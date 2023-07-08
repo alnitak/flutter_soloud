@@ -1,0 +1,4 @@
+[submodule "src/soloud"]
+	path = src/soloud
+	url = https://github.com/alnitak/soloud.git
+	branch = new_miniaudio
