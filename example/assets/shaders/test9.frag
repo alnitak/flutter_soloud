@@ -159,7 +159,7 @@ bool traceHeightField(vec3 ro, vec3 rayStep, out vec3 hitPos)
 
 vec3 background(vec3 rd)
 {
-    return mix(vec3(1.0, 1.0, 1.0), vec3(0.0, 0.0, 0.0), abs(rd.y));
+    return mix(vec3(1.0, 1.0, 1.0), vec3(0.6, 0.6, 1.0), abs(rd.y));
 }
 
 void mainImage( out vec4 fragColor, in vec2 fragCoord )
@@ -174,12 +174,12 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
 
     // rotate view
     float a;
-    a = -0.5;
-    //= -1.0;
+    a = -0.6;
     rd = rotateX(rd, a);
     ro = rotateX(ro, a);
 
-    a = 1.9; //sin(iTime*0.4)*.5 + 1.570796327;
+    a = 1.5;
+//    a = sin(iTime)*.5 + 1.570796327;
     rd = rotateY(rd, a);
     ro = rotateY(ro, a);
 
