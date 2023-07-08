@@ -1,0 +1,8 @@
+{
+    "cmake.sourceDirectory": "/Users/deimos/FLUTTER/flutter_soloud/example/linux",
+    "files.associations": {
+        "__locale": "c",
+        "ios": "c",
+        "stb_vorbis.c": "cpp"
+    }
+}

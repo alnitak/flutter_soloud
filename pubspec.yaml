@@ -1,0 +1,49 @@
+name: flutter_soloud
+description: Flutter audio plugin using SoLoud library and FFI
+version: 0.0.1
+homepage:
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+  flutter: '>=3.3.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  plugin_platform_interface: ^2.0.2
+
+dev_dependencies:
+  #https://pub.dev/packages/ffi
+  ffi: ^2.0.2
+  #https://pub.dev/packages/ffigen
+  ffigen: ^8.0.2
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        ffiPlugin: true
+      ios:
+        ffiPlugin: true
+      linux:
+        ffiPlugin: true
+      macos:
+        ffiPlugin: true
+      windows:
+        ffiPlugin: true
+
+ffigen:
+  output: './lib/flutter_soloud_bindings_ffi_TMP.dart'
+  name: 'FlutterSoLoudFfi'
+  description: 'FFI bindings to SoLoud'
+  functions:
+    exclude:
+      - ''
+  headers:
+    entry-points:
+      - '../flutter_soloud_ios/ios/Classes/src/ffi_gen_tmp.h'
+    include-directives:
+      # - '**ffi_gen_tmp.h'
+      - '**ffi_gen_tmp.h.h'
