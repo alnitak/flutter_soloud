@@ -47,16 +47,21 @@ list(APPEND PLUGIN_SOURCES
 add_library(${PLUGIN_NAME} SHARED
   ${PLUGIN_SOURCES}
 )
-apply_standard_settings(${PLUGIN_NAME})
+#apply_standard_settings(${PLUGIN_NAME})
 set_target_properties(${PLUGIN_NAME} PROPERTIES
   CXX_VISIBILITY_PRESET hidden)
 
 
+find_library( # Sets the name of the path variable.
+		log-lib
+		# Specifies the name of the NDK library that
+		# you want CMake to locate.
+		log)
+
   
 target_compile_definitions(${PLUGIN_NAME} PRIVATE FLUTTER_PLUGIN_IMPL)
 target_include_directories(${PLUGIN_NAME} INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/include")
-target_link_libraries(${PLUGIN_NAME} PRIVATE flutter)
-target_link_libraries(${PLUGIN_NAME} PRIVATE PkgConfig::GTK)
+target_link_libraries(${PLUGIN_NAME} PRIVATE ${log-lib} android)
 
 target_compile_options("${PLUGIN_NAME}" PRIVATE -Wall -Wno-error -fPIC) #  -ldl -lpthread -lm
 

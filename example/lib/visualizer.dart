@@ -144,7 +144,7 @@ class _VisualizerState extends State<Visualizer>
                 PaintTexture(
                   text: 'the texture sent to the shader',
                   width: constraints.maxWidth,
-                  height: 130,
+                  height: 120,
                   image: snapshot.data!,
                 ),
 
