@@ -16,7 +16,7 @@ class SoLoudController {
 
   void initialize() {
     nativeLib = Platform.isLinux
-        ? ffi.DynamicLibrary.open('libflutter_soloud_linux_plugin.so')
+        ? ffi.DynamicLibrary.open('libflutter_soloud_plugin.so')
         : (Platform.isAndroid ? ffi.DynamicLibrary.open('libflutter_soloud_android_plugin.so')
             : (Platform.isWindows
     ? ffi.DynamicLibrary.open('flutter_soloud_windows_plugin.dll')

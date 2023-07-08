@@ -5,41 +5,63 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "flutter_soloud",
-            "request": "launch",
-            "type": "dart"
-        },
-        {
-            "name": "flutter_soloud (profile mode)",
-            "request": "launch",
+            "name": "Flutter profile",
             "type": "dart",
-            "flutterMode": "profile"
+            "request": "launch",
+            "program": "lib/main.dart",
+            "flutterMode": "profile",
+            "cwd": "${workspaceFolder}/example"
         },
         {
-            "name": "flutter_soloud (release mode)",
-            "request": "launch",
+            "name": "Flutter release",
             "type": "dart",
-            "flutterMode": "release"
+            "request": "launch",
+            "program": "lib/main.dart",
+            "flutterMode": "release",
+            "cwd": "${workspaceFolder}/example"
         },
         {
-            "name": "example",
-            "cwd": "example",
-            "request": "launch",
-            "type": "dart"
-        },
-        {
-            "name": "example (profile mode)",
-            "cwd": "example",
-            "request": "launch",
+            "name": "Flutter debug",
             "type": "dart",
-            "flutterMode": "profile"
+            "request": "launch",
+            "program": "lib/main.dart",
+            "flutterMode": "debug",
+            "cwd": "${workspaceFolder}/example"
         },
         {
-            "name": "example (release mode)",
-            "cwd": "example",
+            "name": "Debug native Windows",
+            "preLaunchTask": "compile windows debug",
+            "type": "cppvsdbg",
             "request": "launch",
-            "type": "dart",
-            "flutterMode": "release"
+            "args": [],
+            "program": "${workspaceFolder}/example/build/windows/runner/Debug/flutter_soloud_example.exe",
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Debug native Windows VERBOSE",
+            "preLaunchTask": "compile windows debug verbose",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "args": [],
+            "program": "${workspaceFolder}/example/build/windows/runner/Debug/flutter_soloud_example.exe",
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Debug native Linux",
+            "preLaunchTask": "compile linux debug",
+            "type": "cppdbg",
+            "request": "launch",
+            "args": [],
+            "program": "${workspaceFolder}/example/build/linux/x64/debug/bundle/flutter_soloud_example",
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Debug native Linux VERBOSE",
+            "preLaunchTask": "compile linux debug verbose",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/example/build/linux/x64/debug/bundle/flutter_soloud_example",
+            "cwd": "${workspaceFolder}"
         }
     ]
 }
