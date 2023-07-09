@@ -19,6 +19,7 @@ dev_dependencies:
   ffigen: ^8.0.2
   flutter_test:
     sdk: flutter
+  very_good_analysis: ^5.0.0+1
 
 flutter:
   plugin:
