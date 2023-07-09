@@ -92,4 +92,18 @@ For help getting started with Flutter, view our
 [online documentation](https://flutter.dev/docs), which offers tutorials,
 samples, guidance on mobile development, and a full API reference.
 
+
+
+
+
+
+
+
+Openmpt is a module-playing engine, capable of replaying wide variety of multichannel music (669, amf, ams, dbm, digi, dmf, dsm, far, gdm, ice, imf, it, itp, j2b, m15, mdl, med, mid, mo3, mod, mptm, mt2, mtm, okt, plm, psm, ptm, s3m, stm, ult, umx, wow, xm). It also loads wav files, and may support wider support for wav files than the stand-alone wav audio source.
+
+SoLoud uses Openmpt through DLL, available from https://lib.openmpt.org/
+If you wish to use it, enable it in the 1st line of *windows/src.cmake*
+
+
+
 flutter run --no-enable-impeller

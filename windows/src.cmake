@@ -1,3 +1,6 @@
+# set this to TRUE if you have installed OpenMPT https://lib.openmpt.org/
+set(USE_OPENMPT FALSE)
+
 set (TARGET_NAME soloud)
 
 set (HEADER_PATH ${CMAKE_CURRENT_SOURCE_DIR}/../src/soloud/include)
@@ -30,7 +33,7 @@ set (TARGET_HEADERS
 	${HEADER_PATH}/soloud_misc.h
 	${HEADER_PATH}/soloud_monotone.h
 	${HEADER_PATH}/soloud_noise.h
-	# ${HEADER_PATH}/soloud_openmpt.h
+	${HEADER_PATH}/soloud_openmpt.h
 	${HEADER_PATH}/soloud_queue.h
 	${HEADER_PATH}/soloud_robotizefilter.h
 	${HEADER_PATH}/soloud_sfxr.h
@@ -73,7 +76,7 @@ set (CORE_SOURCES
 # Audiosources
 set (AUDIOSOURCES_PATH ${SOURCE_PATH}/audiosource)
 set (AUDIOSOURCES_SOURCES)
-if(WIN32)
+if(WIN32 AND USE_OPENMPT)
 	# openmpt only in Windows
 	set (AUDIOSOURCES_SOURCES
 		${AUDIOSOURCES_PATH}/openmpt/soloud_openmpt.cpp
@@ -104,7 +107,7 @@ set (AUDIOSOURCES_SOURCES
 	${AUDIOSOURCES_PATH}/sfxr/soloud_sfxr.cpp
 
 	# speech
-	${AUDIOSOURCES_PATH}/speech/Elements.def
+	# ${AUDIOSOURCES_PATH}/speech/Elements.def
 	${AUDIOSOURCES_PATH}/speech/darray.cpp
 	# ${AUDIOSOURCES_PATH}/speech/darray.h
 	${AUDIOSOURCES_PATH}/speech/klatt.cpp
@@ -299,7 +302,7 @@ set (TARGET_SOURCES
 if (SOLOUD_C_API)
 	set (TARGET_SOURCES
 		${TARGET_SOURCES}
-		${SOURCE_PATH}/c_api/soloud.def
+		# ${SOURCE_PATH}/c_api/soloud.def
 		${SOURCE_PATH}/c_api/soloud_c.cpp
 	)
 	set (TARGET_HEADERS
@@ -321,6 +324,7 @@ endif()
 
 
 set_source_files_properties(${AUDIOSOURCES_PATH}/wav/stb_vorbis.c PROPERTIES LANGUAGE CXX )
+# set_source_files_properties(${AUDIOSOURCES_PATH}/openmpt/soloud_openmpt_dll.c PROPERTIES LANGUAGE CXX )
 # target_compile_options(${TARGET_NAME} PRIVATE -Wall -Wno-error -ldl -fPIC -O2 -DNDEBUG -fno-exceptions -fno-rtti) #  -lpthread -ldl
 
 # include (${CMAKE_CURRENT_SOURCE_DIR}/src/soloud/contrib/cmake/Install.cmake)
