@@ -3,13 +3,16 @@
 Flutter audio plugin using SoLoud library and FFI
 
 [![style: very good analysis](https://img.shields.io/badge/style-very_good_analysis-B22C89.svg)](https://pub.dev/packages/very_good_analysis)
+|Linux|Windows|Android|MacOS|iOS|web|
+|-|-|-|-|-|-|
+|💙|💙|💙|💙|💙|😭|
 
-## Getting Started
+## Overview
 
-flutter_soloud plugin uses [SoLoud](https://github.com/jarikomppa/soloud) forked repo where [miniaudio](https://github.com/mackron/miniaudio) audio backend has been updated.
+***flutter_soloud*** plugin uses [SoLoud](https://github.com/jarikomppa/soloud) forked repo where [miniaudio](https://github.com/mackron/miniaudio) audio backend has been updated.
 
 So it is mandatory to clone this repo using:
-```git clone --recursive git://github.com/alnitak/flutter_soloud.git```
+```git clone --recursive https://github.com/alnitak/flutter_soloud.git```
 
 If you already cloned normally, go into the repo dir and:
 ```git submodule update --init --recursive```
@@ -127,3 +130,12 @@ This will build **libflutter_soloud_web_plugin.wasm*** and ***libflutter_soloud_
 First I tried with [wasm_interop](https://pub.dev/packages/wasm_interop) plugin. But had errors loading and initializing the Module.
 
 I tried also [web_ffi](https://pub.dev/packages/web_ffi) but seems it has been discontinued because it supports the old `dart:ffi API 2.12.0` and cannot be used here.
+
+## TODOs
+
+Many things can still be done.
+For now only a small portion of the possibilities given by SoLoud have been implemented. Look [here](https://solhsa.com/soloud/index.html).
+- audio filters
+- 3D audio
+- fading
+- noise generation
