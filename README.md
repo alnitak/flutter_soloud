@@ -14,6 +14,16 @@ So it is mandatory to clone this repo using:
 If you already cloned normally, go into the repo dir and:
 ```git submodule update --init --recursive```
 
+The example aims to show a visualization of frequencies and wave data.
+[***Visualizer.dart***] uses `getAudioTexture2D` to store new audio data into `audioData` on every Tick.
+The data is then stored in an image (the upper widget) and then given to the shader (the middle widget).
+
+The bottom widgets use, on the left, FFT data and on the right the wave data represented win a row of yellow containers with the height taken from `audioData`.
+
+The `getAudioTexture2D` returns an array of 512x256. Each row contains 256 Floats of FFT data and 256 Floats of wave data making it possible to write a shader like a spectogram (shader #8) or a 3D visualization (shader #9).
+
+The shaders from 1 to 7 are using just 1 row of the `audioData`. Therefore the texture generated and sent to the shader, should be 256x2 px. The 1st row represents the FFT data, and the 2nd the wave data.
+
 ## Usage
 First of all, SoLoudController must be initialized:
 ```

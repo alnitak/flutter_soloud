@@ -248,13 +248,14 @@ class _HomePageState extends State<HomePage> {
                       ),
 
                       /// both fft and wave
-                      ActionChip(
-                        backgroundColor: Colors.blue,
-                        onPressed: () {
-                          textureType.value = TextureType.both2D;
-                        },
-                        label: const Text('both'),
-                      ),
+                      /// TODO: not implemented yet
+                      // ActionChip(
+                      //   backgroundColor: Colors.blue,
+                      //   onPressed: () {
+                      //     textureType.value = TextureType.both2D;
+                      //   },
+                      //   label: const Text('both'),
+                      // ),
                     ],
                     child: const Chip(
                       label: Text('texture'),

@@ -258,7 +258,7 @@ if (SOLOUD_BACKEND_MINIAUDIO)
 
 	add_definitions(-DWITH_MINIAUDIO)
 	# remove PulseAudio since it can cause stutters and glitches
-	# add_definitions(-DMA_NO_PULSEAUDIO)
+	add_definitions(-DMA_NO_PULSEAUDIO)
 	set (BACKENDS_SOURCES
 			${BACKENDS_SOURCES}
 			${BACKENDS_PATH}/miniaudio/miniaudio.h

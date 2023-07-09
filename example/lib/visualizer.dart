@@ -123,8 +123,8 @@ class _VisualizerState extends State<Visualizer>
   Widget build(BuildContext context) {
     return FutureBuilder<ui.Image?>(
       future: buildImageCallback(),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData || snapshot.data == null) {
+      builder: (context, dataTexture) {
+        if (!dataTexture.hasData || dataTexture.data == null) {
           return const Placeholder(
             color: Colors.yellow,
             fallbackWidth: 100,
@@ -145,14 +145,14 @@ class _VisualizerState extends State<Visualizer>
                   text: 'the texture sent to the shader',
                   width: constraints.maxWidth,
                   height: 120,
-                  image: snapshot.data!,
+                  image: dataTexture.data!,
                 ),
 
                 AudioShader(
                   text: 'SHADER',
                   width: constraints.maxWidth,
                   height: constraints.maxWidth / 2,
-                  image: snapshot.data!,
+                  image: dataTexture.data!,
                   shader: widget.shader,
                   iTime: sw.elapsedMilliseconds / 1000.0,
                 ),
@@ -162,7 +162,7 @@ class _VisualizerState extends State<Visualizer>
                     /// FFT bars
                     BarsWidget(
                       text: '256 FFT data',
-                      fftReal: audioData.value,
+                      audioData: audioData.value,
                       n: halfFftSize,
                       useFftData: true,
                       width: constraints.maxWidth / 2 - 3,
@@ -173,7 +173,7 @@ class _VisualizerState extends State<Visualizer>
                     /// wave data bars
                     BarsWidget(
                       text: '256 wave data',
-                      fftReal: audioData.value,
+                      audioData: audioData.value,
                       n: halfFftSize,
                       width: constraints.maxWidth / 2 - 3,
                       height: constraints.maxWidth / 4,
@@ -195,11 +195,14 @@ class _VisualizerState extends State<Visualizer>
   Future<ui.Image?> buildImageFromLatestSamplesRow() async {
     final completer = Completer<ui.Image>();
 
+    /// audioData here will be available to all the children of [Visualizer]
     soLoudController.soLoudFFI.getAudioTexture2D(audioData);
     final bytes = Uint8List(fftBitmapRange * 2 * 4);
     // Fill the texture bitmap
-    int col = 0;
-    for (var i = widget.minImageFreqRange; i < widget.maxImageFreqRange; ++i, ++col) {
+    var col = 0;
+    for (var i = widget.minImageFreqRange;
+        i < widget.maxImageFreqRange;
+        ++i, ++col) {
       // fill 1st bitmap row with magnitude
       bytes[col * 4 + 0] = getFFTDataCallback(0, i);
       bytes[col * 4 + 1] = 0;
@@ -236,13 +239,16 @@ class _VisualizerState extends State<Visualizer>
   Future<ui.Image?> buildImageFromAllSamplesMatrix() async {
     final completer = Completer<ui.Image>();
 
+    /// audioData here will be available to all the children of [Visualizer]
     soLoudController.soLoudFFI.getAudioTexture2D(audioData);
     final bytes = Uint8List(fftBitmapRange * 256 * 4);
 
     // Fill the texture bitmap with wave data
     for (var y = 0; y < 256; ++y) {
-      int col = 0;
-      for (var x = widget.minImageFreqRange; x < widget.maxImageFreqRange; ++x, ++col) {
+      var col = 0;
+      for (var x = widget.minImageFreqRange;
+          x < widget.maxImageFreqRange;
+          ++x, ++col) {
         bytes[y * fftBitmapRange * 4 + col * 4 + 0] = textureTypeCallback(y, x);
         bytes[y * fftBitmapRange * 4 + col * 4 + 1] = 0;
         bytes[y * fftBitmapRange * 4 + col * 4 + 2] = 0;

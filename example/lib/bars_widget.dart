@@ -6,7 +6,7 @@ class BarsWidget extends StatelessWidget {
   const BarsWidget({
     super.key,
     this.text = '',
-    required this.fftReal,
+    required this.audioData,
     required this.n,
     required this.width,
     required this.height,
@@ -14,7 +14,7 @@ class BarsWidget extends StatelessWidget {
   });
 
   final String text;
-  final ffi.Pointer<ffi.Float> fftReal;
+  final ffi.Pointer<ffi.Float> audioData;
   final int n;
   final bool useFftData;
   final double width;
@@ -43,7 +43,7 @@ class BarsWidget extends StatelessWidget {
               for (int i = 0; i < n; i++)
                 Container(
                   width: barWidth,
-                  height: (height * fftReal[i + (useFftData ? 0 : n)]).abs(),
+                  height: (height * audioData[i + (useFftData ? 0 : n)]).abs(),
                   color: Colors.yellow,
                 )
             ],
