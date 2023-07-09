@@ -24,6 +24,10 @@ The `getAudioTexture2D` returns an array of 512x256. Each row contains 256 Float
 
 The shaders from 1 to 7 are using just 1 row of the `audioData`. Therefore the texture generated and sent to the shader, should be 256x2 px. The 1st row represents the FFT data, and the 2nd the wave data.
 
+
+https://github.com/alnitak/flutter_soloud/assets/192827/fe0f16a2-eecd-47d0-aee2-71411833e0d5
+
+
 ## Usage
 First of all, SoLoudController must be initialized:
 ```
