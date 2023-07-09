@@ -57,7 +57,7 @@ The `soLoudController` will set the `soLoudFFI` which provides:
 
 The `PlayerErrors` enum:
 |name|description|
-|---|---|---|
+|---|---|
 |***noError***|No error|
 |***invalidParameter***|Some parameter is invalid|
 |***fileNotFound***|File not found|
