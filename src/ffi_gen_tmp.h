@@ -26,4 +26,4 @@
 #endif
 
 
-//--------------------- copy here new functions to generate
+//--------------------- copy here the new functions to generate

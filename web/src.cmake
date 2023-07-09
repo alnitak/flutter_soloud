@@ -104,7 +104,7 @@ set (AUDIOSOURCES_SOURCES
 	${AUDIOSOURCES_PATH}/sfxr/soloud_sfxr.cpp
 
 	# speech
-	${AUDIOSOURCES_PATH}/speech/Elements.def
+	# ${AUDIOSOURCES_PATH}/speech/Elements.def
 	${AUDIOSOURCES_PATH}/speech/darray.cpp
 	# ${AUDIOSOURCES_PATH}/speech/darray.h
 	${AUDIOSOURCES_PATH}/speech/klatt.cpp
@@ -129,10 +129,10 @@ set (AUDIOSOURCES_SOURCES
 	${AUDIOSOURCES_PATH}/vizsn/soloud_vizsn.cpp
 
 	# wav
-	${AUDIOSOURCES_PATH}/wav/dr_flac.h
+	# ${AUDIOSOURCES_PATH}/wav/dr_flac.h
 	${AUDIOSOURCES_PATH}/wav/dr_impl.cpp
-	${AUDIOSOURCES_PATH}/wav/dr_mp3.h
-	${AUDIOSOURCES_PATH}/wav/dr_wav.h
+	# ${AUDIOSOURCES_PATH}/wav/dr_mp3.h
+	# ${AUDIOSOURCES_PATH}/wav/dr_wav.h
 	${AUDIOSOURCES_PATH}/wav/soloud_wav.cpp
 	${AUDIOSOURCES_PATH}/wav/soloud_wavstream.cpp
 	${AUDIOSOURCES_PATH}/wav/stb_vorbis.c
@@ -257,8 +257,6 @@ if (SOLOUD_BACKEND_MINIAUDIO)
 			)
 
 	add_definitions(-DWITH_MINIAUDIO)
-	# remove PulseAudio since it can cause stutters and glitches
-	# add_definitions(-DMA_NO_PULSEAUDIO)
 	set (BACKENDS_SOURCES
 			${BACKENDS_SOURCES}
 			${BACKENDS_PATH}/miniaudio/miniaudio.h
@@ -308,7 +306,6 @@ if (SOLOUD_C_API)
 	)
 endif()
 
-# Removed since ${TARGET_SOURCES} is added in CMakeList.txt
 # if (SOLOUD_DYNAMIC)
 # 	add_library(${TARGET_NAME} SHARED ${TARGET_SOURCES})
 # endif ()
@@ -320,6 +317,7 @@ endif()
 # target_link_libraries (${TARGET_NAME} ${LINK_LIBRARIES})
 
 
+# force stb_vorbis.c to be treated as c++
 set_source_files_properties(${AUDIOSOURCES_PATH}/wav/stb_vorbis.c PROPERTIES LANGUAGE CXX )
 # target_compile_options(${TARGET_NAME} PRIVATE -Wall -Wno-error -ldl -fPIC -O2 -DNDEBUG -fno-exceptions -fno-rtti) #  -lpthread -ldl
 

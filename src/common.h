@@ -22,6 +22,8 @@
     #else
         // Unsupported platform
     #endif
+#else
+    #define _WASM_
 #endif
 
 
@@ -35,7 +37,7 @@
 #define FFI_PLUGIN_EXPORT __declspec(dllexport)
 #endif
 
-#ifdef _IS_LINUX_
+#if defined _IS_LINUX_ || defined _WASM_
 #include <stdarg.h>
 #include <stdio.h>
 #define FFI_PLUGIN_EXPORT __attribute__((visibility("default"))) __attribute__((used))
@@ -47,8 +49,8 @@
 #define FFI_PLUGIN_EXPORT __attribute__((visibility("default"))) __attribute__((used))
 #endif
 
-
+#if !defined(_WASM_)
 void platform_log(const char *fmt, ...);
-
+#endif
 
 #endif // COMMON_H

@@ -84,6 +84,12 @@ class _HomePageState extends State<HomePage> {
   }
 
   @override
+  void dispose() {
+    soLoudController.soLoudFFI.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: Padding(
