@@ -1,6 +1,5 @@
 #include "player.h"
-#include "soloud/include/soloud.h"
-#include "soloud/src/backend/miniaudio/miniaudio.h"
+#include "soloud.h"
 
 Player::Player() : mInited(false) {};
 Player::~Player() = default;
@@ -37,7 +36,7 @@ const std::string Player::getErrorString(PlayerErrors aErrorCode) const
         case outOfMemory: return "Out of memory";
         case notImplemented: return "Feature not implemented";
         case backendNotInited: return "Player not yet initialized";
-        /*case unknownError: return "Other error";*/
+        case unknownError: return "Unknown error";
     }
     return "Other error";
 }

@@ -76,7 +76,7 @@ FFI_PLUGIN_EXPORT float getPosition();
 /// @brief smooth FFT data. 
 /// When new data is read and the values are decreasing, the new value will be
 /// decreased with an amplitude between the old and the new value.
-/// This will resul on a less shaky visualization
+/// This will result on a less shaky visualization
 /// @param [smooth] must be in the [0.0 ~ 1.0] range.
 /// 0 = no smooth
 /// 1 = full smooth

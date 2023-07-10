@@ -43,7 +43,7 @@ void main() {
 ```
 The `soLoudController` will set the `soLoudFFI` which provides:
 |function|returns|params|description|
-|---|---|---|-----------------------|
+|-|-|-|-----------------------|
 |***initEngine***|PlayerErrors|-|Initialize the player. Must be called before any other player functions|
 |***dispose***|-|-|Must be called when there is no more need of the player or when closing the app|
 |***playFile***|PlayerErrors|`String` fileName|Play a new file|
@@ -53,10 +53,10 @@ The `soLoudController` will set the `soLoudFFI` which provides:
 |***getWave***|-|`Pointer<Float>` wave|Returns a 256 float array containing wave data (magnitudes).|
 |***getAudioTexture***|`Pointer<Float>` samples|-|Returns in `samples` a 512 float array.<br/>- The first 256 floats represent the FFT frequencies data [0.0~1.0].<br/>- The other 256 floats represent the wave data (amplitude) [-1.0~1.0].|
 |***getAudioTexture2D***|-|`Pointer<Pointer<Float>>` samples|Return a floats matrix of 256x512.<br/>Every row are composed of 256 FFT values plus 256 wave data.<br/>Every time is called, a new row is stored in the first row and all the previous rows are shifted up (the last will be lost).|
-|***getLength***|`double` time|-||
-|***seek***|PlayerErrors|`double` time||
-|***getPosition***|`double` time|-||
-|***setFftSmoothing***|-|`double` smooth||
+|***getLength***|`double` time|-|Returns sound length in seconds.|
+|***seek***|PlayerErrors|`double` time|Seek playing in seconds.|
+|***getPosition***|`double` time|-|Get current sound position in seconds.|
+|***setFftSmoothing***|-|`double` smooth|Smooth FFT data.<br/>When new data is read and the values are decreasing, the new value will be decreased with an amplitude between the old and the new value.<br/> This will result on a less shaky visualization.<br/>0 = no smooth<br/>1 = full smooth<br/>the new value is calculated with:<br/>`newFreq = smooth * oldFreq + (1 - smooth) * newFreq`|
 
 The `PlayerErrors` enum:
 |name|description|
@@ -138,4 +138,4 @@ For now only a small portion of the possibilities given by SoLoud have been impl
 - audio filters
 - 3D audio
 - fading
-- noise generation
+- noise and waveform generation
