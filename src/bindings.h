@@ -12,7 +12,7 @@ FFI_PLUGIN_EXPORT void test();
 
 /// @brief Initialize the player. Must be called before any other player functions
 /// @return Returns [PlayerErrors.noError] if success
-FFI_PLUGIN_EXPORT PlayerErrors initEngine();
+FFI_PLUGIN_EXPORT enum PlayerErrors initEngine();
 
 /// @brief Must be called when there is no more need of the player or when closing the app
 /// @return 
@@ -20,14 +20,16 @@ FFI_PLUGIN_EXPORT void dispose();
 
 /// @brief Play a new file
 /// @param completeFileName the complete file path
+/// @param handle sound identifier
 /// @return Returns [PlayerErrors.noError] if success
-FFI_PLUGIN_EXPORT PlayerErrors playFile(char * completeFileName);
+FFI_PLUGIN_EXPORT enum PlayerErrors playFile(char * completeFileName, unsigned int *handle);
 
 /// @brief Speech
 /// @param textToSpeech
+/// @param handle sound identifier
 /// @return Returns [PlayerErrors.noError] if success
 /// TODO(me): add other T2S parameters
-FFI_PLUGIN_EXPORT PlayerErrors speechText(char * textToSpeech);
+FFI_PLUGIN_EXPORT enum PlayerErrors speechText(char * textToSpeech, unsigned int *handle);
 
 /// @brief Enable or disable visualization
 /// @param enabled 
@@ -61,17 +63,20 @@ FFI_PLUGIN_EXPORT void getAudioTexture(float* samples);
 FFI_PLUGIN_EXPORT void getAudioTexture2D(float** samples);
 
 /// @brief get the sound length in seconds
+/// @param handle the sound handle
 /// @return returns sound length in seconds
-FFI_PLUGIN_EXPORT double getLength();
+FFI_PLUGIN_EXPORT double getLength(unsigned int handle);
 
 /// @brief seek playing in [time] seconds
-/// @param [time] 
+/// @param time
+/// @param handle the sound handle
 /// @return Returns [PlayerErrors.noError] if success
-FFI_PLUGIN_EXPORT PlayerErrors seek(float time);
+FFI_PLUGIN_EXPORT enum PlayerErrors seek(unsigned int handle,float time);
 
 /// @brief get current sound position
+/// @param handle the sound handle
 /// @return time in seconds
-FFI_PLUGIN_EXPORT float getPosition();
+FFI_PLUGIN_EXPORT double getPosition(unsigned int handle);
 
 /// @brief smooth FFT data. 
 /// When new data is read and the values are decreasing, the new value will be

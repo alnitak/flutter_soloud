@@ -8,20 +8,28 @@ import 'package:ffi/ffi.dart';
 enum PlayerErrors {
   /// No error
   noError,
+
   /// Some parameter is invalid
   invalidParameter,
+
   /// File not found
   fileNotFound,
+
   /// File found, but could not be loaded
   fileLoadFailed,
+
   /// DLL not found, or wrong DLL
   dllNotFound,
+
   /// Out of memory
   outOfMemory,
+
   /// Feature not implemented
   notImplemented,
+
   /// Other error
   unknownError,
+
   /// Player not initialized
   backendNotInited,
 }
@@ -33,17 +41,18 @@ class FlutterSoLoudFfi {
       _lookup;
 
   /// The symbols are looked up in [dynamicLibrary].
+  // ignore: sort_constructors_first
   FlutterSoLoudFfi(ffi.DynamicLibrary dynamicLibrary)
       : _lookup = dynamicLibrary.lookup;
 
   /// The symbols are looked up with [lookup].
+  // ignore: sort_constructors_first
   FlutterSoLoudFfi.fromLookup(
       ffi.Pointer<T> Function<T extends ffi.NativeType>(String symbolName)
           lookup)
       : _lookup = lookup;
 
-
-  /// @brief Initialize the player. Must be called before any 
+  /// @brief Initialize the player. Must be called before any
   /// other player functions
   /// @return Returns [PlayerErrors.noError] if success
   PlayerErrors initEngine() {
@@ -54,7 +63,7 @@ class FlutterSoLoudFfi {
       _lookup<ffi.NativeFunction<ffi.Int32 Function()>>('initEngine');
   late final _initEngine = _initEnginePtr.asFunction<int Function()>();
 
-  /// @brief Must be called when there is no more need of the 
+  /// @brief Must be called when there is no more need of the
   /// player or when closing the app
   /// @return
   void dispose() {
@@ -67,38 +76,86 @@ class FlutterSoLoudFfi {
 
   /// @brief Play a new file
   /// @param completeFileName the complete file path
-  /// @return Returns [PlayerErrors.noError] if success
-  PlayerErrors playFile(String completeFileName) {
-    final e = _playFile(completeFileName.toNativeUtf8().cast<ffi.Char>());
-    return PlayerErrors.values[e];
+  /// @return Returns a Record composed by
+  /// [PlayerErrors.noError] if success and the handle of the sound
+  ({PlayerErrors error, int handle}) playFile(String completeFileName) {
+    // ignore: omit_local_variable_types
+    final ffi.Pointer<ffi.UnsignedInt> handle =
+        calloc(ffi.sizeOf<ffi.UnsignedInt>());
+    final e = _playFile(
+      completeFileName.toNativeUtf8().cast<ffi.Char>(),
+      handle,
+    );
+    final ret = (error: PlayerErrors.values[e], handle: handle.value);
+    calloc.free(handle);
+    return ret;
   }
 
-  late final _playFilePtr =
-      _lookup<ffi.NativeFunction<ffi.Int32 Function(ffi.Pointer<ffi.Char>)>>(
-          'playFile');
-  late final _playFile =
-      _playFilePtr.asFunction<int Function(ffi.Pointer<ffi.Char>)>();
+  late final _playFilePtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Int32 Function(ffi.Pointer<ffi.Char>,
+              ffi.Pointer<ffi.UnsignedInt>)>>('playFile');
+  late final _playFile = _playFilePtr.asFunction<
+      int Function(ffi.Pointer<ffi.Char>, ffi.Pointer<ffi.UnsignedInt>)>();
 
-  /// @brief Speech
+  /// @brief T2S
   /// @param textToSpeech
+  /// @param handle sound identifier
   /// @return Returns [PlayerErrors.noError] if success
-  // TODO(me): add other T2S parameters
-  PlayerErrors speechText(String completeFileName) {
+  /// TODO(me): add other T2S parameters
+  (PlayerErrors, int) speechText(String completeFileName) {
+    // ignore: omit_local_variable_types
+    final ffi.Pointer<ffi.UnsignedInt> handle = calloc(1);
     final e = _speechText(
       completeFileName.toNativeUtf8().cast<ffi.Char>(),
+      handle,
     );
-    return PlayerErrors.values[e];
+    final ret = (PlayerErrors.values[e], handle.value);
+    calloc.free(handle);
+    return ret;
   }
 
-  late final _speechTextPtr =
-      _lookup<ffi.NativeFunction<ffi.Int32 Function(ffi.Pointer<ffi.Char>)>>(
-          'speechText');
-  late final _speechText =
-      _speechTextPtr.asFunction<int Function(ffi.Pointer<ffi.Char>)>();
+  late final _speechTextPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Int32 Function(ffi.Pointer<ffi.Char>,
+              ffi.Pointer<ffi.UnsignedInt>)>>('speechText');
+  late final _speechText = _speechTextPtr.asFunction<
+      int Function(ffi.Pointer<ffi.Char>, ffi.Pointer<ffi.UnsignedInt>)>();
+
+  /// @brief Pause already loaded sound identified by [handle]
+  /// @param handle
+  void pause(int handle) {
+    return _pause(handle);
+  }
+
+  late final _pausePtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt)>>('pause');
+  late final _pause = _pausePtr.asFunction<void Function(int)>();
+
+  /// @brief Play already loaded sound identified by [handle]
+  /// @param handle
+  void play(int handle) {
+    return _play(handle);
+  }
+
+  late final _playPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt)>>('play');
+  late final _play = _playPtr.asFunction<void Function(int)>();
+
+  /// @brief Stop already loaded sound identified by [handle] and clear it
+  /// @param handle
+  void stop(int handle) {
+    return _stop(handle);
+  }
+
+  late final _stopPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt)>>('stop');
+  late final _stop = _stopPtr.asFunction<void Function(int)>();
 
   /// @brief Enable or disable visualization
   /// @param enabled
   /// @return
+  // ignore: avoid_positional_boolean_parameters
   void setVisualizationEnabled(bool enabled) {
     return _setVisualizationEnabled(
       enabled ? 1 : 0,
@@ -171,36 +228,41 @@ class FlutterSoLoudFfi {
       .asFunction<void Function(ffi.Pointer<ffi.Pointer<ffi.Float>>)>();
 
   /// @brief get the sound length in seconds
+  /// @param handle the sound handle
   /// @return returns sound length in seconds
-  double getLength() {
-    return _getLength();
+  double getLength(int handle) {
+    return _getLength(handle);
   }
 
   late final _getLengthPtr =
-      _lookup<ffi.NativeFunction<ffi.Double Function()>>('getLength');
-  late final _getLength = _getLengthPtr.asFunction<double Function()>();
+      _lookup<ffi.NativeFunction<ffi.Double Function(ffi.UnsignedInt)>>(
+          'getLength');
+  late final _getLength = _getLengthPtr.asFunction<double Function(int)>();
 
   /// @brief seek playing in [time] seconds
-  /// @param [time]
+  /// @param time
+  /// @param handle the sound handle
   /// @return Returns [PlayerErrors.noError] if success
-  PlayerErrors seek(double time) {
-    final e = _seek(time);
-    return PlayerErrors.values[e];
+  int seek(int handle, double time) {
+    return _seek(handle, time);
   }
 
-  late final _seekPtr =
-      _lookup<ffi.NativeFunction<ffi.Int32 Function(ffi.Float)>>('seek');
-  late final _seek = _seekPtr.asFunction<int Function(double)>();
+  late final _seekPtr = _lookup<
+      ffi
+      .NativeFunction<ffi.Int32 Function(ffi.UnsignedInt, ffi.Float)>>('seek');
+  late final _seek = _seekPtr.asFunction<int Function(int, double)>();
 
   /// @brief get current sound position
+  /// @param handle the sound handle
   /// @return time in seconds
-  double getPosition() {
-    return _getPosition();
+  double getPosition(int handle) {
+    return _getPosition(handle);
   }
 
   late final _getPositionPtr =
-      _lookup<ffi.NativeFunction<ffi.Float Function()>>('getPosition');
-  late final _getPosition = _getPositionPtr.asFunction<double Function()>();
+      _lookup<ffi.NativeFunction<ffi.Double Function(ffi.UnsignedInt)>>(
+          'getPosition');
+  late final _getPosition = _getPositionPtr.asFunction<double Function(int)>();
 
   /// @brief smooth FFT data.
   /// When new data is read and the values are decreasing, the new value will be
@@ -222,9 +284,6 @@ class FlutterSoLoudFfi {
   late final _setFftSmoothing =
       _setFftSmoothingPtr.asFunction<void Function(double)>();
 
-
-
-  
   /// internal test. Does nothing now
   void test() {
     return _test();
@@ -234,4 +293,3 @@ class FlutterSoLoudFfi {
       _lookup<ffi.NativeFunction<ffi.Void Function()>>('test');
   late final _test = _testPtr.asFunction<void Function()>();
 }
-

@@ -1,3 +1,5 @@
+// ignore_for_file: unawaited_futures
+
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -76,6 +78,7 @@ class _HomePageState extends State<HomePage> {
   final ValueNotifier<double> soundLength = ValueNotifier(0);
   final ValueNotifier<double> soundPosition = ValueNotifier(0);
   Timer? timer;
+  int currentSoundHandle = -1;
 
   @override
   void initState() {
@@ -96,7 +99,7 @@ class _HomePageState extends State<HomePage> {
         padding: const EdgeInsets.only(top: 50, right: 8, left: 8),
         child: Center(
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.start,
+            // mainAxisAlignment: MainAxisAlignment.start,
             children: [
               /// audio & frags popup menu
               Row(
@@ -271,6 +274,13 @@ class _HomePageState extends State<HomePage> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
+                  ElevatedButton(
+                    onPressed: () async {
+                      soLoudController.soLoudFFI.test();
+                    },
+                    child: const Text('test'),
+                  ),
+
                   /// init audio engine
                   ElevatedButton(
                     onPressed: () async {
@@ -349,7 +359,8 @@ class _HomePageState extends State<HomePage> {
                               max: length < position ? position : length,
                               onChanged: (value) {
                                 stopTimer();
-                                soLoudController.soLoudFFI.seek(value);
+                                soLoudController.soLoudFFI
+                                    .seek(currentSoundHandle, value);
                                 soundPosition.value = value;
                                 startTimer();
                               },
@@ -463,23 +474,29 @@ class _HomePageState extends State<HomePage> {
 
   /// play file
   void play(String file) {
-    soLoudController.soLoudFFI.playFile(file);
-    soundLength.value = soLoudController.soLoudFFI.getLength();
+    soLoudController.soLoudFFI.stop(currentSoundHandle);
+    final r = soLoudController.soLoudFFI.playFile(file);
+    currentSoundHandle = r.handle;
+    soundLength.value =
+        soLoudController.soLoudFFI.getLength(currentSoundHandle);
   }
 
   /// plays an assets file
   Future<void> playAsset(String assetsFile) async {
-    File audioFile = await getAssetFile(assetsFile);
-    soLoudController.soLoudFFI.playFile(audioFile.path);
-    soundLength.value = soLoudController.soLoudFFI.getLength();
+    soLoudController.soLoudFFI.stop(currentSoundHandle);
+    final audioFile = await getAssetFile(assetsFile);
+    final r = soLoudController.soLoudFFI.playFile(audioFile.path);
+    currentSoundHandle = r.handle;
+    soundLength.value =
+        soLoudController.soLoudFFI.getLength(currentSoundHandle);
   }
 
   /// get the assets file and copy it to the temp dir
   Future<File> getAssetFile(String assetsFile) async {
-    Directory tempDir = await getTemporaryDirectory();
-    String tempPath = tempDir.path;
-    var filePath = '$tempPath/$assetsFile';
-    var file = File(filePath);
+    final tempDir = await getTemporaryDirectory();
+    final tempPath = tempDir.path;
+    final filePath = '$tempPath/$assetsFile';
+    final file = File(filePath);
     if (file.existsSync()) {
       return file;
     } else {
@@ -487,14 +504,16 @@ class _HomePageState extends State<HomePage> {
       final buffer = byteData.buffer;
       await file.create(recursive: true);
       return file.writeAsBytes(
-          buffer.asUint8List(byteData.offsetInBytes, byteData.lengthInBytes));
+        buffer.asUint8List(byteData.offsetInBytes, byteData.lengthInBytes),
+      );
     }
   }
 
   /// start timer to update the audio position slider
   void startTimer() {
     timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      soundPosition.value = soLoudController.soLoudFFI.getPosition();
+      soundPosition.value =
+          soLoudController.soLoudFFI.getPosition(currentSoundHandle);
     });
   }
 
