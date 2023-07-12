@@ -1,21 +1,28 @@
 #include "player.h"
 #include "soloud.h"
 
-#include <thread>
 #include <algorithm>
 #include <cstdarg>
+#include <unistd.h>
 
 #define RANGE_POSITION_CALLBACK 0.15
 
-Player::Player() : mInited(false){};
-Player::~Player() = default;
+Player::Player() : mInited(false), isLoopRunning(false){};
+Player::~Player()
+{
+    stopLoop();
+    while (isLoopRunning)
+        ;
+    dispose();
+}
 
 void Player::startLoop()
 {
-    PlayerMessages _msg;
-    std::thread loopThread = std::thread([&](Player *me)
-                                         {
-        bool isLoopRunning = true;
+    loopThread = std::thread([&](Player *me)
+                             {
+        PlayerMessages _msg;
+        int c=0;
+        isLoopRunning = true;
         while(isLoopRunning) {
             mutex.lock();
             if (msg.size() == 0) _msg = MSG_NONE;
@@ -23,17 +30,26 @@ void Player::startLoop()
 
             switch (_msg)
             {
-                case MSG_STOP: isLoopRunning = false; break;
+                case MSG_STOP: 
+                    isLoopRunning = false; 
+                    break;
                 case MSG_NONE:
                 default: {
-
+                    for (auto& sound : sounds) {
+                        double time = soloud.getStreamPosition(sound->handle);
+                        if (sound.get()->playEndedCallback != nullptr &&
+                            time > 3.0 && time < 3.2) {
+                            printf("CALLING DART %d\n", c++);
+                            sound.get()->playEndedCallback(sound.get()->handle);
+                        }
+                    }
+                    usleep(1000);
                 }
-
             }
 
             mutex.unlock();
-        } },
-                                         this);
+        } 
+                             this);
     loopThread.detach();
 }
 
@@ -42,13 +58,26 @@ void Player::stopLoop()
     msg.push_back(MSG_STOP);
 }
 
+int Player::sendCommand(PlayerMessages message, ...)
+{
+    int result = 0;
+    std::va_list args;
+    va_start(args, message);
+    // for (int i = 0; i < count; ++i) {
+    //     result += va_arg(args, int);
+    // }
+    va_end(args);
+    return result;
+}
+
 ////////////////////////////////////////////////////
 ////////////////////////////////////////////////////
 ////////////////////////////////////////////////////
 PlayerErrors Player::init()
 {
-    if (mInited) dispose();
-    
+    if (mInited)
+        dispose();
+
     // initialize SoLoud.
     SoLoud::result result = soloud.init(
         SoLoud::Soloud::CLIP_ROUNDOFF,
@@ -59,6 +88,15 @@ PlayerErrors Player::init()
         mInited = true;
     else
         result = backendNotInited;
+
+    // std::thread loopThread = std::thread([&]()
+    // {
+    startLoop();
+    // });
+    // loopThread.detach();
+
+    // usleep(1000);
+    // stopLoop();
     return (PlayerErrors)result;
 }
 
@@ -127,26 +165,29 @@ PlayerErrors Player::play(const std::string &completeFileName, unsigned int &han
 
 void Player::pause(unsigned int handle)
 {
-    ActiveSound* sound = findByHandle(handle);
-    if (sound == nullptr) return;
+    ActiveSound *sound = findByHandle(handle);
+    if (sound == nullptr)
+        return;
     sound->sound.stop();
 }
 
 void Player::play(unsigned int handle)
 {
-    ActiveSound* sound = findByHandle(handle);
-    if (sound == nullptr) return;
+    ActiveSound *sound = findByHandle(handle);
+    if (sound == nullptr)
+        return;
     soloud.play(sound->sound);
 }
 
 void Player::stop(unsigned int handle)
 {
-    ActiveSound* sound = findByHandle(handle);
-    if (sound == nullptr) return;
+    ActiveSound *sound = findByHandle(handle);
+    if (sound == nullptr)
+        return;
     sound->sound.stop();
-    sounds.erase( std::remove_if(sounds.begin(), sounds.end(),
-                        [handle](std::unique_ptr<ActiveSound> &f)
-                        {return f.get()->handle == handle;}) );
+    sounds.erase(std::remove_if(sounds.begin(), sounds.end(),
+                                [handle](std::unique_ptr<ActiveSound> &f)
+                                { return f.get()->handle == handle; }));
 }
 
 PlayerErrors Player::textToSpeech(const std::string &textToSpeech, unsigned int &handle)
@@ -186,8 +227,9 @@ float *Player::getWave()
 // The length in seconds
 double Player::getLength(SoLoud::handle handle)
 {
-    ActiveSound* sound = findByHandle(handle);
-    if (sound == nullptr) return 0.0;
+    ActiveSound *sound = findByHandle(handle);
+    if (sound == nullptr)
+        return 0.0;
     return sound->sound.getLength();
 }
 
@@ -204,26 +246,29 @@ PlayerErrors Player::seek(SoLoud::handle handle, float time)
 // returns time in seconds
 double Player::getPosition(SoLoud::handle handle)
 {
-    ActiveSound* sound = findByHandle(handle);
-    if (sound == nullptr) return 0.0;
+    ActiveSound *sound = findByHandle(handle);
+    if (sound == nullptr)
+        return 0.0;
     return soloud.getStreamPosition(sound->handle);
 }
 
-ActiveSound* Player::findByHandle(SoLoud::handle handle) 
+ActiveSound *Player::findByHandle(SoLoud::handle handle)
 {
     auto sound = std::find_if(sounds.begin(), sounds.end(),
                               [handle](std::unique_ptr<ActiveSound> &f)
                               { return f.get()->handle == handle; });
-    if (sound == sounds.end()) return nullptr;
+    if (sound == sounds.end())
+        return nullptr;
     return sound->get();
 }
 
 void Player::debug()
 {
-    int n=0;
-    for (auto& sound : sounds) {
-        printf("%d: \thandle: %d  \tpos: %f   %s\n", 
-            n, sound.get()->handle, sound.get()->currPos, sound.get()->completeFileName.c_str());
+    int n = 0;
+    for (auto &sound : sounds)
+    {
+        printf("%d: \thandle: %d  \tpos: %f   %s\n",
+               n, sound.get()->handle, sound.get()->currPos, sound.get()->completeFileName.c_str());
         n++;
     }
 }
