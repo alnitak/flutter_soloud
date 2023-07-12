@@ -20,45 +20,38 @@ class FlutterSoLoudFfi {
           lookup)
       : _lookup = lookup;
 
-  /// @brief Pause already loaded sound identified by [handle]
-  /// @param handle
-  void pause(
+  /// @brief Set a dart function to call when the sound with [handle] handle ends
+  /// @param callback the dart function. Must be global or a static class member:
+  /// ```@pragma('vm:entry-point')
+  /// void playEndedCallback(int handle) {
+  /// // here the sound with [handle] has ended.
+  /// // you can play again
+  /// soLoudController.soLoudFFI.play(handle);
+  /// // or dispose it
+  /// soLoudController.soLoudFFI.stop(handle);
+  /// }
+  /// ```
+  /// @param handle the handle to the sound
+  /// @return true if success;
+  int setPlayEndedCallback(
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt)>>
+        callback,
     int handle,
   ) {
-    return _pause(
+    return _setPlayEndedCallback(
+      callback,
       handle,
     );
   }
 
-  late final _pausePtr =
-      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt)>>('pause');
-  late final _pause = _pausePtr.asFunction<void Function(int)>();
-
-  /// @brief Play already loaded sound identified by [handle]
-  /// @param handle
-  void play(
-    int handle,
-  ) {
-    return _play(
-      handle,
-    );
-  }
-
-  late final _playPtr =
-      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt)>>('play');
-  late final _play = _playPtr.asFunction<void Function(int)>();
-
-  /// @brief Stop already loaded sound identified by [handle] and clear it
-  /// @param handle
-  void stop(
-    int handle,
-  ) {
-    return _stop(
-      handle,
-    );
-  }
-
-  late final _stopPtr =
-      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt)>>('stop');
-  late final _stop = _stopPtr.asFunction<void Function(int)>();
+  late final _setPlayEndedCallbackPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Int Function(
+              ffi.Pointer<
+                  ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt)>>,
+              ffi.UnsignedInt)>>('setPlayEndedCallback');
+  late final _setPlayEndedCallback = _setPlayEndedCallbackPtr.asFunction<
+      int Function(
+          ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt)>>,
+          int)>();
 }

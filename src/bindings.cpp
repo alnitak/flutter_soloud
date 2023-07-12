@@ -21,6 +21,17 @@ extern "C" {
 Player player;
 std::unique_ptr<Analyzer> analyzer = std::make_unique<Analyzer>(2048);
 
+FFI_PLUGIN_EXPORT bool setPlayEndedCallback(void (*callback)(unsigned int), unsigned int handle)
+{
+    if (!player.isInited()) return false;
+    ActiveSound* sound = player.findByHandle(handle);
+    if (sound != nullptr) {
+        sound->playEndedCallback = callback;
+        return true;
+    }
+    return false;
+}
+
 FFI_PLUGIN_EXPORT enum PlayerErrors initEngine()
 {
     PlayerErrors res = (PlayerErrors)player.init();
@@ -175,6 +186,10 @@ FFI_PLUGIN_EXPORT void test()
     // player.play("/home/deimos/5/Music/ROSS/DANCE/Alphaville - Big In Japan (Original Version).mp3", handle);
 
     player.debug();
+    if (player.sounds.size() > 0) {
+        ActiveSound* s = player.sounds.back().get();
+        s->playEndedCallback(s->handle);
+    }
 }
 
 

@@ -134,6 +134,13 @@ I tried also [web_ffi](https://pub.dev/packages/web_ffi) but seems it has been d
 ## TODOs
 
 Many things can still be done.
+
+The FFT doesn't look as my wishes. Some works on *Analyzer::calcFFT()* has yet to be done.
+|name|description|
+|--------|-|
+|![spectrum1](https://github.com/alnitak/flutter_soloud/blob/master/img/flutter_soloud_spectrum.png "flutter_soloud spectrum")|flutter_soloud spectrum|
+|![spectrum2](https://github.com/alnitak/flutter_soloud/blob/master/img/audacity_spectrum.png "audacity spectrum")|audacity spectrum|
+
 For now only a small portion of the possibilities given by SoLoud have been implemented. Look [here](https://solhsa.com/soloud/index.html).
 - audio filters
 - 3D audio

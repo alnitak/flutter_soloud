@@ -3,6 +3,9 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
+import 'dart:ffi' as ffi;
+
+import 'package:ffi/ffi.dart';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/gestures.dart';
@@ -149,7 +152,6 @@ class _HomePageState extends State<HomePage> {
                         ActionChip(
                           backgroundColor: Colors.blue,
                           onPressed: () async {
-                            soLoudController.soLoudFFI.playFile(audioChecks[i]);
                             playAsset(audioChecks[i]);
                           },
                           label: Text(
@@ -481,11 +483,26 @@ class _HomePageState extends State<HomePage> {
         soLoudController.soLoudFFI.getLength(currentSoundHandle);
   }
 
+  static void playEndedCallback(int handle) {
+    //  // here the sound with [handle] has ended.
+    //  // you can play again
+    //  soLoudController.soLoudFFI.play(handle);
+    //  // or dispose it
+    //  soLoudController.soLoudFFI.stop(handle);
+    print('******************** sound with $handle handle has ended!');
+  }
+
   /// plays an assets file
   Future<void> playAsset(String assetsFile) async {
     soLoudController.soLoudFFI.stop(currentSoundHandle);
     final audioFile = await getAssetFile(assetsFile);
+
     final r = soLoudController.soLoudFFI.playFile(audioFile.path);
+    soLoudController.soLoudFFI.setPlayEndedCallback(
+      playEndedCallback,
+      r.handle,
+    );
+
     currentSoundHandle = r.handle;
     soundLength.value =
         soLoudController.soLoudFFI.getLength(currentSoundHandle);

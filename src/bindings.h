@@ -10,6 +10,26 @@ extern "C" {
 
 FFI_PLUGIN_EXPORT void test();
 
+/// @brief Set a dart function to call when the sound with [handle] handle ends
+/// @param callback this is the dart function that will be called
+///     when the sound ends to play. 
+///     Must be global or a static class member:
+///     ```@pragma('vm:entry-point')
+///        void playEndedCallback(int handle) {
+///             // here the sound with [handle] has ended.
+///             // you can play again
+///             soLoudController.soLoudFFI.play(handle);
+///             // or dispose it
+///             soLoudController.soLoudFFI.stop(handle);
+///        }
+///     ```
+/// @param handle the handle to the sound
+/// @return callback this is the dart function that will be called
+///         when the sound ends to play
+/// @return true if success;
+FFI_PLUGIN_EXPORT bool setPlayEndedCallback
+    (void (*callback)(unsigned int), unsigned int handle);
+
 /// @brief Initialize the player. Must be called before any other player functions
 /// @return Returns [PlayerErrors.noError] if success
 FFI_PLUGIN_EXPORT enum PlayerErrors initEngine();

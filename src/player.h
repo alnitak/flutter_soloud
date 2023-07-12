@@ -13,6 +13,8 @@
 #include <map>
 #include <mutex>
 #include <memory>
+#include <atomic>
+#include <thread>
 
 typedef enum PlayerMessages
 {
@@ -26,7 +28,7 @@ struct ActiveSound {
     SoLoud::handle handle;
     double currPos = 0.0;
     double posForCallback = -1.0;
-    void (*endPlayingCallback)(void) = nullptr;
+    void (*playEndedCallback)(unsigned int) = nullptr;
     void (*positionCallback)(void) = nullptr;
 };
 
@@ -37,6 +39,7 @@ public:
 
     void startLoop();
     void stopLoop();
+    int sendCommand(PlayerMessages message, ...);
 
     /// @brief Initialize the player. Must be called before any other player functions
     /// @return Returns [PlayerErrors.SO_NO_ERROR] if success
@@ -108,19 +111,20 @@ public:
     /// @return time in seconds
     double getPosition(SoLoud::handle handle);
 
-    void debug();
-
-public:
-
     /// @brief Find a sound by its handle
     /// @param handle 
     /// @return If not found, return nullptr
     ActiveSound* findByHandle(SoLoud::handle handle); 
 
+    void debug();
+
+public:
+
+    std::thread loopThread;
+    std::atomic<bool> isLoopRunning;
     std::mutex mutex;
     std::vector<PlayerMessages> msg;
     std::vector<std::unique_ptr<ActiveSound>> sounds;
-    // std::map<SoLoud::handle, std::unique_ptr<ActiveSound>> sounds;
 
     /// true when the backend is initialized
     bool mInited;
