@@ -20,38 +20,34 @@ class FlutterSoLoudFfi {
           lookup)
       : _lookup = lookup;
 
-  /// @brief Set a dart function to call when the sound with [handle] handle ends
-  /// @param callback the dart function. Must be global or a static class member:
-  /// ```@pragma('vm:entry-point')
-  /// void playEndedCallback(int handle) {
-  /// // here the sound with [handle] has ended.
-  /// // you can play again
-  /// soLoudController.soLoudFFI.play(handle);
-  /// // or dispose it
-  /// soLoudController.soLoudFFI.stop(handle);
-  /// }
-  /// ```
-  /// @param handle the handle to the sound
-  /// @return true if success;
-  int setPlayEndedCallback(
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt)>>
-        callback,
+  /// @brief Pause or unpause already loaded sound identified by [handle]
+  /// @param handle the sound handle
+  void pauseSwitch(
     int handle,
   ) {
-    return _setPlayEndedCallback(
-      callback,
+    return _pauseSwitch(
       handle,
     );
   }
 
-  late final _setPlayEndedCallbackPtr = _lookup<
-      ffi.NativeFunction<
-          ffi.Int Function(
-              ffi.Pointer<
-                  ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt)>>,
-              ffi.UnsignedInt)>>('setPlayEndedCallback');
-  late final _setPlayEndedCallback = _setPlayEndedCallbackPtr.asFunction<
-      int Function(
-          ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt)>>,
-          int)>();
+  late final _pauseSwitchPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt)>>(
+          'pauseSwitch');
+  late final _pauseSwitch = _pauseSwitchPtr.asFunction<void Function(int)>();
+
+  /// @brief Gets the pause state
+  /// @param handle the sound handle
+  /// @return true if paused
+  int getPause(
+    int handle,
+  ) {
+    return _getPause(
+      handle,
+    );
+  }
+
+  late final _getPausePtr =
+      _lookup<ffi.NativeFunction<ffi.Int Function(ffi.UnsignedInt)>>(
+          'getPause');
+  late final _getPause = _getPausePtr.asFunction<int Function(int)>();
 }

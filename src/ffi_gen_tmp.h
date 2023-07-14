@@ -16,17 +16,12 @@
 
 //--------------------- copy here the new functions to generate
 
-/// @brief Set a dart function to call when the sound with [handle] handle ends
-/// @param callback the dart function. Must be global or a static class member:
-///     ```@pragma('vm:entry-point')
-///        void playEndedCallback(int handle) {
-///             // here the sound with [handle] has ended.
-///             // you can play again
-///             soLoudController.soLoudFFI.play(handle);
-///             // or dispose it
-///             soLoudController.soLoudFFI.stop(handle);
-///        } 
-///     ```
-/// @param handle the handle to the sound
-/// @return true if success;
-FFI_PLUGIN_EXPORT bool setPlayEndedCallback(void (*callback)(unsigned int), unsigned int handle);
+/// @brief Pause or unpause already loaded sound identified by [handle]
+/// @param handle the sound handle
+FFI_PLUGIN_EXPORT void pauseSwitch(unsigned int handle);
+
+/// @brief Gets the pause state
+/// @param handle the sound handle
+/// @return true if paused
+FFI_PLUGIN_EXPORT bool getPause(unsigned int handle);
+

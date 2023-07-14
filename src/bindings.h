@@ -51,6 +51,23 @@ FFI_PLUGIN_EXPORT enum PlayerErrors playFile(char * completeFileName, unsigned i
 /// TODO(me): add other T2S parameters
 FFI_PLUGIN_EXPORT enum PlayerErrors speechText(char * textToSpeech, unsigned int *handle);
 
+/// @brief Pause or unpause already loaded sound identified by [handle]
+/// @param handle the sound handle
+FFI_PLUGIN_EXPORT void pauseSwitch(unsigned int handle);
+
+/// @brief Gets the pause state
+/// @param handle the sound handle
+/// @return true if paused
+FFI_PLUGIN_EXPORT bool getPause(unsigned int handle);
+
+/// @brief Play already loaded sound identified by [handle]
+/// @param handle 
+FFI_PLUGIN_EXPORT unsigned int play(unsigned int handle);
+
+/// @brief Stop already loaded sound identified by [handle] and clear it
+/// @param handle 
+FFI_PLUGIN_EXPORT void stop(unsigned int handle);
+
 /// @brief Enable or disable visualization
 /// @param enabled 
 /// @return 

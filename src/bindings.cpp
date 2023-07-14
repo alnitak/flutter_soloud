@@ -62,20 +62,27 @@ FFI_PLUGIN_EXPORT enum PlayerErrors speechText(char * textToSpeech, unsigned int
     return (PlayerErrors)player.textToSpeech(textToSpeech, *handle);
 }
 
-/// @brief Pause already loaded sound identified by [handle]
-/// @param handle 
-FFI_PLUGIN_EXPORT void pause(unsigned int handle)
+FFI_PLUGIN_EXPORT void pauseSwitch(unsigned int handle)
 {
     if (!player.isInited()) return;
-    player.pause(handle);
+    player.pauseSwitch(handle);
+}
+
+/// @brief Gets the pause state
+/// @param handle the sound handle
+/// @return true if paused
+FFI_PLUGIN_EXPORT bool getPause(unsigned int handle)
+{
+    if (!player.isInited()) return false;
+    return player.getPause(handle);
 }
 
 /// @brief Play already loaded sound identified by [handle]
 /// @param handle 
-FFI_PLUGIN_EXPORT void play(unsigned int handle)
+FFI_PLUGIN_EXPORT unsigned int play(unsigned int handle)
 {
-    if (!player.isInited()) return;
-    player.play(handle);
+    if (!player.isInited()) return -1;
+    return player.play(handle); 
 }
 
 /// @brief Stop already loaded sound identified by [handle] and clear it

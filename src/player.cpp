@@ -48,7 +48,7 @@ void Player::startLoop()
             }
 
             mutex.unlock();
-        } 
+        } },
                              this);
     loopThread.detach();
 }
@@ -89,14 +89,7 @@ PlayerErrors Player::init()
     else
         result = backendNotInited;
 
-    // std::thread loopThread = std::thread([&]()
-    // {
     startLoop();
-    // });
-    // loopThread.detach();
-
-    // usleep(1000);
-    // stopLoop();
     return (PlayerErrors)result;
 }
 
@@ -146,6 +139,7 @@ const std::string Player::getErrorString(PlayerErrors aErrorCode) const
 
 PlayerErrors Player::play(const std::string &completeFileName, unsigned int &handle)
 {
+    handle = -1;
     if (!mInited)
         return backendNotInited;
 
@@ -154,7 +148,8 @@ PlayerErrors Player::play(const std::string &completeFileName, unsigned int &han
     SoLoud::result result = sounds.back().get()->sound.load(completeFileName.c_str());
     if (result == SoLoud::SO_NO_ERROR)
     {
-        handle = sounds.back().get()->handle = soloud.play(sounds.back().get()->sound, -1.0f, 0.0f, 0, 0);
+        handle = sounds.back().get()->handle = 
+            soloud.play(sounds.back().get()->sound, -1.0f, 0.0f, 0, 0);
     }
     else
     {
@@ -163,20 +158,28 @@ PlayerErrors Player::play(const std::string &completeFileName, unsigned int &han
     return (PlayerErrors)result;
 }
 
-void Player::pause(unsigned int handle)
+void Player::pauseSwitch(unsigned int handle)
 {
     ActiveSound *sound = findByHandle(handle);
     if (sound == nullptr)
         return;
-    sound->sound.stop();
+    soloud.setPause(sound->handle, !getPause(handle));
 }
 
-void Player::play(unsigned int handle)
+bool Player::getPause(unsigned int handle)
 {
     ActiveSound *sound = findByHandle(handle);
     if (sound == nullptr)
-        return;
-    soloud.play(sound->sound);
+        return false;
+    return soloud.getPause(sound->handle);
+}
+
+unsigned int Player::play(unsigned int handle)
+{
+    ActiveSound *sound = findByHandle(handle);
+    if (sound == nullptr)
+        return -1;
+    return soloud.play(sound->sound);
 }
 
 void Player::stop(unsigned int handle)

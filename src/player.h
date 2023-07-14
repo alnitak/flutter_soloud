@@ -63,13 +63,19 @@ public:
     /// @return Returns [PlayerErrors.SO_NO_ERROR] if success
     PlayerErrors play(const std::string& completeFileName, unsigned int &handle);
 
-    /// @brief Pause already loaded sound identified by [handle]
-    /// @param handle 
-    void pause(unsigned int handle);
+    /// @brief Pause or unpause already loaded sound identified by [handle]
+    /// @param handle the sound handle
+    void pauseSwitch(unsigned int handle);
+
+    /// @brief Gets the pause state
+    /// @param handle the sound handle
+    /// @return true if paused
+    bool getPause(unsigned int handle);
     
     /// @brief Play already loaded sound identified by [handle]
     /// @param handle 
-    void play(unsigned int handle);
+    /// @return the handle of the sound
+    unsigned int play(unsigned int handle);
     
     /// @brief Stop already loaded sound identified by [handle] and clear it
     /// @param handle 

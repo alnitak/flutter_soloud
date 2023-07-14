@@ -6,7 +6,7 @@ import 'dart:ui' as ui;
 import 'package:ffi/ffi.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
-import 'package:flutter_soloud_example/main.dart';
+import 'package:flutter_soloud_example/main_FFT.dart';
 
 import 'audio_shader.dart';
 import 'bars_widget.dart';
