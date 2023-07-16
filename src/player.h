@@ -22,10 +22,15 @@ typedef enum PlayerMessages
     MSG_STOP
 } PlayerMessages_t;
 
+/// The default number of concurrent voices - maximum number of "streams" - is 16, 
+/// but this can be adjusted at runtime
 struct ActiveSound {
     SoLoud::Wav sound;
     std::string completeFileName;
-    SoLoud::handle handle;
+    /// many istances of [sound] can be played without re-loading it
+    std::vector<SoLoud::handle> handle;
+    /// following params are not used since 
+    /// I can't call Dart from another thread
     double currPos = 0.0;
     double posForCallback = -1.0;
     void (*playEndedCallback)(unsigned int) = nullptr;
@@ -36,10 +41,6 @@ class Player {
 public:
     Player();
     ~Player();
-
-    void startLoop();
-    void stopLoop();
-    int sendCommand(PlayerMessages message, ...);
 
     /// @brief Initialize the player. Must be called before any other player functions
     /// @return Returns [PlayerErrors.SO_NO_ERROR] if success
@@ -117,10 +118,16 @@ public:
     /// @return time in seconds
     double getPosition(SoLoud::handle handle);
 
+    /// @brief check if a handle is still valid.
+    /// @param handle handle to check
+    /// @return true if it still exists
+    bool getIsValidVoiceHandle(SoLoud::handle handle);
+
     /// @brief Find a sound by its handle
     /// @param handle 
-    /// @return If not found, return nullptr
-    ActiveSound* findByHandle(SoLoud::handle handle); 
+    /// @return If not found, return nullptr. 
+    ///    [handleId] is the index of the handles of the sound found
+    ActiveSound* findByHandle(SoLoud::handle handle, int *handleId); 
 
     void debug();
 

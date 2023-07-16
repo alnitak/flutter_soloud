@@ -54,65 +54,67 @@ class FlutterSoLoudFfi {
           lookup)
       : _lookup = lookup;
 
-  /// Since using the callback passed to [setPlayEndedCallback] will throw
-  /// ```Error: fromFunction expects a static function as parameter. 
-  /// dart:ffi only supports calling static Dart functions from native code. 
-  /// Closures and tear-offs are not supported because 
-  /// they can capture context.```
-  static void Function(int)? _userPlayEndedCallback;
-  /// here the user callback given to [setPlayEndedCallback] will be temporarly
-/// saved into [_userPlayEndedCallback]. The [_playEndedCallback] will instead
-/// passed to C side to be called, which then call the user callback.
-  static void _playEndedCallback(int handle) {
-    if (_userPlayEndedCallback != null) {
-      // ignore: prefer_null_aware_method_calls
-      _userPlayEndedCallback!(handle);
-    }
-  }
-  /// @brief Set a dart function to call when the sound with [handle] handle ends
-  /// @param callback this is the dart function that will be called
-  ///     when the sound ends to play. 
-  ///     Must be global or a static class member:
-  ///     ```@pragma('vm:entry-point')
-  ///        void playEndedCallback(int handle) {
-  ///             // here the sound with [handle] has ended.
-  ///             // you can play again
-  ///             soLoudController.soLoudFFI.play(handle);
-  ///             // or dispose it
-  ///             soLoudController.soLoudFFI.stop(handle);
-  ///        }
-  ///     ```
-  /// @param handle the handle to the sound
-  /// @return callback this is the dart function that will be called
-  ///         when the sound ends to play
-  /// @return true if success;
-  /// https://github.com/dart-lang/sdk/issues/37022
-  /// PS: NOT USED, maybe in another time
-  bool setPlayEndedCallback(
-    void Function(int) callback,
-    int handle,
-  ) {
+/// For now remove the callback
+/// 
+//   /// Since using the callback passed to [setPlayEndedCallback] will throw
+//   /// ```Error: fromFunction expects a static function as parameter. 
+//   /// dart:ffi only supports calling static Dart functions from native code. 
+//   /// Closures and tear-offs are not supported because 
+//   /// they can capture context.```
+//   static void Function(int)? _userPlayEndedCallback;
+//   /// here the user callback given to [setPlayEndedCallback] will be temporarly
+// /// saved into [_userPlayEndedCallback]. The [_playEndedCallback] will instead
+// /// passed to C side to be called, which then call the user callback.
+//   static void _playEndedCallback(int handle) {
+//     if (_userPlayEndedCallback != null) {
+//       // ignore: prefer_null_aware_method_calls
+//       _userPlayEndedCallback!(handle);
+//     }
+//   }
+//   /// @brief Set a dart function to call when the sound with [handle] handle ends
+//   /// @param callback this is the dart function that will be called
+//   ///     when the sound ends to play. 
+//   ///     Must be global or a static class member:
+//   ///     ```@pragma('vm:entry-point')
+//   ///        void playEndedCallback(int handle) {
+//   ///             // here the sound with [handle] has ended.
+//   ///             // you can play again
+//   ///             soLoudController.soLoudFFI.play(handle);
+//   ///             // or dispose it
+//   ///             soLoudController.soLoudFFI.stop(handle);
+//   ///        }
+//   ///     ```
+//   /// @param handle the handle to the sound
+//   /// @return callback this is the dart function that will be called
+//   ///         when the sound ends to play
+//   /// @return true if success;
+//   /// https://github.com/dart-lang/sdk/issues/37022
+//   /// PS: NOT USED, maybe in another time
+//   bool setPlayEndedCallback(
+//     void Function(int) callback,
+//     int handle,
+//   ) {
     
 
-    _userPlayEndedCallback = callback;
-    final ret = _setPlayEndedCallback(
-      ffi.Pointer.fromFunction(_playEndedCallback),
-      handle,
-    );
+//     _userPlayEndedCallback = callback;
+//     final ret = _setPlayEndedCallback(
+//       ffi.Pointer.fromFunction(_playEndedCallback),
+//       handle,
+//     );
 
-    return ret == 1 ? true : false;
-  }
+//     return ret == 1 ? true : false;
+//   }
 
-  late final _setPlayEndedCallbackPtr = _lookup<
-      ffi.NativeFunction<
-          ffi.Int Function(
-              ffi.Pointer<
-                  ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt)>>,
-              ffi.UnsignedInt)>>('setPlayEndedCallback');
-  late final _setPlayEndedCallback = _setPlayEndedCallbackPtr.asFunction<
-      int Function(
-          ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt)>>,
-          int)>();
+//   late final _setPlayEndedCallbackPtr = _lookup<
+//       ffi.NativeFunction<
+//           ffi.Int Function(
+//               ffi.Pointer<
+//                   ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt)>>,
+//               ffi.UnsignedInt)>>('setPlayEndedCallback');
+//   late final _setPlayEndedCallback = _setPlayEndedCallbackPtr.asFunction<
+//       int Function(
+//           ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt)>>,
+//           int)>();
 
   /// @brief Initialize the player. Must be called before any
   /// other player functions
@@ -293,7 +295,7 @@ class FlutterSoLoudFfi {
   /// @param samples
   /// @return
   void getAudioTexture2D(ffi.Pointer<ffi.Pointer<ffi.Float>> samples) {
-    return _getAudioTexture2D(samples);
+    _getAudioTexture2D(samples);
   }
 
   late final _getAudioTexture2DPtr = _lookup<
@@ -339,6 +341,19 @@ class FlutterSoLoudFfi {
       _lookup<ffi.NativeFunction<ffi.Double Function(ffi.UnsignedInt)>>(
           'getPosition');
   late final _getPosition = _getPositionPtr.asFunction<double Function(int)>();
+
+  /// @brief check if a handle is still valid.
+  /// @param handle handle to check
+  /// @return true if it still exists
+  bool getIsValidVoiceHandle(int handle) {
+    return _getIsValidVoiceHandle(handle) == 1 ? true : false;
+  }
+
+  late final _getIsValidVoiceHandlePtr =
+      _lookup<ffi.NativeFunction<ffi.Int Function(ffi.UnsignedInt)>>(
+          'getIsValidVoiceHandle');
+  late final _getIsValidVoiceHandle =
+      _getIsValidVoiceHandlePtr.asFunction<int Function(int)>();
 
   /// @brief smooth FFT data.
   /// When new data is read and the values are decreasing, the new value will be

@@ -16,12 +16,8 @@
 
 //--------------------- copy here the new functions to generate
 
-/// @brief Pause or unpause already loaded sound identified by [handle]
-/// @param handle the sound handle
-FFI_PLUGIN_EXPORT void pauseSwitch(unsigned int handle);
-
-/// @brief Gets the pause state
-/// @param handle the sound handle
-/// @return true if paused
-FFI_PLUGIN_EXPORT bool getPause(unsigned int handle);
+/// @brief check if a handle is still valid.
+/// @param handle handle to check
+/// @return true if it still exists
+FFI_PLUGIN_EXPORT bool getIsValidVoiceHandle(unsigned int handle);
 

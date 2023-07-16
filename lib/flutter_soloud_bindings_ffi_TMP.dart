@@ -20,34 +20,20 @@ class FlutterSoLoudFfi {
           lookup)
       : _lookup = lookup;
 
-  /// @brief Pause or unpause already loaded sound identified by [handle]
-  /// @param handle the sound handle
-  void pauseSwitch(
+  /// @brief check if a handle is still valid.
+  /// @param handle handle to check
+  /// @return true if it still exists
+  int getIsValidVoiceHandle(
     int handle,
   ) {
-    return _pauseSwitch(
+    return _getIsValidVoiceHandle(
       handle,
     );
   }
 
-  late final _pauseSwitchPtr =
-      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt)>>(
-          'pauseSwitch');
-  late final _pauseSwitch = _pauseSwitchPtr.asFunction<void Function(int)>();
-
-  /// @brief Gets the pause state
-  /// @param handle the sound handle
-  /// @return true if paused
-  int getPause(
-    int handle,
-  ) {
-    return _getPause(
-      handle,
-    );
-  }
-
-  late final _getPausePtr =
+  late final _getIsValidVoiceHandlePtr =
       _lookup<ffi.NativeFunction<ffi.Int Function(ffi.UnsignedInt)>>(
-          'getPause');
-  late final _getPause = _getPausePtr.asFunction<int Function(int)>();
+          'getIsValidVoiceHandle');
+  late final _getIsValidVoiceHandle =
+      _getIsValidVoiceHandlePtr.asFunction<int Function(int)>();
 }

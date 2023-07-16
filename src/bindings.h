@@ -27,8 +27,8 @@ FFI_PLUGIN_EXPORT void test();
 /// @return callback this is the dart function that will be called
 ///         when the sound ends to play
 /// @return true if success;
-FFI_PLUGIN_EXPORT bool setPlayEndedCallback
-    (void (*callback)(unsigned int), unsigned int handle);
+// FFI_PLUGIN_EXPORT bool setPlayEndedCallback
+//     (void (*callback)(unsigned int), unsigned int handle);
 
 /// @brief Initialize the player. Must be called before any other player functions
 /// @return Returns [PlayerErrors.noError] if success
@@ -114,6 +114,11 @@ FFI_PLUGIN_EXPORT enum PlayerErrors seek(unsigned int handle,float time);
 /// @param handle the sound handle
 /// @return time in seconds
 FFI_PLUGIN_EXPORT double getPosition(unsigned int handle);
+
+/// @brief check if a handle is still valid.
+/// @param handle handle to check
+/// @return true if it still exists
+FFI_PLUGIN_EXPORT bool getIsValidVoiceHandle(unsigned int handle);
 
 /// @brief smooth FFT data. 
 /// When new data is read and the values are decreasing, the new value will be

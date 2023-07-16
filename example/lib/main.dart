@@ -1,6 +1,9 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui';
+import 'dart:ffi' as ffi;
+
+import 'package:ffi/ffi.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -41,14 +44,26 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
+  late ffi.Pointer<ffi.Pointer<ffi.Float>> audioData;
+
   @override
   void initState() {
     super.initState();
+    audioData = calloc();
+    AudioIsolate().startIsolate().then((value) {
+      debugPrint('isolate started');
+      AudioIsolate().initEngine().then((value) {
+        debugPrint('initEngine: $value');
+        AudioIsolate().setVisualizationEnabled(true);
+        AudioIsolate().startLoop().then((value) => debugPrint('loop started'));
+      });
+    });
   }
 
   @override
   void dispose() {
     super.dispose();
+    calloc.free(audioData);
   }
 
   @override
@@ -88,9 +103,10 @@ class _HomePageState extends State<HomePage> {
                     const SizedBox(width: 32),
                     ElevatedButton(
                       onPressed: () {
-                        AudioIsolate()
-                            .initEngine()
-                            .then((value) => debugPrint('initEngine: $value'));
+                        AudioIsolate().initEngine().then((value) {
+                          debugPrint('initEngine: $value');
+                          AudioIsolate().setVisualizationEnabled(true);
+                        });
                       },
                       child: const Text('init'),
                     ),
@@ -123,13 +139,22 @@ class _HomePageState extends State<HomePage> {
                     ElevatedButton(
                       onPressed: () {
                         AudioIsolate()
-                            .stoptLoop()
+                            .stopLoop()
                             .then((value) => debugPrint('loop stopped'));
                       },
                       child: const Text('stop loop'),
                     ),
                   ],
                 ),
+                const SizedBox(height: 32),
+
+                ElevatedButton(
+                  onPressed: () async {
+                    await AudioIsolate().getAudioTexture2D(audioData);
+                  },
+                  child: const Text('get FFT'),
+                ),
+
                 const SizedBox(height: 32),
                 MyButton(
                   assetsAudio: 'assets/audio/8_bit_mentality.mp3',
@@ -150,7 +175,7 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-class MyButton extends StatelessWidget {
+class MyButton extends StatefulWidget {
   MyButton({
     required this.assetsAudio,
     required this.text,
@@ -160,11 +185,41 @@ class MyButton extends StatelessWidget {
   final String assetsAudio;
   final String text;
 
+  @override
+  State<MyButton> createState() => _MyButtonState();
+}
+
+class _MyButtonState extends State<MyButton> {
   final isPaused = ValueNotifier<bool>(true);
+
   final soundLength = ValueNotifier<double>(0);
+
   final soundPosition = ValueNotifier<double>(0);
+
   Timer? timer;
+
   int? audioHandler;
+
+  late StreamSubscription<StreamSoundEvent> _subscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _subscription = AudioIsolate().soundEvents.stream.listen(
+      (event) {
+        if (event.sound.handle != audioHandler) return;
+        print('@@@@@@@@@@@ StreamSoundEvent for handle: ${event.sound.handle}');
+        stopTimer();
+        audioHandler = null;
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _subscription.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -173,9 +228,9 @@ class MyButton extends StatelessWidget {
         ElevatedButton(
           onPressed: () {
             if (audioHandler != null) return;
-            playAsset(assetsAudio);
+            playAsset(widget.assetsAudio);
           },
-          child: Text(text),
+          child: Text(widget.text),
         ),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -187,14 +242,15 @@ class MyButton extends StatelessWidget {
                   onPressed: () async {
                     if (audioHandler == null) return;
                     await AudioIsolate().pauseSwitch(audioHandler!);
-                    await AudioIsolate().getPause(audioHandler!).then((value) {
+                    unawaited(
+                        AudioIsolate().getPause(audioHandler!).then((value) {
                       if (value) {
                         stopTimer();
                       } else {
                         startTimer();
                       }
                       isPaused.value = value;
-                    });
+                    }));
                   },
                   icon: paused
                       ? const Icon(Icons.pause_circle_outline, size: 48)
@@ -207,10 +263,9 @@ class MyButton extends StatelessWidget {
             IconButton(
               onPressed: () {
                 if (audioHandler == null) return;
-                AudioIsolate().stop(audioHandler!).then((value) {
-                  stopTimer();
-                  audioHandler = null;
-                });
+                AudioIsolate().stop(audioHandler!);
+                stopTimer();
+                audioHandler = null;
               },
               icon: const Icon(Icons.stop_circle_outlined, size: 48),
               iconSize: 48,
@@ -239,6 +294,7 @@ class MyButton extends StatelessWidget {
                         value: position,
                         max: length < position ? position : length,
                         onChanged: (value) async {
+                          if (audioHandler == null) return;
                           stopTimer();
                           soundPosition.value = value;
                           await AudioIsolate()
@@ -268,16 +324,12 @@ class MyButton extends StatelessWidget {
   Future<void> playAsset(String assetsFile) async {
     final audioFile = await getAssetFile(assetsFile);
     await AudioIsolate().playFile(audioFile.path).then((value) {
-      debugPrint('playFile: $value');
       audioHandler = value.handle;
       startTimer();
-    });
-    if (audioHandler != null) {
-      await AudioIsolate().getLength(audioHandler!).then((value) {
-        debugPrint('getLength: $value');
+      unawaited(AudioIsolate().getLength(audioHandler!).then((value) {
         soundLength.value = value;
-      });
-    }
+      }));
+    });
   }
 
   /// get the assets file and copy it to the temp dir
