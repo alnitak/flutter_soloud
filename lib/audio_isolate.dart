@@ -7,6 +7,12 @@ import 'dart:isolate';
 import 'flutter_soloud_bindings_ffi.dart';
 import 'soloud_controller.dart';
 
+/// Author note: I am a bit scared on how the use of
+/// these 2 isolates implementation is gone. But hey, 
+/// Records saved my life! \O/
+
+/// print some infos when isolate receive events 
+/// from main isolate and vice versa
 void debugIsolates(String text) {
   // print(text);
 }
@@ -67,6 +73,8 @@ class SoundProps {
   final int handle;
   double length = 0;
   List<double> keys = [];
+
+  /// the user can listed ie when a sound ends
   StreamController<StreamSoundEvent> soundEvents = StreamController.broadcast();
 }
 
@@ -82,6 +90,7 @@ class SoundProps {
 void audioIsolate(SendPort isolateToMainStream) {
   final mainToIsolateStream = ReceivePort();
   final soLoudController = SoLoudController();
+  // the active sounds 
   final List<SoundProps> activeSounds = [];
   bool loopRunning = false;
 
@@ -120,13 +129,18 @@ void audioIsolate(SendPort isolateToMainStream) {
         final args = event['args'] as ArgsPlayFile;
         final ret = soLoudController.soLoudFFI.playFile(args.completeFileName);
         // add the new sound handler to the list
+        final newSound = SoundProps(ret.handle);
         if (ret.error == PlayerErrors.noError) {
-          activeSounds.add(SoundProps(ret.handle));
+          activeSounds.add(newSound);
         }
-        isolateToMainStream
-            .send({'event': event['event'], 'args': args, 'return': ret});
+        isolateToMainStream.send({
+          'event': event['event'],
+          'args': args,
+          'return': (error: ret.error, sound: newSound),
+        });
         break;
 
+    /// TODO: this should return a handle. And this handle must be another sound
       case _MessageEvents.play:
         final args = event['args'] as ArgsPlay;
         soLoudController.soLoudFFI.play(args.handle);
@@ -231,19 +245,18 @@ void audioIsolate(SendPort isolateToMainStream) {
             if (!isValid) {
               isolateToMainStream
                   .send((event: SoundEvent.handleIsNoMoreValid, sound: sound));
-              // remove this from the list
+              // remove the ended sound from the list
               pendingRemoves.add(() {
                 activeSounds.remove(sound);
               });
 
-              print(
-                  '************* sounds#: ${activeSounds.length} handler: ${sound.handle}  isValid: $isValid');
             }
           }
+          // TODO: this is executed every loop. Design in another 
+          //way even if it's fast
           for (final pendingRemove in pendingRemoves.reversed) {
             pendingRemove();
           }
-          print('************* sounds#: ${activeSounds.length}');
 
           // TODO: is 10 ms ok?
           Future.delayed(const Duration(milliseconds: 10), () {
@@ -269,13 +282,13 @@ class AudioIsolate {
 
   SendPort? _mainToIsolateStream;
 
-  /// the user can listed ie when a sound ends
-  StreamController<StreamSoundEvent> soundEvents = StreamController.broadcast();
-
   /// internally used to listen from isolate
   StreamController<dynamic>? _returnedEvent;
   Isolate? _isolate;
   ReceivePort? _isolateToMainStream;
+
+  /// should be synchronized with the other in the isolate
+  final List<SoundProps> activeSounds = [];
 
   /// Start the audio isolate and listen for messages coming from it.
   /// Messages are streamed with [_returnedEvent] and processed
@@ -293,8 +306,16 @@ class AudioIsolate {
       } else {
         debugIsolates('******** ISOLATE TO MAIN: $data');
         if (data is StreamSoundEvent) {
-          print('@@@@@@@@@@@ send STREAM');
-          soundEvents.add(data);
+          print(
+              '@@@@@@@@@@@ send STREAM with sound hash: ${data.sound.hashCode}');
+          final sound = activeSounds
+              .firstWhere((element) => element.handle == data.sound.handle);
+          sound.soundEvents.add(data);
+          activeSounds.removeWhere(
+            (element) {
+              return element.handle == sound.handle;
+            },
+          );
         } else {
           _returnedEvent?.add(data);
         }
@@ -318,7 +339,6 @@ class AudioIsolate {
     await _waitForEvent(_MessageEvents.exitIsolate, ());
     await _returnedEvent?.close();
     _returnedEvent = null;
-    await soundEvents.close();
     _isolateToMainStream?.close();
     _isolateToMainStream = null;
     _isolate!.kill();
@@ -399,22 +419,24 @@ class AudioIsolate {
     return _waitForEvent(_MessageEvents.disposeEngine, ());
   }
 
-  Future<({PlayerErrors error, int handle})> playFile(
-      String completeFileName) async {
+  Future<({PlayerErrors error, SoundProps sound})> playFile(
+    String completeFileName,
+  ) async {
     _mainToIsolateStream?.send(
       {
         'event': _MessageEvents.playFile,
         'args': (completeFileName: completeFileName),
       },
     );
-
     final ret = (await _waitForEvent(
       _MessageEvents.playFile,
       (completeFileName: completeFileName),
-    )) as ({PlayerErrors error, int handle});
-    return ret;
+    )) as ({PlayerErrors error, SoundProps sound});
+    activeSounds.add(ret.sound);
+    return (error: ret.error, sound: activeSounds.last);
   }
 
+  /// TODO: this should return a handle. And this handle must be another sound
   Future<void> play(int handle) async {
     _mainToIsolateStream?.send(
       {
@@ -455,6 +477,11 @@ class AudioIsolate {
       },
     );
     await _waitForEvent(_MessageEvents.stop, (handle: handle));
+    activeSounds.removeWhere(
+      (element) {
+        return element.handle == handle;
+      },
+    );
   }
 
   Future<void> setVisualizationEnabled(bool enabled) async {

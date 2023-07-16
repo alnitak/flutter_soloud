@@ -198,26 +198,17 @@ class _MyButtonState extends State<MyButton> {
 
   Timer? timer;
 
-  int? audioHandler;
-
-  late StreamSubscription<StreamSoundEvent> _subscription;
+  StreamSubscription<StreamSoundEvent>? _subscription;
+  SoundProps? sound;
 
   @override
   void initState() {
     super.initState();
-    _subscription = AudioIsolate().soundEvents.stream.listen(
-      (event) {
-        if (event.sound.handle != audioHandler) return;
-        print('@@@@@@@@@@@ StreamSoundEvent for handle: ${event.sound.handle}');
-        stopTimer();
-        audioHandler = null;
-      },
-    );
   }
 
   @override
   void dispose() {
-    _subscription.cancel();
+    _subscription?.cancel();
     super.dispose();
   }
 
@@ -226,9 +217,9 @@ class _MyButtonState extends State<MyButton> {
     return Column(
       children: [
         ElevatedButton(
-          onPressed: () {
-            if (audioHandler != null) return;
-            playAsset(widget.assetsAudio);
+          onPressed: () async {
+            if (sound != null) return;
+            await playAsset(widget.assetsAudio);
           },
           child: Text(widget.text),
         ),
@@ -240,10 +231,10 @@ class _MyButtonState extends State<MyButton> {
               builder: (_, paused, __) {
                 return IconButton(
                   onPressed: () async {
-                    if (audioHandler == null) return;
-                    await AudioIsolate().pauseSwitch(audioHandler!);
+                    if (sound == null) return;
+                    await AudioIsolate().pauseSwitch(sound!.handle);
                     unawaited(
-                        AudioIsolate().getPause(audioHandler!).then((value) {
+                        AudioIsolate().getPause(sound!.handle).then((value) {
                       if (value) {
                         stopTimer();
                       } else {
@@ -262,10 +253,10 @@ class _MyButtonState extends State<MyButton> {
             const SizedBox(width: 16),
             IconButton(
               onPressed: () {
-                if (audioHandler == null) return;
-                AudioIsolate().stop(audioHandler!);
+                if (sound == null) return;
+                AudioIsolate().stop(sound!.handle);
                 stopTimer();
-                audioHandler = null;
+                sound = null;
               },
               icon: const Icon(Icons.stop_circle_outlined, size: 48),
               iconSize: 48,
@@ -294,13 +285,13 @@ class _MyButtonState extends State<MyButton> {
                         value: position,
                         max: length < position ? position : length,
                         onChanged: (value) async {
-                          if (audioHandler == null) return;
+                          if (sound == null) return;
                           stopTimer();
                           soundPosition.value = value;
                           await AudioIsolate()
-                              .seek(audioHandler!, value)
+                              .seek(sound!.handle, value)
                               .then((value) {
-                            debugPrint('seek $value  handler:$audioHandler');
+                            debugPrint('seek $value  handler:${sound!.handle}');
                           });
                           startTimer();
                         },
@@ -324,9 +315,22 @@ class _MyButtonState extends State<MyButton> {
   Future<void> playAsset(String assetsFile) async {
     final audioFile = await getAssetFile(assetsFile);
     await AudioIsolate().playFile(audioFile.path).then((value) {
-      audioHandler = value.handle;
+      if (value.error != PlayerErrors.noError) return;
+
+      sound = value.sound;
+      _subscription = sound!.soundEvents.stream.listen(
+        (event) {
+          print(
+              '@@@@@@@@@@@ StreamSoundEvent for handle: ${event.sound.handle}');
+          stopTimer();
+          _subscription?.cancel();
+          sound!.soundEvents.close(); // TODO: put elsewhere
+          sound = null;
+        },
+      );
+
       startTimer();
-      unawaited(AudioIsolate().getLength(audioHandler!).then((value) {
+      unawaited(AudioIsolate().getLength(sound!.handle).then((value) {
         soundLength.value = value;
       }));
     });
@@ -353,7 +357,7 @@ class _MyButtonState extends State<MyButton> {
   /// start timer to update the audio position slider
   void startTimer() {
     timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      AudioIsolate().getPosition(audioHandler!).then((value) {
+      AudioIsolate().getPosition(sound!.handle).then((value) {
         soundPosition.value = value;
       });
     });
