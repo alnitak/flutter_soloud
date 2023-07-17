@@ -44,7 +44,7 @@ ffigen:
       - ''
   headers:
     entry-points:
-      - '../flutter_soloud_ios/ios/Classes/src/ffi_gen_tmp.h'
+      - 'src/ffi_gen_tmp.h'
     include-directives:
       # - '**ffi_gen_tmp.h'
-      - '**ffi_gen_tmp.h.h'
+      - '**ffi_gen_tmp.h'
