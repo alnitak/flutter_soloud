@@ -1,59 +1,23 @@
-// ignore_for_file: unawaited_futures
-
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
-import 'dart:ffi' as ffi;
-
-import 'package:ffi/ffi.dart';
 
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_soloud/flutter_soloud_bindings_ffi.dart';
-import 'package:flutter_soloud/soloud_controller.dart';
+import 'package:flutter_soloud/audio_isolate.dart';
+import 'package:flutter_soloud_example/visualizer/visualizer.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:star_menu/star_menu.dart';
 
-import 'visualizer.dart';
-
-SoLoudController soLoudController = SoLoudController();
-
-void main() {
-  soLoudController.initialize();
-  runApp(const MyApp());
-}
-
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class Page1 extends StatefulWidget {
+  const Page1({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      themeMode: ThemeMode.dark,
-      darkTheme: ThemeData.dark(),
-      scrollBehavior: const MaterialScrollBehavior().copyWith(
-        dragDevices: {
-          PointerDeviceKind.mouse,
-          PointerDeviceKind.touch,
-          PointerDeviceKind.stylus,
-          PointerDeviceKind.unknown,
-        },
-      ),
-      home: const HomePage(),
-    );
-  }
+  State<Page1> createState() => _Page1State();
 }
 
-class HomePage extends StatefulWidget {
-  const HomePage({super.key});
-
-  @override
-  State<HomePage> createState() => _HomePageState();
-}
-
-class _HomePageState extends State<HomePage> {
+class _Page1State extends State<Page1> {
   String shader = 'assets/shaders/test9.frag';
   final regExp = RegExp('_(s[w|i].*)_-');
   final List<String> audioChecks = [
@@ -82,18 +46,6 @@ class _HomePageState extends State<HomePage> {
   final ValueNotifier<double> soundPosition = ValueNotifier(0);
   Timer? timer;
   int currentSoundHandle = -1;
-
-  @override
-  void initState() {
-    super.initState();
-    startTimer();
-  }
-
-  @override
-  void dispose() {
-    soLoudController.soLoudFFI.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -136,14 +88,14 @@ class _HomePageState extends State<HomePage> {
                       ),
                       ActionChip(
                         backgroundColor: Colors.blue,
-                        onPressed: () async {
+                        onPressed: () {
                           playAsset('assets/audio/Tropical Beeper.mp3');
                         },
                         label: const Text('Tropical Beeper'),
                       ),
                       ActionChip(
                         backgroundColor: Colors.blue,
-                        onPressed: () async {
+                        onPressed: () {
                           playAsset('assets/audio/X trackTure.mp3');
                         },
                         label: const Text('X trackTure'),
@@ -151,7 +103,7 @@ class _HomePageState extends State<HomePage> {
                       for (int i = 0; i < audioChecks.length; i++)
                         ActionChip(
                           backgroundColor: Colors.blue,
-                          onPressed: () async {
+                          onPressed: () {
                             playAsset(audioChecks[i]);
                           },
                           label: Text(
@@ -276,45 +228,10 @@ class _HomePageState extends State<HomePage> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  ElevatedButton(
-                    onPressed: () async {
-                      soLoudController.soLoudFFI.test();
-                    },
-                    child: const Text('test'),
-                  ),
-
-                  /// init audio engine
-                  ElevatedButton(
-                    onPressed: () async {
-                      if (soLoudController.soLoudFFI.initEngine() ==
-                          PlayerErrors.noError) {
-                        soLoudController.soLoudFFI
-                            .setVisualizationEnabled(true);
-                      } else {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Audio initialization error!!'),
-                          ),
-                        );
-                      }
-                    },
-                    child: const Text('init'),
-                  ),
-                  const SizedBox(width: 6),
-
-                  /// dispose audio engine
-                  ElevatedButton(
-                    onPressed: () async {
-                      soLoudController.soLoudFFI.dispose();
-                    },
-                    child: const Text('dispose'),
-                  ),
-                  const SizedBox(width: 20),
-
                   /// text 2 speech
                   ElevatedButton(
-                    onPressed: () async {
-                      soLoudController.soLoudFFI
+                    onPressed: () {
+                      AudioIsolate()
                           .speechText('Hello Flutter. Text to speech!!');
                     },
                     child: const Text('T2S'),
@@ -331,7 +248,7 @@ class _HomePageState extends State<HomePage> {
                       ))
                           ?.files;
                       if (paths != null) {
-                        play(paths.first.path!);
+                        unawaited(play(paths.first.path!));
                       }
                     },
                     child: const Text('pick audio'),
@@ -359,9 +276,9 @@ class _HomePageState extends State<HomePage> {
                             child: Slider.adaptive(
                               value: position,
                               max: length < position ? position : length,
-                              onChanged: (value) {
+                              onChanged: (value) async {
                                 stopTimer();
-                                soLoudController.soLoudFFI
+                                await AudioIsolate()
                                     .seek(currentSoundHandle, value);
                                 soundPosition.value = value;
                                 startTimer();
@@ -409,9 +326,12 @@ class _HomePageState extends State<HomePage> {
                       Expanded(
                         child: Slider.adaptive(
                           value: smoothing,
-                          onChanged: (value) {
-                            soLoudController.soLoudFFI.setFftSmoothing(value);
-                            fftSmoothing.value = value;
+                          onChanged: (smooth) {
+                            AudioIsolate()
+                                .setFftSmoothing(smooth)
+                                .then((value) {
+                              fftSmoothing.value = smooth;
+                            });
                           },
                         ),
                       ),
@@ -475,37 +395,30 @@ class _HomePageState extends State<HomePage> {
   }
 
   /// play file
-  void play(String file) {
-    soLoudController.soLoudFFI.stop(currentSoundHandle);
-    final r = soLoudController.soLoudFFI.playFile(file);
-    currentSoundHandle = r.handle;
-    soundLength.value =
-        soLoudController.soLoudFFI.getLength(currentSoundHandle);
-  }
+  Future<void> play(String file) async {
+    await AudioIsolate().stop(currentSoundHandle);
+    await AudioIsolate().playFile(file).then((value) {
+      currentSoundHandle = value.sound.handle;
+      unawaited(AudioIsolate().getLength(currentSoundHandle).then((value) {
+        soundLength.value = value.length;
+      }));
 
-  // static void playEndedCallback(int handle) {
-  //   //  // here the sound with [handle] has ended.
-  //   //  // you can play again
-  //   //  soLoudController.soLoudFFI.play(handle);
-  //   //  // or dispose it
-  //   //  soLoudController.soLoudFFI.stop(handle);
-  //   print('******************** sound with $handle handle has ended!');
-  // }
+      /// Stop the timer when the sound ends
+      value.sound.soundEvents.stream.listen(
+        (event) {
+          stopTimer();
+          event.sound.soundEvents.close(); // TODO: put this elsewhere
+          currentSoundHandle = -1;
+        },
+      );
+      startTimer();
+    });
+  }
 
   /// plays an assets file
   Future<void> playAsset(String assetsFile) async {
-    soLoudController.soLoudFFI.stop(currentSoundHandle);
     final audioFile = await getAssetFile(assetsFile);
-
-    final r = soLoudController.soLoudFFI.playFile(audioFile.path);
-    // soLoudController.soLoudFFI.setPlayEndedCallback(
-    //   playEndedCallback,
-    //   r.handle,
-    // );
-
-    currentSoundHandle = r.handle;
-    soundLength.value =
-        soLoudController.soLoudFFI.getLength(currentSoundHandle);
+    return play(audioFile.path);
   }
 
   /// get the assets file and copy it to the temp dir
@@ -529,8 +442,9 @@ class _HomePageState extends State<HomePage> {
   /// start timer to update the audio position slider
   void startTimer() {
     timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      soundPosition.value =
-          soLoudController.soLoudFFI.getPosition(currentSoundHandle);
+      AudioIsolate().getPosition(currentSoundHandle).then((value) {
+        soundPosition.value = value.position;
+      });
     });
   }
 

@@ -6,12 +6,13 @@ import 'dart:ui' as ui;
 import 'package:ffi/ffi.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
-import 'package:flutter_soloud_example/main_FFT.dart';
+import 'package:flutter_soloud/audio_isolate.dart';
+import 'package:flutter_soloud/flutter_soloud_bindings_ffi.dart';
 
-import 'audio_shader.dart';
-import 'bars_widget.dart';
-import 'bmp_header.dart';
-import 'paint_texture.dart';
+import 'package:flutter_soloud_example/visualizer/audio_shader.dart';
+import 'package:flutter_soloud_example/visualizer/bars_widget.dart';
+import 'package:flutter_soloud_example/visualizer/bmp_header.dart';
+import 'package:flutter_soloud_example/visualizer/paint_texture.dart';
 
 /// enum to tell [Visualizer] to build a texture as:
 /// [both1D] frequencies data on the 1st 256px row, wave on the 2nd 256px
@@ -56,7 +57,7 @@ class _VisualizerState extends State<Visualizer>
   late int fftSize;
   late int halfFftSize;
   late int fftBitmapRange;
-  late ffi.Pointer<ffi.Pointer<ffi.Float>> audioData;
+  ffi.Pointer<ffi.Pointer<ffi.Float>> audioData = ffi.nullptr;
   late Future<ui.Image?> Function() buildImageCallback;
   late int Function(int row, int col) textureTypeCallback;
 
@@ -110,13 +111,17 @@ class _VisualizerState extends State<Visualizer>
 
   @override
   void dispose() {
-    ticker.dispose();
+    ticker.stop();
+    sw.stop();
     calloc.free(audioData);
+    audioData = ffi.nullptr;
     super.dispose();
   }
 
   void _tick(Duration elapsed) {
-    setState(() {});
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   @override
@@ -193,10 +198,13 @@ class _VisualizerState extends State<Visualizer>
   /// in the 1st row the frequencies data
   /// in the 2nd row the wave data
   Future<ui.Image?> buildImageFromLatestSamplesRow() async {
+    if (audioData == ffi.nullptr) return null;
     final completer = Completer<ui.Image>();
 
     /// audioData here will be available to all the children of [Visualizer]
-    soLoudController.soLoudFFI.getAudioTexture2D(audioData);
+    final ret = await AudioIsolate().getAudioTexture2D(audioData);
+    if (ret != PlayerErrors.noError || !mounted) return null;
+
     final bytes = Uint8List(fftBitmapRange * 2 * 4);
     // Fill the texture bitmap
     var col = 0;
@@ -221,16 +229,6 @@ class _VisualizerState extends State<Visualizer>
     return completer.future;
   }
 
-  int getFFTDataCallback(int row, int col) {
-    return (audioData.value[row * fftSize + col] * 255.0).toInt();
-  }
-
-  int getWaveDataCallback(int row, int col) {
-    return (((audioData.value[row * fftSize + halfFftSize + col] + 1.0) / 2.0) *
-            128)
-        .toInt();
-  }
-
   /// build an image to be passed to the shader.
   /// The image is a matrix of 256x256 RGBA pixels representing
   /// rows of wave data or frequencies data.
@@ -240,7 +238,16 @@ class _VisualizerState extends State<Visualizer>
     final completer = Completer<ui.Image>();
 
     /// audioData here will be available to all the children of [Visualizer]
-    soLoudController.soLoudFFI.getAudioTexture2D(audioData);
+    final ret = await AudioIsolate().getAudioTexture2D(audioData);
+    /// IMPORTANT: if [mounted] is not checked here, could happens that
+    /// dispose() is called before this is called but it is called!
+    /// Since in dispose the [audioData] is freed, there will be a crash!
+    /// I do not understand why this happens because the FutureBuilder
+    /// seems has not finished before dispose()!?
+    /// My psychoanalyst told me to forget it and my mom to study more
+    if (ret != PlayerErrors.noError || !mounted) {
+      return null;
+    }
     final bytes = Uint8List(fftBitmapRange * 256 * 4);
 
     // Fill the texture bitmap with wave data
@@ -260,5 +267,15 @@ class _VisualizerState extends State<Visualizer>
     ui.decodeImageFromList(img, completer.complete);
 
     return completer.future;
+  }
+
+  int getFFTDataCallback(int row, int col) {
+    return (audioData.value[row * fftSize + col] * 255.0).toInt();
+  }
+
+  int getWaveDataCallback(int row, int col) {
+    return (((audioData.value[row * fftSize + halfFftSize + col] + 1.0) / 2.0) *
+            128)
+        .toInt();
   }
 }

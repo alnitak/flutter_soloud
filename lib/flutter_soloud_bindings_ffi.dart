@@ -32,8 +32,21 @@ enum PlayerErrors {
   /// Other error
   unknownError,
 
+  /// null pointer. Could happens when passing a non initialized
+  /// pointer (with calloc()) to retrieve FFT or wave data
+  nullPointer,
+
   /// Player not initialized
   backendNotInited,
+
+  /// Audio isolate not yet started
+  isolateAlreadyStarted,
+
+  /// Audio isolate not yet started
+  isolateNotStarted,
+
+  /// Engine not yet started
+  engineNotStarted,
 }
 
 /// FFI bindings to SoLoud
@@ -54,12 +67,12 @@ class FlutterSoLoudFfi {
           lookup)
       : _lookup = lookup;
 
-/// For now remove the callback
-/// 
+  /// For now remove the callback
+  ///
 //   /// Since using the callback passed to [setPlayEndedCallback] will throw
-//   /// ```Error: fromFunction expects a static function as parameter. 
-//   /// dart:ffi only supports calling static Dart functions from native code. 
-//   /// Closures and tear-offs are not supported because 
+//   /// ```Error: fromFunction expects a static function as parameter.
+//   /// dart:ffi only supports calling static Dart functions from native code.
+//   /// Closures and tear-offs are not supported because
 //   /// they can capture context.```
 //   static void Function(int)? _userPlayEndedCallback;
 //   /// here the user callback given to [setPlayEndedCallback] will be temporarly
@@ -73,7 +86,7 @@ class FlutterSoLoudFfi {
 //   }
 //   /// @brief Set a dart function to call when the sound with [handle] handle ends
 //   /// @param callback this is the dart function that will be called
-//   ///     when the sound ends to play. 
+//   ///     when the sound ends to play.
 //   ///     Must be global or a static class member:
 //   ///     ```@pragma('vm:entry-point')
 //   ///        void playEndedCallback(int handle) {
@@ -94,7 +107,6 @@ class FlutterSoLoudFfi {
 //     void Function(int) callback,
 //     int handle,
 //   ) {
-    
 
 //     _userPlayEndedCallback = callback;
 //     final ret = _setPlayEndedCallback(
@@ -167,14 +179,14 @@ class FlutterSoLoudFfi {
   /// @param handle sound identifier
   /// @return Returns [PlayerErrors.noError] if success
   /// TODO(me): add other T2S parameters
-  (PlayerErrors, int) speechText(String completeFileName) {
+  ({PlayerErrors error, int handle}) speechText(String textToSpeech) {
     // ignore: omit_local_variable_types
     final ffi.Pointer<ffi.UnsignedInt> handle = calloc(1);
     final e = _speechText(
-      completeFileName.toNativeUtf8().cast<ffi.Char>(),
+      textToSpeech.toNativeUtf8().cast<ffi.Char>(),
       handle,
     );
-    final ret = (PlayerErrors.values[e], handle.value);
+    final ret = (error: PlayerErrors.values[e], handle: handle.value);
     calloc.free(handle);
     return ret;
   }
@@ -295,6 +307,7 @@ class FlutterSoLoudFfi {
   /// @param samples
   /// @return
   void getAudioTexture2D(ffi.Pointer<ffi.Pointer<ffi.Float>> samples) {
+    if (samples.address == ffi.nullptr.address) return;
     _getAudioTexture2D(samples);
   }
 
