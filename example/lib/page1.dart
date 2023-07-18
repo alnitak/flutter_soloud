@@ -48,6 +48,12 @@ class _Page1State extends State<Page1> {
   int currentSoundHandle = -1;
 
   @override
+  void dispose() {
+    AudioIsolate().stopIsolate();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: Padding(

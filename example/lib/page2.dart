@@ -7,7 +7,6 @@ import 'package:flutter_soloud/audio_isolate.dart';
 import 'package:flutter_soloud/flutter_soloud_bindings_ffi.dart';
 import 'package:path_provider/path_provider.dart';
 
-
 class Page2 extends StatefulWidget {
   const Page2({super.key});
 
@@ -16,7 +15,6 @@ class Page2 extends StatefulWidget {
 }
 
 class _Page2State extends State<Page2> {
-
   @override
   void initState() {
     super.initState();
@@ -44,7 +42,6 @@ class _Page2State extends State<Page2> {
                   text: '8 bit mentality',
                 ),
                 const SizedBox(height: 32),
-
                 MyButton(
                   assetsAudio: 'assets/audio/Tropical Beeper.mp3',
                   text: 'Tropical Beeper',
@@ -93,6 +90,7 @@ class _MyButtonState extends State<MyButton> {
   @override
   void dispose() {
     _subscription?.cancel();
+    AudioIsolate().stopIsolate();
     super.dispose();
   }
 
@@ -198,6 +196,8 @@ class _MyButtonState extends State<MyButton> {
       if (value.error != PlayerErrors.noError) return;
 
       sound = value.sound;
+
+      /// Listen to this sound events
       _subscription = sound!.soundEvents.stream.listen(
         (event) {
           print(

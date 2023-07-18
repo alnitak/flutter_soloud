@@ -69,16 +69,24 @@ enum SoundEvent {
 /// the type sent back to the user when a sound event occurs
 typedef StreamSoundEvent = ({SoundEvent event, SoundProps sound});
 
-/// the sound which receive the event
+/// the sound class
 class SoundProps {
   SoundProps(this.handle);
 
+  /// handle of this sound
   final int handle;
-  double length = 0;
+
+  /// TODO: make keys time able to trigger an event
   List<double> keys = [];
 
-  /// the user can listed ie when a sound ends
+  /// the user can listed ie when a sound ends or key events (TODO)
   StreamController<StreamSoundEvent> soundEvents = StreamController.broadcast();
+}
+
+/// The events exposed by the plugin
+enum AudioEvent {
+  isolateStarted,
+  isolateStopped,
 }
 
 /// Top Level audio isolate function
@@ -320,6 +328,8 @@ class AudioIsolate {
   Isolate? _isolate;
   ReceivePort? _isolateToMainStream;
 
+  StreamController<AudioEvent> audioEvent = StreamController.broadcast();
+
   bool engineInited = false;
 
   /// should be synchronized with the other in the isolate
@@ -365,7 +375,13 @@ class AudioIsolate {
         _mainToIsolateStream = data;
 
         /// finally start the audio engine
-        initEngine().then(completer.complete);
+        final ret = initEngine().then((value) {
+          if (value == PlayerErrors.noError) {
+            audioEvent.add(AudioEvent.isolateStarted);
+          }
+          completer.complete(value);
+        });
+        
       } else {
         debugIsolates('******** ISOLATE TO MAIN: $data');
         if (data is StreamSoundEvent) {
@@ -422,8 +438,10 @@ class AudioIsolate {
     _returnedEvent = null;
     _isolateToMainStream?.close();
     _isolateToMainStream = null;
-    _isolate!.kill();
+    _isolate?.kill();
     _isolate = null;
+    audioEvent.add(AudioEvent.isolateStopped);
+
     return true;
   }
 

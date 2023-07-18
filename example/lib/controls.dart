@@ -28,6 +28,12 @@ class _ControlsState extends State<Controls> {
 
   @override
   Widget build(BuildContext context) {
+    AudioIsolate().audioEvent.stream.listen(
+      (event) {
+        isAudioIsolateRunning.value = AudioIsolate().isIsolateRunning();
+      },
+    );
+
     return ValueListenableBuilder<bool>(
       valueListenable: isAudioIsolateRunning,
       builder: (_, isRunning, __) {
