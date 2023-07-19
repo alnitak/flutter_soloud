@@ -1,9 +1,14 @@
+#include "common.h"
 #include "player.h"
 #include "soloud.h"
 
 #include <algorithm>
 #include <cstdarg>
+#ifdef _IS_WIN_
+#include <stddef.h> // for size_t
+#else
 #include <unistd.h>
+#endif
 
 #define RANGE_POSITION_CALLBACK 0.15
 

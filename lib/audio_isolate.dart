@@ -6,8 +6,8 @@ import 'dart:isolate';
 
 import 'package:flutter/material.dart';
 
-import 'flutter_soloud_bindings_ffi.dart';
-import 'soloud_controller.dart';
+import 'package:flutter_soloud/flutter_soloud_bindings_ffi.dart';
+import 'package:flutter_soloud/soloud_controller.dart';
 
 /// Author note: I am a bit scared on how the use of
 /// these 2 isolates implementation is gone. But hey,
@@ -119,8 +119,8 @@ void audioIsolate(SendPort isolateToMainStream) {
   mainToIsolateStream.listen((data) {
     final event = data as Map<String, Object>;
     if ((event['event'] as _MessageEvents) !=
-        (event['event'] as _MessageEvents)) {
-      debugIsolates('*** MAIN TO ISOLATE data: $data');
+        _MessageEvents.loop) {
+      debugIsolates('******** ISOLATE EVENT data: $data');
     }
 
     switch (event['event'] as _MessageEvents) {
@@ -427,7 +427,7 @@ class AudioIsolate {
           completer.complete(value);
         });
       } else {
-        debugIsolates('******** ISOLATE TO MAIN: $data');
+        debugIsolates('******** MAIN EVENT data: $data');
         if (data is StreamSoundEvent) {
           print('@@@@@@@@@@@ STREAM EVENT: ${data.event}  '
               'handle: ${data.sound.handle}');

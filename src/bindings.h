@@ -59,7 +59,7 @@ FFI_PLUGIN_EXPORT void pauseSwitch(unsigned int handle);
 /// @brief Gets the pause state
 /// @param handle the sound handle
 /// @return true if paused
-FFI_PLUGIN_EXPORT bool getPause(unsigned int handle);
+FFI_PLUGIN_EXPORT int getPause(unsigned int handle);
 
 /// @brief Play already loaded sound identified by [handle]
 /// @param hash the unique sound hash of a sound
@@ -131,7 +131,7 @@ FFI_PLUGIN_EXPORT double getPosition(unsigned int handle);
 /// @brief check if a handle is still valid.
 /// @param handle handle to check
 /// @return true if it still exists
-FFI_PLUGIN_EXPORT bool getIsValidVoiceHandle(unsigned int handle);
+FFI_PLUGIN_EXPORT int getIsValidVoiceHandle(unsigned int handle);
 
 /// @brief smooth FFT data. 
 /// When new data is read and the values are decreasing, the new value will be

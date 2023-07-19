@@ -68,10 +68,10 @@ FFI_PLUGIN_EXPORT void pauseSwitch(unsigned int handle)
     player.pauseSwitch(handle);
 }
 
-FFI_PLUGIN_EXPORT bool getPause(unsigned int handle)
+FFI_PLUGIN_EXPORT int getPause(unsigned int handle)
 {
     if (!player.isInited()) return false;
-    return player.getPause(handle);
+    return player.getPause(handle) ? 1 : 0;
 }
 
 FFI_PLUGIN_EXPORT unsigned int play(
@@ -169,10 +169,10 @@ FFI_PLUGIN_EXPORT double getPosition(unsigned int handle)
     return player.getPosition(handle);
 }
 
-FFI_PLUGIN_EXPORT bool getIsValidVoiceHandle(unsigned int handle)
+FFI_PLUGIN_EXPORT int getIsValidVoiceHandle(unsigned int handle)
 {
     if (!player.isInited() || player.getSoundsCount() == 0) return false;
-    return player.getIsValidVoiceHandle(handle);
+    return player.getIsValidVoiceHandle(handle) ? 1 : 0;
 }
 
 
