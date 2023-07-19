@@ -36,6 +36,9 @@ enum PlayerErrors {
   /// pointer (with calloc()) to retrieve FFT or wave data
   nullPointer,
 
+  /// The sound with specified hash is not found
+  soundHashNotFound,
+
   /// Player not initialized
   backendNotInited,
 
@@ -67,7 +70,7 @@ class FlutterSoLoudFfi {
           lookup)
       : _lookup = lookup;
 
-  /// For now remove the callback
+  /// FOR NOW THIS CALLBACK IS NOT USED
   ///
 //   /// Since using the callback passed to [setPlayEndedCallback] will throw
 //   /// ```Error: fromFunction expects a static function as parameter.
@@ -150,35 +153,35 @@ class FlutterSoLoudFfi {
       _lookup<ffi.NativeFunction<ffi.Void Function()>>('dispose');
   late final _dispose = _disposePtr.asFunction<void Function()>();
 
-  /// @brief Play a new file
+  /// @brief Load a new sound to be played once or multiple times later
   /// @param completeFileName the complete file path
-  /// @return Returns a Record composed by
-  /// [PlayerErrors.noError] if success and the handle of the sound
-  ({PlayerErrors error, int handle}) playFile(String completeFileName) {
+  /// @param hash return hash of the sound
+  /// @return Returns [PlayerErrors.noError] if success and a new [sound]
+  ({PlayerErrors error, int soundHash}) loadFile(String completeFileName) {
     // ignore: omit_local_variable_types
-    final ffi.Pointer<ffi.UnsignedInt> handle =
+    final ffi.Pointer<ffi.UnsignedInt> h =
         calloc(ffi.sizeOf<ffi.UnsignedInt>());
-    final e = _playFile(
+    final e = _loadFile(
       completeFileName.toNativeUtf8().cast<ffi.Char>(),
-      handle,
+      h,
     );
-    final ret = (error: PlayerErrors.values[e], handle: handle.value);
-    calloc.free(handle);
+    final ret = (error: PlayerErrors.values[e], soundHash: h.value);
+    calloc.free(h);
     return ret;
   }
 
-  late final _playFilePtr = _lookup<
+  late final _loadFilePtr = _lookup<
       ffi.NativeFunction<
           ffi.Int32 Function(ffi.Pointer<ffi.Char>,
-              ffi.Pointer<ffi.UnsignedInt>)>>('playFile');
-  late final _playFile = _playFilePtr.asFunction<
+              ffi.Pointer<ffi.UnsignedInt>)>>('loadFile');
+  late final _loadFile = _loadFilePtr.asFunction<
       int Function(ffi.Pointer<ffi.Char>, ffi.Pointer<ffi.UnsignedInt>)>();
 
   /// @brief T2S
-  /// @param textToSpeech
+  /// @param textToSpeech the text to be spoken
   /// @param handle sound identifier
   /// @return Returns [PlayerErrors.noError] if success
-  /// TODO(me): add other T2S parameters
+  /// TODO(me): add other T2S parameters and a new [sound]
   ({PlayerErrors error, int handle}) speechText(String textToSpeech) {
     // ignore: omit_local_variable_types
     final ffi.Pointer<ffi.UnsignedInt> handle = calloc(1);
@@ -221,16 +224,27 @@ class FlutterSoLoudFfi {
           'getPause');
   late final _getPause = _getPausePtr.asFunction<int Function(int)>();
 
-  /// @brief Play already loaded sound identified by [handle]
-  /// @param handle
-  int play(int handle) {
-    return _play(handle);
+  /// @brief Play already loaded sound identified by [soundHash]
+  /// @param soundHash the unique sound hash of a sound
+  /// @param volume 1.0f full volume
+  /// @param pan 0.0f centered
+  /// @param paused 0 not pause
+  /// @return Returns the new [handle] of the sound, 0 if error
+  int play(
+    int soundHash, {
+    double volume = 1,
+    double pan = 0,
+    bool paused = false,
+  }) {
+    return _play(soundHash, volume, pan, paused ? 1 : 0);
   }
 
-  late final _playPtr =
-      _lookup<ffi.NativeFunction<ffi.UnsignedInt Function(ffi.UnsignedInt)>>(
-          'play');
-  late final _play = _playPtr.asFunction<int Function(int)>();
+  late final _playPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.UnsignedInt Function(
+              ffi.UnsignedInt, ffi.Float, ffi.Float, ffi.Int)>>('play');
+  late final _play =
+      _playPtr.asFunction<int Function(int, double, double, int)>();
 
   /// @brief Stop already loaded sound identified by [handle] and clear it
   /// @param handle
@@ -241,6 +255,18 @@ class FlutterSoLoudFfi {
   late final _stopPtr =
       _lookup<ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt)>>('stop');
   late final _stop = _stopPtr.asFunction<void Function(int)>();
+
+  /// @brief Stop all handles of the already loaded sound identified 
+  ///     by [soundHash] and clear it
+  /// @param hash
+  void stopSound(int soundHash) {
+    return _stopSound(soundHash);
+  }
+
+  late final _stopSoundPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt)>>(
+          'stopSound');
+  late final _stopSound = _stopSoundPtr.asFunction<void Function(int)>();
 
   /// @brief Enable or disable visualization
   /// @param enabled
@@ -300,10 +326,10 @@ class FlutterSoLoudFfi {
       _getAudioTexturePtr.asFunction<void Function(ffi.Pointer<ffi.Float>)>();
 
   /// @brief Return a floats matrix of 256x512
-  /// Every row are composed of 256 FFT values plus 256 wave data
+  /// Every row are composed of 256 FFT values plus 256 of wave data
   /// Every time is called, a new row is stored in the
   /// first row and all the previous rows are shifted
-  /// up (the last will be lost).
+  /// up (the last one will be lost).
   /// @param samples
   /// @return
   void getAudioTexture2D(ffi.Pointer<ffi.Pointer<ffi.Float>> samples) {
@@ -319,10 +345,10 @@ class FlutterSoLoudFfi {
       .asFunction<void Function(ffi.Pointer<ffi.Pointer<ffi.Float>>)>();
 
   /// @brief get the sound length in seconds
-  /// @param handle the sound handle
+  /// @param soundHash the sound hash
   /// @return returns sound length in seconds
-  double getLength(int handle) {
-    return _getLength(handle);
+  double getLength(int soundHash) {
+    return _getLength(soundHash);
   }
 
   late final _getLengthPtr =
@@ -343,7 +369,7 @@ class FlutterSoLoudFfi {
       'seek');
   late final _seek = _seekPtr.asFunction<int Function(int, double)>();
 
-  /// @brief get current sound position
+  /// @brief get current sound position in seconds
   /// @param handle the sound handle
   /// @return time in seconds
   double getPosition(int handle) {

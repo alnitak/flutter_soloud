@@ -30,3 +30,4 @@ migrate_working_dir/
 build/
 
 images/
+lib/flutter_soloud_bindings_ffi_TMP.dart

@@ -16,8 +16,9 @@
 
 //--------------------- copy here the new functions to generate
 
-/// @brief check if a handle is still valid.
-/// @param handle handle to check
-/// @return true if it still exists
-FFI_PLUGIN_EXPORT bool getIsValidVoiceHandle(unsigned int handle);
+
+
+/// @brief Stop all handles of the already loaded sound identified by [hash] and clear it
+/// @param hash
+FFI_PLUGIN_EXPORT void stopSound(unsigned int hash);
 

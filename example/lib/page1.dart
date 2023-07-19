@@ -6,6 +6,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_soloud/audio_isolate.dart';
+import 'package:flutter_soloud/flutter_soloud_bindings_ffi.dart';
 import 'package:flutter_soloud_example/visualizer/visualizer.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:star_menu/star_menu.dart';
@@ -45,7 +46,7 @@ class _Page1State extends State<Page1> {
   final ValueNotifier<double> soundLength = ValueNotifier(0);
   final ValueNotifier<double> soundPosition = ValueNotifier(0);
   Timer? timer;
-  int currentSoundHandle = -1;
+  SoundProps? currentSound;
 
   @override
   void dispose() {
@@ -283,9 +284,10 @@ class _Page1State extends State<Page1> {
                               value: position,
                               max: length < position ? position : length,
                               onChanged: (value) async {
+                                if (currentSound == null) return;
                                 stopTimer();
                                 await AudioIsolate()
-                                    .seek(currentSoundHandle, value);
+                                    .seek(currentSound!.handle.last, value);
                                 soundPosition.value = value;
                                 startTimer();
                               },
@@ -402,23 +404,37 @@ class _Page1State extends State<Page1> {
 
   /// play file
   Future<void> play(String file) async {
-    await AudioIsolate().stop(currentSoundHandle);
-    await AudioIsolate().playFile(file).then((value) {
-      currentSoundHandle = value.sound.handle;
-      unawaited(AudioIsolate().getLength(currentSoundHandle).then((value) {
-        soundLength.value = value.length;
-      }));
+    if (currentSound != null) {
+      if ((await AudioIsolate().stopSound(currentSound!)) !=
+          PlayerErrors.noError) return;
+      stopTimer();
+    }
 
-      /// Stop the timer when the sound ends
-      value.sound.soundEvents.stream.listen(
-        (event) {
-          stopTimer();
-          event.sound.soundEvents.close(); // TODO: put this elsewhere
-          currentSoundHandle = -1;
-        },
-      );
-      startTimer();
-    });
+    /// load the file
+    final loadRet = await AudioIsolate().loadFile(file);
+    if (loadRet.error != PlayerErrors.noError) return;
+    currentSound = loadRet.sound;
+
+    /// play it
+    final playRet = await AudioIsolate().play(currentSound!);
+    if (loadRet.error != PlayerErrors.noError) return;
+    currentSound = playRet.sound;
+
+    /// get its length and notify it
+    unawaited(AudioIsolate().getLength(currentSound!.handle.last).then((value) {
+      soundLength.value = value.length;
+    }));
+
+    /// Stop the timer and dispose the sound when the sound ends
+    currentSound!.soundEvents.stream.listen(
+      (event) {
+        stopTimer();
+        event.sound.soundEvents.close(); // TODO: put this elsewhere
+        AudioIsolate().stopSound(currentSound!);
+        currentSound = null;
+      },
+    );
+    startTimer();
   }
 
   /// plays an assets file
@@ -448,7 +464,7 @@ class _Page1State extends State<Page1> {
   /// start timer to update the audio position slider
   void startTimer() {
     timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      AudioIsolate().getPosition(currentSoundHandle).then((value) {
+      AudioIsolate().getPosition(currentSound!.handle.last).then((value) {
         soundPosition.value = value.position;
       });
     });

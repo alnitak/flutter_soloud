@@ -50,10 +50,10 @@ FFI_PLUGIN_EXPORT void dispose()
     player.dispose();
 }
 
-FFI_PLUGIN_EXPORT enum PlayerErrors playFile(char * completeFileName, unsigned int *handle)
+FFI_PLUGIN_EXPORT enum PlayerErrors loadFile(char * completeFileName, unsigned int *hash)
 {
     if (!player.isInited()) return backendNotInited;
-    return (PlayerErrors)player.play(completeFileName, *handle);
+    return (PlayerErrors)player.loadFile(completeFileName, *hash);
 }
 
 FFI_PLUGIN_EXPORT enum PlayerErrors speechText(char * textToSpeech, unsigned int *handle)
@@ -68,31 +68,33 @@ FFI_PLUGIN_EXPORT void pauseSwitch(unsigned int handle)
     player.pauseSwitch(handle);
 }
 
-/// @brief Gets the pause state
-/// @param handle the sound handle
-/// @return true if paused
 FFI_PLUGIN_EXPORT bool getPause(unsigned int handle)
 {
     if (!player.isInited()) return false;
     return player.getPause(handle);
 }
 
-/// @brief Play already loaded sound identified by [handle]
-/// @param handle 
-FFI_PLUGIN_EXPORT unsigned int play(unsigned int handle)
+FFI_PLUGIN_EXPORT unsigned int play(
+    unsigned int hash,
+    float volume,
+    float pan,
+    bool paused)
 {
     if (!player.isInited()) return -1;
-    return player.play(handle); 
+    return player.play(hash, volume, pan, paused); 
 }
 
-/// @brief Stop already loaded sound identified by [handle] and clear it
-/// @param handle 
 FFI_PLUGIN_EXPORT void stop(unsigned int handle)
 {
     if (!player.isInited()) return;
     player.stop(handle);
 }
 
+FFI_PLUGIN_EXPORT void stopSound(unsigned int soundHash)
+{
+    if (!player.isInited()) return;
+    player.stopSound(soundHash);
+}
 
 FFI_PLUGIN_EXPORT void setVisualizationEnabled(bool enabled)
 {
@@ -149,10 +151,10 @@ FFI_PLUGIN_EXPORT void getAudioTexture2D(float** samples)
     *samples = *texture2D;
 }
 
-FFI_PLUGIN_EXPORT double getLength(unsigned int handle)
+FFI_PLUGIN_EXPORT double getLength(unsigned int soundHash)
 {
     if (!player.isInited()) return 0.0;
-    return player.getLength(handle);
+    return player.getLength(soundHash);
 }
 
 FFI_PLUGIN_EXPORT enum PlayerErrors seek(unsigned int handle, float time)

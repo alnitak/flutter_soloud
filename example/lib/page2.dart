@@ -27,28 +27,28 @@ class _Page2State extends State<Page2> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return const Scaffold(
       body: Padding(
-        padding: const EdgeInsets.only(top: 50, right: 8, left: 8),
+        padding: EdgeInsets.only(top: 50, right: 8, left: 8),
         child: Column(
           // mainAxisAlignment: MainAxisAlignment.start,
 
           children: [
             Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                MyButton(
+                PlaySoundWidget(
                   assetsAudio: 'assets/audio/8_bit_mentality.mp3',
                   text: '8 bit mentality',
                 ),
-                const SizedBox(height: 32),
-                MyButton(
-                  assetsAudio: 'assets/audio/Tropical Beeper.mp3',
-                  text: 'Tropical Beeper',
+                SizedBox(height: 32),
+                PlaySoundWidget(
+                  assetsAudio: 'assets/audio/explosion.mp3',
+                  text: 'game explosion',
                 ),
               ],
             ),
-            const SizedBox(height: 12),
+            SizedBox(height: 12),
           ],
         ),
       ),
@@ -56,8 +56,8 @@ class _Page2State extends State<Page2> {
   }
 }
 
-class MyButton extends StatefulWidget {
-  MyButton({
+class PlaySoundWidget extends StatefulWidget {
+  const PlaySoundWidget({
     required this.assetsAudio,
     required this.text,
     super.key,
@@ -67,18 +67,13 @@ class MyButton extends StatefulWidget {
   final String text;
 
   @override
-  State<MyButton> createState() => _MyButtonState();
+  State<PlaySoundWidget> createState() => _PlaySoundWidgetState();
 }
 
-class _MyButtonState extends State<MyButton> {
-  final isPaused = ValueNotifier<bool>(true);
-
-  final soundLength = ValueNotifier<double>(0);
-
-  final soundPosition = ValueNotifier<double>(0);
-
-  Timer? timer;
-
+class _PlaySoundWidgetState extends State<PlaySoundWidget> {
+  late double soundLength;
+  final Map<int, ValueNotifier<bool>> isPaused = {};
+  final Map<int, ValueNotifier<double>> soundPosition = {};
   StreamSubscription<StreamSoundEvent>? _subscription;
   SoundProps? sound;
 
@@ -90,130 +85,77 @@ class _MyButtonState extends State<MyButton> {
   @override
   void dispose() {
     _subscription?.cancel();
+    if (sound != null) AudioIsolate().stopSound(sound!);
     AudioIsolate().stopIsolate();
     super.dispose();
+  }
+
+  Future<bool> loadAsset() async {
+    final path = (await getAssetFile(widget.assetsAudio)).path;
+    final loadRet = await AudioIsolate().loadFile(path);
+
+    if (loadRet.error == PlayerErrors.noError) {
+      soundLength =
+          (await AudioIsolate().getLength(loadRet.sound!.soundHash)).length;
+      sound = loadRet.sound;
+
+      /// Listen to this sound events
+      _subscription = sound!.soundEvents.stream.listen(
+        (event) {
+          print('@@@@@@@@@@@ StreamSoundEvent for '
+              'handle: ${event.handle}');
+          isPaused.remove(event.handle);
+          soundPosition.remove(event.handle);
+          if (mounted) setState(() {});
+        },
+      );
+    } else {
+      print('Load sound asset failed: ${loadRet.error}');
+      return false;
+    }
+    return true;
   }
 
   @override
   Widget build(BuildContext context) {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         ElevatedButton(
           onPressed: () async {
-            if (sound != null) return;
-            await playAsset(widget.assetsAudio);
+            await playAnotherInstance();
+            if (mounted) setState(() {});
           },
-          child: Text(widget.text),
+          child: Text('load\n${widget.text}'),
         ),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            ValueListenableBuilder<bool>(
-              valueListenable: isPaused,
-              builder: (_, paused, __) {
-                return IconButton(
-                  onPressed: () async {
-                    if (sound == null) return;
-                    await AudioIsolate().pauseSwitch(sound!.handle);
-                    await AudioIsolate().getPause(sound!.handle).then((value) {
-                      if (value.pause) {
-                        stopTimer();
-                      } else {
-                        startTimer();
-                      }
-                      isPaused.value = value.pause;
-                    });
-                  },
-                  icon: paused
-                      ? const Icon(Icons.pause_circle_outline, size: 48)
-                      : const Icon(Icons.play_circle_outline, size: 48),
-                  iconSize: 48,
-                );
+        if (sound != null)
+          for (int i = 0; i < sound!.handle.length; ++i)
+            PlayingRow(
+              handle: sound!.handle[i],
+              soundLength: soundLength,
+              onStopped: () {
+                if (mounted) setState(() {});
               },
             ),
-            const SizedBox(width: 16),
-            IconButton(
-              onPressed: () {
-                if (sound == null) return;
-                AudioIsolate().stop(sound!.handle);
-                stopTimer();
-                sound = null;
-              },
-              icon: const Icon(Icons.stop_circle_outlined, size: 48),
-              iconSize: 48,
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-
-        /// Seek slider
-        ValueListenableBuilder<double>(
-          valueListenable: soundLength,
-          builder: (_, length, __) {
-            return ValueListenableBuilder<double>(
-              valueListenable: soundPosition,
-              builder: (_, position, __) {
-                if (position >= length) {
-                  position = 0;
-                  if (length == 0) length = 1;
-                }
-
-                return Row(
-                  children: [
-                    Text(position.toInt().toString()),
-                    Expanded(
-                      child: Slider.adaptive(
-                        value: position,
-                        max: length < position ? position : length,
-                        onChanged: (value) async {
-                          if (sound == null) return;
-                          stopTimer();
-                          soundPosition.value = value;
-                          await AudioIsolate()
-                              .seek(sound!.handle, value)
-                              .then((value) {
-                            debugPrint('seek $value  handler:${sound!.handle}');
-                          });
-                          startTimer();
-                        },
-                      ),
-                    ),
-                    Text(length.toInt().toString()),
-                  ],
-                );
-              },
-            );
-          },
-        ),
       ],
     );
   }
 
   /// plays an assets file
-  Future<void> playAsset(String assetsFile) async {
-    final audioFile = await getAssetFile(assetsFile);
-    await AudioIsolate().playFile(audioFile.path).then((value) {
-      if (value.error != PlayerErrors.noError) return;
+  ///
+  /// the 1st time call, the sound must be loaded.
+  /// Other calls, the sound is already in memory and no more
+  /// lag before play will happens
+  Future<void> playAnotherInstance() async {
+    if (sound == null) {
+      if (!(await loadAsset())) return;
+    }
 
-      sound = value.sound;
+    final newHandle = await AudioIsolate().play(sound!);
+    if (newHandle.error == PlayerErrors.noError) return;
 
-      /// Listen to this sound events
-      _subscription = sound!.soundEvents.stream.listen(
-        (event) {
-          print(
-              '@@@@@@@@@@@ StreamSoundEvent for handle: ${event.sound.handle}');
-          stopTimer();
-          _subscription?.cancel();
-          sound!.soundEvents.close(); // TODO: put this elsewhere
-          sound = null;
-        },
-      );
-
-      startTimer();
-      unawaited(AudioIsolate().getLength(sound!.handle).then((value) {
-        soundLength.value = value.length;
-      }));
-    });
+    isPaused[newHandle.newHandle] = ValueNotifier(false);
+    soundPosition[newHandle.newHandle] = ValueNotifier(0);
   }
 
   /// get the assets file and copy it to the temp dir
@@ -233,11 +175,104 @@ class _MyButtonState extends State<MyButton> {
       );
     }
   }
+}
+
+/// row widget containing play/pause and time slider
+class PlayingRow extends StatefulWidget {
+  const PlayingRow({
+    required this.handle,
+    required this.soundLength,
+    required this.onStopped,
+    super.key,
+  });
+
+  final double soundLength;
+  final int handle;
+  final VoidCallback onStopped;
+
+  @override
+  State<PlayingRow> createState() => _PlayingRowState();
+}
+
+class _PlayingRowState extends State<PlayingRow> {
+  final ValueNotifier<bool> isPaused = ValueNotifier(true);
+  final ValueNotifier<double> soundPosition = ValueNotifier(0);
+  Timer? timer;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        ValueListenableBuilder<bool>(
+          valueListenable: isPaused,
+          builder: (_, paused, __) {
+            if (paused) {
+              startTimer();
+            } else {
+              stopTimer();
+            }
+            return IconButton(
+              onPressed: () async {
+                await AudioIsolate().pauseSwitch(widget.handle);
+                await AudioIsolate().getPause(widget.handle).then((value) {
+                  isPaused.value = !value.pause;
+                });
+              },
+              icon: paused
+                  ? const Icon(Icons.pause_circle_outline, size: 48)
+                  : const Icon(Icons.play_circle_outline, size: 48),
+              iconSize: 48,
+            );
+          },
+        ),
+        const SizedBox(width: 16),
+        IconButton(
+          onPressed: () async {
+            await AudioIsolate().stop(widget.handle);
+            widget.onStopped();
+          },
+          icon: const Icon(Icons.stop_circle_outlined, size: 48),
+          iconSize: 48,
+        ),
+
+        /// Seek slider
+        Expanded(
+          child: ValueListenableBuilder<double>(
+            valueListenable: soundPosition,
+            builder: (_, position, __) {
+              if (position >= widget.soundLength) {
+                position = 0;
+              }
+
+              return Row(
+                children: [
+                  Text(position.toInt().toString()),
+                  Expanded(
+                    child: Slider(
+                      value: position,
+                      max: widget.soundLength < position
+                          ? position
+                          : widget.soundLength,
+                      onChanged: (value) async {
+                        soundPosition.value = value;
+                        await AudioIsolate().seek(widget.handle, value);
+                      },
+                    ),
+                  ),
+                  Text(widget.soundLength.toInt().toString()),
+                ],
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
 
   /// start timer to update the audio position slider
   void startTimer() {
-    timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      AudioIsolate().getPosition(sound!.handle).then((value) {
+    timer = Timer.periodic(const Duration(microseconds: 100), (_) {
+      AudioIsolate().getPosition(widget.handle).then((value) {
         soundPosition.value = value.position;
       });
     });

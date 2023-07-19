@@ -20,20 +20,18 @@ class FlutterSoLoudFfi {
           lookup)
       : _lookup = lookup;
 
-  /// @brief check if a handle is still valid.
-  /// @param handle handle to check
-  /// @return true if it still exists
-  int getIsValidVoiceHandle(
-    int handle,
+  /// @brief Stop all handles of the already loaded sound identified by [hash] and clear it
+  /// @param hash
+  void stopSound(
+    int hash,
   ) {
-    return _getIsValidVoiceHandle(
-      handle,
+    return _stopSound(
+      hash,
     );
   }
 
-  late final _getIsValidVoiceHandlePtr =
-      _lookup<ffi.NativeFunction<ffi.Int Function(ffi.UnsignedInt)>>(
-          'getIsValidVoiceHandle');
-  late final _getIsValidVoiceHandle =
-      _getIsValidVoiceHandlePtr.asFunction<int Function(int)>();
+  late final _stopSoundPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt)>>(
+          'stopSound');
+  late final _stopSound = _stopSoundPtr.asFunction<void Function(int)>();
 }

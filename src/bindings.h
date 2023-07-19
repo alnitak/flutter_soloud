@@ -38,18 +38,19 @@ FFI_PLUGIN_EXPORT enum PlayerErrors initEngine();
 /// @return 
 FFI_PLUGIN_EXPORT void dispose();
 
-/// @brief Play a new file
+/// @brief Load a new sound to be played once or multiple times later
 /// @param completeFileName the complete file path
-/// @param handle sound identifier
+/// @param hash return hash of the sound
 /// @return Returns [PlayerErrors.noError] if success
-FFI_PLUGIN_EXPORT enum PlayerErrors playFile(char * completeFileName, unsigned int *handle);
+FFI_PLUGIN_EXPORT enum PlayerErrors loadFile(char * completeFileName, unsigned int *hash);
 
 /// @brief Speech
 /// @param textToSpeech
 /// @param handle sound identifier
 /// @return Returns [PlayerErrors.noError] if success
 /// TODO(me): add other T2S parameters
-FFI_PLUGIN_EXPORT enum PlayerErrors speechText(char * textToSpeech, unsigned int *handle);
+FFI_PLUGIN_EXPORT enum PlayerErrors speechText(
+    char * textToSpeech, unsigned int *handle);
 
 /// @brief Pause or unpause already loaded sound identified by [handle]
 /// @param handle the sound handle
@@ -61,12 +62,24 @@ FFI_PLUGIN_EXPORT void pauseSwitch(unsigned int handle);
 FFI_PLUGIN_EXPORT bool getPause(unsigned int handle);
 
 /// @brief Play already loaded sound identified by [handle]
-/// @param handle 
-FFI_PLUGIN_EXPORT unsigned int play(unsigned int handle);
+/// @param hash the unique sound hash of a sound
+/// @param volume 1.0f full volume
+/// @param pan 0.0f centered
+/// @param paused 0 not pause
+/// @return the handle of the sound, 0 if error
+FFI_PLUGIN_EXPORT unsigned int play(
+    unsigned int hash,
+    float volume,
+    float pan,
+    bool paused);
 
 /// @brief Stop already loaded sound identified by [handle] and clear it
 /// @param handle 
 FFI_PLUGIN_EXPORT void stop(unsigned int handle);
+
+/// @brief Stop all handles of the already loaded sound identified by [hash] and clear it
+/// @param hash
+FFI_PLUGIN_EXPORT void stopSound(unsigned int soundHash);
 
 /// @brief Enable or disable visualization
 /// @param enabled 
@@ -91,18 +104,18 @@ FFI_PLUGIN_EXPORT void getWave(float* wave);
 FFI_PLUGIN_EXPORT void getAudioTexture(float* samples);
 
 /// @brief Return a floats matrix of 256x512
-/// Every row are composed of 256 FFT values plus 256 wave data
+/// Every row are composed of 256 FFT values plus 256 of wave data
 /// Every time is called, a new row is stored in the
 /// first row and all the previous rows are shifted
-/// up (the last will be lost).
+/// up (the last one will be lost).
 /// @param samples 
 /// @return 
 FFI_PLUGIN_EXPORT void getAudioTexture2D(float** samples);
 
 /// @brief get the sound length in seconds
-/// @param handle the sound handle
+/// @param soundHash the sound hash
 /// @return returns sound length in seconds
-FFI_PLUGIN_EXPORT double getLength(unsigned int handle);
+FFI_PLUGIN_EXPORT double getLength(unsigned int soundHash);
 
 /// @brief seek playing in [time] seconds
 /// @param time
@@ -110,7 +123,7 @@ FFI_PLUGIN_EXPORT double getLength(unsigned int handle);
 /// @return Returns [PlayerErrors.noError] if success
 FFI_PLUGIN_EXPORT enum PlayerErrors seek(unsigned int handle,float time);
 
-/// @brief get current sound position
+/// @brief get current sound position  in seconds
 /// @param handle the sound handle
 /// @return time in seconds
 FFI_PLUGIN_EXPORT double getPosition(unsigned int handle);

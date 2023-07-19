@@ -29,12 +29,9 @@ struct ActiveSound {
     std::string completeFileName;
     /// many istances of [sound] can be played without re-loading it
     std::vector<SoLoud::handle> handle;
-    /// following params are not used since 
-    /// I can't call Dart from another thread
-    double currPos = 0.0;
-    double posForCallback = -1.0;
-    void (*playEndedCallback)(unsigned int) = nullptr;
-    void (*positionCallback)(void) = nullptr;
+
+    // unique identifier of this sound based on the file name
+    std::size_t soundHash;
 };
 
 class Player {
@@ -58,11 +55,11 @@ public:
     /// @return a string represented by the PlayerErrors code
     const std::string getErrorString(PlayerErrors aErrorCode) const;
 
-    /// @brief Play a new file
+    /// @brief Load a new sound to be played once or multiple times later
     /// @param completeFileName the complete file path + file name
-    /// @param handle return handle of the sound. -1 if error
+    /// @param hash return the hash of the sound
     /// @return Returns [PlayerErrors.SO_NO_ERROR] if success
-    PlayerErrors play(const std::string& completeFileName, unsigned int &handle);
+    PlayerErrors loadFile(const std::string &completeFileName, unsigned int &hash);
 
     /// @brief Pause or unpause already loaded sound identified by [handle]
     /// @param handle the sound handle
@@ -73,14 +70,26 @@ public:
     /// @return true if paused
     bool getPause(unsigned int handle);
     
-    /// @brief Play already loaded sound identified by [handle]
-    /// @param handle 
-    /// @return the handle of the sound
-    unsigned int play(unsigned int handle);
+    /// @brief Play already loaded sound identified by [soundHash]
+    /// @param soundHash 
+    /// @param volume 1.0f full volume
+    /// @param pan 0.0f centered
+    /// @param paused 0 not pause
+    /// @return the handle of the sound, 0 if error
+    unsigned int play(
+        std::size_t soundHash,
+        float volume = 1.0f,
+        float pan = 0.0f,
+        bool paused = 0);
     
     /// @brief Stop already loaded sound identified by [handle] and clear it
     /// @param handle 
     void stop(unsigned int handle);
+
+    /// @brief Stop all handles of the already loaded sound identified by [soundHash] and clear it
+    /// @param soundHash
+    void stopSound(std::size_t soundHash);
+
 
     /// @brief Speech
     /// @param textToSpeech
@@ -95,18 +104,17 @@ public:
     void setVisualizationEnabled(bool enabled);
 
     /// @brief Calculates FFT of the currently playing sound
-    /// @param
     /// @return a 256 float pointer to the result
     float* calcFFT();
 
     /// @brief Gets 256 samples of the currently playing sound
-    /// @param
     /// @return a 256 float pointer to the result
     float* getWave();
 
     /// @brief get the sound length in seconds
+    /// @param soundHash 
     /// @return returns sound length in seconds
-    double getLength(SoLoud::handle handle);
+    double getLength(std::size_t soundHash);
 
     /// @brief seek playing in [time] seconds
     /// @param handle the sound handle
@@ -114,7 +122,7 @@ public:
     /// @return Returns [PlayerErrors.SO_NO_ERROR] if success
     PlayerErrors seek(SoLoud::handle handle, float time);
 
-    /// @brief get current sound position
+    /// @brief get current sound position in seconds
     /// @return time in seconds
     double getPosition(SoLoud::handle handle);
 
@@ -132,11 +140,7 @@ public:
     void debug();
 
 public:
-
-    std::thread loopThread;
-    std::atomic<bool> isLoopRunning;
-    std::mutex mutex;
-    std::vector<PlayerMessages> msg;
+    /// all the sounds loaded
     std::vector<std::unique_ptr<ActiveSound>> sounds;
 
     /// true when the backend is initialized

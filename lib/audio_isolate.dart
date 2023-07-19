@@ -26,12 +26,13 @@ enum _MessageEvents {
   startLoop,
   stopLoop,
   loop,
-  playFile,
+  loadFile,
   speechText,
   pauseSwitch,
   getPause,
   play,
   stop,
+  stopSound,
   setVisualizationEnabled,
   getFft,
   getWave,
@@ -47,12 +48,13 @@ enum _MessageEvents {
 /// definitions to be checked in main isolate
 typedef ArgsInitEngine = ();
 typedef ArgsDisposeEngine = ();
-typedef ArgsPlayFile = ({String completeFileName});
+typedef ArgsLoadFile = ({String completeFileName});
 typedef ArgsSpeechText = ({String textToSpeech});
-typedef ArgsPlay = ({int handle});
+typedef ArgsPlay = ({int soundHash, double volume, double pan, bool paused});
 typedef ArgsPauseSwitch = ({int handle});
 typedef ArgsGetPause = ({int handle});
 typedef ArgsStop = ({int handle});
+typedef ArgsStopSound = ({int soundHash});
 typedef ArgsSetVisualizationEnabled = ({bool enabled});
 typedef ArgsGetLength = ({int handle});
 typedef ArgsSeek = ({int handle, double time});
@@ -67,14 +69,18 @@ enum SoundEvent {
 }
 
 /// the type sent back to the user when a sound event occurs
-typedef StreamSoundEvent = ({SoundEvent event, SoundProps sound});
+typedef StreamSoundEvent = ({SoundEvent event, SoundProps sound, int handle});
 
 /// the sound class
 class SoundProps {
-  SoundProps(this.handle);
+  SoundProps(this.soundHash);
 
-  /// handle of this sound
-  final int handle;
+  // the [hash] is returned by [loadFile]
+  final int soundHash;
+
+  /// handles of this sound. Multiple instances of this sound can be
+  /// played, each with their unique handle
+  List<int> handle = [];
 
   /// TODO: make keys time able to trigger an event
   List<double> keys = [];
@@ -139,12 +145,13 @@ void audioIsolate(SendPort isolateToMainStream) {
             .send({'event': event['event'], 'args': args, 'return': ()});
         break;
 
-      case _MessageEvents.playFile:
-        final args = event['args'] as ArgsPlayFile;
-        final ret = soLoudController.soLoudFFI.playFile(args.completeFileName);
+      case _MessageEvents.loadFile:
+        final args = event['args'] as ArgsLoadFile;
+        final ret = soLoudController.soLoudFFI.loadFile(args.completeFileName);
         // add the new sound handler to the list
-        final newSound = SoundProps(ret.handle);
+        SoundProps? newSound;
         if (ret.error == PlayerErrors.noError) {
+          newSound = SoundProps(ret.soundHash);
           activeSounds.add(newSound);
         }
         isolateToMainStream.send({
@@ -169,17 +176,33 @@ void audioIsolate(SendPort isolateToMainStream) {
         });
         break;
 
-      /// TODO: this should return a handle. And this handle must be another sound
       case _MessageEvents.play:
         final args = event['args'] as ArgsPlay;
-        final ret = soLoudController.soLoudFFI.play(args.handle);
-        // add the new sound handler to the list
-        final newSound = SoundProps(ret);
-        activeSounds.add(newSound);
+        final ret = soLoudController.soLoudFFI.play(
+          args.soundHash,
+          volume: args.volume,
+          pan: args.pan,
+          paused: args.paused,
+        );
+        // add the new handle to the [activeSound] hash list
+        try {
+          activeSounds
+              .firstWhere((s) => s.soundHash == args.soundHash)
+              .handle
+              .add(ret);
+        } catch (e) {
+          debugPrint('No sound with shoundHash ${args.soundHash} found!');
+          isolateToMainStream.send({
+            'event': event['event'],
+            'args': args,
+            'return': (error: PlayerErrors.soundHashNotFound, newHandle: -1),
+          });
+          break;
+        }
         isolateToMainStream.send({
           'event': event['event'],
           'args': args,
-          'return': (error: PlayerErrors.noError, sound: newSound),
+          'return': (error: PlayerErrors.noError, newHandle: ret),
         });
         break;
 
@@ -199,8 +222,25 @@ void audioIsolate(SendPort isolateToMainStream) {
 
       case _MessageEvents.stop:
         final args = event['args'] as ArgsStop;
-        activeSounds.removeWhere((item) => item.handle == args.handle);
         soLoudController.soLoudFFI.stop(args.handle);
+
+        /// find a sound with this handle and remove that handle from the list
+        for (final sound in activeSounds) {
+          sound.handle.removeWhere((element) => element == args.handle);
+        }
+
+        isolateToMainStream
+            .send({'event': event['event'], 'args': args, 'return': ()});
+        break;
+
+      case _MessageEvents.stopSound:
+        final args = event['args'] as ArgsStopSound;
+        soLoudController.soLoudFFI.stopSound(args.soundHash);
+
+        /// find a sound with this handle and remove that handle from the list
+        activeSounds
+            .removeWhere((element) => element.soundHash == args.soundHash);
+
         isolateToMainStream
             .send({'event': event['event'], 'args': args, 'return': ()});
         break;
@@ -279,27 +319,29 @@ void audioIsolate(SendPort isolateToMainStream) {
 
       case _MessageEvents.loop:
         if (loopRunning) {
-          final List<void Function()> pendingRemoves = [];
           for (final sound in activeSounds) {
-            // check valids
-            final bool isValid =
-                soLoudController.soLoudFFI.getIsValidVoiceHandle(sound.handle);
-            if (!isValid) {
-              isolateToMainStream
-                  .send((event: SoundEvent.handleIsNoMoreValid, sound: sound));
-              // remove the ended sound from the list
-              pendingRemoves.add(() {
-                activeSounds.remove(sound);
-              });
+            final List<void Function()> removeInvalid = [];
+            // check valids handles in [sound] list
+            for (final handle in sound.handle) {
+              final bool isValid =
+                  soLoudController.soLoudFFI.getIsValidVoiceHandle(handle);
+              if (!isValid) {
+                isolateToMainStream.send((
+                  event: SoundEvent.handleIsNoMoreValid,
+                  sound: sound,
+                  handle: handle
+                ));
+                removeInvalid.add(() {
+                  sound.handle.remove(handle);
+                });
+              }
+            }
+            for (final f in removeInvalid) {
+              f();
             }
           }
-          // TODO: this is executed every loop. Design in another
-          //way even if it's fast
-          for (final pendingRemove in pendingRemoves.reversed) {
-            pendingRemove();
-          }
 
-          // TODO: is 10 ms ok?
+          // TODO: is 10 ms ok to loop again?
           Future.delayed(const Duration(milliseconds: 10), () {
             mainToIsolateStream.sendPort.send(
               {'event': _MessageEvents.loop, 'args': ()},
@@ -314,6 +356,7 @@ void audioIsolate(SendPort isolateToMainStream) {
   });
 }
 
+///
 class AudioIsolate {
   factory AudioIsolate() => _instance ??= AudioIsolate._();
 
@@ -332,17 +375,18 @@ class AudioIsolate {
 
   bool engineInited = false;
 
-  /// should be synchronized with the other in the isolate
+  /// Used both in main and audio isolates
+  /// should be synchronized with each other
   final List<SoundProps> activeSounds = [];
 
   /// Wait for the isolate to return after the event has been completed.
   /// The event must be recognized by [event] and [args] sent to
   /// the audio isolate.
   /// ie:
-  /// - call [playFile] with [completeFileName] arg
-  /// - wait the audio isolate to call the FFI playFile function
-  /// - the audio isolate will then send back what has been called and
-  ///   eventually the return value
+  /// - call [loadFile] with [completeFileName] arg
+  /// - wait the audio isolate to call the FFI loadFile function
+  /// - the audio isolate will then send back the args used in the call and
+  ///   eventually the return value of the FFI function
   Future<dynamic> _waitForEvent(_MessageEvents event, Record args) async {
     final Completer<dynamic> completer = Completer();
 
@@ -366,6 +410,7 @@ class AudioIsolate {
   /// by [_waitForEvent] when they come.
   Future<PlayerErrors> startIsolate() async {
     if (_isolate != null) return PlayerErrors.isolateAlreadyStarted;
+    activeSounds.clear();
     final completer = Completer<PlayerErrors>();
     _isolateToMainStream = ReceivePort();
     _returnedEvent = StreamController.broadcast();
@@ -381,35 +426,34 @@ class AudioIsolate {
           }
           completer.complete(value);
         });
-        
       } else {
         debugIsolates('******** ISOLATE TO MAIN: $data');
         if (data is StreamSoundEvent) {
-          print(
-              '@@@@@@@@@@@ STREAM EVENT: ${data.event}  handle: ${data.sound.handle}');
+          // print('@@@@@@@@@@@ STREAM EVENT: ${data.event}  '
+          //     'handle: ${data.sound.handle}');
 
-          /// find the sound receive the [SoundEvent] and...
+          /// find the sound which received the [SoundEvent] and...
           final sound = activeSounds.firstWhere(
-            (element) => element.handle == data.sound.handle,
+            (sound) => sound.soundHash == data.sound.soundHash,
             orElse: () {
               debugPrint('Receive an event for sound with handle: '
-                  '${data.sound.handle} but there is not that sound! '
+                  '${data.handle} but there is not that sound! '
                   'Call the Police!');
-              return SoundProps(-1);
+              return SoundProps(0);
             },
           );
 
           /// ...put in its own stream the event
-          if (sound.handle != -1) {
+          if (sound.soundHash != 0) {
             sound.soundEvents.add(data);
-            activeSounds.removeWhere(
-              (element) {
-                return element.handle == sound.handle;
+            sound.handle.removeWhere(
+              (handle) {
+                return handle == data.handle;
               },
             );
           }
         } else {
-          // if not a StreamSoundEvent queue this into [_returnedEvent]
+          // if not a StreamSoundEvent, queue this into [_returnedEvent]
           _returnedEvent?.add(data);
         }
       }
@@ -441,19 +485,26 @@ class AudioIsolate {
     _isolate?.kill();
     _isolate = null;
     audioEvent.add(AudioEvent.isolateStopped);
-
     return true;
   }
 
+  ///
   bool isIsolateRunning() {
     return _isolate != null;
   }
 
   //////////////////////////////////////////////////
-  /// isolate loop management
+  /// isolate loop events management
   //////////////////////////////////////////////////
 
   /// start the isolate loop to catch end of sound playback or keys
+  ///
+  /// The loop recursively call itself to check the state of
+  /// all active sound handles. Therefore it can cause some lag for
+  /// other event calls.
+  /// Not starting this will implies not receive [SoundEvent]s,
+  /// it will therefore be up to the developer to check
+  /// the sound handle validity
   Future<bool> _startLoop() async {
     if (_isolate == null || !engineInited) return false;
 
@@ -467,6 +518,7 @@ class AudioIsolate {
     return true;
   }
 
+  /// stop the [SoundEvent]s loop
   Future<bool> _stopLoop() async {
     if (_isolate == null || !engineInited) return false;
 
@@ -483,6 +535,13 @@ class AudioIsolate {
   //////////////////////////////////////////////////
   /// Below all the methods implemented with FFI
   //////////////////////////////////////////////////
+
+  /// Init the audio engine.
+  ///
+  /// Defaults are:
+  /// Miniaudio audio backend
+  /// sample rate 44100
+  /// buffer 2048
   Future<PlayerErrors> initEngine() async {
     if (_isolate == null) return PlayerErrors.isolateNotStarted;
     _mainToIsolateStream?.send(
@@ -502,6 +561,7 @@ class AudioIsolate {
     return ret;
   }
 
+  /// Stop the engine
   Future<bool> disposeEngine() async {
     if (_isolate == null || !engineInited) return false;
 
@@ -519,28 +579,33 @@ class AudioIsolate {
     return true;
   }
 
-  Future<({PlayerErrors error, SoundProps sound})> playFile(
-    String completeFileName,
-  ) async {
+  /// @brief Load a new sound to be played once or multiple times later
+  /// @param completeFileName the complete file path
+  /// @return Returns [PlayerErrors.noError] if success and a new [sound]
+  Future<({PlayerErrors error, SoundProps? sound})> loadFile(
+      String completeFileName) async {
     if (!engineInited) {
-      return (error: PlayerErrors.engineNotStarted, sound: SoundProps(-1));
+      return (error: PlayerErrors.engineNotStarted, sound: null);
     }
     _mainToIsolateStream?.send(
       {
-        'event': _MessageEvents.playFile,
+        'event': _MessageEvents.loadFile,
         'args': (completeFileName: completeFileName),
       },
     );
     final ret = (await _waitForEvent(
-      _MessageEvents.playFile,
+      _MessageEvents.loadFile,
       (completeFileName: completeFileName),
-    )) as ({PlayerErrors error, SoundProps sound});
+    )) as ({PlayerErrors error, SoundProps? sound});
     if (ret.error == PlayerErrors.noError) {
-      activeSounds.add(ret.sound);
+      activeSounds.add(ret.sound!);
     }
     return (error: ret.error, sound: ret.sound);
   }
 
+  /// @brief Speech given text
+  /// @param textToSpeech the text to be spoken
+  /// @return Returns [PlayerErrors.noError] if success and a new [sound]
   Future<({PlayerErrors error, SoundProps sound})> speechText(
     String textToSpeech,
   ) async {
@@ -561,24 +626,59 @@ class AudioIsolate {
     return (error: ret.error, sound: activeSounds.last);
   }
 
-  Future<({PlayerErrors error, SoundProps sound})> play(int handle) async {
+  /// @brief Play already loaded sound identified by [soundHash]
+  /// @param sound the sound to play
+  /// @param volume 1.0f full volume
+  /// @param pan 0.0f centered
+  /// @param paused 0 not pause
+  /// @return Returns the new [handle] of the sound, 0 if error
+  Future<({PlayerErrors error, SoundProps sound, int newHandle})> play(
+    SoundProps sound, {
+    double volume = 1,
+    double pan = 0,
+    bool paused = false,
+  }) async {
     if (!engineInited) {
-      return (error: PlayerErrors.engineNotStarted, sound: SoundProps(-1));
+      return (error: PlayerErrors.engineNotStarted, sound: sound, newHandle: 0);
     }
     _mainToIsolateStream?.send(
       {
         'event': _MessageEvents.play,
-        'args': (handle: handle),
+        'args': (
+          soundHash: sound.soundHash,
+          volume: volume,
+          pan: pan,
+          paused: paused
+        ),
       },
     );
     final ret = (await _waitForEvent(
       _MessageEvents.play,
-      (handle: handle),
-    )) as ({PlayerErrors error, SoundProps sound});
-    activeSounds.add(ret.sound);
-    return (error: PlayerErrors.engineNotStarted, sound: ret.sound);
+      (soundHash: sound.soundHash, volume: volume, pan: pan, paused: paused),
+    )) as ({PlayerErrors error, int newHandle});
+    try {
+      /// add the new handle to the sound
+      activeSounds
+          .firstWhere((s) => s.soundHash == sound.soundHash)
+          .handle
+          .add(ret.newHandle);
+    } catch (e) {
+      debugPrint('No sound with shoundHash ${sound.soundHash} found!');
+      return (
+        error: PlayerErrors.soundHashNotFound,
+        sound: sound,
+        newHandle: 0
+      );
+    }
+    return (
+      error: PlayerErrors.engineNotStarted,
+      sound: sound,
+      newHandle: ret.newHandle
+    );
   }
 
+  /// @brief Pause or unpause already loaded sound identified by [handle]
+  /// @param handle the sound handle
   Future<PlayerErrors> pauseSwitch(int handle) async {
     if (!engineInited) return PlayerErrors.engineNotStarted;
     _mainToIsolateStream?.send(
@@ -591,6 +691,9 @@ class AudioIsolate {
     return PlayerErrors.noError;
   }
 
+  /// @brief Gets the pause state
+  /// @param handle the sound handle
+  /// @return true if paused
   Future<({PlayerErrors error, bool pause})> getPause(int handle) async {
     if (!engineInited) {
       return (error: PlayerErrors.engineNotStarted, pause: false);
@@ -606,6 +709,8 @@ class AudioIsolate {
     return (error: PlayerErrors.noError, pause: ret as bool);
   }
 
+  /// @brief Stop already loaded sound identified by [handle] and clear it
+  /// @param handle
   Future<PlayerErrors> stop(int handle) async {
     if (!engineInited) {
       return PlayerErrors.engineNotStarted;
@@ -617,14 +722,43 @@ class AudioIsolate {
       },
     );
     await _waitForEvent(_MessageEvents.stop, (handle: handle));
+
+    /// find a sound with this handle and remove that handle from the list
+    for (final sound in activeSounds) {
+      sound.handle.removeWhere((element) => element == handle);
+    }
+    return PlayerErrors.noError;
+  }
+
+  /// @brief Stop all handles of the already loaded sound identified
+  ///     by [soundHash] and clear it
+  /// @param sound
+  Future<PlayerErrors> stopSound(SoundProps sound) async {
+    if (!engineInited) {
+      return PlayerErrors.engineNotStarted;
+    }
+    _mainToIsolateStream?.send(
+      {
+        'event': _MessageEvents.stopSound,
+        'args': (soundHash: sound.soundHash),
+      },
+    );
+    await _waitForEvent(_MessageEvents.stopSound, (soundHash: sound.soundHash));
+
+    /// remove the sound with [soundHash]
     activeSounds.removeWhere(
       (element) {
-        return element.handle == handle;
+        return element.soundHash == sound.soundHash;
       },
     );
     return PlayerErrors.noError;
   }
 
+  /// @brief Enable or disable visualization.
+  ///   When enabled it will be possible to get FFT and wave data.
+  /// @param enabled
+  /// @return [PlayerErrors.noError] on success
+  // ignore: avoid_positional_boolean_parameters
   Future<PlayerErrors> setVisualizationEnabled(bool enabled) async {
     if (!engineInited) {
       return PlayerErrors.engineNotStarted;
@@ -640,22 +774,29 @@ class AudioIsolate {
     return PlayerErrors.noError;
   }
 
-  Future<({PlayerErrors error, double length})> getLength(int handle) async {
+  /// @brief get the sound length in seconds
+  /// @param soundHash the sound hash
+  /// @return returns sound length in seconds
+  Future<({PlayerErrors error, double length})> getLength(int soundHash) async {
     if (!engineInited) {
       return (error: PlayerErrors.engineNotStarted, length: 0.0);
     }
     _mainToIsolateStream?.send(
       {
         'event': _MessageEvents.getLength,
-        'args': (handle: handle),
+        'args': (handle: soundHash),
       },
     );
     final ret =
-        (await _waitForEvent(_MessageEvents.getLength, (handle: handle)))
+        (await _waitForEvent(_MessageEvents.getLength, (handle: soundHash)))
             as double;
     return (error: PlayerErrors.noError, length: ret);
   }
 
+  /// @brief seek playing in seconds
+  /// @param time the time to seek
+  /// @param handle the sound handle
+  /// @return Returns [PlayerErrors.noError] if success
   Future<PlayerErrors> seek(int handle, double time) async {
     if (!engineInited) {
       return PlayerErrors.engineNotStarted;
@@ -672,6 +813,9 @@ class AudioIsolate {
     return PlayerErrors.values[ret];
   }
 
+  /// @brief get current sound position in seconds
+  /// @param handle the sound handle
+  /// @return time in seconds
   Future<({PlayerErrors error, double position})> getPosition(
       int handle) async {
     if (!engineInited) {
@@ -689,6 +833,9 @@ class AudioIsolate {
     return (error: PlayerErrors.noError, position: ret);
   }
 
+  /// @brief check if a handle is still valid.
+  /// @param handle handle to check
+  /// @return [PlayerErrors.noError] if success and [isvalid]==true if valid
   Future<({PlayerErrors error, bool isValid})> getIsValidVoiceHandle(
       int handle) async {
     if (!engineInited) {
@@ -705,6 +852,13 @@ class AudioIsolate {
     return (error: PlayerErrors.noError, isValid: ret);
   }
 
+  /// @brief Return a floats matrix of 256x512
+  /// Every row are composed of 256 FFT values plus 256 of wave data
+  /// Every time is called, a new row is stored in the
+  /// first row and all the previous rows are shifted
+  /// up (the last one will be lost).
+  /// @param samples
+  /// @return [PlayerErrors.noError] if success
   Future<PlayerErrors> getAudioTexture2D(
       ffi.Pointer<ffi.Pointer<ffi.Float>> audioData) async {
     if (!engineInited) return PlayerErrors.engineNotStarted;
@@ -723,6 +877,16 @@ class AudioIsolate {
     return PlayerErrors.noError;
   }
 
+  /// @brief smooth FFT data.
+  /// When new data is read and the values are decreasing, the new value will be
+  /// decreased with an amplitude between the old and the new value.
+  /// This will resul on a less shaky visualization
+  /// @param [smooth] must be in the [0.0 ~ 1.0] range.
+  /// 0 = no smooth
+  /// 1 = full smooth
+  /// the new value is calculated with:
+  /// newFreq = smooth * oldFreq + (1 - smooth) * newFreq
+  /// @return [PlayerErrors.noError] if success
   Future<PlayerErrors> setFftSmoothing(double smooth) async {
     if (!engineInited) return PlayerErrors.engineNotStarted;
     _mainToIsolateStream?.send(
