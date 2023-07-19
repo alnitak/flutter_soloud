@@ -35,15 +35,20 @@ class MyHomePage extends StatelessWidget {
       child: Scaffold(
         body: Column(
           children: [
-            Controls(),
+
             SizedBox(
-              height: 40,
-              child: TabBar(
-                isScrollable: true,
-                tabs: [
-                  Tab(text: 'hello world!'),
-                  Tab(text: 'visualizer'),
-                  Tab(text: 'multi track'),
+              height: 70,
+              child: Row(
+                children: [
+                  Controls(),
+                  TabBar(
+                    isScrollable: true,
+                    tabs: [
+                      Tab(text: 'hello world!'),
+                      Tab(text: 'visualizer'),
+                      Tab(text: 'multi track'),
+                    ],
+                  ),
                 ],
               ),
             ),

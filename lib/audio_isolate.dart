@@ -56,7 +56,7 @@ typedef ArgsGetPause = ({int handle});
 typedef ArgsStop = ({int handle});
 typedef ArgsStopSound = ({int soundHash});
 typedef ArgsSetVisualizationEnabled = ({bool enabled});
-typedef ArgsGetLength = ({int handle});
+typedef ArgsGetLength = ({int soundHash});
 typedef ArgsSeek = ({int handle, double time});
 typedef ArgsGetPosition = ({int handle});
 typedef ArgsGetIsValidVoiceHandle = ({int handle});
@@ -254,7 +254,7 @@ void audioIsolate(SendPort isolateToMainStream) {
 
       case _MessageEvents.getLength:
         final args = event['args'] as ArgsGetLength;
-        final ret = soLoudController.soLoudFFI.getLength(args.handle);
+        final ret = soLoudController.soLoudFFI.getLength(args.soundHash);
         isolateToMainStream
             .send({'event': event['event'], 'args': args, 'return': ret});
         break;
@@ -429,8 +429,8 @@ class AudioIsolate {
       } else {
         debugIsolates('******** ISOLATE TO MAIN: $data');
         if (data is StreamSoundEvent) {
-          // print('@@@@@@@@@@@ STREAM EVENT: ${data.event}  '
-          //     'handle: ${data.sound.handle}');
+          print('@@@@@@@@@@@ STREAM EVENT: ${data.event}  '
+              'handle: ${data.sound.handle}');
 
           /// find the sound which received the [SoundEvent] and...
           final sound = activeSounds.firstWhere(
@@ -784,11 +784,11 @@ class AudioIsolate {
     _mainToIsolateStream?.send(
       {
         'event': _MessageEvents.getLength,
-        'args': (handle: soundHash),
+        'args': (soundHash: soundHash),
       },
     );
     final ret =
-        (await _waitForEvent(_MessageEvents.getLength, (handle: soundHash)))
+        (await _waitForEvent(_MessageEvents.getLength, (soundHash: soundHash)))
             as double;
     return (error: PlayerErrors.noError, length: ret);
   }

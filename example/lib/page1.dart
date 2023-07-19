@@ -58,7 +58,7 @@ class _Page1State extends State<Page1> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Padding(
-        padding: const EdgeInsets.only(top: 50, right: 8, left: 8),
+        padding: const EdgeInsets.only(top: 10, right: 8, left: 8),
         child: Center(
           child: Column(
             // mainAxisAlignment: MainAxisAlignment.start,
@@ -262,7 +262,6 @@ class _Page1State extends State<Page1> {
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
 
               /// Seek slider
               ValueListenableBuilder<double>(
@@ -301,7 +300,7 @@ class _Page1State extends State<Page1> {
                 },
               ),
 
-              /// fft range to put into the texture
+              /// fft range slider values to put into the texture
               ValueListenableBuilder<RangeValues>(
                 valueListenable: fftImageRange,
                 builder: (_, fftRange, __) {
@@ -347,7 +346,6 @@ class _Page1State extends State<Page1> {
                   );
                 },
               ),
-              const SizedBox(height: 8),
 
               /// VISUALIZER
               FutureBuilder<ui.FragmentShader?>(
@@ -421,7 +419,7 @@ class _Page1State extends State<Page1> {
     currentSound = playRet.sound;
 
     /// get its length and notify it
-    unawaited(AudioIsolate().getLength(currentSound!.handle.last).then((value) {
+    unawaited(AudioIsolate().getLength(currentSound!.soundHash).then((value) {
       soundLength.value = value.length;
     }));
 

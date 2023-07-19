@@ -31,3 +31,13 @@ build/
 
 images/
 lib/flutter_soloud_bindings_ffi_TMP.dart
+
+**/android/caches
+**/android/.tmp
+**/android/wrapper/dists
+**/android/undefined-build
+**/android/native
+**/android/kotlin-profile
+**/android/daemon
+**/android/android
+

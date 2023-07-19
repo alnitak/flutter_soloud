@@ -65,12 +65,11 @@ class _ControlsState extends State<Controls> {
                   },
                   style: buttonStyle(isRunning),
                   child: isRunning
-                      ? const Text('stop isolate')
-                      : const Text('start isolate'),
+                      ? const Text('stop')
+                      : const Text('start'),
                 ),
               ],
             ),
-            const SizedBox(height: 32),
           ],
         );
       },
