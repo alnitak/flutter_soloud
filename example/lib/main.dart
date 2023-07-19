@@ -32,37 +32,39 @@ class MyHomePage extends StatelessWidget {
   Widget build(BuildContext context) {
     return const DefaultTabController(
       length: 3,
-      child: Scaffold(
-        body: Column(
-          children: [
-
-            SizedBox(
-              height: 70,
-              child: Row(
-                children: [
-                  Controls(),
-                  TabBar(
-                    isScrollable: true,
-                    tabs: [
-                      Tab(text: 'hello world!'),
-                      Tab(text: 'visualizer'),
-                      Tab(text: 'multi track'),
-                    ],
-                  ),
-                ],
+      child: SafeArea(
+        child: Scaffold(
+          body: Column(
+            children: [
+      
+              SizedBox(
+                height: 70,
+                child: Row(
+                  children: [
+                    Controls(),
+                    TabBar(
+                      isScrollable: true,
+                      tabs: [
+                        Tab(text: 'hello world!'),
+                        Tab(text: 'visualizer'),
+                        Tab(text: 'multi track'),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ),
-            Expanded(
-              child: TabBarView(
-                physics: NeverScrollableScrollPhysics(),
-                children: [
-                  HelloFlutterSoLoud(),
-                  Page1(),
-                  Page2(),
-                ],
+              Expanded(
+                child: TabBarView(
+                  physics: NeverScrollableScrollPhysics(),
+                  children: [
+                    HelloFlutterSoLoud(),
+                    Page1(),
+                    Page2(),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -89,9 +91,6 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
   @override
   void dispose() {
     debugPrint('${currentSound?.soundHash}');
-    if (currentSound != null) {
-      AudioIsolate().stopSound(currentSound!);
-    }
     AudioIsolate().stopIsolate();
     super.dispose();
   }

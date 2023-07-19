@@ -94,6 +94,7 @@ FFI_PLUGIN_EXPORT void stopSound(unsigned int soundHash)
 {
     if (!player.isInited()) return;
     player.stopSound(soundHash);
+    return;
 }
 
 FFI_PLUGIN_EXPORT void setVisualizationEnabled(bool enabled)
