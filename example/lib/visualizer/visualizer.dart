@@ -173,12 +173,12 @@ class _VisualizerState extends State<Visualizer>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 /// paint texture passed to the shader
-                PaintTexture(
-                  text: 'the texture sent to the shader',
-                  width: constraints.maxWidth,
-                  height: 120,
-                  image: dataTexture.data!,
-                ),
+                // PaintTexture(
+                //   text: 'the texture sent to the shader',
+                //   width: constraints.maxWidth,
+                //   height: 100,
+                //   image: dataTexture.data!,
+                // ),
 
                 AudioShader(
                   text: 'SHADER',
@@ -189,31 +189,31 @@ class _VisualizerState extends State<Visualizer>
                   iTime: sw.elapsedMilliseconds / 1000.0,
                 ),
 
-                Row(
-                  children: [
-                    /// FFT bars
-                    BarsWidget(
-                      text: '256 FFT data',
-                      audioData: audioData.value,
-                      minFreq: widget.controller.minFreqRange,
-                      maxFreq: widget.controller.maxFreqRange,
-                      useFftData: true,
-                      width: constraints.maxWidth / 2 - 3,
-                      height: constraints.maxWidth / 4,
-                    ),
-                    const SizedBox(width: 6),
+                // Row(
+                //   children: [
+                //     /// FFT bars
+                //     BarsWidget(
+                //       text: '256 FFT data',
+                //       audioData: audioData.value,
+                //       minFreq: widget.controller.minFreqRange,
+                //       maxFreq: widget.controller.maxFreqRange,
+                //       useFftData: true,
+                //       width: constraints.maxWidth / 2 - 3,
+                //       height: constraints.maxWidth / 5,
+                //     ),
+                //     const SizedBox(width: 6),
 
-                    /// wave data bars
-                    BarsWidget(
-                      text: '256 wave data',
-                      audioData: audioData.value,
-                      minFreq: widget.controller.minFreqRange,
-                      maxFreq: widget.controller.maxFreqRange,
-                      width: constraints.maxWidth / 2 - 3,
-                      height: constraints.maxWidth / 4,
-                    ),
-                  ],
-                ),
+                //     /// wave data bars
+                //     BarsWidget(
+                //       text: '256 wave data',
+                //       audioData: audioData.value,
+                //       minFreq: widget.controller.minFreqRange,
+                //       maxFreq: widget.controller.maxFreqRange,
+                //       width: constraints.maxWidth / 2 - 3,
+                //       height: constraints.maxWidth / 5,
+                //     ),
+                //   ],
+                // ),
               ],
             );
           },

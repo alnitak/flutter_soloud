@@ -460,9 +460,11 @@ class _Page1State extends State<Page1> {
   /// start timer to update the audio position slider
   void startTimer() {
     timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      AudioIsolate().getPosition(currentSound!.handle.last).then((value) {
+      if (currentSound != null) {
+        AudioIsolate().getPosition(currentSound!.handle.last).then((value) {
         soundPosition.value = value.position;
       });
+      }
     });
   }
 

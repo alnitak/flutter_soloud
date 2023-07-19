@@ -85,7 +85,6 @@ class _PlaySoundWidgetState extends State<PlaySoundWidget> {
   @override
   void dispose() {
     _subscription?.cancel();
-    if (sound != null) AudioIsolate().stopSound(sound!);
     AudioIsolate().stopIsolate();
     super.dispose();
   }
