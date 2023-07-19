@@ -140,6 +140,16 @@ void listedToEndPlaying(SoundProps sound) {
   );
 }
 ```
+it has also a `StreamController` to monitor when the engine starts or stops:
+```
+AudioIsolate().audioEvent.stream.listen(
+  (event) {
+    /// event == AudioEvent.isolateStarted
+    /// or
+    /// event == AudioEvent.isolateStopped
+  },
+);
+```
 
 ## Contribute
 

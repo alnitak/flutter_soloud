@@ -1,5 +1,3 @@
-// ignore_for_file: public_member_api_docs, unused_local_variable, strict_raw_type, avoid_print, cascade_invocations, lines_longer_than_80_chars, omit_local_variable_types, cast_nullable_to_non_nullable, unnecessary_breaks
-
 import 'dart:async';
 import 'dart:ffi' as ffi;
 import 'dart:isolate';
@@ -65,6 +63,7 @@ typedef ArgsSetFftSmoothing = ({double smooth});
 
 /// sound event types
 enum SoundEvent {
+  /// handle reache the end of playback
   handleIsNoMoreValid,
 }
 
@@ -73,9 +72,10 @@ typedef StreamSoundEvent = ({SoundEvent event, SoundProps sound, int handle});
 
 /// the sound class
 class SoundProps {
+  ///
   SoundProps(this.soundHash);
 
-  // the [hash] returned by [loadFile]
+  /// the [hash] returned by [loadFile]
   final int soundHash;
 
   /// handles of this sound. Multiple instances of this sound can be

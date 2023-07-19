@@ -47,6 +47,7 @@ class _Page1State extends State<Page1> {
   final ValueNotifier<double> soundPosition = ValueNotifier(0);
   Timer? timer;
   SoundProps? currentSound;
+  FftRangeController visualizerFftRangeController = FftRangeController();
 
   @override
   void dispose() {
@@ -314,6 +315,9 @@ class _Page1State extends State<Page1> {
                           values: fftRange,
                           onChanged: (values) {
                             fftImageRange.value = values;
+                            visualizerFftRangeController
+                              ..changeMinFreq(values.start.toInt())
+                              ..changeMaxFreq(values.end.toInt());
                           },
                         ),
                       ),
@@ -352,21 +356,15 @@ class _Page1State extends State<Page1> {
                 future: loadShader(),
                 builder: (context, snapshot) {
                   if (snapshot.hasData) {
-                    return ValueListenableBuilder<RangeValues>(
-                      valueListenable: fftImageRange,
-                      builder: (_, fftRange, __) {
-                        return ValueListenableBuilder<TextureType>(
-                          valueListenable: textureType,
-                          builder: (_, type, __) {
-                            // return SizedBox.shrink();
-                            return Visualizer(
-                              key: UniqueKey(),
-                              shader: snapshot.data!,
-                              textureType: type,
-                              minImageFreqRange: fftRange.start.toInt(),
-                              maxImageFreqRange: fftRange.end.toInt(),
-                            );
-                          },
+                    return ValueListenableBuilder<TextureType>(
+                      valueListenable: textureType,
+                      builder: (_, type, __) {
+                        // return SizedBox.shrink();
+                        return Visualizer(
+                          key: UniqueKey(),
+                          controller: visualizerFftRangeController,
+                          shader: snapshot.data!,
+                          textureType: type,
                         );
                       },
                     );

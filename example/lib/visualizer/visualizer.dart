@@ -26,23 +26,39 @@ enum TextureType {
   both2D, // no implemented yet
 }
 
+class FftRangeController extends ChangeNotifier {
+  FftRangeController({
+    this.minFreqRange = 0,
+    this.maxFreqRange = 255,
+  });
+
+  int minFreqRange;
+  int maxFreqRange;
+
+  void changeMinFreq(int minFreq) {
+    if (minFreq < 0) return;
+    minFreqRange = minFreq;
+    notifyListeners();
+  }
+
+  void changeMaxFreq(int maxFreq) {
+    if (maxFreq > 255) return;
+    maxFreqRange = maxFreq;
+    notifyListeners();
+  }
+}
+
 class Visualizer extends StatefulWidget {
   const Visualizer({
+    required this.controller,
     required this.shader,
     this.textureType = TextureType.fft2D,
-    this.minImageFreqRange = 0,
-    this.maxImageFreqRange = 255,
     super.key,
-  }) : assert(
-            minImageFreqRange < maxImageFreqRange &&
-                maxImageFreqRange <= 255 &&
-                minImageFreqRange >= 0,
-            'min and max frequency must be in the range [0-255]!');
+  });
 
+  final FftRangeController controller;
   final ui.FragmentShader shader;
   final TextureType textureType;
-  final int minImageFreqRange;
-  final int maxImageFreqRange;
 
   @override
   State<Visualizer> createState() => _VisualizerState();
@@ -70,9 +86,40 @@ class _VisualizerState extends State<Visualizer>
     fftSize = 512;
     halfFftSize = fftSize >> 1;
 
-    fftBitmapRange = widget.maxImageFreqRange - widget.minImageFreqRange;
-
     audioData = calloc();
+
+    ticker = createTicker(_tick);
+    sw = Stopwatch();
+    sw.start();
+    setupBitmapSize();
+    ticker.start();
+
+    widget.controller.addListener(() {
+      ticker.stop();
+      setupBitmapSize();
+      ticker.start();
+
+    });
+  }
+
+  @override
+  void dispose() {
+    ticker.stop();
+    sw.stop();
+    calloc.free(audioData);
+    audioData = ffi.nullptr;
+    super.dispose();
+  }
+
+  void _tick(Duration elapsed) {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  void setupBitmapSize() {
+    fftBitmapRange =
+        widget.controller.maxFreqRange - widget.controller.minFreqRange;
     fftImageRow = Bmp32Header.setHeader(fftBitmapRange, 2);
     fftImageMatrix = Bmp32Header.setHeader(fftBitmapRange, 256);
 
@@ -101,26 +148,6 @@ class _VisualizerState extends State<Visualizer>
           textureTypeCallback = getWaveDataCallback;
           break;
         }
-    }
-
-    ticker = createTicker(_tick);
-    sw = Stopwatch();
-    sw.start();
-    ticker.start();
-  }
-
-  @override
-  void dispose() {
-    ticker.stop();
-    sw.stop();
-    calloc.free(audioData);
-    audioData = ffi.nullptr;
-    super.dispose();
-  }
-
-  void _tick(Duration elapsed) {
-    if (mounted) {
-      setState(() {});
     }
   }
 
@@ -168,7 +195,8 @@ class _VisualizerState extends State<Visualizer>
                     BarsWidget(
                       text: '256 FFT data',
                       audioData: audioData.value,
-                      n: halfFftSize,
+                      minFreq: widget.controller.minFreqRange,
+                      maxFreq: widget.controller.maxFreqRange,
                       useFftData: true,
                       width: constraints.maxWidth / 2 - 3,
                       height: constraints.maxWidth / 4,
@@ -179,7 +207,8 @@ class _VisualizerState extends State<Visualizer>
                     BarsWidget(
                       text: '256 wave data',
                       audioData: audioData.value,
-                      n: halfFftSize,
+                      minFreq: widget.controller.minFreqRange,
+                      maxFreq: widget.controller.maxFreqRange,
                       width: constraints.maxWidth / 2 - 3,
                       height: constraints.maxWidth / 4,
                     ),
@@ -208,8 +237,8 @@ class _VisualizerState extends State<Visualizer>
     final bytes = Uint8List(fftBitmapRange * 2 * 4);
     // Fill the texture bitmap
     var col = 0;
-    for (var i = widget.minImageFreqRange;
-        i < widget.maxImageFreqRange;
+    for (var i = widget.controller.minFreqRange;
+        i < widget.controller.maxFreqRange;
         ++i, ++col) {
       // fill 1st bitmap row with magnitude
       bytes[col * 4 + 0] = getFFTDataCallback(0, i);
@@ -239,6 +268,7 @@ class _VisualizerState extends State<Visualizer>
 
     /// audioData here will be available to all the children of [Visualizer]
     final ret = await AudioIsolate().getAudioTexture2D(audioData);
+
     /// IMPORTANT: if [mounted] is not checked here, could happens that
     /// dispose() is called before this is called but it is called!
     /// Since in dispose the [audioData] is freed, there will be a crash!
@@ -253,8 +283,8 @@ class _VisualizerState extends State<Visualizer>
     // Fill the texture bitmap with wave data
     for (var y = 0; y < 256; ++y) {
       var col = 0;
-      for (var x = widget.minImageFreqRange;
-          x < widget.maxImageFreqRange;
+      for (var x = widget.controller.minFreqRange;
+          x < widget.controller.maxFreqRange;
           ++x, ++col) {
         bytes[y * fftBitmapRange * 4 + col * 4 + 0] = textureTypeCallback(y, x);
         bytes[y * fftBitmapRange * 4 + col * 4 + 1] = 0;
