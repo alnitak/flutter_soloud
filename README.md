@@ -17,7 +17,9 @@ So it is mandatory to clone this repo using:
 If you already cloned normally, go into the repo dir and:
 ```git submodule update --init --recursive```
 
-The are 3 examples.
+For the SoLoud license look at [here](https://github.com/alnitak/soloud/blob/f4f089aa592aa45f5f6fa8c8efff64996fae920f/LICENSE).
+
+The are 3 examples:
 ***The 1st*** is a simple use-case.
 
 ***The 2nd*** aims to show a visualization of frequencies and wave data.
