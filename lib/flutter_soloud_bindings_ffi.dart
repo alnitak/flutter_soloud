@@ -42,7 +42,7 @@ enum PlayerErrors {
   /// Player not initialized
   backendNotInited,
 
-  /// Audio isolate not yet started
+  /// Audio isolate already started
   isolateAlreadyStarted,
 
   /// Audio isolate not yet started

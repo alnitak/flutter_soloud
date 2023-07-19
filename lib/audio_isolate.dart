@@ -75,7 +75,7 @@ typedef StreamSoundEvent = ({SoundEvent event, SoundProps sound, int handle});
 class SoundProps {
   SoundProps(this.soundHash);
 
-  // the [hash] is returned by [loadFile]
+  // the [hash] returned by [loadFile]
   final int soundHash;
 
   /// handles of this sound. Multiple instances of this sound can be
@@ -466,7 +466,7 @@ class AudioIsolate {
     return completer.future;
   }
 
-  /// kill the isolate
+  /// Stop the loop, stop the engine and kill the isolate
   Future<bool> stopIsolate() async {
     if (_isolate == null) return false;
     engineInited = false; // engine will be disposed in the audio isolate
@@ -488,7 +488,7 @@ class AudioIsolate {
     return true;
   }
 
-  ///
+  /// return true if the audio isolate is running
   bool isIsolateRunning() {
     return _isolate != null;
   }
@@ -497,7 +497,8 @@ class AudioIsolate {
   /// isolate loop events management
   //////////////////////////////////////////////////
 
-  /// start the isolate loop to catch end of sound playback or keys
+  /// start the isolate loop to catch the end 
+  /// of sounds (handles) playback or keys
   ///
   /// The loop recursively call itself to check the state of
   /// all active sound handles. Therefore it can cause some lag for
@@ -536,7 +537,7 @@ class AudioIsolate {
   /// Below all the methods implemented with FFI
   //////////////////////////////////////////////////
 
-  /// Init the audio engine.
+  /// Initialize the audio engine.
   ///
   /// Defaults are:
   /// Miniaudio audio backend
@@ -626,12 +627,13 @@ class AudioIsolate {
     return (error: ret.error, sound: activeSounds.last);
   }
 
-  /// @brief Play already loaded sound identified by [soundHash]
+  /// @brief Play already loaded sound identified by [sound]
   /// @param sound the sound to play
   /// @param volume 1.0f full volume
   /// @param pan 0.0f centered
   /// @param paused 0 not pause
-  /// @return Returns the new [handle] of the sound, 0 if error
+  /// @return Returns [PlayerErrors.noError] if success, the new [sound] and
+  ///   the new [handle]
   Future<({PlayerErrors error, SoundProps sound, int newHandle})> play(
     SoundProps sound, {
     double volume = 1,
