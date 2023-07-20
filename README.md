@@ -43,12 +43,14 @@ Shaders from 1 to 7 are using just 1 row of the `audioData`. Therefore, the text
 Since many operations are required for each frame, the CPU and GPU can be under stress, leading to overheating of a mobile device. 
 It seems that sending an image (with `setImageSampler()`) to the shader is very expensive. You can observe this by disabling the shader widget.
 
+https://github.com/alnitak/flutter_soloud/assets/192827/c5015fb3-1380-41e2-b63a-5331b3e4ec56
 
-https://github.com/alnitak/flutter_soloud/assets/192827/fe0f16a2-eecd-47d0-aee2-71411833e0d5
 
 ***The 3rd*** example demonstrates how to manage sounds using their handles: every sound should be loaded before it can be played. Loading a sound can take some time and should not be done during gameplay, for instance, in a game. Once a sound is loaded, it can be played, and every instance of that same audio will be identified by its *handle*.
 
 The example shows how you can have background music and play a fire sound multiple times.
+
+https://github.com/alnitak/flutter_soloud/assets/192827/56f83541-900f-4b35-a7c6-269e9d73f24a
 
 
 
