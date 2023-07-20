@@ -7,36 +7,49 @@ Flutter audio plugin using SoLoud library and FFI
 |-|-|-|-|-|-|
 |💙|💙|💙|💙|💙|😭|
 
+* Supported on Linux, Windows, Mac, Android, and iOS
+* Multiple voices, capable of playing different sounds simultaneously or even repeating the same sound multiple times on top of each other
+* Includes a speech synthesizer
+* Supports various common formats such as 8, 16, and 32-bit WAVs, floating point WAVs, OGG, MP3, and FLAC
+* Enables real-time retrieval of audio FFT and wave data
+
 ## Overview
 
-***flutter_soloud*** plugin uses [SoLoud](https://github.com/jarikomppa/soloud) forked repo where [miniaudio](https://github.com/mackron/miniaudio) audio backend has been updated and it is located in `src/soloud` as a git  submodule.
+The ***flutter_soloud*** plugin utilizes a [forked](https://github.com/alnitak/soloud) repository of [SoLoud](https://github.com/jarikomppa/soloud), where the [miniaudio](https://github.com/mackron/miniaudio) audio backend has been updated and is located in src/soloud as a git submodule.
 
-So it is mandatory to clone this repo using:
-```git clone --recursive https://github.com/alnitak/flutter_soloud.git```
+To ensure that you have the correct dependencies, it is mandatory to clone this repository using the following command:
 
-If you already cloned normally, go into the repo dir and:
-```git submodule update --init --recursive```
+`git clone --recursive https://github.com/alnitak/flutter_soloud.git`
+If you have already cloned the repository without the recursive option, you can navigate to the repository directory and execute the following command to update the git submodule:
 
-For the SoLoud license look at [here](https://github.com/alnitak/soloud/blob/f4f089aa592aa45f5f6fa8c8efff64996fae920f/LICENSE).
+`git submodule update --init --recursive`
+For information regarding the SoLoud license, please refer to [this link](https://github.com/alnitak/soloud/blob/f4f089aa592aa45f5f6fa8c8efff64996fae920f/LICENSE).
 
-The are 3 examples:
-***The 1st*** is a simple use-case.
 
-***The 2nd*** aims to show a visualization of frequencies and wave data.
-[***Visualizer.dart***] uses `getAudioTexture2D` to store new audio data into `audioData` on every Tick.
+There are 3 examples:
 
-The video below illustrate how the data is then converted to an image (the upper widget) and then it's sent to the shader (the middle widget).
-The bottom widgets use, on the left, FFT data and on the right the wave data represented with a row of yellow vertical containers with the height taken from `audioData`.
+**The 1st** is a simple use-case.
 
-The `getAudioTexture2D` returns an array of 512x256. Each row contains 256 Floats of FFT data and 256 Floats of wave data making it possible to write a shader like a spectogram (shader #8) or a 3D visualization (shader #9).
+**The 2nd** aims to show a visualization of frequencies and wave data. 
+The file [**Visualizer.dart**] uses `getAudioTexture2D` to store new audio data into `audioData` on every tick.
 
-The shaders from 1 to 7 are using just 1 row of the `audioData`. Therefore the texture generated to feed the shader, should be 256x2 px. The 1st row represents the FFT data, and the 2nd the wave data.
+The video below illustrates how the data is then converted to an image (the upper widget) and sent to the shader (the middle widget). 
+The bottom widgets use FFT data on the left and wave data represented with a row of yellow vertical containers with the height taken from `audioData` on the right.
+
+The `getAudioTexture2D` returns an array of 512x256. Each row contains 256 Floats of FFT data and 256 Floats of wave data, making it possible to write a shader like a spectrogram (shader #8) or a 3D visualization (shader #9).
+
+Shaders from 1 to 7 are using just 1 row of the `audioData`. Therefore, the texture generated to feed the shader should be 256x2 px. The 1st row represents the FFT data, and the 2nd represents the wave data.
+
+Since many operations are required for each frame, the CPU and GPU can be under stress, leading to overheating of a mobile device. 
+It seems that sending an image (with `setImageSampler()`) to the shader is very expensive. You can observe this by disabling the shader widget.
 
 
 https://github.com/alnitak/flutter_soloud/assets/192827/fe0f16a2-eecd-47d0-aee2-71411833e0d5
 
-***The 3rd*** example shows how to manage sounds by its handles: every sounds should be loaded before they can be played. Loading a sound can take some time and should not be done ie in a game. After loading a sound it can be played and every instance of that same audio, will be indentified byt its *handle*.
-The example show you can have a background music and play a fire sound multiple times.
+***The 3rd*** example demonstrates how to manage sounds using their handles: every sound should be loaded before it can be played. Loading a sound can take some time and should not be done during gameplay, for instance, in a game. Once a sound is loaded, it can be played, and every instance of that same audio will be identified by its *handle*.
+
+The example shows how you can have background music and play a fire sound multiple times.
+
 
 
 ## Usage
@@ -81,32 +94,40 @@ class SoundProps {
 
 ### The AudioIsolate instance
 
-The AudioIsolate instance has the duty to receive commands and send them to a separate Isolate giving back to the main UI isolate the results.
+The `AudioIsolate` instance has the duty of receiving commands and sending them to a separate `Isolate`, while returning the results to the main UI isolate.
 
-|function|returns|params|description|
-|-|-|-|-----------------------|
-|***startIsolate***|PlayerErrors|-|Start the audio isolate and listen for messages coming from it.|
-|***stopIsolate***|bool|-|Stop the loop, stop the engine and kill the isolate. Must be called when there is no more need of the player or when closing the app.|
-|***isIsolateRunning***|bool|-|Return true if the audio isolate is running.|
-|***initEngine***|PlayerErrors|-|Initialize the audio engine. Defaults are:<br/><br/>*Miniaudio* audio backend<br/>sample rate 44100<br/>buffer 2048|
-|***dispose***|-|-|Stop the audio engine.|
-|***loadFile***|({PlayerErrors error, SoundProps? sound})|`String` fileName|Load a new sound to be played once or multiple times later.|
-|***play***|({PlayerErrors error, SoundProps sound, int newHandle})|`SoundProps` sound, {<br/>`double` volume = 1,<br/>`double` pan = 0,<br/>`bool` paused = false,<br/>}|Play already loaded sound identified by [sound].|
-|***speechText***|({PlayerErrors error, SoundProps sound})|`String` textToSpeech|Speech given text.|
-|***pauseSwitch***|PlayerErrors|`int` handle|Pause or unpause already loaded sound identified by [handle].|
-|***getPause***|({PlayerErrors error, bool pause})|`int` handle|Gets the pause state of the sound identified by [handle].|
-|***stop***|PlayerErrors|`int` handle|Stop already loaded sound identified by [handle] and clear it.|
-|***stopSound***|PlayerErrors|`int` handle|Stop ALL handles of the already loaded sound identified by [soundHash] and clear it.|
-|***getLength***|({PlayerErrors error, double length})|`int` soundHash|Gets the sound length in seconds.|
-|***seek***|PlayerErrors|`int` handle, `double` time|Seek playing in seconds.|
-|***getPosition***|({PlayerErrors error, double position})|`int` handle|Get current sound position in seconds.|
-|***getIsValidVoiceHandle***|({PlayerErrors error, bool isValid})|`int` handle|Check if a handle is still valid.|
-|***setVisualizationEnabled***|-|`bool` enabled|Enable or disable getting data from `getFft`, `getWave`, `getAudioTexture*`|
-|***getFft***|-|`Pointer<Float>` fft|Returns a 256 float array containing FFT data.|
-|***getWave***|-|`Pointer<Float>` wave|Returns a 256 float array containing wave data (magnitudes).|
-|***getAudioTexture***|`Pointer<Float>` samples|-|Returns in `samples` a 512 float array.<br/>- The first 256 floats represent the FFT frequencies data [0.0~1.0].<br/>- The other 256 floats represent the wave data (amplitude) [-1.0~1.0].|
-|***getAudioTexture2D***|-|`Pointer<Pointer<Float>>` samples|Return a floats matrix of 256x512.<br/>Every row are composed of 256 FFT values plus 256 wave data.<br/>Every time is called, a new row is stored in the first row and all the previous rows are shifted up (the last will be lost).|
-|***setFftSmoothing***|-|`double` smooth|Smooth FFT data.<br/>When new data is read and the values are decreasing, the new value will be decreased with an amplitude between the old and the new value.<br/> This will result on a less shaky visualization.<br/>0 = no smooth<br/>1 = full smooth<br/>the new value is calculated with:<br/>`newFreq = smooth * oldFreq + (1 - smooth) * newFreq`|
+
+
+| Function| Returns| Params| Description|
+|---------|---------|---------|--------------------------------------------------------------------------------------------|
+| **startIsolate**| PlayerErrors| -| Start the audio isolate and listen for messages coming from it.|
+| **stopIsolate**| bool| -| Stop the loop, stop the engine, and kill the isolate. Must be called when there is no more need for the player or when closing the app.|
+| **isIsolateRunning**| bool| -| Return true if the audio isolate is running.|
+| **initEngine**| PlayerErrors| -| Initialize the audio engine. Defaults are: Sample rate 44100, buffer 2048, and Miniaudio audio backend.|
+| **dispose**| -| -| Stop the audio engine.|
+| **loadFile**| ({PlayerErrors error, SoundProps? sound})| `String` fileName| Load a new sound to be played once or multiple times later.|
+| **play**| ({PlayerErrors error, SoundProps sound, int newHandle})| `SoundProps` sound, {<br/>`double` volume = 1,<br/>`double` pan = 0,<br/>`bool` paused = false,<br/>}| Play an already loaded sound identified by [sound].|
+| **speechText**| ({PlayerErrors error, SoundProps sound})| `String` textToSpeech| Speech from the given text.|
+| **pauseSwitch**| PlayerErrors| `int` handle| Pause or unpause an already loaded sound identified by [handle].|
+| **getPause**| ({PlayerErrors error, bool pause})| `int` handle| Get the pause state of the sound identified by [handle].|
+| **stop**| PlayerErrors| `int` handle| Stop an already loaded sound identified by [handle] and clear it.|
+| **stopSound**| PlayerErrors| `int` handle| Stop ALL handles of the already loaded sound identified by [soundHash] and clear it.|
+| **getLength**| ({PlayerErrors error, double length})| `int` soundHash| Get the sound length in seconds.|
+| **seek**| PlayerErrors| `int` handle, `double` time| Seek playing in seconds.|
+| **getPosition**| ({PlayerErrors error, double position})| `int` handle| Get the current sound position in seconds.|
+| **getIsValidVoiceHandle**| ({PlayerErrors error, bool isValid})| `int` handle| Check if a handle is still valid.|
+| **setVisualizationEnabled**| -| `bool` enabled| Enable or disable getting data from `getFft`, `getWave`, `getAudioTexture*`.|
+| **getFft**| -| `Pointer<Float>` fft| Returns a 256 float array containing FFT data.|
+| **getWave**| -| `Pointer<Float>` wave| Returns a 256 float array containing wave data (magnitudes).|
+| **getAudioTexture**| -| `Pointer<Float>` samples| Returns in `samples` a 512 float array.<br/>- The first 256 floats represent the FFT frequencies data [0.0~1.0].<br/>- The other 256 floats represent the wave data (amplitude) [-1.0~1.0].|
+| **getAudioTexture2D**| -| `Pointer<Pointer<Float>>` samples| Return a floats matrix of 256x512.<br/>Every row is composed of 256 FFT values plus 256 wave data.<br/>Every time is called, a new row is stored in the first row and all the previous rows are shifted up (the last will be lost).|
+| **setFftSmoothing**| -| `double` smooth| Smooth FFT data.<br/>When new data is read and the values are decreasing, the new value will be decreased with an amplitude between the old and the new value.<br/> This will result in a less shaky visualization.<br/>0 = no smooth<br/>1 = full smooth<br/>The new value is calculated with:<br/>`newFreq = smooth * oldFreq + (1 - smooth) * newFreq`|
+
+
+
+
+
+
 
 The `PlayerErrors` enum:
 |name|description|
@@ -126,7 +147,7 @@ The `PlayerErrors` enum:
 |***isolateNotStarted***|Audio isolate not yet started|
 |***engineNotStarted***|Engine not yet started|
 
-*AudioIsolate()* has a `StreamController` which can be used for now to know when a sound handle reached the end:
+*AudioIsolate()* has a `StreamController` which can be used, for now, only to know when a sound handle reached the end:
 ```
 StreamSubscription<StreamSoundEvent>? _subscription;
 void listedToEndPlaying(SoundProps sound) {
@@ -153,15 +174,17 @@ AudioIsolate().audioEvent.stream.listen(
 
 ## Contribute
 
-To use the native code, bindings from Dart to c/c++ is needed.
-To avoid writing these by hand, they are generated from the header file (`src/ffi_gen_tmp.h`) by [package:ffigen](https://pub.dev/packages/ffigen) and stored temporarly into `lib/flutter_soloud_bindings_ffi_TMP.dart`.
-Generate the bindings by running `dart run ffigen`.
-Since I had the needs to modify the generated `.dart` I used this flow:
-- copy into `src/ffi_gen_tmp.h` the functions declarations to be generated
-- the `lib/flutter_soloud_bindings_ffi_TMP.dart` is generated
-- copy the code generated into `lib/flutter_soloud_bindings_ffi.dart`, but only the code relative to the new functions
+To use native code, bindings from Dart to C/C++ are needed. To avoid writing these manually, they are generated from the header file (`src/ffi_gen_tmp.h`) using [package:ffigen](https://pub.dev/packages/ffigen) and temporarily stored in `lib/flutter_soloud_bindings_ffi_TMP.dart`. You can generate the bindings by running `dart run ffigen`.
 
-I have forked [SoLoud](https://github.com/jarikomppa/soloud) repo and modified it with the latest [Miniaudio](https://github.com/mackron/miniaudio) audio backend which, used by default, is in the [new_miniaudio] branch of my [fork](https://github.com/alnitak/soloud).
+Since I needed to modify the generated `.dart` file, I followed this flow:
+1. Copy the function declarations to be generated into `src/ffi_gen_tmp.h`.
+2. The file `lib/flutter_soloud_bindings_ffi_TMP.dart` will be generated automatically.
+3. Copy the relevant code for the new functions from `lib/flutter_soloud_bindings_ffi_TMP.dart` into `lib/flutter_soloud_bindings_ffi.dart`.
+
+Additionally, I have forked the [SoLoud](https://github.com/jarikomppa/soloud) repository and made modifications to include the latest [Miniaudio](https://github.com/mackron/miniaudio) audio backend. This backend is in the [new_miniaudio] branch of my [fork](https://github.com/alnitak/soloud) and is set as the default.
+
+
+
 
 #### Project structure
 
@@ -174,55 +197,53 @@ This plugin uses the following structure:
 * `src/soloud`: contains the SoLoud sources of my fork
 
 #### Debugging
-I left the **.vscode** dir which provides the settings to debug native c++ on Linux and Windows. To debug on Android use Android Studio and open the project in ***example/android*** dir.
-I don't know how to debug native code on mac and iOS.
+
+I have provided the necessary settings in the **.vscode** directory for debugging native C++ code on both Linux and Windows. To debug on Android, please use Android Studio and open the project located in the ***example/android*** directory. However, I am not familiar with the process of debugging native code on Mac and iOS.
 
 #### Linux
-If you notice some glitches, they are probably caused by PulseAudio. 
-You can try to disable it withing the `linux/src.cmake`:
-Search for `add_definitions(-DMA_NO_PULSEAUDIO)` and uncomment it (default).
+
+If you encounter any glitches, they might be caused by PulseAudio. To troubleshoot this issue, you can try disabling PulseAudio within the `linux/src.cmake` file. Look for the line `add_definitions(-DMA_NO_PULSEAUDIO)` and uncomment it (now it is the default behavior).
 
 #### Android
 
-Since the default audio backend is `miniaudio`, it will choose which backend to use:
-- AAudio with Android 8.0+
-- else OpenSL|ES
+The default audio backend is `miniaudio`, which will automatically select the appropriate audio backend based on your Android version:
+- AAudio with Android 8.0 and newer.
+- OpenSL|ES for older Android versions.
 
 #### Windows
 
-SoLoud uses *Openmpt* through DLL, available from https://lib.openmpt.org/
-If you wish to use it, install and then enable it in the 1st line of *windows/src.cmake*
+For Windows users, SoLoud utilizes *Openmpt* through a DLL, which can be obtained from [https://lib.openmpt.org/](https://lib.openmpt.org/). If you wish to use this feature, install the DLL and enable it by modifying the first line in `windows/src.cmake`.
 
-***Openmpt*** is a module-playing engine, capable of replaying wide variety of multichannel music (669, amf, ams, dbm, digi, dmf, dsm, far, gdm, ice, imf, it, itp, j2b, m15, mdl, med, mid, mo3, mod, mptm, mt2, mtm, okt, plm, psm, ptm, s3m, stm, ult, umx, wow, xm). It also loads wav files, and may support wider support for wav files than the stand-alone wav audio source.
+***Openmpt*** functions as a module-playing engine, capable of replaying a wide variety of multichannel music formats (669, amf, ams, dbm, digi, dmf, dsm, far, gdm, ice, imf, it, itp, j2b, m15, mdl, med, mid, mo3, mod, mptm, mt2, mtm, okt, plm, psm, ptm, s3m, stm, ult, umx, wow, xm). Additionally, it can load wav files and may offer better support for wav files compared to the stand-alone wav audio source.
 
 #### iOS
-On simulator the Impeller engine doesn't work. You need to disable it by running:
+On the simulator, the Impeller engine doesn't work. To disable it, run the following command:
 `flutter run --no-enable-impeller`
-I do not have a real device to try.
+Unfortunately, I don't have a real device to test it.
 
 #### Web
+I put in a lot of effort to make this to work on the web! :(
+I have successfully compiled the sources with Emscripten. Inside the **web** directory, there's a script to automate the compiling process using the `CmakeLists.txt` file. This will generate **libflutter_soloud_web_plugin.wasm** and **libflutter_soloud_web_plugin.bc**.
 
-I tried hard to make this working on web! :(
-I have succesfully compiled the sources with emscripten. In the **web** dir,
-there is a little script to automate the compiling using CmakeLists.txt file.
-This will build **libflutter_soloud_web_plugin.wasm*** and ***libflutter_soloud_web_plugin.bc***.
+Initially, I tried using the [wasm_interop](https://pub.dev/packages/wasm_interop) plugin, but encountered errors while loading and initializing the Module.
 
-First I tried with [wasm_interop](https://pub.dev/packages/wasm_interop) plugin. But had errors loading and initializing the Module.
+Then, I attempted using [web_ffi](https://pub.dev/packages/web_ffi), but it seems to have been discontinued because it only supports the old `dart:ffi API 2.12.0`, which cannot be used here.
 
-I tried also [web_ffi](https://pub.dev/packages/web_ffi) but seems it has been discontinued because it supports the old `dart:ffi API 2.12.0` and cannot be used here.
 
 ## TODOs
 
 Many things can still be done.
 
-The FFT data doesn't look as my wishes. Some works on *Analyzer::calcFFT()* in `src/analyzer.cpp` has yet to be done:
+The FFT data doesn't match my expectations. Some work still needs to be done on *Analyzer::calcFFT()* in `src/analyzer.cpp`.
+
 |name|description|
 |--------|-|
 |![spectrum1](https://github.com/alnitak/flutter_soloud/blob/master/img/flutter_soloud_spectrum.png "flutter_soloud spectrum")|flutter_soloud spectrum|
 |![spectrum2](https://github.com/alnitak/flutter_soloud/blob/master/img/audacity_spectrum.png "audacity spectrum")|audacity spectrum|
 
-For now only a small portion of the possibilities given by SoLoud have been implemented. Look [here](https://solhsa.com/soloud/index.html).
-- audio filters
-- 3D audio
-- fading
-- noise and waveform generation
+For now, only a small portion of the possibilities offered by SoLoud have been implemented. Look [here](https://solhsa.com/soloud/index.html).
+* audio filter effects
+* 3D audio
+* TED and SID soundchip simulator (Commodore 64/plus)
+* noise and waveform generation
+and much more I think!
