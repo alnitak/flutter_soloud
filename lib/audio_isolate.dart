@@ -1,3 +1,5 @@
+// ignore_for_file: public_member_api_docs
+
 import 'dart:async';
 import 'dart:ffi' as ffi;
 import 'dart:isolate';
@@ -72,7 +74,6 @@ typedef StreamSoundEvent = ({SoundEvent event, SoundProps sound, int handle});
 
 /// the sound class
 class SoundProps {
-  ///
   SoundProps(this.soundHash);
 
   /// the [hash] returned by [loadFile]
@@ -108,8 +109,8 @@ void audioIsolate(SendPort isolateToMainStream) {
   final mainToIsolateStream = ReceivePort();
   final soLoudController = SoLoudController();
   // the active sounds
-  final List<SoundProps> activeSounds = [];
-  bool loopRunning = false;
+  final activeSounds = <SoundProps>[];
+  var loopRunning = false;
 
   isolateToMainStream.send(mainToIsolateStream.sendPort);
 
@@ -118,12 +119,11 @@ void audioIsolate(SendPort isolateToMainStream) {
   /// Listen to all requests from the main isolate
   mainToIsolateStream.listen((data) {
     final event = data as Map<String, Object>;
-    if ((event['event'] as _MessageEvents) !=
-        _MessageEvents.loop) {
+    if ((event['event']! as _MessageEvents) != _MessageEvents.loop) {
       debugIsolates('******** ISOLATE EVENT data: $data');
     }
 
-    switch (event['event'] as _MessageEvents) {
+    switch (event['event']! as _MessageEvents) {
       case _MessageEvents.exitIsolate:
         mainToIsolateStream.close();
         soLoudController.soLoudFFI.dispose();
@@ -132,21 +132,21 @@ void audioIsolate(SendPort isolateToMainStream) {
         break;
 
       case _MessageEvents.initEngine:
-        final args = event['args'] as ArgsInitEngine;
+        final args = event['args']! as ArgsInitEngine;
         final ret = soLoudController.soLoudFFI.initEngine();
         isolateToMainStream
             .send({'event': event['event'], 'args': args, 'return': ret});
         break;
 
       case _MessageEvents.disposeEngine:
-        final args = event['args'] as ArgsDisposeEngine;
+        final args = event['args']! as ArgsDisposeEngine;
         soLoudController.soLoudFFI.dispose();
         isolateToMainStream
             .send({'event': event['event'], 'args': args, 'return': ()});
         break;
 
       case _MessageEvents.loadFile:
-        final args = event['args'] as ArgsLoadFile;
+        final args = event['args']! as ArgsLoadFile;
         final ret = soLoudController.soLoudFFI.loadFile(args.completeFileName);
         // add the new sound handler to the list
         SoundProps? newSound;
@@ -162,7 +162,7 @@ void audioIsolate(SendPort isolateToMainStream) {
         break;
 
       case _MessageEvents.speechText:
-        final args = event['args'] as ArgsSpeechText;
+        final args = event['args']! as ArgsSpeechText;
         final ret = soLoudController.soLoudFFI.speechText(args.textToSpeech);
         // add the new sound handler to the list
         final newSound = SoundProps(ret.handle);
@@ -177,7 +177,7 @@ void audioIsolate(SendPort isolateToMainStream) {
         break;
 
       case _MessageEvents.play:
-        final args = event['args'] as ArgsPlay;
+        final args = event['args']! as ArgsPlay;
         final ret = soLoudController.soLoudFFI.play(
           args.soundHash,
           volume: args.volume,
@@ -207,21 +207,21 @@ void audioIsolate(SendPort isolateToMainStream) {
         break;
 
       case _MessageEvents.pauseSwitch:
-        final args = event['args'] as ArgsPauseSwitch;
+        final args = event['args']! as ArgsPauseSwitch;
         soLoudController.soLoudFFI.pauseSwitch(args.handle);
         isolateToMainStream
             .send({'event': event['event'], 'args': args, 'return': ()});
         break;
 
       case _MessageEvents.getPause:
-        final args = event['args'] as ArgsGetPause;
+        final args = event['args']! as ArgsGetPause;
         final ret = soLoudController.soLoudFFI.getPause(args.handle);
         isolateToMainStream
             .send({'event': event['event'], 'args': args, 'return': ret});
         break;
 
       case _MessageEvents.stop:
-        final args = event['args'] as ArgsStop;
+        final args = event['args']! as ArgsStop;
         soLoudController.soLoudFFI.stop(args.handle);
 
         /// find a sound with this handle and remove that handle from the list
@@ -234,7 +234,7 @@ void audioIsolate(SendPort isolateToMainStream) {
         break;
 
       case _MessageEvents.stopSound:
-        final args = event['args'] as ArgsStopSound;
+        final args = event['args']! as ArgsStopSound;
         soLoudController.soLoudFFI.stopSound(args.soundHash);
 
         /// find a sound with this handle and remove that handle from the list
@@ -246,35 +246,35 @@ void audioIsolate(SendPort isolateToMainStream) {
         break;
 
       case _MessageEvents.setVisualizationEnabled:
-        final args = event['args'] as ArgsSetVisualizationEnabled;
+        final args = event['args']! as ArgsSetVisualizationEnabled;
         soLoudController.soLoudFFI.setVisualizationEnabled(args.enabled);
         isolateToMainStream
             .send({'event': event['event'], 'args': args, 'return': ()});
         break;
 
       case _MessageEvents.getLength:
-        final args = event['args'] as ArgsGetLength;
+        final args = event['args']! as ArgsGetLength;
         final ret = soLoudController.soLoudFFI.getLength(args.soundHash);
         isolateToMainStream
             .send({'event': event['event'], 'args': args, 'return': ret});
         break;
 
       case _MessageEvents.seek:
-        final args = event['args'] as ArgsSeek;
+        final args = event['args']! as ArgsSeek;
         final ret = soLoudController.soLoudFFI.seek(args.handle, args.time);
         isolateToMainStream
             .send({'event': event['event'], 'args': args, 'return': ret});
         break;
 
       case _MessageEvents.getPosition:
-        final args = event['args'] as ArgsGetPosition;
+        final args = event['args']! as ArgsGetPosition;
         final ret = soLoudController.soLoudFFI.getPosition(args.handle);
         isolateToMainStream
             .send({'event': event['event'], 'args': args, 'return': ret});
         break;
 
       case _MessageEvents.getIsValidVoiceHandle:
-        final args = event['args'] as ArgsGetIsValidVoiceHandle;
+        final args = event['args']! as ArgsGetIsValidVoiceHandle;
         final ret =
             soLoudController.soLoudFFI.getIsValidVoiceHandle(args.handle);
         isolateToMainStream
@@ -282,16 +282,17 @@ void audioIsolate(SendPort isolateToMainStream) {
         break;
 
       case _MessageEvents.getAudioTexture2D:
-        final args = event['args'] as ArgsGetAudioTexture2D;
-        final ffi.Pointer<ffi.Pointer<ffi.Float>> audioDataFromAddress =
-            ffi.Pointer.fromAddress(args.audioDataAddress);
+        final args = event['args']! as ArgsGetAudioTexture2D;
+        final audioDataFromAddress =
+            ffi.Pointer<ffi.Pointer<ffi.Float>>.fromAddress(
+                args.audioDataAddress);
         soLoudController.soLoudFFI.getAudioTexture2D(audioDataFromAddress);
         isolateToMainStream
             .send({'event': event['event'], 'args': args, 'return': ()});
         break;
 
       case _MessageEvents.setFftSmoothing:
-        final args = event['args'] as ArgsSetFftSmoothing;
+        final args = event['args']! as ArgsSetFftSmoothing;
         soLoudController.soLoudFFI.setFftSmoothing(args.smooth);
         isolateToMainStream
             .send({'event': event['event'], 'args': args, 'return': ()});
@@ -320,10 +321,10 @@ void audioIsolate(SendPort isolateToMainStream) {
       case _MessageEvents.loop:
         if (loopRunning) {
           for (final sound in activeSounds) {
-            final List<void Function()> removeInvalid = [];
+            final removeInvalid = <void Function()>[];
             // check valids handles in [sound] list
             for (final handle in sound.handle) {
-              final bool isValid =
+              final isValid =
                   soLoudController.soLoudFFI.getIsValidVoiceHandle(handle);
               if (!isValid) {
                 isolateToMainStream.send((
@@ -388,14 +389,14 @@ class AudioIsolate {
   /// - the audio isolate will then send back the args used in the call and
   ///   eventually the return value of the FFI function
   Future<dynamic> _waitForEvent(_MessageEvents event, Record args) async {
-    final Completer<dynamic> completer = Completer();
+    final completer = Completer<dynamic>();
 
     final ret = await _returnedEvent?.stream.firstWhere((element) {
       final e = element as Map<String, Object?>;
 
       // if the event with its args are what we are waiting for...
-      if ((e['event'] as _MessageEvents) != event) return false;
-      if ((e['args'] as Record) != args) return false;
+      if ((e['event']! as _MessageEvents) != event) return false;
+      if ((e['args']! as Record) != args) return false;
 
       // return the result
       completer.complete(e['return']);
@@ -420,7 +421,7 @@ class AudioIsolate {
         _mainToIsolateStream = data;
 
         /// finally start the audio engine
-        final ret = initEngine().then((value) {
+        initEngine().then((value) {
           if (value == PlayerErrors.noError) {
             audioEvent.add(AudioEvent.isolateStarted);
           }
@@ -497,7 +498,7 @@ class AudioIsolate {
   /// isolate loop events management
   //////////////////////////////////////////////////
 
-  /// start the isolate loop to catch the end 
+  /// start the isolate loop to catch the end
   /// of sounds (handles) playback or keys
   ///
   /// The loop recursively call itself to check the state of

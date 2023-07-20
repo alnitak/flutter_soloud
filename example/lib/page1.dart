@@ -462,8 +462,8 @@ class _Page1State extends State<Page1> {
     timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (currentSound != null) {
         AudioIsolate().getPosition(currentSound!.handle.last).then((value) {
-        soundPosition.value = value.position;
-      });
+          soundPosition.value = value.position;
+        });
       }
     });
   }

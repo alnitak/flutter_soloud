@@ -1,7 +1,8 @@
 name: flutter_soloud
 description: Flutter audio plugin using SoLoud library and FFI
 version: 0.1.0
-homepage:
+homepage: https://github.com/alnitak/flutter_soloud
+maintainer: Marco Bavagnoli (@lildeimos)
 
 environment:
   sdk: '>=3.0.0 <4.0.0'

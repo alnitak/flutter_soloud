@@ -365,8 +365,8 @@ class FlutterSoLoudFfi {
   }
 
   late final _seekPtr = _lookup<
-      ffi
-      .NativeFunction<ffi.Int32 Function(ffi.UnsignedInt, ffi.Float)>>('seek');
+          ffi.NativeFunction<ffi.Int32 Function(ffi.UnsignedInt, ffi.Float)>>(
+      'seek');
   late final _seek = _seekPtr.asFunction<int Function(int, double)>();
 
   /// @brief get current sound position in seconds

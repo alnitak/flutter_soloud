@@ -36,7 +36,6 @@ class MyHomePage extends StatelessWidget {
         child: Scaffold(
           body: Column(
             children: [
-      
               SizedBox(
                 height: 70,
                 child: Row(

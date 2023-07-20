@@ -64,9 +64,7 @@ class _ControlsState extends State<Controls> {
                     }
                   },
                   style: buttonStyle(isRunning),
-                  child: isRunning
-                      ? const Text('stop')
-                      : const Text('start'),
+                  child: isRunning ? const Text('stop') : const Text('start'),
                 ),
               ],
             ),
