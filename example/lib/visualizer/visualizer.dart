@@ -10,7 +10,8 @@ import 'package:flutter_soloud/audio_isolate.dart';
 import 'package:flutter_soloud/flutter_soloud_bindings_ffi.dart';
 
 import 'package:flutter_soloud_example/visualizer/audio_shader.dart';
-import 'package:flutter_soloud_example/visualizer/bars_widget.dart';
+import 'package:flutter_soloud_example/visualizer/bars_fft_widget.dart';
+import 'package:flutter_soloud_example/visualizer/bars_wave_widget.dart';
 import 'package:flutter_soloud_example/visualizer/bmp_header.dart';
 import 'package:flutter_soloud_example/visualizer/paint_texture.dart';
 
@@ -76,6 +77,7 @@ class _VisualizerState extends State<Visualizer>
   ffi.Pointer<ffi.Pointer<ffi.Float>> audioData = ffi.nullptr;
   late Future<ui.Image?> Function() buildImageCallback;
   late int Function(int row, int col) textureTypeCallback;
+  int nFrames = 0;
 
   @override
   void initState() {
@@ -98,7 +100,8 @@ class _VisualizerState extends State<Visualizer>
       ticker.stop();
       setupBitmapSize();
       ticker.start();
-
+      sw.reset();
+      nFrames = 0;
     });
   }
 
@@ -112,6 +115,7 @@ class _VisualizerState extends State<Visualizer>
   }
 
   void _tick(Duration elapsed) {
+    nFrames++;
     if (mounted) {
       setState(() {});
     }
@@ -166,54 +170,110 @@ class _VisualizerState extends State<Visualizer>
           );
         }
 
+        final nFft =
+            widget.controller.maxFreqRange - widget.controller.minFreqRange;
+
         return LayoutBuilder(
           builder: (context, constraints) {
+            final fps = nFrames.toDouble() / (sw.elapsedMilliseconds / 1000.0);
             return Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                /// paint texture passed to the shader
-                // PaintTexture(
-                //   text: 'the texture sent to the shader',
-                //   width: constraints.maxWidth,
-                //   height: 100,
-                //   image: dataTexture.data!,
-                // ),
-
-                AudioShader(
-                  text: 'SHADER',
-                  width: constraints.maxWidth,
-                  height: constraints.maxWidth / 2,
-                  image: dataTexture.data!,
-                  shader: widget.shader,
-                  iTime: sw.elapsedMilliseconds / 1000.0,
+                Text(
+                  'FPS: ${fps.toStringAsFixed(1)}     '
+                  'the texture sent to the shader',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
 
-                // Row(
-                //   children: [
-                //     /// FFT bars
-                //     BarsWidget(
-                //       text: '256 FFT data',
-                //       audioData: audioData.value,
-                //       minFreq: widget.controller.minFreqRange,
-                //       maxFreq: widget.controller.maxFreqRange,
-                //       useFftData: true,
-                //       width: constraints.maxWidth / 2 - 3,
-                //       height: constraints.maxWidth / 5,
-                //     ),
-                //     const SizedBox(width: 6),
+                /// paint texture passed to the shader
+                DisableButton(
+                  width: constraints.maxWidth,
+                  height: 100,
+                  onPressed: () {
+                    sw.reset();
+                    nFrames = 0;
+                  },
+                  child: PaintTexture(
+                    width: constraints.maxWidth,
+                    height: 100,
+                    image: dataTexture.data!,
+                  ),
+                ),
 
-                //     /// wave data bars
-                //     BarsWidget(
-                //       text: '256 wave data',
-                //       audioData: audioData.value,
-                //       minFreq: widget.controller.minFreqRange,
-                //       maxFreq: widget.controller.maxFreqRange,
-                //       width: constraints.maxWidth / 2 - 3,
-                //       height: constraints.maxWidth / 5,
-                //     ),
-                //   ],
-                // ),
+                const Text(
+                  'SHADER',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                DisableButton(
+                  width: constraints.maxWidth,
+                  height: constraints.maxWidth / 2,
+                  onPressed: () {
+                    sw.reset();
+                    nFrames = 0;
+                  },
+                  child: AudioShader(
+                    width: constraints.maxWidth,
+                    height: constraints.maxWidth / 2,
+                    image: dataTexture.data!,
+                    shader: widget.shader,
+                    iTime: sw.elapsedMilliseconds / 1000.0,
+                  ),
+                ),
+
+                Row(
+                  children: [
+                    Column(
+                      children: [
+                        Text(
+                          '$nFft FFT data',
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+
+                        /// FFT bars
+                        DisableButton(
+                          width: constraints.maxWidth / 2 - 3,
+                          height: constraints.maxWidth / 5,
+                          onPressed: () {
+                            sw.reset();
+                            nFrames = 0;
+                          },
+                          child: BarsFftWidget(
+                            audioData: audioData.value,
+                            minFreq: widget.controller.minFreqRange,
+                            maxFreq: widget.controller.maxFreqRange,
+                            width: constraints.maxWidth / 2 - 3,
+                            height: constraints.maxWidth / 5,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(width: 6),
+                    Column(
+                      children: [
+                        const Text(
+                          '256 wave data',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+
+                        /// wave data bars
+                        DisableButton(
+                          width: constraints.maxWidth / 2 - 3,
+                          height: constraints.maxWidth / 5,
+                          onPressed: () {
+                            sw.reset();
+                            nFrames = 0;
+                          },
+                          child: BarsWaveWidget(
+                            audioData: audioData.value,
+                            width: constraints.maxWidth / 2 - 3,
+                            height: constraints.maxWidth / 5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ],
             );
           },
@@ -307,5 +367,58 @@ class _VisualizerState extends State<Visualizer>
     return (((audioData.value[row * fftSize + halfFftSize + col] + 1.0) / 2.0) *
             128)
         .toInt();
+  }
+}
+
+class DisableButton extends StatefulWidget {
+  const DisableButton({
+    required this.width,
+    required this.height,
+    required this.child,
+    required this.onPressed,
+    super.key,
+  });
+
+  final VoidCallback onPressed;
+  final double width;
+  final double height;
+  final Widget child;
+
+  @override
+  State<DisableButton> createState() => _DisableButtonState();
+}
+
+class _DisableButtonState extends State<DisableButton> {
+  late bool isChildVisible;
+
+  @override
+  void initState() {
+    super.initState();
+    isChildVisible = true;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: widget.width,
+      height: widget.height,
+      child: Stack(
+        children: [
+          if (isChildVisible) widget.child else const Placeholder(),
+          Align(
+            alignment: Alignment.topRight,
+            child: FloatingActionButton.small(
+              onPressed: () {
+                isChildVisible = !isChildVisible;
+                setState(() {});
+                widget.onPressed();
+              },
+              backgroundColor: Colors.blue,
+              child: const Icon(Icons.close, color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

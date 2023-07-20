@@ -250,7 +250,8 @@ class _Page1State extends State<Page1> {
                   ElevatedButton(
                     onPressed: () async {
                       final paths = (await FilePicker.platform.pickFiles(
-                        type: FileType.audio,
+                        // type: FileType.audio,
+                        allowedExtensions: ['mp3', 'wav', 'ogg', 'flac'],
                         onFileLoading: print,
                         dialogTitle: 'Pick audio file',
                       ))
@@ -426,7 +427,6 @@ class _Page1State extends State<Page1> {
       (event) {
         stopTimer();
         event.sound.soundEvents.close(); // TODO: put this elsewhere
-        AudioIsolate().stopSound(currentSound!);
         currentSound = null;
       },
     );

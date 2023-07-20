@@ -1,16 +1,15 @@
-import 'package:flutter/material.dart';
 import 'dart:ui' as ui;
+
+import 'package:flutter/material.dart';
 
 class PaintTexture extends StatelessWidget {
   const PaintTexture({
-    super.key,
-    required this.text,
     required this.width,
     required this.height,
     required this.image,
+    super.key,
   });
 
-  final String text;
   final double width;
   final double height;
   final ui.Image image;
@@ -20,11 +19,6 @@ class PaintTexture extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (text.isNotEmpty)
-          Text(
-            text,
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
         CustomPaint(
           size: Size(width, height),
           painter: DisplayUiImagePainter(

@@ -4,16 +4,14 @@ import 'package:flutter/material.dart';
 
 class AudioShader extends StatelessWidget {
   const AudioShader({
-    super.key,
-    required this.text,
-    this.width,
-    this.height,
     required this.image,
     required this.shader,
     required this.iTime,
+    super.key,
+    this.width,
+    this.height,
   });
 
-  final String text;
   final double? width;
   final double? height;
   final ui.Image image;
@@ -26,11 +24,6 @@ class AudioShader extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (text.isNotEmpty)
-          Text(
-            text,
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
         SizedBox(
           width: width,
           height: height,
