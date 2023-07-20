@@ -240,10 +240,10 @@ Many things can still be done.
 
 The FFT data doesn't match my expectations. Some work still needs to be done on *Analyzer::calcFFT()* in `src/analyzer.cpp`.
 
-|name|description|
-|--------|-|
-|![spectrum1](https://github.com/alnitak/flutter_soloud/blob/master/img/flutter_soloud_spectrum.png "flutter_soloud spectrum")|flutter_soloud spectrum|
-|![spectrum2](https://github.com/alnitak/flutter_soloud/blob/master/img/audacity_spectrum.png "audacity spectrum")|audacity spectrum|
+|![spectrum1](/img/flutter_soloud_spectrum.png)|![spectrum2](/img/audacity_spectrum.png)|
+|:--|:--|
+|*flutter_soloud spectrum*|*audacity spectrum*|
+
 
 For now, only a small portion of the possibilities offered by SoLoud have been implemented. Look [here](https://solhsa.com/soloud/index.html).
 * audio filter effects
