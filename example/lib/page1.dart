@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_soloud/audio_isolate.dart';
 import 'package:flutter_soloud/flutter_soloud_bindings_ffi.dart';
+import 'package:flutter_soloud/soloud_controller.dart';
 import 'package:flutter_soloud_example/visualizer/visualizer.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:star_menu/star_menu.dart';
@@ -40,6 +41,7 @@ class _Page1State extends State<Page1> {
   final ValueNotifier<TextureType> textureType =
       ValueNotifier(TextureType.fft2D);
   final ValueNotifier<double> fftSmoothing = ValueNotifier(0.8);
+  final ValueNotifier<bool> isVisualizerForPlayer = ValueNotifier(false);
   final ValueNotifier<RangeValues> fftImageRange =
       ValueNotifier(const RangeValues(0, 255));
   final ValueNotifier<int> maxFftImageRange = ValueNotifier(255);
@@ -47,7 +49,7 @@ class _Page1State extends State<Page1> {
   final ValueNotifier<double> soundPosition = ValueNotifier(0);
   Timer? timer;
   SoundProps? currentSound;
-  FftRangeController visualizerFftRangeController = FftRangeController();
+  FftController visualizerController = FftController();
 
   @override
   void dispose() {
@@ -316,7 +318,7 @@ class _Page1State extends State<Page1> {
                           values: fftRange,
                           onChanged: (values) {
                             fftImageRange.value = values;
-                            visualizerFftRangeController
+                            visualizerController
                               ..changeMinFreq(values.start.toInt())
                               ..changeMaxFreq(values.end.toInt());
                           },
@@ -339,14 +341,37 @@ class _Page1State extends State<Page1> {
                         child: Slider.adaptive(
                           value: smoothing,
                           onChanged: (smooth) {
-                            AudioIsolate()
-                                .setFftSmoothing(smooth)
-                                .then((value) {
-                              fftSmoothing.value = smooth;
-                            });
+                            if (AudioIsolate().isIsolateRunning()) {
+                              AudioIsolate().setFftSmoothing(smooth);
+                            } else {
+                              SoLoudController()
+                                  .captureFFI
+                                  .setCaptureFftSmoothing(smooth);
+                            }
+                            fftSmoothing.value = smooth;
                           },
                         ),
                       ),
+                    ],
+                  );
+                },
+              ),
+
+              /// fft smoothing slider
+              ValueListenableBuilder<bool>(
+                valueListenable: isVisualizerForPlayer,
+                builder: (_, forPlayer, __) {
+                  return Row(
+                    children: [
+                      Switch(
+                        value: forPlayer,
+                        onChanged: (value) {
+                          isVisualizerForPlayer.value = value;
+                          visualizerController
+                              .changeIsVisualizerForPlayer(value);
+                        },
+                      ),
+                      const Text('show capture/player data'),
                     ],
                   );
                 },
@@ -363,7 +388,7 @@ class _Page1State extends State<Page1> {
                         // return SizedBox.shrink();
                         return Visualizer(
                           key: UniqueKey(),
-                          controller: visualizerFftRangeController,
+                          controller: visualizerController,
                           shader: snapshot.data!,
                           textureType: type,
                         );

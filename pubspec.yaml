@@ -36,16 +36,4 @@ flutter:
       windows:
         ffiPlugin: true
 
-ffigen:
-  output: './lib/flutter_soloud_bindings_ffi_TMP.dart'
-  name: 'FlutterSoLoudFfi'
-  description: 'FFI bindings to SoLoud'
-  functions:
-    exclude:
-      - ''
-  headers:
-    entry-points:
-      - 'src/ffi_gen_tmp.h'
-    include-directives:
-      # - '**ffi_gen_tmp.h'
-      - '**ffi_gen_tmp.h'
+

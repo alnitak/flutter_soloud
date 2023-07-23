@@ -42,7 +42,7 @@ FFI_PLUGIN_EXPORT enum PlayerErrors initEngine()
             player.soloud.getBackendChannels()
         ) - 1;
     analyzer.get()->setWindowsSize(windowSize);
-    return noError;
+    return (PlayerErrors)noError;
 }
 
 FFI_PLUGIN_EXPORT void dispose()

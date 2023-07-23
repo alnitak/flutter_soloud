@@ -41,6 +41,8 @@ list(APPEND PLUGIN_SOURCES
   "${SRC_DIR}/bindings.cpp"
   "${SRC_DIR}/player.cpp"
   "${SRC_DIR}/analyzer.cpp"
+  "${SRC_DIR}/bindings_capture.cpp"
+  "${SRC_DIR}/capture.cpp"
   ${TARGET_SOURCES}
 )
 

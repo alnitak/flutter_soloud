@@ -54,8 +54,8 @@ void Analyzer::hammingWindow(float* samples, const float *waveData) const
 float * Analyzer::calcFFT(float *waveData)
 {
     blackmanWindow(temp, waveData);
-    // hanningWindow(temp, waveData, windowSize);
-    // hammingWindow(temp, waveData, windowSize);
+    // hanningWindow(temp, waveData);
+    // hammingWindow(temp, waveData);
 
     SoLoud::FFT::fft1024(temp);
 

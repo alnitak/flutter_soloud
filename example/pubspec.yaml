@@ -25,6 +25,8 @@ dependencies:
   #https://pub.dev/packages/star_menu
   star_menu: ^3.1.4
 
+  permission_handler: ^10.4.3
+
   flutter_soloud:
     path: ../
 

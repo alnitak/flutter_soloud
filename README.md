@@ -1,6 +1,6 @@
-# Flutter audio plugin using SoLoud library
+# Flutter low level audio plugin using SoLoud library
 
-Flutter audio plugin using SoLoud library and FFI
+Flutter low level audio plugin using SoLoud library and FFI
 
 [![style: very good analysis](https://img.shields.io/badge/style-very_good_analysis-B22C89.svg)](https://pub.dev/packages/very_good_analysis)
 |Linux|Windows|Android|MacOS|iOS|web|

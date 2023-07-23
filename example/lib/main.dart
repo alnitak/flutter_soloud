@@ -7,6 +7,7 @@ import 'package:flutter_soloud/flutter_soloud_bindings_ffi.dart';
 import 'package:flutter_soloud_example/controls.dart';
 import 'package:flutter_soloud_example/page1.dart';
 import 'package:flutter_soloud_example/page2.dart';
+import 'package:flutter_soloud_example/testing.dart';
 
 void main() {
   runApp(const MyApp());
@@ -31,19 +32,21 @@ class MyHomePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const DefaultTabController(
-      length: 3,
+      length: 4,
+      initialIndex: 2,
       child: SafeArea(
         child: Scaffold(
           body: Column(
             children: [
+              Controls(),
               SizedBox(
                 height: 70,
                 child: Row(
                   children: [
-                    Controls(),
                     TabBar(
                       isScrollable: true,
                       tabs: [
+                        Tab(text: 'capture'),
                         Tab(text: 'hello world!'),
                         Tab(text: 'visualizer'),
                         Tab(text: 'multi track'),
@@ -56,6 +59,7 @@ class MyHomePage extends StatelessWidget {
                 child: TabBarView(
                   physics: NeverScrollableScrollPhysics(),
                   children: [
+                    Capture(),
                     HelloFlutterSoLoud(),
                     Page1(),
                     Page2(),

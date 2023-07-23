@@ -10,8 +10,6 @@
 #include <unistd.h>
 #endif
 
-#define RANGE_POSITION_CALLBACK 0.15
-
 Player::Player() : mInited(false){};
 Player::~Player()
 {

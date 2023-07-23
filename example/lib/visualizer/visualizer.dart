@@ -27,14 +27,16 @@ enum TextureType {
   both2D, // no implemented yet
 }
 
-class FftRangeController extends ChangeNotifier {
-  FftRangeController({
+class FftController extends ChangeNotifier {
+  FftController({
     this.minFreqRange = 0,
     this.maxFreqRange = 255,
+    this.isVisualizerForPlayer = false,
   });
 
   int minFreqRange;
   int maxFreqRange;
+  bool isVisualizerForPlayer;
 
   void changeMinFreq(int minFreq) {
     if (minFreq < 0) return;
@@ -47,6 +49,12 @@ class FftRangeController extends ChangeNotifier {
     maxFreqRange = maxFreq;
     notifyListeners();
   }
+
+  void changeIsVisualizerForPlayer(bool isForPlayer) {
+    print('****** changeIsVisualizerForPlayer $isForPlayer');
+    isVisualizerForPlayer = isForPlayer;
+    notifyListeners();
+  }
 }
 
 class Visualizer extends StatefulWidget {
@@ -57,7 +65,7 @@ class Visualizer extends StatefulWidget {
     super.key,
   });
 
-  final FftRangeController controller;
+  final FftController controller;
   final ui.FragmentShader shader;
   final TextureType textureType;
 
@@ -67,6 +75,8 @@ class Visualizer extends StatefulWidget {
 
 class _VisualizerState extends State<Visualizer>
     with SingleTickerProviderStateMixin {
+  late bool isPlayerInited;
+  late bool isCaptureInited;
   late Ticker ticker;
   late Stopwatch sw;
   late Bmp32Header fftImageRow;
@@ -74,7 +84,8 @@ class _VisualizerState extends State<Visualizer>
   late int fftSize;
   late int halfFftSize;
   late int fftBitmapRange;
-  ffi.Pointer<ffi.Pointer<ffi.Float>> audioData = ffi.nullptr;
+  ffi.Pointer<ffi.Pointer<ffi.Float>> playerData = ffi.nullptr;
+  ffi.Pointer<ffi.Pointer<ffi.Float>> captureData = ffi.nullptr;
   late Future<ui.Image?> Function() buildImageCallback;
   late int Function(int row, int col) textureTypeCallback;
   int nFrames = 0;
@@ -83,12 +94,22 @@ class _VisualizerState extends State<Visualizer>
   void initState() {
     super.initState();
 
+    isPlayerInited = AudioIsolate().isPlayerInited;
+    isCaptureInited = AudioIsolate().isCaptureInited;
+    AudioIsolate().audioEvent.stream.listen(
+      (event) {
+        isPlayerInited = AudioIsolate().isPlayerInited;
+        isCaptureInited = AudioIsolate().isCaptureInited;
+      },
+    );
+
     /// these constants must not be touched since SoLoud
     /// gives back a size of 256 values
     fftSize = 512;
     halfFftSize = fftSize >> 1;
 
-    audioData = calloc();
+    playerData = calloc();
+    captureData = calloc();
 
     ticker = createTicker(_tick);
     sw = Stopwatch();
@@ -109,8 +130,10 @@ class _VisualizerState extends State<Visualizer>
   void dispose() {
     ticker.stop();
     sw.stop();
-    calloc.free(audioData);
-    audioData = ffi.nullptr;
+    calloc.free(playerData);
+    playerData = ffi.nullptr;
+    calloc.free(captureData);
+    captureData = ffi.nullptr;
     super.dispose();
   }
 
@@ -239,7 +262,9 @@ class _VisualizerState extends State<Visualizer>
                             nFrames = 0;
                           },
                           child: BarsFftWidget(
-                            audioData: audioData.value,
+                            audioData: widget.controller.isVisualizerForPlayer
+                                ? playerData.value
+                                : captureData.value,
                             minFreq: widget.controller.minFreqRange,
                             maxFreq: widget.controller.maxFreqRange,
                             width: constraints.maxWidth / 2 - 3,
@@ -265,7 +290,9 @@ class _VisualizerState extends State<Visualizer>
                             nFrames = 0;
                           },
                           child: BarsWaveWidget(
-                            audioData: audioData.value,
+                            audioData: widget.controller.isVisualizerForPlayer
+                                ? playerData.value
+                                : captureData.value,
                             width: constraints.maxWidth / 2 - 3,
                             height: constraints.maxWidth / 5,
                           ),
@@ -287,12 +314,26 @@ class _VisualizerState extends State<Visualizer>
   /// in the 1st row the frequencies data
   /// in the 2nd row the wave data
   Future<ui.Image?> buildImageFromLatestSamplesRow() async {
-    if (audioData == ffi.nullptr) return null;
+    if (widget.controller.isVisualizerForPlayer && playerData == ffi.nullptr) {
+      return null;
+    }
+    if (!widget.controller.isVisualizerForPlayer &&
+        captureData == ffi.nullptr) {
+      return null;
+    }
     final completer = Completer<ui.Image>();
 
     /// audioData here will be available to all the children of [Visualizer]
-    final ret = await AudioIsolate().getAudioTexture2D(audioData);
-    if (ret != PlayerErrors.noError || !mounted) return null;
+    if (widget.controller.isVisualizerForPlayer) {
+      final ret = await AudioIsolate().getAudioTexture2D(playerData);
+      if (ret != PlayerErrors.noError) return null;
+    } else {
+      AudioIsolate().getCaptureAudioTexture2D(captureData);
+    }
+
+    if (!mounted) {
+      return null;
+    }
 
     final bytes = Uint8List(fftBitmapRange * 2 * 4);
     // Fill the texture bitmap
@@ -327,7 +368,16 @@ class _VisualizerState extends State<Visualizer>
     final completer = Completer<ui.Image>();
 
     /// audioData here will be available to all the children of [Visualizer]
-    final ret = await AudioIsolate().getAudioTexture2D(audioData);
+    if (widget.controller.isVisualizerForPlayer && isPlayerInited) {
+      final ret = await AudioIsolate().getAudioTexture2D(playerData);
+      if (ret != PlayerErrors.noError) {
+        return null;
+      }
+    } else if (!widget.controller.isVisualizerForPlayer && isCaptureInited) {
+      AudioIsolate().getCaptureAudioTexture2D(captureData);
+    } else {
+      return null;
+    }
 
     /// IMPORTANT: if [mounted] is not checked here, could happens that
     /// dispose() is called before this is called but it is called!
@@ -335,7 +385,7 @@ class _VisualizerState extends State<Visualizer>
     /// I do not understand why this happens because the FutureBuilder
     /// seems has not finished before dispose()!?
     /// My psychoanalyst told me to forget it and my mom to study more
-    if (ret != PlayerErrors.noError || !mounted) {
+    if (!mounted) {
       return null;
     }
     final bytes = Uint8List(fftBitmapRange * 256 * 4);
@@ -360,13 +410,25 @@ class _VisualizerState extends State<Visualizer>
   }
 
   int getFFTDataCallback(int row, int col) {
-    return (audioData.value[row * fftSize + col] * 255.0).toInt();
+    if (widget.controller.isVisualizerForPlayer) {
+      return (playerData.value[row * fftSize + col] * 255.0).toInt();
+    } else {
+      return (captureData.value[row * fftSize + col] * 255.0).toInt();
+    }
   }
 
   int getWaveDataCallback(int row, int col) {
-    return (((audioData.value[row * fftSize + halfFftSize + col] + 1.0) / 2.0) *
-            128)
-        .toInt();
+    if (widget.controller.isVisualizerForPlayer) {
+      return (((playerData.value[row * fftSize + halfFftSize + col] + 1.0) /
+                  2.0) *
+              128)
+          .toInt();
+    } else {
+      return (((captureData.value[row * fftSize + halfFftSize + col] + 1.0) /
+                  2.0) *
+              128)
+          .toInt();
+    }
   }
 }
 
