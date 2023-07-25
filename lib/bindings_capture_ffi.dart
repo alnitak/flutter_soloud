@@ -40,24 +40,6 @@ final class CaptureDevice {
   final bool isDefault;
 }
 
-String charArrayToString(ffi.Array<ffi.Char> charArray) {
-  // Extract characters from memory one by one until we reach the null character.
-  final List<int> charCodes = [];
-  int index = 0;
-  while (true) {
-    int charCode = charArray[index];
-    if (charCode == 0) {
-      break;
-    }
-    charCodes.add(charCode);
-    index++;
-  }
-
-  // Create a Dart string from the extracted characters.
-  final resultString = String.fromCharCodes(charCodes);
-  return resultString;
-}
-
 /// FFI bindings to capture with miniaudio
 class FlutterCaptureFfi {
   /// Holds the symbol lookup function.
@@ -93,6 +75,7 @@ class FlutterCaptureFfi {
       ret.add(CaptureDevice(s, n == 1 ? true : false));
     }
     /// free allocated memory done in C
+    /// this work on linux and android, not on win
     for (int i = 0; i < ndev; i++) {
       calloc.free(devices.elementAt(i).value.ref.name);
       calloc.free(devices.elementAt(i).value);
