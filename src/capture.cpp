@@ -100,6 +100,12 @@ bool Capture::isInited()
     return mInited;
 }
 
+bool Capture::isStarted()
+{
+    ma_device_state result = ma_device_get_state(&device);
+    return result == ma_device_state_started;
+}
+
 CaptureErrors Capture::startCapture()
 {
     if (!mInited)

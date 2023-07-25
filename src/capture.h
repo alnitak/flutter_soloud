@@ -37,7 +37,7 @@ public:
     void dispose();
 
     bool isInited();
-
+    bool isStarted();
     CaptureErrors startCapture();
     CaptureErrors stopCapture();
 

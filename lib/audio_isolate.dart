@@ -943,6 +943,10 @@ class AudioIsolate {
     return SoLoudController().captureFFI.isCaptureInited();
   }
 
+  bool isCaptureStarted() {
+    return SoLoudController().captureFFI.isCaptureStarted();
+  }
+
   CaptureErrors stopCapture() {
     final ret = SoLoudController().captureFFI.stopCapture();
     if (ret == CaptureErrors.captureNoError) {

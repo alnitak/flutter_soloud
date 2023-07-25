@@ -62,6 +62,11 @@ FFI_PLUGIN_EXPORT int isCaptureInited()
     return capture.isInited() ? 1 : 0;
 }
 
+FFI_PLUGIN_EXPORT int isCaptureStarted()
+{
+    return capture.isStarted() ? 1 : 0;
+}
+
 FFI_PLUGIN_EXPORT enum CaptureErrors startCapture()
 {
     if (!capture.isInited()) return capture_not_inited;

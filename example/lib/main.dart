@@ -1,13 +1,8 @@
-import 'dart:async';
-
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_soloud/audio_isolate.dart';
-import 'package:flutter_soloud/flutter_soloud_bindings_ffi.dart';
 import 'package:flutter_soloud_example/controls.dart';
+import 'package:flutter_soloud_example/hello_flutter.dart';
 import 'package:flutter_soloud_example/page1.dart';
 import 'package:flutter_soloud_example/page2.dart';
-import 'package:flutter_soloud_example/testing.dart';
 
 void main() {
   runApp(const MyApp());
@@ -32,34 +27,26 @@ class MyHomePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const DefaultTabController(
-      length: 4,
-      initialIndex: 2,
+      length: 3,
+      initialIndex: 1,
       child: SafeArea(
         child: Scaffold(
           body: Column(
             children: [
               Controls(),
-              SizedBox(
-                height: 70,
-                child: Row(
-                  children: [
-                    TabBar(
-                      isScrollable: true,
-                      tabs: [
-                        Tab(text: 'capture'),
-                        Tab(text: 'hello world!'),
-                        Tab(text: 'visualizer'),
-                        Tab(text: 'multi track'),
-                      ],
-                    ),
-                  ],
-                ),
+              TabBar(
+                isScrollable: true,
+                tabs: [
+                  Tab(text: 'hello world!'),
+                  Tab(text: 'visualizer'),
+                  Tab(text: 'multi track'),
+                ],
               ),
+              SizedBox(height: 8),
               Expanded(
                 child: TabBarView(
                   physics: NeverScrollableScrollPhysics(),
                   children: [
-                    Capture(),
                     HelloFlutterSoLoud(),
                     Page1(),
                     Page2(),
@@ -71,86 +58,5 @@ class MyHomePage extends StatelessWidget {
         ),
       ),
     );
-  }
-}
-
-/// Simple usecase of flutter_soloud plugin
-// ignore: must_be_immutable
-class HelloFlutterSoLoud extends StatefulWidget {
-  const HelloFlutterSoLoud({super.key});
-
-  @override
-  State<HelloFlutterSoLoud> createState() => _HelloFlutterSoLoudState();
-}
-
-class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
-  SoundProps? currentSound;
-
-  @override
-  void initState() {
-    super.initState();
-  }
-
-  @override
-  void dispose() {
-    debugPrint('${currentSound?.soundHash}');
-    AudioIsolate().stopIsolate();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Center(
-        child:
-
-            /// pick audio file
-            ElevatedButton(
-          onPressed: () async {
-            final paths = (await FilePicker.platform.pickFiles(
-              type: FileType.audio,
-              onFileLoading: print,
-              dialogTitle: 'Pick audio file',
-            ))
-                ?.files;
-            if (paths != null) {
-              unawaited(play(paths.first.path!));
-            }
-          },
-          child: const Text('pick audio'),
-        ),
-      ),
-    );
-  }
-
-  /// play file
-  Future<void> play(String file) async {
-    /// Start audio engine if not already
-    if (!AudioIsolate().isIsolateRunning()) {
-      await AudioIsolate().startIsolate().then((value) {
-        if (value == PlayerErrors.noError) {
-          debugPrint('isolate started');
-        } else {
-          debugPrint('isolate starting error: $value');
-          return;
-        }
-      });
-    }
-
-    /// stop any previous sound loaded
-    if (currentSound != null) {
-      if ((await AudioIsolate().stopSound(currentSound!)) !=
-          PlayerErrors.noError) return;
-    }
-
-    /// load the audio file
-    final loadRet = await AudioIsolate().loadFile(file);
-    if (loadRet.error != PlayerErrors.noError) return;
-    currentSound = loadRet.sound;
-
-    /// play it
-    final playRet = await AudioIsolate().play(currentSound!);
-    if (loadRet.error != PlayerErrors.noError) return;
-    currentSound = playRet.sound;
   }
 }

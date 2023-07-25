@@ -37,6 +37,7 @@ class _ControlsState extends State<Controls> {
   @override
   void reassemble() {
     isAudioIsolateRunning.value = AudioIsolate().isIsolateRunning();
+    isCaptureRunning.value = AudioIsolate().isCaptureStarted();
     super.reassemble();
   }
 
@@ -45,6 +46,7 @@ class _ControlsState extends State<Controls> {
     AudioIsolate().audioEvent.stream.listen(
       (event) {
         isAudioIsolateRunning.value = AudioIsolate().isIsolateRunning();
+        isCaptureRunning.value = AudioIsolate().isCaptureStarted();
       },
     );
 
@@ -63,14 +65,12 @@ class _ControlsState extends State<Controls> {
                       final b = await AudioIsolate().stopIsolate();
                       if (b) {
                         debugPrint('isolate stopped');
-                        isAudioIsolateRunning.value = false;
                       }
                     } else {
                       final b = await AudioIsolate().startIsolate();
                       if (b == PlayerErrors.noError) {
                         debugPrint('isolate started');
                         unawaited(AudioIsolate().setVisualizationEnabled(true));
-                        isAudioIsolateRunning.value = true;
                       }
                     }
                   },
@@ -99,12 +99,10 @@ class _ControlsState extends State<Controls> {
                     }
                     if (isRunning) {
                       AudioIsolate().stopCapture();
-                      isCaptureRunning.value = false;
                     } else {
                       AudioIsolate()
                           .initCapture(deviceID: choosenCaptureDeviceId);
                       AudioIsolate().startCapture();
-                      isCaptureRunning.value = true;
                     }
                   },
                   style: buttonStyle(isRunning),

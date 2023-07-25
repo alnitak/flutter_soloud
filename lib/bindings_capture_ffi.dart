@@ -132,6 +132,15 @@ class FlutterCaptureFfi {
   late final _isCaptureInited =
       _isCaptureInitedPtr.asFunction<int Function()>();
 
+  bool isCaptureStarted() {
+    return _isCaptureStarted() == 1 ? true : false;
+  }
+
+  late final _isCaptureStartedPtr =
+      _lookup<ffi.NativeFunction<ffi.Int Function()>>('isCaptureStarted');
+  late final _isCaptureStarted =
+      _isCaptureStartedPtr.asFunction<int Function()>();
+
   CaptureErrors startCapture() {
     return CaptureErrors.values[_startCapture()];
   }

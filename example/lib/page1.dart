@@ -55,6 +55,7 @@ class _Page1State extends State<Page1> {
   @override
   void dispose() {
     AudioIsolate().stopIsolate();
+    AudioIsolate().stopCapture();
     super.dispose();
   }
 
@@ -250,7 +251,7 @@ class _Page1State extends State<Page1> {
                 ElevatedButton(
                   onPressed: () async {
                     final paths = (await FilePicker.platform.pickFiles(
-                      // type: FileType.audio,
+                      type: FileType.custom,
                       allowedExtensions: ['mp3', 'wav', 'ogg', 'flac'],
                       onFileLoading: print,
                       dialogTitle: 'Pick audio file',
