@@ -926,7 +926,7 @@ class AudioIsolate {
   //////////////////////////////////////////////////
 
   List<CaptureDevice> listCaptureDevices() {
-    return SoLoudController().captureFFI.listCaptureDevices();
+    return SoLoudController().captureFFI. listCaptureDevices();
   }
 
   CaptureErrors initCapture({int deviceID = -1}) {
