@@ -7,6 +7,7 @@ import 'package:ffi/ffi.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_soloud/audio_isolate.dart';
+import 'package:flutter_soloud/bindings_capture_ffi.dart';
 import 'package:flutter_soloud/flutter_soloud_bindings_ffi.dart';
 
 import 'package:flutter_soloud_example/visualizer/audio_shader.dart';
@@ -31,11 +32,13 @@ class FftController extends ChangeNotifier {
   FftController({
     this.minFreqRange = 0,
     this.maxFreqRange = 255,
+    this.isVisualizerEnabled = true,
     this.isVisualizerForPlayer = false,
   });
 
   int minFreqRange;
   int maxFreqRange;
+  bool isVisualizerEnabled;
   bool isVisualizerForPlayer;
 
   void changeMinFreq(int minFreq) {
@@ -51,9 +54,14 @@ class FftController extends ChangeNotifier {
   }
 
   void changeIsVisualizerForPlayer(bool isForPlayer) {
-    print('****** changeIsVisualizerForPlayer $isForPlayer');
     isVisualizerForPlayer = isForPlayer;
     notifyListeners();
+  }
+
+  void changeIsVisualizerEnabled(bool enable) {
+    isVisualizerEnabled = enable;
+    notifyListeners();
+    AudioIsolate().setVisualizationEnabled(enable);
   }
 }
 
@@ -183,13 +191,16 @@ class _VisualizerState extends State<Visualizer>
     return FutureBuilder<ui.Image?>(
       future: buildImageCallback(),
       builder: (context, dataTexture) {
-        if (!dataTexture.hasData || dataTexture.data == null) {
-          return const Placeholder(
+        final fps = nFrames.toDouble() / (sw.elapsedMilliseconds / 1000.0);
+        if (!dataTexture.hasData ||
+            dataTexture.data == null) {
+          return Placeholder(
             color: Colors.yellow,
             fallbackWidth: 100,
             fallbackHeight: 100,
             strokeWidth: 0.5,
-            child: Text("can't get audio samples"),
+            child: Text("can't get audio samples\n"
+                'FPS: ${fps.toStringAsFixed(1)}'),
           );
         }
 
@@ -198,7 +209,6 @@ class _VisualizerState extends State<Visualizer>
 
         return LayoutBuilder(
           builder: (context, constraints) {
-            final fps = nFrames.toDouble() / (sw.elapsedMilliseconds / 1000.0);
             return Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -212,14 +222,14 @@ class _VisualizerState extends State<Visualizer>
                 /// paint texture passed to the shader
                 DisableButton(
                   width: constraints.maxWidth,
-                  height: 100,
+                  height: constraints.maxWidth / 6,
                   onPressed: () {
                     sw.reset();
                     nFrames = 0;
                   },
                   child: PaintTexture(
                     width: constraints.maxWidth,
-                    height: 100,
+                    height: constraints.maxWidth / 6,
                     image: dataTexture.data!,
                   ),
                 ),
@@ -230,14 +240,14 @@ class _VisualizerState extends State<Visualizer>
                 ),
                 DisableButton(
                   width: constraints.maxWidth,
-                  height: constraints.maxWidth / 2,
+                  height: constraints.maxWidth / 2.4,
                   onPressed: () {
                     sw.reset();
                     nFrames = 0;
                   },
                   child: AudioShader(
                     width: constraints.maxWidth,
-                    height: constraints.maxWidth / 2,
+                    height: constraints.maxWidth / 2.4,
                     image: dataTexture.data!,
                     shader: widget.shader,
                     iTime: sw.elapsedMilliseconds / 1000.0,
@@ -256,7 +266,7 @@ class _VisualizerState extends State<Visualizer>
                         /// FFT bars
                         DisableButton(
                           width: constraints.maxWidth / 2 - 3,
-                          height: constraints.maxWidth / 5,
+                          height: constraints.maxWidth / 6,
                           onPressed: () {
                             sw.reset();
                             nFrames = 0;
@@ -268,7 +278,7 @@ class _VisualizerState extends State<Visualizer>
                             minFreq: widget.controller.minFreqRange,
                             maxFreq: widget.controller.maxFreqRange,
                             width: constraints.maxWidth / 2 - 3,
-                            height: constraints.maxWidth / 5,
+                            height: constraints.maxWidth / 6,
                           ),
                         ),
                       ],
@@ -284,7 +294,7 @@ class _VisualizerState extends State<Visualizer>
                         /// wave data bars
                         DisableButton(
                           width: constraints.maxWidth / 2 - 3,
-                          height: constraints.maxWidth / 5,
+                          height: constraints.maxWidth / 6,
                           onPressed: () {
                             sw.reset();
                             nFrames = 0;
@@ -294,7 +304,7 @@ class _VisualizerState extends State<Visualizer>
                                 ? playerData.value
                                 : captureData.value,
                             width: constraints.maxWidth / 2 - 3,
-                            height: constraints.maxWidth / 5,
+                            height: constraints.maxWidth / 6,
                           ),
                         ),
                       ],
@@ -314,27 +324,28 @@ class _VisualizerState extends State<Visualizer>
   /// in the 1st row the frequencies data
   /// in the 2nd row the wave data
   Future<ui.Image?> buildImageFromLatestSamplesRow() async {
-    if (widget.controller.isVisualizerForPlayer && playerData == ffi.nullptr) {
+    if (!widget.controller.isVisualizerEnabled) {
       return null;
     }
-    if (!widget.controller.isVisualizerForPlayer &&
-        captureData == ffi.nullptr) {
-      return null;
-    }
-    final completer = Completer<ui.Image>();
-
-    /// audioData here will be available to all the children of [Visualizer]
-    if (widget.controller.isVisualizerForPlayer) {
+    /// get audio data from player or capture device
+    if (widget.controller.isVisualizerForPlayer && isPlayerInited) {
       final ret = await AudioIsolate().getAudioTexture2D(playerData);
       if (ret != PlayerErrors.noError) return null;
+    } else 
+    if (!widget.controller.isVisualizerForPlayer && isCaptureInited) {
+      final ret = AudioIsolate().getCaptureAudioTexture2D(captureData);
+      if (ret != CaptureErrors.captureNoError) {
+        return null;
+      }
     } else {
-      AudioIsolate().getCaptureAudioTexture2D(captureData);
+      return null;
     }
 
     if (!mounted) {
       return null;
     }
 
+    final completer = Completer<ui.Image>();
     final bytes = Uint8List(fftBitmapRange * 2 * 4);
     // Fill the texture bitmap
     var col = 0;
@@ -365,17 +376,24 @@ class _VisualizerState extends State<Visualizer>
   /// Passing [getWaveDataCallback] as parameter, it will return wave data
   /// Passing [getFFTDataCallback] as parameter, it will return FFT data
   Future<ui.Image?> buildImageFromAllSamplesMatrix() async {
-    final completer = Completer<ui.Image>();
-
-    /// audioData here will be available to all the children of [Visualizer]
+    if (!widget.controller.isVisualizerEnabled) {
+      return null;
+    }
+    /// get audio data from player or capture device
     if (widget.controller.isVisualizerForPlayer && isPlayerInited) {
       final ret = await AudioIsolate().getAudioTexture2D(playerData);
-      if (ret != PlayerErrors.noError) {
+      if (ret != PlayerErrors.noError) return null;
+    } else 
+    if (!widget.controller.isVisualizerForPlayer && isCaptureInited) {
+      final ret = AudioIsolate().getCaptureAudioTexture2D(captureData);
+      if (ret != CaptureErrors.captureNoError) {
         return null;
       }
-    } else if (!widget.controller.isVisualizerForPlayer && isCaptureInited) {
-      AudioIsolate().getCaptureAudioTexture2D(captureData);
     } else {
+      return null;
+    }
+
+    if (!mounted) {
       return null;
     }
 
@@ -388,6 +406,7 @@ class _VisualizerState extends State<Visualizer>
     if (!mounted) {
       return null;
     }
+    final completer = Completer<ui.Image>();
     final bytes = Uint8List(fftBitmapRange * 256 * 4);
 
     // Fill the texture bitmap with wave data

@@ -6,19 +6,31 @@
 #include "common.h"
 #endif
 
-// #ifndef miniaudio_c
-// #define MINIAUDIO_IMPLEMENTATION
+#include <vector>
+#include <string>
+
 #include "soloud/src/backend/miniaudio/miniaudio.h"
-// #endif
+
+struct CaptureDevice {
+    char* name;
+    unsigned int isDefault;
+};
 
 class Capture {
 public:
     Capture();
     ~Capture();
 
-    void listDevices();
+    /// returns a list of available capture devices
+    /// detected by miniaudio
+    std::vector<CaptureDevice> listCaptureDevices();
 
-    CaptureErrors init();
+    /// @brief initialize the capture with a [deviceID]. A list of devices
+    ///     can be acquired with [listCaptureDevices].
+    ///     If [deviceID] is -1, the default will be used
+    /// @param deviceID 
+    /// @return 
+    CaptureErrors init(int deviceID);
 
     /// @brief Must be called when there is no more need of the capture or when closing the app
     /// @return 

@@ -110,7 +110,7 @@ FFI_PLUGIN_EXPORT void getAudioTexture(float* samples);
 /// up (the last one will be lost).
 /// @param samples 
 /// @return 
-FFI_PLUGIN_EXPORT void getAudioTexture2D(float** samples);
+FFI_PLUGIN_EXPORT enum PlayerErrors getAudioTexture2D(float** samples);
 
 /// @brief get the sound length in seconds
 /// @param soundHash the sound hash

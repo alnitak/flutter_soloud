@@ -189,6 +189,11 @@ void Player::setVisualizationEnabled(bool enabled)
     soloud.setVisualizationEnable(enabled);
 }
 
+bool Player::isVisualizationEnabled()
+{
+    return soloud.mFlags & SoLoud::Soloud::ENABLE_VISUALIZATION;
+}
+
 float *Player::calcFFT()
 {
     return soloud.calcFFT();

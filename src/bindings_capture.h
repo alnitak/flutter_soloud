@@ -3,12 +3,15 @@
 
 #include "enums.h"
 #include "common.h"
+#include "capture.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-FFI_PLUGIN_EXPORT enum CaptureErrors initCapture();
+FFI_PLUGIN_EXPORT void listCaptureDevices(CaptureDevice **devices, int *n_devices);
+
+FFI_PLUGIN_EXPORT enum CaptureErrors initCapture(int deviceID);
 
 FFI_PLUGIN_EXPORT int isCaptureInited();
 

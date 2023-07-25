@@ -49,7 +49,7 @@ enum PlayerErrors {
   isolateNotStarted,
 
   /// Engine not yet started
-  engineNotStarted,
+  engineNotInited,
 }
 
 /// FFI bindings to SoLoud
@@ -332,17 +332,18 @@ class FlutterSoLoudFfi {
   /// up (the last one will be lost).
   /// @param samples
   /// @return
-  void getAudioTexture2D(ffi.Pointer<ffi.Pointer<ffi.Float>> samples) {
-    if (samples.address == ffi.nullptr.address) return;
-    _getAudioTexture2D(samples);
+  PlayerErrors getAudioTexture2D(ffi.Pointer<ffi.Pointer<ffi.Float>> samples) {
+    if (samples == ffi.nullptr) return PlayerErrors.nullPointer;
+    final ret = _getAudioTexture2D(samples);
+    return PlayerErrors.values[ret];
   }
 
   late final _getAudioTexture2DPtr = _lookup<
       ffi.NativeFunction<
-          ffi.Void Function(
+          ffi.Int32 Function(
               ffi.Pointer<ffi.Pointer<ffi.Float>>)>>('getAudioTexture2D');
   late final _getAudioTexture2D = _getAudioTexture2DPtr
-      .asFunction<void Function(ffi.Pointer<ffi.Pointer<ffi.Float>>)>();
+      .asFunction<int Function(ffi.Pointer<ffi.Pointer<ffi.Float>>)>();
 
   /// @brief get the sound length in seconds
   /// @param soundHash the sound hash

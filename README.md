@@ -155,7 +155,7 @@ The `PlayerErrors` enum:
 |***soundHashNotFound***|The sound with specified hash is not found|
 |***isolateAlreadyStarted***|Audio isolate already started|
 |***isolateNotStarted***|Audio isolate not yet started|
-|***engineNotStarted***|Engine not yet started|
+|***engineNotInited***|Engine not yet started|
 
 *AudioIsolate()* has a `StreamController` which can be used, for now, only to know when a sound handle reached the end:
 ```

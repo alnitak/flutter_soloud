@@ -24,12 +24,14 @@ Capture::~Capture()
     dispose();
 }
 
-void Capture::listDevices()
+std::vector<CaptureDevice> Capture::listCaptureDevices()
 {
     platform_log("***************** LIST DEVICES START\n");
+    std::vector<CaptureDevice> ret;
     if ((result = ma_context_init(NULL, 0, NULL, &context)) != MA_SUCCESS)
     {
         platform_log("Failed to initialize context %d\n", result);
+        return ret;
     }
 
     if ((result = ma_context_get_devices(
@@ -40,47 +42,35 @@ void Capture::listDevices()
              &captureCount)) != MA_SUCCESS)
     {
         platform_log("Failed to get devices %d\n", result);
+        return ret;
     }
 
     // Loop over each device info and do something with it. Here we just print
     // the name with their index. You may want
     // to give the user the opportunity to choose which device they'd prefer.
-    for (ma_uint32 iDevice = 0; iDevice < playbackCount; iDevice += 1)
+    for (ma_uint32 i = 0; i < playbackCount; i++)
     {
         platform_log("######%s %d - %s\n",
-                     pCaptureInfos[iDevice].isDefault ? "X" : "-",
-                     iDevice,
-                     pCaptureInfos[iDevice].name);
+                     pCaptureInfos[i].isDefault ? " X" : "-",
+                     i,
+                     pCaptureInfos[i].name);
+        CaptureDevice cd;
+        cd.name = strdup(pCaptureInfos[i].name);
+        cd.isDefault = pCaptureInfos[i].isDefault;
+        ret.push_back(cd);
     }
-
-    // ma_device_config config = ma_device_config_init(ma_device_type_playback);
-    // config.playback.pDeviceID = &pPlaybackInfos[chosenPlaybackDeviceIndex].id;
-    // config.playback.format = MY_FORMAT;
-    // config.playback.channels = MY_CHANNEL_COUNT;
-    // config.sampleRate = MY_SAMPLE_RATE;
-    // config.dataCallback = data_callback;
-    // config.pUserData = pMyCustomData;
-
-    // ma_device device;
-    // if (ma_device_init(&context, &config, &device) != MA_SUCCESS)
-    // {
-    //     // Error
-    // }
-
-    // ...
-
-    //     ma_device_uninit(&device);
-    // ma_context_uninit(&context);
     platform_log("***************** LIST DEVICES END\n");
+    return ret;
 }
 
-CaptureErrors Capture::init()
+CaptureErrors Capture::init(int deviceID)
 {
-    listDevices();
+    listCaptureDevices();
 
     deviceConfig = ma_device_config_init(ma_device_type_capture);
     deviceConfig.periodSizeInFrames = CAPTURE_BUFFER_SIZE;
-    deviceConfig.capture.pDeviceID = &pPlaybackInfos[6].id;
+    if (deviceID != -1)
+        deviceConfig.capture.pDeviceID = &pPlaybackInfos[deviceID].id;
     deviceConfig.capture.format = ma_format_f32;
     deviceConfig.capture.channels = 2;
     deviceConfig.sampleRate = 44100;
@@ -140,12 +130,11 @@ float *Capture::getWave()
     int n = CAPTURE_BUFFER_SIZE >> 8;
     for (int i = 0; i < 256; i++)
     {
-        waveData[i] = (
-            capturedBuffer[i * n] + 
-            capturedBuffer[i * n + 1] + 
-            capturedBuffer[i * n + 2] + 
-            capturedBuffer[i * n + 3]
-            ) / n;
+        waveData[i] = (capturedBuffer[i * n] +
+                       capturedBuffer[i * n + 1] +
+                       capturedBuffer[i * n + 2] +
+                       capturedBuffer[i * n + 3]) /
+                      n;
     }
     return waveData;
 }

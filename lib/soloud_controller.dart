@@ -9,7 +9,9 @@ class SoLoudController {
   ///
   factory SoLoudController() => _instance ??= SoLoudController._();
 
-  SoLoudController._();
+  SoLoudController._() {
+    initialize();
+  }
 
   static SoLoudController? _instance;
 

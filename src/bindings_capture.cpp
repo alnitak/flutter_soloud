@@ -5,6 +5,7 @@
 #endif
 
 #include <stdio.h>
+#include <vector>
 #include <iostream>
 #include <memory.h>
 #include <memory>
@@ -16,9 +17,29 @@ extern "C" {
 Capture capture;
 std::unique_ptr<Analyzer> analyzerCapture = std::make_unique<Analyzer>(256);
 
-FFI_PLUGIN_EXPORT enum CaptureErrors initCapture()
+FFI_PLUGIN_EXPORT void listCaptureDevices(struct CaptureDevice **devices, int *n_devices)
 {
-    CaptureErrors res = (CaptureErrors)capture.init();
+    std::vector<CaptureDevice> d = capture.listCaptureDevices();
+    int numDevices = 0;
+    for (int i=0; i<(int)d.size(); i++)
+    {
+        bool hasSpecialChar = false;
+        /// check if the device name has some strange chars
+        for (int n=0; n<5; n++) if (d[i].name[n] < 0x20) hasSpecialChar = true;
+        if (strlen(d[i].name) <= 5 || hasSpecialChar) break;
+
+        devices[i] = (CaptureDevice*)malloc(sizeof(CaptureDevice));
+        devices[i]->name = strdup(d[i].name);
+        devices[i]->isDefault = d[i].isDefault;
+
+        numDevices++;
+    }
+    *n_devices = numDevices;
+}
+
+FFI_PLUGIN_EXPORT enum CaptureErrors initCapture(int deviceID)
+{
+    CaptureErrors res = (CaptureErrors)capture.init(deviceID);
     if (res != noError) return res;
     return capture_noError;
 }

@@ -17,7 +17,6 @@ class _HelloFlutterSoLoudState extends State<Capture> {
   @override
   void initState() {
     super.initState();
-    soLoudController.initialize();
   }
 
   @override
@@ -45,7 +44,7 @@ class _HelloFlutterSoLoudState extends State<Capture> {
 
             ElevatedButton(
               onPressed: () async {
-                final b = soLoudController.captureFFI.initCapture();
+                final b = soLoudController.captureFFI.initCapture(6);
                 print('INIT: $b');
               },
               child: const Text('init capture'),

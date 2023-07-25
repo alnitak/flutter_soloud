@@ -103,6 +103,8 @@ public:
     /// @return 
     void setVisualizationEnabled(bool enabled);
 
+    bool isVisualizationEnabled();
+
     /// @brief Calculates FFT of the currently playing sound
     /// @return a 256 float pointer to the result
     float* calcFFT();

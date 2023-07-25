@@ -16,12 +16,16 @@
 
 #include "enums.h"
 
+struct CaptureDevice {
+    char* name;
+    unsigned int isDefault;
+};
+
 #define FFI_PLUGIN_EXPORT
 
 //--------------------- copy here the new functions to generate
 
 
+FFI_PLUGIN_EXPORT enum CaptureErrors initCapture(int deviceID);
 
-FFI_PLUGIN_EXPORT enum CaptureErrors getCaptureAudioTexture2D(float** samples);
 
-FFI_PLUGIN_EXPORT enum CaptureErrors setCaptureFftSmoothing(float smooth);

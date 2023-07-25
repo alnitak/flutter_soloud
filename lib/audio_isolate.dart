@@ -118,8 +118,6 @@ void audioIsolate(SendPort isolateToMainStream) {
 
   isolateToMainStream.send(mainToIsolateStream.sendPort);
 
-  soLoudController.initialize();
-
   /// Listen to all requests from the main isolate
   mainToIsolateStream.listen((data) {
     final event = data as Map<String, Object>;
@@ -290,9 +288,10 @@ void audioIsolate(SendPort isolateToMainStream) {
         final audioDataFromAddress =
             ffi.Pointer<ffi.Pointer<ffi.Float>>.fromAddress(
                 args.audioDataAddress);
-        soLoudController.soLoudFFI.getAudioTexture2D(audioDataFromAddress);
+        final ret =
+            soLoudController.soLoudFFI.getAudioTexture2D(audioDataFromAddress);
         isolateToMainStream
-            .send({'event': event['event'], 'args': args, 'return': ()});
+            .send({'event': event['event'], 'args': args, 'return': ret});
         break;
 
       case _MessageEvents.setFftSmoothing:
@@ -592,7 +591,7 @@ class AudioIsolate {
   Future<({PlayerErrors error, SoundProps? sound})> loadFile(
       String completeFileName) async {
     if (!isPlayerInited) {
-      return (error: PlayerErrors.engineNotStarted, sound: null);
+      return (error: PlayerErrors.engineNotInited, sound: null);
     }
     _mainToIsolateStream?.send(
       {
@@ -617,7 +616,7 @@ class AudioIsolate {
     String textToSpeech,
   ) async {
     if (!isPlayerInited) {
-      return (error: PlayerErrors.engineNotStarted, sound: SoundProps(-1));
+      return (error: PlayerErrors.engineNotInited, sound: SoundProps(-1));
     }
     _mainToIsolateStream?.send(
       {
@@ -647,7 +646,7 @@ class AudioIsolate {
     bool paused = false,
   }) async {
     if (!isPlayerInited) {
-      return (error: PlayerErrors.engineNotStarted, sound: sound, newHandle: 0);
+      return (error: PlayerErrors.engineNotInited, sound: sound, newHandle: 0);
     }
     _mainToIsolateStream?.send(
       {
@@ -679,7 +678,7 @@ class AudioIsolate {
       );
     }
     return (
-      error: PlayerErrors.engineNotStarted,
+      error: PlayerErrors.engineNotInited,
       sound: sound,
       newHandle: ret.newHandle
     );
@@ -688,7 +687,7 @@ class AudioIsolate {
   /// @brief Pause or unpause already loaded sound identified by [handle]
   /// @param handle the sound handle
   Future<PlayerErrors> pauseSwitch(int handle) async {
-    if (!isPlayerInited) return PlayerErrors.engineNotStarted;
+    if (!isPlayerInited) return PlayerErrors.engineNotInited;
     _mainToIsolateStream?.send(
       {
         'event': _MessageEvents.pauseSwitch,
@@ -704,7 +703,7 @@ class AudioIsolate {
   /// @return true if paused
   Future<({PlayerErrors error, bool pause})> getPause(int handle) async {
     if (!isPlayerInited) {
-      return (error: PlayerErrors.engineNotStarted, pause: false);
+      return (error: PlayerErrors.engineNotInited, pause: false);
     }
     _mainToIsolateStream?.send(
       {
@@ -721,7 +720,7 @@ class AudioIsolate {
   /// @param handle
   Future<PlayerErrors> stop(int handle) async {
     if (!isPlayerInited) {
-      return PlayerErrors.engineNotStarted;
+      return PlayerErrors.engineNotInited;
     }
     _mainToIsolateStream?.send(
       {
@@ -743,7 +742,7 @@ class AudioIsolate {
   /// @param sound
   Future<PlayerErrors> stopSound(SoundProps sound) async {
     if (!isPlayerInited) {
-      return PlayerErrors.engineNotStarted;
+      return PlayerErrors.engineNotInited;
     }
     _mainToIsolateStream?.send(
       {
@@ -769,7 +768,7 @@ class AudioIsolate {
   // ignore: avoid_positional_boolean_parameters
   Future<PlayerErrors> setVisualizationEnabled(bool enabled) async {
     if (!isPlayerInited) {
-      return PlayerErrors.engineNotStarted;
+      return PlayerErrors.engineNotInited;
     }
     _mainToIsolateStream?.send(
       {
@@ -787,7 +786,7 @@ class AudioIsolate {
   /// @return returns sound length in seconds
   Future<({PlayerErrors error, double length})> getLength(int soundHash) async {
     if (!isPlayerInited) {
-      return (error: PlayerErrors.engineNotStarted, length: 0.0);
+      return (error: PlayerErrors.engineNotInited, length: 0.0);
     }
     _mainToIsolateStream?.send(
       {
@@ -807,7 +806,7 @@ class AudioIsolate {
   /// @return Returns [PlayerErrors.noError] if success
   Future<PlayerErrors> seek(int handle, double time) async {
     if (!isPlayerInited) {
-      return PlayerErrors.engineNotStarted;
+      return PlayerErrors.engineNotInited;
     }
     _mainToIsolateStream?.send(
       {
@@ -827,7 +826,7 @@ class AudioIsolate {
   Future<({PlayerErrors error, double position})> getPosition(
       int handle) async {
     if (!isPlayerInited) {
-      return (error: PlayerErrors.engineNotStarted, position: 0.0);
+      return (error: PlayerErrors.engineNotInited, position: 0.0);
     }
     _mainToIsolateStream?.send(
       {
@@ -847,7 +846,7 @@ class AudioIsolate {
   Future<({PlayerErrors error, bool isValid})> getIsValidVoiceHandle(
       int handle) async {
     if (!isPlayerInited) {
-      return (error: PlayerErrors.engineNotStarted, isValid: false);
+      return (error: PlayerErrors.engineNotInited, isValid: false);
     }
     _mainToIsolateStream?.send(
       {
@@ -878,7 +877,7 @@ class AudioIsolate {
     //     'args': r,
     //   },
     // );
-    // await _waitForEvent(_MessageEvents.getAudioTexture2D, r);
+    // final ret = await _waitForEvent(_MessageEvents.getAudioTexture2D, r);
     // if (audioData.address == ffi.nullptr.address) {
     //   return PlayerErrors.nullPointer;
     // }
@@ -886,14 +885,16 @@ class AudioIsolate {
 
     /// Prefer using direct FFI call since there is less gap then calling
     /// the audio isolate.
-    if (!isPlayerInited) return PlayerErrors.engineNotStarted;
     // final ret =
-        SoLoudController().soLoudFFI.getAudioTexture2D(audioData);
-    if (audioData.address == ffi.nullptr.address) {
+    if (!isPlayerInited || audioData == ffi.nullptr) {
+      return PlayerErrors.engineNotInited;
+    }
+    final ret = SoLoudController().soLoudFFI.getAudioTexture2D(audioData);
+    if (ret != PlayerErrors.noError || audioData.value == ffi.nullptr) {
       return PlayerErrors.nullPointer;
     }
     // if (ret != PlayerErrors.noError) {
-      // return PlayerErrors.nullPointer;
+    // return PlayerErrors.nullPointer;
     // }
     return PlayerErrors.noError;
   }
@@ -909,7 +910,7 @@ class AudioIsolate {
   /// newFreq = smooth * oldFreq + (1 - smooth) * newFreq
   /// @return [PlayerErrors.noError] if success
   Future<PlayerErrors> setFftSmoothing(double smooth) async {
-    if (!isPlayerInited) return PlayerErrors.engineNotStarted;
+    if (!isPlayerInited) return PlayerErrors.engineNotInited;
     _mainToIsolateStream?.send(
       {
         'event': _MessageEvents.setFftSmoothing,
@@ -924,9 +925,12 @@ class AudioIsolate {
   /// Below all the methods implemented with FFI for the capture
   //////////////////////////////////////////////////
 
-  CaptureErrors initCapture() {
-    SoLoudController().initialize();
-    final ret = SoLoudController().captureFFI.initCapture();
+  List<CaptureDevice> listCaptureDevices() {
+    return SoLoudController().captureFFI.listCaptureDevices();
+  }
+
+  CaptureErrors initCapture({int deviceID = -1}) {
+    final ret = SoLoudController().captureFFI.initCapture(deviceID);
     if (ret == CaptureErrors.captureNoError) {
       isCaptureInited = true;
       audioEvent.add(AudioEvent.captureStarted);
@@ -957,13 +961,13 @@ class AudioIsolate {
 
   CaptureErrors getCaptureAudioTexture2D(
       ffi.Pointer<ffi.Pointer<ffi.Float>> audioData) {
-    if (!isCaptureInited) return CaptureErrors.captureNotInited;
+    if (!isCaptureInited || audioData == ffi.nullptr) {
+      return CaptureErrors.captureNotInited;
+    }
+
     final ret =
         SoLoudController().captureFFI.getCaptureAudioTexture2D(audioData);
-    if (audioData.address == ffi.nullptr.address) {
-      return CaptureErrors.nullPointer;
-    }
-    if (ret != CaptureErrors.captureNoError) {
+    if (ret != CaptureErrors.captureNoError || audioData.value == ffi.nullptr) {
       return CaptureErrors.nullPointer;
     }
     return CaptureErrors.captureNoError;
