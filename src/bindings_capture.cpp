@@ -109,6 +109,7 @@ FFI_PLUGIN_EXPORT enum CaptureErrors setCaptureFftSmoothing(float smooth)
 {
     if (!capture.isInited()) return capture_not_inited;
     analyzerCapture.get()->setSmoothing(smooth);
+    return capture_noError;
 }
 
 #ifdef __cplusplus
