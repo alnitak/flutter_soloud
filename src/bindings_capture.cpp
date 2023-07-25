@@ -36,9 +36,13 @@ FFI_PLUGIN_EXPORT void listCaptureDevices(struct CaptureDevice **devices, int *n
     }
     *n_devices = numDevices;
 }
-FFI_PLUGIN_EXPORT void freeListCaptureDevices(struct CaptureDevice **devices, int *n_devices)
+FFI_PLUGIN_EXPORT void freeListCaptureDevices(struct CaptureDevice **devices, int n_devices)
 {
-
+    for (int i=0; i<n_devices; i++)
+    {
+        free(devices[i]->name);
+        free(devices[i]);
+    }
 }
 
 FFI_PLUGIN_EXPORT enum CaptureErrors initCapture(int deviceID)

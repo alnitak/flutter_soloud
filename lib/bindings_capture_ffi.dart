@@ -76,10 +76,14 @@ class FlutterCaptureFfi {
     }
     /// free allocated memory done in C
     /// this work on linux and android, not on win
-    for (int i = 0; i < ndev; i++) {
-      calloc.free(devices.elementAt(i).value.ref.name);
-      calloc.free(devices.elementAt(i).value);
-    }
+    // for (int i = 0; i < ndev; i++) {
+    //   calloc.free(devices.elementAt(i).value.ref.name);
+    //   calloc.free(devices.elementAt(i).value);
+    // }
+    _freeListCaptureDevices(
+      devices,
+      ndev,
+    );
 
     calloc.free(devices);
     calloc.free(n_devices);
@@ -94,6 +98,14 @@ class FlutterCaptureFfi {
       void Function(
           ffi.Pointer<ffi.Pointer<_CaptureDevice>>, ffi.Pointer<ffi.Int>)>();
 
+  late final _freeListCaptureDevicesPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Void Function(ffi.Pointer<ffi.Pointer<_CaptureDevice>>,
+              ffi.Int)>>('freeListCaptureDevices');
+  late final _freeListCaptureDevices = _freeListCaptureDevicesPtr.asFunction<
+      void Function(ffi.Pointer<ffi.Pointer<_CaptureDevice>>, int)>();
+
+  ///
   CaptureErrors initCapture(int deviceID) {
     final e = _initCapture(deviceID);
     return CaptureErrors.values[e];

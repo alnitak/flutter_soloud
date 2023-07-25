@@ -26,6 +26,6 @@ struct CaptureDevice {
 //--------------------- copy here the new functions to generate
 
 
-FFI_PLUGIN_EXPORT void freeListCaptureDevices(struct CaptureDevice **devices, int *n_devices);
+FFI_PLUGIN_EXPORT void freeListCaptureDevices(struct CaptureDevice **devices, int n_devices);
 
 
