@@ -65,8 +65,7 @@ std::vector<CaptureDevice> Capture::listCaptureDevices()
 
 CaptureErrors Capture::init(int deviceID)
 {
-    listCaptureDevices();
-
+    if (mInited) return capture_init_failed;
     deviceConfig = ma_device_config_init(ma_device_type_capture);
     deviceConfig.periodSizeInFrames = CAPTURE_BUFFER_SIZE;
     if (deviceID != -1)
@@ -127,6 +126,7 @@ CaptureErrors Capture::stopCapture()
         return capture_not_inited;
 
     ma_device_uninit(&device);
+    mInited = false;
     return capture_noError;
 }
 

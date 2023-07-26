@@ -47,9 +47,8 @@ FFI_PLUGIN_EXPORT void freeListCaptureDevices(struct CaptureDevice **devices, in
 
 FFI_PLUGIN_EXPORT enum CaptureErrors initCapture(int deviceID)
 {
-    CaptureErrors res = (CaptureErrors)capture.init(deviceID);
-    if (res != noError) return res;
-    return capture_noError;
+    CaptureErrors res = capture.init(deviceID);
+    return res;
 }
 
 FFI_PLUGIN_EXPORT void disposeCapture()
@@ -69,22 +68,18 @@ FFI_PLUGIN_EXPORT int isCaptureStarted()
 
 FFI_PLUGIN_EXPORT enum CaptureErrors startCapture()
 {
-    if (!capture.isInited()) return capture_not_inited;
-
     return capture.startCapture();
 }
 
 FFI_PLUGIN_EXPORT enum CaptureErrors stopCapture()
 {
-    if (!capture.isInited()) return capture_not_inited;
-
     return capture.stopCapture();
 }
 
 
 FFI_PLUGIN_EXPORT void getCaptureTexture(float* samples)
 {
-    if (analyzerCapture.get() == nullptr) {
+    if (analyzerCapture.get() == nullptr || !capture.isInited()) {
         memset(samples,0, sizeof(float) * 512);
         return;
     }

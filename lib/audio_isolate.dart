@@ -923,16 +923,16 @@ class AudioIsolate {
   /// Below all the methods implemented with FFI for the capture
   //////////////////////////////////////////////////
 
-  /// List available input devices. Useful on desktop to choose 
+  /// List available input devices. Useful on desktop to choose
   /// which input device to use
-  /// 
+  ///
   List<CaptureDevice> listCaptureDevices() {
-    return SoLoudController().captureFFI. listCaptureDevices();
+    return SoLoudController().captureFFI.listCaptureDevices();
   }
 
   /// Initialize input device with [deviceID]
   /// Return [CaptureErrors.captureNoError] if no error
-  /// 
+  ///
   CaptureErrors initCapture({int deviceID = -1}) {
     final ret = SoLoudController().captureFFI.initCapture(deviceID);
     if (ret == CaptureErrors.captureNoError) {
@@ -944,23 +944,24 @@ class AudioIsolate {
   }
 
   /// Get the status of the device
-  /// 
+  ///
   bool isCaptureInitialized() {
     return SoLoudController().captureFFI.isCaptureInited();
   }
 
   /// Returns true if the device is capturing audio
-  /// 
+  ///
   bool isCaptureStarted() {
     return SoLoudController().captureFFI.isCaptureStarted();
   }
 
   /// Stop and deinit capture device
   /// Return [CaptureErrors.captureNoError] if no error
-  /// 
+  ///
   CaptureErrors stopCapture() {
     final ret = SoLoudController().captureFFI.stopCapture();
     if (ret == CaptureErrors.captureNoError) {
+      isCaptureInited = false;
       audioEvent.add(AudioEvent.captureStopped);
     }
     return ret;
@@ -968,7 +969,7 @@ class AudioIsolate {
 
   /// Start capturing audio data
   /// Return [CaptureErrors.captureNoError] if no error
-  /// 
+  ///
   CaptureErrors startCapture() {
     final ret = SoLoudController().captureFFI.startCapture();
     if (ret == CaptureErrors.captureNoError) {
@@ -982,9 +983,9 @@ class AudioIsolate {
   /// Every time is called, a new row is stored in the
   /// first row and all the previous rows are shifted
   /// up (the last one will be lost).
-  /// 
+  ///
   /// Return [CaptureErrors.captureNoError] if no error
-  /// 
+  ///
   CaptureErrors getCaptureAudioTexture2D(
       ffi.Pointer<ffi.Pointer<ffi.Float>> audioData) {
     if (!isCaptureInited || audioData == ffi.nullptr) {
@@ -1008,9 +1009,9 @@ class AudioIsolate {
   /// 1 = full smooth
   /// the new value is calculated with:
   /// newFreq = smooth * oldFreq + (1 - smooth) * newFreq
-  /// 
+  ///
   /// Return [CaptureErrors.captureNoError] if no error
-  /// 
+  ///
   CaptureErrors setCaptureFftSmoothing(double smooth) {
     final ret = SoLoudController().captureFFI.setCaptureFftSmoothing(smooth);
     return ret;

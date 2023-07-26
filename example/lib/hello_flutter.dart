@@ -73,11 +73,9 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
                 ),
                 const SizedBox(height: 16),
                 if (AudioIsolate().isCaptureInited)
-                  const RepaintBoundary(
-                    child: MicAudioWidget(
-                      width: 100,
-                      height: 100,
-                    ),
+                  const MicAudioWidget(
+                    width: 100,
+                    height: 100,
                   ),
               ],
             ),
@@ -163,9 +161,11 @@ class _MicAudioWidgetState extends State<MicAudioWidget>
 
   @override
   Widget build(BuildContext context) {
-    return CustomPaint(
-      size: Size(widget.width, widget.height),
-      painter: MicAudioPainter(audioData: audioData),
+    return RepaintBoundary(
+      child: CustomPaint(
+        size: Size(widget.width, widget.height),
+        painter: MicAudioPainter(audioData: audioData),
+      ),
     );
   }
 }
