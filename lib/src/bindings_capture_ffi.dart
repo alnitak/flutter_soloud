@@ -73,6 +73,7 @@ class FlutterCaptureFfi {
       var n = devices.elementAt(i).value.ref.isDefault;
       ret.add(CaptureDevice(s, n == 1 ? true : false));
     }
+
     /// free allocated memory done in C
     /// this work on linux and android, not on win
     // for (int i = 0; i < ndev; i++) {

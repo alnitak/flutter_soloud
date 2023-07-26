@@ -1,3 +1,5 @@
+// ignore_for_file: sort_constructors_first
+
 import 'dart:typed_data';
 
 /// Class to construct an uncompressed 32bit BMP image from raw data
@@ -65,8 +67,8 @@ class Bmp32Header {
     tmp.fillRange(0, tmp.length, value);
 
     final bytes = BytesBuilder()
-    ..add(bmp.sublist(0, rgba32HeaderSize))
-    ..add(tmp.buffer.asUint8List());
+      ..add(bmp.sublist(0, rgba32HeaderSize))
+      ..add(tmp.buffer.asUint8List());
     bmp = bytes.toBytes();
 
     return bmp;

@@ -2,6 +2,8 @@ import 'dart:ffi' as ffi;
 
 import 'package:flutter/material.dart';
 
+/// Draw the audio wave data
+///
 class BarsWaveWidget extends StatelessWidget {
   const BarsWaveWidget({
     required this.audioData,

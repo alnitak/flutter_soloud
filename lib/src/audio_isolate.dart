@@ -5,9 +5,9 @@ import 'dart:ffi' as ffi;
 import 'dart:isolate';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_soloud/bindings_capture_ffi.dart';
-import 'package:flutter_soloud/flutter_soloud_bindings_ffi.dart';
-import 'package:flutter_soloud/soloud_controller.dart';
+import 'package:flutter_soloud/src/bindings_capture_ffi.dart';
+import 'package:flutter_soloud/src/flutter_soloud_bindings_ffi.dart';
+import 'package:flutter_soloud/src/soloud_controller.dart';
 
 /// Author note: I am a bit scared on how the use of
 /// these 2 isolates implementation is gone. But hey,
@@ -34,9 +34,9 @@ enum _MessageEvents {
   stop,
   stopSound,
   setVisualizationEnabled,
-  getFft,
-  getWave,
-  getAudioTexture,
+  getFft, // TODO
+  getWave, // TODO
+  getAudioTexture, // TODO
   getAudioTexture2D,
   getLength,
   seek,
@@ -110,16 +110,19 @@ enum AudioEvent {
 void audioIsolate(SendPort isolateToMainStream) {
   final mainToIsolateStream = ReceivePort();
   final soLoudController = SoLoudController();
-  // the active sounds
+
+  /// the active sounds
   final activeSounds = <SoundProps>[];
   var loopRunning = false;
 
+  /// Tell the main isolate how to communicate with this isolate
   isolateToMainStream.send(mainToIsolateStream.sendPort);
 
   /// Listen to all requests from the main isolate
   mainToIsolateStream.listen((data) {
     final event = data as Map<String, Object>;
     if ((event['event']! as _MessageEvents) != _MessageEvents.loop) {
+      /// don't print the loop message
       debugIsolates('******** ISOLATE EVENT data: $data');
     }
 
@@ -328,11 +331,13 @@ void audioIsolate(SendPort isolateToMainStream) {
               final isValid =
                   soLoudController.soLoudFFI.getIsValidVoiceHandle(handle);
               if (!isValid) {
-                isolateToMainStream.send((
-                  event: SoundEvent.handleIsNoMoreValid,
-                  sound: sound,
-                  handle: handle
-                ));
+                isolateToMainStream.send(
+                  (
+                    event: SoundEvent.handleIsNoMoreValid,
+                    sound: sound,
+                    handle: handle
+                  ),
+                );
                 removeInvalid.add(() {
                   sound.handle.remove(handle);
                 });
@@ -343,8 +348,10 @@ void audioIsolate(SendPort isolateToMainStream) {
             }
           }
 
-          // TODO: is 10 ms ok to loop again?
+          /// Call again this isolate after N ms to let other messages
+          /// to be managed
           Future.delayed(const Duration(milliseconds: 10), () {
+            // TODO: is 10 ms ok to loop again?
             mainToIsolateStream.sendPort.send(
               {'event': _MessageEvents.loop, 'args': ()},
             );
@@ -358,6 +365,7 @@ void audioIsolate(SendPort isolateToMainStream) {
   });
 }
 
+/// The main class to call all the methods
 ///
 class AudioIsolate {
   factory AudioIsolate() => _instance ??= AudioIsolate._();
@@ -366,11 +374,16 @@ class AudioIsolate {
 
   static AudioIsolate? _instance;
 
+  /// the way to talk to the audio isolate
   SendPort? _mainToIsolateStream;
 
   /// internally used to listen from isolate
   StreamController<dynamic>? _returnedEvent;
+
+  /// the isolate used to spawn the audio management
   Isolate? _isolate;
+
+  /// the way to receive events from audio isolate
   ReceivePort? _isolateToMainStream;
 
   StreamController<AudioEvent> audioEvent = StreamController.broadcast();
@@ -432,7 +445,7 @@ class AudioIsolate {
       } else {
         debugIsolates('******** MAIN EVENT data: $data');
         if (data is StreamSoundEvent) {
-          print('@@@@@@@@@@@ STREAM EVENT: ${data.event}  '
+          debugPrint('@@@@@@@@@@@ STREAM EVENT: ${data.event}  '
               'handle: ${data.sound.handle}');
 
           /// find the sound which received the [SoundEvent] and...
@@ -470,9 +483,11 @@ class AudioIsolate {
   }
 
   /// Stop the loop, stop the engine and kill the isolate
+  ///
   Future<bool> stopIsolate() async {
     if (_isolate == null) return false;
-    isPlayerInited = false; // engine will be disposed in the audio isolate
+    // engine will be disposed in the audio isolate, so just set this variable
+    isPlayerInited = false;
     await _stopLoop();
     _mainToIsolateStream?.send(
       {
@@ -492,6 +507,7 @@ class AudioIsolate {
   }
 
   /// return true if the audio isolate is running
+  ///
   bool isIsolateRunning() {
     return _isolate != null;
   }
@@ -566,6 +582,7 @@ class AudioIsolate {
   }
 
   /// Stop the engine
+  /// The audio isolate doesn't get killed
   Future<bool> disposeEngine() async {
     if (_isolate == null || !isPlayerInited) return false;
 
@@ -583,11 +600,13 @@ class AudioIsolate {
     return true;
   }
 
-  /// @brief Load a new sound to be played once or multiple times later
-  /// @param completeFileName the complete file path
-  /// @return Returns [PlayerErrors.noError] if success and a new [sound]
+  /// Load a new sound to be played once or multiple times later
+  ///
+  /// [completeFileName] the complete file path
+  /// Returns [PlayerErrors.noError] if success and a new [sound]
   Future<({PlayerErrors error, SoundProps? sound})> loadFile(
-      String completeFileName) async {
+    String completeFileName,
+  ) async {
     if (!isPlayerInited) {
       return (error: PlayerErrors.engineNotInited, sound: null);
     }
@@ -607,9 +626,10 @@ class AudioIsolate {
     return (error: ret.error, sound: ret.sound);
   }
 
-  /// @brief Speech given text
-  /// @param textToSpeech the text to be spoken
-  /// @return Returns [PlayerErrors.noError] if success and a new [sound]
+  /// Speech the given text
+  ///
+  /// [textToSpeech] the text to be spoken
+  /// Returns [PlayerErrors.noError] if success and a new [sound]
   Future<({PlayerErrors error, SoundProps sound})> speechText(
     String textToSpeech,
   ) async {
@@ -630,13 +650,14 @@ class AudioIsolate {
     return (error: ret.error, sound: activeSounds.last);
   }
 
-  /// @brief Play already loaded sound identified by [sound]
-  /// @param sound the sound to play
-  /// @param volume 1.0f full volume
-  /// @param pan 0.0f centered
-  /// @param paused 0 not pause
-  /// @return Returns [PlayerErrors.noError] if success, the new [sound] and
-  ///   the new [handle]
+  /// Play already loaded sound identified by [sound]
+  ///
+  /// [sound] the sound to play
+  /// [volume] 1.0f full volume
+  /// [pan] 0.0f centered
+  /// [paused] 0 not pause
+  /// Returns [PlayerErrors.noError] if success, the new [sound] and
+  ///   the new sound [handle]
   Future<({PlayerErrors error, SoundProps sound, int newHandle})> play(
     SoundProps sound, {
     double volume = 1,
@@ -682,8 +703,10 @@ class AudioIsolate {
     );
   }
 
-  /// @brief Pause or unpause already loaded sound identified by [handle]
-  /// @param handle the sound handle
+  /// Pause or unpause already loaded sound identified by [handle]
+  ///
+  /// [handle] the sound handle
+  /// Returns [PlayerErrors.noError] if success
   Future<PlayerErrors> pauseSwitch(int handle) async {
     if (!isPlayerInited) return PlayerErrors.engineNotInited;
     _mainToIsolateStream?.send(
@@ -696,9 +719,10 @@ class AudioIsolate {
     return PlayerErrors.noError;
   }
 
-  /// @brief Gets the pause state
-  /// @param handle the sound handle
-  /// @return true if paused
+  /// Gets the pause state
+  ///
+  /// [handle] the sound handle
+  /// return true if paused
   Future<({PlayerErrors error, bool pause})> getPause(int handle) async {
     if (!isPlayerInited) {
       return (error: PlayerErrors.engineNotInited, pause: false);
@@ -714,8 +738,10 @@ class AudioIsolate {
     return (error: PlayerErrors.noError, pause: ret as bool);
   }
 
-  /// @brief Stop already loaded sound identified by [handle] and clear it
-  /// @param handle
+  /// Stop already loaded sound identified by [handle] and clear it from the
+  /// sound handle list
+  ///
+  /// [handle] the sound handle to stop
   Future<PlayerErrors> stop(int handle) async {
     if (!isPlayerInited) {
       return PlayerErrors.engineNotInited;
@@ -735,9 +761,10 @@ class AudioIsolate {
     return PlayerErrors.noError;
   }
 
-  /// @brief Stop all handles of the already loaded sound identified
-  ///     by [soundHash] and clear it
-  /// @param sound
+  /// Stop all handles of the already loaded sound identified
+  /// by soundHash of [sound] and clear it
+  ///
+  /// [sound] the sound to clear
   Future<PlayerErrors> stopSound(SoundProps sound) async {
     if (!isPlayerInited) {
       return PlayerErrors.engineNotInited;
@@ -759,10 +786,11 @@ class AudioIsolate {
     return PlayerErrors.noError;
   }
 
-  /// @brief Enable or disable visualization.
-  ///   When enabled it will be possible to get FFT and wave data.
-  /// @param enabled
-  /// @return [PlayerErrors.noError] on success
+  /// Enable or disable visualization.
+  /// When enabled it will be possible to get FFT and wave data.
+  ///
+  /// [enabled]
+  /// Return [PlayerErrors.noError] on success
   // ignore: avoid_positional_boolean_parameters
   Future<PlayerErrors> setVisualizationEnabled(bool enabled) async {
     if (!isPlayerInited) {
@@ -779,9 +807,10 @@ class AudioIsolate {
     return PlayerErrors.noError;
   }
 
-  /// @brief get the sound length in seconds
-  /// @param soundHash the sound hash
-  /// @return returns sound length in seconds
+  /// Get the sound length in seconds
+  ///
+  /// [soundHash] the sound hash to get the length
+  /// returns sound length in seconds
   Future<({PlayerErrors error, double length})> getLength(int soundHash) async {
     if (!isPlayerInited) {
       return (error: PlayerErrors.engineNotInited, length: 0.0);
@@ -798,10 +827,11 @@ class AudioIsolate {
     return (error: PlayerErrors.noError, length: ret);
   }
 
-  /// @brief seek playing in seconds
-  /// @param time the time to seek
-  /// @param handle the sound handle
-  /// @return Returns [PlayerErrors.noError] if success
+  /// Seek playing in seconds
+  ///
+  /// [time] the time to seek
+  /// [handle] the sound handle
+  /// Returns [PlayerErrors.noError] if success
   Future<PlayerErrors> seek(int handle, double time) async {
     if (!isPlayerInited) {
       return PlayerErrors.engineNotInited;
@@ -818,9 +848,10 @@ class AudioIsolate {
     return PlayerErrors.values[ret];
   }
 
-  /// @brief get current sound position in seconds
-  /// @param handle the sound handle
-  /// @return time in seconds
+  /// Get current sound position in seconds
+  ///
+  /// [handle] the sound handle
+  /// Return time in seconds
   Future<({PlayerErrors error, double position})> getPosition(
       int handle) async {
     if (!isPlayerInited) {
@@ -838,9 +869,10 @@ class AudioIsolate {
     return (error: PlayerErrors.noError, position: ret);
   }
 
-  /// @brief check if a handle is still valid.
-  /// @param handle handle to check
-  /// @return [PlayerErrors.noError] if success and [isvalid]==true if valid
+  /// Check if a handle is still valid
+  ///
+  /// [handle] handle to check
+  /// Return [PlayerErrors.noError] if success and [isvalid]==true if valid
   Future<({PlayerErrors error, bool isValid})> getIsValidVoiceHandle(
       int handle) async {
     if (!isPlayerInited) {
@@ -857,13 +889,14 @@ class AudioIsolate {
     return (error: PlayerErrors.noError, isValid: ret);
   }
 
-  /// @brief Return a floats matrix of 256x512
-  /// Every row are composed of 256 FFT values plus 256 of wave data
+  /// Return a floats matrix of 256x512
+  /// Every row are composed of 256 FFT values plus 256 of wave data.
   /// Every time is called, a new row is stored in the
   /// first row and all the previous rows are shifted
-  /// up (the last one will be lost).
-  /// @param audioData
-  /// @return [PlayerErrors.noError] if success
+  /// up. The last one will be lost.
+  ///
+  /// [audioData]
+  /// Return [PlayerErrors.noError] if success
   Future<PlayerErrors> getAudioTexture2D(
       ffi.Pointer<ffi.Pointer<ffi.Float>> audioData) async {
     // if (!isPlayerInited) return PlayerErrors.engineNotStarted;
@@ -883,7 +916,6 @@ class AudioIsolate {
 
     /// Prefer using direct FFI call since there is less gap then calling
     /// the audio isolate.
-    // final ret =
     if (!isPlayerInited || audioData == ffi.nullptr) {
       return PlayerErrors.engineNotInited;
     }
@@ -891,22 +923,20 @@ class AudioIsolate {
     if (ret != PlayerErrors.noError || audioData.value == ffi.nullptr) {
       return PlayerErrors.nullPointer;
     }
-    // if (ret != PlayerErrors.noError) {
-    // return PlayerErrors.nullPointer;
-    // }
     return PlayerErrors.noError;
   }
 
-  /// @brief smooth FFT data.
-  /// When new data is read and the values are decreasing, the new value will be
-  /// decreased with an amplitude between the old and the new value.
-  /// This will resul on a less shaky visualization
-  /// @param [smooth] must be in the [0.0 ~ 1.0] range.
+  /// Smooth FFT data.
+  /// When new data is read and the values are decreasing, the new value
+  /// will be decreased with an amplitude between the old and the new value.
+  /// This will resul on a less shaky visualization.
+  ///
+  /// [smooth] must be in the [0.0 ~ 1.0] range.
   /// 0 = no smooth
   /// 1 = full smooth
   /// the new value is calculated with:
   /// newFreq = smooth * oldFreq + (1 - smooth) * newFreq
-  /// @return [PlayerErrors.noError] if success
+  /// Return [PlayerErrors.noError] if success
   Future<PlayerErrors> setFftSmoothing(double smooth) async {
     if (!isPlayerInited) return PlayerErrors.engineNotInited;
     _mainToIsolateStream?.send(
@@ -931,8 +961,8 @@ class AudioIsolate {
   }
 
   /// Initialize input device with [deviceID]
-  /// Return [CaptureErrors.captureNoError] if no error
   ///
+  /// Return [CaptureErrors.captureNoError] if no error
   CaptureErrors initCapture({int deviceID = -1}) {
     final ret = SoLoudController().captureFFI.initCapture(deviceID);
     if (ret == CaptureErrors.captureNoError) {
@@ -956,8 +986,8 @@ class AudioIsolate {
   }
 
   /// Stop and deinit capture device
-  /// Return [CaptureErrors.captureNoError] if no error
   ///
+  /// Return [CaptureErrors.captureNoError] if no error
   CaptureErrors stopCapture() {
     final ret = SoLoudController().captureFFI.stopCapture();
     if (ret == CaptureErrors.captureNoError) {
@@ -968,8 +998,8 @@ class AudioIsolate {
   }
 
   /// Start capturing audio data
-  /// Return [CaptureErrors.captureNoError] if no error
   ///
+  /// Return [CaptureErrors.captureNoError] if no error
   CaptureErrors startCapture() {
     final ret = SoLoudController().captureFFI.startCapture();
     if (ret == CaptureErrors.captureNoError) {
@@ -985,7 +1015,6 @@ class AudioIsolate {
   /// up (the last one will be lost).
   ///
   /// Return [CaptureErrors.captureNoError] if no error
-  ///
   CaptureErrors getCaptureAudioTexture2D(
       ffi.Pointer<ffi.Pointer<ffi.Float>> audioData) {
     if (!isCaptureInited || audioData == ffi.nullptr) {
@@ -1011,7 +1040,6 @@ class AudioIsolate {
   /// newFreq = smooth * oldFreq + (1 - smooth) * newFreq
   ///
   /// Return [CaptureErrors.captureNoError] if no error
-  ///
   CaptureErrors setCaptureFftSmoothing(double smooth) {
     final ret = SoLoudController().captureFFI.setCaptureFftSmoothing(smooth);
     return ret;

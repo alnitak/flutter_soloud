@@ -6,9 +6,7 @@ import 'package:ffi/ffi.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
-import 'package:flutter_soloud/audio_isolate.dart';
-import 'package:flutter_soloud/bindings_capture_ffi.dart';
-import 'package:flutter_soloud/flutter_soloud_bindings_ffi.dart';
+import 'package:flutter_soloud/flutter_soloud.dart';
 
 /// Simple usecase of flutter_soloud plugin
 class HelloFlutterSoLoud extends StatefulWidget {

@@ -2,6 +2,8 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+/// Draw the image painted using audio data
+///
 class PaintTexture extends StatelessWidget {
   const PaintTexture({
     required this.width,
@@ -19,10 +21,12 @@ class PaintTexture extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        CustomPaint(
-          size: Size(width, height),
-          painter: DisplayUiImagePainter(
-            image,
+        RepaintBoundary(
+          child: CustomPaint(
+            size: Size(width, height),
+            painter: DisplayUiImagePainter(
+              image,
+            ),
           ),
         ),
       ],
@@ -30,6 +34,8 @@ class PaintTexture extends StatelessWidget {
   }
 }
 
+/// CustomPainter to draw the ui.Image
+///
 class DisplayUiImagePainter extends CustomPainter {
   DisplayUiImagePainter(
     this.image,

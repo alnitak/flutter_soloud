@@ -5,9 +5,7 @@ import 'dart:ui' as ui;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_soloud/audio_isolate.dart';
-import 'package:flutter_soloud/flutter_soloud_bindings_ffi.dart';
-import 'package:flutter_soloud/soloud_controller.dart';
+import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:flutter_soloud_example/visualizer/visualizer.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:star_menu/star_menu.dart';
@@ -343,9 +341,7 @@ class _Page1State extends State<Page1> {
                           if (AudioIsolate().isIsolateRunning()) {
                             AudioIsolate().setFftSmoothing(smooth);
                           } else {
-                            SoLoudController()
-                                .captureFFI
-                                .setCaptureFftSmoothing(smooth);
+                            AudioIsolate().setCaptureFftSmoothing(smooth);
                           }
                           fftSmoothing.value = smooth;
                         },
@@ -367,8 +363,7 @@ class _Page1State extends State<Page1> {
                       value: forPlayer,
                       onChanged: (value) {
                         isVisualizerForPlayer.value = value;
-                        visualizerController
-                            .changeIsVisualizerForPlayer(value);
+                        visualizerController.changeIsVisualizerForPlayer(value);
                       },
                     ),
                     const Text('show capture/player data'),
@@ -388,8 +383,7 @@ class _Page1State extends State<Page1> {
                       value: isEnabled,
                       onChanged: (value) {
                         isVisualizerEnabled.value = value;
-                        visualizerController
-                            .changeIsVisualizerEnabled(value);
+                        visualizerController.changeIsVisualizerEnabled(value);
                         // AudioIsolate().setVisualizationCaptureEnabled(value);
                       },
                     ),

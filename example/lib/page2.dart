@@ -3,8 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_soloud/audio_isolate.dart';
-import 'package:flutter_soloud/flutter_soloud_bindings_ffi.dart';
+import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:path_provider/path_provider.dart';
 
 class Page2 extends StatefulWidget {
@@ -103,7 +102,7 @@ class _PlaySoundWidgetState extends State<PlaySoundWidget> {
       /// Listen to this sound events
       _subscription = sound!.soundEvents.stream.listen(
         (event) {
-          print('@@@@@@@@@@@ StreamSoundEvent for '
+          debugPrint('@@@@@@@@@@@ StreamSoundEvent for '
               'handle: ${event.handle}');
           isPaused.remove(event.handle);
           soundPosition.remove(event.handle);
@@ -111,7 +110,7 @@ class _PlaySoundWidgetState extends State<PlaySoundWidget> {
         },
       );
     } else {
-      print('Load sound asset failed: ${loadRet.error}');
+      debugPrint('Load sound asset failed: ${loadRet.error}');
       return false;
     }
     return true;

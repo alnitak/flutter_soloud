@@ -2,9 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_soloud/audio_isolate.dart';
-import 'package:flutter_soloud/bindings_capture_ffi.dart';
-import 'package:flutter_soloud/flutter_soloud_bindings_ffi.dart';
+import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:star_menu/star_menu.dart';
 
@@ -21,6 +19,7 @@ class _ControlsState extends State<Controls> {
   late final List<CaptureDevice> captureDevices;
   int choosenCaptureDeviceId = -1;
 
+  // ignore: avoid_positional_boolean_parameters
   ButtonStyle buttonStyle(bool enabled) {
     return enabled
         ? ButtonStyle(backgroundColor: MaterialStateProperty.all(Colors.green))

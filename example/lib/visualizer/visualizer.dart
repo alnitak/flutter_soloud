@@ -1,3 +1,5 @@
+// ignore_for_file: avoid_positional_boolean_parameters
+
 import 'dart:async';
 import 'dart:ffi' as ffi;
 import 'dart:typed_data';
@@ -6,9 +8,7 @@ import 'dart:ui' as ui;
 import 'package:ffi/ffi.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
-import 'package:flutter_soloud/audio_isolate.dart';
-import 'package:flutter_soloud/bindings_capture_ffi.dart';
-import 'package:flutter_soloud/flutter_soloud_bindings_ffi.dart';
+import 'package:flutter_soloud/flutter_soloud.dart';
 
 import 'package:flutter_soloud_example/visualizer/audio_shader.dart';
 import 'package:flutter_soloud_example/visualizer/bars_fft_widget.dart';
@@ -192,8 +192,7 @@ class _VisualizerState extends State<Visualizer>
       future: buildImageCallback(),
       builder: (context, dataTexture) {
         final fps = nFrames.toDouble() / (sw.elapsedMilliseconds / 1000.0);
-        if (!dataTexture.hasData ||
-            dataTexture.data == null) {
+        if (!dataTexture.hasData || dataTexture.data == null) {
           return Placeholder(
             color: Colors.yellow,
             fallbackWidth: 100,
@@ -327,12 +326,12 @@ class _VisualizerState extends State<Visualizer>
     if (!widget.controller.isVisualizerEnabled) {
       return null;
     }
+
     /// get audio data from player or capture device
     if (widget.controller.isVisualizerForPlayer && isPlayerInited) {
       final ret = await AudioIsolate().getAudioTexture2D(playerData);
       if (ret != PlayerErrors.noError) return null;
-    } else 
-    if (!widget.controller.isVisualizerForPlayer && isCaptureInited) {
+    } else if (!widget.controller.isVisualizerForPlayer && isCaptureInited) {
       final ret = AudioIsolate().getCaptureAudioTexture2D(captureData);
       if (ret != CaptureErrors.captureNoError) {
         return null;
@@ -379,12 +378,12 @@ class _VisualizerState extends State<Visualizer>
     if (!widget.controller.isVisualizerEnabled) {
       return null;
     }
+
     /// get audio data from player or capture device
     if (widget.controller.isVisualizerForPlayer && isPlayerInited) {
       final ret = await AudioIsolate().getAudioTexture2D(playerData);
       if (ret != PlayerErrors.noError) return null;
-    } else 
-    if (!widget.controller.isVisualizerForPlayer && isCaptureInited) {
+    } else if (!widget.controller.isVisualizerForPlayer && isCaptureInited) {
       final ret = AudioIsolate().getCaptureAudioTexture2D(captureData);
       if (ret != CaptureErrors.captureNoError) {
         return null;
