@@ -109,6 +109,12 @@ now it's possible to get audio data. When the mic is no more needed, it can be s
 ```
 AudioIsolate().stopCapture();
 ```
+With the audio data it will be simple to do something like in the 1st example:
+
+
+https://github.com/alnitak/flutter_soloud/assets/192827/b7d0343a-c646-4741-abab-bd88599212d0
+
+
 
 ### The AudioIsolate instance
 
