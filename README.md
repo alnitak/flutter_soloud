@@ -18,14 +18,8 @@ Flutter low level audio plugin using SoLoud library and FFI
 
 ## Overview
 
-The ***flutter_soloud*** plugin utilizes a [forked](https://github.com/alnitak/soloud) repository of [SoLoud](https://github.com/jarikomppa/soloud), where the [miniaudio](https://github.com/mackron/miniaudio) audio backend has been updated and is located in src/soloud as a git submodule.
+The ***flutter_soloud*** plugin utilizes a [forked](https://github.com/alnitak/soloud) repository of [SoLoud](https://github.com/jarikomppa/soloud), where the [miniaudio](https://github.com/mackron/miniaudio) audio backend has been updated and is located in src/soloud.
 
-To ensure that you have the correct dependencies, it is mandatory to clone this repository using the following command:
-
-`git clone --recursive https://github.com/alnitak/flutter_soloud.git`
-If you have already cloned the repository without the recursive option, you can navigate to the repository directory and execute the following command to update the git submodule:
-
-`git submodule update --init --recursive`
 For information regarding the SoLoud license, please refer to [this link](https://github.com/alnitak/soloud/blob/f4f089aa592aa45f5f6fa8c8efff64996fae920f/LICENSE).
 
 
