@@ -8,6 +8,7 @@ Flutter low level audio plugin using SoLoud library and FFI
 |💙|💙|💙|💙|💙|😭|
 
 * Supported on Linux, Windows, Mac, Android, and iOS
+* Player and capture audio from microphone
 * Multiple voices, capable of playing different sounds simultaneously or even repeating the same sound multiple times on top of each other
 * Includes a speech synthesizer
 * Supports various common formats such as 8, 16, and 32-bit WAVs, floating point WAVs, OGG, MP3, and FLAC
@@ -30,7 +31,7 @@ For information regarding the SoLoud license, please refer to [this link](https:
 
 There are 3 examples:
 
-**The 1st** is a simple use-case.
+**The 1st** is a simple use-case to show how to play a sound and how to activate the capture.
 
 **The 2nd** aims to show a visualization of frequencies and wave data. 
 The file [**Visualizer.dart**] uses `getAudioTexture2D` to store new audio data into `audioData` on every tick.
@@ -63,6 +64,7 @@ https://github.com/alnitak/flutter_soloud/assets/192827/92c9db80-80ee-4a27-b6a9-
 
 
 ## Usage
+#### Player
 First of all, *AudioIsolate* must be initialized:
 ```
 Future<bool> start() async{
@@ -102,12 +104,24 @@ class SoundProps {
 ```
 *soundHash* and *handle* list are then used in the *AudioIsolate()* class.
 
+#### Capture from mic
+
+Start the capture
+```
+AudioIsolate().initCapture();
+AudioIsolate().startCapture();
+```
+now it's possible to get audio data. When the mic is no more needed, it can be stopped:
+```
+AudioIsolate().stopCapture();
+```
+
 ### The AudioIsolate instance
 
 The `AudioIsolate` instance has the duty of receiving commands and sending them to a separate `Isolate`, while returning the results to the main UI isolate.
 
 
-
+#### Player methods
 | Function| Returns| Params| Description|
 |---------|---------|---------|--------------------------------------------------------------------------------------------|
 | **startIsolate**| PlayerErrors| -| Start the audio isolate and listen for messages coming from it.|
@@ -132,9 +146,6 @@ The `AudioIsolate` instance has the duty of receiving commands and sending them 
 | **getAudioTexture**| -| `Pointer<Float>` samples| Returns in `samples` a 512 float array.<br/>- The first 256 floats represent the FFT frequencies data [0.0~1.0].<br/>- The other 256 floats represent the wave data (amplitude) [-1.0~1.0].|
 | **getAudioTexture2D**| -| `Pointer<Pointer<Float>>` samples| Return a floats matrix of 256x512.<br/>Every row is composed of 256 FFT values plus 256 wave data.<br/>Every time is called, a new row is stored in the first row and all the previous rows are shifted up (the last will be lost).|
 | **setFftSmoothing**| -| `double` smooth| Smooth FFT data.<br/>When new data is read and the values are decreasing, the new value will be decreased with an amplitude between the old and the new value.<br/> This will result in a less shaky visualization.<br/>0 = no smooth<br/>1 = full smooth<br/>The new value is calculated with:<br/>`newFreq = smooth * oldFreq + (1 - smooth) * newFreq`|
-
-
-
 
 
 
@@ -175,12 +186,28 @@ it has also a `StreamController` to monitor when the engine starts or stops:
 ```
 AudioIsolate().audioEvent.stream.listen(
   (event) {
-    /// event == AudioEvent.isolateStarted
-    /// or
-    /// event == AudioEvent.isolateStopped
+    /// event is of [AudioEvent] enum type:
+    /// [AudioEvent.isolateStarted] the player is started and sounds can be played
+    /// [AudioEvent.isolateStopped] player stopped
+    /// [captureStarted] microphone is active and audio data can be read
+    /// [captureStopped] microphone stopped
   },
 );
 ```
+
+#### Capture methods
+| Function| Returns| Params| Description|
+|---------|---------|---------|--------------------------------------------------------------------------------------------|
+| **listCaptureDevices**| CaptureDevice| - | List available input devices. Useful on desktop to choose which input device to use.|
+| **initCapture**| CaptureErrors| - | Initialize input device with [deviceID]<br/>Return [CaptureErrors.captureNoError] if no error.|
+| **isCaptureInitialized**| bool| - | Get the status of the device.|
+| **isCaptureStarted**| bool| - | Returns true if the device is capturing audio.|
+| **stopCapture**| CaptureErrors| - | Stop and deinit capture device.|
+| **startCapture**| CaptureErrors| - | Start capturing audio data.|
+| **getCaptureAudioTexture2D**| CaptureErrors| - | Return a floats matrix of 256x512<br/>Every row are composed of 256 FFT values plus 256 of wave data.<br/>Every time is called, a new row is stored in the first row and all the previous rows are shifted up (the last one will be lost).|
+| **setCaptureFftSmoothing**| CaptureErrors| `double` smooth | Smooth FFT data.<br/>When new data is read and the values are decreasing, the new value will be decreased with an amplitude between the old and the new value. This will resul on a less shaky visualization.<br/><br/>[smooth] must be in the [0.0 ~ 1.0] range.<br/>0 = no smooth<br/>1 = full smooth<br/><br/>the new value is calculated with:<br/>newFreq = smooth * oldFreq + (1 - smooth) * newFreq|
+
+
 
 ## Contribute
 

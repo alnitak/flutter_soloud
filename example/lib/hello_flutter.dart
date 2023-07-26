@@ -11,7 +11,6 @@ import 'package:flutter_soloud/bindings_capture_ffi.dart';
 import 'package:flutter_soloud/flutter_soloud_bindings_ffi.dart';
 
 /// Simple usecase of flutter_soloud plugin
-// ignore: must_be_immutable
 class HelloFlutterSoLoud extends StatefulWidget {
   const HelloFlutterSoLoud({super.key});
 
@@ -59,6 +58,7 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
             ),
             Column(
               children: [
+                /// start the capture
                 ElevatedButton(
                   onPressed: () async {
                     final a = AudioIsolate().initCapture();

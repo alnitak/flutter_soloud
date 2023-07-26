@@ -5,11 +5,9 @@ import 'dart:ffi' as ffi;
 import 'dart:isolate';
 
 import 'package:flutter/material.dart';
-
+import 'package:flutter_soloud/bindings_capture_ffi.dart';
 import 'package:flutter_soloud/flutter_soloud_bindings_ffi.dart';
 import 'package:flutter_soloud/soloud_controller.dart';
-
-import 'bindings_capture_ffi.dart';
 
 /// Author note: I am a bit scared on how the use of
 /// these 2 isolates implementation is gone. But hey,
@@ -864,7 +862,7 @@ class AudioIsolate {
   /// Every time is called, a new row is stored in the
   /// first row and all the previous rows are shifted
   /// up (the last one will be lost).
-  /// @param samples
+  /// @param audioData
   /// @return [PlayerErrors.noError] if success
   Future<PlayerErrors> getAudioTexture2D(
       ffi.Pointer<ffi.Pointer<ffi.Float>> audioData) async {
@@ -925,10 +923,16 @@ class AudioIsolate {
   /// Below all the methods implemented with FFI for the capture
   //////////////////////////////////////////////////
 
+  /// List available input devices. Useful on desktop to choose 
+  /// which input device to use
+  /// 
   List<CaptureDevice> listCaptureDevices() {
     return SoLoudController().captureFFI. listCaptureDevices();
   }
 
+  /// Initialize input device with [deviceID]
+  /// Return [CaptureErrors.captureNoError] if no error
+  /// 
   CaptureErrors initCapture({int deviceID = -1}) {
     final ret = SoLoudController().captureFFI.initCapture(deviceID);
     if (ret == CaptureErrors.captureNoError) {
@@ -939,14 +943,21 @@ class AudioIsolate {
     return ret;
   }
 
+  /// Get the status of the device
+  /// 
   bool isCaptureInitialized() {
     return SoLoudController().captureFFI.isCaptureInited();
   }
 
+  /// Returns true if the device is capturing audio
+  /// 
   bool isCaptureStarted() {
     return SoLoudController().captureFFI.isCaptureStarted();
   }
 
+  /// Stop and deinit capture device
+  /// Return [CaptureErrors.captureNoError] if no error
+  /// 
   CaptureErrors stopCapture() {
     final ret = SoLoudController().captureFFI.stopCapture();
     if (ret == CaptureErrors.captureNoError) {
@@ -955,6 +966,9 @@ class AudioIsolate {
     return ret;
   }
 
+  /// Start capturing audio data
+  /// Return [CaptureErrors.captureNoError] if no error
+  /// 
   CaptureErrors startCapture() {
     final ret = SoLoudController().captureFFI.startCapture();
     if (ret == CaptureErrors.captureNoError) {
@@ -963,6 +977,14 @@ class AudioIsolate {
     return ret;
   }
 
+  /// Return a floats matrix of 256x512
+  /// Every row are composed of 256 FFT values plus 256 of wave data
+  /// Every time is called, a new row is stored in the
+  /// first row and all the previous rows are shifted
+  /// up (the last one will be lost).
+  /// 
+  /// Return [CaptureErrors.captureNoError] if no error
+  /// 
   CaptureErrors getCaptureAudioTexture2D(
       ffi.Pointer<ffi.Pointer<ffi.Float>> audioData) {
     if (!isCaptureInited || audioData == ffi.nullptr) {
@@ -977,6 +999,18 @@ class AudioIsolate {
     return CaptureErrors.captureNoError;
   }
 
+  /// Smooth FFT data.
+  /// When new data is read and the values are decreasing, the new value will be
+  /// decreased with an amplitude between the old and the new value.
+  /// This will resul on a less shaky visualization.
+  /// [smooth] must be in the [0.0 ~ 1.0] range.
+  /// 0 = no smooth
+  /// 1 = full smooth
+  /// the new value is calculated with:
+  /// newFreq = smooth * oldFreq + (1 - smooth) * newFreq
+  /// 
+  /// Return [CaptureErrors.captureNoError] if no error
+  /// 
   CaptureErrors setCaptureFftSmoothing(double smooth) {
     final ret = SoLoudController().captureFFI.setCaptureFftSmoothing(smooth);
     return ret;

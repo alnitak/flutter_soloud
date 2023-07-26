@@ -156,7 +156,7 @@ class FlutterSoLoudFfi {
   /// @brief Load a new sound to be played once or multiple times later
   /// @param completeFileName the complete file path
   /// @param hash return hash of the sound
-  /// @return Returns [PlayerErrors.noError] if success and a new [sound]
+  /// @return Returns [PlayerErrors.noError] if success and a new sound
   ({PlayerErrors error, int soundHash}) loadFile(String completeFileName) {
     // ignore: omit_local_variable_types
     final ffi.Pointer<ffi.UnsignedInt> h =
@@ -181,7 +181,7 @@ class FlutterSoLoudFfi {
   /// @param textToSpeech the text to be spoken
   /// @param handle sound identifier
   /// @return Returns [PlayerErrors.noError] if success
-  /// TODO(me): add other T2S parameters and a new [sound]
+  /// TODO(me): add other T2S parameters and a new sound
   ({PlayerErrors error, int handle}) speechText(String textToSpeech) {
     // ignore: omit_local_variable_types
     final ffi.Pointer<ffi.UnsignedInt> handle = calloc(1);

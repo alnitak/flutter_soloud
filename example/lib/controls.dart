@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_soloud/audio_isolate.dart';
 import 'package:flutter_soloud/bindings_capture_ffi.dart';
 import 'package:flutter_soloud/flutter_soloud_bindings_ffi.dart';
-import 'package:flutter_soloud/soloud_controller.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:star_menu/star_menu.dart';
 
