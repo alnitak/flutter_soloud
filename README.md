@@ -58,7 +58,7 @@ https://github.com/alnitak/flutter_soloud/assets/192827/92c9db80-80ee-4a27-b6a9-
 
 
 ## Usage
-#### Player
+#### The Player
 First of all, *AudioIsolate* must be initialized:
 ```
 Future<bool> start() async{
@@ -98,7 +98,7 @@ class SoundProps {
 ```
 *soundHash* and *handle* list are then used in the *AudioIsolate()* class.
 
-#### Capture from mic
+#### Capture from microphone
 
 Start the capture
 ```
