@@ -1,11 +1,11 @@
-// ignore_for_file: public_member_api_docs
+// ignore_for_file: public_member_api_docs, unnecessary_breaks
 
 import 'dart:async';
 import 'dart:ffi' as ffi;
 import 'dart:isolate';
 
 import 'package:flutter/material.dart';
-
+import 'package:flutter_soloud/bindings_capture_ffi.dart';
 import 'package:flutter_soloud/flutter_soloud_bindings_ffi.dart';
 import 'package:flutter_soloud/soloud_controller.dart';
 
@@ -94,6 +94,8 @@ class SoundProps {
 enum AudioEvent {
   isolateStarted,
   isolateStopped,
+  captureStarted,
+  captureStopped,
 }
 
 /// Top Level audio isolate function
@@ -113,8 +115,6 @@ void audioIsolate(SendPort isolateToMainStream) {
   var loopRunning = false;
 
   isolateToMainStream.send(mainToIsolateStream.sendPort);
-
-  soLoudController.initialize();
 
   /// Listen to all requests from the main isolate
   mainToIsolateStream.listen((data) {
@@ -286,9 +286,10 @@ void audioIsolate(SendPort isolateToMainStream) {
         final audioDataFromAddress =
             ffi.Pointer<ffi.Pointer<ffi.Float>>.fromAddress(
                 args.audioDataAddress);
-        soLoudController.soLoudFFI.getAudioTexture2D(audioDataFromAddress);
+        final ret =
+            soLoudController.soLoudFFI.getAudioTexture2D(audioDataFromAddress);
         isolateToMainStream
-            .send({'event': event['event'], 'args': args, 'return': ()});
+            .send({'event': event['event'], 'args': args, 'return': ret});
         break;
 
       case _MessageEvents.setFftSmoothing:
@@ -374,7 +375,8 @@ class AudioIsolate {
 
   StreamController<AudioEvent> audioEvent = StreamController.broadcast();
 
-  bool engineInited = false;
+  bool isPlayerInited = false;
+  bool isCaptureInited = false;
 
   /// Used both in main and audio isolates
   /// should be synchronized with each other
@@ -391,7 +393,7 @@ class AudioIsolate {
   Future<dynamic> _waitForEvent(_MessageEvents event, Record args) async {
     final completer = Completer<dynamic>();
 
-    final ret = await _returnedEvent?.stream.firstWhere((element) {
+    await _returnedEvent?.stream.firstWhere((element) {
       final e = element as Map<String, Object?>;
 
       // if the event with its args are what we are waiting for...
@@ -470,7 +472,7 @@ class AudioIsolate {
   /// Stop the loop, stop the engine and kill the isolate
   Future<bool> stopIsolate() async {
     if (_isolate == null) return false;
-    engineInited = false; // engine will be disposed in the audio isolate
+    isPlayerInited = false; // engine will be disposed in the audio isolate
     await _stopLoop();
     _mainToIsolateStream?.send(
       {
@@ -508,7 +510,7 @@ class AudioIsolate {
   /// it will therefore be up to the developer to check
   /// the sound handle validity
   Future<bool> _startLoop() async {
-    if (_isolate == null || !engineInited) return false;
+    if (_isolate == null || !isPlayerInited) return false;
 
     _mainToIsolateStream?.send(
       {
@@ -522,7 +524,7 @@ class AudioIsolate {
 
   /// stop the [SoundEvent]s loop
   Future<bool> _stopLoop() async {
-    if (_isolate == null || !engineInited) return false;
+    if (_isolate == null || !isPlayerInited) return false;
 
     _mainToIsolateStream?.send(
       {
@@ -535,7 +537,7 @@ class AudioIsolate {
   }
 
   //////////////////////////////////////////////////
-  /// Below all the methods implemented with FFI
+  /// Below all the methods implemented with FFI for the player
   //////////////////////////////////////////////////
 
   /// Initialize the audio engine.
@@ -554,10 +556,10 @@ class AudioIsolate {
     );
     final ret =
         await _waitForEvent(_MessageEvents.initEngine, ()) as PlayerErrors;
-    engineInited = ret == PlayerErrors.noError;
+    isPlayerInited = ret == PlayerErrors.noError;
 
     /// start also the loop in the audio isolate
-    if (engineInited) {
+    if (isPlayerInited) {
       await _startLoop();
     }
     return ret;
@@ -565,7 +567,7 @@ class AudioIsolate {
 
   /// Stop the engine
   Future<bool> disposeEngine() async {
-    if (_isolate == null || !engineInited) return false;
+    if (_isolate == null || !isPlayerInited) return false;
 
     /// first stop the loop
     await _stopLoop();
@@ -586,8 +588,8 @@ class AudioIsolate {
   /// @return Returns [PlayerErrors.noError] if success and a new [sound]
   Future<({PlayerErrors error, SoundProps? sound})> loadFile(
       String completeFileName) async {
-    if (!engineInited) {
-      return (error: PlayerErrors.engineNotStarted, sound: null);
+    if (!isPlayerInited) {
+      return (error: PlayerErrors.engineNotInited, sound: null);
     }
     _mainToIsolateStream?.send(
       {
@@ -611,8 +613,8 @@ class AudioIsolate {
   Future<({PlayerErrors error, SoundProps sound})> speechText(
     String textToSpeech,
   ) async {
-    if (!engineInited) {
-      return (error: PlayerErrors.engineNotStarted, sound: SoundProps(-1));
+    if (!isPlayerInited) {
+      return (error: PlayerErrors.engineNotInited, sound: SoundProps(-1));
     }
     _mainToIsolateStream?.send(
       {
@@ -641,8 +643,8 @@ class AudioIsolate {
     double pan = 0,
     bool paused = false,
   }) async {
-    if (!engineInited) {
-      return (error: PlayerErrors.engineNotStarted, sound: sound, newHandle: 0);
+    if (!isPlayerInited) {
+      return (error: PlayerErrors.engineNotInited, sound: sound, newHandle: 0);
     }
     _mainToIsolateStream?.send(
       {
@@ -674,7 +676,7 @@ class AudioIsolate {
       );
     }
     return (
-      error: PlayerErrors.engineNotStarted,
+      error: PlayerErrors.engineNotInited,
       sound: sound,
       newHandle: ret.newHandle
     );
@@ -683,7 +685,7 @@ class AudioIsolate {
   /// @brief Pause or unpause already loaded sound identified by [handle]
   /// @param handle the sound handle
   Future<PlayerErrors> pauseSwitch(int handle) async {
-    if (!engineInited) return PlayerErrors.engineNotStarted;
+    if (!isPlayerInited) return PlayerErrors.engineNotInited;
     _mainToIsolateStream?.send(
       {
         'event': _MessageEvents.pauseSwitch,
@@ -698,8 +700,8 @@ class AudioIsolate {
   /// @param handle the sound handle
   /// @return true if paused
   Future<({PlayerErrors error, bool pause})> getPause(int handle) async {
-    if (!engineInited) {
-      return (error: PlayerErrors.engineNotStarted, pause: false);
+    if (!isPlayerInited) {
+      return (error: PlayerErrors.engineNotInited, pause: false);
     }
     _mainToIsolateStream?.send(
       {
@@ -715,8 +717,8 @@ class AudioIsolate {
   /// @brief Stop already loaded sound identified by [handle] and clear it
   /// @param handle
   Future<PlayerErrors> stop(int handle) async {
-    if (!engineInited) {
-      return PlayerErrors.engineNotStarted;
+    if (!isPlayerInited) {
+      return PlayerErrors.engineNotInited;
     }
     _mainToIsolateStream?.send(
       {
@@ -737,8 +739,8 @@ class AudioIsolate {
   ///     by [soundHash] and clear it
   /// @param sound
   Future<PlayerErrors> stopSound(SoundProps sound) async {
-    if (!engineInited) {
-      return PlayerErrors.engineNotStarted;
+    if (!isPlayerInited) {
+      return PlayerErrors.engineNotInited;
     }
     _mainToIsolateStream?.send(
       {
@@ -763,8 +765,8 @@ class AudioIsolate {
   /// @return [PlayerErrors.noError] on success
   // ignore: avoid_positional_boolean_parameters
   Future<PlayerErrors> setVisualizationEnabled(bool enabled) async {
-    if (!engineInited) {
-      return PlayerErrors.engineNotStarted;
+    if (!isPlayerInited) {
+      return PlayerErrors.engineNotInited;
     }
     _mainToIsolateStream?.send(
       {
@@ -781,8 +783,8 @@ class AudioIsolate {
   /// @param soundHash the sound hash
   /// @return returns sound length in seconds
   Future<({PlayerErrors error, double length})> getLength(int soundHash) async {
-    if (!engineInited) {
-      return (error: PlayerErrors.engineNotStarted, length: 0.0);
+    if (!isPlayerInited) {
+      return (error: PlayerErrors.engineNotInited, length: 0.0);
     }
     _mainToIsolateStream?.send(
       {
@@ -801,8 +803,8 @@ class AudioIsolate {
   /// @param handle the sound handle
   /// @return Returns [PlayerErrors.noError] if success
   Future<PlayerErrors> seek(int handle, double time) async {
-    if (!engineInited) {
-      return PlayerErrors.engineNotStarted;
+    if (!isPlayerInited) {
+      return PlayerErrors.engineNotInited;
     }
     _mainToIsolateStream?.send(
       {
@@ -821,8 +823,8 @@ class AudioIsolate {
   /// @return time in seconds
   Future<({PlayerErrors error, double position})> getPosition(
       int handle) async {
-    if (!engineInited) {
-      return (error: PlayerErrors.engineNotStarted, position: 0.0);
+    if (!isPlayerInited) {
+      return (error: PlayerErrors.engineNotInited, position: 0.0);
     }
     _mainToIsolateStream?.send(
       {
@@ -841,8 +843,8 @@ class AudioIsolate {
   /// @return [PlayerErrors.noError] if success and [isvalid]==true if valid
   Future<({PlayerErrors error, bool isValid})> getIsValidVoiceHandle(
       int handle) async {
-    if (!engineInited) {
-      return (error: PlayerErrors.engineNotStarted, isValid: false);
+    if (!isPlayerInited) {
+      return (error: PlayerErrors.engineNotInited, isValid: false);
     }
     _mainToIsolateStream?.send(
       {
@@ -860,23 +862,38 @@ class AudioIsolate {
   /// Every time is called, a new row is stored in the
   /// first row and all the previous rows are shifted
   /// up (the last one will be lost).
-  /// @param samples
+  /// @param audioData
   /// @return [PlayerErrors.noError] if success
   Future<PlayerErrors> getAudioTexture2D(
       ffi.Pointer<ffi.Pointer<ffi.Float>> audioData) async {
-    if (!engineInited) return PlayerErrors.engineNotStarted;
+    // if (!isPlayerInited) return PlayerErrors.engineNotStarted;
 
-    final r = (audioDataAddress: audioData.address);
-    _mainToIsolateStream?.send(
-      {
-        'event': _MessageEvents.getAudioTexture2D,
-        'args': r,
-      },
-    );
-    await _waitForEvent(_MessageEvents.getAudioTexture2D, r);
-    if (audioData.address == ffi.nullptr.address) {
+    // final r = (audioDataAddress: audioData.address);
+    // _mainToIsolateStream?.send(
+    //   {
+    //     'event': _MessageEvents.getAudioTexture2D,
+    //     'args': r,
+    //   },
+    // );
+    // final ret = await _waitForEvent(_MessageEvents.getAudioTexture2D, r);
+    // if (audioData.address == ffi.nullptr.address) {
+    //   return PlayerErrors.nullPointer;
+    // }
+    // return PlayerErrors.noError;
+
+    /// Prefer using direct FFI call since there is less gap then calling
+    /// the audio isolate.
+    // final ret =
+    if (!isPlayerInited || audioData == ffi.nullptr) {
+      return PlayerErrors.engineNotInited;
+    }
+    final ret = SoLoudController().soLoudFFI.getAudioTexture2D(audioData);
+    if (ret != PlayerErrors.noError || audioData.value == ffi.nullptr) {
       return PlayerErrors.nullPointer;
     }
+    // if (ret != PlayerErrors.noError) {
+    // return PlayerErrors.nullPointer;
+    // }
     return PlayerErrors.noError;
   }
 
@@ -891,7 +908,7 @@ class AudioIsolate {
   /// newFreq = smooth * oldFreq + (1 - smooth) * newFreq
   /// @return [PlayerErrors.noError] if success
   Future<PlayerErrors> setFftSmoothing(double smooth) async {
-    if (!engineInited) return PlayerErrors.engineNotStarted;
+    if (!isPlayerInited) return PlayerErrors.engineNotInited;
     _mainToIsolateStream?.send(
       {
         'event': _MessageEvents.setFftSmoothing,
@@ -900,5 +917,102 @@ class AudioIsolate {
     );
     await _waitForEvent(_MessageEvents.setFftSmoothing, (smooth: smooth));
     return PlayerErrors.noError;
+  }
+
+  //////////////////////////////////////////////////
+  /// Below all the methods implemented with FFI for the capture
+  //////////////////////////////////////////////////
+
+  /// List available input devices. Useful on desktop to choose 
+  /// which input device to use
+  /// 
+  List<CaptureDevice> listCaptureDevices() {
+    return SoLoudController().captureFFI. listCaptureDevices();
+  }
+
+  /// Initialize input device with [deviceID]
+  /// Return [CaptureErrors.captureNoError] if no error
+  /// 
+  CaptureErrors initCapture({int deviceID = -1}) {
+    final ret = SoLoudController().captureFFI.initCapture(deviceID);
+    if (ret == CaptureErrors.captureNoError) {
+      isCaptureInited = true;
+      audioEvent.add(AudioEvent.captureStarted);
+    }
+
+    return ret;
+  }
+
+  /// Get the status of the device
+  /// 
+  bool isCaptureInitialized() {
+    return SoLoudController().captureFFI.isCaptureInited();
+  }
+
+  /// Returns true if the device is capturing audio
+  /// 
+  bool isCaptureStarted() {
+    return SoLoudController().captureFFI.isCaptureStarted();
+  }
+
+  /// Stop and deinit capture device
+  /// Return [CaptureErrors.captureNoError] if no error
+  /// 
+  CaptureErrors stopCapture() {
+    final ret = SoLoudController().captureFFI.stopCapture();
+    if (ret == CaptureErrors.captureNoError) {
+      audioEvent.add(AudioEvent.captureStopped);
+    }
+    return ret;
+  }
+
+  /// Start capturing audio data
+  /// Return [CaptureErrors.captureNoError] if no error
+  /// 
+  CaptureErrors startCapture() {
+    final ret = SoLoudController().captureFFI.startCapture();
+    if (ret == CaptureErrors.captureNoError) {
+      audioEvent.add(AudioEvent.captureStarted);
+    }
+    return ret;
+  }
+
+  /// Return a floats matrix of 256x512
+  /// Every row are composed of 256 FFT values plus 256 of wave data
+  /// Every time is called, a new row is stored in the
+  /// first row and all the previous rows are shifted
+  /// up (the last one will be lost).
+  /// 
+  /// Return [CaptureErrors.captureNoError] if no error
+  /// 
+  CaptureErrors getCaptureAudioTexture2D(
+      ffi.Pointer<ffi.Pointer<ffi.Float>> audioData) {
+    if (!isCaptureInited || audioData == ffi.nullptr) {
+      return CaptureErrors.captureNotInited;
+    }
+
+    final ret =
+        SoLoudController().captureFFI.getCaptureAudioTexture2D(audioData);
+    if (ret != CaptureErrors.captureNoError || audioData.value == ffi.nullptr) {
+      return CaptureErrors.nullPointer;
+    }
+    return CaptureErrors.captureNoError;
+  }
+
+  /// Smooth FFT data.
+  /// When new data is read and the values are decreasing, the new value will be
+  /// decreased with an amplitude between the old and the new value.
+  /// This will resul on a less shaky visualization.
+  /// [smooth] must be in the [0.0 ~ 1.0] range.
+  /// 0 = no smooth
+  /// 1 = full smooth
+  /// the new value is calculated with:
+  /// newFreq = smooth * oldFreq + (1 - smooth) * newFreq
+  /// 
+  /// Return [CaptureErrors.captureNoError] if no error
+  /// 
+  CaptureErrors setCaptureFftSmoothing(double smooth) {
+    final ret = SoLoudController().captureFFI.setCaptureFftSmoothing(smooth);
+    return ret;
   }
 }

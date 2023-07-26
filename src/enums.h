@@ -26,4 +26,17 @@ typedef enum PlayerErrors
     backendNotInited = 8
 } PlayerErrors_t;
 
+/// Possible capture errors
+typedef enum CaptureErrors
+{
+    /// No error
+    capture_noError          = 0,
+    /// 
+    capture_init_failed      = 1,
+    /// 
+    capture_not_inited       = 2,
+    /// 
+    failed_to_start_device   = 3,
+} CaptureErrors_t;
+
 #endif // ENUMS_H

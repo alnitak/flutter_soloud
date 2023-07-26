@@ -17,13 +17,15 @@ dependencies:
   ffi: ^2.0.2
 
   #https://pub.dev/packages/file_picker
-  file_picker: ^5.3.2
+  file_picker: ^5.3.3
 
   #https://pub.dev/packages/path_provider
   path_provider: ^2.0.15
 
   #https://pub.dev/packages/star_menu
   star_menu: ^3.1.4
+
+  permission_handler: ^10.4.3
 
   flutter_soloud:
     path: ../

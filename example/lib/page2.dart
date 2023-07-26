@@ -22,6 +22,8 @@ class _Page2State extends State<Page2> {
 
   @override
   void dispose() {
+    AudioIsolate().stopIsolate();
+    AudioIsolate().stopCapture();
     super.dispose();
   }
 

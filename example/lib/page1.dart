@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_soloud/audio_isolate.dart';
 import 'package:flutter_soloud/flutter_soloud_bindings_ffi.dart';
+import 'package:flutter_soloud/soloud_controller.dart';
 import 'package:flutter_soloud_example/visualizer/visualizer.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:star_menu/star_menu.dart';
@@ -40,6 +41,8 @@ class _Page1State extends State<Page1> {
   final ValueNotifier<TextureType> textureType =
       ValueNotifier(TextureType.fft2D);
   final ValueNotifier<double> fftSmoothing = ValueNotifier(0.8);
+  final ValueNotifier<bool> isVisualizerForPlayer = ValueNotifier(false);
+  final ValueNotifier<bool> isVisualizerEnabled = ValueNotifier(true);
   final ValueNotifier<RangeValues> fftImageRange =
       ValueNotifier(const RangeValues(0, 255));
   final ValueNotifier<int> maxFftImageRange = ValueNotifier(255);
@@ -47,342 +50,385 @@ class _Page1State extends State<Page1> {
   final ValueNotifier<double> soundPosition = ValueNotifier(0);
   Timer? timer;
   SoundProps? currentSound;
-  FftRangeController visualizerFftRangeController = FftRangeController();
+  FftController visualizerController = FftController();
 
   @override
   void dispose() {
     AudioIsolate().stopIsolate();
+    AudioIsolate().stopCapture();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Padding(
-        padding: const EdgeInsets.only(top: 10, right: 8, left: 8),
-        child: Center(
-          child: Column(
-            // mainAxisAlignment: MainAxisAlignment.start,
-            children: [
-              /// audio & frags popup menu
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  /// audio samples popup menu
-                  StarMenu(
-                    params: StarMenuParameters(
-                      shape: MenuShape.linear,
-                      boundaryBackground: BoundaryBackground(
-                        color: Colors.white.withOpacity(0.1),
-                        blurSigmaX: 6,
-                        blurSigmaY: 6,
-                      ),
-                      linearShapeParams: LinearShapeParams(
-                        angle: -90,
-                        space: Platform.isAndroid || Platform.isIOS ? -10 : 10,
-                        alignment: LinearAlignment.left,
-                      ),
+      body: SingleChildScrollView(
+        child: Column(
+          children: [
+            /// audio & frags popup menu
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                /// audio samples popup menu
+                StarMenu(
+                  params: StarMenuParameters(
+                    shape: MenuShape.linear,
+                    boundaryBackground: BoundaryBackground(
+                      color: Colors.white.withOpacity(0.1),
+                      blurSigmaX: 6,
+                      blurSigmaY: 6,
                     ),
-                    onItemTapped: (index, controller) {
-                      controller.closeMenu!();
-                    },
-                    items: [
-                      ActionChip(
-                        backgroundColor: Colors.blue,
-                        onPressed: () {
-                          playAsset('assets/audio/8_bit_mentality.mp3');
-                        },
-                        label: const Text('8 bit mentality'),
-                      ),
-                      ActionChip(
-                        backgroundColor: Colors.blue,
-                        onPressed: () {
-                          playAsset('assets/audio/Tropical Beeper.mp3');
-                        },
-                        label: const Text('Tropical Beeper'),
-                      ),
-                      ActionChip(
-                        backgroundColor: Colors.blue,
-                        onPressed: () {
-                          playAsset('assets/audio/X trackTure.mp3');
-                        },
-                        label: const Text('X trackTure'),
-                      ),
-                      for (int i = 0; i < audioChecks.length; i++)
-                        ActionChip(
-                          backgroundColor: Colors.blue,
-                          onPressed: () {
-                            playAsset(audioChecks[i]);
-                          },
-                          label: Text(
-                            regExp.firstMatch(audioChecks[i])?.group(1) ?? '',
-                          ),
-                        ),
-                    ],
-                    child: const Chip(
-                      label: Text('samples'),
+                    linearShapeParams: LinearShapeParams(
+                      angle: -90,
+                      space: Platform.isAndroid || Platform.isIOS ? -10 : 10,
+                      alignment: LinearAlignment.left,
+                    ),
+                  ),
+                  onItemTapped: (index, controller) {
+                    controller.closeMenu!();
+                  },
+                  items: [
+                    ActionChip(
                       backgroundColor: Colors.blue,
-                      avatar: Icon(Icons.arrow_drop_down),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-
-                  /// frags popup menu
-                  StarMenu(
-                    params: StarMenuParameters(
-                      shape: MenuShape.linear,
-                      boundaryBackground: BoundaryBackground(
-                        color: Colors.white.withOpacity(0.1),
-                        blurSigmaX: 6,
-                        blurSigmaY: 6,
-                      ),
-                      linearShapeParams: const LinearShapeParams(
-                        angle: -90,
-                        space: 10,
-                        alignment: LinearAlignment.left,
-                      ),
-                    ),
-                    onItemTapped: (index, controller) {
-                      controller.closeMenu!();
-                    },
-                    items: [
-                      for (int i = 1; i <= 9; ++i)
-                        ActionChip(
-                          backgroundColor: Colors.blue,
-                          onPressed: () {
-                            setState(() {
-                              shader = 'assets/shaders/test$i.frag';
-                            });
-                          },
-                          label: Text(i.toString()),
-                        ),
-                    ],
-                    child: const Chip(
-                      label: Text('shaders'),
-                      backgroundColor: Colors.blue,
-                      avatar: Icon(Icons.arrow_drop_down),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-
-                  /// texture type
-                  StarMenu(
-                    params: StarMenuParameters(
-                      shape: MenuShape.linear,
-                      boundaryBackground: BoundaryBackground(
-                        color: Colors.white.withOpacity(0.1),
-                        blurSigmaX: 6,
-                        blurSigmaY: 6,
-                      ),
-                      linearShapeParams: const LinearShapeParams(
-                        angle: -90,
-                        space: 10,
-                        alignment: LinearAlignment.left,
-                      ),
-                    ),
-                    onItemTapped: (index, controller) {
-                      controller.closeMenu!();
-                    },
-                    items: [
-                      /// frequencies on 1st 256 px row
-                      /// wave on 2nd 256 px row
-                      ActionChip(
-                        backgroundColor: Colors.blue,
-                        onPressed: () {
-                          textureType.value = TextureType.both1D;
-                        },
-                        label: const Text('both 1D'),
-                      ),
-
-                      /// frequencies (FFT)
-                      ActionChip(
-                        backgroundColor: Colors.blue,
-                        onPressed: () {
-                          textureType.value = TextureType.fft2D;
-                        },
-                        label: const Text('frequencies'),
-                      ),
-
-                      /// wave data (amplitudes)
-                      ActionChip(
-                        backgroundColor: Colors.blue,
-                        onPressed: () {
-                          textureType.value = TextureType.wave2D;
-                        },
-                        label: const Text('wave data'),
-                      ),
-
-                      /// both fft and wave
-                      /// TODO: not implemented yet
-                      // ActionChip(
-                      //   backgroundColor: Colors.blue,
-                      //   onPressed: () {
-                      //     textureType.value = TextureType.both2D;
-                      //   },
-                      //   label: const Text('both'),
-                      // ),
-                    ],
-                    child: const Chip(
-                      label: Text('texture'),
-                      backgroundColor: Colors.blue,
-                      avatar: Icon(Icons.arrow_drop_down),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-
-              /// Text to Speech & pick audio file
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  /// text 2 speech
-                  ElevatedButton(
-                    onPressed: () {
-                      AudioIsolate()
-                          .speechText('Hello Flutter. Text to speech!!');
-                    },
-                    child: const Text('T2S'),
-                  ),
-                  const SizedBox(width: 6),
-
-                  /// pick audio file
-                  ElevatedButton(
-                    onPressed: () async {
-                      final paths = (await FilePicker.platform.pickFiles(
-                        // type: FileType.audio,
-                        allowedExtensions: ['mp3', 'wav', 'ogg', 'flac'],
-                        onFileLoading: print,
-                        dialogTitle: 'Pick audio file',
-                      ))
-                          ?.files;
-                      if (paths != null) {
-                        unawaited(play(paths.first.path!));
-                      }
-                    },
-                    child: const Text('pick audio'),
-                  ),
-                ],
-              ),
-
-              /// Seek slider
-              ValueListenableBuilder<double>(
-                valueListenable: soundLength,
-                builder: (_, length, __) {
-                  return ValueListenableBuilder<double>(
-                    valueListenable: soundPosition,
-                    builder: (_, position, __) {
-                      if (position >= length) {
-                        position = 0;
-                        if (length == 0) length = 1;
-                      }
-
-                      return Row(
-                        children: [
-                          Text(position.toInt().toString()),
-                          Expanded(
-                            child: Slider.adaptive(
-                              value: position,
-                              max: length < position ? position : length,
-                              onChanged: (value) async {
-                                if (currentSound == null) return;
-                                stopTimer();
-                                await AudioIsolate()
-                                    .seek(currentSound!.handle.last, value);
-                                soundPosition.value = value;
-                                startTimer();
-                              },
-                            ),
-                          ),
-                          Text(length.toInt().toString()),
-                        ],
-                      );
-                    },
-                  );
-                },
-              ),
-
-              /// fft range slider values to put into the texture
-              ValueListenableBuilder<RangeValues>(
-                valueListenable: fftImageRange,
-                builder: (_, fftRange, __) {
-                  return Row(
-                    children: [
-                      Text('FFT range ${fftRange.start.toInt()}'),
-                      Expanded(
-                        child: RangeSlider(
-                          max: 255,
-                          divisions: 256,
-                          values: fftRange,
-                          onChanged: (values) {
-                            fftImageRange.value = values;
-                            visualizerFftRangeController
-                              ..changeMinFreq(values.start.toInt())
-                              ..changeMaxFreq(values.end.toInt());
-                          },
-                        ),
-                      ),
-                      Text('${fftRange.end.toInt()}'),
-                    ],
-                  );
-                },
-              ),
-
-              /// fft smoothing slider
-              ValueListenableBuilder<double>(
-                valueListenable: fftSmoothing,
-                builder: (_, smoothing, __) {
-                  return Row(
-                    children: [
-                      Text('FFT smooth: ${smoothing.toStringAsFixed(2)}'),
-                      Expanded(
-                        child: Slider.adaptive(
-                          value: smoothing,
-                          onChanged: (smooth) {
-                            AudioIsolate()
-                                .setFftSmoothing(smooth)
-                                .then((value) {
-                              fftSmoothing.value = smooth;
-                            });
-                          },
-                        ),
-                      ),
-                    ],
-                  );
-                },
-              ),
-
-              /// VISUALIZER
-              FutureBuilder<ui.FragmentShader?>(
-                future: loadShader(),
-                builder: (context, snapshot) {
-                  if (snapshot.hasData) {
-                    return ValueListenableBuilder<TextureType>(
-                      valueListenable: textureType,
-                      builder: (_, type, __) {
-                        // return SizedBox.shrink();
-                        return Visualizer(
-                          key: UniqueKey(),
-                          controller: visualizerFftRangeController,
-                          shader: snapshot.data!,
-                          textureType: type,
-                        );
+                      onPressed: () {
+                        playAsset('assets/audio/8_bit_mentality.mp3');
                       },
-                    );
-                  } else {
-                    if (snapshot.data == null) {
-                      return const Placeholder(
-                        child: Align(
-                          child: Text('Error compiling shader.\nSee log'),
+                      label: const Text('8 bit mentality'),
+                    ),
+                    ActionChip(
+                      backgroundColor: Colors.blue,
+                      onPressed: () {
+                        playAsset('assets/audio/Tropical Beeper.mp3');
+                      },
+                      label: const Text('Tropical Beeper'),
+                    ),
+                    ActionChip(
+                      backgroundColor: Colors.blue,
+                      onPressed: () {
+                        playAsset('assets/audio/X trackTure.mp3');
+                      },
+                      label: const Text('X trackTure'),
+                    ),
+                    for (int i = 0; i < audioChecks.length; i++)
+                      ActionChip(
+                        backgroundColor: Colors.blue,
+                        onPressed: () {
+                          playAsset(audioChecks[i]);
+                        },
+                        label: Text(
+                          regExp.firstMatch(audioChecks[i])?.group(1) ?? '',
                         ),
-                      );
+                      ),
+                  ],
+                  child: const Chip(
+                    label: Text('samples'),
+                    backgroundColor: Colors.blue,
+                    avatar: Icon(Icons.arrow_drop_down),
+                  ),
+                ),
+                const SizedBox(width: 10),
+
+                /// frags popup menu
+                StarMenu(
+                  params: StarMenuParameters(
+                    shape: MenuShape.linear,
+                    boundaryBackground: BoundaryBackground(
+                      color: Colors.white.withOpacity(0.1),
+                      blurSigmaX: 6,
+                      blurSigmaY: 6,
+                    ),
+                    linearShapeParams: const LinearShapeParams(
+                      angle: -90,
+                      space: 10,
+                      alignment: LinearAlignment.left,
+                    ),
+                  ),
+                  onItemTapped: (index, controller) {
+                    controller.closeMenu!();
+                  },
+                  items: [
+                    for (int i = 1; i <= 9; ++i)
+                      ActionChip(
+                        backgroundColor: Colors.blue,
+                        onPressed: () {
+                          setState(() {
+                            shader = 'assets/shaders/test$i.frag';
+                          });
+                        },
+                        label: Text(i.toString()),
+                      ),
+                  ],
+                  child: const Chip(
+                    label: Text('shaders'),
+                    backgroundColor: Colors.blue,
+                    avatar: Icon(Icons.arrow_drop_down),
+                  ),
+                ),
+                const SizedBox(width: 10),
+
+                /// texture type
+                StarMenu(
+                  params: StarMenuParameters(
+                    shape: MenuShape.linear,
+                    boundaryBackground: BoundaryBackground(
+                      color: Colors.white.withOpacity(0.1),
+                      blurSigmaX: 6,
+                      blurSigmaY: 6,
+                    ),
+                    linearShapeParams: const LinearShapeParams(
+                      angle: -90,
+                      space: 10,
+                      alignment: LinearAlignment.left,
+                    ),
+                  ),
+                  onItemTapped: (index, controller) {
+                    controller.closeMenu!();
+                  },
+                  items: [
+                    /// frequencies on 1st 256 px row
+                    /// wave on 2nd 256 px row
+                    ActionChip(
+                      backgroundColor: Colors.blue,
+                      onPressed: () {
+                        textureType.value = TextureType.both1D;
+                      },
+                      label: const Text('both 1D'),
+                    ),
+
+                    /// frequencies (FFT)
+                    ActionChip(
+                      backgroundColor: Colors.blue,
+                      onPressed: () {
+                        textureType.value = TextureType.fft2D;
+                      },
+                      label: const Text('frequencies'),
+                    ),
+
+                    /// wave data (amplitudes)
+                    ActionChip(
+                      backgroundColor: Colors.blue,
+                      onPressed: () {
+                        textureType.value = TextureType.wave2D;
+                      },
+                      label: const Text('wave data'),
+                    ),
+
+                    /// both fft and wave
+                    /// TODO: not implemented yet
+                    // ActionChip(
+                    //   backgroundColor: Colors.blue,
+                    //   onPressed: () {
+                    //     textureType.value = TextureType.both2D;
+                    //   },
+                    //   label: const Text('both'),
+                    // ),
+                  ],
+                  child: const Chip(
+                    label: Text('texture'),
+                    backgroundColor: Colors.blue,
+                    avatar: Icon(Icons.arrow_drop_down),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+
+            /// Text to Speech & pick audio file
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                /// text 2 speech
+                ElevatedButton(
+                  onPressed: () {
+                    AudioIsolate()
+                        .speechText('Hello Flutter. Text to speech!!');
+                  },
+                  child: const Text('T2S'),
+                ),
+                const SizedBox(width: 6),
+
+                /// pick audio file
+                ElevatedButton(
+                  onPressed: () async {
+                    final paths = (await FilePicker.platform.pickFiles(
+                      type: FileType.custom,
+                      allowedExtensions: ['mp3', 'wav', 'ogg', 'flac'],
+                      onFileLoading: print,
+                      dialogTitle: 'Pick audio file',
+                    ))
+                        ?.files;
+                    if (paths != null) {
+                      unawaited(play(paths.first.path!));
                     }
-                    return const CircularProgressIndicator();
+                  },
+                  child: const Text('pick audio'),
+                ),
+              ],
+            ),
+
+            /// Seek slider
+            ValueListenableBuilder<double>(
+              valueListenable: soundLength,
+              builder: (_, length, __) {
+                return ValueListenableBuilder<double>(
+                  valueListenable: soundPosition,
+                  builder: (_, position, __) {
+                    if (position >= length) {
+                      position = 0;
+                      if (length == 0) length = 1;
+                    }
+
+                    return Row(
+                      children: [
+                        Text(position.toInt().toString()),
+                        Expanded(
+                          child: Slider.adaptive(
+                            value: position,
+                            max: length < position ? position : length,
+                            onChanged: (value) async {
+                              if (currentSound == null) return;
+                              stopTimer();
+                              await AudioIsolate()
+                                  .seek(currentSound!.handle.last, value);
+                              soundPosition.value = value;
+                              startTimer();
+                            },
+                          ),
+                        ),
+                        Text(length.toInt().toString()),
+                      ],
+                    );
+                  },
+                );
+              },
+            ),
+
+            /// fft range slider values to put into the texture
+            ValueListenableBuilder<RangeValues>(
+              valueListenable: fftImageRange,
+              builder: (_, fftRange, __) {
+                return Row(
+                  children: [
+                    Text('FFT range ${fftRange.start.toInt()}'),
+                    Expanded(
+                      child: RangeSlider(
+                        max: 255,
+                        divisions: 256,
+                        values: fftRange,
+                        onChanged: (values) {
+                          fftImageRange.value = values;
+                          visualizerController
+                            ..changeMinFreq(values.start.toInt())
+                            ..changeMaxFreq(values.end.toInt());
+                        },
+                      ),
+                    ),
+                    Text('${fftRange.end.toInt()}'),
+                  ],
+                );
+              },
+            ),
+
+            /// fft smoothing slider
+            ValueListenableBuilder<double>(
+              valueListenable: fftSmoothing,
+              builder: (_, smoothing, __) {
+                return Row(
+                  children: [
+                    Text('FFT smooth: ${smoothing.toStringAsFixed(2)}'),
+                    Expanded(
+                      child: Slider.adaptive(
+                        value: smoothing,
+                        onChanged: (smooth) {
+                          if (AudioIsolate().isIsolateRunning()) {
+                            AudioIsolate().setFftSmoothing(smooth);
+                          } else {
+                            SoLoudController()
+                                .captureFFI
+                                .setCaptureFftSmoothing(smooth);
+                          }
+                          fftSmoothing.value = smooth;
+                        },
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+
+            /// switch for getting data from player or from mic
+            ValueListenableBuilder<bool>(
+              valueListenable: isVisualizerForPlayer,
+              builder: (_, forPlayer, __) {
+                return Row(
+                  children: [
+                    Switch(
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      value: forPlayer,
+                      onChanged: (value) {
+                        isVisualizerForPlayer.value = value;
+                        visualizerController
+                            .changeIsVisualizerForPlayer(value);
+                      },
+                    ),
+                    const Text('show capture/player data'),
+                  ],
+                );
+              },
+            ),
+
+            /// switch to enable / disable retrieving audio data
+            ValueListenableBuilder<bool>(
+              valueListenable: isVisualizerEnabled,
+              builder: (_, isEnabled, __) {
+                return Row(
+                  children: [
+                    Switch(
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      value: isEnabled,
+                      onChanged: (value) {
+                        isVisualizerEnabled.value = value;
+                        visualizerController
+                            .changeIsVisualizerEnabled(value);
+                        // AudioIsolate().setVisualizationCaptureEnabled(value);
+                      },
+                    ),
+                    const Text('FFT data'),
+                  ],
+                );
+              },
+            ),
+
+            /// VISUALIZER
+            FutureBuilder<ui.FragmentShader?>(
+              future: loadShader(),
+              builder: (context, snapshot) {
+                if (snapshot.hasData) {
+                  return ValueListenableBuilder<TextureType>(
+                    valueListenable: textureType,
+                    builder: (_, type, __) {
+                      // return SizedBox.shrink();
+                      return Visualizer(
+                        key: UniqueKey(),
+                        controller: visualizerController,
+                        shader: snapshot.data!,
+                        textureType: type,
+                      );
+                    },
+                  );
+                } else {
+                  if (snapshot.data == null) {
+                    return const Placeholder(
+                      child: Align(
+                        child: Text('Error compiling shader.\nSee log'),
+                      ),
+                    );
                   }
-                },
-              ),
-            ],
-          ),
+                  return const CircularProgressIndicator();
+                }
+              },
+            ),
+          ],
         ),
       ),
     );

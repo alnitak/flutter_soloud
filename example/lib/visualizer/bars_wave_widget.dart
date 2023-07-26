@@ -16,6 +16,7 @@ class BarsWaveWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (audioData.address == 0x0) return const SizedBox.shrink();
     final barWidth = width / 256;
 
     return Column(

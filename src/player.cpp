@@ -10,8 +10,6 @@
 #include <unistd.h>
 #endif
 
-#define RANGE_POSITION_CALLBACK 0.15
-
 Player::Player() : mInited(false){};
 Player::~Player()
 {
@@ -189,6 +187,11 @@ PlayerErrors Player::textToSpeech(const std::string &textToSpeech, unsigned int 
 void Player::setVisualizationEnabled(bool enabled)
 {
     soloud.setVisualizationEnable(enabled);
+}
+
+bool Player::isVisualizationEnabled()
+{
+    return soloud.mFlags & SoLoud::Soloud::ENABLE_VISUALIZATION;
 }
 
 float *Player::calcFFT()

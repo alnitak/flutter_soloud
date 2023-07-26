@@ -42,7 +42,7 @@ FFI_PLUGIN_EXPORT enum PlayerErrors initEngine()
             player.soloud.getBackendChannels()
         ) - 1;
     analyzer.get()->setWindowsSize(windowSize);
-    return noError;
+    return (PlayerErrors)noError;
 }
 
 FFI_PLUGIN_EXPORT void dispose()
@@ -100,13 +100,7 @@ FFI_PLUGIN_EXPORT void stopSound(unsigned int soundHash)
 FFI_PLUGIN_EXPORT void setVisualizationEnabled(bool enabled)
 {
     if (!player.isInited()) return;
-    if (enabled) {
-        SoLoud::Thread::sleep(100);
-        player.setVisualizationEnabled(true);
-    } else {
-        player.setVisualizationEnabled(false);
-        analyzer.reset();
-    }
+    player.setVisualizationEnabled(enabled);
 }
 
 FFI_PLUGIN_EXPORT void getFft(float* fft)
@@ -139,17 +133,19 @@ FFI_PLUGIN_EXPORT void getAudioTexture(float* samples)
 }
 
 float texture2D[256][512];
-FFI_PLUGIN_EXPORT void getAudioTexture2D(float** samples)
+FFI_PLUGIN_EXPORT enum PlayerErrors getAudioTexture2D(float** samples)
 {
-    if (analyzer.get() == nullptr) {
+    if (analyzer.get() == nullptr || !player.isVisualizationEnabled()) {
+        if (*samples == nullptr) return unknownError;
         memset(samples,0, sizeof(float) * 512 * 256);
-        return;
+        return backendNotInited;
     }
     /// shift up 1 row
     memmove(*texture2D+512, texture2D, sizeof(float) * 512 * 255);
     /// store the new 1st row
     getAudioTexture(texture2D[0]);
     *samples = *texture2D;
+    return noError;
 }
 
 FFI_PLUGIN_EXPORT double getLength(unsigned int soundHash)

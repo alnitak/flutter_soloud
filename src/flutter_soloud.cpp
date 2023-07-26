@@ -1,6 +1,4 @@
 // this source is used only on Mac and iOS to reference all the others
-#include "flutter_soloud.h"
-
 
 /// SoLoud sources
 #define WITH_NULL
@@ -105,6 +103,8 @@
 #include "bindings.cpp"
 #include "player.cpp"
 #include "analyzer.cpp"
+#include "capture.cpp"
+#include "bindings_capture.cpp"
 
 
 // A very short-lived native function.

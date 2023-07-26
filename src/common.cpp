@@ -8,7 +8,7 @@
 #endif
 
 void platform_log(const char *fmt, ...) {
-/*    va_list args;
+    va_list args;
     va_start(args, fmt);
 #ifdef _IS_ANDROID_
     __android_log_vprint(ANDROID_LOG_VERBOSE, "flutter_soloud NDK", fmt, args);
@@ -24,5 +24,5 @@ void platform_log(const char *fmt, ...) {
     fflush(nullptr);
     setvbuf(stdout, (char*)NULL, _IONBF, 0);
 #endif
-*/
+
 }
