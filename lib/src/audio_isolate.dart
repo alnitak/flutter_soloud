@@ -1,4 +1,4 @@
-// ignore_for_file: public_member_api_docs, unnecessary_breaks
+// ignore_for_file: public_member_api_docs, unnecessary_breaks, require_trailing_commas
 
 import 'dart:async';
 import 'dart:ffi' as ffi;
@@ -43,6 +43,7 @@ enum _MessageEvents {
   getPosition,
   getIsValidVoiceHandle,
   setFftSmoothing,
+  play3d,
 }
 
 /// definitions to be checked in main isolate
@@ -62,6 +63,17 @@ typedef ArgsGetPosition = ({int handle});
 typedef ArgsGetIsValidVoiceHandle = ({int handle});
 typedef ArgsGetAudioTexture2D = ({int audioDataAddress});
 typedef ArgsSetFftSmoothing = ({double smooth});
+typedef ArgsPlay3d = ({
+  int soundHash,
+  double posX,
+  double posY,
+  double posZ,
+  double velX,
+  double velY,
+  double velZ,
+  double volume,
+  bool paused
+});
 
 /// sound event types
 enum SoundEvent {
@@ -300,6 +312,44 @@ void audioIsolate(SendPort isolateToMainStream) {
         soLoudController.soLoudFFI.setFftSmoothing(args.smooth);
         isolateToMainStream
             .send({'event': event['event'], 'args': args, 'return': ()});
+        break;
+
+      //////////////////////////////////
+      /// 3D audio
+
+      case _MessageEvents.play3d:
+        final args = event['args']! as ArgsPlay3d;
+        final ret = soLoudController.soLoudFFI.play3d(
+          args.soundHash,
+          args.posX,
+          args.posY,
+          args.posZ,
+          velX: args.velX,
+          velY: args.velY,
+          velZ: args.velZ,
+          volume: args.volume,
+          paused: args.paused,
+        );
+        // add the new handle to the [activeSound] hash list
+        try {
+          activeSounds
+              .firstWhere((s) => s.soundHash == args.soundHash)
+              .handle
+              .add(ret);
+        } catch (e) {
+          debugPrint('No sound with shoundHash ${args.soundHash} found!');
+          isolateToMainStream.send({
+            'event': event['event'],
+            'args': args,
+            'return': (error: PlayerErrors.soundHashNotFound, newHandle: -1),
+          });
+          break;
+        }
+        isolateToMainStream.send({
+          'event': event['event'],
+          'args': args,
+          'return': (error: PlayerErrors.noError, newHandle: ret),
+        });
         break;
 
       //////////////////////////////////
@@ -786,6 +836,15 @@ class AudioIsolate {
     return PlayerErrors.noError;
   }
 
+  /// This function can be used to set a sample to play on repeat,
+  /// instead of just playing once
+  ///
+  /// [sound] the sound for which enable or disable the loop
+  /// [enable]
+  void setLooping(int handle, bool enable) {
+    SoLoudController().soLoudFFI.setLooping(handle, enable);
+  }
+
   /// Enable or disable visualization.
   /// When enabled it will be possible to get FFT and wave data.
   ///
@@ -1043,5 +1102,147 @@ class AudioIsolate {
   CaptureErrors setCaptureFftSmoothing(double smooth) {
     final ret = SoLoudController().captureFFI.setCaptureFftSmoothing(smooth);
     return ret;
+  }
+
+  //////////////////////////////////////////////////
+  /// Below all the methods implemented with FFI for the 3D audio
+  /// more info: https://solhsa.com/soloud/core3d.html
+  ///
+  /// coordinate system is right handed
+  ///           Y
+  ///           ^
+  ///           |
+  ///           |
+  ///           |
+  ///           --------> X
+  ///         /
+  ///       /
+  ///     Z
+  //////////////////////////////////////////////////
+
+  /// play3d() is the 3d version of the play() call
+  ///
+  /// Returns the handle of the sound, 0 if error
+  Future<({PlayerErrors error, SoundProps sound, int newHandle})> play3d(
+    SoundProps sound,
+    double posX,
+    double posY,
+    double posZ, {
+    double velX = 0,
+    double velY = 0,
+    double velZ = 0,
+    double volume = 1,
+    bool paused = false,
+  }) async {
+    if (!isPlayerInited) {
+      return (error: PlayerErrors.engineNotInited, sound: sound, newHandle: 0);
+    }
+    _mainToIsolateStream?.send(
+      {
+        'event': _MessageEvents.play3d,
+        'args': (
+          soundHash: sound.soundHash,
+          posX: posX,
+          posY: posY,
+          posZ: posZ,
+          velX: velX,
+          velY: velY,
+          velZ: velZ,
+          volume: volume,
+          paused: paused
+        ),
+      },
+    );
+    final ret = (await _waitForEvent(
+      _MessageEvents.play3d,
+      (
+        soundHash: sound.soundHash,
+        posX: posX,
+        posY: posY,
+        posZ: posZ,
+        velX: velX,
+        velY: velY,
+        velZ: velZ,
+        volume: volume,
+        paused: paused
+      ),
+    )) as ({PlayerErrors error, int newHandle});
+    try {
+      /// add the new handle to the sound
+      activeSounds
+          .firstWhere((s) => s.soundHash == sound.soundHash)
+          .handle
+          .add(ret.newHandle);
+    } catch (e) {
+      debugPrint('No sound with shoundHash ${sound.soundHash} found!');
+      return (
+        error: PlayerErrors.soundHashNotFound,
+        sound: sound,
+        newHandle: 0
+      );
+    }
+    return (
+      error: PlayerErrors.engineNotInited,
+      sound: sound,
+      newHandle: ret.newHandle
+    );
+  }
+
+  /// You can set the position and velocity parameters of a live
+  /// 3d audio source with one call
+  void set3dSourceParameters(int handle, double posX, double posY, double posZ,
+      double velocityX, double velocityY, double velocityZ) {
+    SoLoudController().soLoudFFI.set3dSourceParameters(
+        handle, posX, posY, posZ, velocityX, velocityY, velocityZ);
+  }
+
+  /// You can set the position parameters of a live 3d audio source
+  void set3dSourcePosition(int handle, double posX, double posY, double posZ) {
+    SoLoudController().soLoudFFI.set3dSourcePosition(handle, posX, posY, posZ);
+  }
+
+  /// You can set the velocity parameters of a live 3d audio source
+  void set3dSourceVelocity(
+      int handle, double velocityX, double velocityY, double velocityZ) {
+    SoLoudController()
+        .soLoudFFI
+        .set3dSourceVelocity(handle, velocityX, velocityY, velocityZ);
+  }
+
+  /// You can set the minimum and maximum distance parameters
+  /// of a live 3d audio source
+  void set3dSourceMinMaxDistance(
+      int handle, double minDistance, double maxDistance) {
+    SoLoudController()
+        .soLoudFFI
+        .set3dSourceMinMaxDistance(handle, minDistance, maxDistance);
+  }
+
+  /// You can change the attenuation model and rolloff factor parameters of
+  /// a live 3d audio source.
+  ///
+  /// NO_ATTENUATION 	      No attenuation
+  /// INVERSE_DISTANCE 	    Inverse distance attenuation model
+  /// LINEAR_DISTANCE 	    Linear distance attenuation model
+  /// EXPONENTIAL_DISTANCE 	Exponential distance attenuation model
+  ///
+  /// see https://solhsa.com/soloud/concepts3d.html
+  void set3dSourceAttenuation(
+    int handle,
+    int attenuationModel,
+    double attenuationRolloffFactor,
+  ) {
+    SoLoudController().soLoudFFI.set3dSourceAttenuation(
+          handle,
+          attenuationModel,
+          attenuationRolloffFactor,
+        );
+  }
+
+  /// You can change the doppler factor of a live 3d audio source
+  void set3dSourceDopplerFactor(int handle, double dopplerFactor) {
+    SoLoudController()
+        .soLoudFFI
+        .set3dSourceDopplerFactor(handle, dopplerFactor);
   }
 }

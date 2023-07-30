@@ -3,6 +3,7 @@ import 'package:flutter_soloud_example/controls.dart';
 import 'package:flutter_soloud_example/hello_flutter.dart';
 import 'package:flutter_soloud_example/page1.dart';
 import 'package:flutter_soloud_example/page2.dart';
+import 'package:flutter_soloud_example/page3.dart';
 
 void main() {
   runApp(const MyApp());
@@ -27,8 +28,8 @@ class MyHomePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const DefaultTabController(
-      length: 3,
-      initialIndex: 1,
+      length: 4,
+      initialIndex: 3,
       child: SafeArea(
         child: Scaffold(
           body: Column(
@@ -40,6 +41,7 @@ class MyHomePage extends StatelessWidget {
                   Tab(text: 'hello world!'),
                   Tab(text: 'visualizer'),
                   Tab(text: 'multi track'),
+                  Tab(text: '3D audio'),
                 ],
               ),
               SizedBox(height: 8),
@@ -50,6 +52,7 @@ class MyHomePage extends StatelessWidget {
                     HelloFlutterSoLoud(),
                     Page1(),
                     Page2(),
+                    Page3(),
                   ],
                 ),
               ),

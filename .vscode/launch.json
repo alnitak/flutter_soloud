@@ -5,6 +5,14 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Flutter debug",
+            "type": "dart",
+            "request": "launch",
+            "program": "lib/main.dart",
+            "flutterMode": "debug",
+            "cwd": "${workspaceFolder}/example"
+        },
+        {
             "name": "Flutter profile",
             "type": "dart",
             "request": "launch",
@@ -18,14 +26,6 @@
             "request": "launch",
             "program": "lib/main.dart",
             "flutterMode": "release",
-            "cwd": "${workspaceFolder}/example"
-        },
-        {
-            "name": "Flutter debug",
-            "type": "dart",
-            "request": "launch",
-            "program": "lib/main.dart",
-            "flutterMode": "debug",
             "cwd": "${workspaceFolder}/example"
         },
         {

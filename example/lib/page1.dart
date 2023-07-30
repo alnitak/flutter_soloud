@@ -338,7 +338,7 @@ class _Page1State extends State<Page1> {
                       child: Slider.adaptive(
                         value: smoothing,
                         onChanged: (smooth) {
-                          if (AudioIsolate().isIsolateRunning()) {
+                          if (isVisualizerForPlayer.value) {
                             AudioIsolate().setFftSmoothing(smooth);
                           } else {
                             AudioIsolate().setCaptureFftSmoothing(smooth);

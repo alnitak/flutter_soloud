@@ -122,9 +122,9 @@ unsigned int Player::play(
     float pan,
     bool paused)
 {
-    auto const& s = std::find_if(sounds.begin(), sounds.end(),
-                [&]( std::unique_ptr<ActiveSound> const& f ) {
-                            return (unsigned int)f->soundHash == soundHash; } );
+    auto const &s = std::find_if(sounds.begin(), sounds.end(),
+                                 [&](std::unique_ptr<ActiveSound> const &f)
+                                 { return (unsigned int)f->soundHash == soundHash; });
 
     if (s == sounds.end())
         return 0;
@@ -150,9 +150,9 @@ void Player::stop(unsigned int handle)
 
 void Player::stopSound(std::size_t soundHash)
 {
-    auto const& s = std::find_if(sounds.begin(), sounds.end(),
-                [&]( std::unique_ptr<ActiveSound> const& f ) {
-                            return (unsigned int)f->soundHash == soundHash; } );
+    auto const &s = std::find_if(sounds.begin(), sounds.end(),
+                                 [&](std::unique_ptr<ActiveSound> const &f)
+                                 { return (unsigned int)f->soundHash == soundHash; });
 
     if (s == sounds.end())
         return;
@@ -160,8 +160,21 @@ void Player::stopSound(std::size_t soundHash)
     s->get()->sound.stop();
     // remove the sound from the list
     sounds.erase(std::remove_if(sounds.begin(), sounds.end(),
-                          [soundHash](std::unique_ptr<ActiveSound> &f)
-                          { return f.get()->soundHash == soundHash; }));
+                                [soundHash](std::unique_ptr<ActiveSound> &f)
+                                { return f.get()->soundHash == soundHash; }));
+}
+
+void Player::setLooping(unsigned int handle, bool enable)
+{
+    // auto const &s = std::find_if(sounds.begin(), sounds.end(),
+    //                              [&](std::unique_ptr<ActiveSound> const &f)
+    //                              { return (unsigned int)f->soundHash == soundHash; });
+
+    // if (s == sounds.end())
+    //     return;
+    // s->get()->sound.setAutoStop(!enable);
+    // s->get()->sound.setLooping(enable);
+    soloud.setLooping(handle, enable);
 }
 
 PlayerErrors Player::textToSpeech(const std::string &textToSpeech, unsigned int &handle)
@@ -207,9 +220,9 @@ float *Player::getWave()
 // The length in seconds
 double Player::getLength(std::size_t soundHash)
 {
-    auto const& s = std::find_if(sounds.begin(), sounds.end(),
-                [&]( std::unique_ptr<ActiveSound> const& f ) {
-                            return (unsigned int)f->soundHash == soundHash; } );
+    auto const &s = std::find_if(sounds.begin(), sounds.end(),
+                                 [&](std::unique_ptr<ActiveSound> const &f)
+                                 { return (unsigned int)f->soundHash == soundHash; });
     if (s == sounds.end())
         return 0.0;
     return s->get()->sound.getLength();
@@ -272,4 +285,142 @@ void Player::debug()
 
         n++;
     }
+}
+
+/////////////////////////////////////////
+/// 3D audio methods
+/////////////////////////////////////////
+
+void Player::update3dAudio()
+{
+    soloud.update3dAudio();
+}
+
+unsigned int Player::play3d(
+    std::size_t soundHash,
+    float aPosX,
+    float aPosY,
+    float aPosZ,
+    float aVelX,
+    float aVelY,
+    float aVelZ,
+    float aVolume,
+    bool aPaused,
+    unsigned int aBus)
+{
+    auto const &s = std::find_if(sounds.begin(), sounds.end(),
+                                 [&](std::unique_ptr<ActiveSound> const &f)
+                                 { return (unsigned int)f->soundHash == soundHash; });
+    if (s == sounds.end())
+        return 0;
+
+    return soloud.play3d(
+        s->get()->sound,
+        aPosX, aPosY, aPosZ,
+        aVelX, aVelY, aVelZ,
+        aVolume,
+        aPaused,
+        aBus);
+}
+
+void Player::set3dSoundSpeed(float speed)
+{
+    soloud.set3dSoundSpeed(speed);
+}
+
+float Player::get3dSoundSpeed()
+{
+    return soloud.get3dSoundSpeed();
+}
+
+void Player::set3dListenerParameters(
+    float aPosX, float aPosY, float aPosZ,
+    float aAtX, float aAtY, float aAtZ,
+    float aUpX, float aUpY, float aUpZ,
+    float aVelocityX, float aVelocityY, float aVelocityZ)
+{
+    soloud.set3dListenerParameters(
+        aPosX, aPosY, aPosZ,
+        aAtX, aAtY, aAtZ,
+        aUpX, aUpY, aUpZ,
+        aVelocityX, aVelocityY, aVelocityZ);
+}
+
+void Player::set3dListenerPosition(float aPosX,
+                                   float aPosY,
+                                   float aPosZ)
+{
+    soloud.set3dListenerPosition(aPosX, aPosY, aPosZ);
+}
+
+void Player::set3dListenerAt(float aAtX,
+                             float aAtY,
+                             float aAtZ)
+{
+    soloud.set3dListenerAt(aAtX, aAtY, aAtZ);
+}
+
+void Player::set3dListenerUp(float aUpX,
+                             float aUpY,
+                             float aUpZ)
+{
+    soloud.set3dListenerAt(aUpX, aUpY, aUpZ);
+}
+
+void Player::set3dListenerVelocity(float aVelocityX,
+                                   float aVelocityY,
+                                   float aVelocityZ)
+{
+    soloud.set3dListenerVelocity(aVelocityX, aVelocityY, aVelocityZ);
+}
+
+void Player::set3dSourceParameters(
+    unsigned int aVoiceHandle,
+    float aPosX, float aPosY, float aPosZ,
+    float aVelocityX, float aVelocityY, float aVelocityZ)
+{
+    soloud.set3dSourceParameters(aVoiceHandle,
+                                 aPosX, aPosY, aPosZ,
+                                 aVelocityX, aVelocityY, aVelocityZ);
+}
+
+void Player::set3dSourcePosition(
+    unsigned int aVoiceHandle,
+    float aPosX,
+    float aPosY,
+    float aPosZ)
+{
+    soloud.set3dSourcePosition(aVoiceHandle, aPosX, aPosY, aPosZ);
+}
+
+void Player::set3dSourceVelocity(
+    unsigned int aVoiceHandle,
+    float aVelocityX,
+    float aVelocityY,
+    float aVelocityZ)
+{
+    soloud.set3dSourceVelocity(aVoiceHandle, aVelocityX, aVelocityY, aVelocityZ);
+}
+
+void Player::set3dSourceMinMaxDistance(
+    unsigned int aVoiceHandle,
+    float aMinDistance,
+    float aMaxDistance)
+{
+    soloud.set3dSourceMinMaxDistance(aVoiceHandle, aMinDistance, aMaxDistance);
+}
+
+void Player::set3dSourceAttenuation(
+    unsigned int aVoiceHandle,
+    unsigned int aAttenuationModel,
+    float aAttenuationRolloffFactor)
+{
+    soloud.set3dSourceAttenuation(aVoiceHandle, aAttenuationModel, aAttenuationRolloffFactor);
+}
+
+void Player::set3dSourceDopplerFactor(
+    unsigned int aVoiceHandle,
+    float aDopplerFactor)
+{
+    soloud.set3dSourceDopplerFactor(aVoiceHandle, aDopplerFactor);
 }

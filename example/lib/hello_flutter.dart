@@ -20,11 +20,6 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
   SoundProps? currentSound;
 
   @override
-  void initState() {
-    super.initState();
-  }
-
-  @override
   void dispose() {
     AudioIsolate().stopIsolate();
     AudioIsolate().stopCapture();

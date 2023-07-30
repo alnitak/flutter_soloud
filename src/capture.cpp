@@ -88,9 +88,7 @@ CaptureErrors Capture::init(int deviceID)
 
 void Capture::dispose()
 {
-    // Clean up SoLoud
     mInited = false;
-
     ma_device_uninit(&device);
 }
 

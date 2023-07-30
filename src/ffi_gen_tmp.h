@@ -13,11 +13,11 @@
 // the generated code will be in flutter_soloud_bindings_ffi_TMP.dart
 // copy the generated definition  into flutter_soloud_bindings_ffi.dart
 
-
 #include "enums.h"
 
-struct CaptureDevice {
-    char* name;
+struct CaptureDevice
+{
+    char *name;
     unsigned int isDefault;
 };
 
@@ -25,7 +25,9 @@ struct CaptureDevice {
 
 //--------------------- copy here the new functions to generate
 
-
-FFI_PLUGIN_EXPORT void freeListCaptureDevices(struct CaptureDevice **devices, int n_devices);
-
-
+/// This function can be used to set a sample to play on repeat, 
+/// instead of just playing once
+///
+/// [soundHash]
+/// [enable]
+FFI_PLUGIN_EXPORT void setLooping(unsigned int soundHash, bool enable);
