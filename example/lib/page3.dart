@@ -18,8 +18,8 @@ class _Page3State extends State<Page3> {
 
   @override
   void dispose() {
-    AudioIsolate().stopIsolate();
-    AudioIsolate().stopCapture();
+    SoLoud().stopIsolate();
+    SoLoud().stopCapture();
     super.dispose();
   }
 
@@ -35,6 +35,7 @@ class _Page3State extends State<Page3> {
             ),
             const SizedBox(height: 16),
             Audio3DWidget(
+              key: UniqueKey(),
               sound: currentSound,
               width: 400,
               height: 400,
@@ -47,8 +48,8 @@ class _Page3State extends State<Page3> {
 
   Future<void> play() async {
     /// Start audio engine if not already
-    if (!AudioIsolate().isIsolateRunning()) {
-      await AudioIsolate().startIsolate().then((value) {
+    if (!SoLoud().isIsolateRunning()) {
+      await SoLoud().startIsolate().then((value) {
         if (value == PlayerErrors.noError) {
           debugPrint('isolate started');
         } else {
@@ -60,26 +61,26 @@ class _Page3State extends State<Page3> {
 
     /// stop any previous sound loaded
     if (currentSound != null) {
-      if ((await AudioIsolate().stopSound(currentSound!)) !=
+      if ((await SoLoud().stopSound(currentSound!)) !=
           PlayerErrors.noError) return;
     }
 
     /// load the audio file
     final f = await getAssetFile('assets/audio/siren.mp3');
-    final loadRet = await AudioIsolate().loadFile(f.path);
+    final loadRet = await SoLoud().loadFile(f.path);
     if (loadRet.error != PlayerErrors.noError) return;
     currentSound = loadRet.sound;
 
     /// play it
-    final playRet = await AudioIsolate().play3d(currentSound!, 0, 0, 0);
+    final playRet = await SoLoud().play3d(currentSound!, 0, 0, 0);
     if (loadRet.error != PlayerErrors.noError) return;
-    AudioIsolate().setLooping(playRet.newHandle, true);
-    AudioIsolate().set3dSourceMinMaxDistance(
+    SoLoud().setLooping(playRet.newHandle, true);
+    SoLoud().set3dSourceMinMaxDistance(
       playRet.newHandle,
       50,
       200,
     );
-    AudioIsolate().set3dSourceAttenuation(playRet.newHandle, 2, 1);
+    SoLoud().set3dSourceAttenuation(playRet.newHandle, 2, 1);
     currentSound = playRet.sound;
 
     if (mounted) setState(() {});
@@ -130,18 +131,26 @@ class _Audio3DWidgetState extends State<Audio3DWidget>
   double posZ = 0;
   double velX = 0;
   double velY = 0;
-  double dx = 2;
+  double animVel = 2;
+  late double dx;
 
   @override
   void initState() {
     super.initState();
+    dx = animVel;
     ticker = Ticker(_tick);
     if (widget.sound != null) ticker.start();
   }
 
+  @override
+  void dispose() {
+    ticker.dispose();
+    super.dispose();
+  }
+
   void _tick(Duration elapsed) {
-    if (posX + dx > 200) dx = -2;
-    if (posX + dx < -200) dx = 2;
+    if (posX + dx > widget.width / 2) dx = -animVel;
+    if (posX + dx < -widget.width / 2) dx = animVel;
     posX += dx;
     updatePos(Offset(dx, 0), elapsed);
   }
@@ -152,7 +161,7 @@ class _Audio3DWidgetState extends State<Audio3DWidget>
     velY =
         100 * delta.dy / (timeStamp.inMilliseconds - precTime.inMilliseconds);
     if (widget.sound != null) {
-      AudioIsolate().set3dSourceParameters(
+      SoLoud().set3dSourceParameters(
         widget.sound!.handle.first,
         posX,
         posY,

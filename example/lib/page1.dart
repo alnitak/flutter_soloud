@@ -52,8 +52,8 @@ class _Page1State extends State<Page1> {
 
   @override
   void dispose() {
-    AudioIsolate().stopIsolate();
-    AudioIsolate().stopCapture();
+    SoLoud().stopIsolate();
+    SoLoud().stopCapture();
     super.dispose();
   }
 
@@ -238,7 +238,7 @@ class _Page1State extends State<Page1> {
                 /// text 2 speech
                 ElevatedButton(
                   onPressed: () {
-                    AudioIsolate()
+                    SoLoud()
                         .speechText('Hello Flutter. Text to speech!!');
                   },
                   child: const Text('T2S'),
@@ -286,7 +286,7 @@ class _Page1State extends State<Page1> {
                             onChanged: (value) async {
                               if (currentSound == null) return;
                               stopTimer();
-                              await AudioIsolate()
+                              await SoLoud()
                                   .seek(currentSound!.handle.last, value);
                               soundPosition.value = value;
                               startTimer();
@@ -339,9 +339,9 @@ class _Page1State extends State<Page1> {
                         value: smoothing,
                         onChanged: (smooth) {
                           if (isVisualizerForPlayer.value) {
-                            AudioIsolate().setFftSmoothing(smooth);
+                            SoLoud().setFftSmoothing(smooth);
                           } else {
-                            AudioIsolate().setCaptureFftSmoothing(smooth);
+                            SoLoud().setCaptureFftSmoothing(smooth);
                           }
                           fftSmoothing.value = smooth;
                         },
@@ -442,23 +442,23 @@ class _Page1State extends State<Page1> {
   /// play file
   Future<void> play(String file) async {
     if (currentSound != null) {
-      if ((await AudioIsolate().stopSound(currentSound!)) !=
+      if ((await SoLoud().stopSound(currentSound!)) !=
           PlayerErrors.noError) return;
       stopTimer();
     }
 
     /// load the file
-    final loadRet = await AudioIsolate().loadFile(file);
+    final loadRet = await SoLoud().loadFile(file);
     if (loadRet.error != PlayerErrors.noError) return;
     currentSound = loadRet.sound;
 
     /// play it
-    final playRet = await AudioIsolate().play(currentSound!);
+    final playRet = await SoLoud().play(currentSound!);
     if (loadRet.error != PlayerErrors.noError) return;
     currentSound = playRet.sound;
 
     /// get its length and notify it
-    unawaited(AudioIsolate().getLength(currentSound!.soundHash).then((value) {
+    unawaited(SoLoud().getLength(currentSound!.soundHash).then((value) {
       soundLength.value = value.length;
     }));
 
@@ -501,7 +501,7 @@ class _Page1State extends State<Page1> {
   void startTimer() {
     timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (currentSound != null) {
-        AudioIsolate().getPosition(currentSound!.handle.last).then((value) {
+        SoLoud().getPosition(currentSound!.handle.last).then((value) {
           soundPosition.value = value.position;
         });
       }

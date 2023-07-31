@@ -21,8 +21,8 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
 
   @override
   void dispose() {
-    AudioIsolate().stopIsolate();
-    AudioIsolate().stopCapture();
+    SoLoud().stopIsolate();
+    SoLoud().stopCapture();
     super.dispose();
   }
 
@@ -54,8 +54,8 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
                 /// start the capture
                 ElevatedButton(
                   onPressed: () async {
-                    final a = AudioIsolate().initCapture();
-                    final b = AudioIsolate().startCapture();
+                    final a = SoLoud().initCapture();
+                    final b = SoLoud().startCapture();
                     if (mounted &&
                         a == CaptureErrors.captureNoError &&
                         b == CaptureErrors.captureNoError) {
@@ -65,7 +65,7 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
                   child: const Text('start mic'),
                 ),
                 const SizedBox(height: 16),
-                if (AudioIsolate().isCaptureInited)
+                if (SoLoud().isCaptureInited)
                   const MicAudioWidget(
                     width: 100,
                     height: 100,
@@ -81,8 +81,8 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
   /// play file
   Future<void> play(String file) async {
     /// Start audio engine if not already
-    if (!AudioIsolate().isIsolateRunning()) {
-      await AudioIsolate().startIsolate().then((value) {
+    if (!SoLoud().isIsolateRunning()) {
+      await SoLoud().startIsolate().then((value) {
         if (value == PlayerErrors.noError) {
           debugPrint('isolate started');
         } else {
@@ -94,17 +94,17 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
 
     /// stop any previous sound loaded
     if (currentSound != null) {
-      if ((await AudioIsolate().stopSound(currentSound!)) !=
+      if ((await SoLoud().stopSound(currentSound!)) !=
           PlayerErrors.noError) return;
     }
 
     /// load the audio file
-    final loadRet = await AudioIsolate().loadFile(file);
+    final loadRet = await SoLoud().loadFile(file);
     if (loadRet.error != PlayerErrors.noError) return;
     currentSound = loadRet.sound;
 
     /// play it
-    final playRet = await AudioIsolate().play(currentSound!);
+    final playRet = await SoLoud().play(currentSound!);
     if (loadRet.error != PlayerErrors.noError) return;
     currentSound = playRet.sound;
   }
@@ -135,10 +135,10 @@ class _MicAudioWidgetState extends State<MicAudioWidget>
   void initState() {
     super.initState();
     audioData = calloc();
-    AudioIsolate().getCaptureAudioTexture2D(audioData);
+    SoLoud().getCaptureAudioTexture2D(audioData);
     ticker = createTicker((Duration elapsed) {
       if (mounted) {
-        AudioIsolate().getCaptureAudioTexture2D(audioData);
+        SoLoud().getCaptureAudioTexture2D(audioData);
         setState(() {});
       }
     });
