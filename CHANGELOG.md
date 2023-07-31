@@ -1,3 +1,9 @@
+## 1.0.0
+- added 3D audio with example
+
+## 0.9.0
+- added capture from microphone with example
+
 ## 0.1.0
 
 Initial release:

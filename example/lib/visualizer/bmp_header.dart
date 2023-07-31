@@ -69,6 +69,7 @@ class Bmp32Header {
     final bytes = BytesBuilder()
       ..add(bmp.sublist(0, rgba32HeaderSize))
       ..add(tmp.buffer.asUint8List());
+    // ignore: join_return_with_assignment
     bmp = bytes.toBytes();
 
     return bmp;
