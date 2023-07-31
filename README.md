@@ -23,7 +23,7 @@ The ***flutter_soloud*** plugin utilizes a [forked](https://github.com/alnitak/s
 For information regarding the SoLoud license, please refer to [this link](https://github.com/alnitak/soloud/blob/f4f089aa592aa45f5f6fa8c8efff64996fae920f/LICENSE).
 
 
-There are 3 examples:
+There are 4 examples:
 *(to use microphone on MacOs or iOS you should add audio input permission in the example app)*
 
 **The 1st** is a simple use-case to show how to play a sound and how to activate the capture.
@@ -41,8 +41,6 @@ Shaders from 1 to 7 are using just 1 row of the `audioData`. Therefore, the text
 Since many operations are required for each frame, the CPU and GPU can be under stress, leading to overheating of a mobile device. 
 It seems that sending an image (with `setImageSampler()`) to the shader is very expensive. You can observe this by disabling the shader widget.
 
-
-
 https://github.com/alnitak/flutter_soloud/assets/192827/384c88aa-5daf-4f10-a879-169ab8522690
 
 
@@ -52,9 +50,10 @@ https://github.com/alnitak/flutter_soloud/assets/192827/384c88aa-5daf-4f10-a879-
 
 The example shows how you can have background music and play a fire sound multiple times.
 
-
-
 https://github.com/alnitak/flutter_soloud/assets/192827/92c9db80-80ee-4a27-b6a9-3e089ffe600e
+
+
+***The 4th*** example show how to enance audio with 3D capabilities. There is a circle where the listener is placed in the center and a moving siren audio is represented by a little circle which is automatically animated or can be moved by mouse gesture. The sound volume fades off at the circonference. There is also a doppler effect that can be turned off.
 
 
 
