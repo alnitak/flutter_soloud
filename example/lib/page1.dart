@@ -238,8 +238,7 @@ class _Page1State extends State<Page1> {
                 /// text 2 speech
                 ElevatedButton(
                   onPressed: () {
-                    SoLoud()
-                        .speechText('Hello Flutter. Text to speech!!');
+                    SoLoud().speechText('Hello Flutter. Text to speech!!');
                   },
                   child: const Text('T2S'),
                 ),
@@ -442,8 +441,9 @@ class _Page1State extends State<Page1> {
   /// play file
   Future<void> play(String file) async {
     if (currentSound != null) {
-      if ((await SoLoud().stopSound(currentSound!)) !=
-          PlayerErrors.noError) return;
+      if ((SoLoud().stopSound(currentSound!)) != PlayerErrors.noError) {
+        return;
+      }
       stopTimer();
     }
 
@@ -458,9 +458,7 @@ class _Page1State extends State<Page1> {
     currentSound = playRet.sound;
 
     /// get its length and notify it
-    unawaited(SoLoud().getLength(currentSound!.soundHash).then((value) {
-      soundLength.value = value.length;
-    }));
+    soundLength.value = SoLoud().getLength(currentSound!.soundHash).length;
 
     /// Stop the timer and dispose the sound when the sound ends
     currentSound!.soundEvents.stream.listen(
@@ -501,9 +499,8 @@ class _Page1State extends State<Page1> {
   void startTimer() {
     timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (currentSound != null) {
-        SoLoud().getPosition(currentSound!.handle.last).then((value) {
-          soundPosition.value = value.position;
-        });
+        soundPosition.value =
+            SoLoud().getPosition(currentSound!.handle.last).position;
       }
     });
   }

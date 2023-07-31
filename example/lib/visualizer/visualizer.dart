@@ -329,7 +329,7 @@ class _VisualizerState extends State<Visualizer>
 
     /// get audio data from player or capture device
     if (widget.controller.isVisualizerForPlayer && isPlayerInited) {
-      final ret = await SoLoud().getAudioTexture2D(playerData);
+      final ret = SoLoud().getAudioTexture2D(playerData);
       if (ret != PlayerErrors.noError) return null;
     } else if (!widget.controller.isVisualizerForPlayer && isCaptureInited) {
       final ret = SoLoud().getCaptureAudioTexture2D(captureData);
@@ -381,7 +381,7 @@ class _VisualizerState extends State<Visualizer>
 
     /// get audio data from player or capture device
     if (widget.controller.isVisualizerForPlayer && isPlayerInited) {
-      final ret = await SoLoud().getAudioTexture2D(playerData);
+      final ret = SoLoud().getAudioTexture2D(playerData);
       if (ret != PlayerErrors.noError) return null;
     } else if (!widget.controller.isVisualizerForPlayer && isCaptureInited) {
       final ret = SoLoud().getCaptureAudioTexture2D(captureData);

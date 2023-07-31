@@ -213,10 +213,8 @@ class _PlayingRowState extends State<PlayingRow> {
             }
             return IconButton(
               onPressed: () async {
-                await SoLoud().pauseSwitch(widget.handle);
-                await SoLoud().getPause(widget.handle).then((value) {
-                  isPaused.value = !value.pause;
-                });
+                SoLoud().pauseSwitch(widget.handle);
+                isPaused.value = SoLoud().getPause(widget.handle).pause;
               },
               icon: paused
                   ? const Icon(Icons.pause_circle_outline, size: 48)
@@ -228,7 +226,7 @@ class _PlayingRowState extends State<PlayingRow> {
         const SizedBox(width: 16),
         IconButton(
           onPressed: () async {
-            await SoLoud().stop(widget.handle);
+            SoLoud().stop(widget.handle);
             widget.onStopped();
           },
           icon: const Icon(Icons.stop_circle_outlined, size: 48),
@@ -272,9 +270,7 @@ class _PlayingRowState extends State<PlayingRow> {
   /// start timer to update the audio position slider
   void startTimer() {
     timer = Timer.periodic(const Duration(microseconds: 100), (_) {
-      SoLoud().getPosition(widget.handle).then((value) {
-        soundPosition.value = value.position;
-      });
+      soundPosition.value = SoLoud().getPosition(widget.handle).position;
     });
   }
 

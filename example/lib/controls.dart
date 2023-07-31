@@ -68,7 +68,7 @@ class _ControlsState extends State<Controls> {
                       final b = await SoLoud().startIsolate();
                       if (b == PlayerErrors.noError) {
                         debugPrint('isolate started');
-                        unawaited(SoLoud().setVisualizationEnabled(true));
+                        SoLoud().setVisualizationEnabled(true);
                       }
                     }
                   },

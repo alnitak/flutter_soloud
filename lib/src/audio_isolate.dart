@@ -29,21 +29,7 @@ enum MessageEvents {
   loop,
   loadFile,
   speechText,
-  pauseSwitch,
-  getPause,
   play,
-  stop,
-  stopSound,
-  setVisualizationEnabled,
-  getFft, // TODO
-  getWave, // TODO
-  getAudioTexture, // TODO
-  getAudioTexture2D,
-  getLength,
-  seek,
-  getPosition,
-  getIsValidVoiceHandle,
-  setFftSmoothing,
   play3d,
 }
 
@@ -53,17 +39,6 @@ typedef ArgsDisposeEngine = ();
 typedef ArgsLoadFile = ({String completeFileName});
 typedef ArgsSpeechText = ({String textToSpeech});
 typedef ArgsPlay = ({int soundHash, double volume, double pan, bool paused});
-typedef ArgsPauseSwitch = ({int handle});
-typedef ArgsGetPause = ({int handle});
-typedef ArgsStop = ({int handle});
-typedef ArgsStopSound = ({int soundHash});
-typedef ArgsSetVisualizationEnabled = ({bool enabled});
-typedef ArgsGetLength = ({int soundHash});
-typedef ArgsSeek = ({int handle, double time});
-typedef ArgsGetPosition = ({int handle});
-typedef ArgsGetIsValidVoiceHandle = ({int handle});
-typedef ArgsGetAudioTexture2D = ({int audioDataAddress});
-typedef ArgsSetFftSmoothing = ({double smooth});
 typedef ArgsPlay3d = ({
   int soundHash,
   double posX,
@@ -185,99 +160,6 @@ void audioIsolate(SendPort isolateToMainStream) {
           'args': args,
           'return': (error: PlayerErrors.noError, newHandle: ret),
         });
-        break;
-
-      case MessageEvents.pauseSwitch:
-        final args = event['args']! as ArgsPauseSwitch;
-        soLoudController.soLoudFFI.pauseSwitch(args.handle);
-        isolateToMainStream
-            .send({'event': event['event'], 'args': args, 'return': ()});
-        break;
-
-      case MessageEvents.getPause:
-        final args = event['args']! as ArgsGetPause;
-        final ret = soLoudController.soLoudFFI.getPause(args.handle);
-        isolateToMainStream
-            .send({'event': event['event'], 'args': args, 'return': ret});
-        break;
-
-      case MessageEvents.stop:
-        final args = event['args']! as ArgsStop;
-        soLoudController.soLoudFFI.stop(args.handle);
-
-        /// find a sound with this handle and remove that handle from the list
-        for (final sound in activeSounds) {
-          sound.handle.removeWhere((element) => element == args.handle);
-        }
-
-        isolateToMainStream
-            .send({'event': event['event'], 'args': args, 'return': ()});
-        break;
-
-      case MessageEvents.stopSound:
-        final args = event['args']! as ArgsStopSound;
-        soLoudController.soLoudFFI.stopSound(args.soundHash);
-
-        /// find a sound with this handle and remove that handle from the list
-        activeSounds
-            .removeWhere((element) => element.soundHash == args.soundHash);
-
-        isolateToMainStream
-            .send({'event': event['event'], 'args': args, 'return': ()});
-        break;
-
-      case MessageEvents.setVisualizationEnabled:
-        final args = event['args']! as ArgsSetVisualizationEnabled;
-        soLoudController.soLoudFFI.setVisualizationEnabled(args.enabled);
-        isolateToMainStream
-            .send({'event': event['event'], 'args': args, 'return': ()});
-        break;
-
-      case MessageEvents.getLength:
-        final args = event['args']! as ArgsGetLength;
-        final ret = soLoudController.soLoudFFI.getLength(args.soundHash);
-        isolateToMainStream
-            .send({'event': event['event'], 'args': args, 'return': ret});
-        break;
-
-      case MessageEvents.seek:
-        final args = event['args']! as ArgsSeek;
-        final ret = soLoudController.soLoudFFI.seek(args.handle, args.time);
-        isolateToMainStream
-            .send({'event': event['event'], 'args': args, 'return': ret});
-        break;
-
-      case MessageEvents.getPosition:
-        final args = event['args']! as ArgsGetPosition;
-        final ret = soLoudController.soLoudFFI.getPosition(args.handle);
-        isolateToMainStream
-            .send({'event': event['event'], 'args': args, 'return': ret});
-        break;
-
-      case MessageEvents.getIsValidVoiceHandle:
-        final args = event['args']! as ArgsGetIsValidVoiceHandle;
-        final ret =
-            soLoudController.soLoudFFI.getIsValidVoiceHandle(args.handle);
-        isolateToMainStream
-            .send({'event': event['event'], 'args': args, 'return': ret});
-        break;
-
-      case MessageEvents.getAudioTexture2D:
-        final args = event['args']! as ArgsGetAudioTexture2D;
-        final audioDataFromAddress =
-            ffi.Pointer<ffi.Pointer<ffi.Float>>.fromAddress(
-                args.audioDataAddress);
-        final ret =
-            soLoudController.soLoudFFI.getAudioTexture2D(audioDataFromAddress);
-        isolateToMainStream
-            .send({'event': event['event'], 'args': args, 'return': ret});
-        break;
-
-      case MessageEvents.setFftSmoothing:
-        final args = event['args']! as ArgsSetFftSmoothing;
-        soLoudController.soLoudFFI.setFftSmoothing(args.smooth);
-        isolateToMainStream
-            .send({'event': event['event'], 'args': args, 'return': ()});
         break;
 
       //////////////////////////////////

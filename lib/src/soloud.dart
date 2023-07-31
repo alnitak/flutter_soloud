@@ -401,15 +401,9 @@ class SoLoud {
   ///
   /// [handle] the sound handle
   /// Returns [PlayerErrors.noError] if success
-  Future<PlayerErrors> pauseSwitch(int handle) async {
+  PlayerErrors pauseSwitch(int handle) {
     if (!isPlayerInited) return PlayerErrors.engineNotInited;
-    _mainToIsolateStream?.send(
-      {
-        'event': MessageEvents.pauseSwitch,
-        'args': (handle: handle),
-      },
-    );
-    await _waitForEvent(MessageEvents.pauseSwitch, (handle: handle));
+    SoLoudController().soLoudFFI.pauseSwitch(handle);
     return PlayerErrors.noError;
   }
 
@@ -417,37 +411,23 @@ class SoLoud {
   ///
   /// [handle] the sound handle
   /// return true if paused
-  Future<({PlayerErrors error, bool pause})> getPause(int handle) async {
+  ({PlayerErrors error, bool pause}) getPause(int handle) {
     if (!isPlayerInited) {
       return (error: PlayerErrors.engineNotInited, pause: false);
     }
-    _mainToIsolateStream?.send(
-      {
-        'event': MessageEvents.getPause,
-        'args': (handle: handle),
-      },
-    );
-
-    final ret = await _waitForEvent(MessageEvents.getPause, (handle: handle));
-    return (error: PlayerErrors.noError, pause: ret as bool);
+    final ret = SoLoudController().soLoudFFI.getPause(handle);
+    return (error: PlayerErrors.noError, pause: ret);
   }
 
   /// Stop already loaded sound identified by [handle] and clear it from the
   /// sound handle list
   ///
   /// [handle] the sound handle to stop
-  Future<PlayerErrors> stop(int handle) async {
+  PlayerErrors stop(int handle) {
     if (!isPlayerInited) {
       return PlayerErrors.engineNotInited;
     }
-    _mainToIsolateStream?.send(
-      {
-        'event': MessageEvents.stop,
-        'args': (handle: handle),
-      },
-    );
-    await _waitForEvent(MessageEvents.stop, (handle: handle));
-
+    SoLoudController().soLoudFFI.stop(handle);
     /// find a sound with this handle and remove that handle from the list
     for (final sound in activeSounds) {
       sound.handle.removeWhere((element) => element == handle);
@@ -459,18 +439,11 @@ class SoLoud {
   /// by soundHash of [sound] and clear it
   ///
   /// [sound] the sound to clear
-  Future<PlayerErrors> stopSound(SoundProps sound) async {
+  PlayerErrors stopSound(SoundProps sound) {
     if (!isPlayerInited) {
       return PlayerErrors.engineNotInited;
     }
-    _mainToIsolateStream?.send(
-      {
-        'event': MessageEvents.stopSound,
-        'args': (soundHash: sound.soundHash),
-      },
-    );
-    await _waitForEvent(MessageEvents.stopSound, (soundHash: sound.soundHash));
-
+    SoLoudController().soLoudFFI.stopSound(sound.soundHash);
     /// remove the sound with [soundHash]
     activeSounds.removeWhere(
       (element) {
@@ -485,8 +458,12 @@ class SoLoud {
   ///
   /// [sound] the sound for which enable or disable the loop
   /// [enable]
-  void setLooping(int handle, bool enable) {
+  PlayerErrors setLooping(int handle, bool enable) {
+    if (!isPlayerInited) {
+      return PlayerErrors.engineNotInited;
+    }
     SoLoudController().soLoudFFI.setLooping(handle, enable);
+    return PlayerErrors.noError;
   }
 
   /// Enable or disable visualization.
@@ -495,18 +472,11 @@ class SoLoud {
   /// [enabled]
   /// Return [PlayerErrors.noError] on success
   // ignore: avoid_positional_boolean_parameters
-  Future<PlayerErrors> setVisualizationEnabled(bool enabled) async {
+  PlayerErrors setVisualizationEnabled(bool enabled) {
     if (!isPlayerInited) {
       return PlayerErrors.engineNotInited;
     }
-    _mainToIsolateStream?.send(
-      {
-        'event': MessageEvents.setVisualizationEnabled,
-        'args': (enabled: enabled),
-      },
-    );
-    await _waitForEvent(
-        MessageEvents.setVisualizationEnabled, (enabled: enabled));
+    SoLoudController().soLoudFFI.setVisualizationEnabled(enabled);
     return PlayerErrors.noError;
   }
 
@@ -514,19 +484,11 @@ class SoLoud {
   ///
   /// [soundHash] the sound hash to get the length
   /// returns sound length in seconds
-  Future<({PlayerErrors error, double length})> getLength(int soundHash) async {
+  ({PlayerErrors error, double length}) getLength(int soundHash) {
     if (!isPlayerInited) {
       return (error: PlayerErrors.engineNotInited, length: 0.0);
     }
-    _mainToIsolateStream?.send(
-      {
-        'event': MessageEvents.getLength,
-        'args': (soundHash: soundHash),
-      },
-    );
-    final ret =
-        (await _waitForEvent(MessageEvents.getLength, (soundHash: soundHash)))
-            as double;
+    final ret = SoLoudController().soLoudFFI.getLength(soundHash);
     return (error: PlayerErrors.noError, length: ret);
   }
 
@@ -535,19 +497,11 @@ class SoLoud {
   /// [time] the time to seek
   /// [handle] the sound handle
   /// Returns [PlayerErrors.noError] if success
-  Future<PlayerErrors> seek(int handle, double time) async {
+  PlayerErrors seek(int handle, double time) {
     if (!isPlayerInited) {
       return PlayerErrors.engineNotInited;
     }
-    _mainToIsolateStream?.send(
-      {
-        'event': MessageEvents.seek,
-        'args': (handle: handle, time: time),
-      },
-    );
-    final ret =
-        (await _waitForEvent(MessageEvents.seek, (handle: handle, time: time)))
-            as int;
+    final ret = SoLoudController().soLoudFFI.seek(handle, time);
     return PlayerErrors.values[ret];
   }
 
@@ -555,20 +509,11 @@ class SoLoud {
   ///
   /// [handle] the sound handle
   /// Return time in seconds
-  Future<({PlayerErrors error, double position})> getPosition(
-      int handle) async {
+  ({PlayerErrors error, double position}) getPosition(int handle) {
     if (!isPlayerInited) {
       return (error: PlayerErrors.engineNotInited, position: 0.0);
     }
-    _mainToIsolateStream?.send(
-      {
-        'event': MessageEvents.getPosition,
-        'args': (handle: handle),
-      },
-    );
-    final ret =
-        (await _waitForEvent(MessageEvents.getPosition, (handle: handle)))
-            as double;
+    final ret = SoLoudController().soLoudFFI.getPosition(handle);
     return (error: PlayerErrors.noError, position: ret);
   }
 
@@ -576,19 +521,11 @@ class SoLoud {
   ///
   /// [handle] handle to check
   /// Return [PlayerErrors.noError] if success and [isvalid]==true if valid
-  Future<({PlayerErrors error, bool isValid})> getIsValidVoiceHandle(
-      int handle) async {
+  ({PlayerErrors error, bool isValid}) getIsValidVoiceHandle(int handle) {
     if (!isPlayerInited) {
       return (error: PlayerErrors.engineNotInited, isValid: false);
     }
-    _mainToIsolateStream?.send(
-      {
-        'event': MessageEvents.getIsValidVoiceHandle,
-        'args': (handle: handle),
-      },
-    );
-    final ret = (await _waitForEvent(
-        MessageEvents.getIsValidVoiceHandle, (handle: handle))) as bool;
+    final ret = SoLoudController().soLoudFFI.getIsValidVoiceHandle(handle);
     return (error: PlayerErrors.noError, isValid: ret);
   }
 
@@ -600,25 +537,8 @@ class SoLoud {
   ///
   /// [audioData]
   /// Return [PlayerErrors.noError] if success
-  Future<PlayerErrors> getAudioTexture2D(
-      ffi.Pointer<ffi.Pointer<ffi.Float>> audioData) async {
-    // if (!isPlayerInited) return PlayerErrors.engineNotStarted;
-
-    // final r = (audioDataAddress: audioData.address);
-    // _mainToIsolateStream?.send(
-    //   {
-    //     'event': MessageEvents.getAudioTexture2D,
-    //     'args': r,
-    //   },
-    // );
-    // final ret = await _waitForEvent(MessageEvents.getAudioTexture2D, r);
-    // if (audioData.address == ffi.nullptr.address) {
-    //   return PlayerErrors.nullPointer;
-    // }
-    // return PlayerErrors.noError;
-
-    /// Prefer using direct FFI call since there is less gap then calling
-    /// the audio isolate.
+  PlayerErrors getAudioTexture2D(
+      ffi.Pointer<ffi.Pointer<ffi.Float>> audioData) {
     if (!isPlayerInited || audioData == ffi.nullptr) {
       return PlayerErrors.engineNotInited;
     }
@@ -640,15 +560,10 @@ class SoLoud {
   /// the new value is calculated with:
   /// newFreq = smooth * oldFreq + (1 - smooth) * newFreq
   /// Return [PlayerErrors.noError] if success
-  Future<PlayerErrors> setFftSmoothing(double smooth) async {
-    // if (!isPlayerInited) return PlayerErrors.engineNotInited;
-    // _mainToIsolateStream?.send(
-    //   {
-    //     'event': MessageEvents.setFftSmoothing,
-    //     'args': (smooth: smooth),
-    //   },
-    // );
-    // await _waitForEvent(MessageEvents.setFftSmoothing, (smooth: smooth));
+  PlayerErrors setFftSmoothing(double smooth) {
+    if (!isPlayerInited) {
+      return PlayerErrors.engineNotInited;
+    }
     SoLoudController().soLoudFFI.setFftSmoothing(smooth);
     return PlayerErrors.noError;
   }
