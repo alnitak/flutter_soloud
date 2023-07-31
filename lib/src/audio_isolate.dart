@@ -1188,6 +1188,65 @@ class AudioIsolate {
     );
   }
 
+  /// Since SoLoud has no knowledge of the scale of your coordinates,
+  /// you may need to adjust the speed of sound for these effects
+  /// to work correctly. The default value is 343, which assumes
+  /// that your world coordinates are in meters (where 1 unit is 1 meter),
+  /// and that the environment is dry air at around 20 degrees Celsius.
+  ///
+  void set3dSoundSpeed(double speed) {
+    SoLoudController().soLoudFFI.set3dSoundSpeed(speed);
+  }
+
+  /// Get the sound speed
+  ///
+  double get3dSoundSpeed() {
+    return SoLoudController().soLoudFFI.get3dSoundSpeed();
+  }
+
+  /// You can set the position, at-vector, up-vector and velocity
+  /// parameters of the 3d audio listener with one call
+  ///
+  void set3dListenerParameters(
+      double posX,
+      double posY,
+      double posZ,
+      double atX,
+      double atY,
+      double atZ,
+      double upX,
+      double upY,
+      double upZ,
+      double velocityX,
+      double velocityY,
+      double velocityZ) {
+    SoLoudController().soLoudFFI.set3dListenerParameters(posX, posY, posZ, atX,
+        atY, atZ, upX, upY, upZ, velocityX, velocityY, velocityZ);
+  }
+
+  /// You can set the position parameter of the 3d audio listener
+  void set3dListenerPosition(double posX, double posY, double posZ) {
+    SoLoudController().soLoudFFI.set3dListenerPosition(posX, posY, posZ);
+  }
+
+  /// You can set the "at" vector parameter of the 3d audio listener
+  void set3dListenerAt(double atX, double atY, double atZ) {
+    SoLoudController().soLoudFFI.set3dListenerAt(atX, atY, atZ);
+  }
+
+  /// You can set the "up" vector parameter of the 3d audio listener
+  void set3dListenerUp(double upX, double upY, double upZ) {
+    SoLoudController().soLoudFFI.set3dListenerUp(upX, upY, upZ);
+  }
+
+  /// You can set the listener's velocity vector parameter
+  void set3dListenerVelocity(
+      double velocityX, double velocityY, double velocityZ) {
+    SoLoudController()
+        .soLoudFFI
+        .set3dListenerVelocity(velocityX, velocityY, velocityZ);
+  }
+
   /// You can set the position and velocity parameters of a live
   /// 3d audio source with one call
   void set3dSourceParameters(int handle, double posX, double posY, double posZ,

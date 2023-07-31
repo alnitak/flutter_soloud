@@ -476,6 +476,7 @@ class FlutterSoLoudFfi {
   /// to work correctly. The default value is 343, which assumes
   /// that your world coordinates are in meters (where 1 unit is 1 meter),
   /// and that the environment is dry air at around 20 degrees Celsius.
+  /// 
   void set3dSoundSpeed(
     double speed,
   ) {

@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:path_provider/path_provider.dart';
@@ -73,6 +74,12 @@ class _Page3State extends State<Page3> {
     final playRet = await AudioIsolate().play3d(currentSound!, 0, 0, 0);
     if (loadRet.error != PlayerErrors.noError) return;
     AudioIsolate().setLooping(playRet.newHandle, true);
+    AudioIsolate().set3dSourceMinMaxDistance(
+      playRet.newHandle,
+      50,
+      200,
+    );
+    AudioIsolate().set3dSourceAttenuation(playRet.newHandle, 2, 1);
     currentSound = playRet.sound;
 
     if (mounted) setState(() {});
@@ -113,14 +120,52 @@ class Audio3DWidget extends StatefulWidget {
   State<Audio3DWidget> createState() => _Audio3DWidgetState();
 }
 
-class _Audio3DWidgetState extends State<Audio3DWidget> {
+class _Audio3DWidgetState extends State<Audio3DWidget>
+    with SingleTickerProviderStateMixin {
+  late Ticker ticker;
   final doppler = ValueNotifier(true);
   Duration precTime = Duration.zero;
   double posX = 0;
-  double posY = 0;
+  double posY = 20;
   double posZ = 0;
   double velX = 0;
   double velY = 0;
+  double dx = 2;
+
+  @override
+  void initState() {
+    super.initState();
+    ticker = Ticker(_tick);
+    if (widget.sound != null) ticker.start();
+  }
+
+  void _tick(Duration elapsed) {
+    if (posX + dx > 200) dx = -2;
+    if (posX + dx < -200) dx = 2;
+    posX += dx;
+    updatePos(Offset(dx, 0), elapsed);
+  }
+
+  void updatePos(Offset delta, Duration timeStamp) {
+    velX =
+        100 * delta.dx / (timeStamp.inMilliseconds - precTime.inMilliseconds);
+    velY =
+        100 * delta.dy / (timeStamp.inMilliseconds - precTime.inMilliseconds);
+    if (widget.sound != null) {
+      AudioIsolate().set3dSourceParameters(
+        widget.sound!.handle.first,
+        posX,
+        posY,
+        posZ,
+        doppler.value ? velX : 0,
+        doppler.value ? velY : 0,
+        0,
+      );
+    }
+
+    precTime = timeStamp;
+    if (mounted) setState(() {});
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -129,33 +174,13 @@ class _Audio3DWidgetState extends State<Audio3DWidget> {
         Listener(
           onPointerDown: (event) {
             precTime = Duration.zero;
+            ticker.stop();
           },
+          onPointerUp: (event) => ticker.start(),
           onPointerMove: (event) {
             posX = event.localPosition.dx - widget.width / 2;
             posY = event.localPosition.dy - widget.height / 2;
-            velX = 100 *
-                event.delta.dx /
-                (event.timeStamp.inMilliseconds - precTime.inMilliseconds);
-            velY = 100 *
-                event.delta.dy /
-                (event.timeStamp.inMilliseconds - precTime.inMilliseconds);
-            if (widget.sound != null) {
-              AudioIsolate().set3dSourceParameters(
-                widget.sound!.handle.first,
-                posX,
-                posY,
-                posZ,
-                doppler.value ? velX : 0,
-                doppler.value ? velY : 0,
-                0,
-              );
-            }
-
-            precTime = event.timeStamp;
-
-            if (mounted) {
-              setState(() {});
-            }
+            updatePos(event.delta, event.timeStamp);
           },
           child: Stack(
             alignment: Alignment.center,
