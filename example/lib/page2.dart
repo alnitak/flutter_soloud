@@ -21,8 +21,8 @@ class _Page2State extends State<Page2> {
 
   @override
   void dispose() {
-    AudioIsolate().stopIsolate();
-    AudioIsolate().stopCapture();
+    SoLoud().stopIsolate();
+    SoLoud().stopCapture();
     super.dispose();
   }
 
@@ -86,17 +86,17 @@ class _PlaySoundWidgetState extends State<PlaySoundWidget> {
   @override
   void dispose() {
     _subscription?.cancel();
-    AudioIsolate().stopIsolate();
+    SoLoud().stopIsolate();
     super.dispose();
   }
 
   Future<bool> loadAsset() async {
     final path = (await getAssetFile(widget.assetsAudio)).path;
-    final loadRet = await AudioIsolate().loadFile(path);
+    final loadRet = await SoLoud().loadFile(path);
 
     if (loadRet.error == PlayerErrors.noError) {
       soundLength =
-          (await AudioIsolate().getLength(loadRet.sound!.soundHash)).length;
+          SoLoud().getLength(loadRet.sound!.soundHash).length;
       sound = loadRet.sound;
 
       /// Listen to this sound events
@@ -151,7 +151,7 @@ class _PlaySoundWidgetState extends State<PlaySoundWidget> {
       if (!(await loadAsset())) return;
     }
 
-    final newHandle = await AudioIsolate().play(sound!);
+    final newHandle = await SoLoud().play(sound!);
     if (newHandle.error == PlayerErrors.noError) return;
 
     isPaused[newHandle.newHandle] = ValueNotifier(false);
@@ -213,10 +213,8 @@ class _PlayingRowState extends State<PlayingRow> {
             }
             return IconButton(
               onPressed: () async {
-                await AudioIsolate().pauseSwitch(widget.handle);
-                await AudioIsolate().getPause(widget.handle).then((value) {
-                  isPaused.value = !value.pause;
-                });
+                SoLoud().pauseSwitch(widget.handle);
+                isPaused.value = SoLoud().getPause(widget.handle).pause;
               },
               icon: paused
                   ? const Icon(Icons.pause_circle_outline, size: 48)
@@ -228,7 +226,7 @@ class _PlayingRowState extends State<PlayingRow> {
         const SizedBox(width: 16),
         IconButton(
           onPressed: () async {
-            await AudioIsolate().stop(widget.handle);
+            SoLoud().stop(widget.handle);
             widget.onStopped();
           },
           icon: const Icon(Icons.stop_circle_outlined, size: 48),
@@ -253,9 +251,9 @@ class _PlayingRowState extends State<PlayingRow> {
                       max: widget.soundLength < position
                           ? position
                           : widget.soundLength,
-                      onChanged: (value) async {
+                      onChanged: (value) {
                         soundPosition.value = value;
-                        await AudioIsolate().seek(widget.handle, value);
+                        SoLoud().seek(widget.handle, value);
                       },
                     ),
                   ),
@@ -272,9 +270,7 @@ class _PlayingRowState extends State<PlayingRow> {
   /// start timer to update the audio position slider
   void startTimer() {
     timer = Timer.periodic(const Duration(microseconds: 100), (_) {
-      AudioIsolate().getPosition(widget.handle).then((value) {
-        soundPosition.value = value.position;
-      });
+      soundPosition.value = SoLoud().getPosition(widget.handle).position;
     });
   }
 

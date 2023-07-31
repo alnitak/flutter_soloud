@@ -24,7 +24,7 @@ FFI_PLUGIN_EXPORT void listCaptureDevices(struct CaptureDevice **devices, int *n
     for (int i=0; i<(int)d.size(); i++)
     {
         bool hasSpecialChar = false;
-        /// check if the device name has some strange chars
+        /// check if the device name has some strange chars (happens on linux)
         for (int n=0; n<5; n++) if (d[i].name[n] < 0x20) hasSpecialChar = true;
         if (strlen(d[i].name) <= 5 || hasSpecialChar) break;
 

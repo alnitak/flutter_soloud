@@ -23,7 +23,8 @@ The ***flutter_soloud*** plugin utilizes a [forked](https://github.com/alnitak/s
 For information regarding the SoLoud license, please refer to [this link](https://github.com/alnitak/soloud/blob/f4f089aa592aa45f5f6fa8c8efff64996fae920f/LICENSE).
 
 
-There are 3 examples:
+There are 4 examples:
+*(to use microphone on MacOs or iOS you should add audio input permission in the example app)*
 
 **The 1st** is a simple use-case to show how to play a sound and how to activate the capture.
 
@@ -40,8 +41,6 @@ Shaders from 1 to 7 are using just 1 row of the `audioData`. Therefore, the text
 Since many operations are required for each frame, the CPU and GPU can be under stress, leading to overheating of a mobile device. 
 It seems that sending an image (with `setImageSampler()`) to the shader is very expensive. You can observe this by disabling the shader widget.
 
-
-
 https://github.com/alnitak/flutter_soloud/assets/192827/384c88aa-5daf-4f10-a879-169ab8522690
 
 
@@ -51,9 +50,10 @@ https://github.com/alnitak/flutter_soloud/assets/192827/384c88aa-5daf-4f10-a879-
 
 The example shows how you can have background music and play a fire sound multiple times.
 
-
-
 https://github.com/alnitak/flutter_soloud/assets/192827/92c9db80-80ee-4a27-b6a9-3e089ffe600e
+
+
+***The 4th*** example show how to enance audio with 3D capabilities. There is a circle where the listener is placed in the center and a moving siren audio is represented by a little circle which is automatically animated or can be moved by mouse gesture. The sound volume fades off at the circonference. There is also a doppler effect that can be turned off.
 
 
 
@@ -62,7 +62,7 @@ https://github.com/alnitak/flutter_soloud/assets/192827/92c9db80-80ee-4a27-b6a9-
 First of all, *AudioIsolate* must be initialized:
 ```
 Future<bool> start() async{
-  final value = AudioIsolate().startIsolate();
+  final value = SoLoud().startIsolate();
   if (value == PlayerErrors.noError) {
     debugPrint('isolate started');
     return true;
@@ -75,7 +75,7 @@ Future<bool> start() async{
 When succesfully started a sound can be loaded:
 ```
 Future<SoundProps?> loadSound(String completeFileName) {
-  final load = await AudioIsolate().loadFile(completeFileName);
+  final load = await SoLoud().loadFile(completeFileName);
   if (load.error != PlayerErrors.noError) return null;
   return load.sound;
 }
@@ -102,12 +102,12 @@ class SoundProps {
 
 Start the capture
 ```
-AudioIsolate().initCapture();
-AudioIsolate().startCapture();
+SoLoud().initCapture();
+SoLoud().startCapture();
 ```
 now it's possible to get audio data. When the mic is no more needed, it can be stopped:
 ```
-AudioIsolate().stopCapture();
+SoLoud().stopCapture();
 ```
 
 ### The AudioIsolate instance
@@ -124,12 +124,13 @@ The `AudioIsolate` instance has the duty of receiving commands and sending them 
 | **initEngine**| PlayerErrors| -| Initialize the audio engine. Defaults are: Sample rate 44100, buffer 2048, and Miniaudio audio backend.|
 | **dispose**| -| -| Stop the audio engine.|
 | **loadFile**| ({PlayerErrors error, SoundProps? sound})| `String` fileName| Load a new sound to be played once or multiple times later.|
-| **play**| ({PlayerErrors error, SoundProps sound, int newHandle})| `SoundProps` sound, {<br/>`double` volume = 1,<br/>`double` pan = 0,<br/>`bool` paused = false,<br/>}| Play an already loaded sound identified by [sound].|
+| **play**| ({PlayerErrors error, SoundProps sound, int newHandle})| `int` soundHash, {<br/>`double` volume = 1,<br/>`double` pan = 0,<br/>`bool` paused = false,<br/>}| Play an already loaded sound identified by [sound].|
 | **speechText**| ({PlayerErrors error, SoundProps sound})| `String` textToSpeech| Speech from the given text.|
 | **pauseSwitch**| PlayerErrors| `int` handle| Pause or unpause an already loaded sound identified by [handle].|
 | **getPause**| ({PlayerErrors error, bool pause})| `int` handle| Get the pause state of the sound identified by [handle].|
 | **stop**| PlayerErrors| `int` handle| Stop an already loaded sound identified by [handle] and clear it.|
 | **stopSound**| PlayerErrors| `int` handle| Stop ALL handles of the already loaded sound identified by [soundHash] and clear it.|
+| **setLooping**| -| `int` handle, `bool` enable| This function can be used to set a sample to play on repeat, instead of just playing once.|
 | **getLength**| ({PlayerErrors error, double length})| `int` soundHash| Get the sound length in seconds.|
 | **seek**| PlayerErrors| `int` handle, `double` time| Seek playing in seconds.|
 | **getPosition**| ({PlayerErrors error, double position})| `int` handle| Get the current sound position in seconds.|
@@ -141,6 +142,24 @@ The `AudioIsolate` instance has the duty of receiving commands and sending them 
 | **getAudioTexture2D**| -| `Pointer<Pointer<Float>>` samples| Return a floats matrix of 256x512.<br/>Every row is composed of 256 FFT values plus 256 wave data.<br/>Every time is called, a new row is stored in the first row and all the previous rows are shifted up (the last will be lost).|
 | **setFftSmoothing**| -| `double` smooth| Smooth FFT data.<br/>When new data is read and the values are decreasing, the new value will be decreased with an amplitude between the old and the new value.<br/> This will result in a less shaky visualization.<br/>0 = no smooth<br/>1 = full smooth<br/>The new value is calculated with:<br/>`newFreq = smooth * oldFreq + (1 - smooth) * newFreq`|
 
+
+#### 3D audio methods
+| Function| Returns| Params| Description|
+|---------|---------|---------|--------------------------------------------------------------------------------------------|
+| **play3d**| `int` handle| `int` soundHash, `double` posX, `double` posY, `double` posZ,<br/>{`double` velX = 0,<br/>`double` velY = 0,<br/>`double` velZ = 0,<br/>`double` volume = 1,<br/>`bool` paused = false}| play3d() is the 3d version of the play() call. Returns the handle of the sound, 0 if error|
+| **set3dSoundSpeed**| -| `double` speed| Since SoLoud has no knowledge of the scale of your coordinates, you may need to adjust the speed of sound for these effects to work correctly. The default value is 343, which assumes that your world coordinates are in meters (where 1 unit is 1 meter), and that the environment is dry air at around 20 degrees Celsius.|
+| **get3dSoundSpeed**| `double`| -| Get the sound speed.|
+| **set3dListenerParameters**| -| double posX,`double` posY,<br/>`double` posZ,<br/>`double` atX,<br/>`double` atY,<br/>`double` atZ,<br/>`double` upX,<br/>`double` upY,<br/>`double` upZ,<br/>`double` velocityX,<br/>`double` velocityY,<br/>`double` velocityZ| You can set the position, at-vector, up-vector and velocity parameters of the 3d audio listener with one call.|
+| **set3dListenerPosition**| -| `double` posX,<br/> `double` posY,<br/> `double` posZ| Get the sound speed.|
+| **set3dListenerAt**| -| `double` atX,<br/> `double` atY,<br/> `double` atZ| You can set the "at" vector parameter of the 3d audio listener.|
+| **set3dListenerUp**| -| `double` upX,<br/> `double` upY,<br/> `double` upZ| You can set the "up" vector parameter of the 3d audio listener.|
+| **set3dListenerVelocity**| -| `double` velocityX,<br/> `double` velocityY,<br/> `double` velocityZ| You can set the listener's velocity vector parameter.|
+| **set3dSourceParameters**| -| `int` handle,<br/>`double` posX,<br/> `double` posY,<br/> `double` posZ,<br/>`double` velocityX,<br/> `double` velocityY,<br/> `double` velocityZ| You can set the position and velocity parameters of a live 3d audio source with one call.|
+| **set3dSourcePosition**| -| `int` handle,<br/>`double` posX,<br/> `double` posY,<br/> `double` posZ| You can set the position parameters of a live 3d audio source.|
+| **set3dSourceVelocity**| -| `int` handle,<br/>`double` velocityX,<br/> `double` velocityY,<br/> `double` velocityZ| You can set the velocity parameters of a live 3d audio source.|
+| **set3dSourceMinMaxDistance**| -| `int` handle,<br/>`double` minDistance,<br/> `double` maxDistance| You can set the minimum and maximum distance parameters of a live 3d audio source.|
+| **set3dSourceAttenuation**| -| `int` handle,<br/>`int` attenuationModel,<br/> `double` attenuationRolloffFactor| You can change the attenuation model and rolloff factor parameters of a live 3d audio source.<br/>See https://solhsa.com/soloud/concepts3d.html |
+| **set3dSourceDopplerFactor**| -| `int` handle,<br/>`double` dopplerFactor| You can change the doppler factor of a live 3d audio source.<br/>See https://solhsa.com/soloud/concepts3d.html |
 
 
 
@@ -170,15 +189,15 @@ void listedToEndPlaying(SoundProps sound) {
     (event) {
       /// Here the [event.handle] of [sound] has naturally finished
       /// and [sound.handle] doesn't contains [envent.handle] anymore.
-      /// Not passing here when calling [AudioIsolate().stop()]
-      /// or [AudioIsolate().stopSound()]
+      /// Not passing here when calling [SoLoud().stop()]
+      /// or [SoLoud().stopSound()]
     },
   );
 }
 ```
 it has also a `StreamController` to monitor when the engine starts or stops:
 ```
-AudioIsolate().audioEvent.stream.listen(
+SoLoud().audioEvent.stream.listen(
   (event) {
     /// event is of [AudioEvent] enum type:
     /// [AudioEvent.isolateStarted] the player is started and sounds can be played
@@ -274,7 +293,7 @@ The FFT data doesn't match my expectations. Some work still needs to be done on 
 
 For now, only a small portion of the possibilities offered by SoLoud have been implemented. Look [here](https://solhsa.com/soloud/index.html).
 * audio filter effects
-* 3D audio
+* 3D audio ✅
 * TED and SID soundchip simulator (Commodore 64/plus)
 * noise and waveform generation
 and much more I think!

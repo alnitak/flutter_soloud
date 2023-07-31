@@ -29,22 +29,22 @@ class _ControlsState extends State<Controls> {
   @override
   void initState() {
     super.initState();
-    captureDevices = AudioIsolate().listCaptureDevices();
+    captureDevices = SoLoud().listCaptureDevices();
   }
 
   @override
   void reassemble() {
-    isAudioIsolateRunning.value = AudioIsolate().isIsolateRunning();
-    isCaptureRunning.value = AudioIsolate().isCaptureStarted();
+    isAudioIsolateRunning.value = SoLoud().isIsolateRunning();
+    isCaptureRunning.value = SoLoud().isCaptureStarted();
     super.reassemble();
   }
 
   @override
   Widget build(BuildContext context) {
-    AudioIsolate().audioEvent.stream.listen(
+    SoLoud().audioEvent.stream.listen(
       (event) {
-        isAudioIsolateRunning.value = AudioIsolate().isIsolateRunning();
-        isCaptureRunning.value = AudioIsolate().isCaptureStarted();
+        isAudioIsolateRunning.value = SoLoud().isIsolateRunning();
+        isCaptureRunning.value = SoLoud().isCaptureStarted();
       },
     );
 
@@ -60,15 +60,15 @@ class _ControlsState extends State<Controls> {
                   onPressed: () async {
                     if (isRunning) {
                       /// this will stop also the engine and the loop
-                      final b = await AudioIsolate().stopIsolate();
+                      final b = await SoLoud().stopIsolate();
                       if (b) {
                         debugPrint('isolate stopped');
                       }
                     } else {
-                      final b = await AudioIsolate().startIsolate();
+                      final b = await SoLoud().startIsolate();
                       if (b == PlayerErrors.noError) {
                         debugPrint('isolate started');
-                        unawaited(AudioIsolate().setVisualizationEnabled(true));
+                        SoLoud().setVisualizationEnabled(true);
                       }
                     }
                   },
@@ -96,11 +96,11 @@ class _ControlsState extends State<Controls> {
                       }
                     }
                     if (isRunning) {
-                      AudioIsolate().stopCapture();
+                      SoLoud().stopCapture();
                     } else {
-                      AudioIsolate()
+                      SoLoud()
                           .initCapture(deviceID: choosenCaptureDeviceId);
-                      AudioIsolate().startCapture();
+                      SoLoud().startCapture();
                     }
                   },
                   style: buttonStyle(isRunning),

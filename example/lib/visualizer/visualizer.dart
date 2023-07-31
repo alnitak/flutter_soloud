@@ -61,7 +61,7 @@ class FftController extends ChangeNotifier {
   void changeIsVisualizerEnabled(bool enable) {
     isVisualizerEnabled = enable;
     notifyListeners();
-    AudioIsolate().setVisualizationEnabled(enable);
+    SoLoud().setVisualizationEnabled(enable);
   }
 }
 
@@ -102,12 +102,12 @@ class _VisualizerState extends State<Visualizer>
   void initState() {
     super.initState();
 
-    isPlayerInited = AudioIsolate().isPlayerInited;
-    isCaptureInited = AudioIsolate().isCaptureInited;
-    AudioIsolate().audioEvent.stream.listen(
+    isPlayerInited = SoLoud().isPlayerInited;
+    isCaptureInited = SoLoud().isCaptureInited;
+    SoLoud().audioEvent.stream.listen(
       (event) {
-        isPlayerInited = AudioIsolate().isPlayerInited;
-        isCaptureInited = AudioIsolate().isCaptureInited;
+        isPlayerInited = SoLoud().isPlayerInited;
+        isCaptureInited = SoLoud().isCaptureInited;
       },
     );
 
@@ -329,10 +329,10 @@ class _VisualizerState extends State<Visualizer>
 
     /// get audio data from player or capture device
     if (widget.controller.isVisualizerForPlayer && isPlayerInited) {
-      final ret = await AudioIsolate().getAudioTexture2D(playerData);
+      final ret = SoLoud().getAudioTexture2D(playerData);
       if (ret != PlayerErrors.noError) return null;
     } else if (!widget.controller.isVisualizerForPlayer && isCaptureInited) {
-      final ret = AudioIsolate().getCaptureAudioTexture2D(captureData);
+      final ret = SoLoud().getCaptureAudioTexture2D(captureData);
       if (ret != CaptureErrors.captureNoError) {
         return null;
       }
@@ -381,10 +381,10 @@ class _VisualizerState extends State<Visualizer>
 
     /// get audio data from player or capture device
     if (widget.controller.isVisualizerForPlayer && isPlayerInited) {
-      final ret = await AudioIsolate().getAudioTexture2D(playerData);
+      final ret = SoLoud().getAudioTexture2D(playerData);
       if (ret != PlayerErrors.noError) return null;
     } else if (!widget.controller.isVisualizerForPlayer && isCaptureInited) {
-      final ret = AudioIsolate().getCaptureAudioTexture2D(captureData);
+      final ret = SoLoud().getCaptureAudioTexture2D(captureData);
       if (ret != CaptureErrors.captureNoError) {
         return null;
       }

@@ -52,8 +52,8 @@ class _Page1State extends State<Page1> {
 
   @override
   void dispose() {
-    AudioIsolate().stopIsolate();
-    AudioIsolate().stopCapture();
+    SoLoud().stopIsolate();
+    SoLoud().stopCapture();
     super.dispose();
   }
 
@@ -212,7 +212,7 @@ class _Page1State extends State<Page1> {
                     ),
 
                     /// both fft and wave
-                    /// TODO: not implemented yet
+                    /// not implemented yet
                     // ActionChip(
                     //   backgroundColor: Colors.blue,
                     //   onPressed: () {
@@ -238,8 +238,7 @@ class _Page1State extends State<Page1> {
                 /// text 2 speech
                 ElevatedButton(
                   onPressed: () {
-                    AudioIsolate()
-                        .speechText('Hello Flutter. Text to speech!!');
+                    SoLoud().speechText('Hello Flutter. Text to speech!!');
                   },
                   child: const Text('T2S'),
                 ),
@@ -283,11 +282,10 @@ class _Page1State extends State<Page1> {
                           child: Slider.adaptive(
                             value: position,
                             max: length < position ? position : length,
-                            onChanged: (value) async {
+                            onChanged: (value) {
                               if (currentSound == null) return;
                               stopTimer();
-                              await AudioIsolate()
-                                  .seek(currentSound!.handle.last, value);
+                              SoLoud().seek(currentSound!.handle.last, value);
                               soundPosition.value = value;
                               startTimer();
                             },
@@ -338,10 +336,10 @@ class _Page1State extends State<Page1> {
                       child: Slider.adaptive(
                         value: smoothing,
                         onChanged: (smooth) {
-                          if (AudioIsolate().isIsolateRunning()) {
-                            AudioIsolate().setFftSmoothing(smooth);
+                          if (isVisualizerForPlayer.value) {
+                            SoLoud().setFftSmoothing(smooth);
                           } else {
-                            AudioIsolate().setCaptureFftSmoothing(smooth);
+                            SoLoud().setCaptureFftSmoothing(smooth);
                           }
                           fftSmoothing.value = smooth;
                         },
@@ -358,15 +356,23 @@ class _Page1State extends State<Page1> {
               builder: (_, forPlayer, __) {
                 return Row(
                   children: [
-                    Switch(
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      value: forPlayer,
+                    Checkbox(
+                      value: !forPlayer,
                       onChanged: (value) {
-                        isVisualizerForPlayer.value = value;
-                        visualizerController.changeIsVisualizerForPlayer(value);
+                        isVisualizerForPlayer.value = !value!;
+                        visualizerController
+                            .changeIsVisualizerForPlayer(!value);
                       },
                     ),
-                    const Text('show capture/player data'),
+                    const Text('show capture data'),
+                    Checkbox(
+                        value: forPlayer,
+                        onChanged: (value) {
+                          isVisualizerForPlayer.value = value!;
+                          visualizerController
+                              .changeIsVisualizerForPlayer(value);
+                        },),
+                    const Text('show player data'),
                   ],
                 );
               },
@@ -442,31 +448,31 @@ class _Page1State extends State<Page1> {
   /// play file
   Future<void> play(String file) async {
     if (currentSound != null) {
-      if ((await AudioIsolate().stopSound(currentSound!)) !=
-          PlayerErrors.noError) return;
+      if ((SoLoud().stopSound(currentSound!)) != PlayerErrors.noError) {
+        return;
+      }
       stopTimer();
     }
 
     /// load the file
-    final loadRet = await AudioIsolate().loadFile(file);
+    final loadRet = await SoLoud().loadFile(file);
     if (loadRet.error != PlayerErrors.noError) return;
     currentSound = loadRet.sound;
 
     /// play it
-    final playRet = await AudioIsolate().play(currentSound!);
+    final playRet = await SoLoud().play(currentSound!);
     if (loadRet.error != PlayerErrors.noError) return;
     currentSound = playRet.sound;
 
     /// get its length and notify it
-    unawaited(AudioIsolate().getLength(currentSound!.soundHash).then((value) {
-      soundLength.value = value.length;
-    }));
+    soundLength.value = SoLoud().getLength(currentSound!.soundHash).length;
 
     /// Stop the timer and dispose the sound when the sound ends
     currentSound!.soundEvents.stream.listen(
       (event) {
         stopTimer();
-        event.sound.soundEvents.close(); // TODO: put this elsewhere
+        // TODO(me): put this elsewhere?
+        event.sound.soundEvents.close();
         currentSound = null;
       },
     );
@@ -501,9 +507,8 @@ class _Page1State extends State<Page1> {
   void startTimer() {
     timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (currentSound != null) {
-        AudioIsolate().getPosition(currentSound!.handle.last).then((value) {
-          soundPosition.value = value.position;
-        });
+        soundPosition.value =
+            SoLoud().getPosition(currentSound!.handle.last).position;
       }
     });
   }
