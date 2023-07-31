@@ -212,7 +212,7 @@ class _Page1State extends State<Page1> {
                     ),
 
                     /// both fft and wave
-                    /// TODO: not implemented yet
+                    /// not implemented yet
                     // ActionChip(
                     //   backgroundColor: Colors.blue,
                     //   onPressed: () {
@@ -282,11 +282,10 @@ class _Page1State extends State<Page1> {
                           child: Slider.adaptive(
                             value: position,
                             max: length < position ? position : length,
-                            onChanged: (value) async {
+                            onChanged: (value) {
                               if (currentSound == null) return;
                               stopTimer();
-                              await SoLoud()
-                                  .seek(currentSound!.handle.last, value);
+                              SoLoud().seek(currentSound!.handle.last, value);
                               soundPosition.value = value;
                               startTimer();
                             },
@@ -358,12 +357,13 @@ class _Page1State extends State<Page1> {
                 return Row(
                   children: [
                     Checkbox(
-                        value: !forPlayer,
-                        onChanged: (value) {
-                          isVisualizerForPlayer.value = !value!;
-                          visualizerController
-                              .changeIsVisualizerForPlayer(!value);
-                        }),
+                      value: !forPlayer,
+                      onChanged: (value) {
+                        isVisualizerForPlayer.value = !value!;
+                        visualizerController
+                            .changeIsVisualizerForPlayer(!value);
+                      },
+                    ),
                     const Text('show capture data'),
                     Checkbox(
                         value: forPlayer,
@@ -371,7 +371,7 @@ class _Page1State extends State<Page1> {
                           isVisualizerForPlayer.value = value!;
                           visualizerController
                               .changeIsVisualizerForPlayer(value);
-                        }),
+                        },),
                     const Text('show player data'),
                   ],
                 );
@@ -471,7 +471,8 @@ class _Page1State extends State<Page1> {
     currentSound!.soundEvents.stream.listen(
       (event) {
         stopTimer();
-        event.sound.soundEvents.close(); // TODO: put this elsewhere
+        // TODO(me): put this elsewhere?
+        event.sound.soundEvents.close();
         currentSound = null;
       },
     );

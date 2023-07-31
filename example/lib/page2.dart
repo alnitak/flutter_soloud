@@ -96,7 +96,7 @@ class _PlaySoundWidgetState extends State<PlaySoundWidget> {
 
     if (loadRet.error == PlayerErrors.noError) {
       soundLength =
-          (await SoLoud().getLength(loadRet.sound!.soundHash)).length;
+          SoLoud().getLength(loadRet.sound!.soundHash).length;
       sound = loadRet.sound;
 
       /// Listen to this sound events
@@ -251,9 +251,9 @@ class _PlayingRowState extends State<PlayingRow> {
                       max: widget.soundLength < position
                           ? position
                           : widget.soundLength,
-                      onChanged: (value) async {
+                      onChanged: (value) {
                         soundPosition.value = value;
-                        await SoLoud().seek(widget.handle, value);
+                        SoLoud().seek(widget.handle, value);
                       },
                     ),
                   ),

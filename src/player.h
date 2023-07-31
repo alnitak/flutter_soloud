@@ -95,6 +95,7 @@ public:
     /// @brief This function can be used to set a sample to play on repeat, 
     /// instead of just playing once
     /// @param handle
+    /// @param enable
     void setLooping(unsigned int handle, bool enable);
 
     /// @brief Speech

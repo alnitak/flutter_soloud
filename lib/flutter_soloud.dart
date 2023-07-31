@@ -1,4 +1,5 @@
-///
+/// Flutter low level audio plugin using SoLoud library and FFI
+/// 
 library flutter_soloud;
 
 export 'src/bindings_capture_ffi.dart' show CaptureDevice, CaptureErrors;

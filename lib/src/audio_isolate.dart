@@ -1,14 +1,13 @@
-// ignore_for_file: require_trailing_commas, public_member_api_docs, unnecessary_breaks
+// ignore_for_file: require_trailing_commas, public_member_api_docs, 
+// ignore_for_file: unnecessary_breaks
 
 import 'dart:async';
-import 'dart:ffi' as ffi;
 import 'dart:isolate';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_soloud/src/flutter_soloud_bindings_ffi.dart';
+import 'package:flutter_soloud/src/soloud.dart';
 import 'package:flutter_soloud/src/soloud_controller.dart';
-
-import 'soloud.dart';
 
 /// Author note: I am a bit scared on how the use of
 /// these 2 isolates implementation is gone. But hey,
@@ -59,7 +58,7 @@ typedef ArgsPlay3d = ({
 /// - when a new message come, execute it and send back the result
 /// Since from C is difficult to call dart function from another thread for now,
 /// I did this isolate with the main purpose to make use of some callbacks
-/// like [playEndedCallback]. Ref: https://github.com/dart-lang/sdk/issues/37022
+/// like playEndedCallback. Ref: https://github.com/dart-lang/sdk/issues/37022
 void audioIsolate(SendPort isolateToMainStream) {
   final mainToIsolateStream = ReceivePort();
   final soLoudController = SoLoudController();
@@ -250,16 +249,13 @@ void audioIsolate(SendPort isolateToMainStream) {
           /// Call again this isolate after N ms to let other messages
           /// to be managed
           Future.delayed(const Duration(milliseconds: 10), () {
-            // TODO: is 10 ms ok to loop again?
+            // TODO(me): is 10 ms ok to loop again?
             mainToIsolateStream.sendPort.send(
               {'event': MessageEvents.loop, 'args': ()},
             );
           });
         }
         break;
-
-      default:
-        print('Isolate: No event with that name!');
     }
   });
 }
