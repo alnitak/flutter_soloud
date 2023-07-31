@@ -9,6 +9,7 @@ Flutter low level audio plugin using SoLoud library and FFI
 
 * Supported on Linux, Windows, Mac, Android, and iOS
 * Player and capture audio from microphone
+* 3D audio with doppler effect
 * Multiple voices, capable of playing different sounds simultaneously or even repeating the same sound multiple times on top of each other
 * Includes a speech synthesizer
 * Supports various common formats such as 8, 16, and 32-bit WAVs, floating point WAVs, OGG, MP3, and FLAC
