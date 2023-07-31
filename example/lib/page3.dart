@@ -30,15 +30,16 @@ class _Page3State extends State<Page3> {
         child: Column(
           children: [
             ElevatedButton(
-              onPressed: play,
+              onPressed: () =>
+                  play((MediaQuery.sizeOf(context).width - 20) / 2),
               child: const Text('play'),
             ),
             const SizedBox(height: 16),
             Audio3DWidget(
               key: UniqueKey(),
               sound: currentSound,
-              width: 400,
-              height: 400,
+              width: MediaQuery.sizeOf(context).width - 20,
+              height: MediaQuery.sizeOf(context).width - 20,
             ),
           ],
         ),
@@ -46,7 +47,7 @@ class _Page3State extends State<Page3> {
     );
   }
 
-  Future<void> play() async {
+  Future<void> play(double maxDistance) async {
     /// Start audio engine if not already
     if (!SoLoud().isIsolateRunning()) {
       await SoLoud().startIsolate().then((value) {
@@ -61,8 +62,8 @@ class _Page3State extends State<Page3> {
 
     /// stop any previous sound loaded
     if (currentSound != null) {
-      if ((await SoLoud().stopSound(currentSound!)) !=
-          PlayerErrors.noError) return;
+      if ((await SoLoud().stopSound(currentSound!)) != PlayerErrors.noError)
+        return;
     }
 
     /// load the audio file
@@ -78,9 +79,9 @@ class _Page3State extends State<Page3> {
     SoLoud().set3dSourceMinMaxDistance(
       playRet.newHandle,
       50,
-      200,
+      maxDistance,
     );
-    SoLoud().set3dSourceAttenuation(playRet.newHandle, 2, 1);
+    SoLoud().set3dSourceAttenuation(playRet.newHandle, 1, 1);
     currentSound = playRet.sound;
 
     if (mounted) setState(() {});
@@ -256,7 +257,8 @@ class Audio3DPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
       ..color = Colors.green
-      ..style = PaintingStyle.stroke;
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5;
 
     /// draw background circle
     canvas

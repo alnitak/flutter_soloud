@@ -357,15 +357,22 @@ class _Page1State extends State<Page1> {
               builder: (_, forPlayer, __) {
                 return Row(
                   children: [
-                    Switch(
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      value: forPlayer,
-                      onChanged: (value) {
-                        isVisualizerForPlayer.value = value;
-                        visualizerController.changeIsVisualizerForPlayer(value);
-                      },
-                    ),
-                    const Text('show capture/player data'),
+                    Checkbox(
+                        value: !forPlayer,
+                        onChanged: (value) {
+                          isVisualizerForPlayer.value = !value!;
+                          visualizerController
+                              .changeIsVisualizerForPlayer(!value);
+                        }),
+                    const Text('show capture data'),
+                    Checkbox(
+                        value: forPlayer,
+                        onChanged: (value) {
+                          isVisualizerForPlayer.value = value!;
+                          visualizerController
+                              .changeIsVisualizerForPlayer(value);
+                        }),
+                    const Text('show player data'),
                   ],
                 );
               },
