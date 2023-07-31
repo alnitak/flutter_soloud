@@ -24,6 +24,7 @@ For information regarding the SoLoud license, please refer to [this link](https:
 
 
 There are 3 examples:
+*(to use microphone on MacOs or iOS you should add audio input permission in the example app)*
 
 **The 1st** is a simple use-case to show how to play a sound and how to activate the capture.
 
