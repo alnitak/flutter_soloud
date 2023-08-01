@@ -1,10 +1,11 @@
-// ignore_for_file: require_trailing_commas, public_member_api_docs, 
+// ignore_for_file: require_trailing_commas, public_member_api_docs,
 // ignore_for_file: unnecessary_breaks
 
 import 'dart:async';
 import 'dart:isolate';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_soloud/src/bindings_capture_ffi.dart';
 import 'package:flutter_soloud/src/flutter_soloud_bindings_ffi.dart';
 import 'package:flutter_soloud/src/soloud.dart';
 import 'package:flutter_soloud/src/soloud_controller.dart';
@@ -17,6 +18,89 @@ import 'package:flutter_soloud/src/soloud_controller.dart';
 /// from main isolate and vice versa
 void debugIsolates(String text) {
   // print(text);
+}
+
+/// print the message and the error when [error] 
+/// is not [CaptureErrors.captureNoError]
+///
+void printCaptureError(String message, CaptureErrors error) {
+  if (error == CaptureErrors.captureNoError) return;
+
+  var out = '';
+  switch (error) {
+    case CaptureErrors.captureNoError:
+      out = '';
+      break;
+    case CaptureErrors.captureInitFailed:
+      out = 'Capture failed to initialize';
+      break;
+    case CaptureErrors.captureNotInited:
+      out = 'Capture not yet initialized';
+      break;
+    case CaptureErrors.nullPointer:
+      out = 'Capture null pointer error. Could happens when passing '
+      'a non initialized pointer (with calloc()) to retrieve FFT or wave data';
+      break;
+  }
+  debugPrint('flutter_soloud capture error: $message: $out');
+}
+
+/// print the message and the error when [error] 
+/// is not [PlayerErrors.noError]
+///
+void printPlayerError(String message, PlayerErrors error) {
+  if (error == PlayerErrors.noError) return;
+
+  var out = '';
+  switch (error) {
+    case PlayerErrors.noError:
+      out = '';
+      break;
+    case PlayerErrors.invalidParameter:
+      out = 'Some parameter is invalid';
+      break;
+    case PlayerErrors.fileNotFound:
+      out = 'File not found';
+      break;
+    case PlayerErrors.fileLoadFailed:
+      out = 'File found, but could not be loaded';
+      break;
+    case PlayerErrors.fileAlreadyLoaded:
+      out = 'The sound file has already been loaded';
+      break;
+    case PlayerErrors.dllNotFound:
+      out = 'DLL not found, or wrong DLL';
+      break;
+    case PlayerErrors.outOfMemory:
+      out = 'Out of memory';
+      break;
+    case PlayerErrors.notImplemented:
+      out = 'Feature not implemented';
+      break;
+    case PlayerErrors.unknownError:
+      out = 'Other error';
+      break;
+    case PlayerErrors.nullPointer:
+      out = 'Capture null pointer error. Could happens when passing '
+      'a non initialized pointer (with calloc()) to retrieve FFT or wave data';
+      break;
+    case PlayerErrors.soundHashNotFound:
+      out = 'The sound with specified hash is not found';
+      break;
+    case PlayerErrors.backendNotInited:
+      out = 'Player not initialized';
+      break;
+    case PlayerErrors.isolateAlreadyStarted:
+      out = 'Audio isolate already started';
+      break;
+    case PlayerErrors.isolateNotStarted:
+      out = 'Audio isolate not yet started';
+      break;
+    case PlayerErrors.engineNotInited:
+      out = 'Engine not yet started';
+      break;
+  }
+  debugPrint('flutter_soloud player error: $message: $out');
 }
 
 enum MessageEvents {
@@ -232,8 +316,8 @@ void audioIsolate(SendPort isolateToMainStream) {
       /// LOOP
       case MessageEvents.startLoop:
         loopRunning = true;
-        isolateToMainStream.send(
-            {'event': MessageEvents.startLoop, 'args': (), 'return': ()});
+        isolateToMainStream
+            .send({'event': MessageEvents.startLoop, 'args': (), 'return': ()});
         mainToIsolateStream.sendPort.send(
           {
             'event': MessageEvents.loop,
@@ -264,6 +348,7 @@ void audioIsolate(SendPort isolateToMainStream) {
                     handle: handle
                   ),
                 );
+
                 /// later, outside the loop, remove the handle
                 removeInvalid.add(() {
                   sound.handle.remove(handle);

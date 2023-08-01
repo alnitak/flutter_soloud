@@ -98,7 +98,7 @@ class SoLoud {
   /// - wait the audio isolate to call the FFI loadFile function
   /// - the audio isolate will then send back the args used in the call and
   ///   eventually the return value of the FFI function
-  /// 
+  ///
   Future<dynamic> _waitForEvent(MessageEvents event, Record args) async {
     final completer = Completer<dynamic>();
 
@@ -120,7 +120,7 @@ class SoLoud {
   /// Start the audio isolate and listen for messages coming from it.
   /// Messages are streamed with [_returnedEvent] and processed
   /// by [_waitForEvent] when they come.
-  /// 
+  ///
   Future<PlayerErrors> startIsolate() async {
     if (_isolate != null) return PlayerErrors.isolateAlreadyStarted;
     activeSounds.clear();
@@ -182,7 +182,7 @@ class SoLoud {
   /// Stop the loop, stop the engine and kill the isolate
   ///
   /// Return true if success
-  /// 
+  ///
   Future<bool> stopIsolate() async {
     if (_isolate == null) return false;
     // engine will be disposed in the audio isolate, so just set this variable
@@ -224,7 +224,7 @@ class SoLoud {
   /// Not starting this will implies not receive [SoundEvent]s,
   /// it will therefore be up to the developer to check
   /// the sound handle validity
-  /// 
+  ///
   Future<bool> _startLoop() async {
     if (_isolate == null || !isPlayerInited) return false;
 
@@ -239,7 +239,7 @@ class SoLoud {
   }
 
   /// stop the [SoundEvent]s loop
-  /// 
+  ///
   Future<bool> _stopLoop() async {
     if (_isolate == null || !isPlayerInited) return false;
 
@@ -263,7 +263,7 @@ class SoLoud {
   /// Miniaudio audio backend
   /// sample rate 44100
   /// buffer 2048
-  /// 
+  ///
   Future<PlayerErrors> initEngine() async {
     if (_isolate == null) return PlayerErrors.isolateNotStarted;
     _mainToIsolateStream?.send(
@@ -275,6 +275,7 @@ class SoLoud {
     final ret =
         await _waitForEvent(MessageEvents.initEngine, ()) as PlayerErrors;
     isPlayerInited = ret == PlayerErrors.noError;
+    printPlayerError('initEngine()', ret);
 
     /// start also the loop in the audio isolate
     if (isPlayerInited) {
@@ -285,9 +286,9 @@ class SoLoud {
 
   /// Stop the engine
   /// The audio isolate doesn't get killed
-  /// 
+  ///
   /// Returns true if success
-  /// 
+  ///
   Future<bool> disposeEngine() async {
     if (_isolate == null || !isPlayerInited) return false;
 
@@ -309,7 +310,7 @@ class SoLoud {
   ///
   /// [completeFileName] the complete file path
   /// Returns PlayerErrors.noError if success and a new sound
-  /// 
+  ///
   Future<({PlayerErrors error, SoundProps? sound})> loadFile(
     String completeFileName,
   ) async {
@@ -329,6 +330,7 @@ class SoLoud {
     if (ret.error == PlayerErrors.noError) {
       activeSounds.add(ret.sound!);
     }
+    printPlayerError('loadFile()', ret.error);
     return (error: ret.error, sound: ret.sound);
   }
 
@@ -336,7 +338,7 @@ class SoLoud {
   ///
   /// [textToSpeech] the text to be spoken
   /// Returns PlayerErrors.noError if success and a new sound
-  /// 
+  ///
   Future<({PlayerErrors error, SoundProps sound})> speechText(
     String textToSpeech,
   ) async {
@@ -353,7 +355,10 @@ class SoLoud {
       MessageEvents.speechText,
       (textToSpeech: textToSpeech),
     )) as ({PlayerErrors error, SoundProps sound});
-    activeSounds.add(ret.sound);
+    printPlayerError('speechText()', ret.error);
+    if (ret.error == PlayerErrors.noError) {
+      activeSounds.add(ret.sound);
+    }
     return (error: ret.error, sound: activeSounds.last);
   }
 
@@ -365,7 +370,7 @@ class SoLoud {
   /// [paused] 0 not pause
   /// Returns PlayerErrors.noError if success, the new sound and
   /// the new handle newHandle
-  /// 
+  ///
   Future<({PlayerErrors error, SoundProps sound, int newHandle})> play(
     SoundProps sound, {
     double volume = 1,
@@ -373,6 +378,7 @@ class SoLoud {
     bool paused = false,
   }) async {
     if (!isPlayerInited) {
+      printPlayerError('play()', PlayerErrors.engineNotInited);
       return (error: PlayerErrors.engineNotInited, sound: sound, newHandle: 0);
     }
     _mainToIsolateStream?.send(
@@ -397,7 +403,8 @@ class SoLoud {
           .handle
           .add(ret.newHandle);
     } catch (e) {
-      debugPrint('No sound with shoundHash ${sound.soundHash} found!');
+      printPlayerError('play(): shoundHash ${sound.soundHash} found!',
+          PlayerErrors.soundHashNotFound);
       return (
         error: PlayerErrors.soundHashNotFound,
         sound: sound,
@@ -415,9 +422,12 @@ class SoLoud {
   ///
   /// [handle] the sound handle
   /// Returns [PlayerErrors.noError] if success
-  /// 
+  ///
   PlayerErrors pauseSwitch(int handle) {
-    if (!isPlayerInited) return PlayerErrors.engineNotInited;
+    if (!isPlayerInited) {
+      printPlayerError('pauseSwitch()', PlayerErrors.engineNotInited);
+      return PlayerErrors.engineNotInited;
+    }
     SoLoudController().soLoudFFI.pauseSwitch(handle);
     return PlayerErrors.noError;
   }
@@ -426,9 +436,10 @@ class SoLoud {
   ///
   /// [handle] the sound handle
   /// Return [PlayerErrors.noError] on success and true if paused
-  /// 
+  ///
   ({PlayerErrors error, bool pause}) getPause(int handle) {
     if (!isPlayerInited) {
+      printPlayerError('getPause()', PlayerErrors.engineNotInited);
       return (error: PlayerErrors.engineNotInited, pause: false);
     }
     final ret = SoLoudController().soLoudFFI.getPause(handle);
@@ -440,9 +451,10 @@ class SoLoud {
   ///
   /// [handle] the sound handle to stop
   /// Return [PlayerErrors.noError] on success
-  /// 
+  ///
   Future<PlayerErrors> stop(int handle) async {
     if (!isPlayerInited) {
+      printPlayerError('stop()', PlayerErrors.engineNotInited);
       return PlayerErrors.engineNotInited;
     }
     _mainToIsolateStream?.send(
@@ -465,9 +477,10 @@ class SoLoud {
   ///
   /// [sound] the sound to clear
   /// Return [PlayerErrors.noError] on success
-  /// 
+  ///
   Future<PlayerErrors> stopSound(SoundProps sound) async {
     if (!isPlayerInited) {
+      printPlayerError('stopSound()', PlayerErrors.engineNotInited);
       return PlayerErrors.engineNotInited;
     }
     _mainToIsolateStream?.send(
@@ -480,7 +493,7 @@ class SoLoud {
 
     /// remove the sound with [soundHash]
     activeSounds.removeWhere(
-          (element) {
+      (element) {
         return element.soundHash == sound.soundHash;
       },
     );
@@ -493,9 +506,10 @@ class SoLoud {
   /// [handle] the handle for which enable or disable the loop
   /// [enable]
   /// Return [PlayerErrors.noError] on success
-  /// 
+  ///
   PlayerErrors setLooping(int handle, bool enable) {
     if (!isPlayerInited) {
+      printPlayerError('setLooping()', PlayerErrors.engineNotInited);
       return PlayerErrors.engineNotInited;
     }
     SoLoudController().soLoudFFI.setLooping(handle, enable);
@@ -507,9 +521,11 @@ class SoLoud {
   ///
   /// [enabled]
   /// Return [PlayerErrors.noError] on success
-  /// 
+  ///
   PlayerErrors setVisualizationEnabled(bool enabled) {
     if (!isPlayerInited) {
+      printPlayerError(
+          'setVisualizationEnabled()', PlayerErrors.engineNotInited);
       return PlayerErrors.engineNotInited;
     }
     SoLoudController().soLoudFFI.setVisualizationEnabled(enabled);
@@ -520,9 +536,10 @@ class SoLoud {
   ///
   /// [soundHash] the sound hash to get the length
   /// returns sound length in seconds
-  /// 
+  ///
   ({PlayerErrors error, double length}) getLength(int soundHash) {
     if (!isPlayerInited) {
+      printPlayerError('getLength()', PlayerErrors.engineNotInited);
       return (error: PlayerErrors.engineNotInited, length: 0.0);
     }
     final ret = SoLoudController().soLoudFFI.getLength(soundHash);
@@ -534,9 +551,10 @@ class SoLoud {
   /// [time] the time to seek
   /// [handle] the sound handle
   /// Returns [PlayerErrors.noError] if success
-  /// 
+  ///
   PlayerErrors seek(int handle, double time) {
     if (!isPlayerInited) {
+      printPlayerError('seek()', PlayerErrors.engineNotInited);
       return PlayerErrors.engineNotInited;
     }
     final ret = SoLoudController().soLoudFFI.seek(handle, time);
@@ -547,9 +565,10 @@ class SoLoud {
   ///
   /// [handle] the sound handle
   /// Return PlayerErrors.noError if success and position in seconds
-  /// 
+  ///
   ({PlayerErrors error, double position}) getPosition(int handle) {
     if (!isPlayerInited) {
+      printPlayerError('getPosition()', PlayerErrors.engineNotInited);
       return (error: PlayerErrors.engineNotInited, position: 0.0);
     }
     final ret = SoLoudController().soLoudFFI.getPosition(handle);
@@ -560,9 +579,10 @@ class SoLoud {
   ///
   /// [handle] handle to check
   /// Return PlayerErrors.noError if success and isvalid==true if valid
-  /// 
+  ///
   ({PlayerErrors error, bool isValid}) getIsValidVoiceHandle(int handle) {
     if (!isPlayerInited) {
+      printPlayerError('getIsValidVoiceHandle()', PlayerErrors.engineNotInited);
       return (error: PlayerErrors.engineNotInited, isValid: false);
     }
     final ret = SoLoudController().soLoudFFI.getIsValidVoiceHandle(handle);
@@ -577,14 +597,16 @@ class SoLoud {
   ///
   /// [audioData]
   /// Return [PlayerErrors.noError] if success
-  /// 
+  ///
   PlayerErrors getAudioTexture2D(
       ffi.Pointer<ffi.Pointer<ffi.Float>> audioData) {
     if (!isPlayerInited || audioData == ffi.nullptr) {
+      printPlayerError('getAudioTexture2D()', PlayerErrors.engineNotInited);
       return PlayerErrors.engineNotInited;
     }
     final ret = SoLoudController().soLoudFFI.getAudioTexture2D(audioData);
     if (ret != PlayerErrors.noError || audioData.value == ffi.nullptr) {
+      printPlayerError('getAudioTexture2D()', PlayerErrors.nullPointer);
       return PlayerErrors.nullPointer;
     }
     return PlayerErrors.noError;
@@ -601,9 +623,10 @@ class SoLoud {
   /// the new value is calculated with:
   /// newFreq = smooth * oldFreq + (1 - smooth) * newFreq
   /// Return [PlayerErrors.noError] if success
-  /// 
+  ///
   PlayerErrors setFftSmoothing(double smooth) {
     if (!isPlayerInited) {
+      printPlayerError('setFftSmoothing()', PlayerErrors.engineNotInited);
       return PlayerErrors.engineNotInited;
     }
     SoLoudController().soLoudFFI.setFftSmoothing(smooth);
@@ -624,9 +647,10 @@ class SoLoud {
   /// Initialize input device with [deviceID].
   ///
   /// Return [CaptureErrors.captureNoError] if no error.
-  /// 
+  ///
   CaptureErrors initCapture({int deviceID = -1}) {
     final ret = SoLoudController().captureFFI.initCapture(deviceID);
+    printCaptureError('initCapture()', ret);
     if (ret == CaptureErrors.captureNoError) {
       isCaptureInited = true;
       audioEvent.add(AudioEvent.captureStarted);
@@ -650,9 +674,10 @@ class SoLoud {
   /// Stop and deinit capture device.
   ///
   /// Return [CaptureErrors.captureNoError] if no error.
-  /// 
+  ///
   CaptureErrors stopCapture() {
     final ret = SoLoudController().captureFFI.stopCapture();
+    printCaptureError('stopCapture()', ret);
     if (ret == CaptureErrors.captureNoError) {
       isCaptureInited = false;
       audioEvent.add(AudioEvent.captureStopped);
@@ -663,9 +688,10 @@ class SoLoud {
   /// Start capturing audio data.
   ///
   /// Return [CaptureErrors.captureNoError] if no error
-  /// 
+  ///
   CaptureErrors startCapture() {
     final ret = SoLoudController().captureFFI.startCapture();
+    printCaptureError('startCapture()', ret);
     if (ret == CaptureErrors.captureNoError) {
       audioEvent.add(AudioEvent.captureStarted);
     }
@@ -679,23 +705,27 @@ class SoLoud {
   /// up (the last one will be lost).
   ///
   /// Return [CaptureErrors.captureNoError] if no error.
-  /// 
+  ///
   CaptureErrors getCaptureAudioTexture2D(
       ffi.Pointer<ffi.Pointer<ffi.Float>> audioData) {
     if (!isCaptureInited || audioData == ffi.nullptr) {
+      printCaptureError(
+          'getCaptureAudioTexture2D()', CaptureErrors.captureNotInited);
       return CaptureErrors.captureNotInited;
     }
 
     final ret =
         SoLoudController().captureFFI.getCaptureAudioTexture2D(audioData);
     if (ret != CaptureErrors.captureNoError || audioData.value == ffi.nullptr) {
+      printCaptureError(
+          'getCaptureAudioTexture2D()', CaptureErrors.nullPointer);
       return CaptureErrors.nullPointer;
     }
     return CaptureErrors.captureNoError;
   }
 
   /// Smooth FFT data.
-  /// 
+  ///
   /// When new data is read and the values are decreasing, the new value will be
   /// decreased with an amplitude between the old and the new value.
   /// This will resul on a less shaky visualization.
@@ -706,9 +736,10 @@ class SoLoud {
   /// newFreq = smooth * oldFreq + (1 - smooth) * newFreq
   ///
   /// Return [CaptureErrors.captureNoError] if no error.
-  /// 
+  ///
   CaptureErrors setCaptureFftSmoothing(double smooth) {
     final ret = SoLoudController().captureFFI.setCaptureFftSmoothing(smooth);
+    printCaptureError('setCaptureFftSmoothing()', ret);
     return ret;
   }
 
@@ -731,7 +762,7 @@ class SoLoud {
   /// play3d() is the 3d version of the play() call.
   ///
   /// Returns the handle of the sound, 0 if error.
-  /// 
+  ///
   Future<({PlayerErrors error, SoundProps sound, int newHandle})> play3d(
     SoundProps sound,
     double posX,
@@ -744,6 +775,7 @@ class SoLoud {
     bool paused = false,
   }) async {
     if (!isPlayerInited) {
+      printPlayerError('play3d()', PlayerErrors.engineNotInited);
       return (error: PlayerErrors.engineNotInited, sound: sound, newHandle: 0);
     }
     _mainToIsolateStream?.send(
@@ -783,7 +815,8 @@ class SoLoud {
           .handle
           .add(ret.newHandle);
     } catch (e) {
-      debugPrint('No sound with shoundHash ${sound.soundHash} found!');
+      printPlayerError('play3d(): shoundHash ${sound.soundHash} found!',
+          PlayerErrors.soundHashNotFound);
       return (
         error: PlayerErrors.soundHashNotFound,
         sound: sound,
@@ -834,25 +867,25 @@ class SoLoud {
   }
 
   /// You can set the position parameter of the 3d audio listener.
-  /// 
+  ///
   void set3dListenerPosition(double posX, double posY, double posZ) {
     SoLoudController().soLoudFFI.set3dListenerPosition(posX, posY, posZ);
   }
 
   /// You can set the "at" vector parameter of the 3d audio listener.
-  /// 
+  ///
   void set3dListenerAt(double atX, double atY, double atZ) {
     SoLoudController().soLoudFFI.set3dListenerAt(atX, atY, atZ);
   }
 
   /// You can set the "up" vector parameter of the 3d audio listener.
-  /// 
+  ///
   void set3dListenerUp(double upX, double upY, double upZ) {
     SoLoudController().soLoudFFI.set3dListenerUp(upX, upY, upZ);
   }
 
   /// You can set the listener's velocity vector parameter.
-  /// 
+  ///
   void set3dListenerVelocity(
       double velocityX, double velocityY, double velocityZ) {
     SoLoudController()
@@ -862,7 +895,7 @@ class SoLoud {
 
   /// You can set the position and velocity parameters of a live
   /// 3d audio source with one call.
-  /// 
+  ///
   void set3dSourceParameters(int handle, double posX, double posY, double posZ,
       double velocityX, double velocityY, double velocityZ) {
     SoLoudController().soLoudFFI.set3dSourceParameters(
@@ -870,13 +903,13 @@ class SoLoud {
   }
 
   /// You can set the position parameters of a live 3d audio source.
-  /// 
+  ///
   void set3dSourcePosition(int handle, double posX, double posY, double posZ) {
     SoLoudController().soLoudFFI.set3dSourcePosition(handle, posX, posY, posZ);
   }
 
   /// You can set the velocity parameters of a live 3d audio source.
-  /// 
+  ///
   void set3dSourceVelocity(
       int handle, double velocityX, double velocityY, double velocityZ) {
     SoLoudController()
@@ -886,7 +919,7 @@ class SoLoud {
 
   /// You can set the minimum and maximum distance parameters
   /// of a live 3d audio source.
-  /// 
+  ///
   void set3dSourceMinMaxDistance(
       int handle, double minDistance, double maxDistance) {
     SoLoudController()
@@ -903,7 +936,7 @@ class SoLoud {
   /// EXPONENTIAL_DISTANCE 	Exponential distance attenuation model
   ///
   /// see https://solhsa.com/soloud/concepts3d.html
-  /// 
+  ///
   void set3dSourceAttenuation(
     int handle,
     int attenuationModel,
@@ -917,7 +950,7 @@ class SoLoud {
   }
 
   /// You can change the doppler factor of a live 3d audio source.
-  /// 
+  ///
   void set3dSourceDopplerFactor(int handle, double dopplerFactor) {
     SoLoudController()
         .soLoudFFI

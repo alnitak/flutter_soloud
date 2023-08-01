@@ -74,7 +74,6 @@ class _Page4State extends State<Page4> {
               await play(maxDistance: 100);
             } else {
               timer?.cancel();
-              // await SoLoud().stop(currentSound!.handle.first);
               await SoLoud().stopSound(currentSound!);
               currentSound = null;
             }

@@ -20,6 +20,9 @@ enum PlayerErrors {
   /// File found, but could not be loaded
   fileLoadFailed,
 
+  /// The sound file has already been loaded
+  fileAlreadyLoaded,
+
   /// DLL not found, or wrong DLL
   dllNotFound,
 

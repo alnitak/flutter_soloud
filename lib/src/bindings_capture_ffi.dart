@@ -13,10 +13,10 @@ enum CaptureErrors {
   /// No error
   captureNoError,
 
-  ///
+  /// Capture failed to initialize
   captureInitFailed,
 
-  ///
+  /// Capture not yet initialized
   captureNotInited,
 
   /// null pointer. Could happens when passing a non initialized
