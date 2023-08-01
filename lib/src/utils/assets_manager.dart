@@ -6,7 +6,7 @@ import 'package:path_provider/path_provider.dart';
 /// file and save it to the local file system.
 class AssetsManager {
   /// Loads asset audio to temp file
-  static Future<File> getAssetFile(String assetsFile) async {
+  static Future<File?> getAssetFile(String assetsFile) async {
     final tempDir = await getTemporaryDirectory();
     final tempPath = tempDir.path;
     final filePath = '$tempPath/$assetsFile';
@@ -14,12 +14,17 @@ class AssetsManager {
     if (file.existsSync()) {
       return file;
     } else {
-      final byteData = await rootBundle.load(assetsFile);
-      final buffer = byteData.buffer;
-      await file.create(recursive: true);
-      return file.writeAsBytes(
-        buffer.asUint8List(byteData.offsetInBytes, byteData.lengthInBytes),
-      );
+      try {
+        final byteData = await rootBundle.load(assetsFile);
+        final buffer = byteData.buffer;
+        await file.create(recursive: true);
+        await file.writeAsBytes(
+          buffer.asUint8List(byteData.offsetInBytes, byteData.lengthInBytes),
+        );
+      } catch (e) {
+        return null;
+      }
+      return file;
     }
   }
 }
