@@ -30,6 +30,8 @@ enum MessageEvents {
   speechText,
   play,
   play3d,
+  stop,
+  stopSound,
 }
 
 /// definitions to be checked in main isolate
@@ -49,6 +51,8 @@ typedef ArgsPlay3d = ({
   double volume,
   bool paused
 });
+typedef ArgsStop = ({int handle});
+typedef ArgsStopSound = ({int soundHash});
 
 /// Top Level audio isolate function
 ///
@@ -159,6 +163,31 @@ void audioIsolate(SendPort isolateToMainStream) {
           'args': args,
           'return': (error: PlayerErrors.noError, newHandle: ret),
         });
+        break;
+
+      case MessageEvents.stop:
+        final args = event['args']! as ArgsStop;
+        soLoudController.soLoudFFI.stop(args.handle);
+
+        /// find a sound with this handle and remove that handle from the list
+        for (final sound in activeSounds) {
+          sound.handle.removeWhere((element) => element == args.handle);
+        }
+
+        isolateToMainStream
+            .send({'event': event['event'], 'args': args, 'return': ()});
+        break;
+
+      case MessageEvents.stopSound:
+        final args = event['args']! as ArgsStopSound;
+        soLoudController.soLoudFFI.stopSound(args.soundHash);
+
+        /// find a sound with this handle and remove that handle from the list
+        activeSounds
+            .removeWhere((element) => element.soundHash == args.soundHash);
+
+        isolateToMainStream
+            .send({'event': event['event'], 'args': args, 'return': ()});
         break;
 
       //////////////////////////////////

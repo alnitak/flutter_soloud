@@ -441,11 +441,18 @@ class SoLoud {
   /// [handle] the sound handle to stop
   /// Return [PlayerErrors.noError] on success
   /// 
-  PlayerErrors stop(int handle) {
+  Future<PlayerErrors> stop(int handle) async {
     if (!isPlayerInited) {
       return PlayerErrors.engineNotInited;
     }
-    SoLoudController().soLoudFFI.stop(handle);
+    _mainToIsolateStream?.send(
+      {
+        'event': MessageEvents.stop,
+        'args': (handle: handle),
+      },
+    );
+    await _waitForEvent(MessageEvents.stop, (handle: handle));
+
     /// find a sound with this handle and remove that handle from the list
     for (final sound in activeSounds) {
       sound.handle.removeWhere((element) => element == handle);
@@ -459,14 +466,21 @@ class SoLoud {
   /// [sound] the sound to clear
   /// Return [PlayerErrors.noError] on success
   /// 
-  PlayerErrors stopSound(SoundProps sound) {
+  Future<PlayerErrors> stopSound(SoundProps sound) async {
     if (!isPlayerInited) {
       return PlayerErrors.engineNotInited;
     }
-    SoLoudController().soLoudFFI.stopSound(sound.soundHash);
+    _mainToIsolateStream?.send(
+      {
+        'event': MessageEvents.stopSound,
+        'args': (soundHash: sound.soundHash),
+      },
+    );
+    await _waitForEvent(MessageEvents.stopSound, (soundHash: sound.soundHash));
+
     /// remove the sound with [soundHash]
     activeSounds.removeWhere(
-      (element) {
+          (element) {
         return element.soundHash == sound.soundHash;
       },
     );

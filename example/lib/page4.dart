@@ -17,7 +17,7 @@ class Page4 extends StatefulWidget {
 class _Page4State extends State<Page4> {
   SoundProps? currentSound;
   late DateTime initialTime;
-  late final Timer timer;
+  Timer? timer;
   Duration elapsed = Duration.zero;
   double soundSpeed = 0.3;
   double elapsedDistance = 0;
@@ -29,6 +29,10 @@ class _Page4State extends State<Page4> {
   void initState() {
     super.initState();
     initialTime = DateTime.now();
+  }
+
+  void _startTimer() {
+    timer?.cancel();
     timer = Timer.periodic(const Duration(milliseconds: 50), (_) {
       if (currentSound != null) {
         final now = DateTime.now();
@@ -56,7 +60,7 @@ class _Page4State extends State<Page4> {
   void dispose() {
     SoLoud().stopIsolate();
     SoLoud().stopCapture();
-    timer.cancel();
+    timer?.cancel();
     super.dispose();
   }
 
@@ -66,10 +70,13 @@ class _Page4State extends State<Page4> {
       children: [
         ElevatedButton(
           onPressed: () async {
-            if(currentSound == null){
+            if (currentSound == null) {
               await play(maxDistance: 100);
-            }else{
-              SoLoud().stop(currentSound!.handle.first);
+            } else {
+              timer?.cancel();
+              // await SoLoud().stop(currentSound!.handle.first);
+              await SoLoud().stopSound(currentSound!);
+              currentSound = null;
             }
             setState(() {});
           },
@@ -102,7 +109,7 @@ class _Page4State extends State<Page4> {
 
     /// stop any previous sound loaded
     if (currentSound != null) {
-      if (SoLoud().stopSound(currentSound!) != PlayerErrors.noError) {
+      if (await SoLoud().stopSound(currentSound!) != PlayerErrors.noError) {
         return;
       }
     }
@@ -125,6 +132,7 @@ class _Page4State extends State<Page4> {
     SoLoud().set3dSourceAttenuation(playRet.newHandle, 1, 1);
     currentSound = playRet.sound;
 
+    _startTimer();
     if (mounted) setState(() {});
   }
 
