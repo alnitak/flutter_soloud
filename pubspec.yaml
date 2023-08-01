@@ -2,7 +2,7 @@ name: flutter_soloud
 description: >-
   Flutter audio plugin using SoLoud library and FFI.
   It provides player, basic capture from microphone, 3D audio and more.
-version: 1.0.0
+version: 1.1.0
 issue_tracker: https://github.com/alnitak/flutter_soloud/issues
 homepage: https://github.com/alnitak/flutter_soloud
 maintainer: Marco Bavagnoli (@lildeimos)

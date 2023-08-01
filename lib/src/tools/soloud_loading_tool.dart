@@ -8,8 +8,10 @@ import 'package:path_provider/path_provider.dart';
 
 /// The `SoloudLoadingTool` class provides static methods to load audio files
 /// from various sources, including assets, local files, and URLs.
+/// 
 class SoloudLoadingTool {
   /// Loads an audio file from the assets folder.
+  /// 
   static Future<SoundProps?> loadFromAssets(String path) async {
     final f = await AssetsManager.getAssetFile(path);
     if (f == null) {
@@ -21,6 +23,7 @@ class SoloudLoadingTool {
   }
 
   /// Loads an audio file from the local file system.
+  /// 
   static Future<SoundProps?> loadFromFile(String path) async {
     final file = File(path);
     if (file.existsSync()) {
@@ -32,6 +35,7 @@ class SoloudLoadingTool {
   }
 
   /// Fetches an audio file from a URL and loads it into the memory.
+  /// 
   static Future<SoundProps?> loadFromUrl(String url) async {
     try {
       final response = await http.get(Uri.parse(url));
@@ -59,6 +63,8 @@ class SoloudLoadingTool {
     }
   }
 
+  /// Let SoLoud try to load the file
+  /// 
   static Future<SoundProps?> _finallyLoadFile(File file) async {
     final result = await SoLoud().loadFile(file.path);
     if (result.error != PlayerErrors.noError) {

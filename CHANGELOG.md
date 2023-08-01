@@ -1,3 +1,11 @@
+## 1.1.0
+added load sound tools:
+- SoloudLoadingTool.loadFromAssets()
+- SoloudLoadingTool.loadFromFile()
+- SoloudLoadingTool.loadFromUrl()
+
+added also a spin around example
+
 ## 1.0.0
 - added 3D audio with example
 

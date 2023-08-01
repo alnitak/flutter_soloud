@@ -4,8 +4,10 @@ import 'package:path_provider/path_provider.dart';
 
 /// The [AssetsManager] class provides a static method to retrieve an asset
 /// file and save it to the local file system.
+/// 
 class AssetsManager {
   /// Loads asset audio to temp file
+  /// 
   static Future<File?> getAssetFile(String assetsFile) async {
     final tempDir = await getTemporaryDirectory();
     final tempPath = tempDir.path;

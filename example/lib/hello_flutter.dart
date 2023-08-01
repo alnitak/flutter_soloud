@@ -99,13 +99,13 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
     }
 
     /// load the audio file
-    final loadRet = await SoLoud().loadFile(file);
-    if (loadRet.error != PlayerErrors.noError) return;
-    currentSound = loadRet.sound;
+    final newSound = await SoloudLoadingTool.loadFromFile(file);
+    if (newSound == null) return;
+    currentSound = newSound;
 
     /// play it
     final playRet = await SoLoud().play(currentSound!);
-    if (loadRet.error != PlayerErrors.noError) return;
+    if (playRet.error != PlayerErrors.noError) return;
     currentSound = playRet.sound;
   }
 }

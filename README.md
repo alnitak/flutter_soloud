@@ -82,7 +82,13 @@ Future<SoundProps?> loadSound(String completeFileName) {
   return load.sound;
 }
 ```
-The [SoundProps] returned:
+
+There are 3 convenient methods that can be used insted in the [SoloudLoadingTool] class:
+- ```Future<SoundProps?> loadFromAssets(String path)```
+- ```Future<SoundProps?> loadFromFile(String path)```
+- ```Future<SoundProps?> loadFromUrl(String url)```
+
+The [SoundProps] class:
 ```
 class SoundProps {
   SoundProps(this.soundHash);
