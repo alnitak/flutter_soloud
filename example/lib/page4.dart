@@ -1,11 +1,8 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
-import 'package:path_provider/path_provider.dart';
 
 class Page4 extends StatefulWidget {
   const Page4({super.key});
@@ -114,14 +111,16 @@ class _Page4State extends State<Page4> {
     }
 
     /// load the audio file
-    final f = await getAssetFile('assets/audio/8_bit_mentality.mp3');
-    final loadRet = await SoLoud().loadFile(f.path);
-    if (loadRet.error != PlayerErrors.noError) return;
-    currentSound = loadRet.sound;
+    // currentSound = await SoloudLoadingTool.loadFromAssets(
+    //     'assets/audio/8_bit_mentality.mp3');
+    currentSound = await SoloudLoadingTool.loadFromUrl(
+      'https://www.learningcontainer.com/wp-content/uploads/2020/02/Kalimba.mp3',
+    );
+
+    if (currentSound == null) return;
 
     /// play it
     final playRet = await SoLoud().play3d(currentSound!, 0, 0, 0);
-    if (loadRet.error != PlayerErrors.noError) return;
     SoLoud().setLooping(playRet.newHandle, true);
     SoLoud().set3dSourceMinMaxDistance(
       playRet.newHandle,
@@ -133,28 +132,6 @@ class _Page4State extends State<Page4> {
 
     _startTimer();
     if (mounted) setState(() {});
-  }
-
-  /// get the assets file and copy it to the temp dir
-  Future<File> getAssetFile(String assetsFile) async {
-    final tempDir = await getTemporaryDirectory();
-    final tempPath = tempDir.path;
-    final filePath = '$tempPath/$assetsFile';
-    final file = File(filePath);
-    if (file.existsSync()) {
-      return file;
-    } else {
-      final byteData = await rootBundle.load(assetsFile);
-      final buffer = byteData.buffer;
-      await file.create(recursive: true);
-      return file.writeAsBytes(
-        buffer.asUint8List(byteData.offsetInBytes, byteData.lengthInBytes),
-      );
-    }
-  }
-
-  void stopSound() {
-    SoLoud().pauseSwitch(currentSound!.handle.first);
   }
 }
 

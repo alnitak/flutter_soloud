@@ -62,7 +62,7 @@ class _Page3State extends State<Page3> {
 
     /// stop any previous sound loaded
     if (currentSound != null) {
-      if (SoLoud().stopSound(currentSound!) != PlayerErrors.noError) {
+      if (await SoLoud().stopSound(currentSound!) != PlayerErrors.noError) {
         return;
       }
     }

@@ -94,7 +94,7 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
 
     /// stop any previous sound loaded
     if (currentSound != null) {
-      if (SoLoud().stopSound(currentSound!) !=
+      if (await SoLoud().stopSound(currentSound!) !=
           PlayerErrors.noError) return;
     }
 

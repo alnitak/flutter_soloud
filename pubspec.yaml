@@ -26,11 +26,15 @@ environment:
   flutter: '>=3.3.0'
 
 dependencies:
-  #https://pub.dev/packages/ffi
-  ffi: ^2.0.2
-
   flutter:
     sdk: flutter
+
+  #https://pub.dev/packages/ffi
+  ffi: ^2.0.2
+  #https://pub.dev/packages/http
+  http: ^1.1.0
+  #https://pub.dev/packages/path_provider
+  path_provider: ^2.0.15
   
   plugin_platform_interface: ^2.1.5
 

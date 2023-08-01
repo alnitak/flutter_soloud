@@ -448,7 +448,7 @@ class _Page1State extends State<Page1> {
   /// play file
   Future<void> play(String file) async {
     if (currentSound != null) {
-      if ((SoLoud().stopSound(currentSound!)) != PlayerErrors.noError) {
+      if (await SoLoud().stopSound(currentSound!) != PlayerErrors.noError) {
         return;
       }
       stopTimer();
