@@ -226,7 +226,7 @@ class _PlayingRowState extends State<PlayingRow> {
         const SizedBox(width: 16),
         IconButton(
           onPressed: () async {
-            SoLoud().stop(widget.handle);
+            await SoLoud().stop(widget.handle);
             widget.onStopped();
           },
           icon: const Icon(Icons.stop_circle_outlined, size: 48),
