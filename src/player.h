@@ -32,7 +32,7 @@ struct ActiveSound
     std::vector<SoLoud::handle> handle;
 
     // unique identifier of this sound based on the file name
-    std::size_t soundHash;
+    unsigned int soundHash;
 };
 
 class Player
@@ -79,7 +79,7 @@ public:
     /// @param paused 0 not pause
     /// @return the handle of the sound, 0 if error
     unsigned int play(
-        std::size_t soundHash,
+        unsigned int soundHash,
         float volume = 1.0f,
         float pan = 0.0f,
         bool paused = 0);
@@ -90,7 +90,7 @@ public:
 
     /// @brief Stop all handles of the already loaded sound identified by [soundHash] and clear it
     /// @param soundHash
-    void stopSound(std::size_t soundHash);
+    void stopSound(unsigned int soundHash);
 
     /// @brief This function can be used to set a sample to play on repeat, 
     /// instead of just playing once
@@ -123,7 +123,7 @@ public:
     /// @brief get the sound length in seconds
     /// @param soundHash
     /// @return returns sound length in seconds
-    double getLength(std::size_t soundHash);
+    double getLength(unsigned int soundHash);
 
     /// @brief seek playing in [time] seconds
     /// @param handle the sound handle
@@ -154,7 +154,7 @@ public:
     /// @brief play3d() is the 3d version of the play() call
     /// @return the handle of the sound, 0 if error
     unsigned int play3d(
-        std::size_t soundHash,
+        unsigned int soundHash,
         float posX,
         float posY,
         float posZ,

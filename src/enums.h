@@ -7,23 +7,25 @@
 typedef enum PlayerErrors
 {
     /// No error
-    noError          = 0,
+    noError,
     /// Some parameter is invalid
-    invalidParameter = 1,
+    invalidParameter,
     /// File not found 
-    fileNotFound     = 2,
+    fileNotFound,
     /// File found, but could not be loaded
-    fileLoadFailed   = 3,
+    fileLoadFailed,
+    /// The sound file has already been loaded
+    fileAlreadyLoaded,
     /// DLL not found, or wrong DLL
-    dllNotFound      = 4,
+    dllNotFound,
     /// Out of memory
-    outOfMemory      = 5,
+    outOfMemory,
     /// Feature not implemented
-    notImplemented   = 6,
+    notImplemented,
     /// Other error
-    unknownError     = 7,
+    unknownError,
     /// Player not initialized
-    backendNotInited = 8
+    backendNotInited
 } PlayerErrors_t;
 
 /// Possible capture errors

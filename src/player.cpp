@@ -85,9 +85,20 @@ PlayerErrors Player::loadFile(const std::string &completeFileName, unsigned int 
         return backendNotInited;
 
     hash = 0;
+
+    unsigned int newHash = (unsigned int)std::hash<std::string>{}(completeFileName);
+    /// check if the sound has been already loaded
+    auto const &s = std::find_if(
+        sounds.begin(), sounds.end(),
+        [&](std::unique_ptr<ActiveSound> const &f)
+        { return f->soundHash == newHash; });
+
+    if (s != sounds.end())
+        return fileAlreadyLoaded;
+
     sounds.push_back(std::make_unique<ActiveSound>());
     sounds.back().get()->completeFileName = std::string(completeFileName);
-    hash = sounds.back().get()->soundHash = std::hash<std::string>{}(completeFileName);
+    hash = sounds.back().get()->soundHash = newHash;
     SoLoud::result result = sounds.back().get()->sound.load(completeFileName.c_str());
     if (result != SoLoud::SO_NO_ERROR)
     {
@@ -117,14 +128,14 @@ bool Player::getPause(unsigned int handle)
 }
 
 unsigned int Player::play(
-    std::size_t soundHash,
+    unsigned int soundHash,
     float volume,
     float pan,
     bool paused)
 {
     auto const &s = std::find_if(sounds.begin(), sounds.end(),
                                  [&](std::unique_ptr<ActiveSound> const &f)
-                                 { return (unsigned int)f->soundHash == soundHash; });
+                                 { return f->soundHash == soundHash; });
 
     if (s == sounds.end())
         return 0;
@@ -148,11 +159,11 @@ void Player::stop(unsigned int handle)
                                        { return f == handle; }));
 }
 
-void Player::stopSound(std::size_t soundHash)
+void Player::stopSound(unsigned int soundHash)
 {
     auto const &s = std::find_if(sounds.begin(), sounds.end(),
                                  [&](std::unique_ptr<ActiveSound> const &f)
-                                 { return (unsigned int)f->soundHash == soundHash; });
+                                 { return f->soundHash == soundHash; });
 
     if (s == sounds.end())
         return;
@@ -166,14 +177,6 @@ void Player::stopSound(std::size_t soundHash)
 
 void Player::setLooping(unsigned int handle, bool enable)
 {
-    // auto const &s = std::find_if(sounds.begin(), sounds.end(),
-    //                              [&](std::unique_ptr<ActiveSound> const &f)
-    //                              { return (unsigned int)f->soundHash == soundHash; });
-
-    // if (s == sounds.end())
-    //     return;
-    // s->get()->sound.setAutoStop(!enable);
-    // s->get()->sound.setLooping(enable);
     soloud.setLooping(handle, enable);
 }
 
@@ -218,11 +221,11 @@ float *Player::getWave()
 }
 
 // The length in seconds
-double Player::getLength(std::size_t soundHash)
+double Player::getLength(unsigned int soundHash)
 {
     auto const &s = std::find_if(sounds.begin(), sounds.end(),
                                  [&](std::unique_ptr<ActiveSound> const &f)
-                                 { return (unsigned int)f->soundHash == soundHash; });
+                                 { return f->soundHash == soundHash; });
     if (s == sounds.end())
         return 0.0;
     return s->get()->sound.getLength();
@@ -297,7 +300,7 @@ void Player::update3dAudio()
 }
 
 unsigned int Player::play3d(
-    std::size_t soundHash,
+    unsigned int soundHash,
     float aPosX,
     float aPosY,
     float aPosZ,
@@ -310,17 +313,20 @@ unsigned int Player::play3d(
 {
     auto const &s = std::find_if(sounds.begin(), sounds.end(),
                                  [&](std::unique_ptr<ActiveSound> const &f)
-                                 { return (unsigned int)f->soundHash == soundHash; });
+                                 { return f->soundHash == soundHash; });
     if (s == sounds.end())
         return 0;
 
-    return soloud.play3d(
-        s->get()->sound,
+    ActiveSound *sound = s->get();
+    SoLoud::handle newHandle = soloud.play3d(
+        sound->sound,
         aPosX, aPosY, aPosZ,
         aVelX, aVelY, aVelZ,
         aVolume,
         aPaused,
         aBus);
+    sound->handle.emplace_back(newHandle);
+    return newHandle;
 }
 
 void Player::set3dSoundSpeed(float speed)
