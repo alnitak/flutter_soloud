@@ -31,7 +31,7 @@ class _Page4State extends State<Page4> {
   void _startTimer() {
     timer?.cancel();
     timer = Timer.periodic(const Duration(milliseconds: 50), (_) {
-      if (currentSound != null) {
+      if (currentSound != null && currentSound!.handle.isNotEmpty) {
         final now = DateTime.now();
         SoLoud().set3dSourceParameters(
           currentSound!.handle.first,
@@ -56,7 +56,6 @@ class _Page4State extends State<Page4> {
   @override
   void dispose() {
     SoLoud().stopIsolate();
-    SoLoud().stopCapture();
     timer?.cancel();
     super.dispose();
   }
@@ -105,7 +104,8 @@ class _Page4State extends State<Page4> {
 
     /// stop any previous sound loaded
     if (currentSound != null) {
-      if (await SoLoud().stopSound(currentSound!) != PlayerErrors.noError) {
+      if (await SoLoud().stopSound(currentSound!) !=
+          PlayerErrors.noError) {
         return;
       }
     }

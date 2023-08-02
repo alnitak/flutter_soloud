@@ -20,7 +20,7 @@ void debugIsolates(String text) {
   // print(text);
 }
 
-/// print the message and the error when [error] 
+/// print the message and the error when [error]
 /// is not [CaptureErrors.captureNoError]
 ///
 void printCaptureError(String message, CaptureErrors error) {
@@ -39,13 +39,13 @@ void printCaptureError(String message, CaptureErrors error) {
       break;
     case CaptureErrors.nullPointer:
       out = 'Capture null pointer error. Could happens when passing '
-      'a non initialized pointer (with calloc()) to retrieve FFT or wave data';
+          'a non initialized pointer (with calloc()) to retrieve FFT or wave data';
       break;
   }
   debugPrint('flutter_soloud capture error: $message: $out');
 }
 
-/// print the message and the error when [error] 
+/// print the message and the error when [error]
 /// is not [PlayerErrors.noError]
 ///
 void printPlayerError(String message, PlayerErrors error) {
@@ -82,7 +82,7 @@ void printPlayerError(String message, PlayerErrors error) {
       break;
     case PlayerErrors.nullPointer:
       out = 'Capture null pointer error. Could happens when passing '
-      'a non initialized pointer (with calloc()) to retrieve FFT or wave data';
+          'a non initialized pointer (with calloc()) to retrieve FFT or wave data';
       break;
     case PlayerErrors.soundHashNotFound:
       out = 'The sound with specified hash is not found';
@@ -196,6 +196,18 @@ void audioIsolate(SendPort isolateToMainStream) {
         if (ret.error == PlayerErrors.noError) {
           newSound = SoundProps(ret.soundHash);
           activeSounds.add(newSound);
+        } else if (ret.error == PlayerErrors.fileAlreadyLoaded) {
+          /// the file is already loaded.
+          /// Check if it is already in [activeSound] else add it
+          var isAlreadyThere = true;
+          newSound = activeSounds.firstWhere(
+            (s) => s.soundHash == ret.soundHash,
+            orElse: () {
+              isAlreadyThere = false;
+              return SoundProps(ret.soundHash);
+            },
+          );
+          if (!isAlreadyThere) activeSounds.add(newSound);
         }
         isolateToMainStream.send({
           'event': event['event'],

@@ -93,8 +93,10 @@ PlayerErrors Player::loadFile(const std::string &completeFileName, unsigned int 
         [&](std::unique_ptr<ActiveSound> const &f)
         { return f->soundHash == newHash; });
 
-    if (s != sounds.end())
+    if (s != sounds.end()) {
+        hash = newHash;
         return fileAlreadyLoaded;
+    }
 
     sounds.push_back(std::make_unique<ActiveSound>());
     sounds.back().get()->completeFileName = std::string(completeFileName);

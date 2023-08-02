@@ -366,12 +366,12 @@ class _Page1State extends State<Page1> {
                     ),
                     const Text('show capture data'),
                     Checkbox(
-                        value: forPlayer,
-                        onChanged: (value) {
-                          isVisualizerForPlayer.value = value!;
-                          visualizerController
-                              .changeIsVisualizerForPlayer(value);
-                        },),
+                      value: forPlayer,
+                      onChanged: (value) {
+                        isVisualizerForPlayer.value = value!;
+                        visualizerController.changeIsVisualizerForPlayer(value);
+                      },
+                    ),
                     const Text('show player data'),
                   ],
                 );
@@ -390,7 +390,6 @@ class _Page1State extends State<Page1> {
                       onChanged: (value) {
                         isVisualizerEnabled.value = value;
                         visualizerController.changeIsVisualizerEnabled(value);
-                        // AudioIsolate().setVisualizationCaptureEnabled(value);
                       },
                     ),
                     const Text('FFT data'),
@@ -473,6 +472,9 @@ class _Page1State extends State<Page1> {
         stopTimer();
         // TODO(me): put this elsewhere?
         event.sound.soundEvents.close();
+        /// It's needed to stop the sound when it end else it will 
+        /// not be disposed
+        // SoLoud().stopSound(currentSound!);
         currentSound = null;
       },
     );

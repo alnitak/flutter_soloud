@@ -30,7 +30,7 @@ class SoundProps {
 
   /// handles of this sound. Multiple instances of this sound can be
   /// played, each with their unique handle
-  List<int> handle = [];
+  Set<int> handle = {};
 
   ///
   // TODO(me): make marker keys time able to trigger an event
@@ -402,9 +402,12 @@ class SoLoud {
           .firstWhere((s) => s.soundHash == sound.soundHash)
           .handle
           .add(ret.newHandle);
+      sound.handle.add(ret.newHandle);
     } catch (e) {
-      printPlayerError('play(): shoundHash ${sound.soundHash} found!',
-          PlayerErrors.soundHashNotFound);
+      printPlayerError(
+        'play(): shoundHash ${sound.soundHash} not found!',
+        PlayerErrors.soundHashNotFound,
+      );
       return (
         error: PlayerErrors.soundHashNotFound,
         sound: sound,
@@ -412,7 +415,7 @@ class SoLoud {
       );
     }
     return (
-      error: PlayerErrors.engineNotInited,
+      error: PlayerErrors.noError,
       sound: sound,
       newHandle: ret.newHandle
     );
@@ -814,9 +817,12 @@ class SoLoud {
           .firstWhere((s) => s.soundHash == sound.soundHash)
           .handle
           .add(ret.newHandle);
+      sound.handle.add(ret.newHandle);
     } catch (e) {
-      printPlayerError('play3d(): shoundHash ${sound.soundHash} found!',
-          PlayerErrors.soundHashNotFound);
+      printPlayerError(
+        'play3d(): shoundHash ${sound.soundHash} not found!',
+        PlayerErrors.soundHashNotFound,
+      );
       return (
         error: PlayerErrors.soundHashNotFound,
         sound: sound,
@@ -824,7 +830,7 @@ class SoLoud {
       );
     }
     return (
-      error: PlayerErrors.engineNotInited,
+      error: PlayerErrors.noError,
       sound: sound,
       newHandle: ret.newHandle
     );
