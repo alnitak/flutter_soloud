@@ -23,28 +23,65 @@ class BarsFftWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (audioData.address == 0x0) return const SizedBox.shrink();
-    final barWidth = width / (maxFreq - minFreq);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          width: width,
-          height: height,
+        ColoredBox(
           color: Colors.black,
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              for (int i = minFreq; i < maxFreq; i++)
-                Container(
-                  width: barWidth,
-                  height: (height * audioData[i]).abs(),
-                  color: Colors.yellow,
-                )
-            ],
+          child: RepaintBoundary(
+            child: CustomPaint(
+              size: Size(width, height),
+              painter: FftPainter(
+                audioData: audioData,
+                minFreq: minFreq,
+                maxFreq: maxFreq,
+                ),
+            ),
           ),
         ),
       ],
     );
+  }
+}
+
+/// Custom painter to draw the wave in a circle
+///
+class FftPainter extends CustomPainter {
+  const FftPainter({
+    required this.audioData,
+    required this.minFreq,
+    required this.maxFreq,
+    
+  });
+  final ffi.Pointer<ffi.Float> audioData;
+  final int minFreq;
+  final int maxFreq;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final barWidth = size.width / (maxFreq - minFreq);
+    final paint = Paint()..color = Colors.yellow 
+    ..strokeWidth = barWidth * 0.8
+    ..style = PaintingStyle.stroke;
+
+
+    for (var i = minFreq; i <= maxFreq; i++) {
+      final barHeight = size.height * audioData[i];
+      canvas.drawRect(
+        Rect.fromLTWH(
+          barWidth * (i - minFreq),
+          size.height - barHeight,
+          barWidth,
+          barHeight,
+        ),
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) {
+    return true;
   }
 }
