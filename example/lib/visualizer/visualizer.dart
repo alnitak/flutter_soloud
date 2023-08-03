@@ -42,12 +42,14 @@ class FftController extends ChangeNotifier {
 
   void changeMinFreq(int minFreq) {
     if (minFreq < 0) return;
+    if (minFreq >= maxFreqRange) return;
     minFreqRange = minFreq;
     notifyListeners();
   }
 
   void changeMaxFreq(int maxFreq) {
     if (maxFreq > 255) return;
+    if (maxFreq <= minFreqRange) return;
     maxFreqRange = maxFreq;
     notifyListeners();
   }

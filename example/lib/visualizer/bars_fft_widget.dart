@@ -30,13 +30,15 @@ class BarsFftWidget extends StatelessWidget {
         ColoredBox(
           color: Colors.black,
           child: RepaintBoundary(
-            child: CustomPaint(
-              size: Size(width, height),
-              painter: FftPainter(
-                audioData: audioData,
-                minFreq: minFreq,
-                maxFreq: maxFreq,
+            child: ClipRRect(
+              child: CustomPaint(
+                size: Size(width, height),
+                painter: FftPainter(
+                  audioData: audioData,
+                  minFreq: minFreq,
+                  maxFreq: maxFreq,
                 ),
+              ),
             ),
           ),
         ),
@@ -52,7 +54,6 @@ class FftPainter extends CustomPainter {
     required this.audioData,
     required this.minFreq,
     required this.maxFreq,
-    
   });
   final ffi.Pointer<ffi.Float> audioData;
   final int minFreq;
@@ -61,10 +62,10 @@ class FftPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final barWidth = size.width / (maxFreq - minFreq);
-    final paint = Paint()..color = Colors.yellow 
-    ..strokeWidth = barWidth * 0.8
-    ..style = PaintingStyle.stroke;
-
+    final paint = Paint()
+      ..color = Colors.yellow
+      ..strokeWidth = barWidth * 0.8
+      ..style = PaintingStyle.stroke;
 
     for (var i = minFreq; i <= maxFreq; i++) {
       final barHeight = size.height * audioData[i];

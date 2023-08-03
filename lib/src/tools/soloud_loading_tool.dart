@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:flutter_soloud/src/utils/assets_manager.dart';
 import 'package:http/http.dart' as http;
+import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 
 /// Thanks to Maks Klimko
@@ -40,25 +41,27 @@ class SoloudLoadingTool {
   ///
   static Future<SoundProps?> loadFromUrl(String url) async {
     try {
-      final response = await http.get(Uri.parse(url));
-      if (response.statusCode == 200) {
-        final tempDir = await getTemporaryDirectory();
-        final tempPath = tempDir.path;
-        final filePath = '$tempPath/${DateTime.now()}';
-        final file = File(filePath);
-        if (!file.existsSync()) {
+      final tempDir = await getTemporaryDirectory();
+      final tempPath = tempDir.path;
+      final filePath = '$tempPath${Platform.pathSeparator}'
+          '${DateFormat('MMM d y').format(DateTime.now())}';
+      final file = File(filePath);
+
+      if (!file.existsSync()) {
+        final response = await http.get(Uri.parse(url));
+        if (response.statusCode == 200) {
           final byteData = response.bodyBytes;
           final buffer = byteData.buffer;
           await file.create(recursive: true);
           await file.writeAsBytes(
             buffer.asUint8List(byteData.offsetInBytes, byteData.lengthInBytes),
           );
+        } else {
+          debugPrint('Failed to fetch file from URL: $url');
+          return null;
         }
-        return _finallyLoadFile(file);
-      } else {
-        debugPrint('Failed to fetch file from URL: $url');
-        return null;
       }
+      return _finallyLoadFile(file);
     } catch (e) {
       debugPrint('Error while fetching file: $e');
       return null;
