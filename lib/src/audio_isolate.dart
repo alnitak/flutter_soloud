@@ -38,8 +38,8 @@ void printCaptureError(String message, CaptureErrors error) {
       out = 'Capture not yet initialized';
       break;
     case CaptureErrors.nullPointer:
-      out = 'Capture null pointer error. Could happens when passing '
-          'a non initialized pointer (with calloc()) to retrieve FFT or wave data';
+      out = 'Capture null pointer error. Could happens when passing a non '
+          'initialized pointer (with calloc()) to retrieve FFT or wave data';
       break;
   }
   debugPrint('flutter_soloud capture error: $message: $out');
@@ -81,8 +81,8 @@ void printPlayerError(String message, PlayerErrors error) {
       out = 'Other error';
       break;
     case PlayerErrors.nullPointer:
-      out = 'Capture null pointer error. Could happens when passing '
-          'a non initialized pointer (with calloc()) to retrieve FFT or wave data';
+      out = 'Capture null pointer error. Could happens when passing a non '
+          'initialized pointer (with calloc()) to retrieve FFT or wave data';
       break;
     case PlayerErrors.soundHashNotFound:
       out = 'The sound with specified hash is not found';
