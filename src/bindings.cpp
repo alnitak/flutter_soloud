@@ -144,14 +144,23 @@ extern "C"
         player.stop(handle);
     }
 
-    /// Stop all handles of the already loaded sound identified by [hash] and clear it
+    /// Stop all handles of the already loaded sound identified by [hash] and dispose it
     ///
     /// [soundHash]
-    FFI_PLUGIN_EXPORT void stopSound(unsigned int soundHash)
+    FFI_PLUGIN_EXPORT void disposeSound(unsigned int soundHash)
     {
         if (!player.isInited())
             return;
-        player.stopSound(soundHash);
+        player.disposeSound(soundHash);
+    }
+
+    /// Dispose all sounds already loaded
+    ///
+    FFI_PLUGIN_EXPORT void disposeAllSound()
+    {
+        if (!player.isInited())
+            return;
+        player.disposeAllSound();
     }
 
     /// This function can be used to set a sample to play on repeat, 

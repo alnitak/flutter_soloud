@@ -13,8 +13,11 @@ import 'package:flutter_soloud/src/soloud_controller.dart';
 
 /// sound event types
 enum SoundEvent {
-  /// handle reache the end of playback
+  /// handle reached the end of playback
   handleIsNoMoreValid,
+
+  /// the sound has been disposed
+  soundDisposed,
 }
 
 /// the type sent back to the user when a sound event occurs
@@ -38,6 +41,11 @@ class SoundProps {
 
   /// the user can listed ie when a sound ends or key events (TODO)
   StreamController<StreamSoundEvent> soundEvents = StreamController.broadcast();
+
+  @override
+  String toString() {
+    return 'soundHash: $soundHash has ${handle.length} active handles';
+  }
 }
 
 /// The events exposed by the plugin
@@ -142,8 +150,9 @@ class SoLoud {
       } else {
         debugIsolates('******** MAIN EVENT data: $data');
         if (data is StreamSoundEvent) {
-          debugPrint('@@@@@@@@@@@ STREAM EVENT: ${data.event}  '
-              'handle: ${data.sound.handle}');
+          debugPrint('@@@@@@@@@@@ SOUND EVENT: ${data.event}  '
+              'handle: ${data.handle}  '
+              'sound: ${data.sound}');
 
           /// find the sound which received the [SoundEvent] and...
           final sound = activeSounds.firstWhere(
@@ -156,14 +165,24 @@ class SoLoud {
             },
           );
 
-          /// ...put in its own stream the event
-          if (sound.soundHash != 0) {
+          /// send the disposed event to listeners and remove the sound
+          if (data.event == SoundEvent.soundDisposed) {
             sound.soundEvents.add(data);
-            sound.handle.removeWhere(
-              (handle) {
-                return handle == data.handle;
-              },
-            );
+            activeSounds.removeWhere(
+                (element) => element.soundHash == data.sound.soundHash);
+          }
+
+          /// send the handle event to the listeners and remove it
+          if (data.event == SoundEvent.handleIsNoMoreValid) {
+            /// ...put in its own stream the event, then remove the handle
+            if (sound.soundHash != 0) {
+              sound.soundEvents.add(data);
+              sound.handle.removeWhere(
+                (handle) {
+                  return handle == data.handle;
+                },
+              );
+            }
           }
         } else {
           // if not a StreamSoundEvent, queue this into [_returnedEvent]
@@ -185,6 +204,7 @@ class SoLoud {
   ///
   Future<bool> stopIsolate() async {
     if (_isolate == null) return false;
+    await disposeAllSound();
     // engine will be disposed in the audio isolate, so just set this variable
     isPlayerInited = false;
     await _stopLoop();
@@ -291,6 +311,8 @@ class SoLoud {
   ///
   Future<bool> disposeEngine() async {
     if (_isolate == null || !isPlayerInited) return false;
+
+    await disposeAllSound();
 
     /// first stop the loop
     await _stopLoop();
@@ -481,18 +503,19 @@ class SoLoud {
   /// [sound] the sound to clear
   /// Return [PlayerErrors.noError] on success
   ///
-  Future<PlayerErrors> stopSound(SoundProps sound) async {
+  Future<PlayerErrors> disposeSound(SoundProps sound) async {
     if (!isPlayerInited) {
-      printPlayerError('stopSound()', PlayerErrors.engineNotInited);
+      printPlayerError('disposeSound()', PlayerErrors.engineNotInited);
       return PlayerErrors.engineNotInited;
     }
     _mainToIsolateStream?.send(
       {
-        'event': MessageEvents.stopSound,
+        'event': MessageEvents.disposeSound,
         'args': (soundHash: sound.soundHash),
       },
     );
-    await _waitForEvent(MessageEvents.stopSound, (soundHash: sound.soundHash));
+    await _waitForEvent(
+        MessageEvents.disposeSound, (soundHash: sound.soundHash));
 
     /// remove the sound with [soundHash]
     activeSounds.removeWhere(
@@ -500,6 +523,28 @@ class SoLoud {
         return element.soundHash == sound.soundHash;
       },
     );
+    return PlayerErrors.noError;
+  }
+
+  /// Dispose all sounds already loaded. Complete silence
+  ///
+  /// Return [PlayerErrors.noError] on success
+  ///
+  Future<PlayerErrors> disposeAllSound() async {
+    if (!isPlayerInited) {
+      printPlayerError('disposeAllSound()', PlayerErrors.engineNotInited);
+      return PlayerErrors.engineNotInited;
+    }
+    _mainToIsolateStream?.send(
+      {
+        'event': MessageEvents.disposeAllSound,
+        'args': (),
+      },
+    );
+    await _waitForEvent(MessageEvents.disposeAllSound, ());
+
+    /// remove the sound with [soundHash]
+    activeSounds.clear();
     return PlayerErrors.noError;
   }
 
@@ -935,12 +980,12 @@ class SoLoud {
 
   /// You can change the attenuation model and rolloff factor parameters of
   /// a live 3d audio source.
-  ///
-  /// NO_ATTENUATION 	      No attenuation
-  /// INVERSE_DISTANCE 	    Inverse distance attenuation model
-  /// LINEAR_DISTANCE 	    Linear distance attenuation model
-  /// EXPONENTIAL_DISTANCE 	Exponential distance attenuation model
-  ///
+  /// ```
+  /// 0 NO_ATTENUATION        No attenuation
+  /// 1 INVERSE_DISTANCE      Inverse distance attenuation model
+  /// 2 LINEAR_DISTANCE       Linear distance attenuation model
+  /// 3 EXPONENTIAL_DISTANCE  Exponential distance attenuation model
+  /// ```
   /// see https://solhsa.com/soloud/concepts3d.html
   ///
   void set3dSourceAttenuation(

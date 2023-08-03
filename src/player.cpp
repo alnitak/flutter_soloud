@@ -161,7 +161,7 @@ void Player::stop(unsigned int handle)
                                        { return f == handle; }));
 }
 
-void Player::stopSound(unsigned int soundHash)
+void Player::disposeSound(unsigned int soundHash)
 {
     auto const &s = std::find_if(sounds.begin(), sounds.end(),
                                  [&](std::unique_ptr<ActiveSound> const &f)
@@ -175,6 +175,12 @@ void Player::stopSound(unsigned int soundHash)
     sounds.erase(std::remove_if(sounds.begin(), sounds.end(),
                                 [soundHash](std::unique_ptr<ActiveSound> &f)
                                 { return f.get()->soundHash == soundHash; }));
+}
+
+void Player::disposeAllSound()
+{
+    soloud.stopAll();
+    sounds.clear();
 }
 
 void Player::setLooping(unsigned int handle, bool enable)

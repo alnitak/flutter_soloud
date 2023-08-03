@@ -90,7 +90,11 @@ public:
 
     /// @brief Stop all handles of the already loaded sound identified by [soundHash] and clear it
     /// @param soundHash
-    void stopSound(unsigned int soundHash);
+    void disposeSound(unsigned int soundHash);
+
+    /// @brief Dispose all sounds already loaded
+    /// @param soundHash
+    void disposeAllSound();
 
     /// @brief This function can be used to set a sample to play on repeat, 
     /// instead of just playing once
