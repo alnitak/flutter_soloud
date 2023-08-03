@@ -447,7 +447,7 @@ class _Page1State extends State<Page1> {
   /// play file
   Future<void> play(String file) async {
     if (currentSound != null) {
-      if (await SoLoud().stopSound(currentSound!) != PlayerErrors.noError) {
+      if (await SoLoud().disposeSound(currentSound!) != PlayerErrors.noError) {
         return;
       }
       stopTimer();
@@ -472,9 +472,10 @@ class _Page1State extends State<Page1> {
         stopTimer();
         // TODO(me): put this elsewhere?
         event.sound.soundEvents.close();
-        /// It's needed to stop the sound when it end else it will 
-        /// not be disposed
-        // SoLoud().stopSound(currentSound!);
+
+        /// It's needed to call dispose when it end else it will
+        /// not be cleared
+        SoLoud().disposeSound(currentSound!);
         currentSound = null;
       },
     );
@@ -507,6 +508,7 @@ class _Page1State extends State<Page1> {
 
   /// start timer to update the audio position slider
   void startTimer() {
+    timer?.cancel();
     timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (currentSound != null) {
         soundPosition.value =

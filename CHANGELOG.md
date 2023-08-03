@@ -1,3 +1,9 @@
+## 1.X.X
+- *SoLoud().loadFile* now can return *PlayerErrors.fileAlreadyLoaded* when a sound has already been loaded previously. It still return the SoundProps sound. It's not a breaking error.
+- added *Soloud().disposeAllSound* to stop and dispose all active sounds
+
+**breaking change**: *Soloud().stopSound* has been renamed to *Soloud().disposeSound*
+
 ## 1.1.0
 added load sound tools:
 - SoloudLoadingTool.loadFromAssets()

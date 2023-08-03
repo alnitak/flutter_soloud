@@ -28,6 +28,14 @@ class _Page4State extends State<Page4> {
     initialTime = DateTime.now();
   }
 
+  @override
+  void dispose() {
+    SoLoud().stopIsolate();
+    SoLoud().stopCapture();
+    timer?.cancel();
+    super.dispose();
+  }
+
   void _startTimer() {
     timer?.cancel();
     timer = Timer.periodic(const Duration(milliseconds: 50), (_) {
@@ -54,13 +62,6 @@ class _Page4State extends State<Page4> {
   }
 
   @override
-  void dispose() {
-    SoLoud().stopIsolate();
-    timer?.cancel();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     return Column(
       children: [
@@ -70,7 +71,7 @@ class _Page4State extends State<Page4> {
               await play(maxDistance: 100);
             } else {
               timer?.cancel();
-              await SoLoud().stopSound(currentSound!);
+              await SoLoud().disposeSound(currentSound!);
               currentSound = null;
             }
             setState(() {});
@@ -104,8 +105,7 @@ class _Page4State extends State<Page4> {
 
     /// stop any previous sound loaded
     if (currentSound != null) {
-      if (await SoLoud().stopSound(currentSound!) !=
-          PlayerErrors.noError) {
+      if (await SoLoud().disposeSound(currentSound!) != PlayerErrors.noError) {
         return;
       }
     }

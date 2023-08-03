@@ -83,7 +83,7 @@ Future<SoundProps?> loadSound(String completeFileName) {
 }
 ```
 
-There are 3 convenient methods that can be used insted in the [SoloudLoadingTool] class:
+There are 3 convenient methods that can be used instead in the [SoloudLoadingTool] class:
 - ```Future<SoundProps?> loadFromAssets(String path)```
 - ```Future<SoundProps?> loadFromFile(String path)```
 - ```Future<SoundProps?> loadFromUrl(String url)```
@@ -104,7 +104,10 @@ class SoundProps {
   StreamController<StreamSoundEvent> soundEvents = StreamController.broadcast();
 }
 ```
-*soundHash* and *handle* list are then used in the *AudioIsolate()* class.
+*soundHash* and *handle* list are then used to call many methods in the *AudioIsolate()* class.
+
+**warning**: when you call a load* method, in return you will get a SoundProps. This is the reference to the sound which is used by SoLoud and need to be disposed when is no more needed. When you play a SoundsProps, intstead a new handle, to identify the new playing instance, is created and added to SoundProps.handle list. This let you play the sound as many times you want without calling a load* method again which can be laggy.
+To dispose a sound call you should call *Soloud().disposeSound* or *Soloud().disposeAllSounds*
 
 #### Capture from microphone
 
@@ -143,7 +146,7 @@ The `AudioIsolate` instance has the duty of receiving commands and sending them 
 | **pauseSwitch**| PlayerErrors| `int` handle| Pause or unpause an already loaded sound identified by [handle].|
 | **getPause**| ({PlayerErrors error, bool pause})| `int` handle| Get the pause state of the sound identified by [handle].|
 | **stop**| PlayerErrors| `int` handle| Stop an already loaded sound identified by [handle] and clear it.|
-| **stopSound**| PlayerErrors| `int` handle| Stop ALL handles of the already loaded sound identified by [soundHash] and clear it.|
+| **disposeSound**| PlayerErrors| `int` handle| Stop ALL handles of the already loaded sound identified by [soundHash] and dispose it.|
 | **setLooping**| -| `int` handle, `bool` enable| This function can be used to set a sample to play on repeat, instead of just playing once.|
 | **getLength**| ({PlayerErrors error, double length})| `int` soundHash| Get the sound length in seconds.|
 | **seek**| PlayerErrors| `int` handle, `double` time| Seek playing in seconds.|
@@ -191,6 +194,7 @@ The `PlayerErrors` enum:
 |***backendNotInited***|Player not initialized|
 |***nullPointer***|null pointer. Could happens when passing a non initialized pointer (with calloc()) to retrieve FFT or wave data|
 |***soundHashNotFound***|The sound with specified hash is not found|
+|***fileAlreadyLoaded***|The sound file has already been loaded|
 |***isolateAlreadyStarted***|Audio isolate already started|
 |***isolateNotStarted***|Audio isolate not yet started|
 |***engineNotInited***|Engine not yet started|
@@ -204,7 +208,7 @@ void listedToEndPlaying(SoundProps sound) {
       /// Here the [event.handle] of [sound] has naturally finished
       /// and [sound.handle] doesn't contains [envent.handle] anymore.
       /// Not passing here when calling [SoLoud().stop()]
-      /// or [SoLoud().stopSound()]
+      /// or [SoLoud().disposeSound()]
     },
   );
 }
@@ -238,12 +242,12 @@ SoLoud().audioEvent.stream.listen(
 
 ## Contribute
 
-To use native code, bindings from Dart to C/C++ are needed. To avoid writing these manually, they are generated from the header file (`src/ffi_gen_tmp.h`) using [package:ffigen](https://pub.dev/packages/ffigen) and temporarily stored in `lib/flutter_soloud_bindings_ffi_TMP.dart`. You can generate the bindings by running `dart run ffigen`.
+To use native code, bindings from Dart to C/C++ are needed. To avoid writing these manually, they are generated from the header file (`src/ffi_gen_tmp.h`) using [package:ffigen](https://pub.dev/packages/ffigen) and temporarily stored in `lib/flutter_soloud_FFIGEN.dart`. You can generate the bindings by running `dart run ffigen`.
 
 Since I needed to modify the generated `.dart` file, I followed this flow:
 1. Copy the function declarations to be generated into `src/ffi_gen_tmp.h`.
-2. The file `lib/flutter_soloud_bindings_ffi_TMP.dart` will be generated automatically.
-3. Copy the relevant code for the new functions from `lib/flutter_soloud_bindings_ffi_TMP.dart` into `lib/flutter_soloud_bindings_ffi.dart`.
+2. The file `lib/flutter_soloud_FFIGEN.dart` will be generated.
+3. Copy the relevant code for the new functions from `lib/flutter_soloud_FFIGEN.dart` into `lib/flutter_soloud_bindings_ffi.dart`.
 
 Additionally, I have forked the [SoLoud](https://github.com/jarikomppa/soloud) repository and made modifications to include the latest [Miniaudio](https://github.com/mackron/miniaudio) audio backend. This backend is in the [new_miniaudio] branch of my [fork](https://github.com/alnitak/soloud) and is set as the default.
 

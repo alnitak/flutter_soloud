@@ -274,18 +274,28 @@ class FlutterSoLoudFfi {
   late final _stop = _stopPtr.asFunction<void Function(int)>();
 
   /// Stop all handles of the already loaded sound identified
-  /// by [soundHash] and clear it.
+  /// by [soundHash] and dispose it.
   ///
   /// [soundHash]
-  void stopSound(int soundHash) {
+  void disposeSound(int soundHash) {
     return _stopSound(soundHash);
   }
 
   late final _stopSoundPtr =
       _lookup<ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt)>>(
-    'stopSound',
+    'disposeSound',
   );
   late final _stopSound = _stopSoundPtr.asFunction<void Function(int)>();
+
+  /// Dispose all sounds already loaded
+  void disposeAllSound() {
+    return _disposeAllSound();
+  }
+
+  late final _disposeAllSoundPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function()>>('disposeAllSound');
+  late final _disposeAllSound =
+      _disposeAllSoundPtr.asFunction<void Function()>();
 
   /// This function can be used to set a sample to play on repeat,
   /// instead of just playing once

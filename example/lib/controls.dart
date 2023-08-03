@@ -52,6 +52,15 @@ class _ControlsState extends State<Controls> {
       children: [
         Row(
           children: [
+            /// STOP ALL
+            ElevatedButton(
+              onPressed: () {
+                SoLoud().disposeAllSound();
+              },
+              child: const Text('stop all'),
+            ),
+            const SizedBox(width: 8),
+
             /// AudioIsolate
             ValueListenableBuilder<bool>(
               valueListenable: isAudioIsolateRunning,
@@ -98,8 +107,7 @@ class _ControlsState extends State<Controls> {
                     if (isRunning) {
                       SoLoud().stopCapture();
                     } else {
-                      SoLoud()
-                          .initCapture(deviceID: choosenCaptureDeviceId);
+                      SoLoud().initCapture(deviceID: choosenCaptureDeviceId);
                       SoLoud().startCapture();
                     }
                   },

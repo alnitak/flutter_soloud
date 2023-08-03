@@ -9,7 +9,6 @@ import 'package:ffi/ffi.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
-
 import 'package:flutter_soloud_example/visualizer/audio_shader.dart';
 import 'package:flutter_soloud_example/visualizer/bars_fft_widget.dart';
 import 'package:flutter_soloud_example/visualizer/bars_wave_widget.dart';

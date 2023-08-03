@@ -115,7 +115,8 @@ enum MessageEvents {
   play,
   play3d,
   stop,
-  stopSound,
+  disposeSound,
+  disposeAllSound,
 }
 
 /// definitions to be checked in main isolate
@@ -136,7 +137,8 @@ typedef ArgsPlay3d = ({
   bool paused
 });
 typedef ArgsStop = ({int handle});
-typedef ArgsStopSound = ({int soundHash});
+typedef ArgsDisposeSound = ({int soundHash});
+typedef ArgsDisposeAllSound = ();
 
 /// Top Level audio isolate function
 ///
@@ -274,13 +276,35 @@ void audioIsolate(SendPort isolateToMainStream) {
             .send({'event': event['event'], 'args': args, 'return': ()});
         break;
 
-      case MessageEvents.stopSound:
-        final args = event['args']! as ArgsStopSound;
-        soLoudController.soLoudFFI.stopSound(args.soundHash);
+      case MessageEvents.disposeSound:
+        final args = event['args']! as ArgsDisposeSound;
+        soLoudController.soLoudFFI.disposeSound(args.soundHash);
 
         /// find a sound with this handle and remove that handle from the list
         activeSounds
             .removeWhere((element) => element.soundHash == args.soundHash);
+
+        isolateToMainStream
+            .send({'event': event['event'], 'args': args, 'return': ()});
+        break;
+
+      case MessageEvents.disposeAllSound:
+        final args = event['args']! as ArgsDisposeAllSound;
+        soLoudController.soLoudFFI.disposeAllSound();
+
+        /// send the [SoundEvent.soundDisposed] event to main isolate
+        for (final sound in activeSounds) {
+          isolateToMainStream.send(
+            (
+              event: SoundEvent.soundDisposed,
+              sound: sound,
+              handle: 0,
+            ),
+          );
+        }
+
+        /// Clear the sound list
+        activeSounds.clear();
 
         isolateToMainStream
             .send({'event': event['event'], 'args': args, 'return': ()});
@@ -357,7 +381,7 @@ void audioIsolate(SendPort isolateToMainStream) {
                   (
                     event: SoundEvent.handleIsNoMoreValid,
                     sound: sound,
-                    handle: handle
+                    handle: handle,
                   ),
                 );
 

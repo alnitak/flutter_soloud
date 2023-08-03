@@ -79,14 +79,8 @@ class _PlaySoundWidgetState extends State<PlaySoundWidget> {
   SoundProps? sound;
 
   @override
-  void initState() {
-    super.initState();
-  }
-
-  @override
   void dispose() {
     _subscription?.cancel();
-    SoLoud().stopIsolate();
     super.dispose();
   }
 
@@ -95,17 +89,28 @@ class _PlaySoundWidgetState extends State<PlaySoundWidget> {
     final loadRet = await SoLoud().loadFile(path);
 
     if (loadRet.error == PlayerErrors.noError) {
-      soundLength =
-          SoLoud().getLength(loadRet.sound!.soundHash).length;
+      soundLength = SoLoud().getLength(loadRet.sound!.soundHash).length;
       sound = loadRet.sound;
 
       /// Listen to this sound events
       _subscription = sound!.soundEvents.stream.listen(
         (event) {
-          debugPrint('@@@@@@@@@@@ StreamSoundEvent for '
-              'handle: ${event.handle}');
-          isPaused.remove(event.handle);
-          soundPosition.remove(event.handle);
+          debugPrint('@@@@@@@@@@@ Received StreamSoundEvent ${event.event}');
+
+          /// if handle has been stoppend of has finished to play
+          if (event.event == SoundEvent.handleIsNoMoreValid) {
+            isPaused.remove(event.handle);
+            soundPosition.remove(event.handle);
+            _subscription?.cancel();
+          }
+
+          /// if the sound has been disposed
+          if (event.event == SoundEvent.soundDisposed) {
+            isPaused.clear();
+            soundPosition.clear();
+            sound = null;
+          }
+
           if (mounted) setState(() {});
         },
       );
@@ -200,6 +205,12 @@ class _PlayingRowState extends State<PlayingRow> {
   Timer? timer;
 
   @override
+  void dispose() {
+    stopTimer();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Row(
       children: [
@@ -269,7 +280,8 @@ class _PlayingRowState extends State<PlayingRow> {
 
   /// start timer to update the audio position slider
   void startTimer() {
-    timer = Timer.periodic(const Duration(microseconds: 100), (_) {
+    timer?.cancel();
+    timer = Timer.periodic(const Duration(milliseconds: 100), (_) {
       soundPosition.value = SoLoud().getPosition(widget.handle).position;
     });
   }

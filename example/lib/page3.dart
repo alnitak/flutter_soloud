@@ -1,10 +1,8 @@
-import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
-import 'package:path_provider/path_provider.dart';
 
 class Page3 extends StatefulWidget {
   const Page3({super.key});
@@ -15,6 +13,7 @@ class Page3 extends StatefulWidget {
 
 class _Page3State extends State<Page3> {
   SoundProps? currentSound;
+  bool spinAround = false;
 
   @override
   void dispose() {
@@ -29,17 +28,28 @@ class _Page3State extends State<Page3> {
       body: Center(
         child: Column(
           children: [
-            ElevatedButton(
-              onPressed: () =>
-                  play((MediaQuery.sizeOf(context).width - 20) / 2),
-              child: const Text('play'),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                ElevatedButton(
+                  onPressed: playFromUrl,
+                  child: const Text('spin around\nsound from network'),
+                ),
+                const SizedBox(width: 16),
+                ElevatedButton(
+                  onPressed: () =>
+                      play((MediaQuery.sizeOf(context).width - 20) / 2),
+                  child: const Text('play'),
+                ),
+              ],
             ),
             const SizedBox(height: 16),
             Audio3DWidget(
               key: UniqueKey(),
+              spinAround: spinAround,
               sound: currentSound,
-              width: MediaQuery.sizeOf(context).width - 20,
-              height: MediaQuery.sizeOf(context).width - 20,
+              width: MediaQuery.sizeOf(context).width * .8 - 20,
+              height: MediaQuery.sizeOf(context).width * .8 - 20,
             ),
           ],
         ),
@@ -47,6 +57,47 @@ class _Page3State extends State<Page3> {
     );
   }
 
+  /// Play an audio downloaded from url
+  ///
+  Future<void> playFromUrl() async {
+    /// Start audio engine if not already
+    if (!SoLoud().isIsolateRunning()) {
+      await SoLoud().startIsolate().then((value) {
+        if (value == PlayerErrors.noError) {
+          debugPrint('isolate started');
+        } else {
+          debugPrint('isolate starting error: $value');
+          return;
+        }
+      });
+    }
+
+    /// stop any previous sound loaded
+    if (currentSound != null) {
+      if (await SoLoud().disposeSound(currentSound!) != PlayerErrors.noError) {
+        return;
+      }
+    }
+
+    /// load the audio file
+    currentSound = await SoloudLoadingTool.loadFromUrl(
+      'https://www.learningcontainer.com/wp-content/uploads/2020/02/Kalimba.mp3',
+    );
+
+    /// play it
+    final playRet = await SoLoud().play3d(currentSound!, 0, 0, 0);
+    if (playRet.error != PlayerErrors.noError) return;
+
+    SoLoud().setLooping(playRet.newHandle, true);
+    currentSound = playRet.sound;
+    
+    spinAround = true;
+
+    if (mounted) setState(() {});
+  }
+
+  /// Play the audio setting min and max distance and attenuation
+  ///
   Future<void> play(double maxDistance) async {
     /// Start audio engine if not already
     if (!SoLoud().isIsolateRunning()) {
@@ -62,59 +113,44 @@ class _Page3State extends State<Page3> {
 
     /// stop any previous sound loaded
     if (currentSound != null) {
-      if (await SoLoud().stopSound(currentSound!) != PlayerErrors.noError) {
+      if (await SoLoud().disposeSound(currentSound!) != PlayerErrors.noError) {
         return;
       }
     }
 
     /// load the audio file
-    final f = await getAssetFile('assets/audio/siren.mp3');
-    final loadRet = await SoLoud().loadFile(f.path);
-    if (loadRet.error != PlayerErrors.noError) return;
-    currentSound = loadRet.sound;
+    currentSound =
+        await SoloudLoadingTool.loadFromAssets('assets/audio/siren.mp3');
 
     /// play it
     final playRet = await SoLoud().play3d(currentSound!, 0, 0, 0);
-    if (loadRet.error != PlayerErrors.noError) return;
+    if (playRet.error != PlayerErrors.noError) return;
+
     SoLoud().setLooping(playRet.newHandle, true);
     SoLoud().set3dSourceMinMaxDistance(
       playRet.newHandle,
       50,
       maxDistance,
     );
-    SoLoud().set3dSourceAttenuation(playRet.newHandle, 1, 1);
+    SoLoud().set3dSourceAttenuation(playRet.newHandle, 1, 0.5);
     currentSound = playRet.sound;
 
-    if (mounted) setState(() {});
-  }
+    spinAround = false;
 
-  /// get the assets file and copy it to the temp dir
-  Future<File> getAssetFile(String assetsFile) async {
-    final tempDir = await getTemporaryDirectory();
-    final tempPath = tempDir.path;
-    final filePath = '$tempPath/$assetsFile';
-    final file = File(filePath);
-    if (file.existsSync()) {
-      return file;
-    } else {
-      final byteData = await rootBundle.load(assetsFile);
-      final buffer = byteData.buffer;
-      await file.create(recursive: true);
-      return file.writeAsBytes(
-        buffer.asUint8List(byteData.offsetInBytes, byteData.lengthInBytes),
-      );
-    }
+    if (mounted) setState(() {});
   }
 }
 
 class Audio3DWidget extends StatefulWidget {
   const Audio3DWidget({
+    required this.spinAround,
     required this.width,
     required this.height,
     this.sound,
     super.key,
   });
 
+  final bool spinAround;
   final SoundProps? sound;
   final double width;
   final double height;
@@ -129,11 +165,13 @@ class _Audio3DWidgetState extends State<Audio3DWidget>
   final doppler = ValueNotifier(true);
   Duration precTime = Duration.zero;
   double posX = 0;
-  double posY = 20;
+  double posY = -50;
   double posZ = 0;
   double velX = 0;
   double velY = 0;
   double animVel = 2;
+  double angle = 0;
+  Offset center = Offset.zero;
   late double dx;
 
   @override
@@ -151,9 +189,16 @@ class _Audio3DWidgetState extends State<Audio3DWidget>
   }
 
   void _tick(Duration elapsed) {
-    if (posX + dx > widget.width / 2) dx = -animVel;
-    if (posX + dx < -widget.width / 2) dx = animVel;
-    posX += dx;
+    if (widget.spinAround) {
+      angle += pi / animVel / 50;
+      final circleRadius = Offset(posX - center.dx, posY - center.dy).distance;
+      posX = circleRadius * cos(angle);
+      posY = circleRadius * sin(angle);
+    } else {
+      if (posX + dx > widget.width / 2) dx = -animVel;
+      if (posX + dx < -widget.width / 2) dx = animVel;
+      posX += dx;
+    }
     updatePos(Offset(dx, 0), elapsed);
   }
 
@@ -284,8 +329,10 @@ class Audio3DPainter extends CustomPainter {
       /// draw sound position
       ..drawCircle(
         Offset(posX + size.width / 2, posY + size.height / 2),
-        5,
-        paint,
+        size.width / 50,
+        Paint()
+          ..color = Colors.red
+          ..style = PaintingStyle.fill,
       );
   }
 

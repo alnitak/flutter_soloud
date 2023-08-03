@@ -5,7 +5,6 @@ import 'dart:ffi' as ffi;
 import 'dart:isolate';
 
 import 'package:flutter/foundation.dart';
-
 import 'package:flutter_soloud/src/audio_isolate.dart';
 import 'package:flutter_soloud/src/bindings_capture_ffi.dart';
 import 'package:flutter_soloud/src/flutter_soloud_bindings_ffi.dart';

@@ -43,7 +43,7 @@ class MyHomePage extends StatelessWidget {
                   Tab(text: 'visualizer'),
                   Tab(text: 'multi track'),
                   Tab(text: '3D audio'),
-                  Tab(text: 'Spining audio'),
+                  Tab(text: 'Spinning audio'),
                 ],
               ),
               SizedBox(height: 8),

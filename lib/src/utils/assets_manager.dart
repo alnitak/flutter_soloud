@@ -2,6 +2,8 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
+/// Thanks to Maks Klimko
+
 /// The [AssetsManager] class provides a static method to retrieve an asset
 /// file and save it to the local file system.
 /// 

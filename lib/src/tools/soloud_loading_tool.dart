@@ -6,6 +6,8 @@ import 'package:flutter_soloud/src/utils/assets_manager.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
+/// Thanks to Maks Klimko
+
 /// The `SoloudLoadingTool` class provides static methods to load audio files
 /// from various sources, including assets, local files, and URLs.
 ///
