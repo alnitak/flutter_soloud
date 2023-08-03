@@ -30,21 +30,24 @@ class MyHomePage extends StatelessWidget {
   Widget build(BuildContext context) {
     return const DefaultTabController(
       length: 5,
-      initialIndex: 4,
+      initialIndex: 1,
       child: SafeArea(
         child: Scaffold(
           body: Column(
             children: [
               Controls(),
-              TabBar(
-                isScrollable: true,
-                tabs: [
-                  Tab(text: 'hello world!'),
-                  Tab(text: 'visualizer'),
-                  Tab(text: 'multi track'),
-                  Tab(text: '3D audio'),
-                  Tab(text: 'Spinning audio'),
-                ],
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: TabBar(
+                  isScrollable: true,
+                  tabs: [
+                    Tab(text: 'hello world!'),
+                    Tab(text: 'visualizer'),
+                    Tab(text: 'multi track'),
+                    Tab(text: '3D audio'),
+                    Tab(text: 'Spinning audio'),
+                  ],
+                ),
               ),
               SizedBox(height: 8),
               Expanded(

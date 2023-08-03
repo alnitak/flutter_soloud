@@ -101,13 +101,13 @@ class _PlaySoundWidgetState extends State<PlaySoundWidget> {
           if (event.event == SoundEvent.handleIsNoMoreValid) {
             isPaused.remove(event.handle);
             soundPosition.remove(event.handle);
-            _subscription?.cancel();
           }
 
           /// if the sound has been disposed
           if (event.event == SoundEvent.soundDisposed) {
             isPaused.clear();
             soundPosition.clear();
+            _subscription?.cancel();
             sound = null;
           }
 
