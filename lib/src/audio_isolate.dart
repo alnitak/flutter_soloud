@@ -23,8 +23,8 @@ void debugIsolates(String text) {
 /// print the message and the error when [error]
 /// is not [CaptureErrors.captureNoError]
 ///
-void printCaptureError(String message, CaptureErrors error) {
-  if (error == CaptureErrors.captureNoError) return;
+String printCaptureError(String message, CaptureErrors error) {
+  if (error == CaptureErrors.captureNoError) return 'no error';
 
   var out = '';
   switch (error) {
@@ -42,14 +42,16 @@ void printCaptureError(String message, CaptureErrors error) {
           'initialized pointer (with calloc()) to retrieve FFT or wave data';
       break;
   }
-  debugPrint('flutter_soloud capture error: $message: $out');
+  final ret = 'flutter_soloud capture error: $message: $out';
+  debugPrint(ret);
+  return ret;
 }
 
 /// print the message and the error when [error]
 /// is not [PlayerErrors.noError]
 ///
-void printPlayerError(String message, PlayerErrors error) {
-  if (error == PlayerErrors.noError) return;
+String printPlayerError(String message, PlayerErrors error) {
+  if (error == PlayerErrors.noError) return 'no error';
 
   var out = '';
   switch (error) {
@@ -100,7 +102,10 @@ void printPlayerError(String message, PlayerErrors error) {
       out = 'Engine not yet started';
       break;
   }
-  debugPrint('flutter_soloud player error: $message: $out');
+
+  final ret = 'flutter_soloud player error: $message: $out';
+  debugPrint(ret);
+  return ret;
 }
 
 enum MessageEvents {
@@ -377,17 +382,17 @@ void audioIsolate(SendPort isolateToMainStream) {
               final isValid =
                   soLoudController.soLoudFFI.getIsValidVoiceHandle(handle);
               if (!isValid) {
-                isolateToMainStream.send(
-                  (
-                    event: SoundEvent.handleIsNoMoreValid,
-                    sound: sound,
-                    handle: handle,
-                  ),
-                );
-
                 /// later, outside the loop, remove the handle
                 removeInvalid.add(() {
                   sound.handle.remove(handle);
+
+                  isolateToMainStream.send(
+                    (
+                      event: SoundEvent.handleIsNoMoreValid,
+                      sound: sound,
+                      handle: handle,
+                    ),
+                  );
                 });
               }
             }

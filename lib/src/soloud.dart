@@ -497,7 +497,7 @@ class SoLoud {
   }
 
   /// Stop all handles of the already loaded sound identified
-  /// by soundHash of [sound] and clear it
+  /// by soundHash of [sound] and dispose it
   ///
   /// [sound] the sound to clear
   /// Return [PlayerErrors.noError] on success

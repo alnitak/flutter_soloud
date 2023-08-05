@@ -1,7 +1,4 @@
 {
-    // Use IntelliSense to learn about possible attributes.
-    // Hover to view descriptions of existing attributes.
-    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
         {
@@ -26,6 +23,14 @@
             "request": "launch",
             "program": "lib/main.dart",
             "flutterMode": "release",
+            "cwd": "${workspaceFolder}/example"
+        },
+        {
+            "name": "Flutter test",
+            "type": "dart",
+            "request": "launch",
+            "program": "tests/tests.dart",
+            "flutterMode": "debug",
             "cwd": "${workspaceFolder}/example"
         },
         {
@@ -62,6 +67,13 @@
             "request": "launch",
             "program": "${workspaceFolder}/example/build/linux/x64/debug/bundle/flutter_soloud_example",
             "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Flutter Integration Tests",
+            "program": "integration_test",
+            "cwd": "example",
+            "request": "launch",
+            "type": "dart"
         }
     ]
 }
