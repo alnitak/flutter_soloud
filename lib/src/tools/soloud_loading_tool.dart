@@ -4,7 +4,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:flutter_soloud/src/utils/assets_manager.dart';
 import 'package:http/http.dart' as http;
-import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 
 /// Thanks to Maks Klimko
@@ -41,10 +40,11 @@ class SoloudLoadingTool {
   ///
   static Future<SoundProps?> loadFromUrl(String url) async {
     try {
+      final now = DateTime.now();
       final tempDir = await getTemporaryDirectory();
       final tempPath = tempDir.path;
       final filePath = '$tempPath${Platform.pathSeparator}'
-          '${DateFormat('MMM d y').format(DateTime.now())}';
+          '${now.year} ${now.month} ${now.day}';
       final file = File(filePath);
 
       if (!file.existsSync()) {

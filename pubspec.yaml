@@ -33,8 +33,6 @@ dependencies:
   ffi: ^2.0.2
   #https://pub.dev/packages/http
   http: ^1.1.0
-  #https://pub.dev/packages/intl
-  intl: ^0.18.1
   #https://pub.dev/packages/path_provider
   path_provider: ^2.0.15
   

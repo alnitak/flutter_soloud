@@ -3,19 +3,27 @@
 Flutter low level audio plugin using SoLoud library and FFI
 
 [![style: very good analysis](https://img.shields.io/badge/style-very_good_analysis-B22C89.svg)](https://pub.dev/packages/very_good_analysis)
+
 |Linux|Windows|Android|MacOS|iOS|web|
-|-|-|-|-|-|-|
+|:-:|:-:|:-:|:-:|:-:|:-:|
 |💙|💙|💙|💙|💙|😭|
 
-* Supported on Linux, Windows, Mac, Android, and iOS
-* Player and capture audio from microphone
-* 3D audio with doppler effect
-* Multiple voices, capable of playing different sounds simultaneously or even repeating the same sound multiple times on top of each other
-* Includes a speech synthesizer
-* Supports various common formats such as 8, 16, and 32-bit WAVs, floating point WAVs, OGG, MP3, and FLAC
-* Enables real-time retrieval of audio FFT and wave data
 
-<a href="https://www.buymeacoffee.com/marcobavag" target="_blank"><img align="left" src="https://cdn.buymeacoffee.com/buttons/default-orange.png" alt="Buy Me A Coffee" height="41" width="174"></a><br/>
+🌐 Supported on Linux, Windows, Mac, Android, and iOS
+
+🎤 Player and capture audio from microphone
+
+🎶 3D audio with doppler effect
+
+🎙️ Multiple voices, capable of playing different sounds simultaneously or even repeating the same sound multiple times on top of each other
+
+💬 Includes a speech synthesizer
+
+🔊 Supports various common formats such as 8, 16, and 32-bit WAVs, floating point WAVs, OGG, MP3, and FLAC
+
+🎚️ Enables real-time retrieval of audio FFT and wave data
+
+<a href="https://www.buymeacoffee.com/marcobavag" target="_blank"><img align="left" src="https://cdn.buymeacoffee.com/buttons/default-orange.png" alt="Buy Me A Coffee" height="41" width="174"></a><br/><br/>
 
 ## Overview
 
