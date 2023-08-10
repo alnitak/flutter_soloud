@@ -89,7 +89,7 @@ class _PlaySoundWidgetState extends State<PlaySoundWidget> {
     final loadRet = await SoLoud().loadFile(path);
 
     if (loadRet.error == PlayerErrors.noError) {
-      soundLength = SoLoud().getLength(loadRet.sound!.soundHash).length;
+      soundLength = SoLoud().getLength(loadRet.sound!).length;
       sound = loadRet.sound;
 
       /// Listen to this sound events

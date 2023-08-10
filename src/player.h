@@ -16,23 +16,25 @@
 #include <atomic>
 #include <thread>
 
-typedef enum PlayerMessages
+typedef enum SoundType
 {
-    MSG_NONE,
-    MSG_STOP
-} PlayerMessages_t;
+    TYPE_WAV,
+    TYPE_SYNTH
+} SoundType_t;
 
 /// The default number of concurrent voices - maximum number of "streams" - is 16,
 /// but this can be adjusted at runtime
 struct ActiveSound
 {
-    SoLoud::Wav sound;
+    std::unique_ptr<SoLoud::AudioSource> sound;
+    SoundType soundType;
     std::string completeFileName;
     /// many istances of [sound] can be played without re-loading it
     std::vector<SoLoud::handle> handle;
 
     // unique identifier of this sound based on the file name
     unsigned int soundHash;
+    
 };
 
 class Player
@@ -62,6 +64,17 @@ public:
     /// @param hash return the hash of the sound
     /// @return Returns [PlayerErrors.SO_NO_ERROR] if success
     PlayerErrors loadFile(const std::string &completeFileName, unsigned int &hash);
+    PlayerErrors loadWaveform(
+        int waveform, 
+        bool superWave,
+        float scale,
+        float detune,
+        unsigned int &hash);
+    void setWaveformScale(unsigned int soundHash, float newScale);
+    void setWaveformDetune(unsigned int soundHash, float newDetune);
+    void setWaveformFreq(unsigned int soundHash, float newFreq);
+    void setWaveformSuperwave(unsigned int soundHash, bool superwave);
+    void setWaveform(unsigned int soundHash, int newWaveform);
 
     /// @brief Pause or unpause already loaded sound identified by [handle]
     /// @param handle the sound handle

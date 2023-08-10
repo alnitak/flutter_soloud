@@ -464,7 +464,7 @@ class _Page1State extends State<Page1> {
     currentSound = playRet.sound;
 
     /// get its length and notify it
-    soundLength.value = SoLoud().getLength(currentSound!.soundHash).length;
+    soundLength.value = SoLoud().getLength(currentSound!).length;
 
     /// Stop the timer and dispose the sound when the sound ends
     currentSound!.soundEvents.stream.listen(

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
@@ -6,12 +7,10 @@ import 'package:flutter_soloud/src/utils/assets_manager.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
-/// Thanks to Maks Klimko
-
 /// The `SoloudLoadingTool` class provides static methods to load audio files
 /// from various sources, including assets, local files, and URLs.
 ///
-class SoloudLoadingTool {
+class SoloudTools {
   /// Loads an audio file from the assets folder.
   ///
   static Future<SoundProps?> loadFromAssets(String path) async {
@@ -77,5 +76,31 @@ class SoloudLoadingTool {
       return null;
     }
     return result.sound;
+  }
+
+  /// Returns a list of the 12 SoundProps (notes) of the given octave
+  ///
+  /// [octave] usually from 0 to 4
+  static Future<List<SoundProps>> initSounds({
+    int octave = 3,
+    bool superwave = true,
+  }) async {
+    assert(octave >= 0 && octave <= 4, '0 >= octave <= 4 is not true!');
+    final startingFreq = 55.0 * (pow(2, (12 * octave) / 12));
+    final notes = <SoundProps>[];
+    for (var index = 0; index < 12; index++) {
+      final ret = await SoLoud().loadWaveform(
+        WaveForm.square,
+        true,
+        0.25,
+        1,
+      );
+      if (ret.error != PlayerErrors.noError) return [];
+      final freq = startingFreq * (pow(2, index / 12));
+      SoLoud().setWaveformFreq(ret.sound!, freq);
+      SoLoud().setWaveformSuperWave(ret.sound!, superwave);
+      notes.add(ret.sound!);
+    }
+    return notes;
   }
 }

@@ -33,6 +33,7 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
+
             /// pick audio file
             ElevatedButton(
               onPressed: () async {
@@ -94,12 +95,13 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
 
     /// stop any previous sound loaded
     if (currentSound != null) {
-      if (await SoLoud().disposeSound(currentSound!) !=
-          PlayerErrors.noError) return;
+      if (await SoLoud().disposeSound(currentSound!) != PlayerErrors.noError) {
+        return;
+      }
     }
 
     /// load the audio file
-    final newSound = await SoloudLoadingTool.loadFromFile(file);
+    final newSound = await SoloudTools.loadFromFile(file);
     if (newSound == null) return;
     currentSound = newSound;
 

@@ -202,7 +202,7 @@ class SoLoud {
   /// Return true if success
   ///
   Future<bool> stopIsolate() async {
-    if (_isolate == null) return false;
+    if (_isolate == null || !isPlayerInited) return false;
     await disposeAllSound();
     // engine will be disposed in the audio isolate, so just set this variable
     isPlayerInited = false;
@@ -353,6 +353,127 @@ class SoLoud {
     }
     printPlayerError('loadFile()', ret.error);
     return (error: ret.error, sound: ret.sound);
+  }
+
+  /// Load a new waveform to be played once or multiple times later
+  ///
+  /// [waveform]
+  /// [superWave]
+  /// [scale]
+  /// [detune]
+  /// [hash] return hash of the sound
+  /// Returns [PlayerErrors.noError] if success
+  Future<({PlayerErrors error, SoundProps? sound})> loadWaveform(
+    WaveForm waveform,
+    bool superWave,
+    double scale,
+    double detune,
+  ) async {
+    if (!isPlayerInited) {
+      return (error: PlayerErrors.engineNotInited, sound: null);
+    }
+    _mainToIsolateStream?.send(
+      {
+        'event': MessageEvents.loadWaveform,
+        'args': (
+          waveForm: waveform.index,
+          superWave: superWave,
+          scale: scale,
+          detune: detune,
+        ),
+      },
+    );
+    final ret = (await _waitForEvent(
+      MessageEvents.loadWaveform,
+      (
+        waveForm: waveform.index,
+        superWave: superWave,
+        scale: scale,
+        detune: detune,
+      ),
+    )) as ({PlayerErrors error, SoundProps? sound});
+    if (ret.error == PlayerErrors.noError) {
+      activeSounds.add(ret.sound!);
+    }
+    printPlayerError('loadWaveform()', ret.error);
+    return (error: ret.error, sound: ret.sound);
+  }
+
+  /// Set the scale of an already loaded waveform identified by [sound]
+  ///
+  /// [sound] the sound of a waveform
+  /// [newWaveform]
+  PlayerErrors setWaveform(SoundProps sound, WaveForm newWaveform) {
+    if (!isPlayerInited) {
+      printPlayerError('setWaveform()', PlayerErrors.engineNotInited);
+      return PlayerErrors.engineNotInited;
+    }
+    SoLoudController().soLoudFFI.setWaveform(sound.soundHash, newWaveform);
+    return PlayerErrors.noError;
+  }
+
+  /// Set the scale of an already loaded waveform identified by [sound]
+  ///
+  /// [sound] the sound of a waveform
+  /// [newScale]
+  PlayerErrors setWaveformScale(SoundProps sound, double newScale) {
+    if (!isPlayerInited) {
+      printPlayerError('setWaveformScale()', PlayerErrors.engineNotInited);
+      return PlayerErrors.engineNotInited;
+    }
+    SoLoudController().soLoudFFI.setWaveformScale(sound.soundHash, newScale);
+    return PlayerErrors.noError;
+  }
+
+  /// Set the scale of an already loaded waveform identified by [sound]
+  ///
+  /// [sound] the sound of a waveform
+  /// [newDetune]
+  PlayerErrors setWaveformDetune(SoundProps sound, double newDetune) {
+    if (!isPlayerInited) {
+      printPlayerError('setWaveformDetune()', PlayerErrors.engineNotInited);
+      return PlayerErrors.engineNotInited;
+    }
+    SoLoudController().soLoudFFI.setWaveformDetune(sound.soundHash, newDetune);
+    return PlayerErrors.noError;
+  }
+
+  /// Set a new frequency of an already loaded waveform identified by [sound]
+  ///
+  /// [sound] the sound of a waveform
+  /// [newFreq]
+  PlayerErrors setWaveformFreq(
+    SoundProps sound,
+    double newFreq
+  ) {
+    if (!isPlayerInited) {
+      printPlayerError('setWaveformFreq()', PlayerErrors.engineNotInited);
+      return PlayerErrors.engineNotInited;
+    }
+    SoLoudController().soLoudFFI.setWaveformFreq(
+          sound.soundHash,
+          newFreq
+        );
+    return PlayerErrors.noError;
+  }
+
+  /// Set a new frequency of an already loaded waveform identified by [sound]
+  ///
+  /// [sound] the sound of a waveform
+  /// [superwave]
+  PlayerErrors setWaveformSuperWave(
+    SoundProps sound,
+    bool superwave
+  ) {
+    if (!isPlayerInited) {
+      printPlayerError('setWaveformSuperWave()', PlayerErrors.engineNotInited);
+      return PlayerErrors.engineNotInited;
+    }
+    SoLoudController().soLoudFFI.setWaveformSuperWave(
+          sound.soundHash,
+          superwave ? 1 : 0,
+        );
+    return PlayerErrors.noError;
   }
 
   /// Speech the given text
@@ -584,12 +705,12 @@ class SoLoud {
   /// [soundHash] the sound hash to get the length
   /// returns sound length in seconds
   ///
-  ({PlayerErrors error, double length}) getLength(int soundHash) {
+  ({PlayerErrors error, double length}) getLength(SoundProps sound) {
     if (!isPlayerInited) {
       printPlayerError('getLength()', PlayerErrors.engineNotInited);
       return (error: PlayerErrors.engineNotInited, length: 0.0);
     }
-    final ret = SoLoudController().soLoudFFI.getLength(soundHash);
+    final ret = SoLoudController().soLoudFFI.getLength(sound.soundHash);
     return (error: PlayerErrors.noError, length: ret);
   }
 
