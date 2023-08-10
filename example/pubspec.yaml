@@ -10,6 +10,8 @@ environment:
   sdk: '>=3.0.0 <4.0.0'
 
 dependencies:
+  cupertino_icons: ^1.0.2
+  
   #https://pub.dev/packages/ffi
   ffi: ^2.0.2
 
@@ -32,10 +34,9 @@ dependencies:
   star_menu: ^3.1.4
 
 dev_dependencies:
-  flutter_driver:
+  flutter_test:
     sdk: flutter
-  integration_test:
-    sdk: flutter
+
   very_good_analysis: ^5.0.0+1
 
 flutter:

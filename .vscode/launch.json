@@ -29,6 +29,14 @@
             "cwd": "${workspaceFolder}/example"
         },
         {
+            "name": "Flutter test",
+            "type": "dart",
+            "request": "launch",
+            "program": "tests/tests.dart",
+            "flutterMode": "debug",
+            "cwd": "${workspaceFolder}/example"
+        },
+        {
             "name": "Debug native Windows",
             "preLaunchTask": "compile windows debug",
             "type": "cppvsdbg",

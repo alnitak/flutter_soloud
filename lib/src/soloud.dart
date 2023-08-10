@@ -618,7 +618,7 @@ class SoLoud {
   }
 
   /// Stop all handles of the already loaded sound identified
-  /// by soundHash of [sound] and clear it
+  /// by soundHash of [sound] and dispose it
   ///
   /// [sound] the sound to clear
   /// Return [PlayerErrors.noError] on success
@@ -702,7 +702,7 @@ class SoLoud {
 
   /// Get the sound length in seconds
   ///
-  /// [soundHash] the sound hash to get the length
+  /// [sound] the sound hash to get the length
   /// returns sound length in seconds
   ///
   ({PlayerErrors error, double length}) getLength(SoundProps sound) {
