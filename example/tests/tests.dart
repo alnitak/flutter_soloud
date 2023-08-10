@@ -1,11 +1,20 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  await runZonedGuarded(
+    () async => waveformTest(),
+    (error, stack) {
+      debugPrint('TEST error: $error\nstack: $stack');
+      exit(1);
+    },
+  );
 
   await runZonedGuarded(
     () async => loadAndPlay(),
@@ -22,13 +31,57 @@ void main() async {
       exit(1);
     },
   );
-  
+
   debugPrint('TEST passed!');
   exit(0);
 }
 
 String output = '';
 SoundProps? currentSound;
+
+Future<void> delay(int ms) async {
+  await Future.delayed(Duration(milliseconds: ms), () {});
+}
+
+Future<void> waveformTest() async {
+  await startIsolate();
+  final notes = await SoloudTools.initSounds(
+    octave: 1,
+    waveForm: WaveForm.sin,
+    superwave: true,
+  );
+  assert(
+      notes.length == 12,
+      'SoloudTools.initSounds() failed!',
+    );
+
+  for (var i = 2; i < 10; i++) {
+    final d = (sin(i/6.28)*400).toInt();
+    await SoLoud().play(notes[5]);
+    await delay(500 - d);
+    await SoLoud().stop(notes[5].handle.first);
+
+    await SoLoud().play(notes[7]);
+    await delay(500 - d);
+    await SoLoud().stop(notes[7].handle.first);
+
+    await SoLoud().play(notes[5]);
+    await delay(500 - d);
+    await SoLoud().stop(notes[5].handle.first);
+
+    await SoLoud().play(notes[0]);
+    await delay(500 - d);
+    await SoLoud().stop(notes[0].handle.first);
+
+    await SoLoud().play(notes[2]);
+    await delay(800 - d);
+    await SoLoud().stop(notes[2].handle.first);
+
+    await delay(300);
+  }
+
+  await stopIsolate();
+}
 
 Future<void> playTest() async {
   /// Start audio isolate
@@ -46,7 +99,7 @@ Future<void> playTest() async {
           (ret1.length * 100).ceilToDouble().toInt() == 384,
       'pauseSwitch() failed!',
     );
-    await Future.delayed(const Duration(milliseconds: 1000), () {});
+    await delay(1000);
     var ret2 = SoLoud().pauseSwitch(currentSound!.handle.first);
     assert(
       ret2 == PlayerErrors.noError,
@@ -96,7 +149,7 @@ Future<void> loadAndPlay() async {
     /// Wait for the sample to finish and see in log:
     /// "@@@@@@@@@@@ SOUND EVENT: SoundEvent.soundDisposed .*"
     /// 3798ms explosion.mp3 sample duration
-    await Future.delayed(const Duration(milliseconds: 4500), () {});
+    await delay(4500);
     assert(
       output == 'SoundEvent.handleIsNoMoreValid',
       'Sound end playback event not triggered!',
@@ -117,7 +170,7 @@ Future<void> loadAndPlay() async {
     /// Wait for the sample to finish and see in log:
     /// "@@@@@@@@@@@ SOUND EVENT: SoundEvent.handleIsNoMoreValid .* has [3-2-1-0] active handles"
     /// 3798ms explosion.mp3 sample duration
-    await Future.delayed(const Duration(milliseconds: 4500), () {});
+    await delay(4500);
     assert(
       currentSound!.handle.isEmpty,
       'Play 4 sample handles failed!',

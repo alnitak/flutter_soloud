@@ -83,6 +83,7 @@ class SoloudTools {
   /// [octave] usually from 0 to 4
   static Future<List<SoundProps>> initSounds({
     int octave = 3,
+    WaveForm waveForm = WaveForm.sin,
     bool superwave = true,
   }) async {
     assert(octave >= 0 && octave <= 4, '0 >= octave <= 4 is not true!');
@@ -97,6 +98,7 @@ class SoloudTools {
       );
       if (ret.error != PlayerErrors.noError) return [];
       final freq = startingFreq * (pow(2, index / 12));
+      SoLoud().setWaveform(ret.sound!, waveForm);
       SoLoud().setWaveformFreq(ret.sound!, freq);
       SoLoud().setWaveformSuperWave(ret.sound!, superwave);
       notes.add(ret.sound!);
