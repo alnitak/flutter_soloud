@@ -40,7 +40,7 @@ Future<void> playTest() async {
   /// pause, seek test
   {
     await SoLoud().play(currentSound!);
-    final ret1 = SoLoud().getLength(currentSound!.soundHash);
+    final ret1 = SoLoud().getLength(currentSound!);
     assert(
       ret1.error == PlayerErrors.noError &&
           (ret1.length * 100).ceilToDouble().toInt() == 384,
@@ -148,7 +148,7 @@ Future<void> stopIsolate() async {
 }
 
 Future<void> loadAsset() async {
-  currentSound = await SoloudLoadingTool.loadFromAssets(
+  currentSound = await SoloudTools.loadFromAssets(
     'assets/audio/explosion.mp3',
   );
   assert(currentSound != null, 'loadFromAssets() failed!');
