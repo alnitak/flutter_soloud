@@ -32,7 +32,7 @@ The ***flutter_soloud*** plugin utilizes a [forked](https://github.com/alnitak/s
 For information regarding the SoLoud license, please refer to [this link](https://github.com/alnitak/soloud/blob/f4f089aa592aa45f5f6fa8c8efff64996fae920f/LICENSE).
 
 
-There are 4 examples:
+There are 5 examples:
 *(to use microphone on MacOs or iOS you should add audio input permission in the example app)*
 
 **The 1st** is a simple use-case to show how to play a sound and how to activate the capture.
@@ -53,8 +53,6 @@ It seems that sending an image (with `setImageSampler()`) to the shader is very 
 https://github.com/alnitak/flutter_soloud/assets/192827/384c88aa-5daf-4f10-a879-169ab8522690
 
 
-
-
 ***The 3rd*** example demonstrates how to manage sounds using their handles: every sound should be loaded before it can be played. Loading a sound can take some time and should not be done during gameplay, for instance, in a game. Once a sound is loaded, it can be played, and every instance of that same audio will be identified by its *handle*.
 
 The example shows how you can have background music and play a fire sound multiple times.
@@ -62,9 +60,13 @@ The example shows how you can have background music and play a fire sound multip
 https://github.com/alnitak/flutter_soloud/assets/192827/92c9db80-80ee-4a27-b6a9-3e089ffe600e
 
 
-***The 4th*** example show how to enance audio with 3D capabilities. There is a circle where the listener is placed in the center and a moving siren audio is represented by a little circle which is automatically animated or can be moved by mouse gesture. The sound volume fades off at the circonference. There is also a doppler effect that can be turned off.
+***The 4th*** example shows how to enance audio with 3D capabilities. There is a circle where the listener is placed in the center and a moving siren audio is represented by a little circle which is automatically animated or can be moved by mouse gesture. The sound volume fades off at the circonference. There is also a doppler effect that can be turned off.
 
 https://github.com/alnitak/flutter_soloud/assets/192827/f7cf9d71-be4f-4c83-99ff-89dbd9378859
+
+
+***The 5th*** example shows how to generete [**SoundProps**] key sounds. There is a handy tool method to generate the 12 key notes of a given octave. A widget to play them can be used with the touch or a keyboard. Different types of waveforms can be chosen including square,`saw`,`sin`,`triangle`,`bounce`,`jaws`,`humps`,`fSquare` and `fSaw`.
+
 
 
 ## Usage
