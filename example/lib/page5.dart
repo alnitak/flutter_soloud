@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:ffi/ffi.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:flutter_soloud_example/visualizer/bars_fft_widget.dart';
 import 'package:flutter_soloud_example/visualizer/bars_wave_widget.dart';
@@ -343,8 +344,10 @@ class KeyboardWidget extends StatefulWidget {
 
 class _KeyboardWidgetState extends State<KeyboardWidget> {
   late final List<String> notesText;
+  late final List<String> notesKeys;
   late final List<ValueNotifier<bool>> isPressed;
   final noteKeyWidth = 30;
+  int lastKeyPress = -1;
 
   @override
   void initState() {
@@ -363,23 +366,65 @@ class _KeyboardWidgetState extends State<KeyboardWidget> {
       'A#',
       'B',
     ];
+    notesKeys = [
+      'Q',
+      '2',
+      'W',
+      '3',
+      'E',
+      'R',
+      '5',
+      'T',
+      '6',
+      'Y',
+      '7',
+      'U',
+    ];
     isPressed = List.generate(12, (index) {
       return ValueNotifier(false);
     });
+
+    ServicesBinding.instance.keyboard.addHandler(onKey);
+  }
+
+  @override
+  void dispose() {
+    ServicesBinding.instance.keyboard.removeHandler(onKey);
+    super.dispose();
+  }
+
+  bool onKey(KeyEvent event) {
+    final key = event.logicalKey.keyLabel;
+    final keyId = notesKeys.indexOf(key);
+    if (keyId == -1) return true;
+
+    if (event is KeyDownEvent) {
+      play(keyId);
+    } else if (event is KeyUpEvent) {
+      stop(keyId);
+    }
+
+    return false;
   }
 
   void stopAll() {
     for (var i = 0; i < 12; i++) {
-      if (widget.notes[i].handle.isNotEmpty) {
-        SoLoud().stop(widget.notes[i].handle.first);
-      }
-      isPressed[i].value = false;
+      stop(i);
     }
   }
 
   void play(int index) {
+    if (isPressed[index].value) return;
     SoLoud().play(widget.notes[index], volume: 0.7);
     isPressed[index].value = true;
+  }
+
+  void stop(int index) {
+    if (index == -1) return;
+    for (final h in widget.notes[index].handle) {
+      SoLoud().stop(h);
+    }
+    isPressed[index].value = false;
   }
 
   @override
@@ -389,10 +434,26 @@ class _KeyboardWidgetState extends State<KeyboardWidget> {
     return SizedBox(
       height: 120,
       child: Listener(
-        onPointerDown: (event) => playNote(event.localPosition.dx),
-        onPointerMove: (event) => playNote(event.localPosition.dx),
-        onPointerCancel: (e) => stopAll(),
-        onPointerUp: (e) => stopAll(),
+        onPointerDown: (e) {
+          stop(lastKeyPress);
+          lastKeyPress = e.localPosition.dx.toInt() ~/ noteKeyWidth;
+          play(lastKeyPress);
+        },
+        onPointerMove: (e) {
+          if (lastKeyPress != e.localPosition.dx.toInt() ~/ noteKeyWidth) {
+            stop(lastKeyPress);
+          }
+          lastKeyPress = e.localPosition.dx.toInt() ~/ noteKeyWidth;
+          play(lastKeyPress);
+        },
+        onPointerCancel: (e) {
+          stop(lastKeyPress);
+          lastKeyPress = -1;
+        },
+        onPointerUp: (e) {
+          stop(lastKeyPress);
+          lastKeyPress = -1;
+        },
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -410,12 +471,24 @@ class _KeyboardWidgetState extends State<KeyboardWidget> {
                       ),
                     ),
                     alignment: Alignment.bottomCenter,
-                    child: Text(
-                      notesText[i],
-                      style: const TextStyle(
-                        color: Colors.black,
-                        fontWeight: FontWeight.w900,
-                      ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          notesKeys[i].toLowerCase(),
+                          style: const TextStyle(
+                            color: Colors.black,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        Text(
+                          notesText[i],
+                          style: const TextStyle(
+                            color: Colors.black,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ],
                     ),
                   );
                 },
@@ -424,14 +497,5 @@ class _KeyboardWidgetState extends State<KeyboardWidget> {
         ),
       ),
     );
-  }
-
-  void playNote(double x) {
-    final noteOver = x.toInt() ~/ noteKeyWidth;
-    if (!isPressed[noteOver].value) {
-      stopAll();
-      play(noteOver);
-      isPressed[noteOver].value = true;
-    }
   }
 }

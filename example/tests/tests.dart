@@ -9,7 +9,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await runZonedGuarded(
-    () async => waveformTest(),
+    () async => test3(),
     (error, stack) {
       debugPrint('TEST error: $error\nstack: $stack');
       exit(1);
@@ -17,7 +17,7 @@ void main() async {
   );
 
   await runZonedGuarded(
-    () async => loadAndPlay(),
+    () async => test1(),
     (error, stack) {
       debugPrint('TEST error: $error\nstack: $stack');
       exit(1);
@@ -25,7 +25,7 @@ void main() async {
   );
 
   await runZonedGuarded(
-    () async => playTest(),
+    () async => test2(),
     (error, stack) {
       debugPrint('TEST error: $error\nstack: $stack');
       exit(1);
@@ -43,10 +43,12 @@ Future<void> delay(int ms) async {
   await Future.delayed(Duration(milliseconds: ms), () {});
 }
 
-Future<void> waveformTest() async {
+/// Test waveform
+///
+Future<void> test3() async {
   await startIsolate();
   final notes = await SoloudTools.initSounds(
-    octave: 1,
+    octave: 0,
     waveForm: WaveForm.sin,
     superwave: true,
   );
@@ -62,7 +64,7 @@ Future<void> waveformTest() async {
     await SoLoud().stop(notes[5].handle.first);
 
     await SoLoud().play(notes[7]);
-    await delay(500 - d);
+    await delay(550 - d);
     await SoLoud().stop(notes[7].handle.first);
 
     await SoLoud().play(notes[5]);
@@ -83,7 +85,9 @@ Future<void> waveformTest() async {
   await stopIsolate();
 }
 
-Future<void> playTest() async {
+/// Test play, pause, seek, position
+///
+Future<void> test2() async {
   /// Start audio isolate
   await startIsolate();
 
@@ -129,7 +133,7 @@ Future<void> playTest() async {
 
 /// Test start/stop isolate, load, play and events from sound
 ///
-Future<void> loadAndPlay() async {
+Future<void> test1() async {
   /// Start audio isolate
   await startIsolate();
 
