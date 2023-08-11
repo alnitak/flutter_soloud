@@ -105,7 +105,7 @@
 #include "analyzer.cpp"
 #include "capture.cpp"
 #include "bindings_capture.cpp"
-
+#include "synth/basic_wave.cpp"
 
 // A very short-lived native function.
 //
