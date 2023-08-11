@@ -30,8 +30,7 @@ migrate_working_dir/
 build/
 
 images/
-lib/flutter_soloud_bindings_ffi_TMP.dart
-lib/bindings_capture_ffi_TMP.dart
+lib/flutter_soloud_FFIGEN.dart
 
 **/android/caches
 **/android/.tmp
