@@ -10,6 +10,8 @@ import 'package:flutter_soloud_example/visualizer/bars_fft_widget.dart';
 import 'package:flutter_soloud_example/visualizer/bars_wave_widget.dart';
 import 'package:star_menu/star_menu.dart';
 
+/// Example to demostrate how waveforms work with a keyboard
+///
 class Page5 extends StatefulWidget {
   const Page5({super.key});
 
@@ -20,7 +22,6 @@ class Page5 extends StatefulWidget {
 class _Page5State extends State<Page5> {
   ValueNotifier<double> scale = ValueNotifier(0.25);
   ValueNotifier<double> detune = ValueNotifier(1);
-  ValueNotifier<double> freq = ValueNotifier(400);
   ValueNotifier<bool> superWave = ValueNotifier(false);
   ValueNotifier<WaveForm> waveForm = ValueNotifier(WaveForm.fSquare);
   ValueNotifier<int> octave = ValueNotifier(2);
@@ -29,9 +30,13 @@ class _Page5State extends State<Page5> {
   @override
   void initState() {
     super.initState();
+
+    /// listen to player events
     SoLoud().audioEvent.stream.listen((event) async {
       if (event == AudioEvent.isolateStarted) {
+        /// When it starts initialize notes
         SoLoud().setVisualizationEnabled(true);
+        await SoLoud().disposeAllSound();
         notes = await SoloudTools.initSounds(
           octave: 1,
           superwave: superWave.value,
@@ -46,6 +51,7 @@ class _Page5State extends State<Page5> {
   void dispose() {
     SoLoud().stopIsolate();
     SoLoud().stopCapture();
+    SoLoud().disposeAllSound();
     super.dispose();
   }
 
@@ -71,10 +77,7 @@ class _Page5State extends State<Page5> {
                   onChanged: (value) {
                     scale.value = value;
                     for (var i = 0; i < notes.length; i++) {
-                      SoLoud().setWaveformScale(
-                        notes[i],
-                        value,
-                      );
+                      SoLoud().setWaveformScale(notes[i], value);
                     }
                   },
                 );
@@ -94,33 +97,7 @@ class _Page5State extends State<Page5> {
                   onChanged: (value) {
                     detune.value = value;
                     for (var i = 0; i < notes.length; i++) {
-                      SoLoud().setWaveformDetune(
-                        notes[i],
-                        value,
-                      );
-                    }
-                  },
-                );
-              },
-            ),
-
-            /// Freq
-            ValueListenableBuilder<double>(
-              valueListenable: freq,
-              builder: (_, newFreq, __) {
-                return MySlider(
-                  text: 'freq',
-                  min: 55,
-                  max: 2000,
-                  value: newFreq,
-                  enabled: true,
-                  onChanged: (value) {
-                    freq.value = value;
-                    for (var i = 0; i < notes.length; i++) {
-                      SoLoud().setWaveformFreq(
-                        notes[i],
-                        value,
-                      );
+                      SoLoud().setWaveformDetune(notes[i], value);
                     }
                   },
                 );
@@ -163,10 +140,7 @@ class _Page5State extends State<Page5> {
                       onChanged: (value) {
                         superWave.value = value!;
                         for (var i = 0; i < notes.length; i++) {
-                          SoLoud().setWaveformSuperWave(
-                            notes[i],
-                            value,
-                          );
+                          SoLoud().setWaveformSuperWave(notes[i], value);
                         }
                         if (mounted) setState(() {});
                       },
@@ -176,7 +150,7 @@ class _Page5State extends State<Page5> {
               },
             ),
 
-            /// Wave form
+            /// Choose wave form
             StarMenu(
               params: StarMenuParameters(
                 shape: MenuShape.linear,
@@ -230,6 +204,8 @@ class _Page5State extends State<Page5> {
   }
 }
 
+/// Custom slider with text
+/// 
 class MySlider extends StatelessWidget {
   const MySlider({
     required this.text,
@@ -271,6 +247,8 @@ class MySlider extends StatelessWidget {
   }
 }
 
+/// Visualizer for FFT and wave data
+/// 
 class Bars extends StatefulWidget {
   const Bars({super.key});
 
@@ -330,6 +308,8 @@ class BbarsState extends State<Bars> with SingleTickerProviderStateMixin {
   }
 }
 
+/// Widget to display and manage touch/keys event
+/// 
 class KeyboardWidget extends StatefulWidget {
   const KeyboardWidget({
     required this.notes,
@@ -393,6 +373,7 @@ class _KeyboardWidgetState extends State<KeyboardWidget> {
     super.dispose();
   }
 
+  /// Play a sound when key is pressed
   bool onKey(KeyEvent event) {
     final key = event.logicalKey.keyLabel;
     final keyId = notesKeys.indexOf(key);

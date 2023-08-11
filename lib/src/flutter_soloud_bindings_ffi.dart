@@ -57,31 +57,31 @@ enum PlayerErrors {
 
 /// Wave forms
 enum WaveForm {
-  ///
+  /// Raw, harsh square wave
   square,
 
-  ///
+  /// Raw, harsh saw wave
   saw,
 
-  ///
+  /// Sine wave
   sin,
 
-  ///
+  /// Triangle wave
   triangle,
 
-  ///
+  /// Bounce, i.e, abs(sin())
   bounce,
 
-  ///
+  /// Quater sine wave, rest of period quiet
   jaws,
 
-  ///
+  /// Half sine wave, rest of period quiet
   humps,
 
-  ///
+  /// "Fourier" square wave; less noisy
   fSquare,
 
-  ///
+  /// "Fourier" saw wave; less noisy
   fSaw,
 }
 
