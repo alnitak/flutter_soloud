@@ -48,7 +48,7 @@ Future<void> delay(int ms) async {
 Future<void> test3() async {
   await startIsolate();
   final notes = await SoloudTools.initSounds(
-    octave: 0,
+    octave: 1,
     waveForm: WaveForm.sin,
     superwave: true,
   );
@@ -59,25 +59,25 @@ Future<void> test3() async {
 
   for (var i = 2; i < 10; i++) {
     final d = (sin(i/6.28)*400).toInt();
-    await SoLoud().play(notes[5]);
-    await delay(500 - d);
-    await SoLoud().stop(notes[5].handle.first);
-
     await SoLoud().play(notes[7]);
-    await delay(550 - d);
+    await delay(500 - d);
     await SoLoud().stop(notes[7].handle.first);
 
-    await SoLoud().play(notes[5]);
+    await SoLoud().play(notes[10]);
+    await delay(550 - d);
+    await SoLoud().stop(notes[10].handle.first);
+
+    await SoLoud().play(notes[7]);
     await delay(500 - d);
-    await SoLoud().stop(notes[5].handle.first);
+    await SoLoud().stop(notes[7].handle.first);
 
     await SoLoud().play(notes[0]);
     await delay(500 - d);
     await SoLoud().stop(notes[0].handle.first);
 
-    await SoLoud().play(notes[2]);
+    await SoLoud().play(notes[4]);
     await delay(800 - d);
-    await SoLoud().stop(notes[2].handle.first);
+    await SoLoud().stop(notes[4].handle.first);
 
     await delay(300);
   }

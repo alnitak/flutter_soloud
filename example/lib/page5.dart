@@ -205,7 +205,7 @@ class _Page5State extends State<Page5> {
 }
 
 /// Custom slider with text
-/// 
+///
 class MySlider extends StatelessWidget {
   const MySlider({
     required this.text,
@@ -248,7 +248,7 @@ class MySlider extends StatelessWidget {
 }
 
 /// Visualizer for FFT and wave data
-/// 
+///
 class Bars extends StatefulWidget {
   const Bars({super.key});
 
@@ -309,7 +309,7 @@ class BbarsState extends State<Bars> with SingleTickerProviderStateMixin {
 }
 
 /// Widget to display and manage touch/keys event
-/// 
+///
 class KeyboardWidget extends StatefulWidget {
   const KeyboardWidget({
     required this.notes,
@@ -395,13 +395,14 @@ class _KeyboardWidgetState extends State<KeyboardWidget> {
   }
 
   void play(int index) {
+    if (index < 0 || index >= notesKeys.length) return;
     if (isPressed[index].value) return;
     SoLoud().play(widget.notes[index], volume: 0.7);
     isPressed[index].value = true;
   }
 
   void stop(int index) {
-    if (index == -1) return;
+    if (index < 0 || index >= notesKeys.length) return;
     for (final h in widget.notes[index].handle) {
       SoLoud().stop(h);
     }
