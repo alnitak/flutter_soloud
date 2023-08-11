@@ -1,7 +1,7 @@
 ## 1.2.0
 - added waveform generator
 - added a test page for waveform
-- added some test in `tests` dir
+- added some tests in `tests` dir
 - miniaudio updated to v0.11.18
 
 ## 1.1.1

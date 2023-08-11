@@ -49,8 +49,6 @@ Future<void> test3() async {
   await startIsolate();
   final notes = await SoloudTools.initSounds(
     octave: 1,
-    waveForm: WaveForm.sin,
-    superwave: true,
   );
   assert(
       notes.length == 12,
