@@ -1,3 +1,9 @@
+## 1.2.0
+- added waveform generator
+- added a test page for waveform
+- added some tests in `tests` dir
+- miniaudio updated to v0.11.18
+
 ## 1.1.1
 - *SoLoud().loadFile* now can return *PlayerErrors.fileAlreadyLoaded* when a sound has already been loaded previously. It still return the SoundProps sound. It's not a breaking error.
 - added *Soloud().disposeAllSound* to stop and dispose all active sounds

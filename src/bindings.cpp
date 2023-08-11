@@ -1,5 +1,6 @@
 #include "player.h"
 #include "analyzer.h"
+#include "synth/basic_wave.h"
 #ifndef COMMON_H
 #include "common.h"
 #endif
@@ -83,6 +84,102 @@ extern "C"
         return (PlayerErrors)player.loadFile(completeFileName, *hash);
     }
 
+    /// Load a new waveform to be played once or multiple times later
+    ///
+    /// [waveform]  WAVE_SQUARE = 0,
+    ///             WAVE_SAW,
+    ///             WAVE_SIN,
+    ///             WAVE_TRIANGLE,
+    ///             WAVE_BOUNCE,
+    ///             WAVE_JAWS,
+    ///             WAVE_HUMPS,
+    ///             WAVE_FSQUARE,
+    ///             WAVE_FSAW
+    /// [superWave]
+    /// [scale]
+    /// [detune]
+    /// [hash] return hash of the sound
+    /// Returns [PlayerErrors.noError] if success
+    FFI_PLUGIN_EXPORT enum PlayerErrors loadWaveform(
+        int waveform, 
+        bool superWave,
+        float scale,
+        float detune,
+        unsigned int *hash)
+    {
+        if (!player.isInited())
+            return backendNotInited;
+        return (PlayerErrors)player.loadWaveform(waveform, superWave, scale, detune, *hash);
+    }
+
+    /// Set the scale of an already loaded waveform identified by [hash]
+    ///
+    /// [hash] the unique sound hash of a waveform sound
+    /// [newScale]
+    FFI_PLUGIN_EXPORT void setWaveformScale(unsigned int hash, float newScale)
+    {
+        if (!player.isInited())
+            return;
+        
+        player.setWaveformScale(hash, newScale);
+    }
+
+    /// Set the scale of an already loaded waveform identified by [hash]
+    ///
+    /// [hash] the unique sound hash of a waveform sound
+    /// [newDetune]
+    FFI_PLUGIN_EXPORT void setWaveformDetune(unsigned int hash, float newDetune)
+    {
+        if (!player.isInited())
+            return;
+        
+        player.setWaveformDetune(hash, newDetune);
+    }
+
+    /// Set a new frequency of an already loaded waveform identified by [hash]
+    ///
+    /// [hash] the unique sound hash of a waveform sound
+    /// [newFreq]
+    FFI_PLUGIN_EXPORT void setWaveformFreq(unsigned int hash, float newFreq)
+    {
+        if (!player.isInited())
+            return;
+        
+        player.setWaveformFreq(hash, newFreq);
+    }
+
+    /// Set a new frequence of an already loaded waveform identified by [hash]
+    ///
+    /// [hash] the unique sound hash of a waveform sound
+    /// [superwave]
+    FFI_PLUGIN_EXPORT void setSuperWave(unsigned int hash, bool superwave)
+    {
+        if (!player.isInited())
+            return;
+        
+        player.setWaveformSuperwave(hash, superwave);
+    }
+
+    /// Set a new wave form of an already loaded waveform identified by [hash]
+    ///
+    /// [hash] the unique sound hash of a waveform sound
+    /// [newWaveform]   WAVE_SQUARE = 0,
+    ///                 WAVE_SAW,
+    ///                 WAVE_SIN,
+    ///                 WAVE_TRIANGLE,
+    ///                 WAVE_BOUNCE,
+    ///                 WAVE_JAWS,
+    ///                 WAVE_HUMPS,
+    ///                 WAVE_FSQUARE,
+    ///                 WAVE_FSAW
+    FFI_PLUGIN_EXPORT void setWaveform(unsigned int hash, int newWaveform)
+    {
+        if (!player.isInited())
+            return;
+        
+        player.setWaveform(hash, newWaveform);
+    }
+
     /// Speech the text given
     ///
     /// [textToSpeech]
@@ -163,7 +260,7 @@ extern "C"
         player.disposeAllSound();
     }
 
-    /// This function can be used to set a sample to play on repeat, 
+    /// This function can be used to set a sample to play on repeat,
     /// instead of just playing once
     ///
     /// [soundHash]
@@ -519,7 +616,7 @@ extern "C"
     SoLoud::Wav sound1;
     SoLoud::Wav sound2;
     SoLoud::Soloud soloud;
-
+    // Basicwave basicWave;
     FFI_PLUGIN_EXPORT void test()
     {
         // unsigned int handle;
@@ -536,7 +633,9 @@ extern "C"
         // player.play("/home/deimos/5/01 - Theme From Farscape.mp3", handle);
         // player.play("/home/deimos/5/Music/ROSS/DANCE/Alphaville - Big In Japan (Original Version).mp3", handle);
 
-        player.debug();
+        unsigned int hash;
+        player.loadWaveform(SoLoud::Soloud::WAVE_SQUARE, true, 0.25f, 1.0f, hash);
+        player.play(hash);
     }
 
 #ifdef __cplusplus

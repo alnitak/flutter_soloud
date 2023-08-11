@@ -23,8 +23,8 @@ void debugIsolates(String text) {
 /// print the message and the error when [error]
 /// is not [CaptureErrors.captureNoError]
 ///
-void printCaptureError(String message, CaptureErrors error) {
-  if (error == CaptureErrors.captureNoError) return;
+String printCaptureError(String message, CaptureErrors error) {
+  if (error == CaptureErrors.captureNoError) return 'no error';
 
   var out = '';
   switch (error) {
@@ -39,17 +39,20 @@ void printCaptureError(String message, CaptureErrors error) {
       break;
     case CaptureErrors.nullPointer:
       out = 'Capture null pointer error. Could happens when passing a non '
-          'initialized pointer (with calloc()) to retrieve FFT or wave data';
+          'initialized pointer (with calloc()) to retrieve FFT or wave data. '
+          'Or, setVisualization has not been enabled.';
       break;
   }
-  debugPrint('flutter_soloud capture error: $message: $out');
+  final ret = 'flutter_soloud capture error: $message: $out';
+  debugPrint(ret);
+  return ret;
 }
 
 /// print the message and the error when [error]
 /// is not [PlayerErrors.noError]
 ///
-void printPlayerError(String message, PlayerErrors error) {
-  if (error == PlayerErrors.noError) return;
+String printPlayerError(String message, PlayerErrors error) {
+  if (error == PlayerErrors.noError) return 'no error';
 
   var out = '';
   switch (error) {
@@ -82,7 +85,8 @@ void printPlayerError(String message, PlayerErrors error) {
       break;
     case PlayerErrors.nullPointer:
       out = 'Capture null pointer error. Could happens when passing a non '
-          'initialized pointer (with calloc()) to retrieve FFT or wave data';
+          'initialized pointer (with calloc()) to retrieve FFT or wave data. '
+          'Or, setVisualization has not been enabled.';
       break;
     case PlayerErrors.soundHashNotFound:
       out = 'The sound with specified hash is not found';
@@ -100,7 +104,10 @@ void printPlayerError(String message, PlayerErrors error) {
       out = 'Engine not yet started';
       break;
   }
-  debugPrint('flutter_soloud player error: $message: $out');
+
+  final ret = 'flutter_soloud player error: $message: $out';
+  debugPrint(ret);
+  return ret;
 }
 
 enum MessageEvents {
@@ -111,6 +118,7 @@ enum MessageEvents {
   stopLoop,
   loop,
   loadFile,
+  loadWaveform,
   speechText,
   play,
   play3d,
@@ -123,6 +131,12 @@ enum MessageEvents {
 typedef ArgsInitEngine = ();
 typedef ArgsDisposeEngine = ();
 typedef ArgsLoadFile = ({String completeFileName});
+typedef ArgsLoadWaveform = ({
+  int waveForm,
+  bool superWave,
+  double scale,
+  double detune,
+});
 typedef ArgsSpeechText = ({String textToSpeech});
 typedef ArgsPlay = ({int soundHash, double volume, double pan, bool paused});
 typedef ArgsPlay3d = ({
@@ -193,6 +207,39 @@ void audioIsolate(SendPort isolateToMainStream) {
       case MessageEvents.loadFile:
         final args = event['args']! as ArgsLoadFile;
         final ret = soLoudController.soLoudFFI.loadFile(args.completeFileName);
+        // add the new sound handler to the list
+        SoundProps? newSound;
+        if (ret.error == PlayerErrors.noError) {
+          newSound = SoundProps(ret.soundHash);
+          activeSounds.add(newSound);
+        } else if (ret.error == PlayerErrors.fileAlreadyLoaded) {
+          /// the file is already loaded.
+          /// Check if it is already in [activeSound] else add it
+          var isAlreadyThere = true;
+          newSound = activeSounds.firstWhere(
+            (s) => s.soundHash == ret.soundHash,
+            orElse: () {
+              isAlreadyThere = false;
+              return SoundProps(ret.soundHash);
+            },
+          );
+          if (!isAlreadyThere) activeSounds.add(newSound);
+        }
+        isolateToMainStream.send({
+          'event': event['event'],
+          'args': args,
+          'return': (error: ret.error, sound: newSound),
+        });
+        break;
+
+      case MessageEvents.loadWaveform:
+        final args = event['args']! as ArgsLoadWaveform;
+        final ret = soLoudController.soLoudFFI.loadWaveform(
+          WaveForm.values[args.waveForm],
+          args.superWave,
+          args.scale,
+          args.detune,
+          );
         // add the new sound handler to the list
         SoundProps? newSound;
         if (ret.error == PlayerErrors.noError) {
@@ -377,17 +424,17 @@ void audioIsolate(SendPort isolateToMainStream) {
               final isValid =
                   soLoudController.soLoudFFI.getIsValidVoiceHandle(handle);
               if (!isValid) {
-                isolateToMainStream.send(
-                  (
-                    event: SoundEvent.handleIsNoMoreValid,
-                    sound: sound,
-                    handle: handle,
-                  ),
-                );
-
                 /// later, outside the loop, remove the handle
                 removeInvalid.add(() {
                   sound.handle.remove(handle);
+
+                  isolateToMainStream.send(
+                    (
+                      event: SoundEvent.handleIsNoMoreValid,
+                      sound: sound,
+                      handle: handle,
+                    ),
+                  );
                 });
               }
             }

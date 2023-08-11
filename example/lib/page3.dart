@@ -80,7 +80,7 @@ class _Page3State extends State<Page3> {
     }
 
     /// load the audio file
-    currentSound = await SoloudLoadingTool.loadFromUrl(
+    currentSound = await SoloudTools.loadFromUrl(
       'https://www.learningcontainer.com/wp-content/uploads/2020/02/Kalimba.mp3',
     );
 
@@ -120,7 +120,7 @@ class _Page3State extends State<Page3> {
 
     /// load the audio file
     currentSound =
-        await SoloudLoadingTool.loadFromAssets('assets/audio/siren.mp3');
+        await SoloudTools.loadFromAssets('assets/audio/siren.mp3');
 
     /// play it
     final playRet = await SoLoud().play3d(currentSound!, 0, 0, 0);

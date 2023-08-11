@@ -3,6 +3,6 @@
 library flutter_soloud;
 
 export 'src/bindings_capture_ffi.dart' show CaptureDevice, CaptureErrors;
-export 'src/flutter_soloud_bindings_ffi.dart' show PlayerErrors;
+export 'src/flutter_soloud_bindings_ffi.dart' show PlayerErrors, WaveForm;
 export 'src/soloud.dart';
-export 'src/tools/soloud_loading_tool.dart';
+export 'src/tools/soloud_tools.dart';

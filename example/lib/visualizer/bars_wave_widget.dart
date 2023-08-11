@@ -26,9 +26,11 @@ class BarsWaveWidget extends StatelessWidget {
         ColoredBox(
           color: Colors.black,
           child: RepaintBoundary(
-            child: CustomPaint(
-              size: Size(width, height),
-              painter: WavePainter(audioData: audioData),
+            child: ClipRRect(
+              child: CustomPaint(
+                size: Size(width, height),
+                painter: WavePainter(audioData: audioData),
+              ),
             ),
           ),
         ),

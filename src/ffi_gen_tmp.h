@@ -23,8 +23,16 @@ struct CaptureDevice
 
 //--------------------- copy here the new functions to generate
 
-    /// Dispose all sounds already loaded
-    ///
-    FFI_PLUGIN_EXPORT void disposeAllSound();
 
-    
+
+/// Set a new frequence of an already loaded waveform identified by [hash]
+///
+/// [hash] the unique sound hash of a waveform sound
+/// [newFreq]
+FFI_PLUGIN_EXPORT void setWaveformFreq(unsigned int hash, float newFreq);
+
+/// Set a new frequence of an already loaded waveform identified by [hash]
+///
+/// [hash] the unique sound hash of a waveform sound
+/// [superwave]
+FFI_PLUGIN_EXPORT void setSuperWave(unsigned int hash, bool superwave);

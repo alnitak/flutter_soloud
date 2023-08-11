@@ -113,7 +113,7 @@ class _Page4State extends State<Page4> {
     /// load the audio file
     // currentSound = await SoloudLoadingTool.loadFromAssets(
     //     'assets/audio/8_bit_mentality.mp3');
-    currentSound = await SoloudLoadingTool.loadFromUrl(
+    currentSound = await SoloudTools.loadFromUrl(
       'https://www.learningcontainer.com/wp-content/uploads/2020/02/Kalimba.mp3',
     );
 

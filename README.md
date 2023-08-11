@@ -32,7 +32,7 @@ The ***flutter_soloud*** plugin utilizes a [forked](https://github.com/alnitak/s
 For information regarding the SoLoud license, please refer to [this link](https://github.com/alnitak/soloud/blob/f4f089aa592aa45f5f6fa8c8efff64996fae920f/LICENSE).
 
 
-There are 4 examples:
+There are 5 examples:
 *(to use microphone on MacOs or iOS you should add audio input permission in the example app)*
 
 **The 1st** is a simple use-case to show how to play a sound and how to activate the capture.
@@ -53,8 +53,6 @@ It seems that sending an image (with `setImageSampler()`) to the shader is very 
 https://github.com/alnitak/flutter_soloud/assets/192827/384c88aa-5daf-4f10-a879-169ab8522690
 
 
-
-
 ***The 3rd*** example demonstrates how to manage sounds using their handles: every sound should be loaded before it can be played. Loading a sound can take some time and should not be done during gameplay, for instance, in a game. Once a sound is loaded, it can be played, and every instance of that same audio will be identified by its *handle*.
 
 The example shows how you can have background music and play a fire sound multiple times.
@@ -62,9 +60,13 @@ The example shows how you can have background music and play a fire sound multip
 https://github.com/alnitak/flutter_soloud/assets/192827/92c9db80-80ee-4a27-b6a9-3e089ffe600e
 
 
-***The 4th*** example show how to enance audio with 3D capabilities. There is a circle where the listener is placed in the center and a moving siren audio is represented by a little circle which is automatically animated or can be moved by mouse gesture. The sound volume fades off at the circonference. There is also a doppler effect that can be turned off.
+***The 4th*** example shows how to enance audio with 3D capabilities. There is a circle where the listener is placed in the center and a moving siren audio is represented by a little circle which is automatically animated or can be moved by mouse gesture. The sound volume fades off at the circonference. There is also a doppler effect that can be turned off.
 
 https://github.com/alnitak/flutter_soloud/assets/192827/f7cf9d71-be4f-4c83-99ff-89dbd9378859
+
+
+***The 5th*** example shows how to generete [**SoundProps**] key sounds. There is a handy tool method to generate the 12 key notes of a given octave. A widget to play them can be used with the touch or a keyboard. Different types of waveforms can be chosen including square,`saw`,`sin`,`triangle`,`bounce`,`jaws`,`humps`,`fSquare` and `fSaw`.
+
 
 
 ## Usage
@@ -168,9 +170,33 @@ The `AudioIsolate` instance has the duty of receiving commands and sending them 
 | **setFftSmoothing**| -| `double` smooth| Smooth FFT data.<br/>When new data is read and the values are decreasing, the new value will be decreased with an amplitude between the old and the new value.<br/> This will result in a less shaky visualization.<br/>0 = no smooth<br/>1 = full smooth<br/>The new value is calculated with:<br/>`newFreq = smooth * oldFreq + (1 - smooth) * newFreq`|
 
 
+#### waveform
+| Function| Returns| Params| Description|
+|---------|--------|-------|------------|
+| **loadWaveform**| ({PlayerErrors error, SoundProps? sound})| `WaveForm` waveform<br/>`bool` superWave<br/>`double` scale<br/>`double` detune| Load a new sound to be played.|
+| **setWaveform**| PlayerErrors|`SoundProps` sound<br/>`WaveForm` newWaveform| Set a new waveform for the [sound].|
+| **setWaveformScale**| PlayerErrors|`SoundProps` sound<br/>`double` newScale| Set a new scale for the [sound] (only if [superWave] is true).|
+| **setWaveformDetune**| PlayerErrors|`SoundProps` sound<br/>`double` newDetune| Set a new detune for the [sound] (only if [superWave] is true).|
+| **setWaveformFreq**| PlayerErrors|`SoundProps` sound<br/>`double` newFreq| Set a new frequency for the [sound].|
+| **setWaveformSuperWave**| PlayerErrors|`SoundProps` sound<br/>`bool` superwave| Set to compute superwave for the [sound].|
+
+**enum WaveForm**
+| Name| Description|
+|---------|--------|
+|**square**|Raw, harsh square wave|
+|**saw**|Raw, harsh saw wave|
+|**sin**|Sine wave|
+|**triangle**|Triangle wave|
+|**bounce**|Bounce, i.e, abs(sin())|
+|**jaws**|Quater sine wave, rest of period quiet|
+|**humps**|Half sine wave, rest of period quiet|
+|**fSquare**|"Fourier" square wave; less noisy|
+|**fSaw**|"Fourier" saw wave; less noisy|
+
+
 #### 3D audio methods
 | Function| Returns| Params| Description|
-|---------|---------|---------|--------------------------------------------------------------------------------------------|
+|---------|---------|---------|---------|
 | **play3d**| `int` handle| `int` soundHash, `double` posX, `double` posY, `double` posZ,<br/>{`double` velX = 0,<br/>`double` velY = 0,<br/>`double` velZ = 0,<br/>`double` volume = 1,<br/>`bool` paused = false}| play3d() is the 3d version of the play() call. Returns the handle of the sound, 0 if error|
 | **set3dSoundSpeed**| -| `double` speed| Since SoLoud has no knowledge of the scale of your coordinates, you may need to adjust the speed of sound for these effects to work correctly. The default value is 343, which assumes that your world coordinates are in meters (where 1 unit is 1 meter), and that the environment is dry air at around 20 degrees Celsius.|
 | **get3dSoundSpeed**| `double`| -| Get the sound speed.|
