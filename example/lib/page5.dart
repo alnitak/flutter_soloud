@@ -58,7 +58,7 @@ class _Page5State extends State<Page5> {
   Future<void> setupNotes() async {
     await SoLoud().disposeAllSound();
     notes = await SoloudTools.initSounds(
-      octave: 1,
+      octave: octave,
       superwave: superWave,
       waveForm: waveForm.value,
     );
@@ -74,9 +74,9 @@ class _Page5State extends State<Page5> {
     if (!SoLoud().isPlayerInited) return const SizedBox.shrink();
 
     return Scaffold(
-      body: Center(
+      body: SingleChildScrollView(padding: const EdgeInsets.all(8),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             /// Scale
             ValueListenableBuilder<double>(
@@ -247,9 +247,10 @@ class _Page5State extends State<Page5> {
               fadeSpeedIn: fadeSpeedIn,
               fadeSpeedOut: fadeSpeedOut,
             ),
-            const Spacer(),
+            const SizedBox(height: 8),
+
             Bars(key: UniqueKey()),
-            const Spacer(),
+            const SizedBox(height: 8),
           ],
         ),
       ),
@@ -345,14 +346,14 @@ class BbarsState extends State<Bars> with SingleTickerProviderStateMixin {
           BarsFftWidget(
             audioData: playerData.value,
             minFreq: 0,
-            maxFreq: 256,
-            width: MediaQuery.sizeOf(context).width / 2 - 9,
+            maxFreq: 64,
+            width: MediaQuery.sizeOf(context).width / 2 - 17,
             height: MediaQuery.sizeOf(context).width / 6,
           ),
           const SizedBox(width: 6),
           BarsWaveWidget(
             audioData: playerData.value,
-            width: MediaQuery.sizeOf(context).width / 2 - 9,
+            width: MediaQuery.sizeOf(context).width / 2 - 17,
             height: MediaQuery.sizeOf(context).width / 6,
           ),
         ],
@@ -453,13 +454,14 @@ class _KeyboardWidgetState extends State<KeyboardWidget> {
     if (index < 0 || index >= notesKeys.length) return;
     if (isPressed[index].value) return;
     SoLoud().setRelativePlaySpeed(widget.notes[index].handle.first, 0);
-    SoLoud().setPause(widget.notes[index].handle.first, false);
+    SoLoud().setVolume(widget.notes[index].handle.first, 0);
     SoLoud().fadeVolume(widget.notes[index].handle.first, 1, widget.fadeIn);
     SoLoud().fadeRelativePlaySpeed(
       widget.notes[index].handle.first,
       1,
       widget.fadeSpeedIn,
     );
+    SoLoud().setPause(widget.notes[index].handle.first, false);
     isPressed[index].value = true;
   }
 

@@ -73,9 +73,7 @@ class _ControlsState extends State<Controls> {
                     }
                   },
                   style: buttonStyle(isRunning),
-                  child: isRunning
-                      ? const Text('stop player')
-                      : const Text('start player'),
+                  child: const Text('player'),
                 );
               },
             ),
@@ -103,12 +101,11 @@ class _ControlsState extends State<Controls> {
                     }
                   },
                   style: buttonStyle(isRunning),
-                  child: isRunning
-                      ? const Text('stop capture')
-                      : const Text('start capture'),
+                  child: const Text('capture'),
                 );
               },
             ),
+            const SizedBox(width: 8),
 
             /// capture devices
             StarMenu(

@@ -206,32 +206,17 @@ void Player::setWaveformSuperwave(unsigned int soundHash, bool superwave)
 
 void Player::pauseSwitch(unsigned int handle)
 {
-    int handleId;
-    ActiveSound *sound = findByHandle(handle, &handleId);
-    if (sound == nullptr)
-        return;
-    soloud.setPause(
-        sound->handle[handleId],
-        !soloud.getPause(sound->handle[handleId]));
-    setPause(handle, !soloud.getPause(sound->handle[handleId]));
+    setPause(handle, !soloud.getPause(handle));
 }
 
 void Player::setPause(unsigned int handle, bool pause)
 {
-    int handleId;
-    ActiveSound *sound = findByHandle(handle, &handleId);
-    if (sound == nullptr)
-        return;
-    soloud.setPause(sound->handle[handleId], pause);
+    soloud.setPause(handle, pause);
 }
 
 bool Player::getPause(unsigned int handle)
 {
-    int handleId;
-    ActiveSound *sound = findByHandle(handle, &handleId);
-    if (sound == nullptr)
-        return false;
-    return soloud.getPause(sound->handle[handleId]);
+    return soloud.getPause(handle);
 }
 
 
