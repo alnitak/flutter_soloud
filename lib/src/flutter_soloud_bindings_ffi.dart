@@ -352,7 +352,7 @@ class FlutterSoLoudFfi {
   late final _speechText = _speechTextPtr.asFunction<
       int Function(ffi.Pointer<ffi.Char>, ffi.Pointer<ffi.UnsignedInt>)>();
 
-  /// Pause or unpause already loaded sound identified by [handle]
+  /// Switch pause state of an already loaded sound identified by [handle]
   ///
   /// [handle] the sound handle
   void pauseSwitch(int handle) {
@@ -364,6 +364,19 @@ class FlutterSoLoudFfi {
     'pauseSwitch',
   );
   late final _pauseSwitch = _pauseSwitchPtr.asFunction<void Function(int)>();
+
+  /// Pause or unpause already loaded sound identified by [handle]
+  ///
+  /// [handle] the sound handle
+  /// [pause] the sound handle
+  void setPause(int handle, int pause) {
+    return _setPause(handle, pause);
+  }
+
+  late final _setPausePtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt, ffi.Int)>>(
+          'setPause');
+  late final _setPause = _setPausePtr.asFunction<void Function(int, int)>();
 
   /// Gets the pause state
   ///
@@ -616,6 +629,138 @@ class FlutterSoLoudFfi {
   );
   late final _getIsValidVoiceHandle =
       _getIsValidVoiceHandlePtr.asFunction<int Function(int)>();
+
+  /////////////////////////////////////////
+  /// faders
+  /////////////////////////////////////////
+
+  /// Smoothly change the global volume over specified time.
+  ///
+  int fadeGlobalVolume(double to, double time) {
+    return _fadeGlobalVolume(to, time);
+  }
+
+  late final _fadeGlobalVolumePtr =
+      _lookup<ffi.NativeFunction<ffi.Int32 Function(ffi.Float, ffi.Float)>>(
+          'fadeGlobalVolume');
+  late final _fadeGlobalVolume =
+      _fadeGlobalVolumePtr.asFunction<int Function(double, double)>();
+
+  /// Smoothly change a channel's volume over specified time.
+  ///
+  int fadeVolume(int handle, double to, double time) {
+    return _fadeVolume(handle, to, time);
+  }
+
+  late final _fadeVolumePtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Int32 Function(
+              ffi.UnsignedInt, ffi.Float, ffi.Float)>>('fadeVolume');
+  late final _fadeVolume =
+      _fadeVolumePtr.asFunction<int Function(int, double, double)>();
+
+  /// Smoothly change a channel's pan setting over specified time.
+  ///
+  int fadePan(int handle, double to, double time) {
+    return _fadePan(handle, to, time);
+  }
+
+  late final _fadePanPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Int32 Function(
+              ffi.UnsignedInt, ffi.Float, ffi.Float)>>('fadePan');
+  late final _fadePan =
+      _fadePanPtr.asFunction<int Function(int, double, double)>();
+
+  /// Smoothly change a channel's relative play speed over specified time.
+  ///
+  int fadeRelativePlaySpeed(int handle, double to, double time) {
+    return _fadeRelativePlaySpeed(handle, to, time);
+  }
+
+  late final _fadeRelativePlaySpeedPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Int32 Function(
+              ffi.UnsignedInt, ffi.Float, ffi.Float)>>('fadeRelativePlaySpeed');
+  late final _fadeRelativePlaySpeed =
+      _fadeRelativePlaySpeedPtr.asFunction<int Function(int, double, double)>();
+
+  /// After specified time, pause the channel.
+  ///
+  int schedulePause(int handle, double time) {
+    return _schedulePause(handle, time);
+  }
+
+  late final _schedulePausePtr = _lookup<
+          ffi.NativeFunction<ffi.Int32 Function(ffi.UnsignedInt, ffi.Float)>>(
+      'schedulePause');
+  late final _schedulePause =
+      _schedulePausePtr.asFunction<int Function(int, double)>();
+
+  /// After specified time, stop the channel.
+  ///
+  int scheduleStop(int handle, double time) {
+    return _scheduleStop(handle, time);
+  }
+
+  late final _scheduleStopPtr = _lookup<
+          ffi.NativeFunction<ffi.Int32 Function(ffi.UnsignedInt, ffi.Float)>>(
+      'scheduleStop');
+  late final _scheduleStop =
+      _scheduleStopPtr.asFunction<int Function(int, double)>();
+
+  /// Set fader to oscillate the volume at specified frequency.
+  ///
+  int oscillateVolume(int handle, double from, double to, double time) {
+    return _oscillateVolume(handle, from, to, time);
+  }
+
+  late final _oscillateVolumePtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Int32 Function(ffi.UnsignedInt, ffi.Float, ffi.Float,
+              ffi.Float)>>('oscillateVolume');
+  late final _oscillateVolume = _oscillateVolumePtr
+      .asFunction<int Function(int, double, double, double)>();
+
+  /// Set fader to oscillate the panning at specified frequency.
+  ///
+  int oscillatePan(int handle, double from, double to, double time) {
+    return _oscillatePan(handle, from, to, time);
+  }
+
+  late final _oscillatePanPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Int32 Function(ffi.UnsignedInt, ffi.Float, ffi.Float,
+              ffi.Float)>>('oscillatePan');
+  late final _oscillatePan =
+      _oscillatePanPtr.asFunction<int Function(int, double, double, double)>();
+
+  /// Set fader to oscillate the relative play speed at specified frequency.
+  ///
+  int oscillateRelativePlaySpeed(
+      int handle, double from, double to, double time) {
+    return _oscillateRelativePlaySpeed(handle, from, to, time);
+  }
+
+  late final _oscillateRelativePlaySpeedPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Int32 Function(ffi.UnsignedInt, ffi.Float, ffi.Float,
+              ffi.Float)>>('oscillateRelativePlaySpeed');
+  late final _oscillateRelativePlaySpeed = _oscillateRelativePlaySpeedPtr
+      .asFunction<int Function(int, double, double, double)>();
+
+  /// Set fader to oscillate the global volume at specified frequency.
+  ///
+  int oscillateGlobalVolume(double from, double to, double time) {
+    return _oscillateGlobalVolume(from, to, time);
+  }
+
+  late final _oscillateGlobalVolumePtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Int32 Function(
+              ffi.Float, ffi.Float, ffi.Float)>>('oscillateGlobalVolume');
+  late final _oscillateGlobalVolume = _oscillateGlobalVolumePtr
+      .asFunction<int Function(double, double, double)>();
 
   /////////////////////////////////////////
   /// 3D audio methods

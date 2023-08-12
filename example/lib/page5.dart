@@ -22,9 +22,11 @@ class Page5 extends StatefulWidget {
 class _Page5State extends State<Page5> {
   ValueNotifier<double> scale = ValueNotifier(0.25);
   ValueNotifier<double> detune = ValueNotifier(1);
-  ValueNotifier<bool> superWave = ValueNotifier(false);
   ValueNotifier<WaveForm> waveForm = ValueNotifier(WaveForm.fSquare);
-  ValueNotifier<int> octave = ValueNotifier(2);
+  bool superWave = false;
+  int octave = 2;
+  double fadeIn = 0.5;
+  double fadeOut = 0.5;
   List<SoundProps> notes = [];
 
   @override
@@ -39,7 +41,7 @@ class _Page5State extends State<Page5> {
         await SoLoud().disposeAllSound();
         notes = await SoloudTools.initSounds(
           octave: 1,
-          superwave: superWave.value,
+          superwave: superWave,
         );
       }
       if (mounted) setState(() {});
@@ -73,7 +75,7 @@ class _Page5State extends State<Page5> {
                   min: 0,
                   max: 2,
                   value: newScale,
-                  enabled: superWave.value,
+                  enabled: superWave,
                   onChanged: (value) {
                     scale.value = value;
                     for (var i = 0; i < notes.length; i++) {
@@ -93,7 +95,7 @@ class _Page5State extends State<Page5> {
                   min: 0,
                   max: 1,
                   value: newDetune,
-                  enabled: superWave.value,
+                  enabled: superWave,
                   onChanged: (value) {
                     detune.value = value;
                     for (var i = 0; i < notes.length; i++) {
@@ -105,49 +107,65 @@ class _Page5State extends State<Page5> {
             ),
 
             /// Octave
-            ValueListenableBuilder<int>(
-              valueListenable: octave,
-              builder: (_, newOctave, __) {
-                return MySlider(
-                  text: 'octave',
-                  min: 0,
-                  max: 4,
-                  value: newOctave.toDouble(),
-                  enabled: true,
-                  isDivided: true,
-                  onChanged: (value) async {
-                    octave.value = value.toInt();
-                    await SoLoud().disposeAllSound();
-                    notes = await SoloudTools.initSounds(
-                      octave: value.toInt(),
-                      superwave: superWave.value,
-                    );
-                    if (mounted) setState(() {});
-                  },
+            MySlider(
+              text: 'octave',
+              min: 0,
+              max: 4,
+              value: octave.toDouble(),
+              enabled: true,
+              isDivided: true,
+              onChanged: (value) async {
+                octave = value.toInt();
+                await SoLoud().disposeAllSound();
+                notes = await SoloudTools.initSounds(
+                  octave: value.toInt(),
+                  superwave: superWave,
                 );
+                if (mounted) setState(() {});
+              },
+            ),
+
+            /// Fade in
+            MySlider(
+              text: 'fade in',
+              min: 0,
+              max: 2,
+              value: fadeIn,
+              enabled: true,
+              onChanged: (value) async {
+                fadeIn = value;
+                if (mounted) setState(() {});
+              },
+            ),
+
+            /// Fade out
+            MySlider(
+              text: 'fade out',
+              min: 0,
+              max: 2,
+              value: fadeOut,
+              enabled: true,
+              onChanged: (value) async {
+                fadeOut = value;
+                if (mounted) setState(() {});
               },
             ),
 
             /// SuperWave
-            ValueListenableBuilder<bool>(
-              valueListenable: superWave,
-              builder: (_, newSuperWave, __) {
-                return Row(
-                  children: [
-                    const Text('superWave '),
-                    Checkbox.adaptive(
-                      value: newSuperWave,
-                      onChanged: (value) {
-                        superWave.value = value!;
-                        for (var i = 0; i < notes.length; i++) {
-                          SoLoud().setWaveformSuperWave(notes[i], value);
-                        }
-                        if (mounted) setState(() {});
-                      },
-                    ),
-                  ],
-                );
-              },
+            Row(
+              children: [
+                const Text('superWave '),
+                Checkbox.adaptive(
+                  value: superWave,
+                  onChanged: (value) {
+                    superWave = value!;
+                    for (var i = 0; i < notes.length; i++) {
+                      SoLoud().setWaveformSuperWave(notes[i], value);
+                    }
+                    if (mounted) setState(() {});
+                  },
+                ),
+              ],
             ),
 
             /// Choose wave form
@@ -193,7 +211,11 @@ class _Page5State extends State<Page5> {
             ),
 
             const SizedBox(height: 8),
-            KeyboardWidget(notes: notes),
+            KeyboardWidget(
+              notes: notes,
+              fadeIn: fadeIn,
+              fadeOut: fadeOut,
+            ),
             const Spacer(),
             Bars(key: UniqueKey()),
             const Spacer(),
@@ -313,9 +335,13 @@ class BbarsState extends State<Bars> with SingleTickerProviderStateMixin {
 class KeyboardWidget extends StatefulWidget {
   const KeyboardWidget({
     required this.notes,
+    required this.fadeIn,
+    required this.fadeOut,
     super.key,
   });
 
+  final double fadeIn;
+  final double fadeOut;
   final List<SoundProps> notes;
 
   @override
@@ -394,17 +420,19 @@ class _KeyboardWidgetState extends State<KeyboardWidget> {
     }
   }
 
-  void play(int index) {
+  Future<void> play(int index) async {
     if (index < 0 || index >= notesKeys.length) return;
     if (isPressed[index].value) return;
-    SoLoud().play(widget.notes[index], volume: 0.7);
+    await SoLoud().play(widget.notes[index], volume: 0);
+    SoLoud().fadeVolume(widget.notes[index].handle.first, 1, widget.fadeIn);
     isPressed[index].value = true;
   }
 
   void stop(int index) {
     if (index < 0 || index >= notesKeys.length) return;
     for (final h in widget.notes[index].handle) {
-      SoLoud().stop(h);
+      SoLoud().fadeVolume(h, 0, widget.fadeOut);
+      SoLoud().scheduleStop(h, widget.fadeOut);
     }
     isPressed[index].value = false;
   }

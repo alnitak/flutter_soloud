@@ -213,6 +213,16 @@ void Player::pauseSwitch(unsigned int handle)
     soloud.setPause(
         sound->handle[handleId],
         !soloud.getPause(sound->handle[handleId]));
+    setPause(handle, !soloud.getPause(sound->handle[handleId]));
+}
+
+void Player::setPause(unsigned int handle, bool pause)
+{
+    int handleId;
+    ActiveSound *sound = findByHandle(handle, &handleId);
+    if (sound == nullptr || sound->soundType != TYPE_WAV)
+        return;
+    soloud.setPause(sound->handle[handleId], pause);
 }
 
 bool Player::getPause(unsigned int handle)
@@ -391,6 +401,61 @@ void Player::debug()
         n++;
     }
 }
+
+/////////////////////////////////////////
+/// faders
+/////////////////////////////////////////
+
+void Player::fadeGlobalVolume(float to, float time)
+{
+    soloud.fadeGlobalVolume(to, time);
+}
+
+void Player::fadeVolume(SoLoud::handle handle, float to, float time)
+{
+    soloud.fadeVolume(handle, to, time);
+}
+
+void Player::fadePan(SoLoud::handle handle, float to, float time)
+{
+    soloud.fadePan(handle, to, time);
+}
+
+void Player::fadeRelativePlaySpeed(SoLoud::handle handle, float to, float time)
+{
+    soloud.fadeRelativePlaySpeed(handle, to, time);
+}
+
+void Player::schedulePause(SoLoud::handle handle, float time)
+{
+    soloud.schedulePause(handle, time);
+}
+
+void Player::scheduleStop(SoLoud::handle handle, float time)
+{
+    soloud.scheduleStop(handle, time);
+}
+
+void Player::oscillateVolume(SoLoud::handle handle, float from, float to, float time)
+{
+    soloud.oscillateVolume(handle, from, to, time);
+}
+
+void Player::oscillatePan(SoLoud::handle handle, float from, float to, float time)
+{
+    soloud.oscillatePan(handle, from, to, time);
+}
+
+void Player::oscillateRelativePlaySpeed(SoLoud::handle handle, float from, float to, float time)
+{
+    soloud.oscillateRelativePlaySpeed(handle, from, to, time);
+}
+
+void Player::oscillateGlobalVolume(float from, float to, float time)
+{
+    soloud.oscillateGlobalVolume(from, to, time);
+}
+
 
 /////////////////////////////////////////
 /// 3D audio methods

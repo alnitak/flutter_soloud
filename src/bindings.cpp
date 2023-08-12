@@ -192,7 +192,7 @@ extern "C"
         return (PlayerErrors)player.textToSpeech(textToSpeech, *handle);
     }
 
-    /// Pause or unpause already loaded sound identified by [handle]
+    /// Switch pause state for an already loaded sound identified by [handle]
     ///
     /// [handle] the sound handle
     FFI_PLUGIN_EXPORT void pauseSwitch(unsigned int handle)
@@ -200,6 +200,17 @@ extern "C"
         if (!player.isInited())
             return;
         player.pauseSwitch(handle);
+    }
+
+    /// Pause or unpause already loaded sound identified by [handle]
+    ///
+    /// [handle] the sound handle
+    /// [pause] the sound handle
+    FFI_PLUGIN_EXPORT void setPause(unsigned int handle, bool pause)
+    {
+        if (!player.isInited())
+            return;
+        player.setPause(handle, pause);
     }
 
     /// Gets the pause state
@@ -403,6 +414,110 @@ extern "C"
         if (!player.isInited() || player.getSoundsCount() == 0)
             return false;
         return player.getIsValidVoiceHandle(handle) ? 1 : 0;
+    }
+
+    /////////////////////////////////////////
+    /// faders
+    /////////////////////////////////////////
+
+    /// Smoothly change the global volume over specified time.
+    ///
+    FFI_PLUGIN_EXPORT enum PlayerErrors fadeGlobalVolume(float to, float time)
+    {
+        if (!player.isInited())
+            return backendNotInited;
+        player.fadeGlobalVolume(to, time);
+        return noError;
+    }
+
+    /// Smoothly change a channel's volume over specified time.
+    ///
+    FFI_PLUGIN_EXPORT enum PlayerErrors fadeVolume(SoLoud::handle handle, float to, float time)
+    {
+        if (!player.isInited())
+            return backendNotInited;
+        player.fadeVolume(handle, to, time);
+        return noError;
+    }
+
+    /// Smoothly change a channel's pan setting over specified time.
+    ///
+    FFI_PLUGIN_EXPORT enum PlayerErrors fadePan(SoLoud::handle handle, float to, float time)
+    {
+        if (!player.isInited())
+            return backendNotInited;
+        player.fadePan(handle, to, time);
+        return noError;
+    }
+
+    /// Smoothly change a channel's relative play speed over specified time.
+    ///
+    FFI_PLUGIN_EXPORT enum PlayerErrors fadeRelativePlaySpeed(SoLoud::handle handle, float to, float time)
+    {
+        if (!player.isInited())
+            return backendNotInited;
+        player.fadeRelativePlaySpeed(handle, to, time);
+        return noError;
+    }
+
+    /// After specified time, pause the channel.
+    ///
+    FFI_PLUGIN_EXPORT enum PlayerErrors schedulePause(SoLoud::handle handle, float time)
+    {
+        if (!player.isInited())
+            return backendNotInited;
+        player.schedulePause(handle, time);
+        return noError;
+    }
+
+    /// After specified time, stop the channel.
+    ///
+    FFI_PLUGIN_EXPORT enum PlayerErrors scheduleStop(SoLoud::handle handle, float time)
+    {
+        if (!player.isInited())
+            return backendNotInited;
+        player.scheduleStop(handle, time);
+        return noError;
+    }
+
+    /// Set fader to oscillate the volume at specified frequency.
+    ///
+    FFI_PLUGIN_EXPORT enum PlayerErrors oscillateVolume(SoLoud::handle handle, float from, float to, float time)
+    {
+        if (!player.isInited())
+            return backendNotInited;
+        player.oscillateVolume(handle, from, to, time);
+        return noError;
+    }
+
+    /// Set fader to oscillate the panning at specified frequency.
+    ///
+    FFI_PLUGIN_EXPORT enum PlayerErrors oscillatePan(SoLoud::handle handle, float from, float to, float time)
+    {
+        if (!player.isInited())
+            return backendNotInited;
+        player.oscillatePan(handle, from, to, time);
+        return noError;
+    }
+
+    /// Set fader to oscillate the relative play speed at specified frequency.
+    ///
+    FFI_PLUGIN_EXPORT enum PlayerErrors oscillateRelativePlaySpeed(SoLoud::handle handle, float from, float to, float time)
+    {
+        if (!player.isInited())
+            return backendNotInited;
+        player.oscillateRelativePlaySpeed(handle, from, to, time);
+        return noError;
+    }
+
+    /// Set fader to oscillate the global volume at specified frequency.
+    ///
+    FFI_PLUGIN_EXPORT enum PlayerErrors oscillateGlobalVolume(float from, float to, float time)
+    {
+        if (!player.isInited())
+            return backendNotInited;
+        player.oscillateGlobalVolume(from, to, time);
+        return noError;
     }
 
     /////////////////////////////////////////

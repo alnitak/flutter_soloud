@@ -442,18 +442,12 @@ class SoLoud {
   ///
   /// [sound] the sound of a waveform
   /// [newFreq]
-  PlayerErrors setWaveformFreq(
-    SoundProps sound,
-    double newFreq
-  ) {
+  PlayerErrors setWaveformFreq(SoundProps sound, double newFreq) {
     if (!isPlayerInited) {
       printPlayerError('setWaveformFreq()', PlayerErrors.engineNotInited);
       return PlayerErrors.engineNotInited;
     }
-    SoLoudController().soLoudFFI.setWaveformFreq(
-          sound.soundHash,
-          newFreq
-        );
+    SoLoudController().soLoudFFI.setWaveformFreq(sound.soundHash, newFreq);
     return PlayerErrors.noError;
   }
 
@@ -461,10 +455,7 @@ class SoLoud {
   ///
   /// [sound] the sound of a waveform
   /// [superwave]
-  PlayerErrors setWaveformSuperWave(
-    SoundProps sound,
-    bool superwave
-  ) {
+  PlayerErrors setWaveformSuperWave(SoundProps sound, bool superwave) {
     if (!isPlayerInited) {
       printPlayerError('setWaveformSuperWave()', PlayerErrors.engineNotInited);
       return PlayerErrors.engineNotInited;
@@ -574,6 +565,20 @@ class SoLoud {
       return PlayerErrors.engineNotInited;
     }
     SoLoudController().soLoudFFI.pauseSwitch(handle);
+    return PlayerErrors.noError;
+  }
+
+  /// Pause or unpause already loaded sound identified by [handle]
+  ///
+  /// [handle] the sound handle
+  /// Returns [PlayerErrors.noError] if success
+  ///
+  PlayerErrors setPause(int handle, bool pause) {
+    if (!isPlayerInited) {
+      printPlayerError('setPause()', PlayerErrors.engineNotInited);
+      return PlayerErrors.engineNotInited;
+    }
+    SoLoudController().soLoudFFI.setPause(handle, pause ? 1 : 0);
     return PlayerErrors.noError;
   }
 
@@ -799,6 +804,129 @@ class SoLoud {
     }
     SoLoudController().soLoudFFI.setFftSmoothing(smooth);
     return PlayerErrors.noError;
+  }
+
+  /////////////////////////////////////////
+  /// faders
+  /////////////////////////////////////////
+
+  /// Smoothly change the global volume over specified time.
+  ///
+  PlayerErrors fadeGlobalVolume(double to, double time) {
+    if (!isPlayerInited) {
+      printPlayerError('fadeGlobalVolume()', PlayerErrors.engineNotInited);
+      return PlayerErrors.engineNotInited;
+    }
+    final ret = SoLoudController().soLoudFFI.fadeGlobalVolume(to, time);
+    return PlayerErrors.values[ret];
+  }
+
+  /// Smoothly change a channel's volume over specified time.
+  ///
+  PlayerErrors fadeVolume(int handle, double to, double time) {
+    if (!isPlayerInited) {
+      printPlayerError('fadeVolume()', PlayerErrors.engineNotInited);
+      return PlayerErrors.engineNotInited;
+    }
+    final ret = SoLoudController().soLoudFFI.fadeVolume(handle, to, time);
+    return PlayerErrors.values[ret];
+  }
+
+  /// Smoothly change a channel's pan setting over specified time.
+  ///
+  PlayerErrors fadePan(int handle, double to, double time) {
+    if (!isPlayerInited) {
+      printPlayerError('fadePan()', PlayerErrors.engineNotInited);
+      return PlayerErrors.engineNotInited;
+    }
+    final ret = SoLoudController().soLoudFFI.fadePan(handle, to, time);
+    return PlayerErrors.values[ret];
+  }
+
+  /// Smoothly change a channel's relative play speed over specified time.
+  ///
+  PlayerErrors fadeRelativePlaySpeed(int handle, double to, double time) {
+    if (!isPlayerInited) {
+      printPlayerError('fadeRelativePlaySpeed()', PlayerErrors.engineNotInited);
+      return PlayerErrors.engineNotInited;
+    }
+    final ret =
+        SoLoudController().soLoudFFI.fadeRelativePlaySpeed(handle, to, time);
+    return PlayerErrors.values[ret];
+  }
+
+  /// After specified time, pause the channel.
+  ///
+  PlayerErrors schedulePause(int handle, double time) {
+    if (!isPlayerInited) {
+      printPlayerError('schedulePause()', PlayerErrors.engineNotInited);
+      return PlayerErrors.engineNotInited;
+    }
+    final ret = SoLoudController().soLoudFFI.schedulePause(handle, time);
+    return PlayerErrors.values[ret];
+  }
+
+  /// After specified time, stop the channel.
+  ///
+  PlayerErrors scheduleStop(int handle, double time) {
+    if (!isPlayerInited) {
+      printPlayerError('scheduleStop()', PlayerErrors.engineNotInited);
+      return PlayerErrors.engineNotInited;
+    }
+    final ret = SoLoudController().soLoudFFI.scheduleStop(handle, time);
+    return PlayerErrors.values[ret];
+  }
+
+  /// Set fader to oscillate the volume at specified frequency.
+  ///
+  PlayerErrors oscillateVolume(
+      int handle, double from, double to, double time) {
+    if (!isPlayerInited) {
+      printPlayerError('oscillateVolume()', PlayerErrors.engineNotInited);
+      return PlayerErrors.engineNotInited;
+    }
+    final ret =
+        SoLoudController().soLoudFFI.oscillateVolume(handle, from, to, time);
+    return PlayerErrors.values[ret];
+  }
+
+  /// Set fader to oscillate the panning at specified frequency.
+  ///
+  PlayerErrors oscillatePan(int handle, double from, double to, double time) {
+    if (!isPlayerInited) {
+      printPlayerError('oscillatePan()', PlayerErrors.engineNotInited);
+      return PlayerErrors.engineNotInited;
+    }
+    final ret =
+        SoLoudController().soLoudFFI.oscillatePan(handle, from, to, time);
+    return PlayerErrors.values[ret];
+  }
+
+  /// Set fader to oscillate the relative play speed at specified frequency.
+  ///
+  PlayerErrors oscillateRelativePlaySpeed(
+      int handle, double from, double to, double time) {
+    if (!isPlayerInited) {
+      printPlayerError(
+          'oscillateRelativePlaySpeed()', PlayerErrors.engineNotInited);
+      return PlayerErrors.engineNotInited;
+    }
+    final ret = SoLoudController()
+        .soLoudFFI
+        .oscillateRelativePlaySpeed(handle, from, to, time);
+    return PlayerErrors.values[ret];
+  }
+
+  /// Set fader to oscillate the global volume at specified frequency.
+  ///
+  PlayerErrors oscillateGlobalVolume(double from, double to, double time) {
+    if (!isPlayerInited) {
+      printPlayerError('oscillateGlobalVolume()', PlayerErrors.engineNotInited);
+      return PlayerErrors.engineNotInited;
+    }
+    final ret =
+        SoLoudController().soLoudFFI.oscillateGlobalVolume(from, to, time);
+    return PlayerErrors.values[ret];
   }
 
   // ////////////////////////////////////////////////
