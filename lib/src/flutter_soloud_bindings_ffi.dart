@@ -392,6 +392,41 @@ class FlutterSoLoudFfi {
   );
   late final _getPause = _getPausePtr.asFunction<int Function(int)>();
 
+  /// Set a sound's relative play speed.
+  /// Setting the value to 0 will cause undefined behavior, likely a crash.
+  /// Change the relative play speed of a sample. This changes the effective
+  /// sample rate while leaving the base sample rate alone.
+  ///
+  /// Note that playing a sound at a higher sample rate will require SoLoud
+  /// to request more samples from the sound source, which will require more
+  /// memory and more processing power. Playing at a slower sample 
+  /// rate is cheaper.
+  ///
+  /// [handle] the sound handle
+  /// [speed] the new speed
+  void setRelativePlaySpeed(int handle, double speed) {
+    return _setRelativePlaySpeed(handle, speed);
+  }
+
+  late final _setRelativePlaySpeedPtr = _lookup<
+          ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt, ffi.Float)>>(
+      'setRelativePlaySpeed');
+  late final _setRelativePlaySpeed =
+      _setRelativePlaySpeedPtr.asFunction<void Function(int, double)>();
+
+  /// Return the current play speed.
+  ///
+  /// [handle] the sound handle
+  double getRelativePlaySpeed(int handle) {
+    return _getRelativePlaySpeed(handle);
+  }
+
+  late final _getRelativePlaySpeedPtr =
+      _lookup<ffi.NativeFunction<ffi.Float Function(ffi.UnsignedInt)>>(
+          'getRelativePlaySpeed');
+  late final _getRelativePlaySpeed =
+      _getRelativePlaySpeedPtr.asFunction<double Function(int)>();
+
   /// Play already loaded sound identified by [soundHash].
   ///
   /// [soundHash] the unique sound hash of a sound
@@ -614,6 +649,30 @@ class FlutterSoLoudFfi {
     'getPosition',
   );
   late final _getPosition = _getPositionPtr.asFunction<double Function(int)>();
+
+  /// Get current [handle] volume
+  ///
+  /// Returns the volume
+  double getVolume(int handle) {
+    return _getVolume(handle);
+  }
+
+  late final _getVolumePtr =
+      _lookup<ffi.NativeFunction<ffi.Double Function(ffi.UnsignedInt)>>(
+          'getVolume');
+  late final _getVolume = _getVolumePtr.asFunction<double Function(int)>();
+
+  /// Get current [handle] volume
+  ///
+  /// Returns [PlayerErrors.noError] if success
+  int setVolume(int handle, double volume) {
+    return _setVolume(handle, volume);
+  }
+
+  late final _setVolumePtr = _lookup<
+          ffi.NativeFunction<ffi.Int32 Function(ffi.UnsignedInt, ffi.Float)>>(
+      'setVolume');
+  late final _setVolume = _setVolumePtr.asFunction<int Function(int, double)>();
 
   /// Check if a handle is still valid.
   ///

@@ -596,6 +596,39 @@ class SoLoud {
     return (error: PlayerErrors.noError, pause: ret);
   }
 
+  /// Set a sound's relative play speed.
+  /// Setting the value to 0 will cause undefined behavior, likely a crash.
+  /// Change the relative play speed of a sample. This changes the effective
+  /// sample rate while leaving the base sample rate alone.
+  ///
+  /// Note that playing a sound at a higher sample rate will require SoLoud
+  /// to request more samples from the sound source, which will require more
+  /// memory and more processing power. Playing at a slower sample
+  /// rate is cheaper.
+  ///
+  /// [handle] the sound handle
+  /// [speed] the new speed
+  PlayerErrors setRelativePlaySpeed(int handle, double speed) {
+    if (!isPlayerInited) {
+      printPlayerError('setRelativePlaySpeed()', PlayerErrors.engineNotInited);
+      return PlayerErrors.engineNotInited;
+    }
+    SoLoudController().soLoudFFI.setRelativePlaySpeed(handle, speed);
+    return PlayerErrors.noError;
+  }
+
+  /// Return the current play speed.
+  ///
+  /// [handle] the sound handle
+  ({PlayerErrors error, double speed}) getRelativePlaySpeed(int handle) {
+    if (!isPlayerInited) {
+      printPlayerError('getRelativePlaySpeed()', PlayerErrors.engineNotInited);
+      return (error: PlayerErrors.engineNotInited, speed: 1);
+    }
+    final ret = SoLoudController().soLoudFFI.getRelativePlaySpeed(handle);
+    return (error: PlayerErrors.noError, speed: ret);
+  }
+
   /// Stop already loaded sound identified by [handle] and clear it from the
   /// sound handle list
   ///
@@ -746,6 +779,32 @@ class SoLoud {
     }
     final ret = SoLoudController().soLoudFFI.getPosition(handle);
     return (error: PlayerErrors.noError, position: ret);
+  }
+
+  /// Get current [handle] volume
+  ///
+  /// Return PlayerErrors.noError if success and volume
+  ///
+  ({PlayerErrors error, double volume}) getVolume(int handle) {
+    if (!isPlayerInited) {
+      printPlayerError('getVolume()', PlayerErrors.engineNotInited);
+      return (error: PlayerErrors.engineNotInited, volume: 0.0);
+    }
+    final ret = SoLoudController().soLoudFFI.getVolume(handle);
+    return (error: PlayerErrors.noError, volume: ret);
+  }
+
+  /// Get current [handle] volume
+  ///
+  /// Return PlayerErrors.noError if success and volume
+  ///
+  PlayerErrors setVolume(int handle, double volume) {
+    if (!isPlayerInited) {
+      printPlayerError('setVolume()', PlayerErrors.engineNotInited);
+      return PlayerErrors.engineNotInited;
+    }
+    final ret = SoLoudController().soLoudFFI.setVolume(handle, volume);
+    return PlayerErrors.values[ret];
   }
 
   /// Check if a handle is still valid

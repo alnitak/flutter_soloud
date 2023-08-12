@@ -97,6 +97,23 @@ public:
     /// @return true if paused
     bool getPause(unsigned int handle);
 
+    /// @brief Set a sound's relative play speed.
+    /// Setting the value to 0 will cause undefined behavior, likely a crash.
+    /// Change the relative play speed of a sample. This changes the effective 
+    /// sample rate while leaving the base sample rate alone.
+    ///
+    /// Note that playing a sound at a higher sample rate will require SoLoud 
+    /// to request more samples from the sound source, which will require more 
+    /// memory and more processing power. Playing at a slower sample rate is cheaper.
+    /// @param handle the sound handle
+    /// @param speed the new speed
+    void setRelativePlaySpeed(unsigned int handle, float speed);
+
+    /// @brief Get a sound's relative play speed.
+    /// If an invalid handle is given to getRelativePlaySpeed, it will return 1.
+    /// @return the current play speed.
+    float getRelativePlaySpeed(unsigned int handle);
+
     /// @brief Play already loaded sound identified by [soundHash]
     /// @param soundHash
     /// @param volume 1.0f full volume
@@ -163,6 +180,15 @@ public:
     /// @brief get current sound position in seconds
     /// @return time in seconds
     double getPosition(SoLoud::handle handle);
+
+    /// @brief get current [handle] volume
+    /// @return the volume
+    float getVolume(SoLoud::handle handle);
+
+    /// @brief set the [handle] volume
+    /// @param handle the sound handle
+    /// @param volume the new volume to set
+    void setVolume(SoLoud::handle handle, float volume);
 
     /// @brief check if a handle is still valid.
     /// @param handle handle to check

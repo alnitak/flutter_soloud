@@ -27,6 +27,8 @@ class _Page5State extends State<Page5> {
   int octave = 2;
   double fadeIn = 0.5;
   double fadeOut = 0.5;
+  double fadeSpeedIn = 0;
+  double fadeSpeedOut = 0;
   List<SoundProps> notes = [];
 
   @override
@@ -38,11 +40,7 @@ class _Page5State extends State<Page5> {
       if (event == AudioEvent.isolateStarted) {
         /// When it starts initialize notes
         SoLoud().setVisualizationEnabled(true);
-        await SoLoud().disposeAllSound();
-        notes = await SoloudTools.initSounds(
-          octave: 1,
-          superwave: superWave,
-        );
+        await setupNotes();
       }
       if (mounted) setState(() {});
     });
@@ -55,6 +53,20 @@ class _Page5State extends State<Page5> {
     SoLoud().stopCapture();
     SoLoud().disposeAllSound();
     super.dispose();
+  }
+
+  Future<void> setupNotes() async {
+    await SoLoud().disposeAllSound();
+    notes = await SoloudTools.initSounds(
+      octave: 1,
+      superwave: superWave,
+      waveForm: waveForm.value,
+    );
+
+    /// set all sounds to pause state
+    for (final s in notes) {
+      await SoLoud().play(s, paused: true);
+    }
   }
 
   @override
@@ -116,11 +128,7 @@ class _Page5State extends State<Page5> {
               isDivided: true,
               onChanged: (value) async {
                 octave = value.toInt();
-                await SoLoud().disposeAllSound();
-                notes = await SoloudTools.initSounds(
-                  octave: value.toInt(),
-                  superwave: superWave,
-                );
+                await setupNotes();
                 if (mounted) setState(() {});
               },
             ),
@@ -147,6 +155,32 @@ class _Page5State extends State<Page5> {
               enabled: true,
               onChanged: (value) async {
                 fadeOut = value;
+                if (mounted) setState(() {});
+              },
+            ),
+
+            /// Fade speed in
+            MySlider(
+              text: 'fade speed in',
+              min: 0,
+              max: 2,
+              value: fadeSpeedIn,
+              enabled: true,
+              onChanged: (value) async {
+                fadeSpeedIn = value;
+                if (mounted) setState(() {});
+              },
+            ),
+
+            /// Fade speed out
+            MySlider(
+              text: 'fade speed out',
+              min: 0,
+              max: 2,
+              value: fadeSpeedOut,
+              enabled: true,
+              onChanged: (value) async {
+                fadeSpeedOut = value;
                 if (mounted) setState(() {});
               },
             ),
@@ -192,12 +226,7 @@ class _Page5State extends State<Page5> {
                     backgroundColor: Colors.blue,
                     onPressed: () {
                       waveForm.value = WaveForm.values[i];
-                      for (var n = 0; n < notes.length; n++) {
-                        SoLoud().setWaveform(
-                          notes[n],
-                          WaveForm.values[i],
-                        );
-                      }
+                      setupNotes();
                       if (mounted) setState(() {});
                     },
                     label: Text(WaveForm.values[i].name),
@@ -215,6 +244,8 @@ class _Page5State extends State<Page5> {
               notes: notes,
               fadeIn: fadeIn,
               fadeOut: fadeOut,
+              fadeSpeedIn: fadeSpeedIn,
+              fadeSpeedOut: fadeSpeedOut,
             ),
             const Spacer(),
             Bars(key: UniqueKey()),
@@ -337,11 +368,15 @@ class KeyboardWidget extends StatefulWidget {
     required this.notes,
     required this.fadeIn,
     required this.fadeOut,
+    required this.fadeSpeedIn,
+    required this.fadeSpeedOut,
     super.key,
   });
 
   final double fadeIn;
   final double fadeOut;
+  final double fadeSpeedIn;
+  final double fadeSpeedOut;
   final List<SoundProps> notes;
 
   @override
@@ -414,17 +449,17 @@ class _KeyboardWidgetState extends State<KeyboardWidget> {
     return false;
   }
 
-  void stopAll() {
-    for (var i = 0; i < 12; i++) {
-      stop(i);
-    }
-  }
-
   Future<void> play(int index) async {
     if (index < 0 || index >= notesKeys.length) return;
     if (isPressed[index].value) return;
-    await SoLoud().play(widget.notes[index], volume: 0);
+    SoLoud().setRelativePlaySpeed(widget.notes[index].handle.first, 0);
+    SoLoud().setPause(widget.notes[index].handle.first, false);
     SoLoud().fadeVolume(widget.notes[index].handle.first, 1, widget.fadeIn);
+    SoLoud().fadeRelativePlaySpeed(
+      widget.notes[index].handle.first,
+      1,
+      widget.fadeSpeedIn,
+    );
     isPressed[index].value = true;
   }
 
@@ -432,7 +467,8 @@ class _KeyboardWidgetState extends State<KeyboardWidget> {
     if (index < 0 || index >= notesKeys.length) return;
     for (final h in widget.notes[index].handle) {
       SoLoud().fadeVolume(h, 0, widget.fadeOut);
-      SoLoud().scheduleStop(h, widget.fadeOut);
+      SoLoud().fadeRelativePlaySpeed(h, 0, widget.fadeSpeedOut);
+      SoLoud().schedulePause(h, widget.fadeOut);
     }
     isPressed[index].value = false;
   }

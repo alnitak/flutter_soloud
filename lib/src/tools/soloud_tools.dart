@@ -91,14 +91,13 @@ class SoloudTools {
     final notes = <SoundProps>[];
     for (var index = 0; index < 12; index++) {
       final ret = await SoLoud().loadWaveform(
-        WaveForm.square,
+        waveForm,
         true,
         0.25,
         1,
       );
       if (ret.error != PlayerErrors.noError) return [];
       final freq = startingFreq * (pow(2, index / 12));
-      SoLoud().setWaveform(ret.sound!, waveForm);
       SoLoud().setWaveformFreq(ret.sound!, freq);
       SoLoud().setWaveformSuperWave(ret.sound!, superwave);
       notes.add(ret.sound!);

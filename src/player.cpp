@@ -208,7 +208,7 @@ void Player::pauseSwitch(unsigned int handle)
 {
     int handleId;
     ActiveSound *sound = findByHandle(handle, &handleId);
-    if (sound == nullptr || sound->soundType != TYPE_WAV)
+    if (sound == nullptr)
         return;
     soloud.setPause(
         sound->handle[handleId],
@@ -220,7 +220,7 @@ void Player::setPause(unsigned int handle, bool pause)
 {
     int handleId;
     ActiveSound *sound = findByHandle(handle, &handleId);
-    if (sound == nullptr || sound->soundType != TYPE_WAV)
+    if (sound == nullptr)
         return;
     soloud.setPause(sound->handle[handleId], pause);
 }
@@ -229,9 +229,21 @@ bool Player::getPause(unsigned int handle)
 {
     int handleId;
     ActiveSound *sound = findByHandle(handle, &handleId);
-    if (sound == nullptr || sound->soundType != TYPE_WAV)
+    if (sound == nullptr)
         return false;
     return soloud.getPause(sound->handle[handleId]);
+}
+
+
+void Player::setRelativePlaySpeed(unsigned int handle, float speed)
+{
+    if (speed < 0.05) speed = 0.05;
+    soloud.setRelativePlaySpeed(handle, speed);
+}
+
+float Player::getRelativePlaySpeed(unsigned int handle)
+{
+    return soloud.getRelativePlaySpeed(handle);
 }
 
 unsigned int Player::play(
@@ -358,6 +370,16 @@ PlayerErrors Player::seek(SoLoud::handle handle, float time)
 double Player::getPosition(SoLoud::handle handle)
 {
     return soloud.getStreamPosition(handle);
+}
+
+float Player::getVolume(SoLoud::handle handle)
+{
+    return soloud.getVolume(handle);
+}
+
+void Player::setVolume(SoLoud::handle handle, float volume)
+{
+    return soloud.setVolume(handle, volume);
 }
 
 bool Player::getIsValidVoiceHandle(SoLoud::handle handle)

@@ -24,39 +24,22 @@ struct CaptureDevice
 //--------------------- copy here the new functions to generate
 
 
-/// Pause or unpause already loaded sound identified by [handle]
-///
-/// [handle] the sound handle
-/// [pause] the sound handle
-FFI_PLUGIN_EXPORT void setPause(unsigned int handle, bool pause);
 
-    /// Smoothly change the global volume over specified time.
+    /// Set a sound's relative play speed.
+    /// Setting the value to 0 will cause undefined behavior, likely a crash.
+    /// Change the relative play speed of a sample. This changes the effective 
+    /// sample rate while leaving the base sample rate alone.
     ///
-FFI_PLUGIN_EXPORT enum PlayerErrors fadeGlobalVolume(float to, float time);
-    /// Smoothly change a channel's volume over specified time.
+    /// Note that playing a sound at a higher sample rate will require SoLoud 
+    /// to request more samples from the sound source, which will require more 
+    /// memory and more processing power. Playing at a slower sample rate is cheaper.
     ///
-FFI_PLUGIN_EXPORT enum PlayerErrors fadeVolume(unsigned int handle, float to, float time);
-    /// Smoothly change a channel's pan setting over specified time.
-    ///
-FFI_PLUGIN_EXPORT enum PlayerErrors fadePan(unsigned int handle, float to, float time);
-    /// Smoothly change a channel's relative play speed over specified time.
-    ///
-FFI_PLUGIN_EXPORT enum PlayerErrors fadeRelativePlaySpeed(unsigned int handle, float to, float time);
-    /// After specified time, pause the channel.
-    ///
-FFI_PLUGIN_EXPORT enum PlayerErrors schedulePause(unsigned int handle, float time);
-    /// After specified time, stop the channel.
-    ///
-FFI_PLUGIN_EXPORT enum PlayerErrors scheduleStop(unsigned int handle, float time);
-    /// Set fader to oscillate the volume at specified frequency.
-    ///
-FFI_PLUGIN_EXPORT enum PlayerErrors oscillateVolume(unsigned int handle, float from, float to, float time);
-    /// Set fader to oscillate the panning at specified frequency.
-    ///
-FFI_PLUGIN_EXPORT enum PlayerErrors oscillatePan(unsigned int handle, float from, float to, float time);
-    /// Set fader to oscillate the relative play speed at specified frequency.
-    ///
-FFI_PLUGIN_EXPORT enum PlayerErrors oscillateRelativePlaySpeed(unsigned int handle, float from, float to, float time);
-    /// Set fader to oscillate the global volume at specified frequency.
-    ///
-FFI_PLUGIN_EXPORT enum PlayerErrors oscillateGlobalVolume(float from, float to, float time);
+    /// [handle] the sound handle
+    /// [speed] the new speed
+    FFI_PLUGIN_EXPORT void setRelativePlaySpeed(unsigned int handle, float speed);
+
+    /// Get a sound's relative play speed.
+    /// If an invalid handle is given to getRelativePlaySpeed, it will return 1.
+
+    /// Return the current play speed.
+    FFI_PLUGIN_EXPORT float getRelativePlaySpeed(unsigned int handle);

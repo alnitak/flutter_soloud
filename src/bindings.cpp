@@ -224,6 +224,37 @@ extern "C"
         return player.getPause(handle) ? 1 : 0;
     }
 
+    /// Set a sound's relative play speed.
+    /// Setting the value to 0 will cause undefined behavior, likely a crash.
+    /// Change the relative play speed of a sample. This changes the effective 
+    /// sample rate while leaving the base sample rate alone.
+    ///
+    /// Note that playing a sound at a higher sample rate will require SoLoud 
+    /// to request more samples from the sound source, which will require more 
+    /// memory and more processing power. Playing at a slower sample rate 
+    /// is cheaper.
+    ///
+    /// [handle] the sound handle
+    /// [speed] the new speed
+    FFI_PLUGIN_EXPORT void setRelativePlaySpeed(unsigned int handle, float speed)
+    {
+        if (!player.isInited())
+            return;
+        player.setRelativePlaySpeed(handle, speed);
+    }
+
+    /// Get a sound's relative play speed.
+    /// If an invalid handle is given to getRelativePlaySpeed, it will return 1.
+
+    /// Return the current play speed.
+    /// [handle] the sound handle
+    FFI_PLUGIN_EXPORT float getRelativePlaySpeed(unsigned int handle)
+    {
+        if (!player.isInited())
+            return 1;
+        return player.getRelativePlaySpeed(handle);
+    }
+
     /// Play already loaded sound identified by [handle]
     ///
     /// [hash] the unique sound hash of a sound
@@ -403,6 +434,27 @@ extern "C"
         if (!player.isInited() || player.getSoundsCount() == 0)
             return 0.0f;
         return player.getPosition(handle);
+    }
+
+    /// Get current [handle] volume
+    ///
+    /// Returns the volume
+    FFI_PLUGIN_EXPORT double getVolume(unsigned int handle)
+    {
+        if (!player.isInited() || player.getSoundsCount() == 0)
+            return 0.0f;
+        return player.getVolume(handle);
+    }
+
+    /// Get current [handle] volume
+    ///
+    /// Returns the volume
+    FFI_PLUGIN_EXPORT enum PlayerErrors setVolume(unsigned int handle, float volume)
+    {
+        if (!player.isInited())
+            return backendNotInited;
+        player.setVolume(handle, volume);
+        return noError;
     }
 
     /// Check if a handle is still valid.
