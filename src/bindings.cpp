@@ -436,6 +436,27 @@ extern "C"
         return player.getPosition(handle);
     }
 
+    /// Get current Global volume
+    ///
+    /// Returns the volume
+    FFI_PLUGIN_EXPORT double getGlobalVolume()
+    {
+        if (!player.isInited())
+            return 0.0f;
+        return player.getGlobalVolume();
+    }
+
+    /// Set current Global volume
+    ///
+    /// Returns the volume
+    FFI_PLUGIN_EXPORT enum PlayerErrors setGlobalVolume(float volume)
+    {
+        if (!player.isInited())
+            return backendNotInited;
+        player.setGlobalVolume(volume);
+        return noError;
+    }
+
     /// Get current [handle] volume
     ///
     /// Returns the volume
@@ -446,7 +467,7 @@ extern "C"
         return player.getVolume(handle);
     }
 
-    /// Get current [handle] volume
+    /// Set current [handle] volume
     ///
     /// Returns the volume
     FFI_PLUGIN_EXPORT enum PlayerErrors setVolume(unsigned int handle, float volume)

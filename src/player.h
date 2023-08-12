@@ -181,6 +181,14 @@ public:
     /// @return time in seconds
     double getPosition(SoLoud::handle handle);
 
+    /// @brief get current global volume
+    /// @return the volume
+    float getGlobalVolume();
+
+    /// @brief set the global volume
+    /// @param volume the new volume to set
+    void setGlobalVolume(float volume);
+
     /// @brief get current [handle] volume
     /// @return the volume
     float getVolume(SoLoud::handle handle);

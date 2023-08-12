@@ -357,6 +357,16 @@ double Player::getPosition(SoLoud::handle handle)
     return soloud.getStreamPosition(handle);
 }
 
+float Player::getGlobalVolume()
+{
+    return soloud.getGlobalVolume();
+}
+
+void Player::setGlobalVolume(float volume)
+{
+    return soloud.setGlobalVolume(volume);
+}
+
 float Player::getVolume(SoLoud::handle handle)
 {
     return soloud.getVolume(handle);

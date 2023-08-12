@@ -41,6 +41,7 @@ class _Page5State extends State<Page5> {
         /// When it starts initialize notes
         SoLoud().setVisualizationEnabled(true);
         await setupNotes();
+        SoLoud().setGlobalVolume(0.6);
       }
       if (mounted) setState(() {});
     });
@@ -74,9 +75,9 @@ class _Page5State extends State<Page5> {
     if (!SoLoud().isPlayerInited) return const SizedBox.shrink();
 
     return Scaffold(
-      body: SingleChildScrollView(padding: const EdgeInsets.all(8),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(8),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             /// Scale
             ValueListenableBuilder<double>(
@@ -248,7 +249,6 @@ class _Page5State extends State<Page5> {
               fadeSpeedOut: fadeSpeedOut,
             ),
             const SizedBox(height: 8),
-
             Bars(key: UniqueKey()),
             const SizedBox(height: 8),
           ],
@@ -346,7 +346,7 @@ class BbarsState extends State<Bars> with SingleTickerProviderStateMixin {
           BarsFftWidget(
             audioData: playerData.value,
             minFreq: 0,
-            maxFreq: 64,
+            maxFreq: 128,
             width: MediaQuery.sizeOf(context).width / 2 - 17,
             height: MediaQuery.sizeOf(context).width / 6,
           ),

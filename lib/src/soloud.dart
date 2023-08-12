@@ -781,6 +781,32 @@ class SoLoud {
     return (error: PlayerErrors.noError, position: ret);
   }
 
+  /// Get current Global volume
+  ///
+  /// Return PlayerErrors.noError if success and volume
+  ///
+  ({PlayerErrors error, double volume}) getGlobalVolume() {
+    if (!isPlayerInited) {
+      printPlayerError('getGlobalVolume()', PlayerErrors.engineNotInited);
+      return (error: PlayerErrors.engineNotInited, volume: 0.0);
+    }
+    final ret = SoLoudController().soLoudFFI.getGlobalVolume();
+    return (error: PlayerErrors.noError, volume: ret);
+  }
+
+  /// Get current Global volume
+  ///
+  /// Return PlayerErrors.noError if success
+  ///
+  PlayerErrors setGlobalVolume(double volume) {
+    if (!isPlayerInited) {
+      printPlayerError('setGlobalVolume()', PlayerErrors.engineNotInited);
+      return PlayerErrors.engineNotInited;
+    }
+    final ret = SoLoudController().soLoudFFI.setGlobalVolume(volume);
+    return PlayerErrors.values[ret];
+  }
+
   /// Get current [handle] volume
   ///
   /// Return PlayerErrors.noError if success and volume
@@ -796,7 +822,7 @@ class SoLoud {
 
   /// Get current [handle] volume
   ///
-  /// Return PlayerErrors.noError if success and volume
+  /// Return PlayerErrors.noError if success
   ///
   PlayerErrors setVolume(int handle, double volume) {
     if (!isPlayerInited) {

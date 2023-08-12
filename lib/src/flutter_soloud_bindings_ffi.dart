@@ -399,7 +399,7 @@ class FlutterSoLoudFfi {
   ///
   /// Note that playing a sound at a higher sample rate will require SoLoud
   /// to request more samples from the sound source, which will require more
-  /// memory and more processing power. Playing at a slower sample 
+  /// memory and more processing power. Playing at a slower sample
   /// rate is cheaper.
   ///
   /// [handle] the sound handle
@@ -650,6 +650,31 @@ class FlutterSoLoudFfi {
   );
   late final _getPosition = _getPositionPtr.asFunction<double Function(int)>();
 
+  /// Get current Global volume
+  ///
+  /// Returns the volume
+  double getGlobalVolume() {
+    return _getGlobalVolume();
+  }
+
+  late final _getGlobalVolumePtr =
+      _lookup<ffi.NativeFunction<ffi.Double Function()>>('getGlobalVolume');
+  late final _getGlobalVolume =
+      _getGlobalVolumePtr.asFunction<double Function()>();
+
+  /// Set current Global volume
+  ///
+  /// Returns [PlayerErrors.noError] if success
+  int setGlobalVolume(double volume) {
+    return _setGlobalVolume(volume);
+  }
+
+  late final _setGlobalVolumePtr =
+      _lookup<ffi.NativeFunction<ffi.Int32 Function(ffi.Float)>>(
+          'setGlobalVolume');
+  late final _setGlobalVolume =
+      _setGlobalVolumePtr.asFunction<int Function(double)>();
+
   /// Get current [handle] volume
   ///
   /// Returns the volume
@@ -662,7 +687,7 @@ class FlutterSoLoudFfi {
           'getVolume');
   late final _getVolume = _getVolumePtr.asFunction<double Function(int)>();
 
-  /// Get current [handle] volume
+  /// Set current [handle] volume
   ///
   /// Returns [PlayerErrors.noError] if success
   int setVolume(int handle, double volume) {
