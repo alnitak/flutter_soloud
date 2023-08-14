@@ -1,3 +1,17 @@
+## 1.2.1
+- binded some more SoLoud functionalities:
+    - fadeGlobalVolume
+    - fadeVolume
+    - fadePan
+    - fadeRelativePlaySpeed
+    - schedulePause
+    - scheduleStop
+    - oscillateVolume
+    - oscillatePan
+    - oscillateRelativePlaySpeed
+    - oscillateGlobalVolume
+- waveform example page updated
+
 ## 1.2.0
 - added waveform generator
 - added a test page for waveform
@@ -23,6 +37,8 @@ added also a spin around example
 
 ## 0.9.0
 - added capture from microphone with example
+
+## [...]
 
 ## 0.1.0
 

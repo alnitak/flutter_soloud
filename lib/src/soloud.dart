@@ -820,7 +820,7 @@ class SoLoud {
     return (error: PlayerErrors.noError, volume: ret);
   }
 
-  /// Get current [handle] volume
+  /// Set [handle] volume
   ///
   /// Return PlayerErrors.noError if success
   ///

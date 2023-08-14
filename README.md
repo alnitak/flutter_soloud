@@ -156,12 +156,16 @@ The `AudioIsolate` instance has the duty of receiving commands and sending them 
 | **speechText**| ({PlayerErrors error, SoundProps sound})| `String` textToSpeech| Speech from the given text.|
 | **pauseSwitch**| PlayerErrors| `int` handle| Pause or unpause an already loaded sound identified by [handle].|
 | **getPause**| ({PlayerErrors error, bool pause})| `int` handle| Get the pause state of the sound identified by [handle].|
+| **setRelativePlaySpeed**| PlayerErrors| `int` handle, `double` speed| Set a sound's relative play speed.|
+| **getRelativePlaySpeed**| ({PlayerErrors error, double speed})| `int` handle| Return the current play speed.|
 | **stop**| PlayerErrors| `int` handle| Stop an already loaded sound identified by [handle] and clear it.|
 | **disposeSound**| PlayerErrors| `int` handle| Stop ALL handles of the already loaded sound identified by [soundHash] and dispose it.|
 | **setLooping**| -| `int` handle, `bool` enable| This function can be used to set a sample to play on repeat, instead of just playing once.|
 | **getLength**| ({PlayerErrors error, double length})| `int` soundHash| Get the sound length in seconds.|
 | **seek**| PlayerErrors| `int` handle, `double` time| Seek playing in seconds.|
 | **getPosition**| ({PlayerErrors error, double position})| `int` handle| Get the current sound position in seconds.|
+| **getVolume**| ({PlayerErrors error, double volume})| `int` handle| Get current [handle] volume.|
+| **setVolume**| ({PlayerErrors error, double volume})| `int` handle, `double` volume| set  [handle] volume.|
 | **getIsValidVoiceHandle**| ({PlayerErrors error, bool isValid})| `int` handle| Check if a handle is still valid.|
 | **setVisualizationEnabled**| -| `bool` enabled| Enable or disable getting data from `getFft`, `getWave`, `getAudioTexture*`.|
 | **getFft**| -| `Pointer<Float>` fft| Returns a 256 float array containing FFT data.|
@@ -348,5 +352,5 @@ For now, only a small portion of the possibilities offered by SoLoud have been i
 * audio filter effects
 * 3D audio ✅
 * TED and SID soundchip simulator (Commodore 64/plus)
-* noise and waveform generation
+* noise and waveform generation ✅
 and much more I think!
