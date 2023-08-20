@@ -6,14 +6,14 @@ import 'package:flutter/services.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:path_provider/path_provider.dart';
 
-class Page2 extends StatefulWidget {
-  const Page2({super.key});
+class PageMultiTrack extends StatefulWidget {
+  const PageMultiTrack({super.key});
 
   @override
-  State<Page2> createState() => _Page2State();
+  State<PageMultiTrack> createState() => _PageMultiTrackState();
 }
 
-class _Page2State extends State<Page2> {
+class _PageMultiTrackState extends State<PageMultiTrack> {
   @override
   void initState() {
     super.initState();

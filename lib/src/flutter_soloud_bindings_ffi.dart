@@ -53,6 +53,9 @@ enum PlayerErrors {
 
   /// Engine not yet started
   engineNotInited,
+
+  /// Filter not found
+  filterNotFound,
 }
 
 /// Wave forms
@@ -840,11 +843,112 @@ class FlutterSoLoudFfi {
   }
 
   late final _oscillateGlobalVolumePtr = _lookup<
-      ffi.NativeFunction<
-          ffi.Int32 Function(
-              ffi.Float, ffi.Float, ffi.Float)>>('oscillateGlobalVolume');
+          ffi
+          .NativeFunction<ffi.Int32 Function(ffi.Float, ffi.Float, ffi.Float)>>(
+      'oscillateGlobalVolume');
   late final _oscillateGlobalVolume = _oscillateGlobalVolumePtr
       .asFunction<int Function(double, double, double)>();
+
+  /////////////////////////////////////////
+  /// Filters
+  /////////////////////////////////////////
+
+  ({PlayerErrors error, int index}) isFilterActive(int filterType) {
+    // ignore: omit_local_variable_types
+    final ffi.Pointer<ffi.Int> id = calloc(ffi.sizeOf<ffi.Int>());
+    final e = _isFilterActive(filterType, id);
+    final ret = (error: PlayerErrors.values[e], index: id.value);
+    calloc.free(id);
+    return ret;
+  }
+
+  late final _isFilterActivePtr = _lookup<
+          ffi
+          .NativeFunction<ffi.Int32 Function(ffi.Int32, ffi.Pointer<ffi.Int>)>>(
+      'isFilterActive');
+  late final _isFilterActive =
+      _isFilterActivePtr.asFunction<int Function(int, ffi.Pointer<ffi.Int>)>();
+
+  ({PlayerErrors error, List<String> names}) getFilterParamNames(
+      int filterType) {
+    // ignore: omit_local_variable_types
+    final ffi.Pointer<ffi.Int> paramsCount = calloc(ffi.sizeOf<ffi.Int>());
+    // ignore: omit_local_variable_types
+    final ffi.Pointer<ffi.Pointer<ffi.Char>> names =
+        calloc(ffi.sizeOf<ffi.Char>() * 30);
+    print('PARAMS NAME paramsCount: ${paramsCount.address.toRadixString(16)}  '
+        'names: ${names.address.toRadixString(16)}');
+
+    final e = _getFilterParamNames(
+      filterType,
+      paramsCount,
+      names,
+    );
+    final pNames = <String>[];
+    for (var i = 0; i < paramsCount.value; i++) {
+      print('PARAMS NAME $i ${names.elementAt(i)}   '
+          '${names[i].cast<Utf8>().toDartString()}    '
+          'names[i]: ${names[i].address.toRadixString(16)}');
+      pNames.add(names[i].cast<Utf8>().toDartString());
+    }
+    final ret = (error: PlayerErrors.values[e], names: pNames);
+    calloc.free(paramsCount);
+    for (var i = 0; i < pNames.length; i++) {
+      calloc.free(names[i]);
+    }
+    calloc.free(names);
+    return ret;
+  }
+
+  late final _getFilterParamNamesPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Int32 Function(ffi.Int32, ffi.Pointer<ffi.Int>,
+              ffi.Pointer<ffi.Pointer<ffi.Char>>)>>('getFilterParamNames');
+  late final _getFilterParamNames = _getFilterParamNamesPtr.asFunction<
+      int Function(
+          int, ffi.Pointer<ffi.Int>, ffi.Pointer<ffi.Pointer<ffi.Char>>)>();
+
+  int addGlobalFilter(int filterType) {
+    return _addGlobalFilter(filterType);
+  }
+
+  late final _addGlobalFilterPtr =
+      _lookup<ffi.NativeFunction<ffi.Int32 Function(ffi.Int32)>>(
+          'addGlobalFilter');
+  late final _addGlobalFilter =
+      _addGlobalFilterPtr.asFunction<int Function(int)>();
+
+  int removeGlobalFilter(int filterType) {
+    return _removeGlobalFilter(filterType);
+  }
+
+  late final _removeGlobalFilterPtr =
+      _lookup<ffi.NativeFunction<ffi.Int32 Function(ffi.Int32)>>(
+          'removeGlobalFilter');
+  late final _removeGlobalFilter =
+      _removeGlobalFilterPtr.asFunction<int Function(int)>();
+
+  int setFxParams(int filterType, int attributeId, double value) {
+    return _setFxParams(filterType, attributeId, value);
+  }
+
+  late final _setFxParamsPtr = _lookup<
+          ffi
+          .NativeFunction<ffi.Int32 Function(ffi.Int32, ffi.Int, ffi.Float)>>(
+      'setFxParams');
+  late final _setFxParams =
+      _setFxParamsPtr.asFunction<int Function(int, int, double)>();
+
+  double getFxParams(int filterType, int attributeId) {
+    return _getFxParams(filterType, attributeId);
+  }
+
+  late final _getFxParamsPtr =
+      _lookup<ffi.NativeFunction<ffi.Float Function(ffi.Int32, ffi.Int)>>(
+          'getFxParams');
+  late final _getFxParams =
+      _getFxParamsPtr.asFunction<double Function(int, int)>();
+
 
   /////////////////////////////////////////
   /// 3D audio methods

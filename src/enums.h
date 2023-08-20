@@ -25,20 +25,23 @@ typedef enum PlayerErrors
     /// Other error
     unknownError,
     /// Player not initialized
-    backendNotInited
+    backendNotInited,
+    /// Filter not found
+    filterNotFound
 } PlayerErrors_t;
 
 /// Possible capture errors
 typedef enum CaptureErrors
 {
     /// No error
-    capture_noError          = 0,
+    capture_noError,
     /// 
-    capture_init_failed      = 1,
+    capture_init_failed,
     /// 
-    capture_not_inited       = 2,
+    capture_not_inited,
     /// 
-    failed_to_start_device   = 3,
+    failed_to_start_device,
 } CaptureErrors_t;
+
 
 #endif // ENUMS_H

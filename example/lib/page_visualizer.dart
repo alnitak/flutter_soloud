@@ -10,14 +10,14 @@ import 'package:flutter_soloud_example/visualizer/visualizer.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:star_menu/star_menu.dart';
 
-class Page1 extends StatefulWidget {
-  const Page1({super.key});
+class PageVisualizer extends StatefulWidget {
+  const PageVisualizer({super.key});
 
   @override
-  State<Page1> createState() => _Page1State();
+  State<PageVisualizer> createState() => _PageVisualizerState();
 }
 
-class _Page1State extends State<Page1> {
+class _PageVisualizerState extends State<PageVisualizer> {
   String shader = 'assets/shaders/test9.frag';
   final regExp = RegExp('_(s[w|i].*)_-');
   final List<String> audioChecks = [

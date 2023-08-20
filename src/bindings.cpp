@@ -101,7 +101,7 @@ extern "C"
     /// [hash] return hash of the sound
     /// Returns [PlayerErrors.noError] if success
     FFI_PLUGIN_EXPORT enum PlayerErrors loadWaveform(
-        int waveform, 
+        int waveform,
         bool superWave,
         float scale,
         float detune,
@@ -120,7 +120,7 @@ extern "C"
     {
         if (!player.isInited())
             return;
-        
+
         player.setWaveformScale(hash, newScale);
     }
 
@@ -132,7 +132,7 @@ extern "C"
     {
         if (!player.isInited())
             return;
-        
+
         player.setWaveformDetune(hash, newDetune);
     }
 
@@ -144,7 +144,7 @@ extern "C"
     {
         if (!player.isInited())
             return;
-        
+
         player.setWaveformFreq(hash, newFreq);
     }
 
@@ -156,7 +156,7 @@ extern "C"
     {
         if (!player.isInited())
             return;
-        
+
         player.setWaveformSuperwave(hash, superwave);
     }
 
@@ -176,7 +176,7 @@ extern "C"
     {
         if (!player.isInited())
             return;
-        
+
         player.setWaveform(hash, newWaveform);
     }
 
@@ -226,12 +226,12 @@ extern "C"
 
     /// Set a sound's relative play speed.
     /// Setting the value to 0 will cause undefined behavior, likely a crash.
-    /// Change the relative play speed of a sample. This changes the effective 
+    /// Change the relative play speed of a sample. This changes the effective
     /// sample rate while leaving the base sample rate alone.
     ///
-    /// Note that playing a sound at a higher sample rate will require SoLoud 
-    /// to request more samples from the sound source, which will require more 
-    /// memory and more processing power. Playing at a slower sample rate 
+    /// Note that playing a sound at a higher sample rate will require SoLoud
+    /// to request more samples from the sound source, which will require more
+    /// memory and more processing power. Playing at a slower sample rate
     /// is cheaper.
     ///
     /// [handle] the sound handle
@@ -591,6 +591,99 @@ extern "C"
             return backendNotInited;
         player.oscillateGlobalVolume(from, to, time);
         return noError;
+    }
+
+    /////////////////////////////////////////
+    /// Filters
+    /////////////////////////////////////////
+
+    /// Check if the given filter is active or not.
+    /// 
+    /// [filterType] filter to check
+    /// Returns [PlayerErrors.noError] if no errors and the index of
+    /// the given filter (-1 if the filter is not active)
+    /// 
+    FFI_PLUGIN_EXPORT enum PlayerErrors isFilterActive(enum FilterType filterType, int *index)
+    {
+        *index = -1;
+        if (!player.isInited())
+            return backendNotInited;
+        *index = player.mFilters.isFilterActive(filterType);
+        return noError;
+    }
+
+    /// Get parameters names of the given filter.
+    /// 
+    /// [filterType] filter to get param names
+    /// Returns [PlayerErrors.noError] if no errors and the list of param names
+    ///
+    FFI_PLUGIN_EXPORT enum PlayerErrors getFilterParamNames(
+        enum FilterType filterType, int *paramsCount, char **names)
+    {
+        *paramsCount = 0;
+        if (!player.isInited())
+            return backendNotInited;
+        std::vector<std::string> pNames = player.mFilters.getFilterParamNames(filterType);
+        *paramsCount = pNames.size();
+        *names = (char *)malloc(sizeof(char *) * *paramsCount);
+        printf("C  paramsCount: %p  **names: %p\n", paramsCount, names);
+        for (int i = 0; i < *paramsCount; i++) {
+            names[i] = strdup(pNames[i].c_str());
+            printf("C  i: %d  names[i]: %s  names[i]: %p\n", i, names[i], names[i]);
+        }
+        return noError;
+    }
+
+    /// Add the filter [filterType].
+    /// 
+    /// [filterType] filter to add
+    /// Returns [PlayerErrors.noError] if no errors
+    /// 
+    FFI_PLUGIN_EXPORT enum PlayerErrors addGlobalFilter(enum FilterType filterType)
+    {
+        if (!player.isInited())
+            return backendNotInited;
+        if (player.mFilters.addGlobalFilter(filterType) == -1)
+            return filterNotFound;
+        return noError;
+    }
+
+    /// Remove the filter [filterType].
+    /// 
+    /// [filterType] filter to remove
+    /// Returns [PlayerErrors.noError] if no errors
+    /// 
+    FFI_PLUGIN_EXPORT enum PlayerErrors removeGlobalFilter(enum FilterType filterType)
+    {
+        if (!player.isInited())
+            return backendNotInited;
+        if (player.mFilters.removeGlobalFilter(filterType) == -1)
+            return filterNotFound;
+        return noError;
+    }
+
+    /// Set the effect parameter with id [attributeId] 
+    /// of [filterType] with [value] value.
+    /// 
+    /// [filterType] filter to modify a param
+    /// Returns [PlayerErrors.noError] if no errors
+    /// 
+    FFI_PLUGIN_EXPORT enum PlayerErrors setFxParams(enum FilterType filterType, int attributeId, float value)
+    {
+        if (!player.isInited())
+            return backendNotInited;
+        player.mFilters.setFxParams(filterType, attributeId, value);
+        return noError;
+    }
+
+    /// Get the effect parameter with id [attributeId] of [filterType].
+    /// 
+    /// [filterType] filter to modify a param
+    /// Returns the value of param
+    /// 
+    FFI_PLUGIN_EXPORT float getFxParams(enum FilterType filterType, int attributeId)
+    {
+        return player.mFilters.getFxParams(filterType, attributeId);
     }
 
     /////////////////////////////////////////

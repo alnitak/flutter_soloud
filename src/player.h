@@ -7,6 +7,7 @@
 #include "soloud.h"
 #include "soloud_wav.h"
 #include "soloud_speech.h"
+#include "filters/filters.h"
 
 #include <iostream>
 #include <vector>
@@ -212,7 +213,7 @@ public:
     void debug();
 
     /////////////////////////////////////////
-    /// faders
+    /// faders & oscillators
     /////////////////////////////////////////
 
     void fadeGlobalVolume(float to, float time);
@@ -225,6 +226,7 @@ public:
     void oscillatePan(SoLoud::handle handle, float from, float to, float time);
     void oscillateRelativePlaySpeed(SoLoud::handle handle, float from, float to, float time);
     void oscillateGlobalVolume(float from, float to, float time);
+
 
     /////////////////////////////////////////
     /// 3D audio
@@ -314,6 +316,9 @@ public:
 
     /// speech object
     SoLoud::Speech speech;
+
+    /// Filters
+    Filters mFilters;
 };
 
 #endif // PLAYER_H
