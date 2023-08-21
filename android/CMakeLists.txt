@@ -44,6 +44,7 @@ list(APPEND PLUGIN_SOURCES
   "${SRC_DIR}/bindings_capture.cpp"
   "${SRC_DIR}/capture.cpp"
   "${SRC_DIR}/synth/basic_wave.cpp"
+  "${SRC_DIR}/filters/filters.cpp"
   ${TARGET_SOURCES}
 )
 

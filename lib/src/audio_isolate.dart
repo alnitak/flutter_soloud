@@ -103,6 +103,9 @@ String printPlayerError(String message, PlayerErrors error) {
     case PlayerErrors.engineNotInited:
       out = 'Engine not yet started';
       break;
+    case PlayerErrors.filterNotFound:
+      out = 'Filter not found';
+      break;
   }
 
   final ret = 'flutter_soloud player error: $message: $out';

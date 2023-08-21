@@ -11,17 +11,19 @@ Flutter low level audio plugin using SoLoud library and FFI
 
 🌐 Supported on Linux, Windows, Mac, Android, and iOS
 
-🎤 Player and capture audio from microphone
+🎤 **Player** and **capture** audio from microphone
 
-🎶 3D audio with doppler effect
+🎶 **3D audio** with doppler effect
 
-🎙️ Multiple voices, capable of playing different sounds simultaneously or even repeating the same sound multiple times on top of each other
+🎚️ **Faders**, **oscillators** and audio effects like **echo**, **freeverb**, **robotizer**, **equalizer**, **bassboost**
 
-💬 Includes a speech synthesizer
+🎙️ **Multiple voices**, capable of playing different sounds simultaneously or even repeating the same sound multiple times on top of each other
 
-🔊 Supports various common formats such as 8, 16, and 32-bit WAVs, floating point WAVs, OGG, MP3, and FLAC
+💬 Includes a simple **speech synthesizer**
 
-🎚️ Enables real-time retrieval of audio FFT and wave data
+🔊 Supports various common formats such as 8, 16, and 32-bit WAVs, floating point **WAVs**, **OGG**, **MP3**, and **FLAC**
+
+🎚️ Enables **real-time** retrieval of audio **FFT** and **wave data**
 
 <a href="https://www.buymeacoffee.com/marcobavag" target="_blank"><img align="left" src="https://cdn.buymeacoffee.com/buttons/default-orange.png" alt="Buy Me A Coffee" height="41" width="174"></a><br/><br/>
 
@@ -66,6 +68,7 @@ https://github.com/alnitak/flutter_soloud/assets/192827/f7cf9d71-be4f-4c83-99ff-
 
 
 ***The 5th*** example shows how to generete [**SoundProps**] key sounds. There is a handy tool method to generate the 12 key notes of a given octave. A widget to play them can be used with the touch or a keyboard. Different types of waveforms can be chosen including square,`saw`,`sin`,`triangle`,`bounce`,`jaws`,`humps`,`fSquare` and `fSaw`.
+There are also simple knobs to adjust faders and oscillators. Other knobs to add/remove audio effects.
 
 https://github.com/alnitak/flutter_soloud/assets/192827/b2a84c86-17ac-4e1e-9dde-ef95298c59fb
 
@@ -175,7 +178,7 @@ The `AudioIsolate` instance has the duty of receiving commands and sending them 
 | **setFftSmoothing**| -| `double` smooth| Smooth FFT data.<br/>When new data is read and the values are decreasing, the new value will be decreased with an amplitude between the old and the new value.<br/> This will result in a less shaky visualization.<br/>0 = no smooth<br/>1 = full smooth<br/>The new value is calculated with:<br/>`newFreq = smooth * oldFreq + (1 - smooth) * newFreq`|
 
 
-#### waveform
+#### Waveform
 | Function| Returns| Params| Description|
 |---------|--------|-------|------------|
 | **loadWaveform**| ({PlayerErrors error, SoundProps? sound})| `WaveForm` waveform<br/>`bool` superWave<br/>`double` scale<br/>`double` detune| Load a new sound to be played.|
@@ -197,6 +200,50 @@ The `AudioIsolate` instance has the duty of receiving commands and sending them 
 |**humps**|Half sine wave, rest of period quiet|
 |**fSquare**|"Fourier" square wave; less noisy|
 |**fSaw**|"Fourier" saw wave; less noisy|
+
+
+#### Audio FXs, faders and oscillators methods
+These methods add audio effects to sounds. 
+Faders and oscillators are binded to sound handles, so they need [SoundProps.handle] as first parameter. 
+Audio FXs like *echo*, *freeverb*, *bassboost* etc, are working on the output, so they can set anytime while playing something.
+
+| Function| Returns| Params| Description|
+|---------|---------|---------|---------|
+|**fadeGlobalVolume**| PlayerErrors error|`double` to,<br/>`double` time|Smoothly change the global volume over specified time.|
+|**fadeVolume**| PlayerErrors error|`int` handle,<br/>`double` to,<br/>`double` time|Smoothly change a channel's volume over specified time.|
+|**fadePan**| PlayerErrors error|`int` handle,<br/>`double` to,<br/>`double` time|Smoothly change a channel's pan setting over specified time.|
+|**fadeRelativePlaySpeed**| PlayerErrors error|`int` handle,<br/>`double` to,<br/>`double` time|Smoothly change a channel's relative play speed over specified time.|
+|**schedulePause**| PlayerErrors error|`int` handle,<br/>`double` time|After specified time, pause the channel.|
+|**scheduleStop**| PlayerErrors error|`int` handle,<br/>`double` time|After specified time, stop the channel.|
+|**oscillateVolume**| PlayerErrors error|`int` handle,<br/>`double` from,<br/>`double` to,<br/>`double` time|Smoothly change a channel's pan setting over specified time.|
+|**oscillatePan**| PlayerErrors error|`int` handle,<br/>`double` from,<br/>`double` to,<br/>`double` time|Set fader to oscillate the panning at specified frequency.|
+|**oscillateRelativePlaySpeed**| PlayerErrors error|`int` handle,<br/>`double` from,<br/>`double` to,<br/>`double` time|Set fader to oscillate the relative play speed at specified frequency.|
+|**oscillateGlobalVolume**| PlayerErrors error|`double` from,<br/>`double` to,<br/>`double` time|Set fader to oscillate the global volume at specified frequency.|
+|**isFilterActive**| ({PlayerErrors error, int index})|`FilterType` filterType|Check if the given filter is active or not.|
+|**getFilterParamNames**| ({PlayerErrors error, List<String> names})|`FilterType` filterType|Get parameters names of the given filter.|
+|**addGlobalFilter**| PlayerErrors|`FilterType` filterType|Add the filter [filterType].|
+|**removeGlobalFilter**| PlayerErrors|`FilterType` filterType|Remove the filter [filterType].|
+|**setFxParams**| PlayerErrors|`FilterType` filterType,<br/>`int` attributeId,<br/>`double` value|Set the effect parameter with id [attributeId] of [filterType] with [value] value.|
+|**getFxParams**| PlayerErrors|`FilterType` filterType,<br/>`int` attributeId|Get the effect parameter with id [attributeId] of [filterType].|
+
+
+**enum FilterType**
+| Name|
+|---------|
+|**biquadResonantFilter**|
+|**eqFilter**|
+|**echoFilter**|
+|**lofiFilter**|
+|**flangerFilter**|
+|**bassboostFilter**|
+|**waveShaperFilter**|
+|**robotizeFilter**|
+|**freeverbFilter**|
+
+There are also conveninet const to easily access effect parameter like *filter name*, *param names*, *mins values*, *max values* and *defaults*:
+
+`fxEq`, `fxEcho`, `fxLofi`, `fxFlanger`, `fxBassboost`, `fxWaveShaper`, `fxRobotize`, `fxFreeverb`.
+
 
 
 #### 3D audio methods

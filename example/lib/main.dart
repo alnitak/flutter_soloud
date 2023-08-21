@@ -2,12 +2,11 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_soloud_example/controls.dart';
-import 'package:flutter_soloud_example/hello_flutter.dart';
-import 'package:flutter_soloud_example/page1.dart';
-import 'package:flutter_soloud_example/page2.dart';
-import 'package:flutter_soloud_example/page3.dart';
-import 'package:flutter_soloud_example/page4.dart';
-import 'package:flutter_soloud_example/page5.dart';
+import 'package:flutter_soloud_example/page_3d_audio.dart';
+import 'package:flutter_soloud_example/page_hello_flutter.dart';
+import 'package:flutter_soloud_example/page_multi_track.dart';
+import 'package:flutter_soloud_example/page_visualizer.dart';
+import 'package:flutter_soloud_example/page_waveform.dart';
 
 void main() {
   runApp(const MyApp());
@@ -20,15 +19,11 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       themeMode: ThemeMode.dark,
-      darkTheme: ThemeData.dark(),
+      darkTheme: ThemeData.dark(useMaterial3: true),
       scrollBehavior: const MaterialScrollBehavior().copyWith(
-          dragDevices: {
-            PointerDeviceKind.mouse,
-            PointerDeviceKind.touch,
-            PointerDeviceKind.stylus,
-            PointerDeviceKind.unknown,
-          },
-        ),
+        // enable mouse dragging 
+        dragDevices: PointerDeviceKind.values.toSet(),
+      ),
       home: const MyHomePage(),
     );
   }
@@ -40,8 +35,8 @@ class MyHomePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const DefaultTabController(
-      length: 6,
-      initialIndex: 5,
+      length: 5,
+      initialIndex: 4,
       child: SafeArea(
         child: Scaffold(
           body: Column(
@@ -56,7 +51,6 @@ class MyHomePage extends StatelessWidget {
                     Tab(text: 'visualizer'),
                     Tab(text: 'multi track'),
                     Tab(text: '3D audio'),
-                    Tab(text: 'Spinning audio'),
                     Tab(text: 'wave form'),
                   ],
                 ),
@@ -66,12 +60,11 @@ class MyHomePage extends StatelessWidget {
                 child: TabBarView(
                   physics: NeverScrollableScrollPhysics(),
                   children: [
-                    HelloFlutterSoLoud(),
-                    Page1(),
-                    Page2(),
-                    Page3(),
-                    Page4(),
-                    Page5(),
+                    PageHelloFlutterSoLoud(),
+                    PageVisualizer(),
+                    PageMultiTrack(),
+                    Page3DAudio(),
+                    PageWaveform(),
                   ],
                 ),
               ),

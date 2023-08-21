@@ -12,7 +12,7 @@
 #include <unistd.h>
 #endif
 
-Player::Player() : mInited(false){};
+Player::Player() : mInited(false), mFilters(&soloud){};
 Player::~Player()
 {
     dispose();
@@ -67,6 +67,8 @@ const std::string Player::getErrorString(PlayerErrors aErrorCode) const
         return "File not found";
     case fileLoadFailed:
         return "File found, but could not be loaded";
+    case fileAlreadyLoaded:
+        return "File already loaded";
     case dllNotFound:
         return "DLL not found, or wrong DLL";
     case outOfMemory:
@@ -75,6 +77,8 @@ const std::string Player::getErrorString(PlayerErrors aErrorCode) const
         return "Feature not implemented";
     case backendNotInited:
         return "Player not yet initialized";
+    case filterNotFound:
+        return "Filter not found";
     case unknownError:
         return "Unknown error";
     }

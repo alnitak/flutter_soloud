@@ -1,3 +1,16 @@
+## 1.2.2
+- waveform example page updated with sound FXs
+- added sound FXs
+    - biquadResonantFilter
+    - eqFilter
+    - echoFilter
+    - lofiFilter
+    - flangerFilter
+    - bassboostFilter
+    - waveShaperFilter
+    - robotizeFilter
+    - freeverbFilter
+
 ## 1.2.1
 - binded some more SoLoud functionalities:
     - fadeGlobalVolume
