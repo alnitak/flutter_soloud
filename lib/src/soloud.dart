@@ -7,8 +7,6 @@ import 'dart:isolate';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:flutter_soloud/src/audio_isolate.dart';
-import 'package:flutter_soloud/src/bindings_capture_ffi.dart';
-import 'package:flutter_soloud/src/flutter_soloud_bindings_ffi.dart';
 import 'package:flutter_soloud/src/soloud_controller.dart';
 
 /// sound event types

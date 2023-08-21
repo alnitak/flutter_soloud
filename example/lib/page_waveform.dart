@@ -255,7 +255,7 @@ class _PageWaveformState extends State<PageWaveform> {
 
                         /// Biquad Resonant
                         const FilterFx(
-                            filterType: FilterType.biquadResonantFilter),
+                            filterType: FilterType.biquadResonantFilter,),
 
                         /// Eq
                         const FilterFx(filterType: FilterType.eqFilter),
