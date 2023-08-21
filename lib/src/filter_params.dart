@@ -16,9 +16,6 @@ enum FilterType {
   flangerFilter,
 
   ///
-  dcRemovalFilter,
-
-  ///
   bassboostFilter,
 
   ///
@@ -31,6 +28,7 @@ enum FilterType {
   freeverbFilter,
 }
 
+///
 typedef FxParams = ({
   String title,
   List<String> names,
@@ -44,9 +42,9 @@ const FxParams fxBiquadResonant = (
   title: 'Biquad Resonant',
   /// [Type] type is int
   names: ['Wet', 'Type', 'Frequency', 'Resonance'],
-  mins: [0, 0, 10, 0.1],
-  maxs: [1, 2, 8000, 20],
-  defs: [1, 0.1, 0.5, 0.1],
+  mins: [0, 0.999, 10, 0.1],
+  maxs: [1, 1.1, 16000, 20],
+  defs: [1, 0.999, 0.5, 0.1],
 );
 
 /// EQ filter
@@ -93,15 +91,6 @@ const FxParams fxFlanger = (
   mins: [0, 0.001, 0.001],
   maxs: [1, 0.1, 100],
   defs: [1, 0.005, 10],
-);
-
-/// DC Removal filter
-const FxParams fxDCRemoval = (
-  title: 'DCRemoval',
-  names: ['Wet', 'Length'],
-  mins: [0, 0.001],
-  maxs: [1, 2],
-  defs: [1, 0],
 );
 
 /// Bassboost filter

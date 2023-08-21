@@ -853,6 +853,12 @@ class FlutterSoLoudFfi {
   /// Filters
   /////////////////////////////////////////
 
+  /// Check if the given filter is active or not.
+  /// 
+  /// [filterType] filter to check
+  /// Returns [PlayerErrors.noError] if no errors and the index of
+  /// the given filter (-1 if the filter is not active)
+  /// 
   ({PlayerErrors error, int index}) isFilterActive(int filterType) {
     // ignore: omit_local_variable_types
     final ffi.Pointer<ffi.Int> id = calloc(ffi.sizeOf<ffi.Int>());
@@ -869,6 +875,11 @@ class FlutterSoLoudFfi {
   late final _isFilterActive =
       _isFilterActivePtr.asFunction<int Function(int, ffi.Pointer<ffi.Int>)>();
 
+  /// Get parameters names of the given filter.
+  /// 
+  /// [filterType] filter to get param names
+  /// Returns [PlayerErrors.noError] if no errors and the list of param names
+  /// 
   ({PlayerErrors error, List<String> names}) getFilterParamNames(
       int filterType) {
     // ignore: omit_local_variable_types
@@ -907,7 +918,12 @@ class FlutterSoLoudFfi {
   late final _getFilterParamNames = _getFilterParamNamesPtr.asFunction<
       int Function(
           int, ffi.Pointer<ffi.Int>, ffi.Pointer<ffi.Pointer<ffi.Char>>)>();
-
+  
+  /// Add the filter [filterType].
+  /// 
+  /// [filterType] filter to add
+  /// Returns [PlayerErrors.noError] if no errors
+  /// 
   int addGlobalFilter(int filterType) {
     return _addGlobalFilter(filterType);
   }
@@ -917,7 +933,12 @@ class FlutterSoLoudFfi {
           'addGlobalFilter');
   late final _addGlobalFilter =
       _addGlobalFilterPtr.asFunction<int Function(int)>();
-
+  
+  /// Remove the filter [filterType].
+  /// 
+  /// [filterType] filter to remove
+  /// Returns [PlayerErrors.noError] if no errors
+  /// 
   int removeGlobalFilter(int filterType) {
     return _removeGlobalFilter(filterType);
   }
@@ -928,6 +949,12 @@ class FlutterSoLoudFfi {
   late final _removeGlobalFilter =
       _removeGlobalFilterPtr.asFunction<int Function(int)>();
 
+  /// Set the effect parameter with id [attributeId] 
+  /// of [filterType] with [value] value.
+  /// 
+  /// [filterType] filter to modify a param
+  /// Returns [PlayerErrors.noError] if no errors
+  /// 
   int setFxParams(int filterType, int attributeId, double value) {
     return _setFxParams(filterType, attributeId, value);
   }
@@ -939,6 +966,11 @@ class FlutterSoLoudFfi {
   late final _setFxParams =
       _setFxParamsPtr.asFunction<int Function(int, int, double)>();
 
+  /// Get the effect parameter with id [attributeId] of [filterType].
+  /// 
+  /// [filterType] filter to modify a param
+  /// Returns the value of param
+  /// 
   double getFxParams(int filterType, int attributeId) {
     return _getFxParams(filterType, attributeId);
   }

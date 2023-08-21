@@ -24,17 +24,15 @@ class _PageWaveformState extends State<PageWaveform> {
   ValueNotifier<WaveForm> waveForm = ValueNotifier(WaveForm.fSquare);
   bool superWave = false;
   int octave = 2;
-  double echoDelay = 0.1;
-  double echoDecay = 0.7;
-  double echoFilter = 0;
-  double fadeIn = 0.5;
-  double fadeOut = 0.5;
+  double fadeIn = 0.3;
+  double fadeOut = 0.3;
   double fadeSpeedIn = 0;
   double fadeSpeedOut = 0;
   double oscillateVol = 0;
   double oscillatePan = 0;
   double oscillateSpeed = 0;
   List<SoundProps> notes = [];
+  SoundProps? sound;
 
   @override
   void initState() {
@@ -84,14 +82,48 @@ class _PageWaveformState extends State<PageWaveform> {
         padding: const EdgeInsets.all(8),
         child: Column(
           children: [
-            ElevatedButton(
-              onPressed: () async {
-                final ret = await SoloudTools.loadFromAssets(
-                  'assets/audio/8_bit_mentality.mp3',
-                );
-                SoLoud().play(ret!);
-              },
-              child: Text('play'),
+            Row(
+              children: [
+                ElevatedButton(
+                  onPressed: () async {
+                    if (sound != null) {
+                      await SoLoud().disposeSound(sound!);
+                    }
+                    /// text created by ChatGPT :)
+                    await SoLoud()
+                        .speechText('Flutter and So Loud audio plugin are the '
+                        "tech tag team you never knew you needed – they're "
+                        'like Batman and Robin, swooping in to save your app '
+                        'with style and sound effects that would make '
+                        'even Gotham jealous!')
+                        .then((value) => sound = value.sound);
+                  },
+                  child: const Text('T2S'),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  onPressed: () async {
+                    final ret = await SoloudTools.loadFromAssets(
+                      'assets/audio/8_bit_mentality.mp3',
+                    );
+                    await SoLoud()
+                        .play(ret!)
+                        .then((value) => sound = value.sound);
+                  },
+                  child: const Text('play sample'),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  onPressed: () {
+                    if (sound != null) {
+                      SoLoud().disposeSound(sound!).then((value) {
+                        sound = null;
+                      });
+                    }
+                  },
+                  child: const Text('stop'),
+                ),
+              ],
             ),
 
             /// Scale
@@ -167,7 +199,7 @@ class _PageWaveformState extends State<PageWaveform> {
             ),
 
             DefaultTabController(
-              length: 12,
+              length: 11,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -182,7 +214,6 @@ class _PageWaveformState extends State<PageWaveform> {
                       Tab(text: 'Echo'),
                       Tab(text: 'Lofi'),
                       Tab(text: 'Flanger'),
-                      Tab(text: 'DC Removal'),
                       Tab(text: 'Bassboost'),
                       Tab(text: 'Wave shaper'),
                       Tab(text: 'Robotize'),
@@ -223,7 +254,8 @@ class _PageWaveformState extends State<PageWaveform> {
                         ),
 
                         /// Biquad Resonant
-                        const FilterFx(filterType: FilterType.biquadResonantFilter),
+                        const FilterFx(
+                            filterType: FilterType.biquadResonantFilter),
 
                         /// Eq
                         const FilterFx(filterType: FilterType.eqFilter),
@@ -236,9 +268,6 @@ class _PageWaveformState extends State<PageWaveform> {
 
                         /// Flanger
                         const FilterFx(filterType: FilterType.flangerFilter),
-
-                        /// DC Removal
-                        const FilterFx(filterType: FilterType.dcRemovalFilter),
 
                         /// Bassboost
                         const FilterFx(filterType: FilterType.bassboostFilter),
@@ -280,9 +309,9 @@ class _PageWaveformState extends State<PageWaveform> {
                 for (int i = 0; i < WaveForm.values.length; i++)
                   ActionChip(
                     backgroundColor: Colors.blue,
-                    onPressed: () {
+                    onPressed: () async{
                       waveForm.value = WaveForm.values[i];
-                      setupNotes();
+                      await setupNotes();
                       if (mounted) setState(() {});
                     },
                     label: Text(WaveForm.values[i].name),

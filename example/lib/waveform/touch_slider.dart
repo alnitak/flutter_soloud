@@ -23,9 +23,9 @@ class TouchSlider extends StatelessWidget {
     final newValue = ValueNotifier<double>(value);
     final step = max == double.maxFinite ? 0.1 : (max - min) / (diameter * 3);
     newValue.value = value;
-    return Listener(
-      onPointerMove: (event) {
-        newValue.value += event.localDelta.dx * step;
+    return GestureDetector(
+      onPanUpdate: (event) {
+        newValue.value += event.delta.dx * step;
         if (newValue.value > max) newValue.value = max;
         if (newValue.value < min) newValue.value = min;
         onChanged(newValue.value);
@@ -52,14 +52,18 @@ class TouchSlider extends StatelessWidget {
                       text,
                       textAlign: TextAlign.center,
                       style: const TextStyle(
-                          fontWeight: FontWeight.bold, color: Colors.black),
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black,
+                      ),
                     ),
                     const Text('<-->', style: TextStyle(color: Colors.black)),
                     const SizedBox(height: 4),
                     Text(
                       val.toStringAsFixed(3),
                       style: const TextStyle(
-                          fontWeight: FontWeight.bold, color: Colors.black),
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black,
+                      ),
                     ),
                   ],
                 ),

@@ -79,15 +79,6 @@ std::vector<std::string> Filters::getFilterParamNames(FilterType filterType)
             ret.push_back(f.getParamName(i));
         }
     }
-    case DCRemovalFilter:
-    {
-        SoLoud::DCRemovalFilter f;
-        int nParams = f.getParamCount();
-        for (int i = 0; i < nParams; i++)
-        {
-            ret.push_back(f.getParamName(i));
-        }
-    }
     case BassboostFilter:
     {
         SoLoud::BassboostFilter f;
@@ -172,12 +163,6 @@ bool Filters::addGlobalFilter(FilterType filterType)
         mSoloud->setGlobalFilter(filters.size(), mFlangerFilter.get());
         filters.push_back({filterType, static_cast<SoLoud::Filter *>(mFlangerFilter.get())});
         break;
-    case DCRemovalFilter:
-        if (!mDCRemovalFilter)
-            mDCRemovalFilter = std::make_unique<SoLoud::DCRemovalFilter>();
-        mSoloud->setGlobalFilter(filters.size(), mDCRemovalFilter.get());
-        filters.push_back({filterType, static_cast<SoLoud::Filter *>(mDCRemovalFilter.get())});
-        break;
     case BassboostFilter:
         if (!mBassboostFilter)
             mBassboostFilter = std::make_unique<SoLoud::BassboostFilter>();
@@ -215,46 +200,34 @@ bool Filters::removeGlobalFilter(FilterType filterType)
         return false;
 
     // TODO check if also mEchoFilter is disposed
+    mSoloud->setGlobalFilter(index, 0);
     switch (filterType)
     {
     case BiquadResonantFilter:
-        mSoloud->setGlobalFilter(index, 0);
         mBiquadResonantFilter.reset();
         break;
     case EqFilter:
-        mSoloud->setGlobalFilter(index, 0);
         mEqFilter.reset();
         break;
     case EchoFilter:
-        mSoloud->setGlobalFilter(index, 0);
         mEchoFilter.reset();
         break;
     case LofiFilter:
-        mSoloud->setGlobalFilter(index, 0);
         mLofiFilter.reset();
         break;
     case FlangerFilter:
-        mSoloud->setGlobalFilter(index, 0);
         mFlangerFilter.reset();
         break;
-    case DCRemovalFilter:
-        mSoloud->setGlobalFilter(index, 0);
-        mDCRemovalFilter.reset();
-        break;
     case BassboostFilter:
-        mSoloud->setGlobalFilter(index, 0);
         mBassboostFilter.reset();
         break;
     case WaveShaperFilter:
-        mSoloud->setGlobalFilter(index, 0);
         mWaveShaperFilter.reset();
         break;
     case RobotizeFilter:
-        mSoloud->setGlobalFilter(index, 0);
         mRobotizeFilter.reset();
         break;
     case FreeverbFilter:
-        mSoloud->setGlobalFilter(index, 0);
         mFreeverbFilter.reset();
         break;
     }
@@ -263,7 +236,7 @@ bool Filters::removeGlobalFilter(FilterType filterType)
     for (int i = index; i < filters.size() - 1; i++)
     {
         mSoloud->setGlobalFilter(i + 1, 0);
-        mSoloud->setGlobalFilter(i, filters[i].filter);
+        mSoloud->setGlobalFilter(i, filters[i+1].filter);
     }
     /// remove the filter from the list
     filters.erase(filters.begin() + index);

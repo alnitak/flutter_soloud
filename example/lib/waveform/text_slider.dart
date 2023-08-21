@@ -37,7 +37,7 @@ class TextSlider extends StatelessWidget {
             divisions: isDivided ? 4 : null,
             onChanged: enabled ? onChanged : null,
           ),
-        )
+        ),
       ],
     );
   }

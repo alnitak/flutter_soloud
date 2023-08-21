@@ -39,9 +39,6 @@ class _FilterFxState extends State<FilterFx> {
       case FilterType.flangerFilter:
         params = List.from(fxFlanger.defs);
         fxParams = fxFlanger;
-      case FilterType.dcRemovalFilter:
-        params = List.from(fxDCRemoval.defs);
-        fxParams = fxDCRemoval;
       case FilterType.bassboostFilter:
         params = List.from(fxBassboost.defs);
         fxParams = fxBassboost;
