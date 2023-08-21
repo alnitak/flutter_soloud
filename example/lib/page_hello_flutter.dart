@@ -9,14 +9,14 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 
 /// Simple usecase of flutter_soloud plugin
-class HelloFlutterSoLoud extends StatefulWidget {
-  const HelloFlutterSoLoud({super.key});
+class PageHelloFlutterSoLoud extends StatefulWidget {
+  const PageHelloFlutterSoLoud({super.key});
 
   @override
-  State<HelloFlutterSoLoud> createState() => _HelloFlutterSoLoudState();
+  State<PageHelloFlutterSoLoud> createState() => _PageHelloFlutterSoLoudState();
 }
 
-class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
+class _PageHelloFlutterSoLoudState extends State<PageHelloFlutterSoLoud> {
   SoundProps? currentSound;
 
   @override

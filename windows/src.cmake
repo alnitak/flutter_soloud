@@ -18,6 +18,7 @@ set (TARGET_HEADERS
 	${HEADER_PATH}/soloud_bus.h
 	${HEADER_PATH}/soloud_dcremovalfilter.h
 	${HEADER_PATH}/soloud_echofilter.h
+	${HEADER_PATH}/soloud_eqfilter.h
 	${HEADER_PATH}/soloud_error.h
 	${HEADER_PATH}/soloud_fader.h
 	${HEADER_PATH}/soloud_fft.h
@@ -276,6 +277,7 @@ set (FILTERS_SOURCES
 	${FILTERS_PATH}/soloud_biquadresonantfilter.cpp
 	${FILTERS_PATH}/soloud_dcremovalfilter.cpp
 	${FILTERS_PATH}/soloud_echofilter.cpp
+	${FILTERS_PATH}/soloud_eqfilter.cpp
 	${FILTERS_PATH}/soloud_fftfilter.cpp
 	${FILTERS_PATH}/soloud_flangerfilter.cpp
 	${FILTERS_PATH}/soloud_freeverbfilter.cpp

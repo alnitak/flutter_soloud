@@ -4,14 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 
-class Page3 extends StatefulWidget {
-  const Page3({super.key});
+class Page3DAudio extends StatefulWidget {
+  const Page3DAudio({super.key});
 
   @override
-  State<Page3> createState() => _Page3State();
+  State<Page3DAudio> createState() => _Page3DAudioState();
 }
 
-class _Page3State extends State<Page3> {
+class _Page3DAudioState extends State<Page3DAudio> {
   SoundProps? currentSound;
   bool spinAround = false;
 

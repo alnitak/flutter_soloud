@@ -5,14 +5,14 @@
             "includePath": [
                 "${workspaceFolder}/**",
                 "${workspaceFolder}/flutter_soloud_ios/ios/Classes/src",
-                "${workspaceFolder}/flutter_soloud_ios/ios/Classes/src/soloud/include"
+                "${workspaceFolder}/flutter_soloud_ios/ios/Classes/src/soloud/include",
+                "${workspaceFolder}/src"
             ],
             "defines": [],
             "compilerPath": "/usr/bin/clang",
             "cStandard": "c17",
             "cppStandard": "c++17",
             "intelliSenseMode": "linux-clang-x64",
-            // "compileCommands": "${workspaceFolder}/build/compile_commands.json",
             "configurationProvider": "ms-vscode.cmake-tools"
         },
         {
