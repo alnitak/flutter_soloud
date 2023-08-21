@@ -70,7 +70,7 @@ https://github.com/alnitak/flutter_soloud/assets/192827/f7cf9d71-be4f-4c83-99ff-
 ***The 5th*** example shows how to generete [**SoundProps**] key sounds. There is a handy tool method to generate the 12 key notes of a given octave. A widget to play them can be used with the touch or a keyboard. Different types of waveforms can be chosen including square,`saw`,`sin`,`triangle`,`bounce`,`jaws`,`humps`,`fSquare` and `fSaw`.
 There are also simple knobs to adjust faders and oscillators. Other knobs to add/remove audio effects.
 
-https://github.com/alnitak/flutter_soloud/assets/192827/b2a84c86-17ac-4e1e-9dde-ef95298c59fb
+https://github.com/alnitak/flutter_soloud/assets/192827/bfc5aa73-6dbc-42f5-90e4-bc1cc5e181e0
 
 
 ## Usage
