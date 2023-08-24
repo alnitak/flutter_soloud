@@ -13,7 +13,7 @@ void data_callback(ma_device *pDevice, void *pOutput, const void *pInput, ma_uin
     // For example, you can copy it to a buffer for later use.
     float *captured = (float *)(pInput); // Assuming float format
     // Do something with the captured audio data...
-    // platform_log("framecound: %d   data_callback %f\n", frameCount, captured[0]);
+    // printf("framecound: %d   data_callback %f\n", frameCount, captured[0]);
 
     memcpy(capturedBuffer, captured, sizeof(float) * CAPTURE_BUFFER_SIZE);
 }
@@ -26,11 +26,11 @@ Capture::~Capture()
 
 std::vector<CaptureDevice> Capture::listCaptureDevices()
 {
-    platform_log("***************** LIST DEVICES START\n");
+    printf("***************** LIST DEVICES START\n");
     std::vector<CaptureDevice> ret;
     if ((result = ma_context_init(NULL, 0, NULL, &context)) != MA_SUCCESS)
     {
-        platform_log("Failed to initialize context %d\n", result);
+        printf("Failed to initialize context %d\n", result);
         return ret;
     }
 
@@ -41,7 +41,7 @@ std::vector<CaptureDevice> Capture::listCaptureDevices()
              &pCaptureInfos,
              &captureCount)) != MA_SUCCESS)
     {
-        platform_log("Failed to get devices %d\n", result);
+        printf("Failed to get devices %d\n", result);
         return ret;
     }
 
@@ -50,7 +50,7 @@ std::vector<CaptureDevice> Capture::listCaptureDevices()
     // to give the user the opportunity to choose which device they'd prefer.
     for (ma_uint32 i = 0; i < playbackCount; i++)
     {
-        platform_log("######%s %d - %s\n",
+        printf("######%s %d - %s\n",
                      pCaptureInfos[i].isDefault ? " X" : "-",
                      i,
                      pCaptureInfos[i].name);
@@ -59,7 +59,7 @@ std::vector<CaptureDevice> Capture::listCaptureDevices()
         cd.isDefault = pCaptureInfos[i].isDefault;
         ret.push_back(cd);
     }
-    platform_log("***************** LIST DEVICES END\n");
+    printf("***************** LIST DEVICES END\n");
     return ret;
 }
 
@@ -79,7 +79,7 @@ CaptureErrors Capture::init(int deviceID)
     result = ma_device_init(NULL, &deviceConfig, &device);
     if (result != MA_SUCCESS)
     {
-        platform_log("Failed to initialize capture device.\n");
+        printf("Failed to initialize capture device.\n");
         return capture_init_failed;
     }
     mInited = true;
@@ -112,7 +112,7 @@ CaptureErrors Capture::startCapture()
     if (result != MA_SUCCESS)
     {
         ma_device_uninit(&device);
-        platform_log("Failed to start device.\n");
+        printf("Failed to start device.\n");
         return failed_to_start_device;
     }
     return capture_noError;

@@ -50,6 +50,8 @@ namespace SoLoud
 	public:
 		virtual void fftFilterChannel(float *aFFTBuffer, unsigned int aSamples, float aSamplerate, time aTime, unsigned int aChannel, unsigned int aChannels);
 		EqFilterInstance(EqFilter *aParent);
+	private:
+		float catmullrom(float t, float p0, float p1, float p2, float p3);
 	};
 
 	class EqFilter : public FFTFilter

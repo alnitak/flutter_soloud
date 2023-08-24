@@ -29,15 +29,6 @@ freely, subject to the following restrictions:
 
 namespace SoLoud
 {
-	float catmullrom(float t, float p0, float p1, float p2, float p3)
-	{
-		return 0.5f * (
-			(2 * p1) +
-			(-p0 + p2) * t +
-			(2 * p0 - 5 * p1 + 4 * p2 - p3) * t * t +
-			(-p0 + 3 * p1 - 3 * p2 + p3) * t * t * t
-			);
-	}
 	
 	EqFilterInstance::EqFilterInstance(EqFilter *aParent)
 	{
@@ -54,15 +45,15 @@ namespace SoLoud
 	}
 
 	/// Already defined in soloud.cpp:945
-	// static float catmullrom(float t, float p0, float p1, float p2, float p3)
-	// {
-	// 	return 0.5f * (
-	// 		(2 * p1) +
-	// 		(-p0 + p2) * t +
-	// 		(2 * p0 - 5 * p1 + 4 * p2 - p3) * t * t +
-	// 		(-p0 + 3 * p1 - 3 * p2 + p3) * t * t * t
-	// 		);
-	// }
+	float EqFilterInstance::catmullrom(float t, float p0, float p1, float p2, float p3)
+	{
+		return 0.5f * (
+			(2 * p1) +
+			(-p0 + p2) * t +
+			(2 * p0 - 5 * p1 + 4 * p2 - p3) * t * t +
+			(-p0 + 3 * p1 - 3 * p2 + p3) * t * t * t
+			);
+	}
 
 
 	void EqFilterInstance::fftFilterChannel(float *aFFTBuffer, unsigned int aSamples, float /*aSamplerate*/, time /*aTime*/, unsigned int /*aChannel*/, unsigned int /*aChannels*/)

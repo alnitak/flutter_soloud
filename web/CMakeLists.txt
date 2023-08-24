@@ -31,6 +31,10 @@ list(APPEND PLUGIN_SOURCES
   "../src/bindings.cpp"
   "../src/player.cpp"
   "../src/analyzer.cpp"
+  "../src/bindings_capture.cpp"
+  "../src/capture.cpp"
+  "../src/synth/basic_wave.cpp"
+  "../src/filters/filters.cpp"
 
   # add SoLoud sources. These definitions are in src.cmake
   ${TARGET_SOURCES}
