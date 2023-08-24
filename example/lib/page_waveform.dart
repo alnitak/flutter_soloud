@@ -89,13 +89,14 @@ class _PageWaveformState extends State<PageWaveform> {
                     if (sound != null) {
                       await SoLoud().disposeSound(sound!);
                     }
+
                     /// text created by ChatGPT :)
                     await SoLoud()
                         .speechText('Flutter and So Loud audio plugin are the '
-                        "tech tag team you never knew you needed – they're "
-                        'like Batman and Robin, swooping in to save your app '
-                        'with style and sound effects that would make '
-                        'even Gotham jealous!')
+                            "tech tag team you never knew you needed – they're "
+                            'like Batman and Robin, swooping in to save your app '
+                            'with style and sound effects that would make '
+                            'even Gotham jealous!')
                         .then((value) => sound = value.sound);
                   },
                   child: const Text('T2S'),
@@ -222,7 +223,7 @@ class _PageWaveformState extends State<PageWaveform> {
                   ),
                   const SizedBox(height: 8),
                   SizedBox(
-                    height: 200,
+                    height: 210,
                     child: TabBarView(
                       physics: const NeverScrollableScrollPhysics(),
                       children: [
@@ -239,7 +240,7 @@ class _PageWaveformState extends State<PageWaveform> {
                             (value) => setState(() => fadeSpeedOut = value),
                           ],
                         ),
-                  
+
                         /// Oscillators
                         KnobsGroup(
                           texts: const ['volume', 'pan', 'speed'],
@@ -252,32 +253,33 @@ class _PageWaveformState extends State<PageWaveform> {
                             (value) => setState(() => oscillateSpeed = value),
                           ],
                         ),
-                  
+
                         /// Biquad Resonant
                         const FilterFx(
-                            filterType: FilterType.biquadResonantFilter,),
-                  
+                          filterType: FilterType.biquadResonantFilter,
+                        ),
+
                         /// Eq
                         const FilterFx(filterType: FilterType.eqFilter),
-                  
+
                         /// Echo
                         const FilterFx(filterType: FilterType.echoFilter),
-                  
+
                         /// Lofi
                         const FilterFx(filterType: FilterType.lofiFilter),
-                  
+
                         /// Flanger
                         const FilterFx(filterType: FilterType.flangerFilter),
-                  
+
                         /// Bassboost
                         const FilterFx(filterType: FilterType.bassboostFilter),
-                  
+
                         /// Wave Shaper
                         const FilterFx(filterType: FilterType.waveShaperFilter),
-                  
+
                         /// Robotize
                         const FilterFx(filterType: FilterType.robotizeFilter),
-                  
+
                         /// Freeverb
                         const FilterFx(filterType: FilterType.freeverbFilter),
                       ],
@@ -309,7 +311,7 @@ class _PageWaveformState extends State<PageWaveform> {
                 for (int i = 0; i < WaveForm.values.length; i++)
                   ActionChip(
                     backgroundColor: Colors.blue,
-                    onPressed: () async{
+                    onPressed: () async {
                       waveForm.value = WaveForm.values[i];
                       await setupNotes();
                       if (mounted) setState(() {});

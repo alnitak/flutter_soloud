@@ -53,6 +53,7 @@ class TouchSlider extends StatelessWidget {
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
+                        fontSize: 18,
                         color: Colors.black,
                       ),
                     ),

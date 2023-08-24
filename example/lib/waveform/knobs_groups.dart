@@ -42,7 +42,7 @@ class _KnobsGroupState extends State<KnobsGroup> {
       children: List.generate(widget.texts.length, (i) {
         return TouchSlider(
           text: widget.texts[i],
-          diameter: 100,
+          diameter: 80,
           min: widget.mins[i],
           max: widget.maxs[i],
           value: values[i],
