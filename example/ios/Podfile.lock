@@ -78,7 +78,7 @@ SPEC CHECKSUMS:
   file_picker: ce3938a0df3cc1ef404671531facef740d03f920
   Flutter: f04841e97a9d0b0a8025694d0796dd46242b2854
   flutter_soloud: a49590bf8d8be2c55b50f4d4e819b764901a4946
-  path_provider_foundation: eaf5b3e458fc0e5fbb9940fb09980e853fe058b8
+  path_provider_foundation: 29f094ae23ebbca9d3d0cec13889cd9060c0e943
   permission_handler_apple: e76247795d700c14ea09e3a2d8855d41ee80a2e6
   SDWebImage: 2aea163b50bfcb569a2726b6a754c54a4506fcf6
   SwiftyGif: 93a1cc87bf3a51916001cf8f3d63835fb64c819f

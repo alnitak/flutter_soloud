@@ -222,7 +222,7 @@ class _PageWaveformState extends State<PageWaveform> {
                   ),
                   const SizedBox(height: 8),
                   SizedBox(
-                    height: 300,
+                    height: 200,
                     child: TabBarView(
                       physics: const NeverScrollableScrollPhysics(),
                       children: [
@@ -239,7 +239,7 @@ class _PageWaveformState extends State<PageWaveform> {
                             (value) => setState(() => fadeSpeedOut = value),
                           ],
                         ),
-
+                  
                         /// Oscillators
                         KnobsGroup(
                           texts: const ['volume', 'pan', 'speed'],
@@ -252,32 +252,32 @@ class _PageWaveformState extends State<PageWaveform> {
                             (value) => setState(() => oscillateSpeed = value),
                           ],
                         ),
-
+                  
                         /// Biquad Resonant
                         const FilterFx(
                             filterType: FilterType.biquadResonantFilter,),
-
+                  
                         /// Eq
                         const FilterFx(filterType: FilterType.eqFilter),
-
+                  
                         /// Echo
                         const FilterFx(filterType: FilterType.echoFilter),
-
+                  
                         /// Lofi
                         const FilterFx(filterType: FilterType.lofiFilter),
-
+                  
                         /// Flanger
                         const FilterFx(filterType: FilterType.flangerFilter),
-
+                  
                         /// Bassboost
                         const FilterFx(filterType: FilterType.bassboostFilter),
-
+                  
                         /// Wave Shaper
                         const FilterFx(filterType: FilterType.waveShaperFilter),
-
+                  
                         /// Robotize
                         const FilterFx(filterType: FilterType.robotizeFilter),
-
+                  
                         /// Freeverb
                         const FilterFx(filterType: FilterType.freeverbFilter),
                       ],

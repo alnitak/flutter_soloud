@@ -90,7 +90,7 @@ class _FilterFxState extends State<FilterFx> {
           children: List.generate(params.length, (index) {
             return TouchSlider(
               text: fxParams.names[index],
-              diameter: 120,
+              diameter: 100,
               min: fxParams.mins[index],
               max: fxParams.maxs[index],
               value: params[index],

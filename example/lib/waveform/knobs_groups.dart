@@ -37,12 +37,12 @@ class _KnobsGroupState extends State<KnobsGroup> {
 
   @override
   Widget build(BuildContext context) {
-    return Wrap(
-      alignment: WrapAlignment.center,
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
       children: List.generate(widget.texts.length, (i) {
         return TouchSlider(
           text: widget.texts[i],
-          diameter: 120,
+          diameter: 100,
           min: widget.mins[i],
           max: widget.maxs[i],
           value: values[i],
