@@ -1,3 +1,6 @@
+## 1.2.3
+fixed compilation on iOS and macOS
+
 ## 1.2.2
 - waveform example page updated with sound FXs
 - added sound FXs
