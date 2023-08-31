@@ -17,6 +17,7 @@
 #include "soloud_freeverbfilter.h"
 
 #include <vector>
+#include <string>
 #include <memory>
 
 typedef enum FilterType

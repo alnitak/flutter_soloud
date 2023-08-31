@@ -86,23 +86,21 @@ class _FilterFxState extends State<FilterFx> {
         ),
     
         /// Params knobs
-        ColoredBox(color: Colors.yellow,
-          child: Wrap(
-            children: List.generate(params.length, (index) {
-              return TouchSlider(
-                text: fxParams.names[index],
-                diameter: 75,
-                min: fxParams.mins[index],
-                max: fxParams.maxs[index],
-                value: params[index],
-                onChanged: (value) async {
-                  params[index] = value;
-                  SoLoud().setFxParams(widget.filterType, index, value);
-                  if (mounted) setState(() {});
-                },
-              );
-            }),
-          ),
+        Wrap(
+          children: List.generate(params.length, (index) {
+            return TouchSlider(
+              text: fxParams.names[index],
+              diameter: 75,
+              min: fxParams.mins[index],
+              max: fxParams.maxs[index],
+              value: params[index],
+              onChanged: (value) async {
+                params[index] = value;
+                SoLoud().setFxParams(widget.filterType, index, value);
+                if (mounted) setState(() {});
+              },
+            );
+          }),
         ),
       ],
     );

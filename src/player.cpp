@@ -52,7 +52,7 @@ bool Player::isInited()
 
 int Player::getSoundsCount()
 {
-    return sounds.size();
+    return (int)sounds.size();
 }
 
 const std::string Player::getErrorString(PlayerErrors aErrorCode) const
