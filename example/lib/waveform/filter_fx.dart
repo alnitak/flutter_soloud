@@ -84,7 +84,7 @@ class _FilterFxState extends State<FilterFx> {
             ),
           ],
         ),
-    
+
         /// Params knobs
         Wrap(
           children: List.generate(params.length, (index) {

@@ -40,6 +40,7 @@ typedef FxParams = ({
 /// Biquad Resonant filter
 const FxParams fxBiquadResonant = (
   title: 'Biquad Resonant',
+
   /// [Type] type is int
   names: ['Wet', 'Type', 'Frequency', 'Resonance'],
   mins: [0, 0.999, 10, 0.1],
@@ -114,6 +115,7 @@ const FxParams fxWaveShaper = (
 /// Robotize filter
 const FxParams fxRobotize = (
   title: 'Robotize',
+
   /// [Waveform] type is int
   names: ['Wet', 'Frequency', 'Waveform'],
   mins: [0, 0.1, 0],
@@ -124,6 +126,7 @@ const FxParams fxRobotize = (
 /// Freeverb filter
 const FxParams fxFreeverb = (
   title: 'Freeverb',
+
   /// [Freeze] type is bool
   names: ['Wet', 'Freeze', 'Room Size', 'Damp', 'Width'],
   mins: [0, 0, 0, 0, 0],

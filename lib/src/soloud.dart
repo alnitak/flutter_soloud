@@ -1128,21 +1128,21 @@ class SoLoud {
   /////////////////////////////////////////
 
   /// Check if the given filter is active or not.
-  /// 
+  ///
   /// [filterType] filter to check
   /// Returns [PlayerErrors.noError] if no errors and the index of
   /// the given filter (-1 if the filter is not active)
-  /// 
+  ///
   ({PlayerErrors error, int index}) isFilterActive(FilterType filterType) {
     final ret = SoLoudController().soLoudFFI.isFilterActive(filterType.index);
     return ret;
   }
 
   /// Get parameters names of the given filter.
-  /// 
+  ///
   /// [filterType] filter to get param names
   /// Returns [PlayerErrors.noError] if no errors and the list of param names
-  /// 
+  ///
   ({PlayerErrors error, List<String> names}) getFilterParamNames(
       FilterType filterType) {
     final ret =
@@ -1151,32 +1151,32 @@ class SoLoud {
   }
 
   /// Add the filter [filterType].
-  /// 
+  ///
   /// [filterType] filter to add
   /// Returns [PlayerErrors.noError] if no errors
-  /// 
+  ///
   PlayerErrors addGlobalFilter(FilterType filterType) {
     final ret = SoLoudController().soLoudFFI.addGlobalFilter(filterType.index);
     return PlayerErrors.values[ret];
   }
 
   /// Remove the filter [filterType].
-  /// 
+  ///
   /// [filterType] filter to remove
   /// Returns [PlayerErrors.noError] if no errors
-  /// 
+  ///
   PlayerErrors removeGlobalFilter(FilterType filterType) {
     final ret =
         SoLoudController().soLoudFFI.removeGlobalFilter(filterType.index);
     return PlayerErrors.values[ret];
   }
 
-  /// Set the effect parameter with id [attributeId] 
+  /// Set the effect parameter with id [attributeId]
   /// of [filterType] with [value] value.
-  /// 
+  ///
   /// [filterType] filter to modify a param
   /// Returns [PlayerErrors.noError] if no errors
-  /// 
+  ///
   PlayerErrors setFxParams(
       FilterType filterType, int attributeId, double value) {
     final ret = SoLoudController()
@@ -1186,14 +1186,13 @@ class SoLoud {
   }
 
   /// Get the effect parameter with id [attributeId] of [filterType].
-  /// 
+  ///
   /// [filterType] filter to modify a param
   /// Returns the value of param
-  /// 
+  ///
   double getFxParams(FilterType filterType, int attributeId) {
-    final ret = SoLoudController()
-        .soLoudFFI
-        .getFxParams(filterType.index, attributeId);
+    final ret =
+        SoLoudController().soLoudFFI.getFxParams(filterType.index, attributeId);
     return ret;
   }
 

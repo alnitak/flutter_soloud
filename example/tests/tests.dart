@@ -51,12 +51,12 @@ Future<void> test3() async {
     octave: 1,
   );
   assert(
-      notes.length == 12,
-      'SoloudTools.initSounds() failed!',
-    );
+    notes.length == 12,
+    'SoloudTools.initSounds() failed!',
+  );
 
   for (var i = 2; i < 10; i++) {
-    final d = (sin(i/6.28)*400).toInt();
+    final d = (sin(i / 6.28) * 400).toInt();
     await SoLoud().play(notes[7]);
     await delay(500 - d);
     await SoLoud().stop(notes[7].handle.first);
@@ -170,8 +170,8 @@ Future<void> test1() async {
     );
 
     /// Wait for the sample to finish and see in log:
-    /// "@@@@@@@@@@@ SOUND EVENT: SoundEvent.handleIsNoMoreValid .* has [3-2-1-0] active handles"
-    /// 3798ms explosion.mp3 sample duration
+    /// "@@@@@@@@@@@ SOUND EVENT: SoundEvent.handleIsNoMoreValid .* has
+    /// [3-2-1-0] active handles" 3798ms explosion.mp3 sample duration
     await delay(4500);
     assert(
       currentSound!.handle.isEmpty,

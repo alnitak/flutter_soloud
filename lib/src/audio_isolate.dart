@@ -242,7 +242,7 @@ void audioIsolate(SendPort isolateToMainStream) {
           args.superWave,
           args.scale,
           args.detune,
-          );
+        );
         // add the new sound handler to the list
         SoundProps? newSound;
         if (ret.error == PlayerErrors.noError) {
