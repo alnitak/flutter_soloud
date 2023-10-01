@@ -2,6 +2,8 @@
 
 Flutter low level audio plugin using SoLoud library and FFI
 
+
+[![Pub Version](https://img.shields.io/pub/v/flutter_soloud?logo=dart)](https://pub.dev/packages/flutter_soloud)
 [![style: very good analysis](https://img.shields.io/badge/style-very_good_analysis-B22C89.svg)](https://pub.dev/packages/very_good_analysis)
 
 |Linux|Windows|Android|MacOS|iOS|web|
