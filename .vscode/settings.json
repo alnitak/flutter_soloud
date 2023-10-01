@@ -1,5 +1,5 @@
 {
-    "cmake.sourceDirectory": "C:/workspace/flutter_soloud/android",
+    "cmake.sourceDirectory": "/home/deimos/FLUTTER/libs/flutter_soloud/android",
     "files.associations": {
         "iostream": "cpp",
         "memory": "cpp",

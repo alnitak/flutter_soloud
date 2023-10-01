@@ -90,7 +90,7 @@ class _Page3DAudioState extends State<Page3DAudio> {
 
     SoLoud().setLooping(playRet.newHandle, true);
     currentSound = playRet.sound;
-    
+
     spinAround = true;
 
     if (mounted) setState(() {});
@@ -119,8 +119,7 @@ class _Page3DAudioState extends State<Page3DAudio> {
     }
 
     /// load the audio file
-    currentSound =
-        await SoloudTools.loadFromAssets('assets/audio/siren.mp3');
+    currentSound = await SoloudTools.loadFromAssets('assets/audio/siren.mp3');
 
     /// play it
     final playRet = await SoLoud().play3d(currentSound!, 0, 0, 0);

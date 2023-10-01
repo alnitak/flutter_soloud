@@ -3,7 +3,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 
 /// Draw the the shader using the built image as a parameter
-/// 
+///
 class AudioShader extends StatelessWidget {
   const AudioShader({
     required this.image,

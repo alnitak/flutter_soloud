@@ -1,3 +1,6 @@
+## 1.2.4
+fixed compilation on Windows
+
 ## 1.2.3
 fixed compilation on iOS and macOS
 

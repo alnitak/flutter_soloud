@@ -50,10 +50,10 @@ class WavePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final barWidth = size.width / 256;
-    final paint = Paint()..color = Colors.yellow 
-    ..strokeWidth = barWidth * 0.8
-    ..style = PaintingStyle.stroke;
-
+    final paint = Paint()
+      ..color = Colors.yellow
+      ..strokeWidth = barWidth * 0.8
+      ..style = PaintingStyle.stroke;
 
     for (var i = 0; i < 256; i++) {
       final barHeight = size.height * audioData[i + 256];

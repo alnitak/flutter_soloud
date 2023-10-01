@@ -21,7 +21,7 @@ class MyApp extends StatelessWidget {
       themeMode: ThemeMode.dark,
       darkTheme: ThemeData.dark(useMaterial3: true),
       scrollBehavior: const MaterialScrollBehavior().copyWith(
-        // enable mouse dragging 
+        // enable mouse dragging
         dragDevices: PointerDeviceKind.values.toSet(),
       ),
       home: const MyHomePage(),
