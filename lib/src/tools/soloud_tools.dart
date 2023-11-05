@@ -2,7 +2,8 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter_soloud/flutter_soloud.dart';
+import 'package:flutter_soloud/src/enums.dart';
+import 'package:flutter_soloud/src/soloud.dart';
 import 'package:flutter_soloud/src/utils/assets_manager.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
@@ -39,11 +40,9 @@ class SoloudTools {
   ///
   static Future<SoundProps?> loadFromUrl(String url) async {
     try {
-      final now = DateTime.now();
       final tempDir = await getTemporaryDirectory();
       final tempPath = tempDir.path;
-      final filePath = '$tempPath${Platform.pathSeparator}'
-          '${now.year} ${now.month} ${now.day}';
+      final filePath = '$tempPath${Platform.pathSeparator}${shortHash(url)}';
       final file = File(filePath);
 
       if (!file.existsSync()) {
