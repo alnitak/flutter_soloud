@@ -7,22 +7,7 @@
 import 'dart:ffi' as ffi;
 
 import 'package:ffi/ffi.dart';
-
-/// Possible capture errors
-enum CaptureErrors {
-  /// No error
-  captureNoError,
-
-  /// Capture failed to initialize
-  captureInitFailed,
-
-  /// Capture not yet initialized
-  captureNotInited,
-
-  /// null pointer. Could happens when passing a non initialized
-  /// pointer (with calloc()) to retrieve FFT or wave data
-  nullPointer,
-}
+import 'package:flutter_soloud/src/enums.dart';
 
 /// CaptureDevice struct exposed in C
 final class _CaptureDevice extends ffi.Struct {
@@ -30,13 +15,6 @@ final class _CaptureDevice extends ffi.Struct {
 
   @ffi.UnsignedInt()
   external int isDefault;
-}
-
-/// CaptureDevice exposed to Dart
-final class CaptureDevice {
-  CaptureDevice(this.name, this.isDefault);
-  final String name;
-  final bool isDefault;
 }
 
 /// FFI bindings to capture with miniaudio

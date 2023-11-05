@@ -5,14 +5,9 @@ import 'dart:async';
 import 'dart:isolate';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_soloud/src/bindings_capture_ffi.dart';
-import 'package:flutter_soloud/src/flutter_soloud_bindings_ffi.dart';
+import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/soloud.dart';
 import 'package:flutter_soloud/src/soloud_controller.dart';
-
-/// Author note: I am a bit scared on how the use of
-/// these 2 isolates implementation is gone. But hey,
-/// Records saved my life! \O/
 
 /// print some infos when isolate receive events
 /// from main isolate and vice versa

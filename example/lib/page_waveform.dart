@@ -93,9 +93,9 @@ class _PageWaveformState extends State<PageWaveform> {
                     /// text created by ChatGPT :)
                     await SoLoud()
                         .speechText('Flutter and So Loud audio plugin are the '
-                            "tech tag team you never knew you needed – they're "
-                            'like Batman and Robin, swooping in to save your app '
-                            'with style and sound effects that would make '
+                            "tech tag team you never knew you needed - they're "
+                            'like Batman and Robin, swooping in to save your '
+                            'app with style and sound effects that would make '
                             'even Gotham jealous!')
                         .then((value) => sound = value.sound);
                   },
