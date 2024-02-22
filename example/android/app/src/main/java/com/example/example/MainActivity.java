@@ -1,4 +1,4 @@
-package com.example.example;
+package flutter.soloud.example;
 
 import io.flutter.embedding.android.FlutterActivity;
 

@@ -5,6 +5,20 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 
+void main() {
+  runApp(const MyApp());
+}
+
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+  @override
+  Widget build(BuildContext context) {
+    return const MaterialApp(
+      home: HelloFlutterSoLoud(),
+    );
+  }
+}
+
 /// Simple usecase of flutter_soloud plugin
 class HelloFlutterSoLoud extends StatefulWidget {
   const HelloFlutterSoLoud({super.key});
@@ -92,7 +106,7 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
     }
 
     /// load the audio file
-    final newSound = await SoloudLoadingTool.loadFromFile(file);
+    final newSound = await SoloudTools.loadFromFile(file);
     if (newSound == null) return;
     currentSound = newSound;
 

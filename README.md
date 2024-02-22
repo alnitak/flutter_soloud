@@ -1,6 +1,7 @@
 # Flutter low level audio plugin using SoLoud library
 
-Flutter low level audio plugin using SoLoud library and FFI
+Flutter low level audio plugin using SoLoud library with miniaudio backend and FFI.
+It provides player, basic capture from microphone, 3D audio and more.
 
 
 [![Pub Version](https://img.shields.io/pub/v/flutter_soloud?logo=dart)](https://pub.dev/packages/flutter_soloud)
@@ -13,7 +14,7 @@ Flutter low level audio plugin using SoLoud library and FFI
 
 🌐 Supported on Linux, Windows, Mac, Android, and iOS
 
-🎤 **Player** and **capture** audio from microphone
+🎤 **Player** and **capture** audio from microphone (no recording)
 
 🎶 **3D audio** with doppler effect
 
@@ -31,7 +32,7 @@ Flutter low level audio plugin using SoLoud library and FFI
 
 ## Overview
 
-The ***flutter_soloud*** plugin utilizes a [forked](https://github.com/alnitak/soloud) repository of [SoLoud](https://github.com/jarikomppa/soloud), where the [miniaudio](https://github.com/mackron/miniaudio) audio backend has been updated and is located in src/soloud.
+The ***flutter_soloud*** plugin utilizes a [forked](https://github.com/alnitak/soloud) repository of [SoLoud](https://github.com/jarikomppa/soloud), where the [miniaudio](https://github.com/mackron/miniaudio) audio backend has been updated and is located in src/soloud/src/backend/miniaudio
 
 For information regarding the SoLoud license, please refer to [this link](https://github.com/alnitak/soloud/blob/f4f089aa592aa45f5f6fa8c8efff64996fae920f/LICENSE).
 

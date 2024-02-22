@@ -161,6 +161,8 @@ typedef ArgsDisposeAllSound = ();
 /// Since from C is difficult to call dart function from another thread for now,
 /// I did this isolate with the main purpose to make use of some callbacks
 /// like playEndedCallback. Ref: https://github.com/dart-lang/sdk/issues/37022
+/// MD https://github.com/mraleph/language/blob/shared-memory/working/333%20-%20shared%20memory%20multithreading/proposal.md
+/// PR doc Shared Memory Multithreading https://github.com/dart-lang/language/pull/3531
 void audioIsolate(SendPort isolateToMainStream) {
   final mainToIsolateStream = ReceivePort();
   final soLoudController = SoLoudController();

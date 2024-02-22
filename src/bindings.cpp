@@ -124,7 +124,7 @@ extern "C"
         player.setWaveformScale(hash, newScale);
     }
 
-    /// Set the scale of an already loaded waveform identified by [hash]
+    /// Set the detune of an already loaded waveform identified by [hash]
     ///
     /// [hash] the unique sound hash of a waveform sound
     /// [newDetune]
@@ -378,14 +378,14 @@ extern "C"
         memcpy(samples + 256, wave, sizeof(float) * 256);
     }
 
-    /// Return a floats matrix of 256x512
+    /// Return a floats matrix of 512x256
     /// Every row are composed of 256 FFT values plus 256 of wave data
     /// Every time is called, a new row is stored in the
     /// first row and all the previous rows are shifted
     /// up (the last one will be lost).
     ///
     /// [samples]
-    float texture2D[256][512];
+    float texture2D[512][256];
     FFI_PLUGIN_EXPORT enum PlayerErrors getAudioTexture2D(float **samples)
     {
         if (analyzer.get() == nullptr || !player.isVisualizationEnabled())

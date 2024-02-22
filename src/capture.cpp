@@ -13,7 +13,7 @@ void data_callback(ma_device *pDevice, void *pOutput, const void *pInput, ma_uin
     // For example, you can copy it to a buffer for later use.
     float *captured = (float *)(pInput); // Assuming float format
     // Do something with the captured audio data...
-    // printf("framecound: %d   data_callback %f\n", frameCount, captured[0]);
+    // printf("framecount: %d\n", frameCount);
 
     memcpy(capturedBuffer, captured, sizeof(float) * CAPTURE_BUFFER_SIZE);
 }
