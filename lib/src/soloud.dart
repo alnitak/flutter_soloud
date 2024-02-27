@@ -148,10 +148,6 @@ class SoLoud {
       } else {
         debugIsolates('******** MAIN EVENT data: $data');
         if (data is StreamSoundEvent) {
-          debugPrint('@@@@@@@@@@@ SOUND EVENT: ${data.event}  '
-              'handle: ${data.handle}  '
-              'sound: ${data.sound}');
-
           /// find the sound which received the [SoundEvent] and...
           final sound = activeSounds.firstWhere(
             (sound) => sound.soundHash == data.sound.soundHash,
