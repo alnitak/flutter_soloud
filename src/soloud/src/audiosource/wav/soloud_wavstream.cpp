@@ -25,6 +25,9 @@ freely, subject to the following restrictions:
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <chrono>
+#include <atomic>
+
 #include "soloud.h"
 #include "dr_flac.h"
 #include "dr_mp3.h"
@@ -339,7 +342,20 @@ namespace SoLoud
 		return aSamplesToRead;
 	}
 
-	result WavStreamInstance::seek(double aSeconds, float* mScratch, unsigned int mScratchSize)
+	//
+	// When using TYPE_WAVSTREAM for mp3 and seeking backward,
+	// dr_mp3.h uses `drmp3_seek_to_pcm_frame__brute_force()` function which
+	// move to the start of the stream and then move forward to [time]. This
+	// implies some lag and queue subsequent seeks request if the previous seek is not yet
+	// complete (especially when using a slider) impacting the main UI thread.
+	// To overcome this, a time check is performed: if a seek request comes
+	// before N ms, just don't perform the seek.
+	// BUT to have no lags, please use TYPE_WAV instead if possible!
+	std::atomic<double> newMp3Pos;
+	std::clock_t seekAtClock;
+	std::clock_t lastSeekReqClock;
+
+	result WavStreamInstance::seek(double aSeconds, float *mScratch, unsigned int mScratchSize)
 	{
 		if (mCodec.mOgg)
 		{
@@ -363,9 +379,25 @@ namespace SoLoud
 				mStreamPosition = float(pos / mBaseSamplerate);
 				return 0;
 			case WAVSTREAM_MP3:
+				// if seeking forward do it in the simple way
+				if (pos > mOffset)
+				{
+					drmp3_seek_to_pcm_frame(mCodec.mMp3, pos);
+					mOffset = pos;
+					mStreamPosition = float(pos / mBaseSamplerate);
+					return 0;
+				}
+
+				// if seeking backward, skip the request if called before 10(?) ms sice the last one
+				lastSeekReqClock = std::clock();
+				if (1000.0 * (lastSeekReqClock - seekAtClock) / CLOCKS_PER_SEC <= 10)
+				{
+					return 0;
+				}
 				drmp3_seek_to_pcm_frame(mCodec.mMp3, pos);
 				mOffset = pos;
 				mStreamPosition = float(pos / mBaseSamplerate);
+				seekAtClock = std::clock();
 				return 0;
 			case WAVSTREAM_WAV:
 				drwav_seek_to_pcm_frame(mCodec.mWav, pos);
@@ -376,7 +408,8 @@ namespace SoLoud
 				break;
 			}
 		}
-		else {
+		else
+		{
 			return AudioSourceInstance::seek(aSeconds, mScratch, mScratchSize);
 		}
 
