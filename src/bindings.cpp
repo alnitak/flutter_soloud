@@ -75,13 +75,23 @@ extern "C"
     /// Load a new sound to be played once or multiple times later
     ///
     /// [completeFileName] the complete file path
+    /// [loadIntoMem] if true Soloud::wav will be used which loads
+    /// all audio data into memory. This will be useful when
+    /// the audio is short, ie for game sounds, mainly used to prevent
+    /// gaps or lags when starting a sound (less CPU, more memory allocated).
+    /// If false, Soloud::wavStream will be used and the audio data is loaded 
+    /// from the given file when needed (more CPU less memory allocated).
+    /// See the [seek] note problem when using [loadIntoMem] = false
     /// [hash] return hash of the sound
     /// Returns [PlayerErrors.noError] if success
-    FFI_PLUGIN_EXPORT enum PlayerErrors loadFile(char *completeFileName, unsigned int *hash)
+    FFI_PLUGIN_EXPORT enum PlayerErrors loadFile(
+        char *completeFileName, 
+        bool loadIntoMem, 
+        unsigned int *hash)
     {
         if (!player.isInited())
             return backendNotInited;
-        return (PlayerErrors)player.loadFile(completeFileName, *hash);
+        return (PlayerErrors)player.loadFile(completeFileName, loadIntoMem, *hash);
     }
 
     /// Load a new waveform to be played once or multiple times later
@@ -418,6 +428,19 @@ extern "C"
     /// [time]
     /// [handle] the sound handle
     /// Returns [PlayerErrors.noError] if success
+    /// 
+    /// NOTE: When loading a sound with `loadIntoMem`=false for mp3 
+    /// and seeking backward, the [seek] function firstly
+    /// move to the start of the stream and then move forward to [time]. This
+    /// implies some lag and queue subsequent seeks request if the previous seek is
+    /// not yet complete (especially when using a slider) impacting 
+    /// the main UI thread.
+    /// To overcome this, a time check is performed: if a seek request comes
+    /// before N ms, just don't perform the seek.
+    /// This mode is useful ie for background music, not for a music player
+    /// where a seek slider is a must.
+    /// BUT to have no lags, please use `loadIntoMem`=true instead!
+    ///
     FFI_PLUGIN_EXPORT enum PlayerErrors seek(unsigned int handle, float time)
     {
         if (!player.isInited())
@@ -894,9 +917,9 @@ extern "C"
     }
 
     /////////// JUST FOR TEST //////////
-    SoLoud::Wav sound1;
-    SoLoud::Wav sound2;
-    SoLoud::Soloud soloud;
+    // SoLoud::Wav sound1;
+    // SoLoud::Wav sound2;
+    // SoLoud::Soloud soloud;
     // Basicwave basicWave;
     FFI_PLUGIN_EXPORT void test()
     {
@@ -914,9 +937,9 @@ extern "C"
         // player.play("/home/deimos/5/01 - Theme From Farscape.mp3", handle);
         // player.play("/home/deimos/5/Music/ROSS/DANCE/Alphaville - Big In Japan (Original Version).mp3", handle);
 
-        unsigned int hash;
-        player.loadWaveform(SoLoud::Soloud::WAVE_SQUARE, true, 0.25f, 1.0f, hash);
-        player.play(hash);
+        // unsigned int hash;
+        // player.loadWaveform(SoLoud::Soloud::WAVE_SQUARE, true, 0.25f, 1.0f, hash);
+        // player.play(hash);
     }
 
 #ifdef __cplusplus

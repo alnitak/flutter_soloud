@@ -324,24 +324,33 @@ class SoLoud {
 
   /// Load a new sound to be played once or multiple times later
   ///
+  /// [loadIntoMem] if true Soloud::wav will be used which loads
+  /// all audio data into memory. This will be useful when
+  /// the audio is short, ie for game sounds, mainly used to prevent
+  /// gaps or lags when starting a sound (less CPU, more memory allocated).
+  /// If false, Soloud::wavStream will be used and the audio data is loaded 
+  /// from the given file when needed (more CPU less memory allocated).
+  /// See the [seek] note problem when using [loadIntoMem] = false
+  /// Default is true.
   /// [completeFileName] the complete file path
   /// Returns PlayerErrors.noError if success and a new sound
   ///
   Future<({PlayerErrors error, SoundProps? sound})> loadFile(
-    String completeFileName,
-  ) async {
+    String completeFileName, {
+    bool loadIntoMem = true,
+  }) async {
     if (!isPlayerInited) {
       return (error: PlayerErrors.engineNotInited, sound: null);
     }
     _mainToIsolateStream?.send(
       {
         'event': MessageEvents.loadFile,
-        'args': (completeFileName: completeFileName),
+        'args': (completeFileName: completeFileName, loadIntoMem: loadIntoMem),
       },
     );
     final ret = (await _waitForEvent(
       MessageEvents.loadFile,
-      (completeFileName: completeFileName),
+      (completeFileName: completeFileName, loadIntoMem: loadIntoMem),
     )) as ({PlayerErrors error, SoundProps? sound});
     if (ret.error == PlayerErrors.noError) {
       activeSounds.add(ret.sound!);
@@ -752,6 +761,18 @@ class SoLoud {
   /// [time] the time to seek
   /// [handle] the sound handle
   /// Returns [PlayerErrors.noError] if success
+  /// 
+  /// NOTE: When loading a sound with `loadIntoMem`=false for mp3 
+  /// and seeking backward, the [seek] function firstly
+  /// move to the start of the stream and then move forward to [time]. This
+  /// implies some lag and queue subsequent seeks request if the previous seek is
+  /// not yet complete (especially when using a slider) impacting 
+  /// the main UI thread.
+  /// To overcome this, a time check is performed: if a seek request comes
+  /// before N ms, just don't perform the seek.
+  /// This mode is useful ie for background music, not for a music player
+  /// where a seek slider is a must.
+  /// BUT to have no lags, please use `loadIntoMem`=true instead!
   ///
   PlayerErrors seek(int handle, double time) {
     if (!isPlayerInited) {

@@ -107,17 +107,28 @@ class FlutterSoLoudFfi {
       _lookup<ffi.NativeFunction<ffi.Void Function()>>('dispose');
   late final _dispose = _disposePtr.asFunction<void Function()>();
 
-  /// Load a new sound to be played once or multiple times later
+  /// Load a new sound to be played once or multiple times later.
   ///
-  /// [completeFileName] the complete file path
-  /// [soundHash] return hash of the sound
-  /// Returns [PlayerErrors.noError] if success
-  ({PlayerErrors error, int soundHash}) loadFile(String completeFileName) {
+  /// [completeFileName] the complete file path.
+  /// [loadIntoMem] if true Soloud::wav will be used which loads
+  /// all audio data into memory. This will be useful when
+  /// the audio is short, ie for game sounds, mainly used to prevent
+  /// gaps or lags when starting a sound (less CPU, more memory allocated).
+  /// If false, the audio data is loaded from the given file when
+  /// needed (more CPU less memory allocated).
+  /// See the [seek] note problem when using [loadIntoMem] = false
+  /// [soundHash] return hash of the sound.
+  /// Returns [PlayerErrors.noError] if success.
+  ({PlayerErrors error, int soundHash}) loadFile(
+    String completeFileName,
+    bool loadIntoMem,
+  ) {
     // ignore: omit_local_variable_types
     final ffi.Pointer<ffi.UnsignedInt> h =
         calloc(ffi.sizeOf<ffi.UnsignedInt>());
     final e = _loadFile(
       completeFileName.toNativeUtf8().cast<ffi.Char>(),
+      loadIntoMem ? 1 : 0,
       h,
     );
     final ret = (error: PlayerErrors.values[e], soundHash: h.value);
@@ -129,10 +140,11 @@ class FlutterSoLoudFfi {
       ffi.NativeFunction<
           ffi.Int32 Function(
             ffi.Pointer<ffi.Char>,
+            ffi.Int,
             ffi.Pointer<ffi.UnsignedInt>,
           )>>('loadFile');
   late final _loadFile = _loadFilePtr.asFunction<
-      int Function(ffi.Pointer<ffi.Char>, ffi.Pointer<ffi.UnsignedInt>)>();
+      int Function(ffi.Pointer<ffi.Char>, int, ffi.Pointer<ffi.UnsignedInt>)>();
 
   /// Load a new waveform to be played once or multiple times later
   ///
@@ -548,6 +560,19 @@ class FlutterSoLoudFfi {
   /// [time]
   /// [handle] the sound handle
   /// Returns [PlayerErrors.noError] if success
+  /// 
+  /// NOTE: When loading a sound with `loadIntoMem`=false (aka Soloud::wavStream)
+  /// for mp3 and seeking backward,
+	/// dr_mp3.h uses `drmp3_seek_to_pcm_frame__brute_force()` function which
+	/// move to the start of the stream and then move forward to [time]. This
+	/// implies some lag and queue subsequent seeks request if the previous seek is
+	/// not yet complete (especially when using a slider) impacting 
+  /// the main UI thread.
+	/// To overcome this, a time check is performed: if a seek request comes
+	/// before N ms, just don't perform the seek.
+  /// This mode is useful ie for background music, not for a music player
+  /// where a seek slider is a must.
+	/// BUT to have no lags, please use `loadIntoMem`=true instead!
   int seek(int handle, double time) {
     return _seek(handle, time);
   }
@@ -879,9 +904,8 @@ class FlutterSoLoudFfi {
   }
 
   late final _setFxParamsPtr = _lookup<
-          ffi
-          .NativeFunction<ffi.Int32 Function(ffi.Int32, ffi.Int, ffi.Float)>>(
-      'setFxParams');
+      ffi.NativeFunction<
+          ffi.Int32 Function(ffi.Int32, ffi.Int, ffi.Float)>>('setFxParams');
   late final _setFxParams =
       _setFxParamsPtr.asFunction<int Function(int, int, double)>();
 

@@ -1,7 +1,10 @@
 #include "common.h"
 #include "player.h"
 #include "soloud.h"
+#include "soloud_wav.h"
+#include "soloud_wavstream.h"
 #include "synth/basic_wave.h"
+
 
 #include <algorithm>
 #include <cstdarg>
@@ -85,7 +88,10 @@ const std::string Player::getErrorString(PlayerErrors aErrorCode) const
     return "Other error";
 }
 
-PlayerErrors Player::loadFile(const std::string &completeFileName, unsigned int &hash)
+PlayerErrors Player::loadFile(
+    const std::string &completeFileName, 
+    bool loadIntoMem, 
+    unsigned int &hash)
 {
     if (!mInited)
         return backendNotInited;
@@ -107,10 +113,19 @@ PlayerErrors Player::loadFile(const std::string &completeFileName, unsigned int 
     sounds.push_back(std::make_unique<ActiveSound>());
     sounds.back().get()->completeFileName = std::string(completeFileName);
     hash = sounds.back().get()->soundHash = newHash;
-    sounds.back().get()->sound = std::make_unique<SoLoud::Wav>();
-    sounds.back().get()->soundType = TYPE_WAV;
-    SoLoud::result result = 
-        static_cast<SoLoud::Wav*>(sounds.back().get()->sound.get())->load(completeFileName.c_str());
+    
+    SoLoud::result result;
+    if (loadIntoMem) {
+        sounds.back().get()->sound = std::make_unique<SoLoud::Wav>();
+        sounds.back().get()->soundType = TYPE_WAV;
+        result = static_cast<SoLoud::Wav*>(sounds.back().get()->sound.get())->load(completeFileName.c_str());
+    }
+    else {
+        sounds.back().get()->sound = std::make_unique<SoLoud::WavStream>();
+        sounds.back().get()->soundType = TYPE_WAVSTREAM;
+        result = static_cast<SoLoud::WavStream*>(sounds.back().get()->sound.get())->loadToMem(completeFileName.c_str());
+    }
+
     if (result != SoLoud::SO_NO_ERROR)
     {
         sounds.emplace_back();
@@ -340,9 +355,13 @@ double Player::getLength(unsigned int soundHash)
     auto const &s = std::find_if(sounds.begin(), sounds.end(),
                                  [&](std::unique_ptr<ActiveSound> const &f)
                                  { return f->soundHash == soundHash; });
-    if (s == sounds.end() || s->get()->soundType != TYPE_WAV)
+    if (s == sounds.end() || s->get()->soundType == TYPE_SYNTH)
         return 0.0;
-    return static_cast<SoLoud::Wav*>(s->get()->sound.get())->getLength();
+    if (s->get()->soundType == TYPE_WAV)
+        return static_cast<SoLoud::Wav*>(s->get()->sound.get())->getLength();
+    
+    // if (s->get()->soundType == TYPE_WAVSTREAM)
+    return static_cast<SoLoud::WavStream*>(s->get()->sound.get())->getLength();
 }
 
 // time in seconds
@@ -350,6 +369,11 @@ PlayerErrors Player::seek(SoLoud::handle handle, float time)
 {
     if (!mInited)
         return backendNotInited;
+
+    int handleId;
+    ActiveSound *sound = findByHandle(handle, &handleId);
+    if (sound == nullptr || sound->soundType == TYPE_SYNTH)
+        return invalidParameter;
 
     SoLoud::result result = soloud.seek(handle, time);
     return (PlayerErrors)result;
