@@ -28,8 +28,6 @@ It provides player, basic capture from microphone, 3D audio and more.
 
 🎚️ Enables **real-time** retrieval of audio **FFT** and **wave data**
 
-<a href="https://www.buymeacoffee.com/marcobavag" target="_blank"><img align="left" src="https://cdn.buymeacoffee.com/buttons/default-orange.png" alt="Buy Me A Coffee" height="41" width="174"></a><br/><br/>
-
 ## Overview
 
 The ***flutter_soloud*** plugin utilizes a [forked](https://github.com/alnitak/soloud) repository of [SoLoud](https://github.com/jarikomppa/soloud), where the [miniaudio](https://github.com/mackron/miniaudio) audio backend has been updated and is located in src/soloud/src/backend/miniaudio
