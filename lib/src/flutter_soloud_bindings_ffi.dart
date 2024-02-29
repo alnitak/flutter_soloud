@@ -506,7 +506,7 @@ class FlutterSoLoudFfi {
       _setFftSmoothingPtr.asFunction<void Function(double)>();
 
   /// Return in [samples] a 512 float array.
-  /// The first 256 floats represent the FFT frequencies data [0.0~1.0].
+  /// The first 256 floats represent the FFT frequencies data [>=0.0].
   /// The other 256 floats represent the wave data (amplitude) [-1.0~1.0].
   ///
   /// [samples] should be allocated and freed in dart side

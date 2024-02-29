@@ -174,7 +174,7 @@ The `AudioIsolate` instance has the duty of receiving commands and sending them 
 | **setVisualizationEnabled**| -| `bool` enabled| Enable or disable getting data from `getFft`, `getWave`, `getAudioTexture*`.|
 | **getFft**| -| `Pointer<Float>` fft| Returns a 256 float array containing FFT data.|
 | **getWave**| -| `Pointer<Float>` wave| Returns a 256 float array containing wave data (magnitudes).|
-| **getAudioTexture**| -| `Pointer<Float>` samples| Returns in `samples` a 512 float array.<br/>- The first 256 floats represent the FFT frequencies data [0.0~1.0].<br/>- The other 256 floats represent the wave data (amplitude) [-1.0~1.0].|
+| **getAudioTexture**| -| `Pointer<Float>` samples| Returns in `samples` a 512 float array.<br/>- The first 256 floats represent the FFT frequencies data [>=0.0].<br/>- The other 256 floats represent the wave data (amplitude) [-1.0~1.0].|
 | **getAudioTexture2D**| -| `Pointer<Pointer<Float>>` samples| Return a floats matrix of 256x512.<br/>Every row is composed of 256 FFT values plus 256 wave data.<br/>Every time is called, a new row is stored in the first row and all the previous rows are shifted up (the last will be lost).|
 | **setFftSmoothing**| -| `double` smooth| Smooth FFT data.<br/>When new data is read and the values are decreasing, the new value will be decreased with an amplitude between the old and the new value.<br/> This will result in a less shaky visualization.<br/>0 = no smooth<br/>1 = full smooth<br/>The new value is calculated with:<br/>`newFreq = smooth * oldFreq + (1 - smooth) * newFreq`|
 
