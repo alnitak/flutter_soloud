@@ -1,5 +1,5 @@
 #### 1.2.5 (2 Mar 2024)
-- updated mp3, flac and wav decoder
+- updated mp3, flac and wav decoders
 - updated miniaudio to 0.11.21
 - fixed doppler effect in 3D audio example
 
