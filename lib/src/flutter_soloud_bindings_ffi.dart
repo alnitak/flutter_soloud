@@ -816,7 +816,7 @@ class FlutterSoLoudFfi {
     );
     final pNames = <String>[];
     for (var i = 0; i < paramsCount.value; i++) {
-      print('PARAMS NAME $i ${names.elementAt(i)}   '
+      print('PARAMS NAME $i ${names + i}   '
           '${names[i].cast<Utf8>().toDartString()}    '
           'names[i]: ${names[i].address.toRadixString(16)}');
       pNames.add(names[i].cast<Utf8>().toDartString());
