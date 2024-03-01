@@ -102,4 +102,3 @@ enum WaveForm {
   /// "Fourier" saw wave; less noisy
   fSaw,
 }
-
