@@ -879,9 +879,8 @@ class FlutterSoLoudFfi {
   }
 
   late final _setFxParamsPtr = _lookup<
-          ffi
-          .NativeFunction<ffi.Int32 Function(ffi.Int32, ffi.Int, ffi.Float)>>(
-      'setFxParams');
+      ffi.NativeFunction<
+          ffi.Int32 Function(ffi.Int32, ffi.Int, ffi.Float)>>('setFxParams');
   late final _setFxParams =
       _setFxParamsPtr.asFunction<int Function(int, int, double)>();
 
