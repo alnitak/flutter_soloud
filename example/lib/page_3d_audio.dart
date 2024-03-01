@@ -203,9 +203,9 @@ class _Audio3DWidgetState extends State<Audio3DWidget>
 
   void updatePos(Offset delta, Duration timeStamp) {
     velX =
-        100 * delta.dx / (timeStamp.inMilliseconds - precTime.inMilliseconds);
+        -100 * delta.dx / (timeStamp.inMilliseconds - precTime.inMilliseconds);
     velY =
-        100 * delta.dy / (timeStamp.inMilliseconds - precTime.inMilliseconds);
+        -100 * delta.dy / (timeStamp.inMilliseconds - precTime.inMilliseconds);
     if (widget.sound != null) {
       SoLoud().set3dSourceParameters(
         widget.sound!.handle.first,
