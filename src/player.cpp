@@ -123,7 +123,7 @@ PlayerErrors Player::loadFile(
     else {
         sounds.back().get()->sound = std::make_unique<SoLoud::WavStream>();
         sounds.back().get()->soundType = TYPE_WAVSTREAM;
-        result = static_cast<SoLoud::WavStream*>(sounds.back().get()->sound.get())->loadToMem(completeFileName.c_str());
+        result = static_cast<SoLoud::WavStream*>(sounds.back().get()->sound.get())->load(completeFileName.c_str());
     }
 
     if (result != SoLoud::SO_NO_ERROR)

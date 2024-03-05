@@ -25,8 +25,6 @@ freely, subject to the following restrictions:
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <chrono>
-#include <atomic>
 
 #include "soloud.h"
 #include "dr_flac.h"
@@ -342,19 +340,6 @@ namespace SoLoud
 		return aSamplesToRead;
 	}
 
-	//
-	// When using TYPE_WAVSTREAM for mp3 and seeking backward,
-	// dr_mp3.h uses `drmp3_seek_to_pcm_frame__brute_force()` function which
-	// move to the start of the stream and then move forward to [time]. This
-	// implies some lag and queue subsequent seeks request if the previous seek is not yet
-	// complete (especially when using a slider) impacting the main UI thread.
-	// To overcome this, a time check is performed: if a seek request comes
-	// before N ms, just don't perform the seek.
-	// BUT to have no lags, please use TYPE_WAV instead if possible!
-	std::atomic<double> newMp3Pos;
-	std::clock_t seekAtClock;
-	std::clock_t lastSeekReqClock;
-
 	result WavStreamInstance::seek(double aSeconds, float *mScratch, unsigned int mScratchSize)
 	{
 		if (mCodec.mOgg)
@@ -379,25 +364,45 @@ namespace SoLoud
 				mStreamPosition = float(pos / mBaseSamplerate);
 				return 0;
 			case WAVSTREAM_MP3:
-				// if seeking forward do it in the simple way
-				if (pos > mOffset)
-				{
-					drmp3_seek_to_pcm_frame(mCodec.mMp3, pos);
-					mOffset = pos;
-					mStreamPosition = float(pos / mBaseSamplerate);
-					return 0;
-				}
+				// Seeking an mp3 is disabled with due to the following considerations.
 
-				// if seeking backward, skip the request if called before 10(?) ms sice the last one
-				lastSeekReqClock = std::clock();
-				if (1000.0 * (lastSeekReqClock - seekAtClock) / CLOCKS_PER_SEC <= 10)
-				{
-					return 0;
-				}
-				drmp3_seek_to_pcm_frame(mCodec.mMp3, pos);
-				mOffset = pos;
-				mStreamPosition = float(pos / mBaseSamplerate);
-				seekAtClock = std::clock();
+				//
+				// When using TYPE_WAVSTREAM for mp3 and seeking backward,
+				// dr_mp3.h uses `drmp3_seek_to_pcm_frame__brute_force()` function which
+				// move to the start of the stream and then move forward to [time]. This
+				// implies some lag and queue subsequent seeks request if the previous seek is not yet
+				// complete (especially when using a slider) impacting the main UI thread.
+				// To overcome this, a timer check is performed: if a seek request comes
+				// before N ms, just just update the seek position when the timer ticks.
+				// BUT to have no lags, please use TYPE_WAV instead if possible!
+
+				// If seeking forward do it in the simple way. It has some lags anyways
+				// when the seeking point is far from current position.
+				// if (pos > mOffset && !timer.isActive())
+				// {
+				// 	drmp3_seek_to_pcm_frame(mCodec.mMp3, pos);
+				// 	mOffset = pos;
+				// 	mStreamPosition = float(pos / mBaseSamplerate);
+				// 	return 0;
+				// }
+
+				// // if seeking backward, skip the request if called before 10(?) ms sice the last one
+				// if (timer.isActive()) {
+				// 	posMutex.lock();
+				// 	newPos = pos;
+				// 	posMutex.unlock();
+				// } else {
+				// 	// timer.stop();
+				// 	timer.start(50, [this]() {
+				// 		posMutex.lock();
+				// 		drmp3_seek_to_pcm_frame(this->mCodec.mMp3, newPos);
+				// 		this->mOffset = newPos;
+				// 		this->mStreamPosition = float(newPos / this->mBaseSamplerate);
+				// 		posMutex.unlock();
+				// 	});
+				// }
+
+				
 				return 0;
 			case WAVSTREAM_WAV:
 				drwav_seek_to_pcm_frame(mCodec.mWav, pos);

@@ -47,8 +47,8 @@ class FlutterCaptureFfi {
 
     int ndev = n_devices.value;
     for (int i = 0; i < ndev; i++) {
-      var s = devices.elementAt(i).value.ref.name.cast<Utf8>().toDartString();
-      var n = devices.elementAt(i).value.ref.isDefault;
+      var s = (devices + i).value.ref.name.cast<Utf8>().toDartString();
+      var n = (devices + i).value.ref.isDefault;
       ret.add(CaptureDevice(s, n == 1 ? true : false));
     }
 

@@ -561,18 +561,17 @@ class FlutterSoLoudFfi {
   /// [handle] the sound handle
   /// Returns [PlayerErrors.noError] if success
   /// 
-  /// NOTE: When loading a sound with `loadIntoMem`=false (aka Soloud::wavStream)
-  /// for mp3 and seeking backward,
-	/// dr_mp3.h uses `drmp3_seek_to_pcm_frame__brute_force()` function which
-	/// move to the start of the stream and then move forward to [time]. This
-	/// implies some lag and queue subsequent seeks request if the previous seek is
-	/// not yet complete (especially when using a slider) impacting 
-  /// the main UI thread.
-	/// To overcome this, a time check is performed: if a seek request comes
-	/// before N ms, just don't perform the seek.
+  /// NOTE: when seeking an mp3 file loaded using `loadIntoMem`=false
+  /// the seek operation is not performed due to lags. This occurs because the 
+  /// mp3 codec must compute each frame length to gain a new position.
+  /// The problem is explained in souloud_wavstream.cpp 
+  /// in `WavStreamInstance::seek` function.
+  ///
   /// This mode is useful ie for background music, not for a music player
-  /// where a seek slider is a must.
-	/// BUT to have no lags, please use `loadIntoMem`=true instead!
+  /// where a seek slider for mp3s is a must.
+  /// If you need seeking mp3, please, use `loadIntoMem`=true instead 
+  /// or other audio formats!
+  ///
   int seek(int handle, double time) {
     return _seek(handle, time);
   }
@@ -841,7 +840,7 @@ class FlutterSoLoudFfi {
     );
     final pNames = <String>[];
     for (var i = 0; i < paramsCount.value; i++) {
-      print('PARAMS NAME $i ${names.elementAt(i)}   '
+      print('PARAMS NAME $i ${names + i}   '
           '${names[i].cast<Utf8>().toDartString()}    '
           'names[i]: ${names[i].address.toRadixString(16)}');
       pNames.add(names[i].cast<Utf8>().toDartString());

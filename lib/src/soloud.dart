@@ -329,7 +329,7 @@ class SoLoud {
   /// the audio is short, ie for game sounds, mainly used to prevent
   /// gaps or lags when starting a sound (less CPU, more memory allocated).
   /// If false, Soloud::wavStream will be used and the audio data is loaded 
-  /// from the given file when needed (more CPU less memory allocated).
+  /// from the given file when needed (more CPU, less memory allocated).
   /// See the [seek] note problem when using [loadIntoMem] = false
   /// Default is true.
   /// [completeFileName] the complete file path
@@ -756,23 +756,21 @@ class SoLoud {
     return (error: PlayerErrors.noError, length: ret);
   }
 
-  /// Seek playing in seconds
-  ///
-  /// [time] the time to seek
+  /// Seek playing in [time] seconds
+  /// [time]
   /// [handle] the sound handle
   /// Returns [PlayerErrors.noError] if success
   /// 
-  /// NOTE: When loading a sound with `loadIntoMem`=false for mp3 
-  /// and seeking backward, the [seek] function firstly
-  /// move to the start of the stream and then move forward to [time]. This
-  /// implies some lag and queue subsequent seeks request if the previous seek is
-  /// not yet complete (especially when using a slider) impacting 
-  /// the main UI thread.
-  /// To overcome this, a time check is performed: if a seek request comes
-  /// before N ms, just don't perform the seek.
-  /// This mode is useful ie for background music, not for a music player
-  /// where a seek slider is a must.
-  /// BUT to have no lags, please use `loadIntoMem`=true instead!
+  /// NOTE: when seeking an mp3 file loaded using `loadIntoMem`=false
+  /// the seek operation is not performed due to lags. This occurs because the 
+  /// mp3 codec must compute each frame length to gain a new position.
+  /// The problem is explained in souloud_wavstream.cpp 
+  /// in `WavStreamInstance::seek` function.
+  ///
+  /// This mode is useful ie for background music, not ie for a music player
+  /// where a seek slider for mp3s is a must.
+  /// If you need seeking mp3, please, use `loadIntoMem`=true instead 
+  /// or other audio formats!
   ///
   PlayerErrors seek(int handle, double time) {
     if (!isPlayerInited) {

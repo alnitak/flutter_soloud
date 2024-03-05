@@ -185,6 +185,10 @@ public:
     /// @param handle the sound handle.
     /// @param time the time to seek in seconds.
     /// @return Returns [PlayerErrors.SO_NO_ERROR] if success.
+    ///
+    /// WARNING: when seeking an mp3 file loaded using `loadIntoMem`=false
+    /// the seek operation is not performed due to the problem explained
+    /// in souloud_wavstream.cpp in `WavStreamInstance::seek` function.
     PlayerErrors seek(SoLoud::handle handle, float time);
 
     /// @brief get current sound position in seconds.
