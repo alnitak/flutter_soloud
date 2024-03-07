@@ -364,45 +364,15 @@ namespace SoLoud
 				mStreamPosition = float(pos / mBaseSamplerate);
 				return 0;
 			case WAVSTREAM_MP3:
-				// Seeking an mp3 is disabled with due to the following considerations.
-
-				//
 				// When using TYPE_WAVSTREAM for mp3 and seeking backward,
 				// dr_mp3.h uses `drmp3_seek_to_pcm_frame__brute_force()` function which
 				// move to the start of the stream and then move forward to [time]. This
 				// implies some lag and queue subsequent seeks request if the previous seek is not yet
 				// complete (especially when using a slider) impacting the main UI thread.
-				// To overcome this, a timer check is performed: if a seek request comes
-				// before N ms, just just update the seek position when the timer ticks.
-				// BUT to have no lags, please use TYPE_WAV instead if possible!
-
-				// If seeking forward do it in the simple way. It has some lags anyways
-				// when the seeking point is far from current position.
-				// if (pos > mOffset && !timer.isActive())
-				// {
-				// 	drmp3_seek_to_pcm_frame(mCodec.mMp3, pos);
-				// 	mOffset = pos;
-				// 	mStreamPosition = float(pos / mBaseSamplerate);
-				// 	return 0;
-				// }
-
-				// // if seeking backward, skip the request if called before 10(?) ms sice the last one
-				// if (timer.isActive()) {
-				// 	posMutex.lock();
-				// 	newPos = pos;
-				// 	posMutex.unlock();
-				// } else {
-				// 	// timer.stop();
-				// 	timer.start(50, [this]() {
-				// 		posMutex.lock();
-				// 		drmp3_seek_to_pcm_frame(this->mCodec.mMp3, newPos);
-				// 		this->mOffset = newPos;
-				// 		this->mStreamPosition = float(newPos / this->mBaseSamplerate);
-				// 		posMutex.unlock();
-				// 	});
-				// }
-
-				
+				// To have no lags, please use TYPE_WAV instead if possible!
+				drmp3_seek_to_pcm_frame(mCodec.mMp3, pos);
+				mOffset = pos;
+				mStreamPosition = float(pos / mBaseSamplerate);
 				return 0;
 			case WAVSTREAM_WAV:
 				drwav_seek_to_pcm_frame(mCodec.mWav, pos);

@@ -1,7 +1,7 @@
-#### 1.X.Y
-- added `loadIntoMem` property to `Soloud.loadFile()` to prevent to load the whole audio data into memory:
-    - *true* by default. Means less CPU, more memory allocated.
-    - *false* means more CPU, less memory allocated. By seeking backward an mp3 some lags can occurs, especially when using a slider.
+#### 1.2.xx
+- added `mode` property to `Soloud.loadFile()` and `SoloudTools.loadFrom*` to prevent to load the whole audio data into memory:
+    - *LoadMode.memory* by default. Means less CPU, more memory allocated.
+    - *LoadMode.disk* means more CPU, less memory allocated. Lags can occurs while seeking MP3s, especially when using a slider..
 
 #### 1.2.4
 fixed compilation on Windows

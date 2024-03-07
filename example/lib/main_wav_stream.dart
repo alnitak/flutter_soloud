@@ -4,27 +4,29 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 
-/// Example using Soloud::WavStream.
+/// Example to test `mode: LoadMode.disk` parameter to seek all audio files
+/// with a single slider.
+/// 
 /// When using `SoloudTools.loadFrom*()` you can choose to load the audio
 /// as a stream. This means that the audio is decoded when needed when
-/// using `loadIntoMem: false` parameter. By default is `true`, hence the audio
-/// file is loaded as raw data into memory.
+/// using `mode: LoadMode.disk` parameter. By default `LoadMode.disk` is used, 
+/// hence the audio file is loaded as raw data into memory.
 /// 
-/// `loadIntoMem: true` this will be useful when the audio is short or when
+/// `mode: LoadMode.memory` this will be useful when 
 /// loading few audio files, ie for game sounds, mainly used to prevent
-/// gaps or lags when starting a sound (less CPU, more memory allocated).
-/// `loadIntoMem: false` the audio data is loaded from the given
+/// gaps or lags when starting/seeking a sound (less CPU, more memory allocated).
+/// `mode: LoadMode.disk` the audio data is loaded from the given
 /// file when needed (more CPU, less memory allocated).
-/// The drawback is seeking: when using mp3s the seek operation is not 
-/// performed due to lags. This occurs because the mp3 codec must compute 
-/// each frame length to gain a new position.
+/// The drawback is seeking: when using MP3s the seek operation is
+/// performed but there will be delays. This occurs because
+/// the MP3 codec must compute each frame length to gain a new position.
 /// This mode is useful ie for background music, not for a music player
-/// where a seek slider for mp3s is a must.
-/// If you need seeking mp3, please, use `loadIntoMem`=true instead, 
+/// where a seek slider for MP3s is a must.
+/// If you need seeking MP3s, please, use `mode: LoadMode.memory` instead, 
 /// or other audio formats!
 /// 
-/// Please, in the the following example, add as many `await addSound('');`
-/// you wish in the `start()` method.
+/// Please, in the the following example, add as many 
+/// `await addSound('audio/path');` you wish in the `start()` method.
 
 
 
@@ -84,8 +86,9 @@ class _MyHomePageState extends State<MyHomePage> {
     sounds.clear();
     seekPos.value = 0;
 
-    /// Add here the complete audio file path
-    await addSound('/complete/audio/file/name');
+    /// Add here the complete audio file path. 
+    /// MP3s will have lags problem when seeking
+    await addSound('');
 
     for (final s in sounds) {
       await SoLoud().play(s);
@@ -101,7 +104,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
   Future<void> addSound(String file) async {
     var l = 0.0;
-    final s = await SoloudTools.loadFromFile(file, loadIntoMem: false);
+    final s = await SoloudTools.loadFromFile(file, mode: LoadMode.disk);
     sounds.add(s!);
     l = SoLoud().getLength(s).length;
     if (l < minLength) minLength = l;

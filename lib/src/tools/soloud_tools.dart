@@ -16,7 +16,7 @@ class SoloudTools {
   ///
   static Future<SoundProps?> loadFromAssets(
     String path, {
-    bool loadIntoMem = true,
+    LoadMode mode = LoadMode.memory,
   }) async {
     final f = await AssetsManager.getAssetFile(path);
     if (f == null) {
@@ -24,18 +24,18 @@ class SoloudTools {
       return null;
     }
 
-    return _finallyLoadFile(f, loadIntoMem: loadIntoMem);
+    return _finallyLoadFile(f, mode: mode);
   }
 
   /// Loads an audio file from the local file system.
   ///
   static Future<SoundProps?> loadFromFile(
     String path, {
-    bool loadIntoMem = true,
+    LoadMode mode = LoadMode.memory,
   }) async {
     final file = File(path);
     if (file.existsSync()) {
-      return _finallyLoadFile(file, loadIntoMem: loadIntoMem);
+      return _finallyLoadFile(file, mode: mode);
     } else {
       debugPrint('Load from file failed: File does not exist');
       return null;
@@ -46,7 +46,7 @@ class SoloudTools {
   ///
   static Future<SoundProps?> loadFromUrl(
     String url, {
-    bool loadIntoMem = true,
+    LoadMode mode = LoadMode.memory,
   }) async {
     try {
       final tempDir = await getTemporaryDirectory();
@@ -68,7 +68,7 @@ class SoloudTools {
           return null;
         }
       }
-      return _finallyLoadFile(file, loadIntoMem: loadIntoMem);
+      return _finallyLoadFile(file, mode: mode);
     } catch (e) {
       debugPrint('Error while fetching file: $e');
       return null;
@@ -79,9 +79,9 @@ class SoloudTools {
   ///
   static Future<SoundProps?> _finallyLoadFile(
     File file, {
-    bool loadIntoMem = true,
+    LoadMode mode = LoadMode.memory,
   }) async {
-    final result = await SoLoud().loadFile(file.path, loadIntoMem: loadIntoMem);
+    final result = await SoLoud().loadFile(file.path, mode: mode);
     if (!(result.error == PlayerErrors.noError ||
         result.error == PlayerErrors.fileAlreadyLoaded)) {
       return null;

@@ -103,3 +103,13 @@ enum WaveForm {
   fSaw,
 }
 
+/// The way an audio file is loaded.
+enum LoadMode {  
+  /// Load and decompress the audio file into RAM.
+  /// Less CPU, more memory allocated, low latency.
+  memory,  
+
+  /// Keep the file on disk and only load chunks as needed.
+  /// More CPU, less memory allocated, seeking lags with MP3s.
+  disk,  
+}  

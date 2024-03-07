@@ -27,9 +27,6 @@ freely, subject to the following restrictions:
 
 #include <stdio.h>
 #include <chrono>
-// #include <atomic>
-// #include <mutex>
-// #include "timer.h"
 #include "soloud.h"
 
 struct stb_vorbis;
@@ -63,10 +60,6 @@ namespace SoLoud
 		unsigned int mOggFrameSize;
 		unsigned int mOggFrameOffset;
 		float **mOggOutputs;
-	
-		// Timer timer;
-		// std::mutex posMutex;
-		// std::atomic<int> newPos;
 		
 	public:
 		WavStreamInstance(WavStream *aParent);
