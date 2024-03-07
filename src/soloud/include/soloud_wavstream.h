@@ -26,6 +26,7 @@ freely, subject to the following restrictions:
 #define SOLOUD_WAVSTREAM_H
 
 #include <stdio.h>
+#include <chrono>
 #include "soloud.h"
 
 struct stb_vorbis;
@@ -59,6 +60,7 @@ namespace SoLoud
 		unsigned int mOggFrameSize;
 		unsigned int mOggFrameOffset;
 		float **mOggOutputs;
+		
 	public:
 		WavStreamInstance(WavStream *aParent);
 		virtual unsigned int getAudio(float *aBuffer, unsigned int aSamplesToRead, unsigned int aBufferSize);

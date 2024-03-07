@@ -37,7 +37,7 @@ class SoundProps {
   // TODO(me): make marker keys time able to trigger an event
   List<double> keys = [];
 
-  /// the user can listed ie when a sound ends or key events (TODO)
+  /// the user can listen ie when a sound ends or key events (TODO)
   StreamController<StreamSoundEvent> soundEvents = StreamController.broadcast();
 
   @override
@@ -148,10 +148,15 @@ class SoLoud {
       } else {
         debugIsolates('******** MAIN EVENT data: $data');
         if (data is StreamSoundEvent) {
+          /// TODO: replace with pkg:logger
+          debugPrint('@@@@@@@@@@@ SOUND EVENT: ${data.event}  '
+              'handle: ${data.handle}  '
+              'sound: ${data.sound}');
           /// find the sound which received the [SoundEvent] and...
           final sound = activeSounds.firstWhere(
             (sound) => sound.soundHash == data.sound.soundHash,
             orElse: () {
+              /// TODO: replace with pkg:logger
               debugPrint('Receive an event for sound with handle: '
                   '${data.handle} but there is not that sound! '
                   'Call the Police!');
@@ -324,24 +329,32 @@ class SoLoud {
 
   /// Load a new sound to be played once or multiple times later
   ///
-  /// [completeFileName] the complete file path
-  /// Returns PlayerErrors.noError if success and a new sound
+  /// [completeFileName] the complete file path.
+  /// [LoadMode] if `LoadMode.memory`, the whole uncompressed RAW PCM 
+  /// audio is loaded into memory. Used to prevent gaps or lags
+  /// when seeking/starting a sound (less CPU, more memory allocated).
+  /// If `LoadMode.disk` is used, the audio data is loaded 
+  /// from the given file when needed (more CPU, less memory allocated).
+  /// See the [seek] note problem when using [LoadMode] = `LoadMode.disk`.
+  /// Default is `LoadMode.memory`.
+  /// Returns PlayerErrors.noError if success and a new sound.
   ///
   Future<({PlayerErrors error, SoundProps? sound})> loadFile(
-    String completeFileName,
-  ) async {
+    String completeFileName, {
+    LoadMode mode = LoadMode.memory,
+  }) async {
     if (!isPlayerInited) {
       return (error: PlayerErrors.engineNotInited, sound: null);
     }
     _mainToIsolateStream?.send(
       {
         'event': MessageEvents.loadFile,
-        'args': (completeFileName: completeFileName),
+        'args': (completeFileName: completeFileName, mode: mode),
       },
     );
     final ret = (await _waitForEvent(
       MessageEvents.loadFile,
-      (completeFileName: completeFileName),
+      (completeFileName: completeFileName, mode: mode),
     )) as ({PlayerErrors error, SoundProps? sound});
     if (ret.error == PlayerErrors.noError) {
       activeSounds.add(ret.sound!);
@@ -747,11 +760,21 @@ class SoLoud {
     return (error: PlayerErrors.noError, length: ret);
   }
 
-  /// Seek playing in seconds
-  ///
-  /// [time] the time to seek
+  /// Seek playing in [time] seconds
+  /// [time]
   /// [handle] the sound handle
   /// Returns [PlayerErrors.noError] if success
+  /// 
+  /// NOTE: when seeking an MP3 file loaded using `mode`=`LoadMode.disk` the
+  /// seek operation is performed but there will be delays. This occurs because
+  /// the MP3 codec must compute each frame length to gain a new position.
+  /// The problem is explained in souloud_wavstream.cpp 
+  /// in `WavStreamInstance::seek` function.
+  ///
+  /// This mode is useful ie for background music, not for a music player
+  /// where a seek slider for MP3s is a must.
+  /// If you need to seek MP3s without lags, please, use
+  /// `mode`=`LoadMode.memory` instead or other supported audio formats!
   ///
   PlayerErrors seek(int handle, double time) {
     if (!isPlayerInited) {

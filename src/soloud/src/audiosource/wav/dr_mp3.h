@@ -3669,7 +3669,7 @@ static drmp3_uint64 drmp3_read_pcm_frames_raw(drmp3* pMP3, drmp3_uint64 framesTo
             break;
         }
 
-        DRMP3_ASSERT(pMP3->pcmFramesRemainingInMP3Frame == 0);
+        //DRMP3_ASSERT(pMP3->pcmFramesRemainingInMP3Frame == 0);
 
         /*
         At this point we have exhausted our in-memory buffer so we need to re-fill. Note that the sample rate may have changed

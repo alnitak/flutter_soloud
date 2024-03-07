@@ -75,13 +75,23 @@ extern "C"
     /// Load a new sound to be played once or multiple times later
     ///
     /// [completeFileName] the complete file path
+    /// [loadIntoMem] if true Soloud::wav will be used which loads
+    /// all audio data into memory. This will be useful when
+    /// the audio is short, ie for game sounds, mainly used to prevent
+    /// gaps or lags when starting a sound (less CPU, more memory allocated).
+    /// If false, Soloud::wavStream will be used and the audio data is loaded 
+    /// from the given file when needed (more CPU, less memory allocated).
+    /// See the [seek] note problem when using [loadIntoMem] = false
     /// [hash] return hash of the sound
     /// Returns [PlayerErrors.noError] if success
-    FFI_PLUGIN_EXPORT enum PlayerErrors loadFile(char *completeFileName, unsigned int *hash)
+    FFI_PLUGIN_EXPORT enum PlayerErrors loadFile(
+        char *completeFileName, 
+        bool loadIntoMem, 
+        unsigned int *hash)
     {
         if (!player.isInited())
             return backendNotInited;
-        return (PlayerErrors)player.loadFile(completeFileName, *hash);
+        return (PlayerErrors)player.loadFile(completeFileName, loadIntoMem, *hash);
     }
 
     /// Load a new waveform to be played once or multiple times later
@@ -360,7 +370,7 @@ extern "C"
     }
 
     /// Return in [samples] a 512 float array.
-    /// The first 256 floats represent the FFT frequencies data [0.0~1.0].
+    /// The first 256 floats represent the FFT frequencies data [>=0.0].
     /// The other 256 floats represent the wave data (amplitude) [-1.0~1.0].
     ///
     /// [samples] should be allocated and freed in dart side
@@ -418,6 +428,18 @@ extern "C"
     /// [time]
     /// [handle] the sound handle
     /// Returns [PlayerErrors.noError] if success
+    /// 
+    /// NOTE: when seeking an mp3 file loaded using `loadIntoMem`=false
+    /// the seek operation is not performed due to lags. This occurs because the 
+    /// mp3 codec must compute each frame length to gain a new position.
+    /// The problem is explained in souloud_wavstream.cpp
+    /// in `WavStreamInstance::seek` function.
+    ///
+    /// This mode is useful ie for background music, not for a music player
+    /// where a seek slider for mp3s is a must.
+    /// If you need seeking mp3, please, use `loadIntoMem`=true instead 
+    /// or other audio formats!
+    ///
     FFI_PLUGIN_EXPORT enum PlayerErrors seek(unsigned int handle, float time)
     {
         if (!player.isInited())
@@ -894,9 +916,9 @@ extern "C"
     }
 
     /////////// JUST FOR TEST //////////
-    SoLoud::Wav sound1;
-    SoLoud::Wav sound2;
-    SoLoud::Soloud soloud;
+    // SoLoud::Wav sound1;
+    // SoLoud::Wav sound2;
+    // SoLoud::Soloud soloud;
     // Basicwave basicWave;
     FFI_PLUGIN_EXPORT void test()
     {
@@ -914,9 +936,9 @@ extern "C"
         // player.play("/home/deimos/5/01 - Theme From Farscape.mp3", handle);
         // player.play("/home/deimos/5/Music/ROSS/DANCE/Alphaville - Big In Japan (Original Version).mp3", handle);
 
-        unsigned int hash;
-        player.loadWaveform(SoLoud::Soloud::WAVE_SQUARE, true, 0.25f, 1.0f, hash);
-        player.play(hash);
+        // unsigned int hash;
+        // player.loadWaveform(SoLoud::Soloud::WAVE_SQUARE, true, 0.25f, 1.0f, hash);
+        // player.play(hash);
     }
 
 #ifdef __cplusplus

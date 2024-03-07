@@ -14,22 +14,28 @@ import 'package:path_provider/path_provider.dart';
 class SoloudTools {
   /// Loads an audio file from the assets folder.
   ///
-  static Future<SoundProps?> loadFromAssets(String path) async {
+  static Future<SoundProps?> loadFromAssets(
+    String path, {
+    LoadMode mode = LoadMode.memory,
+  }) async {
     final f = await AssetsManager.getAssetFile(path);
     if (f == null) {
       debugPrint('Load from assets failed: Sound is null');
       return null;
     }
 
-    return _finallyLoadFile(f);
+    return _finallyLoadFile(f, mode: mode);
   }
 
   /// Loads an audio file from the local file system.
   ///
-  static Future<SoundProps?> loadFromFile(String path) async {
+  static Future<SoundProps?> loadFromFile(
+    String path, {
+    LoadMode mode = LoadMode.memory,
+  }) async {
     final file = File(path);
     if (file.existsSync()) {
-      return _finallyLoadFile(file);
+      return _finallyLoadFile(file, mode: mode);
     } else {
       debugPrint('Load from file failed: File does not exist');
       return null;
@@ -38,7 +44,10 @@ class SoloudTools {
 
   /// Fetches an audio file from a URL and loads it into the memory.
   ///
-  static Future<SoundProps?> loadFromUrl(String url) async {
+  static Future<SoundProps?> loadFromUrl(
+    String url, {
+    LoadMode mode = LoadMode.memory,
+  }) async {
     try {
       final tempDir = await getTemporaryDirectory();
       final tempPath = tempDir.path;
@@ -59,7 +68,7 @@ class SoloudTools {
           return null;
         }
       }
-      return _finallyLoadFile(file);
+      return _finallyLoadFile(file, mode: mode);
     } catch (e) {
       debugPrint('Error while fetching file: $e');
       return null;
@@ -68,8 +77,11 @@ class SoloudTools {
 
   /// Let SoLoud try to load the file
   ///
-  static Future<SoundProps?> _finallyLoadFile(File file) async {
-    final result = await SoLoud().loadFile(file.path);
+  static Future<SoundProps?> _finallyLoadFile(
+    File file, {
+    LoadMode mode = LoadMode.memory,
+  }) async {
+    final result = await SoLoud().loadFile(file.path, mode: mode);
     if (!(result.error == PlayerErrors.noError ||
         result.error == PlayerErrors.fileAlreadyLoaded)) {
       return null;

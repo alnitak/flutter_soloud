@@ -155,7 +155,7 @@ The `AudioIsolate` instance has the duty of receiving commands and sending them 
 | **isIsolateRunning**| bool| -| Return true if the audio isolate is running.|
 | **initEngine**| PlayerErrors| -| Initialize the audio engine. Defaults are: Sample rate 44100, buffer 2048, and Miniaudio audio backend.|
 | **dispose**| -| -| Stop the audio engine.|
-| **loadFile**| ({PlayerErrors error, SoundProps? sound})| `String` fileName| Load a new sound to be played once or multiple times later.|
+| **loadFile**| ({PlayerErrors error, SoundProps? sound})|`String` fileName, <br/>`LoadMode` mode = LoadMode.memory| Load a new sound to be played once or multiple times later.<br/>If `mode = LoadMode.disk`, seek will have lags with MP3s.|
 | **play**| ({PlayerErrors error, SoundProps sound, int newHandle})| `int` soundHash, {<br/>`double` volume = 1,<br/>`double` pan = 0,<br/>`bool` paused = false,<br/>}| Play an already loaded sound identified by [sound].|
 | **speechText**| ({PlayerErrors error, SoundProps sound})| `String` textToSpeech| Speech from the given text.|
 | **pauseSwitch**| PlayerErrors| `int` handle| Pause or unpause an already loaded sound identified by [handle].|
@@ -166,7 +166,7 @@ The `AudioIsolate` instance has the duty of receiving commands and sending them 
 | **disposeSound**| PlayerErrors| `int` handle| Stop ALL handles of the already loaded sound identified by [soundHash] and dispose it.|
 | **setLooping**| -| `int` handle, `bool` enable| This function can be used to set a sample to play on repeat, instead of just playing once.|
 | **getLength**| ({PlayerErrors error, double length})| `int` soundHash| Get the sound length in seconds.|
-| **seek**| PlayerErrors| `int` handle, `double` time| Seek playing in seconds.|
+| **seek**| PlayerErrors| `int` handle, `double` time| Seek playing in seconds.<br/>WARNING: when loading an MP3 file with `mode = LoadMode.disk`, the seek is laggy. This should not happens with FLACs, OGGs and WAVs.|
 | **getPosition**| ({PlayerErrors error, double position})| `int` handle| Get the current sound position in seconds.|
 | **getVolume**| ({PlayerErrors error, double volume})| `int` handle| Get current [handle] volume.|
 | **setVolume**| ({PlayerErrors error, double volume})| `int` handle, `double` volume| set  [handle] volume.|
@@ -174,7 +174,7 @@ The `AudioIsolate` instance has the duty of receiving commands and sending them 
 | **setVisualizationEnabled**| -| `bool` enabled| Enable or disable getting data from `getFft`, `getWave`, `getAudioTexture*`.|
 | **getFft**| -| `Pointer<Float>` fft| Returns a 256 float array containing FFT data.|
 | **getWave**| -| `Pointer<Float>` wave| Returns a 256 float array containing wave data (magnitudes).|
-| **getAudioTexture**| -| `Pointer<Float>` samples| Returns in `samples` a 512 float array.<br/>- The first 256 floats represent the FFT frequencies data [0.0~1.0].<br/>- The other 256 floats represent the wave data (amplitude) [-1.0~1.0].|
+| **getAudioTexture**| -| `Pointer<Float>` samples| Returns in `samples` a 512 float array.<br/>- The first 256 floats represent the FFT frequencies data [>=0.0].<br/>- The other 256 floats represent the wave data (amplitude) [-1.0~1.0].|
 | **getAudioTexture2D**| -| `Pointer<Pointer<Float>>` samples| Return a floats matrix of 256x512.<br/>Every row is composed of 256 FFT values plus 256 wave data.<br/>Every time is called, a new row is stored in the first row and all the previous rows are shifted up (the last will be lost).|
 | **setFftSmoothing**| -| `double` smooth| Smooth FFT data.<br/>When new data is read and the values are decreasing, the new value will be decreased with an amplitude between the old and the new value.<br/> This will result in a less shaky visualization.<br/>0 = no smooth<br/>1 = full smooth<br/>The new value is calculated with:<br/>`newFreq = smooth * oldFreq + (1 - smooth) * newFreq`|
 
