@@ -393,6 +393,14 @@ This plugin uses the following structure:
 
 I have provided the necessary settings in the **.vscode** directory for debugging native C++ code on both Linux and Windows. To debug on Android, please use Android Studio and open the project located in the ***example/android*** directory. However, I am not familiar with the process of debugging native code on Mac and iOS.
 
+When debugging the package using the `example/` app, you might want to change
+the logging level to something more granular. For example, in `main()`:
+
+```dart
+// Capture even the finest log messages.
+Logger.root.level = Level.ALL;
+```
+
 #### Linux
 
 If you encounter any glitches, they might be caused by PulseAudio. To troubleshoot this issue, you can try disabling PulseAudio within the `linux/src.cmake` file. Look for the line `add_definitions(-DMA_NO_PULSEAUDIO)` and uncomment it (now it is the default behavior).
