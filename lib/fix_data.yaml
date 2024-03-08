@@ -1,0 +1,31 @@
+# This file helps `dart fix` (a.k.a. Quick Fix in IDEs) migrate client
+# code to newer versions of the package.
+#
+# For documentation about this file format,
+# see https://dart.dev/go/data-driven-fixes.
+#
+# Please add new fixes to the top of the file.
+
+version: 1
+
+transforms:
+  # SoLoud.startIsolate deprecation
+  - title: "Rename to 'initialize()'"
+    date: 2024-03-08
+    element:
+      uris: [ 'flutter_soloud.dart', 'package:flutter_soloud/flutter_soloud.dart' ]
+      method: 'startIsolate'
+      inClass: 'SoLoud'
+    changes:
+      - kind: 'rename'
+        newName: 'initialize'
+  # SoLoud.stopIsolate deprecation
+  - title: "Rename to 'dispose()'"
+    date: 2024-03-08
+    element:
+      uris: [ 'flutter_soloud.dart', 'package:flutter_soloud/flutter_soloud.dart' ]
+      method: 'stopIsolate'
+      inClass: 'SoLoud'
+    changes:
+      - kind: 'rename'
+        newName: 'dispose'

@@ -24,6 +24,9 @@ dependencies:
   flutter_soloud:
     path: ../
 
+  #https://pub.dev/packages/logging
+  logging: ^1.0.0
+
   #https://pub.dev/packages/path_provider
   path_provider: ^2.0.15
 

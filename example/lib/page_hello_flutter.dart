@@ -7,6 +7,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
+import 'package:logging/logging.dart';
 
 /// Simple usecase of flutter_soloud plugin
 class PageHelloFlutterSoLoud extends StatefulWidget {
@@ -17,11 +18,13 @@ class PageHelloFlutterSoLoud extends StatefulWidget {
 }
 
 class _PageHelloFlutterSoLoudState extends State<PageHelloFlutterSoLoud> {
+  static final Logger _log = Logger('_PageHelloFlutterSoLoudState');
+
   SoundProps? currentSound;
 
   @override
   void dispose() {
-    SoLoud().stopIsolate();
+    SoLoud().dispose();
     SoLoud().stopCapture();
     super.dispose();
   }
@@ -82,11 +85,11 @@ class _PageHelloFlutterSoLoudState extends State<PageHelloFlutterSoLoud> {
   Future<void> play(String file) async {
     /// Start audio engine if not already
     if (!SoLoud().isIsolateRunning()) {
-      await SoLoud().startIsolate().then((value) {
+      await SoLoud().initialize().then((value) {
         if (value == PlayerErrors.noError) {
-          debugPrint('isolate started');
+          _log.info('engine started');
         } else {
-          debugPrint('isolate starting error: $value');
+          _log.severe('engine starting error: $value');
           return;
         }
       });

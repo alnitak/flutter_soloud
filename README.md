@@ -325,6 +325,44 @@ SoLoud().audioEvent.stream.listen(
 | **getCaptureAudioTexture2D**| CaptureErrors| - | Return a floats matrix of 256x512<br/>Every row are composed of 256 FFT values plus 256 of wave data.<br/>Every time is called, a new row is stored in the first row and all the previous rows are shifted up (the last one will be lost).|
 | **setCaptureFftSmoothing**| CaptureErrors| `double` smooth | Smooth FFT data.<br/>When new data is read and the values are decreasing, the new value will be decreased with an amplitude between the old and the new value. This will resul on a less shaky visualization.<br/><br/>[smooth] must be in the [0.0 ~ 1.0] range.<br/>0 = no smooth<br/>1 = full smooth<br/><br/>the new value is calculated with:<br/>newFreq = smooth * oldFreq + (1 - smooth) * newFreq|
 
+#### Logging
+
+The `flutter_soloud` package logs everything
+(from severe warnings to fine debug messages) using the standard 
+[`logging` package](https://pub.dev/packages/logging).
+
+See the example's `lib/main.dart` to see how to capture these logs.
+For example:
+
+```dart
+import 'dart:developer' as dev;
+
+void main() {
+  // Cut-off for messages. (Lower levels than INFO will be discarded.)
+  Logger.root.level = Level.FINE;
+  Logger.root.onRecord.listen((record) {
+    // Forward logs to the console.
+    dev.log(
+      record.message,
+      time: record.time,
+      level: record.level.value,
+      name: record.loggerName,
+      zone: record.zone,
+      error: record.error,
+      stackTrace: record.stackTrace,
+    );
+    // TODO: if needed, forward to Sentry.io, Crashlytics, etc.
+  });
+
+  runApp(const MyApp());
+}
+```
+
+If you don't set up a listener like the one above, there will be no logging
+from the package.
+
+See the `logging` package's [documentation](https://pub.dev/packages/logging)
+to learn more about its functionality.
 
 
 ## Contribute
@@ -354,6 +392,25 @@ This plugin uses the following structure:
 #### Debugging
 
 I have provided the necessary settings in the **.vscode** directory for debugging native C++ code on both Linux and Windows. To debug on Android, please use Android Studio and open the project located in the ***example/android*** directory. However, I am not familiar with the process of debugging native code on Mac and iOS.
+
+##### Logging
+
+When debugging the package using the `example/` app, you might want to change
+the logging level to something more granular. For example, in `main()`:
+
+```dart
+// Capture even the finest log messages.
+Logger.root.level = Level.ALL;
+```
+
+One thing that's missing (as of March 2024) is logging 
+from inside the audio isolate. 
+We'd have to send logs to the main isolate through an event, 
+which might be too expensive and brittle. 
+Feel free to use `debugPrint` in `audio_isolate.dart` 
+when working on the package. 
+Just make sure to delete those calls before submitting pull requests.
+We don't want to pollute developers' console outputs.
 
 #### Linux
 
