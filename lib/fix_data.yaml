@@ -10,7 +10,7 @@ version: 1
 
 transforms:
   # SoLoud.startIsolate deprecation
-  - title: "Rename to initialize"
+  - title: "Rename to 'initialize()'"
     date: 2024-03-08
     element:
       uris: [ 'flutter_soloud.dart', 'package:flutter_soloud/flutter_soloud.dart' ]
@@ -20,7 +20,7 @@ transforms:
       - kind: 'rename'
         newName: 'initialize'
   # SoLoud.stopIsolate deprecation
-  - title: "Rename to dispose"
+  - title: "Rename to 'dispose()'"
     date: 2024-03-08
     element:
       uris: [ 'flutter_soloud.dart', 'package:flutter_soloud/flutter_soloud.dart' ]
