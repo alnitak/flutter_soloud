@@ -141,8 +141,10 @@ class SoLoud {
   /// If you call any other methods (such as [play]) before initialization
   /// completes, those calls will be ignored and you will get
   /// a [PlayerErrors.engineNotInited] back.
+  ///
+  /// (This method was formerly called `startIsolate()`.)
   Future<PlayerErrors> initialize() async {
-     _log.finest('initialize() called');
+    _log.finest('initialize() called');
     // Start the audio isolate and listen for messages coming from it.
     // Messages are streamed with [_returnedEvent] and processed
     // by [_waitForEvent] when they come.
@@ -228,6 +230,8 @@ class SoLoud {
   /// Returns `true` when everything has been disposed. Returns `false`
   /// if there was nothing to dispose (e.g. the engine hasn't ever been
   /// initialized).
+  ///
+  /// (This method was formerly called `stopIsolate()`.)
   Future<bool> dispose() async {
     _log.finest('dispose() called');
     if (_isolate == null || !isPlayerInited) return false;
