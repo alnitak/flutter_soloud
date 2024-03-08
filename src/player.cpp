@@ -128,7 +128,7 @@ PlayerErrors Player::loadFile(
 
     if (result != SoLoud::SO_NO_ERROR)
     {
-        sounds.emplace_back();
+        sounds.pop_back();
     }
     return (PlayerErrors)result;
 }
