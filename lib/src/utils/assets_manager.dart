@@ -1,6 +1,7 @@
 import 'dart:io';
-import 'package:flutter/foundation.dart';
+
 import 'package:flutter/services.dart';
+import 'package:logging/logging.dart';
 import 'package:path_provider/path_provider.dart';
 
 /// Thanks to Maks Klimko
@@ -9,6 +10,8 @@ import 'package:path_provider/path_provider.dart';
 /// file and save it to the local file system.
 ///
 class AssetsManager {
+  static final Logger _log = Logger('flutter_soloud.AssetsManager');
+
   /// Loads asset audio to temp file
   ///
   static Future<File?> getAssetFile(String assetsFile) async {
@@ -19,15 +22,28 @@ class AssetsManager {
     if (file.existsSync()) {
       return file;
     } else {
+      final ByteData byteData;
       try {
-        final byteData = await rootBundle.load(assetsFile);
+        byteData = await rootBundle.load(assetsFile);
+      } catch (e, s) {
+        // TODO(filiph): This probably shouldn't be a caught exception?
+        //               Let the developer deal with it instead of silently
+        //               failing.
+        _log.severe("getAssetFile() couldn't load asset file", e, s);
+        return null;
+      }
+
+      try {
         final buffer = byteData.buffer;
         await file.create(recursive: true);
         await file.writeAsBytes(
           buffer.asUint8List(byteData.offsetInBytes, byteData.lengthInBytes),
         );
-      } catch (e) {
-        debugPrint('getAssetFile() error: $e');
+      } catch (e, s) {
+        // TODO(filiph): This probably shouldn't be a caught exception?
+        //               Let the developer deal with it instead of silently
+        //               failing.
+        _log.severe("getAssetFile() couldn't write $file to disk", e, s);
         return null;
       }
       return file;

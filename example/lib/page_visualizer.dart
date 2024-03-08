@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:flutter_soloud_example/visualizer/visualizer.dart';
+import 'package:logging/logging.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:star_menu/star_menu.dart';
 
@@ -18,6 +19,8 @@ class PageVisualizer extends StatefulWidget {
 }
 
 class _PageVisualizerState extends State<PageVisualizer> {
+  static final Logger _log = Logger('_PageVisualizerState');
+
   String shader = 'assets/shaders/test9.frag';
   final regExp = RegExp('_(s[w|i].*)_-');
   final List<String> audioChecks = [
@@ -439,7 +442,7 @@ class _PageVisualizerState extends State<PageVisualizer> {
       final program = await ui.FragmentProgram.fromAsset(shader);
       return program.fragmentShader();
     } catch (e) {
-      debugPrint('error compiling the shader: $e');
+      _log.severe('error compiling the shader', e);
     }
     return null;
   }

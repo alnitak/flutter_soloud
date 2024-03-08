@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
+import 'package:logging/logging.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:star_menu/star_menu.dart';
 
@@ -14,6 +15,8 @@ class Controls extends StatefulWidget {
 }
 
 class _ControlsState extends State<Controls> {
+  static final Logger _log = Logger('_ControlsState');
+
   final isAudioIsolateRunning = ValueNotifier<bool>(false);
   final isCaptureRunning = ValueNotifier<bool>(false);
   late final List<CaptureDevice> captureDevices;
@@ -62,12 +65,12 @@ class _ControlsState extends State<Controls> {
                       /// this will stop also the engine and the loop
                       final b = await SoLoud().stopIsolate();
                       if (b) {
-                        debugPrint('isolate stopped');
+                        _log.info('isolate stopped');
                       }
                     } else {
                       final b = await SoLoud().startIsolate();
                       if (b == PlayerErrors.noError) {
-                        debugPrint('isolate started');
+                        _log.info('isolate started');
                         SoLoud().setVisualizationEnabled(true);
                       }
                     }

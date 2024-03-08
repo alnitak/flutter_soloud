@@ -18,7 +18,26 @@ enum CaptureErrors {
 
   /// null pointer. Could happens when passing a non initialized
   /// pointer (with calloc()) to retrieve FFT or wave data
-  nullPointer,
+  nullPointer;
+
+  /// Returns a human-friendly sentence describing the error.
+  String get _asSentence {
+    switch (this) {
+      case CaptureErrors.captureNoError:
+        return 'No error';
+      case CaptureErrors.captureInitFailed:
+        return 'Capture failed to initialize';
+      case CaptureErrors.captureNotInited:
+        return 'Capture not yet initialized';
+      case CaptureErrors.nullPointer:
+        return 'Capture null pointer error. Could happens when passing a non '
+            'initialized pointer (with calloc()) to retrieve FFT or wave data. '
+            'Or, setVisualization has not been enabled.';
+    }
+  }
+
+  @override
+  String toString() => 'CaptureErrors.$name ($_asSentence)';
 }
 
 /// Possible player errors
@@ -70,7 +89,50 @@ enum PlayerErrors {
   engineNotInited,
 
   /// Filter not found
-  filterNotFound,
+  filterNotFound;
+
+  /// Returns a human-friendly sentence describing the error.
+  String get _asSentence {
+    switch (this) {
+      case PlayerErrors.noError:
+        return 'No error';
+      case PlayerErrors.invalidParameter:
+        return 'Some parameter is invalid';
+      case PlayerErrors.fileNotFound:
+        return 'File not found';
+      case PlayerErrors.fileLoadFailed:
+        return 'File found, but could not be loaded';
+      case PlayerErrors.fileAlreadyLoaded:
+        return 'The sound file has already been loaded';
+      case PlayerErrors.dllNotFound:
+        return 'DLL not found, or wrong DLL';
+      case PlayerErrors.outOfMemory:
+        return 'Out of memory';
+      case PlayerErrors.notImplemented:
+        return 'Feature not implemented';
+      case PlayerErrors.unknownError:
+        return 'Unknown error';
+      case PlayerErrors.nullPointer:
+        return 'Capture null pointer error. Could happens when passing a non '
+            'initialized pointer (with calloc()) to retrieve FFT or wave data. '
+            'Or, setVisualization has not been enabled.';
+      case PlayerErrors.soundHashNotFound:
+        return 'The sound with specified hash is not found';
+      case PlayerErrors.backendNotInited:
+        return 'Player not initialized';
+      case PlayerErrors.isolateAlreadyStarted:
+        return 'Audio isolate already started';
+      case PlayerErrors.isolateNotStarted:
+        return 'Audio isolate not yet started';
+      case PlayerErrors.engineNotInited:
+        return 'Engine not yet started';
+      case PlayerErrors.filterNotFound:
+        return 'Filter not found';
+    }
+  }
+
+  @override
+  String toString() => 'PlayerErrors.$name ($_asSentence)';
 }
 
 /// Wave forms

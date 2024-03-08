@@ -4,11 +4,15 @@
 // ignore_for_file: avoid_positional_boolean_parameters, require_trailing_commas
 
 import 'dart:ffi' as ffi;
+
 import 'package:ffi/ffi.dart';
 import 'package:flutter_soloud/src/enums.dart';
+import 'package:logging/logging.dart';
 
 /// FFI bindings to SoLoud
 class FlutterSoLoudFfi {
+  static final Logger _log = Logger('flutter_soloud.FlutterSoLoudFfi');
+
   /// Holds the symbol lookup function.
   final ffi.Pointer<T> Function<T extends ffi.NativeType>(String symbolName)
       _lookup;
@@ -806,7 +810,8 @@ class FlutterSoLoudFfi {
     // ignore: omit_local_variable_types
     final ffi.Pointer<ffi.Pointer<ffi.Char>> names =
         calloc(ffi.sizeOf<ffi.Char>() * 30);
-    print('PARAMS NAME paramsCount: ${paramsCount.address.toRadixString(16)}  '
+    _log.fine(() =>
+        'PARAMS NAME paramsCount: ${paramsCount.address.toRadixString(16)}  '
         'names: ${names.address.toRadixString(16)}');
 
     final e = _getFilterParamNames(
@@ -816,7 +821,7 @@ class FlutterSoLoudFfi {
     );
     final pNames = <String>[];
     for (var i = 0; i < paramsCount.value; i++) {
-      print('PARAMS NAME $i ${names + i}   '
+      _log.fine(() => 'PARAMS NAME $i ${names + i}   '
           '${names[i].cast<Utf8>().toDartString()}    '
           'names[i]: ${names[i].address.toRadixString(16)}');
       pNames.add(names[i].cast<Utf8>().toDartString());
