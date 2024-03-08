@@ -6,12 +6,15 @@ import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/soloud.dart';
 import 'package:flutter_soloud/src/utils/assets_manager.dart';
 import 'package:http/http.dart' as http;
+import 'package:logging/logging.dart';
 import 'package:path_provider/path_provider.dart';
 
 /// The `SoloudTools` class provides static methods to load audio files
 /// from various sources, including assets, local files, and URLs.
 ///
 class SoloudTools {
+  static final Logger _log = Logger('flutter_soloud.SoloudTools');
+
   /// Loads an audio file from the assets folder.
   ///
   static Future<SoundProps?> loadFromAssets(
@@ -20,7 +23,7 @@ class SoloudTools {
   }) async {
     final f = await AssetsManager.getAssetFile(path);
     if (f == null) {
-      debugPrint('Load from assets failed: Sound is null');
+      _log.severe('Load from assets failed: Sound is null');
       return null;
     }
 
@@ -37,7 +40,7 @@ class SoloudTools {
     if (file.existsSync()) {
       return _finallyLoadFile(file, mode: mode);
     } else {
-      debugPrint('Load from file failed: File does not exist');
+      _log.severe('Load from file failed: File does not exist');
       return null;
     }
   }
@@ -64,13 +67,13 @@ class SoloudTools {
             buffer.asUint8List(byteData.offsetInBytes, byteData.lengthInBytes),
           );
         } else {
-          debugPrint('Failed to fetch file from URL: $url');
+          _log.severe(() => 'Failed to fetch file from URL: $url');
           return null;
         }
       }
       return _finallyLoadFile(file, mode: mode);
-    } catch (e) {
-      debugPrint('Error while fetching file: $e');
+    } catch (e, s) {
+      _log.severe('Error while fetching file', e, s);
       return null;
     }
   }
