@@ -125,12 +125,30 @@ class SoLoud {
     return completer.future;
   }
 
-  /// Start the audio isolate and listen for messages coming from it.
-  /// Messages are streamed with [_returnedEvent] and processed
-  /// by [_waitForEvent] when they come.
+  /// Initializes the audio engine.
   ///
-  Future<PlayerErrors> startIsolate() async {
-    _log.finest('startIsolate() called');
+  /// Use [initialize] instead. This method is simply an alias for [initialize]
+  /// for backwards compatibility. It will be removed in a future version.
+  @Deprecated('use initialize() instead')
+  Future<PlayerErrors> startIsolate() => initialize();
+
+  /// Initializes the audio engine.
+  ///
+  /// Run this before anything else, and `await` its result. Only when
+  /// this method returns [PlayerErrors.noError] will the engine
+  /// be ready.
+  ///
+  /// If you call any other methods (such as [play]) before initialization
+  /// completes, those calls will be ignored and you will get
+  /// a [PlayerErrors.engineNotInited] back.
+  ///
+  /// (This method was formerly called `startIsolate()`.)
+  Future<PlayerErrors> initialize() async {
+    _log.finest('initialize() called');
+    // Start the audio isolate and listen for messages coming from it.
+    // Messages are streamed with [_returnedEvent] and processed
+    // by [_waitForEvent] when they come.
+
     if (_isolate != null) return PlayerErrors.isolateAlreadyStarted;
     activeSounds.clear();
     final completer = Completer<PlayerErrors>();
@@ -142,7 +160,7 @@ class SoLoud {
         _mainToIsolateStream = data;
 
         /// finally start the audio engine
-        initEngine().then((value) {
+        _initEngine().then((value) {
           if (value == PlayerErrors.noError) {
             audioEvent.add(AudioEvent.isolateStarted);
           }
@@ -199,12 +217,23 @@ class SoLoud {
     return completer.future;
   }
 
-  /// Stop the loop, stop the engine and kill the isolate
+  /// An alias for [dispose], for backwards compatibility.
   ///
-  /// Return true if success
+  /// Use [dispose] instead. The [stopIsolate] alias will be removed
+  /// in a future version.
+  @Deprecated('use dispose() instead')
+  Future<bool> stopIsolate() => dispose();
+
+  /// Stops the engine and disposes of all resources, including sounds
+  /// and the audio isolate.
   ///
-  Future<bool> stopIsolate() async {
-    _log.finest('stopIsolate() called');
+  /// Returns `true` when everything has been disposed. Returns `false`
+  /// if there was nothing to dispose (e.g. the engine hasn't ever been
+  /// initialized).
+  ///
+  /// (This method was formerly called `stopIsolate()`.)
+  Future<bool> dispose() async {
+    _log.finest('dispose() called');
     if (_isolate == null || !isPlayerInited) return false;
     await disposeAllSound();
     // engine will be disposed in the audio isolate, so just set this variable
@@ -281,6 +310,13 @@ class SoLoud {
   // Below all the methods implemented with FFI for the player
   // ////////////////////////////////////////////////
 
+  /// A deprecated method that manually starts the engine.
+  ///
+  /// Do not use. The engine is fully started with [initialize].
+  /// This method will be removed in a future version.
+  @Deprecated('Use initialize() instead')
+  Future<PlayerErrors> initEngine() => _initEngine();
+
   /// Initialize the audio engine.
   ///
   /// Defaults are:
@@ -288,8 +324,8 @@ class SoLoud {
   /// sample rate 44100
   /// buffer 2048
   ///
-  Future<PlayerErrors> initEngine() async {
-    _log.finest('initEngine() called');
+  Future<PlayerErrors> _initEngine() async {
+    _log.finest('_initEngine() called');
     if (_isolate == null) return PlayerErrors.isolateNotStarted;
     _mainToIsolateStream?.send(
       {
@@ -300,7 +336,7 @@ class SoLoud {
     final ret =
         await _waitForEvent(MessageEvents.initEngine, ()) as PlayerErrors;
     isPlayerInited = ret == PlayerErrors.noError;
-    _logPlayerError(ret, from: 'initEngine() result');
+    _logPlayerError(ret, from: '_initEngine() result');
 
     /// start also the loop in the audio isolate
     if (isPlayerInited) {
@@ -309,13 +345,20 @@ class SoLoud {
     return ret;
   }
 
+  /// A deprecated method that manually disposes the engine.
+  ///
+  /// Do not use. The engine is fully disposed with [dispose].
+  /// This method will be removed in a future version.
+  @Deprecated('Use dispose() instead')
+  Future<bool> disposeEngine() => _disposeEngine();
+
   /// Stop the engine
   /// The audio isolate doesn't get killed
   ///
   /// Returns true if success
   ///
-  Future<bool> disposeEngine() async {
-    _log.finest('disposeEngine() called');
+  Future<bool> _disposeEngine() async {
+    _log.finest('_disposeEngine() called');
     if (_isolate == null || !isPlayerInited) return false;
 
     await disposeAllSound();
