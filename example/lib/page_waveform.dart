@@ -48,14 +48,13 @@ class _PageWaveformState extends State<PageWaveform> {
       }
       if (mounted) setState(() {});
     });
-    SoLoud().startIsolate();
+    SoLoud().initialize();
   }
 
   @override
   void dispose() {
-    SoLoud().stopIsolate();
+    SoLoud().dispose();
     SoLoud().stopCapture();
-    SoLoud().disposeAllSound();
     super.dispose();
   }
 
