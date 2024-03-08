@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
+import 'package:logging/logging.dart';
 import 'package:path_provider/path_provider.dart';
 
 class PageMultiTrack extends StatefulWidget {
@@ -72,6 +73,8 @@ class PlaySoundWidget extends StatefulWidget {
 }
 
 class _PlaySoundWidgetState extends State<PlaySoundWidget> {
+  static final Logger _log = Logger('_PlaySoundWidgetState');
+
   late double soundLength;
   final Map<int, ValueNotifier<bool>> isPaused = {};
   final Map<int, ValueNotifier<double>> soundPosition = {};
@@ -95,7 +98,7 @@ class _PlaySoundWidgetState extends State<PlaySoundWidget> {
       /// Listen to this sound events
       _subscription = sound!.soundEvents.stream.listen(
         (event) {
-          debugPrint('@@@@@@@@@@@ Received StreamSoundEvent ${event.event}');
+          _log.fine('Received StreamSoundEvent ${event.event}');
 
           /// if handle has been stoppend of has finished to play
           if (event.event == SoundEvent.handleIsNoMoreValid) {
@@ -115,7 +118,7 @@ class _PlaySoundWidgetState extends State<PlaySoundWidget> {
         },
       );
     } else {
-      debugPrint('Load sound asset failed: ${loadRet.error}');
+      _log.severe('Load sound asset failed: ${loadRet.error}');
       return false;
     }
     return true;

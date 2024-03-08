@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
+import 'package:logging/logging.dart';
 
 class Page3DAudio extends StatefulWidget {
   const Page3DAudio({super.key});
@@ -12,6 +13,8 @@ class Page3DAudio extends StatefulWidget {
 }
 
 class _Page3DAudioState extends State<Page3DAudio> {
+  static final Logger _log = Logger('_Page3DAudioState');
+
   SoundProps? currentSound;
   bool spinAround = false;
 
@@ -64,9 +67,9 @@ class _Page3DAudioState extends State<Page3DAudio> {
     if (!SoLoud().isIsolateRunning()) {
       await SoLoud().startIsolate().then((value) {
         if (value == PlayerErrors.noError) {
-          debugPrint('isolate started');
+          _log.info('isolate started');
         } else {
-          debugPrint('isolate starting error: $value');
+          _log.severe('isolate starting error: $value');
           return;
         }
       });
@@ -103,9 +106,9 @@ class _Page3DAudioState extends State<Page3DAudio> {
     if (!SoLoud().isIsolateRunning()) {
       await SoLoud().startIsolate().then((value) {
         if (value == PlayerErrors.noError) {
-          debugPrint('isolate started');
+          _log.info('isolate started');
         } else {
-          debugPrint('isolate starting error: $value');
+          _log.severe('isolate starting error: $value');
           return;
         }
       });

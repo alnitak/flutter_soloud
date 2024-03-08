@@ -1,5 +1,7 @@
+import 'dart:developer' as dev;
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_soloud_example/controls.dart';
 import 'package:flutter_soloud_example/page_3d_audio.dart';
@@ -7,8 +9,26 @@ import 'package:flutter_soloud_example/page_hello_flutter.dart';
 import 'package:flutter_soloud_example/page_multi_track.dart';
 import 'package:flutter_soloud_example/page_visualizer.dart';
 import 'package:flutter_soloud_example/page_waveform.dart';
+import 'package:logging/logging.dart';
 
 void main() {
+  // The `flutter_soloud` package logs everything
+  // (from severe warnings to fine debug messages)
+  // using the standard `package:logging`.
+  // You can listen to the logs as shown below.
+  Logger.root.level = kDebugMode ? Level.FINE : Level.INFO;
+  Logger.root.onRecord.listen((record) {
+    dev.log(
+      record.message,
+      time: record.time,
+      level: record.level.value,
+      name: record.loggerName,
+      zone: record.zone,
+      error: record.error,
+      stackTrace: record.stackTrace,
+    );
+  });
+
   runApp(const MyApp());
 }
 
