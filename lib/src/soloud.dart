@@ -151,10 +151,11 @@ class SoLoud {
       } else {
         _log.finest(() => 'main isolate received: $data');
         if (data is StreamSoundEvent) {
-          /// TODO: replace with pkg:logger
-          debugPrint('@@@@@@@@@@@ SOUND EVENT: ${data.event}  '
-              'handle: ${data.handle}  '
-              'sound: ${data.sound}');
+          _log.finer(
+              () => 'Main isolate received a sound event: ${data.event}  '
+                  'handle: ${data.handle}  '
+                  'sound: ${data.sound}');
+
           /// find the sound which received the [SoundEvent] and...
           final sound = activeSounds.firstWhere(
             (sound) => sound.soundHash == data.sound.soundHash,
@@ -336,10 +337,10 @@ class SoLoud {
   /// Load a new sound to be played once or multiple times later
   ///
   /// [completeFileName] the complete file path.
-  /// [LoadMode] if `LoadMode.memory`, the whole uncompressed RAW PCM 
+  /// [LoadMode] if `LoadMode.memory`, the whole uncompressed RAW PCM
   /// audio is loaded into memory. Used to prevent gaps or lags
   /// when seeking/starting a sound (less CPU, more memory allocated).
-  /// If `LoadMode.disk` is used, the audio data is loaded 
+  /// If `LoadMode.disk` is used, the audio data is loaded
   /// from the given file when needed (more CPU, less memory allocated).
   /// See the [seek] note problem when using [LoadMode] = `LoadMode.disk`.
   /// Default is `LoadMode.memory`.
@@ -778,11 +779,11 @@ class SoLoud {
   /// [time] the time to seek
   /// [handle] the sound handle
   /// Returns [PlayerErrors.noError] if success
-  /// 
+  ///
   /// NOTE: when seeking an MP3 file loaded using `mode`=`LoadMode.disk` the
   /// seek operation is performed but there will be delays. This occurs because
   /// the MP3 codec must compute each frame length to gain a new position.
-  /// The problem is explained in souloud_wavstream.cpp 
+  /// The problem is explained in souloud_wavstream.cpp
   /// in `WavStreamInstance::seek` function.
   ///
   /// This mode is useful ie for background music, not for a music player
