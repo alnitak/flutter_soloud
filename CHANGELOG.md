@@ -1,10 +1,17 @@
 #### 1.2.xx
-- added `mode` property to `Soloud.loadFile()` and `SoloudTools.loadFrom*` to prevent to load the whole audio data into memory:
+- added `mode` property to `SoLoud.loadFile()` and `SoloudTools.loadFrom*` to prevent to load the whole audio data into memory:
     - *LoadMode.memory* by default. Means less CPU, more memory allocated.
     - *LoadMode.disk* means more CPU, less memory allocated. Lags can occurs while seeking MP3s, especially when using a slider.
 - Switched from `print()` logging to using the standard `package:logging`.
   See `README.md` to learn how to capture log messages and how to filter
   them.
+- Renamed `SoLoud.startIsolate()` to `SoLoud.initialize()`
+- Renamed `SoLoud.stopIsolate()` to `SoLoud.dispose()`
+- Removed `SoLoud.initEngine()` (it shouldn't be called manually)
+- None of the renaming changes are strictly breaking (yet). 
+  The old method names still exist as aliases to the new names, and are
+  merely marked `@deprecated`. There is a quick fix (`dart fix`) 
+  to automatically rename them. 
 
 #### 1.2.5 (2 Mar 2024)
 - updated mp3, flac and wav decoders
