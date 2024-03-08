@@ -4,8 +4,17 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
+import 'package:logging/logging.dart';
 
+/// An end-to-end test.
+///
+/// Run this with `flutter run tests/tests.dart`.
 void main() async {
+  // Make sure we can see logs from the engine, even in release mode.
+  // ignore: avoid_print
+  Logger.root.onRecord.listen(print);
+  Logger.root.level = Level.ALL;
+
   WidgetsFlutterBinding.ensureInitialized();
 
   await runZonedGuarded(
