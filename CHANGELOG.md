@@ -2,6 +2,9 @@
 - added `mode` property to `Soloud.loadFile()` and `SoloudTools.loadFrom*` to prevent to load the whole audio data into memory:
     - *LoadMode.memory* by default. Means less CPU, more memory allocated.
     - *LoadMode.disk* means more CPU, less memory allocated. Lags can occurs while seeking MP3s, especially when using a slider.
+- Switched from `print()` logging to using the standard `package:logging`.
+  See `README.md` to learn how to capture log messages and how to filter
+  them.
 
 #### 1.2.5 (2 Mar 2024)
 - updated mp3, flac and wav decoders
