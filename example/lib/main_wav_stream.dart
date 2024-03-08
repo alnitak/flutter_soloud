@@ -6,13 +6,13 @@ import 'package:flutter_soloud/flutter_soloud.dart';
 
 /// Example to test `mode: LoadMode.disk` parameter to seek all audio files
 /// with a single slider.
-/// 
+///
 /// When using `SoloudTools.loadFrom*()` you can choose to load the audio
 /// as a stream. This means that the audio is decoded when needed when
-/// using `mode: LoadMode.disk` parameter. By default `LoadMode.disk` is used, 
+/// using `mode: LoadMode.disk` parameter. By default `LoadMode.disk` is used,
 /// hence the audio file is loaded as raw data into memory.
-/// 
-/// `mode: LoadMode.memory` this will be useful when 
+///
+/// `mode: LoadMode.memory` this will be useful when
 /// loading few audio files, ie for game sounds, mainly used to prevent
 /// gaps or lags when starting/seeking a sound (less CPU, more memory allocated).
 /// `mode: LoadMode.disk` the audio data is loaded from the given
@@ -22,13 +22,11 @@ import 'package:flutter_soloud/flutter_soloud.dart';
 /// the MP3 codec must compute each frame length to gain a new position.
 /// This mode is useful ie for background music, not for a music player
 /// where a seek slider for MP3s is a must.
-/// If you need seeking MP3s, please, use `mode: LoadMode.memory` instead, 
+/// If you need seeking MP3s, please, use `mode: LoadMode.memory` instead,
 /// or other audio formats!
-/// 
-/// Please, in the the following example, add as many 
+///
+/// Please, in the the following example, add as many
 /// `await addSound('audio/path');` you wish in the `start()` method.
-
-
 
 void main() {
   runApp(const MyApp());
@@ -71,7 +69,7 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<void> start() async {
-    await SoLoud().startIsolate().then((value) {
+    await SoLoud().initialize().then((value) {
       if (value == PlayerErrors.noError) {
         debugPrint('isolate started');
         if (context.mounted) {
@@ -86,7 +84,7 @@ class _MyHomePageState extends State<MyHomePage> {
     sounds.clear();
     seekPos.value = 0;
 
-    /// Add here the complete audio file path. 
+    /// Add here the complete audio file path.
     /// MP3s will have lags problem when seeking
     await addSound('');
 
@@ -111,8 +109,7 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<void> stop() async {
-    await SoLoud().disposeAllSound();
-    await SoLoud().stopIsolate();
+    await SoLoud().dispose();
     SoLoud().stopCapture();
     sounds.clear();
   }

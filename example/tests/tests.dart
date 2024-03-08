@@ -46,7 +46,7 @@ Future<void> delay(int ms) async {
 /// Test waveform
 ///
 Future<void> test3() async {
-  await startIsolate();
+  await initialize();
   final notes = await SoloudTools.initSounds(
     octave: 1,
   );
@@ -80,14 +80,14 @@ Future<void> test3() async {
     await delay(300);
   }
 
-  await stopIsolate();
+  await dispose();
 }
 
 /// Test play, pause, seek, position
 ///
 Future<void> test2() async {
   /// Start audio isolate
-  await startIsolate();
+  await initialize();
 
   /// Load sample
   await loadAsset();
@@ -126,14 +126,14 @@ Future<void> test2() async {
     );
   }
 
-  await stopIsolate();
+  await dispose();
 }
 
 /// Test start/stop isolate, load, play and events from sound
 ///
 Future<void> test1() async {
   /// Start audio isolate
-  await startIsolate();
+  await initialize();
 
   /// Load sample
   await loadAsset();
@@ -183,7 +183,7 @@ Future<void> test1() async {
   {
     /// Stop player and see in log:
     /// "@@@@@@@@@@@ SOUND EVENT: SoundEvent.soundDisposed .*"
-    await stopIsolate();
+    await dispose();
     assert(
       output == 'SoundEvent.soundDisposed',
       'Sound end playback event not triggered!',
@@ -192,14 +192,14 @@ Future<void> test1() async {
 }
 
 /// Common methods
-Future<void> startIsolate() async {
-  final ret = await SoLoud().startIsolate();
-  assert(ret == PlayerErrors.noError, 'startIsolate() failed!');
+Future<void> initialize() async {
+  final ret = await SoLoud().initialize();
+  assert(ret == PlayerErrors.noError, 'initialize() failed!');
 }
 
-Future<void> stopIsolate() async {
-  final ret = await SoLoud().stopIsolate();
-  assert(ret, 'stopIsolate() failed!');
+Future<void> dispose() async {
+  final ret = await SoLoud().dispose();
+  assert(ret, 'dispose() failed!');
 }
 
 Future<void> loadAsset() async {

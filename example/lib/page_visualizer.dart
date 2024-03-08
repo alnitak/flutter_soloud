@@ -55,7 +55,7 @@ class _PageVisualizerState extends State<PageVisualizer> {
 
   @override
   void dispose() {
-    SoLoud().stopIsolate();
+    SoLoud().dispose();
     SoLoud().stopCapture();
     super.dispose();
   }

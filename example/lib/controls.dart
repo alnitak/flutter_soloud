@@ -63,12 +63,12 @@ class _ControlsState extends State<Controls> {
                   onPressed: () async {
                     if (isRunning) {
                       /// this will stop also the engine and the loop
-                      final b = await SoLoud().stopIsolate();
+                      final b = await SoLoud().dispose();
                       if (b) {
                         _log.info('isolate stopped');
                       }
                     } else {
-                      final b = await SoLoud().startIsolate();
+                      final b = await SoLoud().initialize();
                       if (b == PlayerErrors.noError) {
                         _log.info('isolate started');
                         SoLoud().setVisualizationEnabled(true);
