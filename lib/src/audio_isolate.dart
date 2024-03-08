@@ -36,7 +36,7 @@ enum MessageEvents {
 /// definitions to be checked in main isolate
 typedef ArgsInitEngine = ();
 typedef ArgsDisposeEngine = ();
-typedef ArgsLoadFile = ({String completeFileName});
+typedef ArgsLoadFile = ({String completeFileName, LoadMode mode});
 typedef ArgsLoadWaveform = ({
   int waveForm,
   bool superWave,
@@ -114,7 +114,10 @@ void audioIsolate(SendPort isolateToMainStream) {
 
       case MessageEvents.loadFile:
         final args = event['args']! as ArgsLoadFile;
-        final ret = soLoudController.soLoudFFI.loadFile(args.completeFileName);
+        final ret = soLoudController.soLoudFFI.loadFile(
+          args.completeFileName,
+          args.mode,
+        );
         // add the new sound handler to the list
         SoundProps? newSound;
         if (ret.error == PlayerErrors.noError) {

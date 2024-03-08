@@ -1,10 +1,15 @@
+#### 1.2.xx
+- added `mode` property to `Soloud.loadFile()` and `SoloudTools.loadFrom*` to prevent to load the whole audio data into memory:
+    - *LoadMode.memory* by default. Means less CPU, more memory allocated.
+    - *LoadMode.disk* means more CPU, less memory allocated. Lags can occurs while seeking MP3s, especially when using a slider.
+
 #### 1.2.5 (2 Mar 2024)
 - updated mp3, flac and wav decoders
 - updated miniaudio to 0.11.21
 - fixed doppler effect in 3D audio example
 
-#### 1.2.4
-- fixed compilation on Windows
+## 1.2.4
+fixed compilation on Windows
 
 #### 1.2.3
 - fixed compilation on iOS and macOS
@@ -61,8 +66,6 @@ added also a spin around example
 
 #### 0.9.0
 - added capture from microphone with example
-
-#### [...]
 
 #### 0.1.0
 

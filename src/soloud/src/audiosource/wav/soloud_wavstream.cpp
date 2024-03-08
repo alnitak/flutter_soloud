@@ -25,6 +25,7 @@ freely, subject to the following restrictions:
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+
 #include "soloud.h"
 #include "dr_flac.h"
 #include "dr_mp3.h"
@@ -339,24 +340,57 @@ namespace SoLoud
 		return aSamplesToRead;
 	}
 
-	result WavStreamInstance::seek(double aSeconds, float* mScratch, unsigned int mScratchSize)
+	result WavStreamInstance::seek(double aSeconds, float *mScratch, unsigned int mScratchSize)
 	{
 		if (mCodec.mOgg)
 		{
 			int pos = (int)floor(mBaseSamplerate * aSeconds);
-			stb_vorbis_seek(mCodec.mOgg, pos);
-			// Since the position that we just sought to might not be *exactly*
-			// the position we asked for, we're re-calculating the position just
-			// for the sake of correctness.
-			mOffset = stb_vorbis_get_sample_offset(mCodec.mOgg);
-			double newPosition = float(mOffset / mBaseSamplerate);
-			mStreamPosition = newPosition;
-			return 0;
+			double newPosition;
+
+			switch (mParent->mFiletype)
+			{
+			case WAVSTREAM_OGG:
+				stb_vorbis_seek(mCodec.mOgg, pos);
+				// Since the position that we just sought to might not be *exactly*
+				// the position we asked for, we're re-calculating the position just
+				// for the sake of correctness.
+				mOffset = stb_vorbis_get_sample_offset(mCodec.mOgg);
+				newPosition = float(mOffset / mBaseSamplerate);
+				mStreamPosition = newPosition;
+				return 0;
+			case WAVSTREAM_FLAC:
+				drflac_seek_to_pcm_frame(mCodec.mFlac, pos);
+				mOffset = pos;
+				mStreamPosition = float(pos / mBaseSamplerate);
+				return 0;
+			case WAVSTREAM_MP3:
+				// When using TYPE_WAVSTREAM for mp3 and seeking backward,
+				// dr_mp3.h uses `drmp3_seek_to_pcm_frame__brute_force()` function which
+				// move to the start of the stream and then move forward to [time]. This
+				// implies some lag and queue subsequent seeks request if the previous seek is not yet
+				// complete (especially when using a slider) impacting the main UI thread.
+				// To have no lags, please use TYPE_WAV instead if possible!
+				drmp3_seek_to_pcm_frame(mCodec.mMp3, pos);
+				mOffset = pos;
+				mStreamPosition = float(pos / mBaseSamplerate);
+				return 0;
+			case WAVSTREAM_WAV:
+				drwav_seek_to_pcm_frame(mCodec.mWav, pos);
+				mOffset = pos;
+				mStreamPosition = float(pos / mBaseSamplerate);
+				return 0;
+			default:
+				break;
+			}
 		}
-		else {
+		else
+		{
 			return AudioSourceInstance::seek(aSeconds, mScratch, mScratchSize);
 		}
+
+		return NOT_IMPLEMENTED;
 	}
+
 
 	result WavStreamInstance::rewind()
 	{
