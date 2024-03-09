@@ -11,7 +11,21 @@
 - None of the renaming changes are strictly breaking (yet). 
   The old method names still exist as aliases to the new names, and are
   merely marked `@deprecated`. There is a quick fix (`dart fix`) 
-  to automatically rename them. 
+  to automatically rename them.
+- The singleton SoLoud instance is now accessible through `SoLoud.instance`.
+  Accessing it through `SoLoud()` is now deprecated.
+    - This change cannot be automated through a Quick Fix. 
+      You will need to manually replace `SoLoud()` with `SoLoud.instance`
+      in your code.
+- All methods related to audio capture have been extracted to a separate class. 
+  So now, there are two classes:
+    - `SoLoud` for _playing_ audio
+    - `SoLoudCapture` for _capturing_ audio
+- The `SoLoud` class is now an `interface` class.
+  This means you can _implement_ it (e.g. for mocking in tests) but you can't
+  _extend_ it. This reduces the
+  [fragile base class problem](https://en.wikipedia.org/wiki/Fragile_base_class)
+  and makes the API easier to evolve.
 
 #### 1.2.5 (2 Mar 2024)
 - updated mp3, flac and wav decoders

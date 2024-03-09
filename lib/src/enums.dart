@@ -1,7 +1,13 @@
 /// CaptureDevice exposed to Dart
 final class CaptureDevice {
-  CaptureDevice(this.name, this.isDefault);
+  /// Constructs a new [CaptureDevice].
+  // ignore: avoid_positional_boolean_parameters
+  const CaptureDevice(this.name, this.isDefault);
+
+  /// The name of the device.
   final String name;
+
+  /// Whether this is the default capture device.
   final bool isDefault;
 }
 
@@ -174,4 +180,4 @@ enum LoadMode {
   /// Keep the file on disk and only load chunks as needed.
   /// More CPU, less memory allocated, seeking lags with MP3s.
   disk,
-}  
+}

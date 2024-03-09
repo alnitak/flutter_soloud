@@ -9,6 +9,21 @@
 version: 1
 
 transforms:
+  # SoLoudCapture.initCapture => SoLoudCapture.initialize
+  - title: "Rename to 'initialize()'"
+    date: 2024-03-08
+    element:
+      uris: [ 'flutter_soloud.dart', 'package:flutter_soloud/flutter_soloud.dart' ]
+      method: 'initCapture'
+      inClass: 'SoLoudCapture'
+    changes:
+      - kind: 'rename'
+        newName: 'initialize'
+
+  # Moving methods over to SoLoudCapture is actually impossible to implement
+  # in fix_data.yaml because of the limitations of `replacedBy`:
+  # https://github.com/flutter/flutter/wiki/Data-driven-Fixes#replacedby
+
   # SoLoud.startIsolate deprecation
   - title: "Rename to 'initialize()'"
     date: 2024-03-08
@@ -19,6 +34,7 @@ transforms:
     changes:
       - kind: 'rename'
         newName: 'initialize'
+
   # SoLoud.stopIsolate deprecation
   - title: "Rename to 'dispose()'"
     date: 2024-03-08

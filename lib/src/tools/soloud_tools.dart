@@ -84,7 +84,7 @@ class SoloudTools {
     File file, {
     LoadMode mode = LoadMode.memory,
   }) async {
-    final result = await SoLoud().loadFile(file.path, mode: mode);
+    final result = await SoLoud.instance.loadFile(file.path, mode: mode);
     if (!(result.error == PlayerErrors.noError ||
         result.error == PlayerErrors.fileAlreadyLoaded)) {
       return null;
@@ -104,7 +104,7 @@ class SoloudTools {
     final startingFreq = 55.0 * (pow(2, (12 * octave) / 12));
     final notes = <SoundProps>[];
     for (var index = 0; index < 12; index++) {
-      final ret = await SoLoud().loadWaveform(
+      final ret = await SoLoud.instance.loadWaveform(
         waveForm,
         true,
         0.25,
@@ -112,8 +112,8 @@ class SoloudTools {
       );
       if (ret.error != PlayerErrors.noError) return [];
       final freq = startingFreq * (pow(2, index / 12));
-      SoLoud().setWaveformFreq(ret.sound!, freq);
-      SoLoud().setWaveformSuperWave(ret.sound!, superwave);
+      SoLoud.instance.setWaveformFreq(ret.sound!, freq);
+      SoLoud.instance.setWaveformSuperWave(ret.sound!, superwave);
       notes.add(ret.sound!);
     }
     return notes;

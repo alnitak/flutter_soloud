@@ -62,7 +62,7 @@ class FftController extends ChangeNotifier {
   void changeIsVisualizerEnabled(bool enable) {
     isVisualizerEnabled = enable;
     notifyListeners();
-    SoLoud().setVisualizationEnabled(enable);
+    SoLoud.instance.setVisualizationEnabled(enable);
   }
 }
 
@@ -103,12 +103,12 @@ class _VisualizerState extends State<Visualizer>
   void initState() {
     super.initState();
 
-    isPlayerInited = SoLoud().isPlayerInited;
-    isCaptureInited = SoLoud().isCaptureInited;
-    SoLoud().audioEvent.stream.listen(
+    isPlayerInited = SoLoud.instance.isPlayerInited;
+    isCaptureInited = SoLoudCapture.instance.isCaptureInited;
+    SoLoud.instance.audioEvent.stream.listen(
       (event) {
-        isPlayerInited = SoLoud().isPlayerInited;
-        isCaptureInited = SoLoud().isCaptureInited;
+        isPlayerInited = SoLoud.instance.isPlayerInited;
+        isCaptureInited = SoLoudCapture.instance.isCaptureInited;
       },
     );
 
@@ -330,10 +330,10 @@ class _VisualizerState extends State<Visualizer>
 
     /// get audio data from player or capture device
     if (widget.controller.isVisualizerForPlayer && isPlayerInited) {
-      final ret = SoLoud().getAudioTexture2D(playerData);
+      final ret = SoLoud.instance.getAudioTexture2D(playerData);
       if (ret != PlayerErrors.noError) return null;
     } else if (!widget.controller.isVisualizerForPlayer && isCaptureInited) {
-      final ret = SoLoud().getCaptureAudioTexture2D(captureData);
+      final ret = SoLoudCapture.instance.getCaptureAudioTexture2D(captureData);
       if (ret != CaptureErrors.captureNoError) {
         return null;
       }
@@ -382,10 +382,10 @@ class _VisualizerState extends State<Visualizer>
 
     /// get audio data from player or capture device
     if (widget.controller.isVisualizerForPlayer && isPlayerInited) {
-      final ret = SoLoud().getAudioTexture2D(playerData);
+      final ret = SoLoud.instance.getAudioTexture2D(playerData);
       if (ret != PlayerErrors.noError) return null;
     } else if (!widget.controller.isVisualizerForPlayer && isCaptureInited) {
-      final ret = SoLoud().getCaptureAudioTexture2D(captureData);
+      final ret = SoLoudCapture.instance.getCaptureAudioTexture2D(captureData);
       if (ret != CaptureErrors.captureNoError) {
         return null;
       }
