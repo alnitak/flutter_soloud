@@ -2,7 +2,7 @@ import 'dart:ffi' as ffi;
 import 'dart:io';
 
 import 'package:flutter_soloud/src/bindings_capture_ffi.dart';
-import 'package:flutter_soloud/src/flutter_soloud_bindings_ffi.dart';
+import 'package:flutter_soloud/src/bindings_player_ffi.dart';
 
 /// Controller that expose method channel and FFI
 class SoLoudController {

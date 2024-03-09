@@ -66,25 +66,25 @@ Future<void> test3() async {
 
   for (var i = 2; i < 10; i++) {
     final d = (sin(i / 6.28) * 400).toInt();
-    await SoLoud().play(notes[7]);
+    await SoLoud.instance.play(notes[7]);
     await delay(500 - d);
-    await SoLoud().stop(notes[7].handle.first);
+    await SoLoud.instance.stop(notes[7].handle.first);
 
-    await SoLoud().play(notes[10]);
+    await SoLoud.instance.play(notes[10]);
     await delay(550 - d);
-    await SoLoud().stop(notes[10].handle.first);
+    await SoLoud.instance.stop(notes[10].handle.first);
 
-    await SoLoud().play(notes[7]);
+    await SoLoud.instance.play(notes[7]);
     await delay(500 - d);
-    await SoLoud().stop(notes[7].handle.first);
+    await SoLoud.instance.stop(notes[7].handle.first);
 
-    await SoLoud().play(notes[0]);
+    await SoLoud.instance.play(notes[0]);
     await delay(500 - d);
-    await SoLoud().stop(notes[0].handle.first);
+    await SoLoud.instance.stop(notes[0].handle.first);
 
-    await SoLoud().play(notes[4]);
+    await SoLoud.instance.play(notes[4]);
     await delay(800 - d);
-    await SoLoud().stop(notes[4].handle.first);
+    await SoLoud.instance.stop(notes[4].handle.first);
 
     await delay(300);
   }
@@ -103,32 +103,32 @@ Future<void> test2() async {
 
   /// pause, seek test
   {
-    await SoLoud().play(currentSound!);
-    final ret1 = SoLoud().getLength(currentSound!);
+    await SoLoud.instance.play(currentSound!);
+    final ret1 = SoLoud.instance.getLength(currentSound!);
     assert(
       ret1.error == PlayerErrors.noError &&
           (ret1.length * 100).ceilToDouble().toInt() == 384,
       'pauseSwitch() failed!',
     );
     await delay(1000);
-    var ret2 = SoLoud().pauseSwitch(currentSound!.handle.first);
+    var ret2 = SoLoud.instance.pauseSwitch(currentSound!.handle.first);
     assert(
       ret2 == PlayerErrors.noError,
       'pauseSwitch() failed!',
     );
-    final ret3 = SoLoud().getPause(currentSound!.handle.first);
+    final ret3 = SoLoud.instance.getPause(currentSound!.handle.first);
     assert(
       ret3.error == PlayerErrors.noError && ret3.pause,
       'play() failed!',
     );
 
     /// seek
-    ret2 = SoLoud().seek(currentSound!.handle.first, 2);
+    ret2 = SoLoud.instance.seek(currentSound!.handle.first, 2);
     assert(
       ret2 == PlayerErrors.noError,
       'seek() failed!',
     );
-    final ret4 = SoLoud().getPosition(currentSound!.handle.first);
+    final ret4 = SoLoud.instance.getPosition(currentSound!.handle.first);
     assert(
       ret4.error == PlayerErrors.noError && ret4.position == 2,
       'getPosition() failed!',
@@ -149,7 +149,7 @@ Future<void> test1() async {
 
   /// Play sample
   {
-    final ret = await SoLoud().play(currentSound!);
+    final ret = await SoLoud.instance.play(currentSound!);
     assert(
       ret.error == PlayerErrors.noError &&
           currentSound!.soundHash > 0 &&
@@ -169,17 +169,17 @@ Future<void> test1() async {
 
   /// Play 4 sample
   {
-    await SoLoud().play(currentSound!);
-    await SoLoud().play(currentSound!);
-    await SoLoud().play(currentSound!);
-    await SoLoud().play(currentSound!);
+    await SoLoud.instance.play(currentSound!);
+    await SoLoud.instance.play(currentSound!);
+    await SoLoud.instance.play(currentSound!);
+    await SoLoud.instance.play(currentSound!);
     assert(
       currentSound!.handle.length == 4,
       'loadFromAssets() failed!',
     );
 
     /// Wait for the sample to finish and see in log:
-    /// "@@@@@@@@@@@ SOUND EVENT: SoundEvent.handleIsNoMoreValid .* has [3-2-1-0] active handles"
+    /// "SoundEvent.handleIsNoMoreValid .* has [3-2-1-0] active handles"
     /// 3798ms explosion.mp3 sample duration
     await delay(4500);
     assert(
@@ -202,12 +202,12 @@ Future<void> test1() async {
 
 /// Common methods
 Future<void> initialize() async {
-  final ret = await SoLoud().initialize();
+  final ret = await SoLoud.instance.initialize();
   assert(ret == PlayerErrors.noError, 'initialize() failed!');
 }
 
 Future<void> dispose() async {
-  final ret = await SoLoud().dispose();
+  final ret = await SoLoud.instance.dispose();
   assert(ret, 'dispose() failed!');
 }
 

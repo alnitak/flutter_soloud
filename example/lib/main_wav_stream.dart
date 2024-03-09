@@ -69,7 +69,7 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<void> start() async {
-    await SoLoud().initialize().then((value) {
+    await SoLoud.instance.initialize().then((value) {
       if (value == PlayerErrors.noError) {
         debugPrint('isolate started');
         if (context.mounted) {
@@ -80,7 +80,7 @@ class _MyHomePageState extends State<MyHomePage> {
       }
     });
 
-    await SoLoud().disposeAllSound();
+    await SoLoud.instance.disposeAllSound();
     sounds.clear();
     seekPos.value = 0;
 
@@ -89,13 +89,13 @@ class _MyHomePageState extends State<MyHomePage> {
     await addSound('');
 
     for (final s in sounds) {
-      await SoLoud().play(s);
+      await SoLoud.instance.play(s);
     }
     if (context.mounted) setState(() {});
 
     timer = Timer.periodic(const Duration(milliseconds: 100), (timer) {
       if (sounds.isEmpty || sounds[0].handle.isEmpty) return;
-      final p = SoLoud().getPosition(sounds[0].handle.first).position;
+      final p = SoLoud.instance.getPosition(sounds[0].handle.first).position;
       if (p <= minLength) seekPos.value = p;
     });
   }
@@ -104,13 +104,13 @@ class _MyHomePageState extends State<MyHomePage> {
     var l = 0.0;
     final s = await SoloudTools.loadFromFile(file, mode: LoadMode.disk);
     sounds.add(s!);
-    l = SoLoud().getLength(s).length;
+    l = SoLoud.instance.getLength(s).length;
     if (l < minLength) minLength = l;
   }
 
   Future<void> stop() async {
-    await SoLoud().dispose();
-    SoLoud().stopCapture();
+    await SoLoud.instance.dispose();
+    SoLoudCapture.instance.stopCapture();
     sounds.clear();
   }
 
@@ -146,7 +146,7 @@ class _MyHomePageState extends State<MyHomePage> {
                     seekPos.value = value;
                     for (final s in sounds) {
                       if (s.handle.isEmpty) continue;
-                      SoLoud().seek(s.handle.first, value);
+                      SoLoud.instance.seek(s.handle.first, value);
                     }
                   },
                 );
@@ -178,10 +178,11 @@ class _SoundRowState extends State<SoundRow> {
   @override
   void initState() {
     super.initState();
-    max = SoLoud().getLength(widget.soundProps).length;
+    max = SoLoud.instance.getLength(widget.soundProps).length;
     timer = Timer.periodic(const Duration(milliseconds: 100), (timer) {
       if (widget.soundProps.handle.isEmpty) return;
-      pos = SoLoud().getPosition(widget.soundProps.handle.first).position;
+      pos =
+          SoLoud.instance.getPosition(widget.soundProps.handle.first).position;
       if (context.mounted) setState(() {});
     });
   }

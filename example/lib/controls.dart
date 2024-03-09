@@ -32,22 +32,23 @@ class _ControlsState extends State<Controls> {
   @override
   void initState() {
     super.initState();
-    captureDevices = SoLoud().listCaptureDevices();
+    captureDevices = SoLoudCapture.instance.listCaptureDevices();
   }
 
   @override
   void reassemble() {
-    isAudioIsolateRunning.value = SoLoud().isIsolateRunning();
-    isCaptureRunning.value = SoLoud().isCaptureStarted();
+    isAudioIsolateRunning.value = SoLoud.instance.isIsolateRunning();
+    isCaptureRunning.value = SoLoudCapture.instance.isCaptureStarted();
     super.reassemble();
   }
 
   @override
   Widget build(BuildContext context) {
-    SoLoud().audioEvent.stream.listen(
+    // TODO(filiph): remove this listener - it starts listening on every build
+    SoLoud.instance.audioEvent.stream.listen(
       (event) {
-        isAudioIsolateRunning.value = SoLoud().isIsolateRunning();
-        isCaptureRunning.value = SoLoud().isCaptureStarted();
+        isAudioIsolateRunning.value = SoLoud.instance.isIsolateRunning();
+        isCaptureRunning.value = SoLoudCapture.instance.isCaptureStarted();
       },
     );
 
@@ -63,15 +64,15 @@ class _ControlsState extends State<Controls> {
                   onPressed: () async {
                     if (isRunning) {
                       /// this will stop also the engine and the loop
-                      final b = await SoLoud().dispose();
+                      final b = await SoLoud.instance.dispose();
                       if (b) {
                         _log.info('isolate stopped');
                       }
                     } else {
-                      final b = await SoLoud().initialize();
+                      final b = await SoLoud.instance.initialize();
                       if (b == PlayerErrors.noError) {
                         _log.info('isolate started');
-                        SoLoud().setVisualizationEnabled(true);
+                        SoLoud.instance.setVisualizationEnabled(true);
                       }
                     }
                   },
@@ -97,10 +98,11 @@ class _ControlsState extends State<Controls> {
                       }
                     }
                     if (isRunning) {
-                      SoLoud().stopCapture();
+                      SoLoudCapture.instance.stopCapture();
                     } else {
-                      SoLoud().initCapture(deviceID: choosenCaptureDeviceId);
-                      SoLoud().startCapture();
+                      SoLoudCapture.instance
+                          .initialize(deviceID: choosenCaptureDeviceId);
+                      SoLoudCapture.instance.startCapture();
                     }
                   },
                   style: buttonStyle(isRunning),

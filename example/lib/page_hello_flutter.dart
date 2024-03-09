@@ -24,8 +24,8 @@ class _PageHelloFlutterSoLoudState extends State<PageHelloFlutterSoLoud> {
 
   @override
   void dispose() {
-    SoLoud().dispose();
-    SoLoud().stopCapture();
+    SoLoud.instance.dispose();
+    SoLoudCapture.instance.stopCapture();
     super.dispose();
   }
 
@@ -57,8 +57,8 @@ class _PageHelloFlutterSoLoudState extends State<PageHelloFlutterSoLoud> {
                 /// start the capture
                 ElevatedButton(
                   onPressed: () async {
-                    final a = SoLoud().initCapture();
-                    final b = SoLoud().startCapture();
+                    final a = SoLoudCapture.instance.initialize();
+                    final b = SoLoudCapture.instance.startCapture();
                     if (mounted &&
                         a == CaptureErrors.captureNoError &&
                         b == CaptureErrors.captureNoError) {
@@ -68,7 +68,7 @@ class _PageHelloFlutterSoLoudState extends State<PageHelloFlutterSoLoud> {
                   child: const Text('start mic'),
                 ),
                 const SizedBox(height: 16),
-                if (SoLoud().isCaptureInited)
+                if (SoLoudCapture.instance.isCaptureInited)
                   const MicAudioWidget(
                     width: 100,
                     height: 100,
@@ -84,8 +84,8 @@ class _PageHelloFlutterSoLoudState extends State<PageHelloFlutterSoLoud> {
   /// play file
   Future<void> play(String file) async {
     /// Start audio engine if not already
-    if (!SoLoud().isIsolateRunning()) {
-      await SoLoud().initialize().then((value) {
+    if (!SoLoud.instance.isIsolateRunning()) {
+      await SoLoud.instance.initialize().then((value) {
         if (value == PlayerErrors.noError) {
           _log.info('engine started');
         } else {
@@ -97,7 +97,8 @@ class _PageHelloFlutterSoLoudState extends State<PageHelloFlutterSoLoud> {
 
     /// stop any previous sound loaded
     if (currentSound != null) {
-      if (await SoLoud().disposeSound(currentSound!) != PlayerErrors.noError) {
+      if (await SoLoud.instance.disposeSound(currentSound!) !=
+          PlayerErrors.noError) {
         return;
       }
     }
@@ -108,7 +109,7 @@ class _PageHelloFlutterSoLoudState extends State<PageHelloFlutterSoLoud> {
     currentSound = newSound;
 
     /// play it
-    final playRet = await SoLoud().play(currentSound!);
+    final playRet = await SoLoud.instance.play(currentSound!);
     if (playRet.error != PlayerErrors.noError) return;
     currentSound = playRet.sound;
   }
@@ -139,10 +140,10 @@ class _MicAudioWidgetState extends State<MicAudioWidget>
   void initState() {
     super.initState();
     audioData = calloc();
-    SoLoud().getCaptureAudioTexture2D(audioData);
+    SoLoudCapture.instance.getCaptureAudioTexture2D(audioData);
     ticker = createTicker((Duration elapsed) {
       if (mounted) {
-        SoLoud().getCaptureAudioTexture2D(audioData);
+        SoLoudCapture.instance.getCaptureAudioTexture2D(audioData);
         setState(() {});
       }
     });

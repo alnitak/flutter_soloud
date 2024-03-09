@@ -22,8 +22,8 @@ class _PageMultiTrackState extends State<PageMultiTrack> {
 
   @override
   void dispose() {
-    SoLoud().dispose();
-    SoLoud().stopCapture();
+    SoLoud.instance.dispose();
+    SoLoudCapture.instance.stopCapture();
     super.dispose();
   }
 
@@ -89,10 +89,10 @@ class _PlaySoundWidgetState extends State<PlaySoundWidget> {
 
   Future<bool> loadAsset() async {
     final path = (await getAssetFile(widget.assetsAudio)).path;
-    final loadRet = await SoLoud().loadFile(path);
+    final loadRet = await SoLoud.instance.loadFile(path);
 
     if (loadRet.error == PlayerErrors.noError) {
-      soundLength = SoLoud().getLength(loadRet.sound!).length;
+      soundLength = SoLoud.instance.getLength(loadRet.sound!).length;
       sound = loadRet.sound;
 
       /// Listen to this sound events
@@ -159,7 +159,7 @@ class _PlaySoundWidgetState extends State<PlaySoundWidget> {
       if (!(await loadAsset())) return;
     }
 
-    final newHandle = await SoLoud().play(sound!);
+    final newHandle = await SoLoud.instance.play(sound!);
     if (newHandle.error == PlayerErrors.noError) return;
 
     isPaused[newHandle.newHandle] = ValueNotifier(false);
@@ -227,8 +227,8 @@ class _PlayingRowState extends State<PlayingRow> {
             }
             return IconButton(
               onPressed: () async {
-                SoLoud().pauseSwitch(widget.handle);
-                isPaused.value = SoLoud().getPause(widget.handle).pause;
+                SoLoud.instance.pauseSwitch(widget.handle);
+                isPaused.value = SoLoud.instance.getPause(widget.handle).pause;
               },
               icon: paused
                   ? const Icon(Icons.pause_circle_outline, size: 48)
@@ -240,7 +240,7 @@ class _PlayingRowState extends State<PlayingRow> {
         const SizedBox(width: 16),
         IconButton(
           onPressed: () async {
-            await SoLoud().stop(widget.handle);
+            await SoLoud.instance.stop(widget.handle);
             widget.onStopped();
           },
           icon: const Icon(Icons.stop_circle_outlined, size: 48),
@@ -267,7 +267,7 @@ class _PlayingRowState extends State<PlayingRow> {
                           : widget.soundLength,
                       onChanged: (value) {
                         soundPosition.value = value;
-                        SoLoud().seek(widget.handle, value);
+                        SoLoud.instance.seek(widget.handle, value);
                       },
                     ),
                   ),
@@ -285,7 +285,7 @@ class _PlayingRowState extends State<PlayingRow> {
   void startTimer() {
     timer?.cancel();
     timer = Timer.periodic(const Duration(milliseconds: 100), (_) {
-      soundPosition.value = SoLoud().getPosition(widget.handle).position;
+      soundPosition.value = SoLoud.instance.getPosition(widget.handle).position;
     });
   }
 

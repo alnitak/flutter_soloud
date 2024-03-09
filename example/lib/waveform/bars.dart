@@ -38,7 +38,7 @@ class BarsState extends State<Bars> with SingleTickerProviderStateMixin {
 
   void _tick(Duration elapsed) {
     if (mounted) {
-      SoLoud().getAudioTexture2D(playerData);
+      SoLoud.instance.getAudioTexture2D(playerData);
       setState(() {});
     }
   }

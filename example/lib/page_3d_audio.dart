@@ -20,8 +20,8 @@ class _Page3DAudioState extends State<Page3DAudio> {
 
   @override
   void dispose() {
-    SoLoud().stopIsolate();
-    SoLoud().stopCapture();
+    SoLoud.instance.dispose();
+    SoLoudCapture.instance.stopCapture();
     super.dispose();
   }
 
@@ -64,8 +64,8 @@ class _Page3DAudioState extends State<Page3DAudio> {
   ///
   Future<void> playFromUrl() async {
     /// Start audio engine if not already
-    if (!SoLoud().isIsolateRunning()) {
-      await SoLoud().startIsolate().then((value) {
+    if (!SoLoud.instance.isIsolateRunning()) {
+      await SoLoud.instance.initialize().then((value) {
         if (value == PlayerErrors.noError) {
           _log.info('isolate started');
         } else {
@@ -77,7 +77,8 @@ class _Page3DAudioState extends State<Page3DAudio> {
 
     /// stop any previous sound loaded
     if (currentSound != null) {
-      if (await SoLoud().disposeSound(currentSound!) != PlayerErrors.noError) {
+      if (await SoLoud.instance.disposeSound(currentSound!) !=
+          PlayerErrors.noError) {
         return;
       }
     }
@@ -88,10 +89,10 @@ class _Page3DAudioState extends State<Page3DAudio> {
     );
 
     /// play it
-    final playRet = await SoLoud().play3d(currentSound!, 0, 0, 0);
+    final playRet = await SoLoud.instance.play3d(currentSound!, 0, 0, 0);
     if (playRet.error != PlayerErrors.noError) return;
 
-    SoLoud().setLooping(playRet.newHandle, true);
+    SoLoud.instance.setLooping(playRet.newHandle, true);
     currentSound = playRet.sound;
 
     spinAround = true;
@@ -103,8 +104,8 @@ class _Page3DAudioState extends State<Page3DAudio> {
   ///
   Future<void> play(double maxDistance) async {
     /// Start audio engine if not already
-    if (!SoLoud().isIsolateRunning()) {
-      await SoLoud().startIsolate().then((value) {
+    if (!SoLoud.instance.isIsolateRunning()) {
+      await SoLoud.instance.initialize().then((value) {
         if (value == PlayerErrors.noError) {
           _log.info('isolate started');
         } else {
@@ -116,7 +117,8 @@ class _Page3DAudioState extends State<Page3DAudio> {
 
     /// stop any previous sound loaded
     if (currentSound != null) {
-      if (await SoLoud().disposeSound(currentSound!) != PlayerErrors.noError) {
+      if (await SoLoud.instance.disposeSound(currentSound!) !=
+          PlayerErrors.noError) {
         return;
       }
     }
@@ -125,16 +127,16 @@ class _Page3DAudioState extends State<Page3DAudio> {
     currentSound = await SoloudTools.loadFromAssets('assets/audio/siren.mp3');
 
     /// play it
-    final playRet = await SoLoud().play3d(currentSound!, 0, 0, 0);
+    final playRet = await SoLoud.instance.play3d(currentSound!, 0, 0, 0);
     if (playRet.error != PlayerErrors.noError) return;
 
-    SoLoud().setLooping(playRet.newHandle, true);
-    SoLoud().set3dSourceMinMaxDistance(
+    SoLoud.instance.setLooping(playRet.newHandle, true);
+    SoLoud.instance.set3dSourceMinMaxDistance(
       playRet.newHandle,
       50,
       maxDistance,
     );
-    SoLoud().set3dSourceAttenuation(playRet.newHandle, 1, 0.5);
+    SoLoud.instance.set3dSourceAttenuation(playRet.newHandle, 1, 0.5);
     currentSound = playRet.sound;
 
     spinAround = false;
@@ -210,7 +212,7 @@ class _Audio3DWidgetState extends State<Audio3DWidget>
     velY =
         -100 * delta.dy / (timeStamp.inMilliseconds - precTime.inMilliseconds);
     if (widget.sound != null) {
-      SoLoud().set3dSourceParameters(
+      SoLoud.instance.set3dSourceParameters(
         widget.sound!.handle.first,
         posX,
         posY,

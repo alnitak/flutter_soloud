@@ -39,27 +39,27 @@ class _PageWaveformState extends State<PageWaveform> {
     super.initState();
 
     /// listen to player events
-    SoLoud().audioEvent.stream.listen((event) async {
+    SoLoud.instance.audioEvent.stream.listen((event) async {
       if (event == AudioEvent.isolateStarted) {
         /// When it starts initialize notes
-        SoLoud().setVisualizationEnabled(true);
+        SoLoud.instance.setVisualizationEnabled(true);
         await setupNotes();
-        SoLoud().setGlobalVolume(0.6);
+        SoLoud.instance.setGlobalVolume(0.6);
       }
       if (mounted) setState(() {});
     });
-    SoLoud().initialize();
+    SoLoud.instance.initialize();
   }
 
   @override
   void dispose() {
-    SoLoud().dispose();
-    SoLoud().stopCapture();
+    SoLoud.instance.dispose();
+    SoLoudCapture.instance.stopCapture();
     super.dispose();
   }
 
   Future<void> setupNotes() async {
-    await SoLoud().disposeAllSound();
+    await SoLoud.instance.disposeAllSound();
     notes = await SoloudTools.initSounds(
       octave: octave,
       superwave: superWave,
@@ -68,13 +68,13 @@ class _PageWaveformState extends State<PageWaveform> {
 
     /// set all sounds to pause state
     for (final s in notes) {
-      await SoLoud().play(s, paused: true);
+      await SoLoud.instance.play(s, paused: true);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!SoLoud().isPlayerInited) return const SizedBox.shrink();
+    if (!SoLoud.instance.isPlayerInited) return const SizedBox.shrink();
 
     return Scaffold(
       body: SingleChildScrollView(
@@ -86,11 +86,11 @@ class _PageWaveformState extends State<PageWaveform> {
                 ElevatedButton(
                   onPressed: () async {
                     if (sound != null) {
-                      await SoLoud().disposeSound(sound!);
+                      await SoLoud.instance.disposeSound(sound!);
                     }
 
                     /// text created by ChatGPT :)
-                    await SoLoud()
+                    await SoLoud.instance
                         .speechText('Flutter and So Loud audio plugin are the '
                             "tech tag team you never knew you needed - they're "
                             'like Batman and Robin, swooping in to save your '
@@ -106,7 +106,7 @@ class _PageWaveformState extends State<PageWaveform> {
                     final ret = await SoloudTools.loadFromAssets(
                       'assets/audio/8_bit_mentality.mp3',
                     );
-                    await SoLoud()
+                    await SoLoud.instance
                         .play(ret!)
                         .then((value) => sound = value.sound);
                   },
@@ -116,7 +116,7 @@ class _PageWaveformState extends State<PageWaveform> {
                 ElevatedButton(
                   onPressed: () {
                     if (sound != null) {
-                      SoLoud().disposeSound(sound!).then((value) {
+                      SoLoud.instance.disposeSound(sound!).then((value) {
                         sound = null;
                       });
                     }
@@ -139,7 +139,7 @@ class _PageWaveformState extends State<PageWaveform> {
                   onChanged: (value) {
                     scale.value = value;
                     for (var i = 0; i < notes.length; i++) {
-                      SoLoud().setWaveformScale(notes[i], value);
+                      SoLoud.instance.setWaveformScale(notes[i], value);
                     }
                   },
                 );
@@ -159,7 +159,7 @@ class _PageWaveformState extends State<PageWaveform> {
                   onChanged: (value) {
                     detune.value = value;
                     for (var i = 0; i < notes.length; i++) {
-                      SoLoud().setWaveformDetune(notes[i], value);
+                      SoLoud.instance.setWaveformDetune(notes[i], value);
                     }
                   },
                 );
@@ -190,7 +190,7 @@ class _PageWaveformState extends State<PageWaveform> {
                   onChanged: (value) {
                     superWave = value!;
                     for (var i = 0; i < notes.length; i++) {
-                      SoLoud().setWaveformSuperWave(notes[i], value);
+                      SoLoud.instance.setWaveformSuperWave(notes[i], value);
                     }
                     if (mounted) setState(() {});
                   },

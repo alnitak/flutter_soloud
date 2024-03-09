@@ -100,34 +100,34 @@ class _KeyboardWidgetState extends State<KeyboardWidget> {
     if (index < 0 || index >= notesKeys.length) return;
     if (isPressed[index].value) return;
     final handle = widget.notes[index].handle.first;
-    SoLoud().setRelativePlaySpeed(handle, 0);
-    SoLoud().setVolume(handle, 0);
-    SoLoud().fadeVolume(handle, 1, widget.fadeIn);
-    SoLoud().fadeRelativePlaySpeed(
+    SoLoud.instance.setRelativePlaySpeed(handle, 0);
+    SoLoud.instance.setVolume(handle, 0);
+    SoLoud.instance.fadeVolume(handle, 1, widget.fadeIn);
+    SoLoud.instance.fadeRelativePlaySpeed(
       handle,
       1,
       widget.fadeSpeedIn,
     );
     if (widget.oscillateVolume > 0) {
-      SoLoud().oscillateVolume(handle, 0.3, 1, widget.oscillateVolume);
+      SoLoud.instance.oscillateVolume(handle, 0.3, 1, widget.oscillateVolume);
     }
     if (widget.oscillatePan > 0) {
-      SoLoud().oscillatePan(handle, 0.3, 1, widget.oscillatePan);
+      SoLoud.instance.oscillatePan(handle, 0.3, 1, widget.oscillatePan);
     }
     if (widget.oscillateSpeed > 0) {
-      SoLoud()
+      SoLoud.instance
           .oscillateRelativePlaySpeed(handle, 0.3, 1, widget.oscillateSpeed);
     }
-    SoLoud().setPause(handle, false);
+    SoLoud.instance.setPause(handle, false);
     isPressed[index].value = true;
   }
 
   void stop(int index) {
     if (index < 0 || index >= notesKeys.length) return;
     for (final h in widget.notes[index].handle) {
-      SoLoud().fadeVolume(h, 0, widget.fadeOut);
-      SoLoud().fadeRelativePlaySpeed(h, 0, widget.fadeSpeedOut);
-      SoLoud().schedulePause(h, widget.fadeOut);
+      SoLoud.instance.fadeVolume(h, 0, widget.fadeOut);
+      SoLoud.instance.fadeRelativePlaySpeed(h, 0, widget.fadeSpeedOut);
+      SoLoud.instance.schedulePause(h, widget.fadeOut);
     }
     isPressed[index].value = false;
   }

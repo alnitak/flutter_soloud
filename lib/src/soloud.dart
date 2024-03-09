@@ -61,17 +61,74 @@ enum AudioEvent {
   captureStopped,
 }
 
-/// The main class to call all the audio methods
+/// The main class to call all the audio methods that play sounds.
 ///
-class SoLoud {
-  static final Logger _log = Logger('flutter_soloud.SoLoud');
-
+/// For methods that _capture_ sounds, use [SoLoudCapture].
+interface class SoLoud {
+  /// A deprecated way to access the singleton [instance] of SoLoud.
   ///
-  factory SoLoud() => _instance ??= SoLoud._();
+  /// The reason this is deprecated is that it leads to code that misrepresents
+  /// what is actually happening. For example:
+  ///
+  /// ```dart
+  /// // BAD
+  /// var sound = await SoLoud().loadFile('path/to/sound.mp3');
+  /// await SoLoud().play(sound)
+  /// ```
+  ///
+  /// The code above suggests, on the face of it, that we're _constructing_
+  /// two instances of [SoLoud], although we're in fact only accessing
+  /// the singleton instance.
+  @Deprecated('Use SoLoudPlayer.instance instead')
+  factory SoLoud() => instance;
 
+  /// The private constructor of [SoLoud]. This prevents developers from
+  /// instantiating new instances.
   SoLoud._();
 
-  static SoLoud? _instance;
+  static final Logger _log = Logger('flutter_soloud.SoLoudPlayer');
+
+  /// The singleton instance of [SoLoud]. Only one SoLoud instance
+  /// can exist in C++ land, so – for consistency and to avoid confusion
+  /// – only one instance can exist in Dart land.
+  ///
+  /// Using this static field, you can get a hold of the single instance
+  /// of this class from anywhere. This ability to access global state
+  /// from anywhere can lead to hard-to-debug bugs, though, so it is
+  /// preferable to encapsulate this and provide it through a facade.
+  /// For example:
+  ///
+  /// ```dart
+  /// final audioController = MyAudioController(SoLoudPlayer.instance);
+  ///
+  /// // Now provide the audio controller to parts of the app that need it.
+  /// // No other part of the codebase need import `package:flutter_soloud`.
+  /// ```
+  ///
+  /// Alternatively, at least create a field with the single instance
+  /// of [SoLoud], and provide that (without the facade, but also without
+  /// accessing [SoLoud.instance] from different places of the app).
+  /// For example:
+  ///
+  /// ```dart
+  /// class _MyWidgetState extends State<MyWidget> {
+  ///   SoLoud? _soloud;
+  ///
+  ///   void _initializeSound() async {
+  ///     // The only place in the codebase that accesses SoLoudPlayer.instance
+  ///     // directly.
+  ///     final soloud = SoLoudPlayer.instance;
+  ///     await soloud.initialize();
+  ///
+  ///     setState(() {
+  ///       _soloud = soloud;
+  ///     });
+  ///   }
+  ///
+  ///   // ...
+  /// }
+  /// ```
+  static final SoLoud instance = SoLoud._();
 
   /// the way to talk to the audio isolate
   SendPort? _mainToIsolateStream;
@@ -86,13 +143,16 @@ class SoLoud {
   ReceivePort? _isolateToMainStream;
 
   /// Stream audio events
+  @Deprecated(
+      'Instead of listening to events, just await initialize() and shutdown()')
   StreamController<AudioEvent> audioEvent = StreamController.broadcast();
 
   /// status of player
   bool isPlayerInited = false;
 
   /// status of capture
-  bool isCaptureInited = false;
+  @Deprecated('Use SoLoudCapture.isCaptureInited instead')
+  bool get isCaptureInited => SoLoudCapture.instance.isCaptureInited;
 
   /// Used both in main and audio isolates
   /// should be synchronized with each other
@@ -162,6 +222,7 @@ class SoLoud {
         /// finally start the audio engine
         _initEngine().then((value) {
           if (value == PlayerErrors.noError) {
+            // ignore: deprecated_member_use_from_same_package
             audioEvent.add(AudioEvent.isolateStarted);
           }
           completer.complete(value);
@@ -252,6 +313,7 @@ class SoLoud {
     _isolateToMainStream = null;
     _isolate?.kill();
     _isolate = null;
+    // ignore: deprecated_member_use_from_same_package
     audioEvent.add(AudioEvent.isolateStopped);
     return true;
   }
@@ -1102,64 +1164,47 @@ class SoLoud {
 
   /// List available input devices. Useful on desktop to choose
   /// which input device to use.
-  ///
-  List<CaptureDevice> listCaptureDevices() {
-    return SoLoudController().captureFFI.listCaptureDevices();
-  }
+  @Deprecated('Use SoLoudCapture.listCaptureDevices instead '
+      '(all capture-related methods were moved to SoLoudCapture class)')
+  List<CaptureDevice> listCaptureDevices() =>
+      SoLoudCapture.instance.listCaptureDevices();
 
   /// Initialize input device with [deviceID].
   ///
   /// Return [CaptureErrors.captureNoError] if no error.
   ///
-  CaptureErrors initCapture({int deviceID = -1}) {
-    final ret = SoLoudController().captureFFI.initCapture(deviceID);
-    _logCaptureError(ret, from: 'initCapture() result');
-    if (ret == CaptureErrors.captureNoError) {
-      isCaptureInited = true;
-      audioEvent.add(AudioEvent.captureStarted);
-    }
-
-    return ret;
-  }
+  @Deprecated('Use SoLoudCapture.initialize() instead '
+      '(all capture-related methods were moved to SoLoudCapture class)')
+  CaptureErrors initCapture({int deviceID = -1}) =>
+      SoLoudCapture.instance.initialize();
 
   /// Get the status of the device.
   ///
-  bool isCaptureInitialized() {
-    return SoLoudController().captureFFI.isCaptureInited();
-  }
+  @Deprecated('Use SoLoudCapture.isCaptureInitialized() instead '
+      '(all capture-related methods were moved to SoLoudCapture class)')
+  bool isCaptureInitialized() => SoLoudCapture.instance.isCaptureInitialized();
 
   /// Returns true if the device is capturing audio.
   ///
-  bool isCaptureStarted() {
-    return SoLoudController().captureFFI.isCaptureStarted();
-  }
+  @Deprecated('Use SoLoudCapture.isCaptureStarted() instead '
+      '(all capture-related methods were moved to SoLoudCapture class)')
+  bool isCaptureStarted() => SoLoudCapture.instance.isCaptureStarted();
 
   /// Stop and deinit capture device.
   ///
   /// Return [CaptureErrors.captureNoError] if no error.
   ///
-  CaptureErrors stopCapture() {
-    final ret = SoLoudController().captureFFI.stopCapture();
-    _logCaptureError(ret, from: 'stopCapture() result');
-    if (ret == CaptureErrors.captureNoError) {
-      isCaptureInited = false;
-      audioEvent.add(AudioEvent.captureStopped);
-    }
-    return ret;
-  }
+  @Deprecated('Use SoLoudCapture.stopCapture() instead '
+      '(all capture-related methods were moved to SoLoudCapture class)')
+  CaptureErrors stopCapture() => SoLoudCapture.instance.stopCapture();
 
   /// Start capturing audio data.
   ///
   /// Return [CaptureErrors.captureNoError] if no error
   ///
-  CaptureErrors startCapture() {
-    final ret = SoLoudController().captureFFI.startCapture();
-    _logCaptureError(ret, from: 'startCapture() result');
-    if (ret == CaptureErrors.captureNoError) {
-      audioEvent.add(AudioEvent.captureStarted);
-    }
-    return ret;
-  }
+  @Deprecated('Use SoLoudCapture.startCapture() instead '
+      '(all capture-related methods were moved to SoLoudCapture class)')
+  CaptureErrors startCapture() => SoLoudCapture.instance.startCapture();
 
   /// Return a floats matrix of 256x512
   /// Every row are composed of 256 FFT values plus 256 of wave data
@@ -1169,28 +1214,11 @@ class SoLoud {
   ///
   /// Return [CaptureErrors.captureNoError] if no error.
   ///
+  @Deprecated('Use SoLoudCapture.getCaptureAudioTexture2D() instead '
+      '(all capture-related methods were moved to SoLoudCapture class)')
   CaptureErrors getCaptureAudioTexture2D(
-      ffi.Pointer<ffi.Pointer<ffi.Float>> audioData) {
-    if (!isCaptureInited || audioData == ffi.nullptr) {
-      _log.severe(() =>
-          'getCaptureAudioTexture2D(): ${CaptureErrors.captureNotInited}');
-      return CaptureErrors.captureNotInited;
-    }
-
-    final ret =
-        SoLoudController().captureFFI.getCaptureAudioTexture2D(audioData);
-    _logCaptureError(ret, from: 'getCaptureAudioTexture2D() result');
-
-    if (ret != CaptureErrors.captureNoError) {
-      return ret;
-    }
-    if (audioData.value == ffi.nullptr) {
-      _logCaptureError(CaptureErrors.nullPointer,
-          from: 'getCaptureAudioTexture2D() result');
-      return CaptureErrors.nullPointer;
-    }
-    return CaptureErrors.captureNoError;
-  }
+          ffi.Pointer<ffi.Pointer<ffi.Float>> audioData) =>
+      SoLoudCapture.instance.getCaptureAudioTexture2D(audioData);
 
   /// Smooth FFT data.
   ///
@@ -1205,11 +1233,10 @@ class SoLoud {
   ///
   /// Return [CaptureErrors.captureNoError] if no error.
   ///
-  CaptureErrors setCaptureFftSmoothing(double smooth) {
-    final ret = SoLoudController().captureFFI.setCaptureFftSmoothing(smooth);
-    _logCaptureError(ret, from: 'setCaptureFftSmoothing() result');
-    return ret;
-  }
+  @Deprecated('Use SoLoudCapture.setCaptureFftSmoothing() instead '
+      '(all capture-related methods were moved to SoLoudCapture class)')
+  CaptureErrors setCaptureFftSmoothing(double smooth) =>
+      SoLoudCapture.instance.setCaptureFftSmoothing(smooth);
 
   /////////////////////////////////////////
   /// Filters
@@ -1537,25 +1564,6 @@ class SoLoud {
       strBuf.write('$from: ');
     }
     strBuf.write(playerError.toString());
-    _log.severe(strBuf.toString());
-  }
-
-  /// Same as [_logPlayerError], but for [CaptureErrors].
-  void _logCaptureError(CaptureErrors captureError, {String? from}) {
-    if (captureError == CaptureErrors.captureNoError) {
-      return;
-    }
-
-    if (!_log.isLoggable(Level.SEVERE)) {
-      // Do not do extra work if the logger isn't listening.
-      return;
-    }
-
-    final strBuf = StringBuffer();
-    if (from != null) {
-      strBuf.write('$from: ');
-    }
-    strBuf.write(captureError.toString());
     _log.severe(strBuf.toString());
   }
 }

@@ -55,8 +55,8 @@ class _PageVisualizerState extends State<PageVisualizer> {
 
   @override
   void dispose() {
-    SoLoud().dispose();
-    SoLoud().stopCapture();
+    SoLoud.instance.dispose();
+    SoLoudCapture.instance.stopCapture();
     super.dispose();
   }
 
@@ -241,7 +241,8 @@ class _PageVisualizerState extends State<PageVisualizer> {
                 /// text 2 speech
                 ElevatedButton(
                   onPressed: () {
-                    SoLoud().speechText('Hello Flutter. Text to speech!!');
+                    SoLoud.instance
+                        .speechText('Hello Flutter. Text to speech!!');
                   },
                   child: const Text('T2S'),
                 ),
@@ -288,7 +289,8 @@ class _PageVisualizerState extends State<PageVisualizer> {
                             onChanged: (value) {
                               if (currentSound == null) return;
                               stopTimer();
-                              SoLoud().seek(currentSound!.handle.last, value);
+                              SoLoud.instance
+                                  .seek(currentSound!.handle.last, value);
                               soundPosition.value = value;
                               startTimer();
                             },
@@ -340,9 +342,10 @@ class _PageVisualizerState extends State<PageVisualizer> {
                         value: smoothing,
                         onChanged: (smooth) {
                           if (isVisualizerForPlayer.value) {
-                            SoLoud().setFftSmoothing(smooth);
+                            SoLoud.instance.setFftSmoothing(smooth);
                           } else {
-                            SoLoud().setCaptureFftSmoothing(smooth);
+                            SoLoudCapture.instance
+                                .setCaptureFftSmoothing(smooth);
                           }
                           fftSmoothing.value = smooth;
                         },
@@ -450,24 +453,25 @@ class _PageVisualizerState extends State<PageVisualizer> {
   /// play file
   Future<void> play(String file) async {
     if (currentSound != null) {
-      if (await SoLoud().disposeSound(currentSound!) != PlayerErrors.noError) {
+      if (await SoLoud.instance.disposeSound(currentSound!) !=
+          PlayerErrors.noError) {
         return;
       }
       stopTimer();
     }
 
     /// load the file
-    final loadRet = await SoLoud().loadFile(file);
+    final loadRet = await SoLoud.instance.loadFile(file);
     if (loadRet.error != PlayerErrors.noError) return;
     currentSound = loadRet.sound;
 
     /// play it
-    final playRet = await SoLoud().play(currentSound!);
+    final playRet = await SoLoud.instance.play(currentSound!);
     if (loadRet.error != PlayerErrors.noError) return;
     currentSound = playRet.sound;
 
     /// get its length and notify it
-    soundLength.value = SoLoud().getLength(currentSound!).length;
+    soundLength.value = SoLoud.instance.getLength(currentSound!).length;
 
     /// Stop the timer and dispose the sound when the sound ends
     currentSound!.soundEvents.stream.listen(
@@ -478,7 +482,7 @@ class _PageVisualizerState extends State<PageVisualizer> {
 
         /// It's needed to call dispose when it end else it will
         /// not be cleared
-        SoLoud().disposeSound(currentSound!);
+        SoLoud.instance.disposeSound(currentSound!);
         currentSound = null;
       },
     );
@@ -515,7 +519,7 @@ class _PageVisualizerState extends State<PageVisualizer> {
     timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (currentSound != null) {
         soundPosition.value =
-            SoLoud().getPosition(currentSound!.handle.last).position;
+            SoLoud.instance.getPosition(currentSound!.handle.last).position;
       }
     });
   }
