@@ -22,7 +22,7 @@ class _PageMultiTrackState extends State<PageMultiTrack> {
 
   @override
   void dispose() {
-    SoLoud.instance.dispose();
+    SoLoud.instance.shutdown();
     SoLoudCapture.instance.stopCapture();
     super.dispose();
   }

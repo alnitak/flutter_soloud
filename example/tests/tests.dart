@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:logging/logging.dart';
 
@@ -12,7 +13,17 @@ import 'package:logging/logging.dart';
 void main() async {
   // Make sure we can see logs from the engine, even in release mode.
   // ignore: avoid_print
-  Logger.root.onRecord.listen(print);
+  final errorsBuffer = StringBuffer();
+  Logger.root.onRecord.listen((record) {
+    debugPrint(record.toString(), wrapWidth: 80);
+    if (record.level >= Level.WARNING) {
+      // Make sure the warnings are visible.
+      stderr.writeln('TEST error: $record');
+      errorsBuffer.writeln('- $record');
+      // Set exit code but keep running to see all logs.
+      exitCode = 1;
+    }
+  });
   Logger.root.level = Level.ALL;
 
   WidgetsFlutterBinding.ensureInitialized();
@@ -20,29 +31,48 @@ void main() async {
   await runZonedGuarded(
     () async => test3(),
     (error, stack) {
-      debugPrint('TEST error: $error\nstack: $stack');
-      exit(1);
+      stderr.writeln('TEST error: $error\nstack: $stack');
+      exitCode = 1;
     },
   );
 
   await runZonedGuarded(
     () async => test1(),
     (error, stack) {
-      debugPrint('TEST error: $error\nstack: $stack');
-      exit(1);
+      stderr.writeln('TEST error: $error\nstack: $stack');
+      exitCode = 1;
     },
   );
 
   await runZonedGuarded(
     () async => test2(),
     (error, stack) {
-      debugPrint('TEST error: $error\nstack: $stack');
-      exit(1);
+      stderr.writeln('TEST error: $error\nstack: $stack');
+      exitCode = 1;
     },
   );
 
-  debugPrint('TEST passed!');
-  exit(0);
+  stdout.write('\n\n\n---\n\n\n');
+
+  if (exitCode != 0) {
+    // Since we're running this inside `flutter run`, the exit code
+    // will be overridden to 0 by the Flutter tool.
+    // The following is making sure that the errors are noticed.
+    stderr
+      ..writeln('===== TESTS FAILED with the following error(s) =====')
+      ..writeln()
+      ..writeln(errorsBuffer.toString())
+      ..writeln()
+      ..writeln('See logs above for details.')
+      ..writeln();
+  } else {
+    stdout
+      ..writeln('===== TESTS PASSED! =====')
+      ..writeln();
+  }
+
+  // Cleanly close the app.
+  await SystemChannels.platform.invokeMethod('SystemNavigator.pop');
 }
 
 String output = '';
@@ -207,7 +237,7 @@ Future<void> initialize() async {
 }
 
 Future<void> dispose() async {
-  final ret = await SoLoud.instance.dispose();
+  final ret = await SoLoud.instance.shutdown();
   assert(ret, 'dispose() failed!');
 }
 

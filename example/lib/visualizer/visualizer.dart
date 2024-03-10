@@ -84,7 +84,7 @@ class Visualizer extends StatefulWidget {
 
 class _VisualizerState extends State<Visualizer>
     with SingleTickerProviderStateMixin {
-  late bool isPlayerInited;
+  late bool isInitialized;
   late bool isCaptureInited;
   late Ticker ticker;
   late Stopwatch sw;
@@ -103,11 +103,11 @@ class _VisualizerState extends State<Visualizer>
   void initState() {
     super.initState();
 
-    isPlayerInited = SoLoud.instance.isPlayerInited;
+    isInitialized = SoLoud.instance.isInitialized;
     isCaptureInited = SoLoudCapture.instance.isCaptureInited;
     SoLoud.instance.audioEvent.stream.listen(
       (event) {
-        isPlayerInited = SoLoud.instance.isPlayerInited;
+        isInitialized = SoLoud.instance.isInitialized;
         isCaptureInited = SoLoudCapture.instance.isCaptureInited;
       },
     );
@@ -329,7 +329,7 @@ class _VisualizerState extends State<Visualizer>
     }
 
     /// get audio data from player or capture device
-    if (widget.controller.isVisualizerForPlayer && isPlayerInited) {
+    if (widget.controller.isVisualizerForPlayer && isInitialized) {
       final ret = SoLoud.instance.getAudioTexture2D(playerData);
       if (ret != PlayerErrors.noError) return null;
     } else if (!widget.controller.isVisualizerForPlayer && isCaptureInited) {
@@ -381,7 +381,7 @@ class _VisualizerState extends State<Visualizer>
     }
 
     /// get audio data from player or capture device
-    if (widget.controller.isVisualizerForPlayer && isPlayerInited) {
+    if (widget.controller.isVisualizerForPlayer && isInitialized) {
       final ret = SoLoud.instance.getAudioTexture2D(playerData);
       if (ret != PlayerErrors.noError) return null;
     } else if (!widget.controller.isVisualizerForPlayer && isCaptureInited) {

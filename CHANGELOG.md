@@ -6,7 +6,7 @@
   See `README.md` to learn how to capture log messages and how to filter
   them.
 - Renamed `SoLoud.startIsolate()` to `SoLoud.initialize()`
-- Renamed `SoLoud.stopIsolate()` to `SoLoud.dispose()`
+- Renamed `SoLoud.stopIsolate()` to `SoLoud.shutdown()`
 - Removed `SoLoud.initEngine()` (it shouldn't be called manually)
 - None of the renaming changes are strictly breaking (yet). 
   The old method names still exist as aliases to the new names, and are
@@ -26,6 +26,20 @@
   _extend_ it. This reduces the
   [fragile base class problem](https://en.wikipedia.org/wiki/Fragile_base_class)
   and makes the API easier to evolve.
+- Added a new, more usable way of finding out whether the audio engine
+  is initialized and ready to use:
+    - `SoLoud.initialized` (returns a future, safe to check during initialization)
+      - This is a much easier way to check engine readiness than
+        subscribing to `SoLoud.audioEvents` and waiting for 
+        the `isolateStarted` event.
+    - `SoLoud.isInitialized` (returns synchronously)
+    - previous methods to check readiness (`isPlayerInited` and `isIsolateRunning()`)
+      are now deprecated
+- `SoLoud.initialize()` can now be safely called during engine
+  shutdown. It will wait for the engine to shut down before
+  re-initializing it. Same for `SoLoud.shutdown()`, which will 
+  wait for the engine to initialize before shutting it down,
+  to avoid various race conditions.
 
 #### 1.2.5 (2 Mar 2024)
 - updated mp3, flac and wav decoders

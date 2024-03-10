@@ -86,13 +86,25 @@ enum PlayerErrors {
   backendNotInited,
 
   /// Audio isolate already started
+  @Deprecated('Use multipleInitialization instead')
   isolateAlreadyStarted,
+
+  /// Engine has already been initialized successfully
+  /// but a new call to `initialize()` was made.
+  multipleInitialization,
+
+  /// Engine is currently being initialized
+  /// and another call to `initialize()` was made.
+  concurrentInitialization,
 
   /// Audio isolate not yet started
   isolateNotStarted,
 
   /// Engine not yet started
   engineNotInited,
+
+  /// The engine took too long to initialize.
+  engineInitializationTimedOut,
 
   /// Filter not found
   filterNotFound;
@@ -126,12 +138,24 @@ enum PlayerErrors {
         return 'The sound with specified hash is not found';
       case PlayerErrors.backendNotInited:
         return 'Player not initialized';
+      // ignore: deprecated_member_use_from_same_package
       case PlayerErrors.isolateAlreadyStarted:
         return 'Audio isolate already started';
+      case PlayerErrors.multipleInitialization:
+        return 'Engine has already been initialized successfully '
+            'but a new call to initialize() was made';
+      case PlayerErrors.concurrentInitialization:
+        return 'Engine is currently being initialized '
+            'and another call to initialize() was made';
       case PlayerErrors.isolateNotStarted:
         return 'Audio isolate not yet started';
       case PlayerErrors.engineNotInited:
-        return 'Engine not yet started';
+        return 'Engine not yet started. '
+            'Either asynchronously await `SoLoud.ready` '
+            'or synchronously check `SoLoud.isReady` '
+            'before calling the function.';
+      case PlayerErrors.engineInitializationTimedOut:
+        return 'Engine initialization timed out';
       case PlayerErrors.filterNotFound:
         return 'Filter not found';
     }

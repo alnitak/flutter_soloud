@@ -9,9 +9,42 @@
 version: 1
 
 transforms:
+  # PlayerErrors.isolateAlreadyStarted => SoLoudCapture.multipleInitialization
+  - title: "Rename to 'multipleInitialization'"
+    date: 2024-03-09
+    element:
+      uris: [ 'flutter_soloud.dart', 'package:flutter_soloud/flutter_soloud.dart' ]
+      constant: 'isolateAlreadyStarted'
+      inEnum: 'PlayerErrors'
+    changes:
+      - kind: 'rename'
+        newName: 'multipleInitialization'
+
+  # SoLoud.isPlayerInited => SoLoudCapture.isReady
+  - title: "Rename to 'isInitialized'"
+    date: 2024-03-09
+    element:
+      uris: [ 'flutter_soloud.dart', 'package:flutter_soloud/flutter_soloud.dart' ]
+      getter: 'isPlayerInited'
+      inClass: 'SoLoud'
+    changes:
+      - kind: 'rename'
+        newName: 'isInitialized'
+
+  # SoLoud.dispose => SoLoudCapture.shutdown
+  - title: "Rename to 'shutdown()'"
+    date: 2024-03-09
+    element:
+      uris: [ 'flutter_soloud.dart', 'package:flutter_soloud/flutter_soloud.dart' ]
+      method: 'dispose'
+      inClass: 'SoLoud'
+    changes:
+      - kind: 'rename'
+        newName: 'shutdown'
+
   # SoLoudCapture.initCapture => SoLoudCapture.initialize
   - title: "Rename to 'initialize()'"
-    date: 2024-03-08
+    date: 2024-03-09
     element:
       uris: [ 'flutter_soloud.dart', 'package:flutter_soloud/flutter_soloud.dart' ]
       method: 'initCapture'

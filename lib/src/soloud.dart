@@ -142,13 +142,109 @@ interface class SoLoud {
   /// the way to receive events from audio isolate
   ReceivePort? _isolateToMainStream;
 
+  /// The backing private field for [isInitialized].
+  bool _isInitialized = false;
+
+  /// The current status of the engine. This is `true` when the engine
+  /// has been initialized and is immediately ready.
+  ///
+  /// The result will be `false` in all the following cases:
+  ///
+  /// - the engine was never initialized
+  /// - it's being initialized right now (but not finished yet)
+  /// - its most recent initialization failed
+  /// - it's being shut down right now
+  /// - it has been shut down
+  ///
+  /// You can `await` [initialized] instead if you want to wait for the engine
+  /// to become ready (in case it's being initialized right now).
+  ///
+  /// Use [isInitialized] only if you want to check the current status of
+  /// the engine synchronously and you don't care that it might be ready soon.
+  bool get isInitialized => _isInitialized;
+
+  /// The completer for an initialization in progress.
+  ///
+  /// This is `null` when the engine is not currently being initialized.
+  Completer<PlayerErrors>? _initializeCompleter;
+
+  /// The completer for a shutdown in progress.
+  ///
+  /// This is `null` when the engine is not currently being shut down.
+  Completer<bool>? _shutdownCompleter;
+
+  /// A [Future] that returns `true` when the audio engine is initialized
+  /// (and ready to play sounds, for example).
+  ///
+  /// You can call this at any time. For example:
+  ///
+  /// ```dart
+  /// void onPressed() async {
+  ///   if (await SoLoud.instance.initialized) {
+  ///     // The audio engine is ready. We can play sounds now.
+  ///     await SoLoud.instance.play(sound);
+  ///   }
+  /// }
+  /// ```
+  ///
+  /// The future will complete immediately (synchronously) if the engine is
+  /// either already initialized (`true`),
+  /// or it had failed to initialize (`false`),
+  /// or it was already shut down (`false`),
+  /// or it is _being_ shut down (`false`),
+  /// or when there wasn't ever a call to [initialize] at all (`false`).
+  ///
+  /// If the engine is in the middle of initializing, the future will complete
+  /// when the initialization is done. It will be `true` if the initialization
+  /// was successful, and `false` if it failed. The future will never throw.
+  ///
+  /// It is _not_ needed to await this future after a call to [initialize].
+  /// The [initialize] method already returns a future, and it is the
+  /// same future that this getter returns.
+  ///
+  /// ```dart
+  /// final result = await SoLoud.instance.initialize();
+  /// await SoLoud.instance.initialized;  // NOT NEEDED
+  /// ```
+  ///
+  /// This getter ([initialized]) is useful when you want to check the status
+  /// of the engine from places in your code that _don't_ do the initialization.
+  /// For example, a widget down the widget tree.
+  ///
+  /// If you need a version of this that is synchronous,
+  /// or if you don't care that the engine might be initializing right now
+  /// and therefore ready in a moment,
+  /// use [isInitialized] instead.
+  FutureOr<bool> get initialized {
+    if (_initializeCompleter == null) {
+      // We are _not_ during initialization. Return synchronously.
+      return _isInitialized;
+    }
+
+    // We are in the middle of initializing the engine. Wait for that to
+    // complete and return `true` if it was successful.
+    return _initializeCompleter!.future
+        .then((error) => error == PlayerErrors.noError);
+  }
+
   /// Stream audio events
   @Deprecated(
       'Instead of listening to events, just await initialize() and shutdown()')
   StreamController<AudioEvent> audioEvent = StreamController.broadcast();
 
   /// status of player
-  bool isPlayerInited = false;
+  @Deprecated('Use SoLoud.isInitialized (or await SoLoud.initialized) instead')
+  bool get isPlayerInited => _isInitialized;
+
+  /// Status of the engine.
+  ///
+  /// Since the engine is initialized as a part of the
+  /// more general initialization process, this field is only an internal
+  /// control mechanism. Users should use [initialized] instead.
+  ///
+  /// The field is useful in [disposeAllSound], which is called from [shutdown]
+  /// (so [isInitialized] is already `false` at that point).
+  bool _isEngineInitialized = false;
 
   /// status of capture
   @Deprecated('Use SoLoudCapture.isCaptureInited instead')
@@ -202,16 +298,51 @@ interface class SoLoud {
   /// completes, those calls will be ignored and you will get
   /// a [PlayerErrors.engineNotInited] back.
   ///
+  /// The [timeout] parameter is the maximum time to wait for the engine
+  /// to initialize. If the engine doesn't initialize within this time,
+  /// the method will return [PlayerErrors.engineInitializationTimedOut].
+  /// The default timeout is 10 seconds.
+  ///
+  /// It is safe to call this function even if the engine is currently being
+  /// shut down. In that case, the function will wait for [shutdown]
+  /// to properly complete before initializing again.
+  ///
   /// (This method was formerly called `startIsolate()`.)
-  Future<PlayerErrors> initialize() async {
+  Future<PlayerErrors> initialize({
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
     _log.finest('initialize() called');
     // Start the audio isolate and listen for messages coming from it.
     // Messages are streamed with [_returnedEvent] and processed
     // by [_waitForEvent] when they come.
 
-    if (_isolate != null) return PlayerErrors.isolateAlreadyStarted;
+    if (_isInitialized) {
+      _log.severe('initialize() called when the engine is already initialized');
+      return PlayerErrors.multipleInitialization;
+    }
+
+    if (_initializeCompleter != null) {
+      _log.severe('initialize() called while already initializing');
+      return PlayerErrors.concurrentInitialization;
+    }
+
     activeSounds.clear();
     final completer = Completer<PlayerErrors>();
+    _initializeCompleter = completer;
+
+    if (_shutdownCompleter != null) {
+      // We are in the middle of shutting down the engine.
+      // We should wait for that to complete before initializing again.
+      final success = await _shutdownCompleter!.future;
+      if (!success) {
+        // The engine failed to shut down. We can't initialize it.
+        _log.severe('initialize() called while the engine is shutting down '
+            'but the shutdown failed');
+        _initializeCompleter = null;
+        return PlayerErrors.unknownError;
+      }
+    }
+
     _isolateToMainStream = ReceivePort();
     _returnedEvent = StreamController.broadcast();
 
@@ -221,10 +352,22 @@ interface class SoLoud {
 
         /// finally start the audio engine
         _initEngine().then((value) {
+          assert(
+              !_isInitialized,
+              '_isInitialized should be false at this point. '
+              'There might be a bug in the code that tries to prevent '
+              'multiple concurrent initializations.');
           if (value == PlayerErrors.noError) {
             // ignore: deprecated_member_use_from_same_package
             audioEvent.add(AudioEvent.isolateStarted);
+            _isInitialized = true;
+          } else {
+            _log.severe('_initEngine() failed with error: $value');
+            _cleanUpUnsuccessfulInitialization();
           }
+          assert(_initializeCompleter == completer,
+              '_initializeCompleter has been reassigned during initialization');
+          _initializeCompleter = null;
           completer.complete(value);
         });
       } else {
@@ -275,31 +418,87 @@ interface class SoLoud {
         await Isolate.spawn(audioIsolate, _isolateToMainStream!.sendPort);
     if (_isolate == null) return PlayerErrors.isolateNotStarted;
 
-    return completer.future;
+    return completer.future.timeout(timeout, onTimeout: () {
+      _log.severe('initialize() timed out');
+      assert(_initializeCompleter == completer,
+          '_initializeCompleter has been reassigned');
+      _initializeCompleter = null;
+      _cleanUpUnsuccessfulInitialization();
+      return PlayerErrors.engineInitializationTimedOut;
+    });
   }
 
-  /// An alias for [dispose], for backwards compatibility.
+  /// Used to clean up after an unsuccessful or interrupted initialization.
+  void _cleanUpUnsuccessfulInitialization() {
+    _isolateToMainStream?.close();
+    _isolateToMainStream = null;
+    _mainToIsolateStream = null;
+    _returnedEvent?.close();
+    _returnedEvent = null;
+    _isolate?.kill();
+    _isolate = null;
+    _isEngineInitialized = false;
+  }
+
+  /// An alias for [shutdown], for backwards compatibility.
   ///
-  /// Use [dispose] instead. The [stopIsolate] alias will be removed
+  /// Use [shutdown] instead. The [stopIsolate] alias will be removed
   /// in a future version.
   @Deprecated('use dispose() instead')
-  Future<bool> stopIsolate() => dispose();
+  Future<bool> stopIsolate() => shutdown();
 
   /// Stops the engine and disposes of all resources, including sounds
   /// and the audio isolate.
   ///
   /// Returns `true` when everything has been disposed. Returns `false`
   /// if there was nothing to dispose (e.g. the engine hasn't ever been
-  /// initialized).
+  /// successfully initialized).
+  ///
+  /// It is safe to call this function even if the engine is currently being
+  /// initialized. In that case, the function will wait for [initialize]
+  /// to properly complete before shutting down.
   ///
   /// (This method was formerly called `stopIsolate()`.)
-  Future<bool> dispose() async {
-    _log.finest('dispose() called');
-    if (_isolate == null || !isPlayerInited) return false;
+  Future<bool> shutdown() async {
+    _log.finest('shutdown() called');
+
+    if (_initializeCompleter != null) {
+      // We are in the middle of initializing the engine.
+      // We should wait for that to complete before disposing.
+      assert(!_isInitialized,
+          '_isInitialized should be false before initialization completes');
+      final error = await _initializeCompleter!.future;
+      if (error != PlayerErrors.noError) {
+        // The engine failed to initialize. Nothing to do.
+        assert(!_isInitialized,
+            '_isInitialized should be false when initialization fails');
+        return false;
+      }
+    }
+
+    if (_shutdownCompleter != null) {
+      // We are already in the middle of shutting down the engine.
+      assert(
+          !_isInitialized, '_isInitialized should be false when shutting down');
+      return _shutdownCompleter!.future;
+    }
+
+    if (!_isInitialized) {
+      // The engine isn't initialized.
+      _log.warning('shutdown() called when the engine is not initialized');
+      return false;
+    }
+
+    _isInitialized = false;
+
+    final completer = Completer<bool>();
+    _shutdownCompleter = completer;
+
     await disposeAllSound();
-    // engine will be disposed in the audio isolate, so just set this variable
-    isPlayerInited = false;
     await _stopLoop();
+    // Engine will be disposed below when the audio isolate exits,
+    // so just set this variable to false.
+    _isEngineInitialized = false;
     _mainToIsolateStream?.send(
       {
         'event': MessageEvents.exitIsolate,
@@ -315,11 +514,18 @@ interface class SoLoud {
     _isolate = null;
     // ignore: deprecated_member_use_from_same_package
     audioEvent.add(AudioEvent.isolateStopped);
-    return true;
+
+    assert(_shutdownCompleter == completer,
+        '_shutdownCompleter has been reassigned');
+    _shutdownCompleter = null;
+
+    completer.complete(true);
+    return completer.future;
   }
 
   /// return true if the audio isolate is running
   ///
+  @Deprecated('Use isInitialized (or await SoLoud.initialized) instead')
   bool isIsolateRunning() {
     return _isolate != null;
   }
@@ -340,7 +546,7 @@ interface class SoLoud {
   ///
   Future<bool> _startLoop() async {
     _log.finest('_startLoop() called');
-    if (_isolate == null || !isPlayerInited) return false;
+    if (_isolate == null || !_isEngineInitialized) return false;
 
     _mainToIsolateStream?.send(
       {
@@ -356,7 +562,7 @@ interface class SoLoud {
   ///
   Future<bool> _stopLoop() async {
     _log.finest('_stopLoop() called');
-    if (_isolate == null || !isPlayerInited) return false;
+    if (_isolate == null || !_isEngineInitialized) return false;
 
     _mainToIsolateStream?.send(
       {
@@ -397,21 +603,22 @@ interface class SoLoud {
     );
     final ret =
         await _waitForEvent(MessageEvents.initEngine, ()) as PlayerErrors;
-    isPlayerInited = ret == PlayerErrors.noError;
+    _isEngineInitialized = ret == PlayerErrors.noError;
     _logPlayerError(ret, from: '_initEngine() result');
 
     /// start also the loop in the audio isolate
-    if (isPlayerInited) {
+    if (_isEngineInitialized) {
       await _startLoop();
     }
     return ret;
   }
 
-  /// A deprecated method that manually disposes the engine.
+  /// A deprecated method that manually disposes the engine
+  /// (and only the engine).
   ///
-  /// Do not use. The engine is fully disposed with [dispose].
+  /// Do not use. The engine is fully disposed within [shutdown].
   /// This method will be removed in a future version.
-  @Deprecated('Use dispose() instead')
+  @Deprecated('Use shutdown() instead')
   Future<bool> disposeEngine() => _disposeEngine();
 
   /// Stop the engine
@@ -421,12 +628,13 @@ interface class SoLoud {
   ///
   Future<bool> _disposeEngine() async {
     _log.finest('_disposeEngine() called');
-    if (_isolate == null || !isPlayerInited) return false;
+    if (_isolate == null || !_isEngineInitialized) return false;
 
     await disposeAllSound();
 
     /// first stop the loop
     await _stopLoop();
+    _isEngineInitialized = false;
 
     /// then ask to audio isolate to dispose the engine
     _mainToIsolateStream?.send(
@@ -455,7 +663,7 @@ interface class SoLoud {
     String completeFileName, {
     LoadMode mode = LoadMode.memory,
   }) async {
-    if (!isPlayerInited) {
+    if (!isInitialized) {
       _log.severe(() => 'loadFile(): ${PlayerErrors.engineNotInited}');
       return (error: PlayerErrors.engineNotInited, sound: null);
     }
@@ -490,7 +698,7 @@ interface class SoLoud {
     double scale,
     double detune,
   ) async {
-    if (!isPlayerInited) {
+    if (!isInitialized) {
       _log.severe(() => 'loadWaveform(): ${PlayerErrors.engineNotInited}');
       return (error: PlayerErrors.engineNotInited, sound: null);
     }
@@ -526,7 +734,7 @@ interface class SoLoud {
   /// [sound] the sound of a waveform
   /// [newWaveform]
   PlayerErrors setWaveform(SoundProps sound, WaveForm newWaveform) {
-    if (!isPlayerInited) {
+    if (!isInitialized) {
       _log.severe(() => 'setWaveform(): ${PlayerErrors.engineNotInited}');
       return PlayerErrors.engineNotInited;
     }
@@ -539,7 +747,7 @@ interface class SoLoud {
   /// [sound] the sound of a waveform
   /// [newScale]
   PlayerErrors setWaveformScale(SoundProps sound, double newScale) {
-    if (!isPlayerInited) {
+    if (!isInitialized) {
       _log.severe(() => 'setWaveformScale(): ${PlayerErrors.engineNotInited}');
       return PlayerErrors.engineNotInited;
     }
@@ -552,7 +760,7 @@ interface class SoLoud {
   /// [sound] the sound of a waveform
   /// [newDetune]
   PlayerErrors setWaveformDetune(SoundProps sound, double newDetune) {
-    if (!isPlayerInited) {
+    if (!isInitialized) {
       _log.severe(() => 'setWaveformDetune(): ${PlayerErrors.engineNotInited}');
       return PlayerErrors.engineNotInited;
     }
@@ -565,7 +773,7 @@ interface class SoLoud {
   /// [sound] the sound of a waveform
   /// [newFreq]
   PlayerErrors setWaveformFreq(SoundProps sound, double newFreq) {
-    if (!isPlayerInited) {
+    if (!isInitialized) {
       _log.severe(() => 'setWaveformFreq(): ${PlayerErrors.engineNotInited}');
       return PlayerErrors.engineNotInited;
     }
@@ -578,7 +786,7 @@ interface class SoLoud {
   /// [sound] the sound of a waveform
   /// [superwave]
   PlayerErrors setWaveformSuperWave(SoundProps sound, bool superwave) {
-    if (!isPlayerInited) {
+    if (!isInitialized) {
       _log.severe(
           () => 'setWaveformSuperWave(): ${PlayerErrors.engineNotInited}');
       return PlayerErrors.engineNotInited;
@@ -598,7 +806,7 @@ interface class SoLoud {
   Future<({PlayerErrors error, SoundProps sound})> speechText(
     String textToSpeech,
   ) async {
-    if (!isPlayerInited) {
+    if (!isInitialized) {
       _log.severe(() => 'speechText(): ${PlayerErrors.engineNotInited}');
       return (error: PlayerErrors.engineNotInited, sound: SoundProps(-1));
     }
@@ -634,7 +842,7 @@ interface class SoLoud {
     double pan = 0,
     bool paused = false,
   }) async {
-    if (!isPlayerInited) {
+    if (!isInitialized) {
       _log.severe(() => 'play(): ${PlayerErrors.engineNotInited}');
       return (error: PlayerErrors.engineNotInited, sound: sound, newHandle: 0);
     }
@@ -686,7 +894,7 @@ interface class SoLoud {
   /// Returns [PlayerErrors.noError] if success
   ///
   PlayerErrors pauseSwitch(int handle) {
-    if (!isPlayerInited) {
+    if (!isInitialized) {
       _log.severe(() => 'pauseSwitch(): ${PlayerErrors.engineNotInited}');
       return PlayerErrors.engineNotInited;
     }
@@ -700,7 +908,7 @@ interface class SoLoud {
   /// Returns [PlayerErrors.noError] if success
   ///
   PlayerErrors setPause(int handle, bool pause) {
-    if (!isPlayerInited) {
+    if (!isInitialized) {
       _log.severe(() => 'setPause(): ${PlayerErrors.engineNotInited}');
       return PlayerErrors.engineNotInited;
     }
@@ -714,7 +922,7 @@ interface class SoLoud {
   /// Return [PlayerErrors.noError] on success and true if paused
   ///
   ({PlayerErrors error, bool pause}) getPause(int handle) {
-    if (!isPlayerInited) {
+    if (!isInitialized) {
       _log.severe(() => 'getPause(): ${PlayerErrors.engineNotInited}');
       return (error: PlayerErrors.engineNotInited, pause: false);
     }
@@ -735,7 +943,7 @@ interface class SoLoud {
   /// [handle] the sound handle
   /// [speed] the new speed
   PlayerErrors setRelativePlaySpeed(int handle, double speed) {
-    if (!isPlayerInited) {
+    if (!isInitialized) {
       _log.severe(
           () => 'setRelativePlaySpeed(): ${PlayerErrors.engineNotInited}');
       return PlayerErrors.engineNotInited;
@@ -748,7 +956,7 @@ interface class SoLoud {
   ///
   /// [handle] the sound handle
   ({PlayerErrors error, double speed}) getRelativePlaySpeed(int handle) {
-    if (!isPlayerInited) {
+    if (!isInitialized) {
       _log.severe(
           () => 'getRelativePlaySpeed(): ${PlayerErrors.engineNotInited}');
       return (error: PlayerErrors.engineNotInited, speed: 1);
@@ -764,7 +972,7 @@ interface class SoLoud {
   /// Return [PlayerErrors.noError] on success
   ///
   Future<PlayerErrors> stop(int handle) async {
-    if (!isPlayerInited) {
+    if (!isInitialized) {
       _log.severe(() => 'stop(): ${PlayerErrors.engineNotInited}');
       return PlayerErrors.engineNotInited;
     }
@@ -790,7 +998,7 @@ interface class SoLoud {
   /// Return [PlayerErrors.noError] on success
   ///
   Future<PlayerErrors> disposeSound(SoundProps sound) async {
-    if (!isPlayerInited) {
+    if (!isInitialized) {
       _log.severe(() => 'disposeSound(): ${PlayerErrors.engineNotInited}');
       return PlayerErrors.engineNotInited;
     }
@@ -812,12 +1020,15 @@ interface class SoLoud {
     return PlayerErrors.noError;
   }
 
-  /// Dispose all sounds already loaded. Complete silence
+  /// Disposes all sounds already loaded. Complete silence.
+  ///
+  /// No need to call this method when shutting down the engine.
+  /// (It is automatically called from within [shutdown].)
   ///
   /// Return [PlayerErrors.noError] on success
   ///
   Future<PlayerErrors> disposeAllSound() async {
-    if (!isPlayerInited) {
+    if (!_isEngineInitialized) {
       _log.severe(() => 'disposeAllSound(): ${PlayerErrors.engineNotInited}');
       return PlayerErrors.engineNotInited;
     }
@@ -842,7 +1053,7 @@ interface class SoLoud {
   /// Return [PlayerErrors.noError] on success
   ///
   PlayerErrors setLooping(int handle, bool enable) {
-    if (!isPlayerInited) {
+    if (!isInitialized) {
       _log.severe(() => 'setLooping(): ${PlayerErrors.engineNotInited}');
       return PlayerErrors.engineNotInited;
     }
@@ -857,7 +1068,7 @@ interface class SoLoud {
   /// Return [PlayerErrors.noError] on success
   ///
   PlayerErrors setVisualizationEnabled(bool enabled) {
-    if (!isPlayerInited) {
+    if (!isInitialized) {
       _log.severe('setVisualizationEnabled(): ${PlayerErrors.engineNotInited}');
       return PlayerErrors.engineNotInited;
     }
@@ -871,7 +1082,7 @@ interface class SoLoud {
   /// returns sound length in seconds
   ///
   ({PlayerErrors error, double length}) getLength(SoundProps sound) {
-    if (!isPlayerInited) {
+    if (!isInitialized) {
       _log.severe(() => 'getLength(): ${PlayerErrors.engineNotInited}');
       return (error: PlayerErrors.engineNotInited, length: 0.0);
     }
@@ -897,7 +1108,7 @@ interface class SoLoud {
   /// `mode`=`LoadMode.memory` instead or other supported audio formats!
   ///
   PlayerErrors seek(int handle, double time) {
-    if (!isPlayerInited) {
+    if (!isInitialized) {
       _log.severe(() => 'seek(): ${PlayerErrors.engineNotInited}');
       return PlayerErrors.engineNotInited;
     }
@@ -911,7 +1122,7 @@ interface class SoLoud {
   /// Return PlayerErrors.noError if success and position in seconds
   ///
   ({PlayerErrors error, double position}) getPosition(int handle) {
-    if (!isPlayerInited) {
+    if (!isInitialized) {
       _log.severe(() => 'getPosition(): ${PlayerErrors.engineNotInited}');
       return (error: PlayerErrors.engineNotInited, position: 0.0);
     }
@@ -924,7 +1135,7 @@ interface class SoLoud {
   /// Return PlayerErrors.noError if success and volume
   ///
   ({PlayerErrors error, double volume}) getGlobalVolume() {
-    if (!isPlayerInited) {
+    if (!isInitialized) {
       _log.severe(() => 'getGlobalVolume(): ${PlayerErrors.engineNotInited}');
       return (error: PlayerErrors.engineNotInited, volume: 0.0);
     }
@@ -937,7 +1148,7 @@ interface class SoLoud {
   /// Return PlayerErrors.noError if success
   ///
   PlayerErrors setGlobalVolume(double volume) {
-    if (!isPlayerInited) {
+    if (!isInitialized) {
       _log.severe(() => 'setGlobalVolume(): ${PlayerErrors.engineNotInited}');
       return PlayerErrors.engineNotInited;
     }
@@ -950,7 +1161,7 @@ interface class SoLoud {
   /// Return PlayerErrors.noError if success and volume
   ///
   ({PlayerErrors error, double volume}) getVolume(int handle) {
-    if (!isPlayerInited) {
+    if (!isInitialized) {
       _log.severe(() => 'getVolume(): ${PlayerErrors.engineNotInited}');
       return (error: PlayerErrors.engineNotInited, volume: 0.0);
     }
@@ -963,7 +1174,7 @@ interface class SoLoud {
   /// Return PlayerErrors.noError if success
   ///
   PlayerErrors setVolume(int handle, double volume) {
-    if (!isPlayerInited) {
+    if (!isInitialized) {
       _log.severe(() => 'setVolume(): ${PlayerErrors.engineNotInited}');
       return PlayerErrors.engineNotInited;
     }
@@ -977,7 +1188,7 @@ interface class SoLoud {
   /// Return PlayerErrors.noError if success and isvalid==true if valid
   ///
   ({PlayerErrors error, bool isValid}) getIsValidVoiceHandle(int handle) {
-    if (!isPlayerInited) {
+    if (!isInitialized) {
       _log.severe(
           () => 'getIsValidVoiceHandle(): ${PlayerErrors.engineNotInited}');
       return (error: PlayerErrors.engineNotInited, isValid: false);
@@ -997,7 +1208,7 @@ interface class SoLoud {
   ///
   PlayerErrors getAudioTexture2D(
       ffi.Pointer<ffi.Pointer<ffi.Float>> audioData) {
-    if (!isPlayerInited || audioData == ffi.nullptr) {
+    if (!isInitialized || audioData == ffi.nullptr) {
       _log.severe(() => 'getAudioTexture2D(): ${PlayerErrors.engineNotInited}');
       return PlayerErrors.engineNotInited;
     }
@@ -1025,7 +1236,7 @@ interface class SoLoud {
   /// Return [PlayerErrors.noError] if success
   ///
   PlayerErrors setFftSmoothing(double smooth) {
-    if (!isPlayerInited) {
+    if (!isInitialized) {
       _log.severe(() => 'setFftSmoothing(): ${PlayerErrors.engineNotInited}');
       return PlayerErrors.engineNotInited;
     }
@@ -1040,7 +1251,7 @@ interface class SoLoud {
   /// Smoothly change the global volume over specified time.
   ///
   PlayerErrors fadeGlobalVolume(double to, double time) {
-    if (!isPlayerInited) {
+    if (!isInitialized) {
       _log.severe(() => 'fadeGlobalVolume(): ${PlayerErrors.engineNotInited}');
       return PlayerErrors.engineNotInited;
     }
@@ -1051,7 +1262,7 @@ interface class SoLoud {
   /// Smoothly change a channel's volume over specified time.
   ///
   PlayerErrors fadeVolume(int handle, double to, double time) {
-    if (!isPlayerInited) {
+    if (!isInitialized) {
       _log.severe(() => 'fadeVolume(): ${PlayerErrors.engineNotInited}');
       return PlayerErrors.engineNotInited;
     }
@@ -1062,7 +1273,7 @@ interface class SoLoud {
   /// Smoothly change a channel's pan setting over specified time.
   ///
   PlayerErrors fadePan(int handle, double to, double time) {
-    if (!isPlayerInited) {
+    if (!isInitialized) {
       _log.severe(() => 'fadePan(): ${PlayerErrors.engineNotInited}');
       return PlayerErrors.engineNotInited;
     }
@@ -1073,7 +1284,7 @@ interface class SoLoud {
   /// Smoothly change a channel's relative play speed over specified time.
   ///
   PlayerErrors fadeRelativePlaySpeed(int handle, double to, double time) {
-    if (!isPlayerInited) {
+    if (!isInitialized) {
       _log.severe(
           () => 'fadeRelativePlaySpeed(): ${PlayerErrors.engineNotInited}');
       return PlayerErrors.engineNotInited;
@@ -1086,7 +1297,7 @@ interface class SoLoud {
   /// After specified time, pause the channel.
   ///
   PlayerErrors schedulePause(int handle, double time) {
-    if (!isPlayerInited) {
+    if (!isInitialized) {
       _log.severe(() => 'schedulePause(): ${PlayerErrors.engineNotInited}');
       return PlayerErrors.engineNotInited;
     }
@@ -1097,7 +1308,7 @@ interface class SoLoud {
   /// After specified time, stop the channel.
   ///
   PlayerErrors scheduleStop(int handle, double time) {
-    if (!isPlayerInited) {
+    if (!isInitialized) {
       _log.severe(() => 'scheduleStop(): ${PlayerErrors.engineNotInited}');
       return PlayerErrors.engineNotInited;
     }
@@ -1109,7 +1320,7 @@ interface class SoLoud {
   ///
   PlayerErrors oscillateVolume(
       int handle, double from, double to, double time) {
-    if (!isPlayerInited) {
+    if (!isInitialized) {
       _log.severe(() => 'oscillateVolume(): ${PlayerErrors.engineNotInited}');
       return PlayerErrors.engineNotInited;
     }
@@ -1121,7 +1332,7 @@ interface class SoLoud {
   /// Set fader to oscillate the panning at specified frequency.
   ///
   PlayerErrors oscillatePan(int handle, double from, double to, double time) {
-    if (!isPlayerInited) {
+    if (!isInitialized) {
       _log.severe(() => 'oscillatePan(): ${PlayerErrors.engineNotInited}');
       return PlayerErrors.engineNotInited;
     }
@@ -1134,7 +1345,7 @@ interface class SoLoud {
   ///
   PlayerErrors oscillateRelativePlaySpeed(
       int handle, double from, double to, double time) {
-    if (!isPlayerInited) {
+    if (!isInitialized) {
       _log.severe('oscillateRelativePlaySpeed(): '
           '${PlayerErrors.engineNotInited}');
       return PlayerErrors.engineNotInited;
@@ -1148,7 +1359,7 @@ interface class SoLoud {
   /// Set fader to oscillate the global volume at specified frequency.
   ///
   PlayerErrors oscillateGlobalVolume(double from, double to, double time) {
-    if (!isPlayerInited) {
+    if (!isInitialized) {
       _log.severe(
           () => 'oscillateGlobalVolume(): ${PlayerErrors.engineNotInited}');
       return PlayerErrors.engineNotInited;
@@ -1349,7 +1560,7 @@ interface class SoLoud {
     double volume = 1,
     bool paused = false,
   }) async {
-    if (!isPlayerInited) {
+    if (!isInitialized) {
       _log.severe(() => 'play3d(): ${PlayerErrors.engineNotInited}');
       return (error: PlayerErrors.engineNotInited, sound: sound, newHandle: 0);
     }
