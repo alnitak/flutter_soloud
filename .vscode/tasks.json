@@ -3,7 +3,7 @@
     "tasks": [
         {
             "label": "compile linux debug verbose",
-            "command": "cd ${workspaceFolder}/example && flutter build linux -t lib/main.dart --debug --verbose",
+            "command": "cd ${workspaceFolder}/example; flutter build linux -t lib/main.dart --debug --verbose",
             // "args": ["build", "linux", "--verbose"],
             "type": "shell"
         },
