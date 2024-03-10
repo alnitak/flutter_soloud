@@ -56,19 +56,22 @@ void main() async {
 
   if (exitCode != 0) {
     // Since we're running this inside `flutter run`, the exit code
-    // will be overridden to 1 by the flutter tool.
-    // The following is making sure that the errors aren't lost.
+    // will be overridden to 0 by the Flutter tool.
+    // The following is making sure that the errors are noticed.
     stderr
-      ..writeln('===== TEST FAILED with the following error(s) =====')
+      ..writeln('===== TESTS FAILED with the following error(s) =====')
       ..writeln()
       ..writeln(errorsBuffer.toString())
       ..writeln()
       ..writeln('See logs above for details.')
       ..writeln();
   } else {
-    debugPrint('===== TEST PASSED! =====');
+    stdout
+      ..writeln('===== TESTS PASSED! =====')
+      ..writeln();
   }
 
+  // Cleanly close the app.
   await SystemChannels.platform.invokeMethod('SystemNavigator.pop');
 }
 
@@ -193,8 +196,6 @@ Future<void> test1() async {
       'Sound end playback event not triggered!',
     );
   }
-
-  Logger('test1').warning('test warning!');
 
   /// Play 4 sample
   {
