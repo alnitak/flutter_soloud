@@ -20,7 +20,7 @@ class _Page3DAudioState extends State<Page3DAudio> {
 
   @override
   void dispose() {
-    SoLoud.instance.dispose();
+    SoLoud.instance.shutdown();
     SoLoudCapture.instance.stopCapture();
     super.dispose();
   }
@@ -64,7 +64,7 @@ class _Page3DAudioState extends State<Page3DAudio> {
   ///
   Future<void> playFromUrl() async {
     /// Start audio engine if not already
-    if (!SoLoud.instance.isIsolateRunning()) {
+    if (!await SoLoud.instance.initialized) {
       await SoLoud.instance.initialize().then((value) {
         if (value == PlayerErrors.noError) {
           _log.info('isolate started');
@@ -104,7 +104,7 @@ class _Page3DAudioState extends State<Page3DAudio> {
   ///
   Future<void> play(double maxDistance) async {
     /// Start audio engine if not already
-    if (!SoLoud.instance.isIsolateRunning()) {
+    if (!await SoLoud.instance.initialized) {
       await SoLoud.instance.initialize().then((value) {
         if (value == PlayerErrors.noError) {
           _log.info('isolate started');

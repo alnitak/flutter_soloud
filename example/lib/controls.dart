@@ -17,7 +17,7 @@ class Controls extends StatefulWidget {
 class _ControlsState extends State<Controls> {
   static final Logger _log = Logger('_ControlsState');
 
-  final isAudioIsolateRunning = ValueNotifier<bool>(false);
+  final isInitialized = ValueNotifier<bool>(false);
   final isCaptureRunning = ValueNotifier<bool>(false);
   late final List<CaptureDevice> captureDevices;
   int choosenCaptureDeviceId = -1;
@@ -37,7 +37,7 @@ class _ControlsState extends State<Controls> {
 
   @override
   void reassemble() {
-    isAudioIsolateRunning.value = SoLoud.instance.isIsolateRunning();
+    isInitialized.value = SoLoud.instance.isInitialized;
     isCaptureRunning.value = SoLoudCapture.instance.isCaptureStarted();
     super.reassemble();
   }
@@ -47,7 +47,7 @@ class _ControlsState extends State<Controls> {
     // TODO(filiph): remove this listener - it starts listening on every build
     SoLoud.instance.audioEvent.stream.listen(
       (event) {
-        isAudioIsolateRunning.value = SoLoud.instance.isIsolateRunning();
+        isInitialized.value = SoLoud.instance.isInitialized;
         isCaptureRunning.value = SoLoudCapture.instance.isCaptureStarted();
       },
     );
@@ -58,13 +58,13 @@ class _ControlsState extends State<Controls> {
           children: [
             /// AudioIsolate
             ValueListenableBuilder<bool>(
-              valueListenable: isAudioIsolateRunning,
+              valueListenable: isInitialized,
               builder: (_, isRunning, __) {
                 return ElevatedButton(
                   onPressed: () async {
                     if (isRunning) {
                       /// this will stop also the engine and the loop
-                      final b = await SoLoud.instance.dispose();
+                      final b = await SoLoud.instance.shutdown();
                       if (b) {
                         _log.info('isolate stopped');
                       }

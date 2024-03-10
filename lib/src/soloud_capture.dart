@@ -5,11 +5,21 @@ import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/soloud.dart';
 import 'package:flutter_soloud/src/soloud_controller.dart';
 import 'package:logging/logging.dart';
+import 'package:meta/meta.dart';
 
 /// Use this class to _capture_ audio (such as from a microphone).
 ///
 /// This class is completely independent from [SoLoud]. You can
 /// initialize and shut it down regardless of the state of [SoLoud].
+///
+/// Please note that this class does _not_ currently provide
+/// recording capabilities. It allows you to provide stats and visualizations
+/// of the audio data coming from a capture device (such as microphone)
+/// but it currently does not allow you to save that data to a file.
+///
+/// This class is marked as [experimental] and therefore may have
+/// breaking changes in the future without a major version bump.
+@experimental
 interface class SoLoudCapture {
   /// A deprecated way to access the singleton [instance] of [SoLoudCapture].
   ///

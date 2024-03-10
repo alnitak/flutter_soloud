@@ -53,7 +53,7 @@ class _PageWaveformState extends State<PageWaveform> {
 
   @override
   void dispose() {
-    SoLoud.instance.dispose();
+    SoLoud.instance.shutdown();
     SoLoudCapture.instance.stopCapture();
     super.dispose();
   }
@@ -74,7 +74,7 @@ class _PageWaveformState extends State<PageWaveform> {
 
   @override
   Widget build(BuildContext context) {
-    if (!SoLoud.instance.isPlayerInited) return const SizedBox.shrink();
+    if (!SoLoud.instance.isInitialized) return const SizedBox.shrink();
 
     return Scaffold(
       body: SingleChildScrollView(

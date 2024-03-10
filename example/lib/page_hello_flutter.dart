@@ -24,7 +24,7 @@ class _PageHelloFlutterSoLoudState extends State<PageHelloFlutterSoLoud> {
 
   @override
   void dispose() {
-    SoLoud.instance.dispose();
+    SoLoud.instance.shutdown();
     SoLoudCapture.instance.stopCapture();
     super.dispose();
   }
@@ -84,7 +84,7 @@ class _PageHelloFlutterSoLoudState extends State<PageHelloFlutterSoLoud> {
   /// play file
   Future<void> play(String file) async {
     /// Start audio engine if not already
-    if (!SoLoud.instance.isIsolateRunning()) {
+    if (!await SoLoud.instance.initialized) {
       await SoLoud.instance.initialize().then((value) {
         if (value == PlayerErrors.noError) {
           _log.info('engine started');
