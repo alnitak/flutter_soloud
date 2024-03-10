@@ -334,6 +334,16 @@ extern "C"
         player.setVisualizationEnabled(enabled);
     }
 
+    /// Get visualization state
+    ///
+    /// Return true if enabled
+    FFI_PLUGIN_EXPORT int getVisualizationEnabled()
+    {
+        if (!player.isInited())
+            return 0;
+        return player.isVisualizationEnabled();
+    }
+
     /// Returns valid data only if VisualizationEnabled is true
     ///
     /// [fft]

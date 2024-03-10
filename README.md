@@ -172,6 +172,7 @@ The `AudioIsolate` instance has the duty of receiving commands and sending them 
 | **setVolume**| ({PlayerErrors error, double volume})| `int` handle, `double` volume| set  [handle] volume.|
 | **getIsValidVoiceHandle**| ({PlayerErrors error, bool isValid})| `int` handle| Check if a handle is still valid.|
 | **setVisualizationEnabled**| -| `bool` enabled| Enable or disable getting data from `getFft`, `getWave`, `getAudioTexture*`.|
+| **getVisualizationEnabled**| ({PlayerErrors error, bool isEnabled})| -| Get the state of visualization flag.|
 | **getFft**| -| `Pointer<Float>` fft| Returns a 256 float array containing FFT data.|
 | **getWave**| -| `Pointer<Float>` wave| Returns a 256 float array containing wave data (magnitudes).|
 | **getAudioTexture**| -| `Pointer<Float>` samples| Returns in `samples` a 512 float array.<br/>- The first 256 floats represent the FFT frequencies data [>=0.0].<br/>- The other 256 floats represent the wave data (amplitude) [-1.0~1.0].|

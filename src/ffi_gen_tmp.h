@@ -25,7 +25,7 @@ struct CaptureDevice
 
 
 
-FFI_PLUGIN_EXPORT float getFxParams(enum FilterType filterType, int attributeId);
-
-
-
+/// Get visualization state
+///
+/// Return true if enabled
+FFI_PLUGIN_EXPORT int getVisualizationEnabled();

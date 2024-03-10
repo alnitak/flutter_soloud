@@ -107,7 +107,10 @@ enum PlayerErrors {
   engineInitializationTimedOut,
 
   /// Filter not found
-  filterNotFound;
+  filterNotFound,
+
+  /// asking for wave and FFT is not enableb
+  visualizationNotEnabled;
 
   /// Returns a human-friendly sentence describing the error.
   String get _asSentence {
@@ -158,6 +161,9 @@ enum PlayerErrors {
         return 'Engine initialization timed out';
       case PlayerErrors.filterNotFound:
         return 'Filter not found';
+      case PlayerErrors.visualizationNotEnabled:
+        return 'Asking for audio data is not enabled! Please use '
+        '`setVisualizationEnabled(true);` to enable!';
     }
   }
 

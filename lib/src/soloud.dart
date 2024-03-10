@@ -145,6 +145,9 @@ interface class SoLoud {
   /// The backing private field for [isInitialized].
   bool _isInitialized = false;
 
+  /// Whether or not is it possible to ask for wave and FFT data.
+  bool isVisualizationEnabled = false;
+
   /// The current status of the engine. This is `true` when the engine
   /// has been initialized and is immediately ready.
   ///
@@ -361,6 +364,11 @@ interface class SoLoud {
             // ignore: deprecated_member_use_from_same_package
             audioEvent.add(AudioEvent.isolateStarted);
             _isInitialized = true;
+
+            /// get the visualization flag from the player on C side.
+            /// Eventually we can set this as a parameter during the
+            /// initialization with some other parameters like `sampleRate`
+            isVisualizationEnabled = getVisualizationEnabled().isEnabled;
           } else {
             _log.severe('_initEngine() failed with error: $value');
             _cleanUpUnsuccessfulInitialization();
@@ -1073,13 +1081,28 @@ interface class SoLoud {
       return PlayerErrors.engineNotInited;
     }
     SoLoudController().soLoudFFI.setVisualizationEnabled(enabled);
+    isVisualizationEnabled = enabled;
     return PlayerErrors.noError;
+  }
+
+  /// Get visualization state
+  ///
+  /// Return PlayerErrors.noError if success and true if enabled
+  ({PlayerErrors error, bool isEnabled}) getVisualizationEnabled() {
+    if (!isInitialized) {
+      _log.severe('setVisualizationEnabled(): ${PlayerErrors.engineNotInited}');
+      return (error: PlayerErrors.engineNotInited, isEnabled: false);
+    }
+    return (
+      error: PlayerErrors.engineNotInited,
+      isEnabled: SoLoudController().soLoudFFI.getVisualizationEnabled(),
+    );
   }
 
   /// Get the sound length in seconds
   ///
   /// [sound] the sound hash to get the length
-  /// returns sound length in seconds
+  /// Return PlayerErrors.noError if success and sound length in seconds
   ///
   ({PlayerErrors error, double length}) getLength(SoundProps sound) {
     if (!isInitialized) {
@@ -1211,6 +1234,9 @@ interface class SoLoud {
     if (!isInitialized || audioData == ffi.nullptr) {
       _log.severe(() => 'getAudioTexture2D(): ${PlayerErrors.engineNotInited}');
       return PlayerErrors.engineNotInited;
+    }
+    if (!isVisualizationEnabled) {
+      return PlayerErrors.visualizationNotEnabled;
     }
     final ret = SoLoudController().soLoudFFI.getAudioTexture2D(audioData);
     _logPlayerError(ret, from: 'getAudioTexture2D() result');
