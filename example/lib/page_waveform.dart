@@ -7,6 +7,7 @@ import 'package:flutter_soloud_example/waveform/filter_fx.dart';
 import 'package:flutter_soloud_example/waveform/keyboard_widget.dart';
 import 'package:flutter_soloud_example/waveform/knobs_groups.dart';
 import 'package:flutter_soloud_example/waveform/text_slider.dart';
+import 'package:logging/logging.dart';
 import 'package:star_menu/star_menu.dart';
 
 /// Example to demostrate how waveforms work with a keyboard
@@ -19,6 +20,8 @@ class PageWaveform extends StatefulWidget {
 }
 
 class _PageWaveformState extends State<PageWaveform> {
+  static final Logger _log = Logger('_PageWaveformState');
+
   ValueNotifier<double> scale = ValueNotifier(0.25);
   ValueNotifier<double> detune = ValueNotifier(1);
   ValueNotifier<WaveForm> waveForm = ValueNotifier(WaveForm.fSquare);
@@ -33,29 +36,33 @@ class _PageWaveformState extends State<PageWaveform> {
   double oscillateSpeed = 0;
   List<SoundProps> notes = [];
   SoundProps? sound;
+  bool canBuild = false;
 
   @override
   void initState() {
     super.initState();
 
-    /// listen to player events
-    SoLoud.instance.audioEvent.stream.listen((event) async {
-      if (event == AudioEvent.isolateStarted) {
-        /// When it starts initialize notes
-        SoLoud.instance.setVisualizationEnabled(true);
-        await setupNotes();
-        SoLoud.instance.setGlobalVolume(0.6);
-      }
-      if (mounted) setState(() {});
-    });
-    SoLoud.instance.initialize();
-  }
+    /// Ensure the player is down
+    if (SoLoud.instance.isInitialized) {
+      SoLoud.instance.shutdown();
+    }
 
-  @override
-  void dispose() {
-    SoLoud.instance.shutdown();
-    SoLoudCapture.instance.stopCapture();
-    super.dispose();
+    /// Reinitialize the player
+    SoLoud.instance.initialize().then((value) {
+      if (value == PlayerErrors.noError) {
+        _log.info('player started');
+        SoLoud.instance.setVisualizationEnabled(true);
+        SoLoud.instance.setGlobalVolume(0.6);
+        /// Only when the [notes] are set up, build the UI
+        setupNotes().then((value) {
+          canBuild = true;
+          if (context.mounted) setState(() {});
+        });
+      } else {
+        _log.severe('player starting error: $value');
+        return;
+      }
+    });
   }
 
   Future<void> setupNotes() async {

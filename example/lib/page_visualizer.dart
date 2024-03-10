@@ -42,8 +42,8 @@ class _PageVisualizerState extends State<PageVisualizer> {
   final ValueNotifier<TextureType> textureType =
       ValueNotifier(TextureType.fft2D);
   final ValueNotifier<double> fftSmoothing = ValueNotifier(0.8);
-  final ValueNotifier<bool> isVisualizerForPlayer = ValueNotifier(false);
-  final ValueNotifier<bool> isVisualizerEnabled = ValueNotifier(true);
+  final ValueNotifier<bool> isVisualizerForPlayer = ValueNotifier(true);
+  late final ValueNotifier<bool> isVisualizerEnabled = ValueNotifier(true);
   final ValueNotifier<RangeValues> fftImageRange =
       ValueNotifier(const RangeValues(0, 255));
   final ValueNotifier<int> maxFftImageRange = ValueNotifier(255);
@@ -52,12 +52,30 @@ class _PageVisualizerState extends State<PageVisualizer> {
   Timer? timer;
   SoundProps? currentSound;
   FftController visualizerController = FftController();
+  bool canBuild = false;
 
   @override
-  void dispose() {
-    SoLoud.instance.shutdown();
-    SoLoudCapture.instance.stopCapture();
-    super.dispose();
+  void initState() {
+    super.initState();
+
+    /// Ensure the player is down
+    if (SoLoud.instance.isInitialized) {
+      SoLoud.instance.shutdown();
+    }
+
+    /// Reinitialize the player
+    SoLoud.instance.initialize().then((value) {
+      if (value == PlayerErrors.noError) {
+        _log.info('player started');
+        SoLoud.instance.setVisualizationEnabled(true);
+        SoLoud.instance.setGlobalVolume(1);
+        canBuild = true;
+        if (context.mounted) setState(() {});
+      } else {
+        _log.severe('player starting error: $value');
+        return;
+      }
+    });
   }
 
   @override

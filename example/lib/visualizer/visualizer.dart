@@ -32,7 +32,7 @@ class FftController extends ChangeNotifier {
     this.minFreqRange = 0,
     this.maxFreqRange = 255,
     this.isVisualizerEnabled = true,
-    this.isVisualizerForPlayer = false,
+    this.isVisualizerForPlayer = true,
   });
 
   int minFreqRange;

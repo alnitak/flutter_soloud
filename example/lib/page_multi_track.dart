@@ -15,20 +15,38 @@ class PageMultiTrack extends StatefulWidget {
 }
 
 class _PageMultiTrackState extends State<PageMultiTrack> {
+  static final Logger _log = Logger('_PageMultiTrackState');
+
+  bool canBuild = false;
+
   @override
   void initState() {
     super.initState();
-  }
+    
+    /// Ensure the player is down
+    if (SoLoud.instance.isInitialized) {
+      SoLoud.instance.shutdown();
+    }
 
-  @override
-  void dispose() {
-    SoLoud.instance.shutdown();
-    SoLoudCapture.instance.stopCapture();
-    super.dispose();
+    /// Reinitialize the player
+    SoLoud.instance.initialize().then((value) {
+      if (value == PlayerErrors.noError) {
+        _log.info('player started');
+        // SoLoud.instance.setVisualizationEnabled(false);
+        SoLoud.instance.setGlobalVolume(1);
+        canBuild = true;
+        if (context.mounted) setState(() {});
+      } else {
+        _log.severe('player starting error: $value');
+        return;
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    if (!SoLoud.instance.isInitialized) return const SizedBox.shrink();
+
     return const Scaffold(
       body: Padding(
         padding: EdgeInsets.only(top: 50, right: 8, left: 8),

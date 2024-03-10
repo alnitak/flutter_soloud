@@ -21,16 +21,36 @@ class _PageHelloFlutterSoLoudState extends State<PageHelloFlutterSoLoud> {
   static final Logger _log = Logger('_PageHelloFlutterSoLoudState');
 
   SoundProps? currentSound;
+  bool canBuild = false;
 
   @override
-  void dispose() {
-    SoLoud.instance.shutdown();
-    SoLoudCapture.instance.stopCapture();
-    super.dispose();
+  void initState() {
+    super.initState();
+    
+    /// Ensure the player is down
+    if (SoLoud.instance.isInitialized) {
+      SoLoud.instance.shutdown();
+    }
+
+    /// Reinitialize the player
+    SoLoud.instance.initialize().then((value) {
+      if (value == PlayerErrors.noError) {
+        _log.info('player started');
+        // SoLoud.instance.setVisualizationEnabled(false);
+        SoLoud.instance.setGlobalVolume(1);
+        canBuild = true;
+        if (context.mounted) setState(() {});
+      } else {
+        _log.severe('player starting error: $value');
+        return;
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    if (!SoLoud.instance.isInitialized) return const SizedBox.shrink();
+
     return Scaffold(
       body: Center(
         child: Column(
