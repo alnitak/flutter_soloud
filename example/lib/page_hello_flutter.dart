@@ -28,12 +28,8 @@ class _PageHelloFlutterSoLoudState extends State<PageHelloFlutterSoLoud> {
     super.initState();
 
     /// Initialize the player
-    SoLoud.instance.initialize().then((value) {
-      if (value == PlayerErrors.multipleInitialization) {
-        SoLoud.instance.disposeAllSound();
-      }
-      if (value == PlayerErrors.noError ||
-          value == PlayerErrors.multipleInitialization) {
+    SoLoud.instance.initialize().then(
+      (_) {
         _log.info('player started');
         // SoLoud.instance.setVisualizationEnabled(false);
         SoLoud.instance.setGlobalVolume(1);
@@ -42,11 +38,11 @@ class _PageHelloFlutterSoLoudState extends State<PageHelloFlutterSoLoud> {
             canBuild = true;
           });
         }
-      } else {
-        _log.severe('player starting error: $value');
-        return;
-      }
-    });
+      },
+      onError: (Object e) {
+        _log.severe('player starting error: $e');
+      },
+    );
   }
 
   @override
@@ -107,34 +103,38 @@ class _PageHelloFlutterSoLoudState extends State<PageHelloFlutterSoLoud> {
   Future<void> play(String file) async {
     /// Start audio engine if not already
     if (!await SoLoud.instance.initialized) {
-      await SoLoud.instance.initialize().then((value) {
-        if (value == PlayerErrors.noError) {
-          _log.info('engine started');
-        } else {
-          _log.severe('engine starting error: $value');
-          return;
-        }
-      });
+      try {
+        await SoLoud.instance.initialize();
+        _log.info('engine started');
+      } catch (e) {
+        _log.severe('engine starting error', e);
+        return;
+      }
     }
 
     /// stop any previous sound loaded
     if (currentSound != null) {
-      if (await SoLoud.instance.disposeSound(currentSound!) !=
-          PlayerErrors.noError) {
+      try {
+        await SoLoud.instance.disposeSound(currentSound!);
+      } catch (e) {
+        _log.severe('dispose error', e);
         return;
       }
     }
 
     /// load the audio file
-    final ret = await SoLoud.instance.loadFile(file);
-    if (ret.error != PlayerErrors.noError) return;
-    final newSound = ret.sound!;
+    final SoundProps newSound;
+    try {
+      newSound = await SoLoud.instance.loadFile(file);
+    } catch (e) {
+      _log.severe('load error', e);
+      return;
+    }
+
     currentSound = newSound;
 
     /// play it
-    final playRet = await SoLoud.instance.play(currentSound!);
-    if (playRet.error != PlayerErrors.noError) return;
-    currentSound = playRet.sound;
+    await SoLoud.instance.play(currentSound!);
   }
 }
 

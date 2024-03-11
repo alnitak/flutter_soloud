@@ -1,3 +1,6 @@
+import 'package:flutter_soloud/src/exceptions.dart';
+import 'package:meta/meta.dart';
+
 /// CaptureDevice exposed to Dart
 final class CaptureDevice {
   /// Constructs a new [CaptureDevice].
@@ -48,6 +51,7 @@ enum CaptureErrors {
 
 /// Possible player errors.
 /// New values must be enumerated at the bottom
+@internal
 enum PlayerErrors {
   /// No error
   noError,
@@ -92,18 +96,6 @@ enum PlayerErrors {
   /// asking for wave and FFT is not enabled
   visualizationNotEnabled,
 
-  /// Audio isolate already started
-  @Deprecated('Use multipleInitialization instead')
-  isolateAlreadyStarted,
-
-  /// Engine has already been initialized successfully
-  /// but a new call to `initialize()` was made.
-  multipleInitialization,
-
-  /// Engine is currently being initialized
-  /// and another call to `initialize()` was made.
-  concurrentInitialization,
-
   /// Audio isolate not yet started
   isolateNotStarted,
 
@@ -145,15 +137,6 @@ enum PlayerErrors {
         return 'The sound with specified hash is not found';
       case PlayerErrors.backendNotInited:
         return 'Player not initialized';
-      // ignore: deprecated_member_use_from_same_package
-      case PlayerErrors.isolateAlreadyStarted:
-        return 'Audio isolate already started';
-      case PlayerErrors.multipleInitialization:
-        return 'Engine has already been initialized successfully '
-            'but a new call to initialize() was made';
-      case PlayerErrors.concurrentInitialization:
-        return 'Engine is currently being initialized '
-            'and another call to initialize() was made';
       case PlayerErrors.isolateNotStarted:
         return 'Audio isolate not yet started';
       case PlayerErrors.engineNotInited:
@@ -177,6 +160,48 @@ enum PlayerErrors {
 
   @override
   String toString() => 'PlayerErrors.$name ($_asSentence)';
+
+  /// Returns the error as an exception to be thrown.
+  Exception toException() {
+    switch (this) {
+      case PlayerErrors.noError:
+        throw StateError('Trying to throw an exception with no error');
+      case PlayerErrors.invalidParameter:
+        return const SoLoudInvalidParameterException();
+      case PlayerErrors.fileNotFound:
+        return const SoLoudFileNotFoundException();
+      case PlayerErrors.fileLoadFailed:
+        return const SoLoudFileLoadFailedException();
+      case PlayerErrors.fileAlreadyLoaded:
+        return const SoLoudFileAlreadyLoadedException();
+      case PlayerErrors.dllNotFound:
+        return const SoLoudDllNotFoundException();
+      case PlayerErrors.outOfMemory:
+        return const SoLoudOutOfMemoryException();
+      case PlayerErrors.notImplemented:
+        return const SoLoudNotImplementedException();
+      case PlayerErrors.unknownError:
+        return const SoLoudUnknownErrorException();
+      case PlayerErrors.nullPointer:
+        return const SoLoudNullPointerException();
+      case PlayerErrors.soundHashNotFound:
+        return const SoLoudSoundHashNotFoundException(null);
+      case PlayerErrors.backendNotInited:
+        return const SoLoudBackendNotInitedException();
+      case PlayerErrors.isolateNotStarted:
+        return const SoLoudIsolateNotStartedException();
+      case PlayerErrors.engineNotInited:
+        return const SoLoudEngineNotInitedException();
+      case PlayerErrors.engineInitializationTimedOut:
+        return const SoLoudEngineInitializationTimedOutException();
+      case PlayerErrors.filterNotFound:
+        return const SoLoudFilterNotFoundException();
+      case PlayerErrors.visualizationNotEnabled:
+        return const SoLoudVisualizationNotEnabledException();
+      case PlayerErrors.assetLoadFailed:
+        return const SoLoudAssetLoadFailedException();
+    }
+  }
 }
 
 /// Wave forms
@@ -196,7 +221,7 @@ enum WaveForm {
   /// Bounce, i.e, abs(sin())
   bounce,
 
-  /// Quater sine wave, rest of period quiet
+  /// Quarter sine wave, rest of period quiet
   jaws,
 
   /// Half sine wave, rest of period quiet

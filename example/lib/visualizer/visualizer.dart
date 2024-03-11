@@ -330,8 +330,11 @@ class _VisualizerState extends State<Visualizer>
 
     /// get audio data from player or capture device
     if (widget.controller.isVisualizerForPlayer && isInitialized) {
-      final ret = SoLoud.instance.getAudioTexture2D(playerData);
-      if (ret != PlayerErrors.noError) return null;
+      try {
+        SoLoud.instance.getAudioTexture2D(playerData);
+      } catch (e) {
+        return null;
+      }
     } else if (!widget.controller.isVisualizerForPlayer && isCaptureInited) {
       final ret = SoLoudCapture.instance.getCaptureAudioTexture2D(captureData);
       if (ret != CaptureErrors.captureNoError) {
@@ -382,8 +385,11 @@ class _VisualizerState extends State<Visualizer>
 
     /// get audio data from player or capture device
     if (widget.controller.isVisualizerForPlayer && isInitialized) {
-      final ret = SoLoud.instance.getAudioTexture2D(playerData);
-      if (ret != PlayerErrors.noError) return null;
+      try {
+        SoLoud.instance.getAudioTexture2D(playerData);
+      } catch (e) {
+        return null;
+      }
     } else if (!widget.controller.isVisualizerForPlayer && isCaptureInited) {
       final ret = SoLoudCapture.instance.getCaptureAudioTexture2D(captureData);
       if (ret != CaptureErrors.captureNoError) {

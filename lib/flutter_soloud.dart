@@ -2,7 +2,7 @@
 ///
 library flutter_soloud;
 
-export 'src/enums.dart';
+export 'src/enums.dart' hide PlayerErrors;
 export 'src/exceptions.dart';
 export 'src/filter_params.dart';
 export 'src/soloud.dart';

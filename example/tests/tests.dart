@@ -134,35 +134,17 @@ Future<void> test2() async {
   /// pause, seek test
   {
     await SoLoud.instance.play(currentSound!);
-    final ret1 = SoLoud.instance.getLength(currentSound!);
-    assert(
-      ret1.error == PlayerErrors.noError &&
-          (ret1.length * 100).ceilToDouble().toInt() == 384,
-      'pauseSwitch() failed!',
-    );
+    final length = SoLoud.instance.getLength(currentSound!);
+    assert((length * 100).ceilToDouble().toInt() == 384, 'getLength() failed!');
     await delay(1000);
-    var ret2 = SoLoud.instance.pauseSwitch(currentSound!.handles.first);
-    assert(
-      ret2 == PlayerErrors.noError,
-      'pauseSwitch() failed!',
-    );
-    final ret3 = SoLoud.instance.getPause(currentSound!.handles.first);
-    assert(
-      ret3.error == PlayerErrors.noError && ret3.pause,
-      'play() failed!',
-    );
+    SoLoud.instance.pauseSwitch(currentSound!.handles.first);
+    final paused = SoLoud.instance.getPause(currentSound!.handles.first);
+    assert(paused, 'pauseSwitch() failed!');
 
     /// seek
-    ret2 = SoLoud.instance.seek(currentSound!.handles.first, 2);
-    assert(
-      ret2 == PlayerErrors.noError,
-      'seek() failed!',
-    );
-    final ret4 = SoLoud.instance.getPosition(currentSound!.handles.first);
-    assert(
-      ret4.error == PlayerErrors.noError && ret4.position == 2,
-      'getPosition() failed!',
-    );
+    SoLoud.instance.seek(currentSound!.handles.first, 2);
+    final position = SoLoud.instance.getPosition(currentSound!.handles.first);
+    assert(position == 2, 'getPosition() failed!');
   }
 
   await dispose();
@@ -179,11 +161,9 @@ Future<void> test1() async {
 
   /// Play sample
   {
-    final ret = await SoLoud.instance.play(currentSound!);
+    await SoLoud.instance.play(currentSound!);
     assert(
-      ret.error == PlayerErrors.noError &&
-          currentSound!.soundHash.isValid &&
-          currentSound!.handles.length == 1,
+      currentSound!.soundHash.isValid && currentSound!.handles.length == 1,
       'play() failed!',
     );
 
@@ -232,8 +212,7 @@ Future<void> test1() async {
 
 /// Common methods
 Future<void> initialize() async {
-  final ret = await SoLoud.instance.initialize();
-  assert(ret == PlayerErrors.noError, 'initialize() failed!');
+  await SoLoud.instance.initialize();
 }
 
 Future<void> dispose() async {
@@ -242,9 +221,7 @@ Future<void> dispose() async {
 }
 
 Future<void> loadAsset() async {
-  final ret = await SoLoud.instance.loadAsset('assets/audio/explosion.mp3');
-  currentSound = ret.sound;
-  assert(currentSound != null, 'loadFromAssets() failed!');
+  currentSound = await SoLoud.instance.loadAsset('assets/audio/explosion.mp3');
 
   currentSound!.soundEvents.stream.listen((event) {
     if (event.event == SoundEvent.handleIsNoMoreValid) {

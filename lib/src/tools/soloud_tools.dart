@@ -85,16 +85,17 @@ class SoLoudTools {
 
   /// Let SoLoud try to load the file
   ///
+  @Deprecated('Only used internally by deprecated methods')
   static Future<SoundProps?> _finallyLoadFile(
     File file, {
     LoadMode mode = LoadMode.memory,
   }) async {
-    final result = await SoLoud.instance.loadFile(file.path, mode: mode);
-    if (!(result.error == PlayerErrors.noError ||
-        result.error == PlayerErrors.fileAlreadyLoaded)) {
+    try {
+      final result = await SoLoud.instance.loadFile(file.path, mode: mode);
+      return result;
+    } catch (e) {
       return null;
     }
-    return result.sound;
   }
 
   /// Deprecated: Use [createNotes] instead.
@@ -122,17 +123,16 @@ class SoLoudTools {
     final startingFreq = 55.0 * (pow(2, (12 * octave) / 12));
     final notes = <SoundProps>[];
     for (var index = 0; index < 12; index++) {
-      final ret = await SoLoud.instance.loadWaveform(
+      final sound = await SoLoud.instance.loadWaveform(
         waveForm,
         true,
         0.25,
         1,
       );
-      if (ret.error != PlayerErrors.noError) return [];
       final freq = startingFreq * (pow(2, index / 12));
-      SoLoud.instance.setWaveformFreq(ret.sound!, freq);
-      SoLoud.instance.setWaveformSuperWave(ret.sound!, superwave);
-      notes.add(ret.sound!);
+      SoLoud.instance.setWaveformFreq(sound, freq);
+      SoLoud.instance.setWaveformSuperWave(sound, superwave);
+      notes.add(sound);
     }
     return notes;
   }

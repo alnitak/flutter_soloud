@@ -505,7 +505,7 @@ class FlutterSoLoudFfi {
   late final _setLoopPoint =
       _setLoopPointPtr.asFunction<void Function(int, double)>();
 
-  /// TODO(@alnitak): implement Soloud.getLoopCount() also?
+  // TODO(alnitak): implement Soloud.getLoopCount() also?
 
   /// Enable or disable visualization
   ///
@@ -1016,9 +1016,9 @@ class FlutterSoLoudFfi {
   /// [velX], [velY], [velZ] are the audio source velocity.
   /// [looping] whether to start the sound in looping state.
   /// [loopingStartAt] If looping is enabled, the loop point is, by default,
-  /// the start of the stream. The loop start point can be set with this parameter, and
-  /// current loop point can be queried with [getLoopingPoint] and
-  /// changed by [setLoopingPoint].
+  /// the start of the stream. The loop start point can be set with this
+  /// parameter, and current loop point can be queried with [getLoopingPoint]
+  /// and changed by [setLoopingPoint].
   /// Returns the handle of the sound, 0 if error
   ({PlayerErrors error, SoundHandle newHandle}) play3d(
     SoundHash soundHash,

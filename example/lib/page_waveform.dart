@@ -43,13 +43,8 @@ class _PageWaveformState extends State<PageWaveform> {
     super.initState();
 
     /// Initialize the player
-    _log.info('player starting');
-    SoLoud.instance.initialize().then((value) {
-      if (value == PlayerErrors.multipleInitialization) {
-        SoLoud.instance.disposeAllSound();
-      }
-      if (value == PlayerErrors.noError ||
-          value == PlayerErrors.multipleInitialization) {
+    SoLoud.instance.initialize().then(
+      (_) {
         _log.info('player started');
         SoLoud.instance.setVisualizationEnabled(true);
         SoLoud.instance.setGlobalVolume(0.6);
@@ -62,11 +57,11 @@ class _PageWaveformState extends State<PageWaveform> {
             });
           }
         });
-      } else {
-        _log.severe('player starting error: $value');
-        return;
-      }
-    });
+      },
+      onError: (Object e) {
+        _log.severe('player starting error: $e');
+      },
+    );
   }
 
   Future<void> setupNotes() async {
@@ -107,23 +102,19 @@ class _PageWaveformState extends State<PageWaveform> {
                             'like Batman and Robin, swooping in to save your '
                             'app with style and sound effects that would make '
                             'even Gotham jealous!')
-                        .then((value) => sound = value.sound);
+                        .then((value) => sound = value);
                   },
                   child: const Text('T2S'),
                 ),
                 const SizedBox(width: 8),
                 ElevatedButton(
                   onPressed: () async {
-                    final ret = await SoLoud.instance.loadAsset(
+                    final newSound = await SoLoud.instance.loadAsset(
                       'assets/audio/8_bit_mentality.mp3',
                     );
-                    if (ret.error != PlayerErrors.noError) {
-                      _log.severe('error loading sample: ${ret.error}');
-                      return;
-                    }
                     await SoLoud.instance
-                        .play(ret.sound!)
-                        .then((value) => sound = value.sound);
+                        .play(newSound)
+                        .then((value) => sound = newSound);
                   },
                   child: const Text('play sample'),
                 ),

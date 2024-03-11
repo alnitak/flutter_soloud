@@ -28,12 +28,8 @@ class _PageMultiTrackState extends State<PageMultiTrack> {
     super.initState();
 
     /// Initialize the player
-    SoLoud.instance.initialize().then((value) {
-      if (value == PlayerErrors.multipleInitialization) {
-        SoLoud.instance.disposeAllSound();
-      }
-      if (value == PlayerErrors.noError ||
-          value == PlayerErrors.multipleInitialization) {
+    SoLoud.instance.initialize().then(
+      (_) {
         _log.info('player started');
         // SoLoud.instance.setVisualizationEnabled(false);
         SoLoud.instance.setGlobalVolume(1);
@@ -42,11 +38,11 @@ class _PageMultiTrackState extends State<PageMultiTrack> {
             canBuild = true;
           });
         }
-      } else {
-        _log.severe('player starting error: $value');
-        return;
-      }
-    });
+      },
+      onError: (Object e) {
+        _log.severe('player starting error: $e');
+      },
+    );
   }
 
   @override
@@ -84,7 +80,9 @@ class _PageMultiTrackState extends State<PageMultiTrack> {
                                   value: looping,
                                   onChanged: (value) {
                                     _looping.value = !looping;
-                                    _playSoundController.setLooping(value!);
+                                    _playSoundController.setLooping(
+                                      looping: value!,
+                                    );
                                   },
                                 ),
                                 Expanded(
@@ -123,18 +121,18 @@ class _PageMultiTrackState extends State<PageMultiTrack> {
 
 /// Controller to manage loop and loopStartAt parameters of all sounds.
 class PlaySoundController {
-  void Function(bool looping)? _looping;
+  void Function({required bool looping})? _looping;
   void Function(double loopStartAt)? _loopingStartAt;
 
   void _setController(
-    void Function(bool looping)? looping,
+    void Function({required bool looping})? looping,
     void Function(double loopStartAt)? loopingStartAt,
   ) {
     _looping = looping;
     _loopingStartAt = loopingStartAt;
   }
 
-  void setLooping(bool looping) => _looping?.call(looping);
+  void setLooping({required bool looping}) => _looping?.call(looping: looping);
   void setLoopStartAT(double loopStartAt) => _loopingStartAt?.call(loopStartAt);
 }
 
@@ -177,7 +175,7 @@ class _PlaySoundWidgetState extends State<PlaySoundWidget> {
     super.dispose();
   }
 
-  void _setLooping(bool looping) {
+  void _setLooping({required bool looping}) {
     _looping = looping;
     if (sound != null) {
       for (final element in sound!.handles) {
@@ -197,38 +195,40 @@ class _PlaySoundWidgetState extends State<PlaySoundWidget> {
 
   Future<bool> loadAsset() async {
     final path = (await getAssetFile(widget.assetsAudio)).path;
-    final loadRet = await SoLoud.instance.loadFile(path);
 
-    if (loadRet.error == PlayerErrors.noError) {
-      soundLength = SoLoud.instance.getLength(loadRet.sound!).length;
-      sound = loadRet.sound;
-
-      /// Listen to this sound events
-      _subscription = sound!.soundEvents.stream.listen(
-        (event) {
-          _log.fine('Received StreamSoundEvent ${event.event}');
-
-          /// if handle has been stoppend of has finished to play
-          if (event.event == SoundEvent.handleIsNoMoreValid) {
-            isPaused.remove(event.handle);
-            soundPosition.remove(event.handle);
-          }
-
-          /// if the sound has been disposed
-          if (event.event == SoundEvent.soundDisposed) {
-            isPaused.clear();
-            soundPosition.clear();
-            _subscription?.cancel();
-            sound = null;
-          }
-
-          if (mounted) setState(() {});
-        },
-      );
-    } else {
-      _log.severe('Load sound asset failed: ${loadRet.error}');
+    final SoundProps? newSound;
+    try {
+      newSound = await SoLoud.instance.loadFile(path);
+    } catch (e) {
+      _log.severe('Load sound asset failed', e);
       return false;
     }
+
+    soundLength = SoLoud.instance.getLength(newSound);
+    sound = newSound;
+
+    /// Listen to this sound events
+    _subscription = sound!.soundEvents.stream.listen(
+      (event) {
+        _log.fine('Received StreamSoundEvent ${event.event}');
+
+        /// if handle has been stoppend of has finished to play
+        if (event.event == SoundEvent.handleIsNoMoreValid) {
+          isPaused.remove(event.handle);
+          soundPosition.remove(event.handle);
+        }
+
+        /// if the sound has been disposed
+        if (event.event == SoundEvent.soundDisposed) {
+          isPaused.clear();
+          soundPosition.clear();
+          _subscription?.cancel();
+          sound = null;
+        }
+
+        if (mounted) setState(() {});
+      },
+    );
     return true;
   }
 
@@ -272,10 +272,9 @@ class _PlaySoundWidgetState extends State<PlaySoundWidget> {
       looping: _looping,
       loopingStartAt: _loopingStartAt,
     );
-    if (newHandle.error != PlayerErrors.noError) return;
 
-    isPaused[newHandle.newHandle] = ValueNotifier(false);
-    soundPosition[newHandle.newHandle] = ValueNotifier(0);
+    isPaused[newHandle] = ValueNotifier(false);
+    soundPosition[newHandle] = ValueNotifier(0);
   }
 
   /// get the assets file and copy it to the temp dir
@@ -340,7 +339,7 @@ class _PlayingRowState extends State<PlayingRow> {
             return IconButton(
               onPressed: () async {
                 SoLoud.instance.pauseSwitch(widget.handle);
-                isPaused.value = SoLoud.instance.getPause(widget.handle).pause;
+                isPaused.value = SoLoud.instance.getPause(widget.handle);
               },
               icon: paused
                   ? const Icon(Icons.pause_circle_outline, size: 48)
@@ -397,7 +396,7 @@ class _PlayingRowState extends State<PlayingRow> {
   void startTimer() {
     timer?.cancel();
     timer = Timer.periodic(const Duration(milliseconds: 100), (_) {
-      soundPosition.value = SoLoud.instance.getPosition(widget.handle).position;
+      soundPosition.value = SoLoud.instance.getPosition(widget.handle);
     });
   }
 

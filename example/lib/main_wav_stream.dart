@@ -69,16 +69,17 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<void> start() async {
-    await SoLoud.instance.initialize().then((value) {
-      if (value == PlayerErrors.noError) {
-        debugPrint('isolate started');
-        if (context.mounted) {
-          isStarted = true;
-        }
-      } else {
-        debugPrint('isolate starting error: $value');
-      }
-    });
+    try {
+      await SoLoud.instance.initialize();
+    } catch (e) {
+      debugPrint('isolate starting error: $e');
+      return;
+    }
+
+    debugPrint('isolate started');
+    if (context.mounted) {
+      isStarted = true;
+    }
 
     await SoLoud.instance.disposeAllSound();
     sounds.clear();
@@ -95,18 +96,16 @@ class _MyHomePageState extends State<MyHomePage> {
 
     timer = Timer.periodic(const Duration(milliseconds: 100), (timer) {
       if (sounds.isEmpty || sounds[0].handles.isEmpty) return;
-      final p = SoLoud.instance.getPosition(sounds[0].handles.first).position;
+      final p = SoLoud.instance.getPosition(sounds[0].handles.first);
       if (p <= minLength) seekPos.value = p;
     });
   }
 
   Future<void> addSound(String file) async {
     var l = 0.0;
-    final ret = await SoLoud.instance.loadFile(file, mode: LoadMode.disk);
-    assert(ret.error == PlayerErrors.noError, 'Error: ${ret.error}');
-    final s = ret.sound!;
+    final s = await SoLoud.instance.loadFile(file, mode: LoadMode.disk);
     sounds.add(s);
-    l = SoLoud.instance.getLength(s).length;
+    l = SoLoud.instance.getLength(s);
     if (l < minLength) minLength = l;
   }
 
@@ -180,11 +179,10 @@ class _SoundRowState extends State<SoundRow> {
   @override
   void initState() {
     super.initState();
-    max = SoLoud.instance.getLength(widget.soundProps).length;
+    max = SoLoud.instance.getLength(widget.soundProps);
     timer = Timer.periodic(const Duration(milliseconds: 100), (timer) {
       if (widget.soundProps.handles.isEmpty) return;
-      pos =
-          SoLoud.instance.getPosition(widget.soundProps.handles.first).position;
+      pos = SoLoud.instance.getPosition(widget.soundProps.handles.first);
       if (context.mounted) setState(() {});
     });
   }

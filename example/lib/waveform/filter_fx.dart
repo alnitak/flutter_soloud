@@ -21,7 +21,7 @@ class _FilterFxState extends State<FilterFx> {
   @override
   void initState() {
     super.initState();
-    enabled = SoLoud.instance.isFilterActive(widget.filterType).index != -1;
+    enabled = SoLoud.instance.isFilterActive(widget.filterType) != -1;
 
     switch (widget.filterType) {
       case FilterType.biquadResonantFilter:
@@ -67,18 +67,21 @@ class _FilterFxState extends State<FilterFx> {
               onChanged: (value) {
                 enabled = value!;
                 if (enabled) {
-                  if (SoLoud.instance.addGlobalFilter(widget.filterType) !=
-                      PlayerErrors.noError) {
+                  try {
+                    SoLoud.instance.addGlobalFilter(widget.filterType);
+                  } catch (e) {
                     enabled = false;
-                  } else {
-                    for (var i = 0; i < params.length; i++) {
-                      params[i] =
-                          SoLoud.instance.getFxParams(widget.filterType, i);
-                    }
+                  }
+                  for (var i = 0; i < params.length; i++) {
+                    params[i] =
+                        SoLoud.instance.getFxParams(widget.filterType, i);
                   }
                 } else {
-                  if (SoLoud.instance.removeGlobalFilter(widget.filterType) !=
-                      PlayerErrors.noError) enabled = true;
+                  try {
+                    SoLoud.instance.removeGlobalFilter(widget.filterType);
+                  } catch (e) {
+                    enabled = true;
+                  }
                 }
                 if (mounted) setState(() {});
               },
