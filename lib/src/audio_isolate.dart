@@ -207,6 +207,19 @@ void audioIsolate(SendPort isolateToMainStream) {
           pan: args.pan,
           paused: args.paused,
         );
+
+        if (ret.isError) {
+          isolateToMainStream.send({
+            'event': event['event'],
+            'args': args,
+            'return': (
+              error: PlayerErrors.unknownError,
+              newHandle: ret,
+            ),
+          });
+          break;
+        }
+
         // add the new handle to the [activeSound] hash list
         try {
           activeSounds
@@ -296,6 +309,19 @@ void audioIsolate(SendPort isolateToMainStream) {
           volume: args.volume,
           paused: args.paused,
         );
+
+        if (ret.isError) {
+          isolateToMainStream.send({
+            'event': event['event'],
+            'args': args,
+            'return': (
+              error: PlayerErrors.unknownError,
+              newHandle: ret,
+            ),
+          });
+          break;
+        }
+
         // add the new handle to the [activeSound] hash list
         try {
           activeSounds

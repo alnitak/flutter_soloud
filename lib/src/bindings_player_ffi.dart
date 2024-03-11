@@ -375,7 +375,8 @@ class FlutterSoLoudFfi {
   /// [volume] 1.0f full volume
   /// [pan] 0.0f centered
   /// [paused] 0 not pause
-  /// Return the handle of the sound, 0 if error
+  ///
+  /// Return the handle of the sound, [SoundHandle.error] if error
   SoundHandle play(
     SoundHash soundHash, {
     double volume = 1,
@@ -383,6 +384,9 @@ class FlutterSoLoudFfi {
     bool paused = false,
   }) {
     final handleId = _play(soundHash.hash, volume, pan, paused ? 1 : 0);
+    if (handleId == 0) {
+      return SoundHandle.error();
+    }
     return SoundHandle(handleId);
   }
 
@@ -952,7 +956,7 @@ class FlutterSoLoudFfi {
 
   /// play3d() is the 3d version of the play() call.
   ///
-  /// Returns the handle of the sound, 0 if error
+  /// Returns the handle of the sound, [SoundHandle.error] if error
   SoundHandle play3d(
     SoundHash soundHash,
     double posX,
@@ -975,6 +979,9 @@ class FlutterSoLoudFfi {
       volume,
       paused ? 1 : 0,
     );
+    if (handleId == 0) {
+      return SoundHandle.error();
+    }
     return SoundHandle(handleId);
   }
 
