@@ -68,8 +68,11 @@ class _PageVisualizerState extends State<PageVisualizer> {
         _log.info('player started');
         SoLoud.instance.setVisualizationEnabled(true);
         SoLoud.instance.setGlobalVolume(1);
-        canBuild = true;
-        if (context.mounted) setState(() {});
+        if (context.mounted) {
+          setState(() {
+            canBuild = true;
+          });
+        }
       } else {
         _log.severe('player starting error: $value');
         return;

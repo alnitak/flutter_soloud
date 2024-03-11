@@ -56,8 +56,11 @@ class _PageWaveformState extends State<PageWaveform> {
 
         /// Only when the [notes] are set up, build the UI
         setupNotes().then((value) {
-          canBuild = true;
-          if (context.mounted) setState(() {});
+          if (context.mounted) {
+          setState(() {
+            canBuild = true;
+          });
+        }
         });
       } else {
         _log.severe('player starting error: $value');
