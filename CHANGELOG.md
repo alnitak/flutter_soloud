@@ -1,4 +1,5 @@
-#### 1.2.xx
+#### 2.xx.yy
+- added `bool SoLoud.getVisualizationEnabled()` to get the current state of the visualization.
 - added `mode` property to `SoLoud.loadFile()` and `SoloudTools.loadFrom*` to prevent to load the whole audio data into memory:
     - *LoadMode.memory* by default. Means less CPU, more memory allocated.
     - *LoadMode.disk* means more CPU, less memory allocated. Lags can occurs while seeking MP3s, especially when using a slider.

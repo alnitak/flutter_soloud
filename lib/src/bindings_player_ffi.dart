@@ -457,6 +457,19 @@ class FlutterSoLoudFfi {
   late final _setVisualizationEnabled =
       _setVisualizationEnabledPtr.asFunction<void Function(int)>();
 
+  /// Get visualization state
+  ///
+  /// Return true if enabled
+  bool getVisualizationEnabled() {
+    return _getVisualizationEnabled() == 1;
+  }
+
+  late final _getVisualizationEnabledPtr =
+      _lookup<ffi.NativeFunction<ffi.Int Function()>>(
+          'getVisualizationEnabled');
+  late final _getVisualizationEnabled =
+      _getVisualizationEnabledPtr.asFunction<int Function()>();
+
   /// Returns valid data only if VisualizationEnabled is true
   ///
   /// [fft]

@@ -17,16 +17,39 @@ class _Page3DAudioState extends State<Page3DAudio> {
 
   SoundProps? currentSound;
   bool spinAround = false;
+  bool canBuild = false;
 
   @override
-  void dispose() {
-    SoLoud.instance.shutdown();
-    SoLoudCapture.instance.stopCapture();
-    super.dispose();
+  void initState() {
+    super.initState();
+
+    /// Initialize the player
+    _log.info('player starting');
+    SoLoud.instance.initialize().then((value) {
+      if (value == PlayerErrors.multipleInitialization) {
+        SoLoud.instance.disposeAllSound();
+      }
+      if (value == PlayerErrors.noError ||
+          value == PlayerErrors.multipleInitialization) {
+        _log.info('player started');
+        SoLoud.instance.setVisualizationEnabled(false);
+        SoLoud.instance.setGlobalVolume(1);
+        if (context.mounted) {
+          setState(() {
+            canBuild = true;
+          });
+        }
+      } else {
+        _log.severe('player starting error: $value');
+        return;
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    if (!SoLoud.instance.isInitialized) return const SizedBox.shrink();
+
     return Scaffold(
       body: Center(
         child: Column(
@@ -63,18 +86,6 @@ class _Page3DAudioState extends State<Page3DAudio> {
   /// Play an audio downloaded from url
   ///
   Future<void> playFromUrl() async {
-    /// Start audio engine if not already
-    if (!await SoLoud.instance.initialized) {
-      await SoLoud.instance.initialize().then((value) {
-        if (value == PlayerErrors.noError) {
-          _log.info('isolate started');
-        } else {
-          _log.severe('isolate starting error: $value');
-          return;
-        }
-      });
-    }
-
     /// stop any previous sound loaded
     if (currentSound != null) {
       if (await SoLoud.instance.disposeSound(currentSound!) !=
@@ -103,18 +114,6 @@ class _Page3DAudioState extends State<Page3DAudio> {
   /// Play the audio setting min and max distance and attenuation
   ///
   Future<void> play(double maxDistance) async {
-    /// Start audio engine if not already
-    if (!await SoLoud.instance.initialized) {
-      await SoLoud.instance.initialize().then((value) {
-        if (value == PlayerErrors.noError) {
-          _log.info('isolate started');
-        } else {
-          _log.severe('isolate starting error: $value');
-          return;
-        }
-      });
-    }
-
     /// stop any previous sound loaded
     if (currentSound != null) {
       if (await SoLoud.instance.disposeSound(currentSound!) !=
