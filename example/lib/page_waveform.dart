@@ -42,17 +42,18 @@ class _PageWaveformState extends State<PageWaveform> {
   void initState() {
     super.initState();
 
-    /// Ensure the player is down
-    if (SoLoud.instance.isInitialized) {
-      SoLoud.instance.shutdown();
-    }
-
-    /// Reinitialize the player
+    /// Initialize the player
+    _log.info('player starting');
     SoLoud.instance.initialize().then((value) {
-      if (value == PlayerErrors.noError) {
+      if (value == PlayerErrors.multipleInitialization) {
+        SoLoud.instance.disposeAllSound();
+      }
+      if (value == PlayerErrors.noError ||
+          value == PlayerErrors.multipleInitialization) {
         _log.info('player started');
         SoLoud.instance.setVisualizationEnabled(true);
         SoLoud.instance.setGlobalVolume(0.6);
+
         /// Only when the [notes] are set up, build the UI
         setupNotes().then((value) {
           canBuild = true;

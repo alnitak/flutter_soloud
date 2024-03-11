@@ -23,14 +23,14 @@ class _Page3DAudioState extends State<Page3DAudio> {
   void initState() {
     super.initState();
 
-    /// Ensure the player is down
-    if (SoLoud.instance.isInitialized) {
-      SoLoud.instance.shutdown();
-    }
-
-    /// Reinitialize the player
+    /// Initialize the player
+    _log.info('player starting');
     SoLoud.instance.initialize().then((value) {
-      if (value == PlayerErrors.noError) {
+      if (value == PlayerErrors.multipleInitialization) {
+        SoLoud.instance.disposeAllSound();
+      }
+      if (value == PlayerErrors.noError ||
+          value == PlayerErrors.multipleInitialization) {
         _log.info('player started');
         SoLoud.instance.setVisualizationEnabled(false);
         SoLoud.instance.setGlobalVolume(1);
@@ -46,7 +46,7 @@ class _Page3DAudioState extends State<Page3DAudio> {
   @override
   Widget build(BuildContext context) {
     if (!SoLoud.instance.isInitialized) return const SizedBox.shrink();
-    
+
     return Scaffold(
       body: Center(
         child: Column(

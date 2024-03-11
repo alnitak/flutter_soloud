@@ -109,7 +109,7 @@ enum PlayerErrors {
   /// Filter not found
   filterNotFound,
 
-  /// asking for wave and FFT is not enableb
+  /// asking for wave and FFT is not enabled
   visualizationNotEnabled;
 
   /// Returns a human-friendly sentence describing the error.

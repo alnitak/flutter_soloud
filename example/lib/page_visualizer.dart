@@ -43,7 +43,7 @@ class _PageVisualizerState extends State<PageVisualizer> {
       ValueNotifier(TextureType.fft2D);
   final ValueNotifier<double> fftSmoothing = ValueNotifier(0.8);
   final ValueNotifier<bool> isVisualizerForPlayer = ValueNotifier(true);
-  late final ValueNotifier<bool> isVisualizerEnabled = ValueNotifier(true);
+  final ValueNotifier<bool> isVisualizerEnabled = ValueNotifier(true);
   final ValueNotifier<RangeValues> fftImageRange =
       ValueNotifier(const RangeValues(0, 255));
   final ValueNotifier<int> maxFftImageRange = ValueNotifier(255);
@@ -58,14 +58,13 @@ class _PageVisualizerState extends State<PageVisualizer> {
   void initState() {
     super.initState();
 
-    /// Ensure the player is down
-    if (SoLoud.instance.isInitialized) {
-      SoLoud.instance.shutdown();
-    }
-
-    /// Reinitialize the player
+    /// Initialize the player
     SoLoud.instance.initialize().then((value) {
-      if (value == PlayerErrors.noError) {
+      if (value == PlayerErrors.multipleInitialization) {
+        SoLoud.instance.disposeAllSound();
+      }
+      if (value == PlayerErrors.noError ||
+          value == PlayerErrors.multipleInitialization) {
         _log.info('player started');
         SoLoud.instance.setVisualizationEnabled(true);
         SoLoud.instance.setGlobalVolume(1);

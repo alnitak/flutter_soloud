@@ -26,15 +26,14 @@ class _PageHelloFlutterSoLoudState extends State<PageHelloFlutterSoLoud> {
   @override
   void initState() {
     super.initState();
-    
-    /// Ensure the player is down
-    if (SoLoud.instance.isInitialized) {
-      SoLoud.instance.shutdown();
-    }
 
-    /// Reinitialize the player
+    /// Initialize the player
     SoLoud.instance.initialize().then((value) {
-      if (value == PlayerErrors.noError) {
+      if (value == PlayerErrors.multipleInitialization) {
+        SoLoud.instance.disposeAllSound();
+      }
+      if (value == PlayerErrors.noError ||
+          value == PlayerErrors.multipleInitialization) {
         _log.info('player started');
         // SoLoud.instance.setVisualizationEnabled(false);
         SoLoud.instance.setGlobalVolume(1);

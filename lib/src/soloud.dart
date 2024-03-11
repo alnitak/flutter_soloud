@@ -146,7 +146,7 @@ interface class SoLoud {
   bool _isInitialized = false;
 
   /// Whether or not is it possible to ask for wave and FFT data.
-  bool isVisualizationEnabled = false;
+  bool _isVisualizationEnabled = false;
 
   /// The current status of the engine. This is `true` when the engine
   /// has been initialized and is immediately ready.
@@ -368,7 +368,7 @@ interface class SoLoud {
             /// get the visualization flag from the player on C side.
             /// Eventually we can set this as a parameter during the
             /// initialization with some other parameters like `sampleRate`
-            isVisualizationEnabled = getVisualizationEnabled().isEnabled;
+            _isVisualizationEnabled = getVisualizationEnabled().isEnabled;
           } else {
             _log.severe('_initEngine() failed with error: $value');
             _cleanUpUnsuccessfulInitialization();
@@ -1081,7 +1081,7 @@ interface class SoLoud {
       return PlayerErrors.engineNotInited;
     }
     SoLoudController().soLoudFFI.setVisualizationEnabled(enabled);
-    isVisualizationEnabled = enabled;
+    _isVisualizationEnabled = enabled;
     return PlayerErrors.noError;
   }
 
@@ -1235,7 +1235,7 @@ interface class SoLoud {
       _log.severe(() => 'getAudioTexture2D(): ${PlayerErrors.engineNotInited}');
       return PlayerErrors.engineNotInited;
     }
-    if (!isVisualizationEnabled) {
+    if (!_isVisualizationEnabled) {
       return PlayerErrors.visualizationNotEnabled;
     }
     final ret = SoLoudController().soLoudFFI.getAudioTexture2D(audioData);
