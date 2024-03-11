@@ -94,8 +94,8 @@ class _MyHomePageState extends State<MyHomePage> {
     if (context.mounted) setState(() {});
 
     timer = Timer.periodic(const Duration(milliseconds: 100), (timer) {
-      if (sounds.isEmpty || sounds[0].handle.isEmpty) return;
-      final p = SoLoud.instance.getPosition(sounds[0].handle.first).position;
+      if (sounds.isEmpty || sounds[0].handles.isEmpty) return;
+      final p = SoLoud.instance.getPosition(sounds[0].handles.first).position;
       if (p <= minLength) seekPos.value = p;
     });
   }
@@ -145,8 +145,8 @@ class _MyHomePageState extends State<MyHomePage> {
                   onChanged: (value) {
                     seekPos.value = value;
                     for (final s in sounds) {
-                      if (s.handle.isEmpty) continue;
-                      SoLoud.instance.seek(s.handle.first, value);
+                      if (s.handles.isEmpty) continue;
+                      SoLoud.instance.seek(s.handles.first, value);
                     }
                   },
                 );
@@ -180,9 +180,9 @@ class _SoundRowState extends State<SoundRow> {
     super.initState();
     max = SoLoud.instance.getLength(widget.soundProps).length;
     timer = Timer.periodic(const Duration(milliseconds: 100), (timer) {
-      if (widget.soundProps.handle.isEmpty) return;
+      if (widget.soundProps.handles.isEmpty) return;
       pos =
-          SoLoud.instance.getPosition(widget.soundProps.handle.first).position;
+          SoLoud.instance.getPosition(widget.soundProps.handles.first).position;
       if (context.mounted) setState(() {});
     });
   }

@@ -41,6 +41,17 @@
   re-initializing it. Same for `SoLoud.shutdown()`, which will 
   wait for the engine to initialize before shutting it down,
   to avoid various race conditions.
+- Sound handles and sound hashes are now typed: `SoundHandle` and `SoundHash`
+  instead of raw integers.
+  This prevents from erroneously passing a sound handle as a sound hash,
+  for example. This is a breaking API change but, in practice, shouldn't
+  be much of a problem, since these objects were always meant as
+  identifiers (to be taken from some API calls and put into others).
+- `SoundProps.handle` renamed to `SoundProps.handles` (because it's a Set)
+  and also disallowed modifying it from outside the package.
+- All fields of `SoundProps` marked `final`. This is a breaking change
+  but unlikely to have effect (as most users hopefully don't assign
+  to these fields).
 
 #### 1.2.5 (2 Mar 2024)
 - updated mp3, flac and wav decoders

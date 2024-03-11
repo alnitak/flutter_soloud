@@ -8,6 +8,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/soloud.dart';
 import 'package:flutter_soloud/src/soloud_controller.dart';
+import 'package:flutter_soloud/src/sound_handle.dart';
+import 'package:flutter_soloud/src/sound_hash.dart';
 
 /// print some infos when isolate receive events
 /// from main isolate and vice versa
@@ -44,9 +46,14 @@ typedef ArgsLoadWaveform = ({
   double detune,
 });
 typedef ArgsSpeechText = ({String textToSpeech});
-typedef ArgsPlay = ({int soundHash, double volume, double pan, bool paused});
+typedef ArgsPlay = ({
+  SoundHash soundHash,
+  double volume,
+  double pan,
+  bool paused
+});
 typedef ArgsPlay3d = ({
-  int soundHash,
+  SoundHash soundHash,
   double posX,
   double posY,
   double posZ,
@@ -56,8 +63,8 @@ typedef ArgsPlay3d = ({
   double volume,
   bool paused
 });
-typedef ArgsStop = ({int handle});
-typedef ArgsDisposeSound = ({int soundHash});
+typedef ArgsStop = ({SoundHandle handle});
+typedef ArgsDisposeSound = ({SoundHash soundHash});
 typedef ArgsDisposeAllSound = ();
 
 /// Top Level audio isolate function
@@ -179,9 +186,10 @@ void audioIsolate(SendPort isolateToMainStream) {
       case MessageEvents.speechText:
         final args = event['args']! as ArgsSpeechText;
         final ret = soLoudController.soLoudFFI.speechText(args.textToSpeech);
-        // add the new sound handler to the list
-        final newSound = SoundProps(ret.handle);
+        final newSound = SoundProps(SoundHash.random());
+        newSound.handlesInternal.add(ret.handle);
         if (ret.error == PlayerErrors.noError) {
+          // Add the new sound to the list
           activeSounds.add(newSound);
         }
         isolateToMainStream.send({
@@ -203,14 +211,17 @@ void audioIsolate(SendPort isolateToMainStream) {
         try {
           activeSounds
               .firstWhere((s) => s.soundHash == args.soundHash)
-              .handle
+              .handlesInternal
               .add(ret);
         } catch (e) {
-          debugPrint('No sound with shoundHash ${args.soundHash} found!');
+          debugPrint('No sound with soundHash ${args.soundHash} found!');
           isolateToMainStream.send({
             'event': event['event'],
             'args': args,
-            'return': (error: PlayerErrors.soundHashNotFound, newHandle: -1),
+            'return': (
+              error: PlayerErrors.soundHashNotFound,
+              newHandle: SoundHandle.error()
+            ),
           });
           break;
         }
@@ -227,7 +238,8 @@ void audioIsolate(SendPort isolateToMainStream) {
 
         /// find a sound with this handle and remove that handle from the list
         for (final sound in activeSounds) {
-          sound.handle.removeWhere((element) => element == args.handle);
+          sound.handlesInternal
+              .removeWhere((element) => element == args.handle);
         }
 
         isolateToMainStream
@@ -288,10 +300,10 @@ void audioIsolate(SendPort isolateToMainStream) {
         try {
           activeSounds
               .firstWhere((s) => s.soundHash == args.soundHash)
-              .handle
+              .handlesInternal
               .add(ret);
         } catch (e) {
-          debugPrint('No sound with shoundHash ${args.soundHash} found!');
+          debugPrint('No sound with soundHash ${args.soundHash} found!');
           isolateToMainStream.send({
             'event': event['event'],
             'args': args,
@@ -330,14 +342,14 @@ void audioIsolate(SendPort isolateToMainStream) {
         if (loopRunning) {
           for (final sound in activeSounds) {
             final removeInvalid = <void Function()>[];
-            // check valids handles in [sound] list
-            for (final handle in sound.handle) {
+            // check valid handles in [sound] list
+            for (final handle in sound.handlesInternal) {
               final isValid =
                   soLoudController.soLoudFFI.getIsValidVoiceHandle(handle);
               if (!isValid) {
                 /// later, outside the loop, remove the handle
                 removeInvalid.add(() {
-                  sound.handle.remove(handle);
+                  sound.handlesInternal.remove(handle);
 
                   isolateToMainStream.send(
                     (

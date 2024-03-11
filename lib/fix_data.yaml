@@ -9,6 +9,17 @@
 version: 1
 
 transforms:
+  # SoundProps.handle => SoundProps.handles
+  - title: "Rename to 'handles'"
+    date: 2024-03-11
+    element:
+      uris: [ 'flutter_soloud.dart', 'package:flutter_soloud/flutter_soloud.dart' ]
+      getter: 'handle'
+      inClass: 'SoundProps'
+    changes:
+      - kind: 'rename'
+        newName: 'handles'
+
   # PlayerErrors.isolateAlreadyStarted => SoLoudCapture.multipleInitialization
   - title: "Rename to 'multipleInitialization'"
     date: 2024-03-09

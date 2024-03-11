@@ -310,7 +310,7 @@ class _PageVisualizerState extends State<PageVisualizer> {
                               if (currentSound == null) return;
                               stopTimer();
                               SoLoud.instance
-                                  .seek(currentSound!.handle.last, value);
+                                  .seek(currentSound!.handles.last, value);
                               soundPosition.value = value;
                               startTimer();
                             },
@@ -539,7 +539,7 @@ class _PageVisualizerState extends State<PageVisualizer> {
     timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (currentSound != null) {
         soundPosition.value =
-            SoLoud.instance.getPosition(currentSound!.handle.last).position;
+            SoLoud.instance.getPosition(currentSound!.handles.last).position;
       }
     });
   }

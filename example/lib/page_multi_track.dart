@@ -96,8 +96,8 @@ class _PlaySoundWidgetState extends State<PlaySoundWidget> {
   static final Logger _log = Logger('_PlaySoundWidgetState');
 
   late double soundLength;
-  final Map<int, ValueNotifier<bool>> isPaused = {};
-  final Map<int, ValueNotifier<double>> soundPosition = {};
+  final Map<SoundHandle, ValueNotifier<bool>> isPaused = {};
+  final Map<SoundHandle, ValueNotifier<double>> soundPosition = {};
   StreamSubscription<StreamSoundEvent>? _subscription;
   SoundProps? sound;
 
@@ -157,9 +157,9 @@ class _PlaySoundWidgetState extends State<PlaySoundWidget> {
           child: Text('load\n${widget.text}'),
         ),
         if (sound != null)
-          for (int i = 0; i < sound!.handle.length; ++i)
+          for (int i = 0; i < sound!.handles.length; ++i)
             PlayingRow(
-              handle: sound!.handle.elementAt(i),
+              handle: sound!.handles.elementAt(i),
               soundLength: soundLength,
               onStopped: () {
                 if (mounted) setState(() {});
@@ -215,7 +215,7 @@ class PlayingRow extends StatefulWidget {
   });
 
   final double soundLength;
-  final int handle;
+  final SoundHandle handle;
   final VoidCallback onStopped;
 
   @override
