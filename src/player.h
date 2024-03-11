@@ -129,12 +129,19 @@ public:
     /// @param volume 1.0f full volume.
     /// @param pan 0.0f centered.
     /// @param paused 0 not pause.
+    /// @param looping whether to start the sound in looping state.
+    /// @param loopingStartAt If looping is enabled, the loop point is, by default, 
+    /// the start of the stream. The loop start point can be set with this parameter, and 
+    /// current loop point can be queried with [getLoopingPoint] and 
+    /// changed by [setLoopingPoint].
     /// @return the handle of the sound, 0 if error.
     unsigned int play(
         unsigned int soundHash,
         float volume = 1.0f,
         float pan = 0.0f,
-        bool paused = 0);
+        bool paused = false,
+        bool looping = false,
+        double loopingStartAt = 0.0);
 
     /// @brief Stop already loaded sound identified by [handle] and clear it.
     /// @param handle
@@ -148,11 +155,23 @@ public:
     /// @param soundHash
     void disposeAllSound();
 
+    /// @brief Query whether a sound is set to loop.
+    bool getLooping(unsigned int handle);
+
     /// @brief This function can be used to set a sample to play on repeat, 
     /// instead of just playing once.
     /// @param handle
     /// @param enable
     void setLooping(unsigned int handle, bool enable);
+
+    /// @brief Get sound loop point value.
+    /// @return the time in seconds.
+    double getLoopPoint(unsigned int handle);
+
+    /// @brief Set sound loop point value.
+    /// @param handle 
+    /// @param time in seconds.
+    void setLoopPoint(unsigned int handle, double time);
 
     /// @brief Speech
     /// @param textToSpeech
@@ -249,6 +268,11 @@ public:
     void update3dAudio();
 
     /// @brief play3d() is the 3d version of the play() call.
+    /// @param looping whether to start the sound in looping state.
+    /// @param loopingStartAt If looping is enabled, the loop point is, by default, 
+    /// the start of the stream. The loop start point can be set with this parameter, and 
+    /// current loop point can be queried with [getLoopingPoint] and 
+    /// changed by [setLoopingPoint].
     /// @return the handle of the sound, 0 if error.
     unsigned int play3d(
         unsigned int soundHash,
@@ -260,7 +284,9 @@ public:
         float velZ = 0.0f,
         float volume = 1.0f,
         bool paused = 0,
-        unsigned int bus = 0);
+        unsigned int bus = 0,
+        bool looping = false,
+        double loopingStartAt = 0.0);
 
     /// You can set and get the current value of the speed of
     /// sound width the get3dSoundSpeed() and set3dSoundSpeed() functions.

@@ -1,3 +1,4 @@
+// ignore_for_file: public_member_api_docs, sort_constructors_first
 import 'dart:async';
 import 'dart:io';
 
@@ -17,6 +18,9 @@ class PageMultiTrack extends StatefulWidget {
 class _PageMultiTrackState extends State<PageMultiTrack> {
   static final Logger _log = Logger('_PageMultiTrackState');
 
+  final _looping = ValueNotifier<bool>(false);
+  final _loopingStartAt = ValueNotifier<double>(0);
+  final _playSoundController = PlaySoundController();
   bool canBuild = false;
 
   @override
@@ -49,12 +53,10 @@ class _PageMultiTrackState extends State<PageMultiTrack> {
   Widget build(BuildContext context) {
     if (!SoLoud.instance.isInitialized) return const SizedBox.shrink();
 
-    return const Scaffold(
+    return Scaffold(
       body: Padding(
-        padding: EdgeInsets.only(top: 50, right: 8, left: 8),
+        padding: const EdgeInsets.only(top: 50, right: 8, left: 8),
         child: Column(
-          // mainAxisAlignment: MainAxisAlignment.start,
-
           children: [
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -62,15 +64,56 @@ class _PageMultiTrackState extends State<PageMultiTrack> {
                 PlaySoundWidget(
                   assetsAudio: 'assets/audio/8_bit_mentality.mp3',
                   text: '8 bit mentality',
+                  controller: _playSoundController,
                 ),
-                SizedBox(height: 32),
-                PlaySoundWidget(
-                  assetsAudio: 'assets/audio/explosion.mp3',
-                  text: 'game explosion',
+                const SizedBox(height: 32),
+                ValueListenableBuilder(
+                  valueListenable: _looping,
+                  builder: (_, looping, __) {
+                    return ValueListenableBuilder(
+                      valueListenable: _loopingStartAt,
+                      builder: (_, loopingStartAt, __) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                const Text('looping'),
+                                const SizedBox(width: 16),
+                                Checkbox(
+                                  value: looping,
+                                  onChanged: (value) {
+                                    _looping.value = !looping;
+                                    _playSoundController.setLooping(value!);
+                                  },
+                                ),
+                                Expanded(
+                                  child: Slider(
+                                    value: loopingStartAt,
+                                    max: 3.8, // the length of explosion.mp3
+                                    onChanged: (value) {
+                                      _loopingStartAt.value = value;
+                                      _playSoundController
+                                          .setLoopStartAT(value);
+                                    },
+                                  ),
+                                ),
+                              ],
+                            ),
+                            PlaySoundWidget(
+                              assetsAudio: 'assets/audio/explosion.mp3',
+                              text: 'game explosion',
+                              controller: _playSoundController,
+                            ),
+                          ],
+                        );
+                      },
+                    );
+                  },
                 ),
               ],
             ),
-            SizedBox(height: 12),
+            const SizedBox(height: 12),
           ],
         ),
       ),
@@ -78,15 +121,34 @@ class _PageMultiTrackState extends State<PageMultiTrack> {
   }
 }
 
+/// Controller to manage loop and loopStartAt parameters of all sounds.
+class PlaySoundController {
+  void Function(bool looping)? _looping;
+  void Function(double loopStartAt)? _loopingStartAt;
+
+  void _setController(
+    void Function(bool looping)? looping,
+    void Function(double loopStartAt)? loopingStartAt,
+  ) {
+    _looping = looping;
+    _loopingStartAt = loopingStartAt;
+  }
+
+  void setLooping(bool looping) => _looping?.call(looping);
+  void setLoopStartAT(double loopStartAt) => _loopingStartAt?.call(loopStartAt);
+}
+
 class PlaySoundWidget extends StatefulWidget {
   const PlaySoundWidget({
     required this.assetsAudio,
     required this.text,
+    required this.controller,
     super.key,
   });
 
   final String assetsAudio;
   final String text;
+  final PlaySoundController controller;
 
   @override
   State<PlaySoundWidget> createState() => _PlaySoundWidgetState();
@@ -100,11 +162,37 @@ class _PlaySoundWidgetState extends State<PlaySoundWidget> {
   final Map<SoundHandle, ValueNotifier<double>> soundPosition = {};
   StreamSubscription<StreamSoundEvent>? _subscription;
   SoundProps? sound;
+  bool _looping = false;
+  double _loopingStartAt = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller._setController(_setLooping, _setLoopStartAt);
+  }
 
   @override
   void dispose() {
     _subscription?.cancel();
     super.dispose();
+  }
+
+  void _setLooping(bool looping) {
+    _looping = looping;
+    if (sound != null) {
+      for (final element in sound!.handles) {
+        SoLoud.instance.setLooping(element, looping);
+      }
+    }
+  }
+
+  void _setLoopStartAt(double loopingStartAt) {
+    _loopingStartAt = loopingStartAt;
+    if (sound != null) {
+      for (final element in sound!.handles) {
+        SoLoud.instance.setLoopPoint(element, loopingStartAt);
+      }
+    }
   }
 
   Future<bool> loadAsset() async {
@@ -179,8 +267,12 @@ class _PlaySoundWidgetState extends State<PlaySoundWidget> {
       if (!(await loadAsset())) return;
     }
 
-    final newHandle = await SoLoud.instance.play(sound!);
-    if (newHandle.error == PlayerErrors.noError) return;
+    final newHandle = await SoLoud.instance.play(
+      sound!,
+      looping: _looping,
+      loopingStartAt: _loopingStartAt,
+    );
+    if (newHandle.error != PlayerErrors.noError) return;
 
     isPaused[newHandle.newHandle] = ValueNotifier(false);
     soundPosition[newHandle.newHandle] = ValueNotifier(0);
@@ -278,7 +370,7 @@ class _PlayingRowState extends State<PlayingRow> {
 
               return Row(
                 children: [
-                  Text(position.toInt().toString()),
+                  Text(position.toStringAsFixed(1)),
                   Expanded(
                     child: Slider(
                       value: position,

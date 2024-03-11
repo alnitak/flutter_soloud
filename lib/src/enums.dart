@@ -46,7 +46,8 @@ enum CaptureErrors {
   String toString() => 'CaptureErrors.$name ($_asSentence)';
 }
 
-/// Possible player errors
+/// Possible player errors.
+/// New values must be enumerated at the bottom
 enum PlayerErrors {
   /// No error
   noError,
@@ -85,6 +86,12 @@ enum PlayerErrors {
   /// Player not initialized
   backendNotInited,
 
+  /// Filter not found
+  filterNotFound,
+
+  /// asking for wave and FFT is not enabled
+  visualizationNotEnabled,
+
   /// Audio isolate already started
   @Deprecated('Use multipleInitialization instead')
   isolateAlreadyStarted,
@@ -104,13 +111,7 @@ enum PlayerErrors {
   engineNotInited,
 
   /// The engine took too long to initialize.
-  engineInitializationTimedOut,
-
-  /// Filter not found
-  filterNotFound,
-
-  /// asking for wave and FFT is not enabled
-  visualizationNotEnabled;
+  engineInitializationTimedOut;
 
   /// Returns a human-friendly sentence describing the error.
   String get _asSentence {

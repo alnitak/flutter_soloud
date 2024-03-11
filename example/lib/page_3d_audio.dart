@@ -103,7 +103,6 @@ class _Page3DAudioState extends State<Page3DAudio> {
     final playRet = await SoLoud.instance.play3d(currentSound!, 0, 0, 0);
     if (playRet.error != PlayerErrors.noError) return;
 
-    SoLoud.instance.setLooping(playRet.newHandle, true);
     currentSound = playRet.sound;
 
     spinAround = true;
@@ -126,10 +125,15 @@ class _Page3DAudioState extends State<Page3DAudio> {
     currentSound = await SoloudTools.loadFromAssets('assets/audio/siren.mp3');
 
     /// play it
-    final playRet = await SoLoud.instance.play3d(currentSound!, 0, 0, 0);
+    final playRet = await SoLoud.instance.play3d(
+      currentSound!,
+      0,
+      0,
+      0,
+      looping: true,
+    );
     if (playRet.error != PlayerErrors.noError) return;
 
-    SoLoud.instance.setLooping(playRet.newHandle, true);
     SoLoud.instance.set3dSourceMinMaxDistance(
       playRet.newHandle,
       50,

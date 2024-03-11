@@ -3,7 +3,7 @@
 #ifndef ENUMS_H
 #define ENUMS_H
 
-/// Possible player errors
+/// Possible player errors. 
 typedef enum PlayerErrors
 {
     /// No error
@@ -25,11 +25,15 @@ typedef enum PlayerErrors
     /// Other error
     unknownError,
     /// Player not initialized
+    nullPointer,
+    /// audio sound hash has not found
+    soundHashNotFound,
+    /// Player not initialized
     backendNotInited,
     /// Filter not found
     filterNotFound,
-    /// audio sound hash has not found
-    soundHashNotFound
+    /// asking for wave and FFT is not enabled
+    visualizationNotEnabled,
 } PlayerErrors_t;
 
 /// Possible capture errors

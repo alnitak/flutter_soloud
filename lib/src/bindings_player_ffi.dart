@@ -369,68 +369,50 @@ class FlutterSoLoudFfi {
   late final _getRelativePlaySpeed =
       _getRelativePlaySpeedPtr.asFunction<double Function(int)>();
 
-  /// Play already loaded sound identified by [soundHandle].
-  ///
-  /// [soundHandle] the unique sound hash of a sound
-  /// [volume] 1.0f full volume
-  /// [pan] 0.0f centered
-  /// [paused] 0 not pause
-  /// Return the handle of the sound, 0 if error
-  // SoundHandle play(
-  //   SoundHash soundHash, {
-  //   double volume = 1,
-  //   double pan = 0,
-  //   bool paused = false,
-  // }) {
-  //   final handleId = _play(soundHash.hash, volume, pan, paused ? 1 : 0);
-  //   return SoundHandle(handleId);
-  // }
-
-  // late final _playPtr = _lookup<
-  //     ffi.NativeFunction<
-  //         ffi.UnsignedInt Function(
-  //           ffi.UnsignedInt,
-  //           ffi.Float,
-  //           ffi.Float,
-  //           ffi.Int,
-  //         )>>('play');
-  // late final _play =
-  //     _playPtr.asFunction<int Function(int, double, double, int)>();
-
   /// Play already loaded sound identified by [hash]
   ///
   /// [hash] the unique sound hash of a sound
-  /// [volume] 1.0f full volume
-  /// [pan] 0.0f centered
-  /// [paused] 0 not paused
-  /// Return the error if any and a new [handle] of this sound
-  ({PlayerErrors error, SoundHandle handle}) play(
+  /// [volume] 1.0 full volume
+  /// [pan] 0.0 centered
+  /// [paused] false not paused
+  /// [looping] whether to start the sound in looping state.
+  /// [loopingStartAt] If looping is enabled, the loop point is, by default,
+  /// the start of the stream. The loop start point can be set with this
+  /// parameter, and current loop point can be queried with [getLoopingPoint]
+  /// and changed by [setLoopingPoint].
+  /// Return the error if any and a new [newHandle] of this sound
+  ({PlayerErrors error, SoundHandle newHandle}) play(
     SoundHash soundHash, {
     double volume = 1,
     double pan = 0,
     bool paused = false,
+    bool looping = false,
+    double loopingStartAt = 0,
   }) {
     // ignore: omit_local_variable_types
-    final ffi.Pointer<ffi.UnsignedInt> newHandle = calloc();
+    final ffi.Pointer<ffi.UnsignedInt> handle = calloc();
     final e = _play(
       soundHash.hash,
       volume,
       pan,
       paused ? 1 : 0,
-      newHandle,
+      looping ? 1 : 0,
+      loopingStartAt,
+      handle,
     );
     final ret =
-        (error: PlayerErrors.values[e], handle: SoundHandle(newHandle.value));
-    calloc.free(newHandle);
+        (error: PlayerErrors.values[e], newHandle: SoundHandle(handle.value));
+    calloc.free(handle);
     return ret;
   }
 
   late final _playPtr = _lookup<
       ffi.NativeFunction<
           ffi.Int32 Function(ffi.UnsignedInt, ffi.Float, ffi.Float, ffi.Int,
-              ffi.Pointer<ffi.UnsignedInt>)>>('play');
+              ffi.Int, ffi.Double, ffi.Pointer<ffi.UnsignedInt>)>>('play');
   late final _play = _playPtr.asFunction<
-      int Function(int, double, double, int, ffi.Pointer<ffi.UnsignedInt>)>();
+      int Function(int, double, double, int, int, double,
+          ffi.Pointer<ffi.UnsignedInt>)>();
 
   /// Stop already loaded sound identified by [handle] and clear it.
   ///
@@ -467,6 +449,19 @@ class FlutterSoLoudFfi {
   late final _disposeAllSound =
       _disposeAllSoundPtr.asFunction<void Function()>();
 
+  /// Query whether a sound is set to loop.
+  ///
+  /// [handle]
+  /// Returns true if flagged for looping.
+  bool getLooping(int handle) {
+    return _getLooping(handle) == 1;
+  }
+
+  late final _getLoopingPtr =
+      _lookup<ffi.NativeFunction<ffi.Int Function(ffi.UnsignedInt)>>(
+          'getLooping');
+  late final _getLooping = _getLoopingPtr.asFunction<int Function(int)>();
+
   /// This function can be used to set a sample to play on repeat,
   /// instead of just playing once
   ///
@@ -481,6 +476,36 @@ class FlutterSoLoudFfi {
     'setLooping',
   );
   late final _setLooping = _setLoopingPtr.asFunction<void Function(int, int)>();
+
+  /// Get sound loop point value.
+  ///
+  /// [handle]
+  /// Returns the time in seconds.
+  double getLoopPoint(int handle) {
+    return _getLoopPoint(handle);
+  }
+
+  late final _getLoopPointPtr =
+      _lookup<ffi.NativeFunction<ffi.Double Function(ffi.UnsignedInt)>>(
+          'getLoopPoint');
+  late final _getLoopPoint =
+      _getLoopPointPtr.asFunction<double Function(int)>();
+
+  /// Set sound loop point value.
+  ///
+  /// [handle]
+  /// [time] in seconds.
+  void setLoopPoint(int handle, double time) {
+    _setLoopPoint(handle, time);
+  }
+
+  late final _setLoopPointPtr = _lookup<
+          ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt, ffi.Double)>>(
+      'setLoopPoint');
+  late final _setLoopPoint =
+      _setLoopPointPtr.asFunction<void Function(int, double)>();
+
+  /// TODO(@alnitak): implement Soloud.getLoopCount() also?
 
   /// Enable or disable visualization
   ///
@@ -985,10 +1010,17 @@ class FlutterSoLoudFfi {
   /// 3D audio methods
   /////////////////////////////////////////
 
-  /// play3d() is the 3d version of the play() call.
+  /// play3d() is the 3d version of the play() call
   ///
+  /// [posX], [posY], [posZ] are the audio source position coordinates.
+  /// [velX], [velY], [velZ] are the audio source velocity.
+  /// [looping] whether to start the sound in looping state.
+  /// [loopingStartAt] If looping is enabled, the loop point is, by default,
+  /// the start of the stream. The loop start point can be set with this parameter, and
+  /// current loop point can be queried with [getLoopingPoint] and
+  /// changed by [setLoopingPoint].
   /// Returns the handle of the sound, 0 if error
-  SoundHandle play3d(
+  ({PlayerErrors error, SoundHandle newHandle}) play3d(
     SoundHash soundHash,
     double posX,
     double posY,
@@ -998,8 +1030,12 @@ class FlutterSoLoudFfi {
     double velZ = 0,
     double volume = 1,
     bool paused = false,
+    bool looping = false,
+    double loopingStartAt = 0,
   }) {
-    final handleId = _play3d(
+    // ignore: omit_local_variable_types
+    final ffi.Pointer<ffi.UnsignedInt> handle = calloc();
+    final e = _play3d(
       soundHash.hash,
       posX,
       posY,
@@ -1009,35 +1045,34 @@ class FlutterSoLoudFfi {
       velZ,
       volume,
       paused ? 1 : 0,
+      looping ? 1 : 0,
+      loopingStartAt,
+      handle,
     );
-    return SoundHandle(handleId);
+    final ret =
+        (error: PlayerErrors.values[e], newHandle: SoundHandle(handle.value));
+    calloc.free(handle);
+    return ret;
   }
 
   late final _play3dPtr = _lookup<
       ffi.NativeFunction<
           ffi.UnsignedInt Function(
-            ffi.UnsignedInt,
-            ffi.Float,
-            ffi.Float,
-            ffi.Float,
-            ffi.Float,
-            ffi.Float,
-            ffi.Float,
-            ffi.Float,
-            ffi.Int,
-          )>>('play3d');
+              ffi.UnsignedInt,
+              ffi.Float,
+              ffi.Float,
+              ffi.Float,
+              ffi.Float,
+              ffi.Float,
+              ffi.Float,
+              ffi.Float,
+              ffi.Int,
+              ffi.Int,
+              ffi.Double,
+              ffi.Pointer<ffi.UnsignedInt>)>>('play3d');
   late final _play3d = _play3dPtr.asFunction<
-      int Function(
-        int,
-        double,
-        double,
-        double,
-        double,
-        double,
-        double,
-        double,
-        int,
-      )>();
+      int Function(int, double, double, double, double, double, double, double,
+          int, int, double, ffi.Pointer<ffi.UnsignedInt>)>();
 
   /// Since SoLoud has no knowledge of the scale of your coordinates,
   /// you may need to adjust the speed of sound for these effects
