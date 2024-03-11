@@ -213,7 +213,7 @@ class _Audio3DWidgetState extends State<Audio3DWidget>
         -100 * delta.dy / (timeStamp.inMilliseconds - precTime.inMilliseconds);
     if (widget.sound != null) {
       SoLoud.instance.set3dSourceParameters(
-        widget.sound!.handle.first,
+        widget.sound!.handles.first,
         posX,
         posY,
         posZ,

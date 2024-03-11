@@ -99,7 +99,7 @@ class _KeyboardWidgetState extends State<KeyboardWidget> {
   Future<void> play(int index) async {
     if (index < 0 || index >= notesKeys.length) return;
     if (isPressed[index].value) return;
-    final handle = widget.notes[index].handle.first;
+    final handle = widget.notes[index].handles.first;
     SoLoud.instance.setRelativePlaySpeed(handle, 0);
     SoLoud.instance.setVolume(handle, 0);
     SoLoud.instance.fadeVolume(handle, 1, widget.fadeIn);
@@ -124,7 +124,7 @@ class _KeyboardWidgetState extends State<KeyboardWidget> {
 
   void stop(int index) {
     if (index < 0 || index >= notesKeys.length) return;
-    for (final h in widget.notes[index].handle) {
+    for (final h in widget.notes[index].handles) {
       SoLoud.instance.fadeVolume(h, 0, widget.fadeOut);
       SoLoud.instance.fadeRelativePlaySpeed(h, 0, widget.fadeSpeedOut);
       SoLoud.instance.schedulePause(h, widget.fadeOut);

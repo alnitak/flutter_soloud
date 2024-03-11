@@ -137,9 +137,9 @@ class _PlaySoundWidgetState extends State<PlaySoundWidget> {
           child: Text('load\n${widget.text}'),
         ),
         if (sound != null)
-          for (int i = 0; i < sound!.handle.length; ++i)
+          for (int i = 0; i < sound!.handles.length; ++i)
             PlayingRow(
-              handle: sound!.handle.elementAt(i),
+              handle: sound!.handles.elementAt(i),
               soundLength: soundLength,
               onStopped: () {
                 if (mounted) setState(() {});
