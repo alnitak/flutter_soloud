@@ -369,33 +369,68 @@ class FlutterSoLoudFfi {
   late final _getRelativePlaySpeed =
       _getRelativePlaySpeedPtr.asFunction<double Function(int)>();
 
-  /// Play already loaded sound identified by [soundHash].
+  /// Play already loaded sound identified by [soundHandle].
   ///
-  /// [soundHash] the unique sound hash of a sound
+  /// [soundHandle] the unique sound hash of a sound
   /// [volume] 1.0f full volume
   /// [pan] 0.0f centered
   /// [paused] 0 not pause
   /// Return the handle of the sound, 0 if error
-  SoundHandle play(
+  // SoundHandle play(
+  //   SoundHash soundHash, {
+  //   double volume = 1,
+  //   double pan = 0,
+  //   bool paused = false,
+  // }) {
+  //   final handleId = _play(soundHash.hash, volume, pan, paused ? 1 : 0);
+  //   return SoundHandle(handleId);
+  // }
+
+  // late final _playPtr = _lookup<
+  //     ffi.NativeFunction<
+  //         ffi.UnsignedInt Function(
+  //           ffi.UnsignedInt,
+  //           ffi.Float,
+  //           ffi.Float,
+  //           ffi.Int,
+  //         )>>('play');
+  // late final _play =
+  //     _playPtr.asFunction<int Function(int, double, double, int)>();
+
+  /// Play already loaded sound identified by [hash]
+  ///
+  /// [hash] the unique sound hash of a sound
+  /// [volume] 1.0f full volume
+  /// [pan] 0.0f centered
+  /// [paused] 0 not paused
+  /// Return the error if any and a new [handle] of this sound
+  ({PlayerErrors error, SoundHandle handle}) play(
     SoundHash soundHash, {
     double volume = 1,
     double pan = 0,
     bool paused = false,
   }) {
-    final handleId = _play(soundHash.hash, volume, pan, paused ? 1 : 0);
-    return SoundHandle(handleId);
+    // ignore: omit_local_variable_types
+    final ffi.Pointer<ffi.UnsignedInt> newHandle = calloc();
+    final e = _play(
+      soundHash.hash,
+      volume,
+      pan,
+      paused ? 1 : 0,
+      newHandle,
+    );
+    final ret =
+        (error: PlayerErrors.values[e], handle: SoundHandle(newHandle.value));
+    calloc.free(newHandle);
+    return ret;
   }
 
   late final _playPtr = _lookup<
       ffi.NativeFunction<
-          ffi.UnsignedInt Function(
-            ffi.UnsignedInt,
-            ffi.Float,
-            ffi.Float,
-            ffi.Int,
-          )>>('play');
-  late final _play =
-      _playPtr.asFunction<int Function(int, double, double, int)>();
+          ffi.Int32 Function(ffi.UnsignedInt, ffi.Float, ffi.Float, ffi.Int,
+              ffi.Pointer<ffi.UnsignedInt>)>>('play');
+  late final _play = _playPtr.asFunction<
+      int Function(int, double, double, int, ffi.Pointer<ffi.UnsignedInt>)>();
 
   /// Stop already loaded sound identified by [handle] and clear it.
   ///

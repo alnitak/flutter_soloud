@@ -212,7 +212,7 @@ void audioIsolate(SendPort isolateToMainStream) {
           activeSounds
               .firstWhere((s) => s.soundHash == args.soundHash)
               .handlesInternal
-              .add(ret);
+              .add(ret.handle);
         } catch (e) {
           debugPrint('No sound with soundHash ${args.soundHash} found!');
           isolateToMainStream.send({

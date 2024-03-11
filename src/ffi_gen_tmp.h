@@ -25,7 +25,17 @@ struct CaptureDevice
 
 
 
-/// Get visualization state
+/// Play already loaded sound identified by [hash]
 ///
-/// Return true if enabled
-FFI_PLUGIN_EXPORT int getVisualizationEnabled();
+/// [hash] the unique sound hash of a sound
+/// [volume] 1.0f full volume
+/// [pan] 0.0f centered
+/// [paused] 0 not paused
+/// [newHandle] the handle for this sound
+/// Return the error if any and the [newHandle] of the sound
+FFI_PLUGIN_EXPORT enum PlayerErrors play(
+    unsigned int hash,
+    float volume,
+    float pan,
+    bool paused,
+    unsigned int *newHandle);

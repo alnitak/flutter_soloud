@@ -265,22 +265,25 @@ extern "C"
         return player.getRelativePlaySpeed(handle);
     }
 
-    /// Play already loaded sound identified by [handle]
+    /// Play already loaded sound identified by [hash]
     ///
     /// [hash] the unique sound hash of a sound
     /// [volume] 1.0f full volume
     /// [pan] 0.0f centered
-    /// [paused] 0 not pause
-    /// Return the handle of the sound, 0 if error
-    FFI_PLUGIN_EXPORT unsigned int play(
+    /// [paused] 0 not paused
+    /// [newHandle] pointer to the handle for this new sound
+    /// Return the error if any and a new [handle] of this sound
+    FFI_PLUGIN_EXPORT enum PlayerErrors play(
         unsigned int hash,
         float volume,
         float pan,
-        bool paused)
+        bool paused,
+        unsigned int *handle)
     {
         if (!player.isInited())
-            return -1;
-        return player.play(hash, volume, pan, paused);
+            return backendNotInited;
+        *handle = player.play(hash, volume, pan, paused);
+        return *handle == 0 ? soundHashNotFound : noError;
     }
 
     /// Stop already loaded sound identified by [handle] and clear it

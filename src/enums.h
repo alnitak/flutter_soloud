@@ -27,7 +27,9 @@ typedef enum PlayerErrors
     /// Player not initialized
     backendNotInited,
     /// Filter not found
-    filterNotFound
+    filterNotFound,
+    /// audio sound hash has not found
+    soundHashNotFound
 } PlayerErrors_t;
 
 /// Possible capture errors
