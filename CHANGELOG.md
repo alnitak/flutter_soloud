@@ -1,4 +1,4 @@
-#### 2.xx.yy
+#### 2.0.0-pre.0 (11 Mar 2024)
 - added `bool SoLoud.getVisualizationEnabled()` to get the current state of the visualization.
 - added `mode` property to `SoLoud.loadFile()` and `SoloudTools.loadFrom*` to prevent to load the whole audio data into memory:
     - *LoadMode.memory* by default. Means less CPU, more memory allocated.

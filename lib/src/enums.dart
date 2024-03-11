@@ -163,7 +163,7 @@ enum PlayerErrors {
         return 'Filter not found';
       case PlayerErrors.visualizationNotEnabled:
         return 'Asking for audio data is not enabled! Please use '
-        '`setVisualizationEnabled(true);` to enable!';
+            '`setVisualizationEnabled(true);` to enable!';
     }
   }
 
