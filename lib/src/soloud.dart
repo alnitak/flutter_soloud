@@ -1,13 +1,19 @@
 // ignore_for_file: require_trailing_commas, avoid_positional_boolean_parameters
 
 import 'dart:async';
+import 'dart:collection';
 import 'dart:ffi' as ffi;
 import 'dart:isolate';
 
-import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:flutter_soloud/src/audio_isolate.dart';
+import 'package:flutter_soloud/src/enums.dart';
+import 'package:flutter_soloud/src/filter_params.dart';
+import 'package:flutter_soloud/src/soloud_capture.dart';
 import 'package:flutter_soloud/src/soloud_controller.dart';
+import 'package:flutter_soloud/src/sound_handle.dart';
+import 'package:flutter_soloud/src/sound_hash.dart';
 import 'package:logging/logging.dart';
+import 'package:meta/meta.dart';
 
 /// sound event types
 enum SoundEvent {
@@ -19,30 +25,55 @@ enum SoundEvent {
 }
 
 /// the type sent back to the user when a sound event occurs
-typedef StreamSoundEvent = ({SoundEvent event, SoundProps sound, int handle});
+typedef StreamSoundEvent = ({
+  SoundEvent event,
+  SoundProps sound,
+  SoundHandle handle,
+});
 
 /// the sound class
 class SoundProps {
   ///
   SoundProps(this.soundHash);
 
-  /// the [hash] returned by [loadFile()]
-  final int soundHash;
+  /// The hash uniquely identifying this loaded sound.
+  final SoundHash soundHash;
 
-  /// handles of this sound. Multiple instances of this sound can be
-  /// played, each with their unique handle
-  Set<int> handle = {};
+  /// This getter is [deprecated] and will be removed. Use [handles] instead.
+  @Deprecated("Use 'handles' instead")
+  UnmodifiableSetView<SoundHandle> get handle => handles;
+
+  /// The handles of currently playing instances of this sound.
+  ///
+  /// A sound (expressed as [SoundProps]) can be loaded once, but then
+  /// played multiple times. It's even possible to play several instances
+  /// of the sound simultaneously.
+  ///
+  /// Each time you [SoLoud.play] a sound, you get back a [SoundHandle],
+  /// and that same handle will be added to this [handles] set.
+  /// When the sound finishes playing, its handle will be removed from this set.
+  ///
+  /// This set is unmodifiable.
+  late final UnmodifiableSetView<SoundHandle> handles =
+      UnmodifiableSetView(handlesInternal);
+
+  /// The [internal] backing of [handles].
+  ///
+  /// Use [handles].
+  @internal
+  final Set<SoundHandle> handlesInternal = {};
 
   ///
   // TODO(me): make marker keys time able to trigger an event
-  List<double> keys = [];
+  final List<double> keys = [];
 
   /// the user can listen ie when a sound ends or key events (TODO)
-  StreamController<StreamSoundEvent> soundEvents = StreamController.broadcast();
+  final StreamController<StreamSoundEvent> soundEvents =
+      StreamController.broadcast();
 
   @override
   String toString() {
-    return 'soundHash: $soundHash has ${handle.length} active handles';
+    return 'soundHash: $soundHash has ${handles.length} active handles';
   }
 }
 
@@ -384,7 +415,7 @@ interface class SoLoud {
             orElse: () {
               _log.info(() => 'Received an event for sound with handle: '
                   "${data.handle} but such sound isn't among activeSounds.");
-              return SoundProps(0);
+              return SoundProps(SoundHash.invalid());
             },
           );
 
@@ -398,9 +429,9 @@ interface class SoLoud {
           /// send the handle event to the listeners and remove it
           if (data.event == SoundEvent.handleIsNoMoreValid) {
             /// ...put in its own stream the event, then remove the handle
-            if (sound.soundHash != 0) {
+            if (sound.soundHash.isValid) {
               sound.soundEvents.add(data);
-              sound.handle.removeWhere(
+              sound.handlesInternal.removeWhere(
                 (handle) {
                   return handle == data.handle;
                 },
@@ -808,7 +839,10 @@ interface class SoLoud {
   ) async {
     if (!isInitialized) {
       _log.severe(() => 'speechText(): ${PlayerErrors.engineNotInited}');
-      return (error: PlayerErrors.engineNotInited, sound: SoundProps(-1));
+      return (
+        error: PlayerErrors.engineNotInited,
+        sound: SoundProps(SoundHash.invalid()),
+      );
     }
     _mainToIsolateStream?.send(
       {
@@ -836,7 +870,7 @@ interface class SoLoud {
   /// Returns PlayerErrors.noError if success, the new sound and
   /// the new handle newHandle
   ///
-  Future<({PlayerErrors error, SoundProps sound, int newHandle})> play(
+  Future<({PlayerErrors error, SoundProps sound, SoundHandle newHandle})> play(
     SoundProps sound, {
     double volume = 1,
     double pan = 0,
@@ -844,7 +878,11 @@ interface class SoLoud {
   }) async {
     if (!isInitialized) {
       _log.severe(() => 'play(): ${PlayerErrors.engineNotInited}');
-      return (error: PlayerErrors.engineNotInited, sound: sound, newHandle: 0);
+      return (
+        error: PlayerErrors.engineNotInited,
+        sound: sound,
+        newHandle: SoundHandle.error(),
+      );
     }
     _mainToIsolateStream?.send(
       {
@@ -860,25 +898,29 @@ interface class SoLoud {
     final ret = (await _waitForEvent(
       MessageEvents.play,
       (soundHash: sound.soundHash, volume: volume, pan: pan, paused: paused),
-    )) as ({PlayerErrors error, int newHandle});
+    )) as ({PlayerErrors error, SoundHandle newHandle});
     _logPlayerError(ret.error, from: 'play()');
     if (ret.error != PlayerErrors.noError) {
-      return (error: ret.error, sound: sound, newHandle: 0);
+      return (
+        error: ret.error,
+        sound: sound,
+        newHandle: SoundHandle.error(),
+      );
     }
 
     try {
       /// add the new handle to the sound
       activeSounds
           .firstWhere((s) => s.soundHash == sound.soundHash)
-          .handle
+          .handlesInternal
           .add(ret.newHandle);
-      sound.handle.add(ret.newHandle);
+      sound.handlesInternal.add(ret.newHandle);
     } catch (e) {
       _log.severe('play(): soundHash ${sound.soundHash} not found', e);
       return (
         error: PlayerErrors.soundHashNotFound,
         sound: sound,
-        newHandle: 0
+        newHandle: SoundHandle.error(),
       );
     }
     return (
@@ -893,7 +935,7 @@ interface class SoLoud {
   /// [handle] the sound handle
   /// Returns [PlayerErrors.noError] if success
   ///
-  PlayerErrors pauseSwitch(int handle) {
+  PlayerErrors pauseSwitch(SoundHandle handle) {
     if (!isInitialized) {
       _log.severe(() => 'pauseSwitch(): ${PlayerErrors.engineNotInited}');
       return PlayerErrors.engineNotInited;
@@ -907,7 +949,7 @@ interface class SoLoud {
   /// [handle] the sound handle
   /// Returns [PlayerErrors.noError] if success
   ///
-  PlayerErrors setPause(int handle, bool pause) {
+  PlayerErrors setPause(SoundHandle handle, bool pause) {
     if (!isInitialized) {
       _log.severe(() => 'setPause(): ${PlayerErrors.engineNotInited}');
       return PlayerErrors.engineNotInited;
@@ -921,7 +963,7 @@ interface class SoLoud {
   /// [handle] the sound handle
   /// Return [PlayerErrors.noError] on success and true if paused
   ///
-  ({PlayerErrors error, bool pause}) getPause(int handle) {
+  ({PlayerErrors error, bool pause}) getPause(SoundHandle handle) {
     if (!isInitialized) {
       _log.severe(() => 'getPause(): ${PlayerErrors.engineNotInited}');
       return (error: PlayerErrors.engineNotInited, pause: false);
@@ -942,7 +984,7 @@ interface class SoLoud {
   ///
   /// [handle] the sound handle
   /// [speed] the new speed
-  PlayerErrors setRelativePlaySpeed(int handle, double speed) {
+  PlayerErrors setRelativePlaySpeed(SoundHandle handle, double speed) {
     if (!isInitialized) {
       _log.severe(
           () => 'setRelativePlaySpeed(): ${PlayerErrors.engineNotInited}');
@@ -955,7 +997,8 @@ interface class SoLoud {
   /// Return the current play speed.
   ///
   /// [handle] the sound handle
-  ({PlayerErrors error, double speed}) getRelativePlaySpeed(int handle) {
+  ({PlayerErrors error, double speed}) getRelativePlaySpeed(
+      SoundHandle handle) {
     if (!isInitialized) {
       _log.severe(
           () => 'getRelativePlaySpeed(): ${PlayerErrors.engineNotInited}');
@@ -971,7 +1014,7 @@ interface class SoLoud {
   /// [handle] the sound handle to stop
   /// Return [PlayerErrors.noError] on success
   ///
-  Future<PlayerErrors> stop(int handle) async {
+  Future<PlayerErrors> stop(SoundHandle handle) async {
     if (!isInitialized) {
       _log.severe(() => 'stop(): ${PlayerErrors.engineNotInited}');
       return PlayerErrors.engineNotInited;
@@ -986,7 +1029,7 @@ interface class SoLoud {
 
     /// find a sound with this handle and remove that handle from the list
     for (final sound in activeSounds) {
-      sound.handle.removeWhere((element) => element == handle);
+      sound.handlesInternal.removeWhere((element) => element == handle);
     }
     return PlayerErrors.noError;
   }
@@ -1052,7 +1095,7 @@ interface class SoLoud {
   /// [enable]
   /// Return [PlayerErrors.noError] on success
   ///
-  PlayerErrors setLooping(int handle, bool enable) {
+  PlayerErrors setLooping(SoundHandle handle, bool enable) {
     if (!isInitialized) {
       _log.severe(() => 'setLooping(): ${PlayerErrors.engineNotInited}');
       return PlayerErrors.engineNotInited;
@@ -1107,7 +1150,7 @@ interface class SoLoud {
   /// If you need to seek MP3s without lags, please, use
   /// `mode`=`LoadMode.memory` instead or other supported audio formats!
   ///
-  PlayerErrors seek(int handle, double time) {
+  PlayerErrors seek(SoundHandle handle, double time) {
     if (!isInitialized) {
       _log.severe(() => 'seek(): ${PlayerErrors.engineNotInited}');
       return PlayerErrors.engineNotInited;
@@ -1121,7 +1164,7 @@ interface class SoLoud {
   /// [handle] the sound handle
   /// Return PlayerErrors.noError if success and position in seconds
   ///
-  ({PlayerErrors error, double position}) getPosition(int handle) {
+  ({PlayerErrors error, double position}) getPosition(SoundHandle handle) {
     if (!isInitialized) {
       _log.severe(() => 'getPosition(): ${PlayerErrors.engineNotInited}');
       return (error: PlayerErrors.engineNotInited, position: 0.0);
@@ -1160,7 +1203,7 @@ interface class SoLoud {
   ///
   /// Return PlayerErrors.noError if success and volume
   ///
-  ({PlayerErrors error, double volume}) getVolume(int handle) {
+  ({PlayerErrors error, double volume}) getVolume(SoundHandle handle) {
     if (!isInitialized) {
       _log.severe(() => 'getVolume(): ${PlayerErrors.engineNotInited}');
       return (error: PlayerErrors.engineNotInited, volume: 0.0);
@@ -1173,7 +1216,7 @@ interface class SoLoud {
   ///
   /// Return PlayerErrors.noError if success
   ///
-  PlayerErrors setVolume(int handle, double volume) {
+  PlayerErrors setVolume(SoundHandle handle, double volume) {
     if (!isInitialized) {
       _log.severe(() => 'setVolume(): ${PlayerErrors.engineNotInited}');
       return PlayerErrors.engineNotInited;
@@ -1187,7 +1230,8 @@ interface class SoLoud {
   /// [handle] handle to check
   /// Return PlayerErrors.noError if success and isvalid==true if valid
   ///
-  ({PlayerErrors error, bool isValid}) getIsValidVoiceHandle(int handle) {
+  ({PlayerErrors error, bool isValid}) getIsValidVoiceHandle(
+      SoundHandle handle) {
     if (!isInitialized) {
       _log.severe(
           () => 'getIsValidVoiceHandle(): ${PlayerErrors.engineNotInited}');
@@ -1261,7 +1305,7 @@ interface class SoLoud {
 
   /// Smoothly change a channel's volume over specified time.
   ///
-  PlayerErrors fadeVolume(int handle, double to, double time) {
+  PlayerErrors fadeVolume(SoundHandle handle, double to, double time) {
     if (!isInitialized) {
       _log.severe(() => 'fadeVolume(): ${PlayerErrors.engineNotInited}');
       return PlayerErrors.engineNotInited;
@@ -1272,7 +1316,7 @@ interface class SoLoud {
 
   /// Smoothly change a channel's pan setting over specified time.
   ///
-  PlayerErrors fadePan(int handle, double to, double time) {
+  PlayerErrors fadePan(SoundHandle handle, double to, double time) {
     if (!isInitialized) {
       _log.severe(() => 'fadePan(): ${PlayerErrors.engineNotInited}');
       return PlayerErrors.engineNotInited;
@@ -1283,7 +1327,8 @@ interface class SoLoud {
 
   /// Smoothly change a channel's relative play speed over specified time.
   ///
-  PlayerErrors fadeRelativePlaySpeed(int handle, double to, double time) {
+  PlayerErrors fadeRelativePlaySpeed(
+      SoundHandle handle, double to, double time) {
     if (!isInitialized) {
       _log.severe(
           () => 'fadeRelativePlaySpeed(): ${PlayerErrors.engineNotInited}');
@@ -1296,7 +1341,7 @@ interface class SoLoud {
 
   /// After specified time, pause the channel.
   ///
-  PlayerErrors schedulePause(int handle, double time) {
+  PlayerErrors schedulePause(SoundHandle handle, double time) {
     if (!isInitialized) {
       _log.severe(() => 'schedulePause(): ${PlayerErrors.engineNotInited}');
       return PlayerErrors.engineNotInited;
@@ -1307,7 +1352,7 @@ interface class SoLoud {
 
   /// After specified time, stop the channel.
   ///
-  PlayerErrors scheduleStop(int handle, double time) {
+  PlayerErrors scheduleStop(SoundHandle handle, double time) {
     if (!isInitialized) {
       _log.severe(() => 'scheduleStop(): ${PlayerErrors.engineNotInited}');
       return PlayerErrors.engineNotInited;
@@ -1319,7 +1364,7 @@ interface class SoLoud {
   /// Set fader to oscillate the volume at specified frequency.
   ///
   PlayerErrors oscillateVolume(
-      int handle, double from, double to, double time) {
+      SoundHandle handle, double from, double to, double time) {
     if (!isInitialized) {
       _log.severe(() => 'oscillateVolume(): ${PlayerErrors.engineNotInited}');
       return PlayerErrors.engineNotInited;
@@ -1331,7 +1376,8 @@ interface class SoLoud {
 
   /// Set fader to oscillate the panning at specified frequency.
   ///
-  PlayerErrors oscillatePan(int handle, double from, double to, double time) {
+  PlayerErrors oscillatePan(
+      SoundHandle handle, double from, double to, double time) {
     if (!isInitialized) {
       _log.severe(() => 'oscillatePan(): ${PlayerErrors.engineNotInited}');
       return PlayerErrors.engineNotInited;
@@ -1344,7 +1390,7 @@ interface class SoLoud {
   /// Set fader to oscillate the relative play speed at specified frequency.
   ///
   PlayerErrors oscillateRelativePlaySpeed(
-      int handle, double from, double to, double time) {
+      SoundHandle handle, double from, double to, double time) {
     if (!isInitialized) {
       _log.severe('oscillateRelativePlaySpeed(): '
           '${PlayerErrors.engineNotInited}');
@@ -1549,7 +1595,8 @@ interface class SoLoud {
   ///
   /// Returns the handle of the sound, 0 if error.
   ///
-  Future<({PlayerErrors error, SoundProps sound, int newHandle})> play3d(
+  Future<({PlayerErrors error, SoundProps sound, SoundHandle newHandle})>
+      play3d(
     SoundProps sound,
     double posX,
     double posY,
@@ -1562,7 +1609,11 @@ interface class SoLoud {
   }) async {
     if (!isInitialized) {
       _log.severe(() => 'play3d(): ${PlayerErrors.engineNotInited}');
-      return (error: PlayerErrors.engineNotInited, sound: sound, newHandle: 0);
+      return (
+        error: PlayerErrors.engineNotInited,
+        sound: sound,
+        newHandle: SoundHandle.error(),
+      );
     }
     _mainToIsolateStream?.send(
       {
@@ -1593,22 +1644,22 @@ interface class SoLoud {
         volume: volume,
         paused: paused
       ),
-    )) as ({PlayerErrors error, int newHandle});
+    )) as ({PlayerErrors error, SoundHandle newHandle});
     _logPlayerError(ret.error, from: 'play3d() result');
     try {
       /// add the new handle to the sound
       activeSounds
           .firstWhere((s) => s.soundHash == sound.soundHash)
-          .handle
+          .handlesInternal
           .add(ret.newHandle);
-      sound.handle.add(ret.newHandle);
+      sound.handlesInternal.add(ret.newHandle);
     } catch (e, s) {
       _log.severe(
           () => 'play3d(): soundHash ${sound.soundHash} not found', e, s);
       return (
         error: PlayerErrors.soundHashNotFound,
         sound: sound,
-        newHandle: 0
+        newHandle: SoundHandle.error(),
       );
     }
     return (
@@ -1684,22 +1735,23 @@ interface class SoLoud {
   /// You can set the position and velocity parameters of a live
   /// 3d audio source with one call.
   ///
-  void set3dSourceParameters(int handle, double posX, double posY, double posZ,
-      double velocityX, double velocityY, double velocityZ) {
+  void set3dSourceParameters(SoundHandle handle, double posX, double posY,
+      double posZ, double velocityX, double velocityY, double velocityZ) {
     SoLoudController().soLoudFFI.set3dSourceParameters(
         handle, posX, posY, posZ, velocityX, velocityY, velocityZ);
   }
 
   /// You can set the position parameters of a live 3d audio source.
   ///
-  void set3dSourcePosition(int handle, double posX, double posY, double posZ) {
+  void set3dSourcePosition(
+      SoundHandle handle, double posX, double posY, double posZ) {
     SoLoudController().soLoudFFI.set3dSourcePosition(handle, posX, posY, posZ);
   }
 
   /// You can set the velocity parameters of a live 3d audio source.
   ///
-  void set3dSourceVelocity(
-      int handle, double velocityX, double velocityY, double velocityZ) {
+  void set3dSourceVelocity(SoundHandle handle, double velocityX,
+      double velocityY, double velocityZ) {
     SoLoudController()
         .soLoudFFI
         .set3dSourceVelocity(handle, velocityX, velocityY, velocityZ);
@@ -1709,7 +1761,7 @@ interface class SoLoud {
   /// of a live 3d audio source.
   ///
   void set3dSourceMinMaxDistance(
-      int handle, double minDistance, double maxDistance) {
+      SoundHandle handle, double minDistance, double maxDistance) {
     SoLoudController()
         .soLoudFFI
         .set3dSourceMinMaxDistance(handle, minDistance, maxDistance);
@@ -1726,7 +1778,7 @@ interface class SoLoud {
   /// see https://solhsa.com/soloud/concepts3d.html
   ///
   void set3dSourceAttenuation(
-    int handle,
+    SoundHandle handle,
     int attenuationModel,
     double attenuationRolloffFactor,
   ) {
@@ -1739,7 +1791,7 @@ interface class SoLoud {
 
   /// You can change the doppler factor of a live 3d audio source.
   ///
-  void set3dSourceDopplerFactor(int handle, double dopplerFactor) {
+  void set3dSourceDopplerFactor(SoundHandle handle, double dopplerFactor) {
     SoLoudController()
         .soLoudFFI
         .set3dSourceDopplerFactor(handle, dopplerFactor);

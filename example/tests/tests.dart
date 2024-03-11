@@ -182,7 +182,7 @@ Future<void> test1() async {
     final ret = await SoLoud.instance.play(currentSound!);
     assert(
       ret.error == PlayerErrors.noError &&
-          currentSound!.soundHash > 0 &&
+          currentSound!.soundHash.isValid &&
           currentSound!.handle.length == 1,
       'play() failed!',
     );

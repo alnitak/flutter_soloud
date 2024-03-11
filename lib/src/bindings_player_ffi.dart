@@ -7,6 +7,8 @@ import 'dart:ffi' as ffi;
 
 import 'package:ffi/ffi.dart';
 import 'package:flutter_soloud/src/enums.dart';
+import 'package:flutter_soloud/src/sound_handle.dart';
+import 'package:flutter_soloud/src/sound_hash.dart';
 import 'package:logging/logging.dart';
 
 /// FFI bindings to SoLoud
@@ -117,12 +119,12 @@ class FlutterSoLoudFfi {
   /// [LoadMode] if `LoadMode.memory`, Soloud::wav will be used which loads
   /// all audio data into memory. Used to prevent gaps or lags
   /// when seeking/starting a sound (less CPU, more memory allocated).
-  /// If `LoadMode.disk` is used, the audio data is loaded 
+  /// If `LoadMode.disk` is used, the audio data is loaded
   /// from the given file when needed (more CPU, less memory allocated).
   /// See the [seek] note problem when using [LoadMode] = `LoadMode.disk`.
   /// [soundHash] return hash of the sound.
   /// Returns [PlayerErrors.noError] if success.
-  ({PlayerErrors error, int soundHash}) loadFile(
+  ({PlayerErrors error, SoundHash soundHash}) loadFile(
     String completeFileName,
     LoadMode mode,
   ) {
@@ -134,7 +136,8 @@ class FlutterSoLoudFfi {
       mode == LoadMode.memory ? 1 : 0,
       h,
     );
-    final ret = (error: PlayerErrors.values[e], soundHash: h.value);
+    final soundHash = SoundHash(h.value);
+    final ret = (error: PlayerErrors.values[e], soundHash: soundHash);
     calloc.free(h);
     return ret;
   }
@@ -157,7 +160,7 @@ class FlutterSoLoudFfi {
   /// [detune]
   /// [soundHash] return hash of the sound
   /// Returns [PlayerErrors.noError] if success
-  ({PlayerErrors error, int soundHash}) loadWaveform(
+  ({PlayerErrors error, SoundHash soundHash}) loadWaveform(
     WaveForm waveform,
     bool superWave,
     double scale,
@@ -173,7 +176,8 @@ class FlutterSoLoudFfi {
       detune,
       h,
     );
-    final ret = (error: PlayerErrors.values[e], soundHash: h.value);
+    final soundHash = SoundHash(h.value);
+    final ret = (error: PlayerErrors.values[e], soundHash: soundHash);
     calloc.free(h);
     return ret;
   }
@@ -189,8 +193,8 @@ class FlutterSoLoudFfi {
   ///
   /// [hash] the unique sound hash of a waveform sound
   /// [newScale]
-  void setWaveformScale(int hash, double newScale) {
-    return _setWaveformScale(hash, newScale);
+  void setWaveformScale(SoundHash hash, double newScale) {
+    return _setWaveformScale(hash.hash, newScale);
   }
 
   late final _setWaveformScalePtr = _lookup<
@@ -203,8 +207,8 @@ class FlutterSoLoudFfi {
   ///
   /// [hash] the unique sound hash of a waveform sound
   /// [newDetune]
-  void setWaveformDetune(int hash, double newDetune) {
-    return _setWaveformDetune(hash, newDetune);
+  void setWaveformDetune(SoundHash hash, double newDetune) {
+    return _setWaveformDetune(hash.hash, newDetune);
   }
 
   late final _setWaveformDetunePtr = _lookup<
@@ -217,8 +221,8 @@ class FlutterSoLoudFfi {
   ///
   /// [hash] the unique sound hash of a waveform sound
   /// [newFreq]
-  void setWaveformFreq(int hash, double newFreq) {
-    return _setWaveformFreq(hash, newFreq);
+  void setWaveformFreq(SoundHash hash, double newFreq) {
+    return _setWaveformFreq(hash.hash, newFreq);
   }
 
   late final _setWaveformFreqPtr = _lookup<
@@ -231,8 +235,8 @@ class FlutterSoLoudFfi {
   ///
   /// [hash] the unique sound hash of a waveform sound
   /// [superwave]
-  void setWaveformSuperWave(int hash, int superwave) {
-    return _setSuperWave(hash, superwave);
+  void setWaveformSuperWave(SoundHash hash, int superwave) {
+    return _setSuperWave(hash.hash, superwave);
   }
 
   late final _setSuperWavePtr =
@@ -253,8 +257,8 @@ class FlutterSoLoudFfi {
   /// WAVE_HUMPS,
   /// WAVE_FSQUARE,
   /// WAVE_FSAW
-  void setWaveform(int hash, WaveForm newWaveform) {
-    return _setWaveform(hash, newWaveform.index);
+  void setWaveform(SoundHash hash, WaveForm newWaveform) {
+    return _setWaveform(hash.hash, newWaveform.index);
   }
 
   late final _setWaveformPtr =
@@ -268,14 +272,15 @@ class FlutterSoLoudFfi {
   /// [textToSpeech]
   /// Returns PlayerErrors.noError if success and handle sound identifier
   // TODO(me): add other T2S parameters
-  ({PlayerErrors error, int handle}) speechText(String textToSpeech) {
+  ({PlayerErrors error, SoundHandle handle}) speechText(String textToSpeech) {
     // ignore: omit_local_variable_types
     final ffi.Pointer<ffi.UnsignedInt> handle = calloc();
     final e = _speechText(
       textToSpeech.toNativeUtf8().cast<ffi.Char>(),
       handle,
     );
-    final ret = (error: PlayerErrors.values[e], handle: handle.value);
+    final ret =
+        (error: PlayerErrors.values[e], handle: SoundHandle(handle.value));
     calloc.free(handle);
     return ret;
   }
@@ -292,8 +297,8 @@ class FlutterSoLoudFfi {
   /// Switch pause state of an already loaded sound identified by [handle]
   ///
   /// [handle] the sound handle
-  void pauseSwitch(int handle) {
-    return _pauseSwitch(handle);
+  void pauseSwitch(SoundHandle handle) {
+    return _pauseSwitch(handle.id);
   }
 
   late final _pauseSwitchPtr =
@@ -306,8 +311,8 @@ class FlutterSoLoudFfi {
   ///
   /// [handle] the sound handle
   /// [pause] the sound handle
-  void setPause(int handle, int pause) {
-    return _setPause(handle, pause);
+  void setPause(SoundHandle handle, int pause) {
+    return _setPause(handle.id, pause);
   }
 
   late final _setPausePtr =
@@ -319,8 +324,8 @@ class FlutterSoLoudFfi {
   ///
   /// [handle] the sound handle
   /// Return true if paused
-  bool getPause(int handle) {
-    return _getPause(handle) == 1;
+  bool getPause(SoundHandle handle) {
+    return _getPause(handle.id) == 1;
   }
 
   late final _getPausePtr =
@@ -341,8 +346,8 @@ class FlutterSoLoudFfi {
   ///
   /// [handle] the sound handle
   /// [speed] the new speed
-  void setRelativePlaySpeed(int handle, double speed) {
-    return _setRelativePlaySpeed(handle, speed);
+  void setRelativePlaySpeed(SoundHandle handle, double speed) {
+    return _setRelativePlaySpeed(handle.id, speed);
   }
 
   late final _setRelativePlaySpeedPtr = _lookup<
@@ -354,8 +359,8 @@ class FlutterSoLoudFfi {
   /// Return the current play speed.
   ///
   /// [handle] the sound handle
-  double getRelativePlaySpeed(int handle) {
-    return _getRelativePlaySpeed(handle);
+  double getRelativePlaySpeed(SoundHandle handle) {
+    return _getRelativePlaySpeed(handle.id);
   }
 
   late final _getRelativePlaySpeedPtr =
@@ -371,13 +376,14 @@ class FlutterSoLoudFfi {
   /// [pan] 0.0f centered
   /// [paused] 0 not pause
   /// Return the handle of the sound, 0 if error
-  int play(
-    int soundHash, {
+  SoundHandle play(
+    SoundHash soundHash, {
     double volume = 1,
     double pan = 0,
     bool paused = false,
   }) {
-    return _play(soundHash, volume, pan, paused ? 1 : 0);
+    final handleId = _play(soundHash.hash, volume, pan, paused ? 1 : 0);
+    return SoundHandle(handleId);
   }
 
   late final _playPtr = _lookup<
@@ -394,8 +400,8 @@ class FlutterSoLoudFfi {
   /// Stop already loaded sound identified by [handle] and clear it.
   ///
   /// [handle]
-  void stop(int handle) {
-    return _stop(handle);
+  void stop(SoundHandle handle) {
+    return _stop(handle.id);
   }
 
   late final _stopPtr =
@@ -406,8 +412,8 @@ class FlutterSoLoudFfi {
   /// by [soundHash] and dispose it.
   ///
   /// [soundHash]
-  void disposeSound(int soundHash) {
-    return _stopSound(soundHash);
+  void disposeSound(SoundHash soundHash) {
+    return _stopSound(soundHash.hash);
   }
 
   late final _stopSoundPtr =
@@ -431,8 +437,8 @@ class FlutterSoLoudFfi {
   ///
   /// [handle]
   /// [enable]
-  void setLooping(int handle, bool enable) {
-    return _setLooping(handle, enable ? 1 : 0);
+  void setLooping(SoundHandle handle, bool enable) {
+    return _setLooping(handle.id, enable ? 1 : 0);
   }
 
   late final _setLoopingPtr =
@@ -549,8 +555,8 @@ class FlutterSoLoudFfi {
   ///
   /// [soundHash] the sound hash
   /// Returns sound length in seconds
-  double getLength(int soundHash) {
-    return _getLength(soundHash);
+  double getLength(SoundHash soundHash) {
+    return _getLength(soundHash.hash);
   }
 
   late final _getLengthPtr =
@@ -563,11 +569,11 @@ class FlutterSoLoudFfi {
   /// [time]
   /// [handle] the sound handle
   /// Returns [PlayerErrors.noError] if success
-  /// 
+  ///
   /// NOTE: when seeking an MP3 file loaded using `mode`=`LoadMode.disk` the
   /// seek operation is performed but there will be delays. This occurs because
   /// the MP3 codec must compute each frame length to gain a new position.
-  /// The problem is explained in souloud_wavstream.cpp 
+  /// The problem is explained in souloud_wavstream.cpp
   /// in `WavStreamInstance::seek` function.
   ///
   /// This mode is useful ie for background music, not for a music player
@@ -575,8 +581,8 @@ class FlutterSoLoudFfi {
   /// If you need to seek MP3s without lags, please, use
   /// `mode`=`LoadMode.memory` instead or other supported audio formats!
   ///
-  int seek(int handle, double time) {
-    return _seek(handle, time);
+  int seek(SoundHandle handle, double time) {
+    return _seek(handle.id, time);
   }
 
   late final _seekPtr = _lookup<
@@ -589,8 +595,8 @@ class FlutterSoLoudFfi {
   ///
   /// [handle] the sound handle
   /// Returns time in seconds
-  double getPosition(int handle) {
-    return _getPosition(handle);
+  double getPosition(SoundHandle handle) {
+    return _getPosition(handle.id);
   }
 
   late final _getPositionPtr =
@@ -627,8 +633,8 @@ class FlutterSoLoudFfi {
   /// Get current [handle] volume
   ///
   /// Returns the volume
-  double getVolume(int handle) {
-    return _getVolume(handle);
+  double getVolume(SoundHandle handle) {
+    return _getVolume(handle.id);
   }
 
   late final _getVolumePtr =
@@ -639,8 +645,8 @@ class FlutterSoLoudFfi {
   /// Set current [handle] volume
   ///
   /// Returns [PlayerErrors.noError] if success
-  int setVolume(int handle, double volume) {
-    return _setVolume(handle, volume);
+  int setVolume(SoundHandle handle, double volume) {
+    return _setVolume(handle.id, volume);
   }
 
   late final _setVolumePtr = _lookup<
@@ -652,8 +658,8 @@ class FlutterSoLoudFfi {
   ///
   /// [handle] handle to check
   /// Return true if it still exists
-  bool getIsValidVoiceHandle(int handle) {
-    return _getIsValidVoiceHandle(handle) == 1;
+  bool getIsValidVoiceHandle(SoundHandle handle) {
+    return _getIsValidVoiceHandle(handle.id) == 1;
   }
 
   late final _getIsValidVoiceHandlePtr =
@@ -681,8 +687,8 @@ class FlutterSoLoudFfi {
 
   /// Smoothly change a channel's volume over specified time.
   ///
-  int fadeVolume(int handle, double to, double time) {
-    return _fadeVolume(handle, to, time);
+  int fadeVolume(SoundHandle handle, double to, double time) {
+    return _fadeVolume(handle.id, to, time);
   }
 
   late final _fadeVolumePtr = _lookup<
@@ -694,8 +700,8 @@ class FlutterSoLoudFfi {
 
   /// Smoothly change a channel's pan setting over specified time.
   ///
-  int fadePan(int handle, double to, double time) {
-    return _fadePan(handle, to, time);
+  int fadePan(SoundHandle handle, double to, double time) {
+    return _fadePan(handle.id, to, time);
   }
 
   late final _fadePanPtr = _lookup<
@@ -707,8 +713,8 @@ class FlutterSoLoudFfi {
 
   /// Smoothly change a channel's relative play speed over specified time.
   ///
-  int fadeRelativePlaySpeed(int handle, double to, double time) {
-    return _fadeRelativePlaySpeed(handle, to, time);
+  int fadeRelativePlaySpeed(SoundHandle handle, double to, double time) {
+    return _fadeRelativePlaySpeed(handle.id, to, time);
   }
 
   late final _fadeRelativePlaySpeedPtr = _lookup<
@@ -720,8 +726,8 @@ class FlutterSoLoudFfi {
 
   /// After specified time, pause the channel.
   ///
-  int schedulePause(int handle, double time) {
-    return _schedulePause(handle, time);
+  int schedulePause(SoundHandle handle, double time) {
+    return _schedulePause(handle.id, time);
   }
 
   late final _schedulePausePtr = _lookup<
@@ -732,8 +738,8 @@ class FlutterSoLoudFfi {
 
   /// After specified time, stop the channel.
   ///
-  int scheduleStop(int handle, double time) {
-    return _scheduleStop(handle, time);
+  int scheduleStop(SoundHandle handle, double time) {
+    return _scheduleStop(handle.id, time);
   }
 
   late final _scheduleStopPtr = _lookup<
@@ -744,8 +750,8 @@ class FlutterSoLoudFfi {
 
   /// Set fader to oscillate the volume at specified frequency.
   ///
-  int oscillateVolume(int handle, double from, double to, double time) {
-    return _oscillateVolume(handle, from, to, time);
+  int oscillateVolume(SoundHandle handle, double from, double to, double time) {
+    return _oscillateVolume(handle.id, from, to, time);
   }
 
   late final _oscillateVolumePtr = _lookup<
@@ -757,8 +763,8 @@ class FlutterSoLoudFfi {
 
   /// Set fader to oscillate the panning at specified frequency.
   ///
-  int oscillatePan(int handle, double from, double to, double time) {
-    return _oscillatePan(handle, from, to, time);
+  int oscillatePan(SoundHandle handle, double from, double to, double time) {
+    return _oscillatePan(handle.id, from, to, time);
   }
 
   late final _oscillatePanPtr = _lookup<
@@ -771,8 +777,8 @@ class FlutterSoLoudFfi {
   /// Set fader to oscillate the relative play speed at specified frequency.
   ///
   int oscillateRelativePlaySpeed(
-      int handle, double from, double to, double time) {
-    return _oscillateRelativePlaySpeed(handle, from, to, time);
+      SoundHandle handle, double from, double to, double time) {
+    return _oscillateRelativePlaySpeed(handle.id, from, to, time);
   }
 
   late final _oscillateRelativePlaySpeedPtr = _lookup<
@@ -934,8 +940,8 @@ class FlutterSoLoudFfi {
   /// play3d() is the 3d version of the play() call.
   ///
   /// Returns the handle of the sound, 0 if error
-  int play3d(
-    int soundHash,
+  SoundHandle play3d(
+    SoundHash soundHash,
     double posX,
     double posY,
     double posZ, {
@@ -945,8 +951,8 @@ class FlutterSoLoudFfi {
     double volume = 1,
     bool paused = false,
   }) {
-    return _play3d(
-      soundHash,
+    final handleId = _play3d(
+      soundHash.hash,
       posX,
       posY,
       posZ,
@@ -956,6 +962,7 @@ class FlutterSoLoudFfi {
       volume,
       paused ? 1 : 0,
     );
+    return SoundHandle(handleId);
   }
 
   late final _play3dPtr = _lookup<
@@ -1149,7 +1156,7 @@ class FlutterSoLoudFfi {
   /// 3d audio source with one call.
   ///
   void set3dSourceParameters(
-    int handle,
+    SoundHandle handle,
     double posX,
     double posY,
     double posZ,
@@ -1158,7 +1165,7 @@ class FlutterSoLoudFfi {
     double velocityZ,
   ) {
     return _set3dSourceParameters(
-      handle,
+      handle.id,
       posX,
       posY,
       posZ,
@@ -1184,8 +1191,9 @@ class FlutterSoLoudFfi {
 
   /// You can set the position parameters of a live 3d audio source
   ///
-  void set3dSourcePosition(int handle, double posX, double posY, double posZ) {
-    return _set3dSourcePosition(handle, posX, posY, posZ);
+  void set3dSourcePosition(
+      SoundHandle handle, double posX, double posY, double posZ) {
+    return _set3dSourcePosition(handle.id, posX, posY, posZ);
   }
 
   late final _set3dSourcePositionPtr = _lookup<
@@ -1202,12 +1210,12 @@ class FlutterSoLoudFfi {
   /// You can set the velocity parameters of a live 3d audio source
   ///
   void set3dSourceVelocity(
-    int handle,
+    SoundHandle handle,
     double velocityX,
     double velocityY,
     double velocityZ,
   ) {
-    return _set3dSourceVelocity(handle, velocityX, velocityY, velocityZ);
+    return _set3dSourceVelocity(handle.id, velocityX, velocityY, velocityZ);
   }
 
   late final _set3dSourceVelocityPtr = _lookup<
@@ -1225,11 +1233,11 @@ class FlutterSoLoudFfi {
   /// of a live 3d audio source
   ///
   void set3dSourceMinMaxDistance(
-    int handle,
+    SoundHandle handle,
     double minDistance,
     double maxDistance,
   ) {
-    return _set3dSourceMinMaxDistance(handle, minDistance, maxDistance);
+    return _set3dSourceMinMaxDistance(handle.id, minDistance, maxDistance);
   }
 
   late final _set3dSourceMinMaxDistancePtr = _lookup<
@@ -1253,12 +1261,12 @@ class FlutterSoLoudFfi {
   /// see https://solhsa.com/soloud/concepts3d.html
   ///
   void set3dSourceAttenuation(
-    int handle,
+    SoundHandle handle,
     int attenuationModel,
     double attenuationRolloffFactor,
   ) {
     return _set3dSourceAttenuation(
-      handle,
+      handle.id,
       attenuationModel,
       attenuationRolloffFactor,
     );
@@ -1276,8 +1284,8 @@ class FlutterSoLoudFfi {
 
   /// You can change the doppler factor of a live 3d audio source
   ///
-  void set3dSourceDopplerFactor(int handle, double dopplerFactor) {
-    return _set3dSourceDopplerFactor(handle, dopplerFactor);
+  void set3dSourceDopplerFactor(SoundHandle handle, double dopplerFactor) {
+    return _set3dSourceDopplerFactor(handle.id, dopplerFactor);
   }
 
   late final _set3dSourceDopplerFactorPtr = _lookup<
