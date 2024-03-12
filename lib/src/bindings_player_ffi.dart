@@ -369,9 +369,9 @@ class FlutterSoLoudFfi {
   late final _getRelativePlaySpeed =
       _getRelativePlaySpeedPtr.asFunction<double Function(int)>();
 
-  /// Play already loaded sound identified by [hash]
+  /// Play already loaded sound identified by [soundHash]
   ///
-  /// [hash] the unique sound hash of a sound
+  /// [soundHash] the unique sound hash of a sound
   /// [volume] 1.0 full volume
   /// [pan] 0.0 centered
   /// [paused] false not paused
@@ -495,8 +495,8 @@ class FlutterSoLoudFfi {
   ///
   /// [handle]
   /// [time] in seconds.
-  void setLoopPoint(int handle, double time) {
-    _setLoopPoint(handle, time);
+  void setLoopPoint(SoundHandle handle, double time) {
+    _setLoopPoint(handle.id, time);
   }
 
   late final _setLoopPointPtr = _lookup<
