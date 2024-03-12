@@ -254,7 +254,9 @@ unsigned int Player::play(
     unsigned int soundHash,
     float volume,
     float pan,
-    bool paused)
+    bool paused,
+    bool looping,
+    double loopingStartAt)
 {
     auto const &s = std::find_if(sounds.begin(), sounds.end(),
                                  [&](std::unique_ptr<ActiveSound> const &f)
@@ -264,8 +266,20 @@ unsigned int Player::play(
         return 0;
 
     ActiveSound *sound = s->get();
-    SoLoud::handle newHandle = soloud.play(*sound->sound.get(), volume, pan, paused, 0);
-    sound->handle.emplace_back(newHandle);
+    /// When looping in conjuction with the `loopingStartAt`, it's needed
+    /// to seek to the start loop point. So the seek will be performed in a paused state.
+    SoLoud::handle newHandle = soloud.play(*sound->sound.get(), volume, pan, looping ? true : paused, 0);
+    if (newHandle != 0) sound->handle.emplace_back(newHandle);
+    if (looping)
+    {
+        /// here a seek is needed because at first loop the sound start 
+        /// from the beginning. From the 2nd and above, the starting point
+        /// is managed correctly.
+        seek(newHandle, loopingStartAt);
+        setLoopPoint(newHandle, loopingStartAt);
+        setLooping(newHandle, true);
+        setPause(newHandle, paused);
+    }
     return newHandle;
 }
 
@@ -304,9 +318,24 @@ void Player::disposeAllSound()
     sounds.clear();
 }
 
+bool Player::getLooping(unsigned int handle)
+{
+    return soloud.getLooping(handle);
+}
+
 void Player::setLooping(unsigned int handle, bool enable)
 {
     soloud.setLooping(handle, enable);
+}
+
+double Player::getLoopPoint(unsigned int handle)
+{
+    return soloud.getLoopPoint(handle);
+}
+
+void Player::setLoopPoint(unsigned int handle, double time)
+{
+    soloud.setLoopPoint(handle, time);
 }
 
 PlayerErrors Player::textToSpeech(const std::string &textToSpeech, unsigned int &handle)
@@ -513,15 +542,17 @@ void Player::update3dAudio()
 
 unsigned int Player::play3d(
     unsigned int soundHash,
-    float aPosX,
-    float aPosY,
-    float aPosZ,
-    float aVelX,
-    float aVelY,
-    float aVelZ,
-    float aVolume,
-    bool aPaused,
-    unsigned int aBus)
+    float posX,
+    float posY,
+    float posZ,
+    float velX,
+    float velY,
+    float velZ,
+    float volume,
+    bool paused,
+    unsigned int bus,
+    bool looping,
+    double loopingStartAt)
 {
     auto const &s = std::find_if(sounds.begin(), sounds.end(),
                                  [&](std::unique_ptr<ActiveSound> const &f)
@@ -532,12 +563,19 @@ unsigned int Player::play3d(
     ActiveSound *sound = s->get();
     SoLoud::handle newHandle = soloud.play3d(
         *sound->sound.get(),
-        aPosX, aPosY, aPosZ,
-        aVelX, aVelY, aVelZ,
-        aVolume,
-        aPaused,
-        aBus);
-    sound->handle.emplace_back(newHandle);
+        posX, posY, posZ,
+        velX, velY, velZ,
+        volume,
+        paused,
+        bus);
+    if (newHandle != 0) sound->handle.emplace_back(newHandle);
+    if (looping)
+    {
+        seek(newHandle, loopingStartAt);
+        setLoopPoint(newHandle, loopingStartAt);
+        setLooping(newHandle, true);
+        setPause(newHandle, paused);
+    }
     return newHandle;
 }
 

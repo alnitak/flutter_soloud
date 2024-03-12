@@ -982,6 +982,8 @@ interface class SoLoud {
     double volume = 1,
     double pan = 0,
     bool paused = false,
+    bool looping = false,
+    double loopingStartAt = 0,
   }) async {
     if (!isInitialized) {
       _log.severe(() => 'play(): ${PlayerErrors.engineNotInited}');
@@ -998,13 +1000,22 @@ interface class SoLoud {
           soundHash: sound.soundHash,
           volume: volume,
           pan: pan,
-          paused: paused
+          paused: paused,
+          looping: looping,
+          loopingStartAt: loopingStartAt,
         ),
       },
     );
     final ret = (await _waitForEvent(
       MessageEvents.play,
-      (soundHash: sound.soundHash, volume: volume, pan: pan, paused: paused),
+      (
+        soundHash: sound.soundHash,
+        volume: volume,
+        pan: pan,
+        paused: paused,
+        looping: looping,
+        loopingStartAt: loopingStartAt,
+      ),
     )) as ({PlayerErrors error, SoundHandle newHandle});
     _logPlayerError(ret.error, from: 'play()');
     if (ret.error != PlayerErrors.noError) {
@@ -1195,6 +1206,20 @@ interface class SoLoud {
     return PlayerErrors.noError;
   }
 
+  /// Query whether a sound is set to loop.
+  ///
+  /// [handle]
+  /// Returns true if flagged for looping.
+  ///
+  ({PlayerErrors error, bool isLooping}) getLooping(SoundHandle handle) {
+    if (!isInitialized) {
+      _log.severe(() => 'getLooping(): ${PlayerErrors.engineNotInited}');
+      return (error: PlayerErrors.engineNotInited, isLooping: false);
+    }
+    final ret = SoLoudController().soLoudFFI.getLooping(handle.id);
+    return (error: PlayerErrors.noError, isLooping: ret);
+  }
+
   /// This function can be used to set a sample to play on repeat,
   /// instead of just playing once
   ///
@@ -1208,6 +1233,35 @@ interface class SoLoud {
       return PlayerErrors.engineNotInited;
     }
     SoLoudController().soLoudFFI.setLooping(handle, enable);
+    return PlayerErrors.noError;
+  }
+
+  /// Get sound loop point value.
+  ///
+  /// [handle]
+  /// Returns the time in seconds.
+  ///
+  ({PlayerErrors error, double time}) getLoopPoint(SoundHandle handle) {
+    if (!isInitialized) {
+      _log.severe('getLoopPoint(): ${PlayerErrors.engineNotInited}');
+      return (error: PlayerErrors.engineNotInited, time: 0.0);
+    }
+    final time = SoLoudController().soLoudFFI.getLoopPoint(handle.id);
+    return (error: PlayerErrors.noError, time: time);
+  }
+
+  /// Set sound loop point value.
+  ///
+  /// [handle]
+  /// [time] in seconds.
+  /// Return [PlayerErrors.noError] on success
+  ///
+  PlayerErrors setLoopPoint(SoundHandle handle, double time) {
+    if (!isInitialized) {
+      _log.severe('setLoopPoint(): ${PlayerErrors.engineNotInited}');
+      return PlayerErrors.engineNotInited;
+    }
+    SoLoudController().soLoudFFI.setLoopPoint(handle.id, time);
     return PlayerErrors.noError;
   }
 
@@ -1717,8 +1771,12 @@ interface class SoLoud {
   // ////////////////////////////////////////////////
 
   /// play3d() is the 3d version of the play() call.
+  /// The listener position is (0, 0, 0).
   ///
-  /// Returns the handle of the sound, 0 if error.
+  /// [posX], [posY], [posZ] are the audio source position coordinates.
+  /// [velX], [velY], [velZ] are the audio source velocity.
+  /// [volume]
+  /// Return the error if any and a new [newHandle] of this sound
   ///
   Future<({PlayerErrors error, SoundProps sound, SoundHandle newHandle})>
       play3d(
@@ -1731,6 +1789,8 @@ interface class SoLoud {
     double velZ = 0,
     double volume = 1,
     bool paused = false,
+    bool looping = false,
+    double loopingStartAt = 0,
   }) async {
     if (!isInitialized) {
       _log.severe(() => 'play3d(): ${PlayerErrors.engineNotInited}');
@@ -1752,7 +1812,9 @@ interface class SoLoud {
           velY: velY,
           velZ: velZ,
           volume: volume,
-          paused: paused
+          paused: paused,
+          looping: looping,
+          loopingStartAt: loopingStartAt,
         ),
       },
     );
@@ -1767,10 +1829,20 @@ interface class SoLoud {
         velY: velY,
         velZ: velZ,
         volume: volume,
-        paused: paused
+        paused: paused,
+        looping: looping,
+        loopingStartAt: loopingStartAt,
       ),
     )) as ({PlayerErrors error, SoundHandle newHandle});
     _logPlayerError(ret.error, from: 'play3d() result');
+    if (ret.error != PlayerErrors.noError) {
+      return (
+        error: ret.error,
+        sound: sound,
+        newHandle: SoundHandle.error(),
+      );
+    }
+
     try {
       /// add the new handle to the sound
       activeSounds

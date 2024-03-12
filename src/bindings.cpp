@@ -265,22 +265,32 @@ extern "C"
         return player.getRelativePlaySpeed(handle);
     }
 
-    /// Play already loaded sound identified by [handle]
+    /// Play already loaded sound identified by [hash]
     ///
     /// [hash] the unique sound hash of a sound
     /// [volume] 1.0f full volume
     /// [pan] 0.0f centered
-    /// [paused] 0 not pause
-    /// Return the handle of the sound, 0 if error
-    FFI_PLUGIN_EXPORT unsigned int play(
-        unsigned int hash,
+    /// [paused] 0 not paused
+    /// [newHandle] pointer to the handle for this new sound
+    /// [looping] whether to start the sound in looping state.
+    /// [loopingStartAt] If looping is enabled, the loop point is, by default, 
+    /// the start of the stream. The loop start point can be set with this parameter, and 
+    /// current loop point can be queried with [getLoopingPoint] and 
+    /// changed by [setLoopingPoint].
+    /// Return the error if any and a new [handle] of this sound
+    FFI_PLUGIN_EXPORT enum PlayerErrors play(
+        unsigned int soundHash,
         float volume,
         float pan,
-        bool paused)
+        bool paused,
+        bool looping,
+        double loopingStartAt,
+        unsigned int *handle)
     {
         if (!player.isInited())
-            return -1;
-        return player.play(hash, volume, pan, paused);
+            return backendNotInited;
+        *handle = player.play(soundHash, volume, pan, paused, looping, loopingStartAt);
+        return *handle == 0 ? soundHashNotFound : noError;
     }
 
     /// Stop already loaded sound identified by [handle] and clear it
@@ -312,6 +322,17 @@ extern "C"
         player.disposeAllSound();
     }
 
+    /// Query whether a sound is set to loop.
+    ///
+    /// [handle]
+    /// Returns true if flagged for looping.
+    FFI_PLUGIN_EXPORT int getLooping(unsigned int handle)
+    {
+        if (!player.isInited())
+            return 0;
+        return player.getLooping(handle) == 1;
+    }
+
     /// This function can be used to set a sample to play on repeat,
     /// instead of just playing once
     ///
@@ -322,6 +343,28 @@ extern "C"
         if (!player.isInited())
             return;
         player.setLooping(handle, enable);
+    }
+
+    /// Get sound loop point value.
+    ///
+    /// [handle]
+    /// Returns the time in seconds.
+    FFI_PLUGIN_EXPORT double getLoopPoint(unsigned int handle)
+    {
+        if (!player.isInited())
+            return 0;
+        return player.getLoopPoint(handle);
+    }
+
+    /// Set sound loop point value.
+    ///
+    /// [handle]
+    /// [time] in seconds.
+    FFI_PLUGIN_EXPORT void setLoopPoint(unsigned int handle, double time)
+    {
+        if (!player.isInited())
+            return;
+        player.setLoopPoint(handle, time);
     }
 
     /// Enable or disable visualization
@@ -724,6 +767,13 @@ extern "C"
 
     /// play3d() is the 3d version of the play() call
     ///
+    /// [posX], [posY], [posZ] are the audio source position coordinates.
+    /// [velX], [velY], [velZ] are the audio source velocity.
+    /// [looping] whether to start the sound in looping state.
+    /// [loopingStartAt] If looping is enabled, the loop point is, by default, 
+    /// the start of the stream. The loop start point can be set with this parameter, and 
+    /// current loop point can be queried with [getLoopingPoint] and 
+    /// changed by [setLoopingPoint].
     /// Returns the handle of the sound, 0 if error
     FFI_PLUGIN_EXPORT unsigned int play3d(
         unsigned int soundHash,
@@ -734,18 +784,24 @@ extern "C"
         float velY,
         float velZ,
         float volume,
-        bool paused)
+        bool paused,
+        bool looping,
+        double loopingStartAt,
+        unsigned int *handle)
     {
         if (!player.isInited() || player.getSoundsCount() == 0)
-            return 0;
+            return backendNotInited;
 
-        return player.play3d(
+        *handle = player.play3d(
             soundHash,
             posX, posY, posZ,
             velX, velY, velZ,
             volume,
             paused,
-            0);
+            0,
+            looping,
+            loopingStartAt);
+        return *handle == 0 ? soundHashNotFound : noError;
     }
 
     /// You can set and get the current value of the speed of

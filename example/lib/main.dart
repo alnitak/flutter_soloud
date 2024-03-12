@@ -54,23 +54,19 @@ class MyHomePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
+    return const DefaultTabController(
       length: 5,
-      initialIndex: 4,
+      initialIndex: 2,
       child: SafeArea(
         child: Scaffold(
           body: Column(
             children: [
-              const Controls(),
+              Controls(),
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: TabBar(
-                  onTap: (value) {
-                    debugPrint('ON TAP');
-                    // SoLoud.instance.shutdown();
-                  },
                   isScrollable: true,
-                  tabs: const [
+                  tabs: [
                     Tab(text: 'hello world!'),
                     Tab(text: 'visualizer'),
                     Tab(text: 'multi track'),
@@ -79,8 +75,8 @@ class MyHomePage extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(height: 8),
-              const Expanded(
+              SizedBox(height: 8),
+              Expanded(
                 child: TabBarView(
                   physics: NeverScrollableScrollPhysics(),
                   children: [

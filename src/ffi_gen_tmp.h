@@ -24,8 +24,27 @@ struct CaptureDevice
 //--------------------- copy here the new functions to generate
 
 
-
-/// Get visualization state
+/// play3d() is the 3d version of the play() call
 ///
-/// Return true if enabled
-FFI_PLUGIN_EXPORT int getVisualizationEnabled();
+/// [posX], [posY], [posZ] are the audio source position coordinates.
+/// [velX], [velY], [velZ] are the audio source velocity.
+/// [looping] whether to start the sound in looping state.
+/// [loopingStartAt] If looping is enabled, the loop point is, by default, 
+/// the start of the stream. The loop start point can be set with this parameter, and 
+/// current loop point can be queried with [getLoopingPoint] and 
+/// changed by [setLoopingPoint].
+/// Returns the handle of the sound, 0 if error
+FFI_PLUGIN_EXPORT unsigned int play3d(
+    unsigned int soundHash,
+    float posX,
+    float posY,
+    float posZ,
+    float velX,
+    float velY,
+    float velZ,
+    float volume,
+    bool paused,
+    bool looping,
+    double loopingStartAt,
+    unsigned int *handle);
+    
