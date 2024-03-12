@@ -95,9 +95,11 @@ class _Page3DAudioState extends State<Page3DAudio> {
     }
 
     /// load the audio file
-    currentSound = await SoloudTools.loadFromUrl(
+    final ret = await SoLoud.instance.loadUrl(
       'https://www.learningcontainer.com/wp-content/uploads/2020/02/Kalimba.mp3',
     );
+    if (ret.error != PlayerErrors.noError) return;
+    currentSound = ret.sound;
 
     /// play it
     final playRet = await SoLoud.instance.play3d(currentSound!, 0, 0, 0);
@@ -122,7 +124,9 @@ class _Page3DAudioState extends State<Page3DAudio> {
     }
 
     /// load the audio file
-    currentSound = await SoloudTools.loadFromAssets('assets/audio/siren.mp3');
+    final ret = await SoLoud.instance.loadAsset('assets/audio/siren.mp3');
+    if (ret.error != PlayerErrors.noError) return;
+    currentSound = ret.sound;
 
     /// play it
     final playRet = await SoLoud.instance.play3d(

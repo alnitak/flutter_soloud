@@ -37,6 +37,8 @@ dependencies:
   logging: ^1.0.0
   #https://pub.dev/packages/meta
   meta: ^1.0.0
+  #https://pub.dev/packages/path
+  path: ^1.8.1
   #https://pub.dev/packages/path_provider
   path_provider: ^2.0.15
   

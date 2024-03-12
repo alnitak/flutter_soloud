@@ -57,6 +57,12 @@
 - All fields of `SoundProps` marked `final`. This is a breaking change
   but unlikely to have effect (as most users hopefully don't assign
   to these fields).
+- New methods `SoLoud.loadAsset()` and `SoLoud.loadUrl()` to load audio
+  from assets and URLs, respectively. These replace the old 
+  `SoloudTools.loadFrom*` methods (which are now deprecated).
+    - The new methods also correctly invalidate the temporary files
+      (for example, when an asset changes between versions of the app,
+      we don't want to play the old file).
 
 #### 1.2.5 (2 Mar 2024)
 - updated mp3, flac and wav decoders

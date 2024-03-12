@@ -111,7 +111,16 @@ enum PlayerErrors {
   engineNotInited,
 
   /// The engine took too long to initialize.
-  engineInitializationTimedOut;
+  engineInitializationTimedOut,
+
+  /// Filter not found
+  filterNotFound,
+
+  /// asking for wave and FFT is not enabled
+  visualizationNotEnabled,
+
+  /// Asset was found but for some reason couldn't be loaded.
+  assetLoadFailed;
 
   /// Returns a human-friendly sentence describing the error.
   String get _asSentence {
@@ -165,6 +174,10 @@ enum PlayerErrors {
       case PlayerErrors.visualizationNotEnabled:
         return 'Asking for audio data is not enabled! Please use '
             '`setVisualizationEnabled(true);` to enable!';
+      case PlayerErrors.assetLoadFailed:
+        return "Asset was found but for some reason couldn't be loaded. "
+            'This could be a problem with the temporary directory into which '
+            'the asset is being copied.';
     }
   }
 
