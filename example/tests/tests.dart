@@ -86,7 +86,7 @@ Future<void> delay(int ms) async {
 ///
 Future<void> test3() async {
   await initialize();
-  final notes = await SoloudTools.initSounds(
+  final notes = await SoLoudTools.createNotes(
     octave: 1,
   );
   assert(

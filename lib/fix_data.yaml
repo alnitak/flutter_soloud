@@ -9,6 +9,27 @@
 version: 1
 
 transforms:
+  # SoLoudTools.initSounds => SoLoudTools.createNotes
+  - title: "Rename to 'createNotes'"
+    date: 2024-03-12
+    element:
+      uris: [ 'flutter_soloud.dart', 'package:flutter_soloud/flutter_soloud.dart' ]
+      method: 'initSounds'
+      inClass: 'SoLoudTools'
+    changes:
+      - kind: 'rename'
+        newName: 'createNotes'
+
+  # SoloudTools => SoLoudTools
+  - title: "Rename to 'SoLoudTools'"
+    date: 2024-03-12
+    element:
+      uris: [ 'flutter_soloud.dart', 'package:flutter_soloud/flutter_soloud.dart' ]
+      class: 'SoloudTools'
+    changes:
+      - kind: 'rename'
+        newName: 'SoLoudTools'
+
   # SoundProps.handle => SoundProps.handles
   - title: "Rename to 'handles'"
     date: 2024-03-11

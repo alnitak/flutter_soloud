@@ -71,7 +71,7 @@ class _PageWaveformState extends State<PageWaveform> {
 
   Future<void> setupNotes() async {
     await SoLoud.instance.disposeAllSound();
-    notes = await SoloudTools.initSounds(
+    notes = await SoLoudTools.createNotes(
       octave: octave,
       superwave: superWave,
       waveForm: waveForm.value,
