@@ -102,7 +102,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
   Future<void> addSound(String file) async {
     var l = 0.0;
-    final s = await SoloudTools.loadFromFile(file, mode: LoadMode.disk);
+    final s = await SoLoudTools.loadFromFile(file, mode: LoadMode.disk);
     sounds.add(s!);
     l = SoLoud.instance.getLength(s).length;
     if (l < minLength) minLength = l;

@@ -9,10 +9,14 @@ import 'package:http/http.dart' as http;
 import 'package:logging/logging.dart';
 import 'package:path_provider/path_provider.dart';
 
+/// Old spelling of [SoLoudTools].
+@Deprecated('Use SoLoudTools instead')
+typedef SoloudTools = SoLoudTools;
+
 /// The `SoloudTools` class provides static methods to load audio files
 /// from various sources, including assets, local files, and URLs.
 ///
-class SoloudTools {
+class SoLoudTools {
   static final Logger _log = Logger('flutter_soloud.SoloudTools');
 
   /// Loads an audio file from the assets folder.
@@ -92,10 +96,23 @@ class SoloudTools {
     return result.sound;
   }
 
+  /// Deprecated: Use [createNotes] instead.
+  @Deprecated("Use 'createNotes' instead.")
+  static Future<List<SoundProps>> initSounds({
+    int octave = 3,
+    WaveForm waveForm = WaveForm.sin,
+    bool superwave = true,
+  }) =>
+      createNotes(
+        octave: octave,
+        waveForm: waveForm,
+        superwave: superwave,
+      );
+
   /// Returns a list of the 12 SoundProps (notes) of the given octave
   ///
   /// [octave] usually from 0 to 4
-  static Future<List<SoundProps>> initSounds({
+  static Future<List<SoundProps>> createNotes({
     int octave = 3,
     WaveForm waveForm = WaveForm.sin,
     bool superwave = true,

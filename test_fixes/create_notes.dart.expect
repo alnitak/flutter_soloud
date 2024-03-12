@@ -1,0 +1,6 @@
+import 'package:flutter_soloud/flutter_soloud.dart';
+
+Future<void> main() async {
+  final notes = await SoLoudTools.createNotes();
+  print(notes);
+}

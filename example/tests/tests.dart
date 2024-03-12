@@ -86,7 +86,7 @@ Future<void> delay(int ms) async {
 ///
 Future<void> test3() async {
   await initialize();
-  final notes = await SoloudTools.initSounds(
+  final notes = await SoLoudTools.createNotes(
     octave: 1,
   );
   assert(
@@ -242,7 +242,7 @@ Future<void> dispose() async {
 }
 
 Future<void> loadAsset() async {
-  currentSound = await SoloudTools.loadFromAssets(
+  currentSound = await SoLoudTools.loadFromAssets(
     'assets/audio/explosion.mp3',
   );
   assert(currentSound != null, 'loadFromAssets() failed!');
