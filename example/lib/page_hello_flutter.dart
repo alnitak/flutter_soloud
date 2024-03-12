@@ -126,8 +126,9 @@ class _PageHelloFlutterSoLoudState extends State<PageHelloFlutterSoLoud> {
     }
 
     /// load the audio file
-    final newSound = await SoLoudTools.loadFromFile(file);
-    if (newSound == null) return;
+    final ret = await SoLoud.instance.loadFile(file);
+    if (ret.error != PlayerErrors.noError) return;
+    final newSound = ret.sound!;
     currentSound = newSound;
 
     /// play it

@@ -50,7 +50,9 @@ typedef ArgsPlay = ({
   SoundHash soundHash,
   double volume,
   double pan,
-  bool paused
+  bool paused,
+  bool looping,
+  double loopingStartAt,
 });
 typedef ArgsPlay3d = ({
   SoundHash soundHash,
@@ -61,7 +63,9 @@ typedef ArgsPlay3d = ({
   double velY,
   double velZ,
   double volume,
-  bool paused
+  bool paused,
+  bool looping,
+  double loopingStartAt,
 });
 typedef ArgsStop = ({SoundHandle handle});
 typedef ArgsDisposeSound = ({SoundHash soundHash});
@@ -206,15 +210,17 @@ void audioIsolate(SendPort isolateToMainStream) {
           volume: args.volume,
           pan: args.pan,
           paused: args.paused,
+          looping: args.looping,
+          loopingStartAt: args.loopingStartAt,
         );
 
-        if (ret.isError) {
+        if (ret.error != PlayerErrors.noError) {
           isolateToMainStream.send({
             'event': event['event'],
             'args': args,
             'return': (
-              error: PlayerErrors.unknownError,
-              newHandle: ret,
+              error: ret.error,
+              newHandle: SoundHandle.error(),
             ),
           });
           break;
@@ -225,7 +231,7 @@ void audioIsolate(SendPort isolateToMainStream) {
           activeSounds
               .firstWhere((s) => s.soundHash == args.soundHash)
               .handlesInternal
-              .add(ret);
+              .add(ret.newHandle);
         } catch (e) {
           debugPrint('No sound with soundHash ${args.soundHash} found!');
           isolateToMainStream.send({
@@ -233,7 +239,7 @@ void audioIsolate(SendPort isolateToMainStream) {
             'args': args,
             'return': (
               error: PlayerErrors.soundHashNotFound,
-              newHandle: SoundHandle.error()
+              newHandle: SoundHandle.error(),
             ),
           });
           break;
@@ -241,7 +247,7 @@ void audioIsolate(SendPort isolateToMainStream) {
         isolateToMainStream.send({
           'event': event['event'],
           'args': args,
-          'return': (error: PlayerErrors.noError, newHandle: ret),
+          'return': (error: PlayerErrors.noError, newHandle: ret.newHandle),
         });
         break;
 
@@ -308,15 +314,17 @@ void audioIsolate(SendPort isolateToMainStream) {
           velZ: args.velZ,
           volume: args.volume,
           paused: args.paused,
+          looping: args.looping,
+          loopingStartAt: args.loopingStartAt,
         );
 
-        if (ret.isError) {
+        if (ret.error != PlayerErrors.noError) {
           isolateToMainStream.send({
             'event': event['event'],
             'args': args,
             'return': (
-              error: PlayerErrors.unknownError,
-              newHandle: ret,
+              error: ret.error,
+              newHandle: SoundHandle.error(),
             ),
           });
           break;
@@ -327,20 +335,23 @@ void audioIsolate(SendPort isolateToMainStream) {
           activeSounds
               .firstWhere((s) => s.soundHash == args.soundHash)
               .handlesInternal
-              .add(ret);
+              .add(ret.newHandle);
         } catch (e) {
           debugPrint('No sound with soundHash ${args.soundHash} found!');
           isolateToMainStream.send({
             'event': event['event'],
             'args': args,
-            'return': (error: PlayerErrors.soundHashNotFound, newHandle: -1),
+            'return': (
+              error: PlayerErrors.soundHashNotFound,
+              newHandle: SoundHandle.error(),
+            ),
           });
           break;
         }
         isolateToMainStream.send({
           'event': event['event'],
           'args': args,
-          'return': (error: PlayerErrors.noError, newHandle: ret),
+          'return': (error: PlayerErrors.noError, newHandle: ret.newHandle),
         });
         break;
 

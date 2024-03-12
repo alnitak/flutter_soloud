@@ -5,13 +5,18 @@ import 'dart:collection';
 import 'dart:ffi' as ffi;
 import 'dart:isolate';
 
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_soloud/src/audio_isolate.dart';
 import 'package:flutter_soloud/src/enums.dart';
+import 'package:flutter_soloud/src/exceptions.dart';
 import 'package:flutter_soloud/src/filter_params.dart';
 import 'package:flutter_soloud/src/soloud_capture.dart';
 import 'package:flutter_soloud/src/soloud_controller.dart';
 import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
+import 'package:flutter_soloud/src/utils/loader.dart';
+import 'package:http/http.dart' as http;
 import 'package:logging/logging.dart';
 import 'package:meta/meta.dart';
 
@@ -117,7 +122,7 @@ interface class SoLoud {
   /// instantiating new instances.
   SoLoud._();
 
-  static final Logger _log = Logger('flutter_soloud.SoLoudPlayer');
+  static final Logger _log = Logger('flutter_soloud.SoLoud');
 
   /// The singleton instance of [SoLoud]. Only one SoLoud instance
   /// can exist in C++ land, so – for consistency and to avoid confusion
@@ -172,6 +177,9 @@ interface class SoLoud {
 
   /// the way to receive events from audio isolate
   ReceivePort? _isolateToMainStream;
+
+  /// A helper for loading files that aren't on disk.
+  final SoLoudLoader _loader = SoLoudLoader();
 
   /// The backing private field for [isInitialized].
   bool _isInitialized = false;
@@ -337,6 +345,17 @@ interface class SoLoud {
   /// the method will return [PlayerErrors.engineInitializationTimedOut].
   /// The default timeout is 10 seconds.
   ///
+  /// If [automaticCleanup] is `true`, the temporary directory that
+  /// the engine uses for storing sound files will be purged occasionally
+  /// (e.g. on shutdown, and on startup in case shutdown never has the chance
+  /// to properly finish).
+  /// This is especially important when the program plays a lot of
+  /// different files during its lifetime (e.g. a music player
+  /// loading tracks from the network). For applications and games
+  /// that play sounds from assets or from the file system, this is probably
+  /// unnecessary, as the amount of data will be finite.
+  /// The default is `false`.
+  ///
   /// It is safe to call this function even if the engine is currently being
   /// shut down. In that case, the function will wait for [shutdown]
   /// to properly complete before initializing again.
@@ -344,6 +363,7 @@ interface class SoLoud {
   /// (This method was formerly called `startIsolate()`.)
   Future<PlayerErrors> initialize({
     Duration timeout = const Duration(seconds: 10),
+    bool automaticCleanup = false,
   }) async {
     _log.finest('initialize() called');
     // Start the audio isolate and listen for messages coming from it.
@@ -456,6 +476,9 @@ interface class SoLoud {
     _isolate =
         await Isolate.spawn(audioIsolate, _isolateToMainStream!.sendPort);
     if (_isolate == null) return PlayerErrors.isolateNotStarted;
+
+    _loader.automaticCleanup = automaticCleanup;
+    await _loader.initialize();
 
     return completer.future.timeout(timeout, onTimeout: () {
       _log.severe('initialize() timed out');
@@ -686,7 +709,8 @@ interface class SoLoud {
     return true;
   }
 
-  /// Load a new sound to be played once or multiple times later
+  /// Load a new sound to be played once or multiple times later, from
+  /// the file system.
   ///
   /// [completeFileName] the complete file path.
   /// [LoadMode] if `LoadMode.memory`, the whole uncompressed RAW PCM
@@ -721,6 +745,81 @@ interface class SoLoud {
     }
     _logPlayerError(ret.error, from: 'loadFile() result');
     return (error: ret.error, sound: ret.sound);
+  }
+
+  /// Load a new sound to be played once or multiple times later, from
+  /// an asset.
+  ///
+  /// Provide the [key] of the asset to load (e.g. `assets/sound.mp3`).
+  ///
+  /// You can provide a custom [assetBundle]. By default, the [rootBundle]
+  /// is used.
+  ///
+  /// Since SoLoud can only play from files, the asset will be copied to
+  /// a temporary file, and that file will be used to load the sound.
+  ///
+  /// Throws a [FlutterError] if the asset is not found.
+  ///
+  /// Returns [PlayerErrors.noError] if loading was successful,
+  /// as well as the new sound. Returns [PlayerErrors.assetLoadFailed]
+  /// if there was a problem creating the temporary file.
+  /// Returns [PlayerErrors.engineNotInited] if the engine is not initialized.
+  Future<({PlayerErrors error, SoundProps? sound})> loadAsset(
+    String key, {
+    LoadMode mode = LoadMode.memory,
+    AssetBundle? assetBundle,
+  }) async {
+    if (!isInitialized) {
+      _log.severe(() => 'loadAsset(): ${PlayerErrors.engineNotInited}');
+      return (error: PlayerErrors.engineNotInited, sound: null);
+    }
+
+    final file = await _loader.loadAsset(key, assetBundle: assetBundle);
+
+    if (file == null) {
+      return (error: PlayerErrors.assetLoadFailed, sound: null);
+    }
+
+    return loadFile(file.absolute.path, mode: mode);
+  }
+
+  /// Load a new sound to be played once or multiple times later, from
+  /// a network URL.
+  ///
+  /// Provide the [url] of the sound to load.
+  ///
+  /// Optionally, you can provide your own [httpClient]. This is a good idea
+  /// if you're loading several files in a short span of time (such as
+  /// on program startup). When no [httpClient] is provided,
+  /// a new one will be created (and closed afterwards) for each call.
+  ///
+  /// Since SoLoud can only play from files, the downloaded data will be
+  /// copied to a temporary file, and that file will be used to load the sound.
+  ///
+  /// Throws [FormatException] if the [url] is invalid.
+  /// Throws [SoLoudNetworkException] if the request fails.
+  ///
+  /// Returns [PlayerErrors.noError] if loading was successful,
+  /// as well as the new sound. Returns [PlayerErrors.assetLoadFailed]
+  /// if there was a problem creating the temporary file.
+  /// Returns [PlayerErrors.engineNotInited] if the engine is not initialized.
+  Future<({PlayerErrors error, SoundProps? sound})> loadUrl(
+    String url, {
+    LoadMode mode = LoadMode.memory,
+    http.Client? httpClient,
+  }) async {
+    if (!isInitialized) {
+      _log.severe(() => 'loadUrl(): ${PlayerErrors.engineNotInited}');
+      return (error: PlayerErrors.engineNotInited, sound: null);
+    }
+
+    final file = await _loader.loadUrl(url, httpClient: httpClient);
+
+    if (file == null) {
+      return (error: PlayerErrors.assetLoadFailed, sound: null);
+    }
+
+    return loadFile(file.absolute.path, mode: mode);
   }
 
   /// Load a new waveform to be played once or multiple times later
@@ -883,6 +982,8 @@ interface class SoLoud {
     double volume = 1,
     double pan = 0,
     bool paused = false,
+    bool looping = false,
+    double loopingStartAt = 0,
   }) async {
     if (!isInitialized) {
       _log.severe(() => 'play(): ${PlayerErrors.engineNotInited}');
@@ -899,13 +1000,22 @@ interface class SoLoud {
           soundHash: sound.soundHash,
           volume: volume,
           pan: pan,
-          paused: paused
+          paused: paused,
+          looping: looping,
+          loopingStartAt: loopingStartAt,
         ),
       },
     );
     final ret = (await _waitForEvent(
       MessageEvents.play,
-      (soundHash: sound.soundHash, volume: volume, pan: pan, paused: paused),
+      (
+        soundHash: sound.soundHash,
+        volume: volume,
+        pan: pan,
+        paused: paused,
+        looping: looping,
+        loopingStartAt: loopingStartAt,
+      ),
     )) as ({PlayerErrors error, SoundHandle newHandle});
     _logPlayerError(ret.error, from: 'play()');
     if (ret.error != PlayerErrors.noError) {
@@ -1096,6 +1206,20 @@ interface class SoLoud {
     return PlayerErrors.noError;
   }
 
+  /// Query whether a sound is set to loop.
+  ///
+  /// [handle]
+  /// Returns true if flagged for looping.
+  ///
+  ({PlayerErrors error, bool isLooping}) getLooping(SoundHandle handle) {
+    if (!isInitialized) {
+      _log.severe(() => 'getLooping(): ${PlayerErrors.engineNotInited}');
+      return (error: PlayerErrors.engineNotInited, isLooping: false);
+    }
+    final ret = SoLoudController().soLoudFFI.getLooping(handle.id);
+    return (error: PlayerErrors.noError, isLooping: ret);
+  }
+
   /// This function can be used to set a sample to play on repeat,
   /// instead of just playing once
   ///
@@ -1109,6 +1233,35 @@ interface class SoLoud {
       return PlayerErrors.engineNotInited;
     }
     SoLoudController().soLoudFFI.setLooping(handle, enable);
+    return PlayerErrors.noError;
+  }
+
+  /// Get sound loop point value.
+  ///
+  /// [handle]
+  /// Returns the time in seconds.
+  ///
+  ({PlayerErrors error, double time}) getLoopPoint(SoundHandle handle) {
+    if (!isInitialized) {
+      _log.severe('getLoopPoint(): ${PlayerErrors.engineNotInited}');
+      return (error: PlayerErrors.engineNotInited, time: 0.0);
+    }
+    final time = SoLoudController().soLoudFFI.getLoopPoint(handle.id);
+    return (error: PlayerErrors.noError, time: time);
+  }
+
+  /// Set sound loop point value.
+  ///
+  /// [handle]
+  /// [time] in seconds.
+  /// Return [PlayerErrors.noError] on success
+  ///
+  PlayerErrors setLoopPoint(SoundHandle handle, double time) {
+    if (!isInitialized) {
+      _log.severe('setLoopPoint(): ${PlayerErrors.engineNotInited}');
+      return PlayerErrors.engineNotInited;
+    }
+    SoLoudController().soLoudFFI.setLoopPoint(handle.id, time);
     return PlayerErrors.noError;
   }
 
@@ -1618,8 +1771,12 @@ interface class SoLoud {
   // ////////////////////////////////////////////////
 
   /// play3d() is the 3d version of the play() call.
+  /// The listener position is (0, 0, 0).
   ///
-  /// Returns the handle of the sound, 0 if error.
+  /// [posX], [posY], [posZ] are the audio source position coordinates.
+  /// [velX], [velY], [velZ] are the audio source velocity.
+  /// [volume]
+  /// Return the error if any and a new [newHandle] of this sound
   ///
   Future<({PlayerErrors error, SoundProps sound, SoundHandle newHandle})>
       play3d(
@@ -1632,6 +1789,8 @@ interface class SoLoud {
     double velZ = 0,
     double volume = 1,
     bool paused = false,
+    bool looping = false,
+    double loopingStartAt = 0,
   }) async {
     if (!isInitialized) {
       _log.severe(() => 'play3d(): ${PlayerErrors.engineNotInited}');
@@ -1653,7 +1812,9 @@ interface class SoLoud {
           velY: velY,
           velZ: velZ,
           volume: volume,
-          paused: paused
+          paused: paused,
+          looping: looping,
+          loopingStartAt: loopingStartAt,
         ),
       },
     );
@@ -1668,10 +1829,20 @@ interface class SoLoud {
         velY: velY,
         velZ: velZ,
         volume: volume,
-        paused: paused
+        paused: paused,
+        looping: looping,
+        loopingStartAt: loopingStartAt,
       ),
     )) as ({PlayerErrors error, SoundHandle newHandle});
     _logPlayerError(ret.error, from: 'play3d() result');
+    if (ret.error != PlayerErrors.noError) {
+      return (
+        error: ret.error,
+        sound: sound,
+        newHandle: SoundHandle.error(),
+      );
+    }
+
     try {
       /// add the new handle to the sound
       activeSounds

@@ -7,6 +7,7 @@ import 'package:flutter_soloud/src/soloud.dart';
 import 'package:flutter_soloud/src/utils/assets_manager.dart';
 import 'package:http/http.dart' as http;
 import 'package:logging/logging.dart';
+import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 
 /// Old spelling of [SoLoudTools].
@@ -20,7 +21,7 @@ class SoLoudTools {
   static final Logger _log = Logger('flutter_soloud.SoloudTools');
 
   /// Loads an audio file from the assets folder.
-  ///
+  @Deprecated('Use SoLoud.loadAsset() instead')
   static Future<SoundProps?> loadFromAssets(
     String path, {
     LoadMode mode = LoadMode.memory,
@@ -35,7 +36,7 @@ class SoLoudTools {
   }
 
   /// Loads an audio file from the local file system.
-  ///
+  @Deprecated('Use SoLoud.loadFile() instead')
   static Future<SoundProps?> loadFromFile(
     String path, {
     LoadMode mode = LoadMode.memory,
@@ -50,7 +51,7 @@ class SoLoudTools {
   }
 
   /// Fetches an audio file from a URL and loads it into the memory.
-  ///
+  @Deprecated('Use SoLoud.loadUrl() instead')
   static Future<SoundProps?> loadFromUrl(
     String url, {
     LoadMode mode = LoadMode.memory,
@@ -58,7 +59,7 @@ class SoLoudTools {
     try {
       final tempDir = await getTemporaryDirectory();
       final tempPath = tempDir.path;
-      final filePath = '$tempPath${Platform.pathSeparator}${shortHash(url)}';
+      final filePath = path.join(tempPath, shortHash(url));
       final file = File(filePath);
 
       if (!file.existsSync()) {

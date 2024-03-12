@@ -164,7 +164,10 @@ The `AudioIsolate` instance has the duty of receiving commands and sending them 
 | **getRelativePlaySpeed**| ({PlayerErrors error, double speed})| `int` handle| Return the current play speed.|
 | **stop**| PlayerErrors| `int` handle| Stop an already loaded sound identified by [handle] and clear it.|
 | **disposeSound**| PlayerErrors| `int` handle| Stop ALL handles of the already loaded sound identified by [soundHash] and dispose it.|
+| **getLooping**| ({PlayerErrors error, bool isLooping})| -| Query whether a sound is set to loop.|
 | **setLooping**| -| `int` handle, `bool` enable| This function can be used to set a sample to play on repeat, instead of just playing once.|
+| **getLoopPoint**| ({PlayerErrors error, double time})| -| Get sound loop point value.|
+| **setLoopPoint**| PlayerErrors| `SoundHandle` handle, `double` time| Set sound loop point value.|
 | **getLength**| ({PlayerErrors error, double length})| `int` soundHash| Get the sound length in seconds.|
 | **seek**| PlayerErrors| `int` handle, `double` time| Seek playing in seconds.<br/>WARNING: when loading an MP3 file with `mode = LoadMode.disk`, the seek is laggy. This should not happens with FLACs, OGGs and WAVs.|
 | **getPosition**| ({PlayerErrors error, double position})| `int` handle| Get the current sound position in seconds.|

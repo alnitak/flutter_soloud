@@ -95,15 +95,16 @@ class _Page3DAudioState extends State<Page3DAudio> {
     }
 
     /// load the audio file
-    currentSound = await SoLoudTools.loadFromUrl(
+    final ret = await SoLoud.instance.loadUrl(
       'https://www.learningcontainer.com/wp-content/uploads/2020/02/Kalimba.mp3',
     );
+    if (ret.error != PlayerErrors.noError) return;
+    currentSound = ret.sound;
 
     /// play it
     final playRet = await SoLoud.instance.play3d(currentSound!, 0, 0, 0);
     if (playRet.error != PlayerErrors.noError) return;
 
-    SoLoud.instance.setLooping(playRet.newHandle, true);
     currentSound = playRet.sound;
 
     spinAround = true;
@@ -123,13 +124,20 @@ class _Page3DAudioState extends State<Page3DAudio> {
     }
 
     /// load the audio file
-    currentSound = await SoLoudTools.loadFromAssets('assets/audio/siren.mp3');
+    final ret = await SoLoud.instance.loadAsset('assets/audio/siren.mp3');
+    if (ret.error != PlayerErrors.noError) return;
+    currentSound = ret.sound;
 
     /// play it
-    final playRet = await SoLoud.instance.play3d(currentSound!, 0, 0, 0);
+    final playRet = await SoLoud.instance.play3d(
+      currentSound!,
+      0,
+      0,
+      0,
+      looping: true,
+    );
     if (playRet.error != PlayerErrors.noError) return;
 
-    SoLoud.instance.setLooping(playRet.newHandle, true);
     SoLoud.instance.set3dSourceMinMaxDistance(
       playRet.newHandle,
       50,
@@ -172,7 +180,7 @@ class _Audio3DWidgetState extends State<Audio3DWidget>
   double posZ = 0;
   double velX = 0;
   double velY = 0;
-  double animVel = 2;
+  double animVel = 1;
   double angle = 0;
   Offset center = Offset.zero;
   late double dx;
@@ -193,8 +201,8 @@ class _Audio3DWidgetState extends State<Audio3DWidget>
 
   void _tick(Duration elapsed) {
     if (widget.spinAround) {
-      angle += pi / animVel / 50;
       final circleRadius = Offset(posX - center.dx, posY - center.dy).distance;
+      angle += pi / (animVel / (circleRadius / widget.width)) / 50;
       posX = circleRadius * cos(angle);
       posY = circleRadius * sin(angle);
     } else {
