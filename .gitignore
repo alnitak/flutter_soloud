@@ -32,6 +32,8 @@ build/
 images/
 lib/flutter_soloud_FFIGEN.dart
 
+web/build
+
 **/android/caches
 **/android/.tmp
 **/android/wrapper/dists
