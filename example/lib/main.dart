@@ -3,7 +3,6 @@ import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:flutter_soloud_example/controls.dart';
 import 'package:flutter_soloud_example/page_3d_audio.dart';
 import 'package:flutter_soloud_example/page_hello_flutter.dart';

@@ -242,9 +242,8 @@ Future<void> dispose() async {
 }
 
 Future<void> loadAsset() async {
-  currentSound = await SoloudTools.loadFromAssets(
-    'assets/audio/explosion.mp3',
-  );
+  final ret = await SoLoud.instance.loadAsset('assets/audio/explosion.mp3');
+  currentSound = ret.sound;
   assert(currentSound != null, 'loadFromAssets() failed!');
 
   currentSound!.soundEvents.stream.listen((event) {

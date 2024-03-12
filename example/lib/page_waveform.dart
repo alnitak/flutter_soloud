@@ -57,10 +57,10 @@ class _PageWaveformState extends State<PageWaveform> {
         /// Only when the [notes] are set up, build the UI
         setupNotes().then((value) {
           if (context.mounted) {
-          setState(() {
-            canBuild = true;
-          });
-        }
+            setState(() {
+              canBuild = true;
+            });
+          }
         });
       } else {
         _log.severe('player starting error: $value');
@@ -114,11 +114,15 @@ class _PageWaveformState extends State<PageWaveform> {
                 const SizedBox(width: 8),
                 ElevatedButton(
                   onPressed: () async {
-                    final ret = await SoloudTools.loadFromAssets(
+                    final ret = await SoLoud.instance.loadAsset(
                       'assets/audio/8_bit_mentality.mp3',
                     );
+                    if (ret.error != PlayerErrors.noError) {
+                      _log.severe('error loading sample: ${ret.error}');
+                      return;
+                    }
                     await SoLoud.instance
-                        .play(ret!)
+                        .play(ret.sound!)
                         .then((value) => sound = value.sound);
                   },
                   child: const Text('play sample'),
