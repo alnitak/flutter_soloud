@@ -1,4 +1,4 @@
-#### 2.0.0-pre.X
+#### 2.0.0-pre.1 (12 Mar 2024)
 - added `looping` and `loopingStartAt` properties to `SoLoud.play()` and `SoLoud.play3d()`.
 - added `SoLoud.getLooping()` to retrieve the looping state of a sound.
 - added `SoLoud.getLoopPoint()` and `SoLoud.setLoopPoint()` to get and set the looping start position of a sound.
