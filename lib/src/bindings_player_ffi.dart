@@ -122,7 +122,7 @@ class FlutterSoLoudFfi {
   /// If `LoadMode.disk` is used, the audio data is loaded
   /// from the given file when needed (more CPU, less memory allocated).
   /// See the [seek] note problem when using [LoadMode] = `LoadMode.disk`.
-  /// [soundHash] return hash of the sound.
+  /// `soundHash` return hash of the sound.
   /// Returns [PlayerErrors.noError] if success.
   ({PlayerErrors error, SoundHash soundHash}) loadFile(
     String completeFileName,
@@ -158,7 +158,7 @@ class FlutterSoLoudFfi {
   /// [superWave]
   /// [scale]
   /// [detune]
-  /// [soundHash] return hash of the sound
+  /// `soundHash` return hash of the sound
   /// Returns [PlayerErrors.noError] if success
   ({PlayerErrors error, SoundHash soundHash}) loadWaveform(
     WaveForm waveform,
