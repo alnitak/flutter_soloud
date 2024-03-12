@@ -1261,7 +1261,7 @@ interface class SoLoud {
       _log.severe('setLoopPoint(): ${PlayerErrors.engineNotInited}');
       return PlayerErrors.engineNotInited;
     }
-    SoLoudController().soLoudFFI.setLoopPoint(handle.id, time);
+    SoLoudController().soLoudFFI.setLoopPoint(handle, time);
     return PlayerErrors.noError;
   }
 

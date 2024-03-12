@@ -113,12 +113,6 @@ enum PlayerErrors {
   /// The engine took too long to initialize.
   engineInitializationTimedOut,
 
-  /// Filter not found
-  filterNotFound,
-
-  /// asking for wave and FFT is not enabled
-  visualizationNotEnabled,
-
   /// Asset was found but for some reason couldn't be loaded.
   assetLoadFailed;
 
