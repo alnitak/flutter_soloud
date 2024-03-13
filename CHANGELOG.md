@@ -1,6 +1,6 @@
 #### 2.0.0-pre.2
 
-- `SoLoud` methods now throw instead of returning a `PlayerError` object.
+- `SoLoud` methods now throw instead of returning a `PlayerErrors` object.
   This is a massive breaking change, but it makes the package API
   more idiomatic and easier to use.
   
@@ -8,7 +8,7 @@
 
   ```dart
   final ret = await SoLoud.play(sound);
-  if (ret.error != PlayerError.noError) {
+  if (ret.error != PlayerErrors.noError) {
     print('Oh no! ${ret.error}');
   } else {
     print('Playing sound with new handle: ${ret.newHandle}');
