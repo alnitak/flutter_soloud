@@ -1,3 +1,32 @@
+#### 2.0.0-pre.2
+
+- `SoLoud` methods now throw instead of returning a `PlayerError` object.
+  This is a massive breaking change, but it makes the package API
+  more idiomatic and easier to use.
+  
+  Before:
+
+  ```dart
+  final ret = await SoLoud.play(sound);
+  if (ret.error != PlayerError.noError) {
+    print('Oh no! ${ret.error}');
+  } else {
+    print('Playing sound with new handle: ${ret.newHandle}');
+  }
+  ```
+
+  After:
+
+  ```dart
+  try {
+    final handle = await SoLoud.play(sound);
+    print('Playing sound with new handle: $handle');
+  } on SoLoudException catch (e) {
+    print('Oh no! $e');
+  }
+  ```
+
+
 #### 2.0.0-pre.1 (12 Mar 2024)
 - added `looping` and `loopingStartAt` properties to `SoLoud.play()` and `SoLoud.play3d()`.
 - added `SoLoud.getLooping()` to retrieve the looping state of a sound.
