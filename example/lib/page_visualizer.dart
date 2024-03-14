@@ -59,12 +59,8 @@ class _PageVisualizerState extends State<PageVisualizer> {
     super.initState();
 
     /// Initialize the player
-    SoLoud.instance.initialize().then((value) {
-      if (value == PlayerErrors.multipleInitialization) {
-        SoLoud.instance.disposeAllSound();
-      }
-      if (value == PlayerErrors.noError ||
-          value == PlayerErrors.multipleInitialization) {
+    SoLoud.instance.initialize().then(
+      (_) {
         _log.info('player started');
         SoLoud.instance.setVisualizationEnabled(true);
         SoLoud.instance.setGlobalVolume(1);
@@ -73,11 +69,11 @@ class _PageVisualizerState extends State<PageVisualizer> {
             canBuild = true;
           });
         }
-      } else {
-        _log.severe('player starting error: $value');
-        return;
-      }
-    });
+      },
+      onError: (Object e) {
+        _log.severe('player starting error: $e');
+      },
+    );
   }
 
   @override
@@ -473,25 +469,23 @@ class _PageVisualizerState extends State<PageVisualizer> {
   /// play file
   Future<void> play(String file) async {
     if (currentSound != null) {
-      if (await SoLoud.instance.disposeSound(currentSound!) !=
-          PlayerErrors.noError) {
+      try {
+        await SoLoud.instance.disposeSound(currentSound!);
+      } catch (e) {
+        _log.severe('error disposing the current sound', e);
         return;
       }
       stopTimer();
     }
 
     /// load the file
-    final loadRet = await SoLoud.instance.loadFile(file);
-    if (loadRet.error != PlayerErrors.noError) return;
-    currentSound = loadRet.sound;
+    currentSound = await SoLoud.instance.loadFile(file);
 
     /// play it
-    final playRet = await SoLoud.instance.play(currentSound!);
-    if (loadRet.error != PlayerErrors.noError) return;
-    currentSound = playRet.sound;
+    await SoLoud.instance.play(currentSound!);
 
     /// get its length and notify it
-    soundLength.value = SoLoud.instance.getLength(currentSound!).length;
+    soundLength.value = SoLoud.instance.getLength(currentSound!);
 
     /// Stop the timer and dispose the sound when the sound ends
     currentSound!.soundEvents.stream.listen(
@@ -539,7 +533,7 @@ class _PageVisualizerState extends State<PageVisualizer> {
     timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (currentSound != null) {
         soundPosition.value =
-            SoLoud.instance.getPosition(currentSound!.handles.last).position;
+            SoLoud.instance.getPosition(currentSound!.handles.last);
       }
     });
   }

@@ -3,37 +3,39 @@
 #ifndef ENUMS_H
 #define ENUMS_H
 
-/// Possible player errors. 
+/// Possible player errors.
+///
+/// WARNING: Keep these in sync with `lib/src/enums.dart`.
 typedef enum PlayerErrors
 {
     /// No error
-    noError,
+    noError = 0,
     /// Some parameter is invalid
-    invalidParameter,
+    invalidParameter = 1,
     /// File not found 
-    fileNotFound,
+    fileNotFound = 2,
     /// File found, but could not be loaded
-    fileLoadFailed,
+    fileLoadFailed = 3,
     /// The sound file has already been loaded
-    fileAlreadyLoaded,
+    fileAlreadyLoaded = 4,
     /// DLL not found, or wrong DLL
-    dllNotFound,
+    dllNotFound = 5,
     /// Out of memory
-    outOfMemory,
+    outOfMemory = 6,
     /// Feature not implemented
-    notImplemented,
+    notImplemented = 7,
     /// Other error
-    unknownError,
+    unknownError = 8,
     /// Player not initialized
-    nullPointer,
+    nullPointer = 9,
     /// audio sound hash has not found
-    soundHashNotFound,
+    soundHashNotFound = 10,
     /// Player not initialized
-    backendNotInited,
+    backendNotInited = 11,
     /// Filter not found
-    filterNotFound,
+    filterNotFound = 12,
     /// asking for wave and FFT is not enabled
-    visualizationNotEnabled,
+    visualizationNotEnabled = 13,
 } PlayerErrors_t;
 
 /// Possible capture errors

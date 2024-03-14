@@ -25,12 +25,8 @@ class _Page3DAudioState extends State<Page3DAudio> {
 
     /// Initialize the player
     _log.info('player starting');
-    SoLoud.instance.initialize().then((value) {
-      if (value == PlayerErrors.multipleInitialization) {
-        SoLoud.instance.disposeAllSound();
-      }
-      if (value == PlayerErrors.noError ||
-          value == PlayerErrors.multipleInitialization) {
+    SoLoud.instance.initialize().then(
+      (_) {
         _log.info('player started');
         SoLoud.instance.setVisualizationEnabled(false);
         SoLoud.instance.setGlobalVolume(1);
@@ -39,11 +35,11 @@ class _Page3DAudioState extends State<Page3DAudio> {
             canBuild = true;
           });
         }
-      } else {
-        _log.severe('player starting error: $value');
-        return;
-      }
-    });
+      },
+      onError: (Object e) {
+        _log.severe('player starting error: $e');
+      },
+    );
   }
 
   @override
@@ -88,24 +84,21 @@ class _Page3DAudioState extends State<Page3DAudio> {
   Future<void> playFromUrl() async {
     /// stop any previous sound loaded
     if (currentSound != null) {
-      if (await SoLoud.instance.disposeSound(currentSound!) !=
-          PlayerErrors.noError) {
+      try {
+        await SoLoud.instance.disposeSound(currentSound!);
+      } catch (e) {
+        _log.severe('error disposing sound: $e');
         return;
       }
     }
 
     /// load the audio file
-    final ret = await SoLoud.instance.loadUrl(
+    currentSound = await SoLoud.instance.loadUrl(
       'https://www.learningcontainer.com/wp-content/uploads/2020/02/Kalimba.mp3',
     );
-    if (ret.error != PlayerErrors.noError) return;
-    currentSound = ret.sound;
 
     /// play it
-    final playRet = await SoLoud.instance.play3d(currentSound!, 0, 0, 0);
-    if (playRet.error != PlayerErrors.noError) return;
-
-    currentSound = playRet.sound;
+    await SoLoud.instance.play3d(currentSound!, 0, 0, 0);
 
     spinAround = true;
 
@@ -117,34 +110,32 @@ class _Page3DAudioState extends State<Page3DAudio> {
   Future<void> play(double maxDistance) async {
     /// stop any previous sound loaded
     if (currentSound != null) {
-      if (await SoLoud.instance.disposeSound(currentSound!) !=
-          PlayerErrors.noError) {
+      try {
+        await SoLoud.instance.disposeSound(currentSound!);
+      } catch (e) {
+        _log.severe('error disposing sound: $e');
         return;
       }
     }
 
     /// load the audio file
-    final ret = await SoLoud.instance.loadAsset('assets/audio/siren.mp3');
-    if (ret.error != PlayerErrors.noError) return;
-    currentSound = ret.sound;
+    currentSound = await SoLoud.instance.loadAsset('assets/audio/siren.mp3');
 
     /// play it
-    final playRet = await SoLoud.instance.play3d(
+    final newHandle = await SoLoud.instance.play3d(
       currentSound!,
       0,
       0,
       0,
       looping: true,
     );
-    if (playRet.error != PlayerErrors.noError) return;
 
     SoLoud.instance.set3dSourceMinMaxDistance(
-      playRet.newHandle,
+      newHandle,
       50,
       maxDistance,
     );
-    SoLoud.instance.set3dSourceAttenuation(playRet.newHandle, 1, 0.5);
-    currentSound = playRet.sound;
+    SoLoud.instance.set3dSourceAttenuation(newHandle, 1, 0.5);
 
     spinAround = false;
 

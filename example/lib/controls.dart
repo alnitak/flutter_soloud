@@ -69,11 +69,9 @@ class _ControlsState extends State<Controls> {
                         _log.info('isolate stopped');
                       }
                     } else {
-                      final b = await SoLoud.instance.initialize();
-                      if (b == PlayerErrors.noError) {
-                        _log.info('isolate started');
-                        SoLoud.instance.setVisualizationEnabled(true);
-                      }
+                      await SoLoud.instance.initialize();
+                      _log.info('isolate started');
+                      SoLoud.instance.setVisualizationEnabled(true);
                     }
                   },
                   style: buttonStyle(isRunning),

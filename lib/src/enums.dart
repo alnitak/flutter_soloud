@@ -1,3 +1,5 @@
+import 'package:meta/meta.dart';
+
 /// CaptureDevice exposed to Dart
 final class CaptureDevice {
   /// Constructs a new [CaptureDevice].
@@ -48,73 +50,58 @@ enum CaptureErrors {
 
 /// Possible player errors.
 /// New values must be enumerated at the bottom
+///
+/// WARNING: Keep these in sync with `src/enums.h`.
+@internal
 enum PlayerErrors {
   /// No error
-  noError,
+  noError(0),
 
   /// Some parameter is invalid
-  invalidParameter,
+  invalidParameter(1),
 
   /// File not found
-  fileNotFound,
+  fileNotFound(2),
 
   /// File found, but could not be loaded
-  fileLoadFailed,
+  fileLoadFailed(3),
 
   /// The sound file has already been loaded
-  fileAlreadyLoaded,
+  fileAlreadyLoaded(4),
 
   /// DLL not found, or wrong DLL
-  dllNotFound,
+  dllNotFound(5),
 
   /// Out of memory
-  outOfMemory,
+  outOfMemory(6),
 
   /// Feature not implemented
-  notImplemented,
+  notImplemented(7),
 
   /// Other error
-  unknownError,
+  unknownError(8),
 
   /// null pointer. Could happens when passing a non initialized
   /// pointer (with calloc()) to retrieve FFT or wave data
-  nullPointer,
+  nullPointer(9),
 
   /// The sound with specified hash is not found
-  soundHashNotFound,
+  soundHashNotFound(10),
 
   /// Player not initialized
-  backendNotInited,
+  backendNotInited(11),
 
   /// Filter not found
-  filterNotFound,
+  filterNotFound(12),
 
   /// asking for wave and FFT is not enabled
-  visualizationNotEnabled,
+  visualizationNotEnabled(13);
 
-  /// Audio isolate already started
-  @Deprecated('Use multipleInitialization instead')
-  isolateAlreadyStarted,
+  const PlayerErrors(this.value);
 
-  /// Engine has already been initialized successfully
-  /// but a new call to `initialize()` was made.
-  multipleInitialization,
-
-  /// Engine is currently being initialized
-  /// and another call to `initialize()` was made.
-  concurrentInitialization,
-
-  /// Audio isolate not yet started
-  isolateNotStarted,
-
-  /// Engine not yet started
-  engineNotInited,
-
-  /// The engine took too long to initialize.
-  engineInitializationTimedOut,
-
-  /// Asset was found but for some reason couldn't be loaded.
-  assetLoadFailed;
+  /// The integer value of the error. This is the same number that is returned
+  /// from the C++ API.
+  final int value;
 
   /// Returns a human-friendly sentence describing the error.
   String get _asSentence {
@@ -145,33 +132,11 @@ enum PlayerErrors {
         return 'The sound with specified hash is not found';
       case PlayerErrors.backendNotInited:
         return 'Player not initialized';
-      // ignore: deprecated_member_use_from_same_package
-      case PlayerErrors.isolateAlreadyStarted:
-        return 'Audio isolate already started';
-      case PlayerErrors.multipleInitialization:
-        return 'Engine has already been initialized successfully '
-            'but a new call to initialize() was made';
-      case PlayerErrors.concurrentInitialization:
-        return 'Engine is currently being initialized '
-            'and another call to initialize() was made';
-      case PlayerErrors.isolateNotStarted:
-        return 'Audio isolate not yet started';
-      case PlayerErrors.engineNotInited:
-        return 'Engine not yet started. '
-            'Either asynchronously await `SoLoud.ready` '
-            'or synchronously check `SoLoud.isReady` '
-            'before calling the function.';
-      case PlayerErrors.engineInitializationTimedOut:
-        return 'Engine initialization timed out';
       case PlayerErrors.filterNotFound:
         return 'Filter not found';
       case PlayerErrors.visualizationNotEnabled:
         return 'Asking for audio data is not enabled! Please use '
             '`setVisualizationEnabled(true);` to enable!';
-      case PlayerErrors.assetLoadFailed:
-        return "Asset was found but for some reason couldn't be loaded. "
-            'This could be a problem with the temporary directory into which '
-            'the asset is being copied.';
     }
   }
 
@@ -196,7 +161,7 @@ enum WaveForm {
   /// Bounce, i.e, abs(sin())
   bounce,
 
-  /// Quater sine wave, rest of period quiet
+  /// Quarter sine wave, rest of period quiet
   jaws,
 
   /// Half sine wave, rest of period quiet

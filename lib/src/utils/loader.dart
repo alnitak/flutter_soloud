@@ -1,7 +1,8 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_soloud/src/exceptions.dart';
+import 'package:flutter_soloud/src/exceptions/exceptions.dart';
 import 'package:http/http.dart' as http;
 import 'package:logging/logging.dart';
 import 'package:meta/meta.dart';
@@ -121,9 +122,9 @@ class SoLoudLoader {
   /// Returns `null` if there's a problem with some implementation detail
   /// (e.g. cannot create temporary file).
   ///
-  /// Throws an exception when the asset doesn't exist or cannot be loaded.
+  /// Throws [FlutterError] when the asset doesn't exist or cannot be loaded.
   /// (This is the same exception that [AssetBundle.load] would throw.)
-  Future<File?> loadAsset(
+  Future<File> loadAsset(
     String key, {
     AssetBundle? assetBundle,
   }) async {
@@ -137,16 +138,16 @@ class SoLoudLoader {
       final existingFile = _temporaryFiles[id]!;
       if (existingFile.existsSync()) {
         _log.finest(() => 'Asset $key already exists as a temporary file.');
-        return _temporaryFiles[id];
+        return _temporaryFiles[id]!;
       }
     }
 
     final directory = _temporaryDirectory;
 
     if (directory == null) {
-      _log.severe("Temporary directory hasn't been initialized, "
+      throw const SoLoudTemporaryFolderFailedException(
+          "Temporary directory hasn't been initialized, "
           'yet loadAsset() is called.');
-      return null;
     }
 
     final newFilepath = _getFullTempFilePath(id);
@@ -172,9 +173,10 @@ class SoLoudLoader {
       await newFile.writeAsBytes(
         buffer.asUint8List(byteData.offsetInBytes, byteData.lengthInBytes),
       );
-    } catch (e, s) {
-      _log.severe("loadAsset() couldn't write $newFile to disk", e, s);
-      return null;
+    } catch (e) {
+      throw SoLoudTemporaryFolderFailedException(
+        "loadAsset() couldn't write $newFile to disk",
+      );
     }
 
     _temporaryFiles[id] = newFile;
@@ -188,8 +190,8 @@ class SoLoudLoader {
   /// will create a new one and close it afterwards.
   ///
   /// Throws [FormatException] if the [url] is invalid.
-  /// Throws [SoLoudNetworkException] if the request fails.
-  Future<File?> loadUrl(
+  /// Throws [SoLoudNetworkStatusCodeException] if the request fails.
+  Future<File> loadUrl(
     String url, {
     http.Client? httpClient,
   }) async {
@@ -207,16 +209,16 @@ class SoLoudLoader {
         _log.finest(
           () => 'Sound from $url already exists as a temporary file.',
         );
-        return _temporaryFiles[id];
+        return _temporaryFiles[id]!;
       }
     }
 
     final directory = _temporaryDirectory;
 
     if (directory == null) {
-      _log.severe("Temporary directory hasn't been initialized, "
+      throw const SoLoudTemporaryFolderFailedException(
+          "Temporary directory hasn't been initialized, "
           'yet loadUrl() is called.');
-      return null;
     }
 
     final newFilepath = _getFullTempFilePath(id);
@@ -234,9 +236,9 @@ class SoLoudLoader {
       if (response.statusCode == 200) {
         byteData = response.bodyBytes;
       } else {
-        throw SoLoudNetworkException(
+        throw SoLoudNetworkStatusCodeException(
+          response.statusCode,
           'Failed to fetch file from URL: $url',
-          statusCode: response.statusCode,
         );
       }
     } catch (e) {
@@ -250,9 +252,10 @@ class SoLoudLoader {
       await newFile.writeAsBytes(
         buffer.asUint8List(byteData.offsetInBytes, byteData.lengthInBytes),
       );
-    } catch (e, s) {
-      _log.severe("loadUrl() couldn't write $newFile to disk", e, s);
-      return null;
+    } catch (e) {
+      throw SoLoudTemporaryFolderFailedException(
+        "loadAsset() couldn't write $newFile to disk",
+      );
     }
 
     _temporaryFiles[id] = newFile;
