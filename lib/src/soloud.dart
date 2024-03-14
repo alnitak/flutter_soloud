@@ -9,7 +9,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_soloud/src/audio_isolate.dart';
 import 'package:flutter_soloud/src/enums.dart';
-import 'package:flutter_soloud/src/exceptions.dart';
+import 'package:flutter_soloud/src/exceptions/exceptions.dart';
 import 'package:flutter_soloud/src/filter_params.dart';
 import 'package:flutter_soloud/src/soloud_capture.dart';
 import 'package:flutter_soloud/src/soloud_controller.dart';
@@ -410,7 +410,7 @@ interface class SoLoud {
         _mainToIsolateStream = data;
 
         /// finally start the audio engine
-        _initEngine().then((value) {
+        _initEngine().then((error) {
           assert(
               !_isInitialized,
               '_isInitialized should be false at this point. '
@@ -419,7 +419,7 @@ interface class SoLoud {
           assert(_initializeCompleter == completer,
               '_initializeCompleter has been reassigned during initialization');
 
-          if (value == PlayerErrors.noError) {
+          if (error == PlayerErrors.noError) {
             // ignore: deprecated_member_use_from_same_package
             audioEvent.add(AudioEvent.isolateStarted);
             _isInitialized = true;
@@ -431,10 +431,10 @@ interface class SoLoud {
             _initializeCompleter = null;
             completer.complete();
           } else {
-            _log.severe('_initEngine() failed with error: $value');
+            _log.severe('_initEngine() failed with error: $error');
             _cleanUpUnsuccessfulInitialization();
             _initializeCompleter = null;
-            completer.completeError(value.toException());
+            completer.completeError(SoLoudCppException.fromPlayerError(error));
           }
         });
       } else {
@@ -488,7 +488,7 @@ interface class SoLoud {
       _log.severe('Isolate.spawn() failed.', e);
       _cleanUpUnsuccessfulInitialization();
       _initializeCompleter = null;
-      completer.completeError(const SoLoudIsolateNotStartedException());
+      completer.completeError(const SoLoudIsolateSpawnFailedException());
       return completer.future;
     }
 
@@ -501,7 +501,7 @@ interface class SoLoud {
           '_initializeCompleter has been reassigned');
       _initializeCompleter = null;
       _cleanUpUnsuccessfulInitialization();
-      throw const SoLoudEngineInitializationTimedOutException();
+      throw const SoLoudInitializationTimedOutException();
     });
   }
 
@@ -686,7 +686,9 @@ interface class SoLoud {
   ///
   Future<PlayerErrors> _initEngine() async {
     _log.finest('_initEngine() called');
-    if (_isolate == null) return PlayerErrors.isolateNotStarted;
+    if (_isolate == null) {
+      throw StateError('The audio isolate is not running');
+    }
     _mainToIsolateStream?.send(
       {
         'event': MessageEvents.initEngine,
@@ -753,14 +755,13 @@ interface class SoLoud {
   /// Returns PlayerErrors.noError if success and a new sound.
   ///
   ///
-  /// Throws [SoLoudEngineNotInitedException] if the engine is not initialized.
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   Future<SoundProps> loadFile(
     String completeFileName, {
     LoadMode mode = LoadMode.memory,
   }) async {
     if (!isInitialized) {
-      _log.severe(() => 'loadFile(): ${PlayerErrors.engineNotInited}');
-      throw const SoLoudEngineNotInitedException();
+      throw const SoLoudNotInitializedException();
     }
     _mainToIsolateStream?.send(
       {
@@ -780,7 +781,7 @@ interface class SoLoud {
       activeSounds.add(ret.sound!);
       return ret.sound!;
     } else {
-      throw ret.error.toException();
+      throw SoLoudCppException.fromPlayerError(ret.error);
     }
   }
 
@@ -798,7 +799,7 @@ interface class SoLoud {
   /// Throws a [FlutterError] if the asset is not found.
   /// Throws a [SoLoudTemporaryFolderFailedException] if there was a problem
   /// creating the temporary file that the asset will be copied to.
-  /// Throws [SoLoudEngineNotInitedException] if the engine is not initialized.
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   ///
   /// Returns [PlayerErrors.noError] if loading was successful,
   /// as well as the new sound. Returns [PlayerErrors.assetLoadFailed]
@@ -810,8 +811,7 @@ interface class SoLoud {
     AssetBundle? assetBundle,
   }) async {
     if (!isInitialized) {
-      _log.severe(() => 'loadAsset(): ${PlayerErrors.engineNotInited}');
-      throw const SoLoudEngineNotInitedException();
+      throw const SoLoudNotInitializedException();
     }
 
     final file = await _loader.loadAsset(key, assetBundle: assetBundle);
@@ -837,7 +837,7 @@ interface class SoLoud {
   /// with a non-`200` status code.
   /// Throws a [SoLoudTemporaryFolderFailedException] if there was a problem
   /// creating the temporary file that the asset will be copied to.
-  /// Throws [SoLoudEngineNotInitedException] if the engine is not initialized.
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   ///
   /// Returns [PlayerErrors.noError] if loading was successful,
   /// as well as the new sound. Returns [PlayerErrors.assetLoadFailed]
@@ -849,8 +849,7 @@ interface class SoLoud {
     http.Client? httpClient,
   }) async {
     if (!isInitialized) {
-      _log.severe(() => 'loadUrl(): ${PlayerErrors.engineNotInited}');
-      throw const SoLoudEngineNotInitedException();
+      throw const SoLoudNotInitializedException();
     }
 
     final file = await _loader.loadUrl(url, httpClient: httpClient);
@@ -873,8 +872,7 @@ interface class SoLoud {
     double detune,
   ) async {
     if (!isInitialized) {
-      _log.severe(() => 'loadWaveform(): ${PlayerErrors.engineNotInited}');
-      throw const SoLoudEngineNotInitedException();
+      throw const SoLoudNotInitializedException();
     }
 
     _mainToIsolateStream?.send(
@@ -902,7 +900,7 @@ interface class SoLoud {
       return ret.sound!;
     }
     _logPlayerError(ret.error, from: 'loadWaveform() result');
-    throw ret.error.toException();
+    throw SoLoudCppException.fromPlayerError(ret.error);
   }
 
   /// Set the scale of an already loaded waveform identified by [sound]
@@ -911,8 +909,7 @@ interface class SoLoud {
   /// [newWaveform]
   void setWaveform(SoundProps sound, WaveForm newWaveform) {
     if (!isInitialized) {
-      _log.severe(() => 'setWaveform(): ${PlayerErrors.engineNotInited}');
-      throw const SoLoudEngineNotInitedException();
+      throw const SoLoudNotInitializedException();
     }
     SoLoudController().soLoudFFI.setWaveform(sound.soundHash, newWaveform);
   }
@@ -923,8 +920,7 @@ interface class SoLoud {
   /// [newScale]
   void setWaveformScale(SoundProps sound, double newScale) {
     if (!isInitialized) {
-      _log.severe(() => 'setWaveformScale(): ${PlayerErrors.engineNotInited}');
-      throw const SoLoudEngineNotInitedException();
+      throw const SoLoudNotInitializedException();
     }
     SoLoudController().soLoudFFI.setWaveformScale(sound.soundHash, newScale);
   }
@@ -935,8 +931,7 @@ interface class SoLoud {
   /// [newDetune]
   void setWaveformDetune(SoundProps sound, double newDetune) {
     if (!isInitialized) {
-      _log.severe(() => 'setWaveformDetune(): ${PlayerErrors.engineNotInited}');
-      throw const SoLoudEngineNotInitedException();
+      throw const SoLoudNotInitializedException();
     }
     SoLoudController().soLoudFFI.setWaveformDetune(sound.soundHash, newDetune);
   }
@@ -947,8 +942,7 @@ interface class SoLoud {
   /// [newFreq]
   void setWaveformFreq(SoundProps sound, double newFreq) {
     if (!isInitialized) {
-      _log.severe(() => 'setWaveformFreq(): ${PlayerErrors.engineNotInited}');
-      throw const SoLoudEngineNotInitedException();
+      throw const SoLoudNotInitializedException();
     }
     SoLoudController().soLoudFFI.setWaveformFreq(sound.soundHash, newFreq);
   }
@@ -959,9 +953,7 @@ interface class SoLoud {
   /// [superwave]
   void setWaveformSuperWave(SoundProps sound, bool superwave) {
     if (!isInitialized) {
-      _log.severe(
-          () => 'setWaveformSuperWave(): ${PlayerErrors.engineNotInited}');
-      throw const SoLoudEngineNotInitedException();
+      throw const SoLoudNotInitializedException();
     }
     SoLoudController().soLoudFFI.setWaveformSuperWave(
           sound.soundHash,
@@ -978,8 +970,7 @@ interface class SoLoud {
     String textToSpeech,
   ) async {
     if (!isInitialized) {
-      _log.severe(() => 'speechText(): ${PlayerErrors.engineNotInited}');
-      throw const SoLoudEngineNotInitedException();
+      throw const SoLoudNotInitializedException();
     }
     _mainToIsolateStream?.send(
       {
@@ -996,7 +987,7 @@ interface class SoLoud {
       activeSounds.add(ret.sound);
       return ret.sound;
     }
-    throw ret.error.toException();
+    throw SoLoudCppException.fromPlayerError(ret.error);
   }
 
   /// Play already loaded sound identified by [sound]
@@ -1017,8 +1008,7 @@ interface class SoLoud {
     double loopingStartAt = 0,
   }) async {
     if (!isInitialized) {
-      _log.severe(() => 'play(): ${PlayerErrors.engineNotInited}');
-      throw const SoLoudEngineNotInitedException();
+      throw const SoLoudNotInitializedException();
     }
     _mainToIsolateStream?.send(
       {
@@ -1046,7 +1036,7 @@ interface class SoLoud {
     )) as ({PlayerErrors error, SoundHandle newHandle});
     _logPlayerError(ret.error, from: 'play()');
     if (ret.error != PlayerErrors.noError) {
-      throw ret.error.toException();
+      throw SoLoudCppException.fromPlayerError(ret.error);
     }
 
     try {
@@ -1058,7 +1048,7 @@ interface class SoLoud {
       sound.handlesInternal.add(ret.newHandle);
     } catch (e) {
       _log.severe('play(): soundHash ${sound.soundHash} not found', e);
-      throw SoLoudSoundHashNotFoundException(sound.soundHash);
+      throw SoLoudSoundHashNotFoundDartException(sound.soundHash);
     }
     return ret.newHandle;
   }
@@ -1070,8 +1060,7 @@ interface class SoLoud {
   ///
   void pauseSwitch(SoundHandle handle) {
     if (!isInitialized) {
-      _log.severe(() => 'pauseSwitch(): ${PlayerErrors.engineNotInited}');
-      throw const SoLoudEngineNotInitedException();
+      throw const SoLoudNotInitializedException();
     }
     SoLoudController().soLoudFFI.pauseSwitch(handle);
   }
@@ -1083,8 +1072,7 @@ interface class SoLoud {
   ///
   void setPause(SoundHandle handle, bool pause) {
     if (!isInitialized) {
-      _log.severe(() => 'setPause(): ${PlayerErrors.engineNotInited}');
-      throw const SoLoudEngineNotInitedException();
+      throw const SoLoudNotInitializedException();
     }
     SoLoudController().soLoudFFI.setPause(handle, pause ? 1 : 0);
   }
@@ -1096,8 +1084,7 @@ interface class SoLoud {
   ///
   bool getPause(SoundHandle handle) {
     if (!isInitialized) {
-      _log.severe(() => 'getPause(): ${PlayerErrors.engineNotInited}');
-      throw const SoLoudEngineNotInitedException();
+      throw const SoLoudNotInitializedException();
     }
     return SoLoudController().soLoudFFI.getPause(handle);
   }
@@ -1116,9 +1103,7 @@ interface class SoLoud {
   /// [speed] the new speed
   void setRelativePlaySpeed(SoundHandle handle, double speed) {
     if (!isInitialized) {
-      _log.severe(
-          () => 'setRelativePlaySpeed(): ${PlayerErrors.engineNotInited}');
-      throw const SoLoudEngineNotInitedException();
+      throw const SoLoudNotInitializedException();
     }
     SoLoudController().soLoudFFI.setRelativePlaySpeed(handle, speed);
   }
@@ -1128,9 +1113,7 @@ interface class SoLoud {
   /// [handle] the sound handle
   double getRelativePlaySpeed(SoundHandle handle) {
     if (!isInitialized) {
-      _log.severe(
-          () => 'getRelativePlaySpeed(): ${PlayerErrors.engineNotInited}');
-      throw const SoLoudEngineNotInitedException();
+      throw const SoLoudNotInitializedException();
     }
     return SoLoudController().soLoudFFI.getRelativePlaySpeed(handle);
   }
@@ -1143,8 +1126,7 @@ interface class SoLoud {
   ///
   Future<void> stop(SoundHandle handle) async {
     if (!isInitialized) {
-      _log.severe(() => 'stop(): ${PlayerErrors.engineNotInited}');
-      throw const SoLoudEngineNotInitedException();
+      throw const SoLoudNotInitializedException();
     }
     _mainToIsolateStream?.send(
       {
@@ -1168,8 +1150,7 @@ interface class SoLoud {
   ///
   Future<void> disposeSound(SoundProps sound) async {
     if (!isInitialized) {
-      _log.severe(() => 'disposeSound(): ${PlayerErrors.engineNotInited}');
-      throw const SoLoudEngineNotInitedException();
+      throw const SoLoudNotInitializedException();
     }
     _mainToIsolateStream?.send(
       {
@@ -1197,8 +1178,7 @@ interface class SoLoud {
   ///
   Future<void> disposeAllSound() async {
     if (!_isEngineInitialized) {
-      _log.severe(() => 'disposeAllSound(): ${PlayerErrors.engineNotInited}');
-      throw const SoLoudEngineNotInitedException();
+      throw const SoLoudNotInitializedException();
     }
     _mainToIsolateStream?.send(
       {
@@ -1219,8 +1199,7 @@ interface class SoLoud {
   ///
   bool getLooping(SoundHandle handle) {
     if (!isInitialized) {
-      _log.severe(() => 'getLooping(): ${PlayerErrors.engineNotInited}');
-      throw const SoLoudEngineNotInitedException();
+      throw const SoLoudNotInitializedException();
     }
     return SoLoudController().soLoudFFI.getLooping(handle.id);
   }
@@ -1234,8 +1213,7 @@ interface class SoLoud {
   ///
   void setLooping(SoundHandle handle, bool enable) {
     if (!isInitialized) {
-      _log.severe(() => 'setLooping(): ${PlayerErrors.engineNotInited}');
-      throw const SoLoudEngineNotInitedException();
+      throw const SoLoudNotInitializedException();
     }
     SoLoudController().soLoudFFI.setLooping(handle, enable);
   }
@@ -1247,8 +1225,7 @@ interface class SoLoud {
   ///
   double getLoopPoint(SoundHandle handle) {
     if (!isInitialized) {
-      _log.severe('getLoopPoint(): ${PlayerErrors.engineNotInited}');
-      throw const SoLoudEngineNotInitedException();
+      throw const SoLoudNotInitializedException();
     }
     return SoLoudController().soLoudFFI.getLoopPoint(handle.id);
   }
@@ -1261,8 +1238,7 @@ interface class SoLoud {
   ///
   void setLoopPoint(SoundHandle handle, double time) {
     if (!isInitialized) {
-      _log.severe('setLoopPoint(): ${PlayerErrors.engineNotInited}');
-      throw const SoLoudEngineNotInitedException();
+      throw const SoLoudNotInitializedException();
     }
     SoLoudController().soLoudFFI.setLoopPoint(handle, time);
   }
@@ -1275,8 +1251,7 @@ interface class SoLoud {
   ///
   void setVisualizationEnabled(bool enabled) {
     if (!isInitialized) {
-      _log.severe('setVisualizationEnabled(): ${PlayerErrors.engineNotInited}');
-      throw const SoLoudEngineNotInitedException();
+      throw const SoLoudNotInitializedException();
     }
     SoLoudController().soLoudFFI.setVisualizationEnabled(enabled);
     _isVisualizationEnabled = enabled;
@@ -1287,8 +1262,7 @@ interface class SoLoud {
   /// Return PlayerErrors.noError if success and true if enabled
   bool getVisualizationEnabled() {
     if (!isInitialized) {
-      _log.severe('setVisualizationEnabled(): ${PlayerErrors.engineNotInited}');
-      throw const SoLoudEngineNotInitedException();
+      throw const SoLoudNotInitializedException();
     }
     return SoLoudController().soLoudFFI.getVisualizationEnabled();
   }
@@ -1300,8 +1274,7 @@ interface class SoLoud {
   ///
   double getLength(SoundProps sound) {
     if (!isInitialized) {
-      _log.severe(() => 'getLength(): ${PlayerErrors.engineNotInited}');
-      throw const SoLoudEngineNotInitedException();
+      throw const SoLoudNotInitializedException();
     }
     return SoLoudController().soLoudFFI.getLength(sound.soundHash);
   }
@@ -1325,14 +1298,13 @@ interface class SoLoud {
   ///
   void seek(SoundHandle handle, double time) {
     if (!isInitialized) {
-      _log.severe(() => 'seek(): ${PlayerErrors.engineNotInited}');
-      throw const SoLoudEngineNotInitedException();
+      throw const SoLoudNotInitializedException();
     }
     final ret = SoLoudController().soLoudFFI.seek(handle, time);
     final error = PlayerErrors.values[ret];
     if (error != PlayerErrors.noError) {
       _log.severe(() => 'seek(): $error');
-      throw error.toException();
+      throw SoLoudCppException.fromPlayerError(error);
     }
   }
 
@@ -1343,8 +1315,7 @@ interface class SoLoud {
   ///
   double getPosition(SoundHandle handle) {
     if (!isInitialized) {
-      _log.severe(() => 'getPosition(): ${PlayerErrors.engineNotInited}');
-      throw const SoLoudEngineNotInitedException();
+      throw const SoLoudNotInitializedException();
     }
     return SoLoudController().soLoudFFI.getPosition(handle);
   }
@@ -1355,8 +1326,7 @@ interface class SoLoud {
   ///
   double getGlobalVolume() {
     if (!isInitialized) {
-      _log.severe(() => 'getGlobalVolume(): ${PlayerErrors.engineNotInited}');
-      throw const SoLoudEngineNotInitedException();
+      throw const SoLoudNotInitializedException();
     }
     return SoLoudController().soLoudFFI.getGlobalVolume();
   }
@@ -1367,14 +1337,13 @@ interface class SoLoud {
   ///
   void setGlobalVolume(double volume) {
     if (!isInitialized) {
-      _log.severe(() => 'setGlobalVolume(): ${PlayerErrors.engineNotInited}');
-      throw const SoLoudEngineNotInitedException();
+      throw const SoLoudNotInitializedException();
     }
     final ret = SoLoudController().soLoudFFI.setGlobalVolume(volume);
     final error = PlayerErrors.values[ret];
     if (error != PlayerErrors.noError) {
       _log.severe(() => 'setGlobalVolume(): $error');
-      throw error.toException();
+      throw SoLoudCppException.fromPlayerError(error);
     }
   }
 
@@ -1384,8 +1353,7 @@ interface class SoLoud {
   ///
   double getVolume(SoundHandle handle) {
     if (!isInitialized) {
-      _log.severe(() => 'getVolume(): ${PlayerErrors.engineNotInited}');
-      throw const SoLoudEngineNotInitedException();
+      throw const SoLoudNotInitializedException();
     }
     return SoLoudController().soLoudFFI.getVolume(handle);
   }
@@ -1396,14 +1364,13 @@ interface class SoLoud {
   ///
   void setVolume(SoundHandle handle, double volume) {
     if (!isInitialized) {
-      _log.severe(() => 'setVolume(): ${PlayerErrors.engineNotInited}');
-      throw const SoLoudEngineNotInitedException();
+      throw const SoLoudNotInitializedException();
     }
     final ret = SoLoudController().soLoudFFI.setVolume(handle, volume);
     final error = PlayerErrors.values[ret];
     if (error != PlayerErrors.noError) {
       _log.severe(() => 'setVolume(): $error');
-      throw error.toException();
+      throw SoLoudCppException.fromPlayerError(error);
     }
   }
 
@@ -1414,9 +1381,7 @@ interface class SoLoud {
   ///
   bool getIsValidVoiceHandle(SoundHandle handle) {
     if (!isInitialized) {
-      _log.severe(
-          () => 'getIsValidVoiceHandle(): ${PlayerErrors.engineNotInited}');
-      throw const SoLoudEngineNotInitedException();
+      throw const SoLoudNotInitializedException();
     }
     return SoLoudController().soLoudFFI.getIsValidVoiceHandle(handle);
   }
@@ -1433,16 +1398,15 @@ interface class SoLoud {
   @experimental
   void getAudioTexture2D(ffi.Pointer<ffi.Pointer<ffi.Float>> audioData) {
     if (!isInitialized || audioData == ffi.nullptr) {
-      _log.severe(() => 'getAudioTexture2D(): ${PlayerErrors.engineNotInited}');
-      throw const SoLoudEngineNotInitedException();
+      throw const SoLoudNotInitializedException();
     }
     if (!_isVisualizationEnabled) {
       throw const SoLoudVisualizationNotEnabledException();
     }
-    final ret = SoLoudController().soLoudFFI.getAudioTexture2D(audioData);
-    _logPlayerError(ret, from: 'getAudioTexture2D() result');
-    if (ret != PlayerErrors.noError) {
-      throw ret.toException();
+    final error = SoLoudController().soLoudFFI.getAudioTexture2D(audioData);
+    _logPlayerError(error, from: 'getAudioTexture2D() result');
+    if (error != PlayerErrors.noError) {
+      throw SoLoudCppException.fromPlayerError(error);
     }
     if (audioData.value == ffi.nullptr) {
       throw const SoLoudNullPointerException();
@@ -1464,8 +1428,7 @@ interface class SoLoud {
   @experimental
   void setFftSmoothing(double smooth) {
     if (!isInitialized) {
-      _log.severe(() => 'setFftSmoothing(): ${PlayerErrors.engineNotInited}');
-      throw const SoLoudEngineNotInitedException();
+      throw const SoLoudNotInitializedException();
     }
     SoLoudController().soLoudFFI.setFftSmoothing(smooth);
   }
@@ -1478,14 +1441,13 @@ interface class SoLoud {
   ///
   void fadeGlobalVolume(double to, double time) {
     if (!isInitialized) {
-      _log.severe(() => 'fadeGlobalVolume(): ${PlayerErrors.engineNotInited}');
-      throw const SoLoudEngineNotInitedException();
+      throw const SoLoudNotInitializedException();
     }
     final ret = SoLoudController().soLoudFFI.fadeGlobalVolume(to, time);
     final error = PlayerErrors.values[ret];
     if (error != PlayerErrors.noError) {
       _log.severe(() => 'fadeGlobalVolume(): $error');
-      throw error.toException();
+      throw SoLoudCppException.fromPlayerError(error);
     }
   }
 
@@ -1493,14 +1455,13 @@ interface class SoLoud {
   ///
   void fadeVolume(SoundHandle handle, double to, double time) {
     if (!isInitialized) {
-      _log.severe(() => 'fadeVolume(): ${PlayerErrors.engineNotInited}');
-      throw const SoLoudEngineNotInitedException();
+      throw const SoLoudNotInitializedException();
     }
     final ret = SoLoudController().soLoudFFI.fadeVolume(handle, to, time);
     final error = PlayerErrors.values[ret];
     if (error != PlayerErrors.noError) {
       _log.severe(() => 'fadeVolume(): $error');
-      throw error.toException();
+      throw SoLoudCppException.fromPlayerError(error);
     }
   }
 
@@ -1508,14 +1469,13 @@ interface class SoLoud {
   ///
   void fadePan(SoundHandle handle, double to, double time) {
     if (!isInitialized) {
-      _log.severe(() => 'fadePan(): ${PlayerErrors.engineNotInited}');
-      throw const SoLoudEngineNotInitedException();
+      throw const SoLoudNotInitializedException();
     }
     final ret = SoLoudController().soLoudFFI.fadePan(handle, to, time);
     final error = PlayerErrors.values[ret];
     if (error != PlayerErrors.noError) {
       _log.severe(() => 'fadePan(): $error');
-      throw error.toException();
+      throw SoLoudCppException.fromPlayerError(error);
     }
   }
 
@@ -1523,16 +1483,14 @@ interface class SoLoud {
   ///
   void fadeRelativePlaySpeed(SoundHandle handle, double to, double time) {
     if (!isInitialized) {
-      _log.severe(
-          () => 'fadeRelativePlaySpeed(): ${PlayerErrors.engineNotInited}');
-      throw const SoLoudEngineNotInitedException();
+      throw const SoLoudNotInitializedException();
     }
     final ret =
         SoLoudController().soLoudFFI.fadeRelativePlaySpeed(handle, to, time);
     final error = PlayerErrors.values[ret];
     if (error != PlayerErrors.noError) {
       _log.severe(() => 'fadeRelativePlaySpeed(): $error');
-      throw error.toException();
+      throw SoLoudCppException.fromPlayerError(error);
     }
   }
 
@@ -1540,14 +1498,13 @@ interface class SoLoud {
   ///
   void schedulePause(SoundHandle handle, double time) {
     if (!isInitialized) {
-      _log.severe(() => 'schedulePause(): ${PlayerErrors.engineNotInited}');
-      throw const SoLoudEngineNotInitedException();
+      throw const SoLoudNotInitializedException();
     }
     final ret = SoLoudController().soLoudFFI.schedulePause(handle, time);
     final error = PlayerErrors.values[ret];
     if (error != PlayerErrors.noError) {
       _log.severe(() => 'schedulePause(): $error');
-      throw error.toException();
+      throw SoLoudCppException.fromPlayerError(error);
     }
   }
 
@@ -1555,14 +1512,13 @@ interface class SoLoud {
   ///
   void scheduleStop(SoundHandle handle, double time) {
     if (!isInitialized) {
-      _log.severe(() => 'scheduleStop(): ${PlayerErrors.engineNotInited}');
-      throw const SoLoudEngineNotInitedException();
+      throw const SoLoudNotInitializedException();
     }
     final ret = SoLoudController().soLoudFFI.scheduleStop(handle, time);
     final error = PlayerErrors.values[ret];
     if (error != PlayerErrors.noError) {
       _log.severe(() => 'scheduleStop(): $error');
-      throw error.toException();
+      throw SoLoudCppException.fromPlayerError(error);
     }
   }
 
@@ -1571,15 +1527,14 @@ interface class SoLoud {
   void oscillateVolume(
       SoundHandle handle, double from, double to, double time) {
     if (!isInitialized) {
-      _log.severe(() => 'oscillateVolume(): ${PlayerErrors.engineNotInited}');
-      throw const SoLoudEngineNotInitedException();
+      throw const SoLoudNotInitializedException();
     }
     final ret =
         SoLoudController().soLoudFFI.oscillateVolume(handle, from, to, time);
     final error = PlayerErrors.values[ret];
     if (error != PlayerErrors.noError) {
       _log.severe(() => 'oscillateVolume(): $error');
-      throw error.toException();
+      throw SoLoudCppException.fromPlayerError(error);
     }
   }
 
@@ -1587,15 +1542,14 @@ interface class SoLoud {
   ///
   void oscillatePan(SoundHandle handle, double from, double to, double time) {
     if (!isInitialized) {
-      _log.severe(() => 'oscillatePan(): ${PlayerErrors.engineNotInited}');
-      throw const SoLoudEngineNotInitedException();
+      throw const SoLoudNotInitializedException();
     }
     final ret =
         SoLoudController().soLoudFFI.oscillatePan(handle, from, to, time);
     final error = PlayerErrors.values[ret];
     if (error != PlayerErrors.noError) {
       _log.severe(() => 'oscillatePan(): $error');
-      throw error.toException();
+      throw SoLoudCppException.fromPlayerError(error);
     }
   }
 
@@ -1604,9 +1558,7 @@ interface class SoLoud {
   void oscillateRelativePlaySpeed(
       SoundHandle handle, double from, double to, double time) {
     if (!isInitialized) {
-      _log.severe('oscillateRelativePlaySpeed(): '
-          '${PlayerErrors.engineNotInited}');
-      throw const SoLoudEngineNotInitedException();
+      throw const SoLoudNotInitializedException();
     }
     final ret = SoLoudController()
         .soLoudFFI
@@ -1614,7 +1566,7 @@ interface class SoLoud {
     final error = PlayerErrors.values[ret];
     if (error != PlayerErrors.noError) {
       _log.severe(() => 'oscillateRelativePlaySpeed(): $error');
-      throw error.toException();
+      throw SoLoudCppException.fromPlayerError(error);
     }
   }
 
@@ -1622,16 +1574,14 @@ interface class SoLoud {
   ///
   void oscillateGlobalVolume(double from, double to, double time) {
     if (!isInitialized) {
-      _log.severe(
-          () => 'oscillateGlobalVolume(): ${PlayerErrors.engineNotInited}');
-      throw const SoLoudEngineNotInitedException();
+      throw const SoLoudNotInitializedException();
     }
     final ret =
         SoLoudController().soLoudFFI.oscillateGlobalVolume(from, to, time);
     final error = PlayerErrors.values[ret];
     if (error != PlayerErrors.noError) {
       _log.severe(() => 'oscillateGlobalVolume(): $error');
-      throw error.toException();
+      throw SoLoudCppException.fromPlayerError(error);
     }
   }
 
@@ -1737,7 +1687,7 @@ interface class SoLoud {
     final ret = SoLoudController().soLoudFFI.isFilterActive(filterType.index);
     if (ret.error != PlayerErrors.noError) {
       _log.severe(() => 'isFilterActive(): ${ret.error}');
-      throw ret.error.toException();
+      throw SoLoudCppException.fromPlayerError(ret.error);
     }
     return ret.index;
   }
@@ -1752,7 +1702,7 @@ interface class SoLoud {
         SoLoudController().soLoudFFI.getFilterParamNames(filterType.index);
     if (ret.error != PlayerErrors.noError) {
       _log.severe(() => 'getFilterParamNames(): ${ret.error}');
-      throw ret.error.toException();
+      throw SoLoudCppException.fromPlayerError(ret.error);
     }
     return ret.names;
   }
@@ -1767,7 +1717,7 @@ interface class SoLoud {
     final error = PlayerErrors.values[ret];
     if (error != PlayerErrors.noError) {
       _log.severe(() => 'addGlobalFilter(): $error');
-      throw error.toException();
+      throw SoLoudCppException.fromPlayerError(error);
     }
   }
 
@@ -1782,7 +1732,7 @@ interface class SoLoud {
     final error = PlayerErrors.values[ret];
     if (error != PlayerErrors.noError) {
       _log.severe(() => 'removeGlobalFilter(): $error');
-      throw error.toException();
+      throw SoLoudCppException.fromPlayerError(error);
     }
   }
 
@@ -1799,7 +1749,7 @@ interface class SoLoud {
     final error = PlayerErrors.values[ret];
     if (error != PlayerErrors.noError) {
       _log.severe(() => 'setFxParams(): $error');
-      throw error.toException();
+      throw SoLoudCppException.fromPlayerError(error);
     }
   }
 
@@ -1852,8 +1802,7 @@ interface class SoLoud {
     double loopingStartAt = 0,
   }) async {
     if (!isInitialized) {
-      _log.severe(() => 'play3d(): ${PlayerErrors.engineNotInited}');
-      throw const SoLoudEngineNotInitedException();
+      throw const SoLoudNotInitializedException();
     }
     _mainToIsolateStream?.send(
       {
@@ -1891,14 +1840,14 @@ interface class SoLoud {
     )) as ({PlayerErrors error, SoundHandle newHandle});
     if (ret.error != PlayerErrors.noError) {
       _log.severe(() => 'play3d(): ${ret.error}');
-      throw ret.error.toException();
+      throw SoLoudCppException.fromPlayerError(ret.error);
     }
 
     final filtered =
         activeSounds.where((s) => s.soundHash == sound.soundHash).toSet();
     if (filtered.isEmpty) {
       _log.severe(() => 'play3d(): soundHash ${sound.soundHash} not found');
-      throw SoLoudSoundHashNotFoundException(sound.soundHash);
+      throw SoLoudSoundHashNotFoundDartException(sound.soundHash);
     }
 
     assert(filtered.length == 1, 'Duplicate sounds found');

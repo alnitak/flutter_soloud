@@ -1,4 +1,3 @@
-import 'package:flutter_soloud/src/exceptions.dart';
 import 'package:meta/meta.dart';
 
 /// CaptureDevice exposed to Dart
@@ -51,62 +50,58 @@ enum CaptureErrors {
 
 /// Possible player errors.
 /// New values must be enumerated at the bottom
+///
+/// WARNING: Keep these in sync with `src/enums.h`.
 @internal
 enum PlayerErrors {
   /// No error
-  noError,
+  noError(0),
 
   /// Some parameter is invalid
-  invalidParameter,
+  invalidParameter(1),
 
   /// File not found
-  fileNotFound,
+  fileNotFound(2),
 
   /// File found, but could not be loaded
-  fileLoadFailed,
+  fileLoadFailed(3),
 
   /// The sound file has already been loaded
-  fileAlreadyLoaded,
+  fileAlreadyLoaded(4),
 
   /// DLL not found, or wrong DLL
-  dllNotFound,
+  dllNotFound(5),
 
   /// Out of memory
-  outOfMemory,
+  outOfMemory(6),
 
   /// Feature not implemented
-  notImplemented,
+  notImplemented(7),
 
   /// Other error
-  unknownError,
+  unknownError(8),
 
   /// null pointer. Could happens when passing a non initialized
   /// pointer (with calloc()) to retrieve FFT or wave data
-  nullPointer,
+  nullPointer(9),
 
   /// The sound with specified hash is not found
-  soundHashNotFound,
+  soundHashNotFound(10),
 
   /// Player not initialized
-  backendNotInited,
+  backendNotInited(11),
 
   /// Filter not found
-  filterNotFound,
+  filterNotFound(12),
 
   /// asking for wave and FFT is not enabled
-  visualizationNotEnabled,
+  visualizationNotEnabled(13);
 
-  /// Audio isolate not yet started
-  isolateNotStarted,
+  const PlayerErrors(this.value);
 
-  /// Engine not yet started
-  engineNotInited,
-
-  /// The engine took too long to initialize.
-  engineInitializationTimedOut,
-
-  /// Asset was found but for some reason couldn't be loaded.
-  assetLoadFailed;
+  /// The integer value of the error. This is the same number that is returned
+  /// from the C++ API.
+  final int value;
 
   /// Returns a human-friendly sentence describing the error.
   String get _asSentence {
@@ -137,71 +132,16 @@ enum PlayerErrors {
         return 'The sound with specified hash is not found';
       case PlayerErrors.backendNotInited:
         return 'Player not initialized';
-      case PlayerErrors.isolateNotStarted:
-        return 'Audio isolate not yet started';
-      case PlayerErrors.engineNotInited:
-        return 'Engine not yet started. '
-            'Either asynchronously await `SoLoud.ready` '
-            'or synchronously check `SoLoud.isReady` '
-            'before calling the function.';
-      case PlayerErrors.engineInitializationTimedOut:
-        return 'Engine initialization timed out';
       case PlayerErrors.filterNotFound:
         return 'Filter not found';
       case PlayerErrors.visualizationNotEnabled:
         return 'Asking for audio data is not enabled! Please use '
             '`setVisualizationEnabled(true);` to enable!';
-      case PlayerErrors.assetLoadFailed:
-        return "Asset was found but for some reason couldn't be loaded. "
-            'This could be a problem with the temporary directory into which '
-            'the asset is being copied.';
     }
   }
 
   @override
   String toString() => 'PlayerErrors.$name ($_asSentence)';
-
-  /// Returns the error as an exception to be thrown.
-  Exception toException() {
-    switch (this) {
-      case PlayerErrors.noError:
-        throw StateError('Trying to throw an exception with no error');
-      case PlayerErrors.invalidParameter:
-        return const SoLoudInvalidParameterException();
-      case PlayerErrors.fileNotFound:
-        return const SoLoudFileNotFoundException();
-      case PlayerErrors.fileLoadFailed:
-        return const SoLoudFileLoadFailedException();
-      case PlayerErrors.fileAlreadyLoaded:
-        return const SoLoudFileAlreadyLoadedException();
-      case PlayerErrors.dllNotFound:
-        return const SoLoudDllNotFoundException();
-      case PlayerErrors.outOfMemory:
-        return const SoLoudOutOfMemoryException();
-      case PlayerErrors.notImplemented:
-        return const SoLoudNotImplementedException();
-      case PlayerErrors.unknownError:
-        return const SoLoudUnknownErrorException();
-      case PlayerErrors.nullPointer:
-        return const SoLoudNullPointerException();
-      case PlayerErrors.soundHashNotFound:
-        return const SoLoudSoundHashNotFoundException(null);
-      case PlayerErrors.backendNotInited:
-        return const SoLoudBackendNotInitedException();
-      case PlayerErrors.isolateNotStarted:
-        return const SoLoudIsolateNotStartedException();
-      case PlayerErrors.engineNotInited:
-        return const SoLoudEngineNotInitedException();
-      case PlayerErrors.engineInitializationTimedOut:
-        return const SoLoudEngineInitializationTimedOutException();
-      case PlayerErrors.filterNotFound:
-        return const SoLoudFilterNotFoundException();
-      case PlayerErrors.visualizationNotEnabled:
-        return const SoLoudVisualizationNotEnabledException();
-      case PlayerErrors.assetLoadFailed:
-        return const SoLoudAssetLoadFailedException();
-    }
-  }
 }
 
 /// Wave forms
