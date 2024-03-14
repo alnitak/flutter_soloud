@@ -1,5 +1,10 @@
 #### 2.0.0-pre.2
 
+NOTE: This version is much more breaking than the ones before it.
+It might be worth it to first upgrade your code to `2.0.0-pre.1`,
+use the quick fixes to rename the methods, and only then upgrade 
+to `2.0.0-pre.2` and beyond.
+
 - `SoLoud` methods now throw instead of returning a `PlayerErrors` object.
   This is a massive breaking change, but it makes the package API
   more idiomatic and easier to use.
