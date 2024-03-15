@@ -35,6 +35,8 @@ class SoLoudFileLoadFailedException extends SoLoudCppException {
       '(on the C++ side).';
 }
 
+// Note: PlayerErrors.fileAlreadyLoaded is not thrown as an exception.
+
 /// An exception that is thrown when the SoLoud (C++) dynamic library
 /// (.dll, .so, .dylib) was not found.
 class SoLoudDllNotFoundException extends SoLoudCppException {
