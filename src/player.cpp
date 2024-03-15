@@ -58,32 +58,38 @@ int Player::getSoundsCount()
     return (int)sounds.size();
 }
 
-const std::string Player::getErrorString(PlayerErrors aErrorCode) const
+const std::string Player::getErrorString(PlayerErrors errorCode) const
 {
-    switch (aErrorCode)
+    switch (errorCode)
     {
     case noError:
         return "No error";
     case invalidParameter:
-        return "Some parameter is invalid";
+        return "error: some parameter is invalid!";
     case fileNotFound:
-        return "File not found";
+        return "error: file not found!";
     case fileLoadFailed:
-        return "File found, but could not be loaded";
+        return "error: file found, but could not be loaded!";
     case fileAlreadyLoaded:
-        return "File already loaded";
+        return "error: file already loaded!";
     case dllNotFound:
-        return "DLL not found, or wrong DLL";
+        return "error: DLL not found, or wrong DLL!";
     case outOfMemory:
-        return "Out of memory";
+        return "error: out of memory!";
     case notImplemented:
-        return "Feature not implemented";
+        return "error: feature not implemented!";
     case backendNotInited:
-        return "Player not yet initialized";
+        return "error: player not yet initialized!";
     case filterNotFound:
-        return "Filter not found";
+        return "error: filter not found!";
     case unknownError:
-        return "Unknown error";
+        return "error: unknown error!";
+    case nullPointer:
+        return "error: nullPointer!";
+    case soundHashNotFound:
+        return "error: sound hash not found!";
+    case visualizationNotEnabled:
+        return "error: visualization not enabled!";
     }
     return "Other error";
 }
@@ -147,7 +153,7 @@ PlayerErrors Player::loadWaveform(
 
     std::random_device rd;
     std::mt19937 g(rd());
-    std::uniform_int_distribution<unsigned int> dist(0, INT64_MAX);
+    std::uniform_int_distribution<unsigned int> dist(0, INT32_MAX);
 
     hash = dist(g);
     
@@ -285,8 +291,7 @@ unsigned int Player::play(
 
 void Player::stop(unsigned int handle)
 {
-    int handleId;
-    ActiveSound *sound = findByHandle(handle, &handleId);
+    ActiveSound *sound = findByHandle(handle);
     if (sound == nullptr)
         return;
     soloud.stop(handle);
@@ -399,8 +404,7 @@ PlayerErrors Player::seek(SoLoud::handle handle, float time)
     if (!mInited)
         return backendNotInited;
 
-    int handleId;
-    ActiveSound *sound = findByHandle(handle, &handleId);
+    ActiveSound *sound = findByHandle(handle);
     if (sound == nullptr || sound->soundType == TYPE_SYNTH)
         return invalidParameter;
 
@@ -439,11 +443,10 @@ bool Player::getIsValidVoiceHandle(SoLoud::handle handle)
     return soloud.isValidVoiceHandle(handle);
 }
 
-ActiveSound *Player::findByHandle(SoLoud::handle handle, int *handleId)
+ActiveSound *Player::findByHandle(SoLoud::handle handle)
 {
-    *handleId = -1;
     int i = 0;
-    // TODO: do a better std pls! \o/ :)
+    // TODO(marco): do a better std pls! \o/
     while (i < (int)sounds.size())
     {
         int index = 0;
@@ -451,7 +454,6 @@ ActiveSound *Player::findByHandle(SoLoud::handle handle, int *handleId)
         {
             if (sounds[i].get()->handle[index] == handle)
             {
-                *handleId = index;
                 return sounds[i].get();
             }
             ++index;
