@@ -75,6 +75,10 @@ public:
     /// needed (more CPU less memory allocated). (https://solhsa.com/soloud/wavstream.html)
     /// @param hash return the hash of the sound.
     /// @return Returns [PlayerErrors.SO_NO_ERROR] if success
+    ///
+    /// NOTE: non standard OGGs file with a custom header introduced by `xiph` cannot be playd
+    /// and the `stb_vorbis::start_decoder` returns VORBIS_invalid_first_page error.
+    /// ref: https://github.com/nothings/stb/issues/676
     PlayerErrors loadFile(
         const std::string &completeFileName, 
         const bool loadIntoMem, 

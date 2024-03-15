@@ -301,8 +301,13 @@ class _PageVisualizerState extends State<PageVisualizer> {
                             onChanged: (value) {
                               if (currentSound == null) return;
                               stopTimer();
+                              final position = Duration(
+                                milliseconds:
+                                    (value * Duration.millisecondsPerSecond)
+                                        .round(),
+                              );
                               SoLoud.instance
-                                  .seek(currentSound!.handles.last, value);
+                                  .seek(currentSound!.handles.last, position);
                               soundPosition.value = value;
                               startTimer();
                             },
@@ -480,14 +485,14 @@ class _PageVisualizerState extends State<PageVisualizer> {
     await SoLoud.instance.play(currentSound!);
 
     /// get its length and notify it
-    soundLength.value = SoLoud.instance.getLength(currentSound!);
+    soundLength.value =
+        SoLoud.instance.getLength(currentSound!).inMilliseconds /
+            Duration.millisecondsPerSecond;
 
     /// Stop the timer and dispose the sound when the sound ends
-    currentSound!.soundEvents.stream.listen(
+    currentSound!.soundEvents.listen(
       (event) {
         stopTimer();
-        // TODO(marco): put this elsewhere?
-        event.sound.soundEvents.close();
 
         /// It's needed to call dispose when it end else it will
         /// not be cleared
@@ -527,8 +532,10 @@ class _PageVisualizerState extends State<PageVisualizer> {
     timer?.cancel();
     timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (currentSound != null) {
-        soundPosition.value =
-            SoLoud.instance.getPosition(currentSound!.handles.last);
+        soundPosition.value = SoLoud.instance
+                .getPosition(currentSound!.handles.last)
+                .inMilliseconds /
+            Duration.millisecondsPerSecond;
       }
     });
   }

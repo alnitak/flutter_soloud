@@ -35,15 +35,7 @@ class SoLoudFileLoadFailedException extends SoLoudCppException {
       '(on the C++ side).';
 }
 
-/// An exception that is thrown when the sound file has already been loaded.
-class SoLoudFileAlreadyLoadedException extends SoLoudCppException {
-  /// Creates a new [SoLoudFileAlreadyLoadedException].
-  const SoLoudFileAlreadyLoadedException([super.message]);
-
-  @override
-  String get description => 'The sound file has already been loaded '
-      '(on the C++ side).';
-}
+// Note: PlayerErrors.fileAlreadyLoaded is not thrown as an exception.
 
 /// An exception that is thrown when the SoLoud (C++) dynamic library
 /// (.dll, .so, .dylib) was not found.

@@ -324,13 +324,13 @@ class _PageWaveformState extends State<PageWaveform> {
             const SizedBox(height: 8),
             KeyboardWidget(
               notes: notes,
-              fadeIn: fadeIn,
-              fadeOut: fadeOut,
-              fadeSpeedIn: fadeSpeedIn,
-              fadeSpeedOut: fadeSpeedOut,
-              oscillateVolume: oscillateVol,
-              oscillatePan: oscillatePan,
-              oscillateSpeed: oscillateSpeed,
+              fadeIn: _duration(fadeIn),
+              fadeOut: _duration(fadeOut),
+              fadeSpeedIn: _duration(fadeSpeedIn),
+              fadeSpeedOut: _duration(fadeSpeedOut),
+              oscillateVolume: _duration(oscillateVol),
+              oscillatePan: _duration(oscillatePan),
+              oscillateSpeed: _duration(oscillateSpeed),
             ),
             const SizedBox(height: 8),
             Bars(key: UniqueKey()),
@@ -340,4 +340,8 @@ class _PageWaveformState extends State<PageWaveform> {
       ),
     );
   }
+
+  static Duration _duration(double seconds) => Duration(
+        microseconds: (seconds * Duration.microsecondsPerSecond).round(),
+      );
 }

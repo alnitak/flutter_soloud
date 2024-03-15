@@ -135,16 +135,20 @@ Future<void> test2() async {
   {
     await SoLoud.instance.play(currentSound!);
     final length = SoLoud.instance.getLength(currentSound!);
-    assert((length * 100).ceilToDouble().toInt() == 384, 'getLength() failed!');
+    assert(
+      length.inMilliseconds == 3840,
+      'getLength() failed: ${length.inMilliseconds}!',
+    );
     await delay(1000);
     SoLoud.instance.pauseSwitch(currentSound!.handles.first);
     final paused = SoLoud.instance.getPause(currentSound!.handles.first);
     assert(paused, 'pauseSwitch() failed!');
 
     /// seek
-    SoLoud.instance.seek(currentSound!.handles.first, 2);
+    const wantedPosition = Duration(seconds: 2);
+    SoLoud.instance.seek(currentSound!.handles.first, wantedPosition);
     final position = SoLoud.instance.getPosition(currentSound!.handles.first);
-    assert(position == 2, 'getPosition() failed!');
+    assert(position == wantedPosition, 'getPosition() failed!');
   }
 
   await dispose();
@@ -223,11 +227,11 @@ Future<void> dispose() async {
 Future<void> loadAsset() async {
   currentSound = await SoLoud.instance.loadAsset('assets/audio/explosion.mp3');
 
-  currentSound!.soundEvents.stream.listen((event) {
-    if (event.event == SoundEvent.handleIsNoMoreValid) {
+  currentSound!.soundEvents.listen((event) {
+    if (event.event == SoundEventType.handleIsNoMoreValid) {
       output = 'SoundEvent.handleIsNoMoreValid';
     }
-    if (event.event == SoundEvent.soundDisposed) {
+    if (event.event == SoundEventType.soundDisposed) {
       output = 'SoundEvent.soundDisposed';
     }
   });

@@ -17,13 +17,13 @@ class KeyboardWidget extends StatefulWidget {
     super.key,
   });
 
-  final double fadeIn;
-  final double fadeOut;
-  final double fadeSpeedIn;
-  final double fadeSpeedOut;
-  final double oscillateVolume;
-  final double oscillatePan;
-  final double oscillateSpeed;
+  final Duration fadeIn;
+  final Duration fadeOut;
+  final Duration fadeSpeedIn;
+  final Duration fadeSpeedOut;
+  final Duration oscillateVolume;
+  final Duration oscillatePan;
+  final Duration oscillateSpeed;
   final List<SoundProps> notes;
 
   @override
@@ -108,13 +108,13 @@ class _KeyboardWidgetState extends State<KeyboardWidget> {
       1,
       widget.fadeSpeedIn,
     );
-    if (widget.oscillateVolume > 0) {
+    if (widget.oscillateVolume > Duration.zero) {
       SoLoud.instance.oscillateVolume(handle, 0.3, 1, widget.oscillateVolume);
     }
-    if (widget.oscillatePan > 0) {
+    if (widget.oscillatePan > Duration.zero) {
       SoLoud.instance.oscillatePan(handle, 0.3, 1, widget.oscillatePan);
     }
-    if (widget.oscillateSpeed > 0) {
+    if (widget.oscillateSpeed > Duration.zero) {
       SoLoud.instance
           .oscillateRelativePlaySpeed(handle, 0.3, 1, widget.oscillateSpeed);
     }

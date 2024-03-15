@@ -20,8 +20,12 @@ import 'package:http/http.dart' as http;
 import 'package:logging/logging.dart';
 import 'package:meta/meta.dart';
 
+/// Deprecated alias to [SoundEventType].
+@Deprecated('Use SoundEventType instead')
+typedef SoundEvent = SoundEventType;
+
 /// sound event types
-enum SoundEvent {
+enum SoundEventType {
   /// handle reached the end of playback
   handleIsNoMoreValid,
 
@@ -31,7 +35,7 @@ enum SoundEvent {
 
 /// the type sent back to the user when a sound event occurs
 typedef StreamSoundEvent = ({
-  SoundEvent event,
+  SoundEventType event,
   SoundProps sound,
   SoundHandle handle,
 });
@@ -72,9 +76,12 @@ class SoundProps {
   // TODO(marco): make marker keys time able to trigger an event
   final List<double> keys = [];
 
-  /// the user can listen ie when a sound ends or key events (TODO)
-  final StreamController<StreamSoundEvent> soundEvents =
+  /// Backing controller for [soundEvents].
+  final StreamController<StreamSoundEvent> _soundEvents =
       StreamController.broadcast();
+
+  /// the user can listen ie when a sound ends or key events (TODO)
+  Stream<StreamSoundEvent> get soundEvents => _soundEvents.stream;
 
   @override
   String toString() {
@@ -294,7 +301,12 @@ interface class SoLoud {
 
   /// Used both in main and audio isolates
   /// should be synchronized with each other
-  final List<SoundProps> activeSounds = [];
+  ///
+  /// Backing of [activeSounds].
+  final List<SoundProps> _activeSounds = [];
+
+  /// The sounds that are currently _playing_.
+  Iterable<SoundProps> get activeSounds => _activeSounds;
 
   /// Wait for the isolate to return after the event has been completed.
   /// The event must be recognized by [event] and [args] sent to
@@ -332,7 +344,7 @@ interface class SoLoud {
 
   /// Initializes the audio engine.
   ///
-  /// Run this before anything else, and `await` its result in a try/catch. 
+  /// Run this before anything else, and `await` its result in a try/catch.
   /// Only when this method returns without throwing exceptions will the engine
   /// be ready.
   ///
@@ -386,7 +398,7 @@ interface class SoLoud {
       return _initializeCompleter!.future;
     }
 
-    activeSounds.clear();
+    _activeSounds.clear();
     final completer = Completer<void>();
     _initializeCompleter = completer;
 
@@ -447,27 +459,27 @@ interface class SoLoud {
                   'sound: ${data.sound}');
 
           /// find the sound which received the [SoundEvent] and...
-          final sound = activeSounds.firstWhere(
+          final sound = _activeSounds.firstWhere(
             (sound) => sound.soundHash == data.sound.soundHash,
             orElse: () {
               _log.info(() => 'Received an event for sound with handle: '
-                  "${data.handle} but such sound isn't among activeSounds.");
+                  "${data.handle} but such sound isn't among _activeSounds.");
               return SoundProps(SoundHash.invalid());
             },
           );
 
           /// send the disposed event to listeners and remove the sound
-          if (data.event == SoundEvent.soundDisposed) {
-            sound.soundEvents.add(data);
-            activeSounds.removeWhere(
+          if (data.event == SoundEventType.soundDisposed) {
+            sound._soundEvents.add(data);
+            _activeSounds.removeWhere(
                 (element) => element.soundHash == data.sound.soundHash);
           }
 
           /// send the handle event to the listeners and remove it
-          if (data.event == SoundEvent.handleIsNoMoreValid) {
+          if (data.event == SoundEventType.handleIsNoMoreValid) {
             /// ...put in its own stream the event, then remove the handle
             if (sound.soundHash.isValid) {
-              sound.soundEvents.add(data);
+              sound._soundEvents.add(data);
               sound.handlesInternal.removeWhere(
                 (handle) {
                   return handle == data.handle;
@@ -633,7 +645,7 @@ interface class SoLoud {
   /// The loop recursively call itself to check the state of
   /// all active sound handles. Therefore it can cause some lag for
   /// other event calls.
-  /// Not starting this will implies not receive [SoundEvent]s,
+  /// Not starting this will implies not receive [SoundEventType]s,
   /// it will therefore be up to the developer to check
   /// the sound handle validity
   ///
@@ -651,7 +663,7 @@ interface class SoLoud {
     return true;
   }
 
-  /// stop the [SoundEvent]s loop
+  /// stop the [SoundEventType]s loop
   ///
   Future<bool> _stopLoop() async {
     _log.finest('_stopLoop() called');
@@ -778,7 +790,21 @@ interface class SoLoud {
     if (ret.error == PlayerErrors.noError) {
       assert(
           ret.sound != null, 'loadFile() returned no sound despite no error');
-      activeSounds.add(ret.sound!);
+      _activeSounds.add(ret.sound!);
+      return ret.sound!;
+    } else if (ret.error == PlayerErrors.fileAlreadyLoaded) {
+      _log.warning(() => "Sound '$completeFileName' was already loaded. "
+          'Prefer loading only once, and reusing the loaded sound '
+          'when playing.');
+      // The `audio_isolate.dart` code has logic to find the already-loaded
+      // sound among active sounds. The sound should be here as well.
+      assert(
+          _activeSounds
+                  .where((sound) => sound.soundHash == ret.sound!.soundHash)
+                  .length ==
+              1,
+          'Sound is already loaded but missing from _activeSounds. '
+          'This is probably a bug in flutter_soloud, please file.');
       return ret.sound!;
     } else {
       throw SoLoudCppException.fromPlayerError(ret.error);
@@ -857,9 +883,9 @@ interface class SoLoud {
   /// [superWave] whater this is a superWave.
   /// [scale] if using [superWave] this is its scale.
   /// [detune] if using [superWave] this is its detune.
-  /// 
+  ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
-  /// 
+  ///
   /// Returns the new sound as [SoundProps].
   Future<SoundProps> loadWaveform(
     WaveForm waveform,
@@ -892,7 +918,7 @@ interface class SoLoud {
       ),
     )) as ({PlayerErrors error, SoundProps? sound});
     if (ret.error == PlayerErrors.noError) {
-      activeSounds.add(ret.sound!);
+      _activeSounds.add(ret.sound!);
       return ret.sound!;
     }
     _logPlayerError(ret.error, from: 'loadWaveform() result');
@@ -903,7 +929,7 @@ interface class SoLoud {
   ///
   /// [sound] the sound to change the wafeform type.
   /// [newWaveform] the new waveform type.
-  /// 
+  ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void setWaveform(SoundProps sound, WaveForm newWaveform) {
     if (!isInitialized) {
@@ -916,7 +942,7 @@ interface class SoLoud {
   ///
   /// [sound] the sound to change the scale to.
   /// [newScale] the new scale.
-  /// 
+  ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void setWaveformScale(SoundProps sound, double newScale) {
     if (!isInitialized) {
@@ -929,7 +955,7 @@ interface class SoLoud {
   ///
   /// [sound] the sound to change the detune to.
   /// [newDetune] the new detune.
-  /// 
+  ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void setWaveformDetune(SoundProps sound, double newDetune) {
     if (!isInitialized) {
@@ -942,7 +968,7 @@ interface class SoLoud {
   ///
   /// [sound] the sound to se the [newFrequency] to.
   /// [newFrequency] the new frequency.
-  /// 
+  ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void setWaveformFreq(SoundProps sound, double newFrequency) {
     if (!isInitialized) {
@@ -955,7 +981,7 @@ interface class SoLoud {
   ///
   /// [sound] the sound to se the [superwave] to.
   /// [superwave] whether this sound should be a super wave or not.
-  /// 
+  ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void setWaveformSuperWave(SoundProps sound, bool superwave) {
     if (!isInitialized) {
@@ -971,7 +997,7 @@ interface class SoLoud {
   ///
   /// [textToSpeech] the text to be spoken.
   /// Returns the new sound as [SoundProps].
-  /// 
+  ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   Future<SoundProps> speechText(String textToSpeech) async {
     if (!isInitialized) {
@@ -989,7 +1015,7 @@ interface class SoLoud {
     )) as ({PlayerErrors error, SoundProps sound});
     _logPlayerError(ret.error, from: 'speechText() result');
     if (ret.error == PlayerErrors.noError) {
-      activeSounds.add(ret.sound);
+      _activeSounds.add(ret.sound);
       return ret.sound;
     }
     throw SoLoudCppException.fromPlayerError(ret.error);
@@ -1010,7 +1036,7 @@ interface class SoLoud {
     double pan = 0,
     bool paused = false,
     bool looping = false,
-    double loopingStartAt = 0,
+    Duration loopingStartAt = Duration.zero,
   }) async {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1046,7 +1072,7 @@ interface class SoLoud {
 
     try {
       /// add the new handle to the sound
-      activeSounds
+      _activeSounds
           .firstWhere((s) => s.soundHash == sound.soundHash)
           .handlesInternal
           .add(ret.newHandle);
@@ -1106,7 +1132,7 @@ interface class SoLoud {
   ///
   /// [handle] the sound handle.
   /// [speed] the new speed.
-  /// 
+  ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void setRelativePlaySpeed(SoundHandle handle, double speed) {
     if (!isInitialized) {
@@ -1118,7 +1144,7 @@ interface class SoLoud {
   /// Get a sound's relative play speed.
   ///
   /// [handle] the sound handle.
-  /// 
+  ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   double getRelativePlaySpeed(SoundHandle handle) {
     if (!isInitialized) {
@@ -1146,7 +1172,7 @@ interface class SoLoud {
     await _waitForEvent(MessageEvents.stop, (handle: handle));
 
     /// find a sound with this handle and remove that handle from the list
-    for (final sound in activeSounds) {
+    for (final sound in _activeSounds) {
       sound.handlesInternal.removeWhere((element) => element == handle);
     }
   }
@@ -1170,8 +1196,10 @@ interface class SoLoud {
     await _waitForEvent(
         MessageEvents.disposeSound, (soundHash: sound.soundHash));
 
+    await sound._soundEvents.close();
+
     /// remove the sound with [soundHash]
-    activeSounds.removeWhere(
+    _activeSounds.removeWhere(
       (element) {
         return element.soundHash == sound.soundHash;
       },
@@ -1182,8 +1210,8 @@ interface class SoLoud {
   ///
   /// No need to call this method when shutting down the engine.
   /// (It is automatically called from within [shutdown].)
-  ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
   Future<void> disposeAllSound() async {
     if (!_isEngineInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1197,7 +1225,7 @@ interface class SoLoud {
     await _waitForEvent(MessageEvents.disposeAllSound, ());
 
     /// remove all sounds
-    activeSounds.clear();
+    _activeSounds.clear();
   }
 
   /// Query whether a sound is set to loop.
@@ -1246,7 +1274,7 @@ interface class SoLoud {
   /// [time] in seconds.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
-  void setLoopPoint(SoundHandle handle, double time) {
+  void setLoopPoint(SoundHandle handle, Duration time) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
@@ -1284,7 +1312,7 @@ interface class SoLoud {
   /// [sound] the sound hash to get the length.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
-  double getLength(SoundProps sound) {
+  Duration getLength(SoundProps sound) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
@@ -1309,7 +1337,7 @@ interface class SoLoud {
   /// If you need to seek MP3s without lags, please, use
   /// `mode`=`LoadMode.memory` instead or other supported audio formats!
   ///
-  void seek(SoundHandle handle, double time) {
+  void seek(SoundHandle handle, Duration time) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
@@ -1327,7 +1355,7 @@ interface class SoLoud {
   /// Return the position in seconds.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
-  double getPosition(SoundHandle handle) {
+  Duration getPosition(SoundHandle handle) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
@@ -1407,7 +1435,7 @@ interface class SoLoud {
   /// Return a floats matrix of 256x512.
   /// Every row are composed of 256 FFT values plus 256 of wave data.
   /// Every time is called, a new row is stored in the
-  /// first row and all the previous rows are shifted up. The last 
+  /// first row and all the previous rows are shifted up. The last
   /// one will be lost.
   ///
   /// [audioData] this is the list where data is stored. It can be read like
@@ -1418,10 +1446,10 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   /// Throws [SoLoudVisualizationNotEnabledException] if the visualization
-  /// flag is not enableb. Please, Use `setVisualizationEnabled(true)` 
+  /// flag is not enableb. Please, Use `setVisualizationEnabled(true)`
   /// when needed.
   /// Throws [SoLoudNullPointerException] something is going wrong with the
-  /// player engine. Please, open an issue on 
+  /// player engine. Please, open an issue on
   /// [GitHub](https://github.com/alnitak/flutter_soloud/issues) providing
   /// a simple working example.
   @experimental
@@ -1470,9 +1498,9 @@ interface class SoLoud {
   ///
   /// [to] the volume to fade to.
   /// [time] the time in seconds to change the volume.
-  /// 
+  ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
-  void fadeGlobalVolume(double to, double time) {
+  void fadeGlobalVolume(double to, Duration time) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
@@ -1489,9 +1517,9 @@ interface class SoLoud {
   /// [handle] the sound handle.
   /// [to] the volume to fade to.
   /// [time] the time in seconds to change the volume.
-  /// 
+  ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
-  void fadeVolume(SoundHandle handle, double to, double time) {
+  void fadeVolume(SoundHandle handle, double to, Duration time) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
@@ -1508,9 +1536,9 @@ interface class SoLoud {
   /// [handle] the sound handle.
   /// [to] the pan value to fade to.
   /// [time] the time in seconds to change the pan.
-  /// 
+  ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
-  void fadePan(SoundHandle handle, double to, double time) {
+  void fadePan(SoundHandle handle, double to, Duration time) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
@@ -1527,9 +1555,9 @@ interface class SoLoud {
   /// [handle] the sound handle.
   /// [to] the speed value to fade to.
   /// [time] the time in seconds to change the speed.
-  /// 
+  ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
-  void fadeRelativePlaySpeed(SoundHandle handle, double to, double time) {
+  void fadeRelativePlaySpeed(SoundHandle handle, double to, Duration time) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
@@ -1546,9 +1574,9 @@ interface class SoLoud {
   ///
   /// [handle] the sound handle.
   /// [time] the time in seconds to pause.
-  /// 
+  ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
-  void schedulePause(SoundHandle handle, double time) {
+  void schedulePause(SoundHandle handle, Duration time) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
@@ -1564,9 +1592,9 @@ interface class SoLoud {
   ///
   /// [handle] the sound handle.
   /// [time] the time in seconds to pause.
-  /// 
+  ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
-  void scheduleStop(SoundHandle handle, double time) {
+  void scheduleStop(SoundHandle handle, Duration time) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
@@ -1584,10 +1612,10 @@ interface class SoLoud {
   /// [from] the lowest value for the oscillation.
   /// [to] the highest value for the oscillation.
   /// [time] the time in seconds to oscillate.
-  /// 
+  ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void oscillateVolume(
-      SoundHandle handle, double from, double to, double time) {
+      SoundHandle handle, double from, double to, Duration time) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
@@ -1606,9 +1634,9 @@ interface class SoLoud {
   /// [from] the lowest value for the oscillation.
   /// [to] the highest value for the oscillation.
   /// [time] the time in seconds to oscillate.
-  /// 
+  ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
-  void oscillatePan(SoundHandle handle, double from, double to, double time) {
+  void oscillatePan(SoundHandle handle, double from, double to, Duration time) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
@@ -1627,10 +1655,10 @@ interface class SoLoud {
   /// [from] the lowest value for the oscillation.
   /// [to] the highest value for the oscillation.
   /// [time] the time in seconds to oscillate.
-  /// 
+  ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void oscillateRelativePlaySpeed(
-      SoundHandle handle, double from, double to, double time) {
+      SoundHandle handle, double from, double to, Duration time) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
@@ -1649,9 +1677,9 @@ interface class SoLoud {
   /// [from] the lowest value for the oscillation.
   /// [to] the highest value for the oscillation.
   /// [time] the time in seconds to oscillate.
-  /// 
+  ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
-  void oscillateGlobalVolume(double from, double to, double time) {
+  void oscillateGlobalVolume(double from, double to, Duration time) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
@@ -1787,8 +1815,8 @@ interface class SoLoud {
   }
 
   /// Add a filter to all sounds.
-  ///
   /// [filterType] filter to add.
+  ///
   void addGlobalFilter(FilterType filterType) {
     final ret = SoLoudController().soLoudFFI.addGlobalFilter(filterType.index);
     final error = PlayerErrors.values[ret];
@@ -1811,17 +1839,22 @@ interface class SoLoud {
     }
   }
 
+  /// Deprecated alias of [setFilterParameter].
+  @Deprecated("Use 'setFilterParams' instead")
+  void setFxParams(FilterType filterType, int attributeId, double value) =>
+      setFilterParameter(filterType, attributeId, value);
+
   /// Set the effect parameter.
   ///
   /// [filterType] the filter to change the parameter to.
   /// [attributeId] the attribute ID to change.
   /// [value] the new value.
   ///
-  /// TODO(marco, filip): should we rename to `setFilterParams`?
-  void setFxParams(FilterType filterType, int attributeId, double value) {
+  void setFilterParameter(
+      FilterType filterType, int attributeId, double value) {
     final ret = SoLoudController()
         .soLoudFFI
-        .setFxParams(filterType.index, attributeId, value);
+        .setFilterParams(filterType.index, attributeId, value);
     final error = PlayerErrors.values[ret];
     if (error != PlayerErrors.noError) {
       _log.severe(() => 'setFxParams(): $error');
@@ -1829,17 +1862,21 @@ interface class SoLoud {
     }
   }
 
+  /// Deprecated alias of [getFilterParameter].
+  @Deprecated("Use 'getFilterParams' instead")
+  double getFxParams(FilterType filterType, int attributeId) =>
+      getFilterParameter(filterType, attributeId);
+
   /// Get the effect current parameter.
   ///
   /// [filterType] the filter to query the parameter.
   /// [attributeId] the ID of the attribute to request the value from.
   /// Returns the value of param
   ///
-  /// TODO(marco, filip): should we rename to `getFilterParams`?
-  double getFxParams(FilterType filterType, int attributeId) {
+  double getFilterParameter(FilterType filterType, int attributeId) {
     return SoLoudController()
         .soLoudFFI
-        .getFxParams(filterType.index, attributeId);
+        .getFilterParams(filterType.index, attributeId);
   }
 
   // ////////////////////////////////////////////////
@@ -1862,7 +1899,7 @@ interface class SoLoud {
   /// The listener position is (0, 0, 0) by default.
   ///
   /// [posX], [posY], [posZ] are the audio source position coordinates.
-  /// [velX], [velY], [velZ] are the audio source velocity. 
+  /// [velX], [velY], [velZ] are the audio source velocity.
   /// Defaults to (0, 0, 0).
   /// [volume] the playing volume. Default to 1.
   /// Returns the [SoundHandle] of this new sound.
@@ -1879,7 +1916,7 @@ interface class SoLoud {
     double volume = 1,
     bool paused = false,
     bool looping = false,
-    double loopingStartAt = 0,
+    Duration loopingStartAt = Duration.zero,
   }) async {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1924,7 +1961,7 @@ interface class SoLoud {
     }
 
     final filtered =
-        activeSounds.where((s) => s.soundHash == sound.soundHash).toSet();
+        _activeSounds.where((s) => s.soundHash == sound.soundHash).toSet();
     if (filtered.isEmpty) {
       _log.severe(() => 'play3d(): soundHash ${sound.soundHash} not found');
       throw SoLoudSoundHashNotFoundDartException(sound.soundHash);

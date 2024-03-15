@@ -59,8 +59,8 @@ class MyHomePage extends StatefulWidget {
 class _MyHomePageState extends State<MyHomePage> {
   List<SoundProps> sounds = [];
   bool isStarted = false;
-  double minLength = double.maxFinite;
-  ValueNotifier<double> seekPos = ValueNotifier(0);
+  Duration minLength = const Duration(days: 99);
+  ValueNotifier<Duration> seekPos = ValueNotifier(Duration.zero);
   late Timer timer;
 
   @override
@@ -83,7 +83,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
     await SoLoud.instance.disposeAllSound();
     sounds.clear();
-    seekPos.value = 0;
+    seekPos.value = Duration.zero;
 
     /// Add here the complete audio file path.
     /// MP3s will have lags problem when seeking
@@ -102,7 +102,7 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<void> addSound(String file) async {
-    var l = 0.0;
+    var l = Duration.zero;
     final s = await SoLoud.instance.loadFile(file, mode: LoadMode.disk);
     sounds.add(s);
     l = SoLoud.instance.getLength(s);
@@ -141,13 +141,18 @@ class _MyHomePageState extends State<MyHomePage> {
               valueListenable: seekPos,
               builder: (_, v, __) {
                 return Slider(
-                  max: minLength,
-                  value: v,
+                  max:
+                      minLength.inMilliseconds / Duration.millisecondsPerSecond,
+                  value: v.inMilliseconds / Duration.millisecondsPerSecond,
                   onChanged: (value) {
-                    seekPos.value = value;
+                    final time = Duration(
+                      milliseconds:
+                          (value * Duration.millisecondsPerSecond).round(),
+                    );
+                    seekPos.value = time;
                     for (final s in sounds) {
                       if (s.handles.isEmpty) continue;
-                      SoLoud.instance.seek(s.handles.first, value);
+                      SoLoud.instance.seek(s.handles.first, time);
                     }
                   },
                 );
@@ -173,8 +178,8 @@ class SoundRow extends StatefulWidget {
 
 class _SoundRowState extends State<SoundRow> {
   late final Timer timer;
-  double pos = 0;
-  double max = 999999;
+  Duration pos = Duration.zero;
+  Duration max = const Duration(days: 99);
 
   @override
   void initState() {
@@ -198,8 +203,12 @@ class _SoundRowState extends State<SoundRow> {
     return Row(
       children: [
         Text(widget.soundProps.soundHash.toString()),
-        Slider.adaptive(max: max, value: pos, onChanged: null),
-        Text(pos.toStringAsFixed(2)),
+        Slider.adaptive(
+          max: max.inMilliseconds * Duration.millisecondsPerSecond.toDouble(),
+          value: pos.inMilliseconds * Duration.millisecondsPerSecond.toDouble(),
+          onChanged: null,
+        ),
+        Text(pos.toString()),
       ],
     );
   }
