@@ -39,8 +39,12 @@ to `2.0.0-pre.2` and beyond.
   `SoLoud.disposeSound()` is called.
 - `SoLoud.activeSounds` is now an `Iterable` instead of a `List`
   (therefore, it cannot be modified from outside the package).
-- Renamed `SoLoud.getFxParams` to `SoLoud.getFilterParams`. Quick fix available.
-- Renamed `SoLoud.setFxParams` to `SoLoud.setFilterParams`. Quick fix available.
+- Renamed `SoLoud.getFxParams` to `SoLoud.getFilterParameter`.
+  This mimics the C++ API name.
+  Quick fix available.
+- Renamed `SoLoud.setFxParams` to `SoLoud.setFilterParameter`. 
+  This mimics the C++ API name.
+  Quick fix available.
 
 #### 2.0.0-pre.1 (12 Mar 2024)
 - added `looping` and `loopingStartAt` properties to `SoLoud.play()` and `SoLoud.play3d()`.
