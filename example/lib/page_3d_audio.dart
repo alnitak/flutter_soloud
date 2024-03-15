@@ -17,30 +17,6 @@ class _Page3DAudioState extends State<Page3DAudio> {
 
   SoundProps? currentSound;
   bool spinAround = false;
-  bool canBuild = false;
-
-  @override
-  void initState() {
-    super.initState();
-
-    /// Initialize the player
-    _log.info('player starting');
-    SoLoud.instance.initialize().then(
-      (_) {
-        _log.info('player started');
-        SoLoud.instance.setVisualizationEnabled(false);
-        SoLoud.instance.setGlobalVolume(1);
-        if (context.mounted) {
-          setState(() {
-            canBuild = true;
-          });
-        }
-      },
-      onError: (Object e) {
-        _log.severe('player starting error: $e');
-      },
-    );
-  }
 
   @override
   Widget build(BuildContext context) {

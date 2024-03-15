@@ -21,29 +21,6 @@ class _PageMultiTrackState extends State<PageMultiTrack> {
   final _looping = ValueNotifier<bool>(false);
   final _loopingStartAt = ValueNotifier<double>(0);
   final _playSoundController = PlaySoundController();
-  bool canBuild = false;
-
-  @override
-  void initState() {
-    super.initState();
-
-    /// Initialize the player
-    SoLoud.instance.initialize().then(
-      (_) {
-        _log.info('player started');
-        // SoLoud.instance.setVisualizationEnabled(false);
-        SoLoud.instance.setGlobalVolume(1);
-        if (context.mounted) {
-          setState(() {
-            canBuild = true;
-          });
-        }
-      },
-      onError: (Object e) {
-        _log.severe('player starting error: $e');
-      },
-    );
-  }
 
   @override
   Widget build(BuildContext context) {

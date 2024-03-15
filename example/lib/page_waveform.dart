@@ -42,26 +42,14 @@ class _PageWaveformState extends State<PageWaveform> {
   void initState() {
     super.initState();
 
-    /// Initialize the player
-    SoLoud.instance.initialize().then(
-      (_) {
-        _log.info('player started');
-        SoLoud.instance.setVisualizationEnabled(true);
-        SoLoud.instance.setGlobalVolume(0.6);
-
-        /// Only when the [notes] are set up, build the UI
-        setupNotes().then((value) {
-          if (context.mounted) {
-            setState(() {
-              canBuild = true;
-            });
-          }
+    /// Only when the [notes] are set up, build the UI
+    setupNotes().then((value) {
+      if (context.mounted) {
+        setState(() {
+          canBuild = true;
         });
-      },
-      onError: (Object e) {
-        _log.severe('player starting error: $e');
-      },
-    );
+      }
+    });
   }
 
   Future<void> setupNotes() async {
@@ -80,7 +68,9 @@ class _PageWaveformState extends State<PageWaveform> {
 
   @override
   Widget build(BuildContext context) {
-    if (!SoLoud.instance.isInitialized) return const SizedBox.shrink();
+    if (!SoLoud.instance.isInitialized || !canBuild) {
+      return const SizedBox.shrink();
+    }
 
     return Scaffold(
       body: SingleChildScrollView(

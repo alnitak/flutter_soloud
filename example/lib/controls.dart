@@ -3,19 +3,26 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
-import 'package:logging/logging.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:star_menu/star_menu.dart';
 
 class Controls extends StatefulWidget {
-  const Controls({super.key});
+  const Controls({
+    super.key,
+    this.onCaptureToggle,
+    this.onDeviceIdChanged,
+  });
+
+  // ignore: avoid_positional_boolean_parameters
+  final void Function(int deviceID)? onCaptureToggle;
+
+  final void Function(int deviceID)? onDeviceIdChanged;
 
   @override
   State<Controls> createState() => _ControlsState();
 }
 
 class _ControlsState extends State<Controls> {
-  final isCaptureRunning = ValueNotifier<bool>(false);
   late final List<CaptureDevice> captureDevices;
   int choosenCaptureDeviceId = -1;
 
@@ -33,51 +40,27 @@ class _ControlsState extends State<Controls> {
   }
 
   @override
-  void reassemble() {
-    isCaptureRunning.value = SoLoudCapture.instance.isCaptureStarted();
-    super.reassemble();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    // // TODO(filiph): remove this listener - it starts listening on every build
-    // SoLoud.instance.audioEvent.stream.listen(
-    //   (event) {
-    //     isInitialized.value = SoLoud.instance.isInitialized;
-    //     isCaptureRunning.value = SoLoudCapture.instance.isCaptureStarted();
-    //   },
-    // );
-
     return Column(
       children: [
         Row(
           children: [
             /// Capture
-            ValueListenableBuilder<bool>(
-              valueListenable: isCaptureRunning,
-              builder: (_, isRunning, __) {
-                return ElevatedButton(
-                  onPressed: () async {
-                    /// Ask recording permission on mobile
-                    if (Platform.isAndroid || Platform.isIOS) {
-                      final p = await Permission.microphone.isGranted;
-                      if (!p) {
-                        unawaited(Permission.microphone.request());
-                        return;
-                      }
-                    }
-                    if (isRunning) {
-                      SoLoudCapture.instance.stopCapture();
-                    } else {
-                      SoLoudCapture.instance
-                          .initialize(deviceID: choosenCaptureDeviceId);
-                      SoLoudCapture.instance.startCapture();
-                    }
-                  },
-                  style: buttonStyle(isRunning),
-                  child: const Text('capture'),
-                );
+            ElevatedButton(
+              onPressed: () async {
+                /// Ask recording permission on mobile
+                if (Platform.isAndroid || Platform.isIOS) {
+                  final p = await Permission.microphone.isGranted;
+                  if (!p) {
+                    unawaited(Permission.microphone.request());
+                    return;
+                  }
+                }
+                widget.onCaptureToggle?.call(choosenCaptureDeviceId);
+                setState(() {}); /// just change button color
               },
+              style: buttonStyle(SoLoudCapture.instance.isCaptureStarted()),
+              child: const Text('capture'),
             ),
             const SizedBox(width: 8),
 
@@ -99,7 +82,8 @@ class _ControlsState extends State<Controls> {
               ),
               onItemTapped: (index, controller) {
                 controller.closeMenu!();
-                setState(() {});
+                widget.onDeviceIdChanged?.call(choosenCaptureDeviceId);
+                setState(() {}); /// just to rebuild [lazyItems]
               },
               lazyItems: captureDeviceList,
               child: const Chip(
