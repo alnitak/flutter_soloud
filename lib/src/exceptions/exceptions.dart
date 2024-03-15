@@ -51,7 +51,12 @@ abstract class SoLoudCppException extends SoLoudException {
       case PlayerErrors.fileLoadFailed:
         return const SoLoudFileLoadFailedException();
       case PlayerErrors.fileAlreadyLoaded:
-        return const SoLoudFileAlreadyLoadedException();
+        throw ArgumentError(
+          'The fileAlreadyLoaded return from C++ should not be thrown '
+              'as an error. It has no effect on functionality: the sound '
+              'is already loaded, and we get the correct sound back, too.',
+          'error',
+        );
       case PlayerErrors.dllNotFound:
         return const SoLoudDllNotFoundException();
       case PlayerErrors.outOfMemory:
