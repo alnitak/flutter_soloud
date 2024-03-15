@@ -61,7 +61,6 @@ class MyHomePage extends StatelessWidget {
         child: Scaffold(
           body: Column(
             children: [
-              Controls(),
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: TabBar(

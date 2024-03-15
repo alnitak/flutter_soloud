@@ -6,6 +6,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
+import 'package:flutter_soloud_example/controls.dart';
 import 'package:flutter_soloud_example/visualizer/visualizer.dart';
 import 'package:logging/logging.dart';
 import 'package:path_provider/path_provider.dart';
@@ -82,6 +83,7 @@ class _PageVisualizerState extends State<PageVisualizer> {
       body: SingleChildScrollView(
         child: Column(
           children: [
+            const Controls(),
             /// audio & frags popup menu
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
