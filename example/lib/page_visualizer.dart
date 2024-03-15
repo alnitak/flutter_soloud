@@ -491,7 +491,7 @@ class _PageVisualizerState extends State<PageVisualizer> {
     currentSound!.soundEvents.stream.listen(
       (event) {
         stopTimer();
-        // TODO(me): put this elsewhere?
+        // TODO(marco): put this elsewhere?
         event.sound.soundEvents.close();
 
         /// It's needed to call dispose when it end else it will
