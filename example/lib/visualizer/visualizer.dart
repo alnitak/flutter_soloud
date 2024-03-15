@@ -177,7 +177,7 @@ class _VisualizerState extends State<Visualizer>
           textureTypeCallback = getWaveDataCallback;
           break;
         }
-      // TODO(me): implement this
+      // TODO(marco): implement this
       case TextureType.both2D:
         {
           buildImageCallback = buildImageFromAllSamplesMatrix;

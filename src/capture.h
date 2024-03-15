@@ -21,19 +21,19 @@ public:
     Capture();
     ~Capture();
 
-    /// returns a list of available capture devices
+    /// stores a list of available capture devices
     /// detected by miniaudio
     std::vector<CaptureDevice> listCaptureDevices();
 
     /// @brief initialize the capture with a [deviceID]. A list of devices
     ///     can be acquired with [listCaptureDevices].
     ///     If [deviceID] is -1, the default will be used
-    /// @param deviceID 
-    /// @return 
+    /// @param deviceID the device ID chosen to be initialized
+    /// @return `capture_noError` if no error or else `capture_init_failed`
+    // TODO(marco): eventually add all the errors miniaudio could return
     CaptureErrors init(int deviceID);
 
     /// @brief Must be called when there is no more need of the capture or when closing the app
-    /// @return 
     void dispose();
 
     bool isInited();

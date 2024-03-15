@@ -69,7 +69,7 @@ class SoundProps {
   final Set<SoundHandle> handlesInternal = {};
 
   ///
-  // TODO(me): make marker keys time able to trigger an event
+  // TODO(marco): make marker keys time able to trigger an event
   final List<double> keys = [];
 
   /// the user can listen ie when a sound ends or key events (TODO)
@@ -332,17 +332,17 @@ interface class SoLoud {
 
   /// Initializes the audio engine.
   ///
-  /// Run this before anything else, and `await` its result. Only when
-  /// this method returns [PlayerErrors.noError] will the engine
+  /// Run this before anything else, and `await` its result in a try/catch. 
+  /// Only when this method returns without throwing exceptions will the engine
   /// be ready.
   ///
   /// If you call any other methods (such as [play]) before initialization
   /// completes, those calls will be ignored and you will get
-  /// a [PlayerErrors.engineNotInited] back.
+  /// a [SoLoudNotInitializedException] exception.
   ///
   /// The [timeout] parameter is the maximum time to wait for the engine
   /// to initialize. If the engine doesn't initialize within this time,
-  /// the method will return [PlayerErrors.engineInitializationTimedOut].
+  /// the method will throw [SoLoudInitializationTimedOutException].
   /// The default timeout is 10 seconds.
   ///
   /// If [automaticCleanup] is `true`, the temporary directory that
@@ -358,7 +358,8 @@ interface class SoLoud {
   ///
   /// It is safe to call this function even if the engine is currently being
   /// shut down. In that case, the function will wait for [shutdown]
-  /// to properly complete before initializing again.
+  /// to properly complete before initializing again. In case the shutting
+  /// down doesn't complete succesfully, [ShutdownFailedException] is thrown.
   ///
   /// (This method was formerly called `startIsolate()`.)
   Future<void> initialize({
@@ -683,7 +684,7 @@ interface class SoLoud {
   /// Miniaudio audio backend
   /// sample rate 44100
   /// buffer 2048
-  ///
+  /// TODO(marco): add initialization parameters
   Future<PlayerErrors> _initEngine() async {
     _log.finest('_initEngine() called');
     if (_isolate == null) {
@@ -752,8 +753,7 @@ interface class SoLoud {
   /// from the given file when needed (more CPU, less memory allocated).
   /// See the [seek] note problem when using [LoadMode] = `LoadMode.disk`.
   /// Default is `LoadMode.memory`.
-  /// Returns PlayerErrors.noError if success and a new sound.
-  ///
+  /// Returns the new sound as [SoundProps].
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   Future<SoundProps> loadFile(
@@ -815,10 +815,7 @@ interface class SoLoud {
   /// creating the temporary file that the asset will be copied to.
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   ///
-  /// Returns [PlayerErrors.noError] if loading was successful,
-  /// as well as the new sound. Returns [PlayerErrors.assetLoadFailed]
-  /// if there was a problem creating the temporary file.
-  /// Returns [PlayerErrors.engineNotInited] if the engine is not initialized.
+  /// Returns the new sound as [SoundProps].
   Future<SoundProps> loadAsset(
     String key, {
     LoadMode mode = LoadMode.memory,
@@ -853,10 +850,7 @@ interface class SoLoud {
   /// creating the temporary file that the asset will be copied to.
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   ///
-  /// Returns [PlayerErrors.noError] if loading was successful,
-  /// as well as the new sound. Returns [PlayerErrors.assetLoadFailed]
-  /// if there was a problem creating the temporary file.
-  /// Returns [PlayerErrors.engineNotInited] if the engine is not initialized.
+  /// Returns the new sound as [SoundProps].
   Future<SoundProps> loadUrl(
     String url, {
     LoadMode mode = LoadMode.memory,
@@ -873,12 +867,14 @@ interface class SoLoud {
 
   /// Load a new waveform to be played once or multiple times later
   ///
-  /// [waveform]
-  /// [superWave]
-  /// [scale]
-  /// [detune]
-  /// [hash] return hash of the sound
-  /// Returns [PlayerErrors.noError] if success
+  /// [waveform] the type of [WaveForm] to generate.
+  /// [superWave] whater this is a superWave.
+  /// [scale] if using [superWave] this is its scale.
+  /// [detune] if using [superWave] this is its detune.
+  /// 
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  /// 
+  /// Returns the new sound as [SoundProps].
   Future<SoundProps> loadWaveform(
     WaveForm waveform,
     bool superWave,
@@ -917,10 +913,12 @@ interface class SoLoud {
     throw SoLoudCppException.fromPlayerError(ret.error);
   }
 
-  /// Set the scale of an already loaded waveform identified by [sound]
+  /// Set a waveform type to the given sound: see [WaveForm] enum.
   ///
-  /// [sound] the sound of a waveform
-  /// [newWaveform]
+  /// [sound] the sound to change the wafeform type.
+  /// [newWaveform] the new waveform type.
+  /// 
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void setWaveform(SoundProps sound, WaveForm newWaveform) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -928,10 +926,12 @@ interface class SoLoud {
     SoLoudController().soLoudFFI.setWaveform(sound.soundHash, newWaveform);
   }
 
-  /// Set the scale of an already loaded waveform identified by [sound]
+  /// If this sound is a `superWave` you can change the scale at runtime.
   ///
-  /// [sound] the sound of a waveform
-  /// [newScale]
+  /// [sound] the sound to change the scale to.
+  /// [newScale] the new scale.
+  /// 
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void setWaveformScale(SoundProps sound, double newScale) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -939,10 +939,12 @@ interface class SoLoud {
     SoLoudController().soLoudFFI.setWaveformScale(sound.soundHash, newScale);
   }
 
-  /// Set the scale of an already loaded waveform identified by [sound]
+  /// If this sound is a `superWave` you can change the detune at runtime.
   ///
-  /// [sound] the sound of a waveform
-  /// [newDetune]
+  /// [sound] the sound to change the detune to.
+  /// [newDetune] the new detune.
+  /// 
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void setWaveformDetune(SoundProps sound, double newDetune) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -950,21 +952,25 @@ interface class SoLoud {
     SoLoudController().soLoudFFI.setWaveformDetune(sound.soundHash, newDetune);
   }
 
-  /// Set a new frequency of an already loaded waveform identified by [sound]
+  /// Set the frequency of the given sound.
   ///
-  /// [sound] the sound of a waveform
-  /// [newFreq]
-  void setWaveformFreq(SoundProps sound, double newFreq) {
+  /// [sound] the sound to se the [newFrequency] to.
+  /// [newFrequency] the new frequency.
+  /// 
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  void setWaveformFreq(SoundProps sound, double newFrequency) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
-    SoLoudController().soLoudFFI.setWaveformFreq(sound.soundHash, newFreq);
+    SoLoudController().soLoudFFI.setWaveformFreq(sound.soundHash, newFrequency);
   }
 
-  /// Set a new frequency of an already loaded waveform identified by [sound]
+  /// Set the given sound as a super wave.
   ///
-  /// [sound] the sound of a waveform
-  /// [superwave]
+  /// [sound] the sound to se the [superwave] to.
+  /// [superwave] whether this sound should be a super wave or not.
+  /// 
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void setWaveformSuperWave(SoundProps sound, bool superwave) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -975,14 +981,13 @@ interface class SoLoud {
         );
   }
 
-  /// Speech the given text
+  /// Speech the given text.
   ///
-  /// [textToSpeech] the text to be spoken
-  /// Returns PlayerErrors.noError if success and a new sound
-  ///
-  Future<SoundProps> speechText(
-    String textToSpeech,
-  ) async {
+  /// [textToSpeech] the text to be spoken.
+  /// Returns the new sound as [SoundProps].
+  /// 
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  Future<SoundProps> speechText(String textToSpeech) async {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
@@ -1007,12 +1012,12 @@ interface class SoLoud {
   /// Play already loaded sound identified by [sound]
   ///
   /// [sound] the sound to play
-  /// [volume] 1.0f full volume
-  /// [pan] 0.0f centered
+  /// [volume] 1.0 full volume
+  /// [pan] 0.0 centered
   /// [paused] 0 not pause
-  /// Returns PlayerErrors.noError if success, the new sound and
-  /// the new handle newHandle
+  /// Returns the [SoundHandle] of this new sound.
   ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   Future<SoundHandle> play(
     SoundProps sound, {
     double volume = 1,
@@ -1067,11 +1072,11 @@ interface class SoLoud {
     return ret.newHandle;
   }
 
-  /// Pause or unpause already loaded sound identified by [handle]
+  /// Pause or unpause an already loaded sound identified by [handle].
   ///
-  /// [handle] the sound handle
-  /// Returns [PlayerErrors.noError] if success
+  /// [handle] the sound handle.
   ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void pauseSwitch(SoundHandle handle) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1079,11 +1084,11 @@ interface class SoLoud {
     SoLoudController().soLoudFFI.pauseSwitch(handle);
   }
 
-  /// Pause or unpause already loaded sound identified by [handle]
+  /// Pause or unpause an already loaded sound identified by [handle].
   ///
-  /// [handle] the sound handle
-  /// Returns [PlayerErrors.noError] if success
+  /// [handle] the sound handle.
   ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void setPause(SoundHandle handle, bool pause) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1091,11 +1096,11 @@ interface class SoLoud {
     SoLoudController().soLoudFFI.setPause(handle, pause ? 1 : 0);
   }
 
-  /// Gets the pause state
+  /// Gets the pause state of an already loaded sound identified by [handle].
   ///
-  /// [handle] the sound handle
-  /// Return [PlayerErrors.noError] on success and true if paused
+  /// [handle] the sound handle.
   ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   bool getPause(SoundHandle handle) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1113,8 +1118,10 @@ interface class SoLoud {
   /// memory and more processing power. Playing at a slower sample
   /// rate is cheaper.
   ///
-  /// [handle] the sound handle
-  /// [speed] the new speed
+  /// [handle] the sound handle.
+  /// [speed] the new speed.
+  /// 
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void setRelativePlaySpeed(SoundHandle handle, double speed) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1122,9 +1129,11 @@ interface class SoLoud {
     SoLoudController().soLoudFFI.setRelativePlaySpeed(handle, speed);
   }
 
-  /// Return the current play speed.
+  /// Get a sound's relative play speed.
   ///
-  /// [handle] the sound handle
+  /// [handle] the sound handle.
+  /// 
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   double getRelativePlaySpeed(SoundHandle handle) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1133,11 +1142,11 @@ interface class SoLoud {
   }
 
   /// Stop already loaded sound identified by [handle] and clear it from the
-  /// sound handle list
+  /// sound handle list.
   ///
-  /// [handle] the sound handle to stop
-  /// Return [PlayerErrors.noError] on success
+  /// [handle] the sound handle to stop.
   ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   Future<void> stop(SoundHandle handle) async {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1157,11 +1166,11 @@ interface class SoLoud {
   }
 
   /// Stop all handles of the already loaded sound identified
-  /// by soundHash of [sound] and dispose it
+  /// by soundHash of [sound] and dispose it.
   ///
-  /// [sound] the sound to clear
-  /// Return [PlayerErrors.noError] on success
+  /// [sound] the sound to clear.
   ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   Future<void> disposeSound(SoundProps sound) async {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1187,8 +1196,7 @@ interface class SoLoud {
   ///
   /// No need to call this method when shutting down the engine.
   /// (It is automatically called from within [shutdown].)
-  ///
-  /// Return [PlayerErrors.noError] on success
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   ///
   Future<void> disposeAllSound() async {
     if (!_isEngineInitialized) {
@@ -1208,9 +1216,10 @@ interface class SoLoud {
 
   /// Query whether a sound is set to loop.
   ///
-  /// [handle]
+  /// [handle] the sound handle.
   /// Returns true if flagged for looping.
   ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   bool getLooping(SoundHandle handle) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1219,12 +1228,12 @@ interface class SoLoud {
   }
 
   /// This function can be used to set a sample to play on repeat,
-  /// instead of just playing once
+  /// instead of just playing once.
   ///
   /// [handle] the handle for which enable or disable the loop
-  /// [enable]
-  /// Return [PlayerErrors.noError] on success
+  /// [enable] whether to enable looping or not.
   ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void setLooping(SoundHandle handle, bool enable) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1234,9 +1243,10 @@ interface class SoLoud {
 
   /// Get sound loop point value.
   ///
-  /// [handle]
+  /// [handle] the sound handle.
   /// Returns the time in seconds.
   ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   double getLoopPoint(SoundHandle handle) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1246,10 +1256,10 @@ interface class SoLoud {
 
   /// Set sound loop point value.
   ///
-  /// [handle]
+  /// [handle] the sound handle.
   /// [time] in seconds.
-  /// Return [PlayerErrors.noError] on success
   ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void setLoopPoint(SoundHandle handle, double time) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1260,9 +1270,9 @@ interface class SoLoud {
   /// Enable or disable visualization.
   /// When enabled it will be possible to get FFT and wave data.
   ///
-  /// [enabled]
-  /// Return [PlayerErrors.noError] on success
+  /// [enabled] wheter to set the visualization or not.
   ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void setVisualizationEnabled(bool enabled) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1271,9 +1281,11 @@ interface class SoLoud {
     _isVisualizationEnabled = enabled;
   }
 
-  /// Get visualization state
+  /// Get visualization state.
   ///
-  /// Return PlayerErrors.noError if success and true if enabled
+  /// Return true if enabled.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   bool getVisualizationEnabled() {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1281,11 +1293,11 @@ interface class SoLoud {
     return SoLoudController().soLoudFFI.getVisualizationEnabled();
   }
 
-  /// Get the sound length in seconds
+  /// Get the sound length in seconds.
   ///
-  /// [sound] the sound hash to get the length
-  /// Return PlayerErrors.noError if success and sound length in seconds
+  /// [sound] the sound hash to get the length.
   ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   double getLength(SoundProps sound) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1293,11 +1305,12 @@ interface class SoLoud {
     return SoLoudController().soLoudFFI.getLength(sound.soundHash);
   }
 
-  /// Seek playing in [time] seconds
+  /// Seek playing in seconds.
   ///
-  /// [time] the time to seek
-  /// [handle] the sound handle
-  /// Returns [PlayerErrors.noError] if success
+  /// [time] the time to seek.
+  /// [handle] the sound handle.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   ///
   /// NOTE: when seeking an MP3 file loaded using `mode`=`LoadMode.disk` the
   /// seek operation is performed but there will be delays. This occurs because
@@ -1322,11 +1335,12 @@ interface class SoLoud {
     }
   }
 
-  /// Get current sound position in seconds
+  /// Get current sound position in seconds.
   ///
-  /// [handle] the sound handle
-  /// Return PlayerErrors.noError if success and position in seconds
+  /// [handle] the sound handle.
+  /// Return the position in seconds.
   ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   double getPosition(SoundHandle handle) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1334,10 +1348,11 @@ interface class SoLoud {
     return SoLoudController().soLoudFFI.getPosition(handle);
   }
 
-  /// Get current Global volume
+  /// Get current global volume.
   ///
-  /// Return PlayerErrors.noError if success and volume
+  /// Return the volume.
   ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   double getGlobalVolume() {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1345,10 +1360,9 @@ interface class SoLoud {
     return SoLoudController().soLoudFFI.getGlobalVolume();
   }
 
-  /// Get current Global volume
+  /// Set global volume for all the sounds.
   ///
-  /// Return PlayerErrors.noError if success
-  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void setGlobalVolume(double volume) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1361,10 +1375,11 @@ interface class SoLoud {
     }
   }
 
-  /// Get current [handle] volume
+  /// Get current [handle] volume.
   ///
-  /// Return PlayerErrors.noError if success and volume
+  /// Return the volume.
   ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   double getVolume(SoundHandle handle) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1372,10 +1387,12 @@ interface class SoLoud {
     return SoLoudController().soLoudFFI.getVolume(handle);
   }
 
-  /// Set [handle] volume
+  /// Set the volume for the given [handle].
   ///
-  /// Return PlayerErrors.noError if success
+  /// [handle] the sound handle.
+  /// [volume] the new volume to set.
   ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void setVolume(SoundHandle handle, double volume) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1388,11 +1405,12 @@ interface class SoLoud {
     }
   }
 
-  /// Check if a handle is still valid
+  /// Check if a handle is still valid.
   ///
-  /// [handle] handle to check
-  /// Return PlayerErrors.noError if success and isvalid==true if valid
+  /// [handle] handle to check.
+  /// Return true if valid.
   ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   bool getIsValidVoiceHandle(SoundHandle handle) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1400,15 +1418,26 @@ interface class SoLoud {
     return SoLoudController().soLoudFFI.getIsValidVoiceHandle(handle);
   }
 
-  /// Return a floats matrix of 256x512
+  /// Return a floats matrix of 256x512.
   /// Every row are composed of 256 FFT values plus 256 of wave data.
   /// Every time is called, a new row is stored in the
-  /// first row and all the previous rows are shifted
-  /// up. The last one will be lost.
+  /// first row and all the previous rows are shifted up. The last 
+  /// one will be lost.
   ///
-  /// [audioData]
-  /// Return [PlayerErrors.noError] if success
+  /// [audioData] this is the list where data is stored. It can be read like
+  /// any other list. For example the first row can be read like this:
+  /// `audioData[0...255]` this range represents FFT values for the first row
+  /// `audioData[256...512]` this range represents wave data for the first row
+  /// multiply the index by the row number you want to query.
   ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  /// Throws [SoLoudVisualizationNotEnabledException] if the visualization
+  /// flag is not enableb. Please, Use `setVisualizationEnabled(true)` 
+  /// when needed.
+  /// Throws [SoLoudNullPointerException] something is going wrong with the
+  /// player engine. Please, open an issue on 
+  /// [GitHub](https://github.com/alnitak/flutter_soloud/issues) providing
+  /// a simple working example.
   @experimental
   void getAudioTexture2D(ffi.Pointer<ffi.Pointer<ffi.Float>> audioData) {
     if (!isInitialized || audioData == ffi.nullptr) {
@@ -1437,8 +1466,8 @@ interface class SoLoud {
   /// 1 = full smooth
   /// the new value is calculated with:
   /// newFreq = smooth * oldFreq + (1 - smooth) * newFreq
-  /// Return [PlayerErrors.noError] if success
   ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   @experimental
   void setFftSmoothing(double smooth) {
     if (!isInitialized) {
@@ -1453,7 +1482,10 @@ interface class SoLoud {
 
   /// Smoothly change the global volume over specified time.
   ///
-  // TODO: change `double` to `Duration`
+  /// [to] the volume to fade to.
+  /// [time] the time in seconds to change the volume.
+  /// 
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void fadeGlobalVolume(double to, double time) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1468,6 +1500,11 @@ interface class SoLoud {
 
   /// Smoothly change a channel's volume over specified time.
   ///
+  /// [handle] the sound handle.
+  /// [to] the volume to fade to.
+  /// [time] the time in seconds to change the volume.
+  /// 
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void fadeVolume(SoundHandle handle, double to, double time) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1482,6 +1519,11 @@ interface class SoLoud {
 
   /// Smoothly change a channel's pan setting over specified time.
   ///
+  /// [handle] the sound handle.
+  /// [to] the pan value to fade to.
+  /// [time] the time in seconds to change the pan.
+  /// 
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void fadePan(SoundHandle handle, double to, double time) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1496,6 +1538,11 @@ interface class SoLoud {
 
   /// Smoothly change a channel's relative play speed over specified time.
   ///
+  /// [handle] the sound handle.
+  /// [to] the speed value to fade to.
+  /// [time] the time in seconds to change the speed.
+  /// 
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void fadeRelativePlaySpeed(SoundHandle handle, double to, double time) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1511,6 +1558,10 @@ interface class SoLoud {
 
   /// After specified time, pause the channel.
   ///
+  /// [handle] the sound handle.
+  /// [time] the time in seconds to pause.
+  /// 
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void schedulePause(SoundHandle handle, double time) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1525,6 +1576,10 @@ interface class SoLoud {
 
   /// After specified time, stop the channel.
   ///
+  /// [handle] the sound handle.
+  /// [time] the time in seconds to pause.
+  /// 
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void scheduleStop(SoundHandle handle, double time) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1539,6 +1594,12 @@ interface class SoLoud {
 
   /// Set fader to oscillate the volume at specified frequency.
   ///
+  /// [handle] the sound handle.
+  /// [from] the lowest value for the oscillation.
+  /// [to] the highest value for the oscillation.
+  /// [time] the time in seconds to oscillate.
+  /// 
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void oscillateVolume(
       SoundHandle handle, double from, double to, double time) {
     if (!isInitialized) {
@@ -1555,6 +1616,12 @@ interface class SoLoud {
 
   /// Set fader to oscillate the panning at specified frequency.
   ///
+  /// [handle] the sound handle.
+  /// [from] the lowest value for the oscillation.
+  /// [to] the highest value for the oscillation.
+  /// [time] the time in seconds to oscillate.
+  /// 
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void oscillatePan(SoundHandle handle, double from, double to, double time) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1570,6 +1637,12 @@ interface class SoLoud {
 
   /// Set fader to oscillate the relative play speed at specified frequency.
   ///
+  /// [handle] the sound handle.
+  /// [from] the lowest value for the oscillation.
+  /// [to] the highest value for the oscillation.
+  /// [time] the time in seconds to oscillate.
+  /// 
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void oscillateRelativePlaySpeed(
       SoundHandle handle, double from, double to, double time) {
     if (!isInitialized) {
@@ -1587,6 +1660,11 @@ interface class SoLoud {
 
   /// Set fader to oscillate the global volume at specified frequency.
   ///
+  /// [from] the lowest value for the oscillation.
+  /// [to] the highest value for the oscillation.
+  /// [time] the time in seconds to oscillate.
+  /// 
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void oscillateGlobalVolume(double from, double to, double time) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1697,7 +1775,6 @@ interface class SoLoud {
   /// [filterType] filter to check
   /// Returns [PlayerErrors.noError] if no errors and the index of
   /// the given filter (-1 if the filter is not active)
-  ///
   int isFilterActive(FilterType filterType) {
     final ret = SoLoudController().soLoudFFI.isFilterActive(filterType.index);
     if (ret.error != PlayerErrors.noError) {
@@ -1707,11 +1784,12 @@ interface class SoLoud {
     return ret.index;
   }
 
+  /// TODO(marco): add a method to rearrange filters order?
+
   /// Get parameters names of the given filter.
   ///
   /// [filterType] filter to get param names
-  /// Returns [PlayerErrors.noError] if no errors and the list of param names
-  ///
+  /// Returns the list of param names
   List<String> getFilterParamNames(FilterType filterType) {
     final ret =
         SoLoudController().soLoudFFI.getFilterParamNames(filterType.index);
@@ -1722,10 +1800,8 @@ interface class SoLoud {
     return ret.names;
   }
 
-  /// Add the filter [filterType].
-  ///
-  /// [filterType] filter to add
-  /// Returns [PlayerErrors.noError] if no errors
+  /// Add a filter to all sounds.
+  /// [filterType] filter to add.
   ///
   void addGlobalFilter(FilterType filterType) {
     final ret = SoLoudController().soLoudFFI.addGlobalFilter(filterType.index);
@@ -1736,11 +1812,9 @@ interface class SoLoud {
     }
   }
 
-  /// Remove the filter [filterType].
+  /// Remove filter from all sounds.
   ///
-  /// [filterType] filter to remove
-  /// Returns [PlayerErrors.noError] if no errors
-  ///
+  /// [filterType] filter to remove.
   void removeGlobalFilter(FilterType filterType) {
     final ret =
         SoLoudController().soLoudFFI.removeGlobalFilter(filterType.index);
@@ -1751,12 +1825,13 @@ interface class SoLoud {
     }
   }
 
-  /// Set the effect parameter with id [attributeId]
-  /// of [filterType] with [value] value.
+  /// Set the effect parameter.
   ///
-  /// [filterType] filter to modify a param
-  /// Returns [PlayerErrors.noError] if no errors
+  /// [filterType] the filter to change the parameter to.
+  /// [attributeId] the attribute ID to change.
+  /// [value] the new value.
   ///
+  /// TODO(marco, filip): should we rename to `setFilterParams`?
   void setFxParams(FilterType filterType, int attributeId, double value) {
     final ret = SoLoudController()
         .soLoudFFI
@@ -1768,11 +1843,13 @@ interface class SoLoud {
     }
   }
 
-  /// Get the effect parameter with id [attributeId] of [filterType].
+  /// Get the effect current parameter.
   ///
-  /// [filterType] filter to modify a param
+  /// [filterType] the filter to query the parameter.
+  /// [attributeId] the ID of the attribute to request the value from.
   /// Returns the value of param
   ///
+  /// TODO(marco, filip): should we rename to `getFilterParams`?
   double getFxParams(FilterType filterType, int attributeId) {
     return SoLoudController()
         .soLoudFFI
@@ -1796,13 +1873,15 @@ interface class SoLoud {
   // ////////////////////////////////////////////////
 
   /// play3d() is the 3d version of the play() call.
-  /// The listener position is (0, 0, 0).
+  /// The listener position is (0, 0, 0) by default.
   ///
   /// [posX], [posY], [posZ] are the audio source position coordinates.
-  /// [velX], [velY], [velZ] are the audio source velocity.
-  /// [volume]
-  /// Return the error if any and a new [newHandle] of this sound
+  /// [velX], [velY], [velZ] are the audio source velocity. 
+  /// Defaults to (0, 0, 0).
+  /// [volume] the playing volume. Default to 1.
+  /// Returns the [SoundHandle] of this new sound.
   ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   Future<SoundHandle> play3d(
     SoundProps sound,
     double posX,
@@ -1879,20 +1958,17 @@ interface class SoLoud {
   /// to work correctly. The default value is 343, which assumes
   /// that your world coordinates are in meters (where 1 unit is 1 meter),
   /// and that the environment is dry air at around 20 degrees Celsius.
-  ///
   void set3dSoundSpeed(double speed) {
     SoLoudController().soLoudFFI.set3dSoundSpeed(speed);
   }
 
-  /// Get the sound speed
-  ///
+  /// Get the sound speed.
   double get3dSoundSpeed() {
     return SoLoudController().soLoudFFI.get3dSoundSpeed();
   }
 
   /// You can set the position, at-vector, up-vector and velocity
   /// parameters of the 3d audio listener with one call.
-  ///
   void set3dListenerParameters(
       double posX,
       double posY,
@@ -1911,25 +1987,21 @@ interface class SoLoud {
   }
 
   /// You can set the position parameter of the 3d audio listener.
-  ///
   void set3dListenerPosition(double posX, double posY, double posZ) {
     SoLoudController().soLoudFFI.set3dListenerPosition(posX, posY, posZ);
   }
 
   /// You can set the "at" vector parameter of the 3d audio listener.
-  ///
   void set3dListenerAt(double atX, double atY, double atZ) {
     SoLoudController().soLoudFFI.set3dListenerAt(atX, atY, atZ);
   }
 
   /// You can set the "up" vector parameter of the 3d audio listener.
-  ///
   void set3dListenerUp(double upX, double upY, double upZ) {
     SoLoudController().soLoudFFI.set3dListenerUp(upX, upY, upZ);
   }
 
   /// You can set the listener's velocity vector parameter.
-  ///
   void set3dListenerVelocity(
       double velocityX, double velocityY, double velocityZ) {
     SoLoudController()
@@ -1939,7 +2011,6 @@ interface class SoLoud {
 
   /// You can set the position and velocity parameters of a live
   /// 3d audio source with one call.
-  ///
   void set3dSourceParameters(SoundHandle handle, double posX, double posY,
       double posZ, double velocityX, double velocityY, double velocityZ) {
     SoLoudController().soLoudFFI.set3dSourceParameters(
@@ -1947,14 +2018,12 @@ interface class SoLoud {
   }
 
   /// You can set the position parameters of a live 3d audio source.
-  ///
   void set3dSourcePosition(
       SoundHandle handle, double posX, double posY, double posZ) {
     SoLoudController().soLoudFFI.set3dSourcePosition(handle, posX, posY, posZ);
   }
 
   /// You can set the velocity parameters of a live 3d audio source.
-  ///
   void set3dSourceVelocity(SoundHandle handle, double velocityX,
       double velocityY, double velocityZ) {
     SoLoudController()
@@ -1964,7 +2033,6 @@ interface class SoLoud {
 
   /// You can set the minimum and maximum distance parameters
   /// of a live 3d audio source.
-  ///
   void set3dSourceMinMaxDistance(
       SoundHandle handle, double minDistance, double maxDistance) {
     SoLoudController()
@@ -1995,7 +2063,6 @@ interface class SoLoud {
   }
 
   /// You can change the doppler factor of a live 3d audio source.
-  ///
   void set3dSourceDopplerFactor(SoundHandle handle, double dopplerFactor) {
     SoLoudController()
         .soLoudFFI

@@ -131,60 +131,61 @@ bool Filters::addGlobalFilter(FilterType filterType)
     if (isFilterActive(filterType) >= 0)
         return false;
 
+    const unsigned int filtersSize = static_cast<unsigned int>(filters.size());
     switch (filterType)
     {
     case BiquadResonantFilter:
         if (!mBiquadResonantFilter)
             mBiquadResonantFilter = std::make_unique<SoLoud::BiquadResonantFilter>();
-        mSoloud->setGlobalFilter(filters.size(), mBiquadResonantFilter.get());
+        mSoloud->setGlobalFilter(filtersSize, mBiquadResonantFilter.get());
         filters.push_back({filterType, static_cast<SoLoud::Filter *>(mBiquadResonantFilter.get())});
         break;
     case EqFilter:
         if (!mEqFilter)
             mEqFilter = std::make_unique<SoLoud::EqFilter>();
-        mSoloud->setGlobalFilter(filters.size(), mEqFilter.get());
+        mSoloud->setGlobalFilter(filtersSize, mEqFilter.get());
         filters.push_back({filterType, static_cast<SoLoud::Filter *>(mEqFilter.get())});
         break;
     case EchoFilter:
         if (!mEchoFilter)
             mEchoFilter = std::make_unique<SoLoud::EchoFilter>();
-        mSoloud->setGlobalFilter(filters.size(), mEchoFilter.get());
+        mSoloud->setGlobalFilter(filtersSize, mEchoFilter.get());
         filters.push_back({filterType, static_cast<SoLoud::Filter *>(mEchoFilter.get())});
         break;
     case LofiFilter:
         if (!mLofiFilter)
             mLofiFilter = std::make_unique<SoLoud::LofiFilter>();
-        mSoloud->setGlobalFilter(filters.size(), mLofiFilter.get());
+        mSoloud->setGlobalFilter(filtersSize, mLofiFilter.get());
         filters.push_back({filterType, static_cast<SoLoud::Filter *>(mLofiFilter.get())});
         break;
     case FlangerFilter:
         if (!mFlangerFilter)
             mFlangerFilter = std::make_unique<SoLoud::FlangerFilter>();
-        mSoloud->setGlobalFilter(filters.size(), mFlangerFilter.get());
+        mSoloud->setGlobalFilter(filtersSize, mFlangerFilter.get());
         filters.push_back({filterType, static_cast<SoLoud::Filter *>(mFlangerFilter.get())});
         break;
     case BassboostFilter:
         if (!mBassboostFilter)
             mBassboostFilter = std::make_unique<SoLoud::BassboostFilter>();
-        mSoloud->setGlobalFilter(filters.size(), mBassboostFilter.get());
+        mSoloud->setGlobalFilter(filtersSize, mBassboostFilter.get());
         filters.push_back({filterType, static_cast<SoLoud::Filter *>(mBassboostFilter.get())});
         break;
     case WaveShaperFilter:
         if (!mWaveShaperFilter)
             mWaveShaperFilter = std::make_unique<SoLoud::WaveShaperFilter>();
-        mSoloud->setGlobalFilter(filters.size(), mWaveShaperFilter.get());
+        mSoloud->setGlobalFilter(filtersSize, mWaveShaperFilter.get());
         filters.push_back({filterType, static_cast<SoLoud::Filter *>(mWaveShaperFilter.get())});
         break;
     case RobotizeFilter:
         if (!mRobotizeFilter)
             mRobotizeFilter = std::make_unique<SoLoud::RobotizeFilter>();
-        mSoloud->setGlobalFilter(filters.size(), mRobotizeFilter.get());
+        mSoloud->setGlobalFilter(filtersSize, mRobotizeFilter.get());
         filters.push_back({filterType, static_cast<SoLoud::Filter *>(mRobotizeFilter.get())});
         break;
     case FreeverbFilter:
         if (!mFreeverbFilter)
             mFreeverbFilter = std::make_unique<SoLoud::FreeverbFilter>();
-        mSoloud->setGlobalFilter(filters.size(), mFreeverbFilter.get());
+        mSoloud->setGlobalFilter(filtersSize, mFreeverbFilter.get());
         filters.push_back({filterType, static_cast<SoLoud::Filter *>(mFreeverbFilter.get())});
         break;
     default:

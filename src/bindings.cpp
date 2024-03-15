@@ -194,7 +194,7 @@ extern "C"
     ///
     /// [textToSpeech]
     /// Returns [PlayerErrors.noError] if success and [handle] sound identifier
-    /// TODO(me): add other T2S parameters
+    /// TODO(marco): add other T2S parameters
     FFI_PLUGIN_EXPORT enum PlayerErrors speechText(char *textToSpeech, unsigned int *handle)
     {
         if (!player.isInited())
@@ -699,7 +699,7 @@ extern "C"
         if (!player.isInited())
             return backendNotInited;
         std::vector<std::string> pNames = player.mFilters.getFilterParamNames(filterType);
-        *paramsCount = pNames.size();
+        *paramsCount = static_cast<int>(pNames.size());
         *names = (char *)malloc(sizeof(char *) * *paramsCount);
         printf("C  paramsCount: %p  **names: %p\n", paramsCount, names);
         for (int i = 0; i < *paramsCount; i++) {
@@ -709,7 +709,7 @@ extern "C"
         return noError;
     }
 
-    /// Add the filter [filterType].
+    /// Add the filter [filterType] to all sounds.
     /// 
     /// [filterType] filter to add
     /// Returns [PlayerErrors.noError] if no errors
@@ -718,7 +718,7 @@ extern "C"
     {
         if (!player.isInited())
             return backendNotInited;
-        if (player.mFilters.addGlobalFilter(filterType) == -1)
+        if (!player.mFilters.addGlobalFilter(filterType))
             return filterNotFound;
         return noError;
     }
@@ -732,7 +732,7 @@ extern "C"
     {
         if (!player.isInited())
             return backendNotInited;
-        if (player.mFilters.removeGlobalFilter(filterType) == -1)
+        if (!player.mFilters.removeGlobalFilter(filterType))
             return filterNotFound;
         return noError;
     }
