@@ -271,7 +271,7 @@ class FlutterSoLoudFfi {
   ///
   /// [textToSpeech]
   /// Returns PlayerErrors.noError if success and handle sound identifier
-  // TODO(me): add other T2S parameters
+  // TODO(marco): add other T2S parameters
   ({PlayerErrors error, SoundHandle handle}) speechText(String textToSpeech) {
     // ignore: omit_local_variable_types
     final ffi.Pointer<ffi.UnsignedInt> handle = calloc();
@@ -505,7 +505,7 @@ class FlutterSoLoudFfi {
   late final _setLoopPoint =
       _setLoopPointPtr.asFunction<void Function(int, double)>();
 
-  // TODO(alnitak): implement Soloud.getLoopCount() also?
+  // TODO(marco): implement Soloud.getLoopCount() also?
 
   /// Enable or disable visualization
   ///

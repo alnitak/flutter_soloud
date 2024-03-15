@@ -406,7 +406,7 @@ void audioIsolate(SendPort isolateToMainStream) {
           /// Call again this isolate after N ms to let other messages
           /// to be managed
           Future.delayed(const Duration(milliseconds: 10), () {
-            // TODO(me): is 10 ms ok to loop again?
+            // TODO(marco): is 10 ms ok to loop again?
             mainToIsolateStream.sendPort.send(
               {'event': MessageEvents.loop, 'args': ()},
             );
