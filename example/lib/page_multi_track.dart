@@ -155,7 +155,7 @@ class PlaySoundWidget extends StatefulWidget {
 class _PlaySoundWidgetState extends State<PlaySoundWidget> {
   static final Logger _log = Logger('_PlaySoundWidgetState');
 
-  late double soundLength;
+  late Duration soundLength;
   final Map<SoundHandle, ValueNotifier<bool>> isPaused = {};
   final Map<SoundHandle, ValueNotifier<double>> soundPosition = {};
   StreamSubscription<StreamSoundEvent>? _subscription;
@@ -188,7 +188,13 @@ class _PlaySoundWidgetState extends State<PlaySoundWidget> {
     _loopingStartAt = loopingStartAt;
     if (sound != null) {
       for (final element in sound!.handles) {
-        SoLoud.instance.setLoopPoint(element, loopingStartAt);
+        SoLoud.instance.setLoopPoint(
+          element,
+          Duration(
+            milliseconds:
+                (loopingStartAt * Duration.millisecondsPerSecond).round(),
+          ),
+        );
       }
     }
   }
@@ -208,18 +214,18 @@ class _PlaySoundWidgetState extends State<PlaySoundWidget> {
     sound = newSound;
 
     /// Listen to this sound events
-    _subscription = sound!.soundEvents.stream.listen(
+    _subscription = sound!.soundEvents.listen(
       (event) {
         _log.fine('Received StreamSoundEvent ${event.event}');
 
         /// if handle has been stoppend of has finished to play
-        if (event.event == SoundEvent.handleIsNoMoreValid) {
+        if (event.event == SoundEventType.handleIsNoMoreValid) {
           isPaused.remove(event.handle);
           soundPosition.remove(event.handle);
         }
 
         /// if the sound has been disposed
-        if (event.event == SoundEvent.soundDisposed) {
+        if (event.event == SoundEventType.soundDisposed) {
           isPaused.clear();
           soundPosition.clear();
           _subscription?.cancel();
@@ -270,7 +276,10 @@ class _PlaySoundWidgetState extends State<PlaySoundWidget> {
     final newHandle = await SoLoud.instance.play(
       sound!,
       looping: _looping,
-      loopingStartAt: _loopingStartAt,
+      loopingStartAt: Duration(
+        milliseconds:
+            (_loopingStartAt * Duration.millisecondsPerSecond).round(),
+      ),
     );
 
     isPaused[newHandle] = ValueNotifier(false);
@@ -305,7 +314,7 @@ class PlayingRow extends StatefulWidget {
     super.key,
   });
 
-  final double soundLength;
+  final Duration soundLength;
   final SoundHandle handle;
   final VoidCallback onStopped;
 
@@ -315,7 +324,7 @@ class PlayingRow extends StatefulWidget {
 
 class _PlayingRowState extends State<PlayingRow> {
   final ValueNotifier<bool> isPaused = ValueNotifier(true);
-  final ValueNotifier<double> soundPosition = ValueNotifier(0);
+  final ValueNotifier<Duration> soundPosition = ValueNotifier(Duration.zero);
   Timer? timer;
 
   @override
@@ -360,29 +369,33 @@ class _PlayingRowState extends State<PlayingRow> {
 
         /// Seek slider
         Expanded(
-          child: ValueListenableBuilder<double>(
+          child: ValueListenableBuilder<Duration>(
             valueListenable: soundPosition,
             builder: (_, position, __) {
               if (position >= widget.soundLength) {
-                position = 0;
+                position = Duration.zero;
               }
+              final positionText = '${position.inMinutes}:'
+                  '${(position.inSeconds % 60).toString().padLeft(2, '0')}';
 
               return Row(
                 children: [
-                  Text(position.toStringAsFixed(1)),
+                  Text(positionText),
                   Expanded(
                     child: Slider(
-                      value: position,
+                      value: position.inMilliseconds.toDouble(),
                       max: widget.soundLength < position
-                          ? position
-                          : widget.soundLength,
+                          ? position.inMilliseconds.toDouble()
+                          : widget.soundLength.inMilliseconds.toDouble(),
                       onChanged: (value) {
-                        soundPosition.value = value;
-                        SoLoud.instance.seek(widget.handle, value);
+                        final newPosition =
+                            Duration(milliseconds: value.round());
+                        soundPosition.value = newPosition;
+                        SoLoud.instance.seek(widget.handle, newPosition);
                       },
                     ),
                   ),
-                  Text(widget.soundLength.toInt().toString()),
+                  Text(widget.soundLength.inSeconds.toString()),
                 ],
               );
             },

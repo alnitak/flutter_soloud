@@ -52,7 +52,7 @@ typedef ArgsPlay = ({
   double pan,
   bool paused,
   bool looping,
-  double loopingStartAt,
+  Duration loopingStartAt,
 });
 typedef ArgsPlay3d = ({
   SoundHash soundHash,
@@ -65,7 +65,7 @@ typedef ArgsPlay3d = ({
   double volume,
   bool paused,
   bool looping,
-  double loopingStartAt,
+  Duration loopingStartAt,
 });
 typedef ArgsStop = ({SoundHandle handle});
 typedef ArgsDisposeSound = ({SoundHash soundHash});
@@ -285,7 +285,7 @@ void audioIsolate(SendPort isolateToMainStream) {
         for (final sound in activeSounds) {
           isolateToMainStream.send(
             (
-              event: SoundEvent.soundDisposed,
+              event: SoundEventType.soundDisposed,
               sound: sound,
               handle: 0,
             ),
@@ -390,7 +390,7 @@ void audioIsolate(SendPort isolateToMainStream) {
 
                   isolateToMainStream.send(
                     (
-                      event: SoundEvent.handleIsNoMoreValid,
+                      event: SoundEventType.handleIsNoMoreValid,
                       sound: sound,
                       handle: handle,
                     ),

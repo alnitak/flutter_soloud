@@ -16,6 +16,24 @@ sealed class SoLoudException implements Exception {
   /// Don't confuse with the optional [message] parameter, which is there
   /// to explain what exactly went wrong in that particular case.
   String get description;
+
+  @override
+  String toString() {
+    final buffer = StringBuffer()
+      // ignore: no_runtimeType_toString
+      ..write(runtimeType)
+      ..write(': ')
+      ..write(description);
+
+    if (message != null) {
+      buffer
+        ..write(' (')
+        ..write(message)
+        ..write(')');
+    }
+
+    return buffer.toString();
+  }
 }
 
 /// A base class for all SoLoud exceptions that are thrown from the Dart side.
