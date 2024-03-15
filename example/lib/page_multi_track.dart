@@ -214,18 +214,18 @@ class _PlaySoundWidgetState extends State<PlaySoundWidget> {
     sound = newSound;
 
     /// Listen to this sound events
-    _subscription = sound!.soundEvents.stream.listen(
+    _subscription = sound!.soundEvents.listen(
       (event) {
         _log.fine('Received StreamSoundEvent ${event.event}');
 
         /// if handle has been stoppend of has finished to play
-        if (event.event == SoundEvent.handleIsNoMoreValid) {
+        if (event.event == SoundEventType.handleIsNoMoreValid) {
           isPaused.remove(event.handle);
           soundPosition.remove(event.handle);
         }
 
         /// if the sound has been disposed
-        if (event.event == SoundEvent.soundDisposed) {
+        if (event.event == SoundEventType.soundDisposed) {
           isPaused.clear();
           soundPosition.clear();
           _subscription?.cancel();
@@ -277,8 +277,9 @@ class _PlaySoundWidgetState extends State<PlaySoundWidget> {
       sound!,
       looping: _looping,
       loopingStartAt: Duration(
-          milliseconds:
-              (_loopingStartAt * Duration.millisecondsPerSecond).round()),
+        milliseconds:
+            (_loopingStartAt * Duration.millisecondsPerSecond).round(),
+      ),
     );
 
     isPaused[newHandle] = ValueNotifier(false);

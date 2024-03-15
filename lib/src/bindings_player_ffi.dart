@@ -982,7 +982,7 @@ class FlutterSoLoudFfi {
   /// [filterType] filter to modify a param
   /// Returns [PlayerErrors.noError] if no errors
   ///
-  int setFxParams(int filterType, int attributeId, double value) {
+  int setFilterParams(int filterType, int attributeId, double value) {
     return _setFxParams(filterType, attributeId, value);
   }
 
@@ -997,7 +997,7 @@ class FlutterSoLoudFfi {
   /// [filterType] filter to modify a param
   /// Returns the value of param
   ///
-  double getFxParams(int filterType, int attributeId) {
+  double getFilterParams(int filterType, int attributeId) {
     return _getFxParams(filterType, attributeId);
   }
 

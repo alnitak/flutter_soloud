@@ -225,11 +225,11 @@ Future<void> dispose() async {
 Future<void> loadAsset() async {
   currentSound = await SoLoud.instance.loadAsset('assets/audio/explosion.mp3');
 
-  currentSound!.soundEvents.stream.listen((event) {
-    if (event.event == SoundEvent.handleIsNoMoreValid) {
+  currentSound!.soundEvents.listen((event) {
+    if (event.event == SoundEventType.handleIsNoMoreValid) {
       output = 'SoundEvent.handleIsNoMoreValid';
     }
-    if (event.event == SoundEvent.soundDisposed) {
+    if (event.event == SoundEventType.soundDisposed) {
       output = 'SoundEvent.soundDisposed';
     }
   });

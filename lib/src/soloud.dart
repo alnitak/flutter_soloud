@@ -20,8 +20,12 @@ import 'package:http/http.dart' as http;
 import 'package:logging/logging.dart';
 import 'package:meta/meta.dart';
 
+/// Deprecated alias to [SoundEventType].
+@Deprecated('Use SoundEventType instead')
+typedef SoundEvent = SoundEventType;
+
 /// sound event types
-enum SoundEvent {
+enum SoundEventType {
   /// handle reached the end of playback
   handleIsNoMoreValid,
 
@@ -31,7 +35,7 @@ enum SoundEvent {
 
 /// the type sent back to the user when a sound event occurs
 typedef StreamSoundEvent = ({
-  SoundEvent event,
+  SoundEventType event,
   SoundProps sound,
   SoundHandle handle,
 });
@@ -72,9 +76,12 @@ class SoundProps {
   // TODO(marco): make marker keys time able to trigger an event
   final List<double> keys = [];
 
-  /// the user can listen ie when a sound ends or key events (TODO)
-  final StreamController<StreamSoundEvent> soundEvents =
+  /// Backing controller for [soundEvents].
+  final StreamController<StreamSoundEvent> _soundEvents =
       StreamController.broadcast();
+
+  /// the user can listen ie when a sound ends or key events (TODO)
+  Stream<StreamSoundEvent> get soundEvents => _soundEvents.stream;
 
   @override
   String toString() {
@@ -294,7 +301,12 @@ interface class SoLoud {
 
   /// Used both in main and audio isolates
   /// should be synchronized with each other
-  final List<SoundProps> activeSounds = [];
+  ///
+  /// Backing of [activeSounds].
+  final List<SoundProps> _activeSounds = [];
+
+  /// The sounds that are currently _playing_.
+  Iterable<SoundProps> get activeSounds => _activeSounds;
 
   /// Wait for the isolate to return after the event has been completed.
   /// The event must be recognized by [event] and [args] sent to
@@ -386,7 +398,7 @@ interface class SoLoud {
       return _initializeCompleter!.future;
     }
 
-    activeSounds.clear();
+    _activeSounds.clear();
     final completer = Completer<void>();
     _initializeCompleter = completer;
 
@@ -447,27 +459,27 @@ interface class SoLoud {
                   'sound: ${data.sound}');
 
           /// find the sound which received the [SoundEvent] and...
-          final sound = activeSounds.firstWhere(
+          final sound = _activeSounds.firstWhere(
             (sound) => sound.soundHash == data.sound.soundHash,
             orElse: () {
               _log.info(() => 'Received an event for sound with handle: '
-                  "${data.handle} but such sound isn't among activeSounds.");
+                  "${data.handle} but such sound isn't among _activeSounds.");
               return SoundProps(SoundHash.invalid());
             },
           );
 
           /// send the disposed event to listeners and remove the sound
-          if (data.event == SoundEvent.soundDisposed) {
-            sound.soundEvents.add(data);
-            activeSounds.removeWhere(
+          if (data.event == SoundEventType.soundDisposed) {
+            sound._soundEvents.add(data);
+            _activeSounds.removeWhere(
                 (element) => element.soundHash == data.sound.soundHash);
           }
 
           /// send the handle event to the listeners and remove it
-          if (data.event == SoundEvent.handleIsNoMoreValid) {
+          if (data.event == SoundEventType.handleIsNoMoreValid) {
             /// ...put in its own stream the event, then remove the handle
             if (sound.soundHash.isValid) {
-              sound.soundEvents.add(data);
+              sound._soundEvents.add(data);
               sound.handlesInternal.removeWhere(
                 (handle) {
                   return handle == data.handle;
@@ -633,7 +645,7 @@ interface class SoLoud {
   /// The loop recursively call itself to check the state of
   /// all active sound handles. Therefore it can cause some lag for
   /// other event calls.
-  /// Not starting this will implies not receive [SoundEvent]s,
+  /// Not starting this will implies not receive [SoundEventType]s,
   /// it will therefore be up to the developer to check
   /// the sound handle validity
   ///
@@ -651,7 +663,7 @@ interface class SoLoud {
     return true;
   }
 
-  /// stop the [SoundEvent]s loop
+  /// stop the [SoundEventType]s loop
   ///
   Future<bool> _stopLoop() async {
     _log.finest('_stopLoop() called');
@@ -778,7 +790,7 @@ interface class SoLoud {
     if (ret.error == PlayerErrors.noError) {
       assert(
           ret.sound != null, 'loadFile() returned no sound despite no error');
-      activeSounds.add(ret.sound!);
+      _activeSounds.add(ret.sound!);
       return ret.sound!;
     } else if (ret.error == PlayerErrors.fileAlreadyLoaded) {
       _log.warning(() => "Sound '$completeFileName' was already loaded. "
@@ -787,11 +799,11 @@ interface class SoLoud {
       // The `audio_isolate.dart` code has logic to find the already-loaded
       // sound among active sounds. The sound should be here as well.
       assert(
-          activeSounds
+          _activeSounds
                   .where((sound) => sound.soundHash == ret.sound!.soundHash)
                   .length ==
               1,
-          'Sound is already loaded but missing from activeSounds. '
+          'Sound is already loaded but missing from _activeSounds. '
           'This is probably a bug in flutter_soloud, please file.');
       return ret.sound!;
     } else {
@@ -906,7 +918,7 @@ interface class SoLoud {
       ),
     )) as ({PlayerErrors error, SoundProps? sound});
     if (ret.error == PlayerErrors.noError) {
-      activeSounds.add(ret.sound!);
+      _activeSounds.add(ret.sound!);
       return ret.sound!;
     }
     _logPlayerError(ret.error, from: 'loadWaveform() result');
@@ -1003,7 +1015,7 @@ interface class SoLoud {
     )) as ({PlayerErrors error, SoundProps sound});
     _logPlayerError(ret.error, from: 'speechText() result');
     if (ret.error == PlayerErrors.noError) {
-      activeSounds.add(ret.sound);
+      _activeSounds.add(ret.sound);
       return ret.sound;
     }
     throw SoLoudCppException.fromPlayerError(ret.error);
@@ -1060,7 +1072,7 @@ interface class SoLoud {
 
     try {
       /// add the new handle to the sound
-      activeSounds
+      _activeSounds
           .firstWhere((s) => s.soundHash == sound.soundHash)
           .handlesInternal
           .add(ret.newHandle);
@@ -1160,7 +1172,7 @@ interface class SoLoud {
     await _waitForEvent(MessageEvents.stop, (handle: handle));
 
     /// find a sound with this handle and remove that handle from the list
-    for (final sound in activeSounds) {
+    for (final sound in _activeSounds) {
       sound.handlesInternal.removeWhere((element) => element == handle);
     }
   }
@@ -1184,8 +1196,10 @@ interface class SoLoud {
     await _waitForEvent(
         MessageEvents.disposeSound, (soundHash: sound.soundHash));
 
+    await sound._soundEvents.close();
+
     /// remove the sound with [soundHash]
-    activeSounds.removeWhere(
+    _activeSounds.removeWhere(
       (element) {
         return element.soundHash == sound.soundHash;
       },
@@ -1211,7 +1225,7 @@ interface class SoLoud {
     await _waitForEvent(MessageEvents.disposeAllSound, ());
 
     /// remove all sounds
-    activeSounds.clear();
+    _activeSounds.clear();
   }
 
   /// Query whether a sound is set to loop.
@@ -1825,17 +1839,21 @@ interface class SoLoud {
     }
   }
 
+  /// Deprecated alias of [setFilterParams].
+  @Deprecated("Use 'setFilterParams' instead")
+  void setFxParams(FilterType filterType, int attributeId, double value) =>
+      setFilterParams(filterType, attributeId, value);
+
   /// Set the effect parameter.
   ///
   /// [filterType] the filter to change the parameter to.
   /// [attributeId] the attribute ID to change.
   /// [value] the new value.
   ///
-  /// TODO(marco, filip): should we rename to `setFilterParams`?
-  void setFxParams(FilterType filterType, int attributeId, double value) {
+  void setFilterParams(FilterType filterType, int attributeId, double value) {
     final ret = SoLoudController()
         .soLoudFFI
-        .setFxParams(filterType.index, attributeId, value);
+        .setFilterParams(filterType.index, attributeId, value);
     final error = PlayerErrors.values[ret];
     if (error != PlayerErrors.noError) {
       _log.severe(() => 'setFxParams(): $error');
@@ -1843,17 +1861,21 @@ interface class SoLoud {
     }
   }
 
+  /// Deprecated alias of [getFilterParams].
+  @Deprecated("Use 'getFilterParams' instead")
+  double getFxParams(FilterType filterType, int attributeId) =>
+      getFilterParams(filterType, attributeId);
+
   /// Get the effect current parameter.
   ///
   /// [filterType] the filter to query the parameter.
   /// [attributeId] the ID of the attribute to request the value from.
   /// Returns the value of param
   ///
-  /// TODO(marco, filip): should we rename to `getFilterParams`?
-  double getFxParams(FilterType filterType, int attributeId) {
+  double getFilterParams(FilterType filterType, int attributeId) {
     return SoLoudController()
         .soLoudFFI
-        .getFxParams(filterType.index, attributeId);
+        .getFilterParams(filterType.index, attributeId);
   }
 
   // ////////////////////////////////////////////////
@@ -1938,7 +1960,7 @@ interface class SoLoud {
     }
 
     final filtered =
-        activeSounds.where((s) => s.soundHash == sound.soundHash).toSet();
+        _activeSounds.where((s) => s.soundHash == sound.soundHash).toSet();
     if (filtered.isEmpty) {
       _log.severe(() => 'play3d(): soundHash ${sound.soundHash} not found');
       throw SoLoudSoundHashNotFoundDartException(sound.soundHash);

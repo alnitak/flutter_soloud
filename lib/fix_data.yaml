@@ -9,6 +9,38 @@
 version: 1
 
 transforms:
+  # SoLoud.setFxParams => SoLoud.setFilterParams
+  - title: "Rename to 'setFilterParams()'"
+    date: 2024-03-15
+    element:
+      uris: [ 'flutter_soloud.dart', 'package:flutter_soloud/flutter_soloud.dart' ]
+      method: 'setFxParams'
+      inClass: 'SoLoud'
+    changes:
+      - kind: 'rename'
+        newName: 'setFilterParams'
+
+  # SoLoud.getFxParams => SoLoud.getFilterParams
+  - title: "Rename to 'getFilterParams()'"
+    date: 2024-03-15
+    element:
+      uris: [ 'flutter_soloud.dart', 'package:flutter_soloud/flutter_soloud.dart' ]
+      method: 'getFxParams'
+      inClass: 'SoLoud'
+    changes:
+      - kind: 'rename'
+        newName: 'getFilterParams'
+
+  # SoundEvent => SoundEventType
+  - title: "Rename to 'SoundEventType'"
+    date: 2024-03-15
+    element:
+      uris: [ 'flutter_soloud.dart', 'package:flutter_soloud/flutter_soloud.dart' ]
+      enum: 'SoundEvent'
+    changes:
+      - kind: 'rename'
+        newName: 'SoundEventType'
+
   # SoLoudTools.initSounds => SoLoudTools.createNotes
   - title: "Rename to 'createNotes'"
     date: 2024-03-12
