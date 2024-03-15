@@ -780,6 +780,20 @@ interface class SoLoud {
           ret.sound != null, 'loadFile() returned no sound despite no error');
       activeSounds.add(ret.sound!);
       return ret.sound!;
+    } else if (ret.error == PlayerErrors.fileAlreadyLoaded) {
+      _log.warning(() => "Sound '$completeFileName' was already loaded. "
+          'Prefer loading only once, and reusing the loaded sound '
+          'when playing.');
+      // The `audio_isolate.dart` code has logic to find the already-loaded
+      // sound among active sounds. The sound should be here as well.
+      assert(
+          activeSounds
+                  .where((sound) => sound.soundHash == ret.sound!.soundHash)
+                  .length ==
+              1,
+          'Sound is already loaded but missing from activeSounds. '
+          'This is probably a bug in flutter_soloud, please file.');
+      return ret.sound!;
     } else {
       throw SoLoudCppException.fromPlayerError(ret.error);
     }
@@ -1439,6 +1453,7 @@ interface class SoLoud {
 
   /// Smoothly change the global volume over specified time.
   ///
+  // TODO: change `double` to `Duration`
   void fadeGlobalVolume(double to, double time) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
