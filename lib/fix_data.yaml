@@ -9,8 +9,8 @@
 version: 1
 
 transforms:
-  # SoLoud.setFxParams => SoLoud.setFilterParams
-  - title: "Rename to 'setFilterParams()'"
+  # SoLoud.setFxParams => SoLoud.setFilterParameter
+  - title: "Rename to 'setFilterParameter()'"
     date: 2024-03-15
     element:
       uris: [ 'flutter_soloud.dart', 'package:flutter_soloud/flutter_soloud.dart' ]
@@ -18,10 +18,10 @@ transforms:
       inClass: 'SoLoud'
     changes:
       - kind: 'rename'
-        newName: 'setFilterParams'
+        newName: 'setFilterParameter'
 
-  # SoLoud.getFxParams => SoLoud.getFilterParams
-  - title: "Rename to 'getFilterParams()'"
+  # SoLoud.getFxParams => SoLoud.getFilterParameter
+  - title: "Rename to 'getFilterParameter()'"
     date: 2024-03-15
     element:
       uris: [ 'flutter_soloud.dart', 'package:flutter_soloud/flutter_soloud.dart' ]
@@ -29,7 +29,7 @@ transforms:
       inClass: 'SoLoud'
     changes:
       - kind: 'rename'
-        newName: 'getFilterParams'
+        newName: 'getFilterParameter'
 
   # SoundEvent => SoundEventType
   - title: "Rename to 'SoundEventType'"

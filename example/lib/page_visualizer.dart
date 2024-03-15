@@ -306,9 +306,10 @@ class _PageVisualizerState extends State<PageVisualizer> {
                               if (currentSound == null) return;
                               stopTimer();
                               final position = Duration(
-                                  milliseconds:
-                                      (value * Duration.millisecondsPerSecond)
-                                          .round());
+                                milliseconds:
+                                    (value * Duration.millisecondsPerSecond)
+                                        .round(),
+                              );
                               SoLoud.instance
                                   .seek(currentSound!.handles.last, position);
                               soundPosition.value = value;

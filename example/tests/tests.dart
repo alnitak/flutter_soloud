@@ -135,8 +135,10 @@ Future<void> test2() async {
   {
     await SoLoud.instance.play(currentSound!);
     final length = SoLoud.instance.getLength(currentSound!);
-    assert(length.inMilliseconds == 3840,
-        'getLength() failed: ${length.inMilliseconds}!');
+    assert(
+      length.inMilliseconds == 3840,
+      'getLength() failed: ${length.inMilliseconds}!',
+    );
     await delay(1000);
     SoLoud.instance.pauseSwitch(currentSound!.handles.first);
     final paused = SoLoud.instance.getPause(currentSound!.handles.first);

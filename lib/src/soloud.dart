@@ -1839,10 +1839,10 @@ interface class SoLoud {
     }
   }
 
-  /// Deprecated alias of [setFilterParams].
+  /// Deprecated alias of [setFilterParameter].
   @Deprecated("Use 'setFilterParams' instead")
   void setFxParams(FilterType filterType, int attributeId, double value) =>
-      setFilterParams(filterType, attributeId, value);
+      setFilterParameter(filterType, attributeId, value);
 
   /// Set the effect parameter.
   ///
@@ -1850,7 +1850,8 @@ interface class SoLoud {
   /// [attributeId] the attribute ID to change.
   /// [value] the new value.
   ///
-  void setFilterParams(FilterType filterType, int attributeId, double value) {
+  void setFilterParameter(
+      FilterType filterType, int attributeId, double value) {
     final ret = SoLoudController()
         .soLoudFFI
         .setFilterParams(filterType.index, attributeId, value);
@@ -1861,10 +1862,10 @@ interface class SoLoud {
     }
   }
 
-  /// Deprecated alias of [getFilterParams].
+  /// Deprecated alias of [getFilterParameter].
   @Deprecated("Use 'getFilterParams' instead")
   double getFxParams(FilterType filterType, int attributeId) =>
-      getFilterParams(filterType, attributeId);
+      getFilterParameter(filterType, attributeId);
 
   /// Get the effect current parameter.
   ///
@@ -1872,7 +1873,7 @@ interface class SoLoud {
   /// [attributeId] the ID of the attribute to request the value from.
   /// Returns the value of param
   ///
-  double getFilterParams(FilterType filterType, int attributeId) {
+  double getFilterParameter(FilterType filterType, int attributeId) {
     return SoLoudController()
         .soLoudFFI
         .getFilterParams(filterType.index, attributeId);

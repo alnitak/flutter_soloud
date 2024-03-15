@@ -352,5 +352,6 @@ class _PageWaveformState extends State<PageWaveform> {
   }
 
   static Duration _duration(double seconds) => Duration(
-      microseconds: (seconds * Duration.microsecondsPerSecond).round());
+        microseconds: (seconds * Duration.microsecondsPerSecond).round(),
+      );
 }

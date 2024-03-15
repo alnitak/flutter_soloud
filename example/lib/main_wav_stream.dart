@@ -59,7 +59,7 @@ class MyHomePage extends StatefulWidget {
 class _MyHomePageState extends State<MyHomePage> {
   List<SoundProps> sounds = [];
   bool isStarted = false;
-  Duration minLength = Duration(days: 99);
+  Duration minLength = const Duration(days: 99);
   ValueNotifier<Duration> seekPos = ValueNotifier(Duration.zero);
   late Timer timer;
 
