@@ -899,7 +899,7 @@ interface class SoLoud {
     throw SoLoudCppException.fromPlayerError(ret.error);
   }
 
-  ///  Set a waveform type to the given sound: see [WaveForm] enum.
+  /// Set a waveform type to the given sound: see [WaveForm] enum.
   ///
   /// [sound] the sound to change the wafeform type.
   /// [newWaveform] the new waveform type.
