@@ -387,7 +387,7 @@ class FlutterSoLoudFfi {
     double pan = 0,
     bool paused = false,
     bool looping = false,
-    double loopingStartAt = 0,
+    Duration loopingStartAt = Duration.zero,
   }) {
     // ignore: omit_local_variable_types
     final ffi.Pointer<ffi.UnsignedInt> handle = calloc();
@@ -397,7 +397,7 @@ class FlutterSoLoudFfi {
       pan,
       paused ? 1 : 0,
       looping ? 1 : 0,
-      loopingStartAt,
+      loopingStartAt.toDouble(),
       handle,
     );
     final ret =
@@ -494,9 +494,9 @@ class FlutterSoLoudFfi {
   /// Set sound loop point value.
   ///
   /// [handle]
-  /// [time] in seconds.
-  void setLoopPoint(SoundHandle handle, double time) {
-    _setLoopPoint(handle.id, time);
+  /// [timestamp]
+  void setLoopPoint(SoundHandle handle, Duration timestamp) {
+    _setLoopPoint(handle.id, timestamp.toDouble());
   }
 
   late final _setLoopPointPtr = _lookup<
@@ -624,12 +624,12 @@ class FlutterSoLoudFfi {
   late final _getAudioTexture2D = _getAudioTexture2DPtr
       .asFunction<int Function(ffi.Pointer<ffi.Pointer<ffi.Float>>)>();
 
-  /// Get the sound length in seconds
+  /// Get the sound length.
   ///
   /// [soundHash] the sound hash
   /// Returns sound length in seconds
-  double getLength(SoundHash soundHash) {
-    return _getLength(soundHash.hash);
+  Duration getLength(SoundHash soundHash) {
+    return _getLength(soundHash.hash).toDuration();
   }
 
   late final _getLengthPtr =
@@ -654,8 +654,8 @@ class FlutterSoLoudFfi {
   /// If you need to seek MP3s without lags, please, use
   /// `mode`=`LoadMode.memory` instead or other supported audio formats!
   ///
-  int seek(SoundHandle handle, double time) {
-    return _seek(handle.id, time);
+  int seek(SoundHandle handle, Duration time) {
+    return _seek(handle.id, time.toDouble());
   }
 
   late final _seekPtr = _lookup<
@@ -667,9 +667,9 @@ class FlutterSoLoudFfi {
   /// Get current sound position  in seconds
   ///
   /// [handle] the sound handle
-  /// Returns time in seconds
-  double getPosition(SoundHandle handle) {
-    return _getPosition(handle.id);
+  /// Returns time
+  Duration getPosition(SoundHandle handle) {
+    return _getPosition(handle.id).toDuration();
   }
 
   late final _getPositionPtr =
@@ -746,10 +746,10 @@ class FlutterSoLoudFfi {
   /// faders
   /////////////////////////////////////////
 
-  /// Smoothly change the global volume over specified time.
+  /// Smoothly change the global volume over specified [duration].
   ///
-  int fadeGlobalVolume(double to, double time) {
-    return _fadeGlobalVolume(to, time);
+  int fadeGlobalVolume(double to, Duration duration) {
+    return _fadeGlobalVolume(to, duration.toDouble());
   }
 
   late final _fadeGlobalVolumePtr =
@@ -758,10 +758,10 @@ class FlutterSoLoudFfi {
   late final _fadeGlobalVolume =
       _fadeGlobalVolumePtr.asFunction<int Function(double, double)>();
 
-  /// Smoothly change a channel's volume over specified time.
+  /// Smoothly change a channel's volume over specified [duration].
   ///
-  int fadeVolume(SoundHandle handle, double to, double time) {
-    return _fadeVolume(handle.id, to, time);
+  int fadeVolume(SoundHandle handle, double to, Duration duration) {
+    return _fadeVolume(handle.id, to, duration.toDouble());
   }
 
   late final _fadeVolumePtr = _lookup<
@@ -771,10 +771,10 @@ class FlutterSoLoudFfi {
   late final _fadeVolume =
       _fadeVolumePtr.asFunction<int Function(int, double, double)>();
 
-  /// Smoothly change a channel's pan setting over specified time.
+  /// Smoothly change a channel's pan setting over specified [duration].
   ///
-  int fadePan(SoundHandle handle, double to, double time) {
-    return _fadePan(handle.id, to, time);
+  int fadePan(SoundHandle handle, double to, Duration duration) {
+    return _fadePan(handle.id, to, duration.toDouble());
   }
 
   late final _fadePanPtr = _lookup<
@@ -786,8 +786,8 @@ class FlutterSoLoudFfi {
 
   /// Smoothly change a channel's relative play speed over specified time.
   ///
-  int fadeRelativePlaySpeed(SoundHandle handle, double to, double time) {
-    return _fadeRelativePlaySpeed(handle.id, to, time);
+  int fadeRelativePlaySpeed(SoundHandle handle, double to, Duration time) {
+    return _fadeRelativePlaySpeed(handle.id, to, time.toDouble());
   }
 
   late final _fadeRelativePlaySpeedPtr = _lookup<
@@ -797,10 +797,10 @@ class FlutterSoLoudFfi {
   late final _fadeRelativePlaySpeed =
       _fadeRelativePlaySpeedPtr.asFunction<int Function(int, double, double)>();
 
-  /// After specified time, pause the channel.
+  /// After specified [duration], pause the channel.
   ///
-  int schedulePause(SoundHandle handle, double time) {
-    return _schedulePause(handle.id, time);
+  int schedulePause(SoundHandle handle, Duration duration) {
+    return _schedulePause(handle.id, duration.toDouble());
   }
 
   late final _schedulePausePtr = _lookup<
@@ -811,8 +811,8 @@ class FlutterSoLoudFfi {
 
   /// After specified time, stop the channel.
   ///
-  int scheduleStop(SoundHandle handle, double time) {
-    return _scheduleStop(handle.id, time);
+  int scheduleStop(SoundHandle handle, Duration duration) {
+    return _scheduleStop(handle.id, duration.toDouble());
   }
 
   late final _scheduleStopPtr = _lookup<
@@ -823,8 +823,9 @@ class FlutterSoLoudFfi {
 
   /// Set fader to oscillate the volume at specified frequency.
   ///
-  int oscillateVolume(SoundHandle handle, double from, double to, double time) {
-    return _oscillateVolume(handle.id, from, to, time);
+  int oscillateVolume(
+      SoundHandle handle, double from, double to, Duration time) {
+    return _oscillateVolume(handle.id, from, to, time.toDouble());
   }
 
   late final _oscillateVolumePtr = _lookup<
@@ -836,8 +837,8 @@ class FlutterSoLoudFfi {
 
   /// Set fader to oscillate the panning at specified frequency.
   ///
-  int oscillatePan(SoundHandle handle, double from, double to, double time) {
-    return _oscillatePan(handle.id, from, to, time);
+  int oscillatePan(SoundHandle handle, double from, double to, Duration time) {
+    return _oscillatePan(handle.id, from, to, time.toDouble());
   }
 
   late final _oscillatePanPtr = _lookup<
@@ -850,8 +851,8 @@ class FlutterSoLoudFfi {
   /// Set fader to oscillate the relative play speed at specified frequency.
   ///
   int oscillateRelativePlaySpeed(
-      SoundHandle handle, double from, double to, double time) {
-    return _oscillateRelativePlaySpeed(handle.id, from, to, time);
+      SoundHandle handle, double from, double to, Duration time) {
+    return _oscillateRelativePlaySpeed(handle.id, from, to, time.toDouble());
   }
 
   late final _oscillateRelativePlaySpeedPtr = _lookup<
@@ -863,8 +864,8 @@ class FlutterSoLoudFfi {
 
   /// Set fader to oscillate the global volume at specified frequency.
   ///
-  int oscillateGlobalVolume(double from, double to, double time) {
-    return _oscillateGlobalVolume(from, to, time);
+  int oscillateGlobalVolume(double from, double to, Duration time) {
+    return _oscillateGlobalVolume(from, to, time.toDouble());
   }
 
   late final _oscillateGlobalVolumePtr = _lookup<
@@ -1031,7 +1032,7 @@ class FlutterSoLoudFfi {
     double volume = 1,
     bool paused = false,
     bool looping = false,
-    double loopingStartAt = 0,
+    Duration loopingStartAt = Duration.zero,
   }) {
     // ignore: omit_local_variable_types
     final ffi.Pointer<ffi.UnsignedInt> handle = calloc();
@@ -1046,7 +1047,7 @@ class FlutterSoLoudFfi {
       volume,
       paused ? 1 : 0,
       looping ? 1 : 0,
-      loopingStartAt,
+      loopingStartAt.toDouble(),
       handle,
     );
     final ret =
@@ -1387,4 +1388,19 @@ class FlutterSoLoudFfi {
   late final _testPtr =
       _lookup<ffi.NativeFunction<ffi.Void Function()>>('test');
   late final _test = _testPtr.asFunction<void Function()>();
+}
+
+/// Used for easier conversion from [double] to [Duration].
+extension _DoubleToDuration on double {
+  Duration toDuration() {
+    return Duration(
+        microseconds: (this * Duration.microsecondsPerSecond).round());
+  }
+}
+
+/// Used for easier conversion from [Duration] to [double].
+extension _DurationToDouble on Duration {
+  double toDouble() {
+    return inMicroseconds / Duration.microsecondsPerSecond;
+  }
 }

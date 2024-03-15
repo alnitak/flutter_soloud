@@ -191,6 +191,8 @@ class _Audio3DWidgetState extends State<Audio3DWidget>
   }
 
   void _tick(Duration elapsed) {
+    final prevX = posX;
+    final prevY = posY;
     if (widget.spinAround) {
       final circleRadius = Offset(posX - center.dx, posY - center.dy).distance;
       angle += pi / (animVel / (circleRadius / widget.width)) / 50;
@@ -201,7 +203,7 @@ class _Audio3DWidgetState extends State<Audio3DWidget>
       if (posX + dx < -widget.width / 2) dx = animVel;
       posX += dx;
     }
-    updatePos(Offset(dx, 0), elapsed);
+    updatePos(Offset(posX - prevX, posY - prevY), elapsed);
   }
 
   void updatePos(Offset delta, Duration timeStamp) {

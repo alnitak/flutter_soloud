@@ -52,7 +52,7 @@ typedef ArgsPlay = ({
   double pan,
   bool paused,
   bool looping,
-  double loopingStartAt,
+  Duration loopingStartAt,
 });
 typedef ArgsPlay3d = ({
   SoundHash soundHash,
@@ -65,7 +65,7 @@ typedef ArgsPlay3d = ({
   double volume,
   bool paused,
   bool looping,
-  double loopingStartAt,
+  Duration loopingStartAt,
 });
 typedef ArgsStop = ({SoundHandle handle});
 typedef ArgsDisposeSound = ({SoundHash soundHash});
