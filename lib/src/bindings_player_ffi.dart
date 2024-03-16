@@ -742,6 +742,103 @@ class FlutterSoLoudFfi {
   late final _getIsValidVoiceHandle =
       _getIsValidVoiceHandlePtr.asFunction<int Function(int)>();
 
+  /// Returns the number of concurrent sounds that are playing at the moment.
+  int getActiveVoiceCount() {
+    return _getActiveVoiceCount();
+  }
+
+  late final _getActiveVoiceCountPtr =
+      _lookup<ffi.NativeFunction<ffi.UnsignedInt Function()>>(
+          'getActiveVoiceCount');
+  late final _getActiveVoiceCount =
+      _getActiveVoiceCountPtr.asFunction<int Function()>();
+
+  /// Returns the number of concurrent sounds that are playing a
+  /// specific audio source.
+  int getCountAudioSource(int soundHash) {
+    return _getCountAudioSource(soundHash);
+  }
+
+  late final _getCountAudioSourcePtr =
+      _lookup<ffi.NativeFunction<ffi.Int Function(ffi.UnsignedInt)>>(
+          'getCountAudioSource');
+  late final _getCountAudioSource =
+      _getCountAudioSourcePtr.asFunction<int Function(int)>();
+
+  /// Returns the number of voices the application has told SoLoud to play.
+  int getVoiceCount() {
+    return _getVoiceCount();
+  }
+
+  late final _getVoiceCountPtr =
+      _lookup<ffi.NativeFunction<ffi.UnsignedInt Function()>>('getVoiceCount');
+  late final _getVoiceCount = _getVoiceCountPtr.asFunction<int Function()>();
+
+  /// Get a sound's protection state.
+  bool getProtectVoice(int handle) {
+    return _getProtectVoice(handle) == 1;
+  }
+
+  late final _getProtectVoicePtr =
+      _lookup<ffi.NativeFunction<ffi.Int Function(ffi.UnsignedInt)>>(
+          'getProtectVoice');
+  late final _getProtectVoice =
+      _getProtectVoicePtr.asFunction<int Function(int)>();
+
+  /// Set a sound's protection state.
+  ///
+  /// Normally, if you try to play more sounds than there are voices,
+  /// SoLoud will kill off the oldest playing sound to make room.
+  /// This will most likely be your background music. This can be worked
+  /// around by protecting the sound.
+  /// If all voices are protected, the result will be undefined.
+  ///
+  /// [handle]  handle to check.
+  /// [protect] whether to protect or not.
+  void setProtectVoice(int handle, bool protect) {
+    return _setProtectVoice(handle, protect ? 1 : 0);
+  }
+
+  late final _setProtectVoicePtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt, ffi.Int)>>(
+          'setProtectVoice');
+  late final _setProtectVoice =
+      _setProtectVoicePtr.asFunction<void Function(int, int)>();
+
+  /// Get the current maximum active voice count.
+  int getMaxActiveVoiceCount() {
+    return _getMaxActiveVoiceCount();
+  }
+
+  late final _getMaxActiveVoiceCountPtr =
+      _lookup<ffi.NativeFunction<ffi.UnsignedInt Function()>>(
+          'getMaxActiveVoiceCount');
+  late final _getMaxActiveVoiceCount =
+      _getMaxActiveVoiceCountPtr.asFunction<int Function()>();
+
+  /// Set the current maximum active voice count.
+  /// If voice count is higher than the maximum active voice count,
+  /// SoLoud will pick the ones with the highest volume to actually play.
+  /// [maxVoiceCount] the max concurrent sounds that can be played.
+  ///
+  /// NOTE: The number of concurrent voices is limited, as having unlimited
+  /// voices would cause performance issues, as well as lead to unnecessary
+  /// clipping. The default number of concurrent voices is 16, but this can be
+  /// adjusted at runtime. The hard maximum number is 4095, but if more are 
+  /// required, SoLoud can be modified to support more. But seriously, if you
+  /// need more than 4095 sounds at once, you're probably going to make 
+  /// some serious changes in any case.
+  void setMaxActiveVoiceCount(int maxVoiceCount) {
+    return _setMaxActiveVoiceCount(maxVoiceCount);
+  }
+
+  late final _setMaxActiveVoiceCountPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt)>>(
+          'setMaxActiveVoiceCount');
+  late final _setMaxActiveVoiceCount =
+      _setMaxActiveVoiceCountPtr.asFunction<void Function(int)>();
+
+
   /////////////////////////////////////////
   /// faders
   /////////////////////////////////////////
