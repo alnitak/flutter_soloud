@@ -45,8 +45,19 @@ void main() async {
   runApp(const MyApp());
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  @override
+  void dispose() {
+    SoLoud.instance.shutdown();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -54,7 +65,7 @@ class MyApp extends StatelessWidget {
       themeMode: ThemeMode.dark,
       darkTheme: ThemeData.dark(useMaterial3: true),
       scrollBehavior: const MaterialScrollBehavior().copyWith(
-        // enable mouse dragging
+        // enable mouse dragging also on desktop
         dragDevices: PointerDeviceKind.values.toSet(),
       ),
       home: const MyHomePage(),

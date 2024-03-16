@@ -147,7 +147,7 @@ class _Audio3DWidgetState extends State<Audio3DWidget>
   double posZ = 0;
   double velX = 0;
   double velY = 0;
-  double animVel = 1;
+  double animVel = 2;
   double angle = 0;
   Offset center = Offset.zero;
   late double dx;
