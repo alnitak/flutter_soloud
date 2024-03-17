@@ -6,6 +6,7 @@ import 'dart:ffi' as ffi;
 import 'dart:isolate';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_soloud/src/audio_isolate.dart';
 import 'package:flutter_soloud/src/enums.dart';
@@ -626,6 +627,38 @@ interface class SoLoud {
 
     completer.complete(true);
     return completer.future;
+  }
+
+  /// Stops the engine and disposes of all resources, including sounds
+  /// and the audio isolate in an synchronous way.
+  /// 
+  /// This method is meant to be called when exiting the app. For example
+  /// within the `dispose()` of the uppermost widget in the tree
+  /// or inside [AppLifecycleListener.onExitRequested].
+  /// 
+  /// During the normal app life cycle and if you want to shutdown the player,
+  /// please use [shutdown] which safer and it is meant to throw errors.
+  void deinit() {
+    _log.finest('deinit() called');
+    /// check if we are in the middle of an initialization.
+    if (_initializeCompleter != null) {
+      _log.warning('deinit() called while already initializing.');
+      _initializeCompleter = null;
+    }
+
+    /// if not already initialized, just return.
+    if (!_isInitialized) {
+      // The engine isn't initialized.
+      _log.warning('deinit() called when the engine is not initialized');
+      return;
+    }
+
+    /// reset broadcast and kill isolate
+    _cleanUpUnsuccessfulInitialization();
+    _isInitialized = false;
+
+    SoLoudController().soLoudFFI.disposeAllSound();
+    _activeSounds.clear();
   }
 
   /// return true if the audio isolate is running
@@ -1498,9 +1531,9 @@ interface class SoLoud {
   /// NOTE: The number of concurrent voices is limited, as having unlimited
   /// voices would cause performance issues, as well as lead to unnecessary
   /// clipping. The default number of concurrent voices is 16, but this can be
-  /// adjusted at runtime. The hard maximum number is 4095, but if more are 
+  /// adjusted at runtime. The hard maximum number is 4095, but if more are
   /// required, SoLoud can be modified to support more. But seriously, if you
-  /// need more than 4095 sounds at once, you're probably going to make 
+  /// need more than 4095 sounds at once, you're probably going to make
   /// some serious changes in any case.
   void setMaxActiveVoiceCount(int maxVoiceCount) {
     if (!isInitialized) {
@@ -1508,7 +1541,6 @@ interface class SoLoud {
     }
     SoLoudController().soLoudFFI.setMaxActiveVoiceCount(maxVoiceCount);
   }
-
 
   /// Return a floats matrix of 256x512.
   /// Every row are composed of 256 FFT values plus 256 of wave data.
