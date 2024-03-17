@@ -3,7 +3,7 @@ import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_soloud_example/controls.dart';
+import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:flutter_soloud_example/page_3d_audio.dart';
 import 'package:flutter_soloud_example/page_hello_flutter.dart';
 import 'package:flutter_soloud_example/page_multi_track.dart';
@@ -11,7 +11,7 @@ import 'package:flutter_soloud_example/page_visualizer.dart';
 import 'package:flutter_soloud_example/page_waveform.dart';
 import 'package:logging/logging.dart';
 
-void main() {
+void main() async {
   // The `flutter_soloud` package logs everything
   // (from severe warnings to fine debug messages)
   // using the standard `package:logging`.
@@ -29,11 +29,35 @@ void main() {
     );
   });
 
+  /// Initialize the player
+  await SoLoud.instance.initialize().then(
+    (_) {
+      Logger('main').info('player started');
+      SoLoud.instance.setVisualizationEnabled(true);
+      SoLoud.instance.setGlobalVolume(1);
+      SoLoud.instance.setMaxActiveVoiceCount(32);
+    },
+    onError: (Object e) {
+      Logger('main').severe('player starting error: $e');
+    },
+  );
+
   runApp(const MyApp());
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  @override
+  void dispose() {
+    SoLoud.instance.shutdown();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -41,7 +65,7 @@ class MyApp extends StatelessWidget {
       themeMode: ThemeMode.dark,
       darkTheme: ThemeData.dark(useMaterial3: true),
       scrollBehavior: const MaterialScrollBehavior().copyWith(
-        // enable mouse dragging
+        // enable mouse dragging also on desktop
         dragDevices: PointerDeviceKind.values.toSet(),
       ),
       home: const MyHomePage(),
@@ -54,19 +78,21 @@ class MyHomePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const DefaultTabController(
+    return DefaultTabController(
       length: 5,
       initialIndex: 2,
       child: SafeArea(
         child: Scaffold(
           body: Column(
             children: [
-              Controls(),
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: TabBar(
                   isScrollable: true,
-                  tabs: [
+                  onTap: (value) {
+                    SoLoud.instance.disposeAllSound();
+                  },
+                  tabs: const [
                     Tab(text: 'hello world!'),
                     Tab(text: 'visualizer'),
                     Tab(text: 'multi track'),
@@ -75,8 +101,8 @@ class MyHomePage extends StatelessWidget {
                   ],
                 ),
               ),
-              SizedBox(height: 8),
-              Expanded(
+              const SizedBox(height: 8),
+              const Expanded(
                 child: TabBarView(
                   physics: NeverScrollableScrollPhysics(),
                   children: [

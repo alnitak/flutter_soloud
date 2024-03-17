@@ -6,6 +6,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
+import 'package:flutter_soloud_example/controls.dart';
 import 'package:flutter_soloud_example/visualizer/visualizer.dart';
 import 'package:logging/logging.dart';
 import 'package:path_provider/path_provider.dart';
@@ -52,29 +53,6 @@ class _PageVisualizerState extends State<PageVisualizer> {
   Timer? timer;
   SoundProps? currentSound;
   FftController visualizerController = FftController();
-  bool canBuild = false;
-
-  @override
-  void initState() {
-    super.initState();
-
-    /// Initialize the player
-    SoLoud.instance.initialize().then(
-      (_) {
-        _log.info('player started');
-        SoLoud.instance.setVisualizationEnabled(true);
-        SoLoud.instance.setGlobalVolume(1);
-        if (context.mounted) {
-          setState(() {
-            canBuild = true;
-          });
-        }
-      },
-      onError: (Object e) {
-        _log.severe('player starting error: $e');
-      },
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -82,7 +60,25 @@ class _PageVisualizerState extends State<PageVisualizer> {
       body: SingleChildScrollView(
         child: Column(
           children: [
-            /// audio & frags popup menu
+            Controls(
+              onCaptureToggle: (deviceID) {
+                if (SoLoudCapture.instance.isCaptureStarted()) {
+                  SoLoudCapture.instance.stopCapture();
+                  visualizerController.changeIsCaptureStarted(false);
+                } else {
+                  SoLoudCapture.instance.initialize(deviceID: deviceID);
+                  SoLoudCapture.instance.startCapture();
+                  visualizerController.changeIsCaptureStarted(true);
+                }
+              },
+              onDeviceIdChanged: (deviceID) {
+                SoLoudCapture.instance.stopCapture();
+                SoLoudCapture.instance.initialize(deviceID: deviceID);
+                SoLoudCapture.instance.startCapture();
+              },
+            ),
+
+            /// audio, shader and texture kind popup menu
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -145,7 +141,7 @@ class _PageVisualizerState extends State<PageVisualizer> {
                 ),
                 const SizedBox(width: 10),
 
-                /// frags popup menu
+                /// sahders popup menu
                 StarMenu(
                   params: StarMenuParameters(
                     shape: MenuShape.linear,
@@ -433,7 +429,6 @@ class _PageVisualizerState extends State<PageVisualizer> {
                   return ValueListenableBuilder<TextureType>(
                     valueListenable: textureType,
                     builder: (_, type, __) {
-                      // return SizedBox.shrink();
                       return Visualizer(
                         key: UniqueKey(),
                         controller: visualizerController,

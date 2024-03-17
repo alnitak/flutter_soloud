@@ -1432,6 +1432,84 @@ interface class SoLoud {
     return SoLoudController().soLoudFFI.getIsValidVoiceHandle(handle);
   }
 
+  /// Returns the number of concurrent sounds that are playing at the moment.
+  int getActiveVoiceCount() {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    return SoLoudController().soLoudFFI.getActiveVoiceCount();
+  }
+
+  /// Returns the number of concurrent sounds that are playing a
+  /// specific audio source.
+  int getCountAudioSource(int soundHash) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    return SoLoudController().soLoudFFI.getCountAudioSource(soundHash);
+  }
+
+  /// Returns the number of voices the application has told SoLoud to play.
+  int getVoiceCount() {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    return SoLoudController().soLoudFFI.getVoiceCount();
+  }
+
+  // /// Get a sound's protection state.
+  // bool getProtectVoice(int handle) {
+  //   if (!isInitialized) {
+  //     throw const SoLoudNotInitializedException();
+  //   }
+  //   return SoLoudController().soLoudFFI.getProtectVoice(handle);
+  // }
+
+  // /// Set a sound's protection state.
+  // ///
+  // /// Normally, if you try to play more sounds than there are voices,
+  // /// SoLoud will kill off the oldest playing sound to make room.
+  // /// This will most likely be your background music. This can be worked
+  // /// around by protecting the sound.
+  // /// If all voices are protected, the result will be undefined.
+  // ///
+  // /// [handle]  handle to check.
+  // /// [protect] whether to protect or not.
+  // void setProtectVoice(int handle, bool protect) {
+  //   if (!isInitialized) {
+  //     throw const SoLoudNotInitializedException();
+  //   }
+  //   SoLoudController().soLoudFFI.setProtectVoice(handle, protect);
+  // }
+
+  /// Get the current maximum active voice count.
+  int getMaxActiveVoiceCount() {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    return SoLoudController().soLoudFFI.getMaxActiveVoiceCount();
+  }
+
+  /// Set the current maximum active voice count.
+  /// If voice count is higher than the maximum active voice count,
+  /// SoLoud will pick the ones with the highest volume to actually play.
+  /// [maxVoiceCount] the max concurrent sounds that can be played.
+  ///
+  /// NOTE: The number of concurrent voices is limited, as having unlimited
+  /// voices would cause performance issues, as well as lead to unnecessary
+  /// clipping. The default number of concurrent voices is 16, but this can be
+  /// adjusted at runtime. The hard maximum number is 4095, but if more are 
+  /// required, SoLoud can be modified to support more. But seriously, if you
+  /// need more than 4095 sounds at once, you're probably going to make 
+  /// some serious changes in any case.
+  void setMaxActiveVoiceCount(int maxVoiceCount) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    SoLoudController().soLoudFFI.setMaxActiveVoiceCount(maxVoiceCount);
+  }
+
+
   /// Return a floats matrix of 256x512.
   /// Every row are composed of 256 FFT values plus 256 of wave data.
   /// Every time is called, a new row is stored in the

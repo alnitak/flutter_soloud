@@ -21,29 +21,6 @@ class _PageHelloFlutterSoLoudState extends State<PageHelloFlutterSoLoud> {
   static final Logger _log = Logger('_PageHelloFlutterSoLoudState');
 
   SoundProps? currentSound;
-  bool canBuild = false;
-
-  @override
-  void initState() {
-    super.initState();
-
-    /// Initialize the player
-    SoLoud.instance.initialize().then(
-      (_) {
-        _log.info('player started');
-        // SoLoud.instance.setVisualizationEnabled(false);
-        SoLoud.instance.setGlobalVolume(1);
-        if (context.mounted) {
-          setState(() {
-            canBuild = true;
-          });
-        }
-      },
-      onError: (Object e) {
-        _log.severe('player starting error: $e');
-      },
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -72,18 +49,23 @@ class _PageHelloFlutterSoLoudState extends State<PageHelloFlutterSoLoud> {
             ),
             Column(
               children: [
-                /// start the capture
+                /// start/stop the capture
                 ElevatedButton(
                   onPressed: () async {
-                    final a = SoLoudCapture.instance.initialize();
-                    final b = SoLoudCapture.instance.startCapture();
-                    if (mounted &&
-                        a == CaptureErrors.captureNoError &&
-                        b == CaptureErrors.captureNoError) {
-                      setState(() {});
+                    if (SoLoudCapture.instance.isCaptureInited) {
+                      SoLoudCapture.instance.stopCapture();
+                      if (context.mounted) setState(() {});
+                    } else {
+                      final a = SoLoudCapture.instance.initialize();
+                      final b = SoLoudCapture.instance.startCapture();
+                      if (context.mounted &&
+                          a == CaptureErrors.captureNoError &&
+                          b == CaptureErrors.captureNoError) {
+                        setState(() {});
+                      }
                     }
                   },
-                  child: const Text('start mic'),
+                  child: const Text('start/stop mic'),
                 ),
                 const SizedBox(height: 16),
                 if (SoLoudCapture.instance.isCaptureInited)
@@ -101,17 +83,6 @@ class _PageHelloFlutterSoLoudState extends State<PageHelloFlutterSoLoud> {
 
   /// play file
   Future<void> play(String file) async {
-    /// Start audio engine if not already
-    if (!await SoLoud.instance.initialized) {
-      try {
-        await SoLoud.instance.initialize();
-        _log.info('engine started');
-      } catch (e) {
-        _log.severe('engine starting error', e);
-        return;
-      }
-    }
-
     /// stop any previous sound loaded
     if (currentSound != null) {
       try {

@@ -42,6 +42,12 @@ struct FilterObject {
 };
 
 class Filters {
+    /// TODO(marco): Soloud.setGlobalFilter()
+    /// Sets, or clears, the global filter.
+    ///
+    /// Setting the global filter to NULL will clear the global filter. 
+    /// The default maximum number of global filters active is 4, but this 
+    /// can be changed in a global constant in soloud.h (and rebuilding SoLoud).
 public:
     Filters(SoLoud::Soloud *soloud);
     ~Filters();

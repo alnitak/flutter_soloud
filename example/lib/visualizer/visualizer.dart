@@ -33,12 +33,14 @@ class FftController extends ChangeNotifier {
     this.maxFreqRange = 255,
     this.isVisualizerEnabled = true,
     this.isVisualizerForPlayer = true,
+    this.isCaptureStarted = false,
   });
 
   int minFreqRange;
   int maxFreqRange;
   bool isVisualizerEnabled;
   bool isVisualizerForPlayer;
+  bool isCaptureStarted;
 
   void changeMinFreq(int minFreq) {
     if (minFreq < 0) return;
@@ -64,6 +66,11 @@ class FftController extends ChangeNotifier {
     notifyListeners();
     SoLoud.instance.setVisualizationEnabled(enable);
   }
+
+  void changeIsCaptureStarted(bool enabled) {
+    isCaptureStarted = enabled;
+    notifyListeners();
+  }
 }
 
 class Visualizer extends StatefulWidget {
@@ -84,8 +91,6 @@ class Visualizer extends StatefulWidget {
 
 class _VisualizerState extends State<Visualizer>
     with SingleTickerProviderStateMixin {
-  late bool isInitialized;
-  late bool isCaptureInited;
   late Ticker ticker;
   late Stopwatch sw;
   late Bmp32Header fftImageRow;
@@ -103,15 +108,6 @@ class _VisualizerState extends State<Visualizer>
   void initState() {
     super.initState();
 
-    isInitialized = SoLoud.instance.isInitialized;
-    isCaptureInited = SoLoudCapture.instance.isCaptureInited;
-    SoLoud.instance.audioEvent.stream.listen(
-      (event) {
-        isInitialized = SoLoud.instance.isInitialized;
-        isCaptureInited = SoLoudCapture.instance.isCaptureInited;
-      },
-    );
-
     /// these constants must not be touched since SoLoud
     /// gives back a size of 256 values
     fftSize = 512;
@@ -126,6 +122,9 @@ class _VisualizerState extends State<Visualizer>
     setupBitmapSize();
     ticker.start();
 
+    widget.controller.isCaptureStarted =
+        SoLoudCapture.instance.isCaptureStarted();
+        
     widget.controller.addListener(() {
       ticker.stop();
       setupBitmapSize();
@@ -329,13 +328,14 @@ class _VisualizerState extends State<Visualizer>
     }
 
     /// get audio data from player or capture device
-    if (widget.controller.isVisualizerForPlayer && isInitialized) {
+    if (widget.controller.isVisualizerForPlayer) {
       try {
         SoLoud.instance.getAudioTexture2D(playerData);
       } catch (e) {
         return null;
       }
-    } else if (!widget.controller.isVisualizerForPlayer && isCaptureInited) {
+    } else if (!widget.controller.isVisualizerForPlayer &&
+        widget.controller.isCaptureStarted) {
       final ret = SoLoudCapture.instance.getCaptureAudioTexture2D(captureData);
       if (ret != CaptureErrors.captureNoError) {
         return null;
@@ -384,13 +384,14 @@ class _VisualizerState extends State<Visualizer>
     }
 
     /// get audio data from player or capture device
-    if (widget.controller.isVisualizerForPlayer && isInitialized) {
+    if (widget.controller.isVisualizerForPlayer) {
       try {
         SoLoud.instance.getAudioTexture2D(playerData);
       } catch (e) {
         return null;
       }
-    } else if (!widget.controller.isVisualizerForPlayer && isCaptureInited) {
+    } else if (!widget.controller.isVisualizerForPlayer &&
+        widget.controller.isCaptureStarted) {
       final ret = SoLoudCapture.instance.getCaptureAudioTexture2D(captureData);
       if (ret != CaptureErrors.captureNoError) {
         return null;
@@ -408,7 +409,6 @@ class _VisualizerState extends State<Visualizer>
     /// Since in dispose the [audioData] is freed, there will be a crash!
     /// I do not understand why this happens because the FutureBuilder
     /// seems has not finished before dispose()!?
-    /// My psychoanalyst told me to forget it and my mom to study more
     if (!mounted) {
       return null;
     }
