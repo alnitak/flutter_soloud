@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter_soloud/src/audio_source.dart';
 import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/soloud.dart';
 import 'package:flutter_soloud/src/utils/assets_manager.dart';
@@ -22,7 +23,7 @@ class SoLoudTools {
 
   /// Loads an audio file from the assets folder.
   @Deprecated('Use SoLoud.loadAsset() instead')
-  static Future<SoundProps?> loadFromAssets(
+  static Future<AudioSource?> loadFromAssets(
     String path, {
     LoadMode mode = LoadMode.memory,
   }) async {
@@ -37,7 +38,7 @@ class SoLoudTools {
 
   /// Loads an audio file from the local file system.
   @Deprecated('Use SoLoud.loadFile() instead')
-  static Future<SoundProps?> loadFromFile(
+  static Future<AudioSource?> loadFromFile(
     String path, {
     LoadMode mode = LoadMode.memory,
   }) async {
@@ -52,7 +53,7 @@ class SoLoudTools {
 
   /// Fetches an audio file from a URL and loads it into the memory.
   @Deprecated('Use SoLoud.loadUrl() instead')
-  static Future<SoundProps?> loadFromUrl(
+  static Future<AudioSource?> loadFromUrl(
     String url, {
     LoadMode mode = LoadMode.memory,
   }) async {
@@ -86,7 +87,7 @@ class SoLoudTools {
   /// Let SoLoud try to load the file
   ///
   @Deprecated('Only used internally by deprecated methods')
-  static Future<SoundProps?> _finallyLoadFile(
+  static Future<AudioSource?> _finallyLoadFile(
     File file, {
     LoadMode mode = LoadMode.memory,
   }) async {
@@ -100,7 +101,7 @@ class SoLoudTools {
 
   /// Deprecated: Use [createNotes] instead.
   @Deprecated("Use 'createNotes' instead.")
-  static Future<List<SoundProps>> initSounds({
+  static Future<List<AudioSource>> initSounds({
     int octave = 3,
     WaveForm waveForm = WaveForm.sin,
     bool superwave = true,
@@ -111,17 +112,17 @@ class SoLoudTools {
         superwave: superwave,
       );
 
-  /// Returns a list of the 12 SoundProps (notes) of the given octave
+  /// Returns a list of the 12 [AudioSource] notes of the given octave
   ///
   /// [octave] usually from 0 to 4
-  static Future<List<SoundProps>> createNotes({
+  static Future<List<AudioSource>> createNotes({
     int octave = 3,
     WaveForm waveForm = WaveForm.sin,
     bool superwave = true,
   }) async {
     assert(octave >= 0 && octave <= 4, '0 >= octave <= 4 is not true!');
     final startingFreq = 55.0 * (pow(2, (12 * octave) / 12));
-    final notes = <SoundProps>[];
+    final notes = <AudioSource>[];
     for (var index = 0; index < 12; index++) {
       final sound = await SoLoud.instance.loadWaveform(
         waveForm,

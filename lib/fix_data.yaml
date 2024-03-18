@@ -9,6 +9,27 @@
 version: 1
 
 transforms:
+  # AudioSource.handle => AudioSource.handles
+  - title: "Rename to 'handles'"
+    date: 2024-03-11
+    element:
+      uris: [ 'flutter_soloud.dart', 'package:flutter_soloud/flutter_soloud.dart' ]
+      getter: 'handle'
+      inClass: 'AudioSource'
+    changes:
+      - kind: 'rename'
+        newName: 'handles'
+
+  # SoundProps => AudioSource
+  - title: "Rename to 'AudioSource'"
+    date: 2024-03-18
+    element:
+      uris: [ 'flutter_soloud.dart', 'package:flutter_soloud/flutter_soloud.dart' ]
+      class: 'SoundProps'
+    changes:
+      - kind: 'rename'
+        newName: 'AudioSource'
+
   # SoLoud.setFxParams => SoLoud.setFilterParameter
   - title: "Rename to 'setFilterParameter()'"
     date: 2024-03-15

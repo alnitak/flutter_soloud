@@ -15,7 +15,7 @@ class Page3DAudio extends StatefulWidget {
 class _Page3DAudioState extends State<Page3DAudio> {
   static final Logger _log = Logger('_Page3DAudioState');
 
-  SoundProps? currentSound;
+  AudioSource? currentSound;
   bool spinAround = false;
 
   @override
@@ -129,7 +129,7 @@ class Audio3DWidget extends StatefulWidget {
   });
 
   final bool spinAround;
-  final SoundProps? sound;
+  final AudioSource? sound;
   final double width;
   final double height;
 

@@ -7,7 +7,6 @@ import 'package:flutter_soloud_example/waveform/filter_fx.dart';
 import 'package:flutter_soloud_example/waveform/keyboard_widget.dart';
 import 'package:flutter_soloud_example/waveform/knobs_groups.dart';
 import 'package:flutter_soloud_example/waveform/text_slider.dart';
-import 'package:logging/logging.dart';
 import 'package:star_menu/star_menu.dart';
 
 /// Example to demostrate how waveforms work with a keyboard
@@ -20,8 +19,6 @@ class PageWaveform extends StatefulWidget {
 }
 
 class _PageWaveformState extends State<PageWaveform> {
-  static final Logger _log = Logger('_PageWaveformState');
-
   ValueNotifier<double> scale = ValueNotifier(0.25);
   ValueNotifier<double> detune = ValueNotifier(1);
   ValueNotifier<WaveForm> waveForm = ValueNotifier(WaveForm.fSquare);
@@ -34,8 +31,8 @@ class _PageWaveformState extends State<PageWaveform> {
   double oscillateVol = 0;
   double oscillatePan = 0;
   double oscillateSpeed = 0;
-  List<SoundProps> notes = [];
-  SoundProps? sound;
+  List<AudioSource> notes = [];
+  AudioSource? sound;
   bool canBuild = false;
 
   @override

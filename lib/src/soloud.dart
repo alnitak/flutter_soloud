@@ -1,13 +1,13 @@
 // ignore_for_file: require_trailing_commas, avoid_positional_boolean_parameters
 
 import 'dart:async';
-import 'dart:collection';
 import 'dart:ffi' as ffi;
 import 'dart:isolate';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_soloud/src/audio_isolate.dart';
+import 'package:flutter_soloud/src/audio_source.dart';
 import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/exceptions/exceptions.dart';
 import 'package:flutter_soloud/src/filter_params.dart';
@@ -19,75 +19,6 @@ import 'package:flutter_soloud/src/utils/loader.dart';
 import 'package:http/http.dart' as http;
 import 'package:logging/logging.dart';
 import 'package:meta/meta.dart';
-
-/// Deprecated alias to [SoundEventType].
-@Deprecated('Use SoundEventType instead')
-typedef SoundEvent = SoundEventType;
-
-/// sound event types
-enum SoundEventType {
-  /// handle reached the end of playback
-  handleIsNoMoreValid,
-
-  /// the sound has been disposed
-  soundDisposed,
-}
-
-/// the type sent back to the user when a sound event occurs
-typedef StreamSoundEvent = ({
-  SoundEventType event,
-  SoundProps sound,
-  SoundHandle handle,
-});
-
-/// the sound class
-class SoundProps {
-  ///
-  SoundProps(this.soundHash);
-
-  /// The hash uniquely identifying this loaded sound.
-  final SoundHash soundHash;
-
-  /// This getter is [deprecated] and will be removed. Use [handles] instead.
-  @Deprecated("Use 'handles' instead")
-  UnmodifiableSetView<SoundHandle> get handle => handles;
-
-  /// The handles of currently playing instances of this sound.
-  ///
-  /// A sound (expressed as [SoundProps]) can be loaded once, but then
-  /// played multiple times. It's even possible to play several instances
-  /// of the sound simultaneously.
-  ///
-  /// Each time you [SoLoud.play] a sound, you get back a [SoundHandle],
-  /// and that same handle will be added to this [handles] set.
-  /// When the sound finishes playing, its handle will be removed from this set.
-  ///
-  /// This set is unmodifiable.
-  late final UnmodifiableSetView<SoundHandle> handles =
-      UnmodifiableSetView(handlesInternal);
-
-  /// The [internal] backing of [handles].
-  ///
-  /// Use [handles].
-  @internal
-  final Set<SoundHandle> handlesInternal = {};
-
-  ///
-  // TODO(marco): make marker keys time able to trigger an event
-  final List<double> keys = [];
-
-  /// Backing controller for [soundEvents].
-  final StreamController<StreamSoundEvent> _soundEvents =
-      StreamController.broadcast();
-
-  /// the user can listen ie when a sound ends or key events (TODO)
-  Stream<StreamSoundEvent> get soundEvents => _soundEvents.stream;
-
-  @override
-  String toString() {
-    return 'soundHash: $soundHash has ${handles.length} active handles';
-  }
-}
 
 /// The events exposed by the plugin
 enum AudioEvent {
@@ -303,10 +234,10 @@ interface class SoLoud {
   /// should be synchronized with each other
   ///
   /// Backing of [activeSounds].
-  final List<SoundProps> _activeSounds = [];
+  final List<AudioSource> _activeSounds = [];
 
   /// The sounds that are currently _playing_.
-  Iterable<SoundProps> get activeSounds => _activeSounds;
+  Iterable<AudioSource> get activeSounds => _activeSounds;
 
   /// Wait for the isolate to return after the event has been completed.
   /// The event must be recognized by [event] and [args] sent to
@@ -464,13 +395,13 @@ interface class SoLoud {
             orElse: () {
               _log.info(() => 'Received an event for sound with handle: '
                   "${data.handle} but such sound isn't among _activeSounds.");
-              return SoundProps(SoundHash.invalid());
+              return AudioSource(SoundHash.invalid());
             },
           );
 
           /// send the disposed event to listeners and remove the sound
           if (data.event == SoundEventType.soundDisposed) {
-            sound._soundEvents.add(data);
+            sound.soundEventsController.add(data);
             _activeSounds.removeWhere(
                 (element) => element.soundHash == data.sound.soundHash);
           }
@@ -479,7 +410,7 @@ interface class SoLoud {
           if (data.event == SoundEventType.handleIsNoMoreValid) {
             /// ...put in its own stream the event, then remove the handle
             if (sound.soundHash.isValid) {
-              sound._soundEvents.add(data);
+              sound.soundEventsController.add(data);
               sound.handlesInternal.removeWhere(
                 (handle) {
                   return handle == data.handle;
@@ -696,7 +627,7 @@ interface class SoLoud {
   /// Miniaudio audio backend
   /// sample rate 44100
   /// buffer 2048
-  /// TODO(marco): add initialization parameters
+  // TODO(marco): add initialization parameters
   Future<PlayerErrors> _initEngine() async {
     _log.finest('_initEngine() called');
     if (_isolate == null) {
@@ -765,10 +696,10 @@ interface class SoLoud {
   /// from the given file when needed (more CPU, less memory allocated).
   /// See the [seek] note problem when using [LoadMode] = `LoadMode.disk`.
   /// Default is `LoadMode.memory`.
-  /// Returns the new sound as [SoundProps].
+  /// Returns the new sound as [AudioSource].
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
-  Future<SoundProps> loadFile(
+  Future<AudioSource> loadFile(
     String completeFileName, {
     LoadMode mode = LoadMode.memory,
   }) async {
@@ -784,7 +715,7 @@ interface class SoLoud {
     final ret = (await _waitForEvent(
       MessageEvents.loadFile,
       (completeFileName: completeFileName, mode: mode),
-    )) as ({PlayerErrors error, SoundProps? sound});
+    )) as ({PlayerErrors error, AudioSource? sound});
 
     _logPlayerError(ret.error, from: 'loadFile() result');
     if (ret.error == PlayerErrors.noError) {
@@ -827,8 +758,8 @@ interface class SoLoud {
   /// creating the temporary file that the asset will be copied to.
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   ///
-  /// Returns the new sound as [SoundProps].
-  Future<SoundProps> loadAsset(
+  /// Returns the new sound as [AudioSource].
+  Future<AudioSource> loadAsset(
     String key, {
     LoadMode mode = LoadMode.memory,
     AssetBundle? assetBundle,
@@ -862,8 +793,8 @@ interface class SoLoud {
   /// creating the temporary file that the asset will be copied to.
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   ///
-  /// Returns the new sound as [SoundProps].
-  Future<SoundProps> loadUrl(
+  /// Returns the new sound as [AudioSource].
+  Future<AudioSource> loadUrl(
     String url, {
     LoadMode mode = LoadMode.memory,
     http.Client? httpClient,
@@ -886,8 +817,8 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   ///
-  /// Returns the new sound as [SoundProps].
-  Future<SoundProps> loadWaveform(
+  /// Returns the new sound as [AudioSource].
+  Future<AudioSource> loadWaveform(
     WaveForm waveform,
     bool superWave,
     double scale,
@@ -916,7 +847,7 @@ interface class SoLoud {
         scale: scale,
         detune: detune,
       ),
-    )) as ({PlayerErrors error, SoundProps? sound});
+    )) as ({PlayerErrors error, AudioSource? sound});
     if (ret.error == PlayerErrors.noError) {
       _activeSounds.add(ret.sound!);
       return ret.sound!;
@@ -931,7 +862,7 @@ interface class SoLoud {
   /// [newWaveform] the new waveform type.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
-  void setWaveform(SoundProps sound, WaveForm newWaveform) {
+  void setWaveform(AudioSource sound, WaveForm newWaveform) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
@@ -944,7 +875,7 @@ interface class SoLoud {
   /// [newScale] the new scale.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
-  void setWaveformScale(SoundProps sound, double newScale) {
+  void setWaveformScale(AudioSource sound, double newScale) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
@@ -957,7 +888,7 @@ interface class SoLoud {
   /// [newDetune] the new detune.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
-  void setWaveformDetune(SoundProps sound, double newDetune) {
+  void setWaveformDetune(AudioSource sound, double newDetune) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
@@ -970,7 +901,7 @@ interface class SoLoud {
   /// [newFrequency] the new frequency.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
-  void setWaveformFreq(SoundProps sound, double newFrequency) {
+  void setWaveformFreq(AudioSource sound, double newFrequency) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
@@ -983,7 +914,7 @@ interface class SoLoud {
   /// [superwave] whether this sound should be a super wave or not.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
-  void setWaveformSuperWave(SoundProps sound, bool superwave) {
+  void setWaveformSuperWave(AudioSource sound, bool superwave) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
@@ -996,10 +927,10 @@ interface class SoLoud {
   /// Speech the given text.
   ///
   /// [textToSpeech] the text to be spoken.
-  /// Returns the new sound as [SoundProps].
+  /// Returns the new sound as [AudioSource].
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
-  Future<SoundProps> speechText(String textToSpeech) async {
+  Future<AudioSource> speechText(String textToSpeech) async {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
@@ -1012,7 +943,7 @@ interface class SoLoud {
     final ret = (await _waitForEvent(
       MessageEvents.speechText,
       (textToSpeech: textToSpeech),
-    )) as ({PlayerErrors error, SoundProps sound});
+    )) as ({PlayerErrors error, AudioSource sound});
     _logPlayerError(ret.error, from: 'speechText() result');
     if (ret.error == PlayerErrors.noError) {
       _activeSounds.add(ret.sound);
@@ -1031,7 +962,7 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   Future<SoundHandle> play(
-    SoundProps sound, {
+    AudioSource sound, {
     double volume = 1,
     double pan = 0,
     bool paused = false,
@@ -1183,7 +1114,7 @@ interface class SoLoud {
   /// [sound] the sound to clear.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
-  Future<void> disposeSound(SoundProps sound) async {
+  Future<void> disposeSound(AudioSource sound) async {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
@@ -1196,7 +1127,7 @@ interface class SoLoud {
     await _waitForEvent(
         MessageEvents.disposeSound, (soundHash: sound.soundHash));
 
-    await sound._soundEvents.close();
+    await sound.soundEventsController.close();
 
     /// remove the sound with [soundHash]
     _activeSounds.removeWhere(
@@ -1312,7 +1243,7 @@ interface class SoLoud {
   /// [sound] the sound hash to get the length.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
-  Duration getLength(SoundProps sound) {
+  Duration getLength(AudioSource sound) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
@@ -1798,7 +1729,7 @@ interface class SoLoud {
     return ret.index;
   }
 
-  /// TODO(marco): add a method to rearrange filters order?
+  // TODO(marco): add a method to rearrange filters order?
 
   /// Get parameters names of the given filter.
   ///
@@ -1906,7 +1837,7 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   Future<SoundHandle> play3d(
-    SoundProps sound,
+    AudioSource sound,
     double posX,
     double posY,
     double posZ, {

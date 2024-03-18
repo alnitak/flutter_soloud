@@ -45,6 +45,7 @@ to `2.0.0-pre.2` and beyond.
 - Renamed `SoLoud.setFxParams` to `SoLoud.setFilterParameter`. 
   This mimics the C++ API name.
   Quick fix available.
+- Renamed `SoundProps` to `AudioSource`. Quick fix available.
 
 #### 2.0.0-pre.1 (12 Mar 2024)
 - added `looping` and `loopingStartAt` properties to `SoLoud.play()` and `SoLoud.play3d()`.

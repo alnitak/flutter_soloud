@@ -2,7 +2,7 @@ import 'dart:math';
 
 import 'package:meta/meta.dart';
 
-/// A hash of a `SoundProps` instance.
+/// A hash of an `AudioSource` instance.
 ///
 /// Each newly loaded sound gets a unique hash. This hash is then used
 /// to uniquely identify the loaded sound to SoLoud.
