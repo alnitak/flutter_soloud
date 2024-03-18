@@ -430,14 +430,14 @@ class FlutterSoLoudFfi {
   ///
   /// [soundHash]
   void disposeSound(SoundHash soundHash) {
-    return _stopSound(soundHash.hash);
+    return _disposeSound(soundHash.hash);
   }
 
-  late final _stopSoundPtr =
+  late final _disposeSoundPtr =
       _lookup<ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt)>>(
     'disposeSound',
   );
-  late final _stopSound = _stopSoundPtr.asFunction<void Function(int)>();
+  late final _disposeSound = _disposeSoundPtr.asFunction<void Function(int)>();
 
   /// Dispose all sounds already loaded
   void disposeAllSound() {

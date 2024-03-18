@@ -696,7 +696,7 @@ interface class SoLoud {
   /// Miniaudio audio backend
   /// sample rate 44100
   /// buffer 2048
-  /// TODO(marco): add initialization parameters
+  // TODO(marco): add initialization parameters
   Future<PlayerErrors> _initEngine() async {
     _log.finest('_initEngine() called');
     if (_isolate == null) {
@@ -1798,7 +1798,7 @@ interface class SoLoud {
     return ret.index;
   }
 
-  /// TODO(marco): add a method to rearrange filters order?
+  // TODO(marco): add a method to rearrange filters order?
 
   /// Get parameters names of the given filter.
   ///
