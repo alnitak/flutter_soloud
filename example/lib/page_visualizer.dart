@@ -141,7 +141,7 @@ class _PageVisualizerState extends State<PageVisualizer> {
                 ),
                 const SizedBox(width: 10),
 
-                /// sahders popup menu
+                /// shaders popup menu
                 StarMenu(
                   params: StarMenuParameters(
                     shape: MenuShape.linear,
