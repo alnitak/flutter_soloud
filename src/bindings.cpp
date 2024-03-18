@@ -72,6 +72,11 @@ extern "C"
         player.dispose();
     }
 
+    FFI_PLUGIN_EXPORT int isInited()
+    {
+        return player.isInited() ? 1 : 0;
+    }
+
     /// Load a new sound to be played once or multiple times later
     ///
     /// [completeFileName] the complete file path

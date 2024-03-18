@@ -113,6 +113,19 @@ class FlutterSoLoudFfi {
       _lookup<ffi.NativeFunction<ffi.Void Function()>>('dispose');
   late final _dispose = _disposePtr.asFunction<void Function()>();
 
+  /// Gets the state of player
+  ///
+  /// Return true if initilized
+  bool isInited() {
+    return _isInited() == 1;
+  }
+
+  late final _isInitedPtr =
+      _lookup<ffi.NativeFunction<ffi.Int Function()>>(
+    'isInited',
+  );
+  late final _isInited = _isInitedPtr.asFunction<int Function()>();
+
   /// Load a new sound to be played once or multiple times later.
   ///
   /// [completeFileName] the complete file path.

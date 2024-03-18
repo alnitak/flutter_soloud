@@ -36,7 +36,6 @@ PlayerErrors Player::init()
         mInited = true;
     else
         result = backendNotInited;
-
     return (PlayerErrors)result;
 }
 
