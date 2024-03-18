@@ -1,4 +1,11 @@
-#### 2.0.0-pre.2
+#### 2.0.0-pre.X
+- added `getActiveVoiceCount()` to get concurrent sounds that are playing at the moment.
+- added `getCountAudioSource()` to get concurrent sounds that are playing a specific audio source.
+- added `getVoiceCount()` to get the number of voices the application has told SoLoud to play.
+- added `getMaxActiveVoiceCount()` to get the current maximum active voice count.
+- added `setMaxActiveVoiceCount()` to set the current maximum active voice count.
+
+#### 2.0.0-pre.2 (14 Mar 2024)
 
 NOTE: This version is much more breaking than the ones before it.
 It might be worth it to first upgrade your code to `2.0.0-pre.1`,

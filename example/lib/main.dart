@@ -35,6 +35,7 @@ void main() async {
       Logger('main').info('player started');
       SoLoud.instance.setVisualizationEnabled(true);
       SoLoud.instance.setGlobalVolume(1);
+      SoLoud.instance.setMaxActiveVoiceCount(32);
     },
     onError: (Object e) {
       Logger('main').severe('player starting error: $e');

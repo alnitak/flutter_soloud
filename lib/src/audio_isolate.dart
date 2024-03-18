@@ -104,7 +104,7 @@ void audioIsolate(SendPort isolateToMainStream) {
     switch (event['event']! as MessageEvents) {
       case MessageEvents.exitIsolate:
         mainToIsolateStream.close();
-        soLoudController.soLoudFFI.dispose();
+        soLoudController.soLoudFFI.deinit();
         isolateToMainStream
             .send({'event': event['event'], 'args': (), 'return': ()});
         break;
@@ -118,7 +118,7 @@ void audioIsolate(SendPort isolateToMainStream) {
 
       case MessageEvents.disposeEngine:
         final args = event['args']! as ArgsDisposeEngine;
-        soLoudController.soLoudFFI.dispose();
+        soLoudController.soLoudFFI.deinit();
         isolateToMainStream
             .send({'event': event['event'], 'args': args, 'return': ()});
         break;

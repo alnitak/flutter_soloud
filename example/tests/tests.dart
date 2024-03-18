@@ -5,6 +5,8 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
+import 'package:flutter_soloud/src/soloud_controller.dart';
+import 'package:flutter_test/flutter_test.dart';
 import 'package:logging/logging.dart';
 
 /// An end-to-end test.
@@ -27,6 +29,14 @@ void main() async {
   Logger.root.level = Level.ALL;
 
   WidgetsFlutterBinding.ensureInitialized();
+
+  await runZonedGuarded(
+    () async => test4(),
+    (error, stack) {
+      stderr.writeln('TEST error: $error\nstack: $stack');
+      exitCode = 1;
+    },
+  );
 
   await runZonedGuarded(
     () async => test3(),
@@ -80,6 +90,76 @@ AudioSource? currentSound;
 
 Future<void> delay(int ms) async {
   await Future.delayed(Duration(milliseconds: ms), () {});
+}
+
+/// Test synchronous `deinit()`
+Future<void> test4() async {
+  /// test init-deinit looping with a short decreasing time
+  for (var t = 500; t >= 0; t -= 50) {
+    /// Initialize the player
+    var error = '';
+    await SoLoud.instance.initialize().then(
+      (_) {},
+      onError: (Object e) {
+        e = 'TEST FAILED delay: $t. Player starting error: $e';
+        error = e.toString();
+      },
+    );
+
+    assert(error.isEmpty, error);
+
+    final before = SoLoudController().soLoudFFI.isInited();
+
+    /// wait for [t] ms and deinit()
+    await Future.delayed(Duration(milliseconds: t), () {});
+    SoLoud.instance.deinit();
+    final after = SoLoudController().soLoudFFI.isInited();
+
+    assert(
+      before == !after,
+      'TEST FAILED delay: $t. The player has not been '
+      'inited or deinited correctly!',
+    );
+
+    print('------------- delay $t passed\n');
+  }
+
+  /// Try init-play-deinit and again init-play without disposing the sound
+  await SoLoud.instance.initialize();
+
+  await loadAsset();
+  await SoLoud.instance.play(currentSound!);
+  await delay(100);
+  await SoLoud.instance.play(currentSound!);
+  await delay(100);
+  await SoLoud.instance.play(currentSound!);
+
+  await delay(2000);
+
+  SoLoud.instance.deinit();
+
+  /// Initialize again and check if the sound has been
+  /// disposed correctly by `deinit()`
+  await SoLoud.instance.initialize();
+  assert(
+    SoLoudController()
+            .soLoudFFI
+            .getIsValidVoiceHandle(currentSound!.handles.first) ==
+        false,
+    'getIsValidVoiceHandle(): sound not disposed by the engine',
+  );
+  assert(
+    SoLoudController()
+            .soLoudFFI
+            .getCountAudioSource(currentSound!.soundHash.hash) ==
+        0,
+    'getCountAudioSource(): sound not disposed by the engine',
+  );
+  assert(
+    SoLoudController().soLoudFFI.getActiveVoiceCount() == 0,
+    'getActiveVoiceCount(): sound not disposed by the engine',
+  );
+  SoLoud.instance.deinit();
 }
 
 /// Test waveform
@@ -225,6 +305,9 @@ Future<void> dispose() async {
 }
 
 Future<void> loadAsset() async {
+  if (currentSound != null) {
+    await SoLoud.instance.disposeSound(currentSound!);
+  }
   currentSound = await SoLoud.instance.loadAsset('assets/audio/explosion.mp3');
 
   currentSound!.soundEvents.listen((event) {

@@ -72,6 +72,11 @@ extern "C"
         player.dispose();
     }
 
+    FFI_PLUGIN_EXPORT int isInited()
+    {
+        return player.isInited() ? 1 : 0;
+    }
+
     /// Load a new sound to be played once or multiple times later
     ///
     /// [completeFileName] the complete file path
@@ -207,7 +212,7 @@ extern "C"
     /// [handle] the sound handle
     FFI_PLUGIN_EXPORT void pauseSwitch(unsigned int handle)
     {
-        if (!player.isInited())
+        if (!player.isInited() || !player.isValidVoiceHandle(handle))
             return;
         player.pauseSwitch(handle);
     }
@@ -218,7 +223,7 @@ extern "C"
     /// [pause] the sound handle
     FFI_PLUGIN_EXPORT void setPause(unsigned int handle, bool pause)
     {
-        if (!player.isInited())
+        if (!player.isInited() || !player.isValidVoiceHandle(handle))
             return;
         player.setPause(handle, pause);
     }
@@ -229,7 +234,7 @@ extern "C"
     /// Return true if paused
     FFI_PLUGIN_EXPORT int getPause(unsigned int handle)
     {
-        if (!player.isInited())
+        if (!player.isInited() || !player.isValidVoiceHandle(handle))
             return false;
         return player.getPause(handle) ? 1 : 0;
     }
@@ -248,7 +253,7 @@ extern "C"
     /// [speed] the new speed
     FFI_PLUGIN_EXPORT void setRelativePlaySpeed(unsigned int handle, float speed)
     {
-        if (!player.isInited())
+        if (!player.isInited() || !player.isValidVoiceHandle(handle))
             return;
         player.setRelativePlaySpeed(handle, speed);
     }
@@ -260,7 +265,7 @@ extern "C"
     /// [handle] the sound handle
     FFI_PLUGIN_EXPORT float getRelativePlaySpeed(unsigned int handle)
     {
-        if (!player.isInited())
+        if (!player.isInited() || !player.isValidVoiceHandle(handle))
             return 1;
         return player.getRelativePlaySpeed(handle);
     }
@@ -298,7 +303,7 @@ extern "C"
     /// [handle]
     FFI_PLUGIN_EXPORT void stop(unsigned int handle)
     {
-        if (!player.isInited())
+        if (!player.isInited() || !player.isValidVoiceHandle(handle))
             return;
         player.stop(handle);
     }
@@ -328,7 +333,7 @@ extern "C"
     /// Returns true if flagged for looping.
     FFI_PLUGIN_EXPORT int getLooping(unsigned int handle)
     {
-        if (!player.isInited())
+        if (!player.isInited() || !player.isValidVoiceHandle(handle))
             return 0;
         return player.getLooping(handle) == 1;
     }
@@ -340,7 +345,7 @@ extern "C"
     /// [enable]
     FFI_PLUGIN_EXPORT void setLooping(unsigned int handle, bool enable)
     {
-        if (!player.isInited())
+        if (!player.isInited() || !player.isValidVoiceHandle(handle))
             return;
         player.setLooping(handle, enable);
     }
@@ -351,7 +356,7 @@ extern "C"
     /// Returns the time in seconds.
     FFI_PLUGIN_EXPORT double getLoopPoint(unsigned int handle)
     {
-        if (!player.isInited())
+        if (!player.isInited() || !player.isValidVoiceHandle(handle))
             return 0;
         return player.getLoopPoint(handle);
     }
@@ -362,7 +367,7 @@ extern "C"
     /// [time] in seconds.
     FFI_PLUGIN_EXPORT void setLoopPoint(unsigned int handle, double time)
     {
-        if (!player.isInited())
+        if (!player.isInited() || !player.isValidVoiceHandle(handle))
             return;
         player.setLoopPoint(handle, time);
     }
@@ -474,7 +479,8 @@ extern "C"
     {
         if (!player.isInited())
             return 0.0;
-        return player.getLength(soundHash);
+        auto f = player.getLength(soundHash);
+        return f;
     }
 
     /// Seek playing in [time] seconds
@@ -506,7 +512,7 @@ extern "C"
     /// Returns time in seconds
     FFI_PLUGIN_EXPORT double getPosition(unsigned int handle)
     {
-        if (!player.isInited() || player.getSoundsCount() == 0)
+        if (!player.isInited() || !player.isValidVoiceHandle(handle))
             return 0.0f;
         return player.getPosition(handle);
     }
@@ -517,7 +523,7 @@ extern "C"
     FFI_PLUGIN_EXPORT double getGlobalVolume()
     {
         if (!player.isInited())
-            return 0.0f;
+            return 0.0;
         return player.getGlobalVolume();
     }
 
@@ -537,7 +543,7 @@ extern "C"
     /// Returns the volume
     FFI_PLUGIN_EXPORT double getVolume(unsigned int handle)
     {
-        if (!player.isInited() || player.getSoundsCount() == 0)
+        if (!player.isInited() || !player.isValidVoiceHandle(handle))
             return 0.0f;
         return player.getVolume(handle);
     }
@@ -547,7 +553,7 @@ extern "C"
     /// Returns the volume
     FFI_PLUGIN_EXPORT enum PlayerErrors setVolume(unsigned int handle, float volume)
     {
-        if (!player.isInited())
+        if (!player.isInited() || !player.isValidVoiceHandle(handle))
             return backendNotInited;
         player.setVolume(handle, volume);
         return noError;
@@ -561,7 +567,82 @@ extern "C"
     {
         if (!player.isInited() || player.getSoundsCount() == 0)
             return false;
-        return player.getIsValidVoiceHandle(handle) ? 1 : 0;
+        return player.isValidVoiceHandle(handle) ? 1 : 0;
+    }
+
+    /// Returns the number of concurrent sounds that are playing at the moment.
+    FFI_PLUGIN_EXPORT unsigned int getActiveVoiceCount()
+    {
+        if (!player.isInited())
+            return 0;
+        return player.getActiveVoiceCount();
+    }
+
+    /// Returns the number of concurrent sounds that are playing a specific audio source.
+    FFI_PLUGIN_EXPORT int getCountAudioSource(unsigned int soundHash)
+    {
+        if (!player.isInited())
+            return 0;
+        return player.getCountAudioSource(soundHash);
+    }
+
+    /// Returns the number of voices the application has told SoLoud to play.
+    FFI_PLUGIN_EXPORT unsigned int getVoiceCount()
+    {
+        if (!player.isInited())
+            return 0;
+        return player.getVoiceCount();
+    }
+
+    /// Get a sound's protection state.
+    FFI_PLUGIN_EXPORT bool getProtectVoice(unsigned int handle)
+    {
+        if (!player.isInited() || !player.isValidVoiceHandle(handle))
+            return false;
+        return player.getProtectVoice(handle);
+    }
+
+    /// Set a sound's protection state.
+    ///
+    /// Normally, if you try to play more sounds than there are voices,
+    /// SoLoud will kill off the oldest playing sound to make room.
+    /// This will most likely be your background music. This can be worked
+    /// around by protecting the sound.
+    /// If all voices are protected, the result will be undefined.
+    ///
+    /// [handle]  handle to check.
+    /// [protect] whether to protect or not.
+    FFI_PLUGIN_EXPORT void setProtectVoice(unsigned int handle, bool protect)
+    {
+        if (!player.isInited() || !player.isValidVoiceHandle(handle))
+            return;
+        player.setProtectVoice(handle, protect);
+    }
+
+    /// Get the current maximum active voice count.
+    FFI_PLUGIN_EXPORT unsigned int getMaxActiveVoiceCount()
+    {
+        if (!player.isInited())
+            return 0;
+        return player.getMaxActiveVoiceCount();
+    }
+
+    /// Set the current maximum active voice count.
+    /// If voice count is higher than the maximum active voice count,
+    /// SoLoud will pick the ones with the highest volume to actually play.
+    /// [maxVoiceCount] the max concurrent sounds that can be played.
+    ///
+    /// NOTE: The number of concurrent voices is limited, as having unlimited
+    /// voices would cause performance issues, as well as lead to unnecessary clipping.
+    /// The default number of concurrent voices is 16, but this can be adjusted at runtime.
+    /// The hard maximum number is 4095, but if more are required, SoLoud can be modified to
+    /// support more. But seriously, if you need more than 4095 sounds at once, you're
+    /// probably going to make some serious changes in any case.
+    FFI_PLUGIN_EXPORT void setMaxActiveVoiceCount(unsigned int maxVoiceCount)
+    {
+        if (!player.isInited())
+            return;
+        player.setMaxActiveVoiceCount(maxVoiceCount);
     }
 
     /////////////////////////////////////////

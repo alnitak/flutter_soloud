@@ -36,7 +36,6 @@ PlayerErrors Player::init()
         mInited = true;
     else
         result = backendNotInited;
-
     return (PlayerErrors)result;
 }
 
@@ -438,9 +437,57 @@ void Player::setVolume(SoLoud::handle handle, float volume)
     return soloud.setVolume(handle, volume);
 }
 
-bool Player::getIsValidVoiceHandle(SoLoud::handle handle)
+bool Player::isValidVoiceHandle(SoLoud::handle handle)
 {
     return soloud.isValidVoiceHandle(handle);
+}
+
+unsigned int Player::getActiveVoiceCount()
+{
+    return soloud.getActiveVoiceCount();
+}
+
+int Player::getCountAudioSource(unsigned int soundHash)
+{
+    auto const &s = std::find_if(sounds.begin(), sounds.end(),
+                                 [&](std::unique_ptr<ActiveSound> const &f)
+                                 { return f->soundHash == soundHash; });
+    if (s == sounds.end() || s->get()->soundType == TYPE_SYNTH)
+        return 0;
+    if (s->get()->soundType == TYPE_WAV)
+    {
+        SoLoud::AudioSource *as = static_cast<SoLoud::Wav *>(s->get()->sound.get());
+        return soloud.countAudioSource(*as);
+    }
+    
+    // if (s->get()->soundType == TYPE_WAVSTREAM)
+    SoLoud::AudioSource *as = static_cast<SoLoud::WavStream *>(s->get()->sound.get());
+    return soloud.countAudioSource(*as);
+}
+
+unsigned int Player::getVoiceCount()
+{
+    return soloud.getVoiceCount();
+}
+
+bool Player::getProtectVoice(SoLoud::handle handle)
+{
+    return soloud.getProtectVoice(handle);
+}
+
+void Player::setProtectVoice(SoLoud::handle handle, bool protect)
+{
+    soloud.setProtectVoice(handle, protect);
+}
+
+unsigned int Player::getMaxActiveVoiceCount()
+{
+    return soloud.getMaxActiveVoiceCount();
+}
+
+void Player::setMaxActiveVoiceCount(unsigned int maxVoiceCount)
+{
+    soloud.setMaxActiveVoiceCount(maxVoiceCount);
 }
 
 ActiveSound *Player::findByHandle(SoLoud::handle handle)
