@@ -112,7 +112,7 @@ class SoLoudTools {
         superwave: superwave,
       );
 
-  /// Returns a list of the 12 SoundProps (notes) of the given octave
+  /// Returns a list of the 12 [AudioSource] notes of the given octave
   ///
   /// [octave] usually from 0 to 4
   static Future<List<AudioSource>> createNotes({

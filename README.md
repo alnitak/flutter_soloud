@@ -68,7 +68,7 @@ https://github.com/alnitak/flutter_soloud/assets/192827/92c9db80-80ee-4a27-b6a9-
 https://github.com/alnitak/flutter_soloud/assets/192827/f7cf9d71-be4f-4c83-99ff-89dbd9378859
 
 
-***The 5th*** example shows how to generete [**SoundProps**] key sounds. There is a handy tool method to generate the 12 key notes of a given octave. A widget to play them can be used with the touch or a keyboard. Different types of waveforms can be chosen including square,`saw`,`sin`,`triangle`,`bounce`,`jaws`,`humps`,`fSquare` and `fSaw`.
+***The 5th*** example shows how to generete [**AudioSource**] key sounds. There is a handy tool method to generate the 12 key notes of a given octave. A widget to play them can be used with the touch or a keyboard. Different types of waveforms can be chosen including square,`saw`,`sin`,`triangle`,`bounce`,`jaws`,`humps`,`fSquare` and `fSaw`.
 There are also simple knobs to adjust faders and oscillators. Other knobs to add/remove audio effects.
 
 https://github.com/alnitak/flutter_soloud/assets/192827/bfc5aa73-6dbc-42f5-90e4-bc1cc5e181e0
@@ -91,7 +91,7 @@ Future<bool> start() async{
 ```
 When succesfully started a sound can be loaded:
 ```
-Future<SoundProps?> loadSound(String completeFileName) {
+Future<AudioSource?> loadSound(String completeFileName) {
   final load = await SoLoud().loadFile(completeFileName);
   if (load.error != PlayerErrors.noError) return null;
   return load.sound;
@@ -99,14 +99,14 @@ Future<SoundProps?> loadSound(String completeFileName) {
 ```
 
 There are 3 convenient methods that can be used instead in the [SoloudLoadingTool] class:
-- ```Future<SoundProps?> loadFromAssets(String path)```
-- ```Future<SoundProps?> loadFromFile(String path)```
-- ```Future<SoundProps?> loadFromUrl(String url)```
+- ```Future<AudioSource?> loadFromAssets(String path)```
+- ```Future<AudioSource?> loadFromFile(String path)```
+- ```Future<AudioSource?> loadFromUrl(String url)```
 
-The [SoundProps] class:
+The [AudioSource] class:
 ```
-class SoundProps {
-  SoundProps(this.soundHash);
+class AudioSource {
+  AudioSource(this.soundHash);
 
   // the [hash] returned by [loadFile]
   final int soundHash;
@@ -121,7 +121,7 @@ class SoundProps {
 ```
 *soundHash* and *handle* list are then used to call many methods in the *AudioIsolate()* class.
 
-**warning**: when you call a load* method, in return you will get a SoundProps. This is the reference to the sound which is used by SoLoud and need to be disposed when is no more needed. When you play a SoundsProps, intstead a new handle, to identify the new playing instance, is created and added to SoundProps.handle list. This let you play the sound as many times you want without calling a load* method again which can be laggy.
+**warning**: when you call a load* method, in return you will get a AudioSource. This is the reference to the sound which is used by SoLoud and need to be disposed when is no more needed. When you play a SoundsProps, intstead a new handle, to identify the new playing instance, is created and added to AudioSource.handle list. This let you play the sound as many times you want without calling a load* method again which can be laggy.
 To dispose a sound call you should call *Soloud().disposeSound* or *Soloud().disposeAllSounds*
 
 #### Capture from microphone
@@ -148,50 +148,50 @@ The `AudioIsolate` instance has the duty of receiving commands and sending them 
 
 
 #### Player methods
-| Function| Returns| Params| Description|
-|---------|---------|---------|--------------------------------------------------------------------------------------------|
-| **startIsolate**| PlayerErrors| -| Start the audio isolate and listen for messages coming from it.|
-| **stopIsolate**| bool| -| Stop the loop, stop the engine, and kill the isolate. Must be called when there is no more need for the player or when closing the app.|
-| **isIsolateRunning**| bool| -| Return true if the audio isolate is running.|
-| **initEngine**| PlayerErrors| -| Initialize the audio engine. Defaults are: Sample rate 44100, buffer 2048, and Miniaudio audio backend.|
-| **dispose**| -| -| Stop the audio engine.|
-| **loadFile**| ({PlayerErrors error, SoundProps? sound})|`String` fileName, <br/>`LoadMode` mode = LoadMode.memory| Load a new sound to be played once or multiple times later.<br/>If `mode = LoadMode.disk`, seek will have lags with MP3s.|
-| **play**| ({PlayerErrors error, SoundProps sound, int newHandle})| `int` soundHash, {<br/>`double` volume = 1,<br/>`double` pan = 0,<br/>`bool` paused = false,<br/>}| Play an already loaded sound identified by [sound].|
-| **speechText**| ({PlayerErrors error, SoundProps sound})| `String` textToSpeech| Speech from the given text.|
-| **pauseSwitch**| PlayerErrors| `int` handle| Pause or unpause an already loaded sound identified by [handle].|
-| **getPause**| ({PlayerErrors error, bool pause})| `int` handle| Get the pause state of the sound identified by [handle].|
-| **setRelativePlaySpeed**| PlayerErrors| `int` handle, `double` speed| Set a sound's relative play speed.|
-| **getRelativePlaySpeed**| ({PlayerErrors error, double speed})| `int` handle| Return the current play speed.|
-| **stop**| PlayerErrors| `int` handle| Stop an already loaded sound identified by [handle] and clear it.|
-| **disposeSound**| PlayerErrors| `int` handle| Stop ALL handles of the already loaded sound identified by [soundHash] and dispose it.|
-| **getLooping**| ({PlayerErrors error, bool isLooping})| -| Query whether a sound is set to loop.|
-| **setLooping**| -| `int` handle, `bool` enable| This function can be used to set a sample to play on repeat, instead of just playing once.|
-| **getLoopPoint**| ({PlayerErrors error, double time})| -| Get sound loop point value.|
-| **setLoopPoint**| PlayerErrors| `SoundHandle` handle, `double` time| Set sound loop point value.|
-| **getLength**| ({PlayerErrors error, double length})| `int` soundHash| Get the sound length in seconds.|
-| **seek**| PlayerErrors| `int` handle, `double` time| Seek playing in seconds.<br/>WARNING: when loading an MP3 file with `mode = LoadMode.disk`, the seek is laggy. This should not happens with FLACs, OGGs and WAVs.|
-| **getPosition**| ({PlayerErrors error, double position})| `int` handle| Get the current sound position in seconds.|
-| **getVolume**| ({PlayerErrors error, double volume})| `int` handle| Get current [handle] volume.|
-| **setVolume**| ({PlayerErrors error, double volume})| `int` handle, `double` volume| set  [handle] volume.|
-| **getIsValidVoiceHandle**| ({PlayerErrors error, bool isValid})| `int` handle| Check if a handle is still valid.|
-| **setVisualizationEnabled**| -| `bool` enabled| Enable or disable getting data from `getFft`, `getWave`, `getAudioTexture*`.|
-| **getVisualizationEnabled**| ({PlayerErrors error, bool isEnabled})| -| Get the state of visualization flag.|
-| **getFft**| -| `Pointer<Float>` fft| Returns a 256 float array containing FFT data.|
-| **getWave**| -| `Pointer<Float>` wave| Returns a 256 float array containing wave data (magnitudes).|
-| **getAudioTexture**| -| `Pointer<Float>` samples| Returns in `samples` a 512 float array.<br/>- The first 256 floats represent the FFT frequencies data [>=0.0].<br/>- The other 256 floats represent the wave data (amplitude) [-1.0~1.0].|
-| **getAudioTexture2D**| -| `Pointer<Pointer<Float>>` samples| Return a floats matrix of 256x512.<br/>Every row is composed of 256 FFT values plus 256 wave data.<br/>Every time is called, a new row is stored in the first row and all the previous rows are shifted up (the last will be lost).|
-| **setFftSmoothing**| -| `double` smooth| Smooth FFT data.<br/>When new data is read and the values are decreasing, the new value will be decreased with an amplitude between the old and the new value.<br/> This will result in a less shaky visualization.<br/>0 = no smooth<br/>1 = full smooth<br/>The new value is calculated with:<br/>`newFreq = smooth * oldFreq + (1 - smooth) * newFreq`|
+| Function| Returns                                                  | Params| Description|
+|---------|----------------------------------------------------------|---------|--------------------------------------------------------------------------------------------|
+| **startIsolate**| PlayerErrors                                             | -| Start the audio isolate and listen for messages coming from it.|
+| **stopIsolate**| bool                                                     | -| Stop the loop, stop the engine, and kill the isolate. Must be called when there is no more need for the player or when closing the app.|
+| **isIsolateRunning**| bool                                                     | -| Return true if the audio isolate is running.|
+| **initEngine**| PlayerErrors                                             | -| Initialize the audio engine. Defaults are: Sample rate 44100, buffer 2048, and Miniaudio audio backend.|
+| **dispose**| -                                                        | -| Stop the audio engine.|
+| **loadFile**| ({PlayerErrors error, AudioSource? sound})               |`String` fileName, <br/>`LoadMode` mode = LoadMode.memory| Load a new sound to be played once or multiple times later.<br/>If `mode = LoadMode.disk`, seek will have lags with MP3s.|
+| **play**| ({PlayerErrors error, AudioSource sound, int newHandle}) | `int` soundHash, {<br/>`double` volume = 1,<br/>`double` pan = 0,<br/>`bool` paused = false,<br/>}| Play an already loaded sound identified by [sound].|
+| **speechText**| ({PlayerErrors error, AudioSource sound})                | `String` textToSpeech| Speech from the given text.|
+| **pauseSwitch**| PlayerErrors                                             | `int` handle| Pause or unpause an already loaded sound identified by [handle].|
+| **getPause**| ({PlayerErrors error, bool pause})                       | `int` handle| Get the pause state of the sound identified by [handle].|
+| **setRelativePlaySpeed**| PlayerErrors                                             | `int` handle, `double` speed| Set a sound's relative play speed.|
+| **getRelativePlaySpeed**| ({PlayerErrors error, double speed})                     | `int` handle| Return the current play speed.|
+| **stop**| PlayerErrors                                             | `int` handle| Stop an already loaded sound identified by [handle] and clear it.|
+| **disposeSound**| PlayerErrors                                             | `int` handle| Stop ALL handles of the already loaded sound identified by [soundHash] and dispose it.|
+| **getLooping**| ({PlayerErrors error, bool isLooping})                   | -| Query whether a sound is set to loop.|
+| **setLooping**| -                                                        | `int` handle, `bool` enable| This function can be used to set a sample to play on repeat, instead of just playing once.|
+| **getLoopPoint**| ({PlayerErrors error, double time})                      | -| Get sound loop point value.|
+| **setLoopPoint**| PlayerErrors                                             | `SoundHandle` handle, `double` time| Set sound loop point value.|
+| **getLength**| ({PlayerErrors error, double length})                    | `int` soundHash| Get the sound length in seconds.|
+| **seek**| PlayerErrors                                             | `int` handle, `double` time| Seek playing in seconds.<br/>WARNING: when loading an MP3 file with `mode = LoadMode.disk`, the seek is laggy. This should not happens with FLACs, OGGs and WAVs.|
+| **getPosition**| ({PlayerErrors error, double position})                  | `int` handle| Get the current sound position in seconds.|
+| **getVolume**| ({PlayerErrors error, double volume})                    | `int` handle| Get current [handle] volume.|
+| **setVolume**| ({PlayerErrors error, double volume})                    | `int` handle, `double` volume| set  [handle] volume.|
+| **getIsValidVoiceHandle**| ({PlayerErrors error, bool isValid})                     | `int` handle| Check if a handle is still valid.|
+| **setVisualizationEnabled**| -                                                        | `bool` enabled| Enable or disable getting data from `getFft`, `getWave`, `getAudioTexture*`.|
+| **getVisualizationEnabled**| ({PlayerErrors error, bool isEnabled})                   | -| Get the state of visualization flag.|
+| **getFft**| -                                                        | `Pointer<Float>` fft| Returns a 256 float array containing FFT data.|
+| **getWave**| -                                                        | `Pointer<Float>` wave| Returns a 256 float array containing wave data (magnitudes).|
+| **getAudioTexture**| -                                                        | `Pointer<Float>` samples| Returns in `samples` a 512 float array.<br/>- The first 256 floats represent the FFT frequencies data [>=0.0].<br/>- The other 256 floats represent the wave data (amplitude) [-1.0~1.0].|
+| **getAudioTexture2D**| -                                                        | `Pointer<Pointer<Float>>` samples| Return a floats matrix of 256x512.<br/>Every row is composed of 256 FFT values plus 256 wave data.<br/>Every time is called, a new row is stored in the first row and all the previous rows are shifted up (the last will be lost).|
+| **setFftSmoothing**| -                                                        | `double` smooth| Smooth FFT data.<br/>When new data is read and the values are decreasing, the new value will be decreased with an amplitude between the old and the new value.<br/> This will result in a less shaky visualization.<br/>0 = no smooth<br/>1 = full smooth<br/>The new value is calculated with:<br/>`newFreq = smooth * oldFreq + (1 - smooth) * newFreq`|
 
 
 #### Waveform
-| Function| Returns| Params| Description|
-|---------|--------|-------|------------|
-| **loadWaveform**| ({PlayerErrors error, SoundProps? sound})| `WaveForm` waveform<br/>`bool` superWave<br/>`double` scale<br/>`double` detune| Load a new sound to be played.|
-| **setWaveform**| PlayerErrors|`SoundProps` sound<br/>`WaveForm` newWaveform| Set a new waveform for the [sound].|
-| **setWaveformScale**| PlayerErrors|`SoundProps` sound<br/>`double` newScale| Set a new scale for the [sound] (only if [superWave] is true).|
-| **setWaveformDetune**| PlayerErrors|`SoundProps` sound<br/>`double` newDetune| Set a new detune for the [sound] (only if [superWave] is true).|
-| **setWaveformFreq**| PlayerErrors|`SoundProps` sound<br/>`double` newFreq| Set a new frequency for the [sound].|
-| **setWaveformSuperWave**| PlayerErrors|`SoundProps` sound<br/>`bool` superwave| Set to compute superwave for the [sound].|
+| Function| Returns                                    | Params                                                                          | Description|
+|---------|--------------------------------------------|---------------------------------------------------------------------------------|------------|
+| **loadWaveform**| ({PlayerErrors error, AudioSource? sound}) | `WaveForm` waveform<br/>`bool` superWave<br/>`double` scale<br/>`double` detune | Load a new sound to be played.|
+| **setWaveform**| PlayerErrors                               | `AudioSource` sound<br/>`WaveForm` newWaveform                                  | Set a new waveform for the [sound].|
+| **setWaveformScale**| PlayerErrors                               | `SoundPropsAudioSource` sound<br/>`double` newScale                             | Set a new scale for the [sound] (only if [superWave] is true).|
+| **setWaveformDetune**| PlayerErrors                               | `SoundPropsAudioSource` sound<br/>`double` newDetune                            | Set a new detune for the [sound] (only if [superWave] is true).|
+| **setWaveformFreq**| PlayerErrors                               | `SoundPropsAudioSource` sound<br/>`double` newFreq                              | Set a new frequency for the [sound].|
+| **setWaveformSuperWave**| PlayerErrors                               | `SoundPropsAudioSource` sound<br/>`bool` superwave                              | Set to compute superwave for the [sound].|
 
 **enum WaveForm**
 | Name| Description|
@@ -209,7 +209,7 @@ The `AudioIsolate` instance has the duty of receiving commands and sending them 
 
 #### Audio FXs, faders and oscillators methods
 These methods add audio effects to sounds. 
-Faders and oscillators are binded to sound handles, so they need [SoundProps.handle] as first parameter. 
+Faders and oscillators are binded to sound handles, so they need [AudioSource.handle] as first parameter. 
 Audio FXs like *echo*, *freeverb*, *bassboost* etc, are working on the output, so they can set anytime while playing something.
 
 | Function| Returns| Params| Description|
@@ -293,7 +293,7 @@ The `PlayerErrors` enum:
 *AudioIsolate()* has a `StreamController` which can be used, for now, only to know when a sound handle reached the end:
 ```
 StreamSubscription<StreamSoundEvent>? _subscription;
-void listedToEndPlaying(SoundProps sound) {
+void listedToEndPlaying(AudioSource sound) {
   _subscription = sound!.soundEvents.stream.listen(
     (event) {
       /// Here the [event.handle] of [sound] has naturally finished
