@@ -234,10 +234,10 @@ interface class SoLoud {
   /// should be synchronized with each other
   ///
   /// Backing of [activeSounds].
-  final List<SoundProps> _activeSounds = [];
+  final List<AudioSource> _activeSounds = [];
 
   /// The sounds that are currently _playing_.
-  Iterable<SoundProps> get activeSounds => _activeSounds;
+  Iterable<AudioSource> get activeSounds => _activeSounds;
 
   /// Wait for the isolate to return after the event has been completed.
   /// The event must be recognized by [event] and [args] sent to
@@ -395,7 +395,7 @@ interface class SoLoud {
             orElse: () {
               _log.info(() => 'Received an event for sound with handle: '
                   "${data.handle} but such sound isn't among _activeSounds.");
-              return SoundProps(SoundHash.invalid());
+              return AudioSource(SoundHash.invalid());
             },
           );
 
@@ -696,10 +696,10 @@ interface class SoLoud {
   /// from the given file when needed (more CPU, less memory allocated).
   /// See the [seek] note problem when using [LoadMode] = `LoadMode.disk`.
   /// Default is `LoadMode.memory`.
-  /// Returns the new sound as [SoundProps].
+  /// Returns the new sound as [AudioSource].
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
-  Future<SoundProps> loadFile(
+  Future<AudioSource> loadFile(
     String completeFileName, {
     LoadMode mode = LoadMode.memory,
   }) async {
@@ -715,7 +715,7 @@ interface class SoLoud {
     final ret = (await _waitForEvent(
       MessageEvents.loadFile,
       (completeFileName: completeFileName, mode: mode),
-    )) as ({PlayerErrors error, SoundProps? sound});
+    )) as ({PlayerErrors error, AudioSource? sound});
 
     _logPlayerError(ret.error, from: 'loadFile() result');
     if (ret.error == PlayerErrors.noError) {
@@ -758,8 +758,8 @@ interface class SoLoud {
   /// creating the temporary file that the asset will be copied to.
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   ///
-  /// Returns the new sound as [SoundProps].
-  Future<SoundProps> loadAsset(
+  /// Returns the new sound as [AudioSource].
+  Future<AudioSource> loadAsset(
     String key, {
     LoadMode mode = LoadMode.memory,
     AssetBundle? assetBundle,
@@ -793,8 +793,8 @@ interface class SoLoud {
   /// creating the temporary file that the asset will be copied to.
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   ///
-  /// Returns the new sound as [SoundProps].
-  Future<SoundProps> loadUrl(
+  /// Returns the new sound as [AudioSource].
+  Future<AudioSource> loadUrl(
     String url, {
     LoadMode mode = LoadMode.memory,
     http.Client? httpClient,
@@ -817,8 +817,8 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   ///
-  /// Returns the new sound as [SoundProps].
-  Future<SoundProps> loadWaveform(
+  /// Returns the new sound as [AudioSource].
+  Future<AudioSource> loadWaveform(
     WaveForm waveform,
     bool superWave,
     double scale,
@@ -847,7 +847,7 @@ interface class SoLoud {
         scale: scale,
         detune: detune,
       ),
-    )) as ({PlayerErrors error, SoundProps? sound});
+    )) as ({PlayerErrors error, AudioSource? sound});
     if (ret.error == PlayerErrors.noError) {
       _activeSounds.add(ret.sound!);
       return ret.sound!;
@@ -862,7 +862,7 @@ interface class SoLoud {
   /// [newWaveform] the new waveform type.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
-  void setWaveform(SoundProps sound, WaveForm newWaveform) {
+  void setWaveform(AudioSource sound, WaveForm newWaveform) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
@@ -875,7 +875,7 @@ interface class SoLoud {
   /// [newScale] the new scale.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
-  void setWaveformScale(SoundProps sound, double newScale) {
+  void setWaveformScale(AudioSource sound, double newScale) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
@@ -888,7 +888,7 @@ interface class SoLoud {
   /// [newDetune] the new detune.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
-  void setWaveformDetune(SoundProps sound, double newDetune) {
+  void setWaveformDetune(AudioSource sound, double newDetune) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
@@ -901,7 +901,7 @@ interface class SoLoud {
   /// [newFrequency] the new frequency.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
-  void setWaveformFreq(SoundProps sound, double newFrequency) {
+  void setWaveformFreq(AudioSource sound, double newFrequency) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
@@ -914,7 +914,7 @@ interface class SoLoud {
   /// [superwave] whether this sound should be a super wave or not.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
-  void setWaveformSuperWave(SoundProps sound, bool superwave) {
+  void setWaveformSuperWave(AudioSource sound, bool superwave) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
@@ -927,10 +927,10 @@ interface class SoLoud {
   /// Speech the given text.
   ///
   /// [textToSpeech] the text to be spoken.
-  /// Returns the new sound as [SoundProps].
+  /// Returns the new sound as [AudioSource].
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
-  Future<SoundProps> speechText(String textToSpeech) async {
+  Future<AudioSource> speechText(String textToSpeech) async {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
@@ -943,7 +943,7 @@ interface class SoLoud {
     final ret = (await _waitForEvent(
       MessageEvents.speechText,
       (textToSpeech: textToSpeech),
-    )) as ({PlayerErrors error, SoundProps sound});
+    )) as ({PlayerErrors error, AudioSource sound});
     _logPlayerError(ret.error, from: 'speechText() result');
     if (ret.error == PlayerErrors.noError) {
       _activeSounds.add(ret.sound);
@@ -962,7 +962,7 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   Future<SoundHandle> play(
-    SoundProps sound, {
+    AudioSource sound, {
     double volume = 1,
     double pan = 0,
     bool paused = false,
@@ -1114,7 +1114,7 @@ interface class SoLoud {
   /// [sound] the sound to clear.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
-  Future<void> disposeSound(SoundProps sound) async {
+  Future<void> disposeSound(AudioSource sound) async {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
@@ -1243,7 +1243,7 @@ interface class SoLoud {
   /// [sound] the sound hash to get the length.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
-  Duration getLength(SoundProps sound) {
+  Duration getLength(AudioSource sound) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
@@ -1837,7 +1837,7 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   Future<SoundHandle> play3d(
-    SoundProps sound,
+    AudioSource sound,
     double posX,
     double posY,
     double posZ, {

@@ -9,36 +9,48 @@ import 'package:meta/meta.dart';
 @Deprecated('Use SoundEventType instead')
 typedef SoundEvent = SoundEventType;
 
+/// A deprecated alias for [AudioSource].
+@Deprecated("Use 'AudioSource' instead")
+typedef SoundProps = AudioSource;
+
 /// the type sent back to the user when a sound event occurs
 typedef StreamSoundEvent = ({
   SoundEventType event,
-  SoundProps sound,
+  AudioSource sound,
   SoundHandle handle,
 });
 
-/// sound event types
-enum SoundEventType {
-  /// handle reached the end of playback
-  handleIsNoMoreValid,
-
-  /// the sound has been disposed
-  soundDisposed,
-}
-
-class SoundProps {
-  ///
-  SoundProps(this.soundHash);
+/// A representation of an audio source: something that can be played.
+///
+/// Audio sources cannot be instantiated directly. The need to be loaded
+/// (via something like `SoLoud.loadFile()`, for example).
+/// Then they can be played once or several times.
+/// Finally, the need to be disposed with something like
+/// `SoLoud.disposeSound()` or `SoLoud.disposeAllSounds()`.
+///
+/// Audio sources are uniquely identified by their [soundHash], which is
+/// what you pass to methods such as `SoLoud.play()`.
+///
+/// Playing a sound in this way creates a new sound _instance_. There can
+/// be several instances of one audio source playing simultaneously.
+/// You can access the currently playing instances' handles via [handles].
+///
+/// You can listen to the broadcast stream of [soundEvents].
+class AudioSource {
+  /// Constructs an instance of [AudioSource].
+  @internal
+  AudioSource(this.soundHash);
 
   /// The hash uniquely identifying this loaded sound.
   final SoundHash soundHash;
 
   /// The handles of currently playing instances of this sound.
   ///
-  /// A sound (expressed as [SoundProps]) can be loaded once, but then
+  /// A sound (expressed as [AudioSource]) can be loaded once, but then
   /// played multiple times. It's even possible to play several instances
   /// of the sound simultaneously.
   ///
-  /// Each time you [SoLoud.play] a sound, you get back a [SoundHandle],
+  /// Each time you `SoLoud.play()` a sound, you get back a [SoundHandle],
   /// and that same handle will be added to this [handles] set.
   /// When the sound finishes playing, its handle will be removed from this set.
   ///
@@ -72,4 +84,13 @@ class SoundProps {
   String toString() {
     return 'soundHash: $soundHash has ${handles.length} active handles';
   }
+}
+
+/// sound event types
+enum SoundEventType {
+  /// handle reached the end of playback
+  handleIsNoMoreValid,
+
+  /// the sound has been disposed
+  soundDisposed,
 }

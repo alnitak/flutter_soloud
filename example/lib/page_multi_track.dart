@@ -16,8 +16,6 @@ class PageMultiTrack extends StatefulWidget {
 }
 
 class _PageMultiTrackState extends State<PageMultiTrack> {
-  static final Logger _log = Logger('_PageMultiTrackState');
-
   final _looping = ValueNotifier<bool>(false);
   final _loopingStartAt = ValueNotifier<double>(0);
   final _playSoundController = PlaySoundController();
@@ -136,7 +134,7 @@ class _PlaySoundWidgetState extends State<PlaySoundWidget> {
   final Map<SoundHandle, ValueNotifier<bool>> isPaused = {};
   final Map<SoundHandle, ValueNotifier<double>> soundPosition = {};
   StreamSubscription<StreamSoundEvent>? _subscription;
-  SoundProps? sound;
+  AudioSource? sound;
   bool _looping = false;
   double _loopingStartAt = 0;
 
@@ -179,7 +177,7 @@ class _PlaySoundWidgetState extends State<PlaySoundWidget> {
   Future<bool> loadAsset() async {
     final path = (await getAssetFile(widget.assetsAudio)).path;
 
-    final SoundProps? newSound;
+    final AudioSource? newSound;
     try {
       newSound = await SoLoud.instance.loadFile(path);
     } catch (e) {

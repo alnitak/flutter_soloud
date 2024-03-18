@@ -51,7 +51,7 @@ class _PageVisualizerState extends State<PageVisualizer> {
   final ValueNotifier<double> soundLength = ValueNotifier(0);
   final ValueNotifier<double> soundPosition = ValueNotifier(0);
   Timer? timer;
-  SoundProps? currentSound;
+  AudioSource? currentSound;
   FftController visualizerController = FftController();
 
   @override

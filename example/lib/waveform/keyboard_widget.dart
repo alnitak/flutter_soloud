@@ -24,7 +24,7 @@ class KeyboardWidget extends StatefulWidget {
   final Duration oscillateVolume;
   final Duration oscillatePan;
   final Duration oscillateSpeed;
-  final List<SoundProps> notes;
+  final List<AudioSource> notes;
 
   @override
   State<KeyboardWidget> createState() => _KeyboardWidgetState();

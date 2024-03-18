@@ -57,7 +57,7 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  List<SoundProps> sounds = [];
+  List<AudioSource> sounds = [];
   bool isStarted = false;
   Duration minLength = const Duration(days: 99);
   ValueNotifier<Duration> seekPos = ValueNotifier(Duration.zero);
@@ -170,7 +170,7 @@ class SoundRow extends StatefulWidget {
     required this.soundProps,
     super.key,
   });
-  final SoundProps soundProps;
+  final AudioSource soundProps;
 
   @override
   State<SoundRow> createState() => _SoundRowState();

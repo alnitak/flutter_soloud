@@ -20,7 +20,7 @@ class PageHelloFlutterSoLoud extends StatefulWidget {
 class _PageHelloFlutterSoLoudState extends State<PageHelloFlutterSoLoud> {
   static final Logger _log = Logger('_PageHelloFlutterSoLoudState');
 
-  SoundProps? currentSound;
+  AudioSource? currentSound;
 
   @override
   Widget build(BuildContext context) {
@@ -94,7 +94,7 @@ class _PageHelloFlutterSoLoudState extends State<PageHelloFlutterSoLoud> {
     }
 
     /// load the audio file
-    final SoundProps newSound;
+    final AudioSource newSound;
     try {
       newSound = await SoLoud.instance.loadFile(file);
     } catch (e) {

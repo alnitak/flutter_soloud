@@ -378,9 +378,9 @@ class FlutterSoLoudFfi {
   /// [looping] whether to start the sound in looping state.
   /// [loopingStartAt] If looping is enabled, the loop point is, by default,
   /// the start of the stream. The loop start point can be set with this
-  /// parameter, and current loop point can be queried with [getLoopingPoint]
-  /// and changed by [setLoopingPoint].
-  /// Return the error if any and a new [newHandle] of this sound
+  /// parameter, and current loop point can be queried with `getLoopingPoint()`
+  /// and changed by `setLoopingPoint()`.
+  /// Return the error if any and a new `newHandle` of this sound
   ({PlayerErrors error, SoundHandle newHandle}) play(
     SoundHash soundHash, {
     double volume = 1,
@@ -1018,8 +1018,8 @@ class FlutterSoLoudFfi {
   /// [looping] whether to start the sound in looping state.
   /// [loopingStartAt] If looping is enabled, the loop point is, by default,
   /// the start of the stream. The loop start point can be set with this
-  /// parameter, and current loop point can be queried with [getLoopingPoint]
-  /// and changed by [setLoopingPoint].
+  /// parameter, and current loop point can be queried with `getLoopingPoint()`
+  /// and changed by `setLoopingPoint()`.
   /// Returns the handle of the sound, 0 if error
   ({PlayerErrors error, SoundHandle newHandle}) play3d(
     SoundHash soundHash,

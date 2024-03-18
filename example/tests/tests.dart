@@ -76,7 +76,7 @@ void main() async {
 }
 
 String output = '';
-SoundProps? currentSound;
+AudioSource? currentSound;
 
 Future<void> delay(int ms) async {
   await Future.delayed(Duration(milliseconds: ms), () {});

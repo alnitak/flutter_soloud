@@ -87,7 +87,7 @@ void audioIsolate(SendPort isolateToMainStream) {
   final soLoudController = SoLoudController();
 
   /// the active sounds
-  final activeSounds = <SoundProps>[];
+  final activeSounds = <AudioSource>[];
   var loopRunning = false;
 
   /// Tell the main isolate how to communicate with this isolate
@@ -130,9 +130,9 @@ void audioIsolate(SendPort isolateToMainStream) {
           args.mode,
         );
         // add the new sound handler to the list
-        SoundProps? newSound;
+        AudioSource? newSound;
         if (ret.error == PlayerErrors.noError) {
-          newSound = SoundProps(ret.soundHash);
+          newSound = AudioSource(ret.soundHash);
           activeSounds.add(newSound);
         } else if (ret.error == PlayerErrors.fileAlreadyLoaded) {
           /// the file is already loaded.
@@ -142,7 +142,7 @@ void audioIsolate(SendPort isolateToMainStream) {
             (s) => s.soundHash == ret.soundHash,
             orElse: () {
               isAlreadyThere = false;
-              return SoundProps(ret.soundHash);
+              return AudioSource(ret.soundHash);
             },
           );
           if (!isAlreadyThere) activeSounds.add(newSound);
@@ -163,9 +163,9 @@ void audioIsolate(SendPort isolateToMainStream) {
           args.detune,
         );
         // add the new sound handler to the list
-        SoundProps? newSound;
+        AudioSource? newSound;
         if (ret.error == PlayerErrors.noError) {
-          newSound = SoundProps(ret.soundHash);
+          newSound = AudioSource(ret.soundHash);
           activeSounds.add(newSound);
         } else if (ret.error == PlayerErrors.fileAlreadyLoaded) {
           /// the file is already loaded.
@@ -175,7 +175,7 @@ void audioIsolate(SendPort isolateToMainStream) {
             (s) => s.soundHash == ret.soundHash,
             orElse: () {
               isAlreadyThere = false;
-              return SoundProps(ret.soundHash);
+              return AudioSource(ret.soundHash);
             },
           );
           if (!isAlreadyThere) activeSounds.add(newSound);
@@ -190,7 +190,7 @@ void audioIsolate(SendPort isolateToMainStream) {
       case MessageEvents.speechText:
         final args = event['args']! as ArgsSpeechText;
         final ret = soLoudController.soLoudFFI.speechText(args.textToSpeech);
-        final newSound = SoundProps(SoundHash.random());
+        final newSound = AudioSource(SoundHash.random());
         newSound.handlesInternal.add(ret.handle);
         if (ret.error == PlayerErrors.noError) {
           // Add the new sound to the list
