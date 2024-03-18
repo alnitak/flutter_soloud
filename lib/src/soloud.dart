@@ -1,13 +1,13 @@
 // ignore_for_file: require_trailing_commas, avoid_positional_boolean_parameters
 
 import 'dart:async';
-import 'dart:collection';
 import 'dart:ffi' as ffi;
 import 'dart:isolate';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_soloud/src/audio_isolate.dart';
+import 'package:flutter_soloud/src/audio_source.dart';
 import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/exceptions/exceptions.dart';
 import 'package:flutter_soloud/src/filter_params.dart';
@@ -19,75 +19,6 @@ import 'package:flutter_soloud/src/utils/loader.dart';
 import 'package:http/http.dart' as http;
 import 'package:logging/logging.dart';
 import 'package:meta/meta.dart';
-
-/// Deprecated alias to [SoundEventType].
-@Deprecated('Use SoundEventType instead')
-typedef SoundEvent = SoundEventType;
-
-/// sound event types
-enum SoundEventType {
-  /// handle reached the end of playback
-  handleIsNoMoreValid,
-
-  /// the sound has been disposed
-  soundDisposed,
-}
-
-/// the type sent back to the user when a sound event occurs
-typedef StreamSoundEvent = ({
-  SoundEventType event,
-  SoundProps sound,
-  SoundHandle handle,
-});
-
-/// the sound class
-class SoundProps {
-  ///
-  SoundProps(this.soundHash);
-
-  /// The hash uniquely identifying this loaded sound.
-  final SoundHash soundHash;
-
-  /// This getter is [deprecated] and will be removed. Use [handles] instead.
-  @Deprecated("Use 'handles' instead")
-  UnmodifiableSetView<SoundHandle> get handle => handles;
-
-  /// The handles of currently playing instances of this sound.
-  ///
-  /// A sound (expressed as [SoundProps]) can be loaded once, but then
-  /// played multiple times. It's even possible to play several instances
-  /// of the sound simultaneously.
-  ///
-  /// Each time you [SoLoud.play] a sound, you get back a [SoundHandle],
-  /// and that same handle will be added to this [handles] set.
-  /// When the sound finishes playing, its handle will be removed from this set.
-  ///
-  /// This set is unmodifiable.
-  late final UnmodifiableSetView<SoundHandle> handles =
-      UnmodifiableSetView(handlesInternal);
-
-  /// The [internal] backing of [handles].
-  ///
-  /// Use [handles].
-  @internal
-  final Set<SoundHandle> handlesInternal = {};
-
-  ///
-  // TODO(marco): make marker keys time able to trigger an event
-  final List<double> keys = [];
-
-  /// Backing controller for [soundEvents].
-  final StreamController<StreamSoundEvent> _soundEvents =
-      StreamController.broadcast();
-
-  /// the user can listen ie when a sound ends or key events (TODO)
-  Stream<StreamSoundEvent> get soundEvents => _soundEvents.stream;
-
-  @override
-  String toString() {
-    return 'soundHash: $soundHash has ${handles.length} active handles';
-  }
-}
 
 /// The events exposed by the plugin
 enum AudioEvent {
@@ -470,7 +401,7 @@ interface class SoLoud {
 
           /// send the disposed event to listeners and remove the sound
           if (data.event == SoundEventType.soundDisposed) {
-            sound._soundEvents.add(data);
+            sound.soundEventsController.add(data);
             _activeSounds.removeWhere(
                 (element) => element.soundHash == data.sound.soundHash);
           }
@@ -479,7 +410,7 @@ interface class SoLoud {
           if (data.event == SoundEventType.handleIsNoMoreValid) {
             /// ...put in its own stream the event, then remove the handle
             if (sound.soundHash.isValid) {
-              sound._soundEvents.add(data);
+              sound.soundEventsController.add(data);
               sound.handlesInternal.removeWhere(
                 (handle) {
                   return handle == data.handle;
@@ -1196,7 +1127,7 @@ interface class SoLoud {
     await _waitForEvent(
         MessageEvents.disposeSound, (soundHash: sound.soundHash));
 
-    await sound._soundEvents.close();
+    await sound.soundEventsController.close();
 
     /// remove the sound with [soundHash]
     _activeSounds.removeWhere(
