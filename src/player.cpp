@@ -447,7 +447,7 @@ unsigned int Player::getActiveVoiceCount()
     return soloud.getActiveVoiceCount();
 }
 
-int Player::getCountAudioSource(unsigned int soundHash)
+int Player::countAudioSource(unsigned int soundHash)
 {
     auto const &s = std::find_if(sounds.begin(), sounds.end(),
                                  [&](std::unique_ptr<ActiveSound> const &f)

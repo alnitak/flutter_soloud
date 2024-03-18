@@ -1414,11 +1414,11 @@ interface class SoLoud {
 
   /// Returns the number of concurrent sounds that are playing a
   /// specific audio source.
-  int getCountAudioSource(int soundHash) {
+  int countAudioSource(int soundHash) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
-    return SoLoudController().soLoudFFI.getCountAudioSource(soundHash);
+    return SoLoudController().soLoudFFI.countAudioSource(soundHash);
   }
 
   /// Returns the number of voices the application has told SoLoud to play.
