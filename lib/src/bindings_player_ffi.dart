@@ -105,7 +105,7 @@ class FlutterSoLoudFfi {
   /// Must be called when there is no more need of the player
   /// or when closing the app
   ///
-  void dispose() {
+  void deinit() {
     return _dispose();
   }
 

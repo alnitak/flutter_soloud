@@ -665,7 +665,7 @@ interface class SoLoud {
     _isInitialized = false;
 
     SoLoudController().soLoudFFI.disposeAllSound();
-    SoLoudController().soLoudFFI.dispose();
+    SoLoudController().soLoudFFI.deinit();
     _activeSounds.clear();
   }
 
