@@ -38,29 +38,29 @@ void main() async {
     },
   );
 
-  // await runZonedGuarded(
-  //   () async => test3(),
-  //   (error, stack) {
-  //     stderr.writeln('TEST error: $error\nstack: $stack');
-  //     exitCode = 1;
-  //   },
-  // );
+  await runZonedGuarded(
+    () async => test3(),
+    (error, stack) {
+      stderr.writeln('TEST error: $error\nstack: $stack');
+      exitCode = 1;
+    },
+  );
 
-  // await runZonedGuarded(
-  //   () async => test1(),
-  //   (error, stack) {
-  //     stderr.writeln('TEST error: $error\nstack: $stack');
-  //     exitCode = 1;
-  //   },
-  // );
+  await runZonedGuarded(
+    () async => test1(),
+    (error, stack) {
+      stderr.writeln('TEST error: $error\nstack: $stack');
+      exitCode = 1;
+    },
+  );
 
-  // await runZonedGuarded(
-  //   () async => test2(),
-  //   (error, stack) {
-  //     stderr.writeln('TEST error: $error\nstack: $stack');
-  //     exitCode = 1;
-  //   },
-  // );
+  await runZonedGuarded(
+    () async => test2(),
+    (error, stack) {
+      stderr.writeln('TEST error: $error\nstack: $stack');
+      exitCode = 1;
+    },
+  );
 
   stdout.write('\n\n\n---\n\n\n');
 
@@ -108,9 +108,18 @@ Future<void> test4() async {
 
     assert(error.isEmpty, error);
 
+    final before = SoLoudController().soLoudFFI.isInited();
+
     /// wait for [t] ms and deinit()
     await Future.delayed(Duration(milliseconds: t), () {});
     SoLoud.instance.deinit();
+    final after = SoLoudController().soLoudFFI.isInited();
+
+    assert(
+      before == !after,
+      'TEST FAILED delay: $t. The player has not been '
+      'inited or deinited correctly!',
+    );
 
     print('------------- delay $t passed\n');
   }
@@ -120,6 +129,11 @@ Future<void> test4() async {
 
   await loadAsset();
   await SoLoud.instance.play(currentSound!);
+  await delay(100);
+  await SoLoud.instance.play(currentSound!);
+  await delay(100);
+  await SoLoud.instance.play(currentSound!);
+
   await delay(2000);
 
   SoLoud.instance.deinit();

@@ -654,10 +654,18 @@ interface class SoLoud {
     }
 
     /// reset broadcast and kill isolate
-    _cleanUpUnsuccessfulInitialization();
+    _isolateToMainStream?.close();
+    _isolateToMainStream = null;
+    _mainToIsolateStream = null;
+    _returnedEvent?.close();
+    _returnedEvent = null;
+    _isolate?.kill();
+    _isolate = null;
+    _isEngineInitialized = false;
     _isInitialized = false;
 
     SoLoudController().soLoudFFI.disposeAllSound();
+    SoLoudController().soLoudFFI.dispose();
     _activeSounds.clear();
   }
 
