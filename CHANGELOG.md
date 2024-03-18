@@ -1,6 +1,6 @@
 #### 2.0.0-pre.X
 - added `getActiveVoiceCount()` to get concurrent sounds that are playing at the moment.
-- added `getCountAudioSource()` to get concurrent sounds that are playing a specific audio source.
+- added `countAudioSource()` to get concurrent sounds that are playing a specific audio source.
 - added `getVoiceCount()` to get the number of voices the application has told SoLoud to play.
 - added `getMaxActiveVoiceCount()` to get the current maximum active voice count.
 - added `setMaxActiveVoiceCount()` to set the current maximum active voice count.

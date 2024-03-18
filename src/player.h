@@ -273,7 +273,7 @@ public:
     unsigned int getActiveVoiceCount();
 
     /// @brief Returns the number of concurrent sounds that are playing a specific audio source.
-    int getCountAudioSource(unsigned int soundHash);
+    int countAudioSource(unsigned int soundHash);
 
     /// @brief Returns the number of voices the application has told SoLoud to play.
     unsigned int getVoiceCount();

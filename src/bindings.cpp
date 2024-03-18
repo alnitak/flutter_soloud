@@ -574,11 +574,11 @@ extern "C"
     }
 
     /// Returns the number of concurrent sounds that are playing a specific audio source.
-    FFI_PLUGIN_EXPORT int getCountAudioSource(unsigned int soundHash)
+    FFI_PLUGIN_EXPORT int countAudioSource(unsigned int soundHash)
     {
         if (!player.isInited())
             return 0;
-        return player.getCountAudioSource(soundHash);
+        return player.countAudioSource(soundHash);
     }
 
     /// Returns the number of voices the application has told SoLoud to play.

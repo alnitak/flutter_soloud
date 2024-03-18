@@ -28,7 +28,7 @@ struct CaptureDevice
 FFI_PLUGIN_EXPORT unsigned int getActiveVoiceCount();
 
 /// Returns the number of concurrent sounds that are playing a specific audio source.
-FFI_PLUGIN_EXPORT int getCountAudioSource(unsigned int soundHash);
+FFI_PLUGIN_EXPORT int countAudioSource(unsigned int soundHash);
 
 /// Returns the number of voices the application has told SoLoud to play.
 FFI_PLUGIN_EXPORT unsigned int getVoiceCount();

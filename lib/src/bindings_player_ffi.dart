@@ -755,15 +755,15 @@ class FlutterSoLoudFfi {
 
   /// Returns the number of concurrent sounds that are playing a
   /// specific audio source.
-  int getCountAudioSource(int soundHash) {
-    return _getCountAudioSource(soundHash);
+  int countAudioSource(int soundHash) {
+    return _countAudioSource(soundHash);
   }
 
-  late final _getCountAudioSourcePtr =
+  late final _countAudioSourcePtr =
       _lookup<ffi.NativeFunction<ffi.Int Function(ffi.UnsignedInt)>>(
-          'getCountAudioSource');
-  late final _getCountAudioSource =
-      _getCountAudioSourcePtr.asFunction<int Function(int)>();
+          'countAudioSource');
+  late final _countAudioSource =
+      _countAudioSourcePtr.asFunction<int Function(int)>();
 
   /// Returns the number of voices the application has told SoLoud to play.
   int getVoiceCount() {
