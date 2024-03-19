@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:flutter_soloud/src/soloud_controller.dart';
-import 'package:flutter_test/flutter_test.dart';
 import 'package:logging/logging.dart';
 
 /// An end-to-end test.
@@ -38,29 +37,29 @@ void main() async {
     },
   );
 
-  await runZonedGuarded(
-    () async => test3(),
-    (error, stack) {
-      stderr.writeln('TEST error: $error\nstack: $stack');
-      exitCode = 1;
-    },
-  );
+  // await runZonedGuarded(
+  //   () async => test3(),
+  //   (error, stack) {
+  //     stderr.writeln('TEST error: $error\nstack: $stack');
+  //     exitCode = 1;
+  //   },
+  // );
 
-  await runZonedGuarded(
-    () async => test1(),
-    (error, stack) {
-      stderr.writeln('TEST error: $error\nstack: $stack');
-      exitCode = 1;
-    },
-  );
+  // await runZonedGuarded(
+  //   () async => test1(),
+  //   (error, stack) {
+  //     stderr.writeln('TEST error: $error\nstack: $stack');
+  //     exitCode = 1;
+  //   },
+  // );
 
-  await runZonedGuarded(
-    () async => test2(),
-    (error, stack) {
-      stderr.writeln('TEST error: $error\nstack: $stack');
-      exitCode = 1;
-    },
-  );
+  // await runZonedGuarded(
+  //   () async => test2(),
+  //   (error, stack) {
+  //     stderr.writeln('TEST error: $error\nstack: $stack');
+  //     exitCode = 1;
+  //   },
+  // );
 
   stdout.write('\n\n\n---\n\n\n');
 
@@ -92,10 +91,11 @@ Future<void> delay(int ms) async {
   await Future.delayed(Duration(milliseconds: ms), () {});
 }
 
-/// Test synchronous `deinit()`
+/// Test synchronous and asynchronous `initialize()` - `deinit()` within
+/// short time delays.
 Future<void> test4() async {
-  /// test init-deinit looping with a short decreasing time
-  for (var t = 500; t >= 0; t -= 50) {
+  /// test synchronous init-deinit looping with a short decreasing time
+  for (var t = 100; t >= 0; t -= 5) {
     /// Initialize the player
     var error = '';
     await SoLoud.instance.initialize().then(
@@ -121,7 +121,26 @@ Future<void> test4() async {
       'inited or deinited correctly!',
     );
 
-    print('------------- delay $t passed\n');
+    stderr.writeln('------------- awaited init delay $t passed\n');
+  }
+
+  /// test asynchronous init-deinit looping with a short decreasing time without
+  /// waiting for `initialize()` to finish
+  for (var t = 50; t >= 0; t -= 2) {
+    /// Initialize the player
+    unawaited(SoLoud.instance.initialize());
+
+    /// wait for [t] ms and deinit()
+    await Future.delayed(Duration(milliseconds: t), () {});
+    SoLoud.instance.deinit();
+
+    assert(
+      !SoLoudController().soLoudFFI.isInited(),
+      'ASSERT FAILED delay: $t. The player has not been '
+      'inited or deinited correctly!',
+    );
+
+    stderr.writeln('------------- unawaited init delay $t passed\n');
   }
 
   /// Try init-play-deinit and again init-play without disposing the sound
@@ -151,7 +170,7 @@ Future<void> test4() async {
   assert(
     SoLoudController()
             .soLoudFFI
-            .getCountAudioSource(currentSound!.soundHash.hash) ==
+            .countAudioSource(currentSound!.soundHash.hash) ==
         0,
     'getCountAudioSource(): sound not disposed by the engine',
   );

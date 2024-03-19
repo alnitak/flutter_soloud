@@ -477,6 +477,9 @@ public:
 
     /// Filters
     Filters mFilters;
+
+private:
+    std::mutex init_deinit_mutex;
 };
 
 #endif // PLAYER_H
