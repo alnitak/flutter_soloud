@@ -73,7 +73,7 @@ class AudioSource {
 
   /// Backing controller for [soundEvents].
   @internal
-  final StreamController<StreamSoundEvent> soundEventsController =
+  late final StreamController<StreamSoundEvent> soundEventsController =
       StreamController.broadcast();
 
   /// This getter is [deprecated] and will be removed. Use [handles] instead.
@@ -85,7 +85,7 @@ class AudioSource {
 
   /// Backing controller for [allInstancesFinished].
   @internal
-  final StreamController<void> allInstancesFinishedController =
+  late final StreamController<void> allInstancesFinishedController =
       StreamController.broadcast();
 
   /// A stream that adds an event every time the number of concurrently
