@@ -53,6 +53,19 @@ to `2.0.0-pre.2` and beyond.
   This mimics the C++ API name.
   Quick fix available.
 - Renamed `SoundProps` to `AudioSource`. Quick fix available.
+- Added new `AudioSource.allInstancesFinished` stream. This can be used to
+  more easily await times when it's safe to dispose the sound. For example:
+
+  ```dart
+  final source = soloud.loadAsset('...');
+  // Wait for the first time all the instances of the sound are finished
+  // (finished playing or were stopped with soloud.stop()).
+  source.allInstancesFinished.first.then(
+    // Dispose of the sound.
+    (_) => soloud.disposeSound(source))
+  );
+  soloud.play(source);
+  ```
 
 #### 2.0.0-pre.1 (12 Mar 2024)
 - added `looping` and `loopingStartAt` properties to `SoLoud.play()` and `SoLoud.play3d()`.
