@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:flutter_soloud/src/soloud_controller.dart';
-import 'package:flutter_test/flutter_test.dart';
 import 'package:logging/logging.dart';
 
 /// An end-to-end test.
@@ -29,6 +28,14 @@ void main() async {
   Logger.root.level = Level.ALL;
 
   WidgetsFlutterBinding.ensureInitialized();
+
+  await runZonedGuarded(
+    () async => test5(),
+    (error, stack) {
+      stderr.writeln('TEST error: $error\nstack: $stack');
+      exitCode = 1;
+    },
+  );
 
   await runZonedGuarded(
     () async => test4(),
@@ -92,6 +99,56 @@ Future<void> delay(int ms) async {
   await Future.delayed(Duration(milliseconds: ms), () {});
 }
 
+Future<void> test5() async {
+  final log = Logger('test5');
+  await initialize();
+
+  await SoLoud.instance.disposeAllSound();
+  assert(
+    SoLoud.instance.activeSounds.isEmpty,
+    'Active sounds even after disposeAllSound()',
+  );
+
+  final explosion =
+      await SoLoud.instance.loadAsset('assets/audio/explosion.mp3');
+  final song =
+      await SoLoud.instance.loadAsset('assets/audio/8_bit_mentality.mp3');
+
+  // Set up unloading.
+  var explosionDisposed = false;
+  var songDisposed = false;
+  unawaited(
+    explosion.allInstancesFinished.first.then((_) async {
+      log.info('All instances of explosion finished.');
+      await SoLoud.instance.disposeSound(explosion);
+      explosionDisposed = true;
+    }),
+  );
+  unawaited(
+    song.allInstancesFinished.first.then((_) async {
+      log.info('All instances of song finished.');
+      await SoLoud.instance.disposeSound(song);
+      songDisposed = true;
+    }),
+  );
+
+  await SoLoud.instance.play(explosion, volume: 0.2);
+  final songHandle = await SoLoud.instance.play(song, volume: 0.6);
+  await Future<void>.delayed(const Duration(milliseconds: 500));
+  await SoLoud.instance.play(explosion, volume: 0.3);
+
+  // Let the second explosion play for its full duration.
+  await Future<void>.delayed(const Duration(milliseconds: 4000));
+
+  await SoLoud.instance.stop(songHandle);
+  await Future<void>.delayed(const Duration(milliseconds: 1000));
+
+  assert(explosionDisposed, "Explosion sound wasn't disposed.");
+  assert(songDisposed, "Song sound wasn't disposed.");
+
+  await dispose();
+}
+
 /// Test synchronous `deinit()`
 Future<void> test4() async {
   /// test init-deinit looping with a short decreasing time
@@ -151,7 +208,7 @@ Future<void> test4() async {
   assert(
     SoLoudController()
             .soLoudFFI
-            .getCountAudioSource(currentSound!.soundHash.hash) ==
+            .countAudioSource(currentSound!.soundHash.hash) ==
         0,
     'getCountAudioSource(): sound not disposed by the engine',
   );
