@@ -4,7 +4,6 @@ import 'dart:async';
 import 'dart:ffi' as ffi;
 import 'dart:isolate';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_soloud/src/audio_isolate.dart';
@@ -417,6 +416,10 @@ interface class SoLoud {
                   return handle == data.handle;
                 },
               );
+              if (sound.handles.isEmpty) {
+                // All instances of the sound have finished.
+                sound.allInstancesFinishedController.add(null);
+              }
             }
           }
         } else {
@@ -562,15 +565,16 @@ interface class SoLoud {
 
   /// Stops the engine and disposes of all resources, including sounds
   /// and the audio isolate in an synchronous way.
-  /// 
+  ///
   /// This method is meant to be called when exiting the app. For example
   /// within the `dispose()` of the uppermost widget in the tree
   /// or inside [AppLifecycleListener.onExitRequested].
-  /// 
+  ///
   /// During the normal app life cycle and if you want to shutdown the player,
   /// please use [shutdown] which safer and it is meant to throw errors.
   void deinit() {
     _log.finest('deinit() called');
+
     /// check if we are in the middle of an initialization.
     if (_initializeCompleter != null) {
       _log.warning('deinit() called while already initializing.');
@@ -1146,6 +1150,9 @@ interface class SoLoud {
     /// find a sound with this handle and remove that handle from the list
     for (final sound in _activeSounds) {
       sound.handlesInternal.removeWhere((element) => element == handle);
+      if (sound.handles.isEmpty) {
+        sound.allInstancesFinishedController.add(null);
+      }
     }
   }
 
