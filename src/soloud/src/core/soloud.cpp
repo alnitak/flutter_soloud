@@ -26,6 +26,7 @@ freely, subject to the following restrictions:
 #include <stdlib.h>
 #include <math.h> // sin
 #include <float.h> // _controlfp
+#include <algorithm> // stable_sort
 #include "soloud_internal.h"
 #include "soloud_thread.h"
 #include "soloud_fft.h"
@@ -1977,7 +1978,8 @@ namespace SoLoud
 		mustlive = 0;
 		for (i = 0; i < mHighestVoice; i++)
 		{
-			if (mVoice[i] && (!(mVoice[i]->mFlags & (AudioSourceInstance::INAUDIBLE | AudioSourceInstance::PAUSED)) || (mVoice[i]->mFlags & AudioSourceInstance::INAUDIBLE_TICK)))
+			if (mVoice[i] && (!(mVoice[i]->mFlags & (AudioSourceInstance::INAUDIBLE | AudioSourceInstance::PAUSED)) 
+				|| (mVoice[i]->mFlags & AudioSourceInstance::INAUDIBLE_TICK)))
 			{
 				mActiveVoice[candidates] = i;
 				candidates++;
@@ -2013,41 +2015,52 @@ namespace SoLoud
 		// If we get this far, there's nothing to it: we'll have to sort the voices to find the most audible.
 
 		// Iterative partial quicksort:
-		int left = 0, stack[24], pos = 0, right;
-		int len = candidates - mustlive;
-		unsigned int *data = mActiveVoice + mustlive;
-		int k = mActiveVoiceCount;
-		for (;;) 
-		{                                 
-			for (; left + 1 < len; len++) 
-			{                
-				if (pos == 24) len = stack[pos = 0]; 
-				int pivot = data[left];
-				float pivotvol = mVoice[pivot]->mOverallVolume;
-				stack[pos++] = len;      
-				for (right = left - 1;;) 
-				{
-					do 
-					{
-						right++;
-					} 
-					while (mVoice[data[right]]->mOverallVolume > pivotvol);
-					do
-					{
-						len--;
-					}
-					while (pivotvol > mVoice[data[len]]->mOverallVolume);
-					if (right >= len) break;       
-					int temp = data[right];
-					data[right] = data[len];
-					data[len] = temp;
-				}                        
-			}
-			if (pos == 0) break;         
-			if (left >= k) break;
-			left = len;                  
-			len = stack[--pos];          
-		}	
+		// int left = 0, stack[24], pos = 0, right;
+		// int len = candidates - mustlive;
+		// unsigned int *data = mActiveVoice + mustlive;
+		// int k = mActiveVoiceCount;
+		// for (;;) 
+		// {                                 
+		// 	for (; left + 1 < len; len++) 
+		// 	{                
+		// 		if (pos == 24) len = stack[pos = 0]; 
+		// 		int pivot = data[left];
+		// 		float pivotvol = mVoice[pivot]->mOverallVolume;
+		// 		stack[pos++] = len;      
+		// 		for (right = left - 1;;) 
+		// 		{
+		// 			do 
+		// 			{
+		// 				right++;
+		// 			} 
+		// 			while (mVoice[data[right]]->mOverallVolume > pivotvol);
+		// 			do
+		// 			{
+		// 				len--;
+		// 			}
+		// 			while (pivotvol > mVoice[data[len]]->mOverallVolume);
+		// 			if (right >= len) break;       
+		// 			int temp = data[right];
+		// 			data[right] = data[len];
+		// 			data[len] = temp;
+		// 		}                        
+		// 	}
+		// 	if (pos == 0) break;         
+		// 	if (left >= k) break;
+		// 	left = len;                  
+		// 	len = stack[--pos];          
+		// }
+		// // https://github.com/jarikomppa/soloud/issues/298
+		auto comp = [this](const unsigned int & a, const unsigned int & b)
+		{
+			// Test a>b
+			if((mVoice[a]->mFlags & AudioSourceInstance::PROTECTED) && !(mVoice[b]->mFlags & AudioSourceInstance::PROTECTED))
+				return true;
+			if((mVoice[b]->mFlags & AudioSourceInstance::PROTECTED) && !(mVoice[a]->mFlags & AudioSourceInstance::PROTECTED))
+				return false;
+			return mVoice[a]->mOverallVolume > mVoice[b]->mOverallVolume;
+		};
+		std::stable_sort(&mActiveVoice[0+mustlive], &mActiveVoice[candidates], comp);
 		// TODO: should the rest of the voices be flagged INAUDIBLE?
 		mapResampleBuffers_internal();
 	}

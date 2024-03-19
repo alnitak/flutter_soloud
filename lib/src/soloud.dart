@@ -1436,30 +1436,35 @@ interface class SoLoud {
     return SoLoudController().soLoudFFI.getVoiceCount();
   }
 
-  // /// Get a sound's protection state.
-  // bool getProtectVoice(int handle) {
-  //   if (!isInitialized) {
-  //     throw const SoLoudNotInitializedException();
-  //   }
-  //   return SoLoudController().soLoudFFI.getProtectVoice(handle);
-  // }
+  /// Get a sound's protection state.
+  bool getProtectVoice(int handle) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    return SoLoudController().soLoudFFI.getProtectVoice(handle);
+  }
 
-  // /// Set a sound's protection state.
-  // ///
-  // /// Normally, if you try to play more sounds than there are voices,
-  // /// SoLoud will kill off the oldest playing sound to make room.
-  // /// This will most likely be your background music. This can be worked
-  // /// around by protecting the sound.
-  // /// If all voices are protected, the result will be undefined.
-  // ///
-  // /// [handle]  handle to check.
-  // /// [protect] whether to protect or not.
-  // void setProtectVoice(int handle, bool protect) {
-  //   if (!isInitialized) {
-  //     throw const SoLoudNotInitializedException();
-  //   }
-  //   SoLoudController().soLoudFFI.setProtectVoice(handle, protect);
-  // }
+  /// Set a sound's protection state.
+  ///
+  /// Normally, if you try to play more sounds than there are voices,
+  /// SoLoud will kill off the oldest playing sound to make room.
+  /// This will most likely be your background music. This can be worked
+  /// around by protecting the sound.
+  /// If all voices are protected, the result will be undefined.
+  /// The number of protected entries is inclusive in the 
+  /// max number active voice count [getMaxActiveVoiceCount]. 
+  /// For example when having 16 max active voice count set to 16, and
+  /// you want to play 20 other sounds, the protected voice will still play
+  /// but you will hear only 15 of the other 20.
+  ///
+  /// [handle]  handle to check.
+  /// [protect] whether to protect or not.
+  void setProtectVoice(int handle, bool protect) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    SoLoudController().soLoudFFI.setProtectVoice(handle, protect);
+  }
 
   /// Get the current maximum active voice count.
   int getMaxActiveVoiceCount() {
