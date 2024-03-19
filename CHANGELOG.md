@@ -63,7 +63,7 @@ to `2.0.0-pre.2` and beyond.
   // (finished playing or were stopped with soloud.stop()).
   source.allInstancesFinished.first.then(
     // Dispose of the sound.
-    (_) => soloud.disposeSound(source))
+    (_) => soloud.disposeSound(source)
   );
   soloud.play(source);
   ```
