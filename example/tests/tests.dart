@@ -37,29 +37,29 @@ void main() async {
     },
   );
 
-  // await runZonedGuarded(
-  //   () async => test3(),
-  //   (error, stack) {
-  //     stderr.writeln('TEST error: $error\nstack: $stack');
-  //     exitCode = 1;
-  //   },
-  // );
+  await runZonedGuarded(
+    () async => test3(),
+    (error, stack) {
+      stderr.writeln('TEST error: $error\nstack: $stack');
+      exitCode = 1;
+    },
+  );
 
-  // await runZonedGuarded(
-  //   () async => test1(),
-  //   (error, stack) {
-  //     stderr.writeln('TEST error: $error\nstack: $stack');
-  //     exitCode = 1;
-  //   },
-  // );
+  await runZonedGuarded(
+    () async => test1(),
+    (error, stack) {
+      stderr.writeln('TEST error: $error\nstack: $stack');
+      exitCode = 1;
+    },
+  );
 
-  // await runZonedGuarded(
-  //   () async => test2(),
-  //   (error, stack) {
-  //     stderr.writeln('TEST error: $error\nstack: $stack');
-  //     exitCode = 1;
-  //   },
-  // );
+  await runZonedGuarded(
+    () async => test2(),
+    (error, stack) {
+      stderr.writeln('TEST error: $error\nstack: $stack');
+      exitCode = 1;
+    },
+  );
 
   stdout.write('\n\n\n---\n\n\n');
 
