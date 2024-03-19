@@ -232,24 +232,25 @@ Future<void> test3() async {
   );
 
   for (var i = 2; i < 10; i++) {
+    const volume = 0.2;
     final d = (sin(i / 6.28) * 400).toInt();
-    await SoLoud.instance.play(notes[7]);
+    await SoLoud.instance.play(notes[7], volume: volume);
     await delay(500 - d);
     await SoLoud.instance.stop(notes[7].handles.first);
 
-    await SoLoud.instance.play(notes[10]);
+    await SoLoud.instance.play(notes[10], volume: volume);
     await delay(550 - d);
     await SoLoud.instance.stop(notes[10].handles.first);
 
-    await SoLoud.instance.play(notes[7]);
+    await SoLoud.instance.play(notes[7], volume: volume);
     await delay(500 - d);
     await SoLoud.instance.stop(notes[7].handles.first);
 
-    await SoLoud.instance.play(notes[0]);
+    await SoLoud.instance.play(notes[0], volume: volume);
     await delay(500 - d);
     await SoLoud.instance.stop(notes[0].handles.first);
 
-    await SoLoud.instance.play(notes[4]);
+    await SoLoud.instance.play(notes[4], volume: volume);
     await delay(800 - d);
     await SoLoud.instance.stop(notes[4].handles.first);
 
