@@ -53,8 +53,9 @@ to `2.0.0-pre.2` and beyond.
   This mimics the C++ API name.
   Quick fix available.
 - Renamed `SoundProps` to `AudioSource`. Quick fix available.
-- Added new `AudioSource.allInstancesFinished` stream. This can be used to
-  more easily await times when it's safe to dispose the sound. For example:
+- Added new (experimental) `AudioSource.allInstancesFinished` stream. 
+  This can be used to more easily await times when it's safe to dispose 
+  the sound. For example:
 
   ```dart
   final source = soloud.loadAsset('...');
