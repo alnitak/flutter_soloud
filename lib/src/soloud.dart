@@ -1794,12 +1794,15 @@ interface class SoLoud {
   /// Add a filter to all sounds.
   /// [filterType] filter to add.
   ///
+  /// Throws [SoLoudMaxFilterNumberReachedException] when the max number of 
+  ///     concurrent filter is reached (default max filter is 8).
+  /// Throws [SoLoudFilterAlreadyAddedException] when trying to add a filter 
+  ///     that has already been added.
   void addGlobalFilter(FilterType filterType) {
-    final ret = SoLoudController().soLoudFFI.addGlobalFilter(filterType.index);
-    final error = PlayerErrors.values[ret];
-    if (error != PlayerErrors.noError) {
-      _log.severe(() => 'addGlobalFilter(): $error');
-      throw SoLoudCppException.fromPlayerError(error);
+    final e = SoLoudController().soLoudFFI.addGlobalFilter(filterType.index);
+    if (e != PlayerErrors.noError) {
+      _log.severe(() => 'addGlobalFilter(): $e');
+      throw SoLoudCppException.fromPlayerError(e);
     }
   }
 

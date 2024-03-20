@@ -16,6 +16,8 @@
 #include "soloud_robotizefilter.h"
 #include "soloud_freeverbfilter.h"
 
+#include "../enums.h"
+
 #include <vector>
 #include <string>
 #include <memory>
@@ -53,7 +55,7 @@ public:
     ~Filters();
 
     int isFilterActive(FilterType filter);
-    bool addGlobalFilter(FilterType filterType);
+    PlayerErrors addGlobalFilter(FilterType filterType);
     bool removeGlobalFilter(FilterType filterType);
     std::vector<std::string> getFilterParamNames(FilterType filterType);
     void setFxParams(FilterType filterType, int attributeId, float value);

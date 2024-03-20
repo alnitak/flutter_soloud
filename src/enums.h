@@ -34,8 +34,12 @@ typedef enum PlayerErrors
     backendNotInited = 11,
     /// Filter not found
     filterNotFound = 12,
-    /// asking for wave and FFT is not enabled
+    /// Asking for wave and FFT is not enabled
     visualizationNotEnabled = 13,
+    /// The maximum number of filters has been reached (default is 8).
+    maxNumberOfFiltersReached = 14,
+    /// The filter has already been added.
+    filterAlreadyAdded = 15,
 } PlayerErrors_t;
 
 /// Possible capture errors

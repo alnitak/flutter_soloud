@@ -799,9 +799,7 @@ extern "C"
     {
         if (!player.isInited())
             return backendNotInited;
-        if (!player.mFilters.addGlobalFilter(filterType))
-            return filterNotFound;
-        return noError;
+        return player.mFilters.addGlobalFilter(filterType);
     }
 
     /// Remove the filter [filterType].
