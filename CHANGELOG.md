@@ -1,10 +1,45 @@
-#### 2.0.0-pre.X
+#### 2.0.0-pre.3 (20 Mar 2024)
 - added `getActiveVoiceCount()` to get concurrent sounds that are playing at the moment.
 - added `countAudioSource()` to get concurrent sounds that are playing a specific audio source.
 - added `getVoiceCount()` to get the number of voices the application has told SoLoud to play.
 - added `getMaxActiveVoiceCount()` to get the current maximum active voice count.
 - added `setMaxActiveVoiceCount()` to set the current maximum active voice count.
 - added `setProtectVoice()` and `getProtectVoice()` to get/set the protect voice flag.
+- All time-related parameters and return values are now `Duration` type.
+  Before, they were `double`.
+- Fixed velocity computation bug in `example/`.
+- Renamed `SoundEvent` to `SoundEventType`. Quick fix available.
+- `SoundProps.soundEvents` is now a `Stream`, not a `StreamController`
+- `SoundProps.soundEvents` stream is now closed automatically when
+  `SoLoud.disposeSound()` is called.
+- `SoLoud.activeSounds` is now an `Iterable` instead of a `List`
+  (therefore, it cannot be modified from outside the package).
+- Renamed `SoLoud.getFxParams` to `SoLoud.getFilterParameter`.
+  This mimics the C++ API name.
+  Quick fix available.
+- Renamed `SoLoud.setFxParams` to `SoLoud.setFilterParameter`. 
+  This mimics the C++ API name.
+  Quick fix available.
+- Renamed `SoundProps` to `AudioSource`. Quick fix available.
+- Added new (experimental) `AudioSource.allInstancesFinished` stream. 
+  This can be used to more easily await times when it's safe to dispose 
+  the sound. For example:
+
+  ```dart
+  final source = soloud.loadAsset('...');
+  // Wait for the first time all the instances of the sound are finished
+  // (finished playing or were stopped with soloud.stop()).
+  source.allInstancesFinished.first.then(
+    // Dispose of the sound.
+    (_) => soloud.disposeSound(source)
+  );
+  soloud.play(source);
+  ```
+- Deprecated `shutdown()`. Replaced with the synchronous `deinit()`.
+  Quick fix available.
+- Renamed `initialize()` to `init()`, in order to come closer to the original
+  C++ API, and also to have a symmetry (`init`/`deinit`).
+  Quick fix available.
 
 #### 2.0.0-pre.2 (14 Mar 2024)
 
@@ -38,42 +73,6 @@ to `2.0.0-pre.2` and beyond.
     print('Oh no! $e');
   }
   ```
-- All time-related parameters and return values are now `Duration` type.
-  Before, they were `double`.
-- Fixed velocity computation bug in `example/`.
-- Renamed `SoundEvent` to `SoundEventType`. Quick fix available.
-- `SoundProps.soundEvents` is now a `Stream`, not a `StreamController`
-- `SoundProps.soundEvents` stream is now closed automatically when
-  `SoLoud.disposeSound()` is called.
-- `SoLoud.activeSounds` is now an `Iterable` instead of a `List`
-  (therefore, it cannot be modified from outside the package).
-- Renamed `SoLoud.getFxParams` to `SoLoud.getFilterParameter`.
-  This mimics the C++ API name.
-  Quick fix available.
-- Renamed `SoLoud.setFxParams` to `SoLoud.setFilterParameter`. 
-  This mimics the C++ API name.
-  Quick fix available.
-- Renamed `SoundProps` to `AudioSource`. Quick fix available.
-- Added new (experimental) `AudioSource.allInstancesFinished` stream. 
-  This can be used to more easily await times when it's safe to dispose 
-  the sound. For example:
-
-  ```dart
-  final source = soloud.loadAsset('...');
-  // Wait for the first time all the instances of the sound are finished
-  // (finished playing or were stopped with soloud.stop()).
-  source.allInstancesFinished.first.then(
-    // Dispose of the sound.
-    (_) => soloud.disposeSound(source)
-  );
-  soloud.play(source);
-  ```
-  
-- Deprecated `shutdown()`. Replaced with the synchronous `deinit()`.
-  Quick fix available.
-- Renamed `initialize()` to `init()`, in order to come closer to the original
-  C++ API, and also to have a symmetry (`init`/`deinit`).
-  Quick fix available.
 
 #### 2.0.0-pre.1 (12 Mar 2024)
 - added `looping` and `loopingStartAt` properties to `SoLoud.play()` and `SoLoud.play3d()`.

@@ -120,8 +120,7 @@ class FlutterSoLoudFfi {
     return _isInited() == 1;
   }
 
-  late final _isInitedPtr =
-      _lookup<ffi.NativeFunction<ffi.Int Function()>>(
+  late final _isInitedPtr = _lookup<ffi.NativeFunction<ffi.Int Function()>>(
     'isInited',
   );
   late final _isInited = _isInitedPtr.asFunction<int Function()>();
@@ -837,9 +836,9 @@ class FlutterSoLoudFfi {
   /// NOTE: The number of concurrent voices is limited, as having unlimited
   /// voices would cause performance issues, as well as lead to unnecessary
   /// clipping. The default number of concurrent voices is 16, but this can be
-  /// adjusted at runtime. The hard maximum number is 4095, but if more are 
+  /// adjusted at runtime. The hard maximum number is 4095, but if more are
   /// required, SoLoud can be modified to support more. But seriously, if you
-  /// need more than 4095 sounds at once, you're probably going to make 
+  /// need more than 4095 sounds at once, you're probably going to make
   /// some serious changes in any case.
   void setMaxActiveVoiceCount(int maxVoiceCount) {
     return _setMaxActiveVoiceCount(maxVoiceCount);
@@ -850,7 +849,6 @@ class FlutterSoLoudFfi {
           'setMaxActiveVoiceCount');
   late final _setMaxActiveVoiceCount =
       _setMaxActiveVoiceCountPtr.asFunction<void Function(int)>();
-
 
   /////////////////////////////////////////
   /// faders
@@ -1062,9 +1060,9 @@ class FlutterSoLoudFfi {
   /// Returns:
   /// [PlayerErrors.noError] if no errors
   /// [PlayerErrors.filterNotFound] if the [filterType] does not exits
-  /// [PlayerErrors.filterAlreadyAdded] when trying to add an already 
+  /// [PlayerErrors.filterAlreadyAdded] when trying to add an already
   ///     added filter
-  /// [PlayerErrors.maxNumberOfFiltersReached] when the maximum number of 
+  /// [PlayerErrors.maxNumberOfFiltersReached] when the maximum number of
   ///     filters has been reached (default is 8)
   ///
   PlayerErrors addGlobalFilter(int filterType) {

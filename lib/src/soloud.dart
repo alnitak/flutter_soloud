@@ -1792,11 +1792,12 @@ interface class SoLoud {
   }
 
   /// Add a filter to all sounds.
+  ///
   /// [filterType] filter to add.
   ///
-  /// Throws [SoLoudMaxFilterNumberReachedException] when the max number of 
+  /// Throws [SoLoudMaxFilterNumberReachedException] when the max number of
   ///     concurrent filter is reached (default max filter is 8).
-  /// Throws [SoLoudFilterAlreadyAddedException] when trying to add a filter 
+  /// Throws [SoLoudFilterAlreadyAddedException] when trying to add a filter
   ///     that has already been added.
   void addGlobalFilter(FilterType filterType) {
     final e = SoLoudController().soLoudFFI.addGlobalFilter(filterType.index);
