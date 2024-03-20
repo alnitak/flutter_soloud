@@ -275,17 +275,12 @@ unsigned int Player::play(
     ActiveSound *sound = s->get();
     /// When looping in conjuction with the `loopingStartAt`, it's needed
     /// to seek to the start loop point. So the seek will be performed in a paused state.
-    SoLoud::handle newHandle = soloud.play(*sound->sound.get(), volume, pan, looping ? true : paused, 0);
+    SoLoud::handle newHandle = soloud.play(*sound->sound.get(), volume, pan, paused, 0);
     if (newHandle != 0) sound->handle.emplace_back(newHandle);
     if (looping)
     {
-        /// here a seek is needed because at first loop the sound start 
-        /// from the beginning. From the 2nd and above, the starting point
-        /// is managed correctly.
-        seek(newHandle, loopingStartAt);
         setLoopPoint(newHandle, loopingStartAt);
         setLooping(newHandle, true);
-        setPause(newHandle, paused);
     }
     return newHandle;
 }

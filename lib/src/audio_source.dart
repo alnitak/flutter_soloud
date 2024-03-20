@@ -58,9 +58,12 @@ class AudioSource {
   late final UnmodifiableSetView<SoundHandle> handles =
       UnmodifiableSetView(handlesInternal);
 
-  /// The [internal] backing of [handles].
+  /// The [internal] backing of [handles]/ Use [handles] from outside
+  /// the package.
   ///
-  /// Use [handles].
+  /// If you are removing a handle from this set, remember to check whether
+  /// this was the last one (`handles.isEmpty`). If so, you should
+  /// add an event to [allInstancesFinishedController].
   @internal
   final Set<SoundHandle> handlesInternal = {};
 
@@ -70,7 +73,7 @@ class AudioSource {
 
   /// Backing controller for [soundEvents].
   @internal
-  final StreamController<StreamSoundEvent> soundEventsController =
+  late final StreamController<StreamSoundEvent> soundEventsController =
       StreamController.broadcast();
 
   /// This getter is [deprecated] and will be removed. Use [handles] instead.
@@ -79,6 +82,31 @@ class AudioSource {
 
   /// the user can listen ie when a sound ends or key events (TODO)
   Stream<StreamSoundEvent> get soundEvents => soundEventsController.stream;
+
+  /// Backing controller for [allInstancesFinished].
+  @internal
+  late final StreamController<void> allInstancesFinishedController =
+      StreamController.broadcast();
+
+  /// A stream that adds an event every time the number of concurrently
+  /// playing instances of this [AudioSource] reaches zero.
+  ///
+  /// This can be used to await times when an audio source can be safely
+  /// disposed. For example:
+  ///
+  /// ```dart
+  /// final source = soloud.loadAsset('...');
+  /// // Wait for the first time all the instances of the sound are finished
+  /// // (finished playing or were stopped with soloud.stop()).
+  /// source.allInstancesFinished.first.then(
+  ///   // Dispose of the sound.
+  ///   (_) => soloud.disposeSound(source))
+  /// );
+  /// soloud.play(source);
+  /// ```
+  @experimental
+  Stream<void> get allInstancesFinished =>
+      allInstancesFinishedController.stream;
 
   @override
   String toString() {

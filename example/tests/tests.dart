@@ -30,6 +30,22 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await runZonedGuarded(
+    () async => test6(),
+    (error, stack) {
+      stderr.writeln('TEST error: $error\nstack: $stack');
+      exitCode = 1;
+    },
+  );
+
+  await runZonedGuarded(
+    () async => test5(),
+    (error, stack) {
+      stderr.writeln('TEST error: $error\nstack: $stack');
+      exitCode = 1;
+    },
+  );
+
+  await runZonedGuarded(
     () async => test4(),
     (error, stack) {
       stderr.writeln('TEST error: $error\nstack: $stack');
@@ -93,6 +109,104 @@ Future<void> delay(int ms) async {
 
 /// Test synchronous and asynchronous `initialize()` - `deinit()` within
 /// short time delays.
+/// Test setMaxActiveVoiceCount, setProtectedVoice and getProtectedVoice
+Future<void> test6() async {
+  await initialize();
+
+  SoLoud.instance.setMaxActiveVoiceCount(3);
+  assert(
+    SoLoud.instance.getMaxActiveVoiceCount() == 3,
+    "setMaxActiveVoiceCount() didn't worked correctly",
+  );
+
+  final explosion =
+      await SoLoud.instance.loadAsset('assets/audio/explosion.mp3');
+  final song =
+      await SoLoud.instance.loadAsset('assets/audio/8_bit_mentality.mp3');
+
+  /// play 5 explosion
+  for (var i = 0; i < 5; i++) {
+    await SoLoud.instance.play(explosion);
+    await delay(100);
+  }
+
+  /// play 1 protected [song]
+  final songHandle = await SoLoud.instance.play(song);
+  SoLoud.instance.setProtectVoice(songHandle.id, true);
+  assert(
+    SoLoud.instance.getProtectVoice(songHandle.id),
+    "setProtectVoice() didn't worked correctly",
+  );
+
+  /// play 5 explosion
+  for (var i = 0; i < 5; i++) {
+    await SoLoud.instance.play(explosion);
+    await delay(100);
+  }
+
+  await delay(1000);
+
+  assert(
+    SoLoud.instance.getIsValidVoiceHandle(songHandle) &&
+        SoLoud.instance.getActiveVoiceCount() == 3,
+    'The protected song has been stopped!',
+  );
+
+  await dispose();
+}
+
+/// Test allInstancesFinished stream
+Future<void> test5() async {
+  final log = Logger('test5');
+  await initialize();
+
+  await SoLoud.instance.disposeAllSound();
+  assert(
+    SoLoud.instance.activeSounds.isEmpty,
+    'Active sounds even after disposeAllSound()',
+  );
+
+  final explosion =
+      await SoLoud.instance.loadAsset('assets/audio/explosion.mp3');
+  final song =
+      await SoLoud.instance.loadAsset('assets/audio/8_bit_mentality.mp3');
+
+  // Set up unloading.
+  var explosionDisposed = false;
+  var songDisposed = false;
+  unawaited(
+    explosion.allInstancesFinished.first.then((_) async {
+      log.info('All instances of explosion finished.');
+      await SoLoud.instance.disposeSound(explosion);
+      explosionDisposed = true;
+    }),
+  );
+  unawaited(
+    song.allInstancesFinished.first.then((_) async {
+      log.info('All instances of song finished.');
+      await SoLoud.instance.disposeSound(song);
+      songDisposed = true;
+    }),
+  );
+
+  await SoLoud.instance.play(explosion, volume: 0.2);
+  final songHandle = await SoLoud.instance.play(song, volume: 0.6);
+  await Future<void>.delayed(const Duration(milliseconds: 500));
+  await SoLoud.instance.play(explosion, volume: 0.3);
+
+  // Let the second explosion play for its full duration.
+  await Future<void>.delayed(const Duration(milliseconds: 4000));
+
+  await SoLoud.instance.stop(songHandle);
+  await Future<void>.delayed(const Duration(milliseconds: 1000));
+
+  assert(explosionDisposed, "Explosion sound wasn't disposed.");
+  assert(songDisposed, "Song sound wasn't disposed.");
+
+  await dispose();
+}
+
+/// Test synchronous `deinit()`
 Future<void> test4() async {
   /// test synchronous init-deinit looping with a short decreasing time
   for (var t = 100; t >= 0; t -= 5) {
@@ -194,24 +308,25 @@ Future<void> test3() async {
   );
 
   for (var i = 2; i < 10; i++) {
+    const volume = 0.2;
     final d = (sin(i / 6.28) * 400).toInt();
-    await SoLoud.instance.play(notes[7]);
+    await SoLoud.instance.play(notes[7], volume: volume);
     await delay(500 - d);
     await SoLoud.instance.stop(notes[7].handles.first);
 
-    await SoLoud.instance.play(notes[10]);
+    await SoLoud.instance.play(notes[10], volume: volume);
     await delay(550 - d);
     await SoLoud.instance.stop(notes[10].handles.first);
 
-    await SoLoud.instance.play(notes[7]);
+    await SoLoud.instance.play(notes[7], volume: volume);
     await delay(500 - d);
     await SoLoud.instance.stop(notes[7].handles.first);
 
-    await SoLoud.instance.play(notes[0]);
+    await SoLoud.instance.play(notes[0], volume: volume);
     await delay(500 - d);
     await SoLoud.instance.stop(notes[0].handles.first);
 
-    await SoLoud.instance.play(notes[4]);
+    await SoLoud.instance.play(notes[4], volume: volume);
     await delay(800 - d);
     await SoLoud.instance.stop(notes[4].handles.first);
 

@@ -289,6 +289,9 @@ public:
     /// If all voices are protected, the result will be undefined.
     /// @param handle  handle to check.
     /// @param protect whether to protect or not.
+    ///
+    /// NOTE: patched with
+    /// https://github.com/jarikomppa/soloud/issues/298
     void setProtectVoice(SoLoud::handle handle, bool protect);
 
     /// @brief Get the current maximum active voice count.
