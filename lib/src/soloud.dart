@@ -251,17 +251,23 @@ interface class SoLoud {
   Future<dynamic> _waitForEvent(MessageEvents event, Record args) async {
     final completer = Completer<dynamic>();
 
-    await _returnedEvent?.stream.firstWhere((element) {
-      final e = element as Map<String, Object?>;
+    await _returnedEvent?.stream.firstWhere(
+      (element) {
+        final e = element as Map<String, Object?>;
 
-      // if the event with its args are what we are waiting for...
-      if ((e['event']! as MessageEvents) != event) return false;
-      if ((e['args']! as Record) != args) return false;
+        // if the event with its args are what we are waiting for...
+        if ((e['event']! as MessageEvents) != event) return false;
+        if ((e['args']! as Record) != args) return false;
 
-      // return the result
-      completer.complete(e['return']);
-      return true;
-    });
+        // return the result
+        completer.complete(e['return']);
+        return true;
+      },
+      // The event cannot be received from AudioIsolate.
+      // This could be caused when the player is deinited while some
+      // events are still queued.
+      orElse: () => false,
+    );
 
     return completer.future;
   }
@@ -577,15 +583,8 @@ interface class SoLoud {
 
     /// check if we are in the middle of an initialization.
     if (_initializeCompleter != null) {
-      _log.warning('deinit() called while already initializing.');
+      _initializeCompleter?.complete();
       _initializeCompleter = null;
-    }
-
-    /// if not already initialized, just return.
-    if (!_isInitialized) {
-      // The engine isn't initialized.
-      _log.warning('deinit() called when the engine is not initialized');
-      return;
     }
 
     /// reset broadcast and kill isolate

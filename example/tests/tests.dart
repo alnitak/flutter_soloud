@@ -107,6 +107,8 @@ Future<void> delay(int ms) async {
   await Future.delayed(Duration(milliseconds: ms), () {});
 }
 
+/// Test synchronous and asynchronous `initialize()` - `deinit()` within
+/// short time delays.
 /// Test setMaxActiveVoiceCount, setProtectedVoice and getProtectedVoice
 Future<void> test6() async {
   await initialize();
@@ -206,8 +208,8 @@ Future<void> test5() async {
 
 /// Test synchronous `deinit()`
 Future<void> test4() async {
-  /// test init-deinit looping with a short decreasing time
-  for (var t = 500; t >= 0; t -= 50) {
+  /// test synchronous init-deinit looping with a short decreasing time
+  for (var t = 100; t >= 0; t -= 5) {
     /// Initialize the player
     var error = '';
     await SoLoud.instance.initialize().then(
@@ -233,7 +235,26 @@ Future<void> test4() async {
       'inited or deinited correctly!',
     );
 
-    print('------------- delay $t passed\n');
+    stderr.writeln('------------- awaited init delay $t passed\n');
+  }
+
+  /// test asynchronous init-deinit looping with a short decreasing time without
+  /// waiting for `initialize()` to finish
+  for (var t = 50; t >= 0; t -= 2) {
+    /// Initialize the player
+    unawaited(SoLoud.instance.initialize());
+
+    /// wait for [t] ms and deinit()
+    await Future.delayed(Duration(milliseconds: t), () {});
+    SoLoud.instance.deinit();
+
+    assert(
+      !SoLoudController().soLoudFFI.isInited(),
+      'ASSERT FAILED delay: $t. The player has not been '
+      'inited or deinited correctly!',
+    );
+
+    stderr.writeln('------------- unawaited init delay $t passed\n');
   }
 
   /// Try init-play-deinit and again init-play without disposing the sound

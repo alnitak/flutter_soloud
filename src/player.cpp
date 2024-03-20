@@ -23,8 +23,9 @@ Player::~Player()
 
 PlayerErrors Player::init()
 {
-    if (mInited)
-        dispose();
+    if (mInited) dispose();
+    
+    std::lock_guard<std::mutex> guard(init_deinit_mutex);
 
     // initialize SoLoud.
     SoLoud::result result = soloud.init(
@@ -41,6 +42,7 @@ PlayerErrors Player::init()
 
 void Player::dispose()
 {
+    std::lock_guard<std::mutex> guard(init_deinit_mutex);
     // Clean up SoLoud
     soloud.deinit();
     mInited = false;
