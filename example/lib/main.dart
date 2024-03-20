@@ -55,7 +55,7 @@ class MyApp extends StatefulWidget {
 class _MyAppState extends State<MyApp> {
   @override
   void dispose() {
-    SoLoud.instance.shutdown();
+    SoLoud.instance.deinit();
     super.dispose();
   }
 
