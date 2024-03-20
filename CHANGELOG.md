@@ -4,6 +4,7 @@
 - added `getVoiceCount()` to get the number of voices the application has told SoLoud to play.
 - added `getMaxActiveVoiceCount()` to get the current maximum active voice count.
 - added `setMaxActiveVoiceCount()` to set the current maximum active voice count.
+- added `setProtectVoice()` and `getProtectVoice()` to get/set the protect voice flag.
 
 #### 2.0.0-pre.2 (14 Mar 2024)
 

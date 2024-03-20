@@ -30,6 +30,14 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await runZonedGuarded(
+    () async => test6(),
+    (error, stack) {
+      stderr.writeln('TEST error: $error\nstack: $stack');
+      exitCode = 1;
+    },
+  );
+
+  await runZonedGuarded(
     () async => test5(),
     (error, stack) {
       stderr.writeln('TEST error: $error\nstack: $stack');
@@ -99,6 +107,53 @@ Future<void> delay(int ms) async {
   await Future.delayed(Duration(milliseconds: ms), () {});
 }
 
+/// Test setMaxActiveVoiceCount, setProtectedVoice and getProtectedVoice
+Future<void> test6() async {
+  await initialize();
+
+  SoLoud.instance.setMaxActiveVoiceCount(3);
+  assert(
+    SoLoud.instance.getMaxActiveVoiceCount() == 3,
+    "setMaxActiveVoiceCount() didn't worked correctly",
+  );
+
+  final explosion =
+      await SoLoud.instance.loadAsset('assets/audio/explosion.mp3');
+  final song =
+      await SoLoud.instance.loadAsset('assets/audio/8_bit_mentality.mp3');
+
+  /// play 5 explosion
+  for (var i = 0; i < 5; i++) {
+    await SoLoud.instance.play(explosion);
+    await delay(100);
+  }
+
+  /// play 1 protected [song]
+  final songHandle = await SoLoud.instance.play(song);
+  SoLoud.instance.setProtectVoice(songHandle.id, true);
+  assert(
+    SoLoud.instance.getProtectVoice(songHandle.id),
+    "setProtectVoice() didn't worked correctly",
+  );
+
+  /// play 5 explosion
+  for (var i = 0; i < 5; i++) {
+    await SoLoud.instance.play(explosion);
+    await delay(100);
+  }
+
+  await delay(1000);
+
+  assert(
+    SoLoud.instance.getIsValidVoiceHandle(songHandle) &&
+        SoLoud.instance.getActiveVoiceCount() == 3,
+    'The protected song has been stopped!',
+  );
+
+  await dispose();
+}
+
+/// Test allInstancesFinished stream
 Future<void> test5() async {
   final log = Logger('test5');
   await initialize();
