@@ -95,7 +95,13 @@ enum PlayerErrors {
   filterNotFound(12),
 
   /// asking for wave and FFT is not enabled
-  visualizationNotEnabled(13);
+  visualizationNotEnabled(13),
+
+  /// The maximum number of filters has been reached (default is 8).
+  maxNumberOfFiltersReached(14),
+
+  /// The filter has already been added.
+  filterAlreadyAdded(15);
 
   const PlayerErrors(this.value);
 
@@ -109,34 +115,38 @@ enum PlayerErrors {
       case PlayerErrors.noError:
         return 'No error';
       case PlayerErrors.invalidParameter:
-        return 'Some parameter is invalid';
+        return 'Some parameters are invalid!';
       case PlayerErrors.fileNotFound:
-        return 'File not found';
+        return 'File not found!';
       case PlayerErrors.fileLoadFailed:
-        return 'File found, but could not be loaded';
+        return 'File found, but could not be loaded!';
       case PlayerErrors.fileAlreadyLoaded:
-        return 'The sound file has already been loaded';
+        return 'The sound file has already been loaded!';
       case PlayerErrors.dllNotFound:
-        return 'DLL not found, or wrong DLL';
+        return 'DLL not found, or wrong DLL!';
       case PlayerErrors.outOfMemory:
-        return 'Out of memory';
+        return 'Out of memory!';
       case PlayerErrors.notImplemented:
-        return 'Feature not implemented';
+        return 'Feature not implemented!';
       case PlayerErrors.unknownError:
-        return 'Unknown error';
+        return 'Unknown error!';
       case PlayerErrors.nullPointer:
         return 'Capture null pointer error. Could happens when passing a non '
             'initialized pointer (with calloc()) to retrieve FFT or wave data. '
             'Or, setVisualization has not been enabled.';
       case PlayerErrors.soundHashNotFound:
-        return 'The sound with specified hash is not found';
+        return 'The sound with specified hash is not found!';
       case PlayerErrors.backendNotInited:
-        return 'Player not initialized';
+        return 'Player not initialized!';
       case PlayerErrors.filterNotFound:
-        return 'Filter not found';
+        return 'Filter not found!';
       case PlayerErrors.visualizationNotEnabled:
         return 'Asking for audio data is not enabled! Please use '
             '`setVisualizationEnabled(true);` to enable!';
+      case PlayerErrors.maxNumberOfFiltersReached:
+        return 'The maximum number of filters has been reached (default is 8)!';
+      case PlayerErrors.filterAlreadyAdded:
+        return 'Filter not found!';
     }
   }
 

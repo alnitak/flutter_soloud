@@ -129,3 +129,25 @@ class SoLoudVisualizationNotEnabledException extends SoLoudCppException {
       '(on the C++ side). '
       'Please use `setVisualizationEnabled(true);` to enable.';
 }
+
+/// An exception that is thrown when SoLoud (C++) cannot add another filter.
+/// The max number of concurrent filter is set to 8.
+class SoLoudMaxFilterNumberReachedException extends SoLoudCppException {
+  /// Creates a new [SoLoudMaxFilterNumberReachedException].
+  const SoLoudMaxFilterNumberReachedException([super.message]);
+
+  @override
+  String get description => 'Askind to add another filter, but no more then 8 '
+      'is allowed (on the C++ side).';
+}
+
+/// An exception that is thrown when SoLoud (C++) cannot add a filter 
+/// that has already been added.
+class SoLoudFilterAlreadyAddedException extends SoLoudCppException {
+  /// Creates a new [SoLoudFilterAlreadyAddedException].
+  const SoLoudFilterAlreadyAddedException([super.message]);
+
+  @override
+  String get description => 'Askind to add a filter that is already been added. '
+      'Only one of each type is allowed (on the C++ side).';
+}

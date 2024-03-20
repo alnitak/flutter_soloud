@@ -1058,11 +1058,18 @@ class FlutterSoLoudFfi {
 
   /// Add the filter [filterType].
   ///
-  /// [filterType] filter to add
-  /// Returns [PlayerErrors.noError] if no errors
+  /// [filterType] filter to add.
+  /// Returns:
+  /// [PlayerErrors.noError] if no errors
+  /// [PlayerErrors.filterNotFound] if the [filterType] does not exits
+  /// [PlayerErrors.filterAlreadyAdded] when trying to add an already 
+  ///     added filter
+  /// [PlayerErrors.maxNumberOfFiltersReached] when the maximum number of 
+  ///     filters has been reached (default is 8)
   ///
-  int addGlobalFilter(int filterType) {
-    return _addGlobalFilter(filterType);
+  PlayerErrors addGlobalFilter(int filterType) {
+    final e = _addGlobalFilter(filterType);
+    return PlayerErrors.values[e];
   }
 
   late final _addGlobalFilterPtr =

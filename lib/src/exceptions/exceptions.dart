@@ -93,6 +93,10 @@ abstract class SoLoudCppException extends SoLoudException {
         return const SoLoudFilterNotFoundException();
       case PlayerErrors.visualizationNotEnabled:
         return const SoLoudVisualizationNotEnabledException();
+      case PlayerErrors.maxNumberOfFiltersReached:
+        return const SoLoudMaxFilterNumberReachedException();
+      case PlayerErrors.filterAlreadyAdded:
+        return const SoLoudFilterAlreadyAddedException();
     }
   }
 }

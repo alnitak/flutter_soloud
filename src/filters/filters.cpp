@@ -121,15 +121,15 @@ std::vector<std::string> Filters::getFilterParamNames(FilterType filterType)
     return ret;
 }
 
-bool Filters::addGlobalFilter(FilterType filterType)
+PlayerErrors Filters::addGlobalFilter(FilterType filterType)
 {
     if (filters.size() >= FILTERS_PER_STREAM)
-        return false;
+        return maxNumberOfFiltersReached;
 
-    // Check if the new filter is already be here.
-    // Only one kind of filter allowed
+    // Check if the new filter is already here.
+    // Only one kind of filter allowed.
     if (isFilterActive(filterType) >= 0)
-        return false;
+        return filterAlreadyAdded;
 
     const unsigned int filtersSize = static_cast<unsigned int>(filters.size());
     switch (filterType)
@@ -189,9 +189,9 @@ bool Filters::addGlobalFilter(FilterType filterType)
         filters.push_back({filterType, static_cast<SoLoud::Filter *>(mFreeverbFilter.get())});
         break;
     default:
-        return false;
+        return filterNotFound;
     }
-    return true;
+    return noError;
 }
 /// TODO remove all filters FilterType.none
 bool Filters::removeGlobalFilter(FilterType filterType)
