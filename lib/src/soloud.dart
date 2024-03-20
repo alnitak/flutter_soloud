@@ -167,14 +167,14 @@ interface class SoLoud {
   /// or it had failed to initialize (`false`),
   /// or it was already shut down (`false`),
   /// or it is _being_ shut down (`false`),
-  /// or when there wasn't ever a call to [initialize] at all (`false`).
+  /// or when there wasn't ever a call to [init] at all (`false`).
   ///
   /// If the engine is in the middle of initializing, the future will complete
   /// when the initialization is done. It will be `true` if the initialization
   /// was successful, and `false` if it failed. The future will never throw.
   ///
-  /// It is _not_ needed to await this future after a call to [initialize].
-  /// The [initialize] method already returns a future, and it is the
+  /// It is _not_ needed to await this future after a call to [init].
+  /// The [init] method already returns a future, and it is the
   /// same future that this getter returns.
   ///
   /// ```dart
@@ -271,10 +271,18 @@ interface class SoLoud {
 
   /// Initializes the audio engine.
   ///
-  /// Use [initialize] instead. This method is simply an alias for [initialize]
+  /// Use [init] instead. This method is simply an alias for [init]
   /// for backwards compatibility. It will be removed in a future version.
-  @Deprecated('use initialize() instead')
-  Future<void> startIsolate() => initialize();
+  @Deprecated('use init() instead')
+  Future<void> startIsolate() => init();
+
+  /// Deprecated alias of [init].
+  @Deprecated("Use 'init()' instead")
+  Future<void> initialize({
+    Duration timeout = const Duration(seconds: 10),
+    bool automaticCleanup = false,
+  }) =>
+      init(timeout: timeout, automaticCleanup: automaticCleanup);
 
   /// Initializes the audio engine.
   ///
@@ -303,7 +311,7 @@ interface class SoLoud {
   /// The default is `false`.
   ///
   /// (This method was formerly called `startIsolate()`.)
-  Future<void> initialize({
+  Future<void> init({
     Duration timeout = const Duration(seconds: 10),
     bool automaticCleanup = false,
   }) async {
@@ -571,7 +579,7 @@ interface class SoLoud {
 
   /// A deprecated method that manually starts the engine.
   ///
-  /// Do not use. The engine is fully started with [initialize].
+  /// Do not use. The engine is fully started with [init].
   /// This method will be removed in a future version.
   @Deprecated('Use initialize() instead')
   Future<PlayerErrors> initEngine() => _initEngine();

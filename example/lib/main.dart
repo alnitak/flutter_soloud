@@ -30,7 +30,7 @@ void main() async {
   });
 
   /// Initialize the player
-  await SoLoud.instance.initialize().then(
+  await SoLoud.instance.init().then(
     (_) {
       Logger('main').info('player started');
       SoLoud.instance.setVisualizationEnabled(true);

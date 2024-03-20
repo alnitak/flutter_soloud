@@ -70,7 +70,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
   Future<void> start() async {
     try {
-      await SoLoud.instance.initialize();
+      await SoLoud.instance.init();
     } catch (e) {
       debugPrint('isolate starting error: $e');
       return;
