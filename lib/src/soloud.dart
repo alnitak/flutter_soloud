@@ -148,11 +148,6 @@ interface class SoLoud {
   /// This is `null` when the engine is not currently being initialized.
   Completer<void>? _initializeCompleter;
 
-  /// The completer for a shutdown in progress.
-  ///
-  /// This is `null` when the engine is not currently being shut down.
-  Completer<bool>? _shutdownCompleter;
-
   /// A [Future] that returns `true` when the audio engine is initialized
   /// (and ready to play sounds, for example).
   ///
@@ -172,14 +167,14 @@ interface class SoLoud {
   /// or it had failed to initialize (`false`),
   /// or it was already shut down (`false`),
   /// or it is _being_ shut down (`false`),
-  /// or when there wasn't ever a call to [initialize] at all (`false`).
+  /// or when there wasn't ever a call to [init] at all (`false`).
   ///
   /// If the engine is in the middle of initializing, the future will complete
   /// when the initialization is done. It will be `true` if the initialization
   /// was successful, and `false` if it failed. The future will never throw.
   ///
-  /// It is _not_ needed to await this future after a call to [initialize].
-  /// The [initialize] method already returns a future, and it is the
+  /// It is _not_ needed to await this future after a call to [init].
+  /// The [init] method already returns a future, and it is the
   /// same future that this getter returns.
   ///
   /// ```dart
@@ -222,8 +217,10 @@ interface class SoLoud {
   /// more general initialization process, this field is only an internal
   /// control mechanism. Users should use [initialized] instead.
   ///
-  /// The field is useful in [disposeAllSound], which is called from [shutdown]
+  /// The field is useful in [disposeAllSound], which is called from `shutdown`
   /// (so [isInitialized] is already `false` at that point).
+  ///
+  // TODO(filiph): check if still needed
   bool _isEngineInitialized = false;
 
   /// status of capture
@@ -274,10 +271,18 @@ interface class SoLoud {
 
   /// Initializes the audio engine.
   ///
-  /// Use [initialize] instead. This method is simply an alias for [initialize]
+  /// Use [init] instead. This method is simply an alias for [init]
   /// for backwards compatibility. It will be removed in a future version.
-  @Deprecated('use initialize() instead')
-  Future<void> startIsolate() => initialize();
+  @Deprecated('use init() instead')
+  Future<void> startIsolate() => init();
+
+  /// Deprecated alias of [init].
+  @Deprecated("Use 'init()' instead")
+  Future<void> initialize({
+    Duration timeout = const Duration(seconds: 10),
+    bool automaticCleanup = false,
+  }) =>
+      init(timeout: timeout, automaticCleanup: automaticCleanup);
 
   /// Initializes the audio engine.
   ///
@@ -305,13 +310,8 @@ interface class SoLoud {
   /// unnecessary, as the amount of data will be finite.
   /// The default is `false`.
   ///
-  /// It is safe to call this function even if the engine is currently being
-  /// shut down. In that case, the function will wait for [shutdown]
-  /// to properly complete before initializing again. In case the shutting
-  /// down doesn't complete succesfully, [ShutdownFailedException] is thrown.
-  ///
   /// (This method was formerly called `startIsolate()`.)
-  Future<void> initialize({
+  Future<void> init({
     Duration timeout = const Duration(seconds: 10),
     bool automaticCleanup = false,
   }) async {
@@ -339,19 +339,6 @@ interface class SoLoud {
     final completer = Completer<void>();
     _initializeCompleter = completer;
 
-    if (_shutdownCompleter != null) {
-      // We are in the middle of shutting down the engine.
-      // We should wait for that to complete before initializing again.
-      final success = await _shutdownCompleter!.future;
-      if (!success) {
-        // The engine failed to shut down. We can't initialize it.
-        _initializeCompleter = null;
-        throw const ShutdownFailedException(
-            'initialize() called while the engine is shutting down '
-            'but the shutdown failed');
-      }
-    }
-
     _isolateToMainStream = ReceivePort();
     _returnedEvent = StreamController.broadcast();
 
@@ -366,8 +353,23 @@ interface class SoLoud {
               '_isInitialized should be false at this point. '
               'There might be a bug in the code that tries to prevent '
               'multiple concurrent initializations.');
-          assert(_initializeCompleter == completer,
-              '_initializeCompleter has been reassigned during initialization');
+          if (_initializeCompleter == null) {
+            _log.warning(
+                '_initializeCompleter was set to null during initialization. '
+                'This might mean that deinit() was called while the engine '
+                'was still being initialized.');
+            _cleanUpUnsuccessfulInitialization();
+            assert(completer.isCompleted,
+                'Deinit() should have completed the future');
+            return;
+          }
+
+          assert(
+              _initializeCompleter == completer,
+              '_initializeCompleter has been reassigned '
+              'during initialization. This is probably a bug in '
+              'the flutter_soloud package. There should always be at most '
+              'one _initializeCompleter running at any given time.');
 
           if (error == PlayerErrors.noError) {
             // ignore: deprecated_member_use_from_same_package
@@ -478,95 +480,12 @@ interface class SoLoud {
   @Deprecated('use dispose() instead')
   Future<bool> stopIsolate() => shutdown();
 
-  /// Stops the engine and disposes of all resources, including sounds
-  /// and the audio isolate.
-  ///
-  /// Returns `true` when everything has been disposed. Returns `false`
-  /// if there was nothing to dispose (e.g. the engine hasn't ever been
-  /// successfully initialized).
-  ///
-  /// It is safe to call this function even if the engine is currently being
-  /// initialized. In that case, the function will wait for [initialize]
-  /// to properly complete before shutting down.
-  ///
-  /// (This method was formerly called `stopIsolate()`.)
+  /// Deprecated alias of [deinit].
+  @Deprecated("Use 'deinit()' instead")
   Future<bool> shutdown() async {
     _log.finest('shutdown() called');
-
-    if (_initializeCompleter != null) {
-      // We are in the middle of initializing the engine.
-      // We should wait for that to complete before disposing.
-      assert(!_isInitialized,
-          '_isInitialized should be false before initialization completes');
-      try {
-        await _initializeCompleter!.future;
-      } on SoLoudException catch (e) {
-        // The engine failed to initialize. Nothing to shut down.
-        _log.warning(
-            'shutdown() called while the engine is initializing '
-            'but the initialization failed.',
-            e);
-        assert(!_isInitialized,
-            '_isInitialized should be false when initialization fails');
-        return false;
-      }
-    }
-
-    if (_shutdownCompleter != null) {
-      // We are already in the middle of shutting down the engine.
-      assert(
-          !_isInitialized, '_isInitialized should be false when shutting down');
-      return _shutdownCompleter!.future;
-    }
-
-    if (!_isInitialized) {
-      // The engine isn't initialized.
-      _log.warning('shutdown() called when the engine is not initialized');
-      return false;
-    }
-
-    _isInitialized = false;
-
-    final completer = Completer<bool>();
-    _shutdownCompleter = completer;
-
-    try {
-      await disposeAllSound();
-    } on SoLoudException catch (e) {
-      _log.severe('disposeAllSound() failed during shutdown', e);
-    }
-
-    try {
-      await _stopLoop();
-    } on SoLoudException catch (e) {
-      _log.severe('stopLoop() failed during shutdown', e);
-    }
-
-    // Engine will be disposed below when the audio isolate exits,
-    // so just set this variable to false.
-    _isEngineInitialized = false;
-    _mainToIsolateStream?.send(
-      {
-        'event': MessageEvents.exitIsolate,
-        'args': (),
-      },
-    );
-    await _waitForEvent(MessageEvents.exitIsolate, ());
-    await _returnedEvent?.close();
-    _returnedEvent = null;
-    _isolateToMainStream?.close();
-    _isolateToMainStream = null;
-    _isolate?.kill();
-    _isolate = null;
-    // ignore: deprecated_member_use_from_same_package
-    audioEvent.add(AudioEvent.isolateStopped);
-
-    assert(_shutdownCompleter == completer,
-        '_shutdownCompleter has been reassigned');
-    _shutdownCompleter = null;
-
-    completer.complete(true);
-    return completer.future;
+    deinit();
+    return true;
   }
 
   /// Stops the engine and disposes of all resources, including sounds
@@ -576,14 +495,14 @@ interface class SoLoud {
   /// within the `dispose()` of the uppermost widget in the tree
   /// or inside [AppLifecycleListener.onExitRequested].
   ///
-  /// During the normal app life cycle and if you want to shutdown the player,
-  /// please use [shutdown] which safer and it is meant to throw errors.
+  /// (This method was formerly called `stopIsolate()`.)
   void deinit() {
     _log.finest('deinit() called');
 
     /// check if we are in the middle of an initialization.
     if (_initializeCompleter != null) {
-      _initializeCompleter?.complete();
+      _initializeCompleter
+          ?.completeError(const SoLoudInitializationStoppedByDeinitException());
       _initializeCompleter = null;
     }
 
@@ -660,7 +579,7 @@ interface class SoLoud {
 
   /// A deprecated method that manually starts the engine.
   ///
-  /// Do not use. The engine is fully started with [initialize].
+  /// Do not use. The engine is fully started with [init].
   /// This method will be removed in a future version.
   @Deprecated('Use initialize() instead')
   Future<PlayerErrors> initEngine() => _initEngine();
@@ -1187,9 +1106,7 @@ interface class SoLoud {
   /// Disposes all sounds already loaded. Complete silence.
   ///
   /// No need to call this method when shutting down the engine.
-  /// (It is automatically called from within [shutdown].)
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
-  ///
   Future<void> disposeAllSound() async {
     if (!_isEngineInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1450,8 +1367,8 @@ interface class SoLoud {
   /// This will most likely be your background music. This can be worked
   /// around by protecting the sound.
   /// If all voices are protected, the result will be undefined.
-  /// The number of protected entries is inclusive in the 
-  /// max number active voice count [getMaxActiveVoiceCount]. 
+  /// The number of protected entries is inclusive in the
+  /// max number active voice count [getMaxActiveVoiceCount].
   /// For example when having 16 max active voice count set to 16, and
   /// you want to play 20 other sounds, the protected voice will still play
   /// but you will hear only 15 of the other 20.

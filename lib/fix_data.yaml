@@ -9,6 +9,28 @@
 version: 1
 
 transforms:
+  # SoLoud.initialize => SoLoud.init
+  - title: "Rename to 'init'"
+    date: 2024-03-20
+    element:
+      uris: [ 'flutter_soloud.dart', 'package:flutter_soloud/flutter_soloud.dart' ]
+      method: 'initialize'
+      inClass: 'SoLoud'
+    changes:
+      - kind: 'rename'
+        newName: 'init'
+
+  # SoLoud.shutdown => SoLoud.deinit
+  - title: "Rename to 'deinit'"
+    date: 2024-03-20
+    element:
+      uris: [ 'flutter_soloud.dart', 'package:flutter_soloud/flutter_soloud.dart' ]
+      method: 'shutdown'
+      inClass: 'SoLoud'
+    changes:
+      - kind: 'rename'
+        newName: 'deinit'
+
   # AudioSource.handle => AudioSource.handles
   - title: "Rename to 'handles'"
     date: 2024-03-11

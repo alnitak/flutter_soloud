@@ -68,6 +68,12 @@ to `2.0.0-pre.2` and beyond.
   );
   soloud.play(source);
   ```
+  
+- Deprecated `shutdown()`. Replaced with the synchronous `deinit()`.
+  Quick fix available.
+- Renamed `initialize()` to `init()`, in order to come closer to the original
+  C++ API, and also to have a symmetry (`init`/`deinit`).
+  Quick fix available.
 
 #### 2.0.0-pre.1 (12 Mar 2024)
 - added `looping` and `loopingStartAt` properties to `SoLoud.play()` and `SoLoud.play3d()`.

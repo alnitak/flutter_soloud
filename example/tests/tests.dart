@@ -152,7 +152,7 @@ Future<void> test6() async {
     'The protected song has been stopped!',
   );
 
-  await dispose();
+  dispose();
 }
 
 /// Test allInstancesFinished stream
@@ -203,7 +203,7 @@ Future<void> test5() async {
   assert(explosionDisposed, "Explosion sound wasn't disposed.");
   assert(songDisposed, "Song sound wasn't disposed.");
 
-  await dispose();
+  dispose();
 }
 
 /// Test synchronous `deinit()`
@@ -212,7 +212,7 @@ Future<void> test4() async {
   for (var t = 100; t >= 0; t -= 5) {
     /// Initialize the player
     var error = '';
-    await SoLoud.instance.initialize().then(
+    await SoLoud.instance.init().then(
       (_) {},
       onError: (Object e) {
         e = 'TEST FAILED delay: $t. Player starting error: $e';
@@ -242,7 +242,7 @@ Future<void> test4() async {
   /// waiting for `initialize()` to finish
   for (var t = 50; t >= 0; t -= 2) {
     /// Initialize the player
-    unawaited(SoLoud.instance.initialize());
+    unawaited(SoLoud.instance.init());
 
     /// wait for [t] ms and deinit()
     await Future.delayed(Duration(milliseconds: t), () {});
@@ -258,7 +258,7 @@ Future<void> test4() async {
   }
 
   /// Try init-play-deinit and again init-play without disposing the sound
-  await SoLoud.instance.initialize();
+  await SoLoud.instance.init();
 
   await loadAsset();
   await SoLoud.instance.play(currentSound!);
@@ -273,7 +273,7 @@ Future<void> test4() async {
 
   /// Initialize again and check if the sound has been
   /// disposed correctly by `deinit()`
-  await SoLoud.instance.initialize();
+  await SoLoud.instance.init();
   assert(
     SoLoudController()
             .soLoudFFI
@@ -333,7 +333,7 @@ Future<void> test3() async {
     await delay(300);
   }
 
-  await dispose();
+  dispose();
 }
 
 /// Test play, pause, seek, position
@@ -365,7 +365,7 @@ Future<void> test2() async {
     assert(position == wantedPosition, 'getPosition() failed!');
   }
 
-  await dispose();
+  dispose();
 }
 
 /// Test start/stop isolate, load, play and events from sound
@@ -420,7 +420,7 @@ Future<void> test1() async {
   {
     /// Stop player and see in log:
     /// "@@@@@@@@@@@ SOUND EVENT: SoundEvent.soundDisposed .*"
-    await dispose();
+    dispose();
     assert(
       output == 'SoundEvent.soundDisposed',
       'Sound end playback event not triggered!',
@@ -430,12 +430,11 @@ Future<void> test1() async {
 
 /// Common methods
 Future<void> initialize() async {
-  await SoLoud.instance.initialize();
+  await SoLoud.instance.init();
 }
 
-Future<void> dispose() async {
-  final ret = await SoLoud.instance.shutdown();
-  assert(ret, 'dispose() failed!');
+void dispose() {
+  SoLoud.instance.deinit();
 }
 
 Future<void> loadAsset() async {

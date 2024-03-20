@@ -38,18 +38,14 @@ class SoLoudInitializationTimedOutException extends SoLoudDartException {
   String get description => 'The engine took too long to initialize.';
 }
 
-/// An exception that is thrown when the SoLoud engine fails to shutdown.
-/// This is not thrown during normal shutdown, but it _can_ be thrown if
-/// `initialize()` was called at a time of shutdown, and that shutdown failed.
-class ShutdownFailedException extends SoLoudDartException {
-  /// Creates a new [ShutdownFailedException].
-  const ShutdownFailedException([super.message]);
+/// An exception that is thrown when the SoLoud engine initialization
+/// is cut short by a call to `SoLoud.deinit()`.
+class SoLoudInitializationStoppedByDeinitException extends SoLoudDartException {
+  /// Creates a new [SoLoudInitializationStoppedByDeinitException].
+  const SoLoudInitializationStoppedByDeinitException([super.message]);
 
   @override
-  String get description => 'The engine failed to shut down. '
-      'This is not thrown during normal shutdown, but it _can_ be thrown if '
-      '`initialize()` was called at a time of a shutdown in progress, '
-      'and that shutdown failed.';
+  String get description => 'SoLoud.deinit() was called during initialization.';
 }
 
 /// An exception that is thrown when the temporary folder fails to be created
