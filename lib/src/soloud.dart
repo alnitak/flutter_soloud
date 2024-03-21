@@ -1792,6 +1792,7 @@ interface class SoLoud {
   }
 
   /// Add a filter to all sounds.
+  ///
   /// [filterType] filter to add.
   ///
   /// Throws [SoLoudMaxFilterNumberReachedException] when the max number of

@@ -1,12 +1,47 @@
-#### 2.0.0-pre.X
+### 2.0.0-pre.3 (20 Mar 2024)
 - added `getActiveVoiceCount()` to get concurrent sounds that are playing at the moment.
 - added `countAudioSource()` to get concurrent sounds that are playing a specific audio source.
 - added `getVoiceCount()` to get the number of voices the application has told SoLoud to play.
 - added `getMaxActiveVoiceCount()` to get the current maximum active voice count.
 - added `setMaxActiveVoiceCount()` to set the current maximum active voice count.
 - added `setProtectVoice()` and `getProtectVoice()` to get/set the protect voice flag.
+- All time-related parameters and return values are now `Duration` type.
+  Before, they were `double`.
+- Fixed velocity computation bug in `example/`.
+- Renamed `SoundEvent` to `SoundEventType`. Quick fix available.
+- `SoundProps.soundEvents` is now a `Stream`, not a `StreamController`
+- `SoundProps.soundEvents` stream is now closed automatically when
+  `SoLoud.disposeSound()` is called.
+- `SoLoud.activeSounds` is now an `Iterable` instead of a `List`
+  (therefore, it cannot be modified from outside the package).
+- Renamed `SoLoud.getFxParams` to `SoLoud.getFilterParameter`.
+  This mimics the C++ API name.
+  Quick fix available.
+- Renamed `SoLoud.setFxParams` to `SoLoud.setFilterParameter`. 
+  This mimics the C++ API name.
+  Quick fix available.
+- Renamed `SoundProps` to `AudioSource`. Quick fix available.
+- Added new (experimental) `AudioSource.allInstancesFinished` stream. 
+  This can be used to more easily await times when it's safe to dispose 
+  the sound. For example:
 
-#### 2.0.0-pre.2 (14 Mar 2024)
+  ```dart
+  final source = soloud.loadAsset('...');
+  // Wait for the first time all the instances of the sound are finished
+  // (finished playing or were stopped with soloud.stop()).
+  source.allInstancesFinished.first.then(
+    // Dispose of the sound.
+    (_) => soloud.disposeSound(source)
+  );
+  soloud.play(source);
+  ```
+- Deprecated `shutdown()`. Replaced with the synchronous `deinit()`.
+  Quick fix available.
+- Renamed `initialize()` to `init()`, in order to come closer to the original
+  C++ API, and also to have a symmetry (`init`/`deinit`).
+  Quick fix available.
+
+### 2.0.0-pre.2 (14 Mar 2024)
 
 NOTE: This version is much more breaking than the ones before it.
 It might be worth it to first upgrade your code to `2.0.0-pre.1`,
@@ -38,44 +73,8 @@ to `2.0.0-pre.2` and beyond.
     print('Oh no! $e');
   }
   ```
-- All time-related parameters and return values are now `Duration` type.
-  Before, they were `double`.
-- Fixed velocity computation bug in `example/`.
-- Renamed `SoundEvent` to `SoundEventType`. Quick fix available.
-- `SoundProps.soundEvents` is now a `Stream`, not a `StreamController`
-- `SoundProps.soundEvents` stream is now closed automatically when
-  `SoLoud.disposeSound()` is called.
-- `SoLoud.activeSounds` is now an `Iterable` instead of a `List`
-  (therefore, it cannot be modified from outside the package).
-- Renamed `SoLoud.getFxParams` to `SoLoud.getFilterParameter`.
-  This mimics the C++ API name.
-  Quick fix available.
-- Renamed `SoLoud.setFxParams` to `SoLoud.setFilterParameter`. 
-  This mimics the C++ API name.
-  Quick fix available.
-- Renamed `SoundProps` to `AudioSource`. Quick fix available.
-- Added new (experimental) `AudioSource.allInstancesFinished` stream. 
-  This can be used to more easily await times when it's safe to dispose 
-  the sound. For example:
 
-  ```dart
-  final source = soloud.loadAsset('...');
-  // Wait for the first time all the instances of the sound are finished
-  // (finished playing or were stopped with soloud.stop()).
-  source.allInstancesFinished.first.then(
-    // Dispose of the sound.
-    (_) => soloud.disposeSound(source)
-  );
-  soloud.play(source);
-  ```
-  
-- Deprecated `shutdown()`. Replaced with the synchronous `deinit()`.
-  Quick fix available.
-- Renamed `initialize()` to `init()`, in order to come closer to the original
-  C++ API, and also to have a symmetry (`init`/`deinit`).
-  Quick fix available.
-
-#### 2.0.0-pre.1 (12 Mar 2024)
+### 2.0.0-pre.1 (12 Mar 2024)
 - added `looping` and `loopingStartAt` properties to `SoLoud.play()` and `SoLoud.play3d()`.
 - added `SoLoud.getLooping()` to retrieve the looping state of a sound.
 - added `SoLoud.getLoopPoint()` and `SoLoud.setLoopPoint()` to get and set the looping start position of a sound.
@@ -89,7 +88,7 @@ to `2.0.0-pre.2` and beyond.
 - Rename `SoLoudTools.initSounds` to `SoLoudTools.createNotes` for clarity.
   (Quick fix available.)
 
-#### 2.0.0-pre.0 (11 Mar 2024)
+### 2.0.0-pre.0 (11 Mar 2024)
 - added `bool SoLoud.getVisualizationEnabled()` to get the current state of the visualization.
 - added `mode` property to `SoLoud.loadFile()` and `SoloudTools.loadFrom*` to prevent to load the whole audio data into memory:
     - *LoadMode.memory* by default. Means less CPU, more memory allocated.
@@ -144,18 +143,18 @@ to `2.0.0-pre.2` and beyond.
   but unlikely to have effect (as most users hopefully don't assign
   to these fields).
 
-#### 1.2.5 (2 Mar 2024)
+### 1.2.5 (2 Mar 2024)
 - updated mp3, flac and wav decoders
 - updated miniaudio to 0.11.21
 - fixed doppler effect in 3D audio example
 
-## 1.2.4
+### 1.2.4
 fixed compilation on Windows
 
-#### 1.2.3
+### 1.2.3
 - fixed compilation on iOS and macOS
 
-#### 1.2.2
+### 1.2.2
 - waveform example page updated with sound FXs
 - added sound FXs
     - biquadResonantFilter
@@ -168,7 +167,7 @@ fixed compilation on Windows
     - robotizeFilter
     - freeverbFilter
 
-#### 1.2.1
+### 1.2.1
 - binded some more SoLoud functionalities:
     - fadeGlobalVolume
     - fadeVolume
@@ -182,19 +181,19 @@ fixed compilation on Windows
     - oscillateGlobalVolume
 - waveform example page updated
 
-#### 1.2.0
+### 1.2.0
 - added waveform generator
 - added a test page for waveform
 - added some tests in `tests` dir
 - miniaudio updated to v0.11.18
 
-#### 1.1.1
+### 1.1.1
 - *SoLoud().loadFile* now can return *PlayerErrors.fileAlreadyLoaded* when a sound has already been loaded previously. It still return the SoundProps sound. It's not a breaking error.
 - added *Soloud().disposeAllSound* to stop and dispose all active sounds
 
 **breaking change**: *Soloud().stopSound* has been renamed to *Soloud().disposeSound*
 
-#### 1.1.0
+### 1.1.0
 added load sound tools:
 - SoloudLoadingTool.loadFromAssets()
 - SoloudLoadingTool.loadFromFile()
@@ -202,13 +201,13 @@ added load sound tools:
 
 added also a spin around example
 
-#### 1.0.0
+### 1.0.0
 - added 3D audio with example
 
-#### 0.9.0
+### 0.9.0
 - added capture from microphone with example
 
-#### 0.1.0
+### 0.1.0
 
 Initial release:
 * Supported on Linux, Windows, Mac, Android, and iOS
