@@ -42,7 +42,7 @@
             "type": "cppvsdbg",
             "request": "launch",
             "args": [],
-            "program": "${workspaceFolder}/example/build/windows/runner/Debug/flutter_soloud_example.exe",
+            "program": "${workspaceFolder}/example/build/windows/x64/runner/Debug/flutter_soloud_example.exe",
             "cwd": "${workspaceFolder}"
         },
         {
@@ -51,7 +51,7 @@
             "type": "cppvsdbg",
             "request": "launch",
             "args": [],
-            "program": "${workspaceFolder}/example/build/windows/runner/Debug/flutter_soloud_example.exe",
+            "program": "${workspaceFolder}/example/build/windows/x64/runner/Debug/flutter_soloud_example.exe",
             "cwd": "${workspaceFolder}"
         },
         {

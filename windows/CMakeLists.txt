@@ -33,6 +33,12 @@ include_directories(${SRC_DIR}/soloud/src)
 include (src.cmake)
 message("**************** SOLOUD SRC.CMAKE 2  ${TARGET_NAME}")
 
+set_source_files_properties(
+  ${TARGET_SOURCES}
+  PROPERTIES
+  COMPILE_FLAGS "-w"
+)
+
 
 
 
