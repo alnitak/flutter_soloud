@@ -1,3 +1,6 @@
+### 2.0.0-pre.4 (21 Mar 2024)
+- some little fixes.
+
 ### 2.0.0-pre.3 (20 Mar 2024)
 - added `getActiveVoiceCount()` to get concurrent sounds that are playing at the moment.
 - added `countAudioSource()` to get concurrent sounds that are playing a specific audio source.
