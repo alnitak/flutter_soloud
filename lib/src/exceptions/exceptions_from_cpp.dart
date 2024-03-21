@@ -148,7 +148,6 @@ class SoLoudFilterAlreadyAddedException extends SoLoudCppException {
   const SoLoudFilterAlreadyAddedException([super.message]);
 
   @override
-  String get description =>
-      'Askind to add a filter that is already been added. '
-      'Only one of each type is allowed (on the C++ side).';
+  String get description => 'Asking to add a filter that has '
+      'already been added. Only one of each type is allowed (on the C++ side).';
 }

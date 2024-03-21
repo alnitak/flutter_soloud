@@ -1133,7 +1133,7 @@ interface class SoLoud {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
-    return SoLoudController().soLoudFFI.getLooping(handle.id);
+    return SoLoudController().soLoudFFI.getLooping(handle);
   }
 
   /// This function can be used to set a sample to play on repeat,
@@ -1160,7 +1160,7 @@ interface class SoLoud {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
-    return SoLoudController().soLoudFFI.getLoopPoint(handle.id);
+    return SoLoudController().soLoudFFI.getLoopPoint(handle);
   }
 
   /// Set sound loop point value.
@@ -1337,7 +1337,7 @@ interface class SoLoud {
 
   /// Returns the number of concurrent sounds that are playing a
   /// specific audio source.
-  int countAudioSource(int soundHash) {
+  int countAudioSource(SoundHash soundHash) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
@@ -1353,7 +1353,7 @@ interface class SoLoud {
   }
 
   /// Get a sound's protection state.
-  bool getProtectVoice(int handle) {
+  bool getProtectVoice(SoundHandle handle) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
@@ -1375,7 +1375,7 @@ interface class SoLoud {
   ///
   /// [handle]  handle to check.
   /// [protect] whether to protect or not.
-  void setProtectVoice(int handle, bool protect) {
+  void setProtectVoice(SoundHandle handle, bool protect) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }

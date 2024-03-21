@@ -465,8 +465,8 @@ class FlutterSoLoudFfi {
   ///
   /// [handle]
   /// Returns true if flagged for looping.
-  bool getLooping(int handle) {
-    return _getLooping(handle) == 1;
+  bool getLooping(SoundHandle handle) {
+    return _getLooping(handle.id) == 1;
   }
 
   late final _getLoopingPtr =
@@ -493,8 +493,8 @@ class FlutterSoLoudFfi {
   ///
   /// [handle]
   /// Returns the time in seconds.
-  double getLoopPoint(int handle) {
-    return _getLoopPoint(handle);
+  double getLoopPoint(SoundHandle handle) {
+    return _getLoopPoint(handle.id);
   }
 
   late final _getLoopPointPtr =
@@ -767,8 +767,8 @@ class FlutterSoLoudFfi {
 
   /// Returns the number of concurrent sounds that are playing a
   /// specific audio source.
-  int countAudioSource(int soundHash) {
-    return _countAudioSource(soundHash);
+  int countAudioSource(SoundHash soundHash) {
+    return _countAudioSource(soundHash.hash);
   }
 
   late final _countAudioSourcePtr =
@@ -787,8 +787,8 @@ class FlutterSoLoudFfi {
   late final _getVoiceCount = _getVoiceCountPtr.asFunction<int Function()>();
 
   /// Get a sound's protection state.
-  bool getProtectVoice(int handle) {
-    return _getProtectVoice(handle) == 1;
+  bool getProtectVoice(SoundHandle handle) {
+    return _getProtectVoice(handle.id) == 1;
   }
 
   late final _getProtectVoicePtr =
@@ -807,8 +807,8 @@ class FlutterSoLoudFfi {
   ///
   /// [handle]  handle to check.
   /// [protect] whether to protect or not.
-  void setProtectVoice(int handle, bool protect) {
-    return _setProtectVoice(handle, protect ? 1 : 0);
+  void setProtectVoice(SoundHandle handle, bool protect) {
+    return _setProtectVoice(handle.id, protect ? 1 : 0);
   }
 
   late final _setProtectVoicePtr =
