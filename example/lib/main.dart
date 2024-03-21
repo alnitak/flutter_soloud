@@ -12,6 +12,8 @@ import 'package:flutter_soloud_example/page_waveform.dart';
 import 'package:logging/logging.dart';
 
 void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
   // The `flutter_soloud` package logs everything
   // (from severe warnings to fine debug messages)
   // using the standard `package:logging`.

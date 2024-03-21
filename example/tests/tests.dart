@@ -12,6 +12,8 @@ import 'package:logging/logging.dart';
 ///
 /// Run this with `flutter run tests/tests.dart`.
 void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
   // Make sure we can see logs from the engine, even in release mode.
   // ignore: avoid_print
   final errorsBuffer = StringBuffer();
