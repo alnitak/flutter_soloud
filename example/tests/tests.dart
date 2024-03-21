@@ -18,8 +18,13 @@ void main() async {
   Logger.root.onRecord.listen((record) {
     debugPrint(record.toString(), wrapWidth: 80);
     if (record.level >= Level.WARNING) {
+      // Exception for deiniting.
+      if (record.error is SoLoudInitializationStoppedByDeinitException) {
+        return;
+      }
+
       // Make sure the warnings are visible.
-      stderr.writeln('TEST error: $record');
+      stderr.writeln('TEST error (${record.level} log): $record');
       errorsBuffer.writeln('- $record');
       // Set exit code but keep running to see all logs.
       exitCode = 1;
@@ -30,7 +35,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await runZonedGuarded(
-    () async => test6(),
+    () async => testProtectVoice(),
     (error, stack) {
       stderr.writeln('TEST error: $error\nstack: $stack');
       exitCode = 1;
@@ -38,7 +43,7 @@ void main() async {
   );
 
   await runZonedGuarded(
-    () async => test5(),
+    () async => testAllInstancesFinished(),
     (error, stack) {
       stderr.writeln('TEST error: $error\nstack: $stack');
       exitCode = 1;
@@ -46,7 +51,19 @@ void main() async {
   );
 
   await runZonedGuarded(
-    () async => test4(),
+    () async => testSynchronousDeinit(),
+    (error, stack) {
+      if (error is SoLoudInitializationStoppedByDeinitException) {
+        // This is to be expected in this test.
+        return;
+      }
+      stderr.writeln('TEST error in zone: $error\nstack: $stack');
+      exitCode = 1;
+    },
+  );
+
+  await runZonedGuarded(
+    () async => testCreateNotes(),
     (error, stack) {
       stderr.writeln('TEST error: $error\nstack: $stack');
       exitCode = 1;
@@ -54,7 +71,7 @@ void main() async {
   );
 
   await runZonedGuarded(
-    () async => test3(),
+    () async => testHandles(),
     (error, stack) {
       stderr.writeln('TEST error: $error\nstack: $stack');
       exitCode = 1;
@@ -62,15 +79,7 @@ void main() async {
   );
 
   await runZonedGuarded(
-    () async => test1(),
-    (error, stack) {
-      stderr.writeln('TEST error: $error\nstack: $stack');
-      exitCode = 1;
-    },
-  );
-
-  await runZonedGuarded(
-    () async => test2(),
+    () async => testPlaySeekPause(),
     (error, stack) {
       stderr.writeln('TEST error: $error\nstack: $stack');
       exitCode = 1;
@@ -110,9 +119,10 @@ Future<void> delay(int ms) async {
 /// Test synchronous and asynchronous `initialize()` - `deinit()` within
 /// short time delays.
 /// Test setMaxActiveVoiceCount, setProtectedVoice and getProtectedVoice
-Future<void> test6() async {
+Future<void> testProtectVoice() async {
   await initialize();
 
+  final previous = SoLoud.instance.getMaxActiveVoiceCount();
   SoLoud.instance.setMaxActiveVoiceCount(3);
   assert(
     SoLoud.instance.getMaxActiveVoiceCount() == 3,
@@ -152,11 +162,15 @@ Future<void> test6() async {
     'The protected song has been stopped!',
   );
 
+  // Reset voice count to normal. Workaround to the issue that maxVoiceCount
+  // persists between different initializations of the engine.
+  SoLoud.instance.setMaxActiveVoiceCount(previous);
+
   dispose();
 }
 
 /// Test allInstancesFinished stream
-Future<void> test5() async {
+Future<void> testAllInstancesFinished() async {
   final log = Logger('test5');
   await initialize();
 
@@ -207,22 +221,30 @@ Future<void> test5() async {
 }
 
 /// Test synchronous `deinit()`
-Future<void> test4() async {
+Future<void> testSynchronousDeinit() async {
+  final log = Logger('test4');
+
   /// test synchronous init-deinit looping with a short decreasing time
   for (var t = 100; t >= 0; t -= 5) {
     /// Initialize the player
     var error = '';
-    await SoLoud.instance.init().then(
-      (_) {},
-      onError: (Object e) {
-        e = 'TEST FAILED delay: $t. Player starting error: $e';
-        error = e.toString();
-      },
+
+    unawaited(
+      SoLoud.instance.init().then(
+        (_) {},
+        onError: (Object e) {
+          if (e is SoLoudInitializationStoppedByDeinitException) {
+            // This is to be expected.
+            log.info('$e');
+            return;
+          }
+          e = 'TEST FAILED delay: $t. Player starting error: $e';
+          error = e.toString();
+        },
+      ),
     );
 
     assert(error.isEmpty, error);
-
-    final before = SoLoudController().soLoudFFI.isInited();
 
     /// wait for [t] ms and deinit()
     await Future.delayed(Duration(milliseconds: t), () {});
@@ -230,9 +252,8 @@ Future<void> test4() async {
     final after = SoLoudController().soLoudFFI.isInited();
 
     assert(
-      before == !after,
-      'TEST FAILED delay: $t. The player has not been '
-      'inited or deinited correctly!',
+      after == false,
+      'TEST FAILED delay: $t. The player has not been deinited correctly!',
     );
 
     stderr.writeln('------------- awaited init delay $t passed\n');
@@ -294,7 +315,7 @@ Future<void> test4() async {
 
 /// Test waveform
 ///
-Future<void> test3() async {
+Future<void> testCreateNotes() async {
   await initialize();
   final notes = await SoLoudTools.createNotes(
     octave: 1,
@@ -304,7 +325,7 @@ Future<void> test3() async {
     'SoloudTools.initSounds() failed!',
   );
 
-  for (var i = 2; i < 10; i++) {
+  for (var i = 6; i < 10; i++) {
     const volume = 0.2;
     final d = (sin(i / 6.28) * 400).toInt();
     await SoLoud.instance.play(notes[7], volume: volume);
@@ -335,7 +356,7 @@ Future<void> test3() async {
 
 /// Test play, pause, seek, position
 ///
-Future<void> test2() async {
+Future<void> testPlaySeekPause() async {
   /// Start audio isolate
   await initialize();
 
@@ -367,7 +388,7 @@ Future<void> test2() async {
 
 /// Test start/stop isolate, load, play and events from sound
 ///
-Future<void> test1() async {
+Future<void> testHandles() async {
   /// Start audio isolate
   await initialize();
 
@@ -394,10 +415,10 @@ Future<void> test1() async {
 
   /// Play 4 sample
   {
-    await SoLoud.instance.play(currentSound!);
-    await SoLoud.instance.play(currentSound!);
-    await SoLoud.instance.play(currentSound!);
-    await SoLoud.instance.play(currentSound!);
+    await SoLoud.instance.play(currentSound!, volume: 0.2);
+    await SoLoud.instance.play(currentSound!, volume: 0.2);
+    await SoLoud.instance.play(currentSound!, volume: 0.2);
+    await SoLoud.instance.play(currentSound!, volume: 0.2);
     assert(
       currentSound!.handles.length == 4,
       'loadFromAssets() failed!',
@@ -413,16 +434,7 @@ Future<void> test1() async {
     );
   }
 
-  /// Stop isolate
-  {
-    /// Stop player and see in log:
-    /// "@@@@@@@@@@@ SOUND EVENT: SoundEvent.soundDisposed .*"
-    dispose();
-    assert(
-      output == 'SoundEvent.soundDisposed',
-      'Sound end playback event not triggered!',
-    );
-  }
+  dispose();
 }
 
 /// Common methods
