@@ -91,6 +91,10 @@ const std::string Player::getErrorString(PlayerErrors errorCode) const
         return "error: sound hash not found!";
     case visualizationNotEnabled:
         return "error: visualization not enabled!";
+    case maxNumberOfFiltersReached:
+        return "error: max number of filter reached!";
+    case filterAlreadyAdded:
+        return "error: filter already added!";
     }
     return "Other error";
 }
