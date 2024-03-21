@@ -18,7 +18,7 @@ int Filters::isFilterActive(FilterType filter)
 
     if (it != filters.end())
     {
-        int index = it - filters.begin();
+        int index = static_cast<int>(it - filters.begin());
         return index;
     }
     else
