@@ -120,8 +120,7 @@ class FlutterSoLoudFfi {
     return _isInited() == 1;
   }
 
-  late final _isInitedPtr =
-      _lookup<ffi.NativeFunction<ffi.Int Function()>>(
+  late final _isInitedPtr = _lookup<ffi.NativeFunction<ffi.Int Function()>>(
     'isInited',
   );
   late final _isInited = _isInitedPtr.asFunction<int Function()>();
@@ -466,8 +465,8 @@ class FlutterSoLoudFfi {
   ///
   /// [handle]
   /// Returns true if flagged for looping.
-  bool getLooping(int handle) {
-    return _getLooping(handle) == 1;
+  bool getLooping(SoundHandle handle) {
+    return _getLooping(handle.id) == 1;
   }
 
   late final _getLoopingPtr =
@@ -494,8 +493,8 @@ class FlutterSoLoudFfi {
   ///
   /// [handle]
   /// Returns the time in seconds.
-  double getLoopPoint(int handle) {
-    return _getLoopPoint(handle);
+  double getLoopPoint(SoundHandle handle) {
+    return _getLoopPoint(handle.id);
   }
 
   late final _getLoopPointPtr =
@@ -768,8 +767,8 @@ class FlutterSoLoudFfi {
 
   /// Returns the number of concurrent sounds that are playing a
   /// specific audio source.
-  int countAudioSource(int soundHash) {
-    return _countAudioSource(soundHash);
+  int countAudioSource(SoundHash soundHash) {
+    return _countAudioSource(soundHash.hash);
   }
 
   late final _countAudioSourcePtr =
@@ -788,8 +787,8 @@ class FlutterSoLoudFfi {
   late final _getVoiceCount = _getVoiceCountPtr.asFunction<int Function()>();
 
   /// Get a sound's protection state.
-  bool getProtectVoice(int handle) {
-    return _getProtectVoice(handle) == 1;
+  bool getProtectVoice(SoundHandle handle) {
+    return _getProtectVoice(handle.id) == 1;
   }
 
   late final _getProtectVoicePtr =
@@ -808,8 +807,8 @@ class FlutterSoLoudFfi {
   ///
   /// [handle]  handle to check.
   /// [protect] whether to protect or not.
-  void setProtectVoice(int handle, bool protect) {
-    return _setProtectVoice(handle, protect ? 1 : 0);
+  void setProtectVoice(SoundHandle handle, bool protect) {
+    return _setProtectVoice(handle.id, protect ? 1 : 0);
   }
 
   late final _setProtectVoicePtr =
@@ -837,9 +836,9 @@ class FlutterSoLoudFfi {
   /// NOTE: The number of concurrent voices is limited, as having unlimited
   /// voices would cause performance issues, as well as lead to unnecessary
   /// clipping. The default number of concurrent voices is 16, but this can be
-  /// adjusted at runtime. The hard maximum number is 4095, but if more are 
+  /// adjusted at runtime. The hard maximum number is 4095, but if more are
   /// required, SoLoud can be modified to support more. But seriously, if you
-  /// need more than 4095 sounds at once, you're probably going to make 
+  /// need more than 4095 sounds at once, you're probably going to make
   /// some serious changes in any case.
   void setMaxActiveVoiceCount(int maxVoiceCount) {
     return _setMaxActiveVoiceCount(maxVoiceCount);
@@ -850,7 +849,6 @@ class FlutterSoLoudFfi {
           'setMaxActiveVoiceCount');
   late final _setMaxActiveVoiceCount =
       _setMaxActiveVoiceCountPtr.asFunction<void Function(int)>();
-
 
   /////////////////////////////////////////
   /// faders
@@ -1062,9 +1060,9 @@ class FlutterSoLoudFfi {
   /// Returns:
   /// [PlayerErrors.noError] if no errors
   /// [PlayerErrors.filterNotFound] if the [filterType] does not exits
-  /// [PlayerErrors.filterAlreadyAdded] when trying to add an already 
+  /// [PlayerErrors.filterAlreadyAdded] when trying to add an already
   ///     added filter
-  /// [PlayerErrors.maxNumberOfFiltersReached] when the maximum number of 
+  /// [PlayerErrors.maxNumberOfFiltersReached] when the maximum number of
   ///     filters has been reached (default is 8)
   ///
   PlayerErrors addGlobalFilter(int filterType) {

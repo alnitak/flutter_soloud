@@ -132,9 +132,9 @@ Future<void> test6() async {
 
   /// play 1 protected [song]
   final songHandle = await SoLoud.instance.play(song);
-  SoLoud.instance.setProtectVoice(songHandle.id, true);
+  SoLoud.instance.setProtectVoice(songHandle, true);
   assert(
-    SoLoud.instance.getProtectVoice(songHandle.id),
+    SoLoud.instance.getProtectVoice(songHandle),
     "setProtectVoice() didn't worked correctly",
   );
 
@@ -282,10 +282,7 @@ Future<void> test4() async {
     'getIsValidVoiceHandle(): sound not disposed by the engine',
   );
   assert(
-    SoLoudController()
-            .soLoudFFI
-            .countAudioSource(currentSound!.soundHash.hash) ==
-        0,
+    SoLoudController().soLoudFFI.countAudioSource(currentSound!.soundHash) == 0,
     'getCountAudioSource(): sound not disposed by the engine',
   );
   assert(
