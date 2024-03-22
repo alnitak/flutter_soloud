@@ -13,7 +13,8 @@ if (EMSCRIPTEN)
     set(CMAKE_CXX_CREATE_STATIC_LIBRARY "<CMAKE_AR> -o <TARGET> <LINK_FLAGS> <OBJECTS>")
 endif()
 
-set(CMAKE_C_FLAGS "-s STANDALONE_WASM" )
+#set(CMAKE_C_FLAGS "-s STANDALONE_WASM" )
+set(CMAKE_C_FLAGS "-s LINKABLE=1 -s EXPORT_ALL=1 -s STANDALONE_WASM" )
 
 
 ## Add SoLoud custom cmake files
@@ -24,6 +25,13 @@ include_directories(../src/soloud/include )
 include_directories(../src/soloud/src)
 include (src.cmake)
 message("**************** SOLOUD SRC.CMAKE 2  ${TARGET_NAME}")
+
+# Suppress warnings for SoLoud lib sources
+set_source_files_properties(
+  ${TARGET_SOURCES}
+  PROPERTIES
+  COMPILE_FLAGS "-w"
+)
 
 
 list(APPEND PLUGIN_SOURCES
