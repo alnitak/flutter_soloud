@@ -1,0 +1,47 @@
+name: Flutter Analyze
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    name: Analyze code and requirements
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        channel: 'stable'
+
+    - name: Verify Flutter installation
+      run: flutter doctor
+
+    - name: Check pub dependencies
+      run: flutter pub get
+
+    - name: "Run Dart Analyze"
+      uses: invertase/github-action-dart-analyzer@v3
+      with:
+        fatal-infos: true
+        fatal-warnings: true
+        annotate: true
+        working-directory: lib/
+
+    - name: Check Code formatting
+      run: dart format -o none --set-exit-if-changed .
+
+    - name: Check pub.dev requirements
+      run: flutter pub publish --dry-run
+      
+    - name: Block merge if checks fail
+      if: ${{ failure() }}
+      run: echo "Checks failed, cannot merge." && exit 1
