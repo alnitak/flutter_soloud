@@ -124,7 +124,7 @@ class _VisualizerState extends State<Visualizer>
 
     widget.controller.isCaptureStarted =
         SoLoudCapture.instance.isCaptureStarted();
-        
+
     widget.controller.addListener(() {
       ticker.stop();
       setupBitmapSize();

@@ -57,7 +57,9 @@ class _ControlsState extends State<Controls> {
                   }
                 }
                 widget.onCaptureToggle?.call(choosenCaptureDeviceId);
-                setState(() {}); /// just change button color
+                setState(() {});
+
+                /// just change button color
               },
               style: buttonStyle(SoLoudCapture.instance.isCaptureStarted()),
               child: const Text('capture'),
@@ -83,7 +85,9 @@ class _ControlsState extends State<Controls> {
               onItemTapped: (index, controller) {
                 controller.closeMenu!();
                 widget.onDeviceIdChanged?.call(choosenCaptureDeviceId);
-                setState(() {}); /// just to rebuild [lazyItems]
+                setState(() {});
+
+                /// just to rebuild [lazyItems]
               },
               lazyItems: captureDeviceList,
               child: const Chip(
