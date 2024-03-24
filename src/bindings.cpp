@@ -18,7 +18,7 @@ extern "C"
 {
 #endif
 
-    Player player;
+    std::unique_ptr<Player> player = nullptr;
     std::unique_ptr<Analyzer> analyzer = std::make_unique<Analyzer>(2048);
 
     /// @brief Set a dart function to call when the sound with [handle] handle ends
@@ -40,8 +40,8 @@ extern "C"
     /// @return true if success;
     // FFI_PLUGIN_EXPORT bool setPlayEndedCallback(void (*callback)(unsigned int), unsigned int handle)
     // {
-    //     if (!player.isInited()) return false;
-    //     ActiveSound* sound = player.findByHandle(handle);
+    //     if (!player.get()->isInited()) return false;
+    //     ActiveSound* sound = player.get()->findByHandle(handle);
     //     if (sound != nullptr) {
     //         sound->playEndedCallback = callback;
     //         return true;
@@ -49,17 +49,21 @@ extern "C"
     //     return false;
     // }
 
-    /// Initialize the player. Must be called before any other player functions
+    /// Initialize the player.get()-> Must be called before any other player functions
     ///
     /// Returns [PlayerErrors.noError] if success
     FFI_PLUGIN_EXPORT enum PlayerErrors initEngine()
     {
-        PlayerErrors res = (PlayerErrors)player.init();
+        if (player.get() == nullptr)
+        {
+            player = std::make_unique<Player>();
+        }
+        PlayerErrors res = (PlayerErrors)player.get()->init();
         if (res != noError)
             return res;
 
-        const int windowSize = (player.soloud.getBackendBufferSize() /
-                                player.soloud.getBackendChannels()) -
+        const int windowSize = (player.get()->soloud.getBackendBufferSize() /
+                                player.get()->soloud.getBackendChannels()) -
                                1;
         analyzer.get()->setWindowsSize(windowSize);
         return (PlayerErrors)noError;
@@ -69,12 +73,17 @@ extern "C"
     ///
     FFI_PLUGIN_EXPORT void dispose()
     {
-        player.dispose();
+        if (player.get() == nullptr)
+            return;
+        player.get()->dispose();
+        player = nullptr;
     }
 
     FFI_PLUGIN_EXPORT int isInited()
     {
-        return player.isInited() ? 1 : 0;
+        if (player.get() == nullptr)
+            return 0;
+        return player.get()->isInited() ? 1 : 0;
     }
 
     /// Load a new sound to be played once or multiple times later
@@ -94,9 +103,9 @@ extern "C"
         bool loadIntoMem, 
         unsigned int *hash)
     {
-        if (!player.isInited())
+        if (!player.get()->isInited())
             return backendNotInited;
-        return (PlayerErrors)player.loadFile(completeFileName, loadIntoMem, *hash);
+        return (PlayerErrors)player.get()->loadFile(completeFileName, loadIntoMem, *hash);
     }
 
     /// Load a new waveform to be played once or multiple times later
@@ -122,9 +131,9 @@ extern "C"
         float detune,
         unsigned int *hash)
     {
-        if (!player.isInited())
+        if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
-        return (PlayerErrors)player.loadWaveform(waveform, superWave, scale, detune, *hash);
+        return (PlayerErrors)player.get()->loadWaveform(waveform, superWave, scale, detune, *hash);
     }
 
     /// Set the scale of an already loaded waveform identified by [hash]
@@ -133,10 +142,10 @@ extern "C"
     /// [newScale]
     FFI_PLUGIN_EXPORT void setWaveformScale(unsigned int hash, float newScale)
     {
-        if (!player.isInited())
+        if (player.get() == nullptr || !player.get()->isInited())
             return;
 
-        player.setWaveformScale(hash, newScale);
+        player.get()->setWaveformScale(hash, newScale);
     }
 
     /// Set the detune of an already loaded waveform identified by [hash]
@@ -145,10 +154,10 @@ extern "C"
     /// [newDetune]
     FFI_PLUGIN_EXPORT void setWaveformDetune(unsigned int hash, float newDetune)
     {
-        if (!player.isInited())
+        if (player.get() == nullptr || !player.get()->isInited())
             return;
 
-        player.setWaveformDetune(hash, newDetune);
+        player.get()->setWaveformDetune(hash, newDetune);
     }
 
     /// Set a new frequency of an already loaded waveform identified by [hash]
@@ -157,10 +166,10 @@ extern "C"
     /// [newFreq]
     FFI_PLUGIN_EXPORT void setWaveformFreq(unsigned int hash, float newFreq)
     {
-        if (!player.isInited())
+        if (player.get() == nullptr || !player.get()->isInited())
             return;
 
-        player.setWaveformFreq(hash, newFreq);
+        player.get()->setWaveformFreq(hash, newFreq);
     }
 
     /// Set a new frequence of an already loaded waveform identified by [hash]
@@ -169,10 +178,10 @@ extern "C"
     /// [superwave]
     FFI_PLUGIN_EXPORT void setSuperWave(unsigned int hash, bool superwave)
     {
-        if (!player.isInited())
+        if (player.get() == nullptr || !player.get()->isInited())
             return;
 
-        player.setWaveformSuperwave(hash, superwave);
+        player.get()->setWaveformSuperwave(hash, superwave);
     }
 
     /// Set a new wave form of an already loaded waveform identified by [hash]
@@ -189,10 +198,10 @@ extern "C"
     ///                 WAVE_FSAW
     FFI_PLUGIN_EXPORT void setWaveform(unsigned int hash, int newWaveform)
     {
-        if (!player.isInited())
+        if (player.get() == nullptr || !player.get()->isInited())
             return;
 
-        player.setWaveform(hash, newWaveform);
+        player.get()->setWaveform(hash, newWaveform);
     }
 
     /// Speech the text given
@@ -202,9 +211,9 @@ extern "C"
     /// TODO(marco): add other T2S parameters
     FFI_PLUGIN_EXPORT enum PlayerErrors speechText(char *textToSpeech, unsigned int *handle)
     {
-        if (!player.isInited())
+        if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
-        return (PlayerErrors)player.textToSpeech(textToSpeech, *handle);
+        return (PlayerErrors)player.get()->textToSpeech(textToSpeech, *handle);
     }
 
     /// Switch pause state for an already loaded sound identified by [handle]
@@ -212,9 +221,10 @@ extern "C"
     /// [handle] the sound handle
     FFI_PLUGIN_EXPORT void pauseSwitch(unsigned int handle)
     {
-        if (!player.isInited() || !player.isValidVoiceHandle(handle))
+        if (player.get() == nullptr || !player.get()->isInited() || 
+            !player.get()->isValidVoiceHandle(handle))
             return;
-        player.pauseSwitch(handle);
+        player.get()->pauseSwitch(handle);
     }
 
     /// Pause or unpause already loaded sound identified by [handle]
@@ -223,9 +233,10 @@ extern "C"
     /// [pause] the sound handle
     FFI_PLUGIN_EXPORT void setPause(unsigned int handle, bool pause)
     {
-        if (!player.isInited() || !player.isValidVoiceHandle(handle))
+        if (player.get() == nullptr || !player.get()->isInited() || 
+            !player.get()->isValidVoiceHandle(handle))
             return;
-        player.setPause(handle, pause);
+        player.get()->setPause(handle, pause);
     }
 
     /// Gets the pause state
@@ -234,9 +245,10 @@ extern "C"
     /// Return true if paused
     FFI_PLUGIN_EXPORT int getPause(unsigned int handle)
     {
-        if (!player.isInited() || !player.isValidVoiceHandle(handle))
+        if (player.get() == nullptr || !player.get()->isInited() ||
+            !player.get()->isValidVoiceHandle(handle))
             return false;
-        return player.getPause(handle) ? 1 : 0;
+        return player.get()->getPause(handle) ? 1 : 0;
     }
 
     /// Set a sound's relative play speed.
@@ -253,9 +265,10 @@ extern "C"
     /// [speed] the new speed
     FFI_PLUGIN_EXPORT void setRelativePlaySpeed(unsigned int handle, float speed)
     {
-        if (!player.isInited() || !player.isValidVoiceHandle(handle))
+        if (player.get() == nullptr || !player.get()->isInited() || 
+            !player.get()->isValidVoiceHandle(handle))
             return;
-        player.setRelativePlaySpeed(handle, speed);
+        player.get()->setRelativePlaySpeed(handle, speed);
     }
 
     /// Get a sound's relative play speed.
@@ -265,9 +278,10 @@ extern "C"
     /// [handle] the sound handle
     FFI_PLUGIN_EXPORT float getRelativePlaySpeed(unsigned int handle)
     {
-        if (!player.isInited() || !player.isValidVoiceHandle(handle))
+        if (player.get() == nullptr || !player.get()->isInited() || 
+            !player.get()->isValidVoiceHandle(handle))
             return 1;
-        return player.getRelativePlaySpeed(handle);
+        return player.get()->getRelativePlaySpeed(handle);
     }
 
     /// Play already loaded sound identified by [hash]
@@ -292,9 +306,9 @@ extern "C"
         double loopingStartAt,
         unsigned int *handle)
     {
-        if (!player.isInited())
+        if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
-        *handle = player.play(soundHash, volume, pan, paused, looping, loopingStartAt);
+        *handle = player.get()->play(soundHash, volume, pan, paused, looping, loopingStartAt);
         return *handle == 0 ? soundHashNotFound : noError;
     }
 
@@ -303,9 +317,10 @@ extern "C"
     /// [handle]
     FFI_PLUGIN_EXPORT void stop(unsigned int handle)
     {
-        if (!player.isInited() || !player.isValidVoiceHandle(handle))
+        if (player.get() == nullptr || !player.get()->isInited() || 
+            !player.get()->isValidVoiceHandle(handle))
             return;
-        player.stop(handle);
+        player.get()->stop(handle);
     }
 
     /// Stop all handles of the already loaded sound identified by [hash] and dispose it
@@ -313,18 +328,18 @@ extern "C"
     /// [soundHash]
     FFI_PLUGIN_EXPORT void disposeSound(unsigned int soundHash)
     {
-        if (!player.isInited())
+        if (player.get() == nullptr || !player.get()->isInited())
             return;
-        player.disposeSound(soundHash);
+        player.get()->disposeSound(soundHash);
     }
 
     /// Dispose all sounds already loaded
     ///
     FFI_PLUGIN_EXPORT void disposeAllSound()
     {
-        if (!player.isInited())
+        if (player.get() == nullptr || !player.get()->isInited())
             return;
-        player.disposeAllSound();
+        player.get()->disposeAllSound();
     }
 
     /// Query whether a sound is set to loop.
@@ -333,9 +348,10 @@ extern "C"
     /// Returns true if flagged for looping.
     FFI_PLUGIN_EXPORT int getLooping(unsigned int handle)
     {
-        if (!player.isInited() || !player.isValidVoiceHandle(handle))
+        if (player.get() == nullptr || !player.get()->isInited() || 
+            !player.get()->isValidVoiceHandle(handle))
             return 0;
-        return player.getLooping(handle) == 1;
+        return player.get()->getLooping(handle) == 1;
     }
 
     /// This function can be used to set a sample to play on repeat,
@@ -345,9 +361,10 @@ extern "C"
     /// [enable]
     FFI_PLUGIN_EXPORT void setLooping(unsigned int handle, bool enable)
     {
-        if (!player.isInited() || !player.isValidVoiceHandle(handle))
+        if (player.get() == nullptr || !player.get()->isInited() || 
+            !player.get()->isValidVoiceHandle(handle))
             return;
-        player.setLooping(handle, enable);
+        player.get()->setLooping(handle, enable);
     }
 
     /// Get sound loop point value.
@@ -356,9 +373,10 @@ extern "C"
     /// Returns the time in seconds.
     FFI_PLUGIN_EXPORT double getLoopPoint(unsigned int handle)
     {
-        if (!player.isInited() || !player.isValidVoiceHandle(handle))
+        if (player.get() == nullptr || !player.get()->isInited() || 
+            !player.get()->isValidVoiceHandle(handle))
             return 0;
-        return player.getLoopPoint(handle);
+        return player.get()->getLoopPoint(handle);
     }
 
     /// Set sound loop point value.
@@ -367,9 +385,10 @@ extern "C"
     /// [time] in seconds.
     FFI_PLUGIN_EXPORT void setLoopPoint(unsigned int handle, double time)
     {
-        if (!player.isInited() || !player.isValidVoiceHandle(handle))
+        if (player.get() == nullptr || !player.get()->isInited() || 
+            !player.get()->isValidVoiceHandle(handle))
             return;
-        player.setLoopPoint(handle, time);
+        player.get()->setLoopPoint(handle, time);
     }
 
     /// Enable or disable visualization
@@ -377,9 +396,9 @@ extern "C"
     /// [enabled] enable or disable it
     FFI_PLUGIN_EXPORT void setVisualizationEnabled(bool enabled)
     {
-        if (!player.isInited())
+        if (player.get() == nullptr || !player.get()->isInited())
             return;
-        player.setVisualizationEnabled(enabled);
+        player.get()->setVisualizationEnabled(enabled);
     }
 
     /// Get visualization state
@@ -387,9 +406,9 @@ extern "C"
     /// Return true if enabled
     FFI_PLUGIN_EXPORT int getVisualizationEnabled()
     {
-        if (!player.isInited())
+        if (player.get() == nullptr || !player.get()->isInited())
             return 0;
-        return player.isVisualizationEnabled();
+        return player.get()->isVisualizationEnabled();
     }
 
     /// Returns valid data only if VisualizationEnabled is true
@@ -398,7 +417,9 @@ extern "C"
     /// Return a 256 float array containing FFT data.
     FFI_PLUGIN_EXPORT void getFft(float *fft)
     {
-        fft = player.calcFFT();
+        if (player.get() == nullptr || !player.get()->isInited())
+            return;
+        fft = player.get()->calcFFT();
     }
 
     /// Returns valid data only if VisualizationEnabled is true
@@ -407,7 +428,9 @@ extern "C"
     /// Return a 256 float array containing wave data.
     FFI_PLUGIN_EXPORT void getWave(float *wave)
     {
-        wave = player.getWave();
+        if (player.get() == nullptr || !player.get()->isInited())
+            return;
+        wave = player.get()->getWave();
     }
 
     /// Smooth FFT data.
@@ -422,7 +445,7 @@ extern "C"
     /// newFreq = smooth * oldFreq + (1 - smooth) * newFreq
     FFI_PLUGIN_EXPORT void setFftSmoothing(float smooth)
     {
-        if (!player.isInited())
+        if (player.get() == nullptr || !player.get()->isInited())
             return;
         analyzer.get()->setSmoothing(smooth);
     }
@@ -434,12 +457,13 @@ extern "C"
     /// [samples] should be allocated and freed in dart side
     FFI_PLUGIN_EXPORT void getAudioTexture(float *samples)
     {
-        if (analyzer.get() == nullptr)
+        if (player.get() == nullptr || !player.get()->isInited() || 
+            analyzer.get() == nullptr)
         {
             memset(samples, 0, sizeof(float) * 512);
             return;
         }
-        float *wave = player.getWave();
+        float *wave = player.get()->getWave();
         float *fft = analyzer.get()->calcFFT(wave);
 
         memcpy(samples, fft, sizeof(float) * 256);
@@ -456,7 +480,8 @@ extern "C"
     float texture2D[512][256];
     FFI_PLUGIN_EXPORT enum PlayerErrors getAudioTexture2D(float **samples)
     {
-        if (analyzer.get() == nullptr || !player.isVisualizationEnabled())
+        if (player.get() == nullptr || !player.get()->isInited() || 
+            analyzer.get() == nullptr || !player.get()->isVisualizationEnabled())
         {
             if (*samples == nullptr)
                 return unknownError;
@@ -477,9 +502,9 @@ extern "C"
     /// Returns sound length in seconds
     FFI_PLUGIN_EXPORT double getLength(unsigned int soundHash)
     {
-        if (!player.isInited())
+        if (player.get() == nullptr || !player.get()->isInited())
             return 0.0;
-        auto f = player.getLength(soundHash);
+        auto f = player.get()->getLength(soundHash);
         return f;
     }
 
@@ -501,9 +526,9 @@ extern "C"
     ///
     FFI_PLUGIN_EXPORT enum PlayerErrors seek(unsigned int handle, float time)
     {
-        if (!player.isInited())
+        if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
-        return (PlayerErrors)player.seek(handle, time);
+        return (PlayerErrors)player.get()->seek(handle, time);
     }
 
     /// Get current sound position  in seconds
@@ -512,9 +537,10 @@ extern "C"
     /// Returns time in seconds
     FFI_PLUGIN_EXPORT double getPosition(unsigned int handle)
     {
-        if (!player.isInited() || !player.isValidVoiceHandle(handle))
-            return 0.0f;
-        return player.getPosition(handle);
+        if (player.get() == nullptr || !player.get()->isInited() || 
+            !player.get()->isValidVoiceHandle(handle))
+            return 0.0;
+        return player.get()->getPosition(handle);
     }
 
     /// Get current Global volume
@@ -522,9 +548,9 @@ extern "C"
     /// Returns the volume
     FFI_PLUGIN_EXPORT double getGlobalVolume()
     {
-        if (!player.isInited())
+        if (player.get() == nullptr || !player.get()->isInited())
             return 0.0;
-        return player.getGlobalVolume();
+        return player.get()->getGlobalVolume();
     }
 
     /// Set current Global volume
@@ -532,9 +558,9 @@ extern "C"
     /// Returns the volume
     FFI_PLUGIN_EXPORT enum PlayerErrors setGlobalVolume(float volume)
     {
-        if (!player.isInited())
+        if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
-        player.setGlobalVolume(volume);
+        player.get()->setGlobalVolume(volume);
         return noError;
     }
 
@@ -543,9 +569,10 @@ extern "C"
     /// Returns the volume
     FFI_PLUGIN_EXPORT double getVolume(unsigned int handle)
     {
-        if (!player.isInited() || !player.isValidVoiceHandle(handle))
-            return 0.0f;
-        return player.getVolume(handle);
+        if (player.get() == nullptr || !player.get()->isInited() || 
+            !player.get()->isValidVoiceHandle(handle))
+            return 0.0;
+        return player.get()->getVolume(handle);
     }
 
     /// Set current [handle] volume
@@ -553,9 +580,10 @@ extern "C"
     /// Returns the volume
     FFI_PLUGIN_EXPORT enum PlayerErrors setVolume(unsigned int handle, float volume)
     {
-        if (!player.isInited() || !player.isValidVoiceHandle(handle))
+        if (player.get() == nullptr || !player.get()->isInited() || 
+            !player.get()->isValidVoiceHandle(handle))
             return backendNotInited;
-        player.setVolume(handle, volume);
+        player.get()->setVolume(handle, volume);
         return noError;
     }
 
@@ -565,41 +593,43 @@ extern "C"
     /// Return true if it still exists
     FFI_PLUGIN_EXPORT int getIsValidVoiceHandle(unsigned int handle)
     {
-        if (!player.isInited() || player.getSoundsCount() == 0)
+        if (player.get() == nullptr || !player.get()->isInited() || 
+            player.get()->getSoundsCount() == 0)
             return false;
-        return player.isValidVoiceHandle(handle) ? 1 : 0;
+        return player.get()->isValidVoiceHandle(handle) ? 1 : 0;
     }
 
     /// Returns the number of concurrent sounds that are playing at the moment.
     FFI_PLUGIN_EXPORT unsigned int getActiveVoiceCount()
     {
-        if (!player.isInited())
+        if (player.get() == nullptr || !player.get()->isInited())
             return 0;
-        return player.getActiveVoiceCount();
+        return player.get()->getActiveVoiceCount();
     }
 
     /// Returns the number of concurrent sounds that are playing a specific audio source.
     FFI_PLUGIN_EXPORT int countAudioSource(unsigned int soundHash)
     {
-        if (!player.isInited())
+        if (player.get() == nullptr || !player.get()->isInited())
             return 0;
-        return player.countAudioSource(soundHash);
+        return player.get()->countAudioSource(soundHash);
     }
 
     /// Returns the number of voices the application has told SoLoud to play.
     FFI_PLUGIN_EXPORT unsigned int getVoiceCount()
     {
-        if (!player.isInited())
+        if (player.get() == nullptr || !player.get()->isInited())
             return 0;
-        return player.getVoiceCount();
+        return player.get()->getVoiceCount();
     }
 
     /// Get a sound's protection state.
     FFI_PLUGIN_EXPORT bool getProtectVoice(unsigned int handle)
     {
-        if (!player.isInited() || !player.isValidVoiceHandle(handle))
+        if (player.get() == nullptr || !player.get()->isInited() || 
+            !player.get()->isValidVoiceHandle(handle))
             return false;
-        return player.getProtectVoice(handle);
+        return player.get()->getProtectVoice(handle);
     }
 
     /// Set a sound's protection state.
@@ -614,17 +644,18 @@ extern "C"
     /// [protect] whether to protect or not.
     FFI_PLUGIN_EXPORT void setProtectVoice(unsigned int handle, bool protect)
     {
-        if (!player.isInited() || !player.isValidVoiceHandle(handle))
+        if (player.get() == nullptr || !player.get()->isInited() || 
+            !player.get()->isValidVoiceHandle(handle))
             return;
-        player.setProtectVoice(handle, protect);
+        player.get()->setProtectVoice(handle, protect);
     }
 
     /// Get the current maximum active voice count.
     FFI_PLUGIN_EXPORT unsigned int getMaxActiveVoiceCount()
     {
-        if (!player.isInited())
+        if (player.get() == nullptr || !player.get()->isInited())
             return 0;
-        return player.getMaxActiveVoiceCount();
+        return player.get()->getMaxActiveVoiceCount();
     }
 
     /// Set the current maximum active voice count.
@@ -640,9 +671,9 @@ extern "C"
     /// probably going to make some serious changes in any case.
     FFI_PLUGIN_EXPORT void setMaxActiveVoiceCount(unsigned int maxVoiceCount)
     {
-        if (!player.isInited())
+        if (player.get() == nullptr || !player.get()->isInited())
             return;
-        player.setMaxActiveVoiceCount(maxVoiceCount);
+        player.get()->setMaxActiveVoiceCount(maxVoiceCount);
     }
 
     /////////////////////////////////////////
@@ -653,9 +684,9 @@ extern "C"
     ///
     FFI_PLUGIN_EXPORT enum PlayerErrors fadeGlobalVolume(float to, float time)
     {
-        if (!player.isInited())
+        if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
-        player.fadeGlobalVolume(to, time);
+        player.get()->fadeGlobalVolume(to, time);
         return noError;
     }
 
@@ -663,9 +694,9 @@ extern "C"
     ///
     FFI_PLUGIN_EXPORT enum PlayerErrors fadeVolume(SoLoud::handle handle, float to, float time)
     {
-        if (!player.isInited())
+        if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
-        player.fadeVolume(handle, to, time);
+        player.get()->fadeVolume(handle, to, time);
         return noError;
     }
 
@@ -673,9 +704,9 @@ extern "C"
     ///
     FFI_PLUGIN_EXPORT enum PlayerErrors fadePan(SoLoud::handle handle, float to, float time)
     {
-        if (!player.isInited())
+        if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
-        player.fadePan(handle, to, time);
+        player.get()->fadePan(handle, to, time);
         return noError;
     }
 
@@ -683,9 +714,9 @@ extern "C"
     ///
     FFI_PLUGIN_EXPORT enum PlayerErrors fadeRelativePlaySpeed(SoLoud::handle handle, float to, float time)
     {
-        if (!player.isInited())
+        if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
-        player.fadeRelativePlaySpeed(handle, to, time);
+        player.get()->fadeRelativePlaySpeed(handle, to, time);
         return noError;
     }
 
@@ -693,9 +724,9 @@ extern "C"
     ///
     FFI_PLUGIN_EXPORT enum PlayerErrors schedulePause(SoLoud::handle handle, float time)
     {
-        if (!player.isInited())
+        if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
-        player.schedulePause(handle, time);
+        player.get()->schedulePause(handle, time);
         return noError;
     }
 
@@ -703,9 +734,9 @@ extern "C"
     ///
     FFI_PLUGIN_EXPORT enum PlayerErrors scheduleStop(SoLoud::handle handle, float time)
     {
-        if (!player.isInited())
+        if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
-        player.scheduleStop(handle, time);
+        player.get()->scheduleStop(handle, time);
         return noError;
     }
 
@@ -713,9 +744,9 @@ extern "C"
     ///
     FFI_PLUGIN_EXPORT enum PlayerErrors oscillateVolume(SoLoud::handle handle, float from, float to, float time)
     {
-        if (!player.isInited())
+        if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
-        player.oscillateVolume(handle, from, to, time);
+        player.get()->oscillateVolume(handle, from, to, time);
         return noError;
     }
 
@@ -723,9 +754,9 @@ extern "C"
     ///
     FFI_PLUGIN_EXPORT enum PlayerErrors oscillatePan(SoLoud::handle handle, float from, float to, float time)
     {
-        if (!player.isInited())
+        if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
-        player.oscillatePan(handle, from, to, time);
+        player.get()->oscillatePan(handle, from, to, time);
         return noError;
     }
 
@@ -733,9 +764,9 @@ extern "C"
     ///
     FFI_PLUGIN_EXPORT enum PlayerErrors oscillateRelativePlaySpeed(SoLoud::handle handle, float from, float to, float time)
     {
-        if (!player.isInited())
+        if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
-        player.oscillateRelativePlaySpeed(handle, from, to, time);
+        player.get()->oscillateRelativePlaySpeed(handle, from, to, time);
         return noError;
     }
 
@@ -743,9 +774,9 @@ extern "C"
     ///
     FFI_PLUGIN_EXPORT enum PlayerErrors oscillateGlobalVolume(float from, float to, float time)
     {
-        if (!player.isInited())
+        if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
-        player.oscillateGlobalVolume(from, to, time);
+        player.get()->oscillateGlobalVolume(from, to, time);
         return noError;
     }
 
@@ -762,9 +793,9 @@ extern "C"
     FFI_PLUGIN_EXPORT enum PlayerErrors isFilterActive(enum FilterType filterType, int *index)
     {
         *index = -1;
-        if (!player.isInited())
+        if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
-        *index = player.mFilters.isFilterActive(filterType);
+        *index = player.get()->mFilters.isFilterActive(filterType);
         return noError;
     }
 
@@ -777,9 +808,9 @@ extern "C"
         enum FilterType filterType, int *paramsCount, char **names)
     {
         *paramsCount = 0;
-        if (!player.isInited())
+        if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
-        std::vector<std::string> pNames = player.mFilters.getFilterParamNames(filterType);
+        std::vector<std::string> pNames = player.get()->mFilters.getFilterParamNames(filterType);
         *paramsCount = static_cast<int>(pNames.size());
         *names = (char *)malloc(sizeof(char *) * *paramsCount);
         printf("C  paramsCount: %p  **names: %p\n", paramsCount, names);
@@ -797,9 +828,9 @@ extern "C"
     /// 
     FFI_PLUGIN_EXPORT enum PlayerErrors addGlobalFilter(enum FilterType filterType)
     {
-        if (!player.isInited())
+        if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
-        return player.mFilters.addGlobalFilter(filterType);
+        return player.get()->mFilters.addGlobalFilter(filterType);
     }
 
     /// Remove the filter [filterType].
@@ -809,9 +840,9 @@ extern "C"
     /// 
     FFI_PLUGIN_EXPORT enum PlayerErrors removeGlobalFilter(enum FilterType filterType)
     {
-        if (!player.isInited())
+        if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
-        if (!player.mFilters.removeGlobalFilter(filterType))
+        if (!player.get()->mFilters.removeGlobalFilter(filterType))
             return filterNotFound;
         return noError;
     }
@@ -824,9 +855,9 @@ extern "C"
     /// 
     FFI_PLUGIN_EXPORT enum PlayerErrors setFxParams(enum FilterType filterType, int attributeId, float value)
     {
-        if (!player.isInited())
+        if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
-        player.mFilters.setFxParams(filterType, attributeId, value);
+        player.get()->mFilters.setFxParams(filterType, attributeId, value);
         return noError;
     }
 
@@ -837,7 +868,9 @@ extern "C"
     /// 
     FFI_PLUGIN_EXPORT float getFxParams(enum FilterType filterType, int attributeId)
     {
-        return player.mFilters.getFxParams(filterType, attributeId);
+        if (player.get() == nullptr || !player.get()->isInited())
+            return backendNotInited;
+        return player.get()->mFilters.getFxParams(filterType, attributeId);
     }
 
     /////////////////////////////////////////
@@ -868,10 +901,11 @@ extern "C"
         double loopingStartAt,
         unsigned int *handle)
     {
-        if (!player.isInited() || player.getSoundsCount() == 0)
+        if (player.get() == nullptr || !player.get()->isInited() || 
+            player.get()->getSoundsCount() == 0)
             return backendNotInited;
 
-        *handle = player.play3d(
+        *handle = player.get()->play3d(
             soundHash,
             posX, posY, posZ,
             velX, velY, velZ,
@@ -895,18 +929,20 @@ extern "C"
     /// and that the environment is dry air at around 20 degrees Celsius.
     FFI_PLUGIN_EXPORT void set3dSoundSpeed(float speed)
     {
-        if (!player.isInited() || player.getSoundsCount() == 0)
+        if (player.get() == nullptr || !player.get()->isInited() || 
+            player.get()->getSoundsCount() == 0)
             return;
-        player.set3dSoundSpeed(speed);
-        player.update3dAudio();
+        player.get()->set3dSoundSpeed(speed);
+        player.get()->update3dAudio();
     }
 
     /// Get the sound speed
     FFI_PLUGIN_EXPORT float get3dSoundSpeed()
     {
-        if (!player.isInited() || player.getSoundsCount() == 0)
+        if (player.get() == nullptr || !player.get()->isInited() || 
+            player.get()->getSoundsCount() == 0)
             return 0.0f;
-        return player.get3dSoundSpeed();
+        return player.get()->get3dSoundSpeed();
     }
 
     /// You can set the position, at-vector, up-vector and velocity
@@ -917,14 +953,15 @@ extern "C"
         float upX, float upY, float upZ,
         float velocityX, float velocityY, float velocityZ)
     {
-        if (!player.isInited() || player.getSoundsCount() == 0)
+        if (player.get() == nullptr || !player.get()->isInited() || 
+            player.get()->getSoundsCount() == 0)
             return;
-        player.set3dListenerParameters(
+        player.get()->set3dListenerParameters(
             posX, posY, posZ,
             atX, atY, atZ,
             upX, upY, upZ,
             velocityX, velocityY, velocityZ);
-        player.update3dAudio();
+        player.get()->update3dAudio();
     }
 
     /// You can set the position parameter of the 3d audio listener
@@ -933,10 +970,11 @@ extern "C"
         float posY,
         float posZ)
     {
-        if (!player.isInited() || player.getSoundsCount() == 0)
+        if (player.get() == nullptr || !player.get()->isInited() || 
+            player.get()->getSoundsCount() == 0)
             return;
-        player.set3dListenerPosition(posX, posY, posZ);
-        player.update3dAudio();
+        player.get()->set3dListenerPosition(posX, posY, posZ);
+        player.get()->update3dAudio();
     }
 
     /// You can set the "at" vector parameter of the 3d audio listener
@@ -945,10 +983,11 @@ extern "C"
         float atY,
         float atZ)
     {
-        if (!player.isInited() || player.getSoundsCount() == 0)
+        if (player.get() == nullptr || !player.get()->isInited() || 
+            player.get()->getSoundsCount() == 0)
             return;
-        player.set3dListenerAt(atX, atY, atZ);
-        player.update3dAudio();
+        player.get()->set3dListenerAt(atX, atY, atZ);
+        player.get()->update3dAudio();
     }
 
     /// You can set the "up" vector parameter of the 3d audio listener
@@ -957,10 +996,11 @@ extern "C"
         float upY,
         float upZ)
     {
-        if (!player.isInited() || player.getSoundsCount() == 0)
+        if (player.get() == nullptr || !player.get()->isInited() || 
+            player.get()->getSoundsCount() == 0)
             return;
-        player.set3dListenerAt(upX, upY, upZ);
-        player.update3dAudio();
+        player.get()->set3dListenerAt(upX, upY, upZ);
+        player.get()->update3dAudio();
     }
 
     /// You can set the listener's velocity vector parameter
@@ -969,10 +1009,11 @@ extern "C"
         float velocityY,
         float velocityZ)
     {
-        if (!player.isInited() || player.getSoundsCount() == 0)
+        if (player.get() == nullptr || !player.get()->isInited() || 
+            player.get()->getSoundsCount() == 0)
             return;
-        player.set3dListenerVelocity(velocityX, velocityY, velocityZ);
-        player.update3dAudio();
+        player.get()->set3dListenerVelocity(velocityX, velocityY, velocityZ);
+        player.get()->update3dAudio();
     }
 
     /// You can set the position and velocity parameters of a live
@@ -982,12 +1023,13 @@ extern "C"
         float posX, float posY, float posZ,
         float velocityX, float velocityY, float velocityZ)
     {
-        if (!player.isInited() || player.getSoundsCount() == 0)
+        if (player.get() == nullptr || !player.get()->isInited() || 
+            player.get()->getSoundsCount() == 0)
             return;
-        player.set3dSourceParameters(handle,
+        player.get()->set3dSourceParameters(handle,
                                      posX, posY, posZ,
                                      velocityX, velocityY, velocityZ);
-        player.update3dAudio();
+        player.get()->update3dAudio();
     }
 
     /// You can set the position parameters of a live 3d audio source
@@ -997,10 +1039,11 @@ extern "C"
         float posY,
         float posZ)
     {
-        if (!player.isInited() || player.getSoundsCount() == 0)
+        if (player.get() == nullptr || !player.get()->isInited() || 
+            player.get()->getSoundsCount() == 0)
             return;
-        player.set3dSourcePosition(handle, posX, posY, posZ);
-        player.update3dAudio();
+        player.get()->set3dSourcePosition(handle, posX, posY, posZ);
+        player.get()->update3dAudio();
     }
 
     /// You can set the velocity parameters of a live 3d audio source
@@ -1010,10 +1053,11 @@ extern "C"
         float velocityY,
         float velocityZ)
     {
-        if (!player.isInited() || player.getSoundsCount() == 0)
+        if (player.get() == nullptr || !player.get()->isInited() || 
+            player.get()->getSoundsCount() == 0)
             return;
-        player.set3dSourceVelocity(handle, velocityX, velocityY, velocityZ);
-        player.update3dAudio();
+        player.get()->set3dSourceVelocity(handle, velocityX, velocityY, velocityZ);
+        player.get()->update3dAudio();
     }
 
     /// You can set the minimum and maximum distance parameters
@@ -1023,10 +1067,11 @@ extern "C"
         float minDistance,
         float maxDistance)
     {
-        if (!player.isInited() || player.getSoundsCount() == 0)
+        if (player.get() == nullptr || !player.get()->isInited() || 
+            player.get()->getSoundsCount() == 0)
             return;
-        player.set3dSourceMinMaxDistance(handle, minDistance, maxDistance);
-        player.update3dAudio();
+        player.get()->set3dSourceMinMaxDistance(handle, minDistance, maxDistance);
+        player.get()->update3dAudio();
     }
 
     /// You can change the attenuation model and rolloff factor parameters of
@@ -1042,10 +1087,11 @@ extern "C"
         unsigned int attenuationModel,
         float attenuationRolloffFactor)
     {
-        if (!player.isInited() || player.getSoundsCount() == 0)
+        if (player.get() == nullptr || !player.get()->isInited() || 
+            player.get()->getSoundsCount() == 0)
             return;
-        player.set3dSourceAttenuation(handle, attenuationModel, attenuationRolloffFactor);
-        player.update3dAudio();
+        player.get()->set3dSourceAttenuation(handle, attenuationModel, attenuationRolloffFactor);
+        player.get()->update3dAudio();
     }
 
     /// You can change the doppler factor of a live 3d audio source
@@ -1054,10 +1100,11 @@ extern "C"
         float dopplerFactor)
     {
 
-        if (!player.isInited() || player.getSoundsCount() == 0)
+        if (player.get() == nullptr || !player.get()->isInited() || 
+            player.get()->getSoundsCount() == 0)
             return;
-        player.set3dSourceDopplerFactor(handle, dopplerFactor);
-        player.update3dAudio();
+        player.get()->set3dSourceDopplerFactor(handle, dopplerFactor);
+        player.get()->update3dAudio();
     }
 
     /////////// JUST FOR TEST //////////
@@ -1078,12 +1125,12 @@ extern "C"
         // soloud.play(sound2, -1.0f, 0.0f, 0, 0);
 
         // unsigned int handle;
-        // player.play("/home/deimos/5/01 - Theme From Farscape.mp3", handle);
-        // player.play("/home/deimos/5/Music/ROSS/DANCE/Alphaville - Big In Japan (Original Version).mp3", handle);
+        // player.get()->play("/home/deimos/5/01 - Theme From Farscape.mp3", handle);
+        // player.get()->play("/home/deimos/5/Music/ROSS/DANCE/Alphaville - Big In Japan (Original Version).mp3", handle);
 
         // unsigned int hash;
-        // player.loadWaveform(SoLoud::Soloud::WAVE_SQUARE, true, 0.25f, 1.0f, hash);
-        // player.play(hash);
+        // player.get()->loadWaveform(SoLoud::Soloud::WAVE_SQUARE, true, 0.25f, 1.0f, hash);
+        // player.get()->play(hash);
     }
 
 #ifdef __cplusplus

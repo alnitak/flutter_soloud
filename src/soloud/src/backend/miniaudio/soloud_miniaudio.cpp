@@ -43,6 +43,20 @@ namespace SoLoud
 #define MA_NO_WAV
 #define MA_NO_FLAC
 #define MA_NO_MP3
+#define MA_NO_AUTOINITIALIZATION
+#define MA_NO_VORBIS
+#define MA_NO_OPUS
+#define MA_NO_MIDI
+
+// Seems that on miniaudio there is still an issue when uninitializing the device
+// addressed by this issue: https://github.com/mackron/miniaudio/issues/466
+// For me this happens using AAudio on android <= 10 (but not on Samsung Galaxy S9+).
+// Disablig AAudio in favor of OpenSL is a workaround to prevent the crash.
+#if defined(__ANDROID__) && (__ANDROID_API__ <= 29)
+#define MA_NO_AAUDIO
+#endif
+// #define MA_DEBUG_OUTPUT
+// #define MINIAUDIO_IMPLEMENTATION
 #include "miniaudio.h"
 #include <math.h>
 

@@ -40,6 +40,8 @@ typedef enum PlayerErrors
     maxNumberOfFiltersReached = 14,
     /// The filter has already been added.
     filterAlreadyAdded = 15,
+    /// Player already inited.
+    playerAlreadyInited = 16,
 } PlayerErrors_t;
 
 /// Possible capture errors
