@@ -1402,7 +1402,6 @@ interface class SoLoud {
   /// required, SoLoud can be modified to support more. But seriously, if you
   /// need more than 4095 sounds at once, you're probably going to make
   /// some serious changes in any case.
-  // TODO(filiph): Make sure the set maxVoiceCount _doesn't_ survive deinit
   void setMaxActiveVoiceCount(int maxVoiceCount) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();

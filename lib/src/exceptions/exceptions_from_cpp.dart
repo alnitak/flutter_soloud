@@ -151,3 +151,14 @@ class SoLoudFilterAlreadyAddedException extends SoLoudCppException {
   String get description => 'Asking to add a filter that has '
       'already been added. Only one of each type is allowed (on the C++ side).';
 }
+
+/// An exception that is thrown when SoLoud (C++) cannot add a filter
+/// that has already been added.
+class SoLoudPlayerAlreadyInitializedException extends SoLoudCppException {
+  /// Creates a new [SoLoudPlayerAlreadyInitializedException].
+  const SoLoudPlayerAlreadyInitializedException([super.message]);
+
+  @override
+  String get description => 'The player has already been initialized '
+      '(on the C++ side).';
+}

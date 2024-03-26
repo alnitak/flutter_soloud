@@ -101,7 +101,10 @@ enum PlayerErrors {
   maxNumberOfFiltersReached(14),
 
   /// The filter has already been added.
-  filterAlreadyAdded(15);
+  filterAlreadyAdded(15),
+
+  /// Player already inited.
+  playerAlreadyInited(16);
 
   const PlayerErrors(this.value);
 
@@ -147,6 +150,8 @@ enum PlayerErrors {
         return 'The maximum number of filters has been reached (default is 8)!';
       case PlayerErrors.filterAlreadyAdded:
         return 'Filter not found!';
+      case PlayerErrors.playerAlreadyInited:
+        return 'The player has already been inited!';
     }
   }
 

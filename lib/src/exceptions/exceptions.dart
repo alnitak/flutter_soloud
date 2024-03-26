@@ -97,6 +97,8 @@ abstract class SoLoudCppException extends SoLoudException {
         return const SoLoudMaxFilterNumberReachedException();
       case PlayerErrors.filterAlreadyAdded:
         return const SoLoudFilterAlreadyAddedException();
+      case PlayerErrors.playerAlreadyInited:
+        return const SoLoudPlayerAlreadyInitializedException();
     }
   }
 }

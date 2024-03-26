@@ -2,6 +2,7 @@
 #include "player.h"
 #include "soloud.h"
 #include "soloud_wav.h"
+// #include "soloud_thread.h"
 #include "soloud_wavstream.h"
 #include "synth/basic_wave.h"
 
@@ -23,7 +24,7 @@ Player::~Player()
 
 PlayerErrors Player::init()
 {
-    if (mInited) dispose();
+    if (mInited) return playerAlreadyInited;
     
     std::lock_guard<std::mutex> guard(init_deinit_mutex);
 
@@ -32,7 +33,7 @@ PlayerErrors Player::init()
         SoLoud::Soloud::CLIP_ROUNDOFF,
         SoLoud::Soloud::MINIAUDIO, 44100, 2048, 2U);
     // soloud.init(1U, 0U, 44100, 2048, 2U);
-    // SoLoud::Thread::sleep(100);
+    // SoLoud::Thread::sleep(1000);
     if (result == SoLoud::SO_NO_ERROR)
         mInited = true;
     else
@@ -95,6 +96,8 @@ const std::string Player::getErrorString(PlayerErrors errorCode) const
         return "error: max number of filter reached!";
     case filterAlreadyAdded:
         return "error: filter already added!";
+    case playerAlreadyInited:
+        return "error: the player is already initialized!";
     }
     return "Other error";
 }
