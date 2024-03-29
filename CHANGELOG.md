@@ -1,3 +1,6 @@
+### 2.0.0-pre.X (XX XXX 2024)
+- getLoopPoint now returns Duration
+
 ### 2.0.0-pre.4 (21 Mar 2024)
 - some little fixes.
 
