@@ -1156,7 +1156,7 @@ interface class SoLoud {
   /// Returns the time in seconds.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
-  double getLoopPoint(SoundHandle handle) {
+  Duration getLoopPoint(SoundHandle handle) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
