@@ -492,9 +492,9 @@ class FlutterSoLoudFfi {
   /// Get sound loop point value.
   ///
   /// [handle]
-  /// Returns the time in seconds.
-  double getLoopPoint(SoundHandle handle) {
-    return _getLoopPoint(handle.id);
+  /// Returns the duration.
+  Duration getLoopPoint(SoundHandle handle) {
+    return _getLoopPoint(handle.id).toDuration();
   }
 
   late final _getLoopPointPtr =

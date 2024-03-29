@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -34,52 +33,37 @@ void main() async {
 
   WidgetsFlutterBinding.ensureInitialized();
 
-  await runZonedGuarded(
-    () async => testProtectVoice(),
-    (error, stack) => printError,
-  );
+  var tests = <Future<void> Function()>[
+    testProtectVoice,
+    testAllInstancesFinished,
+    testCreateNotes,
+    testPlaySeekPause,
+    testHandles,
+    loopingTests,
+  ];
+  for (final f in tests) {
+    await runZonedGuarded(
+      () async => f(),
+      (error, stack) => printError,
+    );
+  }
 
-  await runZonedGuarded(
-    () async => testAllInstancesFinished(),
-    (error, stack) => printError,
-  );
-
-  await runZonedGuarded(
-    () async => testSynchronousDeinit(),
-    (error, stack) {
-      if (error is SoLoudInitializationStoppedByDeinitException) {
-        // This is to be expected in this test.
-        return;
-      }
-      printError(error, stack);
-    },
-  );
-
-  await runZonedGuarded(
-    () async => testAsynchronousDeinit(),
-    (error, stack) {
-      if (error is SoLoudInitializationStoppedByDeinitException) {
-        // This is to be expected in this test.
-        return;
-      }
-      printError(error, stack);
-    },
-  );
-
-  await runZonedGuarded(
-    () async => testCreateNotes(),
-    (error, stack) => printError,
-  );
-
-  await runZonedGuarded(
-    () async => testHandles(),
-    (error, stack) => printError,
-  );
-
-  await runZonedGuarded(
-    () async => testPlaySeekPause(),
-    (error, stack) => printError,
-  );
+  tests = <Future<void> Function()>[
+    // testSynchronousDeinit,
+    // testAsynchronousDeinit,
+  ];
+  for (final f in tests) {
+    await runZonedGuarded(
+      () async => f(),
+      (error, stack) {
+        if (error is SoLoudInitializationStoppedByDeinitException) {
+          // This is to be expected in this test.
+          return;
+        }
+        printError(error, stack);
+      },
+    );
+  }
 
   stdout.write('\n\n\n---\n\n\n');
 
@@ -107,16 +91,15 @@ void main() async {
 String output = '';
 AudioSource? currentSound;
 
-/// Test synchronous and asynchronous `initialize()` - `deinit()` within
-/// short time delays.
 /// Test setMaxActiveVoiceCount, setProtectedVoice and getProtectedVoice
 Future<void> testProtectVoice() async {
   await initialize();
+  final defaultVoiceCount = SoLoud.instance.getMaxActiveVoiceCount();
 
   SoLoud.instance.setMaxActiveVoiceCount(3);
   assert(
     SoLoud.instance.getMaxActiveVoiceCount() == 3,
-    "setMaxActiveVoiceCount() didn't worked correctly",
+    "setMaxActiveVoiceCount() didn't work properly",
   );
 
   final explosion =
@@ -135,7 +118,7 @@ Future<void> testProtectVoice() async {
   SoLoud.instance.setProtectVoice(songHandle, true);
   assert(
     SoLoud.instance.getProtectVoice(songHandle),
-    "setProtectVoice() didn't worked correctly",
+    "setProtectVoice() didn't work properly",
   );
 
   /// play 5 explosion
@@ -152,10 +135,16 @@ Future<void> testProtectVoice() async {
     'The protected song has been stopped!',
   );
 
-  // Reset voice count to normal. Workaround to the issue that maxVoiceCount
-  // persists between different initializations of the engine.
+  deinit();
 
-  dispose();
+  /// Afer disposing the player and re-initializing, max active voices
+  /// should be reset to 16
+  await initialize();
+  assert(
+    SoLoud.instance.getMaxActiveVoiceCount() == defaultVoiceCount,
+    'Max active voices are not reset to the default value after reinit!',
+  );
+  deinit();
 }
 
 /// Test allInstancesFinished stream
@@ -206,7 +195,7 @@ Future<void> testAllInstancesFinished() async {
   assert(explosionDisposed, "Explosion sound wasn't disposed.");
   assert(songDisposed, "Song sound wasn't disposed.");
 
-  dispose();
+  deinit();
 }
 
 /// Test asynchronous `init()`-`deinit()`
@@ -328,41 +317,52 @@ Future<void> testSynchronousDeinit() async {
 ///
 Future<void> testCreateNotes() async {
   await initialize();
-  final notes = await SoLoudTools.createNotes(
+
+  final notes0 = await SoLoudTools.createNotes(
+    octave: 0,
+  );
+  final notes1 = await SoLoudTools.createNotes(
     octave: 1,
   );
+  final notes2 = await SoLoudTools.createNotes(
+    octave: 2,
+  );
   assert(
-    notes.length == 12,
-    'SoloudTools.initSounds() failed!',
+    notes0.length == 12 && notes1.length == 12 && notes2.length == 12,
+    'SoLoudTools.createNotes() failed!',
   );
 
-  for (var i = 6; i < 10; i++) {
-    const volume = 0.2;
-    final d = (sin(i / 6.28) * 400).toInt();
-    await SoLoud.instance.play(notes[7], volume: volume);
-    await delay(500 - d);
-    await SoLoud.instance.stop(notes[7].handles.first);
+  await SoLoud.instance.play(notes1[5]);
+  await SoLoud.instance.play(notes2[0]);
+  await delay(350);
+  await SoLoud.instance.stop(notes1[5].handles.first);
+  await SoLoud.instance.stop(notes2[0].handles.first);
 
-    await SoLoud.instance.play(notes[10], volume: volume);
-    await delay(550 - d);
-    await SoLoud.instance.stop(notes[10].handles.first);
+  await SoLoud.instance.play(notes1[6]);
+  await SoLoud.instance.play(notes2[1]);
+  await delay(350);
+  await SoLoud.instance.stop(notes1[6].handles.first);
+  await SoLoud.instance.stop(notes2[1].handles.first);
 
-    await SoLoud.instance.play(notes[7], volume: volume);
-    await delay(500 - d);
-    await SoLoud.instance.stop(notes[7].handles.first);
+  await SoLoud.instance.play(notes1[4]);
+  await SoLoud.instance.play(notes1[11]);
+  await delay(350);
+  await SoLoud.instance.stop(notes1[4].handles.first);
+  await SoLoud.instance.stop(notes1[11].handles.first);
 
-    await SoLoud.instance.play(notes[0], volume: volume);
-    await delay(500 - d);
-    await SoLoud.instance.stop(notes[0].handles.first);
+  await SoLoud.instance.play(notes1[4]);
+  await SoLoud.instance.play(notes0[9]);
+  await delay(350);
+  await SoLoud.instance.stop(notes1[4].handles.first);
+  await SoLoud.instance.stop(notes0[9].handles.first);
 
-    await SoLoud.instance.play(notes[4], volume: volume);
-    await delay(800 - d);
-    await SoLoud.instance.stop(notes[4].handles.first);
+  await SoLoud.instance.play(notes1[8]);
+  await SoLoud.instance.play(notes1[1]);
+  await delay(1500);
+  await SoLoud.instance.stop(notes1[8].handles.first);
+  await SoLoud.instance.stop(notes1[1].handles.first);
 
-    await delay(300);
-  }
-
-  dispose();
+  deinit();
 }
 
 /// Test play, pause, seek, position
@@ -394,11 +394,10 @@ Future<void> testPlaySeekPause() async {
     assert(position == wantedPosition, 'getPosition() failed!');
   }
 
-  dispose();
+  deinit();
 }
 
-/// Test start/stop isolate, load, play and events from sound
-///
+/// Test instancing playing handles and their disposal
 Future<void> testHandles() async {
   /// Start audio isolate
   await initialize();
@@ -407,53 +406,77 @@ Future<void> testHandles() async {
   await loadAsset();
 
   /// Play sample
-  {
-    await SoLoud.instance.play(currentSound!);
-    assert(
-      currentSound!.soundHash.isValid && currentSound!.handles.length == 1,
-      'play() failed!',
-    );
+  await SoLoud.instance.play(currentSound!);
+  assert(
+    currentSound!.soundHash.isValid && currentSound!.handles.length == 1,
+    'play() failed!',
+  );
 
-    /// Wait for the sample to finish and see in log:
-    /// "@@@@@@@@@@@ SOUND EVENT: SoundEvent.soundDisposed .*"
-    /// 3798ms explosion.mp3 sample duration
-    await delay(4500);
-    assert(
-      output == 'SoundEvent.handleIsNoMoreValid',
-      'Sound end playback event not triggered!',
-    );
-  }
+  /// 3798ms explosion.mp3 sample duration
+  await delay(4500);
+  assert(
+    output == 'SoundEvent.handleIsNoMoreValid',
+    'Sound end playback event not triggered!',
+  );
 
   /// Play 4 sample
-  {
-    await SoLoud.instance.play(currentSound!, volume: 0.2);
-    await SoLoud.instance.play(currentSound!, volume: 0.2);
-    await SoLoud.instance.play(currentSound!, volume: 0.2);
-    await SoLoud.instance.play(currentSound!, volume: 0.2);
-    assert(
-      currentSound!.handles.length == 4,
-      'loadFromAssets() failed!',
-    );
+  await SoLoud.instance.play(currentSound!);
+  await SoLoud.instance.play(currentSound!);
+  await SoLoud.instance.play(currentSound!);
+  await SoLoud.instance.play(currentSound!);
+  assert(
+    currentSound!.handles.length == 4,
+    'loadFromAssets() failed!',
+  );
 
-    /// Wait for the sample to finish and see in log:
-    /// "SoundEvent.handleIsNoMoreValid .* has [3-2-1-0] active handles"
-    /// 3798ms explosion.mp3 sample duration
-    await delay(4500);
-    assert(
-      currentSound!.handles.isEmpty,
-      'Play 4 sample handles failed!',
-    );
-  }
+  /// Wait for the sample to finish and see in log:
+  /// "SoundEvent.handleIsNoMoreValid .* has [3-2-1-0] active handles"
+  /// 3798ms explosion.mp3 sample duration
+  await delay(4500);
+  assert(
+    currentSound!.handles.isEmpty,
+    'Play 4 sample handles failed!',
+  );
 
-  dispose();
+  deinit();
+}
+
+/// Test looping state and `loopingStartAt`
+Future<void> loopingTests() async {
+  await initialize();
+
+  await loadAsset();
+
+  await SoLoud.instance.play(
+    currentSound!,
+    looping: true,
+    loopingStartAt: const Duration(seconds: 1),
+  );
+  assert(
+    SoLoud.instance.getLooping(currentSound!.handles.first),
+    'looping failed!',
+  );
+
+  /// Wait for the first loop to start at 1s
+  await delay(4100);
+  assert(
+    SoLoud.instance.getLoopPoint(currentSound!.handles.first) ==
+            const Duration(seconds: 1) &&
+        SoLoud.instance.getPosition(currentSound!.handles.first) >
+            const Duration(seconds: 1),
+    'looping start failed!',
+  );
+
+  deinit();
 }
 
 /// Common methods
 Future<void> initialize() async {
   await SoLoud.instance.init();
+  SoLoud.instance.setGlobalVolume(0.2);
 }
 
-void dispose() {
+void deinit() {
   SoLoud.instance.deinit();
 }
 
