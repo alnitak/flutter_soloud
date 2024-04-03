@@ -90,7 +90,7 @@ class MyHomePage extends StatelessWidget {
                 child: TabBar(
                   isScrollable: true,
                   onTap: (value) {
-                    SoLoud.instance.disposeAllSound();
+                    SoLoud.instance.disposeAllSources();
                   },
                   tabs: const [
                     Tab(text: 'hello world!'),

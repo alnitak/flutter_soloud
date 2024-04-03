@@ -1,34 +1,34 @@
-/// Filters enum
+/// The different types of audio filters.
 enum FilterType {
-  ///
+  /// A biquad resonant filter.
   biquadResonantFilter,
 
-  ///
+  /// An equalizer filter.
   eqFilter,
 
-  ///
+  /// An echo filter.
   echoFilter,
 
-  ///
+  /// A lo-fi filter.
   lofiFilter,
 
-  ///
+  /// A flanger filter.
   flangerFilter,
 
-  ///
+  /// A bass-boost filter.
   bassboostFilter,
 
-  ///
+  /// A wave shaper filter.
   waveShaperFilter,
 
-  ///
+  /// A robotize filter.
   robotizeFilter,
 
-  ///
+  /// A reverb filter.
   freeverbFilter,
 }
 
-///
+/// The parameters for each filter.
 typedef FxParams = ({
   String title,
   List<String> names,
@@ -76,7 +76,7 @@ const FxParams fxEcho = (
   defs: [1, 0.3, 0.7, 0],
 );
 
-/// Lofi filter
+/// Lo-fi filter
 const FxParams fxLofi = (
   title: 'Lofi',
   names: ['Wet', 'Samplerate', 'Bitdepth'],
@@ -94,7 +94,7 @@ const FxParams fxFlanger = (
   defs: [1, 0.005, 10],
 );
 
-/// Bassboost filter
+/// Bass-boost filter
 const FxParams fxBassboost = (
   title: 'Bassboost',
   names: ['Wet', 'Boost'],
@@ -123,7 +123,7 @@ const FxParams fxRobotize = (
   defs: [1, 30, 0],
 );
 
-/// Freeverb filter
+/// Freeverb (reverb) filter
 const FxParams fxFreeverb = (
   title: 'Freeverb',
 

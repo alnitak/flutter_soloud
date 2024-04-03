@@ -86,7 +86,7 @@ class _PageHelloFlutterSoLoudState extends State<PageHelloFlutterSoLoud> {
     /// stop any previous sound loaded
     if (currentSound != null) {
       try {
-        await SoLoud.instance.disposeSound(currentSound!);
+        await SoLoud.instance.disposeSource(currentSound!);
       } catch (e) {
         _log.severe('dispose error', e);
         return;

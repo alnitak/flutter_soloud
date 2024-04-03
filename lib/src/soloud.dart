@@ -20,22 +20,25 @@ import 'package:http/http.dart' as http;
 import 'package:logging/logging.dart';
 import 'package:meta/meta.dart';
 
-/// The events exposed by the plugin
+/// The events exposed by the plugin.
 enum AudioEvent {
-  /// emitted when audio isolate is started
+  /// Emitted when audio isolate is started.
   isolateStarted,
 
-  /// emitted when audio isolate is stopped
+  /// Emitted when audio isolate is stopped.
   isolateStopped,
 
-  /// emitted when audio capture is started
+  /// Emitted when audio capture is started.
   captureStarted,
 
-  /// emitted when audio capture is stopped
+  /// Emitted when audio capture is stopped.
   captureStopped,
 }
 
 /// The main class to call all the audio methods that play sounds.
+///
+/// This class has a singleton [instance] which represents the (also singleton)
+/// instance of the SoLoud (C++) engine.
 ///
 /// For methods that _capture_ sounds, use [SoLoudCapture].
 interface class SoLoud {
@@ -217,7 +220,8 @@ interface class SoLoud {
   /// more general initialization process, this field is only an internal
   /// control mechanism. Users should use [initialized] instead.
   ///
-  /// The field is useful in [disposeAllSound], which is called from `shutdown`
+  /// The field is useful in [disposeAllSources],
+  /// which is called from `shutdown`
   /// (so [isInitialized] is already `false` at that point).
   ///
   // TODO(filiph): check if still needed
@@ -233,7 +237,7 @@ interface class SoLoud {
   /// Backing of [activeSounds].
   final List<AudioSource> _activeSounds = [];
 
-  /// The sounds that are currently _playing_.
+  /// The sounds that are _currently being played_.
   Iterable<AudioSource> get activeSounds => _activeSounds;
 
   /// Wait for the isolate to return after the event has been completed.
@@ -489,7 +493,7 @@ interface class SoLoud {
   }
 
   /// Stops the engine and disposes of all resources, including sounds
-  /// and the audio isolate in an synchronous way.
+  /// and the audio isolate in a synchronous way.
   ///
   /// This method is meant to be called when exiting the app. For example
   /// within the `dispose()` of the uppermost widget in the tree
@@ -631,7 +635,7 @@ interface class SoLoud {
     _log.finest('_disposeEngine() called');
     if (_isolate == null || !_isEngineInitialized) return false;
 
-    await disposeAllSound();
+    await disposeAllSources();
 
     /// first stop the loop
     await _stopLoop();
@@ -651,19 +655,24 @@ interface class SoLoud {
   /// Load a new sound to be played once or multiple times later, from
   /// the file system.
   ///
-  /// [completeFileName] the complete file path.
-  /// [LoadMode] if `LoadMode.memory`, the whole uncompressed RAW PCM
+  /// Provide the complete [path] of the file to be played.
+  ///
+  /// When [mode] is [LoadMode.memory], the whole uncompressed RAW PCM
   /// audio is loaded into memory. Used to prevent gaps or lags
   /// when seeking/starting a sound (less CPU, more memory allocated).
-  /// If `LoadMode.disk` is used, the audio data is loaded
+  /// If [LoadMode.disk] is used instead, the audio data is loaded
   /// from the given file when needed (more CPU, less memory allocated).
-  /// See the [seek] note problem when using [LoadMode] = `LoadMode.disk`.
-  /// Default is `LoadMode.memory`.
+  /// See the [seek] note problem when using [LoadMode.disk].
+  /// The default is [LoadMode.memory].
+  ///
   /// Returns the new sound as [AudioSource].
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// If the file is already loaded, this is a no-op (but a warning
+  /// will be produced in the log).
   Future<AudioSource> loadFile(
-    String completeFileName, {
+    String path, {
     LoadMode mode = LoadMode.memory,
   }) async {
     if (!isInitialized) {
@@ -672,12 +681,12 @@ interface class SoLoud {
     _mainToIsolateStream?.send(
       {
         'event': MessageEvents.loadFile,
-        'args': (completeFileName: completeFileName, mode: mode),
+        'args': (completeFileName: path, mode: mode),
       },
     );
     final ret = (await _waitForEvent(
       MessageEvents.loadFile,
-      (completeFileName: completeFileName, mode: mode),
+      (completeFileName: path, mode: mode),
     )) as ({PlayerErrors error, AudioSource? sound});
 
     _logPlayerError(ret.error, from: 'loadFile() result');
@@ -687,7 +696,7 @@ interface class SoLoud {
       _activeSounds.add(ret.sound!);
       return ret.sound!;
     } else if (ret.error == PlayerErrors.fileAlreadyLoaded) {
-      _log.warning(() => "Sound '$completeFileName' was already loaded. "
+      _log.warning(() => "Sound '$path' was already loaded. "
           'Prefer loading only once, and reusing the loaded sound '
           'when playing.');
       // The `audio_isolate.dart` code has logic to find the already-loaded
@@ -722,6 +731,9 @@ interface class SoLoud {
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   ///
   /// Returns the new sound as [AudioSource].
+  ///
+  /// If the file is already loaded, this is a no-op (but a warning
+  /// will be produced in the log).
   Future<AudioSource> loadAsset(
     String key, {
     LoadMode mode = LoadMode.memory,
@@ -757,6 +769,9 @@ interface class SoLoud {
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   ///
   /// Returns the new sound as [AudioSource].
+  ///
+  /// If the file is already loaded, this is a no-op (but a warning
+  /// will be produced in the log).
   Future<AudioSource> loadUrl(
     String url, {
     LoadMode mode = LoadMode.memory,
@@ -771,12 +786,13 @@ interface class SoLoud {
     return loadFile(file.absolute.path, mode: mode);
   }
 
-  /// Load a new waveform to be played once or multiple times later
+  /// Load a new waveform to be played once or multiple times later.
   ///
-  /// [waveform] the type of [WaveForm] to generate.
-  /// [superWave] whater this is a superWave.
-  /// [scale] if using [superWave] this is its scale.
-  /// [detune] if using [superWave] this is its detune.
+  /// Specify the type of the waveform (such as sine or square or saw)
+  /// with [waveform].
+  ///
+  /// You must also specify if the waveform should be a [superWave],
+  /// and what the superwave's [scale] and [detune] should be.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   ///
@@ -821,8 +837,8 @@ interface class SoLoud {
 
   /// Set a waveform type to the given sound: see [WaveForm] enum.
   ///
-  /// [sound] the sound to change the wafeform type.
-  /// [newWaveform] the new waveform type.
+  /// Provide the [sound] for which to change the waveform type,
+  /// and the new [newWaveform].
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void setWaveform(AudioSource sound, WaveForm newWaveform) {
@@ -834,8 +850,8 @@ interface class SoLoud {
 
   /// If this sound is a `superWave` you can change the scale at runtime.
   ///
-  /// [sound] the sound to change the scale to.
-  /// [newScale] the new scale.
+  /// Provide the [sound] for which to change the scale,
+  /// and the new [newScale].
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void setWaveformScale(AudioSource sound, double newScale) {
@@ -847,8 +863,8 @@ interface class SoLoud {
 
   /// If this sound is a `superWave` you can change the detune at runtime.
   ///
-  /// [sound] the sound to change the detune to.
-  /// [newDetune] the new detune.
+  /// Provide the [sound] for which to change the detune,
+  /// and the new [newDetune].
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void setWaveformDetune(AudioSource sound, double newDetune) {
@@ -858,10 +874,10 @@ interface class SoLoud {
     SoLoudController().soLoudFFI.setWaveformDetune(sound.soundHash, newDetune);
   }
 
-  /// Set the frequency of the given sound.
+  /// Set the frequency of the given waveform sound.
   ///
-  /// [sound] the sound to se the [newFrequency] to.
-  /// [newFrequency] the new frequency.
+  /// Provide the [sound] for which to change the scale,
+  /// and the new [newFrequency].
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void setWaveformFreq(AudioSource sound, double newFrequency) {
@@ -871,10 +887,10 @@ interface class SoLoud {
     SoLoudController().soLoudFFI.setWaveformFreq(sound.soundHash, newFrequency);
   }
 
-  /// Set the given sound as a super wave.
+  /// Set the given waveform sound's super wave flag.
   ///
-  /// [sound] the sound to se the [superwave] to.
-  /// [superwave] whether this sound should be a super wave or not.
+  /// Provide the [sound] for which to change the flag,
+  /// and the new [superwave] value.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void setWaveformSuperWave(AudioSource sound, bool superwave) {
@@ -887,9 +903,8 @@ interface class SoLoud {
         );
   }
 
-  /// Speech the given text.
+  /// Create a new audio source from the given [textToSpeech].
   ///
-  /// [textToSpeech] the text to be spoken.
   /// Returns the new sound as [AudioSource].
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
@@ -915,13 +930,28 @@ interface class SoLoud {
     throw SoLoudCppException.fromPlayerError(ret.error);
   }
 
-  /// Play already loaded sound identified by [sound]
+  /// Play an already-loaded sound identified by [sound]. Creates a new
+  /// playing instance of the sound, and returns its [SoundHandle].
   ///
-  /// [sound] the sound to play
-  /// [volume] 1.0 full volume
-  /// [pan] 0.0 centered
-  /// [paused] 0 not pause
-  /// Returns the [SoundHandle] of this new sound.
+  /// You can provide the [volume], where `1.0` is full volume and `0.0`
+  /// is silent. Defaults to `1.0`.
+  ///
+  /// You can provide [pan] for the sound, with `0.0` centered,
+  /// `-1.0` fully left, and `1.0` fully right. Defaults to `0.0`.
+  ///
+  /// Set [paused] to `true` if you want the new sound instance to
+  /// start paused. This is helpful if you want to change some attributes
+  /// of the sound instance before you play it. For example, you could
+  /// call [setRelativePlaySpeed] or [setProtectVoice] on the sound before
+  /// un-pausing it.
+  ///
+  /// To play a looping sound, set [paused] to `true`. You can also
+  /// define the region to loop by setting [loopingStartAt]
+  /// (which defaults to the beginning of the sound otherwise).
+  /// There is no way to set the end of the looping region — it will
+  /// always be the end of the [sound].
+  ///
+  /// Returns the [SoundHandle] of the new sound instance.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   Future<SoundHandle> play(
@@ -978,9 +1008,7 @@ interface class SoLoud {
     return ret.newHandle;
   }
 
-  /// Pause or unpause an already loaded sound identified by [handle].
-  ///
-  /// [handle] the sound handle.
+  /// Pause or unpause a currently playing sound identified by [handle].
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void pauseSwitch(SoundHandle handle) {
@@ -990,9 +1018,7 @@ interface class SoLoud {
     SoLoudController().soLoudFFI.pauseSwitch(handle);
   }
 
-  /// Pause or unpause an already loaded sound identified by [handle].
-  ///
-  /// [handle] the sound handle.
+  /// Pause or unpause a currently playing sound identified by [handle].
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void setPause(SoundHandle handle, bool pause) {
@@ -1002,9 +1028,7 @@ interface class SoLoud {
     SoLoudController().soLoudFFI.setPause(handle, pause ? 1 : 0);
   }
 
-  /// Gets the pause state of an already loaded sound identified by [handle].
-  ///
-  /// [handle] the sound handle.
+  /// Gets the pause state of a currently playing sound identified by [handle].
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   bool getPause(SoundHandle handle) {
@@ -1015,17 +1039,19 @@ interface class SoLoud {
   }
 
   /// Set a sound's relative play speed.
-  /// Setting the value to 0 will cause undefined behavior, likely a crash.
-  /// Change the relative play speed of a sample. This changes the effective
-  /// sample rate while leaving the base sample rate alone.
   ///
+  /// Provide the currently playing sound instance via its [handle],
+  /// and the new [speed].
+  ///
+  /// Setting the speed value to `0` will cause undefined behavior,
+  /// likely a crash.
+  ///
+  /// This changes the effective sample rate
+  /// while leaving the base sample rate alone.
   /// Note that playing a sound at a higher sample rate will require SoLoud
   /// to request more samples from the sound source, which will require more
   /// memory and more processing power. Playing at a slower sample
   /// rate is cheaper.
-  ///
-  /// [handle] the sound handle.
-  /// [speed] the new speed.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void setRelativePlaySpeed(SoundHandle handle, double speed) {
@@ -1035,9 +1061,8 @@ interface class SoLoud {
     SoLoudController().soLoudFFI.setRelativePlaySpeed(handle, speed);
   }
 
-  /// Get a sound's relative play speed.
-  ///
-  /// [handle] the sound handle.
+  /// Get a sound's relative play speed. Provide the sound instance via
+  /// its [handle].
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   double getRelativePlaySpeed(SoundHandle handle) {
@@ -1047,10 +1072,10 @@ interface class SoLoud {
     return SoLoudController().soLoudFFI.getRelativePlaySpeed(handle);
   }
 
-  /// Stop already loaded sound identified by [handle] and clear it from the
-  /// sound handle list.
+  /// Stop a currently playing sound identified by [handle]
+  /// and clear it from the sound handle list.
   ///
-  /// [handle] the sound handle to stop.
+  /// This does _not_ dispose the audio source. Use [disposeSource] for that.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   Future<void> stop(SoundHandle handle) async {
@@ -1074,40 +1099,50 @@ interface class SoLoud {
     }
   }
 
-  /// Stop all handles of the already loaded sound identified
-  /// by soundHash of [sound] and dispose it.
+  /// A deprecated alias of [disposeSource].
+  @Deprecated("Use 'disposeSource' instead")
+  Future<void> disposeSound(AudioSource sound) => disposeSource(sound);
+
+  /// Stops all handles of the already loaded [source], and reclaims memory.
   ///
-  /// [sound] the sound to clear.
+  /// After an audio source has been disposed in this way,
+  /// do not attempt to play it.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
-  Future<void> disposeSound(AudioSource sound) async {
+  Future<void> disposeSource(AudioSource source) async {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
     _mainToIsolateStream?.send(
       {
         'event': MessageEvents.disposeSound,
-        'args': (soundHash: sound.soundHash),
+        'args': (soundHash: source.soundHash),
       },
     );
     await _waitForEvent(
-        MessageEvents.disposeSound, (soundHash: sound.soundHash));
+        MessageEvents.disposeSound, (soundHash: source.soundHash));
 
-    await sound.soundEventsController.close();
+    await source.soundEventsController.close();
 
     /// remove the sound with [soundHash]
     _activeSounds.removeWhere(
       (element) {
-        return element.soundHash == sound.soundHash;
+        return element.soundHash == source.soundHash;
       },
     );
   }
 
-  /// Disposes all sounds already loaded. Complete silence.
+  /// A deprecated alias to [disposeAllSources].
+  @Deprecated("Use 'disposeAllSources()' instead")
+  Future<void> disposeAllSound() => disposeAllSources();
+
+  /// Disposes all audio sources that are currently loaded.
+  /// Also stops all sound instances if anything is playing.
   ///
   /// No need to call this method when shutting down the engine.
+  ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
-  Future<void> disposeAllSound() async {
+  Future<void> disposeAllSources() async {
     if (!_isEngineInitialized) {
       throw const SoLoudNotInitializedException();
     }
@@ -1123,10 +1158,9 @@ interface class SoLoud {
     _activeSounds.clear();
   }
 
-  /// Query whether a sound is set to loop.
+  /// Query whether a sound (supplied via [handle]) is set to loop.
   ///
-  /// [handle] the sound handle.
-  /// Returns true if flagged for looping.
+  /// Returns `true` if the sound is flagged for looping.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   bool getLooping(SoundHandle handle) {
@@ -1136,11 +1170,8 @@ interface class SoLoud {
     return SoLoudController().soLoudFFI.getLooping(handle);
   }
 
-  /// This function can be used to set a sample to play on repeat,
-  /// instead of just playing once.
-  ///
-  /// [handle] the handle for which enable or disable the loop
-  /// [enable] whether to enable looping or not.
+  /// Set the looping flag of a currently playing sound, provided via
+  /// its [handle].
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void setLooping(SoundHandle handle, bool enable) {
@@ -1150,10 +1181,10 @@ interface class SoLoud {
     SoLoudController().soLoudFFI.setLooping(handle, enable);
   }
 
-  /// Get sound loop point value.
+  /// Get the loop point value of a currently playing sound, provided via
+  /// its [handle].
   ///
-  /// [handle] the sound handle.
-  /// Returns the time in seconds.
+  /// Returns the timestamp of the loop point as a [Duration].
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   Duration getLoopPoint(SoundHandle handle) {
@@ -1163,10 +1194,10 @@ interface class SoLoud {
     return SoLoudController().soLoudFFI.getLoopPoint(handle);
   }
 
-  /// Set sound loop point value.
+  /// Set the loop point of a currently playing sound, provided via
+  /// its [handle].
   ///
-  /// [handle] the sound handle.
-  /// [time] in seconds.
+  /// Specify the loop point with [time] (a [Duration]).
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void setLoopPoint(SoundHandle handle, Duration time) {
@@ -1177,9 +1208,10 @@ interface class SoLoud {
   }
 
   /// Enable or disable visualization.
+  ///
   /// When enabled it will be possible to get FFT and wave data.
   ///
-  /// [enabled] wheter to set the visualization or not.
+  /// [enabled] whether to set the visualization or not.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void setVisualizationEnabled(bool enabled) {
@@ -1202,36 +1234,39 @@ interface class SoLoud {
     return SoLoudController().soLoudFFI.getVisualizationEnabled();
   }
 
-  /// Get the sound length in seconds.
+  /// Get the length of a loaded audio [source].
   ///
-  /// [sound] the sound hash to get the length.
+  /// Returns the length as a [Duration].
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
-  Duration getLength(AudioSource sound) {
+  Duration getLength(AudioSource source) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
-    return SoLoudController().soLoudFFI.getLength(sound.soundHash);
+    return SoLoudController().soLoudFFI.getLength(source.soundHash);
   }
 
-  /// Seek playing in seconds.
+  /// Seek a currently playing sound instance, provided via its [handle].
+  /// Specify the [time] (as a [Duration]) to which you want to
+  /// move the play head.
   ///
-  /// [time] the time to seek.
-  /// [handle] the sound handle.
+  /// For example, seeking to `Duration(milliseconds: 200)` means that
+  /// you want to move the play head to a point 200 milliseconds into
+  /// the audio source. Seeking to [Duration.zero] means "go to the beginning
+  /// of the sound".
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   ///
-  /// NOTE: when seeking an MP3 file loaded using `mode`=`LoadMode.disk` the
-  /// seek operation is performed but there will be delays. This occurs because
+  /// NOTE: when seeking an MP3 file loaded using [LoadMode.disk], the
+  /// seek operation is performed but there will be a delay. This occurs because
   /// the MP3 codec must compute each frame length to gain a new position.
-  /// The problem is explained in souloud_wavstream.cpp
-  /// in `WavStreamInstance::seek` function.
-  ///
-  /// This mode is useful ie for background music, not for a music player
-  /// where a seek slider for MP3s is a must.
+  /// The problem is explained in `souloud_wavstream.cpp`,
+  /// in the `WavStreamInstance::seek` function.
+  /// Therefore, [LoadMode.disk] is useful for things like the background music,
+  /// and not for things like a music player where the user
+  /// expects being able to seek anywhere inside a playing track immediately.
   /// If you need to seek MP3s without lags, please, use
-  /// `mode`=`LoadMode.memory` instead or other supported audio formats!
-  ///
+  /// [LoadMode.memory] instead, or use other supported audio formats.
   void seek(SoundHandle handle, Duration time) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1244,10 +1279,12 @@ interface class SoLoud {
     }
   }
 
-  /// Get current sound position in seconds.
+  /// Get the current sound position of a sound instance (provided via its
+  /// [handle]).
   ///
-  /// [handle] the sound handle.
-  /// Return the position in seconds.
+  /// Returns the position as a [Duration]. For example,
+  /// `Duration(milliseconds: 200)` means that the play head is currently
+  /// 200 milliseconds into the audio source.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   Duration getPosition(SoundHandle handle) {
@@ -1257,9 +1294,10 @@ interface class SoLoud {
     return SoLoudController().soLoudFFI.getPosition(handle);
   }
 
-  /// Get current global volume.
+  /// Gets the current global volume.
   ///
-  /// Return the volume.
+  /// Return the volume as a [double], with `0.0` meaning silence
+  /// and `1.0` meaning full volume.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   double getGlobalVolume() {
@@ -1269,7 +1307,10 @@ interface class SoLoud {
     return SoLoudController().soLoudFFI.getGlobalVolume();
   }
 
-  /// Set global volume for all the sounds.
+  /// Sets the global volume which affects all sounds.
+  ///
+  /// The value of [volume] can range from `0.0` (meaning everything is muted)
+  /// to `1.0` (meaning full volume).
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void setGlobalVolume(double volume) {
@@ -1284,9 +1325,11 @@ interface class SoLoud {
     }
   }
 
-  /// Get current [handle] volume.
+  /// Get the volume of the currently playing sound instance, provided
+  /// via its [handle].
   ///
-  /// Return the volume.
+  /// Returns the volume as a [double], where `0.0` means the sound is muted,
+  /// and `1.0` means its playing at full volume.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   double getVolume(SoundHandle handle) {
@@ -1296,10 +1339,11 @@ interface class SoLoud {
     return SoLoudController().soLoudFFI.getVolume(handle);
   }
 
-  /// Set the volume for the given [handle].
+  /// Set the volume for a currently playing sound instance, provided
+  /// via its [handle].
   ///
-  /// [handle] the sound handle.
-  /// [volume] the new volume to set.
+  /// The value of [volume] can range from `0.0` (meaning the sound is muted)
+  /// to `1.0` (meaning it should play at full volume).
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void setVolume(SoundHandle handle, double volume) {
@@ -1314,10 +1358,11 @@ interface class SoLoud {
     }
   }
 
-  /// Check if a handle is still valid.
+  /// Check if the [handle] is still valid.
   ///
-  /// [handle] handle to check.
-  /// Return true if valid.
+  /// Returns `true` if the sound instance identified by its [handle] is
+  /// currently playing or paused. Returns `false` if it's been stopped
+  /// or if it finished playing.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   bool getIsValidVoiceHandle(SoundHandle handle) {
@@ -1337,11 +1382,11 @@ interface class SoLoud {
 
   /// Returns the number of concurrent sounds that are playing a
   /// specific audio source.
-  int countAudioSource(SoundHash soundHash) {
+  int countAudioSource(AudioSource audioSource) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
-    return SoLoudController().soLoudFFI.countAudioSource(soundHash);
+    return SoLoudController().soLoudFFI.countAudioSource(audioSource.soundHash);
   }
 
   /// Returns the number of voices the application has told SoLoud to play.
@@ -1353,6 +1398,8 @@ interface class SoLoud {
   }
 
   /// Get a sound's protection state.
+  ///
+  /// See [setProtectVoice] for details]
   bool getProtectVoice(SoundHandle handle) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1360,21 +1407,29 @@ interface class SoLoud {
     return SoLoudController().soLoudFFI.getProtectVoice(handle);
   }
 
-  /// Set a sound's protection state.
+  /// Sets a sound instance's protection state.
   ///
-  /// Normally, if you try to play more sounds than there are voices,
+  /// The sound is specified via its [handle].
+  ///
+  /// Normally, if you try to play more sounds than there are voices
+  /// (a.k.a. "channels"),
   /// SoLoud will kill off the oldest playing sound to make room.
-  /// This will most likely be your background music. This can be worked
-  /// around by protecting the sound.
-  /// If all voices are protected, the result will be undefined.
+  /// This is normally okay _except_ when you have background music
+  /// or ambience playing.
+  /// These sounds will likely be the oldest playing sounds, and you don't
+  /// want them to be stopped just because there's a lot of sound effects
+  /// playing at the same time.
+  ///
+  /// You can solve this by protecting the sound instance.
+  /// Normally, you'd want to call [setProtectVoice] on all long-running,
+  /// looping or somehow especially important audio.
+  ///
+  /// If all voices are protected, the result is undefined.
   /// The number of protected entries is inclusive in the
-  /// max number active voice count [getMaxActiveVoiceCount].
-  /// For example when having 16 max active voice count set to 16, and
+  /// maximum number of active voices [getMaxActiveVoiceCount].
+  /// For example, when having max active voice count set to 16, and
   /// you want to play 20 other sounds, the protected voice will still play
   /// but you will hear only 15 of the other 20.
-  ///
-  /// [handle]  handle to check.
-  /// [protect] whether to protect or not.
   void setProtectVoice(SoundHandle handle, bool protect) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1382,7 +1437,7 @@ interface class SoLoud {
     SoLoudController().soLoudFFI.setProtectVoice(handle, protect);
   }
 
-  /// Get the current maximum active voice count.
+  /// Gets the current maximum active voice count.
   int getMaxActiveVoiceCount() {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1390,18 +1445,20 @@ interface class SoLoud {
     return SoLoudController().soLoudFFI.getMaxActiveVoiceCount();
   }
 
-  /// Set the current maximum active voice count.
+  /// Sets the current maximum active voice count.
+  ///
   /// If voice count is higher than the maximum active voice count,
   /// SoLoud will pick the ones with the highest volume to actually play.
-  /// [maxVoiceCount] the max concurrent sounds that can be played.
   ///
   /// NOTE: The number of concurrent voices is limited, as having unlimited
-  /// voices would cause performance issues, as well as lead to unnecessary
-  /// clipping. The default number of concurrent voices is 16, but this can be
-  /// adjusted at runtime. The hard maximum number is 4095, but if more are
+  /// voices would cause performance issues, and could lead unnecessary
+  /// clipping. The default number of maximum concurrent voices is 16,
+  /// but this can be adjusted at runtime.
+  ///
+  /// The hard maximum count is 4095, but if more are
   /// required, SoLoud can be modified to support more. But seriously, if you
-  /// need more than 4095 sounds at once, you're probably going to make
-  /// some serious changes in any case.
+  /// need more than 4095 sounds playing _at once_,
+  /// you're probably going to need some serious changes anyway.
   void setMaxActiveVoiceCount(int maxVoiceCount) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1471,10 +1528,8 @@ interface class SoLoud {
   // faders
   // //////////////////////////////////////
 
-  /// Smoothly change the global volume over specified time.
-  ///
-  /// [to] the volume to fade to.
-  /// [time] the time in seconds to change the volume.
+  /// Smoothly changes the global volume to the value of [to]
+  /// over specified [time].
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void fadeGlobalVolume(double to, Duration time) {
@@ -1489,11 +1544,10 @@ interface class SoLoud {
     }
   }
 
-  /// Smoothly change a channel's volume over specified time.
+  /// Smoothly changes a single sound instance's volume
+  /// to the value of [to] over the specified [time].
   ///
-  /// [handle] the sound handle.
-  /// [to] the volume to fade to.
-  /// [time] the time in seconds to change the volume.
+  /// The sound instance is provided via its [handle].
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void fadeVolume(SoundHandle handle, double to, Duration time) {
@@ -1508,11 +1562,10 @@ interface class SoLoud {
     }
   }
 
-  /// Smoothly change a channel's pan setting over specified time.
+  /// Smoothly changes a currently playing sound's pan setting
+  /// to the value of [to] over specified [time].
   ///
-  /// [handle] the sound handle.
-  /// [to] the pan value to fade to.
-  /// [time] the time in seconds to change the pan.
+  /// The sound instance is provided via its [handle].
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void fadePan(SoundHandle handle, double to, Duration time) {
@@ -1527,11 +1580,10 @@ interface class SoLoud {
     }
   }
 
-  /// Smoothly change a channel's relative play speed over specified time.
+  /// Smoothly changes a currently playing sound's relative play speed
+  /// to the value of [to] over specified [time].
   ///
-  /// [handle] the sound handle.
-  /// [to] the speed value to fade to.
-  /// [time] the time in seconds to change the speed.
+  /// The sound instance is provided via its [handle].
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void fadeRelativePlaySpeed(SoundHandle handle, double to, Duration time) {
@@ -1547,10 +1599,9 @@ interface class SoLoud {
     }
   }
 
-  /// After specified time, pause the channel.
+  /// Waits the specified [time], then pauses the currently playing sound.
   ///
-  /// [handle] the sound handle.
-  /// [time] the time in seconds to pause.
+  /// The sound instance is provided via its [handle].
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void schedulePause(SoundHandle handle, Duration time) {
@@ -1565,10 +1616,9 @@ interface class SoLoud {
     }
   }
 
-  /// After specified time, stop the channel.
+  /// Waits the specified [time], then stops the currently playing sound.
   ///
-  /// [handle] the sound handle.
-  /// [time] the time in seconds to pause.
+  /// The sound instance is provided via its [handle].
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void scheduleStop(SoundHandle handle, Duration time) {
@@ -1583,12 +1633,13 @@ interface class SoLoud {
     }
   }
 
-  /// Set fader to oscillate the volume at specified frequency.
+  /// Sets fader to oscillate the volume at specified frequency.
   ///
-  /// [handle] the sound handle.
-  /// [from] the lowest value for the oscillation.
-  /// [to] the highest value for the oscillation.
-  /// [time] the time in seconds to oscillate.
+  /// The sound instance is specified via its [handle].
+  ///
+  /// The value of [from] is the lowest value for the oscillation.
+  /// The value of [to] is the highest value for the oscillation.
+  /// The specified [time] is the period of oscillation.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void oscillateVolume(
@@ -1605,12 +1656,13 @@ interface class SoLoud {
     }
   }
 
-  /// Set fader to oscillate the panning at specified frequency.
+  /// Sets oscillation of the pan at specified frequency.
   ///
-  /// [handle] the sound handle.
-  /// [from] the lowest value for the oscillation.
-  /// [to] the highest value for the oscillation.
-  /// [time] the time in seconds to oscillate.
+  /// The sound instance is specified via its [handle].
+  ///
+  /// The value of [from] is the leftmost value for the oscillation.
+  /// The value of [to] is the rightmost value for the oscillation.
+  /// The specified [time] is the period of oscillation.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void oscillatePan(SoundHandle handle, double from, double to, Duration time) {
@@ -1626,12 +1678,13 @@ interface class SoLoud {
     }
   }
 
-  /// Set fader to oscillate the relative play speed at specified frequency.
+  /// Sets oscillation of the play speed at specified frequency.
   ///
-  /// [handle] the sound handle.
-  /// [from] the lowest value for the oscillation.
-  /// [to] the highest value for the oscillation.
-  /// [time] the time in seconds to oscillate.
+  /// The sound instance is specified via its [handle].
+  ///
+  /// The value of [from] is the lowest value for the oscillation.
+  /// The value of [to] is the highest value for the oscillation.
+  /// The specified [time] is the period of oscillation.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void oscillateRelativePlaySpeed(
@@ -1651,9 +1704,9 @@ interface class SoLoud {
 
   /// Set fader to oscillate the global volume at specified frequency.
   ///
-  /// [from] the lowest value for the oscillation.
-  /// [to] the highest value for the oscillation.
-  /// [time] the time in seconds to oscillate.
+  /// The value of [from] is the lowest value for the oscillation.
+  /// The value of [to] is the highest value for the oscillation.
+  /// The specified [time] is the period of oscillation.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void oscillateGlobalVolume(double from, double to, Duration time) {
@@ -1761,11 +1814,10 @@ interface class SoLoud {
   // / Filters
   // ///////////////////////////////////////
 
-  /// Check if the given filter is active or not.
+  /// Checks whether the given [filterType] is active.
   ///
-  /// [filterType] filter to check
-  /// Returns [PlayerErrors.noError] if no errors and the index of
-  /// the given filter (-1 if the filter is not active)
+  /// Returns `-1` if the filter is not active. Otherwise, returns
+  /// the index of the given filter.
   int isFilterActive(FilterType filterType) {
     final ret = SoLoudController().soLoudFFI.isFilterActive(filterType.index);
     if (ret.error != PlayerErrors.noError) {
@@ -1777,10 +1829,9 @@ interface class SoLoud {
 
   // TODO(marco): add a method to rearrange filters order?
 
-  /// Get parameters names of the given filter.
+  /// Gets parameters of the given [filterType].
   ///
-  /// [filterType] filter to get param names
-  /// Returns the list of param names
+  /// Returns the list of param names.
   List<String> getFilterParamNames(FilterType filterType) {
     final ret =
         SoLoudController().soLoudFFI.getFilterParamNames(filterType.index);
@@ -1791,9 +1842,7 @@ interface class SoLoud {
     return ret.names;
   }
 
-  /// Add a filter to all sounds.
-  ///
-  /// [filterType] filter to add.
+  /// Adds a [filterType] to all sounds.
   ///
   /// Throws [SoLoudMaxFilterNumberReachedException] when the max number of
   ///     concurrent filter is reached (default max filter is 8).
@@ -1807,9 +1856,7 @@ interface class SoLoud {
     }
   }
 
-  /// Remove filter from all sounds.
-  ///
-  /// [filterType] filter to remove.
+  /// Removes [filterType] from all sounds.
   void removeGlobalFilter(FilterType filterType) {
     final ret =
         SoLoudController().soLoudFFI.removeGlobalFilter(filterType.index);
@@ -1825,12 +1872,10 @@ interface class SoLoud {
   void setFxParams(FilterType filterType, int attributeId, double value) =>
       setFilterParameter(filterType, attributeId, value);
 
-  /// Set the effect parameter.
+  /// Sets a parameter of the given [filterType].
   ///
-  /// [filterType] the filter to change the parameter to.
-  /// [attributeId] the attribute ID to change.
-  /// [value] the new value.
-  ///
+  /// Specify the [attributeId] of the parameter (which you can learn from
+  /// [getFilterParamNames]), and its new [value].
   void setFilterParameter(
       FilterType filterType, int attributeId, double value) {
     final ret = SoLoudController()
@@ -1848,12 +1893,12 @@ interface class SoLoud {
   double getFxParams(FilterType filterType, int attributeId) =>
       getFilterParameter(filterType, attributeId);
 
-  /// Get the effect current parameter.
+  /// Gets the value of a parameter of the given [filterType].
   ///
-  /// [filterType] the filter to query the parameter.
-  /// [attributeId] the ID of the attribute to request the value from.
-  /// Returns the value of param
+  /// Specify the [attributeId] of the parameter (which you can learn from
+  /// [getFilterParamNames]).
   ///
+  /// Returns the value as [double].
   double getFilterParameter(FilterType filterType, int attributeId) {
     return SoLoudController()
         .soLoudFFI
@@ -1863,26 +1908,36 @@ interface class SoLoud {
   // ////////////////////////////////////////////////
   // Below all the methods implemented with FFI for the 3D audio
   // more info: https://solhsa.com/soloud/core3d.html
-  //
-  // coordinate system is right handed
-  //           Y
-  //           ^
-  //           |
-  //           |
-  //           |
-  //           --------> X
-  //          /
-  //         /
-  //        Z
   // ////////////////////////////////////////////////
 
-  /// play3d() is the 3d version of the play() call.
-  /// The listener position is (0, 0, 0) by default.
+  /// This function is the 3D version of the [play] call.
   ///
-  /// [posX], [posY], [posZ] are the audio source position coordinates.
-  /// [velX], [velY], [velZ] are the audio source velocity.
-  /// Defaults to (0, 0, 0).
-  /// [volume] the playing volume. Default to 1.
+  /// The coordinate system is right handed.
+  ///
+  /// ```text
+  ///           Y
+  ///           ^
+  ///           |
+  ///           |
+  ///           |
+  ///           --------> X
+  ///          /
+  ///         /
+  ///        Z
+  /// ```
+  ///
+  /// The listener position is `(0, 0, 0)` by default but can be changed
+  /// with [set3dListenerParameters].
+  ///
+  /// The parameters [posX], [posY] and [posZ] are the audio source's
+  /// position coordinates.
+  ///
+  /// The parameters [velX], [velY] and [velZ] are the audio source's velocity.
+  /// Defaults to `(0, 0, 0)`.
+  ///
+  /// The rest of the parameters are equivalent to the non-3D version of this
+  /// method ([play]).
+  ///
   /// Returns the [SoundHandle] of this new sound.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
@@ -1966,13 +2021,15 @@ interface class SoLoud {
     SoLoudController().soLoudFFI.set3dSoundSpeed(speed);
   }
 
-  /// Get the sound speed.
+  /// Gets the speed of sound.
+  ///
+  /// See [set3dSoundSpeed] for details.
   double get3dSoundSpeed() {
     return SoLoudController().soLoudFFI.get3dSoundSpeed();
   }
 
-  /// You can set the position, at-vector, up-vector and velocity
-  /// parameters of the 3d audio listener with one call.
+  /// Sets the position, at-vector, up-vector and velocity
+  /// parameters of the 3D audio listener with one call.
   void set3dListenerParameters(
       double posX,
       double posY,
@@ -1990,22 +2047,22 @@ interface class SoLoud {
         atY, atZ, upX, upY, upZ, velocityX, velocityY, velocityZ);
   }
 
-  /// You can set the position parameter of the 3d audio listener.
+  /// Sets the position parameter of the 3D audio listener.
   void set3dListenerPosition(double posX, double posY, double posZ) {
     SoLoudController().soLoudFFI.set3dListenerPosition(posX, posY, posZ);
   }
 
-  /// You can set the "at" vector parameter of the 3d audio listener.
+  /// Sets the at-vector (i.e. position) parameter of the 3D audio listener.
   void set3dListenerAt(double atX, double atY, double atZ) {
     SoLoudController().soLoudFFI.set3dListenerAt(atX, atY, atZ);
   }
 
-  /// You can set the "up" vector parameter of the 3d audio listener.
+  /// Sets the up-vector parameter of the 3D audio listener.
   void set3dListenerUp(double upX, double upY, double upZ) {
     SoLoudController().soLoudFFI.set3dListenerUp(upX, upY, upZ);
   }
 
-  /// You can set the listener's velocity vector parameter.
+  /// Sets the 3D listener's velocity vector.
   void set3dListenerVelocity(
       double velocityX, double velocityY, double velocityZ) {
     SoLoudController()
@@ -2013,21 +2070,23 @@ interface class SoLoud {
         .set3dListenerVelocity(velocityX, velocityY, velocityZ);
   }
 
-  /// You can set the position and velocity parameters of a live
-  /// 3d audio source with one call.
+  /// Sets the position and velocity parameters of a live
+  /// 3D audio source with one call.
+  ///
+  /// The sound instance is provided via its [handle].
   void set3dSourceParameters(SoundHandle handle, double posX, double posY,
       double posZ, double velocityX, double velocityY, double velocityZ) {
     SoLoudController().soLoudFFI.set3dSourceParameters(
         handle, posX, posY, posZ, velocityX, velocityY, velocityZ);
   }
 
-  /// You can set the position parameters of a live 3d audio source.
+  /// Sets the position of a live 3D audio source.
   void set3dSourcePosition(
       SoundHandle handle, double posX, double posY, double posZ) {
     SoLoudController().soLoudFFI.set3dSourcePosition(handle, posX, posY, posZ);
   }
 
-  /// You can set the velocity parameters of a live 3d audio source.
+  /// Set the velocity parameter of a live 3D audio source.
   void set3dSourceVelocity(SoundHandle handle, double velocityX,
       double velocityY, double velocityZ) {
     SoLoudController()
@@ -2035,8 +2094,8 @@ interface class SoLoud {
         .set3dSourceVelocity(handle, velocityX, velocityY, velocityZ);
   }
 
-  /// You can set the minimum and maximum distance parameters
-  /// of a live 3d audio source.
+  /// Sets the minimum and maximum distance parameters
+  /// of a live 3D audio source.
   void set3dSourceMinMaxDistance(
       SoundHandle handle, double minDistance, double maxDistance) {
     SoLoudController()
@@ -2045,15 +2104,16 @@ interface class SoLoud {
   }
 
   /// You can change the attenuation model and rolloff factor parameters of
-  /// a live 3d audio source.
+  /// a live 3D audio source.
+  ///
   /// ```
   /// 0 NO_ATTENUATION        No attenuation
   /// 1 INVERSE_DISTANCE      Inverse distance attenuation model
   /// 2 LINEAR_DISTANCE       Linear distance attenuation model
   /// 3 EXPONENTIAL_DISTANCE  Exponential distance attenuation model
   /// ```
-  /// see https://solhsa.com/soloud/concepts3d.html
   ///
+  /// See https://solhsa.com/soloud/concepts3d.html.
   void set3dSourceAttenuation(
     SoundHandle handle,
     int attenuationModel,
@@ -2066,7 +2126,7 @@ interface class SoLoud {
         );
   }
 
-  /// You can change the doppler factor of a live 3d audio source.
+  /// Sets the doppler factor of a live 3D audio source.
   void set3dSourceDopplerFactor(SoundHandle handle, double dopplerFactor) {
     SoLoudController()
         .soLoudFFI

@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 /// The [AssetsManager] class provides a static method to retrieve an asset
 /// file and save it to the local file system.
 ///
+@Deprecated('Use SoLoud.loadAsset instead')
 class AssetsManager {
   static final Logger _log = Logger('flutter_soloud.AssetsManager');
 

@@ -61,7 +61,7 @@ class _Page3DAudioState extends State<Page3DAudio> {
     /// stop any previous sound loaded
     if (currentSound != null) {
       try {
-        await SoLoud.instance.disposeSound(currentSound!);
+        await SoLoud.instance.disposeSource(currentSound!);
       } catch (e) {
         _log.severe('error disposing sound: $e');
         return;
@@ -87,7 +87,7 @@ class _Page3DAudioState extends State<Page3DAudio> {
     /// stop any previous sound loaded
     if (currentSound != null) {
       try {
-        await SoLoud.instance.disposeSound(currentSound!);
+        await SoLoud.instance.disposeSource(currentSound!);
       } catch (e) {
         _log.severe('error disposing sound: $e');
         return;

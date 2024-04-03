@@ -81,7 +81,7 @@ class _MyHomePageState extends State<MyHomePage> {
       isStarted = true;
     }
 
-    await SoLoud.instance.disposeAllSound();
+    await SoLoud.instance.disposeAllSources();
     sounds.clear();
     seekPos.value = Duration.zero;
 
