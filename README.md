@@ -62,7 +62,7 @@ void example() async {
   // ...
 
   await soloud.stop(handle);
-  await soloud.disposeSound(source);  
+  await soloud.disposeSource(source);  
 }
 ```
 
