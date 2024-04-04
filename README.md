@@ -151,8 +151,6 @@ Since I needed to modify the generated `.dart` file, I followed this flow:
 2. The file `lib/flutter_soloud_FFIGEN.dart` will be generated.
 3. Copy the relevant code for the new functions from `lib/flutter_soloud_FFIGEN.dart` into `lib/flutter_soloud_bindings_ffi.dart`.
 
-Additionally, I have forked the [SoLoud](https://github.com/jarikomppa/soloud) repository and made modifications to include the latest [Miniaudio](https://github.com/mackron/miniaudio) audio backend. This backend is in the [new_miniaudio] branch of my [fork](https://github.com/alnitak/soloud) and is set as the default.
-
 #### Project structure
 
 This plugin uses the following structure:
@@ -165,8 +163,8 @@ This plugin uses the following structure:
 
 The `flutter_soloud` plugin utilizes a [forked](https://github.com/alnitak/soloud)
 repository of [SoLoud](https://github.com/jarikomppa/soloud),
-where the [miniaudio](https://github.com/mackron/miniaudio) audio backend has been updated and
-is located in `src/soloud/src/backend/miniaudio`.
+where the [miniaudio](https://github.com/mackron/miniaudio) audio backend (used by default) has been updated and
+it is located in `src/soloud/src/backend/miniaudio`.
 
 #### Debugging
 
@@ -206,11 +204,6 @@ The default audio backend is `miniaudio`, which will automatically select the ap
 For Windows users, SoLoud utilizes *Openmpt* through a DLL, which can be obtained from [https://lib.openmpt.org/](https://lib.openmpt.org/). If you wish to use this feature, install the DLL and enable it by modifying the first line in `windows/src.cmake`.
 
 ***Openmpt*** functions as a module-playing engine, capable of replaying a wide variety of multichannel music formats (669, amf, ams, dbm, digi, dmf, dsm, far, gdm, ice, imf, it, itp, j2b, m15, mdl, med, mid, mo3, mod, mptm, mt2, mtm, okt, plm, psm, ptm, s3m, stm, ult, umx, wow, xm). Additionally, it can load wav files and may offer better support for wav files compared to the stand-alone wav audio source.
-
-#### iOS
-There are some problems with Impeller engine when running the *visualizer* example on the simulator (20 Lug 2023). To disable it, run the following command:
-`flutter run --no-enable-impeller`
-Unfortunately, I don't have a real device to test it.
 
 #### Web
 

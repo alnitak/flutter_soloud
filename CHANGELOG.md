@@ -1,3 +1,46 @@
+### 2.0.0 (5 Apr 2024)
+- A giant leap forward from the previous version (many thanks to Filip Hráček).
+- Major changes to API. There are quick fixes (`dart fix`) to automatically rename many changed APIs.
+- `SoLoud` methods now throw instead of returning a PlayerErrors object.
+- added `getActiveVoiceCount()` to get concurrent sounds that are playing at the moment.
+- added `countAudioSource()` to get concurrent sounds that are playing a specific audio source.
+- added `getVoiceCount()` to get the number of voices the application has told SoLoud to play.
+- added `getMaxActiveVoiceCount()` to get the current maximum active voice count.
+- added `setMaxActiveVoiceCount()` to set the current maximum active voice count.
+- added `setProtectVoice()` and `getProtectVoice()` to get/set the protect voice flag.
+- `SoLoud.activeSounds` is now an `Iterable` instead of a `List`.
+- All time-related parameters and return values are now `Duration` type.
+  Before, they were `double`.
+- Added new (experimental) `AudioSource.allInstancesFinished` stream. 
+  This can be used to more easily await times when it's safe to dispose 
+  the sound. For example:
+
+  ```dart
+  final source = soloud.loadAsset('...');
+  // Wait for the first time all the instances of the sound are finished
+  // (finished playing or were stopped with soloud.stop()).
+  source.allInstancesFinished.first.then(
+    // Dispose of the sound.
+    (_) => soloud.disposeSound(source)
+  );
+  soloud.play(source);
+  ```
+- added `looping` and `loopingStartAt` properties to `SoLoud.play()` and `SoLoud.play3d()`.
+- added `SoLoud.getLooping()` to retrieve the looping state of a sound.
+- added `SoLoud.getLoopPoint()` and `SoLoud.setLoopPoint()` to get and set the looping start position of a sound.
+- New methods `SoLoud.loadAsset()` and `SoLoud.loadUrl()` to load audio from assets and URLs, respectively.
+- added `mode` property to `SoLoud.loadFile()` and `SoloudTools.loadFrom*` to prevent to load the whole audio data into memory:
+    - *LoadMode.memory* by default. Means less CPU, more memory allocated.
+    - *LoadMode.disk* means more CPU, less memory allocated. Lags can occurs while seeking MP3s, especially when using a slider.
+- Switched from `print()` logging to using the standard `package:logging`.
+  See `README.md` to learn how to capture log messages and how to filter them.
+- The capture feature is on experimental stage to be fine tuned in the near future. All methods related to audio capture have been extracted to a separate class. 
+  So now, there are two classes:
+    - `SoLoud` for _playing_ audio
+    - `SoLoudCapture` for _capturing_ audio
+- The Web platform is a work in progress, stay tuned!
+- Switched LICENSE from Apache-2.0 to MIT.
+
 ### 2.0.0-pre.5 (4 Apr 2024)
 - getLoopPoint now returns Duration.
 - Major changes to API docs and README.

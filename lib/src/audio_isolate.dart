@@ -21,7 +21,6 @@ void debugIsolates(String text) {
 enum MessageEvents {
   exitIsolate,
   initEngine,
-  disposeEngine,
   startLoop,
   stopLoop,
   loop,
@@ -114,13 +113,6 @@ void audioIsolate(SendPort isolateToMainStream) {
         final ret = soLoudController.soLoudFFI.initEngine();
         isolateToMainStream
             .send({'event': event['event'], 'args': args, 'return': ret});
-        break;
-
-      case MessageEvents.disposeEngine:
-        final args = event['args']! as ArgsDisposeEngine;
-        soLoudController.soLoudFFI.deinit();
-        isolateToMainStream
-            .send({'event': event['event'], 'args': args, 'return': ()});
         break;
 
       case MessageEvents.loadFile:

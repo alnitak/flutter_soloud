@@ -49,8 +49,8 @@ void main() async {
   }
 
   tests = <Future<void> Function()>[
-    // testSynchronousDeinit,
-    // testAsynchronousDeinit,
+    testSynchronousDeinit,
+    testAsynchronousDeinit,
   ];
   for (final f in tests) {
     await runZonedGuarded(
@@ -79,6 +79,7 @@ void main() async {
       ..writeln('See logs above for details.')
       ..writeln();
   } else {
+    debugPrint('===== TESTS PASSED! =====');
     stdout
       ..writeln('===== TESTS PASSED! =====')
       ..writeln();
