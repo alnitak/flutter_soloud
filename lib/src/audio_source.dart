@@ -67,9 +67,7 @@ class AudioSource {
   @internal
   final Set<SoundHandle> handlesInternal = {};
 
-  ///
   // TODO(marco): make marker keys time able to trigger an event
-  final List<double> keys = [];
 
   /// Backing controller for [soundEvents].
   @internal

@@ -152,7 +152,7 @@ Future<void> testAllInstancesFinished() async {
   final log = Logger('testAllInstancesFinished');
   await initialize();
 
-  await SoLoud.instance.disposeAllSound();
+  await SoLoud.instance.disposeAllSources();
   assert(
     SoLoud.instance.activeSounds.isEmpty,
     'Active sounds even after disposeAllSound()',
@@ -169,14 +169,14 @@ Future<void> testAllInstancesFinished() async {
   unawaited(
     explosion.allInstancesFinished.first.then((_) async {
       log.info('All instances of explosion finished.');
-      await SoLoud.instance.disposeSound(explosion);
+      await SoLoud.instance.disposeSource(explosion);
       explosionDisposed = true;
     }),
   );
   unawaited(
     song.allInstancesFinished.first.then((_) async {
       log.info('All instances of song finished.');
-      await SoLoud.instance.disposeSound(song);
+      await SoLoud.instance.disposeSource(song);
       songDisposed = true;
     }),
   );
@@ -486,7 +486,7 @@ Future<void> delay(int ms) async {
 
 Future<void> loadAsset() async {
   if (currentSound != null) {
-    await SoLoud.instance.disposeSound(currentSound!);
+    await SoLoud.instance.disposeSource(currentSound!);
   }
   currentSound = await SoLoud.instance.loadAsset('assets/audio/explosion.mp3');
 

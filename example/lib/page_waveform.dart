@@ -50,7 +50,7 @@ class _PageWaveformState extends State<PageWaveform> {
   }
 
   Future<void> setupNotes() async {
-    await SoLoud.instance.disposeAllSound();
+    await SoLoud.instance.disposeAllSources();
     notes = await SoLoudTools.createNotes(
       octave: octave,
       superwave: superWave,
@@ -79,7 +79,7 @@ class _PageWaveformState extends State<PageWaveform> {
                 ElevatedButton(
                   onPressed: () async {
                     if (sound != null) {
-                      await SoLoud.instance.disposeSound(sound!);
+                      await SoLoud.instance.disposeSource(sound!);
                     }
 
                     /// text created by ChatGPT :)
@@ -109,7 +109,7 @@ class _PageWaveformState extends State<PageWaveform> {
                 ElevatedButton(
                   onPressed: () {
                     if (sound != null) {
-                      SoLoud.instance.disposeSound(sound!).then((value) {
+                      SoLoud.instance.disposeSource(sound!).then((value) {
                         sound = null;
                       });
                     }

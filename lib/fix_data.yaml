@@ -9,6 +9,28 @@
 version: 1
 
 transforms:
+  # SoLoud.disposeAllSound => SoLoud.disposeAllSources
+  - title: "Rename to 'disposeAllSources'"
+    date: 2024-04-03
+    element:
+      uris: [ 'flutter_soloud.dart', 'package:flutter_soloud/flutter_soloud.dart' ]
+      method: 'disposeAllSound'
+      inClass: 'SoLoud'
+    changes:
+      - kind: 'rename'
+        newName: 'disposeAllSources'
+
+  # SoLoud.disposeSound => SoLoud.disposeSource
+  - title: "Rename to 'disposeSource'"
+    date: 2024-04-03
+    element:
+      uris: [ 'flutter_soloud.dart', 'package:flutter_soloud/flutter_soloud.dart' ]
+      method: 'disposeSound'
+      inClass: 'SoLoud'
+    changes:
+      - kind: 'rename'
+        newName: 'disposeSource'
+
   # SoLoud.initialize => SoLoud.init
   - title: "Rename to 'init'"
     date: 2024-03-20

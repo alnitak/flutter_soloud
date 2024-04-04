@@ -159,33 +159,33 @@ enum PlayerErrors {
   String toString() => 'PlayerErrors.$name ($_asSentence)';
 }
 
-/// Wave forms
+/// The types of waveforms.
 enum WaveForm {
-  /// Raw, harsh square wave
+  /// Raw, harsh square wave.
   square,
 
-  /// Raw, harsh saw wave
+  /// Raw, harsh saw wave.
   saw,
 
-  /// Sine wave
+  /// Sine wave.
   sin,
 
-  /// Triangle wave
+  /// Triangle wave.
   triangle,
 
-  /// Bounce, i.e, abs(sin())
+  /// Bounce, i.e, abs(sin()).
   bounce,
 
-  /// Quarter sine wave, rest of period quiet
+  /// Quarter sine wave, rest of period quiet.
   jaws,
 
-  /// Half sine wave, rest of period quiet
+  /// Half sine wave, rest of period quiet.
   humps,
 
-  /// "Fourier" square wave; less noisy
+  /// "Fourier" square wave; less noisy.
   fSquare,
 
-  /// "Fourier" saw wave; less noisy
+  /// "Fourier" saw wave; less noisy.
   fSaw,
 }
 

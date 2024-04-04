@@ -470,7 +470,7 @@ class _PageVisualizerState extends State<PageVisualizer> {
   Future<void> play(String file) async {
     if (currentSound != null) {
       try {
-        await SoLoud.instance.disposeSound(currentSound!);
+        await SoLoud.instance.disposeSource(currentSound!);
       } catch (e) {
         _log.severe('error disposing the current sound', e);
         return;
@@ -496,7 +496,7 @@ class _PageVisualizerState extends State<PageVisualizer> {
 
         /// It's needed to call dispose when it end else it will
         /// not be cleared
-        SoLoud.instance.disposeSound(currentSound!);
+        SoLoud.instance.disposeSource(currentSound!);
         currentSound = null;
       },
     );
