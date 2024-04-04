@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:ffi' as ffi;
 
 import 'package:flutter_soloud/src/enums.dart';

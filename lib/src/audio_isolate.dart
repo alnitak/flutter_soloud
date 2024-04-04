@@ -22,7 +22,6 @@ enum MessageEvents {
   exitIsolate,
   initEngine,
   startLoop,
-  stopLoop,
   loop,
   loadFile,
   loadWaveform,
@@ -359,12 +358,6 @@ void audioIsolate(SendPort isolateToMainStream) {
             'args': (),
           },
         );
-        break;
-
-      case MessageEvents.stopLoop:
-        loopRunning = false;
-        isolateToMainStream
-            .send({'event': MessageEvents.stopLoop, 'args': (), 'return': ()});
         break;
 
       case MessageEvents.loop:

@@ -492,22 +492,6 @@ interface class SoLoud {
     return true;
   }
 
-  /// stop the [SoundEventType]s loop
-  ///
-  Future<bool> _stopLoop() async {
-    _log.finest('_stopLoop() called');
-    if (_isolate == null || !_isEngineInitialized) return false;
-
-    _mainToIsolateStream?.send(
-      {
-        'event': MessageEvents.stopLoop,
-        'args': (),
-      },
-    );
-    await _waitForEvent(MessageEvents.stopLoop, ());
-    return true;
-  }
-
   // ////////////////////////////////////////////////
   // Below all the methods implemented with FFI for the player
   // ////////////////////////////////////////////////
@@ -1676,6 +1660,11 @@ interface class SoLoud {
       throw SoLoudCppException.fromPlayerError(error);
     }
   }
+
+  /// Deprecated alias of [getFilterParameter].
+  @Deprecated("Use 'getFilterParams' instead")
+  double getFxParams(FilterType filterType, int attributeId) =>
+      getFilterParameter(filterType, attributeId);
 
   /// Gets the value of a parameter of the given [filterType].
   ///
