@@ -208,7 +208,7 @@ For Windows users, SoLoud utilizes *Openmpt* through a DLL, which can be obtaine
 ***Openmpt*** functions as a module-playing engine, capable of replaying a wide variety of multichannel music formats (669, amf, ams, dbm, digi, dmf, dsm, far, gdm, ice, imf, it, itp, j2b, m15, mdl, med, mid, mo3, mod, mptm, mt2, mtm, okt, plm, psm, ptm, s3m, stm, ult, umx, wow, xm). Additionally, it can load wav files and may offer better support for wav files compared to the stand-alone wav audio source.
 
 #### iOS
-On the simulator, the Impeller engine doesn't work (20 Lug 2023). To disable it, run the following command:
+There are some problems with Impeller engine when running the *visualizer* example on the simulator (20 Lug 2023). To disable it, run the following command:
 `flutter run --no-enable-impeller`
 Unfortunately, I don't have a real device to test it.
 

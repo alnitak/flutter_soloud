@@ -1,7 +1,6 @@
-### 2.0.0-pre.X (XX XXX 2024)
-
-- getLoopPoint now returns Duration
-- Major changes to API docs and README
+### 2.0.0-pre.5 (4 Apr 2024)
+- getLoopPoint now returns Duration.
+- Major changes to API docs and README.
 - Renamed `SoLoud.disposeSound` to `SoLoud.disposeSource`.
   Quick fix available.
 - Renamed `SoLoud.disposeAllSound` to `SoLoud.disposeAllSources`.
@@ -10,7 +9,6 @@
 - Switched LICENSE from Apache-2.0 to MIT.
 
 ### 2.0.0-pre.4 (21 Mar 2024)
-- 
 - some little fixes.
 
 ### 2.0.0-pre.3 (20 Mar 2024)
