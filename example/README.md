@@ -2,6 +2,9 @@
 
 Demonstrates how to use the `flutter_soloud` plugin.
 
+There are some problems with Impeller engine in iOS when running the *visualizer* example (the 2nd) on the simulator (20 Lug 2023). To disable it, run the following command:
+`flutter run --no-enable-impeller`.
+
 There are 5 examples:
 *(to use microphone on MacOs or iOS you should add audio input permission in the example app)*
 

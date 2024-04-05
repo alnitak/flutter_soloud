@@ -21,9 +21,7 @@ void debugIsolates(String text) {
 enum MessageEvents {
   exitIsolate,
   initEngine,
-  disposeEngine,
   startLoop,
-  stopLoop,
   loop,
   loadFile,
   loadWaveform,
@@ -114,13 +112,6 @@ void audioIsolate(SendPort isolateToMainStream) {
         final ret = soLoudController.soLoudFFI.initEngine();
         isolateToMainStream
             .send({'event': event['event'], 'args': args, 'return': ret});
-        break;
-
-      case MessageEvents.disposeEngine:
-        final args = event['args']! as ArgsDisposeEngine;
-        soLoudController.soLoudFFI.deinit();
-        isolateToMainStream
-            .send({'event': event['event'], 'args': args, 'return': ()});
         break;
 
       case MessageEvents.loadFile:
@@ -367,12 +358,6 @@ void audioIsolate(SendPort isolateToMainStream) {
             'args': (),
           },
         );
-        break;
-
-      case MessageEvents.stopLoop:
-        loopRunning = false;
-        isolateToMainStream
-            .send({'event': MessageEvents.stopLoop, 'args': (), 'return': ()});
         break;
 
       case MessageEvents.loop:

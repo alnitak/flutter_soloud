@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:ffi' as ffi;
 
 import 'package:flutter_soloud/src/enums.dart';
@@ -21,23 +20,6 @@ import 'package:meta/meta.dart';
 /// breaking changes in the future without a major version bump.
 @experimental
 interface class SoLoudCapture {
-  /// A deprecated way to access the singleton [instance] of [SoLoudCapture].
-  ///
-  /// The reason this is deprecated is that it leads to code that misrepresents
-  /// what is actually happening. For example:
-  ///
-  /// ```dart
-  /// // BAD
-  /// var sound = await SoLoudCapture().loadFile('path/to/sound.mp3');
-  /// await SoLoudCapture().play(sound)
-  /// ```
-  ///
-  /// The code above suggests, on the face of it, that we're _constructing_
-  /// two instances of [SoLoudCapture], although we're in fact only accessing
-  /// the singleton instance.
-  @Deprecated('Use SoLoudCapture.instance instead')
-  factory SoLoudCapture() => instance;
-
   /// The private constructor of [SoLoudCapture]. This prevents developers from
   /// instantiating new instances.
   SoLoudCapture._();
@@ -89,12 +71,6 @@ interface class SoLoudCapture {
   /// status of capture
   bool isCaptureInited = false;
 
-  /// Stream of audio events. Deprecated.
-  @Deprecated(
-    'Instead of listening to events, just await initialize() and shutdown()',
-  )
-  StreamController<AudioEvent> get audioEvent => SoLoud.instance.audioEvent;
-
   // ////////////////////////////////////////////////
   // Below all the methods implemented with FFI for the capture
   // ////////////////////////////////////////////////
@@ -133,11 +109,6 @@ interface class SoLoudCapture {
     }
     return CaptureErrors.captureNoError;
   }
-
-  /// Deprecated alias of [initialize].
-  @Deprecated('Use initialize() instead')
-  CaptureErrors initCapture({int deviceID = -1}) =>
-      initialize(deviceID: deviceID);
 
   /// Initialize input device with [deviceID].
   ///
@@ -198,10 +169,6 @@ interface class SoLoudCapture {
   CaptureErrors startCapture() {
     final ret = SoLoudController().captureFFI.startCapture();
     _logCaptureError(ret, from: 'startCapture() result');
-    if (ret == CaptureErrors.captureNoError) {
-      // ignore: deprecated_member_use_from_same_package
-      audioEvent.add(AudioEvent.captureStarted);
-    }
     return ret;
   }
 
@@ -214,8 +181,6 @@ interface class SoLoudCapture {
     _logCaptureError(ret, from: 'stopCapture() result');
     if (ret == CaptureErrors.captureNoError) {
       isCaptureInited = false;
-      // ignore: deprecated_member_use_from_same_package
-      SoLoud.instance.audioEvent.add(AudioEvent.captureStopped);
     }
     return ret;
   }

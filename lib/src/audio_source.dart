@@ -5,14 +5,6 @@ import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
 import 'package:meta/meta.dart';
 
-/// Deprecated alias to [SoundEventType].
-@Deprecated('Use SoundEventType instead')
-typedef SoundEvent = SoundEventType;
-
-/// A deprecated alias for [AudioSource].
-@Deprecated("Use 'AudioSource' instead")
-typedef SoundProps = AudioSource;
-
 /// the type sent back to the user when a sound event occurs
 typedef StreamSoundEvent = ({
   SoundEventType event,
@@ -74,11 +66,7 @@ class AudioSource {
   late final StreamController<StreamSoundEvent> soundEventsController =
       StreamController.broadcast();
 
-  /// This getter is [deprecated] and will be removed. Use [handles] instead.
-  @Deprecated("Use 'handles' instead")
-  UnmodifiableSetView<SoundHandle> get handle => handles;
-
-  /// the user can listen ie when a sound ends or key events (TODO)
+  /// the user can listen when a sound ends
   Stream<StreamSoundEvent> get soundEvents => soundEventsController.stream;
 
   /// Backing controller for [allInstancesFinished].

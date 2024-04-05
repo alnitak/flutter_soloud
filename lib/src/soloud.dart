@@ -42,23 +42,6 @@ enum AudioEvent {
 ///
 /// For methods that _capture_ sounds, use [SoLoudCapture].
 interface class SoLoud {
-  /// A deprecated way to access the singleton [instance] of SoLoud.
-  ///
-  /// The reason this is deprecated is that it leads to code that misrepresents
-  /// what is actually happening. For example:
-  ///
-  /// ```dart
-  /// // BAD
-  /// var sound = await SoLoud().loadFile('path/to/sound.mp3');
-  /// await SoLoud().play(sound)
-  /// ```
-  ///
-  /// The code above suggests, on the face of it, that we're _constructing_
-  /// two instances of [SoLoud], although we're in fact only accessing
-  /// the singleton instance.
-  @Deprecated('Use SoLoudPlayer.instance instead')
-  factory SoLoud() => instance;
-
   /// The private constructor of [SoLoud]. This prevents developers from
   /// instantiating new instances.
   SoLoud._();
@@ -205,15 +188,6 @@ interface class SoLoud {
         .then((_) => true, onError: (_) => false);
   }
 
-  /// Stream audio events
-  @Deprecated(
-      'Instead of listening to events, just await initialize() and shutdown()')
-  StreamController<AudioEvent> audioEvent = StreamController.broadcast();
-
-  /// status of player
-  @Deprecated('Use SoLoud.isInitialized (or await SoLoud.initialized) instead')
-  bool get isPlayerInited => _isInitialized;
-
   /// Status of the engine.
   ///
   /// Since the engine is initialized as a part of the
@@ -226,10 +200,6 @@ interface class SoLoud {
   ///
   // TODO(filiph): check if still needed
   bool _isEngineInitialized = false;
-
-  /// status of capture
-  @Deprecated('Use SoLoudCapture.isCaptureInited instead')
-  bool get isCaptureInited => SoLoudCapture.instance.isCaptureInited;
 
   /// Used both in main and audio isolates
   /// should be synchronized with each other
@@ -272,21 +242,6 @@ interface class SoLoud {
 
     return completer.future;
   }
-
-  /// Initializes the audio engine.
-  ///
-  /// Use [init] instead. This method is simply an alias for [init]
-  /// for backwards compatibility. It will be removed in a future version.
-  @Deprecated('use init() instead')
-  Future<void> startIsolate() => init();
-
-  /// Deprecated alias of [init].
-  @Deprecated("Use 'init()' instead")
-  Future<void> initialize({
-    Duration timeout = const Duration(seconds: 10),
-    bool automaticCleanup = false,
-  }) =>
-      init(timeout: timeout, automaticCleanup: automaticCleanup);
 
   /// Initializes the audio engine.
   ///
@@ -376,8 +331,6 @@ interface class SoLoud {
               'one _initializeCompleter running at any given time.');
 
           if (error == PlayerErrors.noError) {
-            // ignore: deprecated_member_use_from_same_package
-            audioEvent.add(AudioEvent.isolateStarted);
             _isInitialized = true;
 
             /// get the visualization flag from the player on C side.
@@ -477,21 +430,6 @@ interface class SoLoud {
     _isEngineInitialized = false;
   }
 
-  /// An alias for [shutdown], for backwards compatibility.
-  ///
-  /// Use [shutdown] instead. The [stopIsolate] alias will be removed
-  /// in a future version.
-  @Deprecated('use dispose() instead')
-  Future<bool> stopIsolate() => shutdown();
-
-  /// Deprecated alias of [deinit].
-  @Deprecated("Use 'deinit()' instead")
-  Future<bool> shutdown() async {
-    _log.finest('shutdown() called');
-    deinit();
-    return true;
-  }
-
   /// Stops the engine and disposes of all resources, including sounds
   /// and the audio isolate in a synchronous way.
   ///
@@ -526,13 +464,6 @@ interface class SoLoud {
     _activeSounds.clear();
   }
 
-  /// return true if the audio isolate is running
-  ///
-  @Deprecated('Use isInitialized (or await SoLoud.initialized) instead')
-  bool isIsolateRunning() {
-    return _isolate != null;
-  }
-
   // //////////////////////////////////
   // / isolate loop events management /
   // //////////////////////////////////
@@ -561,32 +492,9 @@ interface class SoLoud {
     return true;
   }
 
-  /// stop the [SoundEventType]s loop
-  ///
-  Future<bool> _stopLoop() async {
-    _log.finest('_stopLoop() called');
-    if (_isolate == null || !_isEngineInitialized) return false;
-
-    _mainToIsolateStream?.send(
-      {
-        'event': MessageEvents.stopLoop,
-        'args': (),
-      },
-    );
-    await _waitForEvent(MessageEvents.stopLoop, ());
-    return true;
-  }
-
   // ////////////////////////////////////////////////
   // Below all the methods implemented with FFI for the player
   // ////////////////////////////////////////////////
-
-  /// A deprecated method that manually starts the engine.
-  ///
-  /// Do not use. The engine is fully started with [init].
-  /// This method will be removed in a future version.
-  @Deprecated('Use initialize() instead')
-  Future<PlayerErrors> initEngine() => _initEngine();
 
   /// Initialize the audio engine.
   ///
@@ -616,40 +524,6 @@ interface class SoLoud {
       await _startLoop();
     }
     return ret;
-  }
-
-  /// A deprecated method that manually disposes the engine
-  /// (and only the engine).
-  ///
-  /// Do not use. The engine is fully disposed within [shutdown].
-  /// This method will be removed in a future version.
-  @Deprecated('Use shutdown() instead')
-  Future<bool> disposeEngine() => _disposeEngine();
-
-  /// Stop the engine
-  /// The audio isolate doesn't get killed
-  ///
-  /// Returns true if success
-  ///
-  Future<bool> _disposeEngine() async {
-    _log.finest('_disposeEngine() called');
-    if (_isolate == null || !_isEngineInitialized) return false;
-
-    await disposeAllSources();
-
-    /// first stop the loop
-    await _stopLoop();
-    _isEngineInitialized = false;
-
-    /// then ask to audio isolate to dispose the engine
-    _mainToIsolateStream?.send(
-      {
-        'event': MessageEvents.disposeEngine,
-        'args': (),
-      },
-    );
-    await _waitForEvent(MessageEvents.disposeEngine, ());
-    return true;
   }
 
   /// Load a new sound to be played once or multiple times later, from
@@ -1099,10 +973,6 @@ interface class SoLoud {
     }
   }
 
-  /// A deprecated alias of [disposeSource].
-  @Deprecated("Use 'disposeSource' instead")
-  Future<void> disposeSound(AudioSource sound) => disposeSource(sound);
-
   /// Stops all handles of the already loaded [source], and reclaims memory.
   ///
   /// After an audio source has been disposed in this way,
@@ -1131,10 +1001,6 @@ interface class SoLoud {
       },
     );
   }
-
-  /// A deprecated alias to [disposeAllSources].
-  @Deprecated("Use 'disposeAllSources()' instead")
-  Future<void> disposeAllSound() => disposeAllSources();
 
   /// Disposes all audio sources that are currently loaded.
   /// Also stops all sound instances if anything is playing.
@@ -1722,94 +1588,6 @@ interface class SoLoud {
     }
   }
 
-  // ////////////////////////////////////////////////
-  // Below all the methods implemented with FFI for the capture
-  // ////////////////////////////////////////////////
-
-  /// List available input devices. Useful on desktop to choose
-  /// which input device to use.
-  @Deprecated('Use SoLoudCapture.listCaptureDevices instead '
-      '(all capture-related methods were moved to SoLoudCapture class)')
-  @experimental
-  List<CaptureDevice> listCaptureDevices() =>
-      SoLoudCapture.instance.listCaptureDevices();
-
-  /// Initialize input device with [deviceID].
-  ///
-  /// Return [CaptureErrors.captureNoError] if no error.
-  ///
-  @Deprecated('Use SoLoudCapture.initialize() instead '
-      '(all capture-related methods were moved to SoLoudCapture class)')
-  @experimental
-  CaptureErrors initCapture({int deviceID = -1}) =>
-      SoLoudCapture.instance.initialize();
-
-  /// Get the status of the device.
-  ///
-  @Deprecated('Use SoLoudCapture.isCaptureInitialized() instead '
-      '(all capture-related methods were moved to SoLoudCapture class)')
-  @experimental
-  bool isCaptureInitialized() => SoLoudCapture.instance.isCaptureInitialized();
-
-  /// Returns true if the device is capturing audio.
-  ///
-  @Deprecated('Use SoLoudCapture.isCaptureStarted() instead '
-      '(all capture-related methods were moved to SoLoudCapture class)')
-  @experimental
-  bool isCaptureStarted() => SoLoudCapture.instance.isCaptureStarted();
-
-  /// Stop and deinit capture device.
-  ///
-  /// Return [CaptureErrors.captureNoError] if no error.
-  ///
-  @Deprecated('Use SoLoudCapture.stopCapture() instead '
-      '(all capture-related methods were moved to SoLoudCapture class)')
-  @experimental
-  CaptureErrors stopCapture() => SoLoudCapture.instance.stopCapture();
-
-  /// Start capturing audio data.
-  ///
-  /// Return [CaptureErrors.captureNoError] if no error
-  ///
-  @Deprecated('Use SoLoudCapture.startCapture() instead '
-      '(all capture-related methods were moved to SoLoudCapture class)')
-  @experimental
-  CaptureErrors startCapture() => SoLoudCapture.instance.startCapture();
-
-  /// Return a floats matrix of 256x512
-  /// Every row are composed of 256 FFT values plus 256 of wave data
-  /// Every time is called, a new row is stored in the
-  /// first row and all the previous rows are shifted
-  /// up (the last one will be lost).
-  ///
-  /// Return [CaptureErrors.captureNoError] if no error.
-  ///
-  @Deprecated('Use SoLoudCapture.getCaptureAudioTexture2D() instead '
-      '(all capture-related methods were moved to SoLoudCapture class)')
-  @experimental
-  CaptureErrors getCaptureAudioTexture2D(
-          ffi.Pointer<ffi.Pointer<ffi.Float>> audioData) =>
-      SoLoudCapture.instance.getCaptureAudioTexture2D(audioData);
-
-  /// Smooth FFT data.
-  ///
-  /// When new data is read and the values are decreasing, the new value will be
-  /// decreased with an amplitude between the old and the new value.
-  /// This will resul on a less shaky visualization.
-  /// [smooth] must be in the [0.0 ~ 1.0] range.
-  /// 0 = no smooth
-  /// 1 = full smooth
-  /// the new value is calculated with:
-  /// newFreq = smooth * oldFreq + (1 - smooth) * newFreq
-  ///
-  /// Return [CaptureErrors.captureNoError] if no error.
-  ///
-  @Deprecated('Use SoLoudCapture.setCaptureFftSmoothing() instead '
-      '(all capture-related methods were moved to SoLoudCapture class)')
-  @experimental
-  CaptureErrors setCaptureFftSmoothing(double smooth) =>
-      SoLoudCapture.instance.setCaptureFftSmoothing(smooth);
-
   // ///////////////////////////////////////
   // / Filters
   // ///////////////////////////////////////
@@ -1866,11 +1644,6 @@ interface class SoLoud {
       throw SoLoudCppException.fromPlayerError(error);
     }
   }
-
-  /// Deprecated alias of [setFilterParameter].
-  @Deprecated("Use 'setFilterParams' instead")
-  void setFxParams(FilterType filterType, int attributeId, double value) =>
-      setFilterParameter(filterType, attributeId, value);
 
   /// Sets a parameter of the given [filterType].
   ///
