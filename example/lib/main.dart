@@ -29,6 +29,8 @@ void main() async {
     );
   });
 
+  WidgetsFlutterBinding.ensureInitialized();
+
   /// Initialize the player
   await SoLoud.instance.init().then(
     (_) {
