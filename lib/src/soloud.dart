@@ -287,6 +287,14 @@ interface class SoLoud {
       return;
     }
 
+    // if `!_isInitialized` but the engine is initialized in native, therefore
+    // the developer may have carried out a hot reload which does not imply 
+    // the release of the native player. 
+    // Just deinit the engine to be re-inited later.
+    if (SoLoudController().soLoudFFI.isInited()) {
+      deinit();
+    }
+
     if (_initializeCompleter != null) {
       _log.severe('initialize() called while already initializing. '
           'Avoid this by checking the `initialized` Future before '
