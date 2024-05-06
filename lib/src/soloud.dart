@@ -293,10 +293,10 @@ interface class SoLoud {
     // Just deinit the engine to be re-inited later.
     if (SoLoudController().soLoudFFI.isInited()) {
       _log.warning('init() called when the native player is already '
-          'initialized. This is expected after a hot restart but not otherwise. '
-          "If you see this in production logs, there's probably a bug in "
-          'your code. You may have neglected to deinit() SoLoud during the '
-          'current lifetime of the app.');
+          'initialized. This is expected after a hot restart but not '
+          "otherwise. If you see this in production logs, there's probably "
+          'a bug in your code. You may have neglected to deinit() SoLoud '
+          'during the current lifetime of the app.');
       deinit();
     }
 

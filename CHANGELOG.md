@@ -1,3 +1,6 @@
+### 2.0.1 (6 May 2024)
+- Fix init error on hot restart.
+
 ### 2.0.0 (5 Apr 2024)
 - A giant leap forward from the previous version (many thanks to Filip Hráček).
 - Major changes to API. There are quick fixes (`dart fix`) to automatically rename many changed APIs.
