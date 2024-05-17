@@ -64,10 +64,45 @@ namespace SoLoud
 {
     ma_device gDevice;
 
+    void on_notification(const ma_device_notification* pNotification)
+    {
+        MA_ASSERT(pNotification != NULL);
+        
+        switch (pNotification->type)
+        {
+            case ma_device_notification_type_started:
+            {
+                printf("Started\n");
+            } break;
+
+            case ma_device_notification_type_stopped:
+            {
+                printf("Stopped\n");
+            } break;
+
+            case ma_device_notification_type_rerouted:
+            {
+                printf("Rerouted\n");
+            } break;
+
+            case ma_device_notification_type_interruption_began:
+            {
+                printf("Interruption Began\n");
+            } break;
+
+            case ma_device_notification_type_interruption_ended:
+            {
+                printf("Interruption Ended\n");
+            } break;
+
+            default: break;
+        }
+    }
+
     void soloud_miniaudio_audiomixer(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount)
     {
         SoLoud::Soloud *soloud = (SoLoud::Soloud *)pDevice->pUserData;
-            soloud->mix((float *)pOutput, frameCount);
+        soloud->mix((float *)pOutput, frameCount);
     }
 
     static void soloud_miniaudio_deinit(SoLoud::Soloud *aSoloud)
@@ -84,6 +119,7 @@ namespace SoLoud
         config.sampleRate         = aSamplerate;
         config.dataCallback       = soloud_miniaudio_audiomixer;
         config.pUserData          = (void *)aSoloud;
+        config.notificationCallback = on_notification;
 
         if (ma_device_init(NULL, &config, &gDevice) != MA_SUCCESS)
         {

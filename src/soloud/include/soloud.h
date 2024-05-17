@@ -170,6 +170,11 @@ namespace SoLoud
 		soloudResultFunction mBackendPauseFunc;
 		soloudResultFunction mBackendResumeFunc;
 
+		void (*_voiceStoppedCallback)(int) = nullptr;
+		void setvoiceStoppedCallback(void (*voiceStoppedCallback)(int)) {
+			_voiceStoppedCallback = voiceStoppedCallback;
+		}
+
 		// CTor
 		Soloud();
 		// DTor

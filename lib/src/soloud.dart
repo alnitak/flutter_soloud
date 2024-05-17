@@ -4,7 +4,6 @@ import 'dart:async';
 import 'dart:ffi' as ffi;
 import 'dart:isolate';
 
-// import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_soloud/src/audio_isolate.dart';
 import 'package:flutter_soloud/src/audio_source.dart';

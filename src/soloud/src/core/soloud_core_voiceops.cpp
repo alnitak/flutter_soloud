@@ -129,6 +129,10 @@ namespace SoLoud
 			{
 				if (mResampleDataOwner[i] == v)
 				{
+					if (_voiceStoppedCallback != nullptr) {
+						int handle = (aVoice + 1) | (mResampleDataOwner[i]->mPlayIndex << 12);
+						_voiceStoppedCallback(handle);
+					}
 					mResampleDataOwner[i] = NULL;
 				}
 			}
