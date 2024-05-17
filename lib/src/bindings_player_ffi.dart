@@ -4,6 +4,7 @@
 // ignore_for_file: avoid_positional_boolean_parameters, require_trailing_commas
 
 import 'dart:ffi' as ffi;
+import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 import 'package:flutter_soloud/src/enums.dart';
@@ -163,6 +164,48 @@ class FlutterSoLoudFfi {
           )>>('loadFile');
   late final _loadFile = _loadFilePtr.asFunction<
       int Function(ffi.Pointer<ffi.Char>, int, ffi.Pointer<ffi.UnsignedInt>)>();
+
+  /// Load a new sound stored into [mem] to be played once or multiple times later.
+  /// Mainly used on web because the browsers are not allowed to read files directly.
+  ///
+  /// [uniqueName] the unique name of the sound. Used only to have the [hash].
+  /// [buffer] the audio data. These contains the audio file bytes.
+  /// [length] the length of [mem].
+  /// [hash] return the hash of the sound.
+  ({PlayerErrors error, SoundHash soundHash}) loadMem(
+    String uniqueName,
+    Uint8List buffer,
+  ) {
+    // ignore: omit_local_variable_types
+    final ffi.Pointer<ffi.UnsignedInt> hash =
+        calloc(ffi.sizeOf<ffi.UnsignedInt>());
+    final ffi.Pointer<ffi.Uint8> bufferPtr = calloc(buffer.length);
+    for (var i = 0; i < buffer.length; i++) {
+      bufferPtr[i] = buffer[i];
+    }
+
+    final e = _loadMem(
+      uniqueName.toNativeUtf8().cast<ffi.Char>(),
+      bufferPtr,
+      buffer.length,
+      hash,
+    );
+    final soundHash = SoundHash(hash.value);
+    final ret = (error: PlayerErrors.values[e], soundHash: soundHash);
+    calloc.free(hash);
+    return ret;
+  }
+
+  late final _loadMemPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Int32 Function(
+              ffi.Pointer<ffi.Char>,
+              ffi.Pointer<ffi.Uint8>,
+              ffi.Int,
+              ffi.Pointer<ffi.UnsignedInt>)>>('loadMem');
+  late final _loadMem = _loadMemPtr.asFunction<
+      int Function(ffi.Pointer<ffi.Char>, ffi.Pointer<ffi.Uint8>, int,
+          ffi.Pointer<ffi.UnsignedInt>)>();
 
   /// Load a new waveform to be played once or multiple times later
   ///

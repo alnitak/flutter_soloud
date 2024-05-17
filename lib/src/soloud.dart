@@ -4,7 +4,7 @@ import 'dart:async';
 import 'dart:ffi' as ffi;
 import 'dart:isolate';
 
-import 'package:flutter/material.dart';
+// import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_soloud/src/audio_isolate.dart';
 import 'package:flutter_soloud/src/audio_source.dart';
@@ -888,6 +888,7 @@ interface class SoLoud {
           .handlesInternal
           .add(ret.newHandle);
       sound.handlesInternal.add(ret.newHandle);
+      print('DART PLAY ret.newHandle: ${ret.newHandle}');
     } catch (e) {
       _log.severe('play(): soundHash ${sound.soundHash} not found', e);
       throw SoLoudSoundHashNotFoundDartException(sound.soundHash);

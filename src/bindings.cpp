@@ -1,3 +1,4 @@
+
 #include "player.h"
 #include "analyzer.h"
 #include "synth/basic_wave.h"
@@ -96,7 +97,7 @@ extern "C"
     /// If false, Soloud::wavStream will be used and the audio data is loaded 
     /// from the given file when needed (more CPU, less memory allocated).
     /// See the [seek] note problem when using [loadIntoMem] = false
-    /// [hash] return hash of the sound
+    /// [hash] return the hash of the sound
     /// Returns [PlayerErrors.noError] if success
     FFI_PLUGIN_EXPORT enum PlayerErrors loadFile(
         char *completeFileName, 
@@ -106,6 +107,24 @@ extern "C"
         if (!player.get()->isInited())
             return backendNotInited;
         return (PlayerErrors)player.get()->loadFile(completeFileName, loadIntoMem, *hash);
+    }
+
+    /// Load a new sound stored into [buffer] to be played once or multiple times later.
+    /// Mainly used on web because the browsers are not allowed to read files directly.
+    ///
+    /// [uniqueName] the unique name of the sound. Used only to have the [hash].
+    /// [buffer] the audio data. These contains the audio file bytes.
+    /// [length] the length of [buffer].
+    /// [hash] return the hash of the sound.
+    FFI_PLUGIN_EXPORT enum PlayerErrors loadMem(
+        char *uniqueName, 
+        unsigned char *buffer, 
+        int length,
+        unsigned int *hash)
+    {
+        if (!player.get()->isInited())
+            return backendNotInited;
+        return (PlayerErrors)player.get()->loadMem(uniqueName, buffer, length, *hash);
     }
 
     /// Load a new waveform to be played once or multiple times later
@@ -692,7 +711,7 @@ extern "C"
 
     /// Smoothly change a channel's volume over specified time.
     ///
-    FFI_PLUGIN_EXPORT enum PlayerErrors fadeVolume(SoLoud::handle handle, float to, float time)
+    FFI_PLUGIN_EXPORT enum PlayerErrors fadeVolume(unsigned int handle, float to, float time)
     {
         if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
@@ -702,7 +721,7 @@ extern "C"
 
     /// Smoothly change a channel's pan setting over specified time.
     ///
-    FFI_PLUGIN_EXPORT enum PlayerErrors fadePan(SoLoud::handle handle, float to, float time)
+    FFI_PLUGIN_EXPORT enum PlayerErrors fadePan(unsigned int handle, float to, float time)
     {
         if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
@@ -712,7 +731,7 @@ extern "C"
 
     /// Smoothly change a channel's relative play speed over specified time.
     ///
-    FFI_PLUGIN_EXPORT enum PlayerErrors fadeRelativePlaySpeed(SoLoud::handle handle, float to, float time)
+    FFI_PLUGIN_EXPORT enum PlayerErrors fadeRelativePlaySpeed(unsigned int handle, float to, float time)
     {
         if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
@@ -722,7 +741,7 @@ extern "C"
 
     /// After specified time, pause the channel.
     ///
-    FFI_PLUGIN_EXPORT enum PlayerErrors schedulePause(SoLoud::handle handle, float time)
+    FFI_PLUGIN_EXPORT enum PlayerErrors schedulePause(unsigned int handle, float time)
     {
         if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
@@ -732,7 +751,7 @@ extern "C"
 
     /// After specified time, stop the channel.
     ///
-    FFI_PLUGIN_EXPORT enum PlayerErrors scheduleStop(SoLoud::handle handle, float time)
+    FFI_PLUGIN_EXPORT enum PlayerErrors scheduleStop(unsigned int handle, float time)
     {
         if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
@@ -742,7 +761,7 @@ extern "C"
 
     /// Set fader to oscillate the volume at specified frequency.
     ///
-    FFI_PLUGIN_EXPORT enum PlayerErrors oscillateVolume(SoLoud::handle handle, float from, float to, float time)
+    FFI_PLUGIN_EXPORT enum PlayerErrors oscillateVolume(unsigned int handle, float from, float to, float time)
     {
         if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
@@ -752,7 +771,7 @@ extern "C"
 
     /// Set fader to oscillate the panning at specified frequency.
     ///
-    FFI_PLUGIN_EXPORT enum PlayerErrors oscillatePan(SoLoud::handle handle, float from, float to, float time)
+    FFI_PLUGIN_EXPORT enum PlayerErrors oscillatePan(unsigned int handle, float from, float to, float time)
     {
         if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
@@ -762,7 +781,7 @@ extern "C"
 
     /// Set fader to oscillate the relative play speed at specified frequency.
     ///
-    FFI_PLUGIN_EXPORT enum PlayerErrors oscillateRelativePlaySpeed(SoLoud::handle handle, float from, float to, float time)
+    FFI_PLUGIN_EXPORT enum PlayerErrors oscillateRelativePlaySpeed(unsigned int handle, float from, float to, float time)
     {
         if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
@@ -887,7 +906,7 @@ extern "C"
     /// current loop point can be queried with [getLoopingPoint] and 
     /// changed by [setLoopingPoint].
     /// Returns the handle of the sound, 0 if error
-    FFI_PLUGIN_EXPORT unsigned int play3d(
+    FFI_PLUGIN_EXPORT PlayerErrors play3d(
         unsigned int soundHash,
         float posX,
         float posY,
@@ -1108,31 +1127,61 @@ extern "C"
     }
 
     /////////// JUST FOR TEST //////////
-    // SoLoud::Wav sound1;
-    // SoLoud::Wav sound2;
-    // SoLoud::Soloud soloud;
-    // Basicwave basicWave;
-    FFI_PLUGIN_EXPORT void test()
+    // https://stackoverflow.com/questions/17883799/how-to-handle-passing-returning-array-pointers-to-emscripten-compiled-code
+    // https://stackoverflow.com/questions/50615377/how-do-you-call-a-c-function-that-takes-or-returns-a-struct-by-value-from-js-v
+
+    // https://developer.mozilla.org/en-US/docs/WebAssembly/C_to_Wasm
+    // Run Chromium with:
+    // chromium --disable-web-security --disable-gpu --user-data-dir=~/chromeTemp
+    unsigned int handle;
+    unsigned int hash;
+    struct provaProvaProva{
+        PlayerErrors error;
+        int dummy;
+    };
+
+    FFI_PLUGIN_EXPORT provaProvaProva js_init()
     {
-        // unsigned int handle;
-        // SoLoud::result result = soloud.init(
-        //     SoLoud::Soloud::CLIP_ROUNDOFF,
-        //     SoLoud::Soloud::MINIAUDIO, 44100, 2048, 2U);
-        // result = sound1.load("/home/deimos/5/01 - Theme From Farscape.mp3");
-        // result = sound2.load("/home/deimos/5/Music/ROSS/DANCE/Alphaville - Big In Japan (Original Version).mp3");
-
-        // soloud.play(sound1, -1.0f, 0.0f, 0, 0);
-        // soloud.play(sound2, -1.0f, 0.0f, 0, 0);
-
-        // unsigned int handle;
-        // player.get()->play("/home/deimos/5/01 - Theme From Farscape.mp3", handle);
-        // player.get()->play("/home/deimos/5/Music/ROSS/DANCE/Alphaville - Big In Japan (Original Version).mp3", handle);
-
-        // unsigned int hash;
-        // player.get()->loadWaveform(SoLoud::Soloud::WAVE_SQUARE, true, 0.25f, 1.0f, hash);
-        // player.get()->play(hash);
+        printf("init Called\n");
+        int result = initEngine();
+        printf("initEngine() returned %d\n", result);
+        return {noError, 123};
     }
+
+    FFI_PLUGIN_EXPORT void js_load() {
+        printf("js_load Called\n");
+        int result = loadWaveform(SoLoud::Soloud::WAVE_SQUARE, true, 0.25f, 1.0f, &hash);
+        printf("loadWaveform() result: %d  hash %d\n", result, hash);
+    }
+    // EMSCRIPTEN_BINDINGS(my_struct) {
+    //     class_<MyStruct>("MyStruct")
+    //         .constructor<>()
+    //         .property("a", &MyStruct::a)
+    //         .property("b", &MyStruct::b)
+    //         .property("c", &MyStruct::c)
+    //         ;
+
+    //     function("Foo", &Foo);
+    // }
+
+    FFI_PLUGIN_EXPORT void js_play(unsigned int handle) {
+        printf("js_play Called\n");
+        int result = play(hash, 0.1, 0.0f, false, true, 0.0, &handle);
+        printf("js_play() result: %d\n", result);
+    }
+
+    FFI_PLUGIN_EXPORT void js_dispose() {
+        printf("js_dispose Called\n");
+        dispose();
+    }
+
 
 #ifdef __cplusplus
 }
 #endif
+
+
+
+
+
+    
