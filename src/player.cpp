@@ -16,18 +16,16 @@
 #include <unistd.h>
 #endif
 
-Player::Player() : mInited(false), mFilters(&soloud){
-    soloud.setvoiceStoppedCallback(voiceStoppedCallback);
-}
+Player::Player() : mInited(false), mFilters(&soloud){}
 
 Player::~Player()
 {
     dispose();
 }
 
-void Player::voiceStoppedCallback(int handle)
+void Player::setVoiceEndedCallback(void (*voiceEndedCallback)(unsigned int))
 {
-    printf("PLAYER stoppedCallback handle: %d\n", handle);
+    soloud.setVoiceEndedCallback(voiceEndedCallback);
 }
 
 PlayerErrors Player::init()
@@ -53,6 +51,7 @@ void Player::dispose()
 {
     std::lock_guard<std::mutex> guard(init_deinit_mutex);
     // Clean up SoLoud
+    soloud.setVoiceEndedCallback(nullptr);
     soloud.deinit();
     mInited = false;
     sounds.clear();

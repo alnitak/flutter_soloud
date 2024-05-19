@@ -21,34 +21,38 @@ extern "C"
 
     std::unique_ptr<Player> player = nullptr;
     std::unique_ptr<Analyzer> analyzer = std::make_unique<Analyzer>(2048);
+    void (*dartEndedCallback)(unsigned int) = nullptr;
+    
 
-    /// @brief Set a dart function to call when the sound with [handle] handle ends
-    /// @param callback this is the dart function that will be called
-    ///     when the sound ends to play.
-    ///     Must be global or a static class member:
-    ///     ```@pragma('vm:entry-point')
-    ///        void playEndedCallback(int handle) {
-    ///             // here the sound with [handle] has ended.
-    ///             // you can play again
-    ///             soLoudController.soLoudFFI.play(handle);
-    ///             // or dispose it
-    ///             soLoudController.soLoudFFI.stop(handle);
-    ///        }
-    ///     ```
-    /// @param handle the handle to the sound
-    /// @param callback this is the dart function that will be called
-    ///         when the sound ends to play
-    /// @return true if success;
-    // FFI_PLUGIN_EXPORT bool setPlayEndedCallback(void (*callback)(unsigned int), unsigned int handle)
-    // {
-    //     if (!player.get()->isInited()) return false;
-    //     ActiveSound* sound = player.get()->findByHandle(handle);
-    //     if (sound != nullptr) {
-    //         sound->playEndedCallback = callback;
-    //         return true;
-    //     }
-    //     return false;
-    // }
+    /// The callback to monitor.
+    /// 
+    /// It is called by SoLoud when a voice ends
+    FFI_PLUGIN_EXPORT void voiceEndedCallback(unsigned int handle) {
+        printf("PLAYER stoppedCallback handle: %d\n", handle);
+        if (dartEndedCallback != nullptr)
+            dartEndedCallback(handle);
+    }
+
+    /// Set a Dart function to call when a sound ends.
+    ///
+    /// [callback] Dart function that will be called when the sound ends to play.
+    ///  Must be a global or a static class member.
+    ///  If using a global function, this must be declared with `@pragma('vm:entry-point')`
+    ///  ```
+    ///  @pragma('vm:entry-point')
+    ///  void playEndedCallback(int handle) {
+    ///       // here the sound with [handle] has ended.
+    ///       // you can play again
+    ///       soLoudController.soLoudFFI.play(handle);
+    ///       // or dispose it
+    ///       soLoudController.soLoudFFI.stop(handle);
+    ///  }
+    ///  ```
+    FFI_PLUGIN_EXPORT void setDartPlayEndedCallback(void (*callback)(unsigned int))
+    {
+        if (!player.get()->isInited()) return;
+        dartEndedCallback = callback;
+    }
 
     /// Initialize the player.get()-> Must be called before any other player functions
     ///
@@ -63,10 +67,15 @@ extern "C"
         if (res != noError)
             return res;
 
+        // Set window size for filters
         const int windowSize = (player.get()->soloud.getBackendBufferSize() /
                                 player.get()->soloud.getBackendChannels()) -
                                1;
         analyzer.get()->setWindowsSize(windowSize);
+
+        // Set the callback for when a voice is ended/stopped
+        player.get()->setVoiceEndedCallback(voiceEndedCallback);
+
         return (PlayerErrors)noError;
     }
 
@@ -76,6 +85,7 @@ extern "C"
     {
         if (player.get() == nullptr)
             return;
+        dartEndedCallback = nullptr;
         player.get()->dispose();
         player = nullptr;
     }

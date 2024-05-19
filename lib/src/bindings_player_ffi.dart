@@ -3,6 +3,7 @@
 // from [ffi_gen_tmp.h] file. Read notes in the latter
 // ignore_for_file: avoid_positional_boolean_parameters, require_trailing_commas
 
+import 'dart:async';
 import 'dart:ffi' as ffi;
 import 'dart:typed_data';
 
@@ -11,6 +12,10 @@ import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
 import 'package:logging/logging.dart';
+
+typedef playEndedCallback = ffi.Pointer<ffi.Void> Function(ffi.UnsignedInt);
+typedef CallbackFunc = ffi.Void Function(ffi.UnsignedInt);
+typedef CallbackFuncDart = void Function(int);
 
 /// FFI bindings to SoLoud
 class FlutterSoLoudFfi {
@@ -71,16 +76,16 @@ class FlutterSoLoudFfi {
 //     void Function(int) callback,
 //     int handle,
 //   ) {
-
+//
 //     _userPlayEndedCallback = callback;
 //     final ret = _setPlayEndedCallback(
 //       ffi.Pointer.fromFunction(_playEndedCallback),
 //       handle,
 //     );
-
+//
 //     return ret == 1 ? true : false;
 //   }
-
+//
 //   late final _setPlayEndedCallbackPtr = _lookup<
 //       ffi.NativeFunction<
 //           ffi.Int Function(
@@ -91,6 +96,73 @@ class FlutterSoLoudFfi {
 //       int Function(
 //         ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt)>>,
 //         int)>();
+
+  void voiceEndedCallback(int handle) {
+    return _voiceEndedCallback(handle);
+  }
+
+  late final _voiceEndedCallbackPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt)>>(
+          'voiceEndedCallback');
+  late final _voiceEndedCallback =
+      _voiceEndedCallbackPtr.asFunction<void Function(int)>();
+
+  /// Set a Dart function to call when a sound ends.
+  ///
+  /// [callback] Dart function that will be called when the sound ends to play.
+  /// Must be a global or a static class member.
+  /// If using a global function, this must be declared
+  /// with `@pragma('vm:entry-point')`
+  /// ```
+  /// @pragma('vm:entry-point')
+  /// void playEndedCallback(int handle) {
+  ///   // here the sound with [handle] has ended.
+  ///   // you can play again
+  ///   soLoudController.soLoudFFI.play(handle);
+  ///   // or dispose it
+  ///   soLoudController.soLoudFFI.stop(handle);
+  /// }
+  /// ```
+  void setDartPlayEndedCallback(void Function(int) callback) {
+    // ignore: omit_local_variable_types
+    // final ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt)>>
+    // final
+    //   c = ffi.Pointer.fromFunction(callback);
+    // _setDartPlayEndedCallback(c);
+    final setNativeCallable =
+        ffi.NativeCallable<CallbackFunc>.isolateLocal(voiceEndedCallback);
+    _setDartPlayEndedCallback(setNativeCallable.nativeFunction);
+    setNativeCallable.close();
+
+
+    final completer = Completer<int>();
+    late final ffi.NativeCallable<CallbackFunc> nativeCallable;
+    void onResponse(ffi.UnsignedInt responsePointer) {
+      completer.complete(responsePointer);
+      // calloc.free(responsePointer);
+
+      // Remember to close the NativeCallable once the native API is
+      // finished with it, otherwise this isolate will stay alive
+      // indefinitely.
+      // nativeCallable.close();
+    }
+
+    nativeCallable = ffi.NativeCallable<CallbackFunc>.listener(onResponse);
+
+  }
+
+  late final _setDartPlayEndedCallbackPtr = _lookup<
+          ffi.NativeFunction<
+              ffi.Void Function(
+                  ffi.Pointer<
+                      ffi
+                      .NativeFunction<ffi.Void Function(ffi.UnsignedInt)>>)>>(
+      'setDartPlayEndedCallback');
+  late final _setDartPlayEndedCallback =
+      _setDartPlayEndedCallbackPtr.asFunction<
+          void Function(
+              ffi.Pointer<
+                  ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt)>>)>();
 
   /// Initialize the player. Must be called before any other player functions
   ///
@@ -165,13 +237,13 @@ class FlutterSoLoudFfi {
   late final _loadFile = _loadFilePtr.asFunction<
       int Function(ffi.Pointer<ffi.Char>, int, ffi.Pointer<ffi.UnsignedInt>)>();
 
-  /// Load a new sound stored into [mem] to be played once or multiple times later.
-  /// Mainly used on web because the browsers are not allowed to read files directly.
+  /// Load a new sound stored into [buffer] as file bytes to be played once
+  /// or multiple times later.
+  /// Use this on web because the browsers are not allowed to read
+  /// files directly.
   ///
   /// [uniqueName] the unique name of the sound. Used only to have the [hash].
   /// [buffer] the audio data. These contains the audio file bytes.
-  /// [length] the length of [mem].
-  /// [hash] return the hash of the sound.
   ({PlayerErrors error, SoundHash soundHash}) loadMem(
     String uniqueName,
     Uint8List buffer,
@@ -198,11 +270,8 @@ class FlutterSoLoudFfi {
 
   late final _loadMemPtr = _lookup<
       ffi.NativeFunction<
-          ffi.Int32 Function(
-              ffi.Pointer<ffi.Char>,
-              ffi.Pointer<ffi.Uint8>,
-              ffi.Int,
-              ffi.Pointer<ffi.UnsignedInt>)>>('loadMem');
+          ffi.Int32 Function(ffi.Pointer<ffi.Char>, ffi.Pointer<ffi.Uint8>,
+              ffi.Int, ffi.Pointer<ffi.UnsignedInt>)>>('loadMem');
   late final _loadMem = _loadMemPtr.asFunction<
       int Function(ffi.Pointer<ffi.Char>, ffi.Pointer<ffi.Uint8>, int,
           ffi.Pointer<ffi.UnsignedInt>)>();
