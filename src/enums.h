@@ -28,7 +28,7 @@ typedef enum PlayerErrors
     unknownError = 8,
     /// Player not initialized
     nullPointer = 9,
-    /// audio sound hash has not found
+    /// Audio sound hash is not found
     soundHashNotFound = 10,
     /// Player not initialized
     backendNotInited = 11,
@@ -42,6 +42,8 @@ typedef enum PlayerErrors
     filterAlreadyAdded = 15,
     /// Player already inited.
     playerAlreadyInited = 16,
+    /// Audio handle is not found
+    soundHandleNotFound = 17,
 } PlayerErrors_t;
 
 /// Possible capture errors

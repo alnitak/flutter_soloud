@@ -91,7 +91,7 @@ class SoLoudNullPointerException extends SoLoudCppException {
 /// An exception that is thrown when SoLoud (C++) receives a sound hash
 /// that is not found.
 class SoLoudSoundHashNotFoundCppException extends SoLoudCppException {
-  /// Creates a new [SoLoudSoundHashNotFoundDartException].
+  /// Creates a new [SoLoudSoundHashNotFoundCppException].
   const SoLoudSoundHashNotFoundCppException([super.message]);
 
   @override
@@ -160,5 +160,18 @@ class SoLoudPlayerAlreadyInitializedException extends SoLoudCppException {
 
   @override
   String get description => 'The player has already been initialized '
+      '(on the C++ side).';
+}
+
+/// An exception that is thrown when SoLoud (C++) receives a handle
+/// that is not found. This could happen when trying to use the given handle
+/// to get/set some of its attributes (like setting handle volume) after the
+/// handle has been stopped/ended and hence it becomes invalid.
+class SoLoudSoundHandleNotFoundCppException extends SoLoudCppException {
+  /// Creates a new [SoLoudSoundHandleNotFoundCppException].
+  const SoLoudSoundHandleNotFoundCppException([super.message]);
+
+  @override
+  String get description => 'The sound handle is not found '
       '(on the C++ side).';
 }

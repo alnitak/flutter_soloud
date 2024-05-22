@@ -98,6 +98,8 @@ const std::string Player::getErrorString(PlayerErrors errorCode) const
         return "error: filter already added!";
     case playerAlreadyInited:
         return "error: the player is already initialized!";
+    case soundHandleNotFound:
+        return "error: audio handle is not found!";
     }
     return "Other error";
 }
