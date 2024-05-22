@@ -171,8 +171,8 @@ namespace SoLoud
 		soloudResultFunction mBackendResumeFunc;
 
 		// Set the callback for when a voice is ended/stopped
-		void (*_voiceEndedCallback)(unsigned int) = nullptr;
-		void setVoiceEndedCallback(void (*voiceEndedCallback)(unsigned int)) {
+		void (*_voiceEndedCallback)(unsigned int*) = nullptr;
+		void setVoiceEndedCallback(void (*voiceEndedCallback)(unsigned int*)) {
 			_voiceEndedCallback = voiceEndedCallback;
 		}
 

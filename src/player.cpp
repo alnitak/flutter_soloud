@@ -23,7 +23,7 @@ Player::~Player()
     dispose();
 }
 
-void Player::setVoiceEndedCallback(void (*voiceEndedCallback)(unsigned int))
+void Player::setVoiceEndedCallback(void (*voiceEndedCallback)(unsigned int*))
 {
     soloud.setVoiceEndedCallback(voiceEndedCallback);
 }

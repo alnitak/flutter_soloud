@@ -50,7 +50,7 @@ public:
     /// @return Returns [PlayerErrors.SO_NO_ERROR] if success.
     PlayerErrors init();
 
-    void setVoiceEndedCallback(void (*voiceEndedCallback)(unsigned int));
+    void setVoiceEndedCallback(void (*voiceEndedCallback)(unsigned int*));
 
     /// @brief Must be called when there is no more need of the player or when closing the app.
     void dispose();

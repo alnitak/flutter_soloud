@@ -13,8 +13,9 @@ import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
 import 'package:logging/logging.dart';
 
-typedef playEndedCallback = ffi.Pointer<ffi.Void> Function(ffi.UnsignedInt);
-typedef CallbackFunc = ffi.Void Function(ffi.UnsignedInt);
+typedef playEndedCallback = ffi.Pointer<ffi.Void> Function(
+    ffi.Pointer<ffi.UnsignedInt>);
+typedef CallbackFunc = ffi.Void Function(ffi.Pointer<ffi.UnsignedInt>);
 typedef CallbackFuncDart = void Function(int);
 
 /// FFI bindings to SoLoud
@@ -98,14 +99,34 @@ class FlutterSoLoudFfi {
 //         int)>();
 
   void voiceEndedCallback(int handle) {
-    return _voiceEndedCallback(handle);
+    // ignore: omit_local_variable_types
+    final ffi.Pointer<ffi.UnsignedInt> h =
+        calloc(ffi.sizeOf<ffi.UnsignedInt>());
+    // _voiceEndedCallback(h);
+    // calloc.free(h);
+
+    // final completer = Completer<int>();
+    late final ffi.NativeCallable<CallbackFunc> nativeCallable;
+    void onResponse(ffi.Pointer<ffi.UnsignedInt> responsePointer) {
+      print('ON RESPONSE  ${responsePointer.value}');
+      // completer.complete(responsePointer.value);
+      // calloc.free(responsePointer);
+
+      // Remember to close the NativeCallable once the native API is
+      // finished with it, otherwise this isolate will stay alive
+      // indefinitely.
+      // nativeCallable.close();
+    }
+
+    nativeCallable = ffi.NativeCallable<CallbackFunc>.listener(onResponse);
+    _voiceEndedCallback(h);
   }
 
-  late final _voiceEndedCallbackPtr =
-      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt)>>(
-          'voiceEndedCallback');
-  late final _voiceEndedCallback =
-      _voiceEndedCallbackPtr.asFunction<void Function(int)>();
+  late final _voiceEndedCallbackPtr = _lookup<
+          ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.UnsignedInt>)>>(
+      'voiceEndedCallback');
+  late final _voiceEndedCallback = _voiceEndedCallbackPtr
+      .asFunction<void Function(ffi.Pointer<ffi.UnsignedInt>)>();
 
   /// Set a Dart function to call when a sound ends.
   ///
@@ -123,46 +144,44 @@ class FlutterSoLoudFfi {
   ///   soLoudController.soLoudFFI.stop(handle);
   /// }
   /// ```
-  void setDartPlayEndedCallback(void Function(int) callback) {
-    // ignore: omit_local_variable_types
-    // final ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt)>>
-    // final
-    //   c = ffi.Pointer.fromFunction(callback);
-    // _setDartPlayEndedCallback(c);
-    final setNativeCallable =
-        ffi.NativeCallable<CallbackFunc>.isolateLocal(voiceEndedCallback);
-    _setDartPlayEndedCallback(setNativeCallable.nativeFunction);
-    setNativeCallable.close();
+  // void setDartPlayEndedCallback(void Function(int) callback) {
+  //   // ignore: omit_local_variable_types
+  //   // final ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt)>>
+  //   // final
+  //   //   c = ffi.Pointer.fromFunction(callback);
+  //   // _setDartPlayEndedCallback(c);
+  //   // final setNativeCallable =
+  //   //     ffi.NativeCallable<CallbackFunc>.isolateLocal(voiceEndedCallback);
+  //   // _setDartPlayEndedCallback(setNativeCallable.nativeFunction);
+  //   // setNativeCallable.close();
 
+  //   final completer = Completer<int>();
+  //   late final ffi.NativeCallable<CallbackFunc> nativeCallable;
+  //   void onResponse(ffi.UnsignedInt responsePointer) {
+  //     completer.complete(responsePointer);
+  //     // calloc.free(responsePointer);
 
-    final completer = Completer<int>();
-    late final ffi.NativeCallable<CallbackFunc> nativeCallable;
-    void onResponse(ffi.UnsignedInt responsePointer) {
-      completer.complete(responsePointer);
-      // calloc.free(responsePointer);
+  //     // Remember to close the NativeCallable once the native API is
+  //     // finished with it, otherwise this isolate will stay alive
+  //     // indefinitely.
+  //     // nativeCallable.close();
+  //   }
 
-      // Remember to close the NativeCallable once the native API is
-      // finished with it, otherwise this isolate will stay alive
-      // indefinitely.
-      // nativeCallable.close();
-    }
+  //   nativeCallable = ffi.NativeCallable<CallbackFunc>.listener(onResponse);
+  // }
 
-    nativeCallable = ffi.NativeCallable<CallbackFunc>.listener(onResponse);
-
-  }
-
-  late final _setDartPlayEndedCallbackPtr = _lookup<
-          ffi.NativeFunction<
-              ffi.Void Function(
-                  ffi.Pointer<
-                      ffi
-                      .NativeFunction<ffi.Void Function(ffi.UnsignedInt)>>)>>(
-      'setDartPlayEndedCallback');
-  late final _setDartPlayEndedCallback =
-      _setDartPlayEndedCallbackPtr.asFunction<
-          void Function(
-              ffi.Pointer<
-                  ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt)>>)>();
+  // late final _setDartPlayEndedCallbackPtr = _lookup<
+  //         ffi.NativeFunction<
+  //             ffi.Void Function(
+  //                 ffi.Pointer<
+  //                     ffi
+  //                     .NativeFunction<ffi.Void Function(ffi.UnsignedInt)>>)>>(
+  //     'setDartPlayEndedCallback');
+  // late final _setDartPlayEndedCallback =
+  //     _setDartPlayEndedCallbackPtr.asFunction<
+  //         void Function(
+  //             ffi.Pointer<
+  //                 ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt)>>)>();
 
   /// Initialize the player. Must be called before any other player functions
   ///

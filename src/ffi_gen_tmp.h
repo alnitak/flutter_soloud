@@ -23,4 +23,24 @@ struct CaptureDevice
 
 //--------------------- copy here the new functions to generate
 
-FFI_PLUGIN_EXPORT void voiceEndedCallback(unsigned int handle);
+/// The callback to monitor.
+    /// 
+    /// It is called by SoLoud when a voice ends
+FFI_PLUGIN_EXPORT void voiceEndedCallback(unsigned int *handle);
+
+/// Set a Dart function to call when a sound ends.
+///
+/// [callback] Dart function that will be called when the sound ends to play.
+///  Must be a global or a static class member.
+///  If using a global function, this must be declared with `@pragma('vm:entry-point')`
+///  ```
+///  @pragma('vm:entry-point')
+///  void playEndedCallback(int handle) {
+///       // here the sound with [handle] has ended.
+///       // you can play again
+///       soLoudController.soLoudFFI.play(handle);
+///       // or dispose it
+///       soLoudController.soLoudFFI.stop(handle);
+///  }
+///  ```
+FFI_PLUGIN_EXPORT void setDartPlayEndedCallback(void (*callback)(unsigned int *));

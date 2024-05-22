@@ -21,16 +21,16 @@ extern "C"
 
     std::unique_ptr<Player> player = nullptr;
     std::unique_ptr<Analyzer> analyzer = std::make_unique<Analyzer>(2048);
-    void (*dartEndedCallback)(unsigned int) = nullptr;
+    void (*dartEndedCallback)(unsigned int*) = nullptr;
     
 
-    /// The callback to monitor.
+    /// The callback to monitor when a voice ends.
     /// 
-    /// It is called by SoLoud when a voice ends
-    FFI_PLUGIN_EXPORT void voiceEndedCallback(unsigned int handle) {
-        printf("PLAYER stoppedCallback handle: %d\n", handle);
-        if (dartEndedCallback != nullptr)
-            dartEndedCallback(handle);
+    /// It is called by void `Soloud::stopVoice_internal(unsigned int aVoice)` when a voice ends
+    FFI_PLUGIN_EXPORT void voiceEndedCallback(unsigned int* handle) {
+        printf("BINDINGS PLAYER stoppedCallback handle: %d\n\n", *handle);
+        // if (dartEndedCallback != nullptr)
+        //     dartEndedCallback(handle);
     }
 
     /// Set a Dart function to call when a sound ends.
@@ -48,7 +48,7 @@ extern "C"
     ///       soLoudController.soLoudFFI.stop(handle);
     ///  }
     ///  ```
-    FFI_PLUGIN_EXPORT void setDartPlayEndedCallback(void (*callback)(unsigned int))
+    FFI_PLUGIN_EXPORT void setDartPlayEndedCallback(void (*callback)(unsigned int*))
     {
         if (!player.get()->isInited()) return;
         dartEndedCallback = callback;
