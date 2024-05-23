@@ -104,7 +104,10 @@ enum PlayerErrors {
   filterAlreadyAdded(15),
 
   /// Player already inited.
-  playerAlreadyInited(16);
+  playerAlreadyInited(16),
+
+  /// Audio handle is not found
+  soundHandleNotFound(17);
 
   const PlayerErrors(this.value);
 
@@ -152,6 +155,9 @@ enum PlayerErrors {
         return 'Filter not found!';
       case PlayerErrors.playerAlreadyInited:
         return 'The player has already been inited!';
+      case PlayerErrors.soundHandleNotFound:
+        return 'The handle is not found! The playing handle could have been '
+            'stopped or ended and it is no more valid!';
     }
   }
 
