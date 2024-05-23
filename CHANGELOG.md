@@ -1,3 +1,6 @@
+### 2.0.2 (23 May 2024)
+- Fixed wrong exception raised by `setVolume()` when a handle is no more valid.
+
 ### 2.0.1 (6 May 2024)
 - Fix init error on hot restart.
 
