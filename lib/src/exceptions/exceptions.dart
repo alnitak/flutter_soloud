@@ -100,7 +100,7 @@ abstract class SoLoudCppException extends SoLoudException {
       case PlayerErrors.playerAlreadyInited:
         return const SoLoudPlayerAlreadyInitializedException();
       case PlayerErrors.soundHandleNotFound:
-        return const SoLoudSoundHashNotFoundCppException();
+        return const SoLoudSoundHandleNotFoundCppException();
     }
   }
 }
