@@ -1229,12 +1229,7 @@ interface class SoLoud {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
-    final ret = SoLoudController().soLoudFFI.setVolume(handle, volume);
-    final error = PlayerErrors.values[ret];
-    if (error != PlayerErrors.noError) {
-      _log.severe(() => 'setVolume(): $error');
-      throw SoLoudCppException.fromPlayerError(error);
-    }
+    SoLoudController().soLoudFFI.setVolume(handle, volume);
   }
 
   /// Check if the [handle] is still valid.
