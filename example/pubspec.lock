@@ -92,7 +92,7 @@ packages:
       path: ".."
       relative: true
     source: path
-    version: "2.0.1"
+    version: "2.0.2"
   flutter_test:
     dependency: "direct dev"
     description: flutter
@@ -405,5 +405,9 @@ packages:
     source: hosted
     version: "1.0.4"
 sdks:
+<<<<<<< HEAD
   dart: ">=3.4.0 <4.0.0"
+=======
+  dart: ">=3.3.0 <4.0.0"
+>>>>>>> dev
   flutter: ">=3.18.0-18.0.pre.54"
