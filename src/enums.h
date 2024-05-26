@@ -59,5 +59,9 @@ typedef enum CaptureErrors
     failed_to_start_device,
 } CaptureErrors_t;
 
+typedef enum PlayerEvents
+{
+    voiceEnded,
+} PlayerEvents_t;
 
 #endif // ENUMS_H

@@ -535,6 +535,7 @@ interface class SoLoud {
     if (_isEngineInitialized) {
       await _startLoop();
     }
+    SoLoudController().soLoudFFI.setDartEventCallback();
     return ret;
   }
 

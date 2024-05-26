@@ -13,10 +13,7 @@ import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
 import 'package:logging/logging.dart';
 
-typedef playEndedCallback = ffi.Pointer<ffi.Void> Function(
-    ffi.Pointer<ffi.UnsignedInt>);
 typedef CallbackFunc = ffi.Void Function(ffi.Pointer<ffi.UnsignedInt>);
-typedef CallbackFuncDart = void Function(int);
 
 /// FFI bindings to SoLoud
 class FlutterSoLoudFfi {
@@ -37,151 +34,50 @@ class FlutterSoLoudFfi {
     ffi.Pointer<T> Function<T extends ffi.NativeType>(String symbolName) lookup,
   ) : _lookup = lookup;
 
-  /// FOR NOW THIS CALLBACK IS NOT USED
-  ///
-//   /// Since using the callback passed to [setPlayEndedCallback] will throw
-//   /// ```Error: fromFunction expects a static function as parameter.
-//   /// dart:ffi only supports calling static Dart functions from native code.
-//   /// Closures and tear-offs are not supported because
-//   /// they can capture context.```
-//   static void Function(int)? _userPlayEndedCallback;
-//   /// here the user callback given to [setPlayEndedCallback] will be temporarly
-// /// saved into [_userPlayEndedCallback]. The [_playEndedCallback] will instead
-// /// passed to C side to be called, which then call the user callback.
-//   static void _playEndedCallback(int handle) {
-//     if (_userPlayEndedCallback != null) {
-//       // ignore: prefer_null_aware_method_calls
-//       _userPlayEndedCallback!(handle);
-//     }
-//   }
-//   /// @brief Set a dart function to call when the sound with [handle] handle ends
-//   /// @param callback this is the dart function that will be called
-//   ///     when the sound ends to play.
-//   ///     Must be global or a static class member:
-//   ///     ```@pragma('vm:entry-point')
-//   ///        void playEndedCallback(int handle) {
-//   ///             // here the sound with [handle] has ended.
-//   ///             // you can play again
-//   ///             soLoudController.soLoudFFI.play(handle);
-//   ///             // or dispose it
-//   ///             soLoudController.soLoudFFI.stop(handle);
-//   ///        }
-//   ///     ```
-//   /// @param handle the handle to the sound
-//   /// @return callback this is the dart function that will be called
-//   ///         when the sound ends to play
-//   /// @return true if success;
-//   /// https://github.com/dart-lang/sdk/issues/37022
-//   /// PS: NOT USED, maybe in another time
-//   bool setPlayEndedCallback(
-//     void Function(int) callback,
-//     int handle,
-//   ) {
-//
-//     _userPlayEndedCallback = callback;
-//     final ret = _setPlayEndedCallback(
-//       ffi.Pointer.fromFunction(_playEndedCallback),
-//       handle,
-//     );
-//
-//     return ret == 1 ? true : false;
-//   }
-//
-//   late final _setPlayEndedCallbackPtr = _lookup<
-//       ffi.NativeFunction<
-//           ffi.Int Function(
-//               ffi.Pointer<
-//                   ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt)>>,
-//               ffi.UnsignedInt)>>('setPlayEndedCallback');
-//   late final _setPlayEndedCallback = _setPlayEndedCallbackPtr.asFunction<
-//       int Function(
-//         ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt)>>,
-//         int)>();
 
-  void voiceEndedCallback(int handle) {
-    // ignore: omit_local_variable_types
-    final ffi.Pointer<ffi.UnsignedInt> h =
-        calloc(ffi.sizeOf<ffi.UnsignedInt>());
-    // _voiceEndedCallback(h);
-    // calloc.free(h);
 
-    // final completer = Completer<int>();
-    late final ffi.NativeCallable<CallbackFunc> nativeCallable;
-    void onResponse(ffi.Pointer<ffi.UnsignedInt> responsePointer) {
-      print('ON RESPONSE  ${responsePointer.value}');
-      // completer.complete(responsePointer.value);
-      // calloc.free(responsePointer);
 
-      // Remember to close the NativeCallable once the native API is
-      // finished with it, otherwise this isolate will stay alive
-      // indefinitely.
-      // nativeCallable.close();
-    }
 
-    nativeCallable = ffi.NativeCallable<CallbackFunc>.listener(onResponse);
-    _voiceEndedCallback(h);
+  @pragma('vm:entry-point')
+  void voiceEndedCallback(ffi.Pointer<ffi.UnsignedInt> handle) {
+    print('**voiceEndedCallback  ${handle.value}');
+    calloc.free(handle);
   }
-
-  late final _voiceEndedCallbackPtr = _lookup<
-          ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.UnsignedInt>)>>(
-      'voiceEndedCallback');
-  late final _voiceEndedCallback = _voiceEndedCallbackPtr
-      .asFunction<void Function(ffi.Pointer<ffi.UnsignedInt>)>();
 
   /// Set a Dart function to call when a sound ends.
   ///
-  /// [callback] Dart function that will be called when the sound ends to play.
-  /// Must be a global or a static class member.
-  /// If using a global function, this must be declared
-  /// with `@pragma('vm:entry-point')`
-  /// ```
-  /// @pragma('vm:entry-point')
-  /// void playEndedCallback(int handle) {
-  ///   // here the sound with [handle] has ended.
-  ///   // you can play again
-  ///   soLoudController.soLoudFFI.play(handle);
-  ///   // or dispose it
-  ///   soLoudController.soLoudFFI.stop(handle);
-  /// }
-  /// ```
-  // void setDartPlayEndedCallback(void Function(int) callback) {
-  //   // ignore: omit_local_variable_types
-  //   // final ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt)>>
-  //   // final
-  //   //   c = ffi.Pointer.fromFunction(callback);
-  //   // _setDartPlayEndedCallback(c);
-  //   // final setNativeCallable =
-  //   //     ffi.NativeCallable<CallbackFunc>.isolateLocal(voiceEndedCallback);
-  //   // _setDartPlayEndedCallback(setNativeCallable.nativeFunction);
-  //   // setNativeCallable.close();
+  void setDartEventCallback() {
+    // Create a NativeCallable for the Dart function
+    final nativeCallable = ffi.NativeCallable<CallbackFunc>.listener(
+      voiceEndedCallback,
+    );
 
-  //   final completer = Completer<int>();
-  //   late final ffi.NativeCallable<CallbackFunc> nativeCallable;
-  //   void onResponse(ffi.UnsignedInt responsePointer) {
-  //     completer.complete(responsePointer);
-  //     // calloc.free(responsePointer);
+    _setDartEventCallback(nativeCallable.nativeFunction);
+  }
 
-  //     // Remember to close the NativeCallable once the native API is
-  //     // finished with it, otherwise this isolate will stay alive
-  //     // indefinitely.
-  //     // nativeCallable.close();
-  //   }
+  late final _setDartEventCallbackPtr = _lookup<
+          ffi.NativeFunction<
+              ffi.Void Function(
+                  ffi.Pointer<
+                      ffi.NativeFunction<
+                          ffi.Void Function(ffi.Pointer<ffi.UnsignedInt>)>>)>>(
+      'setDartEventCallback');
+  late final _setDartEventCallback =
+      _setDartEventCallbackPtr.asFunction<
+          void Function(
+              ffi.Pointer<
+                  ffi.NativeFunction<
+                      ffi.Void Function(ffi.Pointer<ffi.UnsignedInt>)>>)>();
 
-  //   nativeCallable = ffi.NativeCallable<CallbackFunc>.listener(onResponse);
-  // }
 
-  // late final _setDartPlayEndedCallbackPtr = _lookup<
-  //         ffi.NativeFunction<
-  //             ffi.Void Function(
-  //                 ffi.Pointer<
-  //                     ffi
-  //                     .NativeFunction<ffi.Void Function(ffi.UnsignedInt)>>)>>(
-  //     'setDartPlayEndedCallback');
-  // late final _setDartPlayEndedCallback =
-  //     _setDartPlayEndedCallbackPtr.asFunction<
-  //         void Function(
-  //             ffi.Pointer<
-  //                 ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt)>>)>();
+
+
+
+
+
+
+
+
 
   /// Initialize the player. Must be called before any other player functions
   ///

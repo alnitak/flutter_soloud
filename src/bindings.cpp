@@ -21,38 +21,47 @@ extern "C"
 
     std::unique_ptr<Player> player = nullptr;
     std::unique_ptr<Analyzer> analyzer = std::make_unique<Analyzer>(2048);
-    void (*dartEndedCallback)(unsigned int*) = nullptr;
+    void (*dartEventCallback)(unsigned int*) = nullptr;
     
+
+    void eventCallback(PlayerEvents event, void* args) 
+    {
+        switch (event)
+        {
+        case voiceEnded:
+            unsigned int *handle = static_cast<unsigned int *>(args);
+            // [n] pointer must be deleted on Dart
+            unsigned int *n = (unsigned int *)malloc(sizeof(unsigned int *));
+            *n = *handle;
+            if (dartEventCallback != nullptr)
+                dartEventCallback(n);
+            break;
+        }
+    }
 
     /// The callback to monitor when a voice ends.
     /// 
-    /// It is called by void `Soloud::stopVoice_internal(unsigned int aVoice)` when a voice ends
-    FFI_PLUGIN_EXPORT void voiceEndedCallback(unsigned int* handle) {
-        printf("BINDINGS PLAYER stoppedCallback handle: %d\n\n", *handle);
-        // if (dartEndedCallback != nullptr)
-        //     dartEndedCallback(handle);
+    /// It is called by void `Soloud::stopVoice_internal(unsigned int aVoice)` when a voice ends.
+    void voiceEndedCallback(unsigned int* handle) {
+        printf("BINDINGS.CPP PLAYER stoppedCallback handle: %d\n\n", *handle);
+        eventCallback(voiceEnded, handle);
     }
 
     /// Set a Dart function to call when a sound ends.
     ///
     /// [callback] Dart function that will be called when the sound ends to play.
-    ///  Must be a global or a static class member.
-    ///  If using a global function, this must be declared with `@pragma('vm:entry-point')`
-    ///  ```
-    ///  @pragma('vm:entry-point')
-    ///  void playEndedCallback(int handle) {
-    ///       // here the sound with [handle] has ended.
-    ///       // you can play again
-    ///       soLoudController.soLoudFFI.play(handle);
-    ///       // or dispose it
-    ///       soLoudController.soLoudFFI.stop(handle);
-    ///  }
-    ///  ```
-    FFI_PLUGIN_EXPORT void setDartPlayEndedCallback(void (*callback)(unsigned int*))
+    FFI_PLUGIN_EXPORT void setDartEventCallback(void (*callback)(unsigned int*))
     {
-        if (!player.get()->isInited()) return;
-        dartEndedCallback = callback;
+        dartEventCallback = callback;
     }
+
+
+
+
+
+
+
+
 
     /// Initialize the player.get()-> Must be called before any other player functions
     ///
@@ -85,7 +94,7 @@ extern "C"
     {
         if (player.get() == nullptr)
             return;
-        dartEndedCallback = nullptr;
+        dartEventCallback = nullptr;
         player.get()->dispose();
         player = nullptr;
     }
