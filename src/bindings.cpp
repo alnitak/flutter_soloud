@@ -21,47 +21,62 @@ extern "C"
 
     std::unique_ptr<Player> player = nullptr;
     std::unique_ptr<Analyzer> analyzer = std::make_unique<Analyzer>(2048);
-    void (*dartEventCallback)(unsigned int*) = nullptr;
-    
 
-    void eventCallback(PlayerEvents event, void* args) 
-    {
-        switch (event)
-        {
-        case voiceEnded:
-            unsigned int *handle = static_cast<unsigned int *>(args);
-            // [n] pointer must be deleted on Dart
-            unsigned int *n = (unsigned int *)malloc(sizeof(unsigned int *));
-            *n = *handle;
-            if (dartEventCallback != nullptr)
-                dartEventCallback(n);
-            break;
-        }
-    }
+    typedef void (*dartVoiceEndedCallback_t)(unsigned int *);
+    typedef void (*dartFileLoadedCallback_t)(enum PlayerErrors *, char *completeFileName, unsigned int *);
+
+    // to be used by `NativeCallable`, these functions must return void.
+    void (*dartVoiceEndedCallback)(unsigned int *) = nullptr;
+    void (*dartFileLoadedCallback)(enum PlayerErrors *, char *completeFileName, unsigned int *) = nullptr;
 
     /// The callback to monitor when a voice ends.
-    /// 
-    /// It is called by void `Soloud::stopVoice_internal(unsigned int aVoice)` when a voice ends.
-    void voiceEndedCallback(unsigned int* handle) {
-        printf("BINDINGS.CPP PLAYER stoppedCallback handle: %d\n\n", *handle);
-        eventCallback(voiceEnded, handle);
-    }
-
-    /// Set a Dart function to call when a sound ends.
     ///
-    /// [callback] Dart function that will be called when the sound ends to play.
-    FFI_PLUGIN_EXPORT void setDartEventCallback(void (*callback)(unsigned int*))
+    /// It is called by void `Soloud::stopVoice_internal(unsigned int aVoice)` when a voice ends.
+    void voiceEndedCallback(unsigned int *handle)
     {
-        dartEventCallback = callback;
+        if (dartVoiceEndedCallback == nullptr)
+            return;
+        printf("BINDINGS.CPP PLAYER stoppedCallback handle: %d\n", *handle);
+        // [n] pointer must be deleted on Dart.
+        unsigned int *n = (unsigned int *)malloc(sizeof(unsigned int *));
+        *n = *handle;
+        dartVoiceEndedCallback(n);
     }
 
+    /// The callback to monitor when a file is loaded.
+    void fileLoadedCallback(enum PlayerErrors *error, char *completeFileName, unsigned int *hash)
+    {
+        printf("BINDINGS.CPP PLAYER fileLoadedCallback error: %d  hash: %d  file: %s\n", *error, *hash, completeFileName);
+        if (dartFileLoadedCallback == nullptr)
+            return;
+        // [e,name,n] pointers must be deleted on Dart.
+        PlayerErrors *e = (PlayerErrors *)malloc(sizeof(PlayerErrors *));
+        *e = *error;
+        char *name = strdup(completeFileName);
+        unsigned int *n = (unsigned int *)malloc(sizeof(unsigned int *));
+        *n = *hash;
+        dartFileLoadedCallback(e, name, n);
+    }
 
+    /// Set a Dart functions to call when an event occurs.
+    ///
+    FFI_PLUGIN_EXPORT void setDartEventCallback(
+        dartVoiceEndedCallback_t voice_ended_callback,
+        dartFileLoadedCallback_t file_loaded_callback)
+    {
+        dartVoiceEndedCallback = voice_ended_callback;
+        dartFileLoadedCallback = file_loaded_callback;
 
+        // loadMem
+    }
 
-
-
-
-
+    //////////////////////////////////////////////////////////////////////////////////
+    //////////////////////////////////////////////////////////////////////////////////
+    //////////////////////////////////////////////////////////////////////////////////
+    //////////////////////////////////////////////////////////////////////////////////
+    //////////////////////////////////////////////////////////////////////////////////
+    //////////////////////////////////////////////////////////////////////////////////
+    //////////////////////////////////////////////////////////////////////////////////
 
     /// Initialize the player.get()-> Must be called before any other player functions
     ///
@@ -94,7 +109,7 @@ extern "C"
     {
         if (player.get() == nullptr)
             return;
-        dartEventCallback = nullptr;
+        dartVoiceEndedCallback = nullptr;
         player.get()->dispose();
         player = nullptr;
     }
@@ -125,7 +140,13 @@ extern "C"
     {
         if (!player.get()->isInited())
             return backendNotInited;
-        return (PlayerErrors)player.get()->loadFile(completeFileName, loadIntoMem, *hash);
+        // return (PlayerErrors)player.get()->loadFile(completeFileName, loadIntoMem, *hash);
+
+        Player *p = player.get();
+        std::thread([p, completeFileName, loadIntoMem, hash]()
+                    {
+            PlayerErrors error = p->loadFile(completeFileName, loadIntoMem, *hash);
+            fileLoadedCallback(&error, hash); });
     }
 
     /// Load a new sound stored into [buffer] to be played once or multiple times later.
@@ -136,8 +157,8 @@ extern "C"
     /// [length] the length of [buffer].
     /// [hash] return the hash of the sound.
     FFI_PLUGIN_EXPORT enum PlayerErrors loadMem(
-        char *uniqueName, 
-        unsigned char *buffer, 
+        char *uniqueName,
+        unsigned char *buffer,
         int length,
         unsigned int *hash)
     {
@@ -1154,7 +1175,8 @@ extern "C"
     // chromium --disable-web-security --disable-gpu --user-data-dir=~/chromeTemp
     unsigned int handle;
     unsigned int hash;
-    struct provaProvaProva{
+    struct provaProvaProva
+    {
         PlayerErrors error;
         int dummy;
     };
@@ -1167,7 +1189,8 @@ extern "C"
         return {noError, 123};
     }
 
-    FFI_PLUGIN_EXPORT void js_load() {
+    FFI_PLUGIN_EXPORT void js_load()
+    {
         printf("js_load Called\n");
         int result = loadWaveform(SoLoud::Soloud::WAVE_SQUARE, true, 0.25f, 1.0f, &hash);
         printf("loadWaveform() result: %d  hash %d\n", result, hash);
@@ -1183,24 +1206,19 @@ extern "C"
     //     function("Foo", &Foo);
     // }
 
-    FFI_PLUGIN_EXPORT void js_play(unsigned int handle) {
+    FFI_PLUGIN_EXPORT void js_play(unsigned int handle)
+    {
         printf("js_play Called\n");
         int result = play(hash, 0.1, 0.0f, false, true, 0.0, &handle);
         printf("js_play() result: %d\n", result);
     }
 
-    FFI_PLUGIN_EXPORT void js_dispose() {
+    FFI_PLUGIN_EXPORT void js_dispose()
+    {
         printf("js_dispose Called\n");
         dispose();
     }
 
-
 #ifdef __cplusplus
 }
 #endif
-
-
-
-
-
-    

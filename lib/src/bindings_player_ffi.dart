@@ -12,8 +12,24 @@ import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
 import 'package:logging/logging.dart';
+import 'package:meta/meta.dart';
 
-typedef CallbackFunc = ffi.Void Function(ffi.Pointer<ffi.UnsignedInt>);
+typedef dartVoiceEndedCallback_t
+    = ffi.Pointer<ffi.NativeFunction<dartVoiceEndedCallback_tFunction>>;
+typedef dartVoiceEndedCallback_tFunction = ffi.Void Function(
+    ffi.Pointer<ffi.UnsignedInt>);
+typedef DartdartVoiceEndedCallback_tFunction = void Function(
+    ffi.Pointer<ffi.UnsignedInt>);
+typedef dartFileLoadedCallback_t
+    = ffi.Pointer<ffi.NativeFunction<dartFileLoadedCallback_tFunction>>;
+typedef dartFileLoadedCallback_tFunction = ffi.Void Function(
+    ffi.Pointer<ffi.Int32>,
+    ffi.Pointer<ffi.Char>,
+    ffi.Pointer<ffi.UnsignedInt>);
+typedef DartdartFileLoadedCallback_tFunction = void Function(
+    ffi.Pointer<ffi.Int32>,
+    ffi.Pointer<ffi.Char>,
+    ffi.Pointer<ffi.UnsignedInt>);
 
 /// FFI bindings to SoLoud
 class FlutterSoLoudFfi {
@@ -34,51 +50,92 @@ class FlutterSoLoudFfi {
     ffi.Pointer<T> Function<T extends ffi.NativeType>(String symbolName) lookup,
   ) : _lookup = lookup;
 
+  ///////////////////////////////////////////////////////////////////////////
+  ///////////////////////////////////////////////////////////////////////////
+  ///////////////////////////////////////////////////////////////////////////
+  ///////////////////////////////////////////////////////////////////////////
+  ///////////////////////////////////////////////////////////////////////////
+  ///////////////////////////////////////////////////////////////////////////
+  ///////////////////////////////////////////////////////////////////////////
 
+  /// Controller to listen to voice ended events.
+  @internal
+  late final StreamController<int> voiceEndedEventController =
+      StreamController.broadcast();
 
+  /// listener for voices ended.
+  @internal
+  Stream<int> get voiceEndedEvents => voiceEndedEventController.stream;
 
-
-  @pragma('vm:entry-point')
+  ///
   void voiceEndedCallback(ffi.Pointer<ffi.UnsignedInt> handle) {
-    print('**voiceEndedCallback  ${handle.value}');
+    _log.fine(() => 'VOICE ENDED EVENT handle: ${handle.value}');
+    voiceEndedEventController.add(handle.value);
     calloc.free(handle);
+  }
+
+  /// Controller to listen to file loaded events.
+  @internal
+  late final StreamController<Map<String, dynamic>> fileLoadedEventController =
+      StreamController.broadcast();
+
+  /// listener for file loaded.
+  @internal
+  Stream<Map<String, dynamic>> get fileLoadedEvents =>
+      fileLoadedEventController.stream;
+
+  ///
+  void fileLoadedCallback(
+    ffi.Pointer<ffi.Int32> error,
+    ffi.Pointer<ffi.Char> completeFileName,
+    ffi.Pointer<ffi.UnsignedInt> hash,
+  ) {
+    _log.fine(() => 'FILE LOADED EVENT error: ${error.value}  '
+        'hash: ${hash.value}');
+    final result = <String, dynamic>{
+      'error': error.value,
+      'completeFileName': completeFileName,
+      'hash': hash.value,
+    };
+    fileLoadedEventController.add(result);
+    calloc
+      ..free(error)
+      ..free(hash);
   }
 
   /// Set a Dart function to call when a sound ends.
   ///
-  void setDartEventCallback() {
-    // Create a NativeCallable for the Dart function
-    final nativeCallable = ffi.NativeCallable<CallbackFunc>.listener(
+  void setDartEventCallbacks() {
+    // Create a NativeCallable for the Dart functions
+    final nativeVoiceEndedCallable =
+        ffi.NativeCallable<dartVoiceEndedCallback_tFunction>.listener(
       voiceEndedCallback,
     );
+    final nativeFileLoadedCallable =
+        ffi.NativeCallable<dartFileLoadedCallback_tFunction>.listener(
+      fileLoadedCallback,
+    );
 
-    _setDartEventCallback(nativeCallable.nativeFunction);
+    _setDartEventCallback(
+      nativeVoiceEndedCallable.nativeFunction,
+      nativeFileLoadedCallable.nativeFunction,
+    );
   }
 
   late final _setDartEventCallbackPtr = _lookup<
-          ffi.NativeFunction<
-              ffi.Void Function(
-                  ffi.Pointer<
-                      ffi.NativeFunction<
-                          ffi.Void Function(ffi.Pointer<ffi.UnsignedInt>)>>)>>(
-      'setDartEventCallback');
-  late final _setDartEventCallback =
-      _setDartEventCallbackPtr.asFunction<
-          void Function(
-              ffi.Pointer<
-                  ffi.NativeFunction<
-                      ffi.Void Function(ffi.Pointer<ffi.UnsignedInt>)>>)>();
+      ffi.NativeFunction<
+          ffi.Void Function(dartVoiceEndedCallback_t,
+              dartFileLoadedCallback_t)>>('setDartEventCallback');
+  late final _setDartEventCallback = _setDartEventCallbackPtr.asFunction<
+      void Function(dartVoiceEndedCallback_t, dartFileLoadedCallback_t)>();
 
-
-
-
-
-
-
-
-
-
-
+  ///////////////////////////////////////////////////////////////////////////
+  ///////////////////////////////////////////////////////////////////////////
+  ///////////////////////////////////////////////////////////////////////////
+  ///////////////////////////////////////////////////////////////////////////
+  ///////////////////////////////////////////////////////////////////////////
+  ///////////////////////////////////////////////////////////////////////////
+  ///////////////////////////////////////////////////////////////////////////
   /// Initialize the player. Must be called before any other player functions
   ///
   /// Returns [PlayerErrors.noError] if success

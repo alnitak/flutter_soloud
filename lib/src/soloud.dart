@@ -535,7 +535,7 @@ interface class SoLoud {
     if (_isEngineInitialized) {
       await _startLoop();
     }
-    SoLoudController().soLoudFFI.setDartEventCallback();
+    SoLoudController().soLoudFFI.setDartEventCallbacks();
     return ret;
   }
 
@@ -599,6 +599,50 @@ interface class SoLoud {
     } else {
       throw SoLoudCppException.fromPlayerError(ret.error);
     }
+  }
+
+  Future<AudioSource> loadFile2(
+    String path, {
+    LoadMode mode = LoadMode.memory,
+  }) async {
+    final completer = Completer<AudioSource>();
+
+    /// Call the loadFile which can only return [PlayerErrors.backendNotInited].
+    /// It will process the load file in a separated thread and a new
+    /// event [TODO] will be emitted
+    final onlyNotInited = SoLoudController().soLoudFFI.loadFile(path, mode);
+    if (onlyNotInited.error == PlayerErrors.backendNotInited) {
+      throw const SoLoudNotInitializedException();
+    }
+    SoLoudController().soLoudFFI.playerEvents.listen((data) {
+      print('SOLOUD.DART  file loaded event $data');
+
+      _logPlayerError(ret.error, from: 'loadFile() result');
+      if (ret.error == PlayerErrors.noError) {
+        assert(
+            ret.sound != null, 'loadFile() returned no sound despite no error');
+        _activeSounds.add(ret.sound!);
+        return ret.sound!;
+      } else if (ret.error == PlayerErrors.fileAlreadyLoaded) {
+        _log.warning(() => "Sound '$path' was already loaded. "
+            'Prefer loading only once, and reusing the loaded sound '
+            'when playing.');
+        // The `audio_isolate.dart` code has logic to find the already-loaded
+        // sound among active sounds. The sound should be here as well.
+        assert(
+            _activeSounds
+                    .where((sound) => sound.soundHash == ret.sound!.soundHash)
+                    .length ==
+                1,
+            'Sound is already loaded but missing from _activeSounds. '
+            'This is probably a bug in flutter_soloud, please file.');
+        return ret.sound!;
+      } else {
+        throw SoLoudCppException.fromPlayerError(ret.error);
+      }
+    });
+
+    return completer.future;
   }
 
   /// Load a new sound to be played once or multiple times later, from

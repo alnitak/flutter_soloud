@@ -61,7 +61,8 @@ typedef enum CaptureErrors
 
 typedef enum PlayerEvents
 {
-    voiceEnded,
+    event_voiceEnded,
+    event_loadFile,
 } PlayerEvents_t;
 
 #endif // ENUMS_H
