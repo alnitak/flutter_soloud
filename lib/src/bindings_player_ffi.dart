@@ -169,6 +169,10 @@ class FlutterSoLoudFfi {
 
   /// Load a new sound to be played once or multiple times later.
   ///
+  /// After loading the file, the [_fileLoadedCallback] will call the 
+  /// Dart function defined with [_setDartEventCallback] which gives back
+  /// the error and the new hash.
+  ///
   /// [completeFileName] the complete file path.
   /// [LoadMode] if `LoadMode.memory`, Soloud::wav will be used which loads
   /// all audio data into memory. Used to prevent gaps or lags

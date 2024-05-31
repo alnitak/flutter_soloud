@@ -121,9 +121,13 @@ extern "C"
         return player.get()->isInited() ? 1 : 0;
     }
 
-    /// Load a new sound to be played once or multiple times later
+    /// Load a new sound to be played once or multiple times later.
     ///
-    /// [completeFileName] the complete file path
+    /// After loading the file, the [fileLoadedCallback] will call the 
+    /// Dart function defined with [setDartEventCallback] which gives back
+    /// the error and the new hash.
+    ///
+    /// [completeFileName] the complete file path.
     /// [loadIntoMem] if true Soloud::wav will be used which loads
     /// all audio data into memory. This will be useful when
     /// the audio is short, ie for game sounds, mainly used to prevent
