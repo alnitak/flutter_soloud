@@ -36,7 +36,8 @@ extern "C"
     {
         if (dartVoiceEndedCallback == nullptr)
             return;
-        printf("BINDINGS.CPP PLAYER stoppedCallback handle: %d\n", *handle);
+        // printf("BINDINGS.CPP PLAYER stoppedCallback handle: %d\n", *handle);
+        player->removeHandle(*handle);
         // [n] pointer must be deleted on Dart.
         unsigned int *n = (unsigned int *)malloc(sizeof(unsigned int *));
         *n = *handle;
@@ -44,14 +45,14 @@ extern "C"
     }
 
     /// The callback to monitor when a file is loaded.
-    void fileLoadedCallback(enum PlayerErrors *error, char *completeFileName, unsigned int *hash)
+    void fileLoadedCallback(enum PlayerErrors error, char *completeFileName, unsigned int *hash)
     {
-        printf("BINDINGS.CPP PLAYER fileLoadedCallback error: %d  hash: %d  file: %s\n", *error, *hash, completeFileName);
+        // printf("BINDINGS.CPP PLAYER fileLoadedCallback error: %d  hash: %u  file: %s\n", error, *hash, completeFileName);
         if (dartFileLoadedCallback == nullptr)
             return;
         // [e,name,n] pointers must be deleted on Dart.
         PlayerErrors *e = (PlayerErrors *)malloc(sizeof(PlayerErrors *));
-        *e = *error;
+        *e = error;
         char *name = strdup(completeFileName);
         unsigned int *n = (unsigned int *)malloc(sizeof(unsigned int *));
         *n = *hash;
@@ -84,9 +85,8 @@ extern "C"
     FFI_PLUGIN_EXPORT enum PlayerErrors initEngine()
     {
         if (player.get() == nullptr)
-        {
             player = std::make_unique<Player>();
-        }
+
         PlayerErrors res = (PlayerErrors)player.get()->init();
         if (res != noError)
             return res;
@@ -140,13 +140,18 @@ extern "C"
     {
         if (!player.get()->isInited())
             return backendNotInited;
-        // return (PlayerErrors)player.get()->loadFile(completeFileName, loadIntoMem, *hash);
 
         Player *p = player.get();
-        std::thread([p, completeFileName, loadIntoMem, hash]()
-                    {
-            PlayerErrors error = p->loadFile(completeFileName, loadIntoMem, *hash);
-            fileLoadedCallback(&error, hash); });
+        *hash = 0;
+        // std::thread loadThread([p, completeFileName, loadIntoMem, hash]()
+        //                        {
+            PlayerErrors error = p->loadFile(completeFileName, loadIntoMem, hash);
+            // printf("*** LOAD FILE FROM THREAD error: %d  hash: %u\n", error,  *hash);
+            fileLoadedCallback(error, completeFileName, hash); 
+        //     });
+        // // TODO(marco): use .detach()? Use std::atomic somewhere
+        // loadThread.join();
+        return error;
     }
 
     /// Load a new sound stored into [buffer] to be played once or multiple times later.

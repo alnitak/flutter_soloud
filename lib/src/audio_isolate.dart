@@ -114,6 +114,7 @@ void audioIsolate(SendPort isolateToMainStream) {
             .send({'event': event['event'], 'args': args, 'return': ret});
         break;
 
+      /// DONE
       case MessageEvents.loadFile:
         final args = event['args']! as ArgsLoadFile;
         final ret = soLoudController.soLoudFFI.loadFile(
@@ -145,6 +146,7 @@ void audioIsolate(SendPort isolateToMainStream) {
         });
         break;
 
+      /// DONE
       case MessageEvents.loadWaveform:
         final args = event['args']! as ArgsLoadWaveform;
         final ret = soLoudController.soLoudFFI.loadWaveform(
@@ -178,6 +180,7 @@ void audioIsolate(SendPort isolateToMainStream) {
         });
         break;
 
+      /// DONE
       case MessageEvents.speechText:
         final args = event['args']! as ArgsSpeechText;
         final ret = soLoudController.soLoudFFI.speechText(args.textToSpeech);
@@ -194,6 +197,7 @@ void audioIsolate(SendPort isolateToMainStream) {
         });
         break;
 
+      /// DONE
       case MessageEvents.play:
         final args = event['args']! as ArgsPlay;
         final ret = soLoudController.soLoudFFI.play(
@@ -242,6 +246,7 @@ void audioIsolate(SendPort isolateToMainStream) {
         });
         break;
 
+      /// DONE
       case MessageEvents.stop:
         final args = event['args']! as ArgsStop;
         soLoudController.soLoudFFI.stop(args.handle);
@@ -256,6 +261,7 @@ void audioIsolate(SendPort isolateToMainStream) {
             .send({'event': event['event'], 'args': args, 'return': ()});
         break;
 
+      /// DONE
       case MessageEvents.disposeSound:
         final args = event['args']! as ArgsDisposeSound;
         soLoudController.soLoudFFI.disposeSound(args.soundHash);
@@ -268,6 +274,7 @@ void audioIsolate(SendPort isolateToMainStream) {
             .send({'event': event['event'], 'args': args, 'return': ()});
         break;
 
+      /// DONE
       case MessageEvents.disposeAllSound:
         final args = event['args']! as ArgsDisposeAllSound;
         soLoudController.soLoudFFI.disposeAllSound();
@@ -293,6 +300,7 @@ void audioIsolate(SendPort isolateToMainStream) {
       //////////////////////////////////
       /// 3D audio
 
+      /// DONE
       case MessageEvents.play3d:
         final args = event['args']! as ArgsPlay3d;
         final ret = soLoudController.soLoudFFI.play3d(

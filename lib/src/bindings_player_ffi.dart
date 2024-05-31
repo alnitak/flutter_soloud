@@ -12,7 +12,6 @@ import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
 import 'package:logging/logging.dart';
-import 'package:meta/meta.dart';
 
 typedef dartVoiceEndedCallback_t
     = ffi.Pointer<ffi.NativeFunction<dartVoiceEndedCallback_tFunction>>;
@@ -59,47 +58,45 @@ class FlutterSoLoudFfi {
   ///////////////////////////////////////////////////////////////////////////
 
   /// Controller to listen to voice ended events.
-  @internal
   late final StreamController<int> voiceEndedEventController =
       StreamController.broadcast();
 
   /// listener for voices ended.
-  @internal
   Stream<int> get voiceEndedEvents => voiceEndedEventController.stream;
 
   ///
-  void voiceEndedCallback(ffi.Pointer<ffi.UnsignedInt> handle) {
+  void _voiceEndedCallback(ffi.Pointer<ffi.UnsignedInt> handle) {
     _log.fine(() => 'VOICE ENDED EVENT handle: ${handle.value}');
     voiceEndedEventController.add(handle.value);
     calloc.free(handle);
   }
 
   /// Controller to listen to file loaded events.
-  @internal
-  late final StreamController<Map<String, dynamic>> fileLoadedEventController =
+  late final StreamController<Map<String, dynamic>> fileLoadedEventsController =
       StreamController.broadcast();
 
   /// listener for file loaded.
-  @internal
   Stream<Map<String, dynamic>> get fileLoadedEvents =>
-      fileLoadedEventController.stream;
+      fileLoadedEventsController.stream;
 
   ///
-  void fileLoadedCallback(
+  void _fileLoadedCallback(
     ffi.Pointer<ffi.Int32> error,
     ffi.Pointer<ffi.Char> completeFileName,
     ffi.Pointer<ffi.UnsignedInt> hash,
   ) {
     _log.fine(() => 'FILE LOADED EVENT error: ${error.value}  '
-        'hash: ${hash.value}');
+        'hash: ${hash.value}  '
+        'file: ${completeFileName.cast<Utf8>().toDartString()}');
     final result = <String, dynamic>{
       'error': error.value,
-      'completeFileName': completeFileName,
+      'completeFileName': completeFileName.cast<Utf8>().toDartString(),
       'hash': hash.value,
     };
-    fileLoadedEventController.add(result);
+    fileLoadedEventsController.add(result);
     calloc
       ..free(error)
+      ..free(completeFileName)
       ..free(hash);
   }
 
@@ -109,11 +106,11 @@ class FlutterSoLoudFfi {
     // Create a NativeCallable for the Dart functions
     final nativeVoiceEndedCallable =
         ffi.NativeCallable<dartVoiceEndedCallback_tFunction>.listener(
-      voiceEndedCallback,
+      _voiceEndedCallback,
     );
     final nativeFileLoadedCallable =
         ffi.NativeCallable<dartFileLoadedCallback_tFunction>.listener(
-      fileLoadedCallback,
+      _fileLoadedCallback,
     );
 
     _setDartEventCallback(
@@ -223,6 +220,7 @@ class FlutterSoLoudFfi {
     // ignore: omit_local_variable_types
     final ffi.Pointer<ffi.UnsignedInt> hash =
         calloc(ffi.sizeOf<ffi.UnsignedInt>());
+    // ignore: omit_local_variable_types
     final ffi.Pointer<ffi.Uint8> bufferPtr = calloc(buffer.length);
     for (var i = 0; i < buffer.length; i++) {
       bufferPtr[i] = buffer[i];
@@ -487,8 +485,9 @@ class FlutterSoLoudFfi {
   }) {
     // ignore: omit_local_variable_types
     final ffi.Pointer<ffi.UnsignedInt> handle = calloc();
+    final hash = soundHash.hash;
     final e = _play(
-      soundHash.hash,
+      hash,
       volume,
       pan,
       paused ? 1 : 0,

@@ -281,6 +281,7 @@ Future<void> testSynchronousDeinit() async {
 
   /// Try init-play-deinit and again init-play without disposing the sound
   await SoLoud.instance.init();
+  SoLoud.instance.setGlobalVolume(0.2);
 
   await loadAsset();
   await SoLoud.instance.play(currentSound!);

@@ -30,14 +30,12 @@ typedef enum SoundType
 /// but this can be adjusted at runtime
 struct ActiveSound
 {
-    std::unique_ptr<SoLoud::AudioSource> sound;
+    std::shared_ptr<SoLoud::AudioSource> sound;
     SoundType soundType;
-    std::string completeFileName;
-    /// many istances of [sound] can be played without re-loading it
     std::vector<SoLoud::handle> handle;
-
     // unique identifier of this sound based on the file name
     unsigned int soundHash;
+    std::string completeFileName;
 };
 
 class Player
@@ -84,7 +82,7 @@ public:
     PlayerErrors loadFile(
         const std::string &completeFileName,
         const bool loadIntoMem,
-        unsigned int &hash);
+        unsigned int *hash);
 
     /// @brief Load a new sound stored into [mem] to be played once or multiple times later.
     /// Mainly used on web because the browsers are not allowed to read files directly.
@@ -191,6 +189,10 @@ public:
     /// @brief Stop already loaded sound identified by [handle] and clear it.
     /// @param handle handle of the sound.
     void stop(unsigned int handle);
+
+    /// @brief Remove the unique [handle] form the list of internal sounds.
+    /// @param handle handle of the sound.
+    void removeHandle(unsigned int handle);
 
     /// @brief Stop all handles of the already loaded sound identified by [soundHash] and clear it.
     /// @param soundHash hash of the sound.
@@ -481,7 +483,7 @@ public:
 
 public:
     /// all the sounds loaded
-    std::vector<std::unique_ptr<ActiveSound>> sounds;
+    std::vector<std::shared_ptr<ActiveSound>> sounds;
 
     /// true when the backend is initialized
     bool mInited;
@@ -497,6 +499,7 @@ public:
 
 private:
     std::mutex init_deinit_mutex;
+    std::mutex lock_mutex;
 };
 
 #endif // PLAYER_H

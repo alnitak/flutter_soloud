@@ -2,10 +2,8 @@
 
 import 'dart:async';
 import 'dart:ffi' as ffi;
-import 'dart:isolate';
 
 import 'package:flutter/services.dart';
-import 'package:flutter_soloud/src/audio_isolate.dart';
 import 'package:flutter_soloud/src/audio_source.dart';
 import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/exceptions/exceptions.dart';
@@ -33,6 +31,9 @@ enum AudioEvent {
   /// Emitted when audio capture is stopped.
   captureStopped,
 }
+
+/// TODO(marco): check SoLoud Future methods which can be sync instead
+/// TODO(marco): check methods docs
 
 /// The main class to call all the audio methods that play sounds.
 ///
@@ -89,18 +90,6 @@ interface class SoLoud {
   /// ```
   static final SoLoud instance = SoLoud._();
 
-  /// the way to talk to the audio isolate
-  SendPort? _mainToIsolateStream;
-
-  /// internally used to listen from isolate
-  StreamController<dynamic>? _returnedEvent;
-
-  /// the isolate used to spawn the audio management
-  Isolate? _isolate;
-
-  /// the way to receive events from audio isolate
-  ReceivePort? _isolateToMainStream;
-
   /// A helper for loading files that aren't on disk.
   final SoLoudLoader _loader = SoLoudLoader();
 
@@ -116,22 +105,9 @@ interface class SoLoud {
   /// The result will be `false` in all the following cases:
   ///
   /// - the engine was never initialized
-  /// - it's being initialized right now (but not finished yet)
   /// - its most recent initialization failed
-  /// - it's being shut down right now
   /// - it has been shut down
-  ///
-  /// You can `await` [initialized] instead if you want to wait for the engine
-  /// to become ready (in case it's being initialized right now).
-  ///
-  /// Use [isInitialized] only if you want to check the current status of
-  /// the engine synchronously and you don't care that it might be ready soon.
-  bool get isInitialized => _isInitialized;
-
-  /// The completer for an initialization in progress.
-  ///
-  /// This is `null` when the engine is not currently being initialized.
-  Completer<void>? _initializeCompleter;
+  bool get isInitialized => SoLoudController().soLoudFFI.isInited();
 
   /// A [Future] that returns `true` when the audio engine is initialized
   /// (and ready to play sounds, for example).
@@ -175,30 +151,10 @@ interface class SoLoud {
   /// or if you don't care that the engine might be initializing right now
   /// and therefore ready in a moment,
   /// use [isInitialized] instead.
+  @Deprecated('Use isInitialized instead!')
   FutureOr<bool> get initialized {
-    if (_initializeCompleter == null) {
-      // We are _not_ during initialization. Return synchronously.
-      return _isInitialized;
-    }
-
-    // We are in the middle of initializing the engine. Wait for that to
-    // complete and return `true` if it was successful.
-    return _initializeCompleter!.future
-        .then((_) => true, onError: (_) => false);
+    return isInitialized;
   }
-
-  /// Status of the engine.
-  ///
-  /// Since the engine is initialized as a part of the
-  /// more general initialization process, this field is only an internal
-  /// control mechanism. Users should use [initialized] instead.
-  ///
-  /// The field is useful in [disposeAllSources],
-  /// which is called from `shutdown`
-  /// (so [isInitialized] is already `false` at that point).
-  ///
-  // TODO(filiph): check if still needed
-  bool _isEngineInitialized = false;
 
   /// Used both in main and audio isolates
   /// should be synchronized with each other
@@ -206,43 +162,10 @@ interface class SoLoud {
   /// Backing of [activeSounds].
   final List<AudioSource> _activeSounds = [];
 
-  /// The sounds that are _currently being played_.
+  /// The sounds that are _currently being loaded_.
   Iterable<AudioSource> get activeSounds => _activeSounds;
 
-  /// Wait for the isolate to return after the event has been completed.
-  /// The event must be recognized by [event] and [args] sent to
-  /// the audio isolate.
-  /// ie:
-  /// - call [loadFile()] with completeFileName arg
-  /// - wait the audio isolate to call the FFI loadFile function
-  /// - the audio isolate will then send back the args used in the call and
-  ///   eventually the return value of the FFI function
-  ///
-  Future<dynamic> _waitForEvent(MessageEvents event, Record args) async {
-    final completer = Completer<dynamic>();
-
-    await _returnedEvent?.stream.firstWhere(
-      (element) {
-        final e = element as Map<String, Object?>;
-
-        // if the event with its args are what we are waiting for...
-        if ((e['event']! as MessageEvents) != event) return false;
-        if ((e['args']! as Record) != args) return false;
-
-        // return the result
-        completer.complete(e['return']);
-        return true;
-      },
-      // The event cannot be received from AudioIsolate.
-      // This could be caused when the player is deinited while some
-      // events are still queued.
-      orElse: () => false,
-    );
-
-    return completer.future;
-  }
-
-  /// Initializes the audio engine.
+  /// Initialize the audio engine.
   ///
   /// Run this before anything else, and `await` its result in a try/catch.
   /// Only when this method returns without throwing exceptions will the engine
@@ -267,30 +190,23 @@ interface class SoLoud {
   /// that play sounds from assets or from the file system, this is probably
   /// unnecessary, as the amount of data will be finite.
   /// The default is `false`.
-  ///
-  /// (This method was formerly called `startIsolate()`.)
   Future<void> init({
+    @Deprecated('[timeout] is not used anymore!')
     Duration timeout = const Duration(seconds: 10),
     bool automaticCleanup = false,
   }) async {
+    /// Defaults are:
+    /// Miniaudio audio backend
+    /// sample rate 44100
+    /// buffer 2048
+    // TODO(marco): add engine initialization parameters
     _log.finest('init() called');
-    // Start the audio isolate and listen for messages coming from it.
-    // Messages are streamed with [_returnedEvent] and processed
-    // by [_waitForEvent] when they come.
 
-    if (_isInitialized) {
-      _log.severe('initialize() called when the engine is already initialized. '
-          'Avoid this by checking the `initialized` Future before '
-          'calling `initialize()`.');
-      // Nothing to do, just ignore the call.
-      return;
-    }
-
-    // if `!_isInitialized` but the engine is initialized in native, therefore
+    // if `!isInitialized` but the engine is initialized in native, therefore
     // the developer may have carried out a hot reload which does not imply
     // the release of the native player.
     // Just deinit the engine to be re-inited later.
-    if (SoLoudController().soLoudFFI.isInited()) {
+    if (isInitialized) {
       _log.warning('init() called when the native player is already '
           'initialized. This is expected after a hot restart but not '
           "otherwise. If you see this in production logs, there's probably "
@@ -299,245 +215,151 @@ interface class SoLoud {
       deinit();
     }
 
-    if (_initializeCompleter != null) {
-      _log.severe('initialize() called while already initializing. '
-          'Avoid this by checking the `initialized` Future before '
-          'calling `initialize()`.');
-      return _initializeCompleter!.future;
-    }
-
     _activeSounds.clear();
-    final completer = Completer<void>();
-    _initializeCompleter = completer;
 
-    _isolateToMainStream = ReceivePort();
-    _returnedEvent = StreamController.broadcast();
+    final error = SoLoudController().soLoudFFI.initEngine();
+    _logPlayerError(error, from: 'initialize() result');
+    if (error == PlayerErrors.noError) {
+      _isInitialized = true;
 
-    _isolateToMainStream?.listen((data) {
-      if (data is SendPort) {
-        _mainToIsolateStream = data;
+      /// get the visualization flag from the player on C side.
+      /// Eventually we can set this as a parameter during the
+      /// initialization with some other parameters like `sampleRate`
+      _isVisualizationEnabled = getVisualizationEnabled();
 
-        /// finally start the audio engine
-        _initEngine().then((error) {
-          assert(
-              !_isInitialized,
-              '_isInitialized should be false at this point. '
-              'There might be a bug in the code that tries to prevent '
-              'multiple concurrent initializations.');
-          if (_initializeCompleter == null) {
-            _log.warning(
-                '_initializeCompleter was set to null during initialization. '
-                'This might mean that deinit() was called while the engine '
-                'was still being initialized.');
-            _cleanUpUnsuccessfulInitialization();
-            assert(completer.isCompleted,
-                'Deinit() should have completed the future');
-            return;
-          }
+      // Initialize native callbacks
+      _initializeNativeCallbacks();
 
-          assert(
-              _initializeCompleter == completer,
-              '_initializeCompleter has been reassigned '
-              'during initialization. This is probably a bug in '
-              'the flutter_soloud package. There should always be at most '
-              'one _initializeCompleter running at any given time.');
-
-          if (error == PlayerErrors.noError) {
-            _isInitialized = true;
-
-            /// get the visualization flag from the player on C side.
-            /// Eventually we can set this as a parameter during the
-            /// initialization with some other parameters like `sampleRate`
-            _isVisualizationEnabled = getVisualizationEnabled();
-            _initializeCompleter = null;
-            completer.complete();
-          } else {
-            _log.severe('_initEngine() failed with error: $error');
-            _cleanUpUnsuccessfulInitialization();
-            _initializeCompleter = null;
-            completer.completeError(SoLoudCppException.fromPlayerError(error));
-          }
-        });
-      } else {
-        _log.finest(() => 'main isolate received: $data');
-        if (data is StreamSoundEvent) {
-          _log.finer(
-              () => 'Main isolate received a sound event: ${data.event}  '
-                  'handle: ${data.handle}  '
-                  'sound: ${data.sound}');
-
-          /// find the sound which received the [SoundEvent] and...
-          final sound = _activeSounds.firstWhere(
-            (sound) => sound.soundHash == data.sound.soundHash,
-            orElse: () {
-              _log.info(() => 'Received an event for sound with handle: '
-                  "${data.handle} but such sound isn't among _activeSounds.");
-              return AudioSource(SoundHash.invalid());
-            },
-          );
-
-          /// send the disposed event to listeners and remove the sound
-          if (data.event == SoundEventType.soundDisposed) {
-            sound.soundEventsController.add(data);
-            _activeSounds.removeWhere(
-                (element) => element.soundHash == data.sound.soundHash);
-          }
-
-          /// send the handle event to the listeners and remove it
-          if (data.event == SoundEventType.handleIsNoMoreValid) {
-            /// ...put in its own stream the event, then remove the handle
-            if (sound.soundHash.isValid) {
-              sound.soundEventsController.add(data);
-              sound.handlesInternal.removeWhere(
-                (handle) {
-                  return handle == data.handle;
-                },
-              );
-              if (sound.handles.isEmpty) {
-                // All instances of the sound have finished.
-                sound.allInstancesFinishedController.add(null);
-              }
-            }
-          }
-        } else {
-          // if not a StreamSoundEvent, queue this into [_returnedEvent]
-          _returnedEvent?.add(data);
-        }
-      }
-    });
-
-    try {
-      _isolate =
-          await Isolate.spawn(audioIsolate, _isolateToMainStream!.sendPort);
-    } catch (e) {
-      _log.severe('Isolate.spawn() failed.', e);
-      _cleanUpUnsuccessfulInitialization();
-      _initializeCompleter = null;
-      completer.completeError(const SoLoudIsolateSpawnFailedException());
-      return completer.future;
+      // Initialize [SoLoudLoader]
+      _loader.automaticCleanup = automaticCleanup;
+      await _loader.initialize();
+    } else {
+      _log.severe('initialize() failed with error: $error');
+      _isInitialized = false;
     }
-
-    _loader.automaticCleanup = automaticCleanup;
-    await _loader.initialize();
-
-    return completer.future.timeout(timeout, onTimeout: () {
-      _log.severe('initialize() timed out');
-      assert(_initializeCompleter == completer,
-          '_initializeCompleter has been reassigned');
-      _initializeCompleter = null;
-      _cleanUpUnsuccessfulInitialization();
-      throw const SoLoudInitializationTimedOutException();
-    });
   }
 
-  /// Used to clean up after an unsuccessful or interrupted initialization.
-  void _cleanUpUnsuccessfulInitialization() {
-    _isolateToMainStream?.close();
-    _isolateToMainStream = null;
-    _mainToIsolateStream = null;
-    _returnedEvent?.close();
-    _returnedEvent = null;
-    _isolate?.kill();
-    _isolate = null;
-    _isEngineInitialized = false;
-  }
-
-  /// Stops the engine and disposes of all resources, including sounds
-  /// and the audio isolate in a synchronous way.
+  /// Stops the engine and disposes of all resources, including sounds.
   ///
   /// This method is meant to be called when exiting the app. For example
   /// within the `dispose()` of the uppermost widget in the tree
   /// or inside [AppLifecycleListener.onExitRequested].
-  ///
-  /// (This method was formerly called `stopIsolate()`.)
   void deinit() {
     _log.finest('deinit() called');
 
-    /// check if we are in the middle of an initialization.
-    if (_initializeCompleter != null) {
-      _initializeCompleter
-          ?.completeError(const SoLoudInitializationStoppedByDeinitException());
-      _initializeCompleter = null;
-    }
-
-    /// reset broadcast and kill isolate
-    _isolateToMainStream?.close();
-    _isolateToMainStream = null;
-    _mainToIsolateStream = null;
-    _returnedEvent?.close();
-    _returnedEvent = null;
-    _isolate?.kill();
-    _isolate = null;
-    _isEngineInitialized = false;
     _isInitialized = false;
+
+    // SoLoudController().soLoudFFI.voiceEndedEventController.close();
+    // SoLoudController().soLoudFFI.fileLoadedEventsController.close();
 
     SoLoudController().soLoudFFI.disposeAllSound();
     SoLoudController().soLoudFFI.deinit();
     _activeSounds.clear();
   }
 
-  // //////////////////////////////////
-  // / isolate loop events management /
-  // //////////////////////////////////
-
-  /// Start the isolate loop to catch the end
-  /// of sounds (handles) playback or keys
+  /// Initialize native callbacks.
+  /// Here, we are listening for voice handles becoming invalid
+  /// when they are stopped/ended from anywhere.
   ///
-  /// The loop recursively call itself to check the state of
-  /// all active sound handles. Therefore it can cause some lag for
-  /// other event calls.
-  /// Not starting this will implies not receive [SoundEventType]s,
-  /// it will therefore be up to the developer to check
-  /// the sound handle validity
-  ///
-  Future<bool> _startLoop() async {
-    _log.finest('_startLoop() called');
-    if (_isolate == null || !_isEngineInitialized) return false;
+  /// Currently available:
+  ///   - [voiceEndedEvents] listening only here
+  ///   - [fileLoadedEvents] listening in `loadFile()`
+  final Map<String, Completer<AudioSource>> loadedFileCompleters = {};
+  final Map<SoundHandle, Completer<void>> voiceEndedCompleters = {};
 
-    _mainToIsolateStream?.send(
-      {
-        'event': MessageEvents.startLoop,
-        'args': (),
-      },
-    );
-    await _waitForEvent(MessageEvents.startLoop, ());
-    return true;
+  AudioSource? _isHandlePresent(SoundHandle h) {
+    for (final sound in _activeSounds) {
+      if (sound.handlesInternal.contains(h)) return sound;
+    }
+    return null;
+  }
+
+  void _initializeNativeCallbacks() {
+    // Initialize callbacks.
+    SoLoudController().soLoudFFI.setDartEventCallbacks();
+
+    // Listen when a handle becomes invalid becaus has been stopped/ended
+    if (!SoLoudController().soLoudFFI.voiceEndedEventController.hasListener) {
+      SoLoudController().soLoudFFI.voiceEndedEvents.listen((handle) {
+        // Remove this UNIQUE [handle] from the `AudioSource` that own that.
+
+        final soundHandleFound = _isHandlePresent(SoundHandle(handle));
+        print('************* RECEIVED HANDLE $handle  '
+            'isPresent: $soundHandleFound');
+
+        if (soundHandleFound != null) {
+          soundHandleFound.soundEventsController.add((
+            event: SoundEventType.handleIsNoMoreValid,
+            sound: soundHandleFound,
+            handle: SoundHandle(handle),
+          ));
+
+          /// Remove this handle from the list
+          soundHandleFound.handlesInternal.removeWhere((element) {
+            if (element.id == handle) print('************* REMOVED $element');
+            return element.id == handle;
+          });
+
+          if (soundHandleFound.handles.isEmpty) {
+            // All instances of the sound have finished.
+            soundHandleFound.allInstancesFinishedController.add(null);
+          }
+          voiceEndedCompleters[SoundHandle(handle)]?.complete();
+        }
+
+        print('************* REMAINING COMPLETES: $voiceEndedCompleters');
+      });
+    }
+
+    if (!SoLoudController().soLoudFFI.fileLoadedEventsController.hasListener) {
+      SoLoudController().soLoudFFI.fileLoadedEvents.listen((result) {
+        final exists =
+            loadedFileCompleters.containsKey(result['completeFileName']);
+        if (exists) {
+          print('SOLOUD.DART  file loaded event $result');
+          final error = PlayerErrors.values[result['error'] as int];
+          final completeFileName = result['completeFileName'] as String;
+          final hash = result['hash'] as int;
+          print('SOLOUD.DART2  file loaded event $hash');
+
+          _logPlayerError(error, from: 'loadFile() result');
+          final newSound = AudioSource(SoundHash(hash));
+          if (error == PlayerErrors.noError) {
+            _activeSounds.add(newSound);
+            loadedFileCompleters[result['completeFileName']]!
+                .complete(newSound);
+          } else if (error == PlayerErrors.fileAlreadyLoaded) {
+            _log.warning(() => "Sound '$completeFileName' was already loaded. "
+                'Prefer loading only once, and reusing the loaded sound '
+                'when playing.');
+            // The `audio_isolate.dart` code has logic to find the already-loaded
+            // sound among active sounds. The sound should be here as well.
+            final alreadyLoaded = _activeSounds
+                    .where((sound) => sound.soundHash == newSound.soundHash)
+                    .length ==
+                1;
+            assert(
+                alreadyLoaded,
+                'Sound is already loaded but missing from _activeSounds. '
+                'This is probably a bug in flutter_soloud, please file.');
+            // If we are here, the file has been already loaded but there is
+            // no corrispondence int the local list of sounds. Add it to the list
+            // safely because the cpp loadFile() compute the hash
+            // using the file name.
+            _activeSounds.add(newSound);
+            loadedFileCompleters[result['completeFileName']]
+                ?.complete(newSound);
+          } else {
+            throw SoLoudCppException.fromPlayerError(error);
+          }
+        }
+      });
+    }
   }
 
   // ////////////////////////////////////////////////
   // Below all the methods implemented with FFI for the player
   // ////////////////////////////////////////////////
-
-  /// Initialize the audio engine.
-  ///
-  /// Defaults are:
-  /// Miniaudio audio backend
-  /// sample rate 44100
-  /// buffer 2048
-  // TODO(marco): add initialization parameters
-  Future<PlayerErrors> _initEngine() async {
-    _log.finest('_initEngine() called');
-    if (_isolate == null) {
-      throw StateError('The audio isolate is not running');
-    }
-    _mainToIsolateStream?.send(
-      {
-        'event': MessageEvents.initEngine,
-        'args': (),
-      },
-    );
-    final ret =
-        await _waitForEvent(MessageEvents.initEngine, ()) as PlayerErrors;
-    _isEngineInitialized = ret == PlayerErrors.noError;
-    _logPlayerError(ret, from: '_initEngine() result');
-
-    /// start also the loop in the audio isolate
-    if (_isEngineInitialized) {
-      await _startLoop();
-    }
-    SoLoudController().soLoudFFI.setDartEventCallbacks();
-    return ret;
-  }
 
   /// Load a new sound to be played once or multiple times later, from
   /// the file system.
@@ -562,50 +384,10 @@ interface class SoLoud {
     String path, {
     LoadMode mode = LoadMode.memory,
   }) async {
-    if (!isInitialized) {
-      throw const SoLoudNotInitializedException();
-    }
-    _mainToIsolateStream?.send(
-      {
-        'event': MessageEvents.loadFile,
-        'args': (completeFileName: path, mode: mode),
-      },
-    );
-    final ret = (await _waitForEvent(
-      MessageEvents.loadFile,
-      (completeFileName: path, mode: mode),
-    )) as ({PlayerErrors error, AudioSource? sound});
-
-    _logPlayerError(ret.error, from: 'loadFile() result');
-    if (ret.error == PlayerErrors.noError) {
-      assert(
-          ret.sound != null, 'loadFile() returned no sound despite no error');
-      _activeSounds.add(ret.sound!);
-      return ret.sound!;
-    } else if (ret.error == PlayerErrors.fileAlreadyLoaded) {
-      _log.warning(() => "Sound '$path' was already loaded. "
-          'Prefer loading only once, and reusing the loaded sound '
-          'when playing.');
-      // The `audio_isolate.dart` code has logic to find the already-loaded
-      // sound among active sounds. The sound should be here as well.
-      assert(
-          _activeSounds
-                  .where((sound) => sound.soundHash == ret.sound!.soundHash)
-                  .length ==
-              1,
-          'Sound is already loaded but missing from _activeSounds. '
-          'This is probably a bug in flutter_soloud, please file.');
-      return ret.sound!;
-    } else {
-      throw SoLoudCppException.fromPlayerError(ret.error);
-    }
-  }
-
-  Future<AudioSource> loadFile2(
-    String path, {
-    LoadMode mode = LoadMode.memory,
-  }) async {
     final completer = Completer<AudioSource>();
+    loadedFileCompleters.addAll({
+      path: completer,
+    });
 
     /// Call the loadFile which can only return [PlayerErrors.backendNotInited].
     /// It will process the load file in a separated thread and a new
@@ -614,35 +396,10 @@ interface class SoLoud {
     if (onlyNotInited.error == PlayerErrors.backendNotInited) {
       throw const SoLoudNotInitializedException();
     }
-    SoLoudController().soLoudFFI.playerEvents.listen((data) {
-      print('SOLOUD.DART  file loaded event $data');
 
-      _logPlayerError(ret.error, from: 'loadFile() result');
-      if (ret.error == PlayerErrors.noError) {
-        assert(
-            ret.sound != null, 'loadFile() returned no sound despite no error');
-        _activeSounds.add(ret.sound!);
-        return ret.sound!;
-      } else if (ret.error == PlayerErrors.fileAlreadyLoaded) {
-        _log.warning(() => "Sound '$path' was already loaded. "
-            'Prefer loading only once, and reusing the loaded sound '
-            'when playing.');
-        // The `audio_isolate.dart` code has logic to find the already-loaded
-        // sound among active sounds. The sound should be here as well.
-        assert(
-            _activeSounds
-                    .where((sound) => sound.soundHash == ret.sound!.soundHash)
-                    .length ==
-                1,
-            'Sound is already loaded but missing from _activeSounds. '
-            'This is probably a bug in flutter_soloud, please file.');
-        return ret.sound!;
-      } else {
-        throw SoLoudCppException.fromPlayerError(ret.error);
-      }
+    return completer.future.whenComplete(() {
+      loadedFileCompleters.removeWhere((key, __) => key == path);
     });
-
-    return completer.future;
   }
 
   /// Load a new sound to be played once or multiple times later, from
@@ -737,30 +494,17 @@ interface class SoLoud {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    final ret = SoLoudController().soLoudFFI.loadWaveform(
+          waveform,
+          superWave,
+          scale,
+          detune,
+        );
 
-    _mainToIsolateStream?.send(
-      {
-        'event': MessageEvents.loadWaveform,
-        'args': (
-          waveForm: waveform.index,
-          superWave: superWave,
-          scale: scale,
-          detune: detune,
-        ),
-      },
-    );
-    final ret = (await _waitForEvent(
-      MessageEvents.loadWaveform,
-      (
-        waveForm: waveform.index,
-        superWave: superWave,
-        scale: scale,
-        detune: detune,
-      ),
-    )) as ({PlayerErrors error, AudioSource? sound});
     if (ret.error == PlayerErrors.noError) {
-      _activeSounds.add(ret.sound!);
-      return ret.sound!;
+      final newSound = AudioSource(ret.soundHash);
+      _activeSounds.add(newSound);
+      return newSound;
     }
     _logPlayerError(ret.error, from: 'loadWaveform() result');
     throw SoLoudCppException.fromPlayerError(ret.error);
@@ -843,20 +587,13 @@ interface class SoLoud {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
-    _mainToIsolateStream?.send(
-      {
-        'event': MessageEvents.speechText,
-        'args': (textToSpeech: textToSpeech),
-      },
-    );
-    final ret = (await _waitForEvent(
-      MessageEvents.speechText,
-      (textToSpeech: textToSpeech),
-    )) as ({PlayerErrors error, AudioSource sound});
+    final ret = SoLoudController().soLoudFFI.speechText(textToSpeech);
+
     _logPlayerError(ret.error, from: 'speechText() result');
     if (ret.error == PlayerErrors.noError) {
-      _activeSounds.add(ret.sound);
-      return ret.sound;
+      final newSound = AudioSource(SoundHash.random());
+      _activeSounds.add(newSound);
+      return newSound;
     }
     throw SoLoudCppException.fromPlayerError(ret.error);
   }
@@ -896,47 +633,33 @@ interface class SoLoud {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
-    _mainToIsolateStream?.send(
-      {
-        'event': MessageEvents.play,
-        'args': (
-          soundHash: sound.soundHash,
+    print('*** FLUTTER PLAY hash: ${sound.soundHash}');
+    final ret = SoLoudController().soLoudFFI.play(
+          sound.soundHash,
           volume: volume,
           pan: pan,
           paused: paused,
           looping: looping,
           loopingStartAt: loopingStartAt,
-        ),
-      },
-    );
-    final ret = (await _waitForEvent(
-      MessageEvents.play,
-      (
-        soundHash: sound.soundHash,
-        volume: volume,
-        pan: pan,
-        paused: paused,
-        looping: looping,
-        loopingStartAt: loopingStartAt,
-      ),
-    )) as ({PlayerErrors error, SoundHandle newHandle});
+        );
     _logPlayerError(ret.error, from: 'play()');
     if (ret.error != PlayerErrors.noError) {
       throw SoLoudCppException.fromPlayerError(ret.error);
     }
 
-    try {
-      /// add the new handle to the sound
-      _activeSounds
-          .firstWhere((s) => s.soundHash == sound.soundHash)
-          .handlesInternal
-          .add(ret.newHandle);
-      sound.handlesInternal.add(ret.newHandle);
-      print('DART PLAY ret.newHandle: ${ret.newHandle}');
-    } catch (e) {
-      _log.severe('play(): soundHash ${sound.soundHash} not found', e);
+    final filtered =
+        _activeSounds.where((s) => s.soundHash == sound.soundHash).toSet();
+    if (filtered.isEmpty) {
+      _log.severe(() => 'play(): soundHash ${sound.soundHash} not found');
       throw SoLoudSoundHashNotFoundDartException(sound.soundHash);
     }
+
+    assert(filtered.length == 1, 'Duplicate sounds found');
+    for (final activeSound in filtered) {
+      activeSound.handlesInternal.add(ret.newHandle);
+      print('DART PLAY ret.newHandle: ${ret.newHandle}');
+    }
+    // sound.handlesInternal.add(ret.newHandle);
     return ret.newHandle;
   }
 
@@ -1014,21 +737,25 @@ interface class SoLoud {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
-    _mainToIsolateStream?.send(
-      {
-        'event': MessageEvents.stop,
-        'args': (handle: handle),
-      },
-    );
-    await _waitForEvent(MessageEvents.stop, (handle: handle));
+    final completer = Completer<void>();
+    voiceEndedCompleters.addAll({
+      handle: completer,
+    });
 
-    /// find a sound with this handle and remove that handle from the list
-    for (final sound in _activeSounds) {
-      sound.handlesInternal.removeWhere((element) => element == handle);
-      if (sound.handles.isEmpty) {
-        sound.allInstancesFinishedController.add(null);
-      }
-    }
+    await Future.delayed(const Duration(microseconds: 100), () {
+      SoLoudController().soLoudFFI.stop(handle);
+    });
+
+    return completer.future
+        .timeout(const Duration(milliseconds: 300))
+        .onError((e, s) {
+      _log.severe('stop() takes too much time for handle $handle. '
+        'This is not expected but not blocking. Worth to file a bug with '
+        'a simple reproducible code.');
+      voiceEndedCompleters[handle]?.complete();
+    }).whenComplete(() {
+      voiceEndedCompleters.removeWhere((key, __) => key == handle);
+    });
   }
 
   /// Stops all handles of the already loaded [source], and reclaims memory.
@@ -1041,15 +768,13 @@ interface class SoLoud {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
-    _mainToIsolateStream?.send(
-      {
-        'event': MessageEvents.disposeSound,
-        'args': (soundHash: source.soundHash),
-      },
-    );
-    await _waitForEvent(
-        MessageEvents.disposeSound, (soundHash: source.soundHash));
+    SoLoudController().soLoudFFI.disposeSound(source.soundHash);
 
+    source.soundEventsController.add((
+      event: SoundEventType.soundDisposed,
+      sound: source,
+      handle: SoundHandle.error(),
+    ));
     await source.soundEventsController.close();
 
     /// remove the sound with [soundHash]
@@ -1067,16 +792,19 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   Future<void> disposeAllSources() async {
-    if (!_isEngineInitialized) {
+    if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
-    _mainToIsolateStream?.send(
-      {
-        'event': MessageEvents.disposeAllSound,
-        'args': (),
-      },
-    );
-    await _waitForEvent(MessageEvents.disposeAllSound, ());
+    SoLoudController().soLoudFFI.disposeAllSound();
+
+    for (final sound in _activeSounds) {
+      sound.soundEventsController.add((
+        event: SoundEventType.soundDisposed,
+        sound: sound,
+        handle: SoundHandle.error(),
+      ));
+      await sound.soundEventsController.close();
+    }
 
     /// remove all sounds
     _activeSounds.clear();
@@ -1783,14 +1511,12 @@ interface class SoLoud {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
-    _mainToIsolateStream?.send(
-      {
-        'event': MessageEvents.play3d,
-        'args': (
-          soundHash: sound.soundHash,
-          posX: posX,
-          posY: posY,
-          posZ: posZ,
+
+    final ret = SoLoudController().soLoudFFI.play3d(
+          sound.soundHash,
+          posX,
+          posY,
+          posZ,
           velX: velX,
           velY: velY,
           velZ: velZ,
@@ -1798,27 +1524,10 @@ interface class SoLoud {
           paused: paused,
           looping: looping,
           loopingStartAt: loopingStartAt,
-        ),
-      },
-    );
-    final ret = (await _waitForEvent(
-      MessageEvents.play3d,
-      (
-        soundHash: sound.soundHash,
-        posX: posX,
-        posY: posY,
-        posZ: posZ,
-        velX: velX,
-        velY: velY,
-        velZ: velZ,
-        volume: volume,
-        paused: paused,
-        looping: looping,
-        loopingStartAt: loopingStartAt,
-      ),
-    )) as ({PlayerErrors error, SoundHandle newHandle});
+        );
+
+    _logPlayerError(ret.error, from: 'play3d()');
     if (ret.error != PlayerErrors.noError) {
-      _log.severe(() => 'play3d(): ${ret.error}');
       throw SoLoudCppException.fromPlayerError(ret.error);
     }
 
@@ -1834,7 +1543,6 @@ interface class SoLoud {
       activeSound.handlesInternal.add(ret.newHandle);
     }
     sound.handlesInternal.add(ret.newHandle);
-
     return ret.newHandle;
   }
 
