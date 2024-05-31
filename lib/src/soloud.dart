@@ -32,8 +32,10 @@ enum AudioEvent {
   captureStopped,
 }
 
-/// TODO(marco): check SoLoud Future methods which can be sync instead
-/// TODO(marco): check methods docs
+/// TODO(all): could it be possible to move `_loader.initialize()` from
+/// `init()` to somewhere else? Doing so we can make `init()` sync.
+/// TODO(all): `loadWaveform()`, `speechText()`, 'play()', `play3d` can be sync.
+/// TODO(marco): add loadMem
 
 /// The main class to call all the audio methods that play sounds.
 ///
@@ -93,9 +95,6 @@ interface class SoLoud {
   /// A helper for loading files that aren't on disk.
   final SoLoudLoader _loader = SoLoudLoader();
 
-  /// The backing private field for [isInitialized].
-  bool _isInitialized = false;
-
   /// Whether or not is it possible to ask for wave and FFT data.
   bool _isVisualizationEnabled = false;
 
@@ -107,6 +106,10 @@ interface class SoLoud {
   /// - the engine was never initialized
   /// - its most recent initialization failed
   /// - it has been shut down
+  ///
+  /// This getter ([isInitialized]) is useful when you want to check the status
+  /// of the engine from places in your code that _don't_ do the initialization.
+  /// For example, a widget down the widget tree.
   bool get isInitialized => SoLoudController().soLoudFFI.isInited();
 
   /// A [Future] that returns `true` when the audio engine is initialized
@@ -122,48 +125,24 @@ interface class SoLoud {
   ///   }
   /// }
   /// ```
-  ///
-  /// The future will complete immediately (synchronously) if the engine is
-  /// either already initialized (`true`),
-  /// or it had failed to initialize (`false`),
-  /// or it was already shut down (`false`),
-  /// or it is _being_ shut down (`false`),
-  /// or when there wasn't ever a call to [init] at all (`false`).
-  ///
-  /// If the engine is in the middle of initializing, the future will complete
-  /// when the initialization is done. It will be `true` if the initialization
-  /// was successful, and `false` if it failed. The future will never throw.
-  ///
-  /// It is _not_ needed to await this future after a call to [init].
-  /// The [init] method already returns a future, and it is the
-  /// same future that this getter returns.
-  ///
-  /// ```dart
-  /// final result = await SoLoud.instance.initialize();
-  /// await SoLoud.instance.initialized;  // NOT NEEDED
-  /// ```
-  ///
-  /// This getter ([initialized]) is useful when you want to check the status
-  /// of the engine from places in your code that _don't_ do the initialization.
-  /// For example, a widget down the widget tree.
-  ///
-  /// If you need a version of this that is synchronous,
-  /// or if you don't care that the engine might be initializing right now
-  /// and therefore ready in a moment,
-  /// use [isInitialized] instead.
   @Deprecated('Use isInitialized instead!')
   FutureOr<bool> get initialized {
     return isInitialized;
   }
 
-  /// Used both in main and audio isolates
-  /// should be synchronized with each other
-  ///
   /// Backing of [activeSounds].
   final List<AudioSource> _activeSounds = [];
 
   /// The sounds that are _currently being loaded_.
   Iterable<AudioSource> get activeSounds => _activeSounds;
+
+  /// Completers for the [loadFile] method
+  @internal
+  final Map<String, Completer<AudioSource>> loadedFileCompleters = {};
+
+  /// Completers for the [stop] method
+  @internal
+  final Map<SoundHandle, Completer<void>> voiceEndedCompleters = {};
 
   /// Initialize the audio engine.
   ///
@@ -174,11 +153,6 @@ interface class SoLoud {
   /// If you call any other methods (such as [play]) before initialization
   /// completes, those calls will be ignored and you will get
   /// a [SoLoudNotInitializedException] exception.
-  ///
-  /// The [timeout] parameter is the maximum time to wait for the engine
-  /// to initialize. If the engine doesn't initialize within this time,
-  /// the method will throw [SoLoudInitializationTimedOutException].
-  /// The default timeout is 10 seconds.
   ///
   /// If [automaticCleanup] is `true`, the temporary directory that
   /// the engine uses for storing sound files will be purged occasionally
@@ -220,8 +194,6 @@ interface class SoLoud {
     final error = SoLoudController().soLoudFFI.initEngine();
     _logPlayerError(error, from: 'initialize() result');
     if (error == PlayerErrors.noError) {
-      _isInitialized = true;
-
       /// get the visualization flag from the player on C side.
       /// Eventually we can set this as a parameter during the
       /// initialization with some other parameters like `sampleRate`
@@ -232,10 +204,12 @@ interface class SoLoud {
 
       // Initialize [SoLoudLoader]
       _loader.automaticCleanup = automaticCleanup;
+
+      /// TODO(all): can we initialize [SoLoudLoader] somewhere else?
+      /// If yes, we can make `init()` sync.
       await _loader.initialize();
     } else {
       _log.severe('initialize() failed with error: $error');
-      _isInitialized = false;
     }
   }
 
@@ -247,33 +221,30 @@ interface class SoLoud {
   void deinit() {
     _log.finest('deinit() called');
 
-    _isInitialized = false;
-
-    // SoLoudController().soLoudFFI.voiceEndedEventController.close();
-    // SoLoudController().soLoudFFI.fileLoadedEventsController.close();
-
     SoLoudController().soLoudFFI.disposeAllSound();
     SoLoudController().soLoudFFI.deinit();
     _activeSounds.clear();
   }
 
-  /// Initialize native callbacks.
-  /// Here, we are listening for voice handles becoming invalid
-  /// when they are stopped/ended from anywhere.
-  ///
-  /// Currently available:
-  ///   - [voiceEndedEvents] listening only here
-  ///   - [fileLoadedEvents] listening in `loadFile()`
-  final Map<String, Completer<AudioSource>> loadedFileCompleters = {};
-  final Map<SoundHandle, Completer<void>> voiceEndedCompleters = {};
-
-  AudioSource? _isHandlePresent(SoundHandle h) {
+  /// Get the [AudioSource] which own the [handle]
+  AudioSource? _isHandlePresent(SoundHandle handle) {
     for (final sound in _activeSounds) {
-      if (sound.handlesInternal.contains(h)) return sound;
+      if (sound.handlesInternal.contains(handle)) return sound;
     }
     return null;
   }
 
+  /// Initialize native callbacks.
+  /// Here, we are listening for voice handles becoming invalid
+  /// when they are stopped/ended from anywhere or when a file has been loaded.
+  ///
+  /// Currently available:
+  ///   - [SoLoudController().soLoudFFI.voiceEndedEvents]
+  ///   - [SoLoudController().soLoudFFI.fileLoadedEvents]
+  ///
+  /// These events are coming from `FlutterSoLoudFfi`. The callbacks
+  /// `_voiceEndedCallback` and `_fileLoadedCallback` are called from CPP.
+  /// From within these callbacks a new stream event is added and listened here.
   void _initializeNativeCallbacks() {
     // Initialize callbacks.
     SoLoudController().soLoudFFI.setDartEventCallbacks();
@@ -281,11 +252,9 @@ interface class SoLoud {
     // Listen when a handle becomes invalid becaus has been stopped/ended
     if (!SoLoudController().soLoudFFI.voiceEndedEventController.hasListener) {
       SoLoudController().soLoudFFI.voiceEndedEvents.listen((handle) {
-        // Remove this UNIQUE [handle] from the `AudioSource` that own that.
+        // Remove this UNIQUE [handle] from the `AudioSource` that own it.
 
         final soundHandleFound = _isHandlePresent(SoundHandle(handle));
-        print('************* RECEIVED HANDLE $handle  '
-            'isPresent: $soundHandleFound');
 
         if (soundHandleFound != null) {
           soundHandleFound.soundEventsController.add((
@@ -296,7 +265,7 @@ interface class SoLoud {
 
           /// Remove this handle from the list
           soundHandleFound.handlesInternal.removeWhere((element) {
-            if (element.id == handle) print('************* REMOVED $element');
+            _log.finest('Voice ended event received. Removing handle $handle');
             return element.id == handle;
           });
 
@@ -306,8 +275,6 @@ interface class SoLoud {
           }
           voiceEndedCompleters[SoundHandle(handle)]?.complete();
         }
-
-        print('************* REMAINING COMPLETES: $voiceEndedCompleters');
       });
     }
 
@@ -316,11 +283,10 @@ interface class SoLoud {
         final exists =
             loadedFileCompleters.containsKey(result['completeFileName']);
         if (exists) {
-          print('SOLOUD.DART  file loaded event $result');
           final error = PlayerErrors.values[result['error'] as int];
           final completeFileName = result['completeFileName'] as String;
           final hash = result['hash'] as int;
-          print('SOLOUD.DART2  file loaded event $hash');
+          _log.finest('File loaded event received for: $completeFileName');
 
           _logPlayerError(error, from: 'loadFile() result');
           final newSound = AudioSource(SoundHash(hash));
@@ -384,18 +350,17 @@ interface class SoLoud {
     String path, {
     LoadMode mode = LoadMode.memory,
   }) async {
-    final completer = Completer<AudioSource>();
-    loadedFileCompleters.addAll({
-      path: completer,
-    });
-
-    /// Call the loadFile which can only return [PlayerErrors.backendNotInited].
-    /// It will process the load file in a separated thread and a new
-    /// event [TODO] will be emitted
+    /// `loadFile` can only return [PlayerErrors.backendNotInited] from ffi.
+    /// The possible loading error will be grabbed by `fileLoadedEvents`.
     final onlyNotInited = SoLoudController().soLoudFFI.loadFile(path, mode);
     if (onlyNotInited.error == PlayerErrors.backendNotInited) {
       throw const SoLoudNotInitializedException();
     }
+
+    final completer = Completer<AudioSource>();
+    loadedFileCompleters.addAll({
+      path: completer,
+    });
 
     return completer.future.whenComplete(() {
       loadedFileCompleters.removeWhere((key, __) => key == path);
@@ -633,7 +598,6 @@ interface class SoLoud {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
-    print('*** FLUTTER PLAY hash: ${sound.soundHash}');
     final ret = SoLoudController().soLoudFFI.play(
           sound.soundHash,
           volume: volume,
@@ -657,9 +621,8 @@ interface class SoLoud {
     assert(filtered.length == 1, 'Duplicate sounds found');
     for (final activeSound in filtered) {
       activeSound.handlesInternal.add(ret.newHandle);
-      print('DART PLAY ret.newHandle: ${ret.newHandle}');
     }
-    // sound.handlesInternal.add(ret.newHandle);
+
     return ret.newHandle;
   }
 
@@ -750,8 +713,8 @@ interface class SoLoud {
         .timeout(const Duration(milliseconds: 300))
         .onError((e, s) {
       _log.severe('stop() takes too much time for handle $handle. '
-        'This is not expected but not blocking. Worth to file a bug with '
-        'a simple reproducible code.');
+          'This is not expected but not blocking. Worth to file a bug with '
+          'a simple reproducible code.');
       voiceEndedCompleters[handle]?.complete();
     }).whenComplete(() {
       voiceEndedCompleters.removeWhere((key, __) => key == handle);
