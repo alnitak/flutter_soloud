@@ -73,38 +73,32 @@ namespace SoLoud
         {
             case ma_device_notification_type_started:
             {
-                printf("]]]]]]]]]]]]]]]]]]]]]] STARTED\n");
                 soloud->_stateChangedCallback(0);
             }
             break;
 
             case ma_device_notification_type_stopped:
             {
-                printf("]]]]]]]]]]]]]]]]]]]]]] STOPPED\n");
                 soloud->_stateChangedCallback(1);
             } break;
 
             case ma_device_notification_type_rerouted:
             {
-                printf("]]]]]]]]]]]]]]]]]]]]]] REROUTED\n");
                 soloud->_stateChangedCallback(2);
             } break;
 
             case ma_device_notification_type_interruption_began:
             {
-                printf("]]]]]]]]]]]]]]]]]]]]]] INTERRUPT BEGAN\n");
                 soloud->_stateChangedCallback(3);
             } break;
 
             case ma_device_notification_type_interruption_ended:
             {
-                printf("]]]]]]]]]]]]]]]]]]]]]] INTERRUPT ENDED\n");
                 soloud->_stateChangedCallback(4);
             } break;
 
             case ma_device_notification_type_unlocked:
             {
-                printf("]]]]]]]]]]]]]]]]]]]]]] UNLOCKED\n");
                 soloud->_stateChangedCallback(5);
             } break;
 
