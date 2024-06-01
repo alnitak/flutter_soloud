@@ -24,10 +24,12 @@ extern "C"
 
     typedef void (*dartVoiceEndedCallback_t)(unsigned int *);
     typedef void (*dartFileLoadedCallback_t)(enum PlayerErrors *, char *completeFileName, unsigned int *);
+    typedef void (*dartStateChangedCallback_t)(enum PlayerStateEvents *);
 
     // to be used by `NativeCallable`, these functions must return void.
     void (*dartVoiceEndedCallback)(unsigned int *) = nullptr;
     void (*dartFileLoadedCallback)(enum PlayerErrors *, char *completeFileName, unsigned int *) = nullptr;
+    void (*dartStateChangedCallback)(enum PlayerStateEvents *) = nullptr;
 
     /// The callback to monitor when a voice ends.
     ///
@@ -36,7 +38,6 @@ extern "C"
     {
         if (dartVoiceEndedCallback == nullptr)
             return;
-        // printf("BINDINGS.CPP PLAYER stoppedCallback handle: %d\n", *handle);
         player->removeHandle(*handle);
         // [n] pointer must be deleted on Dart.
         unsigned int *n = (unsigned int *)malloc(sizeof(unsigned int *));
@@ -47,7 +48,6 @@ extern "C"
     /// The callback to monitor when a file is loaded.
     void fileLoadedCallback(enum PlayerErrors error, char *completeFileName, unsigned int *hash)
     {
-        // printf("BINDINGS.CPP PLAYER fileLoadedCallback error: %d  hash: %u  file: %s\n", error, *hash, completeFileName);
         if (dartFileLoadedCallback == nullptr)
             return;
         // [e,name,n] pointers must be deleted on Dart.
@@ -59,16 +59,25 @@ extern "C"
         dartFileLoadedCallback(e, name, n);
     }
 
+    void stateChangedCallback(unsigned int state) 
+    {
+        printf("BINDINGS.CPP PLAYER stateChangedCallback state: %d \n", state);
+        PlayerStateEvents *type = (PlayerStateEvents *)malloc(sizeof(unsigned int *));
+        *type = (PlayerStateEvents)state;
+        if (dartStateChangedCallback != nullptr)
+            dartStateChangedCallback(type);
+    }
+
     /// Set a Dart functions to call when an event occurs.
     ///
     FFI_PLUGIN_EXPORT void setDartEventCallback(
         dartVoiceEndedCallback_t voice_ended_callback,
-        dartFileLoadedCallback_t file_loaded_callback)
+        dartFileLoadedCallback_t file_loaded_callback,
+        dartStateChangedCallback_t state_changed_callback)
     {
         dartVoiceEndedCallback = voice_ended_callback;
         dartFileLoadedCallback = file_loaded_callback;
-
-        // loadMem
+        dartStateChangedCallback = state_changed_callback;
     }
 
     //////////////////////////////////////////////////////////////////////////////////
@@ -87,6 +96,7 @@ extern "C"
         if (player.get() == nullptr)
             player = std::make_unique<Player>();
 
+        player.get()->setStateChangedCallback(stateChangedCallback);
         PlayerErrors res = (PlayerErrors)player.get()->init();
         if (res != noError)
             return res;
@@ -137,25 +147,24 @@ extern "C"
     /// See the [seek] note problem when using [loadIntoMem] = false
     /// [hash] return the hash of the sound
     /// Returns [PlayerErrors.noError] if success
-    FFI_PLUGIN_EXPORT enum PlayerErrors loadFile(
+    FFI_PLUGIN_EXPORT void loadFile(
         char *completeFileName,
-        bool loadIntoMem,
-        unsigned int *hash)
+        bool loadIntoMem)
     {
+        // this check is already been done in Dart
         if (!player.get()->isInited())
-            return backendNotInited;
+            return;
 
         Player *p = player.get();
-        *hash = 0;
+        unsigned int hash = 0;
         // std::thread loadThread([p, completeFileName, loadIntoMem, hash]()
         //                        {
-            PlayerErrors error = p->loadFile(completeFileName, loadIntoMem, hash);
-            // printf("*** LOAD FILE FROM THREAD error: %d  hash: %u\n", error,  *hash);
-            fileLoadedCallback(error, completeFileName, hash); 
+        PlayerErrors error = p->loadFile(completeFileName, loadIntoMem, &hash);
+        // printf("*** LOAD FILE FROM THREAD error: %d  hash: %u\n", error,  *hash);
+        fileLoadedCallback(error, completeFileName, &hash);
         //     });
         // // TODO(marco): use .detach()? Use std::atomic somewhere
         // loadThread.join();
-        return error;
     }
 
     /// Load a new sound stored into [buffer] to be played once or multiple times later.
@@ -171,6 +180,7 @@ extern "C"
         int length,
         unsigned int *hash)
     {
+        // this check is already been done in Dart
         if (!player.get()->isInited())
             return backendNotInited;
         return (PlayerErrors)player.get()->loadMem(uniqueName, buffer, length, *hash);

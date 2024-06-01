@@ -29,6 +29,12 @@ typedef DartdartFileLoadedCallback_tFunction = void Function(
     ffi.Pointer<ffi.Int32>,
     ffi.Pointer<ffi.Char>,
     ffi.Pointer<ffi.UnsignedInt>);
+typedef dartStateChangedCallback_t
+    = ffi.Pointer<ffi.NativeFunction<dartStateChangedCallback_tFunction>>;
+typedef dartStateChangedCallback_tFunction = ffi.Void Function(
+    ffi.Pointer<ffi.Int32>);
+typedef DartdartStateChangedCallback_tFunction = void Function(
+    ffi.Pointer<ffi.Int32>);
 
 /// FFI bindings to SoLoud
 class FlutterSoLoudFfi {
@@ -100,6 +106,21 @@ class FlutterSoLoudFfi {
       ..free(hash);
   }
 
+  /// Controller to listen to voice ended events.
+  late final StreamController<PlayerStateNotification> stateChangedController =
+      StreamController.broadcast();
+
+  /// listener for voices ended.
+  Stream<PlayerStateNotification> get stateChangedEvents =>
+      stateChangedController.stream;
+
+  void _stateChangedCallback(ffi.Pointer<ffi.Int32> state) {
+    final s = PlayerStateNotification.values[state.value];
+    _log.fine(() => 'STATE CHANGED EVENT state: $s');
+    stateChangedController.add(s);
+    calloc.free(state);
+  }
+
   /// Set a Dart function to call when a sound ends.
   ///
   void setDartEventCallbacks() {
@@ -112,19 +133,25 @@ class FlutterSoLoudFfi {
         ffi.NativeCallable<dartFileLoadedCallback_tFunction>.listener(
       _fileLoadedCallback,
     );
+    final nativeStateChangedCallable =
+        ffi.NativeCallable<dartStateChangedCallback_tFunction>.listener(
+      _stateChangedCallback,
+    );
 
     _setDartEventCallback(
       nativeVoiceEndedCallable.nativeFunction,
       nativeFileLoadedCallable.nativeFunction,
+      nativeStateChangedCallable.nativeFunction,
     );
   }
 
   late final _setDartEventCallbackPtr = _lookup<
       ffi.NativeFunction<
-          ffi.Void Function(dartVoiceEndedCallback_t,
-              dartFileLoadedCallback_t)>>('setDartEventCallback');
+          ffi.Void Function(dartVoiceEndedCallback_t, dartFileLoadedCallback_t,
+              dartStateChangedCallback_t)>>('setDartEventCallback');
   late final _setDartEventCallback = _setDartEventCallbackPtr.asFunction<
-      void Function(dartVoiceEndedCallback_t, dartFileLoadedCallback_t)>();
+      void Function(dartVoiceEndedCallback_t, dartFileLoadedCallback_t,
+          dartStateChangedCallback_t)>();
 
   ///////////////////////////////////////////////////////////////////////////
   ///////////////////////////////////////////////////////////////////////////
@@ -169,7 +196,7 @@ class FlutterSoLoudFfi {
 
   /// Load a new sound to be played once or multiple times later.
   ///
-  /// After loading the file, the [_fileLoadedCallback] will call the 
+  /// After loading the file, the [_fileLoadedCallback] will call the
   /// Dart function defined with [_setDartEventCallback] which gives back
   /// the error and the new hash.
   ///
@@ -182,33 +209,28 @@ class FlutterSoLoudFfi {
   /// See the [seek] note problem when using [LoadMode] = `LoadMode.disk`.
   /// `soundHash` return hash of the sound.
   /// Returns [PlayerErrors.noError] if success.
-  ({PlayerErrors error, SoundHash soundHash}) loadFile(
+  void loadFile(
     String completeFileName,
     LoadMode mode,
   ) {
     // ignore: omit_local_variable_types
     final ffi.Pointer<ffi.UnsignedInt> h =
         calloc(ffi.sizeOf<ffi.UnsignedInt>());
-    final e = _loadFile(
+    _loadFile(
       completeFileName.toNativeUtf8().cast<ffi.Char>(),
       mode == LoadMode.memory ? 1 : 0,
-      h,
     );
-    final soundHash = SoundHash(h.value);
-    final ret = (error: PlayerErrors.values[e], soundHash: soundHash);
     calloc.free(h);
-    return ret;
   }
 
   late final _loadFilePtr = _lookup<
       ffi.NativeFunction<
-          ffi.Int32 Function(
+          ffi.Void Function(
             ffi.Pointer<ffi.Char>,
             ffi.Int,
-            ffi.Pointer<ffi.UnsignedInt>,
           )>>('loadFile');
-  late final _loadFile = _loadFilePtr.asFunction<
-      int Function(ffi.Pointer<ffi.Char>, int, ffi.Pointer<ffi.UnsignedInt>)>();
+  late final _loadFile =
+      _loadFilePtr.asFunction<void Function(ffi.Pointer<ffi.Char>, int)>();
 
   /// Load a new sound stored into [buffer] as file bytes to be played once
   /// or multiple times later.

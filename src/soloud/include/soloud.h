@@ -176,6 +176,12 @@ namespace SoLoud
 			_voiceEndedCallback = voiceEndedCallback;
 		}
 
+		// Set the callback to call when the device receive a state changed
+		void (*_stateChangedCallback)(unsigned int) = nullptr;
+		void setStateChangedCallback(void (*stateChangedCallback)(unsigned int)) {
+			_stateChangedCallback = stateChangedCallback;
+		}
+
 		// CTor
 		Soloud();
 		// DTor

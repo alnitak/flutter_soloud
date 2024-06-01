@@ -48,7 +48,11 @@ public:
     /// @return Returns [PlayerErrors.SO_NO_ERROR] if success.
     PlayerErrors init();
 
+    /// @brief Set a function callback triggered when a voice is stopped/ended.
     void setVoiceEndedCallback(void (*voiceEndedCallback)(unsigned int*));
+
+    /// @brief Set a function callback triggered when the state of the player changes.
+    void setStateChangedCallback(void (*stateChangedCallback)(unsigned int));
 
     /// @brief Must be called when there is no more need of the player or when closing the app.
     void dispose();

@@ -205,3 +205,13 @@ enum LoadMode {
   /// More CPU, less memory allocated, seeking lags with MP3s.
   disk,
 }
+
+enum PlayerStateNotification
+{
+    started,
+    stopped,
+    rerouted,
+    interruption_began,
+    interruption_ended,
+    unlocked,
+}

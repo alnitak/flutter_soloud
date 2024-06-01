@@ -26,10 +26,11 @@ struct CaptureDevice
 
 typedef void (*dartVoiceEndedCallback_t)(unsigned int *);
 typedef void (*dartFileLoadedCallback_t)(enum PlayerErrors *, char *completeFileName, unsigned int *);
+typedef void (*dartStateChangedCallback_t)(enum PlayerStateEvents *);
 
 /// Set a Dart functions to call when an event occurs.
 ///
 FFI_PLUGIN_EXPORT void setDartEventCallback(
         dartVoiceEndedCallback_t voice_ended_callback,
-        dartFileLoadedCallback_t file_loaded_callback
-    );
+        dartFileLoadedCallback_t file_loaded_callback,
+        dartStateChangedCallback_t state_changed_callback);

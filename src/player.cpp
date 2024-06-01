@@ -27,6 +27,11 @@ void Player::setVoiceEndedCallback(void (*voiceEndedCallback)(unsigned int *))
     soloud.setVoiceEndedCallback(voiceEndedCallback);
 }
 
+void Player::setStateChangedCallback(void (*stateChangedCallback)(unsigned int))
+{
+    soloud.setStateChangedCallback(stateChangedCallback);
+}
+
 PlayerErrors Player::init()
 {
     if (mInited)
@@ -216,7 +221,7 @@ PlayerErrors Player::loadWaveform(
 
     std::random_device rd;
     std::mt19937 g(rd());
-    std::uniform_int_distribution<unsigned int> dist(0, UINT64_MAX);
+    std::uniform_int_distribution<unsigned int> dist(0, UINT32_MAX);
 
     hash = dist(g);
 

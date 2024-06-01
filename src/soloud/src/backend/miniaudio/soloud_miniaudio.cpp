@@ -63,6 +63,7 @@ namespace SoLoud
 namespace SoLoud
 {
     ma_device gDevice;
+    SoLoud::Soloud *soloud;
 
     void on_notification(const ma_device_notification* pNotification)
     {
@@ -72,27 +73,39 @@ namespace SoLoud
         {
             case ma_device_notification_type_started:
             {
-                printf("Started\n");
-            } break;
+                printf("]]]]]]]]]]]]]]]]]]]]]] STARTED\n");
+                soloud->_stateChangedCallback(0);
+            }
+            break;
 
             case ma_device_notification_type_stopped:
             {
-                printf("Stopped\n");
+                printf("]]]]]]]]]]]]]]]]]]]]]] STOPPED\n");
+                soloud->_stateChangedCallback(1);
             } break;
 
             case ma_device_notification_type_rerouted:
             {
-                printf("Rerouted\n");
+                printf("]]]]]]]]]]]]]]]]]]]]]] REROUTED\n");
+                soloud->_stateChangedCallback(2);
             } break;
 
             case ma_device_notification_type_interruption_began:
             {
-                printf("Interruption Began\n");
+                printf("]]]]]]]]]]]]]]]]]]]]]] INTERRUPT BEGAN\n");
+                soloud->_stateChangedCallback(3);
             } break;
 
             case ma_device_notification_type_interruption_ended:
             {
-                printf("Interruption Ended\n");
+                printf("]]]]]]]]]]]]]]]]]]]]]] INTERRUPT ENDED\n");
+                soloud->_stateChangedCallback(4);
+            } break;
+
+            case ma_device_notification_type_unlocked:
+            {
+                printf("]]]]]]]]]]]]]]]]]]]]]] UNLOCKED\n");
+                soloud->_stateChangedCallback(5);
             } break;
 
             default: break;
@@ -112,6 +125,7 @@ namespace SoLoud
 
     result miniaudio_init(SoLoud::Soloud *aSoloud, unsigned int aFlags, unsigned int aSamplerate, unsigned int aBuffer, unsigned int aChannels)
     {
+        soloud = aSoloud;
         ma_device_config config = ma_device_config_init(ma_device_type_playback);
         config.periodSizeInFrames = aBuffer;
         config.playback.format    = ma_format_f32;
@@ -119,7 +133,8 @@ namespace SoLoud
         config.sampleRate         = aSamplerate;
         config.dataCallback       = soloud_miniaudio_audiomixer;
         config.pUserData          = (void *)aSoloud;
-        config.notificationCallback = on_notification;
+        if (aSoloud->_stateChangedCallback != nullptr)
+            config.notificationCallback = on_notification;
 
         if (ma_device_init(NULL, &config, &gDevice) != MA_SUCCESS)
         {
