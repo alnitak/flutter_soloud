@@ -13,27 +13,44 @@ import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
 import 'package:logging/logging.dart';
 
-typedef dartVoiceEndedCallback_t
-    = ffi.Pointer<ffi.NativeFunction<dartVoiceEndedCallback_tFunction>>;
-typedef dartVoiceEndedCallback_tFunction = ffi.Void Function(
+///
+typedef DartVoiceEndedCallbackT
+    = ffi.Pointer<ffi.NativeFunction<DartVoiceEndedCallbackTFunction>>;
+
+///
+typedef DartVoiceEndedCallbackTFunction = ffi.Void Function(
     ffi.Pointer<ffi.UnsignedInt>);
-typedef DartdartVoiceEndedCallback_tFunction = void Function(
+
+///
+typedef DartdartVoiceEndedCallbackTFunction = void Function(
     ffi.Pointer<ffi.UnsignedInt>);
-typedef dartFileLoadedCallback_t
-    = ffi.Pointer<ffi.NativeFunction<dartFileLoadedCallback_tFunction>>;
-typedef dartFileLoadedCallback_tFunction = ffi.Void Function(
+
+///
+typedef DartFileLoadedCallbackT
+    = ffi.Pointer<ffi.NativeFunction<DartFileLoadedCallbackTFunction>>;
+
+///
+typedef DartFileLoadedCallbackTFunction = ffi.Void Function(
     ffi.Pointer<ffi.Int32>,
     ffi.Pointer<ffi.Char>,
     ffi.Pointer<ffi.UnsignedInt>);
-typedef DartdartFileLoadedCallback_tFunction = void Function(
+
+///
+typedef DartdartFileLoadedCallbackTFunction = void Function(
     ffi.Pointer<ffi.Int32>,
     ffi.Pointer<ffi.Char>,
     ffi.Pointer<ffi.UnsignedInt>);
-typedef dartStateChangedCallback_t
-    = ffi.Pointer<ffi.NativeFunction<dartStateChangedCallback_tFunction>>;
-typedef dartStateChangedCallback_tFunction = ffi.Void Function(
+
+///
+typedef DartStateChangedCallbackT
+    = ffi.Pointer<ffi.NativeFunction<DartStateChangedCallbackTFunction>>;
+
+///
+typedef DartStateChangedCallbackTFunction = ffi.Void Function(
     ffi.Pointer<ffi.Int32>);
-typedef DartdartStateChangedCallback_tFunction = void Function(
+
+///
+typedef DartdartStateChangedCallbackTFunction = void Function(
     ffi.Pointer<ffi.Int32>);
 
 /// FFI bindings to SoLoud
@@ -126,15 +143,15 @@ class FlutterSoLoudFfi {
   void setDartEventCallbacks() {
     // Create a NativeCallable for the Dart functions
     final nativeVoiceEndedCallable =
-        ffi.NativeCallable<dartVoiceEndedCallback_tFunction>.listener(
+        ffi.NativeCallable<DartVoiceEndedCallbackTFunction>.listener(
       _voiceEndedCallback,
     );
     final nativeFileLoadedCallable =
-        ffi.NativeCallable<dartFileLoadedCallback_tFunction>.listener(
+        ffi.NativeCallable<DartFileLoadedCallbackTFunction>.listener(
       _fileLoadedCallback,
     );
     final nativeStateChangedCallable =
-        ffi.NativeCallable<dartStateChangedCallback_tFunction>.listener(
+        ffi.NativeCallable<DartStateChangedCallbackTFunction>.listener(
       _stateChangedCallback,
     );
 
@@ -147,11 +164,11 @@ class FlutterSoLoudFfi {
 
   late final _setDartEventCallbackPtr = _lookup<
       ffi.NativeFunction<
-          ffi.Void Function(dartVoiceEndedCallback_t, dartFileLoadedCallback_t,
-              dartStateChangedCallback_t)>>('setDartEventCallback');
+          ffi.Void Function(DartVoiceEndedCallbackT, DartFileLoadedCallbackT,
+              DartStateChangedCallbackT)>>('setDartEventCallback');
   late final _setDartEventCallback = _setDartEventCallbackPtr.asFunction<
-      void Function(dartVoiceEndedCallback_t, dartFileLoadedCallback_t,
-          dartStateChangedCallback_t)>();
+      void Function(DartVoiceEndedCallbackT, DartFileLoadedCallbackT,
+          DartStateChangedCallbackT)>();
 
   ///////////////////////////////////////////////////////////////////////////
   ///////////////////////////////////////////////////////////////////////////

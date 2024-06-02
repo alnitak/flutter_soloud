@@ -209,23 +209,22 @@ enum LoadMode {
 /// Audio state changes. Not doing much now. Notifications should work
 /// on iOS but none of the Android backends will report this notification.
 /// However the started and stopped events should be reliable for all backends.
-enum PlayerStateNotification
-{
-    ///
-    started,
-    
-    ///
-    stopped,
-    
-    ///
-    rerouted,
-    
-    ///
-    interruptionBegan,
-    
-    ///
-    interruptionEnded,
-    
-    ///
-    unlocked,
+enum PlayerStateNotification {
+  ///
+  started,
+
+  ///
+  stopped,
+
+  ///
+  rerouted,
+
+  ///
+  interruptionBegan,
+
+  ///
+  interruptionEnded,
+
+  ///
+  unlocked,
 }
