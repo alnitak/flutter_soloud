@@ -3,6 +3,7 @@
 import 'dart:async';
 import 'dart:ffi' as ffi;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_soloud/src/audio_source.dart';
 import 'package:flutter_soloud/src/enums.dart';
@@ -16,27 +17,6 @@ import 'package:flutter_soloud/src/utils/loader.dart';
 import 'package:http/http.dart' as http;
 import 'package:logging/logging.dart';
 import 'package:meta/meta.dart';
-
-/// The events exposed by the plugin.
-enum AudioEvent {
-  /// Emitted when audio isolate is started.
-  isolateStarted,
-
-  /// Emitted when audio isolate is stopped.
-  isolateStopped,
-
-  /// Emitted when audio capture is started.
-  captureStarted,
-
-  /// Emitted when audio capture is stopped.
-  captureStopped,
-}
-
-/// TODO(all): could it be possible to move `_loader.initialize()` from
-/// `init()` to somewhere else? Doing so we can make `init()` sync.
-/// TODO(all): `loadWaveform()`, `speechText()`, 'play()', `play3d` can be sync.
-/// TODO(marco): add loadMem
-/// TODO(marco): modify AudioEvent
 
 /// The main class to call all the audio methods that play sounds.
 ///
@@ -145,7 +125,7 @@ interface class SoLoud {
   @internal
   final Map<SoundHandle, Completer<void>> voiceEndedCompleters = {};
 
-  /// Initialize the audio engine.
+  /// Initializes the audio engine.
   ///
   /// Run this before anything else, and `await` its result in a try/catch.
   /// Only when this method returns without throwing exceptions will the engine
@@ -1453,11 +1433,6 @@ interface class SoLoud {
       throw SoLoudCppException.fromPlayerError(error);
     }
   }
-
-  /// Deprecated alias of [getFilterParameter].
-  @Deprecated("Use 'getFilterParams' instead")
-  double getFxParams(FilterType filterType, int attributeId) =>
-      getFilterParameter(filterType, attributeId);
 
   /// Gets the value of a parameter of the given [filterType].
   ///

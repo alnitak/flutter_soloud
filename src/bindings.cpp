@@ -61,7 +61,6 @@ extern "C"
 
     void stateChangedCallback(unsigned int state) 
     {
-        printf("BINDINGS.CPP PLAYER stateChangedCallback state: %d \n", state);
         PlayerStateEvents *type = (PlayerStateEvents *)malloc(sizeof(unsigned int *));
         *type = (PlayerStateEvents)state;
         if (dartStateChangedCallback != nullptr)
