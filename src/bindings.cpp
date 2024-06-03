@@ -31,6 +31,10 @@ extern "C"
     void (*dartFileLoadedCallback)(enum PlayerErrors *, char *completeFileName, unsigned int *) = nullptr;
     void (*dartStateChangedCallback)(enum PlayerStateEvents *) = nullptr;
 
+    FFI_PLUGIN_EXPORT void nativeFree(void *pointer) {
+        free(pointer);
+    }
+    
     /// The callback to monitor when a voice ends.
     ///
     /// It is called by void `Soloud::stopVoice_internal(unsigned int aVoice)` when a voice ends.

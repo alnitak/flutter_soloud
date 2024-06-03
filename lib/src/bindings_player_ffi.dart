@@ -80,6 +80,16 @@ class FlutterSoLoudFfi {
   ///////////////////////////////////////////////////////////////////////////
   ///////////////////////////////////////////////////////////////////////////
 
+  void nativeFree(ffi.Pointer<ffi.Void> pointer) {
+    return _nativeFree(pointer);
+  }
+
+  late final _nativeFreePtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>(
+          'nativeFree');
+  late final _nativeFree =
+      _nativeFreePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
+
   /// Controller to listen to voice ended events.
   late final StreamController<int> voiceEndedEventController =
       StreamController.broadcast();
@@ -91,7 +101,10 @@ class FlutterSoLoudFfi {
   void _voiceEndedCallback(ffi.Pointer<ffi.UnsignedInt> handle) {
     _log.fine(() => 'VOICE ENDED EVENT handle: ${handle.value}');
     voiceEndedEventController.add(handle.value);
-    calloc.free(handle);
+        // Must free a pointer made on cpp. On Windows this must be freed
+    // there and cannot use `calloc.free(...)`
+    nativeFree(handle.cast<ffi.Void>());
+
   }
 
   /// Controller to listen to file loaded events.
@@ -117,10 +130,11 @@ class FlutterSoLoudFfi {
       'hash': hash.value,
     };
     fileLoadedEventsController.add(result);
-    calloc
-      ..free(error)
-      ..free(completeFileName)
-      ..free(hash);
+    // Must free a pointer made on cpp. On Windows this must be freed
+    // there and cannot use `calloc.free(...)`
+    nativeFree(error.cast<ffi.Void>());
+    nativeFree(completeFileName.cast<ffi.Void>());
+    nativeFree(hash.cast<ffi.Void>());
   }
 
   /// Controller to listen to voice ended events.
@@ -133,9 +147,11 @@ class FlutterSoLoudFfi {
 
   void _stateChangedCallback(ffi.Pointer<ffi.Int32> state) {
     final s = PlayerStateNotification.values[state.value];
+    // Must free a pointer made on cpp. On Windows this must be freed
+    // there and cannot use `calloc.free(state)`
+    nativeFree(state.cast<ffi.Void>());
     _log.fine(() => 'STATE CHANGED EVENT state: $s');
     stateChangedController.add(s);
-    calloc.free(state);
   }
 
   /// Set a Dart function to call when a sound ends.

@@ -34,3 +34,5 @@ FFI_PLUGIN_EXPORT void setDartEventCallback(
         dartVoiceEndedCallback_t voice_ended_callback,
         dartFileLoadedCallback_t file_loaded_callback,
         dartStateChangedCallback_t state_changed_callback);
+
+FFI_PLUGIN_EXPORT void nativeFree(void *pointer);
