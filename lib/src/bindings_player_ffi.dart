@@ -101,10 +101,9 @@ class FlutterSoLoudFfi {
   void _voiceEndedCallback(ffi.Pointer<ffi.UnsignedInt> handle) {
     _log.fine(() => 'VOICE ENDED EVENT handle: ${handle.value}');
     voiceEndedEventController.add(handle.value);
-        // Must free a pointer made on cpp. On Windows this must be freed
+    // Must free a pointer made on cpp. On Windows this must be freed
     // there and cannot use `calloc.free(...)`
     nativeFree(handle.cast<ffi.Void>());
-
   }
 
   /// Controller to listen to file loaded events.
