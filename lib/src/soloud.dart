@@ -186,7 +186,7 @@ interface class SoLoud {
       // Initialize [SoLoudLoader]
       _loader.automaticCleanup = automaticCleanup;
 
-      /// TODO(all): can we initialize [SoLoudLoader] somewhere else?
+      // TODO(all): can we initialize [SoLoudLoader] somewhere else?
       /// If yes, we can make `init()` sync.
       await _loader.initialize();
     } else {
@@ -198,7 +198,7 @@ interface class SoLoud {
   ///
   /// This method is meant to be called when exiting the app. For example
   /// within the `dispose()` of the uppermost widget in the tree
-  /// or inside [AppLifecycleListener.onExitRequested].
+  /// or inside "AppLifecycleListener.onExitRequested".
   void deinit() {
     _log.finest('deinit() called');
 
@@ -279,8 +279,9 @@ interface class SoLoud {
             _log.warning(() => "Sound '$completeFileName' was already loaded. "
                 'Prefer loading only once, and reusing the loaded sound '
                 'when playing.');
-            // The `audio_isolate.dart` code has logic to find the already-loaded
-            // sound among active sounds. The sound should be here as well.
+            // The `audio_isolate.dart` code has logic to find the
+            // already-loaded sound among active sounds. The sound should
+            // be here as well.
             final alreadyLoaded = _activeSounds
                     .where((sound) => sound.soundHash == newSound.soundHash)
                     .length ==
@@ -290,8 +291,8 @@ interface class SoLoud {
                 'Sound is already loaded but missing from _activeSounds. '
                 'This is probably a bug in flutter_soloud, please file.');
             // If we are here, the file has been already loaded but there is
-            // no corrispondence int the local list of sounds. Add it to the list
-            // safely because the cpp loadFile() compute the hash
+            // no corrispondence int the local list of sounds. Add it to
+            // the list safely because the cpp loadFile() compute the hash
             // using the file name.
             _activeSounds.add(newSound);
             loadedFileCompleters[result['completeFileName']]
