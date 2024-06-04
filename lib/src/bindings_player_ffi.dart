@@ -739,6 +739,55 @@ class FlutterSoLoudFfi {
       'setVolume');
   late final _setVolume = _setVolumePtr.asFunction<int Function(int, double)>();
 
+  /// Get a sound's current pan setting.
+  ///
+  /// [handle] the sound handle.
+  /// Returns the range of the pan values is -1 to 1, where -1 is left, 0 is
+  /// middle and and 1 is right.
+  double getPan(int handle) {
+    // Note that because of the float<=>double conversion precision error
+    // (SoLoud lib uses floats), the returned value is not precise. Here we set
+    // a rounding of 5 digits
+    final ret = (_getPan(handle) * 100000).toInt() / 100000;
+    return ret;
+  }
+
+  late final _getPanPtr =
+      _lookup<ffi.NativeFunction<ffi.Double Function(ffi.UnsignedInt)>>(
+          'getPan');
+  late final _getPan = _getPanPtr.asFunction<double Function(int)>();
+
+  /// Set a sound's current pan setting.
+  ///
+  /// [handle] the sound handle.
+  /// [pan] the range of the pan values is -1 to 1, where -1 is left, 0 is
+  /// middle and and 1 is right.
+  void setPan(int handle, double pan) {
+    return _setPan(handle, pan);
+  }
+
+  late final _setPanPtr = _lookup<
+          ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt, ffi.Double)>>(
+      'setPan');
+  late final _setPan = _setPanPtr.asFunction<void Function(int, double)>();
+
+  /// Set the left/right volumes directly.
+  /// Note that this does not affect the value returned by getPan.
+  ///
+  /// [handle] the sound handle.
+  /// [panLeft] value for the left pan.
+  /// [panRight] value for the right pan.
+  void setPanAbsolute(int handle, double panLeft, double panRight) {
+    return _setPanAbsolute(handle, panLeft, panRight);
+  }
+
+  late final _setPanAbsolutePtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Void Function(
+              ffi.UnsignedInt, ffi.Double, ffi.Double)>>('setPanAbsolute');
+  late final _setPanAbsolute =
+      _setPanAbsolutePtr.asFunction<void Function(int, double, double)>();
+
   /// Check if a handle is still valid.
   ///
   /// [handle] handle to check

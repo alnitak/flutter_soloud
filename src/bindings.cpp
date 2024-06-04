@@ -587,6 +587,43 @@ extern "C"
         return noError;
     }
 
+    /// Get a sound's current pan setting.
+    ///
+    /// [handle] the sound handle.
+    /// Returns the range of the pan values is -1 to 1, where -1 is left, 0 is middle and and 1 is right.
+    FFI_PLUGIN_EXPORT double getPan(unsigned int handle)
+    {
+        if (player.get() == nullptr || !player.get()->isInited())
+            return 0.0f;
+
+        return player.get()->getPan(handle);
+    }
+
+    /// Set a sound's current pan setting.
+    ///
+    /// [handle] the sound handle.
+    /// [pan] the range of the pan values is -1 to 1, where -1 is left, 0 is middle and and 1 is right.
+    FFI_PLUGIN_EXPORT void setPan(unsigned int handle, double pan)
+    {
+        if (player.get() == nullptr || !player.get()->isInited())
+            return;
+        // Rounding to 6 decimal to work around the float to double precision.
+        player.get()->setPan(handle, pan);
+    }
+
+    /// Set the left/right volumes directly.
+    /// Note that this does not affect the value returned by getPan.
+    ///
+    /// [handle] the sound handle.
+    /// [panLeft] value for the left pan.
+    /// [panRight] value for the right pan.
+    FFI_PLUGIN_EXPORT void setPanAbsolute(unsigned int handle, double panLeft, double panRight)
+    {
+        if (player.get() == nullptr || !player.get()->isInited())
+            return;
+        player.get()->setPanAbsolute(handle, panLeft, panRight);
+    }
+
     /// Check if a handle is still valid.
     ///
     /// [handle] handle to check

@@ -1232,6 +1232,53 @@ interface class SoLoud {
     SoLoudController().soLoudFFI.setVolume(handle, volume);
   }
 
+  /// Get a sound's current pan setting.
+  ///
+  /// [handle] the sound handle.
+  /// Returns the range of the pan values is -1 to 1, where -1 is left, 0 is
+  /// middle and and 1 is right.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  double getPan(SoundHandle handle) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    return SoLoudController().soLoudFFI.getPan(handle.id);
+  }
+
+  /// Set a sound's current pan setting.
+  ///
+  /// [handle] the sound handle.
+  /// [pan] the range of the pan values is -1 to 1, where -1 is left, 0 is
+  /// middle and and 1 is right.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  void setPan(SoundHandle handle, double pan) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    return SoLoudController().soLoudFFI.setPan(handle.id, pan);
+  }
+
+  /// Set the left/right volumes directly.
+  /// Note that this does not affect the value returned by getPan.
+  ///
+  /// [handle] the sound handle.
+  /// [panLeft] value for the left pan.
+  /// [panRight] value for the right pan.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  void setPanAbsolute(SoundHandle handle, double panLeft, double panRight) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    return SoLoudController().soLoudFFI.setPanAbsolute(
+          handle.id,
+          panLeft,
+          panRight,
+        );
+  }
+
   /// Check if the [handle] is still valid.
   ///
   /// Returns `true` if the sound instance identified by its [handle] is
