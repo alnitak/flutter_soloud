@@ -14,6 +14,12 @@
             "type": "shell"
         },
         {
+            "label": "compile linux test debug",
+            "command": "cd ${workspaceFolder}/example; flutter build linux -t tests/tests.dart --debug",
+            // "args": ["build", "linux"],
+            "type": "shell"
+        },
+        {
             "label": "compile windows debug verbose",
             "command": "cd ${workspaceFolder}/example; flutter build windows -t lib/main.dart --debug --verbose",
             // "args": ["build", "linux"],

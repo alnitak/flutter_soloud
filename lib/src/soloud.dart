@@ -1179,6 +1179,12 @@ interface class SoLoud {
   /// and `1.0` meaning full volume.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Note that if you `setGlobalVolume()` to `0.8` and then
+  /// `getGlobalVolume()`, you might get a slightly different number,
+  /// such as `0.800000042353`.
+  /// This is expected since the internal audio engine uses float
+  /// instead of double, and so there are rounding errors.
   double getGlobalVolume() {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1192,6 +1198,12 @@ interface class SoLoud {
   /// to `1.0` (meaning full volume).
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Note that if you `setGlobalVolume()` to `0.8` and then
+  /// `getGlobalVolume()`, you might get a slightly different number,
+  /// such as `0.800000042353`.
+  /// This is expected since the internal audio engine uses float
+  /// instead of double, and so there are rounding errors.
   void setGlobalVolume(double volume) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1211,6 +1223,11 @@ interface class SoLoud {
   /// and `1.0` means its playing at full volume.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Note that if you `setVolume()` to `0.8` and then `getVolume()`, you might
+  /// get a slightly different number, such as `0.800000042353`.
+  /// This is expected since the internal audio engine uses float
+  /// instead of double, and so there are rounding errors.
   double getVolume(SoundHandle handle) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1225,11 +1242,85 @@ interface class SoLoud {
   /// to `1.0` (meaning it should play at full volume).
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Note that if you `setVolume()` to `0.8` and then `getVolume()`, you might
+  /// get a slightly different number, such as `0.800000042353`.
+  /// This is expected since the internal audio engine uses float
+  /// instead of double, and so there are rounding errors.
   void setVolume(SoundHandle handle, double volume) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
     SoLoudController().soLoudFFI.setVolume(handle, volume);
+  }
+
+  /// Get a sound's current pan setting.
+  ///
+  /// [handle] the sound handle.
+  /// Returns the range of the pan values is -1 to 1, where -1 is left, 0 is
+  /// middle and and 1 is right.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Note that if you `setPan()` to `0.8` and then `getPan()`, you might
+  /// get a slightly different number, such as `0.800000042353`.
+  /// This is expected since the internal audio engine uses float
+  /// instead of double, and so there are rounding errors.
+  double getPan(SoundHandle handle) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    return SoLoudController().soLoudFFI.getPan(handle.id);
+  }
+
+  /// Set a sound's current pan setting.
+  ///
+  /// [handle] the sound handle.
+  /// [pan] the range of the pan values is -1 to 1, where -1 is left, 0 is
+  /// middle and and 1 is right.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Note that if you `setPan()` to `0.8` and then `getPan()`, you might
+  /// get a slightly different number, such as `0.800000042353`.
+  /// This is expected since the internal audio engine uses float
+  /// instead of double, and so there are rounding errors.
+  void setPan(SoundHandle handle, double pan) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    assert(
+      pan >= -1 && pan <= 1,
+      'The pan argument must be in range -1 to 1 inclusive!',
+    );
+    return SoLoudController().soLoudFFI.setPan(handle.id, pan.clamp(-1, 1));
+  }
+
+  /// Set the left/right volumes directly.
+  /// Note that this does not affect the value returned by getPan.
+  ///
+  /// [handle] the sound handle.
+  /// [panLeft] value for the left pan. Must be >= -1 and <= 1.
+  /// [panRight] value for the right pan. Must be >= -1 and <= 1.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  void setPanAbsolute(SoundHandle handle, double panLeft, double panRight) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    assert(
+      panLeft >= -1 && panLeft <= 1,
+      'The panLeft argument must be in range -1 to 1 inclusive!',
+    );
+    assert(
+      panRight >= -1 && panRight <= 1,
+      'The panRight argument must be in range -1 to 1 inclusive!',
+    );
+    return SoLoudController().soLoudFFI.setPanAbsolute(
+          handle.id,
+          panLeft.clamp(-1, 1),
+          panRight.clamp(-1, 1),
+        );
   }
 
   /// Check if the [handle] is still valid.

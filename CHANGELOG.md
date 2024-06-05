@@ -1,3 +1,6 @@
+### 2.1.0
+- added `getPan()`, `setPan()` and `setPanAbsolute()`.
+
 ### 2.0.2 (23 May 2024)
 - Fixed wrong exception raised by `setVolume()` when a handle is no more valid.
 

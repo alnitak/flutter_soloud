@@ -38,6 +38,7 @@ void main() async {
     testAllInstancesFinished,
     testCreateNotes,
     testPlaySeekPause,
+    testPan,
     testHandles,
     loopingTests,
   ];
@@ -399,6 +400,30 @@ Future<void> testPlaySeekPause() async {
 }
 
 /// Test instancing playing handles and their disposal
+Future<void> testPan() async {
+  /// Start audio isolate
+  await initialize();
+
+  final song =
+      await SoLoud.instance.loadAsset('assets/audio/8_bit_mentality.mp3');
+
+  final handle = await SoLoud.instance.play(song, volume: 0.5);
+
+  SoLoud.instance.setPan(handle, -0.8);
+  var pan = SoLoud.instance.getPan(handle);
+  assert(closeTo(pan, -0.8, 0.00001), 'setPan() or getPan() failed!');
+
+  await delay(1000);
+
+  SoLoud.instance.setPan(handle, 0.8);
+  pan = SoLoud.instance.getPan(handle);
+  assert(closeTo(pan, 0.8, 0.00001), 'setPan() or getPan() failed!');
+  await delay(1000);
+
+  deinit();
+}
+
+/// Test instancing playing handles and their disposal
 Future<void> testHandles() async {
   /// Start audio isolate
   await initialize();
@@ -499,6 +524,10 @@ Future<void> loadAsset() async {
       output = 'SoundEvent.soundDisposed';
     }
   });
+}
+
+bool closeTo(num value, num expected, num epsilon) {
+  return (value - expected).abs() <= epsilon.abs();
 }
 
 void printError(Object error, StackTrace stack) {

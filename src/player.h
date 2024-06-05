@@ -264,6 +264,25 @@ public:
     /// @param volume the new volume to set.
     void setVolume(SoLoud::handle handle, float volume);
 
+    /// @brief Get a sound's current pan setting.
+    /// @param handle the sound handle.
+    /// @return the range of the pan values is -1 to 1, where -1 is left, 0 is middle and and 1 is right.
+    float getPan(SoLoud::handle handle);
+
+    /// @brief Set a sound's current pan setting.
+    /// @param handle the sound handle.
+    /// @param pan the range of the pan values is -1 to 1, where -1 is left, 0 is middle and and 1 is right.
+    void setPan(SoLoud::handle handle, float pan);
+
+    /// @brief Set the left/right volumes directly.
+    /// Note that this does not affect the value returned by getPan.
+    /// @param handle the sound handle.
+    /// @param panLeft value for the left pan.
+    /// @param panRight value for the right pan.
+    void setPanAbsolute(SoLoud::handle handle, float panLeft, float panRight);
+
+
+
     /// @brief Check if a handle is still valid.
     /// @param handle handle to check.
     /// @return true if it still exists.
