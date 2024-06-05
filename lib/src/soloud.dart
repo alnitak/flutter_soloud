@@ -1257,25 +1257,37 @@ interface class SoLoud {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
-    return SoLoudController().soLoudFFI.setPan(handle.id, pan);
+    assert(
+      pan >= -1 && pan <= 1,
+      'The pan argument must be in range -1 to 1 inclusive!',
+    );
+    return SoLoudController().soLoudFFI.setPan(handle.id, pan.clamp(-1, 1));
   }
 
   /// Set the left/right volumes directly.
   /// Note that this does not affect the value returned by getPan.
   ///
   /// [handle] the sound handle.
-  /// [panLeft] value for the left pan.
-  /// [panRight] value for the right pan.
+  /// [panLeft] value for the left pan. Must be >= -1 and <= 1.
+  /// [panRight] value for the right pan. Must be >= -1 and <= 1.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void setPanAbsolute(SoundHandle handle, double panLeft, double panRight) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    assert(
+      panLeft >= -1 && panLeft <= 1,
+      'The panLeft argument must be in range -1 to 1 inclusive!',
+    );
+    assert(
+      panRight >= -1 && panRight <= 1,
+      'The panRight argument must be in range -1 to 1 inclusive!',
+    );
     return SoLoudController().soLoudFFI.setPanAbsolute(
           handle.id,
-          panLeft,
-          panRight,
+          panLeft.clamp(-1, 1),
+          panRight.clamp(-1, 1),
         );
   }
 
