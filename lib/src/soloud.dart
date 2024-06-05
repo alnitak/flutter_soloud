@@ -1179,6 +1179,12 @@ interface class SoLoud {
   /// and `1.0` meaning full volume.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Note that if you `setGlobalVolume()` to `0.8` and then
+  /// `getGlobalVolume()`, you might get a slightly different number,
+  /// such as `0.800000042353`.
+  /// This is expected since the internal audio engine uses float
+  /// instead of double, and so there are rounding errors.
   double getGlobalVolume() {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1192,6 +1198,12 @@ interface class SoLoud {
   /// to `1.0` (meaning full volume).
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Note that if you `setGlobalVolume()` to `0.8` and then
+  /// `getGlobalVolume()`, you might get a slightly different number,
+  /// such as `0.800000042353`.
+  /// This is expected since the internal audio engine uses float
+  /// instead of double, and so there are rounding errors.
   void setGlobalVolume(double volume) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1211,6 +1223,11 @@ interface class SoLoud {
   /// and `1.0` means its playing at full volume.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Note that if you `setVolume()` to `0.8` and then `getVolume()`, you might
+  /// get a slightly different number, such as `0.800000042353`.
+  /// This is expected since the internal audio engine uses float
+  /// instead of double, and so there are rounding errors.
   double getVolume(SoundHandle handle) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1225,6 +1242,11 @@ interface class SoLoud {
   /// to `1.0` (meaning it should play at full volume).
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Note that if you `setVolume()` to `0.8` and then `getVolume()`, you might
+  /// get a slightly different number, such as `0.800000042353`.
+  /// This is expected since the internal audio engine uses float
+  /// instead of double, and so there are rounding errors.
   void setVolume(SoundHandle handle, double volume) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1239,6 +1261,11 @@ interface class SoLoud {
   /// middle and and 1 is right.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Note that if you `setPan()` to `0.8` and then `getPan()`, you might
+  /// get a slightly different number, such as `0.800000042353`.
+  /// This is expected since the internal audio engine uses float
+  /// instead of double, and so there are rounding errors.
   double getPan(SoundHandle handle) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1253,6 +1280,11 @@ interface class SoLoud {
   /// middle and and 1 is right.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Note that if you `setPan()` to `0.8` and then `getPan()`, you might
+  /// get a slightly different number, such as `0.800000042353`.
+  /// This is expected since the internal audio engine uses float
+  /// instead of double, and so there are rounding errors.
   void setPan(SoundHandle handle, double pan) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();

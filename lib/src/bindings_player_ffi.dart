@@ -746,10 +746,8 @@ class FlutterSoLoudFfi {
   /// middle and and 1 is right.
   double getPan(int handle) {
     // Note that because of the float<=>double conversion precision error
-    // (SoLoud lib uses floats), the returned value is not precise. Here we set
-    // a rounding of 5 digits
-    final ret = (_getPan(handle) * 100000).toInt() / 100000;
-    return ret;
+    // (SoLoud lib uses floats), the returned value is not precise.
+    return _getPan(handle);
   }
 
   late final _getPanPtr =

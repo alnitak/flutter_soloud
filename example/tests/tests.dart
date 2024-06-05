@@ -411,12 +411,13 @@ Future<void> testPan() async {
 
   SoLoud.instance.setPan(handle, -0.8);
   var pan = SoLoud.instance.getPan(handle);
-  assert(pan == -0.8, 'setPan() or getPan() failed!');
+  assert(closeTo(pan, -0.8, 0.00001), 'setPan() or getPan() failed!');
+
   await delay(1000);
 
   SoLoud.instance.setPan(handle, 0.8);
   pan = SoLoud.instance.getPan(handle);
-  assert(pan == 0.8, 'setPan() or getPan() failed!');
+  assert(closeTo(pan, 0.8, 0.00001), 'setPan() or getPan() failed!');
   await delay(1000);
 
   deinit();
@@ -523,6 +524,10 @@ Future<void> loadAsset() async {
       output = 'SoundEvent.soundDisposed';
     }
   });
+}
+
+bool closeTo(num value, num expected, num epsilon) {
+  return (value - expected).abs() <= epsilon.abs();
 }
 
 void printError(Object error, StackTrace stack) {
