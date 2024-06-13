@@ -735,9 +735,7 @@ interface class SoLoud {
       handle: completer,
     });
 
-    await Future.delayed(const Duration(microseconds: 100), () {
-      SoLoudController().soLoudFFI.stop(handle);
-    });
+    SoLoudController().soLoudFFI.stop(handle);
 
     return completer.future
         .timeout(const Duration(milliseconds: 300))

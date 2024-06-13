@@ -99,7 +99,7 @@ class FlutterSoLoudFfi {
 
   ///
   void _voiceEndedCallback(ffi.Pointer<ffi.UnsignedInt> handle) {
-    _log.fine(() => 'VOICE ENDED EVENT handle: ${handle.value}');
+    _log.finest(() => 'VOICE ENDED EVENT handle: ${handle.value}');
     voiceEndedEventController.add(handle.value);
     // Must free a pointer made on cpp. On Windows this must be freed
     // there and cannot use `calloc.free(...)`
@@ -120,7 +120,8 @@ class FlutterSoLoudFfi {
     ffi.Pointer<ffi.Char> completeFileName,
     ffi.Pointer<ffi.UnsignedInt> hash,
   ) {
-    _log.fine(() => 'FILE LOADED EVENT error: ${error.value}  '
+    _log.finest(() =>
+        'FILE LOADED EVENT error: ${PlayerErrors.values[error.value].name}  '
         'hash: ${hash.value}  '
         'file: ${completeFileName.cast<Utf8>().toDartString()}');
     final result = <String, dynamic>{
@@ -149,7 +150,7 @@ class FlutterSoLoudFfi {
     // Must free a pointer made on cpp. On Windows this must be freed
     // there and cannot use `calloc.free(state)`
     nativeFree(state.cast<ffi.Void>());
-    _log.fine(() => 'STATE CHANGED EVENT state: $s');
+    _log.finest(() => 'STATE CHANGED EVENT state: $s');
     stateChangedController.add(s);
   }
 
