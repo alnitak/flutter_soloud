@@ -1188,59 +1188,7 @@ extern "C"
         player.get()->update3dAudio();
     }
 
-    /////////// JUST FOR TEST //////////
-    // https://stackoverflow.com/questions/17883799/how-to-handle-passing-returning-array-pointers-to-emscripten-compiled-code
-    // https://stackoverflow.com/questions/50615377/how-do-you-call-a-c-function-that-takes-or-returns-a-struct-by-value-from-js-v
-
-    // https://developer.mozilla.org/en-US/docs/WebAssembly/C_to_Wasm
-    // Run Chromium with:
-    // chromium --disable-web-security --disable-gpu --user-data-dir=~/chromeTemp
-    unsigned int handle;
-    unsigned int hash;
-    struct provaProvaProva
-    {
-        PlayerErrors error;
-        int dummy;
-    };
-
-    FFI_PLUGIN_EXPORT provaProvaProva js_init()
-    {
-        printf("init Called\n");
-        int result = initEngine();
-        printf("initEngine() returned %d\n", result);
-        return {noError, 123};
-    }
-
-    FFI_PLUGIN_EXPORT void js_load()
-    {
-        printf("js_load Called\n");
-        int result = loadWaveform(SoLoud::Soloud::WAVE_SQUARE, true, 0.25f, 1.0f, &hash);
-        printf("loadWaveform() result: %d  hash %d\n", result, hash);
-    }
-    // EMSCRIPTEN_BINDINGS(my_struct) {
-    //     class_<MyStruct>("MyStruct")
-    //         .constructor<>()
-    //         .property("a", &MyStruct::a)
-    //         .property("b", &MyStruct::b)
-    //         .property("c", &MyStruct::c)
-    //         ;
-
-    //     function("Foo", &Foo);
-    // }
-
-    FFI_PLUGIN_EXPORT void js_play(unsigned int handle)
-    {
-        printf("js_play Called\n");
-        int result = play(hash, 0.1, 0.0f, false, true, 0.0, &handle);
-        printf("js_play() result: %d\n", result);
-    }
-
-    FFI_PLUGIN_EXPORT void js_dispose()
-    {
-        printf("js_dispose Called\n");
-        dispose();
-    }
-
+    
 #ifdef __cplusplus
 }
 #endif

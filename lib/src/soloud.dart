@@ -76,6 +76,10 @@ interface class SoLoud {
   /// A helper for loading files that aren't on disk.
   final SoLoudLoader _loader = SoLoudLoader();
 
+  /// The backing private field for [isInitialized].
+  /// TODO(filip): related to `get initialized`
+  bool _isInitialized = false;
+
   /// Whether or not is it possible to ask for wave and FFT data.
   bool _isVisualizationEnabled = false;
 
@@ -85,13 +89,27 @@ interface class SoLoud {
   /// The result will be `false` in all the following cases:
   ///
   /// - the engine was never initialized
+  /// - it's being initialized right now (but not finished yet)
   /// - its most recent initialization failed
+  /// - it's being shut down right now
   /// - it has been shut down
   ///
-  /// This getter ([isInitialized]) is useful when you want to check the status
-  /// of the engine from places in your code that _don't_ do the initialization.
-  /// For example, a widget down the widget tree.
+  /// You can `await` [initialized] instead if you want to wait for the engine
+  /// to become ready (in case it's being initialized right now).
+  ///
+  /// Use [isInitialized] only if you want to check the current status of
+  /// the engine synchronously and you don't care that it might be ready soon.
+  /// TODO(filip): related to `get initialized`. This line below is the old one.
+  // bool get isInitialized => _isInitialized;
+  /// TODO(filip): this line below is the new one I leaved to let the
+  /// plugin to work.
   bool get isInitialized => SoLoudController().soLoudFFI.isInited();
+
+  /// The completer for an initialization in progress.
+  ///
+  /// This is `null` when the engine is not currently being initialized.
+  /// TODO(filip): related to `get initialized`
+  Completer<void>? _initializeCompleter;
 
   /// A [Future] that returns `true` when the audio engine is initialized
   /// (and ready to play sounds, for example).
@@ -106,9 +124,46 @@ interface class SoLoud {
   ///   }
   /// }
   /// ```
-  @Deprecated('Use isInitialized instead!')
+  ///
+  /// The future will complete immediately (synchronously) if the engine is
+  /// either already initialized (`true`),
+  /// or it had failed to initialize (`false`),
+  /// or it was already shut down (`false`),
+  /// or it is _being_ shut down (`false`),
+  /// or when there wasn't ever a call to [init] at all (`false`).
+  ///
+  /// If the engine is in the middle of initializing, the future will complete
+  /// when the initialization is done. It will be `true` if the initialization
+  /// was successful, and `false` if it failed. The future will never throw.
+  ///
+  /// It is _not_ needed to await this future after a call to [init].
+  /// The [init] method already returns a future, and it is the
+  /// same future that this getter returns.
+  ///
+  /// ```dart
+  /// final result = await SoLoud.instance.initialize();
+  /// await SoLoud.instance.initialized;  // NOT NEEDED
+  /// ```
+  ///
+  /// This getter ([initialized]) is useful when you want to check the status
+  /// of the engine from places in your code that _don't_ do the initialization.
+  /// For example, a widget down the widget tree.
+  ///
+  /// If you need a version of this that is synchronous,
+  /// or if you don't care that the engine might be initializing right now
+  /// and therefore ready in a moment,
+  /// use [isInitialized] instead.
+  /// TODO(filip): reimplement to satisfy the `Loader` timeout in the `init()`
   FutureOr<bool> get initialized {
-    return isInitialized;
+    if (_initializeCompleter == null) {
+      // We are _not_ during initialization. Return synchronously.
+      return _isInitialized;
+    }
+
+    // We are in the middle of initializing the engine. Wait for that to
+    // complete and return `true` if it was successful.
+    return _initializeCompleter!.future
+        .then((_) => true, onError: (_) => false);
   }
 
   /// Backing of [activeSounds].
@@ -146,7 +201,7 @@ interface class SoLoud {
   /// unnecessary, as the amount of data will be finite.
   /// The default is `false`.
   Future<void> init({
-    @Deprecated('[timeout] is not used anymore!')
+    @Deprecated('timeout is not used anymore.')
     Duration timeout = const Duration(seconds: 10),
     bool automaticCleanup = false,
   }) async {
@@ -226,6 +281,9 @@ interface class SoLoud {
   /// These events are coming from `FlutterSoLoudFfi`. The callbacks
   /// `_voiceEndedCallback` and `_fileLoadedCallback` are called from CPP.
   /// From within these callbacks a new stream event is added and listened here.
+  /// TODO(filip): 'setDartEventCallbacks()' can be called more then once,
+  /// please take a look at the listeners if you find a better way
+  /// to manage then only once.
   void _initializeNativeCallbacks() {
     // Initialize callbacks.
     SoLoudController().soLoudFFI.setDartEventCallbacks();
@@ -279,9 +337,6 @@ interface class SoLoud {
             _log.warning(() => "Sound '$completeFileName' was already loaded. "
                 'Prefer loading only once, and reusing the loaded sound '
                 'when playing.');
-            // The `audio_isolate.dart` code has logic to find the
-            // already-loaded sound among active sounds. The sound should
-            // be here as well.
             final alreadyLoaded = _activeSounds
                     .where((sound) => sound.soundHash == newSound.soundHash)
                     .length ==
@@ -306,12 +361,13 @@ interface class SoLoud {
 
     // Listen player state changes. Not doing much now.
     // This doesn't work on Android. See "ma_device_notification_proc"
-    // in miniaudio.h
-    if (!SoLoudController().soLoudFFI.stateChangedController.hasListener) {
-      SoLoudController().soLoudFFI.stateChangedEvents.listen((newState) {
-        _log.fine(() => 'Audio engine state changed: $newState');
-      });
-    }
+    // in miniaudio.h. Only `started` and `stopped` are working.
+    // Leaving this commented out for futher investigation.
+    // if (!SoLoudController().soLoudFFI.stateChangedController.hasListener) {
+    //   SoLoudController().soLoudFFI.stateChangedEvents.listen((newState) {
+    //     _log.fine(() => 'Audio engine state changed: $newState');
+    //   });
+    // }
   }
 
   // ////////////////////////////////////////////////
@@ -692,7 +748,7 @@ interface class SoLoud {
   /// and the new [speed].
   ///
   /// Setting the speed value to `0` will cause undefined behavior,
-  /// likely a crash.
+  /// likely a crash. The lower limit is clamped to 0.05 silently.
   ///
   /// This changes the effective sample rate
   /// while leaving the base sample rate alone.
@@ -731,9 +787,7 @@ interface class SoLoud {
       throw const SoLoudNotInitializedException();
     }
     final completer = Completer<void>();
-    voiceEndedCompleters.addAll({
-      handle: completer,
-    });
+    voiceEndedCompleters[handle] = completer;
 
     SoLoudController().soLoudFFI.stop(handle);
 
