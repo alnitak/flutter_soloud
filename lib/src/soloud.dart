@@ -1,5 +1,4 @@
 // ignore_for_file: require_trailing_commas, avoid_positional_boolean_parameters
-// ignore_for_file: flutter_style_todos
 
 import 'dart:async';
 import 'dart:ffi' as ffi;
@@ -101,16 +100,16 @@ interface class SoLoud {
   ///
   /// Use [isInitialized] only if you want to check the current status of
   /// the engine synchronously and you don't care that it might be ready soon.
-  /// TODO(filip): related to `get initialized`. This line below is the old one.
+  // TODO(filip): related to `get initialized`. This line below is the old one.
   // bool get isInitialized => _isInitialized;
-  /// TODO(filip): this line below is the new one I leaved to let the
+  // TODO(filip): this line below is the new one I leaved to let the
   /// plugin to work.
   bool get isInitialized => SoLoudController().soLoudFFI.isInited();
 
   /// The completer for an initialization in progress.
   ///
   /// This is `null` when the engine is not currently being initialized.
-  /// TODO(filip): related to `get initialized`
+  // TODO(filip): related to `get initialized`.
   Completer<void>? _initializeCompleter;
 
   /// A [Future] that returns `true` when the audio engine is initialized
@@ -155,7 +154,7 @@ interface class SoLoud {
   /// or if you don't care that the engine might be initializing right now
   /// and therefore ready in a moment,
   /// use [isInitialized] instead.
-  /// TODO(filip): reimplement to satisfy the `Loader` timeout in the `init()`
+  // TODO(filip): reimplement to satisfy the `Loader` timeout in the `init()`
   FutureOr<bool> get initialized {
     if (_initializeCompleter == null) {
       // We are _not_ during initialization. Return synchronously.
@@ -283,9 +282,9 @@ interface class SoLoud {
   /// These events are coming from `FlutterSoLoudFfi`. The callbacks
   /// `_voiceEndedCallback` and `_fileLoadedCallback` are called from CPP.
   /// From within these callbacks a new stream event is added and listened here.
-  /// TODO(filip): 'setDartEventCallbacks()' can be called more then once,
-  /// please take a look at the listeners if you find a better way
-  /// to manage then only once.
+  // TODO(filip): 'setDartEventCallbacks()' can be called more then once,
+  // please take a look at the listeners if you find a better way
+  // to manage then only once.
   void _initializeNativeCallbacks() {
     // Initialize callbacks.
     SoLoudController().soLoudFFI.setDartEventCallbacks();
