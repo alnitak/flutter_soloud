@@ -794,6 +794,7 @@ interface class SoLoud {
         sound: sound,
         handle: SoundHandle.error(),
       ));
+      // TODO(filiph): Close these in parallel using `Future.wait()`
       await sound.soundEventsController.close();
     }
 
