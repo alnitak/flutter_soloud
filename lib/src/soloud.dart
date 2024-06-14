@@ -1,4 +1,5 @@
 // ignore_for_file: require_trailing_commas, avoid_positional_boolean_parameters
+// ignore_for_file: flutter_style_todos
 
 import 'dart:async';
 import 'dart:ffi' as ffi;
@@ -77,7 +78,8 @@ interface class SoLoud {
   final SoLoudLoader _loader = SoLoudLoader();
 
   /// The backing private field for [isInitialized].
-  /// TODO(filip): related to `get initialized`
+  // TODO(filip): related to `get initialized`
+  // ignore: prefer_final_fields
   bool _isInitialized = false;
 
   /// Whether or not is it possible to ask for wave and FFT data.
