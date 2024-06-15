@@ -155,7 +155,7 @@ extern "C"
         bool loadIntoMem)
     {
         // this check is already been done in Dart
-        if (!player.get()->isInited())
+        if (player.get() == nullptr || !player.get()->isInited())
             return;
 
         Player *p = player.get();
@@ -184,7 +184,7 @@ extern "C"
         unsigned int *hash)
     {
         // this check is already been done in Dart
-        if (!player.get()->isInited())
+        if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
         return (PlayerErrors)player.get()->loadMem(uniqueName, buffer, length, *hash);
     }
