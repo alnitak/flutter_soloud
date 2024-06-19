@@ -1,3 +1,4 @@
+
 #include "player.h"
 #include "analyzer.h"
 #include "synth/basic_wave.h"
@@ -21,33 +22,75 @@ extern "C"
     std::unique_ptr<Player> player = nullptr;
     std::unique_ptr<Analyzer> analyzer = std::make_unique<Analyzer>(2048);
 
-    /// @brief Set a dart function to call when the sound with [handle] handle ends
-    /// @param callback this is the dart function that will be called
-    ///     when the sound ends to play.
-    ///     Must be global or a static class member:
-    ///     ```@pragma('vm:entry-point')
-    ///        void playEndedCallback(int handle) {
-    ///             // here the sound with [handle] has ended.
-    ///             // you can play again
-    ///             soLoudController.soLoudFFI.play(handle);
-    ///             // or dispose it
-    ///             soLoudController.soLoudFFI.stop(handle);
-    ///        }
-    ///     ```
-    /// @param handle the handle to the sound
-    /// @param callback this is the dart function that will be called
-    ///         when the sound ends to play
-    /// @return true if success;
-    // FFI_PLUGIN_EXPORT bool setPlayEndedCallback(void (*callback)(unsigned int), unsigned int handle)
-    // {
-    //     if (!player.get()->isInited()) return false;
-    //     ActiveSound* sound = player.get()->findByHandle(handle);
-    //     if (sound != nullptr) {
-    //         sound->playEndedCallback = callback;
-    //         return true;
-    //     }
-    //     return false;
-    // }
+    typedef void (*dartVoiceEndedCallback_t)(unsigned int *);
+    typedef void (*dartFileLoadedCallback_t)(enum PlayerErrors *, char *completeFileName, unsigned int *);
+    typedef void (*dartStateChangedCallback_t)(enum PlayerStateEvents *);
+
+    // to be used by `NativeCallable`, these functions must return void.
+    void (*dartVoiceEndedCallback)(unsigned int *) = nullptr;
+    void (*dartFileLoadedCallback)(enum PlayerErrors *, char *completeFileName, unsigned int *) = nullptr;
+    void (*dartStateChangedCallback)(enum PlayerStateEvents *) = nullptr;
+
+    FFI_PLUGIN_EXPORT void nativeFree(void *pointer)
+    {
+        free(pointer);
+    }
+
+    /// The callback to monitor when a voice ends.
+    ///
+    /// It is called by void `Soloud::stopVoice_internal(unsigned int aVoice)` when a voice ends.
+    void voiceEndedCallback(unsigned int *handle)
+    {
+        if (dartVoiceEndedCallback == nullptr)
+            return;
+        player->removeHandle(*handle);
+        // [n] pointer must be deleted on Dart.
+        unsigned int *n = (unsigned int *)malloc(sizeof(unsigned int *));
+        *n = *handle;
+        dartVoiceEndedCallback(n);
+    }
+
+    /// The callback to monitor when a file is loaded.
+    void fileLoadedCallback(enum PlayerErrors error, char *completeFileName, unsigned int *hash)
+    {
+        if (dartFileLoadedCallback == nullptr)
+            return;
+        // [e,name,n] pointers must be deleted on Dart.
+        PlayerErrors *e = (PlayerErrors *)malloc(sizeof(PlayerErrors *));
+        *e = error;
+        char *name = strdup(completeFileName);
+        unsigned int *n = (unsigned int *)malloc(sizeof(unsigned int *));
+        *n = *hash;
+        dartFileLoadedCallback(e, name, n);
+    }
+
+    void stateChangedCallback(unsigned int state)
+    {
+        PlayerStateEvents *type = (PlayerStateEvents *)malloc(sizeof(unsigned int *));
+        *type = (PlayerStateEvents)state;
+        if (dartStateChangedCallback != nullptr)
+            dartStateChangedCallback(type);
+    }
+
+    /// Set a Dart functions to call when an event occurs.
+    ///
+    FFI_PLUGIN_EXPORT void setDartEventCallback(
+        dartVoiceEndedCallback_t voice_ended_callback,
+        dartFileLoadedCallback_t file_loaded_callback,
+        dartStateChangedCallback_t state_changed_callback)
+    {
+        dartVoiceEndedCallback = voice_ended_callback;
+        dartFileLoadedCallback = file_loaded_callback;
+        dartStateChangedCallback = state_changed_callback;
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////
+    //////////////////////////////////////////////////////////////////////////////////
+    //////////////////////////////////////////////////////////////////////////////////
+    //////////////////////////////////////////////////////////////////////////////////
+    //////////////////////////////////////////////////////////////////////////////////
+    //////////////////////////////////////////////////////////////////////////////////
+    //////////////////////////////////////////////////////////////////////////////////
 
     /// Initialize the player.get()-> Must be called before any other player functions
     ///
@@ -55,17 +98,22 @@ extern "C"
     FFI_PLUGIN_EXPORT enum PlayerErrors initEngine()
     {
         if (player.get() == nullptr)
-        {
             player = std::make_unique<Player>();
-        }
+
+        player.get()->setStateChangedCallback(stateChangedCallback);
         PlayerErrors res = (PlayerErrors)player.get()->init();
         if (res != noError)
             return res;
 
+        // Set window size for filters
         const int windowSize = (player.get()->soloud.getBackendBufferSize() /
                                 player.get()->soloud.getBackendChannels()) -
                                1;
         analyzer.get()->setWindowsSize(windowSize);
+
+        // Set the callback for when a voice is ended/stopped
+        player.get()->setVoiceEndedCallback(voiceEndedCallback);
+
         return (PlayerErrors)noError;
     }
 
@@ -75,6 +123,7 @@ extern "C"
     {
         if (player.get() == nullptr)
             return;
+        dartVoiceEndedCallback = nullptr;
         player.get()->dispose();
         player = nullptr;
     }
@@ -86,9 +135,13 @@ extern "C"
         return player.get()->isInited() ? 1 : 0;
     }
 
-    /// Load a new sound to be played once or multiple times later
+    /// Load a new sound to be played once or multiple times later.
     ///
-    /// [completeFileName] the complete file path
+    /// After loading the file, the [fileLoadedCallback] will call the
+    /// Dart function defined with [setDartEventCallback] which gives back
+    /// the error and the new hash.
+    ///
+    /// [completeFileName] the complete file path.
     /// [loadIntoMem] if true Soloud::wav will be used which loads
     /// all audio data into memory. This will be useful when
     /// the audio is short, ie for game sounds, mainly used to prevent
@@ -96,16 +149,50 @@ extern "C"
     /// If false, Soloud::wavStream will be used and the audio data is loaded
     /// from the given file when needed (more CPU, less memory allocated).
     /// See the [seek] note problem when using [loadIntoMem] = false
-    /// [hash] return hash of the sound
+    /// [hash] return the hash of the sound
     /// Returns [PlayerErrors.noError] if success
-    FFI_PLUGIN_EXPORT enum PlayerErrors loadFile(
+    FFI_PLUGIN_EXPORT void loadFile(
         char *completeFileName,
-        bool loadIntoMem,
+        bool loadIntoMem)
+    {
+        // this check is already been done in Dart
+        if (player.get() == nullptr || !player.get()->isInited())
+        {
+            printf("WARNING (from SoLoud C++ binding code): the player has "
+                   "not yet been initialized. This is likely a bug in flutter_soloud. "
+                   "Please report the bug.");
+            return;
+        }
+
+        Player *p = player.get();
+        unsigned int hash = 0;
+        // std::thread loadThread([p, completeFileName, loadIntoMem, hash]()
+        //                        {
+        PlayerErrors error = p->loadFile(completeFileName, loadIntoMem, &hash);
+        // printf("*** LOAD FILE FROM THREAD error: %d  hash: %u\n", error,  *hash);
+        fileLoadedCallback(error, completeFileName, &hash);
+        //     });
+        // // TODO(marco): use .detach()? Use std::atomic somewhere
+        // loadThread.join();
+    }
+
+    /// Load a new sound stored into [buffer] to be played once or multiple times later.
+    /// Mainly used on web because the browsers are not allowed to read files directly.
+    ///
+    /// [uniqueName] the unique name of the sound. Used only to have the [hash].
+    /// [buffer] the audio data. These contains the audio file bytes.
+    /// [length] the length of [buffer].
+    /// [hash] return the hash of the sound.
+    FFI_PLUGIN_EXPORT enum PlayerErrors loadMem(
+        char *uniqueName,
+        unsigned char *buffer,
+        int length,
         unsigned int *hash)
     {
-        if (!player.get()->isInited())
+        // this check is already been done in Dart
+        if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
-        return (PlayerErrors)player.get()->loadFile(completeFileName, loadIntoMem, *hash);
+        return (PlayerErrors)player.get()->loadMem(uniqueName, buffer, length, *hash);
     }
 
     /// Load a new waveform to be played once or multiple times later
@@ -729,7 +816,7 @@ extern "C"
 
     /// Smoothly change a channel's volume over specified time.
     ///
-    FFI_PLUGIN_EXPORT enum PlayerErrors fadeVolume(SoLoud::handle handle, float to, float time)
+    FFI_PLUGIN_EXPORT enum PlayerErrors fadeVolume(unsigned int handle, float to, float time)
     {
         if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
@@ -739,7 +826,7 @@ extern "C"
 
     /// Smoothly change a channel's pan setting over specified time.
     ///
-    FFI_PLUGIN_EXPORT enum PlayerErrors fadePan(SoLoud::handle handle, float to, float time)
+    FFI_PLUGIN_EXPORT enum PlayerErrors fadePan(unsigned int handle, float to, float time)
     {
         if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
@@ -749,7 +836,7 @@ extern "C"
 
     /// Smoothly change a channel's relative play speed over specified time.
     ///
-    FFI_PLUGIN_EXPORT enum PlayerErrors fadeRelativePlaySpeed(SoLoud::handle handle, float to, float time)
+    FFI_PLUGIN_EXPORT enum PlayerErrors fadeRelativePlaySpeed(unsigned int handle, float to, float time)
     {
         if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
@@ -759,7 +846,7 @@ extern "C"
 
     /// After specified time, pause the channel.
     ///
-    FFI_PLUGIN_EXPORT enum PlayerErrors schedulePause(SoLoud::handle handle, float time)
+    FFI_PLUGIN_EXPORT enum PlayerErrors schedulePause(unsigned int handle, float time)
     {
         if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
@@ -769,7 +856,7 @@ extern "C"
 
     /// After specified time, stop the channel.
     ///
-    FFI_PLUGIN_EXPORT enum PlayerErrors scheduleStop(SoLoud::handle handle, float time)
+    FFI_PLUGIN_EXPORT enum PlayerErrors scheduleStop(unsigned int handle, float time)
     {
         if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
@@ -779,7 +866,7 @@ extern "C"
 
     /// Set fader to oscillate the volume at specified frequency.
     ///
-    FFI_PLUGIN_EXPORT enum PlayerErrors oscillateVolume(SoLoud::handle handle, float from, float to, float time)
+    FFI_PLUGIN_EXPORT enum PlayerErrors oscillateVolume(unsigned int handle, float from, float to, float time)
     {
         if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
@@ -789,7 +876,7 @@ extern "C"
 
     /// Set fader to oscillate the panning at specified frequency.
     ///
-    FFI_PLUGIN_EXPORT enum PlayerErrors oscillatePan(SoLoud::handle handle, float from, float to, float time)
+    FFI_PLUGIN_EXPORT enum PlayerErrors oscillatePan(unsigned int handle, float from, float to, float time)
     {
         if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
@@ -799,7 +886,7 @@ extern "C"
 
     /// Set fader to oscillate the relative play speed at specified frequency.
     ///
-    FFI_PLUGIN_EXPORT enum PlayerErrors oscillateRelativePlaySpeed(SoLoud::handle handle, float from, float to, float time)
+    FFI_PLUGIN_EXPORT enum PlayerErrors oscillateRelativePlaySpeed(unsigned int handle, float from, float to, float time)
     {
         if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
@@ -925,7 +1012,7 @@ extern "C"
     /// current loop point can be queried with [getLoopingPoint] and
     /// changed by [setLoopingPoint].
     /// Returns the handle of the sound, 0 if error
-    FFI_PLUGIN_EXPORT unsigned int play3d(
+    FFI_PLUGIN_EXPORT PlayerErrors play3d(
         unsigned int soundHash,
         float posX,
         float posY,
@@ -1142,23 +1229,6 @@ extern "C"
             return;
         player.get()->set3dSourceDopplerFactor(handle, dopplerFactor);
         player.get()->update3dAudio();
-    }
-
-    /////////// JUST FOR TEST //////////
-    // SoLoud::Wav sound1;
-    // SoLoud::Wav sound2;
-    // SoLoud::Soloud soloud;
-    // Basicwave basicWave;
-    FFI_PLUGIN_EXPORT void test()
-    {
-        // unsigned int handle;
-        // SoLoud::result result = soloud.init(
-        //     SoLoud::Soloud::CLIP_ROUNDOFF,
-        //     SoLoud::Soloud::MINIAUDIO, 44100, 2048, 2U);
-
-        // unsigned int hash;
-        // player.get()->loadWaveform(SoLoud::Soloud::WAVE_SQUARE, true, 0.25f, 1.0f, hash);
-        // player.get()->play(hash);
     }
 
 #ifdef __cplusplus

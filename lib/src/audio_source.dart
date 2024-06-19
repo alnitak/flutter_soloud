@@ -12,6 +12,15 @@ typedef StreamSoundEvent = ({
   SoundHandle handle,
 });
 
+/// sound event types
+enum SoundEventType {
+  /// handle reached the end of playback
+  handleIsNoMoreValid,
+
+  /// the sound has been disposed
+  soundDisposed,
+}
+
 /// A representation of an audio source: something that can be played.
 ///
 /// Audio sources cannot be instantiated directly. The need to be loaded
@@ -98,13 +107,4 @@ class AudioSource {
   String toString() {
     return 'soundHash: $soundHash has ${handles.length} active handles';
   }
-}
-
-/// sound event types
-enum SoundEventType {
-  /// handle reached the end of playback
-  handleIsNoMoreValid,
-
-  /// the sound has been disposed
-  soundDisposed,
 }

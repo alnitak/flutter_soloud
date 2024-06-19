@@ -170,6 +170,18 @@ namespace SoLoud
 		soloudResultFunction mBackendPauseFunc;
 		soloudResultFunction mBackendResumeFunc;
 
+		// Set the callback to call when a voice is ended/stopped
+		void (*_voiceEndedCallback)(unsigned int*) = nullptr;
+		void setVoiceEndedCallback(void (*voiceEndedCallback)(unsigned int*)) {
+			_voiceEndedCallback = voiceEndedCallback;
+		}
+
+		// Set the callback to call when the device receive a state changed
+		void (*_stateChangedCallback)(unsigned int) = nullptr;
+		void setStateChangedCallback(void (*stateChangedCallback)(unsigned int)) {
+			_stateChangedCallback = stateChangedCallback;
+		}
+
 		// CTor
 		Soloud();
 		// DTor
