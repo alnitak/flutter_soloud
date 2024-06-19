@@ -749,7 +749,7 @@ interface class SoLoud {
   /// and the new [speed].
   ///
   /// Setting the speed value to `0` will cause undefined behavior,
-  /// likely a crash. The lower limit is clamped to 0.05 silently.
+  /// likely a crash. The lower limit is clamped to be >=0.05 silently.
   ///
   /// This changes the effective sample rate
   /// while leaving the base sample rate alone.

@@ -31,10 +31,11 @@ extern "C"
     void (*dartFileLoadedCallback)(enum PlayerErrors *, char *completeFileName, unsigned int *) = nullptr;
     void (*dartStateChangedCallback)(enum PlayerStateEvents *) = nullptr;
 
-    FFI_PLUGIN_EXPORT void nativeFree(void *pointer) {
+    FFI_PLUGIN_EXPORT void nativeFree(void *pointer)
+    {
         free(pointer);
     }
-    
+
     /// The callback to monitor when a voice ends.
     ///
     /// It is called by void `Soloud::stopVoice_internal(unsigned int aVoice)` when a voice ends.
@@ -63,7 +64,7 @@ extern "C"
         dartFileLoadedCallback(e, name, n);
     }
 
-    void stateChangedCallback(unsigned int state) 
+    void stateChangedCallback(unsigned int state)
     {
         PlayerStateEvents *type = (PlayerStateEvents *)malloc(sizeof(unsigned int *));
         *type = (PlayerStateEvents)state;
@@ -136,7 +137,7 @@ extern "C"
 
     /// Load a new sound to be played once or multiple times later.
     ///
-    /// After loading the file, the [fileLoadedCallback] will call the 
+    /// After loading the file, the [fileLoadedCallback] will call the
     /// Dart function defined with [setDartEventCallback] which gives back
     /// the error and the new hash.
     ///
@@ -156,7 +157,12 @@ extern "C"
     {
         // this check is already been done in Dart
         if (player.get() == nullptr || !player.get()->isInited())
+        {
+            printf("WARNING (from SoLoud C++ binding code): the player has "
+                   "not yet been initialized. This is likely a bug in flutter_soloud. "
+                   "Please report the bug.");
             return;
+        }
 
         Player *p = player.get();
         unsigned int hash = 0;
@@ -1188,7 +1194,6 @@ extern "C"
         player.get()->update3dAudio();
     }
 
-    
 #ifdef __cplusplus
 }
 #endif
