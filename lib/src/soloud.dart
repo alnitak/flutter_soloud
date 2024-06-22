@@ -242,8 +242,7 @@ interface class SoLoud {
       // Initialize [SoLoudLoader]
       _loader.automaticCleanup = automaticCleanup;
 
-      // TODO(all): can we initialize [SoLoudLoader] somewhere else?
-      /// If yes, we can make `init()` sync.
+      // TODO(filip): The Loader is not compatible with web!
       await _loader.initialize();
     } else {
       _log.severe('initialize() failed with error: $error');
