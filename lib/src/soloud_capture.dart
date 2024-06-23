@@ -2,7 +2,7 @@ import 'dart:ffi' as ffi;
 
 import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/soloud.dart';
-import 'package:flutter_soloud/src/soloud_controller.dart';
+import 'package:flutter_soloud/src/bindings/soloud_controller.dart';
 import 'package:logging/logging.dart';
 import 'package:meta/meta.dart';
 

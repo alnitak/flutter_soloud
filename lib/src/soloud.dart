@@ -10,7 +10,7 @@ import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/exceptions/exceptions.dart';
 import 'package:flutter_soloud/src/filter_params.dart';
 import 'package:flutter_soloud/src/soloud_capture.dart';
-import 'package:flutter_soloud/src/soloud_controller.dart';
+import 'package:flutter_soloud/src/bindings/soloud_controller.dart';
 import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
 import 'package:flutter_soloud/src/utils/loader.dart';

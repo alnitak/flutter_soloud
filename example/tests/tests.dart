@@ -4,7 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
-import 'package:flutter_soloud/src/soloud_controller.dart';
+import 'package:flutter_soloud/src/bindings/soloud_controller.dart';
 import 'package:logging/logging.dart';
 
 /// An end-to-end test.
