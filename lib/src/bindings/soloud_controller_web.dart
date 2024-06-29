@@ -1,6 +1,8 @@
+// ignore_for_file: public_member_api_docs
+
 import 'package:flutter_soloud/src/bindings/bindings_capture_web.dart';
 
-import 'bindings_player_web.dart';
+import 'package:flutter_soloud/src/bindings/bindings_player_web.dart';
 
 /// Controller that expose method channel and FFI
 class SoLoudController {

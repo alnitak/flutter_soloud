@@ -55,12 +55,12 @@ class FlutterCaptureWeb extends FlutterCapture {
 
   @override
   bool isCaptureInited() {
-    return wasmIsCaptureInited() == 1 ? true : false;
+    return wasmIsCaptureInited() == 1;
   }
 
   @override
   bool isCaptureStarted() {
-    return wasmIsCaptureStarted() == 1 ? true : false;
+    return wasmIsCaptureStarted() == 1;
   }
 
   @override

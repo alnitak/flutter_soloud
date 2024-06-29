@@ -1,8 +1,10 @@
+// ignore_for_file: public_member_api_docs
+
 import 'dart:ffi' as ffi;
 import 'dart:io';
 
-import 'bindings_capture_ffi.dart';
-import 'bindings_player_ffi.dart';
+import 'package:flutter_soloud/src/bindings/bindings_capture_ffi.dart';
+import 'package:flutter_soloud/src/bindings/bindings_player_ffi.dart';
 
 /// Controller that expose method channel and FFI
 class SoLoudController {
@@ -28,5 +30,4 @@ class SoLoudController {
   late final FlutterSoLoudFfi soLoudFFI;
 
   late final FlutterCaptureFfi captureFFI;
-
 }

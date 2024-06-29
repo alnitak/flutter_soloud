@@ -5,15 +5,7 @@ import 'package:flutter_soloud/src/bindings/bindings_capture.dart';
 import 'package:flutter_soloud/src/bindings/audio_data.dart';
 import 'package:flutter_soloud/src/enums.dart';
 
-/// CaptureDevice struct exposed in C
-final class _CaptureDevice extends ffi.Struct {
-  external ffi.Pointer<ffi.Char> name;
-
-  @ffi.UnsignedInt()
-  external int isDefault;
-}
-
-/// FFI bindings to capture with miniaudio
+/// FFI bindings to capture with miniaudio.
 class FlutterCaptureFfi extends FlutterCapture {
   /// Holds the symbol lookup function.
   final ffi.Pointer<T> Function<T extends ffi.NativeType>(String symbolName)
@@ -115,7 +107,7 @@ class FlutterCaptureFfi extends FlutterCapture {
   }
 
   late final _isCaptureInitedPtr =
-      _lookup<ffi.NativeFunction<ffi.Int Function()>>('');
+      _lookup<ffi.NativeFunction<ffi.Int Function()>>('isCaptureInited');
   late final _isCaptureInited =
       _isCaptureInitedPtr.asFunction<int Function()>();
 
@@ -161,7 +153,7 @@ class FlutterCaptureFfi extends FlutterCapture {
 
   @override
   void getCaptureWave(AudioData wave) {
-    return _getCaptureWave(wave.samplesWave);
+    return _getCaptureWave(wave.samplesWave!);
   }
 
   late final _getCaptureWavePtr = _lookup<
@@ -194,6 +186,16 @@ class FlutterCaptureFfi extends FlutterCapture {
       'getCaptureAudioTexture2D');
   late final _getCaptureAudioTexture2D = _getCaptureAudioTexture2DPtr
       .asFunction<int Function(ffi.Pointer<ffi.Pointer<ffi.Float>>)>();
+
+  double getCaptureTextureValue(int row, int column) {
+    return _getCaptureTextureValue(row, column);
+  }
+
+  late final _getCaptureTextureValuePtr =
+      _lookup<ffi.NativeFunction<ffi.Float Function(ffi.Int, ffi.Int)>>(
+          'getCaptureTextureValue');
+  late final _getCaptureTextureValue =
+      _getCaptureTextureValuePtr.asFunction<double Function(int, int)>();
 
   @override
   CaptureErrors setCaptureFftSmoothing(double smooth) {

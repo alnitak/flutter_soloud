@@ -2,14 +2,14 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter_soloud/src/enums.dart';
+import 'package:flutter_soloud/src/filter_params.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
 import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/bindings/audio_data.dart';
 import 'package:meta/meta.dart';
 
 export 'package:flutter_soloud/src/bindings/bindings_player_ffi.dart'
-    if (dart.library.html) 
-      'package:flutter_soloud/src/bindings/bindings_player_web.dart';
+    if (dart.library.html) 'package:flutter_soloud/src/bindings/bindings_player_web.dart';
 
 /// Abstract class defining the interface for the platform-specific
 /// implementations.
@@ -112,6 +112,7 @@ abstract class FlutterSoLoud {
   @mustBeOverridden
   ({PlayerErrors error, SoundHash soundHash}) loadWaveform(
     WaveForm waveform,
+    // ignore: avoid_positional_boolean_parameters
     bool superWave,
     double scale,
     double detune,
@@ -253,6 +254,7 @@ abstract class FlutterSoLoud {
   /// [handle] the sound handle.
   /// [enable] enable or not the looping.
   @mustBeOverridden
+  // ignore: avoid_positional_boolean_parameters
   void setLooping(SoundHandle handle, bool enable);
 
   /// Get sound loop point value.
@@ -276,6 +278,7 @@ abstract class FlutterSoLoud {
   ///
   /// [enabled] whether to enable or disable.
   @mustBeOverridden
+  // ignore: avoid_positional_boolean_parameters
   void setVisualizationEnabled(bool enabled);
 
   /// Get visualization state.
@@ -335,6 +338,10 @@ abstract class FlutterSoLoud {
   /// `Pointer<Pointer<Float>>`.
   @mustBeOverridden
   PlayerErrors getAudioTexture2D(AudioData samples);
+
+  /// Get the value in the texture2D matrix at the given coordinates.
+  @mustBeOverridden
+  double getTextureValue(int row, int column);
 
   /// Get the sound length.
   ///
@@ -453,6 +460,7 @@ abstract class FlutterSoLoud {
   /// [handle] handle to check.
   /// [protect] whether to protect or not.
   @mustBeOverridden
+  // ignore: avoid_positional_boolean_parameters
   void setProtectVoice(SoundHandle handle, bool protect);
 
   /// Get the current maximum active voice count.
@@ -505,7 +513,11 @@ abstract class FlutterSoLoud {
   /// Set fader to oscillate the volume at specified frequency.
   @mustBeOverridden
   int oscillateVolume(
-      SoundHandle handle, double from, double to, Duration time);
+    SoundHandle handle,
+    double from,
+    double to,
+    Duration time,
+  );
 
   /// Set fader to oscillate the panning at specified frequency.
   @mustBeOverridden
@@ -514,7 +526,11 @@ abstract class FlutterSoLoud {
   /// Set fader to oscillate the relative play speed at specified frequency.
   @mustBeOverridden
   int oscillateRelativePlaySpeed(
-      SoundHandle handle, double from, double to, Duration time);
+    SoundHandle handle,
+    double from,
+    double to,
+    Duration time,
+  );
 
   /// Set fader to oscillate the global volume at specified frequency.
   @mustBeOverridden
@@ -530,7 +546,7 @@ abstract class FlutterSoLoud {
   /// Returns [PlayerErrors.noError] if no errors and the index of
   /// the active filter (-1 if the filter is not active).
   @mustBeOverridden
-  ({PlayerErrors error, int index}) isFilterActive(int filterType);
+  ({PlayerErrors error, int index}) isFilterActive(FilterType filterType);
 
   /// Get parameters names of the given filter.
   ///
@@ -538,7 +554,8 @@ abstract class FlutterSoLoud {
   /// Returns [PlayerErrors.noError] if no errors and the list of param names.
   @mustBeOverridden
   ({PlayerErrors error, List<String> names}) getFilterParamNames(
-      int filterType);
+    FilterType filterType,
+  );
 
   /// Add the filter [filterType].
   ///
@@ -551,14 +568,14 @@ abstract class FlutterSoLoud {
   /// [PlayerErrors.maxNumberOfFiltersReached] when the maximum number of
   /// filters has been reached (default is 8).
   @mustBeOverridden
-  PlayerErrors addGlobalFilter(int filterType);
+  PlayerErrors addGlobalFilter(FilterType filterType);
 
   /// Remove the filter [filterType].
   ///
   /// [filterType] filter to remove.
   /// Returns [PlayerErrors.noError] if no errors.
   @mustBeOverridden
-  int removeGlobalFilter(int filterType);
+  int removeGlobalFilter(FilterType filterType);
 
   /// Set the effect parameter with id [attributeId] of [filterType]
   /// with [value] value.
@@ -566,14 +583,14 @@ abstract class FlutterSoLoud {
   /// [filterType] filter to modify a param.
   /// Returns [PlayerErrors.noError] if no errors.
   @mustBeOverridden
-  int setFilterParams(int filterType, int attributeId, double value);
+  int setFilterParams(FilterType filterType, int attributeId, double value);
 
   /// Get the effect parameter with id [attributeId] of [filterType].
   ///
   /// [filterType] the filter to modify a parameter.
   /// Returns the value of the parameter.
   @mustBeOverridden
-  double getFilterParams(int filterType, int attributeId);
+  double getFilterParams(FilterType filterType, int attributeId);
 
   // ///////////////////////////////////////
   //  3D audio methods
@@ -717,14 +734,17 @@ abstract class FlutterSoLoud {
 
 /// Used for easier conversion from [double] to [Duration].
 extension DoubleToDuration on double {
+  /// Convert the double.
   Duration toDuration() {
     return Duration(
-        microseconds: (this * Duration.microsecondsPerSecond).round());
+      microseconds: (this * Duration.microsecondsPerSecond).round(),
+    );
   }
 }
 
 /// Used for easier conversion from [Duration] to [double].
 extension DurationToDouble on Duration {
+  /// Convert the duration.
   double toDouble() {
     return inMicroseconds / Duration.microsecondsPerSecond;
   }

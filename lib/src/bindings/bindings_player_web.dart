@@ -6,6 +6,7 @@ import 'package:flutter_soloud/src/bindings/bindings_player.dart';
 import 'package:flutter_soloud/src/bindings/js_extension.dart';
 
 import 'package:flutter_soloud/src/enums.dart';
+import 'package:flutter_soloud/src/filter_params.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
 import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/worker/worker.dart';
@@ -104,12 +105,14 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     final hashPtr = wasmMalloc(4); // 4 bytes for an int
     final bytesPtr = wasmMalloc(buffer.length);
     final pathPtr = wasmMalloc(uniqueName.length);
+    // Is there a way to speed up this array copy?
     for (var i = 0; i < buffer.length; i++) {
       wasmSetValue(bytesPtr + i, buffer[i], 'i8');
     }
     for (var i = 0; i < uniqueName.length; i++) {
       wasmSetValue(pathPtr + i, uniqueName.codeUnits[i], 'i8');
     }
+
     final result = wasmLoadMem(
       pathPtr,
       bytesPtr,
@@ -146,7 +149,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     );
 
     /// "*" means unsigned int 32
-    var hash = wasmGetI32Value(hashPtr, '*');
+    final hash = wasmGetI32Value(hashPtr, '*');
     final soundHash = SoundHash(hash);
     final ret = (error: PlayerErrors.values[result], soundHash: soundHash);
     wasmFree(hashPtr);
@@ -296,8 +299,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
 
   @override
   bool getVisualizationEnabled() {
-    bool b = wasmGetVisualizationEnabled() == 1;
-    return b;
+    return wasmGetVisualizationEnabled() == 1;
   }
 
   @override
@@ -324,6 +326,12 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   PlayerErrors getAudioTexture2D(AudioData samples) {
     final e = wasmGetAudioTexture2D(samples.ctrl.samplesPtr);
     return PlayerErrors.values[e];
+  }
+
+  @override
+  double getTextureValue(int row, int column) {
+    final e = wasmGetTextureValue(row, column);
+    return e;
   }
 
   @override
@@ -452,7 +460,11 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
 
   @override
   int oscillateVolume(
-      SoundHandle handle, double from, double to, Duration time) {
+    SoundHandle handle,
+    double from,
+    double to,
+    Duration time,
+  ) {
     return wasmOscillateVolume(handle.id, from, to, time.toDouble());
   }
 
@@ -463,7 +475,11 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
 
   @override
   int oscillateRelativePlaySpeed(
-      SoundHandle handle, double from, double to, Duration time) {
+    SoundHandle handle,
+    double from,
+    double to,
+    Duration time,
+  ) {
     return wasmOscillateRelativePlaySpeed(handle.id, from, to, time.toDouble());
   }
 
@@ -477,27 +493,30 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   // ///////////////////////////////////////
 
   @override
-  ({PlayerErrors error, int index}) isFilterActive(int filterType) {
+  ({PlayerErrors error, int index}) isFilterActive(FilterType filterType) {
     // ignore: omit_local_variable_types
     final idPtr = wasmMalloc(4); // 4 bytes for an int
-    final e = wasmIsFilterActive(filterType, idPtr);
-    final ret =
-        (error: PlayerErrors.values[e], index: wasmGetI32Value(idPtr, '*'));
+    final e = wasmIsFilterActive(filterType.index, idPtr);
+    final index = wasmGetI32Value(idPtr, 'i32');
+    final ret = (error: PlayerErrors.values[e], index: index);
     wasmFree(idPtr);
     return ret;
   }
 
   @override
   ({PlayerErrors error, List<String> names}) getFilterParamNames(
-      int filterType) {
+    FilterType filterType,
+  ) {
     final paramsCountPtr = wasmMalloc(4); // 4 bytes for an int
     final namesPtr = wasmMalloc(30 * 20); // list of 30 String with 20 chars
-    final e = wasmGetFilterParamNames(filterType, paramsCountPtr, namesPtr);
+    final e =
+        wasmGetFilterParamNames(filterType.index, paramsCountPtr, namesPtr);
 
     final pNames = <String>[];
     var offsetPtr = 0;
-    for (var i = 0; i < wasmGetI32Value(paramsCountPtr, '*'); i++) {
-      final namePtr = wasmGetI32Value(namesPtr + offsetPtr, '*');
+    final paramsCount = wasmGetI32Value(paramsCountPtr, '*');
+    for (var i = 0; i < paramsCount; i++) {
+      final namePtr = wasmGetI32Value(namesPtr + offsetPtr, 'i32');
       final name = wasmUtf8ToString(namePtr);
       offsetPtr += name.length;
 
@@ -511,24 +530,24 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }
 
   @override
-  PlayerErrors addGlobalFilter(int filterType) {
-    final e = wasmAddGlobalFilter(filterType);
+  PlayerErrors addGlobalFilter(FilterType filterType) {
+    final e = wasmAddGlobalFilter(filterType.index);
     return PlayerErrors.values[e];
   }
 
   @override
-  int removeGlobalFilter(int filterType) {
-    return wasmRemoveGlobalFilter(filterType);
+  int removeGlobalFilter(FilterType filterType) {
+    return wasmRemoveGlobalFilter(filterType.index);
   }
 
   @override
-  int setFilterParams(int filterType, int attributeId, double value) {
-    return wasmSetFxParams(filterType, attributeId, value);
+  int setFilterParams(FilterType filterType, int attributeId, double value) {
+    return wasmSetFxParams(filterType.index, attributeId, value);
   }
 
   @override
-  double getFilterParams(int filterType, int attributeId) {
-    return wasmGetFxParams(filterType, attributeId);
+  double getFilterParams(FilterType filterType, int attributeId) {
+    return wasmGetFxParams(filterType.index, attributeId);
   }
 
   // //////////////////////////////////////
@@ -662,7 +681,11 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
 
   @override
   void set3dSourcePosition(
-      SoundHandle handle, double posX, double posY, double posZ) {
+    SoundHandle handle,
+    double posX,
+    double posY,
+    double posZ,
+  ) {
     return wasmSet3dSourcePosition(handle.id, posX, posY, posZ);
   }
 

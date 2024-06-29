@@ -1499,7 +1499,7 @@ interface class SoLoud {
   /// Returns `-1` if the filter is not active. Otherwise, returns
   /// the index of the given filter.
   int isFilterActive(FilterType filterType) {
-    final ret = _controller.soLoudFFI.isFilterActive(filterType.index);
+    final ret = _controller.soLoudFFI.isFilterActive(filterType);
     if (ret.error != PlayerErrors.noError) {
       _log.severe(() => 'isFilterActive(): ${ret.error}');
       throw SoLoudCppException.fromPlayerError(ret.error);
@@ -1513,7 +1513,7 @@ interface class SoLoud {
   ///
   /// Returns the list of param names.
   List<String> getFilterParamNames(FilterType filterType) {
-    final ret = _controller.soLoudFFI.getFilterParamNames(filterType.index);
+    final ret = _controller.soLoudFFI.getFilterParamNames(filterType);
     if (ret.error != PlayerErrors.noError) {
       _log.severe(() => 'getFilterParamNames(): ${ret.error}');
       throw SoLoudCppException.fromPlayerError(ret.error);
@@ -1528,7 +1528,7 @@ interface class SoLoud {
   /// Throws [SoLoudFilterAlreadyAddedException] when trying to add a filter
   ///     that has already been added.
   void addGlobalFilter(FilterType filterType) {
-    final e = _controller.soLoudFFI.addGlobalFilter(filterType.index);
+    final e = _controller.soLoudFFI.addGlobalFilter(filterType);
     if (e != PlayerErrors.noError) {
       _log.severe(() => 'addGlobalFilter(): $e');
       throw SoLoudCppException.fromPlayerError(e);
@@ -1537,7 +1537,7 @@ interface class SoLoud {
 
   /// Removes [filterType] from all sounds.
   void removeGlobalFilter(FilterType filterType) {
-    final ret = _controller.soLoudFFI.removeGlobalFilter(filterType.index);
+    final ret = _controller.soLoudFFI.removeGlobalFilter(filterType);
     final error = PlayerErrors.values[ret];
     if (error != PlayerErrors.noError) {
       _log.severe(() => 'removeGlobalFilter(): $error');
@@ -1552,7 +1552,7 @@ interface class SoLoud {
   void setFilterParameter(
       FilterType filterType, int attributeId, double value) {
     final ret = _controller.soLoudFFI
-        .setFilterParams(filterType.index, attributeId, value);
+        .setFilterParams(filterType, attributeId, value);
     final error = PlayerErrors.values[ret];
     if (error != PlayerErrors.noError) {
       _log.severe(() => 'setFxParams(): $error');
@@ -1567,7 +1567,7 @@ interface class SoLoud {
   ///
   /// Returns the value as [double].
   double getFilterParameter(FilterType filterType, int attributeId) {
-    return _controller.soLoudFFI.getFilterParams(filterType.index, attributeId);
+    return _controller.soLoudFFI.getFilterParams(filterType, attributeId);
   }
 
   // ////////////////////////////////////////////////

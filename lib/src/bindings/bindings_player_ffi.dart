@@ -11,6 +11,7 @@ import 'package:ffi/ffi.dart';
 import 'package:flutter_soloud/src/bindings/bindings_player.dart';
 import 'package:flutter_soloud/src/bindings/audio_data.dart';
 import 'package:flutter_soloud/src/enums.dart';
+import 'package:flutter_soloud/src/filter_params.dart';
 import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
 import 'package:logging/logging.dart';
@@ -48,7 +49,7 @@ typedef DartdartStateChangedCallbackTFunction = void Function(
     ffi.Pointer<ffi.Int32>);
 
 /// FFI bindings to SoLoud
-  @internal
+@internal
 class FlutterSoLoudFfi extends FlutterSoLoud {
   static final Logger _log = Logger('flutter_soloud.FlutterSoLoudFfi');
 
@@ -189,6 +190,9 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   );
   late final _isInited = _isInitedPtr.asFunction<int Function()>();
 
+  /// After loading the file, the [_fileLoadedCallback] will call the
+  /// Dart function defined with [_setDartEventCallback] which gives back
+  /// the error and the new hash.
   @override
   void loadFile(
     String completeFileName,
@@ -398,6 +402,9 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   late final _setRelativePlaySpeed =
       _setRelativePlaySpeedPtr.asFunction<void Function(int, double)>();
 
+  /// Return the current play speed.
+  ///
+  /// [handle] the sound handle
   @override
   double getRelativePlaySpeed(SoundHandle handle) {
     return _getRelativePlaySpeed(handle.id);
@@ -601,6 +608,17 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
           )>>('getAudioTexture2D');
   late final _getAudioTexture2D = _getAudioTexture2DPtr
       .asFunction<int Function(ffi.Pointer<ffi.Pointer<ffi.Float>>)>();
+
+  @override
+  double getTextureValue(int row, int column) {
+    return _getTextureValue(row, column);
+  }
+
+  late final _getTextureValuePtr =
+      _lookup<ffi.NativeFunction<ffi.Float Function(ffi.Int, ffi.Int)>>(
+          'getTextureValue');
+  late final _getTextureValue =
+      _getTextureValuePtr.asFunction<double Function(int, int)>();
 
   @override
   Duration getLength(SoundHash soundHash) {
@@ -945,10 +963,10 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   // ///////////////////////////////////////
 
   @override
-  ({PlayerErrors error, int index}) isFilterActive(int filterType) {
+  ({PlayerErrors error, int index}) isFilterActive(FilterType filterType) {
     // ignore: omit_local_variable_types
     final ffi.Pointer<ffi.Int> id = calloc(ffi.sizeOf<ffi.Int>());
-    final e = _isFilterActive(filterType, id);
+    final e = _isFilterActive(filterType.index, id);
     final ret = (error: PlayerErrors.values[e], index: id.value);
     calloc.free(id);
     return ret;
@@ -963,7 +981,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
 
   @override
   ({PlayerErrors error, List<String> names}) getFilterParamNames(
-      int filterType) {
+      FilterType filterType) {
     // ignore: omit_local_variable_types
     final ffi.Pointer<ffi.Int> paramsCount = calloc(ffi.sizeOf<ffi.Int>());
     // ignore: omit_local_variable_types
@@ -974,7 +992,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
         'names: ${names.address.toRadixString(16)}');
 
     final e = _getFilterParamNames(
-      filterType,
+      filterType.index,
       paramsCount,
       names,
     );
@@ -1003,8 +1021,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
           int, ffi.Pointer<ffi.Int>, ffi.Pointer<ffi.Pointer<ffi.Char>>)>();
 
   @override
-  PlayerErrors addGlobalFilter(int filterType) {
-    final e = _addGlobalFilter(filterType);
+  PlayerErrors addGlobalFilter(FilterType filterType) {
+    final e = _addGlobalFilter(filterType.index);
     return PlayerErrors.values[e];
   }
 
@@ -1015,8 +1033,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       _addGlobalFilterPtr.asFunction<int Function(int)>();
 
   @override
-  int removeGlobalFilter(int filterType) {
-    return _removeGlobalFilter(filterType);
+  int removeGlobalFilter(FilterType filterType) {
+    return _removeGlobalFilter(filterType.index);
   }
 
   late final _removeGlobalFilterPtr =
@@ -1026,8 +1044,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       _removeGlobalFilterPtr.asFunction<int Function(int)>();
 
   @override
-  int setFilterParams(int filterType, int attributeId, double value) {
-    return _setFxParams(filterType, attributeId, value);
+  int setFilterParams(FilterType filterType, int attributeId, double value) {
+    return _setFxParams(filterType.index, attributeId, value);
   }
 
   late final _setFxParamsPtr = _lookup<
@@ -1037,8 +1055,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       _setFxParamsPtr.asFunction<int Function(int, int, double)>();
 
   @override
-  double getFilterParams(int filterType, int attributeId) {
-    return _getFxParams(filterType, attributeId);
+  double getFilterParams(FilterType filterType, int attributeId) {
+    return _getFxParams(filterType.index, attributeId);
   }
 
   late final _getFxParamsPtr =

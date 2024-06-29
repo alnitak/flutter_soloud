@@ -1,3 +1,5 @@
+// ignore_for_file: public_member_api_docs
+
 import 'package:flutter_soloud/src/bindings/audio_data.dart';
 import 'package:flutter_soloud/src/enums.dart';
 import 'package:meta/meta.dart';
@@ -5,6 +7,7 @@ import 'package:meta/meta.dart';
 export 'package:flutter_soloud/src/bindings/bindings_capture_ffi.dart'
     if (dart.library.html) 'package:flutter_soloud/src/bindings/bindings_capture_web.dart';
 
+/// The experimenta functionality to use the microphone used by "SoLoudCapture".
 @experimental
 abstract class FlutterCapture {
   @mustBeOverridden
@@ -14,7 +17,7 @@ abstract class FlutterCapture {
   CaptureErrors initCapture(int deviceID);
 
   @mustBeOverridden
-  void disposeCapture();
+  void disposeCapture(); 
 
   @mustBeOverridden
   bool isCaptureInited();
