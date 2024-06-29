@@ -1,12 +1,9 @@
 // ignore_for_file: public_member_api_docs, sort_constructors_first
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:logging/logging.dart';
-import 'package:path_provider/path_provider.dart';
 
 class PageMultiTrack extends StatefulWidget {
   const PageMultiTrack({super.key});
@@ -175,15 +172,8 @@ class _PlaySoundWidgetState extends State<PlaySoundWidget> {
   }
 
   Future<bool> loadAsset() async {
-    final path = (await getAssetFile(widget.assetsAudio)).path;
-
     final AudioSource? newSound;
-    try {
-      newSound = await SoLoud.instance.loadFile(path);
-    } catch (e) {
-      _log.severe('Load sound asset failed', e);
-      return false;
-    }
+    newSound = await SoLoud.instance.loadAsset(widget.assetsAudio);
 
     soundLength = SoLoud.instance.getLength(newSound);
     sound = newSound;
@@ -259,24 +249,6 @@ class _PlaySoundWidgetState extends State<PlaySoundWidget> {
 
     isPaused[newHandle] = ValueNotifier(false);
     soundPosition[newHandle] = ValueNotifier(0);
-  }
-
-  /// get the assets file and copy it to the temp dir
-  Future<File> getAssetFile(String assetsFile) async {
-    final tempDir = await getTemporaryDirectory();
-    final tempPath = tempDir.path;
-    final filePath = '$tempPath/$assetsFile';
-    final file = File(filePath);
-    if (file.existsSync()) {
-      return file;
-    } else {
-      final byteData = await rootBundle.load(assetsFile);
-      final buffer = byteData.buffer;
-      await file.create(recursive: true);
-      return file.writeAsBytes(
-        buffer.asUint8List(byteData.offsetInBytes, byteData.lengthInBytes),
-      );
-    }
   }
 }
 

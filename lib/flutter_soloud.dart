@@ -2,6 +2,8 @@
 library flutter_soloud;
 
 export 'src/audio_source.dart';
+export 'src/bindings/audio_data.dart';
+export 'src/bindings/audio_data_extensions.dart';
 export 'src/enums.dart' hide PlayerErrors, PlayerStateNotification;
 export 'src/exceptions/exceptions.dart';
 export 'src/filter_params.dart';

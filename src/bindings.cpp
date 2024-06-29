@@ -6,6 +6,10 @@
 #include "common.h"
 #endif
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten/emscripten.h>
+#endif
+
 #include "soloud/include/soloud_fft.h"
 #include "soloud_thread.h"
 
@@ -31,6 +35,51 @@ extern "C"
     void (*dartFileLoadedCallback)(enum PlayerErrors *, char *completeFileName, unsigned int *) = nullptr;
     void (*dartStateChangedCallback)(enum PlayerStateEvents *) = nullptr;
 
+    //////////////////////////////////////////////////////////////
+    /// WEB WORKER
+
+#ifdef __EMSCRIPTEN__
+    /// Create the web worker and store a global "Module.workerUri" in JS.
+    FFI_PLUGIN_EXPORT void createWorkerInWasm()
+    {
+        printf("CPP void createWorkerInWasm()\n");
+        
+        EM_ASM({
+            if (!Module.wasmWorker) 
+            {
+                // Create a new Worker from the URI
+                var workerUri = "assets/packages/flutter_soloud/web/worker.dart.js";
+                console.log("EM_ASM creating web worker!");
+                Module.wasmWorker = new Worker(workerUri);
+            }
+            else
+            {
+                console.log("EM_ASM web worker already created!");
+            }
+        });
+    }
+
+    /// Post a message with the web worker.
+    FFI_PLUGIN_EXPORT void sendToWorker(const char *message, int value)
+    {
+        EM_ASM({
+            if (Module.wasmWorker)
+            {
+                console.log("EM_ASM posting message " + UTF8ToString($0) + 
+                    " with value " + $1);
+                // Send the message
+                Module.wasmWorker.postMessage(JSON.stringify({
+                    "message" : UTF8ToString($0),
+                    "value" : $1
+                }));
+            }
+            else
+            {
+                console.error('Worker not found.');
+            } }, message, value);
+    }
+#endif
+
     FFI_PLUGIN_EXPORT void nativeFree(void *pointer)
     {
         free(pointer);
@@ -38,9 +87,17 @@ extern "C"
 
     /// The callback to monitor when a voice ends.
     ///
-    /// It is called by void `Soloud::stopVoice_internal(unsigned int aVoice)` when a voice ends.
-    void voiceEndedCallback(unsigned int *handle)
+    /// It is called by void `Soloud::stopVoice_internal(unsigned int aVoice)` when a voice ends
+    /// and comes from the audio thread (so on the web, from a different web worker).
+    FFI_PLUGIN_EXPORT void voiceEndedCallback(unsigned int *handle)
     {
+#ifdef __EMSCRIPTEN__
+        // Calling JavaScript from C/C++
+        // https://emscripten.org/docs/porting/connecting_cpp_and_javascript/Interacting-with-code.html#interacting-with-code-call-javascript-from-native
+        // emscripten_run_script("voiceEndedCallbackJS('1234')");
+        sendToWorker("voiceEndedCallback", *handle);
+#endif
+
         if (dartVoiceEndedCallback == nullptr)
             return;
         player->removeHandle(*handle);
@@ -395,7 +452,8 @@ extern "C"
     {
         if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
-        *handle = player.get()->play(soundHash, volume, pan, paused, looping, loopingStartAt);
+        unsigned int newHandle = player.get()->play(soundHash, volume, pan, paused, looping, loopingStartAt);
+        *handle = newHandle;
         return *handle == 0 ? soundHashNotFound : noError;
     }
 
@@ -500,24 +558,22 @@ extern "C"
 
     /// Returns valid data only if VisualizationEnabled is true
     ///
-    /// [fft]
     /// Return a 256 float array containing FFT data.
-    FFI_PLUGIN_EXPORT void getFft(float *fft)
+    FFI_PLUGIN_EXPORT void getFft(float **fft)
     {
         if (player.get() == nullptr || !player.get()->isInited())
             return;
-        fft = player.get()->calcFFT();
+        *fft = player.get()->calcFFT();
     }
 
     /// Returns valid data only if VisualizationEnabled is true
     ///
-    /// fft
     /// Return a 256 float array containing wave data.
-    FFI_PLUGIN_EXPORT void getWave(float *wave)
+    FFI_PLUGIN_EXPORT void getWave(float **wave)
     {
         if (player.get() == nullptr || !player.get()->isInited())
             return;
-        wave = player.get()->getWave();
+        *wave = player.get()->getWave();
     }
 
     /// Smooth FFT data.
@@ -557,22 +613,19 @@ extern "C"
         memcpy(samples + 256, wave, sizeof(float) * 256);
     }
 
-    /// Return a floats matrix of 512x256
+    /// Return a floats matrix of 256x512
     /// Every row are composed of 256 FFT values plus 256 of wave data
     /// Every time is called, a new row is stored in the
     /// first row and all the previous rows are shifted
     /// up (the last one will be lost).
-    ///
-    /// [samples]
-    float texture2D[512][256];
+    float texture2D[256][512];
     FFI_PLUGIN_EXPORT enum PlayerErrors getAudioTexture2D(float **samples)
     {
         if (player.get() == nullptr || !player.get()->isInited() ||
             analyzer.get() == nullptr || !player.get()->isVisualizationEnabled())
         {
-            if (*samples == nullptr)
-                return unknownError;
-            memset(samples, 0, sizeof(float) * 512 * 256);
+            *samples = *texture2D;
+            memset(*samples, 0, sizeof(float) * 512 * 256);
             return backendNotInited;
         }
         /// shift up 1 row
@@ -581,6 +634,10 @@ extern "C"
         getAudioTexture(texture2D[0]);
         *samples = *texture2D;
         return noError;
+    }
+
+    FFI_PLUGIN_EXPORT float getTextureValue(int row, int column) {
+        return texture2D[row][column];
     }
 
     /// Get the sound length in seconds
@@ -937,7 +994,7 @@ extern "C"
         std::vector<std::string> pNames = player.get()->mFilters.getFilterParamNames(filterType);
         *paramsCount = static_cast<int>(pNames.size());
         *names = (char *)malloc(sizeof(char *) * *paramsCount);
-        printf("C  paramsCount: %p  **names: %p\n", paramsCount, names);
+        // printf("C  paramsCount: %p  **names: %p\n", paramsCount, names);
         for (int i = 0; i < *paramsCount; i++)
         {
             names[i] = strdup(pNames[i].c_str());
