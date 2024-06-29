@@ -6,6 +6,10 @@
 #include "common.h"
 #endif
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten/emscripten.h>
+#endif
+
 #include "soloud/include/soloud_fft.h"
 #include "soloud_thread.h"
 
@@ -31,6 +35,51 @@ extern "C"
     void (*dartFileLoadedCallback)(enum PlayerErrors *, char *completeFileName, unsigned int *) = nullptr;
     void (*dartStateChangedCallback)(enum PlayerStateEvents *) = nullptr;
 
+    //////////////////////////////////////////////////////////////
+    /// WEB WORKER
+
+#ifdef __EMSCRIPTEN__
+    /// Create the web worker and store a global "Module.workerUri" in JS.
+    FFI_PLUGIN_EXPORT void createWorkerInWasm()
+    {
+        printf("CPP void createWorkerInWasm()\n");
+        
+        EM_ASM({
+            if (!Module.wasmWorker) 
+            {
+                // Create a new Worker from the URI
+                var workerUri = "assets/packages/flutter_soloud/web/worker.dart.js";
+                console.log("EM_ASM creating web worker!");
+                Module.wasmWorker = new Worker(workerUri);
+            }
+            else
+            {
+                console.log("EM_ASM web worker already created!");
+            }
+        });
+    }
+
+    /// Post a message with the web worker.
+    FFI_PLUGIN_EXPORT void sendToWorker(const char *message, int value)
+    {
+        EM_ASM({
+            if (Module.wasmWorker)
+            {
+                console.log("EM_ASM posting message " + UTF8ToString($0) + 
+                    " with value " + $1);
+                // Send the message
+                Module.wasmWorker.postMessage(JSON.stringify({
+                    message : UTF8ToString($0),
+                    value : $1
+                }));
+            }
+            else
+            {
+                console.error('Worker not found.');
+            } }, message, value);
+    }
+#endif
+
     FFI_PLUGIN_EXPORT void nativeFree(void *pointer)
     {
         free(pointer);
@@ -38,9 +87,17 @@ extern "C"
 
     /// The callback to monitor when a voice ends.
     ///
-    /// It is called by void `Soloud::stopVoice_internal(unsigned int aVoice)` when a voice ends.
-    void voiceEndedCallback(unsigned int *handle)
+    /// It is called by void `Soloud::stopVoice_internal(unsigned int aVoice)` when a voice ends
+    /// and comes from the audio thread (so on the web, from a different web worker).
+    FFI_PLUGIN_EXPORT void voiceEndedCallback(unsigned int *handle)
     {
+#ifdef __EMSCRIPTEN__
+        // Calling JavaScript from C/C++
+        // https://emscripten.org/docs/porting/connecting_cpp_and_javascript/Interacting-with-code.html#interacting-with-code-call-javascript-from-native
+        // emscripten_run_script("voiceEndedCallbackJS('1234')");
+        sendToWorker("voiceEndedCallback", *handle);
+#endif
+
         if (dartVoiceEndedCallback == nullptr)
             return;
         player->removeHandle(*handle);
@@ -97,6 +154,11 @@ extern "C"
     /// Returns [PlayerErrors.noError] if success
     FFI_PLUGIN_EXPORT enum PlayerErrors initEngine()
     {
+        // EM_ASM({
+        //     console.log('I received: ' + $0);
+        //     Module.voiceEndedCallbackJS($0); }, 2222);
+        // emscripten_run_script("Module.voiceEndedCallbackJS('1234')");
+
         if (player.get() == nullptr)
             player = std::make_unique<Player>();
 
@@ -156,13 +218,8 @@ extern "C"
         bool loadIntoMem)
     {
         // this check is already been done in Dart
-        if (player.get() == nullptr || !player.get()->isInited())
-        {
-            printf("WARNING (from SoLoud C++ binding code): the player has "
-                   "not yet been initialized. This is likely a bug in flutter_soloud. "
-                   "Please report the bug.");
+        if (!player.get()->isInited())
             return;
-        }
 
         Player *p = player.get();
         unsigned int hash = 0;
@@ -190,7 +247,7 @@ extern "C"
         unsigned int *hash)
     {
         // this check is already been done in Dart
-        if (player.get() == nullptr || !player.get()->isInited())
+        if (!player.get()->isInited())
             return backendNotInited;
         return (PlayerErrors)player.get()->loadMem(uniqueName, buffer, length, *hash);
     }
@@ -395,7 +452,8 @@ extern "C"
     {
         if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
-        *handle = player.get()->play(soundHash, volume, pan, paused, looping, loopingStartAt);
+        unsigned int newHandle = player.get()->play(soundHash, volume, pan, paused, looping, loopingStartAt);
+        *handle = newHandle;
         return *handle == 0 ? soundHashNotFound : noError;
     }
 
@@ -500,24 +558,22 @@ extern "C"
 
     /// Returns valid data only if VisualizationEnabled is true
     ///
-    /// [fft]
     /// Return a 256 float array containing FFT data.
-    FFI_PLUGIN_EXPORT void getFft(float *fft)
+    FFI_PLUGIN_EXPORT void getFft(float **fft)
     {
         if (player.get() == nullptr || !player.get()->isInited())
             return;
-        fft = player.get()->calcFFT();
+        *fft = player.get()->calcFFT();
     }
 
     /// Returns valid data only if VisualizationEnabled is true
     ///
-    /// fft
     /// Return a 256 float array containing wave data.
-    FFI_PLUGIN_EXPORT void getWave(float *wave)
+    FFI_PLUGIN_EXPORT void getWave(float **wave)
     {
         if (player.get() == nullptr || !player.get()->isInited())
             return;
-        wave = player.get()->getWave();
+        *wave = player.get()->getWave();
     }
 
     /// Smooth FFT data.
@@ -564,7 +620,7 @@ extern "C"
     /// up (the last one will be lost).
     ///
     /// [samples]
-    float texture2D[512][256];
+    float texture2D[256][512];
     FFI_PLUGIN_EXPORT enum PlayerErrors getAudioTexture2D(float **samples)
     {
         if (player.get() == nullptr || !player.get()->isInited() ||
@@ -672,43 +728,6 @@ extern "C"
             return soundHandleNotFound;
         player.get()->setVolume(handle, volume);
         return noError;
-    }
-
-    /// Get a sound's current pan setting.
-    ///
-    /// [handle] the sound handle.
-    /// Returns the range of the pan values is -1 to 1, where -1 is left, 0 is middle and and 1 is right.
-    FFI_PLUGIN_EXPORT double getPan(unsigned int handle)
-    {
-        if (player.get() == nullptr || !player.get()->isInited())
-            return 0.0f;
-
-        return player.get()->getPan(handle);
-    }
-
-    /// Set a sound's current pan setting.
-    ///
-    /// [handle] the sound handle.
-    /// [pan] the range of the pan values is -1 to 1, where -1 is left, 0 is middle and and 1 is right.
-    FFI_PLUGIN_EXPORT void setPan(unsigned int handle, double pan)
-    {
-        if (player.get() == nullptr || !player.get()->isInited())
-            return;
-        // Rounding to 6 decimal to work around the float to double precision.
-        player.get()->setPan(handle, pan);
-    }
-
-    /// Set the left/right volumes directly.
-    /// Note that this does not affect the value returned by getPan.
-    ///
-    /// [handle] the sound handle.
-    /// [panLeft] value for the left pan.
-    /// [panRight] value for the right pan.
-    FFI_PLUGIN_EXPORT void setPanAbsolute(unsigned int handle, double panLeft, double panRight)
-    {
-        if (player.get() == nullptr || !player.get()->isInited())
-            return;
-        player.get()->setPanAbsolute(handle, panLeft, panRight);
     }
 
     /// Check if a handle is still valid.
@@ -937,7 +956,7 @@ extern "C"
         std::vector<std::string> pNames = player.get()->mFilters.getFilterParamNames(filterType);
         *paramsCount = static_cast<int>(pNames.size());
         *names = (char *)malloc(sizeof(char *) * *paramsCount);
-        printf("C  paramsCount: %p  **names: %p\n", paramsCount, names);
+        // printf("C  paramsCount: %p  **names: %p\n", paramsCount, names);
         for (int i = 0; i < *paramsCount; i++)
         {
             names[i] = strdup(pNames[i].c_str());
@@ -1229,6 +1248,62 @@ extern "C"
             return;
         player.get()->set3dSourceDopplerFactor(handle, dopplerFactor);
         player.get()->update3dAudio();
+    }
+
+    /////////// JUST FOR TEST //////////
+    // https://stackoverflow.com/questions/17883799/how-to-handle-passing-returning-array-pointers-to-emscripten-compiled-code
+    // https://stackoverflow.com/questions/50615377/how-do-you-call-a-c-function-that-takes-or-returns-a-struct-by-value-from-js-v
+
+    // call javascript from native
+    // https://emscripten.org/docs/porting/connecting_cpp_and_javascript/Interacting-with-code.html#interacting-with-code-call-javascript-from-native
+
+    // https://developer.mozilla.org/en-US/docs/WebAssembly/C_to_Wasm
+    // Run Chromium with:
+    // chromium --disable-web-security --disable-gpu --user-data-dir=~/chromeTemp
+    unsigned int handle;
+    unsigned int hash;
+    struct provaProvaProva
+    {
+        PlayerErrors error;
+        int dummy;
+    };
+
+    FFI_PLUGIN_EXPORT provaProvaProva js_init()
+    {
+        printf("init Called\n");
+        int result = initEngine();
+        printf("initEngine() returned %d\n", result);
+        return {noError, 123};
+    }
+
+    FFI_PLUGIN_EXPORT void js_load()
+    {
+        printf("js_load Called\n");
+        int result = loadWaveform(SoLoud::Soloud::WAVE_SQUARE, true, 0.25f, 1.0f, &hash);
+        printf("loadWaveform() result: %d  hash %d\n", result, hash);
+    }
+    // EMSCRIPTEN_BINDINGS(my_struct) {
+    //     class_<MyStruct>("MyStruct")
+    //         .constructor<>()
+    //         .property("a", &MyStruct::a)
+    //         .property("b", &MyStruct::b)
+    //         .property("c", &MyStruct::c)
+    //         ;
+
+    //     function("Foo", &Foo);
+    // }
+
+    FFI_PLUGIN_EXPORT void js_play(unsigned int handle)
+    {
+        printf("js_play Called\n");
+        int result = play(hash, 0.1, 0.0f, false, true, 0.0, &handle);
+        printf("js_play() result: %d\n", result);
+    }
+
+    FFI_PLUGIN_EXPORT void js_dispose()
+    {
+        printf("js_dispose Called\n");
+        dispose();
     }
 
 #ifdef __cplusplus

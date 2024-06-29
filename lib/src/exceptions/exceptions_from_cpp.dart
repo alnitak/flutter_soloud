@@ -1,8 +1,8 @@
 part of 'exceptions.dart';
 
-// ///////////////////////
-// / C++-side exceptions /
-// ///////////////////////
+// //////////////////////////////////////
+// / C++-side exceptions for the player /
+// //////////////////////////////////////
 
 /// An exception that is thrown when an invalid parameter was passed
 /// to SoLoud (C++).
@@ -174,4 +174,52 @@ class SoLoudSoundHandleNotFoundCppException extends SoLoudCppException {
   @override
   String get description => 'The sound handle is not found '
       '(on the C++ side).';
+}
+
+// ///////////////////////////////
+// / C++-side exceptions capture /
+// ///////////////////////////////
+
+/// An exception that is thrown when SoLoud (C++) cannot initialize
+/// a capture device.
+class SoLoudCaptureInitFailedException extends SoLoudCppException {
+  /// Creates a new [SoLoudCaptureInitFailedException].
+  const SoLoudCaptureInitFailedException([super.message]);
+
+  @override
+  String get description => 'The capture device has failed to initialize '
+      '(on the C++ side).';
+}
+
+/// An exception that is thrown when SoLoud (C++) has not yet been initialized
+/// and the operation asked to perform cannot be performed.
+class SoLoudCaptureNotYetInitializededException extends SoLoudCppException {
+  /// Creates a new [SoLoudCaptureNotYetInitializededException].
+  const SoLoudCaptureNotYetInitializededException([super.message]);
+
+  @override
+  String get description => 'The capture device has not yet been initialized '
+      '(on the C++ side).';
+}
+
+/// An exception that is thrown when SoLoud (C++) when the start device
+/// task gives problems.
+class SoLoudCaptureFailedToStartException extends SoLoudCppException {
+  /// Creates a new [SoLoudCaptureFailedToStartException].
+  const SoLoudCaptureFailedToStartException([super.message]);
+
+  @override
+  String get description => 'The capture device failed to start '
+      '(on the C++ side).';
+}
+
+/// Capture null pointer error. Could happens when passing a non initialized
+/// pointer (with calloc()) to retrieve FFT or wave data.
+class SoLoudCaptureNullPointerException extends SoLoudCppException {
+  /// Creates a new [SoLoudCaptureNullPointerException].
+  const SoLoudCaptureNullPointerException([super.message]);
+  @override
+  String get description => 'Capture null pointer error. Could happens '
+      'when passing a non initialized pointer (with calloc()) to retrieve '
+      'FFT or wave data (on the C++ side).';
 }

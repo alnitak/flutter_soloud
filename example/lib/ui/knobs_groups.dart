@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_soloud_example/waveform/touch_slider.dart';
+import 'package:flutter_soloud_example/ui/touch_slider.dart';
 
 class KnobsGroup extends StatefulWidget {
   const KnobsGroup({

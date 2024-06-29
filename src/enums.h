@@ -51,11 +51,11 @@ typedef enum CaptureErrors
 {
     /// No error
     capture_noError,
-    /// 
+    /// The capture device has failed to initialize.
     capture_init_failed,
-    /// 
+    /// The capture device has not yet been initialized.
     capture_not_inited,
-    /// 
+    /// Failed to start the device.
     failed_to_start_device,
 } CaptureErrors_t;
 

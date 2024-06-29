@@ -103,4 +103,28 @@ abstract class SoLoudCppException extends SoLoudException {
         return const SoLoudSoundHandleNotFoundCppException();
     }
   }
+
+  /// Takes a [CaptureErrors] enum value and returns a corresponding exception.
+  /// This is useful when we need to convert a C++ error to a Dart exception.
+  ///
+  /// If [error] is [CaptureErrors.noError], this constructor throws
+  /// an [ArgumentError].
+  factory SoLoudCppException.fromCaptureError(CaptureErrors error) {
+    switch (error) {
+      case CaptureErrors.captureNoError:
+        throw ArgumentError(
+          'Trying to create an exception from CaptureErrors.noError. '
+              'This is a bug in the library. Please report it.',
+          'error',
+        );
+      case CaptureErrors.captureInitFailed:
+        return const SoLoudCaptureInitFailedException();
+      case CaptureErrors.captureNotInited:
+        return const SoLoudCaptureNotYetInitializededException();
+      case CaptureErrors.failedToStartDevice:
+        return const SoLoudCaptureFailedToStartException();
+      case CaptureErrors.nullPointer:
+        return const SoLoudCaptureNullPointerException();
+    }
+  }
 }

@@ -1,8 +1,6 @@
 import 'dart:async';
-import 'dart:ffi' as ffi;
 import 'dart:typed_data';
 
-import 'package:ffi/ffi.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
@@ -42,10 +40,27 @@ class _PageHelloFlutterSoLoudState extends State<PageHelloFlutterSoLoud> {
                 ))
                     ?.files;
                 if (paths != null) {
-                  unawaited(play(paths.first.path!));
+                  unawaited(playFile(paths.first.path!));
                 }
               },
               child: const Text('pick audio'),
+            ),
+            /// pick audio file
+            ElevatedButton(
+              onPressed: () async {
+                final paths = (await FilePicker.platform.pickFiles(
+                  type: FileType.custom,
+                  allowedExtensions: ['mp3', 'wav', 'ogg', 'flac'],
+                  onFileLoading: print,
+                  dialogTitle: 'Pick audio file',
+                ))
+                    ?.files;
+
+                if (paths != null) {
+                  unawaited(playWeb(paths.first.name, paths.first.bytes!));
+                }
+              },
+              child: const Text('pick audio for web'),
             ),
             Column(
               children: [
@@ -56,7 +71,7 @@ class _PageHelloFlutterSoLoudState extends State<PageHelloFlutterSoLoud> {
                       SoLoudCapture.instance.stopCapture();
                       if (context.mounted) setState(() {});
                     } else {
-                      final a = SoLoudCapture.instance.initialize();
+                      final a = SoLoudCapture.instance.init();
                       final b = SoLoudCapture.instance.startCapture();
                       if (context.mounted &&
                           a == CaptureErrors.captureNoError &&
@@ -82,7 +97,7 @@ class _PageHelloFlutterSoLoudState extends State<PageHelloFlutterSoLoud> {
   }
 
   /// play file
-  Future<void> play(String file) async {
+  Future<void> playFile(String file) async {
     /// stop any previous sound loaded
     if (currentSound != null) {
       try {
@@ -97,6 +112,33 @@ class _PageHelloFlutterSoLoudState extends State<PageHelloFlutterSoLoud> {
     final AudioSource newSound;
     try {
       newSound = await SoLoud.instance.loadFile(file);
+    } catch (e) {
+      _log.severe('load error', e);
+      return;
+    }
+
+    currentSound = newSound;
+
+    /// play it
+    await SoLoud.instance.play(currentSound!);
+  }
+
+  /// play bytes for web.
+  Future<void> playWeb(String fileName, Uint8List bytes) async {
+    /// stop any previous sound loaded
+    if (currentSound != null) {
+      try {
+        await SoLoud.instance.disposeSource(currentSound!);
+      } catch (e) {
+        _log.severe('dispose error', e);
+        return;
+      }
+    }
+
+    /// load the audio file
+    final AudioSource newSound;
+    try {
+      newSound = await SoLoud.instance.loadMem(fileName, bytes);
     } catch (e) {
       _log.severe('load error', e);
       return;
@@ -127,27 +169,32 @@ class MicAudioWidget extends StatefulWidget {
 
 class _MicAudioWidgetState extends State<MicAudioWidget>
     with SingleTickerProviderStateMixin {
-  late Ticker ticker;
-  late ffi.Pointer<ffi.Pointer<ffi.Float>> audioData;
+  Ticker? ticker;
+  final audioData = AudioData(
+      GetSamplesFrom.microphone,
+      GetSamplesKind.wave,
+    );
 
   @override
   void initState() {
     super.initState();
-    audioData = calloc();
-    SoLoudCapture.instance.getCaptureAudioTexture2D(audioData);
     ticker = createTicker((Duration elapsed) {
-      if (mounted) {
-        SoLoudCapture.instance.getCaptureAudioTexture2D(audioData);
-        setState(() {});
+      if (context.mounted) {
+        try {
+          audioData.updateSamples();
+          setState(() {});
+        } on Exception catch (e) {
+          debugPrint('$e');
+        }
       }
     });
-    ticker.start();
+    ticker?.start();
   }
 
   @override
   void dispose() {
-    ticker.stop();
-    calloc.free(audioData);
+    ticker?.stop();
+    audioData.dispose();
     super.dispose();
   }
 
@@ -168,7 +215,7 @@ class MicAudioPainter extends CustomPainter {
   const MicAudioPainter({
     required this.audioData,
   });
-  final ffi.Pointer<ffi.Pointer<ffi.Float>> audioData;
+  final AudioData audioData;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -188,9 +235,7 @@ class MicAudioPainter extends CustomPainter {
     for (var n = 0; n < 32; n++) {
       var f = 0.0;
       for (var i = 0; i < 8; i++) {
-        /// audioData[n * 8 + i]  is the FFT data
-        /// If you want wave data, add 256 to the index
-        f += audioData.value[n * 8 + i + 256];
+        f += audioData.getWave(SampleWave(n * 8 + i));
       }
       data[n] = f / 8;
     }

@@ -329,22 +329,16 @@ unsigned int Player::play(
     bool looping,
     double loopingStartAt)
 {
-    // printf("*** PLAYER:PLAY() sounds length: %d  looking for hash: %u\n", sounds.size(), soundHash);
-
-    // for (int i = 0; i < sounds.size(); i++)
-    //     printf("*** PLAYER:PLAY()1 sounds hash: %u\n", sounds[i].get()->soundHash);
-
     auto const &s = std::find_if(
         sounds.begin(), sounds.end(),
         [&](std::shared_ptr<ActiveSound> const &f)
-        { 
-        // printf("*** PLAYER:PLAY() sound1 hash: %u\n", f->soundHash);
-        return f->soundHash == soundHash; });
+        { return f->soundHash == soundHash; });
 
     if (s == sounds.end())
         return 0;
 
     ActiveSound *sound = s->get();
+
     SoLoud::handle newHandle = soloud.play(
         *sound->sound.get(), volume, pan, paused, 0);
     if (newHandle != 0)
@@ -521,30 +515,6 @@ void Player::setVolume(SoLoud::handle handle, float volume)
 {
     return soloud.setVolume(handle, volume);
 }
-
-float Player::getPan(SoLoud::handle handle)
-{
-    return soloud.getPan(handle);
-}
-
-void Player::setPan(SoLoud::handle handle, float pan)
-{
-    if (pan > 1.0f)
-        pan = 1.0f;
-    if (pan < -1.0f)
-        pan = -1.0f;
-    soloud.setPan(handle, pan);
-}
-
-void Player::setPanAbsolute(SoLoud::handle handle, float panLeft, float panRight)
-{
-    if (panLeft > 1.0f) panLeft = 1.0f;
-    if (panLeft < -1.0f) panLeft = -1.0f;
-    if (panRight > 1.0f) panRight = 1.0f;
-    if (panRight < -1.0f) panRight = -1.0f;
-    soloud.setPanAbsolute(handle, panLeft, panRight);
-}
-
 
 bool Player::isValidVoiceHandle(SoLoud::handle handle)
 {

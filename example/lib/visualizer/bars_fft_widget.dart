@@ -1,6 +1,7 @@
-import 'dart:ffi' as ffi;
-
+// ignore_for_file: public_member_api_docs
 import 'package:flutter/material.dart';
+
+import 'package:flutter_soloud/flutter_soloud.dart';
 
 /// Draw the audio FFT data
 ///
@@ -14,7 +15,7 @@ class BarsFftWidget extends StatelessWidget {
     super.key,
   });
 
-  final ffi.Pointer<ffi.Float> audioData;
+  final AudioData audioData;
   final int minFreq;
   final int maxFreq;
   final double width;
@@ -22,7 +23,9 @@ class BarsFftWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (audioData.address == 0x0) return const SizedBox.shrink();
+    if (audioData.getSamplesKind == GetSamplesKind.wave) {
+      return const Placeholder();
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -55,7 +58,7 @@ class FftPainter extends CustomPainter {
     required this.minFreq,
     required this.maxFreq,
   });
-  final ffi.Pointer<ffi.Float> audioData;
+  final AudioData audioData;
   final int minFreq;
   final int maxFreq;
 
@@ -68,7 +71,18 @@ class FftPainter extends CustomPainter {
       ..style = PaintingStyle.stroke;
 
     for (var i = minFreq; i <= maxFreq; i++) {
-      final barHeight = size.height * audioData[i];
+      late final double barHeight;
+      try {
+        final double data;
+        if (audioData.getSamplesKind == GetSamplesKind.linear) {
+          data = audioData.getLinearFft(SampleLinear(i));
+        } else {
+          data = audioData.getTexture(SampleRow(0), SampleColumn(i));
+        }
+        barHeight = size.height * data;
+      } on Exception {
+        barHeight = 0;
+      }
       canvas.drawRect(
         Rect.fromLTWH(
           barWidth * (i - minFreq),

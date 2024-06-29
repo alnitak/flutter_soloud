@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
-import 'package:flutter_soloud_example/waveform/touch_slider.dart';
+import 'package:flutter_soloud_example/ui/touch_slider.dart';
 
 class FilterFx extends StatefulWidget {
   const FilterFx({
@@ -9,6 +9,7 @@ class FilterFx extends StatefulWidget {
   });
 
   final FilterType filterType;
+  
   @override
   State<FilterFx> createState() => _FilterFxState();
 }

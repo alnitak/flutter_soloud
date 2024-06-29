@@ -26,6 +26,10 @@ enum CaptureErrors {
 
   /// null pointer. Could happens when passing a non initialized
   /// pointer (with calloc()) to retrieve FFT or wave data
+  failedToStartDevice,
+
+  /// null pointer. Could happens when passing a non initialized
+  /// pointer (with calloc()) to retrieve FFT or wave data
   nullPointer;
 
   /// Returns a human-friendly sentence describing the error.
@@ -37,10 +41,11 @@ enum CaptureErrors {
         return 'Capture failed to initialize';
       case CaptureErrors.captureNotInited:
         return 'Capture not yet initialized';
+      case CaptureErrors.failedToStartDevice:
+        return 'Failed to start capture device.';
       case CaptureErrors.nullPointer:
         return 'Capture null pointer error. Could happens when passing a non '
-            'initialized pointer (with calloc()) to retrieve FFT or wave data. '
-            'Or, setVisualization has not been enabled.';
+            'initialized pointer (with calloc()) to retrieve FFT or wave data.';
     }
   }
 

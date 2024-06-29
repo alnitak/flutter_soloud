@@ -1,6 +1,5 @@
-import 'dart:ffi' as ffi;
-
 import 'package:flutter/material.dart';
+import 'package:flutter_soloud/flutter_soloud.dart';
 
 /// Draw the audio wave data
 ///
@@ -12,14 +11,12 @@ class BarsWaveWidget extends StatelessWidget {
     super.key,
   });
 
-  final ffi.Pointer<ffi.Float> audioData;
+  final AudioData audioData;
   final double width;
   final double height;
 
   @override
   Widget build(BuildContext context) {
-    if (audioData.address == 0x0) return const SizedBox.shrink();
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -45,7 +42,7 @@ class WavePainter extends CustomPainter {
   const WavePainter({
     required this.audioData,
   });
-  final ffi.Pointer<ffi.Float> audioData;
+  final AudioData audioData;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -56,7 +53,20 @@ class WavePainter extends CustomPainter {
       ..style = PaintingStyle.stroke;
 
     for (var i = 0; i < 256; i++) {
-      final barHeight = size.height * audioData[i + 256];
+      late final double barHeight;
+      try {
+        final double data;
+        if (audioData.getSamplesKind == GetSamplesKind.wave) {
+          data = audioData.getWave(SampleWave(i));
+        } else if (audioData.getSamplesKind == GetSamplesKind.linear) {
+          data = audioData.getLinearWave(SampleLinear(i));
+        } else {
+          data = audioData.getTexture(SampleRow(0), SampleColumn(i+256));
+        }
+        barHeight = size.height * data;
+      } on Exception {
+        barHeight = 0;
+      }
       canvas.drawRect(
         Rect.fromLTWH(
           barWidth * i,
