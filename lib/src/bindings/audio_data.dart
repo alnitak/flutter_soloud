@@ -19,13 +19,14 @@ enum GetSamplesFrom {
 
 /// The way the audio data should be acquired.
 ///
-/// Every time [AudioData.updateSamples] is called is possible to query the
-/// acquired new audio data using respectively [AudioData.getLinear],
-/// [AudioData.getTexture] and [AudioData.getWave].
+/// Every time [AudioData.updateSamples] is called it is possible to query the
+/// acquired new audio data using [AudioData.getLinearFft],
+/// [AudioData.getLinearWave], [AudioData.getTexture] or [AudioData.getWave].
 enum GetSamplesKind {
   /// Get data in a linear manner: the first 256 floats are audio FFI values,
   /// the other 256 are audio wave samples.
-  /// To get the audio data use [AudioData.getLinear].
+  /// To get the audio data use [AudioData.getLinearFft] or
+  /// [AudioData.getLinearWave].
   linear,
 
   /// Get data in a 2D way. The resulting data will be a matrix of 256
@@ -50,9 +51,9 @@ enum GetSamplesKind {
 /// IMPORTANT: remember to call [dispose] method when there is no more need
 /// to acquire audio.
 ///
-/// After calling [updateSamples] is possible to call [getLinear] or [getTexture]
-/// and have back the audio samples. For example using a "Ticker" in a Widget
-/// that needs the audio data to be displayed:
+/// After calling [updateSamples] it's possible to call the proper getter
+/// to have back the audio samples. For example using a "Ticker"
+/// in a Widget that needs the audio data to be displayed:
 /// ```
 /// ...
 /// late final Ticker ticker;
@@ -91,8 +92,8 @@ enum GetSamplesKind {
 /// try {
 ///   /// Use [getTexture] if you have inizialized [AudioData]
 ///   /// with [GetSamplesKind.texture]
-///   ffiData = audioData.getLinear(i);
-///   waveData = audioData.getLinear(i+256);
+///   ffiData = audioData.getLinearFft(i);
+///   waveData = audioData.getLinearWave(i);
 /// } on Exception {
 ///   ffiData = 0;
 ///   waveData = 0;
@@ -114,31 +115,32 @@ class AudioData {
     switch (_getSamplesFrom) {
       case GetSamplesFrom.player:
         switch (_getSamplesKind) {
+          case GetSamplesKind.wave:
+            _updateCallback = ctrl.waveCallback;
+            _samplesWave = ctrl.allocSampleWave();
           case GetSamplesKind.linear:
             _updateCallback = ctrl.textureCallback;
             _samples1D = ctrl.allocSample1D();
           case GetSamplesKind.texture:
             _updateCallback = ctrl.texture2DCallback;
             _samples2D = ctrl.allocSample2D();
-          case GetSamplesKind.wave:
-            _updateCallback = ctrl.waveCallback;
-            _samplesWave = ctrl.allocSampleWave();
         }
       case GetSamplesFrom.microphone:
         switch (_getSamplesKind) {
+          case GetSamplesKind.wave:
+            _updateCallback = ctrl.captureWaveCallback;
+            _samplesWave = ctrl.allocSampleWave();
           case GetSamplesKind.linear:
             _updateCallback = ctrl.captureAudioTextureCallback;
             _samples1D = ctrl.allocSample1D();
           case GetSamplesKind.texture:
             _updateCallback = ctrl.captureTexture2DCallback;
             _samples2D = ctrl.allocSample2D();
-          case GetSamplesKind.wave:
-            _updateCallback = ctrl.captureWaveCallback;
-            _samplesWave = ctrl.allocSampleWave();
         }
     }
   }
 
+  /// The controller used to allocate, dispose and get audio data.
   @internal
   final AudioDataCtrl ctrl;
 
@@ -165,10 +167,14 @@ class AudioData {
 
   /// Where to get audio samples. See [GetSamplesFrom].
   final GetSamplesFrom _getSamplesFrom;
+
+  /// The current device to acquire data.
   GetSamplesFrom get getSamplesFrom => _getSamplesFrom;
 
   /// Kind of audio samples. See [GetSamplesKind].
   final GetSamplesKind _getSamplesKind;
+
+  /// The current type of data to acquire.
   GetSamplesKind get getSamplesKind => _getSamplesKind;
 
   /// The callback used to get new audio samples.
@@ -179,12 +185,12 @@ class AudioData {
   /// Update the content of samples memory to be get with [getLinear]
   /// or [getTexture].
   ///
-  /// When using [GetSamplesFrom.microphone] throws 
+  /// When using [GetSamplesFrom.microphone] throws
   /// [SoLoudCaptureNotYetInitializededException] if the capture is
   /// not initialized.
-  /// When using [GetSamplesFrom.player] throws [SoLoudNotInitializedException] 
+  /// When using [GetSamplesFrom.player] throws [SoLoudNotInitializedException]
   /// if the engine is not initialized.
-  /// When using [GetSamplesFrom.player] throws 
+  /// When using [GetSamplesFrom.player] throws
   /// [SoLoudVisualizationNotEnabledException] if the visualization
   /// flag is not enableb. Please, Use `setVisualizationEnabled(true)`
   /// when needed.
@@ -193,18 +199,6 @@ class AudioData {
   /// [GitHub](https://github.com/alnitak/flutter_soloud/issues) providing
   /// a simple working example.
   void updateSamples() {
-    if (getSamplesFrom == GetSamplesFrom.microphone &&
-        !SoLoudController().captureFFI.isCaptureInited()) {
-      throw const SoLoudCaptureNotYetInitializededException();
-    }
-    if (getSamplesFrom == GetSamplesFrom.player &&
-        !SoLoudController().soLoudFFI.isInited()) {
-      throw const SoLoudNotInitializedException();
-    }
-    if (getSamplesFrom == GetSamplesFrom.player &&
-        !SoLoudController().soLoudFFI.getVisualizationEnabled()) {
-      throw const SoLoudVisualizationNotEnabledException();
-    }
     _updateCallback(this);
   }
 
@@ -214,10 +208,10 @@ class AudioData {
     ctrl.dispose(_samples1D, _samples2D);
   }
 
-  /// Get the wave data at offset [offset.]
-  /// 
+  /// Get the wave data at offset [offset].
+  ///
   /// Use this method to get data when using [GetSamplesKind.linear].
-  /// The data is composed of 256 floats. 
+  /// The data is composed of 256 floats.
   double getWave(SampleWave offset) {
     if (_getSamplesKind != GetSamplesKind.wave) return 0;
 
@@ -227,23 +221,42 @@ class AudioData {
     return ctrl.getWave(_samplesWave, offset);
   }
 
-  /// Get the audio data at offset [offset].
-  /// 
-  /// Use this method to get data when using [GetSamplesKind.linear].
-  /// The first 256 float represents FFT data, the other 256 are wave data.
-  double getLinear(SampleLinear offset) {
-    if (_getSamplesKind != GetSamplesKind.linear) return 0;
+  /// Get the FFT audio data at offset [offset].
+  ///
+  /// Use this method to get FFT data when using [GetSamplesKind.linear].
+  /// The data is composed of 256 floats.
+  double getLinearFft(SampleLinear offset) {
+    if (_getSamplesKind != GetSamplesKind.linear || _samples1D == null) {
+      return 0;
+    }
 
-    if (!SoLoudController().soLoudFFI.getVisualizationEnabled()) {
+    if (_getSamplesFrom == GetSamplesFrom.player &&
+        !SoLoudController().soLoudFFI.getVisualizationEnabled()) {
       throw const SoLoudVisualizationNotEnabledException();
     }
-    return ctrl.getLinear(_samples1D, offset);
+    return ctrl.getLinearFft(_samples1D!, offset);
+  }
+
+  /// Get the wave audio data at offset [offset].
+  ///
+  /// Use this method to get wave data when using [GetSamplesKind.linear].
+  /// The data is composed of 256 floats.
+  double getLinearWave(SampleLinear offset) {
+    if (_getSamplesKind != GetSamplesKind.linear || _samples1D == null) {
+      return 0;
+    }
+
+    if (_getSamplesFrom == GetSamplesFrom.player &&
+        !SoLoudController().soLoudFFI.getVisualizationEnabled()) {
+      throw const SoLoudVisualizationNotEnabledException();
+    }
+    return ctrl.getLinearWave(_samples1D!, offset);
   }
 
   /// Get the audio data at row [row] and column [column].
   /// Use this method to get data when using [GetSamplesKind.texture].
-  /// This matrix represents 256 rows alike the [getLinear] manages when
-  /// using [GetSamplesKind.linear].
+  /// This matrix represents 256 rows. Each rows is represented by 256 floats
+  /// of FFT data and 256 floats of wave data.
   /// Each time the [AudioData.updateSamples] method is called,
   /// the last row is discarded and the new one will be the first.
   double getTexture(SampleRow row, SampleColumn column) {

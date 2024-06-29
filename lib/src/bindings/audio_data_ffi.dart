@@ -57,13 +57,23 @@ class AudioDataCtrl {
     return (val + offset.value).value;
   }
 
-  double getLinear(SampleFormat1D s1D, SampleLinear offset) {
+  double getLinearFft(SampleFormat1D s1D, SampleLinear offset) {
     return s1D[offset.value];
   }
 
-  double getTexture(SampleFormat2D s2D, SampleRow row, SampleColumn column) {
+  double getLinearWave(SampleFormat1D s1D, SampleLinear offset) {
+    return s1D[offset.value + 256];
+  }
+
+  double getTexture(
+    SampleFormat2D s2D,
+    GetSamplesFrom getSamplesFrom,
+    SampleRow row,
+    SampleColumn column,
+  ) {
     const stride = 512;
     final val = s2D.value;
+    if (val == nullptr) return 0;
     return val[stride * row.value + column.value];
   }
 

@@ -1,3 +1,5 @@
+// ignore_for_file: public_member_api_docs
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_soloud/src/bindings/audio_data.dart';
 import 'package:flutter_soloud/src/bindings/js_extension.dart';
@@ -57,8 +59,14 @@ class AudioDataCtrl {
     return wasmGetF32Value(samplePtr + offset.value * 4, 'float');
   }
 
-  double getLinear(SampleFormat1D s1D, SampleLinear offset) {
+  double getLinearFft(SampleFormat1D s1D, SampleLinear offset) {
     final data = wasmGetF32Value(_samplesPtr + offset.value * 4, 'float');
+    return data;
+  }
+
+  double getLinearWave(SampleFormat1D s1D, SampleLinear offset) {
+    final data =
+        wasmGetF32Value(_samplesPtr + offset.value * 4 + 256 * 4, 'float');
     return data;
   }
 
