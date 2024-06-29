@@ -1,1 +1,0 @@
-dart compile js -O0 -o worker.dart.js ./worker.dart

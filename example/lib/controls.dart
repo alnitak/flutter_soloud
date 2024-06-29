@@ -1,6 +1,6 @@
 import 'dart:async';
+import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -29,8 +29,8 @@ class _ControlsState extends State<Controls> {
   // ignore: avoid_positional_boolean_parameters
   ButtonStyle buttonStyle(bool enabled) {
     return enabled
-        ? ButtonStyle(backgroundColor: WidgetStateProperty.all(Colors.green))
-        : ButtonStyle(backgroundColor: WidgetStateProperty.all(Colors.red));
+        ? ButtonStyle(backgroundColor: MaterialStateProperty.all(Colors.green))
+        : ButtonStyle(backgroundColor: MaterialStateProperty.all(Colors.red));
   }
 
   @override
@@ -49,8 +49,7 @@ class _ControlsState extends State<Controls> {
             ElevatedButton(
               onPressed: () async {
                 /// Ask recording permission on mobile
-                if (defaultTargetPlatform == TargetPlatform.android ||
-                    defaultTargetPlatform == TargetPlatform.iOS) {
+                if (Platform.isAndroid || Platform.isIOS) {
                   final p = await Permission.microphone.isGranted;
                   if (!p) {
                     unawaited(Permission.microphone.request());
@@ -77,8 +76,9 @@ class _ControlsState extends State<Controls> {
                   blurSigmaX: 6,
                   blurSigmaY: 6,
                 ),
-                linearShapeParams: const LinearShapeParams(
+                linearShapeParams: LinearShapeParams(
                   angle: -90,
+                  space: Platform.isAndroid || Platform.isIOS ? -10 : 10,
                   alignment: LinearAlignment.left,
                 ),
               ),

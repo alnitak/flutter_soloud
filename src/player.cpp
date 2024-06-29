@@ -329,16 +329,22 @@ unsigned int Player::play(
     bool looping,
     double loopingStartAt)
 {
+    // printf("*** PLAYER:PLAY() sounds length: %d  looking for hash: %u\n", sounds.size(), soundHash);
+
+    // for (int i = 0; i < sounds.size(); i++)
+    //     printf("*** PLAYER:PLAY()1 sounds hash: %u\n", sounds[i].get()->soundHash);
+
     auto const &s = std::find_if(
         sounds.begin(), sounds.end(),
         [&](std::shared_ptr<ActiveSound> const &f)
-        { return f->soundHash == soundHash; });
+        { 
+        // printf("*** PLAYER:PLAY() sound1 hash: %u\n", f->soundHash);
+        return f->soundHash == soundHash; });
 
     if (s == sounds.end())
         return 0;
 
     ActiveSound *sound = s->get();
-
     SoLoud::handle newHandle = soloud.play(
         *sound->sound.get(), volume, pan, paused, 0);
     if (newHandle != 0)

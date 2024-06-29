@@ -1,6 +1,6 @@
 /*
 Audio playback and capture library. Choice of public domain or MIT-0. See license statements at the end of this file.
-miniaudio - v0.11.21 - 2023-11-15
+miniaudio - v0.11.22 - TBD
 
 David Reid - mackron@gmail.com
 
@@ -293,7 +293,7 @@ avoids the same sound being loaded multiple times.
 
 The node graph is used for mixing and effect processing. The idea is that you connect a number of
 nodes into the graph by connecting each node's outputs to another node's inputs. Each node can
-implement it's own effect. By chaining nodes together, advanced mixing and effect processing can
+implement its own effect. By chaining nodes together, advanced mixing and effect processing can
 be achieved.
 
 The engine encapsulates both the resource manager and the node graph to create a simple, easy to
@@ -398,7 +398,7 @@ the be started and/or stopped at a specific time. This can be done with the foll
     ```
 
 The start/stop time needs to be specified based on the absolute timer which is controlled by the
-engine. The current global time time in PCM frames can be retrieved with
+engine. The current global time in PCM frames can be retrieved with
 `ma_engine_get_time_in_pcm_frames()`. The engine's global time can be changed with
 `ma_engine_set_time_in_pcm_frames()` for synchronization purposes if required. Note that scheduling
 a start time still requires an explicit call to `ma_sound_start()` before anything will play:
@@ -1309,7 +1309,7 @@ only works for sounds that were initialized with `ma_sound_init_from_file()` and
 
 When you initialize a sound, if you specify a sound group the sound will be attached to that group
 automatically. If you set it to NULL, it will be automatically attached to the engine's endpoint.
-If you would instead rather leave the sound unattached by default, you can can specify the
+If you would instead rather leave the sound unattached by default, you can specify the
 `MA_SOUND_FLAG_NO_DEFAULT_ATTACHMENT` flag. This is useful if you want to set up a complex node
 graph.
 
@@ -1564,22 +1564,28 @@ formats through the use of custom decoders. To do so, pass in your `ma_decoding_
 vtables into the resource manager config:
 
     ```c
-    ma_decoding_backend_vtable* pCustomBackendVTables[] =
+    ma_decoding_backend_vtable* pBackendVTables[] =
     {
-        &g_ma_decoding_backend_vtable_libvorbis,
-        &g_ma_decoding_backend_vtable_libopus
+        ma_decoding_backend_libvorbis,  // Custom
+        ma_decoding_backend_libopus,    // Custom
+        ma_decoding_backend_wav,        // Stock
+        ma_decoding_backend_flac,       // Stock
+        ma_decoding_backend_mp3         // Stock
     };
 
     ...
 
-    resourceManagerConfig.ppCustomDecodingBackendVTables = pCustomBackendVTables;
-    resourceManagerConfig.customDecodingBackendCount     = sizeof(pCustomBackendVTables) / sizeof(pCustomBackendVTables[0]);
-    resourceManagerConfig.pCustomDecodingBackendUserData = NULL;
+    resourceManagerConfig.ppDecodingBackendVTables = pBackendVTables;
+    resourceManagerConfig.decodingBackendCount     = sizeof(pBackendVTables) / sizeof(pBackendVTables[0]);
     ```
 
-This system can allow you to support any kind of file format. See the "Decoding" section for
-details on how to implement custom decoders. The miniaudio repository includes examples for Opus
-via libopus and libopusfile and Vorbis via libvorbis and libvorbisfile.
+Note that when specifying a decoding backend, you need to specify every backend you want to
+support, including stock backends. If `resourceManagerConfig.ppDecodingBackendVTables` is set to
+null, only stock backends will be used, and will be in a fixed order of priority. The order in
+which you list the backends in `resourceManagerConfig.ppDecodingBackendVTables` is the priority
+order. This system can allow you to support any kind of file format in any priority you like. See
+the "Decoding" section for details on how to implement custom decoders. The miniaudio repository
+includes examples for Opus via libopus and libopusfile and Vorbis via libvorbis and libvorbisfile.
 
 Asynchronicity is achieved via a job system. When an operation needs to be performed, such as the
 decoding of a page, a job will be posted to a queue which will then be processed by a job thread.
@@ -1686,6 +1692,7 @@ combination of the following flags:
     MA_RESOURCE_MANAGER_DATA_SOURCE_FLAG_DECODE
     MA_RESOURCE_MANAGER_DATA_SOURCE_FLAG_ASYNC
     MA_RESOURCE_MANAGER_DATA_SOURCE_FLAG_WAIT_INIT
+    MA_RESOURCE_MANAGER_DATA_SOURCE_FLAG_LOOPING
     ```
 
 When no flags are specified (set to 0), the sound will be fully loaded into memory, but not
@@ -1706,6 +1713,14 @@ can instead stream audio data which you can do by specifying the
 second pages. When a new page needs to be decoded, a job will be posted to the job queue and then
 subsequently processed in a job thread.
 
+The `MA_RESOURCE_MANAGER_DATA_SOURCE_FLAG_LOOPING` flag can be used so that the sound will loop
+when it reaches the end by default. It's recommended you use this flag when you want to have a
+looping streaming sound. If you try loading a very short sound as a stream, you will get a glitch.
+This is because the resource manager needs to pre-fill the initial buffer at initialization time,
+and if you don't specify the `MA_RESOURCE_MANAGER_DATA_SOURCE_FLAG_LOOPING` flag, the resource
+manager will assume the sound is not looping and will stop filling the buffer when it reaches the
+end, therefore resulting in a discontinuous buffer.
+
 For in-memory sounds, reference counting is used to ensure the data is loaded only once. This means
 multiple calls to `ma_resource_manager_data_source_init()` with the same file path will result in
 the file data only being loaded once. Each call to `ma_resource_manager_data_source_init()` must be
@@ -1720,7 +1735,7 @@ actual file paths. When `ma_resource_manager_data_source_init()` is called (with
 `MA_RESOURCE_MANAGER_DATA_SOURCE_FLAG_STREAM` flag), the resource manager will look for these
 explicitly registered data buffers and, if found, will use it as the backing data for the data
 source. Note that the resource manager does *not* make a copy of this data so it is up to the
-caller to ensure the pointer stays valid for it's lifetime. Use
+caller to ensure the pointer stays valid for its lifetime. Use
 `ma_resource_manager_unregister_data()` to unregister the self-managed data. You can also use
 `ma_resource_manager_register_file()` and `ma_resource_manager_unregister_file()` to register and
 unregister a file. It does not make sense to use the `MA_RESOURCE_MANAGER_DATA_SOURCE_FLAG_STREAM`
@@ -2031,7 +2046,7 @@ In the above graph, it starts with two data sources whose outputs are attached t
 splitter node. It's at this point that the two data sources are mixed. After mixing, the splitter
 performs it's processing routine and produces two outputs which is simply a duplication of the
 input stream. One output is attached to a low pass filter, whereas the other output is attached to
-a echo/delay. The outputs of the the low pass filter and the echo are attached to the endpoint, and
+a echo/delay. The outputs of the low pass filter and the echo are attached to the endpoint, and
 since they're both connected to the same input bus, they'll be mixed.
 
 Each input bus must be configured to accept the same number of channels, but the number of channels
@@ -2072,7 +2087,7 @@ data from the graph:
     ```
 
 When you read audio data, miniaudio starts at the node graph's endpoint node which then pulls in
-data from it's input attachments, which in turn recursively pull in data from their inputs, and so
+data from its input attachments, which in turn recursively pull in data from their inputs, and so
 on. At the start of the graph there will be some kind of data source node which will have zero
 inputs and will instead read directly from a data source. The base nodes don't literally need to
 read from a `ma_data_source` object, but they will always have some kind of underlying object that
@@ -2318,7 +2333,7 @@ You can start and stop a node with the following:
 
 By default the node is in a started state, but since it won't be connected to anything won't
 actually be invoked by the node graph until it's connected. When you stop a node, data will not be
-read from any of it's input connections. You can use this property to stop a group of sounds
+read from any of its input connections. You can use this property to stop a group of sounds
 atomically.
 
 You can configure the initial state of a node in it's config:
@@ -2411,29 +2426,29 @@ audio thread is finished so that control is not handed back to the caller thereb
 chance to free the node's memory.
 
 When the audio thread is processing a node, it does so by reading from each of the output buses of
-the node. In order for a node to process data for one of it's output buses, it needs to read from
-each of it's input buses, and so on an so forth. It follows that once all output buses of a node
+the node. In order for a node to process data for one of its output buses, it needs to read from
+each of its input buses, and so on an so forth. It follows that once all output buses of a node
 are detached, the node as a whole will be disconnected and no further processing will occur unless
 it's output buses are reattached, which won't be happening when the node is being uninitialized.
 By having `ma_node_detach_output_bus()` wait until the audio thread is finished with it, we can
 simplify a few things, at the expense of making `ma_node_detach_output_bus()` a bit slower. By
 doing this, the implementation of `ma_node_uninit()` becomes trivial - just detach all output
-nodes, followed by each of the attachments to each of it's input nodes, and then do any final clean
+nodes, followed by each of the attachments to each of its input nodes, and then do any final clean
 up.
 
 With the above design, the worst-case scenario is `ma_node_detach_output_bus()` taking as long as
 it takes to process the output bus being detached. This will happen if it's called at just the
 wrong moment where the audio thread has just iterated it and has just started processing. The
 caller of `ma_node_detach_output_bus()` will stall until the audio thread is finished, which
-includes the cost of recursively processing it's inputs. This is the biggest compromise made with
-the approach taken by miniaudio for it's lock-free processing system. The cost of detaching nodes
+includes the cost of recursively processing its inputs. This is the biggest compromise made with
+the approach taken by miniaudio for its lock-free processing system. The cost of detaching nodes
 earlier in the pipeline (data sources, for example) will be cheaper than the cost of detaching
 higher level nodes, such as some kind of final post-processing endpoint. If you need to do mass
 detachments, detach starting from the lowest level nodes and work your way towards the final
 endpoint node (but don't try detaching the node graph's endpoint). If the audio thread is not
 running, detachment will be fast and detachment in any order will be the same. The reason nodes
 need to wait for their input attachments to complete is due to the potential for desyncs between
-data sources. If the node was to terminate processing mid way through processing it's inputs,
+data sources. If the node was to terminate processing mid way through processing its inputs,
 there's a chance that some of the underlying data sources will have been read, but then others not.
 That will then result in a potential desynchronization when detaching and reattaching higher-level
 nodes. A possible solution to this is to have an option when detaching to terminate processing
@@ -2577,19 +2592,24 @@ A custom decoder must implement a data source. A vtable called `ma_decoding_back
 to be implemented which is then passed into the decoder config:
 
     ```c
-    ma_decoding_backend_vtable* pCustomBackendVTables[] =
+    ma_decoding_backend_vtable* pBackendVTables[] =
     {
-        &g_ma_decoding_backend_vtable_libvorbis,
-        &g_ma_decoding_backend_vtable_libopus
+        ma_decoding_backend_libvorbis,
+        ma_decoding_backend_libopus,
+        ma_decoding_backend_wav,
+        ma_decoding_backend_flac,
+        ma_decoding_backend_mp3
     };
 
     ...
 
     decoderConfig = ma_decoder_config_init_default();
-    decoderConfig.pCustomBackendUserData = NULL;
-    decoderConfig.ppCustomBackendVTables = pCustomBackendVTables;
-    decoderConfig.customBackendCount     = sizeof(pCustomBackendVTables) / sizeof(pCustomBackendVTables[0]);
+    decoderConfig.ppBackendVTables = pBackendVTables;
+    decoderConfig.backendCount     = sizeof(pCustomBackendVTables) / sizeof(pCustomBackendVTables[0]);
     ```
+
+Note that when specify your own decoding backends, you must explicitly include any stock backends
+you want to use, and in the order in which you want them to be tried.
 
 The `ma_decoding_backend_vtable` vtable has the following functions:
 
@@ -2598,7 +2618,8 @@ The `ma_decoding_backend_vtable` vtable has the following functions:
     onInitFile
     onInitFileW
     onInitMemory
-    onUninit
+    onUninit,
+    onGetEncodingFormat
     ```
 
 There are only two functions that must be implemented - `onInit` and `onUninit`. The other
@@ -2630,6 +2651,14 @@ initialization routine is clean.
 
 When a decoder is uninitialized, the `onUninit` callback will be fired which will give you an
 opportunity to clean up and internal data.
+
+The `onGetEncodingFormat` function is used to retrieve the encoding format of the data source. This
+is used as a hint to help miniaudio determine which decoding backend to use. If you don't know the
+encoding format, you can return `ma_encoding_format_unknown` and miniaudio will deal with it for
+you through trial and error.
+
+The miniaudio repository includes some examples of custom decoders in the "extras" folder. The
+"custom_decoder" example demonstrates how to use a custom decoder with miniaudio.
 
 
 
@@ -2804,7 +2833,7 @@ weights. Custom weights can be passed in as the last parameter of
 `ma_channel_converter_config_init()`.
 
 Predefined channel maps can be retrieved with `ma_channel_map_init_standard()`. This takes a
-`ma_standard_channel_map` enum as it's first parameter, which can be one of the following:
+`ma_standard_channel_map` enum as its first parameter, which can be one of the following:
 
     +-----------------------------------+-----------------------------------------------------------+
     | Name                              | Description                                               |
@@ -3723,7 +3752,7 @@ extern "C" {
 
 #define MA_VERSION_MAJOR    0
 #define MA_VERSION_MINOR    11
-#define MA_VERSION_REVISION 21
+#define MA_VERSION_REVISION 22
 #define MA_VERSION_STRING   MA_XSTRINGIFY(MA_VERSION_MAJOR) "." MA_XSTRINGIFY(MA_VERSION_MINOR) "." MA_XSTRINGIFY(MA_VERSION_REVISION)
 
 #if defined(_MSC_VER) && !defined(__clang__)
@@ -3805,7 +3834,7 @@ typedef void* ma_handle;
 typedef void* ma_ptr;
 
 /*
-ma_proc is annoying because when compiling with GCC we get pendantic warnings about converting
+ma_proc is annoying because when compiling with GCC we get pedantic warnings about converting
 between `void*` and `void (*)()`. We can't use `void (*)()` with MSVC however, because we'll get
 warning C4191 about "type cast between incompatible function types". To work around this I'm going
 to use a different data type depending on the compiler.
@@ -3999,13 +4028,73 @@ Special wchar_t type to ensure any structures in the public sections that refere
 consistent size across all platforms.
 
 On Windows, wchar_t is 2 bytes, whereas everywhere else it's 4 bytes. Since Windows likes to use
-wchar_t for it's IDs, we need a special explicitly sized wchar type that is always 2 bytes on all
+wchar_t for its IDs, we need a special explicitly sized wchar type that is always 2 bytes on all
 platforms.
 */
 #if !defined(MA_POSIX) && defined(MA_WIN32)
 typedef wchar_t     ma_wchar_win32;
 #else
 typedef ma_uint16   ma_wchar_win32;
+#endif
+
+
+
+/*
+Basic Functions
+===============
+These are mainly for custom backends so they can make use of some useful functionality without having
+to reimplement it themselves.
+*/
+#define ma_countof(x)                   (sizeof(x) / sizeof(x[0]))
+#define ma_max(x, y)                    (((x) > (y)) ? (x) : (y))
+#define ma_min(x, y)                    (((x) < (y)) ? (x) : (y))
+#define ma_abs(x)                       (((x) > 0) ? (x) : -(x))
+#define ma_clamp(x, lo, hi)             (ma_max(lo, ma_min(x, hi)))
+#define ma_offset_ptr(p, offset)        (((ma_uint8*)(p)) + (offset))
+#define ma_align(x, a)                  ((x + (a-1)) & ~(a-1))
+#define ma_align_64(x)                  ma_align(x, 8)
+
+MA_API MA_NO_INLINE int ma_strncpy_s(char* dst, size_t dstSizeInBytes, const char* src, size_t count);
+
+/* Thanks to good old Bit Twiddling Hacks for this one: http://graphics.stanford.edu/~seander/bithacks.html#RoundUpPowerOf2 */
+static MA_INLINE unsigned int ma_next_power_of_2(unsigned int x)
+{
+    x--;
+    x |= x >> 1;
+    x |= x >> 2;
+    x |= x >> 4;
+    x |= x >> 8;
+    x |= x >> 16;
+    x++;
+
+    return x;
+}
+
+
+
+
+/*
+Default Data Formats
+====================
+These are made public for custom backends so they can consistently make use of standard defaults. The only
+time you should be using these are within the implementations of custom backends. It's not recommended to
+use these directly in a device config. Instead set them to ma_format_f32 (for format) and 0 for channels and
+sample rate.
+*/
+
+/* The default format when ma_format_unknown (0) is requested when initializing a device. */
+#ifndef MA_DEFAULT_FORMAT
+#define MA_DEFAULT_FORMAT       ma_format_f32
+#endif
+
+/* The default channel count to use when 0 is used when initializing a device. */
+#ifndef MA_DEFAULT_CHANNELS
+#define MA_DEFAULT_CHANNELS     2
+#endif
+
+/* The default sample rate to use when 0 is used when initializing a device. */
+#ifndef MA_DEFAULT_SAMPLE_RATE
+#define MA_DEFAULT_SAMPLE_RATE  48000
 #endif
 
 
@@ -4025,7 +4114,7 @@ MA_LOG_LEVEL_INFO
     callback.
 
 MA_LOG_LEVEL_WARNING
-    Warnings. You should enable this in you development builds and action them when encounted. These
+    Warnings. You should enable this in you development builds and action them when encountered. These
     logs usually indicate a potential problem or misconfiguration, but still allow you to keep
     running. This will never be called from within the data callback.
 
@@ -4529,6 +4618,20 @@ MA_API ma_result ma_log_postv(ma_log* pLog, ma_uint32 level, const char* pFormat
 MA_API ma_result ma_log_postf(ma_log* pLog, ma_uint32 level, const char* pFormat, ...) MA_ATTRIBUTE_FORMAT(3, 4);
 
 
+
+/**************************************************************************************************************************************************************
+
+Dynamic Linking
+
+These functions are available for use by custom backends so they can dynamically link to their backend libraries at runtime.
+
+**************************************************************************************************************************************************************/
+MA_API ma_handle ma_dlopen(ma_log* pLog, const char* filename);
+MA_API void ma_dlclose(ma_log* pLog, ma_handle handle);
+MA_API ma_proc ma_dlsym(ma_log* pLog, ma_handle handle, const char* symbol);
+
+
+
 /**************************************************************************************************************************************************************
 
 Biquad Filtering
@@ -4951,8 +5054,6 @@ typedef struct
     ma_uint32 sampleRate;
     ma_uint32 delayInFrames;
     ma_bool32 delayStart;       /* Set to true to delay the start of the output; false otherwise. */
-    float wet;                  /* 0..1. Default = 1. */
-    float dry;                  /* 0..1. Default = 1. */
     float decay;                /* 0..1. Default = 0 (no feedback). Feedback decay. Use this for echo. */
 } ma_delay_config;
 
@@ -4970,10 +5071,6 @@ typedef struct
 MA_API ma_result ma_delay_init(const ma_delay_config* pConfig, const ma_allocation_callbacks* pAllocationCallbacks, ma_delay* pDelay);
 MA_API void ma_delay_uninit(ma_delay* pDelay, const ma_allocation_callbacks* pAllocationCallbacks);
 MA_API ma_result ma_delay_process_pcm_frames(ma_delay* pDelay, void* pFramesOut, const void* pFramesIn, ma_uint32 frameCount);
-MA_API void ma_delay_set_wet(ma_delay* pDelay, float value);
-MA_API float ma_delay_get_wet(const ma_delay* pDelay);
-MA_API void ma_delay_set_dry(ma_delay* pDelay, float value);
-MA_API float ma_delay_get_dry(const ma_delay* pDelay);
 MA_API void ma_delay_set_decay(ma_delay* pDelay, float value);
 MA_API float ma_delay_get_decay(const ma_delay* pDelay);
 
@@ -5457,7 +5554,7 @@ input frames.
 MA_API ma_result ma_resampler_get_expected_output_frame_count(const ma_resampler* pResampler, ma_uint64 inputFrameCount, ma_uint64* pOutputFrameCount);
 
 /*
-Resets the resampler's timer and clears it's internal cache.
+Resets the resampler's timer and clears its internal cache.
 */
 MA_API ma_result ma_resampler_reset(ma_resampler* pResampler);
 
@@ -5678,7 +5775,7 @@ MA_API void ma_channel_map_init_standard(ma_standard_channel_map standardChannel
 /*
 Copies a channel map.
 
-Both input and output channel map buffers must have a capacity of at at least `channels`.
+Both input and output channel map buffers must have a capacity of at least `channels`.
 */
 MA_API void ma_channel_map_copy(ma_channel* pOut, const ma_channel* pIn, ma_uint32 channels);
 
@@ -5847,10 +5944,10 @@ typedef struct
     const void* pData;
 } ma_audio_buffer_ref;
 
-MA_API ma_result ma_audio_buffer_ref_init(ma_format format, ma_uint32 channels, const void* pData, ma_uint64 sizeInFrames, ma_audio_buffer_ref* pAudioBufferRef);
+MA_API ma_result ma_audio_buffer_ref_init(ma_format format, ma_uint32 channels, ma_uint32 sampleRate, const void* pData, ma_uint64 sizeInFrames, ma_audio_buffer_ref* pAudioBufferRef);
 MA_API void ma_audio_buffer_ref_uninit(ma_audio_buffer_ref* pAudioBufferRef);
 MA_API ma_result ma_audio_buffer_ref_set_data(ma_audio_buffer_ref* pAudioBufferRef, const void* pData, ma_uint64 sizeInFrames);
-MA_API ma_uint64 ma_audio_buffer_ref_read_pcm_frames(ma_audio_buffer_ref* pAudioBufferRef, void* pFramesOut, ma_uint64 frameCount, ma_bool32 loop);
+MA_API ma_result ma_audio_buffer_ref_read_pcm_frames(ma_audio_buffer_ref* pAudioBufferRef, void* pFramesOut, ma_uint64 frameCount, ma_uint64* pFramesRead);
 MA_API ma_result ma_audio_buffer_ref_seek_to_pcm_frame(ma_audio_buffer_ref* pAudioBufferRef, ma_uint64 frameIndex);
 MA_API ma_result ma_audio_buffer_ref_map(ma_audio_buffer_ref* pAudioBufferRef, void** ppFramesOut, ma_uint64* pFrameCount);
 MA_API ma_result ma_audio_buffer_ref_unmap(ma_audio_buffer_ref* pAudioBufferRef, ma_uint64 frameCount);    /* Returns MA_AT_END if the end has been reached. This should be considered successful. */
@@ -5871,7 +5968,7 @@ typedef struct
     ma_allocation_callbacks allocationCallbacks;
 } ma_audio_buffer_config;
 
-MA_API ma_audio_buffer_config ma_audio_buffer_config_init(ma_format format, ma_uint32 channels, ma_uint64 sizeInFrames, const void* pData, const ma_allocation_callbacks* pAllocationCallbacks);
+MA_API ma_audio_buffer_config ma_audio_buffer_config_init(ma_format format, ma_uint32 channels, ma_uint32 sampleRate, ma_uint64 sizeInFrames, const void* pData, const ma_allocation_callbacks* pAllocationCallbacks);
 
 typedef struct
 {
@@ -5886,7 +5983,7 @@ MA_API ma_result ma_audio_buffer_init_copy(const ma_audio_buffer_config* pConfig
 MA_API ma_result ma_audio_buffer_alloc_and_init(const ma_audio_buffer_config* pConfig, ma_audio_buffer** ppAudioBuffer);  /* Always copies the data. Doesn't make sense to use this otherwise. Use ma_audio_buffer_uninit_and_free() to uninit. */
 MA_API void ma_audio_buffer_uninit(ma_audio_buffer* pAudioBuffer);
 MA_API void ma_audio_buffer_uninit_and_free(ma_audio_buffer* pAudioBuffer);
-MA_API ma_uint64 ma_audio_buffer_read_pcm_frames(ma_audio_buffer* pAudioBuffer, void* pFramesOut, ma_uint64 frameCount, ma_bool32 loop);
+MA_API ma_result ma_audio_buffer_read_pcm_frames(ma_audio_buffer* pAudioBuffer, void* pFramesOut, ma_uint64 frameCount, ma_uint64* pFramesRead);
 MA_API ma_result ma_audio_buffer_seek_to_pcm_frame(ma_audio_buffer* pAudioBuffer, ma_uint64 frameIndex);
 MA_API ma_result ma_audio_buffer_map(ma_audio_buffer* pAudioBuffer, void** ppFramesOut, ma_uint64* pFrameCount);
 MA_API ma_result ma_audio_buffer_unmap(ma_audio_buffer* pAudioBuffer, ma_uint64 frameCount);    /* Returns MA_AT_END if the end has been reached. This should be considered successful. */
@@ -6182,6 +6279,12 @@ MA_API ma_result ma_event_wait(ma_event* pEvent);
 Signals the specified auto-reset event.
 */
 MA_API ma_result ma_event_signal(ma_event* pEvent);
+
+
+MA_API ma_result ma_semaphore_init(int initialValue, ma_semaphore* pSemaphore);
+MA_API void ma_semaphore_uninit(ma_semaphore* pSemaphore);
+MA_API ma_result ma_semaphore_wait(ma_semaphore* pSemaphore);
+MA_API ma_result ma_semaphore_release(ma_semaphore* pSemaphore);
 #endif  /* MA_NO_THREADING */
 
 
@@ -6223,6 +6326,7 @@ typedef void ma_async_notification;
 typedef struct
 {
     void (* onSignal)(ma_async_notification* pNotification);
+    void* pUserData;
 } ma_async_notification_callbacks;
 
 MA_API ma_result ma_async_notification_signal(ma_async_notification* pNotification);
@@ -6832,28 +6936,6 @@ typedef void (* ma_device_data_proc)(ma_device* pDevice, void* pOutput, const vo
 
 
 
-
-/*
-DEPRECATED. Use ma_device_notification_proc instead.
-
-The callback for when the device has been stopped.
-
-This will be called when the device is stopped explicitly with `ma_device_stop()` and also called implicitly when the device is stopped through external forces
-such as being unplugged or an internal error occurring.
-
-
-Parameters
-----------
-pDevice (in)
-    A pointer to the device that has just stopped.
-
-
-Remarks
--------
-Do not restart or uninitialize the device from the callback.
-*/
-typedef void (* ma_stop_proc)(ma_device* pDevice);  /* DEPRECATED. Use ma_device_notification_proc instead. */
-
 typedef enum
 {
     ma_device_type_playback = 1,
@@ -7007,9 +7089,19 @@ typedef union
 } ma_device_id;
 
 
-typedef struct ma_context_config    ma_context_config;
-typedef struct ma_device_config     ma_device_config;
-typedef struct ma_backend_callbacks ma_backend_callbacks;
+typedef struct ma_context_config        ma_context_config;
+typedef struct ma_device_config         ma_device_config;
+typedef struct ma_device_backend_vtable ma_device_backend_vtable;
+typedef struct ma_backend_callbacks     ma_backend_callbacks;
+
+/* For defining vtables, configs and user data pointers for custom backends. */
+typedef struct
+{
+    const ma_device_backend_vtable* pVTable;    /* The vtable of the backend. */
+    const void* pConfig;                        /* Contextual based on whether or not this is being used for a context or device. The object this points to depends on the backend. */
+    void* pUserData;                            /* User data pointer passed into each callback in the vtable. */
+} ma_device_backend_spec;
+
 
 #define MA_DATA_FORMAT_FLAG_EXCLUSIVE_MODE (1U << 1)    /* If set, this is supported in exclusive mode. Otherwise not natively supported by exclusive mode. */
 
@@ -7048,7 +7140,6 @@ struct ma_device_config
     ma_bool8 noFixedSizedCallback;      /* Disables strict fixed-sized data callbacks. Setting this to true will result in the period size being treated only as a hint to the backend. This is an optimization for those who don't need fixed sized callbacks. */
     ma_device_data_proc dataCallback;
     ma_device_notification_proc notificationCallback;
-    ma_stop_proc stopCallback;
     void* pUserData;
     ma_resampler_config resampling;
     struct
@@ -7113,6 +7204,11 @@ struct ma_device_config
         ma_bool32 noAutoStartAfterReroute;
         ma_bool32 enableCompatibilityWorkarounds;
     } aaudio;
+    struct
+    {
+        ma_device_backend_spec* pBackends;
+        size_t count;
+    } custom;
 };
 
 
@@ -7184,7 +7280,7 @@ and on output returns detailed information about the device in `ma_device_info`.
 case when the device ID is NULL, in which case information about the default device needs to be retrieved.
 
 Once the context has been created and the device ID retrieved (if using anything other than the default device), the device can be created.
-This is a little bit more complicated than initialization of the context due to it's more complicated configuration. When initializing a
+This is a little bit more complicated than initialization of the context due to its more complicated configuration. When initializing a
 device, a duplex device may be requested. This means a separate data format needs to be specified for both playback and capture. On input,
 the data format is set to what the application wants. On output it's set to the native format which should match as closely as possible to
 the requested format. The conversion between the format requested by the application and the device's native format will be handled
@@ -7205,10 +7301,10 @@ asynchronous reading and writing, `onDeviceStart()` and `onDeviceStop()` should 
 The handling of data delivery between the application and the device is the most complicated part of the process. To make this a bit
 easier, some helper callbacks are available. If the backend uses a blocking read/write style of API, the `onDeviceRead()` and
 `onDeviceWrite()` callbacks can optionally be implemented. These are blocking and work just like reading and writing from a file. If the
-backend uses a callback for data delivery, that callback must call `ma_device_handle_backend_data_callback()` from within it's callback.
+backend uses a callback for data delivery, that callback must call `ma_device_handle_backend_data_callback()` from within its callback.
 This allows miniaudio to then process any necessary data conversion and then pass it to the miniaudio data callback.
 
-If the backend requires absolute flexibility with it's data delivery, it can optionally implement the `onDeviceDataLoop()` callback
+If the backend requires absolute flexibility with its data delivery, it can optionally implement the `onDeviceDataLoop()` callback
 which will allow it to implement the logic that will run on the audio thread. This is much more advanced and is completely optional.
 
 The audio thread should run data delivery logic in a loop while `ma_device_get_state() == ma_device_state_started` and no errors have been
@@ -7240,6 +7336,32 @@ struct ma_backend_callbacks
     ma_result (* onDeviceGetInfo)(ma_device* pDevice, ma_device_type type, ma_device_info* pDeviceInfo);
 };
 
+struct ma_device_backend_vtable
+{
+    ma_result (* onContextInit            )(void* pUserData, ma_context* pContext, const ma_context_config* pConfig);
+    ma_result (* onContextUninit          )(void* pUserData, ma_context* pContext);
+    ma_result (* onContextEnumerateDevices)(void* pUserData, ma_context* pContext, ma_enum_devices_callback_proc callback, void* pCallbackUserData);
+    ma_result (* onContextGetDeviceInfo   )(void* pUserData, ma_context* pContext, ma_device_type deviceType, const ma_device_id* pDeviceID, ma_device_info* pDeviceInfo);
+    ma_result (* onDeviceInit             )(void* pUserData, ma_device* pDevice, const ma_device_config* pConfig, ma_device_descriptor* pDescriptorPlayback, ma_device_descriptor* pDescriptorCapture);
+    ma_result (* onDeviceUninit           )(void* pUserData, ma_device* pDevice);
+    ma_result (* onDeviceStart            )(void* pUserData, ma_device* pDevice);
+    ma_result (* onDeviceStop             )(void* pUserData, ma_device* pDevice);
+    ma_result (* onDeviceRead             )(void* pUserData, ma_device* pDevice, void* pFrames, ma_uint32 frameCount, ma_uint32* pFramesRead);
+    ma_result (* onDeviceWrite            )(void* pUserData, ma_device* pDevice, const void* pFrames, ma_uint32 frameCount, ma_uint32* pFramesWritten);
+    ma_result (* onDeviceDataLoop         )(void* pUserData, ma_device* pDevice);
+    ma_result (* onDeviceDataLoopWakeup   )(void* pUserData, ma_device* pDevice);
+    ma_result (* onDeviceGetInfo          )(void* pUserData, ma_device* pDevice, ma_device_type type, ma_device_info* pDeviceInfo);
+
+    /* This is temporary while we migrate backends over to the new callback system. */
+    ma_bool32 (* onHasStart         )(void* pUserData, ma_context* pContext);
+    ma_bool32 (* onHasStop          )(void* pUserData, ma_context* pContext);
+    ma_bool32 (* onHasRead          )(void* pUserData, ma_context* pContext);
+    ma_bool32 (* onHasWrite         )(void* pUserData, ma_context* pContext);
+    ma_bool32 (* onHasDataLoop      )(void* pUserData, ma_context* pContext);
+    ma_bool32 (* onHasDataLoopWakeup)(void* pUserData, ma_context* pContext);
+    ma_bool32 (* onHasDeviceGetInfo )(void* pUserData, ma_context* pContext);
+};
+
 struct ma_context_config
 {
     ma_log* pLog;
@@ -7247,6 +7369,10 @@ struct ma_context_config
     size_t threadStackSize;
     void* pUserData;
     ma_allocation_callbacks allocationCallbacks;
+    struct
+    {
+        ma_handle hWnd; /* HWND. Optional window handle to pass into SetCooperativeLevel(). Will default to the foreground window, and if that fails, the desktop window. */
+    } dsound;
     struct
     {
         ma_bool32 useVerboseDeviceEnumeration;
@@ -7269,7 +7395,11 @@ struct ma_context_config
         const char* pClientName;
         ma_bool32 tryStartServer;
     } jack;
-    ma_backend_callbacks custom;
+    struct
+    {
+        ma_device_backend_spec* pBackends;
+        size_t count;
+    } custom;
 };
 
 /* WASAPI specific structure for some commands which must run on a common thread due to bugs in WASAPI. */
@@ -7300,7 +7430,10 @@ typedef struct
 
 struct ma_context
 {
-    ma_backend_callbacks callbacks;
+    ma_backend_callbacks callbacks;     /* Old system. Will be removed when all stock backends have been converted over to the new system. */
+    const ma_device_backend_vtable* pVTable;  /* New system. */
+    void* pVTableUserData;
+    void* pBackendData;                 /* This is not used by miniaudio, but is a way for custom backends to store associate some backend-specific data with the device. Custom backends are free to use this pointer however they like. */
     ma_backend backend;                 /* DirectSound, ALSA, etc. */
     ma_log* pLog;
     ma_log log; /* Only used if the log is owned by the context. The pLog member will be set to &log in this case. */
@@ -7336,6 +7469,7 @@ struct ma_context
 #ifdef MA_SUPPORT_DSOUND
         struct
         {
+            ma_handle hWnd; /* Can be null. */
             ma_handle hDSoundDLL;
             ma_proc DirectSoundCreate;
             ma_proc DirectSoundEnumerateA;
@@ -7713,8 +7847,8 @@ struct ma_device
     ma_atomic_device_state state;               /* The state of the device is variable and can change at any time on any thread. Must be used atomically. */
     ma_device_data_proc onData;                 /* Set once at initialization time and should not be changed after. */
     ma_device_notification_proc onNotification; /* Set once at initialization time and should not be changed after. */
-    ma_stop_proc onStop;                        /* DEPRECATED. Use the notification callback instead. Set once at initialization time and should not be changed after. */
     void* pUserData;                            /* Application defined data. */
+    void* pBackendData;                         /* This is not used by miniaudio, but is a way for custom backends to associate some backend-specific data with the device. Custom backends are free to use this pointer however they like. */
     ma_mutex startStopLock;
     ma_event wakeupEvent;
     ma_event startEvent;
@@ -7742,7 +7876,6 @@ struct ma_device
     {
         ma_device_id* pID;                  /* Set to NULL if using default ID, otherwise set to the address of "id". */
         ma_device_id id;                    /* If using an explicit device, will be set to a copy of the ID used for initialization. Otherwise cleared to 0. */
-        char name[MA_MAX_DEVICE_NAME_LENGTH + 1];                     /* Maybe temporary. Likely to be replaced with a query API. */
         ma_share_mode shareMode;            /* Set to whatever was passed in when the device was initialized. */
         ma_format format;
         ma_uint32 channels;
@@ -7768,7 +7901,6 @@ struct ma_device
     {
         ma_device_id* pID;                  /* Set to NULL if using default ID, otherwise set to the address of "id". */
         ma_device_id id;                    /* If using an explicit device, will be set to a copy of the ID used for initialization. Otherwise cleared to 0. */
-        char name[MA_MAX_DEVICE_NAME_LENGTH + 1];                     /* Maybe temporary. Likely to be replaced with a query API. */
         ma_share_mode shareMode;            /* Set to whatever was passed in when the device was initialized. */
         ma_format format;
         ma_uint32 channels;
@@ -8028,6 +8160,19 @@ See Also
 ma_context_init()
 */
 MA_API ma_context_config ma_context_config_init(void);
+
+
+/*
+Helper function for retrieving a pointer to a custom backend's context config.
+
+
+Remarks
+-------
+This should only ever be used by custom backend implementations. It's used for retrieving the
+pConfig pointer that has been associated with the specified backend vtable.
+*/
+MA_API const void* ma_context_config_find_custom_backend_config(const ma_context_config* pConfig, const ma_device_backend_vtable* pVTable);
+
 
 /*
 Initializes a context.
@@ -8538,6 +8683,18 @@ MA_API ma_device_config ma_device_config_init(ma_device_type deviceType);
 
 
 /*
+Helper function for retrieving a pointer to a custom backend's context config.
+
+
+Remarks
+-------
+This should only ever be used by custom backend implementations. It's used for retrieving the
+pConfig pointer that has been associated with the specified backend vtable.
+*/
+MA_API const void* ma_device_config_find_custom_backend_config(const ma_device_config* pConfig, const ma_device_backend_vtable* pVTable);
+
+
+/*
 Initializes a device.
 
 A device represents a physical audio device. The idea is you send or receive audio data from the device to either play it back through a speaker, or capture it
@@ -8545,7 +8702,7 @@ from a microphone. Whether or not you should send or receive data from the devic
 playback, capture, full-duplex or loopback. (Note that loopback mode is only supported on select backends.) Sending and receiving audio data to and from the
 device is done via a callback which is fired by miniaudio at periodic time intervals.
 
-The frequency at which data is delivered to and from a device depends on the size of it's period. The size of the period can be defined in terms of PCM frames
+The frequency at which data is delivered to and from a device depends on the size of its period. The size of the period can be defined in terms of PCM frames
 or milliseconds, whichever is more convenient. Generally speaking, the smaller the period, the lower the latency at the expense of higher CPU usage and
 increased risk of glitching due to the more frequent and granular data deliver intervals. The size of a period will depend on your requirements, but
 miniaudio's defaults should work fine for most scenarios. If you're building a game you should leave this fairly small, whereas if you're building a simple
@@ -8619,7 +8776,7 @@ then be set directly on the structure. Below are the members of the `ma_device_c
 
     performanceProfile
         A hint to miniaudio as to the performance requirements of your program. Can be either `ma_performance_profile_low_latency` (default) or
-        `ma_performance_profile_conservative`. This mainly affects the size of default buffers and can usually be left at it's default value.
+        `ma_performance_profile_conservative`. This mainly affects the size of default buffers and can usually be left at its default value.
 
     noPreSilencedOutputBuffer
         When set to true, the contents of the output buffer passed into the data callback will be left undefined. When set to false (default), the contents of
@@ -8659,7 +8816,7 @@ then be set directly on the structure. Below are the members of the `ma_device_c
         A pointer that will passed to callbacks in pBackendVTable.
 
     resampling.linear.lpfOrder
-        The linear resampler applies a low-pass filter as part of it's processing for anti-aliasing. This setting controls the order of the filter. The higher
+        The linear resampler applies a low-pass filter as part of its processing for anti-aliasing. This setting controls the order of the filter. The higher
         the value, the better the quality, in general. Setting this to 0 will disable low-pass filtering altogether. The maximum value is
         `MA_MAX_FILTER_ORDER`. The default value is `min(4, MA_MAX_FILTER_ORDER)`.
 
@@ -8909,7 +9066,7 @@ Unsafe. It is not safe to call this inside any callback.
 
 Remarks
 -------
-You only need to use this function if you want to configure the context differently to it's defaults. You should never use this function if you want to manage
+You only need to use this function if you want to configure the context differently to its defaults. You should never use this function if you want to manage
 your own context.
 
 See the documentation for `ma_context_init()` for information on the different context configuration options.
@@ -9856,7 +10013,8 @@ typedef enum
     ma_encoding_format_wav,
     ma_encoding_format_flac,
     ma_encoding_format_mp3,
-    ma_encoding_format_vorbis
+    ma_encoding_format_vorbis,
+    ma_encoding_format_opus
 } ma_encoding_format;
 #endif
 
@@ -9873,22 +10031,25 @@ you do your own synchronization.
 typedef struct ma_decoder ma_decoder;
 
 
+MA_API ma_encoding_format ma_encoding_format_from_path(const char* pFilePath);
+MA_API ma_encoding_format ma_encoding_format_from_path_w(const wchar_t* pFilePath);
+
+
 typedef struct
 {
     ma_format preferredFormat;
-    ma_uint32 seekPointCount;   /* Set to > 0 to generate a seektable if the decoding backend supports it. */
+    ma_uint32 seekPointCount;           /* Set to > 0 to generate a seektable if the decoding backend supports it. */
+    ma_encoding_format encodingFormat;  /* This is the encoding format that the caller wants to use. If set to ma_encoding_format_unknown, the decoding backend should try initializing from any of it's supported formats. */
 } ma_decoding_backend_config;
-
-MA_API ma_decoding_backend_config ma_decoding_backend_config_init(ma_format preferredFormat, ma_uint32 seekPointCount);
-
 
 typedef struct
 {
-    ma_result (* onInit      )(void* pUserData, ma_read_proc onRead, ma_seek_proc onSeek, ma_tell_proc onTell, void* pReadSeekTellUserData, const ma_decoding_backend_config* pConfig, const ma_allocation_callbacks* pAllocationCallbacks, ma_data_source** ppBackend);
-    ma_result (* onInitFile  )(void* pUserData, const char* pFilePath, const ma_decoding_backend_config* pConfig, const ma_allocation_callbacks* pAllocationCallbacks, ma_data_source** ppBackend);               /* Optional. */
-    ma_result (* onInitFileW )(void* pUserData, const wchar_t* pFilePath, const ma_decoding_backend_config* pConfig, const ma_allocation_callbacks* pAllocationCallbacks, ma_data_source** ppBackend);            /* Optional. */
-    ma_result (* onInitMemory)(void* pUserData, const void* pData, size_t dataSize, const ma_decoding_backend_config* pConfig, const ma_allocation_callbacks* pAllocationCallbacks, ma_data_source** ppBackend);  /* Optional. */
-    void      (* onUninit    )(void* pUserData, ma_data_source* pBackend, const ma_allocation_callbacks* pAllocationCallbacks);
+    ma_result          (* onInit             )(void* pUserData, ma_read_proc onRead, ma_seek_proc onSeek, ma_tell_proc onTell, void* pReadSeekTellUserData, const ma_decoding_backend_config* pConfig, const ma_allocation_callbacks* pAllocationCallbacks, ma_data_source** ppBackend);
+    ma_result          (* onInitFile         )(void* pUserData, const char* pFilePath, const ma_decoding_backend_config* pConfig, const ma_allocation_callbacks* pAllocationCallbacks, ma_data_source** ppBackend);               /* Optional. */
+    ma_result          (* onInitFileW        )(void* pUserData, const wchar_t* pFilePath, const ma_decoding_backend_config* pConfig, const ma_allocation_callbacks* pAllocationCallbacks, ma_data_source** ppBackend);            /* Optional. */
+    ma_result          (* onInitMemory       )(void* pUserData, const void* pData, size_t dataSize, const ma_decoding_backend_config* pConfig, const ma_allocation_callbacks* pAllocationCallbacks, ma_data_source** ppBackend);  /* Optional. */
+    void               (* onUninit           )(void* pUserData, ma_data_source* pBackend, const ma_allocation_callbacks* pAllocationCallbacks);
+    ma_encoding_format (* onGetEncodingFormat)(void* pUserData, ma_data_source* pBackend);  /* Optional, in which case ma_encoding_format_unknown will be assumed. When pBackend is not null, return the actual encoding format of the decoder if known. If pBackend is null, return the format supported by the backend. Return ma_encoding_format_unknown if the backend supports multiple formats. */
 } ma_decoding_backend_vtable;
 
 
@@ -9908,9 +10069,9 @@ typedef struct
     ma_allocation_callbacks allocationCallbacks;
     ma_encoding_format encodingFormat;
     ma_uint32 seekPointCount;   /* When set to > 0, specifies the number of seek points to use for the generation of a seek table. Not all decoding backends support this. */
-    ma_decoding_backend_vtable** ppCustomBackendVTables;
-    ma_uint32 customBackendCount;
-    void* pCustomBackendUserData;
+    const ma_decoding_backend_vtable** ppBackendVTables;
+    void** ppBackendUserData;
+    ma_uint32 backendCount;
 } ma_decoder_config;
 
 struct ma_decoder
@@ -9931,7 +10092,7 @@ struct ma_decoder
     void* pInputCache;              /* In input format. Can be null if it's not needed. */
     ma_uint64 inputCacheCap;        /* The capacity of the input cache. */
     ma_uint64 inputCacheConsumed;   /* The number of frames that have been consumed in the cache. Used for determining the next valid frame. */
-    ma_uint64 inputCacheRemaining;  /* The number of valid frames remaining in the cahce. */
+    ma_uint64 inputCacheRemaining;  /* The number of valid frames remaining in the cache. */
     ma_allocation_callbacks allocationCallbacks;
     union
     {
@@ -9972,7 +10133,7 @@ This is not thread safe without your own synchronization.
 MA_API ma_result ma_decoder_read_pcm_frames(ma_decoder* pDecoder, void* pFramesOut, ma_uint64 frameCount, ma_uint64* pFramesRead);
 
 /*
-Seeks to a PCM frame based on it's absolute index.
+Seeks to a PCM frame based on its absolute index.
 
 This is not thread safe without your own synchronization.
 */
@@ -10016,12 +10177,26 @@ returned.
 MA_API ma_result ma_decoder_get_available_frames(ma_decoder* pDecoder, ma_uint64* pAvailableFrames);
 
 /*
+Retrieves the encoding format of the given decoder.
+
+This is just a hint, and some decoding backends may return `ma_encoding_format_unknown`. This is not an error as
+it may just mean the decoding backend is a format not recognized by the enumeration in miniaudio.
+*/
+MA_API ma_encoding_format ma_decoder_get_encoding_format(const ma_decoder* pDecoder);
+
+/*
 Helper for opening and decoding a file into a heap allocated block of memory. Free the returned pointer with ma_free(). On input,
 pConfig should be set to what you want. On output it will be set to what you got.
 */
 MA_API ma_result ma_decode_from_vfs(ma_vfs* pVFS, const char* pFilePath, ma_decoder_config* pConfig, ma_uint64* pFrameCountOut, void** ppPCMFramesOut);
 MA_API ma_result ma_decode_file(const char* pFilePath, ma_decoder_config* pConfig, ma_uint64* pFrameCountOut, void** ppPCMFramesOut);
 MA_API ma_result ma_decode_memory(const void* pData, size_t dataSize, ma_decoder_config* pConfig, ma_uint64* pFrameCountOut, void** ppPCMFramesOut);
+
+
+/* Expose our decoding backend vtables so they can be plugged into a priority list. */
+extern const ma_decoding_backend_vtable* ma_decoding_backend_wav;
+extern const ma_decoding_backend_vtable* ma_decoding_backend_flac;
+extern const ma_decoding_backend_vtable* ma_decoding_backend_mp3;
 
 #endif  /* MA_NO_DECODING */
 
@@ -10206,7 +10381,6 @@ MA_API void ma_noise_uninit(ma_noise* pNoise, const ma_allocation_callbacks* pAl
 MA_API ma_result ma_noise_read_pcm_frames(ma_noise* pNoise, void* pFramesOut, ma_uint64 frameCount, ma_uint64* pFramesRead);
 MA_API ma_result ma_noise_set_amplitude(ma_noise* pNoise, double amplitude);
 MA_API ma_result ma_noise_set_seed(ma_noise* pNoise, ma_int32 seed);
-MA_API ma_result ma_noise_set_type(ma_noise* pNoise, ma_noise_type type);
 
 #endif  /* MA_NO_GENERATION */
 
@@ -10235,7 +10409,8 @@ typedef enum
     MA_RESOURCE_MANAGER_DATA_SOURCE_FLAG_DECODE         = 0x00000002,   /* Decode data before storing in memory. When set, decoding is done at the resource manager level rather than the mixing thread. Results in faster mixing, but higher memory usage. */
     MA_RESOURCE_MANAGER_DATA_SOURCE_FLAG_ASYNC          = 0x00000004,   /* When set, the resource manager will load the data source asynchronously. */
     MA_RESOURCE_MANAGER_DATA_SOURCE_FLAG_WAIT_INIT      = 0x00000008,   /* When set, waits for initialization of the underlying data source before returning from ma_resource_manager_data_source_init(). */
-    MA_RESOURCE_MANAGER_DATA_SOURCE_FLAG_UNKNOWN_LENGTH = 0x00000010    /* Gives the resource manager a hint that the length of the data source is unknown and calling `ma_data_source_get_length_in_pcm_frames()` should be avoided. */
+    MA_RESOURCE_MANAGER_DATA_SOURCE_FLAG_UNKNOWN_LENGTH = 0x00000010,   /* Gives the resource manager a hint that the length of the data source is unknown and calling `ma_data_source_get_length_in_pcm_frames()` should be avoided. */
+    MA_RESOURCE_MANAGER_DATA_SOURCE_FLAG_LOOPING        = 0x00000020    /* When set, configures the data source to loop by default. */
 } ma_resource_manager_data_source_flags;
 
 
@@ -10255,26 +10430,6 @@ typedef struct
 } ma_resource_manager_pipeline_notifications;
 
 MA_API ma_resource_manager_pipeline_notifications ma_resource_manager_pipeline_notifications_init(void);
-
-
-
-/* BEGIN BACKWARDS COMPATIBILITY */
-/* TODO: Remove this block in version 0.12. */
-#if 1
-#define ma_resource_manager_job                         ma_job
-#define ma_resource_manager_job_init                    ma_job_init
-#define MA_JOB_TYPE_RESOURCE_MANAGER_QUEUE_FLAG_NON_BLOCKING MA_JOB_QUEUE_FLAG_NON_BLOCKING
-#define ma_resource_manager_job_queue_config            ma_job_queue_config
-#define ma_resource_manager_job_queue_config_init       ma_job_queue_config_init
-#define ma_resource_manager_job_queue                   ma_job_queue
-#define ma_resource_manager_job_queue_get_heap_size     ma_job_queue_get_heap_size
-#define ma_resource_manager_job_queue_init_preallocated ma_job_queue_init_preallocated
-#define ma_resource_manager_job_queue_init              ma_job_queue_init
-#define ma_resource_manager_job_queue_uninit            ma_job_queue_uninit
-#define ma_resource_manager_job_queue_post              ma_job_queue_post
-#define ma_resource_manager_job_queue_next              ma_job_queue_next
-#endif
-/* END BACKWARDS COMPATIBILITY */
 
 
 
@@ -10303,7 +10458,6 @@ typedef struct
     ma_uint64 rangeEndInPCMFrames;
     ma_uint64 loopPointBegInPCMFrames;
     ma_uint64 loopPointEndInPCMFrames;
-    ma_bool32 isLooping;
     ma_uint32 flags;
 } ma_resource_manager_data_source_config;
 
@@ -10434,9 +10588,9 @@ typedef struct
     ma_uint32 jobQueueCapacity;     /* The maximum number of jobs that can fit in the queue at a time. Defaults to MA_JOB_TYPE_RESOURCE_MANAGER_QUEUE_CAPACITY. Cannot be zero. */
     ma_uint32 flags;
     ma_vfs* pVFS;                   /* Can be NULL in which case defaults will be used. */
-    ma_decoding_backend_vtable** ppCustomDecodingBackendVTables;
-    ma_uint32 customDecodingBackendCount;
-    void* pCustomDecodingBackendUserData;
+    const ma_decoding_backend_vtable** ppDecodingBackendVTables;
+    ma_uint32 decodingBackendCount;
+    void** ppDecodingBackendUserData;
 } ma_resource_manager_config;
 
 MA_API ma_resource_manager_config ma_resource_manager_config_init(void);
@@ -10546,6 +10700,16 @@ Node Graph
 
 /* Use this when the bus count is determined by the node instance rather than the vtable. */
 #define MA_NODE_BUS_COUNT_UNKNOWN   255
+
+
+/* For some internal memory management of ma_node_graph. */
+typedef struct
+{
+    size_t offset;
+    size_t sizeInBytes;
+    unsigned char _data[1];
+} ma_stack;
+
 
 typedef struct ma_node_graph ma_node_graph;
 typedef void ma_node;
@@ -10671,10 +10835,14 @@ typedef struct ma_node_base ma_node_base;
 struct ma_node_base
 {
     /* These variables are set once at startup. */
-    ma_node_graph* pNodeGraph;              /* The graph this node belongs to. */
+    ma_node_graph* pNodeGraph;                  /* The graph this node belongs to. */
     const ma_node_vtable* vtable;
-    float* pCachedData;                     /* Allocated on the heap. Fixed size. Needs to be stored on the heap because reading from output buses is done in separate function calls. */
-    ma_uint16 cachedDataCapInFramesPerBus;  /* The capacity of the input data cache in frames, per bus. */
+    ma_uint32 inputBusCount;
+    ma_uint32 outputBusCount;
+    ma_node_input_bus* pInputBuses;
+    ma_node_output_bus* pOutputBuses;
+    float* pCachedData;                         /* Allocated on the heap. Fixed size. Needs to be stored on the heap because reading from output buses is done in separate function calls. */
+    ma_uint16 cachedDataCapInFramesPerBus;      /* The capacity of the input data cache in frames, per bus. */
 
     /* These variables are read and written only from the audio thread. */
     ma_uint16 cachedFrameCountOut;
@@ -10682,13 +10850,9 @@ struct ma_node_base
     ma_uint16 consumedFrameCountIn;
 
     /* These variables are read and written between different threads. */
-    MA_ATOMIC(4, ma_node_state) state;      /* When set to stopped, nothing will be read, regardless of the times in stateTimes. */
-    MA_ATOMIC(8, ma_uint64) stateTimes[2];  /* Indexed by ma_node_state. Specifies the time based on the global clock that a node should be considered to be in the relevant state. */
-    MA_ATOMIC(8, ma_uint64) localTime;      /* The node's local clock. This is just a running sum of the number of output frames that have been processed. Can be modified by any thread with `ma_node_set_time()`. */
-    ma_uint32 inputBusCount;
-    ma_uint32 outputBusCount;
-    ma_node_input_bus* pInputBuses;
-    ma_node_output_bus* pOutputBuses;
+    MA_ATOMIC(4, ma_node_state) state;          /* When set to stopped, nothing will be read, regardless of the times in stateTimes. */
+    MA_ATOMIC(8, ma_uint64) stateTimes[2];      /* Indexed by ma_node_state. Specifies the time based on the global clock that a node should be considered to be in the relevant state. */
+    MA_ATOMIC(8, ma_uint64) localTime;          /* The node's local clock. This is just a running sum of the number of output frames that have been processed. Can be modified by any thread with `ma_node_set_time()`. */
 
     /* Memory management. */
     ma_node_input_bus _inputBuses[MA_MAX_NODE_LOCAL_BUS_COUNT];
@@ -10724,7 +10888,8 @@ MA_API ma_result ma_node_set_time(ma_node* pNode, ma_uint64 localTime);
 typedef struct
 {
     ma_uint32 channels;
-    ma_uint16 nodeCacheCapInFrames;
+    ma_uint32 processingSizeInFrames;   /* This is the preferred processing size for node processing callbacks unless overridden by a node itself. Can be 0 in which case it will be based on the frame count passed into ma_node_graph_read_pcm_frames(), but will not be well defined. */
+    size_t preMixStackSizeInBytes;      /* Defaults to 512KB per channel. Reducing this will save memory, but the depth of your node graph will be more restricted. */
 } ma_node_graph_config;
 
 MA_API ma_node_graph_config ma_node_graph_config_init(ma_uint32 channels);
@@ -10732,13 +10897,19 @@ MA_API ma_node_graph_config ma_node_graph_config_init(ma_uint32 channels);
 
 struct ma_node_graph
 {
+    ma_data_source_base ds;
+
     /* Immutable. */
-    ma_node_base base;                  /* The node graph itself is a node so it can be connected as an input to different node graph. This has zero inputs and calls ma_node_graph_read_pcm_frames() to generate it's output. */
-    ma_node_base endpoint;              /* Special node that all nodes eventually connect to. Data is read from this node in ma_node_graph_read_pcm_frames(). */
-    ma_uint16 nodeCacheCapInFrames;
+    ma_node_base endpoint; /* Special node that all nodes eventually connect to. Data is read from this node in ma_node_graph_read_pcm_frames(). */
+    float* pProcessingCache;            /* This will be allocated when processingSizeInFrames is non-zero. This is needed because ma_node_graph_read_pcm_frames() can be called with a variable number of frames, and we may need to do some buffering in situations where the caller requests a frame count that's not a multiple of processingSizeInFrames. */
+    ma_uint32 processingCacheFramesRemaining;
+    ma_uint32 processingSizeInFrames;
 
     /* Read and written by multiple threads. */
     MA_ATOMIC(4, ma_bool32) isReading;
+
+    /* Modified only by the audio thread. */
+    ma_stack* pPreMixStack;
 };
 
 MA_API ma_result ma_node_graph_init(const ma_node_graph_config* pConfig, const ma_allocation_callbacks* pAllocationCallbacks, ma_node_graph* pNodeGraph);
@@ -10994,10 +11165,6 @@ typedef struct
 
 MA_API ma_result ma_delay_node_init(ma_node_graph* pNodeGraph, const ma_delay_node_config* pConfig, const ma_allocation_callbacks* pAllocationCallbacks, ma_delay_node* pDelayNode);
 MA_API void ma_delay_node_uninit(ma_delay_node* pDelayNode, const ma_allocation_callbacks* pAllocationCallbacks);
-MA_API void ma_delay_node_set_wet(ma_delay_node* pDelayNode, float value);
-MA_API float ma_delay_node_get_wet(const ma_delay_node* pDelayNode);
-MA_API void ma_delay_node_set_dry(ma_delay_node* pDelayNode, float value);
-MA_API float ma_delay_node_get_dry(const ma_delay_node* pDelayNode);
 MA_API void ma_delay_node_set_decay(ma_delay_node* pDelayNode, float value);
 MA_API float ma_delay_node_get_decay(const ma_delay_node* pDelayNode);
 #endif  /* MA_NO_NODE_GRAPH */
@@ -11023,6 +11190,7 @@ typedef enum
     MA_SOUND_FLAG_ASYNC                 = 0x00000004,   /* MA_RESOURCE_MANAGER_DATA_SOURCE_FLAG_ASYNC */
     MA_SOUND_FLAG_WAIT_INIT             = 0x00000008,   /* MA_RESOURCE_MANAGER_DATA_SOURCE_FLAG_WAIT_INIT */
     MA_SOUND_FLAG_UNKNOWN_LENGTH        = 0x00000010,   /* MA_RESOURCE_MANAGER_DATA_SOURCE_FLAG_UNKNOWN_LENGTH */
+    MA_SOUND_FLAG_LOOPING               = 0x00000020,   /* MA_RESOURCE_MANAGER_DATA_SOURCE_FLAG_LOOPING */
 
     /* ma_sound specific flags. */
     MA_SOUND_FLAG_NO_DEFAULT_ATTACHMENT = 0x00001000,   /* Do not attach to the endpoint by default. Useful for when setting up nodes in a complex graph system. */
@@ -11062,7 +11230,7 @@ MA_API ma_engine_node_config ma_engine_node_config_init(ma_engine* pEngine, ma_e
 /* Base node object for both ma_sound and ma_sound_group. */
 typedef struct
 {
-    ma_node_base baseNode;                              /* Must be the first member for compatiblity with the ma_node API. */
+    ma_node_base baseNode;                              /* Must be the first member for compatibility with the ma_node API. */
     ma_engine* pEngine;                                 /* A pointer to the engine. Set based on the value from the config. */
     ma_uint32 sampleRate;                               /* The sample rate of the input data. For sounds backed by a data source, this will be the data source's sample rate. Otherwise it'll be the engine's sample rate. */
     ma_uint32 volumeSmoothTimeInPCMFrames;
@@ -11102,37 +11270,39 @@ MA_API void ma_engine_node_uninit(ma_engine_node* pEngineNode, const ma_allocati
 
 #define MA_SOUND_SOURCE_CHANNEL_COUNT   0xFFFFFFFF
 
-/* Callback for when a sound reaches the end. */
-typedef void (* ma_sound_end_proc)(void* pUserData, ma_sound* pSound);
+typedef struct
+{
+    ma_fence* pLoadedFence;                                 /* Set to NULL if not using a fence. */
+    void (* onLoaded )(void* pUserData, ma_sound* pSuond);  /* Fired by the resource manager when the sound has finished loading. */
+    void (* onAtEnd  )(void* pUserData, ma_sound* pSound);  /* Fired when the sound reaches the end of the data source. */
+    void (* onProcess)(void* pUserData, ma_sound* pSound, float* pFrames, ma_uint64 frameCount);
+    void* pUserData;
+} ma_sound_notifications;
+
+MA_API ma_sound_notifications ma_sound_notifications_init(void);
+
 
 typedef struct
 {
-    const char* pFilePath;                      /* Set this to load from the resource manager. */
-    const wchar_t* pFilePathW;                  /* Set this to load from the resource manager. */
-    ma_data_source* pDataSource;                /* Set this to load from an existing data source. */
-    ma_node* pInitialAttachment;                /* If set, the sound will be attached to an input of this node. This can be set to a ma_sound. If set to NULL, the sound will be attached directly to the endpoint unless MA_SOUND_FLAG_NO_DEFAULT_ATTACHMENT is set in `flags`. */
-    ma_uint32 initialAttachmentInputBusIndex;   /* The index of the input bus of pInitialAttachment to attach the sound to. */
-    ma_uint32 channelsIn;                       /* Ignored if using a data source as input (the data source's channel count will be used always). Otherwise, setting to 0 will cause the engine's channel count to be used. */
-    ma_uint32 channelsOut;                      /* Set this to 0 (default) to use the engine's channel count. Set to MA_SOUND_SOURCE_CHANNEL_COUNT to use the data source's channel count (only used if using a data source as input). */
-    ma_mono_expansion_mode monoExpansionMode;   /* Controls how the mono channel should be expanded to other channels when spatialization is disabled on a sound. */
-    ma_uint32 flags;                            /* A combination of MA_SOUND_FLAG_* flags. */
-    ma_uint32 volumeSmoothTimeInPCMFrames;      /* The number of frames to smooth over volume changes. Defaults to 0 in which case no smoothing is used. */
-    ma_uint64 initialSeekPointInPCMFrames;      /* Initializes the sound such that it's seeked to this location by default. */
+    const char* pFilePath;                          /* Set this to load from the resource manager. */
+    const wchar_t* pFilePathW;                      /* Set this to load from the resource manager. */
+    ma_data_source* pDataSource;                    /* Set this to load from an existing data source. */
+    ma_node* pInitialAttachment;                    /* If set, the sound will be attached to an input of this node. This can be set to a ma_sound. If set to NULL, the sound will be attached directly to the endpoint unless MA_SOUND_FLAG_NO_DEFAULT_ATTACHMENT is set in `flags`. */
+    ma_uint32 initialAttachmentInputBusIndex;       /* The index of the input bus of pInitialAttachment to attach the sound to. */
+    ma_uint32 channelsIn;                           /* Ignored if using a data source as input (the data source's channel count will be used always). Otherwise, setting to 0 will cause the engine's channel count to be used. */
+    ma_uint32 channelsOut;                          /* Set this to 0 (default) to use the engine's channel count. Set to MA_SOUND_SOURCE_CHANNEL_COUNT to use the data source's channel count (only used if using a data source as input). */
+    ma_mono_expansion_mode monoExpansionMode;       /* Controls how the mono channel should be expanded to other channels when spatialization is disabled on a sound. */
+    ma_uint32 flags;                                /* A combination of MA_SOUND_FLAG_* flags. */
+    ma_uint32 volumeSmoothTimeInPCMFrames;          /* The number of frames to smooth over volume changes. Defaults to 0 in which case no smoothing is used. */
+    ma_uint64 initialSeekPointInPCMFrames;          /* Initializes the sound such that it's seeked to this location by default. */
     ma_uint64 rangeBegInPCMFrames;
     ma_uint64 rangeEndInPCMFrames;
     ma_uint64 loopPointBegInPCMFrames;
     ma_uint64 loopPointEndInPCMFrames;
-    ma_bool32 isLooping;
-    ma_sound_end_proc endCallback;              /* Fired when the sound reaches the end. Will be fired from the audio thread. Do not restart, uninitialize or otherwise change the state of the sound from here. Instead fire an event or set a variable to indicate to a different thread to change the start of the sound. Will not be fired in response to a scheduled stop with ma_sound_set_stop_time_*(). */
-    void* pEndCallbackUserData;
-#ifndef MA_NO_RESOURCE_MANAGER
-    ma_resource_manager_pipeline_notifications initNotifications;
-#endif
-    ma_fence* pDoneFence;                       /* Deprecated. Use initNotifications instead. Released when the resource manager has finished decoding the entire sound. Not used with streams. */
+    const ma_sound_notifications* pNotifications;   /* A pointer to an object containing callbacks for when a sound has finished loading, reached the end, etc. A copy of this structure will be made internally. */
 } ma_sound_config;
 
-MA_API ma_sound_config ma_sound_config_init(void);                  /* Deprecated. Will be removed in version 0.12. Use ma_sound_config_2() instead. */
-MA_API ma_sound_config ma_sound_config_init_2(ma_engine* pEngine);  /* Will be renamed to ma_sound_config_init() in version 0.12. */
+MA_API ma_sound_config ma_sound_config_init(ma_engine* pEngine);
 
 struct ma_sound
 {
@@ -11140,8 +11310,7 @@ struct ma_sound
     ma_data_source* pDataSource;
     MA_ATOMIC(8, ma_uint64) seekTarget; /* The PCM frame index to seek to in the mixing thread. Set to (~(ma_uint64)0) to not perform any seeking. */
     MA_ATOMIC(4, ma_bool32) atEnd;
-    ma_sound_end_proc endCallback;
-    void* pEndCallbackUserData;
+    ma_sound_notifications notifications;
     ma_bool8 ownsDataSource;
 
     /*
@@ -11150,6 +11319,7 @@ struct ma_sound
     */
 #ifndef MA_NO_RESOURCE_MANAGER
     ma_resource_manager_data_source* pResourceManagerDataSource;
+    ma_async_notification_callbacks resourceManagerDoneNotification;
 #endif
 };
 
@@ -11166,8 +11336,7 @@ struct ma_sound_inlined
 typedef ma_sound_config ma_sound_group_config;
 typedef ma_sound        ma_sound_group;
 
-MA_API ma_sound_group_config ma_sound_group_config_init(void);                  /* Deprecated. Will be removed in version 0.12. Use ma_sound_config_2() instead. */
-MA_API ma_sound_group_config ma_sound_group_config_init_2(ma_engine* pEngine);  /* Will be renamed to ma_sound_config_init() in version 0.12. */
+MA_API ma_sound_group_config ma_sound_group_config_init(ma_engine* pEngine);  /* Will be renamed to ma_sound_config_init() in version 0.12. */
 
 typedef void (* ma_engine_process_proc)(void* pUserData, float* pFramesOut, ma_uint64 frameCount);
 
@@ -11192,6 +11361,7 @@ typedef struct
     ma_uint32 gainSmoothTimeInFrames;               /* The number of frames to interpolate the gain of spatialized sounds across. If set to 0, will use gainSmoothTimeInMilliseconds. */
     ma_uint32 gainSmoothTimeInMilliseconds;         /* When set to 0, gainSmoothTimeInFrames will be used. If both are set to 0, a default value will be used. */
     ma_uint32 defaultVolumeSmoothTimeInPCMFrames;   /* Defaults to 0. Controls the default amount of smoothing to apply to volume changes to sounds. High values means more smoothing at the expense of high latency (will take longer to reach the new volume). */
+    ma_uint32 preMixStackSizeInBytes;               /* A stack is used for internal processing in the node graph. This allows you to configure the size of this stack. Smaller values will reduce the maximum depth of your node graph. You should rarely need to modify this. */
     ma_allocation_callbacks allocationCallbacks;
     ma_bool32 noAutoStart;                          /* When set to true, requires an explicit call to ma_engine_start(). This is false by default, meaning the engine will be started automatically in ma_engine_init(). */
     ma_bool32 noDevice;                             /* When set to true, don't create a default device. ma_engine_read_pcm_frames() can be called manually to read data. */
@@ -11206,12 +11376,12 @@ MA_API ma_engine_config ma_engine_config_init(void);
 
 struct ma_engine
 {
-    ma_node_graph nodeGraph;                /* An engine is a node graph. It should be able to be plugged into any ma_node_graph API (with a cast) which means this must be the first member of this struct. */
+    ma_node_graph nodeGraph;                        /* An engine is a node graph. It should be able to be plugged into any ma_node_graph API (with a cast) which means this must be the first member of this struct. */
 #if !defined(MA_NO_RESOURCE_MANAGER)
     ma_resource_manager* pResourceManager;
 #endif
 #if !defined(MA_NO_DEVICE_IO)
-    ma_device* pDevice;                     /* Optionally set via the config, otherwise allocated by the engine in ma_engine_init(). */
+    ma_device* pDevice;                             /* Optionally set via the config, otherwise allocated by the engine in ma_engine_init(). */
 #endif
     ma_log* pLog;
     ma_uint32 sampleRate;
@@ -11220,10 +11390,10 @@ struct ma_engine
     ma_allocation_callbacks allocationCallbacks;
     ma_bool8 ownsResourceManager;
     ma_bool8 ownsDevice;
-    ma_spinlock inlinedSoundLock;               /* For synchronizing access so the inlined sound list. */
-    ma_sound_inlined* pInlinedSoundHead;        /* The first inlined sound. Inlined sounds are tracked in a linked list. */
-    MA_ATOMIC(4, ma_uint32) inlinedSoundCount;  /* The total number of allocated inlined sound objects. Used for debugging. */
-    ma_uint32 gainSmoothTimeInFrames;           /* The number of frames to interpolate the gain of spatialized sounds across. */
+    ma_spinlock inlinedSoundLock;                   /* For synchronizing access to the inlined sound list. */
+    ma_sound_inlined* pInlinedSoundHead;            /* The first inlined sound. Inlined sounds are tracked in a linked list. */
+    MA_ATOMIC(4, ma_uint32) inlinedSoundCount;      /* The total number of allocated inlined sound objects. Used for debugging. */
+    ma_uint32 gainSmoothTimeInFrames;               /* The number of frames to interpolate the gain of spatialized sounds across. */
     ma_uint32 defaultVolumeSmoothTimeInPCMFrames;
     ma_mono_expansion_mode monoExpansionMode;
     ma_engine_process_proc onProcess;
@@ -11244,8 +11414,6 @@ MA_API ma_uint64 ma_engine_get_time_in_pcm_frames(const ma_engine* pEngine);
 MA_API ma_uint64 ma_engine_get_time_in_milliseconds(const ma_engine* pEngine);
 MA_API ma_result ma_engine_set_time_in_pcm_frames(ma_engine* pEngine, ma_uint64 globalTime);
 MA_API ma_result ma_engine_set_time_in_milliseconds(ma_engine* pEngine, ma_uint64 globalTime);
-MA_API ma_uint64 ma_engine_get_time(const ma_engine* pEngine);                  /* Deprecated. Use ma_engine_get_time_in_pcm_frames(). Will be removed in version 0.12. */
-MA_API ma_result ma_engine_set_time(ma_engine* pEngine, ma_uint64 globalTime);  /* Deprecated. Use ma_engine_set_time_in_pcm_frames(). Will be removed in version 0.12. */
 MA_API ma_uint32 ma_engine_get_channels(const ma_engine* pEngine);
 MA_API ma_uint32 ma_engine_get_sample_rate(const ma_engine* pEngine);
 
@@ -11277,11 +11445,11 @@ MA_API ma_result ma_engine_play_sound(ma_engine* pEngine, const char* pFilePath,
 #endif
 
 #ifndef MA_NO_RESOURCE_MANAGER
-MA_API ma_result ma_sound_init_from_file(ma_engine* pEngine, const char* pFilePath, ma_uint32 flags, ma_sound_group* pGroup, ma_fence* pDoneFence, ma_sound* pSound);
-MA_API ma_result ma_sound_init_from_file_w(ma_engine* pEngine, const wchar_t* pFilePath, ma_uint32 flags, ma_sound_group* pGroup, ma_fence* pDoneFence, ma_sound* pSound);
-MA_API ma_result ma_sound_init_copy(ma_engine* pEngine, const ma_sound* pExistingSound, ma_uint32 flags, ma_sound_group* pGroup, ma_sound* pSound);
+MA_API ma_result ma_sound_init_from_file(ma_engine* pEngine, const char* pFilePath, ma_uint32 flags, ma_sound_group* pGroup, const ma_sound_notifications* pNotifications, ma_sound* pSound);
+MA_API ma_result ma_sound_init_from_file_w(ma_engine* pEngine, const wchar_t* pFilePath, ma_uint32 flags, ma_sound_group* pGroup, const ma_sound_notifications* pNotifications, ma_sound* pSound);
+MA_API ma_result ma_sound_init_copy(ma_engine* pEngine, const ma_sound* pExistingSound, ma_uint32 flags, ma_sound_group* pGroup, const ma_sound_notifications* pNotifications, ma_sound* pSound);
 #endif
-MA_API ma_result ma_sound_init_from_data_source(ma_engine* pEngine, ma_data_source* pDataSource, ma_uint32 flags, ma_sound_group* pGroup, ma_sound* pSound);
+MA_API ma_result ma_sound_init_from_data_source(ma_engine* pEngine, ma_data_source* pDataSource, ma_uint32 flags, ma_sound_group* pGroup, const ma_sound_notifications* pNotifications, ma_sound* pSound);
 MA_API ma_result ma_sound_init_ex(ma_engine* pEngine, const ma_sound_config* pConfig, ma_sound* pSound);
 MA_API void ma_sound_uninit(ma_sound* pSound);
 MA_API ma_engine* ma_sound_get_engine(const ma_sound* pSound);
@@ -11353,7 +11521,6 @@ MA_API ma_result ma_sound_get_cursor_in_pcm_frames(ma_sound* pSound, ma_uint64* 
 MA_API ma_result ma_sound_get_length_in_pcm_frames(ma_sound* pSound, ma_uint64* pLength);
 MA_API ma_result ma_sound_get_cursor_in_seconds(ma_sound* pSound, float* pCursor);
 MA_API ma_result ma_sound_get_length_in_seconds(ma_sound* pSound, float* pLength);
-MA_API ma_result ma_sound_set_end_callback(ma_sound* pSound, ma_sound_end_proc callback, void* pUserData);
 
 MA_API ma_result ma_sound_group_init(ma_engine* pEngine, ma_uint32 flags, ma_sound_group* pParentGroup, ma_sound_group* pGroup);
 MA_API ma_result ma_sound_group_init_ex(ma_engine* pEngine, const ma_sound_group_config* pConfig, ma_sound_group* pGroup);
@@ -12075,21 +12242,6 @@ int ma_android_sdk_version()
 #endif
 
 
-/* The default format when ma_format_unknown (0) is requested when initializing a device. */
-#ifndef MA_DEFAULT_FORMAT
-#define MA_DEFAULT_FORMAT                                   ma_format_f32
-#endif
-
-/* The default channel count to use when 0 is used when initializing a device. */
-#ifndef MA_DEFAULT_CHANNELS
-#define MA_DEFAULT_CHANNELS                                 2
-#endif
-
-/* The default sample rate to use when 0 is used when initializing a device. */
-#ifndef MA_DEFAULT_SAMPLE_RATE
-#define MA_DEFAULT_SAMPLE_RATE                              48000
-#endif
-
 /* Default periods when none is specified in ma_device_init(). More periods means more work on the CPU. */
 #ifndef MA_DEFAULT_PERIODS
 #define MA_DEFAULT_PERIODS                                  3
@@ -12225,7 +12377,6 @@ static MA_INLINE void ma_zero_memory_default(void* p, size_t sz)
     }
 }
 
-
 #ifndef MA_ZERO_MEMORY
 #define MA_ZERO_MEMORY(p, sz)           ma_zero_memory_default((p), (sz))
 #endif
@@ -12237,15 +12388,6 @@ static MA_INLINE void ma_zero_memory_default(void* p, size_t sz)
 #endif
 
 #define MA_ZERO_OBJECT(p)               MA_ZERO_MEMORY((p), sizeof(*(p)))
-
-#define ma_countof(x)                   (sizeof(x) / sizeof(x[0]))
-#define ma_max(x, y)                    (((x) > (y)) ? (x) : (y))
-#define ma_min(x, y)                    (((x) < (y)) ? (x) : (y))
-#define ma_abs(x)                       (((x) > 0) ? (x) : -(x))
-#define ma_clamp(x, lo, hi)             (ma_max(lo, ma_min(x, hi)))
-#define ma_offset_ptr(p, offset)        (((ma_uint8*)(p)) + (offset))
-#define ma_align(x, a)                  (((x) + ((a)-1)) & ~((a)-1))
-#define ma_align_64(x)                  ma_align(x, 8)
 
 #define ma_buffer_frame_capacity(buffer, channels, format) (sizeof(buffer) / ma_get_bytes_per_sample(format) / (channels))
 
@@ -13290,19 +13432,6 @@ static MA_INLINE void ma_zero_memory_64(void* dst, ma_uint64 sizeInBytes)
 }
 
 
-/* Thanks to good old Bit Twiddling Hacks for this one: http://graphics.stanford.edu/~seander/bithacks.html#RoundUpPowerOf2 */
-static MA_INLINE unsigned int ma_next_power_of_2(unsigned int x)
-{
-    x--;
-    x |= x >> 1;
-    x |= x >> 2;
-    x |= x >> 4;
-    x |= x >> 8;
-    x |= x >> 16;
-    x++;
-
-    return x;
-}
 
 static MA_INLINE unsigned int ma_prev_power_of_2(unsigned int x)
 {
@@ -16142,19 +16271,34 @@ static ma_result ma_thread_create__posix(ma_thread* pThread, ma_thread_priority 
                 if (priority == ma_thread_priority_idle) {
                     sched.sched_priority = priorityMin;
                 } else if (priority == ma_thread_priority_realtime) {
-                    sched.sched_priority = priorityMax;
-                } else {
-                    sched.sched_priority += ((int)priority + 5) * priorityStep;  /* +5 because the lowest priority is -5. */
-                    if (sched.sched_priority < priorityMin) {
-                        sched.sched_priority = priorityMin;
+                    #if defined(MA_PTHREAD_REALTIME_THREAD_PRIORITY)
+                    {
+                        sched.sched_priority = MA_PTHREAD_REALTIME_THREAD_PRIORITY;
                     }
-                    if (sched.sched_priority > priorityMax) {
+                    #else
+                    {
                         sched.sched_priority = priorityMax;
                     }
+                    #endif
+                } else {
+                    sched.sched_priority += ((int)priority + 5) * priorityStep;  /* +5 because the lowest priority is -5. */
                 }
 
-                /* I'm not treating a failure of setting the priority as a critical error so not checking the return value here. */
-                pthread_attr_setschedparam(&attr, &sched);
+                if (sched.sched_priority < priorityMin) {
+                    sched.sched_priority = priorityMin;
+                }
+                if (sched.sched_priority > priorityMax) {
+                    sched.sched_priority = priorityMax;
+                }
+
+                /* I'm not treating a failure of setting the priority as a critical error so not aborting on failure here. */
+                if (pthread_attr_setschedparam(&attr, &sched) == 0) {
+                    #if !defined(MA_ANDROID) || (defined(__ANDROID_API__) && __ANDROID_API__ >= 28)
+                    {
+                        pthread_attr_setinheritsched(&attr, PTHREAD_EXPLICIT_SCHED);
+                    }
+                    #endif
+                }
             }
         }
     }
@@ -16938,7 +17082,7 @@ MA_API ma_result ma_async_notification_signal(ma_async_notification* pNotificati
     }
 
     pNotificationCallbacks->onSignal(pNotification);
-    return MA_INVALID_ARGS;
+    return MA_SUCCESS;
 }
 
 
@@ -17751,7 +17895,7 @@ MA_API ma_result ma_job_queue_next(ma_job_queue* pQueue, ma_job* pJob)
         is stored. One thread can fall through to the freeing of this item while another is still using "head" for the
         retrieval of the "next" variable.
 
-        The slot allocator might need to make use of some reference counting to ensure it's only truely freed when
+        The slot allocator might need to make use of some reference counting to ensure it's only truly freed when
         there are no more references to the item. This must be fixed before removing these locks.
         */
 
@@ -17939,6 +18083,220 @@ DEVICE I/O
     #endif
 #endif
 
+/* This must be set to at least 26. */
+#ifndef MA_AAUDIO_MIN_ANDROID_SDK_VERSION
+#define MA_AAUDIO_MIN_ANDROID_SDK_VERSION 27
+#endif
+
+
+
+static ma_result ma_context_init__compat(void* pUserData, ma_context* pContext, const ma_context_config* pConfig)
+{
+    (void)pUserData;
+    return pContext->callbacks.onContextInit(pContext, pConfig, &pContext->callbacks);
+}
+
+static ma_result ma_context_uninit__compat(void* pUserData, ma_context* pContext)
+{
+    (void)pUserData;
+
+    if (pContext->callbacks.onContextUninit == NULL) {
+        return MA_NOT_IMPLEMENTED;
+    }
+
+    return pContext->callbacks.onContextUninit(pContext);
+}
+
+static ma_result ma_context_enumerate_devices__compat(void* pUserData, ma_context* pContext, ma_enum_devices_callback_proc callback, void* pCallbackUserData)
+{
+    (void)pUserData;
+
+    if (pContext->callbacks.onContextEnumerateDevices == NULL) {
+        return MA_NOT_IMPLEMENTED;
+    }
+
+    return pContext->callbacks.onContextEnumerateDevices(pContext, callback, pCallbackUserData);
+}
+
+static ma_result ma_context_get_device_info__compat(void* pUserData, ma_context* pContext, ma_device_type deviceType, const ma_device_id* pDeviceID, ma_device_info* pDeviceInfo)
+{
+    (void)pUserData;
+
+    if (pContext->callbacks.onContextGetDeviceInfo == NULL) {
+        return MA_NOT_IMPLEMENTED;
+    }
+
+    return pContext->callbacks.onContextGetDeviceInfo(pContext, deviceType, pDeviceID, pDeviceInfo);
+}
+
+static ma_result ma_device_init__compat(void* pUserData, ma_device* pDevice, const ma_device_config* pConfig, ma_device_descriptor* pDescriptorPlayback, ma_device_descriptor* pDescriptorCapture)
+{
+    (void)pUserData;
+    
+    if (pDevice->pContext->callbacks.onDeviceInit == NULL) {
+        return MA_NOT_IMPLEMENTED;
+    }
+
+    return pDevice->pContext->callbacks.onDeviceInit(pDevice, pConfig, pDescriptorPlayback, pDescriptorCapture);
+}
+
+static ma_result ma_device_uninit__compat(void* pUserData, ma_device* pDevice)
+{
+    (void)pUserData;
+
+    if (pDevice->pContext->callbacks.onDeviceUninit == NULL) {
+        return MA_NOT_IMPLEMENTED;
+    }
+
+    return pDevice->pContext->callbacks.onDeviceUninit(pDevice);
+}
+
+static ma_result ma_device_start__compat(void* pUserData, ma_device* pDevice)
+{
+    (void)pUserData;
+
+    if (pDevice->pContext->callbacks.onDeviceStart == NULL) {
+        return MA_NOT_IMPLEMENTED;
+    }
+
+    return pDevice->pContext->callbacks.onDeviceStart(pDevice);
+}
+
+static ma_result ma_device_stop__compat(void* pUserData, ma_device* pDevice)
+{
+    (void)pUserData;
+
+    if (pDevice->pContext->callbacks.onDeviceStop == NULL) {
+        return MA_NOT_IMPLEMENTED;
+    }
+
+    return pDevice->pContext->callbacks.onDeviceStop(pDevice);
+}
+
+static ma_result ma_device_read__compat(void* pUserData, ma_device* pDevice, void* pFrames, ma_uint32 frameCount, ma_uint32* pFramesRead)
+{
+    (void)pUserData;
+
+    if (pDevice->pContext->callbacks.onDeviceRead == NULL) {
+        return MA_NOT_IMPLEMENTED;
+    }
+
+    return pDevice->pContext->callbacks.onDeviceRead(pDevice, pFrames, frameCount, pFramesRead);
+}
+
+static ma_result ma_device_write__compat(void* pUserData, ma_device* pDevice, const void* pFrames, ma_uint32 frameCount, ma_uint32* pFramesWritten)
+{
+    (void)pUserData;
+
+    if (pDevice->pContext->callbacks.onDeviceWrite == NULL) {
+        return MA_NOT_IMPLEMENTED;
+    }
+
+    return pDevice->pContext->callbacks.onDeviceWrite(pDevice, pFrames, frameCount, pFramesWritten);
+}
+
+static ma_result ma_device_data_loop__compat(void* pUserData, ma_device* pDevice)
+{
+    (void)pUserData;
+
+    if (pDevice->pContext->callbacks.onDeviceDataLoop == NULL) {
+        return MA_NOT_IMPLEMENTED;
+    }
+
+    return pDevice->pContext->callbacks.onDeviceDataLoop(pDevice);
+}
+
+static ma_result ma_device_data_loop_wakeup__compat(void* pUserData, ma_device* pDevice)
+{
+    (void)pUserData;
+
+    if (pDevice->pContext->callbacks.onDeviceDataLoopWakeup == NULL) {
+        return MA_NOT_IMPLEMENTED;
+    }
+
+    return pDevice->pContext->callbacks.onDeviceDataLoopWakeup(pDevice);
+}
+
+static ma_result ma_device_get_info__compat(void* pUserData, ma_device* pDevice, ma_device_type deviceType, ma_device_info* pDeviceInfo)
+{
+    (void)pUserData;
+
+    if (pDevice->pContext->callbacks.onDeviceGetInfo == NULL) {
+        return MA_NOT_IMPLEMENTED;
+    }
+
+    return pDevice->pContext->callbacks.onDeviceGetInfo(pDevice, deviceType, pDeviceInfo);
+}
+
+
+static ma_bool32 ma_device_has_start__compat(void* pUserData, ma_context* pContext)
+{
+    (void)pUserData;
+    return pContext->callbacks.onDeviceStart != NULL;
+}
+
+static ma_bool32 ma_device_has_stop__compat(void* pUserData, ma_context* pContext)
+{
+    (void)pUserData;
+    return pContext->callbacks.onDeviceStop != NULL;
+}
+
+static ma_bool32 ma_device_has_read__compat(void* pUserData, ma_context* pContext)
+{
+    (void)pUserData;
+    return pContext->callbacks.onDeviceRead != NULL;
+}
+
+static ma_bool32 ma_device_has_write__compat(void* pUserData, ma_context* pContext)
+{
+    (void)pUserData;
+    return pContext->callbacks.onDeviceWrite != NULL;
+}
+
+static ma_bool32 ma_device_has_data_loop__compat(void* pUserData, ma_context* pContext)
+{
+    (void)pUserData;
+    return pContext->callbacks.onDeviceDataLoop != NULL;
+}
+
+static ma_bool32 ma_device_has_data_loop_wakeup__compat(void* pUserData, ma_context* pContext)
+{
+    (void)pUserData;
+    return pContext->callbacks.onDeviceDataLoopWakeup != NULL;
+}
+
+static ma_bool32 ma_device_has_get_info__compat(void* pUserData, ma_context* pContext)
+{
+    (void)pUserData;
+    return pContext->callbacks.onDeviceGetInfo != NULL;
+}
+
+static ma_device_backend_vtable ma_gDeviceVTable_Compat =
+{
+    ma_context_init__compat,
+    ma_context_uninit__compat,
+    ma_context_enumerate_devices__compat,
+    ma_context_get_device_info__compat,
+    ma_device_init__compat,
+    ma_device_uninit__compat,
+    ma_device_start__compat,
+    ma_device_stop__compat,
+    ma_device_read__compat,
+    ma_device_write__compat,
+    ma_device_data_loop__compat,
+    ma_device_data_loop_wakeup__compat,
+    ma_device_get_info__compat,
+
+    /* Temporary compatibility functions. Will be removed when all backends implement the new vtable system. */
+    ma_device_has_start__compat,
+    ma_device_has_stop__compat,
+    ma_device_has_read__compat,
+    ma_device_has_write__compat,
+    ma_device_has_data_loop__compat,
+    ma_device_has_data_loop_wakeup__compat,
+    ma_device_has_get_info__compat
+};
+
 
 
 MA_API void ma_device_info_add_native_data_format(ma_device_info* pDeviceInfo, ma_format format, ma_uint32 channels, ma_uint32 sampleRate, ma_uint32 flags)
@@ -18085,7 +18443,7 @@ MA_API ma_bool32 ma_is_backend_enabled(ma_backend backend)
         #if defined(MA_HAS_AAUDIO)
             #if defined(MA_ANDROID)
             {
-                return ma_android_sdk_version() >= 26;
+                return ma_android_sdk_version() >= MA_AAUDIO_MIN_ANDROID_SDK_VERSION;
             }
             #else
                 return MA_FALSE;
@@ -18644,11 +19002,6 @@ static void ma_device__on_notification(ma_device_notification notification)
     if (notification.pDevice->onNotification != NULL) {
         notification.pDevice->onNotification(&notification);
     }
-
-    /* TEMP FOR COMPATIBILITY: If it's a stopped notification, fire the onStop callback as well. This is only for backwards compatibility and will be removed. */
-    if (notification.pDevice->onStop != NULL && notification.type == ma_device_notification_type_stopped) {
-        notification.pDevice->onStop(notification.pDevice);
-    }
 }
 
 static void ma_device__on_notification_started(ma_device* pDevice)
@@ -18670,11 +19023,16 @@ static void ma_device__on_notification_rerouted(ma_device* pDevice)
 #endif
 
 #if defined(MA_EMSCRIPTEN)
-EMSCRIPTEN_KEEPALIVE
-void ma_device__on_notification_unlocked(ma_device* pDevice)
+#ifdef __cplusplus
+extern "C" {
+#endif
+void EMSCRIPTEN_KEEPALIVE ma_device__on_notification_unlocked(ma_device* pDevice)
 {
     ma_device__on_notification(ma_device_notification_init(pDevice, ma_device_notification_type_unlocked));
 }
+#ifdef __cplusplus
+}
+#endif
 #endif
 
 
@@ -18802,7 +19160,7 @@ static void ma_device__handle_data_callback(ma_device* pDevice, void* pFramesOut
         unsigned int prevDenormalState = ma_device_disable_denormals(pDevice);
         {
             /* Volume control of input makes things a bit awkward because the input buffer is read-only. We'll need to use a temp buffer and loop in this case. */
-            if (pFramesIn != NULL && masterVolumeFactor < 1) {
+            if (pFramesIn != NULL && masterVolumeFactor != 1) {
                 ma_uint8 tempFramesIn[MA_DATA_CONVERTER_STACK_BUFFER_SIZE];
                 ma_uint32 bpfCapture  = ma_get_bytes_per_frame(pDevice->capture.format, pDevice->capture.channels);
                 ma_uint32 bpfPlayback = ma_get_bytes_per_frame(pDevice->playback.format, pDevice->playback.channels);
@@ -18825,7 +19183,7 @@ static void ma_device__handle_data_callback(ma_device* pDevice, void* pFramesOut
 
             /* Volume control and clipping for playback devices. */
             if (pFramesOut != NULL) {
-                if (masterVolumeFactor < 1) {
+                if (masterVolumeFactor != 1) {
                     if (pFramesIn == NULL) {    /* <-- In full-duplex situations, the volume will have been applied to the input samples before the data callback. Applying it again post-callback will incorrectly compound it. */
                         ma_apply_volume_factor_pcm_frames(pFramesOut, frameCount, pDevice->playback.format, pDevice->playback.channels, masterVolumeFactor);
                     }
@@ -18965,7 +19323,7 @@ static void ma_device__send_frames_to_client(ma_device* pDevice, ma_uint32 frame
         ma_uint64 totalClientFramesProcessed = 0;
         const void* pRunningFramesInDeviceFormat = pFramesInDeviceFormat;
 
-        /* We just keep going until we've exhaused all of our input frames and cannot generate any more output frames. */
+        /* We just keep going until we've exhausted all of our input frames and cannot generate any more output frames. */
         for (;;) {
             ma_uint64 deviceFramesProcessedThisIteration;
             ma_uint64 clientFramesProcessedThisIteration;
@@ -19188,7 +19546,7 @@ static ma_result ma_device_audio_thread__default_read_write(ma_device* pDevice)
 
     /* Just some quick validation on the device type and the available callbacks. */
     if (pDevice->type == ma_device_type_capture || pDevice->type == ma_device_type_duplex || pDevice->type == ma_device_type_loopback) {
-        if (pDevice->pContext->callbacks.onDeviceRead == NULL) {
+        if (pDevice->pContext->pVTable->onDeviceRead == NULL || (pDevice->pContext->pVTable->onHasRead && pDevice->pContext->pVTable->onHasRead(pDevice->pContext->pVTableUserData, pDevice->pContext) == MA_FALSE)) {
             return MA_NOT_IMPLEMENTED;
         }
 
@@ -19196,7 +19554,7 @@ static ma_result ma_device_audio_thread__default_read_write(ma_device* pDevice)
     }
 
     if (pDevice->type == ma_device_type_playback || pDevice->type == ma_device_type_duplex) {
-        if (pDevice->pContext->callbacks.onDeviceWrite == NULL) {
+        if (pDevice->pContext->pVTable->onDeviceWrite == NULL || (pDevice->pContext->pVTable->onHasWrite && pDevice->pContext->pVTable->onHasWrite(pDevice->pContext->pVTableUserData, pDevice->pContext) == MA_FALSE)) {
             return MA_NOT_IMPLEMENTED;
         }
 
@@ -19222,7 +19580,7 @@ static ma_result ma_device_audio_thread__default_read_write(ma_device* pDevice)
                         capturedDeviceFramesToTryProcessing = capturedDeviceDataCapInFrames;
                     }
 
-                    result = pDevice->pContext->callbacks.onDeviceRead(pDevice, capturedDeviceData, capturedDeviceFramesToTryProcessing, &capturedDeviceFramesToProcess);
+                    result = pDevice->pContext->pVTable->onDeviceRead(pDevice->pContext->pVTableUserData, pDevice, capturedDeviceData, capturedDeviceFramesToTryProcessing, &capturedDeviceFramesToProcess);
                     if (result != MA_SUCCESS) {
                         exitLoop = MA_TRUE;
                         break;
@@ -19248,7 +19606,7 @@ static ma_result ma_device_audio_thread__default_read_write(ma_device* pDevice)
                         }
 
                         /*
-                        If we weren't able to generate any output frames it must mean we've exhaused all of our input. The only time this would not be the case is if capturedClientData was too small
+                        If we weren't able to generate any output frames it must mean we've exhausted all of our input. The only time this would not be the case is if capturedClientData was too small
                         which should never be the case when it's of the size MA_DATA_CONVERTER_STACK_BUFFER_SIZE.
                         */
                         if (capturedClientFramesToProcessThisIteration == 0) {
@@ -19269,7 +19627,7 @@ static ma_result ma_device_audio_thread__default_read_write(ma_device* pDevice)
                                 break;
                             }
 
-                            result = pDevice->pContext->callbacks.onDeviceWrite(pDevice, playbackDeviceData, (ma_uint32)convertedDeviceFrameCount, NULL);   /* Safe cast. */
+                            result = pDevice->pContext->pVTable->onDeviceWrite(pDevice->pContext->pVTableUserData, pDevice, playbackDeviceData, (ma_uint32)convertedDeviceFrameCount, NULL);   /* Safe cast. */
                             if (result != MA_SUCCESS) {
                                 exitLoop = MA_TRUE;
                                 break;
@@ -19310,7 +19668,7 @@ static ma_result ma_device_audio_thread__default_read_write(ma_device* pDevice)
                         framesToReadThisIteration = capturedDeviceDataCapInFrames;
                     }
 
-                    result = pDevice->pContext->callbacks.onDeviceRead(pDevice, capturedDeviceData, framesToReadThisIteration, &framesProcessed);
+                    result = pDevice->pContext->pVTable->onDeviceRead(pDevice->pContext->pVTableUserData, pDevice, capturedDeviceData, framesToReadThisIteration, &framesProcessed);
                     if (result != MA_SUCCESS) {
                         exitLoop = MA_TRUE;
                         break;
@@ -19342,7 +19700,7 @@ static ma_result ma_device_audio_thread__default_read_write(ma_device* pDevice)
 
                     ma_device__read_frames_from_client(pDevice, framesToWriteThisIteration, playbackDeviceData);
 
-                    result = pDevice->pContext->callbacks.onDeviceWrite(pDevice, playbackDeviceData, framesToWriteThisIteration, &framesProcessed);
+                    result = pDevice->pContext->pVTable->onDeviceWrite(pDevice->pContext->pVTableUserData, pDevice, playbackDeviceData, framesToWriteThisIteration, &framesProcessed);
                     if (result != MA_SUCCESS) {
                         exitLoop = MA_TRUE;
                         break;
@@ -21268,7 +21626,7 @@ static ma_result ma_context_get_device_info_from_IAudioClient__wasapi(ma_context
     }
 
     /*
-    Exlcusive Mode. We repeatedly call IsFormatSupported() here. This is not currently supported on
+    Exclusive Mode. We repeatedly call IsFormatSupported() here. This is not currently supported on
     UWP. Failure to retrieve the exclusive mode format is not considered an error, so from here on
     out, MA_SUCCESS is guaranteed to be returned.
     */
@@ -22266,7 +22624,7 @@ static ma_result ma_device_init_internal__wasapi(ma_context* pContext, ma_device
                 if (bufferDuration > 500*10000) {
                     break;
                 } else {
-                    if (bufferDuration == 0) {  /* <-- Just a sanity check to prevent an infinit loop. Should never happen, but it makes me feel better. */
+                    if (bufferDuration == 0) {  /* <-- Just a sanity check to prevent an infinite loop. Should never happen, but it makes me feel better. */
                         break;
                     }
 
@@ -22597,7 +22955,6 @@ static ma_result ma_device_reinit__wasapi(ma_device* pDevice, ma_device_type dev
         MA_COPY_MEMORY(pDevice->capture.internalChannelMap, data.channelMapOut, sizeof(data.channelMapOut));
         pDevice->capture.internalPeriodSizeInFrames = data.periodSizeInFramesOut;
         pDevice->capture.internalPeriods            = data.periodsOut;
-        ma_strcpy_s(pDevice->capture.name, sizeof(pDevice->capture.name), data.deviceName);
 
         ma_IAudioClient_SetEventHandle((ma_IAudioClient*)pDevice->wasapi.pAudioClientCapture, (HANDLE)pDevice->wasapi.hEventCapture);
 
@@ -22618,7 +22975,6 @@ static ma_result ma_device_reinit__wasapi(ma_device* pDevice, ma_device_type dev
         MA_COPY_MEMORY(pDevice->playback.internalChannelMap, data.channelMapOut, sizeof(data.channelMapOut));
         pDevice->playback.internalPeriodSizeInFrames = data.periodSizeInFramesOut;
         pDevice->playback.internalPeriods            = data.periodsOut;
-        ma_strcpy_s(pDevice->playback.name, sizeof(pDevice->playback.name), data.deviceName);
 
         ma_IAudioClient_SetEventHandle((ma_IAudioClient*)pDevice->wasapi.pAudioClientPlayback, (HANDLE)pDevice->wasapi.hEventPlayback);
 
@@ -23655,6 +24011,13 @@ DirectSound Backend
 #define MA_DSBPLAY_TERMINATEBY_DISTANCE 0x00000010
 #define MA_DSBPLAY_TERMINATEBY_PRIORITY 0x00000020
 
+#define MA_DSBSTATUS_PLAYING            0x00000001
+#define MA_DSBSTATUS_BUFFERLOST         0x00000002
+#define MA_DSBSTATUS_LOOPING            0x00000004
+#define MA_DSBSTATUS_LOCHARDWARE        0x00000008
+#define MA_DSBSTATUS_LOCSOFTWARE        0x00000010
+#define MA_DSBSTATUS_TERMINATED         0x00000020
+
 #define MA_DSCBSTART_LOOPING            0x00000001
 
 typedef struct
@@ -24024,9 +24387,12 @@ static ma_result ma_context_create_IDirectSound__dsound(ma_context* pContext, ma
     }
 
     /* The cooperative level must be set before doing anything else. */
-    hWnd = ((MA_PFN_GetForegroundWindow)pContext->win32.GetForegroundWindow)();
+    hWnd = (HWND)pContext->dsound.hWnd;
     if (hWnd == 0) {
-        hWnd = ((MA_PFN_GetDesktopWindow)pContext->win32.GetDesktopWindow)();
+        hWnd = ((MA_PFN_GetForegroundWindow)pContext->win32.GetForegroundWindow)();
+        if (hWnd == 0) {
+            hWnd = ((MA_PFN_GetDesktopWindow)pContext->win32.GetDesktopWindow)();
+        }
     }
 
     hr = ma_IDirectSound_SetCooperativeLevel(pDirectSound, hWnd, (shareMode == ma_share_mode_exclusive) ? MA_DSSCL_EXCLUSIVE : MA_DSSCL_PRIORITY);
@@ -24530,8 +24896,8 @@ static ma_result ma_device_init__dsound(ma_device* pDevice, const ma_device_conf
     }
 
     /*
-    Unfortunately DirectSound uses different APIs and data structures for playback and catpure devices. We need to initialize
-    the capture device first because we'll want to match it's buffer size and period count on the playback side if we're using
+    Unfortunately DirectSound uses different APIs and data structures for playback and capture devices. We need to initialize
+    the capture device first because we'll want to match its buffer size and period count on the playback side if we're using
     full-duplex mode.
     */
     if (pConfig->deviceType == ma_device_type_capture || pConfig->deviceType == ma_device_type_duplex) {
@@ -24814,6 +25180,7 @@ static ma_result ma_device_data_loop__dsound(ma_device* pDevice)
     ma_bool32 isPlaybackDeviceStarted = MA_FALSE;
     ma_uint32 framesWrittenToPlaybackDevice = 0;   /* For knowing whether or not the playback device needs to be started. */
     ma_uint32 waitTimeInMilliseconds = 1;
+    DWORD playbackBufferStatus = 0;
 
     MA_ASSERT(pDevice != NULL);
 
@@ -25142,6 +25509,20 @@ static ma_result ma_device_data_loop__dsound(ma_device* pDevice)
                     break;
                 }
 
+                hr = ma_IDirectSoundBuffer_GetStatus((ma_IDirectSoundBuffer*)pDevice->dsound.pPlaybackBuffer, &playbackBufferStatus);
+                if (SUCCEEDED(hr) && (playbackBufferStatus & MA_DSBSTATUS_PLAYING) == 0 && isPlaybackDeviceStarted) {
+                    ma_log_postf(ma_device_get_log(pDevice), MA_LOG_LEVEL_INFO, "[DirectSound] Attempting to resume audio due to state: %d.", (int)playbackBufferStatus);
+                    hr = ma_IDirectSoundBuffer_Play((ma_IDirectSoundBuffer*)pDevice->dsound.pPlaybackBuffer, 0, 0, MA_DSBPLAY_LOOPING);
+                    if (FAILED(hr)) {
+                        ma_log_postf(ma_device_get_log(pDevice), MA_LOG_LEVEL_ERROR, "[DirectSound] IDirectSoundBuffer_Play() failed after attempting to resume from state %d.", (int)playbackBufferStatus);
+                        return ma_result_from_HRESULT(hr);
+                    }
+
+                    isPlaybackDeviceStarted = MA_TRUE;
+                    ma_sleep(waitTimeInMilliseconds);
+                    continue;
+                }
+
                 if (physicalPlayCursorInBytes < prevPlayCursorInBytesPlayback) {
                     physicalPlayCursorLoopFlagPlayback = !physicalPlayCursorLoopFlagPlayback;
                 }
@@ -25342,6 +25723,8 @@ static ma_result ma_context_init__dsound(ma_context* pContext, const ma_context_
         pContext->dsound.DirectSoundCaptureEnumerateA == NULL) {
         return MA_API_NOT_FOUND;
     }
+
+    pContext->dsound.hWnd = pConfig->dsound.hWnd;
 
     pCallbacks->onContextInit             = ma_context_init__dsound;
     pCallbacks->onContextUninit           = ma_context_uninit__dsound;
@@ -25665,7 +26048,7 @@ static ma_result ma_context_get_device_info_from_WAVECAPS(ma_context* pContext, 
     - If the name GUID is not present in the registry we'll also need to stick to the original 31 characters.
     - I like consistency, so I want the returned device names to be consistent with those returned by WASAPI and DirectSound. The
       problem, however is that WASAPI and DirectSound use "<component> (<name>)" format (such as "Speakers (High Definition Audio)"),
-      but WinMM does not specificy the component name. From my admittedly limited testing, I've notice the component name seems to
+      but WinMM does not specify the component name. From my admittedly limited testing, I've notice the component name seems to
       usually fit within the 31 characters of the fixed sized buffer, so what I'm going to do is parse that string for the component
       name, and then concatenate the name from the registry.
     */
@@ -25933,7 +26316,7 @@ static ma_result ma_device_init__winmm(ma_device* pDevice, const ma_device_confi
         return MA_DEVICE_TYPE_NOT_SUPPORTED;
     }
 
-    /* No exlusive mode with WinMM. */
+    /* No exclusive mode with WinMM. */
     if (((pConfig->deviceType == ma_device_type_playback || pConfig->deviceType == ma_device_type_duplex) && pDescriptorPlayback->shareMode == ma_share_mode_exclusive) ||
         ((pConfig->deviceType == ma_device_type_capture  || pConfig->deviceType == ma_device_type_duplex) && pDescriptorCapture->shareMode  == ma_share_mode_exclusive)) {
         return MA_SHARE_MODE_NOT_SUPPORTED;
@@ -25955,7 +26338,7 @@ static ma_result ma_device_init__winmm(ma_device* pDevice, const ma_device_confi
         /* We use an event to know when a new fragment needs to be enqueued. */
         pDevice->winmm.hEventCapture = (ma_handle)CreateEventA(NULL, TRUE, TRUE, NULL);
         if (pDevice->winmm.hEventCapture == NULL) {
-            errorMsg = "[WinMM] Failed to create event for fragment enqueing for the capture device.", errorCode = ma_result_from_GetLastError(GetLastError());
+            errorMsg = "[WinMM] Failed to create event for fragment enqueuing for the capture device.", errorCode = ma_result_from_GetLastError(GetLastError());
             goto on_error;
         }
 
@@ -25993,7 +26376,7 @@ static ma_result ma_device_init__winmm(ma_device* pDevice, const ma_device_confi
         /* We use an event to know when a new fragment needs to be enqueued. */
         pDevice->winmm.hEventPlayback = (ma_handle)CreateEventA(NULL, TRUE, TRUE, NULL);
         if (pDevice->winmm.hEventPlayback == NULL) {
-            errorMsg = "[WinMM] Failed to create event for fragment enqueing for the playback device.", errorCode = ma_result_from_GetLastError(GetLastError());
+            errorMsg = "[WinMM] Failed to create event for fragment enqueuing for the playback device.", errorCode = ma_result_from_GetLastError(GetLastError());
             goto on_error;
         }
 
@@ -27115,7 +27498,7 @@ static ma_result ma_context_open_pcm__alsa(ma_context* pContext, ma_share_mode s
         /*
         We're trying to open a specific device. There's a few things to consider here:
 
-        miniaudio recongnizes a special format of device id that excludes the "hw", "dmix", etc. prefix. It looks like this: ":0,0", ":0,1", etc. When
+        miniaudio recognizes a special format of device id that excludes the "hw", "dmix", etc. prefix. It looks like this: ":0,0", ":0,1", etc. When
         an ID of this format is specified, it indicates to miniaudio that it can try different combinations of plugins ("hw", "dmix", etc.) until it
         finds an appropriate one that works. This comes in very handy when trying to open a device in shared mode ("dmix"), vs exclusive mode ("hw").
         */
@@ -27214,7 +27597,7 @@ static ma_result ma_context_enumerate_devices__alsa(ma_context* pContext, ma_enu
                     /*
                     At this point, hwid looks like "hw:0,0". In simplified enumeration mode, we actually want to strip off the
                     plugin name so it looks like ":0,0". The reason for this is that this special format is detected at device
-                    initialization time and is used as an indicator to try and use the most appropriate plugin depending on the
+                    initialization time and is used as an indicator to try to use the most appropriate plugin depending on the
                     device type and sharing mode.
                     */
                     char* dst = hwid;
@@ -27393,7 +27776,7 @@ static void ma_context_iterate_rates_and_add_native_data_format__alsa(ma_context
     ((ma_snd_pcm_hw_params_get_rate_min_proc)pContext->alsa.snd_pcm_hw_params_get_rate_min)(pHWParams, &minSampleRate, &sampleRateDir);
     ((ma_snd_pcm_hw_params_get_rate_max_proc)pContext->alsa.snd_pcm_hw_params_get_rate_max)(pHWParams, &maxSampleRate, &sampleRateDir);
 
-    /* Make sure our sample rates are clamped to sane values. Stupid devices like "pulse" will reports rates like "1" which is ridiculus. */
+    /* Make sure our sample rates are clamped to sane values. Stupid devices like "pulse" will reports rates like "1" which is ridiculous. */
     minSampleRate = ma_clamp(minSampleRate, (unsigned int)ma_standard_sample_rate_min, (unsigned int)ma_standard_sample_rate_max);
     maxSampleRate = ma_clamp(maxSampleRate, (unsigned int)ma_standard_sample_rate_min, (unsigned int)ma_standard_sample_rate_max);
 
@@ -27469,10 +27852,10 @@ static ma_result ma_context_get_device_info__alsa(ma_context* pContext, ma_devic
     /*
     Some ALSA devices can support many permutations of formats, channels and rates. We only support
     a fixed number of permutations which means we need to employ some strategies to ensure the best
-    combinations are returned. An example is the "pulse" device which can do it's own data conversion
+    combinations are returned. An example is the "pulse" device which can do its own data conversion
     in software and as a result can support any combination of format, channels and rate.
 
-    We want to ensure the the first data formats are the best. We have a list of favored sample
+    We want to ensure that the first data formats are the best. We have a list of favored sample
     formats and sample rates, so these will be the basis of our iteration.
     */
 
@@ -28063,6 +28446,7 @@ static ma_result ma_device_stop__alsa(ma_device* pDevice)
     a small chance that our wakeupfd has not been cleared. We'll clear that out now if applicable.
     */
     int resultPoll;
+    int resultRead;
 
     if (pDevice->type == ma_device_type_capture || pDevice->type == ma_device_type_duplex) {
         ma_log_postf(ma_device_get_log(pDevice), MA_LOG_LEVEL_DEBUG, "[ALSA] Dropping capture device...\n");
@@ -28077,12 +28461,15 @@ static ma_result ma_device_stop__alsa(ma_device* pDevice)
             ma_log_postf(ma_device_get_log(pDevice), MA_LOG_LEVEL_DEBUG, "[ALSA] Preparing capture device successful.\n");
         }
 
-    /* Clear the wakeupfd. */
-    resultPoll = poll((struct pollfd*)pDevice->alsa.pPollDescriptorsCapture, 1, 0);
-    if (resultPoll > 0) {
-        ma_uint64 t;
-        read(((struct pollfd*)pDevice->alsa.pPollDescriptorsCapture)[0].fd, &t, sizeof(t));
-    }
+        /* Clear the wakeupfd. */
+        resultPoll = poll((struct pollfd*)pDevice->alsa.pPollDescriptorsCapture, 1, 0);
+        if (resultPoll > 0) {
+            ma_uint64 t;
+            resultRead = read(((struct pollfd*)pDevice->alsa.pPollDescriptorsCapture)[0].fd, &t, sizeof(t));
+            if (resultRead != sizeof(t)) {
+                ma_log_postf(ma_device_get_log(pDevice), MA_LOG_LEVEL_DEBUG, "[ALSA] Failed to read from capture wakeupfd. read() = %d\n", resultRead);
+            }
+        }
     }
 
     if (pDevice->type == ma_device_type_playback || pDevice->type == ma_device_type_duplex) {
@@ -28099,11 +28486,14 @@ static ma_result ma_device_stop__alsa(ma_device* pDevice)
         }
 
         /* Clear the wakeupfd. */
-    resultPoll = poll((struct pollfd*)pDevice->alsa.pPollDescriptorsPlayback, 1, 0);
-    if (resultPoll > 0) {
-        ma_uint64 t;
-        read(((struct pollfd*)pDevice->alsa.pPollDescriptorsPlayback)[0].fd, &t, sizeof(t));
-    }
+        resultPoll = poll((struct pollfd*)pDevice->alsa.pPollDescriptorsPlayback, 1, 0);
+        if (resultPoll > 0) {
+            ma_uint64 t;
+            resultRead = read(((struct pollfd*)pDevice->alsa.pPollDescriptorsPlayback)[0].fd, &t, sizeof(t));
+            if (resultRead != sizeof(t)) {
+                ma_log_postf(ma_device_get_log(pDevice), MA_LOG_LEVEL_DEBUG, "[ALSA] Failed to read from playback wakeupfd. read() = %d\n", resultRead);
+            }
+        }
 
     }
 
@@ -28611,7 +29001,7 @@ get fun, and I don't mean that in a good way...
 
 The problems start with the very name of the API - "asynchronous". Yes, this is an asynchronous oriented API which means your commands
 don't immediately take effect. You instead need to issue your commands, and then wait for them to complete. The waiting mechanism is
-enabled through the use of a "main loop". In the asychronous API you cannot get away from the main loop, and the main loop is where almost
+enabled through the use of a "main loop". In the asynchronous API you cannot get away from the main loop, and the main loop is where almost
 all of PulseAudio's problems stem from.
 
 When you first initialize PulseAudio you need an object referred to as "main loop". You can implement this yourself by defining your own
@@ -28661,7 +29051,7 @@ because PulseAudio takes it literally, specifically the "can be". You would thin
 writing and reading data to and from the stream, and that would be right, except when it's not. When you initialize the stream, you can
 set a flag that tells PulseAudio to not start the stream automatically. This is required because miniaudio does not auto-start devices
 straight after initialization - you need to call `ma_device_start()` manually. The problem is that even when this flag is specified,
-PulseAudio will immediately fire it's write or read callback. This is *technically* correct (based on the wording in the documentation)
+PulseAudio will immediately fire its write or read callback. This is *technically* correct (based on the wording in the documentation)
 because indeed, data *can* be written at this point. The problem is that it's not *practical*. It makes sense that the write/read callback
 would be where a program will want to write or read data to or from the stream, but when it's called before the application has even
 requested that the stream be started, it's just not practical because the program probably isn't ready for any kind of data delivery at
@@ -29643,39 +30033,6 @@ static void ma_device_source_info_callback(ma_pa_context* pPulseContext, const m
     (void)pPulseContext; /* Unused. */
 }
 
-#if 0
-static void ma_device_sink_name_callback(ma_pa_context* pPulseContext, const ma_pa_sink_info* pInfo, int endOfList, void* pUserData)
-{
-    ma_device* pDevice;
-
-    if (endOfList > 0) {
-        return;
-    }
-
-    pDevice = (ma_device*)pUserData;
-    MA_ASSERT(pDevice != NULL);
-
-    ma_strncpy_s(pDevice->playback.name, sizeof(pDevice->playback.name), pInfo->description, (size_t)-1);
-
-    (void)pPulseContext; /* Unused. */
-}
-
-static void ma_device_source_name_callback(ma_pa_context* pPulseContext, const ma_pa_source_info* pInfo, int endOfList, void* pUserData)
-{
-    ma_device* pDevice;
-
-    if (endOfList > 0) {
-        return;
-    }
-
-    pDevice = (ma_device*)pUserData;
-    MA_ASSERT(pDevice != NULL);
-
-    ma_strncpy_s(pDevice->capture.name, sizeof(pDevice->capture.name), pInfo->description, (size_t)-1);
-
-    (void)pPulseContext; /* Unused. */
-}
-#endif
 
 static ma_result ma_context_get_sink_info__pulse(ma_context* pContext, const char* pDeviceName, ma_pa_sink_info* pSinkInfo)
 {
@@ -30302,6 +30659,7 @@ static ma_result ma_device_init__pulse(ma_device* pDevice, const ma_device_confi
     ma_pa_buffer_attr attr;
     const ma_pa_sample_spec* pActualSS   = NULL;
     const ma_pa_buffer_attr* pActualAttr = NULL;
+    const ma_pa_channel_map* pActualChannelMap = NULL;
     ma_uint32 iChannel;
     ma_pa_stream_flags_t streamFlags;
 
@@ -30451,7 +30809,12 @@ static ma_result ma_device_init__pulse(ma_device* pDevice, const ma_device_confi
             goto on_error4;
         }
 
+
         /* Internal channel map. */
+        pActualChannelMap = ((ma_pa_stream_get_channel_map_proc)pDevice->pContext->pulse.pa_stream_get_channel_map)((ma_pa_stream*)pDevice->pulse.pStreamCapture);
+        if (pActualChannelMap == NULL) {
+            pActualChannelMap = &cmap;  /* Fallback just in case. */
+        }
 
         /*
         Bug in PipeWire. There have been reports that PipeWire is returning AUX channels when reporting
@@ -30461,8 +30824,8 @@ static ma_result ma_device_init__pulse(ma_device* pDevice, const ma_device_confi
         fixed sooner than later. I might remove this hack later.
         */
         if (pDescriptorCapture->channels > 2) {
-            for (iChannel = 0; iChannel < pDescriptorCapture->channels; ++iChannel) {
-                pDescriptorCapture->channelMap[iChannel] = ma_channel_position_from_pulse(cmap.map[iChannel]);
+            for (iChannel = 0; iChannel < pDescriptorCapture->channels; iChannel += 1) {
+                pDescriptorCapture->channelMap[iChannel] = ma_channel_position_from_pulse(pActualChannelMap->map[iChannel]);
             }
         } else {
             /* Hack for mono and stereo. */
@@ -30603,7 +30966,12 @@ static ma_result ma_device_init__pulse(ma_device* pDevice, const ma_device_confi
             goto on_error4;
         }
 
+
         /* Internal channel map. */
+        pActualChannelMap = ((ma_pa_stream_get_channel_map_proc)pDevice->pContext->pulse.pa_stream_get_channel_map)((ma_pa_stream*)pDevice->pulse.pStreamPlayback);
+        if (pActualChannelMap == NULL) {
+            pActualChannelMap = &cmap;  /* Fallback just in case. */
+        }
 
         /*
         Bug in PipeWire. There have been reports that PipeWire is returning AUX channels when reporting
@@ -30613,8 +30981,8 @@ static ma_result ma_device_init__pulse(ma_device* pDevice, const ma_device_confi
         fixed sooner than later. I might remove this hack later.
         */
         if (pDescriptorPlayback->channels > 2) {
-            for (iChannel = 0; iChannel < pDescriptorPlayback->channels; ++iChannel) {
-                pDescriptorPlayback->channelMap[iChannel] = ma_channel_position_from_pulse(cmap.map[iChannel]);
+            for (iChannel = 0; iChannel < pDescriptorPlayback->channels; iChannel += 1) {
+                pDescriptorPlayback->channelMap[iChannel] = ma_channel_position_from_pulse(pActualChannelMap->map[iChannel]);
             }
         } else {
             /* Hack for mono and stereo. */
@@ -31858,7 +32226,7 @@ that supports this level of detail. There was some public domain sample code I s
 and AudioUnit APIs, but I couldn't see anything that gave low-level control over device selection and capabilities (the
 distinction between playback and capture in particular). Therefore, miniaudio is using the AudioObject API.
 
-Most (all?) functions in the AudioObject API take a AudioObjectID as it's input. This is the device identifier. When
+Most (all?) functions in the AudioObject API take a AudioObjectID as its input. This is the device identifier. When
 retrieving global information, such as the device list, you use kAudioObjectSystemObject. When retrieving device-specific
 data, you pass in the ID for that device. In order to retrieve device-specific IDs you need to enumerate over each of the
 devices. This is done using the AudioObjectGetPropertyDataSize() and AudioObjectGetPropertyData() APIs which seem to be
@@ -34224,7 +34592,7 @@ static ma_result ma_device_init_internal__coreaudio(ma_context* pContext, ma_dev
         returning a result code of -10863. I have also tried changing the format directly on the input scope on the input bus, but
         this just results in `ca_require: IsStreamFormatWritable(inScope, inElement) NotWritable` when trying to set the format.
 
-        Something that does seem to work, however, has been setting the nominal sample rate on the deivce object. The problem with
+        Something that does seem to work, however, has been setting the nominal sample rate on the device object. The problem with
         this, however, is that it actually changes the sample rate at the operating system level and not just the application. This
         could be intrusive to the user, however, so I don't think it's wise to make this the default. Instead I'm making this a
         configuration option. When the `coreaudio.allowNominalSampleRateChange` config option is set to true, changing the sample
@@ -34610,7 +34978,7 @@ static ma_result ma_device_init__coreaudio(ma_device* pDevice, const ma_device_c
         ma_get_AudioObject_uid(pDevice->pContext, pDevice->coreaudio.deviceObjectIDCapture, sizeof(pDevice->capture.id.coreaudio), pDevice->capture.id.coreaudio);
 
         /*
-        If we are using the default device we'll need to listen for changes to the system's default device so we can seemlessly
+        If we are using the default device we'll need to listen for changes to the system's default device so we can seamlessly
         switch the device in the background.
         */
         if (pConfig->capture.pDeviceID == NULL) {
@@ -34674,7 +35042,7 @@ static ma_result ma_device_init__coreaudio(ma_device* pDevice, const ma_device_c
         ma_get_AudioObject_uid(pDevice->pContext, pDevice->coreaudio.deviceObjectIDPlayback, sizeof(pDevice->playback.id.coreaudio), pDevice->playback.id.coreaudio);
 
         /*
-        If we are using the default device we'll need to listen for changes to the system's default device so we can seemlessly
+        If we are using the default device we'll need to listen for changes to the system's default device so we can seamlessly
         switch the device in the background.
         */
         if (pDescriptorPlayback->pDeviceID == NULL && (pConfig->deviceType != ma_device_type_duplex || pDescriptorCapture->pDeviceID != NULL)) {
@@ -37086,7 +37454,7 @@ static ma_result ma_device_init_fd__oss(ma_device* pDevice, const ma_device_conf
     }
 
     /*
-    The OSS documantation is very clear about the order we should be initializing the device's properties:
+    The OSS documentation is very clear about the order we should be initializing the device's properties:
       1) Format
       2) Channels
       3) Sample rate.
@@ -37677,11 +38045,11 @@ static ma_result ma_create_and_configure_AAudioStreamBuilder__aaudio(ma_context*
         There have been reports where setting the frames per data callback results in an error
         later on from Android. To address this, I'm experimenting with simply not setting it on
         anything from Android 11 and earlier. Suggestions welcome on how we might be able to make
-        this more targetted.
+        this more targeted.
         */
         if (!pConfig->aaudio.enableCompatibilityWorkarounds || ma_android_sdk_version() > 30) {
             /*
-            AAudio is annoying when it comes to it's buffer calculation stuff because it doesn't let you
+            AAudio is annoying when it comes to its buffer calculation stuff because it doesn't let you
             retrieve the actual sample rate until after you've opened the stream. But you need to configure
             the buffer capacity before you open the stream... :/
 
@@ -38011,7 +38379,7 @@ static ma_result ma_device_start_stream__aaudio(ma_device* pDevice, ma_AAudioStr
         return ma_result_from_aaudio(resultAA);
     }
 
-    /* Do we actually need to wait for the device to transition into it's started state? */
+    /* Do we actually need to wait for the device to transition into its started state? */
 
     /* The device should be in either a starting or started state. If it's not set to started we need to wait for it to transition. It should go from starting to started. */
     currentState = ((MA_PFN_AAudioStream_getState)pDevice->pContext->aaudio.AAudioStream_getState)(pStream);
@@ -39648,7 +40016,7 @@ TODO: Version 0.12: Swap this logic around so that AudioWorklets are used by def
 
 /* The thread stack size must be a multiple of 16. */
 #ifndef MA_AUDIO_WORKLETS_THREAD_STACK_SIZE
-#define MA_AUDIO_WORKLETS_THREAD_STACK_SIZE 16384
+#define MA_AUDIO_WORKLETS_THREAD_STACK_SIZE     131072
 #endif
 
 #if defined(MA_USE_AUDIO_WORKLETS)
@@ -39774,7 +40142,7 @@ static ma_result ma_device_uninit__webaudio(ma_device* pDevice)
     #if defined(MA_USE_AUDIO_WORKLETS)
     {
         EM_ASM({
-            var device = miniaudio.get_device_by_index($0);
+            var device = window.miniaudio.get_device_by_index($0);
 
             if (device.streamNode !== undefined) {
                 device.streamNode.disconnect();
@@ -39789,7 +40157,7 @@ static ma_result ma_device_uninit__webaudio(ma_device* pDevice)
     #else
     {
         EM_ASM({
-            var device = miniaudio.get_device_by_index($0);
+            var device = window.miniaudio.get_device_by_index($0);
 
             /* Make sure all nodes are disconnected and marked for collection. */
             if (device.scriptNode !== undefined) {
@@ -39816,7 +40184,7 @@ static ma_result ma_device_uninit__webaudio(ma_device* pDevice)
 
     /* Clean up the device on the JS side. */
     EM_ASM({
-        miniaudio.untrack_device_by_index($0);
+        window.miniaudio.untrack_device_by_index($0);
     }, pDevice->webaudio.deviceIndex);
 
     ma_free(pDevice->webaudio.pIntermediaryBuffer, &pDevice->pContext->allocationCallbacks);
@@ -39949,7 +40317,7 @@ static void ma_audio_worklet_processor_created__webaudio(EMSCRIPTEN_WEBAUDIO_T a
     count from MediaStreamAudioSourceNode (what we use for capture)? The only way to have control is to configure an
     output channel count on the capture side. This is slightly confusing for capture mode because intuitively you
     wouldn't actually connect an output to an input-only node, but this is what we'll have to do in order to have
-    proper control over the channel count. In the capture case, we'll have to output silence to it's output node.
+    proper control over the channel count. In the capture case, we'll have to output silence to its output node.
     */
     if (pParameters->pConfig->deviceType == ma_device_type_capture) {
         channels = (int)((pParameters->pDescriptorCapture->channels > 0) ? pParameters->pDescriptorCapture->channels : MA_DEFAULT_CHANNELS);
@@ -39980,7 +40348,6 @@ static void ma_audio_worklet_processor_created__webaudio(EMSCRIPTEN_WEBAUDIO_T a
         ma_free(pParameters, &pParameters->pDevice->pContext->allocationCallbacks);
         return;
     }
-
 
     pParameters->pDevice->webaudio.audioWorklet = emscripten_create_wasm_audio_worklet_node(audioContext, "miniaudio", &audioWorkletOptions, &ma_audio_worklet_process_callback__webaudio, pParameters->pDevice);
 
@@ -40121,7 +40488,6 @@ static ma_result ma_device_init__webaudio(ma_device* pDevice, const ma_device_co
         /* It's not clear if this can return an error. None of the tests in the Emscripten repository check for this, so neither am I for now. */
         pDevice->webaudio.audioContext = emscripten_create_audio_context(&audioContextAttributes);
 
-
         /*
         With the context created we can now create the worklet. We can only have a single worklet per audio
         context which means we'll need to craft this appropriately to handle duplex devices correctly.
@@ -40170,7 +40536,7 @@ static ma_result ma_device_init__webaudio(ma_device* pDevice, const ma_device_co
 
         /* We need to add an entry to the miniaudio.devices list on the JS side so we can do some JS/C interop. */
         pDevice->webaudio.deviceIndex = EM_ASM_INT({
-            return miniaudio.track_device({
+            return window.miniaudio.track_device({
                 webaudio: emscriptenGetAudioObject($0),
                 state:    1 /* 1 = ma_device_state_stopped */
             });
@@ -40186,7 +40552,7 @@ static ma_result ma_device_init__webaudio(ma_device* pDevice, const ma_device_co
         ma_uint32 sampleRate;
         ma_uint32 periodSizeInFrames;
 
-        /* The channel count will depend on the device type. If it's a capture, use it's, otherwise use the playback side. */
+        /* The channel count will depend on the device type. If it's a capture, use its, otherwise use the playback side. */
         if (pConfig->deviceType == ma_device_type_capture) {
             channels = (pDescriptorCapture->channels  > 0) ? pDescriptorCapture->channels  : MA_DEFAULT_CHANNELS;
         } else {
@@ -40255,11 +40621,11 @@ static ma_result ma_device_init__webaudio(ma_device* pDevice, const ma_device_co
             /* The node processing callback. */
             device.scriptNode.onaudioprocess = function(e) {
                 if (device.intermediaryBufferView == null || device.intermediaryBufferView.length == 0) {
-                    device.intermediaryBufferView = new Float32Array(Module.HEAPF32.buffer, pIntermediaryBuffer, bufferSize * channels);
+                    device.intermediaryBufferView = new Float32Array(HEAPF32.buffer, pIntermediaryBuffer, bufferSize * channels);
                 }
 
                 /* Do the capture side first. */
-                if (deviceType == miniaudio.device_type.capture || deviceType == miniaudio.device_type.duplex) {
+                if (deviceType == window.miniaudio.device_type.capture || deviceType == window.miniaudio.device_type.duplex) {
                     /* The data must be interleaved before being processed miniaudio. */
                     for (var iChannel = 0; iChannel < channels; iChannel += 1) {
                         var inputBuffer = e.inputBuffer.getChannelData(iChannel);
@@ -40273,7 +40639,7 @@ static ma_result ma_device_init__webaudio(ma_device* pDevice, const ma_device_co
                     _ma_device_process_pcm_frames_capture__webaudio(pDevice, bufferSize, pIntermediaryBuffer);
                 }
 
-                if (deviceType == miniaudio.device_type.playback || deviceType == miniaudio.device_type.duplex) {
+                if (deviceType == window.miniaudio.device_type.playback || deviceType == window.miniaudio.device_type.duplex) {
                     _ma_device_process_pcm_frames_playback__webaudio(pDevice, bufferSize, pIntermediaryBuffer);
 
                     for (var iChannel = 0; iChannel < e.outputBuffer.numberOfChannels; ++iChannel) {
@@ -40293,7 +40659,7 @@ static ma_result ma_device_init__webaudio(ma_device* pDevice, const ma_device_co
             };
 
             /* Now we need to connect our node to the graph. */
-            if (deviceType == miniaudio.device_type.capture || deviceType == miniaudio.device_type.duplex) {
+            if (deviceType == window.miniaudio.device_type.capture || deviceType == window.miniaudio.device_type.duplex) {
                 navigator.mediaDevices.getUserMedia({audio:true, video:false})
                     .then(function(stream) {
                         device.streamNode = device.webaudio.createMediaStreamSource(stream);
@@ -40305,13 +40671,13 @@ static ma_result ma_device_init__webaudio(ma_device* pDevice, const ma_device_co
                     });
             }
 
-            if (deviceType == miniaudio.device_type.playback) {
+            if (deviceType == window.miniaudio.device_type.playback) {
                 device.scriptNode.connect(device.webaudio.destination);
             }
 
             device.pDevice = pDevice;
 
-            return miniaudio.track_device(device);
+            return window.miniaudio.track_device(device);
         }, pConfig->deviceType, channels, sampleRate, periodSizeInFrames, pDevice->webaudio.pIntermediaryBuffer, pDevice);
 
         if (deviceIndex < 0) {
@@ -40321,7 +40687,7 @@ static ma_result ma_device_init__webaudio(ma_device* pDevice, const ma_device_co
         pDevice->webaudio.deviceIndex = deviceIndex;
 
         /* Grab the sample rate from the audio context directly. */
-        sampleRate = (ma_uint32)EM_ASM_INT({ return miniaudio.get_device_by_index($0).webaudio.sampleRate; }, deviceIndex);
+        sampleRate = (ma_uint32)EM_ASM_INT({ return window.miniaudio.get_device_by_index($0).webaudio.sampleRate; }, deviceIndex);
 
         if (pDescriptorCapture != NULL) {
             pDescriptorCapture->format              = ma_format_f32;
@@ -40351,9 +40717,9 @@ static ma_result ma_device_start__webaudio(ma_device* pDevice)
     MA_ASSERT(pDevice != NULL);
 
     EM_ASM({
-        var device = miniaudio.get_device_by_index($0);
+        var device = window.miniaudio.get_device_by_index($0);
         device.webaudio.resume();
-        device.state = miniaudio.device_state.started;
+        device.state = window.miniaudio.device_state.started;
     }, pDevice->webaudio.deviceIndex);
 
     return MA_SUCCESS;
@@ -40373,9 +40739,9 @@ static ma_result ma_device_stop__webaudio(ma_device* pDevice)
     do any kind of explicit draining.
     */
     EM_ASM({
-        var device = miniaudio.get_device_by_index($0);
+        var device = window.miniaudio.get_device_by_index($0);
         device.webaudio.suspend();
-        device.state = miniaudio.device_state.stopped;
+        device.state = window.miniaudio.device_state.stopped;
     }, pDevice->webaudio.deviceIndex);
 
     ma_device__on_notification_stopped(pDevice);
@@ -40393,6 +40759,10 @@ static ma_result ma_context_uninit__webaudio(ma_context* pContext)
     /* Remove the global miniaudio object from window if there are no more references to it. */
     EM_ASM({
         if (typeof(window.miniaudio) !== 'undefined') {
+            miniaudio.unlock_event_types.map(function(event_type) {
+                document.removeEventListener(event_type, miniaudio.unlock, true);
+            });
+
             window.miniaudio.referenceCount -= 1;
             if (window.miniaudio.referenceCount === 0) {
                 delete window.miniaudio;
@@ -40434,6 +40804,7 @@ static ma_result ma_context_init__webaudio(ma_context* pContext, const ma_contex
             window.miniaudio.device_state.started = $4;
 
             /* Device cache for mapping devices to indexes for JavaScript/C interop. */
+            let miniaudio = window.miniaudio;
             miniaudio.devices = [];
 
             miniaudio.track_device = function(device) {
@@ -40485,13 +40856,13 @@ static ma_result ma_context_init__webaudio(ma_context* pContext, const ma_contex
                     var device = miniaudio.devices[i];
                     if (device != null &&
                         device.webaudio != null &&
-                        device.state === window.miniaudio.device_state.started) {
+                        device.state === miniaudio.device_state.started) {
 
                         device.webaudio.resume().then(() => {
-                                Module._ma_device__on_notification_unlocked(device.pDevice);
-                            },
-                            (error) => {console.error("Failed to resume audiocontext", error);
-                            });
+                            _ma_device__on_notification_unlocked(device.pDevice);
+                        },
+                        (error) => {console.error("Failed to resume audiocontext", error);
+                        });
                     }
                 }
                 miniaudio.unlock_event_types.map(function(event_type) {
@@ -40558,10 +40929,18 @@ static ma_bool32 ma__is_channel_map_valid(const ma_channel* pChannelMap, ma_uint
 
 static ma_bool32 ma_context_is_backend_asynchronous(ma_context* pContext)
 {
+    ma_bool32 hasRead;
+    ma_bool32 hasWrite;
+
     MA_ASSERT(pContext != NULL);
 
-    if (pContext->callbacks.onDeviceRead == NULL && pContext->callbacks.onDeviceWrite == NULL) {
-        if (pContext->callbacks.onDeviceDataLoop == NULL) {
+    hasRead  = pContext->pVTable->onDeviceRead  != NULL && (pContext->pVTable->onHasRead  == NULL || pContext->pVTable->onHasRead (pContext->pVTableUserData, pContext) == MA_TRUE);
+    hasWrite = pContext->pVTable->onDeviceWrite != NULL && (pContext->pVTable->onHasWrite == NULL || pContext->pVTable->onHasWrite(pContext->pVTableUserData, pContext) == MA_TRUE);
+
+    if (hasRead == MA_FALSE && hasWrite == MA_FALSE) {
+        ma_bool32 hasDataLoop = pContext->pVTable->onDeviceDataLoop != NULL && (pContext->pVTable->onHasDataLoop == NULL || pContext->pVTable->onHasDataLoop(pContext->pVTableUserData, pContext) == MA_TRUE);
+
+        if (hasDataLoop == MA_FALSE) {
             return MA_TRUE;
         } else {
             return MA_FALSE;
@@ -40756,8 +41135,6 @@ static ma_result ma_device__post_init_setup(ma_device* pDevice, ma_device_type d
 
 MA_API ma_result ma_device_post_init(ma_device* pDevice, ma_device_type deviceType, const ma_device_descriptor* pDescriptorPlayback, const ma_device_descriptor* pDescriptorCapture)
 {
-    ma_result result;
-
     if (pDevice == NULL) {
         return MA_INVALID_ARGS;
     }
@@ -40798,42 +41175,6 @@ MA_API ma_result ma_device_post_init(ma_device* pDevice, ma_device_type deviceTy
         }
     }
 
-    /*
-    The name of the device can be retrieved from device info. This may be temporary and replaced with a `ma_device_get_info(pDevice, deviceType)` instead.
-    For loopback devices, we need to retrieve the name of the playback device.
-    */
-    {
-        ma_device_info deviceInfo;
-
-        if (deviceType == ma_device_type_capture || deviceType == ma_device_type_duplex || deviceType == ma_device_type_loopback) {
-            result = ma_device_get_info(pDevice, (deviceType == ma_device_type_loopback) ? ma_device_type_playback : ma_device_type_capture, &deviceInfo);
-            if (result == MA_SUCCESS) {
-                ma_strncpy_s(pDevice->capture.name, sizeof(pDevice->capture.name), deviceInfo.name, (size_t)-1);
-            } else {
-                /* We failed to retrieve the device info. Fall back to a default name. */
-                if (pDescriptorCapture->pDeviceID == NULL) {
-                    ma_strncpy_s(pDevice->capture.name, sizeof(pDevice->capture.name), MA_DEFAULT_CAPTURE_DEVICE_NAME, (size_t)-1);
-                } else {
-                    ma_strncpy_s(pDevice->capture.name, sizeof(pDevice->capture.name), "Capture Device", (size_t)-1);
-                }
-            }
-        }
-
-        if (deviceType == ma_device_type_playback || deviceType == ma_device_type_duplex) {
-            result = ma_device_get_info(pDevice, ma_device_type_playback, &deviceInfo);
-            if (result == MA_SUCCESS) {
-                ma_strncpy_s(pDevice->playback.name, sizeof(pDevice->playback.name), deviceInfo.name, (size_t)-1);
-            } else {
-                /* We failed to retrieve the device info. Fall back to a default name. */
-                if (pDescriptorPlayback->pDeviceID == NULL) {
-                    ma_strncpy_s(pDevice->playback.name, sizeof(pDevice->playback.name), MA_DEFAULT_PLAYBACK_DEVICE_NAME, (size_t)-1);
-                } else {
-                    ma_strncpy_s(pDevice->playback.name, sizeof(pDevice->playback.name), "Playback Device", (size_t)-1);
-                }
-            }
-        }
-    }
-
     /* Update data conversion. */
     return ma_device__post_init_setup(pDevice, deviceType); /* TODO: Should probably rename ma_device__post_init_setup() to something better. */
 }
@@ -40853,7 +41194,7 @@ static ma_thread_result MA_THREADCALL ma_worker_thread(void* pData)
 #endif
 
     /*
-    When the device is being initialized it's initial state is set to ma_device_state_uninitialized. Before returning from
+    When the device is being initialized its initial state is set to ma_device_state_uninitialized. Before returning from
     ma_device_init(), the state needs to be set to something valid. In miniaudio the device's default state immediately
     after initialization is stopped, so therefore we need to mark the device as such. miniaudio will wait on the worker
     thread to signal an event to know when the worker thread is ready for action.
@@ -40884,8 +41225,8 @@ static ma_thread_result MA_THREADCALL ma_worker_thread(void* pData)
         MA_ASSERT(ma_device_get_state(pDevice) == ma_device_state_starting);
 
         /* If the device has a start callback, start it now. */
-        if (pDevice->pContext->callbacks.onDeviceStart != NULL) {
-            startResult = pDevice->pContext->callbacks.onDeviceStart(pDevice);
+        if (pDevice->pContext->pVTable->onDeviceStart != NULL && (pDevice->pContext->pVTable->onHasStart == NULL || pDevice->pContext->pVTable->onHasStart(pDevice->pContext->pVTableUserData, pDevice->pContext) == MA_TRUE)) {
+            startResult = pDevice->pContext->pVTable->onDeviceStart(pDevice->pContext->pVTableUserData, pDevice);
         } else {
             startResult = MA_SUCCESS;
         }
@@ -40906,16 +41247,16 @@ static ma_thread_result MA_THREADCALL ma_worker_thread(void* pData)
 
         ma_device__on_notification_started(pDevice);
 
-        if (pDevice->pContext->callbacks.onDeviceDataLoop != NULL) {
-            pDevice->pContext->callbacks.onDeviceDataLoop(pDevice);
+        if (pDevice->pContext->pVTable->onDeviceDataLoop != NULL && (pDevice->pContext->pVTable->onHasDataLoop == NULL || pDevice->pContext->pVTable->onHasDataLoop(pDevice->pContext->pVTableUserData, pDevice->pContext) == MA_TRUE)) {
+            pDevice->pContext->pVTable->onDeviceDataLoop(pDevice->pContext->pVTableUserData, pDevice);
         } else {
             /* The backend is not using a custom main loop implementation, so now fall back to the blocking read-write implementation. */
             ma_device_audio_thread__default_read_write(pDevice);
         }
 
         /* Getting here means we have broken from the main loop which happens the application has requested that device be stopped. */
-        if (pDevice->pContext->callbacks.onDeviceStop != NULL) {
-            stopResult = pDevice->pContext->callbacks.onDeviceStop(pDevice);
+        if (pDevice->pContext->pVTable->onDeviceStop != NULL && (pDevice->pContext->pVTable->onHasStop == NULL || pDevice->pContext->pVTable->onHasStop(pDevice->pContext->pVTableUserData, pDevice->pContext) == MA_TRUE)) {
+            stopResult = pDevice->pContext->pVTable->onDeviceStop(pDevice->pContext->pVTableUserData, pDevice);
         } else {
             stopResult = MA_SUCCESS;    /* No stop callback with the backend. Just assume successful. */
         }
@@ -41198,6 +41539,23 @@ MA_API ma_result ma_device_job_thread_next(ma_device_job_thread* pJobThread, ma_
 }
 
 
+static const void* ma_find_device_backend_config(const ma_device_backend_spec* pBackends, size_t count, const ma_device_backend_vtable* pVTable)
+{
+    size_t iBackend;
+
+    if (pBackends == NULL || count == 0) {
+        return NULL;
+    }
+
+    for (iBackend = 0; iBackend < count; iBackend += 1) {
+        if (pBackends[iBackend].pVTable == pVTable) {
+            return pBackends[iBackend].pConfig;
+        }
+    }
+
+    return NULL;
+}
+
 
 MA_API ma_context_config ma_context_config_init(void)
 {
@@ -41206,6 +41564,16 @@ MA_API ma_context_config ma_context_config_init(void)
 
     return config;
 }
+
+MA_API const void* ma_context_config_find_custom_backend_config(const ma_context_config* pConfig, const ma_device_backend_vtable* pVTable)
+{
+    if (pVTable == NULL || pConfig == NULL) {
+        return NULL;
+    }
+
+    return ma_find_device_backend_config(pConfig->custom.pBackends, pConfig->custom.count, pVTable);
+}
+
 
 MA_API ma_result ma_context_init(const ma_backend backends[], ma_uint32 backendCount, const ma_context_config* pConfig, ma_context* pContext)
 {
@@ -41274,6 +41642,10 @@ MA_API ma_result ma_context_init(const ma_backend backends[], ma_uint32 backendC
 
         /* Make sure all callbacks are reset so we don't accidentally drag in any from previously failed initialization attempts. */
         MA_ZERO_OBJECT(&pContext->callbacks);
+        pContext->pVTable = NULL;
+        pContext->pVTableUserData = NULL;
+
+        /* For stock backends we can just map the backend enum to the appropriate vtable. */
 
         /* These backends are using the new callback system. */
         switch (backend) {
@@ -41281,60 +41653,70 @@ MA_API ma_result ma_context_init(const ma_backend backends[], ma_uint32 backendC
             case ma_backend_wasapi:
             {
                 pContext->callbacks.onContextInit = ma_context_init__wasapi;
+                pContext->pVTable = &ma_gDeviceVTable_Compat;
             } break;
         #endif
         #ifdef MA_HAS_DSOUND
             case ma_backend_dsound:
             {
                 pContext->callbacks.onContextInit = ma_context_init__dsound;
+                pContext->pVTable = &ma_gDeviceVTable_Compat;
             } break;
         #endif
         #ifdef MA_HAS_WINMM
             case ma_backend_winmm:
             {
                 pContext->callbacks.onContextInit = ma_context_init__winmm;
+                pContext->pVTable = &ma_gDeviceVTable_Compat;
             } break;
         #endif
         #ifdef MA_HAS_COREAUDIO
             case ma_backend_coreaudio:
             {
                 pContext->callbacks.onContextInit = ma_context_init__coreaudio;
+                pContext->pVTable = &ma_gDeviceVTable_Compat;
             } break;
         #endif
         #ifdef MA_HAS_SNDIO
             case ma_backend_sndio:
             {
                 pContext->callbacks.onContextInit = ma_context_init__sndio;
+                pContext->pVTable = &ma_gDeviceVTable_Compat;
             } break;
         #endif
         #ifdef MA_HAS_AUDIO4
             case ma_backend_audio4:
             {
                 pContext->callbacks.onContextInit = ma_context_init__audio4;
+                pContext->pVTable = &ma_gDeviceVTable_Compat;
             } break;
         #endif
         #ifdef MA_HAS_OSS
             case ma_backend_oss:
             {
                 pContext->callbacks.onContextInit = ma_context_init__oss;
+                pContext->pVTable = &ma_gDeviceVTable_Compat;
             } break;
         #endif
         #ifdef MA_HAS_PULSEAUDIO
             case ma_backend_pulseaudio:
             {
                 pContext->callbacks.onContextInit = ma_context_init__pulse;
+                pContext->pVTable = &ma_gDeviceVTable_Compat;
             } break;
         #endif
         #ifdef MA_HAS_ALSA
             case ma_backend_alsa:
             {
                 pContext->callbacks.onContextInit = ma_context_init__alsa;
+                pContext->pVTable = &ma_gDeviceVTable_Compat;
             } break;
         #endif
         #ifdef MA_HAS_JACK
             case ma_backend_jack:
             {
                 pContext->callbacks.onContextInit = ma_context_init__jack;
+                pContext->pVTable = &ma_gDeviceVTable_Compat;
             } break;
         #endif
         #ifdef MA_HAS_AAUDIO
@@ -41342,6 +41724,7 @@ MA_API ma_result ma_context_init(const ma_backend backends[], ma_uint32 backendC
             {
                 if (ma_is_backend_enabled(backend)) {
                     pContext->callbacks.onContextInit = ma_context_init__aaudio;
+                    pContext->pVTable = &ma_gDeviceVTable_Compat;
                 }
             } break;
         #endif
@@ -41350,6 +41733,7 @@ MA_API ma_result ma_context_init(const ma_backend backends[], ma_uint32 backendC
             {
                 if (ma_is_backend_enabled(backend)) {
                     pContext->callbacks.onContextInit = ma_context_init__opensl;
+                    pContext->pVTable = &ma_gDeviceVTable_Compat;
                 }
             } break;
         #endif
@@ -41357,40 +41741,66 @@ MA_API ma_result ma_context_init(const ma_backend backends[], ma_uint32 backendC
             case ma_backend_webaudio:
             {
                 pContext->callbacks.onContextInit = ma_context_init__webaudio;
+                pContext->pVTable = &ma_gDeviceVTable_Compat;
             } break;
         #endif
         #ifdef MA_HAS_CUSTOM
             case ma_backend_custom:
             {
-                /* Slightly different logic for custom backends. Custom backends can optionally set all of their callbacks in the config. */
-                pContext->callbacks = pConfig->custom;
+                /* Custom backends are handled differently. */
             } break;
         #endif
         #ifdef MA_HAS_NULL
             case ma_backend_null:
             {
                 pContext->callbacks.onContextInit = ma_context_init__null;
+                pContext->pVTable = &ma_gDeviceVTable_Compat;
             } break;
         #endif
 
             default: break;
         }
 
-        if (pContext->callbacks.onContextInit != NULL) {
-            ma_log_postf(ma_context_get_log(pContext), MA_LOG_LEVEL_DEBUG, "Attempting to initialize %s backend...\n", ma_get_backend_name(backend));
-            result = pContext->callbacks.onContextInit(pContext, pConfig, &pContext->callbacks);
-        } else {
-            /* Getting here means the onContextInit callback is not set which means the backend is not enabled. Special case for the custom backend. */
-            if (backend != ma_backend_custom) {
-                result = MA_BACKEND_NOT_ENABLED;
+        /* Special case for custom backends. */
+        if (backend == ma_backend_custom) {
+            /* It's a custom backend. We need to iterate over each vtable and use the first one that works. */
+            if (pConfig->custom.pBackends != NULL && pConfig->custom.count > 0) {
+                size_t iCustomBackend;
+                for (iCustomBackend = 0; iCustomBackend < pConfig->custom.count; iCustomBackend += 1) {
+                    pContext->pVTable         = pConfig->custom.pBackends[iCustomBackend].pVTable;
+                    pContext->pVTableUserData = pConfig->custom.pBackends[iCustomBackend].pUserData;
+
+                    if (pContext->pVTable != NULL) {
+                        MA_ASSERT(pContext->pVTable->onContextInit != NULL);    /* onContextInit() must always be specified. */
+
+                        ma_log_postf(ma_context_get_log(pContext), MA_LOG_LEVEL_DEBUG, "Attempting to initialize custom backend %d...\n", (int)iCustomBackend);
+
+                        result = pContext->pVTable->onContextInit(pContext->pVTableUserData, pContext, pConfig);
+                        if (result == MA_SUCCESS) {
+                            break;
+                        } else {
+                            ma_log_postf(ma_context_get_log(pContext), MA_LOG_LEVEL_DEBUG, "Failed to initialize custom backend %d.\n", (int)iCustomBackend);
+                        }
+                    }
+                }
             } else {
-            #if !defined(MA_HAS_CUSTOM)
-                result = MA_BACKEND_NOT_ENABLED;
-            #else
+                /* No custom backend vtables defined. */
                 result = MA_NO_BACKEND;
-            #endif
+            }
+        } else {
+            /* It's not a custom backend. */
+            if (pContext->pVTable != NULL) {
+                MA_ASSERT(pContext->pVTable->onContextInit != NULL);    /* onContextInit() must always be specified. */
+
+                ma_log_postf(ma_context_get_log(pContext), MA_LOG_LEVEL_DEBUG, "Attempting to initialize %s backend...\n", ma_get_backend_name(backend));
+                result = pContext->pVTable->onContextInit(pContext->pVTableUserData, pContext, pConfig);
+            } else {
+                /* Getting here means the vtable is not set which means the backend is not enabled. */
+                result = MA_BACKEND_NOT_ENABLED;
             }
         }
+
+        
 
         /* If this iteration was successful, return. */
         if (result == MA_SUCCESS) {
@@ -41432,8 +41842,8 @@ MA_API ma_result ma_context_uninit(ma_context* pContext)
         return MA_INVALID_ARGS;
     }
 
-    if (pContext->callbacks.onContextUninit != NULL) {
-        pContext->callbacks.onContextUninit(pContext);
+    if (pContext->pVTable->onContextUninit != NULL) {
+        pContext->pVTable->onContextUninit(pContext->pVTableUserData, pContext);
     }
 
     ma_mutex_uninit(&pContext->deviceEnumLock);
@@ -41472,13 +41882,13 @@ MA_API ma_result ma_context_enumerate_devices(ma_context* pContext, ma_enum_devi
         return MA_INVALID_ARGS;
     }
 
-    if (pContext->callbacks.onContextEnumerateDevices == NULL) {
+    if (pContext->pVTable->onContextEnumerateDevices == NULL) {
         return MA_INVALID_OPERATION;
     }
 
     ma_mutex_lock(&pContext->deviceEnumLock);
     {
-        result = pContext->callbacks.onContextEnumerateDevices(pContext, callback, pUserData);
+        result = pContext->pVTable->onContextEnumerateDevices(pContext->pVTableUserData, pContext, callback, pUserData);
     }
     ma_mutex_unlock(&pContext->deviceEnumLock);
 
@@ -41548,7 +41958,7 @@ MA_API ma_result ma_context_get_devices(ma_context* pContext, ma_device_info** p
         return MA_INVALID_ARGS;
     }
 
-    if (pContext->callbacks.onContextEnumerateDevices == NULL) {
+    if (pContext->pVTable->onContextEnumerateDevices == NULL) {
         return MA_INVALID_OPERATION;
     }
 
@@ -41560,7 +41970,7 @@ MA_API ma_result ma_context_get_devices(ma_context* pContext, ma_device_info** p
         pContext->captureDeviceInfoCount = 0;
 
         /* Now enumerate over available devices. */
-        result = pContext->callbacks.onContextEnumerateDevices(pContext, ma_context_get_devices__enum_callback, NULL);
+        result = pContext->pVTable->onContextEnumerateDevices(pContext->pVTableUserData, pContext, ma_context_get_devices__enum_callback, NULL);
         if (result == MA_SUCCESS) {
             /* Playback devices. */
             if (ppPlaybackDeviceInfos != NULL) {
@@ -41606,13 +42016,13 @@ MA_API ma_result ma_context_get_device_info(ma_context* pContext, ma_device_type
         MA_COPY_MEMORY(&deviceInfo.id, pDeviceID, sizeof(*pDeviceID));
     }
 
-    if (pContext->callbacks.onContextGetDeviceInfo == NULL) {
+    if (pContext->pVTable->onContextGetDeviceInfo == NULL) {
         return MA_INVALID_OPERATION;
     }
 
     ma_mutex_lock(&pContext->deviceInfoLock);
     {
-        result = pContext->callbacks.onContextGetDeviceInfo(pContext, deviceType, pDeviceID, &deviceInfo);
+        result = pContext->pVTable->onContextGetDeviceInfo(pContext->pVTableUserData, pContext, deviceType, pDeviceID, &deviceInfo);
     }
     ma_mutex_unlock(&pContext->deviceInfoLock);
 
@@ -41640,6 +42050,16 @@ MA_API ma_device_config ma_device_config_init(ma_device_type deviceType)
     return config;
 }
 
+MA_API const void* ma_device_config_find_custom_backend_config(const ma_device_config* pConfig, const ma_device_backend_vtable* pVTable)
+{
+    if (pVTable == NULL || pConfig == NULL) {
+        return NULL;
+    }
+
+    return ma_find_device_backend_config(pConfig->custom.pBackends, pConfig->custom.count, pVTable);
+}
+
+
 MA_API ma_result ma_device_init(ma_context* pContext, const ma_device_config* pConfig, ma_device* pDevice)
 {
     ma_result result;
@@ -41662,7 +42082,7 @@ MA_API ma_result ma_device_init(ma_context* pContext, const ma_device_config* pC
     }
 
     /* Check that we have our callbacks defined. */
-    if (pContext->callbacks.onDeviceInit == NULL) {
+    if (pContext->pVTable->onDeviceInit == NULL) {
         return MA_INVALID_OPERATION;
     }
 
@@ -41693,7 +42113,6 @@ MA_API ma_result ma_device_init(ma_context* pContext, const ma_device_config* pC
     pDevice->pUserData      = pConfig->pUserData;
     pDevice->onData         = pConfig->dataCallback;
     pDevice->onNotification = pConfig->notificationCallback;
-    pDevice->onStop         = pConfig->stopCallback;
 
     if (pConfig->playback.pDeviceID != NULL) {
         MA_COPY_MEMORY(&pDevice->playback.id, pConfig->playback.pDeviceID, sizeof(pDevice->playback.id));
@@ -41802,7 +42221,7 @@ MA_API ma_result ma_device_init(ma_context* pContext, const ma_device_config* pC
     }
 
 
-    result = pContext->callbacks.onDeviceInit(pDevice, pConfig, &descriptorPlayback, &descriptorCapture);
+    result = pContext->pVTable->onDeviceInit(pContext->pVTableUserData, pDevice, pConfig, &descriptorPlayback, &descriptorCapture);
     if (result != MA_SUCCESS) {
         ma_event_uninit(&pDevice->startEvent);
         ma_event_uninit(&pDevice->wakeupEvent);
@@ -41810,87 +42229,6 @@ MA_API ma_result ma_device_init(ma_context* pContext, const ma_device_config* pC
         return result;
     }
 
-#if 0
-    /*
-    On output the descriptors will contain the *actual* data format of the device. We need this to know how to convert the data between
-    the requested format and the internal format.
-    */
-    if (pConfig->deviceType == ma_device_type_capture || pConfig->deviceType == ma_device_type_duplex || pConfig->deviceType == ma_device_type_loopback) {
-        if (!ma_device_descriptor_is_valid(&descriptorCapture)) {
-            ma_device_uninit(pDevice);
-            return MA_INVALID_ARGS;
-        }
-
-        pDevice->capture.internalFormat             = descriptorCapture.format;
-        pDevice->capture.internalChannels           = descriptorCapture.channels;
-        pDevice->capture.internalSampleRate         = descriptorCapture.sampleRate;
-        ma_channel_map_copy(pDevice->capture.internalChannelMap, descriptorCapture.channelMap, descriptorCapture.channels);
-        pDevice->capture.internalPeriodSizeInFrames = descriptorCapture.periodSizeInFrames;
-        pDevice->capture.internalPeriods            = descriptorCapture.periodCount;
-
-        if (pDevice->capture.internalPeriodSizeInFrames == 0) {
-            pDevice->capture.internalPeriodSizeInFrames = ma_calculate_buffer_size_in_frames_from_milliseconds(descriptorCapture.periodSizeInMilliseconds, descriptorCapture.sampleRate);
-        }
-    }
-
-    if (pConfig->deviceType == ma_device_type_playback || pConfig->deviceType == ma_device_type_duplex) {
-        if (!ma_device_descriptor_is_valid(&descriptorPlayback)) {
-            ma_device_uninit(pDevice);
-            return MA_INVALID_ARGS;
-        }
-
-        pDevice->playback.internalFormat             = descriptorPlayback.format;
-        pDevice->playback.internalChannels           = descriptorPlayback.channels;
-        pDevice->playback.internalSampleRate         = descriptorPlayback.sampleRate;
-        ma_channel_map_copy(pDevice->playback.internalChannelMap, descriptorPlayback.channelMap, descriptorPlayback.channels);
-        pDevice->playback.internalPeriodSizeInFrames = descriptorPlayback.periodSizeInFrames;
-        pDevice->playback.internalPeriods            = descriptorPlayback.periodCount;
-
-        if (pDevice->playback.internalPeriodSizeInFrames == 0) {
-            pDevice->playback.internalPeriodSizeInFrames = ma_calculate_buffer_size_in_frames_from_milliseconds(descriptorPlayback.periodSizeInMilliseconds, descriptorPlayback.sampleRate);
-        }
-    }
-
-
-    /*
-    The name of the device can be retrieved from device info. This may be temporary and replaced with a `ma_device_get_info(pDevice, deviceType)` instead.
-    For loopback devices, we need to retrieve the name of the playback device.
-    */
-    {
-        ma_device_info deviceInfo;
-
-        if (pConfig->deviceType == ma_device_type_capture || pConfig->deviceType == ma_device_type_duplex || pConfig->deviceType == ma_device_type_loopback) {
-            result = ma_device_get_info(pDevice, (pConfig->deviceType == ma_device_type_loopback) ? ma_device_type_playback : ma_device_type_capture, &deviceInfo);
-            if (result == MA_SUCCESS) {
-                ma_strncpy_s(pDevice->capture.name, sizeof(pDevice->capture.name), deviceInfo.name, (size_t)-1);
-            } else {
-                /* We failed to retrieve the device info. Fall back to a default name. */
-                if (descriptorCapture.pDeviceID == NULL) {
-                    ma_strncpy_s(pDevice->capture.name, sizeof(pDevice->capture.name), MA_DEFAULT_CAPTURE_DEVICE_NAME, (size_t)-1);
-                } else {
-                    ma_strncpy_s(pDevice->capture.name, sizeof(pDevice->capture.name), "Capture Device", (size_t)-1);
-                }
-            }
-        }
-
-        if (pConfig->deviceType == ma_device_type_playback || pConfig->deviceType == ma_device_type_duplex) {
-            result = ma_device_get_info(pDevice, ma_device_type_playback, &deviceInfo);
-            if (result == MA_SUCCESS) {
-                ma_strncpy_s(pDevice->playback.name, sizeof(pDevice->playback.name), deviceInfo.name, (size_t)-1);
-            } else {
-                /* We failed to retrieve the device info. Fall back to a default name. */
-                if (descriptorPlayback.pDeviceID == NULL) {
-                    ma_strncpy_s(pDevice->playback.name, sizeof(pDevice->playback.name), MA_DEFAULT_PLAYBACK_DEVICE_NAME, (size_t)-1);
-                } else {
-                    ma_strncpy_s(pDevice->playback.name, sizeof(pDevice->playback.name), "Playback Device", (size_t)-1);
-                }
-            }
-        }
-    }
-
-
-    ma_device__post_init_setup(pDevice, pConfig->deviceType);
-#endif
 
     result = ma_device_post_init(pDevice, pConfig->deviceType, &descriptorPlayback, &descriptorCapture);
     if (result != MA_SUCCESS) {
@@ -41971,7 +42309,7 @@ MA_API ma_result ma_device_init(ma_context* pContext, const ma_device_config* pC
             return result;
         }
 
-        /* Wait for the worker thread to put the device into it's stopped state for real. */
+        /* Wait for the worker thread to put the device into its stopped state for real. */
         ma_event_wait(&pDevice->stopEvent);
         MA_ASSERT(ma_device_get_state(pDevice) == ma_device_state_stopped);
     } else {
@@ -42171,8 +42509,8 @@ MA_API void ma_device_uninit(ma_device* pDevice)
         ma_thread_wait(&pDevice->thread);
     }
 
-    if (pDevice->pContext->callbacks.onDeviceUninit != NULL) {
-        pDevice->pContext->callbacks.onDeviceUninit(pDevice);
+    if (pDevice->pContext->pVTable->onDeviceUninit != NULL) {
+        pDevice->pContext->pVTable->onDeviceUninit(pDevice->pContext->pVTableUserData, pDevice);
     }
 
 
@@ -42242,8 +42580,8 @@ MA_API ma_result ma_device_get_info(ma_device* pDevice, ma_device_type type, ma_
     }
 
     /* If the onDeviceGetInfo() callback is set, use that. Otherwise we'll fall back to ma_context_get_device_info(). */
-    if (pDevice->pContext->callbacks.onDeviceGetInfo != NULL) {
-        return pDevice->pContext->callbacks.onDeviceGetInfo(pDevice, type, pDeviceInfo);
+    if (pDevice->pContext->pVTable->onDeviceGetInfo != NULL && (pDevice->pContext->pVTable->onHasDeviceGetInfo == NULL || pDevice->pContext->pVTable->onHasDeviceGetInfo(pDevice->pContext->pVTableUserData, pDevice->pContext) == MA_TRUE)) {
+        return pDevice->pContext->pVTable->onDeviceGetInfo(pDevice->pContext->pVTableUserData, pDevice, type, pDeviceInfo);
     }
 
     /* Getting here means onDeviceGetInfo is not implemented so we need to fall back to an alternative. */
@@ -42318,8 +42656,8 @@ MA_API ma_result ma_device_start(ma_device* pDevice)
 
         /* Asynchronous backends need to be handled differently. */
         if (ma_context_is_backend_asynchronous(pDevice->pContext)) {
-            if (pDevice->pContext->callbacks.onDeviceStart != NULL) {
-                result = pDevice->pContext->callbacks.onDeviceStart(pDevice);
+            if (pDevice->pContext->pVTable->onDeviceStart != NULL && (pDevice->pContext->pVTable->onHasStart == NULL || pDevice->pContext->pVTable->onHasStart(pDevice->pContext->pVTableUserData, pDevice->pContext) == MA_TRUE)) {
+                result = pDevice->pContext->pVTable->onDeviceStart(pDevice->pContext->pVTableUserData, pDevice);
             } else {
                 result = MA_INVALID_OPERATION;
             }
@@ -42379,8 +42717,8 @@ MA_API ma_result ma_device_stop(ma_device* pDevice)
         /* Asynchronous backends need to be handled differently. */
         if (ma_context_is_backend_asynchronous(pDevice->pContext)) {
             /* Asynchronous backends must have a stop operation. */
-            if (pDevice->pContext->callbacks.onDeviceStop != NULL) {
-                result = pDevice->pContext->callbacks.onDeviceStop(pDevice);
+            if (pDevice->pContext->pVTable->onDeviceStop != NULL && (pDevice->pContext->pVTable->onHasStop == NULL || pDevice->pContext->pVTable->onHasStop(pDevice->pContext->pVTableUserData, pDevice->pContext) == MA_TRUE)) {
+                result = pDevice->pContext->pVTable->onDeviceStop(pDevice->pContext->pVTableUserData, pDevice);
             } else {
                 result = MA_INVALID_OPERATION;
             }
@@ -42389,14 +42727,14 @@ MA_API ma_result ma_device_stop(ma_device* pDevice)
         } else {
             /*
             Synchronous backends. The stop callback is always called from the worker thread. Do not call the stop callback here. If
-            the backend is implementing it's own audio thread loop we'll need to wake it up if required. Note that we need to make
+            the backend is implementing its own audio thread loop we'll need to wake it up if required. Note that we need to make
             sure the state of the device is *not* playing right now, which it shouldn't be since we set it above. This is super
             important though, so I'm asserting it here as well for extra safety in case we accidentally change something later.
             */
             MA_ASSERT(ma_device_get_state(pDevice) != ma_device_state_started);
 
-            if (pDevice->pContext->callbacks.onDeviceDataLoopWakeup != NULL) {
-                pDevice->pContext->callbacks.onDeviceDataLoopWakeup(pDevice);
+            if (pDevice->pContext->pVTable->onDeviceDataLoopWakeup != NULL) {
+                pDevice->pContext->pVTable->onDeviceDataLoopWakeup(pDevice->pContext->pVTableUserData, pDevice);
             }
 
             /*
@@ -48384,8 +48722,6 @@ MA_API ma_delay_config ma_delay_config_init(ma_uint32 channels, ma_uint32 sample
     config.sampleRate    = sampleRate;
     config.delayInFrames = delayInFrames;
     config.delayStart    = (decay == 0) ? MA_TRUE : MA_FALSE;   /* Delay the start if it looks like we're not configuring an echo. */
-    config.wet           = 1;
-    config.dry           = 1;
     config.decay         = decay;
 
     return config;
@@ -48450,18 +48786,18 @@ MA_API ma_result ma_delay_process_pcm_frames(ma_delay* pDelay, void* pFramesOut,
                 /* Delayed start. */
 
                 /* Read */
-                pFramesOutF32[iChannel] = pDelay->pBuffer[iBuffer] * pDelay->config.wet;
+                pFramesOutF32[iChannel] = pDelay->pBuffer[iBuffer];
 
                 /* Feedback */
-                pDelay->pBuffer[iBuffer] = (pDelay->pBuffer[iBuffer] * pDelay->config.decay) + (pFramesInF32[iChannel] * pDelay->config.dry);
+                pDelay->pBuffer[iBuffer] = (pDelay->pBuffer[iBuffer] * pDelay->config.decay) + pFramesInF32[iChannel];
             } else {
                 /* Immediate start */
 
                 /* Feedback */
-                pDelay->pBuffer[iBuffer] = (pDelay->pBuffer[iBuffer] * pDelay->config.decay) + (pFramesInF32[iChannel] * pDelay->config.dry);
+                pDelay->pBuffer[iBuffer] = (pDelay->pBuffer[iBuffer] * pDelay->config.decay) + pFramesInF32[iChannel];
 
                 /* Read */
-                pFramesOutF32[iChannel] = pDelay->pBuffer[iBuffer] * pDelay->config.wet;
+                pFramesOutF32[iChannel] = pDelay->pBuffer[iBuffer];
             }
         }
 
@@ -48472,42 +48808,6 @@ MA_API ma_result ma_delay_process_pcm_frames(ma_delay* pDelay, void* pFramesOut,
     }
 
     return MA_SUCCESS;
-}
-
-MA_API void ma_delay_set_wet(ma_delay* pDelay, float value)
-{
-    if (pDelay == NULL) {
-        return;
-    }
-
-    pDelay->config.wet = value;
-}
-
-MA_API float ma_delay_get_wet(const ma_delay* pDelay)
-{
-    if (pDelay == NULL) {
-        return 0;
-    }
-
-    return pDelay->config.wet;
-}
-
-MA_API void ma_delay_set_dry(ma_delay* pDelay, float value)
-{
-    if (pDelay == NULL) {
-        return;
-    }
-
-    pDelay->config.dry = value;
-}
-
-MA_API float ma_delay_get_dry(const ma_delay* pDelay)
-{
-    if (pDelay == NULL) {
-        return 0;
-    }
-
-    return pDelay->config.dry;
 }
 
 MA_API void ma_delay_set_decay(ma_delay* pDelay, float value)
@@ -49689,9 +49989,9 @@ static float ma_attenuation_exponential(float distance, float minDistance, float
 
 
 /*
-Dopper Effect calculation taken from the OpenAL spec, with two main differences:
+Doppler Effect calculation taken from the OpenAL spec, with two main differences:
 
-  1) The source to listener vector will have already been calcualted at an earlier step so we can
+  1) The source to listener vector will have already been calculated at an earlier step so we can
      just use that directly. We need only the position of the source relative to the origin.
 
   2) We don't scale by a frequency because we actually just want the ratio which we'll plug straight
@@ -50064,7 +50364,7 @@ MA_API ma_spatializer_config ma_spatializer_config_init(ma_uint32 channelsIn, ma
     config.maxDistance                  = MA_FLT_MAX;
     config.rolloff                      = 1;
     config.coneInnerAngleInRadians      = 6.283185f; /* 360 degrees. */
-    config.coneOuterAngleInRadians      = 6.283185f; /* 360 degress. */
+    config.coneOuterAngleInRadians      = 6.283185f; /* 360 degrees. */
     config.coneOuterGain                = 0.0f;
     config.dopplerFactor                = 1;
     config.directionalAttenuationFactor = 1;
@@ -50298,7 +50598,7 @@ static float ma_calculate_angular_gain(ma_vec3f dirA, ma_vec3f dirB, float coneI
     To do cone attenuation, I'm just using the same math that we'd use to implement a basic spotlight in OpenGL. We
     just need to get the direction from the source to the listener and then do a dot product against that and the
     direction of the spotlight. Then we just compare that dot product against the cosine of the inner and outer
-    angles. If the dot product is greater than the the outer angle, we just use coneOuterGain. If it's less than
+    angles. If the dot product is greater than the outer angle, we just use coneOuterGain. If it's less than
     the inner angle, we just use a gain of 1. Otherwise we linearly interpolate between 1 and coneOuterGain.
     */
     if (coneInnerAngleInRadians < 6.283185f) {
@@ -50449,11 +50749,11 @@ MA_API ma_result ma_spatializer_process_pcm_frames(ma_spatializer* pSpatializer,
         To do cone attenuation, I'm just using the same math that we'd use to implement a basic spotlight in OpenGL. We
         just need to get the direction from the source to the listener and then do a dot product against that and the
         direction of the spotlight. Then we just compare that dot product against the cosine of the inner and outer
-        angles. If the dot product is greater than the the outer angle, we just use coneOuterGain. If it's less than
+        angles. If the dot product is greater than the outer angle, we just use coneOuterGain. If it's less than
         the inner angle, we just use a gain of 1. Otherwise we linearly interpolate between 1 and coneOuterGain.
         */
         if (distance > 0) {
-            /* Source anglular gain. */
+            /* Source angular gain. */
             float spatializerConeInnerAngle;
             float spatializerConeOuterAngle;
             float spatializerConeOuterGain;
@@ -50965,7 +51265,7 @@ MA_API void ma_spatializer_get_relative_position_and_direction(const ma_spatiali
         listenerDirection    = ma_spatializer_listener_get_direction(pListener);
 
         /*
-        We need to calcualte the right vector from our forward and up vectors. This is done with
+        We need to calculate the right vector from our forward and up vectors. This is done with
         a cross product.
         */
         axisZ = ma_vec3f_normalize(listenerDirection);                                  /* Normalization required here because we can't trust the caller. */
@@ -51111,7 +51411,7 @@ static ma_result ma_linear_resampler_set_rate_internal(ma_linear_resampler* pRes
     lpfConfig = ma_lpf_config_init(pResampler->config.format, pResampler->config.channels, lpfSampleRate, lpfCutoffFrequency, pResampler->config.lpfOrder);
 
     /*
-    If the resampler is alreay initialized we don't want to do a fresh initialization of the low-pass filter because it will result in the cached frames
+    If the resampler is already initialized we don't want to do a fresh initialization of the low-pass filter because it will result in the cached frames
     getting cleared. Instead we re-initialize the filter which will maintain any cached frames.
     */
     if (isResamplerAlreadyInitialized) {
@@ -51806,7 +52106,7 @@ MA_API ma_result ma_linear_resampler_get_expected_output_frame_count(const ma_li
     preliminaryInputFrameCount         = (pResampler->inTimeInt  + outputFrameCount*pResampler->inAdvanceInt ) + preliminaryInputFrameCountFromFrac;
 
     /*
-    If the total number of *whole* input frames that would be required to generate our preliminary output frame count is greather than
+    If the total number of *whole* input frames that would be required to generate our preliminary output frame count is greater than
     the amount of whole input frames we have available as input we need to *not* add an extra output frame as there won't be enough data
     to actually process. Otherwise we need to add the extra output frame.
     */
@@ -51844,7 +52144,7 @@ MA_API ma_result ma_linear_resampler_reset(ma_linear_resampler* pResampler)
         }
     }
 
-    /* The low pass filter needs to have it's cache reset. */
+    /* The low pass filter needs to have its cache reset. */
     ma_lpf_clear_cache(&pResampler->lpf);
 
     return MA_SUCCESS;
@@ -52361,19 +52661,19 @@ static float ma_calculate_channel_position_rectangular_weight(ma_channel channel
     of contribution to apply to the side/left and back/left speakers, however, is a bit more complicated.
 
     Imagine the front/left speaker as emitting audio from two planes - the front plane and the left plane. You can think of the front/left
-    speaker emitting half of it's total volume from the front, and the other half from the left. Since part of it's volume is being emitted
+    speaker emitting half of its total volume from the front, and the other half from the left. Since part of its volume is being emitted
     from the left side, and the side/left and back/left channels also emit audio from the left plane, one would expect that they would
     receive some amount of contribution from front/left speaker. The amount of contribution depends on how many planes are shared between
     the two speakers. Note that in the examples below I've added a top/front/left speaker as an example just to show how the math works
     across 3 spatial dimensions.
 
     The first thing to do is figure out how each speaker's volume is spread over each of plane:
-     - front/left:     2 planes (front and left)      = 1/2 = half it's total volume on each plane
+     - front/left:     2 planes (front and left)      = 1/2 = half its total volume on each plane
      - side/left:      1 plane (left only)            = 1/1 = entire volume from left plane
-     - back/left:      2 planes (back and left)       = 1/2 = half it's total volume on each plane
-     - top/front/left: 3 planes (top, front and left) = 1/3 = one third it's total volume on each plane
+     - back/left:      2 planes (back and left)       = 1/2 = half its total volume on each plane
+     - top/front/left: 3 planes (top, front and left) = 1/3 = one third its total volume on each plane
 
-    The amount of volume each channel contributes to each of it's planes is what controls how much it is willing to given and take to other
+    The amount of volume each channel contributes to each of its planes is what controls how much it is willing to given and take to other
     channels on the same plane. The volume that is willing to the given by one channel is multiplied by the volume that is willing to be
     taken by the other to produce the final contribution.
     */
@@ -52516,8 +52816,8 @@ static ma_result ma_channel_map_build_shuffle_table(const ma_channel* pChannelMa
     }
 
     /*
-    When building the shuffle table we just do a 1:1 mapping based on the first occurance of a channel. If the
-    input channel has more than one occurance of a channel position, the second one will be ignored.
+    When building the shuffle table we just do a 1:1 mapping based on the first occurrence of a channel. If the
+    input channel has more than one occurrence of a channel position, the second one will be ignored.
     */
     for (iChannelOut = 0; iChannelOut < channelCountOut; iChannelOut += 1) {
         ma_channel channelOut;
@@ -53919,7 +54219,7 @@ MA_API ma_data_converter_config ma_data_converter_config_init_default(void)
     config.allowDynamicSampleRate = MA_FALSE; /* Disable dynamic sample rates by default because dynamic rate adjustments should be quite rare and it allows an optimization for cases when the in and out sample rates are the same. */
 
     /* Linear resampling defaults. */
-    config.resampling.linear.lpfOrder = 1;
+    config.resampling.linear.lpfOrder = ma_min(MA_DEFAULT_RESAMPLER_LPF_ORDER, MA_MAX_FILTER_ORDER);
 
     return config;
 }
@@ -53949,7 +54249,7 @@ static ma_bool32 ma_data_converter_config_is_resampler_required(const ma_data_co
 {
     MA_ASSERT(pConfig != NULL);
 
-    return pConfig->allowDynamicSampleRate || pConfig->sampleRateIn != pConfig->sampleRateOut;
+    return (pConfig->allowDynamicSampleRate == MA_TRUE) || (pConfig->sampleRateIn != pConfig->sampleRateOut);
 }
 
 static ma_format ma_data_converter_config_get_mid_format(const ma_data_converter_config* pConfig)
@@ -54812,7 +55112,7 @@ static ma_result ma_data_converter_process_pcm_frames__channels_first(ma_data_co
         Before doing any processing we need to determine how many frames we should try processing
         this iteration, for both input and output. The resampler requires us to perform format and
         channel conversion before passing any data into it. If we get our input count wrong, we'll
-        end up peforming redundant pre-processing. This isn't the end of the world, but it does
+        end up performing redundant pre-processing. This isn't the end of the world, but it does
         result in some inefficiencies proportionate to how far our estimates are off.
 
         If the resampler has a means to calculate exactly how much we'll need, we'll use that.
@@ -57336,7 +57636,7 @@ MA_API ma_result ma_data_source_read_pcm_frames(ma_data_source* pDataSource, voi
         totalFramesProcessed += framesProcessed;
 
         /*
-        If we encounted an error from the read callback, make sure it's propagated to the caller. The caller may need to know whether or not MA_BUSY is returned which is
+        If we encountered an error from the read callback, make sure it's propagated to the caller. The caller may need to know whether or not MA_BUSY is returned which is
         not necessarily considered an error.
         */
         if (result != MA_SUCCESS && result != MA_AT_END) {
@@ -57583,6 +57883,11 @@ MA_API ma_result ma_data_source_get_cursor_in_seconds(ma_data_source* pDataSourc
         return result;
     }
 
+    /* If there is no notion of a sample rate we can't convert to seconds. */
+    if (sampleRate == 0) {
+        return MA_INVALID_OPERATION;
+    }
+
     /* VC6 does not support division of unsigned 64-bit integers with floating point numbers. Need to use a signed number. This shouldn't effect anything in practice. */
     *pCursor = (ma_int64)cursorInPCMFrames / (float)sampleRate;
 
@@ -57609,6 +57914,11 @@ MA_API ma_result ma_data_source_get_length_in_seconds(ma_data_source* pDataSourc
     result = ma_data_source_get_data_format(pDataSource, NULL, NULL, &sampleRate, NULL, 0);
     if (result != MA_SUCCESS) {
         return result;
+    }
+
+    /* If there is no notion of a sample rate we can't convert to seconds. */
+    if (sampleRate == 0) {
+        return MA_INVALID_OPERATION;
     }
 
     /* VC6 does not support division of unsigned 64-bit integers with floating point numbers. Need to use a signed number. This shouldn't effect anything in practice. */
@@ -57664,7 +57974,7 @@ MA_API ma_result ma_data_source_set_range_in_pcm_frames(ma_data_source* pDataSou
 
     /*
     We may need to adjust the position of the cursor to ensure it's clamped to the range. Grab it now
-    so we can calculate it's absolute position before we change the range.
+    so we can calculate its absolute position before we change the range.
     */
     result = ma_data_source_get_cursor_in_pcm_frames(pDataSource, &relativeCursor);
     if (result == MA_SUCCESS) {
@@ -57698,7 +58008,7 @@ MA_API ma_result ma_data_source_set_range_in_pcm_frames(ma_data_source* pDataSou
 
     /*
     Seek to within range. Note that our seek positions here are relative to the new range. We don't want
-    do do this if we failed to retrieve the cursor earlier on because it probably means the data source
+    to do this if we failed to retrieve the cursor earlier on because it probably means the data source
     has no notion of a cursor. In practice the seek would probably fail (which we silently ignore), but
     I'm just not even going to attempt it.
     */
@@ -57849,18 +58159,7 @@ MA_API ma_data_source_get_next_proc ma_data_source_get_next_callback(const ma_da
 
 static ma_result ma_audio_buffer_ref__data_source_on_read(ma_data_source* pDataSource, void* pFramesOut, ma_uint64 frameCount, ma_uint64* pFramesRead)
 {
-    ma_audio_buffer_ref* pAudioBufferRef = (ma_audio_buffer_ref*)pDataSource;
-    ma_uint64 framesRead = ma_audio_buffer_ref_read_pcm_frames(pAudioBufferRef, pFramesOut, frameCount, MA_FALSE);
-
-    if (pFramesRead != NULL) {
-        *pFramesRead = framesRead;
-    }
-
-    if (framesRead < frameCount || framesRead == 0) {
-        return MA_AT_END;
-    }
-
-    return MA_SUCCESS;
+    return ma_audio_buffer_ref_read_pcm_frames((ma_audio_buffer_ref*)pDataSource, pFramesOut, frameCount, pFramesRead);
 }
 
 static ma_result ma_audio_buffer_ref__data_source_on_seek(ma_data_source* pDataSource, ma_uint64 frameIndex)
@@ -57909,7 +58208,7 @@ static ma_data_source_vtable g_ma_audio_buffer_ref_data_source_vtable =
     0
 };
 
-MA_API ma_result ma_audio_buffer_ref_init(ma_format format, ma_uint32 channels, const void* pData, ma_uint64 sizeInFrames, ma_audio_buffer_ref* pAudioBufferRef)
+MA_API ma_result ma_audio_buffer_ref_init(ma_format format, ma_uint32 channels, ma_uint32 sampleRate, const void* pData, ma_uint64 sizeInFrames, ma_audio_buffer_ref* pAudioBufferRef)
 {
     ma_result result;
     ma_data_source_config dataSourceConfig;
@@ -57930,7 +58229,7 @@ MA_API ma_result ma_audio_buffer_ref_init(ma_format format, ma_uint32 channels, 
 
     pAudioBufferRef->format       = format;
     pAudioBufferRef->channels     = channels;
-    pAudioBufferRef->sampleRate   = 0;  /* TODO: Version 0.12. Set this to sampleRate. */
+    pAudioBufferRef->sampleRate   = sampleRate;
     pAudioBufferRef->cursor       = 0;
     pAudioBufferRef->sizeInFrames = sizeInFrames;
     pAudioBufferRef->pData        = pData;
@@ -57960,47 +58259,41 @@ MA_API ma_result ma_audio_buffer_ref_set_data(ma_audio_buffer_ref* pAudioBufferR
     return MA_SUCCESS;
 }
 
-MA_API ma_uint64 ma_audio_buffer_ref_read_pcm_frames(ma_audio_buffer_ref* pAudioBufferRef, void* pFramesOut, ma_uint64 frameCount, ma_bool32 loop)
+MA_API ma_result ma_audio_buffer_ref_read_pcm_frames(ma_audio_buffer_ref* pAudioBufferRef, void* pFramesOut, ma_uint64 frameCount, ma_uint64* pFramesRead)
 {
-    ma_uint64 totalFramesRead = 0;
+    ma_uint64 framesAvailable;
+    ma_uint64 framesToRead;
+
+    if (pFramesRead != NULL) {
+        *pFramesRead = 0;
+    }
 
     if (pAudioBufferRef == NULL) {
-        return 0;
+        return MA_INVALID_ARGS;
     }
 
-    if (frameCount == 0) {
-        return 0;
+    framesAvailable = pAudioBufferRef->sizeInFrames - pAudioBufferRef->cursor;
+
+    framesToRead = frameCount;
+    if (framesToRead > framesAvailable) {
+        framesToRead = framesAvailable;
     }
 
-    while (totalFramesRead < frameCount) {
-        ma_uint64 framesAvailable = pAudioBufferRef->sizeInFrames - pAudioBufferRef->cursor;
-        ma_uint64 framesRemaining = frameCount - totalFramesRead;
-        ma_uint64 framesToRead;
-
-        framesToRead = framesRemaining;
-        if (framesToRead > framesAvailable) {
-            framesToRead = framesAvailable;
-        }
-
-        if (pFramesOut != NULL) {
-            ma_copy_pcm_frames(ma_offset_ptr(pFramesOut, totalFramesRead * ma_get_bytes_per_frame(pAudioBufferRef->format, pAudioBufferRef->channels)), ma_offset_ptr(pAudioBufferRef->pData, pAudioBufferRef->cursor * ma_get_bytes_per_frame(pAudioBufferRef->format, pAudioBufferRef->channels)), framesToRead, pAudioBufferRef->format, pAudioBufferRef->channels);
-        }
-
-        totalFramesRead += framesToRead;
-
-        pAudioBufferRef->cursor += framesToRead;
-        if (pAudioBufferRef->cursor == pAudioBufferRef->sizeInFrames) {
-            if (loop) {
-                pAudioBufferRef->cursor = 0;
-            } else {
-                break;  /* We've reached the end and we're not looping. Done. */
-            }
-        }
-
-        MA_ASSERT(pAudioBufferRef->cursor < pAudioBufferRef->sizeInFrames);
+    if (pFramesOut != NULL && framesToRead > 0) {
+        ma_copy_pcm_frames(pFramesOut, ma_offset_ptr(pAudioBufferRef->pData, pAudioBufferRef->cursor * ma_get_bytes_per_frame(pAudioBufferRef->format, pAudioBufferRef->channels)), framesToRead, pAudioBufferRef->format, pAudioBufferRef->channels);
     }
 
-    return totalFramesRead;
+    pAudioBufferRef->cursor += framesToRead;
+
+    if (pFramesRead != NULL) {
+        *pFramesRead = framesToRead;
+    }
+
+    if (framesToRead == 0) {
+        return MA_AT_END;
+    } else {
+        return MA_SUCCESS;
+    }
 }
 
 MA_API ma_result ma_audio_buffer_ref_seek_to_pcm_frame(ma_audio_buffer_ref* pAudioBufferRef, ma_uint64 frameIndex)
@@ -58136,14 +58429,14 @@ MA_API ma_result ma_audio_buffer_ref_get_available_frames(const ma_audio_buffer_
 
 
 
-MA_API ma_audio_buffer_config ma_audio_buffer_config_init(ma_format format, ma_uint32 channels, ma_uint64 sizeInFrames, const void* pData, const ma_allocation_callbacks* pAllocationCallbacks)
+MA_API ma_audio_buffer_config ma_audio_buffer_config_init(ma_format format, ma_uint32 channels, ma_uint32 sampleRate, ma_uint64 sizeInFrames, const void* pData, const ma_allocation_callbacks* pAllocationCallbacks)
 {
     ma_audio_buffer_config config;
 
     MA_ZERO_OBJECT(&config);
     config.format       = format;
     config.channels     = channels;
-    config.sampleRate   = 0;    /* TODO: Version 0.12. Set this to sampleRate. */
+    config.sampleRate   = sampleRate;
     config.sizeInFrames = sizeInFrames;
     config.pData        = pData;
     ma_allocation_callbacks_init_copy(&config.allocationCallbacks, pAllocationCallbacks);
@@ -58169,13 +58462,10 @@ static ma_result ma_audio_buffer_init_ex(const ma_audio_buffer_config* pConfig, 
         return MA_INVALID_ARGS; /* Not allowing buffer sizes of 0 frames. */
     }
 
-    result = ma_audio_buffer_ref_init(pConfig->format, pConfig->channels, NULL, 0, &pAudioBuffer->ref);
+    result = ma_audio_buffer_ref_init(pConfig->format, pConfig->channels, pConfig->sampleRate, NULL, 0, &pAudioBuffer->ref);
     if (result != MA_SUCCESS) {
         return result;
     }
-
-    /* TODO: Version 0.12. Set this in ma_audio_buffer_ref_init() instead of here. */
-    pAudioBuffer->ref.sampleRate = pConfig->sampleRate;
 
     ma_allocation_callbacks_init_copy(&pAudioBuffer->allocationCallbacks, &pConfig->allocationCallbacks);
 
@@ -58295,13 +58585,13 @@ MA_API void ma_audio_buffer_uninit_and_free(ma_audio_buffer* pAudioBuffer)
     ma_audio_buffer_uninit_ex(pAudioBuffer, MA_TRUE);
 }
 
-MA_API ma_uint64 ma_audio_buffer_read_pcm_frames(ma_audio_buffer* pAudioBuffer, void* pFramesOut, ma_uint64 frameCount, ma_bool32 loop)
+MA_API ma_result ma_audio_buffer_read_pcm_frames(ma_audio_buffer* pAudioBuffer, void* pFramesOut, ma_uint64 frameCount, ma_uint64* pFramesRead)
 {
     if (pAudioBuffer == NULL) {
-        return 0;
+        return MA_INVALID_ARGS;
     }
 
-    return ma_audio_buffer_ref_read_pcm_frames(&pAudioBuffer->ref, pFramesOut, frameCount, loop);
+    return ma_audio_buffer_ref_read_pcm_frames(&pAudioBuffer->ref, pFramesOut, frameCount, pFramesRead);
 }
 
 MA_API ma_result ma_audio_buffer_seek_to_pcm_frame(ma_audio_buffer* pAudioBuffer, ma_uint64 frameIndex)
@@ -59155,7 +59445,7 @@ static ma_result ma_default_vfs_seek__win32(ma_vfs* pVFS, ma_vfs_file file, ma_i
         result = ma_SetFilePointerEx((HANDLE)file, liDistanceToMove, NULL, dwMoveMethod);
     } else if (ma_SetFilePointer != NULL) {
         /* No SetFilePointerEx() so restrict to 31 bits. */
-        if (origin > 0x7FFFFFFF) {
+        if (offset > 0x7FFFFFFF) {
             return MA_OUT_OF_RANGE;
         }
 
@@ -59758,7 +60048,7 @@ extern "C" {
 #define MA_DR_WAV_XSTRINGIFY(x)     MA_DR_WAV_STRINGIFY(x)
 #define MA_DR_WAV_VERSION_MAJOR     0
 #define MA_DR_WAV_VERSION_MINOR     13
-#define MA_DR_WAV_VERSION_REVISION  13
+#define MA_DR_WAV_VERSION_REVISION  16
 #define MA_DR_WAV_VERSION_STRING    MA_DR_WAV_XSTRINGIFY(MA_DR_WAV_VERSION_MAJOR) "." MA_DR_WAV_XSTRINGIFY(MA_DR_WAV_VERSION_MINOR) "." MA_DR_WAV_XSTRINGIFY(MA_DR_WAV_VERSION_REVISION)
 #include <stddef.h>
 #define MA_DR_WAVE_FORMAT_PCM          0x1
@@ -60465,7 +60755,7 @@ extern "C" {
 #define MA_DR_MP3_XSTRINGIFY(x)     MA_DR_MP3_STRINGIFY(x)
 #define MA_DR_MP3_VERSION_MAJOR     0
 #define MA_DR_MP3_VERSION_MINOR     6
-#define MA_DR_MP3_VERSION_REVISION  38
+#define MA_DR_MP3_VERSION_REVISION  39
 #define MA_DR_MP3_VERSION_STRING    MA_DR_MP3_XSTRINGIFY(MA_DR_MP3_VERSION_MAJOR) "." MA_DR_MP3_XSTRINGIFY(MA_DR_MP3_VERSION_MINOR) "." MA_DR_MP3_XSTRINGIFY(MA_DR_MP3_VERSION_REVISION)
 #include <stddef.h>
 #define MA_DR_MP3_MAX_PCM_FRAMES_PER_MP3_FRAME  1152
@@ -60573,444 +60863,6 @@ Decoding
 
 **************************************************************************************************************************************************************/
 #ifndef MA_NO_DECODING
-
-static ma_result ma_decoder_read_bytes(ma_decoder* pDecoder, void* pBufferOut, size_t bytesToRead, size_t* pBytesRead)
-{
-    MA_ASSERT(pDecoder != NULL);
-
-    return pDecoder->onRead(pDecoder, pBufferOut, bytesToRead, pBytesRead);
-}
-
-static ma_result ma_decoder_seek_bytes(ma_decoder* pDecoder, ma_int64 byteOffset, ma_seek_origin origin)
-{
-    MA_ASSERT(pDecoder != NULL);
-
-    return pDecoder->onSeek(pDecoder, byteOffset, origin);
-}
-
-static ma_result ma_decoder_tell_bytes(ma_decoder* pDecoder, ma_int64* pCursor)
-{
-    MA_ASSERT(pDecoder != NULL);
-
-    if (pDecoder->onTell == NULL) {
-        return MA_NOT_IMPLEMENTED;
-    }
-
-    return pDecoder->onTell(pDecoder, pCursor);
-}
-
-
-MA_API ma_decoding_backend_config ma_decoding_backend_config_init(ma_format preferredFormat, ma_uint32 seekPointCount)
-{
-    ma_decoding_backend_config config;
-
-    MA_ZERO_OBJECT(&config);
-    config.preferredFormat = preferredFormat;
-    config.seekPointCount  = seekPointCount;
-
-    return config;
-}
-
-
-MA_API ma_decoder_config ma_decoder_config_init(ma_format outputFormat, ma_uint32 outputChannels, ma_uint32 outputSampleRate)
-{
-    ma_decoder_config config;
-    MA_ZERO_OBJECT(&config);
-    config.format         = outputFormat;
-    config.channels       = outputChannels;
-    config.sampleRate     = outputSampleRate;
-    config.resampling     = ma_resampler_config_init(ma_format_unknown, 0, 0, 0, ma_resample_algorithm_linear); /* Format/channels/rate doesn't matter here. */
-    config.encodingFormat = ma_encoding_format_unknown;
-
-    /* Note that we are intentionally leaving the channel map empty here which will cause the default channel map to be used. */
-
-    return config;
-}
-
-MA_API ma_decoder_config ma_decoder_config_init_default()
-{
-    return ma_decoder_config_init(ma_format_unknown, 0, 0);
-}
-
-MA_API ma_decoder_config ma_decoder_config_init_copy(const ma_decoder_config* pConfig)
-{
-    ma_decoder_config config;
-    if (pConfig != NULL) {
-        config = *pConfig;
-    } else {
-        MA_ZERO_OBJECT(&config);
-    }
-
-    return config;
-}
-
-static ma_result ma_decoder__init_data_converter(ma_decoder* pDecoder, const ma_decoder_config* pConfig)
-{
-    ma_result result;
-    ma_data_converter_config converterConfig;
-    ma_format internalFormat;
-    ma_uint32 internalChannels;
-    ma_uint32 internalSampleRate;
-    ma_channel internalChannelMap[MA_MAX_CHANNELS];
-
-    MA_ASSERT(pDecoder != NULL);
-    MA_ASSERT(pConfig  != NULL);
-
-    result = ma_data_source_get_data_format(pDecoder->pBackend, &internalFormat, &internalChannels, &internalSampleRate, internalChannelMap, ma_countof(internalChannelMap));
-    if (result != MA_SUCCESS) {
-        return result;  /* Failed to retrieve the internal data format. */
-    }
-
-
-    /* Make sure we're not asking for too many channels. */
-    if (pConfig->channels > MA_MAX_CHANNELS) {
-        return MA_INVALID_ARGS;
-    }
-
-    /* The internal channels should have already been validated at a higher level, but we'll do it again explicitly here for safety. */
-    if (internalChannels > MA_MAX_CHANNELS) {
-        return MA_INVALID_ARGS;
-    }
-
-
-    /* Output format. */
-    if (pConfig->format == ma_format_unknown) {
-        pDecoder->outputFormat = internalFormat;
-    } else {
-        pDecoder->outputFormat = pConfig->format;
-    }
-
-    if (pConfig->channels == 0) {
-        pDecoder->outputChannels = internalChannels;
-    } else {
-        pDecoder->outputChannels = pConfig->channels;
-    }
-
-    if (pConfig->sampleRate == 0) {
-        pDecoder->outputSampleRate = internalSampleRate;
-    } else {
-        pDecoder->outputSampleRate = pConfig->sampleRate;
-    }
-
-    converterConfig = ma_data_converter_config_init(
-        internalFormat,     pDecoder->outputFormat,
-        internalChannels,   pDecoder->outputChannels,
-        internalSampleRate, pDecoder->outputSampleRate
-    );
-    converterConfig.pChannelMapIn          = internalChannelMap;
-    converterConfig.pChannelMapOut         = pConfig->pChannelMap;
-    converterConfig.channelMixMode         = pConfig->channelMixMode;
-    converterConfig.ditherMode             = pConfig->ditherMode;
-    converterConfig.allowDynamicSampleRate = MA_FALSE;   /* Never allow dynamic sample rate conversion. Setting this to true will disable passthrough optimizations. */
-    converterConfig.resampling             = pConfig->resampling;
-
-    result = ma_data_converter_init(&converterConfig, &pDecoder->allocationCallbacks, &pDecoder->converter);
-    if (result != MA_SUCCESS) {
-        return result;
-    }
-
-    /*
-    Now that we have the decoder we need to determine whether or not we need a heap-allocated cache. We'll
-    need this if the data converter does not support calculation of the required input frame count. To
-    determine support for this we'll just run a test.
-    */
-    {
-        ma_uint64 unused;
-
-        result = ma_data_converter_get_required_input_frame_count(&pDecoder->converter, 1, &unused);
-        if (result != MA_SUCCESS) {
-            /*
-            We were unable to calculate the required input frame count which means we'll need to use
-            a heap-allocated cache.
-            */
-            ma_uint64 inputCacheCapSizeInBytes;
-
-            pDecoder->inputCacheCap = MA_DATA_CONVERTER_STACK_BUFFER_SIZE / ma_get_bytes_per_frame(internalFormat, internalChannels);
-
-            /* Not strictly necessary, but keeping here for safety in case we change the default value of pDecoder->inputCacheCap. */
-            inputCacheCapSizeInBytes = pDecoder->inputCacheCap * ma_get_bytes_per_frame(internalFormat, internalChannels);
-            if (inputCacheCapSizeInBytes > MA_SIZE_MAX) {
-                ma_data_converter_uninit(&pDecoder->converter, &pDecoder->allocationCallbacks);
-                return MA_OUT_OF_MEMORY;
-            }
-
-            pDecoder->pInputCache = ma_malloc((size_t)inputCacheCapSizeInBytes, &pDecoder->allocationCallbacks);    /* Safe cast to size_t. */
-            if (pDecoder->pInputCache == NULL) {
-                ma_data_converter_uninit(&pDecoder->converter, &pDecoder->allocationCallbacks);
-                return MA_OUT_OF_MEMORY;
-            }
-        }
-    }
-
-    return MA_SUCCESS;
-}
-
-
-
-static ma_result ma_decoder_internal_on_read__custom(void* pUserData, void* pBufferOut, size_t bytesToRead, size_t* pBytesRead)
-{
-    ma_decoder* pDecoder = (ma_decoder*)pUserData;
-    MA_ASSERT(pDecoder != NULL);
-
-    return ma_decoder_read_bytes(pDecoder, pBufferOut, bytesToRead, pBytesRead);
-}
-
-static ma_result ma_decoder_internal_on_seek__custom(void* pUserData, ma_int64 offset, ma_seek_origin origin)
-{
-    ma_decoder* pDecoder = (ma_decoder*)pUserData;
-    MA_ASSERT(pDecoder != NULL);
-
-    return ma_decoder_seek_bytes(pDecoder, offset, origin);
-}
-
-static ma_result ma_decoder_internal_on_tell__custom(void* pUserData, ma_int64* pCursor)
-{
-    ma_decoder* pDecoder = (ma_decoder*)pUserData;
-    MA_ASSERT(pDecoder != NULL);
-
-    return ma_decoder_tell_bytes(pDecoder, pCursor);
-}
-
-
-static ma_result ma_decoder_init_from_vtable__internal(const ma_decoding_backend_vtable* pVTable, void* pVTableUserData, const ma_decoder_config* pConfig, ma_decoder* pDecoder)
-{
-    ma_result result;
-    ma_decoding_backend_config backendConfig;
-    ma_data_source* pBackend;
-
-    MA_ASSERT(pVTable  != NULL);
-    MA_ASSERT(pConfig  != NULL);
-    MA_ASSERT(pDecoder != NULL);
-
-    if (pVTable->onInit == NULL) {
-        return MA_NOT_IMPLEMENTED;
-    }
-
-    backendConfig = ma_decoding_backend_config_init(pConfig->format, pConfig->seekPointCount);
-
-    result = pVTable->onInit(pVTableUserData, ma_decoder_internal_on_read__custom, ma_decoder_internal_on_seek__custom, ma_decoder_internal_on_tell__custom, pDecoder, &backendConfig, &pDecoder->allocationCallbacks, &pBackend);
-    if (result != MA_SUCCESS) {
-        return result;  /* Failed to initialize the backend from this vtable. */
-    }
-
-    /* Getting here means we were able to initialize the backend so we can now initialize the decoder. */
-    pDecoder->pBackend         = pBackend;
-    pDecoder->pBackendVTable   = pVTable;
-    pDecoder->pBackendUserData = pConfig->pCustomBackendUserData;
-
-    return MA_SUCCESS;
-}
-
-static ma_result ma_decoder_init_from_file__internal(const ma_decoding_backend_vtable* pVTable, void* pVTableUserData, const char* pFilePath, const ma_decoder_config* pConfig, ma_decoder* pDecoder)
-{
-    ma_result result;
-    ma_decoding_backend_config backendConfig;
-    ma_data_source* pBackend;
-
-    MA_ASSERT(pVTable  != NULL);
-    MA_ASSERT(pConfig  != NULL);
-    MA_ASSERT(pDecoder != NULL);
-
-    if (pVTable->onInitFile == NULL) {
-        return MA_NOT_IMPLEMENTED;
-    }
-
-    backendConfig = ma_decoding_backend_config_init(pConfig->format, pConfig->seekPointCount);
-
-    result = pVTable->onInitFile(pVTableUserData, pFilePath, &backendConfig, &pDecoder->allocationCallbacks, &pBackend);
-    if (result != MA_SUCCESS) {
-        return result;  /* Failed to initialize the backend from this vtable. */
-    }
-
-    /* Getting here means we were able to initialize the backend so we can now initialize the decoder. */
-    pDecoder->pBackend         = pBackend;
-    pDecoder->pBackendVTable   = pVTable;
-    pDecoder->pBackendUserData = pConfig->pCustomBackendUserData;
-
-    return MA_SUCCESS;
-}
-
-static ma_result ma_decoder_init_from_file_w__internal(const ma_decoding_backend_vtable* pVTable, void* pVTableUserData, const wchar_t* pFilePath, const ma_decoder_config* pConfig, ma_decoder* pDecoder)
-{
-    ma_result result;
-    ma_decoding_backend_config backendConfig;
-    ma_data_source* pBackend;
-
-    MA_ASSERT(pVTable  != NULL);
-    MA_ASSERT(pConfig  != NULL);
-    MA_ASSERT(pDecoder != NULL);
-
-    if (pVTable->onInitFileW == NULL) {
-        return MA_NOT_IMPLEMENTED;
-    }
-
-    backendConfig = ma_decoding_backend_config_init(pConfig->format, pConfig->seekPointCount);
-
-    result = pVTable->onInitFileW(pVTableUserData, pFilePath, &backendConfig, &pDecoder->allocationCallbacks, &pBackend);
-    if (result != MA_SUCCESS) {
-        return result;  /* Failed to initialize the backend from this vtable. */
-    }
-
-    /* Getting here means we were able to initialize the backend so we can now initialize the decoder. */
-    pDecoder->pBackend         = pBackend;
-    pDecoder->pBackendVTable   = pVTable;
-    pDecoder->pBackendUserData = pConfig->pCustomBackendUserData;
-
-    return MA_SUCCESS;
-}
-
-static ma_result ma_decoder_init_from_memory__internal(const ma_decoding_backend_vtable* pVTable, void* pVTableUserData, const void* pData, size_t dataSize, const ma_decoder_config* pConfig, ma_decoder* pDecoder)
-{
-    ma_result result;
-    ma_decoding_backend_config backendConfig;
-    ma_data_source* pBackend;
-
-    MA_ASSERT(pVTable  != NULL);
-    MA_ASSERT(pConfig  != NULL);
-    MA_ASSERT(pDecoder != NULL);
-
-    if (pVTable->onInitMemory == NULL) {
-        return MA_NOT_IMPLEMENTED;
-    }
-
-    backendConfig = ma_decoding_backend_config_init(pConfig->format, pConfig->seekPointCount);
-
-    result = pVTable->onInitMemory(pVTableUserData, pData, dataSize, &backendConfig, &pDecoder->allocationCallbacks, &pBackend);
-    if (result != MA_SUCCESS) {
-        return result;  /* Failed to initialize the backend from this vtable. */
-    }
-
-    /* Getting here means we were able to initialize the backend so we can now initialize the decoder. */
-    pDecoder->pBackend         = pBackend;
-    pDecoder->pBackendVTable   = pVTable;
-    pDecoder->pBackendUserData = pConfig->pCustomBackendUserData;
-
-    return MA_SUCCESS;
-}
-
-
-
-static ma_result ma_decoder_init_custom__internal(const ma_decoder_config* pConfig, ma_decoder* pDecoder)
-{
-    ma_result result = MA_NO_BACKEND;
-    size_t ivtable;
-
-    MA_ASSERT(pConfig != NULL);
-    MA_ASSERT(pDecoder != NULL);
-
-    if (pConfig->ppCustomBackendVTables == NULL) {
-        return MA_NO_BACKEND;
-    }
-
-    /* The order each backend is listed is what defines the priority. */
-    for (ivtable = 0; ivtable < pConfig->customBackendCount; ivtable += 1) {
-        const ma_decoding_backend_vtable* pVTable = pConfig->ppCustomBackendVTables[ivtable];
-        if (pVTable != NULL) {
-            result = ma_decoder_init_from_vtable__internal(pVTable, pConfig->pCustomBackendUserData, pConfig, pDecoder);
-            if (result == MA_SUCCESS) {
-                return MA_SUCCESS;
-            } else {
-                /* Initialization failed. Move on to the next one, but seek back to the start first so the next vtable starts from the first byte of the file. */
-                result = ma_decoder_seek_bytes(pDecoder, 0, ma_seek_origin_start);
-                if (result != MA_SUCCESS) {
-                    return result;  /* Failed to seek back to the start. */
-                }
-            }
-        } else {
-            /* No vtable. */
-        }
-    }
-
-    /* Getting here means we couldn't find a backend. */
-    return MA_NO_BACKEND;
-}
-
-static ma_result ma_decoder_init_custom_from_file__internal(const char* pFilePath, const ma_decoder_config* pConfig, ma_decoder* pDecoder)
-{
-    ma_result result = MA_NO_BACKEND;
-    size_t ivtable;
-
-    MA_ASSERT(pConfig != NULL);
-    MA_ASSERT(pDecoder != NULL);
-
-    if (pConfig->ppCustomBackendVTables == NULL) {
-        return MA_NO_BACKEND;
-    }
-
-    /* The order each backend is listed is what defines the priority. */
-    for (ivtable = 0; ivtable < pConfig->customBackendCount; ivtable += 1) {
-        const ma_decoding_backend_vtable* pVTable = pConfig->ppCustomBackendVTables[ivtable];
-        if (pVTable != NULL) {
-            result = ma_decoder_init_from_file__internal(pVTable, pConfig->pCustomBackendUserData, pFilePath, pConfig, pDecoder);
-            if (result == MA_SUCCESS) {
-                return MA_SUCCESS;
-            }
-        } else {
-            /* No vtable. */
-        }
-    }
-
-    /* Getting here means we couldn't find a backend. */
-    return MA_NO_BACKEND;
-}
-
-static ma_result ma_decoder_init_custom_from_file_w__internal(const wchar_t* pFilePath, const ma_decoder_config* pConfig, ma_decoder* pDecoder)
-{
-    ma_result result = MA_NO_BACKEND;
-    size_t ivtable;
-
-    MA_ASSERT(pConfig != NULL);
-    MA_ASSERT(pDecoder != NULL);
-
-    if (pConfig->ppCustomBackendVTables == NULL) {
-        return MA_NO_BACKEND;
-    }
-
-    /* The order each backend is listed is what defines the priority. */
-    for (ivtable = 0; ivtable < pConfig->customBackendCount; ivtable += 1) {
-        const ma_decoding_backend_vtable* pVTable = pConfig->ppCustomBackendVTables[ivtable];
-        if (pVTable != NULL) {
-            result = ma_decoder_init_from_file_w__internal(pVTable, pConfig->pCustomBackendUserData, pFilePath, pConfig, pDecoder);
-            if (result == MA_SUCCESS) {
-                return MA_SUCCESS;
-            }
-        } else {
-            /* No vtable. */
-        }
-    }
-
-    /* Getting here means we couldn't find a backend. */
-    return MA_NO_BACKEND;
-}
-
-static ma_result ma_decoder_init_custom_from_memory__internal(const void* pData, size_t dataSize, const ma_decoder_config* pConfig, ma_decoder* pDecoder)
-{
-    ma_result result = MA_NO_BACKEND;
-    size_t ivtable;
-
-    MA_ASSERT(pConfig != NULL);
-    MA_ASSERT(pDecoder != NULL);
-
-    if (pConfig->ppCustomBackendVTables == NULL) {
-        return MA_NO_BACKEND;
-    }
-
-    /* The order each backend is listed is what defines the priority. */
-    for (ivtable = 0; ivtable < pConfig->customBackendCount; ivtable += 1) {
-        const ma_decoding_backend_vtable* pVTable = pConfig->ppCustomBackendVTables[ivtable];
-        if (pVTable != NULL) {
-            result = ma_decoder_init_from_memory__internal(pVTable, pConfig->pCustomBackendUserData, pData, dataSize, pConfig, pDecoder);
-            if (result == MA_SUCCESS) {
-                return MA_SUCCESS;
-            }
-        } else {
-            /* No vtable. */
-        }
-    }
-
-    /* Getting here means we couldn't find a backend. */
-    return MA_NO_BACKEND;
-}
 
 
 /* WAV */
@@ -61667,34 +61519,26 @@ static void ma_decoding_backend_uninit__wav(void* pUserData, ma_data_source* pBa
     ma_free(pWav, pAllocationCallbacks);
 }
 
+static ma_encoding_format ma_decoding_backend_get_encoding_format__wav(void* pUserData, ma_data_source* pBackend)
+{
+    (void)pUserData;
+    (void)pBackend;
+
+    return ma_encoding_format_wav;
+}
+
 static ma_decoding_backend_vtable g_ma_decoding_backend_vtable_wav =
 {
     ma_decoding_backend_init__wav,
     ma_decoding_backend_init_file__wav,
     ma_decoding_backend_init_file_w__wav,
     ma_decoding_backend_init_memory__wav,
-    ma_decoding_backend_uninit__wav
+    ma_decoding_backend_uninit__wav,
+    ma_decoding_backend_get_encoding_format__wav
 };
-
-static ma_result ma_decoder_init_wav__internal(const ma_decoder_config* pConfig, ma_decoder* pDecoder)
-{
-    return ma_decoder_init_from_vtable__internal(&g_ma_decoding_backend_vtable_wav, NULL, pConfig, pDecoder);
-}
-
-static ma_result ma_decoder_init_wav_from_file__internal(const char* pFilePath, const ma_decoder_config* pConfig, ma_decoder* pDecoder)
-{
-    return ma_decoder_init_from_file__internal(&g_ma_decoding_backend_vtable_wav, NULL, pFilePath, pConfig, pDecoder);
-}
-
-static ma_result ma_decoder_init_wav_from_file_w__internal(const wchar_t* pFilePath, const ma_decoder_config* pConfig, ma_decoder* pDecoder)
-{
-    return ma_decoder_init_from_file_w__internal(&g_ma_decoding_backend_vtable_wav, NULL, pFilePath, pConfig, pDecoder);
-}
-
-static ma_result ma_decoder_init_wav_from_memory__internal(const void* pData, size_t dataSize, const ma_decoder_config* pConfig, ma_decoder* pDecoder)
-{
-    return ma_decoder_init_from_memory__internal(&g_ma_decoding_backend_vtable_wav, NULL, pData, dataSize, pConfig, pDecoder);
-}
+const ma_decoding_backend_vtable* ma_decoding_backend_wav = &g_ma_decoding_backend_vtable_wav;
+#else
+const ma_decoding_backend_vtable* ma_decoding_backend_wav = NULL;
 #endif  /* ma_dr_wav_h */
 
 /* FLAC */
@@ -62289,34 +62133,26 @@ static void ma_decoding_backend_uninit__flac(void* pUserData, ma_data_source* pB
     ma_free(pFlac, pAllocationCallbacks);
 }
 
+static ma_encoding_format ma_decoding_backend_get_encoding_format__flac(void* pUserData, ma_data_source* pBackend)
+{
+    (void)pUserData;
+    (void)pBackend;
+
+    return ma_encoding_format_flac;
+}
+
 static ma_decoding_backend_vtable g_ma_decoding_backend_vtable_flac =
 {
     ma_decoding_backend_init__flac,
     ma_decoding_backend_init_file__flac,
     ma_decoding_backend_init_file_w__flac,
     ma_decoding_backend_init_memory__flac,
-    ma_decoding_backend_uninit__flac
+    ma_decoding_backend_uninit__flac,
+    ma_decoding_backend_get_encoding_format__flac
 };
-
-static ma_result ma_decoder_init_flac__internal(const ma_decoder_config* pConfig, ma_decoder* pDecoder)
-{
-    return ma_decoder_init_from_vtable__internal(&g_ma_decoding_backend_vtable_flac, NULL, pConfig, pDecoder);
-}
-
-static ma_result ma_decoder_init_flac_from_file__internal(const char* pFilePath, const ma_decoder_config* pConfig, ma_decoder* pDecoder)
-{
-    return ma_decoder_init_from_file__internal(&g_ma_decoding_backend_vtable_flac, NULL, pFilePath, pConfig, pDecoder);
-}
-
-static ma_result ma_decoder_init_flac_from_file_w__internal(const wchar_t* pFilePath, const ma_decoder_config* pConfig, ma_decoder* pDecoder)
-{
-    return ma_decoder_init_from_file_w__internal(&g_ma_decoding_backend_vtable_flac, NULL, pFilePath, pConfig, pDecoder);
-}
-
-static ma_result ma_decoder_init_flac_from_memory__internal(const void* pData, size_t dataSize, const ma_decoder_config* pConfig, ma_decoder* pDecoder)
-{
-    return ma_decoder_init_from_memory__internal(&g_ma_decoding_backend_vtable_flac, NULL, pData, dataSize, pConfig, pDecoder);
-}
+const ma_decoding_backend_vtable* ma_decoding_backend_flac = &g_ma_decoding_backend_vtable_flac;
+#else
+const ma_decoding_backend_vtable* ma_decoding_backend_flac = NULL;
 #endif  /* ma_dr_flac_h */
 
 /* MP3 */
@@ -62969,34 +62805,26 @@ static void ma_decoding_backend_uninit__mp3(void* pUserData, ma_data_source* pBa
     ma_free(pMP3, pAllocationCallbacks);
 }
 
+static ma_encoding_format ma_decoding_backend_get_encoding_format__mp3(void* pUserData, ma_data_source* pBackend)
+{
+    (void)pUserData;
+    (void)pBackend;
+
+    return ma_encoding_format_mp3;
+}
+
 static ma_decoding_backend_vtable g_ma_decoding_backend_vtable_mp3 =
 {
     ma_decoding_backend_init__mp3,
     ma_decoding_backend_init_file__mp3,
     ma_decoding_backend_init_file_w__mp3,
     ma_decoding_backend_init_memory__mp3,
-    ma_decoding_backend_uninit__mp3
+    ma_decoding_backend_uninit__mp3,
+    ma_decoding_backend_get_encoding_format__mp3
 };
-
-static ma_result ma_decoder_init_mp3__internal(const ma_decoder_config* pConfig, ma_decoder* pDecoder)
-{
-    return ma_decoder_init_from_vtable__internal(&g_ma_decoding_backend_vtable_mp3, NULL, pConfig, pDecoder);
-}
-
-static ma_result ma_decoder_init_mp3_from_file__internal(const char* pFilePath, const ma_decoder_config* pConfig, ma_decoder* pDecoder)
-{
-    return ma_decoder_init_from_file__internal(&g_ma_decoding_backend_vtable_mp3, NULL, pFilePath, pConfig, pDecoder);
-}
-
-static ma_result ma_decoder_init_mp3_from_file_w__internal(const wchar_t* pFilePath, const ma_decoder_config* pConfig, ma_decoder* pDecoder)
-{
-    return ma_decoder_init_from_file_w__internal(&g_ma_decoding_backend_vtable_mp3, NULL, pFilePath, pConfig, pDecoder);
-}
-
-static ma_result ma_decoder_init_mp3_from_memory__internal(const void* pData, size_t dataSize, const ma_decoder_config* pConfig, ma_decoder* pDecoder)
-{
-    return ma_decoder_init_from_memory__internal(&g_ma_decoding_backend_vtable_mp3, NULL, pData, dataSize, pConfig, pDecoder);
-}
+const ma_decoding_backend_vtable* ma_decoding_backend_mp3 = &g_ma_decoding_backend_vtable_mp3;
+#else
+const ma_decoding_backend_vtable* ma_decoding_backend_mp3 = NULL;
 #endif  /* ma_dr_mp3_h */
 
 /* Vorbis */
@@ -63220,7 +63048,7 @@ MA_API ma_result ma_stbvorbis_init(ma_read_proc onRead, ma_seek_proc onSeek, ma_
     #if !defined(MA_NO_VORBIS)
     {
         /*
-        stb_vorbis lacks a callback based API for it's pulling API which means we're stuck with the
+        stb_vorbis lacks a callback based API for its pulling API which means we're stuck with the
         pushing API. In order for us to be able to successfully initialize the decoder we need to
         supply it with enough data. We need to keep loading data until we have enough.
         */
@@ -63301,7 +63129,7 @@ MA_API ma_result ma_stbvorbis_init_memory(const void* pData, size_t dataSize, co
     {
         (void)pAllocationCallbacks;
 
-        /* stb_vorbis uses an int as it's size specifier, restricting it to 32-bit even on 64-bit systems. *sigh*. */
+        /* stb_vorbis uses an int as its size specifier, restricting it to 32-bit even on 64-bit systems. *sigh*. */
         if (dataSize > INT_MAX) {
             return MA_TOO_BIG;
         }
@@ -63391,7 +63219,7 @@ MA_API ma_result ma_stbvorbis_read_pcm_frames(ma_stbvorbis* pVorbis, void* pFram
                     /* The first thing to do is read from any already-cached frames. */
                     ma_uint32 framesToReadFromCache = (ma_uint32)ma_min(pVorbis->push.framesRemaining, (frameCount - totalFramesRead));  /* Safe cast because pVorbis->framesRemaining is 32-bit. */
 
-                    /* The output pointer can be null in which case we just treate it as a seek. */
+                    /* The output pointer can be null in which case we just treat it as a seek. */
                     if (pFramesOut != NULL) {
                         ma_uint64 iFrame;
                         for (iFrame = 0; iFrame < framesToReadFromCache; iFrame += 1) {
@@ -63465,7 +63293,7 @@ MA_API ma_result ma_stbvorbis_read_pcm_frames(ma_stbvorbis* pVorbis, void* pFram
                         }
                     }
 
-                    /* If we don't have a success code at this point it means we've encounted an error or the end of the file has been reached (probably the latter). */
+                    /* If we don't have a success code at this point it means we've encountered an error or the end of the file has been reached (probably the latter). */
                     if (result != MA_SUCCESS) {
                         break;
                     }
@@ -63801,490 +63629,27 @@ static void ma_decoding_backend_uninit__stbvorbis(void* pUserData, ma_data_sourc
     ma_free(pVorbis, pAllocationCallbacks);
 }
 
+static ma_encoding_format ma_decoding_backend_get_encoding_format__stbvorbis(void* pUserData, ma_data_source* pBackend)
+{
+    (void)pUserData;
+    (void)pBackend;
+
+    return ma_encoding_format_vorbis;
+}
+
 static ma_decoding_backend_vtable g_ma_decoding_backend_vtable_stbvorbis =
 {
     ma_decoding_backend_init__stbvorbis,
     ma_decoding_backend_init_file__stbvorbis,
     NULL, /* onInitFileW() */
     ma_decoding_backend_init_memory__stbvorbis,
-    ma_decoding_backend_uninit__stbvorbis
+    ma_decoding_backend_uninit__stbvorbis,
+    ma_decoding_backend_get_encoding_format__stbvorbis
 };
-
-static ma_result ma_decoder_init_vorbis__internal(const ma_decoder_config* pConfig, ma_decoder* pDecoder)
-{
-    return ma_decoder_init_from_vtable__internal(&g_ma_decoding_backend_vtable_stbvorbis, NULL, pConfig, pDecoder);
-}
-
-static ma_result ma_decoder_init_vorbis_from_file__internal(const char* pFilePath, const ma_decoder_config* pConfig, ma_decoder* pDecoder)
-{
-    return ma_decoder_init_from_file__internal(&g_ma_decoding_backend_vtable_stbvorbis, NULL, pFilePath, pConfig, pDecoder);
-}
-
-static ma_result ma_decoder_init_vorbis_from_file_w__internal(const wchar_t* pFilePath, const ma_decoder_config* pConfig, ma_decoder* pDecoder)
-{
-    return ma_decoder_init_from_file_w__internal(&g_ma_decoding_backend_vtable_stbvorbis, NULL, pFilePath, pConfig, pDecoder);
-}
-
-static ma_result ma_decoder_init_vorbis_from_memory__internal(const void* pData, size_t dataSize, const ma_decoder_config* pConfig, ma_decoder* pDecoder)
-{
-    return ma_decoder_init_from_memory__internal(&g_ma_decoding_backend_vtable_stbvorbis, NULL, pData, dataSize, pConfig, pDecoder);
-}
 #endif  /* STB_VORBIS_INCLUDE_STB_VORBIS_H */
 
 
 
-static ma_result ma_decoder__init_allocation_callbacks(const ma_decoder_config* pConfig, ma_decoder* pDecoder)
-{
-    MA_ASSERT(pDecoder != NULL);
-
-    if (pConfig != NULL) {
-        return ma_allocation_callbacks_init_copy(&pDecoder->allocationCallbacks, &pConfig->allocationCallbacks);
-    } else {
-        pDecoder->allocationCallbacks = ma_allocation_callbacks_init_default();
-        return MA_SUCCESS;
-    }
-}
-
-static ma_result ma_decoder__data_source_on_read(ma_data_source* pDataSource, void* pFramesOut, ma_uint64 frameCount, ma_uint64* pFramesRead)
-{
-    return ma_decoder_read_pcm_frames((ma_decoder*)pDataSource, pFramesOut, frameCount, pFramesRead);
-}
-
-static ma_result ma_decoder__data_source_on_seek(ma_data_source* pDataSource, ma_uint64 frameIndex)
-{
-    return ma_decoder_seek_to_pcm_frame((ma_decoder*)pDataSource, frameIndex);
-}
-
-static ma_result ma_decoder__data_source_on_get_data_format(ma_data_source* pDataSource, ma_format* pFormat, ma_uint32* pChannels, ma_uint32* pSampleRate, ma_channel* pChannelMap, size_t channelMapCap)
-{
-    return ma_decoder_get_data_format((ma_decoder*)pDataSource, pFormat, pChannels, pSampleRate, pChannelMap, channelMapCap);
-}
-
-static ma_result ma_decoder__data_source_on_get_cursor(ma_data_source* pDataSource, ma_uint64* pCursor)
-{
-    return ma_decoder_get_cursor_in_pcm_frames((ma_decoder*)pDataSource, pCursor);
-}
-
-static ma_result ma_decoder__data_source_on_get_length(ma_data_source* pDataSource, ma_uint64* pLength)
-{
-    return ma_decoder_get_length_in_pcm_frames((ma_decoder*)pDataSource, pLength);
-}
-
-static ma_data_source_vtable g_ma_decoder_data_source_vtable =
-{
-    ma_decoder__data_source_on_read,
-    ma_decoder__data_source_on_seek,
-    ma_decoder__data_source_on_get_data_format,
-    ma_decoder__data_source_on_get_cursor,
-    ma_decoder__data_source_on_get_length,
-    NULL,   /* onSetLooping */
-    0
-};
-
-static ma_result ma_decoder__preinit(ma_decoder_read_proc onRead, ma_decoder_seek_proc onSeek, ma_decoder_tell_proc onTell, void* pUserData, const ma_decoder_config* pConfig, ma_decoder* pDecoder)
-{
-    ma_result result;
-    ma_data_source_config dataSourceConfig;
-
-    MA_ASSERT(pConfig != NULL);
-
-    if (pDecoder == NULL) {
-        return MA_INVALID_ARGS;
-    }
-
-    MA_ZERO_OBJECT(pDecoder);
-
-    dataSourceConfig = ma_data_source_config_init();
-    dataSourceConfig.vtable = &g_ma_decoder_data_source_vtable;
-
-    result = ma_data_source_init(&dataSourceConfig, &pDecoder->ds);
-    if (result != MA_SUCCESS) {
-        return result;
-    }
-
-    pDecoder->onRead    = onRead;
-    pDecoder->onSeek    = onSeek;
-    pDecoder->onTell    = onTell;
-    pDecoder->pUserData = pUserData;
-
-    result = ma_decoder__init_allocation_callbacks(pConfig, pDecoder);
-    if (result != MA_SUCCESS) {
-        ma_data_source_uninit(&pDecoder->ds);
-        return result;
-    }
-
-    return MA_SUCCESS;
-}
-
-static ma_result ma_decoder__postinit(const ma_decoder_config* pConfig, ma_decoder* pDecoder)
-{
-    ma_result result;
-
-    result = ma_decoder__init_data_converter(pDecoder, pConfig);
-
-    /* If we failed post initialization we need to uninitialize the decoder before returning to prevent a memory leak. */
-    if (result != MA_SUCCESS) {
-        ma_decoder_uninit(pDecoder);
-        return result;
-    }
-
-    return result;
-}
-
-
-static ma_result ma_decoder_init__internal(ma_decoder_read_proc onRead, ma_decoder_seek_proc onSeek, void* pUserData, const ma_decoder_config* pConfig, ma_decoder* pDecoder)
-{
-    ma_result result = MA_NO_BACKEND;
-
-    MA_ASSERT(pConfig != NULL);
-    MA_ASSERT(pDecoder != NULL);
-
-    /* Silence some warnings in the case that we don't have any decoder backends enabled. */
-    (void)onRead;
-    (void)onSeek;
-    (void)pUserData;
-
-
-    /* If we've specified a specific encoding type, try that first. */
-    if (pConfig->encodingFormat != ma_encoding_format_unknown) {
-    #ifdef MA_HAS_WAV
-        if (pConfig->encodingFormat == ma_encoding_format_wav) {
-            result = ma_decoder_init_wav__internal(pConfig, pDecoder);
-        }
-    #endif
-    #ifdef MA_HAS_FLAC
-        if (pConfig->encodingFormat == ma_encoding_format_flac) {
-            result = ma_decoder_init_flac__internal(pConfig, pDecoder);
-        }
-    #endif
-    #ifdef MA_HAS_MP3
-        if (pConfig->encodingFormat == ma_encoding_format_mp3) {
-            result = ma_decoder_init_mp3__internal(pConfig, pDecoder);
-        }
-    #endif
-    #ifdef MA_HAS_VORBIS
-        if (pConfig->encodingFormat == ma_encoding_format_vorbis) {
-            result = ma_decoder_init_vorbis__internal(pConfig, pDecoder);
-        }
-    #endif
-
-        /* If we weren't able to initialize the decoder, seek back to the start to give the next attempts a clean start. */
-        if (result != MA_SUCCESS) {
-            onSeek(pDecoder, 0, ma_seek_origin_start);
-        }
-    }
-
-    if (result != MA_SUCCESS) {
-        /* Getting here means we couldn't load a specific decoding backend based on the encoding format. */
-
-        /*
-        We use trial and error to open a decoder. We prioritize custom decoders so that if they
-        implement the same encoding format they take priority over the built-in decoders.
-        */
-        if (result != MA_SUCCESS) {
-            result = ma_decoder_init_custom__internal(pConfig, pDecoder);
-            if (result != MA_SUCCESS) {
-                onSeek(pDecoder, 0, ma_seek_origin_start);
-            }
-        }
-
-        /*
-        If we get to this point and we still haven't found a decoder, and the caller has requested a
-        specific encoding format, there's no hope for it. Abort.
-        */
-        if (pConfig->encodingFormat != ma_encoding_format_unknown) {
-            return MA_NO_BACKEND;
-        }
-
-    #ifdef MA_HAS_WAV
-        if (result != MA_SUCCESS) {
-            result = ma_decoder_init_wav__internal(pConfig, pDecoder);
-            if (result != MA_SUCCESS) {
-                onSeek(pDecoder, 0, ma_seek_origin_start);
-            }
-        }
-    #endif
-    #ifdef MA_HAS_FLAC
-        if (result != MA_SUCCESS) {
-            result = ma_decoder_init_flac__internal(pConfig, pDecoder);
-            if (result != MA_SUCCESS) {
-                onSeek(pDecoder, 0, ma_seek_origin_start);
-            }
-        }
-    #endif
-    #ifdef MA_HAS_MP3
-        if (result != MA_SUCCESS) {
-            result = ma_decoder_init_mp3__internal(pConfig, pDecoder);
-            if (result != MA_SUCCESS) {
-                onSeek(pDecoder, 0, ma_seek_origin_start);
-            }
-        }
-    #endif
-    #ifdef MA_HAS_VORBIS
-        if (result != MA_SUCCESS) {
-            result = ma_decoder_init_vorbis__internal(pConfig, pDecoder);
-            if (result != MA_SUCCESS) {
-                onSeek(pDecoder, 0, ma_seek_origin_start);
-            }
-        }
-    #endif
-    }
-
-    if (result != MA_SUCCESS) {
-        return result;
-    }
-
-    return ma_decoder__postinit(pConfig, pDecoder);
-}
-
-MA_API ma_result ma_decoder_init(ma_decoder_read_proc onRead, ma_decoder_seek_proc onSeek, void* pUserData, const ma_decoder_config* pConfig, ma_decoder* pDecoder)
-{
-    ma_decoder_config config;
-    ma_result result;
-
-    config = ma_decoder_config_init_copy(pConfig);
-
-    result = ma_decoder__preinit(onRead, onSeek, NULL, pUserData, &config, pDecoder);
-    if (result != MA_SUCCESS) {
-        return result;
-    }
-
-    return ma_decoder_init__internal(onRead, onSeek, pUserData, &config, pDecoder);
-}
-
-
-static ma_result ma_decoder__on_read_memory(ma_decoder* pDecoder, void* pBufferOut, size_t bytesToRead, size_t* pBytesRead)
-{
-    size_t bytesRemaining;
-
-    MA_ASSERT(pDecoder->data.memory.dataSize >= pDecoder->data.memory.currentReadPos);
-
-    if (pBytesRead != NULL) {
-        *pBytesRead = 0;
-    }
-
-    bytesRemaining = pDecoder->data.memory.dataSize - pDecoder->data.memory.currentReadPos;
-    if (bytesToRead > bytesRemaining) {
-        bytesToRead = bytesRemaining;
-    }
-
-    if (bytesRemaining == 0) {
-        return MA_AT_END;
-    }
-
-    if (bytesToRead > 0) {
-        MA_COPY_MEMORY(pBufferOut, pDecoder->data.memory.pData + pDecoder->data.memory.currentReadPos, bytesToRead);
-        pDecoder->data.memory.currentReadPos += bytesToRead;
-    }
-
-    if (pBytesRead != NULL) {
-        *pBytesRead = bytesToRead;
-    }
-
-    return MA_SUCCESS;
-}
-
-static ma_result ma_decoder__on_seek_memory(ma_decoder* pDecoder, ma_int64 byteOffset, ma_seek_origin origin)
-{
-    if (byteOffset > 0 && (ma_uint64)byteOffset > MA_SIZE_MAX) {
-        return MA_BAD_SEEK;
-    }
-
-    if (origin == ma_seek_origin_current) {
-        if (byteOffset > 0) {
-            if (pDecoder->data.memory.currentReadPos + byteOffset > pDecoder->data.memory.dataSize) {
-                byteOffset = (ma_int64)(pDecoder->data.memory.dataSize - pDecoder->data.memory.currentReadPos);  /* Trying to seek too far forward. */
-            }
-
-            pDecoder->data.memory.currentReadPos += (size_t)byteOffset;
-        } else {
-            if (pDecoder->data.memory.currentReadPos < (size_t)-byteOffset) {
-                byteOffset = -(ma_int64)pDecoder->data.memory.currentReadPos;  /* Trying to seek too far backwards. */
-            }
-
-            pDecoder->data.memory.currentReadPos -= (size_t)-byteOffset;
-        }
-    } else {
-        if (origin == ma_seek_origin_end) {
-            if (byteOffset < 0) {
-                byteOffset = -byteOffset;
-            }
-
-            if (byteOffset > (ma_int64)pDecoder->data.memory.dataSize) {
-                pDecoder->data.memory.currentReadPos = 0;   /* Trying to seek too far back. */
-            } else {
-                pDecoder->data.memory.currentReadPos = pDecoder->data.memory.dataSize - (size_t)byteOffset;
-            }
-        } else {
-            if ((size_t)byteOffset <= pDecoder->data.memory.dataSize) {
-                pDecoder->data.memory.currentReadPos = (size_t)byteOffset;
-            } else {
-                pDecoder->data.memory.currentReadPos = pDecoder->data.memory.dataSize;  /* Trying to seek too far forward. */
-            }
-        }
-    }
-
-    return MA_SUCCESS;
-}
-
-static ma_result ma_decoder__on_tell_memory(ma_decoder* pDecoder, ma_int64* pCursor)
-{
-    MA_ASSERT(pDecoder != NULL);
-    MA_ASSERT(pCursor  != NULL);
-
-    *pCursor = (ma_int64)pDecoder->data.memory.currentReadPos;
-
-    return MA_SUCCESS;
-}
-
-static ma_result ma_decoder__preinit_memory_wrapper(const void* pData, size_t dataSize, const ma_decoder_config* pConfig, ma_decoder* pDecoder)
-{
-    ma_result result = ma_decoder__preinit(ma_decoder__on_read_memory, ma_decoder__on_seek_memory, ma_decoder__on_tell_memory, NULL, pConfig, pDecoder);
-    if (result != MA_SUCCESS) {
-        return result;
-    }
-
-    if (pData == NULL || dataSize == 0) {
-        return MA_INVALID_ARGS;
-    }
-
-    pDecoder->data.memory.pData = (const ma_uint8*)pData;
-    pDecoder->data.memory.dataSize = dataSize;
-    pDecoder->data.memory.currentReadPos = 0;
-
-    (void)pConfig;
-    return MA_SUCCESS;
-}
-
-MA_API ma_result ma_decoder_init_memory(const void* pData, size_t dataSize, const ma_decoder_config* pConfig, ma_decoder* pDecoder)
-{
-    ma_result result;
-    ma_decoder_config config;
-
-    config = ma_decoder_config_init_copy(pConfig);
-
-    result = ma_decoder__preinit(NULL, NULL, NULL, NULL, &config, pDecoder);
-    if (result != MA_SUCCESS) {
-        return result;
-    }
-
-    if (pData == NULL || dataSize == 0) {
-        return MA_INVALID_ARGS;
-    }
-
-    /* If the backend has support for loading from a file path we'll want to use that. If that all fails we'll fall back to the VFS path. */
-    result = MA_NO_BACKEND;
-
-    if (config.encodingFormat != ma_encoding_format_unknown) {
-    #ifdef MA_HAS_WAV
-        if (config.encodingFormat == ma_encoding_format_wav) {
-            result = ma_decoder_init_wav_from_memory__internal(pData, dataSize, &config, pDecoder);
-        }
-    #endif
-    #ifdef MA_HAS_FLAC
-        if (config.encodingFormat == ma_encoding_format_flac) {
-            result = ma_decoder_init_flac_from_memory__internal(pData, dataSize, &config, pDecoder);
-        }
-    #endif
-    #ifdef MA_HAS_MP3
-        if (config.encodingFormat == ma_encoding_format_mp3) {
-            result = ma_decoder_init_mp3_from_memory__internal(pData, dataSize, &config, pDecoder);
-        }
-    #endif
-    #ifdef MA_HAS_VORBIS
-        if (config.encodingFormat == ma_encoding_format_vorbis) {
-            result = ma_decoder_init_vorbis_from_memory__internal(pData, dataSize, &config, pDecoder);
-        }
-    #endif
-    }
-
-    if (result != MA_SUCCESS) {
-        /* Getting here means we weren't able to initialize a decoder of a specific encoding format. */
-
-        /*
-        We use trial and error to open a decoder. We prioritize custom decoders so that if they
-        implement the same encoding format they take priority over the built-in decoders.
-        */
-        result = ma_decoder_init_custom_from_memory__internal(pData, dataSize, &config, pDecoder);
-
-        /*
-        If we get to this point and we still haven't found a decoder, and the caller has requested a
-        specific encoding format, there's no hope for it. Abort.
-        */
-        if (result != MA_SUCCESS && config.encodingFormat != ma_encoding_format_unknown) {
-            return MA_NO_BACKEND;
-        }
-
-        /* Use trial and error for stock decoders. */
-        if (result != MA_SUCCESS) {
-        #ifdef MA_HAS_WAV
-            if (result != MA_SUCCESS) {
-                result = ma_decoder_init_wav_from_memory__internal(pData, dataSize, &config, pDecoder);
-            }
-        #endif
-        #ifdef MA_HAS_FLAC
-            if (result != MA_SUCCESS) {
-                result = ma_decoder_init_flac_from_memory__internal(pData, dataSize, &config, pDecoder);
-            }
-        #endif
-        #ifdef MA_HAS_MP3
-            if (result != MA_SUCCESS) {
-                result = ma_decoder_init_mp3_from_memory__internal(pData, dataSize, &config, pDecoder);
-            }
-        #endif
-        #ifdef MA_HAS_VORBIS
-            if (result != MA_SUCCESS) {
-                result = ma_decoder_init_vorbis_from_memory__internal(pData, dataSize, &config, pDecoder);
-            }
-        #endif
-        }
-    }
-
-    /*
-    If at this point we still haven't successfully initialized the decoder it most likely means
-    the backend doesn't have an implementation for loading from a file path. We'll try using
-    miniaudio's built-in file IO for loading file.
-    */
-    if (result == MA_SUCCESS) {
-        /* Initialization was successful. Finish up. */
-        result = ma_decoder__postinit(&config, pDecoder);
-        if (result != MA_SUCCESS) {
-            /*
-            The backend was initialized successfully, but for some reason post-initialization failed. This is most likely
-            due to an out of memory error. We're going to abort with an error here and not try to recover.
-            */
-            if (pDecoder->pBackendVTable != NULL && pDecoder->pBackendVTable->onUninit != NULL) {
-                pDecoder->pBackendVTable->onUninit(pDecoder->pBackendUserData, &pDecoder->pBackend, &pDecoder->allocationCallbacks);
-            }
-
-            return result;
-        }
-    } else {
-        /* Probably no implementation for loading from a block of memory. Use miniaudio's abstraction instead. */
-        result = ma_decoder__preinit_memory_wrapper(pData, dataSize, &config, pDecoder);
-        if (result != MA_SUCCESS) {
-            return result;
-        }
-
-        result = ma_decoder_init__internal(ma_decoder__on_read_memory, ma_decoder__on_seek_memory, NULL, &config, pDecoder);
-        if (result != MA_SUCCESS) {
-            return result;
-        }
-    }
-
-    return MA_SUCCESS;
-}
-
-
-#if defined(MA_HAS_WAV)    || \
-    defined(MA_HAS_MP3)    || \
-    defined(MA_HAS_FLAC)   || \
-    defined(MA_HAS_VORBIS) || \
-    defined(MA_HAS_OPUS)
-#define MA_HAS_PATH_API
-#endif
-
-#if defined(MA_HAS_PATH_API)
 static const char* ma_path_file_name(const char* path)
 {
     const char* fileName;
@@ -64451,7 +63816,727 @@ static ma_bool32 ma_path_extension_equal_w(const wchar_t* path, const wchar_t* e
     }
 #endif
 }
-#endif  /* MA_HAS_PATH_API */
+
+
+MA_API ma_encoding_format ma_encoding_format_from_path(const char* pFilePath)
+{
+    /*  */ if (ma_path_extension_equal(pFilePath, "wav")) {
+        return ma_encoding_format_wav;
+    } else if (ma_path_extension_equal(pFilePath, "flac")) {
+        return ma_encoding_format_flac;
+    } else if (ma_path_extension_equal(pFilePath, "mp3")) {
+        return ma_encoding_format_mp3;
+    } else if (ma_path_extension_equal(pFilePath, "ogg")) {
+        return ma_encoding_format_vorbis;
+    } else if (ma_path_extension_equal(pFilePath, "opus")) {
+        return ma_encoding_format_opus;
+    } else {
+        return ma_encoding_format_unknown;
+    }
+}
+
+MA_API ma_encoding_format ma_encoding_format_from_path_w(const wchar_t* pFilePath)
+{
+    /*  */ if (ma_path_extension_equal_w(pFilePath, L"wav")) {
+        return ma_encoding_format_wav;
+    } else if (ma_path_extension_equal_w(pFilePath, L"flac")) {
+        return ma_encoding_format_flac;
+    } else if (ma_path_extension_equal_w(pFilePath, L"mp3")) {
+        return ma_encoding_format_mp3;
+    } else if (ma_path_extension_equal_w(pFilePath, L"ogg")) {
+        return ma_encoding_format_vorbis;
+    } else if (ma_path_extension_equal_w(pFilePath, L"opus")) {
+        return ma_encoding_format_opus;
+    } else {
+        return ma_encoding_format_unknown;
+    }
+}
+
+
+static ma_decoding_backend_config ma_decoding_backend_config_init(ma_format preferredFormat, ma_uint32 seekPointCount, ma_encoding_format encodingFormat)
+{
+    ma_decoding_backend_config config;
+
+    MA_ZERO_OBJECT(&config);
+    config.preferredFormat = preferredFormat;
+    config.seekPointCount  = seekPointCount;
+    config.encodingFormat  = encodingFormat;
+
+    return config;
+}
+
+
+MA_API ma_decoder_config ma_decoder_config_init(ma_format outputFormat, ma_uint32 outputChannels, ma_uint32 outputSampleRate)
+{
+    ma_decoder_config config;
+    MA_ZERO_OBJECT(&config);
+    config.format         = outputFormat;
+    config.channels       = outputChannels;
+    config.sampleRate     = outputSampleRate;
+    config.resampling     = ma_resampler_config_init(ma_format_unknown, 0, 0, 0, ma_resample_algorithm_linear); /* Format/channels/rate doesn't matter here. */
+    config.encodingFormat = ma_encoding_format_unknown;
+
+    /* Note that we are intentionally leaving the channel map empty here which will cause the default channel map to be used. */
+
+    return config;
+}
+
+MA_API ma_decoder_config ma_decoder_config_init_default()
+{
+    return ma_decoder_config_init(ma_format_unknown, 0, 0);
+}
+
+
+
+static const ma_decoding_backend_vtable* ma_DefaultDecodingBackendVTables[] =
+{
+#if defined(MA_HAS_WAV)
+    &g_ma_decoding_backend_vtable_wav,
+#else
+    NULL,
+#endif
+#if defined(MA_HAS_FLAC)
+    &g_ma_decoding_backend_vtable_flac,
+#else
+    NULL,
+#endif
+#if defined(MA_HAS_MP3)
+    &g_ma_decoding_backend_vtable_mp3,
+#else
+    NULL,
+#endif
+#if defined(MA_HAS_VORBIS)
+    &g_ma_decoding_backend_vtable_stbvorbis
+#else
+    NULL
+#endif
+};
+
+static ma_decoder_config ma_decoder_config_init_copy(const ma_decoder_config* pConfig)
+{
+    ma_decoder_config config;
+    if (pConfig != NULL) {
+        config = *pConfig;
+    } else {
+        MA_ZERO_OBJECT(&config);
+    }
+
+    /* Make sure we always have a valid VTable for initialization time. */
+    if (config.ppBackendVTables == NULL) {
+        config.ppBackendVTables = ma_DefaultDecodingBackendVTables;
+        config.backendCount     = ma_countof(ma_DefaultDecodingBackendVTables);
+    }
+
+    return config;
+}
+
+static ma_result ma_decoder__init_data_converter(ma_decoder* pDecoder, const ma_decoder_config* pConfig)
+{
+    ma_result result;
+    ma_data_converter_config converterConfig;
+    ma_format internalFormat;
+    ma_uint32 internalChannels;
+    ma_uint32 internalSampleRate;
+    ma_channel internalChannelMap[MA_MAX_CHANNELS];
+
+    MA_ASSERT(pDecoder != NULL);
+    MA_ASSERT(pConfig  != NULL);
+
+    result = ma_data_source_get_data_format(pDecoder->pBackend, &internalFormat, &internalChannels, &internalSampleRate, internalChannelMap, ma_countof(internalChannelMap));
+    if (result != MA_SUCCESS) {
+        return result;  /* Failed to retrieve the internal data format. */
+    }
+
+
+    /* Make sure we're not asking for too many channels. */
+    if (pConfig->channels > MA_MAX_CHANNELS) {
+        return MA_INVALID_ARGS;
+    }
+
+    /* The internal channels should have already been validated at a higher level, but we'll do it again explicitly here for safety. */
+    if (internalChannels > MA_MAX_CHANNELS) {
+        return MA_INVALID_ARGS;
+    }
+
+
+    /* Output format. */
+    if (pConfig->format == ma_format_unknown) {
+        pDecoder->outputFormat = internalFormat;
+    } else {
+        pDecoder->outputFormat = pConfig->format;
+    }
+
+    if (pConfig->channels == 0) {
+        pDecoder->outputChannels = internalChannels;
+    } else {
+        pDecoder->outputChannels = pConfig->channels;
+    }
+
+    if (pConfig->sampleRate == 0) {
+        pDecoder->outputSampleRate = internalSampleRate;
+    } else {
+        pDecoder->outputSampleRate = pConfig->sampleRate;
+    }
+
+    converterConfig = ma_data_converter_config_init(
+        internalFormat,     pDecoder->outputFormat,
+        internalChannels,   pDecoder->outputChannels,
+        internalSampleRate, pDecoder->outputSampleRate
+    );
+    converterConfig.pChannelMapIn          = internalChannelMap;
+    converterConfig.pChannelMapOut         = pConfig->pChannelMap;
+    converterConfig.channelMixMode         = pConfig->channelMixMode;
+    converterConfig.ditherMode             = pConfig->ditherMode;
+    converterConfig.allowDynamicSampleRate = MA_FALSE;   /* Never allow dynamic sample rate conversion. Setting this to true will disable passthrough optimizations. */
+    converterConfig.resampling             = pConfig->resampling;
+
+    result = ma_data_converter_init(&converterConfig, &pDecoder->allocationCallbacks, &pDecoder->converter);
+    if (result != MA_SUCCESS) {
+        return result;
+    }
+
+    /*
+    Now that we have the decoder we need to determine whether or not we need a heap-allocated cache. We'll
+    need this if the data converter does not support calculation of the required input frame count. To
+    determine support for this we'll just run a test.
+    */
+    {
+        ma_uint64 unused;
+
+        result = ma_data_converter_get_required_input_frame_count(&pDecoder->converter, 1, &unused);
+        if (result != MA_SUCCESS) {
+            /*
+            We were unable to calculate the required input frame count which means we'll need to use
+            a heap-allocated cache.
+            */
+            ma_uint64 inputCacheCapSizeInBytes;
+
+            pDecoder->inputCacheCap = MA_DATA_CONVERTER_STACK_BUFFER_SIZE / ma_get_bytes_per_frame(internalFormat, internalChannels);
+
+            /* Not strictly necessary, but keeping here for safety in case we change the default value of pDecoder->inputCacheCap. */
+            inputCacheCapSizeInBytes = pDecoder->inputCacheCap * ma_get_bytes_per_frame(internalFormat, internalChannels);
+            if (inputCacheCapSizeInBytes > MA_SIZE_MAX) {
+                ma_data_converter_uninit(&pDecoder->converter, &pDecoder->allocationCallbacks);
+                return MA_OUT_OF_MEMORY;
+            }
+
+            pDecoder->pInputCache = ma_malloc((size_t)inputCacheCapSizeInBytes, &pDecoder->allocationCallbacks);    /* Safe cast to size_t. */
+            if (pDecoder->pInputCache == NULL) {
+                ma_data_converter_uninit(&pDecoder->converter, &pDecoder->allocationCallbacks);
+                return MA_OUT_OF_MEMORY;
+            }
+        }
+    }
+
+    return MA_SUCCESS;
+}
+
+
+
+
+
+static ma_result ma_decoder_on_read(void* pUserData, void* pBufferOut, size_t bytesToRead, size_t* pBytesRead)
+{
+    ma_decoder* pDecoder = (ma_decoder*)pUserData;
+    MA_ASSERT(pDecoder != NULL);
+
+    return pDecoder->onRead(pDecoder, pBufferOut, bytesToRead, pBytesRead);
+}
+
+static ma_result ma_decoder_on_seek(void* pUserData, ma_int64 offset, ma_seek_origin origin)
+{
+    ma_decoder* pDecoder = (ma_decoder*)pUserData;
+    MA_ASSERT(pDecoder != NULL);
+
+    return pDecoder->onSeek(pDecoder, offset, origin);
+}
+
+static ma_result ma_decoder_on_tell(void* pUserData, ma_int64* pCursor)
+{
+    ma_decoder* pDecoder = (ma_decoder*)pUserData;
+    MA_ASSERT(pDecoder != NULL);
+
+    if (pDecoder->onTell == NULL) {
+        return MA_NOT_IMPLEMENTED;
+    }
+
+    return pDecoder->onTell(pDecoder, pCursor);
+}
+
+
+static ma_result ma_decoder_init_from_vtable__internal(const ma_decoding_backend_vtable* pVTable, void* pVTableUserData, const ma_decoder_config* pConfig, ma_decoder* pDecoder)
+{
+    ma_result result;
+    ma_decoding_backend_config backendConfig;
+    ma_data_source* pBackend;
+
+    MA_ASSERT(pVTable  != NULL);
+    MA_ASSERT(pConfig  != NULL);
+    MA_ASSERT(pDecoder != NULL);
+
+    if (pVTable->onInit == NULL) {
+        return MA_NOT_IMPLEMENTED;
+    }
+
+    backendConfig = ma_decoding_backend_config_init(pConfig->format, pConfig->seekPointCount, pConfig->encodingFormat);
+
+    result = pVTable->onInit(pVTableUserData, ma_decoder_on_read, ma_decoder_on_seek, ma_decoder_on_tell, pDecoder, &backendConfig, &pDecoder->allocationCallbacks, &pBackend);
+    if (result != MA_SUCCESS) {
+        return result;  /* Failed to initialize the backend from this vtable. */
+    }
+
+    /* Getting here means we were able to initialize the backend so we can now initialize the decoder. */
+    pDecoder->pBackend         = pBackend;
+    pDecoder->pBackendVTable   = pVTable;
+    pDecoder->pBackendUserData = pVTableUserData;
+
+    return MA_SUCCESS;
+}
+
+static ma_result ma_decoder_init_from_file__internal(const ma_decoding_backend_vtable* pVTable, void* pVTableUserData, const char* pFilePath, const ma_decoder_config* pConfig, ma_decoder* pDecoder)
+{
+    ma_result result;
+    ma_decoding_backend_config backendConfig;
+    ma_data_source* pBackend;
+
+    MA_ASSERT(pVTable  != NULL);
+    MA_ASSERT(pConfig  != NULL);
+    MA_ASSERT(pDecoder != NULL);
+
+    if (pVTable->onInitFile == NULL) {
+        return MA_NOT_IMPLEMENTED;
+    }
+
+    backendConfig = ma_decoding_backend_config_init(pConfig->format, pConfig->seekPointCount, pConfig->encodingFormat);
+
+    result = pVTable->onInitFile(pVTableUserData, pFilePath, &backendConfig, &pDecoder->allocationCallbacks, &pBackend);
+    if (result != MA_SUCCESS) {
+        return result;  /* Failed to initialize the backend from this vtable. */
+    }
+
+    /* Getting here means we were able to initialize the backend so we can now initialize the decoder. */
+    pDecoder->pBackend         = pBackend;
+    pDecoder->pBackendVTable   = pVTable;
+    pDecoder->pBackendUserData = pVTableUserData;
+
+    return MA_SUCCESS;
+}
+
+static ma_result ma_decoder_init_from_file_w__internal(const ma_decoding_backend_vtable* pVTable, void* pVTableUserData, const wchar_t* pFilePath, const ma_decoder_config* pConfig, ma_decoder* pDecoder)
+{
+    ma_result result;
+    ma_decoding_backend_config backendConfig;
+    ma_data_source* pBackend;
+
+    MA_ASSERT(pVTable  != NULL);
+    MA_ASSERT(pConfig  != NULL);
+    MA_ASSERT(pDecoder != NULL);
+
+    if (pVTable->onInitFileW == NULL) {
+        return MA_NOT_IMPLEMENTED;
+    }
+
+    backendConfig = ma_decoding_backend_config_init(pConfig->format, pConfig->seekPointCount, pConfig->encodingFormat);
+
+    result = pVTable->onInitFileW(pVTableUserData, pFilePath, &backendConfig, &pDecoder->allocationCallbacks, &pBackend);
+    if (result != MA_SUCCESS) {
+        return result;  /* Failed to initialize the backend from this vtable. */
+    }
+
+    /* Getting here means we were able to initialize the backend so we can now initialize the decoder. */
+    pDecoder->pBackend         = pBackend;
+    pDecoder->pBackendVTable   = pVTable;
+    pDecoder->pBackendUserData = pVTableUserData;
+
+    return MA_SUCCESS;
+}
+
+static ma_result ma_decoder_init_from_memory__internal(const ma_decoding_backend_vtable* pVTable, void* pVTableUserData, const void* pData, size_t dataSize, const ma_decoder_config* pConfig, ma_decoder* pDecoder)
+{
+    ma_result result;
+    ma_decoding_backend_config backendConfig;
+    ma_data_source* pBackend;
+
+    MA_ASSERT(pVTable  != NULL);
+    MA_ASSERT(pConfig  != NULL);
+    MA_ASSERT(pDecoder != NULL);
+
+    if (pVTable->onInitMemory == NULL) {
+        return MA_NOT_IMPLEMENTED;
+    }
+
+    backendConfig = ma_decoding_backend_config_init(pConfig->format, pConfig->seekPointCount, pConfig->encodingFormat);
+
+    result = pVTable->onInitMemory(pVTableUserData, pData, dataSize, &backendConfig, &pDecoder->allocationCallbacks, &pBackend);
+    if (result != MA_SUCCESS) {
+        return result;  /* Failed to initialize the backend from this vtable. */
+    }
+
+    /* Getting here means we were able to initialize the backend so we can now initialize the decoder. */
+    pDecoder->pBackend         = pBackend;
+    pDecoder->pBackendVTable   = pVTable;
+    pDecoder->pBackendUserData = pVTableUserData;
+
+    return MA_SUCCESS;
+}
+
+
+
+static ma_result ma_decoder__init_allocation_callbacks(const ma_decoder_config* pConfig, ma_decoder* pDecoder)
+{
+    MA_ASSERT(pDecoder != NULL);
+
+    if (pConfig != NULL) {
+        return ma_allocation_callbacks_init_copy(&pDecoder->allocationCallbacks, &pConfig->allocationCallbacks);
+    } else {
+        pDecoder->allocationCallbacks = ma_allocation_callbacks_init_default();
+        return MA_SUCCESS;
+    }
+}
+
+static ma_result ma_decoder__data_source_on_read(ma_data_source* pDataSource, void* pFramesOut, ma_uint64 frameCount, ma_uint64* pFramesRead)
+{
+    return ma_decoder_read_pcm_frames((ma_decoder*)pDataSource, pFramesOut, frameCount, pFramesRead);
+}
+
+static ma_result ma_decoder__data_source_on_seek(ma_data_source* pDataSource, ma_uint64 frameIndex)
+{
+    return ma_decoder_seek_to_pcm_frame((ma_decoder*)pDataSource, frameIndex);
+}
+
+static ma_result ma_decoder__data_source_on_get_data_format(ma_data_source* pDataSource, ma_format* pFormat, ma_uint32* pChannels, ma_uint32* pSampleRate, ma_channel* pChannelMap, size_t channelMapCap)
+{
+    return ma_decoder_get_data_format((ma_decoder*)pDataSource, pFormat, pChannels, pSampleRate, pChannelMap, channelMapCap);
+}
+
+static ma_result ma_decoder__data_source_on_get_cursor(ma_data_source* pDataSource, ma_uint64* pCursor)
+{
+    return ma_decoder_get_cursor_in_pcm_frames((ma_decoder*)pDataSource, pCursor);
+}
+
+static ma_result ma_decoder__data_source_on_get_length(ma_data_source* pDataSource, ma_uint64* pLength)
+{
+    return ma_decoder_get_length_in_pcm_frames((ma_decoder*)pDataSource, pLength);
+}
+
+static ma_data_source_vtable g_ma_decoder_data_source_vtable =
+{
+    ma_decoder__data_source_on_read,
+    ma_decoder__data_source_on_seek,
+    ma_decoder__data_source_on_get_data_format,
+    ma_decoder__data_source_on_get_cursor,
+    ma_decoder__data_source_on_get_length,
+    NULL,   /* onSetLooping */
+    0
+};
+
+static ma_result ma_decoder__preinit(ma_decoder_read_proc onRead, ma_decoder_seek_proc onSeek, ma_decoder_tell_proc onTell, void* pUserData, const ma_decoder_config* pConfig, ma_decoder* pDecoder)
+{
+    ma_result result;
+    ma_data_source_config dataSourceConfig;
+
+    MA_ASSERT(pConfig != NULL);
+
+    if (pDecoder == NULL) {
+        return MA_INVALID_ARGS;
+    }
+
+    MA_ZERO_OBJECT(pDecoder);
+
+    dataSourceConfig = ma_data_source_config_init();
+    dataSourceConfig.vtable = &g_ma_decoder_data_source_vtable;
+
+    result = ma_data_source_init(&dataSourceConfig, &pDecoder->ds);
+    if (result != MA_SUCCESS) {
+        return result;
+    }
+
+    pDecoder->onRead    = onRead;
+    pDecoder->onSeek    = onSeek;
+    pDecoder->onTell    = onTell;
+    pDecoder->pUserData = pUserData;
+
+    result = ma_decoder__init_allocation_callbacks(pConfig, pDecoder);
+    if (result != MA_SUCCESS) {
+        ma_data_source_uninit(&pDecoder->ds);
+        return result;
+    }
+
+    return MA_SUCCESS;
+}
+
+static ma_result ma_decoder__postinit(const ma_decoder_config* pConfig, ma_decoder* pDecoder)
+{
+    ma_result result;
+
+    result = ma_decoder__init_data_converter(pDecoder, pConfig);
+
+    /* If we failed post initialization we need to uninitialize the decoder before returning to prevent a memory leak. */
+    if (result != MA_SUCCESS) {
+        ma_decoder_uninit(pDecoder);
+        return result;
+    }
+
+    return result;
+}
+
+static ma_result ma_decoder__postinit_or_uninit(const ma_decoder_config* pConfig, ma_decoder* pDecoder)
+{
+    ma_result result;
+
+    result = ma_decoder__postinit(pConfig, pDecoder);
+    if (result != MA_SUCCESS) {
+        /*
+        The backend was initialized successfully, but for some reason post-initialization failed. This is most likely
+        due to an out of memory error. We're going to abort with an error here and not try to recover.
+        */
+        if (pDecoder->pBackendVTable != NULL && pDecoder->pBackendVTable->onUninit != NULL) {
+            pDecoder->pBackendVTable->onUninit(pDecoder->pBackendUserData, &pDecoder->pBackend, &pDecoder->allocationCallbacks);
+        }
+
+        return result;
+    }
+
+    return MA_SUCCESS;
+}
+
+
+static ma_bool32 ma_can_decoding_backend_possibly_handle_encoding_format(const ma_decoding_backend_vtable* pBackendVTable, void* pBackendUserData, ma_encoding_format encodingFormat)
+{
+    ma_encoding_format backendEncodingFormat = ma_encoding_format_unknown;
+
+    if (pBackendVTable == NULL) {
+        return MA_FALSE;
+    }
+
+    if (encodingFormat == ma_encoding_format_unknown) {
+        return MA_TRUE;    /* The backend can handle anything. */
+    }
+
+    if (pBackendVTable != NULL && pBackendVTable->onGetEncodingFormat != NULL) {
+        backendEncodingFormat = pBackendVTable->onGetEncodingFormat(pBackendUserData, NULL);
+    }
+
+    if (backendEncodingFormat == ma_encoding_format_unknown) {
+        return MA_TRUE;     /* The backend does not specify an encoding format which means we must assume it can handle anything. */
+    }
+
+    return backendEncodingFormat == encodingFormat;
+}
+
+static void* ma_decoder_config_get_backend_user_data(const ma_decoder_config* pConfig, ma_uint32 iBackend)
+{
+    if (pConfig->ppBackendUserData == NULL) {
+        return NULL;
+    }
+
+    return pConfig->ppBackendUserData[iBackend];
+}
+
+
+static ma_result ma_decoder_init__internal(const ma_decoder_config* pConfig, ma_decoder* pDecoder)
+{
+    ma_result result = MA_NO_BACKEND;
+    ma_uint32 iBackend;
+
+    MA_ASSERT(pConfig != NULL);
+    MA_ASSERT(pDecoder != NULL);
+
+    /* The backend vtable list should have been filled out by a higher level function. */
+    MA_ASSERT(pConfig->ppBackendVTables != NULL);
+
+    for (iBackend = 0; iBackend < pConfig->backendCount; iBackend += 1) {
+        if (ma_can_decoding_backend_possibly_handle_encoding_format(pConfig->ppBackendVTables[iBackend], ma_decoder_config_get_backend_user_data(pConfig, iBackend), pConfig->encodingFormat)) {
+            /* Getting here means the backend may support the encoding format. */
+            result = ma_decoder_init_from_vtable__internal(pConfig->ppBackendVTables[iBackend], ma_decoder_config_get_backend_user_data(pConfig, iBackend), pConfig, pDecoder);
+            if (result == MA_SUCCESS) {
+                return ma_decoder__postinit_or_uninit(pConfig, pDecoder);
+            } else {
+                /* Initialization failed. Move on to the next one, but seek back to the start first so the next vtable starts from the first byte of the file. */
+                result = ma_decoder_on_seek(pDecoder, 0, ma_seek_origin_start);
+                if (result != MA_SUCCESS) {
+                    return result;  /* Failed to seek back to the start. */
+                }
+            }
+        } else {
+            /* The backend does not support the specified encoding format. Skip. */
+        }
+    }
+
+    /* Getting here means we couldn't find a backend. */
+    return MA_NO_BACKEND;
+}
+
+MA_API ma_result ma_decoder_init(ma_decoder_read_proc onRead, ma_decoder_seek_proc onSeek, void* pUserData, const ma_decoder_config* pConfig, ma_decoder* pDecoder)
+{
+    ma_decoder_config config;
+    ma_result result;
+
+    config = ma_decoder_config_init_copy(pConfig);
+
+    result = ma_decoder__preinit(onRead, onSeek, NULL, pUserData, &config, pDecoder);
+    if (result != MA_SUCCESS) {
+        return result;
+    }
+
+    return ma_decoder_init__internal(&config, pDecoder);
+}
+
+
+static ma_result ma_decoder__on_read_memory(ma_decoder* pDecoder, void* pBufferOut, size_t bytesToRead, size_t* pBytesRead)
+{
+    size_t bytesRemaining;
+
+    MA_ASSERT(pDecoder->data.memory.dataSize >= pDecoder->data.memory.currentReadPos);
+
+    if (pBytesRead != NULL) {
+        *pBytesRead = 0;
+    }
+
+    bytesRemaining = pDecoder->data.memory.dataSize - pDecoder->data.memory.currentReadPos;
+    if (bytesToRead > bytesRemaining) {
+        bytesToRead = bytesRemaining;
+    }
+
+    if (bytesRemaining == 0) {
+        return MA_AT_END;
+    }
+
+    if (bytesToRead > 0) {
+        MA_COPY_MEMORY(pBufferOut, pDecoder->data.memory.pData + pDecoder->data.memory.currentReadPos, bytesToRead);
+        pDecoder->data.memory.currentReadPos += bytesToRead;
+    }
+
+    if (pBytesRead != NULL) {
+        *pBytesRead = bytesToRead;
+    }
+
+    return MA_SUCCESS;
+}
+
+static ma_result ma_decoder__on_seek_memory(ma_decoder* pDecoder, ma_int64 byteOffset, ma_seek_origin origin)
+{
+    if (byteOffset > 0 && (ma_uint64)byteOffset > MA_SIZE_MAX) {
+        return MA_BAD_SEEK;
+    }
+
+    if (origin == ma_seek_origin_current) {
+        if (byteOffset > 0) {
+            if (pDecoder->data.memory.currentReadPos + byteOffset > pDecoder->data.memory.dataSize) {
+                byteOffset = (ma_int64)(pDecoder->data.memory.dataSize - pDecoder->data.memory.currentReadPos);  /* Trying to seek too far forward. */
+            }
+
+            pDecoder->data.memory.currentReadPos += (size_t)byteOffset;
+        } else {
+            if (pDecoder->data.memory.currentReadPos < (size_t)-byteOffset) {
+                byteOffset = -(ma_int64)pDecoder->data.memory.currentReadPos;  /* Trying to seek too far backwards. */
+            }
+
+            pDecoder->data.memory.currentReadPos -= (size_t)-byteOffset;
+        }
+    } else {
+        if (origin == ma_seek_origin_end) {
+            if (byteOffset < 0) {
+                byteOffset = -byteOffset;
+            }
+
+            if (byteOffset > (ma_int64)pDecoder->data.memory.dataSize) {
+                pDecoder->data.memory.currentReadPos = 0;   /* Trying to seek too far back. */
+            } else {
+                pDecoder->data.memory.currentReadPos = pDecoder->data.memory.dataSize - (size_t)byteOffset;
+            }
+        } else {
+            if ((size_t)byteOffset <= pDecoder->data.memory.dataSize) {
+                pDecoder->data.memory.currentReadPos = (size_t)byteOffset;
+            } else {
+                pDecoder->data.memory.currentReadPos = pDecoder->data.memory.dataSize;  /* Trying to seek too far forward. */
+            }
+        }
+    }
+
+    return MA_SUCCESS;
+}
+
+static ma_result ma_decoder__on_tell_memory(ma_decoder* pDecoder, ma_int64* pCursor)
+{
+    MA_ASSERT(pDecoder != NULL);
+    MA_ASSERT(pCursor  != NULL);
+
+    *pCursor = (ma_int64)pDecoder->data.memory.currentReadPos;
+
+    return MA_SUCCESS;
+}
+
+static ma_result ma_decoder__preinit_memory_wrapper(const void* pData, size_t dataSize, const ma_decoder_config* pConfig, ma_decoder* pDecoder)
+{
+    ma_result result = ma_decoder__preinit(ma_decoder__on_read_memory, ma_decoder__on_seek_memory, ma_decoder__on_tell_memory, NULL, pConfig, pDecoder);
+    if (result != MA_SUCCESS) {
+        return result;
+    }
+
+    if (pData == NULL || dataSize == 0) {
+        return MA_INVALID_ARGS;
+    }
+
+    pDecoder->data.memory.pData = (const ma_uint8*)pData;
+    pDecoder->data.memory.dataSize = dataSize;
+    pDecoder->data.memory.currentReadPos = 0;
+
+    (void)pConfig;
+    return MA_SUCCESS;
+}
+
+MA_API ma_result ma_decoder_init_memory(const void* pData, size_t dataSize, const ma_decoder_config* pConfig, ma_decoder* pDecoder)
+{
+    ma_result result;
+    ma_decoder_config config;
+    ma_uint32 iBackend;
+
+    config = ma_decoder_config_init_copy(pConfig);
+
+    result = ma_decoder__preinit(NULL, NULL, NULL, NULL, &config, pDecoder);
+    if (result != MA_SUCCESS) {
+        return result;
+    }
+
+    if (pData == NULL || dataSize == 0) {
+        return MA_INVALID_ARGS;
+    }
+
+    for (iBackend = 0; iBackend < config.backendCount; iBackend += 1) {
+        if (ma_can_decoding_backend_possibly_handle_encoding_format(config.ppBackendVTables[iBackend], ma_decoder_config_get_backend_user_data(&config, iBackend), config.encodingFormat)) {
+            /* Getting here means the backend may support the encoding format. */
+            result = ma_decoder_init_from_memory__internal(config.ppBackendVTables[iBackend], ma_decoder_config_get_backend_user_data(&config, iBackend), pData, dataSize, &config, pDecoder);
+            if (result == MA_SUCCESS) {
+                return ma_decoder__postinit_or_uninit(&config, pDecoder);
+            } else {
+                /*
+                Initialization failed, but it could just be because the backend does not implement onInitMemory. In this case we need to
+                try again using callbacks.
+                */
+                if (result == MA_NOT_IMPLEMENTED) {
+                    /* Probably no implementation of onInitMemory. Use miniaudio's abstraction instead. */
+                    result = ma_decoder__preinit_memory_wrapper(pData, dataSize, &config, pDecoder);
+                    if (result != MA_SUCCESS) {
+                        return result;
+                    }
+
+                    result = ma_decoder_init__internal(&config, pDecoder);
+                    if (result == MA_SUCCESS) {
+                        return ma_decoder__postinit_or_uninit(&config, pDecoder);
+                    }
+                } else {
+                    /* Initialization failed. Probably an unsupported format. Skip. */
+                }
+            }
+        } else {
+            /* The backend does not support the specified encoding format. Skip. */
+        }
+    }
+
+    /* Getting here means we couldn't find a backend. */
+    return MA_NO_BACKEND;
+}
 
 
 
@@ -64508,98 +64593,20 @@ MA_API ma_result ma_decoder_init_vfs(ma_vfs* pVFS, const char* pFilePath, const 
     ma_decoder_config config;
 
     config = ma_decoder_config_init_copy(pConfig);
+
     result = ma_decoder__preinit_vfs(pVFS, pFilePath, &config, pDecoder);
     if (result != MA_SUCCESS) {
         return result;
     }
 
-    result = MA_NO_BACKEND;
-
-    if (config.encodingFormat != ma_encoding_format_unknown) {
-    #ifdef MA_HAS_WAV
-        if (config.encodingFormat == ma_encoding_format_wav) {
-            result = ma_decoder_init_wav__internal(&config, pDecoder);
-        }
-    #endif
-    #ifdef MA_HAS_FLAC
-        if (config.encodingFormat == ma_encoding_format_flac) {
-            result = ma_decoder_init_flac__internal(&config, pDecoder);
-        }
-    #endif
-    #ifdef MA_HAS_MP3
-        if (config.encodingFormat == ma_encoding_format_mp3) {
-            result = ma_decoder_init_mp3__internal(&config, pDecoder);
-        }
-    #endif
-    #ifdef MA_HAS_VORBIS
-        if (config.encodingFormat == ma_encoding_format_vorbis) {
-            result = ma_decoder_init_vorbis__internal(&config, pDecoder);
-        }
-    #endif
-
-        /* Make sure we seek back to the start if we didn't initialize a decoder successfully so the next attempts have a fresh start. */
-        if (result != MA_SUCCESS) {
-            ma_decoder__on_seek_vfs(pDecoder, 0, ma_seek_origin_start);
-        }
+    result = ma_decoder_init__internal(&config, pDecoder);
+    if (result == MA_SUCCESS) {
+        result = ma_decoder__postinit_or_uninit(&config, pDecoder);
     }
 
+    /* If we failed to initialize a decoder make sure our file handle is closed. */
     if (result != MA_SUCCESS) {
-        /* Getting here means we weren't able to initialize a decoder of a specific encoding format. */
-
-        /*
-        We use trial and error to open a decoder. We prioritize custom decoders so that if they
-        implement the same encoding format they take priority over the built-in decoders.
-        */
-        if (result != MA_SUCCESS) {
-            result = ma_decoder_init_custom__internal(&config, pDecoder);
-            if (result != MA_SUCCESS) {
-                ma_decoder__on_seek_vfs(pDecoder, 0, ma_seek_origin_start);
-            }
-        }
-
-        /*
-        If we get to this point and we still haven't found a decoder, and the caller has requested a
-        specific encoding format, there's no hope for it. Abort.
-        */
-        if (config.encodingFormat != ma_encoding_format_unknown) {
-            return MA_NO_BACKEND;
-        }
-
-    #ifdef MA_HAS_WAV
-        if (result != MA_SUCCESS && ma_path_extension_equal(pFilePath, "wav")) {
-            result = ma_decoder_init_wav__internal(&config, pDecoder);
-            if (result != MA_SUCCESS) {
-                ma_decoder__on_seek_vfs(pDecoder, 0, ma_seek_origin_start);
-            }
-        }
-    #endif
-    #ifdef MA_HAS_FLAC
-        if (result != MA_SUCCESS && ma_path_extension_equal(pFilePath, "flac")) {
-            result = ma_decoder_init_flac__internal(&config, pDecoder);
-            if (result != MA_SUCCESS) {
-                ma_decoder__on_seek_vfs(pDecoder, 0, ma_seek_origin_start);
-            }
-        }
-    #endif
-    #ifdef MA_HAS_MP3
-        if (result != MA_SUCCESS && ma_path_extension_equal(pFilePath, "mp3")) {
-            result = ma_decoder_init_mp3__internal(&config, pDecoder);
-            if (result != MA_SUCCESS) {
-                ma_decoder__on_seek_vfs(pDecoder, 0, ma_seek_origin_start);
-            }
-        }
-    #endif
-    }
-
-    /* If we still haven't got a result just use trial and error. Otherwise we can finish up. */
-    if (result != MA_SUCCESS) {
-        result = ma_decoder_init__internal(ma_decoder__on_read_vfs, ma_decoder__on_seek_vfs, NULL, &config, pDecoder);
-    } else {
-        result = ma_decoder__postinit(&config, pDecoder);
-    }
-
-    if (result != MA_SUCCESS) {
-        if (pDecoder->data.vfs.file != NULL) {   /* <-- Will be reset to NULL if ma_decoder_uninit() is called in one of the steps above which allows us to avoid a double close of the file. */
+        if (pDecoder->data.vfs.file != NULL) {
             ma_vfs_or_default_close(pVFS, pDecoder->data.vfs.file);
         }
 
@@ -64641,98 +64648,23 @@ MA_API ma_result ma_decoder_init_vfs_w(ma_vfs* pVFS, const wchar_t* pFilePath, c
     ma_decoder_config config;
 
     config = ma_decoder_config_init_copy(pConfig);
+
     result = ma_decoder__preinit_vfs_w(pVFS, pFilePath, &config, pDecoder);
     if (result != MA_SUCCESS) {
         return result;
     }
 
-    result = MA_NO_BACKEND;
-
-    if (config.encodingFormat != ma_encoding_format_unknown) {
-    #ifdef MA_HAS_WAV
-        if (config.encodingFormat == ma_encoding_format_wav) {
-            result = ma_decoder_init_wav__internal(&config, pDecoder);
-        }
-    #endif
-    #ifdef MA_HAS_FLAC
-        if (config.encodingFormat == ma_encoding_format_flac) {
-            result = ma_decoder_init_flac__internal(&config, pDecoder);
-        }
-    #endif
-    #ifdef MA_HAS_MP3
-        if (config.encodingFormat == ma_encoding_format_mp3) {
-            result = ma_decoder_init_mp3__internal(&config, pDecoder);
-        }
-    #endif
-    #ifdef MA_HAS_VORBIS
-        if (config.encodingFormat == ma_encoding_format_vorbis) {
-            result = ma_decoder_init_vorbis__internal(&config, pDecoder);
-        }
-    #endif
-
-        /* Make sure we seek back to the start if we didn't initialize a decoder successfully so the next attempts have a fresh start. */
-        if (result != MA_SUCCESS) {
-            ma_decoder__on_seek_vfs(pDecoder, 0, ma_seek_origin_start);
-        }
+    result = ma_decoder_init__internal(&config, pDecoder);
+    if (result == MA_SUCCESS) {
+        result = ma_decoder__postinit_or_uninit(&config, pDecoder);
     }
 
+    /* If we failed to initialize a decoder make sure our file handle is closed. */
     if (result != MA_SUCCESS) {
-        /* Getting here means we weren't able to initialize a decoder of a specific encoding format. */
-
-        /*
-        We use trial and error to open a decoder. We prioritize custom decoders so that if they
-        implement the same encoding format they take priority over the built-in decoders.
-        */
-        if (result != MA_SUCCESS) {
-            result = ma_decoder_init_custom__internal(&config, pDecoder);
-            if (result != MA_SUCCESS) {
-                ma_decoder__on_seek_vfs(pDecoder, 0, ma_seek_origin_start);
-            }
+        if (pDecoder->data.vfs.file != NULL) {
+            ma_vfs_or_default_close(pVFS, pDecoder->data.vfs.file);
         }
 
-        /*
-        If we get to this point and we still haven't found a decoder, and the caller has requested a
-        specific encoding format, there's no hope for it. Abort.
-        */
-        if (config.encodingFormat != ma_encoding_format_unknown) {
-            return MA_NO_BACKEND;
-        }
-
-    #ifdef MA_HAS_WAV
-        if (result != MA_SUCCESS && ma_path_extension_equal_w(pFilePath, L"wav")) {
-            result = ma_decoder_init_wav__internal(&config, pDecoder);
-            if (result != MA_SUCCESS) {
-                ma_decoder__on_seek_vfs(pDecoder, 0, ma_seek_origin_start);
-            }
-        }
-    #endif
-    #ifdef MA_HAS_FLAC
-        if (result != MA_SUCCESS && ma_path_extension_equal_w(pFilePath, L"flac")) {
-            result = ma_decoder_init_flac__internal(&config, pDecoder);
-            if (result != MA_SUCCESS) {
-                ma_decoder__on_seek_vfs(pDecoder, 0, ma_seek_origin_start);
-            }
-        }
-    #endif
-    #ifdef MA_HAS_MP3
-        if (result != MA_SUCCESS && ma_path_extension_equal_w(pFilePath, L"mp3")) {
-            result = ma_decoder_init_mp3__internal(&config, pDecoder);
-            if (result != MA_SUCCESS) {
-                ma_decoder__on_seek_vfs(pDecoder, 0, ma_seek_origin_start);
-            }
-        }
-    #endif
-    }
-
-    /* If we still haven't got a result just use trial and error. Otherwise we can finish up. */
-    if (result != MA_SUCCESS) {
-        result = ma_decoder_init__internal(ma_decoder__on_read_vfs, ma_decoder__on_seek_vfs, NULL, &config, pDecoder);
-    } else {
-        result = ma_decoder__postinit(&config, pDecoder);
-    }
-
-    if (result != MA_SUCCESS) {
-        ma_vfs_or_default_close(pVFS, pDecoder->data.vfs.file);
         return result;
     }
 
@@ -64760,134 +64692,45 @@ MA_API ma_result ma_decoder_init_file(const char* pFilePath, const ma_decoder_co
 {
     ma_result result;
     ma_decoder_config config;
+    ma_uint32 iBackend;
 
     config = ma_decoder_config_init_copy(pConfig);
+
     result = ma_decoder__preinit_file(pFilePath, &config, pDecoder);
     if (result != MA_SUCCESS) {
         return result;
     }
 
-    /* If the backend has support for loading from a file path we'll want to use that. If that all fails we'll fall back to the VFS path. */
-    result = MA_NO_BACKEND;
-
-    if (config.encodingFormat != ma_encoding_format_unknown) {
-    #ifdef MA_HAS_WAV
-        if (config.encodingFormat == ma_encoding_format_wav) {
-            result = ma_decoder_init_wav_from_file__internal(pFilePath, &config, pDecoder);
-        }
-    #endif
-    #ifdef MA_HAS_FLAC
-        if (config.encodingFormat == ma_encoding_format_flac) {
-            result = ma_decoder_init_flac_from_file__internal(pFilePath, &config, pDecoder);
-        }
-    #endif
-    #ifdef MA_HAS_MP3
-        if (config.encodingFormat == ma_encoding_format_mp3) {
-            result = ma_decoder_init_mp3_from_file__internal(pFilePath, &config, pDecoder);
-        }
-    #endif
-    #ifdef MA_HAS_VORBIS
-        if (config.encodingFormat == ma_encoding_format_vorbis) {
-            result = ma_decoder_init_vorbis_from_file__internal(pFilePath, &config, pDecoder);
-        }
-    #endif
-    }
-
-    if (result != MA_SUCCESS) {
-        /* Getting here means we weren't able to initialize a decoder of a specific encoding format. */
-
-        /*
-        We use trial and error to open a decoder. We prioritize custom decoders so that if they
-        implement the same encoding format they take priority over the built-in decoders.
-        */
-        result = ma_decoder_init_custom_from_file__internal(pFilePath, &config, pDecoder);
-
-        /*
-        If we get to this point and we still haven't found a decoder, and the caller has requested a
-        specific encoding format, there's no hope for it. Abort.
-        */
-        if (result != MA_SUCCESS && config.encodingFormat != ma_encoding_format_unknown) {
-            return MA_NO_BACKEND;
-        }
-
-        /* First try loading based on the file extension so we don't waste time opening and closing files. */
-    #ifdef MA_HAS_WAV
-        if (result != MA_SUCCESS && ma_path_extension_equal(pFilePath, "wav")) {
-            result = ma_decoder_init_wav_from_file__internal(pFilePath, &config, pDecoder);
-        }
-    #endif
-    #ifdef MA_HAS_FLAC
-        if (result != MA_SUCCESS && ma_path_extension_equal(pFilePath, "flac")) {
-            result = ma_decoder_init_flac_from_file__internal(pFilePath, &config, pDecoder);
-        }
-    #endif
-    #ifdef MA_HAS_MP3
-        if (result != MA_SUCCESS && ma_path_extension_equal(pFilePath, "mp3")) {
-            result = ma_decoder_init_mp3_from_file__internal(pFilePath, &config, pDecoder);
-        }
-    #endif
-    #ifdef MA_HAS_VORBIS
-        if (result != MA_SUCCESS && ma_path_extension_equal(pFilePath, "ogg")) {
-            result = ma_decoder_init_vorbis_from_file__internal(pFilePath, &config, pDecoder);
-        }
-    #endif
-
-        /*
-        If we still haven't got a result just use trial and error. Custom decoders have already been attempted, so here we
-        need only iterate over our stock decoders.
-        */
-        if (result != MA_SUCCESS) {
-        #ifdef MA_HAS_WAV
-            if (result != MA_SUCCESS) {
-                result = ma_decoder_init_wav_from_file__internal(pFilePath, &config, pDecoder);
+    for (iBackend = 0; iBackend < config.backendCount; iBackend += 1) {
+        if (ma_can_decoding_backend_possibly_handle_encoding_format(config.ppBackendVTables[iBackend], ma_decoder_config_get_backend_user_data(&config, iBackend), config.encodingFormat)) {
+            /* Getting here means the backend may support the encoding format. */
+            result = ma_decoder_init_from_file__internal(config.ppBackendVTables[iBackend], ma_decoder_config_get_backend_user_data(&config, iBackend), pFilePath, &config, pDecoder);
+            if (result == MA_SUCCESS) {
+                return ma_decoder__postinit_or_uninit(&config, pDecoder);
+            } else {
+                /*
+                Initialization failed, but it could just be because the backend does not implement onInitMemory. In this case we need to
+                try again using callbacks.
+                */
+                if (result == MA_NOT_IMPLEMENTED) {
+                    /* Probably no implementation onInitFile. Use miniaudio's file IO instead. */
+                    result = ma_decoder_init_vfs(NULL, pFilePath, pConfig, pDecoder);
+                    if (result == MA_SUCCESS) {
+                        return MA_SUCCESS;
+                    } else {
+                        /* Initialization failed. Probably an unsupported format. Skip. */
+                    }
+                } else {
+                    /* Initialization failed. Probably an unsupported format. Skip. */
+                }
             }
-        #endif
-        #ifdef MA_HAS_FLAC
-            if (result != MA_SUCCESS) {
-                result = ma_decoder_init_flac_from_file__internal(pFilePath, &config, pDecoder);
-            }
-        #endif
-        #ifdef MA_HAS_MP3
-            if (result != MA_SUCCESS) {
-                result = ma_decoder_init_mp3_from_file__internal(pFilePath, &config, pDecoder);
-            }
-        #endif
-        #ifdef MA_HAS_VORBIS
-            if (result != MA_SUCCESS) {
-                result = ma_decoder_init_vorbis_from_file__internal(pFilePath, &config, pDecoder);
-            }
-        #endif
+        } else {
+            /* The backend does not support the specified encoding format. Skip. */
         }
     }
 
-    /*
-    If at this point we still haven't successfully initialized the decoder it most likely means
-    the backend doesn't have an implementation for loading from a file path. We'll try using
-    miniaudio's built-in file IO for loading file.
-    */
-    if (result == MA_SUCCESS) {
-        /* Initialization was successful. Finish up. */
-        result = ma_decoder__postinit(&config, pDecoder);
-        if (result != MA_SUCCESS) {
-            /*
-            The backend was initialized successfully, but for some reason post-initialization failed. This is most likely
-            due to an out of memory error. We're going to abort with an error here and not try to recover.
-            */
-            if (pDecoder->pBackendVTable != NULL && pDecoder->pBackendVTable->onUninit != NULL) {
-                pDecoder->pBackendVTable->onUninit(pDecoder->pBackendUserData, &pDecoder->pBackend, &pDecoder->allocationCallbacks);
-            }
-
-            return result;
-        }
-    } else {
-        /* Probably no implementation for loading from a file path. Use miniaudio's file IO instead. */
-        result = ma_decoder_init_vfs(NULL, pFilePath, pConfig, pDecoder);
-        if (result != MA_SUCCESS) {
-            return result;
-        }
-    }
-
-    return MA_SUCCESS;
+    /* Getting here means we couldn't find a backend. */
+    return MA_NO_BACKEND;
 }
 
 static ma_result ma_decoder__preinit_file_w(const wchar_t* pFilePath, const ma_decoder_config* pConfig, ma_decoder* pDecoder)
@@ -64910,134 +64753,45 @@ MA_API ma_result ma_decoder_init_file_w(const wchar_t* pFilePath, const ma_decod
 {
     ma_result result;
     ma_decoder_config config;
+    ma_uint32 iBackend;
 
     config = ma_decoder_config_init_copy(pConfig);
+
     result = ma_decoder__preinit_file_w(pFilePath, &config, pDecoder);
     if (result != MA_SUCCESS) {
         return result;
     }
 
-    /* If the backend has support for loading from a file path we'll want to use that. If that all fails we'll fall back to the VFS path. */
-    result = MA_NO_BACKEND;
-
-    if (config.encodingFormat != ma_encoding_format_unknown) {
-    #ifdef MA_HAS_WAV
-        if (config.encodingFormat == ma_encoding_format_wav) {
-            result = ma_decoder_init_wav_from_file_w__internal(pFilePath, &config, pDecoder);
-        }
-    #endif
-    #ifdef MA_HAS_FLAC
-        if (config.encodingFormat == ma_encoding_format_flac) {
-            result = ma_decoder_init_flac_from_file_w__internal(pFilePath, &config, pDecoder);
-        }
-    #endif
-    #ifdef MA_HAS_MP3
-        if (config.encodingFormat == ma_encoding_format_mp3) {
-            result = ma_decoder_init_mp3_from_file_w__internal(pFilePath, &config, pDecoder);
-        }
-    #endif
-    #ifdef MA_HAS_VORBIS
-        if (config.encodingFormat == ma_encoding_format_vorbis) {
-            result = ma_decoder_init_vorbis_from_file_w__internal(pFilePath, &config, pDecoder);
-        }
-    #endif
-    }
-
-    if (result != MA_SUCCESS) {
-        /* Getting here means we weren't able to initialize a decoder of a specific encoding format. */
-
-        /*
-        We use trial and error to open a decoder. We prioritize custom decoders so that if they
-        implement the same encoding format they take priority over the built-in decoders.
-        */
-        result = ma_decoder_init_custom_from_file_w__internal(pFilePath, &config, pDecoder);
-
-        /*
-        If we get to this point and we still haven't found a decoder, and the caller has requested a
-        specific encoding format, there's no hope for it. Abort.
-        */
-        if (result != MA_SUCCESS && config.encodingFormat != ma_encoding_format_unknown) {
-            return MA_NO_BACKEND;
-        }
-
-        /* First try loading based on the file extension so we don't waste time opening and closing files. */
-    #ifdef MA_HAS_WAV
-        if (result != MA_SUCCESS && ma_path_extension_equal_w(pFilePath, L"wav")) {
-            result = ma_decoder_init_wav_from_file_w__internal(pFilePath, &config, pDecoder);
-        }
-    #endif
-    #ifdef MA_HAS_FLAC
-        if (result != MA_SUCCESS && ma_path_extension_equal_w(pFilePath, L"flac")) {
-            result = ma_decoder_init_flac_from_file_w__internal(pFilePath, &config, pDecoder);
-        }
-    #endif
-    #ifdef MA_HAS_MP3
-        if (result != MA_SUCCESS && ma_path_extension_equal_w(pFilePath, L"mp3")) {
-            result = ma_decoder_init_mp3_from_file_w__internal(pFilePath, &config, pDecoder);
-        }
-    #endif
-    #ifdef MA_HAS_VORBIS
-        if (result != MA_SUCCESS && ma_path_extension_equal_w(pFilePath, L"ogg")) {
-            result = ma_decoder_init_vorbis_from_file_w__internal(pFilePath, &config, pDecoder);
-        }
-    #endif
-
-        /*
-        If we still haven't got a result just use trial and error. Custom decoders have already been attempted, so here we
-        need only iterate over our stock decoders.
-        */
-        if (result != MA_SUCCESS) {
-        #ifdef MA_HAS_WAV
-            if (result != MA_SUCCESS) {
-                result = ma_decoder_init_wav_from_file_w__internal(pFilePath, &config, pDecoder);
+    for (iBackend = 0; iBackend < config.backendCount; iBackend += 1) {
+        if (ma_can_decoding_backend_possibly_handle_encoding_format(config.ppBackendVTables[iBackend], ma_decoder_config_get_backend_user_data(&config, iBackend), config.encodingFormat)) {
+            /* Getting here means the backend may support the encoding format. */
+            result = ma_decoder_init_from_file_w__internal(config.ppBackendVTables[iBackend], ma_decoder_config_get_backend_user_data(&config, iBackend), pFilePath, &config, pDecoder);
+            if (result == MA_SUCCESS) {
+                return ma_decoder__postinit_or_uninit(&config, pDecoder);
+            } else {
+                /*
+                Initialization failed, but it could just be because the backend does not implement onInitMemory. In this case we need to
+                try again using callbacks.
+                */
+                if (result == MA_NOT_IMPLEMENTED) {
+                    /* Probably no implementation onInitFile. Use miniaudio's file IO instead. */
+                    result = ma_decoder_init_vfs_w(NULL, pFilePath, pConfig, pDecoder);
+                    if (result == MA_SUCCESS) {
+                        return MA_SUCCESS;
+                    } else {
+                        /* Initialization failed. Probably an unsupported format. Skip. */
+                    }
+                } else {
+                    /* Initialization failed. Probably an unsupported format. Skip. */
+                }
             }
-        #endif
-        #ifdef MA_HAS_FLAC
-            if (result != MA_SUCCESS) {
-                result = ma_decoder_init_flac_from_file_w__internal(pFilePath, &config, pDecoder);
-            }
-        #endif
-        #ifdef MA_HAS_MP3
-            if (result != MA_SUCCESS) {
-                result = ma_decoder_init_mp3_from_file_w__internal(pFilePath, &config, pDecoder);
-            }
-        #endif
-        #ifdef MA_HAS_VORBIS
-            if (result != MA_SUCCESS) {
-                result = ma_decoder_init_vorbis_from_file_w__internal(pFilePath, &config, pDecoder);
-            }
-        #endif
+        } else {
+            /* The backend does not support the specified encoding format. Skip. */
         }
     }
 
-    /*
-    If at this point we still haven't successfully initialized the decoder it most likely means
-    the backend doesn't have an implementation for loading from a file path. We'll try using
-    miniaudio's built-in file IO for loading file.
-    */
-    if (result == MA_SUCCESS) {
-        /* Initialization was successful. Finish up. */
-        result = ma_decoder__postinit(&config, pDecoder);
-        if (result != MA_SUCCESS) {
-            /*
-            The backend was initialized successfully, but for some reason post-initialization failed. This is most likely
-            due to an out of memory error. We're going to abort with an error here and not try to recover.
-            */
-            if (pDecoder->pBackendVTable != NULL && pDecoder->pBackendVTable->onUninit != NULL) {
-                pDecoder->pBackendVTable->onUninit(pDecoder->pBackendUserData, &pDecoder->pBackend, &pDecoder->allocationCallbacks);
-            }
-
-            return result;
-        }
-    } else {
-        /* Probably no implementation for loading from a file path. Use miniaudio's file IO instead. */
-        result = ma_decoder_init_vfs_w(NULL, pFilePath, pConfig, pDecoder);
-        if (result != MA_SUCCESS) {
-            return result;
-        }
-    }
-
-    return MA_SUCCESS;
+    /* Getting here means we couldn't find a backend. */
+    return MA_NO_BACKEND;
 }
 
 MA_API ma_result ma_decoder_uninit(ma_decoder* pDecoder)
@@ -65095,7 +64849,7 @@ MA_API ma_result ma_decoder_read_pcm_frames(ma_decoder* pDecoder, void* pFramesO
     } else {
         /*
         Getting here means we need to do data conversion. If we're seeking forward and are _not_ doing resampling we can run this in a fast path. If we're doing resampling we
-        need to run through each sample because we need to ensure it's internal cache is updated.
+        need to run through each sample because we need to ensure its internal cache is updated.
         */
         if (pFramesOut == NULL && pDecoder->converter.hasResampler == MA_FALSE) {
             result = ma_data_source_read_pcm_frames(pDecoder->pBackend, NULL, frameCount, &totalFramesReadOut);
@@ -65376,6 +65130,15 @@ MA_API ma_result ma_decoder_get_available_frames(ma_decoder* pDecoder, ma_uint64
     }
 
     return MA_SUCCESS;
+}
+
+MA_API ma_encoding_format ma_decoder_get_encoding_format(const ma_decoder* pDecoder)
+{
+    if (pDecoder == NULL || pDecoder->pBackendVTable == NULL || pDecoder->pBackendVTable->onGetEncodingFormat == NULL) {
+        return ma_encoding_format_unknown;
+    }
+
+    return pDecoder->pBackendVTable->onGetEncodingFormat(pDecoder->pBackendUserData, pDecoder->pBackend);
 }
 
 
@@ -66659,23 +66422,6 @@ MA_API ma_result ma_noise_set_seed(ma_noise* pNoise, ma_int32 seed)
 }
 
 
-MA_API ma_result ma_noise_set_type(ma_noise* pNoise, ma_noise_type type)
-{
-    if (pNoise == NULL) {
-        return MA_INVALID_ARGS;
-    }
-
-    /*
-    This function should never have been implemented in the first place. Changing the type dynamically is not
-    supported. Instead you need to uninitialize and reinitiailize a fresh `ma_noise` object. This function
-    will be removed in version 0.12.
-    */
-    MA_ASSERT(MA_FALSE);
-    (void)type;
-
-    return MA_INVALID_OPERATION;
-}
-
 static MA_INLINE float ma_noise_f32_white(ma_noise* pNoise)
 {
     return (float)(ma_lcg_rand_f64(&pNoise->lcg) * pNoise->config.amplitude);
@@ -67713,7 +67459,7 @@ MA_API ma_result ma_resource_manager_init(const ma_resource_manager_config* pCon
         pResourceManager->config.pVFS = &pResourceManager->defaultVFS;
     }
 
-    /* If threading has been disabled at compile time, enfore it at run time as well. */
+    /* If threading has been disabled at compile time, enforce it at run time as well. */
     #ifdef MA_NO_THREADING
     {
         pResourceManager->config.flags |= MA_RESOURCE_MANAGER_FLAG_NO_THREADING;
@@ -67748,19 +67494,34 @@ MA_API ma_result ma_resource_manager_init(const ma_resource_manager_config* pCon
 
 
     /* Custom decoding backends. */
-    if (pConfig->ppCustomDecodingBackendVTables != NULL && pConfig->customDecodingBackendCount > 0) {
-        size_t sizeInBytes = sizeof(*pResourceManager->config.ppCustomDecodingBackendVTables) * pConfig->customDecodingBackendCount;
+    if (pConfig->ppDecodingBackendVTables != NULL && pConfig->decodingBackendCount > 0) {
+        size_t vtableSizeInBytes;
+        size_t vtableUserDataSizeInBytes;
 
-        pResourceManager->config.ppCustomDecodingBackendVTables = (ma_decoding_backend_vtable**)ma_malloc(sizeInBytes, &pResourceManager->config.allocationCallbacks);
-        if (pResourceManager->config.ppCustomDecodingBackendVTables == NULL) {
+        vtableSizeInBytes = sizeof(*pResourceManager->config.ppDecodingBackendVTables) * pConfig->decodingBackendCount;
+
+        if (pConfig->ppDecodingBackendUserData != NULL) {
+            vtableUserDataSizeInBytes = sizeof(*pResourceManager->config.ppDecodingBackendUserData) * pConfig->decodingBackendCount;
+        } else {
+            vtableUserDataSizeInBytes = 0;  /* No vtable user data present. No need for an allocation. */
+        }
+
+        pResourceManager->config.ppDecodingBackendVTables = (const ma_decoding_backend_vtable**)ma_malloc(vtableSizeInBytes + vtableUserDataSizeInBytes, &pResourceManager->config.allocationCallbacks);
+        if (pResourceManager->config.ppDecodingBackendVTables == NULL) {
             ma_job_queue_uninit(&pResourceManager->jobQueue, &pResourceManager->config.allocationCallbacks);
             return MA_OUT_OF_MEMORY;
         }
 
-        MA_COPY_MEMORY(pResourceManager->config.ppCustomDecodingBackendVTables, pConfig->ppCustomDecodingBackendVTables, sizeInBytes);
+        MA_COPY_MEMORY(pResourceManager->config.ppDecodingBackendVTables, pConfig->ppDecodingBackendVTables, vtableSizeInBytes);
 
-        pResourceManager->config.customDecodingBackendCount     = pConfig->customDecodingBackendCount;
-        pResourceManager->config.pCustomDecodingBackendUserData = pConfig->pCustomDecodingBackendUserData;
+        if (pConfig->ppDecodingBackendUserData != NULL) {
+            pResourceManager->config.ppDecodingBackendUserData = (void**)ma_offset_ptr(pResourceManager->config.ppDecodingBackendVTables, vtableSizeInBytes);
+            MA_COPY_MEMORY(pResourceManager->config.ppDecodingBackendUserData, pConfig->ppDecodingBackendUserData, vtableUserDataSizeInBytes);
+        } else {
+            pResourceManager->config.ppDecodingBackendUserData = NULL;
+        }
+
+        pResourceManager->config.decodingBackendCount = pConfig->decodingBackendCount;
     }
 
 
@@ -67822,7 +67583,7 @@ MA_API void ma_resource_manager_uninit(ma_resource_manager* pResourceManager)
 
     /*
     Job threads need to be killed first. To do this we need to post a quit message to the message queue and then wait for the thread. The quit message will never be removed from the
-    queue which means it will never not be returned after being encounted for the first time which means all threads will eventually receive it.
+    queue which means it will never not be returned after being encountered for the first time which means all threads will eventually receive it.
     */
     ma_resource_manager_post_job_quit(pResourceManager);
 
@@ -67862,7 +67623,7 @@ MA_API void ma_resource_manager_uninit(ma_resource_manager* pResourceManager)
         #endif
     }
 
-    ma_free(pResourceManager->config.ppCustomDecodingBackendVTables, &pResourceManager->config.allocationCallbacks);
+    ma_free(pResourceManager->config.ppDecodingBackendVTables, &pResourceManager->config.allocationCallbacks);  /* <-- This also frees pResourceManager->config.ppDecodingBackendUserData because it's all in one allocation. */
 
     if (pResourceManager->config.pLog == &pResourceManager->log) {
         ma_log_uninit(&pResourceManager->log);
@@ -67889,7 +67650,6 @@ MA_API ma_resource_manager_data_source_config ma_resource_manager_data_source_co
     config.rangeEndInPCMFrames     = MA_DATA_SOURCE_DEFAULT_RANGE_END;
     config.loopPointBegInPCMFrames = MA_DATA_SOURCE_DEFAULT_LOOP_POINT_BEG;
     config.loopPointEndInPCMFrames = MA_DATA_SOURCE_DEFAULT_LOOP_POINT_END;
-    config.isLooping               = MA_FALSE;
 
     return config;
 }
@@ -67900,10 +67660,10 @@ static ma_decoder_config ma_resource_manager__init_decoder_config(ma_resource_ma
     ma_decoder_config config;
 
     config = ma_decoder_config_init(pResourceManager->config.decodedFormat, pResourceManager->config.decodedChannels, pResourceManager->config.decodedSampleRate);
-    config.allocationCallbacks    = pResourceManager->config.allocationCallbacks;
-    config.ppCustomBackendVTables = pResourceManager->config.ppCustomDecodingBackendVTables;
-    config.customBackendCount     = pResourceManager->config.customDecodingBackendCount;
-    config.pCustomBackendUserData = pResourceManager->config.pCustomDecodingBackendUserData;
+    config.allocationCallbacks = pResourceManager->config.allocationCallbacks;
+    config.ppBackendVTables    = pResourceManager->config.ppDecodingBackendVTables;
+    config.backendCount        = pResourceManager->config.decodingBackendCount;
+    config.ppBackendUserData   = pResourceManager->config.ppDecodingBackendUserData;
 
     return config;
 }
@@ -67995,7 +67755,7 @@ static ma_result ma_resource_manager_data_buffer_init_connector(ma_resource_mana
         case ma_resource_manager_data_supply_type_decoded:          /* Connector is an audio buffer. */
         {
             ma_audio_buffer_config config;
-            config = ma_audio_buffer_config_init(pDataBuffer->pNode->data.backend.decoded.format, pDataBuffer->pNode->data.backend.decoded.channels, pDataBuffer->pNode->data.backend.decoded.totalFrameCount, pDataBuffer->pNode->data.backend.decoded.pData, NULL);
+            config = ma_audio_buffer_config_init(pDataBuffer->pNode->data.backend.decoded.format, pDataBuffer->pNode->data.backend.decoded.channels, pDataBuffer->pNode->data.backend.decoded.sampleRate, pDataBuffer->pNode->data.backend.decoded.totalFrameCount, pDataBuffer->pNode->data.backend.decoded.pData, NULL);
             result = ma_audio_buffer_init(&config, &pDataBuffer->connector.buffer);
         } break;
 
@@ -68039,8 +67799,8 @@ static ma_result ma_resource_manager_data_buffer_init_connector(ma_resource_mana
             ma_data_source_set_loop_point_in_pcm_frames(pDataBuffer, pConfig->loopPointBegInPCMFrames, pConfig->loopPointEndInPCMFrames);
         }
 
-        if (pConfig->isLooping != MA_FALSE) {
-            ma_data_source_set_looping(pDataBuffer, pConfig->isLooping);
+        if ((pConfig->flags & MA_RESOURCE_MANAGER_DATA_SOURCE_FLAG_LOOPING) != 0) {
+            ma_data_source_set_looping(pDataBuffer, MA_TRUE);
         }
 
         ma_atomic_bool32_set(&pDataBuffer->isConnectorInitialized, MA_TRUE);
@@ -68433,7 +68193,7 @@ static ma_result ma_resource_manager_data_buffer_node_acquire_critical_section(m
                 if ((flags & MA_RESOURCE_MANAGER_DATA_SOURCE_FLAG_WAIT_INIT) != 0) {
                     ma_resource_manager_inline_notification_uninit(pInitNotification);
                 } else {
-                    /* These will have been freed by the job thread, but with WAIT_INIT they will already have happend sinced the job has already been handled. */
+                    /* These will have been freed by the job thread, but with WAIT_INIT they will already have happened since the job has already been handled. */
                     ma_free(pFilePathCopy,  &pResourceManager->config.allocationCallbacks);
                     ma_free(pFilePathWCopy, &pResourceManager->config.allocationCallbacks);
                 }
@@ -68810,7 +68570,7 @@ static ma_result ma_resource_manager_data_buffer_init_ex_internal(ma_resource_ma
 
     These fences are always released at the "done" tag at the end of this function. They'll be
     acquired a second if loading asynchronously. This double acquisition system is just done to
-    simplify code maintanence.
+    simplify code maintenance.
     */
     ma_resource_manager_pipeline_notifications_acquire_all_fences(&notifications);
     {
@@ -68855,7 +68615,7 @@ static ma_result ma_resource_manager_data_buffer_init_ex_internal(ma_resource_ma
 
             /*
             The status of the data buffer needs to be set to MA_BUSY before posting the job so that the
-            worker thread is aware of it's busy state. If the LOAD_DATA_BUFFER job sees a status other
+            worker thread is aware of its busy state. If the LOAD_DATA_BUFFER job sees a status other
             than MA_BUSY, it'll assume an error and fall through to an early exit.
             */
             ma_atomic_exchange_i32(&pDataBuffer->result, MA_BUSY);
@@ -68874,7 +68634,7 @@ static ma_result ma_resource_manager_data_buffer_init_ex_internal(ma_resource_ma
             job.data.resourceManager.loadDataBuffer.rangeEndInPCMFrames     = pConfig->rangeEndInPCMFrames;
             job.data.resourceManager.loadDataBuffer.loopPointBegInPCMFrames = pConfig->loopPointBegInPCMFrames;
             job.data.resourceManager.loadDataBuffer.loopPointEndInPCMFrames = pConfig->loopPointEndInPCMFrames;
-            job.data.resourceManager.loadDataBuffer.isLooping               = pConfig->isLooping;
+            job.data.resourceManager.loadDataBuffer.isLooping               = (flags & MA_RESOURCE_MANAGER_DATA_SOURCE_FLAG_LOOPING) != 0;
 
             /* If we need to wait for initialization to complete we can just process the job in place. */
             if ((flags & MA_RESOURCE_MANAGER_DATA_SOURCE_FLAG_WAIT_INIT) != 0) {
@@ -69095,22 +68855,29 @@ MA_API ma_result ma_resource_manager_data_buffer_read_pcm_frames(ma_resource_man
         isDecodedBufferBusy = (ma_resource_manager_data_buffer_node_result(pDataBuffer->pNode) == MA_BUSY);
 
         if (ma_resource_manager_data_buffer_get_available_frames(pDataBuffer, &availableFrames) == MA_SUCCESS) {
-            /* Don't try reading more than the available frame count. */
-            if (frameCount > availableFrames) {
-                frameCount = availableFrames;
+            /* Don't try reading more than the available frame count if the data buffer node is still loading. */
+            if (isDecodedBufferBusy) {
+                if (frameCount > availableFrames) {
+                    frameCount = availableFrames;
 
-                /*
-                If there's no frames available we want to set the status to MA_AT_END. The logic below
-                will check if the node is busy, and if so, change it to MA_BUSY. The reason we do this
-                is because we don't want to call `ma_data_source_read_pcm_frames()` if the frame count
-                is 0 because that'll result in a situation where it's possible MA_AT_END won't get
-                returned.
-                */
-                if (frameCount == 0) {
-                    result = MA_AT_END;
+                    /*
+                    If there's no frames available we want to set the status to MA_AT_END. The logic below
+                    will check if the node is busy, and if so, change it to MA_BUSY. The reason we do this
+                    is because we don't want to call `ma_data_source_read_pcm_frames()` if the frame count
+                    is 0 because that'll result in a situation where it's possible MA_AT_END won't get
+                    returned.
+                    */
+                    if (frameCount == 0) {
+                        result = MA_AT_END;
+                    }
+                } else {
+                    isDecodedBufferBusy = MA_FALSE; /* We have enough frames available in the buffer to avoid a MA_BUSY status. */
                 }
             } else {
-                isDecodedBufferBusy = MA_FALSE; /* We have enough frames available in the buffer to avoid a MA_BUSY status. */
+                /*
+                Getting here means the buffer has been fully loaded. We can just pass the frame count straight
+                into ma_data_source_read_pcm_frames() below and let ma_data_source handle it.
+                */
             }
         }
     }
@@ -69510,6 +69277,7 @@ MA_API ma_result ma_resource_manager_data_stream_init_ex(ma_resource_manager* pR
     ma_bool32 waitBeforeReturning = MA_FALSE;
     ma_resource_manager_inline_notification waitNotification;
     ma_resource_manager_pipeline_notifications notifications;
+    ma_uint32 flags;
 
     if (pDataStream == NULL) {
         if (pConfig != NULL && pConfig->pNotifications != NULL) {
@@ -69540,13 +69308,15 @@ MA_API ma_result ma_resource_manager_data_stream_init_ex(ma_resource_manager* pR
         return result;
     }
 
+    flags = pConfig->flags;
+
     pDataStream->pResourceManager = pResourceManager;
     pDataStream->flags            = pConfig->flags;
     pDataStream->result           = MA_BUSY;
 
     ma_data_source_set_range_in_pcm_frames(pDataStream, pConfig->rangeBegInPCMFrames, pConfig->rangeEndInPCMFrames);
     ma_data_source_set_loop_point_in_pcm_frames(pDataStream, pConfig->loopPointBegInPCMFrames, pConfig->loopPointEndInPCMFrames);
-    ma_data_source_set_looping(pDataStream, pConfig->isLooping);
+    ma_data_source_set_looping(pDataStream, (flags & MA_RESOURCE_MANAGER_DATA_SOURCE_FLAG_LOOPING) != 0);
 
     if (pResourceManager == NULL || (pConfig->pFilePath == NULL && pConfig->pFilePathW == NULL)) {
         ma_resource_manager_pipeline_notifications_signal_all_notifications(&notifications);
@@ -70744,7 +70514,10 @@ static ma_result ma_job_process__resource_manager__load_data_buffer(ma_job* pJob
             dataSourceConfig.rangeEndInPCMFrames     = pJob->data.resourceManager.loadDataBuffer.rangeEndInPCMFrames;
             dataSourceConfig.loopPointBegInPCMFrames = pJob->data.resourceManager.loadDataBuffer.loopPointBegInPCMFrames;
             dataSourceConfig.loopPointEndInPCMFrames = pJob->data.resourceManager.loadDataBuffer.loopPointEndInPCMFrames;
-            dataSourceConfig.isLooping               = pJob->data.resourceManager.loadDataBuffer.isLooping;
+
+            if (pJob->data.resourceManager.loadDataBuffer.isLooping) {
+                dataSourceConfig.flags |= MA_RESOURCE_MANAGER_DATA_SOURCE_FLAG_LOOPING;
+            }
 
             result = ma_resource_manager_data_buffer_init_connector(pDataBuffer, &dataSourceConfig, pJob->data.resourceManager.loadDataBuffer.pInitNotification, pJob->data.resourceManager.loadDataBuffer.pInitFence);
             if (result != MA_SUCCESS) {
@@ -71075,11 +70848,74 @@ static ma_result ma_job_process__resource_manager__seek_data_stream(ma_job* pJob
 
 
 #ifndef MA_NO_NODE_GRAPH
+
+static ma_stack* ma_stack_init(size_t sizeInBytes, const ma_allocation_callbacks* pAllocationCallbacks)
+{
+    ma_stack* pStack;
+
+    if (sizeInBytes == 0) {
+        return NULL;
+    }
+
+    pStack = (ma_stack*)ma_malloc(sizeof(*pStack) - sizeof(pStack->_data) + sizeInBytes, pAllocationCallbacks);
+    if (pStack == NULL) {
+        return NULL;
+    }
+
+    pStack->offset = 0;
+    pStack->sizeInBytes = sizeInBytes;
+
+    return pStack;
+}
+
+static void ma_stack_uninit(ma_stack* pStack, const ma_allocation_callbacks* pAllocationCallbacks)
+{
+    if (pStack == NULL) {
+        return;
+    }
+
+    ma_free(pStack, pAllocationCallbacks);
+}
+
+static void* ma_stack_alloc(ma_stack* pStack, size_t sz)
+{
+    /* The size of the allocation is stored in the memory directly before the pointer. This needs to include padding to keep it aligned to ma_uintptr */
+    void* p = (void*)((char*)pStack->_data + pStack->offset);
+    size_t* pSize = (size_t*)p;
+
+    sz = (sz + (sizeof(ma_uintptr) - 1)) & ~(sizeof(ma_uintptr) - 1);  /* Padding. */
+    if (pStack->offset + sz + sizeof(size_t) > pStack->sizeInBytes) {
+        return NULL;    /* Out of memory. */
+    }
+
+    pStack->offset += sz + sizeof(size_t);
+
+    *pSize = sz;
+    return (void*)((char*)p + sizeof(size_t));
+}
+
+static void ma_stack_free(ma_stack* pStack, void* p)
+{
+    size_t* pSize;
+
+    if (p == NULL) {
+        return;
+    }
+
+    pSize = (size_t*)p - 1;
+    pStack->offset -= *pSize + sizeof(size_t);
+}
+
+
+
 /* 10ms @ 48K = 480. Must never exceed 65535. */
 #ifndef MA_DEFAULT_NODE_CACHE_CAP_IN_FRAMES_PER_BUS
 #define MA_DEFAULT_NODE_CACHE_CAP_IN_FRAMES_PER_BUS 480
 #endif
 
+#ifndef MA_DEFAULT_PREMIX_STACK_SIZE_PER_CHANNEL
+#define MA_DEFAULT_PREMIX_STACK_SIZE_PER_CHANNEL    524288
+#endif
 
 static ma_result ma_node_read_pcm_frames(ma_node* pNode, ma_uint32 outputBusIndex, float* pFramesOut, ma_uint32 frameCount, ma_uint32* pFramesRead, ma_uint64 globalTime);
 
@@ -71119,8 +70955,8 @@ MA_API ma_node_graph_config ma_node_graph_config_init(ma_uint32 channels)
     ma_node_graph_config config;
 
     MA_ZERO_OBJECT(&config);
-    config.channels             = channels;
-    config.nodeCacheCapInFrames = MA_DEFAULT_NODE_CACHE_CAP_IN_FRAMES_PER_BUS;
+    config.channels               = channels;
+    config.processingSizeInFrames = 0;
 
     return config;
 }
@@ -71141,27 +70977,52 @@ static ma_bool32 ma_node_graph_is_reading(ma_node_graph* pNodeGraph)
 #endif
 
 
-static void ma_node_graph_node_process_pcm_frames(ma_node* pNode, const float** ppFramesIn, ma_uint32* pFrameCountIn, float** ppFramesOut, ma_uint32* pFrameCountOut)
+
+static ma_result ma_node_graph_data_source__on_read(ma_data_source* pDataSource, void* pFramesOut, ma_uint64 frameCount, ma_uint64* pFramesRead)
 {
-    ma_node_graph* pNodeGraph = (ma_node_graph*)pNode;
-    ma_uint64 framesRead;
+    /* Since there's no notion of an end, we don't ever want to return MA_AT_END here. But it is possible to return 0. */
+    ma_node_graph* pNodeGraph = (ma_node_graph*)pDataSource;
+    MA_ASSERT(pNodeGraph != NULL);
 
-    ma_node_graph_read_pcm_frames(pNodeGraph, ppFramesOut[0], *pFrameCountOut, &framesRead);
-
-    *pFrameCountOut = (ma_uint32)framesRead;    /* Safe cast. */
-
-    (void)ppFramesIn;
-    (void)pFrameCountIn;
+    return ma_node_graph_read_pcm_frames(pNodeGraph, pFramesOut, frameCount, pFramesRead);
 }
 
-static ma_node_vtable g_node_graph_node_vtable =
+static ma_result ma_node_graph_data_source__on_get_data_format(ma_data_source* pDataSource, ma_format* pFormat, ma_uint32* pChannels, ma_uint32* pSampleRate, ma_channel* pChannelMap, size_t channelMapCap)
 {
-    ma_node_graph_node_process_pcm_frames,
-    NULL,   /* onGetRequiredInputFrameCount */
-    0,      /* 0 input buses. */
-    1,      /* 1 output bus. */
-    0       /* Flags. */
+    ma_node_graph* pNodeGraph = (ma_node_graph*)pDataSource;
+    MA_ASSERT(pNodeGraph != NULL);
+
+    if (pFormat != NULL) {
+        *pFormat = ma_format_f32;
+    }
+
+    if (pChannels != NULL) {
+        *pChannels = ma_node_graph_get_channels(pNodeGraph);
+    }
+
+    if (pSampleRate != NULL) {
+        *pSampleRate = 0;   /* There's no notion of a sample rate. It's just whatever rate is supplied by the underlying nodes. */
+    }
+
+    /* Just assume the default channel map. */
+    if (pChannelMap != NULL) {
+        ma_channel_map_init_standard(ma_standard_channel_map_default, pChannelMap, channelMapCap, *pChannels);
+    }
+
+    return MA_SUCCESS;
+}
+
+static ma_data_source_vtable ma_gNodeGraphDataSourceVTable = 
+{
+    ma_node_graph_data_source__on_read,
+    NULL,   /* onSeek */
+    ma_node_graph_data_source__on_get_data_format,
+    NULL,   /* onGetCursor */
+    NULL,   /* onGetLength */
+    NULL,   /* onSetLooping */
+    0
 };
+
 
 static void ma_node_graph_endpoint_process_pcm_frames(ma_node* pNode, const float** ppFramesIn, ma_uint32* pFrameCountIn, float** ppFramesOut, ma_uint32* pFrameCountOut)
 {
@@ -71178,13 +71039,6 @@ static void ma_node_graph_endpoint_process_pcm_frames(ma_node* pNode, const floa
     (void)pFrameCountIn;
     (void)ppFramesOut;
     (void)pFrameCountOut;
-
-#if 0
-    /* The data has already been mixed. We just need to move it to the output buffer. */
-    if (ppFramesIn != NULL) {
-        ma_copy_pcm_frames(ppFramesOut[0], ppFramesIn[0], *pFrameCountOut, ma_format_f32, ma_node_get_output_channels(pNode, 0));
-    }
-#endif
 }
 
 static ma_node_vtable g_node_graph_endpoint_vtable =
@@ -71199,7 +71053,7 @@ static ma_node_vtable g_node_graph_endpoint_vtable =
 MA_API ma_result ma_node_graph_init(const ma_node_graph_config* pConfig, const ma_allocation_callbacks* pAllocationCallbacks, ma_node_graph* pNodeGraph)
 {
     ma_result result;
-    ma_node_config baseConfig;
+    ma_data_source_config dataSourceConfig;
     ma_node_config endpointConfig;
 
     if (pNodeGraph == NULL) {
@@ -71207,18 +71061,13 @@ MA_API ma_result ma_node_graph_init(const ma_node_graph_config* pConfig, const m
     }
 
     MA_ZERO_OBJECT(pNodeGraph);
-    pNodeGraph->nodeCacheCapInFrames = pConfig->nodeCacheCapInFrames;
-    if (pNodeGraph->nodeCacheCapInFrames == 0) {
-        pNodeGraph->nodeCacheCapInFrames = MA_DEFAULT_NODE_CACHE_CAP_IN_FRAMES_PER_BUS;
-    }
+    pNodeGraph->processingSizeInFrames = pConfig->processingSizeInFrames;
 
+    /* Data source. */
+    dataSourceConfig = ma_data_source_config_init();
+    dataSourceConfig.vtable = &ma_gNodeGraphDataSourceVTable;
 
-    /* Base node so we can use the node graph as a node into another graph. */
-    baseConfig = ma_node_config_init();
-    baseConfig.vtable = &g_node_graph_node_vtable;
-    baseConfig.pOutputChannels = &pConfig->channels;
-
-    result = ma_node_init(pNodeGraph, &baseConfig, pAllocationCallbacks, &pNodeGraph->base);
+    result = ma_data_source_init(&dataSourceConfig, &pNodeGraph->ds);
     if (result != MA_SUCCESS) {
         return result;
     }
@@ -71232,9 +71081,41 @@ MA_API ma_result ma_node_graph_init(const ma_node_graph_config* pConfig, const m
 
     result = ma_node_init(pNodeGraph, &endpointConfig, pAllocationCallbacks, &pNodeGraph->endpoint);
     if (result != MA_SUCCESS) {
-        ma_node_uninit(&pNodeGraph->base, pAllocationCallbacks);
+        ma_data_source_uninit(&pNodeGraph->ds);
         return result;
     }
+
+
+    /* Processing cache. */
+    if (pConfig->processingSizeInFrames > 0) {
+        pNodeGraph->pProcessingCache = (float*)ma_malloc(pConfig->processingSizeInFrames * pConfig->channels * sizeof(float), pAllocationCallbacks);
+        if (pNodeGraph->pProcessingCache == NULL) {
+            ma_node_uninit(&pNodeGraph->endpoint, pAllocationCallbacks);
+            return MA_OUT_OF_MEMORY;
+        }
+    }
+
+
+    /*
+    We need a pre-mix stack. The size of this stack is configurable via the config. The default value depends on the channel count.
+    */
+    {
+        size_t preMixStackSizeInBytes = pConfig->preMixStackSizeInBytes;
+        if (preMixStackSizeInBytes == 0) {
+            preMixStackSizeInBytes = pConfig->channels * MA_DEFAULT_PREMIX_STACK_SIZE_PER_CHANNEL;
+        }
+
+        pNodeGraph->pPreMixStack = ma_stack_init(preMixStackSizeInBytes, pAllocationCallbacks);
+        if (pNodeGraph->pPreMixStack == NULL) {
+            ma_node_uninit(&pNodeGraph->endpoint, pAllocationCallbacks);
+            if (pNodeGraph->pProcessingCache != NULL) {
+                ma_free(pNodeGraph->pProcessingCache, pAllocationCallbacks);
+            }
+
+            return MA_OUT_OF_MEMORY;
+        }
+    }
+
 
     return MA_SUCCESS;
 }
@@ -71246,6 +71127,17 @@ MA_API void ma_node_graph_uninit(ma_node_graph* pNodeGraph, const ma_allocation_
     }
 
     ma_node_uninit(&pNodeGraph->endpoint, pAllocationCallbacks);
+    ma_data_source_uninit(&pNodeGraph->ds);
+
+    if (pNodeGraph->pProcessingCache != NULL) {
+        ma_free(pNodeGraph->pProcessingCache, pAllocationCallbacks);
+        pNodeGraph->pProcessingCache = NULL;
+    }
+
+    if (pNodeGraph->pPreMixStack != NULL) {
+        ma_stack_uninit(pNodeGraph->pPreMixStack, pAllocationCallbacks);
+        pNodeGraph->pPreMixStack = NULL;
+    }
 }
 
 MA_API ma_node* ma_node_graph_get_endpoint(ma_node_graph* pNodeGraph)
@@ -71278,27 +71170,72 @@ MA_API ma_result ma_node_graph_read_pcm_frames(ma_node_graph* pNodeGraph, void* 
     totalFramesRead = 0;
     while (totalFramesRead < frameCount) {
         ma_uint32 framesJustRead;
-        ma_uint64 framesToRead = frameCount - totalFramesRead;
+        ma_uint64 framesToRead;
+        float* pRunningFramesOut;
 
+        framesToRead = frameCount - totalFramesRead;
         if (framesToRead > 0xFFFFFFFF) {
             framesToRead = 0xFFFFFFFF;
         }
 
-        ma_node_graph_set_is_reading(pNodeGraph, MA_TRUE);
-        {
-            result = ma_node_read_pcm_frames(&pNodeGraph->endpoint, 0, (float*)ma_offset_pcm_frames_ptr(pFramesOut, totalFramesRead, ma_format_f32, channels), (ma_uint32)framesToRead, &framesJustRead, ma_node_get_time(&pNodeGraph->endpoint));
-        }
-        ma_node_graph_set_is_reading(pNodeGraph, MA_FALSE);
+        pRunningFramesOut = (float*)ma_offset_pcm_frames_ptr(pFramesOut, totalFramesRead, ma_format_f32, channels);
 
-        totalFramesRead += framesJustRead;
+        /* If there's anything in the cache, consume that first. */
+        if (pNodeGraph->processingCacheFramesRemaining > 0) {
+            ma_uint32 framesToReadFromCache;
 
-        if (result != MA_SUCCESS) {
-            break;
-        }
+            framesToReadFromCache = (ma_uint32)framesToRead;
+            if (framesToReadFromCache > pNodeGraph->processingCacheFramesRemaining) {
+                framesToReadFromCache = pNodeGraph->processingCacheFramesRemaining;
+            }
 
-        /* Abort if we weren't able to read any frames or else we risk getting stuck in a loop. */
-        if (framesJustRead == 0) {
-            break;
+            MA_COPY_MEMORY(pRunningFramesOut, pNodeGraph->pProcessingCache, framesToReadFromCache * channels * sizeof(float));
+            MA_MOVE_MEMORY(pNodeGraph->pProcessingCache, pNodeGraph->pProcessingCache + (framesToReadFromCache * channels), (pNodeGraph->processingCacheFramesRemaining - framesToReadFromCache) * channels * sizeof(float));
+            pNodeGraph->processingCacheFramesRemaining -= framesToReadFromCache;
+
+            totalFramesRead += framesToReadFromCache;
+            continue;
+        } else {
+            /*
+            If processingSizeInFrames is non-zero, we need to make sure we always read in chunks of that size. If the frame count is less than
+            that, we need to read into the cache and then continue on.
+            */
+            float* pReadDst = pRunningFramesOut;
+
+            if (pNodeGraph->processingSizeInFrames > 0) {
+                if (framesToRead < pNodeGraph->processingSizeInFrames) {
+                    pReadDst = pNodeGraph->pProcessingCache;    /* We need to read into the cache because otherwise we'll overflow the output buffer. */
+                }
+
+                framesToRead = pNodeGraph->processingSizeInFrames;
+            }
+
+            ma_node_graph_set_is_reading(pNodeGraph, MA_TRUE);
+            {
+                result = ma_node_read_pcm_frames(&pNodeGraph->endpoint, 0, pReadDst, (ma_uint32)framesToRead, &framesJustRead, ma_node_get_time(&pNodeGraph->endpoint));
+            }
+            ma_node_graph_set_is_reading(pNodeGraph, MA_FALSE);
+
+            /*
+            Do not increment the total frames read counter if we read into the cache. We use this to determine how many frames have
+            been written to the final output buffer.
+            */
+            if (pReadDst == pNodeGraph->pProcessingCache) {
+                /* We read into the cache. */
+                pNodeGraph->processingCacheFramesRemaining = framesJustRead;
+            } else {
+                /* We read straight into the output buffer. */
+                totalFramesRead += framesJustRead;
+            }
+
+            if (result != MA_SUCCESS) {
+                break;
+            }
+
+            /* Abort if we weren't able to read any frames or else we risk getting stuck in a loop. */
+            if (framesJustRead == 0) {
+                break;
+            }
         }
     }
 
@@ -71499,7 +71436,7 @@ static void ma_node_input_bus_detach__no_output_bus_lock(ma_node_input_bus* pInp
     *not* using a lock when iterating over the list in the audio thread. We therefore need to craft
     this in a way such that the iteration on the audio thread doesn't break.
 
-    The the first thing to do is swap out the "next" pointer of the previous output bus with the
+    The first thing to do is swap out the "next" pointer of the previous output bus with the
     new "next" output bus. This is the operation that matters for iteration on the audio thread.
     After that, the previous pointer on the new "next" pointer needs to be updated, after which
     point the linked list will be in a good state.
@@ -71592,7 +71529,7 @@ static void ma_node_input_bus_attach(ma_node_input_bus* pInputBus, ma_node_outpu
         /*
         Now we need to attach the output bus to the linked list. This involves updating two pointers on
         two different output buses so I'm going to go ahead and keep this simple and just use a lock.
-        There are ways to do this without a lock, but it's just too hard to maintain for it's value.
+        There are ways to do this without a lock, but it's just too hard to maintain for its value.
 
         Although we're locking here, it's important to remember that we're *not* locking when iterating
         and reading audio data since that'll be running on the audio thread. As a result we need to be
@@ -71685,11 +71622,9 @@ static ma_result ma_node_input_bus_read_pcm_frames(ma_node* pInputNode, ma_node_
     ma_uint32 inputChannels;
     ma_bool32 doesOutputBufferHaveContent = MA_FALSE;
 
-    (void)pInputNode;   /* Not currently used. */
-
     /*
     This will be called from the audio thread which means we can't be doing any locking. Basically,
-    this function will not perfom any locking, whereas attaching and detaching will, but crafted in
+    this function will not perform any locking, whereas attaching and detaching will, but crafted in
     such a way that we don't need to perform any locking here. The important thing to remember is
     to always iterate in a forward direction.
 
@@ -71735,19 +71670,12 @@ static ma_result ma_node_input_bus_read_pcm_frames(ma_node* pInputNode, ma_node_
 
         if (pFramesOut != NULL) {
             /* Read. */
-            float temp[MA_DATA_CONVERTER_STACK_BUFFER_SIZE / sizeof(float)];
-            ma_uint32 tempCapInFrames = ma_countof(temp) / inputChannels;
-
             while (framesProcessed < frameCount) {
                 float* pRunningFramesOut;
                 ma_uint32 framesToRead;
-                ma_uint32 framesJustRead;
+                ma_uint32 framesJustRead = 0;
 
                 framesToRead = frameCount - framesProcessed;
-                if (framesToRead > tempCapInFrames) {
-                    framesToRead = tempCapInFrames;
-                }
-
                 pRunningFramesOut = ma_offset_pcm_frames_ptr_f32(pFramesOut, framesProcessed, inputChannels);
 
                 if (doesOutputBufferHaveContent == MA_FALSE) {
@@ -71755,11 +71683,32 @@ static ma_result ma_node_input_bus_read_pcm_frames(ma_node* pInputNode, ma_node_
                     result = ma_node_read_pcm_frames(pOutputBus->pNode, pOutputBus->outputBusIndex, pRunningFramesOut, framesToRead, &framesJustRead, globalTime + framesProcessed);
                 } else {
                     /* Slow path. Not the first attachment. Mixing required. */
-                    result = ma_node_read_pcm_frames(pOutputBus->pNode, pOutputBus->outputBusIndex, temp, framesToRead, &framesJustRead, globalTime + framesProcessed);
-                    if (result == MA_SUCCESS || result == MA_AT_END) {
-                        if (isSilentOutput == MA_FALSE) {   /* Don't mix if the node outputs silence. */
-                            ma_mix_pcm_frames_f32(pRunningFramesOut, temp, framesJustRead, inputChannels, /*volume*/1);
+                    ma_uint32 preMixBufferCapInFrames = ((ma_node_base*)pInputNode)->cachedDataCapInFramesPerBus;
+                    float* pPreMixBuffer = (float*)ma_stack_alloc(((ma_node_base*)pInputNode)->pNodeGraph->pPreMixStack, preMixBufferCapInFrames * inputChannels * sizeof(float));
+
+                    if (pPreMixBuffer == NULL) {
+                        /*
+                        If you're hitting this assert it means you've got an unusually deep chain of nodes, you've got an excessively large processing
+                        size, or you have a combination of both, and as a result have run out of stack space. You can increase this using the
+                        preMixStackSizeInBytes variable in ma_node_graph_config. If you're using ma_engine, you can do it via the preMixStackSizeInBytes
+                        variable in ma_engine_config. It defaults to 512KB per output channel.
+                        */
+                        MA_ASSERT(MA_FALSE);
+                    } else {
+                        if (framesToRead > preMixBufferCapInFrames) {
+                            framesToRead = preMixBufferCapInFrames;
                         }
+
+                        result = ma_node_read_pcm_frames(pOutputBus->pNode, pOutputBus->outputBusIndex, pPreMixBuffer, framesToRead, &framesJustRead, globalTime + framesProcessed);
+                        if (result == MA_SUCCESS || result == MA_AT_END) {
+                            if (isSilentOutput == MA_FALSE) {   /* Don't mix if the node outputs silence. */
+                                ma_mix_pcm_frames_f32(pRunningFramesOut, pPreMixBuffer, framesJustRead, inputChannels, /*volume*/1);
+                            }
+                        }
+
+                        /* The pre-mix buffer is no longer required. */
+                        ma_stack_free(((ma_node_base*)pInputNode)->pNodeGraph->pPreMixStack, pPreMixBuffer);
+                        pPreMixBuffer = NULL;
                     }
                 }
 
@@ -71812,6 +71761,25 @@ MA_API ma_node_config ma_node_config_init(void)
     config.outputBusCount = MA_NODE_BUS_COUNT_UNKNOWN;
 
     return config;
+}
+
+static ma_uint16 ma_node_config_get_cache_size_in_frames(const ma_node_config* pConfig, const ma_node_graph* pNodeGraph)
+{
+    ma_uint32 cacheSizeInFrames;
+
+    (void)pConfig;
+
+    if (pNodeGraph->processingSizeInFrames > 0) {
+        cacheSizeInFrames = pNodeGraph->processingSizeInFrames;
+    } else {
+        cacheSizeInFrames = MA_DEFAULT_NODE_CACHE_CAP_IN_FRAMES_PER_BUS;
+    }
+
+    if (cacheSizeInFrames > 0xFFFF) {
+        cacheSizeInFrames = 0xFFFF;
+    }
+
+    return (ma_uint16)cacheSizeInFrames;
 }
 
 
@@ -71968,7 +71936,7 @@ static ma_result ma_node_get_heap_layout(ma_node_graph* pNodeGraph, const ma_nod
     /*
     Cached audio data.
 
-    We need to allocate memory for a caching both input and output data. We have an optimization
+    We need to allocate memory for caching both input and output data. We have an optimization
     where no caching is necessary for specific conditions:
 
         - The node has 0 inputs and 1 output.
@@ -71987,14 +71955,18 @@ static ma_result ma_node_get_heap_layout(ma_node_graph* pNodeGraph, const ma_nod
     } else {
         /* Slow path. Cache needed. */
         size_t cachedDataSizeInBytes = 0;
+        ma_uint32 cacheCapInFrames;
         ma_uint32 iBus;
 
+        /* The capacity of the cache is based on our callback processing size. */
+        cacheCapInFrames = ma_node_config_get_cache_size_in_frames(pConfig, pNodeGraph);
+
         for (iBus = 0; iBus < inputBusCount; iBus += 1) {
-            cachedDataSizeInBytes += pNodeGraph->nodeCacheCapInFrames * ma_get_bytes_per_frame(ma_format_f32, pConfig->pInputChannels[iBus]);
+            cachedDataSizeInBytes += cacheCapInFrames * ma_get_bytes_per_frame(ma_format_f32, pConfig->pInputChannels[iBus]);
         }
 
         for (iBus = 0; iBus < outputBusCount; iBus += 1) {
-            cachedDataSizeInBytes += pNodeGraph->nodeCacheCapInFrames * ma_get_bytes_per_frame(ma_format_f32, pConfig->pOutputChannels[iBus]);
+            cachedDataSizeInBytes += cacheCapInFrames * ma_get_bytes_per_frame(ma_format_f32, pConfig->pOutputChannels[iBus]);
         }
 
         pHeapLayout->cachedDataOffset = pHeapLayout->sizeInBytes;
@@ -72080,11 +72052,10 @@ MA_API ma_result ma_node_init_preallocated(ma_node_graph* pNodeGraph, const ma_n
 
     if (heapLayout.cachedDataOffset != MA_SIZE_MAX) {
         pNodeBase->pCachedData = (float*)ma_offset_ptr(pHeap, heapLayout.cachedDataOffset);
-        pNodeBase->cachedDataCapInFramesPerBus = pNodeGraph->nodeCacheCapInFrames;
+        pNodeBase->cachedDataCapInFramesPerBus = ma_node_config_get_cache_size_in_frames(pConfig, pNodeGraph);
     } else {
         pNodeBase->pCachedData = NULL;
     }
-
 
 
     /* We need to run an initialization step for each input and output bus. */
@@ -72260,7 +72231,7 @@ static ma_result ma_node_detach_full(ma_node* pNode)
 
     /*
     At this point all output buses will have been detached from the graph and we can be guaranteed
-    that none of it's input nodes will be getting processed by the graph. We can detach these
+    that none of its input nodes will be getting processed by the graph. We can detach these
     without needing to worry about the audio thread touching them.
     */
     for (iInputBus = 0; iInputBus < ma_node_get_input_bus_count(pNode); iInputBus += 1) {
@@ -72275,7 +72246,7 @@ static ma_result ma_node_detach_full(ma_node* pNode)
         linked list logic. We don't need to worry about the audio thread referencing these because the step
         above severed the connection to the graph.
         */
-        for (pOutputBus = (ma_node_output_bus*)ma_atomic_load_ptr(&pInputBus->head.pNext); pOutputBus != NULL; pOutputBus = (ma_node_output_bus*)ma_atomic_load_ptr(&pOutputBus->pNext)) {
+        for (pOutputBus = (ma_node_output_bus*)ma_atomic_load_ptr(&pInputBus->head.pNext); pOutputBus != NULL; pOutputBus = (ma_node_output_bus*)ma_atomic_load_ptr(&pInputBus->head.pNext)) {
             ma_node_detach_output_bus(pOutputBus->pNode, pOutputBus->outputBusIndex);   /* This won't do any waiting in practice and should be efficient. */
         }
     }
@@ -72297,7 +72268,7 @@ MA_API ma_result ma_node_detach_output_bus(ma_node* pNode, ma_uint32 outputBusIn
         return MA_INVALID_ARGS; /* Invalid output bus index. */
     }
 
-    /* We need to lock the output bus because we need to inspect the input node and grab it's input bus. */
+    /* We need to lock the output bus because we need to inspect the input node and grab its input bus. */
     ma_node_output_bus_lock(&pNodeBase->pOutputBuses[outputBusIndex]);
     {
         pInputNodeBase = (ma_node_base*)pNodeBase->pOutputBuses[outputBusIndex].pInputNode;
@@ -72463,7 +72434,7 @@ MA_API ma_node_state ma_node_get_state_by_time_range(const ma_node* pNode, ma_ui
 
     /*
     Getting here means the node is marked as started, but it may still not be truly started due to
-    it's start time not having been reached yet. Also, the stop time may have also been reached in
+    its start time not having been reached yet. Also, the stop time may have also been reached in
     which case it'll be considered stopped.
     */
     if (ma_node_get_state_time(pNode, ma_node_state_started) > globalTimeBeg) {
@@ -72474,7 +72445,7 @@ MA_API ma_node_state ma_node_get_state_by_time_range(const ma_node* pNode, ma_ui
         return ma_node_state_stopped;   /* Stop time has been reached. */
     }
 
-    /* Getting here means the node is marked as started and is within it's start/stop times. */
+    /* Getting here means the node is marked as started and is within its start/stop times. */
     return ma_node_state_started;
 }
 
@@ -72636,12 +72607,12 @@ static ma_result ma_node_read_pcm_frames(ma_node* pNode, ma_uint32 outputBusInde
                 frameCountOut = totalFramesRead;
 
                 if (totalFramesRead > 0) {
-                    ma_node_process_pcm_frames_internal(pNode, (const float**)ppFramesIn, &frameCountIn, ppFramesOut, &frameCountOut);  /* From GCC: expected 'const float **' but argument is of type 'float **'. Shouldn't this be implicit? Excplicit cast to silence the warning. */
+                    ma_node_process_pcm_frames_internal(pNode, (const float**)ppFramesIn, &frameCountIn, ppFramesOut, &frameCountOut);  /* From GCC: expected 'const float **' but argument is of type 'float **'. Shouldn't this be implicit? Explicit cast to silence the warning. */
                 }
 
                 /*
                 A passthrough should never have modified the input and output frame counts. If you're
-                triggering these assers you need to fix your processing callback.
+                triggering these asserts you need to fix your processing callback.
                 */
                 MA_ASSERT(frameCountIn  == totalFramesRead);
                 MA_ASSERT(frameCountOut == totalFramesRead);
@@ -72819,7 +72790,7 @@ static ma_result ma_node_read_pcm_frames(ma_node* pNode, ma_uint32 outputBusInde
                         frames available right now.
                         */
                         if (frameCountIn > 0 || (pNodeBase->vtable->flags & MA_NODE_FLAG_DIFFERENT_PROCESSING_RATES) != 0) {
-                            ma_node_process_pcm_frames_internal(pNode, (const float**)ppFramesIn, &frameCountIn, ppFramesOut, &frameCountOut);    /* From GCC: expected 'const float **' but argument is of type 'float **'. Shouldn't this be implicit? Excplicit cast to silence the warning. */
+                            ma_node_process_pcm_frames_internal(pNode, (const float**)ppFramesIn, &frameCountIn, ppFramesOut, &frameCountOut);    /* From GCC: expected 'const float **' but argument is of type 'float **'. Shouldn't this be implicit? Explicit cast to silence the warning. */
                         } else {
                             frameCountOut = 0;  /* No data was processed. */
                         }
@@ -73926,42 +73897,6 @@ MA_API void ma_delay_node_uninit(ma_delay_node* pDelayNode, const ma_allocation_
     ma_delay_uninit(&pDelayNode->delay, pAllocationCallbacks);
 }
 
-MA_API void ma_delay_node_set_wet(ma_delay_node* pDelayNode, float value)
-{
-    if (pDelayNode == NULL) {
-        return;
-    }
-
-    ma_delay_set_wet(&pDelayNode->delay, value);
-}
-
-MA_API float ma_delay_node_get_wet(const ma_delay_node* pDelayNode)
-{
-    if (pDelayNode == NULL) {
-        return 0;
-    }
-
-    return ma_delay_get_wet(&pDelayNode->delay);
-}
-
-MA_API void ma_delay_node_set_dry(ma_delay_node* pDelayNode, float value)
-{
-    if (pDelayNode == NULL) {
-        return;
-    }
-
-    ma_delay_set_dry(&pDelayNode->delay, value);
-}
-
-MA_API float ma_delay_node_get_dry(const ma_delay_node* pDelayNode)
-{
-    if (pDelayNode == NULL) {
-        return 0;
-    }
-
-    return ma_delay_get_dry(&pDelayNode->delay);
-}
-
 MA_API void ma_delay_node_set_decay(ma_delay_node* pDelayNode, float value)
 {
     if (pDelayNode == NULL) {
@@ -73999,8 +73934,8 @@ static void ma_sound_set_at_end(ma_sound* pSound, ma_bool32 atEnd)
 
     /* Fire any callbacks or events. */
     if (atEnd) {
-        if (pSound->endCallback != NULL) {
-            pSound->endCallback(pSound->pEndCallbackUserData, pSound);
+        if (pSound->notifications.onAtEnd != NULL) {
+            pSound->notifications.onAtEnd(pSound->notifications.pUserData, pSound);
         }
     }
 }
@@ -74056,15 +73991,15 @@ static ma_bool32 ma_engine_node_is_pitching_enabled(const ma_engine_node* pEngin
 {
     MA_ASSERT(pEngineNode != NULL);
 
-    /* Don't try to be clever by skiping resampling in the pitch=1 case or else you'll glitch when moving away from 1. */
-    return !ma_atomic_load_explicit_32(&pEngineNode->isPitchDisabled, ma_atomic_memory_order_acquire);
+    /* Don't try to be clever by skipping resampling in the pitch=1 case or else you'll glitch when moving away from 1. */
+    return ma_atomic_load_explicit_32(&pEngineNode->isPitchDisabled, ma_atomic_memory_order_acquire) == 0;
 }
 
 static ma_bool32 ma_engine_node_is_spatialization_enabled(const ma_engine_node* pEngineNode)
 {
     MA_ASSERT(pEngineNode != NULL);
 
-    return !ma_atomic_load_explicit_32(&pEngineNode->isSpatializationDisabled, ma_atomic_memory_order_acquire);
+    return ma_atomic_load_explicit_32(&pEngineNode->isSpatializationDisabled, ma_atomic_memory_order_acquire) == 0;
 }
 
 static ma_uint64 ma_engine_node_get_required_input_frame_count(const ma_engine_node* pEngineNode, ma_uint64 outputFrameCount)
@@ -74322,6 +74257,27 @@ static void ma_engine_node_process_pcm_frames__general(ma_engine_node* pEngineNo
             break;
         }
     }
+
+    /*
+    Fire the processing callback. We can cast pEngineNode to a `ma_sound` since that's the base object. There's
+    a few edge cases here. It's possible that a sound does not have a data source or an input which means the
+    input frame count may be zero. In this case, the output frame count at this point will also be zero since
+    it was unable to process any data. We need to check for this and just assume that the processing callback
+    is producing some data. We pre-initialize this to silence.
+    */
+    {
+        ma_sound* pSound = (ma_sound*)pEngineNode;
+        if (pSound->notifications.onProcess != NULL) {
+            if (totalFramesProcessedOut == 0 && totalFramesProcessedIn == 0 && frameCountOut > 0) {
+                /* Pre-silence the output buffer. This should be the equivalent to setting the output frame count to 0. */
+                totalFramesProcessedOut = frameCountOut;
+                ma_silence_pcm_frames(ppFramesOut[0], totalFramesProcessedOut, ma_format_f32, channelsOut);
+            }
+
+            pSound->notifications.onProcess(pSound->notifications.pUserData, pSound, ppFramesOut[0], totalFramesProcessedOut);
+        }
+    }
+    
 
     /* At this point we're done processing. */
     *pFrameCountIn  = totalFramesProcessedIn;
@@ -74840,12 +74796,18 @@ MA_API void ma_engine_node_uninit(ma_engine_node* pEngineNode, const ma_allocati
 }
 
 
-MA_API ma_sound_config ma_sound_config_init(void)
+
+MA_API ma_sound_notifications ma_sound_notifications_init(void)
 {
-    return ma_sound_config_init_2(NULL);
+    ma_sound_notifications notifications;
+
+    MA_ZERO_OBJECT(&notifications);
+
+    return notifications;
 }
 
-MA_API ma_sound_config ma_sound_config_init_2(ma_engine* pEngine)
+
+MA_API ma_sound_config ma_sound_config_init(ma_engine* pEngine)
 {
     ma_sound_config config;
 
@@ -74863,12 +74825,7 @@ MA_API ma_sound_config ma_sound_config_init_2(ma_engine* pEngine)
     return config;
 }
 
-MA_API ma_sound_group_config ma_sound_group_config_init(void)
-{
-    return ma_sound_group_config_init_2(NULL);
-}
-
-MA_API ma_sound_group_config ma_sound_group_config_init_2(ma_engine* pEngine)
+MA_API ma_sound_group_config ma_sound_group_config_init(ma_engine* pEngine)
 {
     ma_sound_group_config config;
 
@@ -75048,9 +75005,10 @@ MA_API ma_result ma_engine_init(const ma_engine_config* pConfig, ma_engine* pEng
     }
 
 
-    /* The engine is a node graph. This needs to be initialized after we have the device so we can can determine the channel count. */
+    /* The engine is a node graph. This needs to be initialized after we have the device so we can determine the channel count. */
     nodeGraphConfig = ma_node_graph_config_init(engineConfig.channels);
-    nodeGraphConfig.nodeCacheCapInFrames = (engineConfig.periodSizeInFrames > 0xFFFF) ? 0xFFFF : (ma_uint16)engineConfig.periodSizeInFrames;
+    nodeGraphConfig.processingSizeInFrames = engineConfig.periodSizeInFrames;
+    nodeGraphConfig.preMixStackSizeInBytes = engineConfig.preMixStackSizeInBytes;
 
     result = ma_node_graph_init(&nodeGraphConfig, &pEngine->allocationCallbacks, &pEngine->nodeGraph);
     if (result != MA_SUCCESS) {
@@ -75366,16 +75324,6 @@ MA_API ma_result ma_engine_set_time_in_pcm_frames(ma_engine* pEngine, ma_uint64 
 MA_API ma_result ma_engine_set_time_in_milliseconds(ma_engine* pEngine, ma_uint64 globalTime)
 {
     return ma_engine_set_time_in_pcm_frames(pEngine, globalTime * ma_engine_get_sample_rate(pEngine) / 1000);
-}
-
-MA_API ma_uint64 ma_engine_get_time(const ma_engine* pEngine)
-{
-    return ma_engine_get_time_in_pcm_frames(pEngine);
-}
-
-MA_API ma_result ma_engine_set_time(ma_engine* pEngine, ma_uint64 globalTime)
-{
-    return ma_engine_set_time_in_pcm_frames(pEngine, globalTime);
 }
 
 MA_API ma_uint32 ma_engine_get_channels(const ma_engine* pEngine)
@@ -75799,6 +75747,10 @@ static ma_result ma_sound_init_from_data_source_internal(ma_engine* pEngine, con
         type = ma_engine_node_type_group;
     }
 
+    if (pConfig->pNotifications != NULL) {
+        pSound->notifications = *pConfig->pNotifications;
+    }
+
     /*
     Sounds are engine nodes. Before we can initialize this we need to determine the channel count.
     If we can't do this we need to abort. It's up to the caller to ensure they're using a data
@@ -75863,12 +75815,22 @@ static ma_result ma_sound_init_from_data_source_internal(ma_engine* pEngine, con
         ma_data_source_set_range_in_pcm_frames(ma_sound_get_data_source(pSound), pConfig->loopPointBegInPCMFrames, pConfig->loopPointEndInPCMFrames);
     }
 
-    ma_sound_set_looping(pSound, pConfig->isLooping);
+    ma_sound_set_looping(pSound, (pConfig->flags & MA_SOUND_FLAG_LOOPING) != 0);
 
     return MA_SUCCESS;
 }
 
 #ifndef MA_NO_RESOURCE_MANAGER
+static void ma_sound__on_async_notification_loaded(ma_async_notification* pNotification)
+{
+    ma_sound* pSound = (ma_sound*)((ma_async_notification_callbacks*)pNotification)->pUserData;
+    MA_ASSERT(pSound != NULL);
+
+    if (pSound->notifications.onLoaded) {
+        pSound->notifications.onLoaded(pSound->notifications.pUserData, pSound);
+    }
+}
+
 MA_API ma_result ma_sound_init_from_file_internal(ma_engine* pEngine, const ma_sound_config* pConfig, ma_sound* pSound)
 {
     ma_result result = MA_SUCCESS;
@@ -75893,11 +75855,17 @@ MA_API ma_result ma_sound_init_from_file_internal(ma_engine* pEngine, const ma_s
         return MA_OUT_OF_MEMORY;
     }
 
-    /* Removed in 0.12. Set pDoneFence on the notifications. */
-    notifications = pConfig->initNotifications;
-    if (pConfig->pDoneFence != NULL && notifications.done.pFence == NULL) {
-        notifications.done.pFence = pConfig->pDoneFence;
+    notifications = ma_resource_manager_pipeline_notifications_init();
+    if (pConfig->pNotifications != NULL) {
+        notifications.done.pFence = pConfig->pNotifications->pLoadedFence;
+
+        if (pConfig->pNotifications->onLoaded != NULL) {
+            pSound->resourceManagerDoneNotification.onSignal  = ma_sound__on_async_notification_loaded;
+            pSound->resourceManagerDoneNotification.pUserData = pSound;
+            notifications.done.pNotification = &pSound->resourceManagerDoneNotification;
+        }
     }
+    
 
     /*
     We must wrap everything around the fence if one was specified. This ensures ma_fence_wait() does
@@ -75915,7 +75883,6 @@ MA_API ma_result ma_sound_init_from_file_internal(ma_engine* pEngine, const ma_s
         resourceManagerDataSourceConfig.rangeEndInPCMFrames         = pConfig->rangeEndInPCMFrames;
         resourceManagerDataSourceConfig.loopPointBegInPCMFrames     = pConfig->loopPointBegInPCMFrames;
         resourceManagerDataSourceConfig.loopPointEndInPCMFrames     = pConfig->loopPointEndInPCMFrames;
-        resourceManagerDataSourceConfig.isLooping                   = pConfig->isLooping;
 
         result = ma_resource_manager_data_source_init_ex(pEngine->pResourceManager, &resourceManagerDataSourceConfig, pSound->pResourceManagerDataSource);
         if (result != MA_SUCCESS) {
@@ -75943,7 +75910,7 @@ done:
     return result;
 }
 
-MA_API ma_result ma_sound_init_from_file(ma_engine* pEngine, const char* pFilePath, ma_uint32 flags, ma_sound_group* pGroup, ma_fence* pDoneFence, ma_sound* pSound)
+MA_API ma_result ma_sound_init_from_file(ma_engine* pEngine, const char* pFilePath, ma_uint32 flags, ma_sound_group* pGroup, const ma_sound_notifications* pNotifications, ma_sound* pSound)
 {
     ma_sound_config config;
 
@@ -75951,16 +75918,16 @@ MA_API ma_result ma_sound_init_from_file(ma_engine* pEngine, const char* pFilePa
         return MA_INVALID_ARGS;
     }
 
-    config = ma_sound_config_init_2(pEngine);
+    config = ma_sound_config_init(pEngine);
     config.pFilePath          = pFilePath;
     config.flags              = flags;
     config.pInitialAttachment = pGroup;
-    config.pDoneFence         = pDoneFence;
+    config.pNotifications     = pNotifications;
 
     return ma_sound_init_ex(pEngine, &config, pSound);
 }
 
-MA_API ma_result ma_sound_init_from_file_w(ma_engine* pEngine, const wchar_t* pFilePath, ma_uint32 flags, ma_sound_group* pGroup, ma_fence* pDoneFence, ma_sound* pSound)
+MA_API ma_result ma_sound_init_from_file_w(ma_engine* pEngine, const wchar_t* pFilePath, ma_uint32 flags, ma_sound_group* pGroup, const ma_sound_notifications* pNotifications, ma_sound* pSound)
 {
     ma_sound_config config;
 
@@ -75968,16 +75935,16 @@ MA_API ma_result ma_sound_init_from_file_w(ma_engine* pEngine, const wchar_t* pF
         return MA_INVALID_ARGS;
     }
 
-    config = ma_sound_config_init_2(pEngine);
+    config = ma_sound_config_init(pEngine);
     config.pFilePathW         = pFilePath;
     config.flags              = flags;
     config.pInitialAttachment = pGroup;
-    config.pDoneFence         = pDoneFence;
+    config.pNotifications     = pNotifications;
 
     return ma_sound_init_ex(pEngine, &config, pSound);
 }
 
-MA_API ma_result ma_sound_init_copy(ma_engine* pEngine, const ma_sound* pExistingSound, ma_uint32 flags, ma_sound_group* pGroup, ma_sound* pSound)
+MA_API ma_result ma_sound_init_copy(ma_engine* pEngine, const ma_sound* pExistingSound, ma_uint32 flags, ma_sound_group* pGroup, const ma_sound_notifications* pNotifications, ma_sound* pSound)
 {
     ma_result result;
     ma_sound_config config;
@@ -76011,12 +75978,13 @@ MA_API ma_result ma_sound_init_copy(ma_engine* pEngine, const ma_sound* pExistin
         return result;
     }
 
-    config = ma_sound_config_init_2(pEngine);
+    config = ma_sound_config_init(pEngine);
     config.pDataSource                 = pSound->pResourceManagerDataSource;
     config.flags                       = flags;
     config.pInitialAttachment          = pGroup;
     config.monoExpansionMode           = pExistingSound->engineNode.monoExpansionMode;
     config.volumeSmoothTimeInPCMFrames = pExistingSound->engineNode.volumeSmoothTimeInPCMFrames;
+    config.pNotifications     = pNotifications;
 
     result = ma_sound_init_from_data_source_internal(pEngine, &config, pSound);
     if (result != MA_SUCCESS) {
@@ -76033,12 +76001,14 @@ MA_API ma_result ma_sound_init_copy(ma_engine* pEngine, const ma_sound* pExistin
 }
 #endif
 
-MA_API ma_result ma_sound_init_from_data_source(ma_engine* pEngine, ma_data_source* pDataSource, ma_uint32 flags, ma_sound_group* pGroup, ma_sound* pSound)
+MA_API ma_result ma_sound_init_from_data_source(ma_engine* pEngine, ma_data_source* pDataSource, ma_uint32 flags, ma_sound_group* pGroup, const ma_sound_notifications* pNotifications, ma_sound* pSound)
 {
-    ma_sound_config config = ma_sound_config_init_2(pEngine);
+    ma_sound_config config = ma_sound_config_init(pEngine);
     config.pDataSource        = pDataSource;
     config.flags              = flags;
     config.pInitialAttachment = pGroup;
+    config.pNotifications     = pNotifications;
+
     return ma_sound_init_ex(pEngine, &config, pSound);
 }
 
@@ -76055,8 +76025,9 @@ MA_API ma_result ma_sound_init_ex(ma_engine* pEngine, const ma_sound_config* pCo
         return MA_INVALID_ARGS;
     }
 
-    pSound->endCallback          = pConfig->endCallback;
-    pSound->pEndCallbackUserData = pConfig->pEndCallbackUserData;
+    if (pConfig->pNotifications != NULL) {
+        pSound->notifications = *pConfig->pNotifications;
+    }
 
     /* We need to load the sound differently depending on whether or not we're loading from a file. */
 #ifndef MA_NO_RESOURCE_MANAGER
@@ -76067,7 +76038,7 @@ MA_API ma_result ma_sound_init_ex(ma_engine* pEngine, const ma_sound_config* pCo
     {
         /*
         Getting here means we're not loading from a file. We may be loading from an already-initialized
-        data source, or none at all. If we aren't specifying any data source, we'll be initializing the
+        data source, or none at all. If we aren't specifying any data source, we'll be initializing
         the equivalent to a group. ma_data_source_init_from_data_source_internal() will deal with this
         for us, so no special treatment required here.
         */
@@ -76896,27 +76867,10 @@ MA_API ma_result ma_sound_get_length_in_seconds(ma_sound* pSound, float* pLength
     return ma_data_source_get_length_in_seconds(pSound->pDataSource, pLength);
 }
 
-MA_API ma_result ma_sound_set_end_callback(ma_sound* pSound, ma_sound_end_proc callback, void* pUserData)
-{
-    if (pSound == NULL) {
-        return MA_INVALID_ARGS;
-    }
-
-    /* The notion of an end is only valid for sounds that are backed by a data source. */
-    if (pSound->pDataSource == NULL) {
-        return MA_INVALID_OPERATION;
-    }
-
-    pSound->endCallback          = callback;
-    pSound->pEndCallbackUserData = pUserData;
-
-    return MA_SUCCESS;
-}
-
 
 MA_API ma_result ma_sound_group_init(ma_engine* pEngine, ma_uint32 flags, ma_sound_group* pParentGroup, ma_sound_group* pGroup)
 {
-    ma_sound_group_config config = ma_sound_group_config_init_2(pEngine);
+    ma_sound_group_config config = ma_sound_group_config_init(pEngine);
     config.flags              = flags;
     config.pInitialAttachment = pParentGroup;
     return ma_sound_group_init_ex(pEngine, &config, pGroup);
@@ -78555,7 +78509,6 @@ MA_PRIVATE ma_bool32 ma_dr_wav_init__internal(ma_dr_wav* pWav, ma_dr_wav_chunk_p
         }
         if (pWav->container == ma_dr_wav_container_riff || pWav->container == ma_dr_wav_container_rifx) {
             if (ma_dr_wav_bytes_to_u32_ex(chunkSizeBytes, pWav->container) < 36) {
-                return MA_FALSE;
             }
         } else if (pWav->container == ma_dr_wav_container_rf64) {
             if (ma_dr_wav_bytes_to_u32_le(chunkSizeBytes) != 0xFFFFFFFF) {
@@ -78882,9 +78835,7 @@ MA_PRIVATE ma_bool32 ma_dr_wav_init__internal(ma_dr_wav* pWav, ma_dr_wav_chunk_p
             }
         }
         if (isProcessingMetadata) {
-            ma_uint64 metadataBytesRead;
-            metadataBytesRead = ma_dr_wav__metadata_process_chunk(&metadataParser, &header, ma_dr_wav_metadata_type_all_including_unknown);
-            MA_DR_WAV_ASSERT(metadataBytesRead <= header.sizeInBytes);
+            ma_dr_wav__metadata_process_chunk(&metadataParser, &header, ma_dr_wav_metadata_type_all_including_unknown);
             if (ma_dr_wav__seek_from_start(pWav->onSeek, cursor, pWav->pUserData) == MA_FALSE) {
                 break;
             }
@@ -81647,7 +81598,7 @@ MA_API void ma_dr_wav_f32_to_s32(ma_int32* pOut, const float* pIn, size_t sample
         return;
     }
     for (i = 0; i < sampleCount; ++i) {
-        *pOut++ = (ma_int32)(2147483648.0 * pIn[i]);
+        *pOut++ = (ma_int32)(2147483648.0f * pIn[i]);
     }
 }
 MA_API void ma_dr_wav_f64_to_s32(ma_int32* pOut, const double* pIn, size_t sampleCount)
@@ -91135,8 +91086,8 @@ static ma_int16 ma_dr_mp3d_scale_pcm(float sample)
     s32 -= (s32 < 0);
     s = (ma_int16)ma_dr_mp3_clip_int16_arm(s32);
 #else
-    if (sample >=  32766.5) return (ma_int16) 32767;
-    if (sample <= -32767.5) return (ma_int16)-32768;
+    if (sample >=  32766.5f) return (ma_int16) 32767;
+    if (sample <= -32767.5f) return (ma_int16)-32768;
     s = (ma_int16)(sample + .5f);
     s -= (s < 0);
 #endif
@@ -91522,9 +91473,9 @@ MA_API void ma_dr_mp3dec_f32_to_s16(const float *in, ma_int16 *out, size_t num_s
     for(; i < num_samples; i++)
     {
         float sample = in[i] * 32768.0f;
-        if (sample >=  32766.5)
+        if (sample >=  32766.5f)
             out[i] = (ma_int16) 32767;
-        else if (sample <= -32767.5)
+        else if (sample <= -32767.5f)
             out[i] = (ma_int16)-32768;
         else
         {

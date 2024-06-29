@@ -1,10 +1,12 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
-import 'package:flutter_soloud_example/ui/bars.dart';
-import 'package:flutter_soloud_example/ui/filter_fx.dart';
-import 'package:flutter_soloud_example/ui/keyboard_widget.dart';
-import 'package:flutter_soloud_example/ui/knobs_groups.dart';
-import 'package:flutter_soloud_example/ui/text_slider.dart';
+import 'package:flutter_soloud_example/waveform/bars.dart';
+import 'package:flutter_soloud_example/waveform/filter_fx.dart';
+import 'package:flutter_soloud_example/waveform/keyboard_widget.dart';
+import 'package:flutter_soloud_example/waveform/knobs_groups.dart';
+import 'package:flutter_soloud_example/waveform/text_slider.dart';
 import 'package:star_menu/star_menu.dart';
 
 /// Example to demostrate how waveforms work with a keyboard
@@ -80,8 +82,13 @@ class _PageWaveformState extends State<PageWaveform> {
                       await SoLoud.instance.disposeSource(sound!);
                     }
 
+                    /// text created by ChatGPT :)
                     await SoLoud.instance
-                        .speechText('Hello Flutter Soloud!')
+                        .speechText('Flutter and So Loud audio plugin are the '
+                            "tech tag team you never knew you needed - they're "
+                            'like Batman and Robin, swooping in to save your '
+                            'app with style and sound effects that would make '
+                            'even Gotham jealous!')
                         .then((value) => sound = value);
                   },
                   child: const Text('T2S'),
@@ -283,8 +290,9 @@ class _PageWaveformState extends State<PageWaveform> {
                   blurSigmaX: 6,
                   blurSigmaY: 6,
                 ),
-                linearShapeParams: const LinearShapeParams(
+                linearShapeParams: LinearShapeParams(
                   angle: -90,
+                  space: Platform.isAndroid || Platform.isIOS ? -10 : 10,
                   alignment: LinearAlignment.left,
                 ),
               ),

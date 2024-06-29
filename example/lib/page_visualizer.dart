@@ -1,8 +1,8 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
@@ -40,29 +40,19 @@ class _PageVisualizerState extends State<PageVisualizer> {
     'assets/audio/12Bands/audiocheck.net_sin_16000Hz_-3dBFS_2s.wav',
     'assets/audio/12Bands/audiocheck.net_sin_20000Hz_-3dBFS_2s.wav',
   ];
-  late final ValueNotifier<GetSamplesKind> samplesKind;
+  final ValueNotifier<TextureType> textureType =
+      ValueNotifier(TextureType.fft2D);
   final ValueNotifier<double> fftSmoothing = ValueNotifier(0.8);
   final ValueNotifier<bool> isVisualizerForPlayer = ValueNotifier(true);
   final ValueNotifier<bool> isVisualizerEnabled = ValueNotifier(true);
-  late ValueNotifier<RangeValues> fftImageRange;
+  final ValueNotifier<RangeValues> fftImageRange =
+      ValueNotifier(const RangeValues(0, 255));
+  final ValueNotifier<int> maxFftImageRange = ValueNotifier(255);
   final ValueNotifier<double> soundLength = ValueNotifier(0);
   final ValueNotifier<double> soundPosition = ValueNotifier(0);
   Timer? timer;
   AudioSource? currentSound;
-  late final VisualizerController visualizerController;
-
-  @override
-  void initState() {
-    super.initState();
-    samplesKind = ValueNotifier(GetSamplesKind.linear);
-    visualizerController = VisualizerController(samplesKind: samplesKind.value);
-    fftImageRange = ValueNotifier(
-      RangeValues(
-        visualizerController.minRange.toDouble(),
-        visualizerController.maxRange.toDouble(),
-      ),
-    );
-  }
+  FftController visualizerController = FftController();
 
   @override
   Widget build(BuildContext context) {
@@ -76,14 +66,14 @@ class _PageVisualizerState extends State<PageVisualizer> {
                   SoLoudCapture.instance.stopCapture();
                   visualizerController.changeIsCaptureStarted(false);
                 } else {
-                  SoLoudCapture.instance.init(deviceID: deviceID);
+                  SoLoudCapture.instance.initialize(deviceID: deviceID);
                   SoLoudCapture.instance.startCapture();
                   visualizerController.changeIsCaptureStarted(true);
                 }
               },
               onDeviceIdChanged: (deviceID) {
                 SoLoudCapture.instance.stopCapture();
-                SoLoudCapture.instance.init(deviceID: deviceID);
+                SoLoudCapture.instance.initialize(deviceID: deviceID);
                 SoLoudCapture.instance.startCapture();
               },
             ),
@@ -103,10 +93,7 @@ class _PageVisualizerState extends State<PageVisualizer> {
                     ),
                     linearShapeParams: LinearShapeParams(
                       angle: -90,
-                      space: defaultTargetPlatform == TargetPlatform.android ||
-                              defaultTargetPlatform == TargetPlatform.iOS
-                          ? -10
-                          : 10,
+                      space: Platform.isAndroid || Platform.isIOS ? -10 : 10,
                       alignment: LinearAlignment.left,
                     ),
                   ),
@@ -192,7 +179,7 @@ class _PageVisualizerState extends State<PageVisualizer> {
                 ),
                 const SizedBox(width: 10),
 
-                /// texture kind
+                /// texture type
                 StarMenu(
                   params: StarMenuParameters(
                     shape: MenuShape.linear,
@@ -211,52 +198,48 @@ class _PageVisualizerState extends State<PageVisualizer> {
                     controller.closeMenu!();
                   },
                   items: [
-                    /// wave data (amplitudes)
-                    ActionChip(
-                      backgroundColor: Colors.blue,
-                      onPressed: () {
-                        samplesKind.value = GetSamplesKind.wave;
-                        visualizerController
-                            .changeSamplesKind(GetSamplesKind.wave);
-                        fftImageRange.value = const RangeValues(0, 255);
-                      },
-                      label: const Text('wave data'),
-                    ),
-
                     /// frequencies on 1st 256 px row
                     /// wave on 2nd 256 px row
                     ActionChip(
                       backgroundColor: Colors.blue,
                       onPressed: () {
-                        samplesKind.value = GetSamplesKind.linear;
-                        visualizerController
-                            .changeSamplesKind(GetSamplesKind.linear);
-                        fftImageRange.value = const RangeValues(0, 255);
+                        textureType.value = TextureType.both1D;
                       },
-                      label: const Text('linear'),
+                      label: const Text('both 1D'),
                     ),
 
-                    /// both fft and wave
+                    /// frequencies (FFT)
                     ActionChip(
                       backgroundColor: Colors.blue,
                       onPressed: () {
-                        samplesKind.value = GetSamplesKind.texture;
-                        visualizerController
-                            .changeSamplesKind(GetSamplesKind.texture);
-                        fftImageRange.value = const RangeValues(0, 511);
+                        textureType.value = TextureType.fft2D;
                       },
-                      label: const Text('texture'),
+                      label: const Text('frequencies'),
                     ),
+
+                    /// wave data (amplitudes)
+                    ActionChip(
+                      backgroundColor: Colors.blue,
+                      onPressed: () {
+                        textureType.value = TextureType.wave2D;
+                      },
+                      label: const Text('wave data'),
+                    ),
+
+                    /// both fft and wave
+                    /// not implemented yet
+                    // ActionChip(
+                    //   backgroundColor: Colors.blue,
+                    //   onPressed: () {
+                    //     textureType.value = TextureType.both2D;
+                    //   },
+                    //   label: const Text('both'),
+                    // ),
                   ],
-                  child: ValueListenableBuilder<GetSamplesKind>(
-                    valueListenable: samplesKind,
-                    builder: (_, type, __) {
-                      return Chip(
-                        label: Text(type.name),
-                        backgroundColor: Colors.blue,
-                        avatar: const Icon(Icons.arrow_drop_down),
-                      );
-                    },
+                  child: const Chip(
+                    label: Text('texture'),
+                    backgroundColor: Colors.blue,
+                    avatar: Icon(Icons.arrow_drop_down),
                   ),
                 ),
               ],
@@ -288,15 +271,7 @@ class _PageVisualizerState extends State<PageVisualizer> {
                     ))
                         ?.files;
                     if (paths != null) {
-                      final AudioSource audioFile;
-                      if (kIsWeb) {
-                        audioFile = await SoLoud.instance
-                            .loadMem(paths.first.path!, paths.first.bytes!);
-                      } else {
-                        audioFile =
-                            await SoLoud.instance.loadFile(paths.first.path!);
-                      }
-                      unawaited(play(audioFile));
+                      unawaited(play(paths.first.path!));
                     }
                   },
                   child: const Text('pick audio'),
@@ -355,13 +330,14 @@ class _PageVisualizerState extends State<PageVisualizer> {
                     Text('FFT range ${fftRange.start.toInt()}'),
                     Expanded(
                       child: RangeSlider(
-                        max: visualizerController.maxRangeLimit.toDouble() +1,
+                        max: 255,
+                        divisions: 256,
                         values: fftRange,
                         onChanged: (values) {
                           fftImageRange.value = values;
                           visualizerController
-                            ..changeMin(values.start.toInt())
-                            ..changeMax(values.end.toInt());
+                            ..changeMinFreq(values.start.toInt())
+                            ..changeMaxFreq(values.end.toInt());
                         },
                       ),
                     ),
@@ -411,7 +387,7 @@ class _PageVisualizerState extends State<PageVisualizer> {
                             .changeIsVisualizerForPlayer(!value);
                       },
                     ),
-                    const Text('show mic data'),
+                    const Text('show capture data'),
                     Checkbox(
                       value: forPlayer,
                       onChanged: (value) {
@@ -446,19 +422,52 @@ class _PageVisualizerState extends State<PageVisualizer> {
             ),
 
             /// VISUALIZER
-            Visualizer(
-                      // key: UniqueKey(),
-                      controller: visualizerController,
-                      shader: shader,
-                    ),
+            FutureBuilder<ui.FragmentShader?>(
+              future: loadShader(),
+              builder: (context, snapshot) {
+                if (snapshot.hasData) {
+                  return ValueListenableBuilder<TextureType>(
+                    valueListenable: textureType,
+                    builder: (_, type, __) {
+                      return Visualizer(
+                        key: UniqueKey(),
+                        controller: visualizerController,
+                        shader: snapshot.data!,
+                        textureType: type,
+                      );
+                    },
+                  );
+                } else {
+                  if (snapshot.data == null) {
+                    return const Placeholder(
+                      child: Align(
+                        child: Text('Error compiling shader.\nSee log'),
+                      ),
+                    );
+                  }
+                  return const CircularProgressIndicator();
+                }
+              },
+            ),
           ],
         ),
       ),
     );
   }
 
+  /// load asynchronously the fragment shader
+  Future<ui.FragmentShader?> loadShader() async {
+    try {
+      final program = await ui.FragmentProgram.fromAsset(shader);
+      return program.fragmentShader();
+    } catch (e) {
+      _log.severe('error compiling the shader', e);
+    }
+    return null;
+  }
+
   /// play file
-  Future<void> play(AudioSource source) async {
+  Future<void> play(String file) async {
     if (currentSound != null) {
       try {
         await SoLoud.instance.disposeSource(currentSound!);
@@ -468,7 +477,9 @@ class _PageVisualizerState extends State<PageVisualizer> {
       }
       stopTimer();
     }
-    currentSound = source;
+
+    /// load the file
+    currentSound = await SoLoud.instance.loadFile(file);
 
     /// play it
     await SoLoud.instance.play(currentSound!);
@@ -483,7 +494,7 @@ class _PageVisualizerState extends State<PageVisualizer> {
       (event) {
         stopTimer();
 
-        /// It's needed to call dispose when it ends else it will
+        /// It's needed to call dispose when it end else it will
         /// not be cleared
         SoLoud.instance.disposeSource(currentSound!);
         currentSound = null;
@@ -494,9 +505,26 @@ class _PageVisualizerState extends State<PageVisualizer> {
 
   /// plays an assets file
   Future<void> playAsset(String assetsFile) async {
-    // final audioFile = await getAssetFile(assetsFile);
-    final audioFile = await SoLoud.instance.loadAsset(assetsFile);
-    return play(audioFile);
+    final audioFile = await getAssetFile(assetsFile);
+    return play(audioFile.path);
+  }
+
+  /// get the assets file and copy it to the temp dir
+  Future<File> getAssetFile(String assetsFile) async {
+    final tempDir = await getTemporaryDirectory();
+    final tempPath = tempDir.path;
+    final filePath = '$tempPath/$assetsFile';
+    final file = File(filePath);
+    if (file.existsSync()) {
+      return file;
+    } else {
+      final byteData = await rootBundle.load(assetsFile);
+      final buffer = byteData.buffer;
+      await file.create(recursive: true);
+      return file.writeAsBytes(
+        buffer.asUint8List(byteData.offsetInBytes, byteData.lengthInBytes),
+      );
+    }
   }
 
   /// start timer to update the audio position slider

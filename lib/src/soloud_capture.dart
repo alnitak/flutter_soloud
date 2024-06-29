@@ -1,8 +1,6 @@
-// import 'dart:ffi' as ffi;
+import 'dart:ffi' as ffi;
 
-import 'package:flutter_soloud/src/bindings/audio_data.dart';
 import 'package:flutter_soloud/src/enums.dart';
-import 'package:flutter_soloud/src/exceptions/exceptions.dart';
 import 'package:flutter_soloud/src/soloud.dart';
 import 'package:flutter_soloud/src/bindings/soloud_controller.dart';
 import 'package:logging/logging.dart';
@@ -77,26 +75,53 @@ interface class SoLoudCapture {
   // Below all the methods implemented with FFI for the capture
   // ////////////////////////////////////////////////
 
+  /// Return a floats matrix of 256x512
+  /// Every row are composed of 256 FFT values plus 256 of wave data
+  /// Every time is called, a new row is stored in the
+  /// first row and all the previous rows are shifted
+  /// up (the last one will be lost).
+  ///
+  /// Return [CaptureErrors.captureNoError] if no error.
+  ///
+  CaptureErrors getCaptureAudioTexture2D(
+    ffi.Pointer<ffi.Pointer<ffi.Float>> audioData,
+  ) {
+    if (!isCaptureInited || audioData == ffi.nullptr) {
+      _log.severe(
+        () => 'getCaptureAudioTexture2D(): ${CaptureErrors.captureNotInited}',
+      );
+      return CaptureErrors.captureNotInited;
+    }
+
+    final ret =
+        SoLoudController().captureFFI.getCaptureAudioTexture2D(audioData);
+    _logCaptureError(ret, from: 'getCaptureAudioTexture2D() result');
+
+    if (ret != CaptureErrors.captureNoError) {
+      return ret;
+    }
+    if (audioData.value == ffi.nullptr) {
+      _logCaptureError(
+        CaptureErrors.nullPointer,
+        from: 'getCaptureAudioTexture2D() result',
+      );
+      return CaptureErrors.nullPointer;
+    }
+    return CaptureErrors.captureNoError;
+  }
+
   /// Initialize input device with [deviceID].
   ///
   /// Return [CaptureErrors.captureNoError] if no error.
   ///
-  CaptureErrors init({int deviceID = -1}) {
+  CaptureErrors initialize({int deviceID = -1}) {
     final ret = SoLoudController().captureFFI.initCapture(deviceID);
     _logCaptureError(ret, from: 'initCapture() result');
     if (ret == CaptureErrors.captureNoError) {
       isCaptureInited = true;
-    } else {
-      throw SoLoudCppException.fromCaptureError(ret);
     }
 
     return ret;
-  }
-
-  /// Dispose capture device.
-  void deinit() {
-    SoLoudController().captureFFI.disposeCapture();
-    isCaptureInited = false;
   }
 
   /// Get the status of the device.
@@ -137,33 +162,6 @@ interface class SoLoudCapture {
     return ret;
   }
 
-  /// Return a floats matrix of 256x512
-  /// Every row are composed of 256 FFT values plus 256 of wave data
-  /// Every time is called, a new row is stored in the
-  /// first row and all the previous rows are shifted
-  /// up (the last one will be lost).
-  ///
-  /// Return [CaptureErrors.captureNoError] if no error.
-  ///
-  @Deprecated('Please use AudioData class instead.')
-  CaptureErrors getCaptureAudioTexture2D(AudioData audioData) {
-    if (!isCaptureInited) {
-      _log.severe(
-        () => 'getCaptureAudioTexture2D(): ${CaptureErrors.captureNotInited}',
-      );
-      return CaptureErrors.captureNotInited;
-    }
-
-    final ret =
-        SoLoudController().captureFFI.getCaptureAudioTexture2D(audioData);
-    _logCaptureError(ret, from: 'getCaptureAudioTexture2D() result');
-
-    if (ret != CaptureErrors.captureNoError) {
-      return ret;
-    }
-    return CaptureErrors.captureNoError;
-  }
-
   /// Start capturing audio data.
   ///
   /// Return [CaptureErrors.captureNoError] if no error
@@ -171,9 +169,6 @@ interface class SoLoudCapture {
   CaptureErrors startCapture() {
     final ret = SoLoudController().captureFFI.startCapture();
     _logCaptureError(ret, from: 'startCapture() result');
-    if (ret != CaptureErrors.captureNoError) {
-      throw SoLoudCppException.fromCaptureError(ret);
-    }
     return ret;
   }
 
@@ -186,8 +181,6 @@ interface class SoLoudCapture {
     _logCaptureError(ret, from: 'stopCapture() result');
     if (ret == CaptureErrors.captureNoError) {
       isCaptureInited = false;
-    } else {
-      throw SoLoudCppException.fromCaptureError(ret);
     }
     return ret;
   }

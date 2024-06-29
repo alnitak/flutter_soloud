@@ -174,11 +174,11 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
 
     // rotate view
     float a;
-    a = -0.8;
+    a = -0.6;
     rd = rotateX(rd, a);
     ro = rotateX(ro, a);
 
-    a = 1.8;
+    a = 1.5;
 //    a = sin(iTime)*.5 + 1.570796327;
     rd = rotateY(rd, a);
     ro = rotateY(ro, a);
