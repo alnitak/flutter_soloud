@@ -247,7 +247,7 @@ interface class SoLoud {
 
       // TODO(filip): The Loader is not compatible with web!
       //              Commenting this temporarly!
-      // await _loader.initialize();
+      await _loader.initialize();
     } else {
       _log.severe('initialize() failed with error: $error');
     }
@@ -429,7 +429,7 @@ interface class SoLoud {
   ///
   /// It is useful when using this plugin on the web browsers because
   /// they cannot read directly files in the loal storage.
-  /// 
+  ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   Future<AudioSource> loadMem(
     String path,
@@ -489,9 +489,9 @@ interface class SoLoud {
       throw const SoLoudNotInitializedException();
     }
 
-    final file = await _loader.loadAsset(key, assetBundle: assetBundle);
+    final newAudioSource = await _loader.loadAsset(key, mode, assetBundle: assetBundle,);
 
-    return loadFile(file.absolute.path, mode: mode);
+    return newAudioSource;
   }
 
   /// Load a new sound to be played once or multiple times later, from
@@ -527,9 +527,9 @@ interface class SoLoud {
       throw const SoLoudNotInitializedException();
     }
 
-    final file = await _loader.loadUrl(url, httpClient: httpClient);
+    final newAudioSource = await _loader.loadUrl(url, mode, httpClient: httpClient);
 
-    return loadFile(file.absolute.path, mode: mode);
+    return newAudioSource;
   }
 
   /// Load a new waveform to be played once or multiple times later.
@@ -1551,8 +1551,8 @@ interface class SoLoud {
   /// [getFilterParamNames]), and its new [value].
   void setFilterParameter(
       FilterType filterType, int attributeId, double value) {
-    final ret = _controller.soLoudFFI
-        .setFilterParams(filterType, attributeId, value);
+    final ret =
+        _controller.soLoudFFI.setFilterParams(filterType, attributeId, value);
     final error = PlayerErrors.values[ret];
     if (error != PlayerErrors.noError) {
       _log.severe(() => 'setFxParams(): $error');
