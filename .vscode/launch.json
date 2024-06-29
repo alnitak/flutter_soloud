@@ -78,6 +78,12 @@
             "request": "launch",
             "program": "${workspaceFolder}/example/build/linux/x64/debug/bundle/flutter_soloud_example",
             "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Chrome",
+            "type": "chrome",
+            "preLaunchTask": "compile web debug",
+            "request": "launch"
         }
     ]
 }
