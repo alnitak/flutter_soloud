@@ -50,13 +50,19 @@ class AudioDataCtrl {
     return Float32List(256);
   }
 
-  void dispose(SampleFormat1D s1D, SampleFormat2D s2D) {
+  void dispose(
+    GetSamplesKind getSamplesKind,
+    SampleFormat2D? sWave,
+    SampleFormat1D? s1D,
+    SampleFormat2D? s2D,
+  ) {
     wasmFree(_samplesPtr);
   }
 
   double getWave(SampleFormat2D s2D, SampleWave offset) {
     final samplePtr = wasmGetI32Value(_samplesPtr, '*');
-    return wasmGetF32Value(samplePtr + offset.value * 4, 'float');
+    final data = wasmGetF32Value(samplePtr + offset.value * 4, 'float');
+    return data;
   }
 
   double getLinearFft(SampleFormat1D s1D, SampleLinear offset) {
@@ -70,14 +76,20 @@ class AudioDataCtrl {
     return data;
   }
 
-  double getTexture(SampleFormat2D s2D, SampleRow row, SampleColumn column) {
-    final rowPtr = wasmGetI32Value(_samplesPtr + row.value * 4, '*');
-    return wasmGetF32Value(rowPtr + column.value * 4, 'float');
+  double getTexture(
+    SampleFormat2D s2D,
+    GetSamplesFrom getSamplesFrom,
+    SampleRow row,
+    SampleColumn column,
+  ) {
+    // final offset = samplesPtr + ((row.value * 256 + column.value) * 4);
+    // final data = wasmGetF32Value(offset, 'float');
+    final double data;
+    if (getSamplesFrom == GetSamplesFrom.player) {
+      data = wasmGetTextureValue(row.value, column.value);
+    } else {
+      data = wasmGetCaptureTextureValue(row.value, column.value);
+    }
+    return data;
   }
-
-  bool isEmptyLinear(SampleFormat1D s1D) => s1D.isEmpty;
-
-  bool isEmptyTexture(SampleFormat1D s2D) => s2D.isEmpty;
-
-  bool isEmptyWave(SampleFormat1D s2D) => s2D.isEmpty;
 }

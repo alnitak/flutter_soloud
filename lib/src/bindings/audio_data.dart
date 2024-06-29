@@ -205,7 +205,7 @@ class AudioData {
   /// Dispose the memory allocated to acquire audio data.
   /// Must be called when there is no more need of [AudioData].
   void dispose() {
-    ctrl.dispose(_samples1D, _samples2D);
+    ctrl.dispose(_getSamplesKind, _samplesWave, _samples1D, _samples2D);
   }
 
   /// Get the wave data at offset [offset].
@@ -213,12 +213,15 @@ class AudioData {
   /// Use this method to get data when using [GetSamplesKind.linear].
   /// The data is composed of 256 floats.
   double getWave(SampleWave offset) {
-    if (_getSamplesKind != GetSamplesKind.wave) return 0;
+    if (_getSamplesKind != GetSamplesKind.wave || _samplesWave == null) {
+      return 0;
+    }
 
-    if (!SoLoudController().soLoudFFI.getVisualizationEnabled()) {
+    if (_getSamplesFrom == GetSamplesFrom.player &&
+        !SoLoudController().soLoudFFI.getVisualizationEnabled()) {
       throw const SoLoudVisualizationNotEnabledException();
     }
-    return ctrl.getWave(_samplesWave, offset);
+    return ctrl.getWave(_samplesWave!, offset);
   }
 
   /// Get the FFT audio data at offset [offset].
@@ -260,18 +263,14 @@ class AudioData {
   /// Each time the [AudioData.updateSamples] method is called,
   /// the last row is discarded and the new one will be the first.
   double getTexture(SampleRow row, SampleColumn column) {
-    if (_getSamplesKind != GetSamplesKind.texture) return 0;
+    if (_getSamplesKind != GetSamplesKind.texture || _samples2D == null) {
+      return 0;
+    }
 
-    if (!SoLoudController().soLoudFFI.getVisualizationEnabled()) {
+    if (_getSamplesFrom == GetSamplesFrom.player &&
+        !SoLoudController().soLoudFFI.getVisualizationEnabled()) {
       throw const SoLoudVisualizationNotEnabledException();
     }
-    return ctrl.getTexture(_samples2D, row, column);
+    return ctrl.getTexture(_samples2D!, _getSamplesFrom, row, column);
   }
-
-  // Wether or not the current used data is empty.
-  bool get isEmpty => _getSamplesKind == GetSamplesKind.texture
-      ? ctrl.isEmptyTexture(_samples2D)
-      : _getSamplesKind == GetSamplesKind.linear
-          ? ctrl.isEmptyLinear(_samples1D)
-          : ctrl.isEmptyWave(_samplesWave); // GetSamplesKind.wave
 }

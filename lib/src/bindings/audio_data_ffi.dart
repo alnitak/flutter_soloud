@@ -47,14 +47,33 @@ class AudioDataCtrl {
     return calloc();
   }
 
-  void dispose(SampleFormat1D s1D, SampleFormat2D s2D) {
-    if (s1D != nullptr) calloc.free(s1D);
-    if (s2D != nullptr) calloc.free(s2D);
+  void dispose(
+    GetSamplesKind getSamplesKind,
+    SampleFormat2D? sWave,
+    SampleFormat1D? s1D,
+    SampleFormat2D? s2D,
+  ) {
+    if (getSamplesKind == GetSamplesKind.wave &&
+        sWave != null &&
+        sWave != nullptr) {
+      calloc.free(sWave);
+    }
+    if (getSamplesKind == GetSamplesKind.linear &&
+        s1D != null &&
+        s1D != nullptr) {
+      calloc.free(s1D);
+    }
+    if (getSamplesKind == GetSamplesKind.texture &&
+        s2D != null &&
+        s2D != nullptr) {
+      calloc.free(s2D);
+    }
   }
 
   double getWave(SampleFormat2D s2D, SampleWave offset) {
     final val = Pointer<Float>.fromAddress(s2D.value.address);
-    return (val + offset.value).value;
+    if (val == nullptr) return 0;
+    return val[offset.value];
   }
 
   double getLinearFft(SampleFormat1D s1D, SampleLinear offset) {
@@ -76,10 +95,4 @@ class AudioDataCtrl {
     if (val == nullptr) return 0;
     return val[stride * row.value + column.value];
   }
-
-  bool isEmptyLinear(SampleFormat1D s1D) => s1D == nullptr;
-
-  bool isEmptyTexture(SampleFormat2D s2D) => s2D == nullptr;
-
-  bool isEmptyWave(SampleFormat2D s2D) => s2D == nullptr;
 }

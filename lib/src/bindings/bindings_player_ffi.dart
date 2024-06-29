@@ -590,9 +590,6 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
 
   @override
   PlayerErrors getAudioTexture2D(AudioData samples) {
-    if (samples.isEmpty) {
-      return PlayerErrors.nullPointer;
-    }
     final ret = _getAudioTexture2D(samples.samples2D);
     return PlayerErrors.values[ret];
   }
