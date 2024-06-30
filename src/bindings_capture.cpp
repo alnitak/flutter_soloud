@@ -124,7 +124,8 @@ extern "C"
     {
         if (analyzerCapture.get() == nullptr || !capture.isInited())
         {
-            memset(samples, 0, sizeof(float) * 512 * 256);
+            *samples = *capturedTexture2D;
+            memset(*samples, 0, sizeof(float) * 512 * 256);
             return capture_not_inited;
         }
         /// shift up 1 row
@@ -133,6 +134,10 @@ extern "C"
         getCaptureTexture(capturedTexture2D[0]);
         *samples = *capturedTexture2D;
         return capture_noError;
+    }
+
+    FFI_PLUGIN_EXPORT float getCaptureTextureValue(int row, int column) {
+        return capturedTexture2D[row][column];
     }
 
     FFI_PLUGIN_EXPORT enum CaptureErrors setCaptureFftSmoothing(float smooth)

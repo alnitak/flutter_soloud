@@ -734,7 +734,7 @@ function dbg(...args) {
 }
 
 var ASM_CONSTS = {
- 67616: ($0, $1, $2, $3, $4) => {
+ 67760: ($0, $1, $2, $3, $4) => {
   if (typeof window === "undefined" || (window.AudioContext || window.webkitAudioContext) === undefined) {
    return 0;
   }
@@ -806,7 +806,7 @@ var ASM_CONSTS = {
   window.miniaudio.referenceCount += 1;
   return 1;
  },
- 69794: () => {
+ 69938: () => {
   if (typeof (window.miniaudio) !== "undefined") {
    miniaudio.unlock_event_types.map(function(event_type) {
     document.removeEventListener(event_type, miniaudio.unlock, true);
@@ -817,8 +817,8 @@ var ASM_CONSTS = {
    }
   }
  },
- 70084: () => (navigator.mediaDevices !== undefined && navigator.mediaDevices.getUserMedia !== undefined),
- 70188: () => {
+ 70228: () => (navigator.mediaDevices !== undefined && navigator.mediaDevices.getUserMedia !== undefined),
+ 70332: () => {
   try {
    var temp = new (window.AudioContext || window.webkitAudioContext);
    var sampleRate = temp.sampleRate;
@@ -828,7 +828,7 @@ var ASM_CONSTS = {
    return 0;
   }
  },
- 70359: ($0, $1, $2, $3, $4, $5) => {
+ 70503: ($0, $1, $2, $3, $4, $5) => {
   var deviceType = $0;
   var channels = $1;
   var sampleRate = $2;
@@ -899,8 +899,8 @@ var ASM_CONSTS = {
   device.pDevice = pDevice;
   return window.miniaudio.track_device(device);
  },
- 73236: $0 => window.miniaudio.get_device_by_index($0).webaudio.sampleRate,
- 73309: $0 => {
+ 73380: $0 => window.miniaudio.get_device_by_index($0).webaudio.sampleRate,
+ 73453: $0 => {
   var device = window.miniaudio.get_device_by_index($0);
   if (device.scriptNode !== undefined) {
    device.scriptNode.onaudioprocess = function(e) {};
@@ -915,20 +915,20 @@ var ASM_CONSTS = {
   device.webaudio = undefined;
   device.pDevice = undefined;
  },
- 73709: $0 => {
+ 73853: $0 => {
   window.miniaudio.untrack_device_by_index($0);
  },
- 73759: $0 => {
+ 73903: $0 => {
   var device = window.miniaudio.get_device_by_index($0);
   device.webaudio.resume();
   device.state = window.miniaudio.device_state.started;
  },
- 73898: $0 => {
+ 74042: $0 => {
   var device = window.miniaudio.get_device_by_index($0);
   device.webaudio.suspend();
   device.state = window.miniaudio.device_state.stopped;
  },
- 74038: () => {
+ 74182: () => {
   if (!Module.wasmWorker) {
    var workerUri = "assets/packages/flutter_soloud/web/worker.dart.js";
    console.log("EM_ASM creating web worker!");
@@ -937,12 +937,12 @@ var ASM_CONSTS = {
    console.log("EM_ASM web worker already created!");
   }
  },
- 74286: ($0, $1) => {
+ 74430: ($0, $1) => {
   if (Module.wasmWorker) {
    console.log("EM_ASM posting message " + UTF8ToString($0) + " with value " + $1);
    Module.wasmWorker.postMessage(JSON.stringify({
-    message: UTF8ToString($0),
-    value: $1
+    "message": UTF8ToString($0),
+    "value": $1
    }));
   } else {
    console.error("Worker not found.");
@@ -4512,6 +4512,8 @@ var _getAudioTexture = Module["_getAudioTexture"] = createExportWrapper("getAudi
 
 var _getAudioTexture2D = Module["_getAudioTexture2D"] = createExportWrapper("getAudioTexture2D");
 
+var _getTextureValue = Module["_getTextureValue"] = createExportWrapper("getTextureValue");
+
 var _getLength = Module["_getLength"] = createExportWrapper("getLength");
 
 var _seek = Module["_seek"] = createExportWrapper("seek");
@@ -4525,6 +4527,12 @@ var _setGlobalVolume = Module["_setGlobalVolume"] = createExportWrapper("setGlob
 var _getVolume = Module["_getVolume"] = createExportWrapper("getVolume");
 
 var _setVolume = Module["_setVolume"] = createExportWrapper("setVolume");
+
+var _getPan = Module["_getPan"] = createExportWrapper("getPan");
+
+var _setPan = Module["_setPan"] = createExportWrapper("setPan");
+
+var _setPanAbsolute = Module["_setPanAbsolute"] = createExportWrapper("setPanAbsolute");
 
 var _getIsValidVoiceHandle = Module["_getIsValidVoiceHandle"] = createExportWrapper("getIsValidVoiceHandle");
 
@@ -4633,6 +4641,8 @@ var _getCaptureWave = Module["_getCaptureWave"] = createExportWrapper("getCaptur
 var _getCaptureTexture = Module["_getCaptureTexture"] = createExportWrapper("getCaptureTexture");
 
 var _getCaptureAudioTexture2D = Module["_getCaptureAudioTexture2D"] = createExportWrapper("getCaptureAudioTexture2D");
+
+var _getCaptureTextureValue = Module["_getCaptureTextureValue"] = createExportWrapper("getCaptureTextureValue");
 
 var _setCaptureFftSmoothing = Module["_setCaptureFftSmoothing"] = createExportWrapper("setCaptureFftSmoothing");
 

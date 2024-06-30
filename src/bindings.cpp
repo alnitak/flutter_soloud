@@ -69,8 +69,8 @@ extern "C"
                     " with value " + $1);
                 // Send the message
                 Module.wasmWorker.postMessage(JSON.stringify({
-                    message : UTF8ToString($0),
-                    value : $1
+                    "message" : UTF8ToString($0),
+                    "value" : $1
                 }));
             }
             else
@@ -218,8 +218,13 @@ extern "C"
         bool loadIntoMem)
     {
         // this check is already been done in Dart
-        if (!player.get()->isInited())
+        if (player.get() == nullptr || !player.get()->isInited())
+        {
+            printf("WARNING (from SoLoud C++ binding code): the player has "
+                   "not yet been initialized. This is likely a bug in flutter_soloud. "
+                   "Please report the bug.");
             return;
+        }
 
         Player *p = player.get();
         unsigned int hash = 0;
@@ -247,7 +252,7 @@ extern "C"
         unsigned int *hash)
     {
         // this check is already been done in Dart
-        if (!player.get()->isInited())
+        if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
         return (PlayerErrors)player.get()->loadMem(uniqueName, buffer, length, *hash);
     }
@@ -613,7 +618,7 @@ extern "C"
         memcpy(samples + 256, wave, sizeof(float) * 256);
     }
 
-    /// Return a floats matrix of 512x256
+    /// Return a floats matrix of 256x512
     /// Every row are composed of 256 FFT values plus 256 of wave data
     /// Every time is called, a new row is stored in the
     /// first row and all the previous rows are shifted
@@ -626,9 +631,8 @@ extern "C"
         if (player.get() == nullptr || !player.get()->isInited() ||
             analyzer.get() == nullptr || !player.get()->isVisualizationEnabled())
         {
-            if (*samples == nullptr)
-                return unknownError;
-            memset(samples, 0, sizeof(float) * 512 * 256);
+            *samples = *texture2D;
+            memset(*samples, 0, sizeof(float) * 512 * 256);
             return backendNotInited;
         }
         /// shift up 1 row
@@ -637,6 +641,10 @@ extern "C"
         getAudioTexture(texture2D[0]);
         *samples = *texture2D;
         return noError;
+    }
+
+    FFI_PLUGIN_EXPORT float getTextureValue(int row, int column) {
+        return texture2D[row][column];
     }
 
     /// Get the sound length in seconds
@@ -728,6 +736,43 @@ extern "C"
             return soundHandleNotFound;
         player.get()->setVolume(handle, volume);
         return noError;
+    }
+
+    /// Get a sound's current pan setting.
+    ///
+    /// [handle] the sound handle.
+    /// Returns the range of the pan values is -1 to 1, where -1 is left, 0 is middle and and 1 is right.
+    FFI_PLUGIN_EXPORT double getPan(unsigned int handle)
+    {
+        if (player.get() == nullptr || !player.get()->isInited())
+            return 0.0f;
+
+        return player.get()->getPan(handle);
+    }
+
+    /// Set a sound's current pan setting.
+    ///
+    /// [handle] the sound handle.
+    /// [pan] the range of the pan values is -1 to 1, where -1 is left, 0 is middle and and 1 is right.
+    FFI_PLUGIN_EXPORT void setPan(unsigned int handle, double pan)
+    {
+        if (player.get() == nullptr || !player.get()->isInited())
+            return;
+        // Rounding to 6 decimal to work around the float to double precision.
+        player.get()->setPan(handle, pan);
+    }
+
+    /// Set the left/right volumes directly.
+    /// Note that this does not affect the value returned by getPan.
+    ///
+    /// [handle] the sound handle.
+    /// [panLeft] value for the left pan.
+    /// [panRight] value for the right pan.
+    FFI_PLUGIN_EXPORT void setPanAbsolute(unsigned int handle, double panLeft, double panRight)
+    {
+        if (player.get() == nullptr || !player.get()->isInited())
+            return;
+        player.get()->setPanAbsolute(handle, panLeft, panRight);
     }
 
     /// Check if a handle is still valid.

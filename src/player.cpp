@@ -516,6 +516,30 @@ void Player::setVolume(SoLoud::handle handle, float volume)
     return soloud.setVolume(handle, volume);
 }
 
+float Player::getPan(SoLoud::handle handle)
+{
+    return soloud.getPan(handle);
+}
+
+void Player::setPan(SoLoud::handle handle, float pan)
+{
+    if (pan > 1.0f)
+        pan = 1.0f;
+    if (pan < -1.0f)
+        pan = -1.0f;
+    soloud.setPan(handle, pan);
+}
+
+void Player::setPanAbsolute(SoLoud::handle handle, float panLeft, float panRight)
+{
+    if (panLeft > 1.0f) panLeft = 1.0f;
+    if (panLeft < -1.0f) panLeft = -1.0f;
+    if (panRight > 1.0f) panRight = 1.0f;
+    if (panRight < -1.0f) panRight = -1.0f;
+    soloud.setPanAbsolute(handle, panLeft, panRight);
+}
+
+
 bool Player::isValidVoiceHandle(SoLoud::handle handle)
 {
     return soloud.isValidVoiceHandle(handle);

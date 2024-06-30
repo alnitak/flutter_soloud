@@ -42,6 +42,7 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   test: ^1.24.9
+  very_good_analysis: ^5.1.0
 
 flutter:
   plugin:
