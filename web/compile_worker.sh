@@ -1,2 +1,2 @@
  # -O4
-dart compile js -o worker.dart.js ./worker.dart
+dart compile js -O3 -o worker.dart.js ./worker.dart

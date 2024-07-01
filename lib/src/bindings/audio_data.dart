@@ -112,6 +112,10 @@ class AudioData {
     this._getSamplesFrom,
     this._getSamplesKind,
   ) : ctrl = AudioDataCtrl() {
+    init();
+  }
+
+  void init() {
     switch (_getSamplesFrom) {
       case GetSamplesFrom.player:
         switch (_getSamplesKind) {
@@ -145,34 +149,34 @@ class AudioData {
   final AudioDataCtrl ctrl;
 
   /// Where the FFT or wave data is stored.
-  late final SampleFormat2D _samplesWave;
+  late SampleFormat2D _samplesWave;
 
   /// The getter for [_samplesWave].
   @internal
   SampleFormat2D get samplesWave => _samplesWave;
 
   /// Where the audio 2D data is stored.
-  late final SampleFormat2D _samples2D;
+  late SampleFormat2D _samples2D;
 
   /// The getter for [_samples2D].
   @internal
   SampleFormat2D get samples2D => _samples2D;
 
   /// Where the audio 1D data is stored.
-  late final SampleFormat1D _samples1D;
+  late SampleFormat1D _samples1D;
 
   /// The getter for [_samples1D].
   @internal
   SampleFormat1D get samples1D => _samples1D;
 
   /// Where to get audio samples. See [GetSamplesFrom].
-  final GetSamplesFrom _getSamplesFrom;
+  GetSamplesFrom _getSamplesFrom;
 
   /// The current device to acquire data.
   GetSamplesFrom get getSamplesFrom => _getSamplesFrom;
 
   /// Kind of audio samples. See [GetSamplesKind].
-  final GetSamplesKind _getSamplesKind;
+  GetSamplesKind _getSamplesKind;
 
   /// The current type of data to acquire.
   GetSamplesKind get getSamplesKind => _getSamplesKind;
@@ -202,6 +206,13 @@ class AudioData {
     _updateCallback(this);
   }
 
+  void changeType(GetSamplesFrom newFrom, GetSamplesKind newKind) {
+    _getSamplesKind = newKind;
+    _getSamplesFrom = newFrom;
+    // dispose();
+    init();
+  }
+
   /// Dispose the memory allocated to acquire audio data.
   /// Must be called when there is no more need of [AudioData].
   void dispose() {
@@ -213,7 +224,7 @@ class AudioData {
   /// Use this method to get data when using [GetSamplesKind.linear].
   /// The data is composed of 256 floats.
   double getWave(SampleWave offset) {
-    if (_getSamplesKind != GetSamplesKind.wave || _samplesWave == null) {
+    if (_getSamplesKind != GetSamplesKind.wave) {
       return 0;
     }
 
@@ -229,7 +240,7 @@ class AudioData {
   /// Use this method to get FFT data when using [GetSamplesKind.linear].
   /// The data is composed of 256 floats.
   double getLinearFft(SampleLinear offset) {
-    if (_getSamplesKind != GetSamplesKind.linear || _samples1D == null) {
+    if (_getSamplesKind != GetSamplesKind.linear) {
       return 0;
     }
 
@@ -245,7 +256,7 @@ class AudioData {
   /// Use this method to get wave data when using [GetSamplesKind.linear].
   /// The data is composed of 256 floats.
   double getLinearWave(SampleLinear offset) {
-    if (_getSamplesKind != GetSamplesKind.linear || _samples1D == null) {
+    if (_getSamplesKind != GetSamplesKind.linear) {
       return 0;
     }
 
@@ -263,7 +274,7 @@ class AudioData {
   /// Each time the [AudioData.updateSamples] method is called,
   /// the last row is discarded and the new one will be the first.
   double getTexture(SampleRow row, SampleColumn column) {
-    if (_getSamplesKind != GetSamplesKind.texture || _samples2D == null) {
+    if (_getSamplesKind != GetSamplesKind.texture) {
       return 0;
     }
 

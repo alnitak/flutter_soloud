@@ -12,9 +12,8 @@ typedef SampleFormat2D = Float32List;
 typedef SampleFormat1D = Float32List;
 
 @internal
-@immutable
 class AudioDataCtrl {
-  late final int _samplesPtr;
+  final int _samplesPtr = wasmMalloc(512 * 256 * 4);
   int get samplesPtr => _samplesPtr;
 
   final void Function(AudioData) waveCallback =
@@ -36,17 +35,14 @@ class AudioDataCtrl {
       SoLoudController().captureFFI.getCaptureAudioTexture;
 
   SampleFormat2D allocSample2D() {
-    _samplesPtr = wasmMalloc(512 * 256 * 4);
     return Float32List(512 * 256);
   }
 
   SampleFormat1D allocSample1D() {
-    _samplesPtr = wasmMalloc(512 * 4);
     return Float32List(512);
   }
 
   SampleFormat1D allocSampleWave() {
-    _samplesPtr = wasmMalloc(256 * 4);
     return Float32List(256);
   }
 
@@ -56,7 +52,9 @@ class AudioDataCtrl {
     SampleFormat1D? s1D,
     SampleFormat2D? s2D,
   ) {
-    wasmFree(_samplesPtr);
+    if (_samplesPtr != 0) {
+      wasmFree(_samplesPtr);
+    }
   }
 
   double getWave(SampleFormat2D s2D, SampleWave offset) {

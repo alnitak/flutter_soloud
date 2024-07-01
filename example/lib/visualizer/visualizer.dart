@@ -91,8 +91,7 @@ class VisualizerController extends ChangeNotifier {
         changeMax(255, notify: false);
         maxRangeLimit = 255;
     }
-    audioData.dispose();
-    audioData = AudioData(
+    audioData.changeType(
       isVisualizerForPlayer ? GetSamplesFrom.player : GetSamplesFrom.microphone,
       samplesKind,
     );

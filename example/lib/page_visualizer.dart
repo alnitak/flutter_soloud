@@ -65,6 +65,12 @@ class _PageVisualizerState extends State<PageVisualizer> {
   }
 
   @override
+  void dispose() {
+    visualizerController.audioData.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: SingleChildScrollView(
@@ -124,14 +130,14 @@ class _PageVisualizerState extends State<PageVisualizer> {
                     ActionChip(
                       backgroundColor: Colors.blue,
                       onPressed: () {
-                        playAsset('assets/audio/Tropical Beeper.mp3');
+                        playAsset('assets/audio/TropicalBeeper.mp3');
                       },
                       label: const Text('Tropical Beeper'),
                     ),
                     ActionChip(
                       backgroundColor: Colors.blue,
                       onPressed: () {
-                        playAsset('assets/audio/X trackTure.mp3');
+                        playAsset('assets/audio/XtrackTure.mp3');
                       },
                       label: const Text('X trackTure'),
                     ),
@@ -355,7 +361,7 @@ class _PageVisualizerState extends State<PageVisualizer> {
                     Text('FFT range ${fftRange.start.toInt()}'),
                     Expanded(
                       child: RangeSlider(
-                        max: visualizerController.maxRangeLimit.toDouble() +1,
+                        max: visualizerController.maxRangeLimit.toDouble() + 1,
                         values: fftRange,
                         onChanged: (values) {
                           fftImageRange.value = values;
@@ -447,10 +453,10 @@ class _PageVisualizerState extends State<PageVisualizer> {
 
             /// VISUALIZER
             Visualizer(
-                      // key: UniqueKey(),
-                      controller: visualizerController,
-                      shader: shader,
-                    ),
+              // key: UniqueKey(),
+              controller: visualizerController,
+              shader: shader,
+            ),
           ],
         ),
       ),
