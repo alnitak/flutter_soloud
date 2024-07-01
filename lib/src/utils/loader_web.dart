@@ -55,7 +55,7 @@ class SoLoudLoader {
 
     final buffer = byteData.buffer
         .asUint8List(byteData.offsetInBytes, byteData.lengthInBytes);
-    final newAudioSource = SoLoud.instance.loadMem(key, buffer);
+    final newAudioSource = SoLoud.instance.loadMem(key, buffer, mode: mode);
     return newAudioSource;
   }
 
@@ -67,7 +67,8 @@ class SoLoudLoader {
   /// Throws [FormatException] if the [url] is invalid.
   /// Throws [SoLoudNetworkStatusCodeException] if the request fails.
   Future<AudioSource> loadUrl(
-    String url, LoadMode mode, {
+    String url,
+    LoadMode mode, {
     http.Client? httpClient,
   }) async {
     final uri = Uri.parse(url);

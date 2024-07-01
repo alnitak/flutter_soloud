@@ -23,4 +23,9 @@ struct CaptureDevice
 
 //--------------------- copy here the new functions to generate
 
-FFI_PLUGIN_EXPORT void disposeCapture();
+FFI_PLUGIN_EXPORT enum PlayerErrors loadMem(
+    char *uniqueName,
+    unsigned char *buffer,
+    int length,
+    int loadIntoMem,
+    unsigned int *hash);

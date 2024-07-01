@@ -170,6 +170,7 @@ PlayerErrors Player::loadMem(
     const std::string &uniqueName,
     unsigned char *mem,
     int length,
+    bool loadIntoMem,
     unsigned int &hash)
 {
     if (!mInited)
@@ -195,9 +196,18 @@ PlayerErrors Player::loadMem(
     hash = sounds.back().get()->soundHash = newHash;
 
     SoLoud::result result;
-    sounds.back().get()->sound = std::make_shared<SoLoud::Wav>();
-    sounds.back().get()->soundType = TYPE_WAV;
-    result = static_cast<SoLoud::Wav *>(sounds.back().get()->sound.get())->loadMem(mem, length, true, true);
+    if (loadIntoMem)
+    {
+        sounds.back().get()->sound = std::make_shared<SoLoud::Wav>();
+        sounds.back().get()->soundType = TYPE_WAV;
+        result = static_cast<SoLoud::Wav *>(sounds.back().get()->sound.get())->loadMem(mem, length, true, true);
+    }
+    else
+    {
+        sounds.back().get()->sound = std::make_shared<SoLoud::WavStream>();
+        sounds.back().get()->soundType = TYPE_WAVSTREAM;
+        result = static_cast<SoLoud::WavStream *>(sounds.back().get()->sound.get())->loadMem(mem, length, true, true);
+    }
 
     if (result != SoLoud::SO_NO_ERROR)
     {
@@ -368,14 +378,16 @@ void Player::removeHandle(unsigned int handle)
     //         { return f == handle; }));
     bool e = true;
     for (int i = 0; i < sounds.size(); ++i)
-        for (int n = 0; n< sounds[i]->handle.size(); ++n)
+        for (int n = 0; n < sounds[i]->handle.size(); ++n)
         {
-            if (sounds[i]->handle[n] == handle) {
-                sounds[i]->handle.erase(sounds[i]->handle.begin()+n);
+            if (sounds[i]->handle[n] == handle)
+            {
+                sounds[i]->handle.erase(sounds[i]->handle.begin() + n);
                 e = false;
                 break;
             }
-            if (e) break;
+            if (e)
+                break;
         }
 }
 
@@ -532,13 +544,16 @@ void Player::setPan(SoLoud::handle handle, float pan)
 
 void Player::setPanAbsolute(SoLoud::handle handle, float panLeft, float panRight)
 {
-    if (panLeft > 1.0f) panLeft = 1.0f;
-    if (panLeft < -1.0f) panLeft = -1.0f;
-    if (panRight > 1.0f) panRight = 1.0f;
-    if (panRight < -1.0f) panRight = -1.0f;
+    if (panLeft > 1.0f)
+        panLeft = 1.0f;
+    if (panLeft < -1.0f)
+        panLeft = -1.0f;
+    if (panRight > 1.0f)
+        panRight = 1.0f;
+    if (panRight < -1.0f)
+        panRight = -1.0f;
     soloud.setPanAbsolute(handle, panLeft, panRight);
 }
-
 
 bool Player::isValidVoiceHandle(SoLoud::handle handle)
 {

@@ -1,8 +1,6 @@
 // ignore_for_file: avoid_positional_boolean_parameters
 
 import 'dart:async';
-import 'dart:math';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';

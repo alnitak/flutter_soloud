@@ -13,9 +13,8 @@ class FlutterCaptureFfi extends FlutterCapture {
 
   /// The symbols are looked up with [lookup].
   FlutterCaptureFfi.fromLookup(
-      ffi.Pointer<T> Function<T extends ffi.NativeType>(String symbolName)
-          lookup)
-      : _lookup = lookup;
+    ffi.Pointer<T> Function<T extends ffi.NativeType>(String symbolName) lookup,
+  ) : _lookup = lookup;
 
   /// Holds the symbol lookup function.
   final ffi.Pointer<T> Function<T extends ffi.NativeType>(String symbolName)
@@ -69,22 +68,30 @@ class FlutterCaptureFfi extends FlutterCapture {
   late final _listCaptureDevicesPtr = _lookup<
       ffi.NativeFunction<
           ffi.Void Function(
-              ffi.Pointer<ffi.Pointer<ffi.Char>>,
-              ffi.Pointer<ffi.Pointer<ffi.Int>>,
-              ffi.Pointer<ffi.Int>)>>('listCaptureDevices');
+            ffi.Pointer<ffi.Pointer<ffi.Char>>,
+            ffi.Pointer<ffi.Pointer<ffi.Int>>,
+            ffi.Pointer<ffi.Int>,
+          )>>('listCaptureDevices');
   late final _listCaptureDevices = _listCaptureDevicesPtr.asFunction<
-      void Function(ffi.Pointer<ffi.Pointer<ffi.Char>>,
-          ffi.Pointer<ffi.Pointer<ffi.Int>>, ffi.Pointer<ffi.Int>)>();
+      void Function(
+        ffi.Pointer<ffi.Pointer<ffi.Char>>,
+        ffi.Pointer<ffi.Pointer<ffi.Int>>,
+        ffi.Pointer<ffi.Int>,
+      )>();
 
   late final _freeListCaptureDevicesPtr = _lookup<
       ffi.NativeFunction<
           ffi.Void Function(
-              ffi.Pointer<ffi.Pointer<ffi.Char>>,
-              ffi.Pointer<ffi.Pointer<ffi.Int>>,
-              ffi.Int)>>('freeListCaptureDevices');
+            ffi.Pointer<ffi.Pointer<ffi.Char>>,
+            ffi.Pointer<ffi.Pointer<ffi.Int>>,
+            ffi.Int,
+          )>>('freeListCaptureDevices');
   late final _freeListCaptureDevices = _freeListCaptureDevicesPtr.asFunction<
-      void Function(ffi.Pointer<ffi.Pointer<ffi.Char>>,
-          ffi.Pointer<ffi.Pointer<ffi.Int>>, int)>();
+      void Function(
+        ffi.Pointer<ffi.Pointer<ffi.Char>>,
+        ffi.Pointer<ffi.Pointer<ffi.Int>>,
+        int,
+      )>();
 
   @override
   CaptureErrors initCapture(int deviceID) {
@@ -151,19 +158,21 @@ class FlutterCaptureFfi extends FlutterCapture {
   late final _getCaptureFftPtr = _lookup<
       ffi.NativeFunction<
           ffi.Void Function(
-              ffi.Pointer<ffi.Pointer<ffi.Float>>)>>('getCaptureFft');
+            ffi.Pointer<ffi.Pointer<ffi.Float>>,
+          )>>('getCaptureFft');
   late final _getCaptureFft = _getCaptureFftPtr
       .asFunction<void Function(ffi.Pointer<ffi.Pointer<ffi.Float>>)>();
 
   @override
   void getCaptureWave(AudioData wave) {
-    return _getCaptureWave(wave.ctrl.samplesWave!);
+    return _getCaptureWave(wave.ctrl.samplesWave);
   }
 
   late final _getCaptureWavePtr = _lookup<
       ffi.NativeFunction<
           ffi.Void Function(
-              ffi.Pointer<ffi.Pointer<ffi.Float>>)>>('getCaptureWave');
+            ffi.Pointer<ffi.Pointer<ffi.Float>>,
+          )>>('getCaptureWave');
   late final _getCaptureWave = _getCaptureWavePtr
       .asFunction<void Function(ffi.Pointer<ffi.Pointer<ffi.Float>>)>();
 
@@ -174,42 +183,47 @@ class FlutterCaptureFfi extends FlutterCapture {
 
   late final _getCaptureTexturePtr =
       _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Float>)>>(
-          'getCaptureTexture');
+    'getCaptureTexture',
+  );
   late final _getCaptureTexture =
       _getCaptureTexturePtr.asFunction<void Function(ffi.Pointer<ffi.Float>)>();
 
   @override
   CaptureErrors getCaptureAudioTexture2D(AudioData samples) {
-    final int ret = _getCaptureAudioTexture2D(samples.ctrl.samples2D);
+    final ret = _getCaptureAudioTexture2D(samples.ctrl.samples2D);
     return CaptureErrors.values[ret];
   }
 
   late final _getCaptureAudioTexture2DPtr = _lookup<
-          ffi.NativeFunction<
-              ffi.Int32 Function(ffi.Pointer<ffi.Pointer<ffi.Float>>)>>(
-      'getCaptureAudioTexture2D');
+      ffi
+      .NativeFunction<ffi.Int32 Function(ffi.Pointer<ffi.Pointer<ffi.Float>>)>>(
+    'getCaptureAudioTexture2D',
+  );
   late final _getCaptureAudioTexture2D = _getCaptureAudioTexture2DPtr
       .asFunction<int Function(ffi.Pointer<ffi.Pointer<ffi.Float>>)>();
 
+  @override
   double getCaptureTextureValue(int row, int column) {
     return _getCaptureTextureValue(row, column);
   }
 
   late final _getCaptureTextureValuePtr =
       _lookup<ffi.NativeFunction<ffi.Float Function(ffi.Int, ffi.Int)>>(
-          'getCaptureTextureValue');
+    'getCaptureTextureValue',
+  );
   late final _getCaptureTextureValue =
       _getCaptureTextureValuePtr.asFunction<double Function(int, int)>();
 
   @override
   CaptureErrors setCaptureFftSmoothing(double smooth) {
-    final int ret = _setCaptureFftSmoothing(smooth);
+    final ret = _setCaptureFftSmoothing(smooth);
     return CaptureErrors.values[ret];
   }
 
   late final _setCaptureFftSmoothingPtr =
       _lookup<ffi.NativeFunction<ffi.Int32 Function(ffi.Float)>>(
-          'setCaptureFftSmoothing');
+    'setCaptureFftSmoothing',
+  );
   late final _setCaptureFftSmoothing =
       _setCaptureFftSmoothingPtr.asFunction<int Function(double)>();
 }

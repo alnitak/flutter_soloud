@@ -3,11 +3,6 @@
 import 'dart:js_interop';
 import 'package:web/web.dart' as web;
 
-// @JS()
-// external $Module get wasmModule;
-
-// @JS()
-// extension type $Module._(JSObject _) implements JSObject {
 @JS('Module._malloc')
 external int wasmMalloc(int bytesCount);
 
@@ -71,8 +66,10 @@ external int wasmLoadMem(
   int uniqueNamePtr,
   int memPtr,
   int length,
+  int loadIntoMem,
   int hashPtr,
 );
+
 @JS('Module._loadWaveform')
 external int wasmLoadWaveform(
   int waveform,
@@ -439,4 +436,3 @@ external int wasmStartCapture();
 
 @JS('Module._stopCapture')
 external int wasmStopCapture();
-// }

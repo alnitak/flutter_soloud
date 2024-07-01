@@ -4,14 +4,13 @@ import 'dart:typed_data';
 import 'package:flutter_soloud/src/bindings/audio_data.dart';
 import 'package:flutter_soloud/src/bindings/bindings_player.dart';
 import 'package:flutter_soloud/src/bindings/js_extension.dart';
-
 import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/filter_params.dart';
-import 'package:flutter_soloud/src/sound_hash.dart';
 import 'package:flutter_soloud/src/sound_handle.dart';
+import 'package:flutter_soloud/src/sound_hash.dart';
 import 'package:flutter_soloud/src/worker/worker.dart';
-import 'package:meta/meta.dart';
 import 'package:logging/logging.dart';
+import 'package:meta/meta.dart';
 
 /// https://kapadia.github.io/emscripten/2013/09/13/emscripten-pointers-and-pointers.html
 /// https://emscripten.org/docs/porting/connecting_cpp_and_javascript/Interacting-with-code.html#access-memory-from-javascript
@@ -29,7 +28,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
 
   // static FlutterSoLoudWeb? _instance;
 
-  WorkerController? _workerController;
+  WorkerController? workerController;
 
   // FlutterSoLoudWeb._();
 
@@ -48,19 +47,20 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     // is used in the main isolate to listen for events coming from native.
     // From native the events can be sent from the main thread and even from
     // other threads like the audio thread.
-    _workerController = WorkerController();
-    _workerController!.setWasmWorker(wasmWorker);
-    _workerController!.onReceive().listen(
+    workerController = WorkerController();
+    workerController!.setWasmWorker(wasmWorker);
+    workerController!.onReceive().listen(
       (event) {
         /// The [event] coming from `web/worker.dart.js` is of String type.
         /// Only `voiceEndedCallback` event in web for now.
         switch (event) {
           case String():
-            final decodedMap = jsonDecode(event);
+            final decodedMap = jsonDecode(event) as Map;
             if (decodedMap['message'] == 'voiceEndedCallback') {
               _log.finest(
-                  () => 'VOICE ENDED EVENT handle: ${decodedMap['value']}\n');
-              voiceEndedEventController.add(decodedMap['value']);
+                () => 'VOICE ENDED EVENT handle: ${decodedMap['value']}\n',
+              );
+              voiceEndedEventController.add(decodedMap['value'] as int);
             }
         }
       },
@@ -101,6 +101,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   ({PlayerErrors error, SoundHash soundHash}) loadMem(
     String uniqueName,
     Uint8List buffer,
+    LoadMode mode,
   ) {
     final hashPtr = wasmMalloc(4); // 4 bytes for an int
     final bytesPtr = wasmMalloc(buffer.length);
@@ -117,6 +118,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
       pathPtr,
       bytesPtr,
       buffer.length,
+      mode == LoadMode.memory ? 1 : 0,
       hashPtr,
     );
 

@@ -64,13 +64,13 @@ class FftPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final barWidth = size.width / (maxFreq - minFreq);
+    final barWidth = size.width / (maxFreq - minFreq).clamp(0, 255);
     final paint = Paint()
       ..color = Colors.yellow
       ..strokeWidth = barWidth * 0.8
       ..style = PaintingStyle.stroke;
 
-    for (var i = minFreq; i <= maxFreq; i++) {
+    for (var i = minFreq; i <= maxFreq.clamp(0, 255); i++) {
       late final double barHeight;
       try {
         final double data;

@@ -1,11 +1,11 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:flutter_soloud/src/bindings/audio_data.dart';
 import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/filter_params.dart';
-import 'package:flutter_soloud/src/sound_hash.dart';
 import 'package:flutter_soloud/src/sound_handle.dart';
-import 'package:flutter_soloud/src/bindings/audio_data.dart';
+import 'package:flutter_soloud/src/sound_hash.dart';
 import 'package:meta/meta.dart';
 
 export 'package:flutter_soloud/src/bindings/bindings_player_ffi.dart'
@@ -69,8 +69,8 @@ abstract class FlutterSoLoud {
   /// Load a new sound to be played once or multiple times later.
   /// This is not supported on the web, use [loadMem] instead.
   ///
-  /// After loading the file, the [_fileLoadedCallback] will call the
-  /// Dart function defined with [_setDartEventCallback] which gives back
+  /// After loading the file, the "_fileLoadedCallback" will call the
+  /// Dart function defined with "_setDartEventCallback" which gives back
   /// the error and the new hash.
   ///
   /// [completeFileName] the complete file path.
@@ -99,6 +99,7 @@ abstract class FlutterSoLoud {
   ({PlayerErrors error, SoundHash soundHash}) loadMem(
     String uniqueName,
     Uint8List buffer,
+    LoadMode mode,
   );
 
   /// Load a new waveform to be played once or multiple times later.

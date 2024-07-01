@@ -1,15 +1,12 @@
 import 'dart:async';
-import 'dart:ui' as ui;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:flutter_soloud_example/controls.dart';
 import 'package:flutter_soloud_example/visualizer/visualizer.dart';
 import 'package:logging/logging.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:star_menu/star_menu.dart';
 
 class PageVisualizer extends StatefulWidget {
@@ -426,26 +423,6 @@ class _PageVisualizerState extends State<PageVisualizer> {
                       },
                     ),
                     const Text('show player data'),
-                  ],
-                );
-              },
-            ),
-
-            /// switch to enable / disable retrieving audio data
-            ValueListenableBuilder<bool>(
-              valueListenable: isVisualizerEnabled,
-              builder: (_, isEnabled, __) {
-                return Row(
-                  children: [
-                    Switch(
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      value: isEnabled,
-                      onChanged: (value) {
-                        isVisualizerEnabled.value = value;
-                        visualizerController.changeIsVisualizerEnabled(value);
-                      },
-                    ),
-                    const Text('FFT data'),
                   ],
                 );
               },

@@ -50,7 +50,7 @@ extension type SampleColumn._(int value) {
   }
 }
 
-/// The extension type for the `AudioData.getLinearFft` and 
+/// The extension type for the `AudioData.getLinearFft` and
 /// `AudioData.getLinearWave` method which accept
 /// the [value] value in 0~255 range.
 extension type SampleLinear._(int value) {

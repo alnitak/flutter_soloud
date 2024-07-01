@@ -107,7 +107,7 @@ abstract class SoLoudCppException extends SoLoudException {
   /// Takes a [CaptureErrors] enum value and returns a corresponding exception.
   /// This is useful when we need to convert a C++ error to a Dart exception.
   ///
-  /// If [error] is [CaptureErrors.noError], this constructor throws
+  /// If [error] is "CaptureErrors.noError", this constructor throws
   /// an [ArgumentError].
   factory SoLoudCppException.fromCaptureError(CaptureErrors error) {
     switch (error) {

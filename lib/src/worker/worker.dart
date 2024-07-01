@@ -1,8 +1,11 @@
+// ignore_for_file: public_member_api_docs
+
 import 'dart:async';
+import 'dart:convert' show jsonEncode;
 import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
+// ignore: avoid_web_libraries_in_flutter
 import 'dart:js_util';
-import 'dart:convert' show jsonEncode;
 
 import 'package:meta/meta.dart';
 import 'package:web/web.dart' as web;
@@ -12,10 +15,11 @@ import 'package:web/web.dart' as web;
 external JSAny get globalScopeSelf;
 
 @JS('self.importScript')
+// ignore: unused_element
 external JSAny _importScript(String path);
 
 void jsSendMessage(dynamic m) {
-  globalContext.callMethod('postMessage'.toJS, m);
+  globalContext.callMethod('postMessage'.toJS, (m as Object).jsify());
 }
 
 Stream<T> callbackToStream<J, T>(
@@ -23,25 +27,28 @@ Stream<T> callbackToStream<J, T>(
   String name,
   T Function(J jsValue) unwrapValue,
 ) {
-  var controller = StreamController<T>.broadcast(sync: true);
-  setProperty(object, name, allowInterop((J event) {
-    controller.add(unwrapValue(event));
-  }));
+  final controller = StreamController<T>.broadcast(sync: true);
+  setProperty(
+    object as Object,
+    name,
+    allowInterop((J event) {
+      controller.add(unwrapValue(event));
+    }),
+  );
   return controller.stream;
 }
 
 @internal
 class Worker {
-  late StreamController<dynamic> _outputController;
-
-  Worker({dynamic args}) {
+  Worker() {
     _outputController = StreamController();
     callbackToStream(globalScopeSelf, 'onmessage', (web.MessageEvent e) {
-      _outputController.add(getProperty(e, 'data'));
+      _outputController.add(getProperty<dynamic>(e as Object, 'data'));
     });
   }
+  late StreamController<dynamic> _outputController;
 
-  Stream onReceive() => _outputController.stream;
+  Stream<dynamic> onReceive() => _outputController.stream;
 
   void sendMessage(dynamic message) {
     jsSendMessage(message);
@@ -55,14 +62,13 @@ class WorkerController {
 
   /// Spawn a new web Worker with the given JS source (not used now).
   static Future<WorkerController> spawn(String path) async {
-    var controller = WorkerController();
-    controller._outputController = StreamController();
-    path = (path.endsWith('.dart') ? '$path.js' : path);
-    controller._worker = web.Worker(path);
+    final controller = WorkerController()
+      .._outputController = StreamController()
+      .._worker = web.Worker(path.endsWith('.dart') ? '$path.js' : path);
 
-    controller._worker?.onmessage = (((web.MessageEvent event) {
+    controller._worker?.onmessage = ((web.MessageEvent event) {
       controller._outputController?.add(event.data.dartify());
-    })).toJS;
+    }).toJS;
 
     return controller;
   }
@@ -72,9 +78,9 @@ class WorkerController {
   void setWasmWorker(web.Worker wasmWorker) {
     _outputController = StreamController();
     _worker = wasmWorker;
-    _worker?.onmessage = (((web.MessageEvent event) {
+    _worker?.onmessage = ((web.MessageEvent event) {
       _outputController?.add(event.data.dartify());
-    })).toJS;
+    }).toJS;
   }
 
   /// Not used with `Module.wasmWorker`.
@@ -89,11 +95,12 @@ class WorkerController {
         _worker?.postMessage(message.toJS);
       default:
         try {
-          final messageJsifyed = message.jsify();
+          final messageJsifyed = (message as Object).jsify();
           _worker?.postMessage(messageJsifyed);
         } catch (e) {
           throw UnsupportedError(
-              'sendMessage(): Type ${message.runtimeType} unsupported');
+            'sendMessage(): Type ${message.runtimeType} unsupported',
+          );
         }
     }
   }
@@ -108,4 +115,3 @@ class WorkerController {
     _worker?.terminate();
   }
 }
-

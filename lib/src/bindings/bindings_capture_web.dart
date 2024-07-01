@@ -1,12 +1,9 @@
-import 'dart:typed_data';
-import 'dart:js_interop';
+// ignore_for_file: public_member_api_docs
 
 import 'package:flutter_soloud/src/bindings/audio_data.dart';
 import 'package:flutter_soloud/src/bindings/bindings_capture.dart';
-import 'package:flutter_soloud/src/enums.dart';
-import 'package:flutter_soloud/src/sound_hash.dart';
-import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/bindings/js_extension.dart';
+import 'package:flutter_soloud/src/enums.dart';
 
 class FlutterCaptureWeb extends FlutterCapture {
   @override
@@ -27,8 +24,8 @@ class FlutterCaptureWeb extends FlutterCapture {
     for (var i = 0; i < nDevices; i++) {
       final namePtr = wasmGetI32Value(namesPtr + i * 4, '*');
       final name = wasmUtf8ToString(namePtr);
-      final isDefault = wasmGetI32Value(
-          wasmGetI32Value(isDefaultPtr + i * 4, '*'), '*');
+      final isDefault =
+          wasmGetI32Value(wasmGetI32Value(isDefaultPtr + i * 4, '*'), '*');
 
       devices.add(CaptureDevice(name, isDefault == 1));
     }
@@ -92,6 +89,12 @@ class FlutterCaptureWeb extends FlutterCapture {
   CaptureErrors getCaptureAudioTexture2D(AudioData samples) {
     final e = wasmGetCaptureAudioTexture2D(samples.ctrl.samplesPtr);
     return CaptureErrors.values[e];
+  }
+
+  @override
+  double getCaptureTextureValue(int row, int column) {
+    final value = wasmGetCaptureTextureValue(row, column);
+    return value;
   }
 
   @override

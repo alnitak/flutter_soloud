@@ -61,7 +61,7 @@ class WavePainter extends CustomPainter {
         } else if (audioData.getSamplesKind == GetSamplesKind.linear) {
           data = audioData.getLinearWave(SampleLinear(i));
         } else {
-          data = audioData.getTexture(SampleRow(0), SampleColumn(i+256));
+          data = audioData.getTexture(SampleRow(0), SampleColumn(i + 256));
         }
         barHeight = size.height * data;
       } on Exception {

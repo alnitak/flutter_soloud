@@ -244,17 +244,25 @@ extern "C"
     /// [uniqueName] the unique name of the sound. Used only to have the [hash].
     /// [buffer] the audio data. These contains the audio file bytes.
     /// [length] the length of [buffer].
+    /// [loadIntoMem] if true Soloud::wav will be used which loads
+    /// all audio data into memory. This will be useful when
+    /// the audio is short, ie for game sounds, mainly used to prevent
+    /// gaps or lags when starting a sound (less CPU, more memory allocated).
+    /// If false, Soloud::wavStream will be used and the audio data is loaded
+    /// from the given file when needed (more CPU, less memory allocated).
+    /// See the [seek] note problem when using [loadIntoMem] = false
     /// [hash] return the hash of the sound.
     FFI_PLUGIN_EXPORT enum PlayerErrors loadMem(
         char *uniqueName,
         unsigned char *buffer,
         int length,
+        int loadIntoMem,
         unsigned int *hash)
     {
         // this check is already been done in Dart
         if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
-        return (PlayerErrors)player.get()->loadMem(uniqueName, buffer, length, *hash);
+        return (PlayerErrors)player.get()->loadMem(uniqueName, buffer, length, loadIntoMem, *hash);
     }
 
     /// Load a new waveform to be played once or multiple times later

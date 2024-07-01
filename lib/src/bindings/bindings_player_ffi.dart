@@ -8,8 +8,8 @@ import 'dart:ffi' as ffi;
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
-import 'package:flutter_soloud/src/bindings/bindings_player.dart';
 import 'package:flutter_soloud/src/bindings/audio_data.dart';
+import 'package:flutter_soloud/src/bindings/bindings_player.dart';
 import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/filter_params.dart';
 import 'package:flutter_soloud/src/sound_handle.dart';
@@ -221,6 +221,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   ({PlayerErrors error, SoundHash soundHash}) loadMem(
     String uniqueName,
     Uint8List buffer,
+    LoadMode mode,
   ) {
     // ignore: omit_local_variable_types
     final ffi.Pointer<ffi.UnsignedInt> hash =
@@ -235,6 +236,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       uniqueName.toNativeUtf8().cast<ffi.Char>(),
       bufferPtr,
       buffer.length,
+      mode == LoadMode.memory ? 1 : 0,
       hash,
     );
     final soundHash = SoundHash(hash.value);
@@ -246,9 +248,9 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   late final _loadMemPtr = _lookup<
       ffi.NativeFunction<
           ffi.Int32 Function(ffi.Pointer<ffi.Char>, ffi.Pointer<ffi.Uint8>,
-              ffi.Int, ffi.Pointer<ffi.UnsignedInt>)>>('loadMem');
+              ffi.Int, ffi.Int, ffi.Pointer<ffi.UnsignedInt>)>>('loadMem');
   late final _loadMem = _loadMemPtr.asFunction<
-      int Function(ffi.Pointer<ffi.Char>, ffi.Pointer<ffi.Uint8>, int,
+      int Function(ffi.Pointer<ffi.Char>, ffi.Pointer<ffi.Uint8>, int, int,
           ffi.Pointer<ffi.UnsignedInt>)>();
 
   @override

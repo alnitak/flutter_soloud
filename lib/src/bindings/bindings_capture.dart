@@ -17,7 +17,7 @@ abstract class FlutterCapture {
   CaptureErrors initCapture(int deviceID);
 
   @mustBeOverridden
-  void disposeCapture(); 
+  void disposeCapture();
 
   @mustBeOverridden
   bool isCaptureInited();
@@ -42,6 +42,9 @@ abstract class FlutterCapture {
 
   @mustBeOverridden
   CaptureErrors getCaptureAudioTexture2D(AudioData samples);
+
+  @mustBeOverridden
+  double getCaptureTextureValue(int row, int column);
 
   @mustBeOverridden
   CaptureErrors setCaptureFftSmoothing(double smooth);

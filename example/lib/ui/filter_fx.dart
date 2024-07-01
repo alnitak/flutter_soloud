@@ -9,7 +9,7 @@ class FilterFx extends StatefulWidget {
   });
 
   final FilterType filterType;
-  
+
   @override
   State<FilterFx> createState() => _FilterFxState();
 }

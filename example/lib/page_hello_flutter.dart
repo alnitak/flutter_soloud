@@ -1,9 +1,11 @@
 import 'dart:async';
-import 'dart:typed_data';
+import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:logging/logging.dart';
 
@@ -45,6 +47,7 @@ class _PageHelloFlutterSoLoudState extends State<PageHelloFlutterSoLoud> {
               },
               child: const Text('pick audio'),
             ),
+
             /// pick audio file
             ElevatedButton(
               onPressed: () async {
@@ -57,7 +60,13 @@ class _PageHelloFlutterSoLoudState extends State<PageHelloFlutterSoLoud> {
                     ?.files;
 
                 if (paths != null) {
-                  unawaited(playWeb(paths.first.name, paths.first.bytes!));
+                  if (kIsWeb) {
+                    unawaited(playBuffer(paths.first.name, paths.first.bytes!));
+                  } else {
+                    final f = File(paths.first.path!);
+                    final buffer = f.readAsBytesSync();
+                    unawaited(playBuffer(paths.first.path!, buffer));
+                  }
                 }
               },
               child: const Text('pick audio for web'),
@@ -124,7 +133,7 @@ class _PageHelloFlutterSoLoudState extends State<PageHelloFlutterSoLoud> {
   }
 
   /// play bytes for web.
-  Future<void> playWeb(String fileName, Uint8List bytes) async {
+  Future<void> playBuffer(String fileName, Uint8List bytes) async {
     /// stop any previous sound loaded
     if (currentSound != null) {
       try {
@@ -171,9 +180,9 @@ class _MicAudioWidgetState extends State<MicAudioWidget>
     with SingleTickerProviderStateMixin {
   Ticker? ticker;
   final audioData = AudioData(
-      GetSamplesFrom.microphone,
-      GetSamplesKind.wave,
-    );
+    GetSamplesFrom.microphone,
+    GetSamplesKind.wave,
+  );
 
   @override
   void initState() {
