@@ -1,10 +1,9 @@
-import 'package:flutter_soloud/src/bindings/soloud_controller.dart';
-import 'package:flutter_soloud/src/exceptions/exceptions.dart';
 import 'package:flutter_soloud/src/bindings/audio_data_extensions.dart';
-import 'package:meta/meta.dart';
-
 import 'package:flutter_soloud/src/bindings/audio_data_ffi.dart'
     if (dart.library.html) 'audio_data_web.dart';
+import 'package:flutter_soloud/src/bindings/soloud_controller.dart';
+import 'package:flutter_soloud/src/exceptions/exceptions.dart';
+import 'package:meta/meta.dart';
 
 /// Enum to tell [AudioData] from where to get audio data.
 /// Every time [AudioData.updateSamples] is called, the audio data will
@@ -42,8 +41,9 @@ enum GetSamplesKind {
 
 /// Class to manage audio samples.
 ///
-/// The `visualization` must be enabled to be able to acquire data. You can
-/// achieve this by calling `SoLoud.instance.setVisualizationEnabled(true);`.
+/// The `visualization` must be enabled to be able to acquire data from the
+/// player. You can achieve this by calling
+/// `SoLoud.instance.setVisualizationEnabled(true);`.
 ///
 /// Audio samples can be get from the player or from the microphone, and
 /// in a texture matrix or a linear array way.
@@ -52,7 +52,7 @@ enum GetSamplesKind {
 /// to acquire audio.
 ///
 /// After calling [updateSamples] it's possible to call the proper getter
-/// to have back the audio samples. For example using a "Ticker"
+/// to have back the audio samples. For example, using a "Ticker"
 /// in a Widget that needs the audio data to be displayed:
 /// ```
 /// ...
@@ -100,7 +100,7 @@ enum GetSamplesKind {
 /// }
 /// ```
 ///
-/// To smooth FFT value use [SoLoud.instance.setFftSmoothing] or
+/// To smooth FFT values use [SoLoud.instance.setFftSmoothing] or
 /// [SoLoudCapture.instance.setCaptureFftSmoothing].
 ///
 ///
@@ -112,34 +112,29 @@ class AudioData {
     this._getSamplesFrom,
     this._getSamplesKind,
   ) : ctrl = AudioDataCtrl() {
-    init();
+    _init();
+    ctrl.allocSamples();
   }
 
-  void init() {
+  void _init() {
     switch (_getSamplesFrom) {
       case GetSamplesFrom.player:
         switch (_getSamplesKind) {
           case GetSamplesKind.wave:
             _updateCallback = ctrl.waveCallback;
-            _samplesWave = ctrl.allocSampleWave();
           case GetSamplesKind.linear:
             _updateCallback = ctrl.textureCallback;
-            _samples1D = ctrl.allocSample1D();
           case GetSamplesKind.texture:
             _updateCallback = ctrl.texture2DCallback;
-            _samples2D = ctrl.allocSample2D();
         }
       case GetSamplesFrom.microphone:
         switch (_getSamplesKind) {
           case GetSamplesKind.wave:
             _updateCallback = ctrl.captureWaveCallback;
-            _samplesWave = ctrl.allocSampleWave();
           case GetSamplesKind.linear:
             _updateCallback = ctrl.captureAudioTextureCallback;
-            _samples1D = ctrl.allocSample1D();
           case GetSamplesKind.texture:
             _updateCallback = ctrl.captureTexture2DCallback;
-            _samples2D = ctrl.allocSample2D();
         }
     }
   }
@@ -147,27 +142,6 @@ class AudioData {
   /// The controller used to allocate, dispose and get audio data.
   @internal
   final AudioDataCtrl ctrl;
-
-  /// Where the FFT or wave data is stored.
-  late SampleFormat2D _samplesWave;
-
-  /// The getter for [_samplesWave].
-  @internal
-  SampleFormat2D get samplesWave => _samplesWave;
-
-  /// Where the audio 2D data is stored.
-  late SampleFormat2D _samples2D;
-
-  /// The getter for [_samples2D].
-  @internal
-  SampleFormat2D get samples2D => _samples2D;
-
-  /// Where the audio 1D data is stored.
-  late SampleFormat1D _samples1D;
-
-  /// The getter for [_samples1D].
-  @internal
-  SampleFormat1D get samples1D => _samples1D;
 
   /// Where to get audio samples. See [GetSamplesFrom].
   GetSamplesFrom _getSamplesFrom;
@@ -186,8 +160,8 @@ class AudioData {
   /// do the [GetSamplesFrom] and [GetSamplesKind] checks on every calls.
   late void Function(AudioData) _updateCallback;
 
-  /// Update the content of samples memory to be get with [getLinear]
-  /// or [getTexture].
+  /// Update the content of samples memory to be get with [getWave],
+  /// [getLinearFft], [getLinearWave] or [getTexture].
   ///
   /// When using [GetSamplesFrom.microphone] throws
   /// [SoLoudCaptureNotYetInitializededException] if the capture is
@@ -206,22 +180,23 @@ class AudioData {
     _updateCallback(this);
   }
 
+  /// Changes the input device from which to retrieve audio data and its kind.
   void changeType(GetSamplesFrom newFrom, GetSamplesKind newKind) {
     _getSamplesKind = newKind;
     _getSamplesFrom = newFrom;
-    // dispose();
-    init();
+    _init();
   }
 
   /// Dispose the memory allocated to acquire audio data.
-  /// Must be called when there is no more need of [AudioData].
+  /// Must be called when there is no more need of [AudioData] otherwise memory
+  /// leaks will occur.
   void dispose() {
-    ctrl.dispose(_getSamplesKind, _samplesWave, _samples1D, _samples2D);
+    ctrl.dispose(_getSamplesKind);
   }
 
   /// Get the wave data at offset [offset].
   ///
-  /// Use this method to get data when using [GetSamplesKind.linear].
+  /// Use this method to get data when using [GetSamplesKind.wave].
   /// The data is composed of 256 floats.
   double getWave(SampleWave offset) {
     if (_getSamplesKind != GetSamplesKind.wave) {
@@ -232,7 +207,7 @@ class AudioData {
         !SoLoudController().soLoudFFI.getVisualizationEnabled()) {
       throw const SoLoudVisualizationNotEnabledException();
     }
-    return ctrl.getWave(_samplesWave!, offset);
+    return ctrl.getWave(offset);
   }
 
   /// Get the FFT audio data at offset [offset].
@@ -248,7 +223,7 @@ class AudioData {
         !SoLoudController().soLoudFFI.getVisualizationEnabled()) {
       throw const SoLoudVisualizationNotEnabledException();
     }
-    return ctrl.getLinearFft(_samples1D!, offset);
+    return ctrl.getLinearFft(offset);
   }
 
   /// Get the wave audio data at offset [offset].
@@ -264,7 +239,7 @@ class AudioData {
         !SoLoudController().soLoudFFI.getVisualizationEnabled()) {
       throw const SoLoudVisualizationNotEnabledException();
     }
-    return ctrl.getLinearWave(_samples1D!, offset);
+    return ctrl.getLinearWave(offset);
   }
 
   /// Get the audio data at row [row] and column [column].
@@ -282,6 +257,6 @@ class AudioData {
         !SoLoudController().soLoudFFI.getVisualizationEnabled()) {
       throw const SoLoudVisualizationNotEnabledException();
     }
-    return ctrl.getTexture(_samples2D!, _getSamplesFrom, row, column);
+    return ctrl.getTexture(_getSamplesFrom, row, column);
   }
 }

@@ -1,16 +1,12 @@
 import 'dart:ffi' as ffi;
 
 import 'package:ffi/ffi.dart';
-import 'package:flutter_soloud/src/bindings/bindings_capture.dart';
 import 'package:flutter_soloud/src/bindings/audio_data.dart';
+import 'package:flutter_soloud/src/bindings/bindings_capture.dart';
 import 'package:flutter_soloud/src/enums.dart';
 
 /// FFI bindings to capture with miniaudio.
 class FlutterCaptureFfi extends FlutterCapture {
-  /// Holds the symbol lookup function.
-  final ffi.Pointer<T> Function<T extends ffi.NativeType>(String symbolName)
-      _lookup;
-
   /// The symbols are looked up in [dynamicLibrary].
   FlutterCaptureFfi(ffi.DynamicLibrary dynamicLibrary)
       : _lookup = dynamicLibrary.lookup;
@@ -21,14 +17,21 @@ class FlutterCaptureFfi extends FlutterCapture {
           lookup)
       : _lookup = lookup;
 
+  /// Holds the symbol lookup function.
+  final ffi.Pointer<T> Function<T extends ffi.NativeType>(String symbolName)
+      _lookup;
+
   @override
   List<CaptureDevice> listCaptureDevices() {
-    List<CaptureDevice> ret = [];
-    ffi.Pointer<ffi.Pointer<ffi.Char>> deviceNames =
+    final ret = <CaptureDevice>[];
+    // ignore: omit_local_variable_types
+    final ffi.Pointer<ffi.Pointer<ffi.Char>> deviceNames =
         calloc(ffi.sizeOf<ffi.Pointer<ffi.Pointer<ffi.Char>>>() * 50);
-    ffi.Pointer<ffi.Pointer<ffi.Int>> deviceIsDefault =
+    // ignore: omit_local_variable_types
+    final ffi.Pointer<ffi.Pointer<ffi.Int>> deviceIsDefault =
         calloc(ffi.sizeOf<ffi.Pointer<ffi.Pointer<ffi.Int>>>() * 50);
-    ffi.Pointer<ffi.Int> nDevices = calloc();
+    // ignore: omit_local_variable_types
+    final ffi.Pointer<ffi.Int> nDevices = calloc();
 
     _listCaptureDevices(
       deviceNames,
@@ -36,13 +39,13 @@ class FlutterCaptureFfi extends FlutterCapture {
       nDevices,
     );
 
-    int ndev = nDevices.value;
-    for (int i = 0; i < ndev; i++) {
-      var s1 = (deviceNames + i).value;
-      var s = s1.cast<Utf8>().toDartString();
-      var n1 = (deviceIsDefault + i).value;
-      var n = n1.value;
-      ret.add(CaptureDevice(s, n == 1 ? true : false));
+    final ndev = nDevices.value;
+    for (var i = 0; i < ndev; i++) {
+      final s1 = (deviceNames + i).value;
+      final s = s1.cast<Utf8>().toDartString();
+      final n1 = (deviceIsDefault + i).value;
+      final n = n1.value;
+      ret.add(CaptureDevice(s, n == 1));
     }
 
     /// Free allocated memory done in C.
@@ -57,8 +60,9 @@ class FlutterCaptureFfi extends FlutterCapture {
       ndev,
     );
 
-    calloc.free(deviceNames);
-    calloc.free(nDevices);
+    calloc
+      ..free(deviceNames)
+      ..free(nDevices);
     return ret;
   }
 
@@ -103,7 +107,7 @@ class FlutterCaptureFfi extends FlutterCapture {
 
   @override
   bool isCaptureInited() {
-    return _isCaptureInited() == 1 ? true : false;
+    return _isCaptureInited() == 1;
   }
 
   late final _isCaptureInitedPtr =
@@ -113,7 +117,7 @@ class FlutterCaptureFfi extends FlutterCapture {
 
   @override
   bool isCaptureStarted() {
-    return _isCaptureStarted() == 1 ? true : false;
+    return _isCaptureStarted() == 1;
   }
 
   late final _isCaptureStartedPtr =
@@ -141,7 +145,7 @@ class FlutterCaptureFfi extends FlutterCapture {
 
   @override
   void getCaptureFft(AudioData fft) {
-    return _getCaptureFft(fft.samplesWave);
+    return _getCaptureFft(fft.ctrl.samplesWave);
   }
 
   late final _getCaptureFftPtr = _lookup<
@@ -153,7 +157,7 @@ class FlutterCaptureFfi extends FlutterCapture {
 
   @override
   void getCaptureWave(AudioData wave) {
-    return _getCaptureWave(wave.samplesWave!);
+    return _getCaptureWave(wave.ctrl.samplesWave!);
   }
 
   late final _getCaptureWavePtr = _lookup<
@@ -165,7 +169,7 @@ class FlutterCaptureFfi extends FlutterCapture {
 
   @override
   void getCaptureAudioTexture(AudioData samples) {
-    return _getCaptureTexture(samples.samples1D);
+    return _getCaptureTexture(samples.ctrl.samples1D);
   }
 
   late final _getCaptureTexturePtr =
@@ -176,7 +180,7 @@ class FlutterCaptureFfi extends FlutterCapture {
 
   @override
   CaptureErrors getCaptureAudioTexture2D(AudioData samples) {
-    int ret = _getCaptureAudioTexture2D(samples.samples2D);
+    final int ret = _getCaptureAudioTexture2D(samples.ctrl.samples2D);
     return CaptureErrors.values[ret];
   }
 
@@ -199,7 +203,7 @@ class FlutterCaptureFfi extends FlutterCapture {
 
   @override
   CaptureErrors setCaptureFftSmoothing(double smooth) {
-    int ret = _setCaptureFftSmoothing(smooth);
+    final int ret = _setCaptureFftSmoothing(smooth);
     return CaptureErrors.values[ret];
   }
 

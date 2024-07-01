@@ -1,19 +1,13 @@
 // ignore_for_file: public_member_api_docs
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter_soloud/src/bindings/audio_data.dart';
+import 'package:flutter_soloud/src/bindings/audio_data_extensions.dart';
 import 'package:flutter_soloud/src/bindings/js_extension.dart';
 import 'package:flutter_soloud/src/bindings/soloud_controller.dart';
 import 'package:flutter_soloud/src/enums.dart';
-import 'package:meta/meta.dart';
-import 'package:flutter_soloud/src/bindings/audio_data_extensions.dart';
 
-typedef SampleFormat2D = Float32List;
-typedef SampleFormat1D = Float32List;
-
-@internal
 class AudioDataCtrl {
-  final int _samplesPtr = wasmMalloc(512 * 256 * 4);
+  late final int _samplesPtr;
   int get samplesPtr => _samplesPtr;
 
   final void Function(AudioData) waveCallback =
@@ -34,48 +28,36 @@ class AudioDataCtrl {
   final void Function(AudioData) captureAudioTextureCallback =
       SoLoudController().captureFFI.getCaptureAudioTexture;
 
-  SampleFormat2D allocSample2D() {
-    return Float32List(512 * 256);
-  }
-
-  SampleFormat1D allocSample1D() {
-    return Float32List(512);
-  }
-
-  SampleFormat1D allocSampleWave() {
-    return Float32List(256);
+  void allocSamples() {
+    _samplesPtr = wasmMalloc(512 * 256 * 4);
   }
 
   void dispose(
     GetSamplesKind getSamplesKind,
-    SampleFormat2D? sWave,
-    SampleFormat1D? s1D,
-    SampleFormat2D? s2D,
   ) {
     if (_samplesPtr != 0) {
       wasmFree(_samplesPtr);
     }
   }
 
-  double getWave(SampleFormat2D s2D, SampleWave offset) {
+  double getWave(SampleWave offset) {
     final samplePtr = wasmGetI32Value(_samplesPtr, '*');
     final data = wasmGetF32Value(samplePtr + offset.value * 4, 'float');
     return data;
   }
 
-  double getLinearFft(SampleFormat1D s1D, SampleLinear offset) {
+  double getLinearFft(SampleLinear offset) {
     final data = wasmGetF32Value(_samplesPtr + offset.value * 4, 'float');
     return data;
   }
 
-  double getLinearWave(SampleFormat1D s1D, SampleLinear offset) {
+  double getLinearWave(SampleLinear offset) {
     final data =
         wasmGetF32Value(_samplesPtr + offset.value * 4 + 256 * 4, 'float');
     return data;
   }
 
   double getTexture(
-    SampleFormat2D s2D,
     GetSamplesFrom getSamplesFrom,
     SampleRow row,
     SampleColumn column,

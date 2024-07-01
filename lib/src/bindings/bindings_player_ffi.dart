@@ -551,7 +551,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
 
   @override
   void getFft(AudioData fft) {
-    return _getFft(fft.samplesWave);
+    return _getFft(fft.ctrl.samplesWave);
   }
 
   late final _getFftPtr = _lookup<
@@ -562,7 +562,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
 
   @override
   void getWave(AudioData wave) {
-    return _getWave(wave.samplesWave);
+    return _getWave(wave.ctrl.samplesWave);
   }
 
   late final _getWavePtr = _lookup<
@@ -585,7 +585,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
 
   @override
   void getAudioTexture(AudioData samples) {
-    return _getAudioTexture(samples.samples1D);
+    return _getAudioTexture(samples.ctrl.samples1D);
   }
 
   late final _getAudioTexturePtr =
@@ -597,7 +597,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
 
   @override
   PlayerErrors getAudioTexture2D(AudioData samples) {
-    final ret = _getAudioTexture2D(samples.samples2D);
+    final ret = _getAudioTexture2D(samples.ctrl.samples2D);
     return PlayerErrors.values[ret];
   }
 
