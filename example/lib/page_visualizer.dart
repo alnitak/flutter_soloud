@@ -290,17 +290,19 @@ class _PageVisualizerState extends State<PageVisualizer> {
                       dialogTitle: 'Pick audio file',
                     ))
                         ?.files;
+
                     if (paths != null) {
                       final AudioSource audioFile;
                       if (kIsWeb) {
                         audioFile = await SoLoud.instance
-                            .loadMem(paths.first.path!, paths.first.bytes!);
+                            .loadMem(paths.first.name, paths.first.bytes!);
                       } else {
                         audioFile =
                             await SoLoud.instance.loadFile(paths.first.path!);
                       }
                       unawaited(play(audioFile));
                     }
+                    
                   },
                   child: const Text('pick audio'),
                 ),

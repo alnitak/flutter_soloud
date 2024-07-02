@@ -38,14 +38,14 @@ class _PageHelloFlutterSoLoudState extends State<PageHelloFlutterSoLoud> {
                   type: FileType.custom,
                   allowedExtensions: ['mp3', 'wav', 'ogg', 'flac'],
                   onFileLoading: print,
-                  dialogTitle: 'Pick audio file',
+                  dialogTitle: 'Pick audio file\n(not for web)',
                 ))
                     ?.files;
                 if (paths != null) {
                   unawaited(playFile(paths.first.path!));
                 }
               },
-              child: const Text('pick audio'),
+              child: const Text('pick audio\n(not for web)'),
             ),
 
             /// pick audio file
@@ -69,7 +69,9 @@ class _PageHelloFlutterSoLoudState extends State<PageHelloFlutterSoLoud> {
                   }
                 }
               },
-              child: const Text('pick audio for web'),
+              child: const Text(
+                'pick audio using "loadMem()"\n(for web and others)',
+              ),
             ),
             Column(
               children: [
