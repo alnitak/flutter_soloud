@@ -84,7 +84,6 @@ class MyHomePage extends StatelessWidget {
   Widget build(BuildContext context) {
     return DefaultTabController(
       length: 5,
-      initialIndex: 4,
       child: SafeArea(
         child: Scaffold(
           body: Column(
