@@ -11,6 +11,8 @@ In the `web` directory, there is a `compile_wasm.sh` script that generates the `
 These scripts should be run when changing C/C++ code or the `web/worker.dart` code.
 The `compile_wasm.sh` script uses the `-O1` code optimization. A better optimization doesn't work for me,  this need furter investigation.
 
+To see a better errors logs, use `-O0 -g -s ASSERTIONS=1` in `compile_wasm.sh`.
+
 To add the plugin to a web app, add the following line to the `<body>` section of `web/index.html`:
 `<script src="assets/packages/flutter_soloud/web/libflutter_soloud_plugin.js" defer></script>`
 
@@ -64,10 +66,18 @@ The same problem happens using `dart:ffi`, it is also not possible to call a fun
 
 ## Notes
 
-To acquire audio data is (was?) experimental, the following methods are now deprecated and this functionality is now in the `AudioData` class.
+Acquiring audio data is (was?) experimental, the following methods are now deprecated and this functionality is now in the `AudioData` class.
 - `@experimental SoLoud.getAudioTexture2D()`
 - `@experimental SoLoudCapture.getCaptureAudioTexture2D()`
 
 It is not possible to read a local audio file directly on the web. For this reason, `loadMem()` has been added, which requires the `Uint8List` byte buffer of the audio file.
 
 In addition to the `getAudioTexture2D`, with `AudioData` class is now possible to acquire audio as `linear`, which represents the FFT+wave vector, or just the `wave` data vector for better performance. With this class, it is also possible to choose to acquire data from the player or from the microphone.
+
+
+**`loadUrl()`** may produre the following error when the app is run on a remote server:
+>> Cross-Origin Request Blocked: The Same Origin Policy disallows reading the remote resource at https://www.learningcontainer.com/wp-content/uploads/2020/02/Kalimba.mp3. (Reason: CORS header ‘Access-Control-Allow-Origin’ missing). Status code: 200.
+
+This is due for the default beavior of http servers which don't allow to make requests outside their domain. Refer [here](https://enable-cors.org/server.html) to learn how to enable your server to handle this situation.
+Instead, if you run the app locally, you could run the app with something like the following command:
+`flutter run -d chrome --web-renderer canvaskit --web-browser-flag '--disable-web-security' -t lib/main.dart --release`
