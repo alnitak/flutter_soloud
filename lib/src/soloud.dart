@@ -836,11 +836,13 @@ interface class SoLoud {
     }
     _controller.soLoudFFI.disposeSound(source.soundHash);
 
-    source.soundEventsController.add((
-      event: SoundEventType.soundDisposed,
-      sound: source,
-      handle: SoundHandle.error(),
-    ));
+    if (!source.soundEventsController.isClosed) {
+      source.soundEventsController.add((
+        event: SoundEventType.soundDisposed,
+        sound: source,
+        handle: SoundHandle.error(),
+      ));
+    }
     await source.soundEventsController.close();
 
     /// remove the sound with [soundHash]
