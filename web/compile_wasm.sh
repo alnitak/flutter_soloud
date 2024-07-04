@@ -40,7 +40,7 @@ em++ \
 ../../src/capture.cpp \
 ../../src/synth/basic_wave.cpp \
 ../../src/filters/filters.cpp \
--O1 -D WITH_MINIAUDIO \
+-O3 -D WITH_MINIAUDIO \
 -I ~/.emscripten_cache/sysroot/include \
 -s "EXPORTED_RUNTIME_METHODS=['ccall','cwrap']" \
 -s "EXPORTED_FUNCTIONS=['_free', '_malloc']" \
