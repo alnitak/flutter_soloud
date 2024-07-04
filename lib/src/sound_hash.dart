@@ -37,7 +37,8 @@ extension type SoundHash._(int hash) {
   @internal
   factory SoundHash.random() {
     // Dart must support 32 bit systems.
-    const largest32BitInt = 1 << 32;
+    // Shifting by 31 because the leftmost bit is used for the sign.
+    const largest32BitInt = 1 << 31;
     // Generate a random integer, but not 0 (which is reserved for invalid
     // sound hashes).
     final soundHash = _random.nextInt(largest32BitInt - 1) + 1;
