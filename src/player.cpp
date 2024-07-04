@@ -200,13 +200,13 @@ PlayerErrors Player::loadMem(
     {
         sounds.back().get()->sound = std::make_shared<SoLoud::Wav>();
         sounds.back().get()->soundType = TYPE_WAV;
-        result = static_cast<SoLoud::Wav *>(sounds.back().get()->sound.get())->loadMem(mem, length, true, true);
+        result = static_cast<SoLoud::Wav *>(sounds.back().get()->sound.get())->loadMem(mem, length, false, true);
     }
     else
     {
         sounds.back().get()->sound = std::make_shared<SoLoud::WavStream>();
         sounds.back().get()->soundType = TYPE_WAVSTREAM;
-        result = static_cast<SoLoud::WavStream *>(sounds.back().get()->sound.get())->loadMem(mem, length, true, true);
+        result = static_cast<SoLoud::WavStream *>(sounds.back().get()->sound.get())->loadMem(mem, length, false, true);
     }
 
     if (result != SoLoud::SO_NO_ERROR)
