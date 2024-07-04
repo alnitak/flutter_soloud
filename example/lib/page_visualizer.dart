@@ -302,7 +302,6 @@ class _PageVisualizerState extends State<PageVisualizer> {
                       }
                       unawaited(play(audioFile));
                     }
-                    
                   },
                   child: const Text('pick audio'),
                 ),
@@ -470,8 +469,10 @@ class _PageVisualizerState extends State<PageVisualizer> {
 
         /// It's needed to call dispose when it ends else it will
         /// not be cleared
-        SoLoud.instance.disposeSource(currentSound!);
-        currentSound = null;
+        if (currentSound != null) {
+          SoLoud.instance.disposeSource(currentSound!);
+          currentSound = null;
+        }
       },
     );
     startTimer();

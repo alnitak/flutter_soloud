@@ -45,7 +45,10 @@ class _PageHelloFlutterSoLoudState extends State<PageHelloFlutterSoLoud> {
                   unawaited(playFile(paths.first.path!));
                 }
               },
-              child: const Text('pick audio\n(not for web)'),
+              child: const Text(
+                'pick audio\n(not for web)',
+                textAlign: TextAlign.center,
+              ),
             ),
 
             /// pick audio file
@@ -70,7 +73,8 @@ class _PageHelloFlutterSoLoudState extends State<PageHelloFlutterSoLoud> {
                 }
               },
               child: const Text(
-                'pick audio using "loadMem()"\n(for web and others)',
+                'pick audio using "loadMem()"\n(all platforms)',
+                textAlign: TextAlign.center,
               ),
             ),
             Column(
