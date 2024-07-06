@@ -434,6 +434,8 @@ interface class SoLoud {
   /// from the given file when needed (more CPU, less memory allocated).
   /// See the [seek] note problem when using [LoadMode.disk].
   /// The default is [LoadMode.memory].
+  /// IMPORTANT: [LoadMode.memory] used the on web platform could cause UI 
+  /// freezy problems.
   ///
   /// This is the only choice to load a file when using this plugin on the web
   /// because browsers cannot read directly files from the loal storage.

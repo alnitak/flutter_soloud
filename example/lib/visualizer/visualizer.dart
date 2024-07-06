@@ -468,9 +468,10 @@ class _VisualizerState extends State<Visualizer> with TickerProviderStateMixin {
 
     final width = widget.controller.maxRange - widget.controller.minRange;
 
-    /// On the web seems there are some problems with `decodeImageFromList`
-    /// and larger image. Setting here an height of 80 instead of 256.
-    const height = kIsWeb ? 80 : 256;
+    /// On the web there are worst performance getting data because for every 
+    /// single data a JS function must be called.
+    /// Setting here an height of 100 instead of 256 to improve.
+    const height = kIsWeb ? 100 : 256;
 
     final completer = Completer<ui.Image>();
     final bytes = Uint8List(width * height * 4);

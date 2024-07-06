@@ -71,6 +71,7 @@ Acquiring audio data is (was?) experimental, the following methods are now depre
 - `@experimental SoLoudCapture.getCaptureAudioTexture2D()`
 
 It is not possible to read a local audio file directly on the web. For this reason, `loadMem()` has been added, which requires the `Uint8List` byte buffer of the audio file.
+**IMPORTANT**: `loadMem()` with mode `LoadMode.memory` used the on web platform could cause UI freezy problems.
 
 In addition to the `getAudioTexture2D`, with `AudioData` class is now possible to acquire audio as `linear`, which represents the FFT+wave vector, or just the `wave` data vector for better performance. With this class, it is also possible to choose to acquire data from the player or from the microphone.
 

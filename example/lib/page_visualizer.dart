@@ -308,7 +308,11 @@ class _PageVisualizerState extends State<PageVisualizer> {
               ],
             ),
 
-            /// Seek slider
+            /// Seek slider.
+            /// Not used on web platforms because [LoadMode.disk]
+            /// is used with `loadMem()`. Otherwise the seek problem will
+            /// be noticeable while seeking. See [SoLoud.seek] note.
+            if (!kIsWeb)
             ValueListenableBuilder<double>(
               valueListenable: soundLength,
               builder: (_, length, __) {
@@ -481,7 +485,10 @@ class _PageVisualizerState extends State<PageVisualizer> {
   /// plays an assets file
   Future<void> playAsset(String assetsFile) async {
     // final audioFile = await getAssetFile(assetsFile);
-    final audioFile = await SoLoud.instance.loadAsset(assetsFile);
+    final audioFile = await SoLoud.instance.loadAsset(
+      assetsFile,
+      mode: kIsWeb ? LoadMode.disk : LoadMode.memory,
+    );
     return play(audioFile);
   }
 
