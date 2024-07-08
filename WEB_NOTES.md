@@ -7,9 +7,9 @@ The web platform is now supported, but some testing is welcome.
 
 ## How to use
 
-In the `web` directory, there is a `compile_wasm.sh` script that generates the `.js` and `.wasm` files for the native C code. Run it after installing *emscripten*. There is also a `compile_web.sh` to compile the web worker needed by native code to communicate with Dart.
-These scripts should be run when changing C/C++ code or the `web/worker.dart` code.
-The `compile_wasm.sh` script uses the `-O1` code optimization. A better optimization doesn't work for me,  this need furter investigation.
+In the `web` directory, there is a `compile_wasm.sh` script that generates the `.js` and `.wasm` files for the native C code located in the `src` dir. Run it after installing *emscripten*. There is also a `compile_web.sh` to compile the web worker needed by native code to communicate with Dart. The generated files are already provided, but if it is needed to modify C/C++ code or the `web/worker.dart` code, the scripts must be run to reflect the changes.
+
+The `compile_wasm.sh` script uses the `-O3` code optimization flag.
 
 To see a better errors logs, use `-O0 -g -s ASSERTIONS=1` in `compile_wasm.sh`.
 
@@ -18,9 +18,9 @@ To add the plugin to a web app, add the following line to the `<body>` section o
 
 ## The problems
 
-The AudioIsolate was causing many problems related to web workers. It was used to monitor all the sound states and to send some operations to the native code. These operations were not working inside a JS Worker because web audio is not supported.
+The AudioIsolate was causing many problems related to web workers when trying to port to web. It was used to monitor all the sound states and to send some operations to the native code. These operations were not working inside a JS Worker because web audio is not supported.
 
-The `AudioIsolate` [has been removed](https://github.com/alnitak/flutter_soloud/pull/89) and all the logic has been implemented natively. Events like audio finished are sent from C back to Dart. However, since it is not possible to call Dart from a native thread (the audio thread), a new web worker is created using the WASM `EM_ASM` directive. This allows sending the `audio finished` event back to Dart via the worker. Here an example just to let me explain and receive suggestions/critiques:
+The `AudioIsolate` [has been removed](https://github.com/alnitak/flutter_soloud/pull/89) and all the logic has been implemented natively. Events like `voice ended` are sent from C back to Dart. However, since it is not possible to call Dart from a native thread (the audio thread), a new web worker is created using the WASM `EM_ASM` directive. This allows sending the `audio finished` event back to Dart via the worker. Here an example just to let me explain and receive suggestions/critiques:
 ```CPP
 // On C side define an inline function to create the Web Worker and another
 // to send messages to the listening worker in Dart.
@@ -61,7 +61,7 @@ void setDartEventCallbacks() {
 }
 ```
 
-The same problem happens using `dart:ffi`, it is also not possible to call a function directly from a native thread to Dart without using send and receive ports. Here, `NativeCallable` helps. With `NativeCallable`, it is not necessary to import sendPort and receivePort into the native code, which are part of ffi and thus not compatible with the web.
+The same problem happens using `dart:ffi`, it is also not possible to call a function directly from a native thread (audio thread) to Dart without using send. Here, `NativeCallable` helps. With `NativeCallable`, it's not necessary to import sendPort and receivePort into the native code, which are part of ffi and thus not compatible with the web.
 
 
 ## Notes
@@ -71,12 +71,12 @@ Acquiring audio data is (was?) experimental, the following methods are now depre
 - `@experimental SoLoudCapture.getCaptureAudioTexture2D()`
 
 It is not possible to read a local audio file directly on the web. For this reason, `loadMem()` has been added, which requires the `Uint8List` byte buffer of the audio file.
-**IMPORTANT**: `loadMem()` with mode `LoadMode.memory` used the on web platform could cause UI freezy problems.
+**IMPORTANT**: `loadMem()` with mode `LoadMode.memory` used the on web platform will freezy the UI for the time needed to decompress the audio file. Please use it with mode `LoadMode.disk` or load your sound when the app starts.
 
 In addition to the `getAudioTexture2D`, with `AudioData` class is now possible to acquire audio as `linear`, which represents the FFT+wave vector, or just the `wave` data vector for better performance. With this class, it is also possible to choose to acquire data from the player or from the microphone.
 
 
-**`loadUrl()`** may produre the following error when the app is run on a remote server:
+**`loadUrl()`** produces the following error when the app is run on a remote server:
 >> Cross-Origin Request Blocked: The Same Origin Policy disallows reading the remote resource at https://www.learningcontainer.com/wp-content/uploads/2020/02/Kalimba.mp3. (Reason: CORS header ‘Access-Control-Allow-Origin’ missing). Status code: 200.
 
 This is due for the default beavior of http servers which don't allow to make requests outside their domain. Refer [here](https://enable-cors.org/server.html) to learn how to enable your server to handle this situation.

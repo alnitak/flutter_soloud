@@ -44,8 +44,6 @@ void main() async {
     },
   );
 
-  // SoLoudCapture.instance.init();
-
   runApp(const MyApp());
 }
 
