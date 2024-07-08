@@ -313,46 +313,46 @@ class _PageVisualizerState extends State<PageVisualizer> {
             /// is used with `loadMem()`. Otherwise the seek problem will
             /// be noticeable while seeking. See [SoLoud.seek] note.
             if (!kIsWeb)
-            ValueListenableBuilder<double>(
-              valueListenable: soundLength,
-              builder: (_, length, __) {
-                return ValueListenableBuilder<double>(
-                  valueListenable: soundPosition,
-                  builder: (_, position, __) {
-                    if (position >= length) {
-                      position = 0;
-                      if (length == 0) length = 1;
-                    }
+              ValueListenableBuilder<double>(
+                valueListenable: soundLength,
+                builder: (_, length, __) {
+                  return ValueListenableBuilder<double>(
+                    valueListenable: soundPosition,
+                    builder: (_, position, __) {
+                      if (position >= length) {
+                        position = 0;
+                        if (length == 0) length = 1;
+                      }
 
-                    return Row(
-                      children: [
-                        Text(position.toInt().toString()),
-                        Expanded(
-                          child: Slider.adaptive(
-                            value: position,
-                            max: length < position ? position : length,
-                            onChanged: (value) {
-                              if (currentSound == null) return;
-                              stopTimer();
-                              final position = Duration(
-                                milliseconds:
-                                    (value * Duration.millisecondsPerSecond)
-                                        .round(),
-                              );
-                              SoLoud.instance
-                                  .seek(currentSound!.handles.last, position);
-                              soundPosition.value = value;
-                              startTimer();
-                            },
+                      return Row(
+                        children: [
+                          Text(position.toInt().toString()),
+                          Expanded(
+                            child: Slider.adaptive(
+                              value: position,
+                              max: length < position ? position : length,
+                              onChanged: (value) {
+                                if (currentSound == null) return;
+                                stopTimer();
+                                final position = Duration(
+                                  milliseconds:
+                                      (value * Duration.millisecondsPerSecond)
+                                          .round(),
+                                );
+                                SoLoud.instance
+                                    .seek(currentSound!.handles.last, position);
+                                soundPosition.value = value;
+                                startTimer();
+                              },
+                            ),
                           ),
-                        ),
-                        Text(length.toInt().toString()),
-                      ],
-                    );
-                  },
-                );
-              },
-            ),
+                          Text(length.toInt().toString()),
+                        ],
+                      );
+                    },
+                  );
+                },
+              ),
 
             /// fft range slider values to put into the texture
             ValueListenableBuilder<RangeValues>(

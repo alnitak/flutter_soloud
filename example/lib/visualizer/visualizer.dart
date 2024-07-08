@@ -468,7 +468,7 @@ class _VisualizerState extends State<Visualizer> with TickerProviderStateMixin {
 
     final width = widget.controller.maxRange - widget.controller.minRange;
 
-    /// On the web there are worst performance getting data because for every 
+    /// On the web there are worst performance getting data because for every
     /// single data a JS function must be called.
     /// Setting here an height of 100 instead of 256 to improve.
     const height = kIsWeb ? 100 : 256;
