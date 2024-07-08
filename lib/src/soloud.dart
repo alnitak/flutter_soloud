@@ -203,6 +203,7 @@ interface class SoLoud {
   /// unnecessary, as the amount of data will be finite.
   /// The default is `false`.
   Future<void> init({
+    // TODO(filip): remove deprecation?
     @Deprecated('timeout is not used anymore.')
     Duration timeout = const Duration(seconds: 10),
     bool automaticCleanup = false,
@@ -245,8 +246,6 @@ interface class SoLoud {
       // Initialize [SoLoudLoader]
       _loader.automaticCleanup = automaticCleanup;
 
-      // TODO(filip): The Loader is not compatible with web!
-      //              Commenting this temporarly!
       await _loader.initialize();
     } else {
       _log.severe('initialize() failed with error: $error');

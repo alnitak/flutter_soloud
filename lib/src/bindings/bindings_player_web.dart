@@ -26,13 +26,7 @@ import 'package:meta/meta.dart';
 class FlutterSoLoudWeb extends FlutterSoLoud {
   static final Logger _log = Logger('flutter_soloud.FlutterSoLoudFfi');
 
-  // static FlutterSoLoudWeb? _instance;
-
   WorkerController? workerController;
-
-  // FlutterSoLoudWeb._();
-
-  // factory FlutterSoLoudWeb() => _instance ??= FlutterSoLoudWeb._();
 
   /// Create the worker in the WASM Module and listen for events coming
   /// from `web/worker.dart.js`
