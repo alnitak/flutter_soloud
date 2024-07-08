@@ -279,15 +279,15 @@ interface class SoLoud {
   /// when they are stopped/ended from anywhere or when a file has been loaded.
   ///
   /// Currently available:
-  ///   - [_controller.soLoudFFI.voiceEndedEvents]
-  ///   - [_controller.soLoudFFI.fileLoadedEvents]
+  ///   - [SoLoudController().soLoudFFI.voiceEndedEvents]
+  ///   - [SoLoudController().soLoudFFI.fileLoadedEvents]
   ///
   /// These events are coming from `FlutterSoLoudFfi`. The callbacks
   /// `_voiceEndedCallback` and `_fileLoadedCallback` are called from CPP.
   /// From within these callbacks a new stream event is added and listened here.
   // TODO(filip): 'setDartEventCallbacks()' can be called more then once,
   // please take a look at the listeners if you find a better way
-  // to manage then only once.
+  // to manage them only once.
   void _initializeNativeCallbacks() {
     // Initialize callbacks.
     _controller.soLoudFFI.setDartEventCallbacks();
@@ -433,7 +433,7 @@ interface class SoLoud {
   /// from the given file when needed (more CPU, less memory allocated).
   /// See the [seek] note problem when using [LoadMode.disk].
   /// The default is [LoadMode.memory].
-  /// IMPORTANT: [LoadMode.memory] used the on web platform could cause UI 
+  /// IMPORTANT: [LoadMode.memory] used the on web platform could cause UI
   /// freezy problems.
   ///
   /// This is the only choice to load a file when using this plugin on the web
@@ -1024,6 +1024,12 @@ interface class SoLoud {
   /// and `1.0` meaning full volume.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Note that if you `setGlobalVolume()` to `0.8` and then
+  /// `getGlobalVolume()`, you might get a slightly different number,
+  /// such as `0.800000042353`.
+  /// This is expected since the internal audio engine uses float
+  /// instead of double, and so there are rounding errors.
   double getGlobalVolume() {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1037,6 +1043,12 @@ interface class SoLoud {
   /// to `1.0` (meaning full volume).
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Note that if you `setGlobalVolume()` to `0.8` and then
+  /// `getGlobalVolume()`, you might get a slightly different number,
+  /// such as `0.800000042353`.
+  /// This is expected since the internal audio engine uses float
+  /// instead of double, and so there are rounding errors.
   void setGlobalVolume(double volume) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1056,6 +1068,11 @@ interface class SoLoud {
   /// and `1.0` means its playing at full volume.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Note that if you `setVolume()` to `0.8` and then `getVolume()`, you might
+  /// get a slightly different number, such as `0.800000042353`.
+  /// This is expected since the internal audio engine uses float
+  /// instead of double, and so there are rounding errors.
   double getVolume(SoundHandle handle) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();

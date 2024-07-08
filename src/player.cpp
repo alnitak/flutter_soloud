@@ -544,14 +544,10 @@ void Player::setPan(SoLoud::handle handle, float pan)
 
 void Player::setPanAbsolute(SoLoud::handle handle, float panLeft, float panRight)
 {
-    if (panLeft > 1.0f)
-        panLeft = 1.0f;
-    if (panLeft < -1.0f)
-        panLeft = -1.0f;
-    if (panRight > 1.0f)
-        panRight = 1.0f;
-    if (panRight < -1.0f)
-        panRight = -1.0f;
+    if (panLeft > 1.0f) panLeft = 1.0f;
+    if (panLeft < -1.0f) panLeft = -1.0f;
+    if (panRight > 1.0f) panRight = 1.0f;
+    if (panRight < -1.0f) panRight = -1.0f;
     soloud.setPanAbsolute(handle, panLeft, panRight);
 }
 
