@@ -1,2 +1,3 @@
-export 'package:flutter_soloud/src/utils/loader_io.dart'
-    if (dart.library.html) 'package:flutter_soloud/src/utils/loader_web.dart';
+export 'loader_base.dart'
+    if (dart.library.io) 'loader_io.dart'
+    if (dart.library.js_interop) 'loader_web.dart';

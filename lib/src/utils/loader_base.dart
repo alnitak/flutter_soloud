@@ -1,0 +1,23 @@
+import 'package:flutter/services.dart';
+import 'package:flutter_soloud/src/audio_source.dart';
+import 'package:flutter_soloud/src/enums.dart';
+import 'package:http/http.dart' as http;
+
+interface class SoLoudLoader {
+  Future<void> initialize() async =>
+      throw UnsupportedError('platform not supported');
+
+  Future<AudioSource> loadAsset(
+    String key,
+    LoadMode mode, {
+    AssetBundle? assetBundle,
+  }) async =>
+      throw UnsupportedError('platform not supported');
+
+  Future<AudioSource> loadUrl(
+    String url,
+    LoadMode mode, {
+    http.Client? httpClient,
+  }) async =>
+      throw UnsupportedError('platform not supported');
+}
