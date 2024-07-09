@@ -5,7 +5,7 @@ import 'package:flutter_soloud/src/enums.dart';
 import 'package:meta/meta.dart';
 
 export 'package:flutter_soloud/src/bindings/bindings_capture_ffi.dart'
-    if (dart.library.html) 'package:flutter_soloud/src/bindings/bindings_capture_web.dart';
+    if (dart.library.js_interop) 'package:flutter_soloud/src/bindings/bindings_capture_web.dart';
 
 /// The experimenta functionality to use the microphone used by "SoLoudCapture".
 @experimental

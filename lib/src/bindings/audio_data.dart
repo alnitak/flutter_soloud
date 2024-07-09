@@ -1,6 +1,6 @@
 import 'package:flutter_soloud/src/bindings/audio_data_extensions.dart';
 import 'package:flutter_soloud/src/bindings/audio_data_ffi.dart'
-    if (dart.library.html) 'audio_data_web.dart';
+    if (dart.library.js_interop) 'audio_data_web.dart';
 import 'package:flutter_soloud/src/bindings/soloud_controller.dart';
 import 'package:flutter_soloud/src/exceptions/exceptions.dart';
 import 'package:meta/meta.dart';

@@ -60,6 +60,10 @@ flutter:
         ffiPlugin: true
 
   assets:
+    # These assets are only needed for the web platform.
+    # Waiting for https://github.com/flutter/flutter/issues/65065 and
+    # https://github.com/flutter/flutter/issues/8230 to be addressed
+    # to make a conditional build.
     - web/worker.dart.js
     - web/libflutter_soloud_plugin.js
     - web/libflutter_soloud_plugin.wasm

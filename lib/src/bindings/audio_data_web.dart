@@ -29,6 +29,9 @@ class AudioDataCtrl {
       SoLoudController().captureFFI.getCaptureAudioTexture;
 
   void allocSamples() {
+    /// This is the max amount of memory [_samplePtr] may need. This number
+    /// is needed when acquiring data with [getTexture] which is a matrix of
+    /// 256 rows and 512 columns of floats (4 bytes each).
     _samplesPtr = wasmMalloc(512 * 256 * 4);
   }
 

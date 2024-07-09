@@ -9,7 +9,7 @@ import 'package:flutter_soloud/src/sound_hash.dart';
 import 'package:meta/meta.dart';
 
 export 'package:flutter_soloud/src/bindings/bindings_player_ffi.dart'
-    if (dart.library.html) 'package:flutter_soloud/src/bindings/bindings_player_web.dart';
+    if (dart.library.js_interop) 'package:flutter_soloud/src/bindings/bindings_player_web.dart';
 
 /// Abstract class defining the interface for the platform-specific
 /// implementations.
