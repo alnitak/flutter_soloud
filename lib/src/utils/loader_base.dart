@@ -7,6 +7,9 @@ import 'package:http/http.dart' as http;
 
 /// Stub interface for unsupported plarforms.
 interface class SoLoudLoader {
+  /// To reflect [SoLoudLoader] for `io`.
+  bool automaticCleanup = false;
+
   Future<void> initialize() async =>
       throw UnsupportedError('platform not supported');
 
