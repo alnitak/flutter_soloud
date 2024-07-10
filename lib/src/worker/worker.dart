@@ -3,57 +3,9 @@
 import 'dart:async';
 import 'dart:convert' show jsonEncode;
 import 'dart:js_interop';
-import 'dart:js_interop_unsafe';
-// ignore: avoid_web_libraries_in_flutter
-import 'dart:js_util';
 
 import 'package:meta/meta.dart';
 import 'package:web/web.dart' as web;
-
-// Masked type: ServiceWorkerGlobalScope
-@JS('self')
-external JSAny get globalScopeSelf;
-
-@JS('self.importScript')
-// ignore: unused_element
-external JSAny _importScript(String path);
-
-void jsSendMessage(dynamic m) {
-  globalContext.callMethod('postMessage'.toJS, (m as Object).jsify());
-}
-
-Stream<T> callbackToStream<J, T>(
-  dynamic object,
-  String name,
-  T Function(J jsValue) unwrapValue,
-) {
-  final controller = StreamController<T>.broadcast(sync: true);
-  setProperty(
-    object as Object,
-    name,
-    allowInterop((J event) {
-      controller.add(unwrapValue(event));
-    }),
-  );
-  return controller.stream;
-}
-
-@internal
-class Worker {
-  Worker() {
-    _outputController = StreamController();
-    callbackToStream(globalScopeSelf, 'onmessage', (web.MessageEvent e) {
-      _outputController.add(getProperty<dynamic>(e as Object, 'data'));
-    });
-  }
-  late StreamController<dynamic> _outputController;
-
-  Stream<dynamic> onReceive() => _outputController.stream;
-
-  void sendMessage(dynamic message) {
-    jsSendMessage(message);
-  }
-}
 
 @internal
 class WorkerController {
