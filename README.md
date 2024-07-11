@@ -5,7 +5,7 @@ A low-level audio plugin for Flutter.
 
 |Linux|Windows|Android|MacOS|iOS|web|
 |:-:|:-:|:-:|:-:|:-:|:-:|
-|💙|💙|💙|💙|💙| <abbr title="Work in Progress">WIP</abbr> |
+|💙|💙|💙|💙|💙|💙|
 
 ### Select features:
 
@@ -42,6 +42,7 @@ with the [miniaudio](https://miniaud.io/) backend
 through [Dart's C interop](https://dart.dev/interop/c-interop) (`dart:ffi`).
 In other words, it is calling the C/C++ methods of the underlying audio engine
 directly — there are no method channels in use.
+To use this plugin on the **Web platform**, please refer to [WEB_NOTES](https://github.com/alnitak/flutter_soloud/blob/main/WEB_NOTES.md).
 
 
 ## Example
