@@ -46,7 +46,7 @@ external void wasmSendToWorker(int message, int value);
 external web.Worker wasmWorker;
 
 @JS('Module._initEngine')
-external int wasmInitEngine();
+external int wasmInitEngine(int sampleRate, int bufferSize, int channels);
 
 @JS('Module._dispose')
 external void wasmDeinit();
@@ -241,6 +241,29 @@ external int wasmGetMaxActiveVoiceCount();
 
 @JS('Module._setMaxActiveVoiceCount')
 external void wasmSetMaxActiveVoiceCount(int maxVoiceCount);
+
+  /////////////////////////////////////////
+  /// voice groups
+  /////////////////////////////////////////
+
+@JS('Module._createVoiceGroup')
+external int wasmCreateVoiceGroup();
+
+@JS('Module._destroyVoiceGroup')
+external void wasmDestroyVoiceGroup(int handle);
+
+@JS('Module._addVoiceToGroup')
+external void wasmAddVoiceToGroup(int voiceGroupHandle, int voiceHandle);
+
+@JS('Module._isVoiceGroup')
+external int wasmIsVoiceGroup(int handle);
+
+@JS('Module._isVoiceGroupEmpty')
+external int wasmIsVoiceGroupEmpty(int handle);
+
+  // ///////////////////////////////////////
+  //  faders
+  // ///////////////////////////////////////
 
 @JS('Module._fadeGlobalVolume')
 external int wasmFadeGlobalVolume(double to, double duration);

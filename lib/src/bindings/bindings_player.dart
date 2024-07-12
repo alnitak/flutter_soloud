@@ -52,9 +52,19 @@ abstract class FlutterSoLoud {
 
   /// Initialize the player. Must be called before any other player functions.
   ///
+  /// [sampleRate] the sample rate. Usually is 22050, 44100 (CD quality)
+  /// or 48000.
+  /// [bufferSize] the audio buffer size. Usually is 2048, but can be also
+  /// 512 when low latency is needed for example in games.
+  /// [channels] 1=mono, 2=stereo, 4=quad, 6=5.1, 8=7.1.
+  ///
   /// Returns [PlayerErrors.noError] if success.
   @mustBeOverridden
-  PlayerErrors initEngine();
+  PlayerErrors initEngine(
+    int sampleRate,
+    int bufferSize,
+    Channels channels,
+  );
 
   /// Must be called when the player is no more needed or when closing the app.
   @mustBeOverridden
@@ -482,6 +492,43 @@ abstract class FlutterSoLoud {
   /// some serious changes in any case.
   @mustBeOverridden
   void setMaxActiveVoiceCount(int maxVoiceCount);
+
+  /////////////////////////////////////////
+  /// voice groups
+  /////////////////////////////////////////
+
+  /// Used to create a new voice group. Returns 0 if not successful.
+  SoundHandle createVoiceGroup();
+
+  /// Deallocates the voice group. Does not stop the voices attached to the
+  /// voice group.
+  ///
+  /// [handle] the group handle to destroy.
+  void destroyVoiceGroup(SoundHandle handle);
+
+  /// Adds voice handle to the voice group. The voice handles can still be
+  /// used separate from the group.
+  /// [voiceGroupHandle] the group handle to add the new [voiceHandles].
+  /// [voiceHandles] voice handles list to add to the [voiceGroupHandle].
+  void addVoiceToGroup(
+    SoundHandle voiceGroupHandle,
+    List<SoundHandle> voiceHandles,
+  );
+
+  /// Checks if the handle is a valid voice group. Does not care if the
+  /// voice group is empty.
+  ///
+  /// [handle] the group handle to check.
+  /// Return true if [handle] is a group handle.
+  bool isVoiceGroup(SoundHandle handle);
+
+  /// Checks whether a voice group is empty. SoLoud automatically trims
+  /// the voice groups of voices that have ended, so the group may be
+  /// empty even though you've added valid voice handles to it.
+  ///
+  /// [handle] group handle to check.
+  /// Return true if the group handle doesn't have any voices.
+  bool isVoiceGroupEmpty(SoundHandle handle);
 
   // ///////////////////////////////////////
   //  faders

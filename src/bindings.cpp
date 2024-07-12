@@ -43,9 +43,9 @@ extern "C"
     FFI_PLUGIN_EXPORT void createWorkerInWasm()
     {
         printf("CPP void createWorkerInWasm()\n");
-        
+
         EM_ASM({
-            if (!Module.wasmWorker) 
+            if (!Module.wasmWorker)
             {
                 // Create a new Worker from the URI
                 var workerUri = "assets/packages/flutter_soloud/web/worker.dart.js";
@@ -149,16 +149,24 @@ extern "C"
     //////////////////////////////////////////////////////////////////////////////////
     //////////////////////////////////////////////////////////////////////////////////
 
-    /// Initialize the player.get()-> Must be called before any other player functions
+    /// Initialize the player. Must be called before any other player functions.
     ///
-    /// Returns [PlayerErrors.noError] if success
-    FFI_PLUGIN_EXPORT enum PlayerErrors initEngine()
+    /// [sampleRate] the sample rate. Usually is 22050, 44100 (CD quality) or 48000.
+    /// [bufferSize] the audio buffer size. Usually is 2048, but can be also 512 when
+    /// low latency is needed for example in games.
+    /// [channels] 1=mono, 2=stereo, 4=quad, 6=5.1, 8=7.1.
+    ///
+    /// Returns [PlayerErrors.noError] if success.
+    FFI_PLUGIN_EXPORT enum PlayerErrors initEngine(
+        unsigned int sampleRate,
+        unsigned int bufferSize,
+        unsigned int channels)
     {
         if (player.get() == nullptr)
             player = std::make_unique<Player>();
 
         player.get()->setStateChangedCallback(stateChangedCallback);
-        PlayerErrors res = (PlayerErrors)player.get()->init();
+        PlayerErrors res = (PlayerErrors)player.get()->init(sampleRate, bufferSize, channels);
         if (res != noError)
             return res;
 
@@ -374,7 +382,7 @@ extern "C"
     FFI_PLUGIN_EXPORT void pauseSwitch(unsigned int handle)
     {
         if (player.get() == nullptr || !player.get()->isInited() ||
-            !player.get()->isValidVoiceHandle(handle))
+            !player.get()->isValidHandle(handle))
             return;
         player.get()->pauseSwitch(handle);
     }
@@ -386,7 +394,7 @@ extern "C"
     FFI_PLUGIN_EXPORT void setPause(unsigned int handle, bool pause)
     {
         if (player.get() == nullptr || !player.get()->isInited() ||
-            !player.get()->isValidVoiceHandle(handle))
+            !player.get()->isValidHandle(handle))
             return;
         player.get()->setPause(handle, pause);
     }
@@ -398,7 +406,7 @@ extern "C"
     FFI_PLUGIN_EXPORT int getPause(unsigned int handle)
     {
         if (player.get() == nullptr || !player.get()->isInited() ||
-            !player.get()->isValidVoiceHandle(handle))
+            !player.get()->isValidHandle(handle))
             return false;
         return player.get()->getPause(handle) ? 1 : 0;
     }
@@ -418,7 +426,7 @@ extern "C"
     FFI_PLUGIN_EXPORT void setRelativePlaySpeed(unsigned int handle, float speed)
     {
         if (player.get() == nullptr || !player.get()->isInited() ||
-            !player.get()->isValidVoiceHandle(handle))
+            !player.get()->isValidHandle(handle))
             return;
         player.get()->setRelativePlaySpeed(handle, speed);
     }
@@ -431,7 +439,7 @@ extern "C"
     FFI_PLUGIN_EXPORT float getRelativePlaySpeed(unsigned int handle)
     {
         if (player.get() == nullptr || !player.get()->isInited() ||
-            !player.get()->isValidVoiceHandle(handle))
+            !player.get()->isValidHandle(handle))
             return 1;
         return player.get()->getRelativePlaySpeed(handle);
     }
@@ -471,7 +479,7 @@ extern "C"
     FFI_PLUGIN_EXPORT void stop(unsigned int handle)
     {
         if (player.get() == nullptr || !player.get()->isInited() ||
-            !player.get()->isValidVoiceHandle(handle))
+            !player.get()->isValidHandle(handle))
             return;
         player.get()->stop(handle);
     }
@@ -502,7 +510,7 @@ extern "C"
     FFI_PLUGIN_EXPORT int getLooping(unsigned int handle)
     {
         if (player.get() == nullptr || !player.get()->isInited() ||
-            !player.get()->isValidVoiceHandle(handle))
+            !player.get()->isValidHandle(handle))
             return 0;
         return player.get()->getLooping(handle) == 1;
     }
@@ -515,7 +523,7 @@ extern "C"
     FFI_PLUGIN_EXPORT void setLooping(unsigned int handle, bool enable)
     {
         if (player.get() == nullptr || !player.get()->isInited() ||
-            !player.get()->isValidVoiceHandle(handle))
+            !player.get()->isValidHandle(handle))
             return;
         player.get()->setLooping(handle, enable);
     }
@@ -527,7 +535,7 @@ extern "C"
     FFI_PLUGIN_EXPORT double getLoopPoint(unsigned int handle)
     {
         if (player.get() == nullptr || !player.get()->isInited() ||
-            !player.get()->isValidVoiceHandle(handle))
+            !player.get()->isValidHandle(handle))
             return 0;
         return player.get()->getLoopPoint(handle);
     }
@@ -539,7 +547,7 @@ extern "C"
     FFI_PLUGIN_EXPORT void setLoopPoint(unsigned int handle, double time)
     {
         if (player.get() == nullptr || !player.get()->isInited() ||
-            !player.get()->isValidVoiceHandle(handle))
+            !player.get()->isValidHandle(handle))
             return;
         player.get()->setLoopPoint(handle, time);
     }
@@ -646,7 +654,8 @@ extern "C"
         return noError;
     }
 
-    FFI_PLUGIN_EXPORT float getTextureValue(int row, int column) {
+    FFI_PLUGIN_EXPORT float getTextureValue(int row, int column)
+    {
         return texture2D[row][column];
     }
 
@@ -692,7 +701,7 @@ extern "C"
     FFI_PLUGIN_EXPORT double getPosition(unsigned int handle)
     {
         if (player.get() == nullptr || !player.get()->isInited() ||
-            !player.get()->isValidVoiceHandle(handle))
+            !player.get()->isValidHandle(handle))
             return 0.0;
         return player.get()->getPosition(handle);
     }
@@ -724,7 +733,7 @@ extern "C"
     FFI_PLUGIN_EXPORT double getVolume(unsigned int handle)
     {
         if (player.get() == nullptr || !player.get()->isInited() ||
-            !player.get()->isValidVoiceHandle(handle))
+            !player.get()->isValidHandle(handle))
             return 0.0;
         return player.get()->getVolume(handle);
     }
@@ -735,7 +744,7 @@ extern "C"
     {
         if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
-        if (!player.get()->isValidVoiceHandle(handle))
+        if (!player.get()->isValidHandle(handle))
             return soundHandleNotFound;
         player.get()->setVolume(handle, volume);
         return noError;
@@ -787,7 +796,7 @@ extern "C"
         if (player.get() == nullptr || !player.get()->isInited() ||
             player.get()->getSoundsCount() == 0)
             return false;
-        return player.get()->isValidVoiceHandle(handle) ? 1 : 0;
+        return player.get()->isValidHandle(handle) ? 1 : 0;
     }
 
     /// Returns the number of concurrent sounds that are playing at the moment.
@@ -818,7 +827,7 @@ extern "C"
     FFI_PLUGIN_EXPORT bool getProtectVoice(unsigned int handle)
     {
         if (player.get() == nullptr || !player.get()->isInited() ||
-            !player.get()->isValidVoiceHandle(handle))
+            !player.get()->isValidHandle(handle))
             return false;
         return player.get()->getProtectVoice(handle);
     }
@@ -836,7 +845,7 @@ extern "C"
     FFI_PLUGIN_EXPORT void setProtectVoice(unsigned int handle, bool protect)
     {
         if (player.get() == nullptr || !player.get()->isInited() ||
-            !player.get()->isValidVoiceHandle(handle))
+            !player.get()->isValidHandle(handle))
             return;
         player.get()->setProtectVoice(handle, protect);
     }
@@ -868,11 +877,54 @@ extern "C"
     }
 
     /////////////////////////////////////////
-    /// faders
+    /// voice groups
+    /////////////////////////////////////////
+
+    /// Used to create a new voice group. Returns 0 if not successful.
+    FFI_PLUGIN_EXPORT unsigned int createVoiceGroup() {
+        return player.get()->createVoiceGroup();
+    }
+
+    /// Deallocates the voice group. Does not stop the voices attached to the 
+    /// voice group.
+    ///
+    /// [handle] the group handle to destroy.
+    FFI_PLUGIN_EXPORT void destroyVoiceGroup(unsigned int handle) {
+        player.get()->destroyVoiceGroup(handle);
+    }
+
+    /// Adds voice handle to the voice group. The voice handles can still be 
+    /// used separate from the group.
+    /// [voiceGroupHandle] the group handle to add the new [voiceHandle].
+    /// [voiceHandle] voice handle to add to the [voiceGroupHandle].
+    FFI_PLUGIN_EXPORT void addVoiceToGroup(unsigned int voiceGroupHandle, unsigned int voiceHandle) {
+        player.get()->addVoiceToGroup(voiceGroupHandle, voiceHandle);
+    }
+
+    /// Checks if the handle is a valid voice group. Does not care if the 
+    /// voice group is empty.
+    ///
+    /// [handle] the group handle to check.
+    /// Return true if [handle] is a group handle.
+    FFI_PLUGIN_EXPORT bool isVoiceGroup(unsigned int handle) {
+        return player.get()->isVoiceGroup(handle);
+    }
+
+    /// Checks whether a voice group is empty. SoLoud automatically trims 
+    /// the voice groups of voices that have ended, so the group may be
+    /// empty even though you've added valid voice handles to it.
+    ///
+    /// [handle] group handle to check.
+    /// Return true if the group handle doesn't have any voices.
+    FFI_PLUGIN_EXPORT bool isVoiceGroupEmpty(unsigned int handle) {
+        return player.get()->isVoiceGroupEmpty(handle);
+    }
+
+    /////////////////////////////////////////
+    /// faders & oscillators
     /////////////////////////////////////////
 
     /// Smoothly change the global volume over specified time.
-    ///
     FFI_PLUGIN_EXPORT enum PlayerErrors fadeGlobalVolume(float to, float time)
     {
         if (player.get() == nullptr || !player.get()->isInited())
@@ -882,7 +934,6 @@ extern "C"
     }
 
     /// Smoothly change a channel's volume over specified time.
-    ///
     FFI_PLUGIN_EXPORT enum PlayerErrors fadeVolume(unsigned int handle, float to, float time)
     {
         if (player.get() == nullptr || !player.get()->isInited())
@@ -892,7 +943,6 @@ extern "C"
     }
 
     /// Smoothly change a channel's pan setting over specified time.
-    ///
     FFI_PLUGIN_EXPORT enum PlayerErrors fadePan(unsigned int handle, float to, float time)
     {
         if (player.get() == nullptr || !player.get()->isInited())
@@ -902,7 +952,6 @@ extern "C"
     }
 
     /// Smoothly change a channel's relative play speed over specified time.
-    ///
     FFI_PLUGIN_EXPORT enum PlayerErrors fadeRelativePlaySpeed(unsigned int handle, float to, float time)
     {
         if (player.get() == nullptr || !player.get()->isInited())
@@ -912,7 +961,6 @@ extern "C"
     }
 
     /// After specified time, pause the channel.
-    ///
     FFI_PLUGIN_EXPORT enum PlayerErrors schedulePause(unsigned int handle, float time)
     {
         if (player.get() == nullptr || !player.get()->isInited())
@@ -922,7 +970,6 @@ extern "C"
     }
 
     /// After specified time, stop the channel.
-    ///
     FFI_PLUGIN_EXPORT enum PlayerErrors scheduleStop(unsigned int handle, float time)
     {
         if (player.get() == nullptr || !player.get()->isInited())
@@ -932,7 +979,6 @@ extern "C"
     }
 
     /// Set fader to oscillate the volume at specified frequency.
-    ///
     FFI_PLUGIN_EXPORT enum PlayerErrors oscillateVolume(unsigned int handle, float from, float to, float time)
     {
         if (player.get() == nullptr || !player.get()->isInited())
@@ -942,7 +988,6 @@ extern "C"
     }
 
     /// Set fader to oscillate the panning at specified frequency.
-    ///
     FFI_PLUGIN_EXPORT enum PlayerErrors oscillatePan(unsigned int handle, float from, float to, float time)
     {
         if (player.get() == nullptr || !player.get()->isInited())
@@ -952,7 +997,6 @@ extern "C"
     }
 
     /// Set fader to oscillate the relative play speed at specified frequency.
-    ///
     FFI_PLUGIN_EXPORT enum PlayerErrors oscillateRelativePlaySpeed(unsigned int handle, float from, float to, float time)
     {
         if (player.get() == nullptr || !player.get()->isInited())
@@ -962,7 +1006,6 @@ extern "C"
     }
 
     /// Set fader to oscillate the global volume at specified frequency.
-    ///
     FFI_PLUGIN_EXPORT enum PlayerErrors oscillateGlobalVolume(float from, float to, float time)
     {
         if (player.get() == nullptr || !player.get()->isInited())
@@ -980,7 +1023,6 @@ extern "C"
     /// [filterType] filter to check
     /// Returns [PlayerErrors.noError] if no errors and the index of
     /// the given filter (-1 if the filter is not active)
-    ///
     FFI_PLUGIN_EXPORT enum PlayerErrors isFilterActive(enum FilterType filterType, int *index)
     {
         *index = -1;
@@ -994,7 +1036,6 @@ extern "C"
     ///
     /// [filterType] filter to get param names
     /// Returns [PlayerErrors.noError] if no errors and the list of param names
-    ///
     FFI_PLUGIN_EXPORT enum PlayerErrors getFilterParamNames(
         enum FilterType filterType, int *paramsCount, char **names)
     {
@@ -1017,7 +1058,6 @@ extern "C"
     ///
     /// [filterType] filter to add
     /// Returns [PlayerErrors.noError] if no errors
-    ///
     FFI_PLUGIN_EXPORT enum PlayerErrors addGlobalFilter(enum FilterType filterType)
     {
         if (player.get() == nullptr || !player.get()->isInited())
@@ -1029,7 +1069,6 @@ extern "C"
     ///
     /// [filterType] filter to remove
     /// Returns [PlayerErrors.noError] if no errors
-    ///
     FFI_PLUGIN_EXPORT enum PlayerErrors removeGlobalFilter(enum FilterType filterType)
     {
         if (player.get() == nullptr || !player.get()->isInited())
@@ -1044,7 +1083,6 @@ extern "C"
     ///
     /// [filterType] filter to modify a param
     /// Returns [PlayerErrors.noError] if no errors
-    ///
     FFI_PLUGIN_EXPORT enum PlayerErrors setFxParams(enum FilterType filterType, int attributeId, float value)
     {
         if (player.get() == nullptr || !player.get()->isInited())
@@ -1057,7 +1095,6 @@ extern "C"
     ///
     /// [filterType] filter to modify a param
     /// Returns the value of param
-    ///
     FFI_PLUGIN_EXPORT float getFxParams(enum FilterType filterType, int attributeId)
     {
         if (player.get() == nullptr || !player.get()->isInited())

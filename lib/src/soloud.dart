@@ -207,6 +207,9 @@ interface class SoLoud {
     @Deprecated('timeout is not used anymore.')
     Duration timeout = const Duration(seconds: 10),
     bool automaticCleanup = false,
+    int sampleRate = 44100,
+    int bufferSize = 2048,
+    Channels channels = Channels.channelStereo,
   }) async {
     /// Defaults are:
     /// Miniaudio audio backend
@@ -233,7 +236,11 @@ interface class SoLoud {
     // Initialize native callbacks
     _initializeNativeCallbacks();
 
-    final error = _controller.soLoudFFI.initEngine();
+    final error = _controller.soLoudFFI.initEngine(
+      sampleRate,
+      bufferSize,
+      channels,
+    );
     _logPlayerError(error, from: 'initialize() result');
     if (error == PlayerErrors.noError) {
       _isInitialized = true;
@@ -1331,6 +1338,57 @@ interface class SoLoud {
       throw const SoLoudNotInitializedException();
     }
     _controller.soLoudFFI.setFftSmoothing(smooth);
+  }
+
+  /////////////////////////////////////////
+  /// voice groups
+  /////////////////////////////////////////
+
+  /// Used to create a new voice group. Returns 0 if not successful.
+  SoundHandle createVoiceGroup() {
+    final ret = _controller.soLoudFFI.createVoiceGroup();
+    return ret;
+  }
+
+  /// Deallocates the voice group. Does not stop the voices attached to the
+  /// voice group.
+  ///
+  /// [handle] the group handle to destroy.
+  void destroyVoiceGroup(SoundHandle handle) {
+    return _controller.soLoudFFI.destroyVoiceGroup(handle);
+  }
+
+  /// Adds voice handle to the voice group. The voice handles can still be
+  /// used separate from the group.
+  /// [voiceGroupHandle] the group handle to add the new [voiceHandles].
+  /// [voiceHandles] voice handle to add to the [voiceGroupHandle].
+  void addVoiceToGroup(
+    SoundHandle voiceGroupHandle,
+    List<SoundHandle> voiceHandles,
+  ) {
+    return _controller.soLoudFFI.addVoiceToGroup(
+      voiceGroupHandle,
+      voiceHandles,
+    );
+  }
+
+  /// Checks if the handle is a valid voice group. Does not care if the
+  /// voice group is empty.
+  ///
+  /// [handle] the group handle to check.
+  /// Return true if [handle] is a group handle.
+  bool isVoiceGroup(SoundHandle handle) {
+    return _controller.soLoudFFI.isVoiceGroup(handle);
+  }
+
+  /// Checks whether a voice group is empty. SoLoud automatically trims
+  /// the voice groups of voices that have ended, so the group may be
+  /// empty even though you've added valid voice handles to it.
+  ///
+  /// [handle] group handle to check.
+  /// Return true if the group handle doesn't have any voices.
+  bool isVoiceGroupEmpty(SoundHandle handle) {
+    return _controller.soLoudFFI.isVoiceGroupEmpty(handle);
   }
 
   // ///////////////////////////////////////

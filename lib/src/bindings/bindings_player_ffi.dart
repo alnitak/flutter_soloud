@@ -163,13 +163,28 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       _nativeFreePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 
   @override
-  PlayerErrors initEngine() {
-    return PlayerErrors.values[_initEngine()];
+  PlayerErrors initEngine(int sampleRate, int bufferSize, Channels channels) {
+    final channelsInternal = switch (channels) {
+      Channels.channelMono => 1,
+      Channels.channelStereo => 2,
+      Channels.channelQuad => 4,
+      Channels.channel51 => 6,
+      Channels.channel71 => 8,
+    };
+    final ret = _initEngine(
+      sampleRate,
+      bufferSize,
+      channelsInternal,
+    );
+    return PlayerErrors.values[ret];
   }
 
-  late final _initEnginePtr =
-      _lookup<ffi.NativeFunction<ffi.Int32 Function()>>('initEngine');
-  late final _initEngine = _initEnginePtr.asFunction<int Function()>();
+  late final _initEnginePtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Int32 Function(ffi.UnsignedInt, ffi.UnsignedInt,
+              ffi.UnsignedInt)>>('initEngine');
+  late final _initEngine =
+      _initEnginePtr.asFunction<int Function(int, int, int)>();
 
   @override
   void deinit() {
@@ -836,6 +851,71 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
           'setMaxActiveVoiceCount');
   late final _setMaxActiveVoiceCount =
       _setMaxActiveVoiceCountPtr.asFunction<void Function(int)>();
+
+  /////////////////////////////////////////
+  /// voice groups
+  /////////////////////////////////////////
+
+  @override
+  SoundHandle createVoiceGroup() {
+    final ret = _createVoiceGroup();
+    return SoundHandle(ret > 0 ? ret : -1);
+  }
+
+  late final _createVoiceGroupPtr =
+      _lookup<ffi.NativeFunction<ffi.UnsignedInt Function()>>(
+          'createVoiceGroup');
+  late final _createVoiceGroup =
+      _createVoiceGroupPtr.asFunction<int Function()>();
+
+  @override
+  void destroyVoiceGroup(SoundHandle handle) {
+    return _destroyVoiceGroup(handle.id);
+  }
+
+  late final _destroyVoiceGroupPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt)>>(
+          'destroyVoiceGroup');
+  late final _destroyVoiceGroup =
+      _destroyVoiceGroupPtr.asFunction<void Function(int)>();
+
+  @override
+  void addVoiceToGroup(
+    SoundHandle voiceGroupHandle,
+    List<SoundHandle> voiceHandles,
+  ) {
+    for (final handle in voiceHandles) {
+      _addVoiceToGroup(voiceGroupHandle.id, handle.id);
+    }
+  }
+
+  late final _addVoiceToGroupPtr = _lookup<
+          ffi
+          .NativeFunction<ffi.Void Function(ffi.UnsignedInt, ffi.UnsignedInt)>>(
+      'addVoiceToGroup');
+  late final _addVoiceToGroup =
+      _addVoiceToGroupPtr.asFunction<void Function(int, int)>();
+
+  @override
+  bool isVoiceGroup(SoundHandle handle) {
+    return _isVoiceGroup(handle.id) == 1;
+  }
+
+  late final _isVoiceGroupPtr =
+      _lookup<ffi.NativeFunction<ffi.Int Function(ffi.UnsignedInt)>>(
+          'isVoiceGroup');
+  late final _isVoiceGroup = _isVoiceGroupPtr.asFunction<int Function(int)>();
+
+  @override
+  bool isVoiceGroupEmpty(SoundHandle handle) {
+    return _isVoiceGroupEmpty(handle.id) == 1;
+  }
+
+  late final _isVoiceGroupEmptyPtr =
+      _lookup<ffi.NativeFunction<ffi.Int Function(ffi.UnsignedInt)>>(
+          'isVoiceGroupEmpty');
+  late final _isVoiceGroupEmpty =
+      _isVoiceGroupEmptyPtr.asFunction<int Function(int)>();
 
   /////////////////////////////////////////
   /// faders

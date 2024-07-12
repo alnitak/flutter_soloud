@@ -45,8 +45,12 @@ public:
     ~Player();
 
     /// @brief Initialize the player. Must be called before any other player functions.
+    /// @param sampleRate sample rate. Usually is 22050, 44100 (CD quality) or 48000.
+    /// @param bufferSize the audio buffer size. Usually is 2048, but can be also 512 when
+    /// low latency is needed for example in games.
+    /// @param channels 1)mono, 2)stereo 4)quad 6)5.1 8)7.1
     /// @return Returns [PlayerErrors.SO_NO_ERROR] if success.
-    PlayerErrors init();
+    PlayerErrors init(unsigned int sampleRate, unsigned int bufferSize, unsigned int channels);
 
     /// @brief Set a function callback triggered when a voice is stopped/ended.
     void setVoiceEndedCallback(void (*voiceEndedCallback)(unsigned int*));
@@ -307,7 +311,7 @@ public:
     /// @brief Check if a handle is still valid.
     /// @param handle handle to check.
     /// @return true if it still exists.
-    bool isValidVoiceHandle(SoLoud::handle handle);
+    bool isValidHandle(SoLoud::handle handle);
 
     /// @brief Returns the number of concurrent sounds that are playing at the moment.
     unsigned int getActiveVoiceCount();
@@ -356,6 +360,33 @@ public:
     ActiveSound *findByHandle(SoLoud::handle handle);
 
     void debug();
+
+    /////////////////////////////////////////
+    /// voice groups
+    /////////////////////////////////////////
+
+    /// @brief Used to create a new voice group. Returns 0 if not successful.
+    unsigned int createVoiceGroup();
+
+    /// @brief Deallocates the voice group. Does not stop the voices attached to the voice group.
+    /// @param handle the group handle to destroy.
+    void destroyVoiceGroup(SoLoud::handle handle);
+
+    /// @brief Adds voice handle to the voice group. The voice handles can still be used separate from the group.
+    /// @param voiceGroupHandle the group handle to add the new [handle].
+    /// @param voiceHandle voice handle to add to the [voiceGroupHandle].
+    void addVoiceToGroup(SoLoud::handle voiceGroupHandle, SoLoud::handle voiceHandle);
+
+    /// @brief Checks if the handle is a valid voice group. Does not care if the voice group is empty.
+    /// @param handle the group handle to check.
+    /// @return true if [handle] is a group handle.
+    bool isVoiceGroup(SoLoud::handle handle);
+
+    /// @brief Checks whether a voice group is empty. SoLoud automatically trims the voice groups of 
+    /// voices that have ended, so the group may be empty even though you've added valid voice handles to it.
+    /// @param handle group handle to check.
+    /// @return true if the group handle doesn't have any voices.
+    bool isVoiceGroupEmpty(SoLoud::handle handle);
 
     /////////////////////////////////////////
     /// faders & oscillators

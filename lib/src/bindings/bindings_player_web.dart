@@ -72,8 +72,16 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }
 
   @override
-  PlayerErrors initEngine() {
-    return PlayerErrors.values[wasmInitEngine()];
+  PlayerErrors initEngine(int sampleRate, int bufferSize, Channels channels) {
+    final channelsInternal = switch (channels) {
+      Channels.channelMono => 1,
+      Channels.channelStereo => 2,
+      Channels.channelQuad => 4,
+      Channels.channel51 => 6,
+      Channels.channel71 => 8,
+    };
+    final ret = wasmInitEngine(sampleRate, bufferSize, channelsInternal);
+    return PlayerErrors.values[ret];
   }
 
   @override
@@ -418,6 +426,41 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   @override
   void setMaxActiveVoiceCount(int maxVoiceCount) {
     return wasmSetMaxActiveVoiceCount(maxVoiceCount);
+  }
+
+  /////////////////////////////////////////
+  /// voice groups
+  /////////////////////////////////////////
+
+  @override
+  SoundHandle createVoiceGroup() {
+    final ret = wasmCreateVoiceGroup();
+    return SoundHandle(ret > 0 ? ret : -1);
+  }
+
+  @override
+  void destroyVoiceGroup(SoundHandle handle) {
+    return wasmDestroyVoiceGroup(handle.id);
+  }
+
+  @override
+  void addVoiceToGroup(
+    SoundHandle voiceGroupHandle,
+    List<SoundHandle> voiceHandles,
+  ) {
+    for (final handle in voiceHandles) {
+      wasmAddVoiceToGroup(voiceGroupHandle.id, handle.id);
+    }
+  }
+
+  @override
+  bool isVoiceGroup(SoundHandle handle) {
+    return wasmIsVoiceGroup(handle.id) == 1;
+  }
+
+  @override
+  bool isVoiceGroupEmpty(SoundHandle handle) {
+    return wasmIsVoiceGroupEmpty(handle.id) == 1;
   }
 
   // ///////////////////////////////////////

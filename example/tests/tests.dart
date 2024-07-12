@@ -1,7 +1,9 @@
+// ignore_for_file: public_member_api_docs, sort_constructors_first
 import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:flutter_soloud/src/bindings/soloud_controller.dart';
 
@@ -10,12 +12,6 @@ enum TestStatus {
   passed,
   failed,
 }
-
-typedef TestFunction = ({
-  String name,
-  Future<StringBuffer> Function() callback,
-  TestStatus status,
-});
 
 /// A GUI for tests.
 ///
@@ -39,6 +35,17 @@ void main() {
   );
 }
 
+class Test {
+  Test({
+    required this.name,
+    required this.callback,
+    this.status = TestStatus.none,
+  });
+  final String name;
+  final Future<StringBuffer> Function() callback;
+  TestStatus status;
+}
+
 class MyHomePage extends StatefulWidget {
   const MyHomePage({super.key});
 
@@ -48,7 +55,7 @@ class MyHomePage extends StatefulWidget {
 
 class _MyHomePageState extends State<MyHomePage> {
   final output = StringBuffer();
-  final List<TestFunction> tests = [];
+  final List<Test> tests = [];
   final textEditingController = TextEditingController();
 
   @override
@@ -57,51 +64,17 @@ class _MyHomePageState extends State<MyHomePage> {
 
     /// Add all testing functions.
     tests.addAll([
-      (
-        name: 'testProtectVoice',
-        status: TestStatus.none,
-        callback: testProtectVoice,
-      ),
-      (
-        name: 'testAllInstancesFinished',
-        status: TestStatus.none,
-        callback: testAllInstancesFinished,
-      ),
-      (
-        name: 'testCreateNotes',
-        status: TestStatus.none,
-        callback: testCreateNotes,
-      ),
-      (
-        name: 'testPlaySeekPause',
-        status: TestStatus.none,
-        callback: testPlaySeekPause,
-      ),
-      (
-        name: 'testPan',
-        status: TestStatus.none,
-        callback: testPan,
-      ),
-      (
-        name: 'testHandles',
-        status: TestStatus.none,
-        callback: testHandles,
-      ),
-      (
-        name: 'loopingTests',
-        status: TestStatus.none,
-        callback: loopingTests,
-      ),
-      (
-        name: 'testSynchronousDeinit',
-        status: TestStatus.none,
-        callback: testSynchronousDeinit,
-      ),
-      (
-        name: 'testAsynchronousDeinit',
-        status: TestStatus.none,
-        callback: testAsynchronousDeinit,
-      ),
+      Test(name: 'testProtectVoice', callback: testProtectVoice),
+      Test(
+          name: 'testAllInstancesFinished', callback: testAllInstancesFinished),
+      Test(name: 'testCreateNotes', callback: testCreateNotes),
+      Test(name: 'testPlaySeekPause', callback: testPlaySeekPause),
+      Test(name: 'testPan', callback: testPan),
+      Test(name: 'testHandles', callback: testHandles),
+      Test(name: 'loopingTests', callback: loopingTests),
+      Test(name: 'testSynchronousDeinit', callback: testSynchronousDeinit),
+      Test(name: 'testAsynchronousDeinit', callback: testAsynchronousDeinit),
+      Test(name: 'testVoiceGroups', callback: testVoiceGroups),
     ]);
   }
 
@@ -187,11 +160,7 @@ class _MyHomePageState extends State<MyHomePage> {
           ..write(await tests[index].callback())
           ..write('===== PASSED! =====\n\n')
           ..writeln();
-        tests[index] = (
-          name: tests[index].name,
-          status: TestStatus.passed,
-          callback: tests[index].callback,
-        );
+        tests[index].status = TestStatus.passed;
         textEditingController.text = output.toString();
         debugPrint(output.toString());
         if (context.mounted) setState(() {});
@@ -209,11 +178,7 @@ class _MyHomePageState extends State<MyHomePage> {
           ..writeln()
           ..writeln();
         // ignore: parameter_assignments
-        tests[index] = (
-          name: tests[index].name,
-          status: TestStatus.failed,
-          callback: tests[index].callback,
-        );
+        tests[index].status = TestStatus.failed;
         textEditingController.text = output.toString();
         debugPrint(output.toString());
         if (context.mounted) setState(() {});
@@ -674,5 +639,53 @@ Future<StringBuffer> testSynchronousDeinit() async {
   );
   SoLoud.instance.deinit();
 
+  return StringBuffer();
+}
+
+/// Test voice groups.
+Future<StringBuffer> testVoiceGroups() async {
+  await initialize();
+
+  final currentSound =
+      await SoLoud.instance.loadAsset('assets/audio/explosion.mp3');
+
+  /// Start playing sounds in pause state to get their handles.
+  final h1 = await SoLoud.instance.play(currentSound, paused: true);
+  final h2 = await SoLoud.instance.play(currentSound, paused: true);
+  final h3 = await SoLoud.instance.play(currentSound, paused: true);
+  final h4 = await SoLoud.instance.play(currentSound, paused: true);
+
+  final group = SoLoud.instance.createVoiceGroup();
+  assert(!group.isError, 'Failed to create voice group!');
+
+  var isValid = SoLoud.instance.isVoiceGroup(group);
+  assert(isValid, 'Voice group created but it is not valid!');
+
+  var isEmpty = SoLoud.instance.isVoiceGroupEmpty(group);
+  assert(isEmpty, 'Voice group just created but it is not empty!');
+
+  /// Add all voices to the group.
+  SoLoud.instance.addVoiceToGroup(group, [h1, h2, h3, h4]);
+  isEmpty = SoLoud.instance.isVoiceGroupEmpty(group);
+  assert(!isEmpty, 'Voices added to the group, but the group is empty!');
+
+  /// Start playing the voices in the group.
+  SoLoud.instance.setPause(group, false);
+
+  await delay(4000);
+
+  /// Check if group is empty after playing voices.
+  isEmpty = SoLoud.instance.isVoiceGroupEmpty(group);
+  assert(
+    isEmpty,
+    'Voices added and finished to play, but the group is not empty!',
+  );
+
+  /// Destroy the group
+  SoLoud.instance.destroyVoiceGroup(group);
+  isValid = SoLoud.instance.isVoiceGroup(group);
+  assert(!isValid, 'Voice group destroy failed!');
+
+  deinit();
   return StringBuffer();
 }

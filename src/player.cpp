@@ -32,7 +32,7 @@ void Player::setStateChangedCallback(void (*stateChangedCallback)(unsigned int))
     soloud.setStateChangedCallback(stateChangedCallback);
 }
 
-PlayerErrors Player::init()
+PlayerErrors Player::init(unsigned int sampleRate, unsigned int bufferSize, unsigned int channels)
 {
     if (mInited)
         return playerAlreadyInited;
@@ -42,9 +42,7 @@ PlayerErrors Player::init()
     // initialize SoLoud.
     SoLoud::result result = soloud.init(
         SoLoud::Soloud::CLIP_ROUNDOFF,
-        SoLoud::Soloud::MINIAUDIO, 44100, 2048, 2U);
-    // soloud.init(1U, 0U, 44100, 2048, 2U);
-    // SoLoud::Thread::sleep(1000);
+        SoLoud::Soloud::MINIAUDIO, sampleRate, bufferSize, channels);
     if (result == SoLoud::SO_NO_ERROR)
         mInited = true;
     else
@@ -551,9 +549,9 @@ void Player::setPanAbsolute(SoLoud::handle handle, float panLeft, float panRight
     soloud.setPanAbsolute(handle, panLeft, panRight);
 }
 
-bool Player::isValidVoiceHandle(SoLoud::handle handle)
+bool Player::isValidHandle(SoLoud::handle handle)
 {
-    return soloud.isValidVoiceHandle(handle);
+    return soloud.isValidVoiceHandle(handle) || soloud.isVoiceGroup(handle);
 }
 
 unsigned int Player::getActiveVoiceCount()
@@ -637,6 +635,30 @@ void Player::debug()
 
         n++;
     }
+}
+
+/////////////////////////////////////////
+/// voice groups
+/////////////////////////////////////////
+
+unsigned int Player::createVoiceGroup() {
+    return soloud.createVoiceGroup();
+}
+
+void Player::destroyVoiceGroup(SoLoud::handle handle) {
+    soloud.destroyVoiceGroup(handle);
+}
+
+void Player::addVoiceToGroup(SoLoud::handle voiceGroupHandle, SoLoud::handle voiceHandle) {
+    soloud.addVoiceToGroup(voiceGroupHandle, voiceHandle);
+}
+
+bool Player::isVoiceGroup(SoLoud::handle handle) {
+    return soloud.isVoiceGroup(handle);
+}
+
+bool Player::isVoiceGroupEmpty(SoLoud::handle handle) {
+    return soloud.isVoiceGroupEmpty(handle);
 }
 
 /////////////////////////////////////////

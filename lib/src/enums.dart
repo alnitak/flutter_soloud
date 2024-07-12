@@ -233,3 +233,21 @@ enum PlayerStateNotification {
   ///
   unlocked,
 }
+
+/// The channels to be used while initializing the player.
+enum Channels {
+  /// One channel.
+  channelMono,
+
+  /// Two channels.
+  channelStereo,
+
+  /// Four channels.
+  channelQuad,
+
+  /// Six channels.
+  channel51,
+
+  /// Eight channels.
+  channel71,
+}
