@@ -15,7 +15,7 @@
 #include <unistd.h>
 #endif
 
-Player::Player() : mInited(false), mFilters(&soloud) {}
+Player::Player() : mInited(false), mFilters(&soloud, nullptr) {}
 
 Player::~Player()
 {
@@ -126,12 +126,9 @@ PlayerErrors Player::loadFile(
 
     unsigned int newHash = (unsigned int)std::hash<std::string>{}(completeFileName);
     /// check if the sound has been already loaded
-    auto const &s = std::find_if(
-        sounds.begin(), sounds.end(),
-        [&](std::shared_ptr<ActiveSound> const &f)
-        { return f->soundHash == newHash; });
+    auto const s = findByHash(newHash);
 
-    if (s != sounds.end())
+    if (s != 0)
     {
         *hash = newHash;
         return fileAlreadyLoaded;
@@ -158,6 +155,8 @@ PlayerErrors Player::loadFile(
     if (result != SoLoud::SO_NO_ERROR)
     {
         sounds.pop_back();
+    } else {
+        sounds.back().get()->filters = std::make_unique<Filters>(&soloud, sounds.back().get());
     }
     *hash = newHash;
 
@@ -178,12 +177,9 @@ PlayerErrors Player::loadMem(
 
     unsigned int newHash = (unsigned int)std::hash<std::string>{}(uniqueName);
     /// check if the sound has been already loaded
-    auto const &s = std::find_if(
-        sounds.begin(), sounds.end(),
-        [&](std::shared_ptr<ActiveSound> const &f)
-        { return f->soundHash == newHash; });
+    auto const s = findByHash(newHash);
 
-    if (s != sounds.end())
+    if (s != 0)
     {
         hash = newHash;
         return fileAlreadyLoaded;
@@ -210,6 +206,8 @@ PlayerErrors Player::loadMem(
     if (result != SoLoud::SO_NO_ERROR)
     {
         sounds.pop_back();
+    } else {
+        sounds.back().get()->filters = std::make_unique<Filters>(&soloud, sounds.back().get());
     }
 
     return (PlayerErrors)result;
@@ -238,68 +236,59 @@ PlayerErrors Player::loadWaveform(
     sounds.back().get()->soundHash = hash;
     sounds.back().get()->sound = std::make_shared<Basicwave>((SoLoud::Soloud::WAVEFORM)waveform, superWave, detune, scale);
     sounds.back().get()->soundType = TYPE_SYNTH;
+    sounds.back().get()->filters = std::make_unique<Filters>(&soloud, sounds.back().get());
 
     return noError;
 }
 
 void Player::setWaveformScale(unsigned int soundHash, float newScale)
 {
-    auto const &s = std::find_if(sounds.begin(), sounds.end(),
-                                 [&](std::shared_ptr<ActiveSound> const &f)
-                                 { return f->soundHash == soundHash; });
+    auto const s = findByHash(soundHash);
 
-    if (s == sounds.end() || s->get()->soundType != TYPE_SYNTH)
+    if (s == 0 || s->soundType != TYPE_SYNTH)
         return;
 
-    static_cast<Basicwave *>(s->get()->sound.get())->setScale(newScale);
+    static_cast<Basicwave *>(s->sound.get())->setScale(newScale);
 }
 
 void Player::setWaveformDetune(unsigned int soundHash, float newDetune)
 {
-    auto const &s = std::find_if(sounds.begin(), sounds.end(),
-                                 [&](std::shared_ptr<ActiveSound> const &f)
-                                 { return f->soundHash == soundHash; });
+    auto const s = findByHash(soundHash);
 
-    if (s == sounds.end() || s->get()->soundType != TYPE_SYNTH)
+    if (s == 0 || s->soundType != TYPE_SYNTH)
         return;
 
-    static_cast<Basicwave *>(s->get()->sound.get())->setDetune(newDetune);
+    static_cast<Basicwave *>(s->sound.get())->setDetune(newDetune);
 }
 
 void Player::setWaveform(unsigned int soundHash, int newWaveform)
 {
-    auto const &s = std::find_if(sounds.begin(), sounds.end(),
-                                 [&](std::shared_ptr<ActiveSound> const &f)
-                                 { return f->soundHash == soundHash; });
+    auto const s = findByHash(soundHash);
 
-    if (s == sounds.end() || s->get()->soundType != TYPE_SYNTH)
+    if (s == 0 || s->soundType != TYPE_SYNTH)
         return;
 
-    static_cast<Basicwave *>(s->get()->sound.get())->setWaveform((SoLoud::Soloud::WAVEFORM)newWaveform);
+    static_cast<Basicwave *>(s->sound.get())->setWaveform((SoLoud::Soloud::WAVEFORM)newWaveform);
 }
 
 void Player::setWaveformFreq(unsigned int soundHash, float newFreq)
 {
-    auto const &s = std::find_if(sounds.begin(), sounds.end(),
-                                 [&](std::shared_ptr<ActiveSound> const &f)
-                                 { return f->soundHash == soundHash; });
+    auto const s = findByHash(soundHash);
 
-    if (s == sounds.end() || s->get()->soundType != TYPE_SYNTH)
+    if (s == 0 || s->soundType != TYPE_SYNTH)
         return;
 
-    static_cast<Basicwave *>(s->get()->sound.get())->setFreq(newFreq);
+    static_cast<Basicwave *>(s->sound.get())->setFreq(newFreq);
 }
 
 void Player::setWaveformSuperwave(unsigned int soundHash, bool superwave)
 {
-    auto const &s = std::find_if(sounds.begin(), sounds.end(),
-                                 [&](std::shared_ptr<ActiveSound> const &f)
-                                 { return f->soundHash == soundHash; });
+    auto const s = findByHash(soundHash);
 
-    if (s == sounds.end() || s->get()->soundType != TYPE_SYNTH)
+    if (s == 0 || s->soundType != TYPE_SYNTH)
         return;
 
-    static_cast<Basicwave *>(s->get()->sound.get())->setSuperWave(superwave);
+    static_cast<Basicwave *>(s->sound.get())->setSuperWave(superwave);
 }
 
 void Player::pauseSwitch(unsigned int handle)
@@ -337,15 +326,10 @@ unsigned int Player::play(
     bool looping,
     double loopingStartAt)
 {
-    auto const &s = std::find_if(
-        sounds.begin(), sounds.end(),
-        [&](std::shared_ptr<ActiveSound> const &f)
-        { return f->soundHash == soundHash; });
+    ActiveSound *sound = findByHash(soundHash);
 
-    if (s == sounds.end())
-        return 0;
-
-    ActiveSound *sound = s->get();
+    if (sound == 0)
+        return soundHashNotFound;
 
     SoLoud::handle newHandle = soloud.play(
         *sound->sound.get(), volume, pan, paused, 0);
@@ -391,14 +375,12 @@ void Player::removeHandle(unsigned int handle)
 
 void Player::disposeSound(unsigned int soundHash)
 {
-    auto const &s = std::find_if(sounds.begin(), sounds.end(),
-                                 [&](std::shared_ptr<ActiveSound> const &f)
-                                 { return f->soundHash == soundHash; });
+    ActiveSound *sound = findByHash(soundHash);
 
-    if (s == sounds.end())
+    if (sound == 0)
         return;
 
-    s->get()->sound.get()->stop();
+    sound->sound.get()->stop();
     // remove the sound from the list
     sounds.erase(std::remove_if(sounds.begin(), sounds.end(),
                                 [soundHash](std::shared_ptr<ActiveSound> &f)
@@ -442,6 +424,7 @@ PlayerErrors Player::textToSpeech(const std::string &textToSpeech, unsigned int 
     if (result == SoLoud::SO_NO_ERROR)
     {
         handle = soloud.play(speech);
+        sounds.back().get()->filters = std::make_unique<Filters>(&soloud, sounds.back().get());
         sounds.back().get()->handle.push_back(handle);
     }
     else
@@ -474,16 +457,15 @@ float *Player::getWave()
 // The length in seconds
 double Player::getLength(unsigned int soundHash)
 {
-    auto const &s = std::find_if(sounds.begin(), sounds.end(),
-                                 [&](std::shared_ptr<ActiveSound> const &f)
-                                 { return f->soundHash == soundHash; });
-    if (s == sounds.end() || s->get()->soundType == TYPE_SYNTH)
-        return 0.0;
-    if (s->get()->soundType == TYPE_WAV)
-        return static_cast<SoLoud::Wav *>(s->get()->sound.get())->getLength();
+    auto const &s = findByHash(soundHash);
 
-    // if (s->get()->soundType == TYPE_WAVSTREAM)
-    return static_cast<SoLoud::WavStream *>(s->get()->sound.get())->getLength();
+    if (s == 0 || s->soundType == TYPE_SYNTH)
+        return 0.0;
+    if (s->soundType == TYPE_WAV)
+        return static_cast<SoLoud::Wav *>(s->sound.get())->getLength();
+
+    // if (s->soundType == TYPE_WAVSTREAM)
+    return static_cast<SoLoud::WavStream *>(s->sound.get())->getLength();
 }
 
 // time in seconds
@@ -561,19 +543,18 @@ unsigned int Player::getActiveVoiceCount()
 
 int Player::countAudioSource(unsigned int soundHash)
 {
-    auto const &s = std::find_if(sounds.begin(), sounds.end(),
-                                 [&](std::shared_ptr<ActiveSound> const &f)
-                                 { return f->soundHash == soundHash; });
-    if (s == sounds.end() || s->get()->soundType == TYPE_SYNTH)
+    auto const &s = findByHash(soundHash);
+
+    if (s == 0 || s->soundType == TYPE_SYNTH)
         return 0;
-    if (s->get()->soundType == TYPE_WAV)
+    if (s->soundType == TYPE_WAV)
     {
-        SoLoud::AudioSource *as = static_cast<SoLoud::Wav *>(s->get()->sound.get());
+        SoLoud::AudioSource *as = static_cast<SoLoud::Wav *>(s->sound.get());
         return soloud.countAudioSource(*as);
     }
 
-    // if (s->get()->soundType == TYPE_WAVSTREAM)
-    SoLoud::AudioSource *as = static_cast<SoLoud::WavStream *>(s->get()->sound.get());
+    // if (s->soundType == TYPE_WAVSTREAM)
+    SoLoud::AudioSource *as = static_cast<SoLoud::WavStream *>(s->sound.get());
     return soloud.countAudioSource(*as);
 }
 
@@ -623,6 +604,17 @@ ActiveSound *Player::findByHandle(SoLoud::handle handle)
     return nullptr;
 }
 
+ActiveSound *Player::findByHash(unsigned int soundHash)
+{
+    auto const &s = std::find_if(sounds.begin(), sounds.end(),
+                                 [&](std::shared_ptr<ActiveSound> const &f)
+                                 { return f->soundHash == soundHash; });
+    if (s == sounds.end())
+        return 0;
+
+    return s->get();
+}
+
 void Player::debug()
 {
     int n = 0;
@@ -642,7 +634,8 @@ void Player::debug()
 /////////////////////////////////////////
 
 unsigned int Player::createVoiceGroup() {
-    return soloud.createVoiceGroup();
+    auto ret = soloud.createVoiceGroup();
+    return ret;
 }
 
 void Player::destroyVoiceGroup(SoLoud::handle handle) {
@@ -738,13 +731,10 @@ unsigned int Player::play3d(
     bool looping,
     double loopingStartAt)
 {
-    auto const &s = std::find_if(sounds.begin(), sounds.end(),
-                                 [&](std::shared_ptr<ActiveSound> const &f)
-                                 { return f->soundHash == soundHash; });
-    if (s == sounds.end())
-        return 0;
+    ActiveSound *sound = findByHash(soundHash);
+    if (sound == 0)
+        return soundHashNotFound;
 
-    ActiveSound *sound = s->get();
     SoLoud::handle newHandle = soloud.play3d(
         *sound->sound.get(),
         posX, posY, posZ,

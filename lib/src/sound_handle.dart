@@ -16,10 +16,10 @@ import 'package:meta/meta.dart';
 ///
 /// Constructors are marked [internal] because it should not be possible
 /// for users to create a handle from Dart.
-extension type SoundHandle._(int id) {
+extension type const SoundHandle._(int id) {
   /// Constructs a valid handle with [id].
   @internal
-  SoundHandle(this.id)
+  const SoundHandle(this.id)
       : assert(
             id >= 0,
             'Handle with id<0 is being constructed. '
@@ -28,7 +28,7 @@ extension type SoundHandle._(int id) {
   /// Constructs an invalid handle (for APIs that need to return _some_ handle
   /// even during errors).
   @internal
-  SoundHandle.error() : this._(-1);
+  const SoundHandle.error() : this._(-1);
 
   /// Checks if the handle represents an error (it was constructed
   /// with [SoundHandle.error]).

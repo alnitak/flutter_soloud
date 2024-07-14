@@ -69,4 +69,27 @@ typedef enum PlayerStateEvents
     event_unlocked,
 } PlayerEvents_t;
 
+typedef enum SoundType
+{
+    // using Soloud::wav
+    TYPE_WAV,
+    // using Soloud::wavStream
+    TYPE_WAVSTREAM,
+    // this sound is a waveform
+    TYPE_SYNTH
+} SoundType_t;
+
+typedef enum FilterType
+{
+    BiquadResonantFilter,
+    EqFilter,
+    EchoFilter,
+    LofiFilter,
+    FlangerFilter,
+    BassboostFilter,
+    WaveShaperFilter,
+    RobotizeFilter,
+    FreeverbFilter
+} FilterType_t;
+
 #endif // ENUMS_H

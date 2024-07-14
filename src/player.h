@@ -4,9 +4,10 @@
 #define PLAYER_H
 
 #include "enums.h"
+#include "filters/filters.h"
+#include "active_sound.h"
 #include "soloud.h"
 #include "soloud_speech.h"
-#include "filters/filters.h"
 
 #include <iostream>
 #include <vector>
@@ -16,27 +17,6 @@
 #include <atomic>
 #include <thread>
 
-typedef enum SoundType
-{
-    // using Soloud::wav
-    TYPE_WAV,
-    // using Soloud::wavStream
-    TYPE_WAVSTREAM,
-    // this sound is a waveform
-    TYPE_SYNTH
-} SoundType_t;
-
-/// The default number of concurrent voices - maximum number of "streams" - is 16,
-/// but this can be adjusted at runtime
-struct ActiveSound
-{
-    std::shared_ptr<SoLoud::AudioSource> sound;
-    SoundType soundType;
-    std::vector<SoLoud::handle> handle;
-    // unique identifier of this sound based on the file name
-    unsigned int soundHash;
-    std::string completeFileName;
-};
 
 class Player
 {
@@ -359,6 +339,11 @@ public:
     /// @return If not found, return nullptr.
     ActiveSound *findByHandle(SoLoud::handle handle);
 
+    /// @brief Find a sound by its handle.
+    /// @param handle the handle to search.
+    /// @return If not found, return nullptr.
+    ActiveSound *findByHash(unsigned int hash);
+
     void debug();
 
     /////////////////////////////////////////
@@ -549,7 +534,7 @@ public:
     /// speech object
     SoLoud::Speech speech;
 
-    /// Filters
+    /// Global filters
     Filters mFilters;
 
 private:

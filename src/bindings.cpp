@@ -881,42 +881,58 @@ extern "C"
     /////////////////////////////////////////
 
     /// Used to create a new voice group. Returns 0 if not successful.
-    FFI_PLUGIN_EXPORT unsigned int createVoiceGroup() {
-        return player.get()->createVoiceGroup();
+    FFI_PLUGIN_EXPORT unsigned int createVoiceGroup()
+    {
+        if (player.get() == nullptr || !player.get()->isInited())
+            return -1;
+        auto ret = player.get()->createVoiceGroup();
+        return ret;
     }
 
-    /// Deallocates the voice group. Does not stop the voices attached to the 
+    /// Deallocates the voice group. Does not stop the voices attached to the
     /// voice group.
     ///
     /// [handle] the group handle to destroy.
-    FFI_PLUGIN_EXPORT void destroyVoiceGroup(unsigned int handle) {
+    FFI_PLUGIN_EXPORT void destroyVoiceGroup(unsigned int handle)
+    {
+        if (player.get() == nullptr || !player.get()->isInited())
+            return;
         player.get()->destroyVoiceGroup(handle);
     }
 
-    /// Adds voice handle to the voice group. The voice handles can still be 
+    /// Adds voice handle to the voice group. The voice handles can still be
     /// used separate from the group.
     /// [voiceGroupHandle] the group handle to add the new [voiceHandle].
     /// [voiceHandle] voice handle to add to the [voiceGroupHandle].
-    FFI_PLUGIN_EXPORT void addVoiceToGroup(unsigned int voiceGroupHandle, unsigned int voiceHandle) {
+    FFI_PLUGIN_EXPORT void addVoiceToGroup(unsigned int voiceGroupHandle, unsigned int voiceHandle)
+    {
+        if (player.get() == nullptr || !player.get()->isInited())
+            return;
         player.get()->addVoiceToGroup(voiceGroupHandle, voiceHandle);
     }
 
-    /// Checks if the handle is a valid voice group. Does not care if the 
+    /// Checks if the handle is a valid voice group. Does not care if the
     /// voice group is empty.
     ///
     /// [handle] the group handle to check.
     /// Return true if [handle] is a group handle.
-    FFI_PLUGIN_EXPORT bool isVoiceGroup(unsigned int handle) {
+    FFI_PLUGIN_EXPORT bool isVoiceGroup(unsigned int handle)
+    {
+        if (player.get() == nullptr || !player.get()->isInited())
+            return false;
         return player.get()->isVoiceGroup(handle);
     }
 
-    /// Checks whether a voice group is empty. SoLoud automatically trims 
+    /// Checks whether a voice group is empty. SoLoud automatically trims
     /// the voice groups of voices that have ended, so the group may be
     /// empty even though you've added valid voice handles to it.
     ///
     /// [handle] group handle to check.
     /// Return true if the group handle doesn't have any voices.
-    FFI_PLUGIN_EXPORT bool isVoiceGroupEmpty(unsigned int handle) {
+    FFI_PLUGIN_EXPORT bool isVoiceGroupEmpty(unsigned int handle)
+    {
+        if (player.get() == nullptr || !player.get()->isInited())
+            return false;
         return player.get()->isVoiceGroupEmpty(handle);
     }
 
@@ -1020,22 +1036,34 @@ extern "C"
 
     /// Check if the given filter is active or not.
     ///
-    /// [filterType] filter to check
+    /// [soundHash] the sound to check the filter. If this is =0 this function
+    /// searches in the global filters.
+    /// [filterType] filter to check.
     /// Returns [PlayerErrors.noError] if no errors and the index of
-    /// the given filter (-1 if the filter is not active)
-    FFI_PLUGIN_EXPORT enum PlayerErrors isFilterActive(enum FilterType filterType, int *index)
+    /// the given filter (-1 if the filter is not active).
+    FFI_PLUGIN_EXPORT enum PlayerErrors isFilterActive(unsigned int soundHash, enum FilterType filterType, int *index)
     {
         *index = -1;
         if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
-        *index = player.get()->mFilters.isFilterActive(filterType);
+
+        if (soundHash == 0)
+            *index = player.get()->mFilters.isFilterActive(filterType);
+        else
+        {
+            auto const s = player.get()->findByHash(soundHash);
+            if (s == 0)
+                return soundHashNotFound;
+            *index = s->filters->isFilterActive(filterType);
+        }
+
         return noError;
     }
 
     /// Get parameters names of the given filter.
     ///
-    /// [filterType] filter to get param names
-    /// Returns [PlayerErrors.noError] if no errors and the list of param names
+    /// [filterType] filter to get param names.
+    /// Returns [PlayerErrors.noError] if no errors and the list of param names.
     FFI_PLUGIN_EXPORT enum PlayerErrors getFilterParamNames(
         enum FilterType filterType, int *paramsCount, char **names)
     {
@@ -1054,52 +1082,186 @@ extern "C"
         return noError;
     }
 
-    /// Add the filter [filterType] to all sounds.
+    /// Add the filter [filterType] to [soundHash]. If [soundHash]==0 the
+    /// filter is added to global filters.
     ///
-    /// [filterType] filter to add
-    /// Returns [PlayerErrors.noError] if no errors
-    FFI_PLUGIN_EXPORT enum PlayerErrors addGlobalFilter(enum FilterType filterType)
+    /// [soundHash] the sound to add the filter to.
+    /// [filterType] filter to add.
+    /// Returns [PlayerErrors.noError] if no errors.
+    FFI_PLUGIN_EXPORT enum PlayerErrors addFilter(unsigned int soundHash, enum FilterType filterType)
     {
         if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
-        return player.get()->mFilters.addGlobalFilter(filterType);
+        if (soundHash == 0)
+            return player.get()->mFilters.addFilter(filterType);
+
+        auto const s = player.get()->findByHash(soundHash);
+        if (s == 0)
+            return soundHashNotFound;
+
+        return s->filters->addFilter(filterType);
     }
 
-    /// Remove the filter [filterType].
+    /// Remove the filter [filterType] from [soundHash]. If [soundHash]==0 the
+    /// filter is removed from the global filters.
     ///
-    /// [filterType] filter to remove
-    /// Returns [PlayerErrors.noError] if no errors
-    FFI_PLUGIN_EXPORT enum PlayerErrors removeGlobalFilter(enum FilterType filterType)
+    /// [filterType] filter to remove.
+    /// Returns [PlayerErrors.noError] if no errors.
+    FFI_PLUGIN_EXPORT enum PlayerErrors removeFilter(unsigned int soundHash, enum FilterType filterType)
     {
         if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
-        if (!player.get()->mFilters.removeGlobalFilter(filterType))
-            return filterNotFound;
+        if (soundHash == 0)
+        {
+            if (!player.get()->mFilters.removeFilter(filterType))
+                return filterNotFound;
+        }
+        else
+        {
+            auto const s = player.get()->findByHash(soundHash);
+            if (s == 0)
+                return soundHashNotFound;
+            if (!s->filters->removeFilter(filterType))
+                return filterNotFound;
+        }
+
         return noError;
     }
 
     /// Set the effect parameter with id [attributeId]
     /// of [filterType] with [value] value.
     ///
-    /// [filterType] filter to modify a param
-    /// Returns [PlayerErrors.noError] if no errors
-    FFI_PLUGIN_EXPORT enum PlayerErrors setFxParams(enum FilterType filterType, int attributeId, float value)
+    /// [handle] the handle to set the filter to. If equal to 0, the filter is applyed globally.
+    /// [filterType] filter to modify a param.
+    /// Returns [PlayerErrors.noError] if no errors.
+    FFI_PLUGIN_EXPORT enum PlayerErrors setFilterParams(unsigned int handle, enum FilterType filterType, int attributeId, float value)
     {
         if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
-        player.get()->mFilters.setFxParams(filterType, attributeId, value);
+        /// Not important to call the [SoLoud::AudioSource].setFilterParams() here, SoLoud
+        /// will set the param globally or by [handle] if  [handle] is not ==0.
+        if (handle == 0)
+            player.get()->mFilters.setFilterParams(handle, filterType, attributeId, value);
+        else
+        {
+            auto const &s = player.get()->findByHandle(handle);
+            if (s == 0)
+            {
+                return soundHandleNotFound;
+            }
+            else
+            {
+                s->filters.get()->setFilterParams(handle, filterType, attributeId, value);
+            }
+        }
         return noError;
     }
 
     /// Get the effect parameter with id [attributeId] of [filterType].
     ///
-    /// [filterType] filter to modify a param
-    /// Returns the value of param
-    FFI_PLUGIN_EXPORT float getFxParams(enum FilterType filterType, int attributeId)
+    /// [handle] the handle to get the filter to. If equal to 0, it gets the global filter.
+    /// [filterType] filter to modify a param.
+    /// Returns the value of param or 9999.0 if the filter is not found.
+    FFI_PLUGIN_EXPORT enum PlayerErrors getFilterParams(
+        unsigned int handle,
+        enum FilterType filterType,
+        int attributeId,
+        float *filterValue)
+    {
+        *filterValue = 9999.0f;
+        if (player.get() == nullptr || !player.get()->isInited())
+            return backendNotInited;
+        /// If [handle] == 0 get the parameter from global filters else from 
+        /// the sound which owns [handle].
+        if (handle == 0)
+        {
+            *filterValue = player.get()->mFilters.getFilterParams(handle, filterType, attributeId);
+            return noError;
+        }
+        else
+        {
+            auto const &s = player.get()->findByHandle(handle);
+            if (s == 0)
+                return soundHandleNotFound;
+            else
+            {
+                *filterValue = s->filters.get()->getFilterParams(handle, filterType, attributeId);
+                if (*filterValue == 9999.0f)
+                    return filterNotFound;
+                return noError;
+            }
+        }
+        return noError;
+    }
+
+    /// Fades a parameter of a filter.
+    ///
+    /// [handle] the handle of the voice to apply the fade. If equal to 0, it fades the global filter.
+    /// [filterType] filter to modify a param.
+    /// [attributeId] the attribute index to fade.
+    /// [to] value the attribute should go in [time] duration.
+    /// [time] the fade slope duration.
+    /// Returns [PlayerErrors.noError] if no errors.
+    FFI_PLUGIN_EXPORT enum PlayerErrors fadeFilterParameter(
+        unsigned int handle,
+        enum FilterType filterType,
+        int attributeId,
+        float to,
+        float time)
     {
         if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
-        return player.get()->mFilters.getFxParams(filterType, attributeId);
+        if (handle == 0)
+            player.get()->mFilters.fadeFilterParameter(handle, filterType, attributeId, to, time);
+        else
+        {
+            auto const &s = player.get()->findByHandle(handle);
+            if (s == 0)
+            {
+                return soundHandleNotFound;
+            }
+            else
+            {
+                s->filters.get()->fadeFilterParameter(handle, filterType, attributeId, to, time);
+            }
+        }
+        return noError;
+    }
+
+    /// Oscillate a parameter of a filter.
+    ///
+    /// [handle] the handle of the voice to apply the fade. If equal to 0, it fades the global filter.
+    /// [filterType] filter to modify a param.
+    /// [attributeId] the attribute index to fade.
+    /// [from] the starting value the attribute sould start to oscillate.
+    /// [to] the ending value the attribute sould end to oscillate.
+    /// [time] the fade slope duration.
+    /// Returns [PlayerErrors.noError] if no errors.
+    FFI_PLUGIN_EXPORT enum PlayerErrors oscillateFilterParameter(
+        unsigned int handle,
+        enum FilterType filterType,
+        int attributeId,
+        float from,
+        float to,
+        float time)
+    {
+        if (player.get() == nullptr || !player.get()->isInited())
+            return backendNotInited;
+        if (handle == 0)
+            player.get()->mFilters.oscillateFilterParameter(handle, filterType, attributeId, from, to, time);
+        else
+        {
+            auto const &s = player.get()->findByHandle(handle);
+            if (s == 0)
+            {
+                return soundHandleNotFound;
+            }
+            else
+            {
+                s->filters.get()->oscillateFilterParameter(handle, filterType, attributeId, from, to, time);
+            }
+        }
+        return noError;
     }
 
     /////////////////////////////////////////
