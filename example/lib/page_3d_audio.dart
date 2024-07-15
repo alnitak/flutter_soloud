@@ -70,11 +70,12 @@ class _Page3DAudioState extends State<Page3DAudio> {
 
     /// load the audio file
     currentSound = await SoLoud.instance.loadUrl(
-      'https://www.learningcontainer.com/wp-content/uploads/2020/02/Kalimba.mp3',
+      // From https://freetestdata.com/audio-files/mp3/
+      'https://marcobavagnoli.com/Free_Test_Data_500KB_MP3.mp3',
     );
 
     /// play it
-    await SoLoud.instance.play3d(currentSound!, 0, 0, 0);
+    await SoLoud.instance.play3d(currentSound!, 0, 0, 0, looping: true);
 
     spinAround = true;
 

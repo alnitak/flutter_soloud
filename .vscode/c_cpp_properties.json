@@ -16,6 +16,20 @@
             "configurationProvider": "ms-vscode.cmake-tools"
         },
         {
+            "name": "Chrome",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "${workspaceFolder}/src",
+                "/usr/lib/emscripten/system/include"
+            ],
+            "defines": ["WITH_MINIAUDIO", "DR_MP3_IMPLEMENTATION", "__EMSCRIPTEN__"], // to see the code in between "#if defined"
+            "compilerPath": "/usr/bin/clang",
+            "cStandard": "c17",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "${default}",
+            "configurationProvider": "ms-vscode.cmake-tools"
+        },
+        {
             "name": "Win32",
             "includePath": [
                 "${workspaceFolder}/**"

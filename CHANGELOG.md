@@ -1,5 +1,9 @@
 ### 2.1.0
 - added `getPan()`, `setPan()` and `setPanAbsolute()`.
+- added support for the Web platform.
+- added `loadMem()` to read the give audio file bytes buffer (not RAW data). Useful for the Web platform.
+- fixed `getFilterParamNames()`.
+- added `AudioData` class to manage audio samples.
 
 ### 2.0.2 (23 May 2024)
 - Fixed wrong exception raised by `setVolume()` when a handle is no more valid.

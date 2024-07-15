@@ -170,6 +170,7 @@ PlayerErrors Player::loadMem(
     const std::string &uniqueName,
     unsigned char *mem,
     int length,
+    bool loadIntoMem,
     unsigned int &hash)
 {
     if (!mInited)
@@ -195,9 +196,18 @@ PlayerErrors Player::loadMem(
     hash = sounds.back().get()->soundHash = newHash;
 
     SoLoud::result result;
-    sounds.back().get()->sound = std::make_shared<SoLoud::Wav>();
-    sounds.back().get()->soundType = TYPE_WAV;
-    result = static_cast<SoLoud::Wav *>(sounds.back().get()->sound.get())->loadMem(mem, length, true, true);
+    if (loadIntoMem)
+    {
+        sounds.back().get()->sound = std::make_shared<SoLoud::Wav>();
+        sounds.back().get()->soundType = TYPE_WAV;
+        result = static_cast<SoLoud::Wav *>(sounds.back().get()->sound.get())->loadMem(mem, length, false, true);
+    }
+    else
+    {
+        sounds.back().get()->sound = std::make_shared<SoLoud::WavStream>();
+        sounds.back().get()->soundType = TYPE_WAVSTREAM;
+        result = static_cast<SoLoud::WavStream *>(sounds.back().get()->sound.get())->loadMem(mem, length, false, true);
+    }
 
     if (result != SoLoud::SO_NO_ERROR)
     {
@@ -329,22 +339,16 @@ unsigned int Player::play(
     bool looping,
     double loopingStartAt)
 {
-    // printf("*** PLAYER:PLAY() sounds length: %d  looking for hash: %u\n", sounds.size(), soundHash);
-
-    // for (int i = 0; i < sounds.size(); i++)
-    //     printf("*** PLAYER:PLAY()1 sounds hash: %u\n", sounds[i].get()->soundHash);
-
     auto const &s = std::find_if(
         sounds.begin(), sounds.end(),
         [&](std::shared_ptr<ActiveSound> const &f)
-        { 
-        // printf("*** PLAYER:PLAY() sound1 hash: %u\n", f->soundHash);
-        return f->soundHash == soundHash; });
+        { return f->soundHash == soundHash; });
 
     if (s == sounds.end())
         return 0;
 
     ActiveSound *sound = s->get();
+
     SoLoud::handle newHandle = soloud.play(
         *sound->sound.get(), volume, pan, paused, 0);
     if (newHandle != 0)
@@ -374,14 +378,16 @@ void Player::removeHandle(unsigned int handle)
     //         { return f == handle; }));
     bool e = true;
     for (int i = 0; i < sounds.size(); ++i)
-        for (int n = 0; n< sounds[i]->handle.size(); ++n)
+        for (int n = 0; n < sounds[i]->handle.size(); ++n)
         {
-            if (sounds[i]->handle[n] == handle) {
-                sounds[i]->handle.erase(sounds[i]->handle.begin()+n);
+            if (sounds[i]->handle[n] == handle)
+            {
+                sounds[i]->handle.erase(sounds[i]->handle.begin() + n);
                 e = false;
                 break;
             }
-            if (e) break;
+            if (e)
+                break;
         }
 }
 
@@ -544,7 +550,6 @@ void Player::setPanAbsolute(SoLoud::handle handle, float panLeft, float panRight
     if (panRight < -1.0f) panRight = -1.0f;
     soloud.setPanAbsolute(handle, panLeft, panRight);
 }
-
 
 bool Player::isValidVoiceHandle(SoLoud::handle handle)
 {

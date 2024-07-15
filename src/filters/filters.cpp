@@ -61,6 +61,7 @@ std::vector<std::string> Filters::getFilterParamNames(FilterType filterType)
             ret.push_back(f.getParamName(i));
         }
     }
+    break;
     case LofiFilter:
     {
         SoLoud::LofiFilter f;
@@ -70,6 +71,7 @@ std::vector<std::string> Filters::getFilterParamNames(FilterType filterType)
             ret.push_back(f.getParamName(i));
         }
     }
+    break;
     case FlangerFilter:
     {
         SoLoud::FlangerFilter f;
@@ -79,6 +81,7 @@ std::vector<std::string> Filters::getFilterParamNames(FilterType filterType)
             ret.push_back(f.getParamName(i));
         }
     }
+    break;
     case BassboostFilter:
     {
         SoLoud::BassboostFilter f;
@@ -88,6 +91,7 @@ std::vector<std::string> Filters::getFilterParamNames(FilterType filterType)
             ret.push_back(f.getParamName(i));
         }
     }
+    break;
     case WaveShaperFilter:
     {
         SoLoud::WaveShaperFilter f;
@@ -97,6 +101,7 @@ std::vector<std::string> Filters::getFilterParamNames(FilterType filterType)
             ret.push_back(f.getParamName(i));
         }
     }
+    break;
     case RobotizeFilter:
     {
         SoLoud::RobotizeFilter f;
@@ -106,6 +111,7 @@ std::vector<std::string> Filters::getFilterParamNames(FilterType filterType)
             ret.push_back(f.getParamName(i));
         }
     }
+    break;
     case FreeverbFilter:
     {
         SoLoud::FreeverbFilter f;

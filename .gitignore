@@ -33,6 +33,8 @@ images/
 lib/flutter_soloud_FFIGEN.dart
 
 web/build
+web/worker.dart.js.deps
+web/worker.dart.js.map
 
 **/android/caches
 **/android/.tmp

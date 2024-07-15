@@ -1,6 +1,3 @@
-import 'dart:ffi' as ffi;
-
-import 'package:ffi/ffi.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
@@ -8,8 +5,9 @@ import 'package:flutter_soloud_example/visualizer/bars_fft_widget.dart';
 import 'package:flutter_soloud_example/visualizer/bars_wave_widget.dart';
 
 /// Visualizer for FFT and wave data
-///
 class Bars extends StatefulWidget {
+  /// If true get audio data from the player else from the mic
+
   const Bars({super.key});
 
   @override
@@ -18,12 +16,13 @@ class Bars extends StatefulWidget {
 
 class BarsState extends State<Bars> with SingleTickerProviderStateMixin {
   late final Ticker ticker;
-  ffi.Pointer<ffi.Pointer<ffi.Float>> playerData = ffi.nullptr;
-
+  final AudioData audioData = AudioData(
+    GetSamplesFrom.player,
+    GetSamplesKind.linear,
+  );
   @override
   void initState() {
     super.initState();
-    playerData = calloc();
     ticker = createTicker(_tick);
     ticker.start();
   }
@@ -31,15 +30,18 @@ class BarsState extends State<Bars> with SingleTickerProviderStateMixin {
   @override
   void dispose() {
     ticker.stop();
-    calloc.free(playerData);
-    playerData = ffi.nullptr;
+    audioData.dispose();
     super.dispose();
   }
 
   void _tick(Duration elapsed) {
-    if (mounted) {
-      SoLoud.instance.getAudioTexture2D(playerData);
-      setState(() {});
+    if (context.mounted) {
+      try {
+        audioData.updateSamples();
+        setState(() {});
+      } on Exception catch (e) {
+        debugPrint('$e');
+      }
     }
   }
 
@@ -50,7 +52,7 @@ class BarsState extends State<Bars> with SingleTickerProviderStateMixin {
       child: Row(
         children: [
           BarsFftWidget(
-            audioData: playerData.value,
+            audioData: audioData,
             minFreq: 0,
             maxFreq: 128,
             width: MediaQuery.sizeOf(context).width / 2 - 17,
@@ -58,7 +60,7 @@ class BarsState extends State<Bars> with SingleTickerProviderStateMixin {
           ),
           const SizedBox(width: 6),
           BarsWaveWidget(
-            audioData: playerData.value,
+            audioData: audioData,
             width: MediaQuery.sizeOf(context).width / 2 - 17,
             height: MediaQuery.sizeOf(context).width / 6,
           ),

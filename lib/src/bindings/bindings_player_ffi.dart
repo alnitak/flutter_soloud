@@ -4,12 +4,14 @@
 // ignore_for_file: avoid_positional_boolean_parameters,require_trailing_commas
 // ignore_for_file: public_member_api_docs
 
-import 'dart:async';
 import 'dart:ffi' as ffi;
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
+import 'package:flutter_soloud/src/bindings/audio_data.dart';
+import 'package:flutter_soloud/src/bindings/bindings_player.dart';
 import 'package:flutter_soloud/src/enums.dart';
+import 'package:flutter_soloud/src/filter_params.dart';
 import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
 import 'package:logging/logging.dart';
@@ -47,7 +49,8 @@ typedef DartdartStateChangedCallbackTFunction = void Function(
     ffi.Pointer<ffi.Int32>);
 
 /// FFI bindings to SoLoud
-class FlutterSoLoudFfi {
+@internal
+class FlutterSoLoudFfi extends FlutterSoLoud {
   static final Logger _log = Logger('flutter_soloud.FlutterSoLoudFfi');
 
   /// Holds the symbol lookup function.
@@ -65,39 +68,10 @@ class FlutterSoLoudFfi {
     ffi.Pointer<T> Function<T extends ffi.NativeType>(String symbolName) lookup,
   ) : _lookup = lookup;
 
-  ///////////////////////////////////////////////////////////////////////////
-  ///////////////////////////////////////////////////////////////////////////
-  ///////////////////////////////////////////////////////////////////////////
-  ///////////////////////////////////////////////////////////////////////////
-  ///////////////////////////////////////////////////////////////////////////
-  ///////////////////////////////////////////////////////////////////////////
-  ///////////////////////////////////////////////////////////////////////////
+  // ////////////////////////////////////////////////
+  // Callbacks impl
+  // ////////////////////////////////////////////////
 
-  /// When allocating memory in C code, more attention must be given when
-  /// we are on Windows OS. It's not good to call `calloc.free()` because
-  /// Windows could use different allocating methods for this and the same
-  /// must be used freeing it. `calloc.free()` use the standard `free()` and
-  /// doesn't have problems using it in other OSes.
-  void nativeFree(ffi.Pointer<ffi.Void> pointer) {
-    return _nativeFree(pointer);
-  }
-
-  late final _nativeFreePtr =
-      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>(
-          'nativeFree');
-  late final _nativeFree =
-      _nativeFreePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
-
-  /// Controller to listen to voice ended events.
-  @internal
-  late final StreamController<int> voiceEndedEventController =
-      StreamController.broadcast();
-
-  /// listener for voices ended.
-  @internal
-  Stream<int> get voiceEndedEvents => voiceEndedEventController.stream;
-
-  ///
   void _voiceEndedCallback(ffi.Pointer<ffi.UnsignedInt> handle) {
     _log.finest(() => 'VOICE ENDED EVENT handle: ${handle.value}');
     voiceEndedEventController.add(handle.value);
@@ -105,16 +79,6 @@ class FlutterSoLoudFfi {
     // there and cannot use `calloc.free(...)`
     nativeFree(handle.cast<ffi.Void>());
   }
-
-  /// Controller to listen to file loaded events.
-  @internal
-  late final StreamController<Map<String, dynamic>> fileLoadedEventsController =
-      StreamController.broadcast();
-
-  /// listener for file loaded.
-  @internal
-  Stream<Map<String, dynamic>> get fileLoadedEvents =>
-      fileLoadedEventsController.stream;
 
   ///
   void _fileLoadedCallback(
@@ -139,16 +103,6 @@ class FlutterSoLoudFfi {
     nativeFree(hash.cast<ffi.Void>());
   }
 
-  /// Controller to listen to voice ended events.
-  @internal
-  late final StreamController<PlayerStateNotification> stateChangedController =
-      StreamController.broadcast();
-
-  /// listener for voices ended.
-  @internal
-  Stream<PlayerStateNotification> get stateChangedEvents =>
-      stateChangedController.stream;
-
   void _stateChangedCallback(ffi.Pointer<ffi.Int32> state) {
     final s = PlayerStateNotification.values[state.value];
     // Must free a pointer made on cpp. On Windows this must be freed
@@ -158,8 +112,7 @@ class FlutterSoLoudFfi {
     stateChangedController.add(s);
   }
 
-  /// Set a Dart function to call when a sound ends.
-  ///
+  @override
   void setDartEventCallbacks() {
     // Create a NativeCallable for the Dart functions
     final nativeVoiceEndedCallable =
@@ -190,16 +143,26 @@ class FlutterSoLoudFfi {
       void Function(DartVoiceEndedCallbackT, DartFileLoadedCallbackT,
           DartStateChangedCallbackT)>();
 
-  ///////////////////////////////////////////////////////////////////////////
-  ///////////////////////////////////////////////////////////////////////////
-  ///////////////////////////////////////////////////////////////////////////
-  ///////////////////////////////////////////////////////////////////////////
-  ///////////////////////////////////////////////////////////////////////////
-  ///////////////////////////////////////////////////////////////////////////
-  ///////////////////////////////////////////////////////////////////////////
-  /// Initialize the player. Must be called before any other player functions
-  ///
-  /// Returns [PlayerErrors.noError] if success
+  // ////////////////////////////////////////////////
+  // Navtive bindings
+  // ////////////////////////////////////////////////
+
+  /// When allocating memory in C code, more attention must be given when
+  /// we are on Windows OS. It's not good to call `calloc.free()` because
+  /// Windows could use different allocating methods for this and the same
+  /// must be used freeing it. `calloc.free()` use the standard `free()` and
+  /// doesn't have problems using it in other OSes.
+  void nativeFree(ffi.Pointer<ffi.Void> pointer) {
+    return _nativeFree(pointer);
+  }
+
+  late final _nativeFreePtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>(
+          'nativeFree');
+  late final _nativeFree =
+      _nativeFreePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
+
+  @override
   PlayerErrors initEngine() {
     return PlayerErrors.values[_initEngine()];
   }
@@ -208,9 +171,7 @@ class FlutterSoLoudFfi {
       _lookup<ffi.NativeFunction<ffi.Int32 Function()>>('initEngine');
   late final _initEngine = _initEnginePtr.asFunction<int Function()>();
 
-  /// Must be called when there is no more need of the player
-  /// or when closing the app
-  ///
+  @override
   void deinit() {
     return _dispose();
   }
@@ -219,9 +180,7 @@ class FlutterSoLoudFfi {
       _lookup<ffi.NativeFunction<ffi.Void Function()>>('dispose');
   late final _dispose = _disposePtr.asFunction<void Function()>();
 
-  /// Gets the state of player
-  ///
-  /// Return true if initilized
+  @override
   bool isInited() {
     return _isInited() == 1;
   }
@@ -231,20 +190,10 @@ class FlutterSoLoudFfi {
   );
   late final _isInited = _isInitedPtr.asFunction<int Function()>();
 
-  /// Load a new sound to be played once or multiple times later.
-  ///
   /// After loading the file, the [_fileLoadedCallback] will call the
   /// Dart function defined with [_setDartEventCallback] which gives back
   /// the error and the new hash.
-  ///
-  /// [completeFileName] the complete file path.
-  /// [LoadMode] if `LoadMode.memory`, Soloud::wav will be used which loads
-  /// all audio data into memory. Used to prevent gaps or lags
-  /// when seeking/starting a sound (less CPU, more memory allocated).
-  /// If `LoadMode.disk` is used, the audio data is loaded
-  /// from the given file when needed (more CPU, less memory allocated).
-  /// See the [seek] note problem when using [LoadMode] = `LoadMode.disk`.
-  /// `soundHash` return hash of the sound.
+  @override
   void loadFile(
     String completeFileName,
     LoadMode mode,
@@ -268,16 +217,11 @@ class FlutterSoLoudFfi {
   late final _loadFile =
       _loadFilePtr.asFunction<void Function(ffi.Pointer<ffi.Char>, int)>();
 
-  /// Load a new sound stored into [buffer] as file bytes to be played once
-  /// or multiple times later.
-  /// Use this on web because the browsers are not allowed to read
-  /// files directly.
-  ///
-  /// [uniqueName] the unique name of the sound. Used only to have the [hash].
-  /// [buffer] the audio data. These contains the audio file bytes.
+  @override
   ({PlayerErrors error, SoundHash soundHash}) loadMem(
     String uniqueName,
     Uint8List buffer,
+    LoadMode mode,
   ) {
     // ignore: omit_local_variable_types
     final ffi.Pointer<ffi.UnsignedInt> hash =
@@ -292,6 +236,7 @@ class FlutterSoLoudFfi {
       uniqueName.toNativeUtf8().cast<ffi.Char>(),
       bufferPtr,
       buffer.length,
+      mode == LoadMode.memory ? 1 : 0,
       hash,
     );
     final soundHash = SoundHash(hash.value);
@@ -303,19 +248,12 @@ class FlutterSoLoudFfi {
   late final _loadMemPtr = _lookup<
       ffi.NativeFunction<
           ffi.Int32 Function(ffi.Pointer<ffi.Char>, ffi.Pointer<ffi.Uint8>,
-              ffi.Int, ffi.Pointer<ffi.UnsignedInt>)>>('loadMem');
+              ffi.Int, ffi.Int, ffi.Pointer<ffi.UnsignedInt>)>>('loadMem');
   late final _loadMem = _loadMemPtr.asFunction<
-      int Function(ffi.Pointer<ffi.Char>, ffi.Pointer<ffi.Uint8>, int,
+      int Function(ffi.Pointer<ffi.Char>, ffi.Pointer<ffi.Uint8>, int, int,
           ffi.Pointer<ffi.UnsignedInt>)>();
 
-  /// Load a new waveform to be played once or multiple times later
-  ///
-  /// [waveform]
-  /// [superWave]
-  /// [scale]
-  /// [detune]
-  /// `soundHash` return hash of the sound
-  /// Returns [PlayerErrors.noError] if success
+  @override
   ({PlayerErrors error, SoundHash soundHash}) loadWaveform(
     WaveForm waveform,
     bool superWave,
@@ -345,10 +283,7 @@ class FlutterSoLoudFfi {
   late final _loadWaveform = _loadWaveformPtr.asFunction<
       int Function(int, int, double, double, ffi.Pointer<ffi.UnsignedInt>)>();
 
-  /// Set the scale of an already loaded waveform identified by [hash]
-  ///
-  /// [hash] the unique sound hash of a waveform sound
-  /// [newScale]
+  @override
   void setWaveformScale(SoundHash hash, double newScale) {
     return _setWaveformScale(hash.hash, newScale);
   }
@@ -359,10 +294,7 @@ class FlutterSoLoudFfi {
   late final _setWaveformScale =
       _setWaveformScalePtr.asFunction<void Function(int, double)>();
 
-  /// Set the detune of an already loaded waveform identified by [hash]
-  ///
-  /// [hash] the unique sound hash of a waveform sound
-  /// [newDetune]
+  @override
   void setWaveformDetune(SoundHash hash, double newDetune) {
     return _setWaveformDetune(hash.hash, newDetune);
   }
@@ -373,10 +305,7 @@ class FlutterSoLoudFfi {
   late final _setWaveformDetune =
       _setWaveformDetunePtr.asFunction<void Function(int, double)>();
 
-  /// Set a new frequency of an already loaded waveform identified by [hash]
-  ///
-  /// [hash] the unique sound hash of a waveform sound
-  /// [newFreq]
+  @override
   void setWaveformFreq(SoundHash hash, double newFreq) {
     return _setWaveformFreq(hash.hash, newFreq);
   }
@@ -387,10 +316,7 @@ class FlutterSoLoudFfi {
   late final _setWaveformFreq =
       _setWaveformFreqPtr.asFunction<void Function(int, double)>();
 
-  /// Set a new frequence of an already loaded waveform identified by [hash]
-  ///
-  /// [hash] the unique sound hash of a waveform sound
-  /// [superwave]
+  @override
   void setWaveformSuperWave(SoundHash hash, int superwave) {
     return _setSuperWave(hash.hash, superwave);
   }
@@ -401,18 +327,7 @@ class FlutterSoLoudFfi {
   late final _setSuperWave =
       _setSuperWavePtr.asFunction<void Function(int, int)>();
 
-  /// Set a new wave form of an already loaded waveform identified by [hash]
-  ///
-  /// [hash] the unique sound hash of a waveform sound
-  /// [newWaveform]  WAVE_SQUARE = 0,
-  /// WAVE_SAW,
-  /// WAVE_SIN,
-  /// WAVE_TRIANGLE,
-  /// WAVE_BOUNCE,
-  /// WAVE_JAWS,
-  /// WAVE_HUMPS,
-  /// WAVE_FSQUARE,
-  /// WAVE_FSAW
+  @override
   void setWaveform(SoundHash hash, WaveForm newWaveform) {
     return _setWaveform(hash.hash, newWaveform.index);
   }
@@ -423,11 +338,7 @@ class FlutterSoLoudFfi {
   late final _setWaveform =
       _setWaveformPtr.asFunction<void Function(int, int)>();
 
-  /// Speech the text given
-  ///
-  /// [textToSpeech]
-  /// Returns PlayerErrors.noError if success and handle sound identifier
-  // TODO(marco): add other T2S parameters
+  @override
   ({PlayerErrors error, SoundHandle handle}) speechText(String textToSpeech) {
     // ignore: omit_local_variable_types
     final ffi.Pointer<ffi.UnsignedInt> handle = calloc();
@@ -450,9 +361,7 @@ class FlutterSoLoudFfi {
   late final _speechText = _speechTextPtr.asFunction<
       int Function(ffi.Pointer<ffi.Char>, ffi.Pointer<ffi.UnsignedInt>)>();
 
-  /// Switch pause state of an already loaded sound identified by [handle]
-  ///
-  /// [handle] the sound handle
+  @override
   void pauseSwitch(SoundHandle handle) {
     return _pauseSwitch(handle.id);
   }
@@ -463,10 +372,7 @@ class FlutterSoLoudFfi {
   );
   late final _pauseSwitch = _pauseSwitchPtr.asFunction<void Function(int)>();
 
-  /// Pause or unpause already loaded sound identified by [handle]
-  ///
-  /// [handle] the sound handle
-  /// [pause] the sound handle
+  @override
   void setPause(SoundHandle handle, int pause) {
     return _setPause(handle.id, pause);
   }
@@ -476,10 +382,7 @@ class FlutterSoLoudFfi {
           'setPause');
   late final _setPause = _setPausePtr.asFunction<void Function(int, int)>();
 
-  /// Gets the pause state
-  ///
-  /// [handle] the sound handle
-  /// Return true if paused
+  @override
   bool getPause(SoundHandle handle) {
     return _getPause(handle.id) == 1;
   }
@@ -490,18 +393,7 @@ class FlutterSoLoudFfi {
   );
   late final _getPause = _getPausePtr.asFunction<int Function(int)>();
 
-  /// Set a sound's relative play speed.
-  /// Setting the value to 0 will cause undefined behavior, likely a crash.
-  /// Change the relative play speed of a sample. This changes the effective
-  /// sample rate while leaving the base sample rate alone.
-  ///
-  /// Note that playing a sound at a higher sample rate will require SoLoud
-  /// to request more samples from the sound source, which will require more
-  /// memory and more processing power. Playing at a slower sample
-  /// rate is cheaper.
-  ///
-  /// [handle] the sound handle
-  /// [speed] the new speed
+  @override
   void setRelativePlaySpeed(SoundHandle handle, double speed) {
     return _setRelativePlaySpeed(handle.id, speed);
   }
@@ -515,6 +407,7 @@ class FlutterSoLoudFfi {
   /// Return the current play speed.
   ///
   /// [handle] the sound handle
+  @override
   double getRelativePlaySpeed(SoundHandle handle) {
     return _getRelativePlaySpeed(handle.id);
   }
@@ -525,18 +418,7 @@ class FlutterSoLoudFfi {
   late final _getRelativePlaySpeed =
       _getRelativePlaySpeedPtr.asFunction<double Function(int)>();
 
-  /// Play already loaded sound identified by [soundHash]
-  ///
-  /// [soundHash] the unique sound hash of a sound
-  /// [volume] 1.0 full volume
-  /// [pan] 0.0 centered
-  /// [paused] false not paused
-  /// [looping] whether to start the sound in looping state.
-  /// [loopingStartAt] If looping is enabled, the loop point is, by default,
-  /// the start of the stream. The loop start point can be set with this
-  /// parameter, and current loop point can be queried with `getLoopingPoint()`
-  /// and changed by `setLoopingPoint()`.
-  /// Return the error if any and a new `newHandle` of this sound
+  @override
   ({PlayerErrors error, SoundHandle newHandle}) play(
     SoundHash soundHash, {
     double volume = 1,
@@ -571,9 +453,7 @@ class FlutterSoLoudFfi {
       int Function(int, double, double, int, int, double,
           ffi.Pointer<ffi.UnsignedInt>)>();
 
-  /// Stop already loaded sound identified by [handle] and clear it.
-  ///
-  /// [handle]
+  @override
   void stop(SoundHandle handle) {
     return _stop(handle.id);
   }
@@ -582,10 +462,7 @@ class FlutterSoLoudFfi {
       _lookup<ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt)>>('stop');
   late final _stop = _stopPtr.asFunction<void Function(int)>();
 
-  /// Stop all handles of the already loaded sound identified
-  /// by [soundHash] and dispose it.
-  ///
-  /// [soundHash]
+  @override
   void disposeSound(SoundHash soundHash) {
     return _disposeSound(soundHash.hash);
   }
@@ -596,7 +473,7 @@ class FlutterSoLoudFfi {
   );
   late final _disposeSound = _disposeSoundPtr.asFunction<void Function(int)>();
 
-  /// Dispose all sounds already loaded
+  @override
   void disposeAllSound() {
     return _disposeAllSound();
   }
@@ -606,10 +483,7 @@ class FlutterSoLoudFfi {
   late final _disposeAllSound =
       _disposeAllSoundPtr.asFunction<void Function()>();
 
-  /// Query whether a sound is set to loop.
-  ///
-  /// [handle]
-  /// Returns true if flagged for looping.
+  @override
   bool getLooping(SoundHandle handle) {
     return _getLooping(handle.id) == 1;
   }
@@ -619,11 +493,7 @@ class FlutterSoLoudFfi {
           'getLooping');
   late final _getLooping = _getLoopingPtr.asFunction<int Function(int)>();
 
-  /// This function can be used to set a sample to play on repeat,
-  /// instead of just playing once
-  ///
-  /// [handle]
-  /// [enable]
+  @override
   void setLooping(SoundHandle handle, bool enable) {
     return _setLooping(handle.id, enable ? 1 : 0);
   }
@@ -634,10 +504,7 @@ class FlutterSoLoudFfi {
   );
   late final _setLooping = _setLoopingPtr.asFunction<void Function(int, int)>();
 
-  /// Get sound loop point value.
-  ///
-  /// [handle]
-  /// Returns the duration.
+  @override
   Duration getLoopPoint(SoundHandle handle) {
     return _getLoopPoint(handle.id).toDuration();
   }
@@ -648,10 +515,7 @@ class FlutterSoLoudFfi {
   late final _getLoopPoint =
       _getLoopPointPtr.asFunction<double Function(int)>();
 
-  /// Set sound loop point value.
-  ///
-  /// [handle]
-  /// [timestamp]
+  @override
   void setLoopPoint(SoundHandle handle, Duration timestamp) {
     _setLoopPoint(handle.id, timestamp.toDouble());
   }
@@ -662,11 +526,7 @@ class FlutterSoLoudFfi {
   late final _setLoopPoint =
       _setLoopPointPtr.asFunction<void Function(int, double)>();
 
-  // TODO(marco): implement Soloud.getLoopCount() also?
-
-  /// Enable or disable visualization
-  ///
-  /// [enabled] enable or disable it
+  @override
   void setVisualizationEnabled(bool enabled) {
     return _setVisualizationEnabled(
       enabled ? 1 : 0,
@@ -680,9 +540,7 @@ class FlutterSoLoudFfi {
   late final _setVisualizationEnabled =
       _setVisualizationEnabledPtr.asFunction<void Function(int)>();
 
-  /// Get visualization state
-  ///
-  /// Return true if enabled
+  @override
   bool getVisualizationEnabled() {
     return _getVisualizationEnabled() == 1;
   }
@@ -693,46 +551,29 @@ class FlutterSoLoudFfi {
   late final _getVisualizationEnabled =
       _getVisualizationEnabledPtr.asFunction<int Function()>();
 
-  /// Returns valid data only if VisualizationEnabled is true
-  ///
-  /// [fft]
-  /// Return a 256 float array containing FFT data.
-  void getFft(ffi.Pointer<ffi.Float> fft) {
-    return _getFft(fft);
+  @override
+  void getFft(AudioData fft) {
+    return _getFft(fft.ctrl.samplesWave);
   }
 
-  late final _getFftPtr =
-      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Float>)>>(
-    'getFft',
-  );
-  late final _getFft =
-      _getFftPtr.asFunction<void Function(ffi.Pointer<ffi.Float>)>();
+  late final _getFftPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Void Function(ffi.Pointer<ffi.Pointer<ffi.Float>>)>>('getFft');
+  late final _getFft = _getFftPtr
+      .asFunction<void Function(ffi.Pointer<ffi.Pointer<ffi.Float>>)>();
 
-  /// Returns valid data only if VisualizationEnabled is true
-  ///
-  /// fft
-  /// Return a 256 float array containing wave data.
-  void getWave(ffi.Pointer<ffi.Float> wave) {
-    return _getWave(wave);
+  @override
+  void getWave(AudioData wave) {
+    return _getWave(wave.ctrl.samplesWave);
   }
 
-  late final _getWavePtr =
-      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Float>)>>(
-    'getWave',
-  );
-  late final _getWave =
-      _getWavePtr.asFunction<void Function(ffi.Pointer<ffi.Float>)>();
+  late final _getWavePtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Void Function(ffi.Pointer<ffi.Pointer<ffi.Float>>)>>('getWave');
+  late final _getWave = _getWavePtr
+      .asFunction<void Function(ffi.Pointer<ffi.Pointer<ffi.Float>>)>();
 
-  /// Smooth FFT data.
-  /// When new data is read and the values are decreasing, the new value will be
-  /// decreased with an amplitude between the old and the new value.
-  /// This will result on a less shaky visualization.
-  ///
-  /// [smooth] must be in the [0.0 ~ 1.0] range.
-  /// 0 = no smooth
-  /// 1 = full smooth
-  /// the new value is calculated with:
-  /// newFreq = smooth * oldFreq + (1 - smooth) * newFreq
+  @override
   void setFftSmoothing(double smooth) {
     return _setFftSmoothing(smooth);
   }
@@ -744,13 +585,9 @@ class FlutterSoLoudFfi {
   late final _setFftSmoothing =
       _setFftSmoothingPtr.asFunction<void Function(double)>();
 
-  /// Return in [samples] a 512 float array.
-  /// The first 256 floats represent the FFT frequencies data [>=0.0].
-  /// The other 256 floats represent the wave data (amplitude) [-1.0~1.0].
-  ///
-  /// [samples] should be allocated and freed in dart side
-  void getAudioTexture(ffi.Pointer<ffi.Float> samples) {
-    return _getAudioTexture(samples);
+  @override
+  void getAudioTexture(AudioData samples) {
+    return _getAudioTexture(samples.ctrl.samples1D);
   }
 
   late final _getAudioTexturePtr =
@@ -760,16 +597,9 @@ class FlutterSoLoudFfi {
   late final _getAudioTexture =
       _getAudioTexturePtr.asFunction<void Function(ffi.Pointer<ffi.Float>)>();
 
-  /// Return a floats matrix of 256x512
-  /// Every row are composed of 256 FFT values plus 256 of wave data
-  /// Every time is called, a new row is stored in the
-  /// first row and all the previous rows are shifted
-  /// up (the last one will be lost).
-  ///
-  /// [samples]
-  PlayerErrors getAudioTexture2D(ffi.Pointer<ffi.Pointer<ffi.Float>> samples) {
-    if (samples == ffi.nullptr) return PlayerErrors.nullPointer;
-    final ret = _getAudioTexture2D(samples);
+  @override
+  PlayerErrors getAudioTexture2D(AudioData samples) {
+    final ret = _getAudioTexture2D(samples.ctrl.samples2D);
     return PlayerErrors.values[ret];
   }
 
@@ -781,10 +611,18 @@ class FlutterSoLoudFfi {
   late final _getAudioTexture2D = _getAudioTexture2DPtr
       .asFunction<int Function(ffi.Pointer<ffi.Pointer<ffi.Float>>)>();
 
-  /// Get the sound length.
-  ///
-  /// [soundHash] the sound hash
-  /// Returns sound length in seconds
+  @override
+  double getTextureValue(int row, int column) {
+    return _getTextureValue(row, column);
+  }
+
+  late final _getTextureValuePtr =
+      _lookup<ffi.NativeFunction<ffi.Float Function(ffi.Int, ffi.Int)>>(
+          'getTextureValue');
+  late final _getTextureValue =
+      _getTextureValuePtr.asFunction<double Function(int, int)>();
+
+  @override
   Duration getLength(SoundHash soundHash) {
     return _getLength(soundHash.hash).toDuration();
   }
@@ -795,22 +633,7 @@ class FlutterSoLoudFfi {
   );
   late final _getLength = _getLengthPtr.asFunction<double Function(int)>();
 
-  /// Seek playing in [time] seconds
-  /// [time]
-  /// [handle] the sound handle
-  /// Returns [PlayerErrors.noError] if success
-  ///
-  /// NOTE: when seeking an MP3 file loaded using `mode`=`LoadMode.disk` the
-  /// seek operation is performed but there will be delays. This occurs because
-  /// the MP3 codec must compute each frame length to gain a new position.
-  /// The problem is explained in souloud_wavstream.cpp
-  /// in `WavStreamInstance::seek` function.
-  ///
-  /// This mode is useful ie for background music, not for a music player
-  /// where a seek slider for MP3s is a must.
-  /// If you need to seek MP3s without lags, please, use
-  /// `mode`=`LoadMode.memory` instead or other supported audio formats!
-  ///
+  @override
   int seek(SoundHandle handle, Duration time) {
     return _seek(handle.id, time.toDouble());
   }
@@ -821,10 +644,7 @@ class FlutterSoLoudFfi {
   );
   late final _seek = _seekPtr.asFunction<int Function(int, double)>();
 
-  /// Get current sound position  in seconds
-  ///
-  /// [handle] the sound handle
-  /// Returns time
+  @override
   Duration getPosition(SoundHandle handle) {
     return _getPosition(handle.id).toDuration();
   }
@@ -835,9 +655,7 @@ class FlutterSoLoudFfi {
   );
   late final _getPosition = _getPositionPtr.asFunction<double Function(int)>();
 
-  /// Get current Global volume
-  ///
-  /// Returns the volume
+  @override
   double getGlobalVolume() {
     return _getGlobalVolume();
   }
@@ -847,9 +665,7 @@ class FlutterSoLoudFfi {
   late final _getGlobalVolume =
       _getGlobalVolumePtr.asFunction<double Function()>();
 
-  /// Set current Global volume
-  ///
-  /// Returns [PlayerErrors.noError] if success
+  @override
   int setGlobalVolume(double volume) {
     return _setGlobalVolume(volume);
   }
@@ -860,9 +676,7 @@ class FlutterSoLoudFfi {
   late final _setGlobalVolume =
       _setGlobalVolumePtr.asFunction<int Function(double)>();
 
-  /// Get current [handle] volume
-  ///
-  /// Returns the volume
+  @override
   double getVolume(SoundHandle handle) {
     return _getVolume(handle.id);
   }
@@ -872,9 +686,7 @@ class FlutterSoLoudFfi {
           'getVolume');
   late final _getVolume = _getVolumePtr.asFunction<double Function(int)>();
 
-  /// Set current [handle] volume
-  ///
-  /// Returns [PlayerErrors.noError] if success
+  @override
   int setVolume(SoundHandle handle, double volume) {
     return _setVolume(handle.id, volume);
   }
@@ -889,10 +701,11 @@ class FlutterSoLoudFfi {
   /// [handle] the sound handle.
   /// Returns the range of the pan values is -1 to 1, where -1 is left, 0 is
   /// middle and and 1 is right.
-  double getPan(int handle) {
+  @override
+  double getPan(SoundHandle handle) {
     // Note that because of the float<=>double conversion precision error
     // (SoLoud lib uses floats), the returned value is not precise.
-    return _getPan(handle);
+    return _getPan(handle.id);
   }
 
   late final _getPanPtr =
@@ -905,8 +718,9 @@ class FlutterSoLoudFfi {
   /// [handle] the sound handle.
   /// [pan] the range of the pan values is -1 to 1, where -1 is left, 0 is
   /// middle and and 1 is right.
-  void setPan(int handle, double pan) {
-    return _setPan(handle, pan);
+  @override
+  void setPan(SoundHandle handle, double pan) {
+    return _setPan(handle.id, pan);
   }
 
   late final _setPanPtr = _lookup<
@@ -920,8 +734,9 @@ class FlutterSoLoudFfi {
   /// [handle] the sound handle.
   /// [panLeft] value for the left pan.
   /// [panRight] value for the right pan.
-  void setPanAbsolute(int handle, double panLeft, double panRight) {
-    return _setPanAbsolute(handle, panLeft, panRight);
+  @override
+  void setPanAbsolute(SoundHandle handle, double panLeft, double panRight) {
+    return _setPanAbsolute(handle.id, panLeft, panRight);
   }
 
   late final _setPanAbsolutePtr = _lookup<
@@ -935,6 +750,7 @@ class FlutterSoLoudFfi {
   ///
   /// [handle] handle to check
   /// Return true if it still exists
+  @override
   bool getIsValidVoiceHandle(SoundHandle handle) {
     return _getIsValidVoiceHandle(handle.id) == 1;
   }
@@ -946,7 +762,7 @@ class FlutterSoLoudFfi {
   late final _getIsValidVoiceHandle =
       _getIsValidVoiceHandlePtr.asFunction<int Function(int)>();
 
-  /// Returns the number of concurrent sounds that are playing at the moment.
+  @override
   int getActiveVoiceCount() {
     return _getActiveVoiceCount();
   }
@@ -957,8 +773,7 @@ class FlutterSoLoudFfi {
   late final _getActiveVoiceCount =
       _getActiveVoiceCountPtr.asFunction<int Function()>();
 
-  /// Returns the number of concurrent sounds that are playing a
-  /// specific audio source.
+  @override
   int countAudioSource(SoundHash soundHash) {
     return _countAudioSource(soundHash.hash);
   }
@@ -969,7 +784,7 @@ class FlutterSoLoudFfi {
   late final _countAudioSource =
       _countAudioSourcePtr.asFunction<int Function(int)>();
 
-  /// Returns the number of voices the application has told SoLoud to play.
+  @override
   int getVoiceCount() {
     return _getVoiceCount();
   }
@@ -978,7 +793,7 @@ class FlutterSoLoudFfi {
       _lookup<ffi.NativeFunction<ffi.UnsignedInt Function()>>('getVoiceCount');
   late final _getVoiceCount = _getVoiceCountPtr.asFunction<int Function()>();
 
-  /// Get a sound's protection state.
+  @override
   bool getProtectVoice(SoundHandle handle) {
     return _getProtectVoice(handle.id) == 1;
   }
@@ -989,16 +804,7 @@ class FlutterSoLoudFfi {
   late final _getProtectVoice =
       _getProtectVoicePtr.asFunction<int Function(int)>();
 
-  /// Set a sound's protection state.
-  ///
-  /// Normally, if you try to play more sounds than there are voices,
-  /// SoLoud will kill off the oldest playing sound to make room.
-  /// This will most likely be your background music. This can be worked
-  /// around by protecting the sound.
-  /// If all voices are protected, the result will be undefined.
-  ///
-  /// [handle]  handle to check.
-  /// [protect] whether to protect or not.
+  @override
   void setProtectVoice(SoundHandle handle, bool protect) {
     return _setProtectVoice(handle.id, protect ? 1 : 0);
   }
@@ -1009,7 +815,7 @@ class FlutterSoLoudFfi {
   late final _setProtectVoice =
       _setProtectVoicePtr.asFunction<void Function(int, int)>();
 
-  /// Get the current maximum active voice count.
+  @override
   int getMaxActiveVoiceCount() {
     return _getMaxActiveVoiceCount();
   }
@@ -1020,18 +826,7 @@ class FlutterSoLoudFfi {
   late final _getMaxActiveVoiceCount =
       _getMaxActiveVoiceCountPtr.asFunction<int Function()>();
 
-  /// Set the current maximum active voice count.
-  /// If voice count is higher than the maximum active voice count,
-  /// SoLoud will pick the ones with the highest volume to actually play.
-  /// [maxVoiceCount] the max concurrent sounds that can be played.
-  ///
-  /// NOTE: The number of concurrent voices is limited, as having unlimited
-  /// voices would cause performance issues, as well as lead to unnecessary
-  /// clipping. The default number of concurrent voices is 16, but this can be
-  /// adjusted at runtime. The hard maximum number is 4095, but if more are
-  /// required, SoLoud can be modified to support more. But seriously, if you
-  /// need more than 4095 sounds at once, you're probably going to make
-  /// some serious changes in any case.
+  @override
   void setMaxActiveVoiceCount(int maxVoiceCount) {
     return _setMaxActiveVoiceCount(maxVoiceCount);
   }
@@ -1046,8 +841,7 @@ class FlutterSoLoudFfi {
   /// faders
   /////////////////////////////////////////
 
-  /// Smoothly change the global volume over specified [duration].
-  ///
+  @override
   int fadeGlobalVolume(double to, Duration duration) {
     return _fadeGlobalVolume(to, duration.toDouble());
   }
@@ -1058,8 +852,7 @@ class FlutterSoLoudFfi {
   late final _fadeGlobalVolume =
       _fadeGlobalVolumePtr.asFunction<int Function(double, double)>();
 
-  /// Smoothly change a channel's volume over specified [duration].
-  ///
+  @override
   int fadeVolume(SoundHandle handle, double to, Duration duration) {
     return _fadeVolume(handle.id, to, duration.toDouble());
   }
@@ -1071,8 +864,7 @@ class FlutterSoLoudFfi {
   late final _fadeVolume =
       _fadeVolumePtr.asFunction<int Function(int, double, double)>();
 
-  /// Smoothly change a channel's pan setting over specified [duration].
-  ///
+  @override
   int fadePan(SoundHandle handle, double to, Duration duration) {
     return _fadePan(handle.id, to, duration.toDouble());
   }
@@ -1084,8 +876,7 @@ class FlutterSoLoudFfi {
   late final _fadePan =
       _fadePanPtr.asFunction<int Function(int, double, double)>();
 
-  /// Smoothly change a channel's relative play speed over specified time.
-  ///
+  @override
   int fadeRelativePlaySpeed(SoundHandle handle, double to, Duration time) {
     return _fadeRelativePlaySpeed(handle.id, to, time.toDouble());
   }
@@ -1097,8 +888,7 @@ class FlutterSoLoudFfi {
   late final _fadeRelativePlaySpeed =
       _fadeRelativePlaySpeedPtr.asFunction<int Function(int, double, double)>();
 
-  /// After specified [duration], pause the channel.
-  ///
+  @override
   int schedulePause(SoundHandle handle, Duration duration) {
     return _schedulePause(handle.id, duration.toDouble());
   }
@@ -1109,8 +899,7 @@ class FlutterSoLoudFfi {
   late final _schedulePause =
       _schedulePausePtr.asFunction<int Function(int, double)>();
 
-  /// After specified time, stop the channel.
-  ///
+  @override
   int scheduleStop(SoundHandle handle, Duration duration) {
     return _scheduleStop(handle.id, duration.toDouble());
   }
@@ -1121,8 +910,7 @@ class FlutterSoLoudFfi {
   late final _scheduleStop =
       _scheduleStopPtr.asFunction<int Function(int, double)>();
 
-  /// Set fader to oscillate the volume at specified frequency.
-  ///
+  @override
   int oscillateVolume(
       SoundHandle handle, double from, double to, Duration time) {
     return _oscillateVolume(handle.id, from, to, time.toDouble());
@@ -1135,8 +923,7 @@ class FlutterSoLoudFfi {
   late final _oscillateVolume = _oscillateVolumePtr
       .asFunction<int Function(int, double, double, double)>();
 
-  /// Set fader to oscillate the panning at specified frequency.
-  ///
+  @override
   int oscillatePan(SoundHandle handle, double from, double to, Duration time) {
     return _oscillatePan(handle.id, from, to, time.toDouble());
   }
@@ -1148,8 +935,7 @@ class FlutterSoLoudFfi {
   late final _oscillatePan =
       _oscillatePanPtr.asFunction<int Function(int, double, double, double)>();
 
-  /// Set fader to oscillate the relative play speed at specified frequency.
-  ///
+  @override
   int oscillateRelativePlaySpeed(
       SoundHandle handle, double from, double to, Duration time) {
     return _oscillateRelativePlaySpeed(handle.id, from, to, time.toDouble());
@@ -1162,8 +948,7 @@ class FlutterSoLoudFfi {
   late final _oscillateRelativePlaySpeed = _oscillateRelativePlaySpeedPtr
       .asFunction<int Function(int, double, double, double)>();
 
-  /// Set fader to oscillate the global volume at specified frequency.
-  ///
+  @override
   int oscillateGlobalVolume(double from, double to, Duration time) {
     return _oscillateGlobalVolume(from, to, time.toDouble());
   }
@@ -1175,20 +960,15 @@ class FlutterSoLoudFfi {
   late final _oscillateGlobalVolume = _oscillateGlobalVolumePtr
       .asFunction<int Function(double, double, double)>();
 
-  /////////////////////////////////////////
-  /// Filters
-  /////////////////////////////////////////
+  // ///////////////////////////////////////
+  //  Filters
+  // ///////////////////////////////////////
 
-  /// Check if the given filter is active or not.
-  ///
-  /// [filterType] filter to check
-  /// Returns [PlayerErrors.noError] if no errors and the index of
-  /// the given filter (-1 if the filter is not active)
-  ///
-  ({PlayerErrors error, int index}) isFilterActive(int filterType) {
+  @override
+  ({PlayerErrors error, int index}) isFilterActive(FilterType filterType) {
     // ignore: omit_local_variable_types
     final ffi.Pointer<ffi.Int> id = calloc(ffi.sizeOf<ffi.Int>());
-    final e = _isFilterActive(filterType, id);
+    final e = _isFilterActive(filterType.index, id);
     final ret = (error: PlayerErrors.values[e], index: id.value);
     calloc.free(id);
     return ret;
@@ -1201,13 +981,9 @@ class FlutterSoLoudFfi {
   late final _isFilterActive =
       _isFilterActivePtr.asFunction<int Function(int, ffi.Pointer<ffi.Int>)>();
 
-  /// Get parameters names of the given filter.
-  ///
-  /// [filterType] filter to get param names
-  /// Returns [PlayerErrors.noError] if no errors and the list of param names
-  ///
+  @override
   ({PlayerErrors error, List<String> names}) getFilterParamNames(
-      int filterType) {
+      FilterType filterType) {
     // ignore: omit_local_variable_types
     final ffi.Pointer<ffi.Int> paramsCount = calloc(ffi.sizeOf<ffi.Int>());
     // ignore: omit_local_variable_types
@@ -1218,7 +994,7 @@ class FlutterSoLoudFfi {
         'names: ${names.address.toRadixString(16)}');
 
     final e = _getFilterParamNames(
-      filterType,
+      filterType.index,
       paramsCount,
       names,
     );
@@ -1246,19 +1022,9 @@ class FlutterSoLoudFfi {
       int Function(
           int, ffi.Pointer<ffi.Int>, ffi.Pointer<ffi.Pointer<ffi.Char>>)>();
 
-  /// Add the filter [filterType].
-  ///
-  /// [filterType] filter to add.
-  /// Returns:
-  /// [PlayerErrors.noError] if no errors
-  /// [PlayerErrors.filterNotFound] if the [filterType] does not exits
-  /// [PlayerErrors.filterAlreadyAdded] when trying to add an already
-  ///     added filter
-  /// [PlayerErrors.maxNumberOfFiltersReached] when the maximum number of
-  ///     filters has been reached (default is 8)
-  ///
-  PlayerErrors addGlobalFilter(int filterType) {
-    final e = _addGlobalFilter(filterType);
+  @override
+  PlayerErrors addGlobalFilter(FilterType filterType) {
+    final e = _addGlobalFilter(filterType.index);
     return PlayerErrors.values[e];
   }
 
@@ -1268,13 +1034,9 @@ class FlutterSoLoudFfi {
   late final _addGlobalFilter =
       _addGlobalFilterPtr.asFunction<int Function(int)>();
 
-  /// Remove the filter [filterType].
-  ///
-  /// [filterType] filter to remove
-  /// Returns [PlayerErrors.noError] if no errors
-  ///
-  int removeGlobalFilter(int filterType) {
-    return _removeGlobalFilter(filterType);
+  @override
+  int removeGlobalFilter(FilterType filterType) {
+    return _removeGlobalFilter(filterType.index);
   }
 
   late final _removeGlobalFilterPtr =
@@ -1283,14 +1045,9 @@ class FlutterSoLoudFfi {
   late final _removeGlobalFilter =
       _removeGlobalFilterPtr.asFunction<int Function(int)>();
 
-  /// Set the effect parameter with id [attributeId]
-  /// of [filterType] with [value] value.
-  ///
-  /// [filterType] filter to modify a param
-  /// Returns [PlayerErrors.noError] if no errors
-  ///
-  int setFilterParams(int filterType, int attributeId, double value) {
-    return _setFxParams(filterType, attributeId, value);
+  @override
+  int setFilterParams(FilterType filterType, int attributeId, double value) {
+    return _setFxParams(filterType.index, attributeId, value);
   }
 
   late final _setFxParamsPtr = _lookup<
@@ -1299,13 +1056,9 @@ class FlutterSoLoudFfi {
   late final _setFxParams =
       _setFxParamsPtr.asFunction<int Function(int, int, double)>();
 
-  /// Get the effect parameter with id [attributeId] of [filterType].
-  ///
-  /// [filterType] filter to modify a param
-  /// Returns the value of param
-  ///
-  double getFilterParams(int filterType, int attributeId) {
-    return _getFxParams(filterType, attributeId);
+  @override
+  double getFilterParams(FilterType filterType, int attributeId) {
+    return _getFxParams(filterType.index, attributeId);
   }
 
   late final _getFxParamsPtr =
@@ -1318,16 +1071,7 @@ class FlutterSoLoudFfi {
   /// 3D audio methods
   /////////////////////////////////////////
 
-  /// play3d() is the 3d version of the play() call
-  ///
-  /// [posX], [posY], [posZ] are the audio source position coordinates.
-  /// [velX], [velY], [velZ] are the audio source velocity.
-  /// [looping] whether to start the sound in looping state.
-  /// [loopingStartAt] If looping is enabled, the loop point is, by default,
-  /// the start of the stream. The loop start point can be set with this
-  /// parameter, and current loop point can be queried with `getLoopingPoint()`
-  /// and changed by `setLoopingPoint()`.
-  /// Returns the handle of the sound, 0 if error
+  @override
   ({PlayerErrors error, SoundHandle newHandle}) play3d(
     SoundHash soundHash,
     double posX,
@@ -1382,12 +1126,7 @@ class FlutterSoLoudFfi {
       int Function(int, double, double, double, double, double, double, double,
           int, int, double, ffi.Pointer<ffi.UnsignedInt>)>();
 
-  /// Since SoLoud has no knowledge of the scale of your coordinates,
-  /// you may need to adjust the speed of sound for these effects
-  /// to work correctly. The default value is 343, which assumes
-  /// that your world coordinates are in meters (where 1 unit is 1 meter),
-  /// and that the environment is dry air at around 20 degrees Celsius.
-  ///
+  @override
   void set3dSoundSpeed(double speed) {
     return _set3dSoundSpeed(speed);
   }
@@ -1399,8 +1138,7 @@ class FlutterSoLoudFfi {
   late final _set3dSoundSpeed =
       _set3dSoundSpeedPtr.asFunction<void Function(double)>();
 
-  /// Get the sound speed.
-  ///
+  @override
   double get3dSoundSpeed() {
     return _get3dSoundSpeed();
   }
@@ -1410,9 +1148,7 @@ class FlutterSoLoudFfi {
   late final _get3dSoundSpeed =
       _get3dSoundSpeedPtr.asFunction<double Function()>();
 
-  /// You can set the position, at-vector, up-vector and velocity
-  /// parameters of the 3d audio listener with one call
-  ///
+  @override
   void set3dListenerParameters(
     double posX,
     double posY,
@@ -1475,8 +1211,7 @@ class FlutterSoLoudFfi {
         double,
       )>();
 
-  /// You can set the position parameter of the 3d audio listener
-  ///
+  @override
   void set3dListenerPosition(double posX, double posY, double posZ) {
     return _set3dListenerPosition(posX, posY, posZ);
   }
@@ -1491,8 +1226,7 @@ class FlutterSoLoudFfi {
   late final _set3dListenerPosition = _set3dListenerPositionPtr
       .asFunction<void Function(double, double, double)>();
 
-  /// You can set the "at" vector parameter of the 3d audio listener.
-  ///
+  @override
   void set3dListenerAt(double atX, double atY, double atZ) {
     return _set3dListenerAt(atX, atY, atZ);
   }
@@ -1507,8 +1241,7 @@ class FlutterSoLoudFfi {
   late final _set3dListenerAt =
       _set3dListenerAtPtr.asFunction<void Function(double, double, double)>();
 
-  /// You can set the "up" vector parameter of the 3d audio listener.
-  ///
+  @override
   void set3dListenerUp(double upX, double upY, double upZ) {
     return _set3dListenerUp(upX, upY, upZ);
   }
@@ -1523,8 +1256,7 @@ class FlutterSoLoudFfi {
   late final _set3dListenerUp =
       _set3dListenerUpPtr.asFunction<void Function(double, double, double)>();
 
-  /// You can set the listener's velocity vector parameter.
-  ///
+  @override
   void set3dListenerVelocity(
     double velocityX,
     double velocityY,
@@ -1543,9 +1275,7 @@ class FlutterSoLoudFfi {
   late final _set3dListenerVelocity = _set3dListenerVelocityPtr
       .asFunction<void Function(double, double, double)>();
 
-  /// You can set the position and velocity parameters of a live
-  /// 3d audio source with one call.
-  ///
+  @override
   void set3dSourceParameters(
     SoundHandle handle,
     double posX,
@@ -1580,8 +1310,7 @@ class FlutterSoLoudFfi {
   late final _set3dSourceParameters = _set3dSourceParametersPtr.asFunction<
       void Function(int, double, double, double, double, double, double)>();
 
-  /// You can set the position parameters of a live 3d audio source
-  ///
+  @override
   void set3dSourcePosition(
       SoundHandle handle, double posX, double posY, double posZ) {
     return _set3dSourcePosition(handle.id, posX, posY, posZ);
@@ -1598,8 +1327,7 @@ class FlutterSoLoudFfi {
   late final _set3dSourcePosition = _set3dSourcePositionPtr
       .asFunction<void Function(int, double, double, double)>();
 
-  /// You can set the velocity parameters of a live 3d audio source
-  ///
+  @override
   void set3dSourceVelocity(
     SoundHandle handle,
     double velocityX,
@@ -1620,9 +1348,7 @@ class FlutterSoLoudFfi {
   late final _set3dSourceVelocity = _set3dSourceVelocityPtr
       .asFunction<void Function(int, double, double, double)>();
 
-  /// You can set the minimum and maximum distance parameters
-  /// of a live 3d audio source
-  ///
+  @override
   void set3dSourceMinMaxDistance(
     SoundHandle handle,
     double minDistance,
@@ -1641,16 +1367,7 @@ class FlutterSoLoudFfi {
   late final _set3dSourceMinMaxDistance = _set3dSourceMinMaxDistancePtr
       .asFunction<void Function(int, double, double)>();
 
-  /// You can change the attenuation model and rolloff factor parameters of
-  /// a live 3d audio source.
-  ///
-  /// NO_ATTENUATION 	      No attenuation
-  /// INVERSE_DISTANCE 	    Inverse distance attenuation model
-  /// LINEAR_DISTANCE 	    Linear distance attenuation model
-  /// EXPONENTIAL_DISTANCE 	Exponential distance attenuation model
-  ///
-  /// see https://solhsa.com/soloud/concepts3d.html
-  ///
+  @override
   void set3dSourceAttenuation(
     SoundHandle handle,
     int attenuationModel,
@@ -1673,8 +1390,7 @@ class FlutterSoLoudFfi {
   late final _set3dSourceAttenuation =
       _set3dSourceAttenuationPtr.asFunction<void Function(int, int, double)>();
 
-  /// You can change the doppler factor of a live 3d audio source
-  ///
+  @override
   void set3dSourceDopplerFactor(SoundHandle handle, double dopplerFactor) {
     return _set3dSourceDopplerFactor(handle.id, dopplerFactor);
   }
@@ -1685,29 +1401,4 @@ class FlutterSoLoudFfi {
   );
   late final _set3dSourceDopplerFactor =
       _set3dSourceDopplerFactorPtr.asFunction<void Function(int, double)>();
-
-  /// internal test. Does nothing now
-  ///
-  void test() {
-    return _test();
-  }
-
-  late final _testPtr =
-      _lookup<ffi.NativeFunction<ffi.Void Function()>>('test');
-  late final _test = _testPtr.asFunction<void Function()>();
-}
-
-/// Used for easier conversion from [double] to [Duration].
-extension _DoubleToDuration on double {
-  Duration toDuration() {
-    return Duration(
-        microseconds: (this * Duration.microsecondsPerSecond).round());
-  }
-}
-
-/// Used for easier conversion from [Duration] to [double].
-extension _DurationToDouble on Duration {
-  double toDouble() {
-    return inMicroseconds / Duration.microsecondsPerSecond;
-  }
 }

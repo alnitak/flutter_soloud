@@ -23,16 +23,9 @@ struct CaptureDevice
 
 //--------------------- copy here the new functions to generate
 
-
-typedef void (*dartVoiceEndedCallback_t)(unsigned int *);
-typedef void (*dartFileLoadedCallback_t)(enum PlayerErrors *, char *completeFileName, unsigned int *);
-typedef void (*dartStateChangedCallback_t)(enum PlayerStateEvents *);
-
-/// Set a Dart functions to call when an event occurs.
-///
-FFI_PLUGIN_EXPORT void setDartEventCallback(
-        dartVoiceEndedCallback_t voice_ended_callback,
-        dartFileLoadedCallback_t file_loaded_callback,
-        dartStateChangedCallback_t state_changed_callback);
-
-FFI_PLUGIN_EXPORT void nativeFree(void *pointer);
+FFI_PLUGIN_EXPORT enum PlayerErrors loadMem(
+    char *uniqueName,
+    unsigned char *buffer,
+    int length,
+    int loadIntoMem,
+    unsigned int *hash);
