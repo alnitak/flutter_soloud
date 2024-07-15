@@ -19,7 +19,7 @@ A low-level audio plugin for Flutter.
 * 3D positional audio, including Doppler effect
 * Support for MP3, WAV, OGG, and FLAC
 * Audio effects such as echo, reverb, filter, equalizer
-* Web support is still under testing. Your feedback is greatly appreciated.
+* Web support is still under testing. Your feedback is greatly appreciated. Please read the [web notes](https://github.com/alnitak/flutter_soloud/blob/main/WEB_NOTES.md) to start using this plugin on the Web.
 
 
 ## Overview
