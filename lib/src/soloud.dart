@@ -203,6 +203,20 @@ interface class SoLoud {
   /// that play sounds from assets or from the file system, this is probably
   /// unnecessary, as the amount of data will be finite.
   /// The default is `false`.
+  /// [sampleRate] The sample rate represents the number of samples used, per
+  /// second. Typical sample rates are 8000Hz, 22050Hz, 44100Hz and 48000Hz.
+  /// Higher the sample rates mean clearer sound, but also bigger files, more
+  /// memory and higher processing power requirements.
+  /// [bufferSize] Audio latency generally means the time it takes from
+  /// triggering a sound to the sound actually coming out of the speakers.
+  /// The smaller the latency, the better.
+  /// Unfortunately, there's always some latency. The primary source of
+  /// latency (that a programmer can have any control over) is the size of
+  /// audio buffer. Generally speaking, the smaller the buffer, the lower the
+  /// latency, but at the same time, the smaller the buffer, the more likely the
+  /// system hits buffer underruns (ie, the play head marches on but there's no
+  /// data ready to be played) and the sound breaks down horribly.
+  /// [channels] mono, stereo, quad, 5.1, 7.1.
   Future<void> init({
     // TODO(filip): remove deprecation?
     @Deprecated('timeout is not used anymore.')
@@ -850,7 +864,7 @@ interface class SoLoud {
       source.soundEventsController.add((
         event: SoundEventType.soundDisposed,
         sound: source,
-        handle: SoundHandle.error(),
+        handle: const SoundHandle.error(),
       ));
     }
     await source.soundEventsController.close();
@@ -879,7 +893,7 @@ interface class SoLoud {
       sound.soundEventsController.add((
         event: SoundEventType.soundDisposed,
         sound: sound,
-        handle: SoundHandle.error(),
+        handle: const SoundHandle.error(),
       ));
       // TODO(filiph): Close these in parallel using `Future.wait()`
       await sound.soundEventsController.close();

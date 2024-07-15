@@ -54,9 +54,9 @@ abstract class FlutterSoLoud {
   ///
   /// [sampleRate] the sample rate. Usually is 22050, 44100 (CD quality)
   /// or 48000.
-  /// [bufferSize] the audio buffer size. Usually is 2048, but can be also
-  /// 512 when low latency is needed for example in games.
-  /// [channels] 1=mono, 2=stereo, 4=quad, 6=5.1, 8=7.1.
+  /// [bufferSize] the audio buffer size. Usually is 2048, but can be also be
+  /// lowered if less latency is needed.
+  /// [channels] mono, stereo, quad, 5.1, 7.1.
   ///
   /// Returns [PlayerErrors.noError] if success.
   @mustBeOverridden
@@ -574,7 +574,11 @@ abstract class FlutterSoLoud {
   /// Set fader to oscillate the panning at specified frequency.
   @mustBeOverridden
   PlayerErrors oscillatePan(
-      SoundHandle handle, double from, double to, Duration time);
+    SoundHandle handle,
+    double from,
+    double to,
+    Duration time,
+  );
 
   /// Set fader to oscillate the relative play speed at specified frequency.
   @mustBeOverridden
