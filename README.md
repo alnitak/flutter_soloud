@@ -19,6 +19,7 @@ A low-level audio plugin for Flutter.
 * 3D positional audio, including Doppler effect
 * Support for MP3, WAV, OGG, and FLAC
 * Audio effects such as echo, reverb, filter, equalizer
+* Web support is still under testing. Your feedback is greatly appreciated.
 
 
 ## Overview
