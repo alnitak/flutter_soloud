@@ -52,9 +52,19 @@ abstract class FlutterSoLoud {
 
   /// Initialize the player. Must be called before any other player functions.
   ///
+  /// [sampleRate] the sample rate. Usually is 22050, 44100 (CD quality)
+  /// or 48000.
+  /// [bufferSize] the audio buffer size. Usually is 2048, but can be also be
+  /// lowered if less latency is needed.
+  /// [channels] mono, stereo, quad, 5.1, 7.1.
+  ///
   /// Returns [PlayerErrors.noError] if success.
   @mustBeOverridden
-  PlayerErrors initEngine();
+  PlayerErrors initEngine(
+    int sampleRate,
+    int bufferSize,
+    Channels channels,
+  );
 
   /// Must be called when the player is no more needed or when closing the app.
   @mustBeOverridden
@@ -483,37 +493,78 @@ abstract class FlutterSoLoud {
   @mustBeOverridden
   void setMaxActiveVoiceCount(int maxVoiceCount);
 
+  /////////////////////////////////////////
+  /// voice groups
+  /////////////////////////////////////////
+
+  /// Used to create a new voice group. Returns 0 if not successful.
+  SoundHandle createVoiceGroup();
+
+  /// Deallocates the voice group. Does not stop the voices attached to the
+  /// voice group.
+  ///
+  /// [handle] the group handle to destroy.
+  void destroyVoiceGroup(SoundHandle handle);
+
+  /// Adds voice handle to the voice group. The voice handles can still be
+  /// used separate from the group.
+  /// [voiceGroupHandle] the group handle to add the new [voiceHandles].
+  /// [voiceHandles] voice handles list to add to the [voiceGroupHandle].
+  void addVoicesToGroup(
+    SoundHandle voiceGroupHandle,
+    List<SoundHandle> voiceHandles,
+  );
+
+  /// Checks if the handle is a valid voice group. Does not care if the
+  /// voice group is empty.
+  ///
+  /// [handle] the group handle to check.
+  /// Return true if [handle] is a group handle.
+  bool isVoiceGroup(SoundHandle handle);
+
+  /// Checks whether a voice group is empty. SoLoud automatically trims
+  /// the voice groups of voices that have ended, so the group may be
+  /// empty even though you've added valid voice handles to it.
+  ///
+  /// [handle] group handle to check.
+  /// Return true if the group handle doesn't have any voices.
+  bool isVoiceGroupEmpty(SoundHandle handle);
+
   // ///////////////////////////////////////
   //  faders
   // ///////////////////////////////////////
 
   /// Smoothly change the global volume over specified [duration].
   @mustBeOverridden
-  int fadeGlobalVolume(double to, Duration duration);
+  PlayerErrors fadeGlobalVolume(double to, Duration duration);
 
   /// Smoothly change a channel's volume over specified [duration].
   @mustBeOverridden
-  int fadeVolume(SoundHandle handle, double to, Duration duration);
+  PlayerErrors fadeVolume(SoundHandle handle, double to, Duration duration);
 
   /// Smoothly change a channel's pan setting over specified [duration].
   @mustBeOverridden
-  int fadePan(SoundHandle handle, double to, Duration duration);
+  PlayerErrors fadePan(SoundHandle handle, double to, Duration duration);
 
   /// Smoothly change a channel's relative play speed over specified time.
   @mustBeOverridden
-  int fadeRelativePlaySpeed(SoundHandle handle, double to, Duration time);
+  PlayerErrors fadeRelativePlaySpeed(
+    SoundHandle handle,
+    double to,
+    Duration time,
+  );
 
   /// After specified [duration], pause the channel.
   @mustBeOverridden
-  int schedulePause(SoundHandle handle, Duration duration);
+  PlayerErrors schedulePause(SoundHandle handle, Duration duration);
 
   /// After specified time, stop the channel.
   @mustBeOverridden
-  int scheduleStop(SoundHandle handle, Duration duration);
+  PlayerErrors scheduleStop(SoundHandle handle, Duration duration);
 
   /// Set fader to oscillate the volume at specified frequency.
   @mustBeOverridden
-  int oscillateVolume(
+  PlayerErrors oscillateVolume(
     SoundHandle handle,
     double from,
     double to,
@@ -522,11 +573,16 @@ abstract class FlutterSoLoud {
 
   /// Set fader to oscillate the panning at specified frequency.
   @mustBeOverridden
-  int oscillatePan(SoundHandle handle, double from, double to, Duration time);
+  PlayerErrors oscillatePan(
+    SoundHandle handle,
+    double from,
+    double to,
+    Duration time,
+  );
 
   /// Set fader to oscillate the relative play speed at specified frequency.
   @mustBeOverridden
-  int oscillateRelativePlaySpeed(
+  PlayerErrors oscillateRelativePlaySpeed(
     SoundHandle handle,
     double from,
     double to,
@@ -535,7 +591,45 @@ abstract class FlutterSoLoud {
 
   /// Set fader to oscillate the global volume at specified frequency.
   @mustBeOverridden
-  int oscillateGlobalVolume(double from, double to, Duration time);
+  PlayerErrors oscillateGlobalVolume(double from, double to, Duration time);
+
+  /// Fade a parameter of a filter.
+  ///
+  /// [handle] the handle of the voice to apply the fade. If equal to 0,
+  /// it fades the global filter.
+  /// [filterType] filter to modify a param.
+  /// [attributeId] the attribute index to fade.
+  /// [to] value the attribute should go in [time] duration.
+  /// [time] the fade slope duration.
+  /// Returns [PlayerErrors.noError] if no errors.
+  @mustBeOverridden
+  PlayerErrors fadeFilterParameter(
+    FilterType filterType,
+    int attributeId,
+    double to,
+    double time, {
+    SoundHandle handle = const SoundHandle(0),
+  });
+
+  /// Oscillate a parameter of a filter.
+  ///
+  /// [handle] the handle of the voice to apply the fade. If equal to 0,
+  /// it fades the global filter.
+  /// [filterType] filter to modify a param.
+  /// [attributeId] the attribute index to fade.
+  /// [from] the starting value the attribute sould start to oscillate.
+  /// [to] the ending value the attribute sould end to oscillate.
+  /// [time] the fade slope duration.
+  /// Returns [PlayerErrors.noError] if no errors.
+  @mustBeOverridden
+  PlayerErrors oscillateFilterParameter(
+    FilterType filterType,
+    int attributeId,
+    double from,
+    double to,
+    double time, {
+    SoundHandle handle = const SoundHandle(0),
+  });
 
   // ///////////////////////////////////////
   // Filters
@@ -547,7 +641,10 @@ abstract class FlutterSoLoud {
   /// Returns [PlayerErrors.noError] if no errors and the index of
   /// the active filter (-1 if the filter is not active).
   @mustBeOverridden
-  ({PlayerErrors error, int index}) isFilterActive(FilterType filterType);
+  ({PlayerErrors error, int index}) isFilterActive(
+    FilterType filterType, {
+    SoundHash soundHash = const SoundHash.invalid(),
+  });
 
   /// Get parameters names of the given filter.
   ///
@@ -569,29 +666,48 @@ abstract class FlutterSoLoud {
   /// [PlayerErrors.maxNumberOfFiltersReached] when the maximum number of
   /// filters has been reached (default is 8).
   @mustBeOverridden
-  PlayerErrors addGlobalFilter(FilterType filterType);
+  PlayerErrors addFilter(
+    FilterType filterType, {
+    SoundHash soundHash = const SoundHash.invalid(),
+  });
 
   /// Remove the filter [filterType].
   ///
   /// [filterType] filter to remove.
   /// Returns [PlayerErrors.noError] if no errors.
   @mustBeOverridden
-  int removeGlobalFilter(FilterType filterType);
+  PlayerErrors removeFilter(
+    FilterType filterType, {
+    SoundHash soundHash = const SoundHash.invalid(),
+  });
 
   /// Set the effect parameter with id [attributeId] of [filterType]
   /// with [value] value.
   ///
+  /// [handle] the handle to set the filter to. If equal to 0, the filter is
+  /// applyed to the global filter.
   /// [filterType] filter to modify a param.
   /// Returns [PlayerErrors.noError] if no errors.
   @mustBeOverridden
-  int setFilterParams(FilterType filterType, int attributeId, double value);
+  PlayerErrors setFilterParams(
+    FilterType filterType,
+    int attributeId,
+    double value, {
+    SoundHandle handle = const SoundHandle.error(),
+  });
 
-  /// Get the effect parameter with id [attributeId] of [filterType].
+  /// Get the effect parameter value with id [attributeId] of [filterType].
   ///
+  /// [handle] the handle to get the attribute value from. If equal to 0,
+  /// it gets the global filter.
   /// [filterType] the filter to modify a parameter.
   /// Returns the value of the parameter.
   @mustBeOverridden
-  double getFilterParams(FilterType filterType, int attributeId);
+  ({PlayerErrors error, double value}) getFilterParams(
+    FilterType filterType,
+    int attributeId, {
+    SoundHandle handle = const SoundHandle.error(),
+  });
 
   // ///////////////////////////////////////
   //  3D audio methods

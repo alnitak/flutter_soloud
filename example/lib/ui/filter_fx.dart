@@ -75,7 +75,7 @@ class _FilterFxState extends State<FilterFx> {
                   }
                   for (var i = 0; i < params.length; i++) {
                     params[i] = SoLoud.instance
-                        .getFilterParameter(widget.filterType, i);
+                        .getGlobalFilterParameter(widget.filterType, i);
                   }
                 } else {
                   try {
@@ -102,7 +102,7 @@ class _FilterFxState extends State<FilterFx> {
               onChanged: (value) async {
                 params[index] = value;
                 SoLoud.instance
-                    .setFilterParameter(widget.filterType, index, value);
+                    .setGlobalFilterParameter(widget.filterType, index, value);
                 if (mounted) setState(() {});
               },
             );

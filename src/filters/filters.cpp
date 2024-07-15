@@ -4,13 +4,10 @@
 #include <algorithm>
 #include <stdarg.h>
 
-Filters::Filters(SoLoud::Soloud *soloud) : mSoloud(soloud)
-{
-}
+Filters::Filters(SoLoud::Soloud *soloud, ActiveSound *sound)
+    : mSoloud(soloud), mSound(sound), filters({}) {}
 
-Filters::~Filters()
-{
-}
+Filters::~Filters() {}
 
 int Filters::isFilterActive(FilterType filter)
 {
@@ -127,9 +124,9 @@ std::vector<std::string> Filters::getFilterParamNames(FilterType filterType)
     return ret;
 }
 
-PlayerErrors Filters::addGlobalFilter(FilterType filterType)
+PlayerErrors Filters::addFilter(FilterType filterType)
 {
-    if (filters.size() >= FILTERS_PER_STREAM)
+    if ((int)filters.size() >= FILTERS_PER_STREAM)
         return maxNumberOfFiltersReached;
 
     // Check if the new filter is already here.
@@ -143,55 +140,82 @@ PlayerErrors Filters::addGlobalFilter(FilterType filterType)
     case BiquadResonantFilter:
         if (!mBiquadResonantFilter)
             mBiquadResonantFilter = std::make_unique<SoLoud::BiquadResonantFilter>();
-        mSoloud->setGlobalFilter(filtersSize, mBiquadResonantFilter.get());
+        if (mSound == nullptr)
+            mSoloud->setGlobalFilter(filtersSize, mBiquadResonantFilter.get());
+        else
+            mSound->sound.get()->setFilter(filtersSize, mBiquadResonantFilter.get());
         filters.push_back({filterType, static_cast<SoLoud::Filter *>(mBiquadResonantFilter.get())});
         break;
     case EqFilter:
         if (!mEqFilter)
             mEqFilter = std::make_unique<SoLoud::EqFilter>();
-        mSoloud->setGlobalFilter(filtersSize, mEqFilter.get());
+        if (mSound == nullptr)
+            mSoloud->setGlobalFilter(filtersSize, mEqFilter.get());
+        else
+            mSound->sound.get()->setFilter(filtersSize, mEqFilter.get());
         filters.push_back({filterType, static_cast<SoLoud::Filter *>(mEqFilter.get())});
         break;
     case EchoFilter:
         if (!mEchoFilter)
             mEchoFilter = std::make_unique<SoLoud::EchoFilter>();
-        mSoloud->setGlobalFilter(filtersSize, mEchoFilter.get());
+        if (mSound == nullptr)
+            mSoloud->setGlobalFilter(filtersSize, mEchoFilter.get());
+        else
+            mSound->sound.get()->setFilter(filtersSize, mEchoFilter.get());
         filters.push_back({filterType, static_cast<SoLoud::Filter *>(mEchoFilter.get())});
         break;
     case LofiFilter:
         if (!mLofiFilter)
             mLofiFilter = std::make_unique<SoLoud::LofiFilter>();
-        mSoloud->setGlobalFilter(filtersSize, mLofiFilter.get());
+        if (mSound == nullptr)
+            mSoloud->setGlobalFilter(filtersSize, mLofiFilter.get());
+        else
+            mSound->sound.get()->setFilter(filtersSize, mLofiFilter.get());
         filters.push_back({filterType, static_cast<SoLoud::Filter *>(mLofiFilter.get())});
         break;
     case FlangerFilter:
         if (!mFlangerFilter)
             mFlangerFilter = std::make_unique<SoLoud::FlangerFilter>();
-        mSoloud->setGlobalFilter(filtersSize, mFlangerFilter.get());
+        if (mSound == nullptr)
+            mSoloud->setGlobalFilter(filtersSize, mFlangerFilter.get());
+        else
+            mSound->sound.get()->setFilter(filtersSize, mFlangerFilter.get());
         filters.push_back({filterType, static_cast<SoLoud::Filter *>(mFlangerFilter.get())});
         break;
     case BassboostFilter:
         if (!mBassboostFilter)
             mBassboostFilter = std::make_unique<SoLoud::BassboostFilter>();
-        mSoloud->setGlobalFilter(filtersSize, mBassboostFilter.get());
+        if (mSound == nullptr)
+            mSoloud->setGlobalFilter(filtersSize, mBassboostFilter.get());
+        else
+            mSound->sound.get()->setFilter(filtersSize, mBassboostFilter.get());
         filters.push_back({filterType, static_cast<SoLoud::Filter *>(mBassboostFilter.get())});
         break;
     case WaveShaperFilter:
         if (!mWaveShaperFilter)
             mWaveShaperFilter = std::make_unique<SoLoud::WaveShaperFilter>();
-        mSoloud->setGlobalFilter(filtersSize, mWaveShaperFilter.get());
+        if (mSound == nullptr)
+            mSoloud->setGlobalFilter(filtersSize, mWaveShaperFilter.get());
+        else
+            mSound->sound.get()->setFilter(filtersSize, mWaveShaperFilter.get());
         filters.push_back({filterType, static_cast<SoLoud::Filter *>(mWaveShaperFilter.get())});
         break;
     case RobotizeFilter:
         if (!mRobotizeFilter)
             mRobotizeFilter = std::make_unique<SoLoud::RobotizeFilter>();
-        mSoloud->setGlobalFilter(filtersSize, mRobotizeFilter.get());
+        if (mSound == nullptr)
+            mSoloud->setGlobalFilter(filtersSize, mRobotizeFilter.get());
+        else
+            mSound->sound.get()->setFilter(filtersSize, mRobotizeFilter.get());
         filters.push_back({filterType, static_cast<SoLoud::Filter *>(mRobotizeFilter.get())});
         break;
     case FreeverbFilter:
         if (!mFreeverbFilter)
             mFreeverbFilter = std::make_unique<SoLoud::FreeverbFilter>();
-        mSoloud->setGlobalFilter(filtersSize, mFreeverbFilter.get());
+        if (mSound == nullptr)
+            mSoloud->setGlobalFilter(filtersSize, mFreeverbFilter.get());
+        else
+            mSound->sound.get()->setFilter(filtersSize, mFreeverbFilter.get());
         filters.push_back({filterType, static_cast<SoLoud::Filter *>(mFreeverbFilter.get())});
         break;
     default:
@@ -199,8 +223,9 @@ PlayerErrors Filters::addGlobalFilter(FilterType filterType)
     }
     return noError;
 }
+
 /// TODO remove all filters FilterType.none
-bool Filters::removeGlobalFilter(FilterType filterType)
+bool Filters::removeFilter(FilterType filterType)
 {
     int index = isFilterActive(filterType);
     if (index < 0)
@@ -239,11 +264,17 @@ bool Filters::removeGlobalFilter(FilterType filterType)
         break;
     }
 
-    /// shift filters down by 1 fron [index]
+    /// shift filters down by 1 from [index]
     for (int i = index; i < filters.size() - 1; i++)
     {
-        mSoloud->setGlobalFilter(i + 1, 0);
-        mSoloud->setGlobalFilter(i, filters[i+1].filter);
+        if (mSound == nullptr)
+            mSoloud->setGlobalFilter(i + 1, 0);
+        else
+            mSound->sound.get()->setFilter(i + 1, 0);
+        if (mSound == nullptr)
+            mSoloud->setGlobalFilter(i, filters[i + 1].filter);
+        else
+            mSound->sound.get()->setFilter(i, filters[i + 1].filter);
     }
     /// remove the filter from the list
     filters.erase(filters.begin() + index);
@@ -251,21 +282,45 @@ bool Filters::removeGlobalFilter(FilterType filterType)
     return true;
 }
 
-void Filters::setFxParams(FilterType filterType, int attributeId, float value)
+void Filters::setFilterParams(SoLoud::handle handle, FilterType filterType, int attributeId, float value)
 {
     int index = isFilterActive(filterType);
     if (index < 0)
         return;
 
-    mSoloud->setFilterParameter(0, index, attributeId, value);
+    mSoloud->setFilterParameter(handle, index, attributeId, value);
 }
 
-float Filters::getFxParams(FilterType filterType, int attributeId)
+float Filters::getFilterParams(SoLoud::handle handle, FilterType filterType, int attributeId)
 {
     int index = isFilterActive(filterType);
     if (index < 0)
-        return 0.0f;
+        return 9999.0f;
 
-    float ret = mSoloud->getFilterParameter(0, index, attributeId);
+    float ret = mSoloud->getFilterParameter(handle, index, attributeId);
     return ret;
+}
+
+void Filters::fadeFilterParameter(SoLoud::handle handle, FilterType filterType, int attributeId, float to, float time)
+{
+    int index = isFilterActive(filterType);
+    if (index < 0)
+        return;
+
+    mSoloud->fadeFilterParameter(handle, index, attributeId, to, time);
+}
+
+void Filters::oscillateFilterParameter(
+    SoLoud::handle handle,
+    FilterType filterType,
+    int attributeId,
+    float from,
+    float to,
+    float time)
+{
+    int index = isFilterActive(filterType);
+    if (index < 0)
+        return;
+
+    mSoloud->oscillateFilterParameter(handle, index, attributeId, from, to, time);
 }

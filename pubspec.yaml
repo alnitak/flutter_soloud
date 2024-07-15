@@ -3,7 +3,7 @@ description: >-
   A low-level audio plugin for Flutter,
   mainly meant for games and immersive apps.
   Based on the SoLoud (C++) audio engine.
-version: 2.0.2
+version: 2.1.0
 issue_tracker: https://github.com/alnitak/flutter_soloud/issues
 homepage: https://github.com/alnitak/flutter_soloud
 maintainer: Marco Bavagnoli (@lildeimos)
@@ -62,7 +62,7 @@ flutter:
   assets:
     # These assets are only needed for the web platform.
     # Waiting for https://github.com/flutter/flutter/issues/65065 and
-    # https://github.com/flutter/flutter/issues/8230 to be addressed
+    # https://github.com/flutter/flutter/issues/8230 to be addressed.
     # to make a conditional build.
     - web/worker.dart.js
     - web/libflutter_soloud_plugin.js
