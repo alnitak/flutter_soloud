@@ -226,11 +226,6 @@ interface class SoLoud {
     int bufferSize = 2048,
     Channels channels = Channels.channelStereo,
   }) async {
-    /// Defaults are:
-    /// Miniaudio audio backend
-    /// sample rate 44100
-    /// buffer 2048
-    // TODO(marco): add engine initialization parameters
     _log.finest('init() called');
 
     // if `!isInitialized` but the engine is initialized in native, therefore
