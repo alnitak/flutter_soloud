@@ -13,12 +13,6 @@
 
 #include "enums.h"
 
-struct CaptureDevice
-{
-    char *name;
-    unsigned int isDefault;
-};
-
 #define FFI_PLUGIN_EXPORT
 
 //--------------------- copy here the new functions to generate

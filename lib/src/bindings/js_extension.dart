@@ -161,12 +161,6 @@ external void wasmGetFft(int samplesPtr);
 @JS('Module._setFftSmoothing')
 external void wasmSetFftSmoothing(double smooth);
 
-@JS('Module._getCaptureFft')
-external void wasmGetCaptureFft(int samplesPtr);
-
-@JS('Module._getCaptureWave')
-external void wasmGetCaptureWave(int samplesPtr);
-
 @JS('Module._getAudioTexture')
 external void wasmGetAudioTexture(int samplesPtr);
 
@@ -175,18 +169,6 @@ external int wasmGetAudioTexture2D(int samplesPtr);
 
 @JS('Module._getTextureValue')
 external double wasmGetTextureValue(int row, int column);
-
-@JS('Module._getCaptureTexture')
-external void wasmGetCaptureAudioTexture(int samplesPtr);
-
-@JS('Module._getCaptureTextureValue')
-external double wasmGetCaptureTextureValue(int row, int column);
-
-@JS('Module._getCaptureAudioTexture2D')
-external int wasmGetCaptureAudioTexture2D(int samplesPtr);
-
-@JS('Module._setCaptureFftSmoothing')
-external int wasmSetCaptureFftSmoothing(double smooth);
 
 @JS('Module._getLength')
 external double wasmGetLength(int soundHash);
@@ -457,38 +439,3 @@ external void wasmSet3dSourceAttenuation(
 
 @JS('Module._set3dSourceDopplerFactor')
 external void wasmSet3dSourceDopplerFactor(int handle, double dopplerFactor);
-
-// ///////////////////////////
-// Capture
-// ///////////////////////////
-@JS('Module._listCaptureDevices')
-external void wasmListCaptureDevices(
-  int namesPtr,
-  int isDefaultPtr,
-  int nDevicePtr,
-);
-
-@JS('Module._freeListCaptureDevices')
-external void wasmFreeListCaptureDevices(
-  int namesPtr,
-  int isDefaultPtr,
-  int nDevice,
-);
-
-@JS('Module._initCapture')
-external int wasmInitCapture(int deviceID);
-
-@JS('Module._disposeCapture')
-external void wasmDisposeCapture();
-
-@JS('Module._isCaptureInited')
-external int wasmIsCaptureInited();
-
-@JS('Module._isCaptureStarted')
-external int wasmIsCaptureStarted();
-
-@JS('Module._startCapture')
-external int wasmStartCapture();
-
-@JS('Module._stopCapture')
-external int wasmStopCapture();

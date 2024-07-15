@@ -22,8 +22,6 @@ import 'package:meta/meta.dart';
 ///
 /// This class has a singleton [instance] which represents the (also singleton)
 /// instance of the SoLoud (C++) engine.
-///
-/// For methods that _capture_ sounds, use "SoLoudCapture".
 interface class SoLoud {
   /// The private constructor of [SoLoud]. This prevents developers from
   /// instantiating new instances.

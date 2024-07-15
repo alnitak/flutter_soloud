@@ -31,15 +31,6 @@ class AudioDataCtrl {
   final void Function(AudioData) textureCallback =
       SoLoudController().soLoudFFI.getAudioTexture;
 
-  final void Function(AudioData) captureWaveCallback =
-      SoLoudController().captureFFI.getCaptureWave;
-
-  final CaptureErrors Function(AudioData) captureTexture2DCallback =
-      SoLoudController().captureFFI.getCaptureAudioTexture2D;
-
-  final void Function(AudioData) captureAudioTextureCallback =
-      SoLoudController().captureFFI.getCaptureAudioTexture;
-
   void allocSamples() {
     samples2D = calloc();
     samples1D = calloc(512 * 4);
@@ -69,7 +60,6 @@ class AudioDataCtrl {
   }
 
   double getTexture(
-    GetSamplesFrom getSamplesFrom,
     SampleRow row,
     SampleColumn column,
   ) {

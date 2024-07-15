@@ -5,17 +5,6 @@ import 'package:flutter_soloud/src/bindings/soloud_controller.dart';
 import 'package:flutter_soloud/src/exceptions/exceptions.dart';
 import 'package:meta/meta.dart';
 
-/// Enum to tell [AudioData] from where to get audio data.
-/// Every time [AudioData.updateSamples] is called, the audio data will
-/// be acquired by the respective device.
-enum GetSamplesFrom {
-  /// Take data from the player.
-  player,
-
-  /// Take data from the microphone.
-  microphone,
-}
-
 /// The way the audio data should be acquired.
 ///
 /// Every time [AudioData.updateSamples] is called it is possible to query the
@@ -100,16 +89,13 @@ enum GetSamplesKind {
 /// }
 /// ```
 ///
-/// To smooth FFT values use [SoLoud.instance.setFftSmoothing] or
-/// [SoLoudCapture.instance.setCaptureFftSmoothing].
-///
+/// To smooth FFT values use [SoLoud.instance.setFftSmoothing].
 ///
 // TODO(all): make AudioData singleton?
 @experimental
 class AudioData {
   /// Initialize the way the audio data should be acquired.
   AudioData(
-    this._getSamplesFrom,
     this._getSamplesKind,
   ) : ctrl = AudioDataCtrl() {
     _init();
@@ -117,37 +103,19 @@ class AudioData {
   }
 
   void _init() {
-    switch (_getSamplesFrom) {
-      case GetSamplesFrom.player:
-        switch (_getSamplesKind) {
-          case GetSamplesKind.wave:
-            _updateCallback = ctrl.waveCallback;
-          case GetSamplesKind.linear:
-            _updateCallback = ctrl.textureCallback;
-          case GetSamplesKind.texture:
-            _updateCallback = ctrl.texture2DCallback;
-        }
-      case GetSamplesFrom.microphone:
-        switch (_getSamplesKind) {
-          case GetSamplesKind.wave:
-            _updateCallback = ctrl.captureWaveCallback;
-          case GetSamplesKind.linear:
-            _updateCallback = ctrl.captureAudioTextureCallback;
-          case GetSamplesKind.texture:
-            _updateCallback = ctrl.captureTexture2DCallback;
-        }
+    switch (_getSamplesKind) {
+      case GetSamplesKind.wave:
+        _updateCallback = ctrl.waveCallback;
+      case GetSamplesKind.linear:
+        _updateCallback = ctrl.textureCallback;
+      case GetSamplesKind.texture:
+        _updateCallback = ctrl.texture2DCallback;
     }
   }
 
   /// The controller used to allocate, dispose and get audio data.
   @internal
   final AudioDataCtrl ctrl;
-
-  /// Where to get audio samples. See [GetSamplesFrom].
-  GetSamplesFrom _getSamplesFrom;
-
-  /// The current device to acquire data.
-  GetSamplesFrom get getSamplesFrom => _getSamplesFrom;
 
   /// Kind of audio samples. See [GetSamplesKind].
   GetSamplesKind _getSamplesKind;
@@ -157,19 +125,14 @@ class AudioData {
 
   /// The callback used to get new audio samples.
   /// This callback is used in [updateSamples] to avoid to
-  /// do the [GetSamplesFrom] and [GetSamplesKind] checks on every calls.
+  /// do [GetSamplesKind] checks on every calls.
   late void Function(AudioData) _updateCallback;
 
   /// Update the content of samples memory to be get with [getWave],
   /// [getLinearFft], [getLinearWave] or [getTexture].
   ///
-  /// When using [GetSamplesFrom.microphone] throws
-  /// [SoLoudCaptureNotYetInitializededException] if the capture is
-  /// not initialized.
-  /// When using [GetSamplesFrom.player] throws [SoLoudNotInitializedException]
-  /// if the engine is not initialized.
-  /// When using [GetSamplesFrom.player] throws
-  /// [SoLoudVisualizationNotEnabledException] if the visualization
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  /// Throws [SoLoudVisualizationNotEnabledException] if the visualization
   /// flag is not enableb. Please, Use `setVisualizationEnabled(true)`
   /// when needed.
   /// Throws [SoLoudNullPointerException] something is going wrong with the
@@ -181,9 +144,8 @@ class AudioData {
   }
 
   /// Changes the input device from which to retrieve audio data and its kind.
-  void changeType(GetSamplesFrom newFrom, GetSamplesKind newKind) {
+  void changeSamplesKind(GetSamplesKind newKind) {
     _getSamplesKind = newKind;
-    _getSamplesFrom = newFrom;
     _init();
   }
 
@@ -203,8 +165,7 @@ class AudioData {
       return 0;
     }
 
-    if (_getSamplesFrom == GetSamplesFrom.player &&
-        !SoLoudController().soLoudFFI.getVisualizationEnabled()) {
+    if (!SoLoudController().soLoudFFI.getVisualizationEnabled()) {
       throw const SoLoudVisualizationNotEnabledException();
     }
     return ctrl.getWave(offset);
@@ -219,8 +180,7 @@ class AudioData {
       return 0;
     }
 
-    if (_getSamplesFrom == GetSamplesFrom.player &&
-        !SoLoudController().soLoudFFI.getVisualizationEnabled()) {
+    if (!SoLoudController().soLoudFFI.getVisualizationEnabled()) {
       throw const SoLoudVisualizationNotEnabledException();
     }
     return ctrl.getLinearFft(offset);
@@ -235,8 +195,7 @@ class AudioData {
       return 0;
     }
 
-    if (_getSamplesFrom == GetSamplesFrom.player &&
-        !SoLoudController().soLoudFFI.getVisualizationEnabled()) {
+    if (!SoLoudController().soLoudFFI.getVisualizationEnabled()) {
       throw const SoLoudVisualizationNotEnabledException();
     }
     return ctrl.getLinearWave(offset);
@@ -253,10 +212,9 @@ class AudioData {
       return 0;
     }
 
-    if (_getSamplesFrom == GetSamplesFrom.player &&
-        !SoLoudController().soLoudFFI.getVisualizationEnabled()) {
+    if (!SoLoudController().soLoudFFI.getVisualizationEnabled()) {
       throw const SoLoudVisualizationNotEnabledException();
     }
-    return ctrl.getTexture(_getSamplesFrom, row, column);
+    return ctrl.getTexture(row, column);
   }
 }

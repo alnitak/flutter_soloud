@@ -8,6 +8,7 @@
 - added voice groups.
 - it's now possible to set filters not only globally, but also to single audio sources.
 - fade and oscillate filter parameters.
+- experimental capture feature removed.
 
 ### 2.0.2 (23 May 2024)
 - Fixed wrong exception raised by `setVolume()` when a handle is no more valid.
