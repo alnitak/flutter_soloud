@@ -89,12 +89,13 @@ class _PageWaveformState extends State<PageWaveform> {
                 const SizedBox(width: 8),
                 ElevatedButton(
                   onPressed: () async {
-                    final newSound = await SoLoud.instance.loadAsset(
-                      'assets/audio/8_bit_mentality.mp3',
+                    final newSound = await SoLoud.instance.loadFile(
+                      '/home/deimos/5/12.-Animal Instinct_mono.flac',
                     );
-                    await SoLoud.instance
-                        .play(newSound)
-                        .then((value) => sound = newSound);
+                    await SoLoud.instance.play(newSound).then((value) {
+                      SoLoud.instance.seek(value, Duration(seconds: 15));
+                      return sound = newSound;
+                    });
                   },
                   child: const Text('play sample'),
                 ),
@@ -186,6 +187,7 @@ class _PageWaveformState extends State<PageWaveform> {
 
             DefaultTabController(
               length: 11,
+              initialIndex: 3,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [

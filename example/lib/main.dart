@@ -32,7 +32,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   /// Initialize the player
-  await SoLoud.instance.init().then(
+  await SoLoud.instance.init( ).then(
     (_) {
       Logger('main').info('player started');
       SoLoud.instance.setVisualizationEnabled(true);
@@ -82,6 +82,7 @@ class MyHomePage extends StatelessWidget {
   Widget build(BuildContext context) {
     return DefaultTabController(
       length: 5,
+      initialIndex: 4,
       child: SafeArea(
         child: Scaffold(
           body: Column(

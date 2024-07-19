@@ -41,7 +41,8 @@ std::vector<std::string> Filters::getFilterParamNames(FilterType filterType)
     break;
     case EqFilter:
     {
-        SoLoud::EqFilter f;
+        // SoLoud::EqFilter f;
+        Pitch f;
         int nParams = f.getParamCount();
         for (int i = 0; i < nParams; i++)
         {
@@ -148,7 +149,8 @@ PlayerErrors Filters::addFilter(FilterType filterType)
         break;
     case EqFilter:
         if (!mEqFilter)
-            mEqFilter = std::make_unique<SoLoud::EqFilter>();
+            // mEqFilter = std::make_unique<SoLoud::EqFilter>();
+            mEqFilter = std::make_unique<Pitch>();
         if (mSound == nullptr)
             mSoloud->setGlobalFilter(filtersSize, mEqFilter.get());
         else

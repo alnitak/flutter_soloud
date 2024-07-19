@@ -21,6 +21,7 @@ cd build
 # -s TOTAL_MEMORY=512MB \
 # -s DEFAULT_TO_CXX \
 # -s STACK_SIZE=1048576 
+# -msimd128 for sse3 https://emscripten.org/docs/porting/simd.html
 
 ## Compiling with "-O2" or "-O3" doesn't work
 
@@ -38,8 +39,9 @@ em++ \
 ../../src/player.cpp \
 ../../src/analyzer.cpp \
 ../../src/synth/basic_wave.cpp \
-../../src/filters/filters.cpp \
+../../src/filters/*.cpp \
 -O3 -D WITH_MINIAUDIO \
+-msimd128 -msse3 \
 -I ~/.emscripten_cache/sysroot/include \
 -s "EXPORTED_RUNTIME_METHODS=['ccall','cwrap']" \
 -s "EXPORTED_FUNCTIONS=['_free', '_malloc']" \
