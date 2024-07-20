@@ -26,6 +26,9 @@ enum FilterType {
 
   /// A reverb filter.
   freeverbFilter,
+
+  /// A pitch shift filter.
+  pitchShiftFilter,
 }
 
 /// The parameters for each filter.
@@ -132,4 +135,14 @@ const FxParams fxFreeverb = (
   mins: [0, 0, 0, 0, 0],
   maxs: [1, 1, 1, 1, 1],
   defs: [1, 0, 0.5, 0.5, 1],
+);
+
+/// Pitch shift filter
+const FxParams fxPitchShift = (
+  title: 'PitchShift',
+
+  names: ['Wet', 'Shift', 'Semitones'],
+  mins: [0, 0, -48],
+  maxs: [1, 3, 48],
+  defs: [1, 1, 0],
 );

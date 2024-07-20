@@ -89,7 +89,8 @@ typedef enum FilterType
     BassboostFilter,
     WaveShaperFilter,
     RobotizeFilter,
-    FreeverbFilter
+    FreeverbFilter,
+    PitchShiftFilter
 } FilterType_t;
 
 #endif // ENUMS_H

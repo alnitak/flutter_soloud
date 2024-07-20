@@ -41,8 +41,7 @@ std::vector<std::string> Filters::getFilterParamNames(FilterType filterType)
     break;
     case EqFilter:
     {
-        // SoLoud::EqFilter f;
-        Pitch f;
+        SoLoud::EqFilter f;
         int nParams = f.getParamCount();
         for (int i = 0; i < nParams; i++)
         {
@@ -120,6 +119,16 @@ std::vector<std::string> Filters::getFilterParamNames(FilterType filterType)
         }
     }
     break;
+    case PitchShiftFilter:
+    {
+        PitchShift f;
+        int nParams = f.getParamCount();
+        for (int i = 0; i < nParams; i++)
+        {
+            ret.push_back(f.getParamName(i));
+        }
+    }
+    break;
     }
 
     return ret;
@@ -149,8 +158,7 @@ PlayerErrors Filters::addFilter(FilterType filterType)
         break;
     case EqFilter:
         if (!mEqFilter)
-            // mEqFilter = std::make_unique<SoLoud::EqFilter>();
-            mEqFilter = std::make_unique<Pitch>();
+            mEqFilter = std::make_unique<SoLoud::EqFilter>();
         if (mSound == nullptr)
             mSoloud->setGlobalFilter(filtersSize, mEqFilter.get());
         else
@@ -220,6 +228,15 @@ PlayerErrors Filters::addFilter(FilterType filterType)
             mSound->sound.get()->setFilter(filtersSize, mFreeverbFilter.get());
         filters.push_back({filterType, static_cast<SoLoud::Filter *>(mFreeverbFilter.get())});
         break;
+    case PitchShiftFilter:
+        if (!mPitchFilter)
+            mPitchFilter = std::make_unique<PitchShift>();
+        if (mSound == nullptr)
+            mSoloud->setGlobalFilter(filtersSize, mPitchFilter.get());
+        else
+            mSound->sound.get()->setFilter(filtersSize, mPitchFilter.get());
+        filters.push_back({filterType, static_cast<SoLoud::Filter *>(mPitchFilter.get())});
+        break;
     default:
         return filterNotFound;
     }
@@ -263,6 +280,9 @@ bool Filters::removeFilter(FilterType filterType)
         break;
     case FreeverbFilter:
         mFreeverbFilter.reset();
+        break;
+    case PitchShiftFilter:
+        mPitchFilter.reset();
         break;
     }
 

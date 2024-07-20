@@ -1,26 +1,14 @@
-#ifndef SOLOUD_EQFILTER_H
-#define SOLOUD_EQFILTER_H
+#ifndef PITCH_SHIFT_FILTER_H
+#define PITCH_SHIFT_FILTER_H
 
 #include "soloud.h"
 #include "smbPitchShift.h"
 
-class Pitch;
+class PitchShift;
 
-class PitchInstance : public SoLoud::FilterInstance
+class PitchShiftInstance : public SoLoud::FilterInstance
 {
-    enum FILTERATTRIBUTE
-    {
-        WET = 0,
-        BAND1 = 1,
-        BAND2 = 2,
-        BAND3 = 3,
-        BAND4 = 4,
-        BAND5 = 5,
-        BAND6 = 6,
-        BAND7 = 7,
-        BAND8 = 8
-    };
-    Pitch *mParent;
+    PitchShift *mParent;
     CSmbPitchShift pitchShift;
 
 public:
@@ -31,33 +19,30 @@ public:
         unsigned int aChannels,
         float aSamplerate,
         SoLoud::time aTime);
-    PitchInstance(Pitch *aParent);
+    PitchShiftInstance(PitchShift *aParent);
+    void setFilterParameter(unsigned int aAttributeId, float aValue);
 };
 
-class Pitch : public SoLoud::Filter {
+class PitchShift : public SoLoud::Filter {
 
 public:
     enum FILTERATTRIBUTE
     {
         WET = 0,
-        BAND1 = 1,
-        BAND2 = 2,
-        BAND3 = 3,
-        BAND4 = 4,
-        BAND5 = 5,
-        BAND6 = 6,
-        BAND7 = 7,
-        BAND8 = 8
+        SHIFT = 1,
+        SEMITONES = 2
     };
+    float mWet;
+    float mShift;
+    float mSemitones;
     virtual int getParamCount();
     virtual const char *getParamName(unsigned int aParamIndex);
     virtual unsigned int getParamType(unsigned int aParamIndex);
     virtual float getParamMax(unsigned int aParamIndex);
     virtual float getParamMin(unsigned int aParamIndex);
-    float mVolume[8];
-    SoLoud::result setParam(unsigned int aBand, float aVolume);
+    SoLoud::result setParam(unsigned int aParamIndex, float aValue);
     virtual SoLoud::FilterInstance *createInstance();
-    Pitch();
+    PitchShift();
 };
 
 #endif

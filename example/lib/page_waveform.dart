@@ -19,6 +19,7 @@ class PageWaveform extends StatefulWidget {
 class _PageWaveformState extends State<PageWaveform> {
   ValueNotifier<double> scale = ValueNotifier(0.25);
   ValueNotifier<double> detune = ValueNotifier(1);
+  ValueNotifier<double> playSpeed = ValueNotifier(1);
   ValueNotifier<WaveForm> waveForm = ValueNotifier(WaveForm.fSquare);
   bool superWave = false;
   int octave = 2;
@@ -31,6 +32,7 @@ class _PageWaveformState extends State<PageWaveform> {
   double oscillateSpeed = 0;
   List<AudioSource> notes = [];
   AudioSource? sound;
+  SoundHandle? soundHandle;
   bool canBuild = false;
 
   @override
@@ -78,6 +80,7 @@ class _PageWaveformState extends State<PageWaveform> {
                   onPressed: () async {
                     if (sound != null) {
                       await SoLoud.instance.disposeSource(sound!);
+                      sound = null;
                     }
 
                     await SoLoud.instance
@@ -89,12 +92,12 @@ class _PageWaveformState extends State<PageWaveform> {
                 const SizedBox(width: 8),
                 ElevatedButton(
                   onPressed: () async {
-                    final newSound = await SoLoud.instance.loadFile(
-                      '/home/deimos/5/12.-Animal Instinct_mono.flac',
+                    sound = await SoLoud.instance.loadFile(
+                      '/home/deimos/5/12.-Animal Instinct.flac',
                     );
-                    await SoLoud.instance.play(newSound).then((value) {
-                      SoLoud.instance.seek(value, Duration(seconds: 15));
-                      return sound = newSound;
+                    await SoLoud.instance.play(sound!).then((value) {
+                      soundHandle = value;
+                      SoLoud.instance.seek(value, const Duration(seconds: 15));
                     });
                   },
                   child: const Text('play sample'),
@@ -105,12 +108,32 @@ class _PageWaveformState extends State<PageWaveform> {
                     if (sound != null) {
                       SoLoud.instance.disposeSource(sound!).then((value) {
                         sound = null;
+                        soundHandle = null;
                       });
                     }
                   },
                   child: const Text('stop'),
                 ),
               ],
+            ),
+
+            /// Play Speed
+            ValueListenableBuilder<double>(
+              valueListenable: playSpeed,
+              builder: (_, speed, __) {
+                return TextSlider(
+                  text: 'speed  ',
+                  min: 0.01,
+                  max: 10,
+                  value: speed,
+                  enabled: true,
+                  onChanged: (value) {
+                    if (soundHandle == null) return;
+                    playSpeed.value = value;
+                    SoLoud.instance.setRelativePlaySpeed(soundHandle!, value);
+                  },
+                );
+              },
             ),
 
             /// Scale
@@ -186,8 +209,8 @@ class _PageWaveformState extends State<PageWaveform> {
             ),
 
             DefaultTabController(
-              length: 11,
-              initialIndex: 3,
+              length: 12,
+              initialIndex: 2,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -197,6 +220,7 @@ class _PageWaveformState extends State<PageWaveform> {
                     tabs: [
                       Tab(text: 'faders'),
                       Tab(text: 'oscillators'),
+                      Tab(text: 'Pitch shift'),
                       Tab(text: 'Biquad Filter'),
                       Tab(text: 'Eq'),
                       Tab(text: 'Echo'),
@@ -239,6 +263,11 @@ class _PageWaveformState extends State<PageWaveform> {
                             (value) => setState(() => oscillatePan = value),
                             (value) => setState(() => oscillateSpeed = value),
                           ],
+                        ),
+
+                        /// Biquad Resonant
+                        const FilterFx(
+                          filterType: FilterType.pitchShiftFilter,
                         ),
 
                         /// Biquad Resonant

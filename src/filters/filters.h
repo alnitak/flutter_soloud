@@ -2,7 +2,7 @@
 #define FILTERS_H
 
 #include "../active_sound.h"
-#include "pitch.h"
+#include "pitch_shift_filter.h"
 
 #include "soloud.h"
 #include "soloud_filter.h"
@@ -84,8 +84,8 @@ private:
     std::unique_ptr<SoLoud::BiquadResonantFilter> mBiquadResonantFilter;
     /// not yet available
     // std::unique_ptr<SoLoud::DuckFilter> mDuckFilter;
-    // std::unique_ptr<SoLoud::EqFilter> mEqFilter;
-    std::unique_ptr<Pitch> mEqFilter;
+    std::unique_ptr<SoLoud::EqFilter> mEqFilter;
+    std::unique_ptr<PitchShift> mPitchFilter;
     std::unique_ptr<SoLoud::EchoFilter> mEchoFilter;
     std::unique_ptr<SoLoud::LofiFilter> mLofiFilter;
     std::unique_ptr<SoLoud::FlangerFilter> mFlangerFilter;

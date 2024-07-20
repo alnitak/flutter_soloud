@@ -25,6 +25,9 @@ class _FilterFxState extends State<FilterFx> {
     enabled = SoLoud.instance.isFilterActive(widget.filterType) != -1;
 
     switch (widget.filterType) {
+      case FilterType.pitchShiftFilter:
+        params = List.from(fxPitchShift.defs);
+        fxParams = fxPitchShift;
       case FilterType.biquadResonantFilter:
         params = List.from(fxBiquadResonant.defs);
         fxParams = fxBiquadResonant;
@@ -89,6 +92,40 @@ class _FilterFxState extends State<FilterFx> {
             ),
           ],
         ),
+
+        if (fxParams.title == 'PitchShift')
+          OutlinedButton(
+            onPressed: () {
+              SoLoud.instance.oscillateGlobalFilterParameter(
+                FilterType.pitchShiftFilter,
+                1,
+                0.8,
+                1.2,
+                const Duration(milliseconds: 1500),
+              );
+            },
+            child: const Text('Oscillate shift'),
+          ),
+
+        if (fxParams.title == 'PitchShift')
+          OutlinedButton(
+            onPressed: () {
+              SoLoud.instance.fadeGlobalFilterParameter(
+                FilterType.pitchShiftFilter,
+                1,
+                3,
+                const Duration(milliseconds: 2500),
+              );
+              Future.delayed(const Duration(milliseconds: 2500), () {
+                SoLoud.instance.setGlobalFilterParameter(
+                  FilterType.pitchShiftFilter,
+                  1,
+                  1,
+                );
+              });
+            },
+            child: const Text('fade shift'),
+          ),
 
         /// Params knobs
         Wrap(

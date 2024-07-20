@@ -32,7 +32,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   /// Initialize the player
-  await SoLoud.instance.init(channels: Channels.channelMono).then(
+  await SoLoud.instance.init().then(
     (_) {
       Logger('main').info('player started');
       SoLoud.instance.setVisualizationEnabled(true);
