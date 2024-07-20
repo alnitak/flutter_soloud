@@ -44,6 +44,8 @@ list(APPEND PLUGIN_SOURCES
   "${SRC_DIR}/analyzer.cpp"
   "${SRC_DIR}/synth/basic_wave.cpp"
   "${SRC_DIR}/filters/filters.cpp"
+  "${SRC_DIR}/filters/pitch.cpp"
+  "${SRC_DIR}/filters/smbPitchShift.cpp"
 )
 
 add_library(${PLUGIN_NAME} SHARED

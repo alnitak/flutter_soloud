@@ -8,7 +8,6 @@ class Pitch;
 
 class PitchInstance : public SoLoud::FilterInstance
 {
-    enum { MAX_FRAME_LENGTH = 8192 };
     enum FILTERATTRIBUTE
     {
         WET = 0,
@@ -25,13 +24,6 @@ class PitchInstance : public SoLoud::FilterInstance
     CSmbPitchShift pitchShift;
 
 public:
-    // virtual void filterChannel(
-    //     float *aBuffer, 
-    //     unsigned int aSamples, 
-    //     float aSamplerate, 
-    //     SoLoud::time aTime, 
-    //     unsigned int aChannel, 
-    //     unsigned int aChannels);
     virtual void filter(
         float *aBuffer,
         unsigned int aSamples,

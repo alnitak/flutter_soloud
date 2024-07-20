@@ -20,13 +20,6 @@ PitchInstance::PitchInstance(Pitch *aParent)
     mParam[BAND8] = aParent->mVolume[BAND8 - BAND1];
 }
 
-// void PitchInstance::filterChannel(
-//     float *aBuffer, 
-//     unsigned int aSamples, 
-//     float aSamplerate, 
-//     SoLoud::time aTime, 
-//     unsigned int aChannel, 
-//     unsigned int aChannels)
 void PitchInstance::filter(
     float *aBuffer, 
     unsigned int aSamples, 
@@ -39,20 +32,18 @@ void PitchInstance::filter(
     int halfSamples = aSamples >> 1;
     for (int j = 0; j < aSamples; j++)
     {
-        // decrease level to avoid clipping distortions
-        // aBuffer[j] = fminf(1.f, fmaxf(aBuffer[j], -1.f));
         // shrink channels to one to feed smbPitchShift
         for (int n = 0; n < aChannels; n++)
             in[j] += aBuffer[j + aSamples * n];
         in[j] /= (float)aChannels;
     }
     // float pitchShift = pow(2., fSemitones/12.);
-    pitchShift.smbPitchShift(mParam[1], aSamples, 4096, 16, aSamplerate, in, in);
+    pitchShift.smbPitchShift(mParam[1], aSamples, 2048, 4, aSamplerate, in, in);
     for (int j = 0; j < aSamples; j++)
     {
-        aBuffer[j] = in[j]; // L
+        aBuffer[j] = aBuffer[j] * (1.0f - mParam[0]) + in[j] * mParam[0]; // L
         for (int n = 1; n < aChannels; n++)
-            aBuffer[j + aSamples] = in[j]; // R
+            aBuffer[j + aSamples] = aBuffer[j + aSamples] * (1.0f - mParam[0]) + in[j] * mParam[0]; // R
     }
     free(in);
 }
