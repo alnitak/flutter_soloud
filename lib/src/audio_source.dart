@@ -142,13 +142,15 @@ class AudioSource {
     return ret.index;
   }
 
-  /// Adds a [filterType] to this sound.
+  /// Adds a filter [filterType] to this sound.
+  /// IMPORTANT: the filter must be added before playing. Only voice handles
+  /// played after adding a filter will play with the filter chosen.
   ///
   /// Throws [SoLoudMaxFilterNumberReachedException] when the max number of
   ///     concurrent filter is reached (default max filter is 8).
   /// Throws [SoLoudFilterAlreadyAddedException] when trying to add a filter
   ///     that has already been added.
-  PlayerErrors addFilter(FilterType filterType) {
+  void addFilter(FilterType filterType) {
     final error = SoLoudController().soLoudFFI.addFilter(
           filterType,
           soundHash: soundHash,
@@ -157,11 +159,10 @@ class AudioSource {
       _log.severe(() => 'addGlobalFilter(): $error');
       throw SoLoudCppException.fromPlayerError(error);
     }
-    return error;
   }
 
   /// Removes [filterType] from all sounds.
-  PlayerErrors removeFilter(FilterType filterType) {
+  void removeFilter(FilterType filterType) {
     final error = SoLoudController().soLoudFFI.removeFilter(
           filterType,
           soundHash: soundHash,
@@ -170,7 +171,6 @@ class AudioSource {
       _log.severe(() => 'removeGlobalFilter(): $error');
       throw SoLoudCppException.fromPlayerError(error);
     }
-    return error;
   }
 
   /// Set the effect parameter with id [attributeId] of [filterType]
@@ -183,7 +183,7 @@ class AudioSource {
   /// applyed to the global filter.
   /// [filterType] filter to modify a param.
   /// Returns [PlayerErrors.noError] if no errors.
-  PlayerErrors setFilterParameter(
+  void setFilterParameter(
     SoundHandle handle,
     FilterType filterType,
     int attributeId,
@@ -199,7 +199,6 @@ class AudioSource {
       _log.severe(() => 'setFxParams(): $error');
       throw SoLoudCppException.fromPlayerError(error);
     }
-    return error;
   }
 
   /// Get the effect parameter value with id [attributeId] of [filterType].

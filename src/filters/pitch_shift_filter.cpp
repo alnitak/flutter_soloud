@@ -51,6 +51,11 @@ void PitchShiftInstance::setFilterParameter(unsigned int aAttributeId, float aVa
 
     switch (aAttributeId)
     {
+    case PitchShift::WET:
+        if (aValue < 0.f || aValue > 1.f)
+            break;
+        mParam[PitchShift::WET] = aValue;
+        break;
     case PitchShift::SHIFT:
         if (aValue < mParent->getParamMin(PitchShift::SHIFT) ||
             aValue > mParent->getParamMax(PitchShift::SHIFT))
@@ -74,6 +79,11 @@ SoLoud::result PitchShift::setParam(unsigned int aParamIndex, float aValue)
 {
     switch (aParamIndex)
     {
+    case WET:
+        if (aValue < 0.f || aValue > 1.f)
+            break;
+        mWet = aValue;
+        break;
     case SHIFT:
         if (aValue < getParamMin(SHIFT) || aValue > getParamMax(SHIFT))
             return SoLoud::INVALID_PARAMETER;

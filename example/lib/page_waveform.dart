@@ -92,13 +92,12 @@ class _PageWaveformState extends State<PageWaveform> {
                 const SizedBox(width: 8),
                 ElevatedButton(
                   onPressed: () async {
-                    sound = await SoLoud.instance.loadFile(
-                      '/home/deimos/5/12.-Animal Instinct.flac',
+                    sound = await SoLoud.instance.loadAsset(
+                      'assets/audio/8_bit_mentality.mp3',
                     );
-                    await SoLoud.instance.play(sound!).then((value) {
-                      soundHandle = value;
-                      SoLoud.instance.seek(value, const Duration(seconds: 15));
-                    });
+                    if (sound != null) {
+                      soundHandle = await SoLoud.instance.play(sound!);
+                    }
                   },
                   child: const Text('play sample'),
                 ),
@@ -117,14 +116,14 @@ class _PageWaveformState extends State<PageWaveform> {
               ],
             ),
 
-            /// Play Speed
+            /// Sample Play Speed
             ValueListenableBuilder<double>(
               valueListenable: playSpeed,
               builder: (_, speed, __) {
                 return TextSlider(
-                  text: 'speed  ',
+                  text: 'sample speed  ',
                   min: 0.01,
-                  max: 10,
+                  max: 5,
                   value: speed,
                   enabled: true,
                   onChanged: (value) {
@@ -265,7 +264,7 @@ class _PageWaveformState extends State<PageWaveform> {
                           ],
                         ),
 
-                        /// Biquad Resonant
+                        /// Pitch Shift
                         const FilterFx(
                           filterType: FilterType.pitchShiftFilter,
                         ),

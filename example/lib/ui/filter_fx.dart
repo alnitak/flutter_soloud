@@ -93,40 +93,6 @@ class _FilterFxState extends State<FilterFx> {
           ],
         ),
 
-        if (fxParams.title == 'PitchShift')
-          OutlinedButton(
-            onPressed: () {
-              SoLoud.instance.oscillateGlobalFilterParameter(
-                FilterType.pitchShiftFilter,
-                1,
-                0.8,
-                1.2,
-                const Duration(milliseconds: 1500),
-              );
-            },
-            child: const Text('Oscillate shift'),
-          ),
-
-        if (fxParams.title == 'PitchShift')
-          OutlinedButton(
-            onPressed: () {
-              SoLoud.instance.fadeGlobalFilterParameter(
-                FilterType.pitchShiftFilter,
-                1,
-                3,
-                const Duration(milliseconds: 2500),
-              );
-              Future.delayed(const Duration(milliseconds: 2500), () {
-                SoLoud.instance.setGlobalFilterParameter(
-                  FilterType.pitchShiftFilter,
-                  1,
-                  1,
-                );
-              });
-            },
-            child: const Text('fade shift'),
-          ),
-
         /// Params knobs
         Wrap(
           children: List.generate(params.length, (index) {
