@@ -87,3 +87,14 @@ class SoLoudSoundHashNotFoundDartException extends SoLoudDartException {
   String get description => 'The sound with specified hash is not found '
       '(on the Dart side).';
 }
+
+/// An exception that is thrown when SoLoud (Dart) tries to create a voice
+/// group but something goes wrong.
+class SoLoudCreateVoiceGroupDartException extends SoLoudDartException {
+  /// Creates a new [SoLoudCreateVoiceGroupDartException].
+  const SoLoudCreateVoiceGroupDartException([super.message]);
+
+  @override
+  String get description => 'SoLoud.createVoiceGroup() was not able to create '
+      ' a new voice group.';
+}

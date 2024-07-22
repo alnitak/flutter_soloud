@@ -164,17 +164,10 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
 
   @override
   PlayerErrors initEngine(int sampleRate, int bufferSize, Channels channels) {
-    final channelsInternal = switch (channels) {
-      Channels.channelMono => 1,
-      Channels.channelStereo => 2,
-      Channels.channelQuad => 4,
-      Channels.channel51 => 6,
-      Channels.channel71 => 8,
-    };
     final ret = _initEngine(
       sampleRate,
       bufferSize,
-      channelsInternal,
+      channels.count,
     );
     return PlayerErrors.values[ret];
   }

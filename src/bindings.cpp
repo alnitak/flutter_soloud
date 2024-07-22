@@ -1052,7 +1052,7 @@ extern "C"
         else
         {
             auto const s = player.get()->findByHash(soundHash);
-            if (s == 0)
+            if (s == nullptr)
                 return soundHashNotFound;
             *index = s->filters->isFilterActive(filterType);
         }
@@ -1096,7 +1096,7 @@ extern "C"
             return player.get()->mFilters.addFilter(filterType);
 
         auto const s = player.get()->findByHash(soundHash);
-        if (s == 0)
+        if (s == nullptr)
             return soundHashNotFound;
 
         return s->filters->addFilter(filterType);
@@ -1119,7 +1119,7 @@ extern "C"
         else
         {
             auto const s = player.get()->findByHash(soundHash);
-            if (s == 0)
+            if (s == nullptr)
                 return soundHashNotFound;
             if (!s->filters->removeFilter(filterType))
                 return filterNotFound;
@@ -1145,7 +1145,7 @@ extern "C"
         else
         {
             auto const &s = player.get()->findByHandle(handle);
-            if (s == 0)
+            if (s == nullptr)
             {
                 return soundHandleNotFound;
             }
@@ -1181,7 +1181,7 @@ extern "C"
         else
         {
             auto const &s = player.get()->findByHandle(handle);
-            if (s == 0)
+            if (s == nullptr)
                 return soundHandleNotFound;
             else
             {
@@ -1216,7 +1216,7 @@ extern "C"
         else
         {
             auto const &s = player.get()->findByHandle(handle);
-            if (s == 0)
+            if (s == nullptr)
             {
                 return soundHandleNotFound;
             }
@@ -1252,7 +1252,7 @@ extern "C"
         else
         {
             auto const &s = player.get()->findByHandle(handle);
-            if (s == 0)
+            if (s == nullptr)
             {
                 return soundHandleNotFound;
             }

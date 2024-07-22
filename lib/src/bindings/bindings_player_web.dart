@@ -73,14 +73,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
 
   @override
   PlayerErrors initEngine(int sampleRate, int bufferSize, Channels channels) {
-    final channelsInternal = switch (channels) {
-      Channels.channelMono => 1,
-      Channels.channelStereo => 2,
-      Channels.channelQuad => 4,
-      Channels.channel51 => 6,
-      Channels.channel71 => 8,
-    };
-    final ret = wasmInitEngine(sampleRate, bufferSize, channelsInternal);
+    final ret = wasmInitEngine(sampleRate, bufferSize, channels.count);
     return PlayerErrors.values[ret];
   }
 
@@ -436,7 +429,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   SoundHandle createVoiceGroup() {
     /// The group handle returned has the sign bit flagged. Since on the web
     /// the int is a signed 32 bit, a negative number will be returned.
-    /// Fixing by ORing the result.<
+    /// Fixing by ORing the result.
     final ret = wasmCreateVoiceGroup() | 0xfffff000;
     return SoundHandle(ret > 0 ? ret : -1);
   }
