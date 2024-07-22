@@ -46,9 +46,9 @@ enum SoundEventType {
 /// You can listen to the broadcast stream of [soundEvents].
 ///
 /// Every [AudioSource] can have their own filters. You can add, remove and
-/// query wether if filter is active respectively with `addFilter()`,
-/// `removeGlobalFilter()` and `isFilterActive()`. The effect must be
-/// set before playing the sound and parameters can be changed after having
+/// query wether a filter is active with `addFilter()`,
+/// `removeGlobalFilter()` and `isFilterActive()`, respectively. The effect must
+/// be set before playing the sound and parameters can be changed after having
 /// the a voice handle:
 /// ```
 ///   final sound = await SoLoud.instance.loadAsset('...');
@@ -179,8 +179,7 @@ class AudioSource {
   /// Specify the [attributeId] of the parameter (which you can learn from
   /// [SoLoud.getFilterParamNames]), and its new [value].
   ///
-  /// [handle] the handle to set the filter to. If equal to 0, the filter is
-  /// applyed to the global filter.
+  /// [handle] the handle to set the filter to.
   /// [filterType] filter to modify a param.
   /// Returns [PlayerErrors.noError] if no errors.
   void setFilterParameter(

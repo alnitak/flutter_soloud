@@ -222,7 +222,7 @@ interface class SoLoud {
     bool automaticCleanup = false,
     int sampleRate = 44100,
     int bufferSize = 2048,
-    Channels channels = Channels.channelStereo,
+    Channels channels = Channels.stereo,
   }) async {
     _log.finest('init() called');
 
@@ -1355,6 +1355,7 @@ interface class SoLoud {
   /// Used to create a new voice group. Returns 0 if not successful.
   SoundHandle createVoiceGroup() {
     final ret = _controller.soLoudFFI.createVoiceGroup();
+    if (ret.isError) throw const SoLoudCreateVoiceGroupDartException();
     return ret;
   }
 

@@ -128,7 +128,7 @@ PlayerErrors Player::loadFile(
     /// check if the sound has been already loaded
     auto const s = findByHash(newHash);
 
-    if (s != 0)
+    if (s != nullptr)
     {
         *hash = newHash;
         return fileAlreadyLoaded;
@@ -179,7 +179,7 @@ PlayerErrors Player::loadMem(
     /// check if the sound has been already loaded
     auto const s = findByHash(newHash);
 
-    if (s != 0)
+    if (s != nullptr)
     {
         hash = newHash;
         return fileAlreadyLoaded;
@@ -245,7 +245,7 @@ void Player::setWaveformScale(unsigned int soundHash, float newScale)
 {
     auto const s = findByHash(soundHash);
 
-    if (s == 0 || s->soundType != TYPE_SYNTH)
+    if (s == nullptr || s->soundType != TYPE_SYNTH)
         return;
 
     static_cast<Basicwave *>(s->sound.get())->setScale(newScale);
@@ -255,7 +255,7 @@ void Player::setWaveformDetune(unsigned int soundHash, float newDetune)
 {
     auto const s = findByHash(soundHash);
 
-    if (s == 0 || s->soundType != TYPE_SYNTH)
+    if (s == nullptr || s->soundType != TYPE_SYNTH)
         return;
 
     static_cast<Basicwave *>(s->sound.get())->setDetune(newDetune);
@@ -265,7 +265,7 @@ void Player::setWaveform(unsigned int soundHash, int newWaveform)
 {
     auto const s = findByHash(soundHash);
 
-    if (s == 0 || s->soundType != TYPE_SYNTH)
+    if (s == nullptr || s->soundType != TYPE_SYNTH)
         return;
 
     static_cast<Basicwave *>(s->sound.get())->setWaveform((SoLoud::Soloud::WAVEFORM)newWaveform);
@@ -275,7 +275,7 @@ void Player::setWaveformFreq(unsigned int soundHash, float newFreq)
 {
     auto const s = findByHash(soundHash);
 
-    if (s == 0 || s->soundType != TYPE_SYNTH)
+    if (s == nullptr || s->soundType != TYPE_SYNTH)
         return;
 
     static_cast<Basicwave *>(s->sound.get())->setFreq(newFreq);
@@ -285,7 +285,7 @@ void Player::setWaveformSuperwave(unsigned int soundHash, bool superwave)
 {
     auto const s = findByHash(soundHash);
 
-    if (s == 0 || s->soundType != TYPE_SYNTH)
+    if (s == nullptr || s->soundType != TYPE_SYNTH)
         return;
 
     static_cast<Basicwave *>(s->sound.get())->setSuperWave(superwave);
@@ -328,7 +328,7 @@ unsigned int Player::play(
 {
     ActiveSound *sound = findByHash(soundHash);
 
-    if (sound == 0)
+    if (sound == nullptr)
         return soundHashNotFound;
 
     SoLoud::handle newHandle = soloud.play(
@@ -377,7 +377,7 @@ void Player::disposeSound(unsigned int soundHash)
 {
     ActiveSound *sound = findByHash(soundHash);
 
-    if (sound == 0)
+    if (sound == nullptr)
         return;
 
     sound->sound.get()->stop();
@@ -459,7 +459,7 @@ double Player::getLength(unsigned int soundHash)
 {
     auto const &s = findByHash(soundHash);
 
-    if (s == 0 || s->soundType == TYPE_SYNTH)
+    if (s == nullptr || s->soundType == TYPE_SYNTH)
         return 0.0;
     if (s->soundType == TYPE_WAV)
         return static_cast<SoLoud::Wav *>(s->sound.get())->getLength();
@@ -545,7 +545,7 @@ int Player::countAudioSource(unsigned int soundHash)
 {
     auto const &s = findByHash(soundHash);
 
-    if (s == 0 || s->soundType == TYPE_SYNTH)
+    if (s == nullptr || s->soundType == TYPE_SYNTH)
         return 0;
     if (s->soundType == TYPE_WAV)
     {
@@ -610,7 +610,7 @@ ActiveSound *Player::findByHash(unsigned int soundHash)
                                  [&](std::shared_ptr<ActiveSound> const &f)
                                  { return f->soundHash == soundHash; });
     if (s == sounds.end())
-        return 0;
+        return nullptr;
 
     return s->get();
 }

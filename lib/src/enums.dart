@@ -184,17 +184,22 @@ enum PlayerStateNotification {
 /// The channels to be used while initializing the player.
 enum Channels {
   /// One channel.
-  channelMono,
+  mono(1),
 
   /// Two channels.
-  channelStereo,
+  stereo(2),
 
   /// Four channels.
-  channelQuad,
+  quad(4),
 
   /// Six channels.
-  channel51,
+  surround51(6),
 
   /// Eight channels.
-  channel71,
+  dolby71(8);
+
+  const Channels(this.count);
+
+  /// The channels count.
+  final int count;
 }

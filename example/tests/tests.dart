@@ -1,4 +1,3 @@
-// ignore_for_file: public_member_api_docs, sort_constructors_first
 import 'dart:async';
 import 'dart:ui';
 
@@ -34,10 +33,11 @@ void main() {
   );
 }
 
-class Test {
-  Test({
+class _Test {
+  _Test({
     required this.name,
     required this.callback,
+    // ignore: unused_element
     this.status = TestStatus.none,
   });
   final String name;
@@ -54,7 +54,7 @@ class MyHomePage extends StatefulWidget {
 
 class _MyHomePageState extends State<MyHomePage> {
   final output = StringBuffer();
-  final List<Test> tests = [];
+  final List<_Test> tests = [];
   final textEditingController = TextEditingController();
 
   @override
@@ -63,21 +63,21 @@ class _MyHomePageState extends State<MyHomePage> {
 
     /// Add all testing functions.
     tests.addAll([
-      Test(name: 'testProtectVoice', callback: testProtectVoice),
-      Test(
+      _Test(name: 'testProtectVoice', callback: testProtectVoice),
+      _Test(
         name: 'testAllInstancesFinished',
         callback: testAllInstancesFinished,
       ),
-      Test(name: 'testCreateNotes', callback: testCreateNotes),
-      Test(name: 'testPlaySeekPause', callback: testPlaySeekPause),
-      Test(name: 'testPan', callback: testPan),
-      Test(name: 'testHandles', callback: testHandles),
-      Test(name: 'loopingTests', callback: loopingTests),
-      Test(name: 'testSynchronousDeinit', callback: testSynchronousDeinit),
-      Test(name: 'testAsynchronousDeinit', callback: testAsynchronousDeinit),
-      Test(name: 'testVoiceGroups', callback: testVoiceGroups),
-      Test(name: 'testSoundFilters', callback: testSoundFilters),
-      Test(name: 'testGlobalFilters', callback: testGlobalFilters),
+      _Test(name: 'testCreateNotes', callback: testCreateNotes),
+      _Test(name: 'testPlaySeekPause', callback: testPlaySeekPause),
+      _Test(name: 'testPan', callback: testPan),
+      _Test(name: 'testHandles', callback: testHandles),
+      _Test(name: 'loopingTests', callback: loopingTests),
+      _Test(name: 'testSynchronousDeinit', callback: testSynchronousDeinit),
+      _Test(name: 'testAsynchronousDeinit', callback: testAsynchronousDeinit),
+      _Test(name: 'testVoiceGroups', callback: testVoiceGroups),
+      _Test(name: 'testSoundFilters', callback: testSoundFilters),
+      _Test(name: 'testGlobalFilters', callback: testGlobalFilters),
     ]);
   }
 
@@ -280,7 +280,7 @@ Future<StringBuffer> testProtectVoice() async {
 
 /// Test allInstancesFinished stream
 Future<StringBuffer> testAllInstancesFinished() async {
-  final ret = StringBuffer();
+  final strBuf = StringBuffer();
   await initialize();
 
   await SoLoud.instance.disposeAllSources();
@@ -299,14 +299,14 @@ Future<StringBuffer> testAllInstancesFinished() async {
   var songDisposed = false;
   unawaited(
     explosion.allInstancesFinished.first.then((_) async {
-      ret.write('All instances of explosion finished.\n');
+      strBuf.write('All instances of explosion finished.\n');
       await SoLoud.instance.disposeSource(explosion);
       explosionDisposed = true;
     }),
   );
   unawaited(
     song.allInstancesFinished.first.then((_) async {
-      ret.write('All instances of song finished.\n');
+      strBuf.write('All instances of song finished.\n');
       await SoLoud.instance.disposeSource(song);
       songDisposed = true;
     }),
@@ -328,7 +328,7 @@ Future<StringBuffer> testAllInstancesFinished() async {
 
   deinit();
 
-  return ret;
+  return strBuf;
 }
 
 /// Test waveform
@@ -696,7 +696,7 @@ Future<StringBuffer> testVoiceGroups() async {
 
 /// Test sound filters.
 Future<StringBuffer> testSoundFilters() async {
-  final ret = StringBuffer();
+  final strBuf = StringBuffer();
   await initialize();
 
   final sound = await SoLoud.instance.loadAsset(
@@ -722,7 +722,7 @@ Future<StringBuffer> testSoundFilters() async {
   final g = sound.getFilterParameter(h1, FilterType.echoFilter, attributeId);
   assert(
     closeTo(g, value, 0.001),
-    'Setting attribute to $value but optained $g',
+    'Setting attribute to $value but obtained $g',
   );
 
   sound.oscillateFilterParameter(
@@ -745,7 +745,7 @@ Future<StringBuffer> testSoundFilters() async {
   try {
     sound.removeFilter(FilterType.echoFilter);
   } on Exception catch (e) {
-    ret
+    strBuf
       ..write(e)
       ..writeln();
   }
@@ -755,12 +755,12 @@ Future<StringBuffer> testSoundFilters() async {
   );
 
   deinit();
-  return ret;
+  return strBuf;
 }
 
 /// Test global filters.
 Future<StringBuffer> testGlobalFilters() async {
-  final ret = StringBuffer();
+  final strBuf = StringBuffer();
   await initialize();
 
   late final AudioSource sound;
@@ -770,7 +770,7 @@ Future<StringBuffer> testGlobalFilters() async {
       mode: LoadMode.disk,
     );
   } on Exception catch (e) {
-    ret
+    strBuf
       ..write(e)
       ..writeln();
   }
@@ -816,7 +816,7 @@ Future<StringBuffer> testGlobalFilters() async {
   try {
     SoLoud.instance.removeGlobalFilter(FilterType.echoFilter);
   } on Exception catch (e) {
-    ret
+    strBuf
       ..write(e)
       ..writeln();
   }
@@ -826,5 +826,5 @@ Future<StringBuffer> testGlobalFilters() async {
   );
 
   deinit();
-  return ret;
+  return strBuf;
 }
