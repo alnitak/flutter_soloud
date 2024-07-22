@@ -23,9 +23,8 @@ struct CaptureDevice
 
 //--------------------- copy here the new functions to generate
 
-FFI_PLUGIN_EXPORT enum PlayerErrors loadMem(
-    char *uniqueName,
-    unsigned char *buffer,
-    int length,
-    int loadIntoMem,
-    unsigned int *hash);
+FFI_PLUGIN_EXPORT enum PlayerErrors getFilterParams(
+    unsigned int handle,
+    enum FilterType filterType,
+    int attributeId,
+    float *filterValue);

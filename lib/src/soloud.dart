@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_soloud/src/audio_source.dart';
 import 'package:flutter_soloud/src/bindings/audio_data.dart';
+import 'package:flutter_soloud/src/bindings/bindings_player.dart';
 import 'package:flutter_soloud/src/bindings/soloud_controller.dart';
 import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/exceptions/exceptions.dart';
@@ -202,17 +203,29 @@ interface class SoLoud {
   /// that play sounds from assets or from the file system, this is probably
   /// unnecessary, as the amount of data will be finite.
   /// The default is `false`.
+  /// [sampleRate] The sample rate represents the number of samples used, per
+  /// second. Typical sample rates are 8000Hz, 22050Hz, 44100Hz and 48000Hz.
+  /// Higher the sample rates mean clearer sound, but also bigger files, more
+  /// memory and higher processing power requirements.
+  /// [bufferSize] Audio latency generally means the time it takes from
+  /// triggering a sound to the sound actually coming out of the speakers.
+  /// The smaller the latency, the better.
+  /// Unfortunately, there's always some latency. The primary source of
+  /// latency (that a programmer can have any control over) is the size of
+  /// audio buffer. Generally speaking, the smaller the buffer, the lower the
+  /// latency, but at the same time, the smaller the buffer, the more likely the
+  /// system hits buffer underruns (ie, the play head marches on but there's no
+  /// data ready to be played) and the sound breaks down horribly.
+  /// [channels] mono, stereo, quad, 5.1, 7.1.
   Future<void> init({
     // TODO(filip): remove deprecation?
     @Deprecated('timeout is not used anymore.')
     Duration timeout = const Duration(seconds: 10),
     bool automaticCleanup = false,
+    int sampleRate = 44100,
+    int bufferSize = 2048,
+    Channels channels = Channels.stereo,
   }) async {
-    /// Defaults are:
-    /// Miniaudio audio backend
-    /// sample rate 44100
-    /// buffer 2048
-    // TODO(marco): add engine initialization parameters
     _log.finest('init() called');
 
     // if `!isInitialized` but the engine is initialized in native, therefore
@@ -233,7 +246,11 @@ interface class SoLoud {
     // Initialize native callbacks
     _initializeNativeCallbacks();
 
-    final error = _controller.soLoudFFI.initEngine();
+    final error = _controller.soLoudFFI.initEngine(
+      sampleRate,
+      bufferSize,
+      channels,
+    );
     _logPlayerError(error, from: 'initialize() result');
     if (error == PlayerErrors.noError) {
       _isInitialized = true;
@@ -842,7 +859,7 @@ interface class SoLoud {
       source.soundEventsController.add((
         event: SoundEventType.soundDisposed,
         sound: source,
-        handle: SoundHandle.error(),
+        handle: const SoundHandle.error(),
       ));
     }
     await source.soundEventsController.close();
@@ -871,7 +888,7 @@ interface class SoLoud {
       sound.soundEventsController.add((
         event: SoundEventType.soundDisposed,
         sound: sound,
-        handle: SoundHandle.error(),
+        handle: const SoundHandle.error(),
       ));
       // TODO(filiph): Close these in parallel using `Future.wait()`
       await sound.soundEventsController.close();
@@ -1333,6 +1350,58 @@ interface class SoLoud {
     _controller.soLoudFFI.setFftSmoothing(smooth);
   }
 
+  /////////////////////////////////////////
+  /// voice groups
+  /////////////////////////////////////////
+
+  /// Used to create a new voice group. Returns 0 if not successful.
+  SoundHandle createVoiceGroup() {
+    final ret = _controller.soLoudFFI.createVoiceGroup();
+    if (ret.isError) throw const SoLoudCreateVoiceGroupDartException();
+    return ret;
+  }
+
+  /// Deallocates the voice group. Does not stop the voices attached to the
+  /// voice group.
+  ///
+  /// [handle] the group handle to destroy.
+  void destroyVoiceGroup(SoundHandle handle) {
+    return _controller.soLoudFFI.destroyVoiceGroup(handle);
+  }
+
+  /// Adds voice handle to the voice group. The voice handles can still be
+  /// used separate from the group.
+  /// [voiceGroupHandle] the group handle to add the new [voiceHandles].
+  /// [voiceHandles] voice handle to add to the [voiceGroupHandle].
+  void addVoicesToGroup(
+    SoundHandle voiceGroupHandle,
+    List<SoundHandle> voiceHandles,
+  ) {
+    return _controller.soLoudFFI.addVoicesToGroup(
+      voiceGroupHandle,
+      voiceHandles,
+    );
+  }
+
+  /// Checks if the handle is a valid voice group. Does not care if the
+  /// voice group is empty.
+  ///
+  /// [handle] the group handle to check.
+  /// Return true if [handle] is a group handle.
+  bool isVoiceGroup(SoundHandle handle) {
+    return _controller.soLoudFFI.isVoiceGroup(handle);
+  }
+
+  /// Checks whether a voice group is empty. SoLoud automatically trims
+  /// the voice groups of voices that have ended, so the group may be
+  /// empty even though you've added valid voice handles to it.
+  ///
+  /// [handle] group handle to check.
+  /// Return true if the group handle doesn't have any voices.
+  bool isVoiceGroupEmpty(SoundHandle handle) {
+    return _controller.soLoudFFI.isVoiceGroupEmpty(handle);
+  }
+
   // ///////////////////////////////////////
   // faders
   // //////////////////////////////////////
@@ -1345,8 +1414,7 @@ interface class SoLoud {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
-    final ret = _controller.soLoudFFI.fadeGlobalVolume(to, time);
-    final error = PlayerErrors.values[ret];
+    final error = _controller.soLoudFFI.fadeGlobalVolume(to, time);
     if (error != PlayerErrors.noError) {
       _log.severe(() => 'fadeGlobalVolume(): $error');
       throw SoLoudCppException.fromPlayerError(error);
@@ -1363,8 +1431,7 @@ interface class SoLoud {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
-    final ret = _controller.soLoudFFI.fadeVolume(handle, to, time);
-    final error = PlayerErrors.values[ret];
+    final error = _controller.soLoudFFI.fadeVolume(handle, to, time);
     if (error != PlayerErrors.noError) {
       _log.severe(() => 'fadeVolume(): $error');
       throw SoLoudCppException.fromPlayerError(error);
@@ -1381,8 +1448,7 @@ interface class SoLoud {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
-    final ret = _controller.soLoudFFI.fadePan(handle, to, time);
-    final error = PlayerErrors.values[ret];
+    final error = _controller.soLoudFFI.fadePan(handle, to, time);
     if (error != PlayerErrors.noError) {
       _log.severe(() => 'fadePan(): $error');
       throw SoLoudCppException.fromPlayerError(error);
@@ -1399,8 +1465,7 @@ interface class SoLoud {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
-    final ret = _controller.soLoudFFI.fadeRelativePlaySpeed(handle, to, time);
-    final error = PlayerErrors.values[ret];
+    final error = _controller.soLoudFFI.fadeRelativePlaySpeed(handle, to, time);
     if (error != PlayerErrors.noError) {
       _log.severe(() => 'fadeRelativePlaySpeed(): $error');
       throw SoLoudCppException.fromPlayerError(error);
@@ -1416,8 +1481,7 @@ interface class SoLoud {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
-    final ret = _controller.soLoudFFI.schedulePause(handle, time);
-    final error = PlayerErrors.values[ret];
+    final error = _controller.soLoudFFI.schedulePause(handle, time);
     if (error != PlayerErrors.noError) {
       _log.severe(() => 'schedulePause(): $error');
       throw SoLoudCppException.fromPlayerError(error);
@@ -1433,8 +1497,7 @@ interface class SoLoud {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
-    final ret = _controller.soLoudFFI.scheduleStop(handle, time);
-    final error = PlayerErrors.values[ret];
+    final error = _controller.soLoudFFI.scheduleStop(handle, time);
     if (error != PlayerErrors.noError) {
       _log.severe(() => 'scheduleStop(): $error');
       throw SoLoudCppException.fromPlayerError(error);
@@ -1455,8 +1518,7 @@ interface class SoLoud {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
-    final ret = _controller.soLoudFFI.oscillateVolume(handle, from, to, time);
-    final error = PlayerErrors.values[ret];
+    final error = _controller.soLoudFFI.oscillateVolume(handle, from, to, time);
     if (error != PlayerErrors.noError) {
       _log.severe(() => 'oscillateVolume(): $error');
       throw SoLoudCppException.fromPlayerError(error);
@@ -1476,8 +1538,7 @@ interface class SoLoud {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
-    final ret = _controller.soLoudFFI.oscillatePan(handle, from, to, time);
-    final error = PlayerErrors.values[ret];
+    final error = _controller.soLoudFFI.oscillatePan(handle, from, to, time);
     if (error != PlayerErrors.noError) {
       _log.severe(() => 'oscillatePan(): $error');
       throw SoLoudCppException.fromPlayerError(error);
@@ -1498,9 +1559,8 @@ interface class SoLoud {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
-    final ret = _controller.soLoudFFI
+    final error = _controller.soLoudFFI
         .oscillateRelativePlaySpeed(handle, from, to, time);
-    final error = PlayerErrors.values[ret];
     if (error != PlayerErrors.noError) {
       _log.severe(() => 'oscillateRelativePlaySpeed(): $error');
       throw SoLoudCppException.fromPlayerError(error);
@@ -1518,16 +1578,78 @@ interface class SoLoud {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
-    final ret = _controller.soLoudFFI.oscillateGlobalVolume(from, to, time);
-    final error = PlayerErrors.values[ret];
+    final error = _controller.soLoudFFI.oscillateGlobalVolume(from, to, time);
     if (error != PlayerErrors.noError) {
       _log.severe(() => 'oscillateGlobalVolume(): $error');
       throw SoLoudCppException.fromPlayerError(error);
     }
   }
 
+  /// Fade a parameter of a filter.
+  ///
+  /// it fades the global filter.
+  /// [filterType] filter to modify a param.
+  /// [attributeId] the attribute index to fade.
+  /// [to] value the attribute should go in [time] duration.
+  /// [time] the fade slope duration.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  void fadeGlobalFilterParameter(
+    FilterType filterType,
+    int attributeId,
+    double to,
+    Duration time,
+  ) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    final error = _controller.soLoudFFI.fadeFilterParameter(
+      filterType,
+      attributeId,
+      to,
+      time.toDouble(),
+    );
+    if (error != PlayerErrors.noError) {
+      _log.severe(() => 'fadeFilterParameter(): $error');
+      throw SoLoudCppException.fromPlayerError(error);
+    }
+  }
+
+  /// Oscillate a parameter of a filter.
+  ///
+  /// it fades the global filter.
+  /// [filterType] filter to modify a param.
+  /// [attributeId] the attribute index to fade.
+  /// [from] the starting value the attribute sould start to oscillate.
+  /// [to] the ending value the attribute sould end to oscillate.
+  /// [time] the fade slope duration.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  void oscillateGlobalFilterParameter(
+    FilterType filterType,
+    int attributeId,
+    double from,
+    double to,
+    Duration time,
+  ) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    final error = _controller.soLoudFFI.oscillateFilterParameter(
+      filterType,
+      attributeId,
+      from,
+      to,
+      time.toDouble(),
+    );
+    if (error != PlayerErrors.noError) {
+      _log.severe(() => 'oscillateFilterParameter(): $error');
+      throw SoLoudCppException.fromPlayerError(error);
+    }
+  }
+
   // ///////////////////////////////////////
-  // / Filters
+  // / Global filters
   // ///////////////////////////////////////
 
   /// Checks whether the given [filterType] is active.
@@ -1542,8 +1664,6 @@ interface class SoLoud {
     }
     return ret.index;
   }
-
-  // TODO(marco): add a method to rearrange filters order?
 
   /// Gets parameters of the given [filterType].
   ///
@@ -1564,47 +1684,89 @@ interface class SoLoud {
   /// Throws [SoLoudFilterAlreadyAddedException] when trying to add a filter
   ///     that has already been added.
   void addGlobalFilter(FilterType filterType) {
-    final e = _controller.soLoudFFI.addGlobalFilter(filterType);
-    if (e != PlayerErrors.noError) {
-      _log.severe(() => 'addGlobalFilter(): $e');
-      throw SoLoudCppException.fromPlayerError(e);
+    final error = _controller.soLoudFFI.addFilter(filterType);
+    if (error != PlayerErrors.noError) {
+      _log.severe(() => 'addGlobalFilter(): $error');
+      throw SoLoudCppException.fromPlayerError(error);
     }
   }
 
   /// Removes [filterType] from all sounds.
   void removeGlobalFilter(FilterType filterType) {
-    final ret = _controller.soLoudFFI.removeGlobalFilter(filterType);
-    final error = PlayerErrors.values[ret];
+    final error = _controller.soLoudFFI.removeFilter(filterType);
     if (error != PlayerErrors.noError) {
       _log.severe(() => 'removeGlobalFilter(): $error');
       throw SoLoudCppException.fromPlayerError(error);
     }
   }
 
-  /// Sets a parameter of the given [filterType].
+  /// Set the effect parameter with id [attributeId] of [filterType]
+  /// with [value] value.
   ///
   /// Specify the [attributeId] of the parameter (which you can learn from
   /// [getFilterParamNames]), and its new [value].
-  void setFilterParameter(
-      FilterType filterType, int attributeId, double value) {
-    final ret =
-        _controller.soLoudFFI.setFilterParams(filterType, attributeId, value);
-    final error = PlayerErrors.values[ret];
+  ///
+  /// applyed to the global filter.
+  /// [filterType] filter to modify a param.
+  /// Returns [PlayerErrors.noError] if no errors.
+  void setGlobalFilterParameter(
+    FilterType filterType,
+    int attributeId,
+    double value,
+  ) {
+    final error = _controller.soLoudFFI.setFilterParams(
+      filterType,
+      attributeId,
+      value,
+    );
     if (error != PlayerErrors.noError) {
       _log.severe(() => 'setFxParams(): $error');
       throw SoLoudCppException.fromPlayerError(error);
     }
   }
 
-  /// Gets the value of a parameter of the given [filterType].
+  /// Set the effect parameter with id [attributeId] of [filterType]
+  /// with [value] value.
+  @Deprecated('Please use setGlobalFilterParameter class instead.')
+  void setFilterParameter(
+    FilterType filterType,
+    int attributeId,
+    double value,
+  ) =>
+      setGlobalFilterParameter(filterType, attributeId, value);
+
+  /// Get the effect parameter value with id [attributeId] of [filterType].
   ///
   /// Specify the [attributeId] of the parameter (which you can learn from
   /// [getFilterParamNames]).
   ///
-  /// Returns the value as [double].
-  double getFilterParameter(FilterType filterType, int attributeId) {
-    return _controller.soLoudFFI.getFilterParams(filterType, attributeId);
+  /// it gets the global filter value.
+  /// [filterType] the filter to modify a parameter.
+  /// Returns the value of the parameter.
+  double getGlobalFilterParameter(
+    FilterType filterType,
+    int attributeId,
+  ) {
+    final ret = _controller.soLoudFFI.getFilterParams(
+      filterType,
+      attributeId,
+    );
+
+    _logPlayerError(ret.error, from: 'getGlobalFilterParameter()');
+    if (ret.error != PlayerErrors.noError) {
+      throw SoLoudCppException.fromPlayerError(ret.error);
+    }
+    return ret.value;
   }
+
+  /// Get the effect parameter value with id [attributeId] of [filterType].
+  @Deprecated('Please use getGlobalFilterParameter class instead.')
+  double getFilterParameter(
+    FilterType filterType,
+    int attributeId, {
+    SoundHandle handle = const SoundHandle(0),
+  }) =>
+      getGlobalFilterParameter(filterType, attributeId);
 
   // ////////////////////////////////////////////////
   // Below all the methods implemented with FFI for the 3D audio

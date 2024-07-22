@@ -17,10 +17,10 @@ import 'package:meta/meta.dart';
 ///
 /// Constructors are marked [internal] because it should not be possible
 /// for users to create a sound hash from Dart.
-extension type SoundHash._(int hash) {
+extension type const SoundHash._(int hash) {
   /// Constructs a valid sound hash with [hash].
   @internal
-  SoundHash(this.hash)
+  const SoundHash(this.hash)
       : assert(
           hash > 0,
           'Trying to create a valid sound hash with the value 0',
@@ -29,7 +29,7 @@ extension type SoundHash._(int hash) {
   /// Constructs an invalid sound hash
   /// (for APIs that need to return _some_ hash even during errors).
   @internal
-  SoundHash.invalid() : this._(0);
+  const SoundHash.invalid() : this._(0);
 
   /// Generate a "fake" [SoundHash] for generated (i.e. non-loaded) sounds.
   ///

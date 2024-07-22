@@ -46,7 +46,7 @@ external void wasmSendToWorker(int message, int value);
 external web.Worker wasmWorker;
 
 @JS('Module._initEngine')
-external int wasmInitEngine();
+external int wasmInitEngine(int sampleRate, int bufferSize, int channels);
 
 @JS('Module._dispose')
 external void wasmDeinit();
@@ -242,6 +242,29 @@ external int wasmGetMaxActiveVoiceCount();
 @JS('Module._setMaxActiveVoiceCount')
 external void wasmSetMaxActiveVoiceCount(int maxVoiceCount);
 
+/////////////////////////////////////////
+/// voice groups
+/////////////////////////////////////////
+
+@JS('Module._createVoiceGroup')
+external int wasmCreateVoiceGroup();
+
+@JS('Module._destroyVoiceGroup')
+external void wasmDestroyVoiceGroup(int handle);
+
+@JS('Module._addVoiceToGroup')
+external void wasmAddVoiceToGroup(int voiceGroupHandle, int voiceHandle);
+
+@JS('Module._isVoiceGroup')
+external int wasmIsVoiceGroup(int handle);
+
+@JS('Module._isVoiceGroupEmpty')
+external int wasmIsVoiceGroupEmpty(int handle);
+
+// ///////////////////////////////////////
+//  faders
+// ///////////////////////////////////////
+
 @JS('Module._fadeGlobalVolume')
 external int wasmFadeGlobalVolume(double to, double duration);
 
@@ -282,8 +305,31 @@ external int wasmOscillateRelativePlaySpeed(
 @JS('Module._oscillateGlobalVolume')
 external int wasmOscillateGlobalVolume(double from, double to, double time);
 
+@JS('Module._fadeFilterParameter')
+external int wasmFadeFilterParameter(
+  int handle,
+  int filterType,
+  int attributeId,
+  double to,
+  double time,
+);
+
+@JS('Module._oscillateFilterParameter')
+external int wasmOscillateFilterParameter(
+  int handle,
+  int filterType,
+  int attributeId,
+  double from,
+  double to,
+  double time,
+);
+
+// ///////////////////////////////////////
+//  Filters
+// ///////////////////////////////////////
+
 @JS('Module._isFilterActive')
-external int wasmIsFilterActive(int filterType, int idPtr);
+external int wasmIsFilterActive(int soundHash, int filterType, int idPtr);
 
 @JS('Module._getFilterParamNames')
 external int wasmGetFilterParamNames(
@@ -292,17 +338,27 @@ external int wasmGetFilterParamNames(
   int namesPtr,
 );
 
-@JS('Module._addGlobalFilter')
-external int wasmAddGlobalFilter(int filterType);
+@JS('Module._addFilter')
+external int wasmAddFilter(int soundHash, int filterType);
 
-@JS('Module._removeGlobalFilter')
-external int wasmRemoveGlobalFilter(int filterType);
+@JS('Module._removeFilter')
+external int wasmRemoveFilter(int soundHash, int filterType);
 
-@JS('Module._setFxParams')
-external int wasmSetFxParams(int filterType, int attributeId, double value);
+@JS('Module._setFilterParams')
+external int wasmSetFilterParams(
+  int handle,
+  int filterType,
+  int attributeId,
+  double value,
+);
 
-@JS('Module._getFxParams')
-external double wasmGetFxParams(int filterType, int attributeId);
+@JS('Module._getFilterParams')
+external int wasmGetFilterParams(
+  int handle,
+  int filterType,
+  int attributeId,
+  int paramValuePtr,
+);
 
 @JS('Module._play3d')
 external int wasmPlay3d(

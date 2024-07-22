@@ -4,6 +4,10 @@
 - added `loadMem()` to read the give audio file bytes buffer (not RAW data). Useful for the Web platform.
 - fixed `getFilterParamNames()`.
 - added `AudioData` class to manage audio samples.
+- added player initialization parameters: sample rate, buffer size, number of channels (mono, stereo, quad, 5.1, 7.1).
+- added voice groups.
+- it's now possible to set filters not only globally, but also to single audio sources.
+- fade and oscillate filter parameters.
 
 ### 2.0.2 (23 May 2024)
 - Fixed wrong exception raised by `setVolume()` when a handle is no more valid.

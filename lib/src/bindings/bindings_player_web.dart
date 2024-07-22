@@ -72,8 +72,9 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }
 
   @override
-  PlayerErrors initEngine() {
-    return PlayerErrors.values[wasmInitEngine()];
+  PlayerErrors initEngine(int sampleRate, int bufferSize, Channels channels) {
+    final ret = wasmInitEngine(sampleRate, bufferSize, channels.count);
+    return PlayerErrors.values[ret];
   }
 
   @override
@@ -420,68 +421,168 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     return wasmSetMaxActiveVoiceCount(maxVoiceCount);
   }
 
+  /////////////////////////////////////////
+  /// voice groups
+  /////////////////////////////////////////
+
+  @override
+  SoundHandle createVoiceGroup() {
+    /// The group handle returned has the sign bit flagged. Since on the web
+    /// the int is a signed 32 bit, a negative number will be returned.
+    /// Fixing by ORing the result.
+    final ret = wasmCreateVoiceGroup() | 0xfffff000;
+    return SoundHandle(ret > 0 ? ret : -1);
+  }
+
+  @override
+  void destroyVoiceGroup(SoundHandle handle) {
+    return wasmDestroyVoiceGroup(handle.id);
+  }
+
+  @override
+  void addVoicesToGroup(
+    SoundHandle voiceGroupHandle,
+    List<SoundHandle> voiceHandles,
+  ) {
+    for (final handle in voiceHandles) {
+      wasmAddVoiceToGroup(voiceGroupHandle.id, handle.id);
+    }
+  }
+
+  @override
+  bool isVoiceGroup(SoundHandle handle) {
+    return wasmIsVoiceGroup(handle.id) == 1;
+  }
+
+  @override
+  bool isVoiceGroupEmpty(SoundHandle handle) {
+    return wasmIsVoiceGroupEmpty(handle.id) == 1;
+  }
+
   // ///////////////////////////////////////
   //  faders
   // ///////////////////////////////////////
 
   @override
-  int fadeGlobalVolume(double to, Duration duration) {
-    return wasmFadeGlobalVolume(to, duration.toDouble());
+  PlayerErrors fadeGlobalVolume(double to, Duration duration) {
+    final e = wasmFadeGlobalVolume(to, duration.toDouble());
+    return PlayerErrors.values[e];
   }
 
   @override
-  int fadeVolume(SoundHandle handle, double to, Duration duration) {
-    return wasmFadeVolume(handle.id, to, duration.toDouble());
+  PlayerErrors fadeVolume(SoundHandle handle, double to, Duration duration) {
+    final e = wasmFadeVolume(handle.id, to, duration.toDouble());
+    return PlayerErrors.values[e];
   }
 
   @override
-  int fadePan(SoundHandle handle, double to, Duration duration) {
-    return wasmFadePan(handle.id, to, duration.toDouble());
+  PlayerErrors fadePan(SoundHandle handle, double to, Duration duration) {
+    final e = wasmFadePan(handle.id, to, duration.toDouble());
+    return PlayerErrors.values[e];
   }
 
   @override
-  int fadeRelativePlaySpeed(SoundHandle handle, double to, Duration time) {
-    return wasmFadeRelativePlaySpeed(handle.id, to, time.toDouble());
+  PlayerErrors fadeRelativePlaySpeed(
+    SoundHandle handle,
+    double to,
+    Duration time,
+  ) {
+    final e = wasmFadeRelativePlaySpeed(handle.id, to, time.toDouble());
+    return PlayerErrors.values[e];
   }
 
   @override
-  int schedulePause(SoundHandle handle, Duration duration) {
-    return wasmSchedulePause(handle.id, duration.toDouble());
+  PlayerErrors schedulePause(SoundHandle handle, Duration duration) {
+    final e = wasmSchedulePause(handle.id, duration.toDouble());
+    return PlayerErrors.values[e];
   }
 
   @override
-  int scheduleStop(SoundHandle handle, Duration duration) {
-    return wasmScheduleStop(handle.id, duration.toDouble());
+  PlayerErrors scheduleStop(SoundHandle handle, Duration duration) {
+    final e = wasmScheduleStop(handle.id, duration.toDouble());
+    return PlayerErrors.values[e];
   }
 
   @override
-  int oscillateVolume(
+  PlayerErrors oscillateVolume(
     SoundHandle handle,
     double from,
     double to,
     Duration time,
   ) {
-    return wasmOscillateVolume(handle.id, from, to, time.toDouble());
+    final e = wasmOscillateVolume(handle.id, from, to, time.toDouble());
+    return PlayerErrors.values[e];
   }
 
   @override
-  int oscillatePan(SoundHandle handle, double from, double to, Duration time) {
-    return wasmOscillatePan(handle.id, from, to, time.toDouble());
-  }
-
-  @override
-  int oscillateRelativePlaySpeed(
+  PlayerErrors oscillatePan(
     SoundHandle handle,
     double from,
     double to,
     Duration time,
   ) {
-    return wasmOscillateRelativePlaySpeed(handle.id, from, to, time.toDouble());
+    final e = wasmOscillatePan(handle.id, from, to, time.toDouble());
+    return PlayerErrors.values[e];
   }
 
   @override
-  int oscillateGlobalVolume(double from, double to, Duration time) {
-    return wasmOscillateGlobalVolume(from, to, time.toDouble());
+  PlayerErrors oscillateRelativePlaySpeed(
+    SoundHandle handle,
+    double from,
+    double to,
+    Duration time,
+  ) {
+    final e = wasmOscillateRelativePlaySpeed(
+      handle.id,
+      from,
+      to,
+      time.toDouble(),
+    );
+    return PlayerErrors.values[e];
+  }
+
+  @override
+  PlayerErrors oscillateGlobalVolume(double from, double to, Duration time) {
+    final e = wasmOscillateGlobalVolume(from, to, time.toDouble());
+    return PlayerErrors.values[e];
+  }
+
+  @override
+  PlayerErrors fadeFilterParameter(
+    FilterType filterType,
+    int attributeId,
+    double to,
+    double time, {
+    SoundHandle handle = const SoundHandle.error(),
+  }) {
+    final e = wasmFadeFilterParameter(
+      handle.isError ? 0 : handle.id,
+      filterType.index,
+      attributeId,
+      to,
+      time,
+    );
+    return PlayerErrors.values[e];
+  }
+
+  @override
+  PlayerErrors oscillateFilterParameter(
+    FilterType filterType,
+    int attributeId,
+    double from,
+    double to,
+    double time, {
+    SoundHandle handle = const SoundHandle.error(),
+  }) {
+    final e = wasmOscillateFilterParameter(
+      handle.isError ? 0 : handle.id,
+      filterType.index,
+      attributeId,
+      from,
+      to,
+      time,
+    );
+    return PlayerErrors.values[e];
   }
 
   // ///////////////////////////////////////
@@ -489,10 +590,13 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   // ///////////////////////////////////////
 
   @override
-  ({PlayerErrors error, int index}) isFilterActive(FilterType filterType) {
+  ({PlayerErrors error, int index}) isFilterActive(
+    FilterType filterType, {
+    SoundHash soundHash = const SoundHash.invalid(),
+  }) {
     // ignore: omit_local_variable_types
     final idPtr = wasmMalloc(4); // 4 bytes for an int
-    final e = wasmIsFilterActive(filterType.index, idPtr);
+    final e = wasmIsFilterActive(soundHash.hash, filterType.index, idPtr);
     final index = wasmGetI32Value(idPtr, 'i32');
     final ret = (error: PlayerErrors.values[e], index: index);
     wasmFree(idPtr);
@@ -526,24 +630,55 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }
 
   @override
-  PlayerErrors addGlobalFilter(FilterType filterType) {
-    final e = wasmAddGlobalFilter(filterType.index);
+  PlayerErrors addFilter(
+    FilterType filterType, {
+    SoundHash soundHash = const SoundHash.invalid(),
+  }) {
+    final e = wasmAddFilter(soundHash.hash, filterType.index);
     return PlayerErrors.values[e];
   }
 
   @override
-  int removeGlobalFilter(FilterType filterType) {
-    return wasmRemoveGlobalFilter(filterType.index);
+  PlayerErrors removeFilter(
+    FilterType filterType, {
+    SoundHash soundHash = const SoundHash.invalid(),
+  }) {
+    final e = wasmRemoveFilter(soundHash.hash, filterType.index);
+    return PlayerErrors.values[e];
   }
 
   @override
-  int setFilterParams(FilterType filterType, int attributeId, double value) {
-    return wasmSetFxParams(filterType.index, attributeId, value);
+  PlayerErrors setFilterParams(
+    FilterType filterType,
+    int attributeId,
+    double value, {
+    SoundHandle handle = const SoundHandle(0),
+  }) {
+    final e = wasmSetFilterParams(
+      handle.id,
+      filterType.index,
+      attributeId,
+      value,
+    );
+    return PlayerErrors.values[e];
   }
 
   @override
-  double getFilterParams(FilterType filterType, int attributeId) {
-    return wasmGetFxParams(filterType.index, attributeId);
+  ({PlayerErrors error, double value}) getFilterParams(
+    FilterType filterType,
+    int attributeId, {
+    SoundHandle handle = const SoundHandle(0),
+  }) {
+    final paramValuePtr = wasmMalloc(4);
+    final error = wasmGetFilterParams(
+      handle.id,
+      filterType.index,
+      attributeId,
+      paramValuePtr,
+    );
+    final ret = wasmGetF32Value(paramValuePtr, 'float');
+    wasmFree(paramValuePtr);
+    return (error: PlayerErrors.values[error], value: ret);
   }
 
   // //////////////////////////////////////

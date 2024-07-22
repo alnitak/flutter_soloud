@@ -11,12 +11,6 @@ enum TestStatus {
   failed,
 }
 
-typedef TestFunction = ({
-  String name,
-  Future<StringBuffer> Function() callback,
-  TestStatus status,
-});
-
 /// A GUI for tests.
 ///
 /// Run this with `flutter run tests/tests.dart`.
@@ -39,6 +33,18 @@ void main() {
   );
 }
 
+class _Test {
+  _Test({
+    required this.name,
+    required this.callback,
+    // ignore: unused_element
+    this.status = TestStatus.none,
+  });
+  final String name;
+  final Future<StringBuffer> Function() callback;
+  TestStatus status;
+}
+
 class MyHomePage extends StatefulWidget {
   const MyHomePage({super.key});
 
@@ -48,7 +54,7 @@ class MyHomePage extends StatefulWidget {
 
 class _MyHomePageState extends State<MyHomePage> {
   final output = StringBuffer();
-  final List<TestFunction> tests = [];
+  final List<_Test> tests = [];
   final textEditingController = TextEditingController();
 
   @override
@@ -57,51 +63,21 @@ class _MyHomePageState extends State<MyHomePage> {
 
     /// Add all testing functions.
     tests.addAll([
-      (
-        name: 'testProtectVoice',
-        status: TestStatus.none,
-        callback: testProtectVoice,
-      ),
-      (
+      _Test(name: 'testProtectVoice', callback: testProtectVoice),
+      _Test(
         name: 'testAllInstancesFinished',
-        status: TestStatus.none,
         callback: testAllInstancesFinished,
       ),
-      (
-        name: 'testCreateNotes',
-        status: TestStatus.none,
-        callback: testCreateNotes,
-      ),
-      (
-        name: 'testPlaySeekPause',
-        status: TestStatus.none,
-        callback: testPlaySeekPause,
-      ),
-      (
-        name: 'testPan',
-        status: TestStatus.none,
-        callback: testPan,
-      ),
-      (
-        name: 'testHandles',
-        status: TestStatus.none,
-        callback: testHandles,
-      ),
-      (
-        name: 'loopingTests',
-        status: TestStatus.none,
-        callback: loopingTests,
-      ),
-      (
-        name: 'testSynchronousDeinit',
-        status: TestStatus.none,
-        callback: testSynchronousDeinit,
-      ),
-      (
-        name: 'testAsynchronousDeinit',
-        status: TestStatus.none,
-        callback: testAsynchronousDeinit,
-      ),
+      _Test(name: 'testCreateNotes', callback: testCreateNotes),
+      _Test(name: 'testPlaySeekPause', callback: testPlaySeekPause),
+      _Test(name: 'testPan', callback: testPan),
+      _Test(name: 'testHandles', callback: testHandles),
+      _Test(name: 'loopingTests', callback: loopingTests),
+      _Test(name: 'testSynchronousDeinit', callback: testSynchronousDeinit),
+      _Test(name: 'testAsynchronousDeinit', callback: testAsynchronousDeinit),
+      _Test(name: 'testVoiceGroups', callback: testVoiceGroups),
+      _Test(name: 'testSoundFilters', callback: testSoundFilters),
+      _Test(name: 'testGlobalFilters', callback: testGlobalFilters),
     ]);
   }
 
@@ -187,16 +163,13 @@ class _MyHomePageState extends State<MyHomePage> {
           ..write(await tests[index].callback())
           ..write('===== PASSED! =====\n\n')
           ..writeln();
-        tests[index] = (
-          name: tests[index].name,
-          status: TestStatus.passed,
-          callback: tests[index].callback,
-        );
+        tests[index].status = TestStatus.passed;
         textEditingController.text = output.toString();
         debugPrint(output.toString());
         if (context.mounted) setState(() {});
       },
       (error, stack) {
+        deinit();
         // if (error is SoLoudInitializationStoppedByDeinitException) {
         //   // This is to be expected in this test.
         //   return;
@@ -209,11 +182,7 @@ class _MyHomePageState extends State<MyHomePage> {
           ..writeln()
           ..writeln();
         // ignore: parameter_assignments
-        tests[index] = (
-          name: tests[index].name,
-          status: TestStatus.failed,
-          callback: tests[index].callback,
-        );
+        tests[index].status = TestStatus.failed;
         textEditingController.text = output.toString();
         debugPrint(output.toString());
         if (context.mounted) setState(() {});
@@ -311,7 +280,7 @@ Future<StringBuffer> testProtectVoice() async {
 
 /// Test allInstancesFinished stream
 Future<StringBuffer> testAllInstancesFinished() async {
-  final ret = StringBuffer();
+  final strBuf = StringBuffer();
   await initialize();
 
   await SoLoud.instance.disposeAllSources();
@@ -330,14 +299,14 @@ Future<StringBuffer> testAllInstancesFinished() async {
   var songDisposed = false;
   unawaited(
     explosion.allInstancesFinished.first.then((_) async {
-      ret.write('All instances of explosion finished.\n');
+      strBuf.write('All instances of explosion finished.\n');
       await SoLoud.instance.disposeSource(explosion);
       explosionDisposed = true;
     }),
   );
   unawaited(
     song.allInstancesFinished.first.then((_) async {
-      ret.write('All instances of song finished.\n');
+      strBuf.write('All instances of song finished.\n');
       await SoLoud.instance.disposeSource(song);
       songDisposed = true;
     }),
@@ -359,7 +328,7 @@ Future<StringBuffer> testAllInstancesFinished() async {
 
   deinit();
 
-  return ret;
+  return strBuf;
 }
 
 /// Test waveform
@@ -675,4 +644,187 @@ Future<StringBuffer> testSynchronousDeinit() async {
   SoLoud.instance.deinit();
 
   return StringBuffer();
+}
+
+/// Test voice groups.
+Future<StringBuffer> testVoiceGroups() async {
+  await initialize();
+
+  final currentSound =
+      await SoLoud.instance.loadAsset('assets/audio/explosion.mp3');
+
+  /// Start playing sounds in pause state to get their handles.
+  final h1 = await SoLoud.instance.play(currentSound, paused: true);
+  final h2 = await SoLoud.instance.play(currentSound, paused: true);
+  final h3 = await SoLoud.instance.play(currentSound, paused: true);
+  final h4 = await SoLoud.instance.play(currentSound, paused: true);
+
+  final group = SoLoud.instance.createVoiceGroup();
+  assert(!group.isError, 'Failed to create voice group!');
+
+  var isValid = SoLoud.instance.isVoiceGroup(group);
+  assert(isValid, 'Voice group created but it is not valid!');
+
+  var isEmpty = SoLoud.instance.isVoiceGroupEmpty(group);
+  assert(isEmpty, 'Voice group just created but it is not empty!');
+
+  /// Add all voices to the group.
+  SoLoud.instance.addVoicesToGroup(group, [h1, h2, h3, h4]);
+  isEmpty = SoLoud.instance.isVoiceGroupEmpty(group);
+  assert(!isEmpty, 'Voices added to the group, but the group is empty!');
+
+  /// Start playing the voices in the group.
+  SoLoud.instance.setPause(group, false);
+
+  await delay(4000);
+
+  /// Check if group is empty after playing voices.
+  isEmpty = SoLoud.instance.isVoiceGroupEmpty(group);
+  assert(
+    isEmpty,
+    'Voices added and finished to play, but the group is not empty!',
+  );
+
+  /// Destroy the group
+  SoLoud.instance.destroyVoiceGroup(group);
+  isValid = SoLoud.instance.isVoiceGroup(group);
+  assert(!isValid, 'Voice group destroy failed!');
+
+  deinit();
+  return StringBuffer();
+}
+
+/// Test sound filters.
+Future<StringBuffer> testSoundFilters() async {
+  final strBuf = StringBuffer();
+  await initialize();
+
+  final sound = await SoLoud.instance.loadAsset(
+    'assets/audio/8_bit_mentality.mp3',
+    // mode: LoadMode.disk,
+  );
+
+  /// Add filter to the sound.
+  sound.addFilter(FilterType.echoFilter);
+
+  /// Set a handle filter. It must be set before it starts playing.
+  final h1 = await SoLoud.instance.play(sound);
+
+  /// Use the `Wet` attribute index.
+  const attributeId = 0;
+  const value = 1.2;
+  sound.setFilterParameter(
+    h1,
+    FilterType.echoFilter,
+    attributeId,
+    value,
+  );
+  final g = sound.getFilterParameter(h1, FilterType.echoFilter, attributeId);
+  assert(
+    closeTo(g, value, 0.001),
+    'Setting attribute to $value but obtained $g',
+  );
+
+  sound.oscillateFilterParameter(
+    h1,
+    FilterType.echoFilter,
+    attributeId,
+    0.01,
+    2,
+    const Duration(seconds: 2),
+  );
+
+  assert(
+    sound.isFilterActive(FilterType.echoFilter) >= 0,
+    'The filter is not active!',
+  );
+
+  await delay(6000);
+
+  /// Remove the filter
+  try {
+    sound.removeFilter(FilterType.echoFilter);
+  } on Exception catch (e) {
+    strBuf
+      ..write(e)
+      ..writeln();
+  }
+  assert(
+    sound.isFilterActive(FilterType.echoFilter) < 0,
+    'The filter is still active after removing it!',
+  );
+
+  deinit();
+  return strBuf;
+}
+
+/// Test global filters.
+Future<StringBuffer> testGlobalFilters() async {
+  final strBuf = StringBuffer();
+  await initialize();
+
+  late final AudioSource sound;
+  try {
+    sound = await SoLoud.instance.loadAsset(
+      'assets/audio/8_bit_mentality.mp3',
+      mode: LoadMode.disk,
+    );
+  } on Exception catch (e) {
+    strBuf
+      ..write(e)
+      ..writeln();
+  }
+
+  /// Add filter to the sound.
+  SoLoud.instance.addGlobalFilter(FilterType.echoFilter);
+
+  await SoLoud.instance.play(sound);
+
+  /// Use the `Wet` attribute index.
+  const attributeId = 0;
+  const value = 1.2;
+  SoLoud.instance.setGlobalFilterParameter(
+    FilterType.echoFilter,
+    attributeId,
+    value,
+  );
+  final g = SoLoud.instance.getGlobalFilterParameter(
+    FilterType.echoFilter,
+    attributeId,
+  );
+  assert(
+    closeTo(g, value, 0.001),
+    'Setting attribute to $value but optained $g',
+  );
+
+  SoLoud.instance.oscillateGlobalFilterParameter(
+    FilterType.echoFilter,
+    attributeId,
+    0.01,
+    2,
+    const Duration(seconds: 2),
+  );
+
+  assert(
+    SoLoud.instance.isFilterActive(FilterType.echoFilter) >= 0,
+    'The filter is not active!',
+  );
+
+  await delay(6000);
+
+  /// Remove the filter
+  try {
+    SoLoud.instance.removeGlobalFilter(FilterType.echoFilter);
+  } on Exception catch (e) {
+    strBuf
+      ..write(e)
+      ..writeln();
+  }
+  assert(
+    SoLoud.instance.isFilterActive(FilterType.echoFilter) < 0,
+    'The filter is still active after removing it!',
+  );
+
+  deinit();
+  return strBuf;
 }
