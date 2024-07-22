@@ -37,8 +37,6 @@ em++ \
 ../../src/bindings.cpp \
 ../../src/player.cpp \
 ../../src/analyzer.cpp \
-../../src/bindings_capture.cpp \
-../../src/capture.cpp \
 ../../src/synth/basic_wave.cpp \
 ../../src/filters/filters.cpp \
 -O3 -D WITH_MINIAUDIO \

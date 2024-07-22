@@ -17,15 +17,11 @@ class VisualizerController extends ChangeNotifier {
   VisualizerController({
     this.isVisualizerEnabled = true,
     this.isVisualizerForPlayer = true,
-    this.isCaptureStarted = false,
     this.samplesKind = GetSamplesKind.texture,
   })  : maxRangeLimit = samplesKind == GetSamplesKind.texture ? 511 : 255,
         maxRange = samplesKind == GetSamplesKind.texture ? 511 : 255,
         minRange = 0 {
-    audioData = AudioData(
-      isVisualizerForPlayer ? GetSamplesFrom.player : GetSamplesFrom.microphone,
-      samplesKind,
-    );
+    audioData = AudioData(samplesKind);
   }
 
   int maxRangeLimit;
@@ -33,7 +29,6 @@ class VisualizerController extends ChangeNotifier {
   int maxRange;
   bool isVisualizerEnabled;
   bool isVisualizerForPlayer;
-  bool isCaptureStarted;
   GetSamplesKind samplesKind;
   late AudioData audioData;
 
@@ -55,10 +50,7 @@ class VisualizerController extends ChangeNotifier {
   void changeIsVisualizerForPlayer(bool isForPlayer) {
     isVisualizerForPlayer = isForPlayer;
     audioData.dispose();
-    audioData = AudioData(
-      isVisualizerForPlayer ? GetSamplesFrom.player : GetSamplesFrom.microphone,
-      samplesKind,
-    );
+    audioData = AudioData(samplesKind);
     notifyListeners();
   }
 
@@ -66,11 +58,6 @@ class VisualizerController extends ChangeNotifier {
     isVisualizerEnabled = enable;
     notifyListeners();
     SoLoud.instance.setVisualizationEnabled(enable);
-  }
-
-  void changeIsCaptureStarted(bool enabled) {
-    isCaptureStarted = enabled;
-    notifyListeners();
   }
 
   void changeSamplesKind(GetSamplesKind kind) {
@@ -89,10 +76,7 @@ class VisualizerController extends ChangeNotifier {
         changeMax(255, notify: false);
         maxRangeLimit = 255;
     }
-    audioData.changeType(
-      isVisualizerForPlayer ? GetSamplesFrom.player : GetSamplesFrom.microphone,
-      samplesKind,
-    );
+    audioData.changeSamplesKind(samplesKind);
     notifyListeners();
   }
 }
@@ -129,9 +113,6 @@ class _VisualizerState extends State<Visualizer> with TickerProviderStateMixin {
     sw.start();
     setupBitmapSize();
     ticker.start();
-
-    widget.controller.isCaptureStarted =
-        SoLoudCapture.instance.isCaptureStarted();
 
     widget.controller.addListener(() {
       ticker
@@ -388,8 +369,7 @@ class _VisualizerState extends State<Visualizer> with TickerProviderStateMixin {
       return null;
     }
     if (!(widget.controller.isVisualizerEnabled &&
-            SoLoud.instance.getVoiceCount() > 0) &&
-        !widget.controller.isCaptureStarted) {
+        SoLoud.instance.getVoiceCount() > 0)) {
       return null;
     }
 
@@ -423,8 +403,7 @@ class _VisualizerState extends State<Visualizer> with TickerProviderStateMixin {
       return null;
     }
     if (!(widget.controller.isVisualizerEnabled &&
-            SoLoud.instance.getVoiceCount() > 0) &&
-        !widget.controller.isCaptureStarted) {
+        SoLoud.instance.getVoiceCount() > 0)) {
       return null;
     }
 
@@ -461,8 +440,7 @@ class _VisualizerState extends State<Visualizer> with TickerProviderStateMixin {
       return null;
     }
     if (!(widget.controller.isVisualizerEnabled &&
-            SoLoud.instance.getVoiceCount() > 0) &&
-        !widget.controller.isCaptureStarted) {
+        SoLoud.instance.getVoiceCount() > 0)) {
       return null;
     }
 

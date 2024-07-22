@@ -103,8 +103,6 @@
 #include "bindings.cpp"
 #include "player.cpp"
 #include "analyzer.cpp"
-#include "capture.cpp"
-#include "bindings_capture.cpp"
 #include "synth/basic_wave.cpp"
 #include "filters/filters.cpp"
 

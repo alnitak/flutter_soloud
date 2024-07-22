@@ -4,7 +4,6 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
-import 'package:flutter_soloud_example/controls.dart';
 import 'package:flutter_soloud_example/visualizer/visualizer.dart';
 import 'package:logging/logging.dart';
 import 'package:star_menu/star_menu.dart';
@@ -39,7 +38,6 @@ class _PageVisualizerState extends State<PageVisualizer> {
   ];
   late final ValueNotifier<GetSamplesKind> samplesKind;
   final ValueNotifier<double> fftSmoothing = ValueNotifier(0.8);
-  final ValueNotifier<bool> isVisualizerForPlayer = ValueNotifier(true);
   final ValueNotifier<bool> isVisualizerEnabled = ValueNotifier(true);
   late ValueNotifier<RangeValues> fftImageRange;
   final ValueNotifier<double> soundLength = ValueNotifier(0);
@@ -73,24 +71,6 @@ class _PageVisualizerState extends State<PageVisualizer> {
       body: SingleChildScrollView(
         child: Column(
           children: [
-            Controls(
-              onCaptureToggle: (deviceID) {
-                if (SoLoudCapture.instance.isCaptureStarted()) {
-                  SoLoudCapture.instance.stopCapture();
-                  visualizerController.changeIsCaptureStarted(false);
-                } else {
-                  SoLoudCapture.instance.init(deviceID: deviceID);
-                  SoLoudCapture.instance.startCapture();
-                  visualizerController.changeIsCaptureStarted(true);
-                }
-              },
-              onDeviceIdChanged: (deviceID) {
-                SoLoudCapture.instance.stopCapture();
-                SoLoudCapture.instance.init(deviceID: deviceID);
-                SoLoudCapture.instance.startCapture();
-              },
-            ),
-
             /// audio, shader and texture kind popup menu
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -390,44 +370,11 @@ class _PageVisualizerState extends State<PageVisualizer> {
                       child: Slider.adaptive(
                         value: smoothing,
                         onChanged: (smooth) {
-                          if (isVisualizerForPlayer.value) {
-                            SoLoud.instance.setFftSmoothing(smooth);
-                          } else {
-                            SoLoudCapture.instance
-                                .setCaptureFftSmoothing(smooth);
-                          }
+                          SoLoud.instance.setFftSmoothing(smooth);
                           fftSmoothing.value = smooth;
                         },
                       ),
                     ),
-                  ],
-                );
-              },
-            ),
-
-            /// switch for getting data from player or from mic
-            ValueListenableBuilder<bool>(
-              valueListenable: isVisualizerForPlayer,
-              builder: (_, forPlayer, __) {
-                return Row(
-                  children: [
-                    Checkbox(
-                      value: !forPlayer,
-                      onChanged: (value) {
-                        isVisualizerForPlayer.value = !value!;
-                        visualizerController
-                            .changeIsVisualizerForPlayer(!value);
-                      },
-                    ),
-                    const Text('show mic data'),
-                    Checkbox(
-                      value: forPlayer,
-                      onChanged: (value) {
-                        isVisualizerForPlayer.value = value!;
-                        visualizerController.changeIsVisualizerForPlayer(value);
-                      },
-                    ),
-                    const Text('show player data'),
                   ],
                 );
               },

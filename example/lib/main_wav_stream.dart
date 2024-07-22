@@ -111,7 +111,6 @@ class _MyHomePageState extends State<MyHomePage> {
 
   Future<void> stop() async {
     SoLoud.instance.deinit();
-    SoLoudCapture.instance.stopCapture();
     sounds.clear();
   }
 

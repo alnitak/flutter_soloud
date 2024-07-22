@@ -1,58 +1,5 @@
 import 'package:meta/meta.dart';
 
-/// CaptureDevice exposed to Dart
-final class CaptureDevice {
-  /// Constructs a new [CaptureDevice].
-  // ignore: avoid_positional_boolean_parameters
-  const CaptureDevice(this.name, this.isDefault);
-
-  /// The name of the device.
-  final String name;
-
-  /// Whether this is the default capture device.
-  final bool isDefault;
-}
-
-/// Possible capture errors
-enum CaptureErrors {
-  /// No error
-  captureNoError,
-
-  /// Capture failed to initialize
-  captureInitFailed,
-
-  /// Capture not yet initialized
-  captureNotInited,
-
-  /// null pointer. Could happens when passing a non initialized
-  /// pointer (with calloc()) to retrieve FFT or wave data
-  failedToStartDevice,
-
-  /// null pointer. Could happens when passing a non initialized
-  /// pointer (with calloc()) to retrieve FFT or wave data
-  nullPointer;
-
-  /// Returns a human-friendly sentence describing the error.
-  String get _asSentence {
-    switch (this) {
-      case CaptureErrors.captureNoError:
-        return 'No error';
-      case CaptureErrors.captureInitFailed:
-        return 'Capture failed to initialize';
-      case CaptureErrors.captureNotInited:
-        return 'Capture not yet initialized';
-      case CaptureErrors.failedToStartDevice:
-        return 'Failed to start capture device.';
-      case CaptureErrors.nullPointer:
-        return 'Capture null pointer error. Could happens when passing a non '
-            'initialized pointer (with calloc()) to retrieve FFT or wave data.';
-    }
-  }
-
-  @override
-  String toString() => 'CaptureErrors.$name ($_asSentence)';
-}
-
 /// Possible player errors.
 /// New values must be enumerated at the bottom
 ///

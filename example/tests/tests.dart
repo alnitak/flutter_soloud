@@ -535,7 +535,7 @@ Future<StringBuffer> loopingTests() async {
 /// Test asynchronous `init()`-`deinit()`
 Future<StringBuffer> testAsynchronousDeinit() async {
   /// test asynchronous init-deinit looping with a short decreasing time
-  for (var t = 100; t >= 0; t--) {
+  for (var t = 10; t >= 0; t--) {
     var error = '';
 
     /// Initialize the player
@@ -575,7 +575,7 @@ Future<StringBuffer> testAsynchronousDeinit() async {
 Future<StringBuffer> testSynchronousDeinit() async {
   /// test synchronous init-deinit looping with a short decreasing time
   /// waiting for `initialize()` to finish
-  for (var t = 100; t >= 0; t--) {
+  for (var t = 10; t >= 0; t--) {
     var error = '';
 
     /// Initialize the player

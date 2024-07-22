@@ -17,7 +17,6 @@ class Bars extends StatefulWidget {
 class BarsState extends State<Bars> with SingleTickerProviderStateMixin {
   late final Ticker ticker;
   final AudioData audioData = AudioData(
-    GetSamplesFrom.player,
     GetSamplesKind.linear,
   );
   @override

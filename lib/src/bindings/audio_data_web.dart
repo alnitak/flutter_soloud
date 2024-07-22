@@ -4,7 +4,6 @@ import 'package:flutter_soloud/src/bindings/audio_data.dart';
 import 'package:flutter_soloud/src/bindings/audio_data_extensions.dart';
 import 'package:flutter_soloud/src/bindings/js_extension.dart';
 import 'package:flutter_soloud/src/bindings/soloud_controller.dart';
-import 'package:flutter_soloud/src/enums.dart';
 
 class AudioDataCtrl {
   late final int _samplesPtr;
@@ -18,15 +17,6 @@ class AudioDataCtrl {
 
   final void Function(AudioData) textureCallback =
       SoLoudController().soLoudFFI.getAudioTexture;
-
-  final void Function(AudioData) captureWaveCallback =
-      SoLoudController().captureFFI.getCaptureWave;
-
-  final CaptureErrors Function(AudioData) captureTexture2DCallback =
-      SoLoudController().captureFFI.getCaptureAudioTexture2D;
-
-  final void Function(AudioData) captureAudioTextureCallback =
-      SoLoudController().captureFFI.getCaptureAudioTexture;
 
   void allocSamples() {
     /// This is the max amount of memory [_samplePtr] may need. This number
@@ -61,18 +51,11 @@ class AudioDataCtrl {
   }
 
   double getTexture(
-    GetSamplesFrom getSamplesFrom,
     SampleRow row,
     SampleColumn column,
   ) {
     // final offset = samplesPtr + ((row.value * 256 + column.value) * 4);
     // final data = wasmGetF32Value(offset, 'float');
-    final double data;
-    if (getSamplesFrom == GetSamplesFrom.player) {
-      data = wasmGetTextureValue(row.value, column.value);
-    } else {
-      data = wasmGetCaptureTextureValue(row.value, column.value);
-    }
-    return data;
+    return wasmGetTextureValue(row.value, column.value);
   }
 }
