@@ -145,7 +145,7 @@ float PitchShift::getParamMin(unsigned int aParamIndex)
     case WET:
         return 0.f;
     case SHIFT:
-        return 0.f;
+        return 0.1f;
     case SEMITONES:
         return -48.f;
     }

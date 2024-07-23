@@ -42,8 +42,10 @@ typedef enum PlayerErrors
     filterAlreadyAdded = 15,
     /// Player already inited.
     playerAlreadyInited = 16,
-    /// Audio handle is not found
+    /// Audio handle is not found.
     soundHandleNotFound = 17,
+    /// Error getting filter parameter.
+    filterParameterGetError = 18
 } PlayerErrors_t;
 
 /// Possible capture errors
