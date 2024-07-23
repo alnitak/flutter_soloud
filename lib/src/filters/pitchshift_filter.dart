@@ -30,14 +30,14 @@ abstract class PitchShiftInternal {
   const PitchShiftInternal(SoundHash? soundHash) : _soundHash = soundHash;
 
   final SoundHash? _soundHash;
-  FilterType get type => FilterType.pitchShiftFilter;
+  FilterType get filterType => FilterType.pitchShiftFilter;
   PitchShiftEnum get queryWet => PitchShiftEnum.wet;
   PitchShiftEnum get queryShift => PitchShiftEnum.shift;
   PitchShiftEnum get querySemitones => PitchShiftEnum.semitones;
 
-  void activate() => type.activate(_soundHash);
+  void activate() => filterType.activate(_soundHash);
 
-  void deactivate() => type.deactivate(_soundHash);
+  void deactivate() => filterType.deactivate(_soundHash);
 }
 
 class PitchShiftSingle extends PitchShiftInternal {
@@ -45,7 +45,7 @@ class PitchShiftSingle extends PitchShiftInternal {
 
   FilterParam wet({SoundHandle? soundHandle}) => FilterParam(
         soundHandle,
-        type,
+        filterType,
         PitchShiftEnum.wet.index,
         PitchShiftEnum.wet.min,
         PitchShiftEnum.wet.max,
@@ -53,7 +53,7 @@ class PitchShiftSingle extends PitchShiftInternal {
 
   FilterParam shift({SoundHandle? soundHandle}) => FilterParam(
         soundHandle,
-        type,
+        filterType,
         PitchShiftEnum.shift.index,
         PitchShiftEnum.shift.min,
         PitchShiftEnum.shift.max,
@@ -61,7 +61,7 @@ class PitchShiftSingle extends PitchShiftInternal {
 
   FilterParam semitones({SoundHandle? soundHandle}) => FilterParam(
         soundHandle,
-        type,
+        filterType,
         PitchShiftEnum.semitones.index,
         PitchShiftEnum.semitones.min,
         PitchShiftEnum.semitones.max,
@@ -73,7 +73,7 @@ class PitchShiftGlobal extends PitchShiftInternal {
 
   FilterParam get wet => FilterParam(
         null,
-        type,
+        filterType,
         PitchShiftEnum.wet.index,
         PitchShiftEnum.wet.min,
         PitchShiftEnum.wet.max,
@@ -81,7 +81,7 @@ class PitchShiftGlobal extends PitchShiftInternal {
 
   FilterParam get shift => FilterParam(
         null,
-        type,
+        filterType,
         PitchShiftEnum.shift.index,
         PitchShiftEnum.shift.min,
         PitchShiftEnum.shift.max,
@@ -89,7 +89,7 @@ class PitchShiftGlobal extends PitchShiftInternal {
 
   FilterParam get semitones => FilterParam(
         null,
-        type,
+        filterType,
         PitchShiftEnum.semitones.index,
         PitchShiftEnum.semitones.min,
         PitchShiftEnum.semitones.max,

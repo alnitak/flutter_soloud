@@ -161,7 +161,7 @@ class _PitchShiftState extends State<PitchShift> {
                                 shift.value = value;
                                 sound!.filters.pitchShiftFilter
                                     .shift(soundHandle: soundHandle)
-                                    .value = s;
+                                    .value = value;
 
                                 /// Changing the shift value also changes the
                                 /// semitones. Update the semitones slider.
@@ -199,7 +199,7 @@ class _PitchShiftState extends State<PitchShift> {
                                 semitones.value = value.toInt();
                                 sound!.filters.pitchShiftFilter
                                     .semitones(soundHandle: soundHandle)
-                                    .value = s.toDouble();
+                                    .value = semitones.value.toDouble();
 
                                 /// Changing the semitones value also the shift
                                 /// changes. Update the shift slider.
