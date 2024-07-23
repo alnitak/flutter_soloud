@@ -6,6 +6,7 @@ import 'package:flutter_soloud/src/bindings/soloud_controller.dart';
 import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/exceptions/exceptions.dart';
 import 'package:flutter_soloud/src/filter_params.dart';
+import 'package:flutter_soloud/src/filters/filters.dart';
 import 'package:flutter_soloud/src/soloud.dart';
 import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
@@ -121,6 +122,61 @@ class AudioSource {
   @experimental
   Stream<void> get allInstancesFinished =>
       allInstancesFinishedController.stream;
+
+  /// This can be used to access all the available filter functionalities
+  /// for this [AudioSource].
+  ///
+  /// **IMPORTANT**: the filter must be added before playing. Only voice handles
+  /// played after adding a filter will play with the filter chosen:
+  ///
+  /// ```dart
+  /// AudioSource sound = await SoLoud.instance.loadAsset(...);
+  /// /// activate the filter.
+  /// sound.filters.pitchShiftFilter.activate();
+  /// /// start playing it.
+  /// soundHandle = await SoLoud.instance.play(sound, looping: true);
+  /// /// deactivate it.
+  /// sound.filters.pitchShiftFilter.deactivate();
+  /// ```
+  ///
+  /// It's possible to get and set filter parameters:
+  /// ```dart
+  /// /// Set
+  /// sound.filters.pitchShiftFilter.wet(soundHandle: soundHandle).value = 0.6;
+  /// /// Get
+  /// final wetValue = sound.filters.pitchShiftFilter.wet(
+  ///   soundHandle: soundHandle,
+  /// ).value;
+  /// ```
+  /// or fade/oscillate a parameter:
+  /// ```dart
+  /// /// Fade
+  /// sound.filters.pitchShiftFilter.shift(soundHandle: soundHandle)
+  ///     .fadeFilterParameter(
+  ///       to: 3,
+  ///       time: const Duration(milliseconds: 2500),
+  ///     );
+  /// /// Oscillate
+  /// sound.filters.pitchShiftFilter.shift(soundHandle: soundHandle)
+  ///     .oscillateFilterParameter(
+  ///       from: 0.4,
+  ///       to: 1.8,
+  ///       time: const Duration(milliseconds: 2500),
+  ///     );
+  /// ```
+  ///
+  /// It's possible to query filter parameters:
+  /// ```dart
+  /// final shiftParams = sound.filters.pitchShiftFilter.shiftParam;
+  /// ```
+  ///
+  /// Now with "shiftParams" you have access to:
+  /// - `toString()` gives the "human readable" parameter name.
+  /// - `min` which represent the "shift" minimum accepted value.
+  /// - `max` which represent the "shift" maximum accepted value.
+  /// - `def` which represent the "shift" default value.
+  ///
+  late final filters = FiltersSingle(soundHash: soundHash);
 
   // ///////////////////////////////////////
   // / Filters for this [soundHash]

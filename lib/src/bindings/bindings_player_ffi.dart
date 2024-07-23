@@ -12,6 +12,7 @@ import 'package:flutter_soloud/src/bindings/audio_data.dart';
 import 'package:flutter_soloud/src/bindings/bindings_player.dart';
 import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/filter_params.dart';
+import 'package:flutter_soloud/src/filters/filters.dart';
 import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
 import 'package:logging/logging.dart';
@@ -1058,10 +1059,10 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     int attributeId,
     double to,
     double time, {
-    SoundHandle handle = const SoundHandle(0),
+    SoundHandle? handle,
   }) {
     final e = _fadeFilterParameter(
-      handle.id,
+      handle?.id ?? 0,
       filterType.index,
       attributeId,
       to,
@@ -1084,10 +1085,10 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     double from,
     double to,
     double time, {
-    SoundHandle handle = const SoundHandle(0),
+    SoundHandle? handle,
   }) {
     final e = _oscillateFilterParameter(
-      handle.id,
+      handle?.id ?? 0,
       filterType.index,
       attributeId,
       from,

@@ -6,6 +6,7 @@ import 'package:flutter_soloud/src/bindings/bindings_player.dart';
 import 'package:flutter_soloud/src/bindings/js_extension.dart';
 import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/filter_params.dart';
+import 'package:flutter_soloud/src/filters/filters.dart';
 import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
 import 'package:flutter_soloud/src/worker/worker.dart';
@@ -553,10 +554,10 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     int attributeId,
     double to,
     double time, {
-    SoundHandle handle = const SoundHandle.error(),
+    SoundHandle? handle,
   }) {
     final e = wasmFadeFilterParameter(
-      handle.isError ? 0 : handle.id,
+      handle?.id ?? 0,
       filterType.index,
       attributeId,
       to,
@@ -572,10 +573,10 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     double from,
     double to,
     double time, {
-    SoundHandle handle = const SoundHandle.error(),
+    SoundHandle? handle,
   }) {
     final e = wasmOscillateFilterParameter(
-      handle.isError ? 0 : handle.id,
+      handle?.id ?? 0,
       filterType.index,
       attributeId,
       from,

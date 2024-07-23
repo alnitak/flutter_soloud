@@ -11,6 +11,7 @@ import 'package:flutter_soloud/src/bindings/soloud_controller.dart';
 import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/exceptions/exceptions.dart';
 import 'package:flutter_soloud/src/filter_params.dart';
+import 'package:flutter_soloud/src/filters/filters.dart';
 import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
 import 'package:flutter_soloud/src/utils/loader.dart';
@@ -29,7 +30,58 @@ interface class SoLoud {
 
   static final Logger _log = Logger('flutter_soloud.SoLoud');
 
+  /// The controller.
   final _controller = SoLoudController();
+
+  /// This can be used to access all the available filter functionalities
+  /// for the player output (formerly called global filters).
+  ///
+  /// ```dart
+  /// await SoLoud.instance.init();
+  /// ...
+  /// /// activate the filter.
+  /// SoLoud.instance.filters.echoFilter.activate();
+  /// 
+  /// /// Later on, deactivate it.
+  /// SoLoud.instance.filters.echoFilter.deactivate();
+  /// ```
+  ///
+  /// It's possible to get and set filter parameters:
+  /// ```dart
+  /// /// Set
+  /// SoLoud.instance.filters.echoFilter.delay.value = 0.6;
+  /// /// Get
+  /// final wetValue = SoLoud.instance.filters.echoFilter.delay.value;
+  /// ```
+  /// or fade/oscillate a parameter:
+  /// ```dart
+  /// /// Fade
+  /// SoLoud.instance.filters.echoFilter.delay
+  ///     .fadeFilterParameter(
+  ///       to: 3,
+  ///       time: const Duration(milliseconds: 2500),
+  ///     );
+  /// /// Oscillate
+  /// SoLoud.instance.filters.echoFilter.delay
+  ///     .oscillateFilterParameter(
+  ///       from: 0.4,
+  ///       to: 1.8,
+  ///       time: const Duration(milliseconds: 2500),
+  ///     );
+  /// ```
+  ///
+  /// It's possible to query filter parameters:
+  /// ```dart
+  /// final delayParams = SoLoud.instance.filters.echoFilter.delay;
+  /// ```
+  ///
+  /// Now with "delayParams" you have access to:
+  /// - `toString()` gives the "human readable" parameter name.
+  /// - `min` which represent the "shift" minimum accepted value.
+  /// - `max` which represent the "shift" maximum accepted value.
+  /// - `def` which represent the "shift" default value.
+  ///
+  late final filters = const FiltersGlobal();
 
   /// The singleton instance of [SoLoud]. Only one SoLoud instance
   /// can exist in C++ land, so – for consistency and to avoid confusion

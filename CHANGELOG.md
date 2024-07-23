@@ -1,4 +1,4 @@
-### 2.1.0
+### X.Y.Z
 - added `getPan()`, `setPan()` and `setPanAbsolute()`.
 - added support for the Web platform.
 - added `loadMem()` to read the give audio file bytes buffer (not RAW data). Useful for the Web platform.
