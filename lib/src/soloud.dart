@@ -72,7 +72,7 @@ interface class SoLoud {
   ///
   /// It's possible to query filter parameters:
   /// ```dart
-  /// final delayParams = SoLoud.instance.filters.echoFilter.delay;
+  /// final delayParams = SoLoud.instance.filters.echoFilter.queryDelay;
   /// ```
   ///
   /// Now with "delayParams" you have access to:

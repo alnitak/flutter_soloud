@@ -167,7 +167,7 @@ class AudioSource {
   ///
   /// It's possible to query filter parameters:
   /// ```dart
-  /// final shiftParams = sound.filters.pitchShiftFilter.shiftParam;
+  /// final shiftParams = sound.filters.pitchShiftFilter.queryShift;
   /// ```
   ///
   /// Now with "shiftParams" you have access to:

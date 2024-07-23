@@ -27,13 +27,13 @@ enum PitchShiftEnum {
 }
 
 abstract class PitchShiftInternal {
-  PitchShiftInternal(SoundHash? soundHash) : _soundHash = soundHash;
+  const PitchShiftInternal(SoundHash? soundHash) : _soundHash = soundHash;
 
   final SoundHash? _soundHash;
   FilterType get type => FilterType.pitchShiftFilter;
-  PitchShiftEnum get wetQuery => PitchShiftEnum.wet;
-  PitchShiftEnum get shiftQuery => PitchShiftEnum.shift;
-  PitchShiftEnum get semitonesQuery => PitchShiftEnum.semitones;
+  PitchShiftEnum get queryWet => PitchShiftEnum.wet;
+  PitchShiftEnum get queryShift => PitchShiftEnum.shift;
+  PitchShiftEnum get querySemitones => PitchShiftEnum.semitones;
 
   void activate() => type.activate(_soundHash);
 
@@ -69,7 +69,7 @@ class PitchShiftSingle extends PitchShiftInternal {
 }
 
 class PitchShiftGlobal extends PitchShiftInternal {
-  PitchShiftGlobal() : super(null);
+  const PitchShiftGlobal() : super(null);
 
   FilterParam get wet => FilterParam(
         null,
