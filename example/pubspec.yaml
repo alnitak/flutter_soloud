@@ -47,15 +47,3 @@ flutter:
 
   assets:
     - assets/audio/
-    - assets/audio/12Bands/
-
-  shaders:
-    - assets/shaders/test1.frag
-    - assets/shaders/test2.frag
-    - assets/shaders/test3.frag
-    - assets/shaders/test4.frag
-    - assets/shaders/test5.frag
-    - assets/shaders/test6.frag
-    - assets/shaders/test7.frag
-    - assets/shaders/test8.frag
-    - assets/shaders/test9.frag

@@ -65,10 +65,16 @@ class _PitchShiftState extends State<PitchShift> {
         sound = value;
 
         /// Add the filter to this sound handle before playing it.
-        sound!.addFilter(FilterType.pitchShiftFilter);
+        sound!.filters.pitchShiftFilter.activate();
 
         /// start playing.
         soundHandle = await SoLoud.instance.play(sound!, looping: true);
+
+        //************************* */
+        //************************* */
+        //************************* */
+        final wetParam =
+            SoLoud.instance.filters.pitchShiftFilter.wet.value;
       });
     } catch (e) {
       debugPrint(e.toString());
@@ -132,12 +138,9 @@ class _PitchShiftState extends State<PitchShift> {
                                   return;
                                 }
                                 wet.value = value;
-                                sound!.setFilterParameter(
-                                  soundHandle!,
-                                  FilterType.pitchShiftFilter,
-                                  PitchShiftFilter.wet.attributeId,
-                                  w,
-                                );
+                                sound!.filters.pitchShiftFilter
+                                    .wet(soundHandle: soundHandle)
+                                    .value = w;
                               },
                             ),
                           ),
@@ -162,21 +165,16 @@ class _PitchShiftState extends State<PitchShift> {
                                   return;
                                 }
                                 shift.value = value;
-                                sound!.setFilterParameter(
-                                  soundHandle!,
-                                  FilterType.pitchShiftFilter,
-                                  PitchShiftFilter.shift.attributeId,
-                                  s,
-                                );
+                                sound!.filters.pitchShiftFilter
+                                    .shift(soundHandle: soundHandle)
+                                    .value = s;
 
-                                /// Changing the shift value also the semitones
-                                /// changes. Update the semitones slider.
+                                /// Changing the shift value also changes the
+                                /// semitones. Update the semitones slider.
                                 semitones.value = sound!
-                                    .getFilterParameter(
-                                      soundHandle!,
-                                      FilterType.pitchShiftFilter,
-                                      PitchShiftFilter.semitones.attributeId,
-                                    )
+                                    .filters.pitchShiftFilter
+                                    .semitones(soundHandle: soundHandle)
+                                    .value
                                     .toInt()
                                     .clamp(-24, 24);
                               },
@@ -205,21 +203,15 @@ class _PitchShiftState extends State<PitchShift> {
                                   return;
                                 }
                                 semitones.value = value.toInt();
-                                sound!.setFilterParameter(
-                                  soundHandle!,
-                                  FilterType.pitchShiftFilter,
-                                  PitchShiftFilter.semitones.attributeId,
-                                  s.toDouble(),
-                                );
+                                sound!.filters.pitchShiftFilter
+                                    .semitones(soundHandle: soundHandle)
+                                    .value = s.toDouble();
 
                                 /// Changing the semitones value also the shift
                                 /// changes. Update the shift slider.
-                                shift.value = sound!
-                                    .getFilterParameter(
-                                      soundHandle!,
-                                      FilterType.pitchShiftFilter,
-                                      PitchShiftFilter.wet.attributeId,
-                                    )
+                                shift.value = sound!.filters.pitchShiftFilter
+                                    .shift(soundHandle: soundHandle)
+                                    .value
                                     .clamp(0, 3);
                               },
                             ),
@@ -233,14 +225,14 @@ class _PitchShiftState extends State<PitchShift> {
                   OutlinedButton(
                     onPressed: () {
                       if (soundHandle == null || sound == null) return;
-                      sound!.oscillateFilterParameter(
-                        soundHandle!,
-                        FilterType.pitchShiftFilter,
-                        PitchShiftFilter.shift.attributeId,
-                        0.4,
-                        1.6,
-                        const Duration(milliseconds: 1500),
-                      );
+
+                      sound!.filters.pitchShiftFilter
+                          .shift(soundHandle: soundHandle)
+                          .oscillateFilterParameter(
+                            from: 0.4,
+                            to: 1.6,
+                            time: const Duration(milliseconds: 1500),
+                          );
                     },
                     child: const Text('Oscillate shift'),
                   ),
@@ -248,22 +240,18 @@ class _PitchShiftState extends State<PitchShift> {
                   OutlinedButton(
                     onPressed: () {
                       if (soundHandle == null || sound == null) return;
-                      sound!.fadeFilterParameter(
-                        soundHandle!,
-                        FilterType.pitchShiftFilter,
-                        PitchShiftFilter.shift.attributeId,
-                        3,
-                        const Duration(milliseconds: 2500),
-                      );
+                      sound!.filters.pitchShiftFilter
+                          .shift(soundHandle: soundHandle)
+                          .fadeFilterParameter(
+                            to: 3,
+                            time: const Duration(milliseconds: 2500),
+                          );
 
                       /// Restore shift
                       Future.delayed(const Duration(milliseconds: 2500), () {
-                        sound!.setFilterParameter(
-                          soundHandle!,
-                          FilterType.pitchShiftFilter,
-                          PitchShiftFilter.shift.attributeId,
-                          1,
-                        );
+                        sound!.filters.pitchShiftFilter
+                            .shift(soundHandle: soundHandle)
+                            .value = 1;
                       });
                     },
                     child: const Text('Fade shift'),

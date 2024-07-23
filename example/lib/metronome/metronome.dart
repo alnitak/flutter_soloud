@@ -19,7 +19,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   /// Initialize the player.
-  await SoLoud.instance.init(bufferSize: 256, channels: Channels.channelMono);
+  await SoLoud.instance.init(bufferSize: 256, channels: Channels.mono);
 
   runApp(
     const MaterialApp(
