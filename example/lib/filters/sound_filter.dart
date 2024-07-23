@@ -69,12 +69,6 @@ class _PitchShiftState extends State<PitchShift> {
 
         /// start playing.
         soundHandle = await SoLoud.instance.play(sound!, looping: true);
-
-        //************************* */
-        //************************* */
-        //************************* */
-        final wetParam =
-            SoLoud.instance.filters.pitchShiftFilter.wet.value;
       });
     } catch (e) {
       debugPrint(e.toString());
@@ -244,11 +238,11 @@ class _PitchShiftState extends State<PitchShift> {
                           .shift(soundHandle: soundHandle)
                           .fadeFilterParameter(
                             to: 3,
-                            time: const Duration(milliseconds: 2500),
+                            time: const Duration(milliseconds: 1500),
                           );
 
                       /// Restore shift
-                      Future.delayed(const Duration(milliseconds: 2500), () {
+                      Future.delayed(const Duration(milliseconds: 1500), () {
                         sound!.filters.pitchShiftFilter
                             .shift(soundHandle: soundHandle)
                             .value = 1;
