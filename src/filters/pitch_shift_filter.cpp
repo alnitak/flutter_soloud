@@ -26,12 +26,12 @@ void PitchShiftInstance::filter(
     float *in = (float *)calloc((aSamples), sizeof(float));
     for (int j = 0; j < aSamples; j++)
     {
-        // shrink channels to one to feed smbPitchShift
+        // shrink channels to one to feed smbPitchShift.
         for (int n = 0; n < aChannels; n++)
             in[j] += aBuffer[j + aSamples * n];
         in[j] /= (float)aChannels;
     }
-    // float pitchShift = pow(2., fSemitones/12.);
+    
     pitchShift.smbPitchShift(mParam[PitchShift::SHIFT], aSamples, 2048, 4, aSamplerate, in, in);
     for (int j = 0; j < aSamples; j++)
     {
@@ -61,14 +61,14 @@ void PitchShiftInstance::setFilterParameter(unsigned int aAttributeId, float aVa
             aValue > mParent->getParamMax(PitchShift::SHIFT))
             return;
         mParam[PitchShift::SHIFT] = aValue;
-        mParam[PitchShift::SEMITONES] = 12 * log2f(mParam[PitchShift::SHIFT]);
+        mParam[PitchShift::SEMITONES] = 12 * log2f(aValue);
         break;
     case PitchShift::SEMITONES:
         if (aValue < mParent->getParamMin(PitchShift::SEMITONES) ||
             aValue > mParent->getParamMax(PitchShift::SEMITONES))
             return;
         mParam[PitchShift::SEMITONES] = aValue;
-        mParam[PitchShift::SHIFT] = pow(2., mParam[PitchShift::SEMITONES] / 12.);
+        mParam[PitchShift::SHIFT] = pow(2., aValue / 12.);
         break;
     }
 
