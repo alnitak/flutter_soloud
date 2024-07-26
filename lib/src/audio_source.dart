@@ -5,7 +5,6 @@ import 'package:flutter_soloud/src/bindings/bindings_player.dart';
 import 'package:flutter_soloud/src/bindings/soloud_controller.dart';
 import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/exceptions/exceptions.dart';
-import 'package:flutter_soloud/src/filter_params.dart';
 import 'package:flutter_soloud/src/filters/filters.dart';
 import 'package:flutter_soloud/src/soloud.dart';
 import 'package:flutter_soloud/src/sound_handle.dart';
@@ -126,6 +125,8 @@ class AudioSource {
   /// This can be used to access all the available filter functionalities
   /// for this [AudioSource].
   ///
+  /// **IMPORTANT**: filters for individual sounds are not supported on the
+  /// web platform.
   /// **IMPORTANT**: the filter must be added before playing. Only voice handles
   /// played after adding a filter will play with the filter chosen:
   ///

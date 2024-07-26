@@ -28,7 +28,7 @@ abstract class BassBoostInternal {
   const BassBoostInternal(SoundHash? soundHash) : _soundHash = soundHash;
 
   final SoundHash? _soundHash;
-  FilterType get filterType => FilterType.bassBoostFilter;
+  FilterType get filterType => FilterType.bassboostFilter;
   BassBoostEnum get queryWet => BassBoostEnum.wet;
   BassBoostEnum get queryBoost => BassBoostEnum.boost;
 

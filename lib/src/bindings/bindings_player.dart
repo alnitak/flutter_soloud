@@ -3,7 +3,6 @@ import 'dart:typed_data';
 
 import 'package:flutter_soloud/src/bindings/audio_data.dart';
 import 'package:flutter_soloud/src/enums.dart';
-import 'package:flutter_soloud/src/filter_params.dart';
 import 'package:flutter_soloud/src/filters/filters.dart';
 import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
@@ -644,7 +643,7 @@ abstract class FlutterSoLoud {
   @mustBeOverridden
   ({PlayerErrors error, int index}) isFilterActive(
     FilterType filterType, {
-    SoundHash soundHash = const SoundHash.invalid(),
+    SoundHash? soundHash,
   });
 
   /// Get parameters names of the given filter.
@@ -669,7 +668,7 @@ abstract class FlutterSoLoud {
   @mustBeOverridden
   PlayerErrors addFilter(
     FilterType filterType, {
-    SoundHash soundHash = const SoundHash.invalid(),
+    SoundHash? soundHash
   });
 
   /// Remove the filter [filterType].
@@ -679,7 +678,7 @@ abstract class FlutterSoLoud {
   @mustBeOverridden
   PlayerErrors removeFilter(
     FilterType filterType, {
-    SoundHash soundHash = const SoundHash.invalid(),
+    SoundHash? soundHash
   });
 
   /// Set the effect parameter with id [attributeId] of [filterType]
@@ -694,7 +693,7 @@ abstract class FlutterSoLoud {
     FilterType filterType,
     int attributeId,
     double value, {
-    SoundHandle handle = const SoundHandle.error(),
+    SoundHandle? handle,
   });
 
   /// Get the effect parameter value with id [attributeId] of [filterType].
@@ -707,7 +706,7 @@ abstract class FlutterSoLoud {
   ({PlayerErrors error, double value}) getFilterParams(
     FilterType filterType,
     int attributeId, {
-    SoundHandle handle = const SoundHandle.error(),
+    SoundHandle? handle,
   });
 
   // ///////////////////////////////////////

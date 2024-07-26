@@ -14,9 +14,10 @@ class WorkerController {
 
   /// Spawn a new web Worker with the given JS source (not used now).
   static Future<WorkerController> spawn(String path) async {
+    final JSAny newPath = (path.endsWith('.dart') ? '$path.js' : path).toJS;
     final controller = WorkerController()
       .._outputController = StreamController()
-      .._worker = web.Worker(path.endsWith('.dart') ? '$path.js' : path);
+      .._worker = web.Worker(newPath);
 
     controller._worker?.onmessage = ((web.MessageEvent event) {
       controller._outputController?.add(event.data.dartify());

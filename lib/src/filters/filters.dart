@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_soloud/src/audio_source.dart';
 import 'package:flutter_soloud/src/bindings/bindings_player.dart';
 import 'package:flutter_soloud/src/bindings/soloud_controller.dart';
@@ -119,9 +120,15 @@ class FilterParam {
   final double _max;
 
   /// Get the parameter value.
+  ///
+  /// Throws [SoLoudFilterForSingleSoundOnWebDartException] if trying to use
+  /// [FiltersSingle] on the Web platform.
   double get value {
+    if (kIsWeb && _soundHandle != null) {
+      throw const SoLoudFilterForSingleSoundOnWebDartException();
+    }
     final ret = SoLoudController().soLoudFFI.getFilterParams(
-          handle: _soundHandle ?? const SoundHandle.error(),
+          handle: _soundHandle,
           _type,
           _attributeId,
         );
@@ -135,14 +142,20 @@ class FilterParam {
   }
 
   /// Set the parameter value.
+  ///
+  /// Throws [SoLoudFilterForSingleSoundOnWebDartException] if trying to use
+  /// [FiltersSingle] on the Web platform.
   set value(double val) {
+    if (kIsWeb && _soundHandle != null) {
+      throw const SoLoudFilterForSingleSoundOnWebDartException();
+    }
     if (val < _min || val > _max) {
       Logger('flutter_soloud.${_type.name}Filter')
           .warning(() => 'value [$val] out of accepted range [$_min, $_max]');
       return;
     }
     final error = SoLoudController().soLoudFFI.setFilterParams(
-          handle: _soundHandle ?? const SoundHandle.error(),
+          handle: _soundHandle,
           _type,
           _attributeId,
           val,
@@ -155,6 +168,9 @@ class FilterParam {
   }
 
   /// Fade a parameter value to a new value [to] in [time] time duration.
+  ///
+  /// Throws [SoLoudFilterForSingleSoundOnWebDartException] if trying to use
+  /// [FiltersSingle] on the Web platform.
   void fadeFilterParameter({
     required double to,
     required Duration time,
@@ -163,13 +179,21 @@ class FilterParam {
 
   /// Oscillate a parameter value from [from] value to a new value [to]
   /// in [time] time duration.
+  ///
+  /// Throws [SoLoudFilterForSingleSoundOnWebDartException] if trying to use
+  /// [FiltersSingle] on the Web platform.
   void oscillateFilterParameter({
     required double from,
     required double to,
     required Duration time,
   }) =>
       _type.oscillateFilterParameter(
-          _soundHandle, _attributeId, from, to, time);
+        _soundHandle,
+        _attributeId,
+        from,
+        to,
+        time,
+      );
 }
 
 /// The different types of audio filters.
@@ -190,7 +214,7 @@ enum FilterType {
   flangerFilter,
 
   /// A bass-boost filter.
-  bassBoostFilter,
+  bassboostFilter,
 
   /// A wave shaper filter.
   waveShaperFilter,
@@ -211,7 +235,7 @@ enum FilterType {
         FilterType.echoFilter => 'Echo',
         FilterType.lofiFilter => 'Lofi',
         FilterType.flangerFilter => 'Flanger',
-        FilterType.bassBoostFilter => 'Bassboost',
+        FilterType.bassboostFilter => 'Bassboost',
         FilterType.waveShaperFilter => 'Wave Shaper',
         FilterType.robotizeFilter => 'Robotize',
         FilterType.freeverbFilter => 'Freeverb',
@@ -225,18 +249,23 @@ enum FilterType {
         FilterType.echoFilter => 4,
         FilterType.lofiFilter => 3,
         FilterType.flangerFilter => 3,
-        FilterType.bassBoostFilter => 2,
+        FilterType.bassboostFilter => 2,
         FilterType.waveShaperFilter => 2,
         FilterType.robotizeFilter => 3,
         FilterType.freeverbFilter => 5,
         FilterType.pitchShiftFilter => 3,
       };
 
-  @internal
-
   /// Activate this filter. If [soundHash] is null this filter is applied
   /// globally, else to the given [soundHash].
+  ///
+  /// Throws [SoLoudFilterForSingleSoundOnWebDartException] if trying to use
+  /// a filter for a single sound on the Web platform.
+  @internal
   void activate(SoundHash? soundHash) {
+    if (kIsWeb && soundHash != null) {
+      throw const SoLoudFilterForSingleSoundOnWebDartException();
+    }
     final error = SoLoudController().soLoudFFI.addFilter(
           this,
           soundHash: soundHash ?? const SoundHash.invalid(),
@@ -250,11 +279,17 @@ enum FilterType {
     }
   }
 
-  @internal
 
   /// Deactivate this filter. If [soundHash] is null this filter is removed
   /// globally, else from the given [soundHash].
+  ///
+  /// Throws [SoLoudFilterForSingleSoundOnWebDartException] if trying to use
+  /// a filter for a single sound on the Web platform.
+  @internal
   void deactivate(SoundHash? soundHash) {
+    if (kIsWeb && soundHash != null) {
+      throw const SoLoudFilterForSingleSoundOnWebDartException();
+    }
     final error = SoLoudController().soLoudFFI.removeFilter(
           this,
           soundHash: soundHash ?? const SoundHash.invalid(),
@@ -273,12 +308,18 @@ enum FilterType {
   /// Fade a parameter with index [attributeId], to a value [to] in [time] time.
   /// If [soundHandle] is null the fade is applied to this global filter else
   /// to the given sound handle.
+  ///
+  /// Throws [SoLoudFilterForSingleSoundOnWebDartException] if trying to use
+  /// a filter for a single sound on the Web platform.
   void fadeFilterParameter(
     SoundHandle? soundHandle,
     int attributeId,
     double to,
     Duration time,
   ) {
+    if (kIsWeb && soundHandle != null) {
+      throw const SoLoudFilterForSingleSoundOnWebDartException();
+    }
     if (!SoLoud.instance.isInitialized) {
       throw const SoLoudNotInitializedException();
     }
@@ -301,6 +342,9 @@ enum FilterType {
   /// [time] time.
   /// If [soundHandle] is null the fade is applied to this global filter else
   /// to the given sound handle.
+  ///
+  /// Throws [SoLoudFilterForSingleSoundOnWebDartException] if trying to use
+  /// a filter for a single sound on the Web platform.
   void oscillateFilterParameter(
     SoundHandle? soundHandle,
     int attributeId,
@@ -308,6 +352,9 @@ enum FilterType {
     double to,
     Duration time,
   ) {
+    if (kIsWeb && soundHandle != null) {
+      throw const SoLoudFilterForSingleSoundOnWebDartException();
+    }
     if (!SoLoud.instance.isInitialized) {
       throw const SoLoudNotInitializedException();
     }

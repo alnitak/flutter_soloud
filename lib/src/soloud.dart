@@ -10,7 +10,6 @@ import 'package:flutter_soloud/src/bindings/bindings_player.dart';
 import 'package:flutter_soloud/src/bindings/soloud_controller.dart';
 import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/exceptions/exceptions.dart';
-import 'package:flutter_soloud/src/filter_params.dart';
 import 'package:flutter_soloud/src/filters/filters.dart';
 import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
@@ -41,7 +40,7 @@ interface class SoLoud {
   /// ...
   /// /// activate the filter.
   /// SoLoud.instance.filters.echoFilter.activate();
-  /// 
+  ///
   /// /// Later on, deactivate it.
   /// SoLoud.instance.filters.echoFilter.deactivate();
   /// ```
@@ -1814,7 +1813,7 @@ interface class SoLoud {
   double getFilterParameter(
     FilterType filterType,
     int attributeId, {
-    SoundHandle handle = const SoundHandle(0),
+    SoundHandle handle = const SoundHandle.error(),
   }) =>
       getGlobalFilterParameter(filterType, attributeId);
 

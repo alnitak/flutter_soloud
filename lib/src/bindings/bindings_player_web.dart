@@ -5,7 +5,6 @@ import 'package:flutter_soloud/src/bindings/audio_data.dart';
 import 'package:flutter_soloud/src/bindings/bindings_player.dart';
 import 'package:flutter_soloud/src/bindings/js_extension.dart';
 import 'package:flutter_soloud/src/enums.dart';
-import 'package:flutter_soloud/src/filter_params.dart';
 import 'package:flutter_soloud/src/filters/filters.dart';
 import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
@@ -593,11 +592,11 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   @override
   ({PlayerErrors error, int index}) isFilterActive(
     FilterType filterType, {
-    SoundHash soundHash = const SoundHash.invalid(),
+    SoundHash? soundHash,
   }) {
     // ignore: omit_local_variable_types
     final idPtr = wasmMalloc(4); // 4 bytes for an int
-    final e = wasmIsFilterActive(soundHash.hash, filterType.index, idPtr);
+    final e = wasmIsFilterActive(soundHash?.hash ?? 0, filterType.index, idPtr);
     final index = wasmGetI32Value(idPtr, 'i32');
     final ret = (error: PlayerErrors.values[e], index: index);
     wasmFree(idPtr);
@@ -633,18 +632,18 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   @override
   PlayerErrors addFilter(
     FilterType filterType, {
-    SoundHash soundHash = const SoundHash.invalid(),
+    SoundHash? soundHash,
   }) {
-    final e = wasmAddFilter(soundHash.hash, filterType.index);
+    final e = wasmAddFilter(soundHash?.hash ?? 0, filterType.index);
     return PlayerErrors.values[e];
   }
 
   @override
   PlayerErrors removeFilter(
     FilterType filterType, {
-    SoundHash soundHash = const SoundHash.invalid(),
+    SoundHash? soundHash,
   }) {
-    final e = wasmRemoveFilter(soundHash.hash, filterType.index);
+    final e = wasmRemoveFilter(soundHash?.hash ?? 0, filterType.index);
     return PlayerErrors.values[e];
   }
 
@@ -653,10 +652,10 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     FilterType filterType,
     int attributeId,
     double value, {
-    SoundHandle handle = const SoundHandle(0),
+    SoundHandle? handle,
   }) {
     final e = wasmSetFilterParams(
-      handle.id,
+      handle?.id ?? 0,
       filterType.index,
       attributeId,
       value,
@@ -668,11 +667,11 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   ({PlayerErrors error, double value}) getFilterParams(
     FilterType filterType,
     int attributeId, {
-    SoundHandle handle = const SoundHandle(0),
+    SoundHandle? handle,
   }) {
     final paramValuePtr = wasmMalloc(4);
     final error = wasmGetFilterParams(
-      handle.id,
+      handle?.id ?? 0,
       filterType.index,
       attributeId,
       paramValuePtr,

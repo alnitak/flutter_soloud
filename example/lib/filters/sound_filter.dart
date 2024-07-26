@@ -13,8 +13,10 @@ import 'package:flutter_soloud/flutter_soloud.dart';
 /// - [AudioSource.getFilterParameter] to get a parameter.
 /// - [AudioSource.fadeFilterParameter] to fade a parameter.
 /// - [AudioSource.oscillateFilterParameter] to oscillate a parameter.
+/// See [AudioSource.filters] for more documentation.
 ///
 /// It is possible to apply filters globally instead of a single sound using
+/// [useGlobalFilter] set to true.
 /// [SoLoud.addGlobalFilter] to add the filter.
 /// [SoLoud.isFilterActive] to ask if enable.
 /// [SoLoud.removeGlobalFilter] to remove it.
@@ -22,9 +24,13 @@ import 'package:flutter_soloud/flutter_soloud.dart';
 /// [SoLoud.getGlobalFilterParameter] to get a parameter.
 /// [SoLoud.fadeGlobalFilterParameter] to fade a parameter.
 /// [SoLoud.oscillateGlobalVolume] to oscillate a parameter.
+/// See [SoLoud.filters] for more documentation.
 ///
 /// [SoLoud.getFilterParamNames] this method is the common way to get
 /// parameter names for both global and sound filters.
+
+/// Use the filter globally or attached to the sound.
+const bool useGlobalFilter = true;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -60,12 +66,18 @@ class _PitchShiftState extends State<PitchShift> {
     super.initState();
     try {
       SoLoud.instance
-          .loadAsset('assets/audio/8_bit_mentality.mp3')
+          // .loadAsset('assets/audio/8_bit_mentality.mp3')
+          // .loadAsset('assets/audio/tic-2.wav')
+          .loadAsset('assets/audio/IveSeenThings.mp3')
           .then((value) async {
         sound = value;
 
         /// Add the filter to this sound handle before playing it.
-        sound!.filters.pitchShiftFilter.activate();
+        if (useGlobalFilter) {
+          SoLoud.instance.filters.pitchShiftFilter.activate();
+        } else {
+          sound!.filters.pitchShiftFilter.activate();
+        }
 
         /// start playing.
         soundHandle = await SoLoud.instance.play(sound!, looping: true);
@@ -132,9 +144,14 @@ class _PitchShiftState extends State<PitchShift> {
                                   return;
                                 }
                                 wet.value = value;
-                                sound!.filters.pitchShiftFilter
-                                    .wet(soundHandle: soundHandle)
-                                    .value = w;
+                                if (useGlobalFilter) {
+                                  SoLoud.instance.filters.pitchShiftFilter.wet
+                                      .value = w;
+                                } else {
+                                  sound!.filters.pitchShiftFilter
+                                      .wet(soundHandle: soundHandle)
+                                      .value = w;
+                                }
                               },
                             ),
                           ),
@@ -159,18 +176,30 @@ class _PitchShiftState extends State<PitchShift> {
                                   return;
                                 }
                                 shift.value = value;
-                                sound!.filters.pitchShiftFilter
-                                    .shift(soundHandle: soundHandle)
-                                    .value = value;
+                                if (useGlobalFilter) {
+                                  SoLoud.instance.filters.pitchShiftFilter.shift
+                                      .value = value;
+                                } else {
+                                  sound!.filters.pitchShiftFilter
+                                      .shift(soundHandle: soundHandle)
+                                      .value = value;
+                                }
 
                                 /// Changing the shift value also changes the
                                 /// semitones. Update the semitones slider.
-                                semitones.value = sound!
-                                    .filters.pitchShiftFilter
-                                    .semitones(soundHandle: soundHandle)
-                                    .value
-                                    .toInt()
-                                    .clamp(-24, 24);
+                                if (useGlobalFilter) {
+                                  semitones.value = SoLoud.instance.filters
+                                      .pitchShiftFilter.semitones.value
+                                      .toInt()
+                                      .clamp(-24, 24);
+                                } else {
+                                  semitones.value = sound!
+                                      .filters.pitchShiftFilter
+                                      .semitones(soundHandle: soundHandle)
+                                      .value
+                                      .toInt()
+                                      .clamp(-24, 24);
+                                }
                               },
                             ),
                           ),
@@ -197,16 +226,31 @@ class _PitchShiftState extends State<PitchShift> {
                                   return;
                                 }
                                 semitones.value = value.toInt();
-                                sound!.filters.pitchShiftFilter
-                                    .semitones(soundHandle: soundHandle)
-                                    .value = semitones.value.toDouble();
+                                if (useGlobalFilter) {
+                                  SoLoud
+                                      .instance
+                                      .filters
+                                      .pitchShiftFilter
+                                      .semitones
+                                      .value = semitones.value.toDouble();
+                                } else {
+                                  sound!.filters.pitchShiftFilter
+                                      .semitones(soundHandle: soundHandle)
+                                      .value = semitones.value.toDouble();
+                                }
 
                                 /// Changing the semitones value also the shift
                                 /// changes. Update the shift slider.
-                                shift.value = sound!.filters.pitchShiftFilter
-                                    .shift(soundHandle: soundHandle)
-                                    .value
-                                    .clamp(0, 3);
+                                if (useGlobalFilter) {
+                                  shift.value = SoLoud.instance.filters
+                                      .pitchShiftFilter.shift.value
+                                      .clamp(0, 3);
+                                } else {
+                                  shift.value = sound!.filters.pitchShiftFilter
+                                      .shift(soundHandle: soundHandle)
+                                      .value
+                                      .clamp(0, 3);
+                                }
                               },
                             ),
                           ),
@@ -220,13 +264,22 @@ class _PitchShiftState extends State<PitchShift> {
                     onPressed: () {
                       if (soundHandle == null || sound == null) return;
 
-                      sound!.filters.pitchShiftFilter
-                          .shift(soundHandle: soundHandle)
-                          .oscillateFilterParameter(
-                            from: 0.4,
-                            to: 1.6,
-                            time: const Duration(milliseconds: 1500),
-                          );
+                      if (useGlobalFilter) {
+                        SoLoud.instance.filters.pitchShiftFilter.shift
+                            .oscillateFilterParameter(
+                          from: 0.4,
+                          to: 1.6,
+                          time: const Duration(milliseconds: 1500),
+                        );
+                      } else {
+                        sound!.filters.pitchShiftFilter
+                            .shift(soundHandle: soundHandle)
+                            .oscillateFilterParameter(
+                              from: 0.4,
+                              to: 1.6,
+                              time: const Duration(milliseconds: 1500),
+                            );
+                      }
                     },
                     child: const Text('Oscillate shift'),
                   ),
@@ -234,12 +287,20 @@ class _PitchShiftState extends State<PitchShift> {
                   OutlinedButton(
                     onPressed: () {
                       if (soundHandle == null || sound == null) return;
-                      sound!.filters.pitchShiftFilter
-                          .shift(soundHandle: soundHandle)
-                          .fadeFilterParameter(
-                            to: 3,
-                            time: const Duration(milliseconds: 1500),
-                          );
+                      if (useGlobalFilter) {
+                        SoLoud.instance.filters.pitchShiftFilter.shift
+                            .fadeFilterParameter(
+                          to: 3,
+                          time: const Duration(milliseconds: 1500),
+                        );
+                      } else {
+                        sound!.filters.pitchShiftFilter
+                            .shift(soundHandle: soundHandle)
+                            .fadeFilterParameter(
+                              to: 3,
+                              time: const Duration(milliseconds: 1500),
+                            );
+                      }
 
                       /// Restore shift
                       Future.delayed(const Duration(milliseconds: 1500), () {

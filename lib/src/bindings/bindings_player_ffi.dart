@@ -11,7 +11,6 @@ import 'package:ffi/ffi.dart';
 import 'package:flutter_soloud/src/bindings/audio_data.dart';
 import 'package:flutter_soloud/src/bindings/bindings_player.dart';
 import 'package:flutter_soloud/src/enums.dart';
-import 'package:flutter_soloud/src/filter_params.dart';
 import 'package:flutter_soloud/src/filters/filters.dart';
 import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
@@ -1112,11 +1111,11 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   @override
   ({PlayerErrors error, int index}) isFilterActive(
     FilterType filterType, {
-    SoundHash soundHash = const SoundHash.invalid(),
+    SoundHash? soundHash,
   }) {
     // ignore: omit_local_variable_types
     final ffi.Pointer<ffi.Int> id = calloc(ffi.sizeOf<ffi.Int>());
-    final e = _isFilterActive(soundHash.hash, filterType.index, id);
+    final e = _isFilterActive(soundHash?.hash ?? 0, filterType.index, id);
     final ret = (error: PlayerErrors.values[e], index: id.value);
     calloc.free(id);
     return ret;
@@ -1173,9 +1172,9 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   @override
   PlayerErrors addFilter(
     FilterType filterType, {
-    SoundHash soundHash = const SoundHash.invalid(),
+    SoundHash? soundHash,
   }) {
-    final e = _addFilter(soundHash.hash, filterType.index);
+    final e = _addFilter(soundHash?.hash ?? 0, filterType.index);
     return PlayerErrors.values[e];
   }
 
@@ -1187,9 +1186,9 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   @override
   PlayerErrors removeFilter(
     FilterType filterType, {
-    SoundHash soundHash = const SoundHash.invalid(),
+    SoundHash? soundHash,
   }) {
-    final e = _removeFilter(soundHash.hash, filterType.index);
+    final e = _removeFilter(soundHash?.hash ?? 0, filterType.index);
     return PlayerErrors.values[e];
   }
 
@@ -1204,10 +1203,10 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     FilterType filterType,
     int attributeId,
     double value, {
-    SoundHandle handle = const SoundHandle.error(),
+    SoundHandle? handle,
   }) {
     final e = _setFilterParams(
-      handle.isError ? 0 : handle.id,
+      handle?.id ?? 0,
       filterType.index,
       attributeId,
       value,
@@ -1226,12 +1225,12 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   ({PlayerErrors error, double value}) getFilterParams(
     FilterType filterType,
     int attributeId, {
-    SoundHandle handle = const SoundHandle.error(),
+    SoundHandle? handle,
   }) {
     // ignore: omit_local_variable_types
     final ffi.Pointer<ffi.Float> paramValue = calloc();
     final error = _getFilterParams(
-      handle.isError ? 0 : handle.id,
+      handle?.id ?? 0,
       filterType.index,
       attributeId,
       paramValue,

@@ -1,3 +1,4 @@
+import 'package:flutter_soloud/src/audio_source.dart';
 import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
 
