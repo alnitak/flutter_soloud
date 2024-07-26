@@ -8,8 +8,8 @@ class PitchShift;
 
 class PitchShiftInstance : public SoLoud::FilterInstance
 {
-    PitchShift *mParent;
     CSmbPitchShift pitchShift;
+    PitchShift *mParent;
 
 public:
     virtual void filter(

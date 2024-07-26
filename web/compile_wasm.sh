@@ -17,11 +17,13 @@ cd build
 
 # https://emscripten.org/docs/tools_reference/settings_reference.html
 
-# -s ASSERTIONS=1 
+# -s ASSERTIONS=1 \
 # -s TOTAL_MEMORY=512MB \
 # -s DEFAULT_TO_CXX \
-# -s STACK_SIZE=1048576 
+# -s STACK_SIZE=1048576 \
+# -s TOTAL_STACK=5242880 \
 # -msimd128 for sse3 https://emscripten.org/docs/porting/simd.html
+# -std=c++17
 
 ## Compiling with "-O2" or "-O3" doesn't work
 
@@ -42,10 +44,10 @@ em++ \
 ../../src/filters/*.cpp \
 -O3 -D WITH_MINIAUDIO \
 -msimd128 -msse3 \
--I ~/.emscripten_cache/sysroot/include \
 -s "EXPORTED_RUNTIME_METHODS=['ccall','cwrap']" \
 -s "EXPORTED_FUNCTIONS=['_free', '_malloc']" \
 -s EXPORT_ALL=1 -s NO_EXIT_RUNTIME=1 \
 -s SAFE_HEAP=1 \
+-s STACK_SIZE=4194304 \
 -s ALLOW_MEMORY_GROWTH \
 -o ../../web/libflutter_soloud_plugin.js

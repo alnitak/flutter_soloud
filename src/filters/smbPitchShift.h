@@ -1,5 +1,7 @@
 #pragma once
 
+#ifndef SMB_PITCHSHIFT_H
+#define SMB_PITCHSHIFT_H
 // http://blogs.zynaptiq.com/bernsee/pitch-shifting-using-the-ft/
 
 class CSmbPitchShift
@@ -7,6 +9,8 @@ class CSmbPitchShift
     enum { MAX_FRAME_LENGTH = 8192 };
 
 public:
+    CSmbPitchShift();
+    
     void reset()
     {
         gRover = 0;
@@ -31,3 +35,5 @@ private:
     long gRover = 0;
     bool gInit = false;
 };
+
+#endif

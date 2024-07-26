@@ -26,7 +26,11 @@
 struct FilterObject
 {
     FilterType type;
-    SoLoud::Filter *filter;
+    std::unique_ptr<SoLoud::Filter> filter;
+
+    FilterObject(FilterType t, std::unique_ptr<SoLoud::Filter> f)
+        : type(t), filter(std::move(f)) {}
+
     bool operator==(FilterType const &i)
     {
         return (i == type);
@@ -36,9 +40,6 @@ struct FilterObject
 /// Class to manage global filters.
 class Filters
 {
-    /// TODO(marco): Soloud.setGlobalFilter()
-    /// Sets, or clears, the global filter.
-    ///
     /// Setting the global filter to NULL will clear the global filter.
     /// The default maximum number of global filters active is 4, but this
     /// can be changed in a global constant in soloud.h (and rebuilding SoLoud).
@@ -79,24 +80,7 @@ private:
     /// The sound to manage filters for. If null the filters are managed globally.
     ActiveSound *mSound;
 
-    std::vector<FilterObject> filters;
-
-    std::unique_ptr<SoLoud::BiquadResonantFilter> mBiquadResonantFilter;
-    /// not yet available
-    // std::unique_ptr<SoLoud::DuckFilter> mDuckFilter;
-    std::unique_ptr<SoLoud::EqFilter> mEqFilter;
-    std::unique_ptr<PitchShift> mPitchFilter;
-    std::unique_ptr<SoLoud::EchoFilter> mEchoFilter;
-    std::unique_ptr<SoLoud::LofiFilter> mLofiFilter;
-    std::unique_ptr<SoLoud::FlangerFilter> mFlangerFilter;
-    /// not yet available
-    // std::unique_ptr<SoLoud::DCRemovalFilter> mDCRemovalFilter;
-    /// not yet available
-    std::unique_ptr<SoLoud::FFTFilter> mFFTFilter;
-    std::unique_ptr<SoLoud::BassboostFilter> mBassboostFilter;
-    std::unique_ptr<SoLoud::WaveShaperFilter> mWaveShaperFilter;
-    std::unique_ptr<SoLoud::RobotizeFilter> mRobotizeFilter;
-    std::unique_ptr<SoLoud::FreeverbFilter> mFreeverbFilter;
+    std::vector<std::unique_ptr<FilterObject>> filters;
 };
 
 #endif // PLAYER_H

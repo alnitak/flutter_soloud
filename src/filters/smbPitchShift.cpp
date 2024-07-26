@@ -36,13 +36,13 @@
 *
 *****************************************************************************/ 
 
+#include "../common.h"
 #include "smbPitchShift.h"
 #include "soloud.h"
 
 #include <string.h>
 #include <math.h>
 #include <stdio.h>
-
 #include <memory>
 
 namespace {
@@ -51,7 +51,8 @@ namespace {
 #include <emmintrin.h>
 #include <pmmintrin.h>
 #include <xmmintrin.h>
-void smbFft(float *fftBuffer, long fftFrameSize, long sign)
+
+FFI_PLUGIN_EXPORT void smbFft(float *fftBuffer, long fftFrameSize, long sign)
 /* 
     FFT routine, (C)1996 S.M.Bernsee. Sign = -1 is FFT, 1 is iFFT (inverse)
     Fills fftBuffer[0...2*fftFrameSize-1] with the Fourier transform of the
@@ -143,7 +144,7 @@ void smbFft(float *fftBuffer, long fftFrameSize, long sign)
 }
 #else
 /// Without SIMD
-void smbFft(float *fftBuffer, long fftFrameSize, long sign)
+FFI_PLUGIN_EXPORT void smbFft(float *fftBuffer, long fftFrameSize, long sign)
 /* 
     FFT routine, (C)1996 S.M.Bernsee. Sign = -1 is FFT, 1 is iFFT (inverse)
     Fills fftBuffer[0...2*fftFrameSize-1] with the Fourier transform of the
@@ -239,7 +240,7 @@ template<typename T> T CopySign(T v, T x)
     return (x >= 0) ? v : -v;
 }
 
-double smbAtan2(double y, double x)
+FFI_PLUGIN_EXPORT double smbAtan2(double y, double x)
 {
     constexpr double scaling_constant = 0.28086;
 
@@ -292,6 +293,8 @@ double smbAtan2(double y, double x)
 
 // -----------------------------------------------------------------------------------------------------------------
 
+CSmbPitchShift::CSmbPitchShift() {
+}
 
 void CSmbPitchShift::smbPitchShift(float pitchShift, long numSampsToProcess, long fftFrameSize, long osamp, float sampleRate, float *indata, float *outdata)
 /*
