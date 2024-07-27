@@ -101,10 +101,10 @@ interface class SoLoud {
   /// Use [isInitialized] only if you want to check the current status of
   /// the engine synchronously and you don't care that it might be ready soon.
   // TODO(filip): related to `get initialized`. This line below is the old one.
-  bool get isInitialized => _isInitialized;
+  // bool get isInitialized => _isInitialized;
   // TODO(filip): this line below is the new one I leaved to let the
   /// plugin to work.
-  // bool get isInitialized => _controller.soLoudFFI.isInited();
+  bool get isInitialized => _controller.soLoudFFI.isInited();
 
   /// The completer for an initialization in progress.
   ///
