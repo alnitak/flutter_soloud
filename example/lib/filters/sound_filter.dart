@@ -5,31 +5,31 @@ import 'package:flutter_soloud/flutter_soloud.dart';
 
 /// Pitch shift example.
 ///
-/// In this example the filter is applied to a sound using the
-/// [AudioSource.addFilter] before playing it (important). You can then use:
-/// - [AudioSource.isFilterActive] to ask if enable.
-/// - [AudioSource.removeFilter] to remove it.
-/// - [AudioSource.setFilterParameter] to set a parameter.
-/// - [AudioSource.getFilterParameter] to get a parameter.
-/// - [AudioSource.fadeFilterParameter] to fade a parameter.
-/// - [AudioSource.oscillateFilterParameter] to oscillate a parameter.
-/// See [AudioSource.filters] for more documentation.
-///
-/// It is possible to apply filters globally instead of a single sound using
-/// [useGlobalFilter] set to true.
-/// [SoLoud.addGlobalFilter] to add the filter.
-/// [SoLoud.isFilterActive] to ask if enable.
-/// [SoLoud.removeGlobalFilter] to remove it.
-/// [SoLoud.setGlobalFilterParameter] to set a parameter.
-/// [SoLoud.getGlobalFilterParameter] to get a parameter.
-/// [SoLoud.fadeGlobalFilterParameter] to fade a parameter.
-/// [SoLoud.oscillateGlobalVolume] to oscillate a parameter.
-/// See [SoLoud.filters] for more documentation.
-///
-/// [SoLoud.getFilterParamNames] this method is the common way to get
-/// parameter names for both global and sound filters.
+/// Filters can be accessed globally using `SoLoud.instance.filters` or for
+/// single [AudioSource] sounds with `sound.filters`:
+// ```
+// /// For global filters.
+// final ps = SoLoud.instance.filters.pitchShiftFilter;
+// ps.activate();
+// ps.shift(soundHandle: soundHandle).value = 0.6; // set value.
+// final shift = ps.shift(soundHandle: soundHandle).value; // get value.
+// ps.fadeFilterParameter(to: 3, time: const Duration(milliseconds: 2500));
+// ps.oscillateFilterParameter(
+//   from: 0.5,
+//   to: 1.5,
+//   time: const Duration(milliseconds: 2500),
+// );
+// ps.queryShift.[min | max | def] // to get filter min, max and default values.
 
-/// Use the filter globally or attached to the sound.
+// /// For single sound filters.
+// final ps = sound.filters.pitchShiftFilter;
+// [as for global filters]
+
+// ```
+
+
+/// Use the filter globally or attached to the sound. Filters for single sounds
+/// are not supported in the Web platform.
 const bool useGlobalFilter = true;
 
 void main() async {
@@ -53,6 +53,7 @@ class PitchShift extends StatefulWidget {
 }
 
 class _PitchShiftState extends State<PitchShift> {
+  final timeStretching = ValueNotifier<double>(1);
   final playSpeed = ValueNotifier<double>(1);
   final wet = ValueNotifier<double>(1);
   final shift = ValueNotifier<double>(1);
@@ -104,13 +105,53 @@ class _PitchShiftState extends State<PitchShift> {
                   ),
                   const SizedBox(height: 32),
 
+                  /// Play Speed without changing the pitch.
+                  ValueListenableBuilder<double>(
+                    valueListenable: timeStretching,
+                    builder: (_, ts, __) {
+                      return Row(
+                        children: [
+                          Text('time stretching: ${ts.toStringAsFixed(2)}'),
+                          Expanded(
+                            child: Slider.adaptive(
+                              max: 5,
+                              value: ts,
+                              onChanged: (value) {
+                                if (soundHandle == null) return;
+                                timeStretching.value = value;
+                                playSpeed.value = value;
+                                // Adjust the play speed
+                                SoLoud.instance
+                                    .setRelativePlaySpeed(soundHandle!, value);
+
+                                // Adjust the pitchShift relatively to the
+                                // speed. The relation between speed and shift
+                                // is shift = 1 / speed.
+                                shift.value = 1 / value;
+                                if (useGlobalFilter) {
+                                  SoLoud.instance.filters.pitchShiftFilter.shift
+                                      .value = shift.value;
+                                } else {
+                                  sound!.filters.pitchShiftFilter
+                                      .shift(soundHandle: soundHandle)
+                                      .value = shift.value;
+                                }
+                              },
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 32),
+
                   /// Play Speed
                   ValueListenableBuilder<double>(
                     valueListenable: playSpeed,
                     builder: (_, speed, __) {
                       return Row(
                         children: [
-                          Text('speed: ${speed.toStringAsFixed(2)}'),
+                          Text('speed: ${(speed*100).toInt()}%'),
                           Expanded(
                             child: Slider.adaptive(
                               max: 5,
@@ -170,7 +211,10 @@ class _PitchShiftState extends State<PitchShift> {
                           Expanded(
                             child: Slider.adaptive(
                               value: s,
-                              max: 3,
+                              min: SoLoud.instance.filters.pitchShiftFilter
+                                  .queryShift.min,
+                              max: SoLoud.instance.filters.pitchShiftFilter
+                                  .queryShift.max,
                               onChanged: (value) {
                                 if (soundHandle == null || sound == null) {
                                   return;
@@ -191,14 +235,28 @@ class _PitchShiftState extends State<PitchShift> {
                                   semitones.value = SoLoud.instance.filters
                                       .pitchShiftFilter.semitones.value
                                       .toInt()
-                                      .clamp(-24, 24);
+                                      .clamp(
+                                        SoLoud.instance.filters.pitchShiftFilter
+                                            .querySemitones.min
+                                            .toInt(),
+                                        SoLoud.instance.filters.pitchShiftFilter
+                                            .querySemitones.max
+                                            .toInt(),
+                                      );
                                 } else {
                                   semitones.value = sound!
                                       .filters.pitchShiftFilter
                                       .semitones(soundHandle: soundHandle)
                                       .value
                                       .toInt()
-                                      .clamp(-24, 24);
+                                      .clamp(
+                                        SoLoud.instance.filters.pitchShiftFilter
+                                            .querySemitones.min
+                                            .toInt(),
+                                        SoLoud.instance.filters.pitchShiftFilter
+                                            .querySemitones.max
+                                            .toInt(),
+                                      );
                                 }
                               },
                             ),
@@ -218,8 +276,10 @@ class _PitchShiftState extends State<PitchShift> {
                           Expanded(
                             child: Slider.adaptive(
                               value: s.toDouble(),
-                              min: -24,
-                              max: 24,
+                              min: SoLoud.instance.filters.pitchShiftFilter
+                                  .querySemitones.min,
+                              max: SoLoud.instance.filters.pitchShiftFilter
+                                  .querySemitones.max,
                               divisions: 49,
                               onChanged: (value) {
                                 if (soundHandle == null || sound == null) {
@@ -244,12 +304,22 @@ class _PitchShiftState extends State<PitchShift> {
                                 if (useGlobalFilter) {
                                   shift.value = SoLoud.instance.filters
                                       .pitchShiftFilter.shift.value
-                                      .clamp(0, 3);
+                                      .clamp(
+                                    SoLoud.instance.filters.pitchShiftFilter
+                                        .queryShift.min,
+                                    SoLoud.instance.filters.pitchShiftFilter
+                                        .queryShift.max,
+                                  );
                                 } else {
                                   shift.value = sound!.filters.pitchShiftFilter
                                       .shift(soundHandle: soundHandle)
                                       .value
-                                      .clamp(0, 3);
+                                      .clamp(
+                                        SoLoud.instance.filters.pitchShiftFilter
+                                            .queryShift.min,
+                                        SoLoud.instance.filters.pitchShiftFilter
+                                            .queryShift.max,
+                                      );
                                 }
                               },
                             ),
@@ -264,6 +334,7 @@ class _PitchShiftState extends State<PitchShift> {
                     onPressed: () {
                       if (soundHandle == null || sound == null) return;
 
+                      /// Oscillate shift parameter from 0.4 to 1.6 in 1500ms
                       if (useGlobalFilter) {
                         SoLoud.instance.filters.pitchShiftFilter.shift
                             .oscillateFilterParameter(
@@ -287,6 +358,9 @@ class _PitchShiftState extends State<PitchShift> {
                   OutlinedButton(
                     onPressed: () {
                       if (soundHandle == null || sound == null) return;
+
+                      /// Fade shift parameter from the current value to 3.0
+                      /// in 1500ms
                       if (useGlobalFilter) {
                         SoLoud.instance.filters.pitchShiftFilter.shift
                             .fadeFilterParameter(

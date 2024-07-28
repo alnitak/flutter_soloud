@@ -145,7 +145,7 @@ class AudioSource {
   /// /// Set
   /// sound.filters.pitchShiftFilter.wet(soundHandle: soundHandle).value = 0.6;
   /// /// Get
-  /// final wetValue = sound.filters.pitchShiftFilter.wet(
+  /// final shiftValue = sound.filters.pitchShiftFilter.wet(
   ///   soundHandle: soundHandle,
   /// ).value;
   /// ```

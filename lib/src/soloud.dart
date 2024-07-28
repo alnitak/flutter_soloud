@@ -50,7 +50,7 @@ interface class SoLoud {
   /// /// Set
   /// SoLoud.instance.filters.echoFilter.delay.value = 0.6;
   /// /// Get
-  /// final wetValue = SoLoud.instance.filters.echoFilter.delay.value;
+  /// final delayValue = SoLoud.instance.filters.echoFilter.delay.value;
   /// ```
   /// or fade/oscillate a parameter:
   /// ```dart
@@ -152,10 +152,10 @@ interface class SoLoud {
   /// Use [isInitialized] only if you want to check the current status of
   /// the engine synchronously and you don't care that it might be ready soon.
   // TODO(filip): related to `get initialized`. This line below is the old one.
-  bool get isInitialized => _isInitialized;
+  // bool get isInitialized => _isInitialized;
   // TODO(filip): this line below is the new one I leaved to let the
   /// plugin to work.
-  // bool get isInitialized => _controller.soLoudFFI.isInited();
+  bool get isInitialized => _controller.soLoudFFI.isInited();
 
   /// The completer for an initialization in progress.
   ///
@@ -1705,6 +1705,7 @@ interface class SoLoud {
   ///
   /// Returns `-1` if the filter is not active. Otherwise, returns
   /// the index of the given filter.
+  @Deprecated('Please, to manage global filters use SoLoud.filters instead')
   int isFilterActive(FilterType filterType) {
     final ret = _controller.soLoudFFI.isFilterActive(filterType);
     if (ret.error != PlayerErrors.noError) {
@@ -1717,6 +1718,7 @@ interface class SoLoud {
   /// Gets parameters of the given [filterType].
   ///
   /// Returns the list of param names.
+  @Deprecated('Please, to manage global filters use SoLoud.filters instead')
   List<String> getFilterParamNames(FilterType filterType) {
     final ret = _controller.soLoudFFI.getFilterParamNames(filterType);
     if (ret.error != PlayerErrors.noError) {
@@ -1732,6 +1734,7 @@ interface class SoLoud {
   ///     concurrent filter is reached (default max filter is 8).
   /// Throws [SoLoudFilterAlreadyAddedException] when trying to add a filter
   ///     that has already been added.
+  @Deprecated('Please, to manage global filters use SoLoud.filters instead')
   void addGlobalFilter(FilterType filterType) {
     final error = _controller.soLoudFFI.addFilter(filterType);
     if (error != PlayerErrors.noError) {
@@ -1741,6 +1744,7 @@ interface class SoLoud {
   }
 
   /// Removes [filterType] from all sounds.
+  @Deprecated('Please, to manage global filters use SoLoud.filters instead')
   void removeGlobalFilter(FilterType filterType) {
     final error = _controller.soLoudFFI.removeFilter(filterType);
     if (error != PlayerErrors.noError) {
@@ -1758,6 +1762,7 @@ interface class SoLoud {
   /// applyed to the global filter.
   /// [filterType] filter to modify a param.
   /// Returns [PlayerErrors.noError] if no errors.
+  @Deprecated('Please, to manage global filters use SoLoud.filters instead')
   void setGlobalFilterParameter(
     FilterType filterType,
     int attributeId,
@@ -1776,7 +1781,7 @@ interface class SoLoud {
 
   /// Set the effect parameter with id [attributeId] of [filterType]
   /// with [value] value.
-  @Deprecated('Please use setGlobalFilterParameter class instead.')
+  @Deprecated('Please, to manage global filters use SoLoud.filters instead')
   void setFilterParameter(
     FilterType filterType,
     int attributeId,
@@ -1792,6 +1797,7 @@ interface class SoLoud {
   /// it gets the global filter value.
   /// [filterType] the filter to modify a parameter.
   /// Returns the value of the parameter.
+  @Deprecated('Please, to manage global filters use SoLoud.filters instead')
   double getGlobalFilterParameter(
     FilterType filterType,
     int attributeId,
@@ -1809,7 +1815,7 @@ interface class SoLoud {
   }
 
   /// Get the effect parameter value with id [attributeId] of [filterType].
-  @Deprecated('Please use getGlobalFilterParameter class instead.')
+  @Deprecated('Please, to manage global filters use SoLoud.filters instead')
   double getFilterParameter(
     FilterType filterType,
     int attributeId, {

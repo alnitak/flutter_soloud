@@ -32,7 +32,12 @@ void PitchShiftInstance::filter(
         in[j] /= (float)aChannels;
     }
     
-    pitchShift.smbPitchShift(mParam[PitchShift::SHIFT], aSamples, 2048, 4, aSamplerate, in, in);
+#if defined(SOLOUD_SSE_INTRINSICS)
+    // trying to get more quality when SIMD is enabled.
+    pitchShift.smbPitchShift(mParam[PitchShift::SHIFT], aSamples, 4096, 16, aSamplerate, in, in);
+#else
+    pitchShift.smbPitchShift(mParam[PitchShift::SHIFT], aSamples, 2048, 8, aSamplerate, in, in);
+#endif
     for (int j = 0; j < aSamples; j++)
     {
         aBuffer[j] = aBuffer[j] * (1.0f - mParam[PitchShift::WET]) + in[j] * mParam[PitchShift::WET]; // L chan
@@ -133,7 +138,7 @@ float PitchShift::getParamMax(unsigned int aParamIndex)
     case SHIFT:
         return 3.f;
     case SEMITONES:
-        return 48.f;
+        return 36.f;
     }
     return 1;
 }
@@ -147,7 +152,7 @@ float PitchShift::getParamMin(unsigned int aParamIndex)
     case SHIFT:
         return 0.1f;
     case SEMITONES:
-        return -48.f;
+        return -36.f;
     }
     return 1;
 }
