@@ -27,7 +27,6 @@ import 'package:flutter_soloud/flutter_soloud.dart';
 
 // ```
 
-
 /// Use the filter globally or attached to the sound. Filters for single sounds
 /// are not supported in the Web platform.
 const bool useGlobalFilter = true;
@@ -149,7 +148,7 @@ class _PitchShiftState extends State<PitchShift> {
                     builder: (_, speed, __) {
                       return Row(
                         children: [
-                          Text('speed: ${(speed*100).toInt()}%'),
+                          Text('speed: ${(speed * 100).toInt()}%'),
                           Expanded(
                             child: Slider.adaptive(
                               max: 5,

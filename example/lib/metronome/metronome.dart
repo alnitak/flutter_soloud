@@ -4,13 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 
 /// Metronome example.
-/// 
+///
 /// For this example the player is initialized with a buffer size of 256. By
 /// default it is set to 2048, this means that for a playback at 44100 Hz the
 /// buffer is processed in about 40ms. When we use the `play()` method, the
 /// sound will start at the upcoming audio buffer and this could happen with
 /// a delay at least of 40ms. If we reduce the buffer size also this gap will
-/// be shorter. A value of 256 or 512 will reduce this latency but at the same 
+/// be shorter. A value of 256 or 512 will reduce this latency but at the same
 /// time, the smaller the buffer, the more likely the
 /// system hits buffer underruns (ie, the play head marches on but there's no
 /// data ready to be played) and the sound breaks down horribly.
