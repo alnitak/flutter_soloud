@@ -67,8 +67,6 @@ class _PitchShiftState extends State<PitchShift> {
     super.initState();
     try {
       SoLoud.instance
-          // .loadAsset('assets/audio/8_bit_mentality.mp3')
-          // .loadAsset('assets/audio/tic-2.wav')
           .loadAsset('assets/audio/IveSeenThings.mp3')
           .then((value) async {
         sound = value;
