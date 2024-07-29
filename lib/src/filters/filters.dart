@@ -302,7 +302,6 @@ enum FilterType {
     }
   }
 
-  @internal
 
   /// Fade a parameter with index [attributeId], to a value [to] in [time] time.
   /// If [soundHandle] is null the fade is applied to this global filter else
@@ -310,6 +309,7 @@ enum FilterType {
   ///
   /// Throws [SoLoudFilterForSingleSoundOnWebDartException] if trying to use
   /// a filter for a single sound on the Web platform.
+  @internal
   void fadeFilterParameter(
     SoundHandle? soundHandle,
     int attributeId,
@@ -335,7 +335,6 @@ enum FilterType {
     }
   }
 
-  @internal
 
   /// Oscillate a parameter with index [attributeId], to a value [to] in
   /// [time] time.
@@ -344,6 +343,7 @@ enum FilterType {
   ///
   /// Throws [SoLoudFilterForSingleSoundOnWebDartException] if trying to use
   /// a filter for a single sound on the Web platform.
+  @internal
   void oscillateFilterParameter(
     SoundHandle? soundHandle,
     int attributeId,
