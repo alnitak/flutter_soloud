@@ -279,7 +279,6 @@ enum FilterType {
     }
   }
 
-
   /// Deactivate this filter. If [soundHash] is null this filter is removed
   /// globally, else from the given [soundHash].
   ///

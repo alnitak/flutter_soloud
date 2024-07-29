@@ -668,7 +668,7 @@ abstract class FlutterSoLoud {
   @mustBeOverridden
   PlayerErrors addFilter(
     FilterType filterType, {
-    SoundHash? soundHash
+    SoundHash? soundHash,
   });
 
   /// Remove the filter [filterType].
@@ -678,7 +678,7 @@ abstract class FlutterSoLoud {
   @mustBeOverridden
   PlayerErrors removeFilter(
     FilterType filterType, {
-    SoundHash? soundHash
+    SoundHash? soundHash,
   });
 
   /// Set the effect parameter with id [attributeId] of [filterType]
