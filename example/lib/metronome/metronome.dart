@@ -1,7 +1,10 @@
 import 'dart:async';
+import 'dart:developer' as dev;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
+import 'package:logging/logging.dart';
 
 /// Metronome example.
 ///
@@ -16,6 +19,22 @@ import 'package:flutter_soloud/flutter_soloud.dart';
 /// data ready to be played) and the sound breaks down horribly.
 
 void main() async {
+  // The `flutter_soloud` package logs everything
+  // (from severe warnings to fine debug messages)
+  // using the standard `package:logging`.
+  // You can listen to the logs as shown below.
+  Logger.root.level = kDebugMode ? Level.FINE : Level.INFO;
+  Logger.root.onRecord.listen((record) {
+    dev.log(
+      record.message,
+      time: record.time,
+      level: record.level.value,
+      name: record.loggerName,
+      zone: record.zone,
+      error: record.error,
+      stackTrace: record.stackTrace,
+    );
+  });
   WidgetsFlutterBinding.ensureInitialized();
 
   /// Initialize the player.
