@@ -31,7 +31,7 @@ class _PageHelloFlutterSoLoudState extends State<PageHelloFlutterSoLoud> {
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
             /// pick audio file
-            ElevatedButton(
+            OutlinedButton(
               onPressed: () async {
                 final paths = (await FilePicker.platform.pickFiles(
                   type: FileType.custom,
@@ -51,7 +51,7 @@ class _PageHelloFlutterSoLoudState extends State<PageHelloFlutterSoLoud> {
             ),
 
             /// pick audio file
-            ElevatedButton(
+            OutlinedButton(
               onPressed: () async {
                 final paths = (await FilePicker.platform.pickFiles(
                   type: FileType.custom,
