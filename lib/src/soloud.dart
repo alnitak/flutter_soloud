@@ -18,6 +18,24 @@ import 'package:http/http.dart' as http;
 import 'package:logging/logging.dart';
 import 'package:meta/meta.dart';
 
+@pragma('vm:entry-point')
+void _loadFile(Map<String, dynamic> args) {
+  SoLoudController().soLoudFFI.loadFile(
+        args['path'] as String,
+        LoadMode.values[args['mode'] as int],
+      );
+}
+
+@pragma('vm:entry-point')
+({PlayerErrors error, SoundHash soundHash}) _loadMem(
+    Map<String, dynamic> args) {
+  return SoLoudController().soLoudFFI.loadMem(
+        args['path'] as String,
+        args['buffer'] as Uint8List,
+        LoadMode.values[args['mode'] as int],
+      );
+}
+
 /// The main class to call all the audio methods that play sounds.
 ///
 /// This class has a singleton [instance] which represents the (also singleton)
@@ -420,12 +438,12 @@ interface class SoLoud {
       throw const SoLoudNotInitializedException();
     }
 
-    _controller.soLoudFFI.loadFile(path, mode);
-
     final completer = Completer<AudioSource>();
     loadedFileCompleters.addAll({
       path: completer,
     });
+
+    await compute(_loadFile, {'path': path, 'mode': mode.index});
 
     return completer.future.whenComplete(() {
       loadedFileCompleters.removeWhere((key, __) => key == path);
@@ -470,7 +488,11 @@ interface class SoLoud {
       path: completer,
     });
 
-    final ret = _controller.soLoudFFI.loadMem(path, buffer, mode);
+    final ret = await compute(_loadMem, {
+      'path': path,
+      'buffer': buffer,
+      'mode': mode.index,
+    });
 
     /// There is not a callback in cpp that is supposed to add the
     /// "load file event". Manually send this event to have only one
