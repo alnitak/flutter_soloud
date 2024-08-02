@@ -233,12 +233,12 @@ extern "C"
 
         Player *p = player.get();
         unsigned int hash = 0;
-        // std::thread loadThread([p, completeFileName, loadIntoMem, hash]()
+        // std::thread loadThread([p, pa, completeFileName, loadIntoMem, hash]()
         //                        {
-        PlayerErrors error = p->loadFile(pa.string(), loadIntoMem, &hash);
+        PlayerErrors error = p->loadFile(pa.string(), loadIntoMem, (unsigned int*)&hash);
         // printf("*** LOAD FILE FROM THREAD error: %d  hash: %u\n", error,  *hash);
-        fileLoadedCallback(error, completeFileName, &hash);
-        //     });
+        fileLoadedCallback(error, completeFileName, (unsigned int*)&hash);
+            // });
         // // TODO(marco): use .detach()? Use std::atomic somewhere
         // loadThread.join();
     }
