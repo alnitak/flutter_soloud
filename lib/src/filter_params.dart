@@ -1,34 +1,11 @@
-/// The different types of audio filters.
-enum FilterType {
-  /// A biquad resonant filter.
-  biquadResonantFilter,
+// ignore_for_file: public_member_api_docs
 
-  /// An equalizer filter.
-  eqFilter,
-
-  /// An echo filter.
-  echoFilter,
-
-  /// A lo-fi filter.
-  lofiFilter,
-
-  /// A flanger filter.
-  flangerFilter,
-
-  /// A bass-boost filter.
-  bassboostFilter,
-
-  /// A wave shaper filter.
-  waveShaperFilter,
-
-  /// A robotize filter.
-  robotizeFilter,
-
-  /// A reverb filter.
-  freeverbFilter,
-}
+// ///////////////////////////////////////////////
+// Old way to manage filters. Deprecating these
+// ///////////////////////////////////////////////
 
 /// The parameters for each filter.
+@Deprecated('Please use the SoLoud.filters or AudioSource.filters.')
 typedef FxParams = ({
   String title,
   List<String> names,
@@ -38,6 +15,7 @@ typedef FxParams = ({
 });
 
 /// Biquad Resonant filter
+@Deprecated('Please use the SoLoud.filters or AudioSource.filters.')
 const FxParams fxBiquadResonant = (
   title: 'Biquad Resonant',
 
@@ -49,6 +27,7 @@ const FxParams fxBiquadResonant = (
 );
 
 /// EQ filter
+@Deprecated('Please use the SoLoud.filters or AudioSource.filters.')
 const FxParams fxEq = (
   title: 'Equalizer',
   names: [
@@ -68,6 +47,7 @@ const FxParams fxEq = (
 );
 
 /// Echo filter
+@Deprecated('Please use the SoLoud.filters or AudioSource.filters.')
 const FxParams fxEcho = (
   title: 'Echo',
   names: ['Wet', 'Delay', 'Decay', 'Filter'],
@@ -77,6 +57,7 @@ const FxParams fxEcho = (
 );
 
 /// Lo-fi filter
+@Deprecated('Please use the SoLoud.filters or AudioSource.filters.')
 const FxParams fxLofi = (
   title: 'Lofi',
   names: ['Wet', 'Samplerate', 'Bitdepth'],
@@ -86,6 +67,7 @@ const FxParams fxLofi = (
 );
 
 /// Flanger filter
+@Deprecated('Please use the SoLoud.filters or AudioSource.filters.')
 const FxParams fxFlanger = (
   title: 'Flanger',
   names: ['Wet', 'Delay', 'Freq'],
@@ -95,6 +77,7 @@ const FxParams fxFlanger = (
 );
 
 /// Bass-boost filter
+@Deprecated('Please use the SoLoud.filters or AudioSource.filters.')
 const FxParams fxBassboost = (
   title: 'Bassboost',
   names: ['Wet', 'Boost'],
@@ -104,6 +87,7 @@ const FxParams fxBassboost = (
 );
 
 /// WaveShaper filter
+@Deprecated('Please use the SoLoud.filters or AudioSource.filters.')
 const FxParams fxWaveShaper = (
   title: 'Wave Shaper',
   names: ['Wet', 'Amount'],
@@ -113,6 +97,7 @@ const FxParams fxWaveShaper = (
 );
 
 /// Robotize filter
+@Deprecated('Please use the SoLoud.filters or AudioSource.filters.')
 const FxParams fxRobotize = (
   title: 'Robotize',
 
@@ -124,6 +109,7 @@ const FxParams fxRobotize = (
 );
 
 /// Freeverb (reverb) filter
+@Deprecated('Please use the SoLoud.filters or AudioSource.filters.')
 const FxParams fxFreeverb = (
   title: 'Freeverb',
 
@@ -132,4 +118,14 @@ const FxParams fxFreeverb = (
   mins: [0, 0, 0, 0, 0],
   maxs: [1, 1, 1, 1, 1],
   defs: [1, 0, 0.5, 0.5, 1],
+);
+
+/// Pitch shift filter
+@Deprecated('Please use the SoLoud.filters or AudioSource.filters.')
+const FxParams fxPitchShift = (
+  title: 'PitchShift',
+  names: ['Wet', 'Shift', 'Semitones'],
+  mins: [0, 0, -48],
+  maxs: [1, 3, 48],
+  defs: [1, 1, 0],
 );

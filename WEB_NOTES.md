@@ -4,6 +4,7 @@
 ## Description
 
 The web platform is now supported, but some testing is welcome.
+Please note that filters for single sounds are not supported on the web.
 
 ## How to use
 

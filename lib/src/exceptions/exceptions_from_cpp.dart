@@ -175,3 +175,15 @@ class SoLoudSoundHandleNotFoundCppException extends SoLoudCppException {
   String get description => 'The sound handle is not found '
       '(on the C++ side).';
 }
+
+/// An error occurred while getting a filter parameter
+class SoLoudFilterParameterGetErrorCppException extends SoLoudCppException {
+  /// Creates a new [SoLoudFilterParameterGetErrorCppException].
+  const SoLoudFilterParameterGetErrorCppException([super.message]);
+
+  @override
+  String get description => 'An error occurred while getting a filter '
+      'parameter. This could happen when passing a value outside the parameter '
+      'range and then trying to get it '
+      '(on the C++ side).';
+}

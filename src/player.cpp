@@ -110,6 +110,8 @@ const std::string Player::getErrorString(PlayerErrors errorCode) const
         return "error: the player is already initialized!";
     case soundHandleNotFound:
         return "error: audio handle is not found!";
+    case filterParameterGetError:
+        return "error: getting filter parameter error!";
     }
     return "Other error";
 }
@@ -124,7 +126,7 @@ PlayerErrors Player::loadFile(
 
     *hash = 0;
 
-    unsigned int newHash = (unsigned int)std::hash<std::string>{}(completeFileName);
+    unsigned int newHash = (int32_t)std::hash<std::string>{}(completeFileName) & 0x7fffffff;
     /// check if the sound has been already loaded
     auto const s = findByHash(newHash);
 
@@ -134,20 +136,20 @@ PlayerErrors Player::loadFile(
         return fileAlreadyLoaded;
     }
 
-    sounds.push_back(std::make_shared<ActiveSound>());
+    sounds.push_back(std::make_unique<ActiveSound>());
     sounds.back().get()->completeFileName = std::string(completeFileName);
     sounds.back().get()->soundHash = newHash;
 
     SoLoud::result result;
     if (loadIntoMem)
     {
-        sounds.back().get()->sound = std::make_shared<SoLoud::Wav>();
+        sounds.back().get()->sound = std::make_unique<SoLoud::Wav>();
         sounds.back().get()->soundType = TYPE_WAV;
         result = static_cast<SoLoud::Wav *>(sounds.back().get()->sound.get())->load(completeFileName.c_str());
     }
     else
     {
-        sounds.back().get()->sound = std::make_shared<SoLoud::WavStream>();
+        sounds.back().get()->sound = std::make_unique<SoLoud::WavStream>();
         sounds.back().get()->soundType = TYPE_WAVSTREAM;
         result = static_cast<SoLoud::WavStream *>(sounds.back().get()->sound.get())->load(completeFileName.c_str());
     }
@@ -175,7 +177,7 @@ PlayerErrors Player::loadMem(
 
     hash = 0;
 
-    unsigned int newHash = (unsigned int)std::hash<std::string>{}(uniqueName);
+    unsigned int newHash = (int32_t)std::hash<std::string>{}(uniqueName) & 0x7fffffff;
     /// check if the sound has been already loaded
     auto const s = findByHash(newHash);
 
@@ -185,29 +187,28 @@ PlayerErrors Player::loadMem(
         return fileAlreadyLoaded;
     }
 
-    sounds.push_back(std::make_shared<ActiveSound>());
-    sounds.back().get()->completeFileName = std::string(uniqueName);
-    hash = sounds.back().get()->soundHash = newHash;
-
+    std::unique_ptr<ActiveSound> newSound = std::make_unique<ActiveSound>();
+    newSound.get()->completeFileName = std::string(uniqueName);
+    hash = newHash;
+    newSound.get()->soundHash = newHash;
     SoLoud::result result;
     if (loadIntoMem)
     {
-        sounds.back().get()->sound = std::make_shared<SoLoud::Wav>();
-        sounds.back().get()->soundType = TYPE_WAV;
-        result = static_cast<SoLoud::Wav *>(sounds.back().get()->sound.get())->loadMem(mem, length, false, true);
+        newSound.get()->sound = std::make_unique<SoLoud::Wav>();
+        newSound.get()->soundType = TYPE_WAV;
+        result = static_cast<SoLoud::Wav *>(newSound.get()->sound.get())->loadMem(mem, length, false, true);
     }
     else
     {
-        sounds.back().get()->sound = std::make_shared<SoLoud::WavStream>();
-        sounds.back().get()->soundType = TYPE_WAVSTREAM;
-        result = static_cast<SoLoud::WavStream *>(sounds.back().get()->sound.get())->loadMem(mem, length, false, true);
+        newSound.get()->sound = std::make_unique<SoLoud::WavStream>();
+        newSound.get()->soundType = TYPE_WAVSTREAM;
+        result = static_cast<SoLoud::WavStream *>(newSound.get()->sound.get())->loadMem(mem, length, false, true);
     }
-
-    if (result != SoLoud::SO_NO_ERROR)
+    
+    if (result == SoLoud::SO_NO_ERROR)
     {
-        sounds.pop_back();
-    } else {
-        sounds.back().get()->filters = std::make_unique<Filters>(&soloud, sounds.back().get());
+        newSound.get()->filters = std::make_unique<Filters>(&soloud, newSound.get());
+        sounds.push_back(std::move(newSound));
     }
 
     return (PlayerErrors)result;
@@ -231,10 +232,10 @@ PlayerErrors Player::loadWaveform(
 
     hash = dist(g);
 
-    sounds.push_back(std::make_shared<ActiveSound>());
+    sounds.push_back(std::make_unique<ActiveSound>());
     sounds.back().get()->completeFileName = "";
     sounds.back().get()->soundHash = hash;
-    sounds.back().get()->sound = std::make_shared<Basicwave>((SoLoud::Soloud::WAVEFORM)waveform, superWave, detune, scale);
+    sounds.back().get()->sound = std::make_unique<Basicwave>((SoLoud::Soloud::WAVEFORM)waveform, superWave, detune, scale);
     sounds.back().get()->soundType = TYPE_SYNTH;
     sounds.back().get()->filters = std::make_unique<Filters>(&soloud, sounds.back().get());
 
@@ -383,7 +384,7 @@ void Player::disposeSound(unsigned int soundHash)
     sound->sound.get()->stop();
     // remove the sound from the list
     sounds.erase(std::remove_if(sounds.begin(), sounds.end(),
-                                [soundHash](std::shared_ptr<ActiveSound> &f)
+                                [soundHash](std::unique_ptr<ActiveSound> &f)
                                 { return f.get()->soundHash == soundHash; }));
 }
 
@@ -418,7 +419,7 @@ PlayerErrors Player::textToSpeech(const std::string &textToSpeech, unsigned int 
     if (!mInited)
         return backendNotInited;
 
-    sounds.push_back(std::make_shared<ActiveSound>());
+    sounds.push_back(std::make_unique<ActiveSound>());
     sounds.back().get()->completeFileName = std::string("");
     SoLoud::result result = speech.setText(textToSpeech.c_str());
     if (result == SoLoud::SO_NO_ERROR)
@@ -586,7 +587,6 @@ void Player::setMaxActiveVoiceCount(unsigned int maxVoiceCount)
 ActiveSound *Player::findByHandle(SoLoud::handle handle)
 {
     int i = 0;
-    // TODO(marco): do a better std pls! \o/
     while (i < (int)sounds.size())
     {
         int index = 0;
@@ -607,7 +607,7 @@ ActiveSound *Player::findByHandle(SoLoud::handle handle)
 ActiveSound *Player::findByHash(unsigned int soundHash)
 {
     auto const &s = std::find_if(sounds.begin(), sounds.end(),
-                                 [&](std::shared_ptr<ActiveSound> const &f)
+                                 [&](std::unique_ptr<ActiveSound> const &f)
                                  { return f->soundHash == soundHash; });
     if (s == sounds.end())
         return nullptr;

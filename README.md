@@ -209,6 +209,5 @@ For Windows users, SoLoud utilizes *Openmpt* through a DLL, which can be obtaine
 
 #### Web
 
-Work on web support (using WASM) is tracked in
-https://github.com/alnitak/flutter_soloud/issues/46.
+Please see [WEB_NOTES.md](https://github.com/alnitak/flutter_soloud/blob/main/WEB_NOTES.md).
 

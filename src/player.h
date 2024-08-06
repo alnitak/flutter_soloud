@@ -523,7 +523,7 @@ public:
 
 public:
     /// all the sounds loaded
-    std::vector<std::shared_ptr<ActiveSound>> sounds;
+    std::vector<std::unique_ptr<ActiveSound>> sounds;
 
     /// true when the backend is initialized
     bool mInited;

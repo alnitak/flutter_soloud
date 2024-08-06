@@ -10,7 +10,7 @@ import 'package:flutter_soloud/src/bindings/bindings_player.dart';
 import 'package:flutter_soloud/src/bindings/soloud_controller.dart';
 import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/exceptions/exceptions.dart';
-import 'package:flutter_soloud/src/filter_params.dart';
+import 'package:flutter_soloud/src/filters/filters.dart';
 import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
 import 'package:flutter_soloud/src/utils/loader.dart';
@@ -47,7 +47,58 @@ interface class SoLoud {
 
   static final Logger _log = Logger('flutter_soloud.SoLoud');
 
+  /// The controller.
   final _controller = SoLoudController();
+
+  /// This can be used to access all the available filter functionalities
+  /// for the player output (formerly called global filters).
+  ///
+  /// ```dart
+  /// await SoLoud.instance.init();
+  /// ...
+  /// /// activate the filter.
+  /// SoLoud.instance.filters.echoFilter.activate();
+  ///
+  /// /// Later on, deactivate it.
+  /// SoLoud.instance.filters.echoFilter.deactivate();
+  /// ```
+  ///
+  /// It's possible to get and set filter parameters:
+  /// ```dart
+  /// /// Set
+  /// SoLoud.instance.filters.echoFilter.delay.value = 0.6;
+  /// /// Get
+  /// final delayValue = SoLoud.instance.filters.echoFilter.delay.value;
+  /// ```
+  /// or fade/oscillate a parameter:
+  /// ```dart
+  /// /// Fade
+  /// SoLoud.instance.filters.echoFilter.delay
+  ///     .fadeFilterParameter(
+  ///       to: 3,
+  ///       time: const Duration(milliseconds: 2500),
+  ///     );
+  /// /// Oscillate
+  /// SoLoud.instance.filters.echoFilter.delay
+  ///     .oscillateFilterParameter(
+  ///       from: 0.4,
+  ///       to: 1.8,
+  ///       time: const Duration(milliseconds: 2500),
+  ///     );
+  /// ```
+  ///
+  /// It's possible to query filter parameters:
+  /// ```dart
+  /// final delayParams = SoLoud.instance.filters.echoFilter.queryDelay;
+  /// ```
+  ///
+  /// Now with "delayParams" you have access to:
+  /// - `toString()` gives the "human readable" parameter name.
+  /// - `min` which represent the "shift" minimum accepted value.
+  /// - `max` which represent the "shift" maximum accepted value.
+  /// - `def` which represent the "shift" default value.
+  ///
+  late final filters = const FiltersGlobal();
 
   /// The singleton instance of [SoLoud]. Only one SoLoud instance
   /// can exist in C++ land, so – for consistency and to avoid confusion
@@ -1676,6 +1727,7 @@ interface class SoLoud {
   ///
   /// Returns `-1` if the filter is not active. Otherwise, returns
   /// the index of the given filter.
+  @Deprecated('Please, to manage global filters use SoLoud.filters instead')
   int isFilterActive(FilterType filterType) {
     final ret = _controller.soLoudFFI.isFilterActive(filterType);
     if (ret.error != PlayerErrors.noError) {
@@ -1688,6 +1740,7 @@ interface class SoLoud {
   /// Gets parameters of the given [filterType].
   ///
   /// Returns the list of param names.
+  @Deprecated('Please, to manage global filters use SoLoud.filters instead')
   List<String> getFilterParamNames(FilterType filterType) {
     final ret = _controller.soLoudFFI.getFilterParamNames(filterType);
     if (ret.error != PlayerErrors.noError) {
@@ -1703,6 +1756,7 @@ interface class SoLoud {
   ///     concurrent filter is reached (default max filter is 8).
   /// Throws [SoLoudFilterAlreadyAddedException] when trying to add a filter
   ///     that has already been added.
+  @Deprecated('Please, to manage global filters use SoLoud.filters instead')
   void addGlobalFilter(FilterType filterType) {
     final error = _controller.soLoudFFI.addFilter(filterType);
     if (error != PlayerErrors.noError) {
@@ -1712,6 +1766,7 @@ interface class SoLoud {
   }
 
   /// Removes [filterType] from all sounds.
+  @Deprecated('Please, to manage global filters use SoLoud.filters instead')
   void removeGlobalFilter(FilterType filterType) {
     final error = _controller.soLoudFFI.removeFilter(filterType);
     if (error != PlayerErrors.noError) {
@@ -1729,6 +1784,7 @@ interface class SoLoud {
   /// applyed to the global filter.
   /// [filterType] filter to modify a param.
   /// Returns [PlayerErrors.noError] if no errors.
+  @Deprecated('Please, to manage global filters use SoLoud.filters instead')
   void setGlobalFilterParameter(
     FilterType filterType,
     int attributeId,
@@ -1747,7 +1803,7 @@ interface class SoLoud {
 
   /// Set the effect parameter with id [attributeId] of [filterType]
   /// with [value] value.
-  @Deprecated('Please use setGlobalFilterParameter class instead.')
+  @Deprecated('Please, to manage global filters use SoLoud.filters instead')
   void setFilterParameter(
     FilterType filterType,
     int attributeId,
@@ -1763,6 +1819,7 @@ interface class SoLoud {
   /// it gets the global filter value.
   /// [filterType] the filter to modify a parameter.
   /// Returns the value of the parameter.
+  @Deprecated('Please, to manage global filters use SoLoud.filters instead')
   double getGlobalFilterParameter(
     FilterType filterType,
     int attributeId,
@@ -1780,11 +1837,11 @@ interface class SoLoud {
   }
 
   /// Get the effect parameter value with id [attributeId] of [filterType].
-  @Deprecated('Please use getGlobalFilterParameter class instead.')
+  @Deprecated('Please, to manage global filters use SoLoud.filters instead')
   double getFilterParameter(
     FilterType filterType,
     int attributeId, {
-    SoundHandle handle = const SoundHandle(0),
+    SoundHandle handle = const SoundHandle.error(),
   }) =>
       getGlobalFilterParameter(filterType, attributeId);
 

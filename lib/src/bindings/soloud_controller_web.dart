@@ -2,7 +2,7 @@
 
 import 'package:flutter_soloud/src/bindings/bindings_player_web.dart';
 
-/// Controller that expose method channel and FFI
+/// Controller that expose FFI.
 class SoLoudController {
   factory SoLoudController() => _instance ??= SoLoudController._();
 

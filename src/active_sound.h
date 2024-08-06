@@ -15,7 +15,7 @@ class Filters;
 /// but this can be adjusted at runtime
 typedef struct ActiveSound
 {
-    std::shared_ptr<SoLoud::AudioSource> sound;
+    std::unique_ptr<SoLoud::AudioSource> sound;
     SoundType soundType;
     std::vector<SoLoud::handle> handle;
     std::unique_ptr<Filters> filters;

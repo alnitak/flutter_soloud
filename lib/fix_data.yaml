@@ -9,6 +9,28 @@
 version: 1
 
 transforms:
+  # SoLoud.getFilterParameter => SoLoud.getGlobalFilterParameter
+  - title: "Rename to 'getGlobalFilterParameter'"
+    date: 2024-04-03
+    element:
+      uris: [ 'flutter_soloud.dart', 'package:flutter_soloud/flutter_soloud.dart' ]
+      method: 'getFilterParameter'
+      inClass: 'SoLoud'
+    changes:
+      - kind: 'rename'
+        newName: 'getGlobalFilterParameter'
+
+  # SoLoud.setFilterParameter => SoLoud.setGlobalFilterParameter
+  - title: "Rename to 'setGlobalFilterParameter'"
+    date: 2024-04-03
+    element:
+      uris: [ 'flutter_soloud.dart', 'package:flutter_soloud/flutter_soloud.dart' ]
+      method: 'setFilterParameter'
+      inClass: 'SoLoud'
+    changes:
+      - kind: 'rename'
+        newName: 'setGlobalFilterParameter'
+
   # SoLoud.disposeAllSound => SoLoud.disposeAllSources
   - title: "Rename to 'disposeAllSources'"
     date: 2024-04-03
