@@ -302,7 +302,6 @@ enum FilterType {
     }
   }
 
-
   /// Fade a parameter with index [attributeId], to a value [to] in [time] time.
   /// If [soundHandle] is null the fade is applied to this global filter else
   /// to the given sound handle.
@@ -334,7 +333,6 @@ enum FilterType {
       throw SoLoudCppException.fromPlayerError(error);
     }
   }
-
 
   /// Oscillate a parameter with index [attributeId], to a value [to] in
   /// [time] time.
