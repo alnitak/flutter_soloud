@@ -1,5 +1,5 @@
 import 'dart:developer' as dev;
-    
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
