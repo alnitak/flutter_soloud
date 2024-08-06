@@ -209,21 +209,25 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     // ignore: omit_local_variable_types
     final ffi.Pointer<ffi.UnsignedInt> h =
         calloc(ffi.sizeOf<ffi.UnsignedInt>());
+    // ignore: omit_local_variable_types
+    final ffi.Pointer<Utf8> cString = completeFileName.toNativeUtf8();
     _loadFile(
-      completeFileName.toNativeUtf8().cast<ffi.Char>(),
+      cString,
       mode == LoadMode.memory ? 1 : 0,
     );
-    calloc.free(h);
+    calloc
+      ..free(cString)
+      ..free(h);
   }
 
   late final _loadFilePtr = _lookup<
       ffi.NativeFunction<
           ffi.Void Function(
-            ffi.Pointer<ffi.Char>,
+            ffi.Pointer<Utf8>,
             ffi.Int,
           )>>('loadFile');
   late final _loadFile =
-      _loadFilePtr.asFunction<void Function(ffi.Pointer<ffi.Char>, int)>();
+      _loadFilePtr.asFunction<void Function(ffi.Pointer<Utf8>, int)>();
 
   @override
   ({PlayerErrors error, SoundHash soundHash}) loadMem(
@@ -240,8 +244,10 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       bufferPtr[i] = buffer[i];
     }
 
+    // ignore: omit_local_variable_types
+    final ffi.Pointer<Utf8> cString = uniqueName.toNativeUtf8();
     final e = _loadMem(
-      uniqueName.toNativeUtf8().cast<ffi.Char>(),
+      cString,
       bufferPtr,
       buffer.length,
       mode == LoadMode.memory ? 1 : 0,
@@ -249,16 +255,18 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     );
     final soundHash = SoundHash(hash.value);
     final ret = (error: PlayerErrors.values[e], soundHash: soundHash);
-    calloc.free(hash);
+    calloc
+      ..free(hash)
+      ..free(cString);
     return ret;
   }
 
   late final _loadMemPtr = _lookup<
       ffi.NativeFunction<
-          ffi.Int32 Function(ffi.Pointer<ffi.Char>, ffi.Pointer<ffi.Uint8>,
-              ffi.Int, ffi.Int, ffi.Pointer<ffi.UnsignedInt>)>>('loadMem');
+          ffi.Int32 Function(ffi.Pointer<Utf8>, ffi.Pointer<ffi.Uint8>, ffi.Int,
+              ffi.Int, ffi.Pointer<ffi.UnsignedInt>)>>('loadMem');
   late final _loadMem = _loadMemPtr.asFunction<
-      int Function(ffi.Pointer<ffi.Char>, ffi.Pointer<ffi.Uint8>, int, int,
+      int Function(ffi.Pointer<Utf8>, ffi.Pointer<ffi.Uint8>, int, int,
           ffi.Pointer<ffi.UnsignedInt>)>();
 
   @override
@@ -350,8 +358,10 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   ({PlayerErrors error, SoundHandle handle}) speechText(String textToSpeech) {
     // ignore: omit_local_variable_types
     final ffi.Pointer<ffi.UnsignedInt> handle = calloc();
+    // ignore: omit_local_variable_types
+    final ffi.Pointer<Utf8> cString = textToSpeech.toNativeUtf8();
     final e = _speechText(
-      textToSpeech.toNativeUtf8().cast<ffi.Char>(),
+      cString,
       handle,
     );
     final ret =
@@ -363,11 +373,11 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   late final _speechTextPtr = _lookup<
       ffi.NativeFunction<
           ffi.Int32 Function(
-            ffi.Pointer<ffi.Char>,
+            ffi.Pointer<Utf8>,
             ffi.Pointer<ffi.UnsignedInt>,
           )>>('speechText');
   late final _speechText = _speechTextPtr.asFunction<
-      int Function(ffi.Pointer<ffi.Char>, ffi.Pointer<ffi.UnsignedInt>)>();
+      int Function(ffi.Pointer<Utf8>, ffi.Pointer<ffi.UnsignedInt>)>();
 
   @override
   void pauseSwitch(SoundHandle handle) {

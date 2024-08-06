@@ -17,6 +17,7 @@
 #include <iostream>
 #include <memory.h>
 #include <memory>
+#include <filesystem>
 
 #ifdef __cplusplus
 extern "C"
@@ -220,7 +221,8 @@ extern "C"
         char *completeFileName,
         bool loadIntoMem)
     {
-        // this check is already been done in Dart
+        std::filesystem::path pa = std::filesystem::u8path(completeFileName);
+
         if (player.get() == nullptr || !player.get()->isInited())
         {
             printf("WARNING (from SoLoud C++ binding code): the player has "
@@ -231,12 +233,12 @@ extern "C"
 
         Player *p = player.get();
         unsigned int hash = 0;
-        // std::thread loadThread([p, completeFileName, loadIntoMem, hash]()
+        // std::thread loadThread([p, pa, completeFileName, loadIntoMem, hash]()
         //                        {
-        PlayerErrors error = p->loadFile(completeFileName, loadIntoMem, &hash);
+        PlayerErrors error = p->loadFile(pa.string(), loadIntoMem, (unsigned int*)&hash);
         // printf("*** LOAD FILE FROM THREAD error: %d  hash: %u\n", error,  *hash);
-        fileLoadedCallback(error, completeFileName, &hash);
-        //     });
+        fileLoadedCallback(error, completeFileName, (unsigned int*)&hash);
+            // });
         // // TODO(marco): use .detach()? Use std::atomic somewhere
         // loadThread.join();
     }
@@ -1171,7 +1173,7 @@ extern "C"
         *filterValue = 9999.0f;
         if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
-        /// If [handle] == 0 get the parameter from global filters else from 
+        /// If [handle] == 0 get the parameter from global filters else from
         /// the sound which owns [handle].
         if (handle == 0)
         {
