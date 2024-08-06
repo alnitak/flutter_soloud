@@ -75,12 +75,14 @@ class _MetronomeState extends State<Metronome> {
       /// unpaused/paused in the `Timer` callback.
       tick1 = value;
       tick1Handle = await SoLoud.instance.play(tick1!, paused: true);
-    });
-    SoLoud.instance.loadAsset('assets/audio/tic-2.wav').then((value) async {
-      /// start playing the tick in a paused state, so it can be
-      /// unpaused/paused in the `Timer` callback.
-      tick2 = value;
-      tick2Handle = await SoLoud.instance.play(tick2!, paused: true);
+      await SoLoud.instance
+          .loadAsset('assets/audio/tic-2.wav')
+          .then((value) async {
+        /// start playing the tick in a paused state, so it can be
+        /// unpaused/paused in the `Timer` callback.
+        tick2 = value;
+        tick2Handle = await SoLoud.instance.play(tick2!, paused: true);
+      });
     });
   }
 
