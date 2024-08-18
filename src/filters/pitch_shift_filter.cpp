@@ -2,7 +2,6 @@
 #include <memory>
 #include <cmath>
 
-#include "soloud.h"
 #include "pitch_shift_filter.h"
 
 PitchShiftInstance::PitchShiftInstance(PitchShift *aParent)

@@ -2,10 +2,10 @@
 #define FILTERS_H
 
 #include "../active_sound.h"
-#include "pitch_shift_filter.h"
 
 #include "soloud.h"
 #include "soloud_filter.h"
+#include "pitch_shift_filter.h"
 #include "soloud_biquadresonantfilter.h"
 // #include "soloud_duckfilter.h"
 #include "soloud_eqfilter.h"

@@ -1,5 +1,3 @@
-#pragma once
-
 #ifndef SMB_PITCHSHIFT_H
 #define SMB_PITCHSHIFT_H
 // http://blogs.zynaptiq.com/bernsee/pitch-shifting-using-the-ft/

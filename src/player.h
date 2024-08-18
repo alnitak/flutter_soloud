@@ -3,11 +3,11 @@
 #ifndef PLAYER_H
 #define PLAYER_H
 
+#include "soloud.h"
+#include "soloud_speech.h"
 #include "enums.h"
 #include "filters/filters.h"
 #include "active_sound.h"
-#include "soloud.h"
-#include "soloud_speech.h"
 
 #include <iostream>
 #include <vector>
