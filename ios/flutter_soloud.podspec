@@ -27,7 +27,8 @@ Flutter audio plugin using SoLoud library and FFI
     '-w',
     '-DOS_OBJECT_USE_OBJC=0', '-Wno-format',
     '-lpthread',
-    '-lm'
+    '-lm',
+    '-std=c++17'
   ]
   # Flutter.framework does not contain a i386 slice.
   s.pod_target_xcconfig = { 
