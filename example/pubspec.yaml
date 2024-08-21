@@ -16,7 +16,7 @@ dependencies:
   ffi: ^2.1.2
 
   #https://pub.dev/packages/file_picker
-  file_picker: ^5.3.3
+  file_picker: ^8.1.2
 
   flutter:
     sdk: flutter
