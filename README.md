@@ -96,10 +96,11 @@ always check how many times any audio source is being played at the time.
 The `SoundHandle` also allows you to modify the currently-playing sounds,
 such as changing their volume, pausing them, etc.
 
-For more examples, check out the 
-[`example/` project](https://github.com/alnitak/flutter_soloud/tree/main/example)
+For more simple examples, check out the 
+[example/project](https://github.com/alnitak/flutter_soloud/tree/main/example)
 included with the package.
-
+For more complete examples, please look at 
+[flutter_soloud_example](https://github.com/alnitak/flutter_soloud_example)
 
 ## Logging
 
