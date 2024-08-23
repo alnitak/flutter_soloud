@@ -8,7 +8,7 @@
             "name": "Flutter debug",
             "type": "dart",
             "request": "launch",
-            "program": "lib/filters/sound_filter.dart",
+            "program": "lib/filters/pitchshift.dart",
             "flutterMode": "debug",
             "cwd": "${workspaceFolder}/example"
         },
@@ -16,7 +16,7 @@
             "name": "Flutter profile",
             "type": "dart",
             "request": "launch",
-            "program": "lib/filters/sound_filter.dart",
+            "program": "lib/filters/pitchshift.dart",
             "flutterMode": "profile",
             "cwd": "${workspaceFolder}/example"
         },
@@ -24,7 +24,7 @@
             "name": "Flutter release",
             "type": "dart",
             "request": "launch",
-            "program": "lib/filters/sound_filter.dart",
+            "program": "lib/filters/pitchshift.dart",
             "flutterMode": "release",
             "cwd": "${workspaceFolder}/example"
         },
