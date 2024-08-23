@@ -47,6 +47,12 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
   AudioSource? currentSound;
 
   @override
+  void dispose() {
+    SoLoud.instance.deinit();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     if (!SoLoud.instance.isInitialized) return const SizedBox.shrink();
 

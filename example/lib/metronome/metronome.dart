@@ -87,6 +87,12 @@ class _MetronomeState extends State<Metronome> {
   }
 
   @override
+  void dispose() {
+    SoLoud.instance.deinit();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: Stack(
