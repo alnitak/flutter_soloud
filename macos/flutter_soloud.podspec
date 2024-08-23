@@ -20,7 +20,7 @@ Flutter audio plugin using SoLoud library and FFI
   s.source           = { :path => '.' }
   s.source_files     = 'Classes/**/*'
   s.dependency 'FlutterMacOS'
-  s.platform = :osx, '10.11'
+  s.platform = :osx, '10.15'
 
   s.pod_target_xcconfig = { 
     # Enable equivalent of '-Isrc/include' to make '#include <openssl/...>' work
@@ -30,7 +30,9 @@ Flutter audio plugin using SoLoud library and FFI
     ],
     'GCC_PREPROCESSOR_DEFINITIONS' => '$(inherited)',
     'DEFINES_MODULE' => 'YES', 
-    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386' 
+    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386',
+    "CLANG_CXX_LANGUAGE_STANDARD" => "c++17",
+    "CLANG_CXX_LIBRARY" => "libc++"
    }
   s.swift_version = '5.0'
   s.ios.framework  = ['AudioToolbox', 'AVFAudio']

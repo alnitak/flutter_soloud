@@ -89,7 +89,7 @@ class SoLoudSoundHashNotFoundDartException extends SoLoudDartException {
 }
 
 /// An exception that is thrown when SoLoud (Dart) tries to create a voice
-/// group but something goes wrong.
+/// group but something gone wrong.
 class SoLoudCreateVoiceGroupDartException extends SoLoudDartException {
   /// Creates a new [SoLoudCreateVoiceGroupDartException].
   const SoLoudCreateVoiceGroupDartException([super.message]);
@@ -97,4 +97,15 @@ class SoLoudCreateVoiceGroupDartException extends SoLoudDartException {
   @override
   String get description => 'SoLoud.createVoiceGroup() was not able to create '
       ' a new voice group.';
+}
+
+/// An exception that is thrown when trying to set a filter for a single
+/// [AudioSource] on the Web platform.
+class SoLoudFilterForSingleSoundOnWebDartException extends SoLoudDartException {
+  /// Creates a new [SoLoudFilterForSingleSoundOnWebDartException].
+  const SoLoudFilterForSingleSoundOnWebDartException([super.message]);
+
+  @override
+  String get description => 'Filters for single sounds are not supported on '
+      'the Web platform.';
 }

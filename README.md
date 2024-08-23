@@ -43,7 +43,17 @@ with the [miniaudio](https://miniaud.io/) backend
 through [Dart's C interop](https://dart.dev/interop/c-interop) (`dart:ffi`).
 In other words, it is calling the C/C++ methods of the underlying audio engine
 directly — there are no method channels in use.
+
+#### Web platform
 To use this plugin on the **Web platform**, please refer to [WEB_NOTES](https://github.com/alnitak/flutter_soloud/blob/main/WEB_NOTES.md).
+
+
+#### Stripping iOS symbols
+When creating a release archive (IPA), the symbols are [stripped by Xcode](https://docs.flutter.dev/platform-integration/ios/c-interop#stripping-ios-symbols), so the command `flutter build ipa` may throw a `Failed to lookup symbol ... symbol not found error`. To work around this:
+
+1. In Xcode, go to Target Runner > Build Settings > Strip Style
+2. Change from All Symbols to Non-Global Symbols
+
 
 
 ## Example
@@ -209,6 +219,5 @@ For Windows users, SoLoud utilizes *Openmpt* through a DLL, which can be obtaine
 
 #### Web
 
-Work on web support (using WASM) is tracked in
-https://github.com/alnitak/flutter_soloud/issues/46.
+Please see [WEB_NOTES.md](https://github.com/alnitak/flutter_soloud/blob/main/WEB_NOTES.md).
 

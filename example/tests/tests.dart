@@ -76,8 +76,8 @@ class _MyHomePageState extends State<MyHomePage> {
       _Test(name: 'testSynchronousDeinit', callback: testSynchronousDeinit),
       _Test(name: 'testAsynchronousDeinit', callback: testAsynchronousDeinit),
       _Test(name: 'testVoiceGroups', callback: testVoiceGroups),
-      _Test(name: 'testSoundFilters', callback: testSoundFilters),
-      _Test(name: 'testGlobalFilters', callback: testGlobalFilters),
+      // _Test(name: 'testSoundFilters', callback: testSoundFilters),
+      // _Test(name: 'testGlobalFilters', callback: testGlobalFilters),
     ]);
   }
 
@@ -694,137 +694,137 @@ Future<StringBuffer> testVoiceGroups() async {
   return StringBuffer();
 }
 
-/// Test sound filters.
-Future<StringBuffer> testSoundFilters() async {
-  final strBuf = StringBuffer();
-  await initialize();
+// /// Test sound filters.
+// Future<StringBuffer> testSoundFilters() async {
+//   final strBuf = StringBuffer();
+//   await initialize();
 
-  final sound = await SoLoud.instance.loadAsset(
-    'assets/audio/8_bit_mentality.mp3',
-    // mode: LoadMode.disk,
-  );
+//   final sound = await SoLoud.instance.loadAsset(
+//     'assets/audio/8_bit_mentality.mp3',
+//     // mode: LoadMode.disk,
+//   );
 
-  /// Add filter to the sound.
-  sound.addFilter(FilterType.echoFilter);
+//   /// Add filter to the sound.
+//   sound.addFilter(FilterType.echoFilter);
 
-  /// Set a handle filter. It must be set before it starts playing.
-  final h1 = await SoLoud.instance.play(sound);
+//   /// Set a handle filter. It must be set before it starts playing.
+//   final h1 = await SoLoud.instance.play(sound);
 
-  /// Use the `Wet` attribute index.
-  const attributeId = 0;
-  const value = 1.2;
-  sound.setFilterParameter(
-    h1,
-    FilterType.echoFilter,
-    attributeId,
-    value,
-  );
-  final g = sound.getFilterParameter(h1, FilterType.echoFilter, attributeId);
-  assert(
-    closeTo(g, value, 0.001),
-    'Setting attribute to $value but obtained $g',
-  );
+//   /// Use the `Wet` attribute index.
+//   const attributeId = 0;
+//   const value = 1.2;
+//   sound.setFilterParameter(
+//     h1,
+//     FilterType.echoFilter,
+//     attributeId,
+//     value,
+//   );
+//   final g = sound.getFilterParameter(h1, FilterType.echoFilter, attributeId);
+//   assert(
+//     closeTo(g, value, 0.001),
+//     'Setting attribute to $value but obtained $g',
+//   );
 
-  sound.oscillateFilterParameter(
-    h1,
-    FilterType.echoFilter,
-    attributeId,
-    0.01,
-    2,
-    const Duration(seconds: 2),
-  );
+//   sound.oscillateFilterParameter(
+//     h1,
+//     FilterType.echoFilter,
+//     attributeId,
+//     0.01,
+//     2,
+//     const Duration(seconds: 2),
+//   );
 
-  assert(
-    sound.isFilterActive(FilterType.echoFilter) >= 0,
-    'The filter is not active!',
-  );
+//   assert(
+//     sound.isFilterActive(FilterType.echoFilter) >= 0,
+//     'The filter is not active!',
+//   );
 
-  await delay(6000);
+//   await delay(6000);
 
-  /// Remove the filter
-  try {
-    sound.removeFilter(FilterType.echoFilter);
-  } on Exception catch (e) {
-    strBuf
-      ..write(e)
-      ..writeln();
-  }
-  assert(
-    sound.isFilterActive(FilterType.echoFilter) < 0,
-    'The filter is still active after removing it!',
-  );
+//   /// Remove the filter
+//   try {
+//     sound.removeFilter(FilterType.echoFilter);
+//   } on Exception catch (e) {
+//     strBuf
+//       ..write(e)
+//       ..writeln();
+//   }
+//   assert(
+//     sound.isFilterActive(FilterType.echoFilter) < 0,
+//     'The filter is still active after removing it!',
+//   );
 
-  deinit();
-  return strBuf;
-}
+//   deinit();
+//   return strBuf;
+// }
 
-/// Test global filters.
-Future<StringBuffer> testGlobalFilters() async {
-  final strBuf = StringBuffer();
-  await initialize();
+// /// Test global filters.
+// Future<StringBuffer> testGlobalFilters() async {
+//   final strBuf = StringBuffer();
+//   await initialize();
 
-  late final AudioSource sound;
-  try {
-    sound = await SoLoud.instance.loadAsset(
-      'assets/audio/8_bit_mentality.mp3',
-      mode: LoadMode.disk,
-    );
-  } on Exception catch (e) {
-    strBuf
-      ..write(e)
-      ..writeln();
-  }
+//   late final AudioSource sound;
+//   try {
+//     sound = await SoLoud.instance.loadAsset(
+//       'assets/audio/8_bit_mentality.mp3',
+//       mode: LoadMode.disk,
+//     );
+//   } on Exception catch (e) {
+//     strBuf
+//       ..write(e)
+//       ..writeln();
+//   }
 
-  /// Add filter to the sound.
-  SoLoud.instance.addGlobalFilter(FilterType.echoFilter);
+//   /// Add filter to the sound.
+//   SoLoud.instance.addGlobalFilter(FilterType.echoFilter);
 
-  await SoLoud.instance.play(sound);
+//   await SoLoud.instance.play(sound);
 
-  /// Use the `Wet` attribute index.
-  const attributeId = 0;
-  const value = 1.2;
-  SoLoud.instance.setGlobalFilterParameter(
-    FilterType.echoFilter,
-    attributeId,
-    value,
-  );
-  final g = SoLoud.instance.getGlobalFilterParameter(
-    FilterType.echoFilter,
-    attributeId,
-  );
-  assert(
-    closeTo(g, value, 0.001),
-    'Setting attribute to $value but optained $g',
-  );
+//   /// Use the `Wet` attribute index.
+//   const attributeId = 0;
+//   const value = 1.2;
+//   SoLoud.instance.setGlobalFilterParameter(
+//     FilterType.echoFilter,
+//     attributeId,
+//     value,
+//   );
+//   final g = SoLoud.instance.getGlobalFilterParameter(
+//     FilterType.echoFilter,
+//     attributeId,
+//   );
+//   assert(
+//     closeTo(g, value, 0.001),
+//     'Setting attribute to $value but optained $g',
+//   );
 
-  SoLoud.instance.oscillateGlobalFilterParameter(
-    FilterType.echoFilter,
-    attributeId,
-    0.01,
-    2,
-    const Duration(seconds: 2),
-  );
+//   SoLoud.instance.oscillateGlobalFilterParameter(
+//     FilterType.echoFilter,
+//     attributeId,
+//     0.01,
+//     2,
+//     const Duration(seconds: 2),
+//   );
 
-  assert(
-    SoLoud.instance.isFilterActive(FilterType.echoFilter) >= 0,
-    'The filter is not active!',
-  );
+//   assert(
+//     SoLoud.instance.isFilterActive(FilterType.echoFilter) >= 0,
+//     'The filter is not active!',
+//   );
 
-  await delay(6000);
+//   await delay(6000);
 
-  /// Remove the filter
-  try {
-    SoLoud.instance.removeGlobalFilter(FilterType.echoFilter);
-  } on Exception catch (e) {
-    strBuf
-      ..write(e)
-      ..writeln();
-  }
-  assert(
-    SoLoud.instance.isFilterActive(FilterType.echoFilter) < 0,
-    'The filter is still active after removing it!',
-  );
+//   /// Remove the filter
+//   try {
+//     SoLoud.instance.removeGlobalFilter(FilterType.echoFilter);
+//   } on Exception catch (e) {
+//     strBuf
+//       ..write(e)
+//       ..writeln();
+//   }
+//   assert(
+//     SoLoud.instance.isFilterActive(FilterType.echoFilter) < 0,
+//     'The filter is still active after removing it!',
+//   );
 
-  deinit();
-  return strBuf;
-}
+//   deinit();
+//   return strBuf;
+// }

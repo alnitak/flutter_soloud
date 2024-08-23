@@ -3,11 +3,11 @@
 #ifndef PLAYER_H
 #define PLAYER_H
 
+#include "soloud.h"
+#include "soloud_speech.h"
 #include "enums.h"
 #include "filters/filters.h"
 #include "active_sound.h"
-#include "soloud.h"
-#include "soloud_speech.h"
 
 #include <iostream>
 #include <vector>
@@ -523,7 +523,7 @@ public:
 
 public:
     /// all the sounds loaded
-    std::vector<std::shared_ptr<ActiveSound>> sounds;
+    std::vector<std::unique_ptr<ActiveSound>> sounds;
 
     /// true when the backend is initialized
     bool mInited;

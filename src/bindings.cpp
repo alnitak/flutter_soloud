@@ -1188,6 +1188,8 @@ extern "C"
             else
             {
                 *filterValue = s->filters.get()->getFilterParams(handle, filterType, attributeId);
+                if (!(isnormal(*filterValue) || isnan(*filterValue)))
+                    return filterParameterGetError;
                 if (*filterValue == 9999.0f)
                     return filterNotFound;
                 return noError;

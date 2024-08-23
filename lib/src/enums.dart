@@ -59,7 +59,10 @@ enum PlayerErrors {
   playerAlreadyInited(16),
 
   /// Audio handle is not found
-  soundHandleNotFound(17);
+  soundHandleNotFound(17),
+
+  /// Error getting filter parameter.
+  filterParameterGetError(18);
 
   const PlayerErrors(this.value);
 
@@ -110,6 +113,9 @@ enum PlayerErrors {
       case PlayerErrors.soundHandleNotFound:
         return 'The handle is not found! The playing handle could have been '
             'stopped or ended and it is no more valid!';
+      case PlayerErrors.filterParameterGetError:
+        return 'An error (nan or inf value) occurred while getting a '
+            'filter parameter!';
     }
   }
 

@@ -1,3 +1,4 @@
+import 'package:flutter_soloud/src/audio_source.dart';
 import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
 
@@ -101,6 +102,8 @@ abstract class SoLoudCppException extends SoLoudException {
         return const SoLoudPlayerAlreadyInitializedException();
       case PlayerErrors.soundHandleNotFound:
         return const SoLoudSoundHandleNotFoundCppException();
+      case PlayerErrors.filterParameterGetError:
+        return const SoLoudFilterParameterGetErrorCppException();
     }
   }
 }

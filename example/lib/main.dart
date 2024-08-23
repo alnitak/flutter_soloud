@@ -1,14 +1,8 @@
 import 'dart:developer' as dev;
-import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
-import 'package:flutter_soloud_example/page_3d_audio.dart';
-import 'package:flutter_soloud_example/page_hello_flutter.dart';
-import 'package:flutter_soloud_example/page_multi_track.dart';
-import 'package:flutter_soloud_example/page_visualizer.dart';
-import 'package:flutter_soloud_example/page_waveform.dart';
 import 'package:logging/logging.dart';
 
 void main() async {
@@ -31,30 +25,27 @@ void main() async {
 
   WidgetsFlutterBinding.ensureInitialized();
 
-  /// Initialize the player
-  await SoLoud.instance.init().then(
-    (_) {
-      Logger('main').info('player started');
-      SoLoud.instance.setVisualizationEnabled(true);
-      SoLoud.instance.setGlobalVolume(1);
-      SoLoud.instance.setMaxActiveVoiceCount(32);
-    },
-    onError: (Object e) {
-      Logger('main').severe('player starting error: $e');
-    },
-  );
+  /// Initialize the player.
+  await SoLoud.instance.init();
 
-  runApp(const MyApp());
+  runApp(
+    const MaterialApp(
+      home: HelloFlutterSoLoud(),
+    ),
+  );
 }
 
-class MyApp extends StatefulWidget {
-  const MyApp({super.key});
+/// Simple usecase of flutter_soloud plugin
+class HelloFlutterSoLoud extends StatefulWidget {
+  const HelloFlutterSoLoud({super.key});
 
   @override
-  State<MyApp> createState() => _MyAppState();
+  State<HelloFlutterSoLoud> createState() => _HelloFlutterSoLoudState();
 }
 
-class _MyAppState extends State<MyApp> {
+class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
+  AudioSource? currentSound;
+
   @override
   void dispose() {
     SoLoud.instance.deinit();
@@ -63,59 +54,33 @@ class _MyAppState extends State<MyApp> {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      themeMode: ThemeMode.dark,
-      darkTheme: ThemeData.dark(useMaterial3: true),
-      scrollBehavior: const MaterialScrollBehavior().copyWith(
-        // enable mouse dragging also on desktop
-        dragDevices: PointerDeviceKind.values.toSet(),
-      ),
-      home: const MyHomePage(),
-    );
-  }
-}
+    if (!SoLoud.instance.isInitialized) return const SizedBox.shrink();
 
-class MyHomePage extends StatelessWidget {
-  const MyHomePage({super.key});
+    return Scaffold(
+      body: Center(
+        child: ElevatedButton(
+          onPressed: () async {
+            await SoLoud.instance.disposeAllSources();
 
-  @override
-  Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 5,
-      child: SafeArea(
-        child: Scaffold(
-          body: Column(
-            children: [
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: TabBar(
-                  isScrollable: true,
-                  onTap: (value) {
-                    SoLoud.instance.disposeAllSources();
-                  },
-                  tabs: const [
-                    Tab(text: 'hello world!'),
-                    Tab(text: 'visualizer'),
-                    Tab(text: 'multi track'),
-                    Tab(text: '3D audio'),
-                    Tab(text: 'wave form'),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Expanded(
-                child: TabBarView(
-                  physics: NeverScrollableScrollPhysics(),
-                  children: [
-                    PageHelloFlutterSoLoud(),
-                    PageVisualizer(),
-                    PageMultiTrack(),
-                    Page3DAudio(),
-                    PageWaveform(),
-                  ],
-                ),
-              ),
-            ],
+            if (kIsWeb) {
+              /// load the audio file using [LoadMode.disk] (better for the
+              /// Web platform).
+              currentSound = await SoLoud.instance.loadAsset(
+                'assets/audio/8_bit_mentality.mp3',
+                mode: LoadMode.disk,
+              );
+            } else {
+              /// load the audio file
+              currentSound = await SoLoud.instance
+                  .loadAsset('assets/audio/8_bit_mentality.mp3');
+            }
+
+            /// play it
+            await SoLoud.instance.play(currentSound!);
+          },
+          child: const Text(
+            'play asset',
+            textAlign: TextAlign.center,
           ),
         ),
       ),

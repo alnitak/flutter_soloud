@@ -10,13 +10,13 @@ environment:
   sdk: '>=3.0.0 <4.0.0'
 
 dependencies:
-  cupertino_icons: ^1.0.2
+  cupertino_icons: ^1.0.8
   
   #https://pub.dev/packages/ffi
-  ffi: ^2.0.2
+  ffi: ^2.1.2
 
   #https://pub.dev/packages/file_picker
-  file_picker: ^5.3.3
+  file_picker: ^8.1.2
 
   flutter:
     sdk: flutter
@@ -25,37 +25,25 @@ dependencies:
     path: ../
 
   #https://pub.dev/packages/logging
-  logging: ^1.0.0
+  logging: ^1.2.0
 
   #https://pub.dev/packages/path_provider
-  path_provider: ^2.0.15
+  path_provider: ^2.1.3
 
   #https://pub.dev/packages/permission_handler
-  permission_handler: ^10.4.3
+  permission_handler: ^11.3.1
 
   #https://pub.dev/packages/star_menu
-  star_menu: ^3.1.4
+  star_menu: ^4.0.1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
 
-  very_good_analysis: ^5.0.0+1
+  very_good_analysis: ^6.0.0
 
 flutter:
   uses-material-design: true
 
   assets:
     - assets/audio/
-    - assets/audio/12Bands/
-
-  shaders:
-    - assets/shaders/test1.frag
-    - assets/shaders/test2.frag
-    - assets/shaders/test3.frag
-    - assets/shaders/test4.frag
-    - assets/shaders/test5.frag
-    - assets/shaders/test6.frag
-    - assets/shaders/test7.frag
-    - assets/shaders/test8.frag
-    - assets/shaders/test9.frag
