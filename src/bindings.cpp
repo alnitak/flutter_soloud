@@ -190,6 +190,8 @@ extern "C"
         if (player.get() == nullptr)
             return;
         dartVoiceEndedCallback = nullptr;
+        dartFileLoadedCallback = nullptr;
+        dartStateChangedCallback = nullptr;
         player.get()->dispose();
         player = nullptr;
     }
