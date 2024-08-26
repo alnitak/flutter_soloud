@@ -701,7 +701,7 @@ Future<StringBuffer> testSoundFilters() async {
 
   if (kIsWeb || kIsWasm) {
     return strBuf
-      ..write('Web does not support single sound filters.')
+      ..write('WARNING: Web does not support single sound filters.')
       ..writeln();
   }
 

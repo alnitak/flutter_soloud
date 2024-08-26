@@ -1,3 +1,6 @@
+### 2.1.1
+- added `bool isActive()` method to filters.
+
 ### 2.1.0 (23 Aug 2024)
 - added support for the Web platform.
 - added `getPan()`, `setPan()` and `setPanAbsolute()`.
