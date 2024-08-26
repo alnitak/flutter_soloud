@@ -15,7 +15,6 @@ enum EqualizerEnum {
   band7,
   band8;
 
-  /// use iterables?
   final List<double> _mins = const [0, 0, 0, 0, 0, 0, 0, 0, 0];
   final List<double> _maxs = const [1, 4, 4, 4, 4, 4, 4, 4, 4];
   final List<double> _defs = const [1, 1, 1, 1, 1, 1, 1, 1, 1];
@@ -56,6 +55,8 @@ abstract class EqualizerInternal {
   void activate() => filterType.activate(_soundHash);
 
   void deactivate() => filterType.deactivate(_soundHash);
+
+  int isActive() => filterType.isActive(_soundHash);
 }
 
 class EqualizerSingle extends EqualizerInternal {

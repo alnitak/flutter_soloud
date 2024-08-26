@@ -8,7 +8,6 @@ enum BassBoostEnum {
   wet,
   boost;
 
-  /// use iterables?
   final List<double> _mins = const [0, 0];
   final List<double> _maxs = const [1, 10];
   final List<double> _defs = const [1, 2];
@@ -35,6 +34,8 @@ abstract class BassBoostInternal {
   void activate() => filterType.activate(_soundHash);
 
   void deactivate() => filterType.deactivate(_soundHash);
+
+  int isActive() => filterType.isActive(_soundHash);
 }
 
 class BassBoostSingle extends BassBoostInternal {

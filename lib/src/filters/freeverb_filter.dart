@@ -11,7 +11,6 @@ enum FreeverbEnum {
   damp,
   width;
 
-  /// use iterables?
   final List<double> _mins = const [0, 0, 0, 0, 0];
   final List<double> _maxs = const [1, 1, 1, 1, 1];
   final List<double> _defs = const [1, 0, 0.5, 0.5, 1];
@@ -44,6 +43,8 @@ abstract class FreeverbInternal {
   void activate() => filterType.activate(_soundHash);
 
   void deactivate() => filterType.deactivate(_soundHash);
+
+  int isActive() => filterType.isActive(_soundHash);
 }
 
 class FreeverbSingle extends FreeverbInternal {

@@ -279,6 +279,16 @@ enum FilterType {
     }
   }
 
+  /// Checks whether this filter is active.
+  ///
+  /// Returns `-1` if the filter is not active. Otherwise, returns
+  /// the index of the given filter.
+  @internal
+  int isActive(SoundHash? soundHash) => SoLoudController()
+      .soLoudFFI
+      .isFilterActive(this, soundHash: soundHash)
+      .index;
+
   /// Deactivate this filter. If [soundHash] is null this filter is removed
   /// globally, else from the given [soundHash].
   ///

@@ -9,7 +9,6 @@ enum LofiEnum {
   samplerate,
   bitdepth;
 
-  /// use iterables?
   final List<double> _mins = const [0, 100, 0.5];
   final List<double> _maxs = const [1, 22000, 16];
   final List<double> _defs = const [1, 4000, 3];
@@ -38,6 +37,8 @@ abstract class LofiInternal {
   void activate() => filterType.activate(_soundHash);
 
   void deactivate() => filterType.deactivate(_soundHash);
+
+  int isActive() => filterType.isActive(_soundHash);
 }
 
 class LofiSingle extends LofiInternal {

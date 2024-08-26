@@ -8,7 +8,6 @@ enum WaveShaperEnum {
   wet,
   amount;
 
-  /// use iterables?
   final List<double> _mins = const [0, -1];
   final List<double> _maxs = const [1, 1];
   final List<double> _defs = const [1, 0];
@@ -35,6 +34,8 @@ abstract class WaveShaperInternal {
   void activate() => filterType.activate(_soundHash);
 
   void deactivate() => filterType.deactivate(_soundHash);
+
+  int isActive() => filterType.isActive(_soundHash);
 }
 
 class WaveShaperSingle extends WaveShaperInternal {

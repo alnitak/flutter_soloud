@@ -9,7 +9,6 @@ enum PitchShiftEnum {
   shift,
   semitones;
 
-  /// use iterables?
   final List<double> _mins = const [0, 0, -36];
   final List<double> _maxs = const [1, 3, 36];
   final List<double> _defs = const [1, 1, 0];
@@ -38,6 +37,8 @@ abstract class PitchShiftInternal {
   void activate() => filterType.activate(_soundHash);
 
   void deactivate() => filterType.deactivate(_soundHash);
+
+  int isActive() => filterType.isActive(_soundHash);
 }
 
 class PitchShiftSingle extends PitchShiftInternal {

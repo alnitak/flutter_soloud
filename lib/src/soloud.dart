@@ -1421,9 +1421,9 @@ interface class SoLoud {
     _controller.soLoudFFI.setFftSmoothing(smooth);
   }
 
-  /////////////////////////////////////////
-  /// voice groups
-  /////////////////////////////////////////
+  // ///////////////////////////////////////
+  //  voice groups
+  // ///////////////////////////////////////
 
   /// Used to create a new voice group. Returns 0 if not successful.
   SoundHandle createVoiceGroup() {

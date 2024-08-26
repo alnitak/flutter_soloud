@@ -9,7 +9,6 @@ enum RobotizeEnum {
   frequency,
   waveform;
 
-  /// use iterables?
   final List<double> _mins = const [0, 0.1, 0];
   final List<double> _maxs = const [1, 100, 6];
   final List<double> _defs = const [1, 30, 0];
@@ -38,6 +37,8 @@ abstract class RobotizeInternal {
   void activate() => filterType.activate(_soundHash);
 
   void deactivate() => filterType.deactivate(_soundHash);
+
+  int isActive() => filterType.isActive(_soundHash);
 }
 
 class RobotizeSingle extends RobotizeInternal {
