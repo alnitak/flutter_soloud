@@ -23,19 +23,12 @@ enum WaveShaperEnum {
       };
 }
 
-abstract class WaveShaperInternal {
-  const WaveShaperInternal(SoundHash? soundHash) : _soundHash = soundHash;
+abstract class WaveShaperInternal extends FilterBase {
+  const WaveShaperInternal(SoundHash? soundHash)
+      : super(FilterType.waveShaperFilter, soundHash);
 
-  final SoundHash? _soundHash;
-  FilterType get filterType => FilterType.waveShaperFilter;
   WaveShaperEnum get queryWet => WaveShaperEnum.wet;
   WaveShaperEnum get queryAmount => WaveShaperEnum.amount;
-
-  void activate() => filterType.activate(_soundHash);
-
-  void deactivate() => filterType.deactivate(_soundHash);
-
-  int isActive() => filterType.isActive(_soundHash);
 }
 
 class WaveShaperSingle extends WaveShaperInternal {

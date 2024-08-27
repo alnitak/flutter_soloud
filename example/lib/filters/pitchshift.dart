@@ -142,21 +142,33 @@ class _PitchShiftState extends State<PitchShift> {
                                 if (soundHandle == null) return;
                                 timeStretching.value = value;
                                 playSpeed.value = value;
-                                // Adjust the play speed
-                                SoLoud.instance
-                                    .setRelativePlaySpeed(soundHandle!, value);
-
-                                // Adjust the pitchShift relatively to the
-                                // speed. The relation between speed and shift
-                                // is shift = 1 / speed.
-                                shift.value = 1 / value;
                                 if (useGlobalFilter) {
+                                  /// Using the filter for global, its possible
+                                  /// to set manually the relative play speed
+                                  /// and then set the shift relatively to
+                                  /// the speed. The relation between speed and
+                                  /// shift is shift = 1 / speed.
+                                  /// But this implies that the shift is
+                                  /// applied to all the sounds playing.
+
+                                  // Adjust the play speed
+                                  SoLoud.instance.setRelativePlaySpeed(
+                                    soundHandle!,
+                                    value,
+                                  );
+
+                                  // Adjust the pitchShift relatively to the
+                                  // speed. The relation between speed and shift
+                                  // is shift = 1 / speed.
+                                  shift.value = 1 / value;
                                   SoLoud.instance.filters.pitchShiftFilter.shift
                                       .value = shift.value;
                                 } else {
+                                  /// Using the filter for a single sound, its
+                                  /// possible to use the provided `timeStretch`
+                                  /// method.
                                   sound!.filters.pitchShiftFilter
-                                      .shift(soundHandle: soundHandle)
-                                      .value = shift.value;
+                                      .timeStretch(soundHandle!, value);
                                 }
                               },
                             ),

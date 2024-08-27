@@ -25,20 +25,13 @@ enum FlangerEnum {
       };
 }
 
-abstract class FlangerInternal {
-  const FlangerInternal(SoundHash? soundHash) : _soundHash = soundHash;
+abstract class FlangerInternal extends FilterBase {
+  const FlangerInternal(SoundHash? soundHash)
+      : super(FilterType.flangerFilter, soundHash);
 
-  final SoundHash? _soundHash;
-  FilterType get filterType => FilterType.flangerFilter;
   FlangerEnum get queryWet => FlangerEnum.wet;
   FlangerEnum get queryDelay => FlangerEnum.delay;
   FlangerEnum get queryFreq => FlangerEnum.freq;
-
-  void activate() => filterType.activate(_soundHash);
-
-  void deactivate() => filterType.deactivate(_soundHash);
-
-  int isActive() => filterType.isActive(_soundHash);
 }
 
 class FlangerSingle extends FlangerInternal {

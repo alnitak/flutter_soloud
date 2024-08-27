@@ -37,11 +37,10 @@ enum EqualizerEnum {
       };
 }
 
-abstract class EqualizerInternal {
-  const EqualizerInternal(SoundHash? soundHash) : _soundHash = soundHash;
+abstract class EqualizerInternal extends FilterBase {
+  const EqualizerInternal(SoundHash? soundHash)
+      : super(FilterType.eqFilter, soundHash);
 
-  final SoundHash? _soundHash;
-  FilterType get filterType => FilterType.eqFilter;
   EqualizerEnum get queryWet => EqualizerEnum.wet;
   EqualizerEnum get queryBand1 => EqualizerEnum.band1;
   EqualizerEnum get queryBand2 => EqualizerEnum.band2;
@@ -51,12 +50,6 @@ abstract class EqualizerInternal {
   EqualizerEnum get queryBand6 => EqualizerEnum.band6;
   EqualizerEnum get queryBand7 => EqualizerEnum.band7;
   EqualizerEnum get queryBand8 => EqualizerEnum.band8;
-
-  void activate() => filterType.activate(_soundHash);
-
-  void deactivate() => filterType.deactivate(_soundHash);
-
-  int isActive() => filterType.isActive(_soundHash);
 }
 
 class EqualizerSingle extends EqualizerInternal {

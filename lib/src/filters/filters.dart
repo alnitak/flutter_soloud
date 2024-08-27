@@ -20,6 +20,40 @@ import 'package:flutter_soloud/src/sound_hash.dart';
 import 'package:logging/logging.dart';
 import 'package:meta/meta.dart';
 
+/// This class serves as a base for all audio filter methods.
+abstract class FilterBase {
+  /// The base class common to all filters. It can be used to [activate],
+  /// [deactivate] or query its status and its index in the filter list.
+  const FilterBase(FilterType ft, SoundHash? soundHash)
+      : filterType = ft,
+        _soundHash = soundHash;
+
+  final SoundHash? _soundHash;
+
+  /// The type of this filter. It can be used to get the number of its
+  /// parameters or the name of the filter.
+  final FilterType filterType;
+
+  /// Activate this filter.
+  ///
+  /// Throws [SoLoudFilterForSingleSoundOnWebDartException] if trying to use
+  /// a filter for a single sound on the Web platform.
+  void activate() => filterType.activate(_soundHash);
+
+  /// Deactivate this filter.
+  ///
+  /// Throws [SoLoudFilterForSingleSoundOnWebDartException] if trying to use
+  /// a filter for a single sound on the Web platform.
+  void deactivate() => filterType.deactivate(_soundHash);
+
+  /// Returns `-1` if the filter is not active. Otherwise, returns
+  /// the index of this filter.
+  int get index => filterType.isActive(_soundHash);
+
+  /// Checks whether this filter is active.
+  bool get isActive => index >= 0;
+}
+
 /// These classes are not exposed to the APIs. They are used internally in
 /// [AudioSource.filters] and [SoLoud.filters].
 

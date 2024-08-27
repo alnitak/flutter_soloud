@@ -23,19 +23,12 @@ enum BassBoostEnum {
       };
 }
 
-abstract class BassBoostInternal {
-  const BassBoostInternal(SoundHash? soundHash) : _soundHash = soundHash;
+abstract class BassBoostInternal extends FilterBase {
+  const BassBoostInternal(SoundHash? soundHash)
+      : super(FilterType.bassboostFilter, soundHash);
 
-  final SoundHash? _soundHash;
-  FilterType get filterType => FilterType.bassboostFilter;
   BassBoostEnum get queryWet => BassBoostEnum.wet;
   BassBoostEnum get queryBoost => BassBoostEnum.boost;
-
-  void activate() => filterType.activate(_soundHash);
-
-  void deactivate() => filterType.deactivate(_soundHash);
-
-  int isActive() => filterType.isActive(_soundHash);
 }
 
 class BassBoostSingle extends BassBoostInternal {

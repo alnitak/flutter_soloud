@@ -29,22 +29,15 @@ enum FreeverbEnum {
       };
 }
 
-abstract class FreeverbInternal {
-  const FreeverbInternal(SoundHash? soundHash) : _soundHash = soundHash;
+abstract class FreeverbInternal extends FilterBase {
+  const FreeverbInternal(SoundHash? soundHash)
+      : super(FilterType.freeverbFilter, soundHash);
 
-  final SoundHash? _soundHash;
-  FilterType get filterType => FilterType.freeverbFilter;
   FreeverbEnum get queryWet => FreeverbEnum.wet;
   FreeverbEnum get queryFreeze => FreeverbEnum.freeze;
   FreeverbEnum get queryRoomSize => FreeverbEnum.roomSize;
   FreeverbEnum get queryDamp => FreeverbEnum.damp;
   FreeverbEnum get queryWidth => FreeverbEnum.width;
-
-  void activate() => filterType.activate(_soundHash);
-
-  void deactivate() => filterType.deactivate(_soundHash);
-
-  int isActive() => filterType.isActive(_soundHash);
 }
 
 class FreeverbSingle extends FreeverbInternal {

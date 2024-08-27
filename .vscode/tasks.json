@@ -3,13 +3,13 @@
     "tasks": [
         {
             "label": "compile linux debug verbose",
-            "command": "cd ${workspaceFolder}/example; flutter build linux -t lib/filters/sound_filter.dart --debug --verbose",
+            "command": "cd ${workspaceFolder}/example; flutter build linux -t lib/filters/pitchshift.dart --debug --verbose",
             // "args": ["build", "linux", "--verbose"],
             "type": "shell"
         },
         {
             "label": "compile linux debug",
-            "command": "cd ${workspaceFolder}/example; flutter build linux -t lib/filters/sound_filter.dart --debug",
+            "command": "cd ${workspaceFolder}/example; flutter build linux -t lib/filters/pitchshift.dart --debug",
             "type": "shell"
         },
         {
@@ -19,17 +19,17 @@
         },
         {
             "label": "compile windows debug verbose",
-            "command": "cd ${workspaceFolder}/example; flutter build windows -t lib/main.dart --debug --verbose",
+            "command": "cd ${workspaceFolder}/example; flutter build windows -t lib/filters/pitchshift.dart --debug --verbose",
             "type": "shell"
         },
         {
             "label": "compile windows debug",
-            "command": "cd ${workspaceFolder}/example; flutter build windows -t lib/main.dart --debug",
+            "command": "cd ${workspaceFolder}/example; flutter build windows -t lib/filters/pitchshift.dart --debug",
             "type": "shell"
         },
         {
             "label": "compile web debug",
-            "command": "cd ${workspaceFolder}/example; flutter run -d chrome --web-renderer canvaskit --web-browser-flag '--disable-web-security' -t lib/filters/sound_filter.dart --release",
+            "command": "cd ${workspaceFolder}/example; flutter run -d chrome --web-renderer canvaskit --web-browser-flag '--disable-web-security' -t lib/filters/pitchshift.dart --release",
             "type": "shell"
         }
     ]

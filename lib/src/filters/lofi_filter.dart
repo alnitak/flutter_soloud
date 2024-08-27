@@ -25,20 +25,13 @@ enum LofiEnum {
       };
 }
 
-abstract class LofiInternal {
-  const LofiInternal(SoundHash? soundHash) : _soundHash = soundHash;
+abstract class LofiInternal extends FilterBase {
+  const LofiInternal(SoundHash? soundHash)
+      : super(FilterType.lofiFilter, soundHash);
 
-  final SoundHash? _soundHash;
-  FilterType get filterType => FilterType.lofiFilter;
   LofiEnum get queryWet => LofiEnum.wet;
   LofiEnum get querySamplerate => LofiEnum.samplerate;
   LofiEnum get queryBitdepth => LofiEnum.bitdepth;
-
-  void activate() => filterType.activate(_soundHash);
-
-  void deactivate() => filterType.deactivate(_soundHash);
-
-  int isActive() => filterType.isActive(_soundHash);
 }
 
 class LofiSingle extends LofiInternal {

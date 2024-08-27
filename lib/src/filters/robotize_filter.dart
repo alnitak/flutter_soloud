@@ -25,20 +25,13 @@ enum RobotizeEnum {
       };
 }
 
-abstract class RobotizeInternal {
-  const RobotizeInternal(SoundHash? soundHash) : _soundHash = soundHash;
+abstract class RobotizeInternal extends FilterBase {
+  const RobotizeInternal(SoundHash? soundHash)
+      : super(FilterType.robotizeFilter, soundHash);
 
-  final SoundHash? _soundHash;
-  FilterType get filterType => FilterType.robotizeFilter;
   RobotizeEnum get queryWet => RobotizeEnum.wet;
   RobotizeEnum get queryFrequency => RobotizeEnum.frequency;
   RobotizeEnum get queryWaveform => RobotizeEnum.waveform;
-
-  void activate() => filterType.activate(_soundHash);
-
-  void deactivate() => filterType.deactivate(_soundHash);
-
-  int isActive() => filterType.isActive(_soundHash);
 }
 
 class RobotizeSingle extends RobotizeInternal {

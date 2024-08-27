@@ -712,7 +712,7 @@ Future<StringBuffer> testSoundFilters() async {
     // mode: LoadMode.disk,
   );
 
-  final filter = sound.filters.pitchShiftFilter;
+  final filter = sound.filters.echoFilter;
 
   /// Add filter to the sound.
   // ignore: cascade_invocations
@@ -723,7 +723,7 @@ Future<StringBuffer> testSoundFilters() async {
 
   /// Check if filter is active.
   assert(
-    filter.isActive() >= 0,
+    filter.isActive,
     'The filter has not been activate!',
   );
 
@@ -756,7 +756,7 @@ Future<StringBuffer> testSoundFilters() async {
 
   /// Check if filter has been deactivated.
   assert(
-    filter.isActive() < 0,
+    !filter.isActive,
     'The filter is still active after removing it!',
   );
 
@@ -791,7 +791,7 @@ Future<StringBuffer> testGlobalFilters() async {
 
   /// Check if filter is active.
   assert(
-    filter.isActive() >= 0,
+    filter.isActive,
     'The filter has not been activate!',
   );
 
@@ -824,7 +824,7 @@ Future<StringBuffer> testGlobalFilters() async {
 
   /// Check if filter has been deactivated.
   assert(
-    filter.isActive() < 0,
+    !filter.isActive,
     'The filter has not been activate!',
   );
 

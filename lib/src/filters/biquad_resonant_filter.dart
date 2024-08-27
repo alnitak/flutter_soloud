@@ -44,21 +44,14 @@ enum BiquadResonantEnum {
       };
 }
 
-abstract class BiquadResonantInternal {
-  const BiquadResonantInternal(SoundHash? soundHash) : _soundHash = soundHash;
+abstract class BiquadResonantInternal extends FilterBase {
+  const BiquadResonantInternal(SoundHash? soundHash)
+      : super(FilterType.biquadResonantFilter, soundHash);
 
-  final SoundHash? _soundHash;
-  FilterType get filterType => FilterType.biquadResonantFilter;
   BiquadResonantEnum get queryWet => BiquadResonantEnum.wet;
   BiquadResonantEnum get queryType => BiquadResonantEnum.type;
   BiquadResonantEnum get queryFrequency => BiquadResonantEnum.frequency;
   BiquadResonantEnum get queryResonance => BiquadResonantEnum.resonance;
-
-  void activate() => filterType.activate(_soundHash);
-
-  void deactivate() => filterType.deactivate(_soundHash);
-
-  int isActive() => filterType.isActive(_soundHash);
 }
 
 class BiquadResonantSingle extends BiquadResonantInternal {

@@ -27,21 +27,14 @@ enum EchoEnum {
       };
 }
 
-abstract class EchoInternal {
-  const EchoInternal(SoundHash? soundHash) : _soundHash = soundHash;
+abstract class EchoInternal extends FilterBase {
+  const EchoInternal(SoundHash? soundHash)
+      : super(FilterType.echoFilter, soundHash);
 
-  final SoundHash? _soundHash;
-  FilterType get filterType => FilterType.echoFilter;
   EchoEnum get queryWet => EchoEnum.wet;
   EchoEnum get queryDelay => EchoEnum.delay;
   EchoEnum get queryDecay => EchoEnum.decay;
   EchoEnum get queryFilter => EchoEnum.filter;
-
-  void activate() => filterType.activate(_soundHash);
-
-  void deactivate() => filterType.deactivate(_soundHash);
-
-  int isActive() => filterType.isActive(_soundHash);
 }
 
 class EchoSingle extends EchoInternal {
