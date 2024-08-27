@@ -1,6 +1,7 @@
 // ignore_for_file: public_member_api_docs
 
 import 'package:flutter_soloud/src/filters/filters.dart';
+import 'package:flutter_soloud/src/soloud.dart';
 import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
 
@@ -25,20 +26,13 @@ enum PitchShiftEnum {
       };
 }
 
-abstract class PitchShiftInternal {
-  const PitchShiftInternal(SoundHash? soundHash) : _soundHash = soundHash;
+abstract class PitchShiftInternal extends FilterBase {
+  const PitchShiftInternal(SoundHash? soundHash)
+      : super(FilterType.pitchShiftFilter, soundHash);
 
-  final SoundHash? _soundHash;
-  FilterType get filterType => FilterType.pitchShiftFilter;
   PitchShiftEnum get queryWet => PitchShiftEnum.wet;
   PitchShiftEnum get queryShift => PitchShiftEnum.shift;
   PitchShiftEnum get querySemitones => PitchShiftEnum.semitones;
-
-  void activate() => filterType.activate(_soundHash);
-
-  void deactivate() => filterType.deactivate(_soundHash);
-
-  int isActive() => filterType.isActive(_soundHash);
 }
 
 class PitchShiftSingle extends PitchShiftInternal {
@@ -67,6 +61,13 @@ class PitchShiftSingle extends PitchShiftInternal {
         PitchShiftEnum.semitones.min,
         PitchShiftEnum.semitones.max,
       );
+
+  /// Set
+  void timeStretch(SoundHandle soundHandle, double value) {
+    // Adjust the play speed
+    SoLoud.instance.setRelativePlaySpeed(soundHandle!, value);
+    shift(soundHandle: soundHandle).value = 1.0 / value;
+  }
 }
 
 class PitchShiftGlobal extends PitchShiftInternal {
