@@ -1,4 +1,4 @@
-### 2.1.1
+### 2.1.1 (28 Aug 2024)
 - added `bool isActive` and `int iindex` getters to filters.
 - added a `timeStretch()` method to single pitchshift filter.
 - fixed building error on Windows.
