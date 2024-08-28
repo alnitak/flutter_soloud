@@ -44,7 +44,7 @@ enum SoundEventType {
 /// `removeGlobalFilter()` and `isFilterActive()`, respectively. The effect must
 /// be set before playing the sound and parameters can be changed after having
 /// the a voice handle:
-/// ```
+/// ```dart
 ///   final sound = await SoLoud.instance.loadAsset('...');
 ///   sound.addFilter(FilterType.echoFilter);
 ///   final handle = SoLoud.instance.play(sound, paused: true);
