@@ -786,7 +786,7 @@ Future<StringBuffer> testGlobalFilters() async {
   /// Add filter to the sound.
   // ignore: cascade_invocations
   filter.activate();
-  
+
   await SoLoud.instance.play(sound);
 
   /// Check if filter is active.
