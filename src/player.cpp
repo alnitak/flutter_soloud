@@ -54,7 +54,8 @@ void Player::dispose()
 {
     std::lock_guard<std::mutex> guard(init_deinit_mutex);
     // Clean up SoLoud
-    soloud.setVoiceEndedCallback(nullptr);
+    setVoiceEndedCallback(nullptr);
+    setStateChangedCallback(nullptr);
     soloud.deinit();
     mInited = false;
     sounds.clear();

@@ -1421,9 +1421,9 @@ interface class SoLoud {
     _controller.soLoudFFI.setFftSmoothing(smooth);
   }
 
-  /////////////////////////////////////////
-  /// voice groups
-  /////////////////////////////////////////
+  // ///////////////////////////////////////
+  //  voice groups
+  // ///////////////////////////////////////
 
   /// Used to create a new voice group. Returns 0 if not successful.
   SoundHandle createVoiceGroup() {
@@ -2023,7 +2023,7 @@ interface class SoLoud {
   /// You can change the attenuation model and rolloff factor parameters of
   /// a live 3D audio source.
   ///
-  /// ```
+  /// ```text
   /// 0 NO_ATTENUATION        No attenuation
   /// 1 INVERSE_DISTANCE      Inverse distance attenuation model
   /// 2 LINEAR_DISTANCE       Linear distance attenuation model

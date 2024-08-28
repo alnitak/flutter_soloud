@@ -1,6 +1,7 @@
 // ignore_for_file: public_member_api_docs
 
 import 'package:flutter_soloud/src/filters/filters.dart';
+import 'package:flutter_soloud/src/soloud.dart';
 import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
 
@@ -9,7 +10,6 @@ enum PitchShiftEnum {
   shift,
   semitones;
 
-  /// use iterables?
   final List<double> _mins = const [0, 0, -36];
   final List<double> _maxs = const [1, 3, 36];
   final List<double> _defs = const [1, 1, 0];
@@ -26,21 +26,16 @@ enum PitchShiftEnum {
       };
 }
 
-abstract class PitchShiftInternal {
-  const PitchShiftInternal(SoundHash? soundHash) : _soundHash = soundHash;
+abstract class _PitchShiftInternal extends FilterBase {
+  const _PitchShiftInternal(SoundHash? soundHash)
+      : super(FilterType.pitchShiftFilter, soundHash);
 
-  final SoundHash? _soundHash;
-  FilterType get filterType => FilterType.pitchShiftFilter;
   PitchShiftEnum get queryWet => PitchShiftEnum.wet;
   PitchShiftEnum get queryShift => PitchShiftEnum.shift;
   PitchShiftEnum get querySemitones => PitchShiftEnum.semitones;
-
-  void activate() => filterType.activate(_soundHash);
-
-  void deactivate() => filterType.deactivate(_soundHash);
 }
 
-class PitchShiftSingle extends PitchShiftInternal {
+class PitchShiftSingle extends _PitchShiftInternal {
   PitchShiftSingle(super.soundHash);
 
   FilterParam wet({SoundHandle? soundHandle}) => FilterParam(
@@ -66,9 +61,16 @@ class PitchShiftSingle extends PitchShiftInternal {
         PitchShiftEnum.semitones.min,
         PitchShiftEnum.semitones.max,
       );
+
+  /// Set
+  void timeStretch(SoundHandle soundHandle, double value) {
+    // Adjust the play speed
+    SoLoud.instance.setRelativePlaySpeed(soundHandle!, value);
+    shift(soundHandle: soundHandle).value = 1.0 / value;
+  }
 }
 
-class PitchShiftGlobal extends PitchShiftInternal {
+class PitchShiftGlobal extends _PitchShiftInternal {
   const PitchShiftGlobal() : super(null);
 
   FilterParam get wet => FilterParam(

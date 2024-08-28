@@ -43,7 +43,7 @@ enum GetSamplesKind {
 /// After calling [updateSamples] it's possible to call the proper getter
 /// to have back the audio samples. For example, using a "Ticker"
 /// in a Widget that needs the audio data to be displayed:
-/// ```
+/// ```dart
 /// ...
 /// late final Ticker ticker;
 /// late final AudioData audioData;
@@ -77,7 +77,7 @@ enum GetSamplesKind {
 /// }
 /// ```
 /// Then in your "build" method, you can read the audio data:
-/// ```
+/// ```dart
 /// try {
 ///   /// Use [getTexture] if you have inizialized [AudioData]
 ///   /// with [GetSamplesKind.texture]

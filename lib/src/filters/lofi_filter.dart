@@ -9,7 +9,6 @@ enum LofiEnum {
   samplerate,
   bitdepth;
 
-  /// use iterables?
   final List<double> _mins = const [0, 100, 0.5];
   final List<double> _maxs = const [1, 22000, 16];
   final List<double> _defs = const [1, 4000, 3];
@@ -26,21 +25,16 @@ enum LofiEnum {
       };
 }
 
-abstract class LofiInternal {
-  const LofiInternal(SoundHash? soundHash) : _soundHash = soundHash;
+abstract class _LofiInternal extends FilterBase {
+  const _LofiInternal(SoundHash? soundHash)
+      : super(FilterType.lofiFilter, soundHash);
 
-  final SoundHash? _soundHash;
-  FilterType get filterType => FilterType.lofiFilter;
   LofiEnum get queryWet => LofiEnum.wet;
   LofiEnum get querySamplerate => LofiEnum.samplerate;
   LofiEnum get queryBitdepth => LofiEnum.bitdepth;
-
-  void activate() => filterType.activate(_soundHash);
-
-  void deactivate() => filterType.deactivate(_soundHash);
 }
 
-class LofiSingle extends LofiInternal {
+class LofiSingle extends _LofiInternal {
   LofiSingle(super.soundHash);
 
   FilterParam wet({SoundHandle? soundHandle}) => FilterParam(
@@ -68,7 +62,7 @@ class LofiSingle extends LofiInternal {
       );
 }
 
-class LofiGlobal extends LofiInternal {
+class LofiGlobal extends _LofiInternal {
   const LofiGlobal() : super(null);
 
   FilterParam get wet => FilterParam(

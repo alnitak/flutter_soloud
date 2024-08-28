@@ -10,7 +10,6 @@ enum EchoEnum {
   decay,
   filter;
 
-  /// use iterables?
   final List<double> _mins = const [0, 0.001, 0.001, 0];
   final List<double> _maxs = const [1, double.maxFinite, 1, 1];
   final List<double> _defs = const [1, 0.3, 0.7, 0];
@@ -28,22 +27,17 @@ enum EchoEnum {
       };
 }
 
-abstract class EchoInternal {
-  const EchoInternal(SoundHash? soundHash) : _soundHash = soundHash;
+abstract class _EchoInternal extends FilterBase {
+  const _EchoInternal(SoundHash? soundHash)
+      : super(FilterType.echoFilter, soundHash);
 
-  final SoundHash? _soundHash;
-  FilterType get filterType => FilterType.echoFilter;
   EchoEnum get queryWet => EchoEnum.wet;
   EchoEnum get queryDelay => EchoEnum.delay;
   EchoEnum get queryDecay => EchoEnum.decay;
   EchoEnum get queryFilter => EchoEnum.filter;
-
-  void activate() => filterType.activate(_soundHash);
-
-  void deactivate() => filterType.deactivate(_soundHash);
 }
 
-class EchoSingle extends EchoInternal {
+class EchoSingle extends _EchoInternal {
   EchoSingle(super.soundHash);
 
   FilterParam wet({SoundHandle? soundHandle}) => FilterParam(
@@ -79,7 +73,7 @@ class EchoSingle extends EchoInternal {
       );
 }
 
-class EchoGlobal extends EchoInternal {
+class EchoGlobal extends _EchoInternal {
   const EchoGlobal() : super(null);
 
   FilterParam get wet => FilterParam(

@@ -9,7 +9,6 @@ enum FlangerEnum {
   delay,
   freq;
 
-  /// use iterables?
   final List<double> _mins = const [0, 0, -48];
   final List<double> _maxs = const [1, 3, 48];
   final List<double> _defs = const [1, 1, 0];
@@ -26,21 +25,16 @@ enum FlangerEnum {
       };
 }
 
-abstract class FlangerInternal {
-  const FlangerInternal(SoundHash? soundHash) : _soundHash = soundHash;
+abstract class _FlangerInternal extends FilterBase {
+  const _FlangerInternal(SoundHash? soundHash)
+      : super(FilterType.flangerFilter, soundHash);
 
-  final SoundHash? _soundHash;
-  FilterType get filterType => FilterType.flangerFilter;
   FlangerEnum get queryWet => FlangerEnum.wet;
   FlangerEnum get queryDelay => FlangerEnum.delay;
   FlangerEnum get queryFreq => FlangerEnum.freq;
-
-  void activate() => filterType.activate(_soundHash);
-
-  void deactivate() => filterType.deactivate(_soundHash);
 }
 
-class FlangerSingle extends FlangerInternal {
+class FlangerSingle extends _FlangerInternal {
   FlangerSingle(super.soundHash);
 
   FilterParam wet({SoundHandle? soundHandle}) => FilterParam(
@@ -68,7 +62,7 @@ class FlangerSingle extends FlangerInternal {
       );
 }
 
-class FlangerGlobal extends FlangerInternal {
+class FlangerGlobal extends _FlangerInternal {
   const FlangerGlobal() : super(null);
 
   FilterParam get wet => FilterParam(

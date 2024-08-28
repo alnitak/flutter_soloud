@@ -15,7 +15,6 @@ enum EqualizerEnum {
   band7,
   band8;
 
-  /// use iterables?
   final List<double> _mins = const [0, 0, 0, 0, 0, 0, 0, 0, 0];
   final List<double> _maxs = const [1, 4, 4, 4, 4, 4, 4, 4, 4];
   final List<double> _defs = const [1, 1, 1, 1, 1, 1, 1, 1, 1];
@@ -38,11 +37,10 @@ enum EqualizerEnum {
       };
 }
 
-abstract class EqualizerInternal {
-  const EqualizerInternal(SoundHash? soundHash) : _soundHash = soundHash;
+abstract class _EqualizerInternal extends FilterBase {
+  const _EqualizerInternal(SoundHash? soundHash)
+      : super(FilterType.eqFilter, soundHash);
 
-  final SoundHash? _soundHash;
-  FilterType get filterType => FilterType.eqFilter;
   EqualizerEnum get queryWet => EqualizerEnum.wet;
   EqualizerEnum get queryBand1 => EqualizerEnum.band1;
   EqualizerEnum get queryBand2 => EqualizerEnum.band2;
@@ -52,13 +50,9 @@ abstract class EqualizerInternal {
   EqualizerEnum get queryBand6 => EqualizerEnum.band6;
   EqualizerEnum get queryBand7 => EqualizerEnum.band7;
   EqualizerEnum get queryBand8 => EqualizerEnum.band8;
-
-  void activate() => filterType.activate(_soundHash);
-
-  void deactivate() => filterType.deactivate(_soundHash);
 }
 
-class EqualizerSingle extends EqualizerInternal {
+class EqualizerSingle extends _EqualizerInternal {
   EqualizerSingle(super.soundHash);
 
   FilterParam wet({SoundHandle? soundHandle}) => FilterParam(
@@ -134,7 +128,7 @@ class EqualizerSingle extends EqualizerInternal {
       );
 }
 
-class EqualizerGlobal extends EqualizerInternal {
+class EqualizerGlobal extends _EqualizerInternal {
   const EqualizerGlobal() : super(null);
 
   FilterParam get wet => FilterParam(

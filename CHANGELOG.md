@@ -1,3 +1,9 @@
+### 2.1.1 (28 Aug 2024)
+- added `bool isActive` and `int iindex` getters to filters.
+- added a `timeStretch()` method to single pitchshift filter.
+- fixed building error on Windows.
+- updated examples.
+
 ### 2.1.0 (23 Aug 2024)
 - added support for the Web platform.
 - added `getPan()`, `setPan()` and `setPanAbsolute()`.

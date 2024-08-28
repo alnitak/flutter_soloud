@@ -8,7 +8,6 @@ enum BassBoostEnum {
   wet,
   boost;
 
-  /// use iterables?
   final List<double> _mins = const [0, 0];
   final List<double> _maxs = const [1, 10];
   final List<double> _defs = const [1, 2];
@@ -24,20 +23,15 @@ enum BassBoostEnum {
       };
 }
 
-abstract class BassBoostInternal {
-  const BassBoostInternal(SoundHash? soundHash) : _soundHash = soundHash;
+abstract class _BassBoostInternal extends FilterBase {
+  const _BassBoostInternal(SoundHash? soundHash)
+      : super(FilterType.bassboostFilter, soundHash);
 
-  final SoundHash? _soundHash;
-  FilterType get filterType => FilterType.bassboostFilter;
   BassBoostEnum get queryWet => BassBoostEnum.wet;
   BassBoostEnum get queryBoost => BassBoostEnum.boost;
-
-  void activate() => filterType.activate(_soundHash);
-
-  void deactivate() => filterType.deactivate(_soundHash);
 }
 
-class BassBoostSingle extends BassBoostInternal {
+class BassBoostSingle extends _BassBoostInternal {
   BassBoostSingle(super.soundHash);
 
   FilterParam wet({SoundHandle? soundHandle}) => FilterParam(
@@ -57,7 +51,7 @@ class BassBoostSingle extends BassBoostInternal {
       );
 }
 
-class BassBoostGlobal extends BassBoostInternal {
+class BassBoostGlobal extends _BassBoostInternal {
   const BassBoostGlobal() : super(null);
 
   FilterParam get wet => FilterParam(

@@ -68,7 +68,9 @@ namespace SoLoud
     void on_notification(const ma_device_notification* pNotification)
     {
         MA_ASSERT(pNotification != NULL);
-        
+        if (soloud->_stateChangedCallback == nullptr)
+            return;
+
         switch (pNotification->type)
         {
             case ma_device_notification_type_started:
