@@ -25,8 +25,8 @@ enum FlangerEnum {
       };
 }
 
-abstract class FlangerInternal extends FilterBase {
-  const FlangerInternal(SoundHash? soundHash)
+abstract class _FlangerInternal extends FilterBase {
+  const _FlangerInternal(SoundHash? soundHash)
       : super(FilterType.flangerFilter, soundHash);
 
   FlangerEnum get queryWet => FlangerEnum.wet;
@@ -34,7 +34,7 @@ abstract class FlangerInternal extends FilterBase {
   FlangerEnum get queryFreq => FlangerEnum.freq;
 }
 
-class FlangerSingle extends FlangerInternal {
+class FlangerSingle extends _FlangerInternal {
   FlangerSingle(super.soundHash);
 
   FilterParam wet({SoundHandle? soundHandle}) => FilterParam(
@@ -62,7 +62,7 @@ class FlangerSingle extends FlangerInternal {
       );
 }
 
-class FlangerGlobal extends FlangerInternal {
+class FlangerGlobal extends _FlangerInternal {
   const FlangerGlobal() : super(null);
 
   FilterParam get wet => FilterParam(

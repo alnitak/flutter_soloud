@@ -25,8 +25,8 @@ enum LofiEnum {
       };
 }
 
-abstract class LofiInternal extends FilterBase {
-  const LofiInternal(SoundHash? soundHash)
+abstract class _LofiInternal extends FilterBase {
+  const _LofiInternal(SoundHash? soundHash)
       : super(FilterType.lofiFilter, soundHash);
 
   LofiEnum get queryWet => LofiEnum.wet;
@@ -34,7 +34,7 @@ abstract class LofiInternal extends FilterBase {
   LofiEnum get queryBitdepth => LofiEnum.bitdepth;
 }
 
-class LofiSingle extends LofiInternal {
+class LofiSingle extends _LofiInternal {
   LofiSingle(super.soundHash);
 
   FilterParam wet({SoundHandle? soundHandle}) => FilterParam(
@@ -62,7 +62,7 @@ class LofiSingle extends LofiInternal {
       );
 }
 
-class LofiGlobal extends LofiInternal {
+class LofiGlobal extends _LofiInternal {
   const LofiGlobal() : super(null);
 
   FilterParam get wet => FilterParam(

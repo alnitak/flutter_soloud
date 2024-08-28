@@ -29,8 +29,8 @@ enum FreeverbEnum {
       };
 }
 
-abstract class FreeverbInternal extends FilterBase {
-  const FreeverbInternal(SoundHash? soundHash)
+abstract class _FreeverbInternal extends FilterBase {
+  const _FreeverbInternal(SoundHash? soundHash)
       : super(FilterType.freeverbFilter, soundHash);
 
   FreeverbEnum get queryWet => FreeverbEnum.wet;
@@ -40,7 +40,7 @@ abstract class FreeverbInternal extends FilterBase {
   FreeverbEnum get queryWidth => FreeverbEnum.width;
 }
 
-class FreeverbSingle extends FreeverbInternal {
+class FreeverbSingle extends _FreeverbInternal {
   FreeverbSingle(super.soundHash);
 
   FilterParam wet({SoundHandle? soundHandle}) => FilterParam(
@@ -84,7 +84,7 @@ class FreeverbSingle extends FreeverbInternal {
       );
 }
 
-class FreeverbGlobal extends FreeverbInternal {
+class FreeverbGlobal extends _FreeverbInternal {
   const FreeverbGlobal() : super(null);
 
   FilterParam get wet => FilterParam(

@@ -26,8 +26,8 @@ enum PitchShiftEnum {
       };
 }
 
-abstract class PitchShiftInternal extends FilterBase {
-  const PitchShiftInternal(SoundHash? soundHash)
+abstract class _PitchShiftInternal extends FilterBase {
+  const _PitchShiftInternal(SoundHash? soundHash)
       : super(FilterType.pitchShiftFilter, soundHash);
 
   PitchShiftEnum get queryWet => PitchShiftEnum.wet;
@@ -35,7 +35,7 @@ abstract class PitchShiftInternal extends FilterBase {
   PitchShiftEnum get querySemitones => PitchShiftEnum.semitones;
 }
 
-class PitchShiftSingle extends PitchShiftInternal {
+class PitchShiftSingle extends _PitchShiftInternal {
   PitchShiftSingle(super.soundHash);
 
   FilterParam wet({SoundHandle? soundHandle}) => FilterParam(
@@ -70,7 +70,7 @@ class PitchShiftSingle extends PitchShiftInternal {
   }
 }
 
-class PitchShiftGlobal extends PitchShiftInternal {
+class PitchShiftGlobal extends _PitchShiftInternal {
   const PitchShiftGlobal() : super(null);
 
   FilterParam get wet => FilterParam(

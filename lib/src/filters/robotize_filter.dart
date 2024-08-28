@@ -25,8 +25,8 @@ enum RobotizeEnum {
       };
 }
 
-abstract class RobotizeInternal extends FilterBase {
-  const RobotizeInternal(SoundHash? soundHash)
+abstract class _RobotizeInternal extends FilterBase {
+  const _RobotizeInternal(SoundHash? soundHash)
       : super(FilterType.robotizeFilter, soundHash);
 
   RobotizeEnum get queryWet => RobotizeEnum.wet;
@@ -34,7 +34,7 @@ abstract class RobotizeInternal extends FilterBase {
   RobotizeEnum get queryWaveform => RobotizeEnum.waveform;
 }
 
-class RobotizeSingle extends RobotizeInternal {
+class RobotizeSingle extends _RobotizeInternal {
   RobotizeSingle(super.soundHash);
 
   FilterParam wet({SoundHandle? soundHandle}) => FilterParam(
@@ -62,7 +62,7 @@ class RobotizeSingle extends RobotizeInternal {
       );
 }
 
-class RobotizeGlobal extends RobotizeInternal {
+class RobotizeGlobal extends _RobotizeInternal {
   const RobotizeGlobal() : super(null);
 
   FilterParam get wet => FilterParam(

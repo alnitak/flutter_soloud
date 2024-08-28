@@ -44,8 +44,8 @@ enum BiquadResonantEnum {
       };
 }
 
-abstract class BiquadResonantInternal extends FilterBase {
-  const BiquadResonantInternal(SoundHash? soundHash)
+abstract class _BiquadResonantInternal extends FilterBase {
+  const _BiquadResonantInternal(SoundHash? soundHash)
       : super(FilterType.biquadResonantFilter, soundHash);
 
   BiquadResonantEnum get queryWet => BiquadResonantEnum.wet;
@@ -54,7 +54,7 @@ abstract class BiquadResonantInternal extends FilterBase {
   BiquadResonantEnum get queryResonance => BiquadResonantEnum.resonance;
 }
 
-class BiquadResonantSingle extends BiquadResonantInternal {
+class BiquadResonantSingle extends _BiquadResonantInternal {
   BiquadResonantSingle(super.soundHash);
 
   FilterParam wet({SoundHandle? soundHandle}) => FilterParam(
@@ -90,7 +90,7 @@ class BiquadResonantSingle extends BiquadResonantInternal {
       );
 }
 
-class BiquadResonantGlobal extends BiquadResonantInternal {
+class BiquadResonantGlobal extends _BiquadResonantInternal {
   const BiquadResonantGlobal() : super(null);
 
   FilterParam get wet => FilterParam(

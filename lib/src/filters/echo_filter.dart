@@ -27,8 +27,8 @@ enum EchoEnum {
       };
 }
 
-abstract class EchoInternal extends FilterBase {
-  const EchoInternal(SoundHash? soundHash)
+abstract class _EchoInternal extends FilterBase {
+  const _EchoInternal(SoundHash? soundHash)
       : super(FilterType.echoFilter, soundHash);
 
   EchoEnum get queryWet => EchoEnum.wet;
@@ -37,7 +37,7 @@ abstract class EchoInternal extends FilterBase {
   EchoEnum get queryFilter => EchoEnum.filter;
 }
 
-class EchoSingle extends EchoInternal {
+class EchoSingle extends _EchoInternal {
   EchoSingle(super.soundHash);
 
   FilterParam wet({SoundHandle? soundHandle}) => FilterParam(
@@ -73,7 +73,7 @@ class EchoSingle extends EchoInternal {
       );
 }
 
-class EchoGlobal extends EchoInternal {
+class EchoGlobal extends _EchoInternal {
   const EchoGlobal() : super(null);
 
   FilterParam get wet => FilterParam(
