@@ -125,11 +125,13 @@ PlayerErrors Player::loadFile(
     if (!mInited)
         return backendNotInited;
 
+    std::lock_guard<std::mutex> lock(loadMutex);
     *hash = 0;
 
     unsigned int newHash = (int32_t)std::hash<std::string>{}(completeFileName) & 0x7fffffff;
     /// check if the sound has been already loaded
     auto const s = findByHash(newHash);
+
 
     if (s != nullptr)
     {
@@ -176,6 +178,7 @@ PlayerErrors Player::loadMem(
     if (!mInited)
         return backendNotInited;
 
+    std::lock_guard<std::mutex> lock(loadMutex);
     hash = 0;
 
     unsigned int newHash = (int32_t)std::hash<std::string>{}(uniqueName) & 0x7fffffff;
@@ -225,6 +228,7 @@ PlayerErrors Player::loadWaveform(
     if (!mInited)
         return backendNotInited;
 
+    std::lock_guard<std::mutex> lock(loadMutex);
     hash = 0;
 
     std::random_device rd;
@@ -354,7 +358,7 @@ void Player::stop(unsigned int handle)
 
 void Player::removeHandle(unsigned int handle)
 {
-    const std::lock_guard<std::mutex> lock(lock_mutex);
+    const std::lock_guard<std::mutex> guard(lock_mutex);
     // for (auto &sound : sounds)
     //     sound->handle.erase(std::remove_if(
     //         sound->handle.begin(), sound->handle.end(),
