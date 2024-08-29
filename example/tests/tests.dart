@@ -79,6 +79,7 @@ class _MyHomePageState extends State<MyHomePage> {
       _Test(name: 'testVoiceGroups', callback: testVoiceGroups),
       _Test(name: 'testSoundFilters', callback: testSoundFilters),
       _Test(name: 'testGlobalFilters', callback: testGlobalFilters),
+      _Test(name: 'testAsyncMultiLoad', callback: testAsyncMultiLoad),
     ]);
   }
 
@@ -827,6 +828,32 @@ Future<StringBuffer> testGlobalFilters() async {
     !filter.isActive,
     'The filter has not been activate!',
   );
+
+  deinit();
+  return strBuf;
+}
+
+Future<StringBuffer> testAsyncMultiLoad() async {
+  final strBuf = StringBuffer();
+  await initialize();
+
+  const prefix = 'assets/audio/12Bands/audiocheck.net_sin_';
+  final sounds = [
+    SoLoud.instance.loadAsset('${prefix}1000Hz_-3dBFS_2s.wav'),
+    SoLoud.instance.loadAsset('${prefix}125Hz_-3dBFS_2s.wav'),
+    SoLoud.instance.loadAsset('${prefix}16000Hz_-3dBFS_2s.wav'),
+    SoLoud.instance.loadAsset('${prefix}16Hz_-3dBFS_2s.wav'),
+    SoLoud.instance.loadAsset('${prefix}20000Hz_-3dBFS_2s.wav'),
+    SoLoud.instance.loadAsset('${prefix}2000Hz_-3dBFS_2s.wav'),
+    SoLoud.instance.loadAsset('${prefix}250Hz_-3dBFS_2s.wav'),
+    SoLoud.instance.loadAsset('${prefix}31.5Hz_-3dBFS_2s.wav'),
+    SoLoud.instance.loadAsset('${prefix}4000Hz_-3dBFS_2s.wav'),
+    SoLoud.instance.loadAsset('${prefix}500Hz_-3dBFS_2s.wav'),
+    SoLoud.instance.loadAsset('${prefix}63Hz_-3dBFS_2s.wav'),
+    SoLoud.instance.loadAsset('${prefix}8000Hz_-3dBFS_2s.wav'),
+  ];
+
+  await Future.wait(sounds);
 
   deinit();
   return strBuf;

@@ -540,6 +540,9 @@ public:
 private:
     std::mutex init_deinit_mutex;
     std::mutex lock_mutex;
+
+    /// mutex to lock the loading audio methods.
+    std::mutex loadMutex;
 };
 
 #endif // PLAYER_H
