@@ -15,6 +15,7 @@
 #include <unistd.h>
 #endif
 
+
 Player::Player() : mInited(false), mFilters(&soloud, nullptr) {}
 
 Player::~Player()
@@ -37,8 +38,6 @@ PlayerErrors Player::init(unsigned int sampleRate, unsigned int bufferSize, unsi
     if (mInited)
         return playerAlreadyInited;
 
-    std::lock_guard<std::mutex> guard(init_deinit_mutex);
-
     // initialize SoLoud.
     SoLoud::result result = soloud.init(
         SoLoud::Soloud::CLIP_ROUNDOFF,
@@ -52,7 +51,6 @@ PlayerErrors Player::init(unsigned int sampleRate, unsigned int bufferSize, unsi
 
 void Player::dispose()
 {
-    std::lock_guard<std::mutex> guard(init_deinit_mutex);
     // Clean up SoLoud
     setVoiceEndedCallback(nullptr);
     setStateChangedCallback(nullptr);
@@ -124,8 +122,7 @@ PlayerErrors Player::loadFile(
 {
     if (!mInited)
         return backendNotInited;
-
-    std::lock_guard<std::mutex> lock(loadMutex);
+        
     *hash = 0;
 
     unsigned int newHash = (int32_t)std::hash<std::string>{}(completeFileName) & 0x7fffffff;
@@ -139,31 +136,36 @@ PlayerErrors Player::loadFile(
         return fileAlreadyLoaded;
     }
 
-    sounds.push_back(std::make_unique<ActiveSound>());
-    sounds.back().get()->completeFileName = std::string(completeFileName);
-    sounds.back().get()->soundHash = newHash;
+    auto sound = std::make_unique<ActiveSound>();
+
+    
+    
+    sound->completeFileName = std::string(completeFileName);
+    sound->soundHash = newHash;
 
     SoLoud::result result;
     if (loadIntoMem)
     {
-        sounds.back().get()->sound = std::make_unique<SoLoud::Wav>();
-        sounds.back().get()->soundType = TYPE_WAV;
-        result = static_cast<SoLoud::Wav *>(sounds.back().get()->sound.get())->load(completeFileName.c_str());
+        sound->sound = std::make_unique<SoLoud::Wav>();
+        sound->soundType = TYPE_WAV;
+        result = static_cast<SoLoud::Wav *>(sound->sound.get())->load(completeFileName.c_str());
     }
     else
     {
-        sounds.back().get()->sound = std::make_unique<SoLoud::WavStream>();
-        sounds.back().get()->soundType = TYPE_WAVSTREAM;
-        result = static_cast<SoLoud::WavStream *>(sounds.back().get()->sound.get())->load(completeFileName.c_str());
+        sound->sound = std::make_unique<SoLoud::WavStream>();
+        sound->soundType = TYPE_WAVSTREAM;
+        result = static_cast<SoLoud::WavStream *>(sound->sound.get())->load(completeFileName.c_str());
     }
 
     if (result != SoLoud::SO_NO_ERROR)
     {
-        sounds.pop_back();
+        *hash = 0;
     } else {
-        sounds.back().get()->filters = std::make_unique<Filters>(&soloud, sounds.back().get());
+        *hash = newHash;
+        sound->filters = std::make_unique<Filters>(&soloud, sound.get());
+        sounds.push_back(std::move(sound));
     }
-    *hash = newHash;
+    
 
     return (PlayerErrors)result;
 }
@@ -178,7 +180,6 @@ PlayerErrors Player::loadMem(
     if (!mInited)
         return backendNotInited;
 
-    std::lock_guard<std::mutex> lock(loadMutex);
     hash = 0;
 
     unsigned int newHash = (int32_t)std::hash<std::string>{}(uniqueName) & 0x7fffffff;
@@ -228,7 +229,6 @@ PlayerErrors Player::loadWaveform(
     if (!mInited)
         return backendNotInited;
 
-    std::lock_guard<std::mutex> lock(loadMutex);
     hash = 0;
 
     std::random_device rd;
@@ -358,7 +358,7 @@ void Player::stop(unsigned int handle)
 
 void Player::removeHandle(unsigned int handle)
 {
-    const std::lock_guard<std::mutex> guard(lock_mutex);
+    const std::lock_guard<std::mutex> guard(remove_handle_mutex);
     // for (auto &sound : sounds)
     //     sound->handle.erase(std::remove_if(
     //         sound->handle.begin(), sound->handle.end(),
