@@ -59,6 +59,7 @@ flutter:
       windows:
         ffiPlugin: true
       web:
+        default_package: true
 
   assets:
     # These assets are only needed for the web platform.
