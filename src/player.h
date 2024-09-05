@@ -538,11 +538,7 @@ public:
     Filters mFilters;
 
 private:
-    std::mutex init_deinit_mutex;
-    std::mutex lock_mutex;
-
-    /// mutex to lock the loading audio methods.
-    std::mutex loadMutex;
+    std::mutex remove_handle_mutex;
 };
 
 #endif // PLAYER_H

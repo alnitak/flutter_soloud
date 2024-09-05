@@ -10,6 +10,7 @@ enum TestStatus {
   none,
   passed,
   failed,
+  running,
 }
 
 /// A GUI for tests.
@@ -114,14 +115,20 @@ class _MyHomePageState extends State<MyHomePage> {
                     (index) {
                       return OutlinedButton(
                         style: ButtonStyle(
-                          backgroundColor: tests[index].status ==
-                                  TestStatus.failed
-                              ? const WidgetStatePropertyAll(Colors.red)
-                              : tests[index].status == TestStatus.passed
-                                  ? const WidgetStatePropertyAll(Colors.green)
-                                  : null,
+                          backgroundColor: switch (tests[index].status) {
+                            TestStatus.failed =>
+                              const WidgetStatePropertyAll(Colors.red),
+                            TestStatus.passed =>
+                              const WidgetStatePropertyAll(Colors.green),
+                            TestStatus.running =>
+                              const WidgetStatePropertyAll(Colors.yellow),
+                            _ => null,
+                          },
                         ),
                         onPressed: () async {
+                          if (tests[index].status == TestStatus.running) {
+                            return;
+                          }
                           await runTest(index);
                         },
                         child: Text(
@@ -158,6 +165,8 @@ class _MyHomePageState extends State<MyHomePage> {
   /// the test functions.
   /// It also update the state of text buttons.
   Future<void> runTest(int index) async {
+    tests[index].status = TestStatus.running;
+    if (context.mounted) setState(() {});
     await runZonedGuarded<Future<void>>(
       () async {
         output
@@ -844,6 +853,11 @@ Future<StringBuffer> testAsyncMultiLoad() async {
     SoLoud.instance.loadAsset('${prefix}16000Hz_-3dBFS_2s.wav'),
     SoLoud.instance.loadAsset('${prefix}16Hz_-3dBFS_2s.wav'),
     SoLoud.instance.loadAsset('${prefix}20000Hz_-3dBFS_2s.wav'),
+    SoLoud.instance.loadAsset('assets/audio/8_bit_mentality.mp3'),
+    SoLoud.instance.loadAsset('assets/audio/explosion.mp3'),
+    SoLoud.instance.loadAsset('assets/audio/IveSeenThings.mp3'),
+    SoLoud.instance.loadAsset('assets/audio/tic-1.wav'),
+    SoLoud.instance.loadAsset('assets/audio/tic-2.wav'),
     SoLoud.instance.loadAsset('${prefix}2000Hz_-3dBFS_2s.wav'),
     SoLoud.instance.loadAsset('${prefix}250Hz_-3dBFS_2s.wav'),
     SoLoud.instance.loadAsset('${prefix}31.5Hz_-3dBFS_2s.wav'),
