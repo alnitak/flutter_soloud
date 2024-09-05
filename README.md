@@ -47,6 +47,14 @@ directly — there are no method channels in use.
 #### Web platform
 To use this plugin on the **Web platform**, please refer to [WEB_NOTES](https://github.com/alnitak/flutter_soloud/blob/main/WEB_NOTES.md).
 
+#### Linux
+Linux distribution usually install by default the **alsa** library. We noticed that sometime is not the case. For example installing Ubuntu Linux (24.04.1 LTS in this case) in a VM box under Windows, the **alsa** library is not installed. This will prevent `flutter_soloud` to build.
+To fix this, just install that lib with `apt get install libasound2-dev` command.
+Other Linux distributions uses a different name for the *alsa* lib:
+- on Arch based: **alsa-lib**
+- on OpenSUSE: **alsa-devel**
+
+install them with the package manager provided by your Linux distro.
 
 #### Stripping iOS symbols
 When creating a release archive (IPA), the symbols are [stripped by Xcode](https://docs.flutter.dev/platform-integration/ios/c-interop#stripping-ios-symbols), so the command `flutter build ipa` may throw a `Failed to lookup symbol ... symbol not found error`. To work around this:
