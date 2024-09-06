@@ -29,7 +29,7 @@
         },
         {
             "label": "compile web debug",
-            "command": "cd ${workspaceFolder}/example; flutter run -d chrome --web-renderer canvaskit --web-browser-flag '--disable-web-security' -t lib/filters/pitchshift.dart --release",
+            "command": "cd ${workspaceFolder}/example; flutter run -d chrome --web-renderer canvaskit --web-browser-flag '--disable-web-security' -t lib/audio_data/audio_data.dart --release",
             "type": "shell"
         }
     ]

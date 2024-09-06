@@ -81,7 +81,7 @@ enum PlayerErrors {
         return 'File not found!';
       case PlayerErrors.fileLoadFailed:
         return 'File found, but could not be loaded! Could be a permission '
-        'error or the file is corrupted.';
+            'error or the file is corrupted.';
       case PlayerErrors.fileAlreadyLoaded:
         return 'The sound file has already been loaded!';
       case PlayerErrors.dllNotFound:
