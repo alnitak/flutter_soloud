@@ -376,10 +376,10 @@ interface class SoLoud {
     // Initialize callbacks.
     _controller.soLoudFFI.setDartEventCallbacks();
 
-    // Listen when a handle becomes invalid becaus has been stopped/ended
+    // Listen when a handle becomes invalid because has been stopped/ended.
     if (!_controller.soLoudFFI.voiceEndedEventController.hasListener) {
       _controller.soLoudFFI.voiceEndedEvents.listen((handle) {
-        // Remove this UNIQUE [handle] from the `AudioSource` that own it.
+        // Removing this UNIQUE [handle] from the `AudioSource` that owns it.
 
         final soundHandleFound = _isHandlePresent(SoundHandle(handle));
 
@@ -405,7 +405,7 @@ interface class SoLoud {
       });
     }
 
-    // Listen when a file has been loaded
+    // Listen when a file has been loaded.
     if (!_controller.soLoudFFI.fileLoadedEventsController.hasListener) {
       _controller.soLoudFFI.fileLoadedEvents.listen((result) {
         final exists =
@@ -416,8 +416,8 @@ interface class SoLoud {
           final hash = result['hash'] as int;
 
           _logPlayerError(error, from: 'loadFile() result');
-          final newSound = AudioSource(SoundHash(hash));
           if (error == PlayerErrors.noError) {
+            final newSound = AudioSource(SoundHash(hash));
             _activeSounds.add(newSound);
             loadedFileCompleters[result['completeFileName']]!
                 .complete(newSound);
@@ -425,6 +425,7 @@ interface class SoLoud {
             _log.warning(() => "Sound '$completeFileName' was already loaded. "
                 'Prefer loading only once, and reusing the loaded sound '
                 'when playing.');
+            final newSound = AudioSource(SoundHash(hash));
             final alreadyLoaded = _activeSounds
                     .where((sound) => sound.soundHash == newSound.soundHash)
                     .length ==
