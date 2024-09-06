@@ -83,8 +83,9 @@ class WavePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final barWidth = size.width / 256;
-    final paint = Paint()..strokeWidth = barWidth * 0.8
-    ..color = Colors.yellowAccent;
+    final paint = Paint()
+      ..strokeWidth = barWidth * 0.8
+      ..color = Colors.yellowAccent;
 
     for (var i = 0; i < 256; i++) {
       late final double waveHeight;
