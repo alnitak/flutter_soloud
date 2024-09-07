@@ -1,5 +1,11 @@
+### 2.1.3 (7 Sep 2024)
+- added audio_data example.
+- added compatibility for Web platform in the pubspec.
+- bug fix when loading multiple audio files asynchronously.
+- better error message when something goes wrong loading a file.
+
 ### 2.1.2 (29 Aug 2024)
-- bug fix when loading multiple audio files asynchronously
+- bug fix when loading multiple audio files asynchronously.
 
 ### 2.1.1 (28 Aug 2024)
 - added `bool isActive` and `int iindex` getters to filters.
