@@ -30,17 +30,17 @@ freely, subject to the following restrictions:
 class ADSR
 {
 public:
-	float mA, mD, mS, mR;
+	double mA, mD, mS, mR;
 
 	ADSR()
 	{
-		mA = 0.0f;
-		mD = 0.0f;
-		mS = 1.0f;
-		mR = 0.0f;
+		mA = 0.0;
+		mD = 0.0;
+		mS = 1.0;
+		mR = 0.0;
 	}
 
-	ADSR(float aA, float aD, float aS, float aR)
+	ADSR(double aA, double aD, double aS, double aR)
 	{
 		mA = aA;
 		mD = aD;
@@ -48,7 +48,7 @@ public:
 		mR = aR;
 	}
 
-	float val(float aT, float aRelTime)
+	double val(double aT, double aRelTime)
 	{
 		if (aT < mA)
 		{
@@ -57,7 +57,7 @@ public:
 		aT -= mA;
 		if (aT < mD)
 		{
-			return 1.0f - ((aT / mD)) * (1.0f - mS);
+			return 1.0 - ((aT / mD)) * (1.0 - mS);
 		}
 		aT -= mD;
 		if (aT < aRelTime)
@@ -65,9 +65,9 @@ public:
 		aT -= aRelTime;
 		if (aT >= mR)
 		{
-			return 0.0f;
+			return 0.0;
 		}
-		return (1.0f - aT / mR) * mS;
+		return (1.0 - aT / mR) * mS;
 	}
 };
 

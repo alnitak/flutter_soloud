@@ -34,7 +34,7 @@ class BasicwaveInstance : public SoLoud::AudioSourceInstance
 {
 	Basicwave *mParent;
 	int mOffset;
-	float mT;
+	double mT;
 
 public:
 	BasicwaveInstance(Basicwave *aParent);
@@ -46,22 +46,22 @@ class Basicwave : public SoLoud::AudioSource
 {
 public:
 	ADSR mADSR;
-	float mFreq;
-	float mSuperwaveScale;
-	float mSuperwaveDetune;
+	double mFreq;
+	double mSuperwaveScale;
+	double mSuperwaveDetune;
 	int mWaveform;
 	bool mSuperwave;
 	Basicwave(
 		SoLoud::Soloud::WAVEFORM waveform,
 		bool superWave,
-		float scale,
-		float detune);
+		double scale,
+		double detune);
 	virtual ~Basicwave();
-	void setScale(float aScale);
-	void setDetune(float aDetune);
-	void setSamplerate(float aSamplerate);
+	void setScale(double aScale);
+	void setDetune(double aDetune);
+	void setSamplerate(double aSamplerate);
 	void setWaveform(int aWaveform);
-	void setFreq(float aFreq);
+	void setFreq(double aFreq);
 	void setSuperWave(bool aSuperwave);
 	virtual SoLoud::AudioSourceInstance *createInstance();
 };
