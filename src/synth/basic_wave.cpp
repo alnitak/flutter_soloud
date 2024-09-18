@@ -35,15 +35,15 @@ BasicwaveInstance::BasicwaveInstance(Basicwave *aParent)
 unsigned int BasicwaveInstance::getAudio(float *aBuffer, unsigned int aSamplesToRead, unsigned int aBufferSize)
 {
     unsigned int i;
-    float d = 1.0f / mSamplerate;
+    double d = 1.0 / mSamplerate;
     if (!mParent->mSuperwave)
     {
         for (i = 0; i < aSamplesToRead; i++)
         {
             aBuffer[i] = SoLoud::Misc::generateWaveform(
                              mParent->mWaveform,
-                             (float)fmod(mParent->mFreq * (float)mOffset, 1.0f)) *
-                         mParent->mADSR.val(mT, 10000000000000.0f);
+                             (double)fmod(mParent->mFreq * (double)mOffset, 1.0)) *
+                         mParent->mADSR.val(mT, 10000000000000.0);
             mOffset++;
             mT += d;
         }
@@ -53,15 +53,15 @@ unsigned int BasicwaveInstance::getAudio(float *aBuffer, unsigned int aSamplesTo
         for (i = 0; i < aSamplesToRead; i++)
         {
             aBuffer[i] = SoLoud::Misc::generateWaveform(
-                             mParent->mWaveform, (float)fmod(mParent->mFreq * (float)mOffset, 1.0f)) *
-                         mParent->mADSR.val(mT, 10000000000000.0f);
-            float f = mParent->mFreq * (float)mOffset;
+                             mParent->mWaveform, (double)fmod(mParent->mFreq * (double)mOffset, 1.0)) *
+                         mParent->mADSR.val(mT, 10000000000000.0);
+            double f = mParent->mFreq * (double)mOffset;
             for (int j = 0; j < 3; j++)
             {
                 f *= 2;
                 aBuffer[i] += SoLoud::Misc::generateWaveform(
-                                  mParent->mWaveform, (float)fmod(mParent->mSuperwaveDetune * f, 1.0f)) *
-                              mParent->mADSR.val(mT, 10000000000000.0f) * mParent->mSuperwaveScale;
+                                  mParent->mWaveform, (double)fmod(mParent->mSuperwaveDetune * f, 1.0)) *
+                              mParent->mADSR.val(mT, 10000000000000.0) * mParent->mSuperwaveScale;
             }
             mOffset++;
             mT += d;
@@ -79,8 +79,8 @@ bool BasicwaveInstance::hasEnded()
 Basicwave::Basicwave(
     SoLoud::Soloud::WAVEFORM waveform,
     bool superWave,
-    float scale,
-    float detune)
+    double scale,
+    double detune)
 {
     setSamplerate(44100);
     setWaveform(waveform);
@@ -94,23 +94,23 @@ Basicwave::~Basicwave()
     stop();
 }
 
-void Basicwave::setScale(float aScale)
+void Basicwave::setScale(double aScale)
 {
     mSuperwaveScale = aScale;
 }
 
-void Basicwave::setDetune(float aDetune)
+void Basicwave::setDetune(double aDetune)
 {
     mSuperwaveDetune = aDetune;
 }
 
-void Basicwave::setSamplerate(float aSamplerate)
+void Basicwave::setSamplerate(double aSamplerate)
 {
     mBaseSamplerate = aSamplerate;
-    mFreq = (float)(440 / mBaseSamplerate);
+    mFreq = (double)(440 / mBaseSamplerate);
 }
 
-void Basicwave::setFreq(float aFreq)
+void Basicwave::setFreq(double aFreq)
 {
     mFreq = aFreq / mBaseSamplerate;
 }

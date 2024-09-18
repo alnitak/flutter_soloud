@@ -39,8 +39,6 @@ PODS:
   - path_provider_foundation (0.0.1):
     - Flutter
     - FlutterMacOS
-  - permission_handler_apple (9.1.1):
-    - Flutter
   - SDWebImage (5.16.0):
     - SDWebImage/Core (= 5.16.0)
   - SDWebImage/Core (5.16.0)
@@ -51,7 +49,6 @@ DEPENDENCIES:
   - Flutter (from `Flutter`)
   - flutter_soloud (from `.symlinks/plugins/flutter_soloud/ios`)
   - path_provider_foundation (from `.symlinks/plugins/path_provider_foundation/darwin`)
-  - permission_handler_apple (from `.symlinks/plugins/permission_handler_apple/ios`)
 
 SPEC REPOS:
   trunk:
@@ -69,20 +66,17 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/flutter_soloud/ios"
   path_provider_foundation:
     :path: ".symlinks/plugins/path_provider_foundation/darwin"
-  permission_handler_apple:
-    :path: ".symlinks/plugins/permission_handler_apple/ios"
 
 SPEC CHECKSUMS:
   DKImagePickerController: b512c28220a2b8ac7419f21c491fc8534b7601ac
   DKPhotoGallery: fdfad5125a9fdda9cc57df834d49df790dbb4179
-  file_picker: ce3938a0df3cc1ef404671531facef740d03f920
+  file_picker: 09aa5ec1ab24135ccd7a1621c46c84134bfd6655
   Flutter: e0871f40cf51350855a761d2e70bf5af5b9b5de7
-  flutter_soloud: a49590bf8d8be2c55b50f4d4e819b764901a4946
-  path_provider_foundation: 3784922295ac71e43754bd15e0653ccfd36a147c
-  permission_handler_apple: e76247795d700c14ea09e3a2d8855d41ee80a2e6
+  flutter_soloud: 8e3e36e6543681eb9b404e5f4e66dd957adc38dc
+  path_provider_foundation: 2b6b4c569c0fb62ec74538f866245ac84301af46
   SDWebImage: 2aea163b50bfcb569a2726b6a754c54a4506fcf6
   SwiftyGif: 93a1cc87bf3a51916001cf8f3d63835fb64c819f
 
 PODFILE CHECKSUM: 819463e6a0290f5a72f145ba7cde16e8b6ef0796
 
-COCOAPODS: 1.15.0
+COCOAPODS: 1.15.2
