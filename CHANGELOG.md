@@ -1,3 +1,8 @@
+### 2.1.4 (18 Sep 2024)
+- fixed waveform generation which somehow oscillate frequencies after some time #129.
+- fixed iOS compilation by rising minimum iOS version to 13 #128.
+- fixed iOS compilation on the new MacOS 15 with XCode 16 #130.
+
 ### 2.1.3 (7 Sep 2024)
 - added audio_data example.
 - added compatibility for Web platform in the pubspec.
