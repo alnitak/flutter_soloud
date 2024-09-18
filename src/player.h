@@ -188,7 +188,6 @@ public:
     void disposeSound(unsigned int soundHash);
 
     /// @brief Dispose all sounds already loaded.
-    /// @param soundHash hash of the sound.
     void disposeAllSound();
 
     /// @brief Ask whether a sound is set to loop or not.
@@ -340,7 +339,7 @@ public:
     ActiveSound *findByHandle(SoLoud::handle handle);
 
     /// @brief Find a sound by its handle.
-    /// @param handle the handle to search.
+    /// @param hash the hash to search.
     /// @return If not found, return nullptr.
     ActiveSound *findByHash(unsigned int hash);
 

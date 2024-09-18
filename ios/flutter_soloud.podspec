@@ -20,7 +20,7 @@ Flutter audio plugin using SoLoud library and FFI
   s.source           = { :path => '.' }
   s.source_files = 'Classes/**/*'
   s.dependency 'Flutter'
-  s.platform = :ios, '11.0'
+  s.platform = :ios, '13.0'
 
   s.compiler_flags      = [
     '-GCC_WARN_INHIBIT_ALL_WARNINGS',
