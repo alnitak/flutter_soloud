@@ -2,6 +2,7 @@
 #include "player.h"
 #include "analyzer.h"
 #include "synth/basic_wave.h"
+#include "waveform/waveform.h"
 #ifndef COMMON_H
 #include "common.h"
 #endif
@@ -1522,6 +1523,31 @@ extern "C"
             return;
         player.get()->set3dSourceDopplerFactor(handle, dopplerFactor);
         player.get()->update3dAudio();
+    }
+
+    /////////////////////////////////////////
+    /// waveform audio data
+    /////////////////////////////////////////
+
+    FFI_PLUGIN_EXPORT void readSamplesFromFile(
+        const char *filePath,
+        float startTime,
+        float endTime,
+        unsigned long numSamplesNeeded,
+        float* pSamples)
+    {
+        Waveform::readSamplesFromFile(filePath, startTime, endTime, numSamplesNeeded, pSamples);
+    }
+
+    FFI_PLUGIN_EXPORT void readSamplesFromMem(
+        const unsigned char *buffer,
+        unsigned long dataSize,
+        float startTime,
+        float endTime,
+        unsigned long numSamplesNeeded,
+        float* pSamples)
+    {
+        Waveform::readSamplesFromMem(buffer, dataSize, startTime, endTime, numSamplesNeeded, pSamples);
     }
 
 #ifdef __cplusplus

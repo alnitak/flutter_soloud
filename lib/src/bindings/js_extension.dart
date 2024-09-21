@@ -439,3 +439,13 @@ external void wasmSet3dSourceAttenuation(
 
 @JS('Module._set3dSourceDopplerFactor')
 external void wasmSet3dSourceDopplerFactor(int handle, double dopplerFactor);
+
+@JS('Module._readSamplesFromMem')
+external void wasmReadSamplesFromMem(
+  int bufferPtr,
+  int bufferLength,
+  double startTime,
+  double endTime,
+  int numSamplesNeeded,
+  int pSamplesPtr,
+);

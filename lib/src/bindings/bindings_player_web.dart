@@ -856,4 +856,48 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   void set3dSourceDopplerFactor(SoundHandle handle, double dopplerFactor) {
     return wasmSet3dSourceDopplerFactor(handle.id, dopplerFactor);
   }
+
+  // ///////////////////////////////////////
+  // waveform audio data
+  // ///////////////////////////////////////
+  @override
+  Float32List readSamplesFromFile(
+    String completeFileName,
+    int numSamplesNeeded, {
+    double startTime = 0,
+    double endTime = -1,
+  }) {
+    throw UnimplementedError('[readSamplesFromFile] in not supported on the '
+        'web platfom! Please use [readSamplesFromMem].');
+  }
+
+  @override
+  Float32List readSamplesFromMem(
+    Uint8List buffer,
+    int numSamplesNeeded, {
+    double startTime = 0,
+    double endTime = -1,
+  }) {
+    final bufferPtr = wasmMalloc(buffer.length);
+    // Is there a way to speed up this array copy?
+    for (var i = 0; i < buffer.length; i++) {
+      wasmSetValue(bufferPtr + i, buffer[i], 'i8');
+    }
+    final samplesPtr = wasmMalloc(numSamplesNeeded * 4);
+    wasmReadSamplesFromMem(
+      bufferPtr,
+      buffer.length,
+      startTime,
+      endTime,
+      numSamplesNeeded,
+      samplesPtr,
+    );
+    final samples = Float32List(numSamplesNeeded);
+    for (var i = 0; i < numSamplesNeeded; i++) {
+      samples[i] = wasmGetF32Value(samplesPtr + i * 4, 'float');
+    }
+    wasmFree(samplesPtr);
+    wasmFree(bufferPtr);
+    return samples;
+  }
 }

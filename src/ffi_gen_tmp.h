@@ -17,8 +17,10 @@
 
 //--------------------- copy here the new functions to generate
 
-FFI_PLUGIN_EXPORT enum PlayerErrors getFilterParams(
-    unsigned int handle,
-    enum FilterType filterType,
-    int attributeId,
-    float *filterValue);
+FFI_PLUGIN_EXPORT void readSamplesFromMem(
+        const unsigned char *fileMem,
+        unsigned long dataSize,
+        float startTime,
+        float endTime,
+        unsigned long numSamplesNeeded,
+        float* pSamples);
