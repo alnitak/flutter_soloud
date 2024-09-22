@@ -1,4 +1,5 @@
 import 'dart:developer' as dev;
+import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
@@ -45,8 +46,10 @@ class HelloFlutterSoLoud extends StatefulWidget {
 }
 
 class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
+  List<PlatformFile>? paths;
   AudioSource? currentSound;
   Float32List? data;
+  bool average = false;
 
   @override
   void dispose() {
@@ -65,10 +68,11 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
           children: [
             const SizedBox(height: 16),
             const Text(
-                'Read N audio samples (here N = width) from audio file.'),
-            ElevatedButton(
+              'Read N audio samples (here N = width) from audio file.',
+            ),
+            OutlinedButton(
               onPressed: () async {
-                final paths = (await FilePicker.platform.pickFiles(
+                paths = (await FilePicker.platform.pickFiles(
                   type: FileType.custom,
                   allowedExtensions: ['mp3', 'wav', 'flac'],
                   onFileLoading: print,
@@ -76,22 +80,24 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
                 ))
                     ?.files;
 
-                if (paths != null) {
-                  if (kIsWeb) {
-                    data = await SoLoud.instance.readSamplesFromMem(
-                      paths.first.bytes!,
-                      width * 2,
-                    );
-                  } else {
-                    data = await SoLoud.instance.readSamplesFromFile(
-                      paths.first.path!,
-                      width * 2,
-                    );
-                  }
-                }
+                await _loadPath(width);
                 if (context.mounted) setState(() {});
               },
               child: const Text('pickFile'),
+            ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Text('Average samples  '),
+                Switch(
+                  value: average,
+                  onChanged: (value) async{
+                    average = value;
+                    await _loadPath(width);
+                    if (context.mounted) setState(() {});
+                  },
+                ),
+              ],
             ),
             if (data != null)
               Expanded(
@@ -114,6 +120,32 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
         ),
       ),
     );
+  }
+
+  Future<void> _loadPath(int width) async {
+    if (paths != null) {
+      if (kIsWeb) {
+        // on web we can't read the bytes from the file.
+        data = await SoLoud.instance.readSamplesFromMem(
+          paths!.first.bytes!,
+          width * 2,
+          average: average,
+        );
+      } else {
+        // data = await SoLoud.instance.readSamplesFromFile(
+        //   paths.first.path!,
+        //   width * 2,
+        //   average: average,
+        // );
+        final f = File(paths!.first.path!);
+        final bytes = f.readAsBytesSync();
+        data = await SoLoud.instance.readSamplesFromMem(
+          bytes,
+          width * 2,
+          average: average,
+        );
+      }
+    }
   }
 }
 

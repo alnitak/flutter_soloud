@@ -447,5 +447,7 @@ external void wasmReadSamplesFromMem(
   double startTime,
   double endTime,
   int numSamplesNeeded,
+  // ignore: avoid_positional_boolean_parameters
+  bool average,
   int pSamplesPtr,
 );

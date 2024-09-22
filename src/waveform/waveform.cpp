@@ -8,11 +8,12 @@
 
 namespace Waveform
 {
-    void readSamples(
+    void readSamplesFromDecoder(
         ma_decoder *decoder,
         float startTime,
         float endTime,
         unsigned long numSamplesNeeded,
+        bool average,
         float *pSamples)
     {
         ma_uint32 sampleRate = decoder->outputSampleRate;
@@ -22,13 +23,10 @@ namespace Waveform
         ma_uint64 startFrame = (ma_uint64)(startTime * sampleRate);
         ma_uint64 endFrame;
         if (endTime == -1)
-        {
             ma_decoder_get_length_in_pcm_frames(decoder, &endFrame);
-        }
         else
-        {
             endFrame = (ma_uint64)(endTime * sampleRate);
-        }
+            
         ma_uint64 totalFrames = endFrame - startFrame;
         ma_uint64 stepFrames = totalFrames / numSamplesNeeded;
 
@@ -59,33 +57,42 @@ namespace Waveform
             if (framesRead == 0)
                 break;
             // Inside tempBuffer there are now all the samples within a stepFrame values
-            double average = 0;
-            for (int j = 0; j < framesRead; j++)
+            if (average)
             {
-                average += tempBuffer[j] * tempBuffer[j];
+                double average = 0;
+                for (int j = 0; j < framesRead; j++)
+                {
+                    average += tempBuffer[j] * tempBuffer[j];
+                }
+                pSamples[id] = sqrtf(average / framesRead) * channels;
             }
-            pSamples[id] = sqrtf(average / framesRead) * channels;
-            // printf("%f ", pSamples[id]);
+            else
+                pSamples[id] = tempBuffer[0];
         }
-        // printf("\n id: %d\n", id);
         free(tempBuffer);
-
     }
 
-    void readSamplesFromMem(
+    void readSamples(
+        const char *filePath,
         const unsigned char *buffer,
         unsigned long dataSize,
         float startTime,
         float endTime,
         unsigned long numSamplesNeeded,
+        bool average,
         float *pSamples)
     {
         // Clear memory
         memset(pSamples, 0, numSamplesNeeded * sizeof(float));
 
         ma_decoder decoder;
-        // Init the decoder
-        ma_result result = ma_decoder_init_memory(buffer, dataSize, NULL, &decoder);
+        ma_result result;
+        // Init the decoder with file or memory
+        if (filePath != NULL)
+            result = ma_decoder_init_file(filePath, NULL, &decoder);
+        else
+            result = ma_decoder_init_memory(buffer, dataSize, NULL, &decoder);
+
         if (result != MA_SUCCESS)
         {
             printf("Failed to initialize decoder.\n");
@@ -97,66 +104,26 @@ namespace Waveform
         ma_format format;
         // Get audio [sampleRate] and  [channels]
         result = ma_data_source_get_data_format(&decoder, &format, &channels, &sampleRate, NULL, 0);
-        if (result != MA_SUCCESS) {
+        if (result != MA_SUCCESS)
+        {
             printf("Failed to retrieve decoder data format.");
             ma_decoder_uninit(&decoder);
             return;
         }
         // Re-init decoder forcing ma_format_f32
         ma_decoder_config config = ma_decoder_config_init(ma_format_f32, channels, sampleRate);
-        result = ma_decoder_init_memory(buffer, dataSize, &config, &decoder);
+        if (filePath != NULL)
+            result = ma_decoder_init_file(filePath, &config, &decoder);
+        else
+            result = ma_decoder_init_memory(buffer, dataSize, &config, &decoder);
+
         if (result != MA_SUCCESS)
         {
             printf("Failed to initialize decoder forcing f32.\n");
             return;
         }
 
-
-        readSamples(&decoder, startTime, endTime, numSamplesNeeded, pSamples);
+        readSamplesFromDecoder(&decoder, startTime, endTime, numSamplesNeeded, average, pSamples);
         ma_decoder_uninit(&decoder);
     }
-
-    void readSamplesFromFile(
-        const char *filePath,
-        float startTime,
-        float endTime,
-        unsigned long numSamplesNeeded,
-        float *pSamples)
-    {
-        // Clear memory
-        memset(pSamples, 0, numSamplesNeeded * sizeof(float));
-
-        ma_decoder decoder;
-        // Init the decoder
-        ma_result result = ma_decoder_init_file(filePath, NULL, &decoder);
-        if (result != MA_SUCCESS)
-        {
-            printf("Failed to initialize decoder.\n");
-            return;
-        }
-
-        ma_uint32 sampleRate;
-        ma_uint32 channels;
-        ma_format format;
-        // Get audio [sampleRate] and  [channels]
-        result = ma_data_source_get_data_format(&decoder, &format, &channels, &sampleRate, NULL, 0);
-        if (result != MA_SUCCESS) {
-            printf("Failed to retrieve decoder data format.");
-            ma_decoder_uninit(&decoder);
-            return;
-        }
-        // Re-init decoder forcing ma_format_f32
-        ma_decoder_config config = ma_decoder_config_init(ma_format_f32, channels, sampleRate);
-        result = ma_decoder_init_file(filePath, &config, &decoder);
-        if (result != MA_SUCCESS)
-        {
-            printf("Failed to initialize decoder forcing f32.\n");
-            return;
-        }
-
-
-        readSamples(&decoder, startTime, endTime, numSamplesNeeded, pSamples);
-        ma_decoder_uninit(&decoder);
-    }
-
 };

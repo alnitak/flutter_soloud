@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:flutter_soloud/src/bindings/audio_data.dart';
 import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/filters/filters.dart';
@@ -852,47 +853,24 @@ abstract class FlutterSoLoud {
   // waveform audio data
   // ///////////////////////////////////////
 
-  /// Read [numSamplesNeeded] audio data from a file equally spaced in time.
-  /// The returned Float32List is not guaranteed to be [numSamplesNeeded] long.
-  /// Each value in the returned Float32List is in the range -1.0 to 1.0 and
-  /// their values are the average of audio data from the previous
-  /// index sample.
-  ///
-  /// [completeFileName] the complete path to the audio file.
-  /// [numSamplesNeeded] is not guaranteed to be the same length of the returned
-  /// Float32List. Could happen if the [endTime] is greater than the audio
-  /// lenght.
-  /// [startTime] in seconds. Defaults to 0.
-  /// [endTime] in seconds. Defaults to -1. If -1, the audio will be read until
-  /// the end of the file.
+  /// See [SoLoud.readSamplesFromFile] for details.
   @mustBeOverridden
   Float32List readSamplesFromFile(
     String completeFileName,
     int numSamplesNeeded, {
     double startTime = 0,
     double endTime = -1,
+    bool average = false,
   });
 
-  /// Read [numSamplesNeeded] audio data from a audio buffer equally spaced
-  /// in time.
-  /// The returned Float32List is not guaranteed to be [numSamplesNeeded] long.
-  /// Each value in the returned Float32List is in the range -1.0 to 1.0 and
-  /// their values are the average of audio data from the previous
-  /// index sample.
-  ///
-  /// [buffer] the audio file buffer.
-  /// [numSamplesNeeded] is not guaranteed to be the same length of the returned
-  /// Float32List. Could happen if the [endTime] is greater than the audio
-  /// lenght.
-  /// [startTime] in seconds. Defaults to 0.
-  /// [endTime] in seconds. Defaults to -1. If -1, the audio will be read until
-  /// the end of the file.
+  /// See [SoLoud.readSamplesFromMem] for details.
   @mustBeOverridden
   Float32List readSamplesFromMem(
     Uint8List buffer,
     int numSamplesNeeded, {
     double startTime = 0,
     double endTime = -1,
+    bool average = false,
   });
 }
 

@@ -1534,9 +1534,10 @@ extern "C"
         float startTime,
         float endTime,
         unsigned long numSamplesNeeded,
+        bool average,
         float* pSamples)
     {
-        Waveform::readSamplesFromFile(filePath, startTime, endTime, numSamplesNeeded, pSamples);
+        Waveform::readSamples(filePath, nullptr, 0, startTime, endTime, numSamplesNeeded, average, pSamples);
     }
 
     FFI_PLUGIN_EXPORT void readSamplesFromMem(
@@ -1545,9 +1546,10 @@ extern "C"
         float startTime,
         float endTime,
         unsigned long numSamplesNeeded,
+        bool average,
         float* pSamples)
     {
-        Waveform::readSamplesFromMem(buffer, dataSize, startTime, endTime, numSamplesNeeded, pSamples);
+        Waveform::readSamples(nullptr, buffer, dataSize, startTime, endTime, numSamplesNeeded, average, pSamples);
     }
 
 #ifdef __cplusplus

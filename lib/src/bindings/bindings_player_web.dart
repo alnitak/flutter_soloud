@@ -866,6 +866,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     int numSamplesNeeded, {
     double startTime = 0,
     double endTime = -1,
+    bool average = false,
   }) {
     throw UnimplementedError('[readSamplesFromFile] in not supported on the '
         'web platfom! Please use [readSamplesFromMem].');
@@ -877,6 +878,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     int numSamplesNeeded, {
     double startTime = 0,
     double endTime = -1,
+    bool average = false,
   }) {
     final bufferPtr = wasmMalloc(buffer.length);
     // Is there a way to speed up this array copy?
@@ -890,6 +892,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
       startTime,
       endTime,
       numSamplesNeeded,
+      average,
       samplesPtr,
     );
     final samples = Float32List(numSamplesNeeded);

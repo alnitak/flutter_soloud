@@ -1601,6 +1601,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     int numSamplesNeeded, {
     double startTime = 0,
     double endTime = -1,
+    bool average = false,
   }) {
     final pSamples =
         calloc<ffi.Float>(numSamplesNeeded * ffi.sizeOf<ffi.Float>());
@@ -1609,6 +1610,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       startTime,
       endTime,
       numSamplesNeeded,
+      average,
       pSamples,
     );
     final samples = pSamples.asTypedList(numSamplesNeeded).asUnmodifiableView();
@@ -1626,10 +1628,11 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
               ffi.Float,
               ffi.Float,
               ffi.UnsignedLong,
+              ffi.Bool,
               ffi.Pointer<ffi.Float>)>>('readSamplesFromFile');
   late final _readSamplesFromFile = _readSamplesFromFilePtr.asFunction<
-      void Function(
-          ffi.Pointer<Utf8>, double, double, int, ffi.Pointer<ffi.Float>)>();
+      void Function(ffi.Pointer<Utf8>, double, double, int, bool,
+          ffi.Pointer<ffi.Float>)>();
 
   @override
   Float32List readSamplesFromMem(
@@ -1637,6 +1640,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     int numSamplesNeeded, {
     double startTime = 0,
     double endTime = -1,
+    bool average = false,
   }) {
     final pSamples =
         calloc<ffi.Float>(numSamplesNeeded * ffi.sizeOf<ffi.Float>());
@@ -1651,6 +1655,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       startTime,
       endTime,
       numSamplesNeeded,
+      average,
       pSamples,
     );
     final samples = pSamples.asTypedList(numSamplesNeeded).asUnmodifiableView();
@@ -1669,8 +1674,9 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
               ffi.Float,
               ffi.Float,
               ffi.UnsignedLong,
+              ffi.Bool,
               ffi.Pointer<ffi.Float>)>>('readSamplesFromMem');
   late final _readSamplesFromMem = _readSamplesFromMemPtr.asFunction<
       void Function(ffi.Pointer<ffi.Uint8>, int, double, double, int,
-          ffi.Pointer<ffi.Float>)>();
+          bool, ffi.Pointer<ffi.Float>)>();
 }

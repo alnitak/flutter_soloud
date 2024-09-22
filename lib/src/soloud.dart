@@ -43,6 +43,7 @@ Float32List _readSamplesFromFile(Map<String, dynamic> args) {
         args['numSamplesNeeded'] as int,
         startTime: args['startTime'] as double,
         endTime: args['endTime'] as double,
+        average: args['average'] as bool,
       );
 }
 
@@ -53,6 +54,7 @@ Float32List _readSamplesFromMem(Map<String, dynamic> args) {
         args['numSamplesNeeded'] as int,
         startTime: args['startTime'] as double,
         endTime: args['endTime'] as double,
+        average: args['average'] as bool,
       );
 }
 
@@ -2078,7 +2080,7 @@ interface class SoLoud {
   /// The returned Float32List is not guaranteed to be [numSamplesNeeded] long.
   /// Each value in the returned Float32List is in the range -1.0 to 1.0 and
   /// their values are the average of audio data from the previous
-  /// index sample.
+  /// index sample if [average] is true.
   /// NOTE: this is not available on Web. Use [readSamplesFromMem] instead.
   ///
   /// [completeFileName] the complete path to the audio file.
@@ -2088,12 +2090,29 @@ interface class SoLoud {
   /// [startTime] in seconds. Defaults to 0.
   /// [endTime] in seconds. Defaults to -1. If -1, the audio will be read until
   /// the end of the file.
+  /// [average] if true, the returned Float32List will be filled with the
+  /// average of the samples from the previous index sample. Defaults to false.
+  /// When true it does not affect performance much.
+  /// 
+  /// Here a representation of the range [startTime] to [endTime] in the audio
+  /// with [numSamplesNeeded]=10:
+  /// 
+  /// 0      1      2      3      4      5      6      7      8      9
+  /// |------|------|------|------|------|------|------|------|------|
+  ///                ------- with [average]=true all the samples are the
+  ///                        average of the samples from 2 to 3 and it is
+  ///                        stored in the returned Float32List at index 3.
+  ///                      - with [average]=false the value returned at index
+  ///                        3 is the value got at 3.
+  /// 
+  /// See also [readSamplesFromMem].
   @experimental
   Future<Float32List> readSamplesFromFile(
     String completeFileName,
     int numSamplesNeeded, {
     double startTime = 0,
     double endTime = -1,
+    bool average = false,
   }) async {
     assert(
       endTime == -1 || endTime > startTime,
@@ -2104,6 +2123,7 @@ interface class SoLoud {
       'numSamplesNeeded': numSamplesNeeded,
       'startTime': startTime,
       'endTime': endTime,
+      'average': average,
     });
 
     return samples;
@@ -2114,7 +2134,7 @@ interface class SoLoud {
   /// The returned Float32List is not guaranteed to be [numSamplesNeeded] long.
   /// Each value in the returned Float32List is in the range -1.0 to 1.0 and
   /// their values are the average of audio data from the previous
-  /// index sample.
+  /// index sample if [average] is true.
   /// NOTE: on Web this is synchronous and could freeze the UI.
   ///
   /// [buffer] the audio file buffer.
@@ -2124,12 +2144,29 @@ interface class SoLoud {
   /// [startTime] in seconds. Defaults to 0.
   /// [endTime] in seconds. Defaults to -1. If -1, the audio will be read until
   /// the end of the file.
+  /// [average] if true, the returned Float32List will be filled with the
+  /// average of the samples from the previous index sample. Defaults to false.
+  /// When true it does not affect performance much.
+  /// 
+  /// Here a representation of the range [startTime] to [endTime] in the audio
+  /// with [numSamplesNeeded]=10:
+  /// 
+  /// 0      1      2      3      4      5      6      7      8      9
+  /// |------|------|------|------|------|------|------|------|------|
+  ///                ------- with [average]=true all the samples are the
+  ///                        average of the samples from 2 to 3 and it is
+  ///                        stored in the returned Float32List at index 3.
+  ///                      - with [average]=false the value returned at index
+  ///                        3 is the value got at 3.
+  /// 
+  /// See also [readSamplesFromFile].
   @experimental
   Future<Float32List> readSamplesFromMem(
     Uint8List buffer,
     int numSamplesNeeded, {
     double startTime = 0,
     double endTime = -1,
+    bool average = false,
   }) async {
     assert(
       endTime == -1 || endTime > startTime,
@@ -2140,6 +2177,7 @@ interface class SoLoud {
       'numSamplesNeeded': numSamplesNeeded,
       'startTime': startTime,
       'endTime': endTime,
+      'average': average,
     });
 
     return samples;
