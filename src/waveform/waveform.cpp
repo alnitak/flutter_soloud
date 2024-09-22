@@ -15,17 +15,8 @@ namespace Waveform
         unsigned long numSamplesNeeded,
         float *pSamples)
     {
-        ma_uint32 sampleRate;
-        ma_uint32 channels;
-        ma_format format;
-
-        // Initialize the device
-        ma_result result = ma_data_source_get_data_format(decoder, &format, &channels, &sampleRate, NULL, 0);
-        if (result != MA_SUCCESS) {
-            printf("Failed to retrieve decoder data format.");
-            ma_decoder_uninit(decoder);
-            return;
-        }
+        ma_uint32 sampleRate = decoder->outputSampleRate;
+        ma_uint32 channels = decoder->outputChannels;
 
         // Calculate start and end frames based on startTime and endTime
         ma_uint64 startFrame = (ma_uint64)(startTime * sampleRate);
@@ -42,7 +33,7 @@ namespace Waveform
         ma_uint64 stepFrames = totalFrames / numSamplesNeeded;
 
         // Move decoder to start frame
-        result = ma_decoder_seek_to_pcm_frame(decoder, startFrame);
+        ma_result result = ma_decoder_seek_to_pcm_frame(decoder, startFrame);
         if (result != MA_SUCCESS)
         {
             printf("Failed to seek to start time.\n");
@@ -76,7 +67,7 @@ namespace Waveform
             pSamples[id] = sqrtf(average / framesRead) * channels;
             // printf("%f ", pSamples[id]);
         }
-        printf("\n id: %d\n", id);
+        // printf("\n id: %d\n", id);
         free(tempBuffer);
 
     }
@@ -89,15 +80,38 @@ namespace Waveform
         unsigned long numSamplesNeeded,
         float *pSamples)
     {
-        // Init the decoder
+        // Clear memory
+        memset(pSamples, 0, numSamplesNeeded * sizeof(float));
+
         ma_decoder decoder;
+        // Init the decoder
         ma_result result = ma_decoder_init_memory(buffer, dataSize, NULL, &decoder);
         if (result != MA_SUCCESS)
         {
             printf("Failed to initialize decoder.\n");
-            memset(pSamples, 0, numSamplesNeeded * sizeof(float));
             return;
         }
+
+        ma_uint32 sampleRate;
+        ma_uint32 channels;
+        ma_format format;
+        // Get audio [sampleRate] and  [channels]
+        result = ma_data_source_get_data_format(&decoder, &format, &channels, &sampleRate, NULL, 0);
+        if (result != MA_SUCCESS) {
+            printf("Failed to retrieve decoder data format.");
+            ma_decoder_uninit(&decoder);
+            return;
+        }
+        // Re-init decoder forcing ma_format_f32
+        ma_decoder_config config = ma_decoder_config_init(ma_format_f32, channels, sampleRate);
+        result = ma_decoder_init_memory(buffer, dataSize, &config, &decoder);
+        if (result != MA_SUCCESS)
+        {
+            printf("Failed to initialize decoder forcing f32.\n");
+            return;
+        }
+
+
         readSamples(&decoder, startTime, endTime, numSamplesNeeded, pSamples);
         ma_decoder_uninit(&decoder);
     }
@@ -109,15 +123,38 @@ namespace Waveform
         unsigned long numSamplesNeeded,
         float *pSamples)
     {
-        // Init the decoder
+        // Clear memory
+        memset(pSamples, 0, numSamplesNeeded * sizeof(float));
+
         ma_decoder decoder;
+        // Init the decoder
         ma_result result = ma_decoder_init_file(filePath, NULL, &decoder);
         if (result != MA_SUCCESS)
         {
             printf("Failed to initialize decoder.\n");
-            memset(pSamples, 0, numSamplesNeeded * sizeof(float));
             return;
         }
+
+        ma_uint32 sampleRate;
+        ma_uint32 channels;
+        ma_format format;
+        // Get audio [sampleRate] and  [channels]
+        result = ma_data_source_get_data_format(&decoder, &format, &channels, &sampleRate, NULL, 0);
+        if (result != MA_SUCCESS) {
+            printf("Failed to retrieve decoder data format.");
+            ma_decoder_uninit(&decoder);
+            return;
+        }
+        // Re-init decoder forcing ma_format_f32
+        ma_decoder_config config = ma_decoder_config_init(ma_format_f32, channels, sampleRate);
+        result = ma_decoder_init_file(filePath, &config, &decoder);
+        if (result != MA_SUCCESS)
+        {
+            printf("Failed to initialize decoder forcing f32.\n");
+            return;
+        }
+
+
         readSamples(&decoder, startTime, endTime, numSamplesNeeded, pSamples);
         ma_decoder_uninit(&decoder);
     }
