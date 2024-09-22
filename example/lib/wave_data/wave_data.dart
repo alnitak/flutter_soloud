@@ -60,54 +60,57 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
 
     final width = MediaQuery.sizeOf(context).width.toInt();
     return Scaffold(
-      body: Column(
-        children: [
-          const Text('Read N audio samples (here N = width) from audio file.'),
-          ElevatedButton(
-            onPressed: () async {
-              final paths = (await FilePicker.platform.pickFiles(
-                type: FileType.custom,
-                allowedExtensions: ['mp3', 'wav', 'ogg', 'flac'],
-                onFileLoading: print,
-                dialogTitle: 'Pick audio file',
-              ))
-                  ?.files;
-
-              if (paths != null) {
-                if (kIsWeb) {
-                  data = await SoLoud.instance.readSamplesFromMem(
-                    paths.first.bytes!,
-                    width * 2,
-                  );
-                } else {
-                  data = await SoLoud.instance.readSamplesFromFile(
-                    paths.first.path!,
-                    width * 2,
-                  );
+      body: Center(
+        child: Column(
+          children: [
+            const SizedBox(height: 16),
+            const Text('Read N audio samples (here N = width) from audio file.'),
+            ElevatedButton(
+              onPressed: () async {
+                final paths = (await FilePicker.platform.pickFiles(
+                  type: FileType.custom,
+                  allowedExtensions: ['mp3', 'wav', 'flac'],
+                  onFileLoading: print,
+                  dialogTitle: 'Pick audio file',
+                ))
+                    ?.files;
+        
+                if (paths != null) {
+                  if (kIsWeb) {
+                    data = await SoLoud.instance.readSamplesFromMem(
+                      paths.first.bytes!,
+                      width * 2,
+                    );
+                  } else {
+                    data = await SoLoud.instance.readSamplesFromFile(
+                      paths.first.path!,
+                      width * 2,
+                    );
+                  }
                 }
-              }
-              if (context.mounted) setState(() {});
-            },
-            child: const Text('pickFile'),
-          ),
-          if (data != null)
-            Expanded(
-              child: Container(
-                color: Colors.black,
-                width: width.toDouble(),
-                child: RepaintBoundary(
-                  child: ClipRRect(
-                    child: CustomPaint(
-                      key: UniqueKey(),
-                      painter: WavePainter(
-                        data: data!,
+                if (context.mounted) setState(() {});
+              },
+              child: const Text('pickFile'),
+            ),
+            if (data != null)
+              Expanded(
+                child: Container(
+                  color: Colors.black,
+                  width: width.toDouble(),
+                  child: RepaintBoundary(
+                    child: ClipRRect(
+                      child: CustomPaint(
+                        key: UniqueKey(),
+                        painter: WavePainter(
+                          data: data!,
+                        ),
                       ),
                     ),
                   ),
                 ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
