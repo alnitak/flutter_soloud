@@ -64,7 +64,8 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
         child: Column(
           children: [
             const SizedBox(height: 16),
-            const Text('Read N audio samples (here N = width) from audio file.'),
+            const Text(
+                'Read N audio samples (here N = width) from audio file.'),
             ElevatedButton(
               onPressed: () async {
                 final paths = (await FilePicker.platform.pickFiles(
@@ -74,7 +75,7 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
                   dialogTitle: 'Pick audio file',
                 ))
                     ?.files;
-        
+
                 if (paths != null) {
                   if (kIsWeb) {
                     data = await SoLoud.instance.readSamplesFromMem(
