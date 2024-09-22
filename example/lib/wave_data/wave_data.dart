@@ -91,7 +91,7 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
                 const Text('Average samples  '),
                 Switch(
                   value: average,
-                  onChanged: (value) async{
+                  onChanged: (value) async {
                     average = value;
                     await _loadPath(width);
                     if (context.mounted) setState(() {});
@@ -141,7 +141,7 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
         final bytes = f.readAsBytesSync();
         data = await SoLoud.instance.readSamplesFromMem(
           bytes,
-          width * 2,
+          width * 5,
           average: average,
         );
       }
@@ -165,7 +165,7 @@ class WavePainter extends CustomPainter {
       ..strokeWidth = barWidth * 1.5;
 
     for (var i = 0; i < data.length; i++) {
-      final barHeight = size.height * data[i];
+      final barHeight = size.height * data[i] * 2;
       canvas.drawLine(
         Offset(barWidth * i, (size.height - barHeight) / 2),
         Offset(barWidth * i, (size.height + barHeight) / 2),
