@@ -15,11 +15,19 @@ namespace Waveform
         unsigned long numSamplesNeeded,
         float *pSamples)
     {
-        // Recupera la frequenza di campionamento e altre informazioni
-        ma_uint32 sampleRate = decoder->outputSampleRate;
-        ma_uint32 channels = decoder->outputChannels;
+        ma_uint32 sampleRate;
+        ma_uint32 channels;
+        ma_format format;
 
-        // Calcola i frame di inizio e fine basati su startTime e endTime
+        // Initialize the device
+        ma_result result = ma_data_source_get_data_format(decoder, &format, &channels, &sampleRate, NULL, 0);
+        if (result != MA_SUCCESS) {
+            printf("Failed to retrieve decoder data format.");
+            ma_decoder_uninit(decoder);
+            return;
+        }
+
+        // Calculate start and end frames based on startTime and endTime
         ma_uint64 startFrame = (ma_uint64)(startTime * sampleRate);
         ma_uint64 endFrame;
         if (endTime == -1)
@@ -33,8 +41,8 @@ namespace Waveform
         ma_uint64 totalFrames = endFrame - startFrame;
         ma_uint64 stepFrames = totalFrames / numSamplesNeeded;
 
-        // Sposta il decoder al frame di inizio
-        ma_result result = ma_decoder_seek_to_pcm_frame(decoder, startFrame);
+        // Move decoder to start frame
+        result = ma_decoder_seek_to_pcm_frame(decoder, startFrame);
         if (result != MA_SUCCESS)
         {
             printf("Failed to seek to start time.\n");
@@ -42,9 +50,9 @@ namespace Waveform
             return;
         }
 
-        // Alloca memoria temporanea per tutti i frame tra startTime e endTime
+        // Allocate temporary memory for all frames between startTime and endTime
         float *tempBuffer = (float *)malloc(stepFrames * channels * sizeof(float));
-        // Leggi tutti i dati PCM tra startFrame e endFrame
+        // Read all PCM data between startFrame and endFrame
         int id = 0;
         for (int i = 0; i < totalFrames; i += stepFrames, id++)
         {
@@ -81,7 +89,7 @@ namespace Waveform
         unsigned long numSamplesNeeded,
         float *pSamples)
     {
-        // Inizializza il decoder
+        // Init the decoder
         ma_decoder decoder;
         ma_result result = ma_decoder_init_memory(buffer, dataSize, NULL, &decoder);
         if (result != MA_SUCCESS)
@@ -101,7 +109,7 @@ namespace Waveform
         unsigned long numSamplesNeeded,
         float *pSamples)
     {
-        // Inizializza il decoder
+        // Init the decoder
         ma_decoder decoder;
         ma_result result = ma_decoder_init_file(filePath, NULL, &decoder);
         if (result != MA_SUCCESS)
