@@ -13,13 +13,13 @@
 // copy the generated definition into flutter_soloud_bindings_ffi.dart
 
 #include "enums.h"
-// #include <stdbool.h>
+#include <stdbool.h>
 
 #define FFI_PLUGIN_EXPORT
 
 //--------------------- copy here the new functions to generate
 
-FFI_PLUGIN_EXPORT void readSamplesFromFile(
+FFI_PLUGIN_EXPORT enum ReadSamplesErrors readSamplesFromFile(
     const char *filePath,
     float startTime,
     float endTime,
@@ -27,7 +27,7 @@ FFI_PLUGIN_EXPORT void readSamplesFromFile(
     bool average,
     float *pSamples);
 
-FFI_PLUGIN_EXPORT void readSamplesFromMem(
+FFI_PLUGIN_EXPORT enum ReadSamplesErrors readSamplesFromMem(
     const unsigned char *buffer,
     unsigned long dataSize,
     float startTime,

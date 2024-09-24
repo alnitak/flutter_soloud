@@ -2078,9 +2078,9 @@ interface class SoLoud {
 
   /// Read [numSamplesNeeded] audio data from a file equally spaced in time.
   /// The returned Float32List is not guaranteed to be [numSamplesNeeded] long.
-  /// Each value in the returned Float32List is in the range -1.0 to 1.0 and
-  /// their values are the average of audio data from the previous
-  /// index sample if [average] is true.
+  /// Each value in the returned Float32List is in the range -1.0 to 1.0 (but
+  /// not guaranteed). Their values are the average of audio data from the
+  /// previous index sample if [average] is true.
   /// NOTE: this is not available on Web. Use [readSamplesFromMem] instead.
   ///
   /// [completeFileName] the complete path to the audio file.
@@ -2093,10 +2093,10 @@ interface class SoLoud {
   /// [average] if true, the returned Float32List will be filled with the
   /// average of the samples from the previous index sample. Defaults to false.
   /// When true it does not affect performance much.
-  /// 
+  ///
   /// Here a representation of the range [startTime] to [endTime] in the audio
   /// with [numSamplesNeeded]=10:
-  /// 
+  ///
   /// 0      1      2      3      4      5      6      7      8      9
   /// |------|------|------|------|------|------|------|------|------|
   ///                ------- with [average]=true all the samples are the
@@ -2104,7 +2104,16 @@ interface class SoLoud {
   ///                        stored in the returned Float32List at index 3.
   ///                      - with [average]=false the value returned at index
   ///                        3 is the value got at 3.
-  /// 
+  ///
+  /// Throws [SoLoudReadSamplesNoBackendCppException] if an error occurred
+  /// while initializing the backend to read samples.
+  /// Throws [SoLoudReadSamplesFailedToGetDataFormatCppException] if an error
+  /// occurred while reading the decoder data format.
+  /// Throws [SoLoudReadSamplesFailedToSeekPcmCppException] if an error
+  /// occurred when seeking audio data.
+  /// Throws [SoLoudReadSamplesFailedToReadPcmFramesCppException] if an error
+  /// occurred when reading PCM frames.
+  ///
   /// See also [readSamplesFromMem].
   @experimental
   Future<Float32List> readSamplesFromFile(
@@ -2118,6 +2127,7 @@ interface class SoLoud {
       endTime == -1 || endTime > startTime,
       '[endTime] must be greater than [startTime].',
     );
+    assert(startTime >= 0, '[startTime] must be greater than or equal to 0.');
     final samples = await compute(_readSamplesFromFile, {
       'completeFileName': completeFileName,
       'numSamplesNeeded': numSamplesNeeded,
@@ -2132,9 +2142,9 @@ interface class SoLoud {
   /// Read [numSamplesNeeded] audio data from a audio buffer equally spaced
   /// in time.
   /// The returned Float32List is not guaranteed to be [numSamplesNeeded] long.
-  /// Each value in the returned Float32List is in the range -1.0 to 1.0 and
-  /// their values are the average of audio data from the previous
-  /// index sample if [average] is true.
+  /// Each value in the returned Float32List is in the range -1.0 to 1.0 (but
+  /// not guaranteed). Their values are the average of audio data from the
+  /// previous index sample if [average] is true.
   /// NOTE: on Web this is synchronous and could freeze the UI.
   ///
   /// [buffer] the audio file buffer.
@@ -2147,10 +2157,10 @@ interface class SoLoud {
   /// [average] if true, the returned Float32List will be filled with the
   /// average of the samples from the previous index sample. Defaults to false.
   /// When true it does not affect performance much.
-  /// 
+  ///
   /// Here a representation of the range [startTime] to [endTime] in the audio
   /// with [numSamplesNeeded]=10:
-  /// 
+  ///
   /// 0      1      2      3      4      5      6      7      8      9
   /// |------|------|------|------|------|------|------|------|------|
   ///                ------- with [average]=true all the samples are the
@@ -2158,7 +2168,16 @@ interface class SoLoud {
   ///                        stored in the returned Float32List at index 3.
   ///                      - with [average]=false the value returned at index
   ///                        3 is the value got at 3.
-  /// 
+  ///
+  /// Throws [SoLoudReadSamplesNoBackendCppException] if an error occurred
+  /// while initializing the backend to read samples.
+  /// Throws [SoLoudReadSamplesFailedToGetDataFormatCppException] if an error
+  /// occurred while reading the decoder data format.
+  /// Throws [SoLoudReadSamplesFailedToSeekPcmCppException] if an error
+  /// occurred when seeking audio data.
+  /// Throws [SoLoudReadSamplesFailedToReadPcmFramesCppException] if an error
+  /// occurred when reading PCM frames.
+  ///
   /// See also [readSamplesFromFile].
   @experimental
   Future<Float32List> readSamplesFromMem(
@@ -2172,6 +2191,7 @@ interface class SoLoud {
       endTime == -1 || endTime > startTime,
       '[endTime] must be greater than [startTime].',
     );
+    assert(startTime >= 0, '[startTime] must be greater than or equal to 0.');
     final samples = await compute(_readSamplesFromMem, {
       'buffer': buffer,
       'numSamplesNeeded': numSamplesNeeded,

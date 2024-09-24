@@ -106,4 +106,29 @@ abstract class SoLoudCppException extends SoLoudException {
         return const SoLoudFilterParameterGetErrorCppException();
     }
   }
+
+  /// Takes a [ReadSamplesErrors] enum value and returns a corresponding
+  /// exception.
+  /// This is useful when we need to convert a C++ error to a Dart exception.
+  ///
+  /// If [error] is [ReadSamplesErrors.readSamplesNoError], this constructor
+  /// throws an [ArgumentError].
+  factory SoLoudCppException.fromReadSampleError(ReadSamplesErrors error) {
+    switch (error) {
+      case ReadSamplesErrors.readSamplesNoError:
+        throw ArgumentError(
+          'Trying to create an exception from ReadSamplesErrors.noError. '
+              'This is a bug in the library. Please report it.',
+          'error',
+        );
+      case ReadSamplesErrors.noBackend:
+        return const SoLoudReadSamplesNoBackendCppException();
+      case ReadSamplesErrors.failedToGetDataFormat:
+        return const SoLoudReadSamplesFailedToGetDataFormatCppException();
+      case ReadSamplesErrors.failedToSeekPcm:
+        return const SoLoudReadSamplesFailedToSeekPcmCppException();
+      case ReadSamplesErrors.failedToReadPcmFrames:
+        return const SoLoudReadSamplesFailedToReadPcmFramesCppException();
+    }
+  }
 }

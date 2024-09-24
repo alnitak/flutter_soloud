@@ -1,5 +1,10 @@
+#ifndef WAVEFORM_H
+#define WAVEFORM_H
+
+#include "../enums.h"
+
 namespace Waveform {
-    void readSamples(
+    ReadSamplesErrors readSamples(
         const char *filePath,
         const unsigned char *buffer,
         unsigned long dataSize,
@@ -9,3 +14,5 @@ namespace Waveform {
         bool average,
         float *pSamples);
 }
+
+#endif // WAVEFORM_H

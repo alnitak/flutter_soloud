@@ -28,8 +28,12 @@ cd build
 ## Compiling with "-O2" or "-O3" doesn't work
 
 em++ \
--I ../../src -I ../../src/filters -I ../../src/synth -I ../../src/soloud/include \
--I ../../src/soloud/src -I ../../src/soloud/include \
+-I ../../src/soloud/include \
+-I ../../src/soloud/src \
+-I ../../src/soloud/include \
+-I ../../src \
+-I ../../src/filters \
+-I ../../src/synth \
 ../../src/soloud/src/core/*.c* \
 ../../src/soloud/src/filter/*.c* \
 ../../src/soloud/src/backend/miniaudio/*.c* \
@@ -38,11 +42,11 @@ em++ \
 ../../src/soloud/src/audiosource/wav/*.c* \
 ../../src/common.cpp \
 ../../src/bindings.cpp \
-../../src/waveform/*.cpp \
 ../../src/player.cpp \
 ../../src/analyzer.cpp \
 ../../src/synth/basic_wave.cpp \
 ../../src/filters/*.cpp \
+../../src/waveform/*.cpp \
 -O3 -D WITH_MINIAUDIO \
 -msimd128 -msse3 \
 -s "EXPORTED_RUNTIME_METHODS=['ccall','cwrap']" \

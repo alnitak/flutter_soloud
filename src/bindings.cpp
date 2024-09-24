@@ -1,4 +1,3 @@
-
 #include "player.h"
 #include "analyzer.h"
 #include "synth/basic_wave.h"
@@ -1529,7 +1528,7 @@ extern "C"
     /// waveform audio data
     /////////////////////////////////////////
 
-    FFI_PLUGIN_EXPORT void readSamplesFromFile(
+    FFI_PLUGIN_EXPORT enum ReadSamplesErrors readSamplesFromFile(
         const char *filePath,
         float startTime,
         float endTime,
@@ -1537,10 +1536,10 @@ extern "C"
         bool average,
         float* pSamples)
     {
-        Waveform::readSamples(filePath, nullptr, 0, startTime, endTime, numSamplesNeeded, average, pSamples);
+        return Waveform::readSamples(filePath, nullptr, 0, startTime, endTime, numSamplesNeeded, average, pSamples);
     }
 
-    FFI_PLUGIN_EXPORT void readSamplesFromMem(
+    FFI_PLUGIN_EXPORT enum ReadSamplesErrors readSamplesFromMem(
         const unsigned char *buffer,
         unsigned long dataSize,
         float startTime,
@@ -1549,7 +1548,7 @@ extern "C"
         bool average,
         float* pSamples)
     {
-        Waveform::readSamples(nullptr, buffer, dataSize, startTime, endTime, numSamplesNeeded, average, pSamples);
+        return Waveform::readSamples(nullptr, buffer, dataSize, startTime, endTime, numSamplesNeeded, average, pSamples);
     }
 
 #ifdef __cplusplus

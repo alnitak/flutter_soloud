@@ -1,14 +1,13 @@
 #include "../soloud/src/backend/miniaudio/miniaudio.h"
 #include "waveform.h"
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <math.h>
+#include <cstdio>
+#include <cstring>
+#include <cmath>
 
 namespace Waveform
 {
-    void readSamplesFromDecoder(
+    ReadSamplesErrors readSamplesFromDecoder(
         ma_decoder *decoder,
         float startTime,
         float endTime,
@@ -36,7 +35,7 @@ namespace Waveform
         {
             printf("Failed to seek to start time.\n");
             ma_decoder_uninit(decoder);
-            return;
+            return failedToSeekPcm;
         }
 
         // Allocate temporary memory for all frames between startTime and endTime
@@ -51,7 +50,8 @@ namespace Waveform
             {
                 printf("Failed to read PCM frames.\n");
                 ma_decoder_uninit(decoder);
-                return;
+                if (result != MA_AT_END)
+                    return failedToReadPcmFrames;
             }
 
             if (framesRead == 0)
@@ -70,9 +70,10 @@ namespace Waveform
                 pSamples[id] = tempBuffer[0];
         }
         free(tempBuffer);
+        return readSamplesNoError;
     }
 
-    void readSamples(
+    ReadSamplesErrors readSamples(
         const char *filePath,
         const unsigned char *buffer,
         unsigned long dataSize,
@@ -96,7 +97,7 @@ namespace Waveform
         if (result != MA_SUCCESS)
         {
             printf("Failed to initialize decoder.\n");
-            return;
+            return noBackend;
         }
 
         ma_uint32 sampleRate;
@@ -108,7 +109,7 @@ namespace Waveform
         {
             printf("Failed to retrieve decoder data format.");
             ma_decoder_uninit(&decoder);
-            return;
+            return failedToGetDataFormat;
         }
         // Re-init decoder forcing ma_format_f32
         ma_decoder_config config = ma_decoder_config_init(ma_format_f32, channels, sampleRate);
@@ -120,10 +121,11 @@ namespace Waveform
         if (result != MA_SUCCESS)
         {
             printf("Failed to initialize decoder forcing f32.\n");
-            return;
+            return noBackend;
         }
 
-        readSamplesFromDecoder(&decoder, startTime, endTime, numSamplesNeeded, average, pSamples);
+        ReadSamplesErrors ret = readSamplesFromDecoder(&decoder, startTime, endTime, numSamplesNeeded, average, pSamples);
         ma_decoder_uninit(&decoder);
+        return ret;
     }
 };

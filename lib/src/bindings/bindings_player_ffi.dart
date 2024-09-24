@@ -11,6 +11,7 @@ import 'package:ffi/ffi.dart';
 import 'package:flutter_soloud/src/bindings/audio_data.dart';
 import 'package:flutter_soloud/src/bindings/bindings_player.dart';
 import 'package:flutter_soloud/src/enums.dart';
+import 'package:flutter_soloud/src/exceptions/exceptions.dart';
 import 'package:flutter_soloud/src/filters/filters.dart';
 import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
@@ -1605,7 +1606,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   }) {
     final pSamples =
         calloc<ffi.Float>(numSamplesNeeded * ffi.sizeOf<ffi.Float>());
-    _readSamplesFromFile(
+    final error = _readSamplesFromFile(
       completeFileName.toNativeUtf8(),
       startTime,
       endTime,
@@ -1618,12 +1619,17 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     /// Seems freeing this pointer is not needed because "samples" gets
     /// undefined after using "free"!? It will be GC-ed.
     // calloc.free(pSamples);
+    if (ReadSamplesErrors.fromValue(error) !=
+        ReadSamplesErrors.readSamplesNoError) {
+      throw SoLoudCppException.fromReadSampleError(
+          ReadSamplesErrors.fromValue(error));
+    }
     return samples;
   }
 
   late final _readSamplesFromFilePtr = _lookup<
       ffi.NativeFunction<
-          ffi.Void Function(
+          ffi.UnsignedInt Function(
               ffi.Pointer<Utf8>,
               ffi.Float,
               ffi.Float,
@@ -1631,7 +1637,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
               ffi.Bool,
               ffi.Pointer<ffi.Float>)>>('readSamplesFromFile');
   late final _readSamplesFromFile = _readSamplesFromFilePtr.asFunction<
-      void Function(ffi.Pointer<Utf8>, double, double, int, bool,
+      int Function(ffi.Pointer<Utf8>, double, double, int, bool,
           ffi.Pointer<ffi.Float>)>();
 
   @override
@@ -1649,7 +1655,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     for (var i = 0; i < buffer.length; i++) {
       bufferPtr[i] = buffer[i];
     }
-    _readSamplesFromMem(
+    final error = _readSamplesFromMem(
       bufferPtr,
       buffer.length,
       startTime,
@@ -1663,12 +1669,17 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     /// Seems freeing this pointer is not needed because "samples" gets
     /// undefined after using "free"!? It will be GC-ed.
     // calloc.free(pSamples);
+    if (ReadSamplesErrors.fromValue(error) !=
+        ReadSamplesErrors.readSamplesNoError) {
+      throw SoLoudCppException.fromReadSampleError(
+          ReadSamplesErrors.fromValue(error));
+    }
     return samples;
   }
 
   late final _readSamplesFromMemPtr = _lookup<
       ffi.NativeFunction<
-          ffi.Void Function(
+          ffi.UnsignedInt Function(
               ffi.Pointer<ffi.Uint8>,
               ffi.UnsignedLong,
               ffi.Float,
@@ -1677,6 +1688,6 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
               ffi.Bool,
               ffi.Pointer<ffi.Float>)>>('readSamplesFromMem');
   late final _readSamplesFromMem = _readSamplesFromMemPtr.asFunction<
-      void Function(ffi.Pointer<ffi.Uint8>, int, double, double, int,
-          bool, ffi.Pointer<ffi.Float>)>();
+      int Function(ffi.Pointer<ffi.Uint8>, int, double, double, int, bool,
+          ffi.Pointer<ffi.Float>)>();
 }
