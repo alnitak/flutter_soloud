@@ -2,7 +2,7 @@
 set -euo pipefail
 
 rm -f libflutter_soloud_plugin.*
-rm -r build
+rm -rf build
 mkdir build
 cd build
 
