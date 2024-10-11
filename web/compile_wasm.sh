@@ -25,8 +25,6 @@ cd build
 # -msimd128 for sse3 https://emscripten.org/docs/porting/simd.html
 # -std=c++17
 
-## Compiling with "-O2" or "-O3" doesn't work
-
 em++ \
 -I ../../src/soloud/include \
 -I ../../src/soloud/src \

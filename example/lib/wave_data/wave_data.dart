@@ -128,20 +128,15 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
         // on web we can't read the bytes from the file.
         data = await SoLoud.instance.readSamplesFromMem(
           paths!.first.bytes!,
-          width * 2,
+          width * 4,
           average: average,
         );
       } else {
-        // data = await SoLoud.instance.readSamplesFromFile(
-        //   paths.first.path!,
-        //   width * 2,
-        //   average: average,
-        // );
         final f = File(paths!.first.path!);
         final bytes = f.readAsBytesSync();
         data = await SoLoud.instance.readSamplesFromMem(
           bytes,
-          width * 5,
+          width * 4,
           average: average,
         );
       }
@@ -162,7 +157,7 @@ class WavePainter extends CustomPainter {
     final barWidth = size.width / data.length;
     final paint = Paint()
       ..color = Colors.yellowAccent
-      ..strokeWidth = barWidth * 1.5;
+      ..strokeWidth = barWidth;
 
     for (var i = 0; i < data.length; i++) {
       final barHeight = size.height * data[i] * 2;
