@@ -1430,7 +1430,7 @@ interface class SoLoud {
   /// will be decreased with an amplitude between the old and the new value.
   /// This will resul on a less shaky visualization.
   ///
-  /// [smooth] must be in the [0.0 ~ 1.0] range.
+  /// [smooth] must be in the 0.0 ~ 1.0 range.
   /// 0 = no smooth
   /// 1 = full smooth
   /// the new value is calculated with:

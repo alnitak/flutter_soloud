@@ -852,7 +852,7 @@ abstract class FlutterSoLoud {
   // waveform audio data
   // ///////////////////////////////////////
 
-  /// See [SoLoud.readSamplesFromFile] for details.
+  /// See SoLoud.readSamplesFromFile for details.
   @mustBeOverridden
   Float32List readSamplesFromFile(
     String completeFileName,
@@ -862,7 +862,7 @@ abstract class FlutterSoLoud {
     bool average = false,
   });
 
-  /// See [SoLoud.readSamplesFromMem] for details.
+  /// See SoLoud.readSamplesFromMem for details.
   @mustBeOverridden
   Float32List readSamplesFromMem(
     Uint8List buffer,
