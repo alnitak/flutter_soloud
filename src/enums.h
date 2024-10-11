@@ -48,18 +48,20 @@ typedef enum PlayerErrors
     filterParameterGetError = 18
 } PlayerErrors_t;
 
-/// Possible capture errors
-typedef enum CaptureErrors
+/// Possible read sample errors
+typedef enum ReadSamplesErrors
 {
     /// No error
-    capture_noError,
-    /// The capture device has failed to initialize.
-    capture_init_failed,
-    /// The capture device has not yet been initialized.
-    capture_not_inited,
-    /// Failed to start the device.
-    failed_to_start_device,
-} CaptureErrors_t;
+    readSamplesNoError = 0,
+    /// Initialization failed. Probably an unsupported format.
+    noBackend,
+    /// Failed to retrieve decoder data format.
+    failedToGetDataFormat,
+    /// Failed to seek audio data.
+    failedToSeekPcm,
+    /// Failed to read PCM frames.
+    failedToReadPcmFrames
+} ReadSamplesErrors_t;
 
 typedef enum PlayerStateEvents
 {

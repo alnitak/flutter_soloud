@@ -3,6 +3,7 @@ import 'package:flutter_soloud/src/bindings/audio_data_ffi.dart'
     if (dart.library.js_interop) 'audio_data_web.dart';
 import 'package:flutter_soloud/src/bindings/soloud_controller.dart';
 import 'package:flutter_soloud/src/exceptions/exceptions.dart';
+import 'package:flutter_soloud/src/soloud.dart';
 import 'package:meta/meta.dart';
 
 /// The way the audio data should be acquired.
@@ -89,9 +90,7 @@ enum GetSamplesKind {
 /// }
 /// ```
 ///
-/// To smooth FFT values use [SoLoud.instance.setFftSmoothing].
-///
-// TODO(all): make AudioData singleton?
+/// To smooth FFT values use [SoLoud.setFftSmoothing].
 @experimental
 class AudioData {
   /// Initialize the way the audio data should be acquired.

@@ -3,13 +3,13 @@
     "tasks": [
         {
             "label": "compile linux debug verbose",
-            "command": "cd ${workspaceFolder}/example; flutter build linux -t lib/filters/pitchshift.dart --debug --verbose",
+            "command": "cd ${workspaceFolder}/example; flutter build linux -t lib/main.dart --debug --verbose",
             // "args": ["build", "linux", "--verbose"],
             "type": "shell"
         },
         {
             "label": "compile linux debug",
-            "command": "cd ${workspaceFolder}/example; flutter build linux -t lib/main.dart --debug",
+            "command": "cd ${workspaceFolder}/example; flutter build linux -t lib/wave_data/wave_data.dart --debug",
             "type": "shell"
         },
         {
@@ -29,7 +29,7 @@
         },
         {
             "label": "compile web debug",
-            "command": "cd ${workspaceFolder}/example; flutter run -d chrome --web-renderer canvaskit --web-browser-flag '--disable-web-security' -t lib/main.dart --release",
+            "command": "cd ${workspaceFolder}/example; flutter run -d chrome --web-renderer canvaskit --web-browser-flag '--disable-web-security' -t lib/wave_data/wave_data.dart --release",
             "type": "shell"
         }
     ]

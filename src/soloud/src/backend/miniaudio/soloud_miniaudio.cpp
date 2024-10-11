@@ -38,15 +38,15 @@ namespace SoLoud
 #else
 
 #define MINIAUDIO_IMPLEMENTATION
-// #define MA_NO_NULL
-#define MA_NO_DECODING
-#define MA_NO_WAV
-#define MA_NO_FLAC
-#define MA_NO_MP3
-#define MA_NO_AUTOINITIALIZATION
-#define MA_NO_VORBIS
-#define MA_NO_OPUS
-#define MA_NO_MIDI
+// // #define MA_NO_NULL
+// #define MA_NO_DECODING
+// #define MA_NO_WAV
+// #define MA_NO_FLAC
+// #define MA_NO_MP3
+// #define MA_NO_AUTOINITIALIZATION
+// #define MA_NO_VORBIS
+// #define MA_NO_OPUS
+// #define MA_NO_MIDI
 
 // Seems that on miniaudio there is still an issue when uninitializing the device
 // addressed by this issue: https://github.com/mackron/miniaudio/issues/466
@@ -56,7 +56,6 @@ namespace SoLoud
 #define MA_NO_AAUDIO
 #endif
 // #define MA_DEBUG_OUTPUT
-// #define MINIAUDIO_IMPLEMENTATION
 #include "miniaudio.h"
 #include <math.h>
 

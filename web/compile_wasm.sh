@@ -2,7 +2,7 @@
 set -euo pipefail
 
 rm -f libflutter_soloud_plugin.*
-rm -r build
+rm -rf build
 mkdir build
 cd build
 
@@ -25,11 +25,13 @@ cd build
 # -msimd128 for sse3 https://emscripten.org/docs/porting/simd.html
 # -std=c++17
 
-## Compiling with "-O2" or "-O3" doesn't work
-
 em++ \
--I ../../src -I ../../src/filters -I ../../src/synth -I ../../src/soloud/include \
--I ../../src/soloud/src -I ../../src/soloud/include \
+-I ../../src/soloud/include \
+-I ../../src/soloud/src \
+-I ../../src/soloud/include \
+-I ../../src \
+-I ../../src/filters \
+-I ../../src/synth \
 ../../src/soloud/src/core/*.c* \
 ../../src/soloud/src/filter/*.c* \
 ../../src/soloud/src/backend/miniaudio/*.c* \
@@ -42,6 +44,7 @@ em++ \
 ../../src/analyzer.cpp \
 ../../src/synth/basic_wave.cpp \
 ../../src/filters/*.cpp \
+../../src/waveform/*.cpp \
 -O3 -D WITH_MINIAUDIO \
 -msimd128 -msse3 \
 -s "EXPORTED_RUNTIME_METHODS=['ccall','cwrap']" \
