@@ -241,6 +241,10 @@ namespace SoLoud
 		// Initialize SoLoud. Must be called before SoLoud can be used.
 		result init(unsigned int aFlags = Soloud::CLIP_ROUNDOFF, unsigned int aBackend = Soloud::AUTO, unsigned int aSamplerate = Soloud::AUTO, unsigned int aBufferSize = Soloud::AUTO, unsigned int aChannels = 2, void *pPlaybackInfos_id = nullptr);
 
+		// Change output device.
+		// Added by Marco Bavagnoli
+		result miniaudio_changeDevice(void *pPlaybackInfos_id);
+
 		result pause();
 		result resume();
 

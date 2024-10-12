@@ -41,6 +41,10 @@ public:
     /// @return Returns [PlayerErrors.SO_NO_ERROR] if success.
     PlayerErrors init(unsigned int sampleRate, unsigned int bufferSize, unsigned int channels, int deviceID = -1);
 
+    /// @brief Change the playback device.
+    /// @param deviceID the device ID. -1 for default OS output device.
+    PlayerErrors changeDevice(int deviceID);
+
     std::vector<PlaybackDevice> listPlaybackDevices();
 
     /// @brief Set a function callback triggered when a voice is stopped/ended.
@@ -550,6 +554,9 @@ public:
 private:
     ma_device_info *pPlaybackInfos;
     std::mutex remove_handle_mutex;
+    unsigned int mSampleRate;
+    unsigned int mBufferSize;
+    unsigned int mChannels;
 };
 
 #endif // PLAYER_H

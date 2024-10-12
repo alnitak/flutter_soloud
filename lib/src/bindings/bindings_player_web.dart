@@ -89,6 +89,13 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }
 
   @override
+  PlayerErrors changeDevice(int deviceId)
+  {
+    final ret = wasmChangeDevice(deviceId);
+    return PlayerErrors.values[ret];
+  }
+
+  @override
   List<PlaybackDevice> listPlaybackDevices() {
     /// allocate 50 device strings
     final namesPtr = wasmMalloc(50 * 255);

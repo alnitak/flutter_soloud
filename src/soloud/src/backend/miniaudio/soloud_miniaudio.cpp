@@ -149,5 +149,27 @@ namespace SoLoud
         aSoloud->mBackendString = "MiniAudio";
         return 0;
     }
+
+    result miniaudio_changeDevice_impl(void *pPlaybackInfos_id)
+    {
+        if (soloud == nullptr)
+            return UNKNOWN_ERROR;
+
+        ma_device_uninit(&gDevice);
+        ma_device_config config = ma_device_config_init(ma_device_type_playback);
+        config.playback.pDeviceID = (ma_device_id *)pPlaybackInfos_id;
+        config.periodSizeInFrames = soloud->mBufferSize;
+        config.playback.format    = ma_format_f32;
+        config.playback.channels  = soloud->mChannels;
+        config.sampleRate         = soloud->mSamplerate;
+        config.dataCallback       = soloud_miniaudio_audiomixer;
+        config.pUserData          = (void *)soloud;
+        if (ma_device_init(NULL, &config, &gDevice) != MA_SUCCESS)
+        {
+            return UNKNOWN_ERROR;
+        }
+        ma_device_start(&gDevice);
+        return 0;
+    }
 };
 #endif

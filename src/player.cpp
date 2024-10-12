@@ -53,11 +53,34 @@ PlayerErrors Player::init(unsigned int sampleRate, unsigned int bufferSize, unsi
     SoLoud::result result = soloud.init(
         SoLoud::Soloud::CLIP_ROUNDOFF,
         SoLoud::Soloud::MINIAUDIO, sampleRate, bufferSize, channels, playbackInfos_id);
-    if (result == SoLoud::SO_NO_ERROR)
+    if (result == SoLoud::SO_NO_ERROR){
         mInited = true;
-    else
+        mSampleRate = sampleRate;
+        mBufferSize = bufferSize;
+        mChannels = channels;
+    } else
         result = backendNotInited;
     return (PlayerErrors)result;
+}
+
+PlayerErrors Player::changeDevice(int deviceID)
+{
+    if (!mInited)
+        return backendNotInited;
+
+    void *playbackInfos_id = nullptr;
+
+    // Calling this will init [pPlaybackInfos]
+    auto const devices = listPlaybackDevices();
+    if (devices.size() == 0 || deviceID >= devices.size())
+        return backendNotInited;
+    playbackInfos_id = &pPlaybackInfos[deviceID].id;
+
+    SoLoud::result result = soloud.miniaudio_changeDevice(playbackInfos_id);
+    
+    if (result != SoLoud::SO_NO_ERROR)
+        result = backendNotInited;
+    return noError;
 }
 
 // List available playback devices.

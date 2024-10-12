@@ -194,6 +194,17 @@ extern "C"
         return (PlayerErrors)noError;
     }
 
+    /// Change the playback device.
+    ///
+    /// [deviceID] the device ID. -1 for default OS output device.
+    FFI_PLUGIN_EXPORT enum PlayerErrors changeDevice(int deviceID)
+    {
+        if (player.get() == nullptr)
+            return backendNotInited;
+
+        return player.get()->changeDevice(deviceID);
+    }
+
     /// List playback devices.
     FFI_PLUGIN_EXPORT void listPlaybackDevices(
         char **devicesName,

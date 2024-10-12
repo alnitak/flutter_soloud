@@ -187,6 +187,17 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       _initEnginePtr.asFunction<int Function(int, int, int, int)>();
 
   @override
+  PlayerErrors changeDevice(int deviceId) {
+    final ret = _changeDevice(deviceId);
+    return PlayerErrors.values[ret];
+  }
+
+  late final _changeDevicePtr =
+      _lookup<ffi.NativeFunction<ffi.UnsignedInt Function(ffi.Int)>>(
+          'changeDevice');
+  late final _changeDevice = _changeDevicePtr.asFunction<int Function(int)>();
+
+  @override
   List<PlaybackDevice> listPlaybackDevices() {
     final ret = <PlaybackDevice>[];
     final ffi.Pointer<ffi.Pointer<ffi.Char>> deviceNames =

@@ -360,6 +360,18 @@ interface class SoLoud {
     }
   }
 
+  PlayerErrors changeDevice(int deviceId) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    final error = _controller.soLoudFFI.changeDevice(deviceId);
+    _logPlayerError(error, from: 'changeDevice() result');
+    if (error != PlayerErrors.noError) {
+      throw SoLoudCppException.fromPlayerError(error);
+    }
+    return error;
+  }
+
   /// Lists all OS available playback devices.
   List<PlaybackDevice> listPlaybackDevices() {
     return _controller.soLoudFFI.listPlaybackDevices();

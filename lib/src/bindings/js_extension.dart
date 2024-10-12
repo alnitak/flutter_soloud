@@ -53,6 +53,9 @@ external int wasmInitEngine(
   int channels,
 );
 
+@JS('Module._changeDevice')
+external int wasmChangeDevice(int deviceId);
+
 @JS('Module._listPlaybackDevices')
 external void wasmListPlaybackDevices(
   int namesPtr,
