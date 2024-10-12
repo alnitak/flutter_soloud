@@ -46,7 +46,28 @@ external void wasmSendToWorker(int message, int value);
 external web.Worker wasmWorker;
 
 @JS('Module._initEngine')
-external int wasmInitEngine(int sampleRate, int bufferSize, int channels);
+external int wasmInitEngine(
+  int deviceId,
+  int sampleRate,
+  int bufferSize,
+  int channels,
+);
+
+@JS('Module._listPlaybackDevices')
+external void wasmListPlaybackDevices(
+  int namesPtr,
+  int deviceIdPtr,
+  int isDefaultPtr,
+  int nDevicePtr,
+);
+
+@JS('Module._freeListPlaybackDevices')
+external void wasmFreeListPlaybackDevices(
+  int namesPtr,
+  int deviceIdPtr,
+  int isDefaultPtr,
+  int nDevicePtr,
+);
 
 @JS('Module._dispose')
 external void wasmDeinit();

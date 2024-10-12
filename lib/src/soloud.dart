@@ -310,6 +310,7 @@ interface class SoLoud {
     // TODO(filip): remove deprecation?
     @Deprecated('timeout is not used anymore.')
     Duration timeout = const Duration(seconds: 10),
+    int deviceId = -1,
     bool automaticCleanup = false,
     int sampleRate = 44100,
     int bufferSize = 2048,
@@ -336,6 +337,7 @@ interface class SoLoud {
     _initializeNativeCallbacks();
 
     final error = _controller.soLoudFFI.initEngine(
+      deviceId,
       sampleRate,
       bufferSize,
       channels,
@@ -356,6 +358,11 @@ interface class SoLoud {
     } else {
       _log.severe('initialize() failed with error: $error');
     }
+  }
+
+  /// Lists all OS available playback devices.
+  List<PlaybackDevice> listPlaybackDevices() {
+    return _controller.soLoudFFI.listPlaybackDevices();
   }
 
   /// Stops the engine and disposes of all resources, including sounds.

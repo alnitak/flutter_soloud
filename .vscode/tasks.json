@@ -9,7 +9,7 @@
         },
         {
             "label": "compile linux debug",
-            "command": "cd ${workspaceFolder}/example; flutter build linux -t lib/wave_data/wave_data.dart --debug",
+            "command": "cd ${workspaceFolder}/example; flutter build linux -t lib/main.dart --debug",
             "type": "shell"
         },
         {

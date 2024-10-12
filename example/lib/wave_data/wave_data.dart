@@ -7,6 +7,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:logging/logging.dart';
 
+/// Waveform example.
+///
+/// This example demonstrates how read audio samples from a wave file.
 void main() async {
   // The `flutter_soloud` package logs everything
   // (from severe warnings to fine debug messages)

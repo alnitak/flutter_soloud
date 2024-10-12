@@ -61,10 +61,14 @@ abstract class FlutterSoLoud {
   /// Returns [PlayerErrors.noError] if success.
   @mustBeOverridden
   PlayerErrors initEngine(
+    int deviceId,
     int sampleRate,
     int bufferSize,
     Channels channels,
   );
+
+  /// List available playback devices.
+  List<PlaybackDevice> listPlaybackDevices();
 
   /// Must be called when the player is no more needed or when closing the app.
   @mustBeOverridden

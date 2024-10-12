@@ -205,7 +205,7 @@ namespace SoLoud
 		mAudioThreadMutex = NULL;
 	}
 
-	result Soloud::init(unsigned int aFlags, unsigned int aBackend, unsigned int aSamplerate, unsigned int aBufferSize, unsigned int aChannels)
+	result Soloud::init(unsigned int aFlags, unsigned int aBackend, unsigned int aSamplerate, unsigned int aBufferSize, unsigned int aChannels, void *pPlaybackInfos_id)
 	{		
 		if (aBackend >= BACKEND_MAX || aChannels == 3 || aChannels == 5 || aChannels == 7 || aChannels > MAX_CHANNELS)
 			return INVALID_PARAMETER;
@@ -307,7 +307,7 @@ namespace SoLoud
 		{
 			if (aBufferSize == Soloud::AUTO) buffersize = 2048;
 
-			int ret = miniaudio_init(this, aFlags, samplerate, buffersize, aChannels);
+			int ret = miniaudio_init(this, aFlags, samplerate, buffersize, aChannels, pPlaybackInfos_id);
 			if (ret == 0)
 			{
 				inited = 1;
