@@ -799,7 +799,7 @@ interface class SoLoud {
   /// call [setRelativePlaySpeed] or [setProtectVoice] on the sound before
   /// un-pausing it.
   ///
-  /// To play a looping sound, set [paused] to `true`. You can also
+  /// To play a looping sound, set [looping] to `true`. You can also
   /// define the region to loop by setting [loopingStartAt]
   /// (which defaults to the beginning of the sound otherwise).
   /// There is no way to set the end of the looping region — it will
