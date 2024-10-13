@@ -281,6 +281,10 @@ interface class SoLoud {
   /// If you call any other methods (such as [play]) before initialization
   /// completes, those calls will be ignored and you will get
   /// a [SoLoudNotInitializedException] exception.
+  /// 
+  /// NOTE: calling this method while the engine is already initialized, the
+  /// engine will be first deinitialized, and then reinitialized. This means
+  /// that all sounds will be stopped and all sound files will be unloaded.
   ///
   /// If [automaticCleanup] is `true`, the temporary directory that
   /// the engine uses for storing sound files will be purged occasionally
@@ -360,10 +364,16 @@ interface class SoLoud {
     }
   }
 
-  PlayerErrors changeDevice(int deviceId) {
+  /// Changes the output audio device to the one specified in the [newDevice].
+  /// If [newDevice] is not provided, the default OS device will be used.
+  /// 
+  /// Note: Android and Web, only support one output device which is the
+  /// default device (iOS and MacOS?).
+  PlayerErrors changeDevice({PlaybackDevice? newDevice}) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    final deviceId = newDevice?.id ?? -1;
     final error = _controller.soLoudFFI.changeDevice(deviceId);
     _logPlayerError(error, from: 'changeDevice() result');
     if (error != PlayerErrors.noError) {
@@ -373,6 +383,7 @@ interface class SoLoud {
   }
 
   /// Lists all OS available playback devices.
+  /// Could be called safely even in the engin has not been initialized yet.
   List<PlaybackDevice> listPlaybackDevices() {
     return _controller.soLoudFFI.listPlaybackDevices();
   }

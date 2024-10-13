@@ -56,8 +56,14 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
       currentSound = value;
       SoLoud.instance.play(currentSound!, looping: true);
     });
+    
     devices = SoLoud.instance.listPlaybackDevices();
-    currentDevice = devices.firstWhere((d) => d.isDefault);
+    assert(devices.isNotEmpty, 'No devices found!');
+
+    currentDevice = devices.firstWhere(
+      (d) => d.isDefault,
+      orElse: () => devices.first,
+    );
     textEditingController = TextEditingController(text: currentDevice.name);
   }
 
@@ -86,7 +92,7 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
             // currentSound = await SoLoud.instance
             //     .loadAsset('assets/audio/8_bit_mentality.mp3');
             // await SoLoud.instance.play(currentSound!, looping: true);
-            SoLoud.instance.changeDevice(devices[value!].id);
+            SoLoud.instance.changeDevice(newDevice: devices[value!]);
           },
           dropdownMenuEntries: [
             for (var i = 0; i < devices.length; i++)
