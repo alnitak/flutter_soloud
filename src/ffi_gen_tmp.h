@@ -19,19 +19,4 @@
 
 //--------------------- copy here the new functions to generate
 
-FFI_PLUGIN_EXPORT enum ReadSamplesErrors readSamplesFromFile(
-    const char *filePath,
-    float startTime,
-    float endTime,
-    unsigned long numSamplesNeeded,
-    bool average,
-    float *pSamples);
-
-FFI_PLUGIN_EXPORT enum ReadSamplesErrors readSamplesFromMem(
-    const unsigned char *buffer,
-    unsigned long dataSize,
-    float startTime,
-    float endTime,
-    unsigned long numSamplesNeeded,
-    bool average,
-    float *pSamples);
+FFI_PLUGIN_EXPORT enum PlayerErrors changeDevice(int deviceID);

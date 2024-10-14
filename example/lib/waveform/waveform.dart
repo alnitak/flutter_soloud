@@ -7,6 +7,8 @@ import 'package:logging/logging.dart';
 
 /// Waveform example.
 ///
+/// This example demonstrates how to generate a waveform, play it, and change
+/// it's frequency on the fly.
 void main() {
   // The `flutter_soloud` package logs everything
   // (from severe warnings to fine debug messages)

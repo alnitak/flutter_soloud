@@ -52,6 +52,7 @@ abstract class FlutterSoLoud {
 
   /// Initialize the player. Must be called before any other player functions.
   ///
+  /// [deviceId] the device ID. -1 for default OS output device.
   /// [sampleRate] the sample rate. Usually is 22050, 44100 (CD quality)
   /// or 48000.
   /// [bufferSize] the audio buffer size. Usually is 2048, but can be also be
@@ -61,10 +62,20 @@ abstract class FlutterSoLoud {
   /// Returns [PlayerErrors.noError] if success.
   @mustBeOverridden
   PlayerErrors initEngine(
+    int deviceId,
     int sampleRate,
     int bufferSize,
     Channels channels,
   );
+
+  /// Change the playback device.
+  ///
+  /// [deviceId] the device ID. -1 for default OS output device.
+  @mustBeOverridden
+  PlayerErrors changeDevice(int deviceId);
+
+  /// List available playback devices.
+  List<PlaybackDevice> listPlaybackDevices();
 
   /// Must be called when the player is no more needed or when closing the app.
   @mustBeOverridden

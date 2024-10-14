@@ -282,6 +282,10 @@ interface class SoLoud {
   /// completes, those calls will be ignored and you will get
   /// a [SoLoudNotInitializedException] exception.
   ///
+  /// NOTE: Calling this method while the engine is already initialized will
+  /// first deinitialize the engine and then reinitialize it. This means
+  /// that all sounds will be stopped, and all sound files will be unloaded.
+  ///
   /// If [automaticCleanup] is `true`, the temporary directory that
   /// the engine uses for storing sound files will be purged occasionally
   /// (e.g. on shutdown, and on startup in case shutdown never has the chance
@@ -310,6 +314,7 @@ interface class SoLoud {
     // TODO(filip): remove deprecation?
     @Deprecated('timeout is not used anymore.')
     Duration timeout = const Duration(seconds: 10),
+    int deviceId = -1,
     bool automaticCleanup = false,
     int sampleRate = 44100,
     int bufferSize = 2048,
@@ -336,6 +341,7 @@ interface class SoLoud {
     _initializeNativeCallbacks();
 
     final error = _controller.soLoudFFI.initEngine(
+      deviceId,
       sampleRate,
       bufferSize,
       channels,
@@ -356,6 +362,32 @@ interface class SoLoud {
     } else {
       _log.severe('initialize() failed with error: $error');
     }
+  }
+
+  /// Changes the output audio device to the one specified in the [newDevice].
+  /// If [newDevice] is not provided, the default OS device will be used.
+  ///
+  /// Note: Android and Web, only support one output device which is the
+  /// default device (iOS and MacOS?).
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  PlayerErrors changeDevice({PlaybackDevice? newDevice}) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    final deviceId = newDevice?.id ?? -1;
+    final error = _controller.soLoudFFI.changeDevice(deviceId);
+    _logPlayerError(error, from: 'changeDevice() result');
+    if (error != PlayerErrors.noError) {
+      throw SoLoudCppException.fromPlayerError(error);
+    }
+    return error;
+  }
+
+  /// Lists all OS available playback devices.
+  /// Could be called safely even in the engin has not been initialized yet.
+  List<PlaybackDevice> listPlaybackDevices() {
+    return _controller.soLoudFFI.listPlaybackDevices();
   }
 
   /// Stops the engine and disposes of all resources, including sounds.
