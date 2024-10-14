@@ -1,3 +1,8 @@
+### 2.1.6 ()
+- added `listPlaybackDevices` to get all the OS output devices available.
+- added `deviceId` parameter to the `init()` method. You can choose which device is delegated to output the audio.
+- added `changeDevice` method to change the playback device on-the-fly.
+
 ### 2.1.5 (11 Oct 2024)
 - added `readSamplesFrom*()` methods to read N audio data within a time range from a file or memory #75. Example in `example/lib/wave_data/wave_data.dart`.
 

@@ -89,8 +89,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }
 
   @override
-  PlayerErrors changeDevice(int deviceId)
-  {
+  PlayerErrors changeDevice(int deviceId) {
     final ret = wasmChangeDevice(deviceId);
     return PlayerErrors.values[ret];
   }

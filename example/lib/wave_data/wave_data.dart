@@ -71,7 +71,7 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
           children: [
             const SizedBox(height: 16),
             const Text(
-              'Read N audio samples (here N = width) from audio file.',
+              'Read N audio samples (here N = width*4) from audio file.',
             ),
             OutlinedButton(
               onPressed: () async {

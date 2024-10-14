@@ -19,17 +19,17 @@
         },
         {
             "label": "compile windows debug verbose",
-            "command": "cd ${workspaceFolder}/example; flutter build windows -t lib/filters/pitchshift.dart --debug --verbose",
+            "command": "cd ${workspaceFolder}/example; flutter build windows -t lib/main.dart --debug --verbose",
             "type": "shell"
         },
         {
             "label": "compile windows debug",
-            "command": "cd ${workspaceFolder}/example; flutter build windows -t lib/filters/pitchshift.dart --debug",
+            "command": "cd ${workspaceFolder}/example; flutter build windows -t lib/main.dart --debug",
             "type": "shell"
         },
         {
             "label": "compile web debug",
-            "command": "cd ${workspaceFolder}/example; flutter run -d chrome --web-renderer canvaskit --web-browser-flag '--disable-web-security' -t lib/wave_data/wave_data.dart --release",
+            "command": "cd ${workspaceFolder}/example; flutter run -d chrome --web-renderer canvaskit --web-browser-flag '--disable-web-security' -t lib/main.dart --release",
             "type": "shell"
         }
     ]
