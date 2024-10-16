@@ -11,7 +11,6 @@ enum FreeverbEnum {
   damp,
   width;
 
-  /// use iterables?
   final List<double> _mins = const [0, 0, 0, 0, 0];
   final List<double> _maxs = const [1, 1, 1, 1, 1];
   final List<double> _defs = const [1, 0, 0.5, 0.5, 1];
@@ -30,23 +29,18 @@ enum FreeverbEnum {
       };
 }
 
-abstract class FreeverbInternal {
-  const FreeverbInternal(SoundHash? soundHash) : _soundHash = soundHash;
+abstract class _FreeverbInternal extends FilterBase {
+  const _FreeverbInternal(SoundHash? soundHash)
+      : super(FilterType.freeverbFilter, soundHash);
 
-  final SoundHash? _soundHash;
-  FilterType get filterType => FilterType.freeverbFilter;
   FreeverbEnum get queryWet => FreeverbEnum.wet;
   FreeverbEnum get queryFreeze => FreeverbEnum.freeze;
   FreeverbEnum get queryRoomSize => FreeverbEnum.roomSize;
   FreeverbEnum get queryDamp => FreeverbEnum.damp;
   FreeverbEnum get queryWidth => FreeverbEnum.width;
-
-  void activate() => filterType.activate(_soundHash);
-
-  void deactivate() => filterType.deactivate(_soundHash);
 }
 
-class FreeverbSingle extends FreeverbInternal {
+class FreeverbSingle extends _FreeverbInternal {
   FreeverbSingle(super.soundHash);
 
   FilterParam wet({SoundHandle? soundHandle}) => FilterParam(
@@ -90,7 +84,7 @@ class FreeverbSingle extends FreeverbInternal {
       );
 }
 
-class FreeverbGlobal extends FreeverbInternal {
+class FreeverbGlobal extends _FreeverbInternal {
   const FreeverbGlobal() : super(null);
 
   FilterParam get wet => FilterParam(

@@ -847,6 +847,30 @@ abstract class FlutterSoLoud {
   /// You can change the doppler factor of a live 3d audio source.
   @mustBeOverridden
   void set3dSourceDopplerFactor(SoundHandle handle, double dopplerFactor);
+
+  // ///////////////////////////////////////
+  // waveform audio data
+  // ///////////////////////////////////////
+
+  /// See SoLoud.readSamplesFromFile for details.
+  @mustBeOverridden
+  Float32List readSamplesFromFile(
+    String completeFileName,
+    int numSamplesNeeded, {
+    double startTime = 0,
+    double endTime = -1,
+    bool average = false,
+  });
+
+  /// See SoLoud.readSamplesFromMem for details.
+  @mustBeOverridden
+  Float32List readSamplesFromMem(
+    Uint8List buffer,
+    int numSamplesNeeded, {
+    double startTime = 0,
+    double endTime = -1,
+    bool average = false,
+  });
 }
 
 /// Used for easier conversion from [double] to [Duration].

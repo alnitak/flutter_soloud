@@ -12,10 +12,8 @@ A low-level audio plugin for Flutter.
 * Low latency, high performance
 * Gapless looping (for background music, ambience, sound effects)
 * Ability to load sounds to RAM, or play from disk
-* Multiple voices, playing different or even the same sound 
-  multiple times on top of each other
-* Faders for attributes
-  (e.g. fade out for 2 seconds, then stop)
+* Multiple voices, playing different or even the same sound multiple times on top of each other
+* Faders for attributes (e.g. fade out for 2 seconds, then stop)
 * 3D positional audio, including Doppler effect
 * Support for MP3, WAV, OGG, and FLAC
 * Audio effects such as echo, reverb, filter, equalizer
@@ -25,10 +23,7 @@ A low-level audio plugin for Flutter.
 ## Overview
 
 This plugin is mainly meant for games and immersive apps.
-If you merely need to play audio (such as playing a single sound effect
-or a non-looped song), and you don't need to worry about latency,
-there are other Flutter plugins you can use, such as the popular
-[`audioplayers` plugin](https://pub.dev/packages/audioplayers).
+If you merely need to play audio (such as playing a single sound effect or a non-looped song), and you don't need to worry about latency, there are other Flutter plugins you can use, such as the popular [`audioplayers` plugin](https://pub.dev/packages/audioplayers).
 
 > SoLoud is an easy to use, free, portable c/c++ audio engine for games.
 > 
@@ -37,16 +32,22 @@ there are other Flutter plugins you can use, such as the popular
 > 
 > [(from the underlying engine's homepage)](https://solhsa.com/soloud/index.html)
 
-The `flutter_soloud` plugin uses the 
-[SoLoud (C++) audio engine](https://solhsa.com/soloud/)
-with the [miniaudio](https://miniaud.io/) backend
-through [Dart's C interop](https://dart.dev/interop/c-interop) (`dart:ffi`).
-In other words, it is calling the C/C++ methods of the underlying audio engine
-directly — there are no method channels in use.
+The `flutter_soloud` plugin uses the [SoLoud (C++) audio engine](https://solhsa.com/soloud/) with the [miniaudio](https://miniaud.io/) backend through [Dart's C interop](https://dart.dev/interop/c-interop) (`dart:ffi`).
+In other words, it is calling the C/C++ methods of the underlying audio engine directly — there are no method channels in use.
 
 #### Web platform
 To use this plugin on the **Web platform**, please refer to [WEB_NOTES](https://github.com/alnitak/flutter_soloud/blob/main/WEB_NOTES.md).
 
+#### Linux
+Linux distributions usually install the alsa library by default. However, we've noticed that sometimes this isn't the case. For example, when installing Ubuntu Linux (24.04.1 LTS in this case) in a VM box on Windows, the alsa library is not installed. This will prevent `flutter_soloud` from building.
+
+To fix this, also on other Debian based distro, simply install the library using the command `sudo apt-get install libasound2-dev`.
+
+Other Linux distributions use different names for the *alsa* library:
+- on Arch-based systems: **alsa-lib**
+- on OpenSUSE: **alsa-devel**
+
+Install them using the package manager provided by your Linux distribution.
 
 #### Stripping iOS symbols
 When creating a release archive (IPA), the symbols are [stripped by Xcode](https://docs.flutter.dev/platform-integration/ios/c-interop#stripping-ios-symbols), so the command `flutter build ipa` may throw a `Failed to lookup symbol ... symbol not found error`. To work around this:
@@ -58,9 +59,7 @@ When creating a release archive (IPA), the symbols are [stripped by Xcode](https
 
 ## Example
 
-The following example loads an MP3 asset,
-plays it, then later stops it 
-and disposes of the audio source to reclaim memory.
+The following example loads an MP3 asset, plays it, then later stops it and disposes of the audio source to reclaim memory.
 
 ```dart
 void example() async {
@@ -78,35 +77,24 @@ void example() async {
 }
 ```
 
-As you can see, most functionality in `flutter_soloud` is done through
-calling methods on the `SoLoud` instance.
-[**Read the API reference**](https://pub.dev/documentation/flutter_soloud/latest/flutter_soloud/SoLoud-class.html) 
-for the full listing of methods, and their documentation. 
+As you can see, most functionality in `flutter_soloud` is done through calling methods on the `SoLoud` instance.
 
-When you call a `loadAsset` (or `loadFile` or `loadUrl`) method, 
-in return you get an `AudioSource`. This is the reference to the sound 
-which is used by SoLoud. 
+[**Read the API reference**](https://pub.dev/documentation/flutter_soloud/latest/flutter_soloud/SoLoud-class.html) for the full listing of methods, and their documentation. 
+
+When you call a `loadAsset` (or `loadFile` or `loadUrl`) method, in return you get an `AudioSource`. This is the reference to the sound which is used by SoLoud. 
 The source needs to be disposed when it is needed no more. 
 
-Every time you play an `AudioSource`, you get a new `SoundHandle`
-which uniquely identifies the new playing instance of the sound.
-This handle is also added to the `AudioSource.handles` list so that you can
-always check how many times any audio source is being played at the time.
+Every time you play an `AudioSource`, you get a new `SoundHandle` which uniquely identifies the new playing instance of the sound.
+This handle is also added to the `AudioSource.handles` list so that you can always check how many times any audio source is being played at the time.
 
-The `SoundHandle` also allows you to modify the currently-playing sounds,
-such as changing their volume, pausing them, etc.
+The `SoundHandle` also allows you to modify the currently-playing sounds, such as changing their volume, pausing them, etc.
 
-For more simple examples, check out the 
-[example/project](https://github.com/alnitak/flutter_soloud/tree/main/example)
-included with the package.
-For more complete examples, please look at 
-[flutter_soloud_example](https://github.com/alnitak/flutter_soloud_example)
+For more simple examples, check out the [example/project](https://github.com/alnitak/flutter_soloud/tree/main/example) included with the package.
+For more complete examples, please look at [flutter_soloud_example](https://github.com/alnitak/flutter_soloud_example).
 
 ## Logging
 
-The `flutter_soloud` package logs everything
-(from severe warnings to fine debug messages) using the standard 
-[`logging` package](https://pub.dev/packages/logging).
+The `flutter_soloud` package logs everything (from severe warnings to fine debug messages) using the standard [`logging` package](https://pub.dev/packages/logging).
 
 See the example's `lib/main.dart` to see how to capture these logs.
 For example:
@@ -135,24 +123,18 @@ void main() {
 }
 ```
 
-If you don't set up a listener like the one above, there will be no logging
-from the package.
+If you don't set up a listener like the one above, there will be no logging from the package.
 
-See the `logging` package's [documentation](https://pub.dev/packages/logging)
-to learn more about its functionality.
+See the `logging` package's [documentation](https://pub.dev/packages/logging) to learn more about its functionality.
 
 
 ## License
 
 The Dart plugin is covered by the MIT license.
 
-For information regarding the license for the underlying SoLoud (C++) engine, 
-please refer to [this link](https://solhsa.com/soloud/legal.html).
-In short, the SoLoud code itself is covered by
-the ZLib/LibPNG license
-(which is [compatible](https://en.wikipedia.org/wiki/Zlib_License) with GNU GPL).
-Some modules (such as MP3 or OGG support) are covered with other, but still
-permissive open source licenses.
+For information regarding the license for the underlying SoLoud (C++) engine, please refer to [this link](https://solhsa.com/soloud/legal.html).
+In short, the SoLoud code itself is covered by the ZLib/LibPNG license (which is [compatible](https://en.wikipedia.org/wiki/Zlib_License) with GNU GPL).
+Some modules (such as MP3 or OGG support) are covered with other, but still permissive open source licenses.
 
 
 ## Contribute
@@ -174,10 +156,7 @@ This plugin uses the following structure:
 
 * `src/soloud`: contains the SoLoud sources of my fork
 
-The `flutter_soloud` plugin utilizes a [forked](https://github.com/alnitak/soloud)
-repository of [SoLoud](https://github.com/jarikomppa/soloud),
-where the [miniaudio](https://github.com/mackron/miniaudio) audio backend (used by default) has been updated and
-it is located in `src/soloud/src/backend/miniaudio`.
+The `flutter_soloud` plugin utilizes a [forked](https://github.com/alnitak/soloud) repository of [SoLoud](https://github.com/jarikomppa/soloud), where the [miniaudio](https://github.com/mackron/miniaudio) audio backend (used by default) has been updated and it is located in `src/soloud/src/backend/miniaudio`.
 
 #### Debugging
 
@@ -185,20 +164,16 @@ I have provided the necessary settings in the **.vscode** directory for debuggin
 
 ##### Logging
 
-When debugging the package using the `example/` app, you might want to change
-the logging level to something more granular. For example, in `main()`:
+When debugging the package using the `example/` app, you might want to change the logging level to something more granular. For example, in `main()`:
 
 ```dart
 // Capture even the finest log messages.
 Logger.root.level = Level.ALL;
 ```
 
-One thing that's missing (as of March 2024) is logging 
-from inside the audio isolate. 
-We'd have to send logs to the main isolate through an event, 
-which might be too expensive and brittle. 
-Feel free to use `debugPrint` in `audio_isolate.dart` 
-when working on the package. 
+One thing that's missing (as of March 2024) is logging from inside the audio isolate. 
+We'd have to send logs to the main isolate through an event, which might be too expensive and brittle. 
+Feel free to use `debugPrint` in `audio_isolate.dart` when working on the package. 
 Just make sure to delete those calls before submitting pull requests.
 We don't want to pollute developers' console outputs.
 
@@ -209,7 +184,7 @@ If you encounter any glitches, they might be caused by PulseAudio. To troublesho
 #### Android
 
 The default audio backend is `miniaudio`, which will automatically select the appropriate audio backend based on your Android version:
-- AAudio with Android 8.0 and newer.
+- AAudio with Android 11.0 and newer.
 - OpenSL|ES for older Android versions.
 
 #### Windows

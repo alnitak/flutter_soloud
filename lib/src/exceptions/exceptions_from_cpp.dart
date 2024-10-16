@@ -176,7 +176,7 @@ class SoLoudSoundHandleNotFoundCppException extends SoLoudCppException {
       '(on the C++ side).';
 }
 
-/// An error occurred while getting a filter parameter
+/// An error occurred while getting a filter parameter.
 class SoLoudFilterParameterGetErrorCppException extends SoLoudCppException {
   /// Creates a new [SoLoudFilterParameterGetErrorCppException].
   const SoLoudFilterParameterGetErrorCppException([super.message]);
@@ -185,5 +185,49 @@ class SoLoudFilterParameterGetErrorCppException extends SoLoudCppException {
   String get description => 'An error occurred while getting a filter '
       'parameter. This could happen when passing a value outside the parameter '
       'range and then trying to get it '
+      '(on the C++ side).';
+}
+
+/// An error occurred while initializing the backend to read samples.
+class SoLoudReadSamplesNoBackendCppException extends SoLoudCppException {
+  /// Creates a new [SoLoudReadSamplesNoBackendCppException].
+  const SoLoudReadSamplesNoBackendCppException([super.message]);
+
+  @override
+  String get description => 'An error occurred while initializing the '
+      'backend to read samples.  Probably for an unsupported or broken format. '
+      '(on the C++ side).';
+}
+
+/// An error occurred while reading the decoder data format.
+class SoLoudReadSamplesFailedToGetDataFormatCppException
+    extends SoLoudCppException {
+  /// Creates a new [SoLoudReadSamplesFailedToGetDataFormatCppException].
+  const SoLoudReadSamplesFailedToGetDataFormatCppException([super.message]);
+
+  @override
+  String get description => 'An error occurred while reading the decoder '
+      'data format. Probably for an unsupported or broken format.'
+      ' (on the C++ side).';
+}
+
+/// An error occurred when seeking audio data.
+class SoLoudReadSamplesFailedToSeekPcmCppException extends SoLoudCppException {
+  /// Creates a new [SoLoudReadSamplesFailedToSeekPcmCppException].
+  const SoLoudReadSamplesFailedToSeekPcmCppException([super.message]);
+
+  @override
+  String get description => 'An error occurred while seeking audio data. '
+      '(on the C++ side).';
+}
+
+/// An error occurred when reading PCM frames.
+class SoLoudReadSamplesFailedToReadPcmFramesCppException
+    extends SoLoudCppException {
+  /// Creates a new [SoLoudReadSamplesFailedToReadPcmFramesCppException].
+  const SoLoudReadSamplesFailedToReadPcmFramesCppException([super.message]);
+
+  @override
+  String get description => 'An error occurred while reading PCM frames. '
       '(on the C++ side).';
 }

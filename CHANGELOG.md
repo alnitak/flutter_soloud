@@ -1,3 +1,26 @@
+### 2.1.5 (11 Oct 2024)
+- added `readSamplesFrom*()` methods to read N audio data within a time range from a file or memory #75. Example in `example/lib/wave_data/wave_data.dart`.
+
+### 2.1.4 (18 Sep 2024)
+- fixed waveform generation which somehow oscillate frequencies after some time #129.
+- fixed iOS compilation by rising minimum iOS version to 13 #128.
+- fixed iOS compilation on the new MacOS 15 with XCode 16 #130.
+
+### 2.1.3 (7 Sep 2024)
+- added audio_data example.
+- added compatibility for Web platform in the pubspec.
+- bug fix when loading multiple audio files asynchronously.
+- better error message when something goes wrong loading a file.
+
+### 2.1.2 (29 Aug 2024)
+- bug fix when loading multiple audio files asynchronously.
+
+### 2.1.1 (28 Aug 2024)
+- added `bool isActive` and `int index` getters to filters.
+- added a `timeStretch()` method to single pitchshift filter.
+- fixed building error on Windows.
+- updated examples.
+
 ### 2.1.0 (23 Aug 2024)
 - added support for the Web platform.
 - added `getPan()`, `setPan()` and `setPanAbsolute()`.

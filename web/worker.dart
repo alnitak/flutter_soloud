@@ -65,9 +65,7 @@ void main() async {
         final parseMap = jsonDecode(data) as Map;
         // ignore: avoid_print
         print('Received $data  PARSED TO $parseMap\n');
-        if (parseMap['message'] == 'voiceEndedCallback') {
-          worker.sendMessage(data);
-        }
+        worker.sendMessage(data);
       } catch (e) {
         // ignore: avoid_print
         print("Received data from WASM worker but it's not a String!\n");

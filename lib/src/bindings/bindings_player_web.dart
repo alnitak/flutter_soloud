@@ -5,6 +5,7 @@ import 'package:flutter_soloud/src/bindings/audio_data.dart';
 import 'package:flutter_soloud/src/bindings/bindings_player.dart';
 import 'package:flutter_soloud/src/bindings/js_extension.dart';
 import 'package:flutter_soloud/src/enums.dart';
+import 'package:flutter_soloud/src/exceptions/exceptions.dart';
 import 'package:flutter_soloud/src/filters/filters.dart';
 import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
@@ -855,5 +856,58 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   @override
   void set3dSourceDopplerFactor(SoundHandle handle, double dopplerFactor) {
     return wasmSet3dSourceDopplerFactor(handle.id, dopplerFactor);
+  }
+
+  // ///////////////////////////////////////
+  // waveform audio data
+  // ///////////////////////////////////////
+  @override
+  Float32List readSamplesFromFile(
+    String completeFileName,
+    int numSamplesNeeded, {
+    double startTime = 0,
+    double endTime = -1,
+    bool average = false,
+  }) {
+    throw UnimplementedError('[readSamplesFromFile] in not supported on the '
+        'web platfom! Please use [readSamplesFromMem].');
+  }
+
+  @override
+  Float32List readSamplesFromMem(
+    Uint8List buffer,
+    int numSamplesNeeded, {
+    double startTime = 0,
+    double endTime = -1,
+    bool average = false,
+  }) {
+    final bufferPtr = wasmMalloc(buffer.length);
+    // Is there a way to speed up this array copy?
+    for (var i = 0; i < buffer.length; i++) {
+      wasmSetValue(bufferPtr + i, buffer[i], 'i8');
+    }
+    final samplesPtr = wasmMalloc(numSamplesNeeded * 4);
+    final error = wasmReadSamplesFromMem(
+      bufferPtr,
+      buffer.length,
+      startTime,
+      endTime,
+      numSamplesNeeded,
+      average,
+      samplesPtr,
+    );
+    final samples = Float32List(numSamplesNeeded);
+    for (var i = 0; i < numSamplesNeeded; i++) {
+      samples[i] = wasmGetF32Value(samplesPtr + i * 4, 'float');
+    }
+    wasmFree(samplesPtr);
+    wasmFree(bufferPtr);
+    if (ReadSamplesErrors.fromValue(error) !=
+        ReadSamplesErrors.readSamplesNoError) {
+      throw SoLoudCppException.fromReadSampleError(
+        ReadSamplesErrors.fromValue(error),
+      );
+    }
+    return samples;
   }
 }

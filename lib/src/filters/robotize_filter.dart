@@ -9,7 +9,6 @@ enum RobotizeEnum {
   frequency,
   waveform;
 
-  /// use iterables?
   final List<double> _mins = const [0, 0.1, 0];
   final List<double> _maxs = const [1, 100, 6];
   final List<double> _defs = const [1, 30, 0];
@@ -26,21 +25,16 @@ enum RobotizeEnum {
       };
 }
 
-abstract class RobotizeInternal {
-  const RobotizeInternal(SoundHash? soundHash) : _soundHash = soundHash;
+abstract class _RobotizeInternal extends FilterBase {
+  const _RobotizeInternal(SoundHash? soundHash)
+      : super(FilterType.robotizeFilter, soundHash);
 
-  final SoundHash? _soundHash;
-  FilterType get filterType => FilterType.robotizeFilter;
   RobotizeEnum get queryWet => RobotizeEnum.wet;
   RobotizeEnum get queryFrequency => RobotizeEnum.frequency;
   RobotizeEnum get queryWaveform => RobotizeEnum.waveform;
-
-  void activate() => filterType.activate(_soundHash);
-
-  void deactivate() => filterType.deactivate(_soundHash);
 }
 
-class RobotizeSingle extends RobotizeInternal {
+class RobotizeSingle extends _RobotizeInternal {
   RobotizeSingle(super.soundHash);
 
   FilterParam wet({SoundHandle? soundHandle}) => FilterParam(
@@ -68,7 +62,7 @@ class RobotizeSingle extends RobotizeInternal {
       );
 }
 
-class RobotizeGlobal extends RobotizeInternal {
+class RobotizeGlobal extends _RobotizeInternal {
   const RobotizeGlobal() : super(null);
 
   FilterParam get wet => FilterParam(

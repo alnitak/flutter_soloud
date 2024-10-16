@@ -36,6 +36,28 @@ void _loadFile(Map<String, dynamic> args) {
       );
 }
 
+@pragma('vm:entry-point')
+Float32List _readSamplesFromFile(Map<String, dynamic> args) {
+  return SoLoudController().soLoudFFI.readSamplesFromFile(
+        args['completeFileName'] as String,
+        args['numSamplesNeeded'] as int,
+        startTime: args['startTime'] as double,
+        endTime: args['endTime'] as double,
+        average: args['average'] as bool,
+      );
+}
+
+@pragma('vm:entry-point')
+Float32List _readSamplesFromMem(Map<String, dynamic> args) {
+  return SoLoudController().soLoudFFI.readSamplesFromMem(
+        args['buffer'] as Uint8List,
+        args['numSamplesNeeded'] as int,
+        startTime: args['startTime'] as double,
+        endTime: args['endTime'] as double,
+        average: args['average'] as bool,
+      );
+}
+
 /// The main class to call all the audio methods that play sounds.
 ///
 /// This class has a singleton [instance] which represents the (also singleton)
@@ -376,10 +398,10 @@ interface class SoLoud {
     // Initialize callbacks.
     _controller.soLoudFFI.setDartEventCallbacks();
 
-    // Listen when a handle becomes invalid becaus has been stopped/ended
+    // Listen when a handle becomes invalid because has been stopped/ended.
     if (!_controller.soLoudFFI.voiceEndedEventController.hasListener) {
       _controller.soLoudFFI.voiceEndedEvents.listen((handle) {
-        // Remove this UNIQUE [handle] from the `AudioSource` that own it.
+        // Removing this UNIQUE [handle] from the `AudioSource` that owns it.
 
         final soundHandleFound = _isHandlePresent(SoundHandle(handle));
 
@@ -405,7 +427,7 @@ interface class SoLoud {
       });
     }
 
-    // Listen when a file has been loaded
+    // Listen when a file has been loaded.
     if (!_controller.soLoudFFI.fileLoadedEventsController.hasListener) {
       _controller.soLoudFFI.fileLoadedEvents.listen((result) {
         final exists =
@@ -416,8 +438,8 @@ interface class SoLoud {
           final hash = result['hash'] as int;
 
           _logPlayerError(error, from: 'loadFile() result');
-          final newSound = AudioSource(SoundHash(hash));
           if (error == PlayerErrors.noError) {
+            final newSound = AudioSource(SoundHash(hash));
             _activeSounds.add(newSound);
             loadedFileCompleters[result['completeFileName']]!
                 .complete(newSound);
@@ -425,6 +447,7 @@ interface class SoLoud {
             _log.warning(() => "Sound '$completeFileName' was already loaded. "
                 'Prefer loading only once, and reusing the loaded sound '
                 'when playing.');
+            final newSound = AudioSource(SoundHash(hash));
             final alreadyLoaded = _activeSounds
                     .where((sound) => sound.soundHash == newSound.soundHash)
                     .length ==
@@ -464,6 +487,7 @@ interface class SoLoud {
 
   /// Load a new sound to be played once or multiple times later, from
   /// the file system.
+  /// NOTE: this is not available on Web. Use [loadMem] instead.
   ///
   /// Provide the complete [path] of the file to be played.
   ///
@@ -775,7 +799,7 @@ interface class SoLoud {
   /// call [setRelativePlaySpeed] or [setProtectVoice] on the sound before
   /// un-pausing it.
   ///
-  /// To play a looping sound, set [paused] to `true`. You can also
+  /// To play a looping sound, set [looping] to `true`. You can also
   /// define the region to loop by setting [loopingStartAt]
   /// (which defaults to the beginning of the sound otherwise).
   /// There is no way to set the end of the looping region — it will
@@ -1406,7 +1430,7 @@ interface class SoLoud {
   /// will be decreased with an amplitude between the old and the new value.
   /// This will resul on a less shaky visualization.
   ///
-  /// [smooth] must be in the [0.0 ~ 1.0] range.
+  /// [smooth] must be in the 0.0 ~ 1.0 range.
   /// 0 = no smooth
   /// 1 = full smooth
   /// the new value is calculated with:
@@ -1421,9 +1445,9 @@ interface class SoLoud {
     _controller.soLoudFFI.setFftSmoothing(smooth);
   }
 
-  /////////////////////////////////////////
-  /// voice groups
-  /////////////////////////////////////////
+  // ///////////////////////////////////////
+  //  voice groups
+  // ///////////////////////////////////////
 
   /// Used to create a new voice group. Returns 0 if not successful.
   SoundHandle createVoiceGroup() {
@@ -2023,7 +2047,7 @@ interface class SoLoud {
   /// You can change the attenuation model and rolloff factor parameters of
   /// a live 3D audio source.
   ///
-  /// ```
+  /// ```text
   /// 0 NO_ATTENUATION        No attenuation
   /// 1 INVERSE_DISTANCE      Inverse distance attenuation model
   /// 2 LINEAR_DISTANCE       Linear distance attenuation model
@@ -2046,6 +2070,137 @@ interface class SoLoud {
   /// Sets the doppler factor of a live 3D audio source.
   void set3dSourceDopplerFactor(SoundHandle handle, double dopplerFactor) {
     _controller.soLoudFFI.set3dSourceDopplerFactor(handle, dopplerFactor);
+  }
+
+  // ///////////////////////////////////////
+  // waveform audio data
+  // ///////////////////////////////////////
+
+  /// Read [numSamplesNeeded] audio data from a file equally spaced in time.
+  /// The returned Float32List is not guaranteed to be [numSamplesNeeded] long.
+  /// Each value in the returned Float32List is in the range -1.0 to 1.0 (but
+  /// not guaranteed). Their values are the average of audio data from the
+  /// previous index sample if [average] is true.
+  /// NOTE: this is not available on Web. Use [readSamplesFromMem] instead.
+  ///
+  /// [completeFileName] the complete path to the audio file.
+  /// [numSamplesNeeded] is not guaranteed to be the same length as the returned
+  /// Float32List. This could happen if the [endTime] is greater than the audio
+  /// lenght.
+  /// [startTime] in seconds. Defaults to 0.
+  /// [endTime] in seconds. Defaults to -1. If -1, the audio will be read until
+  /// the end of the file.
+  /// [average] if true, the returned Float32List will be filled with the
+  /// average of the samples from the previous index sample. Defaults to false.
+  /// When true it does not affect performance much.
+  ///
+  /// Here a representation of the range [startTime] to [endTime] in the audio
+  /// with [numSamplesNeeded]=10:
+  ///
+  /// 0      1      2      3      4      5      6      7      8      9
+  /// |------|------|------|------|------|------|------|------|------|
+  ///                ------- with [average]=true all the samples are the
+  ///                        average of the samples from 2 to 3 and it is
+  ///                        stored in the returned Float32List at index 3.
+  ///                      - with [average]=false the value returned at index
+  ///                        3 is the value got at 3.
+  ///
+  /// Throws [SoLoudReadSamplesNoBackendCppException] if an error occurred
+  /// while initializing the backend to read samples.
+  /// Throws [SoLoudReadSamplesFailedToGetDataFormatCppException] if an error
+  /// occurred while reading the decoder data format.
+  /// Throws [SoLoudReadSamplesFailedToSeekPcmCppException] if an error
+  /// occurred when seeking audio data.
+  /// Throws [SoLoudReadSamplesFailedToReadPcmFramesCppException] if an error
+  /// occurred when reading PCM frames.
+  ///
+  /// See also [readSamplesFromMem].
+  @experimental
+  Future<Float32List> readSamplesFromFile(
+    String completeFileName,
+    int numSamplesNeeded, {
+    double startTime = 0,
+    double endTime = -1,
+    bool average = false,
+  }) async {
+    assert(
+      endTime == -1 || endTime > startTime,
+      '[endTime] must be greater than [startTime].',
+    );
+    assert(startTime >= 0, '[startTime] must be greater than or equal to 0.');
+    final samples = await compute(_readSamplesFromFile, {
+      'completeFileName': completeFileName,
+      'numSamplesNeeded': numSamplesNeeded,
+      'startTime': startTime,
+      'endTime': endTime,
+      'average': average,
+    });
+
+    return samples;
+  }
+
+  /// Read [numSamplesNeeded] audio data from a audio buffer equally spaced
+  /// in time.
+  /// The returned Float32List is not guaranteed to be [numSamplesNeeded] long.
+  /// Each value in the returned Float32List is in the range -1.0 to 1.0 (but
+  /// not guaranteed). Their values are the average of audio data from the
+  /// previous index sample if [average] is true.
+  /// NOTE: on Web this is synchronous and could freeze the UI.
+  ///
+  /// [buffer] the audio file buffer.
+  /// [numSamplesNeeded] is not guaranteed to be the same length as the returned
+  /// Float32List. This could happen if the [endTime] is greater than the audio
+  /// lenght.
+  /// [startTime] in seconds. Defaults to 0.
+  /// [endTime] in seconds. Defaults to -1. If -1, the audio will be read until
+  /// the end of the file.
+  /// [average] if true, the returned Float32List will be filled with the
+  /// average of the samples from the previous index sample. Defaults to false.
+  /// When true it does not affect performance much.
+  ///
+  /// Here a representation of the range [startTime] to [endTime] in the audio
+  /// with [numSamplesNeeded]=10:
+  ///
+  /// 0      1      2      3      4      5      6      7      8      9
+  /// |------|------|------|------|------|------|------|------|------|
+  ///                ------- with [average]=true all the samples are the
+  ///                        average of the samples from 2 to 3 and it is
+  ///                        stored in the returned Float32List at index 3.
+  ///                      - with [average]=false the value returned at index
+  ///                        3 is the value got at 3.
+  ///
+  /// Throws [SoLoudReadSamplesNoBackendCppException] if an error occurred
+  /// while initializing the backend to read samples.
+  /// Throws [SoLoudReadSamplesFailedToGetDataFormatCppException] if an error
+  /// occurred while reading the decoder data format.
+  /// Throws [SoLoudReadSamplesFailedToSeekPcmCppException] if an error
+  /// occurred when seeking audio data.
+  /// Throws [SoLoudReadSamplesFailedToReadPcmFramesCppException] if an error
+  /// occurred when reading PCM frames.
+  ///
+  /// See also [readSamplesFromFile].
+  @experimental
+  Future<Float32List> readSamplesFromMem(
+    Uint8List buffer,
+    int numSamplesNeeded, {
+    double startTime = 0,
+    double endTime = -1,
+    bool average = false,
+  }) async {
+    assert(
+      endTime == -1 || endTime > startTime,
+      '[endTime] must be greater than [startTime].',
+    );
+    assert(startTime >= 0, '[startTime] must be greater than or equal to 0.');
+    final samples = await compute(_readSamplesFromMem, {
+      'buffer': buffer,
+      'numSamplesNeeded': numSamplesNeeded,
+      'startTime': startTime,
+      'endTime': endTime,
+      'average': average,
+    });
+
+    return samples;
   }
 
   /// Utility method that logs a [Level.SEVERE] message if [playerError]

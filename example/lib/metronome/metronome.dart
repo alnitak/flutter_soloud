@@ -8,7 +8,7 @@ import 'package:logging/logging.dart';
 
 /// Metronome example.
 ///
-/// For this example the player is initialized with a buffer size of 256. By
+/// For this example the player is initialized with a buffer size of 512. By
 /// default it is set to 2048, this means that for a playback at 44100 Hz the
 /// buffer is processed in about 40ms. When we use the `play()` method, the
 /// sound will start at the upcoming audio buffer and this could happen with
@@ -38,7 +38,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   /// Initialize the player.
-  await SoLoud.instance.init(bufferSize: 256, channels: Channels.mono);
+  await SoLoud.instance.init(bufferSize: 512, channels: Channels.mono);
 
   runApp(
     const MaterialApp(

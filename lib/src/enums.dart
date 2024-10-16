@@ -80,7 +80,8 @@ enum PlayerErrors {
       case PlayerErrors.fileNotFound:
         return 'File not found!';
       case PlayerErrors.fileLoadFailed:
-        return 'File found, but could not be loaded!';
+        return 'File found, but could not be loaded! Could be a permission '
+            'error or the file is corrupted.';
       case PlayerErrors.fileAlreadyLoaded:
         return 'The sound file has already been loaded!';
       case PlayerErrors.dllNotFound:
@@ -116,6 +117,61 @@ enum PlayerErrors {
       case PlayerErrors.filterParameterGetError:
         return 'An error (nan or inf value) occurred while getting a '
             'filter parameter!';
+    }
+  }
+
+  @override
+  String toString() => 'PlayerErrors.$name ($_asSentence)';
+}
+
+/// Possible read samples errors.
+enum ReadSamplesErrors {
+  /// No error
+  readSamplesNoError(0),
+
+  /// Initialization failed. Probably an unsupported format.
+  noBackend(1),
+
+  /// Failed to retrieve decoder data format.
+  failedToGetDataFormat(2),
+
+  /// Failed to seek audio data.
+  failedToSeekPcm(3),
+
+  /// Failed to read PCM frames.
+  failedToReadPcmFrames(4);
+
+  /// The integer value of the error. This is the same number that is returned
+  /// from the C++ API.
+  final int value;
+
+  /// Constructs a valid error with [value].
+  // ignore: sort_constructors_first
+  const ReadSamplesErrors(this.value);
+
+  /// Returns a [ReadSamplesErrors] from a [value].
+  static ReadSamplesErrors fromValue(int value) => switch (value) {
+        0 => readSamplesNoError,
+        1 => noBackend,
+        2 => failedToGetDataFormat,
+        3 => failedToSeekPcm,
+        4 => failedToReadPcmFrames,
+        _ => throw ArgumentError('Unknown value for ReadSamplesErrors: $value'),
+      };
+
+  /// Returns a human-friendly sentence describing the error.
+  String get _asSentence {
+    switch (this) {
+      case ReadSamplesErrors.readSamplesNoError:
+        return 'No error';
+      case ReadSamplesErrors.noBackend:
+        return 'Initialization failed. Probably an unsupported format.';
+      case ReadSamplesErrors.failedToGetDataFormat:
+        return 'Failed to retrieve decoder data format.';
+      case ReadSamplesErrors.failedToSeekPcm:
+        return 'Failed to seek audio data.';
+      case ReadSamplesErrors.failedToReadPcmFrames:
+        return 'Failed to read PCM frames.';
     }
   }
 

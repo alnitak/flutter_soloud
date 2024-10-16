@@ -8,7 +8,7 @@
             "name": "Flutter debug",
             "type": "dart",
             "request": "launch",
-            "program": "lib/filters/pitchshift.dart",
+            "program": "lib/wave_data/wave_data.dart",
             "flutterMode": "debug",
             "cwd": "${workspaceFolder}/example"
         },

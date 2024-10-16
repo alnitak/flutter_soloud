@@ -1,7 +1,7 @@
-
 #include "player.h"
 #include "analyzer.h"
 #include "synth/basic_wave.h"
+#include "waveform/waveform.h"
 #ifndef COMMON_H
 #include "common.h"
 #endif
@@ -19,10 +19,17 @@
 #include <memory>
 #include <filesystem>
 
+
 #ifdef __cplusplus
 extern "C"
 {
 #endif
+
+    /// mutex to lock the init and dispose methods.
+    std::mutex init_deinit_mutex;
+
+    /// mutex to lock the loading audio methods and make safe operations on player.sounds list.
+    std::mutex loadMutex;
 
     std::unique_ptr<Player> player = nullptr;
     std::unique_ptr<Analyzer> analyzer = std::make_unique<Analyzer>(2048);
@@ -163,6 +170,9 @@ extern "C"
         unsigned int bufferSize,
         unsigned int channels)
     {
+        std::lock_guard<std::mutex> guard(init_deinit_mutex);
+        std::lock_guard<std::mutex> guard_load(loadMutex);
+
         if (player.get() == nullptr)
             player = std::make_unique<Player>();
 
@@ -189,7 +199,12 @@ extern "C"
     {
         if (player.get() == nullptr)
             return;
+        player.get()->disposeAllSound();
+        std::lock_guard<std::mutex> guard(init_deinit_mutex);
+        std::lock_guard<std::mutex> guard_load(loadMutex);
         dartVoiceEndedCallback = nullptr;
+        dartFileLoadedCallback = nullptr;
+        dartStateChangedCallback = nullptr;
         player.get()->dispose();
         player = nullptr;
     }
@@ -221,17 +236,19 @@ extern "C"
         char *completeFileName,
         bool loadIntoMem)
     {
-        std::filesystem::path pa = std::filesystem::u8path(completeFileName);
+        std::lock_guard<std::mutex> guard_init(init_deinit_mutex);
+        std::lock_guard<std::mutex> guard_load(loadMutex);
 
-        if (player.get() == nullptr || !player.get()->isInited())
+        Player *p = player.get();
+        if (p == nullptr || !p->isInited())
         {
             printf("WARNING (from SoLoud C++ binding code): the player has "
                    "not yet been initialized. This is likely a bug in flutter_soloud. "
-                   "Please report the bug.");
+                   "Please report the bug.\n");
             return;
         }
 
-        Player *p = player.get();
+        std::filesystem::path pa = std::filesystem::u8path(completeFileName);
         unsigned int hash = 0;
         // std::thread loadThread([p, pa, completeFileName, loadIntoMem, hash]()
         //                        {
@@ -264,6 +281,8 @@ extern "C"
         int loadIntoMem,
         unsigned int *hash)
     {
+        std::lock_guard<std::mutex> guard_init(init_deinit_mutex);
+        std::lock_guard<std::mutex> guard_load(loadMutex);
         // this check is already been done in Dart
         if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
@@ -493,6 +512,8 @@ extern "C"
     {
         if (player.get() == nullptr || !player.get()->isInited())
             return;
+        std::lock_guard<std::mutex> guard_init(init_deinit_mutex);
+        std::lock_guard<std::mutex> guard_load(loadMutex);
         player.get()->disposeSound(soundHash);
     }
 
@@ -502,6 +523,8 @@ extern "C"
     {
         if (player.get() == nullptr || !player.get()->isInited())
             return;
+        std::lock_guard<std::mutex> guard_init(init_deinit_mutex);
+        std::lock_guard<std::mutex> guard_load(loadMutex);
         player.get()->disposeAllSound();
     }
 
@@ -1499,6 +1522,33 @@ extern "C"
             return;
         player.get()->set3dSourceDopplerFactor(handle, dopplerFactor);
         player.get()->update3dAudio();
+    }
+
+    /////////////////////////////////////////
+    /// waveform audio data
+    /////////////////////////////////////////
+
+    FFI_PLUGIN_EXPORT enum ReadSamplesErrors readSamplesFromFile(
+        const char *filePath,
+        float startTime,
+        float endTime,
+        unsigned long numSamplesNeeded,
+        bool average,
+        float* pSamples)
+    {
+        return Waveform::readSamples(filePath, nullptr, 0, startTime, endTime, numSamplesNeeded, average, pSamples);
+    }
+
+    FFI_PLUGIN_EXPORT enum ReadSamplesErrors readSamplesFromMem(
+        const unsigned char *buffer,
+        unsigned long dataSize,
+        float startTime,
+        float endTime,
+        unsigned long numSamplesNeeded,
+        bool average,
+        float* pSamples)
+    {
+        return Waveform::readSamples(nullptr, buffer, dataSize, startTime, endTime, numSamplesNeeded, average, pSamples);
     }
 
 #ifdef __cplusplus

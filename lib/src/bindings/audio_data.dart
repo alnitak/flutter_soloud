@@ -3,6 +3,7 @@ import 'package:flutter_soloud/src/bindings/audio_data_ffi.dart'
     if (dart.library.js_interop) 'audio_data_web.dart';
 import 'package:flutter_soloud/src/bindings/soloud_controller.dart';
 import 'package:flutter_soloud/src/exceptions/exceptions.dart';
+import 'package:flutter_soloud/src/soloud.dart';
 import 'package:meta/meta.dart';
 
 /// The way the audio data should be acquired.
@@ -43,7 +44,7 @@ enum GetSamplesKind {
 /// After calling [updateSamples] it's possible to call the proper getter
 /// to have back the audio samples. For example, using a "Ticker"
 /// in a Widget that needs the audio data to be displayed:
-/// ```
+/// ```dart
 /// ...
 /// late final Ticker ticker;
 /// late final AudioData audioData;
@@ -77,7 +78,7 @@ enum GetSamplesKind {
 /// }
 /// ```
 /// Then in your "build" method, you can read the audio data:
-/// ```
+/// ```dart
 /// try {
 ///   /// Use [getTexture] if you have inizialized [AudioData]
 ///   /// with [GetSamplesKind.texture]
@@ -89,9 +90,7 @@ enum GetSamplesKind {
 /// }
 /// ```
 ///
-/// To smooth FFT values use [SoLoud.instance.setFftSmoothing].
-///
-// TODO(all): make AudioData singleton?
+/// To smooth FFT values use [SoLoud.setFftSmoothing].
 @experimental
 class AudioData {
   /// Initialize the way the audio data should be acquired.

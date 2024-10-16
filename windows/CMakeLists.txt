@@ -3,9 +3,6 @@ set(PROJECT_NAME "flutter_soloud")
 project(${PROJECT_NAME} LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-# set(CMAKE_CXX_EXTENSIONS OFF)
-# set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -v -fvisibility=hidden")
-# set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -v -fvisibility=hidden")
 
 set(PLUGIN_NAME "${PROJECT_NAME}_plugin")
 
@@ -43,6 +40,7 @@ list(APPEND PLUGIN_SOURCES
   "${SRC_DIR}/player.cpp"
   "${SRC_DIR}/analyzer.cpp"
   "${SRC_DIR}/synth/basic_wave.cpp"
+  "${SRC_DIR}/waveform/waveform.cpp"
   "${SRC_DIR}/filters/filters.cpp"
   "${SRC_DIR}/filters/pitch_shift_filter.cpp"
   "${SRC_DIR}/filters/smbPitchShift.cpp"
