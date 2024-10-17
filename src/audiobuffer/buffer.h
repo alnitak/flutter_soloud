@@ -101,6 +101,11 @@ public:
     {
         return bufferSizeInBytes();
     }
+
+    void clear()
+    {
+        buffer.clear();
+    }
 };
 
 #endif // CIRCULAR_BUFFER_H

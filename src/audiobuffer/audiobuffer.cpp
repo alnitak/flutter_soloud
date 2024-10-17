@@ -153,7 +153,7 @@ namespace SoLoud
 			}
 		}
 	}
-
+ 
 	BufferStreamInstance::~BufferStreamInstance()
 	{
 		switch (mParent->mFiletype)
@@ -184,6 +184,12 @@ namespace SoLoud
 				drwav_uninit(mCodec.mWav);
 				delete mCodec.mWav;
 				mCodec.mWav = 0;
+			}
+			break;
+		case BUFFERSTREAM_PCM:
+			if (mParent->mBuffer.getCurrentBufferSizeInBytes() > 0)
+			{
+				mParent->mBuffer.clear();
 			}
 			break;
 		}
@@ -292,6 +298,27 @@ namespace SoLoud
 			}
 			break;
 		case BUFFERSTREAM_WAV:
+			{
+				unsigned int i, j, k;
+
+				for (i = 0; i < aSamplesToRead; i += 512)
+				{
+					unsigned int blockSize = (aSamplesToRead - i) > 512 ? 512 : aSamplesToRead - i;
+					offset += (unsigned int)drwav_read_pcm_frames_f32(mCodec.mWav, blockSize, tmp);
+
+					for (j = 0; j < blockSize; j++)
+					{
+						for (k = 0; k < mChannels; k++)
+						{
+							aBuffer[k * aSamplesToRead + i + j] = tmp[j * mCodec.mWav->channels + k];
+						}
+					}
+				}
+				mOffset += offset;
+				return offset;
+			}
+			break;
+		case BUFFERSTREAM_PCM:
 			{
 				unsigned int i, j, k;
 
