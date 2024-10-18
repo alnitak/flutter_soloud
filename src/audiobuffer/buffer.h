@@ -12,8 +12,10 @@
 
 class Buffer
 {
-private:
+public:
     std::vector<float> buffer; // Buffer that stores the float data
+
+private:
     size_t maxBytes;           // Maximum capacity in bytes
 
     // Helper function to calculate the size of the buffer in bytes
@@ -54,8 +56,17 @@ private:
     }
 
 public:
-    // Constructor that accepts the maxBytes parameter
-    Buffer(size_t maxBytes) : maxBytes(maxBytes) {}
+    Buffer() : maxBytes(0) {}
+
+    ~Buffer()
+    {
+        clear();
+    }
+
+    void setSizeInBytes(size_t newBytes)
+    {
+        maxBytes = newBytes;
+    }
 
     // Overload for int8_t data
     void addData(const int8_t *data, size_t numSamples)
@@ -102,6 +113,13 @@ public:
         return bufferSizeInBytes();
     }
 
+    // Function to get the current size of the buffer in bytes
+    size_t getCurrentBufferSize() const
+    {
+        return buffer.size();
+    }
+
+    // Clear the buffer
     void clear()
     {
         buffer.clear();

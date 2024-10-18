@@ -16,7 +16,6 @@
 #include <unistd.h>
 #endif
 
-
 Player::Player() : mInited(false), mFilters(&soloud, nullptr) {}
 
 Player::~Player()
@@ -53,12 +52,14 @@ PlayerErrors Player::init(unsigned int sampleRate, unsigned int bufferSize, unsi
     SoLoud::result result = soloud.init(
         SoLoud::Soloud::CLIP_ROUNDOFF,
         SoLoud::Soloud::MINIAUDIO, sampleRate, bufferSize, channels, playbackInfos_id);
-    if (result == SoLoud::SO_NO_ERROR){
+    if (result == SoLoud::SO_NO_ERROR)
+    {
         mInited = true;
         mSampleRate = sampleRate;
         mBufferSize = bufferSize;
         mChannels = channels;
-    } else
+    }
+    else
         result = backendNotInited;
     return (PlayerErrors)result;
 }
@@ -77,7 +78,7 @@ PlayerErrors Player::changeDevice(int deviceID)
     playbackInfos_id = &pPlaybackInfos[deviceID].id;
 
     SoLoud::result result = soloud.miniaudio_changeDevice(playbackInfos_id);
-    
+
     if (result != SoLoud::SO_NO_ERROR)
         result = backendNotInited;
     return noError;
@@ -100,11 +101,11 @@ std::vector<PlaybackDevice> Player::listPlaybackDevices()
     }
 
     if ((result = ma_context_get_devices(
-            &context,
-            &pPlaybackInfos,
-            &playbackCount,
-            &pCaptureInfos,
-            &captureCount)) != MA_SUCCESS)
+             &context,
+             &pPlaybackInfos,
+             &playbackCount,
+             &pCaptureInfos,
+             &captureCount)) != MA_SUCCESS)
     {
         printf("Failed to get devices %d\n", result);
         return ret;
@@ -202,13 +203,12 @@ PlayerErrors Player::loadFile(
 {
     if (!mInited)
         return backendNotInited;
-        
+
     *hash = 0;
 
     unsigned int newHash = (int32_t)std::hash<std::string>{}(completeFileName) & 0x7fffffff;
     /// check if the sound has been already loaded
     auto const s = findByHash(newHash);
-
 
     if (s != nullptr)
     {
@@ -218,8 +218,6 @@ PlayerErrors Player::loadFile(
 
     auto sound = std::make_unique<ActiveSound>();
 
-    
-    
     sound->completeFileName = std::string(completeFileName);
     sound->soundHash = newHash;
 
@@ -240,12 +238,13 @@ PlayerErrors Player::loadFile(
     if (result != SoLoud::SO_NO_ERROR)
     {
         *hash = 0;
-    } else {
+    }
+    else
+    {
         *hash = newHash;
         sound->filters = std::make_unique<Filters>(&soloud, sound.get());
         sounds.push_back(std::move(sound));
     }
-    
 
     return (PlayerErrors)result;
 }
@@ -289,7 +288,7 @@ PlayerErrors Player::loadMem(
         newSound.get()->soundType = TYPE_WAVSTREAM;
         result = static_cast<SoLoud::WavStream *>(newSound.get()->sound.get())->loadMem(mem, length, false, true);
     }
-    
+
     if (result == SoLoud::SO_NO_ERROR)
     {
         newSound.get()->filters = std::make_unique<Filters>(&soloud, newSound.get());
@@ -297,6 +296,62 @@ PlayerErrors Player::loadMem(
     }
 
     return (PlayerErrors)result;
+}
+
+PlayerErrors Player::loadAudioStream(
+    const std::string &uniqueName,
+    unsigned int &hash,
+    const unsigned char *data,
+    unsigned int aDataLen,
+    unsigned long maxBufferSize,
+    SoLoud::PCMformat dataType)
+{
+    if (!mInited)
+        return backendNotInited;
+
+    hash = 0;
+
+    unsigned int newHash = (int32_t)std::hash<std::string>{}(uniqueName) & 0x7fffffff;
+    /// check if the sound has been already loaded
+    auto const s = findByHash(newHash);
+
+    if (s != nullptr)
+    {
+        hash = newHash;
+        return fileAlreadyLoaded;
+    }
+
+    std::unique_ptr<ActiveSound> newSound = std::make_unique<ActiveSound>();
+    newSound.get()->completeFileName = std::string(uniqueName);
+    hash = newHash;
+    newSound.get()->soundHash = newHash;
+    SoLoud::result result;
+
+    newSound.get()->sound = std::make_unique<SoLoud::BufferStream>();
+    newSound.get()->soundType = TYPE_BUFFER_STREAM;
+    result = static_cast<SoLoud::BufferStream *>(newSound.get()->sound.get())->loadMem(
+        data, aDataLen, maxBufferSize, false, true, dataType);
+
+    if (result == SoLoud::SO_NO_ERROR)
+    {
+        newSound.get()->filters = std::make_unique<Filters>(&soloud, newSound.get());
+        sounds.push_back(std::move(newSound));
+    }
+
+    return (PlayerErrors)result;
+}
+
+void Player::addAudioDataStream(
+    unsigned int hash,
+    const unsigned char *data,
+    unsigned int aDataLen)
+{
+    auto const s = findByHash(hash);
+
+    if (s == nullptr || s->soundType != TYPE_BUFFER_STREAM)
+        return;
+
+    static_cast<SoLoud::BufferStream *>(s->sound.get())->addData(data, aDataLen);
 }
 
 PlayerErrors Player::loadWaveform(
@@ -610,10 +665,14 @@ void Player::setPan(SoLoud::handle handle, float pan)
 
 void Player::setPanAbsolute(SoLoud::handle handle, float panLeft, float panRight)
 {
-    if (panLeft > 1.0f) panLeft = 1.0f;
-    if (panLeft < -1.0f) panLeft = -1.0f;
-    if (panRight > 1.0f) panRight = 1.0f;
-    if (panRight < -1.0f) panRight = -1.0f;
+    if (panLeft > 1.0f)
+        panLeft = 1.0f;
+    if (panLeft < -1.0f)
+        panLeft = -1.0f;
+    if (panRight > 1.0f)
+        panRight = 1.0f;
+    if (panRight < -1.0f)
+        panRight = -1.0f;
     soloud.setPanAbsolute(handle, panLeft, panRight);
 }
 
@@ -718,24 +777,29 @@ void Player::debug()
 /// voice groups
 /////////////////////////////////////////
 
-unsigned int Player::createVoiceGroup() {
+unsigned int Player::createVoiceGroup()
+{
     auto ret = soloud.createVoiceGroup();
     return ret;
 }
 
-void Player::destroyVoiceGroup(SoLoud::handle handle) {
+void Player::destroyVoiceGroup(SoLoud::handle handle)
+{
     soloud.destroyVoiceGroup(handle);
 }
 
-void Player::addVoiceToGroup(SoLoud::handle voiceGroupHandle, SoLoud::handle voiceHandle) {
+void Player::addVoiceToGroup(SoLoud::handle voiceGroupHandle, SoLoud::handle voiceHandle)
+{
     soloud.addVoiceToGroup(voiceGroupHandle, voiceHandle);
 }
 
-bool Player::isVoiceGroup(SoLoud::handle handle) {
+bool Player::isVoiceGroup(SoLoud::handle handle)
+{
     return soloud.isVoiceGroup(handle);
 }
 
-bool Player::isVoiceGroupEmpty(SoLoud::handle handle) {
+bool Player::isVoiceGroupEmpty(SoLoud::handle handle)
+{
     return soloud.isVoiceGroupEmpty(handle);
 }
 

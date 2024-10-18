@@ -37,6 +37,20 @@ void _loadFile(Map<String, dynamic> args) {
 }
 
 @pragma('vm:entry-point')
+({PlayerErrors error, SoundHash soundHash}) _loadAudioStream(
+    Map<String, dynamic> args) {
+  return SoLoudController().soLoudFFI.loadAudioStream(
+        args['path'] as String,
+        args['audioChunk'] as Uint8List,
+        args['maxBufferSize'] as int,
+        args['sampleRate'] as int,
+        args['channels'] as int,
+        args['bytesPerSample'] as int,
+        args['pcmFormat'] as int,
+      );
+}
+
+@pragma('vm:entry-point')
 Float32List _readSamplesFromFile(Map<String, dynamic> args) {
   return SoLoudController().soLoudFFI.readSamplesFromFile(
         args['completeFileName'] as String,
@@ -599,6 +613,47 @@ interface class SoLoud {
       'path': path,
       'buffer': buffer,
       'mode': mode.index,
+    });
+
+    /// There is not a callback in cpp that is supposed to add the
+    /// "load file event". Manually send this event to have only one
+    /// place to do this "loaded" job.
+    _controller.soLoudFFI.fileLoadedEventsController.add({
+      'error': ret.error.index,
+      'completeFileName': path,
+      'hash': ret.soundHash.hash,
+    });
+
+    return completer.future.whenComplete(() {
+      loadedFileCompleters.removeWhere((key, __) => key == path);
+    });
+  }
+  Future<AudioSource> loadAudioStream(
+    String path,
+    Uint8List firstChunk,
+    int maxBufferSize,
+    int sampleRate,
+    int channels,
+    int bytesPerSample,
+    int pcmFormat,
+  ) async {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+
+    final completer = Completer<AudioSource>();
+    loadedFileCompleters.addAll({
+      path: completer,
+    });
+
+    final ret = await compute(_loadAudioStream, {
+      'path': path,
+      'audioChunk': firstChunk,
+      'maxBufferSize': maxBufferSize,
+      'sampleRate': sampleRate,
+      'channels': channels,
+      'bytesPerSample': bytesPerSample,
+      'pcmFormat': pcmFormat,
     });
 
     /// There is not a callback in cpp that is supposed to add the

@@ -18,7 +18,6 @@ import 'package:meta/meta.dart';
 /// for users to create a handle from Dart.
 extension type const SoundHandle._(int id) {
   /// Constructs a valid handle with [id].
-  @internal
   const SoundHandle(this.id)
       : assert(
             id >= 0,

@@ -123,6 +123,22 @@ abstract class FlutterSoLoud {
     LoadMode mode,
   );
 
+  @mustBeOverridden
+  ({PlayerErrors error, SoundHash soundHash}) loadAudioStream(
+    String uniqueName,
+    Uint8List audioChunk,
+    int maxBufferSize,
+    int sampleRate,
+    int channels,
+    int bytesPerSample,
+    int pcmFormat,
+  );
+  @mustBeOverridden
+  void addAudioDataStream(
+    int hash,
+    Uint8List audioChunk,
+  );
+
   /// Load a new waveform to be played once or multiple times later.
   ///
   /// [waveform]

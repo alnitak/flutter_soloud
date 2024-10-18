@@ -374,6 +374,81 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
           ffi.Pointer<ffi.UnsignedInt>)>();
 
   @override
+  ({PlayerErrors error, SoundHash soundHash}) loadAudioStream(
+    String uniqueName,
+    Uint8List audioChunk,
+    int maxBufferSize,
+    int sampleRate,
+    int channels,
+    int bytesPerSample,
+    int pcmFormat,
+  ) {
+    final ffi.Pointer<Utf8> cString = uniqueName.toNativeUtf8();
+    final ffi.Pointer<ffi.UnsignedInt> hash =
+        calloc(ffi.sizeOf<ffi.UnsignedInt>());
+    final ffi.Pointer<ffi.Uint8> audioChunkPtr = calloc(audioChunk.length);
+    for (var i = 0; i < audioChunk.length; i++) {
+      audioChunkPtr[i] = audioChunk[i];
+    }
+    final e = _loadAudioStream(
+      cString,
+      hash,
+      audioChunkPtr,
+      audioChunk.length,
+      maxBufferSize,
+      sampleRate,
+      channels,
+      bytesPerSample,
+      pcmFormat,
+    );
+    final soundHash = SoundHash(hash.value);
+    final ret = (error: PlayerErrors.values[e], soundHash: soundHash);
+    calloc
+      ..free(hash)
+      ..free(cString);
+    return ret;
+  }
+
+  late final _loadAudioStreamPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.UnsignedInt Function(
+              ffi.Pointer<Utf8>,
+              ffi.Pointer<ffi.UnsignedInt>,
+              ffi.Pointer<ffi.Uint8>,
+              ffi.UnsignedInt,
+              ffi.UnsignedLong,
+              ffi.UnsignedInt,
+              ffi.UnsignedInt,
+              ffi.UnsignedInt,
+              ffi.Int)>>('loadAudioStream');
+  late final _loadAudioStream = _loadAudioStreamPtr.asFunction<
+      int Function(ffi.Pointer<Utf8>, ffi.Pointer<ffi.UnsignedInt>,
+          ffi.Pointer<ffi.Uint8>, int, int, int, int, int, int)>();
+
+  @override
+  void addAudioDataStream(
+    int hash,
+    Uint8List audioChunk,
+  ) {
+    final ffi.Pointer<ffi.Uint8> audioChunkPtr = calloc(audioChunk.length);
+    for (var i = 0; i < audioChunk.length; i++) {
+      audioChunkPtr[i] = audioChunk[i];
+    }
+    return _addAudioDataStream(
+      hash,
+      audioChunkPtr,
+      audioChunk.length,
+    );
+  }
+
+  late final _addAudioDataStreamPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Void Function(ffi.UnsignedInt, ffi.Pointer<ffi.Uint8>,
+              ffi.UnsignedInt)>>('addAudioDataStream');
+  late final _addAudioDataStream = _addAudioDataStreamPtr
+      .asFunction<void Function(int, ffi.Pointer<ffi.Uint8>, int)>();
+
+  @override
   ({PlayerErrors error, SoundHash soundHash}) loadWaveform(
     WaveForm waveform,
     bool superWave,

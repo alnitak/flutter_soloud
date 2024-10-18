@@ -349,6 +349,52 @@ extern "C"
         return (PlayerErrors)player.get()->loadMem(uniqueName, buffer, length, loadIntoMem, *hash);
     }
 
+    /// Set up an audio stream.
+    ///
+    /// [data] the first audio data that will be used to identify the stream.
+    /// [aDataLen] the length of [data].
+    /// [maxBufferSize] the max buffer size in bytes.
+    /// [dataType] in case the audio data is PCM, here are the parameters to set it up.
+    FFI_PLUGIN_EXPORT enum PlayerErrors loadAudioStream(
+        char *uniqueName,
+        unsigned int *hash,
+        const unsigned char *data,
+        unsigned int aDataLen,
+        unsigned long maxBufferSize,
+        unsigned int sampleRate,
+        unsigned int channels,
+        unsigned int bytesPerSample,
+        int pcmFormat)
+    {
+        std::lock_guard<std::mutex> guard_init(init_deinit_mutex);
+        std::lock_guard<std::mutex> guard_load(loadMutex);
+        if (player.get() == nullptr || !player.get()->isInited())
+            return backendNotInited;
+        SoLoud::PCMformat dataType = {sampleRate, channels, bytesPerSample, (BufferPcmType)pcmFormat};
+        return (PlayerErrors)player.get()->loadAudioStream(
+            std::string(uniqueName),
+            *hash,
+            data,
+            aDataLen,
+            maxBufferSize,
+            dataType);
+    }
+    
+    /// Add a chunk of audio data to the buffer stream.
+    ///
+    /// [hash] the hash of the sound.
+    /// [data] the audio data to add.
+    /// [aDataLen] the length of [data].
+    FFI_PLUGIN_EXPORT void addAudioDataStream(
+        unsigned int hash,
+        const unsigned char *data,
+        unsigned int aDataLen)
+    {
+        if (player.get() == nullptr || !player.get()->isInited())
+            return;
+        player.get()->addAudioDataStream(hash, data, aDataLen);
+    }
+
     /// Load a new waveform to be played once or multiple times later
     ///
     /// [waveform]  WAVE_SQUARE = 0,

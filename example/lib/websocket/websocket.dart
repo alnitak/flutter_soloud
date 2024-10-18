@@ -1,4 +1,4 @@
-// ignore_for_file: avoid_print
+// ignore_for_file: avoid_print, unnecessary_lambdas
 
 import 'dart:developer' as dev;
 import 'dart:io';
@@ -7,7 +7,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:logging/logging.dart';
-import 'package:web_socket_channel/status.dart' as status;
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 void main() async {
@@ -51,6 +50,7 @@ class HelloFlutterSoLoud extends StatefulWidget {
 class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
   WebSocket? webSocket;
   AudioSource? currentSound;
+  bool isFirstChunk = true;
 
   @override
   void dispose() {
@@ -64,27 +64,52 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
 
     return Scaffold(
       body: Center(
-        child: ElevatedButton(
-          onPressed: () async {
-            final wsUrl = Uri.parse('ws://HAL:8080/');
-            final channel = WebSocketChannel.connect(wsUrl);
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ElevatedButton(
+              onPressed: () async {
+                final wsUrl = Uri.parse('ws://HAL:8080/');
+                final channel = WebSocketChannel.connect(wsUrl);
 
-            await channel.ready;
+                await channel.ready;
 
-            channel.stream.listen((message) {
-              // channel.sink.add('received!');
-              // channel.sink.close(status.goingAway);
-              print(message);
-            });
-            
-            // webSocket = await WebSocket.connect('ws://HAL:8080/');
-            // webSocket!.listen((data) {
-            //   print(data);
-            // });
-          },
-          child: const Text('connect'),
+                channel.stream.listen((message) async {
+                  // channel.sink.add('received!');
+                  // channel.sink.close(status.goingAway);
+                  print(message);
+                  if (isFirstChunk) {
+                    currentSound = await SoLoud.instance.loadAudioStream(
+                      'uniqueName',
+                      message as Uint8List,
+                      1024 * 1024 * 50,
+                      44100,
+                      2,
+                      4,
+                      0,
+                    );
+                    isFirstChunk = false;
+                  } else {
+                    SoLoudController().soLoudFFI.addAudioDataStream(
+                          currentSound!.soundHash.hash,
+                          message as Uint8List,
+                        );
+                  }
+                });
+              },
+              child: const Text('connect'),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: () async {
+                await SoLoud.instance.play(currentSound!);
+              },
+              child: const Text('paly'),
+            ),
+          ],
         ),
       ),
     );
   }
 }
+

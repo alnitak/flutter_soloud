@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <chrono>
 #include "soloud.h"
+#include "../enums.h"
 #include "buffer.h"
 
 struct stb_vorbis;
@@ -56,20 +57,12 @@ namespace SoLoud
     BUFFERSTREAM_PCM = 4
   };
 
-  enum PCM_TYPE
-  {
-    PCM_FLOAT32 = 0,
-    PCM_S8 = 1,
-    PCM_S16LE = 2,
-    PCM_S32LE = 3,
-  };
-
   struct PCMformat
   {
-    int sampleRate;
-    int channels;
-    int bytesPerSample;
-    PCM_TYPE dataType;
+    unsigned int sampleRate;
+    unsigned int channels;
+    unsigned int bytesPerSample;
+    BufferPcmType dataType;
   };
 
   class BufferStream : public AudioSource
@@ -93,9 +86,10 @@ namespace SoLoud
     result loadMem(
         const unsigned char *aData,
         unsigned int aDataLen,
+		    unsigned int maxBufferSize = 1024 * 1024 * 50, // 50 Mbytes
         bool aCopy = false,
         bool aTakeOwnership = true,
-        PCMformat format = {44100, 2, 4, PCM_FLOAT32});
+        PCMformat format = {44100, 2, 2, PCM_S16LE});
     void addData(const void *data, unsigned int numSamples);
     virtual AudioSourceInstance *createInstance();
     time getLength();

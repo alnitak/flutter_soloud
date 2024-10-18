@@ -80,7 +80,9 @@ typedef enum SoundType
     // using Soloud::wavStream
     TYPE_WAVSTREAM,
     // this sound is a waveform
-    TYPE_SYNTH
+    TYPE_SYNTH,
+    // this sound is a streaming buffer
+    TYPE_BUFFER_STREAM,
 } SoundType_t;
 
 typedef enum FilterType
@@ -96,5 +98,13 @@ typedef enum FilterType
     FreeverbFilter,
     PitchShiftFilter
 } FilterType_t;
+
+typedef enum BufferPcmType
+{
+    PCM_FLOAT32 = 0,
+    PCM_S8 = 1,
+    PCM_S16LE = 2,
+    PCM_S32LE = 3,
+} BufferPcmType_t;
 
 #endif // ENUMS_H

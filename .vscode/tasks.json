@@ -9,7 +9,7 @@
         },
         {
             "label": "compile linux debug",
-            "command": "cd ${workspaceFolder}/example; flutter build linux -t lib/output_device/output_device.dart --debug",
+            "command": "cd ${workspaceFolder}/example; flutter build linux -t lib/websocket/websocket.dart --debug",
             "type": "shell"
         },
         {
