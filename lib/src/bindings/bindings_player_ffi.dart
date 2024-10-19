@@ -380,7 +380,6 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     int maxBufferSize,
     int sampleRate,
     int channels,
-    int bytesPerSample,
     int pcmFormat,
   ) {
     final ffi.Pointer<Utf8> cString = uniqueName.toNativeUtf8();
@@ -398,7 +397,6 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       maxBufferSize,
       sampleRate,
       channels,
-      bytesPerSample,
       pcmFormat,
     );
     final soundHash = SoundHash(hash.value);
@@ -419,11 +417,10 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
               ffi.UnsignedLong,
               ffi.UnsignedInt,
               ffi.UnsignedInt,
-              ffi.UnsignedInt,
               ffi.Int)>>('loadAudioStream');
   late final _loadAudioStream = _loadAudioStreamPtr.asFunction<
       int Function(ffi.Pointer<Utf8>, ffi.Pointer<ffi.UnsignedInt>,
-          ffi.Pointer<ffi.Uint8>, int, int, int, int, int, int)>();
+          ffi.Pointer<ffi.Uint8>, int, int, int, int, int)>();
 
   @override
   void addAudioDataStream(

@@ -45,7 +45,6 @@ void _loadFile(Map<String, dynamic> args) {
         args['maxBufferSize'] as int,
         args['sampleRate'] as int,
         args['channels'] as int,
-        args['bytesPerSample'] as int,
         args['pcmFormat'] as int,
       );
 }
@@ -634,7 +633,6 @@ interface class SoLoud {
     int maxBufferSize,
     int sampleRate,
     int channels,
-    int bytesPerSample,
     int pcmFormat,
   ) async {
     if (!isInitialized) {
@@ -652,7 +650,6 @@ interface class SoLoud {
       'maxBufferSize': maxBufferSize,
       'sampleRate': sampleRate,
       'channels': channels,
-      'bytesPerSample': bytesPerSample,
       'pcmFormat': pcmFormat,
     });
 

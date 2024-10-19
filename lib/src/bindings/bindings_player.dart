@@ -130,7 +130,6 @@ abstract class FlutterSoLoud {
     int maxBufferSize,
     int sampleRate,
     int channels,
-    int bytesPerSample,
     int pcmFormat,
   );
   @mustBeOverridden

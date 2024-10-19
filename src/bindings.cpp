@@ -363,13 +363,29 @@ extern "C"
         unsigned long maxBufferSize,
         unsigned int sampleRate,
         unsigned int channels,
-        unsigned int bytesPerSample,
         int pcmFormat)
     {
         std::lock_guard<std::mutex> guard_init(init_deinit_mutex);
         std::lock_guard<std::mutex> guard_load(loadMutex);
         if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
+            
+        unsigned int bytesPerSample;
+        switch (pcmFormat)
+        {
+        case 0:
+            bytesPerSample = 4;
+            break;
+        case 1:
+            bytesPerSample = 1;
+            break;
+        case 2:
+            bytesPerSample = 2;
+            break;
+        case 3:
+            bytesPerSample = 4;
+            break;
+        }
         SoLoud::PCMformat dataType = {sampleRate, channels, bytesPerSample, (BufferPcmType)pcmFormat};
         return (PlayerErrors)player.get()->loadAudioStream(
             std::string(uniqueName),
