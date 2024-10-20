@@ -564,19 +564,31 @@ namespace SoLoud
 		}
 
 		mBaseSamplerate = (float)pcmFormat.sampleRate;
-		// TODO verify this: I suppose fp->length() is in bytes
-		unsigned int size = fp->length();
 		mFiletype = BUFFERSTREAM_PCM;
 
-		// add to buffer
-		addData(fp->getMemPtr(), size);
+		// add PCM data to the buffer
+		unsigned int size = fp->length();
+		switch (mPCMformat.dataType)
+		{
+		case 0:
+			mBuffer.addData((float *)fp->getMemPtr(), size / mPCMformat.bytesPerSample);
+			break;
+		case 1:
+			mBuffer.addData((int8_t *)fp->getMemPtr(), size / mPCMformat.bytesPerSample);
+			break;
+		case 2:
+			mBuffer.addData((int16_t *)fp->getMemPtr(), size / mPCMformat.bytesPerSample);
+			break;
+		case 3:
+			mBuffer.addData((int32_t *)fp->getMemPtr(), size / mPCMformat.bytesPerSample);
+			break;
+		}
+		mSampleCount += size / mPCMformat.bytesPerSample / mChannels;
 
 		return SO_NO_ERROR;
 	}
 
-	result BufferStream::loadMem(
-		const unsigned char *aData,
-		unsigned int aDataLen,
+	void BufferStream::setBufferStream(
 		unsigned int maxBufferSize,
 		bool aCopy,
 		bool aTakeOwnership,
@@ -586,17 +598,25 @@ namespace SoLoud
 		mStreamFile = 0;
 		mMemFile = 0;
 		mSampleCount = 0;
+		mCopy = aCopy;
+		mTakeOwnership = aTakeOwnership;
 		mPCMformat.sampleRate = pcmFormat.sampleRate;
 		mPCMformat.channels = pcmFormat.channels;
 		mPCMformat.bytesPerSample = pcmFormat.bytesPerSample;
 		mPCMformat.dataType = pcmFormat.dataType;
+		mBuffer.clear();
 		mBuffer.setSizeInBytes(maxBufferSize);
+	}
 
+	result BufferStream::loadFirstChunk(
+		const unsigned char *aData,
+		unsigned int aDataLen)
+	{
 		if (aData == NULL || aDataLen == 0)
 			return INVALID_PARAMETER;
 
 		MemoryFile *mf = new MemoryFile();
-		int res = mf->openMem(aData, aDataLen, aCopy, aTakeOwnership);
+		int res = mf->openMem(aData, aDataLen, mCopy, mTakeOwnership);
 		if (res != SO_NO_ERROR)
 		{
 			delete mf;
@@ -616,25 +636,32 @@ namespace SoLoud
 		return 0;
 	}
 
-	void BufferStream::addData(const void *data, unsigned int aDataLen)
+	result BufferStream::addData(const void *data, unsigned int aDataLen)
 	{
-		// add to buffer
-		switch (mPCMformat.dataType)
+		if (mBuffer.getCurrentBufferSize() == 0) 
 		{
-		case 0:
-			mBuffer.addData((float *)data, aDataLen / mPCMformat.bytesPerSample);
-			break;
-		case 1:
-			mBuffer.addData((int8_t *)data, aDataLen / mPCMformat.bytesPerSample);
-			break;
-		case 2:
-			mBuffer.addData((int16_t *)data, aDataLen / mPCMformat.bytesPerSample);
-			break;
-		case 3:
-			mBuffer.addData((int32_t *)data, aDataLen / mPCMformat.bytesPerSample);
-			break;
+			return loadFirstChunk((const unsigned char *)data, aDataLen);
 		}
-		mSampleCount += aDataLen / mPCMformat.bytesPerSample / mChannels;
+		else if (mFiletype == BUFFERSTREAM_PCM){
+			// add PCM data to the buffer
+			switch (mPCMformat.dataType)
+			{
+			case 0:
+				mBuffer.addData((float *)data, aDataLen / mPCMformat.bytesPerSample);
+				break;
+			case 1:
+				mBuffer.addData((int8_t *)data, aDataLen / mPCMformat.bytesPerSample);
+				break;
+			case 2:
+				mBuffer.addData((int16_t *)data, aDataLen / mPCMformat.bytesPerSample);
+				break;
+			case 3:
+				mBuffer.addData((int32_t *)data, aDataLen / mPCMformat.bytesPerSample);
+				break;
+			}
+			mSampleCount += aDataLen / mPCMformat.bytesPerSample / mChannels;
+		}
+		return SO_NO_ERROR;
 	}
 
 	result BufferStream::parse(File *aFile)

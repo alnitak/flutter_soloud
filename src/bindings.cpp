@@ -351,15 +351,12 @@ extern "C"
 
     /// Set up an audio stream.
     ///
-    /// [data] the first audio data that will be used to identify the stream.
-    /// [aDataLen] the length of [data].
     /// [maxBufferSize] the max buffer size in bytes.
-    /// [dataType] in case the audio data is PCM, here are the parameters to set it up.
-    FFI_PLUGIN_EXPORT enum PlayerErrors loadAudioStream(
+    /// [sampleRate], [channels], [pcmFormat] should be set in the case the audio data is PCM.
+    /// [pcmFormat]: 0 = f32le, 1 = s8, 2 = s16le, 3 = s32le
+    FFI_PLUGIN_EXPORT enum PlayerErrors setBufferStream(
         char *uniqueName,
         unsigned int *hash,
-        const unsigned char *data,
-        unsigned int aDataLen,
         unsigned long maxBufferSize,
         unsigned int sampleRate,
         unsigned int channels,
@@ -387,15 +384,14 @@ extern "C"
             break;
         }
         SoLoud::PCMformat dataType = {sampleRate, channels, bytesPerSample, (BufferPcmType)pcmFormat};
-        return (PlayerErrors)player.get()->loadAudioStream(
+        PlayerErrors e = (PlayerErrors)player.get()->setBufferStream(
             std::string(uniqueName),
             *hash,
-            data,
-            aDataLen,
             maxBufferSize,
             dataType);
+        return e;
     }
-    
+
     /// Add a chunk of audio data to the buffer stream.
     ///
     /// [hash] the hash of the sound.

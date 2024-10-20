@@ -374,9 +374,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
           ffi.Pointer<ffi.UnsignedInt>)>();
 
   @override
-  ({PlayerErrors error, SoundHash soundHash}) loadAudioStream(
+  ({PlayerErrors error, SoundHash soundHash}) setBufferStream(
     String uniqueName,
-    Uint8List audioChunk,
     int maxBufferSize,
     int sampleRate,
     int channels,
@@ -385,15 +384,9 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     final ffi.Pointer<Utf8> cString = uniqueName.toNativeUtf8();
     final ffi.Pointer<ffi.UnsignedInt> hash =
         calloc(ffi.sizeOf<ffi.UnsignedInt>());
-    final ffi.Pointer<ffi.Uint8> audioChunkPtr = calloc(audioChunk.length);
-    for (var i = 0; i < audioChunk.length; i++) {
-      audioChunkPtr[i] = audioChunk[i];
-    }
-    final e = _loadAudioStream(
+    final e = _setBufferStream(
       cString,
       hash,
-      audioChunkPtr,
-      audioChunk.length,
       maxBufferSize,
       sampleRate,
       channels,
@@ -407,23 +400,21 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     return ret;
   }
 
-  late final _loadAudioStreamPtr = _lookup<
+  late final _setBufferStreamPtr = _lookup<
       ffi.NativeFunction<
           ffi.UnsignedInt Function(
               ffi.Pointer<Utf8>,
               ffi.Pointer<ffi.UnsignedInt>,
-              ffi.Pointer<ffi.Uint8>,
-              ffi.UnsignedInt,
               ffi.UnsignedLong,
               ffi.UnsignedInt,
               ffi.UnsignedInt,
-              ffi.Int)>>('loadAudioStream');
-  late final _loadAudioStream = _loadAudioStreamPtr.asFunction<
-      int Function(ffi.Pointer<Utf8>, ffi.Pointer<ffi.UnsignedInt>,
-          ffi.Pointer<ffi.Uint8>, int, int, int, int, int)>();
+              ffi.Int)>>('setBufferStream');
+  late final _setBufferStream = _setBufferStreamPtr.asFunction<
+      int Function(ffi.Pointer<Utf8>, ffi.Pointer<ffi.UnsignedInt>, int, int,
+          int, int)>();
 
   @override
-  void addAudioDataStream(
+  PlayerErrors addAudioDataStream(
     int hash,
     Uint8List audioChunk,
   ) {
@@ -431,19 +422,23 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     for (var i = 0; i < audioChunk.length; i++) {
       audioChunkPtr[i] = audioChunk[i];
     }
-    return _addAudioDataStream(
+    final e = _addAudioDataStream(
       hash,
       audioChunkPtr,
       audioChunk.length,
     );
+    return PlayerErrors.values[e];
   }
 
   late final _addAudioDataStreamPtr = _lookup<
       ffi.NativeFunction<
-          ffi.Void Function(ffi.UnsignedInt, ffi.Pointer<ffi.Uint8>,
+          ffi.Int32 Function(ffi.UnsignedInt, ffi.Pointer<ffi.Uint8>,
               ffi.UnsignedInt)>>('addAudioDataStream');
   late final _addAudioDataStream = _addAudioDataStreamPtr
-      .asFunction<void Function(int, ffi.Pointer<ffi.Uint8>, int)>();
+      .asFunction<int Function(int, ffi.Pointer<ffi.Uint8>, int)>();
+
+
+
 
   @override
   ({PlayerErrors error, SoundHash soundHash}) loadWaveform(

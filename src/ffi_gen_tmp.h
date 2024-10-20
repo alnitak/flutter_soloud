@@ -19,18 +19,11 @@
 
 //--------------------- copy here the new functions to generate
 
-FFI_PLUGIN_EXPORT enum PlayerErrors loadAudioStream(
+FFI_PLUGIN_EXPORT enum PlayerErrors setBufferStream(
         char *uniqueName,
         unsigned int *hash,
-        const unsigned char *data,
-        unsigned int aDataLen,
         unsigned long maxBufferSize,
         unsigned int sampleRate,
         unsigned int channels,
-        unsigned int bytesPerSample,
         int pcmFormat);
 
-FFI_PLUGIN_EXPORT void addAudioDataStream(
-    unsigned int hash,
-    const unsigned char *data,
-    unsigned int aDataLen);

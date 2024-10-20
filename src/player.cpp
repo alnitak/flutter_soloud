@@ -298,13 +298,11 @@ PlayerErrors Player::loadMem(
     return (PlayerErrors)result;
 }
 
-PlayerErrors Player::loadAudioStream(
+PlayerErrors Player::setBufferStream(
     const std::string &uniqueName,
     unsigned int &hash,
-    const unsigned char *data,
-    unsigned int aDataLen,
     unsigned long maxBufferSize,
-    SoLoud::PCMformat dataType)
+    SoLoud::PCMformat pcmFormat)
 {
     if (!mInited)
         return backendNotInited;
@@ -325,23 +323,19 @@ PlayerErrors Player::loadAudioStream(
     newSound.get()->completeFileName = std::string(uniqueName);
     hash = newHash;
     newSound.get()->soundHash = newHash;
-    SoLoud::result result;
 
     newSound.get()->sound = std::make_unique<SoLoud::BufferStream>();
     newSound.get()->soundType = TYPE_BUFFER_STREAM;
-    result = static_cast<SoLoud::BufferStream *>(newSound.get()->sound.get())->loadMem(
-        data, aDataLen, maxBufferSize, false, true, dataType);
+    static_cast<SoLoud::BufferStream *>(newSound.get()->sound.get())->setBufferStream(
+        maxBufferSize, false, true, pcmFormat);
 
-    if (result == SoLoud::SO_NO_ERROR)
-    {
-        newSound.get()->filters = std::make_unique<Filters>(&soloud, newSound.get());
-        sounds.push_back(std::move(newSound));
-    }
+    newSound.get()->filters = std::make_unique<Filters>(&soloud, newSound.get());
+    sounds.push_back(std::move(newSound));
 
-    return (PlayerErrors)result;
+    return noError;
 }
 
-void Player::addAudioDataStream(
+PlayerErrors Player::addAudioDataStream(
     unsigned int hash,
     const unsigned char *data,
     unsigned int aDataLen)
@@ -349,9 +343,9 @@ void Player::addAudioDataStream(
     auto const s = findByHash(hash);
 
     if (s == nullptr || s->soundType != TYPE_BUFFER_STREAM)
-        return;
+        return soundHashNotFound;
 
-    static_cast<SoLoud::BufferStream *>(s->sound.get())->addData(data, aDataLen);
+    return (PlayerErrors)static_cast<SoLoud::BufferStream *>(s->sound.get())->addData(data, aDataLen);
 }
 
 PlayerErrors Player::loadWaveform(

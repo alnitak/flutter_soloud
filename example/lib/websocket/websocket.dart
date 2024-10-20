@@ -53,7 +53,7 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
   final websocketUri = 'ws://HAL:8080/';
   final sampleRate = [11025, 22050, 44100, 48000];
   final channels = [1, 2];
-  final format = ['float32', 's8', 's16le', 's32le'];
+  final format = ['f32le', 's8', 's16le', 's32le'];
   int codecId = 4;
   int srId = 2;
   int chId = 0;
@@ -175,12 +175,8 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
                 await channel?.sink.close();
                 await SoLoud.instance.disposeAllSources();
 
-                final b =
-                    Uint8List.fromList(List.generate(8, (index) => index));
-
-                currentSound = await SoLoud.instance.loadAudioStream(
+                currentSound = await SoLoud.instance.setBufferStream(
                   'uniqueName',
-                  b,
                   1024 * 1024 * 50,
                   sampleRate[srId],
                   channels[chId],
@@ -205,7 +201,7 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
 
                 channel?.stream.listen(
                   (message) async {
-                    SoLoudController().soLoudFFI.addAudioDataStream(
+                    SoLoud.instance.addAudioDataStream(
                           currentSound!.soundHash.hash,
                           message as Uint8List,
                         );

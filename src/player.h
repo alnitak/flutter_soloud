@@ -104,23 +104,19 @@ public:
     /// @brief Set up an audio stream.
     /// @param uniqueName the unique name of the sound. Used only to have the [hash].
     /// @param hash return the hash of the sound.
-    /// @param data the first audio data that will be used to identify the stream.
-    /// @param aDataLen the length of [data].
     /// @param maxBufferSize the max buffer size in bytes.
     /// @param dataType in case the audio data is PCM, here are the parameters to set it up.
-    PlayerErrors loadAudioStream(
+    PlayerErrors setBufferStream(
         const std::string &uniqueName,
         unsigned int &hash,
-        const unsigned char *data,
-        unsigned int aDataLen,
         unsigned long maxBufferSize,
-        SoLoud::PCMformat dataType = {44100, 2, 4, PCM_FLOAT32});
+        SoLoud::PCMformat pcmFormat = {44100, 2, 4, PCM_FLOAT32});
     
     /// @brief Add an audio data stream.
     /// @param hash return the hash of the sound.
     /// @param data the audio data to add.
     /// @param aDataLen the length of [data].
-    void addAudioDataStream(
+    PlayerErrors addAudioDataStream(
         unsigned int hash,
         const unsigned char *data,
         unsigned int aDataLen);

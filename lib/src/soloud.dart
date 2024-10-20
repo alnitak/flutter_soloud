@@ -37,11 +37,10 @@ void _loadFile(Map<String, dynamic> args) {
 }
 
 @pragma('vm:entry-point')
-({PlayerErrors error, SoundHash soundHash}) _loadAudioStream(
+({PlayerErrors error, SoundHash soundHash}) _setBufferStream(
     Map<String, dynamic> args) {
-  return SoLoudController().soLoudFFI.loadAudioStream(
+  return SoLoudController().soLoudFFI.setBufferStream(
         args['path'] as String,
-        args['audioChunk'] as Uint8List,
         args['maxBufferSize'] as int,
         args['sampleRate'] as int,
         args['channels'] as int,
@@ -627,9 +626,9 @@ interface class SoLoud {
       loadedFileCompleters.removeWhere((key, __) => key == path);
     });
   }
-  Future<AudioSource> loadAudioStream(
+
+  Future<AudioSource> setBufferStream(
     String path,
-    Uint8List firstChunk,
     int maxBufferSize,
     int sampleRate,
     int channels,
@@ -644,9 +643,8 @@ interface class SoLoud {
       path: completer,
     });
 
-    final ret = await compute(_loadAudioStream, {
+    final ret = await compute(_setBufferStream, {
       'path': path,
-      'audioChunk': firstChunk,
       'maxBufferSize': maxBufferSize,
       'sampleRate': sampleRate,
       'channels': channels,
@@ -665,6 +663,16 @@ interface class SoLoud {
     return completer.future.whenComplete(() {
       loadedFileCompleters.removeWhere((key, __) => key == path);
     });
+  }
+
+  PlayerErrors addAudioDataStream(
+    int hash,
+    Uint8List audioChunk,
+  ) {
+    return SoLoudController().soLoudFFI.addAudioDataStream(
+          hash,
+          audioChunk,
+        );
   }
 
   /// Load a new sound to be played once or multiple times later, from

@@ -123,17 +123,27 @@ abstract class FlutterSoLoud {
     LoadMode mode,
   );
 
+  /// Set up an audio stream.
+  ///
+  /// [maxBufferSize] the max buffer size in bytes.
+  /// [sampleRate], [channels], [pcmFormat] should be set in the case the
+  /// audio data is PCM format.
+  /// [pcmFormat]: 0 = f32le, 1 = s8, 2 = s16le, 3 = s32le
   @mustBeOverridden
-  ({PlayerErrors error, SoundHash soundHash}) loadAudioStream(
+  ({PlayerErrors error, SoundHash soundHash}) setBufferStream(
     String uniqueName,
-    Uint8List audioChunk,
     int maxBufferSize,
     int sampleRate,
     int channels,
     int pcmFormat,
   );
+
+  /// Add a chunk of audio data to the buffer stream.
+  ///
+  /// [hash] the hash of the sound.
+  /// [audioChunk] the audio data to add.
   @mustBeOverridden
-  void addAudioDataStream(
+  PlayerErrors addAudioDataStream(
     int hash,
     Uint8List audioChunk,
   );
