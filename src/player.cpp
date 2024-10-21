@@ -599,9 +599,11 @@ double Player::getLength(unsigned int soundHash)
         return 0.0;
     if (s->soundType == TYPE_WAV)
         return static_cast<SoLoud::Wav *>(s->sound.get())->getLength();
-
-    // if (s->soundType == TYPE_WAVSTREAM)
-    return static_cast<SoLoud::WavStream *>(s->sound.get())->getLength();
+    if (s->soundType == TYPE_BUFFER_STREAM)
+        return static_cast<SoLoud::BufferStream *>(s->sound.get())->getLength();
+    if (s->soundType == TYPE_WAVSTREAM)
+        return static_cast<SoLoud::WavStream *>(s->sound.get())->getLength();
+    return 0.0;
 }
 
 // time in seconds
@@ -693,9 +695,17 @@ int Player::countAudioSource(unsigned int soundHash)
         return soloud.countAudioSource(*as);
     }
 
-    // if (s->soundType == TYPE_WAVSTREAM)
-    SoLoud::AudioSource *as = static_cast<SoLoud::WavStream *>(s->sound.get());
-    return soloud.countAudioSource(*as);
+    if (s->soundType == TYPE_WAVSTREAM)
+    {
+        SoLoud::AudioSource *as = static_cast<SoLoud::WavStream *>(s->sound.get());
+        return soloud.countAudioSource(*as);
+    }
+
+    if (s->soundType == TYPE_BUFFER_STREAM)
+    {
+        SoLoud::AudioSource *as = static_cast<SoLoud::BufferStream *>(s->sound.get());
+        return soloud.countAudioSource(*as);
+    }
 }
 
 unsigned int Player::getVoiceCount()

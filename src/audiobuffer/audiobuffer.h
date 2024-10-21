@@ -80,9 +80,7 @@ namespace SoLoud
   public:
     enum Endianness mEndianness;
     unsigned int mMaxBufferSize;
-    int mFiletype;
     File *mMemFile;
-    File *mStreamFile;
     unsigned int mSampleCount;
     PCMformat mPCMformat;
     Buffer mBuffer;
@@ -100,9 +98,6 @@ namespace SoLoud
     result addData(const void *aData, unsigned int numSamples);
     virtual AudioSourceInstance *createInstance();
     time getLength();
-
-  public:
-    result parse(File *aFile);
   };
 };
 

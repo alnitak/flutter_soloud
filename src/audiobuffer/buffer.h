@@ -102,14 +102,6 @@ public:
         buffer.insert(buffer.end(), data8, data8 + numSamples*sizeof(float)); // Append directly
     }
 
-    // Overload for char data, directly adding its bytes to the buffer
-    void addData(const unsigned char* data, size_t numSamples) {
-        // No normalization needed for char
-        ensureCapacity(numSamples * sizeof(float));           // Ensure space in buffer
-        const unsigned char* data8 = reinterpret_cast<const unsigned char*>(data);  // Convert float array to int8_t array
-        buffer.insert(buffer.end(), data8, data8 + numSamples*sizeof(unsigned char)); // Append directly
-    }
-
     // Function to print the buffer content (for debugging)
     void printBuffer(int numSamples) const
     {
