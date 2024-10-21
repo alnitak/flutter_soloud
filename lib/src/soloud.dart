@@ -42,7 +42,6 @@ void _loadFile(Map<String, dynamic> args) {
   return SoLoudController().soLoudFFI.setBufferStream(
         args['path'] as String,
         args['maxBufferSize'] as int,
-        args['isPCM'] as bool,
         args['sampleRate'] as int,
         args['channels'] as int,
         args['pcmFormat'] as int,
@@ -631,7 +630,6 @@ interface class SoLoud {
   Future<AudioSource> setBufferStream(
     String path,
     int maxBufferSize,
-    bool isPcm,
     int sampleRate,
     int channels,
     BufferPcmType pcmFormat,
@@ -648,7 +646,6 @@ interface class SoLoud {
     final ret = await compute(_setBufferStream, {
       'path': path,
       'maxBufferSize': maxBufferSize,
-      'isPCM': isPcm,
       'sampleRate': sampleRate,
       'channels': channels,
       'pcmFormat': pcmFormat.value,

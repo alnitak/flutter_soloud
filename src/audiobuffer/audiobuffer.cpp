@@ -5,13 +5,6 @@
 #include <mutex>
 
 #include "soloud.h"
-#include "../soloud/src/audiosource/wav/dr_flac.h"
-#include "../soloud/src/audiosource/wav/dr_mp3.h"
-#include "../soloud/src/audiosource/wav/dr_wav.h"
-#include "soloud_wavstream.h"
-#include "soloud_file.h"
-#include "../soloud/src/audiosource/wav/stb_vorbis.h"
-
 #include "audiobuffer.h"
 
 namespace SoLoud
@@ -19,22 +12,8 @@ namespace SoLoud
 
 	BufferStreamInstance::BufferStreamInstance(BufferStream *aParent)
 	{
-		mOggFrameSize = 0;
 		mParent = aParent;
 		mOffset = 0;
-		mCodec.mOgg = 0;
-		mCodec.mFlac = 0;
-		mFile = 0;
-		if (aParent->mMemFile)
-		{
-			MemoryFile *mf = new MemoryFile();
-			mFile = mf;
-			mf->openMem(aParent->mMemFile->getMemPtr(), aParent->mMemFile->length(), false, false);
-		}
-		else
-		{
-			return;
-		}
 	}
 
 	BufferStreamInstance::~BufferStreamInstance()
@@ -43,20 +22,22 @@ namespace SoLoud
 		{
 			mParent->mBuffer.clear();
 		}
-		delete mFile;
 	}
 
 	unsigned int BufferStreamInstance::getAudio(float *aBuffer, unsigned int aSamplesToRead, unsigned int aBufferSize)
 	{
-		unsigned int offset = 0;
-		float tmp[512 * MAX_CHANNELS];
-		if (mFile == NULL)
+		if (mParent->mBuffer.getCurrentBufferSize() == 0)
 			return 0;
 		unsigned int bufferSize = mParent->mBuffer.getCurrentBufferSize() / 4;
 		float* buffer = reinterpret_cast<float*>(mParent->mBuffer.buffer.data());
 		int samplesToRead = mOffset + aSamplesToRead > bufferSize ? bufferSize - mOffset : aSamplesToRead;
 		if (samplesToRead <= 0)
 			return 0;
+
+		if (samplesToRead != aSamplesToRead)
+		{ 
+			memset(aBuffer, 0, sizeof(float) * aSamplesToRead);
+		}
 
 		if (mChannels == 1)
 		{
@@ -80,7 +61,6 @@ namespace SoLoud
 
 		mOffset += samplesToRead * mChannels;
 		return samplesToRead;
-		return aSamplesToRead;
 	}
 
 	result BufferStreamInstance::seek(double aSeconds, float *mScratch, unsigned int mScratchSize)
@@ -113,79 +93,30 @@ namespace SoLoud
 	BufferStream::BufferStream()
 	{
 		mSampleCount = 0;
-		mMemFile = 0;
 	}
 
 	BufferStream::~BufferStream()
 	{
 		stop();
-		delete mMemFile;
-	}
-
-	void BufferStream::loadpcm(File *fp, const PCMformat pcmFormat)
-	{
-		fp->seek(0);
-
-		mChannels = pcmFormat.channels;
-		if (mChannels > MAX_CHANNELS)
-		{
-			mChannels = MAX_CHANNELS;
-		}
-
-		mBaseSamplerate = (float)pcmFormat.sampleRate;
 	}
 
 	void BufferStream::setBufferStream(
 		unsigned int maxBufferSize,
-		bool aCopy,
-		bool aTakeOwnership,
-        bool isPCM,
 		PCMformat pcmFormat)
 	{
-		delete mMemFile;
-		mMemFile = 0;
 		mSampleCount = 0;
 		mEndianness = Endianness::BUFFER_LITTLE_ENDIAN;
-		mCopy = aCopy;
-		mTakeOwnership = aTakeOwnership;
 		mPCMformat.sampleRate = pcmFormat.sampleRate;
 		mPCMformat.channels = pcmFormat.channels;
 		mPCMformat.bytesPerSample = pcmFormat.bytesPerSample;
 		mPCMformat.dataType = pcmFormat.dataType;
 		mBuffer.clear();
 		mBuffer.setSizeInBytes(maxBufferSize);
-	}
-
-	result BufferStream::loadFirstChunk()
-	{
-		MemoryFile *mf = new MemoryFile();
-		int res = mf->openMem((const unsigned char *)mBuffer.buffer.data(), mBuffer.getCurrentBufferSizeInBytes(), mCopy, mTakeOwnership);
-		if (res != SO_NO_ERROR)
-		{
-			delete mf;
-			return res;
-		}
-
-		loadpcm(mf, mPCMformat);
-
-		mMemFile = mf;
-
-		return 0;
+		mChannels = pcmFormat.channels;
+		mBaseSamplerate = (float)pcmFormat.sampleRate;
 	}
 
 	result BufferStream::addData(const void *aData, unsigned int aDataLen)
-	{
-		addToBuffer((const unsigned char *)aData, aDataLen);
-		if (mMemFile == 0 && mBuffer.getCurrentBufferSizeInBytes() > 100000) 
-		{
-			return loadFirstChunk();
-		}
-		return SO_NO_ERROR;
-	}
-
-	void BufferStream::addToBuffer(
-        const unsigned char *aData,
-		unsigned int aDataLen)
 	{
 		// add PCM data to the buffer
 		switch (mPCMformat.dataType)
@@ -204,6 +135,7 @@ namespace SoLoud
 			break;
 		}
 		mSampleCount += aDataLen / mPCMformat.bytesPerSample / mChannels;
+		return SO_NO_ERROR;
 	}
 
 	AudioSourceInstance *BufferStream::createInstance()
