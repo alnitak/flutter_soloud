@@ -2,7 +2,6 @@
 
 import 'dart:async';
 import 'dart:developer' as dev;
-import 'dart:ffi';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -51,12 +50,10 @@ class HelloFlutterSoLoud extends StatefulWidget {
 
 class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
   final file = File('/home/deimos/receivedPCM.pcm');
-  final codec = ['mp3', 'flac', 'ogg', 'wav', 'pcm'];
   final websocketUri = 'ws://HAL:8080/';
   final sampleRate = [11025, 22050, 44100, 48000];
   final channels = [1, 2];
   final format = ['f32le', 's8', 's16le', 's32le'];
-  int codecId = 4;
   int srId = 2;
   int chId = 0;
   int fmtId = 0;
@@ -64,6 +61,7 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
   WebSocket? webSocket;
   WebSocketChannel? channel;
   AudioSource? currentSound;
+  SoundHandle? handle;
   int numberOfChunks = 0;
   int byteSize = 0;
 
@@ -92,20 +90,20 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                /// CODEC
+                /// SAMPLERATE
                 Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    for (var i = 0; i < codec.length; i++)
+                    for (var i = 0; i < sampleRate.length; i++)
                       SizedBox(
                         width: 160,
                         child: RadioListTile<int>(
-                          title: Text(codec[i]),
+                          title: Text(sampleRate[i].toString()),
                           value: i,
-                          groupValue: codecId,
-                          onChanged: (value) {
+                          groupValue: srId,
+                          onChanged: (int? value) {
                             setState(() {
-                              codecId = value!;
+                              srId = value!;
                             });
                           },
                         ),
@@ -113,71 +111,47 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
                   ],
                 ),
 
-                /// SAMPLERATE
-                if (codec[codecId] == 'pcm')
-                  Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      for (var i = 0; i < sampleRate.length; i++)
-                        SizedBox(
-                          width: 160,
-                          child: RadioListTile<int>(
-                            title: Text(sampleRate[i].toString()),
-                            value: i,
-                            groupValue: srId,
-                            onChanged: (int? value) {
-                              setState(() {
-                                srId = value!;
-                              });
-                            },
-                          ),
-                        ),
-                    ],
-                  ),
-
                 /// CHANNELS
-                if (codec[codecId] == 'pcm')
-                  Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      for (var i = 0; i < channels.length; i++)
-                        SizedBox(
-                          width: 100,
-                          child: RadioListTile<int>(
-                            title: Text(channels[i].toString()),
-                            value: i,
-                            groupValue: chId,
-                            onChanged: (int? value) {
-                              setState(() {
-                                chId = value!;
-                              });
-                            },
-                          ),
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (var i = 0; i < channels.length; i++)
+                      SizedBox(
+                        width: 100,
+                        child: RadioListTile<int>(
+                          title: Text(channels[i].toString()),
+                          value: i,
+                          groupValue: chId,
+                          onChanged: (int? value) {
+                            setState(() {
+                              chId = value!;
+                            });
+                          },
                         ),
-                    ],
-                  ),
+                      ),
+                  ],
+                ),
 
                 /// FORMAT
-                if (codec[codecId] == 'pcm')
-                  Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      for (var i = 0; i < format.length; i++)
-                        SizedBox(
-                          width: 160,
-                          child: RadioListTile<int>(
-                            title: Text(format[i]),
-                            value: i,
-                            groupValue: fmtId,
-                            onChanged: (int? value) {
-                              setState(() {
-                                fmtId = value!;
-                              });
-                            },
-                          ),
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (var i = 0; i < format.length; i++)
+                      SizedBox(
+                        width: 160,
+                        child: RadioListTile<int>(
+                          title: Text(format[i]),
+                          value: i,
+                          groupValue: fmtId,
+                          onChanged: (int? value) {
+                            setState(() {
+                              fmtId = value!;
+                            });
+                          },
                         ),
-                    ],
-                  ),
+                      ),
+                  ],
+                ),
               ],
             ),
             OutlinedButton(
@@ -188,7 +162,6 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
                 currentSound = await SoLoud.instance.setBufferStream(
                   'uniqueName',
                   1024 * 1024 * 100, // 100 MB
-                  codec[codecId] == 'pcm',
                   sampleRate[srId],
                   channels[chId],
                   BufferPcmType.values[fmtId],
@@ -242,14 +215,14 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
             const SizedBox(height: 16),
             OutlinedButton(
               onPressed: () async {
-                final handle = await SoLoud.instance.play(currentSound!);
+                handle = await SoLoud.instance.play(currentSound!);
                 print('handle: $handle');
                 Timer.periodic(const Duration(milliseconds: 1000), (timer) {
-                  if (SoLoud.instance.getIsValidVoiceHandle(handle) == false) {
+                  if (SoLoud.instance.getIsValidVoiceHandle(handle!) == false) {
                     timer.cancel();
                   }
                   final d = SoLoud.instance.getLength(currentSound!);
-                  final pos = SoLoud.instance.getPosition(handle);
+                  final pos = SoLoud.instance.getPosition(handle!);
                   print('d: $d, pos: $pos');
                 });
               },

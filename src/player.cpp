@@ -302,7 +302,6 @@ PlayerErrors Player::setBufferStream(
     const std::string &uniqueName,
     unsigned int &hash,
     unsigned long maxBufferSize,
-    bool isPCM,
     SoLoud::PCMformat pcmFormat)
 {
     if (!mInited)
@@ -328,7 +327,7 @@ PlayerErrors Player::setBufferStream(
     newSound.get()->sound = std::make_unique<SoLoud::BufferStream>();
     newSound.get()->soundType = TYPE_BUFFER_STREAM;
     static_cast<SoLoud::BufferStream *>(newSound.get()->sound.get())->setBufferStream(
-        maxBufferSize, false, true, isPCM, pcmFormat);
+        maxBufferSize, pcmFormat);
 
     newSound.get()->filters = std::make_unique<Filters>(&soloud, newSound.get());
     sounds.push_back(std::move(newSound));
@@ -599,9 +598,11 @@ double Player::getLength(unsigned int soundHash)
         return 0.0;
     if (s->soundType == TYPE_WAV)
         return static_cast<SoLoud::Wav *>(s->sound.get())->getLength();
-
-    // if (s->soundType == TYPE_WAVSTREAM)
-    return static_cast<SoLoud::WavStream *>(s->sound.get())->getLength();
+    if (s->soundType == TYPE_BUFFER_STREAM)
+        return static_cast<SoLoud::BufferStream *>(s->sound.get())->getLength();
+    if (s->soundType == TYPE_WAVSTREAM)
+        return static_cast<SoLoud::WavStream *>(s->sound.get())->getLength();
+    return 0.0;
 }
 
 // time in seconds
@@ -693,8 +694,13 @@ int Player::countAudioSource(unsigned int soundHash)
         return soloud.countAudioSource(*as);
     }
 
-    // if (s->soundType == TYPE_WAVSTREAM)
-    SoLoud::AudioSource *as = static_cast<SoLoud::WavStream *>(s->sound.get());
+    if (s->soundType == TYPE_WAVSTREAM)
+    {
+        SoLoud::AudioSource *as = static_cast<SoLoud::WavStream *>(s->sound.get());
+        return soloud.countAudioSource(*as);
+    }
+
+    SoLoud::AudioSource *as = static_cast<SoLoud::BufferStream *>(s->sound.get());
     return soloud.countAudioSource(*as);
 }
 

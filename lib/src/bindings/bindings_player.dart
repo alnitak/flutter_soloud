@@ -128,7 +128,6 @@ abstract class FlutterSoLoud {
   /// Set up an audio stream.
   ///
   /// [maxBufferSize] the max buffer size in bytes.
-  /// [isPCM] if true, the audio data is PCM format.
   /// [sampleRate], [channels], [pcmFormat] should be set in the case the
   /// audio data is PCM format.
   /// [pcmFormat]: 0 = f32le, 1 = s8, 2 = s16le, 3 = s32le
@@ -136,7 +135,6 @@ abstract class FlutterSoLoud {
   ({PlayerErrors error, SoundHash soundHash}) setBufferStream(
     String uniqueName,
     int maxBufferSize,
-    bool isPCM,
     int sampleRate,
     int channels,
     int pcmFormat,

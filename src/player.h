@@ -111,7 +111,6 @@ public:
         const std::string &uniqueName,
         unsigned int &hash,
         unsigned long maxBufferSize,
-        bool isPCM,
         SoLoud::PCMformat pcmFormat = {44100, 2, 4, PCM_F32LE});
     
     /// @brief Add an audio data stream.
