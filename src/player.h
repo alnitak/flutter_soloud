@@ -105,12 +105,14 @@ public:
     /// @param uniqueName the unique name of the sound. Used only to have the [hash].
     /// @param hash return the hash of the sound.
     /// @param maxBufferSize the max buffer size in bytes.
+    /// @param isPCM if true, the audio data is PCM.
     /// @param dataType in case the audio data is PCM, here are the parameters to set it up.
     PlayerErrors setBufferStream(
         const std::string &uniqueName,
         unsigned int &hash,
         unsigned long maxBufferSize,
-        SoLoud::PCMformat pcmFormat = {44100, 2, 4, PCM_FLOAT32});
+        bool isPCM,
+        SoLoud::PCMformat pcmFormat = {44100, 2, 4, PCM_F32LE});
     
     /// @brief Add an audio data stream.
     /// @param hash return the hash of the sound.

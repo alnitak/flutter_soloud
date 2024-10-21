@@ -358,6 +358,7 @@ extern "C"
         char *uniqueName,
         unsigned int *hash,
         unsigned long maxBufferSize,
+        bool isPCM,
         unsigned int sampleRate,
         unsigned int channels,
         int pcmFormat)
@@ -388,6 +389,7 @@ extern "C"
             std::string(uniqueName),
             *hash,
             maxBufferSize,
+            isPCM,
             dataType);
         return e;
     }

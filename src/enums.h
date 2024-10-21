@@ -101,7 +101,7 @@ typedef enum FilterType
 
 typedef enum BufferPcmType
 {
-    PCM_FLOAT32 = 0,
+    PCM_F32LE = 0,
     PCM_S8 = 1,
     PCM_S16LE = 2,
     PCM_S32LE = 3,

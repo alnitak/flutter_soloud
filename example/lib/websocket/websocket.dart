@@ -2,6 +2,7 @@
 
 import 'dart:async';
 import 'dart:developer' as dev;
+import 'dart:ffi';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -49,6 +50,7 @@ class HelloFlutterSoLoud extends StatefulWidget {
 }
 
 class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
+  final file = File('/home/deimos/receivedPCM.pcm');
   final codec = ['mp3', 'flac', 'ogg', 'wav', 'pcm'];
   final websocketUri = 'ws://HAL:8080/';
   final sampleRate = [11025, 22050, 44100, 48000];
@@ -58,9 +60,12 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
   int srId = 2;
   int chId = 0;
   int fmtId = 0;
+  bool writeToFile = false;
   WebSocket? webSocket;
   WebSocketChannel? channel;
   AudioSource? currentSound;
+  int numberOfChunks = 0;
+  int byteSize = 0;
 
   @override
   void dispose() {
@@ -72,6 +77,12 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
   Widget build(BuildContext context) {
     if (!SoLoud.instance.isInitialized) return const SizedBox.shrink();
 
+    if (writeToFile && file.existsSync()) {
+      file
+        ..deleteSync()
+        ..createSync();
+    }
+
     return Scaffold(
       body: Center(
         child: Column(
@@ -81,7 +92,6 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-
                 /// CODEC
                 Column(
                   mainAxisSize: MainAxisSize.min,
@@ -105,69 +115,69 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
 
                 /// SAMPLERATE
                 if (codec[codecId] == 'pcm')
-                Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    for (var i = 0; i < sampleRate.length; i++)
-                      SizedBox(
-                        width: 160,
-                        child: RadioListTile<int>(
-                          title: Text(sampleRate[i].toString()),
-                          value: i,
-                          groupValue: srId,
-                          onChanged: (int? value) {
-                            setState(() {
-                              srId = value!;
-                            });
-                          },
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (var i = 0; i < sampleRate.length; i++)
+                        SizedBox(
+                          width: 160,
+                          child: RadioListTile<int>(
+                            title: Text(sampleRate[i].toString()),
+                            value: i,
+                            groupValue: srId,
+                            onChanged: (int? value) {
+                              setState(() {
+                                srId = value!;
+                              });
+                            },
+                          ),
                         ),
-                      ),
-                  ],
-                ),
+                    ],
+                  ),
 
                 /// CHANNELS
                 if (codec[codecId] == 'pcm')
-                Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    for (var i = 0; i < channels.length; i++)
-                      SizedBox(
-                        width: 100,
-                        child: RadioListTile<int>(
-                          title: Text(channels[i].toString()),
-                          value: i,
-                          groupValue: chId,
-                          onChanged: (int? value) {
-                            setState(() {
-                              chId = value!;
-                            });
-                          },
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (var i = 0; i < channels.length; i++)
+                        SizedBox(
+                          width: 100,
+                          child: RadioListTile<int>(
+                            title: Text(channels[i].toString()),
+                            value: i,
+                            groupValue: chId,
+                            onChanged: (int? value) {
+                              setState(() {
+                                chId = value!;
+                              });
+                            },
+                          ),
                         ),
-                      ),
-                  ],
-                ),
+                    ],
+                  ),
 
                 /// FORMAT
                 if (codec[codecId] == 'pcm')
-                Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    for (var i = 0; i < format.length; i++)
-                      SizedBox(
-                        width: 160,
-                        child: RadioListTile<int>(
-                          title: Text(format[i]),
-                          value: i,
-                          groupValue: fmtId,
-                          onChanged: (int? value) {
-                            setState(() {
-                              fmtId = value!;
-                            });
-                          },
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (var i = 0; i < format.length; i++)
+                        SizedBox(
+                          width: 160,
+                          child: RadioListTile<int>(
+                            title: Text(format[i]),
+                            value: i,
+                            groupValue: fmtId,
+                            onChanged: (int? value) {
+                              setState(() {
+                                fmtId = value!;
+                              });
+                            },
+                          ),
                         ),
-                      ),
-                  ],
-                ),
+                    ],
+                  ),
               ],
             ),
             OutlinedButton(
@@ -177,10 +187,11 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
 
                 currentSound = await SoLoud.instance.setBufferStream(
                   'uniqueName',
-                  1024 * 1024 * 50,
+                  1024 * 1024 * 100, // 100 MB
+                  codec[codecId] == 'pcm',
                   sampleRate[srId],
                   channels[chId],
-                  fmtId,
+                  BufferPcmType.values[fmtId],
                 );
               },
               child: const Text('set chosen stream type'),
@@ -201,18 +212,32 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
 
                 channel?.stream.listen(
                   (message) async {
+                    numberOfChunks++;
+                    byteSize += (message as List<int>).length;
+
                     SoLoud.instance.addAudioDataStream(
-                          currentSound!.soundHash.hash,
-                          message as Uint8List,
-                        );
+                      currentSound!.soundHash.hash,
+                      Uint8List.fromList(message),
+                    );
+
+                    if (writeToFile) {
+                      file.writeAsBytesSync(
+                        message,
+                        mode: FileMode.append,
+                      );
+                      debugPrint('$numberOfChunks, $byteSize');
+                    }
                   },
                   onDone: () {
-                    debugPrint('ws channel closed');
+                    debugPrint('ws channel closed. '
+                        'numberOfChunks: $numberOfChunks  byteSize: $byteSize');
+                    numberOfChunks = 0;
+                    byteSize = 0;
                   },
                   onError: (error) {},
                 );
               },
-              child: const Text('connect to ws and receive PCM audio'),
+              child: const Text('connect to ws and receive audio data'),
             ),
             const SizedBox(height: 16),
             OutlinedButton(

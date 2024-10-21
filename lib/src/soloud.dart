@@ -42,6 +42,7 @@ void _loadFile(Map<String, dynamic> args) {
   return SoLoudController().soLoudFFI.setBufferStream(
         args['path'] as String,
         args['maxBufferSize'] as int,
+        args['isPCM'] as bool,
         args['sampleRate'] as int,
         args['channels'] as int,
         args['pcmFormat'] as int,
@@ -630,9 +631,10 @@ interface class SoLoud {
   Future<AudioSource> setBufferStream(
     String path,
     int maxBufferSize,
+    bool isPcm,
     int sampleRate,
     int channels,
-    int pcmFormat,
+    BufferPcmType pcmFormat,
   ) async {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -646,9 +648,10 @@ interface class SoLoud {
     final ret = await compute(_setBufferStream, {
       'path': path,
       'maxBufferSize': maxBufferSize,
+      'isPCM': isPcm,
       'sampleRate': sampleRate,
       'channels': channels,
-      'pcmFormat': pcmFormat,
+      'pcmFormat': pcmFormat.value,
     });
 
     /// There is not a callback in cpp that is supposed to add the

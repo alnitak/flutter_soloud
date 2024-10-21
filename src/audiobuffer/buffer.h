@@ -9,53 +9,52 @@
 #include <cstdint>
 #include <algorithm>
 #include <iostream>
+#include <cstring>
+
+enum Endianness
+{
+    BUFFER_LITTLE_ENDIAN,
+    BUFFER_BIG_ENDIAN
+};
 
 class Buffer
 {
 public:
-    std::vector<float> buffer; // Buffer that stores the float data
+    std::vector<int8_t> buffer; // Buffer that stores int8_t data
 
 private:
-    size_t maxBytes;           // Maximum capacity in bytes
+    size_t maxBytes; // Maximum capacity in bytes
 
     // Helper function to calculate the size of the buffer in bytes
     size_t bufferSizeInBytes() const
     {
-        return buffer.size() * sizeof(float);
+        return buffer.size(); // Since each element is int8_t, the size is in bytes
     }
 
     // Helper function to ensure the buffer does not exceed maxBytes
-    void ensureCapacity(size_t newBytes)
-    {
+    void ensureCapacity(size_t newBytes) {
         size_t currentBytes = bufferSizeInBytes();
-        if (currentBytes + newBytes > maxBytes)
-        {
+        if (currentBytes + newBytes > maxBytes) {
             // Calculate how many bytes need to be removed
             size_t bytesToRemove = currentBytes + newBytes - maxBytes;
-            size_t samplesToRemove = bytesToRemove / sizeof(float);
-
-            // Remove the necessary amount of samples from the front of the buffer
-            if (samplesToRemove > 0)
-            {
-                buffer.erase(buffer.begin(), buffer.begin() + samplesToRemove);
+            
+            // Remove the necessary amount of bytes from the front of the buffer
+            if (bytesToRemove > 0) {
+                buffer.erase(buffer.begin(), buffer.begin() + bytesToRemove);
             }
         }
     }
 
-    // Template function to convert any audio format to float and append to buffer
-    template <typename T>
-    void appendData(const T *data, size_t numSamples, float normalizationFactor)
-    {
-        ensureCapacity(numSamples * sizeof(float)); // Ensure space in buffer
-
-        for (size_t i = 0; i < numSamples; ++i)
-        {
-            // Normalize the value and push it to the buffer
-            buffer.push_back(static_cast<float>(data[i]) / normalizationFactor);
-        }
+    // Function to convert a float (normalized between 0 and 1) and add its bytes to the buffer
+    void appendFloatAsBytes(float value) {
+        ensureCapacity(sizeof(float));  // Ensure space in buffer for 4 bytes
+        int8_t bytes[sizeof(float)];
+        std::memcpy(bytes, &value, sizeof(float));  // Copy the float into byte array
+        buffer.insert(buffer.end(), bytes, bytes + sizeof(float));  // Insert all bytes
     }
 
 public:
+    // Constructor that accepts the maxBytes parameter
     Buffer() : maxBytes(0) {}
 
     ~Buffer()
@@ -68,41 +67,55 @@ public:
         maxBytes = newBytes;
     }
 
-    // Overload for int8_t data
-    void addData(const int8_t *data, size_t numSamples)
-    {
-        constexpr float normalizationFactor = 128.0f; // Max value for int8_t
-        appendData(data, numSamples, normalizationFactor);
+    // Overload for int8_t data, converting it to normalized float and adding its bytes to the buffer
+    void addData(const int8_t* data, size_t numSamples) {
+        float d[numSamples];
+        for (size_t i = 0; i < numSamples; ++i) {
+            d[i] = data[i] / 128.0f;
+        }
+        addData(d, numSamples);
     }
 
-    // Overload for int16_t data
-    void addData(const int16_t *data, size_t numSamples)
-    {
-        constexpr float normalizationFactor = 32768.0f; // Max value for int16_t
-        appendData(data, numSamples, normalizationFactor);
+    // Overload for int16_t data, converting it to normalized float and adding its bytes to the buffer
+    void addData(const int16_t* data, size_t numSamples) {
+        float d[numSamples];
+        for (size_t i = 0; i < numSamples; ++i) {
+            d[i] = data[i] / 32768.0f;
+        }
+        addData(d, numSamples);
     }
 
-    // Overload for int32_t data
-    void addData(const int32_t *data, size_t numSamples)
-    {
-        constexpr float normalizationFactor = 2147483648.0f; // Max value for int32_t
-        appendData(data, numSamples, normalizationFactor);
+    // Overload for int32_t data, converting it to normalized float and adding its bytes to the buffer
+    void addData(const int32_t* data, size_t numSamples) {
+        float d[numSamples];
+        for (size_t i = 0; i < numSamples; ++i) {
+            d[i] = data[i] / 2147483648.0f;
+        }
+        addData(d, numSamples);
     }
 
-    // Overload for float data
-    void addData(const float *data, size_t numSamples)
-    {
-        // No normalization needed for float, it's already between -1 and 1
+    // Overload for float data, directly adding its bytes to the buffer
+    void addData(const float* data, size_t numSamples) {
+        // No normalization needed for floats
         ensureCapacity(numSamples * sizeof(float));           // Ensure space in buffer
-        buffer.insert(buffer.end(), data, data + numSamples); // Append directly
+        const int8_t* data8 = reinterpret_cast<const int8_t*>(data);  // Convert float array to int8_t array
+        buffer.insert(buffer.end(), data8, data8 + numSamples*sizeof(float)); // Append directly
+    }
+
+    // Overload for char data, directly adding its bytes to the buffer
+    void addData(const unsigned char* data, size_t numSamples) {
+        // No normalization needed for char
+        ensureCapacity(numSamples * sizeof(float));           // Ensure space in buffer
+        const unsigned char* data8 = reinterpret_cast<const unsigned char*>(data);  // Convert float array to int8_t array
+        buffer.insert(buffer.end(), data8, data8 + numSamples*sizeof(unsigned char)); // Append directly
     }
 
     // Function to print the buffer content (for debugging)
-    void printBuffer() const
+    void printBuffer(int numSamples) const
     {
-        for (size_t i = 0; i < buffer.size(); ++i)
+        for (size_t i = 0; i < numSamples; ++i)
         {
-            std::cout << buffer[i] << " ";
+            std::cout /* << (int)buffer[i] << ": "*/ << (char)buffer[i];
         }
         std::cout << std::endl;
     }
@@ -116,7 +129,7 @@ public:
     // Function to get the current size of the buffer in bytes
     size_t getCurrentBufferSize() const
     {
-        return buffer.size();
+        return bufferSizeInBytes() / sizeof(float);
     }
 
     // Clear the buffer

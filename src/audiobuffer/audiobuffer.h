@@ -71,12 +71,15 @@ namespace SoLoud
     result loadogg(File *fp);
     result loadflac(File *fp);
     result loadmp3(File *fp);
-    result loadpcm(File *fp, const PCMformat pcmFormat);
-    result loadFirstChunk(
+    void loadpcm(File *fp, const PCMformat pcmFormat);
+    result loadFirstChunk();
+    void addToBuffer(
         const unsigned char *aData,
         unsigned int aDataLen);
 
   public:
+    enum Endianness mEndianness;
+    unsigned int mMaxBufferSize;
     int mFiletype;
     File *mMemFile;
     File *mStreamFile;
@@ -92,8 +95,9 @@ namespace SoLoud
         unsigned int maxBufferSize = 1024 * 1024 * 50, // 50 Mbytes
         bool aCopy = false,
         bool aTakeOwnership = true,
+        bool isPCM = false,
         PCMformat pcmFormat = {44100, 2, 2, PCM_S16LE});
-    result addData(const void *data, unsigned int numSamples);
+    result addData(const void *aData, unsigned int numSamples);
     virtual AudioSourceInstance *createInstance();
     time getLength();
 

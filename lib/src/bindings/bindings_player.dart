@@ -1,3 +1,5 @@
+// ignore_for_file: avoid_positional_boolean_parameters
+
 import 'dart:async';
 import 'dart:typed_data';
 
@@ -126,6 +128,7 @@ abstract class FlutterSoLoud {
   /// Set up an audio stream.
   ///
   /// [maxBufferSize] the max buffer size in bytes.
+  /// [isPCM] if true, the audio data is PCM format.
   /// [sampleRate], [channels], [pcmFormat] should be set in the case the
   /// audio data is PCM format.
   /// [pcmFormat]: 0 = f32le, 1 = s8, 2 = s16le, 3 = s32le
@@ -133,6 +136,7 @@ abstract class FlutterSoLoud {
   ({PlayerErrors error, SoundHash soundHash}) setBufferStream(
     String uniqueName,
     int maxBufferSize,
+    bool isPCM,
     int sampleRate,
     int channels,
     int pcmFormat,
@@ -159,7 +163,6 @@ abstract class FlutterSoLoud {
   @mustBeOverridden
   ({PlayerErrors error, SoundHash soundHash}) loadWaveform(
     WaveForm waveform,
-    // ignore: avoid_positional_boolean_parameters
     bool superWave,
     double scale,
     double detune,
@@ -301,7 +304,6 @@ abstract class FlutterSoLoud {
   /// [handle] the sound handle.
   /// [enable] enable or not the looping.
   @mustBeOverridden
-  // ignore: avoid_positional_boolean_parameters
   void setLooping(SoundHandle handle, bool enable);
 
   /// Get sound loop point value.
@@ -325,7 +327,6 @@ abstract class FlutterSoLoud {
   ///
   /// [enabled] whether to enable or disable.
   @mustBeOverridden
-  // ignore: avoid_positional_boolean_parameters
   void setVisualizationEnabled(bool enabled);
 
   /// Get visualization state.
@@ -507,7 +508,6 @@ abstract class FlutterSoLoud {
   /// [handle] handle to check.
   /// [protect] whether to protect or not.
   @mustBeOverridden
-  // ignore: avoid_positional_boolean_parameters
   void setProtectVoice(SoundHandle handle, bool protect);
 
   /// Get the current maximum active voice count.

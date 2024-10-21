@@ -285,3 +285,14 @@ final class PlaybackDevice {
   String toString() =>
       '\nPlaybackDevice(id: $id, isDefault: $isDefault, name: $name)';
 }
+
+enum BufferPcmType {
+  f32le(0),
+  s8(1),
+  s16le(2),
+  s32le(3);
+
+  final int value;
+
+  const BufferPcmType(this.value);
+}

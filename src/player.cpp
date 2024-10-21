@@ -302,6 +302,7 @@ PlayerErrors Player::setBufferStream(
     const std::string &uniqueName,
     unsigned int &hash,
     unsigned long maxBufferSize,
+    bool isPCM,
     SoLoud::PCMformat pcmFormat)
 {
     if (!mInited)
@@ -327,7 +328,7 @@ PlayerErrors Player::setBufferStream(
     newSound.get()->sound = std::make_unique<SoLoud::BufferStream>();
     newSound.get()->soundType = TYPE_BUFFER_STREAM;
     static_cast<SoLoud::BufferStream *>(newSound.get()->sound.get())->setBufferStream(
-        maxBufferSize, false, true, pcmFormat);
+        maxBufferSize, false, true, isPCM, pcmFormat);
 
     newSound.get()->filters = std::make_unique<Filters>(&soloud, newSound.get());
     sounds.push_back(std::move(newSound));

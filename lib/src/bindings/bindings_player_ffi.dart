@@ -377,6 +377,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   ({PlayerErrors error, SoundHash soundHash}) setBufferStream(
     String uniqueName,
     int maxBufferSize,
+    bool isPCM,
     int sampleRate,
     int channels,
     int pcmFormat,
@@ -388,6 +389,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       cString,
       hash,
       maxBufferSize,
+      isPCM ? 1 : 0,
       sampleRate,
       channels,
       pcmFormat,
@@ -405,13 +407,14 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
           ffi.UnsignedInt Function(
               ffi.Pointer<Utf8>,
               ffi.Pointer<ffi.UnsignedInt>,
+              ffi.UnsignedInt,
               ffi.UnsignedLong,
               ffi.UnsignedInt,
               ffi.UnsignedInt,
               ffi.Int)>>('setBufferStream');
   late final _setBufferStream = _setBufferStreamPtr.asFunction<
       int Function(ffi.Pointer<Utf8>, ffi.Pointer<ffi.UnsignedInt>, int, int,
-          int, int)>();
+          int, int, int)>();
 
   @override
   PlayerErrors addAudioDataStream(
