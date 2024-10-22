@@ -385,7 +385,7 @@ interface class SoLoud {
   }
 
   /// Lists all OS available playback devices.
-  /// Could be called safely even in the engin has not been initialized yet.
+  /// Could be called safely even if the engin has not been initialized yet.
   List<PlaybackDevice> listPlaybackDevices() {
     return _controller.soLoudFFI.listPlaybackDevices();
   }

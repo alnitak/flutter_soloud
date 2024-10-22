@@ -12,6 +12,15 @@ import 'package:logging/logging.dart';
 /// All this is made simple just using the `listPlaybackDevices` and
 /// `changeDevice` methods.
 /// 
+/// To get all output devices use `listPlaybackDevices` which returns
+/// a list of `PlaybackDevice`s class. Each items of this class
+/// contains the id, whether it's the default device (the one used by the OS)
+/// and the name.
+/// This method can be called even if the engine has not been initialized.
+/// 
+/// At any time it is possible to pass to `changeDevice` a `PlaybackDevice`
+/// which will change the output device.
+/// 
 /// Note: Android, iOS and Web, only support one output device which is
 /// the default.
 
