@@ -11,7 +11,7 @@
 #include <iostream>
 #include <cstring>
 
-enum Endianness
+enum Endianness // TODO?
 {
     BUFFER_LITTLE_ENDIAN,
     BUFFER_BIG_ENDIAN
@@ -31,28 +31,6 @@ private:
         return buffer.size(); // Since each element is int8_t, the size is in bytes
     }
 
-    // Helper function to ensure the buffer does not exceed maxBytes
-    void ensureCapacity(size_t newBytes) {
-        size_t currentBytes = bufferSizeInBytes();
-        if (currentBytes + newBytes > maxBytes) {
-            // Calculate how many bytes need to be removed
-            size_t bytesToRemove = currentBytes + newBytes - maxBytes;
-            
-            // Remove the necessary amount of bytes from the front of the buffer
-            if (bytesToRemove > 0) {
-                buffer.erase(buffer.begin(), buffer.begin() + bytesToRemove);
-            }
-        }
-    }
-
-    // Function to convert a float (normalized between 0 and 1) and add its bytes to the buffer
-    void appendFloatAsBytes(float value) {
-        ensureCapacity(sizeof(float));  // Ensure space in buffer for 4 bytes
-        int8_t bytes[sizeof(float)];
-        std::memcpy(bytes, &value, sizeof(float));  // Copy the float into byte array
-        buffer.insert(buffer.end(), bytes, bytes + sizeof(float));  // Insert all bytes
-    }
-
 public:
     // Constructor that accepts the maxBytes parameter
     Buffer() : maxBytes(0) {}
@@ -68,48 +46,46 @@ public:
     }
 
     // Overload for int8_t data, converting it to normalized float and adding its bytes to the buffer
-    void addData(const int8_t* data, size_t numSamples) {
+    // Return the number of floats written.
+    size_t addData(const int8_t* data, size_t numSamples) {
         float d[numSamples];
         for (size_t i = 0; i < numSamples; ++i) {
             d[i] = data[i] / 128.0f;
         }
-        addData(d, numSamples);
+        return addData(d, numSamples);
     }
 
     // Overload for int16_t data, converting it to normalized float and adding its bytes to the buffer
-    void addData(const int16_t* data, size_t numSamples) {
+    // Return the number of floats written.
+    size_t addData(const int16_t* data, size_t numSamples) {
         float d[numSamples];
         for (size_t i = 0; i < numSamples; ++i) {
             d[i] = data[i] / 32768.0f;
         }
-        addData(d, numSamples);
+        return addData(d, numSamples);
     }
 
     // Overload for int32_t data, converting it to normalized float and adding its bytes to the buffer
-    void addData(const int32_t* data, size_t numSamples) {
+    // Return the number of floats written.
+    size_t addData(const int32_t* data, size_t numSamples) {
         float d[numSamples];
         for (size_t i = 0; i < numSamples; ++i) {
             d[i] = data[i] / 2147483648.0f;
         }
-        addData(d, numSamples);
+        return addData(d, numSamples);
     }
 
     // Overload for float data, directly adding its bytes to the buffer
-    void addData(const float* data, size_t numSamples) {
+    // Return the number of floats written.
+    size_t addData(const float* data, size_t numSamples) {
         // No normalization needed for floats
-        ensureCapacity(numSamples * sizeof(float));           // Ensure space in buffer
+        if (bufferSizeInBytes() + numSamples * sizeof(float) > maxBytes)
+        {
+            return 0;
+        }
         const int8_t* data8 = reinterpret_cast<const int8_t*>(data);  // Convert float array to int8_t array
         buffer.insert(buffer.end(), data8, data8 + numSamples*sizeof(float)); // Append directly
-    }
-
-    // Function to print the buffer content (for debugging)
-    void printBuffer(int numSamples) const
-    {
-        for (size_t i = 0; i < numSamples; ++i)
-        {
-            std::cout /* << (int)buffer[i] << ": "*/ << (char)buffer[i];
-        }
-        std::cout << std::endl;
+        return numSamples;
     }
 
     // Function to get the current size of the buffer in bytes

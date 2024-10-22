@@ -10,6 +10,7 @@
 namespace SoLoud
 {
   class BufferStream;
+  typedef void (*dartVoiceEndedCallback_t)(unsigned int *);
 
   class BufferStreamInstance : public AudioSourceInstance
   {
@@ -41,15 +42,16 @@ namespace SoLoud
     unsigned int mSampleCount;
     PCMformat mPCMformat;
     Buffer mBuffer;
-    bool mCopy;
-    bool mTakeOwnership;
+    bool dataIsEnded;
 
     BufferStream();
     virtual ~BufferStream();
     void setBufferStream(
-        unsigned int maxBufferSize = 1024 * 1024 * 50, // 50 Mbytes
+        unsigned int maxBufferSize = 1024 * 1024 * 100, // 100 Mbytes
         PCMformat pcmFormat = {44100, 2, 2, PCM_S16LE});
-    result addData(const void *aData, unsigned int numSamples);
+    // TODO: add Base64 decoding: https://github.com/aklomp/base64
+    void setDataIsEnded();
+    PlayerErrors addData(const void *aData, unsigned int numSamples);
     virtual AudioSourceInstance *createInstance();
     time getLength();
   };

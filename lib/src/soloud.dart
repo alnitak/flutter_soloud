@@ -629,7 +629,7 @@ interface class SoLoud {
 
   Future<AudioSource> setBufferStream(
     String path,
-    int maxBufferSize,
+    int maxBufferSize, // in bytes
     int sampleRate,
     int channels,
     BufferPcmType pcmFormat,
@@ -664,15 +664,39 @@ interface class SoLoud {
       loadedFileCompleters.removeWhere((key, __) => key == path);
     });
   }
-
-  PlayerErrors addAudioDataStream(
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  /// Throws [SoLoudPcmBufferFullOrStreamEndedCppException] if the buffer
+  /// is full or stream buffer has been set to be ended.
+  /// Thows [SoLoudOutOfMemoryException] if the buffer is out of OS memory or
+  /// the given `maxBufferSize` when calling `setBufferStream` is too small.
+  void addAudioDataStream(
     int hash,
     Uint8List audioChunk,
   ) {
-    return SoLoudController().soLoudFFI.addAudioDataStream(
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+
+    final e = SoLoudController().soLoudFFI.addAudioDataStream(
           hash,
           audioChunk,
         );
+
+    if (e != PlayerErrors.noError) {
+      _logPlayerError(e, from: 'loadWaveform() result');
+      throw SoLoudCppException.fromPlayerError(e);
+    }
+  }
+
+  /// Set the end of the data stream.
+  /// [hash] the hash of the stream sound.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  PlayerErrors setDataIsEnded(AudioSource sound) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    return SoLoudController().soLoudFFI.setDataIsEnded(sound.soundHash);
   }
 
   /// Load a new sound to be played once or multiple times later, from

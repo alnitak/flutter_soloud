@@ -7,6 +7,8 @@
 #include "soloud.h"
 #include "audiobuffer.h"
 
+// TODO: readSamplesFromBuffer
+
 namespace SoLoud
 {
 
@@ -28,14 +30,15 @@ namespace SoLoud
 	{
 		if (mParent->mBuffer.getCurrentBufferSize() == 0)
 			return 0;
-		unsigned int bufferSize = mParent->mBuffer.getCurrentBufferSize() / 4;
+		unsigned int bufferSize = mParent->mBuffer.getCurrentBufferSize();
 		float* buffer = reinterpret_cast<float*>(mParent->mBuffer.buffer.data());
 		int samplesToRead = mOffset + aSamplesToRead > bufferSize ? bufferSize - mOffset : aSamplesToRead;
 		if (samplesToRead <= 0)
 			return 0;
 
 		if (samplesToRead != aSamplesToRead)
-		{ 
+		{
+			printf("samplesToRead %d != aSamplesToRead %d\n", samplesToRead, aSamplesToRead);
 			memset(aBuffer, 0, sizeof(float) * aSamplesToRead);
 		}
 
@@ -77,7 +80,7 @@ namespace SoLoud
 
 	bool BufferStreamInstance::hasEnded()
 	{
-		if (mOffset >= mParent->mSampleCount)
+		if (mOffset >= mParent->mSampleCount && mParent->dataIsEnded)
 		{
 			return 1;
 		}
@@ -90,10 +93,7 @@ namespace SoLoud
 	// //////////////////////////////////////////////////////////////
 	// //////////////////////////////////////////////////////////////
 
-	BufferStream::BufferStream()
-	{
-		mSampleCount = 0;
-	}
+	BufferStream::BufferStream() {}
 
 	BufferStream::~BufferStream()
 	{
@@ -105,7 +105,8 @@ namespace SoLoud
 		PCMformat pcmFormat)
 	{
 		mSampleCount = 0;
-		mEndianness = Endianness::BUFFER_LITTLE_ENDIAN;
+		dataIsEnded = false;
+		mEndianness = Endianness::BUFFER_LITTLE_ENDIAN; // TODO?
 		mPCMformat.sampleRate = pcmFormat.sampleRate;
 		mPCMformat.channels = pcmFormat.channels;
 		mPCMformat.bytesPerSample = pcmFormat.bytesPerSample;
@@ -116,26 +117,43 @@ namespace SoLoud
 		mBaseSamplerate = (float)pcmFormat.sampleRate;
 	}
 
-	result BufferStream::addData(const void *aData, unsigned int aDataLen)
+	void BufferStream::setDataIsEnded()
 	{
+		dataIsEnded = true;
+	}
+
+	PlayerErrors BufferStream::addData(const void *aData, unsigned int aDataLen)
+	{
+		if (dataIsEnded) {
+			return pcmBufferFullOrStreamEnded;
+		}
+
+		unsigned int bytesWritten = 0;
 		// add PCM data to the buffer
 		switch (mPCMformat.dataType)
 		{
 		case 0:
-			mBuffer.addData((float *)aData, aDataLen / mPCMformat.bytesPerSample);
+			bytesWritten = mBuffer.addData((float *)aData, aDataLen / mPCMformat.bytesPerSample);
 			break;
 		case 1:
-			mBuffer.addData((int8_t *)aData, aDataLen / mPCMformat.bytesPerSample);
+			bytesWritten = mBuffer.addData((int8_t *)aData, aDataLen / mPCMformat.bytesPerSample);
 			break;
 		case 2:
-			mBuffer.addData((int16_t *)aData, aDataLen / mPCMformat.bytesPerSample);
+			bytesWritten = mBuffer.addData((int16_t *)aData, aDataLen / mPCMformat.bytesPerSample);
 			break;
 		case 3:
-			mBuffer.addData((int32_t *)aData, aDataLen / mPCMformat.bytesPerSample);
+			bytesWritten = mBuffer.addData((int32_t *)aData, aDataLen / mPCMformat.bytesPerSample);
 			break;
 		}
+
+		if (bytesWritten == 0){
+			dataIsEnded = true;
+			return outOfMemory;
+		}
+
 		mSampleCount += aDataLen / mPCMformat.bytesPerSample / mChannels;
-		return SO_NO_ERROR;
+		
+		return noError;
 	}
 
 	AudioSourceInstance *BufferStream::createInstance()

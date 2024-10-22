@@ -410,8 +410,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
               ffi.UnsignedInt,
               ffi.Int)>>('setBufferStream');
   late final _setBufferStream = _setBufferStreamPtr.asFunction<
-      int Function(ffi.Pointer<Utf8>, ffi.Pointer<ffi.UnsignedInt>, int,
-          int, int, int)>();
+      int Function(ffi.Pointer<Utf8>, ffi.Pointer<ffi.UnsignedInt>, int, int,
+          int, int)>();
 
   @override
   PlayerErrors addAudioDataStream(
@@ -437,8 +437,19 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   late final _addAudioDataStream = _addAudioDataStreamPtr
       .asFunction<int Function(int, ffi.Pointer<ffi.Uint8>, int)>();
 
+  @override
+  PlayerErrors setDataIsEnded(
+    SoundHash soundHash
+  ) {
+    final e = _setDataIsEnded(soundHash.hash);
+    return PlayerErrors.values[e];
+  }
 
-
+  late final _setDataIsEndedPtr =
+      _lookup<ffi.NativeFunction<ffi.UnsignedInt Function(ffi.UnsignedInt)>>(
+          'setDataIsEnded');
+  late final _setDataIsEnded =
+      _setDataIsEndedPtr.asFunction<int Function(int)>();
 
   @override
   ({PlayerErrors error, SoundHash soundHash}) loadWaveform(

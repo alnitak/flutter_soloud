@@ -161,7 +161,7 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
 
                 currentSound = await SoLoud.instance.setBufferStream(
                   'uniqueName',
-                  1024 * 1024 * 100, // 100 MB
+                  1024 * 1024 * 200, // 100 MB
                   sampleRate[srId],
                   channels[chId],
                   BufferPcmType.values[fmtId],
@@ -198,10 +198,12 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
                         message,
                         mode: FileMode.append,
                       );
-                      debugPrint('$numberOfChunks, $byteSize');
                     }
+                    // debugPrint('numberOfChunks: $numberOfChunks, '
+                    //     'byteSize: $byteSize, last chunk: ${message.length}');
                   },
                   onDone: () {
+                    SoLoud.instance.setDataIsEnded(currentSound!);
                     debugPrint('ws channel closed. '
                         'numberOfChunks: $numberOfChunks  byteSize: $byteSize');
                     numberOfChunks = 0;

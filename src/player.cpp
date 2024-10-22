@@ -192,6 +192,8 @@ const std::string Player::getErrorString(PlayerErrors errorCode) const
         return "error: audio handle is not found!";
     case filterParameterGetError:
         return "error: getting filter parameter error!";
+    case pcmBufferFullOrStreamEnded:
+        return "error: pcm buffer full or stream buffer ended!";
     }
     return "Other error";
 }
@@ -345,7 +347,18 @@ PlayerErrors Player::addAudioDataStream(
     if (s == nullptr || s->soundType != TYPE_BUFFER_STREAM)
         return soundHashNotFound;
 
-    return (PlayerErrors)static_cast<SoLoud::BufferStream *>(s->sound.get())->addData(data, aDataLen);
+    return static_cast<SoLoud::BufferStream *>(s->sound.get())->addData(data, aDataLen);
+}
+
+PlayerErrors Player::setDataIsEnded(unsigned int hash)
+{
+    auto const s = findByHash(hash);
+
+    if (s == nullptr || s->soundType != TYPE_BUFFER_STREAM)
+        return soundHashNotFound;
+
+    static_cast<SoLoud::BufferStream *>(s->sound.get())->setDataIsEnded();
+    return noError;
 }
 
 PlayerErrors Player::loadWaveform(

@@ -150,6 +150,12 @@ abstract class FlutterSoLoud {
     Uint8List audioChunk,
   );
 
+  /// Set the end of the data stream.
+  /// [hash] the hash of the stream sound.
+  /// Returns [PlayerErrors.noError] if success.
+  @mustBeOverridden
+  PlayerErrors setDataIsEnded(SoundHash soundHash);
+
   /// Load a new waveform to be played once or multiple times later.
   ///
   /// [waveform]

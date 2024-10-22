@@ -231,3 +231,15 @@ class SoLoudReadSamplesFailedToReadPcmFramesCppException
   String get description => 'An error occurred while reading PCM frames. '
       '(on the C++ side).';
 }
+
+/// An exception that is thrown when trying to add PCM data but the buffer
+/// is full  or stream buffer has been set to be ended.
+class SoLoudPcmBufferFullOrStreamEndedCppException extends SoLoudCppException {
+  /// Creates a new [SoLoudPcmBufferFullOrStreamEndedCppException].
+  const SoLoudPcmBufferFullOrStreamEndedCppException([super.message]);
+
+  @override
+  String get description => 'Trying to add PCM data but the buffer is full '
+      'or stream buffer has been set to be ended. '
+      '(on the C++ side).';
+}

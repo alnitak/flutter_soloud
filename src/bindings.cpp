@@ -397,14 +397,24 @@ extern "C"
     /// [hash] the hash of the sound.
     /// [data] the audio data to add.
     /// [aDataLen] the length of [data].
-    FFI_PLUGIN_EXPORT void addAudioDataStream(
+    FFI_PLUGIN_EXPORT enum PlayerErrors addAudioDataStream(
         unsigned int hash,
         const unsigned char *data,
         unsigned int aDataLen)
     {
         if (player.get() == nullptr || !player.get()->isInited())
-            return;
-        player.get()->addAudioDataStream(hash, data, aDataLen);
+            return backendNotInited;
+        return player.get()->addAudioDataStream(hash, data, aDataLen);
+    }
+
+    // Set the end of the data stream.
+    // [hash] the hash of the stream sound.
+    // Returns [PlayerErrors.SO_NO_ERROR] if success.
+    FFI_PLUGIN_EXPORT enum PlayerErrors setDataIsEnded(unsigned int hash)
+    {
+        if (player.get() == nullptr || !player.get()->isInited())
+            return backendNotInited;
+        return player.get()->setDataIsEnded(hash);
     }
 
     /// Load a new waveform to be played once or multiple times later
