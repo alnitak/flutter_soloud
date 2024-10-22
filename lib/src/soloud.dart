@@ -469,35 +469,30 @@ interface class SoLoud {
           final completeFileName = result['completeFileName'] as String;
           final hash = result['hash'] as int;
 
+          final newSound = AudioSource(SoundHash(hash));
+          final alreadyLoaded = _activeSounds
+                  .where((sound) => sound.soundHash == newSound.soundHash)
+                  .length ==
+              1;
           _logPlayerError(error, from: 'loadFile() result');
           if (error == PlayerErrors.noError) {
-            final newSound = AudioSource(SoundHash(hash));
-            _activeSounds.add(newSound);
-            loadedFileCompleters[result['completeFileName']]!
-                .complete(newSound);
+            if (!alreadyLoaded) {
+              _activeSounds.add(newSound);
+            }
           } else if (error == PlayerErrors.fileAlreadyLoaded) {
-            _log.warning(() => "Sound '$completeFileName' was already loaded. "
-                'Prefer loading only once, and reusing the loaded sound '
-                'when playing.');
-            final newSound = AudioSource(SoundHash(hash));
-            final alreadyLoaded = _activeSounds
-                    .where((sound) => sound.soundHash == newSound.soundHash)
-                    .length ==
-                1;
-            assert(
-                alreadyLoaded,
-                'Sound is already loaded but missing from _activeSounds. '
-                'This is probably a bug in flutter_soloud, please file.');
-            // If we are here, the file has been already loaded but there is
-            // no corrispondence int the local list of sounds. Add it to
-            // the list safely because the cpp loadFile() compute the hash
-            // using the file name.
-            _activeSounds.add(newSound);
-            loadedFileCompleters[result['completeFileName']]
-                ?.complete(newSound);
+            // If we are here, the file has been already loaded on C++ side.
+            // Check if it is already in [_activeSounds], if not add it.
+            if (alreadyLoaded) {
+              _log.warning(() => "Sound '$completeFileName' was already "
+                  'loaded. Prefer loading only once, and reusing the loaded '
+                  'sound when playing.');
+            } else {
+              _activeSounds.add(newSound);
+            }
           } else {
             throw SoLoudCppException.fromPlayerError(error);
           }
+          loadedFileCompleters[result['completeFileName']]?.complete(newSound);
         }
       });
     }
@@ -831,7 +826,7 @@ interface class SoLoud {
   /// call [setRelativePlaySpeed] or [setProtectVoice] on the sound before
   /// un-pausing it.
   ///
-  /// To play a looping sound, set [paused] to `true`. You can also
+  /// To play a looping sound, set [looping] to `true`. You can also
   /// define the region to loop by setting [loopingStartAt]
   /// (which defaults to the beginning of the sound otherwise).
   /// There is no way to set the end of the looping region — it will
