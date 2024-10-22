@@ -5,6 +5,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:logging/logging.dart';
 
+/// Output device example.
+///
+/// This example uses the default output device and present a dropdown
+/// menu to change from all available output devices.
+/// All this is made simple just using the `listPlaybackDevices` and
+/// `changeDevice` methods.
+/// 
+/// Note: Android, iOS and Web, only support one output device which is
+/// the default.
+
 void main() async {
   // The `flutter_soloud` package logs everything
   // (from severe warnings to fine debug messages)
@@ -54,7 +64,7 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
     super.initState();
     SoLoud.instance.loadAsset('assets/audio/8_bit_mentality.mp3').then((value) {
       currentSound = value;
-      SoLoud.instance.play(currentSound!, looping: true);
+      SoLoud.instance.play(currentSound!, looping: true, volume: 0.5);
     });
     
     devices = SoLoud.instance.listPlaybackDevices();
