@@ -95,7 +95,7 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
   @override
   Widget build(BuildContext context) {
     if (!SoLoud.instance.isInitialized) return const SizedBox.shrink();
-    
+
     return Scaffold(
       body: Center(
         child: DropdownMenu(
