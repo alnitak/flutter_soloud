@@ -380,6 +380,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     int sampleRate,
     int channels,
     int pcmFormat,
+    void Function()? onBuffering,
   ) {
     final ffi.Pointer<Utf8> cString = uniqueName.toNativeUtf8();
     final ffi.Pointer<ffi.UnsignedInt> hash =

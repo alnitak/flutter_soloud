@@ -138,6 +138,7 @@ abstract class FlutterSoLoud {
     int sampleRate,
     int channels,
     int pcmFormat,
+    void Function()? onBuffering,
   );
 
   /// Add a chunk of audio data to the buffer stream.

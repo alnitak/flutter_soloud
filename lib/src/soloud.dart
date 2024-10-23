@@ -45,6 +45,7 @@ void _loadFile(Map<String, dynamic> args) {
         args['sampleRate'] as int,
         args['channels'] as int,
         args['pcmFormat'] as int,
+        args['onBuffering'] as void Function()?,
       );
 }
 
@@ -633,6 +634,7 @@ interface class SoLoud {
     int sampleRate,
     int channels,
     BufferPcmType pcmFormat,
+    void Function()? onBuffering,
   ) async {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -649,6 +651,7 @@ interface class SoLoud {
       'sampleRate': sampleRate,
       'channels': channels,
       'pcmFormat': pcmFormat.value,
+      'onBuffering': onBuffering,
     });
 
     /// There is not a callback in cpp that is supposed to add the
@@ -664,6 +667,7 @@ interface class SoLoud {
       loadedFileCompleters.removeWhere((key, __) => key == path);
     });
   }
+
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   /// Throws [SoLoudPcmBufferFullOrStreamEndedCppException] if the buffer
   /// is full or stream buffer has been set to be ended.
