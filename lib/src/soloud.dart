@@ -11,6 +11,7 @@ import 'package:flutter_soloud/src/bindings/soloud_controller.dart';
 import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/exceptions/exceptions.dart';
 import 'package:flutter_soloud/src/filters/filters.dart';
+import 'package:flutter_soloud/src/helpers/playback_device.dart';
 import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
 import 'package:flutter_soloud/src/utils/loader.dart';
@@ -281,6 +282,8 @@ interface class SoLoud {
   /// If you call any other methods (such as [play]) before initialization
   /// completes, those calls will be ignored and you will get
   /// a [SoLoudNotInitializedException] exception.
+  /// Could throw [SoLoudNoPlaybackDevicesFoundCppException] if there is not a
+  /// playback device available or if the given [device] is not found.
   ///
   /// NOTE: Calling this method while the engine is already initialized will
   /// first deinitialize the engine and then reinitialize it. This means
@@ -361,6 +364,7 @@ interface class SoLoud {
       await _loader.initialize();
     } else {
       _log.severe('initialize() failed with error: $error');
+      throw SoLoudCppException.fromPlayerError(error);
     }
   }
 
@@ -371,17 +375,19 @@ interface class SoLoud {
   /// default device (iOS and MacOS?).
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
-  PlayerErrors changeDevice({PlaybackDevice? newDevice}) {
+  /// Throws [SoLoudNoPlaybackDevicesFoundCppException] if the given [newDevice]
+  /// is not found.
+  void changeDevice({PlaybackDevice? newDevice}) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+
     final deviceId = newDevice?.id ?? -1;
     final error = _controller.soLoudFFI.changeDevice(deviceId);
     _logPlayerError(error, from: 'changeDevice() result');
     if (error != PlayerErrors.noError) {
       throw SoLoudCppException.fromPlayerError(error);
     }
-    return error;
   }
 
   /// Lists all OS available playback devices.

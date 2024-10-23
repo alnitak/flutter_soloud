@@ -219,6 +219,10 @@ extern "C"
         {
             bool hasSpecialChar = false;
             /// check if the device name has some strange chars (happens on Linux)
+            /// It happens that some results had the name composed of non-text
+            /// ASCII characters with values ​​<0x20 (blank space). Doesn't happen on
+            /// my Linux anymore (maybe was a bug on audio drivers?), but worth
+            /// checking to be sure.
             for (int n = 0; n < 5; n++)
             {
                 if (d[i].name[n] < 0x20)

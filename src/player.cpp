@@ -45,7 +45,7 @@ PlayerErrors Player::init(unsigned int sampleRate, unsigned int bufferSize, unsi
         // Calling this will init [pPlaybackInfos]
         auto const devices = listPlaybackDevices();
         if (devices.size() == 0 || deviceID >= devices.size())
-            return backendNotInited;
+            return noPlaybackDevicesFound;
         playbackInfos_id = &pPlaybackInfos[deviceID].id;
     }
 
@@ -73,7 +73,7 @@ PlayerErrors Player::changeDevice(int deviceID)
     // Calling this will init [pPlaybackInfos]
     auto const devices = listPlaybackDevices();
     if (devices.size() == 0 || deviceID >= devices.size())
-        return backendNotInited;
+        return noPlaybackDevicesFound;
     playbackInfos_id = &pPlaybackInfos[deviceID].id;
 
     SoLoud::result result = soloud.miniaudio_changeDevice(playbackInfos_id);
@@ -95,7 +95,7 @@ std::vector<PlaybackDevice> Player::listPlaybackDevices()
     ma_result result;
     if ((result = ma_context_init(NULL, 0, NULL, &context)) != MA_SUCCESS)
     {
-        printf("Failed to initialize context %d\n", result);
+        // Failed to initialize audio context.
         return ret;
     }
 
@@ -191,6 +191,8 @@ const std::string Player::getErrorString(PlayerErrors errorCode) const
         return "error: audio handle is not found!";
     case filterParameterGetError:
         return "error: getting filter parameter error!";
+    case noPlaybackDevicesFound:
+        return "error: no playback devices found!";
     }
     return "Other error";
 }

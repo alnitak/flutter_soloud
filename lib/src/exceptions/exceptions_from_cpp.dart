@@ -231,3 +231,14 @@ class SoLoudReadSamplesFailedToReadPcmFramesCppException
   String get description => 'An error occurred while reading PCM frames. '
       '(on the C++ side).';
 }
+
+/// An error occurred when reading PCM frames.
+class SoLoudNoPlaybackDevicesFoundCppException extends SoLoudCppException {
+  /// Creates a new [SoLoudNoPlaybackDevicesFoundCppException].
+  const SoLoudNoPlaybackDevicesFoundCppException([super.message]);
+
+  @override
+  String get description => 'No playback devices were found while '
+      'initializing engine or when changing the output device. '
+      '(on the C++ side).';
+}

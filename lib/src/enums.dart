@@ -62,7 +62,10 @@ enum PlayerErrors {
   soundHandleNotFound(17),
 
   /// Error getting filter parameter.
-  filterParameterGetError(18);
+  filterParameterGetError(18),
+
+  /// No playback devices were found.
+  noPlaybackDevicesFound(19);
 
   const PlayerErrors(this.value);
 
@@ -117,6 +120,9 @@ enum PlayerErrors {
       case PlayerErrors.filterParameterGetError:
         return 'An error (nan or inf value) occurred while getting a '
             'filter parameter!';
+      case PlayerErrors.noPlaybackDevicesFound:
+        return 'No playback devices were found while initializing engine or '
+            'when changing the output device.';
     }
   }
 
@@ -264,24 +270,4 @@ enum Channels {
 
   /// The channels count.
   final int count;
-}
-
-/// CaptureDevice exposed to Dart
-final class PlaybackDevice {
-  /// Constructs a new [PlaybackDevice].
-  // ignore: avoid_positional_boolean_parameters
-  const PlaybackDevice(this.id, this.isDefault, this.name);
-
-  /// The ID of the device.
-  final int id;
-
-  /// Whether this is the default playback device.
-  final bool isDefault;
-
-  /// The name of the device.
-  final String name;
-
-  @override
-  String toString() =>
-      '\nPlaybackDevice(id: $id, isDefault: $isDefault, name: $name)';
 }

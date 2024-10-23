@@ -210,14 +210,11 @@ namespace SoLoud
 	result Soloud::miniaudio_changeDevice(void *pPlaybackInfos_id)
 	{
 #if defined(WITH_MINIAUDIO)
-		// lockAudioMutex_internal();
-
 		int ret = 0;
 		if (mAudioThreadMutex != NULL)
 		{
 			ret = miniaudio_changeDevice_impl(pPlaybackInfos_id);
 		}
-		// unlockAudioMutex_internal();
 		return ret;
 #endif
 	}

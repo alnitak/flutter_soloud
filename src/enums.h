@@ -45,7 +45,9 @@ typedef enum PlayerErrors
     /// Audio handle is not found.
     soundHandleNotFound = 17,
     /// Error getting filter parameter.
-    filterParameterGetError = 18
+    filterParameterGetError = 18,
+    /// No playback devices were found.
+    noPlaybackDevicesFound = 19,
 } PlayerErrors_t;
 
 /// Possible read sample errors

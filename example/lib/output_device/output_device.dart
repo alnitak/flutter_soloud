@@ -100,17 +100,7 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
       body: Center(
         child: DropdownMenu(
           controller: textEditingController,
-          onSelected: (value) async {
-            /// When changing the output device, we need to reinitialize
-            /// the player. All existing audio sources will be stopped and
-            /// disposed as well.
-            // currentDevice = devices[value!];
-            // SoLoud.instance.deinit();
-            // await SoLoud.instance.init(deviceId: currentDevice.id);
-
-            // currentSound = await SoLoud.instance
-            //     .loadAsset('assets/audio/8_bit_mentality.mp3');
-            // await SoLoud.instance.play(currentSound!, looping: true);
+          onSelected: (value) {
             SoLoud.instance.changeDevice(newDevice: devices[value!]);
           },
           dropdownMenuEntries: [
