@@ -1,4 +1,5 @@
 import 'package:flutter_soloud/src/soloud.dart';
+import 'package:meta/meta.dart';
 
 /// CaptureDevice exposed to Dart.
 ///
@@ -10,6 +11,7 @@ import 'package:flutter_soloud/src/soloud.dart';
 /// initializing the engine.
 final class PlaybackDevice {
   /// Constructs a new [PlaybackDevice].
+  @internal
   // ignore: avoid_positional_boolean_parameters
   const PlaybackDevice(this.id, this.isDefault, this.name);
 
