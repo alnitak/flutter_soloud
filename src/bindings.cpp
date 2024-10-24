@@ -360,13 +360,20 @@ extern "C"
         unsigned long maxBufferSize,
         unsigned int sampleRate,
         unsigned int channels,
-        int pcmFormat)
+        int pcmFormat,
+        void (*onBufferingCallback)())
     {
         std::lock_guard<std::mutex> guard_init(init_deinit_mutex);
         std::lock_guard<std::mutex> guard_load(loadMutex);
         if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
             
+        if (onBufferingCallback != nullptr)
+        {
+            std::cout << "*******CPP CALLING ON BUFFERING CALLBACK" << std::endl;
+            onBufferingCallback();
+        }
+
         unsigned int bytesPerSample;
         switch (pcmFormat)
         {

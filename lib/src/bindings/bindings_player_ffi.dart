@@ -382,6 +382,15 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     int pcmFormat,
     void Function()? onBuffering,
   ) {
+    // Create a NativeCallable for the given [onBuffering] callback.
+    ffi.NativeCallable<ffi.Void Function()>? nativeOnBufferingCallable;
+    if (onBuffering != null) {
+      nativeOnBufferingCallable =
+          ffi.NativeCallable<ffi.Void Function()>.listener(
+        onBuffering,
+      );
+    }
+
     final ffi.Pointer<Utf8> cString = uniqueName.toNativeUtf8();
     final ffi.Pointer<ffi.UnsignedInt> hash =
         calloc(ffi.sizeOf<ffi.UnsignedInt>());
@@ -392,6 +401,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       sampleRate,
       channels,
       pcmFormat,
+      nativeOnBufferingCallable?.nativeFunction ?? ffi.nullptr,
     );
     final soundHash = SoundHash(hash.value);
     final ret = (error: PlayerErrors.values[e], soundHash: soundHash);
@@ -402,17 +412,26 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   }
 
   late final _setBufferStreamPtr = _lookup<
-      ffi.NativeFunction<
-          ffi.UnsignedInt Function(
-              ffi.Pointer<Utf8>,
-              ffi.Pointer<ffi.UnsignedInt>,
-              ffi.UnsignedLong,
-              ffi.UnsignedInt,
-              ffi.UnsignedInt,
-              ffi.Int)>>('setBufferStream');
+          ffi.NativeFunction<
+              ffi.UnsignedInt Function(
+                  ffi.Pointer<Utf8>,
+                  ffi.Pointer<ffi.UnsignedInt>,
+                  ffi.UnsignedLong,
+                  ffi.UnsignedInt,
+                  ffi.UnsignedInt,
+                  ffi.Int,
+                  ffi.Pointer<ffi.NativeFunction<ffi.Void Function()>>)>>(
+      'setBufferStream');
   late final _setBufferStream = _setBufferStreamPtr.asFunction<
-      int Function(ffi.Pointer<Utf8>, ffi.Pointer<ffi.UnsignedInt>, int, int,
-          int, int)>();
+      int Function(
+        ffi.Pointer<Utf8>,
+        ffi.Pointer<ffi.UnsignedInt>,
+        int,
+        int,
+        int,
+        int,
+        ffi.Pointer<ffi.NativeFunction<ffi.Void Function()>>,
+      )>();
 
   @override
   PlayerErrors addAudioDataStream(
@@ -439,9 +458,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       .asFunction<int Function(int, ffi.Pointer<ffi.Uint8>, int)>();
 
   @override
-  PlayerErrors setDataIsEnded(
-    SoundHash soundHash
-  ) {
+  PlayerErrors setDataIsEnded(SoundHash soundHash) {
     final e = _setDataIsEnded(soundHash.hash);
     return PlayerErrors.values[e];
   }

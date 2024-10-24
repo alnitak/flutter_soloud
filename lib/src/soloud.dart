@@ -486,7 +486,7 @@ interface class SoLoud {
           if (error == PlayerErrors.noError) {
             final newSound = AudioSource(SoundHash(hash));
             _activeSounds.add(newSound);
-            loadedFileCompleters[result['completeFileName']]!
+            loadedFileCompleters[completeFileName]!
                 .complete(newSound);
           } else if (error == PlayerErrors.fileAlreadyLoaded) {
             _log.warning(() => "Sound '$completeFileName' was already loaded. "
@@ -506,7 +506,7 @@ interface class SoLoud {
             // the list safely because the cpp loadFile() compute the hash
             // using the file name.
             _activeSounds.add(newSound);
-            loadedFileCompleters[result['completeFileName']]
+            loadedFileCompleters[completeFileName]
                 ?.complete(newSound);
           } else {
             throw SoLoudCppException.fromPlayerError(error);
@@ -645,14 +645,24 @@ interface class SoLoud {
       path: completer,
     });
 
-    final ret = await compute(_setBufferStream, {
-      'path': path,
-      'maxBufferSize': maxBufferSize,
-      'sampleRate': sampleRate,
-      'channels': channels,
-      'pcmFormat': pcmFormat.value,
-      'onBuffering': onBuffering,
-    });
+    // NON worka in un altro isolate!
+    // final ret = await compute(_setBufferStream, {
+    //   'path': path,
+    //   'maxBufferSize': maxBufferSize,
+    //   'sampleRate': sampleRate,
+    //   'channels': channels,
+    //   'pcmFormat': pcmFormat.value,
+    //   'onBuffering': onBuffering,
+    // });
+
+    final ret = SoLoudController().soLoudFFI.setBufferStream(
+          path,
+          maxBufferSize,
+          sampleRate,
+          channels,
+          pcmFormat.value,
+          onBuffering,
+        );
 
     /// There is not a callback in cpp that is supposed to add the
     /// "load file event". Manually send this event to have only one

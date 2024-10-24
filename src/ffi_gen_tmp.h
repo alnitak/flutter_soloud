@@ -19,7 +19,11 @@
 
 //--------------------- copy here the new functions to generate
 
-    // Set the end of the data stream.
-    // [hash] the hash of the stream sound.
-    // Returns [PlayerErrors.SO_NO_ERROR] if success.
-FFI_PLUGIN_EXPORT enum PlayerErrors setDataIsEnded(unsigned int hash);
+FFI_PLUGIN_EXPORT enum PlayerErrors setBufferStream(
+        char *uniqueName,
+        unsigned int *hash,
+        unsigned long maxBufferSize,
+        unsigned int sampleRate,
+        unsigned int channels,
+        int pcmFormat,
+        void (*onBufferingCallback)());

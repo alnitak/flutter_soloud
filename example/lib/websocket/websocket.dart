@@ -165,6 +165,9 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
                   sampleRate[srId],
                   channels[chId],
                   BufferPcmType.values[fmtId],
+                  () {
+                    print('DART onBuffering!!!!!!!!!!!!!!!!!!!!!!!!!');
+                  },
                 );
               },
               child: const Text('set chosen stream type'),
