@@ -7,6 +7,7 @@ import 'package:flutter_soloud/src/bindings/js_extension.dart';
 import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/exceptions/exceptions.dart';
 import 'package:flutter_soloud/src/filters/filters.dart';
+import 'package:flutter_soloud/src/helpers/playback_device.dart';
 import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
 import 'package:flutter_soloud/src/worker/worker.dart';
@@ -73,9 +74,63 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }
 
   @override
-  PlayerErrors initEngine(int sampleRate, int bufferSize, Channels channels) {
-    final ret = wasmInitEngine(sampleRate, bufferSize, channels.count);
+  PlayerErrors initEngine(
+    int deviceId,
+    int sampleRate,
+    int bufferSize,
+    Channels channels,
+  ) {
+    final ret = wasmInitEngine(
+      deviceId,
+      sampleRate,
+      bufferSize,
+      channels.count,
+    );
     return PlayerErrors.values[ret];
+  }
+
+  @override
+  PlayerErrors changeDevice(int deviceId) {
+    final ret = wasmChangeDevice(deviceId);
+    return PlayerErrors.values[ret];
+  }
+
+  @override
+  List<PlaybackDevice> listPlaybackDevices() {
+    /// allocate 50 device strings
+    final namesPtr = wasmMalloc(50 * 255);
+    final deviceIdPtr = wasmMalloc(50 * 4);
+    final isDefaultPtr = wasmMalloc(50 * 4);
+    final nDevicesPtr = wasmMalloc(4); // 4 bytes for an int
+
+    wasmListPlaybackDevices(
+      namesPtr,
+      deviceIdPtr,
+      isDefaultPtr,
+      nDevicesPtr,
+    );
+
+    final nDevices = wasmGetI32Value(nDevicesPtr, '*');
+    final devices = <PlaybackDevice>[];
+    for (var i = 0; i < nDevices; i++) {
+      final namePtr = wasmGetI32Value(namesPtr + i * 4, '*');
+      final name = wasmUtf8ToString(namePtr);
+      final deviceId =
+          wasmGetI32Value(wasmGetI32Value(deviceIdPtr + i * 4, '*'), '*');
+      final isDefault =
+          wasmGetI32Value(wasmGetI32Value(isDefaultPtr + i * 4, '*'), '*');
+
+      devices.add(PlaybackDevice(deviceId, isDefault == 1, name));
+    }
+
+    wasmFreeListPlaybackDevices(namesPtr, deviceIdPtr, isDefaultPtr, nDevices);
+
+    wasmFree(nDevicesPtr);
+    wasmFree(deviceIdPtr);
+    wasmFree(isDefaultPtr);
+    wasmFree(namesPtr);
+
+    return devices;
   }
 
   @override

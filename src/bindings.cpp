@@ -166,6 +166,7 @@ extern "C"
     ///
     /// Returns [PlayerErrors.noError] if success.
     FFI_PLUGIN_EXPORT enum PlayerErrors initEngine(
+        int deviceID,
         unsigned int sampleRate,
         unsigned int bufferSize,
         unsigned int channels)
@@ -177,7 +178,7 @@ extern "C"
             player = std::make_unique<Player>();
 
         player.get()->setStateChangedCallback(stateChangedCallback);
-        PlayerErrors res = (PlayerErrors)player.get()->init(sampleRate, bufferSize, channels);
+        PlayerErrors res = (PlayerErrors)player.get()->init(sampleRate, bufferSize, channels, deviceID);
         if (res != noError)
             return res;
 
@@ -191,6 +192,70 @@ extern "C"
         player.get()->setVoiceEndedCallback(voiceEndedCallback);
 
         return (PlayerErrors)noError;
+    }
+
+    /// Change the playback device.
+    ///
+    /// [deviceID] the device ID. -1 for default OS output device.
+    FFI_PLUGIN_EXPORT enum PlayerErrors changeDevice(int deviceID)
+    {
+        if (player.get() == nullptr)
+            return backendNotInited;
+
+        return player.get()->changeDevice(deviceID);
+    }
+
+    /// List playback devices.
+    FFI_PLUGIN_EXPORT void listPlaybackDevices(
+        char **devicesName,
+        int **deviceId,
+        int **isDefault,
+        int *n_devices)
+    {
+        std::vector<PlaybackDevice> d = player.get()->listPlaybackDevices();
+
+        int numDevices = 0;
+        for (int i = 0; i < (int)d.size(); i++)
+        {
+            bool hasSpecialChar = false;
+            /// check if the device name has some strange chars (happens on Linux)
+            /// It happens that some results had the name composed of non-text
+            /// ASCII characters with values ​​<0x20 (blank space) which cannot be
+            /// real devices and should be ignored. Doesn't happen on my Linux
+            /// anymore (maybe was a bug on audio drivers?), but worth checking
+            /// to be sure.
+            for (int n = 0; n < 5; n++)
+            {
+                if (d[i].name[n] < 0x20)
+                    hasSpecialChar = true;
+            }
+            if (strlen(d[i].name) <= 5 || hasSpecialChar)
+                continue;
+
+            devicesName[i] = strdup(d[i].name);
+            isDefault[i] = (int *)malloc(sizeof(int *));
+            *isDefault[i] = d[i].isDefault;
+            deviceId[i] = (int *)malloc(sizeof(int *));
+            *deviceId[i] = d[i].id;
+
+            numDevices++;
+        }
+        *n_devices = numDevices;
+    }
+
+    /// Free the list of playback devices.
+    FFI_PLUGIN_EXPORT void freeListPlaybackDevices(
+        char **devicesName,
+        int **deviceId,
+        int **isDefault,
+        int n_devices)
+    {
+        for (int i = 0; i < n_devices; i++)
+        {
+            free(deviceId[i]);
+            free(isDefault[i]);
+            free(devicesName[i]);
+        }
     }
 
     /// Must be called when there is no more need of the player or when closing the app

@@ -8,6 +8,7 @@
 #include "enums.h"
 #include "filters/filters.h"
 #include "active_sound.h"
+#include "soloud/src/backend/miniaudio/miniaudio.h"
 
 #include <iostream>
 #include <vector>
@@ -17,6 +18,13 @@
 #include <atomic>
 #include <thread>
 
+
+struct PlaybackDevice
+{
+    char *name;
+    unsigned int isDefault;
+    unsigned int id;
+};
 
 class Player
 {
@@ -29,8 +37,15 @@ public:
     /// @param bufferSize the audio buffer size. Usually is 2048, but can be also 512 when
     /// low latency is needed for example in games.
     /// @param channels 1)mono, 2)stereo 4)quad 6)5.1 8)7.1
+    /// @param deviceID the device ID. -1 for default OS output device.
     /// @return Returns [PlayerErrors.SO_NO_ERROR] if success.
-    PlayerErrors init(unsigned int sampleRate, unsigned int bufferSize, unsigned int channels);
+    PlayerErrors init(unsigned int sampleRate, unsigned int bufferSize, unsigned int channels, int deviceID = -1);
+
+    /// @brief Change the playback device.
+    /// @param deviceID the device ID. -1 for default OS output device.
+    PlayerErrors changeDevice(int deviceID);
+
+    std::vector<PlaybackDevice> listPlaybackDevices();
 
     /// @brief Set a function callback triggered when a voice is stopped/ended.
     void setVoiceEndedCallback(void (*voiceEndedCallback)(unsigned int*));
@@ -537,7 +552,11 @@ public:
     Filters mFilters;
 
 private:
+    ma_device_info *pPlaybackInfos;
     std::mutex remove_handle_mutex;
+    unsigned int mSampleRate;
+    unsigned int mBufferSize;
+    unsigned int mChannels;
 };
 
 #endif // PLAYER_H

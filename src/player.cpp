@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cstdarg>
+#include <cstring>
 #include <random>
 #ifdef _IS_WIN_
 #include <stddef.h> // for size_t
@@ -33,20 +34,102 @@ void Player::setStateChangedCallback(void (*stateChangedCallback)(unsigned int))
     soloud.setStateChangedCallback(stateChangedCallback);
 }
 
-PlayerErrors Player::init(unsigned int sampleRate, unsigned int bufferSize, unsigned int channels)
+PlayerErrors Player::init(unsigned int sampleRate, unsigned int bufferSize, unsigned int channels, int deviceID)
 {
     if (mInited)
         return playerAlreadyInited;
 
+    void *playbackInfos_id = nullptr;
+    if (deviceID != -1)
+    {
+        // Calling this will init [pPlaybackInfos]
+        auto const devices = listPlaybackDevices();
+        if (devices.size() == 0 || deviceID >= devices.size())
+            return noPlaybackDevicesFound;
+        playbackInfos_id = &pPlaybackInfos[deviceID].id;
+    }
+
     // initialize SoLoud.
     SoLoud::result result = soloud.init(
         SoLoud::Soloud::CLIP_ROUNDOFF,
-        SoLoud::Soloud::MINIAUDIO, sampleRate, bufferSize, channels);
-    if (result == SoLoud::SO_NO_ERROR)
+        SoLoud::Soloud::MINIAUDIO, sampleRate, bufferSize, channels, playbackInfos_id);
+    if (result == SoLoud::SO_NO_ERROR){
         mInited = true;
-    else
+        mSampleRate = sampleRate;
+        mBufferSize = bufferSize;
+        mChannels = channels;
+    } else
         result = backendNotInited;
     return (PlayerErrors)result;
+}
+
+PlayerErrors Player::changeDevice(int deviceID)
+{
+    if (!mInited)
+        return backendNotInited;
+
+    void *playbackInfos_id = nullptr;
+
+    // Calling this will init [pPlaybackInfos]
+    auto const devices = listPlaybackDevices();
+    if (devices.size() == 0 || deviceID >= devices.size())
+        return noPlaybackDevicesFound;
+    playbackInfos_id = &pPlaybackInfos[deviceID].id;
+
+    SoLoud::result result = soloud.miniaudio_changeDevice(playbackInfos_id);
+    
+    // miniaudio_changeDevice can only throw UNKNOWN_ERROR. This means that
+    // for some reasons the device could not be changed (maybe the engine
+    // was turned off in the meantime?).
+    if (result != SoLoud::SO_NO_ERROR)
+        result = backendNotInited;
+    return noError;
+}
+
+// List available playback devices.
+std::vector<PlaybackDevice> Player::listPlaybackDevices()
+{
+    // printf("***************** LIST DEVICES START\n");
+    ma_context context;
+    ma_uint32 playbackCount;
+    ma_device_info *pCaptureInfos;
+    ma_uint32 captureCount;
+    std::vector<PlaybackDevice> ret;
+    ma_result result;
+    if ((result = ma_context_init(NULL, 0, NULL, &context)) != MA_SUCCESS)
+    {
+        // Failed to initialize audio context.
+        return ret;
+    }
+
+    if ((result = ma_context_get_devices(
+            &context,
+            &pPlaybackInfos,
+            &playbackCount,
+            &pCaptureInfos,
+            &captureCount)) != MA_SUCCESS)
+    {
+        printf("Failed to get devices %d\n", result);
+        return ret;
+    }
+
+    // Loop over each device info and do something with it. Here we just print
+    // the name with their index. You may want
+    // to give the user the opportunity to choose which device they'd prefer.
+    for (ma_uint32 i = 0; i < playbackCount; i++)
+    {
+        // printf("######%s %d - %s\n",
+        //        pPlaybackInfos[i].isDefault ? " X" : "-",
+        //        i,
+        //        pPlaybackInfos[i].name);
+        PlaybackDevice cd;
+        cd.name = strdup(pPlaybackInfos[i].name);
+        cd.isDefault = pPlaybackInfos[i].isDefault;
+        cd.id = i;
+        ret.push_back(cd);
+    }
+    // printf("***************** LIST DEVICES END\n");
+    return ret;
 }
 
 void Player::dispose()
@@ -111,6 +194,8 @@ const std::string Player::getErrorString(PlayerErrors errorCode) const
         return "error: audio handle is not found!";
     case filterParameterGetError:
         return "error: getting filter parameter error!";
+    case noPlaybackDevicesFound:
+        return "error: no playback devices found!";
     }
     return "Other error";
 }

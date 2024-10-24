@@ -11,6 +11,7 @@ import 'package:flutter_soloud/src/bindings/soloud_controller.dart';
 import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/exceptions/exceptions.dart';
 import 'package:flutter_soloud/src/filters/filters.dart';
+import 'package:flutter_soloud/src/helpers/playback_device.dart';
 import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
 import 'package:flutter_soloud/src/utils/loader.dart';
@@ -281,6 +282,12 @@ interface class SoLoud {
   /// If you call any other methods (such as [play]) before initialization
   /// completes, those calls will be ignored and you will get
   /// a [SoLoudNotInitializedException] exception.
+  /// Could throw [SoLoudNoPlaybackDevicesFoundCppException] if there is not a
+  /// playback device available or if the given [device] is not found.
+  ///
+  /// NOTE: Calling this method while the engine is already initialized will
+  /// first deinitialize the engine and then reinitialize it. This means
+  /// that all sounds will be stopped, and all sound files will be unloaded.
   ///
   /// If [automaticCleanup] is `true`, the temporary directory that
   /// the engine uses for storing sound files will be purged occasionally
@@ -310,6 +317,7 @@ interface class SoLoud {
     // TODO(filip): remove deprecation?
     @Deprecated('timeout is not used anymore.')
     Duration timeout = const Duration(seconds: 10),
+    PlaybackDevice? device,
     bool automaticCleanup = false,
     int sampleRate = 44100,
     int bufferSize = 2048,
@@ -336,6 +344,7 @@ interface class SoLoud {
     _initializeNativeCallbacks();
 
     final error = _controller.soLoudFFI.initEngine(
+      device?.id ?? -1,
       sampleRate,
       bufferSize,
       channels,
@@ -355,7 +364,36 @@ interface class SoLoud {
       await _loader.initialize();
     } else {
       _log.severe('initialize() failed with error: $error');
+      throw SoLoudCppException.fromPlayerError(error);
     }
+  }
+
+  /// Changes the output audio device to the one specified in the [newDevice].
+  /// If [newDevice] is not provided, the default OS device will be used.
+  ///
+  /// Note: Android and Web, only support one output device which is the
+  /// default device (iOS and MacOS?).
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  /// Throws [SoLoudNoPlaybackDevicesFoundCppException] if the given [newDevice]
+  /// is not found.
+  void changeDevice({PlaybackDevice? newDevice}) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+
+    final deviceId = newDevice?.id ?? -1;
+    final error = _controller.soLoudFFI.changeDevice(deviceId);
+    _logPlayerError(error, from: 'changeDevice() result');
+    if (error != PlayerErrors.noError) {
+      throw SoLoudCppException.fromPlayerError(error);
+    }
+  }
+
+  /// Lists all OS available playback devices.
+  /// Could be called safely even if the engin has not been initialized yet.
+  List<PlaybackDevice> listPlaybackDevices() {
+    return _controller.soLoudFFI.listPlaybackDevices();
   }
 
   /// Stops the engine and disposes of all resources, including sounds.

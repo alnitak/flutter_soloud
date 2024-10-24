@@ -17,6 +17,10 @@ cd build
 
 # https://emscripten.org/docs/tools_reference/settings_reference.html
 
+# Enable emscripten threads? https://github.com/mackron/miniaudio/issues/855#issuecomment-2301450494
+# -s ASYNCIFY -s AUDIO_WORKLET=1 -s WASM_WORKERS=1 -pthread -s PTHREAD_POOL_SIZE=1 \
+# -D MA_ENABLE_AUDIO_WORKLETS -D MA_AUDIO_WORKLETS_THREAD_STACK_SIZE=524288 \
+
 # -s ASSERTIONS=1 \
 # -s TOTAL_MEMORY=512MB \
 # -s DEFAULT_TO_CXX \

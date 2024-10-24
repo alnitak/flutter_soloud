@@ -1,3 +1,8 @@
+### 2.1.7 ()
+- added `listPlaybackDevices` to get all the OS output devices available.
+- added `deviceId` parameter to the `init()` method. You can choose which device is delegated to output the audio.
+- added `changeDevice` method to change the playback device on-the-fly.
+
 ### 2.1.6 (17 Oct 2024)
 - fixed a bug that caused an error when loading a sound more than twice.
 
