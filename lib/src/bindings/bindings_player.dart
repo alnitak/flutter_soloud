@@ -134,7 +134,6 @@ abstract class FlutterSoLoud {
   /// [pcmFormat]: 0 = f32le, 1 = s8, 2 = s16le, 3 = s32le
   @mustBeOverridden
   ({PlayerErrors error, SoundHash soundHash}) setBufferStream(
-    String uniqueName,
     int maxBufferSize,
     int sampleRate,
     int channels,
@@ -157,6 +156,11 @@ abstract class FlutterSoLoud {
   /// Returns [PlayerErrors.noError] if success.
   @mustBeOverridden
   PlayerErrors setDataIsEnded(SoundHash soundHash);
+
+  /// Get the current buffer size in bytes of this sound with hash [hash].
+  /// [hash] the hash of the stream sound.
+  @mustBeOverridden
+  ({PlayerErrors error, int sizeInBytes}) getBufferSize(int hash);
 
   /// Load a new waveform to be played once or multiple times later.
   ///

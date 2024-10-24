@@ -8,7 +8,7 @@
             "name": "Flutter debug",
             "type": "dart",
             "request": "launch",
-            "program": "lib/websocket/websocket.dart",
+            "program": "lib/buffer_stream/websocket.dart",
             "flutterMode": "debug",
             "cwd": "${workspaceFolder}/example"
         },
@@ -24,7 +24,7 @@
             "name": "Flutter release",
             "type": "dart",
             "request": "launch",
-            "program": "lib/websocket/websocket.dart",
+            "program": "lib/buffer_stream/websocket.dart",
             "flutterMode": "release",
             "cwd": "${workspaceFolder}/example"
         },

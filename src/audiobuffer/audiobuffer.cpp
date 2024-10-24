@@ -38,8 +38,12 @@ namespace SoLoud
 
 		if (samplesToRead != aSamplesToRead)
 		{
-			printf("samplesToRead %d != aSamplesToRead %d\n", samplesToRead, aSamplesToRead);
 			memset(aBuffer, 0, sizeof(float) * aSamplesToRead);
+
+			if (mParent->mOnBufferingCallback != nullptr && !mParent->dataIsEnded)
+			{
+				mParent->mOnBufferingCallback();
+			}
 		}
 
 		if (mChannels == 1)
@@ -102,7 +106,8 @@ namespace SoLoud
 
 	void BufferStream::setBufferStream(
 		unsigned int maxBufferSize,
-		PCMformat pcmFormat)
+		PCMformat pcmFormat,
+		void (*onBufferingCallback)())
 	{
 		mSampleCount = 0;
 		dataIsEnded = false;
@@ -115,6 +120,7 @@ namespace SoLoud
 		mBuffer.setSizeInBytes(maxBufferSize);
 		mChannels = pcmFormat.channels;
 		mBaseSamplerate = (float)pcmFormat.sampleRate;
+		mOnBufferingCallback = onBufferingCallback;
 	}
 
 	void BufferStream::setDataIsEnded()

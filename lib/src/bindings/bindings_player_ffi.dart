@@ -376,7 +376,6 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
 
   @override
   ({PlayerErrors error, SoundHash soundHash}) setBufferStream(
-    String uniqueName,
     int maxBufferSize,
     int sampleRate,
     int channels,
@@ -392,11 +391,9 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       );
     }
 
-    final ffi.Pointer<Utf8> cString = uniqueName.toNativeUtf8();
     final ffi.Pointer<ffi.UnsignedInt> hash =
         calloc(ffi.sizeOf<ffi.UnsignedInt>());
     final e = _setBufferStream(
-      cString,
       hash,
       maxBufferSize,
       sampleRate,
@@ -406,16 +403,13 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     );
     final soundHash = SoundHash(hash.value);
     final ret = (error: PlayerErrors.values[e], soundHash: soundHash);
-    calloc
-      ..free(hash)
-      ..free(cString);
+    calloc.free(hash);
     return ret;
   }
 
   late final _setBufferStreamPtr = _lookup<
           ffi.NativeFunction<
               ffi.UnsignedInt Function(
-                  ffi.Pointer<Utf8>,
                   ffi.Pointer<ffi.UnsignedInt>,
                   ffi.UnsignedLong,
                   ffi.UnsignedInt,
@@ -425,7 +419,6 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       'setBufferStream');
   late final _setBufferStream = _setBufferStreamPtr.asFunction<
       int Function(
-        ffi.Pointer<Utf8>,
         ffi.Pointer<ffi.UnsignedInt>,
         int,
         int,
@@ -469,6 +462,23 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
           'setDataIsEnded');
   late final _setDataIsEnded =
       _setDataIsEndedPtr.asFunction<int Function(int)>();
+
+  @override
+  ({PlayerErrors error, int sizeInBytes}) getBufferSize(int hash) {
+    final ffi.Pointer<ffi.UnsignedInt> size =
+        calloc(ffi.sizeOf<ffi.UnsignedInt>());
+    final e = _getBufferSize(hash, size);
+    final ret = (error: PlayerErrors.values[e], sizeInBytes: size.value);
+    calloc.free(size);
+    return ret;
+  }
+
+  late final _getBufferSizePtr = _lookup<
+      ffi.NativeFunction<
+          ffi.UnsignedInt Function(
+              ffi.UnsignedInt, ffi.Pointer<ffi.UnsignedInt>)>>('getBufferSize');
+  late final _getBufferSize = _getBufferSizePtr
+      .asFunction<int Function(int, ffi.Pointer<ffi.UnsignedInt>)>();
 
   @override
   ({PlayerErrors error, SoundHash soundHash}) loadWaveform(

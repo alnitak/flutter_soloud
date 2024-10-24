@@ -277,26 +277,23 @@ enum Channels {
 
   /// The channels count.
   final int count;
-}
 
-/// CaptureDevice exposed to Dart
-final class PlaybackDevice {
-  /// Constructs a new [PlaybackDevice].
-  // ignore: avoid_positional_boolean_parameters
-  const PlaybackDevice(this.id, this.isDefault, this.name);
-
-  /// The ID of the device.
-  final int id;
-
-  /// Whether this is the default playback device.
-  final bool isDefault;
-
-  /// The name of the device.
-  final String name;
-
+  /// Returns a human-friendly channel name.
   @override
-  String toString() =>
-      '\nPlaybackDevice(id: $id, isDefault: $isDefault, name: $name)';
+  String toString() {
+    switch (this) {
+      case Channels.mono:
+        return 'Mono';
+      case Channels.stereo:
+        return 'Stereo';
+      case Channels.quad:
+        return 'Quad';
+      case Channels.surround51:
+        return 'Surround 5.1';
+      case Channels.dolby71:
+        return 'Dolby 7.1';
+    }
+  }
 }
 
 enum BufferPcmType {
