@@ -37,6 +37,7 @@ namespace SoLoud
   class BufferStream : public AudioSource
   {
   public:
+    void (*mOnBufferingCallback)();
     enum Endianness mEndianness; // TODO?
     unsigned int mMaxBufferSize;
     unsigned int mSampleCount;
@@ -48,12 +49,14 @@ namespace SoLoud
     virtual ~BufferStream();
     void setBufferStream(
         unsigned int maxBufferSize = 1024 * 1024 * 100, // 100 Mbytes
-        PCMformat pcmFormat = {44100, 2, 2, PCM_S16LE});
+        PCMformat pcmFormat = {44100, 2, 2, PCM_S16LE},
+        void (*onBufferingCallback)() = nullptr);
     // TODO: add Base64 decoding: https://github.com/aklomp/base64
     void setDataIsEnded();
     PlayerErrors addData(const void *aData, unsigned int numSamples);
     virtual AudioSourceInstance *createInstance();
     time getLength();
+
   };
 };
 

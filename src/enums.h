@@ -47,7 +47,9 @@ typedef enum PlayerErrors
     /// Error getting filter parameter.
     filterParameterGetError = 18,
     /// Trying to add PCM data but the buffer is full or stream buffer has been set to be ended.
-    pcmBufferFullOrStreamEnded = 19
+    pcmBufferFullOrStreamEnded = 19,
+    /// No playback devices were found.
+    noPlaybackDevicesFound = 20
 } PlayerErrors_t;
 
 /// Possible read sample errors

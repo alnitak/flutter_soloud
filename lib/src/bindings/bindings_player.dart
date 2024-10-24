@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:flutter_soloud/src/bindings/audio_data.dart';
 import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/filters/filters.dart';
+import 'package:flutter_soloud/src/helpers/playback_device.dart';
 import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
 import 'package:meta/meta.dart';
@@ -133,11 +134,11 @@ abstract class FlutterSoLoud {
   /// [pcmFormat]: 0 = f32le, 1 = s8, 2 = s16le, 3 = s32le
   @mustBeOverridden
   ({PlayerErrors error, SoundHash soundHash}) setBufferStream(
-    String uniqueName,
     int maxBufferSize,
     int sampleRate,
     int channels,
     int pcmFormat,
+    void Function()? onBuffering,
   );
 
   /// Add a chunk of audio data to the buffer stream.
@@ -155,6 +156,11 @@ abstract class FlutterSoLoud {
   /// Returns [PlayerErrors.noError] if success.
   @mustBeOverridden
   PlayerErrors setDataIsEnded(SoundHash soundHash);
+
+  /// Get the current buffer size in bytes of this sound with hash [hash].
+  /// [hash] the hash of the stream sound.
+  @mustBeOverridden
+  ({PlayerErrors error, int sizeInBytes}) getBufferSize(int hash);
 
   /// Load a new waveform to be played once or multiple times later.
   ///

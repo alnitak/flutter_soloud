@@ -19,7 +19,6 @@
 
 //--------------------- copy here the new functions to generate
 
-    // Set the end of the data stream.
-    // [hash] the hash of the stream sound.
-    // Returns [PlayerErrors.SO_NO_ERROR] if success.
-FFI_PLUGIN_EXPORT enum PlayerErrors setDataIsEnded(unsigned int hash);
+// Get the current buffer size in bytes of this sound with hash [hash].
+// [hash] the hash of the stream sound.
+FFI_PLUGIN_EXPORT enum PlayerErrors getBufferSize(unsigned int hash, unsigned int *sizeInBytes);

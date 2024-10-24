@@ -219,6 +219,11 @@ extern "C"
         {
             bool hasSpecialChar = false;
             /// check if the device name has some strange chars (happens on Linux)
+            /// It happens that some results had the name composed of non-text
+            /// ASCII characters with values ​​<0x20 (blank space) which cannot be
+            /// real devices and should be ignored. Doesn't happen on my Linux
+            /// anymore (maybe was a bug on audio drivers?), but worth checking
+            /// to be sure.
             for (int n = 0; n < 5; n++)
             {
                 if (d[i].name[n] < 0x20)
@@ -355,18 +360,18 @@ extern "C"
     /// [sampleRate], [channels], [pcmFormat] should be set in the case the audio data is PCM.
     /// [pcmFormat]: 0 = f32le, 1 = s8, 2 = s16le, 3 = s32le
     FFI_PLUGIN_EXPORT enum PlayerErrors setBufferStream(
-        char *uniqueName,
         unsigned int *hash,
         unsigned long maxBufferSize,
         unsigned int sampleRate,
         unsigned int channels,
-        int pcmFormat)
+        int pcmFormat,
+        void (*onBufferingCallback)())
     {
         std::lock_guard<std::mutex> guard_init(init_deinit_mutex);
         std::lock_guard<std::mutex> guard_load(loadMutex);
         if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
-            
+
         unsigned int bytesPerSample;
         switch (pcmFormat)
         {
@@ -385,10 +390,10 @@ extern "C"
         }
         SoLoud::PCMformat dataType = {sampleRate, channels, bytesPerSample, (BufferPcmType)pcmFormat};
         PlayerErrors e = (PlayerErrors)player.get()->setBufferStream(
-            std::string(uniqueName),
             *hash,
             maxBufferSize,
-            dataType);
+            dataType,
+            onBufferingCallback);
         return e;
     }
 
@@ -409,12 +414,20 @@ extern "C"
 
     // Set the end of the data stream.
     // [hash] the hash of the stream sound.
-    // Returns [PlayerErrors.SO_NO_ERROR] if success.
     FFI_PLUGIN_EXPORT enum PlayerErrors setDataIsEnded(unsigned int hash)
     {
         if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
         return player.get()->setDataIsEnded(hash);
+    }
+
+    // Get the current buffer size in bytes of this sound with hash [hash].
+    // [hash] the hash of the stream sound.
+    FFI_PLUGIN_EXPORT enum PlayerErrors getBufferSize(unsigned int hash, unsigned int *sizeInBytes)
+    {
+        if (player.get() == nullptr || !player.get()->isInited())
+            return backendNotInited;
+        return player.get()->getBufferSize(hash, sizeInBytes);
     }
 
     /// Load a new waveform to be played once or multiple times later

@@ -44,7 +44,7 @@ PlayerErrors Player::init(unsigned int sampleRate, unsigned int bufferSize, unsi
         // Calling this will init [pPlaybackInfos]
         auto const devices = listPlaybackDevices();
         if (devices.size() == 0 || deviceID >= devices.size())
-            return backendNotInited;
+            return noPlaybackDevicesFound;
         playbackInfos_id = &pPlaybackInfos[deviceID].id;
     }
 
@@ -74,11 +74,14 @@ PlayerErrors Player::changeDevice(int deviceID)
     // Calling this will init [pPlaybackInfos]
     auto const devices = listPlaybackDevices();
     if (devices.size() == 0 || deviceID >= devices.size())
-        return backendNotInited;
+        return noPlaybackDevicesFound;
     playbackInfos_id = &pPlaybackInfos[deviceID].id;
 
     SoLoud::result result = soloud.miniaudio_changeDevice(playbackInfos_id);
-
+    
+    // miniaudio_changeDevice can only throw UNKNOWN_ERROR. This means that
+    // for some reasons the device could not be changed (maybe the engine
+    // was turned off in the meantime?).
     if (result != SoLoud::SO_NO_ERROR)
         result = backendNotInited;
     return noError;
@@ -96,7 +99,7 @@ std::vector<PlaybackDevice> Player::listPlaybackDevices()
     ma_result result;
     if ((result = ma_context_init(NULL, 0, NULL, &context)) != MA_SUCCESS)
     {
-        printf("Failed to initialize context %d\n", result);
+        // Failed to initialize audio context.
         return ret;
     }
 
@@ -194,6 +197,8 @@ const std::string Player::getErrorString(PlayerErrors errorCode) const
         return "error: getting filter parameter error!";
     case pcmBufferFullOrStreamEnded:
         return "error: pcm buffer full or stream buffer ended!";
+    case noPlaybackDevicesFound:
+        return "error: no playback devices found!";
     }
     return "Other error";
 }
@@ -301,35 +306,28 @@ PlayerErrors Player::loadMem(
 }
 
 PlayerErrors Player::setBufferStream(
-    const std::string &uniqueName,
     unsigned int &hash,
     unsigned long maxBufferSize,
-    SoLoud::PCMformat pcmFormat)
+    SoLoud::PCMformat pcmFormat,
+    void (*onBufferingCallback)())
 {
     if (!mInited)
         return backendNotInited;
 
-    hash = 0;
+    std::random_device rd;
+    std::mt19937 g(rd());
+    std::uniform_int_distribution<unsigned int> dist(0, UINT32_MAX);
 
-    unsigned int newHash = (int32_t)std::hash<std::string>{}(uniqueName) & 0x7fffffff;
-    /// check if the sound has been already loaded
-    auto const s = findByHash(newHash);
-
-    if (s != nullptr)
-    {
-        hash = newHash;
-        return fileAlreadyLoaded;
-    }
+    hash = dist(g);
 
     std::unique_ptr<ActiveSound> newSound = std::make_unique<ActiveSound>();
-    newSound.get()->completeFileName = std::string(uniqueName);
-    hash = newHash;
-    newSound.get()->soundHash = newHash;
+    newSound.get()->completeFileName = "";
+    newSound.get()->soundHash = hash;
 
     newSound.get()->sound = std::make_unique<SoLoud::BufferStream>();
     newSound.get()->soundType = TYPE_BUFFER_STREAM;
     static_cast<SoLoud::BufferStream *>(newSound.get()->sound.get())->setBufferStream(
-        maxBufferSize, pcmFormat);
+        maxBufferSize, pcmFormat, onBufferingCallback);
 
     newSound.get()->filters = std::make_unique<Filters>(&soloud, newSound.get());
     sounds.push_back(std::move(newSound));
@@ -358,6 +356,17 @@ PlayerErrors Player::setDataIsEnded(unsigned int hash)
         return soundHashNotFound;
 
     static_cast<SoLoud::BufferStream *>(s->sound.get())->setDataIsEnded();
+    return noError;
+}
+
+PlayerErrors Player::getBufferSize(unsigned int hash, unsigned int *sizeInBytes)
+{
+    auto const s = findByHash(hash);
+
+    if (s == nullptr || s->soundType != TYPE_BUFFER_STREAM)
+        return soundHashNotFound;
+
+    *sizeInBytes = static_cast<SoLoud::BufferStream *>(s->sound.get())->mBuffer.getCurrentBufferSizeInBytes();
     return noError;
 }
 
