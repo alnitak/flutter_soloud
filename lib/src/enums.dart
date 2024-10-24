@@ -66,7 +66,10 @@ enum PlayerErrors {
 
   /// Trying to add PCM data but the buffer is full or stream buffer has been
   /// set to be ended.
-  pcmBufferFullOrStreamEnded(19);
+  pcmBufferFullOrStreamEnded(19),
+
+  /// No playback devices were found.
+  noPlaybackDevicesFound(20);
 
   const PlayerErrors(this.value);
 
@@ -124,6 +127,9 @@ enum PlayerErrors {
       case PlayerErrors.pcmBufferFullOrStreamEnded:
         return 'Trying to add PCM data but the buffer is full or stream '
             'buffer has been set to be ended.';
+      case PlayerErrors.noPlaybackDevicesFound:
+        return 'No playback devices were found while initializing engine or '
+            'when changing the output device.';
     }
   }
 

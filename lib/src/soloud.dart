@@ -11,6 +11,7 @@ import 'package:flutter_soloud/src/bindings/soloud_controller.dart';
 import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/exceptions/exceptions.dart';
 import 'package:flutter_soloud/src/filters/filters.dart';
+import 'package:flutter_soloud/src/helpers/playback_device.dart';
 import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
 import 'package:flutter_soloud/src/utils/loader.dart';
@@ -294,6 +295,8 @@ interface class SoLoud {
   /// If you call any other methods (such as [play]) before initialization
   /// completes, those calls will be ignored and you will get
   /// a [SoLoudNotInitializedException] exception.
+  /// Could throw [SoLoudNoPlaybackDevicesFoundCppException] if there is not a
+  /// playback device available or if the given [device] is not found.
   ///
   /// NOTE: Calling this method while the engine is already initialized will
   /// first deinitialize the engine and then reinitialize it. This means
@@ -327,7 +330,7 @@ interface class SoLoud {
     // TODO(filip): remove deprecation?
     @Deprecated('timeout is not used anymore.')
     Duration timeout = const Duration(seconds: 10),
-    int deviceId = -1,
+    PlaybackDevice? device,
     bool automaticCleanup = false,
     int sampleRate = 44100,
     int bufferSize = 2048,
@@ -354,7 +357,7 @@ interface class SoLoud {
     _initializeNativeCallbacks();
 
     final error = _controller.soLoudFFI.initEngine(
-      deviceId,
+      device?.id ?? -1,
       sampleRate,
       bufferSize,
       channels,
@@ -374,6 +377,7 @@ interface class SoLoud {
       await _loader.initialize();
     } else {
       _log.severe('initialize() failed with error: $error');
+      throw SoLoudCppException.fromPlayerError(error);
     }
   }
 
@@ -384,21 +388,23 @@ interface class SoLoud {
   /// default device (iOS and MacOS?).
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
-  PlayerErrors changeDevice({PlaybackDevice? newDevice}) {
+  /// Throws [SoLoudNoPlaybackDevicesFoundCppException] if the given [newDevice]
+  /// is not found.
+  void changeDevice({PlaybackDevice? newDevice}) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+
     final deviceId = newDevice?.id ?? -1;
     final error = _controller.soLoudFFI.changeDevice(deviceId);
     _logPlayerError(error, from: 'changeDevice() result');
     if (error != PlayerErrors.noError) {
       throw SoLoudCppException.fromPlayerError(error);
     }
-    return error;
   }
 
   /// Lists all OS available playback devices.
-  /// Could be called safely even in the engin has not been initialized yet.
+  /// Could be called safely even if the engin has not been initialized yet.
   List<PlaybackDevice> listPlaybackDevices() {
     return _controller.soLoudFFI.listPlaybackDevices();
   }
@@ -482,35 +488,30 @@ interface class SoLoud {
           final completeFileName = result['completeFileName'] as String;
           final hash = result['hash'] as int;
 
+          final newSound = AudioSource(SoundHash(hash));
+          final alreadyLoaded = _activeSounds
+                  .where((sound) => sound.soundHash == newSound.soundHash)
+                  .length ==
+              1;
           _logPlayerError(error, from: 'loadFile() result');
           if (error == PlayerErrors.noError) {
-            final newSound = AudioSource(SoundHash(hash));
-            _activeSounds.add(newSound);
-            loadedFileCompleters[completeFileName]!
-                .complete(newSound);
+            if (!alreadyLoaded) {
+              _activeSounds.add(newSound);
+            }
           } else if (error == PlayerErrors.fileAlreadyLoaded) {
-            _log.warning(() => "Sound '$completeFileName' was already loaded. "
-                'Prefer loading only once, and reusing the loaded sound '
-                'when playing.');
-            final newSound = AudioSource(SoundHash(hash));
-            final alreadyLoaded = _activeSounds
-                    .where((sound) => sound.soundHash == newSound.soundHash)
-                    .length ==
-                1;
-            assert(
-                alreadyLoaded,
-                'Sound is already loaded but missing from _activeSounds. '
-                'This is probably a bug in flutter_soloud, please file.');
-            // If we are here, the file has been already loaded but there is
-            // no corrispondence int the local list of sounds. Add it to
-            // the list safely because the cpp loadFile() compute the hash
-            // using the file name.
-            _activeSounds.add(newSound);
-            loadedFileCompleters[completeFileName]
-                ?.complete(newSound);
+            // If we are here, the file has been already loaded on C++ side.
+            // Check if it is already in [_activeSounds], if not add it.
+            if (alreadyLoaded) {
+              _log.warning(() => "Sound '$completeFileName' was already "
+                  'loaded. Prefer loading only once, and reusing the loaded '
+                  'sound when playing.');
+            } else {
+              _activeSounds.add(newSound);
+            }
           } else {
             throw SoLoudCppException.fromPlayerError(error);
           }
+          loadedFileCompleters[result['completeFileName']]?.complete(newSound);
         }
       });
     }

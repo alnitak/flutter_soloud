@@ -868,6 +868,11 @@ Future<StringBuffer> testAsyncMultiLoad() async {
   ];
 
   await Future.wait(sounds);
+  // loading the same asset many times should not throw and just
+  // display a warning.
+  await SoLoud.instance.loadAsset('assets/audio/tic-1.wav');
+  await SoLoud.instance.loadAsset('assets/audio/tic-1.wav');
+  await SoLoud.instance.loadAsset('assets/audio/tic-1.wav');
 
   deinit();
   return strBuf;

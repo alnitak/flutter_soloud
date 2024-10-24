@@ -5,6 +5,25 @@ import 'package:flutter/material.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:logging/logging.dart';
 
+/// Output device example.
+///
+/// This example uses the default output device and present a dropdown
+/// menu to change from all available output devices.
+/// All this is made simple just using the `listPlaybackDevices` and
+/// `changeDevice` methods.
+///
+/// To get all output devices use `listPlaybackDevices` which returns
+/// a list of `PlaybackDevice`s class. Each items of this class
+/// contains the id, whether it's the default device (the one used by the OS)
+/// and the name.
+/// This method can be called even if the engine has not been initialized.
+///
+/// At any time it is possible to pass to `changeDevice` a `PlaybackDevice`
+/// which will change the output device.
+///
+/// Note: Android, iOS and Web, only support one output device which is
+/// the default.
+
 void main() async {
   // The `flutter_soloud` package logs everything
   // (from severe warnings to fine debug messages)
@@ -54,9 +73,9 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
     super.initState();
     SoLoud.instance.loadAsset('assets/audio/8_bit_mentality.mp3').then((value) {
       currentSound = value;
-      SoLoud.instance.play(currentSound!, looping: true);
+      SoLoud.instance.play(currentSound!, looping: true, volume: 0.5);
     });
-    
+
     devices = SoLoud.instance.listPlaybackDevices();
     assert(devices.isNotEmpty, 'No devices found!');
 
@@ -81,17 +100,7 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
       body: Center(
         child: DropdownMenu(
           controller: textEditingController,
-          onSelected: (value) async {
-            /// When changing the output device, we need to reinitialize
-            /// the player. All existing audio sources will be stopped and
-            /// disposed as well.
-            // currentDevice = devices[value!];
-            // SoLoud.instance.deinit();
-            // await SoLoud.instance.init(deviceId: currentDevice.id);
-
-            // currentSound = await SoLoud.instance
-            //     .loadAsset('assets/audio/8_bit_mentality.mp3');
-            // await SoLoud.instance.play(currentSound!, looping: true);
+          onSelected: (value) {
             SoLoud.instance.changeDevice(newDevice: devices[value!]);
           },
           dropdownMenuEntries: [

@@ -243,3 +243,14 @@ class SoLoudPcmBufferFullOrStreamEndedCppException extends SoLoudCppException {
       'or stream buffer has been set to be ended. '
       '(on the C++ side).';
 }
+
+/// An error occurred when reading PCM frames.
+class SoLoudNoPlaybackDevicesFoundCppException extends SoLoudCppException {
+  /// Creates a new [SoLoudNoPlaybackDevicesFoundCppException].
+  const SoLoudNoPlaybackDevicesFoundCppException([super.message]);
+
+  @override
+  String get description => 'No playback devices were found while '
+      'initializing engine or when changing the output device. '
+      '(on the C++ side).';
+}

@@ -44,7 +44,7 @@ PlayerErrors Player::init(unsigned int sampleRate, unsigned int bufferSize, unsi
         // Calling this will init [pPlaybackInfos]
         auto const devices = listPlaybackDevices();
         if (devices.size() == 0 || deviceID >= devices.size())
-            return backendNotInited;
+            return noPlaybackDevicesFound;
         playbackInfos_id = &pPlaybackInfos[deviceID].id;
     }
 
@@ -74,11 +74,14 @@ PlayerErrors Player::changeDevice(int deviceID)
     // Calling this will init [pPlaybackInfos]
     auto const devices = listPlaybackDevices();
     if (devices.size() == 0 || deviceID >= devices.size())
-        return backendNotInited;
+        return noPlaybackDevicesFound;
     playbackInfos_id = &pPlaybackInfos[deviceID].id;
 
     SoLoud::result result = soloud.miniaudio_changeDevice(playbackInfos_id);
-
+    
+    // miniaudio_changeDevice can only throw UNKNOWN_ERROR. This means that
+    // for some reasons the device could not be changed (maybe the engine
+    // was turned off in the meantime?).
     if (result != SoLoud::SO_NO_ERROR)
         result = backendNotInited;
     return noError;
@@ -96,7 +99,7 @@ std::vector<PlaybackDevice> Player::listPlaybackDevices()
     ma_result result;
     if ((result = ma_context_init(NULL, 0, NULL, &context)) != MA_SUCCESS)
     {
-        printf("Failed to initialize context %d\n", result);
+        // Failed to initialize audio context.
         return ret;
     }
 
@@ -194,6 +197,8 @@ const std::string Player::getErrorString(PlayerErrors errorCode) const
         return "error: getting filter parameter error!";
     case pcmBufferFullOrStreamEnded:
         return "error: pcm buffer full or stream buffer ended!";
+    case noPlaybackDevicesFound:
+        return "error: no playback devices found!";
     }
     return "Other error";
 }
