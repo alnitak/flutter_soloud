@@ -366,7 +366,7 @@ PlayerErrors Player::getBufferSize(unsigned int hash, unsigned int *sizeInBytes)
     if (s == nullptr || s->soundType != TYPE_BUFFER_STREAM)
         return soundHashNotFound;
 
-    *sizeInBytes = static_cast<SoLoud::BufferStream *>(s->sound.get())->mBuffer.getCurrentBufferSizeInBytes();
+    *sizeInBytes = static_cast<SoLoud::BufferStream *>(s->sound.get())->mBuffer.buffer.size();
     return noError;
 }
 

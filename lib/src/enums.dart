@@ -125,8 +125,9 @@ enum PlayerErrors {
         return 'An error (nan or inf value) occurred while getting a '
             'filter parameter!';
       case PlayerErrors.pcmBufferFullOrStreamEnded:
-        return 'Trying to add PCM data but the buffer is full or stream '
-            'buffer has been set to be ended.';
+        return 'Trying to add PCM data but the buffer is full or not large '
+            'enough for the neded PCM data. Try increasing the buffer size. '
+            'Or, stream buffer has been set to be ended. ';
       case PlayerErrors.noPlaybackDevicesFound:
         return 'No playback devices were found while initializing engine or '
             'when changing the output device.';

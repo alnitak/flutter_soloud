@@ -239,8 +239,9 @@ class SoLoudPcmBufferFullOrStreamEndedCppException extends SoLoudCppException {
   const SoLoudPcmBufferFullOrStreamEndedCppException([super.message]);
 
   @override
-  String get description => 'Trying to add PCM data but the buffer is full '
-      'or stream buffer has been set to be ended. '
+  String get description => 'Trying to add PCM data but the buffer is full or '
+      'not large enough for the neded PCM data. Try increasing the '
+      'buffer size. Or, stream buffer has been set to be ended. '
       '(on the C++ side).';
 }
 

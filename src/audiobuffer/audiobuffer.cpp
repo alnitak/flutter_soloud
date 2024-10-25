@@ -20,18 +20,14 @@ namespace SoLoud
 
 	BufferStreamInstance::~BufferStreamInstance()
 	{
-		if (mParent->mBuffer.getCurrentBufferSizeInBytes() > 0)
-		{
-			mParent->mBuffer.clear();
-		}
 	}
 
 	unsigned int BufferStreamInstance::getAudio(float *aBuffer, unsigned int aSamplesToRead, unsigned int aBufferSize)
 	{
-		if (mParent->mBuffer.getCurrentBufferSize() == 0)
+		if (mParent->mBuffer.getFloatsBufferSize() == 0)
 			return 0;
-		unsigned int bufferSize = mParent->mBuffer.getCurrentBufferSize();
-		float* buffer = reinterpret_cast<float*>(mParent->mBuffer.buffer.data());
+		unsigned int bufferSize = mParent->mBuffer.getFloatsBufferSize();
+		float *buffer = reinterpret_cast<float *>(mParent->mBuffer.buffer.data());
 		int samplesToRead = mOffset + aSamplesToRead > bufferSize ? bufferSize - mOffset : aSamplesToRead;
 		if (samplesToRead <= 0)
 			return 0;
@@ -48,7 +44,7 @@ namespace SoLoud
 
 		if (mChannels == 1)
 		{
-			// Optimization: if we have a mono audio source, we can just copy all the data in one go. 
+			// Optimization: if we have a mono audio source, we can just copy all the data in one go.
 			memcpy(aBuffer, buffer + mOffset, sizeof(float) * samplesToRead);
 		}
 		else
@@ -84,7 +80,8 @@ namespace SoLoud
 
 	bool BufferStreamInstance::hasEnded()
 	{
-		if (mOffset >= mParent->mSampleCount && mParent->dataIsEnded)
+		if (mOffset >= mParent->mSampleCount * mParent->mPCMformat.bytesPerSample &&
+			mParent->dataIsEnded)
 		{
 			return 1;
 		}
@@ -130,7 +127,8 @@ namespace SoLoud
 
 	PlayerErrors BufferStream::addData(const void *aData, unsigned int aDataLen)
 	{
-		if (dataIsEnded) {
+		if (dataIsEnded)
+		{
 			return pcmBufferFullOrStreamEnded;
 		}
 
@@ -152,13 +150,16 @@ namespace SoLoud
 			break;
 		}
 
-		if (bytesWritten == 0){
+		mSampleCount += bytesWritten / mPCMformat.bytesPerSample;
+
+		// data has been added to the buffer, but not all because reached its full capacity.
+		// So mark this stream as ended and no more data can be added.
+		if (bytesWritten < aDataLen / mPCMformat.bytesPerSample)
+		{
 			dataIsEnded = true;
-			return outOfMemory;
+			return pcmBufferFullOrStreamEnded;
 		}
 
-		mSampleCount += aDataLen / mPCMformat.bytesPerSample / mChannels;
-		
 		return noError;
 	}
 
@@ -171,6 +172,6 @@ namespace SoLoud
 	{
 		if (mBaseSamplerate == 0)
 			return 0;
-		return mSampleCount / mBaseSamplerate;
+		return mSampleCount / mBaseSamplerate * mPCMformat.bytesPerSample / mPCMformat.channels;
 	}
 };

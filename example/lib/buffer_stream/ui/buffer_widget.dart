@@ -4,25 +4,32 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'package:flutter_soloud/flutter_soloud.dart';
+
 class BufferBar extends StatefulWidget {
   const BufferBar({
     super.key,
+    this.label = '',
     this.sound,
+    this.startingMb = 10,
   });
 
+  final String? label;
   final AudioSource? sound;
+  final int startingMb;
 
   @override
   State<BufferBar> createState() => _BufferBarState();
 }
 
 class _BufferBarState extends State<BufferBar> {
+  final width = 400.0;
   final height = 30.0;
   Timer? timer;
-  int currentMaxBytes = 1024 * 1024 * 10; // 10 MB
+  int currentMaxBytes = 1024 * 1024; // 1 MB
 
   @override
   void initState() {
+    currentMaxBytes *= widget.startingMb;
     super.initState();
     timer = Timer.periodic(const Duration(milliseconds: 100), (timer) {
       setState(() {});
@@ -41,42 +48,49 @@ class _BufferBarState extends State<BufferBar> {
     } on Exception catch (_) {
       return const SizedBox.shrink();
     }
+
+    /// Increase the widget width when the buffer size increases.
     if (bufferSize >= currentMaxBytes) {
-      currentMaxBytes += 1024 * 1024 * 10;
+      currentMaxBytes += 1024 * 1024 * widget.startingMb;
     }
 
     /// [soundLength] reflects the value of [progressValue].
     final soundLength = SoLoud.instance.getLength(widget.sound!);
-    final humanLength = 
-        '${soundLength.inMinutes % 60}:'
+    final humanDuration = '${soundLength.inMinutes % 60}:'
         '${(soundLength.inSeconds % 60).toString().padLeft(2, '0')}.'
         '${(soundLength.inMilliseconds % 1000).toString().padLeft(3, '0')}';
 
+    /// The current progress value
+    final progressValue = bufferSize > 0.0 ? bufferSize / currentMaxBytes : 0.0;
+
     /// [handlesPos] reflects the handles position between start and
-    /// [progressValue] in percentage.
+    /// [soundLength] in percentage.
     final handlesPos = <double>[];
     for (var i = 0; i < widget.sound!.handles.length; i++) {
+      final handlePos =
+          SoLoud.instance.getPosition(widget.sound!.handles.elementAt(i));
       handlesPos.add(
-        SoLoud.instance
-                .getPosition(widget.sound!.handles.elementAt(i))
-                .inMilliseconds /
-            soundLength.inMilliseconds,
+        handlePos.inMilliseconds / soundLength.inMilliseconds,
       );
+      print('handlesPos[$i] = $handlePos = ${handlesPos[i].toStringAsFixed(2)}   '
+          'soundLength = $soundLength');
     }
-
-    final progressValue = bufferSize > 0.0 ? bufferSize / currentMaxBytes : 0.0;
 
     return Padding(
       padding: const EdgeInsets.all(8),
       child: Row(
         children: [
           SizedBox(
-            width: 90,
+            width: 120,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                Text(
+                  widget.label ?? '',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
                 Text('${(bufferSize / 1024 / 1024).toStringAsFixed(1)} MB'),
-                Text(humanLength),
+                Text(humanDuration),
               ],
             ),
           ),
@@ -84,18 +98,17 @@ class _BufferBarState extends State<BufferBar> {
             children: [
               SizedBox(
                 height: height,
-                width: 400,
+                width: width,
                 child: LinearProgressIndicator(
                   value: progressValue,
                   backgroundColor: Colors.black,
                   valueColor: const AlwaysStoppedAnimation(Colors.red),
                   minHeight: height,
-                  borderRadius: BorderRadius.circular(height / 3),
                 ),
               ),
               for (var i = 0; i < handlesPos.length; i++)
                 Positioned(
-                  left: handlesPos[i] * progressValue * 400,
+                  left: handlesPos[i] * progressValue * width,
                   child: SizedBox(
                     height: height,
                     width: 3,

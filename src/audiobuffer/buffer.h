@@ -25,12 +25,6 @@ public:
 private:
     size_t maxBytes; // Maximum capacity in bytes
 
-    // Helper function to calculate the size of the buffer in bytes
-    size_t bufferSizeInBytes() const
-    {
-        return buffer.size(); // Since each element is int8_t, the size is in bytes
-    }
-
 public:
     // Constructor that accepts the maxBytes parameter
     Buffer() : maxBytes(0) {}
@@ -48,56 +42,61 @@ public:
     // Overload for int8_t data, converting it to normalized float and adding its bytes to the buffer
     // Return the number of floats written.
     size_t addData(const int8_t* data, size_t numSamples) {
-        float d[numSamples];
+        float* d = new float[numSamples];
         for (size_t i = 0; i < numSamples; ++i) {
             d[i] = data[i] / 128.0f;
         }
-        return addData(d, numSamples);
+        size_t ret = addData(d, numSamples);
+        delete[] d;
+        return ret;
     }
 
     // Overload for int16_t data, converting it to normalized float and adding its bytes to the buffer
     // Return the number of floats written.
     size_t addData(const int16_t* data, size_t numSamples) {
-        float d[numSamples];
+        float* d = new float[numSamples];
         for (size_t i = 0; i < numSamples; ++i) {
             d[i] = data[i] / 32768.0f;
         }
-        return addData(d, numSamples);
+        size_t ret = addData(d, numSamples);
+        delete[] d;
+        return ret;
     }
 
     // Overload for int32_t data, converting it to normalized float and adding its bytes to the buffer
     // Return the number of floats written.
     size_t addData(const int32_t* data, size_t numSamples) {
-        float d[numSamples];
+        float* d = new float[numSamples];
         for (size_t i = 0; i < numSamples; ++i) {
             d[i] = data[i] / 2147483648.0f;
         }
-        return addData(d, numSamples);
+        size_t ret = addData(d, numSamples);
+        delete[] d;
+        return ret;
     }
 
     // Overload for float data, directly adding its bytes to the buffer
     // Return the number of floats written.
     size_t addData(const float* data, size_t numSamples) {
-        // No normalization needed for floats
-        if (bufferSizeInBytes() + numSamples * sizeof(float) > maxBytes)
+        // No normalization needed for floats: the player is set to use f32
+        unsigned int bytesNeeded = numSamples * sizeof(float);
+        int32_t newNumSamples = numSamples;
+        if (buffer.size() + bytesNeeded > maxBytes)
         {
-            return 0;
+            int bytesLeft = maxBytes - buffer.size();
+            newNumSamples = bytesLeft / sizeof(float);
+            if (bytesLeft <= 0)
+                return 0;
         }
         const int8_t* data8 = reinterpret_cast<const int8_t*>(data);  // Convert float array to int8_t array
-        buffer.insert(buffer.end(), data8, data8 + numSamples*sizeof(float)); // Append directly
-        return numSamples;
+        buffer.insert(buffer.end(), data8, data8 + newNumSamples*sizeof(float)); // Append directly
+        return newNumSamples;
     }
 
     // Function to get the current size of the buffer in bytes
-    size_t getCurrentBufferSizeInBytes() const
+    size_t getFloatsBufferSize() const
     {
-        return bufferSizeInBytes();
-    }
-
-    // Function to get the current size of the buffer in bytes
-    size_t getCurrentBufferSize() const
-    {
-        return bufferSizeInBytes() / sizeof(float);
+        return buffer.size() / sizeof(float);
     }
 
     // Clear the buffer

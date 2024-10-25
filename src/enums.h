@@ -46,7 +46,9 @@ typedef enum PlayerErrors
     soundHandleNotFound = 17,
     /// Error getting filter parameter.
     filterParameterGetError = 18,
-    /// Trying to add PCM data but the buffer is full or stream buffer has been set to be ended.
+    /// Trying to add PCM data but the buffer is full or not large
+    /// enough for the neded PCM data. Try increasing the buffer size.
+    /// Or, stream buffer has been set to be ended.
     pcmBufferFullOrStreamEnded = 19,
     /// No playback devices were found.
     noPlaybackDevicesFound = 20

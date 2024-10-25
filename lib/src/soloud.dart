@@ -1,6 +1,8 @@
 // ignore_for_file: require_trailing_commas, avoid_positional_boolean_parameters
 
 import 'dart:async';
+import 'dart:ffi';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -631,11 +633,13 @@ interface class SoLoud {
   /// [maxBufferSize] the max buffer size in **bytes**. When adding audio data
   /// using [addAudioDataStream] and this values is reached, the stream will be
   /// considered ended (likewise we called [setDataIsEnded]). This means that
-  /// when playing it, it will stop at that point (if the loop is not set).
+  /// when playing it, it will stop at that point (if loop is not set).
+  /// **Note:** this parameter doesn't allocate any memory, but it just limits
+  /// the amount of data that can be added.
   /// [sampleRate] the sample rate. Usually is 22050 or 44100 (CD quality).
   /// [channels] enum to choose the number of channels.
   /// [pcmFormat] enum to choose from `f32le`, `s8`, `s16le` and `s32le`.
-  /// 
+  ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   AudioSource setBufferStream({
     required int maxBufferSize, // in bytes
@@ -660,13 +664,19 @@ interface class SoLoud {
     return newSound;
   }
 
+  /// Add PCM audio data to the stream.
+  /// 
+  /// This method can be called within an `Isolate` making possible
+  /// to create PCM data and send them to the buffer without frezing
+  /// the main thread.
+  /// 
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   /// Throws [SoLoudPcmBufferFullOrStreamEndedCppException] if the buffer
   /// is full or stream buffer has been set to be ended.
   /// Thows [SoLoudOutOfMemoryException] if the buffer is out of OS memory or
   /// the given `maxBufferSize` when calling `setBufferStream` is too small.
   void addAudioDataStream(
-    int hash,
+    AudioSource source,
     Uint8List audioChunk,
   ) {
     if (!isInitialized) {
@@ -674,7 +684,7 @@ interface class SoLoud {
     }
 
     final e = SoLoudController().soLoudFFI.addAudioDataStream(
-          hash,
+          source.soundHash.hash,
           audioChunk,
         );
 
@@ -684,11 +694,25 @@ interface class SoLoud {
     }
   }
 
+  void addAudioDataF32(AudioSource source, Float32List audioChunk) {
+    addAudioDataStream(source, audioChunk.buffer.asUint8List());
+  }
+
+  void addAudioDataS8(AudioSource source, Int8List audioChunk) {
+    addAudioDataStream(source, audioChunk.buffer.asUint8List());
+  }
+  void addAudioDataS16(AudioSource source, Int16List audioChunk) {
+    addAudioDataStream(source, audioChunk.buffer.asUint8List());
+  }
+  void addAudioDataS32(AudioSource source, Int32List audioChunk) {
+    addAudioDataStream(source, audioChunk.buffer.asUint8List());
+  }
+
   /// Set the end of the data stream.
-  /// 
+  ///
   /// By setting the stream to be ended means that when playing it, it will stop
   /// at that point (if the loop is not set).
-  /// 
+  ///
   /// [hash] the hash of the stream sound.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
@@ -707,7 +731,7 @@ interface class SoLoud {
 
   /// Get the current buffer size in bytes of this sound with hash [hash].
   /// [hash] the hash of the stream sound.
-  /// 
+  ///
   /// **NOTE**: the returned value is in bytes and since by default uses floats,
   /// the returned value should be divided by 4 and by the number of channels
   /// to have the number of samples.
