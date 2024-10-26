@@ -22,7 +22,7 @@ class BufferBar extends StatefulWidget {
 }
 
 class _BufferBarState extends State<BufferBar> {
-  final width = 400.0;
+  final width = 250.0;
   final height = 30.0;
   Timer? timer;
   int currentMaxBytes = 1024 * 1024; // 1 MB
@@ -72,8 +72,6 @@ class _BufferBarState extends State<BufferBar> {
       handlesPos.add(
         handlePos.inMilliseconds / soundLength.inMilliseconds,
       );
-      print('handlesPos[$i] = $handlePos = ${handlesPos[i].toStringAsFixed(2)}   '
-          'soundLength = $soundLength');
     }
 
     return Padding(
@@ -108,7 +106,7 @@ class _BufferBarState extends State<BufferBar> {
               ),
               for (var i = 0; i < handlesPos.length; i++)
                 Positioned(
-                  left: handlesPos[i] * progressValue * width,
+                  left: handlesPos[i] * progressValue * width - 3,
                   child: SizedBox(
                     height: height,
                     width: 3,

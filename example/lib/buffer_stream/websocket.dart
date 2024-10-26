@@ -12,59 +12,7 @@ import 'package:logging/logging.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 ///
-
-/// feat: send PCM audio data to the player
-///
-/// Would be nice to be able to send PCM data to the player
-/// and have the player be able to render it.
-/// This could be done extending the SoLoud C++
-/// [AudioSource](https://solhsa.com/soloud/newsoundsources.html) class to
-/// have a `BufferStream` class that can be used as a normal AudioSource sound.
-///
-/// The advantages of this is that the player can be used as a normal
-/// flutter_soloud [AudioSource] and can be used to play audio data that could
-/// be retrieved from the web or created directly from Flutter. It can then be
-/// able to use all the features of the flutter_soloud like filters, faders,
-/// oscillators and so on.
-/// Think for example of some AI web services that let you compose voices like
-/// [this](https://elevenlabs.io/docs/api-reference/websockets).
-///
-/// Would also be nice to have a way to send PCM data directly to the output
-/// device without having to create a new [AudioSource]. I short compose
-/// some sound in Flutter and then send it to the player.
-/// But this is maybe for another feature.
-///
-///
-///
-///
-/// Experimenting with the `BufferStream` I come with some good results, but
-/// opinion and suggestions are welcome.
-///
-/// What I did so far is to simulate a websocket connection that stream PCM data
-/// using `ffmpeg`.
-/// [Here](https://github.com/alnitak/websocketd) the source code. The only
-/// needs are to have `ffmpeg` and `websocketd` installed, and in the
-/// `main.dart` modify `final audioPath` to point to an audio file on your PC.
-///
-/// [IMMAGINE WEBSOCKETD]
-/// *Here you choose in which format you want to send the PCM audio data.*
-///
-/// In the `websocket` branch there is an example that demostrate this feature
-/// in `lib/buffer_stream/websocket.dart' file.
-/// Another example `lib/buffer_stream/generate.dart` is an example of how to
-/// generate PCM audio data within an Isolate and send them to the AudioBuffer.
-///
-/// [ANIMATED GIF EXAMPLE]
-///
-/// I am working on Linux, should work also on Mac and Windows.
-///
-/// cc: maybe @maks could be interested in this?
-///
-///
-///
 /// TODO: check win, mac, web, ios
-/// TODO: provare a mandare dati da un isolate
-/// TODO: aggiungere README a websocketd
 
 void main() async {
   // The `flutter_soloud` package logs everything
@@ -105,7 +53,7 @@ class WebsocketExample extends StatefulWidget {
 }
 
 class _WebsocketExampleState extends State<WebsocketExample> {
-  final websocketUri = 'ws://HAL:8080/';
+  final websocketUri = 'ws://192.168.1.2:8080/';
   final sampleRate = [11025, 22050, 44100, 48000];
   final format = ['f32le', 's8', 's16le', 's32le'];
   int srId = 2;
@@ -130,22 +78,33 @@ class _WebsocketExampleState extends State<WebsocketExample> {
     if (!SoLoud.instance.isInitialized) return const SizedBox.shrink();
 
     return Scaffold(
+      appBar: AppBar(
+        title: const Text('PCM audio data from a websocket Example'),
+      ),
       body: Column(
         mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               /// SAMPLERATE
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  for (var i = 0; i < sampleRate.length; i++)
-                    SizedBox(
-                      width: 160,
-                      child: RadioListTile<int>(
-                        title: Text(sampleRate[i].toString()),
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (var i = 0; i < sampleRate.length; i++)
+                      RadioListTile<int>(
+                        title: Text(
+                          sampleRate[i].toString(),
+                          style: const TextStyle(fontSize: 12),
+                        ),
                         value: i,
+                        visualDensity: const VisualDensity(
+                          horizontal: VisualDensity.minimumDensity,
+                          vertical: VisualDensity.minimumDensity,
+                        ),
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         groupValue: srId,
                         onChanged: (int? value) {
                           setState(() {
@@ -153,20 +112,27 @@ class _WebsocketExampleState extends State<WebsocketExample> {
                           });
                         },
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
 
               /// CHANNELS
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  for (var i = 0; i < Channels.values.length; i++)
-                    SizedBox(
-                      width: 210,
-                      child: RadioListTile<int>(
-                        title: Text(Channels.values[i].toString()),
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (var i = 0; i < Channels.values.length; i++)
+                      RadioListTile<int>(
+                        title: Text(
+                          Channels.values[i].toString(),
+                          style: const TextStyle(fontSize: 12),
+                        ),
                         value: i,
+                        visualDensity: const VisualDensity(
+                          horizontal: VisualDensity.minimumDensity,
+                          vertical: VisualDensity.minimumDensity,
+                        ),
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         groupValue: chId,
                         onChanged: (int? value) {
                           setState(() {
@@ -174,20 +140,27 @@ class _WebsocketExampleState extends State<WebsocketExample> {
                           });
                         },
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
 
               /// FORMAT
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  for (var i = 0; i < format.length; i++)
-                    SizedBox(
-                      width: 160,
-                      child: RadioListTile<int>(
-                        title: Text(format[i]),
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (var i = 0; i < format.length; i++)
+                      RadioListTile<int>(
+                        title: Text(
+                          format[i],
+                          style: const TextStyle(fontSize: 12),
+                        ),
                         value: i,
+                        visualDensity: const VisualDensity(
+                          horizontal: VisualDensity.minimumDensity,
+                          vertical: VisualDensity.minimumDensity,
+                        ),
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         groupValue: fmtId,
                         onChanged: (int? value) {
                           setState(() {
@@ -195,8 +168,8 @@ class _WebsocketExampleState extends State<WebsocketExample> {
                           });
                         },
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
             ],
           ),
@@ -233,10 +206,15 @@ class _WebsocketExampleState extends State<WebsocketExample> {
           const SizedBox(height: 16),
           OutlinedButton(
             onPressed: () async {
+              /// This could be a way to receive PCM data from some sources and
+              /// use it to create a new [AudioSource].
+              /// Could be done inside an Isolate for example to manage received
+              /// data if it is in JSON format or the audio data is base64.
               if (currentSound == null) {
                 debugPrint('A stream has not been set yet!');
                 return;
               }
+
               /// Connect to the websocket
               final wsUrl = Uri.parse(websocketUri);
               channel = WebSocketChannel.connect(wsUrl);
@@ -282,33 +260,39 @@ class _WebsocketExampleState extends State<WebsocketExample> {
             child: const Text('connect to ws and receive audio data'),
           ),
           const SizedBox(height: 16),
-          OutlinedButton(
-            onPressed: () async {
-              if (currentSound == null) return;
-              handle = await SoLoud.instance.play(
-                currentSound!,
-                // looping: true,
-              );
-              print('handle: $handle');
-              Timer.periodic(const Duration(milliseconds: 1000), (timer) {
-                if (currentSound == null ||
-                    SoLoud.instance.getIsValidVoiceHandle(handle!) == false) {
-                  timer.cancel();
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              OutlinedButton(
+                onPressed: () async {
+                  if (currentSound == null) return;
+                  handle = await SoLoud.instance.play(
+                    currentSound!,
+                    // looping: true,
+                  );
+                  print('handle: $handle');
+                  Timer.periodic(const Duration(milliseconds: 1000), (timer) {
+                    if (currentSound == null ||
+                        SoLoud.instance.getIsValidVoiceHandle(handle!) ==
+                            false) {
+                      timer.cancel();
+                      setState(() {});
+                    }
+                  });
+                },
+                child: const Text('paly'),
+              ),
+              const SizedBox(width: 16),
+              OutlinedButton(
+                onPressed: () async {
+                  currentSound = null;
+                  await SoLoud.instance.disposeAllSources();
+                  await channel?.sink.close();
                   setState(() {});
-                }
-              });
-            },
-            child: const Text('paly'),
-          ),
-          const SizedBox(height: 16),
-          OutlinedButton(
-            onPressed: () async {
-              currentSound = null;
-              await SoLoud.instance.disposeAllSources();
-              await channel?.sink.close();
-              setState(() {});
-            },
-            child: const Text('stop all sounds and close ws'),
+                },
+                child: const Text('stop all sounds and close ws'),
+              ),
+            ],
           ),
           const SizedBox(height: 16),
           BufferBar(sound: currentSound),

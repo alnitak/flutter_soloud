@@ -171,8 +171,10 @@ class _GenerateState extends State<Generate> {
   Widget build(BuildContext context) {
     const gap = SizedBox(height: 16);
     return Scaffold(
+      appBar: AppBar(title: const Text('Generate PCM Data')),
       body: Center(
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
             OutlinedButton(
               onPressed: () async {
