@@ -308,7 +308,7 @@ PlayerErrors Player::loadMem(
 PlayerErrors Player::setBufferStream(
     unsigned int &hash,
     unsigned long maxBufferSize,
-    SoLoud::PCMformat pcmFormat,
+    PCMformat pcmFormat,
     void (*onBufferingCallback)())
 {
     if (!mInited)
@@ -327,7 +327,7 @@ PlayerErrors Player::setBufferStream(
     newSound.get()->sound = std::make_unique<SoLoud::BufferStream>();
     newSound.get()->soundType = TYPE_BUFFER_STREAM;
     static_cast<SoLoud::BufferStream *>(newSound.get()->sound.get())->setBufferStream(
-        maxBufferSize, pcmFormat, onBufferingCallback);
+        this, newSound.get(), maxBufferSize, pcmFormat, onBufferingCallback);
 
     newSound.get()->filters = std::make_unique<Filters>(&soloud, newSound.get());
     sounds.push_back(std::move(newSound));
@@ -491,7 +491,7 @@ unsigned int Player::play(
     SoLoud::handle newHandle = soloud.play(
         *sound->sound.get(), volume, pan, paused, 0);
     if (newHandle != 0)
-        sound->handle.push_back(newHandle);
+        sound->handle.push_back({newHandle, MAX_DOUBLE});
 
     if (looping)
     {
@@ -519,7 +519,7 @@ void Player::removeHandle(unsigned int handle)
     for (int i = 0; i < sounds.size(); ++i)
         for (int n = 0; n < sounds[i]->handle.size(); ++n)
         {
-            if (sounds[i]->handle[n] == handle)
+            if (sounds[i]->handle[n].handle == handle)
             {
                 sounds[i]->handle.erase(sounds[i]->handle.begin() + n);
                 e = false;
@@ -582,7 +582,7 @@ PlayerErrors Player::textToSpeech(const std::string &textToSpeech, unsigned int 
     {
         handle = soloud.play(speech);
         sounds.back().get()->filters = std::make_unique<Filters>(&soloud, sounds.back().get());
-        sounds.back().get()->handle.push_back(handle);
+        sounds.back().get()->handle.push_back({handle, MAX_DOUBLE});
     }
     else
     {
@@ -759,7 +759,7 @@ ActiveSound *Player::findByHandle(SoLoud::handle handle)
         int index = 0;
         while (index < (int)sounds[i].get()->handle.size())
         {
-            if (sounds[i].get()->handle[index] == handle)
+            if (sounds[i].get()->handle[index].handle == handle)
             {
                 return sounds[i].get();
             }
@@ -789,7 +789,7 @@ void Player::debug()
     {
         printf("%d: \thandle: ", n);
         for (auto &handle : sound.get()->handle)
-            printf("%d ", handle);
+            printf("%d ", handle.handle);
         printf("  %s\n", sound.get()->completeFileName.c_str());
 
         n++;
@@ -915,7 +915,7 @@ unsigned int Player::play3d(
         paused,
         bus);
     if (newHandle != 0)
-        sound->handle.emplace_back(newHandle);
+        sound->handle.push_back({newHandle, MAX_DOUBLE});
     if (looping)
     {
         seek(newHandle, loopingStartAt);

@@ -388,7 +388,7 @@ extern "C"
             bytesPerSample = 4;
             break;
         }
-        SoLoud::PCMformat dataType = {sampleRate, channels, bytesPerSample, (BufferPcmType)pcmFormat};
+        PCMformat dataType = {sampleRate, channels, bytesPerSample, (BufferPcmType)pcmFormat};
         PlayerErrors e = (PlayerErrors)player.get()->setBufferStream(
             *hash,
             maxBufferSize,

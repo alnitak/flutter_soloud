@@ -113,4 +113,13 @@ typedef enum BufferPcmType
     PCM_S32LE = 3,
 } BufferPcmType_t;
 
+
+typedef struct PCMformat
+{
+  unsigned int sampleRate;
+  unsigned int channels;
+  unsigned int bytesPerSample;
+  BufferPcmType dataType;
+} PCMformat;
+
 #endif // ENUMS_H

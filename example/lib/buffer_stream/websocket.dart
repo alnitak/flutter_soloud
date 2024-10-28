@@ -9,10 +9,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:flutter_soloud_example/buffer_stream/ui/buffer_widget.dart';
 import 'package:logging/logging.dart';
+import 'package:web_socket_channel/status.dart' as status;
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 ///
-/// TODO: check win, mac, web, ios
+/// TODO: mac, web, ios
 
 void main() async {
   // The `flutter_soloud` package logs everything
@@ -59,7 +60,6 @@ class _WebsocketExampleState extends State<WebsocketExample> {
   int srId = 2;
   int chId = 0;
   int fmtId = 0;
-  WebSocket? webSocket;
   WebSocketChannel? channel;
   AudioSource? currentSound;
   SoundHandle? handle;
@@ -175,7 +175,7 @@ class _WebsocketExampleState extends State<WebsocketExample> {
           ),
           OutlinedButton(
             onPressed: () async {
-              await channel?.sink.close();
+              await channel?.sink.close(status.goingAway);
               await SoLoud.instance.disposeAllSources();
 
               currentSound = SoLoud.instance.setBufferStream(
@@ -189,9 +189,9 @@ class _WebsocketExampleState extends State<WebsocketExample> {
                       isBuffering.value = !isBuffering.value;
                     });
                   }
-                  SoLoud.instance.pauseSwitch(handle!);
-                  await Future.delayed(const Duration(seconds: 5), () {});
-                  SoLoud.instance.pauseSwitch(handle!);
+                  // SoLoud.instance.pauseSwitch(handle!);
+                  // await Future.delayed(const Duration(seconds: 5), () {});
+                  // SoLoud.instance.pauseSwitch(handle!);
                   if (context.mounted) {
                     setState(() {
                       isBuffering.value = !isBuffering.value;
@@ -242,7 +242,7 @@ class _WebsocketExampleState extends State<WebsocketExample> {
                   } on SoLoudPcmBufferFullOrStreamEndedCppException {
                     debugPrint('pcm buffer full or stream already set '
                         'to be ended');
-                    await channel?.sink.close();
+                    await channel?.sink.close(status.goingAway);
                   }
                 },
                 onDone: () {
@@ -257,7 +257,7 @@ class _WebsocketExampleState extends State<WebsocketExample> {
                 onError: (error) {},
               );
             },
-            child: const Text('connect to ws and receive audio data'),
+            child: const Text('connect to WS and receive audio data'),
           ),
           const SizedBox(height: 16),
           Row(
@@ -268,6 +268,7 @@ class _WebsocketExampleState extends State<WebsocketExample> {
                   if (currentSound == null) return;
                   handle = await SoLoud.instance.play(
                     currentSound!,
+                    volume: 0.6,
                     // looping: true,
                   );
                   print('handle: $handle');
@@ -287,7 +288,7 @@ class _WebsocketExampleState extends State<WebsocketExample> {
                 onPressed: () async {
                   currentSound = null;
                   await SoLoud.instance.disposeAllSources();
-                  await channel?.sink.close();
+                  await channel?.sink.close(status.goingAway);
                   setState(() {});
                 },
                 child: const Text('stop all sounds and close ws'),

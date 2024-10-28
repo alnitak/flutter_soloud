@@ -10,18 +10,25 @@
 #include <memory>
 
 class Filters;
+#define MAX_DOUBLE 1.7976931348623157e+308
+
+struct ActiveHandle
+{
+    SoLoud::handle handle;
+    SoLoud::time bufferingTime;
+};
 
 /// The default number of concurrent voices - maximum number of "streams" - is 16,
 /// but this can be adjusted at runtime
-typedef struct ActiveSound
+struct ActiveSound
 {
     std::unique_ptr<SoLoud::AudioSource> sound;
     SoundType soundType;
-    std::vector<SoLoud::handle> handle;
+    std::vector<ActiveHandle> handle;
     std::unique_ptr<Filters> filters;
     // unique identifier of this sound based on the file name
     unsigned int soundHash;
     std::string completeFileName;
-} ActiveSound;
+};
 
 #endif // ACTIVE_SOUND_H

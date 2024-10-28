@@ -11,6 +11,7 @@
 
 namespace SoLoud
 {
+	float TIME_FOR_BUFFERING = 2.0f; // TODO: make this as parameter
 
 	BufferStreamInstance::BufferStreamInstance(BufferStream *aParent)
 	{
@@ -25,7 +26,11 @@ namespace SoLoud
 	unsigned int BufferStreamInstance::getAudio(float *aBuffer, unsigned int aSamplesToRead, unsigned int aBufferSize)
 	{
 		if (mParent->mBuffer.getFloatsBufferSize() == 0)
+		{
+			memset(aBuffer, 0, sizeof(float) * aSamplesToRead);
 			return 0;
+		}
+
 		unsigned int bufferSize = mParent->mBuffer.getFloatsBufferSize();
 		float *buffer = reinterpret_cast<float *>(mParent->mBuffer.buffer.data());
 		int samplesToRead = mOffset + aSamplesToRead > bufferSize ? bufferSize - mOffset : aSamplesToRead;
@@ -36,9 +41,16 @@ namespace SoLoud
 		{
 			memset(aBuffer, 0, sizeof(float) * aSamplesToRead);
 
-			if (mParent->mOnBufferingCallback != nullptr && !mParent->dataIsEnded)
+			if (!mParent->dataIsEnded)
 			{
-				mParent->mOnBufferingCallback();
+				// The time the buffering is started.
+				// SoLoud::time currBufferTime = 1.0f * mOffset /
+				// 						  mParent->mPCMformat.bytesPerSample /
+				// 						  mParent->mChannels /
+				// 						  mParent->mPCMformat.sampleRate;
+				std::cout << "CPP Buffering" << std::endl;
+				if (mParent->mOnBufferingCallback != nullptr)
+					mParent->mOnBufferingCallback();
 			}
 		}
 
@@ -102,6 +114,8 @@ namespace SoLoud
 	}
 
 	void BufferStream::setBufferStream(
+		Player *aPlayer,
+		ActiveSound *aParent,
 		unsigned int maxBufferSize,
 		PCMformat pcmFormat,
 		void (*onBufferingCallback)())
@@ -109,6 +123,8 @@ namespace SoLoud
 		mSampleCount = 0;
 		dataIsEnded = false;
 		mEndianness = Endianness::BUFFER_LITTLE_ENDIAN; // TODO?
+		mThePlayer = aPlayer;
+		mParent = aParent;
 		mPCMformat.sampleRate = pcmFormat.sampleRate;
 		mPCMformat.channels = pcmFormat.channels;
 		mPCMformat.bytesPerSample = pcmFormat.bytesPerSample;
@@ -151,6 +167,31 @@ namespace SoLoud
 		}
 
 		mSampleCount += bytesWritten / mPCMformat.bytesPerSample;
+
+
+		// If a handle reaches the end and data is not ended, we have to wait for it has enough data
+		// to reach [TIME_FOR_BUFFERING] and restart playing it.
+		// time currBufferTime = 1.0f * mBuffer.getFloatsBufferSize() / mPCMformat.channels / mPCMformat.sampleRate;
+		time currBufferTime = getLength();
+		for (int i = 0; i < mParent->handle.size(); i++)
+		{
+			double pos = mThePlayer->getPosition(mParent->handle[i].handle);
+			// This handle needs to wait for [TIME_FOR_BUFFERING]
+			if (pos >= currBufferTime && !mThePlayer->getPause(mParent->handle[i].handle))
+			{
+				mParent->handle[i].bufferingTime = currBufferTime;
+				mThePlayer->setPause(mParent->handle[i].handle, true);
+				std::cout << "PAUSING AT " << currBufferTime << std::endl;
+			}
+			if (currBufferTime - mParent->handle[i].bufferingTime >= TIME_FOR_BUFFERING && 
+				mThePlayer->getPause(mParent->handle[i].handle))
+			{
+				mThePlayer->setPause(mParent->handle[i].handle, false);
+				mParent->handle[i].bufferingTime = MAX_DOUBLE;
+				std::cout << "UN-PAUSING AT " << currBufferTime << std::endl;
+			}
+		}
+
 
 		// data has been added to the buffer, but not all because reached its full capacity.
 		// So mark this stream as ended and no more data can be added.

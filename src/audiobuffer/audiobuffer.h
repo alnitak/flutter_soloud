@@ -1,11 +1,18 @@
+#pragma once
+
 #ifndef _AUDIOBUFFER_H
 #define _AUDIOBUFFER_H
 
 #include <stdio.h>
+#include <atomic>
 #include <chrono>
 #include "soloud.h"
 #include "../enums.h"
+#include "../active_sound.h"
+#include "../player.h"
 #include "buffer.h"
+
+class Player;
 
 namespace SoLoud
 {
@@ -26,17 +33,13 @@ namespace SoLoud
     virtual ~BufferStreamInstance();
   };
 
-  struct PCMformat
-  {
-    unsigned int sampleRate;
-    unsigned int channels;
-    unsigned int bytesPerSample;
-    BufferPcmType dataType;
-  };
-
   class BufferStream : public AudioSource
   {
   public:
+    // The flutter_soloud main [player] instance
+    Player *mThePlayer;
+    // Used to access the AudioSource this stream belongs to
+    ActiveSound* mParent;
     void (*mOnBufferingCallback)();
     enum Endianness mEndianness; // TODO?
     unsigned int mMaxBufferSize;
@@ -48,15 +51,15 @@ namespace SoLoud
     BufferStream();
     virtual ~BufferStream();
     void setBufferStream(
+        Player *aPlayer,
+        ActiveSound *aParent,
         unsigned int maxBufferSize = 1024 * 1024 * 100, // 100 Mbytes
         PCMformat pcmFormat = {44100, 2, 2, PCM_S16LE},
         void (*onBufferingCallback)() = nullptr);
-    // TODO: add Base64 decoding: https://github.com/aklomp/base64
     void setDataIsEnded();
     PlayerErrors addData(const void *aData, unsigned int numSamples);
     virtual AudioSourceInstance *createInstance();
     time getLength();
-
   };
 };
 

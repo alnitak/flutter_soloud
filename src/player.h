@@ -19,7 +19,6 @@
 #include <atomic>
 #include <thread>
 
-
 struct PlaybackDevice
 {
     char *name;
@@ -109,7 +108,7 @@ public:
     PlayerErrors setBufferStream(
         unsigned int &hash,
         unsigned long maxBufferSize,
-        SoLoud::PCMformat pcmFormat = {44100, 2, 4, PCM_F32LE},
+        PCMformat pcmFormat = {44100, 2, 4, PCM_F32LE},
         void (*onBufferingCallback)() = nullptr);
     
     /// @brief Add an audio data stream.
