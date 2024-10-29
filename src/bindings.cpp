@@ -362,6 +362,7 @@ extern "C"
     FFI_PLUGIN_EXPORT enum PlayerErrors setBufferStream(
         unsigned int *hash,
         unsigned long maxBufferSize,
+        double bufferingTimeNeeds,
         unsigned int sampleRate,
         unsigned int channels,
         int pcmFormat,
@@ -392,6 +393,7 @@ extern "C"
         PlayerErrors e = (PlayerErrors)player.get()->setBufferStream(
             *hash,
             maxBufferSize,
+            bufferingTimeNeeds,
             dataType,
             onBufferingCallback);
         return e;

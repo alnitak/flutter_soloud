@@ -11,8 +11,6 @@
 
 namespace SoLoud
 {
-	float TIME_FOR_BUFFERING = 2.0f; // TODO: make this as parameter
-
 	BufferStreamInstance::BufferStreamInstance(BufferStream *aParent)
 	{
 		mParent = aParent;
@@ -117,6 +115,7 @@ namespace SoLoud
 		Player *aPlayer,
 		ActiveSound *aParent,
 		unsigned int maxBufferSize,
+    	SoLoud::time bufferingTimeNeeds,
 		PCMformat pcmFormat,
 		void (*onBufferingCallback)())
 	{
@@ -131,6 +130,7 @@ namespace SoLoud
 		mPCMformat.dataType = pcmFormat.dataType;
 		mBuffer.clear();
 		mBuffer.setSizeInBytes(maxBufferSize);
+		mBufferingTimeNeeds = bufferingTimeNeeds;
 		mChannels = pcmFormat.channels;
 		mBaseSamplerate = (float)pcmFormat.sampleRate;
 		mOnBufferingCallback = onBufferingCallback;
@@ -183,7 +183,7 @@ namespace SoLoud
 				mThePlayer->setPause(mParent->handle[i].handle, true);
 				std::cout << "PAUSING AT " << currBufferTime << std::endl;
 			}
-			if (currBufferTime - mParent->handle[i].bufferingTime >= TIME_FOR_BUFFERING && 
+			if (currBufferTime - mParent->handle[i].bufferingTime >= mBufferingTimeNeeds && 
 				mThePlayer->getPause(mParent->handle[i].handle))
 			{
 				mThePlayer->setPause(mParent->handle[i].handle, false);

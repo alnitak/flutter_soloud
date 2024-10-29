@@ -662,18 +662,23 @@ interface class SoLoud {
   /// Set up an audio stream.
   ///
   /// [maxBufferSize] the max buffer size in **bytes**. When adding audio data
-  /// using [addAudioDataStream] and this values is reached, the stream will be
-  /// considered ended (likewise we called [setDataIsEnded]). This means that
+  /// using [addAudioDataStreamU8] and this values is reached, the stream will
+  /// be considered ended (likewise we called [setDataIsEnded]). This means that
   /// when playing it, it will stop at that point (if loop is not set).
   /// **Note:** this parameter doesn't allocate any memory, but it just limits
   /// the amount of data that can be added.
+  /// [bufferingTimeNeeds] the buffering time needed in seconds. If a handle
+  /// reaches the current buffer length, it will start to buffer pausing it and
+  /// waiting until the buffer will have enough data to cover this time.
   /// [sampleRate] the sample rate. Usually is 22050 or 44100 (CD quality).
   /// [channels] enum to choose the number of channels.
   /// [pcmFormat] enum to choose from `f32le`, `s8`, `s16le` and `s32le`.
+  /// [onBuffering] a callback that will be called when start buffering.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   AudioSource setBufferStream({
     required int maxBufferSize, // in bytes
+    required double bufferingTimeNeeds,
     required int sampleRate,
     required Channels channels,
     required BufferPcmType pcmFormat,
@@ -685,6 +690,7 @@ interface class SoLoud {
 
     final ret = SoLoudController().soLoudFFI.setBufferStream(
           maxBufferSize,
+          bufferingTimeNeeds,
           sampleRate,
           channels.count,
           pcmFormat.value,
@@ -696,17 +702,25 @@ interface class SoLoud {
   }
 
   /// Add PCM audio data to the stream.
-  /// 
+  ///
   /// This method can be called within an `Isolate` making possible
   /// to create PCM data and send them to the buffer without frezing
   /// the main thread.
-  /// 
+  /// When finishing to add data to the stream, call [setDataIsEnded].
+  ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   /// Throws [SoLoudPcmBufferFullOrStreamEndedCppException] if the buffer
   /// is full or stream buffer has been set to be ended.
   /// Thows [SoLoudOutOfMemoryException] if the buffer is out of OS memory or
-  /// the given `maxBufferSize` when calling `setBufferStream` is too small.
-  void addAudioDataStream(
+  /// the given `maxBufferSize` of the `setBufferStream` call is too small.
+  ///
+  /// See also:
+  ///
+  ///  * [addAudioDataStramF32] to add `Float32List` PCM audio data.
+  ///  * [addAudioDataStreamS8] to add `Int8List` PCM audio data.
+  ///  * [addAudioDataStreamS16] to add `Int16List` PCM audio data.
+  ///  * [addAudioDataStreamS32] to add `Int32List` PCM audio data.
+  void addAudioDataStreamU8(
     AudioSource source,
     Uint8List audioChunk,
   ) {
@@ -725,18 +739,32 @@ interface class SoLoud {
     }
   }
 
-  void addAudioDataF32(AudioSource source, Float32List audioChunk) {
-    addAudioDataStream(source, audioChunk.buffer.asUint8List());
+  /// Helper method to add `Float32List` PCM audio data to the stream.
+  ///
+  /// This method is a wrapper around [addAudioDataStreamU8].
+  void addAudioDataStramF32(AudioSource source, Float32List audioChunk) {
+    addAudioDataStreamU8(source, audioChunk.buffer.asUint8List());
   }
 
-  void addAudioDataS8(AudioSource source, Int8List audioChunk) {
-    addAudioDataStream(source, audioChunk.buffer.asUint8List());
+  /// Helper method to add `Int8List` PCM audio data to the stream.
+  ///
+  /// This method is a wrapper around [addAudioDataStreamU8].
+  void addAudioDataStreamS8(AudioSource source, Int8List audioChunk) {
+    addAudioDataStreamU8(source, audioChunk.buffer.asUint8List());
   }
-  void addAudioDataS16(AudioSource source, Int16List audioChunk) {
-    addAudioDataStream(source, audioChunk.buffer.asUint8List());
+
+  /// Helper method to add `Int16List` PCM audio data to the stream.
+  ///
+  /// This method is a wrapper around [addAudioDataStreamU8].
+  void addAudioDataStreamS16(AudioSource source, Int16List audioChunk) {
+    addAudioDataStreamU8(source, audioChunk.buffer.asUint8List());
   }
-  void addAudioDataS32(AudioSource source, Int32List audioChunk) {
-    addAudioDataStream(source, audioChunk.buffer.asUint8List());
+
+  /// Helper method to add `Int32List` PCM audio data to the stream.
+  ///
+  /// This method is a wrapper around [addAudioDataStreamU8].
+  void addAudioDataStreamS32(AudioSource source, Int32List audioChunk) {
+    addAudioDataStreamU8(source, audioChunk.buffer.asUint8List());
   }
 
   /// Set the end of the data stream.

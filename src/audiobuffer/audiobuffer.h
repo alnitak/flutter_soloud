@@ -17,7 +17,7 @@ class Player;
 namespace SoLoud
 {
   class BufferStream;
-  typedef void (*dartVoiceEndedCallback_t)(unsigned int *);
+  typedef void (*dartOnBufferingCallback_t)(unsigned int *, double time);
 
   class BufferStreamInstance : public AudioSourceInstance
   {
@@ -44,6 +44,7 @@ namespace SoLoud
     enum Endianness mEndianness; // TODO?
     unsigned int mMaxBufferSize;
     unsigned int mSampleCount;
+    SoLoud::time mBufferingTimeNeeds;
     PCMformat mPCMformat;
     Buffer mBuffer;
     bool dataIsEnded;
@@ -54,6 +55,7 @@ namespace SoLoud
         Player *aPlayer,
         ActiveSound *aParent,
         unsigned int maxBufferSize = 1024 * 1024 * 100, // 100 Mbytes
+        SoLoud::time bufferingTimeNeeds = 2.0f, // 2 seconds of data to wait
         PCMformat pcmFormat = {44100, 2, 2, PCM_S16LE},
         void (*onBufferingCallback)() = nullptr);
     void setDataIsEnded();

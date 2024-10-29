@@ -377,6 +377,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   @override
   ({PlayerErrors error, SoundHash soundHash}) setBufferStream(
     int maxBufferSize,
+    double bufferingTimeNeeds,
     int sampleRate,
     int channels,
     int pcmFormat,
@@ -396,6 +397,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     final e = _setBufferStream(
       hash,
       maxBufferSize,
+      bufferingTimeNeeds,
       sampleRate,
       channels,
       pcmFormat,
@@ -412,6 +414,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
               ffi.UnsignedInt Function(
                   ffi.Pointer<ffi.UnsignedInt>,
                   ffi.UnsignedLong,
+                  ffi.Double,
                   ffi.UnsignedInt,
                   ffi.UnsignedInt,
                   ffi.Int,
@@ -421,6 +424,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       int Function(
         ffi.Pointer<ffi.UnsignedInt>,
         int,
+        double,
         int,
         int,
         int,

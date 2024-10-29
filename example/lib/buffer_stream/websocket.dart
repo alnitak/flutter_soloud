@@ -180,6 +180,7 @@ class _WebsocketExampleState extends State<WebsocketExample> {
 
               currentSound = SoLoud.instance.setBufferStream(
                 maxBufferSize: 1024 * 1024 * 600, // 150 MB
+                bufferingTimeNeeds: 2,
                 sampleRate: sampleRate[srId],
                 channels: Channels.values[chId],
                 pcmFormat: BufferPcmType.values[fmtId],
@@ -235,7 +236,7 @@ class _WebsocketExampleState extends State<WebsocketExample> {
                   byteSize += (message as List<int>).length;
 
                   try {
-                    SoLoud.instance.addAudioDataStream(
+                    SoLoud.instance.addAudioDataStreamU8(
                       currentSound!,
                       Uint8List.fromList(message),
                     );

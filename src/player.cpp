@@ -308,6 +308,7 @@ PlayerErrors Player::loadMem(
 PlayerErrors Player::setBufferStream(
     unsigned int &hash,
     unsigned long maxBufferSize,
+    SoLoud::time bufferingTimeNeeds,
     PCMformat pcmFormat,
     void (*onBufferingCallback)())
 {
@@ -327,7 +328,7 @@ PlayerErrors Player::setBufferStream(
     newSound.get()->sound = std::make_unique<SoLoud::BufferStream>();
     newSound.get()->soundType = TYPE_BUFFER_STREAM;
     static_cast<SoLoud::BufferStream *>(newSound.get()->sound.get())->setBufferStream(
-        this, newSound.get(), maxBufferSize, pcmFormat, onBufferingCallback);
+        this, newSound.get(), maxBufferSize, bufferingTimeNeeds, pcmFormat, onBufferingCallback);
 
     newSound.get()->filters = std::make_unique<Filters>(&soloud, newSound.get());
     sounds.push_back(std::move(newSound));

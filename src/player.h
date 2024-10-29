@@ -108,6 +108,7 @@ public:
     PlayerErrors setBufferStream(
         unsigned int &hash,
         unsigned long maxBufferSize,
+    	SoLoud::time bufferingTimeNeeds,
         PCMformat pcmFormat = {44100, 2, 4, PCM_F32LE},
         void (*onBufferingCallback)() = nullptr);
     
