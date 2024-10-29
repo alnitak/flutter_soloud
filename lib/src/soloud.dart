@@ -475,6 +475,12 @@ interface class SoLoud {
           final completeFileName = result['completeFileName'] as String;
           final hash = result['hash'] as int;
 
+          if (hash == 0) {
+            loadedFileCompleters[result['completeFileName']]
+                ?.completeError(SoLoudCppException.fromPlayerError(error));
+            return;
+          }
+
           final newSound = AudioSource(SoundHash(hash));
           final alreadyLoaded = _activeSounds
                   .where((sound) => sound.soundHash == newSound.soundHash)
@@ -496,6 +502,8 @@ interface class SoLoud {
               _activeSounds.add(newSound);
             }
           } else {
+            loadedFileCompleters[result['completeFileName']]
+                ?.completeError(SoLoudCppException.fromPlayerError(error));
             throw SoLoudCppException.fromPlayerError(error);
           }
           loadedFileCompleters[result['completeFileName']]?.complete(newSound);
@@ -535,6 +543,7 @@ interface class SoLoud {
   /// Returns the new sound as [AudioSource].
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  /// Throws [SoLoudFileLoadFailedException] if the file could not be loaded.
   ///
   /// If the file is already loaded, this is a no-op (but a warning
   /// will be produced in the log).
@@ -631,6 +640,7 @@ interface class SoLoud {
   /// Throws a [SoLoudTemporaryFolderFailedException] if there was a problem
   /// creating the temporary file that the asset will be copied to.
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  /// Throws [SoLoudFileLoadFailedException] if the file could not be loaded.
   ///
   /// Returns the new sound as [AudioSource].
   ///
@@ -673,6 +683,7 @@ interface class SoLoud {
   /// Throws a [SoLoudTemporaryFolderFailedException] if there was a problem
   /// creating the temporary file that the asset will be copied to.
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  /// Throws [SoLoudFileLoadFailedException] if the file could not be loaded.
   ///
   /// Returns the new sound as [AudioSource].
   ///
