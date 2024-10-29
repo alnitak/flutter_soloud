@@ -180,12 +180,12 @@ class _WebsocketExampleState extends State<WebsocketExample> {
 
               currentSound = SoLoud.instance.setBufferStream(
                 maxBufferSize: 1024 * 1024 * 600, // 150 MB
-                bufferingTimeNeeds: 2,
+                bufferingTimeNeeds: 3,
                 sampleRate: sampleRate[srId],
                 channels: Channels.values[chId],
                 pcmFormat: BufferPcmType.values[fmtId],
                 onBuffering: (isBuffering, handle, time) async {
-                  debugPrint(' onBuffering started buffering: $isBuffering  '
+                  debugPrint('started buffering? $isBuffering  with '
                       'handle: $handle at time $time');
                   if (context.mounted) {
                     setState(() {

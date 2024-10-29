@@ -677,11 +677,11 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   AudioSource setBufferStream({
-    required int maxBufferSize, // in bytes
-    required double bufferingTimeNeeds,
-    required int sampleRate,
-    required Channels channels,
-    required BufferPcmType pcmFormat,
+    int maxBufferSize = 1024 * 1024 * 100, // 100  MB in bytes
+    double bufferingTimeNeeds = 2, // 2 seconds of data needed to un-pause
+    int sampleRate = 22050,
+    Channels channels = Channels.mono,
+    BufferPcmType pcmFormat = BufferPcmType.s16le,
     void Function(bool isBuffering, int handle, double time)? onBuffering,
   }) {
     if (!isInitialized) {

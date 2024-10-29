@@ -297,13 +297,24 @@ enum Channels {
   }
 }
 
+/// The PCM types.
 enum BufferPcmType {
+  /// 32-bit floating point, little-endian.
   f32le(0),
+
+  /// 8-bit signed, little-endian.
   s8(1),
+
+  /// 16-bit signed, little-endian.
   s16le(2),
+
+  /// 32-bit signed, little-endian.
   s32le(3);
 
+  /// The integer value of the PCM type.
   final int value;
 
+  /// Constructs a valid PCM type with [value].
+  // ignore: sort_constructors_first
   const BufferPcmType(this.value);
 }
