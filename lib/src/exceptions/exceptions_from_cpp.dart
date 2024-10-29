@@ -31,7 +31,8 @@ class SoLoudFileLoadFailedException extends SoLoudCppException {
   const SoLoudFileLoadFailedException([super.message]);
 
   @override
-  String get description => 'The file was found, but could not be loaded '
+  String get description => 'File found, but could not be loaded! '
+      'Could be a permission error or the file is corrupted. '
       '(on the C++ side).';
 }
 
