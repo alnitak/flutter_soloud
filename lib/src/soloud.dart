@@ -682,7 +682,7 @@ interface class SoLoud {
     required int sampleRate,
     required Channels channels,
     required BufferPcmType pcmFormat,
-    void Function()? onBuffering,
+    void Function(bool isBuffering, int handle, double time)? onBuffering,
   }) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();

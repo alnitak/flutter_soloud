@@ -310,7 +310,7 @@ PlayerErrors Player::setBufferStream(
     unsigned long maxBufferSize,
     SoLoud::time bufferingTimeNeeds,
     PCMformat pcmFormat,
-    void (*onBufferingCallback)())
+    dartOnBufferingCallback_t onBufferingCallback)
 {
     if (!mInited)
         return backendNotInited;

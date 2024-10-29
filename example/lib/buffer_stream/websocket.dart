@@ -65,7 +65,7 @@ class _WebsocketExampleState extends State<WebsocketExample> {
   SoundHandle? handle;
   int numberOfChunks = 0;
   int byteSize = 0;
-  final isBuffering = ValueNotifier(false);
+  final streamBuffering = ValueNotifier(false);
 
   @override
   void dispose() {
@@ -184,18 +184,12 @@ class _WebsocketExampleState extends State<WebsocketExample> {
                 sampleRate: sampleRate[srId],
                 channels: Channels.values[chId],
                 pcmFormat: BufferPcmType.values[fmtId],
-                onBuffering: () async {
+                onBuffering: (isBuffering, handle, time) async {
+                  debugPrint(' onBuffering started buffering: $isBuffering  '
+                      'handle: $handle at time $time');
                   if (context.mounted) {
                     setState(() {
-                      isBuffering.value = !isBuffering.value;
-                    });
-                  }
-                  // SoLoud.instance.pauseSwitch(handle!);
-                  // await Future.delayed(const Duration(seconds: 5), () {});
-                  // SoLoud.instance.pauseSwitch(handle!);
-                  if (context.mounted) {
-                    setState(() {
-                      isBuffering.value = !isBuffering.value;
+                      streamBuffering.value = !streamBuffering.value;
                     });
                   }
                 },
@@ -300,7 +294,7 @@ class _WebsocketExampleState extends State<WebsocketExample> {
           BufferBar(sound: currentSound),
           const SizedBox(height: 16),
           ValueListenableBuilder(
-            valueListenable: isBuffering,
+            valueListenable: streamBuffering,
             builder: (_, value, __) {
               if (value) {
                 return const Text('BUFFERING!');

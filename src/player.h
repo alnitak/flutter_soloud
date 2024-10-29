@@ -110,7 +110,7 @@ public:
         unsigned long maxBufferSize,
     	SoLoud::time bufferingTimeNeeds,
         PCMformat pcmFormat = {44100, 2, 4, PCM_F32LE},
-        void (*onBufferingCallback)() = nullptr);
+        dartOnBufferingCallback_t onBufferingCallback = nullptr);
     
     /// @brief Add an audio data stream.
     /// @param hash the hash of the sound.

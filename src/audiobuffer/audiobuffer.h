@@ -7,9 +7,9 @@
 #include <atomic>
 #include <chrono>
 #include "soloud.h"
+#include "../player.h"
 #include "../enums.h"
 #include "../active_sound.h"
-#include "../player.h"
 #include "buffer.h"
 
 class Player;
@@ -17,7 +17,6 @@ class Player;
 namespace SoLoud
 {
   class BufferStream;
-  typedef void (*dartOnBufferingCallback_t)(unsigned int *, double time);
 
   class BufferStreamInstance : public AudioSourceInstance
   {
@@ -40,7 +39,7 @@ namespace SoLoud
     Player *mThePlayer;
     // Used to access the AudioSource this stream belongs to
     ActiveSound* mParent;
-    void (*mOnBufferingCallback)();
+    dartOnBufferingCallback_t mOnBufferingCallback;
     enum Endianness mEndianness; // TODO?
     unsigned int mMaxBufferSize;
     unsigned int mSampleCount;
@@ -55,9 +54,9 @@ namespace SoLoud
         Player *aPlayer,
         ActiveSound *aParent,
         unsigned int maxBufferSize = 1024 * 1024 * 100, // 100 Mbytes
-        SoLoud::time bufferingTimeNeeds = 2.0f, // 2 seconds of data to wait
+        time bufferingTimeNeeds = 2.0f, // 2 seconds of data to wait
         PCMformat pcmFormat = {44100, 2, 2, PCM_S16LE},
-        void (*onBufferingCallback)() = nullptr);
+        dartOnBufferingCallback_t onBufferingCallback = nullptr);
     void setDataIsEnded();
     PlayerErrors addData(const void *aData, unsigned int numSamples);
     virtual AudioSourceInstance *createInstance();

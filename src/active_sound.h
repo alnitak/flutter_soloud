@@ -1,8 +1,8 @@
 #ifndef ACTIVE_SOUND_H
 #define ACTIVE_SOUND_H
 
-#include "enums.h"
 #include "filters/filters.h"
+#include "enums.h"
 #include "soloud.h"
 
 #include <iostream>

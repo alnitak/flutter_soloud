@@ -1,7 +1,10 @@
+#include "soloud/include/soloud_fft.h"
+#include "soloud_thread.h"
 #include "player.h"
 #include "analyzer.h"
 #include "synth/basic_wave.h"
 #include "waveform/waveform.h"
+
 #ifndef COMMON_H
 #include "common.h"
 #endif
@@ -9,9 +12,6 @@
 #ifdef __EMSCRIPTEN__
 #include <emscripten/emscripten.h>
 #endif
-
-#include "soloud/include/soloud_fft.h"
-#include "soloud_thread.h"
 
 #include <stdio.h>
 #include <iostream>
@@ -366,7 +366,7 @@ extern "C"
         unsigned int sampleRate,
         unsigned int channels,
         int pcmFormat,
-        void (*onBufferingCallback)())
+        dartOnBufferingCallback_t onBufferingCallback)
     {
         std::lock_guard<std::mutex> guard_init(init_deinit_mutex);
         std::lock_guard<std::mutex> guard_load(loadMutex);

@@ -122,4 +122,7 @@ typedef struct PCMformat
   BufferPcmType dataType;
 } PCMformat;
 
+
+typedef void (*dartOnBufferingCallback_t)(bool isBuffering, unsigned int, double time);
+
 #endif // ENUMS_H

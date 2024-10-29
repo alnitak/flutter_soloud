@@ -4,10 +4,9 @@
 #include <stdlib.h>
 #include <mutex>
 
-#include "soloud.h"
 #include "audiobuffer.h"
 
-// TODO: readSamplesFromBuffer
+// TODO: readSamplesFromBuffer as for waveform
 
 namespace SoLoud
 {
@@ -46,9 +45,7 @@ namespace SoLoud
 				// 						  mParent->mPCMformat.bytesPerSample /
 				// 						  mParent->mChannels /
 				// 						  mParent->mPCMformat.sampleRate;
-				std::cout << "CPP Buffering" << std::endl;
-				if (mParent->mOnBufferingCallback != nullptr)
-					mParent->mOnBufferingCallback();
+				// std::cout << "CPP Buffering" << std::endl;
 			}
 		}
 
@@ -117,7 +114,7 @@ namespace SoLoud
 		unsigned int maxBufferSize,
     	SoLoud::time bufferingTimeNeeds,
 		PCMformat pcmFormat,
-		void (*onBufferingCallback)())
+		dartOnBufferingCallback_t onBufferingCallback)
 	{
 		mSampleCount = 0;
 		dataIsEnded = false;
@@ -181,14 +178,16 @@ namespace SoLoud
 			{
 				mParent->handle[i].bufferingTime = currBufferTime;
 				mThePlayer->setPause(mParent->handle[i].handle, true);
-				std::cout << "PAUSING AT " << currBufferTime << std::endl;
+				if (mOnBufferingCallback != nullptr)
+					mOnBufferingCallback(true, mParent->handle[i].handle, currBufferTime);
 			}
 			if (currBufferTime - mParent->handle[i].bufferingTime >= mBufferingTimeNeeds && 
 				mThePlayer->getPause(mParent->handle[i].handle))
 			{
 				mThePlayer->setPause(mParent->handle[i].handle, false);
 				mParent->handle[i].bufferingTime = MAX_DOUBLE;
-				std::cout << "UN-PAUSING AT " << currBufferTime << std::endl;
+				if (mOnBufferingCallback != nullptr)
+					mOnBufferingCallback(false, mParent->handle[i].handle, currBufferTime);
 			}
 		}
 

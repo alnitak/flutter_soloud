@@ -381,13 +381,14 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     int sampleRate,
     int channels,
     int pcmFormat,
-    void Function()? onBuffering,
+    void Function(bool isBuffering, int handle, double time)? onBuffering,
   ) {
     // Create a NativeCallable for the given [onBuffering] callback.
-    ffi.NativeCallable<ffi.Void Function()>? nativeOnBufferingCallable;
+    ffi.NativeCallable<ffi.Void Function(ffi.Bool, ffi.Int, ffi.Double)>?
+        nativeOnBufferingCallable;
     if (onBuffering != null) {
       nativeOnBufferingCallable =
-          ffi.NativeCallable<ffi.Void Function()>.listener(
+          ffi.NativeCallable<ffi.Void Function(ffi.Bool, ffi.Int, ffi.Double)>.listener(
         onBuffering,
       );
     }
@@ -410,16 +411,18 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   }
 
   late final _setBufferStreamPtr = _lookup<
-          ffi.NativeFunction<
-              ffi.UnsignedInt Function(
-                  ffi.Pointer<ffi.UnsignedInt>,
-                  ffi.UnsignedLong,
-                  ffi.Double,
-                  ffi.UnsignedInt,
-                  ffi.UnsignedInt,
-                  ffi.Int,
-                  ffi.Pointer<ffi.NativeFunction<ffi.Void Function()>>)>>(
-      'setBufferStream');
+      ffi.NativeFunction<
+          ffi.UnsignedInt Function(
+              ffi.Pointer<ffi.UnsignedInt>,
+              ffi.UnsignedLong,
+              ffi.Double,
+              ffi.UnsignedInt,
+              ffi.UnsignedInt,
+              ffi.Int,
+              ffi.Pointer<
+                  ffi.NativeFunction<
+                      ffi.Void Function(
+                          ffi.Bool, ffi.Int, ffi.Double)>>)>>('setBufferStream');
   late final _setBufferStream = _setBufferStreamPtr.asFunction<
       int Function(
         ffi.Pointer<ffi.UnsignedInt>,
@@ -428,7 +431,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
         int,
         int,
         int,
-        ffi.Pointer<ffi.NativeFunction<ffi.Void Function()>>,
+        ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Bool, ffi.Int, ffi.Double)>>,
       )>();
 
   @override
