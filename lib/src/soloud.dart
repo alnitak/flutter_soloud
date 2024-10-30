@@ -673,7 +673,9 @@ interface class SoLoud {
   /// [sampleRate] the sample rate. Usually is 22050 or 44100 (CD quality).
   /// [channels] enum to choose the number of channels.
   /// [pcmFormat] enum to choose from `f32le`, `s8`, `s16le` and `s32le`.
-  /// [onBuffering] a callback that will be called when start buffering.
+  /// [onBuffering] a callback that is called when starting to buffer
+  /// (isBuffering = true) and when the buffering is done (isBuffering = false).
+  /// It gives back the `handle` and the `time` in seconds.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   AudioSource setBufferStream({
