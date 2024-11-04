@@ -72,8 +72,6 @@ Future<void> generateTone(Map<String, dynamic> args) async {
 @pragma('vm:entry-point')
 Future<void> generateBouncingSoundPCM(Map<String, dynamic> args) async {
   final sound = args['sound'] as AudioSource;
-  // Frequency in Hz
-  final frequency = (args['frequency'] as double).toInt();
   // Sampling rate in Hz (samples per second)
   final sampleRate = args['sampleRate'] as int;
   // Duration of the audio in seconds
@@ -117,8 +115,6 @@ Future<void> generateBouncingSoundPCM(Map<String, dynamic> args) async {
 @pragma('vm:entry-point')
 Future<void> generateWailingSirenSoundPCM(Map<String, dynamic> args) async {
   final sound = args['sound'] as AudioSource;
-  // Frequency in Hz
-  final frequency = (args['frequency'] as double).toInt();
   // Sampling rate in Hz (samples per second)
   final sampleRate = args['sampleRate'] as int;
   // Duration of the audio in seconds
@@ -181,23 +177,14 @@ class _GenerateState extends State<Generate> {
                 /// Setup the buffer stream for each streams.
                 tone = SoLoud.instance.setBufferStream(
                   maxBufferSize: 1024 * 1024 * 1,
-                  bufferingTimeNeeds: 2,
-                  channels: Channels.mono,
-                  sampleRate: 44100,
                   pcmFormat: BufferPcmType.s8,
                 );
                 bouncing = SoLoud.instance.setBufferStream(
                   maxBufferSize: 1024 * 1024 * 1,
-                  bufferingTimeNeeds: 2,
-                  channels: Channels.mono,
-                  sampleRate: 44100,
                   pcmFormat: BufferPcmType.s8,
                 );
                 siren = SoLoud.instance.setBufferStream(
                   maxBufferSize: 1024 * 1024 * 1,
-                  bufferingTimeNeeds: 2,
-                  channels: Channels.mono,
-                  sampleRate: 44100,
                   pcmFormat: BufferPcmType.s8,
                 );
 
