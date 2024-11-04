@@ -14,6 +14,13 @@ import 'package:meta/meta.dart';
 export 'package:flutter_soloud/src/bindings/bindings_player_ffi.dart'
     if (dart.library.js_interop) 'package:flutter_soloud/src/bindings/bindings_player_web.dart';
 
+/// Callback set in `setBufferStream` for the `onBuffering` closure.
+typedef OnBufferingCallbackTFunction = void Function(
+  bool isBuffering,
+  int handle,
+  double time,
+);
+
 /// Abstract class defining the interface for the platform-specific
 /// implementations.
 abstract class FlutterSoLoud {
@@ -142,7 +149,7 @@ abstract class FlutterSoLoud {
     int sampleRate,
     int channels,
     int pcmFormat,
-    void Function(bool isBuffering, int handle, double time)? onBuffering,
+    OnBufferingCallbackTFunction? onBuffering,
   );
 
   /// Add a chunk of audio data to the buffer stream.
@@ -164,7 +171,7 @@ abstract class FlutterSoLoud {
   /// Get the current buffer size in bytes of this sound with hash [hash].
   /// [hash] the hash of the stream sound.
   @mustBeOverridden
-  ({PlayerErrors error, int sizeInBytes}) getBufferSize(int hash);
+  ({PlayerErrors error, int sizeInBytes}) getBufferSize(SoundHash soundHash);
 
   /// Load a new waveform to be played once or multiple times later.
   ///

@@ -175,7 +175,7 @@ class _WebsocketExampleState extends State<WebsocketExample> {
           ),
           OutlinedButton(
             onPressed: () async {
-              await channel?.sink.close(status.goingAway);
+              await channel?.sink.close();
               await SoLoud.instance.disposeAllSources();
 
               currentSound = SoLoud.instance.setBufferStream(
@@ -237,7 +237,7 @@ class _WebsocketExampleState extends State<WebsocketExample> {
                   } on SoLoudPcmBufferFullOrStreamEndedCppException {
                     debugPrint('pcm buffer full or stream already set '
                         'to be ended');
-                    await channel?.sink.close(status.goingAway);
+                    await channel?.sink.close();
                   }
                 },
                 onDone: () {
@@ -283,7 +283,7 @@ class _WebsocketExampleState extends State<WebsocketExample> {
                 onPressed: () async {
                   currentSound = null;
                   await SoLoud.instance.disposeAllSources();
-                  await channel?.sink.close(status.goingAway);
+                  await channel?.sink.close();
                   setState(() {});
                 },
                 child: const Text('stop all sounds and close ws'),

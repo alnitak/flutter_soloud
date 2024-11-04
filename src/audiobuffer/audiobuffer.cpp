@@ -6,6 +6,10 @@
 
 #include "audiobuffer.h"
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten/emscripten.h>
+#endif
+
 // TODO: readSamplesFromBuffer as for waveform
 
 namespace SoLoud
@@ -165,7 +169,6 @@ namespace SoLoud
 
 		mSampleCount += bytesWritten / mPCMformat.bytesPerSample;
 
-
 		// If a handle reaches the end and data is not ended, we have to wait for it has enough data
 		// to reach [TIME_FOR_BUFFERING] and restart playing it.
 		// time currBufferTime = 1.0f * mBuffer.getFloatsBufferSize() / mPCMformat.channels / mPCMformat.sampleRate;
@@ -179,7 +182,23 @@ namespace SoLoud
 				mParent->handle[i].bufferingTime = currBufferTime;
 				mThePlayer->setPause(mParent->handle[i].handle, true);
 				if (mOnBufferingCallback != nullptr)
-					mOnBufferingCallback(true, mParent->handle[i].handle, currBufferTime);
+				{
+#ifdef __EMSCRIPTEN__
+						// Call the Dart callback stored on globalThis, if it exists.
+						EM_ASM({
+							// Compose the function name for this soundHash
+							var functionName = "dartOnBufferingCallback_" + $3;
+							if (typeof window[functionName] === "function") {
+								var buffering = $0 == 1 ? true : false;
+								window[functionName](buffering, $1, $2); // Call it
+							} else {
+								console.log("EM_ASM 'dartOnBufferingCallback_$hash' not found.");
+							}
+						}, true, mParent->handle[i].handle, currBufferTime, mParent->soundHash);
+#else
+						mOnBufferingCallback(true, mParent->handle[i].handle, currBufferTime);
+#endif
+				}
 			}
 			if (currBufferTime - mParent->handle[i].bufferingTime >= mBufferingTimeNeeds && 
 				mThePlayer->getPause(mParent->handle[i].handle))
@@ -187,7 +206,23 @@ namespace SoLoud
 				mThePlayer->setPause(mParent->handle[i].handle, false);
 				mParent->handle[i].bufferingTime = MAX_DOUBLE;
 				if (mOnBufferingCallback != nullptr)
-					mOnBufferingCallback(false, mParent->handle[i].handle, currBufferTime);
+				{
+#ifdef __EMSCRIPTEN__
+						// Call the Dart callback stored on globalThis, if it exists.
+						EM_ASM({
+							// Compose the function name for this soundHash
+							var functionName = "dartOnBufferingCallback_" + $3;
+							if (typeof window[functionName] === "function") {
+								var buffering = $0 == 1 ? true : false;
+								window[functionName](buffering, $1, $2); // Call it
+							} else {
+								console.log("EM_ASM 'dartOnBufferingCallback_$hash' not found.");
+							}
+						}, false, mParent->handle[i].handle, currBufferTime, mParent->soundHash);
+#else
+						mOnBufferingCallback(false, mParent->handle[i].handle, currBufferTime);
+#endif
+				}
 			}
 		}
 

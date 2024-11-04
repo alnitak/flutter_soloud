@@ -317,7 +317,7 @@ PlayerErrors Player::setBufferStream(
 
     std::random_device rd;
     std::mt19937 g(rd());
-    std::uniform_int_distribution<unsigned int> dist(0, UINT32_MAX);
+    std::uniform_int_distribution<unsigned int> dist(0, INT32_MAX);
 
     hash = dist(g);
 

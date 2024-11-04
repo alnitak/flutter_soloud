@@ -123,6 +123,6 @@ typedef struct PCMformat
 } PCMformat;
 
 
-typedef void (*dartOnBufferingCallback_t)(bool isBuffering, unsigned int, double time);
+typedef void (*dartOnBufferingCallback_t)(bool isBuffering, unsigned int handle, double time);
 
 #endif // ENUMS_H

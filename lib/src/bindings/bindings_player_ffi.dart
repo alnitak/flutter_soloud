@@ -381,14 +381,14 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     int sampleRate,
     int channels,
     int pcmFormat,
-    void Function(bool isBuffering, int handle, double time)? onBuffering,
+    OnBufferingCallbackTFunction? onBuffering,
   ) {
     // Create a NativeCallable for the given [onBuffering] callback.
     ffi.NativeCallable<ffi.Void Function(ffi.Bool, ffi.Int, ffi.Double)>?
         nativeOnBufferingCallable;
     if (onBuffering != null) {
-      nativeOnBufferingCallable =
-          ffi.NativeCallable<ffi.Void Function(ffi.Bool, ffi.Int, ffi.Double)>.listener(
+      nativeOnBufferingCallable = ffi.NativeCallable<
+          ffi.Void Function(ffi.Bool, ffi.Int, ffi.Double)>.listener(
         onBuffering,
       );
     }
@@ -421,8 +421,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
               ffi.Int,
               ffi.Pointer<
                   ffi.NativeFunction<
-                      ffi.Void Function(
-                          ffi.Bool, ffi.Int, ffi.Double)>>)>>('setBufferStream');
+                      ffi.Void Function(ffi.Bool, ffi.Int,
+                          ffi.Double)>>)>>('setBufferStream');
   late final _setBufferStream = _setBufferStreamPtr.asFunction<
       int Function(
         ffi.Pointer<ffi.UnsignedInt>,
@@ -431,7 +431,9 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
         int,
         int,
         int,
-        ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Bool, ffi.Int, ffi.Double)>>,
+        ffi.Pointer<
+            ffi
+            .NativeFunction<ffi.Void Function(ffi.Bool, ffi.Int, ffi.Double)>>,
       )>();
 
   @override
@@ -471,10 +473,10 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       _setDataIsEndedPtr.asFunction<int Function(int)>();
 
   @override
-  ({PlayerErrors error, int sizeInBytes}) getBufferSize(int hash) {
+  ({PlayerErrors error, int sizeInBytes}) getBufferSize(SoundHash soundHash) {
     final ffi.Pointer<ffi.UnsignedInt> size =
         calloc(ffi.sizeOf<ffi.UnsignedInt>());
-    final e = _getBufferSize(hash, size);
+    final e = _getBufferSize(soundHash.hash, size);
     final ret = (error: PlayerErrors.values[e], sizeInBytes: size.value);
     calloc.free(size);
     return ret;

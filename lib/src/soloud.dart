@@ -1,7 +1,6 @@
 // ignore_for_file: require_trailing_commas, avoid_positional_boolean_parameters
 
 import 'dart:async';
-import 'dart:ffi';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
@@ -803,7 +802,7 @@ interface class SoLoud {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
-    final e = SoLoudController().soLoudFFI.getBufferSize(sound.soundHash.hash);
+    final e = SoLoudController().soLoudFFI.getBufferSize(sound.soundHash);
 
     if (e.error != PlayerErrors.noError) {
       _logPlayerError(e.error, from: 'getBufferSize() result');
