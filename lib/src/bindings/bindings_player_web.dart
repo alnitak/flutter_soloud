@@ -1,4 +1,8 @@
+// ignore_for_file: avoid_positional_boolean_parameters
+
 import 'dart:convert';
+import 'dart:js_interop';
+import 'dart:js_interop_unsafe';
 import 'dart:typed_data';
 
 import 'package:flutter_soloud/src/bindings/audio_data.dart';
@@ -182,6 +186,78 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     wasmFree(bytesPtr);
     wasmFree(pathPtr);
 
+    return ret;
+  }
+
+  @override
+  ({PlayerErrors error, SoundHash soundHash}) setBufferStream(
+    int maxBufferSize,
+    double bufferingTimeNeeds,
+    int sampleRate,
+    int channels,
+    int pcmFormat,
+    OnBufferingCallbackTFunction? onBuffering,
+  ) {
+    final hashPtr = wasmMalloc(4); // 4 bytes for an int
+    final result = wasmSetBufferStream(
+      hashPtr,
+      maxBufferSize,
+      bufferingTimeNeeds,
+      sampleRate,
+      channels,
+      pcmFormat,
+      // not used on C side. The callback is set below on the JS side. Setting
+      // this to 1 to tell C that we have a callback.
+      onBuffering == null ? 0 : 1,
+    );
+    final hash = wasmGetI32Value(hashPtr, '*');
+    final soundHash = SoundHash(hash);
+    final ret = (error: PlayerErrors.values[result], soundHash: soundHash);
+    wasmFree(hashPtr);
+
+    if (onBuffering != null) {
+      // Convert Dart closure to a JS function. To the function name is added
+      // the hash of the sound to make it unique.
+      globalThis.setProperty(
+        'dartOnBufferingCallback_$hash'.toJS,
+        onBuffering.toJS,
+      );
+    }
+
+    return ret;
+  }
+
+  @override
+  PlayerErrors addAudioDataStream(
+    int hash,
+    Uint8List audioChunk,
+  ) {
+    final audioChunkPtr = wasmMalloc(audioChunk.length);
+    for (var i = 0; i < audioChunk.length; i++) {
+      wasmSetValue(audioChunkPtr + i, audioChunk[i], 'i8');
+    }
+
+    final result =
+        wasmAddAudioDataStream(hash, audioChunkPtr, audioChunk.length);
+    wasmFree(audioChunkPtr);
+
+    return PlayerErrors.values[result];
+  }
+
+  @override
+  PlayerErrors setDataIsEnded(SoundHash soundHash) {
+    final result = wasmSetDataIsEnded(soundHash.hash);
+    return PlayerErrors.values[result];
+  }
+
+  @override
+  ({PlayerErrors error, int sizeInBytes}) getBufferSize(SoundHash soundHash) {
+    final sizeInBytesPtr = wasmMalloc(4);
+    final result = wasmGetBufferSize(soundHash.hash, sizeInBytesPtr);
+    final sizeInBytes = wasmGetI32Value(sizeInBytesPtr, '*');
+    wasmFree(sizeInBytesPtr);
+
+    final ret = (error: PlayerErrors.values[result], sizeInBytes: sizeInBytes);
     return ret;
   }
 

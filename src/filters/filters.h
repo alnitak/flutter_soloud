@@ -23,6 +23,8 @@
 #include <string>
 #include <memory>
 
+struct ActiveSound;
+
 struct FilterObject
 {
     FilterType type;

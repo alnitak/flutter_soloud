@@ -46,8 +46,12 @@ typedef enum PlayerErrors
     soundHandleNotFound = 17,
     /// Error getting filter parameter.
     filterParameterGetError = 18,
+    /// Trying to add PCM data but the buffer is full or not large
+    /// enough for the neded PCM data. Try increasing the buffer size.
+    /// Or, stream buffer has been set to be ended.
+    pcmBufferFullOrStreamEnded = 19,
     /// No playback devices were found.
-    noPlaybackDevicesFound = 19,
+    noPlaybackDevicesFound = 20
 } PlayerErrors_t;
 
 /// Possible read sample errors
@@ -82,7 +86,9 @@ typedef enum SoundType
     // using Soloud::wavStream
     TYPE_WAVSTREAM,
     // this sound is a waveform
-    TYPE_SYNTH
+    TYPE_SYNTH,
+    // this sound is a streaming buffer
+    TYPE_BUFFER_STREAM,
 } SoundType_t;
 
 typedef enum FilterType
@@ -98,5 +104,25 @@ typedef enum FilterType
     FreeverbFilter,
     PitchShiftFilter
 } FilterType_t;
+
+typedef enum BufferPcmType
+{
+    PCM_F32LE = 0,
+    PCM_S8 = 1,
+    PCM_S16LE = 2,
+    PCM_S32LE = 3,
+} BufferPcmType_t;
+
+
+typedef struct PCMformat
+{
+  unsigned int sampleRate;
+  unsigned int channels;
+  unsigned int bytesPerSample;
+  BufferPcmType dataType;
+} PCMformat;
+
+
+typedef void (*dartOnBufferingCallback_t)(bool isBuffering, unsigned int handle, double time);
 
 #endif // ENUMS_H

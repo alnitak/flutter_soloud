@@ -64,8 +64,12 @@ enum PlayerErrors {
   /// Error getting filter parameter.
   filterParameterGetError(18),
 
+  /// Trying to add PCM data but the buffer is full or stream buffer has been
+  /// set to be ended.
+  pcmBufferFullOrStreamEnded(19),
+
   /// No playback devices were found.
-  noPlaybackDevicesFound(19);
+  noPlaybackDevicesFound(20);
 
   const PlayerErrors(this.value);
 
@@ -120,6 +124,10 @@ enum PlayerErrors {
       case PlayerErrors.filterParameterGetError:
         return 'An error (nan or inf value) occurred while getting a '
             'filter parameter!';
+      case PlayerErrors.pcmBufferFullOrStreamEnded:
+        return 'Trying to add PCM data but the buffer is full or not large '
+            'enough for the neded PCM data. Try increasing the buffer size. '
+            'Or, stream buffer has been set to be ended. ';
       case PlayerErrors.noPlaybackDevicesFound:
         return 'No playback devices were found while initializing engine or '
             'when changing the output device.';
@@ -270,4 +278,43 @@ enum Channels {
 
   /// The channels count.
   final int count;
+
+  /// Returns a human-friendly channel name.
+  @override
+  String toString() {
+    switch (this) {
+      case Channels.mono:
+        return 'Mono';
+      case Channels.stereo:
+        return 'Stereo';
+      case Channels.quad:
+        return 'Quad';
+      case Channels.surround51:
+        return 'Surround 5.1';
+      case Channels.dolby71:
+        return 'Dolby 7.1';
+    }
+  }
+}
+
+/// The PCM types.
+enum BufferPcmType {
+  /// 32-bit floating point, little-endian.
+  f32le(0),
+
+  /// 8-bit signed, little-endian.
+  s8(1),
+
+  /// 16-bit signed, little-endian.
+  s16le(2),
+
+  /// 32-bit signed, little-endian.
+  s32le(3);
+
+  /// The integer value of the PCM type.
+  final int value;
+
+  /// Constructs a valid PCM type with [value].
+  // ignore: sort_constructors_first
+  const BufferPcmType(this.value);
 }

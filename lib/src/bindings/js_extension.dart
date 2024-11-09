@@ -3,6 +3,9 @@
 import 'dart:js_interop';
 import 'package:web/web.dart' as web;
 
+@JS('globalThis')
+external JSObject get globalThis;
+
 @JS('Module._malloc')
 external int wasmMalloc(int bytesCount);
 
@@ -44,6 +47,26 @@ external void wasmSendToWorker(int message, int value);
 
 @JS('Module.wasmWorker')
 external web.Worker wasmWorker;
+
+@JS('Module._setBufferStream')
+external int wasmSetBufferStream(
+  int hashPtr,
+  int maxBufferSize,
+  double bufferingTimeNeeds,
+  int sampleRate,
+  int channels,
+  int pcmFormat,
+  int onBufferingPtr,
+);
+
+@JS('Module._addAudioDataStream')
+external int wasmAddAudioDataStream(int hash, int audioChunkPtr, int dataLen);
+
+@JS('Module._setDataIsEnded')
+external int wasmSetDataIsEnded(int hash);
+
+@JS('Module._getBufferSize')
+external int wasmGetBufferSize(int hash, int sizeInBytesPtr);
 
 @JS('Module._initEngine')
 external int wasmInitEngine(

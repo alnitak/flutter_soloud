@@ -40,6 +40,7 @@ list(APPEND PLUGIN_SOURCES
   "${SRC_DIR}/analyzer.cpp"
   "${SRC_DIR}/synth/basic_wave.cpp"
   "${SRC_DIR}/waveform/waveform.cpp"
+  "${SRC_DIR}/audiobuffer/audiobuffer.cpp"
   "${SRC_DIR}/filters/filters.cpp"
   "${SRC_DIR}/filters/pitch_shift_filter.cpp"
   "${SRC_DIR}/filters/smbPitchShift.cpp"
@@ -60,7 +61,7 @@ target_include_directories(${PLUGIN_NAME} INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}
 target_link_libraries(${PLUGIN_NAME} PRIVATE flutter)
 target_link_libraries(${PLUGIN_NAME} PRIVATE PkgConfig::GTK)
 
-target_compile_options("${PLUGIN_NAME}" PRIVATE -Wall -Wno-error -fPIC -O0 -msse3 -msse2) #  -ldl -lpthread -lm
+target_compile_options("${PLUGIN_NAME}" PRIVATE -Wall -Wno-error -Wno-vla -fPIC -O0 -msse3 -msse2) #  -ldl -lpthread -lm
 
 # List of absolute paths to libraries that should be bundled with the plugin.
 set(flutter_soloud_bundled_libraries

@@ -24,6 +24,8 @@ dependencies:
   #https://pub.dev/packages/logging
   logging: ^1.2.0
 
+  web_socket_channel: ^3.0.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -375,6 +375,121 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
           ffi.Pointer<ffi.UnsignedInt>)>();
 
   @override
+  ({PlayerErrors error, SoundHash soundHash}) setBufferStream(
+    int maxBufferSize,
+    double bufferingTimeNeeds,
+    int sampleRate,
+    int channels,
+    int pcmFormat,
+    OnBufferingCallbackTFunction? onBuffering,
+  ) {
+    // Create a NativeCallable for the given [onBuffering] callback.
+    ffi.NativeCallable<ffi.Void Function(ffi.Bool, ffi.Int, ffi.Double)>?
+        nativeOnBufferingCallable;
+    if (onBuffering != null) {
+      nativeOnBufferingCallable = ffi.NativeCallable<
+          ffi.Void Function(ffi.Bool, ffi.Int, ffi.Double)>.listener(
+        onBuffering,
+      );
+    }
+
+    final ffi.Pointer<ffi.UnsignedInt> hash =
+        calloc(ffi.sizeOf<ffi.UnsignedInt>());
+    final e = _setBufferStream(
+      hash,
+      maxBufferSize,
+      bufferingTimeNeeds,
+      sampleRate,
+      channels,
+      pcmFormat,
+      nativeOnBufferingCallable?.nativeFunction ?? ffi.nullptr,
+    );
+    final soundHash = SoundHash(hash.value);
+    final ret = (error: PlayerErrors.values[e], soundHash: soundHash);
+    calloc.free(hash);
+    return ret;
+  }
+
+  late final _setBufferStreamPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.UnsignedInt Function(
+              ffi.Pointer<ffi.UnsignedInt>,
+              ffi.UnsignedLong,
+              ffi.Double,
+              ffi.UnsignedInt,
+              ffi.UnsignedInt,
+              ffi.Int,
+              ffi.Pointer<
+                  ffi.NativeFunction<
+                      ffi.Void Function(ffi.Bool, ffi.Int,
+                          ffi.Double)>>)>>('setBufferStream');
+  late final _setBufferStream = _setBufferStreamPtr.asFunction<
+      int Function(
+        ffi.Pointer<ffi.UnsignedInt>,
+        int,
+        double,
+        int,
+        int,
+        int,
+        ffi.Pointer<
+            ffi
+            .NativeFunction<ffi.Void Function(ffi.Bool, ffi.Int, ffi.Double)>>,
+      )>();
+
+  @override
+  PlayerErrors addAudioDataStream(
+    int hash,
+    Uint8List audioChunk,
+  ) {
+    final ffi.Pointer<ffi.Uint8> audioChunkPtr = calloc(audioChunk.length);
+    for (var i = 0; i < audioChunk.length; i++) {
+      audioChunkPtr[i] = audioChunk[i];
+    }
+    final e = _addAudioDataStream(
+      hash,
+      audioChunkPtr,
+      audioChunk.length,
+    );
+    return PlayerErrors.values[e];
+  }
+
+  late final _addAudioDataStreamPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Int32 Function(ffi.UnsignedInt, ffi.Pointer<ffi.Uint8>,
+              ffi.UnsignedInt)>>('addAudioDataStream');
+  late final _addAudioDataStream = _addAudioDataStreamPtr
+      .asFunction<int Function(int, ffi.Pointer<ffi.Uint8>, int)>();
+
+  @override
+  PlayerErrors setDataIsEnded(SoundHash soundHash) {
+    final e = _setDataIsEnded(soundHash.hash);
+    return PlayerErrors.values[e];
+  }
+
+  late final _setDataIsEndedPtr =
+      _lookup<ffi.NativeFunction<ffi.UnsignedInt Function(ffi.UnsignedInt)>>(
+          'setDataIsEnded');
+  late final _setDataIsEnded =
+      _setDataIsEndedPtr.asFunction<int Function(int)>();
+
+  @override
+  ({PlayerErrors error, int sizeInBytes}) getBufferSize(SoundHash soundHash) {
+    final ffi.Pointer<ffi.UnsignedInt> size =
+        calloc(ffi.sizeOf<ffi.UnsignedInt>());
+    final e = _getBufferSize(soundHash.hash, size);
+    final ret = (error: PlayerErrors.values[e], sizeInBytes: size.value);
+    calloc.free(size);
+    return ret;
+  }
+
+  late final _getBufferSizePtr = _lookup<
+      ffi.NativeFunction<
+          ffi.UnsignedInt Function(
+              ffi.UnsignedInt, ffi.Pointer<ffi.UnsignedInt>)>>('getBufferSize');
+  late final _getBufferSize = _getBufferSizePtr
+      .asFunction<int Function(int, ffi.Pointer<ffi.UnsignedInt>)>();
+
+  @override
   ({PlayerErrors error, SoundHash soundHash}) loadWaveform(
     WaveForm waveform,
     bool superWave,
