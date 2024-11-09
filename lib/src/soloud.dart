@@ -664,20 +664,20 @@ interface class SoLoud {
   /// using [addAudioDataStreamU8] and this values is reached, the stream will
   /// be considered ended (likewise we called [setDataIsEnded]). This means that
   /// when playing it, it will stop at that point (if loop is not set).
-  /// 
+  ///
   /// **Note:** this parameter doesn't allocate any memory, but it just limits
   /// the amount of data that can be added.
-  /// 
+  ///
   /// [bufferingTimeNeeds] the buffering time needed in seconds. If a handle
   /// reaches the current buffer length, it will start to buffer pausing it and
   /// waiting until the buffer will have enough data to cover this time.
-  /// 
+  ///
   /// [sampleRate] the sample rate. Usually is 22050 or 44100 (CD quality).
-  /// 
+  ///
   /// [channels] enum to choose the number of channels.
-  /// 
+  ///
   /// [pcmFormat] enum to choose from `f32le`, `s8`, `s16le` and `s32le`.
-  /// 
+  ///
   /// [onBuffering] a callback that is called when starting to buffer
   /// (isBuffering = true) and when the buffering is done (isBuffering = false).
   /// It gives back the `handle` which triggered the event and the `time`
