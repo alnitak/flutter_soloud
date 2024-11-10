@@ -3,13 +3,13 @@
     "tasks": [
         {
             "label": "compile linux debug verbose",
-            "command": "cd ${workspaceFolder}/example; flutter build linux -t lib/buffer_stream/websocket.dart --debug --verbose",
+            "command": "cd ${workspaceFolder}/example; flutter build linux -t lib/filters/limiter.dart --debug --verbose",
             // "args": ["build", "linux", "--verbose"],
             "type": "shell"
         },
         {
             "label": "compile linux debug",
-            "command": "cd ${workspaceFolder}/example; flutter build linux -t lib/buffer_stream/websocket.dart --debug",
+            "command": "cd ${workspaceFolder}/example; flutter build linux -t lib/filters/limiter.dart --debug",
             "type": "shell"
         },
         {

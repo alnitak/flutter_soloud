@@ -45,6 +45,7 @@ list(APPEND PLUGIN_SOURCES
   "${SRC_DIR}/filters/filters.cpp"
   "${SRC_DIR}/filters/pitch_shift_filter.cpp"
   "${SRC_DIR}/filters/smbPitchShift.cpp"
+  "${SRC_DIR}/filters/limiter.cpp"
 )
 
 add_library(${PLUGIN_NAME} SHARED

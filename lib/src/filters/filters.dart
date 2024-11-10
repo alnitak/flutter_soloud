@@ -10,6 +10,7 @@ import 'package:flutter_soloud/src/filters/echo_filter.dart';
 import 'package:flutter_soloud/src/filters/equalizer_filter.dart';
 import 'package:flutter_soloud/src/filters/flanger_filter.dart';
 import 'package:flutter_soloud/src/filters/freeverb_filter.dart';
+import 'package:flutter_soloud/src/filters/limiter.dart';
 import 'package:flutter_soloud/src/filters/lofi_filter.dart';
 import 'package:flutter_soloud/src/filters/pitchshift_filter.dart';
 import 'package:flutter_soloud/src/filters/robotize_filter.dart';
@@ -96,6 +97,16 @@ final class FiltersSingle {
 
   /// The `Wave Shaper` filter for this sound.
   WaveShaperSingle get waveShaperFilter => WaveShaperSingle(soundHash);
+
+  /// The `Limiter` filter used globally.
+  /// 
+  /// **Parameters**:
+  /// - `wet`: Wet/dry mix ratio, 1.0 means fully wet, 0.0 means fully dry
+  /// - `threshold`: Threshold in dB, default -6 dB
+  /// - `attackTime`: Attack time in seconds, default 10 ms
+  /// - `releaseTime`: Release time in seconds, default 100 ms
+  /// - `makeupGain`: Makeup gain, default 1.0 (no gain adjustment)
+  LimiterSingle get limiterFilter => LimiterSingle(soundHash);
 }
 
 /// Filters instance used in [SoLoud.filters]. This differentiate from the
@@ -134,6 +145,16 @@ final class FiltersGlobal {
 
   /// The `Wave Shaper` filter used globally.
   WaveShaperGlobal get waveShaperFilter => const WaveShaperGlobal();
+
+  /// The `Limiter` filter used globally.
+  /// 
+  /// **Parameters**:
+  /// - `wet`: Wet/dry mix ratio, 1.0 means fully wet, 0.0 means fully dry
+  /// - `threshold`: Threshold in dB, default -6 dB
+  /// - `attackTime`: Attack time in seconds, default 10 ms
+  /// - `releaseTime`: Release time in seconds, default 100 ms
+  /// - `makeupGain`: Makeup gain, default 1.0 (no gain adjustment)
+  LimiterGlobal get limiterFilter => const LimiterGlobal();
 }
 
 /// Common class for single and global filters.
@@ -260,7 +281,10 @@ enum FilterType {
   freeverbFilter,
 
   /// A pitch shift filter.
-  pitchShiftFilter;
+  pitchShiftFilter,
+
+  /// A limiter filter.
+  limiterFilter;
 
   @override
   String toString() => switch (this) {
@@ -274,6 +298,7 @@ enum FilterType {
         FilterType.robotizeFilter => 'Robotize',
         FilterType.freeverbFilter => 'Freeverb',
         FilterType.pitchShiftFilter => 'Pitchshift',
+        FilterType.limiterFilter => 'Limiter',
       };
 
   /// The number of parameter this filter owns.
@@ -288,6 +313,7 @@ enum FilterType {
         FilterType.robotizeFilter => 3,
         FilterType.freeverbFilter => 5,
         FilterType.pitchShiftFilter => 3,
+        FilterType.limiterFilter => 5
       };
 
   /// Activate this filter. If [soundHash] is null this filter is applied

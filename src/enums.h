@@ -102,7 +102,8 @@ typedef enum FilterType
     WaveShaperFilter,
     RobotizeFilter,
     FreeverbFilter,
-    PitchShiftFilter
+    PitchShiftFilter,
+    LimiterFilter
 } FilterType_t;
 
 typedef enum BufferPcmType
