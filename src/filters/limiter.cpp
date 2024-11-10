@@ -169,6 +169,11 @@ SoLoud::result Limiter::setParam(unsigned int aParamIndex, float aValue)
             return SoLoud::INVALID_PARAMETER;
         mKneeWidth = aValue;
         break;
+    case LOOKAHEAD:
+        if (aValue < getParamMin(LOOKAHEAD) || aValue > getParamMax(LOOKAHEAD))
+            return SoLoud::INVALID_PARAMETER;
+        mLookahead = aValue;
+        break;
     case RELEASE_TIME:
         if (aValue < getParamMin(RELEASE_TIME) || aValue > getParamMax(RELEASE_TIME))
             return SoLoud::INVALID_PARAMETER;
