@@ -11,8 +11,8 @@ import 'package:logging/logging.dart';
 /// noise and output distortion. The limiter filter can be used to reduce this
 /// behaviour.
 ///
-/// In this example we play a sound multiple times and to check the sound and
-/// adjust the limiter parameters.
+/// In this example we play a sound multiple times to have a distorted sound.
+/// Then we activate the limiter filter and adjust the limiter parameters.
 ///
 /// ** Limiter parameters**:
 /// - `wet`: Wet/dry mix ratio, 1.0 means fully wet, 0.0 means fully dry
