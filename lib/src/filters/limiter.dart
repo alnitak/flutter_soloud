@@ -7,13 +7,14 @@ import 'package:flutter_soloud/src/sound_hash.dart';
 enum Limiter {
   wet,
   threshold,
-  attackTime,
-  releaseTime,
-  makeupGain;
+  makeupGain,
+  kneeWidth,
+  lookahead,
+  releaseTime;
 
-  final List<double> _mins = const [0, -24, 0.001, 0.01, 0];
-  final List<double> _maxs = const [1, 0, 0.1, 1, 4];
-  final List<double> _defs = const [1, -6, 0.01, 0.1, 1.0];
+  final List<double> _mins = const [0, -60, -30, 0, 0, 1];
+  final List<double> _maxs = const [1, 0, 30, 30, 10, 1000];
+  final List<double> _defs = const [1, -6, 0, 6, 1, 100];
 
   double get min => _mins[index];
   double get max => _maxs[index];
@@ -23,9 +24,10 @@ enum Limiter {
   String toString() => switch (this) {
         Limiter.wet => 'Wet',
         Limiter.threshold => 'Threshold',
-        Limiter.attackTime => 'Attack Time',
-        Limiter.releaseTime => 'Release Time',
         Limiter.makeupGain => 'Makeup Gain',
+        Limiter.kneeWidth => 'Knee Width',
+        Limiter.lookahead => 'Lookahead',
+        Limiter.releaseTime => 'Release Time',
       };
 }
 
@@ -35,9 +37,10 @@ abstract class _LimiterInternal extends FilterBase {
 
   Limiter get queryWet => Limiter.wet;
   Limiter get queryThreshold => Limiter.threshold;
-  Limiter get queryAttackTime => Limiter.attackTime;
-  Limiter get queryReleaseTime => Limiter.releaseTime;
   Limiter get queryMakeupGain => Limiter.makeupGain;
+  Limiter get queryKneeWidth => Limiter.kneeWidth;
+  Limiter get queryLookahead => Limiter.lookahead;
+  Limiter get queryReleaseTime => Limiter.releaseTime;
 }
 
 class LimiterSingle extends _LimiterInternal {
@@ -59,12 +62,28 @@ class LimiterSingle extends _LimiterInternal {
         Limiter.threshold.max,
       );
 
-  FilterParam attackTime({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam makeupGain({SoundHandle? soundHandle}) => FilterParam(
         soundHandle,
         filterType,
-        Limiter.attackTime.index,
-        Limiter.attackTime.min,
-        Limiter.attackTime.max,
+        Limiter.makeupGain.index,
+        Limiter.makeupGain.min,
+        Limiter.makeupGain.max,
+      );
+
+  FilterParam kneeWidth({SoundHandle? soundHandle}) => FilterParam(
+        soundHandle,
+        filterType,
+        Limiter.kneeWidth.index,
+        Limiter.kneeWidth.min,
+        Limiter.kneeWidth.max,
+      );
+
+  FilterParam lookahead({SoundHandle? soundHandle}) => FilterParam(
+        soundHandle,
+        filterType,
+        Limiter.lookahead.index,
+        Limiter.lookahead.min,
+        Limiter.lookahead.max,
       );
 
   FilterParam releaseTime({SoundHandle? soundHandle}) => FilterParam(
@@ -73,14 +92,6 @@ class LimiterSingle extends _LimiterInternal {
         Limiter.releaseTime.index,
         Limiter.releaseTime.min,
         Limiter.releaseTime.max,
-      );
-
-  FilterParam makeupGain({SoundHandle? soundHandle}) => FilterParam(
-        soundHandle,
-        filterType,
-        Limiter.makeupGain.index,
-        Limiter.makeupGain.min,
-        Limiter.makeupGain.max,
       );
 }
 
@@ -103,12 +114,28 @@ class LimiterGlobal extends _LimiterInternal {
         Limiter.threshold.max,
       );
 
-  FilterParam get attackTime => FilterParam(
+  FilterParam get makeupGain => FilterParam(
         null,
         filterType,
-        Limiter.attackTime.index,
-        Limiter.attackTime.min,
-        Limiter.attackTime.max,
+        Limiter.makeupGain.index,
+        Limiter.makeupGain.min,
+        Limiter.makeupGain.max,
+      );
+
+  FilterParam get kneeWidth => FilterParam(
+        null,
+        filterType,
+        Limiter.kneeWidth.index,
+        Limiter.kneeWidth.min,
+        Limiter.kneeWidth.max,
+      );
+
+  FilterParam get lookahead => FilterParam(
+        null,
+        filterType,
+        Limiter.lookahead.index,
+        Limiter.lookahead.min,
+        Limiter.lookahead.max,
       );
 
   FilterParam get releaseTime => FilterParam(
@@ -117,13 +144,5 @@ class LimiterGlobal extends _LimiterInternal {
         Limiter.releaseTime.index,
         Limiter.releaseTime.min,
         Limiter.releaseTime.max,
-      );
-
-  FilterParam get makeupGain => FilterParam(
-        null,
-        filterType,
-        Limiter.makeupGain.index,
-        Limiter.makeupGain.min,
-        Limiter.makeupGain.max,
       );
 }

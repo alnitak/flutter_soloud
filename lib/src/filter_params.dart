@@ -134,8 +134,15 @@ const FxParams fxPitchShift = (
 @Deprecated('Please use the SoLoud.filters or AudioSource.filters.')
 const FxParams fxLimiter = (
   title: 'Limiter',
-  names: ['Wet', 'Threshold', 'Attack Time', 'Release Time', 'Makeup Gain'],
-  mins: [0, -24, 0.001, 0.01, 0],
-  maxs: [1, 0, 0.1, 1, 4],
-  defs: [1, -6, 0.01, 0.1, 1.0],
+  names: [
+    'Wet',
+    'Threshold',
+    'Makeup Gain',
+    'Knee Width',
+    'Lookahead',
+    'Release Time',
+  ],
+  mins: [0, -60, -30, 0, 0, 1],
+  maxs: [1, 0, 30, 30, 10, 1000],
+  defs: [1, -6, 0, 6, 1, 100],
 );

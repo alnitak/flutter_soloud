@@ -9,7 +9,7 @@ class LimiterInstance : public SoLoud::FilterInstance
 {
     Limiter *mParent;
     // Helper parameters calculated from attack/release times
-    float gAttackCoeff;
+    float gLookaheadSamples;
     float gReleaseCoeff;
 
 public:
@@ -32,15 +32,17 @@ public:
     {
         WET = 0,
         THRESHOLD = 1,
-        ATTACK_TIME = 2,
-        RELEASE_TIME = 3,
-        MAKEUP_GAIN = 4
+        MAKEUP_GAIN = 2,
+        KNEE_WIDTH = 3,
+        LOOKAHEAD = 4,
+        RELEASE_TIME = 5
     };
     float mWet;         // Wet/dry mix ratio, 1.0 means fully wet, 0.0 means fully dry
-    float mThreshold;   // Threshold in dB, default -6 dB
-    float mAttackTime;  // Attack time in seconds, default 10 ms
-    float mReleaseTime; // Release time in seconds, default 100 ms
+    float mThreshold;   // Threshold in dB
     float mMakeupGain;  // Makeup gain, default 1.0 (no gain adjustment)
+    float mKneeWidth;   // Knee width in dB
+    float mLookahead;   // Lookahead in ms
+    float mReleaseTime; // Release time in seconds
 
     virtual int getParamCount();
     virtual const char *getParamName(unsigned int aParamIndex);

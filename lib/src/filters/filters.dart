@@ -149,11 +149,18 @@ final class FiltersGlobal {
   /// The `Limiter` filter used globally.
   /// 
   /// **Parameters**:
-  /// - `wet`: Wet/dry mix ratio, 1.0 means fully wet, 0.0 means fully dry
-  /// - `threshold`: Threshold in dB, default -6 dB
-  /// - `attackTime`: Attack time in seconds, default 10 ms
-  /// - `releaseTime`: Release time in seconds, default 100 ms
-  /// - `makeupGain`: Makeup gain, default 1.0 (no gain adjustment)
+/// - `wet`: Wet/dry mix ratio, 1.0 means fully wet, 0.0 means fully dry
+/// - `threshold`: Sets the level (in dB) above which limiting is applied. Any
+/// signal above this level is reduced in volume.
+/// - `makeupGain`: Boosts the signal after limiting to make up for the volume
+/// reduction. Measured in dB.
+/// - `kneeWidth`: Controls the softness of the transition around the threshold.
+/// A higher knee width results in a smoother, gradual limiting effect.
+/// - `lookahead`: Allows the limiter to anticipate peaks by analyzing a certain
+/// amount of samples ahead, helping to prevent clipping. Specified in
+/// milliseconds (ms).
+/// - `releaseTime`: Sets the time (in ms) over which the limiter recovers after
+/// reducing gain, allowing for a smoother return to normal volume.
   LimiterGlobal get limiterFilter => const LimiterGlobal();
 }
 

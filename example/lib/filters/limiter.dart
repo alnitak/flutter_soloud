@@ -5,14 +5,35 @@ import 'package:flutter/material.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:logging/logging.dart';
 
-/// This example shows how to use the limiter filter.
-/// 
+/// This example shows the use of the limiter filter.
+///
 /// Happens that playing multple sounds at the same time can create a lot of
 /// noise and output distortion. The limiter filter can be used to reduce this
 /// behaviour.
-/// 
-/// In this example we play a sound multiple times and adjust the limiter
-/// parameters.
+///
+/// In this example we play a sound multiple times and to check the sound and
+/// adjust the limiter parameters.
+///
+/// ** Limiter parameters**:
+/// - `wet`: Wet/dry mix ratio, 1.0 means fully wet, 0.0 means fully dry
+/// - `threshold`: Sets the level (in dB) above which limiting is applied. Any
+/// signal above this level is reduced in volume.
+/// - `makeupGain`: Boosts the signal after limiting to make up for the volume
+/// reduction. Measured in dB.
+/// - `kneeWidth`: Controls the softness of the transition around the threshold.
+/// A higher knee width results in a smoother, gradual limiting effect.
+/// - `lookahead`: Allows the limiter to anticipate peaks by analyzing a certain
+/// amount of samples ahead, helping to prevent clipping. Specified in
+/// milliseconds (ms).
+/// - `releaseTime`: Sets the time (in ms) over which the limiter recovers after
+/// reducing gain, allowing for a smoother return to normal volume.
+///
+/// Tip: when lowering threshold the sound will get more distorted. Rise the
+/// knee width to reduce the distortion.
+/// Tip2: when using other filter, it's preferable to activate the limiter
+/// filter after all the others. Doing this if underlaying filters gain the
+/// volume too much, this filter will act on top of it.
+
 void main() async {
   // The `flutter_soloud` package logs everything
   // (from severe warnings to fine debug messages)
@@ -56,9 +77,10 @@ class _LimiterExampleState extends State<LimiterExample> {
   AudioSource? sound;
   late double wet;
   late double threshold;
-  late double attackTime;
-  late double releaseTime;
   late double makeupGain;
+  late double kneeWidth;
+  late double lookahead;
+  late double releaseTime;
   bool isFilterActive = false;
 
   @override
@@ -67,9 +89,10 @@ class _LimiterExampleState extends State<LimiterExample> {
 
     wet = limiter.queryWet.def;
     threshold = limiter.queryThreshold.def;
-    attackTime = limiter.queryAttackTime.def;
-    releaseTime = limiter.queryReleaseTime.def;
     makeupGain = limiter.queryMakeupGain.def;
+    kneeWidth = limiter.queryKneeWidth.def;
+    lookahead = limiter.queryLookahead.def;
+    releaseTime = limiter.queryReleaseTime.def;
   }
 
   @override
@@ -92,6 +115,12 @@ class _LimiterExampleState extends State<LimiterExample> {
               onChanged: (value) {
                 if (value!) {
                   limiter.activate();
+                  limiter.wet.value = wet;
+                  limiter.threshold.value = threshold;
+                  limiter.makeupGain.value = makeupGain;
+                  limiter.kneeWidth.value = kneeWidth;
+                  limiter.lookahead.value = lookahead;
+                  limiter.releaseTime.value = releaseTime;
                 } else {
                   limiter.deactivate();
                 }
@@ -104,7 +133,7 @@ class _LimiterExampleState extends State<LimiterExample> {
             ElevatedButton(
               onPressed: () async {
                 sound = await SoLoud.instance
-                    .loadAsset('assets/audio/explosion.mp3');
+                    .loadAsset('assets/audio/8_bit_mentality.mp3');
               },
               child: const Text('load'),
             ),
@@ -112,8 +141,6 @@ class _LimiterExampleState extends State<LimiterExample> {
             ///
             ElevatedButton(
               onPressed: () {
-                SoLoud.instance.play(sound!, looping: true);
-                SoLoud.instance.play(sound!, looping: true);
                 SoLoud.instance.play(sound!, looping: true);
                 SoLoud.instance.play(sound!, looping: true);
                 SoLoud.instance.play(sound!, looping: true);
@@ -169,16 +196,52 @@ class _LimiterExampleState extends State<LimiterExample> {
             ),
             Row(
               children: [
-                Text('Attack time ${attackTime.toStringAsFixed(2)}'),
+                Text('Makeup gain ${makeupGain.toStringAsFixed(2)}'),
                 Expanded(
                   child: Slider(
-                    value: attackTime,
-                    min: limiter.queryAttackTime.min,
-                    max: limiter.queryAttackTime.max,
+                    value: makeupGain,
+                    min: limiter.queryMakeupGain.min,
+                    max: limiter.queryMakeupGain.max,
                     onChanged: (value) {
                       setState(() {
-                        attackTime = value;
-                        limiter.attackTime.value = value;
+                        makeupGain = value;
+                        limiter.makeupGain.value = value;
+                      });
+                    },
+                  ),
+                ),
+              ],
+            ),
+            Row(
+              children: [
+                Text('Knee width ${kneeWidth.toStringAsFixed(2)}'),
+                Expanded(
+                  child: Slider(
+                    value: kneeWidth,
+                    min: limiter.queryKneeWidth.min,
+                    max: limiter.queryKneeWidth.max,
+                    onChanged: (value) {
+                      setState(() {
+                        kneeWidth = value;
+                        limiter.kneeWidth.value = value;
+                      });
+                    },
+                  ),
+                ),
+              ],
+            ),
+            Row(
+              children: [
+                Text('Lookahead ${lookahead.toStringAsFixed(2)}'),
+                Expanded(
+                  child: Slider(
+                    value: lookahead,
+                    min: limiter.queryLookahead.min,
+                    max: limiter.queryLookahead.max,
+                    onChanged: (value) {
+                      setState(() {
+                        lookahead = value;
+                        limiter.lookahead.value = value;
                       });
                     },
                   ),
@@ -197,24 +260,6 @@ class _LimiterExampleState extends State<LimiterExample> {
                       setState(() {
                         releaseTime = value;
                         limiter.releaseTime.value = value;
-                      });
-                    },
-                  ),
-                ),
-              ],
-            ),
-            Row(
-              children: [
-                Text('Makeup gain ${makeupGain.toStringAsFixed(2)}'),
-                Expanded(
-                  child: Slider(
-                    value: makeupGain,
-                    min: limiter.queryMakeupGain.min,
-                    max: limiter.queryMakeupGain.max,
-                    onChanged: (value) {
-                      setState(() {
-                        makeupGain = value;
-                        limiter.makeupGain.value = value;
                       });
                     },
                   ),
