@@ -154,13 +154,14 @@ final class FiltersGlobal {
   /// signal above this level is reduced in volume.
   /// - `makeupGain`: Boosts the signal after limiting to make up for the volume
   /// reduction. Measured in dB.
-  /// - `kneeWidth`: Controls the softness of the transition around the threshold.
-  /// A higher knee width results in a smoother, gradual limiting effect.
-  /// - `lookahead`: Allows the limiter to anticipate peaks by analyzing a certain
-  /// amount of samples ahead, helping to prevent clipping. Specified in
+  /// - `kneeWidth`: Controls the softness of the transition around the
+  /// threshold. A higher knee width results in a smoother, gradual limiting
+  /// effect.
+  /// - `lookahead`: Allows the limiter to anticipate peaks by analyzing a
+  /// certain amount of samples ahead, helping to prevent clipping. Specified in
   /// milliseconds (ms).
-  /// - `releaseTime`: Sets the time (in ms) over which the limiter recovers after
-  /// reducing gain, allowing for a smoother return to normal volume.
+  /// - `releaseTime`: Sets the time (in ms) over which the limiter recovers
+  /// after reducing gain, allowing for a smoother return to normal volume.
   LimiterGlobal get limiterFilter => const LimiterGlobal();
 }
 
