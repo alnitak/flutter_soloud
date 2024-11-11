@@ -66,10 +66,10 @@ void LimiterInstance::filter(
         }
     }
 
-    printf("LimiterInstance::filter(%f, %f, %f,   gain=%f)\n",
-           mParam[Limiter::THRESHOLD],
-           mParam[Limiter::KNEE_WIDTH],
-           mParam[Limiter::RELEASE_TIME], gain);
+    // printf("LimiterInstance::filter(%f, %f, %f,   gain=%f)\n",
+    //        mParam[Limiter::THRESHOLD],
+    //        mParam[Limiter::KNEE_WIDTH],
+    //        mParam[Limiter::RELEASE_TIME], gain);
 }
 
 void LimiterInstance::setFilterParameter(unsigned int aAttributeId, float aValue)

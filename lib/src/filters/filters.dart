@@ -100,46 +100,46 @@ final class FiltersSingle {
   WaveShaperSingle get waveShaperFilter => WaveShaperSingle(soundHash);
 
   /// The `Limiter` filter for this sound.
-  /// 
+  ///
   /// **Parameters**:
   /// - `wet`: Wet/dry mix ratio, 1.0 means fully wet, 0.0 means fully dry
-  /// 
+  ///
   /// - `threshold`: The threshold in dB. Signals above this level are reduced
   /// in gain. A lower value means more aggressive limiting.
-  /// 
+  ///
   /// - `makeupGain`: The make-up gain in dB applied after limiting to bring up
   /// the output level.
-  /// 
+  ///
   /// - `kneeWidth`: The width of the knee in dB. A larger value results in a
   /// softer transition into limiting.
-  /// 
+  ///
   /// - `releaseTime`: The release time in milliseconds. Determines how quickly
   /// the gain reduction recovers after a signal drops below the threshold.
   LimiterSingle get limiterFilter => LimiterSingle(soundHash);
 
   /// The `Compressor` filter for this sound.
-  /// 
+  ///
   /// **Parameters**:
   /// 'wet`: Mix between original (dry) and compressed (wet) signal. 0.0 = 100%
   /// dry, 1.0 = 100% wet.
-  /// 
+  ///
   /// `threshold`: The threshold in dB at which compression starts. Values
   /// lower than the threshold will be compressed.
-  /// 
+  ///
   /// `makeupGain`: The make-up gain in dB applied to the compressed signal
   /// to compensate for loss in volume due to compression.
-  /// 
+  ///
   /// `kneeWidth`: The width in dB of the soft knee where compression smoothly
   /// begins to take effect. A larger value smooths compression.
-  /// 
+  ///
   /// `ratio`: The compression ratio. The amount by which input exceeding the
   /// threshold will be reduced. For example, 4:1 reduces 4 dB of input to 1 dB.
-  /// 
+  ///
   /// `attackTime`: The time in ms for the compressor to react to a sudden
   /// increase in input level.
-  /// 
+  ///
   /// `releaseTime`: The time in ms for the compressor to release the gain
-  /// reduction after the input level falls below the threshold. 
+  /// reduction after the input level falls below the threshold.
   CompressorSingle get compressorFilter => CompressorSingle(soundHash);
 }
 
@@ -181,47 +181,47 @@ final class FiltersGlobal {
   WaveShaperGlobal get waveShaperFilter => const WaveShaperGlobal();
 
   /// The `Limiter` filter used globally.
-  /// 
+  ///
   /// **Parameters**:
   /// - `wet`: Wet/dry mix ratio, 1.0 means fully wet, 0.0 means fully dry
-  /// 
+  ///
   /// - `threshold`: The threshold in dB. Signals above this level are reduced
   /// in gain. A lower value means more aggressive limiting.
-  /// 
+  ///
   /// - `makeupGain`: The make-up gain in dB applied after limiting to bring up
   /// the output level.
-  /// 
+  ///
   /// - `kneeWidth`: The width of the knee in dB. A larger value results in a
   /// softer transition into limiting.
-  /// 
+  ///
   /// - `releaseTime`: The release time in milliseconds. Determines how quickly
   /// the gain reduction recovers after a signal drops below the threshold.
   @experimental
   LimiterGlobal get limiterFilter => const LimiterGlobal();
 
   /// The `Compressor` filter used globally.
-  /// 
+  ///
   /// **Parameters**:
   /// 'wet`: Mix between original (dry) and compressed (wet) signal. 0.0 = 100%
   /// dry, 1.0 = 100% wet.
-  /// 
+  ///
   /// `threshold`: The threshold in dB at which compression starts. Values
   /// lower than the threshold will be compressed.
-  /// 
+  ///
   /// `makeupGain`: The make-up gain in dB applied to the compressed signal
   /// to compensate for loss in volume due to compression.
-  /// 
+  ///
   /// `kneeWidth`: The width in dB of the soft knee where compression smoothly
   /// begins to take effect. A larger value smooths compression.
-  /// 
+  ///
   /// `ratio`: The compression ratio. The amount by which input exceeding the
   /// threshold will be reduced. For example, 4:1 reduces 4 dB of input to 1 dB.
-  /// 
+  ///
   /// `attackTime`: The time in ms for the compressor to react to a sudden
   /// increase in input level.
-  /// 
+  ///
   /// `releaseTime`: The time in ms for the compressor to release the gain
-  /// reduction after the input level falls below the threshold. 
+  /// reduction after the input level falls below the threshold.
   @experimental
   CompressorGlobal get compressorFilter => const CompressorGlobal();
 }
@@ -354,7 +354,7 @@ enum FilterType {
 
   /// A limiter filter.
   limiterFilter,
-  
+
   /// A compressor filter.
   compressorFilter;
 
