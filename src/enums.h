@@ -103,7 +103,8 @@ typedef enum FilterType
     RobotizeFilter,
     FreeverbFilter,
     PitchShiftFilter,
-    LimiterFilter
+    LimiterFilter,
+    CompressorFilter
 } FilterType_t;
 
 typedef enum BufferPcmType

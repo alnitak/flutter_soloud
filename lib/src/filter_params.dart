@@ -146,3 +146,21 @@ const FxParams fxLimiter = (
   maxs: [1, 0, 30, 30, 10, 1000],
   defs: [1, -6, 0, 6, 1, 100],
 );
+
+/// Compressor filter
+@Deprecated('Please use the SoLoud.filters or AudioSource.filters.')
+const FxParams fxCompressor = (
+  title: 'Limiter',
+  names: [
+    'Wet',
+    'Threshold',
+    'Makeup Gain',
+    'Knee Width',
+    'Ratio',
+    'Attack Time',
+    'Release Time',
+  ],
+  mins: [0, -80, -40, 0, 1, 0, 0],
+  maxs: [1, 0, 40, 40, 10, 100, 1000],
+  defs: [1, -24, 0, 10, 4, 10, 50],
+);

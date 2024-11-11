@@ -6,6 +6,7 @@ import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/exceptions/exceptions.dart';
 import 'package:flutter_soloud/src/filters/bassboost_filter.dart';
 import 'package:flutter_soloud/src/filters/biquad_resonant_filter.dart';
+import 'package:flutter_soloud/src/filters/compressor.dart';
 import 'package:flutter_soloud/src/filters/echo_filter.dart';
 import 'package:flutter_soloud/src/filters/equalizer_filter.dart';
 import 'package:flutter_soloud/src/filters/flanger_filter.dart';
@@ -98,7 +99,7 @@ final class FiltersSingle {
   /// The `Wave Shaper` filter for this sound.
   WaveShaperSingle get waveShaperFilter => WaveShaperSingle(soundHash);
 
-  /// The `Limiter` filter used globally.
+  /// The `Limiter` filter for this sound.
   /// 
   /// **Parameters**:
   /// - `wet`: Wet/dry mix ratio, 1.0 means fully wet, 0.0 means fully dry
@@ -107,6 +108,9 @@ final class FiltersSingle {
   /// - `releaseTime`: Release time in seconds, default 100 ms
   /// - `makeupGain`: Makeup gain, default 1.0 (no gain adjustment)
   LimiterSingle get limiterFilter => LimiterSingle(soundHash);
+
+  /// The `Compressor` filter for this sound.
+  CompressorSingle get compressorFilter => CompressorSingle(soundHash);
 }
 
 /// Filters instance used in [SoLoud.filters]. This differentiate from the
@@ -149,20 +153,34 @@ final class FiltersGlobal {
   /// The `Limiter` filter used globally.
   /// 
   /// **Parameters**:
-  /// - `wet`: Wet/dry mix ratio, 1.0 means fully wet, 0.0 means fully dry
-  /// - `threshold`: Sets the level (in dB) above which limiting is applied. Any
-  /// signal above this level is reduced in volume.
-  /// - `makeupGain`: Boosts the signal after limiting to make up for the volume
-  /// reduction. Measured in dB.
-  /// - `kneeWidth`: Controls the softness of the transition around the
-  /// threshold. A higher knee width results in a smoother, gradual limiting
-  /// effect.
-  /// - `lookahead`: Allows the limiter to anticipate peaks by analyzing a
-  /// certain amount of samples ahead, helping to prevent clipping. Specified in
-  /// milliseconds (ms).
-  /// - `releaseTime`: Sets the time (in ms) over which the limiter recovers
-  /// after reducing gain, allowing for a smoother return to normal volume.
+  @experimental
   LimiterGlobal get limiterFilter => const LimiterGlobal();
+
+  /// The `Compressor` filter used globally.
+  /// 
+  /// **Parameters**:
+  /// 'wet`: Mix between original (dry) and compressed (wet) signal. 0.0 = 100%
+  /// dry, 1.0 = 100% wet.
+  /// 
+  /// `threshold`: The threshold in dB at which compression starts. Values
+  /// lower than the threshold will be compressed.
+  /// 
+  /// `makeupGain`: The make-up gain in dB applied to the compressed signal
+  /// to compensate for loss in volume due to compression.
+  /// 
+  /// `kneeWidth`: The width in dB of the soft knee where compression smoothly
+  /// begins to take effect. A larger value smooths compression.
+  /// 
+  /// `ratio`: The compression ratio. The amount by which input exceeding the
+  /// threshold will be reduced. For example, 4:1 reduces 4 dB of input to 1 dB.
+  /// 
+  /// `attackTime`: The time in ms for the compressor to react to a sudden
+  /// increase in input level.
+  /// 
+  /// `releaseTime`: The time in ms for the compressor to release the gain
+  /// reduction after the input level falls below the threshold. 
+  @experimental
+  CompressorGlobal get compressorFilter => const CompressorGlobal();
 }
 
 /// Common class for single and global filters.
@@ -292,7 +310,10 @@ enum FilterType {
   pitchShiftFilter,
 
   /// A limiter filter.
-  limiterFilter;
+  limiterFilter,
+  
+  /// A compressor filter.
+  compressorFilter;
 
   @override
   String toString() => switch (this) {
@@ -307,6 +328,7 @@ enum FilterType {
         FilterType.freeverbFilter => 'Freeverb',
         FilterType.pitchShiftFilter => 'Pitchshift',
         FilterType.limiterFilter => 'Limiter',
+        FilterType.compressorFilter => 'Compressor',
       };
 
   /// The number of parameter this filter owns.
@@ -321,7 +343,8 @@ enum FilterType {
         FilterType.robotizeFilter => 3,
         FilterType.freeverbFilter => 5,
         FilterType.pitchShiftFilter => 3,
-        FilterType.limiterFilter => 5
+        FilterType.limiterFilter => 5,
+        FilterType.compressorFilter => 8,
       };
 
   /// Activate this filter. If [soundHash] is null this filter is applied
