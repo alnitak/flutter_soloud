@@ -17,24 +17,24 @@ import 'package:logging/logging.dart';
 /// ** Compressor parameters**:
 /// 'wet`: Mix between original (dry) and compressed (wet) signal. 0.0 = 100%
 /// dry, 1.0 = 100% wet.
-/// 
+///
 /// `threshold`: The threshold in dB at which compression starts. Values
 /// lower than the threshold will be compressed.
-/// 
+///
 /// `makeupGain`: The make-up gain in dB applied to the compressed signal
 /// to compensate for loss in volume due to compression.
-/// 
+///
 /// `kneeWidth`: The width in dB of the soft knee where compression smoothly
 /// begins to take effect. A larger value smooths compression.
-/// 
+///
 /// `ratio`: The compression ratio. The amount by which input exceeding the
 /// threshold will be reduced. For example, 4:1 reduces 4 dB of input to 1 dB.
-/// 
+///
 /// `attackTime`: The time in ms for the compressor to react to a sudden
 /// increase in input level.
-/// 
+///
 /// `releaseTime`: The time in ms for the compressor to release the gain
-/// reduction after the input level falls below the threshold. 
+/// reduction after the input level falls below the threshold.
 ///
 /// Tip: when using other filter, it's preferable to activate the compressor
 /// filter after all the others. Doing this if underlaying filters gain the
