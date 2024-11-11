@@ -8,12 +8,11 @@
 LimiterInstance::LimiterInstance(Limiter *aParent)
 {
     mParent = aParent;
-    initParams(6);
+    initParams(5);
     mParam[Limiter::WET] = aParent->mWet;
     mParam[Limiter::THRESHOLD] = aParent->mThreshold;
     mParam[Limiter::MAKEUP_GAIN] = aParent->mMakeupGain;
     mParam[Limiter::KNEE_WIDTH] = aParent->mKneeWidth;
-    mParam[Limiter::LOOKAHEAD] = aParent->mLookahead;
     mParam[Limiter::RELEASE_TIME] = aParent->mReleaseTime;
 }
 
@@ -27,73 +26,50 @@ void LimiterInstance::filter(
 {
     updateParams(aTime);
 
-    // Convert lookahead time to samples
-    gLookaheadSamples = (mParam[Limiter::LOOKAHEAD] / 1000.0f) * aSamplerate;
+    const float threshold = std::pow(10.0f, mParam[Limiter::THRESHOLD] / 20.0f); // Convert threshold dB to linear
+    const float makeupGain = std::pow(10.0f, mParam[Limiter::MAKEUP_GAIN] / 20.0f); // Convert make-up gain dB to linear
+    const float kneeWidth = mParam[Limiter::KNEE_WIDTH]; // In dB, defines the width of the knee
+    const float releaseTime = mParam[Limiter::RELEASE_TIME] / 1000.0f; // Convert release time to seconds
     
-    // Release coefficient for smooth gain reduction
-    gReleaseCoeff = expf(-1.0f / ((mParam[Limiter::RELEASE_TIME] / 1000.0f) * aSamplerate));
+    // Variables for the release smoothing
+    float releaseCoef = std::exp(-1.0f / (aSamplerate * releaseTime));
+    float gain = 1.0f; // Current gain adjustment for limiting
 
-    // Circular buffer for lookahead
-    std::vector<float> lookaheadBuffer(aBufferSize * aChannels, 0.0f);
-    unsigned int lookaheadIndex = 0;
+    // Process each channel
+    for (unsigned int ch = 0; ch < aChannels; ++ch) {
+        for (unsigned int sample = 0; sample < aSamples; ++sample) {
+            unsigned int index = sample * aChannels + ch; // Index for the sample in the interleaved buffer
+            
+            // Get the sample value for this channel
+            float sampleValue = aBuffer[index];
 
-    float peakLevel = 0.0f;
-    float gainReduction = 1.0f;
-    
-    float thresholdLinear = powf(10.0f, mParam[Limiter::THRESHOLD] / 20.0f);
-    float makeupGainLinear = powf(10.0f, mParam[Limiter::MAKEUP_GAIN] / 20.0f);
-
-    // Process each sample
-    for (unsigned int i = 0; i < aSamples; i++) {
-        // Insert sample into lookahead buffer
-        for (unsigned int c = 0; c < aChannels; c++) {
-            lookaheadBuffer[lookaheadIndex + c] = aBuffer[i * aChannels + c];
-        }
-
-        // Read from lookahead buffer (anticipate peaks)
-        unsigned int readIndex = (lookaheadIndex + aBufferSize - (unsigned int)gLookaheadSamples) % aBufferSize;
-        peakLevel = 0.0f;
-
-        for (unsigned int c = 0; c < aChannels; c++) {
-            float sample = lookaheadBuffer[readIndex * aChannels + c];
-            peakLevel = fmaxf(peakLevel, fabsf(sample));
-        }
-
-        // Calculate gain reduction based on threshold and knee
-        float targetGain;
-        if (peakLevel > thresholdLinear) {
-            if (mParam[Limiter::KNEE_WIDTH] > 0.0f) {
-                float kneeStart = thresholdLinear - (mParam[Limiter::KNEE_WIDTH] / 2.0f);
-                if (peakLevel > kneeStart) {
-                    targetGain = powf((peakLevel - kneeStart) / mParam[Limiter::KNEE_WIDTH], 2.0f);
-                } else {
-                    targetGain = thresholdLinear / peakLevel;
-                }
-            } else {
-                targetGain = thresholdLinear / peakLevel;
+            // Calculate the level of the sample in linear scale
+            float level = std::fabs(sampleValue);
+            
+            // Apply the knee function if within knee range
+            float reduction = 0.0f;
+            if (level > threshold) {
+                reduction = 1.0f;  // No reduction if above threshold
+            } else if (level > threshold - kneeWidth) {
+                // Soft knee (compress gradually as the level approaches the threshold)
+                reduction = (level - (threshold - kneeWidth)) / kneeWidth;
             }
-        } else {
-            targetGain = 1.0f;
+
+            // Apply release time for the smooth transition
+            gain = releaseCoef * (gain - reduction) + reduction;
+
+            // Apply the makeup gain after limiting
+            float outputSample = sampleValue * gain * makeupGain;
+
+            // Apply the wet/dry mix
+            aBuffer[index] = (mParam[Limiter::WET] * outputSample) + ((1.0f - mParam[Limiter::WET]) * sampleValue);
         }
-
-        // Smooth out gain reduction (release)
-        gainReduction = fmaxf(gainReduction * gReleaseCoeff, targetGain);
-
-        // Apply gain reduction and wet/dry blend to each channel
-        for (unsigned int c = 0; c < aChannels; c++) {
-            float drySample = aBuffer[i * aChannels + c];
-            float wetSample = drySample * gainReduction * makeupGainLinear;
-            aBuffer[i * aChannels + c] = (mParam[Limiter::WET] * wetSample) + ((1.0f - mParam[Limiter::WET]) * drySample);
-        }
-
-        // Update lookahead index
-        lookaheadIndex = (lookaheadIndex + 1) % aBufferSize;
     }
 
-    // printf("LimiterInstance::filter(%f, %f, %f,   gainEnvelope=%f  peakLevel=%f)\n",
-    //        mParam[Limiter::THRESHOLD],
-    //        mParam[Limiter::KNEE_WIDTH],
-    //        mParam[Limiter::RELEASE_TIME], gainReduction, peakLevel);
+    printf("LimiterInstance::filter(%f, %f, %f,   gain=%f)\n",
+           mParam[Limiter::THRESHOLD],
+           mParam[Limiter::KNEE_WIDTH],
+           mParam[Limiter::RELEASE_TIME], gain);
 }
 
 void LimiterInstance::setFilterParameter(unsigned int aAttributeId, float aValue)
@@ -127,12 +103,6 @@ void LimiterInstance::setFilterParameter(unsigned int aAttributeId, float aValue
             aValue > mParent->getParamMax(Limiter::KNEE_WIDTH))
             return;
         mParam[Limiter::KNEE_WIDTH] = aValue;
-        break;
-    case Limiter::LOOKAHEAD:
-        if (aValue < mParent->getParamMin(Limiter::LOOKAHEAD) ||
-            aValue > mParent->getParamMax(Limiter::LOOKAHEAD))
-            return;
-        mParam[Limiter::LOOKAHEAD] = aValue;
         break;
     case Limiter::RELEASE_TIME:
         if (aValue < mParent->getParamMin(Limiter::RELEASE_TIME) ||
@@ -169,11 +139,6 @@ SoLoud::result Limiter::setParam(unsigned int aParamIndex, float aValue)
             return SoLoud::INVALID_PARAMETER;
         mKneeWidth = aValue;
         break;
-    case LOOKAHEAD:
-        if (aValue < getParamMin(LOOKAHEAD) || aValue > getParamMax(LOOKAHEAD))
-            return SoLoud::INVALID_PARAMETER;
-        mLookahead = aValue;
-        break;
     case RELEASE_TIME:
         if (aValue < getParamMin(RELEASE_TIME) || aValue > getParamMax(RELEASE_TIME))
             return SoLoud::INVALID_PARAMETER;
@@ -185,7 +150,7 @@ SoLoud::result Limiter::setParam(unsigned int aParamIndex, float aValue)
 
 int Limiter::getParamCount()
 {
-    return 6;
+    return 5;
 }
 
 const char *Limiter::getParamName(unsigned int aParamIndex)
@@ -200,8 +165,6 @@ const char *Limiter::getParamName(unsigned int aParamIndex)
         return "Makeup Gain";
     case KNEE_WIDTH:
         return "Knee Width";
-    case LOOKAHEAD:
-        return "Lookahead";
     case RELEASE_TIME:
         return "Release Time";
     }
@@ -225,8 +188,6 @@ float Limiter::getParamMax(unsigned int aParamIndex)
         return 30.f;
     case KNEE_WIDTH:
         return 30.0f;
-    case LOOKAHEAD:
-        return 20.f;
     case RELEASE_TIME:
         return 1000.f;
     }
@@ -242,10 +203,8 @@ float Limiter::getParamMin(unsigned int aParamIndex)
     case THRESHOLD:
         return -60.0f;
     case MAKEUP_GAIN:
-        return -30.f;
+        return -60.f;
     case KNEE_WIDTH:
-        return 0.f;
-    case LOOKAHEAD:
         return 0.f;
     case RELEASE_TIME:
         return 1.f;
@@ -258,8 +217,7 @@ Limiter::Limiter()
     mWet = 1.0f;
     mThreshold = -6.f;
     mMakeupGain = 0.0f;
-    mKneeWidth = 6.0f;
-    mLookahead = 1.0f;
+    mKneeWidth = 2.0f;
     mReleaseTime = 100.f;
 }
 

@@ -9,12 +9,11 @@ enum Limiter {
   threshold,
   makeupGain,
   kneeWidth,
-  lookahead,
   releaseTime;
 
-  final List<double> _mins = const [0, -60, -30, 0, 0, 1];
-  final List<double> _maxs = const [1, 0, 30, 30, 10, 1000];
-  final List<double> _defs = const [1, -6, 0, 6, 1, 100];
+  final List<double> _mins = const [0, -60, -60, 0, 1];
+  final List<double> _maxs = const [1, 0, 30, 30, 1000];
+  final List<double> _defs = const [1, -6, 0, 2, 100];
 
   double get min => _mins[index];
   double get max => _maxs[index];
@@ -26,7 +25,6 @@ enum Limiter {
         Limiter.threshold => 'Threshold',
         Limiter.makeupGain => 'Makeup Gain',
         Limiter.kneeWidth => 'Knee Width',
-        Limiter.lookahead => 'Lookahead',
         Limiter.releaseTime => 'Release Time',
       };
 }
@@ -39,7 +37,6 @@ abstract class _LimiterInternal extends FilterBase {
   Limiter get queryThreshold => Limiter.threshold;
   Limiter get queryMakeupGain => Limiter.makeupGain;
   Limiter get queryKneeWidth => Limiter.kneeWidth;
-  Limiter get queryLookahead => Limiter.lookahead;
   Limiter get queryReleaseTime => Limiter.releaseTime;
 }
 
@@ -76,14 +73,6 @@ class LimiterSingle extends _LimiterInternal {
         Limiter.kneeWidth.index,
         Limiter.kneeWidth.min,
         Limiter.kneeWidth.max,
-      );
-
-  FilterParam lookahead({SoundHandle? soundHandle}) => FilterParam(
-        soundHandle,
-        filterType,
-        Limiter.lookahead.index,
-        Limiter.lookahead.min,
-        Limiter.lookahead.max,
       );
 
   FilterParam releaseTime({SoundHandle? soundHandle}) => FilterParam(
@@ -128,14 +117,6 @@ class LimiterGlobal extends _LimiterInternal {
         Limiter.kneeWidth.index,
         Limiter.kneeWidth.min,
         Limiter.kneeWidth.max,
-      );
-
-  FilterParam get lookahead => FilterParam(
-        null,
-        filterType,
-        Limiter.lookahead.index,
-        Limiter.lookahead.min,
-        Limiter.lookahead.max,
       );
 
   FilterParam get releaseTime => FilterParam(

@@ -16,21 +16,16 @@ import 'package:logging/logging.dart';
 ///
 /// ** Limiter parameters**:
 /// - `wet`: Wet/dry mix ratio, 1.0 means fully wet, 0.0 means fully dry
-/// - `threshold`: Sets the level (in dB) above which limiting is applied. Any
-/// signal above this level is reduced in volume.
-/// - `makeupGain`: Boosts the signal after limiting to make up for the volume
-/// reduction. Measured in dB.
-/// - `kneeWidth`: Controls the softness of the transition around the threshold.
-/// A higher knee width results in a smoother, gradual limiting effect.
-/// - `lookahead`: Allows the limiter to anticipate peaks by analyzing a certain
-/// amount of samples ahead, helping to prevent clipping. Specified in
-/// milliseconds (ms).
-/// - `releaseTime`: Sets the time (in ms) over which the limiter recovers after
-/// reducing gain, allowing for a smoother return to normal volume.
+/// - `threshold`: The threshold in dB. Signals above this level are reduced
+/// in gain. A lower value means more aggressive limiting.
+/// - `makeupGain`: The make-up gain in dB applied after limiting to bring up
+/// the output level.
+/// - `kneeWidth`: The width of the knee in dB. A larger value results in a
+/// softer transition into limiting.
+/// - `releaseTime`: The release time in milliseconds. Determines how quickly
+/// the gain reduction recovers after a signal drops below the threshold.
 ///
-/// Tip: when lowering threshold the sound will get more distorted. Rise the
-/// knee width to reduce the distortion.
-/// Tip2: when using other filter, it's preferable to activate the limiter
+/// Tip: when using other filter, it's preferable to activate the limiter
 /// filter after all the others. Doing this if underlaying filters gain the
 /// volume too much, this filter will act on top of it.
 
@@ -55,7 +50,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   /// Initialize the player.
-  await SoLoud.instance.init();
+  await SoLoud.instance.init(channels: Channels.mono);
 
   runApp(
     const MaterialApp(
@@ -79,7 +74,6 @@ class _LimiterExampleState extends State<LimiterExample> {
   late double threshold;
   late double makeupGain;
   late double kneeWidth;
-  late double lookahead;
   late double releaseTime;
   bool isFilterActive = false;
 
@@ -91,7 +85,6 @@ class _LimiterExampleState extends State<LimiterExample> {
     threshold = limiter.queryThreshold.def;
     makeupGain = limiter.queryMakeupGain.def;
     kneeWidth = limiter.queryKneeWidth.def;
-    lookahead = limiter.queryLookahead.def;
     releaseTime = limiter.queryReleaseTime.def;
   }
 
@@ -119,7 +112,6 @@ class _LimiterExampleState extends State<LimiterExample> {
                   limiter.threshold.value = threshold;
                   limiter.makeupGain.value = makeupGain;
                   limiter.kneeWidth.value = kneeWidth;
-                  limiter.lookahead.value = lookahead;
                   limiter.releaseTime.value = releaseTime;
                 } else {
                   limiter.deactivate();
@@ -141,6 +133,10 @@ class _LimiterExampleState extends State<LimiterExample> {
             ///
             ElevatedButton(
               onPressed: () {
+                SoLoud.instance.play(sound!, looping: true);
+                SoLoud.instance.play(sound!, looping: true);
+                SoLoud.instance.play(sound!, looping: true);
+                SoLoud.instance.play(sound!, looping: true);
                 SoLoud.instance.play(sound!, looping: true);
                 SoLoud.instance.play(sound!, looping: true);
                 SoLoud.instance.play(sound!, looping: true);
@@ -224,24 +220,6 @@ class _LimiterExampleState extends State<LimiterExample> {
                       setState(() {
                         kneeWidth = value;
                         limiter.kneeWidth.value = value;
-                      });
-                    },
-                  ),
-                ),
-              ],
-            ),
-            Row(
-              children: [
-                Text('Lookahead ${lookahead.toStringAsFixed(2)}'),
-                Expanded(
-                  child: Slider(
-                    value: lookahead,
-                    min: limiter.queryLookahead.min,
-                    max: limiter.queryLookahead.max,
-                    onChanged: (value) {
-                      setState(() {
-                        lookahead = value;
-                        limiter.lookahead.value = value;
                       });
                     },
                   ),

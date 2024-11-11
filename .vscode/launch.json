@@ -8,7 +8,7 @@
             "name": "Flutter debug",
             "type": "dart",
             "request": "launch",
-            "program": "lib/filters/compressor.dart",
+            "program": "lib/filters/limiter.dart",
             "flutterMode": "debug",
             "cwd": "${workspaceFolder}/example"
         },

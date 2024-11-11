@@ -139,12 +139,11 @@ const FxParams fxLimiter = (
     'Threshold',
     'Makeup Gain',
     'Knee Width',
-    'Lookahead',
     'Release Time',
   ],
-  mins: [0, -60, -30, 0, 0, 1],
-  maxs: [1, 0, 30, 30, 10, 1000],
-  defs: [1, -6, 0, 6, 1, 100],
+  mins: [0, -60, -60, 0, 1],
+  maxs: [1, 0, 30, 30, 1000],
+  defs: [1, -6, 0, 2, 100],
 );
 
 /// Compressor filter
