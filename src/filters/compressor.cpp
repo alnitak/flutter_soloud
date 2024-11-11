@@ -16,6 +16,9 @@ CompressorInstance::CompressorInstance(Compressor *aParent)
     mParam[Compressor::RATIO] = aParent->mRatio;
     mParam[Compressor::ATTACK_TIME] = aParent->mAttackTime;
     mParam[Compressor::RELEASE_TIME] = aParent->mReleaseTime;
+
+    attackCoef = expf(-1.0f / (mParam[Compressor::ATTACK_TIME] * 0.001f * mParent->mSamplerate));
+    releaseCoef = expf(-1.0f / (mParam[Compressor::RELEASE_TIME] * 0.001f * mParent->mSamplerate));
 }
 
 void CompressorInstance::filter(
@@ -28,19 +31,8 @@ void CompressorInstance::filter(
 {
     updateParams(aTime);
 
-    float wet = mParam[Compressor::WET];
-    float threshold = mParam[Compressor::THRESHOLD];
-    float makeupGain = mParam[Compressor::MAKEUP_GAIN];
-    float kneeWidth = mParam[Compressor::KNEE_WIDTH];
-    float ratio = mParam[Compressor::RATIO];
-    float attackTime = mParam[Compressor::ATTACK_TIME];
-    float releaseTime = mParam[Compressor::RELEASE_TIME];
-
-    float attackCoef = expf(-1.0f / (attackTime * 0.001f * aSamplerate));
-    float releaseCoef = expf(-1.0f / (releaseTime * 0.001f * aSamplerate));
-
     // Convert makeup gain to a linear scale
-    float makeupGainLin = powf(10.0f, makeupGain / 20.0f);
+    float makeupGainLin = powf(10.0f, mParam[Compressor::MAKEUP_GAIN] / 20.0f);
 
     float envelope = 0.0f;
 
@@ -61,14 +53,14 @@ void CompressorInstance::filter(
 
             // Determine gain reduction in dB
             float gainReductionDb = 0.0f;
-            if (envelope > threshold) {
-                if (envelope < (threshold + kneeWidth)) {
+            if (envelope > mParam[Compressor::THRESHOLD]) {
+                if (envelope < (mParam[Compressor::THRESHOLD] + mParam[Compressor::KNEE_WIDTH])) {
                     // Soft knee region
-                    float delta = envelope - threshold;
-                    gainReductionDb = (1.0f - (1.0f / ratio)) * powf(delta / kneeWidth, 2.0f) * delta;
+                    float delta = envelope - mParam[Compressor::THRESHOLD];
+                    gainReductionDb = (1.0f - (1.0f / mParam[Compressor::RATIO])) * powf(delta / mParam[Compressor::KNEE_WIDTH], 2.0f) * delta;
                 } else {
                     // Hard knee
-                    gainReductionDb = (threshold - envelope) * (1.0f - (1.0f / ratio));
+                    gainReductionDb = (mParam[Compressor::THRESHOLD] - envelope) * (1.0f - (1.0f / mParam[Compressor::RATIO]));
                 }
             }
 
@@ -76,8 +68,10 @@ void CompressorInstance::filter(
             float gainReductionLin = powf(10.0f, gainReductionDb / 20.0f);
 
             // Apply gain reduction, makeup gain, and wet/dry mix
-            *sample = wet * (*sample * gainReductionLin * makeupGainLin) + (1.0f - wet) * (*sample);
-            *sample = std::clamp(*sample, -1.f, 1.f);
+            *sample = mParam[Compressor::WET] * 
+                    (*sample * gainReductionLin * makeupGainLin) + 
+                    (1.0f - mParam[Compressor::WET]) * 
+                    (*sample);
         }
     }
 
@@ -128,12 +122,14 @@ void CompressorInstance::setFilterParameter(unsigned int aAttributeId, float aVa
             aValue > mParent->getParamMax(Compressor::ATTACK_TIME))
             return;
         mParam[Compressor::ATTACK_TIME] = aValue;
+        attackCoef = expf(-1.0f / (mParam[Compressor::ATTACK_TIME] * 0.001f * mParent->mSamplerate));
         break;
     case Compressor::RELEASE_TIME:
         if (aValue < mParent->getParamMin(Compressor::RELEASE_TIME) ||
             aValue > mParent->getParamMax(Compressor::RELEASE_TIME))
             return;
         mParam[Compressor::RELEASE_TIME] = aValue;
+        releaseCoef = expf(-1.0f / (mParam[Compressor::RELEASE_TIME] * 0.001f * mParent->mSamplerate));
         break;
     }
 
@@ -263,12 +259,12 @@ Compressor::Compressor(unsigned int samplerate)
 {
     mSamplerate = samplerate;
     mWet = 1.0f;
-    mThreshold = -24.f;
-    mMakeupGain = 0.0f;
-    mKneeWidth = 10.0f;
-    mRatio = 4.0f;
+    mThreshold = -6.f;
+    mMakeupGain = 0.f;
+    mKneeWidth = 2.0f;
+    mRatio = 3.0f;
     mAttackTime = 10.f;
-    mReleaseTime = 50.f;
+    mReleaseTime = 100.f;
 }
 
 SoLoud::FilterInstance *Compressor::createInstance()

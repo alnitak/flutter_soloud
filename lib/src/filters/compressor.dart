@@ -15,7 +15,7 @@ enum Compressor {
 
   final List<double> _mins = const [0, -80, -40, 0, 1, 0, 0];
   final List<double> _maxs = const [1, 0, 40, 40, 10, 100, 1000];
-  final List<double> _defs = const [1, -24, 0, 10, 4, 10, 50];
+  final List<double> _defs = const [1, -6, 0, 2, 3, 10, 100];
 
   double get min => _mins[index];
   double get max => _maxs[index];

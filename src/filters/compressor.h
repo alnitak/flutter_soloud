@@ -9,7 +9,9 @@ class Compressor;
 class CompressorInstance : public SoLoud::FilterInstance
 {
     Compressor *mParent;
-    
+    float attackCoef;
+    float releaseCoef;
+
 public:
     virtual void filter(
         float *aBuffer,
