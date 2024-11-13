@@ -105,7 +105,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     final namesPtr = wasmMalloc(50 * 255);
     final deviceIdPtr = wasmMalloc(50 * 4);
     final isDefaultPtr = wasmMalloc(50 * 4);
-    final nDevicesPtr = wasmMalloc(4); // 4 bytes for an int
+    final nDevicesPtr = wasmMalloc(4); // 4 bytes for an int32
 
     wasmListPlaybackDevices(
       namesPtr,
@@ -114,15 +114,15 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
       nDevicesPtr,
     );
 
-    final nDevices = wasmGetI32Value(nDevicesPtr, '*');
+    final nDevices = wasmGetI32Value(nDevicesPtr, 'i32');
     final devices = <PlaybackDevice>[];
     for (var i = 0; i < nDevices; i++) {
-      final namePtr = wasmGetI32Value(namesPtr + i * 4, '*');
+      final namePtr = wasmGetI32Value(namesPtr + i * 4, 'i32');
       final name = wasmUtf8ToString(namePtr);
       final deviceId =
-          wasmGetI32Value(wasmGetI32Value(deviceIdPtr + i * 4, '*'), '*');
+          wasmGetI32Value(wasmGetI32Value(deviceIdPtr + i * 4, 'i32'), 'i32');
       final isDefault =
-          wasmGetI32Value(wasmGetI32Value(isDefaultPtr + i * 4, '*'), '*');
+          wasmGetI32Value(wasmGetI32Value(isDefaultPtr + i * 4, 'i32'), 'i32');
 
       devices.add(PlaybackDevice(deviceId, isDefault == 1, name));
     }
@@ -158,7 +158,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     Uint8List buffer,
     LoadMode mode,
   ) {
-    final hashPtr = wasmMalloc(4); // 4 bytes for an int
+    final hashPtr = wasmMalloc(4); // 4 bytes for an int32
     final bytesPtr = wasmMalloc(buffer.length);
     final pathPtr = wasmMalloc(uniqueName.length);
     // Is there a way to speed up this array copy?
@@ -198,7 +198,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     int pcmFormat,
     OnBufferingCallbackTFunction? onBuffering,
   ) {
-    final hashPtr = wasmMalloc(4); // 4 bytes for an int
+    final hashPtr = wasmMalloc(4); // 4 bytes for an int32
     final result = wasmSetBufferStream(
       hashPtr,
       maxBufferSize,
@@ -210,14 +210,21 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
       // this to 1 to tell C that we have a callback.
       onBuffering == null ? 0 : 1,
     );
-    final hash = wasmGetI32Value(hashPtr, '*');
+    final hash = wasmGetI32Value(hashPtr, 'i32');
     final soundHash = SoundHash(hash);
     final ret = (error: PlayerErrors.values[result], soundHash: soundHash);
     wasmFree(hashPtr);
 
     if (onBuffering != null) {
-      // Convert Dart closure to a JS function. To the function name is added
-      // the hash of the sound to make it unique.
+      // Create a new JS function named `dartOnBufferingCallback_$hash`.
+      // To the function name is added the hash of the sound to make it unique.
+      // This is done to prevent collisions with other sounds.
+      // On the C++ side, this new function is called in `audiobuffer.cpp`
+      // within the `addData()` method (which then calls `onBuffering()`
+      // callback) when a playing handle reach the end of the buffer or
+      // there is enough audio data to start playing it again.
+      // If you change `dartOnBufferingCallback_$hash` name, you need to
+      // change it on the C++ side as well.
       globalThis.setProperty(
         'dartOnBufferingCallback_$hash'.toJS,
         onBuffering.toJS,
@@ -254,7 +261,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   ({PlayerErrors error, int sizeInBytes}) getBufferSize(SoundHash soundHash) {
     final sizeInBytesPtr = wasmMalloc(4);
     final result = wasmGetBufferSize(soundHash.hash, sizeInBytesPtr);
-    final sizeInBytes = wasmGetI32Value(sizeInBytesPtr, '*');
+    final sizeInBytes = wasmGetI32Value(sizeInBytesPtr, 'i32');
     wasmFree(sizeInBytesPtr);
 
     final ret = (error: PlayerErrors.values[result], sizeInBytes: sizeInBytes);
@@ -268,7 +275,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     double scale,
     double detune,
   ) {
-    final hashPtr = wasmMalloc(4); // 4 bytes for an int
+    final hashPtr = wasmMalloc(4); // 4 bytes for an int32
     final result = wasmLoadWaveform(
       waveform.index,
       superWave,
@@ -278,7 +285,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     );
 
     /// "*" means unsigned int 32
-    final hash = wasmGetI32Value(hashPtr, '*');
+    final hash = wasmGetI32Value(hashPtr, 'i32');
     final soundHash = SoundHash(hash);
     final ret = (error: PlayerErrors.values[result], soundHash: soundHash);
     wasmFree(hashPtr);
@@ -313,15 +320,14 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
 
   @override
   ({PlayerErrors error, SoundHandle handle}) speechText(String textToSpeech) {
-    final handlePtr = wasmMalloc(4); // 4 bytes for an int
+    final handlePtr = wasmMalloc(4); // 4 bytes for an int32
     final textToSpeechPtr = wasmMalloc(textToSpeech.length);
     final result = wasmSpeechText(
       textToSpeechPtr,
       handlePtr,
     );
 
-    /// "*" means unsigned int 32
-    final newHandle = wasmGetI32Value(handlePtr, '*');
+    final newHandle = wasmGetI32Value(handlePtr, 'i32');
     final ret = (
       error: PlayerErrors.values[result],
       handle: SoundHandle(newHandle),
@@ -366,7 +372,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
   }) {
-    final handlePtr = wasmMalloc(4); // 4 bytes for an int
+    final handlePtr = wasmMalloc(4); // 4 bytes for an int32
     final result = wasmPlay(
       soundHash.hash,
       volume,
@@ -378,7 +384,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     );
 
     /// "*" means unsigned int 32
-    final newHandle = wasmGetI32Value(handlePtr, '*');
+    final newHandle = wasmGetI32Value(handlePtr, 'i32');
     final ret =
         (error: PlayerErrors.values[result], newHandle: SoundHandle(newHandle));
     wasmFree(handlePtr);
@@ -727,7 +733,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     SoundHash? soundHash,
   }) {
     // ignore: omit_local_variable_types
-    final idPtr = wasmMalloc(4); // 4 bytes for an int
+    final idPtr = wasmMalloc(4); // 4 bytes for an int32
     final e = wasmIsFilterActive(soundHash?.hash ?? 0, filterType.index, idPtr);
     final index = wasmGetI32Value(idPtr, 'i32');
     final ret = (error: PlayerErrors.values[e], index: index);
@@ -739,14 +745,14 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   ({PlayerErrors error, List<String> names}) getFilterParamNames(
     FilterType filterType,
   ) {
-    final paramsCountPtr = wasmMalloc(4); // 4 bytes for an int
+    final paramsCountPtr = wasmMalloc(4); // 4 bytes for an int32
     final namesPtr = wasmMalloc(30 * 20); // list of 30 String with 20 chars
     final e =
         wasmGetFilterParamNames(filterType.index, paramsCountPtr, namesPtr);
 
     final pNames = <String>[];
     var offsetPtr = 0;
-    final paramsCount = wasmGetI32Value(paramsCountPtr, '*');
+    final paramsCount = wasmGetI32Value(paramsCountPtr, 'i32');
     for (var i = 0; i < paramsCount; i++) {
       final namePtr = wasmGetI32Value(namesPtr + offsetPtr, 'i32');
       final name = wasmUtf8ToString(namePtr);
@@ -831,7 +837,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
   }) {
-    final handlePtr = wasmMalloc(4); // 4 bytes for an int
+    final handlePtr = wasmMalloc(4); // 4 bytes for an int32
     final result = wasmPlay3d(
       soundHash.hash,
       posX,
@@ -848,7 +854,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     );
 
     /// "*" means unsigned int 32
-    final newHandle = wasmGetI32Value(handlePtr, '*');
+    final newHandle = wasmGetI32Value(handlePtr, 'i32');
     final ret =
         (error: PlayerErrors.values[result], newHandle: SoundHandle(newHandle));
     wasmFree(handlePtr);

@@ -226,7 +226,7 @@ class _WebsocketExampleState extends State<WebsocketExample> {
                   byteSize += (message as List<int>).length;
 
                   try {
-                    SoLoud.instance.addAudioDataStreamU8(
+                    SoLoud.instance.addAudioDataStream(
                       currentSound!,
                       Uint8List.fromList(message),
                     );

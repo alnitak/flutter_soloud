@@ -41,16 +41,6 @@ namespace SoLoud
 		if (samplesToRead != aSamplesToRead)
 		{
 			memset(aBuffer, 0, sizeof(float) * aSamplesToRead);
-
-			if (!mParent->dataIsEnded)
-			{
-				// The time the buffering is started.
-				// SoLoud::time currBufferTime = 1.0f * mOffset /
-				// 						  mParent->mPCMformat.bytesPerSample /
-				// 						  mParent->mChannels /
-				// 						  mParent->mPCMformat.sampleRate;
-				// std::cout << "CPP Buffering" << std::endl;
-			}
 		}
 
 		if (mChannels == 1)
@@ -64,9 +54,9 @@ namespace SoLoud
 			// So, if 1024 samples are requested from a stereo audio source, the first 1024 floats
 			// should be for the first channel, and the next 1024 samples should be for the second channel.
 			unsigned int i, j;
-			for (i = 0; i < samplesToRead; i++)
+			for (j = 0; j < mChannels; j++)
 			{
-				for (j = 0; j < mChannels; j++)
+				for (i = 0; i < samplesToRead; i++)
 				{
 					aBuffer[j * samplesToRead + i] = buffer[mOffset + i * mChannels + j];
 				}
@@ -116,7 +106,7 @@ namespace SoLoud
 		Player *aPlayer,
 		ActiveSound *aParent,
 		unsigned int maxBufferSize,
-    	SoLoud::time bufferingTimeNeeds,
+		SoLoud::time bufferingTimeNeeds,
 		PCMformat pcmFormat,
 		dartOnBufferingCallback_t onBufferingCallback)
 	{
@@ -146,32 +136,17 @@ namespace SoLoud
 	{
 		if (dataIsEnded)
 		{
-			return pcmBufferFullOrStreamEnded;
+			return streamEndedAlready;
 		}
 
 		unsigned int bytesWritten = 0;
 		// add PCM data to the buffer
-		switch (mPCMformat.dataType)
-		{
-		case 0:
-			bytesWritten = mBuffer.addData((float *)aData, aDataLen / mPCMformat.bytesPerSample);
-			break;
-		case 1:
-			bytesWritten = mBuffer.addData((int8_t *)aData, aDataLen / mPCMformat.bytesPerSample);
-			break;
-		case 2:
-			bytesWritten = mBuffer.addData((int16_t *)aData, aDataLen / mPCMformat.bytesPerSample);
-			break;
-		case 3:
-			bytesWritten = mBuffer.addData((int32_t *)aData, aDataLen / mPCMformat.bytesPerSample);
-			break;
-		}
+		bytesWritten = mBuffer.addData(mPCMformat, aData, aDataLen / mPCMformat.bytesPerSample);
 
 		mSampleCount += bytesWritten / mPCMformat.bytesPerSample;
 
 		// If a handle reaches the end and data is not ended, we have to wait for it has enough data
 		// to reach [TIME_FOR_BUFFERING] and restart playing it.
-		// time currBufferTime = 1.0f * mBuffer.getFloatsBufferSize() / mPCMformat.channels / mPCMformat.sampleRate;
 		time currBufferTime = getLength();
 		for (int i = 0; i < mParent->handle.size(); i++)
 		{
@@ -184,8 +159,11 @@ namespace SoLoud
 				if (mOnBufferingCallback != nullptr)
 				{
 #ifdef __EMSCRIPTEN__
-						// Call the Dart callback stored on globalThis, if it exists.
-						EM_ASM({
+					// Call the Dart callback stored on globalThis, if it exists.
+					// The `dartOnBufferingCallback_$hash` function is created in
+					// `setBufferStream()` in `bindings_player_web.dart` and it's
+					// meant to call the Dart callback passed to `setBufferStream()`.
+					EM_ASM({
 							// Compose the function name for this soundHash
 							var functionName = "dartOnBufferingCallback_" + $3;
 							if (typeof window[functionName] === "function") {
@@ -193,14 +171,13 @@ namespace SoLoud
 								window[functionName](buffering, $1, $2); // Call it
 							} else {
 								console.log("EM_ASM 'dartOnBufferingCallback_$hash' not found.");
-							}
-						}, true, mParent->handle[i].handle, currBufferTime, mParent->soundHash);
+							} }, true, mParent->handle[i].handle, currBufferTime, mParent->soundHash);
 #else
-						mOnBufferingCallback(true, mParent->handle[i].handle, currBufferTime);
+					mOnBufferingCallback(true, mParent->handle[i].handle, currBufferTime);
 #endif
 				}
 			}
-			if (currBufferTime - mParent->handle[i].bufferingTime >= mBufferingTimeNeeds && 
+			if (currBufferTime - mParent->handle[i].bufferingTime >= mBufferingTimeNeeds &&
 				mThePlayer->getPause(mParent->handle[i].handle))
 			{
 				mThePlayer->setPause(mParent->handle[i].handle, false);
@@ -208,8 +185,8 @@ namespace SoLoud
 				if (mOnBufferingCallback != nullptr)
 				{
 #ifdef __EMSCRIPTEN__
-						// Call the Dart callback stored on globalThis, if it exists.
-						EM_ASM({
+					// Call the Dart callback stored on globalThis, if it exists.
+					EM_ASM({
 							// Compose the function name for this soundHash
 							var functionName = "dartOnBufferingCallback_" + $3;
 							if (typeof window[functionName] === "function") {
@@ -217,22 +194,20 @@ namespace SoLoud
 								window[functionName](buffering, $1, $2); // Call it
 							} else {
 								console.log("EM_ASM 'dartOnBufferingCallback_$hash' not found.");
-							}
-						}, false, mParent->handle[i].handle, currBufferTime, mParent->soundHash);
+							} }, false, mParent->handle[i].handle, currBufferTime, mParent->soundHash);
 #else
-						mOnBufferingCallback(false, mParent->handle[i].handle, currBufferTime);
+					mOnBufferingCallback(false, mParent->handle[i].handle, currBufferTime);
 #endif
 				}
 			}
 		}
-
 
 		// data has been added to the buffer, but not all because reached its full capacity.
 		// So mark this stream as ended and no more data can be added.
 		if (bytesWritten < aDataLen / mPCMformat.bytesPerSample)
 		{
 			dataIsEnded = true;
-			return pcmBufferFullOrStreamEnded;
+			return pcmBufferFull;
 		}
 
 		return noError;

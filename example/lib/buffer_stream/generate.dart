@@ -8,6 +8,12 @@ import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:flutter_soloud_example/buffer_stream/ui/buffer_widget.dart';
 import 'package:logging/logging.dart';
 
+/// Example of how to generate PCM audio inside an `Isolate` and play them.
+///
+/// The `setBufferStream`, `addAudioDataStream` and `setDataIsEnded` methods
+/// can be used inside an `Isolate`. So you can perform complex operations
+/// computing audio inside an `Isolate` without freezing the main Isolate.
+
 void main() async {
   // The `flutter_soloud` package logs everything
   // (from severe warnings to fine debug messages)
@@ -52,10 +58,10 @@ Future<void> generateTone(Map<String, dynamic> args) async {
   final duration = args['duration'] as double;
 
   // Total number of samples needed for the given duration
-  final sampleCount = sampleRate * duration;
+  final sampleCount = (sampleRate * duration).ceil();
 
   // List to hold the audio samples
-  final audioData = Int8List(sampleCount.ceil());
+  final audioData = Int8List(sampleCount);
 
   // Generate PCM data
   for (var i = 0; i < sampleCount; i++) {
@@ -65,7 +71,10 @@ Future<void> generateTone(Map<String, dynamic> args) async {
     audioData[i] = amplitude;
   }
 
-  SoLoud.instance.addAudioDataStreamS8(sound, audioData);
+  SoLoud.instance.addAudioDataStream(
+    sound,
+    audioData.buffer.asUint8List(),
+  );
   SoLoud.instance.setDataIsEnded(sound);
 }
 
@@ -108,7 +117,7 @@ Future<void> generateBouncingSoundPCM(Map<String, dynamic> args) async {
     audioData[i] = amplitude;
   }
 
-  SoLoud.instance.addAudioDataStreamS8(sound, audioData);
+  SoLoud.instance.addAudioDataStream(sound, audioData.buffer.asUint8List());
   SoLoud.instance.setDataIsEnded(sound);
 }
 
@@ -147,7 +156,7 @@ Future<void> generateWailingSirenSoundPCM(Map<String, dynamic> args) async {
     audioData[i] = amplitude;
   }
 
-  SoLoud.instance.addAudioDataStreamS8(sound, audioData);
+  SoLoud.instance.addAudioDataStream(sound, audioData.buffer.asUint8List());
   SoLoud.instance.setDataIsEnded(sound);
 }
 

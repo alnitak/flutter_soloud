@@ -46,12 +46,17 @@ typedef enum PlayerErrors
     soundHandleNotFound = 17,
     /// Error getting filter parameter.
     filterParameterGetError = 18,
+    /// No playback devices were found.
+    noPlaybackDevicesFound = 19,
     /// Trying to add PCM data but the buffer is full or not large
     /// enough for the neded PCM data. Try increasing the buffer size.
-    /// Or, stream buffer has been set to be ended.
-    pcmBufferFullOrStreamEnded = 19,
-    /// No playback devices were found.
-    noPlaybackDevicesFound = 20
+    pcmBufferFull = 20,
+    /// Given hash doesn't belong to a buffer stream.
+    hashIsNotABufferStream = 21,
+    /// Trying to add PCM data but the stream is marked to be ended
+    /// already, by the user or when the stream reached its maximum
+    /// capacity, in this case the stream is automatically marked to be ended.
+    streamEndedAlready = 22
 } PlayerErrors_t;
 
 /// Possible read sample errors
@@ -105,6 +110,7 @@ typedef enum FilterType
     PitchShiftFilter
 } FilterType_t;
 
+/// WARNING: Keep these in sync with `lib/src/enums.dart`.
 typedef enum BufferPcmType
 {
     PCM_F32LE = 0,
