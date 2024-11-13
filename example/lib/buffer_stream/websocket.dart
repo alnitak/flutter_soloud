@@ -12,12 +12,12 @@ import 'package:logging/logging.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 /// This example shows how to use BufferStream with a websocket.
-/// 
+///
 /// You must have a server which streams audio data. Here a repo that uses
 /// websocketd as a server and ffmpeg to provide audio data:
 /// https://github.com/alnitak/websocketd
-/// 
-/// Run it and choose which audio format you want to stream and the speed for 
+///
+/// Run it and choose which audio format you want to stream and the speed for
 /// testing BufferStream buffering.
 /// Then run this example and choose the same audio format.
 
