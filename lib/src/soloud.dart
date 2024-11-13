@@ -660,7 +660,7 @@ interface class SoLoud {
   /// Set up an audio stream.
   ///
   /// [maxBufferSize] the max buffer size in **bytes**. When adding audio data
-  /// using [addAudioDataStreamU8] and this values is reached, the stream will
+  /// using [addAudioDataStream] and this values is reached, the stream will
   /// be considered ended (likewise we called [setDataIsEnded]). This means that
   /// when playing it, it will stop at that point (if loop is not set).
   ///

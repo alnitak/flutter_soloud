@@ -78,7 +78,7 @@ PlayerErrors Player::changeDevice(int deviceID)
     playbackInfos_id = &pPlaybackInfos[deviceID].id;
 
     SoLoud::result result = soloud.miniaudio_changeDevice(playbackInfos_id);
-    
+
     // miniaudio_changeDevice can only throw UNKNOWN_ERROR. This means that
     // for some reasons the device could not be changed (maybe the engine
     // was turned off in the meantime?).
@@ -331,8 +331,7 @@ PlayerErrors Player::setBufferStream(
 
     newSound.get()->sound = std::make_unique<SoLoud::BufferStream>();
     newSound.get()->soundType = TYPE_BUFFER_STREAM;
-    static_cast<SoLoud::BufferStream *>(newSound.get()->sound.get())->setBufferStream(
-        this, newSound.get(), maxBufferSize, bufferingTimeNeeds, pcmFormat, onBufferingCallback);
+    static_cast<SoLoud::BufferStream *>(newSound.get()->sound.get())->setBufferStream(this, newSound.get(), maxBufferSize, bufferingTimeNeeds, pcmFormat, onBufferingCallback);
 
     newSound.get()->filters = std::make_unique<Filters>(&soloud, newSound.get());
     sounds.push_back(std::move(newSound));
@@ -722,16 +721,16 @@ int Player::countAudioSource(unsigned int soundHash)
     SoLoud::AudioSource *as;
     switch (s->soundType)
     {
-        case TYPE_SYNTH:
-            return 0;
-        case TYPE_WAV:
-            as = static_cast<SoLoud::Wav *>(s->sound.get());
-        case TYPE_WAVSTREAM:
-            as = static_cast<SoLoud::WavStream *>(s->sound.get());
-        case TYPE_BUFFER_STREAM:
-            as = static_cast<SoLoud::BufferStream *>(s->sound.get());
-        default:
-            return 0;
+    case TYPE_SYNTH:
+        return 0;
+    case TYPE_WAV:
+        as = static_cast<SoLoud::Wav *>(s->sound.get());
+    case TYPE_WAVSTREAM:
+        as = static_cast<SoLoud::WavStream *>(s->sound.get());
+    case TYPE_BUFFER_STREAM:
+        as = static_cast<SoLoud::BufferStream *>(s->sound.get());
+    default:
+        return 0;
     }
     return soloud.countAudioSource(*as);
 }

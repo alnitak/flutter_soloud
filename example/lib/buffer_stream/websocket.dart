@@ -230,9 +230,8 @@ class _WebsocketExampleState extends State<WebsocketExample> {
                       currentSound!,
                       Uint8List.fromList(message),
                     );
-                  } on SoLoudPcmBufferFullOrStreamEndedCppException {
-                    debugPrint('pcm buffer full or stream already set '
-                        'to be ended');
+                  } on Exception catch (e) {
+                    debugPrint('error adding audio data: $e');
                     await channel?.sink.close();
                   }
                 },
