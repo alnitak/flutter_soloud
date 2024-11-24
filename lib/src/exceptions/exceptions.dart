@@ -104,10 +104,14 @@ abstract class SoLoudCppException extends SoLoudException {
         return const SoLoudSoundHandleNotFoundCppException();
       case PlayerErrors.filterParameterGetError:
         return const SoLoudFilterParameterGetErrorCppException();
-      case PlayerErrors.pcmBufferFullOrStreamEnded:
-        return const SoLoudPcmBufferFullOrStreamEndedCppException();
       case PlayerErrors.noPlaybackDevicesFound:
         return const SoLoudNoPlaybackDevicesFoundCppException();
+      case PlayerErrors.pcmBufferFull:
+        return const SoLoudPcmBufferFullCppException();
+      case PlayerErrors.hashIsNotABufferStream:
+        return const SoLoudHashIsNotABufferStreamCppException();
+      case PlayerErrors.streamEndedAlready:
+        return const SoLoudStreamEndedAlreadyCppException();
     }
   }
 

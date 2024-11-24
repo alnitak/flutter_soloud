@@ -78,7 +78,7 @@ PlayerErrors Player::changeDevice(int deviceID)
     playbackInfos_id = &pPlaybackInfos[deviceID].id;
 
     SoLoud::result result = soloud.miniaudio_changeDevice(playbackInfos_id);
-    
+
     // miniaudio_changeDevice can only throw UNKNOWN_ERROR. This means that
     // for some reasons the device could not be changed (maybe the engine
     // was turned off in the meantime?).
@@ -195,10 +195,14 @@ const std::string Player::getErrorString(PlayerErrors errorCode) const
         return "error: audio handle is not found!";
     case filterParameterGetError:
         return "error: getting filter parameter error!";
-    case pcmBufferFullOrStreamEnded:
-        return "error: pcm buffer full or stream buffer ended!";
     case noPlaybackDevicesFound:
         return "error: no playback devices found!";
+    case pcmBufferFull:
+        return "error: pcm buffer full!";
+    case hashIsNotABufferStream:
+        return "error: hash is not a buffer stream!";
+    case streamEndedAlready:
+        return "error: trying to add PCM data but the stream is marked to be ended!";
     }
     return "Other error";
 }
@@ -327,8 +331,7 @@ PlayerErrors Player::setBufferStream(
 
     newSound.get()->sound = std::make_unique<SoLoud::BufferStream>();
     newSound.get()->soundType = TYPE_BUFFER_STREAM;
-    static_cast<SoLoud::BufferStream *>(newSound.get()->sound.get())->setBufferStream(
-        this, newSound.get(), maxBufferSize, bufferingTimeNeeds, pcmFormat, onBufferingCallback);
+    static_cast<SoLoud::BufferStream *>(newSound.get()->sound.get())->setBufferStream(this, newSound.get(), maxBufferSize, bufferingTimeNeeds, pcmFormat, onBufferingCallback);
 
     newSound.get()->filters = std::make_unique<Filters>(&soloud, newSound.get());
     sounds.push_back(std::move(newSound));
@@ -343,8 +346,11 @@ PlayerErrors Player::addAudioDataStream(
 {
     auto const s = findByHash(hash);
 
-    if (s == nullptr || s->soundType != TYPE_BUFFER_STREAM)
+    if (s == nullptr)
         return soundHashNotFound;
+
+    if (s->soundType != TYPE_BUFFER_STREAM)
+        return hashIsNotABufferStream;
 
     return static_cast<SoLoud::BufferStream *>(s->sound.get())->addData(data, aDataLen);
 }
@@ -709,21 +715,23 @@ int Player::countAudioSource(unsigned int soundHash)
 {
     auto const &s = findByHash(soundHash);
 
-    if (s == nullptr || s->soundType == TYPE_SYNTH)
+    if (s == nullptr)
         return 0;
-    if (s->soundType == TYPE_WAV)
-    {
-        SoLoud::AudioSource *as = static_cast<SoLoud::Wav *>(s->sound.get());
-        return soloud.countAudioSource(*as);
-    }
 
-    if (s->soundType == TYPE_WAVSTREAM)
+    SoLoud::AudioSource *as;
+    switch (s->soundType)
     {
-        SoLoud::AudioSource *as = static_cast<SoLoud::WavStream *>(s->sound.get());
-        return soloud.countAudioSource(*as);
+    case TYPE_SYNTH:
+        return 0;
+    case TYPE_WAV:
+        as = static_cast<SoLoud::Wav *>(s->sound.get());
+    case TYPE_WAVSTREAM:
+        as = static_cast<SoLoud::WavStream *>(s->sound.get());
+    case TYPE_BUFFER_STREAM:
+        as = static_cast<SoLoud::BufferStream *>(s->sound.get());
+    default:
+        return 0;
     }
-
-    SoLoud::AudioSource *as = static_cast<SoLoud::BufferStream *>(s->sound.get());
     return soloud.countAudioSource(*as);
 }
 

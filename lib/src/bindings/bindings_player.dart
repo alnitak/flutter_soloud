@@ -139,7 +139,7 @@ abstract class FlutterSoLoud {
   /// [bufferingTimeNeeds] the buffering time needed in seconds. If a handle
   /// reaches the current buffer length, it will start to buffer pausing it and
   /// waiting until the buffer will have enough data to cover this time.
-  /// [sampleRate], [channels], [pcmFormat] should be set in the case the
+  /// [sampleRate], [channels], [pcmFormat] must be set in the case the
   /// audio data is PCM format.
   /// [pcmFormat]: 0 = f32le, 1 = s8, 2 = s16le, 3 = s32le
   @mustBeOverridden

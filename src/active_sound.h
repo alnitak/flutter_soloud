@@ -15,6 +15,9 @@ class Filters;
 struct ActiveHandle
 {
     SoLoud::handle handle;
+    // this is managed only in `audiobuffer.cpp` an it is used to
+    // know when a handle reaches the end or when there is not enough data 
+    // in the buffer to resume playing. Used also to send the buffering events.
     SoLoud::time bufferingTime;
 };
 

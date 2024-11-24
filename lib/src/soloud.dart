@@ -1,7 +1,6 @@
 // ignore_for_file: require_trailing_commas, avoid_positional_boolean_parameters
 
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -661,7 +660,7 @@ interface class SoLoud {
   /// Set up an audio stream.
   ///
   /// [maxBufferSize] the max buffer size in **bytes**. When adding audio data
-  /// using [addAudioDataStreamU8] and this values is reached, the stream will
+  /// using [addAudioDataStream] and this values is reached, the stream will
   /// be considered ended (likewise we called [setDataIsEnded]). This means that
   /// when playing it, it will stop at that point (if loop is not set).
   ///
@@ -680,8 +679,8 @@ interface class SoLoud {
   ///
   /// [onBuffering] a callback that is called when starting to buffer
   /// (isBuffering = true) and when the buffering is done (isBuffering = false).
-  /// It gives back the `handle` which triggered the event and the `time`
-  /// in seconds.
+  /// The callback is called with the `handle` which triggered the event and
+  /// the `time` in seconds.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   AudioSource setBufferStream({
@@ -711,24 +710,64 @@ interface class SoLoud {
 
   /// Add PCM audio data to the stream.
   ///
-  /// This method can be called within an `Isolate` making possible
+  /// This method can be called within an `Isolate` making it possible
   /// to create PCM data and send them to the buffer without frezing
   /// the main thread.
   /// When finishing to add data to the stream, call [setDataIsEnded].
   ///
+  /// [source] the audio source to add audio data to.
+  ///
+  /// [audioChunk] the audio data to add. This is of `Uint8List` type, so if
+  /// you want to add any other typed data like `Float32List`, 'Int32List',
+  /// 'Int16List' etc, you will have to convert it to `Uint8List`:
+  /// `[yourTypedData*List].buffer.asUint8List()`.
+  ///
+  /// **Example**: compute PCM audio inside an `Isolate` returning the new
+  /// `AudioSource`.
+  /// ```dart
+  /// // This is a global function or a static member of a class.
+  /// @pragma('vm:entry-point')
+  /// Future<AudioSource> computePCM(void args) async {
+  ///   final pcmBuffer = Uint8List(1024 * 1024); // 1 MB in bytes
+  ///   final pcmAudio = SoLoud.instance.setBufferStream(
+  ///     maxBufferSize: 1024 * 1024, // 1 MB in bytes
+  ///     pcmFormat: BufferPcmType.s8, // signed 8 bits
+  ///   );
+  ///   for (var i = 0; i < pcmBuffer.length; i++) {
+  ///     // Compose your PCM data here.
+  ///     pcmBuffer[i] = Random().nextInt(256) - 128;
+  ///   }
+  ///
+  ///   /// Add the PCM data to the audio stream.
+  ///   SoLoud.instance
+  ///       .addAudioDataStream(pcmAudio, pcmBuffer.buffer.asUint8List());
+  ///
+  ///   /// Mark the end of the PCM data.
+  ///   SoLoud.instance.setDataIsEnded(pcmAudio);
+  ///
+  ///   return pcmAudio;
+  /// }
+  ///
+  /// /// A method inside a class to call the `computePCM` function.
+  /// Future<void> generate() async {
+  ///   /// Generate PCM data inside an Isolate.
+  ///   final myNewGeneratedAudio = await compute(computePCM, '');
+  /// }
+  /// ```
+  /// An example is also included in `example/lib/buffer_stream/generate.dart`.
+  ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
-  /// Throws [SoLoudPcmBufferFullOrStreamEndedCppException] if the buffer
-  /// is full or stream buffer has been set to be ended.
+  /// Throws [SoLoudPcmBufferFullCppException] if trying to add data and the
+  /// buffer is full.
+  /// Throws [SoLoudHashIsNotABufferStreamCppException] if the given [source]
+  /// is not a buffer stream.
+  /// Throws [SoLoudStreamEndedAlreadyCppException] if trying to add PCM data
+  /// but the stream is marked to be ended already, by the user or when the
+  /// stream reached its maximum capacity, in this case the stream is
+  /// automatically marked to be ended.
   /// Thows [SoLoudOutOfMemoryException] if the buffer is out of OS memory or
   /// the given `maxBufferSize` of the `setBufferStream` call is too small.
-  ///
-  /// See also:
-  ///
-  ///  * [addAudioDataStramF32] to add `Float32List` PCM audio data.
-  ///  * [addAudioDataStreamS8] to add `Int8List` PCM audio data.
-  ///  * [addAudioDataStreamS16] to add `Int16List` PCM audio data.
-  ///  * [addAudioDataStreamS32] to add `Int32List` PCM audio data.
-  void addAudioDataStreamU8(
+  void addAudioDataStream(
     AudioSource source,
     Uint8List audioChunk,
   ) {
@@ -747,38 +786,11 @@ interface class SoLoud {
     }
   }
 
-  /// Helper method to add `Float32List` PCM audio data to the stream.
-  ///
-  /// This method is a wrapper around [addAudioDataStreamU8].
-  void addAudioDataStramF32(AudioSource source, Float32List audioChunk) {
-    addAudioDataStreamU8(source, audioChunk.buffer.asUint8List());
-  }
-
-  /// Helper method to add `Int8List` PCM audio data to the stream.
-  ///
-  /// This method is a wrapper around [addAudioDataStreamU8].
-  void addAudioDataStreamS8(AudioSource source, Int8List audioChunk) {
-    addAudioDataStreamU8(source, audioChunk.buffer.asUint8List());
-  }
-
-  /// Helper method to add `Int16List` PCM audio data to the stream.
-  ///
-  /// This method is a wrapper around [addAudioDataStreamU8].
-  void addAudioDataStreamS16(AudioSource source, Int16List audioChunk) {
-    addAudioDataStreamU8(source, audioChunk.buffer.asUint8List());
-  }
-
-  /// Helper method to add `Int32List` PCM audio data to the stream.
-  ///
-  /// This method is a wrapper around [addAudioDataStreamU8].
-  void addAudioDataStreamS32(AudioSource source, Int32List audioChunk) {
-    addAudioDataStreamU8(source, audioChunk.buffer.asUint8List());
-  }
-
   /// Set the end of the data stream.
   ///
-  /// By setting the stream to be ended means that when playing it, it will stop
-  /// at that point (if the loop is not set).
+  /// By setting the stream to be ended means that when playing it, it can
+  /// handle the stop event when it reaches the end of the data stream or can
+  /// be looped if the looping is enabled.
   ///
   /// [hash] the hash of the stream sound.
   ///
