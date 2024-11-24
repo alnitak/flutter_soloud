@@ -19,4 +19,6 @@
 
 //--------------------- copy here the new functions to generate
 
-FFI_PLUGIN_EXPORT enum PlayerErrors changeDevice(int deviceID);
+// Get the current buffer size in bytes of this sound with hash [hash].
+// [hash] the hash of the stream sound.
+FFI_PLUGIN_EXPORT enum PlayerErrors getBufferSize(unsigned int hash, unsigned int *sizeInBytes);

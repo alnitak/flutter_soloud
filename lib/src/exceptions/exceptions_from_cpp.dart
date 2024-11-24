@@ -243,3 +243,44 @@ class SoLoudNoPlaybackDevicesFoundCppException extends SoLoudCppException {
       'initializing engine or when changing the output device. '
       '(on the C++ side).';
 }
+
+/// Trying to add PCM data but the stream is marked to be ended
+/// already by the user or when the stream reached its maximum
+/// capacity, in this case the stream is automatically marked to be ended.
+class SoLoudPcmBufferFullCppException extends SoLoudCppException {
+  /// Creates a new [SoLoudPcmBufferFullCppException].
+  const SoLoudPcmBufferFullCppException([super.message]);
+
+  @override
+  String get description =>
+      'Trying to add PCM data but the buffer is full or not large '
+      'enough for the neded PCM data. Try increasing the buffer size. '
+      'Or, stream buffer has been set to be ended. '
+      '(on the C++ side).';
+}
+
+/// An error occurred when asking to add audio data to an AudioSource that
+/// is not a buffer stream.
+class SoLoudHashIsNotABufferStreamCppException extends SoLoudCppException {
+  /// Creates a new [SoLoudHashIsNotABufferStreamCppException].
+  const SoLoudHashIsNotABufferStreamCppException([super.message]);
+
+  @override
+  String get description => 'The given AudioSource is not a buffer stream. '
+      '(on the C++ side).';
+}
+
+/// Trying to add PCM data but the stream is marked to be ended
+/// already, by the user or when the stream reached its maximum
+/// capacity, in this case the stream is automatically marked to be ended.
+class SoLoudStreamEndedAlreadyCppException extends SoLoudCppException {
+  /// Creates a new [SoLoudStreamEndedAlreadyCppException].
+  const SoLoudStreamEndedAlreadyCppException([super.message]);
+
+  @override
+  String get description =>
+      'Trying to add PCM data but the stream is marked to be ended '
+      'already, by the user or when the stream reached its maximum '
+      'capacity, in this case the stream is automatically marked to be ended. '
+      '(on the C++ side).';
+}

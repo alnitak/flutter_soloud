@@ -46,9 +46,10 @@ em++ \
 ../../src/bindings.cpp \
 ../../src/player.cpp \
 ../../src/analyzer.cpp \
-../../src/synth/basic_wave.cpp \
+../../src/synth/*.cpp \
 ../../src/filters/*.cpp \
 ../../src/waveform/*.cpp \
+../../src/audiobuffer/*.cpp \
 -O3 -D WITH_MINIAUDIO \
 -msimd128 -msse3 \
 -s "EXPORTED_RUNTIME_METHODS=['ccall','cwrap']" \

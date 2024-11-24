@@ -522,6 +522,38 @@ interface class SoLoud {
     // }
   }
 
+  AudioSource _addNewSound(
+    PlayerErrors error,
+    String completeFileName,
+    int hash,
+  ) {
+    final newSound = AudioSource(SoundHash(hash));
+    final alreadyLoaded = _activeSounds
+            .where((sound) => sound.soundHash == newSound.soundHash)
+            .length ==
+        1;
+    _logPlayerError(error, from: 'loadFile() result');
+    if (error == PlayerErrors.noError) {
+      if (!alreadyLoaded) {
+        _activeSounds.add(newSound);
+      }
+    } else if (error == PlayerErrors.fileAlreadyLoaded) {
+      // If we are here, the file has been already loaded on C++ side.
+      // In any case return the existing sound.
+      // Check if it is already in [_activeSounds], if not add it.
+      if (alreadyLoaded) {
+        _log.warning(() => "Sound '$completeFileName' was already "
+            'loaded. Prefer loading only once, and reusing the loaded '
+            'sound when playing.');
+      } else {
+        _activeSounds.add(newSound);
+      }
+    } else {
+      throw SoLoudCppException.fromPlayerError(error);
+    }
+    return newSound;
+  }
+
   // ////////////////////////////////////////////////
   // Below all the methods implemented with FFI for the player
   // ////////////////////////////////////////////////
@@ -623,6 +655,179 @@ interface class SoLoud {
     return completer.future.whenComplete(() {
       loadedFileCompleters.removeWhere((key, __) => key == path);
     });
+  }
+
+  /// Set up an audio stream.
+  ///
+  /// [maxBufferSize] the max buffer size in **bytes**. When adding audio data
+  /// using [addAudioDataStream] and this values is reached, the stream will
+  /// be considered ended (likewise we called [setDataIsEnded]). This means that
+  /// when playing it, it will stop at that point (if loop is not set).
+  ///
+  /// **Note:** this parameter doesn't allocate any memory, but it just limits
+  /// the amount of data that can be added.
+  ///
+  /// [bufferingTimeNeeds] the buffering time needed in seconds. If a handle
+  /// reaches the current buffer length, it will start to buffer pausing it and
+  /// waiting until the buffer will have enough data to cover this time.
+  ///
+  /// [sampleRate] the sample rate. Usually is 22050 or 44100 (CD quality).
+  ///
+  /// [channels] enum to choose the number of channels.
+  ///
+  /// [pcmFormat] enum to choose from `f32le`, `s8`, `s16le` and `s32le`.
+  ///
+  /// [onBuffering] a callback that is called when starting to buffer
+  /// (isBuffering = true) and when the buffering is done (isBuffering = false).
+  /// The callback is called with the `handle` which triggered the event and
+  /// the `time` in seconds.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  AudioSource setBufferStream({
+    int maxBufferSize = 1024 * 1024 * 100, // 100 MB in bytes
+    double bufferingTimeNeeds = 2, // 2 seconds of data needed to un-pause
+    int sampleRate = 22050,
+    Channels channels = Channels.mono,
+    BufferPcmType pcmFormat = BufferPcmType.s16le,
+    void Function(bool isBuffering, int handle, double time)? onBuffering,
+  }) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+
+    final ret = SoLoudController().soLoudFFI.setBufferStream(
+          maxBufferSize,
+          bufferingTimeNeeds,
+          sampleRate,
+          channels.count,
+          pcmFormat.value,
+          onBuffering,
+        );
+
+    final newSound = _addNewSound(ret.error, '', ret.soundHash.hash);
+    return newSound;
+  }
+
+  /// Add PCM audio data to the stream.
+  ///
+  /// This method can be called within an `Isolate` making it possible
+  /// to create PCM data and send them to the buffer without frezing
+  /// the main thread.
+  /// When finishing to add data to the stream, call [setDataIsEnded].
+  ///
+  /// [source] the audio source to add audio data to.
+  ///
+  /// [audioChunk] the audio data to add. This is of `Uint8List` type, so if
+  /// you want to add any other typed data like `Float32List`, 'Int32List',
+  /// 'Int16List' etc, you will have to convert it to `Uint8List`:
+  /// `[yourTypedData*List].buffer.asUint8List()`.
+  ///
+  /// **Example**: compute PCM audio inside an `Isolate` returning the new
+  /// `AudioSource`.
+  /// ```dart
+  /// // This is a global function or a static member of a class.
+  /// @pragma('vm:entry-point')
+  /// Future<AudioSource> computePCM(void args) async {
+  ///   final pcmBuffer = Uint8List(1024 * 1024); // 1 MB in bytes
+  ///   final pcmAudio = SoLoud.instance.setBufferStream(
+  ///     maxBufferSize: 1024 * 1024, // 1 MB in bytes
+  ///     pcmFormat: BufferPcmType.s8, // signed 8 bits
+  ///   );
+  ///   for (var i = 0; i < pcmBuffer.length; i++) {
+  ///     // Compose your PCM data here.
+  ///     pcmBuffer[i] = Random().nextInt(256) - 128;
+  ///   }
+  ///
+  ///   /// Add the PCM data to the audio stream.
+  ///   SoLoud.instance
+  ///       .addAudioDataStream(pcmAudio, pcmBuffer.buffer.asUint8List());
+  ///
+  ///   /// Mark the end of the PCM data.
+  ///   SoLoud.instance.setDataIsEnded(pcmAudio);
+  ///
+  ///   return pcmAudio;
+  /// }
+  ///
+  /// /// A method inside a class to call the `computePCM` function.
+  /// Future<void> generate() async {
+  ///   /// Generate PCM data inside an Isolate.
+  ///   final myNewGeneratedAudio = await compute(computePCM, '');
+  /// }
+  /// ```
+  /// An example is also included in `example/lib/buffer_stream/generate.dart`.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  /// Throws [SoLoudPcmBufferFullCppException] if trying to add data and the
+  /// buffer is full.
+  /// Throws [SoLoudHashIsNotABufferStreamCppException] if the given [source]
+  /// is not a buffer stream.
+  /// Throws [SoLoudStreamEndedAlreadyCppException] if trying to add PCM data
+  /// but the stream is marked to be ended already, by the user or when the
+  /// stream reached its maximum capacity, in this case the stream is
+  /// automatically marked to be ended.
+  /// Thows [SoLoudOutOfMemoryException] if the buffer is out of OS memory or
+  /// the given `maxBufferSize` of the `setBufferStream` call is too small.
+  void addAudioDataStream(
+    AudioSource source,
+    Uint8List audioChunk,
+  ) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+
+    final e = SoLoudController().soLoudFFI.addAudioDataStream(
+          source.soundHash.hash,
+          audioChunk,
+        );
+
+    if (e != PlayerErrors.noError) {
+      _logPlayerError(e, from: 'addAudioDataStream() result');
+      throw SoLoudCppException.fromPlayerError(e);
+    }
+  }
+
+  /// Set the end of the data stream.
+  ///
+  /// By setting the stream to be ended means that when playing it, it can
+  /// handle the stop event when it reaches the end of the data stream or can
+  /// be looped if the looping is enabled.
+  ///
+  /// [hash] the hash of the stream sound.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  /// Throws [SoLoudSoundHashNotFoundDartException] if the [sound] is not found.
+  void setDataIsEnded(AudioSource sound) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    final e = SoLoudController().soLoudFFI.setDataIsEnded(sound.soundHash);
+
+    if (e != PlayerErrors.noError) {
+      _logPlayerError(e, from: 'setDataIsEnded() result');
+      throw SoLoudCppException.fromPlayerError(e);
+    }
+  }
+
+  /// Get the current buffer size in bytes of this sound with hash [hash].
+  /// [hash] the hash of the stream sound.
+  ///
+  /// **NOTE**: the returned value is in bytes and since by default uses floats,
+  /// the returned value should be divided by 4 and by the number of channels
+  /// to have the number of samples.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  /// Throws [SoLoudSoundHashNotFoundDartException] if the [sound] is not found.
+  int getBufferSize(AudioSource sound) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    final e = SoLoudController().soLoudFFI.getBufferSize(sound.soundHash);
+
+    if (e.error != PlayerErrors.noError) {
+      _logPlayerError(e.error, from: 'getBufferSize() result');
+      throw SoLoudCppException.fromPlayerError(e.error);
+    }
+    return e.sizeInBytes;
   }
 
   /// Load a new sound to be played once or multiple times later, from
@@ -852,6 +1057,8 @@ interface class SoLoud {
   /// Returns the [SoundHandle] of the new sound instance.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  /// Throws [SoLoudSoundHashNotFoundDartException] if the given [sound]
+  /// is not found.
   Future<SoundHandle> play(
     AudioSource sound, {
     double volume = 1,

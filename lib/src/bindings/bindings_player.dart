@@ -1,3 +1,5 @@
+// ignore_for_file: avoid_positional_boolean_parameters
+
 import 'dart:async';
 import 'dart:typed_data';
 
@@ -11,6 +13,13 @@ import 'package:meta/meta.dart';
 
 export 'package:flutter_soloud/src/bindings/bindings_player_ffi.dart'
     if (dart.library.js_interop) 'package:flutter_soloud/src/bindings/bindings_player_web.dart';
+
+/// Callback set in `setBufferStream` for the `onBuffering` closure.
+typedef OnBufferingCallbackTFunction = void Function(
+  bool isBuffering,
+  int handle,
+  double time,
+);
 
 /// Abstract class defining the interface for the platform-specific
 /// implementations.
@@ -124,6 +133,46 @@ abstract class FlutterSoLoud {
     LoadMode mode,
   );
 
+  /// Set up an audio stream.
+  ///
+  /// [maxBufferSize] the max buffer size in bytes.
+  /// [bufferingTimeNeeds] the buffering time needed in seconds. If a handle
+  /// reaches the current buffer length, it will start to buffer pausing it and
+  /// waiting until the buffer will have enough data to cover this time.
+  /// [sampleRate], [channels], [pcmFormat] must be set in the case the
+  /// audio data is PCM format.
+  /// [pcmFormat]: 0 = f32le, 1 = s8, 2 = s16le, 3 = s32le
+  @mustBeOverridden
+  ({PlayerErrors error, SoundHash soundHash}) setBufferStream(
+    int maxBufferSize,
+    double bufferingTimeNeeds,
+    int sampleRate,
+    int channels,
+    int pcmFormat,
+    OnBufferingCallbackTFunction? onBuffering,
+  );
+
+  /// Add a chunk of audio data to the buffer stream.
+  ///
+  /// [hash] the hash of the sound.
+  /// [audioChunk] the audio data to add.
+  @mustBeOverridden
+  PlayerErrors addAudioDataStream(
+    int hash,
+    Uint8List audioChunk,
+  );
+
+  /// Set the end of the data stream.
+  /// [hash] the hash of the stream sound.
+  /// Returns [PlayerErrors.noError] if success.
+  @mustBeOverridden
+  PlayerErrors setDataIsEnded(SoundHash soundHash);
+
+  /// Get the current buffer size in bytes of this sound with hash [hash].
+  /// [hash] the hash of the stream sound.
+  @mustBeOverridden
+  ({PlayerErrors error, int sizeInBytes}) getBufferSize(SoundHash soundHash);
+
   /// Load a new waveform to be played once or multiple times later.
   ///
   /// [waveform]
@@ -135,7 +184,6 @@ abstract class FlutterSoLoud {
   @mustBeOverridden
   ({PlayerErrors error, SoundHash soundHash}) loadWaveform(
     WaveForm waveform,
-    // ignore: avoid_positional_boolean_parameters
     bool superWave,
     double scale,
     double detune,
@@ -277,7 +325,6 @@ abstract class FlutterSoLoud {
   /// [handle] the sound handle.
   /// [enable] enable or not the looping.
   @mustBeOverridden
-  // ignore: avoid_positional_boolean_parameters
   void setLooping(SoundHandle handle, bool enable);
 
   /// Get sound loop point value.
@@ -301,7 +348,6 @@ abstract class FlutterSoLoud {
   ///
   /// [enabled] whether to enable or disable.
   @mustBeOverridden
-  // ignore: avoid_positional_boolean_parameters
   void setVisualizationEnabled(bool enabled);
 
   /// Get visualization state.
@@ -483,7 +529,6 @@ abstract class FlutterSoLoud {
   /// [handle] handle to check.
   /// [protect] whether to protect or not.
   @mustBeOverridden
-  // ignore: avoid_positional_boolean_parameters
   void setProtectVoice(SoundHandle handle, bool protect);
 
   /// Get the current maximum active voice count.

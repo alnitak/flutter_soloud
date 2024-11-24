@@ -16,7 +16,6 @@
 #include <unistd.h>
 #endif
 
-
 Player::Player() : mInited(false), mFilters(&soloud, nullptr) {}
 
 Player::~Player()
@@ -53,12 +52,14 @@ PlayerErrors Player::init(unsigned int sampleRate, unsigned int bufferSize, unsi
     SoLoud::result result = soloud.init(
         SoLoud::Soloud::CLIP_ROUNDOFF,
         SoLoud::Soloud::MINIAUDIO, sampleRate, bufferSize, channels, playbackInfos_id);
-    if (result == SoLoud::SO_NO_ERROR){
+    if (result == SoLoud::SO_NO_ERROR)
+    {
         mInited = true;
         mSampleRate = sampleRate;
         mBufferSize = bufferSize;
         mChannels = channels;
-    } else
+    }
+    else
         result = backendNotInited;
     return (PlayerErrors)result;
 }
@@ -77,7 +78,7 @@ PlayerErrors Player::changeDevice(int deviceID)
     playbackInfos_id = &pPlaybackInfos[deviceID].id;
 
     SoLoud::result result = soloud.miniaudio_changeDevice(playbackInfos_id);
-    
+
     // miniaudio_changeDevice can only throw UNKNOWN_ERROR. This means that
     // for some reasons the device could not be changed (maybe the engine
     // was turned off in the meantime?).
@@ -103,11 +104,11 @@ std::vector<PlaybackDevice> Player::listPlaybackDevices()
     }
 
     if ((result = ma_context_get_devices(
-            &context,
-            &pPlaybackInfos,
-            &playbackCount,
-            &pCaptureInfos,
-            &captureCount)) != MA_SUCCESS)
+             &context,
+             &pPlaybackInfos,
+             &playbackCount,
+             &pCaptureInfos,
+             &captureCount)) != MA_SUCCESS)
     {
         printf("Failed to get devices %d\n", result);
         return ret;
@@ -196,6 +197,12 @@ const std::string Player::getErrorString(PlayerErrors errorCode) const
         return "error: getting filter parameter error!";
     case noPlaybackDevicesFound:
         return "error: no playback devices found!";
+    case pcmBufferFull:
+        return "error: pcm buffer full!";
+    case hashIsNotABufferStream:
+        return "error: hash is not a buffer stream!";
+    case streamEndedAlready:
+        return "error: trying to add PCM data but the stream is marked to be ended!";
     }
     return "Other error";
 }
@@ -207,13 +214,12 @@ PlayerErrors Player::loadFile(
 {
     if (!mInited)
         return backendNotInited;
-        
+
     *hash = 0;
 
     unsigned int newHash = (int32_t)std::hash<std::string>{}(completeFileName) & 0x7fffffff;
     /// check if the sound has been already loaded
     auto const s = findByHash(newHash);
-
 
     if (s != nullptr)
     {
@@ -223,8 +229,6 @@ PlayerErrors Player::loadFile(
 
     auto sound = std::make_unique<ActiveSound>();
 
-    
-    
     sound->completeFileName = std::string(completeFileName);
     sound->soundHash = newHash;
 
@@ -245,12 +249,13 @@ PlayerErrors Player::loadFile(
     if (result != SoLoud::SO_NO_ERROR)
     {
         *hash = 0;
-    } else {
+    }
+    else
+    {
         *hash = newHash;
         sound->filters = std::make_unique<Filters>(&soloud, sound.get());
         sounds.push_back(std::move(sound));
     }
-    
 
     return (PlayerErrors)result;
 }
@@ -294,7 +299,7 @@ PlayerErrors Player::loadMem(
         newSound.get()->soundType = TYPE_WAVSTREAM;
         result = static_cast<SoLoud::WavStream *>(newSound.get()->sound.get())->loadMem(mem, length, false, true);
     }
-    
+
     if (result == SoLoud::SO_NO_ERROR)
     {
         newSound.get()->filters = std::make_unique<Filters>(&soloud, newSound.get());
@@ -302,6 +307,74 @@ PlayerErrors Player::loadMem(
     }
 
     return (PlayerErrors)result;
+}
+
+PlayerErrors Player::setBufferStream(
+    unsigned int &hash,
+    unsigned long maxBufferSize,
+    SoLoud::time bufferingTimeNeeds,
+    PCMformat pcmFormat,
+    dartOnBufferingCallback_t onBufferingCallback)
+{
+    if (!mInited)
+        return backendNotInited;
+
+    std::random_device rd;
+    std::mt19937 g(rd());
+    std::uniform_int_distribution<unsigned int> dist(0, INT32_MAX);
+
+    hash = dist(g);
+
+    std::unique_ptr<ActiveSound> newSound = std::make_unique<ActiveSound>();
+    newSound.get()->completeFileName = "";
+    newSound.get()->soundHash = hash;
+
+    newSound.get()->sound = std::make_unique<SoLoud::BufferStream>();
+    newSound.get()->soundType = TYPE_BUFFER_STREAM;
+    static_cast<SoLoud::BufferStream *>(newSound.get()->sound.get())->setBufferStream(this, newSound.get(), maxBufferSize, bufferingTimeNeeds, pcmFormat, onBufferingCallback);
+
+    newSound.get()->filters = std::make_unique<Filters>(&soloud, newSound.get());
+    sounds.push_back(std::move(newSound));
+
+    return noError;
+}
+
+PlayerErrors Player::addAudioDataStream(
+    unsigned int hash,
+    const unsigned char *data,
+    unsigned int aDataLen)
+{
+    auto const s = findByHash(hash);
+
+    if (s == nullptr)
+        return soundHashNotFound;
+
+    if (s->soundType != TYPE_BUFFER_STREAM)
+        return hashIsNotABufferStream;
+
+    return static_cast<SoLoud::BufferStream *>(s->sound.get())->addData(data, aDataLen);
+}
+
+PlayerErrors Player::setDataIsEnded(unsigned int hash)
+{
+    auto const s = findByHash(hash);
+
+    if (s == nullptr || s->soundType != TYPE_BUFFER_STREAM)
+        return soundHashNotFound;
+
+    static_cast<SoLoud::BufferStream *>(s->sound.get())->setDataIsEnded();
+    return noError;
+}
+
+PlayerErrors Player::getBufferSize(unsigned int hash, unsigned int *sizeInBytes)
+{
+    auto const s = findByHash(hash);
+
+    if (s == nullptr || s->soundType != TYPE_BUFFER_STREAM)
+        return soundHashNotFound;
+
+    *sizeInBytes = static_cast<SoLoud::BufferStream *>(s->sound.get())->mBuffer.buffer.size();
+    return noError;
 }
 
 PlayerErrors Player::loadWaveform(
@@ -318,7 +391,7 @@ PlayerErrors Player::loadWaveform(
 
     std::random_device rd;
     std::mt19937 g(rd());
-    std::uniform_int_distribution<unsigned int> dist(0, UINT32_MAX);
+    std::uniform_int_distribution<unsigned int> dist(0, INT32_MAX);
 
     hash = dist(g);
 
@@ -425,7 +498,7 @@ unsigned int Player::play(
     SoLoud::handle newHandle = soloud.play(
         *sound->sound.get(), volume, pan, paused, 0);
     if (newHandle != 0)
-        sound->handle.push_back(newHandle);
+        sound->handle.push_back({newHandle, MAX_DOUBLE});
 
     if (looping)
     {
@@ -453,7 +526,7 @@ void Player::removeHandle(unsigned int handle)
     for (int i = 0; i < sounds.size(); ++i)
         for (int n = 0; n < sounds[i]->handle.size(); ++n)
         {
-            if (sounds[i]->handle[n] == handle)
+            if (sounds[i]->handle[n].handle == handle)
             {
                 sounds[i]->handle.erase(sounds[i]->handle.begin() + n);
                 e = false;
@@ -516,7 +589,7 @@ PlayerErrors Player::textToSpeech(const std::string &textToSpeech, unsigned int 
     {
         handle = soloud.play(speech);
         sounds.back().get()->filters = std::make_unique<Filters>(&soloud, sounds.back().get());
-        sounds.back().get()->handle.push_back(handle);
+        sounds.back().get()->handle.push_back({handle, MAX_DOUBLE});
     }
     else
     {
@@ -554,9 +627,11 @@ double Player::getLength(unsigned int soundHash)
         return 0.0;
     if (s->soundType == TYPE_WAV)
         return static_cast<SoLoud::Wav *>(s->sound.get())->getLength();
-
-    // if (s->soundType == TYPE_WAVSTREAM)
-    return static_cast<SoLoud::WavStream *>(s->sound.get())->getLength();
+    if (s->soundType == TYPE_BUFFER_STREAM)
+        return static_cast<SoLoud::BufferStream *>(s->sound.get())->getLength();
+    if (s->soundType == TYPE_WAVSTREAM)
+        return static_cast<SoLoud::WavStream *>(s->sound.get())->getLength();
+    return 0.0;
 }
 
 // time in seconds
@@ -615,10 +690,14 @@ void Player::setPan(SoLoud::handle handle, float pan)
 
 void Player::setPanAbsolute(SoLoud::handle handle, float panLeft, float panRight)
 {
-    if (panLeft > 1.0f) panLeft = 1.0f;
-    if (panLeft < -1.0f) panLeft = -1.0f;
-    if (panRight > 1.0f) panRight = 1.0f;
-    if (panRight < -1.0f) panRight = -1.0f;
+    if (panLeft > 1.0f)
+        panLeft = 1.0f;
+    if (panLeft < -1.0f)
+        panLeft = -1.0f;
+    if (panRight > 1.0f)
+        panRight = 1.0f;
+    if (panRight < -1.0f)
+        panRight = -1.0f;
     soloud.setPanAbsolute(handle, panLeft, panRight);
 }
 
@@ -636,16 +715,23 @@ int Player::countAudioSource(unsigned int soundHash)
 {
     auto const &s = findByHash(soundHash);
 
-    if (s == nullptr || s->soundType == TYPE_SYNTH)
+    if (s == nullptr)
         return 0;
-    if (s->soundType == TYPE_WAV)
-    {
-        SoLoud::AudioSource *as = static_cast<SoLoud::Wav *>(s->sound.get());
-        return soloud.countAudioSource(*as);
-    }
 
-    // if (s->soundType == TYPE_WAVSTREAM)
-    SoLoud::AudioSource *as = static_cast<SoLoud::WavStream *>(s->sound.get());
+    SoLoud::AudioSource *as;
+    switch (s->soundType)
+    {
+    case TYPE_SYNTH:
+        return 0;
+    case TYPE_WAV:
+        as = static_cast<SoLoud::Wav *>(s->sound.get());
+    case TYPE_WAVSTREAM:
+        as = static_cast<SoLoud::WavStream *>(s->sound.get());
+    case TYPE_BUFFER_STREAM:
+        as = static_cast<SoLoud::BufferStream *>(s->sound.get());
+    default:
+        return 0;
+    }
     return soloud.countAudioSource(*as);
 }
 
@@ -682,7 +768,7 @@ ActiveSound *Player::findByHandle(SoLoud::handle handle)
         int index = 0;
         while (index < (int)sounds[i].get()->handle.size())
         {
-            if (sounds[i].get()->handle[index] == handle)
+            if (sounds[i].get()->handle[index].handle == handle)
             {
                 return sounds[i].get();
             }
@@ -712,7 +798,7 @@ void Player::debug()
     {
         printf("%d: \thandle: ", n);
         for (auto &handle : sound.get()->handle)
-            printf("%d ", handle);
+            printf("%d ", handle.handle);
         printf("  %s\n", sound.get()->completeFileName.c_str());
 
         n++;
@@ -723,24 +809,29 @@ void Player::debug()
 /// voice groups
 /////////////////////////////////////////
 
-unsigned int Player::createVoiceGroup() {
+unsigned int Player::createVoiceGroup()
+{
     auto ret = soloud.createVoiceGroup();
     return ret;
 }
 
-void Player::destroyVoiceGroup(SoLoud::handle handle) {
+void Player::destroyVoiceGroup(SoLoud::handle handle)
+{
     soloud.destroyVoiceGroup(handle);
 }
 
-void Player::addVoiceToGroup(SoLoud::handle voiceGroupHandle, SoLoud::handle voiceHandle) {
+void Player::addVoiceToGroup(SoLoud::handle voiceGroupHandle, SoLoud::handle voiceHandle)
+{
     soloud.addVoiceToGroup(voiceGroupHandle, voiceHandle);
 }
 
-bool Player::isVoiceGroup(SoLoud::handle handle) {
+bool Player::isVoiceGroup(SoLoud::handle handle)
+{
     return soloud.isVoiceGroup(handle);
 }
 
-bool Player::isVoiceGroupEmpty(SoLoud::handle handle) {
+bool Player::isVoiceGroupEmpty(SoLoud::handle handle)
+{
     return soloud.isVoiceGroupEmpty(handle);
 }
 
@@ -833,7 +924,7 @@ unsigned int Player::play3d(
         paused,
         bus);
     if (newHandle != 0)
-        sound->handle.emplace_back(newHandle);
+        sound->handle.push_back({newHandle, MAX_DOUBLE});
     if (looping)
     {
         seek(newHandle, loopingStartAt);

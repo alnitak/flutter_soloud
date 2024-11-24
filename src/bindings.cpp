@@ -1,7 +1,10 @@
+#include "soloud/include/soloud_fft.h"
+#include "soloud_thread.h"
 #include "player.h"
 #include "analyzer.h"
 #include "synth/basic_wave.h"
 #include "waveform/waveform.h"
+
 #ifndef COMMON_H
 #include "common.h"
 #endif
@@ -9,9 +12,6 @@
 #ifdef __EMSCRIPTEN__
 #include <emscripten/emscripten.h>
 #endif
-
-#include "soloud/include/soloud_fft.h"
-#include "soloud_thread.h"
 
 #include <stdio.h>
 #include <iostream>
@@ -352,6 +352,84 @@ extern "C"
         if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
         return (PlayerErrors)player.get()->loadMem(uniqueName, buffer, length, loadIntoMem, *hash);
+    }
+
+    /// Set up an audio stream.
+    ///
+    /// [maxBufferSize] the max buffer size in bytes.
+    /// [sampleRate], [channels], [pcmFormat] should be set in the case the audio data is PCM.
+    /// [pcmFormat]: 0 = f32le, 1 = s8, 2 = s16le, 3 = s32le
+    FFI_PLUGIN_EXPORT enum PlayerErrors setBufferStream(
+        unsigned int *hash,
+        unsigned long maxBufferSize,
+        double bufferingTimeNeeds,
+        unsigned int sampleRate,
+        unsigned int channels,
+        int pcmFormat,
+        dartOnBufferingCallback_t onBufferingCallback)
+    {
+        std::lock_guard<std::mutex> guard_init(init_deinit_mutex);
+        std::lock_guard<std::mutex> guard_load(loadMutex);
+        if (player.get() == nullptr || !player.get()->isInited())
+            return backendNotInited;
+
+        unsigned int bytesPerSample;
+        switch (pcmFormat)
+        {
+        case 0:
+            bytesPerSample = 4;
+            break;
+        case 1:
+            bytesPerSample = 1;
+            break;
+        case 2:
+            bytesPerSample = 2;
+            break;
+        case 3:
+            bytesPerSample = 4;
+            break;
+        }
+        PCMformat dataType = {sampleRate, channels, bytesPerSample, (BufferPcmType)pcmFormat};
+        PlayerErrors e = (PlayerErrors)player.get()->setBufferStream(
+            *hash,
+            maxBufferSize,
+            bufferingTimeNeeds,
+            dataType,
+            onBufferingCallback);
+        return e;
+    }
+
+    /// Add a chunk of audio data to the buffer stream.
+    ///
+    /// [hash] the hash of the sound.
+    /// [data] the audio data to add.
+    /// [aDataLen] the length of [data].
+    FFI_PLUGIN_EXPORT enum PlayerErrors addAudioDataStream(
+        unsigned int hash,
+        const unsigned char *data,
+        unsigned int aDataLen)
+    {
+        if (player.get() == nullptr || !player.get()->isInited())
+            return backendNotInited;
+        return player.get()->addAudioDataStream(hash, data, aDataLen);
+    }
+
+    // Set the end of the data stream.
+    // [hash] the hash of the stream sound.
+    FFI_PLUGIN_EXPORT enum PlayerErrors setDataIsEnded(unsigned int hash)
+    {
+        if (player.get() == nullptr || !player.get()->isInited())
+            return backendNotInited;
+        return player.get()->setDataIsEnded(hash);
+    }
+
+    // Get the current buffer size in bytes of this sound with hash [hash].
+    // [hash] the hash of the stream sound.
+    FFI_PLUGIN_EXPORT enum PlayerErrors getBufferSize(unsigned int hash, unsigned int *sizeInBytes)
+    {
+        if (player.get() == nullptr || !player.get()->isInited())
+            return backendNotInited;
+        return player.get()->getBufferSize(hash, sizeInBytes);
     }
 
     /// Load a new waveform to be played once or multiple times later
