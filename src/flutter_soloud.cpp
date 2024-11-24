@@ -109,6 +109,8 @@
 #include "filters/filters.cpp"
 #include "filters/pitch_shift_filter.cpp"
 #include "filters/smbPitchShift.cpp"
+#include "filters/limiter.cpp"
+#include "filters/compressor.cpp"
 
 // A very short-lived native function.
 //

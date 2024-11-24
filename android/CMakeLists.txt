@@ -44,6 +44,8 @@ list(APPEND PLUGIN_SOURCES
   "${SRC_DIR}/filters/filters.cpp"
   "${SRC_DIR}/filters/pitch_shift_filter.cpp"
   "${SRC_DIR}/filters/smbPitchShift.cpp"
+  "${SRC_DIR}/filters/limiter.cpp"
+  "${SRC_DIR}/filters/compressor.cpp"
   ${TARGET_SOURCES}
 )
 

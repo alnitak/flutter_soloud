@@ -5,19 +5,6 @@
 
 #include "soloud.h"
 #include "soloud_filter.h"
-#include "pitch_shift_filter.h"
-#include "soloud_biquadresonantfilter.h"
-// #include "soloud_duckfilter.h"
-#include "soloud_eqfilter.h"
-#include "soloud_echofilter.h"
-#include "soloud_lofifilter.h"
-#include "soloud_flangerfilter.h"
-// #include "soloud_dcremovalfilter.h"
-#include "soloud_fftfilter.h"
-#include "soloud_bassboostfilter.h"
-#include "soloud_waveshaperfilter.h"
-#include "soloud_robotizefilter.h"
-#include "soloud_freeverbfilter.h"
 
 #include <vector>
 #include <string>
