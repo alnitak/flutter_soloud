@@ -103,23 +103,33 @@ class _LimiterExampleState extends State<LimiterExample> {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            Checkbox(
-              value: isFilterActive,
-              onChanged: (value) {
-                if (value!) {
-                  limiter.activate();
-                  limiter.wet.value = wet;
-                  limiter.threshold.value = threshold;
-                  limiter.makeupGain.value = makeupGain;
-                  limiter.kneeWidth.value = kneeWidth;
-                  limiter.releaseTime.value = releaseTime;
-                } else {
-                  limiter.deactivate();
-                }
-                setState(() {
-                  isFilterActive = value;
-                });
-              },
+            const Text(
+              'WARNING: lower the volume down!',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Activate Limiter'),
+                Checkbox(
+                  value: isFilterActive,
+                  onChanged: (value) {
+                    if (value!) {
+                      limiter.activate();
+                      limiter.wet.value = wet;
+                      limiter.threshold.value = threshold;
+                      limiter.makeupGain.value = makeupGain;
+                      limiter.kneeWidth.value = kneeWidth;
+                      limiter.releaseTime.value = releaseTime;
+                    } else {
+                      limiter.deactivate();
+                    }
+                    setState(() {
+                      isFilterActive = value;
+                    });
+                  },
+                ),
+              ],
             ),
 
             ElevatedButton(
@@ -133,9 +143,6 @@ class _LimiterExampleState extends State<LimiterExample> {
             ///
             ElevatedButton(
               onPressed: () {
-                SoLoud.instance.play(sound!, looping: true);
-                SoLoud.instance.play(sound!, looping: true);
-                SoLoud.instance.play(sound!, looping: true);
                 SoLoud.instance.play(sound!, looping: true);
                 SoLoud.instance.play(sound!, looping: true);
                 SoLoud.instance.play(sound!, looping: true);

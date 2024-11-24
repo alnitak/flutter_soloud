@@ -117,25 +117,31 @@ class _CompressorExampleState extends State<CompressorExample> {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            Checkbox(
-              value: isFilterActive,
-              onChanged: (value) {
-                if (value!) {
-                  compressor.activate();
-                  compressor.wet.value = wet;
-                  compressor.threshold.value = threshold;
-                  compressor.makeupGain.value = makeupGain;
-                  compressor.kneeWidth.value = kneeWidth;
-                  compressor.ratio.value = ratio;
-                  compressor.attackTime.value = attackTime;
-                  compressor.releaseTime.value = releaseTime;
-                } else {
-                  compressor.deactivate();
-                }
-                setState(() {
-                  isFilterActive = value;
-                });
-              },
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Activate Compressor'),
+                Checkbox(
+                  value: isFilterActive,
+                  onChanged: (value) {
+                    if (value!) {
+                      compressor.activate();
+                      compressor.wet.value = wet;
+                      compressor.threshold.value = threshold;
+                      compressor.makeupGain.value = makeupGain;
+                      compressor.kneeWidth.value = kneeWidth;
+                      compressor.ratio.value = ratio;
+                      compressor.attackTime.value = attackTime;
+                      compressor.releaseTime.value = releaseTime;
+                    } else {
+                      compressor.deactivate();
+                    }
+                    setState(() {
+                      isFilterActive = value;
+                    });
+                  },
+                ),
+              ],
             ),
 
             ElevatedButton(
