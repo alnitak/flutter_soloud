@@ -104,8 +104,8 @@ unsigned int BasicwaveInstance::getAudio(float *aBuffer, unsigned int aSamplesTo
                 double detunedPhase = mPhase * detuneFactor;
 
                 // Wrap detuned phase to [0.0, 1.0)
-                if (detunedPhase >= 1.0)
-                    detunedPhase -= 1.0;
+                // if (detunedPhase >= 1.0)
+                //     detunedPhase -= 1.0;
 
                 aBuffer[i] += SoLoud::Misc::generateWaveform(
                                 mParent->mWaveform, detunedPhase) *
