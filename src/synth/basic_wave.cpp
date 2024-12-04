@@ -32,6 +32,7 @@ BasicwaveInstance::BasicwaveInstance(Basicwave *aParent)
     mParent = aParent;
     mOffset = 0;
     mT = 0;
+    mPhase = 0;
     mCurrentFrequency = mParent->mFreq;
 }
 
@@ -61,7 +62,8 @@ unsigned int BasicwaveInstance::getAudio(float *aBuffer, unsigned int aSamplesTo
             mPhase += phaseIncrement;
 
             // Wrap the phase to keep it in [0.0, 1.0) range
-            if (mPhase >= 1.0) mPhase -= 1.0;
+            if (mPhase >= 1.0)
+                mPhase -= 1.0;
 
             aBuffer[i] = SoLoud::Misc::generateWaveform(
                              mParent->mWaveform,
@@ -70,7 +72,6 @@ unsigned int BasicwaveInstance::getAudio(float *aBuffer, unsigned int aSamplesTo
 
             mT += d;
         }
-        // mCurrentFrequency = targetFrequency;
     }
     else
     {
@@ -86,9 +87,10 @@ unsigned int BasicwaveInstance::getAudio(float *aBuffer, unsigned int aSamplesTo
             mPhase += phaseIncrement;
 
             // Wrap the phase to keep it in [0.0, 1.0) range
-            if (mPhase >= 1.0) mPhase -= 1.0;
+            if (mPhase >= 1.0)
+                mPhase -= 1.0;
 
-            double f = mParent->mFreq * (double)mOffset / mBaseSamplerate;
+            double f = mParent->mFreq * (double)mOffset / mSamplerate;
             aBuffer[i] = SoLoud::Misc::generateWaveform(
                              mParent->mWaveform, (double)fmod(f, 1.0)) *
                          mParent->mADSR.val(mT, 10000000000000.0);
