@@ -75,7 +75,7 @@ class _MyHomePageState extends State<MyHomePage> {
   Future<void> play(double frequency) async {
     try {
       if (!SoLoud.instance.isInitialized) {
-        await SoLoud.instance.init();
+        await SoLoud.instance.init(bufferSize: 512);
       }
 
       if (isPlaying) {
@@ -186,7 +186,7 @@ class _MyHomePageState extends State<MyHomePage> {
               Slider(
                 value: frequency,
                 min: 20,
-                max: 16000,
+                max: 2000,
                 onChanged: (value) {
                   setState(() {
                     frequency = value;

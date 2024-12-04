@@ -33,8 +33,10 @@ class Basicwave;
 class BasicwaveInstance : public SoLoud::AudioSourceInstance
 {
 	Basicwave *mParent;
-	int mOffset;
 	double mT;
+	double mPhase;
+	double mCurrentFrequency;
+	unsigned int mOffset;
 
 public:
 	BasicwaveInstance(Basicwave *aParent);
