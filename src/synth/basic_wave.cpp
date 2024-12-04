@@ -83,25 +83,36 @@ unsigned int BasicwaveInstance::getAudio(float *aBuffer, unsigned int aSamplesTo
             // Calculate the phase increment
             double phaseIncrement = mCurrentFrequency * d;
 
-            // Update the phase
+            // Update the primary phase
             mPhase += phaseIncrement;
 
-            // Wrap the phase to keep it in [0.0, 1.0) range
+            // Wrap the primary phase to [0.0, 1.0)
             if (mPhase >= 1.0)
                 mPhase -= 1.0;
 
-            double f = mParent->mFreq * (double)mOffset / mSamplerate;
+            // Generate the primary waveform
+            double f = mPhase;
             aBuffer[i] = SoLoud::Misc::generateWaveform(
-                             mParent->mWaveform, (double)fmod(f, 1.0)) *
-                         mParent->mADSR.val(mT, 10000000000000.0);
+                            mParent->mWaveform, f) *
+                        mParent->mADSR.val(mT, 10000000000000.0);
+
+            // Generate additional detuned waveforms
             for (int j = 0; j < 3; j++)
             {
-                f *= 2;
+                // Apply detuning for each additional oscillator
+                double detuneFactor = 1.0 + (j + 1) * mParent->mSuperwaveDetune;
+                double detunedPhase = mPhase * detuneFactor;
+
+                // Wrap detuned phase to [0.0, 1.0)
+                if (detunedPhase >= 1.0)
+                    detunedPhase -= 1.0;
+
                 aBuffer[i] += SoLoud::Misc::generateWaveform(
-                                  mParent->mWaveform, (double)fmod(mParent->mSuperwaveDetune * f, 1.0)) *
-                              mParent->mADSR.val(mT, 10000000000000.0) * mParent->mSuperwaveScale;
+                                mParent->mWaveform, detunedPhase) *
+                            mParent->mADSR.val(mT, 10000000000000.0) * mParent->mSuperwaveScale;
             }
-            mOffset++;
+
+            // Increment the time for ADSR
             mT += d;
         }
     }
