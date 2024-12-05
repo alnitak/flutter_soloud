@@ -25,26 +25,50 @@ freely, subject to the following restrictions:
 #include "basic_wave.h"
 #include "soloud_misc.h"
 
+#include <iostream>
+
 BasicwaveInstance::BasicwaveInstance(Basicwave *aParent)
 {
     mParent = aParent;
-    mOffset = 0;
     mT = 0;
+    mPhase = 0;
+    mCurrentFrequency = mParent->mFreq;
 }
 
 unsigned int BasicwaveInstance::getAudio(float *aBuffer, unsigned int aSamplesToRead, unsigned int aBufferSize)
 {
     unsigned int i;
     double d = 1.0 / mSamplerate;
+    double targetFrequency = mParent->mFreq;
+
+    // Number of steps for smoothing frequency
+    const unsigned int smoothingSteps = aSamplesToRead / 3;
+
+    // Calculate the smoothing factor dynamically
+    const double smoothingFactor = smoothingSteps > 0 ? (1.0 / smoothingSteps) : 1.0;
+
     if (!mParent->mSuperwave)
     {
         for (i = 0; i < aSamplesToRead; i++)
         {
+            // Smoothly adjust frequency
+            mCurrentFrequency += (targetFrequency - mCurrentFrequency) * smoothingFactor;
+
+            // Calculate the phase increment
+            double phaseIncrement = mCurrentFrequency * d;
+
+            // Update the phase
+            mPhase += phaseIncrement;
+
+            // Wrap the phase to keep it in [0.0, 1.0) range
+            if (mPhase >= 1.0)
+                mPhase -= 1.0;
+
             aBuffer[i] = SoLoud::Misc::generateWaveform(
                              mParent->mWaveform,
-                             (double)fmod(mParent->mFreq * (double)mOffset, 1.0)) *
+                             mPhase) *
                          mParent->mADSR.val(mT, 10000000000000.0);
-            mOffset++;
+
             mT += d;
         }
     }
@@ -52,18 +76,45 @@ unsigned int BasicwaveInstance::getAudio(float *aBuffer, unsigned int aSamplesTo
     {
         for (i = 0; i < aSamplesToRead; i++)
         {
+            // Smoothly adjust frequency
+            mCurrentFrequency += (targetFrequency - mCurrentFrequency) * smoothingFactor;
+
+            // Calculate the primary phase increment
+            double phaseIncrement = mCurrentFrequency * d;
+
+            // Update the primary phase
+            mPhase += phaseIncrement;
+
+            // Wrap the primary phase to [0.0, 1.0)
+            if (mPhase >= 1.0)
+                mPhase -= 1.0;
+
+            // Generate the primary waveform
             aBuffer[i] = SoLoud::Misc::generateWaveform(
-                             mParent->mWaveform, (double)fmod(mParent->mFreq * (double)mOffset, 1.0)) *
-                         mParent->mADSR.val(mT, 10000000000000.0);
-            double f = mParent->mFreq * (double)mOffset;
+                            mParent->mWaveform, mPhase) *
+                        mParent->mADSR.val(mT, 10000000000000.0);
+
+            // Generate additional harmonics
             for (int j = 0; j < 3; j++)
             {
-                f *= 2;
+                // Calculate the harmonic frequency
+                double harmonicFrequency = mCurrentFrequency * (2.0 + j * mParent->mSuperwaveDetune);
+
+                // Calculate the harmonic phase increment
+                double harmonicPhaseIncrement = harmonicFrequency * d;
+
+                // Update and wrap the harmonic phase
+                mHarmonicPhases[j] += harmonicPhaseIncrement;
+                if (mHarmonicPhases[j] >= 1.0)
+                    mHarmonicPhases[j] -= 1.0;
+
+                // Generate the harmonic waveform
                 aBuffer[i] += SoLoud::Misc::generateWaveform(
-                                  mParent->mWaveform, (double)fmod(mParent->mSuperwaveDetune * f, 1.0)) *
-                              mParent->mADSR.val(mT, 10000000000000.0) * mParent->mSuperwaveScale;
+                                mParent->mWaveform, mHarmonicPhases[j]) *
+                            mParent->mADSR.val(mT, 10000000000000.0) * mParent->mSuperwaveScale;
             }
-            mOffset++;
+
+            // Increment the time for ADSR
             mT += d;
         }
     }
@@ -112,7 +163,7 @@ void Basicwave::setSamplerate(double aSamplerate)
 
 void Basicwave::setFreq(double aFreq)
 {
-    mFreq = aFreq / mBaseSamplerate;
+    mFreq = aFreq;
 }
 
 void Basicwave::setSuperWave(bool aSuperwave)

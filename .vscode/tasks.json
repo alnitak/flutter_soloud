@@ -9,7 +9,7 @@
         },
         {
             "label": "compile linux debug",
-            "command": "cd ${workspaceFolder}/example; flutter build linux -t lib/buffer_stream/websocket.dart --debug",
+            "command": "cd ${workspaceFolder}/example; flutter build linux -t lib/waveform/waveform.dart --debug",
             "type": "shell"
         },
         {
@@ -29,7 +29,7 @@
         },
         {
             "label": "compile web debug",
-            "command": "cd ${workspaceFolder}/example; flutter run -d chrome --web-renderer canvaskit --web-browser-flag '--disable-web-security' -t lib/main.dart --release",
+            "command": "cd ${workspaceFolder}/example; flutter run -d chrome --web-renderer canvaskit --web-browser-flag '--disable-web-security' -t lib/waveform/waveform.dart --release",
             "type": "shell"
         },
         {

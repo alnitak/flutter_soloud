@@ -33,8 +33,10 @@ class Basicwave;
 class BasicwaveInstance : public SoLoud::AudioSourceInstance
 {
 	Basicwave *mParent;
-	int mOffset;
 	double mT;
+	double mPhase;
+	double mCurrentFrequency;
+	double mHarmonicPhases[3]; // Phases for the additional harmonics
 
 public:
 	BasicwaveInstance(Basicwave *aParent);
