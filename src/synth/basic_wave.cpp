@@ -30,7 +30,6 @@ freely, subject to the following restrictions:
 BasicwaveInstance::BasicwaveInstance(Basicwave *aParent)
 {
     mParent = aParent;
-    mOffset = 0;
     mT = 0;
     mPhase = 0;
     mCurrentFrequency = mParent->mFreq;
@@ -80,7 +79,7 @@ unsigned int BasicwaveInstance::getAudio(float *aBuffer, unsigned int aSamplesTo
             // Smoothly adjust frequency
             mCurrentFrequency += (targetFrequency - mCurrentFrequency) * smoothingFactor;
 
-            // Calculate the phase increment
+            // Calculate the primary phase increment
             double phaseIncrement = mCurrentFrequency * d;
 
             // Update the primary phase
@@ -91,24 +90,27 @@ unsigned int BasicwaveInstance::getAudio(float *aBuffer, unsigned int aSamplesTo
                 mPhase -= 1.0;
 
             // Generate the primary waveform
-            double f = mPhase;
             aBuffer[i] = SoLoud::Misc::generateWaveform(
-                            mParent->mWaveform, f) *
+                            mParent->mWaveform, mPhase) *
                         mParent->mADSR.val(mT, 10000000000000.0);
 
-            // Generate additional detuned waveforms
+            // Generate additional harmonics
             for (int j = 0; j < 3; j++)
             {
-                // Apply detuning for each additional oscillator
-                double detuneFactor = 1.0 + (j + 1) * mParent->mSuperwaveDetune;
-                double detunedPhase = mPhase * detuneFactor;
+                // Calculate the harmonic frequency
+                double harmonicFrequency = mCurrentFrequency * (2.0 + j * mParent->mSuperwaveDetune);
 
-                // Wrap detuned phase to [0.0, 1.0)
-                // if (detunedPhase >= 1.0)
-                //     detunedPhase -= 1.0;
+                // Calculate the harmonic phase increment
+                double harmonicPhaseIncrement = harmonicFrequency * d;
 
+                // Update and wrap the harmonic phase
+                mHarmonicPhases[j] += harmonicPhaseIncrement;
+                if (mHarmonicPhases[j] >= 1.0)
+                    mHarmonicPhases[j] -= 1.0;
+
+                // Generate the harmonic waveform
                 aBuffer[i] += SoLoud::Misc::generateWaveform(
-                                mParent->mWaveform, detunedPhase) *
+                                mParent->mWaveform, mHarmonicPhases[j]) *
                             mParent->mADSR.val(mT, 10000000000000.0) * mParent->mSuperwaveScale;
             }
 
