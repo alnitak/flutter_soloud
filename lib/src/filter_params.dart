@@ -149,7 +149,7 @@ const FxParams fxLimiter = (
 /// Compressor filter
 @Deprecated('Please use the SoLoud.filters or AudioSource.filters.')
 const FxParams fxCompressor = (
-  title: 'Limiter',
+  title: 'Compressor',
   names: [
     'Wet',
     'Threshold',
