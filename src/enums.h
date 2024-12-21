@@ -3,6 +3,8 @@
 #ifndef ENUMS_H
 #define ENUMS_H
 
+#include <stdbool.h> // for ffigen to not complain about bool type
+
 /// Possible player errors.
 ///
 /// WARNING: Keep these in sync with `lib/src/enums.dart`.
@@ -125,7 +127,7 @@ typedef struct PCMformat
   unsigned int sampleRate;
   unsigned int channels;
   unsigned int bytesPerSample;
-  BufferPcmType dataType;
+  enum BufferPcmType dataType;
 } PCMformat;
 
 
