@@ -525,7 +525,8 @@ abstract class FlutterSoLoud {
   /// ticking the sound even if it's inaudible.
   ///
   /// [handle] handle to check.
-  /// [mustTick] whether to keep ticking or not when the sound becomes inaudible.
+  /// [mustTick] whether to keep ticking or not when the sound becomes
+  /// inaudible.
   /// [kill] whether to kill the sound or not when the sound becomes inaudible.
   @mustBeOverridden
   void setInaudibleBehavior(SoundHandle handle, bool mustTick, bool kill);
