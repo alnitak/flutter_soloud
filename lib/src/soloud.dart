@@ -1611,6 +1611,51 @@ interface class SoLoud {
     _controller.soLoudFFI.setProtectVoice(handle, protect);
   }
 
+  /// Set the inaudible behavior of a live 3D sound. By default,
+  /// if a sound is inaudible, it's paused, and will resume when it
+  /// becomes audible again. With this function you can tell SoLoud
+  /// to either kill the sound if it becomes inaudible, or to keep
+  /// ticking the sound even if it's inaudible.
+  ///
+  /// [handle] handle to check.
+  /// [mustTick] whether to keep ticking or not when the sound becomes
+  /// inaudible.
+  /// [kill] whether to kill the sound or not when the sound becomes inaudible.
+  ///
+  /// **Example**:
+  /// ```dart
+  /// final sound = SoLoud.instance.load('path/to/sound.mp3');
+  /// final handle = SoLoud.instance.play3d(sound, 0, 0, 0);
+  /// double xPos = 0;
+  ///
+  /// // set the sound to be inaudible if it's more than 10 units away
+  /// SoLoud.instance.set3dSourceMinMaxDistance(handle, 0, 10);
+  /// // set the attenuation to `LINEAR_DISTANCE` and when its position
+  /// // is 10 units away, the volume will be 0 (inaudible).
+  /// SoLoud.instance.set3dSourceAttenuation(handle, 2, 1);
+  ///
+  /// // if the sound is inaudible, it will be killed and the [handle]
+  /// // becomes invalid.
+  /// SoLoud.instance.setInaudibleBehavior(handle, false, true);
+  ///
+  /// // here we shift the sound position away (up to you to cancel the Timer!)
+  /// // When [xPos] reaches 10 units, the handle will stop.
+  /// Timer.periodic(
+  ///   const Duration(milliseconds: 100),
+  ///   (timer) {
+  ///       SoLoud.instance
+  ///           .set3dSourcePosition(handle, xPos += 0.1, 0, 0);
+  ///   },
+  /// );
+  /// ```
+  @mustBeOverridden
+  void setInaudibleBehavior(SoundHandle handle, bool mustTick, bool kill) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    _controller.soLoudFFI.setInaudibleBehavior(handle, mustTick, kill);
+  }
+
   /// Gets the current maximum active voice count.
   int getMaxActiveVoiceCount() {
     if (!isInitialized) {
@@ -2289,6 +2334,7 @@ interface class SoLoud {
 
   /// Sets the minimum and maximum distance parameters
   /// of a live 3D audio source.
+  /// Default values are 1 and 1000000.
   void set3dSourceMinMaxDistance(
       SoundHandle handle, double minDistance, double maxDistance) {
     _controller.soLoudFFI
@@ -2304,6 +2350,7 @@ interface class SoLoud {
   /// 2 LINEAR_DISTANCE       Linear distance attenuation model
   /// 3 EXPONENTIAL_DISTANCE  Exponential distance attenuation model
   /// ```
+  /// The default values are NO_ATTENUATION and 1.
   ///
   /// See https://solhsa.com/soloud/concepts3d.html.
   void set3dSourceAttenuation(

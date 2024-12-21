@@ -750,6 +750,11 @@ void Player::setProtectVoice(SoLoud::handle handle, bool protect)
     soloud.setProtectVoice(handle, protect);
 }
 
+void Player::setInaudibleBehavior(SoLoud::handle handle, bool mustTick, bool kill)
+{
+    soloud.setInaudibleBehavior(handle, mustTick, kill);
+}
+
 unsigned int Player::getMaxActiveVoiceCount()
 {
     return soloud.getMaxActiveVoiceCount();

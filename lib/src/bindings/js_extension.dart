@@ -262,6 +262,9 @@ external int wasmGetVoiceCount();
 @JS('Module._getProtectVoice')
 external int wasmGetProtectVoice(int handle);
 
+@JS('Module._setInaudibleBehavior')
+external void wasmSetInaudibleBehavior(int handle, int mustTick, int kill);
+
 @JS('Module._setProtectVoice')
 external void wasmSetProtectVoice(int handle, int protect);
 
