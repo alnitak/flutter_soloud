@@ -1626,17 +1626,17 @@ interface class SoLoud {
   /// final sound = SoLoud.instance.load('path/to/sound.mp3');
   /// final handle = SoLoud.instance.play3d(sound, 0, 0, 0);
   /// double xPos = 0;
-  /// 
+  ///
   /// // set the sound to be inaudible if it's more than 10 units away
   /// SoLoud.instance.set3dSourceMinMaxDistance(handle, 0, 10);
   /// // set the attenuation to `LINEAR_DISTANCE` and when its position
   /// // is 10 units away, the volume will be 0 (inaudible).
   /// SoLoud.instance.set3dSourceAttenuation(handle, 2, 1);
-  /// 
+  ///
   /// // if the sound is inaudible, it will be killed and the [handle]
   /// // becomes invalid.
   /// SoLoud.instance.setInaudibleBehavior(handle, false, true);
-  /// 
+  ///
   /// // here we shift the sound position away (up to you to cancel the Timer!)
   /// // When [xPos] reaches 10 units, the handle will stop.
   /// Timer.periodic(
