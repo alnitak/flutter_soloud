@@ -11,6 +11,7 @@
 #include "../enums.h"
 #include "../active_sound.h"
 #include "buffer.h"
+#include "opus_stream_decoder.h"
 
 class Player;
 
@@ -40,13 +41,13 @@ namespace SoLoud
     // Used to access the AudioSource this stream belongs to
     ActiveSound* mParent;
     dartOnBufferingCallback_t mOnBufferingCallback;
-    enum Endianness mEndianness; // TODO?
     unsigned int mMaxBufferSize;
     unsigned int mSampleCount;
     SoLoud::time mBufferingTimeNeeds;
     PCMformat mPCMformat;
     Buffer mBuffer;
     bool dataIsEnded;
+    std::unique_ptr<OpusDecoderWrapper> decoder;
 
     BufferStream();
     virtual ~BufferStream();

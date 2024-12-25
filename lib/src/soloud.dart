@@ -686,13 +686,43 @@ interface class SoLoud {
   AudioSource setBufferStream({
     int maxBufferSize = 1024 * 1024 * 100, // 100 MB in bytes
     double bufferingTimeNeeds = 2, // 2 seconds of data needed to un-pause
-    int sampleRate = 22050,
+    int sampleRate = 24000,
     Channels channels = Channels.mono,
-    BufferPcmType pcmFormat = BufferPcmType.s16le,
+    BufferType pcmFormat = BufferType.s16le,
     void Function(bool isBuffering, int handle, double time)? onBuffering,
   }) {
+
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
+    }
+    
+    final opusA = () {
+      if (pcmFormat == BufferType.opus) {
+        return sampleRate == 48000 ||
+            sampleRate == 24000 ||
+            sampleRate == 16000 ||
+            sampleRate == 12000 ||
+            sampleRate == 8000;
+      }
+      return true;
+    }();
+    final opusB = () {
+      if (pcmFormat == BufferType.opus) {
+        return channels == Channels.mono || channels == Channels.stereo;
+      }
+      return true;
+    }();
+    assert(
+      opusA,
+      'Opus format only supports 48, 24, 16, 12 and 8 KHz sample rates',
+    );
+    assert(
+      opusB,
+      'Only mono and stereo channels are supported for Opus format',
+    );
+
+    if (opusA || opusB) {
+      throw const SoLoudWrongOpusParamsException();
     }
 
     final ret = SoLoudController().soLoudFFI.setBufferStream(

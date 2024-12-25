@@ -376,20 +376,21 @@ extern "C"
         unsigned int bytesPerSample;
         switch (pcmFormat)
         {
-        case 0:
+        case BufferType::OPUS:
+        case BufferType::PCM_F32LE:
             bytesPerSample = 4;
             break;
-        case 1:
+        case BufferType::PCM_S8:
             bytesPerSample = 1;
             break;
-        case 2:
+        case BufferType::PCM_S16LE:
             bytesPerSample = 2;
             break;
-        case 3:
+        case BufferType::PCM_S32LE:
             bytesPerSample = 4;
             break;
         }
-        PCMformat dataType = {sampleRate, channels, bytesPerSample, (BufferPcmType)pcmFormat};
+        PCMformat dataType = {sampleRate, channels, bytesPerSample, (BufferType)pcmFormat};
         PlayerErrors e = (PlayerErrors)player.get()->setBufferStream(
             *hash,
             maxBufferSize,

@@ -61,11 +61,17 @@ class WebsocketExample extends StatefulWidget {
 
 class _WebsocketExampleState extends State<WebsocketExample> {
   final websocketUri = 'ws://192.168.1.2:8080/';
-  final sampleRate = [11025, 22050, 44100, 48000];
-  final format = ['f32le', 's8', 's16le', 's32le'];
-  int srId = 2;
+  // Supported Opus sample rates:
+  // 48000
+  // 24000
+  // 16000
+  // 12000
+  // 8000
+  final sampleRate = [8000, 12000, 16000, 24000, 44100, 48000];
+  final format = ['f32le', 's8', 's16le', 's32le', 'opus'];
+  int srId = 5;
   int chId = 0;
-  int fmtId = 0;
+  int fmtId = 4;
   WebSocketChannel? channel;
   AudioSource? currentSound;
   SoundHandle? handle;
@@ -185,11 +191,11 @@ class _WebsocketExampleState extends State<WebsocketExample> {
               await SoLoud.instance.disposeAllSources();
 
               currentSound = SoLoud.instance.setBufferStream(
-                maxBufferSize: 1024 * 1024 * 600, // 150 MB
-                bufferingTimeNeeds: 3,
+                maxBufferSize: 1024 * 1024 * 200, // 200 MB
+                bufferingTimeNeeds: 0.5,
                 sampleRate: sampleRate[srId],
                 channels: Channels.values[chId],
-                pcmFormat: BufferPcmType.values[fmtId],
+                pcmFormat: BufferType.values[fmtId],
                 onBuffering: (isBuffering, handle, time) async {
                   debugPrint('started buffering? $isBuffering  with '
                       'handle: $handle at time $time');
@@ -235,6 +241,11 @@ class _WebsocketExampleState extends State<WebsocketExample> {
                   numberOfChunks++;
                   byteSize += (message as List<int>).length;
 
+                  // start playing at first audio chunk received
+                  if (numberOfChunks == 1) {
+                    handle = await SoLoud.instance.play(currentSound!);
+                  }
+
                   try {
                     SoLoud.instance.addAudioDataStream(
                       currentSound!,
@@ -271,7 +282,6 @@ class _WebsocketExampleState extends State<WebsocketExample> {
                     volume: 0.6,
                     // looping: true,
                   );
-                  print('handle: $handle');
                   Timer.periodic(const Duration(milliseconds: 1000), (timer) {
                     if (currentSound == null ||
                         SoLoud.instance.getIsValidVoiceHandle(handle!) ==

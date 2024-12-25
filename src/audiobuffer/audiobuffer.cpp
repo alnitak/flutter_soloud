@@ -1,8 +1,8 @@
-
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <mutex>
+#include "opus_stream_decoder.h"
 
 #include "audiobuffer.h"
 
@@ -112,7 +112,6 @@ namespace SoLoud
 	{
 		mSampleCount = 0;
 		dataIsEnded = false;
-		mEndianness = Endianness::BUFFER_LITTLE_ENDIAN; // TODO?
 		mThePlayer = aPlayer;
 		mParent = aParent;
 		mPCMformat.sampleRate = pcmFormat.sampleRate;
@@ -125,6 +124,16 @@ namespace SoLoud
 		mChannels = pcmFormat.channels;
 		mBaseSamplerate = (float)pcmFormat.sampleRate;
 		mOnBufferingCallback = onBufferingCallback;
+
+		decoder = nullptr;
+		if (pcmFormat.dataType == OPUS)
+		{
+			decoder = std::make_unique<OpusDecoderWrapper>(
+				pcmFormat.sampleRate, pcmFormat.sampleRate,
+				pcmFormat.channels, pcmFormat.channels);
+				// pcmFormat.sampleRate, mThePlayer->mSampleRate,
+				// pcmFormat.channels, mThePlayer->mChannels);
+		}
 	}
 
 	void BufferStream::setDataIsEnded()
@@ -138,10 +147,24 @@ namespace SoLoud
 		{
 			return streamEndedAlready;
 		}
-
+		printf("BufferStream::addData: %d\n", aDataLen);
 		unsigned int bytesWritten = 0;
-		// add PCM data to the buffer
-		bytesWritten = mBuffer.addData(mPCMformat, aData, aDataLen / mPCMformat.bytesPerSample);
+
+		if (mPCMformat.dataType == BufferType::OPUS)
+		{
+			// Decode the Opus data
+			auto newData = decoder.get()->decode(
+				reinterpret_cast<const unsigned char*>(aData),
+				aDataLen);
+			if (newData.size() > 0)
+				bytesWritten = mBuffer.addData(BufferType::OPUS, newData.data(), newData.size());
+			else 
+				return noError;
+		}
+		else
+		{
+			bytesWritten = mBuffer.addData(mPCMformat.dataType, aData, aDataLen / mPCMformat.bytesPerSample);
+		}
 
 		mSampleCount += bytesWritten / mPCMformat.bytesPerSample;
 

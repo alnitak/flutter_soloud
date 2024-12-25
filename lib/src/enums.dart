@@ -316,7 +316,7 @@ enum Channels {
 /// The PCM types.
 ///
 /// WARNING: Keep these in sync with `src/enums.h`.
-enum BufferPcmType {
+enum BufferType {
   /// 32-bit floating point, little-endian.
   f32le(0),
 
@@ -327,27 +327,32 @@ enum BufferPcmType {
   s16le(2),
 
   /// 32-bit signed, little-endian.
-  s32le(3);
+  s32le(3),
+  
+  /// Opus encoded audio.
+  opus(4);
 
   /// The integer value of the PCM type.
   final int value;
 
   /// Constructs a valid PCM type with [value].
   // ignore: sort_constructors_first
-  const BufferPcmType(this.value);
+  const BufferType(this.value);
 
   /// Returns a human-friendly channel name.
   @override
   String toString() {
     switch (this) {
-      case BufferPcmType.s8:
+      case BufferType.s8:
         return 'Signed 8-bit';
-      case BufferPcmType.s16le:
+      case BufferType.s16le:
         return 'Little Endian Signed 16-bit';
-      case BufferPcmType.s32le:
+      case BufferType.s32le:
         return 'Little Endian Signed 32-bit';
-      case BufferPcmType.f32le:
+      case BufferType.f32le:
         return 'Little Endian Float 32-bit';
+      case BufferType.opus:
+        return 'Opus Encoded Audio';
     }
   }
 }

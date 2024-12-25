@@ -111,13 +111,14 @@ typedef enum FilterType
 } FilterType_t;
 
 /// WARNING: Keep these in sync with `lib/src/enums.dart`.
-typedef enum BufferPcmType
+typedef enum BufferType
 {
     PCM_F32LE = 0,
     PCM_S8 = 1,
     PCM_S16LE = 2,
     PCM_S32LE = 3,
-} BufferPcmType_t;
+    OPUS = 4,
+} BufferType_t;
 
 
 typedef struct PCMformat
@@ -125,7 +126,7 @@ typedef struct PCMformat
   unsigned int sampleRate;
   unsigned int channels;
   unsigned int bytesPerSample;
-  BufferPcmType dataType;
+  BufferType dataType;
 } PCMformat;
 
 
