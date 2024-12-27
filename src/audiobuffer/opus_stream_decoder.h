@@ -6,14 +6,6 @@
 #include <fstream>
 #include <stdexcept>
 #include <cstring>
-#include "opus/opus.h"
-#include "speex/speex_resampler.h"
-
-#include <vector>
-#include <iostream>
-#include <fstream>
-#include <stdexcept>
-#include <cstring>
 #include <deque>
 #include "opus/opus.h"
 #include "ogg/ogg.h"

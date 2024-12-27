@@ -721,7 +721,7 @@ interface class SoLoud {
       'Only mono and stereo channels are supported for Opus format',
     );
 
-    if (opusA || opusB) {
+    if (!opusA || !opusB) {
       throw const SoLoudWrongOpusParamsException();
     }
 

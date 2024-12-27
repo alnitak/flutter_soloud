@@ -27,6 +27,7 @@ endif ()
 
 include_directories(${SRC_DIR}/soloud/include)
 include_directories(${SRC_DIR}/soloud/src)
+include_directories(${SRC_DIR})
 include (src.cmake)
 message("**************** SOLOUD SRC.CMAKE 2  ${TARGET_NAME}")
 
@@ -66,7 +67,32 @@ target_compile_definitions(${PLUGIN_NAME} PRIVATE FLUTTER_PLUGIN_IMPL)
 target_include_directories(${PLUGIN_NAME} INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_link_libraries(${PLUGIN_NAME} PRIVATE ${log-lib} android)
 
-target_compile_options("${PLUGIN_NAME}" PRIVATE -Wall -Wno-error -fPIC -O0) #  -ldl -lpthread -lm
+# Add opus library
+set(OPUS_LIBRARY ${CMAKE_CURRENT_SOURCE_DIR}/libs/${ANDROID_ABI}/libopus.so)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../src/opus)
+target_link_libraries(${PLUGIN_NAME} PRIVATE ${OPUS_LIBRARY})
+set(INSTALL_BUNDLE_LIB_DIR "${CMAKE_INSTALL_PREFIX}/lib")
+
+# Add ogg library
+set(OGG_LIBRARY ${CMAKE_CURRENT_SOURCE_DIR}/libs/${ANDROID_ABI}/libogg.so)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../src/ogg)
+target_link_libraries(${PLUGIN_NAME} PRIVATE ${OGG_LIBRARY})
+set(INSTALL_BUNDLE_LIB_DIR "${CMAKE_INSTALL_PREFIX}/lib")
+
+# Add speexdsp library
+set(SPEEXDSP_LIBRARY ${CMAKE_CURRENT_SOURCE_DIR}/libs/${ANDROID_ABI}/libspeexdsp.so)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../src/speexdsp)
+target_link_libraries(${PLUGIN_NAME} PRIVATE ${SPEEXDSP_LIBRARY})
+set(INSTALL_BUNDLE_LIB_DIR "${CMAKE_INSTALL_PREFIX}/lib")
+
+
+
+# target_compile_definitions(flutter_soloud PUBLIC DART_SHARED_LIB)
+
+# Support Android 15 16k page size
+# target_link_options(flutter_soloud PRIVATE "-Wl,-z,max-page-size=16384")
+
+target_compile_options("${PLUGIN_NAME}" PRIVATE -z max-page-size=16384 -Wall -Wno-error -fPIC -O3) #  -ldl -lpthread -lm
 
 # List of absolute paths to libraries that should be bundled with the plugin.
 set(flutter_soloud_bundled_libraries

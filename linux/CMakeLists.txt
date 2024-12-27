@@ -62,23 +62,23 @@ target_link_libraries(${PLUGIN_NAME} PRIVATE flutter)
 target_link_libraries(${PLUGIN_NAME} PRIVATE PkgConfig::GTK)
 
 # Add opus library
-set(OPUS_LIBRARY ${CMAKE_CURRENT_SOURCE_DIR}/libopus.so.0.10.1)
+set(OPUS_LIBRARY ${CMAKE_CURRENT_SOURCE_DIR}/libopus.so)
 # Link the library to your target
 target_link_libraries(${PLUGIN_NAME} PRIVATE ${OPUS_LIBRARY})
 # Set the directory where the library will be installed
 set(INSTALL_BUNDLE_LIB_DIR "${CMAKE_INSTALL_PREFIX}/lib")
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../src/opus)
 
-# Add opusfile library
-set(OPUS_FILE_LIBRARY ${CMAKE_CURRENT_SOURCE_DIR}/libogg.so.0.8.5)
+# Add ogg library
+set(OGG_LIBRARY ${CMAKE_CURRENT_SOURCE_DIR}/libogg.so)
 # Link the library to your target
-target_link_libraries(${PLUGIN_NAME} PRIVATE ${OPUS_FILE_LIBRARY})
+target_link_libraries(${PLUGIN_NAME} PRIVATE ${OGG_LIBRARY})
 # Set the directory where the library will be installed
 set(INSTALL_BUNDLE_LIB_DIR "${CMAKE_INSTALL_PREFIX}/lib")
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../src/ogg)
 
 # Add speexdsp library
-set(SPEEXDSP_LIBRARY ${CMAKE_CURRENT_SOURCE_DIR}/libspeexdsp.so.1.5.2)
+set(SPEEXDSP_LIBRARY ${CMAKE_CURRENT_SOURCE_DIR}/libspeexdsp)
 # Link the library to your target
 target_link_libraries(${PLUGIN_NAME} PRIVATE ${SPEEXDSP_LIBRARY})
 # Set the directory where the library will be installed

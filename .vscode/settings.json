@@ -107,5 +107,6 @@
         "netfwd": "cpp",
         "timer": "cpp",
         "text_encoding": "cpp"
-    }
+    },
+    "java.configuration.updateBuildConfiguration": "interactive"
 }
