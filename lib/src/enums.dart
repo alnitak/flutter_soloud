@@ -328,7 +328,7 @@ enum BufferType {
 
   /// 32-bit signed, little-endian.
   s32le(3),
-  
+
   /// Opus encoded audio.
   opus(4);
 

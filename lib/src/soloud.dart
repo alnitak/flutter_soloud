@@ -691,11 +691,10 @@ interface class SoLoud {
     BufferType pcmFormat = BufferType.s16le,
     void Function(bool isBuffering, int handle, double time)? onBuffering,
   }) {
-
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
-    
+
     final opusA = () {
       if (pcmFormat == BufferType.opus) {
         return sampleRate == 48000 ||
