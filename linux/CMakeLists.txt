@@ -27,6 +27,7 @@ endif ()
 
 include_directories(${SRC_DIR}/soloud/include)
 include_directories(${SRC_DIR}/soloud/src)
+include_directories(${SRC_DIR})
 include (src.cmake)
 message("**************** SOLOUD SRC.CMAKE 2  ${TARGET_NAME}")
 
