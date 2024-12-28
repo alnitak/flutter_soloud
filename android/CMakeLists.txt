@@ -79,12 +79,6 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../src/ogg)
 target_link_libraries(${PLUGIN_NAME} PRIVATE ${OGG_LIBRARY})
 set(INSTALL_BUNDLE_LIB_DIR "${CMAKE_INSTALL_PREFIX}/lib")
 
-# Add speexdsp library
-set(SPEEXDSP_LIBRARY ${CMAKE_CURRENT_SOURCE_DIR}/libs/${ANDROID_ABI}/libspeexdsp.so)
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../src/speexdsp)
-target_link_libraries(${PLUGIN_NAME} PRIVATE ${SPEEXDSP_LIBRARY})
-set(INSTALL_BUNDLE_LIB_DIR "${CMAKE_INSTALL_PREFIX}/lib")
-
 
 
 # target_compile_definitions(flutter_soloud PUBLIC DART_SHARED_LIB)

@@ -129,10 +129,7 @@ namespace SoLoud
 		if (pcmFormat.dataType == OPUS)
 		{
 			decoder = std::make_unique<OpusDecoderWrapper>(
-				pcmFormat.sampleRate, pcmFormat.sampleRate,
-				pcmFormat.channels, pcmFormat.channels);
-				// pcmFormat.sampleRate, mThePlayer->mSampleRate,
-				// pcmFormat.channels, mThePlayer->mChannels);
+				pcmFormat.sampleRate, pcmFormat.channels);
 		}
 	}
 

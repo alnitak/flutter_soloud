@@ -42,7 +42,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   /// Initialize the player.
-  await SoLoud.instance.init();
+  await SoLoud.instance.init(sampleRate: 24000);
 
   runApp(
     const MaterialApp(

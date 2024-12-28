@@ -77,14 +77,6 @@ target_link_libraries(${PLUGIN_NAME} PRIVATE ${OGG_LIBRARY})
 set(INSTALL_BUNDLE_LIB_DIR "${CMAKE_INSTALL_PREFIX}/lib")
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../src/ogg)
 
-# Add speexdsp library
-set(SPEEXDSP_LIBRARY ${CMAKE_CURRENT_SOURCE_DIR}/libspeexdsp)
-# Link the library to your target
-target_link_libraries(${PLUGIN_NAME} PRIVATE ${SPEEXDSP_LIBRARY})
-# Set the directory where the library will be installed
-set(INSTALL_BUNDLE_LIB_DIR "${CMAKE_INSTALL_PREFIX}/lib")
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../src/speex)
-
 
 target_compile_options("${PLUGIN_NAME}" PRIVATE -Wall -Wno-error -Wno-vla -fPIC -O3 -msse3 -msse2) #  -ldl -lpthread -lm
 
