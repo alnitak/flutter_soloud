@@ -43,8 +43,7 @@ Flutter audio plugin using SoLoud library and FFI
     "CLANG_CXX_LANGUAGE_STANDARD" => "c++17",
     "CLANG_CXX_LIBRARY" => "libc++"
   }
+  s.ios.vendored_libraries = 'libs/libopus_iOS.a', 'libs/libogg_iOS.a'
   s.swift_version = '5.0'
-  # spec.framework      = 'SystemConfiguration'
   s.ios.framework  = ['AudioToolbox', 'AVFAudio']
-  # spec.osx.framework  = 'AppKit'
 end

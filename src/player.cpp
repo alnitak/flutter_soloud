@@ -203,6 +203,10 @@ const std::string Player::getErrorString(PlayerErrors errorCode) const
         return "error: hash is not a buffer stream!";
     case streamEndedAlready:
         return "error: trying to add PCM data but the stream is marked to be ended!";
+    case failedToCreateOpusDecoder:
+        return "error: failed to create Opus decoder!";
+    case failedToDecodeOpusPacket:
+        return "error: failed to decode Opus packet!";
     }
     return "Other error";
 }
