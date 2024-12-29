@@ -51,7 +51,7 @@ namespace SoLoud
 
     BufferStream();
     virtual ~BufferStream();
-    void setBufferStream(
+    PlayerErrors setBufferStream(
         Player *aPlayer,
         ActiveSound *aParent,
         unsigned int maxBufferSize = 1024 * 1024 * 100, // 100 Mbytes

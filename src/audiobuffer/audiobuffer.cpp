@@ -102,7 +102,7 @@ namespace SoLoud
 		stop();
 	}
 
-	void BufferStream::setBufferStream(
+	PlayerErrors BufferStream::setBufferStream(
 		Player *aPlayer,
 		ActiveSound *aParent,
 		unsigned int maxBufferSize,
@@ -128,9 +128,16 @@ namespace SoLoud
 		decoder = nullptr;
 		if (pcmFormat.dataType == OPUS)
 		{
-			decoder = std::make_unique<OpusDecoderWrapper>(
-				pcmFormat.sampleRate, pcmFormat.channels);
+			try {
+				decoder = std::make_unique<OpusDecoderWrapper>(
+					pcmFormat.sampleRate, pcmFormat.channels);
+			}
+			catch (const std::exception &e)
+			{
+				return PlayerErrors::failedToCreateOpusDecoder;
+			}
 		}
+		return PlayerErrors::noError;
 	}
 
 	void BufferStream::setDataIsEnded()
@@ -142,7 +149,7 @@ namespace SoLoud
 	{
 		if (dataIsEnded)
 		{
-			return streamEndedAlready;
+			return PlayerErrors::streamEndedAlready;
 		}
 		printf("BufferStream::addData: %d\n", aDataLen);
 		unsigned int bytesWritten = 0;
@@ -150,13 +157,18 @@ namespace SoLoud
 		if (mPCMformat.dataType == BufferType::OPUS)
 		{
 			// Decode the Opus data
-			auto newData = decoder.get()->decode(
-				reinterpret_cast<const unsigned char*>(aData),
-				aDataLen);
-			if (newData.size() > 0)
-				bytesWritten = mBuffer.addData(BufferType::OPUS, newData.data(), newData.size());
-			else 
-				return noError;
+			try {
+				auto newData = decoder.get()->decode(
+					reinterpret_cast<const unsigned char *>(aData),
+					aDataLen);
+				if (newData.size() > 0)
+					bytesWritten = mBuffer.addData(BufferType::OPUS, newData.data(), newData.size());
+				else
+					return PlayerErrors::noError;
+			} catch (const std::exception &e)
+			{
+				return PlayerErrors::failedToDecodeOpusPacket;
+			}
 		}
 		else
 		{
@@ -227,10 +239,10 @@ namespace SoLoud
 		if (bytesWritten < aDataLen / mPCMformat.bytesPerSample)
 		{
 			dataIsEnded = true;
-			return pcmBufferFull;
+			return PlayerErrors::pcmBufferFull;
 		}
 
-		return noError;
+		return PlayerErrors::noError;
 	}
 
 	AudioSourceInstance *BufferStream::createInstance()

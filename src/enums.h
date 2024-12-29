@@ -56,7 +56,12 @@ typedef enum PlayerErrors
     /// Trying to add PCM data but the stream is marked to be ended
     /// already, by the user or when the stream reached its maximum
     /// capacity, in this case the stream is automatically marked to be ended.
-    streamEndedAlready = 22
+    streamEndedAlready = 22,
+    /// Failed to create Opus decoder.
+    failedToCreateOpusDecoder = 23,
+    /// Failed to decode Opus packet.
+    failedToDecodeOpusPacket = 24
+
 } PlayerErrors_t;
 
 /// Possible read sample errors

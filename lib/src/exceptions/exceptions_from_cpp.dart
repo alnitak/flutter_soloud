@@ -284,3 +284,27 @@ class SoLoudStreamEndedAlreadyCppException extends SoLoudCppException {
       'capacity, in this case the stream is automatically marked to be ended. '
       '(on the C++ side).';
 }
+
+/// An error occurred while creating an Opus decoder.
+class SoLoudFailedToCreateOpusDecoderCppException extends SoLoudCppException {
+  /// Creates a new [SoLoudFailedToCreateOpusDecoderCppException].
+  const SoLoudFailedToCreateOpusDecoderCppException([super.message]);
+
+  @override
+  String get description =>
+      'Failed to create an Opus decoder. This could happen when some internal '
+      'error occurred while creating the decoder. Maybe not enough memory. '
+      '(on the C++ side).';
+}
+
+/// An error occurred while decoding Opus data.
+/// This could happen when the data is corrupted.
+class SoLoudFailedToDecodeOpusPacketCppException extends SoLoudCppException {
+  /// Creates a new [SoLoudFailedToDecodeOpusPacketCppException].
+  const SoLoudFailedToDecodeOpusPacketCppException([super.message]);
+
+  @override
+  String get description =>
+      'Failed to decode Opus data. This could happen when the data is '
+      'corrupted. (on the C++ side).';
+}
