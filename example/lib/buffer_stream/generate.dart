@@ -186,15 +186,15 @@ class _GenerateState extends State<Generate> {
                 /// Setup the buffer stream for each streams.
                 tone = SoLoud.instance.setBufferStream(
                   maxBufferSize: 1024 * 1024 * 1,
-                  pcmFormat: BufferPcmType.s8,
+                  format: BufferType.s8,
                 );
                 bouncing = SoLoud.instance.setBufferStream(
                   maxBufferSize: 1024 * 1024 * 1,
-                  pcmFormat: BufferPcmType.s8,
+                  format: BufferType.s8,
                 );
                 siren = SoLoud.instance.setBufferStream(
                   maxBufferSize: 1024 * 1024 * 1,
-                  pcmFormat: BufferPcmType.s8,
+                  format: BufferType.s8,
                 );
 
                 /// Generate PCM data inside an Isolate

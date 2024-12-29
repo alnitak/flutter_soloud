@@ -1,8 +1,8 @@
-
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <mutex>
+#include "opus_stream_decoder.h"
 
 #include "audiobuffer.h"
 
@@ -102,7 +102,7 @@ namespace SoLoud
 		stop();
 	}
 
-	void BufferStream::setBufferStream(
+	PlayerErrors BufferStream::setBufferStream(
 		Player *aPlayer,
 		ActiveSound *aParent,
 		unsigned int maxBufferSize,
@@ -112,7 +112,6 @@ namespace SoLoud
 	{
 		mSampleCount = 0;
 		dataIsEnded = false;
-		mEndianness = Endianness::BUFFER_LITTLE_ENDIAN; // TODO?
 		mThePlayer = aPlayer;
 		mParent = aParent;
 		mPCMformat.sampleRate = pcmFormat.sampleRate;
@@ -125,6 +124,20 @@ namespace SoLoud
 		mChannels = pcmFormat.channels;
 		mBaseSamplerate = (float)pcmFormat.sampleRate;
 		mOnBufferingCallback = onBufferingCallback;
+
+		decoder = nullptr;
+		if (pcmFormat.dataType == OPUS)
+		{
+			try {
+				decoder = std::make_unique<OpusDecoderWrapper>(
+					pcmFormat.sampleRate, pcmFormat.channels);
+			}
+			catch (const std::exception &e)
+			{
+				return PlayerErrors::failedToCreateOpusDecoder;
+			}
+		}
+		return PlayerErrors::noError;
 	}
 
 	void BufferStream::setDataIsEnded()
@@ -136,12 +149,31 @@ namespace SoLoud
 	{
 		if (dataIsEnded)
 		{
-			return streamEndedAlready;
+			return PlayerErrors::streamEndedAlready;
 		}
-
+		printf("BufferStream::addData: %d\n", aDataLen);
 		unsigned int bytesWritten = 0;
-		// add PCM data to the buffer
-		bytesWritten = mBuffer.addData(mPCMformat, aData, aDataLen / mPCMformat.bytesPerSample);
+
+		if (mPCMformat.dataType == BufferType::OPUS)
+		{
+			// Decode the Opus data
+			try {
+				auto newData = decoder.get()->decode(
+					reinterpret_cast<const unsigned char *>(aData),
+					aDataLen);
+				if (newData.size() > 0)
+					bytesWritten = mBuffer.addData(BufferType::OPUS, newData.data(), newData.size());
+				else
+					return PlayerErrors::noError;
+			} catch (const std::exception &e)
+			{
+				return PlayerErrors::failedToDecodeOpusPacket;
+			}
+		}
+		else
+		{
+			bytesWritten = mBuffer.addData(mPCMformat.dataType, aData, aDataLen / mPCMformat.bytesPerSample);
+		}
 
 		mSampleCount += bytesWritten / mPCMformat.bytesPerSample;
 
@@ -207,10 +239,10 @@ namespace SoLoud
 		if (bytesWritten < aDataLen / mPCMformat.bytesPerSample)
 		{
 			dataIsEnded = true;
-			return pcmBufferFull;
+			return PlayerErrors::pcmBufferFull;
 		}
 
-		return noError;
+		return PlayerErrors::noError;
 	}
 
 	AudioSourceInstance *BufferStream::createInstance()

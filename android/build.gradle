@@ -1,9 +1,10 @@
 // The Android Gradle Plugin builds the native code with the Android NDK.
 
-group 'com.example.flutter_soloud'
-version '1.0'
+group = "flutter.soloud.flutter_soloud"
+version = "1.0"
 
 buildscript {
+    // ext.kotlin_version = '1.7.10'
     repositories {
         google()
         mavenCentral()
@@ -12,6 +13,8 @@ buildscript {
     dependencies {
         // The Android Gradle Plugin knows how to build native code with the NDK.
         classpath 'com.android.tools.build:gradle:7.3.1'
+        // classpath("com.android.tools.build:gradle:8.1.0")
+        // classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
     }
 }
 
@@ -22,25 +25,25 @@ rootProject.allprojects {
     }
 }
 
-apply plugin: 'com.android.library'
+apply plugin: "com.android.library"
 
 android {
-    if (project.android.hasProperty("namespace")) {
-        namespace 'com.example.flutter_soloud'
-    }
+    namespace = "flutter.soloud.flutter_soloud"
 
-    // Bumping the plugin compileSdkVersion requires all clients of this plugin
+    // Bumping the plugin compileSdk version requires all clients of this plugin
     // to bump the version in their app.
-    compileSdkVersion 33
+    compileSdk = 33
 
-    // Bumping the plugin ndkVersion requires all clients of this plugin to bump
-    // the version in their app and to download a newer version of the NDK.
-    ndkVersion "23.1.7779620"
+    // Use the NDK version
+    // declared in /android/app/build.gradle file of the Flutter project.
+    // Replace it with a version number if this plugin requires a specific NDK version.
+    // (e.g. ndkVersion "23.1.7779620")
+    ndkVersion = android.ndkVersion
 
     // Invoke the shared CMake build with the Android Gradle Plugin.
     externalNativeBuild {
         cmake {
-            path "CMakeLists.txt"
+            path = "./CMakeLists.txt"
 
             // The default CMake version for the Android Gradle Plugin is 3.10.2.
             // https://developer.android.com/studio/projects/install-ndk#vanilla_cmake
@@ -53,28 +56,11 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
     }
 
     defaultConfig {
-        minSdkVersion 16
-
-        packagingOptions {
-            doNotStrip '**.so'
-        }
-
-//        externalNativeBuild {
-//            cmake {
-//                cppFlags "-std=c++14 -fexceptions -frtti -stdlib=libc++ -v -g"
-//
-//                arguments '-DBUILD_TESTING=OFF',
-//                        '-DANDROID_PLATFORM=android-21',
-//                        '-DANDROID_TOOLCHAIN=clang',
-//                        '-DCMAKE_VERBOSE_MAKEFILE=ON',
-//                        '-DANDROID_STL=c++_shared'
-//                version "3.10.2"
-//            }
-//        }
+        minSdk = 21
     }
 }

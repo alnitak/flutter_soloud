@@ -55,7 +55,7 @@ external int wasmSetBufferStream(
   double bufferingTimeNeeds,
   int sampleRate,
   int channels,
-  int pcmFormat,
+  int format,
   int onBufferingPtr,
 );
 

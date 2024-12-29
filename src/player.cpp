@@ -203,6 +203,10 @@ const std::string Player::getErrorString(PlayerErrors errorCode) const
         return "error: hash is not a buffer stream!";
     case streamEndedAlready:
         return "error: trying to add PCM data but the stream is marked to be ended!";
+    case failedToCreateOpusDecoder:
+        return "error: failed to create Opus decoder!";
+    case failedToDecodeOpusPacket:
+        return "error: failed to decode Opus packet!";
     }
     return "Other error";
 }
@@ -331,12 +335,18 @@ PlayerErrors Player::setBufferStream(
 
     newSound.get()->sound = std::make_unique<SoLoud::BufferStream>();
     newSound.get()->soundType = TYPE_BUFFER_STREAM;
-    static_cast<SoLoud::BufferStream *>(newSound.get()->sound.get())->setBufferStream(this, newSound.get(), maxBufferSize, bufferingTimeNeeds, pcmFormat, onBufferingCallback);
+    PlayerErrors e = static_cast<SoLoud::BufferStream *>(newSound.get()->sound.get())->setBufferStream(
+        this,
+        newSound.get(),
+        maxBufferSize,
+        bufferingTimeNeeds,
+        pcmFormat,
+        onBufferingCallback);
 
     newSound.get()->filters = std::make_unique<Filters>(&soloud, newSound.get());
     sounds.push_back(std::move(newSound));
 
-    return noError;
+    return e;
 }
 
 PlayerErrors Player::addAudioDataStream(

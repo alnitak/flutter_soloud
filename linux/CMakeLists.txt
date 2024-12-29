@@ -27,6 +27,7 @@ endif ()
 
 include_directories(${SRC_DIR}/soloud/include)
 include_directories(${SRC_DIR}/soloud/src)
+include_directories(${SRC_DIR})
 include (src.cmake)
 message("**************** SOLOUD SRC.CMAKE 2  ${TARGET_NAME}")
 
@@ -61,7 +62,24 @@ target_include_directories(${PLUGIN_NAME} INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}
 target_link_libraries(${PLUGIN_NAME} PRIVATE flutter)
 target_link_libraries(${PLUGIN_NAME} PRIVATE PkgConfig::GTK)
 
-target_compile_options("${PLUGIN_NAME}" PRIVATE -Wall -Wno-error -Wno-vla -fPIC -O0 -msse3 -msse2) #  -ldl -lpthread -lm
+# Add opus library
+set(OPUS_LIBRARY ${CMAKE_CURRENT_SOURCE_DIR}/libopus.so)
+# Link the library to your target
+target_link_libraries(${PLUGIN_NAME} PRIVATE ${OPUS_LIBRARY})
+# Set the directory where the library will be installed
+set(INSTALL_BUNDLE_LIB_DIR "${CMAKE_INSTALL_PREFIX}/lib")
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../src/opus)
+
+# Add ogg library
+set(OGG_LIBRARY ${CMAKE_CURRENT_SOURCE_DIR}/libogg.so)
+# Link the library to your target
+target_link_libraries(${PLUGIN_NAME} PRIVATE ${OGG_LIBRARY})
+# Set the directory where the library will be installed
+set(INSTALL_BUNDLE_LIB_DIR "${CMAKE_INSTALL_PREFIX}/lib")
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../src/ogg)
+
+
+target_compile_options("${PLUGIN_NAME}" PRIVATE -Wall -Wno-error -Wno-vla -fPIC -O3 -msse3 -msse2) #  -ldl -lpthread -lm
 
 # List of absolute paths to libraries that should be bundled with the plugin.
 set(flutter_soloud_bundled_libraries

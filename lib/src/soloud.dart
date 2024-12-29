@@ -672,10 +672,18 @@ interface class SoLoud {
   /// waiting until the buffer will have enough data to cover this time.
   ///
   /// [sampleRate] the sample rate. Usually is 22050 or 44100 (CD quality).
+  /// When using [format] as `opus`, the sample rate can be 48000, 24000,
+  /// 16000, 12000 or 8000. Whatever the sample rate of the incoming data is,
+  /// it will be resampled to this value. So, if you are adding Opus data at
+  /// 48 KHz, and you set this to 24000, the data will be resampled to 24 KHz.
   ///
-  /// [channels] enum to choose the number of channels.
+  /// [channels] enum to choose the number of channels. The `opus` format
+  /// supports only mono and stereo.
   ///
-  /// [pcmFormat] enum to choose from `f32le`, `s8`, `s16le` and `s32le`.
+  /// [format] enum to choose from `f32le`, `s8`, `s16le`, `s32le` and
+  /// `opus`. The last one is a special format that uses the Opus codec with
+  /// Ogg container. It supports only 48, 24, 16, 12 and 8 KHz sample rates
+  /// and mono and stereo.
   ///
   /// [onBuffering] a callback that is called when starting to buffer
   /// (isBuffering = true) and when the buffering is done (isBuffering = false).
@@ -686,13 +694,42 @@ interface class SoLoud {
   AudioSource setBufferStream({
     int maxBufferSize = 1024 * 1024 * 100, // 100 MB in bytes
     double bufferingTimeNeeds = 2, // 2 seconds of data needed to un-pause
-    int sampleRate = 22050,
+    int sampleRate = 24000,
     Channels channels = Channels.mono,
-    BufferPcmType pcmFormat = BufferPcmType.s16le,
+    BufferType format = BufferType.s16le,
     void Function(bool isBuffering, int handle, double time)? onBuffering,
   }) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
+    }
+
+    final opusA = () {
+      if (format == BufferType.opus) {
+        return sampleRate == 48000 ||
+            sampleRate == 24000 ||
+            sampleRate == 16000 ||
+            sampleRate == 12000 ||
+            sampleRate == 8000;
+      }
+      return true;
+    }();
+    final opusB = () {
+      if (format == BufferType.opus) {
+        return channels == Channels.mono || channels == Channels.stereo;
+      }
+      return true;
+    }();
+    assert(
+      opusA,
+      'Opus format only supports 48, 24, 16, 12 and 8 KHz sample rates',
+    );
+    assert(
+      opusB,
+      'Only mono and stereo channels are supported for Opus format',
+    );
+
+    if (!opusA || !opusB) {
+      throw const SoLoudWrongOpusParamsException();
     }
 
     final ret = SoLoudController().soLoudFFI.setBufferStream(
@@ -700,9 +737,14 @@ interface class SoLoud {
           bufferingTimeNeeds,
           sampleRate,
           channels.count,
-          pcmFormat.value,
+          format.value,
           onBuffering,
         );
+
+    if (ret.error != PlayerErrors.noError) {
+      _logPlayerError(ret.error, from: 'addAudioDataStream() result');
+      throw SoLoudCppException.fromPlayerError(ret.error);
+    }
 
     final newSound = _addNewSound(ret.error, '', ret.soundHash.hash);
     return newSound;
@@ -731,7 +773,7 @@ interface class SoLoud {
   ///   final pcmBuffer = Uint8List(1024 * 1024); // 1 MB in bytes
   ///   final pcmAudio = SoLoud.instance.setBufferStream(
   ///     maxBufferSize: 1024 * 1024, // 1 MB in bytes
-  ///     pcmFormat: BufferPcmType.s8, // signed 8 bits
+  ///     format: BufferPcmType.s8, // signed 8 bits
   ///   );
   ///   for (var i = 0; i < pcmBuffer.length; i++) {
   ///     // Compose your PCM data here.
