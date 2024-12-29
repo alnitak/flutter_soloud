@@ -380,7 +380,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     double bufferingTimeNeeds,
     int sampleRate,
     int channels,
-    int pcmFormat,
+    int format,
     OnBufferingCallbackTFunction? onBuffering,
   ) {
     // Create a NativeCallable for the given [onBuffering] callback.
@@ -401,7 +401,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       bufferingTimeNeeds,
       sampleRate,
       channels,
-      pcmFormat,
+      format,
       nativeOnBufferingCallable?.nativeFunction ?? ffi.nullptr,
     );
     final soundHash = SoundHash(hash.value);

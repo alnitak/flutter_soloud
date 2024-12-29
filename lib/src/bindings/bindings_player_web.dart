@@ -195,7 +195,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     double bufferingTimeNeeds,
     int sampleRate,
     int channels,
-    int pcmFormat,
+    int format,
     OnBufferingCallbackTFunction? onBuffering,
   ) {
     final hashPtr = wasmMalloc(4); // 4 bytes for an int32
@@ -205,7 +205,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
       bufferingTimeNeeds,
       sampleRate,
       channels,
-      pcmFormat,
+      format,
       // not used on C side. The callback is set below on the JS side. Setting
       // this to 1 to tell C that we have a callback.
       onBuffering == null ? 0 : 1,
