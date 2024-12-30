@@ -168,6 +168,9 @@ interface class SoLoud {
   /// A helper for loading files that aren't on disk.
   final SoLoudLoader _loader = SoLoudLoader();
 
+  /// Wheter or not the Opus and Ogg libraries are available.
+  bool _areOpusOggLibsAvailable = false;
+
   /// The backing private field for [isInitialized].
   // TODO(filip): related to `get initialized`
   // ignore: prefer_final_fields
@@ -337,6 +340,8 @@ interface class SoLoud {
           'during the current lifetime of the app.');
       deinit();
     }
+
+    _areOpusOggLibsAvailable = _controller.soLoudFFI.areOpusOggLibsAvailable();
 
     _activeSounds.clear();
 
@@ -691,6 +696,9 @@ interface class SoLoud {
   /// the `time` in seconds.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  /// Throws [SoLoudOpusOggLibsNotAvailableException] if trying to use the
+  /// `opus` format but the Opus and Ogg libraries are not available. Please
+  /// check the `README.md` file for more information.
   AudioSource setBufferStream({
     int maxBufferSize = 1024 * 1024 * 100, // 100 MB in bytes
     double bufferingTimeNeeds = 2, // 2 seconds of data needed to un-pause
@@ -701,6 +709,10 @@ interface class SoLoud {
   }) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
+    }
+
+    if (!_areOpusOggLibsAvailable && format == BufferType.opus) {
+      throw const SoLoudOpusOggLibsNotAvailableException();
     }
 
     final opusA = () {

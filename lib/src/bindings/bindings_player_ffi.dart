@@ -149,6 +149,18 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   // Navtive bindings
   // ////////////////////////////////////////////////
 
+  @override
+  bool areOpusOggLibsAvailable() {
+    return _areOpusOggLibsAvailable();
+  }
+
+  late final _areOpusOggLibsAvailablePtr =
+      _lookup<ffi.NativeFunction<ffi.Bool Function()>>(
+    'areOpusOggLibsAvailable',
+  );
+  late final _areOpusOggLibsAvailable =
+      _areOpusOggLibsAvailablePtr.asFunction<bool Function()>();
+
   /// When allocating memory in C code, more attention must be given when
   /// we are on Windows OS. It's not good to call `calloc.free()` because
   /// Windows could use different allocating methods for this and the same

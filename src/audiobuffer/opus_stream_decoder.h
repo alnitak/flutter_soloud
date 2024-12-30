@@ -7,8 +7,8 @@
 #include <stdexcept>
 #include <cstring>
 #include <deque>
-#include "opus/opus.h"
-#include "ogg/ogg.h"
+#include <opus/opus.h>
+#include <ogg/ogg.h>
 
 /// Wrapper class for Opus stream decoder
 ///

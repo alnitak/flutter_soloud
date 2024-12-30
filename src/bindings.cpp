@@ -20,6 +20,13 @@
 #include <filesystem>
 
 
+#ifdef LIBOPUS_OGG_AVAILABLE
+#define HAS_LIB_OGG_OPUS true
+#else
+#define HAS_LIB_OGG_OPUS false
+#endif
+
+
 #ifdef __cplusplus
 extern "C"
 {
@@ -156,6 +163,13 @@ extern "C"
     //////////////////////////////////////////////////////////////////////////////////
     //////////////////////////////////////////////////////////////////////////////////
     //////////////////////////////////////////////////////////////////////////////////
+
+
+
+    /// Check if the libopus and libogg are available at build time.
+    FFI_PLUGIN_EXPORT bool areOpusOggLibsAvailable() {
+        return HAS_LIB_OGG_OPUS;
+    }
 
     /// Initialize the player. Must be called before any other player functions.
     ///
