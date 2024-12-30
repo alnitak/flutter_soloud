@@ -2,8 +2,9 @@
 
 # This script builds the Ogg and Opus libraries for iOS and macOS
 #
-# 1) Make your dir where opus and ogg libraries will be downloaded
-# 2) Copy this script and run it
+# 1) brew install autoconf automake libtool
+# 2) Make your dir where opus and ogg libraries will be downloaded
+# 3) Copy this script and run it
 # The script will git clone the libs, compile them and makes a fat library for iOS and MacOS
 
 # Exit on any error
