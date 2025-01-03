@@ -488,6 +488,9 @@ extern "C"
     ///
     /// [hash] the unique sound hash of a waveform sound
     /// [newFreq]
+
+    /// Thread to oscillate the frequency
+    std::thread waveformFreqThread;
     FFI_PLUGIN_EXPORT void setWaveformFreq(unsigned int hash, float newFreq)
     {
         if (player.get() == nullptr || !player.get()->isInited())
