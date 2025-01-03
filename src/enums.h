@@ -109,7 +109,9 @@ typedef enum FilterType
     WaveShaperFilter,
     RobotizeFilter,
     FreeverbFilter,
-    PitchShiftFilter
+    PitchShiftFilter,
+    LimiterFilter,
+    CompressorFilter
 } FilterType_t;
 
 /// WARNING: Keep these in sync with `lib/src/enums.dart`.

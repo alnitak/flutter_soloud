@@ -129,3 +129,37 @@ const FxParams fxPitchShift = (
   maxs: [1, 3, 48],
   defs: [1, 1, 0],
 );
+
+/// Limiter filter
+@Deprecated('Please use the SoLoud.filters or AudioSource.filters.')
+const FxParams fxLimiter = (
+  title: 'Limiter',
+  names: [
+    'Wet',
+    'Threshold',
+    'Makeup Gain',
+    'Knee Width',
+    'Release Time',
+  ],
+  mins: [0, -60, -60, 0, 1],
+  maxs: [1, 0, 30, 30, 1000],
+  defs: [1, -6, 0, 2, 100],
+);
+
+/// Compressor filter
+@Deprecated('Please use the SoLoud.filters or AudioSource.filters.')
+const FxParams fxCompressor = (
+  title: 'Compressor',
+  names: [
+    'Wet',
+    'Threshold',
+    'Makeup Gain',
+    'Knee Width',
+    'Ratio',
+    'Attack Time',
+    'Release Time',
+  ],
+  mins: [0, -80, -40, 0, 1, 0, 0],
+  maxs: [1, 0, 40, 40, 10, 100, 1000],
+  defs: [1, -6, 0, 2, 3, 10, 100],
+);
