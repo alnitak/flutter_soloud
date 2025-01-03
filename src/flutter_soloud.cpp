@@ -1,5 +1,15 @@
 // this source is used only on Mac and iOS to reference all the others
 
+#ifdef __has_include
+#if (__has_include(<opus/opus.h>) && __has_include(<ogg/ogg.h>))  || (defined(__APPLE__) && defined(TARGET_OS_IOS) && TARGET_OS_IOS)
+#define LIBOPUS_OGG_AVAILABLE 1
+#else
+#define LIBOPUS_OGG_AVAILABLE 0
+#endif
+#else
+#define LIBOPUS_OGG_AVAILABLE 0
+#endif
+
 /// SoLoud sources
 #define WITH_NULL
 #define WITH_NOSOUND
