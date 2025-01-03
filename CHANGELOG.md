@@ -1,6 +1,7 @@
 ### 2.1.8 ()
 - fix: clicks and pops when changing waveform frequency #156
 - added BufferStream #148. Now it's possible to add audio data and listen to them. It provides a customizable buffering length which automatycally pause the playing handle for example when receiving audio data from the web.
+- added Limiter and Compressor filters (see `example/lib/filters`)
 
 ### 2.1.7 (29 Oct 2024)
 - added `listPlaybackDevices` to get all the OS output devices available.
