@@ -364,6 +364,13 @@ public:
     /// https://github.com/jarikomppa/soloud/issues/298
     void setProtectVoice(SoLoud::handle handle, bool protect);
 
+    /// @brief Set the inaudible behavior of a live sound. By default,
+    /// if a sound is inaudible, it's paused, and will resume when it
+    /// becomes audible again. With this function you can tell SoLoud
+    /// to either kill the sound if it becomes inaudible, or to keep
+    /// ticking the sound even if it's inaudible.
+    void setInaudibleBehavior(SoLoud::handle handle, bool mustTick, bool kill);
+
     /// @brief Get the current maximum active voice count.
     unsigned int getMaxActiveVoiceCount();
 

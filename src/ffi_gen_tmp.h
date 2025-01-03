@@ -19,6 +19,13 @@
 
 //--------------------- copy here the new functions to generate
 
-// Get the current buffer size in bytes of this sound with hash [hash].
-// [hash] the hash of the stream sound.
-FFI_PLUGIN_EXPORT enum PlayerErrors getBufferSize(unsigned int hash, unsigned int *sizeInBytes);
+/// Set the inaudible behavior of a live sound. By default,
+/// if a sound is inaudible, it's paused, and will resume when it
+/// becomes audible again. With this function you can tell SoLoud
+/// to either kill the sound if it becomes inaudible, or to keep
+/// ticking the sound even if it's inaudible.
+///
+/// [handle]  handle to check.
+/// [mustTick] whether to keep ticking or not when the sound becomes inaudible.
+/// [kill] whether to kill the sound or not when the sound becomes inaudible.
+FFI_PLUGIN_EXPORT void setInaudibleBehavior(unsigned int handle, bool mustTick, bool kill);

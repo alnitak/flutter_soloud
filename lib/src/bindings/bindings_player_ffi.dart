@@ -1050,6 +1050,26 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       _setProtectVoicePtr.asFunction<void Function(int, int)>();
 
   @override
+  void setInaudibleBehavior(
+    SoundHandle handle,
+    bool mustTick,
+    bool kill,
+  ) {
+    return _setInaudibleBehavior(
+      handle.id,
+      mustTick,
+      kill,
+    );
+  }
+
+  late final _setInaudibleBehaviorPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Void Function(
+              ffi.UnsignedInt, ffi.Bool, ffi.Bool)>>('setInaudibleBehavior');
+  late final _setInaudibleBehavior =
+      _setInaudibleBehaviorPtr.asFunction<void Function(int, bool, bool)>();
+
+  @override
   int getMaxActiveVoiceCount() {
     return _getMaxActiveVoiceCount();
   }
