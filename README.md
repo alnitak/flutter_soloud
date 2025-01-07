@@ -35,6 +35,17 @@ If you merely need to play audio (such as playing a single sound effect or a non
 The `flutter_soloud` plugin uses the [SoLoud (C++) audio engine](https://solhsa.com/soloud/) with the [miniaudio](https://miniaud.io/) backend through [Dart's C interop](https://dart.dev/interop/c-interop) (`dart:ffi`).
 In other words, it is calling the C/C++ methods of the underlying audio engine directly — there are no method channels in use.
 
+#### Opus format for streaming
+When using an `AudioSource` as an audio stream to play custom audio data (ie using setBufferStream/addAudioDataStream/setDataIsEnded), it is possible to add PCM RAW audio data in *s8*, *s16le*, *s32le*, *f32le* and since it supports also the *opus* format with the Ogg codec (ie to work with OpenAI APIs), the [Opus](https://www.opus-codec.org/) and [Ogg](https://xiph.org/ogg/) libraries from [Xiph.org](https://www.xiph.org/) are needed.
+
+On Linux and MacOS theese libraries must be installed if you want to use this kind of `AudioSource`:
+- Linux
+  - install them depending on the package manager used by you distribution
+- MacOS
+  - `brew install opus libogg`
+
+if the libraries are not found the plugin will throw an exeption when calling `setBufferStream` with Opus format.
+
 #### Web platform
 To use this plugin on the **Web platform**, please refer to [WEB_NOTES](https://github.com/alnitak/flutter_soloud/blob/main/WEB_NOTES.md).
 
