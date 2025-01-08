@@ -44,7 +44,3 @@ web/worker.dart.js.map
 **/android/kotlin-profile
 **/android/daemon
 **/android/android
-
-xiph/fat_libs
-xiph/ogg
-xiph/opus
