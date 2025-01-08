@@ -68,6 +68,9 @@ external int wasmSetDataIsEnded(int hash);
 @JS('Module._getBufferSize')
 external int wasmGetBufferSize(int hash, int sizeInBytesPtr);
 
+@JS('Module._areOpusOggLibsAvailable')
+external int wasmAreOpusOggLibsAvailable();
+
 @JS('Module._initEngine')
 external int wasmInitEngine(
   int deviceId,

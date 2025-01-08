@@ -2,7 +2,7 @@
 
 # This script builds the Ogg and Opus libraries for iOS and macOS
 #
-# 1) brew install autoconf automake libtool
+# 1) brew install autoconf automake libtool wget
 # 2) Make your dir where opus and ogg libraries will be downloaded
 # 3) Copy this script and run it
 # The script will git clone the libs, compile them and makes a fat library for iOS and MacOS
@@ -10,15 +10,20 @@
 # Exit on any error
 set -e
 
-git clone https://github.com/xiph/ogg
-git clone https://github.com/xiph/opus
+# Clone repositories if they don't exist
+if [ ! -d "ogg" ]; then
+    git clone https://github.com/xiph/ogg
+fi
+
+if [ ! -d "opus" ]; then
+    git clone https://github.com/xiph/opus
+fi
 
 # Directories for source code and build output
 LIBS=("ogg" "opus")
-BASE_DIR="/Users/deimos/xiph"
-BUILD_DIR="$BASE_DIR/build"
-OUTPUT_DIR="$BASE_DIR/fat_libs"
-ARCHS_MACOS=("x86_64" "arm64")
+BASE_DIR="$PWD"
+BUILD_DIR="$BASE_DIR/iOS/build"
+OUTPUT_DIR="$BASE_DIR/iOS/libs"
 ARCHS_IOS=("arm64" "x86_64")  # iOS arm64 (device) and x86_64 (Simulator)
 
 # iOS-specific flags
@@ -51,13 +56,6 @@ build_lib() {
     cd ..
 }
 
-# Build macOS libraries
-for lib in "${LIBS[@]}"; do
-    for arch in "${ARCHS_MACOS[@]}"; do
-        build_lib $lib $arch "macOS" "$(xcrun --sdk macosx --show-sdk-path)"
-    done
-done
-
 # Build iOS libraries
 for lib in "${LIBS[@]}"; do
     for arch in "${ARCHS_IOS[@]}"; do
@@ -72,28 +70,18 @@ for lib in "${LIBS[@]}"; do
     done
 done
 
-# Create fat libraries using lipo
+# Create output libraries
 for lib in "${LIBS[@]}"; do
-    echo "Creating fat libraries for $lib..."
+    echo "Creating libraries for $lib..."
 
-    # macOS fat library
-    INPUT_LIBS_MACOS=()
-    for arch in "${ARCHS_MACOS[@]}"; do
-        INPUT_LIBS_MACOS+=("$BUILD_DIR/$lib/macOS/$arch/lib/lib${lib}.a")
-    done
-    lipo -create -output "$OUTPUT_DIR/lib${lib}_macOS.a" "${INPUT_LIBS_MACOS[@]}"
+    # iOS device library (arm64)
+    cp "$BUILD_DIR/$lib/iOS/arm64/lib/lib${lib}.a" "$OUTPUT_DIR/lib${lib}_iOS-device.a"
 
-    # iOS fat library
-    INPUT_LIBS_IOS=()
-    for arch in "${ARCHS_IOS[@]}"; do
-        platform="iOS_Simulator"
-        if [ "$arch" == "arm64" ]; then
-            platform="iOS"
-        fi
-        INPUT_LIBS_IOS+=("$BUILD_DIR/$lib/$platform/$arch/lib/lib${lib}.a")
-    done
-    lipo -create -output "$OUTPUT_DIR/lib${lib}_iOS.a" "${INPUT_LIBS_IOS[@]}"
+    # iOS simulator library (x86_64)
+    cp "$BUILD_DIR/$lib/iOS_Simulator/x86_64/lib/lib${lib}.a" "$OUTPUT_DIR/lib${lib}_iOS-simulator.a"
 done
 
-echo "Fat libraries created in $OUTPUT_DIR:"
+echo
+echo
+echo "Libraries created in $OUTPUT_DIR:"
 ls -l $OUTPUT_DIR

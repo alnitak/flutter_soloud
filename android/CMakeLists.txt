@@ -67,17 +67,21 @@ target_compile_definitions(${PLUGIN_NAME} PRIVATE FLUTTER_PLUGIN_IMPL)
 target_include_directories(${PLUGIN_NAME} INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_link_libraries(${PLUGIN_NAME} PRIVATE ${log-lib} android)
 
+
 # Add opus library
 set(OPUS_LIBRARY ${CMAKE_CURRENT_SOURCE_DIR}/libs/${ANDROID_ABI}/libopus.so)
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../src/opus)
 target_link_libraries(${PLUGIN_NAME} PRIVATE ${OPUS_LIBRARY})
 set(INSTALL_BUNDLE_LIB_DIR "${CMAKE_INSTALL_PREFIX}/lib")
 
 # Add ogg library
 set(OGG_LIBRARY ${CMAKE_CURRENT_SOURCE_DIR}/libs/${ANDROID_ABI}/libogg.so)
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../src/ogg)
 target_link_libraries(${PLUGIN_NAME} PRIVATE ${OGG_LIBRARY})
 set(INSTALL_BUNDLE_LIB_DIR "${CMAKE_INSTALL_PREFIX}/lib")
+
+# include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include/ogg)
+# include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include/opus)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
+add_compile_definitions(LIBOPUS_OGG_AVAILABLE)
 
 
 

@@ -45,3 +45,4 @@ web/worker.dart.js.map
 **/android/daemon
 **/android/android
 
+!xiph/.gitignore

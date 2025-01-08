@@ -60,6 +60,10 @@ abstract class FlutterSoLoud {
   @mustBeOverridden
   void setDartEventCallbacks();
 
+  /// Check if the libopus and libogg are available at build time.
+  @mustBeOverridden
+  bool areOpusOggLibsAvailable();
+
   /// Initialize the player. Must be called before any other player functions.
   ///
   /// [deviceId] the device ID. -1 for default OS output device.
