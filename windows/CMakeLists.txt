@@ -67,18 +67,18 @@ target_include_directories(${PLUGIN_NAME} INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}
 set(OPUS_LIBRARY ${CMAKE_CURRENT_SOURCE_DIR}/opus.lib)
 # Link the library to your target
 target_link_libraries(${PLUGIN_NAME} PRIVATE ${OPUS_LIBRARY})
-# Set the directory where the library will be installed
-set(INSTALL_BUNDLE_LIB_DIR "${CMAKE_INSTALL_PREFIX}/lib")
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../src/opus)
 
 # Add ogg library
 set(OGG_LIBRARY ${CMAKE_CURRENT_SOURCE_DIR}/ogg.lib)
 # Link the library to your target
 target_link_libraries(${PLUGIN_NAME} PRIVATE ${OGG_LIBRARY})
-# Set the directory where the library will be installed
-set(INSTALL_BUNDLE_LIB_DIR "${CMAKE_INSTALL_PREFIX}/lib")
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../src/ogg)
 
+# Set the ogg and opus include directory
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
+
+# add the compile definition that will be used to check if the library is available
+# in bindings.cpp
+add_compile_definitions(LIBOPUS_OGG_AVAILABLE)
 
 # target_compile_options("${PLUGIN_NAME}" PRIVATE -Wall -Wno-error -fPIC) #  -ldl -lpthread -lm
 target_compile_options("${PLUGIN_NAME}" PRIVATE "/WX-")
@@ -89,14 +89,15 @@ set(flutter_soloud_bundled_libraries
   PARENT_SCOPE
 )
 
-# Copy DLLs to output directory
+# Copy DLLs to output directory for both Debug and Release configurations
 add_custom_command(TARGET ${PLUGIN_NAME} POST_BUILD
-  COMMAND ${CMAKE_COMMAND} -E copy_if_different
-  "${CMAKE_CURRENT_SOURCE_DIR}/opus.dll"
-  "$<TARGET_FILE_DIR:${PLUGIN_NAME}>/opus.dll"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    "${CMAKE_CURRENT_SOURCE_DIR}/opus.dll"
+    "${CMAKE_BINARY_DIR}/runner/$<CONFIG>/opus.dll"
 )
+
 add_custom_command(TARGET ${PLUGIN_NAME} POST_BUILD
-  COMMAND ${CMAKE_COMMAND} -E copy_if_different
-  "${CMAKE_CURRENT_SOURCE_DIR}/ogg.dll"
-  "$<TARGET_FILE_DIR:${PLUGIN_NAME}>/ogg.dll"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    "${CMAKE_CURRENT_SOURCE_DIR}/ogg.dll"
+    "${CMAKE_BINARY_DIR}/runner/$<CONFIG>/ogg.dll"
 )
