@@ -44,3 +44,5 @@ web/worker.dart.js.map
 **/android/kotlin-profile
 **/android/daemon
 **/android/android
+
+!xiph/.gitignore
