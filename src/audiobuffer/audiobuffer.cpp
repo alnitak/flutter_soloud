@@ -2,7 +2,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <mutex>
-#include "opus_stream_decoder.h"
 
 #include "audiobuffer.h"
 
@@ -125,6 +124,7 @@ namespace SoLoud
 		mBaseSamplerate = (float)pcmFormat.sampleRate;
 		mOnBufferingCallback = onBufferingCallback;
 
+#ifdef LIBOPUS_OGG_AVAILABLE
 		decoder = nullptr;
 		if (pcmFormat.dataType == OPUS)
 		{
@@ -137,6 +137,12 @@ namespace SoLoud
 				return PlayerErrors::failedToCreateOpusDecoder;
 			}
 		}
+#else
+		if (pcmFormat.dataType == OPUS)
+		{
+			return PlayerErrors::failedToCreateOpusDecoder;
+		}
+#endif
 		return PlayerErrors::noError;
 	}
 
@@ -156,6 +162,7 @@ namespace SoLoud
 
 		if (mPCMformat.dataType == BufferType::OPUS)
 		{
+#ifdef LIBOPUS_OGG_AVAILABLE
 			// Decode the Opus data
 			try {
 				auto newData = decoder.get()->decode(
@@ -169,6 +176,9 @@ namespace SoLoud
 			{
 				return PlayerErrors::failedToDecodeOpusPacket;
 			}
+#else
+			return PlayerErrors::failedToDecodeOpusPacket;
+#endif
 		}
 		else
 		{
