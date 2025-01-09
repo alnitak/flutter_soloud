@@ -11,7 +11,9 @@
 #include "../enums.h"
 #include "../active_sound.h"
 #include "buffer.h"
+#ifdef LIBOPUS_OGG_AVAILABLE
 #include "opus_stream_decoder.h"
+#endif
 
 class Player;
 
@@ -47,7 +49,9 @@ namespace SoLoud
     PCMformat mPCMformat;
     Buffer mBuffer;
     bool dataIsEnded;
+#ifdef LIBOPUS_OGG_AVAILABLE
     std::unique_ptr<OpusDecoderWrapper> decoder;
+#endif
 
     BufferStream();
     virtual ~BufferStream();
