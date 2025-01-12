@@ -1,4 +1,7 @@
 #!/bin/bash
+
+# This script builds the Soloud library for WebAssembly
+
 set -euo pipefail
 
 rm -f libflutter_soloud_plugin.*

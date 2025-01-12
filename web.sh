@@ -2,4 +2,4 @@
 set -euo pipefail
 
 cd web
-sh ./compile_worker.sh
+sh ./compile_worker_and_xiph.sh
