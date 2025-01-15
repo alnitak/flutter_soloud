@@ -61,4 +61,5 @@ em++ \
 -s SAFE_HEAP=1 \
 -s STACK_SIZE=4194304 \
 -s ALLOW_MEMORY_GROWTH \
+-s ASSERTIONS=1 \
 -o ../../web/libflutter_soloud_plugin.js

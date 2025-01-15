@@ -74,3 +74,4 @@ flutter:
     - web/ogg.wasm
     - web/opus.js
     - web/opus.wasm
+    - web/init_xiph_modules.dart.js

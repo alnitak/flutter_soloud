@@ -49,9 +49,11 @@ build_lib() {
         emcc -O3 \
             src/.libs/libogg.a \
             -s WASM=1 \
-            -s EXPORTED_FUNCTIONS="['_malloc', '_free']" \
+            -s EXPORTED_FUNCTIONS="['_malloc', '_free', '_ogg_sync_init', '_ogg_sync_clear', '_ogg_sync_buffer', '_ogg_sync_wrote', '_ogg_sync_pageout', '_ogg_stream_init', '_ogg_stream_pagein', '_ogg_stream_packetout', '_ogg_stream_clear']" \
             -s EXPORTED_RUNTIME_METHODS="['ccall', 'cwrap']" \
             -s MODULARIZE=1 \
+            -s SAFE_HEAP=1 \
+            -s ALLOW_MEMORY_GROWTH=1 \
             -s EXPORT_NAME="'Module_$lib_name'" \
             -o "$OUTPUT_DIR/$lib_name.js"
 
@@ -74,9 +76,8 @@ build_lib() {
             -s NO_EXIT_RUNTIME=1 \
             -s MODULARIZE=1 \
             -s SAFE_HEAP=1 \
-            -s EXPORT_NAME="'Module_$lib_name'" \
             -s ALLOW_MEMORY_GROWTH=1 \
-            -s ASSERTIONS=1 \
+            -s EXPORT_NAME="'Module_$lib_name'" \
             -o "$OUTPUT_DIR/$lib_name.js"
     fi
 

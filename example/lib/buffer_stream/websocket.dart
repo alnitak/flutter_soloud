@@ -306,17 +306,17 @@ class _WebsocketExampleState extends State<WebsocketExample> {
             ],
           ),
           const SizedBox(height: 16),
-          BufferBar(sound: currentSound),
-          const SizedBox(height: 16),
-          ValueListenableBuilder(
-            valueListenable: streamBuffering,
-            builder: (_, value, __) {
-              if (value) {
-                return const Text('BUFFERING!');
-              }
-              return const SizedBox.shrink();
-            },
-          ),
+          // BufferBar(sound: currentSound),
+          // const SizedBox(height: 16),
+          // ValueListenableBuilder(
+          //   valueListenable: streamBuffering,
+          //   builder: (_, value, __) {
+          //     if (value) {
+          //       return const Text('BUFFERING!');
+          //     }
+          //     return const SizedBox.shrink();
+          //   },
+          // ),
         ],
       ),
     );

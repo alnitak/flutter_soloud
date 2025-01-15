@@ -20,70 +20,96 @@
 class OpusDecoderWrapper {
 public:
     OpusDecoderWrapper(int sampleRate, int channels)
-        : sampleRate(sampleRate), channels(channels) {
+        : sampleRate(sampleRate), channels(channels), streamInitialized(false) {
         
+        // Create Opus decoder
         decoder = EM_ASM_INT({
             var error = new Int32Array(1);
             var decoder = Module_opus._opus_decoder_create($0, $1, error);
             if (error[0] !== 0) {
-                throw new Error("Failed to create Opus decoder: " + error[0]);
+                throw new Error("Failed to create Opus decoder");
             }
-            console.log("Opus decoder created with sample rate: " + $0 + " and channels: " + $1);
             return decoder;
         }, sampleRate, channels);
 
-        EM_ASM({
-            var oy = Module_ogg._ogg_sync_init();
-            Module.HEAP32[$0 >> 2] = oy;
-        }, &syncState);
+        // Initialize Ogg sync state
+        syncState = EM_ASM_INT({
+            return Module_ogg._ogg_sync_init();
+        }, 0);
+
+        // Allocate Ogg structures
+        oggPage = EM_ASM_INT({
+            return Module._malloc(280); // typical ogg_page size
+        }, 0);
+
+        oggPacket = EM_ASM_INT({
+            return Module._malloc(32);  // typical ogg_packet size
+        }, 0);
     }
 
     ~OpusDecoderWrapper() {
         EM_ASM({
-            Module_opus._opus_decoder_destroy($0);
-            Module_ogg._ogg_sync_clear($1);
-        }, decoder, syncState);
+            if ($0) Module_opus._opus_decoder_destroy($0);
+            if ($1) Module_ogg._ogg_sync_clear($1);
+            if ($2) Module_ogg._ogg_stream_clear($2);
+            if ($3) Module._free($3);  // free oggPage
+            if ($4) Module._free($4);  // free oggPacket
+        }, decoder, syncState, streamState, oggPage, oggPacket);
     }
 
     std::vector<float> decode(const unsigned char* inputData, size_t inputSize) {
         std::vector<float> decodedData;
 
+        // Write data to Ogg sync buffer
+        char* buffer = (char*)EM_ASM_INT({
+            var buffer = Module_ogg._ogg_sync_buffer($0, $1);
+            return buffer;
+        }, syncState, inputSize);
+
+        memcpy(buffer, inputData, inputSize);
+
         EM_ASM({
-            var inputPtr = $0;
-            var inputSize = $1;
-            var syncState = $2;
+            Module_ogg._ogg_sync_wrote($0, $1);
+        }, syncState, inputSize);
+
+        // Process pages
+        while (EM_ASM_INT({
+            return Module_ogg._ogg_sync_pageout($0, $1);
+        }, syncState, oggPage) == 1) {
             
-            // Write data to ogg sync buffer
-            var buffer = Module_ogg._ogg_sync_buffer(syncState, inputSize);
-            Module.HEAPU8.set(Module.HEAPU8.subarray(inputPtr, inputPtr + inputSize), buffer);
-            Module_ogg._ogg_sync_wrote(syncState, inputSize);
-            
-            // Process pages
-            var streamState = 0;
-            var streamInitialized = false;
-            
-            while (Module_ogg._ogg_sync_pageout(syncState, og) === 1) {
-                if (!streamInitialized) {
-                    streamState = Module_ogg._ogg_stream_init(Module_ogg._ogg_page_serialno(og));
-                    streamInitialized = true;
-                }
-                
-                if (Module_ogg._ogg_stream_pagein(streamState, og) < 0) {
-                    throw new Error("Error reading Ogg page");
-                }
-                
-                while (Module_ogg._ogg_stream_packetout(streamState, op) === 1) {
-                    // Process packet here
-                    var packetData = Module.HEAPU8.subarray(op.packet, op.packet + op.bytes);
-                    var decoded = this.decodePacket(packetData, op.bytes);
-                    decodedData.push(...decoded);
-                }
+            // Initialize stream state if needed
+            if (!streamInitialized) {
+                streamState = EM_ASM_INT({
+                    var serialno = Module_ogg._ogg_page_serialno($0);
+                    return Module_ogg._ogg_stream_init(serialno);
+                }, oggPage);
+                streamInitialized = true;
             }
-            
-            if (streamInitialized) {
-                Module_ogg._ogg_stream_clear(streamState);
+
+            // Submit page to stream
+            EM_ASM({
+                Module_ogg._ogg_stream_pagein($0, $1);
+            }, streamState, oggPage);
+
+            // Extract packets
+            while (EM_ASM_INT({
+                return Module_ogg._ogg_stream_packetout($0, $1);
+            }, streamState, oggPacket) == 1) {
+                
+                // Get packet data
+                unsigned char* packetData = (unsigned char*)EM_ASM_INT({
+                    return Module.HEAP32[($0 + 4) >> 2]; // op->packet
+                }, oggPacket);
+                
+                int packetSize = EM_ASM_INT({
+                    return Module.HEAP32[($0 + 8) >> 2]; // op->bytes
+                }, oggPacket);
+
+                // Process packet
+                auto decoded = decodePacket(packetData, packetSize);
+                decodedData.insert(decodedData.end(), decoded.begin(), decoded.end());
             }
-        }, inputData, inputSize, syncState);
+        }
 
         return decodedData;
     }
@@ -92,6 +118,7 @@ private:
     std::vector<float> decodePacket(const unsigned char* packetData, size_t packetSize) {
         std::vector<float> packetPcm;
 
+        // Handle header packets
         if (!headerParsed) {
             if (packetCount == 0 || packetCount == 1) {
                 headerParsed = true;
@@ -102,38 +129,38 @@ private:
 
         if (packetSize < 1) return packetPcm;
 
+        // Decode audio packet
         const int maxFrameSize = sampleRate / 50;
         std::vector<float> outputBuffer(maxFrameSize * channels);
 
         int samples = EM_ASM_INT({
-            var decoder = $0;
-            var packetData = $1;
-            var packetSize = $2;
-            var outputPtr = $3;
-            var maxFrameSize = $4;
-            
             return Module_opus._opus_decode_float(
-                decoder,
-                packetData,
-                packetSize,
-                outputPtr,
-                maxFrameSize,
-                0
+                $0,    // decoder
+                $1,    // input
+                $2,    // input size
+                $3,    // output
+                $4,    // max size
+                0      // decodeFEC
             );
         }, decoder, packetData, packetSize, outputBuffer.data(), maxFrameSize);
 
         if (samples > 0) {
             packetPcm.insert(packetPcm.end(), 
-                           outputBuffer.begin(), 
-                           outputBuffer.begin() + samples * channels);
+                outputBuffer.begin(), 
+                outputBuffer.begin() + samples * channels);
         }
+
         return packetPcm;
     }
 
     int decoder;
     int syncState;
+    int streamState;
+    int oggPage;
+    int oggPacket;
     int sampleRate;
     int channels;
+    bool streamInitialized;
     bool headerParsed{false};
     int packetCount{0};
 };
