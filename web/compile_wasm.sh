@@ -62,4 +62,8 @@ em++ \
 -s STACK_SIZE=4194304 \
 -s ALLOW_MEMORY_GROWTH \
 -s ASSERTIONS=1 \
+-s ENVIRONMENT='web' \
+-s MALLOC='emmalloc' \
+-s SUPPORT_ERRNO=1 \
+-s EXCEPTION_CATCHING_ALLOWED=[..] \
 -o ../../web/libflutter_soloud_plugin.js
