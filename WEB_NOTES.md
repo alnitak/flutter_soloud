@@ -44,10 +44,10 @@ Here a sketch to show the step used:
 ![sketch](img/wasmWorker.png)
 
 **#1.** This function is called while initializing the player with `FlutterSoLoudWeb.setDartEventCallbacks()`.
-It creates a Web Worker in the [WASM Module](https://emscripten.org/docs/api_reference/module.html) using the compiled `web/worker.dart`. After calling this, the WASM Module will have a new variable called `Module.wasmWorker` which will be used in Dart to receive messages.
+It creates a Web Worker in the [WASM Module](https://emscripten.org/docs/api_reference/module.html) using the compiled `web/worker.dart`. After calling this, the WASM Module will have a new variable called `Module_soloud.wasmWorker` which will be used in Dart to receive messages.
 By doing this it will be easy to use the Worker to send messages from within the CPP code.
 
-**#2.** This function, like #1, uses [EM_ASM](https://emscripten.org/docs/porting/connecting_cpp_and_javascript/Interacting-with-code.html#interacting-with-code-call-javascript-from-native) to inline JS. This JS code uses the `Module.wasmWorker` created in #1 to send a message.
+**#2.** This function, like #1, uses [EM_ASM](https://emscripten.org/docs/porting/connecting_cpp_and_javascript/Interacting-with-code.html#interacting-with-code-call-javascript-from-native) to inline JS. This JS code uses the `Module_soloud.wasmWorker` created in #1 to send a message.
 
 **#3.** This is the JS used and created in #1. Every messages sent by #2 are managed here and sent to #4.
 

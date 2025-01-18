@@ -70,8 +70,4 @@ flutter:
     - web/worker.dart.js
     - web/libflutter_soloud_plugin.js
     - web/libflutter_soloud_plugin.wasm
-    - web/ogg.js
-    - web/ogg.wasm
-    - web/opus.js
-    - web/opus.wasm
-    - web/init_xiph_modules.dart.js
+    - web/init_module.dart.js
