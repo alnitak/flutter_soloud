@@ -70,54 +70,31 @@ build_lib() {
             -o "$OUTPUT_DIR/$lib_name.js"
 
     elif [ "$lib_name" = "opus" ]; then
-            
+
         emconfigure ./configure \
-            --disable-asm \
-            --disable-intrinsics \
-            --disable-doc \
             --disable-extra-programs \
-            --prefix="$OUTPUT_DIR/$lib_name.js" \
-            --disable-shared \
-            --disable-stack-protector \
-            || exit 1
-
-        ARGS=(
-            .libs/libopus.a
-            -s EXPORT_ALL=1
-            -s MODULARIZE=1
-            -s EXPORT_NAME="'Module_$lib_name'"
-            -s EXPORTED_FUNCTIONS="['_malloc', '_free', '_opus_decoder_create', '_opus_decoder_destroy', '_opus_decode', '_opus_decode_float', '_opus_strerror']"
-            -s EXPORTED_RUNTIME_METHODS="['ccall', 'cwrap', 'setValue', 'getValue']"
-            -o "$OUTPUT_DIR/$lib_name.js"
-        )
-
-        # compile libopus
-        emcc "${ARGS[@]}" || exit 1
-
-        # emconfigure ./configure \
-        #     --disable-extra-programs \
-        #     --disable-doc \
-        #     --disable-rtcd \
-        #     --disable-intrinsics
+            --disable-doc \
+            --disable-rtcd \
+            --disable-intrinsics
             
-        # emmake make
+        emmake make
 
-        # emcc -O3 \
-        #     .libs/libopus.a \
-        #     -s WASM=1 \
-        #     -s INITIAL_MEMORY=67108864 \
-        #     -s MAXIMUM_MEMORY=2147483648 \
-        #     -s STACK_SIZE=5242880 \
-        #     -s EXPORTED_FUNCTIONS="['_malloc', '_free', '_opus_decoder_create', '_opus_decoder_destroy', '_opus_decode', '_opus_decode_float', '_opus_strerror']" \
-        #     -s EXPORTED_RUNTIME_METHODS="['ccall', 'cwrap', 'setValue', 'getValue']" \
-        #     -s EXPORT_ALL=1 \
-        #     -s NO_EXIT_RUNTIME=1 \
-        #     -s MODULARIZE=1 \
-        #     -s SAFE_HEAP=1 \
-        #     -s ASSERTIONS=2 \
-        #     -s ALLOW_MEMORY_GROWTH=1 \
-        #     -s EXPORT_NAME="'Module_$lib_name'" \
-        #     -o "$OUTPUT_DIR/$lib_name.js"
+        emcc -O3 \
+            .libs/libopus.a \
+            -s WASM=1 \
+            -s INITIAL_MEMORY=67108864 \
+            -s MAXIMUM_MEMORY=2147483648 \
+            -s STACK_SIZE=5242880 \
+            -s EXPORTED_FUNCTIONS="['_malloc', '_free', '_opus_decoder_create', '_opus_decoder_destroy', '_opus_decode', '_opus_decode_float', '_opus_strerror']" \
+            -s EXPORTED_RUNTIME_METHODS="['ccall', 'cwrap', 'setValue', 'getValue']" \
+            -s EXPORT_ALL=1 \
+            -s NO_EXIT_RUNTIME=1 \
+            -s MODULARIZE=1 \
+            -s SAFE_HEAP=1 \
+            -s ASSERTIONS=2 \
+            -s ALLOW_MEMORY_GROWTH=1 \
+            -s EXPORT_NAME="'Module_$lib_name'" \
+            -o "$OUTPUT_DIR/$lib_name.js"
     fi
 
     cd ..

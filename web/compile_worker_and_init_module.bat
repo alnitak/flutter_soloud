@@ -2,5 +2,5 @@
 
 dart compile js -O3 -o worker.dart.js ./worker.dart
 
-dart compile js -O3 -o init_xiph_modules.dart.js ./init_xiph_modules.dart
+dart compile js -O3 -o init_module.dart.js ./init_module.dart
 

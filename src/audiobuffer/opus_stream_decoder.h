@@ -29,28 +29,26 @@ public:
         this->channels = channels;
         EM_ASM({
             // Allocate and initialize Ogg structures in Module memory
-            var oyPtr = Module._malloc(Module_ogg._ogg_sync_state_size || 280);
-            var osPtr = Module._malloc(Module_ogg._ogg_stream_state_size || 464);
-            var ogPtr = Module._malloc(Module_ogg._ogg_page_size || 72);
-            var opPtr = Module._malloc(Module_ogg._ogg_packet_size || 32);
+            var oyPtr = Module._malloc(Module._ogg_sync_state_size || 280);
+            var osPtr = Module._malloc(Module._ogg_stream_state_size || 464);
+            var ogPtr = Module._malloc(Module._ogg_page_size || 72);
+            var opPtr = Module._malloc(Module._ogg_packet_size || 32);
             
             // Initialize Opus decoder
             var error = 0;
             var errorPtr = Module._malloc(4);
             Module.setValue(errorPtr, 0, 'i32');
-            console.log("@@@@@@@1  ", $0, "  ", $1, "  ", errorPtr);
-            var decoderPtr = Module_opus._opus_decoder_create($0, $1, errorPtr);
+            var decoderPtr = Module._opus_decoder_create($0, $1, errorPtr);
             var errorValue = Module.getValue(errorPtr, 'i32');
             Module._free(errorPtr);
-            console.log("@@@@@@@2  ",$0,"  ",$1,"  ",errorValue);
             
             if (errorValue !== 0) {
-                var errorStr = UTF8ToString(Module_opus._opus_strerror(errorValue));
+                var errorStr = UTF8ToString(Module._opus_strerror(errorValue));
                 throw new Error("Failed to create Opus decoder: " + errorStr);
             }
 
             // Initialize Ogg sync state
-            Module_ogg._ogg_sync_init(oyPtr);
+            Module._ogg_sync_init(oyPtr);
             
             // Store pointers in Module for later use
             Module.OpusDecoderState = {};
@@ -70,14 +68,14 @@ public:
             if (Module.OpusDecoderState) {
                 // Clean up Opus decoder
                 if (Module.OpusDecoderState.decoder) {
-                    Module_opus._opus_decoder_destroy(Module.OpusDecoderState.decoder);
+                    Module._opus_decoder_destroy(Module.OpusDecoderState.decoder);
                 }
                 
                 // Clean up Ogg streams
                 if (Module.OpusDecoderState.streamInitialized) {
-                    Module_ogg._ogg_stream_clear(Module.OpusDecoderState.os);
+                    Module._ogg_stream_clear(Module.OpusDecoderState.os);
                 }
-                Module_ogg._ogg_sync_clear(Module.OpusDecoderState.oy);
+                Module._ogg_sync_clear(Module.OpusDecoderState.oy);
                 
                 // Free allocated memory
                 Module._free(Module.OpusDecoderState.oy);
@@ -92,7 +90,7 @@ public:
 
     std::vector<float> decode(const unsigned char* inputData, size_t inputSize) {
         std::vector<float> result;
-        const int localSampleRate = this->sampleRate;  // Create local copies
+        const int localSampleRate = this->sampleRate;
         const int localChannels = this->channels;
         
         // Copy input data to WASM memory
@@ -102,56 +100,65 @@ public:
             return ptr;
         }, inputSize, inputData);
 
-        // Create output buffer in WASM memory with local variable
+        // Create a temporary buffer for decoded frames
+        // For Opus, we need a larger buffer since one packet can decode to multiple frames
+        const int maxFrameSize = (localSampleRate * 60) / 1000; // 60ms frame size to ensure we capture complete packets
         float* outputBuffer = (float*)EM_ASM_PTR({
-            return Module._malloc($0 * $1 * 4); // float = 4 bytes
-        }, localSampleRate/50, localChannels);
+            return Module._malloc($0 * $1 * 4);
+        }, maxFrameSize, localChannels);
 
-        EM_ASM_({
+        float* resultPtr = (float*)EM_ASM_PTR({
             var state = Module.OpusDecoderState;
             var inputSize = $1;
             var inputData = $0;
             var outputPtr = $2;
-            var result = $3;
-            var sr = $4;
-            var ch = $5;
+            var maxFrameSize = $3;
+            var ch = $4;
+            
+            // Create JS array to store all samples
+            var allSamples = [];
+            var headerParsed = state.headerParsed;
+            var packetCount = state.packetCount;
             
             // Write data to Ogg sync buffer
-            var buffer = Module_ogg._ogg_sync_buffer(state.oy, inputSize);
+            var buffer = Module._ogg_sync_buffer(state.oy, inputSize);
             Module._memcpy(buffer, inputData, inputSize);
-            Module_ogg._ogg_sync_wrote(state.oy, inputSize);
+            Module._ogg_sync_wrote(state.oy, inputSize);
             
             // Process pages
-            while (Module_ogg._ogg_sync_pageout(state.oy, state.og) === 1) {
+            while (Module._ogg_sync_pageout(state.oy, state.og) === 1) {
                 if (!state.streamInitialized) {
-                    var serialno = Module_ogg._ogg_page_serialno(state.og);
-                    Module_ogg._ogg_stream_init(state.os, serialno);
+                    var serialno = Module._ogg_page_serialno(state.og);
+                    Module._ogg_stream_init(state.os, serialno);
                     state.streamInitialized = true;
                 }
                 
-                if (Module_ogg._ogg_stream_pagein(state.os, state.og) < 0) {
+                if (Module._ogg_stream_pagein(state.os, state.og) < 0) {
                     throw new Error("Error reading Ogg page");
                 }
                 
-                while (Module_ogg._ogg_stream_packetout(state.os, state.op) === 1) {
+                while (Module._ogg_stream_packetout(state.os, state.op) === 1) {
                     var packetData = Module.getValue(state.op + 0, '*');
-                    var packetSize = Module.getValue(state.op + 24, 'i64');
+                    var packetSizeLow = Module.getValue(state.op + 24, 'i32');
+                    var packetSize = packetSizeLow;
                     
-                    if (!state.headerParsed) {
-                        if (state.packetCount === 0) {
-                            if (packetSize >= 8) state.headerParsed = true;
-                        } else if (state.packetCount === 1) {
-                            state.headerParsed = true;
+                    // Match native header parsing logic exactly
+                    if (!headerParsed) {
+                        if (packetCount === 0) {
+                            if (packetSize >= 8) {
+                                headerParsed = true;
+                            }
+                        } else if (packetCount === 1) {
+                            headerParsed = true;
                         }
-                        state.packetCount++;
+                        packetCount++;
                         continue;
                     }
                     
                     if (packetSize < 1) continue;
                     
-                    var maxFrameSize = sr / 50;
-                    
-                    var samples = Module_opus._opus_decode_float(
+                    // Decode the packet
+                    var samples = Module._opus_decode_float(
                         state.decoder,
                         packetData,
                         packetSize,
@@ -163,20 +170,46 @@ public:
                     if (samples > 0) {
                         var size = samples * ch;
                         var heapView = new Float32Array(Module.HEAPF32.buffer, outputPtr, size);
+                        // Copy samples maintaining their exact values
                         for (var i = 0; i < size; i++) {
-                            Module.HEAPF32[(result>>2) + i] = heapView[i];
+                            allSamples.push(heapView[i]);
                         }
                     }
                 }
             }
-        }, inputBuffer, inputSize, outputBuffer, result.data(), localSampleRate, localChannels);
+            
+            // Save state
+            state.headerParsed = headerParsed;
+            state.packetCount = packetCount;
+            
+            // Allocate final buffer and copy all accumulated samples
+            var finalSize = allSamples.length;
+            var finalPtr = Module._malloc(finalSize * 4);
+            var finalView = new Float32Array(Module.HEAPF32.buffer, finalPtr, finalSize);
+            finalView.set(allSamples);
+            
+            // Store size for C++ side
+            Module.OpusDecoderState.lastResultSize = finalSize;
+            
+            return finalPtr;
+        }, inputBuffer, inputSize, outputBuffer, maxFrameSize, localChannels);
 
-        // Free temporary buffers
+        // Get the size of the result
+        size_t resultSize = EM_ASM_INT({
+            return Module.OpusDecoderState.lastResultSize;
+        });
+
+        // Copy the result to our vector
+        result.resize(resultSize);
+        memcpy(result.data(), resultPtr, resultSize * sizeof(float));
+
+        // Free all temporary buffers
         EM_ASM_({
-            Module._free($0); // Free input buffer
-            Module._free($1); // Free output buffer
-        }, inputBuffer, outputBuffer);
-        
+            Module._free($0);
+            Module._free($1);
+            Module._free($2);
+        }, inputBuffer, outputBuffer, resultPtr);
+
         return result;
     }
 
