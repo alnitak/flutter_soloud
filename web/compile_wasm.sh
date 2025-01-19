@@ -65,7 +65,7 @@ SOURCES=(
 )
 
     # Now compile everything together
-em++ \
+em++ -O3 \
     -I ../src/soloud/include \
     -I ../src/soloud/src \
     -I ../src \
@@ -76,24 +76,16 @@ em++ \
     ${SOURCES[@]} \
     "$OPUS_DIR/.libs/libopus.a" \
     "$OGG_DIR/src/.libs/libogg.a" \
-    -O3 -D WITH_MINIAUDIO \
+    -D WITH_MINIAUDIO \
     -msimd128 -msse3 \
     -s "EXPORTED_RUNTIME_METHODS=['ccall','cwrap','setValue','getValue']" \
-    -s "EXPORTED_FUNCTIONS=['_free', '_malloc', '_memcpy', '_memset', \
-'_opus_decoder_create', '_opus_decoder_destroy', '_opus_decode', '_opus_decode_float', '_opus_strerror', \
-'_ogg_sync_init', '_ogg_sync_clear', '_ogg_sync_buffer', '_ogg_sync_wrote', '_ogg_sync_pageout', \
-'_ogg_stream_init', '_ogg_stream_pagein', '_ogg_stream_packetout', '_ogg_stream_clear', '_ogg_page_serialno']" \
-    -s EXPORT_ALL=1 \
+    -s "EXPORTED_FUNCTIONS=['_free', '_malloc', '_memcpy', '_memset']" \
     -s NO_EXIT_RUNTIME=1 \
     -s SAFE_HEAP=1 \
     -s STACK_SIZE=5242880 \
     -s ALLOW_MEMORY_GROWTH=1 \
     -s INITIAL_MEMORY=67108864 \
     -s MAXIMUM_MEMORY=2147483648 \
-    -s ASSERTIONS=1 \
-    -s ENVIRONMENT='web' \
-    -s MALLOC='emmalloc' \
-    -s SUPPORT_ERRNO=1 \
     -s MODULARIZE=1 \
     -s EXPORT_NAME="'Module_soloud'" \
     -o ../web/libflutter_soloud_plugin.js

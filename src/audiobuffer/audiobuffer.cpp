@@ -100,7 +100,7 @@ namespace SoLoud
 	{
 		stop();
 	}
-
+	int counter;
 	PlayerErrors BufferStream::setBufferStream(
 		Player *aPlayer,
 		ActiveSound *aParent,
@@ -157,7 +157,6 @@ namespace SoLoud
 		{
 			return PlayerErrors::streamEndedAlready;
 		}
-		printf("BufferStream::addData: %d\n", aDataLen);
 		unsigned int bytesWritten = 0;
 
 		if (mPCMformat.dataType == BufferType::OPUS)

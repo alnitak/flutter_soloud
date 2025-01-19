@@ -28,7 +28,7 @@
             "type": "shell"
         },
         {
-            "label": "compile web debug",
+            "label": "compile web wasm release",
             "command": "cd ${workspaceFolder}/example; flutter run -d chrome --web-renderer canvaskit --web-browser-flag '--disable-web-security' -t lib/buffer_stream/websocket.dart --release",
             "type": "shell"
         },

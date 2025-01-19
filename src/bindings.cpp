@@ -160,23 +160,10 @@ extern "C"
 
     /// Check if the libopus and libogg are available at build time.
     FFI_PLUGIN_EXPORT bool areOpusOggLibsAvailable() {
-#ifdef __EMSCRIPTEN__
-        int result = EM_ASM_INT({
-            if (typeof Module._ogg_sync_init !== 'undefined' && typeof Module._opus_decoder_create !== 'undefined') {
-                console.log('Opus and ogg libraries are available.');
-                return 1;
-            } else {
-                console.error('Opus and/or ogg libraries not found.');
-                return 0;
-            }
-        });
-        return result != 0;
-#else
-#ifdef LIBOPUS_OGG_AVAILABLE
+#if defined(LIBOPUS_OGG_AVAILABLE) || defined(__EMSCRIPTEN__)
         return true;
 #else
         return false;
-#endif
 #endif
     }
 
