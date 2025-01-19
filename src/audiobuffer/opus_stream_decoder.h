@@ -36,6 +36,7 @@ public:
         }
 
         ogg_sync_init(&oy);
+        counter = 0;
     }
 
     ~OpusDecoderWrapper()
@@ -49,12 +50,14 @@ public:
         }
         ogg_sync_clear(&oy);
     }
-
+    int counter = 0;
     std::vector<float> decode(const unsigned char *inputData, size_t inputSize)
     {
         std::vector<float> decodedData;
 
         // Write data into ogg sync buffer
+        counter++;
+        printf("decode %d - inputSize: %zu\n", counter, inputSize);
         char *buffer = ogg_sync_buffer(&oy, inputSize);
         memcpy(buffer, inputData, inputSize);
         ogg_sync_wrote(&oy, inputSize);
@@ -92,25 +95,12 @@ private:
         // Skip header packets (first 2 packets in Ogg Opus stream)
         if (!headerParsed)
         {
-            if (packetCount == 0)
-            {
-                // OpusHead packet
-                if (packetSize < 8)
-                    return packetPcm;
-                headerParsed = true;
-            }
-            else if (packetCount == 1)
+            if (packetCount == 1)
             {
                 // OpusTags packet
                 headerParsed = true;
             }
             packetCount++;
-            return packetPcm;
-        }
-
-        // Validate packet
-        if (packetSize < 1)
-        {
             return packetPcm;
         }
 

@@ -189,6 +189,7 @@ class _WebsocketExampleState extends State<WebsocketExample> {
             onPressed: () async {
               await channel?.sink.close();
               await SoLoud.instance.disposeAllSources();
+              streamBuffering.value = false;
 
               currentSound = SoLoud.instance.setBufferStream(
                 maxBufferSize: 1024 * 1024 * 200, // 200 MB
@@ -241,11 +242,6 @@ class _WebsocketExampleState extends State<WebsocketExample> {
                   numberOfChunks++;
                   byteSize += (message as List<int>).length;
 
-                  // start playing at first audio chunk received
-                  if (numberOfChunks == 1) {
-                    handle = await SoLoud.instance.play(currentSound!);
-                  }
-
                   try {
                     SoLoud.instance.addAudioDataStream(
                       currentSound!,
@@ -254,6 +250,11 @@ class _WebsocketExampleState extends State<WebsocketExample> {
                   } on Exception catch (e) {
                     debugPrint('error adding audio data: $e');
                     await channel?.sink.close();
+                  }
+
+                  // start playing at first audio chunk received
+                  if (numberOfChunks == 1) {
+                    handle = await SoLoud.instance.play(currentSound!);
                   }
                 },
                 onDone: () {
