@@ -36,7 +36,7 @@ class WorkerController {
     }).toJS;
   }
 
-  /// Not used with `Module.wasmWorker`.
+  /// Not used with `Module_soloud.wasmWorker`.
   void sendMessage(dynamic message) {
     switch (message) {
       case Map():

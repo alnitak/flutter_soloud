@@ -106,7 +106,8 @@
         "io_context": "cpp",
         "netfwd": "cpp",
         "timer": "cpp",
-        "text_encoding": "cpp"
+        "text_encoding": "cpp",
+        "coroutine": "cpp"
     },
     "java.configuration.updateBuildConfiguration": "interactive"
 }

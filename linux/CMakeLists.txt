@@ -101,11 +101,6 @@ if (LIBOPUS_LIBRARY AND LIBOGG_LIBRARY)
 endif()
 
 
-
-
-
-
-
 target_compile_options("${PLUGIN_NAME}" PRIVATE -Wall -Wno-error -Wno-vla -fPIC -O3 -msse3 -msse2) #  -ldl -lpthread -lm
 
 # List of absolute paths to libraries that should be bundled with the plugin.
@@ -113,3 +108,5 @@ set(flutter_soloud_bundled_libraries
   $<TARGET_FILE:${PLUGIN_NAME}>
   PARENT_SCOPE
 )
+
+message("**************** SOLOUD BUILD SUCCESSFULLY!")

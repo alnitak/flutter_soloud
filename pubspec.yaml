@@ -70,3 +70,4 @@ flutter:
     - web/worker.dart.js
     - web/libflutter_soloud_plugin.js
     - web/libflutter_soloud_plugin.wasm
+    - web/init_module.dart.js

@@ -46,18 +46,18 @@ extern "C"
     /// WEB WORKER
 
 #ifdef __EMSCRIPTEN__
-    /// Create the web worker and store a global "Module.workerUri" in JS.
+    /// Create the web worker and store a global "Module_soloud.workerUri" in JS.
     FFI_PLUGIN_EXPORT void createWorkerInWasm()
     {
         printf("CPP void createWorkerInWasm()\n");
 
         EM_ASM({
-            if (!Module.wasmWorker)
+            if (!Module_soloud.wasmWorker)
             {
                 // Create a new Worker from the URI
                 var workerUri = "assets/packages/flutter_soloud/web/worker.dart.js";
                 console.log("EM_ASM creating web worker!");
-                Module.wasmWorker = new Worker(workerUri);
+                Module_soloud.wasmWorker = new Worker(workerUri);
             }
             else
             {
@@ -70,12 +70,12 @@ extern "C"
     FFI_PLUGIN_EXPORT void sendToWorker(const char *message, int value)
     {
         EM_ASM({
-            if (Module.wasmWorker)
+            if (Module_soloud.wasmWorker)
             {
                 console.log("EM_ASM posting message " + UTF8ToString($0) + 
                     " with value " + $1);
                 // Send the message
-                Module.wasmWorker.postMessage(JSON.stringify({
+                Module_soloud.wasmWorker.postMessage(JSON.stringify({
                     "message" : UTF8ToString($0),
                     "value" : $1
                 }));
@@ -160,7 +160,7 @@ extern "C"
 
     /// Check if the libopus and libogg are available at build time.
     FFI_PLUGIN_EXPORT bool areOpusOggLibsAvailable() {
-#ifdef LIBOPUS_OGG_AVAILABLE
+#if defined(LIBOPUS_OGG_AVAILABLE) || defined(__EMSCRIPTEN__)
         return true;
 #else
         return false;

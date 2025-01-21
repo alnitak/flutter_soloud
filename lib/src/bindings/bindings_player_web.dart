@@ -43,7 +43,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     // create the worker in the WASM `Module`.
     wasmCreateWorkerInWasm();
 
-    // Here the `Module.wasmModule` binded to a local [WorkerController]
+    // Here the `Module_soloud.wasmModule` binded to a local [WorkerController]
     // is used in the main isolate to listen for events coming from native.
     // From native the events can be sent from the main thread and even from
     // other threads like the audio thread.

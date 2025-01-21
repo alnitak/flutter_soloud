@@ -11,6 +11,7 @@ Please note that filters for single sounds are not supported on the web.
 To add the plugin to a web app, add the following line to the `<body>` section of `web/index.html`:
 ```
 <script src="assets/packages/flutter_soloud/web/libflutter_soloud_plugin.js" defer></script>
+  <script src="assets/packages/flutter_soloud/web/init_module.dart.js" defer></script>
 ```
 
 ---
@@ -31,10 +32,11 @@ flutter run -d chrome --web-renderer canvaskit --web-browser-flag '--disable-web
 
 ## For developers
 
-In the `web` directory, there is a `compile_wasm.sh` script that generates the `.js` and `.wasm` files for the native C code located in the `src` dir. Run it after installing *emscripten*. There is also a `compile_web.sh` to compile the web worker needed by native code to communicate with Dart. The generated files are already provided, but if it is needed to modify C/C++ code or the `web/worker.dart` code, the scripts must be run to reflect the changes.
+In the `web` directory, there is a `compile_wasm.sh` script that generates the `.js` and `.wasm` files for the native C code located in the `src` dir. Run it after installing *emscripten*. There is also a `compile_worker_and_init_module.sh` to compile the web worker needed by native code to communicate with Dart and the `init_module.dart` which initializes the WASM module. The default Module name is `Module_soloud` instead of the default `Module` to prevent some other WASM plugins from conflicting.
 
-The `compile_wasm.sh` script uses the `-O3` code optimization flag.
-To see a better errors logs, use `-O0 -g -s ASSERTIONS=1` in `compile_wasm.sh`.
+The generated files are already provided, but if it is needed to modify C/C++ code or the `web/worker.dart` code, the scripts must be run to reflect the changes.
+
+The `compile_wasm.sh` script uses the `-O3` code optimization flag. To see a better errors logs, use `-O0 -g -s ASSERTIONS=1` in `compile_wasm.sh`.
 
 ---
 
@@ -44,10 +46,10 @@ Here a sketch to show the step used:
 ![sketch](img/wasmWorker.png)
 
 **#1.** This function is called while initializing the player with `FlutterSoLoudWeb.setDartEventCallbacks()`.
-It creates a Web Worker in the [WASM Module](https://emscripten.org/docs/api_reference/module.html) using the compiled `web/worker.dart`. After calling this, the WASM Module will have a new variable called `Module.wasmWorker` which will be used in Dart to receive messages.
+It creates a Web Worker in the [WASM Module](https://emscripten.org/docs/api_reference/module.html) using the compiled `web/worker.dart`. After calling this, the WASM Module will have a new variable called `Module_soloud.wasmWorker` which will be used in Dart to receive messages.
 By doing this it will be easy to use the Worker to send messages from within the CPP code.
 
-**#2.** This function, like #1, uses [EM_ASM](https://emscripten.org/docs/porting/connecting_cpp_and_javascript/Interacting-with-code.html#interacting-with-code-call-javascript-from-native) to inline JS. This JS code uses the `Module.wasmWorker` created in #1 to send a message.
+**#2.** This function, like #1, uses [EM_ASM](https://emscripten.org/docs/porting/connecting_cpp_and_javascript/Interacting-with-code.html#interacting-with-code-call-javascript-from-native) to inline JS. This JS code uses the `Module_soloud.wasmWorker` created in #1 to send a message.
 
 **#3.** This is the JS used and created in #1. Every messages sent by #2 are managed here and sent to #4.
 

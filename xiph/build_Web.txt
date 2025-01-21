@@ -1,0 +1,2 @@
+The opus and ogg libraries are built by `web/compile_wasm.sh` and
+are linked in the main libflutter_soloud_plugin.[wasm|js]

@@ -100,7 +100,8 @@ namespace SoLoud
 	{
 		stop();
 	}
-
+	
+	int counter;
 	PlayerErrors BufferStream::setBufferStream(
 		Player *aPlayer,
 		ActiveSound *aParent,
@@ -124,7 +125,7 @@ namespace SoLoud
 		mBaseSamplerate = (float)pcmFormat.sampleRate;
 		mOnBufferingCallback = onBufferingCallback;
 
-#ifdef LIBOPUS_OGG_AVAILABLE
+#if defined(LIBOPUS_OGG_AVAILABLE) || defined(__EMSCRIPTEN__)
 		decoder = nullptr;
 		if (pcmFormat.dataType == OPUS)
 		{
@@ -157,12 +158,11 @@ namespace SoLoud
 		{
 			return PlayerErrors::streamEndedAlready;
 		}
-		printf("BufferStream::addData: %d\n", aDataLen);
 		unsigned int bytesWritten = 0;
 
 		if (mPCMformat.dataType == BufferType::OPUS)
 		{
-#ifdef LIBOPUS_OGG_AVAILABLE
+#if defined(LIBOPUS_OGG_AVAILABLE) || defined(__EMSCRIPTEN__)
 			// Decode the Opus data
 			try {
 				auto newData = decoder.get()->decode(

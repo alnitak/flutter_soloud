@@ -67,10 +67,12 @@ class _BufferBarState extends State<BufferBar> {
     /// [soundLength] in percentage.
     final handlesPos = <double>[];
     for (var i = 0; i < widget.sound!.handles.length; i++) {
-      final handlePos =
+      final hp =
           SoLoud.instance.getPosition(widget.sound!.handles.elementAt(i));
       handlesPos.add(
-        handlePos.inMilliseconds / soundLength.inMilliseconds,
+        soundLength.inMilliseconds == 0 
+        ? 0
+        : hp.inMilliseconds / soundLength.inMilliseconds,
       );
     }
 

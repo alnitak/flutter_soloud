@@ -3,3 +3,4 @@
 #except php files
 !*.bat
 !*.sh
+!*.txt
