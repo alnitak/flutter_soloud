@@ -44,7 +44,7 @@ On Linux and MacOS theese libraries must be installed if you want to use this ki
 - MacOS
   - `brew install opus libogg`
 
-if the libraries are not found the plugin will throw an exeption when calling `setBufferStream` with Opus format.
+if the libraries are not found the plugin will throw an exception when calling `setBufferStream` using Opus format.
 
 #### Web platform
 To use this plugin on the **Web platform**, please refer to [WEB_NOTES](https://github.com/alnitak/flutter_soloud/blob/main/WEB_NOTES.md).
