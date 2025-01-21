@@ -100,6 +100,7 @@ namespace SoLoud
 	{
 		stop();
 	}
+	
 	int counter;
 	PlayerErrors BufferStream::setBufferStream(
 		Player *aPlayer,

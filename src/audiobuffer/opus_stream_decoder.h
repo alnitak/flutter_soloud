@@ -36,7 +36,6 @@ public:
         }
 
         ogg_sync_init(&oy);
-        counter = 0;
     }
 
     ~OpusDecoderWrapper()
@@ -50,14 +49,12 @@ public:
         }
         ogg_sync_clear(&oy);
     }
-    int counter = 0;
+
     std::vector<float> decode(const unsigned char *inputData, size_t inputSize)
     {
         std::vector<float> decodedData;
 
         // Write data into ogg sync buffer
-        counter++;
-        printf("decode %d - inputSize: %zu\n", counter, inputSize);
         char *buffer = ogg_sync_buffer(&oy, inputSize);
         memcpy(buffer, inputData, inputSize);
         ogg_sync_wrote(&oy, inputSize);

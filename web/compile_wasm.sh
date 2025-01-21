@@ -41,7 +41,8 @@ if [ ! -f "$OPUS_DIR/.libs/libopus.a" ] || [ $FORCE_REBUILD_LIBS -eq 1 ]; then
         --disable-extra-programs \
         --disable-doc \
         --disable-rtcd \
-        --disable-intrinsics
+        --disable-intrinsics \
+        CFLAGS="-O3 -fPIC"
     emmake make -j$CORES
     cd -
 fi
