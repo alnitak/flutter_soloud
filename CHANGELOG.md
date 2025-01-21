@@ -2,7 +2,7 @@
 ### 2.1.8 ()
 - fix: clicks and pops when changing waveform frequency #156
 - added BufferStream #148. Now it's possible to add audio data and listen to them. It provides a customizable buffering length which automatycally pause the playing handle for example when receiving audio data from the web.
-- To avoid future incompatibilities when using other plugins that use WASM compiled plugins, it is now necessary to add a new script to `index.html`:
+- To avoid future incompatibilities when using other WASM compiled plugins, it is now necessary to add a new script to `index.html`:
   ```
   <script src="assets/packages/flutter_soloud/web/libflutter_soloud_plugin.js" defer></script>
   <script src="assets/packages/flutter_soloud/web/init_module.dart.js" defer></script>
