@@ -108,5 +108,3 @@ set(flutter_soloud_bundled_libraries
   $<TARGET_FILE:${PLUGIN_NAME}>
   PARENT_SCOPE
 )
-
-message("**************** SOLOUD BUILD SUCCESSFULLY!")

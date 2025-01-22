@@ -100,7 +100,7 @@ namespace SoLoud
 	{
 		stop();
 	}
-	
+
 	int counter;
 	PlayerErrors BufferStream::setBufferStream(
 		Player *aPlayer,
@@ -124,12 +124,14 @@ namespace SoLoud
 		mChannels = pcmFormat.channels;
 		mBaseSamplerate = (float)pcmFormat.sampleRate;
 		mOnBufferingCallback = onBufferingCallback;
+		buffer = std::vector<unsigned char>();
 
 #if defined(LIBOPUS_OGG_AVAILABLE) || defined(__EMSCRIPTEN__)
 		decoder = nullptr;
-		if (pcmFormat.dataType == OPUS)
+		if (pcmFormat.dataType == BufferType::OPUS)
 		{
-			try {
+			try
+			{
 				decoder = std::make_unique<OpusDecoderWrapper>(
 					pcmFormat.sampleRate, pcmFormat.channels);
 			}
@@ -149,16 +151,43 @@ namespace SoLoud
 
 	void BufferStream::setDataIsEnded()
 	{
+		if (buffer.size() > 0)
+			addData(buffer.data(), buffer.size(), true);
+		buffer.clear();
 		dataIsEnded = true;
 	}
 
-	PlayerErrors BufferStream::addData(const void *aData, unsigned int aDataLen)
+	PlayerErrors BufferStream::addData(const void *aData, unsigned int aDataLen, bool forceAdd)
 	{
 		if (dataIsEnded)
 		{
 			return PlayerErrors::streamEndedAlready;
 		}
+
 		unsigned int bytesWritten = 0;
+
+		buffer.insert(buffer.end(),
+			static_cast<const unsigned char *>(aData),
+			static_cast<const unsigned char *>(aData) + aDataLen);
+		int bufferDataToAdd = 0;
+		// Performing some buffering.
+		if (buffer.size() > 1024 * 2 && !forceAdd) // 2 KB of data
+		{
+			// For PCM data we should align the data to the bytes per sample.
+			if (mPCMformat.dataType != BufferType::OPUS)
+			{
+				int alignment = mPCMformat.bytesPerSample * mPCMformat.channels;
+				bufferDataToAdd = (int)(buffer.size() / alignment) * alignment;
+			}
+			else
+			{
+				// When using opus we don't need to align.
+				bufferDataToAdd = buffer.size();
+			}
+		} else
+			// Return if there is not enough data to add.
+			return PlayerErrors::noError;
+
 
 		if (mPCMformat.dataType == BufferType::OPUS)
 		{
@@ -166,13 +195,14 @@ namespace SoLoud
 			// Decode the Opus data
 			try {
 				auto newData = decoder.get()->decode(
-					reinterpret_cast<const unsigned char *>(aData),
-					aDataLen);
+					buffer.data(),
+					bufferDataToAdd);
 				if (newData.size() > 0)
 					bytesWritten = mBuffer.addData(BufferType::OPUS, newData.data(), newData.size());
 				else
 					return PlayerErrors::noError;
-			} catch (const std::exception &e)
+			}
+			catch (const std::exception &e)
 			{
 				return PlayerErrors::failedToDecodeOpusPacket;
 			}
@@ -182,7 +212,12 @@ namespace SoLoud
 		}
 		else
 		{
-			bytesWritten = mBuffer.addData(mPCMformat.dataType, aData, aDataLen / mPCMformat.bytesPerSample);
+			bytesWritten = mBuffer.addData(mPCMformat.dataType, buffer.data(), bufferDataToAdd / mPCMformat.bytesPerSample);
+		}
+
+		// Remove the processed data from the buffer
+		if (bytesWritten > 0) {
+			buffer.erase(buffer.begin(), buffer.begin() + bufferDataToAdd);
 		}
 
 		mSampleCount += bytesWritten / mPCMformat.bytesPerSample;
