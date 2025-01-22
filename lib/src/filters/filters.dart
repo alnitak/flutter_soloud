@@ -112,7 +112,7 @@ final class FiltersSingle {
   ///
   /// - `kneeWidth`: The width of the knee in dB. A larger value results in a
   /// softer transition into limiting.
-  /// 
+  ///
   /// - `attackTime`: The attack time in milliseconds. Determines how quickly
   /// the gain reduction recovers after a signal peaks above the threshold.
   ///
