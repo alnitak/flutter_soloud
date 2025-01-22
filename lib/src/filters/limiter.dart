@@ -7,13 +7,14 @@ import 'package:flutter_soloud/src/sound_hash.dart';
 enum Limiter {
   wet,
   threshold,
-  makeupGain,
+  outputCeiling,
   kneeWidth,
-  releaseTime;
+  releaseTime,
+  attackTime;
 
-  final List<double> _mins = const [0, -60, -60, 0, 1];
-  final List<double> _maxs = const [1, 0, 30, 30, 1000];
-  final List<double> _defs = const [1, -6, 0, 2, 100];
+  final List<double> _mins = const [0, -60, -60, 0, 1, 0.1];
+  final List<double> _maxs = const [1, 0, 0, 30, 1000, 200];
+  final List<double> _defs = const [1, -6, -1, 2, 100, 1];
 
   double get min => _mins[index];
   double get max => _maxs[index];
@@ -23,9 +24,10 @@ enum Limiter {
   String toString() => switch (this) {
         Limiter.wet => 'Wet',
         Limiter.threshold => 'Threshold',
-        Limiter.makeupGain => 'Makeup Gain',
+        Limiter.outputCeiling => 'Output Ceiling',
         Limiter.kneeWidth => 'Knee Width',
         Limiter.releaseTime => 'Release Time',
+        Limiter.attackTime => 'Attack Time',
       };
 }
 
@@ -35,9 +37,10 @@ abstract class _LimiterInternal extends FilterBase {
 
   Limiter get queryWet => Limiter.wet;
   Limiter get queryThreshold => Limiter.threshold;
-  Limiter get queryMakeupGain => Limiter.makeupGain;
+  Limiter get queryOutputCeiling => Limiter.outputCeiling;
   Limiter get queryKneeWidth => Limiter.kneeWidth;
   Limiter get queryReleaseTime => Limiter.releaseTime;
+  Limiter get queryAttackTime => Limiter.attackTime;
 }
 
 class LimiterSingle extends _LimiterInternal {
@@ -59,12 +62,12 @@ class LimiterSingle extends _LimiterInternal {
         Limiter.threshold.max,
       );
 
-  FilterParam makeupGain({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam outputCeiling({SoundHandle? soundHandle}) => FilterParam(
         soundHandle,
         filterType,
-        Limiter.makeupGain.index,
-        Limiter.makeupGain.min,
-        Limiter.makeupGain.max,
+        Limiter.outputCeiling.index,
+        Limiter.outputCeiling.min,
+        Limiter.outputCeiling.max,
       );
 
   FilterParam kneeWidth({SoundHandle? soundHandle}) => FilterParam(
@@ -81,6 +84,14 @@ class LimiterSingle extends _LimiterInternal {
         Limiter.releaseTime.index,
         Limiter.releaseTime.min,
         Limiter.releaseTime.max,
+      );
+
+  FilterParam attackTime({SoundHandle? soundHandle}) => FilterParam(
+        soundHandle,
+        filterType,
+        Limiter.attackTime.index,
+        Limiter.attackTime.min,
+        Limiter.attackTime.max,
       );
 }
 
@@ -103,12 +114,12 @@ class LimiterGlobal extends _LimiterInternal {
         Limiter.threshold.max,
       );
 
-  FilterParam get makeupGain => FilterParam(
+  FilterParam get outputCeiling => FilterParam(
         null,
         filterType,
-        Limiter.makeupGain.index,
-        Limiter.makeupGain.min,
-        Limiter.makeupGain.max,
+        Limiter.outputCeiling.index,
+        Limiter.outputCeiling.min,
+        Limiter.outputCeiling.max,
       );
 
   FilterParam get kneeWidth => FilterParam(
@@ -125,5 +136,13 @@ class LimiterGlobal extends _LimiterInternal {
         Limiter.releaseTime.index,
         Limiter.releaseTime.min,
         Limiter.releaseTime.max,
+      );
+
+  FilterParam get attackTime => FilterParam(
+        null,
+        filterType,
+        Limiter.attackTime.index,
+        Limiter.attackTime.min,
+        Limiter.attackTime.max,
       );
 }
