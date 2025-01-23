@@ -18,8 +18,8 @@ import 'package:logging/logging.dart';
 /// - `wet`: Wet/dry mix ratio, 1.0 means fully wet, 0.0 means fully dry
 /// - `threshold`: The threshold in dB. Signals above this level are reduced
 /// in gain. A lower value means more aggressive limiting.
-/// - `makeupGain`: The make-up gain in dB applied after limiting to bring up
-/// the output level.
+/// - `outputCeiling`: The maximum output level in dB (should be < 0dB to
+/// prevent clipping)
 /// - `kneeWidth`: The width of the knee in dB. A larger value results in a
 /// softer transition into limiting.
 /// - `releaseTime`: The release time in milliseconds. Determines how quickly
@@ -72,9 +72,10 @@ class _LimiterExampleState extends State<LimiterExample> {
   AudioSource? sound;
   late double wet;
   late double threshold;
-  late double makeupGain;
+  late double outputCeiling;
   late double kneeWidth;
   late double releaseTime;
+  late double attackTime;
   bool isFilterActive = false;
 
   @override
@@ -83,9 +84,10 @@ class _LimiterExampleState extends State<LimiterExample> {
 
     wet = limiter.queryWet.def;
     threshold = limiter.queryThreshold.def;
-    makeupGain = limiter.queryMakeupGain.def;
+    outputCeiling = limiter.queryOutputCeiling.def;
     kneeWidth = limiter.queryKneeWidth.def;
     releaseTime = limiter.queryReleaseTime.def;
+    attackTime = limiter.queryAttackTime.def;
   }
 
   @override
@@ -105,7 +107,11 @@ class _LimiterExampleState extends State<LimiterExample> {
           children: [
             const Text(
               'WARNING: lower the volume down!',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.red,
+              ),
             ),
             Row(
               mainAxisSize: MainAxisSize.min,
@@ -118,9 +124,10 @@ class _LimiterExampleState extends State<LimiterExample> {
                       limiter.activate();
                       limiter.wet.value = wet;
                       limiter.threshold.value = threshold;
-                      limiter.makeupGain.value = makeupGain;
+                      limiter.outputCeiling.value = outputCeiling;
                       limiter.kneeWidth.value = kneeWidth;
                       limiter.releaseTime.value = releaseTime;
+                      limiter.attackTime.value = attackTime;
                     } else {
                       limiter.deactivate();
                     }
@@ -143,11 +150,16 @@ class _LimiterExampleState extends State<LimiterExample> {
             ///
             ElevatedButton(
               onPressed: () {
-                SoLoud.instance.play(sound!, looping: true);
-                SoLoud.instance.play(sound!, looping: true);
-                SoLoud.instance.play(sound!, looping: true);
-                SoLoud.instance.play(sound!, looping: true);
-                SoLoud.instance.play(sound!, looping: true);
+                SoLoud.instance.play(sound!, looping: true, volume: 2);
+                SoLoud.instance.play(sound!, looping: true, volume: 2);
+                SoLoud.instance.play(sound!, looping: true, volume: 2);
+                SoLoud.instance.play(sound!, looping: true, volume: 2);
+                SoLoud.instance.play(sound!, looping: true, volume: 2);
+                SoLoud.instance.play(sound!, looping: true, volume: 2);
+                SoLoud.instance.play(sound!, looping: true, volume: 2);
+                SoLoud.instance.play(sound!, looping: true, volume: 2);
+                SoLoud.instance.play(sound!, looping: true, volume: 2);
+                SoLoud.instance.play(sound!, looping: true, volume: 2);
               },
               child: const Text('play sound'),
             ),
@@ -199,16 +211,16 @@ class _LimiterExampleState extends State<LimiterExample> {
             ),
             Row(
               children: [
-                Text('Makeup gain ${makeupGain.toStringAsFixed(2)}'),
+                Text('Outpout ceiling ${outputCeiling.toStringAsFixed(2)}'),
                 Expanded(
                   child: Slider(
-                    value: makeupGain,
-                    min: limiter.queryMakeupGain.min,
-                    max: limiter.queryMakeupGain.max,
+                    value: outputCeiling,
+                    min: limiter.queryOutputCeiling.min,
+                    max: limiter.queryOutputCeiling.max,
                     onChanged: (value) {
                       setState(() {
-                        makeupGain = value;
-                        limiter.makeupGain.value = value;
+                        outputCeiling = value;
+                        limiter.outputCeiling.value = value;
                       });
                     },
                   ),
@@ -245,6 +257,24 @@ class _LimiterExampleState extends State<LimiterExample> {
                       setState(() {
                         releaseTime = value;
                         limiter.releaseTime.value = value;
+                      });
+                    },
+                  ),
+                ),
+              ],
+            ),
+            Row(
+              children: [
+                Text('Attack time ${attackTime.toStringAsFixed(2)}'),
+                Expanded(
+                  child: Slider(
+                    value: attackTime,
+                    min: limiter.queryAttackTime.min,
+                    max: limiter.queryAttackTime.max,
+                    onChanged: (value) {
+                      setState(() {
+                        attackTime = value;
+                        limiter.attackTime.value = value;
                       });
                     },
                   ),

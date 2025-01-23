@@ -107,11 +107,14 @@ final class FiltersSingle {
   /// - `threshold`: The threshold in dB. Signals above this level are reduced
   /// in gain. A lower value means more aggressive limiting.
   ///
-  /// - `makeupGain`: The make-up gain in dB applied after limiting to bring up
-  /// the output level.
+  /// - `outputCeiling`: The maximum output level in dB (should be < 0dB to
+  /// prevent clipping)
   ///
   /// - `kneeWidth`: The width of the knee in dB. A larger value results in a
   /// softer transition into limiting.
+  ///
+  /// - `attackTime`: The attack time in milliseconds. Determines how quickly
+  /// the gain reduction recovers after a signal peaks above the threshold.
   ///
   /// - `releaseTime`: The release time in milliseconds. Determines how quickly
   /// the gain reduction recovers after a signal drops below the threshold.
@@ -188,8 +191,8 @@ final class FiltersGlobal {
   /// - `threshold`: The threshold in dB. Signals above this level are reduced
   /// in gain. A lower value means more aggressive limiting.
   ///
-  /// - `makeupGain`: The make-up gain in dB applied after limiting to bring up
-  /// the output level.
+  /// - `outputCeiling`: The maximum output level in dB (should be < 0dB to
+  /// prevent clipping)
   ///
   /// - `kneeWidth`: The width of the knee in dB. A larger value results in a
   /// softer transition into limiting.
