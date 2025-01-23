@@ -1,6 +1,6 @@
 ### 2.1.8 ()
 - fix: clicks and pops when changing waveform frequency #156
-- added BufferStream #148. Now it's possible to add audio data and listen to them. It provides a customizable buffering length which automatycally pause the playing handle for example when receiving audio data from the web.
+- added BufferStream #148. Now it's possible to add PCM audio data (s8, s16, s32, f32) and listen to them. It provides a customizable buffering length which automatycally pause the playing handle for example when receiving audio data from the web.
 - added Limiter and Compressor filters (see `example/lib/filters`)
 - added `setInaudibleBehavior`. When a 3D sound is too far to be eard, you can tell `flutter_soloud` to kill it.
 
