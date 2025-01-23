@@ -189,7 +189,7 @@ class _WebsocketExampleState extends State<WebsocketExample> {
                 bufferingTimeNeeds: 3,
                 sampleRate: sampleRate[srId],
                 channels: Channels.values[chId],
-                pcmFormat: BufferPcmType.values[fmtId],
+                format: BufferType.values[fmtId],
                 onBuffering: (isBuffering, handle, time) async {
                   debugPrint('started buffering? $isBuffering  with '
                       'handle: $handle at time $time');

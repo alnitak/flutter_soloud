@@ -675,7 +675,7 @@ interface class SoLoud {
   ///
   /// [channels] enum to choose the number of channels.
   ///
-  /// [pcmFormat] enum to choose from `f32le`, `s8`, `s16le` and `s32le`.
+  /// [format] enum to choose from `f32le`, `s8`, `s16le` and `s32le`.
   ///
   /// [onBuffering] a callback that is called when starting to buffer
   /// (isBuffering = true) and when the buffering is done (isBuffering = false).
@@ -688,7 +688,7 @@ interface class SoLoud {
     double bufferingTimeNeeds = 2, // 2 seconds of data needed to un-pause
     int sampleRate = 22050,
     Channels channels = Channels.mono,
-    BufferPcmType pcmFormat = BufferPcmType.s16le,
+    BufferType format = BufferType.s16le,
     void Function(bool isBuffering, int handle, double time)? onBuffering,
   }) {
     if (!isInitialized) {
@@ -700,7 +700,7 @@ interface class SoLoud {
           bufferingTimeNeeds,
           sampleRate,
           channels.count,
-          pcmFormat.value,
+          format.value,
           onBuffering,
         );
 
