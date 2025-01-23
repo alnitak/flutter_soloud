@@ -26,25 +26,30 @@ Flutter audio plugin using SoLoud library and FFI
     # fix for #130. This maybe is temporary solution till a new XCode will be released.
     # '-GCC_WARN_INHIBIT_ALL_WARNINGS',
     '-w',
-    '-DOS_OBJECT_USE_OBJC=0', '-Wno-format',
+    '-DOS_OBJECT_USE_OBJC=0',
+    '-Wno-format',
     '-lpthread',
     '-lm'
   ]
+
   # Flutter.framework does not contain a i386 slice.
   s.pod_target_xcconfig = { 
-    # Enable equivalent of '-Isrc/include' to make '#include <openssl/...>' work
     'HEADER_SEARCH_PATHS' => [
       '$(PODS_TARGET_SRCROOT)/../src',
       '$(PODS_TARGET_SRCROOT)/../src/soloud/include',
     ],
     'GCC_PREPROCESSOR_DEFINITIONS' => '$(inherited)',
     'DEFINES_MODULE' => 'YES', 
-    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386',
-    "CLANG_CXX_LANGUAGE_STANDARD" => "c++17",
-    "CLANG_CXX_LIBRARY" => "libc++"
+    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'arm64',
+    'VALID_ARCHS' => 'arm64 x86_64',
+    'CLANG_CXX_LANGUAGE_STANDARD' => 'c++17',
+    'CLANG_CXX_LIBRARY' => 'libc++',
+    'OTHER_CFLAGS' => '-msse -msse2 -msse3 -msse4.1 -O3 -ffast-math -flto',
+    'OTHER_CPLUSPLUSFLAGS' => '-msse -msse2 -msse3 -msse4.1 -O3 -ffast-math -flto'
   }
+  
+  s.user_target_xcconfig = { 'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'arm64' }
+
   s.swift_version = '5.0'
-  # spec.framework      = 'SystemConfiguration'
   s.ios.framework  = ['AudioToolbox', 'AVFAudio']
-  # spec.osx.framework  = 'AppKit'
 end
