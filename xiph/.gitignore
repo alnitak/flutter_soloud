@@ -1,8 +1,0 @@
-#ignore all kind of files and directories
-*
-*.*
-
-#except specific files
-!*.bat
-!*.sh
-!*.txt

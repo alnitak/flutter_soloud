@@ -45,4 +45,10 @@ web/worker.dart.js.map
 **/android/daemon
 **/android/android
 
-!xiph/.gitignore
+# Ignore all files and directories in xiph
+xiph/**
+
+# Except specific files
+!xiph/**/*.bat
+!xiph/**/*.sh
+!xiph/**/*.txt
