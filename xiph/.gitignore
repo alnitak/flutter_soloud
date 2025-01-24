@@ -1,6 +1,8 @@
-#ignore all kind of files
+#ignore all kind of files and directories
+*
 *.*
-#except php files
+
+#except specific files
 !*.bat
 !*.sh
 !*.txt
