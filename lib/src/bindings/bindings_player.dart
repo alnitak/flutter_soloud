@@ -58,7 +58,7 @@ abstract class FlutterSoLoud {
   /// On the web, only the `voiceEndedCallback` is supported. On the other
   /// platform there are also `fileLoadedCallback` and `stateChangedCallback`.
   @mustBeOverridden
-  void setDartEventCallbacks();
+  Future<void> setDartEventCallbacks();
 
   /// Check if the libopus and libogg are available at build time.
   @mustBeOverridden

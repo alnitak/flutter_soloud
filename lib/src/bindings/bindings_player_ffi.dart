@@ -115,7 +115,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   }
 
   @override
-  void setDartEventCallbacks() {
+  Future<void> setDartEventCallbacks() async {
     // Create a NativeCallable for the Dart functions
     final nativeVoiceEndedCallable =
         ffi.NativeCallable<DartVoiceEndedCallbackTFunction>.listener(

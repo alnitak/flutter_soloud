@@ -37,7 +37,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   /// Create the worker in the WASM Module and listen for events coming
   /// from `web/worker.dart.js`
   @override
-  void setDartEventCallbacks() {
+  Future<void> setDartEventCallbacks() async{
     // This calls the native WASM `createWorkerInWasm()` in `bindings.cpp`.
     // The latter creates a web Worker using `EM_ASM` inlining JS code to
     // create the worker in the WASM `Module`.
@@ -48,7 +48,8 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     // From native the events can be sent from the main thread and even from
     // other threads like the audio thread.
     workerController = WorkerController();
-    workerController!.setWasmWorker(wasmWorker);
+    await workerController!.setWasmWorker(wasmWorker);
+
     workerController!.onReceive().listen(
       (event) {
         /// The [event] coming from `web/worker.dart.js` is of String type.

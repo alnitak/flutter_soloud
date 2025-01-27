@@ -346,7 +346,7 @@ interface class SoLoud {
     _activeSounds.clear();
 
     // Initialize native callbacks
-    _initializeNativeCallbacks();
+    await _initializeNativeCallbacks();
 
     final error = _controller.soLoudFFI.initEngine(
       device?.id ?? -1,
@@ -437,9 +437,9 @@ interface class SoLoud {
   // TODO(filip): 'setDartEventCallbacks()' can be called more then once,
   // please take a look at the listeners if you find a better way
   // to manage them only once.
-  void _initializeNativeCallbacks() {
+  Future<void> _initializeNativeCallbacks() async {
     // Initialize callbacks.
-    _controller.soLoudFFI.setDartEventCallbacks();
+    await _controller.soLoudFFI.setDartEventCallbacks();
 
     // Listen when a handle becomes invalid because has been stopped/ended.
     if (!_controller.soLoudFFI.voiceEndedEventController.hasListener) {
