@@ -11,7 +11,7 @@ Please note that filters for single sounds are not supported on the web.
 To add the plugin to a web app, add the following line to the `<body>` section of `web/index.html`:
 ```
 <script src="assets/packages/flutter_soloud/web/libflutter_soloud_plugin.js" defer></script>
-  <script src="assets/packages/flutter_soloud/web/init_module.dart.js" defer></script>
+<script src="assets/packages/flutter_soloud/web/init_module.dart.js" defer></script>
 ```
 
 ---

@@ -1,4 +1,4 @@
-// ignore_for_file: avoid_print
+// ignore_for_file: avoid_print, document_ignores
 
 import 'dart:js_interop';
 import 'dart:js_util';
