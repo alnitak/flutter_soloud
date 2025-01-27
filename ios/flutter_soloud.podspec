@@ -26,10 +26,12 @@ Flutter audio plugin using SoLoud library and FFI
     # fix for #130. This maybe is temporary solution till a new XCode will be released.
     # '-GCC_WARN_INHIBIT_ALL_WARNINGS',
     '-w',
-    '-DOS_OBJECT_USE_OBJC=0', '-Wno-format',
+    '-DOS_OBJECT_USE_OBJC=0',
+    '-Wno-format',
     '-lpthread',
     '-lm'
   ]
+
   # Flutter.framework does not contain a i386 slice.
   s.pod_target_xcconfig = { 
     'HEADER_SEARCH_PATHS' => [

@@ -4,6 +4,22 @@
 #include <algorithm>
 #include <stdarg.h>
 
+#include "pitch_shift_filter.h"
+#include "soloud_biquadresonantfilter.h"
+// #include "soloud_duckfilter.h"
+#include "soloud_eqfilter.h"
+#include "soloud_echofilter.h"
+#include "soloud_lofifilter.h"
+#include "soloud_flangerfilter.h"
+// #include "soloud_dcremovalfilter.h"
+#include "soloud_fftfilter.h"
+#include "soloud_bassboostfilter.h"
+#include "soloud_waveshaperfilter.h"
+#include "soloud_robotizefilter.h"
+#include "soloud_freeverbfilter.h"
+#include "limiter.h"
+#include "compressor.h"
+
 Filters::Filters(SoLoud::Soloud *soloud, ActiveSound *sound)
     : mSoloud(soloud), mSound(sound) {}
 
@@ -124,6 +140,26 @@ std::vector<std::string> Filters::getFilterParamNames(FilterType filterType)
         }
     }
     break;
+    case LimiterFilter:
+    {
+        Limiter f;
+        int nParams = f.getParamCount();
+        for (int i = 0; i < nParams; i++)
+        {
+            ret.push_back(f.getParamName(i));
+        }
+    }
+    break;
+    case CompressorFilter:
+    {
+        Compressor f(mSoloud->mSamplerate);
+        int nParams = f.getParamCount();
+        for (int i = 0; i < nParams; i++)
+        {
+            ret.push_back(f.getParamName(i));
+        }
+    }
+    break;
     }
 
     return ret;
@@ -174,6 +210,12 @@ PlayerErrors Filters::addFilter(FilterType filterType)
     case PitchShiftFilter:
         newFilter = std::make_unique<PitchShift>();
         break;
+    case LimiterFilter:
+        newFilter = std::make_unique<Limiter>();
+        break;
+    case CompressorFilter:
+        newFilter = std::make_unique<Compressor>(mSoloud->mSamplerate);
+        break;
     default:
         return filterNotFound;
     }
@@ -200,7 +242,6 @@ bool Filters::removeFilter(FilterType filterType)
     if (index < 0)
         return false;
 
-    // TODO: single filter
     mSoloud->setGlobalFilter(index, 0);
     filters[index].get()->filter.reset();
 

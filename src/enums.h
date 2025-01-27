@@ -3,6 +3,8 @@
 #ifndef ENUMS_H
 #define ENUMS_H
 
+#include <stdbool.h> // for ffigen to not complain about bool type
+
 /// Possible player errors.
 ///
 /// WARNING: Keep these in sync with `lib/src/enums.dart`.
@@ -112,7 +114,9 @@ typedef enum FilterType
     WaveShaperFilter,
     RobotizeFilter,
     FreeverbFilter,
-    PitchShiftFilter
+    PitchShiftFilter,
+    LimiterFilter,
+    CompressorFilter
 } FilterType_t;
 
 /// WARNING: Keep these in sync with `lib/src/enums.dart`.
