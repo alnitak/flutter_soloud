@@ -1,5 +1,5 @@
 /// Flutter low level audio plugin using SoLoud library and FFI
-library flutter_soloud;
+library;
 
 export 'src/audio_source.dart';
 export 'src/bindings/audio_data.dart';

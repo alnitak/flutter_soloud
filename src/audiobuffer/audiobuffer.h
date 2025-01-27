@@ -11,6 +11,9 @@
 #include "../enums.h"
 #include "../active_sound.h"
 #include "buffer.h"
+#if defined(LIBOPUS_OGG_AVAILABLE) || defined(__EMSCRIPTEN__)
+#include "opus_stream_decoder.h"
+#endif
 
 class Player;
 
@@ -40,17 +43,19 @@ namespace SoLoud
     // Used to access the AudioSource this stream belongs to
     ActiveSound* mParent;
     dartOnBufferingCallback_t mOnBufferingCallback;
-    enum Endianness mEndianness; // TODO?
     unsigned int mMaxBufferSize;
     unsigned int mSampleCount;
     SoLoud::time mBufferingTimeNeeds;
     PCMformat mPCMformat;
     Buffer mBuffer;
     bool dataIsEnded;
+#if defined(LIBOPUS_OGG_AVAILABLE) || defined(__EMSCRIPTEN__)
+    std::unique_ptr<OpusDecoderWrapper> decoder;
+#endif
 
     BufferStream();
     virtual ~BufferStream();
-    void setBufferStream(
+    PlayerErrors setBufferStream(
         Player *aPlayer,
         ActiveSound *aParent,
         unsigned int maxBufferSize = 1024 * 1024 * 100, // 100 Mbytes
@@ -58,9 +63,11 @@ namespace SoLoud
         PCMformat pcmFormat = {44100, 2, 2, PCM_S16LE},
         dartOnBufferingCallback_t onBufferingCallback = nullptr);
     void setDataIsEnded();
-    PlayerErrors addData(const void *aData, unsigned int numSamples);
+    PlayerErrors addData(const void *aData, unsigned int numSamples, bool forceAdd = false);
     virtual AudioSourceInstance *createInstance();
     time getLength();
+
+    std::vector<unsigned char> buffer;
   };
 };
 

@@ -58,7 +58,11 @@ abstract class FlutterSoLoud {
   /// On the web, only the `voiceEndedCallback` is supported. On the other
   /// platform there are also `fileLoadedCallback` and `stateChangedCallback`.
   @mustBeOverridden
-  void setDartEventCallbacks();
+  Future<void> setDartEventCallbacks();
+
+  /// Check if the libopus and libogg are available at build time.
+  @mustBeOverridden
+  bool areOpusOggLibsAvailable();
 
   /// Initialize the player. Must be called before any other player functions.
   ///
@@ -139,16 +143,16 @@ abstract class FlutterSoLoud {
   /// [bufferingTimeNeeds] the buffering time needed in seconds. If a handle
   /// reaches the current buffer length, it will start to buffer pausing it and
   /// waiting until the buffer will have enough data to cover this time.
-  /// [sampleRate], [channels], [pcmFormat] must be set in the case the
+  /// [sampleRate], [channels], [format] must be set in the case the
   /// audio data is PCM format.
-  /// [pcmFormat]: 0 = f32le, 1 = s8, 2 = s16le, 3 = s32le
+  /// [format]: 0 = f32le, 1 = s8, 2 = s16le, 3 = s32le, 4 = Opus
   @mustBeOverridden
   ({PlayerErrors error, SoundHash soundHash}) setBufferStream(
     int maxBufferSize,
     double bufferingTimeNeeds,
     int sampleRate,
     int channels,
-    int pcmFormat,
+    int format,
     OnBufferingCallbackTFunction? onBuffering,
   );
 

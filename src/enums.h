@@ -58,7 +58,12 @@ typedef enum PlayerErrors
     /// Trying to add PCM data but the stream is marked to be ended
     /// already, by the user or when the stream reached its maximum
     /// capacity, in this case the stream is automatically marked to be ended.
-    streamEndedAlready = 22
+    streamEndedAlready = 22,
+    /// Failed to create Opus decoder.
+    failedToCreateOpusDecoder = 23,
+    /// Failed to decode Opus packet.
+    failedToDecodeOpusPacket = 24
+
 } PlayerErrors_t;
 
 /// Possible read sample errors
@@ -115,13 +120,14 @@ typedef enum FilterType
 } FilterType_t;
 
 /// WARNING: Keep these in sync with `lib/src/enums.dart`.
-typedef enum BufferPcmType
+typedef enum BufferType
 {
     PCM_F32LE = 0,
     PCM_S8 = 1,
     PCM_S16LE = 2,
     PCM_S32LE = 3,
-} BufferPcmType_t;
+    OPUS = 4,
+} BufferType_t;
 
 
 typedef struct PCMformat
@@ -129,7 +135,7 @@ typedef struct PCMformat
   unsigned int sampleRate;
   unsigned int channels;
   unsigned int bytesPerSample;
-  enum BufferPcmType dataType;
+  BufferType dataType;
 } PCMformat;
 
 

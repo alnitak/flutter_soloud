@@ -590,12 +590,14 @@ public:
     /// Global filters
     Filters mFilters;
 
+    unsigned int mSampleRate;
+    
+    unsigned int mChannels;
+
 private:
     ma_device_info *pPlaybackInfos;
     std::mutex remove_handle_mutex;
-    unsigned int mSampleRate;
     unsigned int mBufferSize;
-    unsigned int mChannels;
 };
 
 #endif // PLAYER_H

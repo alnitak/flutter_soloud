@@ -109,3 +109,25 @@ class SoLoudFilterForSingleSoundOnWebDartException extends SoLoudDartException {
   String get description => 'Filters for single sounds are not supported on '
       'the Web platform.';
 }
+
+/// An exception that is thrown when setting the wrong Opus parameters.
+class SoLoudWrongOpusParamsException extends SoLoudDartException {
+  /// Creates a new [SoLoudWrongOpusParamsException].
+  const SoLoudWrongOpusParamsException([super.message]);
+
+  @override
+  String get description => 'Wrong Opus parameter(s). '
+      'When using Opus, the sample rate must be 8, 12, 16, 24, or 48 kHz and '
+      'the channel count must be 1 or 2.';
+}
+
+/// An exception that is thrown when at buit-time the Opus and Ogg libraries
+/// are not available and trying to use the Opus codec.
+class SoLoudOpusOggLibsNotAvailableException extends SoLoudDartException {
+  /// Creates a new [SoLoudOpusOggLibsNotAvailableException].
+  const SoLoudOpusOggLibsNotAvailableException([super.message]);
+
+  @override
+  String get description => 'The Opus and Ogg libraries are not available. '
+      'Please read the documentation on how to enable them.';
+}

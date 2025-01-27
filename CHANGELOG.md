@@ -1,8 +1,19 @@
-### 2.1.8 ()
+
+### 3.0.0-pre.0 ()
 - fix: clicks and pops when changing waveform frequency #156
-- added BufferStream #148. Now it's possible to add PCM audio data (s8, s16, s32, f32) and listen to them. It provides a customizable buffering length which automatycally pause the playing handle for example when receiving audio data from the web.
-- added Limiter and Compressor filters (see `example/lib/filters`)
-- added `setInaudibleBehavior`. When a 3D sound is too far to be eard, you can tell `flutter_soloud` to kill it.
+- added BufferStream #148. Now it's possible to add audio data and listen to them. It provides a customizable buffering length which automatycally pauses the playing handle if there is not enough data, for example when receiving audio data from the web. It also provides a callback that allows you to know when the buffering is started and stopped. The audio data can of of the following formats:
+  - `s8` signed 8 bit
+  - `s16le` signed 16 bit little endian
+  - `s32le` signed 32 bit little endian
+  - `f32le` float 32 bit little endian
+  - `opus` Opus codec compressed audio with Ogg container. Usefull for streaming from the Web (ie using OpenAI APIs).
+- fixed Web Worker initialization non fatal error that could occur on Web.
+- fixed sound distortion using single pitchShift filter and changing relative play speed #154.
+- To avoid future incompatibilities when using other WASM compiled plugins, it is now necessary to add a new script to `index.html`:
+  ```
+  <script src="assets/packages/flutter_soloud/web/libflutter_soloud_plugin.js" defer></script>
+  <script src="assets/packages/flutter_soloud/web/init_module.dart.js" defer></script>
+  ```
 
 ### 2.1.7 (29 Oct 2024)
 - added `listPlaybackDevices` to get all the OS output devices available.

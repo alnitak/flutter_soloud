@@ -107,17 +107,7 @@
         "netfwd": "cpp",
         "timer": "cpp",
         "text_encoding": "cpp",
-        "__bit_reference": "cpp",
-        "__hash_table": "cpp",
-        "__locale": "cpp",
-        "__node_handle": "cpp",
-        "__split_buffer": "cpp",
-        "__threading_support": "cpp",
-        "__tree": "cpp",
-        "__verbose_abort": "cpp",
-        "execution": "cpp",
-        "print": "cpp",
-        "queue": "cpp",
-        "stack": "cpp"
-    }
+        "coroutine": "cpp"
+    },
+    "java.configuration.updateBuildConfiguration": "interactive"
 }

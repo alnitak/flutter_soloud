@@ -115,7 +115,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   }
 
   @override
-  void setDartEventCallbacks() {
+  Future<void> setDartEventCallbacks() async {
     // Create a NativeCallable for the Dart functions
     final nativeVoiceEndedCallable =
         ffi.NativeCallable<DartVoiceEndedCallbackTFunction>.listener(
@@ -148,6 +148,18 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   // ////////////////////////////////////////////////
   // Navtive bindings
   // ////////////////////////////////////////////////
+
+  @override
+  bool areOpusOggLibsAvailable() {
+    return _areOpusOggLibsAvailable();
+  }
+
+  late final _areOpusOggLibsAvailablePtr =
+      _lookup<ffi.NativeFunction<ffi.Bool Function()>>(
+    'areOpusOggLibsAvailable',
+  );
+  late final _areOpusOggLibsAvailable =
+      _areOpusOggLibsAvailablePtr.asFunction<bool Function()>();
 
   /// When allocating memory in C code, more attention must be given when
   /// we are on Windows OS. It's not good to call `calloc.free()` because
@@ -380,7 +392,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     double bufferingTimeNeeds,
     int sampleRate,
     int channels,
-    int pcmFormat,
+    int format,
     OnBufferingCallbackTFunction? onBuffering,
   ) {
     // Create a NativeCallable for the given [onBuffering] callback.
@@ -401,7 +413,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       bufferingTimeNeeds,
       sampleRate,
       channels,
-      pcmFormat,
+      format,
       nativeOnBufferingCallable?.nativeFunction ?? ffi.nullptr,
     );
     final soundHash = SoundHash(hash.value);

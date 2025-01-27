@@ -1,3 +1,5 @@
+// ignore_for_file: document_ignores
+
 import 'dart:async';
 import 'dart:convert' show jsonDecode;
 import 'dart:js_interop';
@@ -25,7 +27,8 @@ Stream<T> callbackToStream<J, T>(
   final controller = StreamController<T>.broadcast(sync: true);
 
   void eventFunction(JSAny event) {
-    controller.add(unwrapValue(event as J));
+    final jsEvent = event.jsify;
+    controller.add(unwrapValue(jsEvent as J));
   }
 
   object.setProperty(
@@ -66,7 +69,7 @@ void main() async {
         // ignore: avoid_print
         print('Received $data  PARSED TO $parseMap\n');
         worker.sendMessage(data);
-      } catch (e) {
+      } on Exception catch (_) {
         // ignore: avoid_print
         print("Received data from WASM worker but it's not a String!\n");
       }

@@ -28,15 +28,29 @@ class WorkerController {
 
   /// Set the worker created in WASM.
   /// This is used to get events sent from the native audio thread.
-  void setWasmWorker(web.Worker wasmWorker) {
+  Future<void> setWasmWorker(web.Worker wasmWorker) async {
     _outputController = StreamController();
     _worker = wasmWorker;
     _worker?.onmessage = ((web.MessageEvent event) {
       _outputController?.add(event.data.dartify());
     }).toJS;
+
+    // Give a small delay to ensure worker is created. This is called only once
+    // the app is started. Even a delay of 1ms is enough (on Linux).
+    // Noticed this when calling `SoLoud.init()` immediately after
+    // `Recorder.init()` of `flutter_recorder` plugin. The error given was:
+    // ```
+    // libflutter_soloud_plugin.wasm:0xbdba6 Uncaught (in promise)
+    //    RuntimeError: table index is out of bounds
+    // at libflutter_soloud_plugin.wasm:0xbdba6
+    // at Module._ma_device__on_notification_unlocked
+    //    (libflutter_soloud_plugin.js:9:78381)
+    // at libflutter_soloud_plugin.js:9:11223
+    // ```
+    await Future.delayed(const Duration(milliseconds: 10), () {});
   }
 
-  /// Not used with `Module.wasmWorker`.
+  /// Not used with `Module_soloud.wasmWorker`.
   void sendMessage(dynamic message) {
     switch (message) {
       case Map():

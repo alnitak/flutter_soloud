@@ -35,20 +35,38 @@ Flutter audio plugin using SoLoud library and FFI
   # Flutter.framework does not contain a i386 slice.
   s.pod_target_xcconfig = { 
     'HEADER_SEARCH_PATHS' => [
+      '$(PODS_TARGET_SRCROOT)/include',
+      '$(PODS_TARGET_SRCROOT)/include/opus',
+      '$(PODS_TARGET_SRCROOT)/include/ogg',
       '$(PODS_TARGET_SRCROOT)/../src',
       '$(PODS_TARGET_SRCROOT)/../src/soloud/include',
     ],
-    'GCC_PREPROCESSOR_DEFINITIONS' => '$(inherited)',
+    'GCC_PREPROCESSOR_DEFINITIONS' => '$(inherited) LIBOPUS_OGG_AVAILABLE=1',
     'DEFINES_MODULE' => 'YES', 
     'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'arm64',
     'VALID_ARCHS' => 'arm64 x86_64',
-    'CLANG_CXX_LANGUAGE_STANDARD' => 'c++17',
-    'CLANG_CXX_LIBRARY' => 'libc++',
-    'OTHER_CFLAGS' => '-msse -msse2 -msse3 -msse4.1 -O3 -ffast-math -flto',
-    'OTHER_CPLUSPLUSFLAGS' => '-msse -msse2 -msse3 -msse4.1 -O3 -ffast-math -flto'
+    'LIBRARY_SEARCH_PATHS' => [
+      '$(PODS_TARGET_SRCROOT)/libs',
+      '$(SRCROOT)/libs'
+    ],
+    'OTHER_LDFLAGS[sdk=iphonesimulator*]' => '-logg_iOS-simulator -lopus_iOS-simulator',
+    'OTHER_LDFLAGS[sdk=iphoneos*]' => '-logg_iOS-device -lopus_iOS-device',
+    "CLANG_CXX_LANGUAGE_STANDARD" => "c++17",
+    "CLANG_CXX_LIBRARY" => "libc++"
   }
   
   s.user_target_xcconfig = { 'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'arm64' }
+
+  # Use different libraries based on the SDK
+  s.ios.vendored_libraries = ['libs/libopus_iOS-device.a', 'libs/libogg_iOS-device.a']
+
+  # Preserve both simulator and device libraries
+  s.preserve_paths = [
+    'libs/libopus_iOS-device.a',
+    'libs/libogg_iOS-device.a',
+    'libs/libopus_iOS-simulator.a',
+    'libs/libogg_iOS-simulator.a'
+  ]
 
   s.swift_version = '5.0'
   s.ios.framework  = ['AudioToolbox', 'AVFAudio']

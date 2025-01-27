@@ -6,32 +6,32 @@ import 'package:web/web.dart' as web;
 @JS('globalThis')
 external JSObject get globalThis;
 
-@JS('Module._malloc')
+@JS('Module_soloud._malloc')
 external int wasmMalloc(int bytesCount);
 
-@JS('Module._free')
+@JS('Module_soloud._free')
 external void wasmFree(int ptrAddress);
 
-@JS('Module.getValue')
+@JS('Module_soloud.getValue')
 external int wasmGetI32Value(int ptrAddress, String type);
 
-@JS('Module.getValue')
+@JS('Module_soloud.getValue')
 external double wasmGetF32Value(int ptrAddress, String type);
 
-@JS('Module.UTF8ToString')
+@JS('Module_soloud.UTF8ToString')
 external String wasmUtf8ToString(int ptrAddress);
 
-@JS('Module.setValue')
+@JS('Module_soloud.setValue')
 external void wasmSetValue(int ptrAddress, int value, String type);
 
-@JS('Module.cwrap')
+@JS('Module_soloud.cwrap')
 external JSFunction wasmCwrap(
   JSString fName,
   JSString returnType,
   JSArray<JSString> argTypes,
 );
 
-@JS('Module.ccall')
+@JS('Module_soloud.ccall')
 external JSFunction wasmCccall(
   JSString fName,
   JSString returnType,
@@ -39,36 +39,39 @@ external JSFunction wasmCccall(
   JSArray<JSAny> args,
 );
 
-@JS('Module._createWorkerInWasm')
+@JS('Module_soloud._createWorkerInWasm')
 external void wasmCreateWorkerInWasm();
 
-@JS('Module._sendToWorker')
+@JS('Module_soloud._sendToWorker')
 external void wasmSendToWorker(int message, int value);
 
-@JS('Module.wasmWorker')
+@JS('Module_soloud.wasmWorker')
 external web.Worker wasmWorker;
 
-@JS('Module._setBufferStream')
+@JS('Module_soloud._setBufferStream')
 external int wasmSetBufferStream(
   int hashPtr,
   int maxBufferSize,
   double bufferingTimeNeeds,
   int sampleRate,
   int channels,
-  int pcmFormat,
+  int format,
   int onBufferingPtr,
 );
 
-@JS('Module._addAudioDataStream')
+@JS('Module_soloud._addAudioDataStream')
 external int wasmAddAudioDataStream(int hash, int audioChunkPtr, int dataLen);
 
-@JS('Module._setDataIsEnded')
+@JS('Module_soloud._setDataIsEnded')
 external int wasmSetDataIsEnded(int hash);
 
-@JS('Module._getBufferSize')
+@JS('Module_soloud._getBufferSize')
 external int wasmGetBufferSize(int hash, int sizeInBytesPtr);
 
-@JS('Module._initEngine')
+@JS('Module_soloud._areOpusOggLibsAvailable')
+external int wasmAreOpusOggLibsAvailable();
+
+@JS('Module_soloud._initEngine')
 external int wasmInitEngine(
   int deviceId,
   int sampleRate,
@@ -76,10 +79,10 @@ external int wasmInitEngine(
   int channels,
 );
 
-@JS('Module._changeDevice')
+@JS('Module_soloud._changeDevice')
 external int wasmChangeDevice(int deviceId);
 
-@JS('Module._listPlaybackDevices')
+@JS('Module_soloud._listPlaybackDevices')
 external void wasmListPlaybackDevices(
   int namesPtr,
   int deviceIdPtr,
@@ -87,7 +90,7 @@ external void wasmListPlaybackDevices(
   int nDevicePtr,
 );
 
-@JS('Module._freeListPlaybackDevices')
+@JS('Module_soloud._freeListPlaybackDevices')
 external void wasmFreeListPlaybackDevices(
   int namesPtr,
   int deviceIdPtr,
@@ -95,20 +98,20 @@ external void wasmFreeListPlaybackDevices(
   int nDevicePtr,
 );
 
-@JS('Module._dispose')
+@JS('Module_soloud._dispose')
 external void wasmDeinit();
 
-@JS('Module._isInited')
+@JS('Module_soloud._isInited')
 external int wasmIsInited();
 
-@JS('Module._loadFile')
+@JS('Module_soloud._loadFile')
 external int wasmLoadFile(
   int completeFileNamePtr,
   int loadIntoMem,
   int hashPtr,
 );
 
-@JS('Module._loadMem')
+@JS('Module_soloud._loadMem')
 external int wasmLoadMem(
   int uniqueNamePtr,
   int memPtr,
@@ -117,7 +120,7 @@ external int wasmLoadMem(
   int hashPtr,
 );
 
-@JS('Module._loadWaveform')
+@JS('Module_soloud._loadWaveform')
 external int wasmLoadWaveform(
   int waveform,
   // ignore: avoid_positional_boolean_parameters
@@ -127,40 +130,40 @@ external int wasmLoadWaveform(
   int hashPtr,
 );
 
-@JS('Module._setWaveformScale')
+@JS('Module_soloud._setWaveformScale')
 external void wasmSetWaveformScale(int soundHash, double newScale);
 
-@JS('Module._setWaveformDetune')
+@JS('Module_soloud._setWaveformDetune')
 external void wasmSetWaveformDetune(int soundHash, double newDetune);
 
-@JS('Module._setWaveformFreq')
+@JS('Module_soloud._setWaveformFreq')
 external void wasmSetWaveformFreq(int soundHash, double newFreq);
 
-@JS('Module._setSuperWave')
+@JS('Module_soloud._setSuperWave')
 external void wasmSetSuperWave(int soundHash, int superwave);
 
-@JS('Module._setWaveform')
+@JS('Module_soloud._setWaveform')
 external void wasmSetWaveform(int soundHash, int newWaveform);
 
-@JS('Module._speechText')
+@JS('Module_soloud._speechText')
 external int wasmSpeechText(int textToSpeechPtr, int handlePtr);
 
-@JS('Module._pauseSwitch')
+@JS('Module_soloud._pauseSwitch')
 external void wasmPauseSwitch(int handle);
 
-@JS('Module._setPause')
+@JS('Module_soloud._setPause')
 external void wasmSetPause(int handle, int pause);
 
-@JS('Module._getPause')
+@JS('Module_soloud._getPause')
 external int wasmGetPause(int handle);
 
-@JS('Module._setRelativePlaySpeed')
+@JS('Module_soloud._setRelativePlaySpeed')
 external void wasmSetRelativePlaySpeed(int handle, double speed);
 
-@JS('Module._getRelativePlaySpeed')
+@JS('Module_soloud._getRelativePlaySpeed')
 external double wasmGetRelativePlaySpeed(int handle);
 
-@JS('Module._play')
+@JS('Module_soloud._play')
 external int wasmPlay(
   int soundHash,
   double volume,
@@ -172,150 +175,150 @@ external int wasmPlay(
   int handlePtr,
 );
 
-@JS('Module._stop')
+@JS('Module_soloud._stop')
 external void wasmStop(int handle);
 
-@JS('Module._disposeSound')
+@JS('Module_soloud._disposeSound')
 external void wasmDisposeSound(int soundHash);
 
-@JS('Module._disposeAllSound')
+@JS('Module_soloud._disposeAllSound')
 external void wasmDisposeAllSound();
 
-@JS('Module._getLooping')
+@JS('Module_soloud._getLooping')
 external int wasmGetLooping(int handle);
 
-@JS('Module._setLooping')
+@JS('Module_soloud._setLooping')
 external void wasmSetLooping(int handle, int enable);
 
-@JS('Module._getLoopPoint')
+@JS('Module_soloud._getLoopPoint')
 external double wasmGetLoopPoint(int handle);
 
-@JS('Module._setLoopPoint')
+@JS('Module_soloud._setLoopPoint')
 external void wasmSetLoopPoint(int handle, double time);
 
-@JS('Module._setVisualizationEnabled')
+@JS('Module_soloud._setVisualizationEnabled')
 external void wasmSetVisualizationEnabled(int enabled);
 
-@JS('Module._getVisualizationEnabled')
+@JS('Module_soloud._getVisualizationEnabled')
 external int wasmGetVisualizationEnabled();
 
-@JS('Module._getWave')
+@JS('Module_soloud._getWave')
 external void wasmGetWave(int samplesPtr);
 
-@JS('Module._getFft')
+@JS('Module_soloud._getFft')
 external void wasmGetFft(int samplesPtr);
 
-@JS('Module._setFftSmoothing')
+@JS('Module_soloud._setFftSmoothing')
 external void wasmSetFftSmoothing(double smooth);
 
-@JS('Module._getAudioTexture')
+@JS('Module_soloud._getAudioTexture')
 external void wasmGetAudioTexture(int samplesPtr);
 
-@JS('Module._getAudioTexture2D')
+@JS('Module_soloud._getAudioTexture2D')
 external int wasmGetAudioTexture2D(int samplesPtr);
 
-@JS('Module._getTextureValue')
+@JS('Module_soloud._getTextureValue')
 external double wasmGetTextureValue(int row, int column);
 
-@JS('Module._getLength')
+@JS('Module_soloud._getLength')
 external double wasmGetLength(int soundHash);
 
-@JS('Module._seek')
+@JS('Module_soloud._seek')
 external int wasmSeek(int handle, double time);
 
-@JS('Module._getPosition')
+@JS('Module_soloud._getPosition')
 external double wasmGetPosition(int handle);
 
-@JS('Module._getGlobalVolume')
+@JS('Module_soloud._getGlobalVolume')
 external double wasmGetGlobalVolume();
 
-@JS('Module._setGlobalVolume')
+@JS('Module_soloud._setGlobalVolume')
 external int wasmSetGlobalVolume(double volume);
 
-@JS('Module._getVolume')
+@JS('Module_soloud._getVolume')
 external double wasmGetVolume(int handle);
 
-@JS('Module._setVolume')
+@JS('Module_soloud._setVolume')
 external int wasmSetVolume(int handle, double volume);
 
-@JS('Module._getPan')
+@JS('Module_soloud._getPan')
 external double wasmGetPan(int handle);
 
-@JS('Module._setPan')
+@JS('Module_soloud._setPan')
 external void wasmSetPan(int handle, double pan);
 
-@JS('Module._setPanAbsolute')
+@JS('Module_soloud._setPanAbsolute')
 external void wasmSetPanAbsolute(int handle, double panLeft, double panRight);
 
-@JS('Module._getIsValidVoiceHandle')
+@JS('Module_soloud._getIsValidVoiceHandle')
 external int wasmGetIsValidVoiceHandle(int handle);
 
-@JS('Module._getActiveVoiceCount')
+@JS('Module_soloud._getActiveVoiceCount')
 external int wasmGetActiveVoiceCount();
 
-@JS('Module._countAudioSource')
+@JS('Module_soloud._countAudioSource')
 external int wasmCountAudioSource(int soundHash);
 
-@JS('Module._getVoiceCount')
+@JS('Module_soloud._getVoiceCount')
 external int wasmGetVoiceCount();
 
-@JS('Module._getProtectVoice')
+@JS('Module_soloud._getProtectVoice')
 external int wasmGetProtectVoice(int handle);
 
 @JS('Module._setInaudibleBehavior')
 external void wasmSetInaudibleBehavior(int handle, int mustTick, int kill);
 
-@JS('Module._setProtectVoice')
+@JS('Module_soloud._setProtectVoice')
 external void wasmSetProtectVoice(int handle, int protect);
 
-@JS('Module._getMaxActiveVoiceCount')
+@JS('Module_soloud._getMaxActiveVoiceCount')
 external int wasmGetMaxActiveVoiceCount();
 
-@JS('Module._setMaxActiveVoiceCount')
+@JS('Module_soloud._setMaxActiveVoiceCount')
 external void wasmSetMaxActiveVoiceCount(int maxVoiceCount);
 
 /////////////////////////////////////////
 /// voice groups
 /////////////////////////////////////////
 
-@JS('Module._createVoiceGroup')
+@JS('Module_soloud._createVoiceGroup')
 external int wasmCreateVoiceGroup();
 
-@JS('Module._destroyVoiceGroup')
+@JS('Module_soloud._destroyVoiceGroup')
 external void wasmDestroyVoiceGroup(int handle);
 
-@JS('Module._addVoiceToGroup')
+@JS('Module_soloud._addVoiceToGroup')
 external void wasmAddVoiceToGroup(int voiceGroupHandle, int voiceHandle);
 
-@JS('Module._isVoiceGroup')
+@JS('Module_soloud._isVoiceGroup')
 external int wasmIsVoiceGroup(int handle);
 
-@JS('Module._isVoiceGroupEmpty')
+@JS('Module_soloud._isVoiceGroupEmpty')
 external int wasmIsVoiceGroupEmpty(int handle);
 
 // ///////////////////////////////////////
 //  faders
 // ///////////////////////////////////////
 
-@JS('Module._fadeGlobalVolume')
+@JS('Module_soloud._fadeGlobalVolume')
 external int wasmFadeGlobalVolume(double to, double duration);
 
-@JS('Module._fadeVolume')
+@JS('Module_soloud._fadeVolume')
 external int wasmFadeVolume(int handle, double to, double duration);
 
-@JS('Module._fadePan')
+@JS('Module_soloud._fadePan')
 external int wasmFadePan(int handle, double to, double duration);
 
-@JS('Module._fadeRelativePlaySpeed')
+@JS('Module_soloud._fadeRelativePlaySpeed')
 external int wasmFadeRelativePlaySpeed(int handle, double to, double duration);
 
-@JS('Module._schedulePause')
+@JS('Module_soloud._schedulePause')
 external int wasmSchedulePause(int handle, double duration);
 
-@JS('Module._scheduleStop')
+@JS('Module_soloud._scheduleStop')
 external int wasmScheduleStop(int handle, double duration);
 
-@JS('Module._oscillateVolume')
+@JS('Module_soloud._oscillateVolume')
 external int wasmOscillateVolume(
   int handle,
   double from,
@@ -323,10 +326,10 @@ external int wasmOscillateVolume(
   double time,
 );
 
-@JS('Module._oscillatePan')
+@JS('Module_soloud._oscillatePan')
 external int wasmOscillatePan(int handle, double from, double to, double time);
 
-@JS('Module._oscillateRelativePlaySpeed')
+@JS('Module_soloud._oscillateRelativePlaySpeed')
 external int wasmOscillateRelativePlaySpeed(
   int handle,
   double from,
@@ -334,10 +337,10 @@ external int wasmOscillateRelativePlaySpeed(
   double time,
 );
 
-@JS('Module._oscillateGlobalVolume')
+@JS('Module_soloud._oscillateGlobalVolume')
 external int wasmOscillateGlobalVolume(double from, double to, double time);
 
-@JS('Module._fadeFilterParameter')
+@JS('Module_soloud._fadeFilterParameter')
 external int wasmFadeFilterParameter(
   int handle,
   int filterType,
@@ -346,7 +349,7 @@ external int wasmFadeFilterParameter(
   double time,
 );
 
-@JS('Module._oscillateFilterParameter')
+@JS('Module_soloud._oscillateFilterParameter')
 external int wasmOscillateFilterParameter(
   int handle,
   int filterType,
@@ -360,23 +363,23 @@ external int wasmOscillateFilterParameter(
 //  Filters
 // ///////////////////////////////////////
 
-@JS('Module._isFilterActive')
+@JS('Module_soloud._isFilterActive')
 external int wasmIsFilterActive(int soundHash, int filterType, int idPtr);
 
-@JS('Module._getFilterParamNames')
+@JS('Module_soloud._getFilterParamNames')
 external int wasmGetFilterParamNames(
   int filterType,
   int paramsCountPtr,
   int namesPtr,
 );
 
-@JS('Module._addFilter')
+@JS('Module_soloud._addFilter')
 external int wasmAddFilter(int soundHash, int filterType);
 
-@JS('Module._removeFilter')
+@JS('Module_soloud._removeFilter')
 external int wasmRemoveFilter(int soundHash, int filterType);
 
-@JS('Module._setFilterParams')
+@JS('Module_soloud._setFilterParams')
 external int wasmSetFilterParams(
   int handle,
   int filterType,
@@ -384,7 +387,7 @@ external int wasmSetFilterParams(
   double value,
 );
 
-@JS('Module._getFilterParams')
+@JS('Module_soloud._getFilterParams')
 external int wasmGetFilterParams(
   int handle,
   int filterType,
@@ -392,7 +395,7 @@ external int wasmGetFilterParams(
   int paramValuePtr,
 );
 
-@JS('Module._play3d')
+@JS('Module_soloud._play3d')
 external int wasmPlay3d(
   int soundHash,
   double posX,
@@ -408,13 +411,13 @@ external int wasmPlay3d(
   int handlePtr,
 );
 
-@JS('Module._set3dSoundSpeed')
+@JS('Module_soloud._set3dSoundSpeed')
 external void wasmSet3dSoundSpeed(double speed);
 
-@JS('Module._get3dSoundSpeed')
+@JS('Module_soloud._get3dSoundSpeed')
 external double wasmGet3dSoundSpeed();
 
-@JS('Module._set3dListenerParameters')
+@JS('Module_soloud._set3dListenerParameters')
 external void wasmSet3dListenerParameters(
   double posX,
   double posY,
@@ -430,23 +433,23 @@ external void wasmSet3dListenerParameters(
   double velocityZ,
 );
 
-@JS('Module._set3dListenerPosition')
+@JS('Module_soloud._set3dListenerPosition')
 external void wasmSet3dListenerPosition(double posX, double posY, double posZ);
 
-@JS('Module._set3dListenerAt')
+@JS('Module_soloud._set3dListenerAt')
 external void wasmSet3dListenerAt(double atX, double atY, double atZ);
 
-@JS('Module._set3dListenerUp')
+@JS('Module_soloud._set3dListenerUp')
 external void wasmSet3dListenerUp(double upX, double upY, double upZ);
 
-@JS('Module._set3dListenerVelocity')
+@JS('Module_soloud._set3dListenerVelocity')
 external void wasmSet3dListenerVelocity(
   double velocityX,
   double velocityY,
   double velocityZ,
 );
 
-@JS('Module._set3dSourceParameters')
+@JS('Module_soloud._set3dSourceParameters')
 external void wasmSet3dSourceParameters(
   int handle,
   double posX,
@@ -457,7 +460,7 @@ external void wasmSet3dSourceParameters(
   double velocityZ,
 );
 
-@JS('Module._set3dSourcePosition')
+@JS('Module_soloud._set3dSourcePosition')
 external void wasmSet3dSourcePosition(
   int handle,
   double posX,
@@ -465,7 +468,7 @@ external void wasmSet3dSourcePosition(
   double posZ,
 );
 
-@JS('Module._set3dSourceVelocity')
+@JS('Module_soloud._set3dSourceVelocity')
 external void wasmSet3dSourceVelocity(
   int handle,
   double velocityX,
@@ -473,24 +476,24 @@ external void wasmSet3dSourceVelocity(
   double velocityZ,
 );
 
-@JS('Module._set3dSourceMinMaxDistance')
+@JS('Module_soloud._set3dSourceMinMaxDistance')
 external void wasmSet3dSourceMinMaxDistance(
   int handle,
   double minDistance,
   double maxDistance,
 );
 
-@JS('Module._set3dSourceAttenuation')
+@JS('Module_soloud._set3dSourceAttenuation')
 external void wasmSet3dSourceAttenuation(
   int handle,
   int attenuationModel,
   double attenuationRolloffFactor,
 );
 
-@JS('Module._set3dSourceDopplerFactor')
+@JS('Module_soloud._set3dSourceDopplerFactor')
 external void wasmSet3dSourceDopplerFactor(int handle, double dopplerFactor);
 
-@JS('Module._readSamplesFromMem')
+@JS('Module_soloud._readSamplesFromMem')
 external int wasmReadSamplesFromMem(
   int bufferPtr,
   int bufferLength,

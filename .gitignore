@@ -45,3 +45,6 @@ web/worker.dart.js.map
 **/android/daemon
 **/android/android
 
+# Ignore ogg and opus directories in xiph
+xiph/ogg
+xiph/opus

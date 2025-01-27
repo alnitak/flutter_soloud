@@ -1,4 +1,3 @@
-
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -102,7 +101,8 @@ namespace SoLoud
 		stop();
 	}
 
-	void BufferStream::setBufferStream(
+	int counter;
+	PlayerErrors BufferStream::setBufferStream(
 		Player *aPlayer,
 		ActiveSound *aParent,
 		unsigned int maxBufferSize,
@@ -112,7 +112,6 @@ namespace SoLoud
 	{
 		mSampleCount = 0;
 		dataIsEnded = false;
-		mEndianness = Endianness::BUFFER_LITTLE_ENDIAN; // TODO?
 		mThePlayer = aPlayer;
 		mParent = aParent;
 		mPCMformat.sampleRate = pcmFormat.sampleRate;
@@ -125,23 +124,101 @@ namespace SoLoud
 		mChannels = pcmFormat.channels;
 		mBaseSamplerate = (float)pcmFormat.sampleRate;
 		mOnBufferingCallback = onBufferingCallback;
+		buffer = std::vector<unsigned char>();
+
+#if defined(LIBOPUS_OGG_AVAILABLE) || defined(__EMSCRIPTEN__)
+		decoder = nullptr;
+		if (pcmFormat.dataType == BufferType::OPUS)
+		{
+			try
+			{
+				decoder = std::make_unique<OpusDecoderWrapper>(
+					pcmFormat.sampleRate, pcmFormat.channels);
+			}
+			catch (const std::exception &e)
+			{
+				return PlayerErrors::failedToCreateOpusDecoder;
+			}
+		}
+#else
+		if (pcmFormat.dataType == OPUS)
+		{
+			return PlayerErrors::failedToCreateOpusDecoder;
+		}
+#endif
+		return PlayerErrors::noError;
 	}
 
 	void BufferStream::setDataIsEnded()
 	{
+		if (buffer.size() > 0)
+			addData(buffer.data(), buffer.size(), true);
+		buffer.clear();
 		dataIsEnded = true;
 	}
 
-	PlayerErrors BufferStream::addData(const void *aData, unsigned int aDataLen)
+	PlayerErrors BufferStream::addData(const void *aData, unsigned int aDataLen, bool forceAdd)
 	{
 		if (dataIsEnded)
 		{
-			return streamEndedAlready;
+			return PlayerErrors::streamEndedAlready;
 		}
 
 		unsigned int bytesWritten = 0;
-		// add PCM data to the buffer
-		bytesWritten = mBuffer.addData(mPCMformat, aData, aDataLen / mPCMformat.bytesPerSample);
+
+		buffer.insert(buffer.end(),
+			static_cast<const unsigned char *>(aData),
+			static_cast<const unsigned char *>(aData) + aDataLen);
+		int bufferDataToAdd = 0;
+		// Performing some buffering.
+		if (buffer.size() > 1024 * 2 && !forceAdd) // 2 KB of data
+		{
+			// For PCM data we should align the data to the bytes per sample.
+			if (mPCMformat.dataType != BufferType::OPUS)
+			{
+				int alignment = mPCMformat.bytesPerSample * mPCMformat.channels;
+				bufferDataToAdd = (int)(buffer.size() / alignment) * alignment;
+			}
+			else
+			{
+				// When using opus we don't need to align.
+				bufferDataToAdd = buffer.size();
+			}
+		} else
+			// Return if there is not enough data to add.
+			return PlayerErrors::noError;
+
+
+		if (mPCMformat.dataType == BufferType::OPUS)
+		{
+#if defined(LIBOPUS_OGG_AVAILABLE) || defined(__EMSCRIPTEN__)
+			// Decode the Opus data
+			try {
+				auto newData = decoder.get()->decode(
+					buffer.data(),
+					bufferDataToAdd);
+				if (newData.size() > 0)
+					bytesWritten = mBuffer.addData(BufferType::OPUS, newData.data(), newData.size());
+				else
+					return PlayerErrors::noError;
+			}
+			catch (const std::exception &e)
+			{
+				return PlayerErrors::failedToDecodeOpusPacket;
+			}
+#else
+			return PlayerErrors::failedToDecodeOpusPacket;
+#endif
+		}
+		else
+		{
+			bytesWritten = mBuffer.addData(mPCMformat.dataType, buffer.data(), bufferDataToAdd / mPCMformat.bytesPerSample);
+		}
+
+		// Remove the processed data from the buffer
+		if (bytesWritten > 0) {
+			buffer.erase(buffer.begin(), buffer.begin() + bufferDataToAdd);
+		}
 
 		mSampleCount += bytesWritten / mPCMformat.bytesPerSample;
 
@@ -207,10 +284,10 @@ namespace SoLoud
 		if (bytesWritten < aDataLen / mPCMformat.bytesPerSample)
 		{
 			dataIsEnded = true;
-			return pcmBufferFull;
+			return PlayerErrors::pcmBufferFull;
 		}
 
-		return noError;
+		return PlayerErrors::noError;
 	}
 
 	AudioSourceInstance *BufferStream::createInstance()

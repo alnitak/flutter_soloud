@@ -19,7 +19,6 @@
 #include <memory>
 #include <filesystem>
 
-
 #ifdef __cplusplus
 extern "C"
 {
@@ -47,18 +46,18 @@ extern "C"
     /// WEB WORKER
 
 #ifdef __EMSCRIPTEN__
-    /// Create the web worker and store a global "Module.workerUri" in JS.
+    /// Create the web worker and store a global "Module_soloud.workerUri" in JS.
     FFI_PLUGIN_EXPORT void createWorkerInWasm()
     {
         printf("CPP void createWorkerInWasm()\n");
 
         EM_ASM({
-            if (!Module.wasmWorker)
+            if (!Module_soloud.wasmWorker)
             {
                 // Create a new Worker from the URI
                 var workerUri = "assets/packages/flutter_soloud/web/worker.dart.js";
                 console.log("EM_ASM creating web worker!");
-                Module.wasmWorker = new Worker(workerUri);
+                Module_soloud.wasmWorker = new Worker(workerUri);
             }
             else
             {
@@ -71,12 +70,12 @@ extern "C"
     FFI_PLUGIN_EXPORT void sendToWorker(const char *message, int value)
     {
         EM_ASM({
-            if (Module.wasmWorker)
+            if (Module_soloud.wasmWorker)
             {
                 console.log("EM_ASM posting message " + UTF8ToString($0) + 
                     " with value " + $1);
                 // Send the message
-                Module.wasmWorker.postMessage(JSON.stringify({
+                Module_soloud.wasmWorker.postMessage(JSON.stringify({
                     "message" : UTF8ToString($0),
                     "value" : $1
                 }));
@@ -156,6 +155,17 @@ extern "C"
     //////////////////////////////////////////////////////////////////////////////////
     //////////////////////////////////////////////////////////////////////////////////
     //////////////////////////////////////////////////////////////////////////////////
+
+
+
+    /// Check if the libopus and libogg are available at build time.
+    FFI_PLUGIN_EXPORT bool areOpusOggLibsAvailable() {
+#if defined(LIBOPUS_OGG_AVAILABLE) || defined(__EMSCRIPTEN__)
+        return true;
+#else
+        return false;
+#endif
+    }
 
     /// Initialize the player. Must be called before any other player functions.
     ///
@@ -356,16 +366,43 @@ extern "C"
 
     /// Set up an audio stream.
     ///
-    /// [maxBufferSize] the max buffer size in bytes.
-    /// [sampleRate], [channels], [pcmFormat] should be set in the case the audio data is PCM.
-    /// [pcmFormat]: 0 = f32le, 1 = s8, 2 = s16le, 3 = s32le
+    /// [maxBufferSize] the max buffer size in **bytes**. When adding audio data
+    /// using [addAudioDataStream] and this values is reached, the stream will
+    /// be considered ended (likewise we called [setDataIsEnded]). This means that
+    /// when playing it, it will stop at that point (if loop is not set).
+    ///
+    /// **Note:** this parameter doesn't allocate any memory, but it just limits
+    /// the amount of data that can be added.
+    ///
+    /// [bufferingTimeNeeds] the buffering time needed in seconds. If a handle
+    /// reaches the current buffer length, it will start to buffer pausing it and
+    /// waiting until the buffer will have enough data to cover this time.
+    ///
+    /// [sampleRate] the sample rate. Usually is 22050 or 44100 (CD quality).
+    /// When using [format] as `opus`, the sample rate can be 48000, 24000,
+    /// 16000, 12000 or 8000. Whatever the sample rate of the incoming data is,
+    /// it will be resampled to this value. So, if you are adding Opus data at
+    /// 48 KHz, and you set this to 24000, the data will be resampled to 24 KHz.
+    ///
+    /// [channels] choose the number of channels. The `opus` format
+    /// supports only mono and stereo.
+    ///
+    /// [format] choose from `f32le`, `s8`, `s16le`, `s32le` and
+    /// `opus`. The last one is a special format that uses the Opus codec with
+    /// Ogg container. It supports only 48, 24, 16, 12 and 8 KHz sample rates
+    /// and mono and stereo.
+    ///
+    /// [onBufferingCallback] a callback that is called when starting to buffer
+    /// (isBuffering = true) and when the buffering is done (isBuffering = false).
+    /// The callback is called with the `handle` which triggered the event and
+    /// the `time` in seconds.
     FFI_PLUGIN_EXPORT enum PlayerErrors setBufferStream(
         unsigned int *hash,
         unsigned long maxBufferSize,
         double bufferingTimeNeeds,
         unsigned int sampleRate,
         unsigned int channels,
-        int pcmFormat,
+        int format,
         dartOnBufferingCallback_t onBufferingCallback)
     {
         std::lock_guard<std::mutex> guard_init(init_deinit_mutex);
@@ -374,22 +411,23 @@ extern "C"
             return backendNotInited;
 
         unsigned int bytesPerSample;
-        switch (pcmFormat)
+        switch (format)
         {
-        case 0:
+        case BufferType::OPUS:
+        case BufferType::PCM_F32LE:
             bytesPerSample = 4;
             break;
-        case 1:
+        case BufferType::PCM_S8:
             bytesPerSample = 1;
             break;
-        case 2:
+        case BufferType::PCM_S16LE:
             bytesPerSample = 2;
             break;
-        case 3:
+        case BufferType::PCM_S32LE:
             bytesPerSample = 4;
             break;
         }
-        PCMformat dataType = {sampleRate, channels, bytesPerSample, (BufferPcmType)pcmFormat};
+        PCMformat dataType = {sampleRate, channels, bytesPerSample, (BufferType)format};
         PlayerErrors e = (PlayerErrors)player.get()->setBufferStream(
             *hash,
             maxBufferSize,

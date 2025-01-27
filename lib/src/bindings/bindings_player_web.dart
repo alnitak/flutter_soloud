@@ -37,18 +37,19 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   /// Create the worker in the WASM Module and listen for events coming
   /// from `web/worker.dart.js`
   @override
-  void setDartEventCallbacks() {
+  Future<void> setDartEventCallbacks() async {
     // This calls the native WASM `createWorkerInWasm()` in `bindings.cpp`.
     // The latter creates a web Worker using `EM_ASM` inlining JS code to
     // create the worker in the WASM `Module`.
     wasmCreateWorkerInWasm();
 
-    // Here the `Module.wasmModule` binded to a local [WorkerController]
+    // Here the `Module_soloud.wasmModule` binded to a local [WorkerController]
     // is used in the main isolate to listen for events coming from native.
     // From native the events can be sent from the main thread and even from
     // other threads like the audio thread.
     workerController = WorkerController();
-    workerController!.setWasmWorker(wasmWorker);
+    await workerController!.setWasmWorker(wasmWorker);
+
     workerController!.onReceive().listen(
       (event) {
         /// The [event] coming from `web/worker.dart.js` is of String type.
@@ -76,6 +77,9 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     wasmSendToWorker(messagePtr, value);
     wasmFree(messagePtr);
   }
+
+  @override
+  bool areOpusOggLibsAvailable() => wasmAreOpusOggLibsAvailable() == 1;
 
   @override
   PlayerErrors initEngine(
@@ -195,7 +199,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     double bufferingTimeNeeds,
     int sampleRate,
     int channels,
-    int pcmFormat,
+    int format,
     OnBufferingCallbackTFunction? onBuffering,
   ) {
     final hashPtr = wasmMalloc(4); // 4 bytes for an int32
@@ -205,7 +209,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
       bufferingTimeNeeds,
       sampleRate,
       channels,
-      pcmFormat,
+      format,
       // not used on C side. The callback is set below on the JS side. Setting
       // this to 1 to tell C that we have a callback.
       onBuffering == null ? 0 : 1,

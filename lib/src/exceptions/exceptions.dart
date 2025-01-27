@@ -112,6 +112,10 @@ abstract class SoLoudCppException extends SoLoudException {
         return const SoLoudHashIsNotABufferStreamCppException();
       case PlayerErrors.streamEndedAlready:
         return const SoLoudStreamEndedAlreadyCppException();
+      case PlayerErrors.failedToCreateOpusDecoder:
+        return const SoLoudFailedToCreateOpusDecoderCppException();
+      case PlayerErrors.failedToDecodeOpusPacket:
+        return const SoLoudFailedToDecodeOpusPacketCppException();
     }
   }
 

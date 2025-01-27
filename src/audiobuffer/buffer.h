@@ -7,12 +7,6 @@
 #include <iostream>
 #include <cstring>
 
-enum Endianness // TODO?
-{
-    BUFFER_LITTLE_ENDIAN,
-    BUFFER_BIG_ENDIAN
-};
-
 class Buffer
 {
 public:
@@ -38,15 +32,16 @@ public:
 
     // Return the number of data written. Should be the same as numSamples else
     // the buffer reached the [maxBytes] meaning the buffer is full.
-    size_t addData(const PCMformat format, const void* data, size_t numSamples) {
-        switch (format.dataType)
+    size_t addData(const BufferType format, const void* data, size_t numSamples) {
+        switch (format)
 		{
-            case 0: // PCM_F32LE
+            case BufferType::OPUS:
+            case BufferType::PCM_F32LE:
             {
                 return addData(reinterpret_cast<const float*>(data), numSamples);
             }
             break;
-            case 1: // PCM_S8
+            case BufferType::PCM_S8:
             {
                 const int8_t* data8 = reinterpret_cast<const int8_t*>(data);
                 float* d = new float[numSamples];
@@ -58,7 +53,7 @@ public:
                 return ret;
             }
             break;
-            case 2: // PCM_S16LE
+            case BufferType::PCM_S16LE:
             {
                 const int16_t* data16 = reinterpret_cast<const int16_t*>(data);
                 float* d = new float[numSamples];
@@ -70,7 +65,7 @@ public:
                 return ret;
             }
             break;
-            case 3: // PCM_S32LE
+            case BufferType::PCM_S32LE:
             {
                 const int32_t* data32 = reinterpret_cast<const int32_t*>(data);
                 float* d = new float[numSamples];
@@ -83,6 +78,7 @@ public:
             }
             break;
         }
+        return 0;
     }
 
     // Overload for float data, directly adding its bytes to the buffer
