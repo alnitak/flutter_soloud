@@ -6,8 +6,9 @@
   - `s16le` signed 16 bit little endian
   - `s32le` signed 32 bit little endian
   - `f32le` float 32 bit little endian
-  - `opus` Opus codec compressed audio with Ogg container. Usefull for OpenAI APIs.
+  - `opus` Opus codec compressed audio with Ogg container. Usefull for streaming from the Web (ie using OpenAI APIs).
 - fixed Web Worker initialization non fatal error that could occur on Web.
+- fixed sound distortion using single pitchShift filter and changing relative play speed #154.
 - To avoid future incompatibilities when using other WASM compiled plugins, it is now necessary to add a new script to `index.html`:
   ```
   <script src="assets/packages/flutter_soloud/web/libflutter_soloud_plugin.js" defer></script>
