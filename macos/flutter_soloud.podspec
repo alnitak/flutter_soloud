@@ -18,12 +18,11 @@ Flutter audio plugin using SoLoud library and FFI
   # paths, so Classes contains a forwarder C file that relatively imports
   # `../src/*` so that the C sources can be shared among all target platforms.
   s.source           = { :path => '.' }
-  s.source_files     = 'Classes/**/*'
+  s.source_files     = 'Classes/**/*.{h,mm}'
   s.dependency 'FlutterMacOS'
   s.platform = :osx, '10.15'
 
   s.pod_target_xcconfig = { 
-    # Enable equivalent of '-Isrc/include' to make '#include <openssl/...>' work
     'HEADER_SEARCH_PATHS' => [
       '$(PODS_TARGET_SRCROOT)/../src',
       '$(PODS_TARGET_SRCROOT)/../src/soloud/include',
@@ -32,8 +31,12 @@ Flutter audio plugin using SoLoud library and FFI
     'DEFINES_MODULE' => 'YES', 
     'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386',
     "CLANG_CXX_LANGUAGE_STANDARD" => "c++17",
-    "CLANG_CXX_LIBRARY" => "libc++"
+    "CLANG_CXX_LIBRARY" => "libc++",
+    'OTHER_CFLAGS' => '-msse -msse2 -msse3 -msse4.1 -O3 -ffast-math -flto',
+    'OTHER_CPLUSPLUSFLAGS' => '-msse -msse2 -msse3 -msse4.1 -O3 -ffast-math -flto'  
    }
+   
   s.swift_version = '5.0'
   s.ios.framework  = ['AudioToolbox', 'AVFAudio']
+
 end
