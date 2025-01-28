@@ -121,7 +121,7 @@ For more simple examples, check out the [example/project](https://github.com/aln
 | Example         | Description |
 |-----------------|-------------|
 |*lib/main.dart*                          |Very simple example where to start from. |
-|*lib/audio_data/audio_data.dart*         |Simple exmple to show how to use the `AudioData` to visualize audio. |
+|*lib/audio_data/audio_data.dart*         |Simple example to show how to use the `AudioData` to visualize audio. |
 |*lib/buffer_stream/generate.dart*        |Example of how to generate PCM audio inside an `Isolate` and play them. |
 |*lib/buffer_stream/websocket.dart*       |Shows how to use BufferStream with a websocket to get PCM and Opus audio data. |
 |*lib/filters/compressor.dart*            |Shows the use of the compressor filter. |

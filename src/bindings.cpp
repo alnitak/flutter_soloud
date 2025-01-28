@@ -72,13 +72,13 @@ extern "C"
         EM_ASM({
             if (Module_soloud.wasmWorker)
             {
+                // Send the message
+                Module_soloud.wasmWorker.postMessage({
+                    message : UTF8ToString($0),
+                    value : $1,
+                });
                 console.log("EM_ASM posting message " + UTF8ToString($0) + 
                     " with value " + $1);
-                // Send the message
-                Module_soloud.wasmWorker.postMessage(JSON.stringify({
-                    "message" : UTF8ToString($0),
-                    "value" : $1
-                }));
             }
             else
             {

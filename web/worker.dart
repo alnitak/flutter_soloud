@@ -27,8 +27,7 @@ Stream<T> callbackToStream<J, T>(
   final controller = StreamController<T>.broadcast(sync: true);
 
   void eventFunction(JSAny event) {
-    final jsEvent = event.jsify;
-    controller.add(unwrapValue(jsEvent as J));
+    controller.add(unwrapValue(event as J));
   }
 
   object.setProperty(
@@ -60,19 +59,15 @@ void main() async {
   // print('Worker created.\n');
   final worker = Worker();
   worker.onReceive().listen((data) {
-    // print('Dart worker: '
-    //     'onMessage received $data with type of ${data.runtimeType}\n');
+    // ignore: avoid_print
+    print('Dart worker: '
+        'onMessage received $data with type of ${data.runtimeType}\n');
 
-    if (data is String) {
-      try {
-        final parseMap = jsonDecode(data) as Map;
-        // ignore: avoid_print
-        print('Received $data  PARSED TO $parseMap\n');
-        worker.sendMessage(data);
-      } on Exception catch (_) {
-        // ignore: avoid_print
-        print("Received data from WASM worker but it's not a String!\n");
-      }
+    try {
+      worker.sendMessage(data);
+    } catch (_) {
+      // ignore: avoid_print
+      print("Received data from WASM worker but it's not a String!\n");
     }
   });
 }

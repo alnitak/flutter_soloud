@@ -63,6 +63,13 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
               );
               voiceEndedEventController.add(decodedMap['value'] as int);
             }
+            case Map():
+            if (event['message'] == 'voiceEndedCallback') {
+              _log.finest(
+                () => 'VOICE ENDED EVENT handle: ${event['value']}\n',
+              );
+              voiceEndedEventController.add(event['value'] as int);
+            }
         }
       },
     );
