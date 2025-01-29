@@ -65,7 +65,7 @@ SOURCES=(
     ../src/audiobuffer/*.cpp
 )
 
-    # Now compile everything together
+# Now compile everything together
 em++ -O3 \
     -I ../src/soloud/include \
     -I ../src/soloud/src \

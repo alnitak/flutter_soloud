@@ -1,4 +1,4 @@
-import 'package:flutter_soloud/src/bindings/audio_data_extensions.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_soloud/src/bindings/audio_data_ffi.dart'
     if (dart.library.js_interop) 'audio_data_web.dart';
 import 'package:flutter_soloud/src/bindings/soloud_controller.dart';
@@ -9,24 +9,21 @@ import 'package:meta/meta.dart';
 /// The way the audio data should be acquired.
 ///
 /// Every time [AudioData.updateSamples] is called it is possible to query the
-/// acquired new audio data using [AudioData.getLinearFft],
-/// [AudioData.getLinearWave], [AudioData.getTexture] or [AudioData.getWave].
+/// acquired new audio data using [AudioData.getAudioData]. The latter method
+/// returns a [Float32List] containing the audio data in the way specified by
+/// [GetSamplesKind] enum.
 enum GetSamplesKind {
+  /// Get the 256 float of wave audio data.
+  wave,
+
   /// Get data in a linear manner: the first 256 floats are audio FFI values,
   /// the other 256 are audio wave samples.
-  /// To get the audio data use [AudioData.getLinearFft] or
-  /// [AudioData.getLinearWave].
   linear,
 
   /// Get data in a 2D way. The resulting data will be a matrix of 256
   /// [linear] rows. Each time the [AudioData.updateSamples] method is called,
   /// the last row is discarded and the new one will be the first.
-  /// To get the audio data use [AudioData.getTexture].
   texture,
-
-  /// Get the 256 float of wave audio data.
-  /// To get the audio data use [AudioData.getWave].
-  wave,
 }
 
 /// Class to manage audio samples.
@@ -35,13 +32,13 @@ enum GetSamplesKind {
 /// player. You can achieve this by calling
 /// `SoLoud.instance.setVisualizationEnabled(true);`.
 ///
-/// Audio samples can be get from the player or from the microphone, and
-/// in a texture matrix or a linear array way.
+/// Audio samples can be get from the player in three ways. See [GetSamplesKind]
+/// for more information.
 ///
 /// IMPORTANT: remember to call [dispose] method when there is no more need
 /// to acquire audio.
 ///
-/// After calling [updateSamples] it's possible to call the proper getter
+/// After calling [updateSamples] it's possible to call [AudioData.getAudioData]
 /// to have back the audio samples. For example, using a "Ticker"
 /// in a Widget that needs the audio data to be displayed:
 /// ```dart
@@ -54,7 +51,7 @@ enum GetSamplesKind {
 /// @override
 /// void initState() {
 ///   super.initState();
-///   audioData = AudioData(GetSamplesFrom.player, GetSamplesKind.linear);
+///   audioData = AudioData(GetSamplesKind.linear);
 ///   ticker = createTicker(_tick);
 ///   ticker.start();
 /// }
@@ -71,8 +68,8 @@ enum GetSamplesKind {
 ///     try {
 ///       audioData.updateSamples();
 ///       setState(() {});
-///     } on Exception {
-///       debugPrint('Player not initialized or visualization is not enabled!');
+///     } on Exception catch (e) {
+///       debugPrint('$e');
 ///     }
 ///   }
 /// }
@@ -80,25 +77,25 @@ enum GetSamplesKind {
 /// Then in your "build" method, you can read the audio data:
 /// ```dart
 /// try {
-///   /// Use [getTexture] if you have inizialized [AudioData]
-///   /// with [GetSamplesKind.texture]
-///   ffiData = audioData.getLinearFft(i);
-///   waveData = audioData.getLinearWave(i);
-/// } on Exception {
-///   ffiData = 0;
-///   waveData = 0;
+///   /// Since we are used [GetSamplesKind.linear], `samples` will contain
+///   /// 512 floats: the first 256 are FFT values, the other 256 are wave values
+///   final samples = audioData.getAudioData();
+///   Float32List ffiData = samples.sublist(0, 256);
+///   Float32List waveData = samples.sublist(256, 512);
+///   /// Do something with `ffiData` and `waveData`
+/// } on Exception catch (e) {
+///   debugPrint('$e');
 /// }
 /// ```
 ///
 /// To smooth FFT values use [SoLoud.setFftSmoothing].
-@experimental
 class AudioData {
   /// Initialize the way the audio data should be acquired.
   AudioData(
     this._getSamplesKind,
   ) : ctrl = AudioDataCtrl() {
     _init();
-    ctrl.allocSamples();
+    ctrl.allocSamples(this);
   }
 
   void _init() {
@@ -127,8 +124,8 @@ class AudioData {
   /// do [GetSamplesKind] checks on every calls.
   late void Function(AudioData) _updateCallback;
 
-  /// Update the content of samples memory to be get with [getWave],
-  /// [getLinearFft], [getLinearWave] or [getTexture].
+  /// Update the content of samples memory to be read later
+  /// using [getAudioData].
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   /// Throws [SoLoudVisualizationNotEnabledException] if the visualization
@@ -155,65 +152,24 @@ class AudioData {
     ctrl.dispose(_getSamplesKind);
   }
 
-  /// Get the wave data at offset [offset].
+  /// Get audio data data.
   ///
-  /// Use this method to get data when using [GetSamplesKind.wave].
-  /// The data is composed of 256 floats.
-  double getWave(SampleWave offset) {
-    if (_getSamplesKind != GetSamplesKind.wave) {
-      return 0;
-    }
-
+  /// Depending on the [GetSamplesKind] used to initialize [AudioData],
+  /// the returned data will be a [Float32List]. See [GetSamplesKind] for
+  /// more information.
+  Float32List getAudioData() {
     if (!SoLoudController().soLoudFFI.getVisualizationEnabled()) {
       throw const SoLoudVisualizationNotEnabledException();
     }
-    return ctrl.getWave(offset);
+
+    switch (_getSamplesKind) {
+      case GetSamplesKind.wave:
+        return ctrl.getWave();
+      case GetSamplesKind.linear:
+        return ctrl.getFftAndWave();
+      case GetSamplesKind.texture:
+        return ctrl.get2DTexture();
+    }
   }
 
-  /// Get the FFT audio data at offset [offset].
-  ///
-  /// Use this method to get FFT data when using [GetSamplesKind.linear].
-  /// The data is composed of 256 floats.
-  double getLinearFft(SampleLinear offset) {
-    if (_getSamplesKind != GetSamplesKind.linear) {
-      return 0;
-    }
-
-    if (!SoLoudController().soLoudFFI.getVisualizationEnabled()) {
-      throw const SoLoudVisualizationNotEnabledException();
-    }
-    return ctrl.getLinearFft(offset);
-  }
-
-  /// Get the wave audio data at offset [offset].
-  ///
-  /// Use this method to get wave data when using [GetSamplesKind.linear].
-  /// The data is composed of 256 floats.
-  double getLinearWave(SampleLinear offset) {
-    if (_getSamplesKind != GetSamplesKind.linear) {
-      return 0;
-    }
-
-    if (!SoLoudController().soLoudFFI.getVisualizationEnabled()) {
-      throw const SoLoudVisualizationNotEnabledException();
-    }
-    return ctrl.getLinearWave(offset);
-  }
-
-  /// Get the audio data at row [row] and column [column].
-  /// Use this method to get data when using [GetSamplesKind.texture].
-  /// This matrix represents 256 rows. Each rows is represented by 256 floats
-  /// of FFT data and 256 floats of wave data.
-  /// Each time the [AudioData.updateSamples] method is called,
-  /// the last row is discarded and the new one will be the first.
-  double getTexture(SampleRow row, SampleColumn column) {
-    if (_getSamplesKind != GetSamplesKind.texture) {
-      return 0;
-    }
-
-    if (!SoLoudController().soLoudFFI.getVisualizationEnabled()) {
-      throw const SoLoudVisualizationNotEnabledException();
-    }
-    return ctrl.getTexture(row, column);
-  }
 }
