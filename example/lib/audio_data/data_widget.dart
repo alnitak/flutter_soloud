@@ -94,7 +94,7 @@ class WavePainter extends CustomPainter {
     for (var i = 0; i < 256; i++) {
       try {
         final fftData = samples[i];
-        final waveData = samples[i+256];
+        final waveData = samples[i + 256];
         waveHeight = size.height * waveData * 0.5;
         fftHeight = size.height * fftData / 2;
       } on Exception {
@@ -103,22 +103,23 @@ class WavePainter extends CustomPainter {
       }
 
       /// Draw the wave
-      canvas..drawRect(
-        Rect.fromLTRB(
-          barWidth * i,
-          size.height / 4 - waveHeight / 2,
-          barWidth * (i + 1),
-          size.height / 4 + waveHeight / 2,
-        ),
-        paint,
-      )
+      canvas
+        ..drawRect(
+          Rect.fromLTRB(
+            barWidth * i,
+            size.height / 4 - waveHeight / 2,
+            barWidth * (i + 1),
+            size.height / 4 + waveHeight / 2,
+          ),
+          paint,
+        )
 
-      /// Draw the fft
-      ..drawLine(
-        Offset(barWidth * i, size.height - 10),
-        Offset(barWidth * i, size.height - 10 - fftHeight),
-        paint,
-      );
+        /// Draw the fft
+        ..drawLine(
+          Offset(barWidth * i, size.height - 10),
+          Offset(barWidth * i, size.height - 10 - fftHeight),
+          paint,
+        );
     }
   }
 

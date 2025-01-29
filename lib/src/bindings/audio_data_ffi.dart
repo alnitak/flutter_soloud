@@ -74,5 +74,4 @@ class AudioDataCtrl {
       512 * 256,
     );
   }
-
 }

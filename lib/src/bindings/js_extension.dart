@@ -22,7 +22,7 @@ external double wasmGetF32Value(int ptrAddress, String type);
 external JSArrayBuffer get wasmHeapU8Buffer;
 
 @JS('Module_soloud.HEAPF32')
-external JSFloat32Array get wasmHeapF32Buffer; 
+external JSFloat32Array get wasmHeapF32Buffer;
 
 @JS('Module_soloud.UTF8ToString')
 external String wasmUtf8ToString(int ptrAddress);

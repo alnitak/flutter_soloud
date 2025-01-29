@@ -171,5 +171,4 @@ class AudioData {
         return ctrl.get2DTexture();
     }
   }
-
 }
