@@ -59,8 +59,8 @@ void main() async {
   final worker = Worker();
   worker.onReceive().listen((data) {
     // ignore: avoid_print
-    print('Dart worker: '
-        'onMessage received $data with type of ${data.runtimeType}\n');
+    print('Dart worker: onMessage received $data '
+    'with type of ${data.runtimeType}\n');
 
     try {
       worker.sendMessage(data);

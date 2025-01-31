@@ -56,7 +56,7 @@ extern "C"
             {
                 // Create a new Worker from the URI
                 var workerUri = "assets/packages/flutter_soloud/web/worker.dart.js";
-                console.log("EM_ASM creating web worker!");
+                console.log("EM_ASM creating Web Worker!");
                 Module_soloud.wasmWorker = new Worker(workerUri);
             }
             else
@@ -98,6 +98,7 @@ extern "C"
     /// and comes from the audio thread (so on the web, from a different web worker).
     FFI_PLUGIN_EXPORT void voiceEndedCallback(unsigned int *handle)
     {
+        printf("CPP voiceEndedCallback handle: %d\n", *handle);
 #ifdef __EMSCRIPTEN__
         // Calling JavaScript from C/C++
         // https://emscripten.org/docs/porting/connecting_cpp_and_javascript/Interacting-with-code.html#interacting-with-code-call-javascript-from-native
@@ -199,6 +200,7 @@ extern "C"
         analyzer.get()->setWindowsSize(windowSize);
 
         // Set the callback for when a voice is ended/stopped
+        printf("CPP initEngine() SET voiceEndedCallback %p\n", voiceEndedCallback);
         player.get()->setVoiceEndedCallback(voiceEndedCallback);
 
         return (PlayerErrors)noError;
@@ -1142,7 +1144,7 @@ extern "C"
     ///
     /// [handle] the group handle to check.
     /// Return true if [handle] is a group handle.
-    FFI_PLUGIN_EXPORT bool isVoiceGroup(unsigned int handle)
+    FFI_PLUGIN_EXPORT int isVoiceGroup(unsigned int handle)
     {
         if (player.get() == nullptr || !player.get()->isInited())
             return false;
@@ -1155,7 +1157,7 @@ extern "C"
     ///
     /// [handle] group handle to check.
     /// Return true if the group handle doesn't have any voices.
-    FFI_PLUGIN_EXPORT bool isVoiceGroupEmpty(unsigned int handle)
+    FFI_PLUGIN_EXPORT int isVoiceGroupEmpty(unsigned int handle)
     {
         if (player.get() == nullptr || !player.get()->isInited())
             return false;

@@ -447,6 +447,7 @@ interface class SoLoud {
         // Removing this UNIQUE [handle] from the `AudioSource` that owns it.
 
         final soundHandleFound = _isHandlePresent(SoundHandle(handle));
+print('********* _initializeNativeCallbacks() handle: $handle  $soundHandleFound , ${soundHandleFound?.handlesInternal}');
 
         if (soundHandleFound != null) {
           soundHandleFound.soundEventsController.add((
@@ -463,6 +464,7 @@ interface class SoLoud {
 
           if (soundHandleFound.handles.isEmpty) {
             // All instances of the sound have finished.
+print('********* _initializeNativeCallbacks() handle: $handle  soundHandleFound.handles.isEmpty');
             soundHandleFound.allInstancesFinishedController.add(null);
           }
           voiceEndedCompleters[SoundHandle(handle)]?.complete();
@@ -511,6 +513,7 @@ interface class SoLoud {
                 ?.completeError(SoLoudCppException.fromPlayerError(error));
             throw SoLoudCppException.fromPlayerError(error);
           }
+print('********* _initializeNativeCallbacks() loadedFile $_activeSounds');
           loadedFileCompleters[result['completeFileName']]?.complete(newSound);
         }
       });
@@ -605,7 +608,10 @@ interface class SoLoud {
   }
 
   /// Load a new sound to be played once or multiple times later, from
-  /// a buffer.
+  /// a buffer. While [loadFile] decompresses the audio file and loads it
+  /// into memory, [loadMem] loads the audio data directly from the
+  /// compressed file. The compressed data could be read from memory
+  /// [LoadMode.memory] or from disk [LoadMode.disk].
   ///
   /// Provide a [path] of the file to be used as a reference to distinguis
   /// this [buffer].
@@ -621,8 +627,9 @@ interface class SoLoud {
   /// from the given file when needed (more CPU, less memory allocated).
   /// See the [seek] note problem when using [LoadMode.disk].
   /// The default is [LoadMode.memory].
-  /// IMPORTANT: [LoadMode.memory] used the on web platform could cause UI
-  /// freeze problems.
+  /// IMPORTANT: on Web [LoadMode.disk] is is overridden to [LoadMode.memory].
+  /// This could cause UI freeze problems for long duration audio files so
+  /// it is recommended to load them when the app starts.
   ///
   /// This is the only choice to load a file when using this plugin on the web
   /// because browsers cannot read directly files from the loal storage.

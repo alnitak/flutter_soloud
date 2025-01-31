@@ -24,6 +24,8 @@ freely, subject to the following restrictions:
 
 #include "soloud.h"
 
+#include <iostream>
+
 // Direct voice operations (no mutexes - called from other functions)
 
 namespace SoLoud

@@ -32,7 +32,7 @@ class WorkerController {
     _outputController = StreamController();
     _worker = wasmWorker;
     _worker?.onmessage = ((web.MessageEvent event) {
-      print('WorkerController.onmessage() event: ${event.data}');
+      print('WorkerController.onmessage() event: ${event.data.dartify()}');
       _outputController?.add(event.data.dartify());
     }).toJS;
 

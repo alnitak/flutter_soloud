@@ -16,6 +16,12 @@
 #include <unistd.h>
 #endif
 
+#ifdef __EMSCRIPTEN__
+#define __WEB__ 1
+#else
+#define __WEB__ 0
+#endif
+
 Player::Player() : mInited(false), mFilters(&soloud, nullptr) {}
 
 Player::~Player()
@@ -222,7 +228,7 @@ PlayerErrors Player::loadFile(
     *hash = 0;
 
     unsigned int newHash = (int32_t)std::hash<std::string>{}(completeFileName) & 0x7fffffff;
-    /// check if the sound has been already loaded
+    /// check if the sound has already been loaded
     auto const s = findByHash(newHash);
 
     if (s != nullptr)
@@ -231,23 +237,24 @@ PlayerErrors Player::loadFile(
         return fileAlreadyLoaded;
     }
 
-    auto sound = std::make_unique<ActiveSound>();
-
-    sound->completeFileName = std::string(completeFileName);
-    sound->soundHash = newHash;
+    std::unique_ptr<ActiveSound> newSound = std::make_unique<ActiveSound>();
+    newSound.get()->completeFileName = std::string(completeFileName);
+    *hash = newHash;
+    newSound.get()->soundHash = newHash;
 
     SoLoud::result result;
-    if (loadIntoMem)
+    // This function is never called when running on the Web, but [__WEB__] is checked for consistency with [loadMem].
+    if (loadIntoMem || __WEB__)
     {
-        sound->sound = std::make_unique<SoLoud::Wav>();
-        sound->soundType = TYPE_WAV;
-        result = static_cast<SoLoud::Wav *>(sound->sound.get())->load(completeFileName.c_str());
+        newSound.get()->sound = std::make_unique<SoLoud::Wav>();
+        newSound.get()->soundType = TYPE_WAV;
+        result = static_cast<SoLoud::Wav *>(newSound.get()->sound.get())->load(completeFileName.c_str());
     }
     else
     {
-        sound->sound = std::make_unique<SoLoud::WavStream>();
-        sound->soundType = TYPE_WAVSTREAM;
-        result = static_cast<SoLoud::WavStream *>(sound->sound.get())->load(completeFileName.c_str());
+        newSound.get()->sound = std::make_unique<SoLoud::WavStream>();
+        newSound.get()->soundType = TYPE_WAVSTREAM;
+        result = static_cast<SoLoud::WavStream *>(newSound.get()->sound.get())->load(completeFileName.c_str());
     }
 
     if (result != SoLoud::SO_NO_ERROR)
@@ -257,8 +264,8 @@ PlayerErrors Player::loadFile(
     else
     {
         *hash = newHash;
-        sound->filters = std::make_unique<Filters>(&soloud, sound.get());
-        sounds.push_back(std::move(sound));
+        newSound.get()->filters = std::make_unique<Filters>(&soloud, newSound.get());
+        sounds.push_back(std::move(newSound));
     }
 
     return (PlayerErrors)result;
@@ -277,7 +284,7 @@ PlayerErrors Player::loadMem(
     hash = 0;
 
     unsigned int newHash = (int32_t)std::hash<std::string>{}(uniqueName) & 0x7fffffff;
-    /// check if the sound has been already loaded
+    /// check if the sound has already been loaded
     auto const s = findByHash(newHash);
 
     if (s != nullptr)
@@ -286,12 +293,12 @@ PlayerErrors Player::loadMem(
         return fileAlreadyLoaded;
     }
 
-    std::unique_ptr<ActiveSound> newSound = std::make_unique<ActiveSound>();
+    auto newSound = std::make_unique<ActiveSound>();
     newSound.get()->completeFileName = std::string(uniqueName);
     hash = newHash;
     newSound.get()->soundHash = newHash;
     SoLoud::result result;
-    if (loadIntoMem)
+    if (loadIntoMem || __WEB__)
     {
         newSound.get()->sound = std::make_unique<SoLoud::Wav>();
         newSound.get()->soundType = TYPE_WAV;
@@ -329,7 +336,7 @@ PlayerErrors Player::setBufferStream(
 
     hash = dist(g);
 
-    std::unique_ptr<ActiveSound> newSound = std::make_unique<ActiveSound>();
+    auto newSound = std::make_unique<ActiveSound>();
     newSound.get()->completeFileName = "";
     newSound.get()->soundHash = hash;
 
@@ -549,22 +556,46 @@ void Player::removeHandle(unsigned int handle)
 
 void Player::disposeSound(unsigned int soundHash)
 {
-    ActiveSound *sound = findByHash(soundHash);
+    std::lock_guard<std::mutex> guard(remove_handle_mutex);
+    printf("CPP Player disposeSound1\n");
 
-    if (sound == nullptr)
+    if (sounds.empty())
         return;
 
-    sound->sound.get()->stop();
-    // remove the sound from the list
-    sounds.erase(std::remove_if(sounds.begin(), sounds.end(),
-                                [soundHash](std::unique_ptr<ActiveSound> &f)
-                                { return f.get()->soundHash == soundHash; }));
+    sounds.erase(
+        std::remove_if(sounds.begin(), sounds.end(), [soundHash](const std::unique_ptr<ActiveSound>& sound) {
+            if (sound->soundHash == soundHash)
+            {
+                printf("CPP Player disposeSound SOUND FOUND \n  name: %s\n  filters: %s\n  handle size: %zu\n  soundHash: %d\n", 
+                        std::move(sound->completeFileName.c_str()),
+                        sound->filters.get() == nullptr ? "null" : "NOT null",
+                        sound->handle.size(),
+                        sound->soundHash
+                        );
+                sound->sound.get()->stop();
+                sound->filters.reset();
+                sound->sound.reset();
+                return true;
+            }
+            return false;
+        }),
+        sounds.end()
+    );
+
+    printf("CPP Player disposeSound2\n");
 }
 
 void Player::disposeAllSound()
 {
-    soloud.stopAll();
-    sounds.clear();
+    printf("CPP Player DISPOSE ALL SOUND1\n");
+    // soloud.stopAll();
+    // printf("CPP Player disposeAllSound2\n");
+    // sounds.clear();
+    while (sounds.size() > 0)
+    {
+        disposeSound(sounds[0]->soundHash);
+    }
+    printf("CPP Player DISPOSE ALL SOUND2\n");
 }
 
 bool Player::getLooping(unsigned int handle)
