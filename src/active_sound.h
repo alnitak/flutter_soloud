@@ -36,7 +36,7 @@ struct ActiveSound
     ~ActiveSound() {
         try {
             // Clear handles first
-            handle.clear();
+            // handle.clear();
             
             // Reset filters before sound since filters may depend on sound
             if (filters) {
@@ -51,10 +51,10 @@ struct ActiveSound
             }
             
             // Finally reset sound
-            if (sound) {
-                sound->stop();
-                sound.reset();
-            }
+            // if (sound) {
+            //     sound->stop();
+            //     sound.reset();
+            // }
         }
         catch (const std::exception& e) {
             printf("Error in ActiveSound destructor: %s\n", e.what());

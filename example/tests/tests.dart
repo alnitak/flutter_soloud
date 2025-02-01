@@ -180,7 +180,7 @@ class _MyHomePageState extends State<MyHomePage> {
         if (context.mounted) setState(() {});
       },
       (error, stack) {
-        // deinit();
+        deinit();
         // if (error is SoLoudInitializationStoppedByDeinitException) {
         //   // This is to be expected in this test.
         //   return;
@@ -300,47 +300,44 @@ Future<StringBuffer> testAllInstancesFinished() async {
     'Active sounds even after disposeAllSound()',
   );
 
-  final explosion = await SoLoud.instance.loadAsset(
-    'assets/audio/explosion.mp3',
-    // mode: LoadMode.disk,
-  );
-  // final song =
-  //     await SoLoud.instance.loadAsset('assets/audio/8_bit_mentality.mp3');
+  final explosion =
+      await SoLoud.instance.loadAsset('assets/audio/explosion.mp3');
+  final song =
+      await SoLoud.instance.loadAsset('assets/audio/8_bit_mentality.mp3');
 
   // Set up unloading.
   var explosionDisposed = false;
-  // var songDisposed = false;
+  var songDisposed = false;
   unawaited(
     explosion.allInstancesFinished.first.then((_) async {
-      print('TEST allInstancesFinished');
       strBuf.write('All instances of explosion finished.\n');
       await SoLoud.instance.disposeSource(explosion);
       explosionDisposed = true;
     }),
   );
-  // unawaited(
-  //   song.allInstancesFinished.first.then((_) async {
-  //     strBuf.write('All instances of song finished.\n');
-  //     await SoLoud.instance.disposeSource(song);
-  //     songDisposed = true;
-  //   }),
-  // );
+  unawaited(
+    song.allInstancesFinished.first.then((_) async {
+      strBuf.write('All instances of song finished.\n');
+      await SoLoud.instance.disposeSource(song);
+      songDisposed = true;
+    }),
+  );
 
-  await SoLoud.instance.play(explosion, volume: 0.6);
-  // final songHandle = await SoLoud.instance.play(song, volume: 0.6);
-  await delay(2000);
-  await SoLoud.instance.play(explosion, volume: 0.8);
+  await SoLoud.instance.play(explosion, volume: 0.2);
+  final songHandle = await SoLoud.instance.play(song, volume: 0.6);
+  await delay(500);
+  await SoLoud.instance.play(explosion, volume: 0.3);
 
   // Let the second explosion play for its full duration.
-  await delay(5000);
+  await delay(4000);
 
-  // await SoLoud.instance.stop(songHandle);
-  // await delay(1000);
+  await SoLoud.instance.stop(songHandle);
+  await delay(1000);
 
   assert(explosionDisposed, "Explosion sound wasn't disposed.");
-  // assert(songDisposed, "Song sound wasn't disposed.");
+  assert(songDisposed, "Song sound wasn't disposed.");
 
-  // deinit();
+  deinit();
 
   return strBuf;
 }

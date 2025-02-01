@@ -447,7 +447,6 @@ interface class SoLoud {
         // Removing this UNIQUE [handle] from the `AudioSource` that owns it.
 
         final soundHandleFound = _isHandlePresent(SoundHandle(handle));
-print('********* _initializeNativeCallbacks() handle: $handle  $soundHandleFound , ${soundHandleFound?.handlesInternal}');
 
         if (soundHandleFound != null) {
           soundHandleFound.soundEventsController.add((
@@ -464,7 +463,6 @@ print('********* _initializeNativeCallbacks() handle: $handle  $soundHandleFound
 
           if (soundHandleFound.handles.isEmpty) {
             // All instances of the sound have finished.
-print('********* _initializeNativeCallbacks() handle: $handle  soundHandleFound.handles.isEmpty');
             soundHandleFound.allInstancesFinishedController.add(null);
           }
           voiceEndedCompleters[SoundHandle(handle)]?.complete();
@@ -513,7 +511,6 @@ print('********* _initializeNativeCallbacks() handle: $handle  soundHandleFound.
                 ?.completeError(SoLoudCppException.fromPlayerError(error));
             throw SoLoudCppException.fromPlayerError(error);
           }
-print('********* _initializeNativeCallbacks() loadedFile $_activeSounds');
           loadedFileCompleters[result['completeFileName']]?.complete(newSound);
         }
       });

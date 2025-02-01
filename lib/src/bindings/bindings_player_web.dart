@@ -54,8 +54,6 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
       (event) {
         /// The [event] coming from `web/worker.dart.js` is of String type.
         /// Only `voiceEndedCallback` event in web for now.
-        print(
-            'WorkerController.listen() event: $event of type ${event.runtimeType}');
         switch (event) {
           case String():
             final decodedMap = jsonDecode(event) as Map;
@@ -66,9 +64,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
               voiceEndedEventController.add(decodedMap['value'] as int);
             }
           case Map():
-            print('Event is Map(): ${event['message']} , ${event['value']}');
             if (event['message'] == 'voiceEndedCallback') {
-              print('**************Event VOICEENDED received  ${event['value']}');
               _log.finest(
                 () => 'VOICE ENDED EVENT handle: ${event['value']}\n',
               );
@@ -412,7 +408,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     return wasmStop(handle.id);
   }
 
-  @override
+ @override
   void disposeSound(SoundHash soundHash) {
     try {
       wasmDisposeSound(soundHash.hash);

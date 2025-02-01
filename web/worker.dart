@@ -57,16 +57,12 @@ class Worker {
 void main() async {
   // print('Worker created.\n');
   final worker = Worker();
+  // ignore: unnecessary_lambdas
   worker.onReceive().listen((data) {
     // ignore: avoid_print
-    print('Dart worker: onMessage received $data '
-    'with type of ${data.runtimeType}\n');
+    // print('Dart worker: onMessage received $data '
+    //   'with type of ${data.runtimeType}\n');
 
-    try {
-      worker.sendMessage(data);
-    } catch (_) {
-      // ignore: avoid_print
-      print("Received data from WASM worker but it's not a String!\n");
-    }
+    worker.sendMessage(data);
   });
 }

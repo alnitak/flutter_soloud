@@ -150,8 +150,6 @@ namespace SoLoud
 #include "soloud_queue.h"
 #include "soloud_error.h"
 
-#include <iostream>
-
 namespace SoLoud
 {
 
@@ -175,10 +173,7 @@ namespace SoLoud
 		// Set the callback to call when a voice is ended/stopped
 		void (*_voiceEndedCallback)(unsigned int*) = nullptr;
 		void setVoiceEndedCallback(void (*voiceEndedCallback)(unsigned int*)) {
-			_voiceEndedCallback = nullptr;
 			_voiceEndedCallback = voiceEndedCallback;
-			printf("CPP SOLOUD setVoiceEndedCallback() SET %p\n", _voiceEndedCallback);
-
 		}
 
 		// Set the callback to call when the device receive a state changed
