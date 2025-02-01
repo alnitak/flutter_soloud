@@ -554,35 +554,22 @@ void Player::removeHandle(unsigned int handle)
         }
 }
 
-void Player::disposeSound(unsigned int soundHash)
-{
+void Player::disposeSound(unsigned int soundHash) {
     std::lock_guard<std::mutex> guard(remove_handle_mutex);
-    printf("CPP Player disposeSound1\n");
 
-    if (sounds.empty())
-        return;
+    if (sounds.empty()) {
+        return;  
+    }
 
-    sounds.erase(
-        std::remove_if(sounds.begin(), sounds.end(), [soundHash](const std::unique_ptr<ActiveSound>& sound) {
-            if (sound->soundHash == soundHash)
-            {
-                printf("CPP Player disposeSound SOUND FOUND \n  name: %s\n  filters: %s\n  handle size: %zu\n  soundHash: %d\n", 
-                        std::move(sound->completeFileName.c_str()),
-                        sound->filters.get() == nullptr ? "null" : "NOT null",
-                        sound->handle.size(),
-                        sound->soundHash
-                        );
-                sound->sound.get()->stop();
-                sound->filters.reset();
-                sound->sound.reset();
-                return true;
-            }
-            return false;
-        }),
-        sounds.end()
-    );
+    auto it = std::find_if(sounds.begin(), sounds.end(),
+        [soundHash](const std::unique_ptr<ActiveSound>& sound) {
+            return sound->soundHash == soundHash;
+        });
 
-    printf("CPP Player disposeSound2\n");
+    if (it != sounds.end()) {
+        // The ActiveSound destructor will handle all the cleanup
+        sounds.erase(it);
+    }
 }
 
 void Player::disposeAllSound()

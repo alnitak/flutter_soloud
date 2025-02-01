@@ -414,7 +414,11 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
 
   @override
   void disposeSound(SoundHash soundHash) {
-    return wasmDisposeSound(soundHash.hash);
+    try {
+      wasmDisposeSound(soundHash.hash);
+    } catch (e) {
+      _log.warning('disposeSound() error: $e');
+    }
   }
 
   @override

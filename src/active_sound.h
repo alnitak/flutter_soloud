@@ -32,6 +32,35 @@ struct ActiveSound
     // unique identifier of this sound based on the file name
     unsigned int soundHash;
     std::string completeFileName;
+
+    // Add explicit destructor to control cleanup order
+    ~ActiveSound() {
+        try {
+            printf("CPP ~ActiveSound1\n");
+            // Clear handles first
+            handle.clear();
+            
+            printf("CPP ~ActiveSound2\n");
+            // Reset filters before sound since filters may depend on sound
+            if (filters) {
+                filters.reset();
+            }
+            
+            printf("CPP ~ActiveSound3\n");
+            // Finally reset sound
+            if (sound) {
+                sound->stop();
+                sound.reset();
+            }
+            printf("CPP ~ActiveSound4\n");
+        }
+        catch (const std::exception& e) {
+            printf("Error in ActiveSound destructor: %s\n", e.what());
+        }
+        catch (...) {
+            printf("Unknown error in ActiveSound destructor\n");
+        }
+    }
 };
 
 #endif // ACTIVE_SOUND_H

@@ -17,8 +17,9 @@ struct FilterObject
     FilterType type;
     std::unique_ptr<SoLoud::Filter> filter;
 
-    FilterObject(FilterType t, std::unique_ptr<SoLoud::Filter> f)
-        : type(t), filter(std::move(f)) {}
+    // Modify constructor to take raw pointer instead of moving unique_ptr
+    FilterObject(FilterType t, SoLoud::Filter* f)
+        : type(t), filter(f) {} // Let unique_ptr take ownership directly
 
     bool operator==(FilterType const &i)
     {

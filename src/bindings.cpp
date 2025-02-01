@@ -700,7 +700,15 @@ extern "C"
             return;
         std::lock_guard<std::mutex> guard_init(init_deinit_mutex);
         std::lock_guard<std::mutex> guard_load(loadMutex);
-        player.get()->disposeSound(soundHash);
+        try {
+            player.get()->disposeSound(soundHash);
+        }
+        catch (const std::exception& e) {
+            printf("Error in disposeSound: %s\n", e.what());
+        }
+        catch (...) {
+            printf("Unknown error in disposeSound\n");
+        }
     }
 
     /// Dispose all sounds already loaded
