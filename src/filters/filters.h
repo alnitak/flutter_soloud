@@ -17,9 +17,8 @@ struct FilterObject
     FilterType type;
     std::unique_ptr<SoLoud::Filter> filter;
 
-    // Modify constructor to take raw pointer instead of moving unique_ptr
     FilterObject(FilterType t, SoLoud::Filter* f)
-        : type(t), filter(f) {} // Let unique_ptr take ownership directly
+        : type(t), filter(f) {}
 
     bool operator==(FilterType const &i)
     {
@@ -27,14 +26,15 @@ struct FilterObject
     }
 };
 
-/// Class to manage global filters.
+/// Class to manage filters.
 class Filters
 {
-    /// Setting the global filter to NULL will clear the global filter.
+    /// Setting the filter to NULL will clear the filter.
     /// The default maximum number of global filters active is 4, but this
     /// can be changed in a global constant in soloud.h (and rebuilding SoLoud).
 public:
     Filters(SoLoud::Soloud *soloud, ActiveSound *sound);
+    ~Filters() {}
 
     int isFilterActive(FilterType filter);
     

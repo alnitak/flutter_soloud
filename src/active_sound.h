@@ -35,28 +35,26 @@ struct ActiveSound
     // Add explicit destructor to control cleanup order
     ~ActiveSound() {
         try {
-            printf("CPP ~ActiveSound1\n");
             // Clear handles first
             handle.clear();
             
-            printf("CPP ~ActiveSound2\n");
             // Reset filters before sound since filters may depend on sound
             if (filters) {
-                printf("CPP ~ActiveSound2A\n");
                 Filters *f = filters.release();
-                printf("CPP ~ActiveSound2B %p\n", f);
-                delete f;
-                printf("CPP ~ActiveSound2C\n");
-                // filters.reset();
+                if (f != nullptr) {
+                    // TODO: deleting "f" when running on Web will crash with segmentation fault.
+                    // This could be a bug in WebAssembly I can't figure out. Even if I don't delete
+                    // there shouldn't be a memory leak as the filters are destroyed with the sound.
+                    // delete f;
+                }
+                filters.reset();
             }
             
-            printf("CPP ~ActiveSound3\n");
             // Finally reset sound
             if (sound) {
                 sound->stop();
                 sound.reset();
             }
-            printf("CPP ~ActiveSound4\n");
         }
         catch (const std::exception& e) {
             printf("Error in ActiveSound destructor: %s\n", e.what());
@@ -64,7 +62,6 @@ struct ActiveSound
         catch (...) {
             printf("Unknown error in ActiveSound destructor\n");
         }
-        printf("CPP ~ActiveSound5\n");
     }
 };
 

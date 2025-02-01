@@ -571,25 +571,16 @@ void Player::disposeSound(unsigned int soundHash) {
         });
 
     if (it != sounds.end()) {
-        // The ActiveSound destructor will handle all the cleanup
-        printf("CPP Player DISPOSE SOUND1 sound size: %d\n", (int)sounds.size());
         sounds.erase(it);
-        printf("CPP Player DISPOSE SOUND2 sound size: %d\n", (int)sounds.size());
     }
-    printf("CPP Player DISPOSE SOUND3 sound size: %d\n", (int)sounds.size());
 }
 
 void Player::disposeAllSound()
 {
-    printf("CPP Player DISPOSE ALL SOUND1\n");
-    // soloud.stopAll();
-    // printf("CPP Player disposeAllSound2\n");
-    // sounds.clear();
     while (sounds.size() > 0)
     {
         disposeSound(sounds[0]->soundHash);
     }
-    printf("CPP Player DISPOSE ALL SOUND2\n");
 }
 
 bool Player::getLooping(unsigned int handle)
