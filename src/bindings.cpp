@@ -98,7 +98,9 @@ extern "C"
     /// and comes from the audio thread (so on the web, from a different web worker).
     FFI_PLUGIN_EXPORT void voiceEndedCallback(unsigned int *handle)
     {
-        printf("CPP voiceEndedCallback handle: %d\n", *handle);
+        printf("########## CPP voiceEndedCallback handle: %d\n", *handle);
+        player->removeHandle(*handle);
+        
 #ifdef __EMSCRIPTEN__
         // Calling JavaScript from C/C++
         // https://emscripten.org/docs/porting/connecting_cpp_and_javascript/Interacting-with-code.html#interacting-with-code-call-javascript-from-native
@@ -106,9 +108,9 @@ extern "C"
         sendToWorker("voiceEndedCallback", *handle);
 #endif
 
+        // The `dartVoiceEndedCallback` is not set on Web.
         if (dartVoiceEndedCallback == nullptr)
             return;
-        player->removeHandle(*handle);
         // [n] pointer must be deleted on Dart.
         unsigned int *n = (unsigned int *)malloc(sizeof(unsigned int *));
         *n = *handle;

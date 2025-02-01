@@ -68,7 +68,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
           case Map():
             print('Event is Map(): ${event['message']} , ${event['value']}');
             if (event['message'] == 'voiceEndedCallback') {
-              print('**************Event VOICEENDED  ${event['value']}');
+              print('**************Event VOICEENDED received  ${event['value']}');
               _log.finest(
                 () => 'VOICE ENDED EVENT handle: ${event['value']}\n',
               );

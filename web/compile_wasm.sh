@@ -66,7 +66,7 @@ SOURCES=(
 )
 
 # Now compile everything together
-em++ \
+em++ -O3 \
     -I ../src/soloud/include \
     -I ../src/soloud/src \
     -I ../src \

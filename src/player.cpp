@@ -539,10 +539,14 @@ void Player::removeHandle(unsigned int handle)
     //         sound->handle.begin(), sound->handle.end(),
     //         [handle](SoLoud::handle &f)
     //         { return f == handle; }));
+    printf("@@@@@@@@ CPP Player removeHandle handle: %d\n", handle);
     bool e = true;
     for (int i = 0; i < sounds.size(); ++i)
         for (int n = 0; n < sounds[i]->handle.size(); ++n)
         {
+            printf("@@@@@@@@ CPP Player removeHandle from sound: %s  with %d handles\n",
+                sounds[i]->completeFileName.c_str(), (int)sounds[i]->handle.size());
+            
             if (sounds[i]->handle[n].handle == handle)
             {
                 sounds[i]->handle.erase(sounds[i]->handle.begin() + n);
@@ -568,8 +572,11 @@ void Player::disposeSound(unsigned int soundHash) {
 
     if (it != sounds.end()) {
         // The ActiveSound destructor will handle all the cleanup
+        printf("CPP Player DISPOSE SOUND1 sound size: %d\n", (int)sounds.size());
         sounds.erase(it);
+        printf("CPP Player DISPOSE SOUND2 sound size: %d\n", (int)sounds.size());
     }
+    printf("CPP Player DISPOSE SOUND3 sound size: %d\n", (int)sounds.size());
 }
 
 void Player::disposeAllSound()

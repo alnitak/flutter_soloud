@@ -68,7 +68,7 @@ private:
     SoLoud::Soloud *mSoloud;
 
     /// The sound to manage filters for. If null the filters are managed globally.
-    ActiveSound *mSound;
+    const ActiveSound *mSound;
 
     std::vector<std::unique_ptr<FilterObject>> filters;
 };

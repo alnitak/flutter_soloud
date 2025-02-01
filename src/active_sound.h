@@ -43,6 +43,8 @@ struct ActiveSound
             printf("CPP ~ActiveSound2\n");
             // Reset filters before sound since filters may depend on sound
             if (filters) {
+                Filters *f = filters.release();
+                delete f;
                 filters.reset();
             }
             
@@ -60,6 +62,7 @@ struct ActiveSound
         catch (...) {
             printf("Unknown error in ActiveSound destructor\n");
         }
+        printf("CPP ~ActiveSound5\n");
     }
 };
 
