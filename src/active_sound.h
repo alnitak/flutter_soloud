@@ -1,7 +1,7 @@
 #ifndef ACTIVE_SOUND_H
 #define ACTIVE_SOUND_H
 
-#include "filters/filters.h"
+#include "filters/filters_fwd.h"
 #include "enums.h"
 #include "soloud.h"
 
@@ -9,7 +9,6 @@
 #include <vector>
 #include <memory>
 
-class Filters;
 #define MAX_DOUBLE 1.7976931348623157e+308
 
 struct ActiveHandle
@@ -43,9 +42,12 @@ struct ActiveSound
             printf("CPP ~ActiveSound2\n");
             // Reset filters before sound since filters may depend on sound
             if (filters) {
+                printf("CPP ~ActiveSound2A\n");
                 Filters *f = filters.release();
+                printf("CPP ~ActiveSound2B %p\n", f);
                 delete f;
-                filters.reset();
+                printf("CPP ~ActiveSound2C\n");
+                // filters.reset();
             }
             
             printf("CPP ~ActiveSound3\n");

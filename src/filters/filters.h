@@ -1,7 +1,9 @@
 #ifndef FILTERS_H
 #define FILTERS_H
 
-#include "../active_sound.h"
+#include "../active_sound_fwd.h"
+#include "filters_fwd.h"
+#include "enums.h"
 
 #include "soloud.h"
 #include "soloud_filter.h"
@@ -9,8 +11,6 @@
 #include <vector>
 #include <string>
 #include <memory>
-
-struct ActiveSound;
 
 struct FilterObject
 {
@@ -35,7 +35,6 @@ class Filters
     /// can be changed in a global constant in soloud.h (and rebuilding SoLoud).
 public:
     Filters(SoLoud::Soloud *soloud, ActiveSound *sound);
-    ~Filters();
 
     int isFilterActive(FilterType filter);
     

@@ -1,4 +1,5 @@
 #include "filters.h"
+#include "../active_sound.h" // Add this include for complete type definition
 
 #include <iostream>
 #include <algorithm>
@@ -22,8 +23,6 @@
 
 Filters::Filters(SoLoud::Soloud *soloud, ActiveSound *sound)
     : mSoloud(soloud), mSound(sound) {}
-
-Filters::~Filters() {}
 
 int Filters::isFilterActive(FilterType filter)
 {
