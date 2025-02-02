@@ -300,10 +300,13 @@ Future<StringBuffer> testAllInstancesFinished() async {
     'Active sounds even after disposeAllSound()',
   );
 
-  final explosion =
-      await SoLoud.instance.loadAsset('assets/audio/explosion.mp3');
-  final song =
-      await SoLoud.instance.loadAsset('assets/audio/8_bit_mentality.mp3');
+  final explosion = await SoLoud.instance.loadAsset(
+    'assets/audio/explosion.mp3'
+  );
+  final song = await SoLoud.instance.loadAsset(
+    'assets/audio/8_bit_mentality.mp3',
+    mode: LoadMode.disk,
+  );
 
   // Set up unloading.
   var explosionDisposed = false;
