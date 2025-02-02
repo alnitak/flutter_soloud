@@ -533,15 +533,12 @@ void Player::stop(unsigned int handle)
 
 void Player::removeHandle(unsigned int handle)
 {
-    const std::lock_guard<std::mutex> guard(remove_handle_mutex);
-    // for (auto &sound : sounds)
-    //     sound->handle.erase(std::remove_if(
-    //         sound->handle.begin(), sound->handle.end(),
-    //         [handle](SoLoud::handle &f)
-    //         { return f == handle; }));
     bool e = true;
-    for (int i = 0; i < sounds.size(); ++i)
-        for (int n = 0; n < sounds[i]->handle.size(); ++n)
+    int i = 0;
+    while (sounds.size() > i && e)
+    {
+        int n = 0;
+        while (n < sounds[i]->handle.size() && e)
         {
             if (sounds[i]->handle[n].handle == handle)
             {
@@ -549,14 +546,13 @@ void Player::removeHandle(unsigned int handle)
                 e = false;
                 break;
             }
-            if (e)
-                break;
+            ++n;
         }
+        ++i;
+    }
 }
 
 void Player::disposeSound(unsigned int soundHash) {
-    // std::lock_guard<std::mutex> guard(remove_handle_mutex);
-
     if (sounds.empty()) {
         return;  
     }
@@ -566,13 +562,28 @@ void Player::disposeSound(unsigned int soundHash) {
             return sound->soundHash == soundHash;
         });
 
-    if (it != sounds.end()) {
+    if (it != sounds.end())
+    {
+        // Free filters
+        if (it->get()->filters) {
+            Filters *f = it->get()->filters.release();
+            if (f != nullptr) {
+                // TODO: deleting "f" when running on Web will crash with segmentation fault.
+                // This could be a bug in WebAssembly I can't figure out. Even if I don't delete
+                // there shouldn't be a memory leak as the filters are destroyed with the sound.
+                // This beahviour can be tested by running "testAllInstancesFinished" in tests.dart.
+                // delete f;
+            }
+            it->get()->filters.reset();
+        }
+       
         sounds.erase(it);
     }
 }
 
 void Player::disposeAllSound()
 {
+    soloud.stopAll();
     while (sounds.size() > 0)
     {
         disposeSound(sounds[0]->soundHash);

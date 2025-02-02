@@ -408,7 +408,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     return wasmStop(handle.id);
   }
 
- @override
+  @override
   void disposeSound(SoundHash soundHash) {
     try {
       wasmDisposeSound(soundHash.hash);

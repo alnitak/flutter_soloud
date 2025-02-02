@@ -31,38 +31,6 @@ struct ActiveSound
     // unique identifier of this sound based on the file name
     unsigned int soundHash;
     std::string completeFileName;
-
-    // Add explicit destructor to control cleanup order
-    ~ActiveSound() {
-        try {
-            // Clear handles first
-            // handle.clear();
-            
-            // Reset filters before sound since filters may depend on sound
-            if (filters) {
-                Filters *f = filters.release();
-                if (f != nullptr) {
-                    // TODO: deleting "f" when running on Web will crash with segmentation fault.
-                    // This could be a bug in WebAssembly I can't figure out. Even if I don't delete
-                    // there shouldn't be a memory leak as the filters are destroyed with the sound.
-                    // delete f;
-                }
-                filters.reset();
-            }
-            
-            // Finally reset sound
-            // if (sound) {
-            //     sound->stop();
-            //     sound.reset();
-            // }
-        }
-        catch (const std::exception& e) {
-            printf("Error in ActiveSound destructor: %s\n", e.what());
-        }
-        catch (...) {
-            printf("Unknown error in ActiveSound destructor\n");
-        }
-    }
 };
 
 #endif // ACTIVE_SOUND_H
