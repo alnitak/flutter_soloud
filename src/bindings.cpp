@@ -56,7 +56,7 @@ extern "C"
             {
                 // Create a new Worker from the URI
                 var workerUri = "assets/packages/flutter_soloud/web/worker.dart.js";
-                console.log("EM_ASM creating web worker!");
+                console.log("EM_ASM creating Web Worker!");
                 Module_soloud.wasmWorker = new Worker(workerUri);
             }
             else
@@ -72,13 +72,13 @@ extern "C"
         EM_ASM({
             if (Module_soloud.wasmWorker)
             {
+                // Send the message
+                Module_soloud.wasmWorker.postMessage({
+                    message : UTF8ToString($0),
+                    value : $1,
+                });
                 console.log("EM_ASM posting message " + UTF8ToString($0) + 
                     " with value " + $1);
-                // Send the message
-                Module_soloud.wasmWorker.postMessage(JSON.stringify({
-                    "message" : UTF8ToString($0),
-                    "value" : $1
-                }));
             }
             else
             {
@@ -98,6 +98,8 @@ extern "C"
     /// and comes from the audio thread (so on the web, from a different web worker).
     FFI_PLUGIN_EXPORT void voiceEndedCallback(unsigned int *handle)
     {
+        player->removeHandle(*handle);
+
 #ifdef __EMSCRIPTEN__
         // Calling JavaScript from C/C++
         // https://emscripten.org/docs/porting/connecting_cpp_and_javascript/Interacting-with-code.html#interacting-with-code-call-javascript-from-native
@@ -105,9 +107,9 @@ extern "C"
         sendToWorker("voiceEndedCallback", *handle);
 #endif
 
+        // The `dartVoiceEndedCallback` is not set on Web.
         if (dartVoiceEndedCallback == nullptr)
             return;
-        player->removeHandle(*handle);
         // [n] pointer must be deleted on Dart.
         unsigned int *n = (unsigned int *)malloc(sizeof(unsigned int *));
         *n = *handle;
@@ -698,7 +700,15 @@ extern "C"
             return;
         std::lock_guard<std::mutex> guard_init(init_deinit_mutex);
         std::lock_guard<std::mutex> guard_load(loadMutex);
-        player.get()->disposeSound(soundHash);
+        try {
+            player.get()->disposeSound(soundHash);
+        }
+        catch (const std::exception& e) {
+            printf("Error in disposeSound: %s\n", e.what());
+        }
+        catch (...) {
+            printf("Unknown error in disposeSound\n");
+        }
     }
 
     /// Dispose all sounds already loaded
@@ -1142,7 +1152,7 @@ extern "C"
     ///
     /// [handle] the group handle to check.
     /// Return true if [handle] is a group handle.
-    FFI_PLUGIN_EXPORT bool isVoiceGroup(unsigned int handle)
+    FFI_PLUGIN_EXPORT int isVoiceGroup(unsigned int handle)
     {
         if (player.get() == nullptr || !player.get()->isInited())
             return false;
@@ -1155,7 +1165,7 @@ extern "C"
     ///
     /// [handle] group handle to check.
     /// Return true if the group handle doesn't have any voices.
-    FFI_PLUGIN_EXPORT bool isVoiceGroupEmpty(unsigned int handle)
+    FFI_PLUGIN_EXPORT int isVoiceGroupEmpty(unsigned int handle)
     {
         if (player.get() == nullptr || !player.get()->isInited())
             return false;

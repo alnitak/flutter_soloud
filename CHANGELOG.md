@@ -1,6 +1,7 @@
 
 ### 3.0.0-pre.0 ()
-- fix: clicks and pops when changing waveform frequency #156
+- fix: clicks and pops when changing waveform frequency #156.
+- added `Limiter` and `Compressor` filters (see `example/lib/filters/`).
 - added BufferStream #148. Now it's possible to add audio data and listen to them. It provides a customizable buffering length which automatycally pauses the playing handle if there is not enough data, for example when receiving audio data from the web. It also provides a callback that allows you to know when the buffering is started and stopped. The audio data can of of the following formats:
   - `s8` signed 8 bit
   - `s16le` signed 16 bit little endian
@@ -9,6 +10,9 @@
   - `opus` Opus codec compressed audio with Ogg container. Usefull for streaming from the Web (ie using OpenAI APIs).
 - fixed Web Worker initialization non fatal error that could occur on Web.
 - fixed sound distortion using single pitchShift filter and changing relative play speed #154.
+- fixed the use of `LoadMode.disk` on the Web platform which in some cases caused the `allInstancesFinished` event to not be emitted.
+- improved performance on Web, MacOS and iOS.
+- get wave and FFT sample is now simpler and faster.
 - To avoid future incompatibilities when using other WASM compiled plugins, it is now necessary to add a new script to `index.html`:
   ```
   <script src="assets/packages/flutter_soloud/web/libflutter_soloud_plugin.js" defer></script>

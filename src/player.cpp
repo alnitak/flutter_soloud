@@ -16,6 +16,12 @@
 #include <unistd.h>
 #endif
 
+#ifdef __EMSCRIPTEN__
+#define __WEB__ 1
+#else
+#define __WEB__ 0
+#endif
+
 Player::Player() : mInited(false), mFilters(&soloud, nullptr) {}
 
 Player::~Player()
@@ -222,7 +228,7 @@ PlayerErrors Player::loadFile(
     *hash = 0;
 
     unsigned int newHash = (int32_t)std::hash<std::string>{}(completeFileName) & 0x7fffffff;
-    /// check if the sound has been already loaded
+    /// check if the sound has already been loaded
     auto const s = findByHash(newHash);
 
     if (s != nullptr)
@@ -231,23 +237,24 @@ PlayerErrors Player::loadFile(
         return fileAlreadyLoaded;
     }
 
-    auto sound = std::make_unique<ActiveSound>();
-
-    sound->completeFileName = std::string(completeFileName);
-    sound->soundHash = newHash;
+    std::unique_ptr<ActiveSound> newSound = std::make_unique<ActiveSound>();
+    newSound.get()->completeFileName = std::string(completeFileName);
+    *hash = newHash;
+    newSound.get()->soundHash = newHash;
 
     SoLoud::result result;
-    if (loadIntoMem)
+    // This function is never called when running on the Web, but [__WEB__] is checked for consistency with [loadMem].
+    if (loadIntoMem || __WEB__)
     {
-        sound->sound = std::make_unique<SoLoud::Wav>();
-        sound->soundType = TYPE_WAV;
-        result = static_cast<SoLoud::Wav *>(sound->sound.get())->load(completeFileName.c_str());
+        newSound.get()->sound = std::make_unique<SoLoud::Wav>();
+        newSound.get()->soundType = TYPE_WAV;
+        result = static_cast<SoLoud::Wav *>(newSound.get()->sound.get())->load(completeFileName.c_str());
     }
     else
     {
-        sound->sound = std::make_unique<SoLoud::WavStream>();
-        sound->soundType = TYPE_WAVSTREAM;
-        result = static_cast<SoLoud::WavStream *>(sound->sound.get())->load(completeFileName.c_str());
+        newSound.get()->sound = std::make_unique<SoLoud::WavStream>();
+        newSound.get()->soundType = TYPE_WAVSTREAM;
+        result = static_cast<SoLoud::WavStream *>(newSound.get()->sound.get())->load(completeFileName.c_str());
     }
 
     if (result != SoLoud::SO_NO_ERROR)
@@ -257,8 +264,8 @@ PlayerErrors Player::loadFile(
     else
     {
         *hash = newHash;
-        sound->filters = std::make_unique<Filters>(&soloud, sound.get());
-        sounds.push_back(std::move(sound));
+        newSound.get()->filters = std::make_unique<Filters>(&soloud, newSound.get());
+        sounds.push_back(std::move(newSound));
     }
 
     return (PlayerErrors)result;
@@ -277,7 +284,7 @@ PlayerErrors Player::loadMem(
     hash = 0;
 
     unsigned int newHash = (int32_t)std::hash<std::string>{}(uniqueName) & 0x7fffffff;
-    /// check if the sound has been already loaded
+    /// check if the sound has already been loaded
     auto const s = findByHash(newHash);
 
     if (s != nullptr)
@@ -286,12 +293,12 @@ PlayerErrors Player::loadMem(
         return fileAlreadyLoaded;
     }
 
-    std::unique_ptr<ActiveSound> newSound = std::make_unique<ActiveSound>();
+    auto newSound = std::make_unique<ActiveSound>();
     newSound.get()->completeFileName = std::string(uniqueName);
     hash = newHash;
     newSound.get()->soundHash = newHash;
     SoLoud::result result;
-    if (loadIntoMem)
+    if (loadIntoMem || __WEB__)
     {
         newSound.get()->sound = std::make_unique<SoLoud::Wav>();
         newSound.get()->soundType = TYPE_WAV;
@@ -329,7 +336,7 @@ PlayerErrors Player::setBufferStream(
 
     hash = dist(g);
 
-    std::unique_ptr<ActiveSound> newSound = std::make_unique<ActiveSound>();
+    auto newSound = std::make_unique<ActiveSound>();
     newSound.get()->completeFileName = "";
     newSound.get()->soundHash = hash;
 
@@ -526,15 +533,12 @@ void Player::stop(unsigned int handle)
 
 void Player::removeHandle(unsigned int handle)
 {
-    const std::lock_guard<std::mutex> guard(remove_handle_mutex);
-    // for (auto &sound : sounds)
-    //     sound->handle.erase(std::remove_if(
-    //         sound->handle.begin(), sound->handle.end(),
-    //         [handle](SoLoud::handle &f)
-    //         { return f == handle; }));
     bool e = true;
-    for (int i = 0; i < sounds.size(); ++i)
-        for (int n = 0; n < sounds[i]->handle.size(); ++n)
+    int i = 0;
+    while (sounds.size() > i && e)
+    {
+        int n = 0;
+        while (n < sounds[i]->handle.size() && e)
         {
             if (sounds[i]->handle[n].handle == handle)
             {
@@ -542,29 +546,48 @@ void Player::removeHandle(unsigned int handle)
                 e = false;
                 break;
             }
-            if (e)
-                break;
+            ++n;
         }
+        ++i;
+    }
 }
 
-void Player::disposeSound(unsigned int soundHash)
-{
-    ActiveSound *sound = findByHash(soundHash);
+void Player::disposeSound(unsigned int soundHash) {
+    if (sounds.empty()) {
+        return;  
+    }
 
-    if (sound == nullptr)
-        return;
+    auto it = std::find_if(sounds.begin(), sounds.end(),
+        [soundHash](const std::unique_ptr<ActiveSound>& sound) {
+            return sound->soundHash == soundHash;
+        });
 
-    sound->sound.get()->stop();
-    // remove the sound from the list
-    sounds.erase(std::remove_if(sounds.begin(), sounds.end(),
-                                [soundHash](std::unique_ptr<ActiveSound> &f)
-                                { return f.get()->soundHash == soundHash; }));
+    if (it != sounds.end())
+    {
+        // Free filters
+        if (it->get()->filters) {
+            Filters *f = it->get()->filters.release();
+            if (f != nullptr) {
+                // TODO: deleting "f" when running on Web will crash with segmentation fault.
+                // This could be a bug in WebAssembly I can't figure out. Even if I don't delete
+                // there shouldn't be a memory leak as the filters are destroyed with the sound.
+                // This beahviour can be tested by running "testAllInstancesFinished" in tests.dart.
+                // delete f;
+            }
+            it->get()->filters.reset();
+        }
+       
+        sounds.erase(it);
+    }
 }
 
 void Player::disposeAllSound()
 {
     soloud.stopAll();
-    sounds.clear();
+    while (sounds.size() > 0)
+    {
+        disposeSound(sounds[0]->soundHash);
+    }
 }
 
 bool Player::getLooping(unsigned int handle)

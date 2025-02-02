@@ -16,9 +16,8 @@ class AudioDataWidgetState extends State<AudioDataWidget>
 
   /// Set [AudioData] to use a `linear` data kind. This is the way to get both
   /// wave and FFT data.
-  final AudioData audioData = AudioData(
-    GetSamplesKind.linear,
-  );
+  final AudioData audioData = AudioData(GetSamplesKind.linear);
+
   @override
   void initState() {
     super.initState();
@@ -87,14 +86,15 @@ class WavePainter extends CustomPainter {
       ..strokeWidth = barWidth * 0.8
       ..color = Colors.yellowAccent;
 
+    final samples = audioData.getAudioData();
+
+    double waveHeight;
+    double fftHeight;
+
     for (var i = 0; i < 256; i++) {
-      late final double waveHeight;
-      late final double fftHeight;
       try {
-        final double waveData;
-        final double fftData;
-        waveData = audioData.getLinearWave(SampleLinear(i));
-        fftData = audioData.getLinearFft(SampleLinear(i));
+        final fftData = samples[i];
+        final waveData = samples[i + 256];
         waveHeight = size.height * waveData * 0.5;
         fftHeight = size.height * fftData / 2;
       } on Exception {

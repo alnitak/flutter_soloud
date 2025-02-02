@@ -63,6 +63,13 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
               );
               voiceEndedEventController.add(decodedMap['value'] as int);
             }
+          case Map():
+            if (event['message'] == 'voiceEndedCallback') {
+              _log.finest(
+                () => 'VOICE ENDED EVENT handle: ${event['value']}\n',
+              );
+              voiceEndedEventController.add(event['value'] as int);
+            }
         }
       },
     );
@@ -403,7 +410,11 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
 
   @override
   void disposeSound(SoundHash soundHash) {
-    return wasmDisposeSound(soundHash.hash);
+    try {
+      wasmDisposeSound(soundHash.hash);
+    } catch (e) {
+      _log.warning('disposeSound() error: $e');
+    }
   }
 
   @override

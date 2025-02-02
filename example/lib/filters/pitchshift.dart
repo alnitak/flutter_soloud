@@ -32,7 +32,7 @@ import 'package:logging/logging.dart';
 
 /// Use the filter globally or attached to the sound. Filters for single sounds
 /// are not supported in the Web platform.
-const bool useGlobalFilter = true;
+const bool useGlobalFilter = false;
 
 void main() async {
   // The `flutter_soloud` package logs everything
@@ -136,6 +136,7 @@ class _PitchShiftState extends State<PitchShift> {
                           Text('time stretching: ${ts.toStringAsFixed(2)}'),
                           Expanded(
                             child: Slider.adaptive(
+                              min: 0.35,
                               max: 5,
                               value: ts,
                               onChanged: (value) {

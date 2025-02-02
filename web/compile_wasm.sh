@@ -65,7 +65,7 @@ SOURCES=(
     ../src/audiobuffer/*.cpp
 )
 
-    # Now compile everything together
+# Now compile everything together
 em++ -O3 \
     -I ../src/soloud/include \
     -I ../src/soloud/src \
@@ -79,11 +79,12 @@ em++ -O3 \
     "$OGG_DIR/src/.libs/libogg.a" \
     -D WITH_MINIAUDIO \
     -msimd128 -msse3 \
+    -std=c++17 \
     -s "EXPORTED_RUNTIME_METHODS=['ccall','cwrap','setValue','getValue']" \
     -s "EXPORTED_FUNCTIONS=['_free', '_malloc', '_memcpy', '_memset']" \
     -s NO_EXIT_RUNTIME=1 \
     -s SAFE_HEAP=1 \
-    -s STACK_SIZE=5242880 \
+    -s STACK_SIZE=4194304 \
     -s ALLOW_MEMORY_GROWTH=1 \
     -s INITIAL_MEMORY=67108864 \
     -s MAXIMUM_MEMORY=2147483648 \
@@ -91,5 +92,5 @@ em++ -O3 \
     -s EXPORT_NAME="'Module_soloud'" \
     -o ../web/libflutter_soloud_plugin.js
 
-    echo
-    echo "Build completed successfully"
+echo
+echo "Build completed successfully"

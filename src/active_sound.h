@@ -1,7 +1,7 @@
 #ifndef ACTIVE_SOUND_H
 #define ACTIVE_SOUND_H
 
-#include "filters/filters.h"
+#include "filters/filters_fwd.h"
 #include "enums.h"
 #include "soloud.h"
 
@@ -9,7 +9,6 @@
 #include <vector>
 #include <memory>
 
-class Filters;
 #define MAX_DOUBLE 1.7976931348623157e+308
 
 struct ActiveHandle

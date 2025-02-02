@@ -68,7 +68,9 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
   @override
   void initState() {
     super.initState();
-    SoLoud.instance.loadAsset('assets/audio/8_bit_mentality.mp3').then((value) {
+    SoLoud.instance
+        .loadAsset('assets/audio/8_bit_mentality.mp3', mode: LoadMode.disk)
+        .then((value) {
       currentSound = value;
       SoLoud.instance.play(currentSound!, looping: true, volume: 0.5);
       if (context.mounted) setState(() {});
