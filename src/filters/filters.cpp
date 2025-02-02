@@ -1,4 +1,5 @@
 #include "filters.h"
+#include "../active_sound.h" // Add this include for complete type definition
 
 #include <iostream>
 #include <algorithm>
@@ -22,8 +23,6 @@
 
 Filters::Filters(SoLoud::Soloud *soloud, ActiveSound *sound)
     : mSoloud(soloud), mSound(sound) {}
-
-Filters::~Filters() {}
 
 int Filters::isFilterActive(FilterType filter)
 {
@@ -177,44 +176,44 @@ PlayerErrors Filters::addFilter(FilterType filterType)
     if (isFilterActive(filterType) >= 0)
         return filterAlreadyAdded;
 
-    std::unique_ptr<SoLoud::Filter> newFilter;
+    SoLoud::Filter* newFilter = nullptr;
     switch (filterType)
     {
     case BiquadResonantFilter:
-        newFilter = std::make_unique<SoLoud::BiquadResonantFilter>();
+        newFilter = new SoLoud::BiquadResonantFilter();
         break;
     case EqFilter:
-        newFilter = std::make_unique<SoLoud::EqFilter>();
+        newFilter = new SoLoud::EqFilter();
         break;
     case EchoFilter:
-        newFilter = std::make_unique<SoLoud::EchoFilter>();
+        newFilter = new SoLoud::EchoFilter();
         break;
     case LofiFilter:
-        newFilter = std::make_unique<SoLoud::LofiFilter>();
+        newFilter = new SoLoud::LofiFilter();
         break;
     case FlangerFilter:
-        newFilter = std::make_unique<SoLoud::FlangerFilter>();
+        newFilter = new SoLoud::FlangerFilter();
         break;
     case BassboostFilter:
-        newFilter = std::make_unique<SoLoud::BassboostFilter>();
+        newFilter = new SoLoud::BassboostFilter();
         break;
     case WaveShaperFilter:
-        newFilter = std::make_unique<SoLoud::WaveShaperFilter>();
+        newFilter = new SoLoud::WaveShaperFilter();
         break;
     case RobotizeFilter:
-        newFilter = std::make_unique<SoLoud::RobotizeFilter>();
+        newFilter = new SoLoud::RobotizeFilter();
         break;
     case FreeverbFilter:
-        newFilter = std::make_unique<SoLoud::FreeverbFilter>();
+        newFilter = new SoLoud::FreeverbFilter();
         break;
     case PitchShiftFilter:
-        newFilter = std::make_unique<PitchShift>();
+        newFilter = new PitchShift();
         break;
     case LimiterFilter:
-        newFilter = std::make_unique<Limiter>();
+        newFilter = new Limiter();
         break;
     case CompressorFilter:
-        newFilter = std::make_unique<Compressor>(mSoloud->mSamplerate);
+        newFilter = new Compressor(mSoloud->mSamplerate);
         break;
     default:
         return filterNotFound;
@@ -222,14 +221,15 @@ PlayerErrors Filters::addFilter(FilterType filterType)
 
     if (mSound == nullptr)
     {
-        mSoloud->setGlobalFilter(filtersSize, newFilter.get());
+        mSoloud->setGlobalFilter(filtersSize, newFilter);
     }
     else
     {
-        mSound->sound.get()->setFilter(filtersSize, newFilter.get());
+        mSound->sound.get()->setFilter(filtersSize, newFilter);
     }
 
-    std::unique_ptr<FilterObject> nfo = std::make_unique<FilterObject>(filterType, std::move(newFilter));
+    // Create FilterObject taking ownership of raw pointer
+    std::unique_ptr<FilterObject> nfo = std::make_unique<FilterObject>(filterType, newFilter);
     filters.push_back(std::move(nfo));
 
     return noError;
