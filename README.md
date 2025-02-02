@@ -20,7 +20,7 @@ A low-level audio plugin for Flutter.
 * 3D positional audio, including Doppler effect
 * Support for MP3, WAV, OGG, and FLAC
 * Generate waveforms with the following types: `square`, `saw`, `sin`, `triangle`, `bounce`, `jaws`, `humps`, `fSquare` and `fSaw`
-* Audio effects such as echo, reverb, filter, equalizer, pitch shifter, limiter, compressor etc.
+* Audio effects such as `echo`, `reverb`, `filter`, `equalizer`, `pitch` `shifter`, `limiter`, `compressor` etc.
 * Stream audio from given audio data with buffering support with the following formats:
   - `s8` signed 8 bit
   - `s16le` signed 16 bit little endian
@@ -48,9 +48,9 @@ In other words, it is calling the C/C++ methods of the underlying audio engine d
 When using an `AudioSource` as an audio stream to play custom audio data (ie using setBufferStream/addAudioDataStream/setDataIsEnded), it is possible to add PCM RAW audio data in *s8*, *s16le*, *s32le*, *f32le* and since it supports also the *opus* format with the Ogg codec (ie to work with OpenAI APIs), the [Opus](https://www.opus-codec.org/) and [Ogg](https://xiph.org/ogg/) libraries from [Xiph.org](https://www.xiph.org/) are needed.
 
 On Linux and MacOS theese libraries must be installed if you want to use this kind of `AudioSource`:
-- Linux
+- **Linux**
   - install them depending on the package manager used by you distribution
-- MacOS
+- **MacOS**
   - `brew install opus libogg`
 
 if the libraries are not found the plugin will throw an exception when calling `setBufferStream` using Opus format.
