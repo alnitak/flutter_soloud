@@ -1,4 +1,7 @@
 
+### 3.0.0-pre.1 (3 Feb 2025)
+- fix: Call `loadMem` will crash the application #174.
+
 ### 3.0.0-pre.0 (2 Feb 2025)
 - fix: clicks and pops when changing waveform frequency #156.
 - added `Limiter` and `Compressor` filters (see `example/lib/filters/`).
@@ -7,12 +10,12 @@
   - `s16le` signed 16 bit little endian
   - `s32le` signed 32 bit little endian
   - `f32le` float 32 bit little endian
-  - `opus` Opus codec compressed audio with Ogg container. Usefull for streaming from the Web (ie using OpenAI APIs).
+  - `opus` Opus codec compressed audio with Ogg container. Useful for streaming from the Web (ie using OpenAI APIs).
 - fixed Web Worker initialization non fatal error that could occur on Web.
 - fixed sound distortion using single pitchShift filter and changing relative play speed #154.
 - fixed the use of `LoadMode.disk` on the Web platform which in some cases caused the `allInstancesFinished` event to not be emitted.
 - improved performance on Web, MacOS and iOS.
-- get wave and FFT sample is now simpler and faster.
+- get wave and FFT samples is now simpler and faster.
 - To avoid future incompatibilities when using other WASM compiled plugins, it is now necessary to add a new script to `index.html`:
   ```
   <script src="assets/packages/flutter_soloud/web/libflutter_soloud_plugin.js" defer></script>

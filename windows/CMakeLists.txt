@@ -82,8 +82,12 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 # in bindings.cpp
 add_compile_definitions(LIBOPUS_OGG_AVAILABLE)
 
-# target_compile_options("${PLUGIN_NAME}" PRIVATE -Wall -Wno-error -fPIC) #  -ldl -lpthread -lm
-target_compile_options("${PLUGIN_NAME}" PRIVATE "/WX-")
+target_compile_options(${PLUGIN_NAME} PRIVATE 
+    /W4     # Warning level 4
+    /WX-    # Disable warnings as errors
+    /arch:SSE2  # Enable SSE2 instructions
+    /arch:SSE3  # Enable SSE3 instructions
+)
 
 # List of absolute paths to libraries that should be bundled with the plugin.
 set(flutter_soloud_bundled_libraries
