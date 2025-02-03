@@ -302,7 +302,7 @@ PlayerErrors Player::loadMem(
     {
         newSound.get()->sound = std::make_unique<SoLoud::Wav>();
         newSound.get()->soundType = TYPE_WAV;
-        result = static_cast<SoLoud::Wav *>(newSound.get()->sound.get())->loadMem(mem, length, false, true);
+        result = static_cast<SoLoud::Wav *>(newSound.get()->sound.get())->loadMem(mem, length, true, true);
     }
     else
     {

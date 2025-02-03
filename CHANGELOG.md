@@ -1,4 +1,7 @@
 
+### 3.0.0-pre.1 (3 Feb 2025)
+- fix: Call `loadMem` will crash the application #174.
+
 ### 3.0.0-pre.0 (2 Feb 2025)
 - fix: clicks and pops when changing waveform frequency #156.
 - added `Limiter` and `Compressor` filters (see `example/lib/filters/`).
