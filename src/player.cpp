@@ -323,6 +323,7 @@ PlayerErrors Player::loadMem(
 PlayerErrors Player::setBufferStream(
     unsigned int &hash,
     unsigned long maxBufferSize,
+    BufferingType bufferingType,
     SoLoud::time bufferingTimeNeeds,
     PCMformat pcmFormat,
     dartOnBufferingCallback_t onBufferingCallback)
@@ -346,6 +347,7 @@ PlayerErrors Player::setBufferStream(
         this,
         newSound.get(),
         maxBufferSize,
+        bufferingType,
         bufferingTimeNeeds,
         pcmFormat,
         onBufferingCallback);
@@ -372,6 +374,8 @@ PlayerErrors Player::addAudioDataStream(
     return static_cast<SoLoud::BufferStream *>(s->sound.get())->addData(data, aDataLen);
 }
 
+/*************  ✨ Codeium Command ⭐  *************/
+/******  ebe1a784-379c-4e5a-b373-94acc8e29a9e  *******/
 PlayerErrors Player::setDataIsEnded(unsigned int hash)
 {
     auto const s = findByHash(hash);
@@ -499,8 +503,9 @@ float Player::getRelativePlaySpeed(unsigned int handle)
     return soloud.getRelativePlaySpeed(handle);
 }
 
-unsigned int Player::play(
+PlayerErrors Player::play(
     unsigned int soundHash,
+    unsigned int &handle,
     float volume,
     float pan,
     bool paused,
@@ -512,6 +517,15 @@ unsigned int Player::play(
     if (sound == nullptr)
         return soundHashNotFound;
 
+    // A BufferStream using `release` buffer type can only have one instance.
+    if (sound->soundType == SoundType::TYPE_BUFFER_STREAM &&
+        static_cast<SoLoud::BufferStream *>(sound->sound.get())->getBufferingType() == BufferingType::RELEASED &&
+        sound->handle.size() > 0)
+    {
+        return bufferStreamCanBePlayedOnlyOnce;
+    }
+
+    handle = 0;
     SoLoud::handle newHandle = soloud.play(
         *sound->sound.get(), volume, pan, paused, 0);
     if (newHandle != 0)
@@ -522,7 +536,8 @@ unsigned int Player::play(
         setLoopPoint(newHandle, loopingStartAt);
         setLooping(newHandle, true);
     }
-    return newHandle;
+    handle = newHandle;
+    return PlayerErrors::noError;
 }
 
 void Player::stop(unsigned int handle)
@@ -936,8 +951,9 @@ void Player::update3dAudio()
     soloud.update3dAudio();
 }
 
-unsigned int Player::play3d(
+PlayerErrors Player::play3d(
     unsigned int soundHash,
+    unsigned int &handle,
     float posX,
     float posY,
     float posZ,
@@ -954,6 +970,15 @@ unsigned int Player::play3d(
     if (sound == 0)
         return soundHashNotFound;
 
+    // A BufferStream using `release` buffer type can only have one instance.
+    if (sound->soundType == SoundType::TYPE_BUFFER_STREAM &&
+        static_cast<SoLoud::BufferStream *>(sound->sound.get())->getBufferingType() == BufferingType::RELEASED &&
+        sound->handle.size() > 0)
+    {
+        return bufferStreamCanBePlayedOnlyOnce;
+    }
+
+    handle = 0;
     SoLoud::handle newHandle = soloud.play3d(
         *sound->sound.get(),
         posX, posY, posZ,
@@ -970,7 +995,8 @@ unsigned int Player::play3d(
         setLooping(newHandle, true);
         setPause(newHandle, paused);
     }
-    return newHandle;
+    handle = newHandle;
+    return PlayerErrors::noError;
 }
 
 void Player::set3dSoundSpeed(float speed)

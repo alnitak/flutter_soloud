@@ -203,6 +203,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   @override
   ({PlayerErrors error, SoundHash soundHash}) setBufferStream(
     int maxBufferSize,
+    BufferingType bufferingType,
     double bufferingTimeNeeds,
     int sampleRate,
     int channels,
@@ -213,6 +214,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     final result = wasmSetBufferStream(
       hashPtr,
       maxBufferSize,
+      bufferingType.index,
       bufferingTimeNeeds,
       sampleRate,
       channels,

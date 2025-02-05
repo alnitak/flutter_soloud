@@ -62,7 +62,9 @@ typedef enum PlayerErrors
     /// Failed to create Opus decoder.
     failedToCreateOpusDecoder = 23,
     /// Failed to decode Opus packet.
-    failedToDecodeOpusPacket = 24
+    failedToDecodeOpusPacket = 24,
+    /// A BufferStream using `release` buffer type can be played only once.
+    bufferStreamCanBePlayedOnlyOnce = 25
 
 } PlayerErrors_t;
 

@@ -675,6 +675,13 @@ interface class SoLoud {
   ///
   /// **Note:** this parameter doesn't allocate any memory, but it just limits
   /// the amount of data that can be added.
+  /// 
+  /// [bufferingType] enum to choose how the buffering will work while playing
+  /// the stream. Using [BufferingType.preserved] will preserve the data already
+  /// in the buffer while playing it and adding new data.
+  /// Using [BufferingType.released] the buffer will free the memory of the
+  /// already played data. With this type only one instance (handle) of the
+  /// stream can be played at the same time.
   ///
   /// [bufferingTimeNeeds] the buffering time needed in seconds. If a handle
   /// reaches the current buffer length, it will start to buffer pausing it and
@@ -705,6 +712,7 @@ interface class SoLoud {
   /// check the `README.md` file for more information.
   AudioSource setBufferStream({
     int maxBufferSize = 1024 * 1024 * 100, // 100 MB in bytes
+    BufferingType bufferingType = BufferingType.preserved,
     double bufferingTimeNeeds = 2, // 2 seconds of data needed to un-pause
     int sampleRate = 24000,
     Channels channels = Channels.mono,
@@ -750,6 +758,7 @@ interface class SoLoud {
 
     final ret = SoLoudController().soLoudFFI.setBufferStream(
           maxBufferSize,
+          bufferingType,
           bufferingTimeNeeds,
           sampleRate,
           channels.count,
@@ -1115,6 +1124,8 @@ interface class SoLoud {
   /// Returns the [SoundHandle] of the new sound instance.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  /// Throws [SoLoudBufferStreamCanBePlayedOnlyOnceCppException] if we try to
+  /// play a BufferStream using `release` buffer type more than once.
   /// Throws [SoLoudSoundHashNotFoundDartException] if the given [sound]
   /// is not found.
   Future<SoundHandle> play(
@@ -2259,6 +2270,8 @@ interface class SoLoud {
   /// Returns the [SoundHandle] of this new sound.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  /// Throws [SoLoudBufferStreamCanBePlayedOnlyOnceCppException] if we try to
+  /// play a BufferStream using `release` buffer type more than once.
   Future<SoundHandle> play3d(
     AudioSource sound,
     double posX,

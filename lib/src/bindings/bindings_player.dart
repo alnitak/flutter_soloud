@@ -140,6 +140,7 @@ abstract class FlutterSoLoud {
   /// Set up an audio stream.
   ///
   /// [maxBufferSize] the max buffer size in bytes.
+  /// [bufferingType] enum to choose how the buffering will work while playing
   /// [bufferingTimeNeeds] the buffering time needed in seconds. If a handle
   /// reaches the current buffer length, it will start to buffer pausing it and
   /// waiting until the buffer will have enough data to cover this time.
@@ -149,6 +150,7 @@ abstract class FlutterSoLoud {
   @mustBeOverridden
   ({PlayerErrors error, SoundHash soundHash}) setBufferStream(
     int maxBufferSize,
+    BufferingType bufferingType,
     double bufferingTimeNeeds,
     int sampleRate,
     int channels,

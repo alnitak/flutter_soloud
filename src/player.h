@@ -6,6 +6,7 @@
 #include "soloud.h"
 #include "soloud_speech.h"
 #include "enums.h"
+#include "audiobuffer/buffer.h"
 #include "filters/filters.h"
 #include "active_sound.h"
 #include "audiobuffer/audiobuffer.h"
@@ -103,11 +104,13 @@ public:
     /// @brief Set up an audio stream.
     /// @param hash return the hash of the sound.
     /// @param maxBufferSize the max buffer size in bytes.
+    /// @param bufferingType the buffering type.
     /// @param isPCM if true, the audio data is PCM.
     /// @param dataType in case the audio data is PCM, here are the parameters to set it up.
     PlayerErrors setBufferStream(
         unsigned int &hash,
         unsigned long maxBufferSize,
+        BufferingType bufferingType,
     	SoLoud::time bufferingTimeNeeds,
         PCMformat pcmFormat = {44100, 2, 4, PCM_F32LE},
         dartOnBufferingCallback_t onBufferingCallback = nullptr);
@@ -214,8 +217,9 @@ public:
     /// current loop point can be queried with [getLoopingPoint] and
     /// changed by [setLoopingPoint].
     /// @return the handle of the sound, 0 if error.
-    unsigned int play(
+    PlayerErrors play(
         unsigned int soundHash,
+        unsigned int &handle,
         float volume = 1.0f,
         float pan = 0.0f,
         bool paused = false,
@@ -505,8 +509,9 @@ public:
     /// current loop point can be queried with [getLoopingPoint] and
     /// changed by [setLoopingPoint].
     /// @return the handle of the sound, 0 if error.
-    unsigned int play3d(
+    PlayerErrors play3d(
         unsigned int soundHash,
+        unsigned int &handle,
         float posX,
         float posY,
         float posZ,

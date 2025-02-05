@@ -57,6 +57,7 @@ external web.Worker wasmWorker;
 @JS('Module_soloud._setBufferStream')
 external int wasmSetBufferStream(
   int hashPtr,
+  int bufferingType,
   int maxBufferSize,
   double bufferingTimeNeeds,
   int sampleRate,
