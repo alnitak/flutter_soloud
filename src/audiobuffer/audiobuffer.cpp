@@ -105,9 +105,11 @@ namespace SoLoud
 
 	bool BufferStreamInstance::hasEnded()
 	{
-		if (mOffset >= mParent->mSampleCount * mParent->mPCMformat.bytesPerSample &&
-			mParent->dataIsEnded)
+		printf("mOffset: %d, mSampleCount: %d, dataIsEnded: %d\n", mOffset, mParent->mSampleCount, mParent->dataIsEnded);
+		if (mParent->dataIsEnded &&
+			mOffset >= mParent->mSampleCount * mParent->mPCMformat.bytesPerSample)
 		{
+			printf("hasEnded\n");
 			return 1;
 		}
 		return 0;
@@ -156,12 +158,7 @@ namespace SoLoud
 		mBaseSamplerate = (float)pcmFormat.sampleRate;
 		mOnBufferingCallback = onBufferingCallback;
 		buffer = std::vector<unsigned char>();
-
 		mBuffer.setBufferType(bufferingType);
-		
-		// We don't want auto-stop since we continuously stream till `setDataIsEnded()` is
-		// called by the user or the buffer is full.
-		mFlags |= DISABLE_AUTOSTOP;
 
 #if defined(LIBOPUS_OGG_AVAILABLE) || defined(__EMSCRIPTEN__)
 		decoder = nullptr;

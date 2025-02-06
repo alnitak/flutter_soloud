@@ -194,7 +194,6 @@ class _WebsocketExampleState extends State<WebsocketExample> {
               currentSound = SoLoud.instance.setBufferStream(
                 // maxBufferSizeBytes: 1024 * 1024 * 200, // 200 MB
                 maxBufferSizeDuration: const Duration(minutes: 3),
-                bufferingType: BufferingType.released,
                 bufferingTimeNeeds: 0.5,
                 sampleRate: sampleRate[srId],
                 channels: Channels.values[chId],

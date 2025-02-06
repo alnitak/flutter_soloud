@@ -668,12 +668,12 @@ interface class SoLoud {
 
   /// Set up an audio stream.
   ///
-  /// [maxBufferSizeBytes] the max buffer size in **bytes**. When adding audio data
-  /// using [addAudioDataStream] and this values is reached, the stream will
-  /// be considered ended (likewise we called [setDataIsEnded]). This means that
-  /// when playing it, it will stop at that point (if loop is not set). Note
-  /// that the engine store floats internally, so even if you add data as `s8`,
-  /// it will be converted to `f32` internally.
+  /// [maxBufferSizeBytes] the max buffer size in **bytes**. When adding audio
+  /// data using [addAudioDataStream] and this values is reached, the stream
+  /// will be considered ended (likewise we called [setDataIsEnded]). This
+  /// means that when playing it, it will stop at that point (if loop is
+  /// not set). Note that the engine store floats internally, so even if you
+  /// add data as `s8`, it will be converted to `f32` internally.
   ///
   /// [maxBufferSizeDuration] same as [maxBufferSizeBytes] but the size is
   /// calculated based on the [sampleRate] and [channels] parameters.
@@ -686,7 +686,8 @@ interface class SoLoud {
   /// in the buffer while playing it and adding new data.
   /// Using [BufferingType.released] the buffer will free the memory of the
   /// already played data. With this type only one instance (handle) of the
-  /// stream can be played at the same time.
+  /// stream can be played at the same time. When it ends, the [AudioSource]
+  /// is empty and manually disposed.
   ///
   /// [bufferingTimeNeeds] the buffering time needed in seconds. If a handle
   /// reaches the current buffer length, it will start to buffer pausing it and
