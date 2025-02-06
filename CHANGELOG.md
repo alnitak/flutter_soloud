@@ -1,4 +1,11 @@
 
+### 3.0.0-XXX ()
+- `BufferStream` now supports 2 type of buffering:
+  - `BufferingType.preserved` (default): preserve the data already in the buffer while playing.
+  - `BufferingType.released`: free the memory of the already played data for longer playback.
+- breaking change: renamed [maxBufferSize] to [maxBufferSizeDuration] in `SoLoud.setBufferStream`.
+- added [maxBufferSizeDuration] in `SoLoud.setBufferStream` parameters which give the user to choose the maximum buffer size using time.
+
 ### 3.0.0-pre.1 (3 Feb 2025)
 - fix: Call `loadMem` will crash the application #174.
 

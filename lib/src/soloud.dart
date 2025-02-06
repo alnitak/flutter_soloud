@@ -668,14 +668,19 @@ interface class SoLoud {
 
   /// Set up an audio stream.
   ///
-  /// [maxBufferSize] the max buffer size in **bytes**. When adding audio data
+  /// [maxBufferSizeBytes] the max buffer size in **bytes**. When adding audio data
   /// using [addAudioDataStream] and this values is reached, the stream will
   /// be considered ended (likewise we called [setDataIsEnded]). This means that
-  /// when playing it, it will stop at that point (if loop is not set).
+  /// when playing it, it will stop at that point (if loop is not set). Note
+  /// that the engine store floats internally, so even if you add data as `s8`,
+  /// it will be converted to `f32` internally.
   ///
-  /// **Note:** this parameter doesn't allocate any memory, but it just limits
-  /// the amount of data that can be added.
-  /// 
+  /// [maxBufferSizeDuration] same as [maxBufferSizeBytes] but the size is
+  /// calculated based on the [sampleRate] and [channels] parameters.
+  ///
+  /// **Note:** these parameters don't allocate any memory, but it is just a
+  /// limitation on the amount of data that can be added.
+  ///
   /// [bufferingType] enum to choose how the buffering will work while playing
   /// the stream. Using [BufferingType.preserved] will preserve the data already
   /// in the buffer while playing it and adding new data.
@@ -698,7 +703,7 @@ interface class SoLoud {
   ///
   /// [format] enum to choose from `f32le`, `s8`, `s16le`, `s32le` and
   /// `opus`. The last one is a special format that uses the Opus codec with
-  /// Ogg container. It supports only 48, 24, 16, 12 and 8 KHz sample rates
+  /// Ogg container. It supports 48, 24, 16, 12 and 8 KHz sample rates
   /// and mono and stereo.
   ///
   /// [onBuffering] a callback that is called when starting to buffer
@@ -711,7 +716,8 @@ interface class SoLoud {
   /// `opus` format but the Opus and Ogg libraries are not available. Please
   /// check the `README.md` file for more information.
   AudioSource setBufferStream({
-    int maxBufferSize = 1024 * 1024 * 100, // 100 MB in bytes
+    int? maxBufferSizeBytes,
+    Duration? maxBufferSizeDuration,
     BufferingType bufferingType = BufferingType.preserved,
     double bufferingTimeNeeds = 2, // 2 seconds of data needed to un-pause
     int sampleRate = 24000,
@@ -756,8 +762,23 @@ interface class SoLoud {
       throw const SoLoudWrongOpusParamsException();
     }
 
+    // Only [maxBufferSizeDuration] or [maxBufferSizeBytes] must be set.
+    assert(
+      maxBufferSizeDuration == null || maxBufferSizeBytes == null,
+      'Only [maxBufferSizeDuration] or [maxBufferSizeBytes] must be set.',
+    );
+
+    var bufferSize = maxBufferSizeBytes ?? 1024 * 1024 * 100; // 100 MB
+    if (maxBufferSizeDuration != null) {
+      bufferSize = (maxBufferSizeDuration.inMilliseconds *
+              sampleRate *
+              channels.count *
+              4) ~/
+          1000;
+    }
+
     final ret = SoLoudController().soLoudFFI.setBufferStream(
-          maxBufferSize,
+          bufferSize,
           bufferingType,
           bufferingTimeNeeds,
           sampleRate,

@@ -374,8 +374,6 @@ PlayerErrors Player::addAudioDataStream(
     return static_cast<SoLoud::BufferStream *>(s->sound.get())->addData(data, aDataLen);
 }
 
-/*************  ✨ Codeium Command ⭐  *************/
-/******  ebe1a784-379c-4e5a-b373-94acc8e29a9e  *******/
 PlayerErrors Player::setDataIsEnded(unsigned int hash)
 {
     auto const s = findByHash(hash);
