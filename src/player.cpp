@@ -142,9 +142,9 @@ std::vector<PlaybackDevice> Player::listPlaybackDevices()
 void Player::dispose()
 {
     // Clean up SoLoud
+    soloud.deinit();
     setVoiceEndedCallback(nullptr);
     setStateChangedCallback(nullptr);
-    soloud.deinit();
     mInited = false;
     sounds.clear();
 }

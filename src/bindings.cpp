@@ -279,10 +279,10 @@ extern "C"
         player.get()->disposeAllSound();
         std::lock_guard<std::mutex> guard(init_deinit_mutex);
         std::lock_guard<std::mutex> guard_load(loadMutex);
+        player.get()->dispose();
         dartVoiceEndedCallback = nullptr;
         dartFileLoadedCallback = nullptr;
         dartStateChangedCallback = nullptr;
-        player.get()->dispose();
         player = nullptr;
     }
 

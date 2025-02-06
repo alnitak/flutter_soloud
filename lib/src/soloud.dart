@@ -520,11 +520,12 @@ interface class SoLoud {
     // This doesn't work on Android. See "ma_device_notification_proc"
     // in miniaudio.h. Only `started` and `stopped` are working.
     // Leaving this commented out for futher investigation.
-    // if (!_controller.soLoudFFI.stateChangedController.hasListener) {
-    //   _controller.soLoudFFI.stateChangedEvents.listen((newState) {
-    //     _log.fine(() => 'Audio engine state changed: $newState');
-    //   });
-    // }
+    if (!_controller.soLoudFFI.stateChangedController.hasListener) {
+      _controller.soLoudFFI.stateChangedEvents.listen((newState) {
+        _log.fine(() => 'Audio engine state changed: $newState');
+        print('############################ $newState');
+      });
+    }
   }
 
   AudioSource _addNewSound(

@@ -71,6 +71,8 @@ namespace SoLoud
         if (soloud->_stateChangedCallback == nullptr)
             return;
 
+        printf("######################## CPP Notification: %d\n", pNotification->type);
+
         switch (pNotification->type)
         {
             case ma_device_notification_type_started:
