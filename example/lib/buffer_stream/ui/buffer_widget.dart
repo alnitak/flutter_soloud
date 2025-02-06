@@ -89,10 +89,10 @@ class _BufferBarState extends State<BufferBar> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 if (widget.label != null && widget.label!.isNotEmpty)
-                Text(
-                  widget.label!,
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
+                  Text(
+                    widget.label!,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
                 Text('using $mb MB'),
                 Text('length $humanDuration'),
               ],
