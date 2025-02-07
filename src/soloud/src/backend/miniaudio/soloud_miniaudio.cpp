@@ -68,10 +68,11 @@ namespace SoLoud
     void on_notification(const ma_device_notification* pNotification)
     {
         MA_ASSERT(pNotification != NULL);
-        if (soloud->_stateChangedCallback == nullptr)
-            return;
-
         printf("######################## CPP Notification: %d\n", pNotification->type);
+
+        if (soloud->_stateChangedCallback == nullptr) {
+            return;
+        }
 
         switch (pNotification->type)
         {
@@ -118,6 +119,7 @@ namespace SoLoud
 
     static void soloud_miniaudio_deinit(SoLoud::Soloud *aSoloud)
     {
+        ma_device_stop(&gDevice);
         ma_device_uninit(&gDevice);
     }
 
@@ -135,6 +137,16 @@ namespace SoLoud
         config.sampleRate         = aSamplerate;
         config.dataCallback       = soloud_miniaudio_audiomixer;
         config.pUserData          = (void *)aSoloud;
+
+        config.aaudio.contentType = ma_aaudio_content_type_music;
+        config.aaudio.usage = ma_aaudio_usage_media;
+        config.aaudio.allowedCapturePolicy = ma_aaudio_allow_capture_by_all;
+
+//        config.coreaudio.sessionCategory = ma_ios_session_category_playback;
+//        config.coreaudio.sessionCategoryOptions = ma_ios_session_category_option_duck_others;
+
+        config.opensl.streamType = ma_opensl_stream_type_media;
+
         if (aSoloud->_stateChangedCallback != nullptr)
             config.notificationCallback = on_notification;
 

@@ -523,7 +523,7 @@ interface class SoLoud {
     if (!_controller.soLoudFFI.stateChangedController.hasListener) {
       _controller.soLoudFFI.stateChangedEvents.listen((newState) {
         _log.fine(() => 'Audio engine state changed: $newState');
-        print('############################ $newState');
+        // print('############################ $newState');
       });
     }
   }
