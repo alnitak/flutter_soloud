@@ -277,9 +277,21 @@ interface class SoLoud {
   final Map<SoundHandle, Completer<void>> voiceEndedCompleters = {};
 
   @experimental
-  void initAndroidFocusManager() {
+  Future<void> initAndroidFocusManager({
+    void Function(String focusState)? onFocusChanged,
+  }) async {
     const channel = MethodChannel('flutter_soloud');
+    
+    if (onFocusChanged != null) {
+      channel.setMethodCallHandler((call) async {
+        if (call.method == 'onAudioFocusChanged') {
+          onFocusChanged(call.arguments as String);
+        }
+      });
+    }
+
     final result = await channel.invokeMethod<bool>('initialize');
+    return;
   }
 
   /// Initializes the audio engine.
@@ -1808,7 +1820,7 @@ interface class SoLoud {
 
   // ///////////////////////////////////////
   //  voice groups
-  // ///////////////////////////////////////
+  // //////////////////////////////////////
 
   /// Used to create a new voice group. Returns 0 if not successful.
   SoundHandle createVoiceGroup() {

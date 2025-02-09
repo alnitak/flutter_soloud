@@ -8,7 +8,7 @@
             "name": "Flutter debug",
             "type": "dart",
             "request": "launch",
-            "program": "lib/main.dart",
+            "program": "lib/audio_focus/audio_focus.dart",
             "flutterMode": "debug",
             "cwd": "${workspaceFolder}/example"
         },

@@ -138,9 +138,9 @@ namespace SoLoud
         config.dataCallback       = soloud_miniaudio_audiomixer;
         config.pUserData          = (void *)aSoloud;
 
-        config.aaudio.contentType = ma_aaudio_content_type_music;
-        config.aaudio.usage = ma_aaudio_usage_media;
-        config.aaudio.allowedCapturePolicy = ma_aaudio_allow_capture_by_all;
+        // config.aaudio.contentType = ma_aaudio_content_type_music;
+        // config.aaudio.usage = ma_aaudio_usage_media;
+        // config.aaudio.allowedCapturePolicy = ma_aaudio_allow_capture_by_all;
 
 //        config.coreaudio.sessionCategory = ma_ios_session_category_playback;
 //        config.coreaudio.sessionCategoryOptions = ma_ios_session_category_option_duck_others;

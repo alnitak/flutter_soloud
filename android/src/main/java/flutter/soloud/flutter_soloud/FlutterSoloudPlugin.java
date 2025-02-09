@@ -9,6 +9,8 @@ import io.flutter.plugin.common.MethodChannel.Result;
 import android.media.AudioManager;
 import android.util.Log;
 import android.content.Context;
+import android.media.AudioAttributes;
+import android.media.AudioFocusRequest;
 
 /// Ref: https://developer.android.com/media/optimize/audio-focus
 public class FlutterSoloudPlugin implements FlutterPlugin, MethodCallHandler, AudioManager.OnAudioFocusChangeListener {
@@ -21,9 +23,6 @@ public class FlutterSoloudPlugin implements FlutterPlugin, MethodCallHandler, Au
     static {
         System.loadLibrary("flutter_soloud_plugin");
     }
-
-    // Native method declarations
-    private native void nativeOnAudioFocusChange(int focusChange);
 
     @Override
     public void onAttachedToEngine(@NonNull FlutterPluginBinding binding) {
@@ -51,14 +50,38 @@ public class FlutterSoloudPlugin implements FlutterPlugin, MethodCallHandler, Au
 
     private void requestAudioFocus() {
         if (audioManager != null) {
-            int result = audioManager.requestAudioFocus(this,
-                    AudioManager.STREAM_MUSIC,
-                    AudioManager.AUDIOFOCUS_GAIN);
-            
-            if (result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
-                Log.d("FlutterSoloudPlugin", "Audio focus request granted");
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                AudioAttributes playbackAttributes = new AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_GAME)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                    .setFlags(AudioAttributes.FLAG_AUDIBILITY_ENFORCED)
+                    .build();
+
+                AudioFocusRequest focusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                    .setAudioAttributes(playbackAttributes)
+                    .setAcceptsDelayedFocusGain(true)
+                    .setWillPauseWhenDucked(true)
+                    .setOnAudioFocusChangeListener(this)
+                    .build();
+
+                int result = audioManager.requestAudioFocus(focusRequest);
+                Log.d("FlutterSoloudPlugin", "Requesting audio focus with new attributes");
+                if (result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
+                    Log.d("FlutterSoloudPlugin", "Audio focus request granted");
+                } else {
+                    Log.d("FlutterSoloudPlugin", "Audio focus request failed");
+                }
             } else {
-                Log.d("FlutterSoloudPlugin", "Audio focus request failed");
+                // For older Android versions, we need to specify flags
+                int result = audioManager.requestAudioFocus(this,
+                        AudioManager.STREAM_MUSIC,
+                        AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK);
+                
+                if (result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
+                    Log.d("FlutterSoloudPlugin", "Audio focus request granted");
+                } else {
+                    Log.d("FlutterSoloudPlugin", "Audio focus request failed");
+                }
             }
         }
     }
@@ -66,7 +89,41 @@ public class FlutterSoloudPlugin implements FlutterPlugin, MethodCallHandler, Au
     @Override
     public void onAudioFocusChange(int focusChange) {
         Log.d("FlutterSoloudPlugin", "Audio focus changed: " + focusChange);
-        nativeOnAudioFocusChange(focusChange);
+        
+        String focusState;
+        switch (focusChange) {
+            case AudioManager.AUDIOFOCUS_GAIN:
+                focusState = "AUDIOFOCUS_GAIN";
+                break;
+            case AudioManager.AUDIOFOCUS_GAIN_TRANSIENT:
+                focusState = "AUDIOFOCUS_GAIN_TRANSIENT";
+                break;
+            case AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE:
+                focusState = "AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE";
+                break;
+            case AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK:
+                focusState = "AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK";
+                break;
+            case AudioManager.AUDIOFOCUS_LOSS:
+                focusState = "AUDIOFOCUS_LOSS";
+                break;
+            case AudioManager.AUDIOFOCUS_LOSS_TRANSIENT:
+                focusState = "AUDIOFOCUS_LOSS_TRANSIENT";
+                break;
+            case AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK:
+                focusState = "AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK";
+                break;
+            case AudioManager.AUDIOFOCUS_NONE:
+                focusState = "AUDIOFOCUS_NONE";
+                break;
+            default:
+                focusState = "UNKNOWN";
+                break;
+        }
+
+        if (channel != null) {
+            channel.invokeMethod("onAudioFocusChanged", focusState);
+        }
     }
 
     @Override

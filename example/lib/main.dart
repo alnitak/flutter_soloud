@@ -25,6 +25,9 @@ void main() async {
 
   WidgetsFlutterBinding.ensureInitialized();
 
+  /// Initialize the player.
+  await SoLoud.instance.init();
+
   runApp(
     const MaterialApp(
       home: HelloFlutterSoLoud(),
@@ -51,59 +54,34 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
 
   @override
   Widget build(BuildContext context) {
+    if (!SoLoud.instance.isInitialized) return const SizedBox.shrink();
 
     return Scaffold(
       body: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          spacing: 16,
-          children: [
-            ElevatedButton(
-              onPressed: () async{
-                SoLoud.instance.initAndroidFocusManager();
-              },
-              child: const Text('JNI'),
-            ),
-            ElevatedButton(
-              onPressed: () async{
-                await SoLoud.instance.init();
-                currentSound = null;
-              },
-              child: const Text('init'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                await SoLoud.instance.disposeAllSources();
-        
-                if (kIsWeb) {
-                  /// load the audio file using [LoadMode.disk] (better for the
-                  /// Web platform).
-                  currentSound = await SoLoud.instance.loadAsset(
-                    'assets/audio/8_bit_mentality.mp3',
-                    mode: LoadMode.disk,
-                  );
-                } else {
-                  /// load the audio file
-                  currentSound = await SoLoud.instance
-                      .loadAsset('assets/audio/8_bit_mentality.mp3');
-                }
-        
-                /// play it
-                await SoLoud.instance.play(currentSound!, looping: true);
-              },
-              child: const Text(
-                'play asset',
-                textAlign: TextAlign.center,
-              ),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                SoLoud.instance.deinit();
-                currentSound = null;
-              },
-              child: const Text('deinit'),
-            ),
-          ],
+        child: ElevatedButton(
+          onPressed: () async {
+            await SoLoud.instance.disposeAllSources();
+
+            if (kIsWeb) {
+              /// load the audio file using [LoadMode.disk] (better for the
+              /// Web platform).
+              currentSound = await SoLoud.instance.loadAsset(
+                'assets/audio/8_bit_mentality.mp3',
+                mode: LoadMode.disk,
+              );
+            } else {
+              /// load the audio file
+              currentSound = await SoLoud.instance
+                  .loadAsset('assets/audio/8_bit_mentality.mp3');
+            }
+
+            /// play it
+            await SoLoud.instance.play(currentSound!);
+          },
+          child: const Text(
+            'play asset',
+            textAlign: TextAlign.center,
+          ),
         ),
       ),
     );
