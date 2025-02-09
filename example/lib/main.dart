@@ -89,7 +89,7 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
                 }
         
                 /// play it
-                await SoLoud.instance.play(currentSound!);
+                await SoLoud.instance.play(currentSound!, looping: true);
               },
               child: const Text(
                 'play asset',
