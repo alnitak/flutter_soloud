@@ -276,6 +276,11 @@ interface class SoLoud {
   @internal
   final Map<SoundHandle, Completer<void>> voiceEndedCompleters = {};
 
+  @experimental
+  void initAndroidFocusManager() {
+    _controller.soLoudFFI.initAndroidFocusManager();
+  }
+
   /// Initializes the audio engine.
   ///
   /// Run this before anything else, and `await` its result in a try/catch.

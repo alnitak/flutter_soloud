@@ -34,6 +34,10 @@ android {
     // to bump the version in their app.
     compileSdk = 33
 
+    defaultConfig {
+        minSdk = 21
+    }
+
     // Use the NDK version
     // declared in /android/app/build.gradle file of the Flutter project.
     // Replace it with a version number if this plugin requires a specific NDK version.
@@ -59,8 +63,8 @@ android {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
+}
 
-    defaultConfig {
-        minSdk = 21
-    }
+dependencies {
+    implementation 'androidx.annotation:annotation:1.7.0'
 }

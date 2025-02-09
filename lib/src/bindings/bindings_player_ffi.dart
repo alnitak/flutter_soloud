@@ -18,6 +18,7 @@ import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
 import 'package:logging/logging.dart';
 import 'package:meta/meta.dart';
+import 'package:flutter/services.dart';
 
 typedef DartVoiceEndedCallbackT
     = ffi.Pointer<ffi.NativeFunction<DartVoiceEndedCallbackTFunction>>;
@@ -69,6 +70,25 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   FlutterSoLoudFfi.fromLookup(
     ffi.Pointer<T> Function<T extends ffi.NativeType>(String symbolName) lookup,
   ) : _lookup = lookup;
+
+  // ////////////////////////////////////////////////
+  // Android initialization for audio focus manager
+  // ////////////////////////////////////////////////
+  @override
+  Future<void> initAndroidFocusManager() async {
+    const channel = MethodChannel('flutter_soloud');
+    final result = await channel.invokeMethod<bool>('initialize');
+
+    if (result ?? false) {
+      _initAndroidFocusManager();
+    }
+  }
+
+  late final _initAndroidFocusManagerPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function()>>(
+          'initAndroidFocusManager');
+  late final _initAndroidFocusManager =
+      _initAndroidFocusManagerPtr.asFunction<void Function()>();
 
   // ////////////////////////////////////////////////
   // Callbacks impl

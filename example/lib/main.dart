@@ -60,6 +60,12 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
           children: [
             ElevatedButton(
               onPressed: () async{
+                SoLoud.instance.initAndroidFocusManager();
+              },
+              child: const Text('JNI'),
+            ),
+            ElevatedButton(
+              onPressed: () async{
                 await SoLoud.instance.init();
                 currentSound = null;
               },

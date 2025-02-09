@@ -42,6 +42,7 @@ list(APPEND PLUGIN_SOURCES
   "${SRC_DIR}/synth/basic_wave.cpp"
   "${SRC_DIR}/waveform/waveform.cpp"
   "${SRC_DIR}/audiobuffer/audiobuffer.cpp"
+  "${SRC_DIR}/android/android_focus.cpp"
   "${SRC_DIR}/filters/filters.cpp"
   "${SRC_DIR}/filters/pitch_shift_filter.cpp"
   "${SRC_DIR}/filters/smbPitchShift.cpp"

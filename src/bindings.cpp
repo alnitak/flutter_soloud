@@ -43,6 +43,46 @@ extern "C"
     void (*dartStateChangedCallback)(enum PlayerStateEvents *) = nullptr;
 
     //////////////////////////////////////////////////////////////
+    /// ANDROID JNI
+
+#ifdef __ANDROID__
+    #include "android/android_focus.h"
+    #include <jni.h>
+
+    JavaVM* javaVM = nullptr;
+    JNIEnv* env = nullptr;
+    jobject globalContext = nullptr;
+    AndroidAudioFocusManager* androidFocusManager = nullptr;
+
+    jint JNI_OnLoad(JavaVM* vm, void* reserved)
+    {
+        javaVM = vm;
+        jint result = javaVM->GetEnv((void**)&env, JNI_VERSION_1_6);
+    
+        if (result == JNI_EDETACHED) {
+            if (javaVM->AttachCurrentThread(&env, nullptr) != JNI_OK) {
+                platform_log("JNI_OnLoad", "Failed to attach thread");
+                return -1;
+            }
+        }
+
+        globalContext = env->NewGlobalRef(env->FindClass("android/app/NativeActivity"));
+//        globalContext = env->FindClass("android/content/Context");
+
+        platform_log("@@@@@@@@@@@@@@@########################@#@#@#@#@#ßðđ@ŋßðđ %p %p", env, globalContext);
+
+        return JNI_VERSION_1_6;
+    }
+
+    FFI_PLUGIN_EXPORT void initAndroidFocusManager() {
+        platform_log("**** BINDINGS initAndroidFocusManager %p %p\n", env, globalContext);
+        androidFocusManager = new AndroidAudioFocusManager(javaVM);
+    }
+
+#endif
+
+
+    //////////////////////////////////////////////////////////////
     /// WEB WORKER
 
 #ifdef __EMSCRIPTEN__

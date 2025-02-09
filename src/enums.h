@@ -135,7 +135,7 @@ typedef struct PCMformat
   unsigned int sampleRate;
   unsigned int channels;
   unsigned int bytesPerSample;
-  BufferType dataType;
+  enum BufferType dataType;
 } PCMformat;
 
 

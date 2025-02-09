@@ -50,7 +50,8 @@ flutter:
   plugin:
     platforms:
       android:
-        ffiPlugin: true
+        package: flutter.soloud.flutter_soloud
+        pluginClass: FlutterSoloudPlugin
       ios:
         ffiPlugin: true
       linux:
