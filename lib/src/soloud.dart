@@ -278,7 +278,8 @@ interface class SoLoud {
 
   @experimental
   void initAndroidFocusManager() {
-    _controller.soLoudFFI.initAndroidFocusManager();
+    const channel = MethodChannel('flutter_soloud');
+    final result = await channel.invokeMethod<bool>('initialize');
   }
 
   /// Initializes the audio engine.

@@ -72,25 +72,6 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   ) : _lookup = lookup;
 
   // ////////////////////////////////////////////////
-  // Android initialization for audio focus manager
-  // ////////////////////////////////////////////////
-  @override
-  Future<void> initAndroidFocusManager() async {
-    const channel = MethodChannel('flutter_soloud');
-    final result = await channel.invokeMethod<bool>('initialize');
-
-    if (result ?? false) {
-      _initAndroidFocusManager();
-    }
-  }
-
-  late final _initAndroidFocusManagerPtr =
-      _lookup<ffi.NativeFunction<ffi.Void Function()>>(
-          'initAndroidFocusManager');
-  late final _initAndroidFocusManager =
-      _initAndroidFocusManagerPtr.asFunction<void Function()>();
-
-  // ////////////////////////////////////////////////
   // Callbacks impl
   // ////////////////////////////////////////////////
 

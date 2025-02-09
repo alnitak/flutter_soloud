@@ -64,9 +64,6 @@ abstract class FlutterSoLoud {
   @mustBeOverridden
   bool areOpusOggLibsAvailable();
 
-  @mustBeOverridden
-  void initAndroidFocusManager();
-
   /// Initialize the player. Must be called before any other player functions.
   ///
   /// [deviceId] the device ID. -1 for default OS output device.

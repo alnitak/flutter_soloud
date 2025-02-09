@@ -43,64 +43,6 @@ extern "C"
     void (*dartStateChangedCallback)(enum PlayerStateEvents *) = nullptr;
 
     //////////////////////////////////////////////////////////////
-    /// ANDROID JNI
-
-#ifdef __ANDROID__
-#include "android/android_focus.h"
-#include <jni.h>
-
-JavaVM* javaVM = nullptr;
-JNIEnv* env = nullptr;
-jobject globalContext = nullptr;
-AndroidAudioFocusManager* androidFocusManager = nullptr;
-jclass globalPluginClass = nullptr;  // Add this line
-jint JNI_OnLoad(JavaVM* vm, void* reserved)
-{
-    javaVM = vm;
-    jint result = javaVM->GetEnv((void**)&env, JNI_VERSION_1_6);
-
-    if (result == JNI_EDETACHED) {
-        if (javaVM->AttachCurrentThread(&env, nullptr) != JNI_OK) {
-            platform_log("JNI_OnLoad", "Failed to attach thread");
-            return -1;
-        }
-    }
-
-    jclass localPluginClass = env->FindClass("flutter/soloud/flutter_soloud/FlutterSoloudPlugin");
-    if (localPluginClass == nullptr) {
-        platform_log("Failed to find FlutterSoloudPlugin class");
-        return -1;
-    }
-    
-    // Create a global reference to the class
-    globalPluginClass = (jclass)env->NewGlobalRef(localPluginClass);
-    env->DeleteLocalRef(localPluginClass);
-
-    platform_log("@@@@@@@@@@@@@@@########################@#@#@#@#@#ßðđ@ŋßðđ %p %p", env, globalContext);
-
-    return JNI_VERSION_1_6;
-}
-
-FFI_PLUGIN_EXPORT void initAndroidFocusManager() {
-    if (!javaVM) {
-        platform_log("ERROR: JavaVM not initialized");
-        return;
-    }
-
-    JNIEnv* env;
-    javaVM->GetEnv((void**)&env, JNI_VERSION_1_6);
-    if (!env) {
-        platform_log("ERROR: Could not get JNIEnv in initAndroidFocusManager");
-        return;
-    }
-
-    // androidFocusManager = new AndroidAudioFocusManager(env);
-}
-
-#endif
-
-
-    //////////////////////////////////////////////////////////////
     /// WEB WORKER
 
 #ifdef __EMSCRIPTEN__
