@@ -361,7 +361,7 @@ interface class SoLoud {
       /// get the visualization flag from the player on C side.
       /// Eventually we can set this as a parameter during the
       /// initialization with some other parameters like `sampleRate`
-      _isVisualizationEnabled = getVisualizationEnabled();
+      _isVisualizationEnabled = _controller.soLoudFFI.getVisualizationEnabled();
 
       // Initialize [SoLoudLoader]
       _loader.automaticCleanup = automaticCleanup;
