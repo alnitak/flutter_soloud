@@ -1,4 +1,8 @@
 
+### 3.0.0-pre.2 ()
+- fixed biquad resonant filter `frequency` default parameter #179
+- fix: on some unclear conditions `isInitialized` returning false on MacOS after engine starts with no error #177
+
 ### 3.0.0-pre.1 (3 Feb 2025)
 - fix: Call `loadMem` will crash the application #174.
 
