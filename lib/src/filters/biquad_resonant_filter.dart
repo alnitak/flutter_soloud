@@ -29,7 +29,7 @@ enum BiquadResonantEnum {
 
   final List<double> _mins = const [0, 0.0, 10, 0.1];
   final List<double> _maxs = const [1, 2.0, 16000, 20];
-  final List<double> _defs = const [1, 0.0, 0.5, 0.1];
+  final List<double> _defs = const [1, 0.0, 10, 0.1];
 
   double get min => _mins[index];
   double get max => _maxs[index];
