@@ -279,13 +279,23 @@ interface class SoLoud {
   @experimental
   Future<void> initAndroidFocusManager({
     void Function(String focusState)? onFocusChanged,
+    void Function(Map<String, dynamic> headsetInfo)? onHeadsetChanged,
   }) async {
     const channel = MethodChannel('flutter_soloud');
     
-    if (onFocusChanged != null) {
+    if (onFocusChanged != null || onHeadsetChanged != null) {
       channel.setMethodCallHandler((call) async {
-        if (call.method == 'onAudioFocusChanged') {
-          onFocusChanged(call.arguments as String);
+        switch (call.method) {
+          case 'onAudioFocusChanged':
+            onFocusChanged?.call(call.arguments as String);
+          case 'onHeadsetChanged':
+            // Cast the dynamic Map to Map<String, dynamic> because when
+            // the data is sent through platform channels, the type
+            // information gets loosened.
+            final rawMap = call.arguments as Map<dynamic, dynamic>;
+            final headsetInfo = rawMap.map((key, value) => 
+              MapEntry(key.toString(), value));
+            onHeadsetChanged?.call(headsetInfo);
         }
       });
     }
