@@ -277,17 +277,9 @@ interface class SoLoud {
   @internal
   final Map<SoundHandle, Completer<void>> voiceEndedCompleters = {};
 
+  /// see [Interruptions]
   @experimental
-  Future<void> initAndroidFocusManager({
-    void Function(AndroidInterruptions focusState)? onFocusChanged,
-    void Function(HeadsetInfo headsetInfo)? onHeadsetChanged,
-  }) async {
-    final instance = Interruptions();
-    await instance.initAndroidFocusManager(
-      onFocusChanged: onFocusChanged,
-      onHeadsetChanged: onHeadsetChanged,
-    );
-  }
+  late final interruptions = Interruptions();
 
   /// Initializes the audio engine.
   ///
@@ -533,10 +525,9 @@ interface class SoLoud {
     // This doesn't work on Android. See "ma_device_notification_proc"
     // in miniaudio.h. Only `started` and `stopped` are working.
     // Leaving this commented out for futher investigation.
-    if (!_controller.soLoudFFI.stateChangedController.hasListener) {
-      _controller.soLoudFFI.stateChangedEvents.listen((newState) {
+    if (!interruptions.stateChangedController.hasListener) {
+      interruptions.stateChangedEvents.listen((newState) {
         _log.fine(() => 'Audio engine state changed: $newState');
-        // print('############################ $newState');
       });
     }
   }

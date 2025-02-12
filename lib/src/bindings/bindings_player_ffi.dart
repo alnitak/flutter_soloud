@@ -8,12 +8,14 @@ import 'dart:ffi' as ffi;
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
+import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:flutter_soloud/src/bindings/audio_data.dart';
 import 'package:flutter_soloud/src/bindings/bindings_player.dart';
 import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/exceptions/exceptions.dart';
 import 'package:flutter_soloud/src/filters/filters.dart';
 import 'package:flutter_soloud/src/helpers/playback_device.dart';
+import 'package:flutter_soloud/src/interruptions/interruptions.dart' show PlayerStateNotification;
 import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
 import 'package:logging/logging.dart';
@@ -112,7 +114,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     // there and cannot use `calloc.free(state)`
     nativeFree(state.cast<ffi.Void>());
     _log.finest(() => 'STATE CHANGED EVENT state: $s');
-    stateChangedController.add(s);
+    SoLoud.instance.interruptions.stateChangedController.add(s);
   }
 
   @override

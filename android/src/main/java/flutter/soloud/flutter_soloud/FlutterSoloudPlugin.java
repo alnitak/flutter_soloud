@@ -20,7 +20,7 @@ import android.media.MediaRouter;
 import android.media.MediaRouter.RouteInfo;
 import android.media.MediaRouter.RouteGroup;
 import android.bluetooth.BluetoothDevice;
-import java.util.Map; // Add this import
+import java.util.Map;
 
 /// Ref: https://developer.android.com/media/optimize/audio-focus
 /// Ref: https://developer.android.com/reference/android/media/AudioManager#AUDIOFOCUS_GAIN
@@ -95,11 +95,8 @@ public class FlutterSoloudPlugin implements FlutterPlugin, MethodCallHandler, Au
                     .build();
 
                 int result = audioManager.requestAudioFocus(focusRequest);
-                Log.d("FlutterSoloudPlugin", "Requesting audio focus with new attributes");
-                if (result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
-                    Log.d("FlutterSoloudPlugin", "Audio focus request granted");
-                } else {
-                    Log.d("FlutterSoloudPlugin", "Audio focus request failed");
+                if (result != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
+                    Log.e("FlutterSoloudPlugin", "Audio focus request failed");
                 }
             } else {
                 // For older Android versions, we need to specify flags
@@ -107,10 +104,8 @@ public class FlutterSoloudPlugin implements FlutterPlugin, MethodCallHandler, Au
                         AudioManager.STREAM_MUSIC,
                         AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK);
                 
-                if (result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
-                    Log.d("FlutterSoloudPlugin", "Audio focus request granted");
-                } else {
-                    Log.d("FlutterSoloudPlugin", "Audio focus request failed");
+                if (result != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
+                    Log.e("FlutterSoloudPlugin", "Audio focus request failed");
                 }
             }
         }
@@ -154,7 +149,6 @@ public class FlutterSoloudPlugin implements FlutterPlugin, MethodCallHandler, Au
                 Log.e("FlutterSoloudPlugin", "Failed to get MediaRouter service");
                 return;
             }
-            Log.d("FlutterSoloudPlugin", "MediaRouter service obtained successfully");
 
             mediaRouter.addCallback(
                 MediaRouter.ROUTE_TYPE_LIVE_AUDIO | 
@@ -162,47 +156,39 @@ public class FlutterSoloudPlugin implements FlutterPlugin, MethodCallHandler, Au
                 new MediaRouter.Callback() {
                     @Override
                     public void onRouteAdded(MediaRouter router, RouteInfo info) {
-                        Log.d("FlutterSoloudPlugin", "Route Added: " + info.getName());
                         updateAudioDeviceStatus();
                     }
 
                     @Override
                     public void onRouteChanged(MediaRouter router, RouteInfo info) {
-                        Log.d("FlutterSoloudPlugin", "Route Changed: " + info.getName());
                         updateAudioDeviceStatus();
                     }
 
                     @Override
                     public void onRouteRemoved(MediaRouter router, RouteInfo info) {
-                        Log.d("FlutterSoloudPlugin", "Route Removed: " + info.getName());
                         updateAudioDeviceStatus();
                     }
 
                     @Override
                     public void onRouteSelected(MediaRouter router, int type, RouteInfo info) {
-                        Log.d("FlutterSoloudPlugin", "Route Selected: " + info.getName());
                         updateAudioDeviceStatus();
                     }
 
                     @Override
                     public void onRouteUnselected(MediaRouter router, int type, RouteInfo info) {
-                        Log.d("FlutterSoloudPlugin", "Route Unselected: " + info.getName());
                         updateAudioDeviceStatus();
                     }
 
                     @Override
                     public void onRouteVolumeChanged(MediaRouter router, RouteInfo info) {
-                        // Optional: handle volume changes
                     }
 
                     @Override
                     public void onRouteGrouped(MediaRouter router, RouteInfo info, RouteGroup group, int index) {
-                        // Optional: handle route grouping
                     }
 
                     @Override
                     public void onRouteUngrouped(MediaRouter router, RouteInfo info, RouteGroup group) {
-                        // Optional: handle route ungrouping
                     }
                 },
                 MediaRouter.CALLBACK_FLAG_PERFORM_ACTIVE_SCAN
@@ -272,8 +258,6 @@ public class FlutterSoloudPlugin implements FlutterPlugin, MethodCallHandler, Au
 
     @Override
     public void onAudioFocusChange(int focusChange) {
-        Log.d("FlutterSoloudPlugin", "Audio focus changed: " + focusChange);
-        
         String focusState;
         switch (focusChange) {
             case AudioManager.AUDIOFOCUS_GAIN:

@@ -61,21 +61,20 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
           children: [
             ElevatedButton(
               onPressed: () async {
-                await SoLoud.instance.initAndroidFocusManager(
-                  onHeadsetChanged: (info) {
-                    print('******* FlutterSoloudPlugin NEW HEADSET INFO: $info');
-                    setState(() {
-                      headsetInfo = info;
-                    });
-                  },
-                  onFocusChanged: (focusState) {
-                    audioFocusState = focusState.name;
-                    print('******* FlutterSoloudPlugin NEW STATE: $audioFocusState');
-                    setState(() {});
-                  },
+                await SoLoud.instance.interruptions.initAndroidInterruptions();
+                SoLoud.instance.interruptions.headsetStateAndroidEvents.listen(
+                  (event) => setState(() {
+                    headsetInfo = event;
+                  }),
+                );
+
+                SoLoud.instance.interruptions.audioAndroidFocusEvents.listen(
+                  (event) => setState(() {
+                    audioFocusState = event.name;
+                  }),
                 );
               },
-              child: const Text('JNI'),
+              child: const Text('listen interruptions'),
             ),
             ElevatedButton(
               onPressed: () async {
@@ -116,7 +115,8 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
               },
               child: const Text('deinit'),
             ),
-            Text('Audio focus state:\n$audioFocusState\n\nHeadset info:\n$headsetInfo'),
+            Text(
+                'Audio focus state:\n$audioFocusState\n\nHeadset info:\n$headsetInfo'),
           ],
         ),
       ),

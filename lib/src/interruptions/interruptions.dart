@@ -1,5 +1,30 @@
+import 'dart:async' show StreamController;
+
 import 'package:flutter/services.dart';
 import 'package:meta/meta.dart';
+
+/// Audio state changes. Not doing much now. Notifications should work
+/// on iOS but none of the Android backends will report this notification.
+/// However the started and stopped events should be reliable for all backends.
+enum PlayerStateNotification {
+  ///
+  started,
+
+  ///
+  stopped,
+
+  ///
+  rerouted,
+
+  ///
+  interruptionBegan,
+
+  ///
+  interruptionEnded,
+
+  ///
+  unlocked,
+}
 
 /// Audio focus states from Android AudioManager
 /// https://developer.android.com/reference/android/media/AudioManager#AUDIOFOCUS_GAIN
@@ -214,6 +239,38 @@ class Interruptions {
   /// The method channel used in FlutterSoloudPlugin.java
   static const channel = MethodChannel('flutter_soloud');
 
+  /// Controller to listen to player state changes.
+  @experimental
+  final StreamController<PlayerStateNotification> stateChangedController =
+      StreamController.broadcast();
+
+  /// listener for player state changes.
+  @experimental
+  Stream<PlayerStateNotification> get stateChangedEvents =>
+      stateChangedController.stream;
+
+  /// Controller to listen to player state changes.
+  @experimental
+  @internal
+  final StreamController<AndroidInterruptions> audioAndroidFocusController =
+      StreamController.broadcast();
+
+  /// listener for player state changes.
+  @experimental
+  Stream<AndroidInterruptions> get audioAndroidFocusEvents =>
+      audioAndroidFocusController.stream;
+
+  /// Controller to listen to headset state changes.
+  @experimental
+  @internal
+  final StreamController<HeadsetInfo> headsetStateAndroidController =
+      StreamController.broadcast();
+
+  /// listener for headset state changes.
+  @experimental
+  Stream<HeadsetInfo> get headsetStateAndroidEvents =>
+      headsetStateAndroidController.stream;
+
   /// Initializes audio focus manager on Android.
   ///
   /// This method is only available on Android platforms.
@@ -222,43 +279,45 @@ class Interruptions {
   /// The [onHeadsetChanged] callback is called when the headset (e.g. headphones)
   /// is connected or disconnected.
   ///
-  /// When [attributes] is not specified, the default attributes are used.
+  /// When [androidAttributes] is not specified, the default attributes are used.
   /// The default attributes have the following settings:
   ///   * [AndroidAttributes.usage]: [AndroidUsage.usageGame]
   ///   * [AndroidAttributes.contentType]: [AndroidContentType.contentTypeMusic]
   ///   * [AndroidAttributes.willPauseWhenDucked]: true
   ///   * [AndroidAttributes.acceptsDelayedFocusGain]: true
-  Future<void> initAndroidFocusManager({
-    AndroidAttributes attributes = const AndroidAttributes(),
-    void Function(AndroidInterruptions focusState)? onFocusChanged,
-    void Function(HeadsetInfo headsetInfo)? onHeadsetChanged,
+  @experimental
+  Future<void> initAndroidInterruptions({
+    AndroidAttributes androidAttributes = const AndroidAttributes(),
+    // void Function(AndroidInterruptions focusState)? onFocusChanged,
+    // void Function(HeadsetInfo headsetInfo)? onHeadsetChanged,
   }) async {
-    if (onFocusChanged != null || onHeadsetChanged != null) {
-      channel.setMethodCallHandler((call) async {
-        print('******* FlutterSoloudPlugin NEW CALL INFO: ${call.arguments}');
-        switch (call.method) {
-          case 'onAudioFocusChanged':
-            final focusState = AndroidInterruptions.values.firstWhere(
-              (e) =>
-                  e.toString() ==
-                  'AndroidInterruptions.${call.arguments as String}',
-              orElse: () => AndroidInterruptions.audioFocusNone,
-            );
-            onFocusChanged?.call(focusState);
-          case 'onHeadsetChanged':
-            // Cast the dynamic Map to Map<String, dynamic> because when
-            // the data is sent through platform channels, the type
-            // information gets loosened.
-            final rawMap = call.arguments as Map<dynamic, dynamic>;
-            final headsetInfo = HeadsetInfo.fromMap(
-              rawMap.map((key, value) => MapEntry(key.toString(), value)),
-            );
-            onHeadsetChanged?.call(headsetInfo);
-        }
-      });
-    }
+    // if (onFocusChanged != null || onHeadsetChanged != null) {
+    channel.setMethodCallHandler((call) async {
+      switch (call.method) {
+        case 'onAudioFocusChanged':
+          final focusState = AndroidInterruptions.values.firstWhere(
+            (e) =>
+                e.toString() ==
+                'AndroidInterruptions.${call.arguments as String}',
+            orElse: () => AndroidInterruptions.audioFocusNone,
+          );
+          // onFocusChanged?.call(focusState);
+          audioAndroidFocusController.add(focusState);
+        case 'onHeadsetChanged':
+          // Cast the dynamic Map to Map<String, dynamic> because when
+          // the data is sent through platform channels, the type
+          // information gets loosened.
+          final rawMap = call.arguments as Map<dynamic, dynamic>;
+          final headsetInfo = HeadsetInfo.fromMap(
+            rawMap.map((key, value) => MapEntry(key.toString(), value)),
+          );
+          // onHeadsetChanged?.call(headsetInfo);
+          headsetStateAndroidController.add(headsetInfo);
+      }
+    });
+    // }
 
-    await channel.invokeMethod<bool>('initialize', attributes.toMap());
+    await channel.invokeMethod<bool>('initialize', androidAttributes.toMap());
     return;
   }
 }
