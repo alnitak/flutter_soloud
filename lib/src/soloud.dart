@@ -12,6 +12,7 @@ import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/exceptions/exceptions.dart';
 import 'package:flutter_soloud/src/filters/filters.dart';
 import 'package:flutter_soloud/src/helpers/playback_device.dart';
+import 'package:flutter_soloud/src/interruptions/interruptions.dart';
 import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
 import 'package:flutter_soloud/src/utils/loader.dart';
@@ -278,30 +279,14 @@ interface class SoLoud {
 
   @experimental
   Future<void> initAndroidFocusManager({
-    void Function(String focusState)? onFocusChanged,
-    void Function(Map<String, dynamic> headsetInfo)? onHeadsetChanged,
+    void Function(AndroidInterruptions focusState)? onFocusChanged,
+    void Function(HeadsetInfo headsetInfo)? onHeadsetChanged,
   }) async {
-    const channel = MethodChannel('flutter_soloud');
-    
-    if (onFocusChanged != null || onHeadsetChanged != null) {
-      channel.setMethodCallHandler((call) async {
-        switch (call.method) {
-          case 'onAudioFocusChanged':
-            onFocusChanged?.call(call.arguments as String);
-          case 'onHeadsetChanged':
-            // Cast the dynamic Map to Map<String, dynamic> because when
-            // the data is sent through platform channels, the type
-            // information gets loosened.
-            final rawMap = call.arguments as Map<dynamic, dynamic>;
-            final headsetInfo = rawMap.map((key, value) => 
-              MapEntry(key.toString(), value));
-            onHeadsetChanged?.call(headsetInfo);
-        }
-      });
-    }
-
-    final result = await channel.invokeMethod<bool>('initialize');
-    return;
+    final instance = Interruptions();
+    await instance.initAndroidFocusManager(
+      onFocusChanged: onFocusChanged,
+      onHeadsetChanged: onHeadsetChanged,
+    );
   }
 
   /// Initializes the audio engine.

@@ -42,7 +42,7 @@ class HelloFlutterSoLoud extends StatefulWidget {
 
 class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
   String audioFocusState = '';
-  Map<String, dynamic> headsetInfo = {};
+  HeadsetInfo? headsetInfo;
   AudioSource? currentSound;
 
   @override
@@ -63,41 +63,14 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
               onPressed: () async {
                 await SoLoud.instance.initAndroidFocusManager(
                   onHeadsetChanged: (info) {
-                    print('******* NEW HEADSET INFO: $info');
+                    print('******* FlutterSoloudPlugin NEW HEADSET INFO: $info');
                     setState(() {
                       headsetInfo = info;
                     });
                   },
                   onFocusChanged: (focusState) {
-                    switch (focusState) {
-                      case 'AUDIOFOCUS_GAIN':
-                        // Your app gained the audio focus - can resume/raise volume
-                        audioFocusState = 'AUDIOFOCUS_GAIN';
-                      case 'AUDIOFOCUS_GAIN_TRANSIENT':
-                        // Temporary audio focus gain - can play short sounds
-                        audioFocusState = 'AUDIOFOCUS_GAIN_TRANSIENT';
-                      case 'AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE':
-                        // Temporary exclusive audio focus - no other app will play audio
-                        audioFocusState = 'AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE';
-                      case 'AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK':
-                        // Temporary audio focus gain where others may duck
-                        audioFocusState = 'AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK';
-                      case 'AUDIOFOCUS_LOSS':
-                        // Permanent loss of audio focus - stop playback
-                        audioFocusState = 'AUDIOFOCUS_LOSS';
-                      case 'AUDIOFOCUS_LOSS_TRANSIENT':
-                        // Temporary loss of audio focus - pause playback
-                        audioFocusState = 'AUDIOFOCUS_LOSS_TRANSIENT';
-                      case 'AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK':
-                        // Temporary loss of audio focus - can duck (lower volume)
-                        audioFocusState = 'AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK';
-                      case 'AUDIOFOCUS_NONE':
-                        // No audio focus change
-                        audioFocusState = 'AUDIOFOCUS_NONE';
-                      default:
-                        audioFocusState = 'UNKNOWN';
-                    }
-                    print('******* NEW STATE: $audioFocusState');
+                    audioFocusState = focusState.name;
+                    print('******* FlutterSoloudPlugin NEW STATE: $audioFocusState');
                     setState(() {});
                   },
                 );

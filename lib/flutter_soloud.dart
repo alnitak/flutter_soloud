@@ -8,6 +8,7 @@ export 'src/exceptions/exceptions.dart';
 export 'src/filter_params.dart';
 export 'src/filters/filters.dart' show FilterType;
 export 'src/helpers/playback_device.dart';
+export 'src/interruptions/interruptions.dart';
 export 'src/soloud.dart';
 export 'src/sound_handle.dart';
 export 'src/sound_hash.dart';

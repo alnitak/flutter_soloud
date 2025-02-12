@@ -145,7 +145,7 @@ namespace SoLoud
 //        config.coreaudio.sessionCategory = ma_ios_session_category_playback;
 //        config.coreaudio.sessionCategoryOptions = ma_ios_session_category_option_duck_others;
 
-        config.opensl.streamType = ma_opensl_stream_type_media;
+        // config.opensl.streamType = ma_opensl_stream_type_media;
 
         if (aSoloud->_stateChangedCallback != nullptr)
             config.notificationCallback = on_notification;

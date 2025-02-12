@@ -20,8 +20,10 @@ import android.media.MediaRouter;
 import android.media.MediaRouter.RouteInfo;
 import android.media.MediaRouter.RouteGroup;
 import android.bluetooth.BluetoothDevice;
+import java.util.Map; // Add this import
 
 /// Ref: https://developer.android.com/media/optimize/audio-focus
+/// Ref: https://developer.android.com/reference/android/media/AudioManager#AUDIOFOCUS_GAIN
 public class FlutterSoloudPlugin implements FlutterPlugin, MethodCallHandler, AudioManager.OnAudioFocusChangeListener {
     private static MethodChannel channel;
     private static final String CHANNEL_NAME = "flutter_soloud";
@@ -51,8 +53,8 @@ public class FlutterSoloudPlugin implements FlutterPlugin, MethodCallHandler, Au
     public void onMethodCall(@NonNull MethodCall call, @NonNull Result result) {
         if (call.method.equals("initialize")) {
             if (!isInitialized) {
-                Log.d("FlutterSoloudPlugin.java", "*****************initialize called");
-                requestAudioFocus();
+                Map<String, Object> attributes = call.arguments();
+                requestAudioFocus(attributes);
                 isInitialized = true;
             }
             result.success(true);
@@ -61,19 +63,34 @@ public class FlutterSoloudPlugin implements FlutterPlugin, MethodCallHandler, Au
         }
     }
 
-    private void requestAudioFocus() {
+    private void requestAudioFocus(Map<String, Object> attributes) {
         if (audioManager != null) {
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                int usage = AudioAttributes.USAGE_GAME;
+                int contentType = AudioAttributes.CONTENT_TYPE_MUSIC;
+                boolean willPauseWhenDucked = true;
+                boolean acceptsDelayedFocusGain = true;
+
+                if (attributes != null) {
+                    String usageStr = (String) attributes.get("usage");
+                    String contentTypeStr = (String) attributes.get("contentType");
+                    willPauseWhenDucked = (Boolean) attributes.getOrDefault("willPauseWhenDucked", true);
+                    acceptsDelayedFocusGain = (Boolean) attributes.getOrDefault("acceptsDelayedFocusGain", true);
+
+                    usage = getUsageFromString(usageStr);
+                    contentType = getContentTypeFromString(contentTypeStr);
+                }
+
                 AudioAttributes playbackAttributes = new AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_GAME)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                    .setUsage(usage)
+                    .setContentType(contentType)
                     .setFlags(AudioAttributes.FLAG_AUDIBILITY_ENFORCED)
                     .build();
 
                 AudioFocusRequest focusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
                     .setAudioAttributes(playbackAttributes)
-                    .setAcceptsDelayedFocusGain(true)
-                    .setWillPauseWhenDucked(true)
+                    .setAcceptsDelayedFocusGain(acceptsDelayedFocusGain)
+                    .setWillPauseWhenDucked(willPauseWhenDucked)
                     .setOnAudioFocusChangeListener(this)
                     .build();
 
@@ -96,6 +113,37 @@ public class FlutterSoloudPlugin implements FlutterPlugin, MethodCallHandler, Au
                     Log.d("FlutterSoloudPlugin", "Audio focus request failed");
                 }
             }
+        }
+    }
+
+    private int getUsageFromString(String usage) {
+        switch (usage) {
+            case "usageAlarm": return AudioAttributes.USAGE_ALARM;
+            case "usageAssistanceAccessibility": return AudioAttributes.USAGE_ASSISTANCE_ACCESSIBILITY;
+            case "usageAssistanceNavigationGuidance": return AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE;
+            case "usageAssistanceSonification": return AudioAttributes.USAGE_ASSISTANCE_SONIFICATION;
+            case "usageAssistance": return AudioAttributes.USAGE_ASSISTANCE_ACCESSIBILITY;
+            case "usageGame": return AudioAttributes.USAGE_GAME;
+            case "usageMedia": return AudioAttributes.USAGE_MEDIA;
+            case "usageNotification": return AudioAttributes.USAGE_NOTIFICATION;
+            case "usageNotificationCommunicationDelayed": return AudioAttributes.USAGE_NOTIFICATION_COMMUNICATION_DELAYED;
+            case "usageNotificationCommunicationInstant": return AudioAttributes.USAGE_NOTIFICATION_COMMUNICATION_INSTANT;
+            case "usageNotificationCommunicationRequest": return AudioAttributes.USAGE_NOTIFICATION_COMMUNICATION_REQUEST;
+            case "usageNotificationEvent": return AudioAttributes.USAGE_NOTIFICATION_EVENT;
+            case "usageNotificationRingtone": return AudioAttributes.USAGE_NOTIFICATION_RINGTONE;
+            case "usageVoiceCommunication": return AudioAttributes.USAGE_VOICE_COMMUNICATION;
+            case "usageVoiceCommunicationSignalling": return AudioAttributes.USAGE_VOICE_COMMUNICATION_SIGNALLING; // Note the correct spelling
+            default: return AudioAttributes.USAGE_GAME;
+        }
+    }
+
+    private int getContentTypeFromString(String contentType) {
+        switch (contentType) {
+            case "contentTypeMovie": return AudioAttributes.CONTENT_TYPE_MOVIE;
+            case "contentTypeMusic": return AudioAttributes.CONTENT_TYPE_MUSIC;
+            case "contentTypeSonification": return AudioAttributes.CONTENT_TYPE_SONIFICATION;
+            case "contentTypeSpeech": return AudioAttributes.CONTENT_TYPE_SPEECH;
+            default: return AudioAttributes.CONTENT_TYPE_UNKNOWN;
         }
     }
 
@@ -229,31 +277,28 @@ public class FlutterSoloudPlugin implements FlutterPlugin, MethodCallHandler, Au
         String focusState;
         switch (focusChange) {
             case AudioManager.AUDIOFOCUS_GAIN:
-                focusState = "AUDIOFOCUS_GAIN";
+                focusState = "audioFocusGain";
                 break;
             case AudioManager.AUDIOFOCUS_GAIN_TRANSIENT:
-                focusState = "AUDIOFOCUS_GAIN_TRANSIENT";
+                focusState = "audioFocusGainTransient";
                 break;
             case AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE:
-                focusState = "AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE";
+                focusState = "audioFocusGainTransientExclusive";
                 break;
             case AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK:
-                focusState = "AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK";
+                focusState = "audioFocusGainTransientMayDuck";
                 break;
             case AudioManager.AUDIOFOCUS_LOSS:
-                focusState = "AUDIOFOCUS_LOSS";
+                focusState = "audioFocusLoss";
                 break;
             case AudioManager.AUDIOFOCUS_LOSS_TRANSIENT:
-                focusState = "AUDIOFOCUS_LOSS_TRANSIENT";
+                focusState = "audioFocusLossTransient";
                 break;
             case AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK:
-                focusState = "AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK";
-                break;
-            case AudioManager.AUDIOFOCUS_NONE:
-                focusState = "AUDIOFOCUS_NONE";
+                focusState = "audioFocusLossTransientCanDuck";
                 break;
             default:
-                focusState = "UNKNOWN";
+                focusState = "audioFocusNone";
                 break;
         }
 
