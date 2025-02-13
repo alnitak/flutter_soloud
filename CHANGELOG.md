@@ -4,6 +4,9 @@
   - `BufferingType.preserved` (default): preserve the data already in the buffer while playing.
   - `BufferingType.released`: free the memory of the already played data for longer playback.
 - breaking change: splitted [maxBufferSize] to [maxBufferSizeBytes] and [maxBufferSizeDuration] in `SoLoud.setBufferStream`. This gives the user to choose the maximum buffer size using bytes or time.
+- breaking change: removed `initialized` getter in favor of `isInitialized`
+- removed deprecated `timeout` parameter in `SoLoud.init`.
+- removed deprecated `filter_params.dart`.
 
 ### 3.0.0-pre.1 (3 Feb 2025)
 - fix: Call `loadMem` will crash the application #174.
