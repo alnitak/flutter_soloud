@@ -105,11 +105,9 @@ namespace SoLoud
 
 	bool BufferStreamInstance::hasEnded()
 	{
-		printf("mOffset: %d, mSampleCount: %d, dataIsEnded: %d\n", mOffset, mParent->mSampleCount, mParent->dataIsEnded);
 		if (mParent->dataIsEnded &&
 			mOffset >= mParent->mSampleCount * mParent->mPCMformat.bytesPerSample)
 		{
-			printf("hasEnded\n");
 			return 1;
 		}
 		return 0;

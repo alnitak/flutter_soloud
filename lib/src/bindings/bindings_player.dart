@@ -234,7 +234,6 @@ abstract class FlutterSoLoud {
   ///
   /// [textToSpeech] the text to be spoken.
   /// Returns [PlayerErrors.noError] if success and handle sound identifier.
-  // TODO(marco): add other T2S parameters
   @mustBeOverridden
   ({PlayerErrors error, SoundHandle handle}) speechText(String textToSpeech);
 
@@ -346,8 +345,6 @@ abstract class FlutterSoLoud {
   /// [timestamp] the time in which the loop will restart.
   @mustBeOverridden
   void setLoopPoint(SoundHandle handle, Duration timestamp);
-
-  // TODO(marco): implement Soloud.getLoopCount() also?
 
   /// Enable or disable visualization.
   /// Not yet supported on the web.

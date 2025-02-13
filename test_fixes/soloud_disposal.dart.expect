@@ -1,7 +1,0 @@
-import 'package:flutter_soloud/flutter_soloud.dart';
-
-Future<void> main() async {
-  SoLoud.instance.deinit();
-  SoLoud.instance.deinit();
-  SoLoud.instance.deinit();
-}
