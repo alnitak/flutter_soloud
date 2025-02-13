@@ -46,7 +46,7 @@ external JSFunction wasmCccall(
 );
 
 @JS('Module_soloud._createWorkerInWasm')
-external void wasmCreateWorkerInWasm();
+external int wasmCreateWorkerInWasm();
 
 @JS('Module_soloud._sendToWorker')
 external void wasmSendToWorker(int message, int value);
@@ -57,6 +57,7 @@ external web.Worker wasmWorker;
 @JS('Module_soloud._setBufferStream')
 external int wasmSetBufferStream(
   int hashPtr,
+  int bufferingType,
   int maxBufferSize,
   double bufferingTimeNeeds,
   int sampleRate,

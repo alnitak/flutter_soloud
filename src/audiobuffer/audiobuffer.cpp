@@ -62,17 +62,42 @@ namespace SoLoud
 			}
 		}
 
-		mOffset += samplesToRead * mChannels;
+		unsigned int totalBytesRead = samplesToRead * mChannels * sizeof(float);
+		size_t samplesRemoved = mParent->mBuffer.removeData(totalBytesRead);
+		
+		 // Update stream position regardless of buffering type
+        mStreamTime += samplesToRead / (float)mSamplerate;
+        
+		// If buffering type is RELEASED, adjust mSampleCount and don't increment mOffset
+		if (mParent->mBuffer.bufferingType == BufferingType::RELEASED) {
+			mParent->mSampleCount -= samplesRemoved / mParent->mPCMformat.bytesPerSample;
+			// For RELEASED type, streamPosition is always at the start of the remaining buffer
+            mStreamPosition = 0;
+		} else {
+			mOffset += samplesToRead * mChannels;
+			// For PRESERVED type, streamPosition advances with the offset
+            mStreamPosition = mOffset / (float)(mSamplerate * mChannels);
+		}
+
 		return samplesToRead;
 	}
 
 	result BufferStreamInstance::seek(double aSeconds, float *mScratch, unsigned int mScratchSize)
 	{
+		if (mParent->mBuffer.bufferingType == BufferingType::RELEASED) {
+            // Seeking not supported in RELEASED mode since data is discarded
+			// TODO: Support seeking forward in RELEASED mode
+            return INVALID_PARAMETER;
+        }
 		return AudioSourceInstance::seek(aSeconds, mScratch, mScratchSize);
 	}
 
 	result BufferStreamInstance::rewind()
 	{
+		if (mParent->mBuffer.bufferingType == BufferingType::RELEASED) {
+            // Rewinding not supported in RELEASED mode since data is discarded
+            return INVALID_PARAMETER;
+        }
 		mOffset = 0;
 		mStreamPosition = 0.0f;
 		return 0;
@@ -80,8 +105,8 @@ namespace SoLoud
 
 	bool BufferStreamInstance::hasEnded()
 	{
-		if (mOffset >= mParent->mSampleCount * mParent->mPCMformat.bytesPerSample &&
-			mParent->dataIsEnded)
+		if (mParent->dataIsEnded &&
+			mOffset >= mParent->mSampleCount * mParent->mPCMformat.bytesPerSample)
 		{
 			return 1;
 		}
@@ -106,10 +131,16 @@ namespace SoLoud
 		Player *aPlayer,
 		ActiveSound *aParent,
 		unsigned int maxBufferSize,
+		BufferingType bufferingType,
 		SoLoud::time bufferingTimeNeeds,
 		PCMformat pcmFormat,
 		dartOnBufferingCallback_t onBufferingCallback)
 	{
+		/// maxBufferSize must be a number divisible by channels * sizeof(float)
+		if (maxBufferSize % (pcmFormat.channels * sizeof(float)) != 0)
+			maxBufferSize -= maxBufferSize % (pcmFormat.channels * sizeof(float));
+
+		mBytesReceived = 0;
 		mSampleCount = 0;
 		dataIsEnded = false;
 		mThePlayer = aPlayer;
@@ -125,6 +156,7 @@ namespace SoLoud
 		mBaseSamplerate = (float)pcmFormat.sampleRate;
 		mOnBufferingCallback = onBufferingCallback;
 		buffer = std::vector<unsigned char>();
+		mBuffer.setBufferType(bufferingType);
 
 #if defined(LIBOPUS_OGG_AVAILABLE) || defined(__EMSCRIPTEN__)
 		decoder = nullptr;
@@ -169,6 +201,7 @@ namespace SoLoud
 		buffer.insert(buffer.end(),
 			static_cast<const unsigned char *>(aData),
 			static_cast<const unsigned char *>(aData) + aDataLen);
+		mBytesReceived += aDataLen;
 		int bufferDataToAdd = 0;
 		// Performing some buffering.
 		if (buffer.size() > 1024 * 2 && !forceAdd) // 2 KB of data
@@ -220,19 +253,19 @@ namespace SoLoud
 			buffer.erase(buffer.begin(), buffer.begin() + bufferDataToAdd);
 		}
 
-		mSampleCount += bytesWritten / mPCMformat.bytesPerSample;
 
 		// If a handle reaches the end and data is not ended, we have to wait for it has enough data
 		// to reach [TIME_FOR_BUFFERING] and restart playing it.
 		time currBufferTime = getLength();
 		for (int i = 0; i < mParent->handle.size(); i++)
 		{
-			double pos = mThePlayer->getPosition(mParent->handle[i].handle);
-			// This handle needs to wait for [TIME_FOR_BUFFERING]
-			if (pos >= currBufferTime && !mThePlayer->getPause(mParent->handle[i].handle))
+			SoLoud::handle handle = mParent->handle[i].handle;
+			double pos = mThePlayer->getPosition(handle);
+			// This handle needs to wait for [TIME_FOR_BUFFERING]. Pause it.
+			if (pos >= currBufferTime && !mThePlayer->getPause(handle))
 			{
 				mParent->handle[i].bufferingTime = currBufferTime;
-				mThePlayer->setPause(mParent->handle[i].handle, true);
+				mThePlayer->setPause(handle, true);
 				if (mOnBufferingCallback != nullptr)
 				{
 #ifdef __EMSCRIPTEN__
@@ -248,16 +281,17 @@ namespace SoLoud
 								window[functionName](buffering, $1, $2); // Call it
 							} else {
 								console.log("EM_ASM 'dartOnBufferingCallback_$hash' not found.");
-							} }, true, mParent->handle[i].handle, currBufferTime, mParent->soundHash);
+							} }, true, handle, currBufferTime, mParent->soundHash);
 #else
-					mOnBufferingCallback(true, mParent->handle[i].handle, currBufferTime);
+					mOnBufferingCallback(true, handle, currBufferTime);
 #endif
 				}
 			}
+			// This handle has reached [TIME_FOR_BUFFERING]. Unpause it.
 			if (currBufferTime - mParent->handle[i].bufferingTime >= mBufferingTimeNeeds &&
-				mThePlayer->getPause(mParent->handle[i].handle))
+				mThePlayer->getPause(handle))
 			{
-				mThePlayer->setPause(mParent->handle[i].handle, false);
+				mThePlayer->setPause(handle, false);
 				mParent->handle[i].bufferingTime = MAX_DOUBLE;
 				if (mOnBufferingCallback != nullptr)
 				{
@@ -271,13 +305,15 @@ namespace SoLoud
 								window[functionName](buffering, $1, $2); // Call it
 							} else {
 								console.log("EM_ASM 'dartOnBufferingCallback_$hash' not found.");
-							} }, false, mParent->handle[i].handle, currBufferTime, mParent->soundHash);
+							} }, false, handle, currBufferTime, mParent->soundHash);
 #else
-					mOnBufferingCallback(false, mParent->handle[i].handle, currBufferTime);
+					mOnBufferingCallback(false, handle, currBufferTime);
 #endif
 				}
 			}
 		}
+
+		mSampleCount += bytesWritten / mPCMformat.bytesPerSample;
 
 		// data has been added to the buffer, but not all because reached its full capacity.
 		// So mark this stream as ended and no more data can be added.
@@ -288,6 +324,11 @@ namespace SoLoud
 		}
 
 		return PlayerErrors::noError;
+	}
+
+	BufferingType BufferStream::getBufferingType()
+	{
+		return mBuffer.bufferingType;
 	}
 
 	AudioSourceInstance *BufferStream::createInstance()

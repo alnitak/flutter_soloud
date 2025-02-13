@@ -76,46 +76,56 @@ class _BufferBarState extends State<BufferBar> {
       );
     }
 
+    final mb = (bufferSize / 1024 / 1024).toStringAsFixed(1);
+
     return Padding(
       padding: const EdgeInsets.all(8),
       child: Row(
         children: [
           SizedBox(
-            width: 120,
+            width: 150,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text(
-                  widget.label ?? '',
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-                Text('${(bufferSize / 1024 / 1024).toStringAsFixed(1)} MB'),
-                Text(humanDuration),
+                if (widget.label != null && widget.label!.isNotEmpty)
+                  Text(
+                    widget.label!,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                Text('using $mb MB'),
+                Text('length $humanDuration'),
               ],
             ),
           ),
-          Stack(
-            children: [
-              SizedBox(
-                height: height,
-                width: width,
-                child: LinearProgressIndicator(
-                  value: progressValue,
-                  backgroundColor: Colors.black,
-                  valueColor: const AlwaysStoppedAnimation(Colors.red),
-                  minHeight: height,
-                ),
-              ),
-              for (var i = 0; i < handlesPos.length; i++)
-                Positioned(
-                  left: handlesPos[i] * progressValue * width - 3,
-                  child: SizedBox(
+          ColoredBox(
+            color: Colors.grey,
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Stack(
+                children: [
+                  SizedBox(
                     height: height,
-                    width: 3,
-                    child: const ColoredBox(color: Colors.yellowAccent),
+                    width: width,
+                    child: LinearProgressIndicator(
+                      value: progressValue,
+                      backgroundColor: Colors.black,
+                      valueColor: const AlwaysStoppedAnimation(Colors.red),
+                      minHeight: height,
+                    ),
                   ),
-                ),
-            ],
+                  for (var i = 0; i < handlesPos.length; i++)
+                    Positioned(
+                      left: handlesPos[i] * progressValue * width,
+                      child: SizedBox(
+                        height: height,
+                        width: 3,
+                        child: const ColoredBox(color: Colors.yellowAccent),
+                      ),
+                    ),
+                ],
+              ),
+            ),
           ),
         ],
       ),

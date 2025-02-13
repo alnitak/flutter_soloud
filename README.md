@@ -55,6 +55,12 @@ On Linux and MacOS theese libraries must be installed if you want to use this ki
 
 if the libraries are not found the plugin will throw an exception when calling `setBufferStream` using Opus format.
 
+The `SoLoud.setBufferStream` supports also `BufferingType.preserved` which behaves the same as a normal `AudioSource`, and `BufferingType.released` which will free the memory of the already played audio for longer playback. The latter will accept to play only one instance of the audio stream at the same time.
+|BufferingType.preserved|BufferingType.released|
+|------------------------------------|----------------------------------|
+|![preserved](https://github.com/user-attachments/assets/e8699bfd-2a40-4832-a7a8-d729d844c48b)|![released](https://github.com/user-attachments/assets/7eb57688-ab0f-4859-813f-d23fff6ca10f)|
+|acts as normal leaving the whole audio data available for future re-play|while playing the already listened audio is freed. It can be listened to only once and the sound must be manually disposed|
+
 #### Web platform
 To use this plugin on the **Web platform**, please add the following scripts to the `<head>` or `<body>` section of your `index.html`:
 ```

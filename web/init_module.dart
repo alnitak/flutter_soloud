@@ -1,7 +1,6 @@
 // ignore_for_file: avoid_print, document_ignores
 
 import 'dart:js_interop';
-import 'dart:js_util';
 
 /// Initialize the WASM module before the app starts.
 /// It must be compiled with
@@ -25,9 +24,12 @@ external set globalModule(JSObject module);
 Future<void> initializeModule() async {
   try {
     // Convert JavaScript Promise to Dart Future
-    final modulePromise = moduleConstructor();
-    final module = await promiseToFuture<JSObject>(modulePromise);
-    globalModule = module; // Make it globally accessible
+    final modulePromise = moduleConstructor() as JSPromise;
+    final module = await JSPromiseToFuture<JSAny?>(modulePromise).toDart;
+    if (module == null) {
+      throw Exception('Module initialization failed: Module is null');
+    }
+    globalModule = module as JSObject; // Make it globally accessible
     print('Module_soloud initialized and set globally.');
   } catch (e) {
     print('Failed to initialize Module_soloud: $e');

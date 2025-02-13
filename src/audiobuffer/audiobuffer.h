@@ -48,6 +48,7 @@ namespace SoLoud
     SoLoud::time mBufferingTimeNeeds;
     PCMformat mPCMformat;
     Buffer mBuffer;
+    uint64_t mBytesReceived;
     bool dataIsEnded;
 #if defined(LIBOPUS_OGG_AVAILABLE) || defined(__EMSCRIPTEN__)
     std::unique_ptr<OpusDecoderWrapper> decoder;
@@ -59,11 +60,13 @@ namespace SoLoud
         Player *aPlayer,
         ActiveSound *aParent,
         unsigned int maxBufferSize = 1024 * 1024 * 100, // 100 Mbytes
+        BufferingType bufferingType = BufferingType::PRESERVED,
         time bufferingTimeNeeds = 2.0f, // 2 seconds of data to wait
         PCMformat pcmFormat = {44100, 2, 2, PCM_S16LE},
         dartOnBufferingCallback_t onBufferingCallback = nullptr);
     void setDataIsEnded();
     PlayerErrors addData(const void *aData, unsigned int numSamples, bool forceAdd = false);
+    BufferingType getBufferingType();
     virtual AudioSourceInstance *createInstance();
     time getLength();
 

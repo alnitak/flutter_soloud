@@ -308,3 +308,14 @@ class SoLoudFailedToDecodeOpusPacketCppException extends SoLoudCppException {
       'Failed to decode Opus data. This could happen when the data is '
       'corrupted. (on the C++ side).';
 }
+
+/// The buffer stream can be played only once when using `release` buffer type.
+class SoLoudBufferStreamCanBePlayedOnlyOnceCppException
+    extends SoLoudCppException {
+  /// Creates a new [SoLoudBufferStreamCanBePlayedOnlyOnceCppException].
+  const SoLoudBufferStreamCanBePlayedOnlyOnceCppException([super.message]);
+
+  @override
+  String get description => 'The buffer stream can be played only once when '
+      'using `BufferingType.release` buffer type. (on the C++ side).';
+}

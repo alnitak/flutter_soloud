@@ -185,15 +185,15 @@ class _GenerateState extends State<Generate> {
               onPressed: () async {
                 /// Setup the buffer stream for each streams.
                 tone = SoLoud.instance.setBufferStream(
-                  maxBufferSize: 1024 * 1024 * 1,
+                  maxBufferSizeBytes: 1024 * 1024 * 1,
                   format: BufferType.s8,
                 );
                 bouncing = SoLoud.instance.setBufferStream(
-                  maxBufferSize: 1024 * 1024 * 1,
+                  maxBufferSizeBytes: 1024 * 1024 * 1,
                   format: BufferType.s8,
                 );
                 siren = SoLoud.instance.setBufferStream(
-                  maxBufferSize: 1024 * 1024 * 1,
+                  maxBufferSizeBytes: 1024 * 1024 * 1,
                   format: BufferType.s8,
                 );
 

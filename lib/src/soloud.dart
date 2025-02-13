@@ -171,11 +171,6 @@ interface class SoLoud {
   /// Wheter or not the Opus and Ogg libraries are available.
   bool _areOpusOggLibsAvailable = false;
 
-  /// The backing private field for [isInitialized].
-  // TODO(filip): related to `get initialized`
-  // ignore: prefer_final_fields
-  bool _isInitialized = false;
-
   /// Whether or not is it possible to ask for wave and FFT data.
   bool _isVisualizationEnabled = false;
 
@@ -190,77 +185,9 @@ interface class SoLoud {
   /// - it's being shut down right now
   /// - it has been shut down
   ///
-  /// You can `await` [initialized] instead if you want to wait for the engine
-  /// to become ready (in case it's being initialized right now).
-  ///
   /// Use [isInitialized] only if you want to check the current status of
   /// the engine synchronously and you don't care that it might be ready soon.
-  // TODO(filip): related to `get initialized`. This line below is the old one.
-  // bool get isInitialized => _isInitialized;
-  // TODO(filip): this line below is the new one I leaved to let the
-  /// plugin to work.
   bool get isInitialized => _controller.soLoudFFI.isInited();
-
-  /// The completer for an initialization in progress.
-  ///
-  /// This is `null` when the engine is not currently being initialized.
-  // TODO(filip): related to `get initialized`.
-  Completer<void>? _initializeCompleter;
-
-  /// A [Future] that returns `true` when the audio engine is initialized
-  /// (and ready to play sounds, for example).
-  ///
-  /// You can call this at any time. For example:
-  ///
-  /// ```dart
-  /// void onPressed() async {
-  ///   if (await SoLoud.instance.initialized) {
-  ///     // The audio engine is ready. We can play sounds now.
-  ///     await SoLoud.instance.play(sound);
-  ///   }
-  /// }
-  /// ```
-  ///
-  /// The future will complete immediately (synchronously) if the engine is
-  /// either already initialized (`true`),
-  /// or it had failed to initialize (`false`),
-  /// or it was already shut down (`false`),
-  /// or it is _being_ shut down (`false`),
-  /// or when there wasn't ever a call to [init] at all (`false`).
-  ///
-  /// If the engine is in the middle of initializing, the future will complete
-  /// when the initialization is done. It will be `true` if the initialization
-  /// was successful, and `false` if it failed. The future will never throw.
-  ///
-  /// It is _not_ needed to await this future after a call to [init].
-  /// The [init] method already returns a future, and it is the
-  /// same future that this getter returns.
-  ///
-  /// ```dart
-  /// final result = await SoLoud.instance.initialize();
-  /// await SoLoud.instance.initialized;  // NOT NEEDED
-  /// ```
-  ///
-  /// This getter ([initialized]) is useful when you want to check the status
-  /// of the engine from places in your code that _don't_ do the initialization.
-  /// For example, a widget down the widget tree.
-  ///
-  /// If you need a version of this that is synchronous,
-  /// or if you don't care that the engine might be initializing right now
-  /// and therefore ready in a moment,
-  /// use [isInitialized] instead.
-  // TODO(filip): reimplement to satisfy the `Loader` timeout in the `init()`
-  FutureOr<bool> get initialized {
-    if (_initializeCompleter == null) {
-      // We are _not_ during initialization. Return synchronously.
-      return _isInitialized;
-    }
-
-    // We are in the middle of initializing the engine. Wait for that to
-    // complete and return `true` if it was successful.
-    return _initializeCompleter!.future
-        .then((_) => true, onError: (_) => false);
-  }
 
   /// Backing of [activeSounds].
   final List<AudioSource> _activeSounds = [];
@@ -302,13 +229,16 @@ interface class SoLoud {
   /// that play sounds from assets or from the file system, this is probably
   /// unnecessary, as the amount of data will be finite.
   /// The default is `false`.
+  ///
   /// [sampleRate] The sample rate represents the number of samples used, per
   /// second. Typical sample rates are 8000Hz, 22050Hz, 44100Hz and 48000Hz.
   /// Higher the sample rates mean clearer sound, but also bigger files, more
   /// memory and higher processing power requirements.
+  ///
   /// [bufferSize] Audio latency generally means the time it takes from
   /// triggering a sound to the sound actually coming out of the speakers.
   /// The smaller the latency, the better.
+  ///
   /// Unfortunately, there's always some latency. The primary source of
   /// latency (that a programmer can have any control over) is the size of
   /// audio buffer. Generally speaking, the smaller the buffer, the lower the
@@ -317,9 +247,6 @@ interface class SoLoud {
   /// data ready to be played) and the sound breaks down horribly.
   /// [channels] mono, stereo, quad, 5.1, 7.1.
   Future<void> init({
-    // TODO(filip): remove deprecation?
-    @Deprecated('timeout is not used anymore.')
-    Duration timeout = const Duration(seconds: 10),
     PlaybackDevice? device,
     bool automaticCleanup = false,
     int sampleRate = 44100,
@@ -356,8 +283,6 @@ interface class SoLoud {
     );
     _logPlayerError(error, from: 'initialize() result');
     if (error == PlayerErrors.noError) {
-      _isInitialized = true;
-
       /// get the visualization flag from the player on C side.
       /// Eventually we can set this as a parameter during the
       /// initialization with some other parameters like `sampleRate`
@@ -409,7 +334,6 @@ interface class SoLoud {
   void deinit() {
     _log.finest('deinit() called');
 
-    _isInitialized = false;
     _controller.soLoudFFI.disposeAllSound();
     _controller.soLoudFFI.deinit();
     _activeSounds.clear();
@@ -434,9 +358,6 @@ interface class SoLoud {
   /// These events are coming from `FlutterSoLoudFfi`. The callbacks
   /// `_voiceEndedCallback` and `_fileLoadedCallback` are called from CPP.
   /// From within these callbacks a new stream event is added and listened here.
-  // TODO(filip): 'setDartEventCallbacks()' can be called more then once,
-  // please take a look at the listeners if you find a better way
-  // to manage them only once.
   Future<void> _initializeNativeCallbacks() async {
     // Initialize callbacks.
     await _controller.soLoudFFI.setDartEventCallbacks();
@@ -668,13 +589,26 @@ interface class SoLoud {
 
   /// Set up an audio stream.
   ///
-  /// [maxBufferSize] the max buffer size in **bytes**. When adding audio data
-  /// using [addAudioDataStream] and this values is reached, the stream will
-  /// be considered ended (likewise we called [setDataIsEnded]). This means that
-  /// when playing it, it will stop at that point (if loop is not set).
+  /// [maxBufferSizeBytes] the max buffer size in **bytes**. When adding audio
+  /// data using [addAudioDataStream] and this values is reached, the stream
+  /// will be considered ended (likewise we called [setDataIsEnded]). This
+  /// means that when playing it, it will stop at that point (if loop is
+  /// not set). Note that the engine store floats internally, so even if you
+  /// add data as `s8`, it will be converted to `f32` internally.
   ///
-  /// **Note:** this parameter doesn't allocate any memory, but it just limits
-  /// the amount of data that can be added.
+  /// [maxBufferSizeDuration] same as [maxBufferSizeBytes] but the size is
+  /// calculated based on the [sampleRate] and [channels] parameters.
+  ///
+  /// **Note:** these parameters don't allocate any memory, but it is just a
+  /// limitation on the amount of data that can be added.
+  ///
+  /// [bufferingType] enum to choose how the buffering will work while playing
+  /// the stream. Using [BufferingType.preserved] will preserve the data already
+  /// in the buffer while playing it and adding new data.
+  /// Using [BufferingType.released] the buffer will free the memory of the
+  /// already played data. With this type only one instance (handle) of the
+  /// stream can be played at the same time. When it ends, the [AudioSource]
+  /// is empty and manually disposed.
   ///
   /// [bufferingTimeNeeds] the buffering time needed in seconds. If a handle
   /// reaches the current buffer length, it will start to buffer pausing it and
@@ -691,7 +625,7 @@ interface class SoLoud {
   ///
   /// [format] enum to choose from `f32le`, `s8`, `s16le`, `s32le` and
   /// `opus`. The last one is a special format that uses the Opus codec with
-  /// Ogg container. It supports only 48, 24, 16, 12 and 8 KHz sample rates
+  /// Ogg container. It supports 48, 24, 16, 12 and 8 KHz sample rates
   /// and mono and stereo.
   ///
   /// [onBuffering] a callback that is called when starting to buffer
@@ -704,7 +638,9 @@ interface class SoLoud {
   /// `opus` format but the Opus and Ogg libraries are not available. Please
   /// check the `README.md` file for more information.
   AudioSource setBufferStream({
-    int maxBufferSize = 1024 * 1024 * 100, // 100 MB in bytes
+    int? maxBufferSizeBytes,
+    Duration? maxBufferSizeDuration,
+    BufferingType bufferingType = BufferingType.preserved,
     double bufferingTimeNeeds = 2, // 2 seconds of data needed to un-pause
     int sampleRate = 24000,
     Channels channels = Channels.mono,
@@ -748,8 +684,24 @@ interface class SoLoud {
       throw const SoLoudWrongOpusParamsException();
     }
 
+    // Only [maxBufferSizeDuration] or [maxBufferSizeBytes] must be set.
+    assert(
+      maxBufferSizeDuration == null || maxBufferSizeBytes == null,
+      'Only [maxBufferSizeDuration] or [maxBufferSizeBytes] must be set.',
+    );
+
+    var bufferSize = maxBufferSizeBytes ?? 1024 * 1024 * 100; // 100 MB
+    if (maxBufferSizeDuration != null) {
+      bufferSize = (maxBufferSizeDuration.inMilliseconds *
+              sampleRate *
+              channels.count *
+              4) ~/
+          1000;
+    }
+
     final ret = SoLoudController().soLoudFFI.setBufferStream(
-          maxBufferSize,
+          bufferSize,
+          bufferingType,
           bufferingTimeNeeds,
           sampleRate,
           channels.count,
@@ -1115,6 +1067,8 @@ interface class SoLoud {
   /// Returns the [SoundHandle] of the new sound instance.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  /// Throws [SoLoudBufferStreamCanBePlayedOnlyOnceCppException] if we try to
+  /// play a BufferStream using `release` buffer type more than once.
   /// Throws [SoLoudSoundHashNotFoundDartException] if the given [sound]
   /// is not found.
   Future<SoundHandle> play(
@@ -1294,7 +1248,6 @@ interface class SoLoud {
         sound: sound,
         handle: const SoundHandle.error(),
       ));
-      // TODO(filiph): Close these in parallel using `Future.wait()`
       await sound.soundEventsController.close();
     }
 
@@ -2259,6 +2212,8 @@ interface class SoLoud {
   /// Returns the [SoundHandle] of this new sound.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  /// Throws [SoLoudBufferStreamCanBePlayedOnlyOnceCppException] if we try to
+  /// play a BufferStream using `release` buffer type more than once.
   Future<SoundHandle> play3d(
     AudioSource sound,
     double posX,

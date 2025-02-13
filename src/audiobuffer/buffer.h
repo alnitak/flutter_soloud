@@ -7,17 +7,24 @@
 #include <iostream>
 #include <cstring>
 
+enum BufferingType
+{
+    PRESERVED,
+    RELEASED
+};
+
 class Buffer
 {
 public:
     std::vector<int8_t> buffer; // Buffer that stores int8_t data
+    BufferingType bufferingType;
 
 private:
     size_t maxBytes; // Maximum capacity in bytes
 
 public:
     // Constructor that accepts the maxBytes parameter
-    Buffer() : maxBytes(0) {}
+    Buffer() : bufferingType(BufferingType::PRESERVED), maxBytes(0) {}
 
     ~Buffer()
     {
@@ -27,7 +34,10 @@ public:
     void setSizeInBytes(size_t newBytes)
     {
         maxBytes = newBytes;
+    }
 
+    void setBufferType(BufferingType type) {
+        bufferingType = type;
     }
 
     // Return the number of data written. Should be the same as numSamples else
@@ -97,6 +107,20 @@ public:
         const int8_t* data8 = reinterpret_cast<const int8_t*>(data);  // Convert float array to int8_t array
         buffer.insert(buffer.end(), data8, data8 + newNumSamples*sizeof(float)); // Append directly
         return newNumSamples;
+    }
+
+    // Remove data from the start of the buffer
+    size_t removeData(size_t bytesToRemove) {
+        size_t samplesRemoved = 0;
+        if (bufferingType == BufferingType::RELEASED && bytesToRemove > 0) {
+            samplesRemoved = bytesToRemove / sizeof(float);
+            if (bytesToRemove >= buffer.size()) {
+                buffer.clear();
+            } else {
+                buffer.erase(buffer.begin(), buffer.begin() + bytesToRemove);
+            }
+        }
+        return samplesRemoved;
     }
 
     // Function to get the current size of the buffer in bytes
