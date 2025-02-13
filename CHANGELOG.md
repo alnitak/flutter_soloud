@@ -1,4 +1,3 @@
-
 ### 3.0.0 (13 Feb 2025)
 - `BufferStream` now supports 2 type of buffering:
   - `BufferingType.preserved` (default): preserve the data already in the buffer while playing.
