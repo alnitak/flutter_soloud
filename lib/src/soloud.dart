@@ -189,7 +189,7 @@ interface class SoLoud {
   /// the engine synchronously and you don't care that it might be ready soon.
   bool get isInitialized => _controller.soLoudFFI.isInited();
 
-    /// Backing of [activeSounds].
+  /// Backing of [activeSounds].
   final List<AudioSource> _activeSounds = [];
 
   /// The sounds that are _currently being loaded_.
@@ -229,16 +229,16 @@ interface class SoLoud {
   /// that play sounds from assets or from the file system, this is probably
   /// unnecessary, as the amount of data will be finite.
   /// The default is `false`.
-  /// 
+  ///
   /// [sampleRate] The sample rate represents the number of samples used, per
   /// second. Typical sample rates are 8000Hz, 22050Hz, 44100Hz and 48000Hz.
   /// Higher the sample rates mean clearer sound, but also bigger files, more
   /// memory and higher processing power requirements.
-  /// 
+  ///
   /// [bufferSize] Audio latency generally means the time it takes from
   /// triggering a sound to the sound actually coming out of the speakers.
   /// The smaller the latency, the better.
-  /// 
+  ///
   /// Unfortunately, there's always some latency. The primary source of
   /// latency (that a programmer can have any control over) is the size of
   /// audio buffer. Generally speaking, the smaller the buffer, the lower the
