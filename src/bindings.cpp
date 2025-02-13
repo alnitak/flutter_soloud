@@ -47,21 +47,28 @@ extern "C"
 
 #ifdef __EMSCRIPTEN__
     /// Create the web worker and store a global "Module_soloud.workerUri" in JS.
-    FFI_PLUGIN_EXPORT void createWorkerInWasm()
+    FFI_PLUGIN_EXPORT bool createWorkerInWasm()
     {
-        printf("CPP void createWorkerInWasm()\n");
+        printf("CPP bool createWorkerInWasm()\n");
 
-        EM_ASM({
+        return EM_ASM_INT({
             if (!Module_soloud.wasmWorker)
             {
                 // Create a new Worker from the URI
                 var workerUri = "assets/packages/flutter_soloud/web/worker.dart.js";
                 console.log("EM_ASM creating Web Worker!");
-                Module_soloud.wasmWorker = new Worker(workerUri);
+                try {
+                    Module_soloud.wasmWorker = new Worker(workerUri);
+                    return 1;
+                } catch(e) {
+                    console.error('Failed to create worker:', e);
+                    return 0;
+                }
             }
             else
             {
                 console.log("EM_ASM web worker already created!");
+                return 0;
             }
         });
     }
@@ -401,6 +408,7 @@ extern "C"
     FFI_PLUGIN_EXPORT enum PlayerErrors setBufferStream(
         unsigned int *hash,
         unsigned long maxBufferSize,
+        int bufferingType,
         double bufferingTimeNeeds,
         unsigned int sampleRate,
         unsigned int channels,
@@ -433,6 +441,7 @@ extern "C"
         PlayerErrors e = (PlayerErrors)player.get()->setBufferStream(
             *hash,
             maxBufferSize,
+            (BufferingType)bufferingType,
             bufferingTimeNeeds,
             dataType,
             onBufferingCallback);
@@ -657,7 +666,7 @@ extern "C"
     /// [volume] 1.0f full volume
     /// [pan] 0.0f centered
     /// [paused] 0 not paused
-    /// [newHandle] pointer to the handle for this new sound
+    /// [handle] pointer to the handle for this new sound
     /// [looping] whether to start the sound in looping state.
     /// [loopingStartAt] If looping is enabled, the loop point is, by default,
     /// the start of the stream. The loop start point can be set with this parameter, and
@@ -675,9 +684,8 @@ extern "C"
     {
         if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
-        unsigned int newHandle = player.get()->play(soundHash, volume, pan, paused, looping, loopingStartAt);
-        *handle = newHandle;
-        return *handle == 0 ? soundHashNotFound : noError;
+        PlayerErrors result = player.get()->play(soundHash, *handle, volume, pan, paused, looping, loopingStartAt);
+        return result;
     }
 
     /// Stop already loaded sound identified by [handle] and clear it
@@ -1515,7 +1523,8 @@ extern "C"
     /// the start of the stream. The loop start point can be set with this parameter, and
     /// current loop point can be queried with [getLoopingPoint] and
     /// changed by [setLoopingPoint].
-    /// Returns the handle of the sound, 0 if error
+    /// [handle] pointer to the handle for this new sound
+    /// Return the error if any
     FFI_PLUGIN_EXPORT PlayerErrors play3d(
         unsigned int soundHash,
         float posX,
@@ -1534,8 +1543,9 @@ extern "C"
             player.get()->getSoundsCount() == 0)
             return backendNotInited;
 
-        *handle = player.get()->play3d(
+        PlayerErrors result = player.get()->play3d(
             soundHash,
+            *handle,
             posX, posY, posZ,
             velX, velY, velZ,
             volume,
@@ -1543,7 +1553,7 @@ extern "C"
             0,
             looping,
             loopingStartAt);
-        return *handle == 0 ? soundHashNotFound : noError;
+        return result;
     }
 
     /// You can set and get the current value of the speed of

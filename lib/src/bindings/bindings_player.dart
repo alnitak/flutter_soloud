@@ -128,6 +128,7 @@ abstract class FlutterSoLoud {
   /// Set up an audio stream.
   ///
   /// [maxBufferSize] the max buffer size in bytes.
+  /// [bufferingType] enum to choose how the buffering will work while playing
   /// [bufferingTimeNeeds] the buffering time needed in seconds. If a handle
   /// reaches the current buffer length, it will start to buffer pausing it and
   /// waiting until the buffer will have enough data to cover this time.
@@ -137,6 +138,7 @@ abstract class FlutterSoLoud {
   @mustBeOverridden
   ({PlayerErrors error, SoundHash soundHash}) setBufferStream(
     int maxBufferSize,
+    BufferingType bufferingType,
     double bufferingTimeNeeds,
     int sampleRate,
     int channels,
@@ -220,7 +222,6 @@ abstract class FlutterSoLoud {
   ///
   /// [textToSpeech] the text to be spoken.
   /// Returns [PlayerErrors.noError] if success and handle sound identifier.
-  // TODO(marco): add other T2S parameters
   @mustBeOverridden
   ({PlayerErrors error, SoundHandle handle}) speechText(String textToSpeech);
 
@@ -332,8 +333,6 @@ abstract class FlutterSoLoud {
   /// [timestamp] the time in which the loop will restart.
   @mustBeOverridden
   void setLoopPoint(SoundHandle handle, Duration timestamp);
-
-  // TODO(marco): implement Soloud.getLoopCount() also?
 
   /// Enable or disable visualization.
   /// Not yet supported on the web.

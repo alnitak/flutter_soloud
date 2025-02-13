@@ -84,7 +84,10 @@ enum PlayerErrors {
   failedToCreateOpusDecoder(23),
 
   /// Failed to decode Opus packet.
-  failedToDecodeOpusPacket(24);
+  failedToDecodeOpusPacket(24),
+
+  /// A BufferStream using `release` buffer type can be played only once.
+  bufferStreamCanBePlayedOnlyOnce(25);
 
   const PlayerErrors(this.value);
 
@@ -157,6 +160,9 @@ enum PlayerErrors {
         return 'Failed to create Opus decoder.';
       case PlayerErrors.failedToDecodeOpusPacket:
         return 'Failed to decode Opus packet.';
+      case PlayerErrors.bufferStreamCanBePlayedOnlyOnce:
+        return 'BufferStream can be played only once when using '
+            '`BufferingType.release` buffer type!';
     }
   }
 
@@ -342,4 +348,13 @@ enum BufferType {
         return 'Opus Encoded Audio';
     }
   }
+}
+
+/// How the buffering should work when using the BufferStream.
+enum BufferingType {
+  /// Preserve the data already in the buffer while adding new data.
+  preserved,
+
+  /// Release the data in the buffer while playing it.
+  released
 }

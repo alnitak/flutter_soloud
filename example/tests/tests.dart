@@ -39,7 +39,7 @@ class _Test {
   _Test({
     required this.name,
     required this.callback,
-    // ignore: unused_element
+    // ignore: unused_element_parameter
     this.status = TestStatus.none,
   });
   final String name;
