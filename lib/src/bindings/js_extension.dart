@@ -46,7 +46,7 @@ external JSFunction wasmCccall(
 );
 
 @JS('Module_soloud._createWorkerInWasm')
-external void wasmCreateWorkerInWasm();
+external int wasmCreateWorkerInWasm();
 
 @JS('Module_soloud._sendToWorker')
 external void wasmSendToWorker(int message, int value);

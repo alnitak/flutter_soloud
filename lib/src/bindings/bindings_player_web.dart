@@ -41,7 +41,11 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     // This calls the native WASM `createWorkerInWasm()` in `bindings.cpp`.
     // The latter creates a web Worker using `EM_ASM` inlining JS code to
     // create the worker in the WASM `Module`.
-    wasmCreateWorkerInWasm();
+    final result = wasmCreateWorkerInWasm();
+    if (result == 0) {
+      // The worker has been already created.
+      return;
+    }
 
     // Here the `Module_soloud.wasmModule` binded to a local [WorkerController]
     // is used in the main isolate to listen for events coming from native.

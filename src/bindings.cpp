@@ -47,21 +47,28 @@ extern "C"
 
 #ifdef __EMSCRIPTEN__
     /// Create the web worker and store a global "Module_soloud.workerUri" in JS.
-    FFI_PLUGIN_EXPORT void createWorkerInWasm()
+    FFI_PLUGIN_EXPORT bool createWorkerInWasm()
     {
-        printf("CPP void createWorkerInWasm()\n");
+        printf("CPP bool createWorkerInWasm()\n");
 
-        EM_ASM({
+        return EM_ASM_INT({
             if (!Module_soloud.wasmWorker)
             {
                 // Create a new Worker from the URI
                 var workerUri = "assets/packages/flutter_soloud/web/worker.dart.js";
                 console.log("EM_ASM creating Web Worker!");
-                Module_soloud.wasmWorker = new Worker(workerUri);
+                try {
+                    Module_soloud.wasmWorker = new Worker(workerUri);
+                    return 1;
+                } catch(e) {
+                    console.error('Failed to create worker:', e);
+                    return 0;
+                }
             }
             else
             {
                 console.log("EM_ASM web worker already created!");
+                return 0;
             }
         });
     }
