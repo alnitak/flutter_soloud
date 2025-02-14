@@ -86,13 +86,17 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
             ElevatedButton(
               onPressed: () async {
                 await SoLoud.instance.init();
-                
+
                 /// load the audio file
                 currentSound = await SoLoud.instance
                     .loadAsset('assets/audio/8_bit_mentality.mp3');
 
                 /// play it
-                await SoLoud.instance.play(currentSound!, looping: true);
+                await SoLoud.instance.play(
+                  currentSound!,
+                  looping: true,
+                  volume: 0.3,
+                );
               },
               child: const Text('init & play asset'),
             ),
@@ -103,8 +107,7 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
               },
               child: const Text('deinit'),
             ),
-            Text(
-                'Player state:\n$playerState\n\n'
+            Text('Player state:\n$playerState\n\n'
                 'Android audio focus:\n$androidFocusState\n\n'
                 'Android Headset info:\n$androidHeadsetInfo'),
           ],
