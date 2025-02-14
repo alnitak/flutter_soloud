@@ -41,8 +41,9 @@ class HelloFlutterSoLoud extends StatefulWidget {
 }
 
 class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
-  String audioFocusState = '';
-  HeadsetInfo? headsetInfo;
+  String androidFocusState = '';
+  String playerState = '';
+  HeadsetInfo? androidHeadsetInfo;
   AudioSource? currentSound;
 
   @override
@@ -64,13 +65,19 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
                 await SoLoud.instance.interruptions.initAndroidInterruptions();
                 SoLoud.instance.interruptions.headsetStateAndroidEvents.listen(
                   (event) => setState(() {
-                    headsetInfo = event;
+                    androidHeadsetInfo = event;
                   }),
                 );
 
                 SoLoud.instance.interruptions.audioAndroidFocusEvents.listen(
                   (event) => setState(() {
-                    audioFocusState = event.name;
+                    androidFocusState = event.name;
+                  }),
+                );
+
+                SoLoud.instance.interruptions.stateChangedEvents.listen(
+                  (event) => setState(() {
+                    playerState = event.name;
                   }),
                 );
               },
@@ -79,34 +86,15 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
             ElevatedButton(
               onPressed: () async {
                 await SoLoud.instance.init();
-                currentSound = null;
-              },
-              child: const Text('init'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                await SoLoud.instance.disposeAllSources();
-
-                if (kIsWeb) {
-                  /// load the audio file using [LoadMode.disk] (better for the
-                  /// Web platform).
-                  currentSound = await SoLoud.instance.loadAsset(
-                    'assets/audio/8_bit_mentality.mp3',
-                    mode: LoadMode.disk,
-                  );
-                } else {
-                  /// load the audio file
-                  currentSound = await SoLoud.instance
-                      .loadAsset('assets/audio/8_bit_mentality.mp3');
-                }
+                
+                /// load the audio file
+                currentSound = await SoLoud.instance
+                    .loadAsset('assets/audio/8_bit_mentality.mp3');
 
                 /// play it
                 await SoLoud.instance.play(currentSound!, looping: true);
               },
-              child: const Text(
-                'play asset',
-                textAlign: TextAlign.center,
-              ),
+              child: const Text('init & play asset'),
             ),
             ElevatedButton(
               onPressed: () {
@@ -116,7 +104,9 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
               child: const Text('deinit'),
             ),
             Text(
-                'Audio focus state:\n$audioFocusState\n\nHeadset info:\n$headsetInfo'),
+                'Player state:\n$playerState\n\n'
+                'Android audio focus:\n$androidFocusState\n\n'
+                'Android Headset info:\n$androidHeadsetInfo'),
           ],
         ),
       ),

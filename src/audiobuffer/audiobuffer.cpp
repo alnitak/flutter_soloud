@@ -31,7 +31,7 @@ namespace SoLoud
 			return 0;
 		}
 
-		unsigned int bufferSize = mParent->mBuffer.getFloatsBufferSize();
+		unsigned int bufferSize = static_cast<unsigned int>(mParent->mBuffer.getFloatsBufferSize());
 		float *buffer = reinterpret_cast<float *>(mParent->mBuffer.buffer.data());
 		int samplesToRead = mOffset + aSamplesToRead > bufferSize ? bufferSize - mOffset : aSamplesToRead;
 		if (samplesToRead <= 0)
@@ -184,7 +184,7 @@ namespace SoLoud
 	void BufferStream::setDataIsEnded()
 	{
 		if (buffer.size() > 0)
-			addData(buffer.data(), buffer.size(), true);
+			addData(buffer.data(), static_cast<unsigned int>(buffer.size()), true);
 		buffer.clear();
 		dataIsEnded = true;
 	}
@@ -202,7 +202,7 @@ namespace SoLoud
 			static_cast<const unsigned char *>(aData),
 			static_cast<const unsigned char *>(aData) + aDataLen);
 		mBytesReceived += aDataLen;
-		int bufferDataToAdd = 0;
+		unsigned int bufferDataToAdd = 0;
 		// Performing some buffering.
 		if (buffer.size() > 1024 * 2 && !forceAdd) // 2 KB of data
 		{
@@ -215,7 +215,7 @@ namespace SoLoud
 			else
 			{
 				// When using opus we don't need to align.
-				bufferDataToAdd = buffer.size();
+				bufferDataToAdd = static_cast<unsigned int>(buffer.size());
 			}
 		} else
 			// Return if there is not enough data to add.
@@ -231,7 +231,7 @@ namespace SoLoud
 					buffer.data(),
 					bufferDataToAdd);
 				if (newData.size() > 0)
-					bytesWritten = mBuffer.addData(BufferType::OPUS, newData.data(), newData.size());
+					bytesWritten = static_cast<unsigned int>(mBuffer.addData(BufferType::OPUS, newData.data(), static_cast<unsigned int>(newData.size())));
 				else
 					return PlayerErrors::noError;
 			}
@@ -245,7 +245,7 @@ namespace SoLoud
 		}
 		else
 		{
-			bytesWritten = mBuffer.addData(mPCMformat.dataType, buffer.data(), bufferDataToAdd / mPCMformat.bytesPerSample);
+			bytesWritten =  static_cast<unsigned int>(mBuffer.addData(mPCMformat.dataType, buffer.data(), bufferDataToAdd / mPCMformat.bytesPerSample));
 		}
 
 		// Remove the processed data from the buffer

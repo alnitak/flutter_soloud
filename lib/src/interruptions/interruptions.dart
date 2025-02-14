@@ -1,5 +1,6 @@
 import 'dart:async' show StreamController;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:meta/meta.dart';
 
@@ -275,10 +276,6 @@ class Interruptions {
   ///
   /// This method is only available on Android platforms.
   ///
-  /// The [onFocusChanged] callback is called when the audio focus changes.
-  /// The [onHeadsetChanged] callback is called when the headset (e.g. headphones)
-  /// is connected or disconnected.
-  ///
   /// When [androidAttributes] is not specified, the default attributes are used.
   /// The default attributes have the following settings:
   ///   * [AndroidAttributes.usage]: [AndroidUsage.usageGame]
@@ -288,10 +285,10 @@ class Interruptions {
   @experimental
   Future<void> initAndroidInterruptions({
     AndroidAttributes androidAttributes = const AndroidAttributes(),
-    // void Function(AndroidInterruptions focusState)? onFocusChanged,
-    // void Function(HeadsetInfo headsetInfo)? onHeadsetChanged,
   }) async {
-    // if (onFocusChanged != null || onHeadsetChanged != null) {
+    if (defaultTargetPlatform != TargetPlatform.android) {
+      return;
+    }
     channel.setMethodCallHandler((call) async {
       switch (call.method) {
         case 'onAudioFocusChanged':
@@ -315,7 +312,6 @@ class Interruptions {
           headsetStateAndroidController.add(headsetInfo);
       }
     });
-    // }
 
     await channel.invokeMethod<bool>('initialize', androidAttributes.toMap());
     return;
