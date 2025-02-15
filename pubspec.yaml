@@ -52,7 +52,7 @@ flutter:
         package: flutter.soloud.flutter_soloud
         pluginClass: FlutterSoloudPlugin
       ios:
-        ffiPlugin: true
+        pluginClass: FlutterSoloudPlugin
       linux:
         ffiPlugin: true
       macos:
@@ -71,3 +71,4 @@ flutter:
     - web/libflutter_soloud_plugin.js
     - web/libflutter_soloud_plugin.wasm
     - web/init_module.dart.js
+
