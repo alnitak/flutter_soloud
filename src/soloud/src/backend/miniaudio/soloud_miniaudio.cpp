@@ -99,6 +99,9 @@ namespace SoLoud
 
             case ma_device_notification_type_interruption_ended:
             {
+                #if defined(MA_HAS_COREAUDIO)
+                ma_device_start(&gDevice);
+                #endif
                 soloud->_stateChangedCallback(4);
             } break;
 

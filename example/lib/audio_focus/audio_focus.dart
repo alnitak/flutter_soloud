@@ -2,6 +2,7 @@ import 'dart:developer' as dev;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show MethodChannel;
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:logging/logging.dart';
 
@@ -52,6 +53,11 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
     super.dispose();
   }
 
+  Future<void> simulateIOSInterruption({String type = 'began'}) async {
+    const channel = MethodChannel('flutter_soloud');
+    await channel.invokeMethod('simulateInterruption', {'type': type});
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -81,7 +87,33 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
                   }),
                 );
               },
-              child: const Text('listen interruptions'),
+              child: const Text('listen to interruptions'),
+            ),
+            const Text('simulate interruptions. Only for iOS'),
+            ColoredBox(
+              color: Colors.grey,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  /// Send 'began' interruption
+                  ElevatedButton(
+                    onPressed: () => simulateIOSInterruption(type: 'began'),
+                    child: const Text('began'),
+                  ),
+              
+                  /// Send 'ended' interruption
+                  ElevatedButton(
+                    onPressed: () => simulateIOSInterruption(type: 'ended'),
+                    child: const Text('ended'),
+                  ),
+              
+                  /// Send 'endedResume' interruption
+                  ElevatedButton(
+                    onPressed: () => simulateIOSInterruption(type: 'endedResume'),
+                    child: const Text('endedResume'),
+                  ),
+                ],
+              ),
             ),
             ElevatedButton(
               onPressed: () async {
