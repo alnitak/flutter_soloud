@@ -445,7 +445,7 @@ interface class SoLoud {
     // Listen player state changes.
     // See "ma_device_notification_proc" in miniaudio.h.
     // Only `started` and `stopped` are working on all devices, the others
-    // are working only on iOS.
+    // are working only on iOS(?) and MacOS(?).
     if (!interruptions.stateChangedController.hasListener) {
       interruptions.stateChangedEvents.listen((newState) {
         _log.fine(() => 'Audio engine state changed: $newState');

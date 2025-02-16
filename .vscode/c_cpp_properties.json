@@ -34,7 +34,7 @@
                 "${workspaceFolder}/**",
                 "${workspaceFolder}/src"
             ],
-            "defines": ["MA_APPLE_MOBILE", "WITH_MINIAUDIO", "DR_MP3_IMPLEMENTATION"], // to see the code in between "#if defined"
+            "defines": ["MA_APPLE_MOBILE", "MA_SUPPORT_COREAUDIO", "WITH_MINIAUDIO", "DR_MP3_IMPLEMENTATION"], // to see the code in between "#if defined"
             "compilerPath": "/usr/bin/clang",
             "cStandard": "c17",
             "cppStandard": "c++17",

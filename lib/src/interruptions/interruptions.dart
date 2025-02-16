@@ -298,8 +298,9 @@ class Interruptions {
                 'AndroidInterruptions.${call.arguments as String}',
             orElse: () => AndroidInterruptions.audioFocusNone,
           );
-          // onFocusChanged?.call(focusState);
-          audioAndroidFocusController.add(focusState);
+          if (audioAndroidFocusController.hasListener) {
+            audioAndroidFocusController.add(focusState);
+          }
         case 'onHeadsetChanged':
           // Cast the dynamic Map to Map<String, dynamic> because when
           // the data is sent through platform channels, the type
@@ -308,8 +309,9 @@ class Interruptions {
           final headsetInfo = HeadsetInfo.fromMap(
             rawMap.map((key, value) => MapEntry(key.toString(), value)),
           );
-          // onHeadsetChanged?.call(headsetInfo);
-          headsetStateAndroidController.add(headsetInfo);
+          if (headsetStateAndroidController.hasListener) {
+            headsetStateAndroidController.add(headsetInfo);
+          }
       }
     });
 

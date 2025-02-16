@@ -63,6 +63,7 @@ namespace SoLoud
 {
     ma_device gDevice;
     SoLoud::Soloud *soloud;
+    ma_context context;
 
     // Added by Marco Bavagnoli
     void on_notification(const ma_device_notification* pNotification)
@@ -94,14 +95,20 @@ namespace SoLoud
 
             case ma_device_notification_type_interruption_began:
             {
+                // When this is triggered the player goes into a paused state
+                // Should be nice to fade out.
                 soloud->_stateChangedCallback(3);
             } break;
 
             case ma_device_notification_type_interruption_ended:
             {
-                #if defined(MA_HAS_COREAUDIO)
+#if defined(MA_HAS_COREAUDIO)
+                // On macOS and iOS when the the interruption begins
+                // the device is automatically stopped (not uninited with ma_device_uninit).
+                // So we need to start it again when the interruption ends.
+                // Should be nice to fade in.
                 ma_device_start(&gDevice);
-                #endif
+#endif
                 soloud->_stateChangedCallback(4);
             } break;
 
@@ -124,42 +131,65 @@ namespace SoLoud
     {
         ma_device_stop(&gDevice);
         ma_device_uninit(&gDevice);
+        ma_context_uninit(&context);
     }
 
     result miniaudio_init(SoLoud::Soloud *aSoloud, unsigned int aFlags, unsigned int aSamplerate, unsigned int aBuffer, unsigned int aChannels, void *pPlaybackInfos_id)
     {
         soloud = aSoloud;
-        ma_device_config config = ma_device_config_init(ma_device_type_playback);
-        if (pPlaybackInfos_id != NULL)
-        {
-            config.playback.pDeviceID = (ma_device_id*)pPlaybackInfos_id;
+
+#if defined(MA_HAS_COREAUDIO)
+        // Initialize context with CoreAudio settings
+        ma_context_config contextConfig = ma_context_config_init();
+        contextConfig.coreaudio.sessionCategory = ma_ios_session_category_playback;
+        contextConfig.coreaudio.sessionCategoryOptions = 
+            ma_ios_session_category_option_allow_bluetooth |
+            ma_ios_session_category_option_allow_bluetooth_a2dp |
+            ma_ios_session_category_option_default_to_speaker |
+            ma_ios_session_category_option_mix_with_others;
+
+        ma_result result = ma_context_init(NULL, 0, &contextConfig, &context);
+        if (result != MA_SUCCESS) {
+            return UNKNOWN_ERROR;
         }
-        config.periodSizeInFrames = aBuffer;
-        config.playback.format    = ma_format_f32;
-        config.playback.channels  = aChannels;
-        config.sampleRate         = aSamplerate;
-        config.dataCallback       = soloud_miniaudio_audiomixer;
-        config.pUserData          = (void *)aSoloud;
 
-        // config.aaudio.contentType = ma_aaudio_content_type_music;
-        // config.aaudio.usage = ma_aaudio_usage_media;
-        // config.aaudio.allowedCapturePolicy = ma_aaudio_allow_capture_by_all;
+        // Get available devices
+        ma_device_info* pPlaybackInfos;
+        ma_uint32 playbackCount;
+        ma_device_info* pCaptureInfos;
+        ma_uint32 captureCount;
+        if (ma_context_get_devices(&context, &pPlaybackInfos, &playbackCount, &pCaptureInfos, &captureCount) != MA_SUCCESS) {
+            return UNKNOWN_ERROR;
+        }
+#endif
 
-//        config.coreaudio.sessionCategory = ma_ios_session_category_playback;
-//        config.coreaudio.sessionCategoryOptions = ma_ios_session_category_option_duck_others;
+        // Configure and initialize the device
+        ma_device_config deviceConfig = ma_device_config_init(ma_device_type_playback);
+        if (pPlaybackInfos_id != NULL) {
+            deviceConfig.playback.pDeviceID = (ma_device_id*)pPlaybackInfos_id;
+        }
+        
+        deviceConfig.periodSizeInFrames = aBuffer;
+        deviceConfig.playback.format    = ma_format_f32;
+        deviceConfig.playback.channels  = aChannels;
+        deviceConfig.sampleRate         = aSamplerate;
+        deviceConfig.dataCallback       = soloud_miniaudio_audiomixer;
+        deviceConfig.pUserData          = (void *)aSoloud;
 
-        // config.opensl.streamType = ma_opensl_stream_type_media;
+        // deviceConfig.aaudio.contentType = ma_aaudio_content_type_music;
+        // deviceConfig.aaudio.usage = ma_aaudio_usage_media;
+        // deviceConfig.aaudio.allowedCapturePolicy = ma_aaudio_allow_capture_by_all;
 
-        if (aSoloud->_stateChangedCallback != nullptr)
-            config.notificationCallback = on_notification;
+        if (aSoloud->_stateChangedCallback != nullptr) {
+            deviceConfig.notificationCallback = on_notification;
+        }
 
-        if (ma_device_init(NULL, &config, &gDevice) != MA_SUCCESS)
-        {
+        if (ma_device_init(&context, &deviceConfig, &gDevice) != MA_SUCCESS) {
+            ma_context_uninit(&context);
             return UNKNOWN_ERROR;
         }
 
         aSoloud->postinit_internal(gDevice.sampleRate, gDevice.playback.internalPeriodSizeInFrames, aFlags, gDevice.playback.channels);
-
         aSoloud->mBackendCleanupFunc = soloud_miniaudio_deinit;
 
         ma_device_start(&gDevice);
