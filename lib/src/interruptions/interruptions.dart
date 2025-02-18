@@ -128,11 +128,12 @@ enum AndroidContentType {
   contentTypeUnknown,
 }
 
-/// Configuration class for Android audio attributes that control how audio playback
-/// behaves in relation to other audio streams.
+/// Configuration class for Android audio attributes that control how audio
+/// playback behaves in relation to other audio streams.
 ///
-/// Audio attributes help the system understand the purpose and characteristics of
-/// your audio playback, allowing it to manage audio focus and routing appropriately.
+/// Audio attributes help the system understand the purpose and
+/// characteristics of your audio playback, allowing it to manage audio focus
+/// and routing appropriately.
 ///
 /// Example:
 /// ```dart
@@ -154,10 +155,14 @@ class AndroidAttributes {
     this.acceptsDelayedFocusGain = true,
     this.willPauseWhenDucked = true,
   });
+  /// The usage category for audio playback
   final AndroidUsage usage;
+
+  /// The content type category for audio playback
   final AndroidContentType contentType;
 
-  /// Temporarily reducing the audio level of one app so that another can be heard clearly
+  /// Temporarily reducing the audio level of one app so that another can
+  /// be heard clearly
   /// Ref: https://developer.android.com/media/optimize/audio-focus#automatic_ducking
   final bool willPauseWhenDucked;
 
@@ -276,7 +281,8 @@ class Interruptions {
   ///
   /// This method is only available on Android platforms.
   ///
-  /// When [androidAttributes] is not specified, the default attributes are used.
+  /// When [androidAttributes] is not specified, the default attributes
+  /// are used.
   /// The default attributes have the following settings:
   ///   * [AndroidAttributes.usage]: [AndroidUsage.usageGame]
   ///   * [AndroidAttributes.contentType]: [AndroidContentType.contentTypeMusic]

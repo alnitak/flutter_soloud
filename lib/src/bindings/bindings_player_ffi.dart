@@ -8,19 +8,19 @@ import 'dart:ffi' as ffi;
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
-import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:flutter_soloud/src/bindings/audio_data.dart';
 import 'package:flutter_soloud/src/bindings/bindings_player.dart';
 import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/exceptions/exceptions.dart';
 import 'package:flutter_soloud/src/filters/filters.dart';
 import 'package:flutter_soloud/src/helpers/playback_device.dart';
-import 'package:flutter_soloud/src/interruptions/interruptions.dart' show PlayerStateNotification;
+import 'package:flutter_soloud/src/interruptions/interruptions.dart'
+    show PlayerStateNotification;
+import 'package:flutter_soloud/src/soloud.dart' show SoLoud;
 import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
 import 'package:logging/logging.dart';
 import 'package:meta/meta.dart';
-import 'package:flutter/services.dart';
 
 typedef DartVoiceEndedCallbackT
     = ffi.Pointer<ffi.NativeFunction<DartVoiceEndedCallbackTFunction>>;
