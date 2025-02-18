@@ -28,7 +28,5 @@
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>Used to capture audio for flutter_soloud plugin</string>
 </dict>
 </plist>

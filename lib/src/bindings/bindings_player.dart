@@ -41,18 +41,6 @@ abstract class FlutterSoLoud {
   Stream<Map<String, dynamic>> get fileLoadedEvents =>
       fileLoadedEventsController.stream;
 
-  /// Controller to listen to voice ended events.
-  /// Not used on the web.
-  @experimental
-  late final StreamController<PlayerStateNotification> stateChangedController =
-      StreamController.broadcast();
-
-  /// listener for voices ended.
-  /// Not used on the web.
-  @experimental
-  Stream<PlayerStateNotification> get stateChangedEvents =>
-      stateChangedController.stream;
-
   /// Set Dart functions to call when an event occurs.
   ///
   /// On the web, only the `voiceEndedCallback` is supported. On the other

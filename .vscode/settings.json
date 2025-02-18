@@ -109,5 +109,6 @@
         "text_encoding": "cpp",
         "coroutine": "cpp"
     },
-    "java.configuration.updateBuildConfiguration": "interactive"
+    "java.configuration.updateBuildConfiguration": "interactive",
+    "java.compile.nullAnalysis.mode": "automatic"
 }

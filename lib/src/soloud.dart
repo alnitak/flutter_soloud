@@ -12,6 +12,7 @@ import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/exceptions/exceptions.dart';
 import 'package:flutter_soloud/src/filters/filters.dart';
 import 'package:flutter_soloud/src/helpers/playback_device.dart';
+import 'package:flutter_soloud/src/interruptions/interruptions.dart';
 import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
 import 'package:flutter_soloud/src/utils/loader.dart';
@@ -202,6 +203,10 @@ interface class SoLoud {
   /// Completers for the [stop] method
   @internal
   final Map<SoundHandle, Completer<void>> voiceEndedCompleters = {};
+
+  /// see [Interruptions]
+  @experimental
+  late final interruptions = Interruptions();
 
   /// Initializes the audio engine.
   ///
@@ -437,15 +442,16 @@ interface class SoLoud {
       });
     }
 
-    // Listen player state changes. Not doing much now.
-    // This doesn't work on Android. See "ma_device_notification_proc"
-    // in miniaudio.h. Only `started` and `stopped` are working.
-    // Leaving this commented out for futher investigation.
-    // if (!_controller.soLoudFFI.stateChangedController.hasListener) {
-    //   _controller.soLoudFFI.stateChangedEvents.listen((newState) {
-    //     _log.fine(() => 'Audio engine state changed: $newState');
-    //   });
-    // }
+    // Listen player state changes.
+    // See "ma_device_notification_proc" in miniaudio.h.
+    // Only `started` and `stopped` are working on all devices, the others
+    // are working only on iOS(?) and MacOS(?).
+    if (!interruptions.stateChangedController.hasListener) {
+      interruptions.stateChangedEvents.listen((newState) {
+        _log.fine(() => 'Audio engine state changed: $newState');
+        interruptions.stateChangedController.add(newState);
+      });
+    }
   }
 
   AudioSource _addNewSound(
@@ -1754,7 +1760,7 @@ interface class SoLoud {
 
   // ///////////////////////////////////////
   //  voice groups
-  // ///////////////////////////////////////
+  // //////////////////////////////////////
 
   /// Used to create a new voice group. Returns 0 if not successful.
   SoundHandle createVoiceGroup() {

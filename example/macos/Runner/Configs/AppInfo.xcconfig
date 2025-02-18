@@ -8,7 +8,7 @@
 PRODUCT_NAME = flutter_soloud_example
 
 // The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = com.example.flutterSoloudExample
+PRODUCT_BUNDLE_IDENTIFIER = com.example.fluttersoloud.flutterSoloudExample
 
 // The copyright displayed in application information
-PRODUCT_COPYRIGHT = Copyright © 2023 com.example. All rights reserved.
+PRODUCT_COPYRIGHT = Copyright © 2025 com.example.flutter_soloud. All rights reserved.
