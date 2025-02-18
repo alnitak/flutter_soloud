@@ -99,6 +99,7 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
                 children: [
                   /// Send 'began' interruption
                   ElevatedButton(
+                    // ignore: avoid_redundant_argument_values
                     onPressed: () => simulateIOSInterruption(type: 'began'),
                     child: const Text('began'),
                   ),
