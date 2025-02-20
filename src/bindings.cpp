@@ -30,7 +30,7 @@ extern "C"
     /// mutex to lock the loading audio methods and make safe operations on player.sounds list.
     std::mutex loadMutex;
 
-    std::unique_ptr<Player> player = nullptr;
+    std::unique_ptr<Player> player = std::make_unique<Player>();
     std::unique_ptr<Analyzer> analyzer = std::make_unique<Analyzer>(2048);
 
     typedef void (*dartVoiceEndedCallback_t)(unsigned int *);
@@ -289,8 +289,9 @@ extern "C"
         dartVoiceEndedCallback = nullptr;
         dartFileLoadedCallback = nullptr;
         dartStateChangedCallback = nullptr;
-        player.get()->dispose();
+        player.reset();
         player = nullptr;
+        player = std::make_unique<Player>();
     }
 
     FFI_PLUGIN_EXPORT int isInited()

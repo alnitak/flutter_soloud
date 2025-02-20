@@ -11,7 +11,7 @@
 				}
 			],
 			"type" : "UNINITIALIZED",
-			"value" : "arm64-v8a"
+			"value" : "armeabi-v7a"
 		},
 		{
 			"name" : "ANDROID_NDK",
@@ -63,7 +63,7 @@
 				}
 			],
 			"type" : "UNINITIALIZED",
-			"value" : "arm64-v8a"
+			"value" : "armeabi-v7a"
 		},
 		{
 			"name" : "CMAKE_ANDROID_NDK",
@@ -151,7 +151,7 @@
 				}
 			],
 			"type" : "INTERNAL",
-			"value" : "/home/deimos/FLUTTER/libs/flutter_soloud/example/android/app/.cxx/Debug/5p4b6b24/arm64-v8a"
+			"value" : "/home/deimos/FLUTTER/libs/flutter_soloud/example/android/app/.cxx/Debug/5p4b6b24/armeabi-v7a"
 		},
 		{
 			"name" : "CMAKE_CACHE_MAJOR_VERSION",
@@ -224,22 +224,6 @@
 			],
 			"type" : "INTERNAL",
 			"value" : "/home/deimos/Android/Sdk/cmake/3.22.1/bin/ctest"
-		},
-		{
-			"name" : "CMAKE_CXX_COMPILER",
-			"properties" : 
-			[
-				{
-					"name" : "ADVANCED",
-					"value" : "1"
-				},
-				{
-					"name" : "HELPSTRING",
-					"value" : "(This variable does not exist and should not be used)"
-				}
-			],
-			"type" : "UNINITIALIZED",
-			"value" : ""
 		},
 		{
 			"name" : "CMAKE_CXX_COMPILER_AR",
@@ -368,22 +352,6 @@
 			],
 			"type" : "STRING",
 			"value" : "-latomic -lm"
-		},
-		{
-			"name" : "CMAKE_C_COMPILER",
-			"properties" : 
-			[
-				{
-					"name" : "ADVANCED",
-					"value" : "1"
-				},
-				{
-					"name" : "HELPSTRING",
-					"value" : "(This variable does not exist and should not be used)"
-				}
-			],
-			"type" : "UNINITIALIZED",
-			"value" : ""
 		},
 		{
 			"name" : "CMAKE_C_COMPILER_AR",
@@ -751,7 +719,7 @@
 				}
 			],
 			"type" : "UNINITIALIZED",
-			"value" : "/home/deimos/FLUTTER/libs/flutter_soloud/example/build/app/intermediates/cxx/Debug/5p4b6b24/obj/arm64-v8a"
+			"value" : "/home/deimos/FLUTTER/libs/flutter_soloud/example/build/app/intermediates/cxx/Debug/5p4b6b24/obj/armeabi-v7a"
 		},
 		{
 			"name" : "CMAKE_LINKER",
@@ -1023,7 +991,7 @@
 				}
 			],
 			"type" : "UNINITIALIZED",
-			"value" : "/home/deimos/FLUTTER/libs/flutter_soloud/example/build/app/intermediates/cxx/Debug/5p4b6b24/obj/arm64-v8a"
+			"value" : "/home/deimos/FLUTTER/libs/flutter_soloud/example/build/app/intermediates/cxx/Debug/5p4b6b24/obj/armeabi-v7a"
 		},
 		{
 			"name" : "CMAKE_SHARED_LINKER_FLAGS",
@@ -1287,10 +1255,10 @@
 			[
 				{
 					"name" : "HELPSTRING",
-					"value" : "The CMake toolchain file"
+					"value" : "No help, variable specified on the command line."
 				}
 			],
-			"type" : "FILEPATH",
+			"type" : "UNINITIALIZED",
 			"value" : "/home/deimos/Android/Sdk/ndk/26.3.11579264/build/cmake/android.toolchain.cmake"
 		},
 		{
@@ -1343,7 +1311,7 @@
 				}
 			],
 			"type" : "STATIC",
-			"value" : "/home/deimos/FLUTTER/libs/flutter_soloud/example/android/app/.cxx/Debug/5p4b6b24/arm64-v8a"
+			"value" : "/home/deimos/FLUTTER/libs/flutter_soloud/example/android/app/.cxx/Debug/5p4b6b24/armeabi-v7a"
 		},
 		{
 			"name" : "Project_IS_TOP_LEVEL",
