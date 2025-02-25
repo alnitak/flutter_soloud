@@ -242,7 +242,15 @@ bool Filters::removeFilter(FilterType filterType)
     if (index < 0)
         return false;
 
-    mSoloud->setGlobalFilter(index, 0);
+    if (mSound == nullptr)
+    {
+        mSoloud->setGlobalFilter(index, 0);
+    }
+    else
+    {
+        mSound->sound.get()->setFilter(index, 0);
+    }
+
     filters[index].get()->filter.reset();
 
     /// shift filters down by 1 from [index]
