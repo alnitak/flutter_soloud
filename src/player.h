@@ -277,11 +277,11 @@ public:
 
     /// @brief Calculates FFT of the currently playing sound.
     /// @return a 256 float pointer to the result.
-    float *calcFFT();
+    float *calcFFT(bool *isTheSameAsBefore);
 
     /// @brief Gets 256 samples of the currently playing sound.
     /// @return a 256 float pointer to the result.
-    float *getWave();
+    float *getWave(bool *isTheSameAsBefore);
 
     /// @brief get the sound length in seconds.
     /// @param soundHash the sound hash.

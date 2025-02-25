@@ -47,7 +47,9 @@ class AudioDataCtrl {
 
   Float32List getWave() {
     final val = Pointer<Float>.fromAddress(samplesWave.value.address);
-    if (val == nullptr) return Float32List(0);
+    if (val == nullptr) {
+      return Float32List(0);
+    }
     return Float32List.view(
       val.cast<Uint8>().asTypedList(256 * 4).buffer,
       0,

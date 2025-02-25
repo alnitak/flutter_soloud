@@ -152,7 +152,7 @@ class AudioData {
     ctrl.dispose(_getSamplesKind);
   }
 
-  /// Get audio data data.
+  /// Get audio data.
   ///
   /// Depending on the [GetSamplesKind] used to initialize [AudioData],
   /// the returned data will be a [Float32List]. See [GetSamplesKind] for

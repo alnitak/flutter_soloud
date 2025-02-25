@@ -852,6 +852,11 @@ extern "C"
         }
         float *wave = player.get()->getWave();
         float *fft = analyzer.get()->calcFFT(wave);
+        if (wave == nullptr || fft == nullptr)
+        {
+            samples = nullptr;
+            return;
+        }
 
         memcpy(samples, fft, sizeof(float) * 256);
         memcpy(samples + 256, wave, sizeof(float) * 256);
@@ -874,10 +879,19 @@ extern "C"
             memset(*samples, 0, sizeof(float) * 512 * 256);
             return backendNotInited;
         }
+        float* tmpTextureRow = (float*)malloc(sizeof(float) * 512);
+        getAudioTexture(tmpTextureRow);
+        if (tmpTextureRow == nullptr)
+        {
+            free(tmpTextureRow);
+            *samples = nullptr;
+            return noError;
+        }
         /// shift up 1 row
         memmove(*texture2D + 512, texture2D, sizeof(float) * 512 * 255);
         /// store the new 1st row
-        getAudioTexture(texture2D[0]);
+        memcpy(*texture2D, tmpTextureRow, sizeof(float) * 512);
+        free(tmpTextureRow);
         *samples = *texture2D;
         return noError;
     }
