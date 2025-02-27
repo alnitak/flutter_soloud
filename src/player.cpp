@@ -213,6 +213,8 @@ const std::string Player::getErrorString(PlayerErrors errorCode) const
         return "error: failed to create Opus decoder!";
     case failedToDecodeOpusPacket:
         return "error: failed to decode Opus packet!";
+    case bufferStreamCanBePlayedOnlyOnce:
+        return "error: buffer stream can be played only once!";
     }
     return "Other error";
 }
@@ -665,7 +667,7 @@ float *Player::calcFFT(bool *isTheSameAsBefore)
     }
     memcpy(fftData, currentWave, sizeof(fftData));
     
-    return waveData;
+    return fftData;
 }
 
 float waveData[256];

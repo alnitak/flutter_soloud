@@ -14,8 +14,8 @@ class AudioDataWidgetState extends State<AudioDataWidget>
     with SingleTickerProviderStateMixin {
   Ticker? ticker;
 
-  /// Set [AudioData] to use a `linear` data kind. This is the way to get both
-  /// wave and FFT data.
+  /// Set [AudioData] to use a [GetSamplesKind.linear] data kind.
+  /// This is the way to get both wave and FFT data in a single list.
   final AudioData audioData = AudioData(GetSamplesKind.linear);
 
   @override
@@ -35,7 +35,7 @@ class AudioDataWidgetState extends State<AudioDataWidget>
   void _tick(Duration elapsed) {
     if (context.mounted) {
       try {
-        /// Internally update the audio data to be used later
+        /// Internally update the audio data to be get later
         /// with `audioData.getLinear*()` in [WavePainter]
         audioData.updateSamples();
         setState(() {});
@@ -71,8 +71,7 @@ class AudioDataWidgetState extends State<AudioDataWidget>
   }
 }
 
-/// Custom painter to draw the wave in a circle
-///
+/// Custom painter to draw the wave and the FFT
 class WavePainter extends CustomPainter {
   const WavePainter({
     required this.audioData,
@@ -81,12 +80,17 @@ class WavePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    // ignore: avoid_redundant_argument_values
+    final samples = audioData.getAudioData(alwaysReturnData: true);
+    // Using `alwaysReturnData: true` this will always return a non-empty list
+    // even if the audio data is the same as the previous one.
+    if (samples.isEmpty) {
+      return;
+    }
     final barWidth = size.width / 256;
     final paint = Paint()
       ..strokeWidth = barWidth * 0.8
       ..color = Colors.yellowAccent;
-
-    final samples = audioData.getAudioData();
 
     double waveHeight;
     double fftHeight;

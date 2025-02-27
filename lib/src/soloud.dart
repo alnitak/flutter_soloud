@@ -5,7 +5,6 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_soloud/src/audio_source.dart';
-import 'package:flutter_soloud/src/bindings/audio_data.dart';
 import 'package:flutter_soloud/src/bindings/bindings_player.dart';
 import 'package:flutter_soloud/src/bindings/soloud_controller.dart';
 import 'package:flutter_soloud/src/enums.dart';
@@ -1696,42 +1695,6 @@ interface class SoLoud {
     _controller.soLoudFFI.setMaxActiveVoiceCount(maxVoiceCount);
   }
 
-  /// Return a floats matrix of 256x512.
-  /// Every row are composed of 256 FFT values plus 256 of wave data.
-  /// Every time is called, a new row is stored in the
-  /// first row and all the previous rows are shifted up. The last
-  /// one will be lost.
-  ///
-  /// [audioData] this is the list where data is stored. It can be read like
-  /// any other list. For example the first row can be read like this:
-  /// `audioData[0...255]` this range represents FFT values for the first row
-  /// `audioData[256...512]` this range represents wave data for the first row
-  /// multiply the index by the row number you want to query.
-  ///
-  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
-  /// Throws [SoLoudVisualizationNotEnabledException] if the visualization
-  /// flag is not enableb. Please, Use `setVisualizationEnabled(true)`
-  /// when needed.
-  /// Throws [SoLoudNullPointerException] something is going wrong with the
-  /// player engine. Please, open an issue on
-  /// [GitHub](https://github.com/alnitak/flutter_soloud/issues) providing
-  /// a simple working example.
-  @experimental
-  @Deprecated('Please use AudioData class instead.')
-  void getAudioTexture2D(AudioData audioData) {
-    if (!isInitialized) {
-      throw const SoLoudNotInitializedException();
-    }
-    if (!_isVisualizationEnabled) {
-      throw const SoLoudVisualizationNotEnabledException();
-    }
-    final error = _controller.soLoudFFI.getAudioTexture2D(audioData);
-    _logPlayerError(error, from: 'getAudioTexture2D() result');
-    if (error != PlayerErrors.noError) {
-      throw SoLoudCppException.fromPlayerError(error);
-    }
-  }
-
   /// Smooth FFT data.
   /// When new data is read and the values are decreasing, the new value
   /// will be decreased with an amplitude between the old and the new value.
@@ -1744,7 +1707,6 @@ interface class SoLoud {
   /// newFreq = smooth * oldFreq + (1 - smooth) * newFreq
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
-  @experimental
   void setFftSmoothing(double smooth) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();

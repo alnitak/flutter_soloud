@@ -210,19 +210,19 @@ external void wasmSetVisualizationEnabled(int enabled);
 external int wasmGetVisualizationEnabled();
 
 @JS('Module_soloud._getWave')
-external void wasmGetWave(int samplesPtr);
+external void wasmGetWave(int samplesPtr, int isTheSameAsBeforePtr);
 
 @JS('Module_soloud._getFft')
-external void wasmGetFft(int samplesPtr);
+external void wasmGetFft(int samplesPtr, int isTheSameAsBeforePtr);
 
 @JS('Module_soloud._setFftSmoothing')
 external void wasmSetFftSmoothing(double smooth);
 
 @JS('Module_soloud._getAudioTexture')
-external void wasmGetAudioTexture(int samplesPtr);
+external void wasmGetAudioTexture(int samplesPtr, int isTheSameAsBeforePtr);
 
 @JS('Module_soloud._getAudioTexture2D')
-external int wasmGetAudioTexture2D(int samplesPtr);
+external void wasmGetAudioTexture2D(int samplesPtr, int isTheSameAsBeforePtr);
 
 @JS('Module_soloud._getTextureValue')
 external double wasmGetTextureValue(int row, int column);

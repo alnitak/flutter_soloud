@@ -39,7 +39,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   /// Initialize the player.
-  await SoLoud.instance.init();
+  await SoLoud.instance.init(bufferSize: 1024, channels: Channels.mono);
 
   /// Activate the visualization. Mandatory to acquire audio data.
   SoLoud.instance.setVisualizationEnabled(true);

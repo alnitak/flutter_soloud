@@ -6,7 +6,6 @@ import 'package:ffi/ffi.dart' show calloc;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_soloud/src/bindings/audio_data.dart';
 import 'package:flutter_soloud/src/bindings/soloud_controller.dart';
-import 'package:flutter_soloud/src/enums.dart';
 
 class AudioDataCtrl {
   /// To reflect [AudioDataCtrl] for web. Not used with `dart:ffi`
@@ -22,16 +21,19 @@ class AudioDataCtrl {
   /// Where the audio 1D data is stored.
   late Pointer<Float> samples1D;
 
-  final void Function(AudioData) waveCallback =
+  final bool Function(AudioData) waveCallback =
       SoLoudController().soLoudFFI.getWave;
 
-  final void Function(AudioData) textureCallback =
+  final bool Function(AudioData) textureCallback =
       SoLoudController().soLoudFFI.getAudioTexture;
 
-  final PlayerErrors Function(AudioData) texture2DCallback =
+  final bool Function(AudioData) texture2DCallback =
       SoLoudController().soLoudFFI.getAudioTexture2D;
 
+  late bool dataIsTheSameAsBefore;
+
   void allocSamples(AudioData audioData) {
+    dataIsTheSameAsBefore = false;
     samples2D = calloc();
     samples1D = calloc(512 * 4);
     samplesWave = calloc();
@@ -45,21 +47,22 @@ class AudioDataCtrl {
     if (samples2D != nullptr) calloc.free(samples2D);
   }
 
-  Float32List getWave() {
-    final val = Pointer<Float>.fromAddress(samplesWave.value.address);
-    if (val == nullptr) {
+  Float32List getWave({bool alwaysReturnData = true}) {
+    final wavePtr = samplesWave.value;
+    if (!alwaysReturnData && dataIsTheSameAsBefore || wavePtr == nullptr) {
       return Float32List(0);
     }
+
     return Float32List.view(
-      val.cast<Uint8>().asTypedList(256 * 4).buffer,
+      wavePtr.cast<Uint8>().asTypedList(256 * 4).buffer,
       0,
       256,
     );
   }
 
-  Float32List getFftAndWave() {
+  Float32List getFftAndWave({bool alwaysReturnData = true}) {
+    if (!alwaysReturnData && dataIsTheSameAsBefore) return Float32List(0);
     final val = Pointer<Float>.fromAddress(samples1D.address);
-    if (val == nullptr) return Float32List(0);
     return Float32List.view(
       val.cast<Uint8>().asTypedList(512 * 4).buffer,
       0,
@@ -67,13 +70,19 @@ class AudioDataCtrl {
     );
   }
 
-  Float32List get2DTexture() {
-    final val = Pointer<Float>.fromAddress(samples1D.address);
-    if (val == nullptr) return Float32List(0);
-    return Float32List.view(
-      val.cast<Uint8>().asTypedList(512 * 256 * 4).buffer,
+  Float32List get2DTexture({bool alwaysReturnData = true}) {
+    final wavePtr = samples2D.value;
+
+    if (!alwaysReturnData && dataIsTheSameAsBefore || wavePtr == nullptr) {
+      return Float32List(0);
+    }
+
+    final ret = Float32List.view(
+      wavePtr.cast<Uint8>().asTypedList(512 * 256 * 4).buffer,
       0,
       512 * 256,
     );
+
+    return ret;
   }
 }

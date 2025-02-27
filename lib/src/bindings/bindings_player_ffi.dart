@@ -802,26 +802,38 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       _getVisualizationEnabledPtr.asFunction<int Function()>();
 
   @override
-  void getFft(AudioData fft) {
-    return _getFft(fft.ctrl.samplesWave);
+  bool getFft(AudioData fft) {
+    final isTheSameAsBefore = calloc<ffi.Bool>();
+    _getFft(fft.ctrl.samplesWave, isTheSameAsBefore);
+    final ret = isTheSameAsBefore.value;
+    calloc.free(isTheSameAsBefore);
+    return ret;
   }
 
   late final _getFftPtr = _lookup<
       ffi.NativeFunction<
-          ffi.Void Function(ffi.Pointer<ffi.Pointer<ffi.Float>>)>>('getFft');
-  late final _getFft = _getFftPtr
-      .asFunction<void Function(ffi.Pointer<ffi.Pointer<ffi.Float>>)>();
+          ffi.Void Function(ffi.Pointer<ffi.Pointer<ffi.Float>>,
+              ffi.Pointer<ffi.Bool>)>>('getFft');
+  late final _getFft = _getFftPtr.asFunction<
+      void Function(
+          ffi.Pointer<ffi.Pointer<ffi.Float>>, ffi.Pointer<ffi.Bool>)>();
 
   @override
-  void getWave(AudioData wave) {
-    return _getWave(wave.ctrl.samplesWave);
+  bool getWave(AudioData wave) {
+    final isTheSameAsBefore = calloc<ffi.Bool>();
+    _getWave(wave.ctrl.samplesWave, isTheSameAsBefore);
+    final ret = isTheSameAsBefore.value;
+    calloc.free(isTheSameAsBefore);
+    return ret;
   }
 
   late final _getWavePtr = _lookup<
       ffi.NativeFunction<
-          ffi.Void Function(ffi.Pointer<ffi.Pointer<ffi.Float>>)>>('getWave');
-  late final _getWave = _getWavePtr
-      .asFunction<void Function(ffi.Pointer<ffi.Pointer<ffi.Float>>)>();
+          ffi.Void Function(ffi.Pointer<ffi.Pointer<ffi.Float>>,
+              ffi.Pointer<ffi.Bool>)>>('getWave');
+  late final _getWave = _getWavePtr.asFunction<
+      void Function(
+          ffi.Pointer<ffi.Pointer<ffi.Float>>, ffi.Pointer<ffi.Bool>)>();
 
   @override
   void setFftSmoothing(double smooth) {
@@ -836,30 +848,38 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       _setFftSmoothingPtr.asFunction<void Function(double)>();
 
   @override
-  void getAudioTexture(AudioData samples) {
-    return _getAudioTexture(samples.ctrl.samples1D);
+  bool getAudioTexture(AudioData samples) {
+    final isTheSameAsBefore = calloc<ffi.Bool>();
+    _getAudioTexture(samples.ctrl.samples1D, isTheSameAsBefore);
+    final ret = isTheSameAsBefore.value;
+    calloc.free(isTheSameAsBefore);
+    return ret;
   }
 
-  late final _getAudioTexturePtr =
-      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Float>)>>(
+  late final _getAudioTexturePtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Void Function(ffi.Pointer<ffi.Float>, ffi.Pointer<ffi.Bool>)>>(
     'getAudioTexture',
   );
-  late final _getAudioTexture =
-      _getAudioTexturePtr.asFunction<void Function(ffi.Pointer<ffi.Float>)>();
+  late final _getAudioTexture = _getAudioTexturePtr.asFunction<
+      void Function(ffi.Pointer<ffi.Float>, ffi.Pointer<ffi.Bool>)>();
 
   @override
-  PlayerErrors getAudioTexture2D(AudioData samples) {
-    final ret = _getAudioTexture2D(samples.ctrl.samples2D);
-    return PlayerErrors.values[ret];
+  bool getAudioTexture2D(AudioData samples) {
+    final isTheSameAsBefore = calloc<ffi.Bool>();
+    _getAudioTexture2D(samples.ctrl.samples2D, isTheSameAsBefore);
+    final ret = isTheSameAsBefore.value;
+    calloc.free(isTheSameAsBefore);
+    return ret;
   }
 
   late final _getAudioTexture2DPtr = _lookup<
       ffi.NativeFunction<
-          ffi.Int32 Function(
-            ffi.Pointer<ffi.Pointer<ffi.Float>>,
-          )>>('getAudioTexture2D');
-  late final _getAudioTexture2D = _getAudioTexture2DPtr
-      .asFunction<int Function(ffi.Pointer<ffi.Pointer<ffi.Float>>)>();
+          ffi.Int32 Function(ffi.Pointer<ffi.Pointer<ffi.Float>>,
+              ffi.Pointer<ffi.Bool>)>>('getAudioTexture2D');
+  late final _getAudioTexture2D = _getAudioTexture2DPtr.asFunction<
+      int Function(
+          ffi.Pointer<ffi.Pointer<ffi.Float>>, ffi.Pointer<ffi.Bool>)>();
 
   @override
   double getTextureValue(int row, int column) {
