@@ -1,15 +1,25 @@
+// ignore_for_file: avoid_positional_boolean_parameters
+
 import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter_soloud/src/bindings/audio_data.dart';
 import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/filters/filters.dart';
+import 'package:flutter_soloud/src/helpers/playback_device.dart';
 import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
 import 'package:meta/meta.dart';
 
 export 'package:flutter_soloud/src/bindings/bindings_player_ffi.dart'
     if (dart.library.js_interop) 'package:flutter_soloud/src/bindings/bindings_player_web.dart';
+
+/// Callback set in `setBufferStream` for the `onBuffering` closure.
+typedef OnBufferingCallbackTFunction = void Function(
+  bool isBuffering,
+  int handle,
+  double time,
+);
 
 /// Abstract class defining the interface for the platform-specific
 /// implementations.
@@ -48,10 +58,15 @@ abstract class FlutterSoLoud {
   /// On the web, only the `voiceEndedCallback` is supported. On the other
   /// platform there are also `fileLoadedCallback` and `stateChangedCallback`.
   @mustBeOverridden
-  void setDartEventCallbacks();
+  Future<void> setDartEventCallbacks();
+
+  /// Check if the libopus and libogg are available at build time.
+  @mustBeOverridden
+  bool areOpusOggLibsAvailable();
 
   /// Initialize the player. Must be called before any other player functions.
   ///
+  /// [deviceId] the device ID. -1 for default OS output device.
   /// [sampleRate] the sample rate. Usually is 22050, 44100 (CD quality)
   /// or 48000.
   /// [bufferSize] the audio buffer size. Usually is 2048, but can be also be
@@ -61,10 +76,20 @@ abstract class FlutterSoLoud {
   /// Returns [PlayerErrors.noError] if success.
   @mustBeOverridden
   PlayerErrors initEngine(
+    int deviceId,
     int sampleRate,
     int bufferSize,
     Channels channels,
   );
+
+  /// Change the playback device.
+  ///
+  /// [deviceId] the device ID. -1 for default OS output device.
+  @mustBeOverridden
+  PlayerErrors changeDevice(int deviceId);
+
+  /// List available playback devices.
+  List<PlaybackDevice> listPlaybackDevices();
 
   /// Must be called when the player is no more needed or when closing the app.
   @mustBeOverridden
@@ -112,6 +137,48 @@ abstract class FlutterSoLoud {
     LoadMode mode,
   );
 
+  /// Set up an audio stream.
+  ///
+  /// [maxBufferSize] the max buffer size in bytes.
+  /// [bufferingType] enum to choose how the buffering will work while playing
+  /// [bufferingTimeNeeds] the buffering time needed in seconds. If a handle
+  /// reaches the current buffer length, it will start to buffer pausing it and
+  /// waiting until the buffer will have enough data to cover this time.
+  /// [sampleRate], [channels], [format] must be set in the case the
+  /// audio data is PCM format.
+  /// [format]: 0 = f32le, 1 = s8, 2 = s16le, 3 = s32le, 4 = Opus
+  @mustBeOverridden
+  ({PlayerErrors error, SoundHash soundHash}) setBufferStream(
+    int maxBufferSize,
+    BufferingType bufferingType,
+    double bufferingTimeNeeds,
+    int sampleRate,
+    int channels,
+    int format,
+    OnBufferingCallbackTFunction? onBuffering,
+  );
+
+  /// Add a chunk of audio data to the buffer stream.
+  ///
+  /// [hash] the hash of the sound.
+  /// [audioChunk] the audio data to add.
+  @mustBeOverridden
+  PlayerErrors addAudioDataStream(
+    int hash,
+    Uint8List audioChunk,
+  );
+
+  /// Set the end of the data stream.
+  /// [hash] the hash of the stream sound.
+  /// Returns [PlayerErrors.noError] if success.
+  @mustBeOverridden
+  PlayerErrors setDataIsEnded(SoundHash soundHash);
+
+  /// Get the current buffer size in bytes of this sound with hash [hash].
+  /// [hash] the hash of the stream sound.
+  @mustBeOverridden
+  ({PlayerErrors error, int sizeInBytes}) getBufferSize(SoundHash soundHash);
+
   /// Load a new waveform to be played once or multiple times later.
   ///
   /// [waveform]
@@ -123,7 +190,6 @@ abstract class FlutterSoLoud {
   @mustBeOverridden
   ({PlayerErrors error, SoundHash soundHash}) loadWaveform(
     WaveForm waveform,
-    // ignore: avoid_positional_boolean_parameters
     bool superWave,
     double scale,
     double detune,
@@ -168,7 +234,6 @@ abstract class FlutterSoLoud {
   ///
   /// [textToSpeech] the text to be spoken.
   /// Returns [PlayerErrors.noError] if success and handle sound identifier.
-  // TODO(marco): add other T2S parameters
   @mustBeOverridden
   ({PlayerErrors error, SoundHandle handle}) speechText(String textToSpeech);
 
@@ -265,7 +330,6 @@ abstract class FlutterSoLoud {
   /// [handle] the sound handle.
   /// [enable] enable or not the looping.
   @mustBeOverridden
-  // ignore: avoid_positional_boolean_parameters
   void setLooping(SoundHandle handle, bool enable);
 
   /// Get sound loop point value.
@@ -282,14 +346,11 @@ abstract class FlutterSoLoud {
   @mustBeOverridden
   void setLoopPoint(SoundHandle handle, Duration timestamp);
 
-  // TODO(marco): implement Soloud.getLoopCount() also?
-
   /// Enable or disable visualization.
   /// Not yet supported on the web.
   ///
   /// [enabled] whether to enable or disable.
   @mustBeOverridden
-  // ignore: avoid_positional_boolean_parameters
   void setVisualizationEnabled(bool enabled);
 
   /// Get visualization state.
@@ -460,6 +521,19 @@ abstract class FlutterSoLoud {
   @mustBeOverridden
   bool getProtectVoice(SoundHandle handle);
 
+  /// Set the inaudible behavior of a live sound. By default,
+  /// if a sound is inaudible, it's paused, and will resume when it
+  /// becomes audible again. With this function you can tell SoLoud
+  /// to either kill the sound if it becomes inaudible, or to keep
+  /// ticking the sound even if it's inaudible.
+  ///
+  /// [handle] handle to check.
+  /// [mustTick] whether to keep ticking or not when the sound becomes
+  /// inaudible.
+  /// [kill] whether to kill the sound or not when the sound becomes inaudible.
+  @mustBeOverridden
+  void setInaudibleBehavior(SoundHandle handle, bool mustTick, bool kill);
+
   /// Set a sound's protection state.
   ///
   /// Normally, if you try to play more sounds than there are voices,
@@ -471,7 +545,6 @@ abstract class FlutterSoLoud {
   /// [handle] handle to check.
   /// [protect] whether to protect or not.
   @mustBeOverridden
-  // ignore: avoid_positional_boolean_parameters
   void setProtectVoice(SoundHandle handle, bool protect);
 
   /// Get the current maximum active voice count.

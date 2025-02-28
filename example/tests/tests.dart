@@ -39,7 +39,7 @@ class _Test {
   _Test({
     required this.name,
     required this.callback,
-    // ignore: unused_element
+    // ignore: unused_element_parameter
     this.status = TestStatus.none,
   });
   final String name;
@@ -302,8 +302,10 @@ Future<StringBuffer> testAllInstancesFinished() async {
 
   final explosion =
       await SoLoud.instance.loadAsset('assets/audio/explosion.mp3');
-  final song =
-      await SoLoud.instance.loadAsset('assets/audio/8_bit_mentality.mp3');
+  final song = await SoLoud.instance.loadAsset(
+    'assets/audio/8_bit_mentality.mp3',
+    mode: LoadMode.disk,
+  );
 
   // Set up unloading.
   var explosionDisposed = false;
@@ -763,6 +765,8 @@ Future<StringBuffer> testSoundFilters() async {
       ..write(e)
       ..writeln();
   }
+
+  await SoLoud.instance.play(sound);
 
   /// Check if filter has been deactivated.
   assert(

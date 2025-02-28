@@ -2,7 +2,7 @@
 // ffiGen will generate [flutter_soloud_bindings_ffi_TMP.dart]
 // from [ffi_gen_tmp.h] file. Read notes in the latter
 // ignore_for_file: avoid_positional_boolean_parameters,require_trailing_commas
-// ignore_for_file: public_member_api_docs
+// ignore_for_file: omit_local_variable_types,public_member_api_docs
 
 import 'dart:ffi' as ffi;
 import 'dart:typed_data';
@@ -13,6 +13,7 @@ import 'package:flutter_soloud/src/bindings/bindings_player.dart';
 import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/exceptions/exceptions.dart';
 import 'package:flutter_soloud/src/filters/filters.dart';
+import 'package:flutter_soloud/src/helpers/playback_device.dart';
 import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
 import 'package:logging/logging.dart';
@@ -114,7 +115,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   }
 
   @override
-  void setDartEventCallbacks() {
+  Future<void> setDartEventCallbacks() async {
     // Create a NativeCallable for the Dart functions
     final nativeVoiceEndedCallable =
         ffi.NativeCallable<DartVoiceEndedCallbackTFunction>.listener(
@@ -148,6 +149,18 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   // Navtive bindings
   // ////////////////////////////////////////////////
 
+  @override
+  bool areOpusOggLibsAvailable() {
+    return _areOpusOggLibsAvailable();
+  }
+
+  late final _areOpusOggLibsAvailablePtr =
+      _lookup<ffi.NativeFunction<ffi.Bool Function()>>(
+    'areOpusOggLibsAvailable',
+  );
+  late final _areOpusOggLibsAvailable =
+      _areOpusOggLibsAvailablePtr.asFunction<bool Function()>();
+
   /// When allocating memory in C code, more attention must be given when
   /// we are on Windows OS. It's not good to call `calloc.free()` because
   /// Windows could use different allocating methods for this and the same
@@ -164,8 +177,14 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       _nativeFreePtr.asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 
   @override
-  PlayerErrors initEngine(int sampleRate, int bufferSize, Channels channels) {
+  PlayerErrors initEngine(
+    int deviceId,
+    int sampleRate,
+    int bufferSize,
+    Channels channels,
+  ) {
     final ret = _initEngine(
+      deviceId,
       sampleRate,
       bufferSize,
       channels.count,
@@ -175,10 +194,112 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
 
   late final _initEnginePtr = _lookup<
       ffi.NativeFunction<
-          ffi.Int32 Function(ffi.UnsignedInt, ffi.UnsignedInt,
+          ffi.Int32 Function(ffi.Int, ffi.UnsignedInt, ffi.UnsignedInt,
               ffi.UnsignedInt)>>('initEngine');
   late final _initEngine =
-      _initEnginePtr.asFunction<int Function(int, int, int)>();
+      _initEnginePtr.asFunction<int Function(int, int, int, int)>();
+
+  @override
+  PlayerErrors changeDevice(int deviceId) {
+    final ret = _changeDevice(deviceId);
+    return PlayerErrors.values[ret];
+  }
+
+  late final _changeDevicePtr =
+      _lookup<ffi.NativeFunction<ffi.UnsignedInt Function(ffi.Int)>>(
+          'changeDevice');
+  late final _changeDevice = _changeDevicePtr.asFunction<int Function(int)>();
+
+  @override
+  List<PlaybackDevice> listPlaybackDevices() {
+    final ret = <PlaybackDevice>[];
+    final ffi.Pointer<ffi.Pointer<ffi.Char>> deviceNames =
+        calloc(ffi.sizeOf<ffi.Pointer<ffi.Pointer<ffi.Char>>>() * 255);
+    final ffi.Pointer<ffi.Pointer<ffi.Int>> deviceIds =
+        calloc(ffi.sizeOf<ffi.Pointer<ffi.Pointer<ffi.Int>>>() * 50);
+    final ffi.Pointer<ffi.Pointer<ffi.Int>> deviceIsDefault =
+        calloc(ffi.sizeOf<ffi.Pointer<ffi.Pointer<ffi.Int>>>() * 50);
+    final ffi.Pointer<ffi.Int> nDevices = calloc();
+
+    _listPlaybackDevices(
+      deviceNames,
+      deviceIds,
+      deviceIsDefault,
+      nDevices,
+    );
+
+    final ndev = nDevices.value;
+    for (var i = 0; i < ndev; i++) {
+      final s1 = (deviceNames + i).value;
+      final s = s1.cast<Utf8>().toDartString();
+      final id1 = (deviceIds + i).value;
+      final id = id1.value;
+      final n1 = (deviceIsDefault + i).value;
+      final n = n1.value;
+      ret.add(PlaybackDevice(id, n == 1, s));
+    }
+
+    /// Free allocated memory is done in C.
+    /// This work on all platforms but not on win.
+    // for (int i = 0; i < ndev; i++) {
+    //   calloc.free(devices.elementAt(i).value.ref.name);
+    //   calloc.free(devices.elementAt(i).value);
+    // }
+    _freeListPlaybackDevices(
+      deviceNames,
+      deviceIds,
+      deviceIsDefault,
+      ndev,
+    );
+
+    calloc
+      ..free(deviceNames)
+      ..free(deviceIds)
+      ..free(nDevices);
+    return ret;
+  }
+
+  late final _listPlaybackDevicesPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Void Function(
+              ffi.Pointer<ffi.Pointer<ffi.Char>>,
+              ffi.Pointer<ffi.Pointer<ffi.Int>>,
+              ffi.Pointer<ffi.Pointer<ffi.Int>>,
+              ffi.Pointer<ffi.Int>)>>('listPlaybackDevices');
+  late final _listPlaybackDevices = _listPlaybackDevicesPtr.asFunction<
+      void Function(
+          ffi.Pointer<ffi.Pointer<ffi.Char>>,
+          ffi.Pointer<ffi.Pointer<ffi.Int>>,
+          ffi.Pointer<ffi.Pointer<ffi.Int>>,
+          ffi.Pointer<ffi.Int>)>();
+
+  void freeListPlaybackDevices(
+    ffi.Pointer<ffi.Pointer<ffi.Char>> devicesName,
+    ffi.Pointer<ffi.Pointer<ffi.Int>> deviceId,
+    ffi.Pointer<ffi.Pointer<ffi.Int>> isDefault,
+    int nDevices,
+  ) {
+    return _freeListPlaybackDevices(
+      devicesName,
+      deviceId,
+      isDefault,
+      nDevices,
+    );
+  }
+
+  late final _freeListPlaybackDevicesPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Void Function(
+              ffi.Pointer<ffi.Pointer<ffi.Char>>,
+              ffi.Pointer<ffi.Pointer<ffi.Int>>,
+              ffi.Pointer<ffi.Pointer<ffi.Int>>,
+              ffi.Int)>>('freeListPlaybackDevices');
+  late final _freeListPlaybackDevices = _freeListPlaybackDevicesPtr.asFunction<
+      void Function(
+          ffi.Pointer<ffi.Pointer<ffi.Char>>,
+          ffi.Pointer<ffi.Pointer<ffi.Int>>,
+          ffi.Pointer<ffi.Pointer<ffi.Int>>,
+          int)>();
 
   @override
   void deinit() {
@@ -207,10 +328,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     String completeFileName,
     LoadMode mode,
   ) {
-    // ignore: omit_local_variable_types
     final ffi.Pointer<ffi.UnsignedInt> h =
         calloc(ffi.sizeOf<ffi.UnsignedInt>());
-    // ignore: omit_local_variable_types
     final ffi.Pointer<Utf8> cString = completeFileName.toNativeUtf8();
     _loadFile(
       cString,
@@ -236,16 +355,13 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     Uint8List buffer,
     LoadMode mode,
   ) {
-    // ignore: omit_local_variable_types
     final ffi.Pointer<ffi.UnsignedInt> hash =
         calloc(ffi.sizeOf<ffi.UnsignedInt>());
-    // ignore: omit_local_variable_types
     final ffi.Pointer<ffi.Uint8> bufferPtr = calloc(buffer.length);
     for (var i = 0; i < buffer.length; i++) {
       bufferPtr[i] = buffer[i];
     }
 
-    // ignore: omit_local_variable_types
     final ffi.Pointer<Utf8> cString = uniqueName.toNativeUtf8();
     final e = _loadMem(
       cString,
@@ -271,13 +387,131 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
           ffi.Pointer<ffi.UnsignedInt>)>();
 
   @override
+  ({PlayerErrors error, SoundHash soundHash}) setBufferStream(
+    int maxBufferSize,
+    BufferingType bufferingType,
+    double bufferingTimeNeeds,
+    int sampleRate,
+    int channels,
+    int format,
+    OnBufferingCallbackTFunction? onBuffering,
+  ) {
+    // Create a NativeCallable for the given [onBuffering] callback.
+    ffi.NativeCallable<ffi.Void Function(ffi.Bool, ffi.Int, ffi.Double)>?
+        nativeOnBufferingCallable;
+    if (onBuffering != null) {
+      nativeOnBufferingCallable = ffi.NativeCallable<
+          ffi.Void Function(ffi.Bool, ffi.Int, ffi.Double)>.listener(
+        onBuffering,
+      );
+    }
+
+    final ffi.Pointer<ffi.UnsignedInt> hash =
+        calloc(ffi.sizeOf<ffi.UnsignedInt>());
+    final e = _setBufferStream(
+      hash,
+      maxBufferSize,
+      bufferingType.index,
+      bufferingTimeNeeds,
+      sampleRate,
+      channels,
+      format,
+      nativeOnBufferingCallable?.nativeFunction ?? ffi.nullptr,
+    );
+    final soundHash = SoundHash(hash.value);
+    final ret = (error: PlayerErrors.values[e], soundHash: soundHash);
+    calloc.free(hash);
+    return ret;
+  }
+
+  late final _setBufferStreamPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.UnsignedInt Function(
+              ffi.Pointer<ffi.UnsignedInt>,
+              ffi.UnsignedLong,
+              ffi.UnsignedInt,
+              ffi.Double,
+              ffi.UnsignedInt,
+              ffi.UnsignedInt,
+              ffi.Int,
+              ffi.Pointer<
+                  ffi.NativeFunction<
+                      ffi.Void Function(ffi.Bool, ffi.Int,
+                          ffi.Double)>>)>>('setBufferStream');
+  late final _setBufferStream = _setBufferStreamPtr.asFunction<
+      int Function(
+        ffi.Pointer<ffi.UnsignedInt>,
+        int,
+        int,
+        double,
+        int,
+        int,
+        int,
+        ffi.Pointer<
+            ffi
+            .NativeFunction<ffi.Void Function(ffi.Bool, ffi.Int, ffi.Double)>>,
+      )>();
+
+  @override
+  PlayerErrors addAudioDataStream(
+    int hash,
+    Uint8List audioChunk,
+  ) {
+    final ffi.Pointer<ffi.Uint8> audioChunkPtr = calloc(audioChunk.length);
+    for (var i = 0; i < audioChunk.length; i++) {
+      audioChunkPtr[i] = audioChunk[i];
+    }
+    final e = _addAudioDataStream(
+      hash,
+      audioChunkPtr,
+      audioChunk.length,
+    );
+    return PlayerErrors.values[e];
+  }
+
+  late final _addAudioDataStreamPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Int32 Function(ffi.UnsignedInt, ffi.Pointer<ffi.Uint8>,
+              ffi.UnsignedInt)>>('addAudioDataStream');
+  late final _addAudioDataStream = _addAudioDataStreamPtr
+      .asFunction<int Function(int, ffi.Pointer<ffi.Uint8>, int)>();
+
+  @override
+  PlayerErrors setDataIsEnded(SoundHash soundHash) {
+    final e = _setDataIsEnded(soundHash.hash);
+    return PlayerErrors.values[e];
+  }
+
+  late final _setDataIsEndedPtr =
+      _lookup<ffi.NativeFunction<ffi.UnsignedInt Function(ffi.UnsignedInt)>>(
+          'setDataIsEnded');
+  late final _setDataIsEnded =
+      _setDataIsEndedPtr.asFunction<int Function(int)>();
+
+  @override
+  ({PlayerErrors error, int sizeInBytes}) getBufferSize(SoundHash soundHash) {
+    final ffi.Pointer<ffi.UnsignedInt> size =
+        calloc(ffi.sizeOf<ffi.UnsignedInt>());
+    final e = _getBufferSize(soundHash.hash, size);
+    final ret = (error: PlayerErrors.values[e], sizeInBytes: size.value);
+    calloc.free(size);
+    return ret;
+  }
+
+  late final _getBufferSizePtr = _lookup<
+      ffi.NativeFunction<
+          ffi.UnsignedInt Function(
+              ffi.UnsignedInt, ffi.Pointer<ffi.UnsignedInt>)>>('getBufferSize');
+  late final _getBufferSize = _getBufferSizePtr
+      .asFunction<int Function(int, ffi.Pointer<ffi.UnsignedInt>)>();
+
+  @override
   ({PlayerErrors error, SoundHash soundHash}) loadWaveform(
     WaveForm waveform,
     bool superWave,
     double scale,
     double detune,
   ) {
-    // ignore: omit_local_variable_types
     final ffi.Pointer<ffi.UnsignedInt> h =
         calloc(ffi.sizeOf<ffi.UnsignedInt>());
     final e = _loadWaveform(
@@ -357,9 +591,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
 
   @override
   ({PlayerErrors error, SoundHandle handle}) speechText(String textToSpeech) {
-    // ignore: omit_local_variable_types
     final ffi.Pointer<ffi.UnsignedInt> handle = calloc();
-    // ignore: omit_local_variable_types
     final ffi.Pointer<Utf8> cString = textToSpeech.toNativeUtf8();
     final e = _speechText(
       cString,
@@ -446,7 +678,6 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
   }) {
-    // ignore: omit_local_variable_types
     final ffi.Pointer<ffi.UnsignedInt> handle = calloc();
     final hash = soundHash.hash;
     final e = _play(
@@ -835,6 +1066,26 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       _setProtectVoicePtr.asFunction<void Function(int, int)>();
 
   @override
+  void setInaudibleBehavior(
+    SoundHandle handle,
+    bool mustTick,
+    bool kill,
+  ) {
+    return _setInaudibleBehavior(
+      handle.id,
+      mustTick,
+      kill,
+    );
+  }
+
+  late final _setInaudibleBehaviorPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Void Function(
+              ffi.UnsignedInt, ffi.Bool, ffi.Bool)>>('setInaudibleBehavior');
+  late final _setInaudibleBehavior =
+      _setInaudibleBehaviorPtr.asFunction<void Function(int, bool, bool)>();
+
+  @override
   int getMaxActiveVoiceCount() {
     return _getMaxActiveVoiceCount();
   }
@@ -1124,7 +1375,6 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     FilterType filterType, {
     SoundHash? soundHash,
   }) {
-    // ignore: omit_local_variable_types
     final ffi.Pointer<ffi.Int> id = calloc(ffi.sizeOf<ffi.Int>());
     final e = _isFilterActive(soundHash?.hash ?? 0, filterType.index, id);
     final ret = (error: PlayerErrors.values[e], index: id.value);
@@ -1142,9 +1392,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   @override
   ({PlayerErrors error, List<String> names}) getFilterParamNames(
       FilterType filterType) {
-    // ignore: omit_local_variable_types
     final ffi.Pointer<ffi.Int> paramsCount = calloc(ffi.sizeOf<ffi.Int>());
-    // ignore: omit_local_variable_types
     final ffi.Pointer<ffi.Pointer<ffi.Char>> names =
         calloc(ffi.sizeOf<ffi.Char>() * 30);
     _log.fine(() =>
@@ -1238,7 +1486,6 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     int attributeId, {
     SoundHandle? handle,
   }) {
-    // ignore: omit_local_variable_types
     final ffi.Pointer<ffi.Float> paramValue = calloc();
     final error = _getFilterParams(
       handle?.id ?? 0,
@@ -1276,7 +1523,6 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
   }) {
-    // ignore: omit_local_variable_types
     final ffi.Pointer<ffi.UnsignedInt> handle = calloc();
     final e = _play3d(
       soundHash.hash,
@@ -1650,7 +1896,6 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   }) {
     final pSamples =
         calloc<ffi.Float>(numSamplesNeeded * ffi.sizeOf<ffi.Float>());
-    // ignore: omit_local_variable_types
     final ffi.Pointer<ffi.Uint8> bufferPtr = calloc(buffer.length);
     for (var i = 0; i < buffer.length; i++) {
       bufferPtr[i] = buffer[i];

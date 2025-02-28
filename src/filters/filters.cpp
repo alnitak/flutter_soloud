@@ -1,13 +1,28 @@
 #include "filters.h"
+#include "../active_sound.h" // Add this include for complete type definition
 
 #include <iostream>
 #include <algorithm>
 #include <stdarg.h>
 
+#include "pitch_shift_filter.h"
+#include "soloud_biquadresonantfilter.h"
+// #include "soloud_duckfilter.h"
+#include "soloud_eqfilter.h"
+#include "soloud_echofilter.h"
+#include "soloud_lofifilter.h"
+#include "soloud_flangerfilter.h"
+// #include "soloud_dcremovalfilter.h"
+#include "soloud_fftfilter.h"
+#include "soloud_bassboostfilter.h"
+#include "soloud_waveshaperfilter.h"
+#include "soloud_robotizefilter.h"
+#include "soloud_freeverbfilter.h"
+#include "limiter.h"
+#include "compressor.h"
+
 Filters::Filters(SoLoud::Soloud *soloud, ActiveSound *sound)
     : mSoloud(soloud), mSound(sound) {}
-
-Filters::~Filters() {}
 
 int Filters::isFilterActive(FilterType filter)
 {
@@ -124,6 +139,26 @@ std::vector<std::string> Filters::getFilterParamNames(FilterType filterType)
         }
     }
     break;
+    case LimiterFilter:
+    {
+        Limiter f;
+        int nParams = f.getParamCount();
+        for (int i = 0; i < nParams; i++)
+        {
+            ret.push_back(f.getParamName(i));
+        }
+    }
+    break;
+    case CompressorFilter:
+    {
+        Compressor f(mSoloud->mSamplerate);
+        int nParams = f.getParamCount();
+        for (int i = 0; i < nParams; i++)
+        {
+            ret.push_back(f.getParamName(i));
+        }
+    }
+    break;
     }
 
     return ret;
@@ -141,38 +176,44 @@ PlayerErrors Filters::addFilter(FilterType filterType)
     if (isFilterActive(filterType) >= 0)
         return filterAlreadyAdded;
 
-    std::unique_ptr<SoLoud::Filter> newFilter;
+    SoLoud::Filter* newFilter = nullptr;
     switch (filterType)
     {
     case BiquadResonantFilter:
-        newFilter = std::make_unique<SoLoud::BiquadResonantFilter>();
+        newFilter = new SoLoud::BiquadResonantFilter();
         break;
     case EqFilter:
-        newFilter = std::make_unique<SoLoud::EqFilter>();
+        newFilter = new SoLoud::EqFilter();
         break;
     case EchoFilter:
-        newFilter = std::make_unique<SoLoud::EchoFilter>();
+        newFilter = new SoLoud::EchoFilter();
         break;
     case LofiFilter:
-        newFilter = std::make_unique<SoLoud::LofiFilter>();
+        newFilter = new SoLoud::LofiFilter();
         break;
     case FlangerFilter:
-        newFilter = std::make_unique<SoLoud::FlangerFilter>();
+        newFilter = new SoLoud::FlangerFilter();
         break;
     case BassboostFilter:
-        newFilter = std::make_unique<SoLoud::BassboostFilter>();
+        newFilter = new SoLoud::BassboostFilter();
         break;
     case WaveShaperFilter:
-        newFilter = std::make_unique<SoLoud::WaveShaperFilter>();
+        newFilter = new SoLoud::WaveShaperFilter();
         break;
     case RobotizeFilter:
-        newFilter = std::make_unique<SoLoud::RobotizeFilter>();
+        newFilter = new SoLoud::RobotizeFilter();
         break;
     case FreeverbFilter:
-        newFilter = std::make_unique<SoLoud::FreeverbFilter>();
+        newFilter = new SoLoud::FreeverbFilter();
         break;
     case PitchShiftFilter:
-        newFilter = std::make_unique<PitchShift>();
+        newFilter = new PitchShift();
+        break;
+    case LimiterFilter:
+        newFilter = new Limiter();
+        break;
+    case CompressorFilter:
+        newFilter = new Compressor(mSoloud->mSamplerate);
         break;
     default:
         return filterNotFound;
@@ -180,14 +221,15 @@ PlayerErrors Filters::addFilter(FilterType filterType)
 
     if (mSound == nullptr)
     {
-        mSoloud->setGlobalFilter(filtersSize, newFilter.get());
+        mSoloud->setGlobalFilter(filtersSize, newFilter);
     }
     else
     {
-        mSound->sound.get()->setFilter(filtersSize, newFilter.get());
+        mSound->sound.get()->setFilter(filtersSize, newFilter);
     }
 
-    std::unique_ptr<FilterObject> nfo = std::make_unique<FilterObject>(filterType, std::move(newFilter));
+    // Create FilterObject taking ownership of raw pointer
+    std::unique_ptr<FilterObject> nfo = std::make_unique<FilterObject>(filterType, newFilter);
     filters.push_back(std::move(nfo));
 
     return noError;
@@ -200,8 +242,15 @@ bool Filters::removeFilter(FilterType filterType)
     if (index < 0)
         return false;
 
-    // TODO: single filter
-    mSoloud->setGlobalFilter(index, 0);
+    if (mSound == nullptr)
+    {
+        mSoloud->setGlobalFilter(index, 0);
+    }
+    else
+    {
+        mSound->sound.get()->setFilter(index, 0);
+    }
+
     filters[index].get()->filter.reset();
 
     /// shift filters down by 1 from [index]

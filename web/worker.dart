@@ -1,5 +1,6 @@
+// ignore_for_file: document_ignores
+
 import 'dart:async';
-import 'dart:convert' show jsonDecode;
 import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
 
@@ -56,20 +57,12 @@ class Worker {
 void main() async {
   // print('Worker created.\n');
   final worker = Worker();
+  // ignore: unnecessary_lambdas
   worker.onReceive().listen((data) {
-    // print('Dart worker: '
-    //     'onMessage received $data with type of ${data.runtimeType}\n');
+    // ignore: avoid_print
+    // print('Dart worker: onMessage received $data '
+    //   'with type of ${data.runtimeType}\n');
 
-    if (data is String) {
-      try {
-        final parseMap = jsonDecode(data) as Map;
-        // ignore: avoid_print
-        print('Received $data  PARSED TO $parseMap\n');
-        worker.sendMessage(data);
-      } catch (e) {
-        // ignore: avoid_print
-        print("Received data from WASM worker but it's not a String!\n");
-      }
-    }
+    worker.sendMessage(data);
   });
 }

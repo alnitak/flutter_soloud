@@ -2,7 +2,6 @@
 name: Bug Report
 about: Create a report to help us improve
 title: "fix: "
-labels: bug
 ---
 
 **Description**
@@ -26,4 +25,4 @@ If applicable, add screenshots to help explain your problem.
 
 **Additional Context**
 
-Add any other context about the problem here.
+Add the platform(s) where the issue arises or any other context about the problem here.

@@ -3,8 +3,8 @@
 import 'dart:ffi';
 
 import 'package:ffi/ffi.dart' show calloc;
+import 'package:flutter/foundation.dart';
 import 'package:flutter_soloud/src/bindings/audio_data.dart';
-import 'package:flutter_soloud/src/bindings/audio_data_extensions.dart';
 import 'package:flutter_soloud/src/bindings/soloud_controller.dart';
 import 'package:flutter_soloud/src/enums.dart';
 
@@ -25,13 +25,13 @@ class AudioDataCtrl {
   final void Function(AudioData) waveCallback =
       SoLoudController().soLoudFFI.getWave;
 
-  final PlayerErrors Function(AudioData) texture2DCallback =
-      SoLoudController().soLoudFFI.getAudioTexture2D;
-
   final void Function(AudioData) textureCallback =
       SoLoudController().soLoudFFI.getAudioTexture;
 
-  void allocSamples() {
+  final PlayerErrors Function(AudioData) texture2DCallback =
+      SoLoudController().soLoudFFI.getAudioTexture2D;
+
+  void allocSamples(AudioData audioData) {
     samples2D = calloc();
     samples1D = calloc(512 * 4);
     samplesWave = calloc();
@@ -45,27 +45,33 @@ class AudioDataCtrl {
     if (samples2D != nullptr) calloc.free(samples2D);
   }
 
-  double getWave(SampleWave offset) {
+  Float32List getWave() {
     final val = Pointer<Float>.fromAddress(samplesWave.value.address);
-    if (val == nullptr) return 0;
-    return val[offset.value];
+    if (val == nullptr) return Float32List(0);
+    return Float32List.view(
+      val.cast<Uint8>().asTypedList(256 * 4).buffer,
+      0,
+      256,
+    );
   }
 
-  double getLinearFft(SampleLinear offset) {
-    return samples1D[offset.value];
+  Float32List getFftAndWave() {
+    final val = Pointer<Float>.fromAddress(samples1D.address);
+    if (val == nullptr) return Float32List(0);
+    return Float32List.view(
+      val.cast<Uint8>().asTypedList(512 * 4).buffer,
+      0,
+      512,
+    );
   }
 
-  double getLinearWave(SampleLinear offset) {
-    return samples1D[offset.value + 256];
-  }
-
-  double getTexture(
-    SampleRow row,
-    SampleColumn column,
-  ) {
-    const stride = 512;
-    final val = samples2D.value;
-    if (val == nullptr) return 0;
-    return val[stride * row.value + column.value];
+  Float32List get2DTexture() {
+    final val = Pointer<Float>.fromAddress(samples1D.address);
+    if (val == nullptr) return Float32List(0);
+    return Float32List.view(
+      val.cast<Uint8>().asTypedList(512 * 256 * 4).buffer,
+      0,
+      512 * 256,
+    );
   }
 }

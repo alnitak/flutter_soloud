@@ -3,6 +3,8 @@
 #ifndef ENUMS_H
 #define ENUMS_H
 
+#include <stdbool.h> // for ffigen to not complain about bool type
+
 /// Possible player errors.
 ///
 /// WARNING: Keep these in sync with `lib/src/enums.dart`.
@@ -45,7 +47,25 @@ typedef enum PlayerErrors
     /// Audio handle is not found.
     soundHandleNotFound = 17,
     /// Error getting filter parameter.
-    filterParameterGetError = 18
+    filterParameterGetError = 18,
+    /// No playback devices were found.
+    noPlaybackDevicesFound = 19,
+    /// Trying to add PCM data but the buffer is full or not large
+    /// enough for the neded PCM data. Try increasing the buffer size.
+    pcmBufferFull = 20,
+    /// Given hash doesn't belong to a buffer stream.
+    hashIsNotABufferStream = 21,
+    /// Trying to add PCM data but the stream is marked to be ended
+    /// already, by the user or when the stream reached its maximum
+    /// capacity, in this case the stream is automatically marked to be ended.
+    streamEndedAlready = 22,
+    /// Failed to create Opus decoder.
+    failedToCreateOpusDecoder = 23,
+    /// Failed to decode Opus packet.
+    failedToDecodeOpusPacket = 24,
+    /// A BufferStream using `release` buffer type can be played only once.
+    bufferStreamCanBePlayedOnlyOnce = 25
+
 } PlayerErrors_t;
 
 /// Possible read sample errors
@@ -80,7 +100,9 @@ typedef enum SoundType
     // using Soloud::wavStream
     TYPE_WAVSTREAM,
     // this sound is a waveform
-    TYPE_SYNTH
+    TYPE_SYNTH,
+    // this sound is a streaming buffer
+    TYPE_BUFFER_STREAM,
 } SoundType_t;
 
 typedef enum FilterType
@@ -94,7 +116,31 @@ typedef enum FilterType
     WaveShaperFilter,
     RobotizeFilter,
     FreeverbFilter,
-    PitchShiftFilter
+    PitchShiftFilter,
+    LimiterFilter,
+    CompressorFilter
 } FilterType_t;
+
+/// WARNING: Keep these in sync with `lib/src/enums.dart`.
+typedef enum BufferType
+{
+    PCM_F32LE = 0,
+    PCM_S8 = 1,
+    PCM_S16LE = 2,
+    PCM_S32LE = 3,
+    OPUS = 4,
+} BufferType_t;
+
+
+typedef struct PCMformat
+{
+  unsigned int sampleRate;
+  unsigned int channels;
+  unsigned int bytesPerSample;
+  BufferType dataType;
+} PCMformat;
+
+
+typedef void (*dartOnBufferingCallback_t)(bool isBuffering, unsigned int handle, double time);
 
 #endif // ENUMS_H

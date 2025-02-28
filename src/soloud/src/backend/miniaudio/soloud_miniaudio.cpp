@@ -64,6 +64,7 @@ namespace SoLoud
     ma_device gDevice;
     SoLoud::Soloud *soloud;
 
+    // Added by Marco Bavagnoli
     void on_notification(const ma_device_notification* pNotification)
     {
         MA_ASSERT(pNotification != NULL);
@@ -118,10 +119,14 @@ namespace SoLoud
         ma_device_uninit(&gDevice);
     }
 
-    result miniaudio_init(SoLoud::Soloud *aSoloud, unsigned int aFlags, unsigned int aSamplerate, unsigned int aBuffer, unsigned int aChannels)
+    result miniaudio_init(SoLoud::Soloud *aSoloud, unsigned int aFlags, unsigned int aSamplerate, unsigned int aBuffer, unsigned int aChannels, void *pPlaybackInfos_id)
     {
         soloud = aSoloud;
         ma_device_config config = ma_device_config_init(ma_device_type_playback);
+        if (pPlaybackInfos_id != NULL)
+        {
+            config.playback.pDeviceID = (ma_device_id*)pPlaybackInfos_id;
+        }
         config.periodSizeInFrames = aBuffer;
         config.playback.format    = ma_format_f32;
         config.playback.channels  = aChannels;
@@ -142,6 +147,28 @@ namespace SoLoud
 
         ma_device_start(&gDevice);
         aSoloud->mBackendString = "MiniAudio";
+        return 0;
+    }
+
+    result miniaudio_changeDevice_impl(void *pPlaybackInfos_id)
+    {
+        if (soloud == nullptr)
+            return UNKNOWN_ERROR;
+
+        ma_device_uninit(&gDevice);
+        ma_device_config config = ma_device_config_init(ma_device_type_playback);
+        config.playback.pDeviceID = (ma_device_id *)pPlaybackInfos_id;
+        config.periodSizeInFrames = soloud->mBufferSize;
+        config.playback.format    = ma_format_f32;
+        config.playback.channels  = soloud->mChannels;
+        config.sampleRate         = soloud->mSamplerate;
+        config.dataCallback       = soloud_miniaudio_audiomixer;
+        config.pUserData          = (void *)soloud;
+        if (ma_device_init(NULL, &config, &gDevice) != MA_SUCCESS)
+        {
+            return UNKNOWN_ERROR;
+        }
+        ma_device_start(&gDevice);
         return 0;
     }
 };

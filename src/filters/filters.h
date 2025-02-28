@@ -1,23 +1,12 @@
 #ifndef FILTERS_H
 #define FILTERS_H
 
-#include "../active_sound.h"
+#include "../active_sound_fwd.h"
+#include "filters_fwd.h"
+#include "enums.h"
 
 #include "soloud.h"
 #include "soloud_filter.h"
-#include "pitch_shift_filter.h"
-#include "soloud_biquadresonantfilter.h"
-// #include "soloud_duckfilter.h"
-#include "soloud_eqfilter.h"
-#include "soloud_echofilter.h"
-#include "soloud_lofifilter.h"
-#include "soloud_flangerfilter.h"
-// #include "soloud_dcremovalfilter.h"
-#include "soloud_fftfilter.h"
-#include "soloud_bassboostfilter.h"
-#include "soloud_waveshaperfilter.h"
-#include "soloud_robotizefilter.h"
-#include "soloud_freeverbfilter.h"
 
 #include <vector>
 #include <string>
@@ -28,8 +17,8 @@ struct FilterObject
     FilterType type;
     std::unique_ptr<SoLoud::Filter> filter;
 
-    FilterObject(FilterType t, std::unique_ptr<SoLoud::Filter> f)
-        : type(t), filter(std::move(f)) {}
+    FilterObject(FilterType t, SoLoud::Filter* f)
+        : type(t), filter(f) {}
 
     bool operator==(FilterType const &i)
     {
@@ -37,15 +26,15 @@ struct FilterObject
     }
 };
 
-/// Class to manage global filters.
+/// Class to manage filters.
 class Filters
 {
-    /// Setting the global filter to NULL will clear the global filter.
+    /// Setting the filter to NULL will clear the filter.
     /// The default maximum number of global filters active is 4, but this
     /// can be changed in a global constant in soloud.h (and rebuilding SoLoud).
 public:
     Filters(SoLoud::Soloud *soloud, ActiveSound *sound);
-    ~Filters();
+    ~Filters() {}
 
     int isFilterActive(FilterType filter);
     
@@ -78,7 +67,7 @@ private:
     SoLoud::Soloud *mSoloud;
 
     /// The sound to manage filters for. If null the filters are managed globally.
-    ActiveSound *mSound;
+    const ActiveSound *mSound;
 
     std::vector<std::unique_ptr<FilterObject>> filters;
 };

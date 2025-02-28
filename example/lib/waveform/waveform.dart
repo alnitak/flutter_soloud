@@ -7,6 +7,8 @@ import 'package:logging/logging.dart';
 
 /// Waveform example.
 ///
+/// This example demonstrates how to generate a waveform, play it, and change
+/// it's frequency on the fly.
 void main() {
   // The `flutter_soloud` package logs everything
   // (from severe warnings to fine debug messages)
@@ -39,7 +41,7 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      home: const MyHomePage(title: 'Flutter SoLoud waveform demo'),
     );
   }
 }
@@ -120,126 +122,132 @@ class _MyHomePageState extends State<MyHomePage> {
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         title: Text(widget.title),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('SuperWave : $superWave'),
-              Switch(
-                value: superWave,
-                onChanged: (value) {
-                  setState(() {
-                    superWave = value;
-                    if (currentSound != null && isPlaying) {
-                      SoLoud.instance
-                          .setWaveformSuperWave(currentSound!, value);
-                    }
-                  });
-                },
-              ),
-              const SizedBox(height: 20),
-              Text('Scale : ${scale.toStringAsFixed(2)}'),
-              Slider(
-                value: scale,
-                max: 4,
-                onChanged: !superWave
-                    ? null
-                    : (value) {
-                        setState(() {
-                          scale = value;
-                          if (currentSound != null && isPlaying) {
-                            SoLoud.instance
-                                .setWaveformScale(currentSound!, value);
-                          }
-                        });
-                      },
-                label: 'Scale: ${scale.toStringAsFixed(2)}',
-                activeColor: Colors.green,
-                inactiveColor: Colors.green[100],
-              ),
-              const SizedBox(height: 20),
-              Text('Detune : ${detune.toStringAsFixed(2)}'),
-              Slider(
-                value: detune,
-                max: 2,
-                onChanged: !superWave
-                    ? null
-                    : (value) {
-                        setState(() {
-                          detune = value;
-                          if (currentSound != null && isPlaying) {
-                            SoLoud.instance
-                                .setWaveformDetune(currentSound!, value);
-                          }
-                        });
-                      },
-                label: 'Detune: ${detune.toStringAsFixed(2)}',
-                activeColor: Colors.green,
-              ),
-              const SizedBox(height: 20),
-              Text('Freequncy Hz: ${frequency.toInt()}'),
-              Slider(
-                value: frequency,
-                min: 20,
-                max: 16000,
-                onChanged: (value) {
-                  setState(() {
-                    frequency = value;
+      body: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('SuperWave : $superWave'),
+                Switch(
+                  value: superWave,
+                  onChanged: (value) {
+                    setState(() {
+                      superWave = value;
+                      if (currentSound != null && isPlaying) {
+                        SoLoud.instance
+                            .setWaveformSuperWave(currentSound!, value);
+                      }
+                    });
+                  },
+                ),
+                const SizedBox(height: 20),
+                Text('Scale : ${scale.toStringAsFixed(2)}'),
+                Slider(
+                  value: scale,
+                  max: 4,
+                  onChanged: !superWave
+                      ? null
+                      : (value) {
+                          setState(() {
+                            scale = value;
+                            if (currentSound != null && isPlaying) {
+                              SoLoud.instance
+                                  .setWaveformScale(currentSound!, value);
+                            }
+                          });
+                        },
+                  label: 'Scale: ${scale.toStringAsFixed(2)}',
+                  activeColor: Colors.green,
+                  inactiveColor: Colors.green[100],
+                ),
+                const SizedBox(height: 20),
+                Text('Detune : ${detune.toStringAsFixed(2)}'),
+                Slider(
+                  value: detune,
+                  max: 2,
+                  onChanged: !superWave
+                      ? null
+                      : (value) {
+                          setState(() {
+                            detune = value;
+                            if (currentSound != null && isPlaying) {
+                              SoLoud.instance
+                                  .setWaveformDetune(currentSound!, value);
+                            }
+                          });
+                        },
+                  label: 'Detune: ${detune.toStringAsFixed(2)}',
+                  activeColor: Colors.green,
+                ),
+                const SizedBox(height: 20),
+                Text('Freequncy Hz: ${frequency.toInt()}'),
+                Slider(
+                  value: frequency,
+                  min: 20,
+                  max: 2000,
+                  onChanged: (value) {
+                    setState(() {
+                      frequency = value;
 
-                    if (currentSound != null && isPlaying) {
-                      SoLoud.instance.setWaveformFreq(currentSound!, value);
-                    }
-                  });
-                },
-                label: 'Frequency: ${frequency.toInt()} Hz',
-                activeColor: Colors.green,
-                inactiveColor: Colors.green[100],
-              ),
-              const SizedBox(height: 50),
+                      if (currentSound != null && isPlaying) {
+                        SoLoud.instance.setWaveformFreq(currentSound!, value);
+                      }
+                    });
+                  },
+                  label: 'Frequency: ${frequency.toInt()} Hz',
+                  activeColor: Colors.green,
+                  inactiveColor: Colors.green[100],
+                ),
+                const SizedBox(height: 50),
 
-              /// All waveform types.
-              Wrap(
-                runSpacing: 4,
-                spacing: 4,
-                alignment: WrapAlignment.center,
-                children: [
-                  for (var i = 0; i < WaveForm.values.length; i++)
-                    OutlinedButton(
-                      onPressed: () {
-                        setState(() {
-                          waveForm = WaveForm.values[i];
-                          SoLoud.instance.setWaveform(currentSound!, waveForm);
-                        });
-                      },
-                      style: ButtonStyle(
-                        backgroundColor: WidgetStateProperty.all(
-                          waveForm == WaveForm.values[i]
-                              ? Colors.green
-                              : Colors.transparent,
+                /// All waveform types.
+                Wrap(
+                  runSpacing: 4,
+                  spacing: 4,
+                  alignment: WrapAlignment.center,
+                  children: [
+                    for (var i = 0; i < WaveForm.values.length; i++)
+                      OutlinedButton(
+                        onPressed: () {
+                          setState(() {
+                            waveForm = WaveForm.values[i];
+                            SoLoud.instance
+                                .setWaveform(currentSound!, waveForm);
+                          });
+                        },
+                        style: ButtonStyle(
+                          backgroundColor: WidgetStateProperty.all(
+                            waveForm == WaveForm.values[i]
+                                ? Colors.green
+                                : Colors.transparent,
+                          ),
                         ),
+                        child: Text(WaveForm.values[i].name),
                       ),
-                      child: Text(WaveForm.values[i].name),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 50),
-              Align(
-                child: OutlinedButton(
-                  onPressed: isPlaying ? null : () => play(frequency),
-                  child: const Text('Play'),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 20),
-              Align(
-                child: OutlinedButton(
-                  onPressed: isPlaying ? stop : null,
-                  child: const Text('Stop'),
+                const SizedBox(height: 50),
+                Align(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      OutlinedButton(
+                        onPressed: isPlaying ? null : () => play(frequency),
+                        child: const Text('Play'),
+                      ),
+                      const SizedBox(width: 20),
+                      OutlinedButton(
+                        onPressed: isPlaying ? stop : null,
+                        child: const Text('Stop'),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

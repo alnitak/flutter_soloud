@@ -1,7 +1,10 @@
+#include "soloud/include/soloud_fft.h"
+#include "soloud_thread.h"
 #include "player.h"
 #include "analyzer.h"
 #include "synth/basic_wave.h"
 #include "waveform/waveform.h"
+
 #ifndef COMMON_H
 #include "common.h"
 #endif
@@ -10,15 +13,11 @@
 #include <emscripten/emscripten.h>
 #endif
 
-#include "soloud/include/soloud_fft.h"
-#include "soloud_thread.h"
-
 #include <stdio.h>
 #include <iostream>
 #include <memory.h>
 #include <memory>
 #include <filesystem>
-
 
 #ifdef __cplusplus
 extern "C"
@@ -31,7 +30,7 @@ extern "C"
     /// mutex to lock the loading audio methods and make safe operations on player.sounds list.
     std::mutex loadMutex;
 
-    std::unique_ptr<Player> player = nullptr;
+    std::unique_ptr<Player> player = std::make_unique<Player>();
     std::unique_ptr<Analyzer> analyzer = std::make_unique<Analyzer>(2048);
 
     typedef void (*dartVoiceEndedCallback_t)(unsigned int *);
@@ -47,22 +46,29 @@ extern "C"
     /// WEB WORKER
 
 #ifdef __EMSCRIPTEN__
-    /// Create the web worker and store a global "Module.workerUri" in JS.
-    FFI_PLUGIN_EXPORT void createWorkerInWasm()
+    /// Create the web worker and store a global "Module_soloud.workerUri" in JS.
+    FFI_PLUGIN_EXPORT bool createWorkerInWasm()
     {
-        printf("CPP void createWorkerInWasm()\n");
+        printf("CPP bool createWorkerInWasm()\n");
 
-        EM_ASM({
-            if (!Module.wasmWorker)
+        return EM_ASM_INT({
+            if (!Module_soloud.wasmWorker)
             {
                 // Create a new Worker from the URI
                 var workerUri = "assets/packages/flutter_soloud/web/worker.dart.js";
-                console.log("EM_ASM creating web worker!");
-                Module.wasmWorker = new Worker(workerUri);
+                console.log("EM_ASM creating Web Worker!");
+                try {
+                    Module_soloud.wasmWorker = new Worker(workerUri);
+                    return 1;
+                } catch(e) {
+                    console.error('Failed to create worker:', e);
+                    return 0;
+                }
             }
             else
             {
                 console.log("EM_ASM web worker already created!");
+                return 0;
             }
         });
     }
@@ -71,15 +77,15 @@ extern "C"
     FFI_PLUGIN_EXPORT void sendToWorker(const char *message, int value)
     {
         EM_ASM({
-            if (Module.wasmWorker)
+            if (Module_soloud.wasmWorker)
             {
+                // Send the message
+                Module_soloud.wasmWorker.postMessage({
+                    message : UTF8ToString($0),
+                    value : $1,
+                });
                 console.log("EM_ASM posting message " + UTF8ToString($0) + 
                     " with value " + $1);
-                // Send the message
-                Module.wasmWorker.postMessage(JSON.stringify({
-                    "message" : UTF8ToString($0),
-                    "value" : $1
-                }));
             }
             else
             {
@@ -99,6 +105,8 @@ extern "C"
     /// and comes from the audio thread (so on the web, from a different web worker).
     FFI_PLUGIN_EXPORT void voiceEndedCallback(unsigned int *handle)
     {
+        player->removeHandle(*handle);
+
 #ifdef __EMSCRIPTEN__
         // Calling JavaScript from C/C++
         // https://emscripten.org/docs/porting/connecting_cpp_and_javascript/Interacting-with-code.html#interacting-with-code-call-javascript-from-native
@@ -106,9 +114,9 @@ extern "C"
         sendToWorker("voiceEndedCallback", *handle);
 #endif
 
+        // The `dartVoiceEndedCallback` is not set on Web.
         if (dartVoiceEndedCallback == nullptr)
             return;
-        player->removeHandle(*handle);
         // [n] pointer must be deleted on Dart.
         unsigned int *n = (unsigned int *)malloc(sizeof(unsigned int *));
         *n = *handle;
@@ -157,6 +165,17 @@ extern "C"
     //////////////////////////////////////////////////////////////////////////////////
     //////////////////////////////////////////////////////////////////////////////////
 
+
+
+    /// Check if the libopus and libogg are available at build time.
+    FFI_PLUGIN_EXPORT bool areOpusOggLibsAvailable() {
+#if defined(LIBOPUS_OGG_AVAILABLE) || defined(__EMSCRIPTEN__)
+        return true;
+#else
+        return false;
+#endif
+    }
+
     /// Initialize the player. Must be called before any other player functions.
     ///
     /// [sampleRate] the sample rate. Usually is 22050, 44100 (CD quality) or 48000.
@@ -166,6 +185,7 @@ extern "C"
     ///
     /// Returns [PlayerErrors.noError] if success.
     FFI_PLUGIN_EXPORT enum PlayerErrors initEngine(
+        int deviceID,
         unsigned int sampleRate,
         unsigned int bufferSize,
         unsigned int channels)
@@ -177,7 +197,7 @@ extern "C"
             player = std::make_unique<Player>();
 
         player.get()->setStateChangedCallback(stateChangedCallback);
-        PlayerErrors res = (PlayerErrors)player.get()->init(sampleRate, bufferSize, channels);
+        PlayerErrors res = (PlayerErrors)player.get()->init(sampleRate, bufferSize, channels, deviceID);
         if (res != noError)
             return res;
 
@@ -193,6 +213,70 @@ extern "C"
         return (PlayerErrors)noError;
     }
 
+    /// Change the playback device.
+    ///
+    /// [deviceID] the device ID. -1 for default OS output device.
+    FFI_PLUGIN_EXPORT enum PlayerErrors changeDevice(int deviceID)
+    {
+        if (player.get() == nullptr)
+            return backendNotInited;
+
+        return player.get()->changeDevice(deviceID);
+    }
+
+    /// List playback devices.
+    FFI_PLUGIN_EXPORT void listPlaybackDevices(
+        char **devicesName,
+        int **deviceId,
+        int **isDefault,
+        int *n_devices)
+    {
+        std::vector<PlaybackDevice> d = player.get()->listPlaybackDevices();
+
+        int numDevices = 0;
+        for (int i = 0; i < (int)d.size(); i++)
+        {
+            bool hasSpecialChar = false;
+            /// check if the device name has some strange chars (happens on Linux)
+            /// It happens that some results had the name composed of non-text
+            /// ASCII characters with values ​​<0x20 (blank space) which cannot be
+            /// real devices and should be ignored. Doesn't happen on my Linux
+            /// anymore (maybe was a bug on audio drivers?), but worth checking
+            /// to be sure.
+            for (int n = 0; n < 5; n++)
+            {
+                if (d[i].name[n] < 0x20)
+                    hasSpecialChar = true;
+            }
+            if (strlen(d[i].name) <= 5 || hasSpecialChar)
+                continue;
+
+            devicesName[i] = strdup(d[i].name);
+            isDefault[i] = (int *)malloc(sizeof(int *));
+            *isDefault[i] = d[i].isDefault;
+            deviceId[i] = (int *)malloc(sizeof(int *));
+            *deviceId[i] = d[i].id;
+
+            numDevices++;
+        }
+        *n_devices = numDevices;
+    }
+
+    /// Free the list of playback devices.
+    FFI_PLUGIN_EXPORT void freeListPlaybackDevices(
+        char **devicesName,
+        int **deviceId,
+        int **isDefault,
+        int n_devices)
+    {
+        for (int i = 0; i < n_devices; i++)
+        {
+            free(deviceId[i]);
+            free(isDefault[i]);
+            free(devicesName[i]);
+        }
+    }
+
     /// Must be called when there is no more need of the player or when closing the app
     ///
     FFI_PLUGIN_EXPORT void dispose()
@@ -205,8 +289,9 @@ extern "C"
         dartVoiceEndedCallback = nullptr;
         dartFileLoadedCallback = nullptr;
         dartStateChangedCallback = nullptr;
-        player.get()->dispose();
+        player.reset();
         player = nullptr;
+        player = std::make_unique<Player>();
     }
 
     FFI_PLUGIN_EXPORT int isInited()
@@ -289,6 +374,114 @@ extern "C"
         return (PlayerErrors)player.get()->loadMem(uniqueName, buffer, length, loadIntoMem, *hash);
     }
 
+    /// Set up an audio stream.
+    ///
+    /// [maxBufferSize] the max buffer size in **bytes**. When adding audio data
+    /// using [addAudioDataStream] and this values is reached, the stream will
+    /// be considered ended (likewise we called [setDataIsEnded]). This means that
+    /// when playing it, it will stop at that point (if loop is not set).
+    ///
+    /// **Note:** this parameter doesn't allocate any memory, but it just limits
+    /// the amount of data that can be added.
+    ///
+    /// [bufferingTimeNeeds] the buffering time needed in seconds. If a handle
+    /// reaches the current buffer length, it will start to buffer pausing it and
+    /// waiting until the buffer will have enough data to cover this time.
+    ///
+    /// [sampleRate] the sample rate. Usually is 22050 or 44100 (CD quality).
+    /// When using [format] as `opus`, the sample rate can be 48000, 24000,
+    /// 16000, 12000 or 8000. Whatever the sample rate of the incoming data is,
+    /// it will be resampled to this value. So, if you are adding Opus data at
+    /// 48 KHz, and you set this to 24000, the data will be resampled to 24 KHz.
+    ///
+    /// [channels] choose the number of channels. The `opus` format
+    /// supports only mono and stereo.
+    ///
+    /// [format] choose from `f32le`, `s8`, `s16le`, `s32le` and
+    /// `opus`. The last one is a special format that uses the Opus codec with
+    /// Ogg container. It supports only 48, 24, 16, 12 and 8 KHz sample rates
+    /// and mono and stereo.
+    ///
+    /// [onBufferingCallback] a callback that is called when starting to buffer
+    /// (isBuffering = true) and when the buffering is done (isBuffering = false).
+    /// The callback is called with the `handle` which triggered the event and
+    /// the `time` in seconds.
+    FFI_PLUGIN_EXPORT enum PlayerErrors setBufferStream(
+        unsigned int *hash,
+        unsigned long maxBufferSize,
+        int bufferingType,
+        double bufferingTimeNeeds,
+        unsigned int sampleRate,
+        unsigned int channels,
+        int format,
+        dartOnBufferingCallback_t onBufferingCallback)
+    {
+        std::lock_guard<std::mutex> guard_init(init_deinit_mutex);
+        std::lock_guard<std::mutex> guard_load(loadMutex);
+        if (player.get() == nullptr || !player.get()->isInited())
+            return backendNotInited;
+
+        unsigned int bytesPerSample;
+        switch (format)
+        {
+        case BufferType::OPUS:
+        case BufferType::PCM_F32LE:
+            bytesPerSample = 4;
+            break;
+        case BufferType::PCM_S8:
+            bytesPerSample = 1;
+            break;
+        case BufferType::PCM_S16LE:
+            bytesPerSample = 2;
+            break;
+        case BufferType::PCM_S32LE:
+            bytesPerSample = 4;
+            break;
+        }
+        PCMformat dataType = {sampleRate, channels, bytesPerSample, (BufferType)format};
+        PlayerErrors e = (PlayerErrors)player.get()->setBufferStream(
+            *hash,
+            maxBufferSize,
+            (BufferingType)bufferingType,
+            bufferingTimeNeeds,
+            dataType,
+            onBufferingCallback);
+        return e;
+    }
+
+    /// Add a chunk of audio data to the buffer stream.
+    ///
+    /// [hash] the hash of the sound.
+    /// [data] the audio data to add.
+    /// [aDataLen] the length of [data].
+    FFI_PLUGIN_EXPORT enum PlayerErrors addAudioDataStream(
+        unsigned int hash,
+        const unsigned char *data,
+        unsigned int aDataLen)
+    {
+        if (player.get() == nullptr || !player.get()->isInited())
+            return backendNotInited;
+        return player.get()->addAudioDataStream(hash, data, aDataLen);
+    }
+
+    // Set the end of the data stream.
+    // [hash] the hash of the stream sound.
+    FFI_PLUGIN_EXPORT enum PlayerErrors setDataIsEnded(unsigned int hash)
+    {
+        if (player.get() == nullptr || !player.get()->isInited())
+            return backendNotInited;
+        return player.get()->setDataIsEnded(hash);
+    }
+
+    // Get the current buffer size in bytes of this sound with hash [hash].
+    // [hash] the hash of the stream sound.
+    FFI_PLUGIN_EXPORT enum PlayerErrors getBufferSize(unsigned int hash, unsigned int *sizeInBytes)
+    {
+        if (player.get() == nullptr || !player.get()->isInited())
+            return backendNotInited;
+        return player.get()->getBufferSize(hash, sizeInBytes);
+    }
+
     /// Load a new waveform to be played once or multiple times later
     ///
     /// [waveform]  WAVE_SQUARE = 0,
@@ -345,6 +538,9 @@ extern "C"
     ///
     /// [hash] the unique sound hash of a waveform sound
     /// [newFreq]
+
+    /// Thread to oscillate the frequency
+    std::thread waveformFreqThread;
     FFI_PLUGIN_EXPORT void setWaveformFreq(unsigned int hash, float newFreq)
     {
         if (player.get() == nullptr || !player.get()->isInited())
@@ -471,7 +667,7 @@ extern "C"
     /// [volume] 1.0f full volume
     /// [pan] 0.0f centered
     /// [paused] 0 not paused
-    /// [newHandle] pointer to the handle for this new sound
+    /// [handle] pointer to the handle for this new sound
     /// [looping] whether to start the sound in looping state.
     /// [loopingStartAt] If looping is enabled, the loop point is, by default,
     /// the start of the stream. The loop start point can be set with this parameter, and
@@ -489,9 +685,8 @@ extern "C"
     {
         if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
-        unsigned int newHandle = player.get()->play(soundHash, volume, pan, paused, looping, loopingStartAt);
-        *handle = newHandle;
-        return *handle == 0 ? soundHashNotFound : noError;
+        PlayerErrors result = player.get()->play(soundHash, *handle, volume, pan, paused, looping, loopingStartAt);
+        return result;
     }
 
     /// Stop already loaded sound identified by [handle] and clear it
@@ -514,7 +709,15 @@ extern "C"
             return;
         std::lock_guard<std::mutex> guard_init(init_deinit_mutex);
         std::lock_guard<std::mutex> guard_load(loadMutex);
-        player.get()->disposeSound(soundHash);
+        try {
+            player.get()->disposeSound(soundHash);
+        }
+        catch (const std::exception& e) {
+            printf("Error in disposeSound: %s\n", e.what());
+        }
+        catch (...) {
+            printf("Unknown error in disposeSound\n");
+        }
     }
 
     /// Dispose all sounds already loaded
@@ -875,6 +1078,23 @@ extern "C"
         player.get()->setProtectVoice(handle, protect);
     }
 
+    /// Set the inaudible behavior of a live sound. By default,
+    /// if a sound is inaudible, it's paused, and will resume when it
+    /// becomes audible again. With this function you can tell SoLoud
+    /// to either kill the sound if it becomes inaudible, or to keep
+    /// ticking the sound even if it's inaudible.
+    ///
+    /// [handle]  handle to check.
+    /// [mustTick] whether to keep ticking or not when the sound becomes inaudible.
+    /// [kill] whether to kill the sound or not when the sound becomes inaudible.
+    FFI_PLUGIN_EXPORT void setInaudibleBehavior(unsigned int handle, bool mustTick, bool kill)
+    {
+        if (player.get() == nullptr || !player.get()->isInited() ||
+            !player.get()->isValidHandle(handle))
+            return;
+        player.get()->setInaudibleBehavior(handle, mustTick, kill);
+    }
+
     /// Get the current maximum active voice count.
     FFI_PLUGIN_EXPORT unsigned int getMaxActiveVoiceCount()
     {
@@ -941,7 +1161,7 @@ extern "C"
     ///
     /// [handle] the group handle to check.
     /// Return true if [handle] is a group handle.
-    FFI_PLUGIN_EXPORT bool isVoiceGroup(unsigned int handle)
+    FFI_PLUGIN_EXPORT int isVoiceGroup(unsigned int handle)
     {
         if (player.get() == nullptr || !player.get()->isInited())
             return false;
@@ -954,7 +1174,7 @@ extern "C"
     ///
     /// [handle] group handle to check.
     /// Return true if the group handle doesn't have any voices.
-    FFI_PLUGIN_EXPORT bool isVoiceGroupEmpty(unsigned int handle)
+    FFI_PLUGIN_EXPORT int isVoiceGroupEmpty(unsigned int handle)
     {
         if (player.get() == nullptr || !player.get()->isInited())
             return false;
@@ -1304,7 +1524,8 @@ extern "C"
     /// the start of the stream. The loop start point can be set with this parameter, and
     /// current loop point can be queried with [getLoopingPoint] and
     /// changed by [setLoopingPoint].
-    /// Returns the handle of the sound, 0 if error
+    /// [handle] pointer to the handle for this new sound
+    /// Return the error if any
     FFI_PLUGIN_EXPORT PlayerErrors play3d(
         unsigned int soundHash,
         float posX,
@@ -1323,8 +1544,9 @@ extern "C"
             player.get()->getSoundsCount() == 0)
             return backendNotInited;
 
-        *handle = player.get()->play3d(
+        PlayerErrors result = player.get()->play3d(
             soundHash,
+            *handle,
             posX, posY, posZ,
             velX, velY, velZ,
             volume,
@@ -1332,7 +1554,7 @@ extern "C"
             0,
             looping,
             loopingStartAt);
-        return *handle == 0 ? soundHashNotFound : noError;
+        return result;
     }
 
     /// You can set and get the current value of the speed of

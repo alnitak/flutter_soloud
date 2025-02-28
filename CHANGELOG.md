@@ -1,3 +1,48 @@
+### 3.0.2 (25 Feb 2025)
+- fixed crash when trying to play a sound after deactivating its active filter #189
+
+### 3.0.1 (20 Feb 2025)
+- fix: error while calling listPlaybackDevices() #186.
+- android example folder recreated.
+
+### 3.0.0 (13 Feb 2025)
+- `BufferStream` now supports 2 type of buffering:
+  - `BufferingType.preserved` (default): preserve the data already in the buffer while playing.
+  - `BufferingType.released`: free the memory of the already played data for longer playback.
+- breaking change: splitted [maxBufferSize] to [maxBufferSizeBytes] and [maxBufferSizeDuration] in `SoLoud.setBufferStream`. This gives the user a way to choose the maximum buffer size using bytes or time.
+- breaking change: removed `initialized` getter in favor of `isInitialized`
+- removed deprecated `timeout` parameter in `SoLoud.init`.
+- removed deprecated `filter_params.dart`.
+- fixed biquad resonant filter `frequency` default parameter #179
+- fix: on some unclear conditions `isInitialized` returning false on MacOS after engine starts with no error #177
+- fix: Call `loadMem` will crash the application #174.
+
+### 3.0.0-pre.0 (2 Feb 2025)
+- fix: clicks and pops when changing waveform frequency #156.
+- added `Limiter` and `Compressor` filters (see `example/lib/filters/`).
+- added BufferStream #148. Now it's possible to add audio data and listen to them. It provides a customizable buffering length which automatycally pauses the playing handle if there is not enough data, for example when receiving audio data from the web. It also provides a callback that allows you to know when the buffering is started and stopped. The audio data can of of the following formats:
+  - `s8` signed 8 bit
+  - `s16le` signed 16 bit little endian
+  - `s32le` signed 32 bit little endian
+  - `f32le` float 32 bit little endian
+  - `opus` Opus codec compressed audio with Ogg container. Useful for streaming from the Web (ie using OpenAI APIs).
+- fixed Web Worker initialization non fatal error that could occur on Web.
+- fixed sound distortion using single pitchShift filter and changing relative play speed #154.
+- fixed the use of `LoadMode.disk` on the Web platform which in some cases caused the `allInstancesFinished` event to not be emitted.
+- improved performance on Web, MacOS and iOS.
+- get wave and FFT samples is now simpler and faster.
+- To avoid future incompatibilities when using other WASM compiled plugins, it is now necessary to add a new script to `index.html`:
+  ```
+  <script src="assets/packages/flutter_soloud/web/libflutter_soloud_plugin.js" defer></script>
+  <script src="assets/packages/flutter_soloud/web/init_module.dart.js" defer></script>
+  ```
+
+### 2.1.7 (29 Oct 2024)
+- added `listPlaybackDevices` to get all the OS output devices available.
+- added `deviceId` parameter to the `init()` method. You can choose which device is delegated to output the audio.
+- added `changeDevice` method to change the output playback device on-the-fly.
+- fix: now throws when loading a file that might be corrupt #145.
+
 ### 2.1.6 (17 Oct 2024)
 - fixed a bug that caused an error when loading a sound more than twice.
 

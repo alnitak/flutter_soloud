@@ -14,10 +14,19 @@ A low-level audio plugin for Flutter.
 * Ability to load sounds to RAM, or play from disk
 * Multiple voices, playing different or even the same sound multiple times on top of each other
 * Faders for attributes (e.g. fade out for 2 seconds, then stop)
+* Oscillators for attributes
+* Get audio wave and/or FFT audio data in real-time (useful for visualization)
+* Read audio data samples from a file with a given time range
 * 3D positional audio, including Doppler effect
 * Support for MP3, WAV, OGG, and FLAC
-* Audio effects such as echo, reverb, filter, equalizer
-* Web support is still under testing. Your feedback is greatly appreciated. Please read the [web notes](https://github.com/alnitak/flutter_soloud/blob/main/WEB_NOTES.md) to start using this plugin on the Web.
+* Generate waveforms with the following types: `square`, `saw`, `sin`, `triangle`, `bounce`, `jaws`, `humps`, `fSquare` and `fSaw`
+* Audio effects such as `echo`, `reverb`, `filter`, `equalizer`, `pitch` `shifter`, `limiter`, `compressor` etc.
+* Stream audio from given audio data with buffering support with the following formats:
+  - `s8` signed 8 bit
+  - `s16le` signed 16 bit little endian
+  - `s32le` signed 32 bit little endian
+  - `f32le` float 32 bit little endian
+  - `opus` Opus codec compressed audio with Ogg container. Usefull for streaming from the Web (ie using OpenAI APIs). 
 
 
 ## Overview
@@ -35,8 +44,31 @@ If you merely need to play audio (such as playing a single sound effect or a non
 The `flutter_soloud` plugin uses the [SoLoud (C++) audio engine](https://solhsa.com/soloud/) with the [miniaudio](https://miniaud.io/) backend through [Dart's C interop](https://dart.dev/interop/c-interop) (`dart:ffi`).
 In other words, it is calling the C/C++ methods of the underlying audio engine directly — there are no method channels in use.
 
+#### Opus format for streaming
+When using an `AudioSource` as an audio stream to play custom audio data (ie using setBufferStream/addAudioDataStream/setDataIsEnded), it is possible to add PCM RAW audio data in *s8*, *s16le*, *s32le*, *f32le* and since it supports also the *opus* format with the Ogg codec (ie to work with OpenAI APIs), the [Opus](https://www.opus-codec.org/) and [Ogg](https://xiph.org/ogg/) libraries from [Xiph.org](https://www.xiph.org/) are needed.
+
+On Linux and MacOS theese libraries must be installed if you want to use this kind of `AudioSource`:
+- **Linux**
+  - install them depending on the package manager used by you distribution
+- **MacOS**
+  - `brew install opus libogg`
+
+if the libraries are not found the plugin will throw an exception when calling `setBufferStream` using Opus format.
+
+The `SoLoud.setBufferStream` supports also `BufferingType.preserved` which behaves the same as a normal `AudioSource`, and `BufferingType.released` which will free the memory of the already played audio for longer playback. The latter will accept to play only one instance of the audio stream at the same time.
+|BufferingType.preserved|BufferingType.released|
+|------------------------------------|----------------------------------|
+|![preserved](https://github.com/user-attachments/assets/e8699bfd-2a40-4832-a7a8-d729d844c48b)|![released](https://github.com/user-attachments/assets/7eb57688-ab0f-4859-813f-d23fff6ca10f)|
+|acts as normal leaving the whole audio data available for future re-play|while playing the already listened audio is freed. It can be listened to only once and the sound must be manually disposed|
+
 #### Web platform
-To use this plugin on the **Web platform**, please refer to [WEB_NOTES](https://github.com/alnitak/flutter_soloud/blob/main/WEB_NOTES.md).
+To use this plugin on the **Web platform**, please add the following scripts to the `<head>` or `<body>` section of your `index.html`:
+```
+<script src="assets/packages/flutter_soloud/web/libflutter_soloud_plugin.js" defer></script>
+<script src="assets/packages/flutter_soloud/web/init_module.dart.js" defer></script>
+```
+
+refer to [WEB_NOTES](https://github.com/alnitak/flutter_soloud/blob/main/WEB_NOTES.md) for more details.
 
 #### Linux
 Linux distributions usually install the alsa library by default. However, we've noticed that sometimes this isn't the case. For example, when installing Ubuntu Linux (24.04.1 LTS in this case) in a VM box on Windows, the alsa library is not installed. This will prevent `flutter_soloud` from building.
@@ -89,7 +121,24 @@ This handle is also added to the `AudioSource.handles` list so that you can alwa
 
 The `SoundHandle` also allows you to modify the currently-playing sounds, such as changing their volume, pausing them, etc.
 
-For more simple examples, check out the [example/project](https://github.com/alnitak/flutter_soloud/tree/main/example) included with the package.
+---
+
+For more simple examples, check out the [example/project](https://github.com/alnitak/flutter_soloud/tree/main/example) included with the package:
+| Example         | Description |
+|-----------------|-------------|
+|*lib/main.dart*                          |Very simple example where to start from. |
+|*lib/audio_data/audio_data.dart*         |Simple example to show how to use the `AudioData` to visualize audio. |
+|*lib/buffer_stream/generate.dart*        |Example of how to generate PCM audio inside an `Isolate` and play them. |
+|*lib/buffer_stream/websocket.dart*       |Shows how to use BufferStream with a websocket to get PCM and Opus audio data. |
+|*lib/filters/compressor.dart*            |Shows the use of the compressor filter. |
+|*lib/filters/limiter.dart*               |Shows the use of the limiter filter. |
+|*lib/filters/pitchshift.dart*            |Shows the use of the pitchshift filter. |
+|*lib/metronome/metronome.dart*           |Metronome example. |
+|*lib/output_device/output_device.dart*   |Lists available output devices. |
+|*lib/wave_data/wave_data.dart*           |Demonstrates how to read audio samples from a file and display them. |
+|*lib/waveform/waveform.dart*             |Demonstrates how to generate a waveform, play it, and change it's frequency on the fly. |
+
+
 For more complete examples, please look at [flutter_soloud_example](https://github.com/alnitak/flutter_soloud_example).
 
 ## Logging
@@ -151,10 +200,10 @@ Since I needed to modify the generated `.dart` file, I followed this flow:
 This plugin uses the following structure:
 
 * `lib`: Contains the Dart code that defines the API of the plugin relative to all platforms.
-
 * `src`: Contains the native source code. Linux, Android and Windows have their own CmakeFile.txt file in their own subdir to build the code into a dynamic library.
-
-* `src/soloud`: contains the SoLoud sources of my fork
+* `src/soloud`: Contains the SoLoud sources of my fork
+* `web`: Contains the scripts to build the plugin on the web platform.
+* `xiph`: Contains the script to build `ogg` and `opus` libraries on Android, Windows, MacOS and iOS.
 
 The `flutter_soloud` plugin utilizes a [forked](https://github.com/alnitak/soloud) repository of [SoLoud](https://github.com/jarikomppa/soloud), where the [miniaudio](https://github.com/mackron/miniaudio) audio backend (used by default) has been updated and it is located in `src/soloud/src/backend/miniaudio`.
 

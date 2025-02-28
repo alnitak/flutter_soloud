@@ -11,6 +11,7 @@ import 'package:flutter_soloud/src/bindings/soloud_controller.dart';
 import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/exceptions/exceptions.dart';
 import 'package:flutter_soloud/src/filters/filters.dart';
+import 'package:flutter_soloud/src/helpers/playback_device.dart';
 import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
 import 'package:flutter_soloud/src/utils/loader.dart';
@@ -167,10 +168,8 @@ interface class SoLoud {
   /// A helper for loading files that aren't on disk.
   final SoLoudLoader _loader = SoLoudLoader();
 
-  /// The backing private field for [isInitialized].
-  // TODO(filip): related to `get initialized`
-  // ignore: prefer_final_fields
-  bool _isInitialized = false;
+  /// Wheter or not the Opus and Ogg libraries are available.
+  bool _areOpusOggLibsAvailable = false;
 
   /// Whether or not is it possible to ask for wave and FFT data.
   bool _isVisualizationEnabled = false;
@@ -186,77 +185,9 @@ interface class SoLoud {
   /// - it's being shut down right now
   /// - it has been shut down
   ///
-  /// You can `await` [initialized] instead if you want to wait for the engine
-  /// to become ready (in case it's being initialized right now).
-  ///
   /// Use [isInitialized] only if you want to check the current status of
   /// the engine synchronously and you don't care that it might be ready soon.
-  // TODO(filip): related to `get initialized`. This line below is the old one.
-  // bool get isInitialized => _isInitialized;
-  // TODO(filip): this line below is the new one I leaved to let the
-  /// plugin to work.
   bool get isInitialized => _controller.soLoudFFI.isInited();
-
-  /// The completer for an initialization in progress.
-  ///
-  /// This is `null` when the engine is not currently being initialized.
-  // TODO(filip): related to `get initialized`.
-  Completer<void>? _initializeCompleter;
-
-  /// A [Future] that returns `true` when the audio engine is initialized
-  /// (and ready to play sounds, for example).
-  ///
-  /// You can call this at any time. For example:
-  ///
-  /// ```dart
-  /// void onPressed() async {
-  ///   if (await SoLoud.instance.initialized) {
-  ///     // The audio engine is ready. We can play sounds now.
-  ///     await SoLoud.instance.play(sound);
-  ///   }
-  /// }
-  /// ```
-  ///
-  /// The future will complete immediately (synchronously) if the engine is
-  /// either already initialized (`true`),
-  /// or it had failed to initialize (`false`),
-  /// or it was already shut down (`false`),
-  /// or it is _being_ shut down (`false`),
-  /// or when there wasn't ever a call to [init] at all (`false`).
-  ///
-  /// If the engine is in the middle of initializing, the future will complete
-  /// when the initialization is done. It will be `true` if the initialization
-  /// was successful, and `false` if it failed. The future will never throw.
-  ///
-  /// It is _not_ needed to await this future after a call to [init].
-  /// The [init] method already returns a future, and it is the
-  /// same future that this getter returns.
-  ///
-  /// ```dart
-  /// final result = await SoLoud.instance.initialize();
-  /// await SoLoud.instance.initialized;  // NOT NEEDED
-  /// ```
-  ///
-  /// This getter ([initialized]) is useful when you want to check the status
-  /// of the engine from places in your code that _don't_ do the initialization.
-  /// For example, a widget down the widget tree.
-  ///
-  /// If you need a version of this that is synchronous,
-  /// or if you don't care that the engine might be initializing right now
-  /// and therefore ready in a moment,
-  /// use [isInitialized] instead.
-  // TODO(filip): reimplement to satisfy the `Loader` timeout in the `init()`
-  FutureOr<bool> get initialized {
-    if (_initializeCompleter == null) {
-      // We are _not_ during initialization. Return synchronously.
-      return _isInitialized;
-    }
-
-    // We are in the middle of initializing the engine. Wait for that to
-    // complete and return `true` if it was successful.
-    return _initializeCompleter!.future
-        .then((_) => true, onError: (_) => false);
-  }
 
   /// Backing of [activeSounds].
   final List<AudioSource> _activeSounds = [];
@@ -281,6 +212,12 @@ interface class SoLoud {
   /// If you call any other methods (such as [play]) before initialization
   /// completes, those calls will be ignored and you will get
   /// a [SoLoudNotInitializedException] exception.
+  /// Could throw [SoLoudNoPlaybackDevicesFoundCppException] if there is not a
+  /// playback device available or if the given [device] is not found.
+  ///
+  /// NOTE: Calling this method while the engine is already initialized will
+  /// first deinitialize the engine and then reinitialize it. This means
+  /// that all sounds will be stopped, and all sound files will be unloaded.
   ///
   /// If [automaticCleanup] is `true`, the temporary directory that
   /// the engine uses for storing sound files will be purged occasionally
@@ -292,13 +229,16 @@ interface class SoLoud {
   /// that play sounds from assets or from the file system, this is probably
   /// unnecessary, as the amount of data will be finite.
   /// The default is `false`.
+  ///
   /// [sampleRate] The sample rate represents the number of samples used, per
   /// second. Typical sample rates are 8000Hz, 22050Hz, 44100Hz and 48000Hz.
   /// Higher the sample rates mean clearer sound, but also bigger files, more
   /// memory and higher processing power requirements.
+  ///
   /// [bufferSize] Audio latency generally means the time it takes from
   /// triggering a sound to the sound actually coming out of the speakers.
   /// The smaller the latency, the better.
+  ///
   /// Unfortunately, there's always some latency. The primary source of
   /// latency (that a programmer can have any control over) is the size of
   /// audio buffer. Generally speaking, the smaller the buffer, the lower the
@@ -307,9 +247,7 @@ interface class SoLoud {
   /// data ready to be played) and the sound breaks down horribly.
   /// [channels] mono, stereo, quad, 5.1, 7.1.
   Future<void> init({
-    // TODO(filip): remove deprecation?
-    @Deprecated('timeout is not used anymore.')
-    Duration timeout = const Duration(seconds: 10),
+    PlaybackDevice? device,
     bool automaticCleanup = false,
     int sampleRate = 44100,
     int bufferSize = 2048,
@@ -330,24 +268,25 @@ interface class SoLoud {
       deinit();
     }
 
+    _areOpusOggLibsAvailable = _controller.soLoudFFI.areOpusOggLibsAvailable();
+
     _activeSounds.clear();
 
     // Initialize native callbacks
-    _initializeNativeCallbacks();
+    await _initializeNativeCallbacks();
 
     final error = _controller.soLoudFFI.initEngine(
+      device?.id ?? -1,
       sampleRate,
       bufferSize,
       channels,
     );
     _logPlayerError(error, from: 'initialize() result');
     if (error == PlayerErrors.noError) {
-      _isInitialized = true;
-
       /// get the visualization flag from the player on C side.
       /// Eventually we can set this as a parameter during the
       /// initialization with some other parameters like `sampleRate`
-      _isVisualizationEnabled = getVisualizationEnabled();
+      _isVisualizationEnabled = _controller.soLoudFFI.getVisualizationEnabled();
 
       // Initialize [SoLoudLoader]
       _loader.automaticCleanup = automaticCleanup;
@@ -355,7 +294,36 @@ interface class SoLoud {
       await _loader.initialize();
     } else {
       _log.severe('initialize() failed with error: $error');
+      throw SoLoudCppException.fromPlayerError(error);
     }
+  }
+
+  /// Changes the output audio device to the one specified in the [newDevice].
+  /// If [newDevice] is not provided, the default OS device will be used.
+  ///
+  /// Note: Android and Web, only support one output device which is the
+  /// default device (iOS and MacOS?).
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  /// Throws [SoLoudNoPlaybackDevicesFoundCppException] if the given [newDevice]
+  /// is not found.
+  void changeDevice({PlaybackDevice? newDevice}) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+
+    final deviceId = newDevice?.id ?? -1;
+    final error = _controller.soLoudFFI.changeDevice(deviceId);
+    _logPlayerError(error, from: 'changeDevice() result');
+    if (error != PlayerErrors.noError) {
+      throw SoLoudCppException.fromPlayerError(error);
+    }
+  }
+
+  /// Lists all OS available playback devices.
+  /// Could be called safely even if the engin has not been initialized yet.
+  List<PlaybackDevice> listPlaybackDevices() {
+    return _controller.soLoudFFI.listPlaybackDevices();
   }
 
   /// Stops the engine and disposes of all resources, including sounds.
@@ -366,7 +334,6 @@ interface class SoLoud {
   void deinit() {
     _log.finest('deinit() called');
 
-    _isInitialized = false;
     _controller.soLoudFFI.disposeAllSound();
     _controller.soLoudFFI.deinit();
     _activeSounds.clear();
@@ -391,12 +358,9 @@ interface class SoLoud {
   /// These events are coming from `FlutterSoLoudFfi`. The callbacks
   /// `_voiceEndedCallback` and `_fileLoadedCallback` are called from CPP.
   /// From within these callbacks a new stream event is added and listened here.
-  // TODO(filip): 'setDartEventCallbacks()' can be called more then once,
-  // please take a look at the listeners if you find a better way
-  // to manage them only once.
-  void _initializeNativeCallbacks() {
+  Future<void> _initializeNativeCallbacks() async {
     // Initialize callbacks.
-    _controller.soLoudFFI.setDartEventCallbacks();
+    await _controller.soLoudFFI.setDartEventCallbacks();
 
     // Listen when a handle becomes invalid because has been stopped/ended.
     if (!_controller.soLoudFFI.voiceEndedEventController.hasListener) {
@@ -437,6 +401,12 @@ interface class SoLoud {
           final completeFileName = result['completeFileName'] as String;
           final hash = result['hash'] as int;
 
+          if (hash == 0) {
+            loadedFileCompleters[result['completeFileName']]
+                ?.completeError(SoLoudCppException.fromPlayerError(error));
+            return;
+          }
+
           final newSound = AudioSource(SoundHash(hash));
           final alreadyLoaded = _activeSounds
                   .where((sound) => sound.soundHash == newSound.soundHash)
@@ -458,6 +428,8 @@ interface class SoLoud {
               _activeSounds.add(newSound);
             }
           } else {
+            loadedFileCompleters[result['completeFileName']]
+                ?.completeError(SoLoudCppException.fromPlayerError(error));
             throw SoLoudCppException.fromPlayerError(error);
           }
           loadedFileCompleters[result['completeFileName']]?.complete(newSound);
@@ -474,6 +446,38 @@ interface class SoLoud {
     //     _log.fine(() => 'Audio engine state changed: $newState');
     //   });
     // }
+  }
+
+  AudioSource _addNewSound(
+    PlayerErrors error,
+    String completeFileName,
+    int hash,
+  ) {
+    final newSound = AudioSource(SoundHash(hash));
+    final alreadyLoaded = _activeSounds
+            .where((sound) => sound.soundHash == newSound.soundHash)
+            .length ==
+        1;
+    _logPlayerError(error, from: 'loadFile() result');
+    if (error == PlayerErrors.noError) {
+      if (!alreadyLoaded) {
+        _activeSounds.add(newSound);
+      }
+    } else if (error == PlayerErrors.fileAlreadyLoaded) {
+      // If we are here, the file has been already loaded on C++ side.
+      // In any case return the existing sound.
+      // Check if it is already in [_activeSounds], if not add it.
+      if (alreadyLoaded) {
+        _log.warning(() => "Sound '$completeFileName' was already "
+            'loaded. Prefer loading only once, and reusing the loaded '
+            'sound when playing.');
+      } else {
+        _activeSounds.add(newSound);
+      }
+    } else {
+      throw SoLoudCppException.fromPlayerError(error);
+    }
+    return newSound;
   }
 
   // ////////////////////////////////////////////////
@@ -497,6 +501,7 @@ interface class SoLoud {
   /// Returns the new sound as [AudioSource].
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  /// Throws [SoLoudFileLoadFailedException] if the file could not be loaded.
   ///
   /// If the file is already loaded, this is a no-op (but a warning
   /// will be produced in the log).
@@ -521,7 +526,10 @@ interface class SoLoud {
   }
 
   /// Load a new sound to be played once or multiple times later, from
-  /// a buffer.
+  /// a buffer. While [loadFile] decompresses the audio file and loads it
+  /// into memory, [loadMem] loads the audio data directly from the
+  /// compressed file. The compressed data could be read from memory
+  /// [LoadMode.memory] or from disk [LoadMode.disk].
   ///
   /// Provide a [path] of the file to be used as a reference to distinguis
   /// this [buffer].
@@ -537,8 +545,9 @@ interface class SoLoud {
   /// from the given file when needed (more CPU, less memory allocated).
   /// See the [seek] note problem when using [LoadMode.disk].
   /// The default is [LoadMode.memory].
-  /// IMPORTANT: [LoadMode.memory] used the on web platform could cause UI
-  /// freeze problems.
+  /// IMPORTANT: on Web [LoadMode.disk] is is overridden to [LoadMode.memory].
+  /// This could cause UI freeze problems for long duration audio files so
+  /// it is recommended to load them when the app starts.
   ///
   /// This is the only choice to load a file when using this plugin on the web
   /// because browsers cannot read directly files from the loal storage.
@@ -578,6 +587,259 @@ interface class SoLoud {
     });
   }
 
+  /// Set up an audio stream.
+  ///
+  /// [maxBufferSizeBytes] the max buffer size in **bytes**. When adding audio
+  /// data using [addAudioDataStream] and this values is reached, the stream
+  /// will be considered ended (likewise we called [setDataIsEnded]). This
+  /// means that when playing it, it will stop at that point (if loop is
+  /// not set). Note that the engine store floats internally, so even if you
+  /// add data as `s8`, it will be converted to `f32` internally.
+  ///
+  /// [maxBufferSizeDuration] same as [maxBufferSizeBytes] but the size is
+  /// calculated based on the [sampleRate] and [channels] parameters.
+  ///
+  /// **Note:** these parameters don't allocate any memory, but it is just a
+  /// limitation on the amount of data that can be added.
+  ///
+  /// [bufferingType] enum to choose how the buffering will work while playing
+  /// the stream. Using [BufferingType.preserved] will preserve the data already
+  /// in the buffer while playing it and adding new data.
+  /// Using [BufferingType.released] the buffer will free the memory of the
+  /// already played data. With this type only one instance (handle) of the
+  /// stream can be played at the same time. When it ends, the [AudioSource]
+  /// is empty and manually disposed.
+  ///
+  /// [bufferingTimeNeeds] the buffering time needed in seconds. If a handle
+  /// reaches the current buffer length, it will start to buffer pausing it and
+  /// waiting until the buffer will have enough data to cover this time.
+  ///
+  /// [sampleRate] the sample rate. Usually is 22050 or 44100 (CD quality).
+  /// When using [format] as `opus`, the sample rate can be 48000, 24000,
+  /// 16000, 12000 or 8000. Whatever the sample rate of the incoming data is,
+  /// it will be resampled to this value. So, if you are adding Opus data at
+  /// 48 KHz, and you set this to 24000, the data will be resampled to 24 KHz.
+  ///
+  /// [channels] enum to choose the number of channels. The `opus` format
+  /// supports only mono and stereo.
+  ///
+  /// [format] enum to choose from `f32le`, `s8`, `s16le`, `s32le` and
+  /// `opus`. The last one is a special format that uses the Opus codec with
+  /// Ogg container. It supports 48, 24, 16, 12 and 8 KHz sample rates
+  /// and mono and stereo.
+  ///
+  /// [onBuffering] a callback that is called when starting to buffer
+  /// (isBuffering = true) and when the buffering is done (isBuffering = false).
+  /// The callback is called with the `handle` which triggered the event and
+  /// the `time` in seconds.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  /// Throws [SoLoudOpusOggLibsNotAvailableException] if trying to use the
+  /// `opus` format but the Opus and Ogg libraries are not available. Please
+  /// check the `README.md` file for more information.
+  AudioSource setBufferStream({
+    int? maxBufferSizeBytes,
+    Duration? maxBufferSizeDuration,
+    BufferingType bufferingType = BufferingType.preserved,
+    double bufferingTimeNeeds = 2, // 2 seconds of data needed to un-pause
+    int sampleRate = 24000,
+    Channels channels = Channels.mono,
+    BufferType format = BufferType.s16le,
+    void Function(bool isBuffering, int handle, double time)? onBuffering,
+  }) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+
+    if (!_areOpusOggLibsAvailable && format == BufferType.opus) {
+      throw const SoLoudOpusOggLibsNotAvailableException();
+    }
+
+    final opusA = () {
+      if (format == BufferType.opus) {
+        return sampleRate == 48000 ||
+            sampleRate == 24000 ||
+            sampleRate == 16000 ||
+            sampleRate == 12000 ||
+            sampleRate == 8000;
+      }
+      return true;
+    }();
+    final opusB = () {
+      if (format == BufferType.opus) {
+        return channels == Channels.mono || channels == Channels.stereo;
+      }
+      return true;
+    }();
+    assert(
+      opusA,
+      'Opus format only supports 48, 24, 16, 12 and 8 KHz sample rates',
+    );
+    assert(
+      opusB,
+      'Only mono and stereo channels are supported for Opus format',
+    );
+
+    if (!opusA || !opusB) {
+      throw const SoLoudWrongOpusParamsException();
+    }
+
+    // Only [maxBufferSizeDuration] or [maxBufferSizeBytes] must be set.
+    assert(
+      maxBufferSizeDuration == null || maxBufferSizeBytes == null,
+      'Only [maxBufferSizeDuration] or [maxBufferSizeBytes] must be set.',
+    );
+
+    var bufferSize = maxBufferSizeBytes ?? 1024 * 1024 * 100; // 100 MB
+    if (maxBufferSizeDuration != null) {
+      bufferSize = (maxBufferSizeDuration.inMilliseconds *
+              sampleRate *
+              channels.count *
+              4) ~/
+          1000;
+    }
+
+    final ret = SoLoudController().soLoudFFI.setBufferStream(
+          bufferSize,
+          bufferingType,
+          bufferingTimeNeeds,
+          sampleRate,
+          channels.count,
+          format.value,
+          onBuffering,
+        );
+
+    if (ret.error != PlayerErrors.noError) {
+      _logPlayerError(ret.error, from: 'addAudioDataStream() result');
+      throw SoLoudCppException.fromPlayerError(ret.error);
+    }
+
+    final newSound = _addNewSound(ret.error, '', ret.soundHash.hash);
+    return newSound;
+  }
+
+  /// Add PCM audio data to the stream.
+  ///
+  /// This method can be called within an `Isolate` making it possible
+  /// to create PCM data and send them to the buffer without frezing
+  /// the main thread.
+  /// When finishing to add data to the stream, call [setDataIsEnded].
+  ///
+  /// [source] the audio source to add audio data to.
+  ///
+  /// [audioChunk] the audio data to add. This is of `Uint8List` type, so if
+  /// you want to add any other typed data like `Float32List`, 'Int32List',
+  /// 'Int16List' etc, you will have to convert it to `Uint8List`:
+  /// `[yourTypedData*List].buffer.asUint8List()`.
+  ///
+  /// **Example**: compute PCM audio inside an `Isolate` returning the new
+  /// `AudioSource`.
+  /// ```dart
+  /// // This is a global function or a static member of a class.
+  /// @pragma('vm:entry-point')
+  /// Future<AudioSource> computePCM(void args) async {
+  ///   final pcmBuffer = Uint8List(1024 * 1024); // 1 MB in bytes
+  ///   final pcmAudio = SoLoud.instance.setBufferStream(
+  ///     maxBufferSize: 1024 * 1024, // 1 MB in bytes
+  ///     format: BufferPcmType.s8, // signed 8 bits
+  ///   );
+  ///   for (var i = 0; i < pcmBuffer.length; i++) {
+  ///     // Compose your PCM data here.
+  ///     pcmBuffer[i] = Random().nextInt(256) - 128;
+  ///   }
+  ///
+  ///   /// Add the PCM data to the audio stream.
+  ///   SoLoud.instance
+  ///       .addAudioDataStream(pcmAudio, pcmBuffer.buffer.asUint8List());
+  ///
+  ///   /// Mark the end of the PCM data.
+  ///   SoLoud.instance.setDataIsEnded(pcmAudio);
+  ///
+  ///   return pcmAudio;
+  /// }
+  ///
+  /// /// A method inside a class to call the `computePCM` function.
+  /// Future<void> generate() async {
+  ///   /// Generate PCM data inside an Isolate.
+  ///   final myNewGeneratedAudio = await compute(computePCM, '');
+  /// }
+  /// ```
+  /// An example is also included in `example/lib/buffer_stream/generate.dart`.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  /// Throws [SoLoudPcmBufferFullCppException] if trying to add data and the
+  /// buffer is full.
+  /// Throws [SoLoudHashIsNotABufferStreamCppException] if the given [source]
+  /// is not a buffer stream.
+  /// Throws [SoLoudStreamEndedAlreadyCppException] if trying to add PCM data
+  /// but the stream is marked to be ended already, by the user or when the
+  /// stream reached its maximum capacity, in this case the stream is
+  /// automatically marked to be ended.
+  /// Thows [SoLoudOutOfMemoryException] if the buffer is out of OS memory or
+  /// the given `maxBufferSize` of the `setBufferStream` call is too small.
+  void addAudioDataStream(
+    AudioSource source,
+    Uint8List audioChunk,
+  ) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+
+    final e = SoLoudController().soLoudFFI.addAudioDataStream(
+          source.soundHash.hash,
+          audioChunk,
+        );
+
+    if (e != PlayerErrors.noError) {
+      _logPlayerError(e, from: 'addAudioDataStream() result');
+      throw SoLoudCppException.fromPlayerError(e);
+    }
+  }
+
+  /// Set the end of the data stream.
+  ///
+  /// By setting the stream to be ended means that when playing it, it can
+  /// handle the stop event when it reaches the end of the data stream or can
+  /// be looped if the looping is enabled.
+  ///
+  /// [hash] the hash of the stream sound.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  /// Throws [SoLoudSoundHashNotFoundDartException] if the [sound] is not found.
+  void setDataIsEnded(AudioSource sound) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    final e = SoLoudController().soLoudFFI.setDataIsEnded(sound.soundHash);
+
+    if (e != PlayerErrors.noError) {
+      _logPlayerError(e, from: 'setDataIsEnded() result');
+      throw SoLoudCppException.fromPlayerError(e);
+    }
+  }
+
+  /// Get the current buffer size in bytes of this sound with hash [hash].
+  /// [hash] the hash of the stream sound.
+  ///
+  /// **NOTE**: the returned value is in bytes and since by default uses floats,
+  /// the returned value should be divided by 4 and by the number of channels
+  /// to have the number of samples.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  /// Throws [SoLoudSoundHashNotFoundDartException] if the [sound] is not found.
+  int getBufferSize(AudioSource sound) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    final e = SoLoudController().soLoudFFI.getBufferSize(sound.soundHash);
+
+    if (e.error != PlayerErrors.noError) {
+      _logPlayerError(e.error, from: 'getBufferSize() result');
+      throw SoLoudCppException.fromPlayerError(e.error);
+    }
+    return e.sizeInBytes;
+  }
+
   /// Load a new sound to be played once or multiple times later, from
   /// an asset.
   ///
@@ -593,6 +855,7 @@ interface class SoLoud {
   /// Throws a [SoLoudTemporaryFolderFailedException] if there was a problem
   /// creating the temporary file that the asset will be copied to.
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  /// Throws [SoLoudFileLoadFailedException] if the file could not be loaded.
   ///
   /// Returns the new sound as [AudioSource].
   ///
@@ -635,6 +898,7 @@ interface class SoLoud {
   /// Throws a [SoLoudTemporaryFolderFailedException] if there was a problem
   /// creating the temporary file that the asset will be copied to.
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  /// Throws [SoLoudFileLoadFailedException] if the file could not be loaded.
   ///
   /// Returns the new sound as [AudioSource].
   ///
@@ -803,6 +1067,10 @@ interface class SoLoud {
   /// Returns the [SoundHandle] of the new sound instance.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  /// Throws [SoLoudBufferStreamCanBePlayedOnlyOnceCppException] if we try to
+  /// play a BufferStream using `release` buffer type more than once.
+  /// Throws [SoLoudSoundHashNotFoundDartException] if the given [sound]
+  /// is not found.
   Future<SoundHandle> play(
     AudioSource sound, {
     double volume = 1,
@@ -980,7 +1248,6 @@ interface class SoLoud {
         sound: sound,
         handle: const SoundHandle.error(),
       ));
-      // TODO(filiph): Close these in parallel using `Future.wait()`
       await sound.soundEventsController.close();
     }
 
@@ -1353,6 +1620,51 @@ interface class SoLoud {
       throw const SoLoudNotInitializedException();
     }
     _controller.soLoudFFI.setProtectVoice(handle, protect);
+  }
+
+  /// Set the inaudible behavior of a live 3D sound. By default,
+  /// if a sound is inaudible, it's paused, and will resume when it
+  /// becomes audible again. With this function you can tell SoLoud
+  /// to either kill the sound if it becomes inaudible, or to keep
+  /// ticking the sound even if it's inaudible.
+  ///
+  /// [handle] handle to check.
+  /// [mustTick] whether to keep ticking or not when the sound becomes
+  /// inaudible.
+  /// [kill] whether to kill the sound or not when the sound becomes inaudible.
+  ///
+  /// **Example**:
+  /// ```dart
+  /// final sound = SoLoud.instance.load('path/to/sound.mp3');
+  /// final handle = SoLoud.instance.play3d(sound, 0, 0, 0);
+  /// double xPos = 0;
+  ///
+  /// // set the sound to be inaudible if it's more than 10 units away
+  /// SoLoud.instance.set3dSourceMinMaxDistance(handle, 0, 10);
+  /// // set the attenuation to `LINEAR_DISTANCE` and when its position
+  /// // is 10 units away, the volume will be 0 (inaudible).
+  /// SoLoud.instance.set3dSourceAttenuation(handle, 2, 1);
+  ///
+  /// // if the sound is inaudible, it will be killed and the [handle]
+  /// // becomes invalid.
+  /// SoLoud.instance.setInaudibleBehavior(handle, false, true);
+  ///
+  /// // here we shift the sound position away (up to you to cancel the Timer!)
+  /// // When [xPos] reaches 10 units, the handle will stop.
+  /// Timer.periodic(
+  ///   const Duration(milliseconds: 100),
+  ///   (timer) {
+  ///       SoLoud.instance
+  ///           .set3dSourcePosition(handle, xPos += 0.1, 0, 0);
+  ///   },
+  /// );
+  /// ```
+  @mustBeOverridden
+  void setInaudibleBehavior(SoundHandle handle, bool mustTick, bool kill) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    _controller.soLoudFFI.setInaudibleBehavior(handle, mustTick, kill);
   }
 
   /// Gets the current maximum active voice count.
@@ -1900,6 +2212,8 @@ interface class SoLoud {
   /// Returns the [SoundHandle] of this new sound.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  /// Throws [SoLoudBufferStreamCanBePlayedOnlyOnceCppException] if we try to
+  /// play a BufferStream using `release` buffer type more than once.
   Future<SoundHandle> play3d(
     AudioSource sound,
     double posX,
@@ -2033,6 +2347,7 @@ interface class SoLoud {
 
   /// Sets the minimum and maximum distance parameters
   /// of a live 3D audio source.
+  /// Default values are 1 and 1000000.
   void set3dSourceMinMaxDistance(
       SoundHandle handle, double minDistance, double maxDistance) {
     _controller.soLoudFFI
@@ -2048,6 +2363,7 @@ interface class SoLoud {
   /// 2 LINEAR_DISTANCE       Linear distance attenuation model
   /// 3 EXPONENTIAL_DISTANCE  Exponential distance attenuation model
   /// ```
+  /// The default values are NO_ATTENUATION and 1.
   ///
   /// See https://solhsa.com/soloud/concepts3d.html.
   void set3dSourceAttenuation(

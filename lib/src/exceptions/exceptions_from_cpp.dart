@@ -31,7 +31,8 @@ class SoLoudFileLoadFailedException extends SoLoudCppException {
   const SoLoudFileLoadFailedException([super.message]);
 
   @override
-  String get description => 'The file was found, but could not be loaded '
+  String get description => 'File found, but could not be loaded! '
+      'Could be a permission error or the file is corrupted. '
       '(on the C++ side).';
 }
 
@@ -230,4 +231,91 @@ class SoLoudReadSamplesFailedToReadPcmFramesCppException
   @override
   String get description => 'An error occurred while reading PCM frames. '
       '(on the C++ side).';
+}
+
+/// An error occurred when reading PCM frames.
+class SoLoudNoPlaybackDevicesFoundCppException extends SoLoudCppException {
+  /// Creates a new [SoLoudNoPlaybackDevicesFoundCppException].
+  const SoLoudNoPlaybackDevicesFoundCppException([super.message]);
+
+  @override
+  String get description => 'No playback devices were found while '
+      'initializing engine or when changing the output device. '
+      '(on the C++ side).';
+}
+
+/// Trying to add PCM data but the stream is marked to be ended
+/// already by the user or when the stream reached its maximum
+/// capacity, in this case the stream is automatically marked to be ended.
+class SoLoudPcmBufferFullCppException extends SoLoudCppException {
+  /// Creates a new [SoLoudPcmBufferFullCppException].
+  const SoLoudPcmBufferFullCppException([super.message]);
+
+  @override
+  String get description =>
+      'Trying to add PCM data but the buffer is full or not large '
+      'enough for the neded PCM data. Try increasing the buffer size. '
+      'Or, stream buffer has been set to be ended. '
+      '(on the C++ side).';
+}
+
+/// An error occurred when asking to add audio data to an AudioSource that
+/// is not a buffer stream.
+class SoLoudHashIsNotABufferStreamCppException extends SoLoudCppException {
+  /// Creates a new [SoLoudHashIsNotABufferStreamCppException].
+  const SoLoudHashIsNotABufferStreamCppException([super.message]);
+
+  @override
+  String get description => 'The given AudioSource is not a buffer stream. '
+      '(on the C++ side).';
+}
+
+/// Trying to add PCM data but the stream is marked to be ended
+/// already, by the user or when the stream reached its maximum
+/// capacity, in this case the stream is automatically marked to be ended.
+class SoLoudStreamEndedAlreadyCppException extends SoLoudCppException {
+  /// Creates a new [SoLoudStreamEndedAlreadyCppException].
+  const SoLoudStreamEndedAlreadyCppException([super.message]);
+
+  @override
+  String get description =>
+      'Trying to add PCM data but the stream is marked to be ended '
+      'already, by the user or when the stream reached its maximum '
+      'capacity, in this case the stream is automatically marked to be ended. '
+      '(on the C++ side).';
+}
+
+/// An error occurred while creating an Opus decoder.
+class SoLoudFailedToCreateOpusDecoderCppException extends SoLoudCppException {
+  /// Creates a new [SoLoudFailedToCreateOpusDecoderCppException].
+  const SoLoudFailedToCreateOpusDecoderCppException([super.message]);
+
+  @override
+  String get description =>
+      'Failed to create an Opus decoder. This could happen when some internal '
+      'error occurred while creating the decoder. Maybe not enough memory. '
+      '(on the C++ side).';
+}
+
+/// An error occurred while decoding Opus data.
+/// This could happen when the data is corrupted.
+class SoLoudFailedToDecodeOpusPacketCppException extends SoLoudCppException {
+  /// Creates a new [SoLoudFailedToDecodeOpusPacketCppException].
+  const SoLoudFailedToDecodeOpusPacketCppException([super.message]);
+
+  @override
+  String get description =>
+      'Failed to decode Opus data. This could happen when the data is '
+      'corrupted. (on the C++ side).';
+}
+
+/// The buffer stream can be played only once when using `release` buffer type.
+class SoLoudBufferStreamCanBePlayedOnlyOnceCppException
+    extends SoLoudCppException {
+  /// Creates a new [SoLoudBufferStreamCanBePlayedOnlyOnceCppException].
+  const SoLoudBufferStreamCanBePlayedOnlyOnceCppException([super.message]);
+
+  @override
+  String get description => 'The buffer stream can be played only once when '
+      'using `BufferingType.release` buffer type. (on the C++ side).';
 }

@@ -104,6 +104,20 @@ abstract class SoLoudCppException extends SoLoudException {
         return const SoLoudSoundHandleNotFoundCppException();
       case PlayerErrors.filterParameterGetError:
         return const SoLoudFilterParameterGetErrorCppException();
+      case PlayerErrors.noPlaybackDevicesFound:
+        return const SoLoudNoPlaybackDevicesFoundCppException();
+      case PlayerErrors.pcmBufferFull:
+        return const SoLoudPcmBufferFullCppException();
+      case PlayerErrors.hashIsNotABufferStream:
+        return const SoLoudHashIsNotABufferStreamCppException();
+      case PlayerErrors.streamEndedAlready:
+        return const SoLoudStreamEndedAlreadyCppException();
+      case PlayerErrors.failedToCreateOpusDecoder:
+        return const SoLoudFailedToCreateOpusDecoderCppException();
+      case PlayerErrors.failedToDecodeOpusPacket:
+        return const SoLoudFailedToDecodeOpusPacketCppException();
+      case PlayerErrors.bufferStreamCanBePlayedOnlyOnce:
+        return const SoLoudBufferStreamCanBePlayedOnlyOnceCppException();
     }
   }
 
