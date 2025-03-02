@@ -867,7 +867,6 @@ extern "C"
     float texture2D[256][512];
     FFI_PLUGIN_EXPORT void getAudioTexture2D(float **samples, bool *isTheSameAsBefore)
     {
-        printf("getAudioTexture2D 1\n");
         if (player.get() == nullptr || !player.get()->isInited() ||
         analyzer.get() == nullptr || !player.get()->isVisualizationEnabled())
         {
@@ -875,28 +874,20 @@ extern "C"
             memset(*samples, 0, sizeof(float) * 512 * 256);
             return;
         }
-        printf("getAudioTexture2D 2\n");
         float* tmpTextureRow = (float*)malloc(sizeof(float) * 512);
         getAudioTexture(tmpTextureRow, isTheSameAsBefore);
-        printf("getAudioTexture2D 3\n");
         if (*isTheSameAsBefore)
         {
             free(tmpTextureRow);
-            printf("getAudioTexture2D 3a\n");
             *samples = *texture2D;
-            printf("getAudioTexture2D 3b\n");
             return;
         }
         /// shift up 1 row
         memmove(*texture2D + 512, texture2D, sizeof(float) * 512 * 255);
-        printf("getAudioTexture2D 4\n");
         /// store the new 1st row
         memcpy(*texture2D, tmpTextureRow, sizeof(float) * 512);
-        printf("getAudioTexture2D 5\n");
         free(tmpTextureRow);
-        printf("getAudioTexture2D 6\n");
         *samples = *texture2D;
-        printf("getAudioTexture2D 7\n");
         return;
     }
 
