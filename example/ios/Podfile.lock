@@ -72,11 +72,11 @@ SPEC CHECKSUMS:
   DKPhotoGallery: b3834fecb755ee09a593d7c9e389d8b5d6deed60
   file_picker: a0560bc09d61de87f12d246fc47d2119e6ef37be
   Flutter: e0871f40cf51350855a761d2e70bf5af5b9b5de7
-  flutter_soloud: c31ffcd136142ddccbcf20cb87c801bc617aaff7
+  flutter_soloud: ae2987c2535b91f3fbb9538e3560b24dbc82ac77
   path_provider_foundation: 080d55be775b7414fd5a5ef3ac137b97b097e564
   SDWebImage: 73c6079366fea25fa4bb9640d5fb58f0893facd8
   SwiftyGif: 706c60cf65fa2bc5ee0313beece843c8eb8194d4
 
-PODFILE CHECKSUM: a57f30d18f102dd3ce366b1d62a55ecbef2158e5
+PODFILE CHECKSUM: 02f4ba238411029ec237b3fafbf627682c8bfff8
 
 COCOAPODS: 1.16.2

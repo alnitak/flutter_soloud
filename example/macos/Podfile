@@ -1,7 +1,10 @@
-platform :osx, '10.15'
+platform :osx, '10.14'
 
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
+
+# Set this to '1' to build without opus ogg libs
+ENV['NO_OPUS_OGG_LIBS'] = '0'
 
 project 'Runner', {
   'Debug' => :debug,
