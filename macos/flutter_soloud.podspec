@@ -19,12 +19,19 @@ Flutter audio plugin using SoLoud library and FFI
   # `../src/*` so that the C sources can be shared among all target platforms.
   s.source           = { :path => '.' }
   s.source_files     = 'Classes/**/*.{h,mm}'
-  s.source_files     = 'Classes/**/*.{h,mm}'
   s.dependency 'FlutterMacOS'
   s.platform = :osx, '10.15'
 
-  # Check if opus and ogg libraries are available
-  has_opus_ogg = system("[ -f /usr/local/lib/libogg.dylib -o -f /opt/homebrew/lib/libogg.dylib ] && [ -f /usr/local/lib/libopus.dylib -o -f /opt/homebrew/lib/libopus.dylib ]")
+  # Check if all opus and ogg libraries are available (both x86_64 and arm64)
+  # To get these libraries, you'll need to run `brew` both in arm64 mode
+  # and in x86_64 mode.
+  # See https://github.com/alnitak/flutter_soloud/issues/191#issuecomment-2692671697
+  #
+  # This is a temporary fix just to get things building.
+  #
+  # IMPORTANT: Apps won't work correctly on user's machines unless they happen
+  # to have libopus and libogg installed.
+  has_opus_ogg = system("[ -f /usr/local/lib/libogg.dylib] && [ -f /opt/homebrew/lib/libogg.dylib ] && [ -f /usr/local/lib/libopus.dylib] && [ -f /opt/homebrew/lib/libopus.dylib ]")
 
   preprocessor_definitions = ['$(inherited)']
   if has_opus_ogg
@@ -43,9 +50,11 @@ Flutter audio plugin using SoLoud library and FFI
     'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386',
     "CLANG_CXX_LANGUAGE_STANDARD" => "c++17",
     "CLANG_CXX_LIBRARY" => "libc++",
-    'OTHER_LDFLAGS' => has_opus_ogg ? '-L/usr/local/lib -L/opt/homebrew/lib -logg -lopus' : '',
+    'OTHER_LDFLAGS[arch=arm64]' => has_opus_ogg ? '-L/opt/homebrew/lib -logg -lopus' : '',
+    'OTHER_LDFLAGS[arch=x86_64]' => has_opus_ogg ? '-L/usr/local/lib -logg -lopus' : '',
     'OTHER_CFLAGS' => '-msse -msse2 -msse3 -msse4.1 -O3 -ffast-math -flto',
-    'OTHER_CPLUSPLUSFLAGS' => '-msse -msse2 -msse3 -msse4.1 -O3 -ffast-math -flto'
+    'OTHER_CPLUSPLUSFLAGS' => '-msse -msse2 -msse3 -msse4.1 -O3 -ffast-math -flto',
+    'VALID_ARCHS' => 'x86_64 arm64',
    }
    
   s.swift_version = '5.0'
