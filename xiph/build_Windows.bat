@@ -17,6 +17,10 @@ set OPUS_DIR=opus
 if not exist "%OGG_DIR%" (
     echo Cloning OGG repository...
     git clone %REPO_OGG%
+    :: reset to a known good commit
+    cd ogg
+    git reset --hard db5c7a4
+    cd ..
 ) else (
     echo OGG repository already exists.
 )
@@ -25,6 +29,10 @@ if not exist "%OGG_DIR%" (
 if not exist "%OPUS_DIR%" (
     echo Cloning OPUS repository...
     git clone %REPO_OPUS%
+    :: reset to a known good commit
+    cd opus
+    git reset --hard c79a9bd
+    cd ..
 ) else (
     echo OPUS repository already exists.
 )

@@ -18,10 +18,18 @@ rm -f libflutter_soloud_plugin.*
 # Clone Opus and Ogg if not exists
 if [ ! -d "$OPUS_DIR" ]; then
     git clone https://github.com/xiph/opus "$OPUS_DIR"
+    # reset to a known good commit
+    cd "$OPUS_DIR"
+    git reset --hard c79a9bd
+    cd -
 fi
 
 if [ ! -d "$OGG_DIR" ]; then
     git clone https://github.com/xiph/ogg "$OGG_DIR"
+    # reset to a known good commit
+    cd "$OGG_DIR"
+    git reset --hard db5c7a4
+    cd -
 fi
 
 # Build Ogg if not built or force rebuild is set

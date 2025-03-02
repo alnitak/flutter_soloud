@@ -26,10 +26,17 @@ mkdir -p "$OUTPUT_DIR"
 # Clone repositories if needed
 if [ ! -d "ogg" ]; then
     git clone https://github.com/xiph/ogg
+    # reset to a known good commit
+    cd ogg
+    git reset --hard db5c7a4
+    cd ..
 fi
 
 if [ ! -d "opus" ]; then
     git clone https://github.com/xiph/opus
+    cd opus
+    git reset --hard c79a9bd
+    cd ..
 fi
 
 # Function to build library for specific architecture
