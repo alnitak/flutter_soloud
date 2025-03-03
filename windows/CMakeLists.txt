@@ -63,24 +63,39 @@ target_compile_definitions(${PLUGIN_NAME} PRIVATE FLUTTER_PLUGIN_IMPL)
 target_include_directories(${PLUGIN_NAME} INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/include")
 # target_link_libraries(${PLUGIN_NAME} PRIVATE flutter)
 
+if(DEFINED ENV{NO_OPUS_OGG_LIBS})
+    message("NO_OPUS_OGG_LIBS environment variable has been set to: $ENV{NO_OPUS_OGG_LIBS}")
+endif()
 
+if(NOT DEFINED ENV{NO_OPUS_OGG_LIBS} OR NOT ("$ENV{NO_OPUS_OGG_LIBS}" STREQUAL "1"))
+    message("Linking Opus and Ogg libraries statically!")
 
-# Add opus library
-set(OPUS_LIBRARY ${CMAKE_CURRENT_SOURCE_DIR}/opus.lib)
-# Link the library to your target
-target_link_libraries(${PLUGIN_NAME} PRIVATE ${OPUS_LIBRARY})
+    if(MSVC)
+      # Enable static linking of the MSVC runtime
+      set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+      # For the plugin
+      set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /MT")
+      set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /MTd")
+    endif()
 
-# Add ogg library
-set(OGG_LIBRARY ${CMAKE_CURRENT_SOURCE_DIR}/ogg.lib)
-# Link the library to your target
-target_link_libraries(${PLUGIN_NAME} PRIVATE ${OGG_LIBRARY})
+    # Add opus and ogg static libraries
+    set(OPUS_LIBRARY ${CMAKE_CURRENT_SOURCE_DIR}/libs/opus.lib)
+    set(OGG_LIBRARY ${CMAKE_CURRENT_SOURCE_DIR}/libs/ogg.lib)
+    
+    # Add the static library dependencies
+    target_link_libraries(${PLUGIN_NAME} PRIVATE 
+        ${OPUS_LIBRARY}
+        ${OGG_LIBRARY}
+    )
 
-# Set the ogg and opus include directory
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
+    # Set the include directory
+    target_include_directories(${PLUGIN_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
-# add the compile definition that will be used to check if the library is available
-# in bindings.cpp
-add_compile_definitions(LIBOPUS_OGG_AVAILABLE)
+    # Add compile definition
+    target_compile_definitions(${PLUGIN_NAME} PRIVATE LIBOPUS_OGG_AVAILABLE)
+
+    # Remove DLL copy commands since we're using static libraries
+endif()
 
 target_compile_options(${PLUGIN_NAME} PRIVATE 
     /W4     # Warning level 4
@@ -93,17 +108,4 @@ target_compile_options(${PLUGIN_NAME} PRIVATE
 set(flutter_soloud_bundled_libraries
   $<TARGET_FILE:${PLUGIN_NAME}>
   PARENT_SCOPE
-)
-
-# Copy DLLs to output directory for both Debug and Release configurations
-add_custom_command(TARGET ${PLUGIN_NAME} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-    "${CMAKE_CURRENT_SOURCE_DIR}/opus.dll"
-    "${CMAKE_BINARY_DIR}/runner/$<CONFIG>/opus.dll"
-)
-
-add_custom_command(TARGET ${PLUGIN_NAME} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-    "${CMAKE_CURRENT_SOURCE_DIR}/ogg.dll"
-    "${CMAKE_BINARY_DIR}/runner/$<CONFIG>/ogg.dll"
 )
