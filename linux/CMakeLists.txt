@@ -64,12 +64,9 @@ target_include_directories(${PLUGIN_NAME} INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}
 target_link_libraries(${PLUGIN_NAME} PRIVATE flutter)
 target_link_libraries(${PLUGIN_NAME} PRIVATE PkgConfig::GTK)
 
-if(DEFINED ENV{NO_OPUS_OGG_LIBS})
-    message("NO_OPUS_OGG_LIBS environment variable has been set to: $ENV{NO_OPUS_OGG_LIBS}")
-endif()
 
-if(NOT DEFINED ENV{NO_OPUS_OGG_LIBS} OR NOT ("$ENV{NO_OPUS_OGG_LIBS}" STREQUAL "1"))
-    message("Linking Opus and Ogg libraries!")
+if(NOT DEFINED ENV{NO_OPUS_OGG_LIBS})
+    message("NO_OPUS_OGG_LIBS has not been set. Linking Opus and Ogg libraries!")
     # Add opus library
     set(OPUS_LIBRARY ${CMAKE_CURRENT_SOURCE_DIR}/libs/libopus.so)
     target_link_libraries(${PLUGIN_NAME} PRIVATE ${OPUS_LIBRARY})
@@ -79,7 +76,9 @@ if(NOT DEFINED ENV{NO_OPUS_OGG_LIBS} OR NOT ("$ENV{NO_OPUS_OGG_LIBS}" STREQUAL "
     target_link_libraries(${PLUGIN_NAME} PRIVATE ${OGG_LIBRARY})
 
     include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
-    add_compile_definitions(LIBOPUS_OGG_AVAILABLE)
+else()
+    message("NO_OPUS_OGG_LIBS has been set. Not linking Opus and Ogg libraries!")
+    add_definitions(-DNO_OPUS_OGG_LIBS)
 endif()
 
 target_compile_options("${PLUGIN_NAME}" PRIVATE -Wall -Wno-error -Wno-vla -fPIC -O3 -msse3 -msse2) #  -ldl -lpthread -lm

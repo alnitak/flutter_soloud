@@ -63,12 +63,8 @@ target_compile_definitions(${PLUGIN_NAME} PRIVATE FLUTTER_PLUGIN_IMPL)
 target_include_directories(${PLUGIN_NAME} INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/include")
 # target_link_libraries(${PLUGIN_NAME} PRIVATE flutter)
 
-if(DEFINED ENV{NO_OPUS_OGG_LIBS})
-    message("NO_OPUS_OGG_LIBS environment variable has been set to: $ENV{NO_OPUS_OGG_LIBS}")
-endif()
-
-if(NOT DEFINED ENV{NO_OPUS_OGG_LIBS} OR NOT ("$ENV{NO_OPUS_OGG_LIBS}" STREQUAL "1"))
-    message("Linking Opus and Ogg libraries!")
+if(NOT DEFINED ENV{NO_OPUS_OGG_LIBS})
+    message("NO_OPUS_OGG_LIBS has not been set. Linking Opus and Ogg libraries!")
 
     if(MSVC)
       # Enable static linking of the MSVC runtime
@@ -91,9 +87,6 @@ if(NOT DEFINED ENV{NO_OPUS_OGG_LIBS} OR NOT ("$ENV{NO_OPUS_OGG_LIBS}" STREQUAL "
     # Set the ogg and opus include directory
     include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 
-    # add the compile definition that will be used to check if the library is available
-    add_compile_definitions(LIBOPUS_OGG_AVAILABLE)
-
     # Copy DLLs to output directory for both Debug and Release configurations
     add_custom_command(TARGET ${PLUGIN_NAME} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -106,6 +99,9 @@ if(NOT DEFINED ENV{NO_OPUS_OGG_LIBS} OR NOT ("$ENV{NO_OPUS_OGG_LIBS}" STREQUAL "
         "${CMAKE_CURRENT_SOURCE_DIR}/libs/ogg.dll"
         "${CMAKE_BINARY_DIR}/runner/$<CONFIG>/ogg.dll"
     )
+else()
+    message("NO_OPUS_OGG_LIBS has been set. Not linking Opus and Ogg libraries!")
+    add_definitions(-DNO_OPUS_OGG_LIBS)
 endif()
 
 target_compile_options(${PLUGIN_NAME} PRIVATE 

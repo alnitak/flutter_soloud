@@ -22,8 +22,8 @@ Flutter audio plugin using SoLoud library and FFI
   s.dependency 'Flutter'
   s.platform = :ios, '13.0'
 
-  # Check if we should disable opus/ogg support (must exist and be '1')
-  disable_opus_ogg = !ENV['NO_OPUS_OGG_LIBS'].nil? && ENV['NO_OPUS_OGG_LIBS'] == '1'
+  # Check if we should disable opus/ogg support (must exist)
+  disable_opus_ogg = !ENV['NO_OPUS_OGG_LIBS'].nil?
 
   s.compiler_flags = [
     '-w',
@@ -32,11 +32,6 @@ Flutter audio plugin using SoLoud library and FFI
     '-lpthread',
     '-lm'
   ]
-
-  preprocessor_definitions = ['$(inherited)']
-  if !disable_opus_ogg
-    preprocessor_definitions << 'LIBOPUS_OGG_AVAILABLE=1'
-  end
 
   # Flutter.framework does not contain a i386 slice.
   s.pod_target_xcconfig = { 
@@ -47,7 +42,7 @@ Flutter audio plugin using SoLoud library and FFI
       '$(PODS_TARGET_SRCROOT)/../src',
       '$(PODS_TARGET_SRCROOT)/../src/soloud/include',
     ],
-    'GCC_PREPROCESSOR_DEFINITIONS' => preprocessor_definitions.join(' '),
+    'GCC_PREPROCESSOR_DEFINITIONS' => ['$(inherited)'],
     'DEFINES_MODULE' => 'YES', 
     'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'arm64',
     'VALID_ARCHS' => 'arm64 x86_64',

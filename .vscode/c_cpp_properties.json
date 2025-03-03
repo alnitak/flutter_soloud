@@ -57,7 +57,7 @@
                 "${workspaceFolder}/flutter_soloud_ios/ios/Classes/src/soloud/include",
                 "${workspaceFolder}/src"
             ],
-            "defines": ["WITH_MINIAUDIO", "DR_MP3_IMPLEMENTATION", "LIBOPUS_OGG_AVAILABLE"],
+            "defines": ["WITH_MINIAUDIO", "DR_MP3_IMPLEMENTATION"],
             "compilerPath": "/usr/bin/clang",
             "cStandard": "c17",
             "cppStandard": "c++17",
@@ -72,7 +72,7 @@
                 "${workspaceFolder}/flutter_soloud_ios/ios/Classes/src/soloud/include",
                 "${workspaceFolder}/src"
             ],
-            "defines": ["WITH_MINIAUDIO", "DR_MP3_IMPLEMENTATION", "LIBOPUS_OGG_AVAILABLE"],
+            "defines": ["WITH_MINIAUDIO", "DR_MP3_IMPLEMENTATION"],
             "compilerPath": "/usr/bin/clang",
             "cStandard": "c17",
             "cppStandard": "c++17",

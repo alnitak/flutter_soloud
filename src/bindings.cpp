@@ -169,7 +169,7 @@ extern "C"
 
     /// Check if the libopus and libogg are available at build time.
     FFI_PLUGIN_EXPORT bool areOpusOggLibsAvailable() {
-#if defined(LIBOPUS_OGG_AVAILABLE) || defined(__EMSCRIPTEN__)
+#if !defined(NO_OPUS_OGG_LIBS)
         return true;
 #else
         return false;
