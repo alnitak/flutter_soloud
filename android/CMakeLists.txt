@@ -11,7 +11,7 @@ set(SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../src")
 ## Add SoLoud custom cmake files
 message("**************** SOLOUD CONFIGURE.CMAKE")
 include (Configure.cmake)
-message("**************** SOLOUD SRC.CMAKE 1")
+message("**************** SOLOUD SRC.CMAKE START")
 if (UNIX AND NOT WIN32 AND NOT APPLE)
 	if (CMAKE_SIZEOF_VOID_P MATCHES "8")
 		set (LIB_POSTFIX "64" CACHE STRING "suffix for 32/64 dir placement")
@@ -29,7 +29,7 @@ include_directories(${SRC_DIR}/soloud/include)
 include_directories(${SRC_DIR}/soloud/src)
 include_directories(${SRC_DIR})
 include (src.cmake)
-message("**************** SOLOUD SRC.CMAKE 2  ${TARGET_NAME}")
+message("**************** SOLOUD SRC.CMAKE END  ${TARGET_NAME}")
 
 
 
