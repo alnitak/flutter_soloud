@@ -67,12 +67,19 @@ build_lib() {
         -DANDROID_PLATFORM=android-21 \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_INSTALL_PREFIX="$temp_install_path" \
-        -DBUILD_SHARED_LIBS=ON
+        -DBUILD_SHARED_LIBS=ON \
+        -DCMAKE_C_FLAGS="-Os -flto -ffunction-sections -fdata-sections" \
+        -DCMAKE_EXE_LINKER_FLAGS="-Wl,--gc-sections -flto" \
+        -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--gc-sections -flto" \
+        -DCMAKE_C_FLAGS_RELEASE="-O3 -DNDEBUG"
 
     cmake --build . --config Release --target install
     
     # Copy only the library files to the final location
     cp "$temp_install_path/lib/lib"*.so "$install_path/"
+    
+    # Strip debug symbols after copying
+    $ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip "$install_path/lib"*.so
     
     # Copy headers (only needs to be done once per library)
     if [ "$arch" = "arm64-v8a" ]; then
@@ -96,6 +103,8 @@ for arch in "${ARCHS[@]}"; do
 done
 
 echo
+echo "Libraries created in $OUTPUT_DIR:"
+ls -l $OUTPUT_DIR
 echo
-echo "Build complete! Libraries are in $OUTPUT_DIR"
-echo "Headers are in $OUTPUT_INCLUDE_DIR"
+echo "Include files copied to $OUTPUT_INCLUDE_DIR:"
+ls -l $OUTPUT_INCLUDE_DIR
