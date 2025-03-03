@@ -68,7 +68,7 @@ if(DEFINED ENV{NO_OPUS_OGG_LIBS})
 endif()
 
 if(NOT DEFINED ENV{NO_OPUS_OGG_LIBS} OR NOT ("$ENV{NO_OPUS_OGG_LIBS}" STREQUAL "1"))
-    message("Linking Opus and Ogg libraries statically!")
+    message("Linking Opus and Ogg libraries!")
 
     if(MSVC)
       # Enable static linking of the MSVC runtime
@@ -78,23 +78,34 @@ if(NOT DEFINED ENV{NO_OPUS_OGG_LIBS} OR NOT ("$ENV{NO_OPUS_OGG_LIBS}" STREQUAL "
       set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /MTd")
     endif()
 
-    # Add opus and ogg static libraries
+    # Add opus library
     set(OPUS_LIBRARY ${CMAKE_CURRENT_SOURCE_DIR}/libs/opus.lib)
+    # Link the library to your target
+    target_link_libraries(${PLUGIN_NAME} PRIVATE ${OPUS_LIBRARY})
+
+    # Add ogg library
     set(OGG_LIBRARY ${CMAKE_CURRENT_SOURCE_DIR}/libs/ogg.lib)
-    
-    # Add the static library dependencies
-    target_link_libraries(${PLUGIN_NAME} PRIVATE 
-        ${OPUS_LIBRARY}
-        ${OGG_LIBRARY}
+    # Link the library to your target
+    target_link_libraries(${PLUGIN_NAME} PRIVATE ${OGG_LIBRARY})
+
+    # Set the ogg and opus include directory
+    include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
+
+    # add the compile definition that will be used to check if the library is available
+    add_compile_definitions(LIBOPUS_OGG_AVAILABLE)
+
+    # Copy DLLs to output directory for both Debug and Release configurations
+    add_custom_command(TARGET ${PLUGIN_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/libs/opus.dll"
+        "${CMAKE_BINARY_DIR}/runner/$<CONFIG>/opus.dll"
     )
 
-    # Set the include directory
-    target_include_directories(${PLUGIN_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-
-    # Add compile definition
-    target_compile_definitions(${PLUGIN_NAME} PRIVATE LIBOPUS_OGG_AVAILABLE)
-
-    # Remove DLL copy commands since we're using static libraries
+    add_custom_command(TARGET ${PLUGIN_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/libs/ogg.dll"
+        "${CMAKE_BINARY_DIR}/runner/$<CONFIG>/ogg.dll"
+    )
 endif()
 
 target_compile_options(${PLUGIN_NAME} PRIVATE 

@@ -50,12 +50,13 @@ echo Building OGG library...
 mkdir "%BUILD_DIR%\ogg"
 cd "%BUILD_DIR%\ogg"
 :: Build static libraries
-cmake -G "Visual Studio 17 2022" -DCMAKE_BUILD_TYPE:STRING=Release -DBUILD_SHARED_LIBS=OFF -DCMAKE_MSVC_RUNTIME_LIBRARY="MultiThreaded" "%OGG_DIR%"
+cmake -G "Visual Studio 17 2022" -DCMAKE_BUILD_TYPE:STRING=Release -DBUILD_SHARED_LIBS=ON -DCMAKE_MSVC_RUNTIME_LIBRARY="MultiThreaded" "%OGG_DIR%"
 msbuild ogg.sln /p:Configuration=Release /p:Platform=x64 /m /nr:false
 cmake --build . --config Release
 :: Step 2: Copy OGG .lib, .dll and include files
 echo Copying OGG files...
 copy /Y ".\Release\*.lib" "%LIBS_DIR%"
+copy /Y ".\Release\*.dll" "%LIBS_DIR%"
 xcopy /Y /S "%OGG_DIR%\include\ogg" "%INCLUDE_DIR%\ogg\"
 
 cd "%BASE_DIR%"
@@ -65,13 +66,14 @@ echo Building OPUS library...
 mkdir "%BUILD_DIR%\opus"
 cd "%BUILD_DIR%\opus"
 :: Build static libraries
-cmake -G "Visual Studio 17 2022" -DCMAKE_BUILD_TYPE:STRING=Release -DBUILD_SHARED_LIBS=OFF -DCMAKE_MSVC_RUNTIME_LIBRARY="MultiThreaded" "%OPUS_DIR%"
+cmake -G "Visual Studio 17 2022" -DCMAKE_BUILD_TYPE:STRING=Release -DBUILD_SHARED_LIBS=ON -DCMAKE_MSVC_RUNTIME_LIBRARY="MultiThreaded" "%OPUS_DIR%"
 msbuild opus.sln /p:Configuration=Release /p:Platform=x64 /m /nr:false
 cmake --build . --config Release
 
 :: Step 4: Copy OPUS .lib, .dll and include files
 echo Copying OPUS files...
 copy /Y ".\Release\*.lib" "%LIBS_DIR%"
+copy /Y ".\Release\*.dll" "%LIBS_DIR%"
 xcopy /Y /S "%OPUS_DIR%\include" "%INCLUDE_DIR%\opus\"
 
 cd "%BASE_DIR%"
