@@ -1,7 +1,8 @@
 #!/bin/bash
 
 
-# This script builds the Ogg and Opus libraries for Android
+# This script builds the Ogg and Opus libraries for Android.
+# NOTE: tested only running on Linux.
 # Required: Android NDK, CMake, Git
 
 # Exit on any error
@@ -17,11 +18,13 @@ fi
 BASE_DIR="$PWD"
 BUILD_DIR="$BASE_DIR/android/build"
 OUTPUT_DIR="$BASE_DIR/android/libs"
+OUTPUT_INCLUDE_DIR="$BASE_DIR/android/include"
 ARCHS=("arm64-v8a" "armeabi-v7a" "x86" "x86_64")
 
 # Create directories
 mkdir -p "$BUILD_DIR"
 mkdir -p "$OUTPUT_DIR"
+mkdir -p "$OUTPUT_INCLUDE_DIR"
 
 # Clone repositories if needed
 if [ ! -d "ogg" ]; then
@@ -45,12 +48,14 @@ build_lib() {
     local arch=$2
     local build_path="$BUILD_DIR/${lib}_${arch}"
     local install_path="$OUTPUT_DIR/$arch"
+    local temp_install_path="$build_path/install"
     
     echo "Building $lib for $arch..."
     
     # Create build directory
     mkdir -p "$build_path"
     mkdir -p "$install_path"
+    mkdir -p "$temp_install_path"
     
     # Navigate to build directory
     cd "$build_path"
@@ -61,10 +66,23 @@ build_lib() {
         -DANDROID_ABI="$arch" \
         -DANDROID_PLATFORM=android-21 \
         -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_INSTALL_PREFIX="$install_path" \
+        -DCMAKE_INSTALL_PREFIX="$temp_install_path" \
         -DBUILD_SHARED_LIBS=ON
-    
+
     cmake --build . --config Release --target install
+    
+    # Copy only the library files to the final location
+    cp "$temp_install_path/lib/lib"*.so "$install_path/"
+    
+    # Copy headers (only needs to be done once per library)
+    if [ "$arch" = "arm64-v8a" ]; then
+        echo "Copying headers for $lib..."
+        if [ "$lib" = "ogg" ]; then
+            cp -r "$temp_install_path/include/ogg" "$OUTPUT_INCLUDE_DIR/"
+        elif [ "$lib" = "opus" ]; then
+            cp -r "$temp_install_path/include/opus" "$OUTPUT_INCLUDE_DIR/"
+        fi
+    fi
     
     # Go back to base directory
     cd "$BASE_DIR"
@@ -80,3 +98,4 @@ done
 echo
 echo
 echo "Build complete! Libraries are in $OUTPUT_DIR"
+echo "Headers are in $OUTPUT_INCLUDE_DIR"
