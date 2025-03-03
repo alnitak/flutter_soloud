@@ -11,7 +11,7 @@ set(SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../src")
 ## Add SoLoud custom cmake files
 message("**************** SOLOUD CONFIGURE.CMAKE")
 include (Configure.cmake)
-message("**************** SOLOUD SRC.CMAKE 1")
+message("**************** SOLOUD SRC.CMAKE START")
 if (UNIX AND NOT WIN32 AND NOT APPLE)
 	if (CMAKE_SIZEOF_VOID_P MATCHES "8")
 		set (LIB_POSTFIX "64" CACHE STRING "suffix for 32/64 dir placement")
@@ -29,7 +29,7 @@ include_directories(${SRC_DIR}/soloud/include)
 include_directories(${SRC_DIR}/soloud/src)
 include_directories(${SRC_DIR})
 include (src.cmake)
-message("**************** SOLOUD SRC.CMAKE 2  ${TARGET_NAME}")
+message("**************** SOLOUD SRC.CMAKE END  ${TARGET_NAME}")
 
 
 
@@ -64,44 +64,23 @@ target_include_directories(${PLUGIN_NAME} INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}
 target_link_libraries(${PLUGIN_NAME} PRIVATE flutter)
 target_link_libraries(${PLUGIN_NAME} PRIVATE PkgConfig::GTK)
 
-# # Add opus library
-# set(OPUS_LIBRARY ${CMAKE_CURRENT_SOURCE_DIR}/libopus.so)
-# # Link the library to your target
-# target_link_libraries(${PLUGIN_NAME} PRIVATE ${OPUS_LIBRARY})
-# # Set the directory where the library will be installed
-# set(INSTALL_BUNDLE_LIB_DIR "${CMAKE_INSTALL_PREFIX}/lib")
-# include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../src/opus)
-
-# # Add ogg library
-# set(OGG_LIBRARY ${CMAKE_CURRENT_SOURCE_DIR}/libogg.so)
-# # Link the library to your target
-# target_link_libraries(${PLUGIN_NAME} PRIVATE ${OGG_LIBRARY})
-# # Set the directory where the library will be installed
-# set(INSTALL_BUNDLE_LIB_DIR "${CMAKE_INSTALL_PREFIX}/lib")
-# include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../src/ogg)
-
-find_library(LIBOPUS_LIBRARY opus)
-find_library(LIBOGG_LIBRARY ogg)
-
-if (LIBOPUS_LIBRARY)
-    message("libopus found: ${LIBOPUS_LIBRARY}")
-else()
-    message(WARNING "libopus not found")
+if(DEFINED ENV{NO_OPUS_OGG_LIBS})
+    message("NO_OPUS_OGG_LIBS environment variable has been set to: $ENV{NO_OPUS_OGG_LIBS}")
 endif()
 
-if (LIBOGG_LIBRARY)
-    message("libogg found: ${LIBOGG_LIBRARY}")
-else()
-    message(WARNING "libopus not found")
-endif()
+if(NOT DEFINED ENV{NO_OPUS_OGG_LIBS} OR NOT ("$ENV{NO_OPUS_OGG_LIBS}" STREQUAL "1"))
+    message("Linking Opus and Ogg libraries!")
+    # Add opus library
+    set(OPUS_LIBRARY ${CMAKE_CURRENT_SOURCE_DIR}/libs/libopus.so)
+    target_link_libraries(${PLUGIN_NAME} PRIVATE ${OPUS_LIBRARY})
 
-if (LIBOPUS_LIBRARY AND LIBOGG_LIBRARY)
-    message("libopus and libogg found")
+    # Add ogg library
+    set(OGG_LIBRARY ${CMAKE_CURRENT_SOURCE_DIR}/libs/libogg.so)
+    target_link_libraries(${PLUGIN_NAME} PRIVATE ${OGG_LIBRARY})
+
+    include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
     add_compile_definitions(LIBOPUS_OGG_AVAILABLE)
-    target_link_libraries(${PLUGIN_NAME} PRIVATE ${LIBOPUS_LIBRARY})
-    target_link_libraries(${PLUGIN_NAME} PRIVATE ${LIBOGG_LIBRARY})
 endif()
-
 
 target_compile_options("${PLUGIN_NAME}" PRIVATE -Wall -Wno-error -Wno-vla -fPIC -O3 -msse3 -msse2) #  -ldl -lpthread -lm
 
