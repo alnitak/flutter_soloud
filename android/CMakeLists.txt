@@ -69,23 +69,25 @@ target_compile_definitions(${PLUGIN_NAME} PRIVATE FLUTTER_PLUGIN_IMPL)
 target_include_directories(${PLUGIN_NAME} INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_link_libraries(${PLUGIN_NAME} PRIVATE ${log-lib} android)
 
+if(DEFINED ENV{NO_OPUS_OGG_LIBS})
+    message("NO_OPUS_OGG_LIBS environment variable has been set to: $ENV{NO_OPUS_OGG_LIBS}")
+endif()
 
-# Add opus library
-set(OPUS_LIBRARY ${CMAKE_CURRENT_SOURCE_DIR}/libs/${ANDROID_ABI}/libopus.so)
-target_link_libraries(${PLUGIN_NAME} PRIVATE ${OPUS_LIBRARY})
-set(INSTALL_BUNDLE_LIB_DIR "${CMAKE_INSTALL_PREFIX}/lib")
+if(NOT DEFINED ENV{NO_OPUS_OGG_LIBS} OR NOT ("$ENV{NO_OPUS_OGG_LIBS}" STREQUAL "1"))
+    message("Linking Opus and Ogg libraries!")
+    # Add opus library
+    set(OPUS_LIBRARY ${CMAKE_CURRENT_SOURCE_DIR}/libs/${ANDROID_ABI}/libopus.so)
+    target_link_libraries(${PLUGIN_NAME} PRIVATE ${OPUS_LIBRARY})
+    set(INSTALL_BUNDLE_LIB_DIR "${CMAKE_INSTALL_PREFIX}/lib")
 
-# Add ogg library
-set(OGG_LIBRARY ${CMAKE_CURRENT_SOURCE_DIR}/libs/${ANDROID_ABI}/libogg.so)
-target_link_libraries(${PLUGIN_NAME} PRIVATE ${OGG_LIBRARY})
-set(INSTALL_BUNDLE_LIB_DIR "${CMAKE_INSTALL_PREFIX}/lib")
+    # Add ogg library
+    set(OGG_LIBRARY ${CMAKE_CURRENT_SOURCE_DIR}/libs/${ANDROID_ABI}/libogg.so)
+    target_link_libraries(${PLUGIN_NAME} PRIVATE ${OGG_LIBRARY})
+    set(INSTALL_BUNDLE_LIB_DIR "${CMAKE_INSTALL_PREFIX}/lib")
 
-# include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include/ogg)
-# include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include/opus)
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
-add_compile_definitions(LIBOPUS_OGG_AVAILABLE)
-
-
+    include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
+    add_compile_definitions(LIBOPUS_OGG_AVAILABLE)
+endif()
 
 # target_compile_definitions(flutter_soloud PUBLIC DART_SHARED_LIB)
 
