@@ -10,9 +10,9 @@
             "request": "launch",
             "program": "lib/buffer_stream/websocket.dart",
             "flutterMode": "debug",
-            "env": {
-                "NO_OPUS_OGG_LIBS": ""
-            },
+            // "env": {
+            //     "NO_OPUS_OGG_LIBS": ""
+            // },
             "cwd": "${workspaceFolder}/example"
         },
         {
