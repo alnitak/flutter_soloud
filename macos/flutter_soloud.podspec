@@ -23,11 +23,16 @@ Flutter audio plugin using SoLoud library and FFI
   s.dependency 'FlutterMacOS'
   s.platform = :osx, '10.15'
 
-  # Check if we should disable opus/ogg support (must exist)
-  disable_opus_ogg = !ENV['NO_OPUS_OGG_LIBS'].nil?
+  # Check if we should disable opus/ogg support (must exist and be '1')
+  disable_opus_ogg = !ENV['NO_OPUS_OGG_LIBS'].nil? && ENV['NO_OPUS_OGG_LIBS'] == '1'
   
   local_lib_path = '$(PODS_TARGET_SRCROOT)/libs'
   local_include_path = '$(PODS_TARGET_SRCROOT)/include'
+
+  preprocessor_definitions = ['$(inherited)']
+  if disable_opus_ogg
+    preprocessor_definitions << 'NO_OPUS_OGG_LIBS'
+  end
 
   s.pod_target_xcconfig = { 
     'HEADER_SEARCH_PATHS' => [
@@ -35,7 +40,7 @@ Flutter audio plugin using SoLoud library and FFI
       '$(PODS_TARGET_SRCROOT)/../src',
       '$(PODS_TARGET_SRCROOT)/../src/soloud/include',
     ],
-    'GCC_PREPROCESSOR_DEFINITIONS' => ['$(inherited)'],
+    'GCC_PREPROCESSOR_DEFINITIONS' => preprocessor_definitions.join(' '),
     'DEFINES_MODULE' => 'YES', 
     'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386',
     "CLANG_CXX_LANGUAGE_STANDARD" => "c++17",
