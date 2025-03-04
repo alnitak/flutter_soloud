@@ -26,7 +26,7 @@ EXTERNAL SOURCES:
 
 SPEC CHECKSUMS:
   file_picker: 7584aae6fa07a041af2b36a2655122d42f578c1a
-  flutter_soloud: 4b4aa6b4715fb3a7028fe081e65a9b6356e22b5b
+  flutter_soloud: a1bab7031872bce1214123d050ad0b18f45366ca
   FlutterMacOS: 8f6f14fa908a6fb3fba0cd85dbd81ec4b251fb24
   path_provider_foundation: 080d55be775b7414fd5a5ef3ac137b97b097e564
 

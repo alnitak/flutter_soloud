@@ -19,7 +19,6 @@ Flutter audio plugin using SoLoud library and FFI
   # `../src/*` so that the C sources can be shared among all target platforms.
   s.source           = { :path => '.' }
   s.source_files     = 'Classes/**/*.{h,mm}'
-  s.source_files     = 'Classes/**/*.{h,mm}'
   s.dependency 'FlutterMacOS'
   s.platform = :osx, '10.15'
 
@@ -47,7 +46,8 @@ Flutter audio plugin using SoLoud library and FFI
     "CLANG_CXX_LIBRARY" => "libc++",
     'OTHER_LDFLAGS' => disable_opus_ogg ? '' : "-L#{local_lib_path} -logg -lopus",
     'OTHER_CFLAGS' => '-msse -msse2 -msse3 -msse4.1 -O3 -ffast-math -flto',
-    'OTHER_CPLUSPLUSFLAGS' => '-msse -msse2 -msse3 -msse4.1 -O3 -ffast-math -flto'
+    'OTHER_CPLUSPLUSFLAGS' => '-msse -msse2 -msse3 -msse4.1 -O3 -ffast-math -flto',
+    'VALID_ARCHS' => 'x86_64 arm64',
    }
    
   s.swift_version = '5.0'
