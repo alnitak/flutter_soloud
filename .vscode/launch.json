@@ -11,7 +11,7 @@
             "program": "lib/buffer_stream/websocket.dart",
             "flutterMode": "debug",
             // "env": {
-            //     "NO_OPUS_OGG_LIBS": ""
+            //     "NO_OPUS_OGG_LIBS": "1"
             // },
             "cwd": "${workspaceFolder}/example"
         },
@@ -29,6 +29,9 @@
             "request": "launch",
             "program": "lib/buffer_stream/websocket.dart",
             "flutterMode": "release",
+            // "env": {
+            //     "NO_OPUS_OGG_LIBS": "1"
+            // },
             "cwd": "${workspaceFolder}/example"
         },
         {
