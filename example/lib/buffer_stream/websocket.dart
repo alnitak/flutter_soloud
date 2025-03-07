@@ -296,7 +296,7 @@ class _WebsocketExampleState extends State<WebsocketExample> {
                     }
                   });
                 },
-                child: const Text('paly'),
+                child: const Text('play'),
               ),
               const SizedBox(width: 8),
               OutlinedButton(
