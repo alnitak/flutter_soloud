@@ -193,7 +193,7 @@ class _WebsocketExampleState extends State<WebsocketExample> {
 
               currentSound = SoLoud.instance.setBufferStream(
                 // maxBufferSizeBytes: 1024 * 1024 * 200, // 200 MB
-                maxBufferSizeDuration: const Duration(minutes: 3),
+                maxBufferSizeDuration: const Duration(minutes: 5),
                 bufferingTimeNeeds: 0.5,
                 sampleRate: sampleRate[srId],
                 channels: Channels.values[chId],
@@ -268,7 +268,9 @@ class _WebsocketExampleState extends State<WebsocketExample> {
                   numberOfChunks = 0;
                   byteSize = 0;
                 },
-                onError: (error) {},
+                onError: (Object error) {
+                  debugPrint('ws error: $error');
+                },
               );
             },
             child: const Text('connect to WS and receive audio data'),
@@ -294,9 +296,9 @@ class _WebsocketExampleState extends State<WebsocketExample> {
                     }
                   });
                 },
-                child: const Text('paly'),
+                child: const Text('play'),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 8),
               OutlinedButton(
                 onPressed: () async {
                   currentSound = null;

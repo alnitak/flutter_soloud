@@ -4,7 +4,6 @@ group = "flutter.soloud.flutter_soloud"
 version = "1.0"
 
 buildscript {
-    // ext.kotlin_version = '1.7.10'
     repositories {
         google()
         mavenCentral()
@@ -12,9 +11,7 @@ buildscript {
 
     dependencies {
         // The Android Gradle Plugin knows how to build native code with the NDK.
-        classpath 'com.android.tools.build:gradle:7.3.1'
-        // classpath("com.android.tools.build:gradle:8.1.0")
-        // classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+        classpath("com.android.tools.build:gradle:8.7.0")
     }
 }
 
@@ -32,7 +29,7 @@ android {
 
     // Bumping the plugin compileSdk version requires all clients of this plugin
     // to bump the version in their app.
-    compileSdk = 33
+    compileSdk = 35
 
     // Use the NDK version
     // declared in /android/app/build.gradle file of the Flutter project.
@@ -55,12 +52,34 @@ android {
         }
     }
 
+    defaultConfig {
+        minSdk = 21
+
+        // Add this inside defaultConfig to affect all variants
+        externalNativeBuild {
+            cmake {
+                // Pass environment variable to CMake
+                arguments "-DNO_OPUS_OGG_LIBS=${System.getenv('NO_OPUS_OGG_LIBS') ?: 'false'}"
+                
+                // Specify the correct target name
+                targets "flutter_soloud_plugin"
+            }
+        }
+    }
+
+    // Task to check if NO_OPUS_OGG_LIBS has changed. If yes the cmake task will be re-run
+    tasks.whenTaskAdded { task ->
+        if (task.name.contains("externalNativeBuild")) {
+            // println "=== Flutter SoLoud Plugin ==="
+            // println "NO_OPUS_OGG_LIBS=${System.getenv('NO_OPUS_OGG_LIBS') ?: 'false'}"
+            
+            // Always run CMake configuration
+            task.outputs.upToDateWhen { false }
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
-    }
-
-    defaultConfig {
-        minSdk = 21
     }
 }

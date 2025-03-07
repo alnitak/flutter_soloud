@@ -129,5 +129,8 @@ class SoLoudOpusOggLibsNotAvailableException extends SoLoudDartException {
 
   @override
   String get description => 'The Opus and Ogg libraries are not available. '
-      'Please read the documentation on how to enable them.';
+      'If your target platform is Android, could happens that the NDK built '
+      'files are not updated. If this is the case, or you just want to read '
+      'more about enablig/disabling the libs, please read the documentation: '
+      'https://github.com/alnitak/flutter_soloud/blob/main/NO_OPUS_OGG_LIBS.md';
 }

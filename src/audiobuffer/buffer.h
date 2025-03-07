@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <iostream>
 #include <cstring>
+#include <mutex>
 
 enum BufferingType
 {
@@ -21,6 +22,7 @@ public:
 
 private:
     size_t maxBytes; // Maximum capacity in bytes
+    std::mutex bufferMutex; // Add mutex for thread safety
 
 public:
     // Constructor that accepts the maxBytes parameter
@@ -94,7 +96,7 @@ public:
     // Overload for float data, directly adding its bytes to the buffer
     // Return the number of floats written.
     size_t addData(const float* data, size_t numSamples) {
-        // No normalization needed for floats: the player is set to use f32
+        std::lock_guard<std::mutex> lock(bufferMutex); // Lock during modification
         unsigned int bytesNeeded = numSamples * sizeof(float);
         int32_t newNumSamples = numSamples;
         if (buffer.size() + bytesNeeded > maxBytes)
@@ -111,6 +113,7 @@ public:
 
     // Remove data from the start of the buffer
     size_t removeData(size_t bytesToRemove) {
+        std::lock_guard<std::mutex> lock(bufferMutex); // Lock during modification
         size_t samplesRemoved = 0;
         if (bufferingType == BufferingType::RELEASED && bytesToRemove > 0) {
             samplesRemoved = bytesToRemove / sizeof(float);
@@ -124,14 +127,16 @@ public:
     }
 
     // Function to get the current size of the buffer in bytes
-    size_t getFloatsBufferSize() const
+    size_t getFloatsBufferSize()
     {
+        std::lock_guard<std::mutex> lock(bufferMutex); // Lock during read
         return buffer.size() / sizeof(float);
     }
 
     // Clear the buffer
     void clear()
     {
+        std::lock_guard<std::mutex> lock(bufferMutex); // Lock during modification
         buffer.clear();
     }
 };

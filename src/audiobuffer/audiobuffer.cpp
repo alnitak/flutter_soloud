@@ -158,7 +158,7 @@ namespace SoLoud
 		buffer = std::vector<unsigned char>();
 		mBuffer.setBufferType(bufferingType);
 
-#if defined(LIBOPUS_OGG_AVAILABLE) || defined(__EMSCRIPTEN__)
+#if !defined(NO_OPUS_OGG_LIBS)
 		decoder = nullptr;
 		if (pcmFormat.dataType == BufferType::OPUS)
 		{
@@ -224,7 +224,8 @@ namespace SoLoud
 
 		if (mPCMformat.dataType == BufferType::OPUS)
 		{
-#if defined(LIBOPUS_OGG_AVAILABLE) || defined(__EMSCRIPTEN__)
+
+#if !defined(NO_OPUS_OGG_LIBS)
 			// Decode the Opus data
 			try {
 				auto newData = decoder.get()->decode(

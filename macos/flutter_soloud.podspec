@@ -22,26 +22,20 @@ Flutter audio plugin using SoLoud library and FFI
   s.dependency 'FlutterMacOS'
   s.platform = :osx, '10.15'
 
-  # Check if all opus and ogg libraries are available (both x86_64 and arm64)
-  # To get these libraries, you'll need to run `brew` both in arm64 mode
-  # and in x86_64 mode.
-  # See https://github.com/alnitak/flutter_soloud/issues/191#issuecomment-2692671697
-  #
-  # This is a temporary fix just to get things building.
-  #
-  # IMPORTANT: Apps won't work correctly on user's machines unless they happen
-  # to have libopus and libogg installed.
-  has_opus_ogg = system("[ -f /usr/local/lib/libogg.dylib] && [ -f /opt/homebrew/lib/libogg.dylib ] && [ -f /usr/local/lib/libopus.dylib] && [ -f /opt/homebrew/lib/libopus.dylib ]")
+  # Check if we should disable opus/ogg support (must exist and be '1')
+  disable_opus_ogg = !ENV['NO_OPUS_OGG_LIBS'].nil? && ENV['NO_OPUS_OGG_LIBS'] == '1'
+  
+  local_lib_path = '$(PODS_TARGET_SRCROOT)/libs'
+  local_include_path = '$(PODS_TARGET_SRCROOT)/include'
 
   preprocessor_definitions = ['$(inherited)']
-  if has_opus_ogg
-    preprocessor_definitions << 'LIBOPUS_OGG_AVAILABLE=1'
+  if disable_opus_ogg
+    preprocessor_definitions << 'NO_OPUS_OGG_LIBS'
   end
 
   s.pod_target_xcconfig = { 
     'HEADER_SEARCH_PATHS' => [
-      '/usr/local/include', # For Intel Macs
-      '/opt/homebrew/include', # For Silicon Macs
+      local_include_path,
       '$(PODS_TARGET_SRCROOT)/../src',
       '$(PODS_TARGET_SRCROOT)/../src/soloud/include',
     ],
@@ -50,8 +44,7 @@ Flutter audio plugin using SoLoud library and FFI
     'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386',
     "CLANG_CXX_LANGUAGE_STANDARD" => "c++17",
     "CLANG_CXX_LIBRARY" => "libc++",
-    'OTHER_LDFLAGS[arch=arm64]' => has_opus_ogg ? '-L/opt/homebrew/lib -logg -lopus' : '',
-    'OTHER_LDFLAGS[arch=x86_64]' => has_opus_ogg ? '-L/usr/local/lib -logg -lopus' : '',
+    'OTHER_LDFLAGS' => disable_opus_ogg ? '' : "-L#{local_lib_path} -logg -lopus",
     'OTHER_CFLAGS' => '-msse -msse2 -msse3 -msse4.1 -O3 -ffast-math -flto',
     'OTHER_CPLUSPLUSFLAGS' => '-msse -msse2 -msse3 -msse4.1 -O3 -ffast-math -flto',
     'VALID_ARCHS' => 'x86_64 arm64',

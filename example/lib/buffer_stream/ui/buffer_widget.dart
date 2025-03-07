@@ -22,7 +22,7 @@ class BufferBar extends StatefulWidget {
 }
 
 class _BufferBarState extends State<BufferBar> {
-  final width = 250.0;
+  final width = 200.0;
   final height = 30.0;
   Timer? timer;
   int currentMaxBytes = 1024 * 1024; // 1 MB
@@ -83,7 +83,7 @@ class _BufferBarState extends State<BufferBar> {
       child: Row(
         children: [
           SizedBox(
-            width: 150,
+            width: 140,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.center,
@@ -101,7 +101,7 @@ class _BufferBarState extends State<BufferBar> {
           ColoredBox(
             color: Colors.grey,
             child: Padding(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(10),
               child: Stack(
                 children: [
                   SizedBox(

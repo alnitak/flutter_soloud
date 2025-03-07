@@ -11,7 +11,7 @@
 #include "../enums.h"
 #include "../active_sound.h"
 #include "buffer.h"
-#if defined(LIBOPUS_OGG_AVAILABLE) || defined(__EMSCRIPTEN__)
+#if !defined(NO_OPUS_OGG_LIBS)
 #include "opus_stream_decoder.h"
 #endif
 
@@ -50,7 +50,7 @@ namespace SoLoud
     Buffer mBuffer;
     uint64_t mBytesReceived;
     bool dataIsEnded;
-#if defined(LIBOPUS_OGG_AVAILABLE) || defined(__EMSCRIPTEN__)
+#if !defined(NO_OPUS_OGG_LIBS)
     std::unique_ptr<OpusDecoderWrapper> decoder;
 #endif
 

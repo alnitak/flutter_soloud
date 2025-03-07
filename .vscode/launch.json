@@ -10,6 +10,9 @@
             "request": "launch",
             "program": "lib/main.dart",
             "flutterMode": "debug",
+            // "env": {
+            //     "NO_OPUS_OGG_LIBS": "1"
+            // },
             "cwd": "${workspaceFolder}/example"
         },
         {
@@ -18,14 +21,20 @@
             "request": "launch",
             "program": "lib/main.dart",
             "flutterMode": "profile",
+            // "env": {
+            //     "NO_OPUS_OGG_LIBS": "1"
+            // },
             "cwd": "${workspaceFolder}/example"
         },
         {
             "name": "Flutter release",
             "type": "dart",
             "request": "launch",
-            "program": "lib/buffer_stream/websocket.dart",
+            "program": "lib/main.dart",
             "flutterMode": "release",
+            // "env": {
+            //     "NO_OPUS_OGG_LIBS": "1"
+            // },
             "cwd": "${workspaceFolder}/example"
         },
         {
