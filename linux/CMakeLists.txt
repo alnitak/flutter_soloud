@@ -92,7 +92,7 @@ endif()
 if (LIBOGG_LIBRARY)
     message("libogg found: ${LIBOGG_LIBRARY}")
 else()
-    message(WARNING "libopus not found")
+    message(WARNING "libogg not found")
 endif()
 
 if (LIBOPUS_LIBRARY AND LIBOGG_LIBRARY)
