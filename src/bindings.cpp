@@ -848,7 +848,8 @@ extern "C"
             analyzer.get() == nullptr)
         {
             memset(samples, 0, sizeof(float) * 512);
-            return;
+            *isTheSameAsBefore = true;
+        return;
         }
         float *wave = player.get()->getWave(isTheSameAsBefore);
         float *fft = analyzer.get()->calcFFT(wave);
@@ -872,6 +873,7 @@ extern "C"
         {
             *samples = *texture2D;
             memset(*samples, 0, sizeof(float) * 512 * 256);
+            *isTheSameAsBefore = true;
             return;
         }
         float* tmpTextureRow = (float*)malloc(sizeof(float) * 512);
