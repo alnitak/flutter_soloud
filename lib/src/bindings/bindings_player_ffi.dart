@@ -858,11 +858,13 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
 
   late final _getAudioTexturePtr = _lookup<
       ffi.NativeFunction<
-          ffi.Void Function(ffi.Pointer<ffi.Float>, ffi.Pointer<ffi.Bool>)>>(
+          ffi.Void Function(
+              ffi.Pointer<ffi.Pointer<ffi.Float>>, ffi.Pointer<ffi.Bool>)>>(
     'getAudioTexture',
   );
   late final _getAudioTexture = _getAudioTexturePtr.asFunction<
-      void Function(ffi.Pointer<ffi.Float>, ffi.Pointer<ffi.Bool>)>();
+      void Function(
+          ffi.Pointer<ffi.Pointer<ffi.Float>>, ffi.Pointer<ffi.Bool>)>();
 
   @override
   bool getAudioTexture2D(AudioData samples) {

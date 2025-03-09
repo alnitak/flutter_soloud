@@ -842,20 +842,23 @@ extern "C"
     /// The other 256 floats represent the wave data (amplitude) [-1.0~1.0].
     ///
     /// [samples] should be allocated and freed in dart side
-    FFI_PLUGIN_EXPORT void getAudioTexture(float *samples, bool *isTheSameAsBefore)
+    float texture[512];
+    FFI_PLUGIN_EXPORT void getAudioTexture(float **samples, bool *isTheSameAsBefore)
     {
         if (player.get() == nullptr || !player.get()->isInited() ||
-            analyzer.get() == nullptr)
+        analyzer.get() == nullptr)
         {
+            *samples = texture;
             memset(samples, 0, sizeof(float) * 512);
             *isTheSameAsBefore = true;
-        return;
+            return;
         }
         float *wave = player.get()->getWave(isTheSameAsBefore);
         float *fft = analyzer.get()->calcFFT(wave);
 
-        memcpy(samples, fft, sizeof(float) * 256);
-        memcpy(samples + 256, wave, sizeof(float) * 256);
+        memcpy(texture, fft, sizeof(float) * 256);
+        memcpy(texture + 256, wave, sizeof(float) * 256);
+        *samples = texture;
     }
 
     /// Return a floats matrix of 256x512
@@ -876,21 +879,23 @@ extern "C"
             *isTheSameAsBefore = true;
             return;
         }
-        float* tmpTextureRow = (float*)malloc(sizeof(float) * 512);
-        getAudioTexture(tmpTextureRow, isTheSameAsBefore);
+
+        float *wave = player.get()->getWave(isTheSameAsBefore);
+        float *fft = analyzer.get()->calcFFT(wave);
         if (*isTheSameAsBefore)
         {
-            free(tmpTextureRow);
             *samples = *texture2D;
             return;
         }
+        
         /// shift up 1 row
-        memmove(*texture2D + 512, texture2D, sizeof(float) * 512 * 255);
+        memmove(texture2D[1], texture2D[0], sizeof(float) * 512 * 255);
         /// store the new 1st row
-        memcpy(*texture2D, tmpTextureRow, sizeof(float) * 512);
-        free(tmpTextureRow);
+        memcpy(texture2D[0], fft, sizeof(float) * 256);
+        memcpy(texture2D[0]+256, wave, sizeof(float) * 256);
+        
         *samples = *texture2D;
-        return;
+        *isTheSameAsBefore = false;
     }
 
     FFI_PLUGIN_EXPORT float getTextureValue(int row, int column)

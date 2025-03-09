@@ -34,15 +34,15 @@ class AudioDataCtrl {
 
     /// Initialize the pointer to the pointer of the samples. This can be done
     /// only after calling once the get* method.
-    if (audioData.getSamplesKind == GetSamplesKind.wave) {
-      SoLoudController().soLoudFFI.getWave(audioData);
-      _samplePtrPtr = wasmGetI32Value(_samplesPtr, '*');
+    switch (audioData.getSamplesKind) {
+      case GetSamplesKind.wave:
+        SoLoudController().soLoudFFI.getWave(audioData);
+      case GetSamplesKind.linear:
+        SoLoudController().soLoudFFI.getAudioTexture(audioData);
+      case GetSamplesKind.texture:
+        SoLoudController().soLoudFFI.getAudioTexture2D(audioData);
     }
-
-    if (audioData.getSamplesKind == GetSamplesKind.texture) {
-      SoLoudController().soLoudFFI.getAudioTexture2D(audioData);
-      _samplePtrPtr = wasmGetI32Value(_samplesPtr, '*');
-    }
+    _samplePtrPtr = wasmGetI32Value(_samplesPtr, '*');
   }
 
   void dispose(
@@ -66,7 +66,7 @@ class AudioDataCtrl {
       return Float32List(0);
     }
     // Convert the JSArrayBuffer to a Dart Float32List
-    return wasmHeapU8Buffer.toDart.asFloat32List(_samplesPtr, 512);
+    return wasmHeapU8Buffer.toDart.asFloat32List(_samplePtrPtr, 512);
   }
 
   Float32List get2DTexture({bool alwaysReturnData = true}) {

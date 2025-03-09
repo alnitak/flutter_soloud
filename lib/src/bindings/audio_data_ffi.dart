@@ -19,7 +19,7 @@ class AudioDataCtrl {
   late Pointer<Pointer<Float>> samples2D;
 
   /// Where the audio 1D data is stored.
-  late Pointer<Float> samples1D;
+  late Pointer<Pointer<Float>> samples1D;
 
   final bool Function(AudioData) waveCallback =
       SoLoudController().soLoudFFI.getWave;
@@ -35,7 +35,7 @@ class AudioDataCtrl {
   void allocSamples(AudioData audioData) {
     dataIsTheSameAsBefore = false;
     samples2D = calloc();
-    samples1D = calloc(512 * 4);
+    samples1D = calloc();
     samplesWave = calloc();
   }
 
@@ -61,10 +61,13 @@ class AudioDataCtrl {
   }
 
   Float32List getFftAndWave({bool alwaysReturnData = true}) {
-    if (!alwaysReturnData && dataIsTheSameAsBefore) return Float32List(0);
-    final val = Pointer<Float>.fromAddress(samples1D.address);
+    final texturePtr = samples1D.value;
+
+    if (!alwaysReturnData && dataIsTheSameAsBefore || texturePtr == nullptr) {
+      return Float32List(0);
+    }
     return Float32List.view(
-      val.cast<Uint8>().asTypedList(512 * 4).buffer,
+      texturePtr.cast<Uint8>().asTypedList(512 * 4).buffer,
       0,
       512,
     );

@@ -26,9 +26,9 @@ Analyzer::Analyzer(int windowSize, float sampleRate)
 
 Analyzer::~Analyzer() = default;
 
-/// Blackman windowing (used by ShaderToy).
-void Analyzer::blackmanWindow(float *samples, const float *waveData) const
-{
+/// Blackman windowing
+/// used by ShaderToy
+void Analyzer::blackmanWindow(float *samples, const float *waveData) const {
     memset(samples + 512, 0, 512 * sizeof(float));
     for (int i = 0; i < 256; i++) {
         float multiplier = a0 - a1 * cosf(2 * M_PI * i / mWindowSize) + a2 * cosf(4 * M_PI * i / mWindowSize);
