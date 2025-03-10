@@ -805,7 +805,7 @@ extern "C"
     /// Return a 256 float array containing FFT data.
     FFI_PLUGIN_EXPORT void getFft(float **fft, bool *isTheSameAsBefore)
     {
-        if (player.get() == nullptr || !player.get()->isInited())
+        if (player.get() == nullptr || !player.get()->isInited() || !player.get()->isVisualizationEnabled())
             return;
         *fft = player.get()->calcFFT(isTheSameAsBefore);
     }
@@ -815,7 +815,7 @@ extern "C"
     /// Return a 256 float array containing wave data.
     FFI_PLUGIN_EXPORT void getWave(float **wave, bool *isTheSameAsBefore)
     {
-        if (player.get() == nullptr || !player.get()->isInited())
+        if (player.get() == nullptr || !player.get()->isInited() || !player.get()->isVisualizationEnabled())
             return;
         *wave = player.get()->getWave(isTheSameAsBefore);
     }
@@ -846,19 +846,25 @@ extern "C"
     FFI_PLUGIN_EXPORT void getAudioTexture(float **samples, bool *isTheSameAsBefore)
     {
         if (player.get() == nullptr || !player.get()->isInited() ||
-        analyzer.get() == nullptr)
+            analyzer.get() == nullptr || !player.get()->isVisualizationEnabled())
         {
             *samples = texture;
-            memset(samples, 0, sizeof(float) * 512);
+            memset(*samples, 0, sizeof(float) * 512);
             *isTheSameAsBefore = true;
             return;
         }
         float *wave = player.get()->getWave(isTheSameAsBefore);
         float *fft = analyzer.get()->calcFFT(wave);
+        if (*isTheSameAsBefore)
+        {
+            *samples = texture;
+            return;
+        }
 
         memcpy(texture, fft, sizeof(float) * 256);
         memcpy(texture + 256, wave, sizeof(float) * 256);
         *samples = texture;
+        *isTheSameAsBefore = false;
     }
 
     /// Return a floats matrix of 256x512

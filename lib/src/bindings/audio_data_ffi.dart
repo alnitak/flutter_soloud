@@ -45,6 +45,9 @@ class AudioDataCtrl {
     if (samplesWave != nullptr) calloc.free(samplesWave);
     if (samples1D != nullptr) calloc.free(samples1D);
     if (samples2D != nullptr) calloc.free(samples2D);
+    samplesWave = nullptr;
+    samples1D = nullptr;
+    samples2D = nullptr;
   }
 
   Float32List getWave({bool alwaysReturnData = true}) {
@@ -74,14 +77,14 @@ class AudioDataCtrl {
   }
 
   Float32List get2DTexture({bool alwaysReturnData = true}) {
-    final wavePtr = samples2D.value;
+    final texture2DPtr = samples2D.value;
 
-    if (!alwaysReturnData && dataIsTheSameAsBefore || wavePtr == nullptr) {
+    if (!alwaysReturnData && dataIsTheSameAsBefore || texture2DPtr == nullptr) {
       return Float32List(0);
     }
 
     final ret = Float32List.view(
-      wavePtr.cast<Uint8>().asTypedList(512 * 256 * 4).buffer,
+      texture2DPtr.cast<Uint8>().asTypedList(512 * 256 * 4).buffer,
       0,
       512 * 256,
     );
