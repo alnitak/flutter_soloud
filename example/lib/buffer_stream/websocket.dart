@@ -198,7 +198,7 @@ class _WebsocketExampleState extends State<WebsocketExample> {
                 sampleRate: sampleRate[srId],
                 channels: Channels.values[chId],
                 format: BufferType.values[fmtId],
-                bufferingType: BufferingType.released,
+                bufferingType: BufferingType.preserved,
                 onBuffering: (isBuffering, handle, time) async {
                   debugPrint('started buffering? $isBuffering  with '
                       'handle: $handle at time $time');
@@ -297,6 +297,14 @@ class _WebsocketExampleState extends State<WebsocketExample> {
                   });
                 },
                 child: const Text('play'),
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton(
+                onPressed: () async {
+                  if (currentSound == null) return;
+                  SoLoud.instance.resetBufferStream(currentSound!);
+                },
+                child: const Text('reset buffer'),
               ),
               const SizedBox(width: 8),
               OutlinedButton(

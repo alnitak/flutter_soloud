@@ -252,6 +252,12 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }
 
   @override
+  PlayerErrors resetBufferStream(SoundHash soundHash) {
+    final result = wasmResetBufferStream(soundHash.hash);
+    return PlayerErrors.values[result];
+  }
+
+  @override
   PlayerErrors addAudioDataStream(
     int hash,
     Uint8List audioChunk,

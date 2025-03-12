@@ -718,6 +718,29 @@ interface class SoLoud {
     return newSound;
   }
 
+  /// Resets the buffer of the data stream.
+  ///
+  /// It happens that when playing a stream, maybe from the web, it is needed
+  /// to change it to another source. The player continues to play the already
+  /// added audio data to the buffer. This method can be used to reset the
+  /// buffer and start with the new audio data.
+  ///
+  /// [hash] the hash of the stream sound.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  /// Throws [SoLoudSoundHashNotFoundDartException] if the [sound] is not found.
+  void resetBufferStream(AudioSource sound) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    final e = SoLoudController().soLoudFFI.resetBufferStream(sound.soundHash);
+
+    if (e != PlayerErrors.noError) {
+      _logPlayerError(e, from: 'resetBufferStream() result');
+      throw SoLoudCppException.fromPlayerError(e);
+    }
+  }
+
   /// Add PCM audio data to the stream.
   ///
   /// This method can be called within an `Isolate` making it possible
