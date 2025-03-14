@@ -171,6 +171,10 @@ class AudioData {
   /// to avoid this and when this happens, the returned data will be an
   /// empty list when [alwaysReturnData] is false.
   Float32List getAudioData({bool alwaysReturnData = true}) {
+    /// Non blocking condition.
+    if (!SoLoudController().soLoudFFI.isInited()) {
+      return Float32List(0);
+    }
     if (!SoLoudController().soLoudFFI.getVisualizationEnabled()) {
       throw const SoLoudVisualizationNotEnabledException();
     }
