@@ -31,7 +31,7 @@ extern "C"
     std::mutex loadMutex;
 
     std::unique_ptr<Player> player = std::make_unique<Player>();
-    std::unique_ptr<Analyzer> analyzer = std::make_unique<Analyzer>(2048);
+    std::unique_ptr<Analyzer> analyzer = std::make_unique<Analyzer>(256);
 
     typedef void (*dartVoiceEndedCallback_t)(unsigned int *);
     typedef void (*dartFileLoadedCallback_t)(enum PlayerErrors *, char *completeFileName, unsigned int *);

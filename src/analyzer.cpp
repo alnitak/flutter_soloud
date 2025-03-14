@@ -108,16 +108,27 @@ float* Analyzer::calcFFT(float* waveData, float minFrequency, float maxFrequency
 
     SoLoud::FFT::fft1024(temp);
 
-    for (int i = 0; i < 256; i++)
+    float real = temp[255 * 2];
+    float imag = temp[255 * 2 + 1];
+    float mag = sqrtf(real*real+imag*imag);
+    // The "+ 1.0" is to make sure I don't get negative values,
+    float t = log10f(mag+1.0f);
+    FFTData[255] = t;
+
+    for (int i = 254; i >= 0; i--)
     {
         float real = temp[i * 2];
         float imag = temp[i * 2 + 1];
         float mag = sqrtf(real*real+imag*imag);
         // The "+ 1.0" is to make sure I don't get negative values,
-        float t = 2.0f * log10f(mag+0.995f);
+        float t = log10f(mag+1.0f) - FFTData[255];
+
+        // Apply frequency-dependent scaling
+        float freqScaling = sqrtf((float)(i + 1));  // Adjust scaling based on frequency bin
+        mag *= freqScaling / 16.0f;  // Normalize the scaling
 
         if (t > 1.0f) t = 1.0f;
-        else if (t < 0.00001) t = 0.0f;
+        else if (t < 0.001f) t = 0.0f;
         if (t >= FFTData[i])
             FFTData[i] = t;
         else {
@@ -125,6 +136,7 @@ float* Analyzer::calcFFT(float* waveData, float minFrequency, float maxFrequency
             FFTData[i] = fftSmoothing * FFTData[i] + (1.0f-fftSmoothing) * t;
         }
     }
+    FFTData[255] = 0.0f;
 
     return FFTData;
 }
