@@ -111,8 +111,11 @@ float* Analyzer::calcFFT(float* waveData, float minFrequency, float maxFrequency
     float real = temp[255 * 2];
     float imag = temp[255 * 2 + 1];
     float mag = sqrtf(real*real+imag*imag);
+    // Apply frequency-dependent scaling
+    float freqScaling = sqrtf(255.f + 1.f);  // Adjust scaling based on frequency bin
+    mag *= freqScaling / 2.0f;  // Normalize the scaling
     // The "+ 1.0" is to make sure I don't get negative values,
-    float t = log10f(mag+1.0f);
+    float t = 2.f * log10f(mag+1.0f);
     FFTData[255] = t;
 
     for (int i = 254; i >= 0; i--)
@@ -120,12 +123,13 @@ float* Analyzer::calcFFT(float* waveData, float minFrequency, float maxFrequency
         float real = temp[i * 2];
         float imag = temp[i * 2 + 1];
         float mag = sqrtf(real*real+imag*imag);
-        // The "+ 1.0" is to make sure I don't get negative values,
-        float t = log10f(mag+1.0f) - FFTData[255];
 
         // Apply frequency-dependent scaling
         float freqScaling = sqrtf((float)(i + 1));  // Adjust scaling based on frequency bin
-        mag *= freqScaling / 16.0f;  // Normalize the scaling
+        mag *= freqScaling / 2.0f;  // Normalize the scaling
+
+        // The "+ 1.0" is to make sure I don't get negative values,
+        float t = 2.f * log10f(mag+1.0f) - FFTData[255];
 
         if (t > 1.0f) t = 1.0f;
         else if (t < 0.001f) t = 0.0f;
