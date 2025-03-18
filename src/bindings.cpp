@@ -449,6 +449,15 @@ extern "C"
         return e;
     }
 
+    // Resets the buffer of the data stream.
+    // [hash] the hash of the stream sound.
+    FFI_PLUGIN_EXPORT enum PlayerErrors resetBufferStream(unsigned int hash)
+    {
+        if (player.get() == nullptr || !player.get()->isInited())
+            return backendNotInited;
+        return player.get()->resetBufferStream(hash);
+    }
+
     /// Add a chunk of audio data to the buffer stream.
     ///
     /// [hash] the hash of the sound.

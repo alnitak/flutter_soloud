@@ -158,6 +158,12 @@ abstract class FlutterSoLoud {
     OnBufferingCallbackTFunction? onBuffering,
   );
 
+  /// Reset the buffer of the audio stream.
+  /// [hash] the hash of the stream sound.
+  /// Returns [PlayerErrors.noError] if success.
+  @mustBeOverridden
+  PlayerErrors resetBufferStream(SoundHash soundHash);
+
   /// Add a chunk of audio data to the buffer stream.
   ///
   /// [hash] the hash of the sound.

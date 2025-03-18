@@ -13,6 +13,8 @@
 
 namespace SoLoud
 {
+    std::mutex buffer_lock_mutex;
+	
 	BufferStreamInstance::BufferStreamInstance(BufferStream *aParent)
 	{
 		mParent = aParent;
@@ -25,6 +27,8 @@ namespace SoLoud
 
 	unsigned int BufferStreamInstance::getAudio(float *aBuffer, unsigned int aSamplesToRead, unsigned int aBufferSize)
 	{
+		std::lock_guard<std::mutex> lock(buffer_lock_mutex);
+
 		if (mParent->mBuffer.getFloatsBufferSize() == 0)
 		{
 			memset(aBuffer, 0, sizeof(float) * aSamplesToRead);
@@ -179,6 +183,15 @@ namespace SoLoud
 		}
 #endif
 		return PlayerErrors::noError;
+	}
+
+	void BufferStream::resetBuffer()
+	{
+		std::lock_guard<std::mutex> lock(buffer_lock_mutex);
+		buffer.clear();
+		mBuffer.clear();
+		mSampleCount = 0;
+		mBytesReceived = 0;
 	}
 
 	void BufferStream::setDataIsEnded()
