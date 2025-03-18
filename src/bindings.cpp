@@ -169,7 +169,7 @@ extern "C"
 
     /// Check if the libopus and libogg are available at build time.
     FFI_PLUGIN_EXPORT bool areOpusOggLibsAvailable() {
-#if defined(LIBOPUS_OGG_AVAILABLE) || defined(__EMSCRIPTEN__)
+#if !defined(NO_OPUS_OGG_LIBS)
         return true;
 #else
         return false;
@@ -447,6 +447,15 @@ extern "C"
             dataType,
             onBufferingCallback);
         return e;
+    }
+
+    // Resets the buffer of the data stream.
+    // [hash] the hash of the stream sound.
+    FFI_PLUGIN_EXPORT enum PlayerErrors resetBufferStream(unsigned int hash)
+    {
+        if (player.get() == nullptr || !player.get()->isInited())
+            return backendNotInited;
+        return player.get()->resetBufferStream(hash);
     }
 
     /// Add a chunk of audio data to the buffer stream.

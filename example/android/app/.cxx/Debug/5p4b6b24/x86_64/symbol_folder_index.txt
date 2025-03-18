@@ -1,1 +1,0 @@
-/home/deimos/FLUTTER/libs/flutter_soloud/example/build/app/intermediates/cxx/Debug/5p4b6b24/obj/x86_64

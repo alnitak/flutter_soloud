@@ -766,6 +766,8 @@ Future<StringBuffer> testSoundFilters() async {
       ..writeln();
   }
 
+  await SoLoud.instance.play(sound);
+
   /// Check if filter has been deactivated.
   assert(
     !filter.isActive,

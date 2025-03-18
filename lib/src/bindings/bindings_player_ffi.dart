@@ -453,6 +453,18 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       )>();
 
   @override
+  PlayerErrors resetBufferStream(SoundHash soundHash) {
+    final e = _resetBufferStream(soundHash.hash);
+    return PlayerErrors.values[e];
+  }
+
+  late final _resetBufferStreamPtr =
+      _lookup<ffi.NativeFunction<ffi.UnsignedInt Function(ffi.UnsignedInt)>>(
+          'resetBufferStream');
+  late final _resetBufferStream =
+      _resetBufferStreamPtr.asFunction<int Function(int)>();
+
+  @override
   PlayerErrors addAudioDataStream(
     int hash,
     Uint8List audioChunk,

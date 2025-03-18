@@ -47,13 +47,7 @@ In other words, it is calling the C/C++ methods of the underlying audio engine d
 #### Opus format for streaming
 When using an `AudioSource` as an audio stream to play custom audio data (ie using setBufferStream/addAudioDataStream/setDataIsEnded), it is possible to add PCM RAW audio data in *s8*, *s16le*, *s32le*, *f32le* and since it supports also the *opus* format with the Ogg codec (ie to work with OpenAI APIs), the [Opus](https://www.opus-codec.org/) and [Ogg](https://xiph.org/ogg/) libraries from [Xiph.org](https://www.xiph.org/) are needed.
 
-On Linux and MacOS theese libraries must be installed if you want to use this kind of `AudioSource`:
-- **Linux**
-  - install them depending on the package manager used by you distribution
-- **MacOS**
-  - `brew install opus libogg`
-
-if the libraries are not found the plugin will throw an exception when calling `setBufferStream` using Opus format.
+These libraries are embedded and enabled by default for all platforms. This leads to an increased binary size by 600~1500 kb depending on platform. If you don't need to use audio streaming, hence you don't need the Opus and Ogg libraries, you can read the [NO_OPUS_OGG_LIBS.md](https://github.com/alnitak/flutter_soloud/blob/main/NO_OPUS_OGG_LIBS.md) for details.
 
 The `SoLoud.setBufferStream` supports also `BufferingType.preserved` which behaves the same as a normal `AudioSource`, and `BufferingType.released` which will free the memory of the already played audio for longer playback. The latter will accept to play only one instance of the audio stream at the same time.
 |BufferingType.preserved|BufferingType.released|

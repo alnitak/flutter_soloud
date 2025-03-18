@@ -376,6 +376,17 @@ PlayerErrors Player::addAudioDataStream(
     return static_cast<SoLoud::BufferStream *>(s->sound.get())->addData(data, aDataLen);
 }
 
+PlayerErrors Player::resetBufferStream(unsigned int hash)
+{
+    auto const s = findByHash(hash);
+
+    if (s == nullptr || s->soundType != TYPE_BUFFER_STREAM)
+        return soundHashNotFound;
+
+    static_cast<SoLoud::BufferStream *>(s->sound.get())->resetBuffer();
+    return noError;
+}
+
 PlayerErrors Player::setDataIsEnded(unsigned int hash)
 {
     auto const s = findByHash(hash);

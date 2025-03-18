@@ -1,3 +1,9 @@
+### 3.0.3 (7 Mar 2025)
+- it's now possible to choose to not link opus and ogg libraries (see `NO_OPUS_OGG_LIBS.md`). Fix for #191 and #192.
+
+### 3.0.2 (25 Feb 2025)
+- fixed crash when trying to play a sound after deactivating its active filter #189
+
 ### 3.0.1 (20 Feb 2025)
 - fix: error while calling listPlaybackDevices() #186.
 - android example folder recreated.

@@ -66,6 +66,9 @@ external int wasmSetBufferStream(
   int onBufferingPtr,
 );
 
+@JS('Module_soloud._resetBufferStream')
+external int wasmResetBufferStream(int hash);
+
 @JS('Module_soloud._addAudioDataStream')
 external int wasmAddAudioDataStream(int hash, int audioChunkPtr, int dataLen);
 

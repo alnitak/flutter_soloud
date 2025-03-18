@@ -193,12 +193,13 @@ class _WebsocketExampleState extends State<WebsocketExample> {
 
               currentSound = SoLoud.instance.setBufferStream(
                 // maxBufferSizeBytes: 1024 * 1024 * 200, // 200 MB
-                maxBufferSizeDuration: const Duration(minutes: 3),
+                maxBufferSizeDuration: const Duration(minutes: 5),
                 bufferingTimeNeeds: 0.5,
                 sampleRate: sampleRate[srId],
                 channels: Channels.values[chId],
                 format: BufferType.values[fmtId],
-                bufferingType: BufferingType.released,
+                // ignore: avoid_redundant_argument_values
+                bufferingType: BufferingType.preserved,
                 onBuffering: (isBuffering, handle, time) async {
                   debugPrint('started buffering? $isBuffering  with '
                       'handle: $handle at time $time');
@@ -268,7 +269,9 @@ class _WebsocketExampleState extends State<WebsocketExample> {
                   numberOfChunks = 0;
                   byteSize = 0;
                 },
-                onError: (error) {},
+                onError: (Object error) {
+                  debugPrint('ws error: $error');
+                },
               );
             },
             child: const Text('connect to WS and receive audio data'),
@@ -294,9 +297,17 @@ class _WebsocketExampleState extends State<WebsocketExample> {
                     }
                   });
                 },
-                child: const Text('paly'),
+                child: const Text('play'),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 8),
+              OutlinedButton(
+                onPressed: () async {
+                  if (currentSound == null) return;
+                  SoLoud.instance.resetBufferStream(currentSound!);
+                },
+                child: const Text('reset buffer'),
+              ),
+              const SizedBox(width: 8),
               OutlinedButton(
                 onPressed: () async {
                   currentSound = null;
