@@ -1,3 +1,7 @@
+### 3.1.0 (18 Mar 2025)
+- wWhen calling `AudioData.getAudioData` is now possible to check if the audio data is the same as before. Useful to visualize waveforms. This is because `AudioData.getAudioData` returns the current data in the buffer and if it is called before the buffer has been updated, it will return the previous data.
+- added `resetBufferStream` method to `SoLoud`. It happens that when playing a stream, maybe from the web, it is needed to change it to another source. The player continues to play the already added audio data to the buffer. This method can be used to reset the buffer and start with the new audio data.
+
 ### 3.0.3 (7 Mar 2025)
 - it's now possible to choose to not link opus and ogg libraries (see `NO_OPUS_OGG_LIBS.md`). Fix for #191 and #192.
 

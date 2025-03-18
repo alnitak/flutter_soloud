@@ -213,6 +213,8 @@ const std::string Player::getErrorString(PlayerErrors errorCode) const
         return "error: failed to create Opus decoder!";
     case failedToDecodeOpusPacket:
         return "error: failed to decode Opus packet!";
+    case bufferStreamCanBePlayedOnlyOnce:
+        return "error: buffer stream can be played only once!";
     }
     return "Other error";
 }
@@ -665,14 +667,32 @@ bool Player::isVisualizationEnabled()
     return soloud.mFlags & SoLoud::Soloud::ENABLE_VISUALIZATION;
 }
 
-float *Player::calcFFT()
+float fftData[256];
+float *Player::calcFFT(bool *isTheSameAsBefore)
 {
-    return soloud.calcFFT();
+    float *currentWave = soloud.calcFFT();
+    if (memcmp(fftData, currentWave, sizeof(fftData)) != 0) {
+        *isTheSameAsBefore = false;
+    } else {
+        *isTheSameAsBefore = true;
+    }
+    memcpy(fftData, currentWave, sizeof(fftData));
+    
+    return fftData;
 }
 
-float *Player::getWave()
+float waveData[256];
+float *Player::getWave(bool *isTheSameAsBefore)
 {
-    return soloud.getWave();
+    float *currentWave = soloud.getWave();
+    if (memcmp(waveData, currentWave, sizeof(waveData)) != 0) {
+        *isTheSameAsBefore = false;
+    } else {
+        *isTheSameAsBefore = true;
+    }
+    memcpy(waveData, currentWave, sizeof(waveData));
+    
+    return waveData;
 }
 
 // The length in seconds

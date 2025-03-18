@@ -31,7 +31,7 @@ extern "C"
     std::mutex loadMutex;
 
     std::unique_ptr<Player> player = std::make_unique<Player>();
-    std::unique_ptr<Analyzer> analyzer = std::make_unique<Analyzer>(2048);
+    std::unique_ptr<Analyzer> analyzer = std::make_unique<Analyzer>(256);
 
     typedef void (*dartVoiceEndedCallback_t)(unsigned int *);
     typedef void (*dartFileLoadedCallback_t)(enum PlayerErrors *, char *completeFileName, unsigned int *);
@@ -812,21 +812,21 @@ extern "C"
     /// Returns valid data only if VisualizationEnabled is true
     ///
     /// Return a 256 float array containing FFT data.
-    FFI_PLUGIN_EXPORT void getFft(float **fft)
+    FFI_PLUGIN_EXPORT void getFft(float **fft, bool *isTheSameAsBefore)
     {
-        if (player.get() == nullptr || !player.get()->isInited())
+        if (player.get() == nullptr || !player.get()->isInited() || !player.get()->isVisualizationEnabled())
             return;
-        *fft = player.get()->calcFFT();
+        *fft = player.get()->calcFFT(isTheSameAsBefore);
     }
 
     /// Returns valid data only if VisualizationEnabled is true
     ///
     /// Return a 256 float array containing wave data.
-    FFI_PLUGIN_EXPORT void getWave(float **wave)
+    FFI_PLUGIN_EXPORT void getWave(float **wave, bool *isTheSameAsBefore)
     {
-        if (player.get() == nullptr || !player.get()->isInited())
+        if (player.get() == nullptr || !player.get()->isInited() || !player.get()->isVisualizationEnabled())
             return;
-        *wave = player.get()->getWave();
+        *wave = player.get()->getWave(isTheSameAsBefore);
     }
 
     /// Smooth FFT data.
@@ -851,19 +851,29 @@ extern "C"
     /// The other 256 floats represent the wave data (amplitude) [-1.0~1.0].
     ///
     /// [samples] should be allocated and freed in dart side
-    FFI_PLUGIN_EXPORT void getAudioTexture(float *samples)
+    float texture[512];
+    FFI_PLUGIN_EXPORT void getAudioTexture(float **samples, bool *isTheSameAsBefore)
     {
         if (player.get() == nullptr || !player.get()->isInited() ||
-            analyzer.get() == nullptr)
+            analyzer.get() == nullptr || !player.get()->isVisualizationEnabled())
         {
-            memset(samples, 0, sizeof(float) * 512);
+            *samples = texture;
+            memset(*samples, 0, sizeof(float) * 512);
+            *isTheSameAsBefore = true;
             return;
         }
-        float *wave = player.get()->getWave();
+        float *wave = player.get()->getWave(isTheSameAsBefore);
         float *fft = analyzer.get()->calcFFT(wave);
+        if (*isTheSameAsBefore)
+        {
+            *samples = texture;
+            return;
+        }
 
-        memcpy(samples, fft, sizeof(float) * 256);
-        memcpy(samples + 256, wave, sizeof(float) * 256);
+        memcpy(texture, fft, sizeof(float) * 256);
+        memcpy(texture + 256, wave, sizeof(float) * 256);
+        *samples = texture;
+        *isTheSameAsBefore = false;
     }
 
     /// Return a floats matrix of 256x512
@@ -874,21 +884,33 @@ extern "C"
     ///
     /// [samples]
     float texture2D[256][512];
-    FFI_PLUGIN_EXPORT enum PlayerErrors getAudioTexture2D(float **samples)
+    FFI_PLUGIN_EXPORT void getAudioTexture2D(float **samples, bool *isTheSameAsBefore)
     {
         if (player.get() == nullptr || !player.get()->isInited() ||
-            analyzer.get() == nullptr || !player.get()->isVisualizationEnabled())
+        analyzer.get() == nullptr || !player.get()->isVisualizationEnabled())
         {
             *samples = *texture2D;
             memset(*samples, 0, sizeof(float) * 512 * 256);
-            return backendNotInited;
+            *isTheSameAsBefore = true;
+            return;
         }
+
+        float *wave = player.get()->getWave(isTheSameAsBefore);
+        float *fft = analyzer.get()->calcFFT(wave);
+        if (*isTheSameAsBefore)
+        {
+            *samples = *texture2D;
+            return;
+        }
+        
         /// shift up 1 row
-        memmove(*texture2D + 512, texture2D, sizeof(float) * 512 * 255);
+        memmove(texture2D[1], texture2D[0], sizeof(float) * 512 * 255);
         /// store the new 1st row
-        getAudioTexture(texture2D[0]);
+        memcpy(texture2D[0], fft, sizeof(float) * 256);
+        memcpy(texture2D[0]+256, wave, sizeof(float) * 256);
+        
         *samples = *texture2D;
-        return noError;
+        *isTheSameAsBefore = false;
     }
 
     FFI_PLUGIN_EXPORT float getTextureValue(int row, int column)

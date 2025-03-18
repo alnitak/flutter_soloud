@@ -372,14 +372,14 @@ abstract class FlutterSoLoud {
   /// [fft] on all platforms web excluded, the [fft] type is `Pointer<Float>`.
   /// Return a 256 float array int the [fft] pointer containing FFT data.
   @mustBeOverridden
-  void getFft(AudioData fft);
+  bool getFft(AudioData fft);
 
   /// Returns valid data only if VisualizationEnabled is true
   ///
   /// [wave] on all platforms web excluded, the [wave] type is `Pointer<Float>`.
   /// Return a 256 float array int the [wave] pointer containing audio data.
   @mustBeOverridden
-  void getWave(AudioData wave);
+  bool getWave(AudioData wave);
 
   /// Smooth FFT data.
   /// Not yet supported on the web.
@@ -404,7 +404,7 @@ abstract class FlutterSoLoud {
   /// [samples] on all platforms web excluded, the [samples] type is
   /// `Pointer<Float>`.
   @mustBeOverridden
-  void getAudioTexture(AudioData samples);
+  bool getAudioTexture(AudioData samples);
 
   /// Return a floats matrix of 256x512
   /// Every row are composed of 256 FFT values plus 256 of wave data
@@ -415,7 +415,7 @@ abstract class FlutterSoLoud {
   /// [samples] on all platforms web excluded, the [samples] type is
   /// `Pointer<Pointer<Float>>`.
   @mustBeOverridden
-  PlayerErrors getAudioTexture2D(AudioData samples);
+  bool getAudioTexture2D(AudioData samples);
 
   /// Get the value in the texture2D matrix at the given coordinates.
   @mustBeOverridden

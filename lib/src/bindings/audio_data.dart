@@ -122,7 +122,7 @@ class AudioData {
   /// The callback used to get new audio samples.
   /// This callback is used in [updateSamples] to avoid to
   /// do [GetSamplesKind] checks on every calls.
-  late void Function(AudioData) _updateCallback;
+  late bool Function(AudioData) _updateCallback;
 
   /// Update the content of samples memory to be read later
   /// using [getAudioData].
@@ -136,7 +136,7 @@ class AudioData {
   /// [GitHub](https://github.com/alnitak/flutter_soloud/issues) providing
   /// a simple working example.
   void updateSamples() {
-    _updateCallback(this);
+    ctrl.dataIsTheSameAsBefore = _updateCallback(this);
   }
 
   /// Changes the input device from which to retrieve audio data and its kind.
@@ -152,23 +152,39 @@ class AudioData {
     ctrl.dispose(_getSamplesKind);
   }
 
-  /// Get audio data data.
+  /// Get audio data only for visualization purposes. Don't use this method
+  /// for audio processing or for saving audio data.
   ///
   /// Depending on the [GetSamplesKind] used to initialize [AudioData],
   /// the returned data will be a [Float32List]. See [GetSamplesKind] for
   /// more information.
-  Float32List getAudioData() {
+  ///
+  /// [alwaysReturnData] if true, the audio data list will be returned even if
+  /// it is the same as the previous one.
+  /// When this method is callled, the returned audio data is the current
+  /// audio buffer shrinked to 256 samples currently playing. For example,
+  /// when initializing the engine with a buffer of 2048, this will return
+  /// the average of that data grouped by 8 samples. For a good visualization
+  /// should be better to use a buffer size of 1024 or maybe 512.
+  /// When calling this method 2 times and before all the buffer is played,
+  /// the returned data will be the same. The purpose of [alwaysReturnData] is
+  /// to avoid this and when this happens, the returned data will be an
+  /// empty list when [alwaysReturnData] is false.
+  Float32List getAudioData({bool alwaysReturnData = true}) {
+    /// Non blocking condition.
+    if (!SoLoudController().soLoudFFI.isInited()) {
+      return Float32List(0);
+    }
     if (!SoLoudController().soLoudFFI.getVisualizationEnabled()) {
       throw const SoLoudVisualizationNotEnabledException();
     }
-
     switch (_getSamplesKind) {
       case GetSamplesKind.wave:
-        return ctrl.getWave();
+        return ctrl.getWave(alwaysReturnData: alwaysReturnData);
       case GetSamplesKind.linear:
-        return ctrl.getFftAndWave();
+        return ctrl.getFftAndWave(alwaysReturnData: alwaysReturnData);
       case GetSamplesKind.texture:
-        return ctrl.get2DTexture();
+        return ctrl.get2DTexture(alwaysReturnData: alwaysReturnData);
     }
   }
 }

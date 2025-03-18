@@ -465,13 +465,21 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }
 
   @override
-  void getFft(AudioData fft) {
-    wasmGetWave(fft.ctrl.samplesPtr);
+  bool getFft(AudioData fft) {
+    final isTheSameAsBeforePtr = wasmMalloc(4);
+    wasmGetWave(fft.ctrl.samplesPtr, isTheSameAsBeforePtr);
+    final ret = wasmGetI32Value(isTheSameAsBeforePtr, 'i32');
+    wasmFree(isTheSameAsBeforePtr);
+    return ret == 1;
   }
 
   @override
-  void getWave(AudioData wave) {
-    wasmGetWave(wave.ctrl.samplesPtr);
+  bool getWave(AudioData wave) {
+    final isTheSameAsBeforePtr = wasmMalloc(4);
+    wasmGetWave(wave.ctrl.samplesPtr, isTheSameAsBeforePtr);
+    final ret = wasmGetI32Value(isTheSameAsBeforePtr, 'i32');
+    wasmFree(isTheSameAsBeforePtr);
+    return ret == 1;
   }
 
   @override
@@ -480,14 +488,21 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }
 
   @override
-  void getAudioTexture(AudioData samples) {
-    wasmGetAudioTexture(samples.ctrl.samplesPtr);
+  bool getAudioTexture(AudioData samples) {
+    final isTheSameAsBeforePtr = wasmMalloc(4);
+    wasmGetAudioTexture(samples.ctrl.samplesPtr, isTheSameAsBeforePtr);
+    final ret = wasmGetI32Value(isTheSameAsBeforePtr, 'i32');
+    wasmFree(isTheSameAsBeforePtr);
+    return ret == 1;
   }
 
   @override
-  PlayerErrors getAudioTexture2D(AudioData samples) {
-    final e = wasmGetAudioTexture2D(samples.ctrl.samplesPtr);
-    return PlayerErrors.values[e];
+  bool getAudioTexture2D(AudioData samples) {
+    final isTheSameAsBeforePtr = wasmMalloc(4);
+    wasmGetAudioTexture2D(samples.ctrl.samplesPtr, isTheSameAsBeforePtr);
+    final ret = wasmGetI32Value(isTheSameAsBeforePtr, 'i32');
+    wasmFree(isTheSameAsBeforePtr);
+    return ret == 1;
   }
 
   @override
