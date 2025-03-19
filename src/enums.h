@@ -64,8 +64,9 @@ typedef enum PlayerErrors
     /// Failed to decode Opus packet.
     failedToDecodeOpusPacket = 24,
     /// A BufferStream using `release` buffer type can be played only once.
-    bufferStreamCanBePlayedOnlyOnce = 25
-
+    bufferStreamCanBePlayedOnlyOnce = 25,
+    /// The maximum number of active voices has been reached.
+    maxActiveVoiceCountReached = 26
 } PlayerErrors_t;
 
 /// Possible read sample errors

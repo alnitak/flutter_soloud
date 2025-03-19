@@ -536,6 +536,20 @@ PlayerErrors Player::play(
         return bufferStreamCanBePlayedOnlyOnce;
     }
 
+    // Check if by playing this sound will exceed the maximum number of voice count. If true, then
+    // check if [soudHash] has other instances playing. If true remove the first and play the new one.
+    // If there are no other instances playing, this sound cannot be played and return an error.
+    // Issue https://github.com/alnitak/flutter_soloud/issues/204
+    if (getActiveVoiceCount() >= getMaxActiveVoiceCount())
+    {
+        if (sound->handle.size() > 0)
+        {
+            stop(sound->handle[0].handle);
+        } else {
+            return PlayerErrors::maxActiveVoiceCountReached;
+        }
+    }
+
     handle = 0;
     SoLoud::handle newHandle = soloud.play(
         *sound->sound.get(), volume, pan, paused, 0);
@@ -1005,6 +1019,20 @@ PlayerErrors Player::play3d(
         sound->handle.size() > 0)
     {
         return bufferStreamCanBePlayedOnlyOnce;
+    }
+
+    // Check if by playing this sound will exceed the maximum number of voice count. If true, then
+    // check if [soudHash] has other instances playing. If true remove the first and play the new one.
+    // If there are no other instances playing, this sound cannot be played and return an error.
+    // Issue https://github.com/alnitak/flutter_soloud/issues/204
+    if (getActiveVoiceCount() >= getMaxActiveVoiceCount())
+    {
+        if (sound->handle.size() > 0)
+        {
+            stop(sound->handle[0].handle);
+        } else {
+            return PlayerErrors::maxActiveVoiceCountReached;
+        }
     }
 
     handle = 0;
