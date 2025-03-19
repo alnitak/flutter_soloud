@@ -89,7 +89,7 @@ enum PlayerErrors {
 
   /// A BufferStream using `release` buffer type can be played only once.
   bufferStreamCanBePlayedOnlyOnce(25),
-  
+
   /// The maximum number of active voices has been reached.
   maxActiveVoiceCountReached(26);
 
