@@ -1,4 +1,3 @@
-import 'package:flutter_soloud/flutter_soloud.dart' show SoLoud;
 import 'package:meta/meta.dart';
 
 /// Possible player errors.
@@ -168,12 +167,11 @@ enum PlayerErrors {
         return 'BufferStream can be played only once when using '
             '`BufferingType.release` buffer type!';
       case PlayerErrors.maxActiveVoiceCountReached:
-        final max = SoLoud.instance.getMaxActiveVoiceCount();
         return 'The maximum number of active voices has been reached! Try '
             'to increase the maximum active voice count with '
-            '`setMaxActiveVoiceCount` which is currently set to $max. Also, '
-            'please read `play/play3d` documentation for more information '
-            'about the maximum active voice count.';
+            '`setMaxActiveVoiceCount`. Also, please read `play/play3d` '
+            'documentation for more information about the maximum active '
+            'voice count.';
     }
   }
 
