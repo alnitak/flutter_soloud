@@ -10,6 +10,7 @@
 #include <cstdarg>
 #include <cstring>
 #include <random>
+
 #ifdef _IS_WIN_
 #include <stddef.h> // for size_t
 #else
@@ -345,14 +346,7 @@ PlayerErrors Player::setBufferStream(
 
     newSound.get()->sound = std::make_unique<SoLoud::BufferStream>();
     newSound.get()->soundType = TYPE_BUFFER_STREAM;
-    PlayerErrors e = static_cast<SoLoud::BufferStream *>(newSound.get()->sound.get())->setBufferStream(
-        this,
-        newSound.get(),
-        maxBufferSize,
-        bufferingType,
-        bufferingTimeNeeds,
-        pcmFormat,
-        onBufferingCallback);
+    PlayerErrors e = static_cast<SoLoud::BufferStream *>(newSound.get()->sound.get())->setBufferStream(this, newSound.get(), maxBufferSize, bufferingType, bufferingTimeNeeds, pcmFormat, onBufferingCallback);
 
     newSound.get()->filters = std::make_unique<Filters>(&soloud, newSound.get());
     sounds.push_back(std::move(newSound));
@@ -514,6 +508,16 @@ float Player::getRelativePlaySpeed(unsigned int handle)
     return soloud.getRelativePlaySpeed(handle);
 }
 
+unsigned int Player::getActiveVoiceCount_internal()
+{
+    unsigned int count = 0;
+    for (auto &s : sounds)
+    {
+        count += s->handle.size();
+    }
+    return count;
+}
+
 PlayerErrors Player::play(
     unsigned int soundHash,
     unsigned int &handle,
@@ -536,16 +540,18 @@ PlayerErrors Player::play(
         return bufferStreamCanBePlayedOnlyOnce;
     }
 
-    // Check if by playing this sound will exceed the maximum number of voice count. If true, then
+    // Check if playing this sound will exceed the maximum number of voice counts. If true, then
     // check if [soudHash] has other instances playing. If true remove the first and play the new one.
-    // If there are no other instances playing, this sound cannot be played and return an error.
+    // If no other instances are playing, this sound cannot be played and return an error.
     // Issue https://github.com/alnitak/flutter_soloud/issues/204
-    if (getActiveVoiceCount() >= getMaxActiveVoiceCount())
+    if (getActiveVoiceCount_internal() >= getMaxActiveVoiceCount())
     {
         if (sound->handle.size() > 0)
         {
             stop(sound->handle[0].handle);
-        } else {
+        }
+        else
+        {
             return PlayerErrors::maxActiveVoiceCountReached;
         }
     }
@@ -592,22 +598,27 @@ void Player::removeHandle(unsigned int handle)
     }
 }
 
-void Player::disposeSound(unsigned int soundHash) {
-    if (sounds.empty()) {
-        return;  
+void Player::disposeSound(unsigned int soundHash)
+{
+    if (sounds.empty())
+    {
+        return;
     }
 
     auto it = std::find_if(sounds.begin(), sounds.end(),
-        [soundHash](const std::unique_ptr<ActiveSound>& sound) {
-            return sound->soundHash == soundHash;
-        });
+                           [soundHash](const std::unique_ptr<ActiveSound> &sound)
+                           {
+                               return sound->soundHash == soundHash;
+                           });
 
     if (it != sounds.end())
     {
         // Free filters
-        if (it->get()->filters) {
+        if (it->get()->filters)
+        {
             Filters *f = it->get()->filters.release();
-            if (f != nullptr) {
+            if (f != nullptr)
+            {
                 // TODO: deleting "f" when running on Web will crash with segmentation fault.
                 // This could be a bug in WebAssembly I can't figure out. Even if I don't delete
                 // there shouldn't be a memory leak as the filters are destroyed with the sound.
@@ -616,7 +627,7 @@ void Player::disposeSound(unsigned int soundHash) {
             }
             it->get()->filters.reset();
         }
-       
+
         sounds.erase(it);
     }
 }
@@ -685,13 +696,16 @@ float fftData[256];
 float *Player::calcFFT(bool *isTheSameAsBefore)
 {
     float *currentWave = soloud.calcFFT();
-    if (memcmp(fftData, currentWave, sizeof(fftData)) != 0) {
+    if (memcmp(fftData, currentWave, sizeof(fftData)) != 0)
+    {
         *isTheSameAsBefore = false;
-    } else {
+    }
+    else
+    {
         *isTheSameAsBefore = true;
     }
     memcpy(fftData, currentWave, sizeof(fftData));
-    
+
     return fftData;
 }
 
@@ -699,13 +713,16 @@ float waveData[256];
 float *Player::getWave(bool *isTheSameAsBefore)
 {
     float *currentWave = soloud.getWave();
-    if (memcmp(waveData, currentWave, sizeof(waveData)) != 0) {
+    if (memcmp(waveData, currentWave, sizeof(waveData)) != 0)
+    {
         *isTheSameAsBefore = false;
-    } else {
+    }
+    else
+    {
         *isTheSameAsBefore = true;
     }
     memcpy(waveData, currentWave, sizeof(waveData));
-    
+
     return waveData;
 }
 
@@ -1030,7 +1047,9 @@ PlayerErrors Player::play3d(
         if (sound->handle.size() > 0)
         {
             stop(sound->handle[0].handle);
-        } else {
+        }
+        else
+        {
             return PlayerErrors::maxActiveVoiceCountReached;
         }
     }

@@ -49,7 +49,7 @@ public:
     std::vector<PlaybackDevice> listPlaybackDevices();
 
     /// @brief Set a function callback triggered when a voice is stopped/ended.
-    void setVoiceEndedCallback(void (*voiceEndedCallback)(unsigned int*));
+    void setVoiceEndedCallback(void (*voiceEndedCallback)(unsigned int *));
 
     /// @brief Set a function callback triggered when the state of the player changes.
     void setStateChangedCallback(void (*stateChangedCallback)(unsigned int));
@@ -111,15 +111,15 @@ public:
         unsigned int &hash,
         unsigned long maxBufferSize,
         BufferingType bufferingType,
-    	SoLoud::time bufferingTimeNeeds,
+        SoLoud::time bufferingTimeNeeds,
         PCMformat pcmFormat = {44100, 2, 4, PCM_F32LE},
         dartOnBufferingCallback_t onBufferingCallback = nullptr);
 
-    /// @brief Resets the buffer of the data stream. 
+    /// @brief Resets the buffer of the data stream.
     /// @param hash the hash of the sound.
     /// @return Returns [PlayerErrors.SO_NO_ERROR] if success.
     PlayerErrors resetBufferStream(unsigned int hash);
-    
+
     /// @brief Add an audio data stream.
     /// @param hash the hash of the sound.
     /// @param data the audio data to add.
@@ -129,14 +129,14 @@ public:
         const unsigned char *data,
         unsigned int aDataLen);
 
-    /// @brief Set the end of the data stream. 
+    /// @brief Set the end of the data stream.
     /// @param hash the hash of the sound.
     /// @return Returns [PlayerErrors.SO_NO_ERROR] if success.
     PlayerErrors setDataIsEnded(unsigned int hash);
 
     /// @brief Get the current buffer size in bytes of this sound with hash [hash].
     /// @param hash the hash of the stream sound.
-    /// @param sizeInBytes return the size in bytes. 
+    /// @param sizeInBytes return the size in bytes.
     /// @return Returns [PlayerErrors.SO_NO_ERROR] if success.
     PlayerErrors getBufferSize(unsigned int hash, unsigned int *sizeInBytes);
 
@@ -341,8 +341,6 @@ public:
     /// @param panRight value for the right pan.
     void setPanAbsolute(SoLoud::handle handle, float panLeft, float panRight);
 
-
-
     /// @brief Check if a handle is still valid.
     /// @param handle handle to check.
     /// @return true if it still exists.
@@ -350,6 +348,12 @@ public:
 
     /// @brief Returns the number of concurrent sounds that are playing at the moment.
     unsigned int getActiveVoiceCount();
+
+    /// @brief Return the number of active voices summing up all the handles of each sound.
+    /// The difference between this function and getActiveVoiceCount() is that
+    /// getActiveVoiceCount() returns the number of active removing those that are paused or
+    /// with a very low volume, while this function returns the total number of active voices.
+    unsigned int getActiveVoiceCount_internal();
 
     /// @brief Returns the number of concurrent sounds that are playing a specific audio source.
     int countAudioSource(unsigned int soundHash);
@@ -429,7 +433,7 @@ public:
     /// @return true if [handle] is a group handle.
     bool isVoiceGroup(SoLoud::handle handle);
 
-    /// @brief Checks whether a voice group is empty. SoLoud automatically trims the voice groups of 
+    /// @brief Checks whether a voice group is empty. SoLoud automatically trims the voice groups of
     /// voices that have ended, so the group may be empty even though you've added valid voice handles to it.
     /// @param handle group handle to check.
     /// @return true if the group handle doesn't have any voices.
@@ -601,7 +605,7 @@ public:
     Filters mFilters;
 
     unsigned int mSampleRate;
-    
+
     unsigned int mChannels;
 
 private:
