@@ -1,3 +1,6 @@
+### 3.1.1 (21 Mar 2025)
+- fix: Sounds seemingly "backed up in a queue" when playing too many at once #204
+
 ### 3.1.0 (18 Mar 2025)
 - when calling `AudioData.getAudioData` is now possible to check if the audio data is the same as before. Useful to visualize waveforms. This is because `AudioData.getAudioData` returns the current data in the buffer and if it is called before the buffer has been updated, it will return the previous data.
 - better FFT data for a better visualization.
