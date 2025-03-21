@@ -118,6 +118,14 @@ abstract class SoLoudCppException extends SoLoudException {
         return const SoLoudFailedToDecodeOpusPacketCppException();
       case PlayerErrors.bufferStreamCanBePlayedOnlyOnce:
         return const SoLoudBufferStreamCanBePlayedOnlyOnceCppException();
+      case PlayerErrors.maxActiveVoiceCountReached:
+        throw ArgumentError(
+          'Trying to create an exception from '
+              'PlayerErrors.maxActiveVoiceCountReached. This is a non-blocking '
+              'error, so it should not be thrown as an exception. '
+              'This is a bug in the library. Please report it.',
+          'error',
+        );
     }
   }
 

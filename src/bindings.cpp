@@ -84,8 +84,8 @@ extern "C"
                     message : UTF8ToString($0),
                     value : $1,
                 });
-                console.log("EM_ASM posting message " + UTF8ToString($0) + 
-                    " with value " + $1);
+                // console.log("EM_ASM posting message " + UTF8ToString($0) + 
+                //     " with value " + $1);
             }
             else
             {
@@ -165,10 +165,9 @@ extern "C"
     //////////////////////////////////////////////////////////////////////////////////
     //////////////////////////////////////////////////////////////////////////////////
 
-
-
     /// Check if the libopus and libogg are available at build time.
-    FFI_PLUGIN_EXPORT bool areOpusOggLibsAvailable() {
+    FFI_PLUGIN_EXPORT bool areOpusOggLibsAvailable()
+    {
 #if !defined(NO_OPUS_OGG_LIBS)
         return true;
 #else
@@ -337,10 +336,10 @@ extern "C"
         unsigned int hash = 0;
         // std::thread loadThread([p, pa, completeFileName, loadIntoMem, hash]()
         //                        {
-        PlayerErrors error = p->loadFile(pa.string(), loadIntoMem, (unsigned int*)&hash);
+        PlayerErrors error = p->loadFile(pa.string(), loadIntoMem, (unsigned int *)&hash);
         // printf("*** LOAD FILE FROM THREAD error: %d  hash: %u\n", error,  *hash);
-        fileLoadedCallback(error, completeFileName, (unsigned int*)&hash);
-            // });
+        fileLoadedCallback(error, completeFileName, (unsigned int *)&hash);
+        // });
         // // TODO(marco): use .detach()? Use std::atomic somewhere
         // loadThread.join();
     }
@@ -718,13 +717,16 @@ extern "C"
             return;
         std::lock_guard<std::mutex> guard_init(init_deinit_mutex);
         std::lock_guard<std::mutex> guard_load(loadMutex);
-        try {
+        try
+        {
             player.get()->disposeSound(soundHash);
         }
-        catch (const std::exception& e) {
+        catch (const std::exception &e)
+        {
             printf("Error in disposeSound: %s\n", e.what());
         }
-        catch (...) {
+        catch (...)
+        {
             printf("Unknown error in disposeSound\n");
         }
     }
@@ -887,7 +889,7 @@ extern "C"
     FFI_PLUGIN_EXPORT void getAudioTexture2D(float **samples, bool *isTheSameAsBefore)
     {
         if (player.get() == nullptr || !player.get()->isInited() ||
-        analyzer.get() == nullptr || !player.get()->isVisualizationEnabled())
+            analyzer.get() == nullptr || !player.get()->isVisualizationEnabled())
         {
             *samples = *texture2D;
             memset(*samples, 0, sizeof(float) * 512 * 256);
@@ -902,13 +904,13 @@ extern "C"
             *samples = *texture2D;
             return;
         }
-        
+
         /// shift up 1 row
         memmove(texture2D[1], texture2D[0], sizeof(float) * 512 * 255);
         /// store the new 1st row
         memcpy(texture2D[0], fft, sizeof(float) * 256);
-        memcpy(texture2D[0]+256, wave, sizeof(float) * 256);
-        
+        memcpy(texture2D[0] + 256, wave, sizeof(float) * 256);
+
         *samples = *texture2D;
         *isTheSameAsBefore = false;
     }
@@ -1063,7 +1065,7 @@ extern "C"
     {
         if (player.get() == nullptr || !player.get()->isInited())
             return 0;
-        return player.get()->getActiveVoiceCount();
+        return player.get()->getActiveVoiceCount_internal();
     }
 
     /// Returns the number of concurrent sounds that are playing a specific audio source.
@@ -1787,7 +1789,7 @@ extern "C"
         float endTime,
         unsigned long numSamplesNeeded,
         bool average,
-        float* pSamples)
+        float *pSamples)
     {
         return Waveform::readSamples(filePath, nullptr, 0, startTime, endTime, numSamplesNeeded, average, pSamples);
     }
@@ -1799,7 +1801,7 @@ extern "C"
         float endTime,
         unsigned long numSamplesNeeded,
         bool average,
-        float* pSamples)
+        float *pSamples)
     {
         return Waveform::readSamples(nullptr, buffer, dataSize, startTime, endTime, numSamplesNeeded, average, pSamples);
     }

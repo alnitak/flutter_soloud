@@ -1088,6 +1088,13 @@ interface class SoLoud {
   ///
   /// Returns the [SoundHandle] of the new sound instance.
   ///
+  /// **NOTE**: by default, the maximum number of sounds you can play is 16 and
+  /// it can be changed with [setMaxActiveVoiceCount]. If this limit is reached
+  /// and other instances of the same sound are played, the oldest one will be
+  /// stopped to make room to play the new sound. If there are no instances of
+  /// the sound and the max limit is reached, a warning will be printed and the
+  /// sound will not play.
+  ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   /// Throws [SoLoudBufferStreamCanBePlayedOnlyOnceCppException] if we try to
   /// play a BufferStream using `release` buffer type more than once.
@@ -1113,7 +1120,8 @@ interface class SoLoud {
       loopingStartAt: loopingStartAt,
     );
     _logPlayerError(ret.error, from: 'play()');
-    if (ret.error != PlayerErrors.noError) {
+    if (!(ret.error == PlayerErrors.noError ||
+        ret.error == PlayerErrors.maxActiveVoiceCountReached)) {
       throw SoLoudCppException.fromPlayerError(ret.error);
     }
 
@@ -1580,6 +1588,14 @@ interface class SoLoud {
   }
 
   /// Returns the number of concurrent sounds that are playing at the moment.
+  ///
+  /// See also:
+  ///
+  ///  *  [getMaxActiveVoiceCount] gets the current maximum active voice count.
+  ///  *  [setMaxActiveVoiceCount] sets the current maximum active voice count.
+  ///  *  [getVoiceCount] the number of voices currently playing.
+  ///  *  [countAudioSource] number of concurrent sounds that are playing a
+  /// specific audio source.
   int getActiveVoiceCount() {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1589,6 +1605,14 @@ interface class SoLoud {
 
   /// Returns the number of concurrent sounds that are playing a
   /// specific audio source.
+  ///
+  /// See also:
+  ///
+  ///  *  [getMaxActiveVoiceCount] gets the current maximum active voice count.
+  ///  *  [setMaxActiveVoiceCount] sets the current maximum active voice count.
+  ///  *  [getActiveVoiceCount] concurrent sounds that are playing.
+  ///  *  [getVoiceCount] the number of voices currently playing.
+  /// specific audio source.
   int countAudioSource(AudioSource audioSource) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1597,6 +1621,14 @@ interface class SoLoud {
   }
 
   /// Returns the number of voices the application has told SoLoud to play.
+  ///
+  /// See also:
+  ///
+  ///  *  [getMaxActiveVoiceCount] gets the current maximum active voice count.
+  ///  *  [setMaxActiveVoiceCount] sets the current maximum active voice count.
+  ///  *  [getActiveVoiceCount] concurrent sounds that are playing.
+  ///  *  [countAudioSource] number of concurrent sounds that are playing a
+  /// specific audio source.
   int getVoiceCount() {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1690,6 +1722,14 @@ interface class SoLoud {
   }
 
   /// Gets the current maximum active voice count.
+  ///
+  /// See also:
+  ///
+  ///  *  [setMaxActiveVoiceCount] sets the current maximum active voice count.
+  ///  *  [getActiveVoiceCount] concurrent sounds that are playing.
+  ///  *  [getVoiceCount] the number of voices currently playing.
+  ///  *  [countAudioSource] number of concurrent sounds that are playing a
+  /// specific audio source.
   int getMaxActiveVoiceCount() {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1705,12 +1745,20 @@ interface class SoLoud {
   /// NOTE: The number of concurrent voices is limited, as having unlimited
   /// voices would cause performance issues, and could lead unnecessary
   /// clipping. The default number of maximum concurrent voices is 16,
-  /// but this can be adjusted at runtime.
+  /// but this can be adjusted at runtime using [setMaxActiveVoiceCount].
   ///
   /// The hard maximum count is 4095, but if more are
   /// required, SoLoud can be modified to support more. But seriously, if you
   /// need more than 4095 sounds playing _at once_,
   /// you're probably going to need some serious changes anyway.
+  ///
+  /// See also:
+  ///
+  ///  *  [getMaxActiveVoiceCount] gets the current maximum active voice count.
+  ///  *  [getActiveVoiceCount] concurrent sounds that are playing.
+  ///  *  [getVoiceCount] the number of voices currently playing.
+  ///  *  [countAudioSource] number of concurrent sounds that are playing a
+  /// specific audio source.
   void setMaxActiveVoiceCount(int maxVoiceCount) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -2196,6 +2244,13 @@ interface class SoLoud {
   ///
   /// Returns the [SoundHandle] of this new sound.
   ///
+  /// **NOTE**: by default, the maximum number of sounds you can play is 16 and
+  /// it can be changed with [setMaxActiveVoiceCount]. If this limit is reached
+  /// and other instances of the same sound are played, the oldest one will be
+  /// stopped to make room to play the new sound. If there are no instances of
+  /// the sound and the max limit is reached, a warning will be printed and the
+  /// sound will not play.
+  ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   /// Throws [SoLoudBufferStreamCanBePlayedOnlyOnceCppException] if we try to
   /// play a BufferStream using `release` buffer type more than once.
@@ -2231,7 +2286,8 @@ interface class SoLoud {
     );
 
     _logPlayerError(ret.error, from: 'play3d()');
-    if (ret.error != PlayerErrors.noError) {
+    if (!(ret.error == PlayerErrors.noError ||
+        ret.error == PlayerErrors.maxActiveVoiceCountReached)) {
       throw SoLoudCppException.fromPlayerError(ret.error);
     }
 
