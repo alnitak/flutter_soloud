@@ -346,9 +346,6 @@ public:
     /// @return true if it still exists.
     bool isValidHandle(SoLoud::handle handle);
 
-    /// @brief Returns the number of concurrent sounds that are playing at the moment.
-    unsigned int getActiveVoiceCount();
-
     /// @brief Return the number of active voices summing up all the handles of each sound.
     /// The difference between this function and getActiveVoiceCount() is that
     /// getActiveVoiceCount() returns the number of active removing those that are paused or

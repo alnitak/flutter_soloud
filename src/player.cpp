@@ -814,11 +814,6 @@ bool Player::isValidHandle(SoLoud::handle handle)
     return soloud.isValidVoiceHandle(handle) || soloud.isVoiceGroup(handle);
 }
 
-unsigned int Player::getActiveVoiceCount()
-{
-    return soloud.getActiveVoiceCount();
-}
-
 int Player::countAudioSource(unsigned int soundHash)
 {
     auto const &s = findByHash(soundHash);
@@ -1042,7 +1037,7 @@ PlayerErrors Player::play3d(
     // check if [soudHash] has other instances playing. If true remove the first and play the new one.
     // If there are no other instances playing, this sound cannot be played and return an error.
     // Issue https://github.com/alnitak/flutter_soloud/issues/204
-    if (getActiveVoiceCount() >= getMaxActiveVoiceCount())
+    if (getActiveVoiceCount_internal() >= getMaxActiveVoiceCount())
     {
         if (sound->handle.size() > 0)
         {
