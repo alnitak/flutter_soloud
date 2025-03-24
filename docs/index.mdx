@@ -21,12 +21,11 @@ If you merely need to play audio (such as playing a single sound effect or a non
 
 Built on the SoLoud audio engine, it provides low latency, high-quality audio playback with advanced features.
 
-> SoLoud is an easy to use, free, portable c/c++ audio engine for games.
-> 
-> The engine has been designed to make simple things easy, 
-> while not making harder things impossible.
-> 
-> [(from the underlying engine's homepage)](https://solhsa.com/soloud/index.html)
+<Card title="from the underlying engine's homepage" href="https://solhsa.com/soloud/index.html">
+*SoLoud is an easy to use, free, portable c/c++ audio engine for games.*
+
+*The engine has been designed to make simple things easy, while not making harder things impossible.*
+</Card>
 
 The `flutter_soloud` plugin uses the [SoLoud (C++) audio engine](https://solhsa.com/soloud/) with the [miniaudio](https://miniaud.io/) backend through [Dart's C interop](https://dart.dev/interop/c-interop) (`dart:ffi`).
 In other words, it is calling the C/C++ methods of the underlying audio engine directly — there are no method channels in use.
@@ -55,18 +54,9 @@ In other words, it is calling the C/C++ methods of the underlying audio engine d
 
 ### Effects & Streaming
 - 🎛️ Rich effects system including:
-  - Echo - Delay and echo effects
-  - FreeVerb - High quality reverb
-  - Biquad Resonant - Multi-mode filter
-  - Bass Boost - Low frequency enhancement
-  - Equalizer - Multi-band EQ
-  - Pitch Shifter - Change pitch without speed
-  - Flanger - Classic modulation effect
-  - Wave Shaper - Audio distortion
-  - Limiter - Peak volume control
-  - Compressor - Dynamic range control
-  - LoFi - Bit depth/rate reduction
-  - Robotize - Voice modulation effect
+  - Echo, Freeverb, Bassboost, Biquad Resonant
+  - Equalizer, Pitch Shifter, Flanger, Wave Shaper
+  - Limiter, Compressor, Lofi, Robotize
 - 🔄 Buffered audio streaming with:
   - Multiple PCM formats (signed le 8/16/32-bit and float 32-bit)
   - Opus codec with Ogg container
