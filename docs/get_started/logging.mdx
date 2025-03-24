@@ -1,0 +1,79 @@
+---
+title: Logging Setup
+description: Learn how to configure and use logging in flutter_soloud
+---
+
+## Overview
+
+flutter_soloud uses Dart's standard [`logging` package](https://pub.dev/packages/logging) for diagnostic output, from severe warnings to fine-grained debug messages.
+
+## Basic Setup
+
+Configure logging in your app's entry point:
+
+```dart
+import 'dart:developer' as dev;
+import 'package:logging/logging.dart';
+
+void main() {
+  // Set minimum log level
+  Logger.root.level = Level.FINE;
+  
+  // Listen to log records
+  Logger.root.onRecord.listen((record) {
+    dev.log(
+      record.message,
+      time: record.time,
+      level: record.level.value,
+      name: record.loggerName,
+      zone: record.zone,
+      error: record.error,
+      stackTrace: record.stackTrace,
+    );
+  });
+
+  runApp(const MyApp());
+}
+```
+
+## Log Levels
+
+Available logging levels in order of severity:
+- `SHOUT` - Critical errors
+- `SEVERE` - Serious errors
+- `WARNING` - Warning messages
+- `INFO` - General information
+- `CONFIG` - Configuration events
+- `FINE` - Debug information
+- `FINER` - Detailed debug
+- `FINEST` - Most detailed debug
+
+## Integration Examples
+
+### Forward to Crash Reporting
+
+```dart
+Logger.root.onRecord.listen((record) {
+  if (record.level >= Level.SEVERE) {
+    // Forward to crash reporting service
+    Crashlytics.recordError(
+      record.error,
+      record.stackTrace,
+      reason: record.message,
+    );
+  }
+});
+```
+
+### Custom Log Formatting
+
+```dart
+Logger.root.onRecord.listen((record) {
+  print('${record.time}: [${record.level.name}] ${record.message}');
+});
+```
+
+## Best Practices
+
+- Set appropriate log levels for development and production
+- Consider forwarding critical errors to crash reporting services

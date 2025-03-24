@@ -1,0 +1,63 @@
+---
+title: Installation
+description: Learn how to set up flutter_soloud in your project
+---
+
+## Platform Setup
+
+### Web Platform
+To use this plugin on the web platform, add the following scripts to your `index.html`:
+
+```html
+<script src="assets/packages/flutter_soloud/web/libflutter_soloud_plugin.js" defer></script>
+<script src="assets/packages/flutter_soloud/web/init_module.dart.js" defer></script>
+```
+
+See the [Web Platform Guide](/get_started/web_notes) for more details.
+
+### Linux Setup
+
+Linux distributions require the ALSA library for audio support. If missing, install it using your package manager:
+
+```bash
+# Debian/Ubuntu
+sudo apt-get install libasound2-dev
+
+# Arch Linux
+sudo pacman -S alsa-lib
+
+# OpenSUSE
+sudo zypper install alsa-devel
+```
+
+### iOS Configuration
+
+When creating a release archive (IPA), you may need to modify symbol stripping to prevent errors:
+
+1. Open your project in Xcode
+2. Navigate to Target Runner > Build Settings > Strip Style
+3. Change from "All Symbols" to "Non-Global Symbols"
+
+## Basic Usage
+
+Initialize SoLoud in your app:
+
+```dart
+void main() async {
+  await SoLoud.instance.init(
+    sampleRate: 44100,      // Audio quality
+    bufferSize: 2048,       // Buffer size affects latency
+    channels: Channels.stereo,
+  );
+  
+  runApp(const MyApp());
+}
+```
+
+## Best Practices
+
+- Initialize SoLoud early in your app lifecycle
+- Handle initialization errors appropriately
+- Configure buffer size based on your latency needs
+- Clean up resources when your app closes
+- Consider platform-specific requirements

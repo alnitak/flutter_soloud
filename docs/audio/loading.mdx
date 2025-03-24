@@ -1,0 +1,130 @@
+---
+title: Loading Audio
+description: Learn how to load and manage audio sources in flutter_soloud
+---
+
+## Overview
+
+flutter_soloud provides multiple ways to load audio content:
+- 📂 Local files
+- 📦 Assets
+- 🌐 Network URLs
+- 💾 Memory buffers
+- 🌊 Generated waveforms
+
+## Audio Source Management
+
+Each loaded sound returns an `AudioSource` that must be managed:
+
+```dart
+// Load and store the audio source
+final sound = await SoLoud.instance.loadFile('path/to/sound.mp3');
+
+// Use the sound multiple times
+final handle1 = await SoLoud.instance.play(sound);
+final handle2 = await SoLoud.instance.play(sound);
+
+// Clean up when no longer needed
+await SoLoud.instance.disposeSource(sound);
+```
+
+### Automatic Cleanup
+
+Listen to `allInstancesFinished` to automatically dispose when all instances complete:
+
+```dart
+final sound = await SoLoud.instance.loadFile('path/to/sound.mp3');
+sound.allInstancesFinished.first.then((_) {
+  SoLoud.instance.disposeSource(sound);
+});
+await SoLoud.instance.play(sound);
+```
+
+## Loading Methods
+
+### From Files
+
+```dart
+final sound = await SoLoud.instance.loadFile(
+  '/path/to/sound.mp3',
+  mode: LoadMode.memory, // Default
+);
+```
+
+> [!IMPORTANT]  
+> Loading from files is not supported on Web platform. Use `loadMem()` instead when targeting web.
+
+Memory modes:
+- `LoadMode.memory` - Full file in RAM (better performance)
+- `LoadMode.disk` - Stream from disk (less memory usage)
+
+### From Assets
+
+```dart
+final sound = await SoLoud.instance.loadAsset(
+  'assets/sound.mp3',
+  mode: LoadMode.memory,
+  assetBundle: rootBundle, // Optional
+);
+```
+
+### From Network
+
+```dart
+final sound = await SoLoud.instance.loadUrl(
+  'https://example.com/sound.mp3',
+  mode: LoadMode.memory,
+  httpClient: client, // Optional custom client
+);
+```
+
+### From Memory
+
+```dart
+final bytes = await File('sound.mp3').readAsBytes();
+final sound = await SoLoud.instance.loadMem(
+  'reference_name.mp3',
+  bytes,
+  mode: LoadMode.memory,
+);
+```
+
+> [!TIP]
+> When targeting web platform, this is the recommended method to load audio files. You can load the bytes from your assets or network sources.
+
+## Format Support
+
+Supported audio formats:
+| Format | Extension | Description |
+|:--|:--|:--|
+| MP3 | `.mp3` | Most common compressed format |
+| WAV | `.wav` | Uncompressed PCM audio |
+| OGG | `.ogg` | Free compressed format |
+| FLAC | `.flac` | Lossless compression |
+
+## Best Practices
+
+### Memory Management
+- Reuse loaded sounds instead of loading multiple times
+- Dispose sounds when no longer needed
+- Use `LoadMode.disk` for large background music files
+- Use `LoadMode.memory` for sound effects needing quick access
+
+### Performance
+- Load frequently used sounds at app startup
+- Consider memory constraints when loading multiple files
+- Use appropriate load modes based on usage patterns
+- Implement proper error handling for all load operations
+
+### Error Handling
+```dart
+try {
+  final sound = await SoLoud.instance.loadFile('path/to/sound.mp3');
+} on SoLoudNotInitializedException {
+  print('Initialize SoLoud first');
+} on SoLoudFileLoadFailedException {
+  print('Could not load audio file');
+} catch (e) {
+  print('Unexpected error: $e');
+}
+```

@@ -1,0 +1,126 @@
+---
+title: 3D Audio
+description: Learn how to use positional audio features
+---
+
+## Overview
+
+3D audio allows you to position sounds in 3D space, creating immersive audio experiences. The coordinate system is right-handed:
+
+```text
+          Y
+          ^
+          |
+          |
+          |
+          --------> X
+         /
+        /
+       Z
+```
+
+## Basic 3D Playback
+
+Play a sound with 3D positioning:
+
+```dart
+final handle = await SoLoud.instance.play3d(
+  sound,
+  posX: 10.0,
+  posY: 0.0,
+  posZ: 5.0,
+  velX: 0.0, // optional velocity
+  velY: 0.0,
+  velZ: 0.0,
+);
+```
+
+## Listener Control
+
+Configure the audio listener (usually your game's camera or player):
+
+```dart
+// Set listener position
+SoLoud.instance.set3dListenerPosition(0, 0, 0);
+
+// Set listener orientation
+SoLoud.instance.set3dListenerAt(0, 0, 1);  // looking forward
+SoLoud.instance.set3dListenerUp(0, 1, 0);   // up vector
+
+// Set listener velocity (for doppler effect)
+SoLoud.instance.set3dListenerVelocity(0, 0, 0);
+
+// Or set all parameters at once
+SoLoud.instance.set3dListenerParameters(
+  posX: 0, posY: 0, posZ: 0,     // position
+  atX: 0, atY: 0, atZ: 1,        // looking direction
+  upX: 0, upY: 1, upZ: 0,        // up vector
+  velX: 0, velY: 0, velZ: 0,     // velocity
+);
+```
+
+## Sound Source Control
+
+Control individual 3D sound sources:
+
+```dart
+// Update sound position
+SoLoud.instance.set3dSourcePosition(handle, x, y, z);
+
+// Set sound velocity
+SoLoud.instance.set3dSourceVelocity(handle, velX, velY, velZ);
+
+// Set both at once
+SoLoud.instance.set3dSourceParameters(
+  handle,
+  posX, posY, posZ,
+  velX, velY, velZ,
+);
+```
+
+## Distance Attenuation
+
+Configure how sounds fade with distance:
+
+```dart
+// Set minimum and maximum distances
+SoLoud.instance.set3dSourceMinMaxDistance(
+  handle,
+  1.0,     // minimum distance
+  1000.0,  // maximum distance
+);
+
+// Set attenuation model
+SoLoud.instance.set3dSourceAttenuation(
+  handle,
+  2,    // LINEAR_DISTANCE model
+  1.0,  // rolloff factor
+);
+```
+
+Available attenuation models:
+- `0`: NO_ATTENUATION - No distance attenuation
+- `1`: INVERSE_DISTANCE - 1/distance attenuation
+- `2`: LINEAR_DISTANCE - Linear distance attenuation
+- `3`: EXPONENTIAL_DISTANCE - Exponential distance attenuation
+
+## Doppler Effect
+
+Control the doppler effect strength:
+
+```dart
+// Set doppler factor (0 = disable, 1 = normal, >1 = exaggerated)
+SoLoud.instance.set3dSourceDopplerFactor(handle, 1.0);
+
+// Set speed of sound (affects doppler calculations)
+SoLoud.instance.set3dSoundSpeed(343.0); // meters/second
+```
+
+## Best Practices
+
+- Keep coordinate scales consistent throughout your application
+- Update listener and source positions every frame if moving
+- Use appropriate attenuation models for your game/app scale
+- Consider performance when using many 3D sound sources
+- Set appropriate minimum/maximum distances for your scale
+- Use doppler effects sparingly for better performance

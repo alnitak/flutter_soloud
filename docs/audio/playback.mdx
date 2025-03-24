@@ -1,0 +1,118 @@
+---
+title: Playback Controls
+description: Learn how to control audio playback
+---
+
+## Basic Playback
+
+After loading a sound, you can play it using the `play()` method:
+
+```dart
+final handle = await SoLoud.instance.play(
+  sound,
+  volume: 1.0,
+  pan: 0.0,
+  paused: false,
+  looping: false,
+);
+```
+
+The returned `handle` uniquely identifies this instance of the playing sound.
+
+## Playback Controls
+
+### Pausing and Resuming
+
+```dart
+// Toggle pause state
+SoLoud.instance.pauseSwitch(handle);
+
+// Set specific pause state
+SoLoud.instance.setPause(handle, true); // pause
+SoLoud.instance.setPause(handle, false); // resume
+
+// Check pause state
+final isPaused = SoLoud.instance.getPause(handle);
+```
+
+### Stopping Playback
+
+```dart
+await SoLoud.instance.stop(handle);
+```
+
+### Seeking
+
+```dart
+// Seek to specific position
+SoLoud.instance.seek(handle, Duration(seconds: 5));
+
+// Get current position
+final position = SoLoud.instance.getPosition(handle);
+```
+
+## Looping
+
+Enable looping during playback:
+
+```dart
+final handle = await SoLoud.instance.play(
+  sound,
+  looping: true,
+  loopingStartAt: Duration(seconds: 1),
+);
+```
+
+Control looping for an already playing sound:
+
+```dart
+// Enable/disable looping
+SoLoud.instance.setLooping(handle, true);
+
+// Set loop point
+SoLoud.instance.setLoopPoint(handle, Duration(seconds: 1));
+
+// Check if looping
+final isLooping = SoLoud.instance.getLooping(handle);
+```
+
+## Playback Speed
+
+Adjust the playback speed of a sound:
+
+```dart
+// Set relative play speed (1.0 is normal speed)
+SoLoud.instance.setRelativePlaySpeed(handle, 2.0); // Play twice as fast
+
+// Get current play speed
+final speed = SoLoud.instance.getRelativePlaySpeed(handle);
+```
+
+## Voice Protection
+
+Protect important sounds from being stopped when voice limit is reached:
+
+```dart
+// Protect background music from being stopped
+SoLoud.instance.setProtectVoice(musicHandle, true);
+```
+
+## Voice Management
+
+```dart
+// Set maximum number of concurrent sounds (default is 16)
+SoLoud.instance.setMaxActiveVoiceCount(32);
+
+// Get current number of playing sounds
+final activeVoices = SoLoud.instance.getActiveVoiceCount();
+
+// Check if a handle is still valid
+final isValid = SoLoud.instance.getIsValidVoiceHandle(handle);
+```
+
+## Best Practices
+
+- Always keep track of sound handles for sounds you need to control
+- Dispose sounds when they're no longer needed
+- Use voice protection for important sounds like background music
+- Consider setting appropriate voice limits based on your app's needs

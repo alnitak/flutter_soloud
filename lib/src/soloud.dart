@@ -2420,6 +2420,7 @@ interface class SoLoud {
   }
 
   /// Sets the doppler factor of a live 3D audio source.
+  /// 0 = disable, 1 = normal, >1 = exaggerated
   void set3dSourceDopplerFactor(SoundHandle handle, double dopplerFactor) {
     _controller.soLoudFFI.set3dSourceDopplerFactor(handle, dopplerFactor);
   }

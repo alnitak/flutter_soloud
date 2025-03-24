@@ -1,0 +1,113 @@
+---
+title: Waveform Generation
+description: Learn how to generate and control waveforms
+---
+
+## Overview
+
+flutter_soloud can generate various waveform types without loading audio files. This is useful for synthesizing sound effects, creating game audio, or testing audio systems.
+
+## Available Waveforms
+
+The following waveform types are supported:
+- `square` - Square wave oscillator
+- `saw` - Sawtooth wave oscillator
+- `sin` - Sine wave oscillator
+- `triangle` - Triangle wave oscillator
+- `bounce` - Bouncing ball effect
+- `jaws` - Increasing frequency sweep
+- `humps` - Multiple humps waveform
+- `fsquare` - Filtered square wave
+- `fsaw` - Filtered saw wave
+
+## Loading Waveforms
+
+Create a waveform sound source:
+
+```dart
+final sound = await SoLoud.instance.loadWaveform(
+  WaveForm.sin,      // waveform type
+  true,              // enable super wave
+  1.0,              // scale 
+  0.0,              // detune
+);
+```
+
+## Controlling Waveforms
+
+### Change Waveform Type
+
+```dart
+// Switch between waveform types
+SoLoud.instance.setWaveform(sound, WaveForm.square);
+```
+
+### Frequency Control
+
+```dart
+// Set frequency in Hz
+SoLoud.instance.setWaveformFreq(sound, 440.0); // A4 note
+```
+
+### Super Wave Parameters
+
+Super waves create a richer sound by combining multiple oscillators:
+
+```dart
+// Enable/disable super wave
+SoLoud.instance.setWaveformSuperWave(sound, true);
+
+// Adjust super wave scale
+SoLoud.instance.setWaveformScale(sound, 2.0);
+
+// Set super wave detune
+SoLoud.instance.setWaveformDetune(sound, 0.1);
+```
+
+## Examples
+
+### Simple Tone Generator
+
+```dart
+// Create a sine wave at 440 Hz (A4 note)
+final tone = await SoLoud.instance.loadWaveform(
+  WaveForm.sin,
+  false,
+  1.0,
+  0.0,
+);
+
+// Play the tone
+final handle = await SoLoud.instance.play(tone);
+
+// Fade out after 1 second
+SoLoud.instance.fadeVolume(
+  handle,
+  0.0,
+  Duration(seconds: 1),
+);
+```
+
+### Rich Sound Effect
+
+```dart
+// Create a detuned super saw wave
+final richSound = await SoLoud.instance.loadWaveform(
+  WaveForm.fsaw,
+  true,        // super wave enabled
+  2.0,         // increased scale
+  0.1,         // slight detune
+);
+
+// Play with frequency sweep
+final handle = await SoLoud.instance.play(richSound);
+SoLoud.instance.setWaveformFreq(richSound, 220.0);
+```
+
+## Best Practices
+
+- Use simple waveforms for basic sound effects
+- Combine super waves for richer sounds
+- Consider using filtered waveforms for smoother tones
+- Be careful with volume levels when using square waves
+- Use frequency sweeps for dynamic effects

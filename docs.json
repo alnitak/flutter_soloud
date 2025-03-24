@@ -1,0 +1,101 @@
+{
+  "name": "flutter_soloud",
+  "description": "Cross-platform audio plugin for Flutter, based on SoLoud audio engine",
+  "sidebar": [
+    {
+      "group": "Getting Started",
+      "pages": [
+        {
+          "title": "🎵 Overview",
+          "href": "/index"
+        }
+      ]
+    },
+    {
+      "group": "Setup",
+      "pages": [
+        {
+          "title": "⚡ Installation",
+          "href": "/get_started/setup"
+        },
+        {
+          "title": "🚫 Without Opus/Ogg",
+          "href": "/get_started/no_opus_ogg_libs"
+        },
+        {
+          "title": "📋 Logging Setup",
+          "href": "/get_started/logging"
+        },
+        {
+          "title": "📜 License Info",
+          "href": "/get_started/license"
+        }
+      ]
+    },
+    {
+      "group": "Basic Audio",
+      "pages": [
+        {
+          "title": "🎵 Loading Audio",
+          "href": "/audio/loading"
+        },
+        {
+          "title": "⏯️ Playback Controls",
+          "href": "/audio/playback"
+        },
+        {
+          "title": "🔊 Volume & Panning",
+          "href": "/audio/volume"
+        }
+      ]
+    },
+    {
+      "group": "Advanced Features",
+      "pages": [
+        {
+          "title": "🎮 3D Audio",
+          "href": "/advanced/3d_audio"
+        },
+        {
+          "title": "🌊 Waveform Generation",
+          "href": "/advanced/waveforms"
+        },
+        {
+          "title": "🔄 Audio Streaming",
+          "href": "/advanced/streaming"
+        },
+        {
+          "title": "🎛️ Effects & Filters",
+          "href": "/advanced/filters"
+        }
+      ]
+    },
+    {
+      "group": "Platform Specific",
+      "pages": [
+        {
+          "title": "🌐 Web Platform",
+          "href": "/get_started/web_notes"
+        }
+      ]
+    },
+    {
+      "group": "Examples",
+      "pages": [
+        {
+          "title": "📚 Sample Projects",
+          "href": "/examples/samples"
+        }
+      ]
+    },
+    {
+      "group": "Contributing",
+      "pages": [
+        {
+          "title": "🤝 How to Contribute",
+          "href": "/get_started/contribute"
+        }
+      ]
+    }
+  ]
+}

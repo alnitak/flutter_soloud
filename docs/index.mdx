@@ -1,0 +1,88 @@
+---
+title: flutter_soloud Documentation
+description: A cross-platform audio plugin for Flutter using the SoLoud audio engine
+---
+
+## Platform Support
+
+|Platform|Support|Minimum Version|
+|:-:|:-:|:-:|
+|Linux|💙|Any|
+|Windows|💙|Any|
+|Android|💙|21|
+|MacOS|💙|10.15|
+|iOS|💙|13.0|
+|Web|💙|Any|
+
+## What is flutter_soloud?
+
+A high-performance audio plugin designed primarily for games and immersive applications. 
+If you merely need to play audio (such as playing a single sound effect or a non-looped song), and you don't need to worry about latency, there are other Flutter plugins you can use, such as the popular [`audioplayers` plugin](https://pub.dev/packages/audioplayers).
+
+Built on the SoLoud audio engine, it provides low latency, high-quality audio playback with advanced features.
+
+> SoLoud is an easy to use, free, portable c/c++ audio engine for games.
+> 
+> The engine has been designed to make simple things easy, 
+> while not making harder things impossible.
+> 
+> [(from the underlying engine's homepage)](https://solhsa.com/soloud/index.html)
+
+The `flutter_soloud` plugin uses the [SoLoud (C++) audio engine](https://solhsa.com/soloud/) with the [miniaudio](https://miniaud.io/) backend through [Dart's C interop](https://dart.dev/interop/c-interop) (`dart:ffi`).
+In other words, it is calling the C/C++ methods of the underlying audio engine directly — there are no method channels in use.
+
+## Key Features
+
+### Core Audio
+- ⚡ Low latency, high performance playback
+- 🔄 Gapless looping for background music and ambience
+- 💾 Flexible memory management (RAM or disk streaming)
+- 🎵 Multiple concurrent voices
+- 📊 Real-time audio visualization (wave/FFT data)
+
+### Advanced Audio Control
+- 🎮 3D positional audio with Doppler effect
+- 🌊 Live waveform generation
+- ⏱️ Time-based faders for attributes
+- 🎛️ Audio parameter oscillators
+
+### Format Support
+- 🎵 MP3, WAV, OGG, and FLAC playback
+- 🌊 Multiple waveform types:
+  - Square, Saw, Sine, Triangle
+  - Bounce, Jaws, Humps
+  - Filtered Square and Saw
+
+### Effects & Streaming
+- 🎛️ Rich effects system including:
+  - Echo - Delay and echo effects
+  - FreeVerb - High quality reverb
+  - Biquad Resonant - Multi-mode filter
+  - Bass Boost - Low frequency enhancement
+  - Equalizer - Multi-band EQ
+  - Pitch Shifter - Change pitch without speed
+  - Flanger - Classic modulation effect
+  - Wave Shaper - Audio distortion
+  - Limiter - Peak volume control
+  - Compressor - Dynamic range control
+  - LoFi - Bit depth/rate reduction
+  - Robotize - Voice modulation effect
+- 🔄 Buffered audio streaming with:
+  - Multiple PCM formats (signed le 8/16/32-bit and float 32-bit)
+  - Opus codec with Ogg container
+
+## When to Use flutter_soloud
+
+Choose flutter_soloud when you need:
+- Low-latency audio playback
+- Complex audio manipulation
+- 3D positional audio
+- Multiple concurrent sound effects
+- Advanced audio effects
+
+## Technical Details
+
+The plugin uses:
+- [SoLoud C++ Engine](https://solhsa.com/soloud/) for audio processing
+- [miniaudio](https://miniaud.io/) backend for platform support
+- [Dart FFI](https://dart.dev/interop/c-interop) for native integration using direct C++ method calls (no method channels)

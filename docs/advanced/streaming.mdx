@@ -1,0 +1,155 @@
+---
+title: Audio Streaming
+description: Learn how to stream and buffer audio data
+---
+
+## Overview
+
+flutter_soloud supports streaming audio data while receiving it in real-time through the [Opus](https://www.opus-codec.org/) and [Ogg](https://xiph.org/ogg/) libraries from [Xiph.org](https://www.xiph.org/). This is particularly useful when:
+- Streaming audio from network sources
+- Generating audio data on-the-fly
+- Processing audio in chunks
+- Working with OpenAI or other streaming APIs
+
+## Buffer Stream Setup
+
+Initialize an audio stream:
+
+```dart
+final stream = SoLoud.instance.setBufferStream(
+  maxBufferSizeBytes: 1024 * 1024 * 10,    // 10MB of max buffer (not allocated)
+  bufferingType: BufferingType.preserved,
+  bufferingTimeNeeds: 2.0,            // 2 seconds buffer
+  sampleRate: 44100,
+  channels: Channels.stereo,
+  format: BufferType.s16le,
+);
+```
+
+### Buffering Types
+
+#### Preserved Mode
+```dart
+final stream = await SoLoud.instance.setBufferStream(
+  bufferingType: BufferingType.preserved,
+  // ...other parameters
+);
+```
+![preserved](https://github.com/user-attachments/assets/e8699bfd-2a40-4832-a7a8-d729d844c48b)
+- Keeps all audio data in memory
+- Allows multiple playback instances
+- Supports seeking and looping
+- Higher memory usage
+
+#### Released Mode
+```dart
+final stream = await SoLoud.instance.setBufferStream(
+  bufferingType: BufferingType.released,
+  // ...other parameters
+);
+```
+![released](https://github.com/user-attachments/assets/7eb57688-ab0f-4859-813f-d23fff6ca10f)
+- Frees played audio data
+- Single playback instance only
+- Lower memory usage
+- Must be manually disposed
+
+### Supported Formats
+
+- `s8` - Signed 8-bit PCM
+- `s16le` - Signed 16-bit PCM (little endian)
+- `s32le` - Signed 32-bit PCM (little endian)
+- `f32le` - 32-bit float PCM (little endian)
+- `opus` - Opus codec with Ogg container
+
+## Adding Audio Data
+
+```dart
+// Add audio data to the stream
+SoLoud.instance.addAudioDataStream(
+  stream,
+  audioChunk,  // Uint8List of audio data
+);
+
+// Mark the stream as complete
+SoLoud.instance.setDataIsEnded(stream);
+```
+
+## Buffer Management
+
+```dart
+// Get current buffer size
+final size = SoLoud.instance.getBufferSize(stream);
+
+// Reset the buffer
+SoLoud.instance.resetBufferStream(stream);
+```
+
+## Example: Network Streaming
+
+```dart
+// Create a WebSocket connection
+final socket = await WebSocket.connect('wss://audio-stream.example.com');
+
+// Set up the audio stream
+final stream = SoLoud.instance.setBufferStream(
+  bufferingType: BufferingType.released,
+  format: BufferType.opus,
+  onBuffering: (isBuffering, handle, time) {
+    // When isBuffering==true, the stream is set to paused automatically till
+    // it reaches bufferingTimeNeeds of audio data or until setDataIsEnded is called
+    // or maxBufferSizeBytes is reached. When isBuffering==false, the playback stream
+    // is resumed.
+    print('Buffering: $isBuffering, Time: $time');
+  },
+);
+
+// Start playback
+final handle = await SoLoud.instance.play(stream);
+
+// Listen for audio data
+socket.listen((data) {
+  if (data is List<int>) {
+    SoLoud.instance.addAudioDataStream(
+      stream, 
+      Uint8List.fromList(data),
+    );
+  }
+});
+```
+
+## Example: PCM Generation
+
+```dart
+@pragma('vm:entry-point')
+Future<AudioSource> generatePCM() async {
+  final pcmStream = SoLoud.instance.setBufferStream(
+    maxBufferSizeBytes: 1024 * 1024,
+    format: BufferType.s16le,
+    channels: Channels.mono,
+    sampleRate: 44100,
+  );
+  
+  // Generate some PCM data
+  final buffer = Int16List(44100);
+  for (var i = 0; i < buffer.length; i++) {
+    buffer[i] = (sin(2 * pi * 440 * i / 44100) * 32767).toInt();
+  }
+  
+  // Add to stream
+  SoLoud.instance.addAudioDataStream(
+    pcmStream,
+    buffer.buffer.asUint8List(),
+  );
+  
+  SoLoud.instance.setDataIsEnded(pcmStream);
+  return pcmStream;
+}
+```
+
+## Best Practices
+
+- Use `BufferingType.released` for long streams
+- Consider memory usage when streaming large files
+- Handle network errors and buffering states
+- Clean up streams when no longer needed

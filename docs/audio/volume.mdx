@@ -1,0 +1,107 @@
+---
+title: Volume & Panning
+description: Learn how to control volume and panning of audio
+---
+
+## Volume Control
+
+### Individual Sound Volume
+
+Control the volume of individual playing sounds:
+
+```dart
+// Set volume (0.0 = silent, 1.0 = full volume)
+SoLoud.instance.setVolume(handle, 0.5); // 50% volume
+
+// Get current volume
+final volume = SoLoud.instance.getVolume(handle);
+
+// Fade volume over time
+SoLoud.instance.fadeVolume(
+  handle,
+  0.0, // target volume
+  Duration(seconds: 2), // fade duration
+);
+
+// Oscillate volume
+SoLoud.instance.oscillateVolume(
+  handle,
+  0.2, // minimum volume
+  0.8, // maximum volume
+  Duration(seconds: 1), // oscillation period
+);
+```
+
+### Global Volume
+
+Control the master volume affecting all sounds:
+
+```dart
+// Set global volume
+SoLoud.instance.setGlobalVolume(0.8); // 80% volume
+
+// Get global volume
+final globalVolume = SoLoud.instance.getGlobalVolume();
+
+// Fade global volume
+SoLoud.instance.fadeGlobalVolume(
+  0.0, // target volume
+  Duration(seconds: 3), // fade duration
+);
+
+// Oscillate global volume
+SoLoud.instance.oscillateGlobalVolume(
+  0.5, // minimum volume
+  1.0, // maximum volume
+  Duration(seconds: 2), // oscillation period
+);
+```
+
+## Panning Control
+
+Control the stereo positioning of sounds:
+
+```dart
+// Set pan (-1.0 = full left, 0.0 = center, 1.0 = full right)
+SoLoud.instance.setPan(handle, -0.5); // slightly to the left
+
+// Get current pan
+final pan = SoLoud.instance.getPan(handle);
+
+// Fade pan position
+SoLoud.instance.fadePan(
+  handle,
+  1.0, // target pan (right)
+  Duration(seconds: 2), // fade duration
+);
+
+// Oscillate pan
+SoLoud.instance.oscillatePan(
+  handle,
+  -1.0, // leftmost position
+  1.0,  // rightmost position
+  Duration(seconds: 1), // oscillation period
+);
+```
+
+### Absolute Pan Control
+
+For more precise control, you can set left and right channels independently:
+
+```dart
+// Set absolute pan values for left and right channels
+SoLoud.instance.setPanAbsolute(
+  handle,
+  0.7, // left channel volume
+  0.3, // right channel volume
+);
+```
+
+## Best Practices
+
+- Keep volume levels reasonable to avoid audio clipping
+- Use fading for smooth transitions
+- Consider using oscillation for special effects
+- Use global volume for overall game/app volume control (or try using Limiter filter)
+- Use individual volume control for sound balance
+- Remember that volume changes are multiplicative with global volume

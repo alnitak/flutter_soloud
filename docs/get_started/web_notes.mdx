@@ -1,0 +1,33 @@
+---
+title: Web Notes
+description: Learn how to use flutter_soloud on the web
+---
+
+## Description
+
+The web platform is now supported, but some testing is welcome.
+Please note that filters for single sounds are not supported on the web.
+
+## How to use
+
+To add the plugin to a web app, add the following line to the `<body>` section of `web/index.html`:
+```
+<script src="assets/packages/flutter_soloud/web/libflutter_soloud_plugin.js" defer></script>
+<script src="assets/packages/flutter_soloud/web/init_module.dart.js" defer></script>
+```
+
+---
+
+**`loadUrl()`** may produce the following error when the app is run:
+>> Cross-Origin Request Blocked: The Same Origin Policy disallows reading the remote resource at https://www.learningcontainer.com/wp-content/uploads/2020/02/Kalimba.mp3. (Reason: CORS header ‘Access-Control-Allow-Origin’ missing). Status code: 200.
+
+This is due for the default beavior of http servers which don't allow to make requests outside their domain. Refer [here](https://enable-cors.org/server.html) to learn how to enable your server to handle this situation.
+Instead, if you run the app locally, you could run the app with something like the following command:
+```
+flutter run -d chrome --web-renderer canvaskit --web-browser-flag '--disable-web-security' -t lib/main.dart --release
+```
+
+---
+
+***It is not possible to read a local audio file directly*** on the web. For this reason, `loadMem()` has been added, which requires the `Uint8List` byte buffer of the audio file.
+***IMPORTANT***: `loadMem()` with mode `LoadMode.memory` used on web platform will freeze the UI for the time needed to decompress the audio file. Please use it with mode `LoadMode.disk` or load your sound when the app starts.

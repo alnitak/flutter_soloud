@@ -1,0 +1,135 @@
+---
+title: Effects & Filters
+description: Learn how to use audio effects and filters
+---
+
+## Overview
+
+flutter_soloud provides various audio effects and filters that can be applied globally to all sounds or individually to specific sound sources.
+
+## Available Filters
+
+- `echo` - Echo/delay effect
+- `freeverbFilter` - High quality reverb effect
+- `biquadResonant` - Multi-mode filter (lowpass, highpass, bandpass)
+- `bassboost` - Low frequency enhancement
+- `equalizer` - Multi-band equalizer
+- `pitchShifter` - Change pitch without affecting speed
+- `flanger` - Classic modulation effect
+- `waveShaper` - Audio distortion/wave shaping
+- `limiter` - Peak volume control
+- `compressor` - Dynamic range compression
+- `lofi` - Bit depth and sample rate reduction
+- `robotize` - Voice modulation effect
+
+## Global Filters
+
+Apply filters to all audio output:
+
+```dart
+// Initialize SoLoud with filters
+await SoLoud.instance.init();
+
+// Access filters through the filters property
+final filters = SoLoud.instance.filters;
+
+// Activate an effect
+filters.echoFilter.activate();
+
+// Configure parameters
+filters.echoFilter.delay.value = 0.2;
+filters.echoFilter.decay.value = 0.7;
+```
+
+### Parameter Control
+
+```dart
+// Fade parameter over time
+filters.echoFilter.delay.fadeFilterParameter(
+  to: 0.5,
+  time: Duration(milliseconds: 1000),
+);
+
+// Oscillate parameter
+filters.echoFilter.decay.oscillateFilterParameter(
+  from: 0.2,
+  to: 0.8,
+  time: Duration(milliseconds: 2000),
+);
+```
+
+## Common Filter Examples
+
+### Echo Effect
+
+```dart
+// Set up echo
+filters.echoFilter.activate();
+filters.echoFilter
+  ..delay.value = 0.2    // 200ms delay
+  ..decay.value = 0.7    // 70% decay
+  ..filter.value = 1.0;  // No filtering
+```
+
+### Bass Boost
+
+```dart
+// Enhance low frequencies
+filters.bassboostFilter.activate();
+filters.bassboostFilter
+  ..boost.value = 2.0;   // Double bass
+```
+
+### Lo-Fi Effect
+
+```dart
+// Add retro sound quality
+filters.lofiFilter.activate();
+filters.lofiFilter
+  ..sampleRate.value = 8000   // 8kHz sampling
+  ..bitDepth.value = 4;       // 4-bit depth
+```
+
+### Reverb
+
+```dart
+// Add space/room effect
+filters.freeverbFilter.activate();
+filters.freeverbFilter
+  ..roomSize.value = 0.8    // Large room
+  ..damping.value = 0.5     // Medium damping
+  ..width.value = 1.0;      // Full stereo width
+```
+
+## Dynamic Effects
+
+Create evolving soundscapes:
+
+```dart
+// Start with normal reverb
+filters.freeverbFilter.activate();
+filters.freeverbFilter.roomSize.value = 0.5;
+
+// Gradually increase room size
+filters.freeverbFilter.roomSize.fadeFilterParameter(
+  to: 0.9,
+  time: Duration(seconds: 3),
+);
+
+// Oscillate damping
+filters.freeverbFilter.damping.oscillateFilterParameter(
+  from: 0.2,
+  to: 0.8,
+  time: Duration(milliseconds: 2000),
+);
+```
+
+## Best Practices
+
+- Use filters sparingly to avoid CPU overhead
+- Be careful with feedback parameters in echo/reverb
+- Consider mobile device performance
+- Deactivate unused filters
+- Use parameter fading for smooth transitions
+- Test on various devices and platforms
+- Monitor CPU usage when using multiple filters

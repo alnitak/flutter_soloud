@@ -1,0 +1,90 @@
+---
+title: Contribute
+description: Learn how to contribute to flutter_soloud
+showPageImage: true
+---
+
+## Contribute
+
+To use native code, bindings from Dart to C/C++ are needed. To avoid writing these manually, they are generated from the header file (`src/ffi_gen_tmp.h`) using [package:ffigen](https://pub.dev/packages/ffigen) and temporarily stored in `lib/flutter_soloud_FFIGEN.dart`. You can generate the bindings by running `dart run ffigen`.
+
+Since I needed to modify the generated `.dart` file, I followed this flow:
+1. Copy the function declarations to be generated into `src/ffi_gen_tmp.h`.
+2. Run `dart run ffigen --config ffigen.yaml` in teminal.
+3. The file `lib/flutter_soloud_FFIGEN.dart` will be generated.
+4. Copy the relevant code for the new functions from `lib/flutter_soloud_FFIGEN.dart` into `lib/flutter_soloud_bindings_ffi.dart`.
+
+#### Project structure
+
+This plugin uses the following structure:
+
+* `lib`: Contains the Dart code that defines the API of the plugin relative to all platforms.
+* `src`: Contains the native source code. Linux, Android and Windows have their own CmakeFile.txt file in their own subdir to build the code into a dynamic library.
+* `src/soloud`: Contains the SoLoud sources of my fork
+* `web`: Contains the scripts to build the plugin on the web platform.
+* `xiph`: Contains the script to build `ogg` and `opus` libraries for Android, Windows, MacOS and iOS.
+
+The `flutter_soloud` plugin utilizes a [forked](https://github.com/alnitak/soloud) repository of [SoLoud](https://github.com/jarikomppa/soloud), where the [miniaudio](https://github.com/mackron/miniaudio) audio backend (used by default) has been updated and it is located in `src/soloud/src/backend/miniaudio`.
+
+#### Debugging
+
+I have provided the necessary settings in the **.vscode** directory for debugging native C++ code on both Linux and Windows. To debug on Android, please use Android Studio and open the project located in the ***example/android*** directory. On Mac and iOS, please use XCode.
+
+##### Logging
+
+When debugging the package using the `example/` app, you might want to change the logging level to something more granular. For example, in `main()`:
+
+```dart
+// Capture even the finest log messages.
+Logger.root.level = Level.ALL;
+```
+
+One thing that's missing (as of March 2024) is logging from inside the audio isolate. 
+We'd have to send logs to the main isolate through an event, which might be too expensive and brittle. 
+Feel free to use `debugPrint` in `audio_isolate.dart` when working on the package. 
+Just make sure to delete those calls before submitting pull requests.
+We don't want to pollute developers' console outputs.
+
+#### Linux
+
+If you encounter any glitches, they might be caused by PulseAudio. To troubleshoot this issue, you can try disabling PulseAudio within the `linux/src.cmake` file. Look for the line `add_definitions(-DMA_NO_PULSEAUDIO)` and uncomment it (now it is the default behavior).
+
+#### Android
+
+The default audio backend is `miniaudio`, which will automatically select the appropriate audio backend based on your Android version:
+- AAudio with Android 11.0 and newer.
+- OpenSL|ES for older Android versions.
+
+#### Windows
+
+For Windows users, SoLoud utilizes *Openmpt* through a DLL, which can be obtained from [https://lib.openmpt.org/](https://lib.openmpt.org/). If you wish to use this feature, install the DLL and enable it by modifying the first line in `windows/src.cmake`.
+
+***Openmpt*** functions as a module-playing engine, capable of replaying a wide variety of multichannel music formats (669, amf, ams, dbm, digi, dmf, dsm, far, gdm, ice, imf, it, itp, j2b, m15, mdl, med, mid, mo3, mod, mptm, mt2, mtm, okt, plm, psm, ptm, s3m, stm, ult, umx, wow, xm). Additionally, it can load wav files and may offer better support for wav files compared to the stand-alone wav audio source.
+
+#### Web
+
+In the `web` directory, there is a `compile_wasm.sh` script that generates the `.js` and `.wasm` files for the native C code located in the `src` dir. Run it after installing *emscripten*. There is also a `compile_worker_and_init_module.sh` to compile the web worker needed by native code to communicate with Dart and the `init_module.dart` which initializes the WASM module. The default Module name is `Module_soloud` instead of the default `Module` to prevent some other WASM plugins from conflicting.
+
+The generated files are already provided, but if it is needed to modify C/C++ code or the `web/worker.dart` code, the scripts must be run to reflect the changes.
+
+The `compile_wasm.sh` script uses the `-O3` code optimization flag. To see a better errors logs, use `-O0 -g -s ASSERTIONS=1` in `compile_wasm.sh`.
+
+---
+
+The `AudioIsolate` [has been removed](https://github.com/alnitak/flutter_soloud/pull/89) and all the logic has been implemented natively. Events like `voice ended` are sent from C back to Dart. However, since it is not possible to call Dart from a native thread (the audio thread), a new web worker is created using the WASM `EM_ASM` directive. This allows sending the `voice ended` event back to Dart via the worker.
+
+Here a sketch to show the step used:
+![sketch](https://github.com/alnitak/flutter_soloud/raw/main/img/wasmWorker.png)
+
+**#1.** This function is called while initializing the player with `FlutterSoLoudWeb.setDartEventCallbacks()`.
+It creates a Web Worker in the [WASM Module](https://emscripten.org/docs/api_reference/module.html) using the compiled `web/worker.dart`. After calling this, the WASM Module will have a new variable called `Module_soloud.wasmWorker` which will be used in Dart to receive messages.
+By doing this it will be easy to use the Worker to send messages from within the CPP code.
+
+**#2.** This function, like #1, uses [EM_ASM](https://emscripten.org/docs/porting/connecting_cpp_and_javascript/Interacting-with-code.html#interacting-with-code-call-javascript-from-native) to inline JS. This JS code uses the `Module_soloud.wasmWorker` created in #1 to send a message.
+
+**#3.** This is the JS used and created in #1. Every messages sent by #2 are managed here and sent to #4.
+
+**#4.** Here when the event message has been received, a new event is added to a Stream. This Stream is listened by the SoLoud API.
+
+**#5.** Here we listen to the event messages coming from the `WorkerController` stream. Currently, only the "voice ended" event is supported. The Stream is listened in `SoLoud._initializeNativeCallbacks()`.
+
