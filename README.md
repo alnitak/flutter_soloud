@@ -26,7 +26,7 @@ A high-performance audio plugin designed primarily for games and immersive appli
 
 ## Documentation
 
-- [Full Documentation](https://docs.page/alnitak/flutter_soloud)
+- [Full Documentation](https://docs.page/alnitak/flutter_soloud_docs)
 - [API Reference](https://pub.dev/documentation/flutter_soloud/latest/)
 
 ## Simple Example
