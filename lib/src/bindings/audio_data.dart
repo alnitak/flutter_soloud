@@ -20,7 +20,7 @@ enum GetSamplesKind {
   /// the other 256 are audio wave samples.
   linear,
 
-  /// Get data in a 2D way. The resulting data will be a matrix of 256
+  /// Get data in a 2D way. The resulting data will be a matrix of 512
   /// [linear] rows. Each time the [AudioData.updateSamples] method is called,
   /// the last row is discarded and the new one will be the first.
   texture,
