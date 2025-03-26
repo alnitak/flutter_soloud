@@ -245,7 +245,7 @@ interface class SoLoud {
   /// system hits buffer underruns (ie, the play head marches on but there's no
   /// data ready to be played) and the sound breaks down horribly.
   /// The default value is 2048.
-  /// 
+  ///
   /// [channels] mono, stereo, quad, 5.1, 7.1.
   Future<void> init({
     PlaybackDevice? device,
