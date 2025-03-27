@@ -1,3 +1,8 @@
+### 3.1.2 (27 Mar 2025)
+- enhanced documentation clarity and organization by moving it to the dedicated [flutter_soloud_docs](https://github.com/alnitak/flutter_soloud_docs) repo. Powered by [docs.page](https://docs.page/) from Invertase and can be viewed [here](https://docs.page/alnitak/flutter_soloud_docs).
+- Web fix: Uncaught (in promise) TypeError #208
+- fix: error when loading very short MP3s file #181
+
 ### 3.1.1 (21 Mar 2025)
 - fix: Sounds seemingly "backed up in a queue" when playing too many at once #204
 
