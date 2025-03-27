@@ -72,11 +72,11 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
             } else {
               /// load the audio file
               currentSound = await SoLoud.instance
-                  .loadAsset('assets/audio/8_bit_mentality.mp3');
+                  .loadFile('/home/deimos/5/short_test_click.mp3');
             }
 
             /// play it
-            await SoLoud.instance.play(currentSound!);
+            await SoLoud.instance.play(currentSound!, looping: true);
           },
           child: const Text(
             'play asset',
