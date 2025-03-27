@@ -244,6 +244,8 @@ interface class SoLoud {
   /// latency, but at the same time, the smaller the buffer, the more likely the
   /// system hits buffer underruns (ie, the play head marches on but there's no
   /// data ready to be played) and the sound breaks down horribly.
+  /// The default value is 2048.
+  ///
   /// [channels] mono, stereo, quad, 5.1, 7.1.
   Future<void> init({
     PlaybackDevice? device,
@@ -2420,6 +2422,7 @@ interface class SoLoud {
   }
 
   /// Sets the doppler factor of a live 3D audio source.
+  /// 0 = disable, 1 = normal, >1 = exaggerated
   void set3dSourceDopplerFactor(SoundHandle handle, double dopplerFactor) {
     _controller.soLoudFFI.set3dSourceDopplerFactor(handle, dopplerFactor);
   }
