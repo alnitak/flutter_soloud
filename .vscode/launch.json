@@ -8,7 +8,7 @@
             "name": "Flutter debug",
             "type": "dart",
             "request": "launch",
-            "program": "lib/buffer_stream/websocket.dart",
+            "program": "lib/main.dart",
             "flutterMode": "debug",
             // "env": {
             //     "NO_OPUS_OGG_LIBS": "1"
