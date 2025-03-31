@@ -1,3 +1,7 @@
+### 3.1.3 (31 Mar 2025)
+- fix `listPlaybackDevices` on Web #214
+- log `maxActiveVoiceCountReached` exception with Level.INFO #212
+
 ### 3.1.2 (27 Mar 2025)
 - enhanced documentation clarity and organization by moving it to the dedicated [flutter_soloud_docs](https://github.com/alnitak/flutter_soloud_docs) repo. Powered by [docs.page](https://docs.page/) from Invertase and can be viewed [here](https://docs.page/alnitak/flutter_soloud_docs).
 - Web fix: Uncaught (in promise) TypeError #208
