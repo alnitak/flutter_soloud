@@ -2594,10 +2594,6 @@ interface class SoLoud {
       strBuf.write('$from: ');
     }
     strBuf.write(playerError.toString());
-    if (playerError == PlayerErrors.maxActiveVoiceCountReached) {
-      _log.info(strBuf.toString());
-    } else {
-      _log.severe(strBuf.toString());
-    }
+    _log.log(logLevel, strBuf.toString());
   }
 }
