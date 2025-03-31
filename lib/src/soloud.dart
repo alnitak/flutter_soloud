@@ -2559,7 +2559,8 @@ interface class SoLoud {
   }
 
   /// Utility method that logs a [Level.SEVERE] message if [playerError]
-  /// is anything other than [PlayerErrors.noError].
+  /// is anything other than [PlayerErrors.noError] or [Level.INFO] if
+  /// the error is [PlayerErrors.maxActiveVoiceCountReached].
   ///
   /// Optionally takes a [from] string, so that it can construct messages
   /// with more context:
@@ -2578,8 +2579,13 @@ interface class SoLoud {
       return;
     }
 
-    if (!_log.isLoggable(Level.SEVERE)) {
-      // Do not do extra work if the logger isn't listening.
+    // Do not do extra work if the logger isn't listening
+    // to the appropriate level.
+    final logLevel = playerError == PlayerErrors.maxActiveVoiceCountReached
+        ? Level.INFO
+        : Level.SEVERE;
+
+    if (!_log.isLoggable(logLevel)) {
       return;
     }
 
@@ -2588,6 +2594,6 @@ interface class SoLoud {
       strBuf.write('$from: ');
     }
     strBuf.write(playerError.toString());
-    _log.severe(strBuf.toString());
+    _log.log(logLevel, strBuf.toString());
   }
 }
