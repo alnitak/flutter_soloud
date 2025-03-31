@@ -2579,9 +2579,13 @@ interface class SoLoud {
       return;
     }
 
-    if (!_log.isLoggable(Level.SEVERE) &&
-        playerError != PlayerErrors.maxActiveVoiceCountReached) {
-      // Do not do extra work if the logger isn't listening.
+    // Do not do extra work if the logger isn't listening
+    // to the appropriate level.
+    final logLevel = playerError == PlayerErrors.maxActiveVoiceCountReached
+        ? Level.INFO
+        : Level.SEVERE;
+
+    if (!_log.isLoggable(logLevel)) {
       return;
     }
 
