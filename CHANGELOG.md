@@ -1,3 +1,6 @@
+### 3.1.4 (6 Apr 2025)
+- fix building issue with XCode 16.3 #217
+
 ### 3.1.3 (31 Mar 2025)
 - fix `listPlaybackDevices` on Web #214
 - log `maxActiveVoiceCountReached` exception with Level.INFO #212
