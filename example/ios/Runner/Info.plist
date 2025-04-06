@@ -45,7 +45,5 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>Used to capture audio for flutter_soloud plugin</string>
 </dict>
 </plist>
