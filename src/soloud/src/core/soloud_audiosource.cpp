@@ -156,7 +156,7 @@ namespace SoLoud
 
 	result AudioSourceInstance::seek(double aSeconds, float *mScratch, unsigned int mScratchSize)
 	{
-		double offset = aSeconds - mStreamPosition;
+		double offset = (aSeconds - mStreamPosition) / mOverallRelativePlaySpeed;
 		if (offset <= 0)
 		{
 			if (rewind() != SO_NO_ERROR)
