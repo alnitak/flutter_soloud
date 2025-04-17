@@ -119,6 +119,7 @@ class AudioSource {
   ///
   /// **IMPORTANT**: filters for individual sounds are not supported on the
   /// web platform.
+  ///
   /// **IMPORTANT**: the filter must be added before playing. Only voice handles
   /// played after adding a filter will play with the filter chosen:
   ///

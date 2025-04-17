@@ -1,3 +1,6 @@
+### 3.1.5 (17 Apr 2025)
+- fix: when the speed is changed, after seeking, the `getPosition()` returns the wrong position #223
+
 ### 3.1.4 (6 Apr 2025)
 - fix building issue with XCode 16.3 #217
 
