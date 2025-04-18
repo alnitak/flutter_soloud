@@ -244,7 +244,7 @@ extern "C"
             /// to be sure.
             for (int n = 0; n < 5; n++)
             {
-                if (d[i].name[n] < 0x20)
+                if (d[i].name[n] < 0x20 && d[i].name[n] >= 0)
                     hasSpecialChar = true;
             }
             if (strlen(d[i].name) <= 5 || hasSpecialChar)
