@@ -1,41 +1,41 @@
-### 3.1.6 (xx Apr 2025)
+#### 3.1.6 (19 Apr 2025)
 - fix: passing a group handle to `seek()` throws error #228
 - fix: `listPlaybackDevices` fails to retrieve devices when the device prefix contains Chinese characters #227 by @WHYBBE
 
-### 3.1.5 (17 Apr 2025)
+#### 3.1.5 (17 Apr 2025)
 - fix: when the speed is changed, after seeking, the `getPosition()` returns the wrong position #223
 
-### 3.1.4 (6 Apr 2025)
+#### 3.1.4 (6 Apr 2025)
 - fix building issue with XCode 16.3 #217
 
-### 3.1.3 (31 Mar 2025)
+#### 3.1.3 (31 Mar 2025)
 - fix `listPlaybackDevices` on Web #214
 - log `maxActiveVoiceCountReached` exception with Level.INFO #212
 
-### 3.1.2 (27 Mar 2025)
+#### 3.1.2 (27 Mar 2025)
 - enhanced documentation clarity and organization by moving it to the dedicated [flutter_soloud_docs](https://github.com/alnitak/flutter_soloud_docs) repo. Powered by [docs.page](https://docs.page/) from Invertase and can be viewed [here](https://docs.page/alnitak/flutter_soloud_docs).
 - Web fix: Uncaught (in promise) TypeError #208
 - fix: error when loading very short MP3s file #181
 
-### 3.1.1 (21 Mar 2025)
+#### 3.1.1 (21 Mar 2025)
 - fix: Sounds seemingly "backed up in a queue" when playing too many at once #204
 
-### 3.1.0 (18 Mar 2025)
+#### 3.1.0 (18 Mar 2025)
 - when calling `AudioData.getAudioData` is now possible to check if the audio data is the same as before. Useful to visualize waveforms. This is because `AudioData.getAudioData` returns the current data in the buffer and if it is called before the buffer has been updated, it will return the previous data.
 - better FFT data for a better visualization.
 - added `resetBufferStream` method to `SoLoud`. It happens that when playing a stream, maybe from the web, it is needed to change it to another source. The player continues to play the already added audio data to the buffer. This method can be used to reset the buffer and start with the new audio data.
 
-### 3.0.3 (7 Mar 2025)
+#### 3.0.3 (7 Mar 2025)
 - it's now possible to choose to not link opus and ogg libraries (see `NO_OPUS_OGG_LIBS.md`). Fix for #191 and #192.
 
-### 3.0.2 (25 Feb 2025)
+#### 3.0.2 (25 Feb 2025)
 - fixed crash when trying to play a sound after deactivating its active filter #189
 
-### 3.0.1 (20 Feb 2025)
+#### 3.0.1 (20 Feb 2025)
 - fix: error while calling listPlaybackDevices() #186.
 - android example folder recreated.
 
-### 3.0.0 (13 Feb 2025)
+#### 3.0.0 (13 Feb 2025)
 - `BufferStream` now supports 2 type of buffering:
   - `BufferingType.preserved` (default): preserve the data already in the buffer while playing.
   - `BufferingType.released`: free the memory of the already played data for longer playback.
@@ -47,7 +47,7 @@
 - fix: on some unclear conditions `isInitialized` returning false on MacOS after engine starts with no error #177
 - fix: Call `loadMem` will crash the application #174.
 
-### 3.0.0-pre.0 (2 Feb 2025)
+#### 3.0.0-pre.0 (2 Feb 2025)
 - fix: clicks and pops when changing waveform frequency #156.
 - added `Limiter` and `Compressor` filters (see `example/lib/filters/`).
 - added BufferStream #148. Now it's possible to add audio data and listen to them. It provides a customizable buffering length which automatycally pauses the playing handle if there is not enough data, for example when receiving audio data from the web. It also provides a callback that allows you to know when the buffering is started and stopped. The audio data can of of the following formats:
@@ -67,39 +67,39 @@
   <script src="assets/packages/flutter_soloud/web/init_module.dart.js" defer></script>
   ```
 
-### 2.1.7 (29 Oct 2024)
+#### 2.1.7 (29 Oct 2024)
 - added `listPlaybackDevices` to get all the OS output devices available.
 - added `deviceId` parameter to the `init()` method. You can choose which device is delegated to output the audio.
 - added `changeDevice` method to change the output playback device on-the-fly.
 - fix: now throws when loading a file that might be corrupt #145.
 
-### 2.1.6 (17 Oct 2024)
+#### 2.1.6 (17 Oct 2024)
 - fixed a bug that caused an error when loading a sound more than twice.
 
-### 2.1.5 (11 Oct 2024)
+#### 2.1.5 (11 Oct 2024)
 - added `readSamplesFrom*()` methods to read N audio data within a time range from a file or memory #75. Example in `example/lib/wave_data/wave_data.dart`.
 
-### 2.1.4 (18 Sep 2024)
+#### 2.1.4 (18 Sep 2024)
 - fixed waveform generation which somehow oscillate frequencies after some time #129.
 - fixed iOS compilation by rising minimum iOS version to 13 #128.
 - fixed iOS compilation on the new MacOS 15 with XCode 16 #130.
 
-### 2.1.3 (7 Sep 2024)
+#### 2.1.3 (7 Sep 2024)
 - added audio_data example.
 - added compatibility for Web platform in the pubspec.
 - bug fix when loading multiple audio files asynchronously.
 - better error message when something goes wrong loading a file.
 
-### 2.1.2 (29 Aug 2024)
+#### 2.1.2 (29 Aug 2024)
 - bug fix when loading multiple audio files asynchronously.
 
-### 2.1.1 (28 Aug 2024)
+#### 2.1.1 (28 Aug 2024)
 - added `bool isActive` and `int index` getters to filters.
 - added a `timeStretch()` method to single pitchshift filter.
 - fixed building error on Windows.
 - updated examples.
 
-### 2.1.0 (23 Aug 2024)
+#### 2.1.0 (23 Aug 2024)
 - added support for the Web platform.
 - added `getPan()`, `setPan()` and `setPanAbsolute()`.
 - added `loadMem()` to read the give audio file bytes buffer (not RAW data). Useful for the Web platform.
@@ -112,13 +112,13 @@
 - experimental capture feature removed.
 - now accessing to filter has been simplified with the use of `SoLoud.filters` and `AudioSource.filters` to use global and single sound filters.
 
-### 2.0.2 (23 May 2024)
+#### 2.0.2 (23 May 2024)
 - Fixed wrong exception raised by `setVolume()` when a handle is no more valid.
 
-### 2.0.1 (6 May 2024)
+#### 2.0.1 (6 May 2024)
 - Fix init error on hot restart.
 
-### 2.0.0 (5 Apr 2024)
+#### 2.0.0 (5 Apr 2024)
 - A giant leap forward from the previous version (many thanks to Filip Hráček).
 - Major changes to API. There are quick fixes (`dart fix`) to automatically rename many changed APIs.
 - `SoLoud` methods now throw instead of returning a PlayerErrors object.
@@ -161,7 +161,7 @@
 - The Web platform is a work in progress, stay tuned!
 - Switched LICENSE from Apache-2.0 to MIT.
 
-### 2.0.0-pre.5 (4 Apr 2024)
+#### 2.0.0-pre.5 (4 Apr 2024)
 - getLoopPoint now returns Duration.
 - Major changes to API docs and README.
 - Renamed `SoLoud.disposeSound` to `SoLoud.disposeSource`.
@@ -171,10 +171,10 @@
 - Removed unused `AudioSource.keys` property.
 - Switched LICENSE from Apache-2.0 to MIT.
 
-### 2.0.0-pre.4 (21 Mar 2024)
+#### 2.0.0-pre.4 (21 Mar 2024)
 - some little fixes.
 
-### 2.0.0-pre.3 (20 Mar 2024)
+#### 2.0.0-pre.3 (20 Mar 2024)
 - added `getActiveVoiceCount()` to get concurrent sounds that are playing at the moment.
 - added `countAudioSource()` to get concurrent sounds that are playing a specific audio source.
 - added `getVoiceCount()` to get the number of voices the application has told SoLoud to play.
@@ -217,7 +217,7 @@
   C++ API, and also to have a symmetry (`init`/`deinit`).
   Quick fix available.
 
-### 2.0.0-pre.2 (14 Mar 2024)
+#### 2.0.0-pre.2 (14 Mar 2024)
 
 NOTE: This version is much more breaking than the ones before it.
 It might be worth it to first upgrade your code to `2.0.0-pre.1`,
@@ -250,7 +250,7 @@ to `2.0.0-pre.2` and beyond.
   }
   ```
 
-### 2.0.0-pre.1 (12 Mar 2024)
+#### 2.0.0-pre.1 (12 Mar 2024)
 - added `looping` and `loopingStartAt` properties to `SoLoud.play()` and `SoLoud.play3d()`.
 - added `SoLoud.getLooping()` to retrieve the looping state of a sound.
 - added `SoLoud.getLoopPoint()` and `SoLoud.setLoopPoint()` to get and set the looping start position of a sound.
@@ -264,7 +264,7 @@ to `2.0.0-pre.2` and beyond.
 - Rename `SoLoudTools.initSounds` to `SoLoudTools.createNotes` for clarity.
   (Quick fix available.)
 
-### 2.0.0-pre.0 (11 Mar 2024)
+#### 2.0.0-pre.0 (11 Mar 2024)
 - added `bool SoLoud.getVisualizationEnabled()` to get the current state of the visualization.
 - added `mode` property to `SoLoud.loadFile()` and `SoloudTools.loadFrom*` to prevent to load the whole audio data into memory:
     - *LoadMode.memory* by default. Means less CPU, more memory allocated.
@@ -319,18 +319,18 @@ to `2.0.0-pre.2` and beyond.
   but unlikely to have effect (as most users hopefully don't assign
   to these fields).
 
-### 1.2.5 (2 Mar 2024)
+#### 1.2.5 (2 Mar 2024)
 - updated mp3, flac and wav decoders
 - updated miniaudio to 0.11.21
 - fixed doppler effect in 3D audio example
 
-### 1.2.4
+#### 1.2.4
 fixed compilation on Windows
 
-### 1.2.3
+#### 1.2.3
 - fixed compilation on iOS and macOS
 
-### 1.2.2
+#### 1.2.2
 - waveform example page updated with sound FXs
 - added sound FXs
     - biquadResonantFilter
@@ -343,7 +343,7 @@ fixed compilation on Windows
     - robotizeFilter
     - freeverbFilter
 
-### 1.2.1
+#### 1.2.1
 - binded some more SoLoud functionalities:
     - fadeGlobalVolume
     - fadeVolume
@@ -357,19 +357,19 @@ fixed compilation on Windows
     - oscillateGlobalVolume
 - waveform example page updated
 
-### 1.2.0
+#### 1.2.0
 - added waveform generator
 - added a test page for waveform
 - added some tests in `tests` dir
 - miniaudio updated to v0.11.18
 
-### 1.1.1
+#### 1.1.1
 - *SoLoud().loadFile* now can return *PlayerErrors.fileAlreadyLoaded* when a sound has already been loaded previously. It still return the SoundProps sound. It's not a breaking error.
 - added *Soloud().disposeAllSound* to stop and dispose all active sounds
 
 **breaking change**: *Soloud().stopSound* has been renamed to *Soloud().disposeSound*
 
-### 1.1.0
+#### 1.1.0
 added load sound tools:
 - SoloudLoadingTool.loadFromAssets()
 - SoloudLoadingTool.loadFromFile()
@@ -377,13 +377,13 @@ added load sound tools:
 
 added also a spin around example
 
-### 1.0.0
+#### 1.0.0
 - added 3D audio with example
 
-### 0.9.0
+#### 0.9.0
 - added capture from microphone with example
 
-### 0.1.0
+#### 0.1.0
 
 Initial release:
 * Supported on Linux, Windows, Mac, Android, and iOS
