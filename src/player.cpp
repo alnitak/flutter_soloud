@@ -749,7 +749,8 @@ PlayerErrors Player::seek(SoLoud::handle handle, float time)
         return backendNotInited;
 
     ActiveSound *sound = findByHandle(handle);
-    if (sound == nullptr || sound->soundType == TYPE_SYNTH)
+    bool isGroupHandle = soloud.isVoiceGroup(handle);
+    if ((sound == nullptr || sound->soundType == TYPE_SYNTH) && !isGroupHandle)
         return invalidParameter;
 
     SoLoud::result result = soloud.seek(handle, time);
@@ -789,23 +790,14 @@ float Player::getPan(SoLoud::handle handle)
 
 void Player::setPan(SoLoud::handle handle, float pan)
 {
-    if (pan > 1.0f)
-        pan = 1.0f;
-    if (pan < -1.0f)
-        pan = -1.0f;
+    std::clamp(pan, -1.0f, 1.0f);
     soloud.setPan(handle, pan);
 }
 
 void Player::setPanAbsolute(SoLoud::handle handle, float panLeft, float panRight)
-{
-    if (panLeft > 1.0f)
-        panLeft = 1.0f;
-    if (panLeft < -1.0f)
-        panLeft = -1.0f;
-    if (panRight > 1.0f)
-        panRight = 1.0f;
-    if (panRight < -1.0f)
-        panRight = -1.0f;
+{ 
+    std::clamp(panLeft, -1.0f, 1.0f);
+    std::clamp(panRight, -1.0f, 1.0f);
     soloud.setPanAbsolute(handle, panLeft, panRight);
 }
 

@@ -166,11 +166,11 @@ namespace SoLoud
 			}
 			offset = aSeconds;
 		}
-		int samples_to_discard = (int)floor(mSamplerate * offset);
+		unsigned int samples_to_discard = (unsigned int)floor(mSamplerate * offset);
 
 		while (samples_to_discard)
 		{
-			int samples = mScratchSize / mChannels;
+			unsigned int samples = mScratchSize / mChannels;
 			if (samples > samples_to_discard)
 				samples = samples_to_discard;
 			getAudio(mScratch, samples, samples);
