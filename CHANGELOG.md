@@ -1,3 +1,6 @@
+### 3.1.6 (xx Apr 2025)
+- fix: passing a group handle to `seek()` throws error #228
+
 ### 3.1.5 (17 Apr 2025)
 - fix: when the speed is changed, after seeking, the `getPosition()` returns the wrong position #223
 
