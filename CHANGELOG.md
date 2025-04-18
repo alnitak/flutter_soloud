@@ -1,5 +1,6 @@
 ### 3.1.6 (xx Apr 2025)
 - fix: passing a group handle to `seek()` throws error #228
+- fix: `listPlaybackDevices` fails to retrieve devices when the device prefix contains Chinese characters #227
 
 ### 3.1.5 (17 Apr 2025)
 - fix: when the speed is changed, after seeking, the `getPosition()` returns the wrong position #223
