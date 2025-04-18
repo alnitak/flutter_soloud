@@ -68,6 +68,34 @@ namespace SoLoud
 		return 0;
 	}
 
+	result WavInstance::seek(double aSeconds, float *mScratch, unsigned int mScratchSize)
+	{
+		double offset = aSeconds - mStreamPosition;
+		if (offset <= 0)
+		{
+			if (rewind() != SO_NO_ERROR)
+			{
+				// can't do generic seek backwards unless we can rewind.
+				return NOT_IMPLEMENTED;
+			}
+			offset = aSeconds;
+		}
+		long samples_to_discard = (long)floor(mSamplerate * offset);
+
+		while (samples_to_discard)
+		{
+			long samples = mScratchSize / mChannels;
+			if (samples > samples_to_discard)
+				samples = samples_to_discard;
+			getAudio(mScratch, samples, samples);
+			samples_to_discard -= samples;
+		}
+		int pos = (int)floor(mBaseSamplerate * aSeconds);
+		mOffset = pos;
+		mStreamPosition = float(pos / mBaseSamplerate);
+		return SO_NO_ERROR;
+	}
+
 	bool WavInstance::hasEnded()
 	{
 		if (!(mFlags & AudioSourceInstance::LOOPING) && mOffset >= mParent->mSampleCount)
