@@ -156,7 +156,7 @@ namespace SoLoud
 
 	result AudioSourceInstance::seek(double aSeconds, float *mScratch, unsigned int mScratchSize)
 	{
-		double offset = (aSeconds - mStreamPosition) / mOverallRelativePlaySpeed;
+		double offset = aSeconds - mStreamPosition;
 		if (offset <= 0)
 		{
 			if (rewind() != SO_NO_ERROR)
@@ -166,11 +166,11 @@ namespace SoLoud
 			}
 			offset = aSeconds;
 		}
-		unsigned int samples_to_discard = (unsigned int)floor(mSamplerate * offset);
+		long samples_to_discard = (long)floor(mSamplerate * offset);
 
 		while (samples_to_discard)
 		{
-			unsigned int samples = mScratchSize / mChannels;
+			long samples = mScratchSize / mChannels;
 			if (samples > samples_to_discard)
 				samples = samples_to_discard;
 			getAudio(mScratch, samples, samples);
