@@ -59,12 +59,14 @@ namespace Waveform
             // Inside [tempBuffer] there are now all the samples between the values ​​of a stepFrame
             if (average)
             {
-                double average = 0;
-                for (int j = 0; j < framesRead; j++)
+                double sum = 0.0;
+                for (int j = 0; j < framesRead * channels; j++)
                 {
-                    average += fabsf(tempBuffer[j]);
+                    // Square the sample value
+                    sum += tempBuffer[j] * tempBuffer[j];
                 }
-                pSamples[id] = sqrtf(average / ((float)framesRead / channels));
+                // Calculate RMS (Root Mean Square)
+                pSamples[id] = sqrtf(sum / (framesRead * channels));
             }
             else
                 pSamples[id] = tempBuffer[0];
