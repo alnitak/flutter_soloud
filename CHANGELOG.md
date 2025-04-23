@@ -1,5 +1,7 @@
-#### 3.1.7 (XX Xxx 2025)
+#### 3.1.7 (23 Apr 2025)
 - docs: clarify docs regarding `semitones` and `shift` parameters of the `pitchShiftFilter` #233 by @bemain
+- fix: `readSamplesFrom*()` works again
+- more accurate samples average in `readSamplesFrom*`
 
 #### 3.1.6 (19 Apr 2025)
 - fix: passing a group handle to `seek()` throws error #228
