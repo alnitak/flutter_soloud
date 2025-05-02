@@ -32,6 +32,8 @@ namespace SoLoud
 		if (mParent->mBuffer.getFloatsBufferSize() == 0)
 		{
 			memset(aBuffer, 0, sizeof(float) * aSamplesToRead);
+			// Calculate mStreamPosition based on mOffset
+			mStreamPosition = mOffset / (float)(mSamplerate * mChannels);
 			return 0;
 		}
 
@@ -39,7 +41,12 @@ namespace SoLoud
 		float *buffer = reinterpret_cast<float *>(mParent->mBuffer.buffer.data());
 		int samplesToRead = mOffset + aSamplesToRead > bufferSize ? bufferSize - mOffset : aSamplesToRead;
 		if (samplesToRead <= 0)
+		{
+			memset(aBuffer, 0, sizeof(float) * aSamplesToRead);
+			// Calculate mStreamPosition based on mOffset
+			mStreamPosition = mOffset / (float)(mSamplerate * mChannels);
 			return 0;
+		}
 
 		if (samplesToRead != aSamplesToRead)
 		{
@@ -77,7 +84,9 @@ namespace SoLoud
 			mParent->mSampleCount -= samplesRemoved / mParent->mPCMformat.bytesPerSample;
 			// For RELEASED type, streamPosition is always at the start of the remaining buffer
             mStreamPosition = 0;
-		} else {
+		}
+		else
+		{
 			mOffset += samplesToRead * mChannels;
 			// For PRESERVED type, streamPosition advances with the offset
             mStreamPosition = mOffset / (float)(mSamplerate * mChannels);
@@ -219,8 +228,23 @@ namespace SoLoud
 
 	void BufferStream::setDataIsEnded()
 	{
+		// Eventually add any remaining data
 		if (buffer.size() > 0)
+		{
 			addData(buffer.data(), buffer.size(), true);
+		}
+		// Check if some handles was paused for buffering and unpause them
+		time currBufferTime = getLength();
+		for (int i = 0; i < mParent->handle.size(); i++)
+		{
+			SoLoud::handle handle = mParent->handle[i].handle;
+			double pos = mThePlayer->getPosition(handle);
+			if (pos < currBufferTime)
+			{
+				mThePlayer->setPause(handle, false);
+			}
+		}
+
 		buffer.clear();
 		dataIsEnded = true;
 	}
@@ -239,7 +263,7 @@ namespace SoLoud
 			static_cast<const unsigned char *>(aData) + aDataLen);
 		mBytesReceived += aDataLen;
 		int bufferDataToAdd = 0;
-		// Performing some buffering.
+		// Performing some buffering. We need some data to be added expecially when using opus.
 		if (buffer.size() > 1024 * 2 && !forceAdd) // 2 KB of data
 		{
 			// For PCM data we should align the data to the bytes per sample.

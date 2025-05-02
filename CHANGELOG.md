@@ -1,3 +1,6 @@
+#### 3.1.8 (2 May 2025)
+- fix: adding audio data to a not ended BufferStream throws error #235
+
 #### 3.1.7 (23 Apr 2025)
 - docs: clarify docs regarding `semitones` and `shift` parameters of the `pitchShiftFilter` #233 by @bemain
 - fix: `readSamplesFrom*()` works again
