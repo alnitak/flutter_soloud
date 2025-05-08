@@ -68,7 +68,7 @@ enum PlayerErrors {
   noPlaybackDevicesFound(19),
 
   /// Trying to add PCM data but the buffer is full or not large
-  /// enough for the neded PCM data. Try increasing the buffer size.
+  /// enough for the needed PCM data. Try increasing the buffer size.
   /// Or, stream buffer has been set to be ended.
   pcmBufferFull(20),
 
@@ -150,7 +150,7 @@ enum PlayerErrors {
             'when changing the output device.';
       case PlayerErrors.pcmBufferFull:
         return 'Trying to add PCM data but the buffer is full or not large '
-            'enough for the neded PCM data. Try increasing the buffer size. '
+            'enough for the needed PCM data. Try increasing the buffer size. '
             'Or, stream buffer has been set to be ended. ';
       case PlayerErrors.hashIsNotABufferStream:
         return "Given hash doesn't belong to a buffer stream.";

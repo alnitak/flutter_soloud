@@ -105,7 +105,8 @@ extern "C"
     /// and comes from the audio thread (so on the web, from a different web worker).
     FFI_PLUGIN_EXPORT void voiceEndedCallback(unsigned int *handle)
     {
-        player->removeHandle(*handle);
+        if (player != nullptr)
+            player->removeHandle(*handle);
 
 #ifdef __EMSCRIPTEN__
         // Calling JavaScript from C/C++
