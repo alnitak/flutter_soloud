@@ -579,20 +579,23 @@ void Player::stop(unsigned int handle)
 
 void Player::removeHandle(unsigned int handle)
 {
-    bool e = true;
-    int i = 0;
-    while (sounds.size() > i && e)
-    {
-        int n = 0;
-        while (n < sounds[i]->handle.size() && e)
-        {
-            if (sounds[i]->handle[n].handle == handle)
-            {
-                sounds[i]->handle.erase(sounds[i]->handle.begin() + n);
-                e = false;
-                break;
+    if (sounds.empty()) {
+        return;
+    }
+
+    bool found = false;
+    size_t i = 0;
+    while (i < sounds.size() && !found) {
+        auto const& sound = sounds[i];
+        if (sound) {  // Check if unique_ptr is valid
+            size_t n = 0;
+            while (n < sound->handle.size() && !found) {
+                if (sound->handle[n].handle == handle) {
+                    sound->handle.erase(sound->handle.begin() + n);
+                    found = true;
+                }
+                ++n;
             }
-            ++n;
         }
         ++i;
     }
@@ -622,7 +625,7 @@ void Player::disposeSound(unsigned int soundHash)
                 // TODO: deleting "f" when running on Web will crash with segmentation fault.
                 // This could be a bug in WebAssembly I can't figure out. Even if I don't delete
                 // there shouldn't be a memory leak as the filters are destroyed with the sound.
-                // This beahviour can be tested by running "testAllInstancesFinished" in tests.dart.
+                // This behavior can be tested by running "testAllInstancesFinished" in tests.dart.
                 // delete f;
             }
             it->get()->filters.reset();

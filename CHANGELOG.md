@@ -1,3 +1,6 @@
+#### 3.1.9 (8 May 2025)
+- fix: `disposeSource` crash on Android #240
+
 #### 3.1.8 (2 May 2025)
 - fix: adding audio data to a not ended BufferStream throws error #235
 

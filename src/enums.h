@@ -51,7 +51,7 @@ typedef enum PlayerErrors
     /// No playback devices were found.
     noPlaybackDevicesFound = 19,
     /// Trying to add PCM data but the buffer is full or not large
-    /// enough for the neded PCM data. Try increasing the buffer size.
+    /// enough for the needed PCM data. Try increasing the buffer size.
     pcmBufferFull = 20,
     /// Given hash doesn't belong to a buffer stream.
     hashIsNotABufferStream = 21,

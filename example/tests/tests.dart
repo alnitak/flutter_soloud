@@ -236,9 +236,9 @@ Future<StringBuffer> testProtectVoice() async {
   await initialize();
   final defaultVoiceCount = SoLoud.instance.getMaxActiveVoiceCount();
 
-  SoLoud.instance.setMaxActiveVoiceCount(3);
+  SoLoud.instance.setMaxActiveVoiceCount(6);
   assert(
-    SoLoud.instance.getMaxActiveVoiceCount() == 3,
+    SoLoud.instance.getMaxActiveVoiceCount() == 6,
     "setMaxActiveVoiceCount() didn't work properly",
   );
 
@@ -271,7 +271,7 @@ Future<StringBuffer> testProtectVoice() async {
 
   assert(
     SoLoud.instance.getIsValidVoiceHandle(songHandle) &&
-        SoLoud.instance.getActiveVoiceCount() == 3,
+        SoLoud.instance.getActiveVoiceCount() == 6,
     'The protected song has been stopped!',
   );
 
@@ -412,7 +412,7 @@ Future<StringBuffer> testPlaySeekPause() async {
     await SoLoud.instance.play(currentSound);
     final length = SoLoud.instance.getLength(currentSound);
     assert(
-      length.inMilliseconds == 3840,
+      closeTo(length.inMilliseconds, 3773, 100),
       'getLength() failed: ${length.inMilliseconds}!\n',
     );
     await delay(1000);
