@@ -1,3 +1,6 @@
+#### 3.1.10 (8 May 2025)
+- fix: Setting pan doesn't cancel pan oscillation #239
+
 #### 3.1.9 (8 May 2025)
 - fix: `disposeSource` crash on Android #240
 

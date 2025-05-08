@@ -119,6 +119,7 @@ namespace SoLoud
 	void Soloud::setPan(handle aVoiceHandle, float aPan)
 	{		
 		FOR_ALL_VOICES_PRE
+			mVoice[ch]->mPanFader.mActive = 0;
 			setVoicePan_internal(ch, aPan);
 		FOR_ALL_VOICES_POST
 	}
