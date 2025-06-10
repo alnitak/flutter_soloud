@@ -1,3 +1,6 @@
+#### 3.1.11 (X Xxx 2025)
+- fix: Loading the same AudioSource twice (in parallel) crashes #247
+
 #### 3.1.10 (8 May 2025)
 - fix: Setting pan doesn't cancel pan oscillation #239
 

@@ -120,6 +120,7 @@ abstract class FlutterSoLoud {
   void loadFile(
     String completeFileName,
     LoadMode mode,
+    int timeStamp,
   );
 
   /// Load a new sound stored into [buffer] as file bytes to be played once

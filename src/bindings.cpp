@@ -34,12 +34,12 @@ extern "C"
     std::unique_ptr<Analyzer> analyzer = std::make_unique<Analyzer>(256);
 
     typedef void (*dartVoiceEndedCallback_t)(unsigned int *);
-    typedef void (*dartFileLoadedCallback_t)(enum PlayerErrors *, char *completeFileName, unsigned int *);
+    typedef void (*dartFileLoadedCallback_t)(enum PlayerErrors *, char *completeFileName, unsigned int *, unsigned long *timeStamp);
     typedef void (*dartStateChangedCallback_t)(enum PlayerStateEvents *);
 
     // to be used by `NativeCallable`, these functions must return void.
     void (*dartVoiceEndedCallback)(unsigned int *) = nullptr;
-    void (*dartFileLoadedCallback)(enum PlayerErrors *, char *completeFileName, unsigned int *) = nullptr;
+    void (*dartFileLoadedCallback)(enum PlayerErrors *, char *completeFileName, unsigned int *, unsigned long *timeStamp) = nullptr;
     void (*dartStateChangedCallback)(enum PlayerStateEvents *) = nullptr;
 
     //////////////////////////////////////////////////////////////
@@ -125,7 +125,7 @@ extern "C"
     }
 
     /// The callback to monitor when a file is loaded.
-    void fileLoadedCallback(enum PlayerErrors error, char *completeFileName, unsigned int *hash)
+    void fileLoadedCallback(enum PlayerErrors error, char *completeFileName, unsigned int *hash, unsigned long timeStamp)
     {
         if (dartFileLoadedCallback == nullptr)
             return;
@@ -135,7 +135,9 @@ extern "C"
         char *name = strdup(completeFileName);
         unsigned int *n = (unsigned int *)malloc(sizeof(unsigned int *));
         *n = *hash;
-        dartFileLoadedCallback(e, name, n);
+        unsigned long *ts = (unsigned long *)malloc(sizeof(unsigned long *));
+        *ts = timeStamp;
+        dartFileLoadedCallback(e, name, n, ts);
     }
 
     void stateChangedCallback(unsigned int state)
@@ -319,7 +321,8 @@ extern "C"
     /// Returns [PlayerErrors.noError] if success
     FFI_PLUGIN_EXPORT void loadFile(
         char *completeFileName,
-        bool loadIntoMem)
+        bool loadIntoMem,
+        unsigned long timeStamp)
     {
         std::lock_guard<std::mutex> guard_init(init_deinit_mutex);
         std::lock_guard<std::mutex> guard_load(loadMutex);
@@ -339,7 +342,7 @@ extern "C"
         //                        {
         PlayerErrors error = p->loadFile(pa.string(), loadIntoMem, (unsigned int *)&hash);
         // printf("*** LOAD FILE FROM THREAD error: %d  hash: %u\n", error,  *hash);
-        fileLoadedCallback(error, completeFileName, (unsigned int *)&hash);
+        fileLoadedCallback(error, completeFileName, (unsigned int *)&hash, timeStamp);
         // });
         // // TODO(marco): use .detach()? Use std::atomic somewhere
         // loadThread.join();

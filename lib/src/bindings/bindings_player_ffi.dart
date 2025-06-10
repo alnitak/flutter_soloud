@@ -34,12 +34,14 @@ typedef DartFileLoadedCallbackT
 typedef DartFileLoadedCallbackTFunction = ffi.Void Function(
     ffi.Pointer<ffi.Int32>,
     ffi.Pointer<ffi.Char>,
-    ffi.Pointer<ffi.UnsignedInt>);
+    ffi.Pointer<ffi.UnsignedInt>,
+    ffi.Pointer<ffi.Uint64>);
 
 typedef DartdartFileLoadedCallbackTFunction = void Function(
     ffi.Pointer<ffi.Int32>,
     ffi.Pointer<ffi.Char>,
-    ffi.Pointer<ffi.UnsignedInt>);
+    ffi.Pointer<ffi.UnsignedInt>,
+    ffi.Pointer<ffi.Uint64>);
 
 typedef DartStateChangedCallbackT
     = ffi.Pointer<ffi.NativeFunction<DartStateChangedCallbackTFunction>>;
@@ -87,15 +89,18 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     ffi.Pointer<ffi.Int32> error,
     ffi.Pointer<ffi.Char> completeFileName,
     ffi.Pointer<ffi.UnsignedInt> hash,
+    ffi.Pointer<ffi.Uint64> timeStamp,
   ) {
     _log.finest(() =>
         'FILE LOADED EVENT error: ${PlayerErrors.values[error.value].name}  '
         'hash: ${hash.value}  '
-        'file: ${completeFileName.cast<Utf8>().toDartString()}');
+        'file: ${completeFileName.cast<Utf8>().toDartString()}  '
+        'timeStamp: ${timeStamp.value}');
     final result = <String, dynamic>{
       'error': error.value,
       'completeFileName': completeFileName.cast<Utf8>().toDartString(),
       'hash': hash.value,
+      'timeStamp': timeStamp.value,
     };
     fileLoadedEventsController.add(result);
     // Must free a pointer made on cpp. On Windows this must be freed
@@ -103,6 +108,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     nativeFree(error.cast<ffi.Void>());
     nativeFree(completeFileName.cast<ffi.Void>());
     nativeFree(hash.cast<ffi.Void>());
+    nativeFree(timeStamp.cast<ffi.Void>());
   }
 
   void _stateChangedCallback(ffi.Pointer<ffi.Int32> state) {
@@ -327,6 +333,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   void loadFile(
     String completeFileName,
     LoadMode mode,
+    int timeStamp,
   ) {
     final ffi.Pointer<ffi.UnsignedInt> h =
         calloc(ffi.sizeOf<ffi.UnsignedInt>());
@@ -334,6 +341,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     _loadFile(
       cString,
       mode == LoadMode.memory ? 1 : 0,
+      timeStamp,
     );
     calloc
       ..free(cString)
@@ -345,9 +353,10 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
           ffi.Void Function(
             ffi.Pointer<Utf8>,
             ffi.Int,
+            ffi.Uint64,
           )>>('loadFile');
   late final _loadFile =
-      _loadFilePtr.asFunction<void Function(ffi.Pointer<Utf8>, int)>();
+      _loadFilePtr.asFunction<void Function(ffi.Pointer<Utf8>, int, int)>();
 
   @override
   ({PlayerErrors error, SoundHash soundHash}) loadMem(

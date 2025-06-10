@@ -162,6 +162,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   ({PlayerErrors error, SoundHash soundHash}) loadFile(
     String completeFileName,
     LoadMode mode,
+    int timeStamp,
   ) {
     throw UnimplementedError('[loadFile] in not supported on the web platfom! '
         'Please use [loadMem].');
