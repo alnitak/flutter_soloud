@@ -23,6 +23,7 @@ void _loadFile(Map<String, dynamic> args) {
   SoLoudController().soLoudFFI.loadFile(
         args['path'] as String,
         LoadMode.values[args['mode'] as int],
+        args['timeStamp'] as int,
       );
 }
 
@@ -395,15 +396,16 @@ interface class SoLoud {
     // Listen when a file has been loaded.
     if (!_controller.soLoudFFI.fileLoadedEventsController.hasListener) {
       _controller.soLoudFFI.fileLoadedEvents.listen((result) {
-        final exists =
-            loadedFileCompleters.containsKey(result['completeFileName']);
-        if (exists) {
-          final error = PlayerErrors.values[result['error'] as int];
-          final completeFileName = result['completeFileName'] as String;
-          final hash = result['hash'] as int;
+        final error = PlayerErrors.values[result['error'] as int];
+        final completeFileName = result['completeFileName'] as String;
+        final hash = result['hash'] as int;
+        final timeStamp = result['timeStamp'] as int;
+        final key = '$completeFileName-$timeStamp';
 
+        final exists = loadedFileCompleters.containsKey(key);
+        if (exists) {
           if (hash == 0) {
-            loadedFileCompleters[result['completeFileName']]
+            loadedFileCompleters[key]
                 ?.completeError(SoLoudCppException.fromPlayerError(error));
             return;
           }
@@ -429,11 +431,11 @@ interface class SoLoud {
               _activeSounds.add(newSound);
             }
           } else {
-            loadedFileCompleters[result['completeFileName']]
+            loadedFileCompleters[key]
                 ?.completeError(SoLoudCppException.fromPlayerError(error));
             throw SoLoudCppException.fromPlayerError(error);
           }
-          loadedFileCompleters[result['completeFileName']]?.complete(newSound);
+          loadedFileCompleters[key]?.complete(newSound);
         }
       });
     }
@@ -515,14 +517,28 @@ interface class SoLoud {
     }
 
     final completer = Completer<AudioSource>();
+    final now = DateTime.now().microsecondsSinceEpoch;
+    // Use the path and the time stamp as a key to avoid collisions.
+    // Happens when the same file is loaded multiple times like:
+    // ```dart
+    // final s1 = SoLoud.instance.loadAsset(path);
+    // final s2 = SoLoud.instance.loadAsset(path);
+    // await [s1, s2].wait;
+    // ```
+    //
+    // In this case, the second call overwrites the first key in
+    // the `loadedFileCompleters` Map because they use the same key (file path).
+    // Adding a time stamp fixes #247.
     loadedFileCompleters.addAll({
-      path: completer,
+      '$path-$now': completer,
     });
 
-    await compute(_loadFile, {'path': path, 'mode': mode.index});
+    await compute(
+        _loadFile, {'path': path, 'mode': mode.index, 'timeStamp': now});
 
     return completer.future.whenComplete(() {
-      loadedFileCompleters.removeWhere((key, __) => key == path);
+      loadedFileCompleters
+          .removeWhere((key, __) => key.compareTo('$path-$now') == 0);
     });
   }
 
