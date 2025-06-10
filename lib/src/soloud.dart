@@ -526,10 +526,9 @@ interface class SoLoud {
     // await [s1, s2].wait;
     // ```
     //
-    // In this case, the second call to `compute(_loadFile, ...)`
-    // overwrites the first completer in the map because they use the
-    // same key (file path).
-    // Adding the time stamp fixes #247.
+    // In this case, the second call overwrites the first key in
+    // the `loadedFileCompleters` Map because they use the same key (file path).
+    // Adding a time stamp fixes #247.
     loadedFileCompleters.addAll({
       '$path-$now': completer,
     });
