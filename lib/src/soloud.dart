@@ -580,8 +580,9 @@ interface class SoLoud {
     }
 
     final completer = Completer<AudioSource>();
+    final now = DateTime.now().microsecondsSinceEpoch;
     loadedFileCompleters.addAll({
-      path: completer,
+      '$path-$now': completer,
     });
 
     final ret = await compute(_loadMem, {
@@ -597,6 +598,7 @@ interface class SoLoud {
       'error': ret.error.index,
       'completeFileName': path,
       'hash': ret.soundHash.hash,
+      'timeStamp': now,
     });
 
     return completer.future.whenComplete(() {
