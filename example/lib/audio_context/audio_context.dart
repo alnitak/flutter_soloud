@@ -36,6 +36,14 @@ void main() async {
   );
 }
 
+enum ContextState {
+  playing,
+  paused,
+  stopped,
+  ducking,
+  unknown,
+}
+
 /// Simple usecase of flutter_soloud plugin
 class AudioContext extends StatefulWidget {
   const AudioContext({super.key});
@@ -49,10 +57,12 @@ class _AudioContextState extends State<AudioContext> {
   late final AudioSession session;
   AudioSource? sound;
   SoundHandle? soundHandle;
+  ValueNotifier<ContextState> isPlaying = ValueNotifier(ContextState.stopped);
 
   @override
   void initState() {
     super.initState();
+    // Initialize the audio session.
     AudioSession.instance.then((audioSession) async {
       session = audioSession;
       await session.configure(const AudioSessionConfiguration.music());
@@ -90,9 +100,21 @@ class _AudioContextState extends State<AudioContext> {
                     soundHandle = await soloud.play(sound!, looping: true);
 
                     await session.setActive(true);
+                    isPlaying.value = ContextState.playing;
                   },
                   child: const Text('play asset'),
                 ),
+
+                // Display the current state.
+                ValueListenableBuilder<ContextState>(
+                  valueListenable: isPlaying,
+                  builder: (context, state, child) {
+                    return Text(
+                      'Current state: ${state.name}',
+                      style: const TextStyle(fontSize: 20),
+                    );
+                  },
+                )
               ],
             ),
           );
@@ -101,39 +123,65 @@ class _AudioContextState extends State<AudioContext> {
     );
   }
 
+  void fadeoutThenPause() {
+    if (soundHandle == null) return;
+    soloud.fadeGlobalVolume(0, const Duration(milliseconds: 300));
+    Future.delayed(const Duration(milliseconds: 300), () {
+      // After fading out, we can pause.
+      soloud.setPause(soundHandle!, true);
+      isPlaying.value = ContextState.paused;
+    });
+  }
+
+  void fadeinThenResume() {
+    if (soundHandle == null) return;
+    isPlaying.value = ContextState.playing;
+    soloud
+      ..setPause(soundHandle!, false)
+      ..fadeGlobalVolume(1, const Duration(milliseconds: 300));
+  }
+
   void _handleInterruptions(AudioSession audioSession) {
     audioSession.becomingNoisyEventStream.listen((_) {
       // The user unplugged the headphones, so we should pause
       // or lower the volume.
       debugPrint('becomingNoisy, pausing...');
+      if (soundHandle == null) return;
       soloud.setPause(soundHandle!, true);
+      isPlaying.value = ContextState.paused;
     });
     audioSession.interruptionEventStream.listen((event) {
       debugPrint('interruption begin: ${event.begin}');
       debugPrint('interruption type: ${event.type}');
+      if (soundHandle == null) return;
       if (event.begin) {
         switch (event.type) {
           case AudioInterruptionType.duck:
             // Another app started playing audio and we should duck.
-            if (audioSession.androidAudioAttributes!.usage ==
-                AndroidAudioUsage.game) {
-              soloud.setGlobalVolume(soloud.getGlobalVolume() / 2);
-            }
+            soloud.fadeGlobalVolume(0.1, const Duration(milliseconds: 300));
+            isPlaying.value = ContextState.ducking;
           case AudioInterruptionType.pause:
+            // Another app started playing audio and we should pause.
+            fadeoutThenPause();
+            isPlaying.value = ContextState.paused;
           case AudioInterruptionType.unknown:
             // Another app started playing audio and we should pause.
-            soloud.setPause(soundHandle!, true);
+            fadeoutThenPause();
+            isPlaying.value = ContextState.unknown;
         }
       } else {
         switch (event.type) {
           case AudioInterruptionType.duck:
             // The interruption ended and we should unduck.
-            soloud.setGlobalVolume(soloud.getGlobalVolume() * 2);
+            soloud.fadeGlobalVolume(1, const Duration(milliseconds: 300));
+            isPlaying.value = ContextState.playing;
           case AudioInterruptionType.pause:
             // The interruption ended and we should resume.
-            soloud.setPause(soundHandle!, false);
+            fadeinThenResume();
+            isPlaying.value = ContextState.playing;
           case AudioInterruptionType.unknown:
-          // The interruption ended but we should not resume.
+            // The interruption ended but we should not resume.
+            isPlaying.value = ContextState.unknown;
         }
       }
     });
