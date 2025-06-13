@@ -12,9 +12,8 @@ print_option_status (SOLOUD_STATIC "Build static library")
 option (SOLOUD_C_API "Set to ON to include the C API" OFF)
 print_option_status (SOLOUD_C_API "Build C API")
 
-# TODO:
 option (SOLOUD_BACKEND_MINIAUDIO "Set to ON to include MiniAudio" ON)
-print_option_status (SOLOUD_WITH_MINIAUDIO "Build MiniAudio")
+print_option_status (SOLOUD_BACKEND_MINIAUDIO "Build MiniAudio")
 
 option (SOLOUD_BUILD_DEMOS "Set to ON for building demos" OFF)
 print_option_status (SOLOUD_BUILD_DEMOS "Build demos")
