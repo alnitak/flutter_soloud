@@ -104,12 +104,53 @@ else()
     add_definitions(-DNO_OPUS_OGG_LIBS)
 endif()
 
-target_compile_options(${PLUGIN_NAME} PRIVATE 
-    /W4     # Warning level 4
+if(MSVC)
+  # Force optimize flags for all configurations
+  string(REPLACE "/O2" "/Ox" CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE}")
+  string(REPLACE "/Ob1" "/Ob2" CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE}")
+  string(REPLACE "/Od" "/Ox" CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG}")
+  string(REPLACE "/Od" "/Ox" CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO}")
+  
+  # Remove RTC1 from debug flags
+  string(REPLACE "/RTC1" "" CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG}")
+  string(REPLACE "/RTC1" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+  
+  # Use static runtime for all configurations
+  foreach(CONFIG DEBUG RELEASE RELWITHDEBINFO MINSIZEREL)
+    string(REPLACE "/MD" "/MT" CMAKE_CXX_FLAGS_${CONFIG} "${CMAKE_CXX_FLAGS_${CONFIG}}")
+    string(REPLACE "/MDd" "/MT" CMAKE_CXX_FLAGS_${CONFIG} "${CMAKE_CXX_FLAGS_${CONFIG}}")
+  endforeach()
+
+  # Advanced optimization flags
+  set(OPTIMIZATION_FLAGS
+    /GL     # Whole program optimization
+    /Gy     # Function-level linking
+    /Oi     # Generate intrinsic functions
+    /Ot     # Favor fast code
+    /Ox     # Full optimization
+    /fp:fast # Fast floating-point model
+    /arch:AVX2  # Use AVX2 instructions
+    /Qpar   # Auto-parallelize loops
+    /O2     # Maximize speed
+    /RTC-   # Disable runtime checks explicitly
+  )
+
+  # Apply optimization flags to all configurations
+  foreach(FLAG ${OPTIMIZATION_FLAGS})
+    target_compile_options(${PLUGIN_NAME} PRIVATE ${FLAG})
+  endforeach()
+
+  # Linker optimization flags
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /LTCG /OPT:REF /OPT:ICF")
+  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /LTCG /OPT:REF /OPT:ICF")
+
+  # Replace existing compile options with optimized ones
+  target_compile_options(${PLUGIN_NAME} PRIVATE 
+    /W4     # Warning level 4 
     /WX-    # Disable warnings as errors
-    /arch:SSE2  # Enable SSE2 instructions
-    /arch:SSE3  # Enable SSE3 instructions
-)
+    ${OPTIMIZATION_FLAGS}
+  )
+endif()
 
 # List of absolute paths to libraries that should be bundled with the plugin.
 set(flutter_soloud_bundled_libraries
