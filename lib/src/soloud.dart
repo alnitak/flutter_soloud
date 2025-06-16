@@ -632,6 +632,8 @@ interface class SoLoud {
   /// [bufferingTimeNeeds] the buffering time needed in seconds. If a handle
   /// reaches the current buffer length, it will start to buffer pausing it and
   /// waiting until the buffer will have enough data to cover this time.
+  /// *NOTE*: when using [BufferingType.released], the position of the stream
+  /// is always 0: [getPosition] will always return 0.
   ///
   /// [sampleRate] the sample rate. Usually is 22050 or 44100 (CD quality).
   /// When using [format] as `opus`, the sample rate can be 48000, 24000,
