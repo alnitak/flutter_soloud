@@ -1,4 +1,4 @@
-#### 3.1.11 (X Xxx 2025)
+#### 3.1.11 (16 Jun 2025)
 - fix: Loading the same AudioSource twice (in parallel) crashes #247
 - fix win: force cmake to build the plugin in release mode even if building in debug
 
