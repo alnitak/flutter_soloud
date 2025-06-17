@@ -255,17 +255,6 @@ namespace SoLoud
 		{
 			addData(buffer.data(), buffer.size(), true);
 		}
-		// Check if some handles was paused for buffering and unpause them
-		// time currBufferTime = getLength();
-		// for (int i = 0; i < mParent->handle.size(); i++)
-		// {
-		// 	SoLoud::handle handle = mParent->handle[i].handle;
-		// 	double pos = mThePlayer->getPosition(handle);
-		// 	if (pos < currBufferTime)
-		// 	{
-		// 		mThePlayer->setPause(handle, false);
-		// 	}
-		// }
 
 		buffer.clear();
 		dataIsEnded = true;

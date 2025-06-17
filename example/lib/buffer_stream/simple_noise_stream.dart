@@ -56,7 +56,7 @@ class _SimpleNoiseState extends State<SimpleNoise> {
   static const chunkSize = 1024 * 1024 / 10; // 1 MB
 
   /// The type of the buffer stream.
-  static const bufferingType = BufferingType.preserved;
+  static const bufferingType = BufferingType.released;
 
   AudioSource? noise;
   bool isBuffering = false;
@@ -80,7 +80,8 @@ class _SimpleNoiseState extends State<SimpleNoise> {
                   bufferingType: bufferingType,
                   onBuffering: (bool buffering, int handle, double time) {
                     isBuffering = buffering;
-                    print('ON BUFFERING: $buffering, handle: $handle, at time: $time');
+                    debugPrint('ON BUFFERING: $buffering, handle: $handle, '
+                        'at time: $time');
                     setState(() {});
                   },
                 );
@@ -103,7 +104,7 @@ class _SimpleNoiseState extends State<SimpleNoise> {
                   // Generate noise in range [-1, 1]
                   randomFloats[i] = random.nextDouble() * 2 - 1;
                 }
-                // Add 1MB of random noise data to the buffer stream
+                // Add [chunkSize] bytes of random noise data to the buffer
                 SoLoud.instance.addAudioDataStream(
                   noise!,
                   randomFloats.buffer.asUint8List(),

@@ -763,8 +763,8 @@ interface class SoLoud {
   }
 
   /// Get the current stream time consumed in seconds of this [sound] of
-  /// type [BufferingType.released]. Useful when releasing the stream
-  /// data memory while playing it and want to know the time already played.
+  /// type [BufferingType.released]. Since the position of this kind of stream
+  /// is always 0, this method is useful to know the time already played.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   /// Throws [SoLoudSoundHashNotFoundDartException] if the [sound] is not found.
@@ -1457,6 +1457,8 @@ interface class SoLoud {
 
   /// Get the current sound position of a sound instance (provided via its
   /// [handle]).
+  /// *NOTE*: if this handle belongs to a buffer stream of
+  /// [BufferingType.released] type, please use [getStreamTimeConsumed] instead.
   ///
   /// Returns the position as a [Duration]. For example,
   /// `Duration(milliseconds: 200)` means that the play head is currently
