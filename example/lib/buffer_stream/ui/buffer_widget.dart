@@ -24,32 +24,17 @@ class BufferBar extends StatefulWidget {
 }
 
 class _BufferBarState extends State<BufferBar> {
-  final width = 200.0;
+  final width = 190.0;
   final height = 30.0;
   Timer? timer;
   int currentMaxBytes = 1024 * 1024; // 1 MB
   String firstHandleHumanPos = '';
-  Stopwatch stopwatch = Stopwatch();
 
   @override
   void initState() {
     currentMaxBytes *= widget.startingMb;
     super.initState();
     timer = Timer.periodic(const Duration(milliseconds: 100), (timer) {
-      if (widget.sound != null &&
-          widget.sound!.handles.isNotEmpty &&
-          !SoLoud.instance.getPause(widget.sound!.handles.first) &&
-          !stopwatch.isRunning) {
-        stopwatch.start();
-      }
-      if (widget.sound != null &&
-          widget.sound!.handles.isNotEmpty &&
-          SoLoud.instance.getPause(widget.sound!.handles.first) &&
-          stopwatch.isRunning) {
-        stopwatch
-          ..stop()
-          ..reset();
-      }
       setState(() {});
     });
   }
@@ -101,9 +86,10 @@ class _BufferBarState extends State<BufferBar> {
     return Padding(
       padding: const EdgeInsets.all(8),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
           SizedBox(
-            width: 160,
+            width: 150,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.center,
@@ -116,7 +102,6 @@ class _BufferBarState extends State<BufferBar> {
                 Text('using $mb MB'),
                 Text('length $humanDuration'),
                 Text('position: $firstHandleHumanPos'),
-                Text('time: ${toHuman(stopwatch.elapsed)}'),
               ],
             ),
           ),

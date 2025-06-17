@@ -29,11 +29,21 @@ namespace SoLoud
 	{
 		std::lock_guard<std::mutex> lock(buffer_lock_mutex);
 
+		// This happens when using RELEASED buffer type
 		if (mParent->mBuffer.getFloatsBufferSize() == 0)
 		{
 			memset(aBuffer, 0, sizeof(float) * aSamplesToRead);
 			// Calculate mStreamPosition based on mOffset
-			mStreamPosition = mOffset / (float)(mSamplerate * mChannels);
+			mStreamPosition = mOffset / (float)(sizeof(float) * mSamplerate * mChannels);
+
+			// This is not nice to do in the audio callback, but I didn't
+			// find a better way to get lenght and pause the sound and the
+			// `chakeBuffering` function is fast enough.
+			if (!mParent->mIsBuffering) {
+				mParent->mThePlayer->soloud.unlockAudioMutex_internal();
+				mParent->checkBuffering(0);
+				mParent->mThePlayer->soloud.lockAudioMutex_internal();
+			}
 			return 0;
 		}
 
@@ -44,7 +54,16 @@ namespace SoLoud
 		{
 			memset(aBuffer, 0, sizeof(float) * aSamplesToRead);
 			// Calculate mStreamPosition based on mOffset
-			mStreamPosition = mOffset / (float)(mSamplerate * mChannels);
+			mStreamPosition = mOffset / (float)(sizeof(float) * mSamplerate * mChannels);
+
+			// This is not nice to do in the audio callback, but I didn't
+			// find a better way to get lenght and pause the sound and the
+			// `chakeBuffering` function is fast enough.
+			if (!mParent->mIsBuffering) {
+				mParent->mThePlayer->soloud.unlockAudioMutex_internal();
+				mParent->checkBuffering(0);
+				mParent->mThePlayer->soloud.lockAudioMutex_internal();
+			}
 			return 0;
 		}
 
@@ -90,7 +109,7 @@ namespace SoLoud
 		{
 			mOffset += samplesToRead * mChannels;
 			// For PRESERVED type, streamPosition advances with the offset
-            mStreamPosition = mOffset / (float)(mSamplerate * mChannels);
+            mStreamPosition = mOffset / (float)(sizeof(float) * mSamplerate * mChannels);
 		}
 
 		return samplesToRead;
@@ -195,6 +214,7 @@ namespace SoLoud
 		mOnBufferingCallback = onBufferingCallback;
 		buffer = std::vector<unsigned char>();
 		mBuffer.setBufferType(bufferingType);
+		mIsBuffering = false;
 
 #if !defined(NO_OPUS_OGG_LIBS)
 		decoder = nullptr;
@@ -236,19 +256,20 @@ namespace SoLoud
 			addData(buffer.data(), buffer.size(), true);
 		}
 		// Check if some handles was paused for buffering and unpause them
-		time currBufferTime = getLength();
-		for (int i = 0; i < mParent->handle.size(); i++)
-		{
-			SoLoud::handle handle = mParent->handle[i].handle;
-			double pos = mThePlayer->getPosition(handle);
-			if (pos < currBufferTime)
-			{
-				mThePlayer->setPause(handle, false);
-			}
-		}
+		// time currBufferTime = getLength();
+		// for (int i = 0; i < mParent->handle.size(); i++)
+		// {
+		// 	SoLoud::handle handle = mParent->handle[i].handle;
+		// 	double pos = mThePlayer->getPosition(handle);
+		// 	if (pos < currBufferTime)
+		// 	{
+		// 		mThePlayer->setPause(handle, false);
+		// 	}
+		// }
 
 		buffer.clear();
 		dataIsEnded = true;
+		checkBuffering(0);
 	}
 
 	PlayerErrors BufferStream::addData(const void *aData, unsigned int aDataLen, bool forceAdd)
@@ -338,7 +359,8 @@ namespace SoLoud
 		// If a handle reaches the end and data is not ended, we have to wait for it has enough data
 		// to reach [TIME_FOR_BUFFERING] and restart playing it.
 		time currBufferTime = getLength();
-		time addedDataTime = afterAddingBytesCount / (mBaseSamplerate * mPCMformat.bytesPerSample * mChannels);
+		// time addedDataTime = afterAddingBytesCount / (mBaseSamplerate * mPCMformat.bytesPerSample * mChannels);
+		time addedDataTime = (afterAddingBytesCount / mPCMformat.bytesPerSample) / (mBaseSamplerate * mChannels);
 		for (int i = 0; i < mParent->handle.size(); i++)
 		{
 			SoLoud::handle handle = mParent->handle[i].handle;
@@ -348,52 +370,49 @@ namespace SoLoud
 			{
 				mParent->handle[i].bufferingTime = currBufferTime;
 				mThePlayer->setPause(handle, true);
-				if (mOnBufferingCallback != nullptr)
-				{
-#ifdef __EMSCRIPTEN__
-					// Call the Dart callback stored on globalThis, if it exists.
-					// The `dartOnBufferingCallback_$hash` function is created in
-					// `setBufferStream()` in `bindings_player_web.dart` and it's
-					// meant to call the Dart callback passed to `setBufferStream()`.
-					EM_ASM({
-							// Compose the function name for this soundHash
-							var functionName = "dartOnBufferingCallback_" + $3;
-							if (typeof window[functionName] === "function") {
-								var buffering = $0 == 1 ? true : false;
-								window[functionName](buffering, $1, $2); // Call it
-							} else {
-								console.log("EM_ASM 'dartOnBufferingCallback_$hash' not found.");
-							} }, true, handle, currBufferTime, mParent->soundHash);
-#else
-					mOnBufferingCallback(true, handle, currBufferTime);
-#endif
-				}
-			}
+				callOnBufferingCallback(true, handle, currBufferTime);
+			} else
 			// This handle has reached [TIME_FOR_BUFFERING]. Unpause it.
 			if (currBufferTime + addedDataTime - mParent->handle[i].bufferingTime >= mBufferingTimeNeeds &&
 				mThePlayer->getPause(handle))
 			{
 				mThePlayer->setPause(handle, false);
+				mParent->handle[i].bufferingTime = currBufferTime + addedDataTime;
+				callOnBufferingCallback(false, handle, currBufferTime);
+			} else
+			// If data is ended and the handle is paused, unpause it to listen to the rest of the data.
+			if (dataIsEnded && mThePlayer->getPause(handle))
+			{
+				mThePlayer->setPause(handle, false);
 				mParent->handle[i].bufferingTime = MAX_DOUBLE;
-				if (mOnBufferingCallback != nullptr)
-				{
-#ifdef __EMSCRIPTEN__
-					// Call the Dart callback stored on globalThis, if it exists.
-					EM_ASM({
-							// Compose the function name for this soundHash
-							var functionName = "dartOnBufferingCallback_" + $3;
-							if (typeof window[functionName] === "function") {
-								var buffering = $0 == 1 ? true : false;
-								window[functionName](buffering, $1, $2); // Call it
-							} else {
-								console.log("EM_ASM 'dartOnBufferingCallback_$hash' not found.");
-							} }, false, handle, currBufferTime, mParent->soundHash);
-#else
-					mOnBufferingCallback(false, handle, currBufferTime);
-#endif
-				}
+				callOnBufferingCallback(false, handle, currBufferTime);
 			}
 		}
+	}
+
+	void BufferStream::callOnBufferingCallback(bool isBuffering, unsigned int handle, double time)
+	{
+		if (mOnBufferingCallback != nullptr)
+		{
+#ifdef __EMSCRIPTEN__
+			// Call the Dart callback stored on globalThis, if it exists.
+			// The `dartOnBufferingCallback_$hash` function is created in
+			// `setBufferStream()` in `bindings_player_web.dart` and it's
+			// meant to call the Dart callback passed to `setBufferStream()`.
+			EM_ASM({
+					// Compose the function name for this soundHash
+					var functionName = "dartOnBufferingCallback_" + $3;
+					if (typeof window[functionName] === "function") {
+						var buffering = $0 == 1 ? true : false;
+						window[functionName](buffering, $1, $2); // Call it
+					} else {
+						console.log("EM_ASM 'dartOnBufferingCallback_$hash' not found.");
+					} }, isBuffering, handle, time, mParent->soundHash);
+#else
+			mOnBufferingCallback(isBuffering, handle, time);
+#endif
+		}
+		mIsBuffering = isBuffering;
 	}
 
 	BufferingType BufferStream::getBufferingType()
@@ -410,7 +429,8 @@ namespace SoLoud
 	{
 		if (mBaseSamplerate == 0)
 			return 0;
-		return mSampleCount / mBaseSamplerate * mPCMformat.bytesPerSample / mPCMformat.channels;
+		// return mSampleCount / mBaseSamplerate * mPCMformat.bytesPerSample / mPCMformat.channels;
+		return mSampleCount / (mBaseSamplerate * mPCMformat.channels);
 	}
 
 	/// Get the time consumed by this stream of type RELEASED

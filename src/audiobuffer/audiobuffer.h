@@ -51,6 +51,7 @@ namespace SoLoud
     Buffer mBuffer;
     uint64_t mBytesReceived;
     bool dataIsEnded;
+    bool mIsBuffering;
 #if !defined(NO_OPUS_OGG_LIBS)
     std::unique_ptr<OpusDecoderWrapper> decoder;
 #endif
@@ -69,6 +70,7 @@ namespace SoLoud
     void setDataIsEnded();
     PlayerErrors addData(const void *aData, unsigned int numSamples, bool forceAdd = false);
     void checkBuffering(unsigned int afterAddingBytesCount);
+    void callOnBufferingCallback(bool isBuffering, unsigned int handle, double time);
     BufferingType getBufferingType();
     virtual AudioSourceInstance *createInstance();
     time getLength();

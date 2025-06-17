@@ -53,7 +53,7 @@ class SimpleNoise extends StatefulWidget {
 
 class _SimpleNoiseState extends State<SimpleNoise> {
   /// The size of the chunks to be sent to the buffer stream in bytes.
-  static const chunkSize = 1024 * 1024 / 2; // 1 MB
+  static const chunkSize = 1024 * 1024 / 10; // 1 MB
 
   /// The type of the buffer stream.
   static const bufferingType = BufferingType.preserved;
@@ -65,7 +65,8 @@ class _SimpleNoiseState extends State<SimpleNoise> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Generate noise')),
-      body: Center(
+      body: Align(
+        alignment: Alignment.topCenter,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           spacing: 16,
@@ -75,10 +76,11 @@ class _SimpleNoiseState extends State<SimpleNoise> {
                 /// Setup the buffer stream
                 noise = SoLoud.instance.setBufferStream(
                   format: BufferType.f32le,
-                  bufferingTimeNeeds: 0.1,
+                  bufferingTimeNeeds: 1,
                   bufferingType: bufferingType,
                   onBuffering: (bool buffering, int handle, double time) {
                     isBuffering = buffering;
+                    print('ON BUFFERING: $buffering, handle: $handle, at time: $time');
                     setState(() {});
                   },
                 );
@@ -106,10 +108,9 @@ class _SimpleNoiseState extends State<SimpleNoise> {
                   noise!,
                   randomFloats.buffer.asUint8List(),
                 );
-                print(
-                    'isPaused: ${SoLoud.instance.getPause(noise!.handles.first)}');
               },
-              child: const Text('push ${chunkSize/1024/1024}MB of noise data'),
+              child:
+                  const Text('push ${chunkSize / 1024 / 1024}MB of noise data'),
             ),
             OutlinedButton(
               onPressed: () async {
@@ -122,6 +123,7 @@ class _SimpleNoiseState extends State<SimpleNoise> {
               onPressed: () async {
                 await SoLoud.instance.disposeAllSources();
                 noise = null;
+                isBuffering = false;
                 setState(() {});
               },
               child: const Text('dispose all sounds'),
