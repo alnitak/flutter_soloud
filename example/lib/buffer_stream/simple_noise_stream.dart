@@ -52,6 +52,12 @@ class SimpleNoise extends StatefulWidget {
 }
 
 class _SimpleNoiseState extends State<SimpleNoise> {
+  /// The size of the chunks to be sent to the buffer stream in bytes.
+  static const chunkSize = 1024 * 1024 / 2; // 1 MB
+
+  /// The type of the buffer stream.
+  static const bufferingType = BufferingType.preserved;
+
   AudioSource? noise;
   bool isBuffering = false;
 
@@ -68,10 +74,9 @@ class _SimpleNoiseState extends State<SimpleNoise> {
               onPressed: () async {
                 /// Setup the buffer stream
                 noise = SoLoud.instance.setBufferStream(
-                  maxBufferSizeBytes: 1024 * 1024 * 10,
                   format: BufferType.f32le,
                   bufferingTimeNeeds: 0.1,
-                  bufferingType: BufferingType.preserved,
+                  bufferingType: bufferingType,
                   onBuffering: (bool buffering, int handle, double time) {
                     isBuffering = buffering;
                     setState(() {});
@@ -89,8 +94,9 @@ class _SimpleNoiseState extends State<SimpleNoise> {
                 if (noise == null) return;
 
                 final random = Random();
-                final randomFloats =
-                    Float32List((1024 * 1024) >> 2); // 1 MB of floats
+                // floats have 4 bytes each
+                final randomFloats = Float32List(chunkSize.toInt() >> 2);
+
                 for (var i = 0; i < randomFloats.length; i++) {
                   // Generate noise in range [-1, 1]
                   randomFloats[i] = random.nextDouble() * 2 - 1;
@@ -103,7 +109,7 @@ class _SimpleNoiseState extends State<SimpleNoise> {
                 print(
                     'isPaused: ${SoLoud.instance.getPause(noise!.handles.first)}');
               },
-              child: const Text('push 1MB of noise data'),
+              child: const Text('push ${chunkSize/1024/1024}MB of noise data'),
             ),
             OutlinedButton(
               onPressed: () async {
@@ -121,13 +127,12 @@ class _SimpleNoiseState extends State<SimpleNoise> {
               child: const Text('dispose all sounds'),
             ),
             BufferBar(
-              bufferingType: BufferingType.preserved,
+              bufferingType: bufferingType,
               sound: noise,
               startingMb: 1,
               label: 'noise',
             ),
-            if (isBuffering)
-              const Text('Buffering...'),
+            if (isBuffering) const Text('Buffering...'),
           ],
         ),
       ),

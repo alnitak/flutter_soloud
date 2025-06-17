@@ -68,6 +68,7 @@ namespace SoLoud
     void resetBuffer();
     void setDataIsEnded();
     PlayerErrors addData(const void *aData, unsigned int numSamples, bool forceAdd = false);
+    void checkBuffering(unsigned int afterAddingBytesCount);
     BufferingType getBufferingType();
     virtual AudioSourceInstance *createInstance();
     time getLength();

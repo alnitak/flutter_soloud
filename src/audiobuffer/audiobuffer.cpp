@@ -316,16 +316,35 @@ namespace SoLoud
 			buffer.erase(buffer.begin(), buffer.begin() + bufferDataToAdd);
 		}
 
+		checkBuffering(bytesWritten);
 
+		mSampleCount += bytesWritten / mPCMformat.bytesPerSample;
+
+		// data has been added to the buffer, but not all because reached its full capacity.
+		// So mark this stream as ended and no more data can be added.
+		if (bytesWritten < aDataLen / mPCMformat.bytesPerSample)
+		{
+			dataIsEnded = true;
+			return PlayerErrors::pcmBufferFull;
+		}
+
+		return PlayerErrors::noError;
+	}
+
+	/// Check if some handles was paused for buffering and unpause them or restart them
+	/// if needed after adding [afterAddingBytesCount] bytes.
+	void BufferStream::checkBuffering(unsigned int afterAddingBytesCount)
+	{
 		// If a handle reaches the end and data is not ended, we have to wait for it has enough data
 		// to reach [TIME_FOR_BUFFERING] and restart playing it.
 		time currBufferTime = getLength();
+		time addedDataTime = afterAddingBytesCount / (mBaseSamplerate * mPCMformat.bytesPerSample * mChannels);
 		for (int i = 0; i < mParent->handle.size(); i++)
 		{
 			SoLoud::handle handle = mParent->handle[i].handle;
 			double pos = mThePlayer->getPosition(handle);
 			// This handle needs to wait for [TIME_FOR_BUFFERING]. Pause it.
-			if (pos >= currBufferTime && !mThePlayer->getPause(handle))
+			if (pos >= currBufferTime + addedDataTime && !mThePlayer->getPause(handle))
 			{
 				mParent->handle[i].bufferingTime = currBufferTime;
 				mThePlayer->setPause(handle, true);
@@ -351,7 +370,7 @@ namespace SoLoud
 				}
 			}
 			// This handle has reached [TIME_FOR_BUFFERING]. Unpause it.
-			if (currBufferTime - mParent->handle[i].bufferingTime >= mBufferingTimeNeeds &&
+			if (currBufferTime + addedDataTime - mParent->handle[i].bufferingTime >= mBufferingTimeNeeds &&
 				mThePlayer->getPause(handle))
 			{
 				mThePlayer->setPause(handle, false);
@@ -375,18 +394,6 @@ namespace SoLoud
 				}
 			}
 		}
-
-		mSampleCount += bytesWritten / mPCMformat.bytesPerSample;
-
-		// data has been added to the buffer, but not all because reached its full capacity.
-		// So mark this stream as ended and no more data can be added.
-		if (bytesWritten < aDataLen / mPCMformat.bytesPerSample)
-		{
-			dataIsEnded = true;
-			return PlayerErrors::pcmBufferFull;
-		}
-
-		return PlayerErrors::noError;
 	}
 
 	BufferingType BufferStream::getBufferingType()

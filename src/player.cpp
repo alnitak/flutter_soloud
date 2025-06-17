@@ -573,8 +573,14 @@ PlayerErrors Player::play(
     handle = 0;
     SoLoud::handle newHandle = soloud.play(
         *sound->sound.get(), volume, pan, paused, 0);
-    if (newHandle != 0)
+    if (newHandle != 0) {
         sound->handle.push_back({newHandle, MAX_DOUBLE});
+        // Check if this buffer has enough data to be played
+        if (sound->soundType == SoundType::TYPE_BUFFER_STREAM)
+        {
+            static_cast<SoLoud::BufferStream *>(sound->sound.get())->checkBuffering(0);
+        }
+    }
 
     if (looping)
     {
