@@ -165,6 +165,13 @@ abstract class FlutterSoLoud {
   @mustBeOverridden
   PlayerErrors resetBufferStream(SoundHash soundHash);
 
+  /// Get the current stream time consumed in seconds of this sound of
+  /// type `BufferingType.RELEASED` with hash [hash].
+  @mustBeOverridden
+  ({PlayerErrors error, double value}) getStreamTimeConsumed(
+    SoundHash soundHash,
+  );
+
   /// Add a chunk of audio data to the buffer stream.
   ///
   /// [hash] the hash of the sound.

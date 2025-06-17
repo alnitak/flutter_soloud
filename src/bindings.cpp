@@ -461,6 +461,15 @@ extern "C"
         return player.get()->resetBufferStream(hash);
     }
 
+    /// Get the time consumed by the stream of a type `BufferingType.RELEASED`with hash [hash].
+    FFI_PLUGIN_EXPORT enum PlayerErrors getStreamTimeConsumed(unsigned int hash, float *timeConsumed)
+    {
+        if (player.get() == nullptr || !player.get()->isInited())
+            return backendNotInited;
+
+        return player.get()->getStreamTimeConsumed(hash, timeConsumed);
+    }
+
     /// Add a chunk of audio data to the buffer stream.
     ///
     /// [hash] the hash of the sound.

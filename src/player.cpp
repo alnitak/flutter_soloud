@@ -345,7 +345,7 @@ PlayerErrors Player::setBufferStream(
     newSound.get()->soundHash = hash;
 
     newSound.get()->sound = std::make_unique<SoLoud::BufferStream>();
-    newSound.get()->soundType = TYPE_BUFFER_STREAM;
+    newSound.get()->soundType = SoundType::TYPE_BUFFER_STREAM;
     PlayerErrors e = static_cast<SoLoud::BufferStream *>(newSound.get()->sound.get())->setBufferStream(this, newSound.get(), maxBufferSize, bufferingType, bufferingTimeNeeds, pcmFormat, onBufferingCallback);
 
     newSound.get()->filters = std::make_unique<Filters>(&soloud, newSound.get());
@@ -362,9 +362,9 @@ PlayerErrors Player::addAudioDataStream(
     auto const s = findByHash(hash);
 
     if (s == nullptr)
-        return soundHashNotFound;
+        return PlayerErrors::soundHashNotFound;
 
-    if (s->soundType != TYPE_BUFFER_STREAM)
+    if (s->soundType != SoundType::TYPE_BUFFER_STREAM)
         return hashIsNotABufferStream;
 
     return static_cast<SoLoud::BufferStream *>(s->sound.get())->addData(data, aDataLen);
@@ -374,33 +374,47 @@ PlayerErrors Player::resetBufferStream(unsigned int hash)
 {
     auto const s = findByHash(hash);
 
-    if (s == nullptr || s->soundType != TYPE_BUFFER_STREAM)
-        return soundHashNotFound;
+    if (s == nullptr || s->soundType != SoundType::TYPE_BUFFER_STREAM)
+        return PlayerErrors::soundHashNotFound;
 
     static_cast<SoLoud::BufferStream *>(s->sound.get())->resetBuffer();
-    return noError;
+    return PlayerErrors::noError;
+}
+
+PlayerErrors Player::getStreamTimeConsumed(unsigned int hash, float *timeConsumed)
+{
+    auto const s = findByHash(hash);
+
+    if (s == nullptr || s->soundType != SoundType::TYPE_BUFFER_STREAM)
+        return PlayerErrors::soundHashNotFound;
+
+    if (static_cast<SoLoud::BufferStream *>(s->sound.get())->getBufferingType() != BufferingType::RELEASED)
+        return PlayerErrors::wrongBufferTypeToAskForTimeConsumed;
+
+    *timeConsumed = static_cast<SoLoud::BufferStream *>(s->sound.get())->getStreamTimeConsumed();
+    return PlayerErrors::noError;
 }
 
 PlayerErrors Player::setDataIsEnded(unsigned int hash)
 {
     auto const s = findByHash(hash);
 
-    if (s == nullptr || s->soundType != TYPE_BUFFER_STREAM)
-        return soundHashNotFound;
+    if (s == nullptr || s->soundType != SoundType::TYPE_BUFFER_STREAM)
+        return PlayerErrors::soundHashNotFound;
 
     static_cast<SoLoud::BufferStream *>(s->sound.get())->setDataIsEnded();
-    return noError;
+    return PlayerErrors::noError;
 }
 
 PlayerErrors Player::getBufferSize(unsigned int hash, unsigned int *sizeInBytes)
 {
     auto const s = findByHash(hash);
 
-    if (s == nullptr || s->soundType != TYPE_BUFFER_STREAM)
-        return soundHashNotFound;
+    if (s == nullptr || s->soundType != SoundType::TYPE_BUFFER_STREAM)
+        return PlayerErrors::soundHashNotFound;
 
     *sizeInBytes = static_cast<SoLoud::BufferStream *>(s->sound.get())->mBuffer.buffer.size();
-    return noError;
+    return PlayerErrors::noError;
 }
 
 PlayerErrors Player::loadWaveform(

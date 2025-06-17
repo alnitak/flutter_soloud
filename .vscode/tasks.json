@@ -9,7 +9,7 @@
         },
         {
             "label": "compile linux debug",
-            "command": "cd ${workspaceFolder}/example; flutter build linux -t lib/main.dart --debug",
+            "command": "cd ${workspaceFolder}/example; flutter build linux -t lib/buffer_stream/simple_noise_stream.dart --debug",
             "type": "shell"
         },
         {

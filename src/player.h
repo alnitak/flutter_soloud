@@ -120,6 +120,11 @@ public:
     /// @return Returns [PlayerErrors.SO_NO_ERROR] if success.
     PlayerErrors resetBufferStream(unsigned int hash);
 
+    /// @brief Get the time consumed by the data stream of type `BufferingType.RELEASED`.
+    /// @param hash the hash of the stream sound.
+    /// @return Returns [PlayerErrors.SO_NO_ERROR] if success.
+    PlayerErrors getStreamTimeConsumed(unsigned int hash, float *timeConsumed);
+
     /// @brief Add an audio data stream.
     /// @param hash the hash of the sound.
     /// @param data the audio data to add.

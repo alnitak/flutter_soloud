@@ -7,6 +7,7 @@ import 'package:flutter_soloud/flutter_soloud.dart';
 
 class BufferBar extends StatefulWidget {
   const BufferBar({
+    required this.bufferingType,
     super.key,
     this.label = '',
     this.sound,
@@ -16,6 +17,7 @@ class BufferBar extends StatefulWidget {
   final String? label;
   final AudioSource? sound;
   final int startingMb;
+  final BufferingType bufferingType;
 
   @override
   State<BufferBar> createState() => _BufferBarState();
@@ -26,21 +28,35 @@ class _BufferBarState extends State<BufferBar> {
   final height = 30.0;
   Timer? timer;
   int currentMaxBytes = 1024 * 1024; // 1 MB
+  String firstHandleHumanPos = '';
+  Stopwatch stopwatch = Stopwatch();
 
   @override
   void initState() {
     currentMaxBytes *= widget.startingMb;
     super.initState();
     timer = Timer.periodic(const Duration(milliseconds: 100), (timer) {
+      if (widget.sound != null &&
+          widget.sound!.handles.isNotEmpty &&
+          !SoLoud.instance.getPause(widget.sound!.handles.first) &&
+          !stopwatch.isRunning) {
+        stopwatch.start();
+      }
+      if (widget.sound != null &&
+          widget.sound!.handles.isNotEmpty &&
+          SoLoud.instance.getPause(widget.sound!.handles.first) &&
+          stopwatch.isRunning) {
+        stopwatch
+          ..stop()
+          ..reset();
+      }
       setState(() {});
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    if (widget.sound == null) {
-      return const SizedBox.shrink();
-    }
+    if (widget.sound == null) return const SizedBox.shrink();
 
     final int bufferSize;
     try {
@@ -56,9 +72,13 @@ class _BufferBarState extends State<BufferBar> {
 
     /// [soundLength] reflects the value of [progressValue].
     final soundLength = SoLoud.instance.getLength(widget.sound!);
-    final humanDuration = '${soundLength.inMinutes % 60}:'
-        '${(soundLength.inSeconds % 60).toString().padLeft(2, '0')}.'
-        '${(soundLength.inMilliseconds % 1000).toString().padLeft(3, '0')}';
+    final humanDuration = toHuman(soundLength);
+    final firstHandlePos = widget.bufferingType == BufferingType.preserved
+        ? (widget.sound!.handles.isNotEmpty
+            ? SoLoud.instance.getPosition(widget.sound!.handles.first)
+            : Duration.zero)
+        : SoLoud.instance.getStreamTimeConsumed(widget.sound!);
+    firstHandleHumanPos = toHuman(firstHandlePos);
 
     /// The current progress value
     final progressValue = bufferSize > 0.0 ? bufferSize / currentMaxBytes : 0.0;
@@ -83,7 +103,7 @@ class _BufferBarState extends State<BufferBar> {
       child: Row(
         children: [
           SizedBox(
-            width: 140,
+            width: 160,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.center,
@@ -95,6 +115,8 @@ class _BufferBarState extends State<BufferBar> {
                   ),
                 Text('using $mb MB'),
                 Text('length $humanDuration'),
+                Text('position: $firstHandleHumanPos'),
+                Text('time: ${toHuman(stopwatch.elapsed)}'),
               ],
             ),
           ),
@@ -130,5 +152,11 @@ class _BufferBarState extends State<BufferBar> {
         ],
       ),
     );
+  }
+
+  String toHuman(Duration time) {
+    return '${time.inMinutes % 60}:'
+        '${(time.inSeconds % 60).toString().padLeft(2, '0')}.'
+        '${(time.inMilliseconds % 1000).toString().padLeft(3, '0')}';
   }
 }

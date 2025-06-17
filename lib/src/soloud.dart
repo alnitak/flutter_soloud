@@ -762,6 +762,31 @@ interface class SoLoud {
     }
   }
 
+  /// Get the current stream time consumed in seconds of this [sound] of
+  /// type [BufferingType.released]. Useful when releasing the stream
+  /// data memory while playing it and want to know the time already played.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  /// Throws [SoLoudSoundHashNotFoundDartException] if the [sound] is not found.
+  /// Throws a cpp error if the [sound] is not a buffer stream
+  /// of type [BufferingType.released].
+  Duration getStreamTimeConsumed(AudioSource sound) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+
+    final result = SoLoudController().soLoudFFI.getStreamTimeConsumed(
+          sound.soundHash,
+        );
+
+    if (result.error != PlayerErrors.noError) {
+      _logPlayerError(result.error, from: 'getStreamTimeConsumed() result');
+      throw SoLoudCppException.fromPlayerError(result.error);
+    }
+
+    return result.value.toDuration();
+  }
+
   /// Add PCM audio data to the stream.
   ///
   /// This method can be called within an `Isolate` making it possible

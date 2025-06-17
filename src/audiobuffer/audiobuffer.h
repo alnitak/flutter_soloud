@@ -45,6 +45,7 @@ namespace SoLoud
     dartOnBufferingCallback_t mOnBufferingCallback;
     unsigned int mMaxBufferSize;
     unsigned int mSampleCount;
+    double mTimeConsumed;
     SoLoud::time mBufferingTimeNeeds;
     PCMformat mPCMformat;
     Buffer mBuffer;
@@ -70,6 +71,7 @@ namespace SoLoud
     BufferingType getBufferingType();
     virtual AudioSourceInstance *createInstance();
     time getLength();
+    time getStreamTimeConsumed();
 
     std::vector<unsigned char> buffer;
   };

@@ -84,6 +84,7 @@ namespace SoLoud
 			mParent->mSampleCount -= samplesRemoved / mParent->mPCMformat.bytesPerSample;
 			// For RELEASED type, streamPosition is always at the start of the remaining buffer
             mStreamPosition = 0;
+			mParent->mTimeConsumed += totalBytesRead / (float)(mSamplerate * mChannels * sizeof(float));
 		}
 		else
 		{
@@ -178,6 +179,7 @@ namespace SoLoud
 
 		mBytesReceived = 0;
 		mSampleCount = 0;
+		mTimeConsumed = 0;
 		dataIsEnded = false;
 		mThePlayer = aPlayer;
 		mParent = aParent;
@@ -402,5 +404,11 @@ namespace SoLoud
 		if (mBaseSamplerate == 0)
 			return 0;
 		return mSampleCount / mBaseSamplerate * mPCMformat.bytesPerSample / mPCMformat.channels;
+	}
+
+	/// Get the time consumed by this stream of type RELEASED
+	time BufferStream::getStreamTimeConsumed()
+	{
+		return mTimeConsumed;
 	}
 };
