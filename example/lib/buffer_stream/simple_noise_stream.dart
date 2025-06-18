@@ -13,6 +13,15 @@ import 'package:logging/logging.dart';
 /// It also shows how to use the `SoLoud.instance.setBufferStream` method
 /// to set up a buffer stream and how to add audio data to it
 /// using `SoLoud.instance.addAudioDataStream`.
+///
+/// As you can see, the playing position of the sound is always at 0 when the
+/// buffering type is `BufferingType.released`.
+/// When the buffering type is `BufferingType.preserved`, all is normal as for
+/// the other "normal" sounds, and the playing position can be get using
+/// `SoLoud.instance.getPosition(handle)`.
+/// When the buffering type is `BufferingType.released`, the sound is
+/// always at the beginning, and the position is get using
+/// `SoLoud.instance.getStreamTimeConsumed(sound.)`.
 
 void main() async {
   // The `flutter_soloud` package logs everything
