@@ -44,12 +44,13 @@ namespace SoLoud
     ActiveSound* mParent;
     dartOnBufferingCallback_t mOnBufferingCallback;
     unsigned int mMaxBufferSize;
-    unsigned int mSampleCount;
-    double mTimeConsumed;
+    int64_t mSampleCount;
+    uint64_t mBytesConsumed;
     SoLoud::time mBufferingTimeNeeds;
     PCMformat mPCMformat;
     Buffer mBuffer;
     uint64_t mBytesReceived;
+    uint64_t mUncompressedBytesReceived;
     bool dataIsEnded;
     bool mIsBuffering;
 #if !defined(NO_OPUS_OGG_LIBS)
@@ -73,8 +74,8 @@ namespace SoLoud
     void callOnBufferingCallback(bool isBuffering, unsigned int handle, double time);
     BufferingType getBufferingType();
     virtual AudioSourceInstance *createInstance();
-    time getLength();
-    time getStreamTimeConsumed();
+    SoLoud::time getLength();
+    SoLoud::time getStreamTimeConsumed();
 
     std::vector<unsigned char> buffer;
   };

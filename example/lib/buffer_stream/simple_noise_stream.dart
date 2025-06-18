@@ -1,6 +1,5 @@
 import 'dart:developer' as dev;
 import 'dart:math';
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -8,11 +7,12 @@ import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:flutter_soloud_example/buffer_stream/ui/buffer_widget.dart';
 import 'package:logging/logging.dart';
 
-/// Example of how to generate PCM audio inside an `Isolate` and play them.
+/// Example to demonstrate how to use the buffer stream generating random noise
+/// data and how to handle buffering events.
 ///
-/// The `setBufferStream`, `addAudioDataStream` and `setDataIsEnded` methods
-/// can be used inside an `Isolate`. So you can perform complex operations
-/// computing audio inside an `Isolate` without freezing the main Isolate.
+/// It also shows how to use the `SoLoud.instance.setBufferStream` method
+/// to set up a buffer stream and how to add audio data to it
+/// using `SoLoud.instance.addAudioDataStream`.
 
 void main() async {
   // The `flutter_soloud` package logs everything
@@ -56,7 +56,10 @@ class _SimpleNoiseState extends State<SimpleNoise> {
   static const chunkSize = 1024 * 1024 / 10; // 1 MB
 
   /// The type of the buffer stream.
-  static const bufferingType = BufferingType.released;
+  final bufferingType = ValueNotifier<BufferingType>(BufferingType.released);
+
+  /// The time needed to wait before unpausing the audio stream.
+  final bufferingTimeNeeds = 1.0;
 
   AudioSource? noise;
   bool isBuffering = false;
@@ -71,13 +74,37 @@ class _SimpleNoiseState extends State<SimpleNoise> {
           mainAxisSize: MainAxisSize.min,
           spacing: 16,
           children: [
+            // CheckBox to choose between BufferingType.released and BufferingType.preserved.
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Text('BufferingType: '),
+                ValueListenableBuilder(
+                  valueListenable: bufferingType,
+                  builder: (context, value, child) {
+                    return DropdownButton<BufferingType>(
+                      value: value,
+                      items: BufferingType.values.map((type) {
+                        return DropdownMenuItem(
+                          value: type,
+                          child: Text(type.name),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        bufferingType.value = value ?? BufferingType.released;
+                      },
+                    );
+                  },
+                ),
+              ],
+            ),
             OutlinedButton(
               onPressed: () async {
                 /// Setup the buffer stream
                 noise = SoLoud.instance.setBufferStream(
                   format: BufferType.f32le,
-                  bufferingTimeNeeds: 1,
-                  bufferingType: bufferingType,
+                  bufferingTimeNeeds: bufferingTimeNeeds,
+                  bufferingType: bufferingType.value,
                   onBuffering: (bool buffering, int handle, double time) {
                     isBuffering = buffering;
                     debugPrint('ON BUFFERING: $buffering, handle: $handle, '
@@ -130,7 +157,7 @@ class _SimpleNoiseState extends State<SimpleNoise> {
               child: const Text('dispose all sounds'),
             ),
             BufferBar(
-              bufferingType: bufferingType,
+              bufferingType: bufferingType.value,
               sound: noise,
               startingMb: 1,
               label: 'noise',
