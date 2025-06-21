@@ -83,7 +83,8 @@ class _SimpleNoiseState extends State<SimpleNoise> {
           mainAxisSize: MainAxisSize.min,
           spacing: 16,
           children: [
-            // CheckBox to choose between BufferingType.released and BufferingType.preserved.
+            // Choose between BufferingType.released and
+            // BufferingType.preserved.
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -107,6 +108,7 @@ class _SimpleNoiseState extends State<SimpleNoise> {
                 ),
               ],
             ),
+            Text('Buffering time needs: $bufferingTimeNeeds seconds'),
             OutlinedButton(
               onPressed: () async {
                 /// Setup the buffer stream
