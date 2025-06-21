@@ -474,6 +474,26 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       _resetBufferStreamPtr.asFunction<int Function(int)>();
 
   @override
+  ({PlayerErrors error, double value}) getStreamTimeConsumed(
+      SoundHash soundHash) {
+    final ffi.Pointer<ffi.Float> paramValue = calloc();
+    final error = _getStreamTimeConsumed(
+      soundHash.hash,
+      paramValue,
+    );
+    final ret = paramValue.value;
+    calloc.free(paramValue);
+    return (error: PlayerErrors.values[error], value: ret);
+  }
+
+  late final _getStreamTimeConsumedPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Int32 Function(ffi.UnsignedInt,
+              ffi.Pointer<ffi.Float>)>>('getStreamTimeConsumed');
+  late final _getStreamTimeConsumed = _getStreamTimeConsumedPtr
+      .asFunction<int Function(int, ffi.Pointer<ffi.Float>)>();
+
+  @override
   PlayerErrors addAudioDataStream(
     int hash,
     Uint8List audioChunk,

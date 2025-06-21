@@ -29,11 +29,21 @@ namespace SoLoud
 	{
 		std::lock_guard<std::mutex> lock(buffer_lock_mutex);
 
+		// This happens when using RELEASED buffer type
 		if (mParent->mBuffer.getFloatsBufferSize() == 0)
 		{
 			memset(aBuffer, 0, sizeof(float) * aSamplesToRead);
 			// Calculate mStreamPosition based on mOffset
-			mStreamPosition = mOffset / (float)(mSamplerate * mChannels);
+			mStreamPosition = mOffset / (float)(sizeof(float) * mSamplerate * mChannels);
+
+			// This is not nice to do in the audio callback, but I didn't
+			// find a better way to get lenght and pause the sound and the
+			// `chakeBuffering` function is fast enough.
+			if (!mParent->mIsBuffering) {
+				mParent->mThePlayer->soloud.unlockAudioMutex_internal();
+				mParent->checkBuffering(0);
+				mParent->mThePlayer->soloud.lockAudioMutex_internal();
+			}
 			return 0;
 		}
 
@@ -44,7 +54,16 @@ namespace SoLoud
 		{
 			memset(aBuffer, 0, sizeof(float) * aSamplesToRead);
 			// Calculate mStreamPosition based on mOffset
-			mStreamPosition = mOffset / (float)(mSamplerate * mChannels);
+			mStreamPosition = mOffset / (float)(sizeof(float) * mSamplerate * mChannels);
+
+			// This is not nice to do in the audio callback, but I didn't
+			// find a better way to get lenght and pause the sound and the
+			// `chakeBuffering` function is fast enough.
+			if (!mParent->mIsBuffering) {
+				mParent->mThePlayer->soloud.unlockAudioMutex_internal();
+				mParent->checkBuffering(0);
+				mParent->mThePlayer->soloud.lockAudioMutex_internal();
+			}
 			return 0;
 		}
 
@@ -84,12 +103,13 @@ namespace SoLoud
 			mParent->mSampleCount -= samplesRemoved / mParent->mPCMformat.bytesPerSample;
 			// For RELEASED type, streamPosition is always at the start of the remaining buffer
             mStreamPosition = 0;
+			mParent->mBytesConsumed += totalBytesRead;
 		}
 		else
 		{
 			mOffset += samplesToRead * mChannels;
 			// For PRESERVED type, streamPosition advances with the offset
-            mStreamPosition = mOffset / (float)(mSamplerate * mChannels);
+            mStreamPosition = mOffset / (float)(sizeof(float) * mSamplerate * mChannels);
 		}
 
 		return samplesToRead;
@@ -141,8 +161,13 @@ namespace SoLoud
 
 	bool BufferStreamInstance::hasEnded()
 	{
-		if (mParent->dataIsEnded &&
-			mOffset >= mParent->mSampleCount * mParent->mPCMformat.bytesPerSample)
+		auto b = mParent->mBuffer.bufferingType == BufferingType::PRESERVED;
+		if (b && mParent->dataIsEnded && 
+			mOffset >= mParent->mSampleCount * mParent->mPCMformat.bytesPerSample) // PRESERVED
+		{
+			return 1;
+		} else 
+		if (!b && mParent->dataIsEnded && mParent->mSampleCount <= 0) // RELEASED
 		{
 			return 1;
 		}
@@ -177,7 +202,9 @@ namespace SoLoud
 			maxBufferSize -= maxBufferSize % (pcmFormat.channels * sizeof(float));
 
 		mBytesReceived = 0;
+		mUncompressedBytesReceived = 0;
 		mSampleCount = 0;
+		mBytesConsumed = 0;
 		dataIsEnded = false;
 		mThePlayer = aPlayer;
 		mParent = aParent;
@@ -193,6 +220,7 @@ namespace SoLoud
 		mOnBufferingCallback = onBufferingCallback;
 		buffer = std::vector<unsigned char>();
 		mBuffer.setBufferType(bufferingType);
+		mIsBuffering = true;
 
 #if !defined(NO_OPUS_OGG_LIBS)
 		decoder = nullptr;
@@ -233,20 +261,10 @@ namespace SoLoud
 		{
 			addData(buffer.data(), buffer.size(), true);
 		}
-		// Check if some handles was paused for buffering and unpause them
-		time currBufferTime = getLength();
-		for (int i = 0; i < mParent->handle.size(); i++)
-		{
-			SoLoud::handle handle = mParent->handle[i].handle;
-			double pos = mThePlayer->getPosition(handle);
-			if (pos < currBufferTime)
-			{
-				mThePlayer->setPause(handle, false);
-			}
-		}
 
 		buffer.clear();
 		dataIsEnded = true;
+		checkBuffering(0);
 	}
 
 	PlayerErrors BufferStream::addData(const void *aData, unsigned int aDataLen, bool forceAdd)
@@ -313,66 +331,9 @@ namespace SoLoud
 		if (bytesWritten > 0) {
 			buffer.erase(buffer.begin(), buffer.begin() + bufferDataToAdd);
 		}
-
-
-		// If a handle reaches the end and data is not ended, we have to wait for it has enough data
-		// to reach [TIME_FOR_BUFFERING] and restart playing it.
-		time currBufferTime = getLength();
-		for (int i = 0; i < mParent->handle.size(); i++)
-		{
-			SoLoud::handle handle = mParent->handle[i].handle;
-			double pos = mThePlayer->getPosition(handle);
-			// This handle needs to wait for [TIME_FOR_BUFFERING]. Pause it.
-			if (pos >= currBufferTime && !mThePlayer->getPause(handle))
-			{
-				mParent->handle[i].bufferingTime = currBufferTime;
-				mThePlayer->setPause(handle, true);
-				if (mOnBufferingCallback != nullptr)
-				{
-#ifdef __EMSCRIPTEN__
-					// Call the Dart callback stored on globalThis, if it exists.
-					// The `dartOnBufferingCallback_$hash` function is created in
-					// `setBufferStream()` in `bindings_player_web.dart` and it's
-					// meant to call the Dart callback passed to `setBufferStream()`.
-					EM_ASM({
-							// Compose the function name for this soundHash
-							var functionName = "dartOnBufferingCallback_" + $3;
-							if (typeof window[functionName] === "function") {
-								var buffering = $0 == 1 ? true : false;
-								window[functionName](buffering, $1, $2); // Call it
-							} else {
-								console.log("EM_ASM 'dartOnBufferingCallback_$hash' not found.");
-							} }, true, handle, currBufferTime, mParent->soundHash);
-#else
-					mOnBufferingCallback(true, handle, currBufferTime);
-#endif
-				}
-			}
-			// This handle has reached [TIME_FOR_BUFFERING]. Unpause it.
-			if (currBufferTime - mParent->handle[i].bufferingTime >= mBufferingTimeNeeds &&
-				mThePlayer->getPause(handle))
-			{
-				mThePlayer->setPause(handle, false);
-				mParent->handle[i].bufferingTime = MAX_DOUBLE;
-				if (mOnBufferingCallback != nullptr)
-				{
-#ifdef __EMSCRIPTEN__
-					// Call the Dart callback stored on globalThis, if it exists.
-					EM_ASM({
-							// Compose the function name for this soundHash
-							var functionName = "dartOnBufferingCallback_" + $3;
-							if (typeof window[functionName] === "function") {
-								var buffering = $0 == 1 ? true : false;
-								window[functionName](buffering, $1, $2); // Call it
-							} else {
-								console.log("EM_ASM 'dartOnBufferingCallback_$hash' not found.");
-							} }, false, handle, currBufferTime, mParent->soundHash);
-#else
-					mOnBufferingCallback(false, handle, currBufferTime);
-#endif
-				}
-			}
-		}
+		
+		checkBuffering(bytesWritten);
+		mUncompressedBytesReceived += bytesWritten;
 
 		mSampleCount += bytesWritten / mPCMformat.bytesPerSample;
 
@@ -387,6 +348,71 @@ namespace SoLoud
 		return PlayerErrors::noError;
 	}
 
+	/// Check if some handles was paused for buffering and unpause them or restart them
+	/// if needed after adding [afterAddingBytesCount] bytes.
+	void BufferStream::checkBuffering(unsigned int afterAddingBytesCount)
+	{
+		// If a handle reaches the end and data is not ended, we have to wait for it has enough data
+		// to reach [TIME_FOR_BUFFERING] and restart playing it.
+		SoLoud::time currBufferTime = getLength();
+		// time addedDataTime = afterAddingBytesCount / (mBaseSamplerate * mPCMformat.bytesPerSample * mChannels);
+		SoLoud::time addedDataTime = (afterAddingBytesCount / mPCMformat.bytesPerSample) / (mBaseSamplerate * mChannels);
+		for (int i = 0; i < mParent->handle.size(); i++)
+		{
+			SoLoud::handle handle = mParent->handle[i].handle;
+			SoLoud::time pos = mBuffer.bufferingType == BufferingType::RELEASED ? getStreamTimeConsumed() :  mThePlayer->getPosition(handle);
+
+			bool p = mThePlayer->getPause(handle);
+			// This handle needs to wait for [TIME_FOR_BUFFERING]. Pause it.
+			if (pos >= currBufferTime + addedDataTime && !mThePlayer->getPause(handle))
+			{
+				mParent->handle[i].bufferingTime = currBufferTime;
+				mThePlayer->setPause(handle, true);
+				callOnBufferingCallback(true, handle, currBufferTime);
+			} else
+			// This handle has reached [TIME_FOR_BUFFERING]. Unpause it.
+			if (currBufferTime + addedDataTime - mParent->handle[i].bufferingTime >= mBufferingTimeNeeds &&
+				mThePlayer->getPause(handle))
+			{
+				mThePlayer->setPause(handle, false);
+				mParent->handle[i].bufferingTime = currBufferTime + addedDataTime;
+				callOnBufferingCallback(false, handle, currBufferTime);
+			} else
+			// If data is ended and the handle is paused, unpause it to listen to the rest of the data.
+			if (dataIsEnded && mThePlayer->getPause(handle))
+			{
+				mThePlayer->setPause(handle, false);
+				mParent->handle[i].bufferingTime = MAX_DOUBLE;
+				callOnBufferingCallback(false, handle, currBufferTime);
+			}
+		}
+	}
+
+	void BufferStream::callOnBufferingCallback(bool isBuffering, unsigned int handle, double time)
+	{
+		if (mOnBufferingCallback != nullptr)
+		{
+#ifdef __EMSCRIPTEN__
+			// Call the Dart callback stored on globalThis, if it exists.
+			// The `dartOnBufferingCallback_$hash` function is created in
+			// `setBufferStream()` in `bindings_player_web.dart` and it's
+			// meant to call the Dart callback passed to `setBufferStream()`.
+			EM_ASM({
+					// Compose the function name for this soundHash
+					var functionName = "dartOnBufferingCallback_" + $3;
+					if (typeof window[functionName] === "function") {
+						var buffering = $0 == 1 ? true : false;
+						window[functionName](buffering, $1, $2); // Call it
+					} else {
+						console.log("EM_ASM 'dartOnBufferingCallback_$hash' not found.");
+					} }, isBuffering, handle, time, mParent->soundHash);
+#else
+			mOnBufferingCallback(isBuffering, handle, time);
+#endif
+		}
+		mIsBuffering = isBuffering;
+	}
+
 	BufferingType BufferStream::getBufferingType()
 	{
 		return mBuffer.bufferingType;
@@ -397,10 +423,17 @@ namespace SoLoud
 		return new BufferStreamInstance(this);
 	}
 
-	double BufferStream::getLength()
+	SoLoud::time BufferStream::getLength()
 	{
 		if (mBaseSamplerate == 0)
 			return 0;
-		return mSampleCount / mBaseSamplerate * mPCMformat.bytesPerSample / mPCMformat.channels;
+		// return mSampleCount / mBaseSamplerate * mPCMformat.bytesPerSample / mPCMformat.channels;
+		return (mUncompressedBytesReceived / mPCMformat.bytesPerSample) / (mBaseSamplerate * mPCMformat.channels);
+	}
+
+	/// Get the time consumed by this stream of type RELEASED
+	SoLoud::time BufferStream::getStreamTimeConsumed()
+	{
+		return (mBytesConsumed / mPCMformat.bytesPerSample) / (mBaseSamplerate * mPCMformat.channels * sizeof(float));
 	}
 };

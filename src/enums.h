@@ -66,7 +66,9 @@ typedef enum PlayerErrors
     /// A BufferStream using `release` buffer type can be played only once.
     bufferStreamCanBePlayedOnlyOnce = 25,
     /// The maximum number of active voices has been reached.
-    maxActiveVoiceCountReached = 26
+    maxActiveVoiceCountReached = 26,
+    /// Trying to get time consumed from wrong buffer type.
+    wrongBufferTypeToAskForTimeConsumed = 27,
 } PlayerErrors_t;
 
 /// Possible read sample errors

@@ -8,7 +8,7 @@
             "name": "Flutter debug",
             "type": "dart",
             "request": "launch",
-            "program": "lib/main.dart",
+            "program": "lib/buffer_stream/simple_noise_stream.dart",
             "flutterMode": "debug",
             // "env": {
             //     "NO_OPUS_OGG_LIBS": "1"
@@ -89,7 +89,7 @@
             "cwd": "${workspaceFolder}"
         },
         {
-            "name": "Chrome release",
+            "name": "Chrome wasm release",
             "type": "chrome",
             "preLaunchTask": "compile web wasm release",
             "request": "launch"
