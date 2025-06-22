@@ -134,8 +134,9 @@ namespace SoLoud
         deviceConfig.sampleRate         = aSamplerate;
         deviceConfig.dataCallback       = soloud_miniaudio_audiomixer;
         deviceConfig.pUserData          = (void *)aSoloud;
-        if (aSoloud->_stateChangedCallback != nullptr)
-            deviceConfig.notificationCallback = on_notification;
+        deviceConfig.aaudio;
+        // if (aSoloud->_stateChangedCallback != nullptr)
+        //     deviceConfig.notificationCallback = on_notification;
 
         // Disable CoreAudio context
         ma_context_config contextConfig = ma_context_config_init();
