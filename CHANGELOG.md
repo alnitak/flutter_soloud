@@ -1,5 +1,11 @@
-#### 3.1.11 (X Xxx 2025)
+#### 3.1.12 (21 Jun 2025)
+- added `getStreamTimeConsumed()` to get the time consumed by a buffer stream of kind `BufferingType.released`. Since the position of this kind of stream is always 0, this method is useful to know the time already played.
+- fix pause/unpause on audio stream buffering.
+- added `buffer_stream/simple_noise_stream.dart` example.
+
+#### 3.1.11 (16 Jun 2025)
 - fix: Loading the same AudioSource twice (in parallel) crashes #247
+- fix win: force cmake to build the plugin in release mode even if building in debug
 
 #### 3.1.10 (8 May 2025)
 - fix: Setting pan doesn't cancel pan oscillation #239

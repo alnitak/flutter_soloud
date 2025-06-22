@@ -259,6 +259,18 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }
 
   @override
+  ({PlayerErrors error, double value}) getStreamTimeConsumed(
+    SoundHash soundHash,
+  ) {
+    final valuePtr = wasmMalloc(4); // 4 bytes for a float
+    final result = wasmGetStreamTimeConsumed(soundHash.hash, valuePtr);
+    final value = wasmGetF32Value(valuePtr, 'float');
+    wasmFree(valuePtr);
+
+    return (error: PlayerErrors.values[result], value: value);
+  }
+
+  @override
   PlayerErrors addAudioDataStream(
     int hash,
     Uint8List audioChunk,

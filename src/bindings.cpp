@@ -34,12 +34,12 @@ extern "C"
     std::unique_ptr<Analyzer> analyzer = std::make_unique<Analyzer>(256);
 
     typedef void (*dartVoiceEndedCallback_t)(unsigned int *);
-    typedef void (*dartFileLoadedCallback_t)(enum PlayerErrors *, char *completeFileName, unsigned int *, unsigned long *timeStamp);
+    typedef void (*dartFileLoadedCallback_t)(enum PlayerErrors *, char *completeFileName, unsigned int *, uint64_t *timeStamp);
     typedef void (*dartStateChangedCallback_t)(enum PlayerStateEvents *);
 
     // to be used by `NativeCallable`, these functions must return void.
     void (*dartVoiceEndedCallback)(unsigned int *) = nullptr;
-    void (*dartFileLoadedCallback)(enum PlayerErrors *, char *completeFileName, unsigned int *, unsigned long *timeStamp) = nullptr;
+    void (*dartFileLoadedCallback)(enum PlayerErrors *, char *completeFileName, unsigned int *, uint64_t *timeStamp) = nullptr;
     void (*dartStateChangedCallback)(enum PlayerStateEvents *) = nullptr;
 
     //////////////////////////////////////////////////////////////
@@ -125,7 +125,7 @@ extern "C"
     }
 
     /// The callback to monitor when a file is loaded.
-    void fileLoadedCallback(enum PlayerErrors error, char *completeFileName, unsigned int *hash, unsigned long timeStamp)
+    void fileLoadedCallback(enum PlayerErrors error, char *completeFileName, unsigned int *hash, uint64_t timeStamp)
     {
         if (dartFileLoadedCallback == nullptr)
             return;
@@ -135,7 +135,7 @@ extern "C"
         char *name = strdup(completeFileName);
         unsigned int *n = (unsigned int *)malloc(sizeof(unsigned int *));
         *n = *hash;
-        unsigned long *ts = (unsigned long *)malloc(sizeof(unsigned long *));
+        uint64_t *ts = (uint64_t *)malloc(sizeof(uint64_t *));
         *ts = timeStamp;
         dartFileLoadedCallback(e, name, n, ts);
     }
@@ -322,7 +322,7 @@ extern "C"
     FFI_PLUGIN_EXPORT void loadFile(
         char *completeFileName,
         bool loadIntoMem,
-        unsigned long timeStamp)
+        uint64_t timeStamp)
     {
         std::lock_guard<std::mutex> guard_init(init_deinit_mutex);
         std::lock_guard<std::mutex> guard_load(loadMutex);
@@ -459,6 +459,15 @@ extern "C"
         if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
         return player.get()->resetBufferStream(hash);
+    }
+
+    /// Get the time consumed by the stream of a type `BufferingType.RELEASED`with hash [hash].
+    FFI_PLUGIN_EXPORT enum PlayerErrors getStreamTimeConsumed(unsigned int hash, float *timeConsumed)
+    {
+        if (player.get() == nullptr || !player.get()->isInited())
+            return backendNotInited;
+
+        return player.get()->getStreamTimeConsumed(hash, timeConsumed);
     }
 
     /// Add a chunk of audio data to the buffer stream.

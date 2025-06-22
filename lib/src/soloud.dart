@@ -632,6 +632,8 @@ interface class SoLoud {
   /// [bufferingTimeNeeds] the buffering time needed in seconds. If a handle
   /// reaches the current buffer length, it will start to buffer pausing it and
   /// waiting until the buffer will have enough data to cover this time.
+  /// *NOTE*: when using [BufferingType.released], the position of the stream
+  /// is always 0: [getPosition] will always return 0.
   ///
   /// [sampleRate] the sample rate. Usually is 22050 or 44100 (CD quality).
   /// When using [format] as `opus`, the sample rate can be 48000, 24000,
@@ -758,6 +760,31 @@ interface class SoLoud {
       _logPlayerError(e, from: 'resetBufferStream() result');
       throw SoLoudCppException.fromPlayerError(e);
     }
+  }
+
+  /// Get the current stream time consumed in seconds of this [sound] of
+  /// type [BufferingType.released]. Since the position of this kind of stream
+  /// is always 0, this method is useful to know the time already played.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  /// Throws [SoLoudSoundHashNotFoundDartException] if the [sound] is not found.
+  /// Throws a cpp error if the [sound] is not a buffer stream
+  /// of type [BufferingType.released].
+  Duration getStreamTimeConsumed(AudioSource sound) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+
+    final result = SoLoudController().soLoudFFI.getStreamTimeConsumed(
+          sound.soundHash,
+        );
+
+    if (result.error != PlayerErrors.noError) {
+      _logPlayerError(result.error, from: 'getStreamTimeConsumed() result');
+      throw SoLoudCppException.fromPlayerError(result.error);
+    }
+
+    return result.value.toDuration();
   }
 
   /// Add PCM audio data to the stream.
@@ -1430,6 +1457,8 @@ interface class SoLoud {
 
   /// Get the current sound position of a sound instance (provided via its
   /// [handle]).
+  /// *NOTE*: if this handle belongs to a buffer stream of
+  /// [BufferingType.released] type, please use [getStreamTimeConsumed] instead.
   ///
   /// Returns the position as a [Duration]. For example,
   /// `Duration(milliseconds: 200)` means that the play head is currently

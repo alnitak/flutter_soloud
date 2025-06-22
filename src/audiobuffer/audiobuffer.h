@@ -44,12 +44,15 @@ namespace SoLoud
     ActiveSound* mParent;
     dartOnBufferingCallback_t mOnBufferingCallback;
     unsigned int mMaxBufferSize;
-    unsigned int mSampleCount;
+    int64_t mSampleCount;
+    uint64_t mBytesConsumed;
     SoLoud::time mBufferingTimeNeeds;
     PCMformat mPCMformat;
     Buffer mBuffer;
     uint64_t mBytesReceived;
+    uint64_t mUncompressedBytesReceived;
     bool dataIsEnded;
+    bool mIsBuffering;
 #if !defined(NO_OPUS_OGG_LIBS)
     std::unique_ptr<OpusDecoderWrapper> decoder;
 #endif
@@ -67,9 +70,12 @@ namespace SoLoud
     void resetBuffer();
     void setDataIsEnded();
     PlayerErrors addData(const void *aData, unsigned int numSamples, bool forceAdd = false);
+    void checkBuffering(unsigned int afterAddingBytesCount);
+    void callOnBufferingCallback(bool isBuffering, unsigned int handle, double time);
     BufferingType getBufferingType();
     virtual AudioSourceInstance *createInstance();
-    time getLength();
+    SoLoud::time getLength();
+    SoLoud::time getStreamTimeConsumed();
 
     std::vector<unsigned char> buffer;
   };

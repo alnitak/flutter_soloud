@@ -90,7 +90,10 @@ enum PlayerErrors {
   bufferStreamCanBePlayedOnlyOnce(25),
 
   /// The maximum number of active voices has been reached.
-  maxActiveVoiceCountReached(26);
+  maxActiveVoiceCountReached(26),
+
+  /// Trying to get time consumed from wrong buffer type.
+  wrongBufferTypeToAskForTimeConsumed(27);
 
   const PlayerErrors(this.value);
 
@@ -172,6 +175,9 @@ enum PlayerErrors {
             '`setMaxActiveVoiceCount`. Also, please read `play/play3d` '
             'documentation for more information about the maximum active '
             'voice count.';
+      case PlayerErrors.wrongBufferTypeToAskForTimeConsumed:
+        return 'Trying to get time consumed from wrong buffer type. '
+            'This is only available for `BufferingType.preserved` buffers.';
     }
   }
 

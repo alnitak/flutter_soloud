@@ -126,6 +126,8 @@ abstract class SoLoudCppException extends SoLoudException {
               'This is a bug in the library. Please report it.',
           'error',
         );
+      case PlayerErrors.wrongBufferTypeToAskForTimeConsumed:
+        return const SoLoudWrongBufferTypeToAskForTimeConsumedCppException();
     }
   }
 

@@ -89,7 +89,7 @@
             "cwd": "${workspaceFolder}"
         },
         {
-            "name": "Chrome release",
+            "name": "Chrome wasm release",
             "type": "chrome",
             "preLaunchTask": "compile web wasm release",
             "request": "launch"

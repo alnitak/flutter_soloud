@@ -319,3 +319,17 @@ class SoLoudBufferStreamCanBePlayedOnlyOnceCppException
   String get description => 'The buffer stream can be played only once when '
       'using `BufferingType.release` buffer type. (on the C++ side).';
 }
+
+/// An error occurred when asking for time consumed from a buffer
+/// that is not suitable for this operation. Please use a buffer of type
+/// `BufferingType.released`.
+class SoLoudWrongBufferTypeToAskForTimeConsumedCppException
+    extends SoLoudCppException {
+  /// Creates a new [SoLoudWrongBufferTypeToAskForTimeConsumedCppException].
+  const SoLoudWrongBufferTypeToAskForTimeConsumedCppException([super.message]);
+
+  @override
+  String get description => 'The buffer type is not suitable for asking '
+      'for time consumed. Please use a buffer of type '
+      '`BufferingType.released`. (on the C++ side).';
+}
