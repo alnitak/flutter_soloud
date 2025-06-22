@@ -114,7 +114,7 @@ class _AudioContextState extends State<AudioContext> {
                       style: const TextStyle(fontSize: 20),
                     );
                   },
-                )
+                ),
               ],
             ),
           );

@@ -63,6 +63,7 @@ namespace SoLoud
 {
     ma_device gDevice;
     SoLoud::Soloud *soloud;
+    ma_context context;
 
     // Added by Marco Bavagnoli
     void on_notification(const ma_device_notification* pNotification)
@@ -122,21 +123,32 @@ namespace SoLoud
     result miniaudio_init(SoLoud::Soloud *aSoloud, unsigned int aFlags, unsigned int aSamplerate, unsigned int aBuffer, unsigned int aChannels, void *pPlaybackInfos_id)
     {
         soloud = aSoloud;
-        ma_device_config config = ma_device_config_init(ma_device_type_playback);
+        ma_device_config deviceConfig = ma_device_config_init(ma_device_type_playback);
         if (pPlaybackInfos_id != NULL)
         {
-            config.playback.pDeviceID = (ma_device_id*)pPlaybackInfos_id;
+            deviceConfig.playback.pDeviceID = (ma_device_id*)pPlaybackInfos_id;
         }
-        config.periodSizeInFrames = aBuffer;
-        config.playback.format    = ma_format_f32;
-        config.playback.channels  = aChannels;
-        config.sampleRate         = aSamplerate;
-        config.dataCallback       = soloud_miniaudio_audiomixer;
-        config.pUserData          = (void *)aSoloud;
+        deviceConfig.periodSizeInFrames = aBuffer;
+        deviceConfig.playback.format    = ma_format_f32;
+        deviceConfig.playback.channels  = aChannels;
+        deviceConfig.sampleRate         = aSamplerate;
+        deviceConfig.dataCallback       = soloud_miniaudio_audiomixer;
+        deviceConfig.pUserData          = (void *)aSoloud;
         if (aSoloud->_stateChangedCallback != nullptr)
-            config.notificationCallback = on_notification;
+            deviceConfig.notificationCallback = on_notification;
 
-        if (ma_device_init(NULL, &config, &gDevice) != MA_SUCCESS)
+        // Disable CoreAudio context
+        ma_context_config contextConfig = ma_context_config_init();
+        contextConfig.coreaudio.sessionCategory = ma_ios_session_category_none;
+        contextConfig.coreaudio.noAudioSessionActivate = true;
+        contextConfig.coreaudio.noAudioSessionDeactivate = true;
+
+        ma_result result = ma_context_init(NULL, 0, &contextConfig, &context);
+        if (result != MA_SUCCESS) {
+            return UNKNOWN_ERROR;
+        }
+
+        if (ma_device_init(&context, &deviceConfig, &gDevice) != MA_SUCCESS)
         {
             return UNKNOWN_ERROR;
         }
@@ -156,15 +168,15 @@ namespace SoLoud
             return UNKNOWN_ERROR;
 
         ma_device_uninit(&gDevice);
-        ma_device_config config = ma_device_config_init(ma_device_type_playback);
-        config.playback.pDeviceID = (ma_device_id *)pPlaybackInfos_id;
-        config.periodSizeInFrames = soloud->mBufferSize;
-        config.playback.format    = ma_format_f32;
-        config.playback.channels  = soloud->mChannels;
-        config.sampleRate         = soloud->mSamplerate;
-        config.dataCallback       = soloud_miniaudio_audiomixer;
-        config.pUserData          = (void *)soloud;
-        if (ma_device_init(NULL, &config, &gDevice) != MA_SUCCESS)
+        ma_device_config deviceConfig = ma_device_config_init(ma_device_type_playback);
+        deviceConfig.playback.pDeviceID = (ma_device_id *)pPlaybackInfos_id;
+        deviceConfig.periodSizeInFrames = soloud->mBufferSize;
+        deviceConfig.playback.format    = ma_format_f32;
+        deviceConfig.playback.channels  = soloud->mChannels;
+        deviceConfig.sampleRate         = soloud->mSamplerate;
+        deviceConfig.dataCallback       = soloud_miniaudio_audiomixer;
+        deviceConfig.pUserData          = (void *)soloud;
+        if (ma_device_init(NULL, &deviceConfig, &gDevice) != MA_SUCCESS)
         {
             return UNKNOWN_ERROR;
         }
