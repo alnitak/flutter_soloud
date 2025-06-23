@@ -117,7 +117,11 @@ namespace SoLoud
 
     static void soloud_miniaudio_deinit(SoLoud::Soloud *aSoloud)
     {
+        ma_device_stop(&gDevice);
         ma_device_uninit(&gDevice);
+#if defined(MA_HAS_COREAUDIO)
+        ma_context_uninit(&context);
+#endif
     }
 
     result miniaudio_init(SoLoud::Soloud *aSoloud, unsigned int aFlags, unsigned int aSamplerate, unsigned int aBuffer, unsigned int aChannels, void *pPlaybackInfos_id)
@@ -134,10 +138,14 @@ namespace SoLoud
         deviceConfig.sampleRate         = aSamplerate;
         deviceConfig.dataCallback       = soloud_miniaudio_audiomixer;
         deviceConfig.pUserData          = (void *)aSoloud;
-        deviceConfig.aaudio;
-        // if (aSoloud->_stateChangedCallback != nullptr)
-        //     deviceConfig.notificationCallback = on_notification;
 
+        // deviceConfig.aaudio.usage       = ma_aaudio_usage_default;
+        // deviceConfig.aaudio.contentType = ma_aaudio_content_type_default;
+        // deviceConfig.aaudio.inputPreset = ma_aaudio_input_preset_default;
+        if (aSoloud->_stateChangedCallback != nullptr)
+            deviceConfig.notificationCallback = on_notification;
+
+#if defined(MA_HAS_COREAUDIO)
         // Disable CoreAudio context
         ma_context_config contextConfig = ma_context_config_init();
         contextConfig.coreaudio.sessionCategory = ma_ios_session_category_none;
@@ -148,11 +156,18 @@ namespace SoLoud
         if (result != MA_SUCCESS) {
             return UNKNOWN_ERROR;
         }
-
         if (ma_device_init(&context, &deviceConfig, &gDevice) != MA_SUCCESS)
+        {
+            ma_context_uninit(&context);
+            return UNKNOWN_ERROR;
+        }
+#else
+        if (ma_device_init(NULL, &deviceConfig, &gDevice) != MA_SUCCESS)
         {
             return UNKNOWN_ERROR;
         }
+#endif
+
 
         aSoloud->postinit_internal(gDevice.sampleRate, gDevice.playback.internalPeriodSizeInFrames, aFlags, gDevice.playback.channels);
 

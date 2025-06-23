@@ -209,14 +209,14 @@ namespace SoLoud
 	// Added by Marco Bavagnoli
 	result Soloud::miniaudio_changeDevice(void *pPlaybackInfos_id)
 	{
-#if defined(WITH_MINIAUDIO)
 		int ret = 0;
+#if defined(WITH_MINIAUDIO)
 		if (mAudioThreadMutex != NULL)
 		{
 			ret = miniaudio_changeDevice_impl(pPlaybackInfos_id);
 		}
-		return ret;
 #endif
+		return ret;
 	}
 
 	result Soloud::init(unsigned int aFlags, unsigned int aBackend, unsigned int aSamplerate, unsigned int aBufferSize, unsigned int aChannels, void *pPlaybackInfos_id)

@@ -105,6 +105,16 @@ class _AudioContextState extends State<AudioContext> {
                   child: const Text('play asset'),
                 ),
 
+                ElevatedButton(
+                  onPressed: () async {
+                    soloud
+                      ..setPause(soundHandle!, false)
+                      ..fadeGlobalVolume(1, const Duration(milliseconds: 300));
+                    isPlaying.value = ContextState.playing;
+                  },
+                  child: const Text('unpause'),
+                ),
+
                 // Display the current state.
                 ValueListenableBuilder<ContextState>(
                   valueListenable: isPlaying,
@@ -145,14 +155,14 @@ class _AudioContextState extends State<AudioContext> {
     audioSession.becomingNoisyEventStream.listen((_) {
       // The user unplugged the headphones, so we should pause
       // or lower the volume.
-      debugPrint('becomingNoisy, pausing...');
+      debugPrint('audio_context: becomingNoisy, pausing...');
       if (soundHandle == null) return;
       soloud.setPause(soundHandle!, true);
       isPlaying.value = ContextState.paused;
     });
     audioSession.interruptionEventStream.listen((event) {
-      debugPrint('interruption begin: ${event.begin}');
-      debugPrint('interruption type: ${event.type}');
+      debugPrint('audio_context: interruption begin: ${event.begin}');
+      debugPrint('audio_context: interruption type: ${event.type}');
       if (soundHandle == null) return;
       if (event.begin) {
         switch (event.type) {
@@ -166,7 +176,7 @@ class _AudioContextState extends State<AudioContext> {
             isPlaying.value = ContextState.paused;
           case AudioInterruptionType.unknown:
             // Another app started playing audio and we should pause.
-            fadeoutThenPause();
+            soloud.setPause(soundHandle!, true);
             isPlaying.value = ContextState.unknown;
         }
       } else {
@@ -186,8 +196,8 @@ class _AudioContextState extends State<AudioContext> {
       }
     });
     audioSession.devicesChangedEventStream.listen((event) {
-      debugPrint('Devices added: ${event.devicesAdded}');
-      debugPrint('Devices removed: ${event.devicesRemoved}');
+      debugPrint('audio_context: Devices added: ${event.devicesAdded}');
+      debugPrint('audio_context: Devices removed: ${event.devicesRemoved}');
     });
   }
 }
