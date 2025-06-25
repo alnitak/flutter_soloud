@@ -97,6 +97,12 @@ namespace SoLoud
 
             case ma_device_notification_type_interruption_ended:
             {
+#if defined(MA_HAS_COREAUDIO)
+                // On macOS and iOS when the the interruption begins
+                // the device is automatically stopped (not uninited with ma_device_uninit).
+                // So we need to start it again when the interruption ends.
+                ma_device_start(&gDevice);
+#endif
                 soloud->_stateChangedCallback(4);
             } break;
 

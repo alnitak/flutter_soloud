@@ -107,6 +107,7 @@ class _AudioContextState extends State<AudioContext> {
 
                 ElevatedButton(
                   onPressed: () async {
+                    await session.setActive(true);
                     soloud
                       ..setPause(soundHandle!, false)
                       ..fadeGlobalVolume(1, const Duration(milliseconds: 300));
