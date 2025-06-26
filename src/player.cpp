@@ -502,7 +502,7 @@ void Player::pauseSwitch(unsigned int handle)
 
 void Player::setPause(unsigned int handle, bool pause)
 {
-    // Ensure miniaudio device is started when unpausing
+    // Ensure miniaudio device is started if it's stopped, ie by an interruption.
     if (!pause)
     {
         soloud.miniaudio_ensureDeviceStarted();
@@ -576,7 +576,7 @@ PlayerErrors Player::play(
         }
     }
 
-    // Ensure miniaudio device is started if it's stopped
+    // Ensure miniaudio device is started if it's stopped, ie by an interruption.
     soloud.miniaudio_ensureDeviceStarted();
 
     handle = 0;
@@ -698,7 +698,7 @@ PlayerErrors Player::textToSpeech(const std::string &textToSpeech, unsigned int 
     if (!mInited)
         return backendNotInited;
 
-    // Ensure miniaudio device is started if it's stopped
+    // Ensure miniaudio device is started if it's stopped, ie by an interruption.
     soloud.miniaudio_ensureDeviceStarted();
 
     sounds.push_back(std::make_unique<ActiveSound>());
@@ -1076,7 +1076,7 @@ PlayerErrors Player::play3d(
         }
     }
 
-    // Ensure miniaudio device is started if it's stopped
+    // Ensure miniaudio device is started if it's stopped, ie by an interruption.
     soloud.miniaudio_ensureDeviceStarted();
 
     handle = 0;

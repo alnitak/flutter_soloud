@@ -219,8 +219,8 @@ namespace SoLoud
 		return ret;
 	}
 
-	// Ensure miniaudio device is started if it's stopped.
-	// Added for handling device state in play() and setPause(false).
+	// Ensure miniaudio device is started if it's stopped, ie by an interruption.
+	// Added for handling device state in some player.cpp methods.
 	result Soloud::miniaudio_ensureDeviceStarted()
 	{
 		int ret = 0;
