@@ -37,9 +37,6 @@ namespace SoLoud
 			aSound.stop();
 		}
 
-		// Ensure miniaudio device is started if it's stopped
-		miniaudio_ensureDeviceStarted();
-
 		// Creation of an audio instance may take significant amount of time,
 		// so let's not do it inside the audio thread mutex.
 		aSound.mSoloud = this;

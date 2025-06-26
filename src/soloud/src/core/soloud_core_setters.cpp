@@ -65,12 +65,6 @@ namespace SoLoud
 
 	void Soloud::setPause(handle aVoiceHandle, bool aPause)
 	{
-		// Ensure miniaudio device is started when unpausing
-		if (!aPause)
-		{
-			miniaudio_ensureDeviceStarted();
-		}
-
 		FOR_ALL_VOICES_PRE
 			setVoicePause_internal(ch, aPause);
 		FOR_ALL_VOICES_POST
