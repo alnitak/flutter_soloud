@@ -205,5 +205,23 @@ namespace SoLoud
         ma_device_start(&gDevice);
         return 0;
     }
+
+    // Added to ensure miniaudio device is started when needed
+    result miniaudio_ensureDeviceStarted_impl()
+    {
+        if (soloud == nullptr)
+            return UNKNOWN_ERROR;
+
+        // Check if device is stopped and start it if needed
+        if (ma_device_get_state(&gDevice) == ma_device_state_stopped)
+        {
+            ma_result result = ma_device_start(&gDevice);
+            if (result != MA_SUCCESS)
+            {
+                return UNKNOWN_ERROR;
+            }
+        }
+        return 0;
+    }
 };
 #endif
