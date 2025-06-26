@@ -219,6 +219,20 @@ namespace SoLoud
 		return ret;
 	}
 
+	// Ensure miniaudio device is started if it's stopped.
+	// Added for handling device state in play() and setPause(false).
+	result Soloud::miniaudio_ensureDeviceStarted()
+	{
+		int ret = 0;
+#if defined(WITH_MINIAUDIO)
+		if (mAudioThreadMutex != NULL && mBackendID == MINIAUDIO)
+		{
+			ret = miniaudio_ensureDeviceStarted_impl();
+		}
+#endif
+		return ret;
+	}
+
 	result Soloud::init(unsigned int aFlags, unsigned int aBackend, unsigned int aSamplerate, unsigned int aBufferSize, unsigned int aChannels, void *pPlaybackInfos_id)
 	{		
 		if (aBackend >= BACKEND_MAX || aChannels == 3 || aChannels == 5 || aChannels == 7 || aChannels > MAX_CHANNELS)
