@@ -65,10 +65,10 @@ class _SimpleNoiseState extends State<SimpleNoise> {
   static const chunkSize = 1024 * 1024 / 10; // 1 MB
 
   /// The type of the buffer stream.
-  final bufferingType = ValueNotifier<BufferingType>(BufferingType.released);
+  final bufferingType = ValueNotifier<BufferingType>(BufferingType.preserved);
 
   /// The time needed to wait before unpausing the audio stream.
-  final bufferingTimeNeeds = 1.0;
+  final bufferingTimeNeeds = 2.0;
 
   AudioSource? noise;
   bool isBuffering = false;
@@ -169,6 +169,7 @@ class _SimpleNoiseState extends State<SimpleNoise> {
             ),
             BufferBar(
               bufferingType: bufferingType.value,
+              isBuffering: isBuffering,
               sound: noise,
               startingMb: 1,
               label: 'noise',

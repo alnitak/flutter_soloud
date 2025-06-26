@@ -8,6 +8,7 @@ import 'package:flutter_soloud/flutter_soloud.dart';
 class BufferBar extends StatefulWidget {
   const BufferBar({
     required this.bufferingType,
+    required this.isBuffering,
     super.key,
     this.label = '',
     this.sound,
@@ -18,12 +19,14 @@ class BufferBar extends StatefulWidget {
   final AudioSource? sound;
   final int startingMb;
   final BufferingType bufferingType;
+  final bool isBuffering;
 
   @override
   State<BufferBar> createState() => _BufferBarState();
 }
 
 class _BufferBarState extends State<BufferBar> {
+  final sw = Stopwatch();
   final width = 190.0;
   final height = 30.0;
   Timer? timer;
@@ -41,7 +44,10 @@ class _BufferBarState extends State<BufferBar> {
 
   @override
   Widget build(BuildContext context) {
-    if (widget.sound == null) return const SizedBox.shrink();
+    if (widget.sound == null) {
+      sw.reset();
+      return const SizedBox.shrink();
+    }
 
     final int bufferSize;
     try {
@@ -81,6 +87,16 @@ class _BufferBarState extends State<BufferBar> {
       );
     }
 
+    if (!widget.isBuffering) {
+      if (!sw.isRunning) {
+        sw.start();
+      }
+    } else {
+      if (sw.isRunning) {
+        sw.stop();
+      }
+    }
+
     final mb = (bufferSize / 1024 / 1024).toStringAsFixed(1);
 
     return Padding(
@@ -102,6 +118,7 @@ class _BufferBarState extends State<BufferBar> {
                 Text('using $mb MB'),
                 Text('length $humanDuration'),
                 Text('position: $firstHandleHumanPos'),
+                Text('time: ${toHuman(sw.elapsed)}'),
               ],
             ),
           ),
