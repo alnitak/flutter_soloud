@@ -65,7 +65,20 @@ class _AudioContextState extends State<AudioContext> {
     // Initialize the audio session.
     AudioSession.instance.then((audioSession) async {
       session = audioSession;
-      await session.configure(const AudioSessionConfiguration.music());
+      await session.configure(
+        const AudioSessionConfiguration(
+          androidWillPauseWhenDucked: true,
+          androidAudioAttributes: AndroidAudioAttributes(
+            usage: AndroidAudioUsage.media,
+            contentType: AndroidAudioContentType.music,
+          ),
+          androidAudioFocusGainType:
+              AndroidAudioFocusGainType.gainTransientMayDuck,
+          avAudioSessionCategory: AVAudioSessionCategory.playback,
+          avAudioSessionCategoryOptions:
+              AVAudioSessionCategoryOptions.mixWithOthers,
+        ),
+      );
 
       // Listen to audio interruptions and pause or duck as appropriate.
       _handleInterruptions(session);
