@@ -75,8 +75,7 @@ class _AudioContextState extends State<AudioContext> {
           androidAudioFocusGainType:
               AndroidAudioFocusGainType.gainTransientMayDuck,
           avAudioSessionCategory: AVAudioSessionCategory.playback,
-          avAudioSessionCategoryOptions:
-              AVAudioSessionCategoryOptions.mixWithOthers,
+          avAudioSessionCategoryOptions: AVAudioSessionCategoryOptions.none,
         ),
       );
 
