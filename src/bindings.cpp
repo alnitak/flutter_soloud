@@ -52,22 +52,25 @@ extern "C"
         printf("CPP bool createWorkerInWasm()\n");
 
         return EM_ASM_INT({
-            if (!Module_soloud.wasmWorker)
+            if (Module_soloud.wasmWorker)
             {
-                // Create a new Worker from the URI
-                var workerUri = "assets/packages/flutter_soloud/web/worker.dart.js";
-                console.log("EM_ASM creating Web Worker!");
+                // Terminate the existing worker before creating a new one
                 try {
-                    Module_soloud.wasmWorker = new Worker(workerUri);
-                    return 1;
+                    Module_soloud.wasmWorker.terminate();
+                    console.log("EM_ASM terminated existing Web Worker.");
                 } catch(e) {
-                    console.error('Failed to create worker:', e);
-                    return 0;
+                    console.error('Failed to terminate existing worker:', e);
                 }
+                Module_soloud.wasmWorker = null;
             }
-            else
-            {
-                console.log("EM_ASM web worker already created!");
+            // Create a new Worker from the URI
+            var workerUri = "assets/packages/flutter_soloud/web/worker.dart.js";
+            console.log("EM_ASM creating Web Worker!");
+            try {
+                Module_soloud.wasmWorker = new Worker(workerUri);
+                return 1;
+            } catch(e) {
+                console.error('Failed to create worker:', e);
                 return 0;
             }
         });
