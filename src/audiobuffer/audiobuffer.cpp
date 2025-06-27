@@ -34,7 +34,7 @@ namespace SoLoud
 		{
 			memset(aBuffer, 0, sizeof(float) * aSamplesToRead);
 			// Calculate mStreamPosition based on mOffset
-			mStreamPosition = mOffset / (float)(sizeof(float) * mSamplerate * mChannels);
+			mStreamPosition = mOffset / (float)(mSamplerate * mChannels);
 
 			// This is not nice to do in the audio callback, but I didn't
 			// find a better way to get lenght and pause the sound and the
@@ -54,7 +54,7 @@ namespace SoLoud
 		{
 			memset(aBuffer, 0, sizeof(float) * aSamplesToRead);
 			// Calculate mStreamPosition based on mOffset
-			mStreamPosition = mOffset / (float)(sizeof(float) * mSamplerate * mChannels);
+			mStreamPosition = mOffset / (float)(mSamplerate * mChannels);
 
 			// This is not nice to do in the audio callback, but I didn't
 			// find a better way to get lenght and pause the sound and the
@@ -109,7 +109,8 @@ namespace SoLoud
 		{
 			mOffset += samplesToRead * mChannels;
 			// For PRESERVED type, streamPosition advances with the offset
-            mStreamPosition = mOffset / (float)(sizeof(float) * mSamplerate * mChannels);
+            // mStreamPosition = mOffset / (float)(sizeof(float) * mSamplerate * mChannels);
+			mStreamPosition = mOffset / (float)(mSamplerate * mChannels);
 		}
 
 		return samplesToRead;
@@ -162,12 +163,14 @@ namespace SoLoud
 	bool BufferStreamInstance::hasEnded()
 	{
 		auto b = mParent->mBuffer.bufferingType == BufferingType::PRESERVED;
+		// PRESERVED
 		if (b && mParent->dataIsEnded && 
-			mOffset >= mParent->mSampleCount * mParent->mPCMformat.bytesPerSample) // PRESERVED
+			mOffset >= mParent->mSampleCount)
 		{
 			return 1;
 		} else 
-		if (!b && mParent->dataIsEnded && mParent->mSampleCount <= 0) // RELEASED
+		// RELEASED
+		if (!b && mParent->dataIsEnded && mParent->mBuffer.getFloatsBufferSize() == 0)
 		{
 			return 1;
 		}
@@ -310,7 +313,7 @@ namespace SoLoud
 					buffer.data(),
 					bufferDataToAdd);
 				if (newData.size() > 0)
-					bytesWritten = mBuffer.addData(BufferType::OPUS, newData.data(), newData.size());
+					bytesWritten = mBuffer.addData(BufferType::OPUS, newData.data(), newData.size()) * mPCMformat.bytesPerSample;
 				else
 					return PlayerErrors::noError;
 			}
@@ -324,7 +327,7 @@ namespace SoLoud
 		}
 		else
 		{
-			bytesWritten = mBuffer.addData(mPCMformat.dataType, buffer.data(), bufferDataToAdd / mPCMformat.bytesPerSample);
+			bytesWritten = mBuffer.addData(mPCMformat.dataType, buffer.data(), bufferDataToAdd / mPCMformat.bytesPerSample) * mPCMformat.bytesPerSample;
 		}
 
 		// Remove the processed data from the buffer
@@ -355,31 +358,33 @@ namespace SoLoud
 		// If a handle reaches the end and data is not ended, we have to wait for it has enough data
 		// to reach [TIME_FOR_BUFFERING] and restart playing it.
 		SoLoud::time currBufferTime = getLength();
-		// time addedDataTime = afterAddingBytesCount / (mBaseSamplerate * mPCMformat.bytesPerSample * mChannels);
 		SoLoud::time addedDataTime = (afterAddingBytesCount / mPCMformat.bytesPerSample) / (mBaseSamplerate * mChannels);
+
 		for (int i = 0; i < mParent->handle.size(); i++)
 		{
 			SoLoud::handle handle = mParent->handle[i].handle;
 			SoLoud::time pos = mBuffer.bufferingType == BufferingType::RELEASED ? getStreamTimeConsumed() :  mThePlayer->getPosition(handle);
+			bool isPaused = mThePlayer->getPause(handle);
 
-			bool p = mThePlayer->getPause(handle);
 			// This handle needs to wait for [TIME_FOR_BUFFERING]. Pause it.
-			if (pos >= currBufferTime + addedDataTime && !mThePlayer->getPause(handle))
+			if (pos >= currBufferTime + addedDataTime && !isPaused)
 			{
 				mParent->handle[i].bufferingTime = currBufferTime;
 				mThePlayer->setPause(handle, true);
+				isPaused = true;
 				callOnBufferingCallback(true, handle, currBufferTime);
 			} else
 			// This handle has reached [TIME_FOR_BUFFERING]. Unpause it.
 			if (currBufferTime + addedDataTime - mParent->handle[i].bufferingTime >= mBufferingTimeNeeds &&
-				mThePlayer->getPause(handle))
+				isPaused)
 			{
 				mThePlayer->setPause(handle, false);
+				isPaused = false;
 				mParent->handle[i].bufferingTime = currBufferTime + addedDataTime;
 				callOnBufferingCallback(false, handle, currBufferTime);
-			} else
+			}
 			// If data is ended and the handle is paused, unpause it to listen to the rest of the data.
-			if (dataIsEnded && mThePlayer->getPause(handle))
+			if (dataIsEnded && isPaused)
 			{
 				mThePlayer->setPause(handle, false);
 				mParent->handle[i].bufferingTime = MAX_DOUBLE;
@@ -427,13 +432,12 @@ namespace SoLoud
 	{
 		if (mBaseSamplerate == 0)
 			return 0;
-		// return mSampleCount / mBaseSamplerate * mPCMformat.bytesPerSample / mPCMformat.channels;
 		return (mUncompressedBytesReceived / mPCMformat.bytesPerSample) / (mBaseSamplerate * mPCMformat.channels);
 	}
 
 	/// Get the time consumed by this stream of type RELEASED
 	SoLoud::time BufferStream::getStreamTimeConsumed()
 	{
-		return (mBytesConsumed / mPCMformat.bytesPerSample) / (mBaseSamplerate * mPCMformat.channels * sizeof(float));
+		return (mBytesConsumed / mPCMformat.bytesPerSample) / (mBaseSamplerate * mPCMformat.channels);
 	}
 };

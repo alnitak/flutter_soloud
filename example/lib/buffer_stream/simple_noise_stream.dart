@@ -62,7 +62,7 @@ class SimpleNoise extends StatefulWidget {
 
 class _SimpleNoiseState extends State<SimpleNoise> {
   /// The size of the chunks to be sent to the buffer stream in bytes.
-  static const chunkSize = 1024 * 1024 / 10; // 1 MB
+  static const chunkSize = 1024 * 1024 / 10; // 0.1 MB
 
   /// The type of the buffer stream.
   final bufferingType = ValueNotifier<BufferingType>(BufferingType.preserved);
@@ -71,6 +71,8 @@ class _SimpleNoiseState extends State<SimpleNoise> {
   final bufferingTimeNeeds = 2.0;
 
   AudioSource? noise;
+
+  /// Whether the sound is awaiting for new data or not.
   bool isBuffering = false;
 
   @override
