@@ -101,7 +101,7 @@ namespace SoLoud
                 // On macOS and iOS when the the interruption begins
                 // the device is automatically stopped (not uninited with ma_device_uninit).
                 // So we need to start it again when the interruption ends.
-                miniaudio_ensureDeviceStarted_impl()
+                miniaudio_ensureDeviceStarted_impl();
 #endif
                 soloud->_stateChangedCallback(4);
             } break;
