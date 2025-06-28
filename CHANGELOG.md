@@ -1,7 +1,8 @@
-#### 3.2.0 (XX Xxx 2025)
-- fix #104, #245, #249. Itis now possible to use a 3rd party plugin like `audio_session` to manage audio context.
+#### 3.2.0 (28 Jun 2025)
+- fix #104, #245, #249. It is now possible to use a 3rd party plugin like `audio_session` to manage audio context.
 - new audio context example in `example/lib/audio_context/audio_context.dart`.
-- fix: GetPosition for buffer streams and Web hot reload/restard #258 and #259
+- fix GetPosition returned value for buffer streams.
+- fix Web hot reload/restard #258 and #259.
 
 #### 3.1.12 (21 Jun 2025)
 - added `getStreamTimeConsumed()` to get the time consumed by a buffer stream of kind `BufferingType.released`. Since the position of this kind of stream is always 0, this method is useful to know the time already played.
