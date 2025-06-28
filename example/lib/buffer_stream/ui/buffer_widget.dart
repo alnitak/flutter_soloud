@@ -8,6 +8,7 @@ import 'package:flutter_soloud/flutter_soloud.dart';
 class BufferBar extends StatefulWidget {
   const BufferBar({
     required this.bufferingType,
+    required this.isBuffering,
     super.key,
     this.label = '',
     this.sound,
@@ -18,6 +19,7 @@ class BufferBar extends StatefulWidget {
   final AudioSource? sound;
   final int startingMb;
   final BufferingType bufferingType;
+  final bool isBuffering;
 
   @override
   State<BufferBar> createState() => _BufferBarState();
@@ -41,7 +43,9 @@ class _BufferBarState extends State<BufferBar> {
 
   @override
   Widget build(BuildContext context) {
-    if (widget.sound == null) return const SizedBox.shrink();
+    if (widget.sound == null) {
+      return const SizedBox.shrink();
+    }
 
     final int bufferSize;
     try {
@@ -83,59 +87,54 @@ class _BufferBarState extends State<BufferBar> {
 
     final mb = (bufferSize / 1024 / 1024).toStringAsFixed(1);
 
-    return Padding(
-      padding: const EdgeInsets.all(8),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SizedBox(
-            width: 150,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      spacing: 8,
+      children: [
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            if (widget.label != null && widget.label!.isNotEmpty)
+              Text(
+                widget.label!,
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+            Text('using: $bufferSize b = $mb MB'),
+            Text('length: $humanDuration'),
+            Text('pos: $firstHandleHumanPos'),
+          ],
+        ),
+        ColoredBox(
+          color: Colors.grey,
+          child: Padding(
+            padding: const EdgeInsets.all(10),
+            child: Stack(
               children: [
-                if (widget.label != null && widget.label!.isNotEmpty)
-                  Text(
-                    widget.label!,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
+                SizedBox(
+                  height: height,
+                  width: width,
+                  child: LinearProgressIndicator(
+                    value: progressValue,
+                    backgroundColor: Colors.black,
+                    valueColor: const AlwaysStoppedAnimation(Colors.red),
+                    minHeight: height,
                   ),
-                Text('using $mb MB'),
-                Text('length $humanDuration'),
-                Text('position: $firstHandleHumanPos'),
+                ),
+                for (var i = 0; i < handlesPos.length; i++)
+                  Positioned(
+                    left: handlesPos[i] * progressValue * width,
+                    child: SizedBox(
+                      height: height,
+                      width: 3,
+                      child: const ColoredBox(color: Colors.yellowAccent),
+                    ),
+                  ),
               ],
             ),
           ),
-          ColoredBox(
-            color: Colors.grey,
-            child: Padding(
-              padding: const EdgeInsets.all(10),
-              child: Stack(
-                children: [
-                  SizedBox(
-                    height: height,
-                    width: width,
-                    child: LinearProgressIndicator(
-                      value: progressValue,
-                      backgroundColor: Colors.black,
-                      valueColor: const AlwaysStoppedAnimation(Colors.red),
-                      minHeight: height,
-                    ),
-                  ),
-                  for (var i = 0; i < handlesPos.length; i++)
-                    Positioned(
-                      left: handlesPos[i] * progressValue * width,
-                      child: SizedBox(
-                        height: height,
-                        width: 3,
-                        child: const ColoredBox(color: Colors.yellowAccent),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 

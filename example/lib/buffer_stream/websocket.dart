@@ -322,6 +322,7 @@ class _WebsocketExampleState extends State<WebsocketExample> {
           const SizedBox(height: 16),
           BufferBar(
             bufferingType: BufferingType.preserved,
+            isBuffering: streamBuffering.value,
             sound: currentSound,
           ),
           const SizedBox(height: 16),

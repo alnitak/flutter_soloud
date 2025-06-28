@@ -263,18 +263,21 @@ class _GenerateState extends State<Generate> {
             gap,
             BufferBar(
               bufferingType: BufferingType.preserved,
+              isBuffering: false,
               sound: tone,
               startingMb: 1,
               label: 'tone',
             ),
             BufferBar(
               bufferingType: BufferingType.preserved,
+              isBuffering: false,
               sound: siren,
               startingMb: 1,
               label: 'siren',
             ),
             BufferBar(
               bufferingType: BufferingType.preserved,
+              isBuffering: false,
               sound: bouncing,
               startingMb: 1,
               label: 'bouncing',
