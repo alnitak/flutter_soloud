@@ -1,3 +1,7 @@
+#### 3.2.0 (XX Xxx 2025)
+- fix #104, #245, #249. Itis now possible to use a 3rd party plugin like `audio_session` to manage audio context.
+- new audio context example in `example/lib/audio_context/audio_context.dart`.
+
 #### 3.1.12 (21 Jun 2025)
 - added `getStreamTimeConsumed()` to get the time consumed by a buffer stream of kind `BufferingType.released`. Since the position of this kind of stream is always 0, this method is useful to know the time already played.
 - fix pause/unpause on audio stream buffering.
