@@ -1,3 +1,6 @@
+#### 3.2.0 (XX Xxx 2025)
+- fix: GetPosition for buffer streams and Web hot reload/restard #258 and #259
+
 #### 3.1.12 (21 Jun 2025)
 - added `getStreamTimeConsumed()` to get the time consumed by a buffer stream of kind `BufferingType.released`. Since the position of this kind of stream is always 0, this method is useful to know the time already played.
 - fix pause/unpause on audio stream buffering.
