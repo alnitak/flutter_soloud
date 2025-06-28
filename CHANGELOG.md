@@ -1,4 +1,4 @@
-#### 3.2.0 (28 Jun 2025)
+#### 3.2.1 (28 Jun 2025)
 - fix #104, #245, #249. It is now possible to use a 3rd party plugin like `audio_session` to manage audio context.
 - new audio context example in `example/lib/audio_context/audio_context.dart`.
 - fix GetPosition returned value for buffer streams.
