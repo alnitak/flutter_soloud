@@ -502,6 +502,12 @@ void Player::pauseSwitch(unsigned int handle)
 
 void Player::setPause(unsigned int handle, bool pause)
 {
+    // Ensure miniaudio device is started if it's stopped, ie by an interruption.
+    if (!pause)
+    {
+        soloud.miniaudio_ensureDeviceStarted();
+    }
+    
     soloud.setPause(handle, pause);
 }
 
@@ -569,6 +575,9 @@ PlayerErrors Player::play(
             return PlayerErrors::maxActiveVoiceCountReached;
         }
     }
+
+    // Ensure miniaudio device is started if it's stopped, ie by an interruption.
+    soloud.miniaudio_ensureDeviceStarted();
 
     handle = 0;
     SoLoud::handle newHandle = soloud.play(
@@ -688,6 +697,9 @@ PlayerErrors Player::textToSpeech(const std::string &textToSpeech, unsigned int 
 {
     if (!mInited)
         return backendNotInited;
+
+    // Ensure miniaudio device is started if it's stopped, ie by an interruption.
+    soloud.miniaudio_ensureDeviceStarted();
 
     sounds.push_back(std::make_unique<ActiveSound>());
     sounds.back().get()->completeFileName = std::string("");
@@ -1063,6 +1075,9 @@ PlayerErrors Player::play3d(
             return PlayerErrors::maxActiveVoiceCountReached;
         }
     }
+
+    // Ensure miniaudio device is started if it's stopped, ie by an interruption.
+    soloud.miniaudio_ensureDeviceStarted();
 
     handle = 0;
     SoLoud::handle newHandle = soloud.play3d(

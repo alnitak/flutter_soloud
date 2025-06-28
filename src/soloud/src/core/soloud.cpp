@@ -209,14 +209,28 @@ namespace SoLoud
 	// Added by Marco Bavagnoli
 	result Soloud::miniaudio_changeDevice(void *pPlaybackInfos_id)
 	{
-#if defined(WITH_MINIAUDIO)
 		int ret = 0;
+#if defined(WITH_MINIAUDIO)
 		if (mAudioThreadMutex != NULL)
 		{
 			ret = miniaudio_changeDevice_impl(pPlaybackInfos_id);
 		}
-		return ret;
 #endif
+		return ret;
+	}
+
+	// Ensure miniaudio device is started if it's stopped, ie by an interruption.
+	// Added for handling device state in some player.cpp methods.
+	result Soloud::miniaudio_ensureDeviceStarted()
+	{
+		int ret = 0;
+#if defined(WITH_MINIAUDIO)
+		if (mAudioThreadMutex != NULL && mBackendID == MINIAUDIO)
+		{
+			ret = miniaudio_ensureDeviceStarted_impl();
+		}
+#endif
+		return ret;
 	}
 
 	result Soloud::init(unsigned int aFlags, unsigned int aBackend, unsigned int aSamplerate, unsigned int aBufferSize, unsigned int aChannels, void *pPlaybackInfos_id)

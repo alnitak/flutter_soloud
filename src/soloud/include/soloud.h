@@ -245,6 +245,10 @@ namespace SoLoud
 		// Added by Marco Bavagnoli
 		result miniaudio_changeDevice(void *pPlaybackInfos_id);
 
+		// Ensure miniaudio device is started if it's stopped.
+		// Added for handling device state in play() and setPause(false).
+		result miniaudio_ensureDeviceStarted();
+
 		result pause();
 		result resume();
 
