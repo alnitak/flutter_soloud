@@ -77,7 +77,7 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
               onPressed: () async {
                 paths = (await FilePicker.platform.pickFiles(
                   type: FileType.custom,
-                  allowedExtensions: ['mp3', 'wav', 'flac'],
+                  allowedExtensions: ['mp3', 'wav', 'flac', 'ogg'],
                   onFileLoading: print,
                   dialogTitle: 'Pick audio file',
                 ))

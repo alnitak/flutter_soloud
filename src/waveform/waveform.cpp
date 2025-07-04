@@ -1,4 +1,5 @@
 #include "../soloud/src/backend/miniaudio/miniaudio.h"
+#include "miniaudio_libvorbis.h"
 #include "waveform.h"
 
 #include <cstdio>
@@ -89,12 +90,49 @@ namespace Waveform
         memset(pSamples, 0, numSamplesNeeded * sizeof(float));
 
         ma_decoder decoder;
+        ma_decoder_config decoderConfig;
         ma_result result;
+        bool isOgg = false;
+
+        // Check if the file is an OGG file reading the header
+        if (filePath != NULL)
+        {
+            FILE *file = fopen(filePath, "rb");
+            if (file)
+            {
+                unsigned char header[4];
+                fread(header, 1, 4, file);
+                if (header[0] == 'O' && header[1] == 'g' && header[2] == 'g' && header[3] == 'S')
+                    isOgg = true;
+                fclose(file);
+            }
+        }
+        // Check if buffer is an OGG file
+        else if (buffer[0] == 'O' && buffer[1] == 'g' && buffer[2] == 'g' && buffer[3] == 'S')
+            isOgg = true;
+
+        if (isOgg)
+        {
+            ma_decoding_backend_vtable* pCustomBackendVTables[] =
+            {
+                ma_decoding_backend_libvorbis
+            };
+            // Initialize the decoder.
+            decoderConfig = ma_decoder_config_init_default();
+            decoderConfig.pCustomBackendUserData = NULL;  /* None of our decoders require user data, so this can be set to null. */
+            decoderConfig.ppCustomBackendVTables = pCustomBackendVTables;
+            decoderConfig.customBackendCount     = sizeof(pCustomBackendVTables) / sizeof(pCustomBackendVTables[0]);
+            decoderConfig.format = ma_format_f32;
+            decoderConfig.channels = 1;
+            decoderConfig.sampleRate = 22000;
+        }
+
+
         // Init the decoder with file or memory
         if (filePath != NULL)
-            result = ma_decoder_init_file(filePath, NULL, &decoder);
+            result = ma_decoder_init_file(filePath, isOgg ? &decoderConfig : NULL, &decoder);
         else
-            result = ma_decoder_init_memory(buffer, dataSize, NULL, &decoder);
+            result = ma_decoder_init_memory(buffer, dataSize, isOgg ? &decoderConfig : NULL, &decoder);
 
         if (result != MA_SUCCESS)
         {
@@ -115,10 +153,18 @@ namespace Waveform
         }
         // Re-init decoder forcing ma_format_f32
         ma_decoder_config config = ma_decoder_config_init(ma_format_f32, channels, sampleRate);
+
+        if (isOgg)
+        {
+            // decoderConfig.format = ma_format_f32;
+            // decoderConfig.channels = channels;
+            // decoderConfig.sampleRate = sampleRate;
+        }
+
         if (filePath != NULL)
-            result = ma_decoder_init_file(filePath, &config, &decoder);
+            result = ma_decoder_init_file(filePath, isOgg ? &decoderConfig : &config, &decoder);
         else
-            result = ma_decoder_init_memory(buffer, dataSize, &config, &decoder);
+            result = ma_decoder_init_memory(buffer, dataSize, isOgg ? &decoderConfig : &config, &decoder);
 
         if (result != MA_SUCCESS)
         {

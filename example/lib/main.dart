@@ -1,4 +1,5 @@
 import 'dart:developer' as dev;
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -60,23 +61,24 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
       body: Center(
         child: ElevatedButton(
           onPressed: () async {
-            await SoLoud.instance.disposeAllSources();
+            // read the file bytes from "home/deimos/8/sample-1.ogg"
+            // final f = File('/home/deimos/8/sample-1.ogg');
+            // final bytes = f.readAsBytesSync();
 
-            if (kIsWeb) {
-              /// load the audio file using [LoadMode.disk] (better for the
-              /// Web platform).
-              currentSound = await SoLoud.instance.loadAsset(
-                'assets/audio/8_bit_mentality.mp3',
-                mode: LoadMode.disk,
-              );
-            } else {
-              /// load the audio file
-              currentSound = await SoLoud.instance
-                  .loadAsset('assets/audio/8_bit_mentality.mp3');
-            }
+            // final waveformData = await SoLoud.instance.readSamplesFromMem(
+            //   bytes,
+            //   2000,
+            //   // average: true, // Average samples to smooth out the waveform
+            // );
 
-            /// play it
-            await SoLoud.instance.play(currentSound!);
+            final waveformData = await SoLoud.instance.readSamplesFromFile(
+              '/home/deimos/8/sample-1.ogg',
+              2000,
+              // average: true, // Average samples to smooth out the waveform
+            );
+            bool b;
+            b = true;
+            print(b);
           },
           child: const Text(
             'play asset',

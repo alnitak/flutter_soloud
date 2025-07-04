@@ -25,6 +25,13 @@ if [ ! -d "ogg" ]; then
     cd ..
 fi
 
+if [ ! -d "vorbis" ]; then
+    git clone https://github.com/xiph/vorbis
+    cd vorbis
+    git reset --hard 84c0236
+    cd ..
+fi
+
 if [ ! -d "opus" ]; then
     git clone https://github.com/xiph/opus
     cd opus
@@ -55,7 +62,8 @@ build_lib() {
         -DCMAKE_C_FLAGS="-Os -flto -ffunction-sections -fdata-sections" \
         -DCMAKE_EXE_LINKER_FLAGS="-Wl,--gc-sections -flto" \
         -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--gc-sections -flto" \
-        -DCMAKE_C_FLAGS_RELEASE="-O3 -DNDEBUG"
+        -DCMAKE_C_FLAGS_RELEASE="-O3 -DNDEBUG" \
+        -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 
     cmake --build . --config Release --target install
     
@@ -70,15 +78,18 @@ build_lib() {
         cp -r "$temp_install_path/include/ogg" "$OUTPUT_INCLUDE_DIR/"
     elif [ "$lib" = "opus" ]; then
         cp -r "$temp_install_path/include/opus" "$OUTPUT_INCLUDE_DIR/"
+    elif [ "$lib" = "vorbis" ]; then
+        cp -r "$temp_install_path/include/vorbis" "$OUTPUT_INCLUDE_DIR/"
     fi
     
     # Go back to base directory
     cd "$BASE_DIR"
 }
 
-# Build both libraries
+# Build all libraries
 echo "=== Building libraries ==="
 build_lib "ogg"
+build_lib "vorbis"
 build_lib "opus"
 
 echo
