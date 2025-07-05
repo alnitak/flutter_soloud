@@ -90,9 +90,14 @@ namespace Waveform
         memset(pSamples, 0, numSamplesNeeded * sizeof(float));
 
         ma_decoder decoder;
-        ma_decoder_config decoderConfig;
+        ma_decoder_config decoderConfig = ma_decoder_config_init_default();
         ma_result result;
         bool isOgg = false;
+
+        // Create a static backend vtable to ensure it persists
+        static ma_decoding_backend_vtable* pCustomBackendVTables[] = {
+            ma_decoding_backend_libvorbis
+        };
 
         // Check if the file is an OGG file reading the header
         if (filePath != NULL)
@@ -113,20 +118,10 @@ namespace Waveform
 
         if (isOgg)
         {
-            ma_decoding_backend_vtable* pCustomBackendVTables[] =
-            {
-                ma_decoding_backend_libvorbis
-            };
-            // Initialize the decoder.
-            decoderConfig = ma_decoder_config_init_default();
-            decoderConfig.pCustomBackendUserData = NULL;  /* None of our decoders require user data, so this can be set to null. */
+            decoderConfig.pCustomBackendUserData = NULL;
             decoderConfig.ppCustomBackendVTables = pCustomBackendVTables;
-            decoderConfig.customBackendCount     = sizeof(pCustomBackendVTables) / sizeof(pCustomBackendVTables[0]);
-            decoderConfig.format = ma_format_f32;
-            decoderConfig.channels = 1;
-            decoderConfig.sampleRate = 22000;
+            decoderConfig.customBackendCount = sizeof(pCustomBackendVTables) / sizeof(pCustomBackendVTables[0]);
         }
-
 
         // Init the decoder with file or memory
         if (filePath != NULL)
@@ -143,7 +138,7 @@ namespace Waveform
         ma_uint32 sampleRate;
         ma_uint32 channels;
         ma_format format;
-        // Get audio [sampleRate] and  [channels]
+        // Get audio [sampleRate] and [channels]
         result = ma_data_source_get_data_format(&decoder, &format, &channels, &sampleRate, NULL, 0);
         if (result != MA_SUCCESS)
         {
@@ -151,25 +146,28 @@ namespace Waveform
             ma_decoder_uninit(&decoder);
             return failedToGetDataFormat;
         }
-        // Re-init decoder forcing ma_format_f32
-        ma_decoder_config config = ma_decoder_config_init(ma_format_f32, channels, sampleRate);
 
-        if (isOgg)
+        // Re-initialize decoder with f32 format
+        if (format != ma_format_f32)
         {
-            // decoderConfig.format = ma_format_f32;
-            // decoderConfig.channels = channels;
-            // decoderConfig.sampleRate = sampleRate;
-        }
+            ma_decoder_uninit(&decoder);
+            
+            // Update config with format settings
+            decoderConfig.format = ma_format_f32;
+            decoderConfig.channels = channels;
+            decoderConfig.sampleRate = sampleRate;
 
-        if (filePath != NULL)
-            result = ma_decoder_init_file(filePath, isOgg ? &decoderConfig : &config, &decoder);
-        else
-            result = ma_decoder_init_memory(buffer, dataSize, isOgg ? &decoderConfig : &config, &decoder);
+            // Re-init with updated config
+            if (filePath != NULL)
+                result = ma_decoder_init_file(filePath, &decoderConfig, &decoder);
+            else
+                result = ma_decoder_init_memory(buffer, dataSize, &decoderConfig, &decoder);
 
-        if (result != MA_SUCCESS)
-        {
-            printf("Failed to initialize decoder forcing f32.\n");
-            return noBackend;
+            if (result != MA_SUCCESS)
+            {
+                printf("Failed to initialize decoder forcing f32.\n");
+                return noBackend;
+            }
         }
 
         ReadSamplesErrors ret = readSamplesFromDecoder(&decoder, startTime, endTime, numSamplesNeeded, average, pSamples);

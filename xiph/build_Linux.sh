@@ -6,11 +6,14 @@
 # Exit on any error
 set -e
 
+BOLD_WHITE_ON_GREEN="\e[1;37;42m"
+RESET="\e[0m"
+
 # Directories setup
 BASE_DIR="$PWD"
 BUILD_DIR="$BASE_DIR/linux/build"
-OUTPUT_DIR="$BASE_DIR/linux/libs"
-OUTPUT_INCLUDE_DIR="$BASE_DIR/linux/include"
+OUTPUT_DIR="$BASE_DIR/../linux/libs"               # plugin linux dir
+OUTPUT_INCLUDE_DIR="$BASE_DIR/../linux/include"    # plugin linux dir
 
 # Create directories
 mkdir -p "$BUILD_DIR"
@@ -87,14 +90,18 @@ build_lib() {
 }
 
 # Build all libraries
-echo "=== Building libraries ==="
+echo -e "${BOLD_WHITE_ON_GREEN}=== Building libraries ===${RESET}"
 build_lib "ogg"
 build_lib "vorbis"
 build_lib "opus"
 
+echo -e "${BOLD_WHITE_ON_GREEN}=== Removing not used libvorbisenc.so* ===${RESET}"
+rm "$OUTPUT_DIR/libvorbisenc.so"*
+rm "$OUTPUT_INCLUDE_DIR/vorbis/vorbisenc.h"
+
 echo
-echo "Libraries created in $OUTPUT_DIR:"
+echo -e "${BOLD_WHITE_ON_GREEN}Libraries created in $OUTPUT_DIR:${RESET}"
 ls -l $OUTPUT_DIR
 echo
-echo "Include files copied to $OUTPUT_INCLUDE_DIR:"
+echo -e "${BOLD_WHITE_ON_GREEN}Include files copied to $OUTPUT_INCLUDE_DIR:${RESET}"
 ls -l $OUTPUT_INCLUDE_DIR

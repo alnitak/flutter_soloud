@@ -135,10 +135,15 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
           average: average,
         );
       } else {
-        final f = File(paths!.first.path!);
-        final bytes = f.readAsBytesSync();
-        data = await SoLoud.instance.readSamplesFromMem(
-          bytes,
+        // final f = File(paths!.first.path!);
+        // final bytes = f.readAsBytesSync();
+        // data = await SoLoud.instance.readSamplesFromMem(
+        //   bytes,
+        //   width * 4,
+        //   average: average,
+        // );
+        data = await SoLoud.instance.readSamplesFromFile(
+          paths!.first.path!,
           width * 4,
           average: average,
         );
