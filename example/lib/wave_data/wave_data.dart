@@ -138,9 +138,9 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
         // final f = File(paths!.first.path!);
         // final bytes = f.readAsBytesSync();
         // data = await SoLoud.instance.readSamplesFromMem(
-        //   bytes,
-        //   width * 4,
-        //   average: average,
+          // bytes,
+          // width * 4,
+          // average: average,
         // );
         data = await SoLoud.instance.readSamplesFromFile(
           paths!.first.path!,

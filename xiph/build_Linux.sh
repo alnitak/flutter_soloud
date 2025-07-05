@@ -48,7 +48,7 @@ build_lib() {
     local build_path="$BUILD_DIR/${lib}"
     local temp_install_path="$build_path/install"
     
-    echo "Building $lib..."
+    echo -e "${BOLD_WHITE_ON_GREEN}Building $lib...${RESET}"
     
     # Create build directory
     mkdir -p "$build_path"
