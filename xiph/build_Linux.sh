@@ -58,15 +58,29 @@ build_lib() {
     cd "$build_path"
     
     # Configure and build
-    cmake "$BASE_DIR/$lib" \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_INSTALL_PREFIX="$temp_install_path" \
-        -DBUILD_SHARED_LIBS=ON \
-        -DCMAKE_C_FLAGS="-Os -flto -ffunction-sections -fdata-sections" \
-        -DCMAKE_EXE_LINKER_FLAGS="-Wl,--gc-sections -flto" \
-        -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--gc-sections -flto" \
-        -DCMAKE_C_FLAGS_RELEASE="-O3 -DNDEBUG" \
-        -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+    if [ "$lib" = "vorbis" ]; then
+        cmake "$BASE_DIR/$lib" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$temp_install_path" \
+            -DBUILD_SHARED_LIBS=ON \
+            -DCMAKE_C_FLAGS="-O2 -flto -ffunction-sections -fdata-sections" \
+            -DCMAKE_EXE_LINKER_FLAGS="-Wl,--gc-sections -flto" \
+            -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--gc-sections -flto" \
+            -DCMAKE_C_FLAGS_RELEASE="-O2 -DNDEBUG" \
+            -DOGG_LIBRARY="$OUTPUT_DIR/libogg.so" \
+            -DOGG_INCLUDE_DIR="$OUTPUT_INCLUDE_DIR" \
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+    else
+        cmake "$BASE_DIR/$lib" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$temp_install_path" \
+            -DBUILD_SHARED_LIBS=ON \
+            -DCMAKE_C_FLAGS="-O2 -flto -ffunction-sections -fdata-sections" \
+            -DCMAKE_EXE_LINKER_FLAGS="-Wl,--gc-sections -flto" \
+            -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--gc-sections -flto" \
+            -DCMAKE_C_FLAGS_RELEASE="-O2 -DNDEBUG" \
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+    fi
 
     cmake --build . --config Release --target install
     

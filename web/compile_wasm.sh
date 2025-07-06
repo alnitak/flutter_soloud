@@ -64,7 +64,7 @@ if [ "${SKIP_OPUS_OGG}" != "1" ]; then
     if [ ! -f "$OGG_DIR/src/.libs/libogg.a" ] || [ $FORCE_REBUILD_LIBS -eq 1 ]; then
         cd "$OGG_DIR"
         ./autogen.sh
-        emconfigure ./configure CFLAGS="-O3 -fPIC"
+        emconfigure ./configure CFLAGS="-O2 -fPIC"
         emmake make -j$CORES
         cd -
     fi
@@ -79,7 +79,7 @@ if [ "${SKIP_OPUS_OGG}" != "1" ]; then
             --disable-doc \
             --disable-rtcd \
             --disable-intrinsics \
-            CFLAGS="-O3 -fPIC"
+            CFLAGS="-O2 -fPIC"
         emmake make -j$CORES
         cd -
     fi
@@ -90,7 +90,7 @@ if [ "${SKIP_OPUS_OGG}" != "1" ]; then
         cd "$VORBIS_DIR"
         ./autogen.sh
         emconfigure ./configure \
-            CFLAGS="-O3 -fPIC -L$OGG_DIR/src/.libs -I$OGG_DIR/include" \
+            CFLAGS="-O2 -fPIC -L$OGG_DIR/src/.libs -I$OGG_DIR/include" \
             --with-ogg="$OGG_DIR"
         emmake make -j$CORES
         cd -

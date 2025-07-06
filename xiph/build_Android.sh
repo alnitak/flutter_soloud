@@ -85,7 +85,7 @@ build_lib() {
             -DCMAKE_C_FLAGS="-Os -flto -ffunction-sections -fdata-sections" \
             -DCMAKE_EXE_LINKER_FLAGS="-Wl,--gc-sections -flto" \
             -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--gc-sections -flto" \
-            -DCMAKE_C_FLAGS_RELEASE="-O3 -DNDEBUG" \
+            -DCMAKE_C_FLAGS_RELEASE="-O2 -DNDEBUG" \
             -DOGG_LIBRARY="$install_path/libogg.so" \
             -DOGG_INCLUDE_DIR="$OUTPUT_DIR/../include" \
             -DCMAKE_POLICY_VERSION_MINIMUM=3.5
@@ -100,7 +100,7 @@ build_lib() {
             -DCMAKE_C_FLAGS="-Os -flto -ffunction-sections -fdata-sections" \
             -DCMAKE_EXE_LINKER_FLAGS="-Wl,--gc-sections -flto" \
             -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--gc-sections -flto" \
-            -DCMAKE_C_FLAGS_RELEASE="-O3 -DNDEBUG" \
+            -DCMAKE_C_FLAGS_RELEASE="-O2 -DNDEBUG" \
             -DCMAKE_POLICY_VERSION_MINIMUM=3.5
     fi
 
