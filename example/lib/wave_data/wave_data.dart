@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:logging/logging.dart';
 
@@ -28,11 +29,6 @@ void main() async {
     );
   });
 
-  WidgetsFlutterBinding.ensureInitialized();
-
-  /// Initialize the player.
-  await SoLoud.instance.init();
-
   runApp(
     const MaterialApp(
       home: HelloFlutterSoLoud(),
@@ -55,15 +51,7 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
   bool average = false;
 
   @override
-  void dispose() {
-    SoLoud.instance.deinit();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    if (!SoLoud.instance.isInitialized) return const SizedBox.shrink();
-
     final width = MediaQuery.sizeOf(context).width.toInt();
     return Scaffold(
       body: Center(
@@ -75,13 +63,13 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
             ),
             OutlinedButton(
               onPressed: () async {
-                paths = (await FilePicker.platform.pickFiles(
-                  type: FileType.custom,
-                  allowedExtensions: ['mp3', 'wav', 'flac', 'ogg'],
-                  onFileLoading: print,
-                  dialogTitle: 'Pick audio file',
-                ))
-                    ?.files;
+                // paths = (await FilePicker.platform.pickFiles(
+                //   type: FileType.custom,
+                //   allowedExtensions: ['mp3', 'wav', 'flac', 'ogg'],
+                //   onFileLoading: print,
+                //   dialogTitle: 'Pick audio file',
+                // ))
+                //     ?.files;
 
                 await _loadPath(width);
                 if (context.mounted) setState(() {});
@@ -126,11 +114,17 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
   }
 
   Future<void> _loadPath(int width) async {
-    if (paths != null) {
       if (kIsWeb) {
         // on web we can't read the bytes from the file.
+        // data = await SoLoud.instance.readSamplesFromMem(
+        //   paths!.first.bytes!,
+        //   width * 4,
+        //   average: average,
+        // );
+        final byteData = await rootBundle.load('assets/audio/sample-1.ogg');
         data = await SoLoud.instance.readSamplesFromMem(
-          paths!.first.bytes!,
+          byteData.buffer
+              .asUint8List(byteData.offsetInBytes, byteData.lengthInBytes),
           width * 4,
           average: average,
         );
@@ -138,9 +132,9 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
         // final f = File(paths!.first.path!);
         // final bytes = f.readAsBytesSync();
         // data = await SoLoud.instance.readSamplesFromMem(
-          // bytes,
-          // width * 4,
-          // average: average,
+        // bytes,
+        // width * 4,
+        // average: average,
         // );
         data = await SoLoud.instance.readSamplesFromFile(
           paths!.first.path!,
@@ -148,7 +142,6 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
           average: average,
         );
       }
-    }
   }
 }
 
