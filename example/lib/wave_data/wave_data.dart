@@ -63,13 +63,13 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
             ),
             OutlinedButton(
               onPressed: () async {
-                paths = (await FilePicker.platform.pickFiles(
-                  type: FileType.custom,
-                  allowedExtensions: ['mp3', 'wav', 'flac', 'ogg'],
-                  onFileLoading: print,
-                  dialogTitle: 'Pick audio file',
-                ))
-                    ?.files;
+                // paths = (await FilePicker.platform.pickFiles(
+                //   type: FileType.custom,
+                //   allowedExtensions: ['mp3', 'wav', 'flac', 'ogg'],
+                //   onFileLoading: print,
+                //   dialogTitle: 'Pick audio file',
+                // ))
+                //     ?.files;
 
                 await _loadPath(width);
                 if (context.mounted) setState(() {});
@@ -114,7 +114,7 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
   }
 
   Future<void> _loadPath(int width) async {
-      if (kIsWeb) {
+      if (!kIsWeb) {
         // on web we can't read the bytes from the file.
         // data = await SoLoud.instance.readSamplesFromMem(
         //   paths!.first.bytes!,
@@ -129,18 +129,18 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
           average: average,
         );
       } else {
-        // final f = File(paths!.first.path!);
-        // final bytes = f.readAsBytesSync();
-        // data = await SoLoud.instance.readSamplesFromMem(
-        // bytes,
-        // width * 4,
-        // average: average,
-        // );
-        data = await SoLoud.instance.readSamplesFromFile(
-          paths!.first.path!,
-          width * 4,
-          average: average,
+        final f = File(paths!.first.path!);
+        final bytes = f.readAsBytesSync();
+        data = await SoLoud.instance.readSamplesFromMem(
+        bytes,
+        width * 4,
+        average: average,
         );
+        // data = await SoLoud.instance.readSamplesFromFile(
+        //   paths!.first.path!,
+        //   width * 4,
+        //   average: average,
+        // );
       }
   }
 }

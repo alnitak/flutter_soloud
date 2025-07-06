@@ -104,7 +104,7 @@ namespace Waveform
         };
 #endif
 
-        // Check if the file is an OGG file reading the header
+        // Check if the file is an OGG file by reading the header
         if (filePath != NULL)
         {
             FILE *file = fopen(filePath, "rb");
