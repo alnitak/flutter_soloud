@@ -63,13 +63,13 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
             ),
             OutlinedButton(
               onPressed: () async {
-                // paths = (await FilePicker.platform.pickFiles(
-                //   type: FileType.custom,
-                //   allowedExtensions: ['mp3', 'wav', 'flac', 'ogg'],
-                //   onFileLoading: print,
-                //   dialogTitle: 'Pick audio file',
-                // ))
-                //     ?.files;
+                paths = (await FilePicker.platform.pickFiles(
+                  type: FileType.custom,
+                  allowedExtensions: ['mp3', 'wav', 'flac', 'ogg'],
+                  onFileLoading: print,
+                  dialogTitle: 'Pick audio file',
+                ))
+                    ?.files;
 
                 await _loadPath(width);
                 if (context.mounted) setState(() {});
