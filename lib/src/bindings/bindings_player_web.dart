@@ -1099,14 +1099,14 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     final jsHeapF32 = wasmHeapF32Buffer;
     // Convert the TypedArray view to a Dart Float32List
     final samples = Float32List.sublistView(
-      jsHeapF32.toDart, 
+      jsHeapF32.toDart,
       samplesPtr ~/ 4, // divide by 4 because Float32 is 4 bytes
       (samplesPtr ~/ 4) + numSamplesNeeded,
     );
 
     wasmFree(samplesPtr);
     wasmFree(bufferPtr);
-    
+
     if (ReadSamplesErrors.fromValue(error) !=
         ReadSamplesErrors.readSamplesNoError) {
       throw SoLoudCppException.fromReadSampleError(
