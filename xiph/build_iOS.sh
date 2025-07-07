@@ -8,12 +8,26 @@
 # Exit on any error
 set -e
 
+BOLD_WHITE_ON_GREEN=$'\e[1;37;42m'
+RESET=$'\e[0m'
+
 # Clone repositories if they don't exist
 if [ ! -d "ogg" ]; then
     git clone https://github.com/xiph/ogg
     # reset to a known good commit
     cd ogg
     git reset --hard db5c7a4
+    cd ..
+fi
+
+if [ ! -d "vorbis" ]; then
+    git clone https://github.com/xiph/vorbis
+    cd vorbis
+    git reset --hard 84c0236
+    # Remove -force_cpusubtype_ALL flag from configure.ac because it was
+    # historically used in build scripts for compatibility with very
+    # old Mac hardware (PowerPC) and prevent the build.
+    sed -i '' 's/-force_cpusubtype_ALL//g' configure.ac
     cd ..
 fi
 
@@ -26,11 +40,11 @@ if [ ! -d "opus" ]; then
 fi
 
 # Directories for source code and build output
-LIBS=("ogg" "opus")
+LIBS=("ogg" "opus" "vorbis")
 BASE_DIR="$PWD"
 BUILD_DIR="$BASE_DIR/iOS/build"
-OUTPUT_DIR="$BASE_DIR/iOS/libs"
-INCLUDE_DIR="$BASE_DIR/iOS/include"
+OUTPUT_DIR="$BASE_DIR/../iOS/libs"
+INCLUDE_DIR="$BASE_DIR/../iOS/include"
 ARCHS_IOS=("arm64" "x86_64")  # iOS arm64 (device) and x86_64 (Simulator)
 
 # iOS-specific flags
@@ -50,14 +64,24 @@ build_lib() {
     local sdk=$4
     local output_dir="$BUILD_DIR/$lib_name/$platform/$arch"
 
-    echo "Building $lib_name for $platform ($arch)..."
+    echo "${BOLD_WHITE_ON_GREEN}Building $lib_name for $platform ($arch)...${RESET}"
 
     cd "$lib_name"
     ./autogen.sh  # Generate configure script if necessary
 
     # Configure and build
-    CFLAGS="-arch $arch -isysroot $sdk -O2" \
-    ./configure --host=$arch-apple-darwin --prefix="$output_dir" --disable-shared
+    if [ "$lib_name" == "vorbis" ]; then
+        PKG_CONFIG_PATH="$BUILD_DIR/ogg/$arch/lib/pkgconfig" \
+        # vorbis is the last build so it can depend on already compiled ogg lib
+        LDFLAGS="-L$BUILD_DIR/ogg/$arch/lib" \
+        CPPFLAGS="-I$BUILD_DIR/ogg/$arch/include" \
+        CFLAGS="-arch $arch -isysroot $sdk -O2" \
+        ./configure --host=$arch-apple-darwin --prefix="$output_dir" --disable-shared --with-ogg="$BUILD_DIR/ogg/$arch"
+    else
+        CFLAGS="-arch $arch -isysroot $sdk -O2" \
+        ./configure --host=$arch-apple-darwin --prefix="$output_dir" --disable-shared
+    fi
+    
     make clean
     make -j$(sysctl -n hw.ncpu)
     make install
@@ -78,9 +102,22 @@ for lib in "${LIBS[@]}"; do
     done
 done
 
+echo "${BOLD_WHITE_ON_GREEN}=== Removing not used libvorbisenc* ===${RESET}"
+    echo "${BOLD_WHITE_ON_GREEN}Removing: $BUILD_DIR/vorbis/iOS/arm64/lib/libvorbisenc.*${RESET}"
+    rm "$BUILD_DIR/vorbis/iOS/arm64/lib/libvorbisenc."*
+    echo "${BOLD_WHITE_ON_GREEN}Removing: $BUILD_DIR/vorbis/iOS/arm64/include/vorbis/vorbisenc.h${RESET}"
+    rm "$BUILD_DIR/vorbis/iOS/arm64/include/vorbis/vorbisenc.h"
+
+
+    echo "${BOLD_WHITE_ON_GREEN}Removing: $BUILD_DIR/vorbis/iOS_Simulator/x86_64/lib/libvorbisenc..*${RESET}"
+    rm "$BUILD_DIR/vorbis/iOS_Simulator/x86_64/lib/libvorbisenc."*
+    echo "${BOLD_WHITE_ON_GREEN}Removing: $BUILD_DIR/vorbis/iOS_Simulator/x86_64/include/vorbis/vorbisenc.h${RESET}"
+    rm "$BUILD_DIR/vorbis/iOS_Simulator/x86_64/include/vorbis/vorbisenc.h"
+echo
+
 # Create output libraries
 for lib in "${LIBS[@]}"; do
-    echo "Creating libraries for $lib..."
+    echo "${BOLD_WHITE_ON_GREEN}Creating libraries for $lib...${RESET}"
 
     # iOS device library (arm64)
     cp "$BUILD_DIR/$lib/iOS/arm64/lib/lib${lib}.a" "$OUTPUT_DIR/lib${lib}_iOS-device.a"
@@ -88,18 +125,23 @@ for lib in "${LIBS[@]}"; do
     # iOS simulator library (x86_64)
     cp "$BUILD_DIR/$lib/iOS_Simulator/x86_64/lib/lib${lib}.a" "$OUTPUT_DIR/lib${lib}_iOS-simulator.a"
 
+    if [ "$lib" == "vorbis" ]; then
+        cp "$BUILD_DIR/$lib/iOS/arm64/lib/libvorbisfile.a" "$OUTPUT_DIR/libvorbisfile_iOS-device.a"
+        cp "$BUILD_DIR/$lib/iOS_Simulator/x86_64/lib/libvorbisfile.a" "$OUTPUT_DIR/libvorbisfile_iOS-simulator.a"
+    fi
+
     # Copy include files (from either arch, they're the same)
     cp -R "$BUILD_DIR/$lib/iOS/arm64/include/"* "$INCLUDE_DIR/"
 
     # Strip symbols from both device and simulator libraries
-    echo "Stripping symbols from $lib libraries..."
+    echo "${BOLD_WHITE_ON_GREEN}Stripping symbols from $lib libraries...${RESET}"
     strip -x "$OUTPUT_DIR/lib${lib}_iOS-device.a"
     strip -x "$OUTPUT_DIR/lib${lib}_iOS-simulator.a"
 done
 
 echo
-echo "Libraries created in $OUTPUT_DIR:"
+echo "${BOLD_WHITE_ON_GREEN}Libraries created in $OUTPUT_DIR:${RESET}"
 ls -l $OUTPUT_DIR
 echo
-echo "Include files copied to $INCLUDE_DIR:"
+echo "${BOLD_WHITE_ON_GREEN}Include files copied to $INCLUDE_DIR:${RESET}"
 ls -l $INCLUDE_DIR
