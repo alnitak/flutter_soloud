@@ -161,7 +161,7 @@ em++ -O3 \
     ${COMPILER_DEFINES} \
     -msimd128 -msse3 \
     -std=c++17 \
-    -s "EXPORTED_RUNTIME_METHODS=['ccall','cwrap','setValue','getValue', 'UTF8ToString']" \
+    -s "EXPORTED_RUNTIME_METHODS=['ccall','cwrap','setValue','getValue','UTF8ToString','HEAPF32','HEAPU8']" \
     -s "EXPORTED_FUNCTIONS=['_free', '_malloc', '_memcpy', '_memset']" \
     -s NO_EXIT_RUNTIME=1 \
     -s SAFE_HEAP=1 \
