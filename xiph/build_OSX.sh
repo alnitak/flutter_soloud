@@ -81,11 +81,13 @@ build_lib() {
     fi
     if [ "$lib_name" == "vorbis" ]; then
         PKG_CONFIG_PATH="$BUILD_DIR/ogg/$arch/lib/pkgconfig" \
+        # vorbis is the last build so it can depend on already compiled ogg lib
         LDFLAGS="-L$BUILD_DIR/ogg/$arch/lib" \
         CPPFLAGS="-I$BUILD_DIR/ogg/$arch/include" \
         CFLAGS="-arch $arch -isysroot $MACOS_SDK -mmacosx-version-min=10.13 -O2" \
         ./configure --host=$host_triplet --prefix="$output_dir" --disable-shared --with-ogg="$BUILD_DIR/ogg/$arch"
     fi
+
     make clean
     make -j$(sysctl -n hw.ncpu)
     make install
@@ -99,7 +101,7 @@ for lib in "${LIBS[@]}"; do
     done
 done
 
-echo "${BOLD_WHITE_ON_GREEN}=== Removing not used libvorbisenc.so* ===${RESET}"
+echo "${BOLD_WHITE_ON_GREEN}=== Removing not used vorbisenc* ===${RESET}"
 for arch in "${ARCHS[@]}"; do
     rm "$BUILD_DIR/vorbis/$arch/lib/libvorbisenc."*
     rm "$BUILD_DIR/vorbis/$arch/include/vorbis/vorbisenc.h"
