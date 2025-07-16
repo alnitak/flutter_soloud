@@ -14,6 +14,7 @@
 namespace SoLoud
 {
     std::mutex buffer_lock_mutex;
+    std::mutex check_buffer_mutex;
 	
 	BufferStreamInstance::BufferStreamInstance(BufferStream *aParent)
 	{
@@ -36,9 +37,10 @@ namespace SoLoud
 			// Calculate mStreamPosition based on mOffset
 			mStreamPosition = mOffset / (float)(mSamplerate * mChannels);
 
+
 			// This is not nice to do in the audio callback, but I didn't
 			// find a better way to get lenght and pause the sound and the
-			// `chakeBuffering` function is fast enough.
+			// `checkBuffering` function is fast enough.
 			if (!mParent->mIsBuffering) {
 				mParent->mThePlayer->soloud.unlockAudioMutex_internal();
 				mParent->checkBuffering(0);
@@ -118,6 +120,10 @@ namespace SoLoud
 
 	result BufferStreamInstance::seek(double aSeconds, float *mScratch, unsigned int mScratchSize)
 	{
+		if (aSeconds <= 0.0) {
+			rewind();
+			return SO_NO_ERROR;
+		}
 		if (mParent->mBuffer.bufferingType == BufferingType::RELEASED) {
             // Seeking not supported in RELEASED mode since data is discarded
 			// TODO: Support seeking forward in RELEASED mode
@@ -151,10 +157,6 @@ namespace SoLoud
 
 	result BufferStreamInstance::rewind()
 	{
-		if (mParent->mBuffer.bufferingType == BufferingType::RELEASED) {
-            // Rewinding not supported in RELEASED mode since data is discarded
-            return INVALID_PARAMETER;
-        }
 		mOffset = 0;
 		mStreamPosition = 0.0f;
 		return 0;
@@ -255,6 +257,13 @@ namespace SoLoud
 		mBuffer.clear();
 		mSampleCount = 0;
 		mBytesReceived = 0;
+		mUncompressedBytesReceived = 0;
+
+		for (int i = 0; i < mParent->handle.size(); i++)
+		{
+			mThePlayer->soloud.seek(mParent->handle[i].handle, 0.0f);
+			mParent->handle[i].bufferingTime = 0.0f;
+		}
 	}
 
 	void BufferStream::setDataIsEnded()
@@ -335,7 +344,8 @@ namespace SoLoud
 			buffer.erase(buffer.begin(), buffer.begin() + bufferDataToAdd);
 		}
 		
-		checkBuffering(bytesWritten);
+		if (mIsBuffering)
+			checkBuffering(bytesWritten);
 		mUncompressedBytesReceived += bytesWritten;
 
 		mSampleCount += bytesWritten / mPCMformat.bytesPerSample;
@@ -355,16 +365,23 @@ namespace SoLoud
 	/// if needed after adding [afterAddingBytesCount] bytes.
 	void BufferStream::checkBuffering(unsigned int afterAddingBytesCount)
 	{
+		std::lock_guard<std::mutex> lock(check_buffer_mutex);
+
 		// If a handle reaches the end and data is not ended, we have to wait for it has enough data
 		// to reach [TIME_FOR_BUFFERING] and restart playing it.
 		SoLoud::time currBufferTime = getLength();
 		SoLoud::time addedDataTime = (afterAddingBytesCount / mPCMformat.bytesPerSample) / (mBaseSamplerate * mChannels);
+		SoLoud::time bufferLength = (double)mBuffer.getFloatsBufferSize() / (mBaseSamplerate * mChannels);
 
 		for (int i = 0; i < mParent->handle.size(); i++)
 		{
 			SoLoud::handle handle = mParent->handle[i].handle;
-			SoLoud::time pos = mBuffer.bufferingType == BufferingType::RELEASED ? getStreamTimeConsumed() :  mThePlayer->getPosition(handle);
+			SoLoud::time pos = mBuffer.bufferingType == BufferingType::RELEASED ? getStreamTimeConsumed() : mThePlayer->getPosition(handle);
+			// SoLoud::time pos = mThePlayer->getPosition(handle);
 			bool isPaused = mThePlayer->getPause(handle);
+
+			printf("checkBuffering -- bufferLength: %lf, currBufferTime: %lf\n", 
+				bufferLength, currBufferTime);
 
 			// This handle needs to wait for [TIME_FOR_BUFFERING]. Pause it.
 			if (pos >= currBufferTime + addedDataTime && !isPaused)
@@ -375,8 +392,7 @@ namespace SoLoud
 				callOnBufferingCallback(true, handle, currBufferTime);
 			} else
 			// This handle has reached [TIME_FOR_BUFFERING]. Unpause it.
-			if (currBufferTime + addedDataTime - mParent->handle[i].bufferingTime >= mBufferingTimeNeeds &&
-				isPaused)
+			if (currBufferTime + addedDataTime - mParent->handle[i].bufferingTime >= mBufferingTimeNeeds && isPaused)
 			{
 				mThePlayer->setPause(handle, false);
 				isPaused = false;
@@ -387,6 +403,7 @@ namespace SoLoud
 			if (dataIsEnded && isPaused)
 			{
 				mThePlayer->setPause(handle, false);
+				isPaused = false;
 				mParent->handle[i].bufferingTime = MAX_DOUBLE;
 				callOnBufferingCallback(false, handle, currBufferTime);
 			}
@@ -438,6 +455,7 @@ namespace SoLoud
 	/// Get the time consumed by this stream of type RELEASED
 	SoLoud::time BufferStream::getStreamTimeConsumed()
 	{
-		return (mBytesConsumed / mPCMformat.bytesPerSample) / (mBaseSamplerate * mPCMformat.channels);
+		// printf("getStreamTimeConsumed  %f\n", (mBytesConsumed / mPCMformat.bytesPerSample) / (mBaseSamplerate * mPCMformat.channels));
+		return (double)(mBytesConsumed / mPCMformat.bytesPerSample) / (mBaseSamplerate * mPCMformat.channels);
 	}
 };
