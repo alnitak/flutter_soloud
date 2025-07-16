@@ -455,7 +455,6 @@ namespace SoLoud
 	/// Get the time consumed by this stream of type RELEASED
 	SoLoud::time BufferStream::getStreamTimeConsumed()
 	{
-		// printf("getStreamTimeConsumed  %f\n", (mBytesConsumed / mPCMformat.bytesPerSample) / (mBaseSamplerate * mPCMformat.channels));
 		return (double)(mBytesConsumed / mPCMformat.bytesPerSample) / (mBaseSamplerate * mPCMformat.channels);
 	}
 };
