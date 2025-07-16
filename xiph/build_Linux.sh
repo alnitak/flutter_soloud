@@ -6,11 +6,14 @@
 # Exit on any error
 set -e
 
+BOLD_WHITE_ON_GREEN="\e[1;37;42m"
+RESET="\e[0m"
+
 # Directories setup
 BASE_DIR="$PWD"
 BUILD_DIR="$BASE_DIR/linux/build"
-OUTPUT_DIR="$BASE_DIR/linux/libs"
-OUTPUT_INCLUDE_DIR="$BASE_DIR/linux/include"
+OUTPUT_DIR="$BASE_DIR/../linux/libs"               # plugin linux dir
+OUTPUT_INCLUDE_DIR="$BASE_DIR/../linux/include"    # plugin linux dir
 
 # Create directories
 mkdir -p "$BUILD_DIR"
@@ -22,6 +25,13 @@ if [ ! -d "ogg" ]; then
     git clone https://github.com/xiph/ogg
     cd ogg
     git reset --hard db5c7a4
+    cd ..
+fi
+
+if [ ! -d "vorbis" ]; then
+    git clone https://github.com/xiph/vorbis
+    cd vorbis
+    git reset --hard 84c0236
     cd ..
 fi
 
@@ -38,7 +48,7 @@ build_lib() {
     local build_path="$BUILD_DIR/${lib}"
     local temp_install_path="$build_path/install"
     
-    echo "Building $lib..."
+    echo -e "${BOLD_WHITE_ON_GREEN}Building $lib...${RESET}"
     
     # Create build directory
     mkdir -p "$build_path"
@@ -48,14 +58,29 @@ build_lib() {
     cd "$build_path"
     
     # Configure and build
-    cmake "$BASE_DIR/$lib" \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_INSTALL_PREFIX="$temp_install_path" \
-        -DBUILD_SHARED_LIBS=ON \
-        -DCMAKE_C_FLAGS="-Os -flto -ffunction-sections -fdata-sections" \
-        -DCMAKE_EXE_LINKER_FLAGS="-Wl,--gc-sections -flto" \
-        -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--gc-sections -flto" \
-        -DCMAKE_C_FLAGS_RELEASE="-O3 -DNDEBUG"
+    if [ "$lib" = "vorbis" ]; then
+        cmake "$BASE_DIR/$lib" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$temp_install_path" \
+            -DBUILD_SHARED_LIBS=ON \
+            -DCMAKE_C_FLAGS="-O2 -flto -ffunction-sections -fdata-sections" \
+            -DCMAKE_EXE_LINKER_FLAGS="-Wl,--gc-sections -flto" \
+            -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--gc-sections -flto" \
+            -DCMAKE_C_FLAGS_RELEASE="-O2 -DNDEBUG" \
+            -DOGG_LIBRARY="$OUTPUT_DIR/libogg.so" \
+            -DOGG_INCLUDE_DIR="$OUTPUT_INCLUDE_DIR" \
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+    else
+        cmake "$BASE_DIR/$lib" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$temp_install_path" \
+            -DBUILD_SHARED_LIBS=ON \
+            -DCMAKE_C_FLAGS="-O2 -flto -ffunction-sections -fdata-sections" \
+            -DCMAKE_EXE_LINKER_FLAGS="-Wl,--gc-sections -flto" \
+            -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--gc-sections -flto" \
+            -DCMAKE_C_FLAGS_RELEASE="-O2 -DNDEBUG" \
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+    fi
 
     cmake --build . --config Release --target install
     
@@ -70,20 +95,27 @@ build_lib() {
         cp -r "$temp_install_path/include/ogg" "$OUTPUT_INCLUDE_DIR/"
     elif [ "$lib" = "opus" ]; then
         cp -r "$temp_install_path/include/opus" "$OUTPUT_INCLUDE_DIR/"
+    elif [ "$lib" = "vorbis" ]; then
+        cp -r "$temp_install_path/include/vorbis" "$OUTPUT_INCLUDE_DIR/"
     fi
     
     # Go back to base directory
     cd "$BASE_DIR"
 }
 
-# Build both libraries
-echo "=== Building libraries ==="
+# Build all libraries
+echo -e "${BOLD_WHITE_ON_GREEN}=== Building libraries ===${RESET}"
 build_lib "ogg"
+build_lib "vorbis"
 build_lib "opus"
 
+echo -e "${BOLD_WHITE_ON_GREEN}=== Removing not used libvorbisenc.so* ===${RESET}"
+rm "$OUTPUT_DIR/libvorbisenc.so"*
+rm "$OUTPUT_INCLUDE_DIR/vorbis/vorbisenc.h"
+
 echo
-echo "Libraries created in $OUTPUT_DIR:"
+echo -e "${BOLD_WHITE_ON_GREEN}Libraries created in $OUTPUT_DIR:${RESET}"
 ls -l $OUTPUT_DIR
 echo
-echo "Include files copied to $OUTPUT_INCLUDE_DIR:"
+echo -e "${BOLD_WHITE_ON_GREEN}Include files copied to $OUTPUT_INCLUDE_DIR:${RESET}"
 ls -l $OUTPUT_INCLUDE_DIR

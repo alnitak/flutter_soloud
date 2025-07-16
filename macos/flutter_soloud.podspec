@@ -44,7 +44,7 @@ Flutter audio plugin using SoLoud library and FFI
     'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386',
     "CLANG_CXX_LANGUAGE_STANDARD" => "c++17",
     "CLANG_CXX_LIBRARY" => "libc++",
-    'OTHER_LDFLAGS' => disable_opus_ogg ? '' : "-L#{local_lib_path} -logg -lopus",
+    'OTHER_LDFLAGS' => disable_opus_ogg ? '' : "-L#{local_lib_path} -logg -lopus -lvorbis -lvorbisfile",
     'OTHER_CFLAGS' => "-O3 -ffast-math -flto",
     'OTHER_CPLUSPLUSFLAGS' => "-O3 -ffast-math -flto",
     'VALID_ARCHS' => 'x86_64 arm64',

@@ -41,6 +41,7 @@ list(APPEND PLUGIN_SOURCES
   "${SRC_DIR}/analyzer.cpp"
   "${SRC_DIR}/synth/basic_wave.cpp"
   "${SRC_DIR}/waveform/waveform.cpp"
+  "${SRC_DIR}/waveform/miniaudio_libvorbis.cpp"
   "${SRC_DIR}/audiobuffer/audiobuffer.cpp"
   "${SRC_DIR}/filters/filters.cpp"
   "${SRC_DIR}/filters/pitch_shift_filter.cpp"
@@ -81,6 +82,12 @@ if(NOT DEFINED ENV{NO_OPUS_OGG_LIBS})
     set(OGG_LIBRARY ${CMAKE_CURRENT_SOURCE_DIR}/libs/${ANDROID_ABI}/libogg.so)
     target_link_libraries(${PLUGIN_NAME} PRIVATE ${OGG_LIBRARY})
     set(INSTALL_BUNDLE_LIB_DIR "${CMAKE_INSTALL_PREFIX}/lib")
+
+    # Add vorbis library
+    set(VORBIS_LIBRARY ${CMAKE_CURRENT_SOURCE_DIR}/libs/${ANDROID_ABI}/libvorbis.so)
+    target_link_libraries(${PLUGIN_NAME} PRIVATE ${VORBIS_LIBRARY})
+    set(VORBISFILE_LIBRARY ${CMAKE_CURRENT_SOURCE_DIR}/libs/${ANDROID_ABI}/libvorbisfile.so)
+    target_link_libraries(${PLUGIN_NAME} PRIVATE ${VORBISFILE_LIBRARY})
 
     include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 else()

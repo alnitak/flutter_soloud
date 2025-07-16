@@ -9,7 +9,7 @@
         },
         {
             "label": "compile linux debug",
-            "command": "cd ${workspaceFolder}/example; flutter build linux -t lib/buffer_stream/simple_noise_stream.dart --debug",
+            "command": "cd ${workspaceFolder}/example; flutter build linux -t lib/wave_data/wave_data.dart --debug",
             "type": "shell"
         },
         {
@@ -29,7 +29,7 @@
         },
         {
             "label": "compile web wasm release",
-            "command": "cd ${workspaceFolder}/example; flutter run -d chrome --wasm --web-browser-flag '--disable-web-security' -t lib/buffer_stream/simple_noise_stream.dart --release",
+            "command": "cd ${workspaceFolder}/example; flutter run -d chrome --wasm --web-browser-flag '--disable-web-security' -t lib/wave_data/wave_data.dart --release",
             "type": "shell"
         },
         {

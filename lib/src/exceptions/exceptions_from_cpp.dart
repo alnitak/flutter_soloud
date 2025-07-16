@@ -196,7 +196,10 @@ class SoLoudReadSamplesNoBackendCppException extends SoLoudCppException {
 
   @override
   String get description => 'An error occurred while initializing the '
-      'backend to read samples.  Probably for an unsupported or broken format. '
+      'backend to read samples. Probably for an unsupported or broken format. '
+      'If you are trying to open an OGG file, please make sure that you have '
+      'unset NO_OPUS_OGG_LIBS environment variable. Ref: '
+      'https://docs.page/alnitak/flutter_soloud_docs/get_started/no_opus_ogg_libs  '
       '(on the C++ side).';
 }
 

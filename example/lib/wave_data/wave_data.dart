@@ -28,11 +28,6 @@ void main() async {
     );
   });
 
-  WidgetsFlutterBinding.ensureInitialized();
-
-  /// Initialize the player.
-  await SoLoud.instance.init();
-
   runApp(
     const MaterialApp(
       home: HelloFlutterSoLoud(),
@@ -55,15 +50,7 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
   bool average = false;
 
   @override
-  void dispose() {
-    SoLoud.instance.deinit();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    if (!SoLoud.instance.isInitialized) return const SizedBox.shrink();
-
     final width = MediaQuery.sizeOf(context).width.toInt();
     return Scaffold(
       body: Center(
@@ -77,7 +64,7 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
               onPressed: () async {
                 paths = (await FilePicker.platform.pickFiles(
                   type: FileType.custom,
-                  allowedExtensions: ['mp3', 'wav', 'flac'],
+                  allowedExtensions: ['mp3', 'wav', 'flac', 'ogg'],
                   onFileLoading: print,
                   dialogTitle: 'Pick audio file',
                 ))

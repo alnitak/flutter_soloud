@@ -41,6 +41,7 @@ list(APPEND PLUGIN_SOURCES
   "${SRC_DIR}/analyzer.cpp"
   "${SRC_DIR}/synth/basic_wave.cpp"
   "${SRC_DIR}/waveform/waveform.cpp"
+  "${SRC_DIR}/waveform/miniaudio_libvorbis.cpp"
   "${SRC_DIR}/audiobuffer/audiobuffer.cpp"
   "${SRC_DIR}/filters/filters.cpp"
   "${SRC_DIR}/filters/pitch_shift_filter.cpp"
@@ -75,13 +76,19 @@ if(NOT DEFINED ENV{NO_OPUS_OGG_LIBS})
     set(OGG_LIBRARY ${CMAKE_CURRENT_SOURCE_DIR}/libs/libogg.so)
     target_link_libraries(${PLUGIN_NAME} PRIVATE ${OGG_LIBRARY})
 
+    # Add vorbis library
+    set(VORBIS_LIBRARY ${CMAKE_CURRENT_SOURCE_DIR}/libs/libvorbis.so)
+    target_link_libraries(${PLUGIN_NAME} PRIVATE ${VORBIS_LIBRARY})
+    set(VORBISFILE_LIBRARY ${CMAKE_CURRENT_SOURCE_DIR}/libs/libvorbisfile.so)
+    target_link_libraries(${PLUGIN_NAME} PRIVATE ${VORBISFILE_LIBRARY})
+
     include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 else()
     message("NO_OPUS_OGG_LIBS has been set. Not linking Opus and Ogg libraries!")
     add_definitions(-DNO_OPUS_OGG_LIBS)
 endif()
 
-target_compile_options("${PLUGIN_NAME}" PRIVATE -Wall -Wno-error -Wno-vla -fPIC -O3 -msse3 -msse2) #  -ldl -lpthread -lm
+target_compile_options("${PLUGIN_NAME}" PRIVATE -Wall -Wno-error -Wno-vla -O2 -msse3 -msse2) #  -ldl -lpthread -lm
 
 # List of absolute paths to libraries that should be bundled with the plugin.
 set(flutter_soloud_bundled_libraries

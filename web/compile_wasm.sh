@@ -2,6 +2,9 @@
 
 set -euo pipefail
 
+BOLD_WHITE_ON_GREEN="\e[1;37;42m"
+RESET="\e[0m"
+
 # Comment this line or set it to 0 to build with opus and ogg.
 # If set to 1, the plugin will be built without opus and ogg.
 NO_OPUS_OGG_LIBS="0"
@@ -21,9 +24,10 @@ else
 fi
 
 # Directories
-XIPH_DIR="../xiph"
+XIPH_DIR="$PWD/../xiph"
 OPUS_DIR="$XIPH_DIR/opus"
 OGG_DIR="$XIPH_DIR/ogg"
+VORBIS_DIR="$XIPH_DIR/vorbis"
 
 # Clean and create build directory
 rm -f libflutter_soloud_plugin.*
@@ -47,16 +51,26 @@ if [ "${SKIP_OPUS_OGG}" != "1" ]; then
         cd -
     fi
 
+    if [ ! -d "$VORBIS_DIR" ]; then
+        git clone https://github.com/xiph/vorbis "$VORBIS_DIR"
+        # reset to a known good commit
+        cd "$VORBIS_DIR"
+        git reset --hard 84c0236
+        cd -
+    fi
+
     # Build Ogg if not built or force rebuild is set
+    echo -e "${BOLD_WHITE_ON_GREEN}Building Ogg${RESET}"
     if [ ! -f "$OGG_DIR/src/.libs/libogg.a" ] || [ $FORCE_REBUILD_LIBS -eq 1 ]; then
         cd "$OGG_DIR"
         ./autogen.sh
-        emconfigure ./configure CFLAGS="-O3 -fPIC"
+        emconfigure ./configure CFLAGS="-O2 -fPIC"
         emmake make -j$CORES
         cd -
     fi
 
     # Build Opus if not built or force rebuild is set
+    echo -e "${BOLD_WHITE_ON_GREEN}Building Opus${RESET}"
     if [ ! -f "$OPUS_DIR/.libs/libopus.a" ] || [ $FORCE_REBUILD_LIBS -eq 1 ]; then
         cd "$OPUS_DIR"
         ./autogen.sh
@@ -65,11 +79,28 @@ if [ "${SKIP_OPUS_OGG}" != "1" ]; then
             --disable-doc \
             --disable-rtcd \
             --disable-intrinsics \
-            CFLAGS="-O3 -fPIC"
+            CFLAGS="-O2 -fPIC"
         emmake make -j$CORES
         cd -
     fi
+
+    # Build Vorbis if not built or force rebuild is set
+    echo -e "${BOLD_WHITE_ON_GREEN}Building Vorbis${RESET}"
+    if [ ! -f "$VORBIS_DIR/lib/.libs/libvorbis.a" ] || [ $FORCE_REBUILD_LIBS -eq 1 ]; then
+        cd "$VORBIS_DIR"
+        ./autogen.sh
+        emconfigure ./configure \
+            CFLAGS="-O2 -fPIC -L$OGG_DIR/src/.libs -I$OGG_DIR/include" \
+            --with-ogg="$OGG_DIR"
+        emmake make -j$CORES
+        cd -
+    fi
+
+    echo -e "${BOLD_WHITE_ON_GREEN}Building libraries completed!${RESET}"
 fi
+
+    echo
+    echo -e "${BOLD_WHITE_ON_GREEN}Start building flutter_soloud!${RESET}"
 
 # Check if we need to recompile the final output
 SOURCES=(
@@ -102,6 +133,7 @@ if [ "${SKIP_OPUS_OGG}" != "1" ]; then
     INCLUDE_DIRS+=(
         -I "$OPUS_DIR/include"
         -I "$OGG_DIR/include"
+        -I "$VORBIS_DIR/include"
     )
 fi
 
@@ -110,6 +142,8 @@ if [ "${SKIP_OPUS_OGG}" != "1" ]; then
     LIBS+=(
         "$OPUS_DIR/.libs/libopus.a"
         "$OGG_DIR/src/.libs/libogg.a"
+        "$VORBIS_DIR/lib/.libs/libvorbis.a"
+        "$VORBIS_DIR/lib/.libs/libvorbisfile.a"
     )
 fi
 
@@ -127,7 +161,7 @@ em++ -O3 \
     ${COMPILER_DEFINES} \
     -msimd128 -msse3 \
     -std=c++17 \
-    -s "EXPORTED_RUNTIME_METHODS=['ccall','cwrap','setValue','getValue', 'UTF8ToString']" \
+    -s "EXPORTED_RUNTIME_METHODS=['ccall','cwrap','setValue','getValue','UTF8ToString','HEAPF32','HEAPU8']" \
     -s "EXPORTED_FUNCTIONS=['_free', '_malloc', '_memcpy', '_memset']" \
     -s NO_EXIT_RUNTIME=1 \
     -s SAFE_HEAP=1 \
@@ -140,9 +174,9 @@ em++ -O3 \
     -o ../web/libflutter_soloud_plugin.js
 
 echo
-echo "Build completed successfully..."
+echo -e "${BOLD_WHITE_ON_GREEN}Build completed successfully...${RESET}"
 if [ "${SKIP_OPUS_OGG}" != "1" ]; then
-    echo "with Opus and Ogg"
+    echo -e "${BOLD_WHITE_ON_GREEN}with Opus and Ogg${RESET}"
 else
-    echo "without Opus and Ogg"
+    echo -e "${BOLD_WHITE_ON_GREEN}without Opus and Ogg${RESET}"
 fi

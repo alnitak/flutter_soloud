@@ -42,6 +42,7 @@ list(APPEND PLUGIN_SOURCES
   "${SRC_DIR}/analyzer.cpp"
   "${SRC_DIR}/synth/basic_wave.cpp"
   "${SRC_DIR}/waveform/waveform.cpp"
+  "${SRC_DIR}/waveform/miniaudio_libvorbis.cpp"
   "${SRC_DIR}/audiobuffer/audiobuffer.cpp"
   "${SRC_DIR}/filters/filters.cpp"
   "${SRC_DIR}/filters/pitch_shift_filter.cpp"
@@ -84,6 +85,13 @@ if(NOT DEFINED ENV{NO_OPUS_OGG_LIBS})
     # Link the library to your target
     target_link_libraries(${PLUGIN_NAME} PRIVATE ${OGG_LIBRARY})
 
+    # Add vorbis library
+    set(VORBIS_LIBRARY ${CMAKE_CURRENT_SOURCE_DIR}/libs/vorbis.lib)
+    set(VORBISFILE_LIBRARY ${CMAKE_CURRENT_SOURCE_DIR}/libs/vorbisfile.lib)
+    # Link the library to your target
+    target_link_libraries(${PLUGIN_NAME} PRIVATE ${VORBIS_LIBRARY})
+    target_link_libraries(${PLUGIN_NAME} PRIVATE ${VORBISFILE_LIBRARY})
+
     # Set the ogg and opus include directory
     include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 
@@ -98,6 +106,18 @@ if(NOT DEFINED ENV{NO_OPUS_OGG_LIBS})
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_SOURCE_DIR}/libs/ogg.dll"
         "${CMAKE_BINARY_DIR}/runner/$<CONFIG>/ogg.dll"
+    )
+
+    add_custom_command(TARGET ${PLUGIN_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/libs/vorbis.dll"
+        "${CMAKE_BINARY_DIR}/runner/$<CONFIG>/vorbis.dll"
+    )
+
+    add_custom_command(TARGET ${PLUGIN_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/libs/vorbisfile.dll"
+        "${CMAKE_BINARY_DIR}/runner/$<CONFIG>/vorbisfile.dll"
     )
 else()
     message("NO_OPUS_OGG_LIBS has been set. Not linking Opus and Ogg libraries!")
