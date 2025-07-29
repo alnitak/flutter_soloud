@@ -1,3 +1,5 @@
+#if !defined(NO_OPUS_OGG_LIBS)
+
 #ifndef miniaudio_libvorbis_c
 #define miniaudio_libvorbis_c
 
@@ -738,3 +740,5 @@ ma_decoding_backend_vtable* ma_decoding_backend_libvorbis = NULL;
 #endif
 
 #endif /* miniaudio_libvorbis_c */
+
+#endif /* !defined(MA_NO_LIBVORBIS) */
