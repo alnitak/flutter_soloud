@@ -93,7 +93,10 @@ enum PlayerErrors {
   maxActiveVoiceCountReached(26),
 
   /// Trying to get time consumed from wrong buffer type.
-  wrongBufferTypeToAskForTimeConsumed(27);
+  wrongBufferTypeToAskForTimeConsumed(27),
+
+  /// BufferStream with released buffer type cannot be seeked!
+  bufferStreamWithReleasedBufferTypeCannotBeSeeked(28);
 
   const PlayerErrors(this.value);
 
@@ -178,6 +181,8 @@ enum PlayerErrors {
       case PlayerErrors.wrongBufferTypeToAskForTimeConsumed:
         return 'Trying to get time consumed from wrong buffer type. '
             'This is only available for `BufferingType.preserved` buffers.';
+      case PlayerErrors.bufferStreamWithReleasedBufferTypeCannotBeSeeked:
+        return 'BufferStream with released buffer type cannot be seeked.';
     }
   }
 

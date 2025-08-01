@@ -336,3 +336,17 @@ class SoLoudWrongBufferTypeToAskForTimeConsumedCppException
       'for time consumed. Please use a buffer of type '
       '`BufferingType.released`. (on the C++ side).';
 }
+
+/// The buffer stream with released buffer type cannot be seeked.
+class SoLoudBufferStreamWithReleasedBufferTypeCannotBeSeekedCppException
+    extends SoLoudCppException {
+  /// Creates a new
+  /// [SoLoudBufferStreamWithReleasedBufferTypeCannotBeSeekedCppException].
+  const SoLoudBufferStreamWithReleasedBufferTypeCannotBeSeekedCppException([
+    super.message,
+  ]);
+
+  @override
+  String get description => 'The buffer stream with released buffer type '
+      'cannot be seeked. (on the C++ side).';
+}

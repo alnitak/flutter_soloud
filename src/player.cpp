@@ -216,6 +216,12 @@ const std::string Player::getErrorString(PlayerErrors errorCode) const
         return "error: failed to decode Opus packet!";
     case bufferStreamCanBePlayedOnlyOnce:
         return "error: buffer stream can be played only once!";
+    case maxActiveVoiceCountReached:
+        return "error: the maximum number of active voices has been reached!";
+    case wrongBufferTypeToAskForTimeConsumed:
+        return "error: trying to get time consumed from wrong buffer type!";
+    case bufferStreamWithReleasedBufferTypeCannotBeSeeked:
+        return "error: buffer stream with released buffer type cannot be seeked!";
     }
     return "Other error";
 }
@@ -784,6 +790,14 @@ PlayerErrors Player::seek(SoLoud::handle handle, float time)
         return backendNotInited;
 
     ActiveSound *sound = findByHandle(handle);
+    
+    // A BufferStream using `release` buffer type cannot use seek.
+    if (sound->soundType == SoundType::TYPE_BUFFER_STREAM &&
+        static_cast<SoLoud::BufferStream *>(sound->sound.get())->getBufferingType() == BufferingType::RELEASED)
+    {
+        return bufferStreamWithReleasedBufferTypeCannotBeSeeked;
+    }
+
     bool isGroupHandle = soloud.isVoiceGroup(handle);
     if ((sound == nullptr || sound->soundType == TYPE_SYNTH) && !isGroupHandle)
         return invalidParameter;
