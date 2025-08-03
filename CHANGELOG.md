@@ -1,3 +1,8 @@
+#### 3.2.3 (3 Aug 2025)
+- fix 16 KB native library alignment on Android #248
+- fix build issue on iOS and macOS #265 #266
+- fix: the `seek` method was causing inconsistent behavior when using `BufferStream` in `BufferingType.released` mode. It is now supported in `BufferingType.preserved` mode.
+
 #### 3.2.2 (16 Jul 2025)
 - OGG is now also supported using `readSamplesFrom*` methods.
 - fix getPosition and bufferirg for released buffer.
