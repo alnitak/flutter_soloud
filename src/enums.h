@@ -70,7 +70,13 @@ typedef enum PlayerErrors
     /// Trying to get time consumed from wrong buffer type.
     wrongBufferTypeToAskForTimeConsumed = 27,
     /// Buffer stream with released buffer type, cannot be seeked.
-    bufferStreamWithReleasedBufferTypeCannotBeSeeked = 28
+    bufferStreamWithReleasedBufferTypeCannotBeSeeked = 28,
+    /// Failed to create MP3 decoder
+    failedToCreateMp3Decoder = 29,
+    /// Failed to decode MP3 frame
+    failedToDecodeMp3Frame = 30,
+    /// Invalid MP3 frame or unsupported format
+    invalidMp3Format = 31
 } PlayerErrors_t;
 
 /// Possible read sample errors
@@ -134,6 +140,7 @@ typedef enum BufferType
     PCM_S16LE = 2,
     PCM_S32LE = 3,
     OPUS = 4,
+    MP3 = 5,
 } BufferType_t;
 
 

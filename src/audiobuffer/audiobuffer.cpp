@@ -247,6 +247,21 @@ namespace SoLoud
 			return PlayerErrors::failedToCreateOpusDecoder;
 		}
 #endif
+
+		mp3Decoder = nullptr;
+		minRequiredMp3Bytes = 0;
+		if (pcmFormat.dataType == BufferType::MP3)
+		{
+			try
+			{
+				mp3Decoder = std::make_unique<MP3DecoderWrapper>(
+					pcmFormat.sampleRate, pcmFormat.channels);
+			}
+			catch (const std::exception &e)
+			{
+				return PlayerErrors::failedToCreateMp3Decoder;
+			}
+		}
 		return PlayerErrors::noError;
 	}
 
@@ -314,17 +329,21 @@ namespace SoLoud
 
 		if (mPCMformat.dataType == BufferType::OPUS)
 		{
-
 #if !defined(NO_OPUS_OGG_LIBS)
 			// Decode the Opus data
-			try {
-				auto newData = decoder.get()->decode(
+			try
+			{
+				std::vector<float> decoded = decoder->decode(
 					buffer.data(),
 					bufferDataToAdd);
-				if (newData.size() > 0)
-					bytesWritten = mBuffer.addData(BufferType::OPUS, newData.data(), newData.size()) * mPCMformat.bytesPerSample;
-				else
-					return PlayerErrors::noError;
+
+				if (!decoded.empty())
+				{
+					bytesWritten = mBuffer.addData(
+						BufferType::PCM_F32LE,
+						decoded.data(),
+						decoded.size()) * sizeof(float);
+				}
 			}
 			catch (const std::exception &e)
 			{
@@ -334,12 +353,63 @@ namespace SoLoud
 			return PlayerErrors::failedToDecodeOpusPacket;
 #endif
 		}
+		else if (mPCMformat.dataType == BufferType::MP3)
+		{
+			// Initialize the decoder if needed
+			if (!mp3Decoder) {
+				try {
+					mp3Decoder = std::make_unique<MP3DecoderWrapper>(
+						mPCMformat.sampleRate,
+						mPCMformat.channels
+					);
+					minRequiredMp3Bytes = 0;  // Will be set after first successful decode
+				} catch (const std::exception &e) {
+					return PlayerErrors::failedToCreateMp3Decoder;
+				}
+			}
+
+			// For first decode or if using VBR, ensure we have enough data
+			if (!forceAdd && buffer.size() < std::max(size_t(1024), minRequiredMp3Bytes)) {
+				return PlayerErrors::noError;
+			}
+			
+			// Decode the MP3 data
+			try {
+				std::vector<float> decoded = mp3Decoder->decode(
+					buffer.data(),
+					bufferDataToAdd
+				);
+				
+				if (decoded.empty()) {
+					// Not enough data for a complete frame
+					return PlayerErrors::noError;
+				}
+
+				// Update minimum bytes needed for next decode
+				minRequiredMp3Bytes = mp3Decoder->getMinimumBytesNeeded();
+				
+				// Add decoded PCM data to the buffer
+				bytesWritten = mBuffer.addData(
+					BufferType::PCM_F32LE,
+					decoded.data(),
+					decoded.size()
+				) * sizeof(float);
+
+				// If we're using VBR, adjust bufferDataToAdd to match what was actually processed
+				if (mp3Decoder->isVariableBitrate()) {
+					bufferDataToAdd = minRequiredMp3Bytes;
+				}
+			} catch (const std::exception &e) {
+				// Reset decoder on critical errors
+				mp3Decoder.reset();
+				minRequiredMp3Bytes = 0;
+				return PlayerErrors::failedToDecodeMp3Frame;
+			}
+		}
 		else
 		{
 			bytesWritten = mBuffer.addData(mPCMformat.dataType, buffer.data(), bufferDataToAdd / mPCMformat.bytesPerSample) * mPCMformat.bytesPerSample;
-		}
-
-		// Remove the processed data from the buffer
+		}		// Remove the processed data from the buffer
 		if (bytesWritten > 0) {
 			buffer.erase(buffer.begin(), buffer.begin() + bufferDataToAdd);
 		}
@@ -380,8 +450,8 @@ namespace SoLoud
 			// SoLoud::time pos = mThePlayer->getPosition(handle);
 			bool isPaused = mThePlayer->getPause(handle);
 
-			printf("checkBuffering -- bufferLength: %lf, currBufferTime: %lf\n", 
-				bufferLength, currBufferTime);
+			// printf("checkBuffering -- bufferLength: %lf, currBufferTime: %lf\n", 
+			// 	bufferLength, currBufferTime);
 
 			// This handle needs to wait for [TIME_FOR_BUFFERING]. Pause it.
 			if (pos >= currBufferTime + addedDataTime && !isPaused)

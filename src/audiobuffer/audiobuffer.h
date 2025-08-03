@@ -14,6 +14,9 @@
 #if !defined(NO_OPUS_OGG_LIBS)
 #include "opus_stream_decoder.h"
 #endif
+#if !defined(NO_MP3_DECODER)
+#include "mp3_stream_decoder.h"
+#endif
 
 class Player;
 
@@ -56,6 +59,9 @@ namespace SoLoud
 #if !defined(NO_OPUS_OGG_LIBS)
     std::unique_ptr<OpusDecoderWrapper> decoder;
 #endif
+
+    std::unique_ptr<MP3DecoderWrapper> mp3Decoder;
+    size_t minRequiredMp3Bytes;
 
     BufferStream();
     virtual ~BufferStream();

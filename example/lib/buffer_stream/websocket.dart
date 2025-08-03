@@ -68,10 +68,10 @@ class _WebsocketExampleState extends State<WebsocketExample> {
   // 12000
   // 8000
   final sampleRate = [8000, 12000, 16000, 24000, 44100, 48000];
-  final format = ['f32le', 's8', 's16le', 's32le', 'opus'];
+  final format = ['f32le', 's8', 's16le', 's32le', 'opus', 'mp3'];
   int srId = 5;
   int chId = 0;
-  int fmtId = 4;
+  int fmtId = 5;
   WebSocketChannel? channel;
   AudioSource? currentSound;
   SoundHandle? handle;

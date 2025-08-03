@@ -350,3 +350,31 @@ class SoLoudBufferStreamWithReleasedBufferTypeCannotBeSeekedCppException
   String get description => 'The buffer stream with released buffer type '
       'cannot be seeked. (on the C++ side).';
 }
+
+/// Failed to create MP3 decoder.
+class SoLoudFailedToCreateMp3DecoderCppException extends SoLoudCppException {
+  /// Creates a new [SoLoudFailedToCreateMp3DecoderCppException].
+  const SoLoudFailedToCreateMp3DecoderCppException([super.message]);
+
+  @override
+  String get description => 'Failed to create MP3 decoder. (on the C++ side).';
+}
+
+/// Failed to decode MP3 frame.
+class SoLoudFailedToDecodeMp3FrameCppException extends SoLoudCppException {
+  /// Creates a new [SoLoudFailedToDecodeMp3FrameCppException].
+  const SoLoudFailedToDecodeMp3FrameCppException([super.message]);
+
+  @override
+  String get description => 'Failed to decode MP3 frame. (on the C++ side).';
+}
+
+/// Invalid MP3 frame or unsupported format.
+class SoLoudInvalidMp3FormatCppException extends SoLoudCppException {
+  /// Creates a new [SoLoudInvalidMp3FormatCppException].
+  const SoLoudInvalidMp3FormatCppException([super.message]);
+
+  @override
+  String get description => 'Invalid MP3 frame or unsupported format. '
+      '(on the C++ side).';
+}

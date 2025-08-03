@@ -96,7 +96,16 @@ enum PlayerErrors {
   wrongBufferTypeToAskForTimeConsumed(27),
 
   /// BufferStream with released buffer type cannot be seeked!
-  bufferStreamWithReleasedBufferTypeCannotBeSeeked(28);
+  bufferStreamWithReleasedBufferTypeCannotBeSeeked(28),
+  
+  /// Failed to create MP3 decoder
+  failedToCreateMp3Decoder(29),
+
+  /// Failed to decode MP3 frame
+  failedToDecodeMp3Frame(30),
+
+  /// Invalid MP3 frame or unsupported format
+  invalidMp3Format(31);
 
   const PlayerErrors(this.value);
 
@@ -183,6 +192,12 @@ enum PlayerErrors {
             'This is only available for `BufferingType.preserved` buffers.';
       case PlayerErrors.bufferStreamWithReleasedBufferTypeCannotBeSeeked:
         return 'BufferStream with released buffer type cannot be seeked.';
+      case PlayerErrors.failedToCreateMp3Decoder:
+        return 'Failed to create MP3 decoder';
+      case PlayerErrors.failedToDecodeMp3Frame:
+        return 'Failed to decode MP3 frame';
+      case PlayerErrors.invalidMp3Format:
+        return 'Invalid MP3 frame or unsupported format';
     }
   }
 
@@ -366,7 +381,10 @@ enum BufferType {
   s32le(3),
 
   /// Opus encoded audio.
-  opus(4);
+  opus(4),
+  
+  /// MP3 encoded audio.
+  mp3(5);
 
   /// The integer value of the PCM type.
   final int value;
@@ -389,6 +407,8 @@ enum BufferType {
         return 'Little Endian Float 32-bit';
       case BufferType.opus:
         return 'Opus Encoded Audio';
+      case BufferType.mp3:
+        return 'MP3 Encoded Audio';
     }
   }
 }
