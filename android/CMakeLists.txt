@@ -95,12 +95,10 @@ else()
     add_definitions(-DNO_OPUS_OGG_LIBS)
 endif()
 
-# target_compile_definitions(flutter_soloud PUBLIC DART_SHARED_LIB)
-
 # Support Android 15 16k page size
-# target_link_options(flutter_soloud PRIVATE "-Wl,-z,max-page-size=16384")
+target_link_options("${PLUGIN_NAME}" PRIVATE "-Wl,-z,max-page-size=16384")
 
-target_compile_options("${PLUGIN_NAME}" PRIVATE -z max-page-size=16384 -Wall -Wno-error -fPIC -O3) #  -ldl -lpthread -lm
+target_compile_options("${PLUGIN_NAME}" PRIVATE -Wall -Wno-error -fPIC -O3) #  -ldl -lpthread -lm
 
 # List of absolute paths to libraries that should be bundled with the plugin.
 set(flutter_soloud_bundled_libraries
