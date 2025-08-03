@@ -69,6 +69,8 @@ typedef enum PlayerErrors
     maxActiveVoiceCountReached = 26,
     /// Trying to get time consumed from wrong buffer type.
     wrongBufferTypeToAskForTimeConsumed = 27,
+    /// Buffer stream with released buffer type, cannot be seeked.
+    bufferStreamWithReleasedBufferTypeCannotBeSeeked = 28
 } PlayerErrors_t;
 
 /// Possible read sample errors

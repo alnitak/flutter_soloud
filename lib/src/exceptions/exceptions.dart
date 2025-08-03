@@ -128,6 +128,9 @@ abstract class SoLoudCppException extends SoLoudException {
         );
       case PlayerErrors.wrongBufferTypeToAskForTimeConsumed:
         return const SoLoudWrongBufferTypeToAskForTimeConsumedCppException();
+      case PlayerErrors.bufferStreamWithReleasedBufferTypeCannotBeSeeked:
+        // ignore: lines_longer_than_80_chars
+        return const SoLoudBufferStreamWithReleasedBufferTypeCannotBeSeekedCppException();
     }
   }
 
