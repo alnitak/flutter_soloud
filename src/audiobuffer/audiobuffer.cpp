@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <mutex>
+#include <algorithm> // std::min
 
 #include "audiobuffer.h"
 
@@ -355,38 +356,128 @@ namespace SoLoud
 		}
 		else if (mPCMformat.dataType == BufferType::MP3)
 		{
+			static const size_t MIN_MP3_DATA = 2048; // Minimum data needed for reliable MP3 frame detection
+			
 			// Initialize the decoder if needed
 			if (!mp3Decoder) {
 				try {
+					// Try to find MP3 header in the buffer
+					const unsigned char* data = buffer.data();
+					size_t size = buffer.size();
+					bool foundHeader = false;
+					size_t headerOffset = 0;
+
+					// Search for MP3 sync word
+					for (size_t i = 0; i < size - 4; i++) {
+						if (data[i] == 0xFF && (data[i + 1] & 0xE0) == 0xE0) {
+							// Verify header
+							unsigned char version = (data[i + 1] >> 3) & 0x03;
+							unsigned char layer = (data[i + 1] >> 1) & 0x03;
+							unsigned char bitrate = (data[i + 2] >> 4) & 0x0F;
+							unsigned char sampleRate = (data[i + 2] >> 2) & 0x03;
+							
+							if (layer != 0 && bitrate != 0x0F && sampleRate != 0x03) {
+								foundHeader = true;
+								headerOffset = i;
+								break;
+							}
+						}
+					}
+
+					if (!foundHeader) {
+						printf("No valid MP3 header found in %zu bytes\n", size);
+						return PlayerErrors::noError;  // Wait for more data
+					}
+
+					// Remove any data before the header
+					if (headerOffset > 0) {
+						printf("Removing %zu bytes before MP3 header\n", headerOffset);
+						buffer.erase(buffer.begin(), buffer.begin() + headerOffset);
+					}
+
 					mp3Decoder = std::make_unique<MP3DecoderWrapper>(
 						mPCMformat.sampleRate,
 						mPCMformat.channels
 					);
-					minRequiredMp3Bytes = 0;  // Will be set after first successful decode
+					minRequiredMp3Bytes = MIN_MP3_DATA;
+					
+					printf("MP3 Decoder created with sr=%d, ch=%d\n", 
+						   mPCMformat.sampleRate, mPCMformat.channels);
+						   
 				} catch (const std::exception &e) {
+					printf("Failed to create MP3 decoder: %s\n", e.what());
 					return PlayerErrors::failedToCreateMp3Decoder;
 				}
 			}
 
-			// For first decode or if using VBR, ensure we have enough data
-			if (!forceAdd && buffer.size() < std::max(size_t(1024), minRequiredMp3Bytes)) {
+			// Ensure we have enough data for reliable frame detection
+			if (!forceAdd && buffer.size() < std::max(MIN_MP3_DATA, minRequiredMp3Bytes)) {
+				printf("Need more data: have %zu, need %zu\n", 
+					   buffer.size(), std::max(MIN_MP3_DATA, minRequiredMp3Bytes));
 				return PlayerErrors::noError;
 			}
 			
+			// Limit how much data we try to decode at once to prevent memory issues
+			size_t maxDecodeAttempt = std::min(bufferDataToAdd, 
+				16 * 1024); // Process max 16KB at a time
+			
 			// Decode the MP3 data
 			try {
+				// Print first few bytes of the buffer for debugging
+				printf("Buffer starts with: ");
+				for (int i = 0; i < std::min(16UL, buffer.size()); i++) {
+					printf("%02X ", buffer[i]);
+				}
+				printf("\n");
+
 				std::vector<float> decoded = mp3Decoder->decode(
 					buffer.data(),
-					bufferDataToAdd
+					maxDecodeAttempt
 				);
+
+				printf("Attempted to decode %zu bytes, got %zu decoded samples\n", 
+					   maxDecodeAttempt, decoded.size());
 				
 				if (decoded.empty()) {
-					// Not enough data for a complete frame
-					return PlayerErrors::noError;
+					if (!forceAdd) {
+						// Try to find next valid frame
+						const unsigned char* data = buffer.data();
+						size_t size = buffer.size();
+						bool foundSync = false;
+						size_t offset = 1;  // Start after current position
+
+						while (offset < size - 4) {
+							if (data[offset] == 0xFF && (data[offset + 1] & 0xE0) == 0xE0) {
+								// Found potential new sync point
+								printf("Found new sync point at offset %zu\n", offset);
+								// Remove data up to new sync point
+								buffer.erase(buffer.begin(), buffer.begin() + offset);
+								return PlayerErrors::noError;  // Try again with realigned data
+							}
+							offset++;
+						}
+						
+						// No sync found, wait for more data
+						return PlayerErrors::noError;
+					}
+					
+					// If forcing, try to decode any remaining data
+					decoded = mp3Decoder->decode(
+						buffer.data(),
+						buffer.size()
+					);
+					
+					printf("Force decode of %zu bytes, got %zu samples\n",
+						   buffer.size(), decoded.size());
+						   
+					if (decoded.empty()) {
+						return PlayerErrors::noError;
+					}
 				}
 
-				// Update minimum bytes needed for next decode
-				minRequiredMp3Bytes = mp3Decoder->getMinimumBytesNeeded();
+				// Get new minimum bytes needed before next decode
+				size_t newMinBytes = mp3Decoder->getMinimumBytesNeeded();
+				minRequiredMp3Bytes = std::max(newMinBytes, MIN_MP3_DATA);
 				
 				// Add decoded PCM data to the buffer
 				bytesWritten = mBuffer.addData(
@@ -395,21 +486,27 @@ namespace SoLoud
 					decoded.size()
 				) * sizeof(float);
 
-				// If we're using VBR, adjust bufferDataToAdd to match what was actually processed
+				// For VBR, adjust bufferDataToAdd based on what was actually processed
 				if (mp3Decoder->isVariableBitrate()) {
-					bufferDataToAdd = minRequiredMp3Bytes;
+					bufferDataToAdd = std::min(maxDecodeAttempt, minRequiredMp3Bytes);
+				} else {
+					bufferDataToAdd = maxDecodeAttempt;
 				}
+				
 			} catch (const std::exception &e) {
-				// Reset decoder on critical errors
-				mp3Decoder.reset();
-				minRequiredMp3Bytes = 0;
+				// Only reset decoder on critical errors
+				if (std::string(e.what()).find("Failed to initialize") != std::string::npos) {
+					mp3Decoder.reset();
+					minRequiredMp3Bytes = MIN_MP3_DATA;
+				}
 				return PlayerErrors::failedToDecodeMp3Frame;
 			}
 		}
 		else
 		{
 			bytesWritten = mBuffer.addData(mPCMformat.dataType, buffer.data(), bufferDataToAdd / mPCMformat.bytesPerSample) * mPCMformat.bytesPerSample;
-		}		// Remove the processed data from the buffer
+		}
+		// Remove the processed data from the buffer
 		if (bytesWritten > 0) {
 			buffer.erase(buffer.begin(), buffer.begin() + bufferDataToAdd);
 		}
@@ -517,7 +614,7 @@ namespace SoLoud
 
 	SoLoud::time BufferStream::getLength()
 	{
-		if (mBaseSamplerate == 0)
+		if (mBaseSamplerate == 0 || mUncompressedBytesReceived == 0 || mPCMformat.bytesPerSample == 0)
 			return 0;
 		return (mUncompressedBytesReceived / mPCMformat.bytesPerSample) / (mBaseSamplerate * mPCMformat.channels);
 	}

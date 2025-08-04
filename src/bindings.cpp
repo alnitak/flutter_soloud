@@ -431,6 +431,7 @@ extern "C"
         switch (format)
         {
         case BufferType::OPUS:
+        case BufferType::MP3:
         case BufferType::PCM_F32LE:
             bytesPerSample = 4;
             break;

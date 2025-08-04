@@ -1,0 +1,253 @@
+#ifndef MP3_STREAM_DECODER_H
+#define MP3_STREAM_DECODER_H
+
+#include <vector>
+#include <iostream>
+#include <stdexcept>
+#include <cstring>
+#include <deque>
+
+// dr_mp3 wants us to define this before including the header
+#define DR_MP3_IMPLEMENTATION
+#include "../soloud/src/audiosource/wav/dr_mp3.h"
+
+#define DRMP3_MAX_FRAME_SIZE 1441 // Maximum possible frame size for MP3
+
+/// Wrapper class for MP3 stream decoder using dr_mp3
+class MP3DecoderWrapper {
+public:
+    MP3DecoderWrapper(int sampleRate, int channels)
+        : targetSampleRate(static_cast<drmp3_uint32>(sampleRate)), 
+          targetChannels(static_cast<drmp3_uint32>(channels)), 
+          isInitialized(false),
+          currentFrameSize(0),
+          minRequiredBytes(2048),  // Start with reasonable minimum
+          isVBR(false)
+    {
+        previousFrameSizes.resize(10, 0);
+        printf("MP3DecoderWrapper initialized with sampleRate=%d, channels=%d\n", sampleRate, channels);
+    }
+
+    ~MP3DecoderWrapper() {
+        cleanup();
+    }
+
+    void cleanup() {
+        if (isInitialized) {
+            drmp3_uninit(&decoder);
+            isInitialized = false;
+        }
+        std::fill(previousFrameSizes.begin(), previousFrameSizes.end(), 0);
+        currentFrameSize = 0;
+        minRequiredBytes = 0;
+    }
+
+    // Returns minimum bytes needed for next decode
+    size_t getMinimumBytesNeeded() const {
+        return minRequiredBytes;
+    }
+
+    bool isVariableBitrate() const {
+        return isVBR;
+    }
+
+    std::vector<float> decode(const unsigned char* inputData, size_t inputSize) {
+        std::vector<float> decodedData;
+        
+        // First time or reinitialization
+        if (!isInitialized) {
+            if (!initializeDecoder(inputData, inputSize)) {
+                return decodedData;
+            }
+        }
+
+        // Pre-allocate buffer for efficiency
+        std::vector<float> tempBuffer(2304);  // 1152 samples * 2 channels
+        size_t totalBytesProcessed = 0;
+        bool foundValidFrame = false;
+
+        while (totalBytesProcessed + 4 <= inputSize) {
+            drmp3dec_frame_info info = {};
+            float* output = tempBuffer.data();
+            
+            // Try to decode a frame
+            int samplesPerChannel = drmp3dec_decode_frame(
+                &decoder.decoder,
+                inputData + totalBytesProcessed,
+                inputSize - totalBytesProcessed,
+                output,
+                &info
+            );
+
+            if (samplesPerChannel > 0) {
+                foundValidFrame = true;
+                size_t totalSamples = samplesPerChannel * info.channels;
+                
+                // Add decoded samples to output
+                decodedData.insert(decodedData.end(), 
+                                 output,
+                                 output + totalSamples);
+
+                // Update tracking
+                updateFrameSizeTracking(info.frame_bytes);
+                totalBytesProcessed += info.frame_bytes;
+                
+                printf("Decoded frame: samples=%d, bytes=%d, channels=%d\n",
+                       samplesPerChannel, info.frame_bytes, info.channels);
+            } else {
+                // Try to find next sync word
+                const unsigned char* next = inputData + totalBytesProcessed;
+                if ((next[0] == 0xFF) && ((next[1] & 0xE0) == 0xE0)) {
+                    if (!foundValidFrame) {
+                        // Reinitialize decoder at this position
+                        cleanup();
+                        if (initializeDecoder(next, inputSize - totalBytesProcessed)) {
+                            totalBytesProcessed = 0;
+                            continue;
+                        }
+                    }
+                }
+                totalBytesProcessed++;
+            }
+        }
+
+        minRequiredBytes = foundValidFrame ? currentFrameSize : 2048;
+        return decodedData;
+    }
+
+private:
+    bool initializeDecoder(const unsigned char* data, size_t dataSize) {
+        cleanup(); // Ensure clean state
+
+            // Try to find MP3 sync word first
+            const unsigned char* syncPos = data;
+            size_t remaining = dataSize;
+            bool foundSync = false;
+            
+            while (remaining >= 4) {
+                if ((syncPos[0] == 0xFF) && ((syncPos[1] & 0xE0) == 0xE0)) {
+                    // Verify the sync word by checking MPEG version and layer
+                    unsigned char version = (syncPos[1] >> 3) & 0x03;
+                    unsigned char layer = (syncPos[1] >> 1) & 0x03;
+                    if (layer != 0) { // Layer should not be 0
+                        foundSync = true;
+                        break;
+                    }
+                }
+                syncPos++;
+                remaining--;
+            }
+
+            if (!foundSync) {
+                printf("No valid MP3 sync word found in data\n");
+                throw std::runtime_error("No valid MP3 sync word found");
+            }
+
+            size_t offset = syncPos - data;
+            printf("Found MP3 sync word at offset %zu, remaining bytes: %zu\n", offset, remaining);
+
+            // Print first few bytes after sync word for debugging
+            printf("Header bytes: %02X %02X %02X %02X\n", 
+                   syncPos[0], syncPos[1], syncPos[2], syncPos[3]);
+
+            // Try to initialize decoder with memory
+            if (!drmp3_init(&decoder, 
+                           [](void* pUserData, void* pBuffer, size_t bytesToRead, size_t* pBytesRead) -> size_t {
+                               auto* data = static_cast<const unsigned char*>(pUserData);
+                               if (pBytesRead) *pBytesRead = bytesToRead;
+                               memcpy(pBuffer, data, bytesToRead);
+                               return bytesToRead;
+                           },
+                           [](void* pUserData, drmp3_int64 offset, drmp3_seek_origin origin) -> drmp3_bool32 {
+                               return DRMP3_TRUE;  // Always return success for streaming
+                           },
+                           const_cast<unsigned char*>(syncPos), nullptr)) {
+                printf("drmp3_init failed with streaming callbacks\n");
+                
+                // Try direct memory initialization as fallback
+                if (!drmp3_init_memory(&decoder, syncPos, remaining, nullptr)) {
+                    printf("drmp3_init_memory failed as fallback\n");
+                    throw std::runtime_error("Failed to initialize MP3 decoder");
+                }
+            }
+            
+            printf("Decoder initialized successfully: sr=%u ch=%u\n",
+                   decoder.sampleRate, decoder.channels);        // Verify format compatibility
+        if (decoder.channels > 2) {
+            cleanup();
+            throw std::runtime_error("Unsupported channel count");
+        }
+
+        isInitialized = true;
+        
+        // Get initial frame info
+        drmp3dec_frame_info info;
+        drmp3dec_decode_frame(&decoder.decoder, data, dataSize, nullptr, &info);
+        
+        currentFrameSize = info.frame_bytes;
+        minRequiredBytes = currentFrameSize;
+
+        // Initialize frame size tracking
+        std::fill(previousFrameSizes.begin(), previousFrameSizes.end(), currentFrameSize);
+
+        return true;
+    }
+
+    void updateFrameSizeTracking(size_t newFrameSize) {
+        if (newFrameSize == 0) return;  // Skip invalid frame sizes
+        
+        // Safely update the circular buffer of frame sizes
+        auto it = previousFrameSizes.begin();
+        std::rotate(previousFrameSizes.begin(), previousFrameSizes.begin() + 1, previousFrameSizes.end());
+        previousFrameSizes.back() = newFrameSize;
+
+        // Check for VBR by comparing against first valid frame size
+        size_t firstValidSize = 0;
+        for (size_t size : previousFrameSizes) {
+            if (size > 0) {
+                firstValidSize = size;
+                break;
+            }
+        }
+        
+        isVBR = false;
+        if (firstValidSize > 0) {
+            for (size_t size : previousFrameSizes) {
+                if (size > 0 && size != firstValidSize) {
+                    isVBR = true;
+                    break;
+                }
+            }
+        }
+        
+        // Update current frame size
+        currentFrameSize = newFrameSize;
+    }
+
+    void updateMinRequiredBytes() {
+        if (isVBR) {
+            // For VBR, use the maximum frame size seen recently
+            size_t maxSize = 0;
+            for (size_t size : previousFrameSizes) {
+                maxSize = std::max(maxSize, size);
+            }
+            minRequiredBytes = maxSize;
+        } else {
+            // For CBR, use the constant frame size
+            minRequiredBytes = currentFrameSize;
+        }
+    }
+
+private:
+    drmp3 decoder;
+    drmp3_uint32 targetSampleRate;
+    drmp3_uint32 targetChannels;
+    bool isInitialized;
+    size_t currentFrameSize;
+    size_t minRequiredBytes;
+    bool isVBR;
+    std::deque<size_t> previousFrameSizes;
+    std::vector<unsigned char> pendingData;  // Buffer for incomplete frames
+};
+
+#endif // MP3_STREAM_DECODER_H
