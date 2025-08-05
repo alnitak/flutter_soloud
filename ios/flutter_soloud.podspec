@@ -47,6 +47,7 @@ Flutter audio plugin using SoLoud library and FFI
       '$(PODS_TARGET_SRCROOT)/include/vorbis',
       '$(PODS_TARGET_SRCROOT)/../src',
       '$(PODS_TARGET_SRCROOT)/../src/soloud/include',
+      '${PODS_ROOT}/abseil',
     ],
     'GCC_PREPROCESSOR_DEFINITIONS' => preprocessor_definitions.join(' '),
     'DEFINES_MODULE' => 'YES', 
