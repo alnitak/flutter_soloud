@@ -192,7 +192,6 @@ namespace SoLoud
 		stop();
 	}
 
-	int counter;
 	PlayerErrors BufferStream::setBufferStream(
 		Player *aPlayer,
 		ActiveSound *aParent,
@@ -301,6 +300,7 @@ namespace SoLoud
 			return PlayerErrors::streamEndedAlready;
 		}
 
+		// printf("buffer size %d    addData %d  aDataLen %d\n", buffer.size(), counter++, aDataLen);
 		unsigned int bytesWritten = 0;
 
 		buffer.insert(buffer.end(),
@@ -309,10 +309,10 @@ namespace SoLoud
 		mBytesReceived += aDataLen;
 		int bufferDataToAdd = 0;
 		// Performing some buffering. We need some data to be added expecially when using opus.
-		if (buffer.size() > 1024 * 2 && !forceAdd) // 2 KB of data
+		if (buffer.size() > 1024 * 16 && !forceAdd) // 16 KB of data. forceAdd used only in setDataIsEnded()
 		{
 			// For PCM data we should align the data to the bytes per sample.
-			if (mPCMformat.dataType != BufferType::OPUS)
+			if (!(mPCMformat.dataType == BufferType::OPUS || mPCMformat.dataType == BufferType::MP3))
 			{
 				int alignment = mPCMformat.bytesPerSample * mPCMformat.channels;
 				bufferDataToAdd = (int)(buffer.size() / alignment) * alignment;
@@ -344,6 +344,10 @@ namespace SoLoud
 						decoded.data(),
 						decoded.size()) * sizeof(float);
 				}
+				// Remove the processed data from the buffer
+				if (bytesWritten > 0) {
+					buffer.erase(buffer.begin(), buffer.begin() + bufferDataToAdd);
+				}
 			}
 			catch (const std::exception &e)
 			{
@@ -370,30 +374,31 @@ namespace SoLoud
 
 			size_t decodedBytes = 0;
             std::vector<float> decoded = mp3Decoder->decode(
-                buffer.data(),
-                buffer.size(),
+                buffer,
                 &decodedBytes);
+        	
+			printf("streamStartOffset: %d  decodedBytes: %d\n", mp3Decoder->decoder.streamStartOffset, decodedBytes);
 
             if (!decoded.empty())
             {
-                bytesWritten = mBuffer.addData(
-                    BufferType::PCM_F32LE,
-                    decoded.data(),
-                    decoded.size()) * sizeof(float);
-            }
+				bytesWritten = mBuffer.addData(
+								   BufferType::PCM_F32LE,
+								   decoded.data(),
+								   decoded.size()) *
+							   sizeof(float);
+			}
 
-            if (decodedBytes > 0 && decodedBytes <= buffer.size()) {
-                buffer.erase(buffer.begin(), buffer.begin() + decodedBytes);
-            }
+
 		}
 		else
 		{
 			bytesWritten = mBuffer.addData(mPCMformat.dataType, buffer.data(), bufferDataToAdd / mPCMformat.bytesPerSample) * mPCMformat.bytesPerSample;
+			// Remove the processed data from the buffer
+			if (bytesWritten > 0) {
+				buffer.erase(buffer.begin(), buffer.begin() + bufferDataToAdd);
+			}
 		}
-		// Remove the processed data from the buffer
-		if (bytesWritten > 0) {
-			buffer.erase(buffer.begin(), buffer.begin() + bufferDataToAdd);
-		}
+		
 		
 		if (mIsBuffering)
 			checkBuffering(bytesWritten);

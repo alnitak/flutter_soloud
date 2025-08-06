@@ -34,14 +34,13 @@ public:
         isInitialized = false;
     }
 
-    std::vector<float> decode(const unsigned char *inputData, size_t inputSize, size_t *decodedBytes)
+    std::vector<float> decode(std::vector<unsigned char> buffer, size_t *decodedBytes)
     {
         *decodedBytes = 0;
-        if (inputSize == 0)
+        if (buffer.empty())
             return {};
 
-        // Add new data to the buffer
-        buffer.insert(buffer.end(), inputData, inputData + inputSize);
+        mBuffer = &buffer;
 
         if (!isInitialized)
         {
@@ -51,6 +50,8 @@ public:
                 // Keep the data in the buffer for the next call.
                 return {};
             }
+            dataStart = 0;
+            dataLength = 0;
         }
 
         std::vector<float> decodedData;
@@ -69,29 +70,35 @@ public:
         // This is a bit of a hack, but since we can't know the exact bytes consumed from the stream,
         // we'll clear the buffer and assume all of it was used. This is acceptable because the `onRead`
         // callback will provide the data again if needed.
-        *decodedBytes = buffer.size();
-        buffer.clear();
+        *decodedBytes = decoder.streamCursor;
 
         return decodedData;
+    }
+
+    bool mustCompactBuffer() {
+        if (dataStart > 1024 * 32) {
+            mBuffer->erase(mBuffer->begin(), mBuffer->begin() + dataStart);
+            dataStart = 0;
+            // dataLength = mBuffer->size();
+        }
     }
 
 private:
     static size_t onRead(void *pUserData, void *pBufferOut, size_t bytesToRead)
     {
         MP3DecoderWrapper *self = static_cast<MP3DecoderWrapper *>(pUserData);
-        if (self->buffer.empty())
+        if (self->mBuffer->empty())
         {
             return 0;
         }
 
-        size_t bytesToCopy = std::min(bytesToRead, self->buffer.size());
-        memcpy(pBufferOut, self->buffer.data(), bytesToCopy);
+        size_t toRead = std::min(bytesToRead, self->mBuffer->size());
+        memcpy(pBufferOut, self->mBuffer->data(), toRead);
 
-        // Here we have a choice, either remove the data from the buffer or not.
-        // Let's not remove it, and let the main decode loop handle it.
-        // self->buffer.erase(self->buffer.begin(), self->buffer.begin() + bytesToCopy);
+        self->dataStart += toRead;
+        self->dataLength -= toRead;
 
-        return bytesToCopy;
+        return toRead;
     }
 
     static void on_meta(void *pUserData, const drmp3_metadata *pMetadata)
@@ -118,7 +125,9 @@ private:
             pMetaName = "Info";
         }
 
+        MP3DecoderWrapper *self = static_cast<MP3DecoderWrapper *>(pUserData);
         printf("Metadata: %s (%d bytes)\n", pMetaName, (int)pMetadata->rawDataSize);
+        printf("Metadata streamStartOffset: %d\n", self->decoder.streamStartOffset);
 
         (void)pUserData;
     }
@@ -127,6 +136,9 @@ private:
     {
         cleanup(); // Ensure clean state
 
+        dataStart = 0;
+        dataLength = 0;
+        
         if (!drmp3_init(&decoder, onRead, nullptr, nullptr, on_meta, this, nullptr))
         {
             return false;
@@ -136,12 +148,15 @@ private:
         return true;
     }
 
-private:
+public:
     drmp3 decoder;
+private:
     drmp3_uint32 targetSampleRate;
     drmp3_uint32 targetChannels;
     bool isInitialized;
-    std::vector<unsigned char> buffer;
+    std::vector<unsigned char> *mBuffer;
+    size_t dataStart;
+    size_t dataLength;
 };
 
 #endif // MP3_STREAM_DECODER_H
