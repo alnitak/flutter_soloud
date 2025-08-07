@@ -372,12 +372,10 @@ namespace SoLoud
 				}
 			}
 
-			size_t decodedBytes = 0;
-            std::vector<float> decoded = mp3Decoder->decode(
-                buffer,
-                &decodedBytes);
+            std::vector<float> decoded = mp3Decoder->decode(buffer);
         	
-			printf("streamStartOffset: %d  decodedBytes: %d\n", mp3Decoder->decoder.streamStartOffset, decodedBytes);
+			// printf("streamStartOffset: %d  decodedBytes: %d\n", mp3Decoder->decoder.streamStartOffset, decodedBytes);
+			// printf("bufferDataToAdd %d buffer size %d\n", bufferDataToAdd, buffer.size());
 
             if (!decoded.empty())
             {
@@ -387,11 +385,9 @@ namespace SoLoud
 								   decoded.size()) *
 							   sizeof(float);
 			}
-
-
 		}
 		else
-		{
+		{   // PCM data
 			bytesWritten = mBuffer.addData(mPCMformat.dataType, buffer.data(), bufferDataToAdd / mPCMformat.bytesPerSample) * mPCMformat.bytesPerSample;
 			// Remove the processed data from the buffer
 			if (bytesWritten > 0) {

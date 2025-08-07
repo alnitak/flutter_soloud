@@ -1,6 +1,6 @@
 /*
 MP3 audio decoder. Choice of public domain or MIT-0. See license statements at the end of this file.
-dr_mp3 - v0.7.0 - TBD
+dr_mp3 - v0.7.1 - TBD
 
 David Reid - mackron@gmail.com
 
@@ -72,7 +72,7 @@ extern "C" {
 
 #define DRMP3_VERSION_MAJOR     0
 #define DRMP3_VERSION_MINOR     7
-#define DRMP3_VERSION_REVISION  0
+#define DRMP3_VERSION_REVISION  1
 #define DRMP3_VERSION_STRING    DRMP3_XSTRINGIFY(DRMP3_VERSION_MAJOR) "." DRMP3_XSTRINGIFY(DRMP3_VERSION_MINOR) "." DRMP3_XSTRINGIFY(DRMP3_VERSION_REVISION)
 
 #include <stddef.h> /* For size_t. */
@@ -286,9 +286,9 @@ Main API (Pull API)
 */
 typedef enum
 {
-    drmp3_seek_origin_start,
-    drmp3_seek_origin_current,
-    drmp3_seek_origin_end
+    DRMP3_SEEK_SET,
+    DRMP3_SEEK_CUR,
+    DRMP3_SEEK_END
 } drmp3_seek_origin;
 
 typedef struct
@@ -1227,6 +1227,14 @@ static float drmp3_L3_ldexp_q2(float y, int exp_q2)
     return y;
 }
 
+/*
+I've had reports of GCC 14 throwing an incorrect -Wstringop-overflow warning here. This is an attempt
+to silence this warning.
+*/
+#if (defined(__GNUC__) && (__GNUC__ >= 14)) && !defined(__clang__)
+    #pragma GCC diagnostic push
+    #pragma GCC diagnostic ignored "-Wstringop-overflow"
+#endif
 static void drmp3_L3_decode_scalefactors(const drmp3_uint8 *hdr, drmp3_uint8 *ist_pos, drmp3_bs *bs, const drmp3_L3_gr_info *gr, float *scf, int ch)
 {
     static const drmp3_uint8 g_scf_partitions[3][28] = {
@@ -1288,6 +1296,9 @@ static void drmp3_L3_decode_scalefactors(const drmp3_uint8 *hdr, drmp3_uint8 *is
         scf[i] = drmp3_L3_ldexp_q2(gain, iscf[i] << scf_shift);
     }
 }
+#if (defined(__GNUC__) && (__GNUC__ >= 14)) && !defined(__clang__)
+    #pragma GCC diagnostic pop
+#endif
 
 static const float g_drmp3_pow43[129 + 16] = {
     0,-1,-2.519842f,-4.326749f,-6.349604f,-8.549880f,-10.902724f,-13.390518f,-16.000000f,-18.720754f,-21.544347f,-24.463781f,-27.473142f,-30.567351f,-33.741992f,-36.993181f,
@@ -2658,13 +2669,13 @@ static size_t drmp3__on_read_clamped(drmp3* pMP3, void* pBufferOut, size_t bytes
 static drmp3_bool32 drmp3__on_seek(drmp3* pMP3, int offset, drmp3_seek_origin origin)
 {
     DRMP3_ASSERT(offset >= 0);
-    DRMP3_ASSERT(origin == drmp3_seek_origin_start || origin == drmp3_seek_origin_current);
+    DRMP3_ASSERT(origin == DRMP3_SEEK_SET || origin == DRMP3_SEEK_CUR);
 
     if (!pMP3->onSeek(pMP3->pUserData, offset, origin)) {
         return DRMP3_FALSE;
     }
 
-    if (origin == drmp3_seek_origin_start) {
+    if (origin == DRMP3_SEEK_SET) {
         pMP3->streamCursor = (drmp3_uint64)offset;
     } else{
         pMP3->streamCursor += offset;
@@ -2680,19 +2691,19 @@ static drmp3_bool32 drmp3__on_seek_64(drmp3* pMP3, drmp3_uint64 offset, drmp3_se
     }
 
     /* Getting here "offset" is too large for a 32-bit integer. We just keep seeking forward until we hit the offset. */
-    if (!drmp3__on_seek(pMP3, 0x7FFFFFFF, drmp3_seek_origin_start)) {
+    if (!drmp3__on_seek(pMP3, 0x7FFFFFFF, DRMP3_SEEK_SET)) {
         return DRMP3_FALSE;
     }
 
     offset -= 0x7FFFFFFF;
     while (offset > 0) {
         if (offset <= 0x7FFFFFFF) {
-            if (!drmp3__on_seek(pMP3, (int)offset, drmp3_seek_origin_current)) {
+            if (!drmp3__on_seek(pMP3, (int)offset, DRMP3_SEEK_CUR)) {
                 return DRMP3_FALSE;
             }
             offset = 0;
         } else {
-            if (!drmp3__on_seek(pMP3, 0x7FFFFFFF, drmp3_seek_origin_current)) {
+            if (!drmp3__on_seek(pMP3, 0x7FFFFFFF, DRMP3_SEEK_CUR)) {
                 return DRMP3_FALSE;
             }
             offset -= 0x7FFFFFFF;
@@ -2875,6 +2886,7 @@ static drmp3_uint32 drmp3_decode_next_frame_ex__memory(drmp3* pMP3, drmp3d_sampl
         } else if (info.frame_bytes > 0) {
             /* No frames were read, but it looks like we skipped past one. Read the next MP3 frame. */
             pMP3->memory.currentReadPos += (size_t)info.frame_bytes;
+            pMP3->streamCursor          += (size_t)info.frame_bytes;
         } else {
             /* Nothing at all was read. Abort. */
             break;
@@ -2883,6 +2895,7 @@ static drmp3_uint32 drmp3_decode_next_frame_ex__memory(drmp3* pMP3, drmp3d_sampl
 
     /* Consume the data. */
     pMP3->memory.currentReadPos += (size_t)info.frame_bytes;
+    pMP3->streamCursor          += (size_t)info.frame_bytes;
 
     return pcmFramesRead;
 }
@@ -2957,7 +2970,7 @@ static drmp3_bool32 drmp3_init_internal(drmp3* pMP3, drmp3_read_proc onRead, drm
     /* We'll first check for any ID3v1 or APE tags. */
     #if 1
     if (onSeek != NULL && onTell != NULL) {
-        if (onSeek(pUserData, 0, drmp3_seek_origin_end)) {
+        if (onSeek(pUserData, 0, DRMP3_SEEK_END)) {
             drmp3_int64 streamLen;
             int streamEndOffset = 0;
         
@@ -2966,7 +2979,7 @@ static drmp3_bool32 drmp3_init_internal(drmp3* pMP3, drmp3_read_proc onRead, drm
                 /* ID3v1 */
                 if (streamLen > 128) {
                     char id3[3];
-                    if (onSeek(pUserData, streamEndOffset - 128, drmp3_seek_origin_end)) {
+                    if (onSeek(pUserData, streamEndOffset - 128, DRMP3_SEEK_END)) {
                         if (onRead(pUserData, id3, 3) == 3 && id3[0] == 'T' && id3[1] == 'A' && id3[2] == 'G') {
                             /* We have an ID3v1 tag. */
                             streamEndOffset -= 128;
@@ -2994,7 +3007,7 @@ static drmp3_bool32 drmp3_init_internal(drmp3* pMP3, drmp3_read_proc onRead, drm
                 /* APE */
                 if (streamLen > 32) {
                     char ape[32];   /* The footer. */
-                    if (onSeek(pUserData, streamEndOffset - 32, drmp3_seek_origin_end)) {
+                    if (onSeek(pUserData, streamEndOffset - 32, DRMP3_SEEK_END)) {
                         if (onRead(pUserData, ape, 32) == 32 && ape[0] == 'A' && ape[1] == 'P' && ape[2] == 'E' && ape[3] == 'T' && ape[4] == 'A' && ape[5] == 'G' && ape[6] == 'E' && ape[7] == 'X') {
                             /* We have an APE tag. */
                             drmp3_uint32 tagSize =
@@ -3009,7 +3022,7 @@ static drmp3_bool32 drmp3_init_internal(drmp3* pMP3, drmp3_read_proc onRead, drm
                             /* Fire a metadata callback for the APE data. Must include both the main content and footer. */
                             if (onMeta != NULL) {
                                 /* We first need to seek to the start of the APE tag. */
-                                if (onSeek(pUserData, streamEndOffset, drmp3_seek_origin_end)) {
+                                if (onSeek(pUserData, streamEndOffset, DRMP3_SEEK_END)) {
                                     size_t apeTagSize = (size_t)tagSize + 32;
                                     drmp3_uint8* pTagData = (drmp3_uint8*)drmp3_malloc(apeTagSize, pAllocationCallbacks);
                                     if (pTagData != NULL) {
@@ -3028,7 +3041,7 @@ static drmp3_bool32 drmp3_init_internal(drmp3* pMP3, drmp3_read_proc onRead, drm
                 }
 
                 /* Seek back to the start. */
-                if (!onSeek(pUserData, 0, drmp3_seek_origin_start)) {
+                if (!onSeek(pUserData, 0, DRMP3_SEEK_SET)) {
                     return DRMP3_FALSE; /* Failed to seek back to the start. */
                 }
 
@@ -3039,7 +3052,7 @@ static drmp3_bool32 drmp3_init_internal(drmp3* pMP3, drmp3_read_proc onRead, drm
                 }
             } else {
                 /* Failed to get the length of the stream. ID3v1 and APE tags cannot be skipped. */
-                if (!onSeek(pUserData, 0, drmp3_seek_origin_start)) {
+                if (!onSeek(pUserData, 0, DRMP3_SEEK_SET)) {
                     return DRMP3_FALSE; /* Failed to seek back to the start. */
                 }
             }
@@ -3085,7 +3098,7 @@ static drmp3_bool32 drmp3_init_internal(drmp3* pMP3, drmp3_read_proc onRead, drm
                 } else {
                     /* Don't have a metadata callback, so just skip the tag. */
                     if (onSeek != NULL) {
-                        if (!onSeek(pUserData, tagSize, drmp3_seek_origin_current)) {
+                        if (!onSeek(pUserData, tagSize, DRMP3_SEEK_CUR)) {
                             return DRMP3_FALSE; /* Failed to seek past the ID3v2 tag. */
                         }
                     } else {
@@ -3112,7 +3125,7 @@ static drmp3_bool32 drmp3_init_internal(drmp3* pMP3, drmp3_read_proc onRead, drm
             } else {
                 /* Not an ID3v2 tag. Seek back to the start. */
                 if (onSeek != NULL) {
-                    if (!onSeek(pUserData, 0, drmp3_seek_origin_start)) {
+                    if (!onSeek(pUserData, 0, DRMP3_SEEK_SET)) {
                         return DRMP3_FALSE; /* Failed to seek back to the start. */
                     }
                 } else {
@@ -3301,39 +3314,33 @@ static size_t drmp3__on_read_memory(void* pUserData, void* pBufferOut, size_t by
 static drmp3_bool32 drmp3__on_seek_memory(void* pUserData, int byteOffset, drmp3_seek_origin origin)
 {
     drmp3* pMP3 = (drmp3*)pUserData;
+    drmp3_int64 newCursor;
 
     DRMP3_ASSERT(pMP3 != NULL);
 
-    if (origin == drmp3_seek_origin_current) {
-        if (byteOffset > 0) {
-            if (pMP3->memory.currentReadPos + byteOffset > pMP3->memory.dataSize) {
-                return DRMP3_FALSE;  /* Trying to seek too far forward. */
-            }
-        } else {
-            if (pMP3->memory.currentReadPos < (size_t)-byteOffset) {
-                return DRMP3_FALSE;  /* Trying to seek too far backwards. */
-            }
-        }
+    newCursor = pMP3->memory.currentReadPos;
 
-        /* This will never underflow thanks to the clamps above. */
-        pMP3->memory.currentReadPos += byteOffset;
-    } else if (origin == drmp3_seek_origin_start) {
-        if ((drmp3_uint32)byteOffset <= pMP3->memory.dataSize) {
-            pMP3->memory.currentReadPos = byteOffset;
-        } else {
-            return DRMP3_FALSE;  /* Trying to seek too far forward. */
-        }
-    } else if (origin == drmp3_seek_origin_end) {
-        if (byteOffset > 0) {
-            return DRMP3_FALSE;  /* Trying to seek beyond the end of the buffer. */
-        }
-
-        if ((size_t)(-byteOffset) > pMP3->memory.dataSize) {
-            return DRMP3_FALSE;  /* Trying to seek too far back. */
-        }
-
-        pMP3->memory.currentReadPos = pMP3->memory.dataSize - (size_t)(-byteOffset);
+    if (origin == DRMP3_SEEK_SET) {
+        newCursor = 0;
+    } else if (origin == DRMP3_SEEK_CUR) {
+        newCursor = (drmp3_int64)pMP3->memory.currentReadPos;
+    } else if (origin == DRMP3_SEEK_END) {
+        newCursor = (drmp3_int64)pMP3->memory.dataSize;
+    } else {
+        DRMP3_ASSERT(!"Invalid seek origin");
+        return DRMP3_FALSE;
     }
+
+    newCursor += byteOffset;
+
+    if (newCursor < 0) {
+        return DRMP3_FALSE;  /* Trying to seek prior to the start of the buffer. */
+    }
+    if ((size_t)newCursor > pMP3->memory.dataSize) {
+        return DRMP3_FALSE;  /* Trying to seek beyond the end of the buffer. */
+    }
+
+    pMP3->memory.currentReadPos = (size_t)newCursor;
 
     return DRMP3_TRUE;
 }
@@ -3967,9 +3974,9 @@ static size_t drmp3__on_read_stdio(void* pUserData, void* pBufferOut, size_t byt
 static drmp3_bool32 drmp3__on_seek_stdio(void* pUserData, int offset, drmp3_seek_origin origin)
 {
     int whence = SEEK_SET;
-    if (origin == drmp3_seek_origin_current) {
+    if (origin == DRMP3_SEEK_CUR) {
         whence = SEEK_CUR;
-    } else if (origin == drmp3_seek_origin_end) {
+    } else if (origin == DRMP3_SEEK_END) {
         whence = SEEK_END;
     }
 
@@ -3985,7 +3992,7 @@ static drmp3_bool32 drmp3__on_tell_stdio(void* pUserData, drmp3_int64* pCursor)
     DRMP3_ASSERT(pFileStdio != NULL);
     DRMP3_ASSERT(pCursor    != NULL);
 
-#if defined(_WIN32)
+#if defined(_WIN32) && !defined(NXDK)
     #if defined(_MSC_VER) && _MSC_VER > 1200
         result = _ftelli64(pFileStdio);
     #else
@@ -4307,7 +4314,7 @@ static drmp3_bool32 drmp3_seek_to_start_of_stream(drmp3* pMP3)
     DRMP3_ASSERT(pMP3->onSeek != NULL);
 
     /* Seek to the start of the stream to begin with. */
-    if (!drmp3__on_seek_64(pMP3, pMP3->streamStartOffset, drmp3_seek_origin_start)) {
+    if (!drmp3__on_seek_64(pMP3, pMP3->streamStartOffset, DRMP3_SEEK_SET)) {
         return DRMP3_FALSE;
     }
 
@@ -4407,7 +4414,7 @@ static drmp3_bool32 drmp3_seek_to_pcm_frame__seek_table(drmp3* pMP3, drmp3_uint6
     }
 
     /* First thing to do is seek to the first byte of the relevant MP3 frame. */
-    if (!drmp3__on_seek_64(pMP3, seekPoint.seekPosInBytes, drmp3_seek_origin_start)) {
+    if (!drmp3__on_seek_64(pMP3, seekPoint.seekPosInBytes, DRMP3_SEEK_SET)) {
         return DRMP3_FALSE; /* Failed to seek. */
     }
 
@@ -4985,9 +4992,17 @@ DIFFERENCES BETWEEN minimp3 AND dr_mp3
 /*
 REVISION HISTORY
 ================
-v0.7.0 - TBD
+v0.7.1 - TBD
+  - Silence a warning with GCC.
+  - Fix an error with the NXDK build.
+
+v0.7.0 - 2025-07-23
   - The old `DRMP3_IMPLEMENTATION` has been removed. Use `DR_MP3_IMPLEMENTATION` instead. The reason for this change is that in the future everything will eventually be using the underscored naming convention in the future, so `drmp3` will become `dr_mp3`.
-  - API CHANGE: Add drmp3_seek_origin_end as a seek origin for the seek callback. This is required for detection of ID3v1 and APE tags.
+  - API CHANGE: Seek origins have been renamed to match the naming convention used by dr_wav and my other libraries.
+    - drmp3_seek_origin_start   -> DRMP3_SEEK_SET
+    - drmp3_seek_origin_current -> DRMP3_SEEK_CUR
+    - DRMP3_SEEK_END (new)
+  - API CHANGE: Add DRMP3_SEEK_END as a seek origin for the seek callback. This is required for detection of ID3v1 and APE tags.
   - API CHANGE: Add onTell callback to `drmp3_init()`. This is needed in order to track the location of ID3v1 and APE tags.
   - API CHANGE: Add onMeta callback to `drmp3_init()`. This is used for reporting tag data back to the caller. Currently this only reports the raw tag data which means applications need to parse the data themselves.
   - API CHANGE: Rename `drmp3dec_frame_info.hz` to `drmp3dec_frame_info.sample_rate`.

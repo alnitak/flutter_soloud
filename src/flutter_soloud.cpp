@@ -66,10 +66,7 @@
 
 // 	# wav
 #include "soloud/src/audiosource/wav/stb_vorbis.c"
-#include "soloud/src/audiosource/wav/dr_flac.h"
 #include "soloud/src/audiosource/wav/dr_impl.cpp"
-#include "soloud/src/audiosource/wav/dr_mp3.h"
-#include "soloud/src/audiosource/wav/dr_wav.h"
 #include "soloud/src/audiosource/wav/soloud_wav.cpp"
 #include "soloud/src/audiosource/wav/soloud_wavstream.cpp"
 

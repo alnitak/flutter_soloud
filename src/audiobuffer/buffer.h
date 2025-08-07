@@ -47,6 +47,7 @@ public:
     size_t addData(const BufferType format, const void* data, size_t numSamples) {
         switch (format)
 		{
+            case BufferType::MP3:
             case BufferType::OPUS:
             case BufferType::PCM_F32LE:
             {

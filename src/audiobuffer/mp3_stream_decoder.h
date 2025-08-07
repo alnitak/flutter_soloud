@@ -7,11 +7,18 @@
 #include <cstring>
 #include <deque>
 
-// dr_mp3 wants us to define this before including the header
-// #define DR_MP3_IMPLEMENTATION
-#ifndef dr_mp3_h
-#include "../soloud/src/audiosource/wav/dr_mp3.h"
-#endif
+// #if !defined(DR_MP3_IMPLEMENTATION)
+// #   define DR_MP3_IMPLEMENTATION
+// #endif
+// #ifndef dr_mp3_h
+// #   include "../soloud/src/audiosource/wav/dr_mp3.h"
+// #include "../soloud/src/audiosource/wav/dr_impl.cpp"
+
+// #endif
+
+
+
+#include "./soloud/src/audiosource/wav/dr_mp3.h"
 
 /// Wrapper class for MP3 stream decoder using dr_mp3
 class MP3DecoderWrapper
@@ -27,6 +34,7 @@ public:
     ~MP3DecoderWrapper()
     {
         cleanup();
+        drmp3_uninit(&decoder);
     }
 
     void cleanup()
@@ -34,9 +42,8 @@ public:
         isInitialized = false;
     }
 
-    std::vector<float> decode(std::vector<unsigned char> buffer, size_t *decodedBytes)
+    std::vector<float> decode(std::vector<unsigned char>& buffer)
     {
-        *decodedBytes = 0;
         if (buffer.empty())
             return {};
 
@@ -50,40 +57,81 @@ public:
                 // Keep the data in the buffer for the next call.
                 return {};
             }
-            dataStart = 0;
-            dataLength = 0;
         }
 
         std::vector<float> decodedData;
-        const size_t MAX_FRAMES_PER_CALL = 1152 * 4; // Adjust as needed
-        std::vector<float> tempBuffer(MAX_FRAMES_PER_CALL * targetChannels);
+        int maxFramesPerCall = buffer.size() / sizeof(float) / decoder.channels;
+        std::vector<float> tempBuffer(maxFramesPerCall * targetChannels);
 
         size_t totalFramesDecoded = 0;
 
-        drmp3_uint64 framesDecoded = drmp3_read_pcm_frames_f32(&decoder, MAX_FRAMES_PER_CALL, tempBuffer.data());
+        drmp3_uint64 framesDecoded = drmp3_read_pcm_frames_f32(&decoder, maxFramesPerCall, tempBuffer.data());
         if (framesDecoded > 0)
         {
             decodedData.insert(decodedData.end(), tempBuffer.begin(), tempBuffer.begin() + framesDecoded * targetChannels);
             totalFramesDecoded += framesDecoded;
+            countFramesInBuffer(buffer, framesDecoded);
+            cleanupBuffer(buffer);
         }
-
-        // This is a bit of a hack, but since we can't know the exact bytes consumed from the stream,
-        // we'll clear the buffer and assume all of it was used. This is acceptable because the `onRead`
-        // callback will provide the data again if needed.
-        *decodedBytes = decoder.streamCursor;
 
         return decodedData;
     }
 
-    bool mustCompactBuffer() {
-        if (dataStart > 1024 * 32) {
-            mBuffer->erase(mBuffer->begin(), mBuffer->begin() + dataStart);
-            dataStart = 0;
-            // dataLength = mBuffer->size();
+    void countFramesInBuffer(std::vector<unsigned char>& buffer, drmp3_uint64 framesDecoded)
+    {
+        // Start from the beginning of the buffer to count valid frames
+        drmp3_uint64 counter = 0;
+        for (int i = 0; i < static_cast<int>(buffer.size()) - 1; i++)
+        {
+            const drmp3_uint8 *h = &buffer[i];
+            if (h[0] == 0xff &&
+                ((h[1] & 0xF0) == 0xf0 || (h[1] & 0xFE) == 0xe2) &&
+                ((((h[1]) >> 1) & 3) != 0) &&
+                (((h[2]) >> 4) != 15) &&
+                ((((h[2]) >> 2) & 3) != 3)) {
+                counter++;
+                // if (counter >= framesDecoded-1) {
+                //     buffer.erase(buffer.begin(), buffer.begin() + i);
+                //     break;
+                // }
+            }
+        }
+        printf("********************** framesDecoded %d  counter %d   buffer size %d\n", framesDecoded, counter, buffer.size());
+    }
+
+    /// Find the last MP3 frame start and leave it into the buffer.
+    /// When other data is added, the MP3 decoder will start decoding from here.
+    void cleanupBuffer(std::vector<unsigned char>& buffer)
+    {
+        int frameStart = findLastMP3FrameStart(buffer);
+        if (frameStart >= 0 && static_cast<size_t>(frameStart) < buffer.size()) {
+            printf("*** buffer size before: %d   ", buffer.size());
+            // Keep only from the last frame onward
+            // if (drmp3_hdr_frame_bytes(&buffer.at(frameStart), buffer.size() - frameStart) > buffer.size() - frameStart) {
+                buffer.erase(buffer.begin(), buffer.begin() + frameStart);
+            // }
+            printf("*** buffer size AFTER: %d\n", buffer.size());
         }
     }
 
 private:
+    int findLastMP3FrameStart(std::vector<unsigned char>& buffer) {
+        if (buffer.size() < 2) return -1;
+
+        for (int i = static_cast<int>(buffer.size()) - 2; i >= 0; --i) {
+            const drmp3_uint8 *h = &buffer[i];
+            // inlining drmp3_hdr_valid()
+            if (h[0] == 0xff &&
+                ((h[1] & 0xF0) == 0xf0 || (h[1] & 0xFE) == 0xe2) &&
+                ((((h[1]) >> 1) & 3) != 0) &&
+                (((h[2]) >> 4) != 15) &&
+                ((((h[2]) >> 2) & 3) != 3)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
     static size_t onRead(void *pUserData, void *pBufferOut, size_t bytesToRead)
     {
         MP3DecoderWrapper *self = static_cast<MP3DecoderWrapper *>(pUserData);
@@ -94,9 +142,6 @@ private:
 
         size_t toRead = std::min(bytesToRead, self->mBuffer->size());
         memcpy(pBufferOut, self->mBuffer->data(), toRead);
-
-        self->dataStart += toRead;
-        self->dataLength -= toRead;
 
         return toRead;
     }
@@ -136,9 +181,6 @@ private:
     {
         cleanup(); // Ensure clean state
 
-        dataStart = 0;
-        dataLength = 0;
-        
         if (!drmp3_init(&decoder, onRead, nullptr, nullptr, on_meta, this, nullptr))
         {
             return false;
@@ -155,8 +197,6 @@ private:
     drmp3_uint32 targetChannels;
     bool isInitialized;
     std::vector<unsigned char> *mBuffer;
-    size_t dataStart;
-    size_t dataLength;
 };
 
 #endif // MP3_STREAM_DECODER_H

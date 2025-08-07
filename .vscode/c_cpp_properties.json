@@ -8,7 +8,7 @@
                 "${workspaceFolder}/flutter_soloud_ios/ios/Classes/src/soloud/include",
                 "${workspaceFolder}/src"
             ],
-            "defines": ["WITH_MINIAUDIO", "DR_MP3_IMPLEMENTATION"], // to see the code in between "#if defined"
+            "defines": ["WITH_MINIAUDIO", "DR_MP3_IMPLEMENTATION", "DR_MP3_FLOAT_OUTPUT"], // to see the code in between "#if defined"
             "compilerPath": "/usr/bin/clang",
             "cStandard": "c17",
             "cppStandard": "c++17",
@@ -22,7 +22,7 @@
                 "${workspaceFolder}/src",
                 "/usr/lib/emscripten/system/include"
             ],
-            "defines": ["WITH_MINIAUDIO", "DR_MP3_IMPLEMENTATION", "__EMSCRIPTEN__"], // to see the code in between "#if defined"
+            "defines": ["WITH_MINIAUDIO", "DR_MP3_IMPLEMENTATION", "DR_MP3_FLOAT_OUTPUT", "__EMSCRIPTEN__"], // to see the code in between "#if defined"
             "compilerPath": "/usr/bin/clang",
             "cStandard": "c17",
             "cppStandard": "c++17",
@@ -40,7 +40,8 @@
                 "_UNICODE",
                 // to see the code in between "#if defined"
                 "WITH_MINIAUDIO",
-                "DR_MP3_IMPLEMENTATION"
+                "DR_MP3_IMPLEMENTATION",
+                "DR_MP3_FLOAT_OUTPUT"
             ],
             "windowsSdkVersion": "10.0.19041.0",
             "compilerPath": "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.32.31326/bin/Hostx64/x64/cl.exe",
@@ -57,7 +58,7 @@
                 "${workspaceFolder}/flutter_soloud_ios/ios/Classes/src/soloud/include",
                 "${workspaceFolder}/src"
             ],
-            "defines": ["WITH_MINIAUDIO", "DR_MP3_IMPLEMENTATION"],
+            "defines": ["WITH_MINIAUDIO", "DR_MP3_IMPLEMENTATION", "DR_MP3_FLOAT_OUTPUT"],
             "compilerPath": "/usr/bin/clang",
             "cStandard": "c17",
             "cppStandard": "c++17",
@@ -72,7 +73,7 @@
                 "${workspaceFolder}/flutter_soloud_ios/ios/Classes/src/soloud/include",
                 "${workspaceFolder}/src"
             ],
-            "defines": ["WITH_MINIAUDIO", "DR_MP3_IMPLEMENTATION"],
+            "defines": ["WITH_MINIAUDIO", "DR_MP3_IMPLEMENTATION", "DR_MP3_FLOAT_OUTPUT"],
             "compilerPath": "/usr/bin/clang",
             "cStandard": "c17",
             "cppStandard": "c++17",
