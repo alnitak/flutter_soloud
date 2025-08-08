@@ -14,9 +14,7 @@
 #if !defined(NO_OPUS_OGG_LIBS)
 #include "opus_stream_decoder.h"
 #endif
-#if !defined(NO_MP3_DECODER)
 #include "mp3_stream_decoder.h"
-#endif
 
 class Player;
 

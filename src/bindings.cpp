@@ -244,7 +244,7 @@ extern "C"
             bool hasSpecialChar = false;
             /// check if the device name has some strange chars (happens on Linux)
             /// It happens that some results had the name composed of non-text
-            /// ASCII characters with values ​​<0x20 (blank space) which cannot be
+            /// ASCII characters with values <0x20 (blank space) which cannot be
             /// real devices and should be ignored. Doesn't happen on my Linux
             /// anymore (maybe was a bug on audio drivers?), but worth checking
             /// to be sure.

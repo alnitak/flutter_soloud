@@ -280,6 +280,7 @@ namespace SoLoud
 		}
 	}
 
+	int counter = 0;
 	void BufferStream::setDataIsEnded()
 	{
 		// Eventually add any remaining data
@@ -290,18 +291,19 @@ namespace SoLoud
 
 		buffer.clear();
 		dataIsEnded = true;
+		counter = 0;
 		checkBuffering(0);
 	}
-
 	PlayerErrors BufferStream::addData(const void *aData, unsigned int aDataLen, bool forceAdd)
 	{
+		printf("***** dataIsEnded %d    counter %d   mBuffer size %d    buffer size %d   aDataLen %d\n", dataIsEnded, counter++, mBuffer.buffer.size(), buffer.size(), aDataLen);
 		if (dataIsEnded)
 		{
 			return PlayerErrors::streamEndedAlready;
 		}
 
-		// printf("buffer size %d    addData %d  aDataLen %d\n", buffer.size(), counter++, aDataLen);
-		unsigned int bytesWritten = 0;
+		size_t bytesWritten = 0;
+		bool allDataAdded = -1;
 
 		buffer.insert(buffer.end(),
 			static_cast<const unsigned char *>(aData),
@@ -309,7 +311,7 @@ namespace SoLoud
 		mBytesReceived += aDataLen;
 		int bufferDataToAdd = 0;
 		// Performing some buffering. We need some data to be added expecially when using opus.
-		if (buffer.size() > 1024 * 16 && !forceAdd) // 16 KB of data. forceAdd used only in setDataIsEnded()
+		if (buffer.size() > 1024 * 64 && !forceAdd) // 16 KB of data. forceAdd used only in setDataIsEnded()
 		{
 			// For PCM data we should align the data to the bytes per sample.
 			if (!(mPCMformat.dataType == BufferType::OPUS || mPCMformat.dataType == BufferType::MP3))
@@ -326,6 +328,7 @@ namespace SoLoud
 			// Return if there is not enough data to add.
 			return PlayerErrors::noError;
 
+		// printf("***** OK... adding %d bytes\n", bufferDataToAdd);
 
 		if (mPCMformat.dataType == BufferType::OPUS)
 		{
@@ -342,7 +345,9 @@ namespace SoLoud
 					bytesWritten = mBuffer.addData(
 						BufferType::PCM_F32LE,
 						decoded.data(),
-						decoded.size()) * sizeof(float);
+						decoded.size(),
+						&allDataAdded) * sizeof(float);
+					// printf("***** all has been added %d\n", allDataAdded);
 				}
 				// Remove the processed data from the buffer
 				if (bytesWritten > 0) {
@@ -382,13 +387,19 @@ namespace SoLoud
 				bytesWritten = mBuffer.addData(
 								   BufferType::PCM_F32LE,
 								   decoded.data(),
-								   decoded.size()) *
+								   decoded.size(),
+								   &allDataAdded) *
 							   sizeof(float);
 			}
 		}
 		else
 		{   // PCM data
-			bytesWritten = mBuffer.addData(mPCMformat.dataType, buffer.data(), bufferDataToAdd / mPCMformat.bytesPerSample) * mPCMformat.bytesPerSample;
+			bytesWritten = mBuffer.addData(
+				mPCMformat.dataType,
+				buffer.data(),
+				bufferDataToAdd / mPCMformat.bytesPerSample,
+				&allDataAdded) *
+					mPCMformat.bytesPerSample;
 			// Remove the processed data from the buffer
 			if (bytesWritten > 0) {
 				buffer.erase(buffer.begin(), buffer.begin() + bufferDataToAdd);
@@ -404,7 +415,7 @@ namespace SoLoud
 
 		// data has been added to the buffer, but not all because reached its full capacity.
 		// So mark this stream as ended and no more data can be added.
-		if (bytesWritten < aDataLen / mPCMformat.bytesPerSample)
+		if (!allDataAdded)
 		{
 			dataIsEnded = true;
 			return PlayerErrors::pcmBufferFull;

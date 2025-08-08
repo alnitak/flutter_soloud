@@ -8,7 +8,7 @@
                 "${workspaceFolder}/flutter_soloud_ios/ios/Classes/src/soloud/include",
                 "${workspaceFolder}/src"
             ],
-            "defines": ["WITH_MINIAUDIO", "DR_MP3_IMPLEMENTATION", "DR_MP3_FLOAT_OUTPUT"], // to see the code in between "#if defined"
+            "defines": ["WITH_MINIAUDIO", "DR_MP3_IMPLEMENTATION", "DR_MP3_FLOAT_OUTPUT", "MINIMP3_IMPLEMENTATION"], // to see the code in between "#if defined"
             "compilerPath": "/usr/bin/clang",
             "cStandard": "c17",
             "cppStandard": "c++17",

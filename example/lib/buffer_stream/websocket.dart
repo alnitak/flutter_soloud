@@ -194,7 +194,7 @@ class _WebsocketExampleState extends State<WebsocketExample> {
               currentSound = SoLoud.instance.setBufferStream(
                 // maxBufferSizeBytes: 1024 * 1024 * 200, // 200 MB
                 maxBufferSizeDuration: const Duration(minutes: 5),
-                bufferingTimeNeeds: 2,
+                bufferingTimeNeeds: 1,
                 sampleRate: sampleRate[srId],
                 channels: Channels.values[chId],
                 format: BufferType.values[fmtId],
@@ -243,6 +243,7 @@ class _WebsocketExampleState extends State<WebsocketExample> {
               channel?.stream.listen(
                 (message) async {
                   numberOfChunks++;
+                  print('Received chunk $numberOfChunks');
                   byteSize += (message as List<int>).length;
 
                   try {
@@ -304,6 +305,7 @@ class _WebsocketExampleState extends State<WebsocketExample> {
                 onPressed: () async {
                   if (currentSound == null) return;
                   SoLoud.instance.resetBufferStream(currentSound!);
+                  streamBuffering.value = false;
                 },
                 child: const Text('reset buffer'),
               ),
@@ -313,6 +315,7 @@ class _WebsocketExampleState extends State<WebsocketExample> {
                   currentSound = null;
                   await SoLoud.instance.disposeAllSources();
                   await channel?.sink.close();
+                  streamBuffering.value = false;
                   setState(() {});
                 },
                 child: const Text('stop all sounds and close ws'),
