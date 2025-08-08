@@ -48,7 +48,7 @@ std::vector<float> MP3DecoderWrapper::decode(std::vector<unsigned char>& buffer)
         const uint8_t *frame_ptr = mp3_ptr;
         int remaining = bytes_left;
 
-        while (remaining >= 4 && validFrames < 2) {  // Need at least 4 bytes for header check
+         while (remaining >= 4 && validFrames < 2) {  // Need at least 4 bytes for header check
             // printf("Valid: %d  Remaining: %d\n", validFrames, remaining);
             if (hdr_valid(frame_ptr))
             {

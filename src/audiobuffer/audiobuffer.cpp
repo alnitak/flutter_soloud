@@ -311,7 +311,7 @@ namespace SoLoud
 		mBytesReceived += aDataLen;
 		int bufferDataToAdd = 0;
 		// Performing some buffering. We need some data to be added expecially when using opus.
-		if (buffer.size() > 1024 * 64 && !forceAdd) // 16 KB of data. forceAdd used only in setDataIsEnded()
+		if (buffer.size() > 1024 * 2 && !forceAdd) // 2 KB of data. forceAdd used only in setDataIsEnded()
 		{
 			// For PCM data we should align the data to the bytes per sample.
 			if (!(mPCMformat.dataType == BufferType::OPUS || mPCMformat.dataType == BufferType::MP3))
