@@ -25,13 +25,7 @@ public:
 
     std::vector<float> decode(std::vector<unsigned char>& buffer);
 
-    /// Find the last MP3 frame start and leave it into the buffer.
-    /// When other data is added, the MP3 decoder will start decoding from here.
-    void cleanupBuffer(std::vector<unsigned char>& buffer);
-
 private:
-    int findLastMP3FrameStart(std::vector<unsigned char>& buffer);
-
     bool initializeDecoder();
 
 public:

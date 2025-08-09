@@ -102,50 +102,6 @@ std::vector<float> MP3DecoderWrapper::decode(std::vector<unsigned char>& buffer)
     return decodedData;
 }
 
-/// Find the last MP3 starting frame and leave it into the buffer.
-/// When other data is added, the MP3 decoder will start decoding from there.
-void MP3DecoderWrapper::cleanupBuffer(std::vector<unsigned char>& buffer)
-{
-    int frameStart = findLastMP3FrameStart(buffer);
-    if (frameStart >= 0 && static_cast<size_t>(frameStart) < buffer.size()) {
-        printf("*** buffer size before: %d   ", buffer.size());
-        // Keep only from the last frame onward
-        // Inlining hdr_frame_bytes logic from minimp3.h
-        const uint8_t *h = &buffer[frameStart];
-        int frame_bytes = HDR_IS_LAYER_1(h) ? 384 : (1152 >> (int)HDR_IS_FRAME_576(h));
-        frame_bytes = frame_bytes * hdr_bitrate_kbps(h) * 125 / hdr_sample_rate_hz(h);
-        if (HDR_IS_LAYER_1(h)) {
-            frame_bytes &= ~3; // slot align
-        }
-        if (frame_bytes == 0) frame_bytes = buffer.size() - frameStart; // Fallback for free format
-
-        if (frame_bytes > buffer.size() - frameStart) {
-            buffer.erase(buffer.begin(), buffer.begin() + frameStart);
-        }
-        printf("*** buffer size AFTER: %d\n", buffer.size());
-    }
-}
-
-int MP3DecoderWrapper::findLastMP3FrameStart(std::vector<unsigned char>& buffer) {
-    if (buffer.size() < 2) return -1;
-
-    for (int i = static_cast<int>(buffer.size()) - 2; i >= 0; --i) {
-        const uint8_t *h = &buffer[i];
-        // inlining hdr_valid() from minimp3.h
-        // if (h[0] == 0xff &&
-        //     ((h[1] & 0xF0) == 0xf0 || (h[1] & 0xFE) == 0xe2) &&
-        //     (HDR_GET_LAYER(h) != 0) &&
-        //     (HDR_GET_BITRATE(h) != 15) &&
-        //     (HDR_GET_SAMPLE_RATE(h) != 3)) {
-        //     return i;
-        // }
-        if (hdr_valid(h)) {
-            return i;
-        }
-    }
-    return -1;
-}
-
 bool MP3DecoderWrapper::initializeDecoder()
 {
     cleanup(); // Ensure clean state
