@@ -9,10 +9,6 @@
 
 #include "minimp3.h"
 
-// Forward declarations for functions moved to .cpp
-unsigned hdr_bitrate_kbps(const uint8_t *h);
-unsigned hdr_sample_rate_hz(const uint8_t *h);
-
 /// Wrapper class for MP3 stream decoder using minimp3
 class MP3DecoderWrapper
 {

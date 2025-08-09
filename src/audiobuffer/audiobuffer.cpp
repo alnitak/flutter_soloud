@@ -384,13 +384,13 @@ namespace SoLoud
 
             if (!decoded.empty())
             {
-				bytesWritten = mBuffer.addData(
-								   BufferType::PCM_F32LE,
-								   decoded.data(),
-								   decoded.size(),
-								   &allDataAdded) *
-							   sizeof(float);
-			}
+                bytesWritten = mBuffer.addData(
+                                   BufferType::PCM_F32LE,
+                                   decoded.data(),
+                                   decoded.size(),
+                                   &allDataAdded) *
+                               sizeof(float);
+            }
 		}
 		else
 		{   // PCM data
