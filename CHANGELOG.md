@@ -1,3 +1,6 @@
+#### 3.2.5 (10 Aug 2025)
+- macos fix: `abseil` not found when using this plugin with some other native plugins like firebase #280. Thanks to @jochy.
+
 #### 3.2.4 (5 Aug 2025)
 - ios fix: `abseil` not found when using this plugin with some other native plugins like firebase #271
 
