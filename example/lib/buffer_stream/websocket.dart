@@ -79,6 +79,8 @@ class _WebsocketExampleState extends State<WebsocketExample> {
   int byteSize = 0;
   final streamBuffering = ValueNotifier(false);
 
+  int totBytesSent = 0;
+
   @override
   void dispose() {
     SoLoud.instance.deinit();
@@ -239,17 +241,22 @@ class _WebsocketExampleState extends State<WebsocketExample> {
                 debugPrint(e.toString());
               }
 
+              totBytesSent = 0;
+
               /// Listen to the websocket
               channel?.stream.listen(
                 (message) async {
                   numberOfChunks++;
-                  print('Received chunk $numberOfChunks');
+                  // print('Received chunk $numberOfChunks');
                   byteSize += (message as List<int>).length;
 
                   try {
+                    final bytesToAdd = Uint8List.fromList(message);
+                    totBytesSent += bytesToAdd.length;
+                    // debugPrint('ws channel sending ${bytesToAdd.length}. total sent: $totBytesSent');
                     SoLoud.instance.addAudioDataStream(
                       currentSound!,
-                      Uint8List.fromList(message),
+                      bytesToAdd,
                     );
                   } on Exception catch (e) {
                     debugPrint('error adding audio data: $e');
@@ -266,7 +273,8 @@ class _WebsocketExampleState extends State<WebsocketExample> {
                     SoLoud.instance.setDataIsEnded(currentSound!);
                   }
                   debugPrint('ws channel closed. '
-                      'numberOfChunks: $numberOfChunks  byteSize: $byteSize');
+                      'numberOfChunks: $numberOfChunks  byteSize: $byteSize  '
+                      'totBytesSent: $totBytesSent');
                   numberOfChunks = 0;
                   byteSize = 0;
                 },

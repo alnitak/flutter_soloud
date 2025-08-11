@@ -35,7 +35,7 @@ namespace SoLoud
 		{
 			memset(aBuffer, 0, sizeof(float) * aSamplesToRead);
 			// Calculate mStreamPosition based on mOffset
-			mStreamPosition = mOffset / (float)(mSamplerate * mChannels);
+			mStreamPosition = mOffset / (float)(mBaseSamplerate * mChannels);
 
 
 			// This is not nice to do in the audio callback, but I didn't
@@ -56,7 +56,7 @@ namespace SoLoud
 		{
 			memset(aBuffer, 0, sizeof(float) * aSamplesToRead);
 			// Calculate mStreamPosition based on mOffset
-			mStreamPosition = mOffset / (float)(mSamplerate * mChannels);
+			mStreamPosition = mOffset / (float)(mBaseSamplerate * mChannels);
 
 			// This is not nice to do in the audio callback, but I didn't
 			// find a better way to get lenght and pause the sound and the
@@ -98,7 +98,7 @@ namespace SoLoud
 		size_t samplesRemoved = mParent->mBuffer.removeData(totalBytesRead);
 		
 		 // Update stream position regardless of buffering type
-        mStreamTime += samplesToRead / (float)mSamplerate;
+        mStreamTime += samplesToRead / (float)mBaseSamplerate;
         
 		// If buffering type is RELEASED, adjust mSampleCount and don't increment mOffset
 		if (mParent->mBuffer.bufferingType == BufferingType::RELEASED) {
@@ -111,8 +111,8 @@ namespace SoLoud
 		{
 			mOffset += samplesToRead * mChannels;
 			// For PRESERVED type, streamPosition advances with the offset
-            // mStreamPosition = mOffset / (float)(sizeof(float) * mSamplerate * mChannels);
-			mStreamPosition = mOffset / (float)(mSamplerate * mChannels);
+            // mStreamPosition = mOffset / (float)(sizeof(float) * mBaseSamplerate * mChannels);
+			mStreamPosition = mOffset / (float)(mBaseSamplerate * mChannels);
 		}
 
 		return samplesToRead;
@@ -139,7 +139,7 @@ namespace SoLoud
 			}
 			offset = aSeconds;
 		}
-		long samples_to_discard = (long)floor(mSamplerate * offset);
+		long samples_to_discard = (long)floor(mBaseSamplerate * offset);
 
 		while (samples_to_discard)
 		{
@@ -249,18 +249,6 @@ namespace SoLoud
 
 		mp3Decoder = nullptr;
 		minRequiredMp3Bytes = 0;
-		if (pcmFormat.dataType == BufferType::MP3)
-		{
-			try
-			{
-				mp3Decoder = std::make_unique<MP3DecoderWrapper>(
-					pcmFormat.sampleRate, pcmFormat.channels);
-			}
-			catch (const std::exception &e)
-			{
-				return PlayerErrors::failedToCreateMp3Decoder;
-			}
-		}
 		return PlayerErrors::noError;
 	}
 
@@ -283,10 +271,11 @@ namespace SoLoud
 	int counter = 0;
 	void BufferStream::setDataIsEnded()
 	{
+		printf("***** setDataIsEnded()   mBytesReceived %d    bytes still on buffer: %d\n", mBytesReceived, buffer.size());
 		// Eventually add any remaining data
 		if (buffer.size() > 0)
 		{
-			addData(buffer.data(), buffer.size(), true);
+			addData(nullptr, 0, true);
 		}
 
 		buffer.clear();
@@ -294,9 +283,9 @@ namespace SoLoud
 		counter = 0;
 		checkBuffering(0);
 	}
-	PlayerErrors BufferStream::addData(const void *aData, unsigned int aDataLen, bool forceAdd)
+	PlayerErrors BufferStream::addData(const void *aData, unsigned int aDataLen, bool dontAdd)
 	{
-		printf("***** dataIsEnded %d    counter %d   mBuffer size %d    buffer size %d   aDataLen %d\n", dataIsEnded, counter++, mBuffer.buffer.size(), buffer.size(), aDataLen);
+		// printf("***** dataIsEnded %d    counter %d   mBuffer size %d    buffer size %d   aDataLen %d\n", dataIsEnded, counter++, mBuffer.buffer.size(), buffer.size(), aDataLen);
 		if (dataIsEnded)
 		{
 			return PlayerErrors::streamEndedAlready;
@@ -304,29 +293,33 @@ namespace SoLoud
 
 		size_t bytesWritten = 0;
 		bool allDataAdded = -1;
-
-		buffer.insert(buffer.end(),
-			static_cast<const unsigned char *>(aData),
-			static_cast<const unsigned char *>(aData) + aDataLen);
-		mBytesReceived += aDataLen;
 		int bufferDataToAdd = 0;
-		// Performing some buffering. We need some data to be added expecially when using opus.
-		if (buffer.size() > 1024 * 2 && !forceAdd) // 2 KB of data. forceAdd used only in setDataIsEnded()
-		{
-			// For PCM data we should align the data to the bytes per sample.
-			if (!(mPCMformat.dataType == BufferType::OPUS || mPCMformat.dataType == BufferType::MP3))
+
+		if (!dontAdd) {
+			buffer.insert(buffer.end(),
+				static_cast<const unsigned char *>(aData),
+				static_cast<const unsigned char *>(aData) + aDataLen);
+			mBytesReceived += aDataLen;
+			// Performing some buffering. We need some data to be added expecially when using opus or mp3.
+			if (buffer.size() > 1024 * 16) // 16 KB of data.
 			{
-				int alignment = mPCMformat.bytesPerSample * mPCMformat.channels;
-				bufferDataToAdd = (int)(buffer.size() / alignment) * alignment;
-			}
-			else
-			{
-				// When using opus we don't need to align.
-				bufferDataToAdd = buffer.size();
-			}
-		} else
-			// Return if there is not enough data to add.
-			return PlayerErrors::noError;
+				// For PCM data we must align the data to the bytes per sample.
+				if (!(mPCMformat.dataType == BufferType::OPUS || mPCMformat.dataType == BufferType::MP3))
+				{
+					int alignment = mPCMformat.bytesPerSample * mPCMformat.channels;
+					bufferDataToAdd = (int)(buffer.size() / alignment) * alignment;
+				}
+				else
+				{
+					// When using opus we don't need to align.
+					bufferDataToAdd = buffer.size();
+				}
+			} else
+				// Return if there is not enough data to add.
+				return PlayerErrors::noError;
+		} else {
+			bufferDataToAdd = buffer.size();
+		}
 
 		// printf("***** OK... adding %d bytes\n", bufferDataToAdd);
 
@@ -367,29 +360,39 @@ namespace SoLoud
 			// Initialize the decoder if needed
 			if (!mp3Decoder) {
 				try {
-					mp3Decoder = std::make_unique<MP3DecoderWrapper>(
-						mPCMformat.sampleRate,
-						mPCMformat.channels
-					);
+					mp3Decoder = std::make_unique<MP3DecoderWrapper>();
 					minRequiredMp3Bytes = 0;  // Will be set after first successful decode
 				} catch (const std::exception &e) {
 					return PlayerErrors::failedToCreateMp3Decoder;
 				}
 			}
 
-            std::vector<float> decoded = mp3Decoder->decode(buffer);
-        	
+			int sr, ch;
+			std::vector<float> decoded = mp3Decoder->decode(buffer, &sr, &ch);
+
 			// printf("streamStartOffset: %d  decodedBytes: %d\n", mp3Decoder->decoder.streamStartOffset, decodedBytes);
 			// printf("bufferDataToAdd %d buffer size %d\n", bufferDataToAdd, buffer.size());
 
             if (!decoded.empty())
             {
-                bytesWritten = mBuffer.addData(
-                                   BufferType::PCM_F32LE,
-                                   decoded.data(),
-                                   decoded.size(),
-                                   &allDataAdded) *
-                               sizeof(float);
+				if (sr != -1) { 
+					mPCMformat.sampleRate = sr;
+					mBaseSamplerate = sr;
+					mInstance->mSamplerate = sr;
+					mInstance->mBaseSamplerate = sr;
+				}
+				if (ch != -1) {
+					mPCMformat.channels = ch;
+					mChannels = ch;
+					mInstance->mChannels = ch;
+				}
+
+				bytesWritten = mBuffer.addData(
+									BufferType::PCM_F32LE,
+									decoded.data(),
+									decoded.size(),
+									&allDataAdded) *
+								sizeof(float);
             }
 		}
 		else
@@ -503,11 +506,6 @@ namespace SoLoud
 		return mBuffer.bufferingType;
 	}
 
-	AudioSourceInstance *BufferStream::createInstance()
-	{
-		return new BufferStreamInstance(this);
-	}
-
 	SoLoud::time BufferStream::getLength()
 	{
 		if (mBaseSamplerate == 0 || mUncompressedBytesReceived == 0 || mPCMformat.bytesPerSample == 0)
@@ -519,5 +517,11 @@ namespace SoLoud
 	SoLoud::time BufferStream::getStreamTimeConsumed()
 	{
 		return (double)(mBytesConsumed / mPCMformat.bytesPerSample) / (mBaseSamplerate * mPCMformat.channels);
+	}
+
+	AudioSourceInstance *BufferStream::createInstance()
+	{
+		mInstance = new BufferStreamInstance(this);
+		return mInstance;
 	}
 };

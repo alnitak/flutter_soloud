@@ -54,6 +54,7 @@ namespace SoLoud
     uint64_t mUncompressedBytesReceived;
     bool dataIsEnded;
     bool mIsBuffering;
+    BufferStreamInstance *mInstance;
 #if !defined(NO_OPUS_OGG_LIBS)
     std::unique_ptr<OpusDecoderWrapper> decoder;
 #endif

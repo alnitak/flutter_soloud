@@ -6,10 +6,8 @@
 
 #include "mp3_stream_decoder.h"
 
-MP3DecoderWrapper::MP3DecoderWrapper(int sampleRate, int channels)
-    : targetSampleRate(static_cast<uint32_t>(sampleRate)),
-      targetChannels(static_cast<uint32_t>(channels)),
-      isInitialized(false),
+MP3DecoderWrapper::MP3DecoderWrapper()
+    : isInitialized(false),
       validFramesFound(false)
 {
 }
@@ -25,7 +23,7 @@ void MP3DecoderWrapper::cleanup()
     validFramesFound = false;
 }
 
-std::vector<float> MP3DecoderWrapper::decode(std::vector<unsigned char>& buffer)
+std::vector<float> MP3DecoderWrapper::decode(std::vector<unsigned char>& buffer, int* sampleRate, int* channels)
 {
     if (buffer.empty())
         return {};
@@ -35,6 +33,8 @@ std::vector<float> MP3DecoderWrapper::decode(std::vector<unsigned char>& buffer)
     mp3dec_frame_info_t frame_info;
     int bytes_left = buffer.size();
     const uint8_t *mp3_ptr = buffer.data();
+    *sampleRate = -1;
+    *channels = -1;
 
     if (!isInitialized)
     {
@@ -60,6 +60,8 @@ std::vector<float> MP3DecoderWrapper::decode(std::vector<unsigned char>& buffer)
                 if (temp_info.frame_bytes <= 0) break;
                 frame_ptr += temp_info.frame_bytes;
                 remaining -= temp_info.frame_bytes;
+                *sampleRate = temp_info.hz;
+                *channels = temp_info.channels;
             }
             else
             {
@@ -76,12 +78,14 @@ std::vector<float> MP3DecoderWrapper::decode(std::vector<unsigned char>& buffer)
         }
     }
 
+
     while (bytes_left > 0)
     {
         int samples = mp3dec_decode_frame(&decoder, mp3_ptr, bytes_left, pcm, &frame_info);
 
         if (samples)
         {
+            printf("************** decoded %d samples\n", samples);
             decodedData.insert(decodedData.end(), pcm, pcm + samples * frame_info.channels);
             mp3_ptr += frame_info.frame_bytes;
             bytes_left -= frame_info.frame_bytes;

@@ -13,13 +13,13 @@
 class MP3DecoderWrapper
 {
 public:
-    MP3DecoderWrapper(int sampleRate, int channels);
+    MP3DecoderWrapper();
 
     ~MP3DecoderWrapper();
 
     void cleanup();
 
-    std::vector<float> decode(std::vector<unsigned char>& buffer);
+    std::vector<float> decode(std::vector<unsigned char>& buffer, int* sampleRate, int* channels);
 
 private:
     bool initializeDecoder();
@@ -27,8 +27,6 @@ private:
 public:
     mp3dec_t decoder;
 private:
-    uint32_t targetSampleRate;
-    uint32_t targetChannels;
     bool isInitialized;
     bool validFramesFound;
 };

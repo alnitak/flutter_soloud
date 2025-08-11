@@ -352,7 +352,13 @@ PlayerErrors Player::setBufferStream(
 
     newSound.get()->sound = std::make_unique<SoLoud::BufferStream>();
     newSound.get()->soundType = SoundType::TYPE_BUFFER_STREAM;
-    PlayerErrors e = static_cast<SoLoud::BufferStream *>(newSound.get()->sound.get())->setBufferStream(this, newSound.get(), maxBufferSize, bufferingType, bufferingTimeNeeds, pcmFormat, onBufferingCallback);
+    PlayerErrors e = static_cast<SoLoud::BufferStream *>(newSound.get()->sound.get())->setBufferStream(
+        this, newSound.get(),
+        maxBufferSize,
+        bufferingType,
+        bufferingTimeNeeds,
+        pcmFormat,
+        onBufferingCallback);
 
     newSound.get()->filters = std::make_unique<Filters>(&soloud, newSound.get());
     sounds.push_back(std::move(newSound));
