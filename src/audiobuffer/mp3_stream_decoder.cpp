@@ -1,9 +1,3 @@
-#define MINIMP3_FLOAT_OUTPUT
-#define MINIMP3_ONLY_MP3
-#if !defined(__EMSCRIPTEN__)
-#define MINIMP3_ONLY_SIMD
-#endif
-#define MINIMP3_IMPLEMENTATION
 #include "minimp3.h"
 
 #include "mp3_stream_decoder.h"
@@ -11,7 +5,7 @@
 MP3DecoderWrapper::MP3DecoderWrapper()
     : isInitialized(false),
       validFramesFound(false)
-{
+{	
 }
 
 MP3DecoderWrapper::~MP3DecoderWrapper()
