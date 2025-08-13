@@ -43,6 +43,8 @@ list(APPEND PLUGIN_SOURCES
   "${SRC_DIR}/waveform/waveform.cpp"
   "${SRC_DIR}/waveform/miniaudio_libvorbis.cpp"
   "${SRC_DIR}/audiobuffer/audiobuffer.cpp"
+  "${SRC_DIR}/audiobuffer/opus_stream_decoder.cpp"
+  "${SRC_DIR}/audiobuffer/mp3_stream_decoder.cpp"
   "${SRC_DIR}/filters/filters.cpp"
   "${SRC_DIR}/filters/pitch_shift_filter.cpp"
   "${SRC_DIR}/filters/smbPitchShift.cpp"

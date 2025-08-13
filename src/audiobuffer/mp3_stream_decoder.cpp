@@ -1,6 +1,8 @@
 #define MINIMP3_FLOAT_OUTPUT
 #define MINIMP3_ONLY_MP3
+#if !defined(__EMSCRIPTEN__)
 #define MINIMP3_ONLY_SIMD
+#endif
 #define MINIMP3_IMPLEMENTATION
 #include "minimp3.h"
 
@@ -14,7 +16,6 @@ MP3DecoderWrapper::MP3DecoderWrapper()
 
 MP3DecoderWrapper::~MP3DecoderWrapper()
 {
-    cleanup();
 }
 
 void MP3DecoderWrapper::cleanup()
@@ -49,7 +50,6 @@ std::vector<float> MP3DecoderWrapper::decode(std::vector<unsigned char>& buffer,
         int remaining = bytes_left;
 
          while (remaining >= 4 && validFrames < 2) {  // Need at least 4 bytes for header check
-            // printf("Valid: %d  Remaining: %d\n", validFrames, remaining);
             if (hdr_valid(frame_ptr))
             {
                 validFrames++;
@@ -85,7 +85,6 @@ std::vector<float> MP3DecoderWrapper::decode(std::vector<unsigned char>& buffer,
 
         if (samples)
         {
-            printf("************** decoded %d samples\n", samples);
             decodedData.insert(decodedData.end(), pcm, pcm + samples * frame_info.channels);
             mp3_ptr += frame_info.frame_bytes;
             bytes_left -= frame_info.frame_bytes;

@@ -227,21 +227,9 @@ namespace SoLoud
 		mIsBuffering = true;
 
 #if !defined(NO_OPUS_OGG_LIBS)
-		decoder = nullptr;
-		if (pcmFormat.dataType == BufferType::OPUS)
-		{
-			try
-			{
-				decoder = std::make_unique<OpusDecoderWrapper>(
-					pcmFormat.sampleRate, pcmFormat.channels);
-			}
-			catch (const std::exception &e)
-			{
-				return PlayerErrors::failedToCreateOpusDecoder;
-			}
-		}
+		oggOpusdecoder = nullptr;
 #else
-		if (pcmFormat.dataType == OPUS)
+		if (pcmFormat.dataType == BufferType::OPUS)
 		{
 			return PlayerErrors::failedToCreateOpusDecoder;
 		}
@@ -271,7 +259,7 @@ namespace SoLoud
 	int counter = 0;
 	void BufferStream::setDataIsEnded()
 	{
-		printf("***** setDataIsEnded()   mBytesReceived %d    bytes still on buffer: %d\n", mBytesReceived, buffer.size());
+		// printf("***** setDataIsEnded()   mBytesReceived %d    bytes still on buffer: %d\n", mBytesReceived, buffer.size());
 		// Eventually add any remaining data
 		if (buffer.size() > 0)
 		{
@@ -321,17 +309,27 @@ namespace SoLoud
 			bufferDataToAdd = buffer.size();
 		}
 
-		// printf("***** OK... adding %d bytes\n", bufferDataToAdd);
-
+		// It's time to decode the data already in the buffer
 		if (mPCMformat.dataType == BufferType::OPUS)
 		{
 #if !defined(NO_OPUS_OGG_LIBS)
-			// Decode the Opus data
+			// Decode the OGG/Opus data
 			try
 			{
-				std::vector<float> decoded = decoder->decode(
-					buffer.data(),
-					bufferDataToAdd);
+				// Initialize the ogg/opus decoder if needed
+				if (!oggOpusdecoder) {
+					try
+					{
+						oggOpusdecoder = std::make_unique<OpusDecoderWrapper>(
+							mPCMformat.sampleRate, mPCMformat.channels);
+					}
+					catch (const std::exception &e)
+					{
+						return PlayerErrors::failedToCreateOpusDecoder;
+					}
+				}
+			
+				std::vector<float> decoded = oggOpusdecoder->decode(buffer);
 
 				if (!decoded.empty())
 				{
@@ -340,7 +338,6 @@ namespace SoLoud
 						decoded.data(),
 						decoded.size(),
 						&allDataAdded) * sizeof(float);
-					// printf("***** all has been added %d\n", allDataAdded);
 				}
 				// Remove the processed data from the buffer
 				if (bytesWritten > 0) {
@@ -357,7 +354,7 @@ namespace SoLoud
 		}
 		else if (mPCMformat.dataType == BufferType::MP3)
 		{
-			// Initialize the decoder if needed
+			// Initialize the mp3 decoder if needed
 			if (!mp3Decoder) {
 				try {
 					mp3Decoder = std::make_unique<MP3DecoderWrapper>();
@@ -369,9 +366,6 @@ namespace SoLoud
 
 			int sr, ch;
 			std::vector<float> decoded = mp3Decoder->decode(buffer, &sr, &ch);
-
-			// printf("streamStartOffset: %d  decodedBytes: %d\n", mp3Decoder->decoder.streamStartOffset, decodedBytes);
-			// printf("bufferDataToAdd %d buffer size %d\n", bufferDataToAdd, buffer.size());
 
             if (!decoded.empty())
             {
@@ -393,7 +387,11 @@ namespace SoLoud
 									decoded.size(),
 									&allDataAdded) *
 								sizeof(float);
-            }
+			} 
+			else {
+				// Continue buffering. Maybe we are still adding artwork image data.
+				return PlayerErrors::noError; //failedToDecodeMp3Frame;
+			}
 		}
 		else
 		{   // PCM data

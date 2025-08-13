@@ -56,7 +56,7 @@ namespace SoLoud
     bool mIsBuffering;
     BufferStreamInstance *mInstance;
 #if !defined(NO_OPUS_OGG_LIBS)
-    std::unique_ptr<OpusDecoderWrapper> decoder;
+    std::unique_ptr<OpusDecoderWrapper> oggOpusdecoder;
 #endif
 
     std::unique_ptr<MP3DecoderWrapper> mp3Decoder;
