@@ -300,24 +300,32 @@ class _WebsocketExampleState extends State<WebsocketExample> {
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              OutlinedButton(
-                onPressed: () async {
-                  if (currentSound == null) return;
-                  handle = await SoLoud.instance.play(
-                    currentSound!,
-                    volume: 0.6,
-                    // looping: true,
+              ValueListenableBuilder(
+                valueListenable: bufferingType,
+                builder: (context, value, child) {
+                  return OutlinedButton(
+                    onPressed: value == BufferingType.released
+                        ? null
+                        : () async {
+                            if (currentSound == null) return;
+                            handle = await SoLoud.instance.play(
+                              currentSound!,
+                              volume: 0.6,
+                            );
+                            Timer.periodic(const Duration(milliseconds: 1000),
+                                (timer) {
+                              if (currentSound == null ||
+                                  SoLoud.instance
+                                          .getIsValidVoiceHandle(handle!) ==
+                                      false) {
+                                timer.cancel();
+                                setState(() {});
+                              }
+                            });
+                          },
+                    child: const Text('play'),
                   );
-                  Timer.periodic(const Duration(milliseconds: 1000), (timer) {
-                    if (currentSound == null ||
-                        SoLoud.instance.getIsValidVoiceHandle(handle!) ==
-                            false) {
-                      timer.cancel();
-                      setState(() {});
-                    }
-                  });
                 },
-                child: const Text('play'),
               ),
               const SizedBox(width: 8),
               OutlinedButton(
@@ -337,7 +345,7 @@ class _WebsocketExampleState extends State<WebsocketExample> {
                   streamBuffering.value = false;
                   setState(() {});
                 },
-                child: const Text('stop all sounds and close ws'),
+                child: const Text('stop sounds and close'),
               ),
             ],
           ),
