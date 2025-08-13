@@ -17,6 +17,8 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 /// websocketd as a server and ffmpeg to provide audio data:
 /// https://github.com/alnitak/websocketd
 ///
+/// Please, be sure you have installed websocketd, ffmpeg and wget on
+/// your system.
 /// Run it and choose which audio format you want to stream and the speed for
 /// testing BufferStream buffering.
 /// Then run this example and choose the same audio format.
@@ -78,6 +80,7 @@ class _WebsocketExampleState extends State<WebsocketExample> {
   int numberOfChunks = 0;
   int byteSize = 0;
   final streamBuffering = ValueNotifier(false);
+  final bufferingType = ValueNotifier(BufferingType.preserved);
 
   int totBytesSent = 0;
 
@@ -90,10 +93,11 @@ class _WebsocketExampleState extends State<WebsocketExample> {
   @override
   Widget build(BuildContext context) {
     if (!SoLoud.instance.isInitialized) return const SizedBox.shrink();
+    final pcmValuesEnabled = format[fmtId] == 'mp3' || format[fmtId] == 'opus';
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('PCM audio data from a websocket Example'),
+        title: const Text('Receive audio data from a websocket Example'),
       ),
       body: Column(
         mainAxisSize: MainAxisSize.min,
@@ -120,11 +124,13 @@ class _WebsocketExampleState extends State<WebsocketExample> {
                         ),
                         materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         groupValue: srId,
-                        onChanged: (int? value) {
-                          setState(() {
-                            srId = value!;
-                          });
-                        },
+                        onChanged: pcmValuesEnabled
+                            ? null
+                            : (int? value) {
+                                setState(() {
+                                  srId = value!;
+                                });
+                              },
                       ),
                   ],
                 ),
@@ -148,11 +154,13 @@ class _WebsocketExampleState extends State<WebsocketExample> {
                         ),
                         materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         groupValue: chId,
-                        onChanged: (int? value) {
-                          setState(() {
-                            chId = value!;
-                          });
-                        },
+                        onChanged: pcmValuesEnabled
+                            ? null
+                            : (int? value) {
+                                setState(() {
+                                  chId = value!;
+                                });
+                              },
                       ),
                   ],
                 ),
@@ -187,34 +195,38 @@ class _WebsocketExampleState extends State<WebsocketExample> {
               ),
             ],
           ),
-          OutlinedButton(
-            onPressed: () async {
-              await channel?.sink.close();
-              await SoLoud.instance.disposeAllSources();
-              streamBuffering.value = false;
+          ValueListenableBuilder(
+            valueListenable: bufferingType,
+            builder: (context, value, child) {
+              return OutlinedButton(
+                onPressed: () async {
+                  await channel?.sink.close();
+                  await SoLoud.instance.disposeAllSources();
+                  streamBuffering.value = false;
 
-              currentSound = SoLoud.instance.setBufferStream(
-                // maxBufferSizeBytes: 1024 * 1024 * 200, // 200 MB
-                maxBufferSizeDuration: const Duration(minutes: 5),
-                bufferingTimeNeeds: 1,
-                sampleRate: sampleRate[srId],
-                channels: Channels.values[chId],
-                format: BufferType.values[fmtId],
-                // ignore: avoid_redundant_argument_values
-                bufferingType: BufferingType.preserved,
-                onBuffering: (isBuffering, handle, time) async {
-                  debugPrint('started buffering? $isBuffering  with '
-                      'handle: $handle at time $time');
-                  if (context.mounted) {
-                    setState(() {
-                      streamBuffering.value = !streamBuffering.value;
-                    });
-                  }
+                  currentSound = SoLoud.instance.setBufferStream(
+                    // maxBufferSizeBytes: 1024 * 1024 * 200, // 200 MB
+                    maxBufferSizeDuration: const Duration(minutes: 5),
+                    bufferingTimeNeeds: 1,
+                    sampleRate: sampleRate[srId],
+                    channels: Channels.values[chId],
+                    format: BufferType.values[fmtId],
+                    bufferingType: bufferingType.value,
+                    onBuffering: (isBuffering, handle, time) async {
+                      debugPrint('started buffering? $isBuffering  with '
+                          'handle: $handle at time $time');
+                      if (context.mounted) {
+                        setState(() {
+                          streamBuffering.value = !streamBuffering.value;
+                        });
+                      }
+                    },
+                  );
+                  setState(() {});
                 },
+                child: const Text('set chosen stream type'),
               );
-              setState(() {});
             },
-            child: const Text('set chosen stream type'),
           ),
           const SizedBox(height: 16),
           OutlinedButton(
@@ -253,7 +265,6 @@ class _WebsocketExampleState extends State<WebsocketExample> {
                   try {
                     final bytesToAdd = Uint8List.fromList(message);
                     totBytesSent += bytesToAdd.length;
-                    // debugPrint('ws channel sending ${bytesToAdd.length}. total sent: $totBytesSent');
                     SoLoud.instance.addAudioDataStream(
                       currentSound!,
                       bytesToAdd,
@@ -331,8 +342,40 @@ class _WebsocketExampleState extends State<WebsocketExample> {
             ],
           ),
           const SizedBox(height: 16),
+
+          /// released or preserved the buffer
+          ValueListenableBuilder(
+            valueListenable: bufferingType,
+            builder: (_, v, __) {
+              return Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Checkbox(
+                    value: v == BufferingType.released,
+                    onChanged: (value) {
+                      bufferingType.value = (value ?? true)
+                          ? BufferingType.released
+                          : BufferingType.preserved;
+                    },
+                  ),
+                  const Text('released'),
+                  const SizedBox(width: 8),
+                  Checkbox(
+                    value: v == BufferingType.preserved,
+                    onChanged: (value) {
+                      bufferingType.value = (value ?? true)
+                          ? BufferingType.preserved
+                          : BufferingType.released;
+                    },
+                  ),
+                  const Text('preserved'),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 16),
           BufferBar(
-            bufferingType: BufferingType.preserved,
+            bufferingType: bufferingType.value,
             isBuffering: streamBuffering.value,
             sound: currentSound,
           ),
