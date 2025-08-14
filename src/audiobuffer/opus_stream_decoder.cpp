@@ -82,7 +82,7 @@ std::vector<float> OpusDecoderWrapper::decodePacket(const unsigned char *packetD
     }
 
     // Opus can handle frame sizes from 2.5ms to 60ms
-    // We'll use a larger buffer size to accommodate any frame size
+    // We'll use buffer size to accommodate any frame size
     const int maxFrameSize = sampleRate * 60 / 1000; // 60ms frame size
     std::vector<float> outputBuffer(maxFrameSize * channels);
 
@@ -96,17 +96,17 @@ std::vector<float> OpusDecoderWrapper::decodePacket(const unsigned char *packetD
 
     if (samples < 0)
     {
-        const char* errorMsg = opus_strerror(samples);
-        fprintf(stderr, "Opus decode error: %s (code: %d) packet size: %zu\n", 
-                errorMsg, samples, packetSize);
+        // const char* errorMsg = opus_strerror(samples);
+        // fprintf(stderr, "Opus decode error: %s (code: %d) packet size: %zu\n", 
+        //         errorMsg, samples, packetSize);
         
         // Additional debugging info
-        if (packetSize < 1)
-            fprintf(stderr, "Warning: Empty packet received\n");
-        else
-            fprintf(stderr, "Packet starts with: %02x %02x %02x %02x\n",
-                    packetData[0], packetData[1], 
-                    packetData[2], packetData[3]);
+        // if (packetSize < 1)
+        //     fprintf(stderr, "Warning: Empty packet received\n");
+        // else
+        //     fprintf(stderr, "Packet starts with: %02x %02x %02x %02x\n",
+        //             packetData[0], packetData[1], 
+        //             packetData[2], packetData[3]);
         
         return packetPcm; // Skip invalid packet instead of throwing
     }
