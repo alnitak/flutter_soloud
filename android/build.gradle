@@ -58,9 +58,15 @@ android {
         // Add this inside defaultConfig to affect all variants
         externalNativeBuild {
             cmake {
-                // Pass environment variable to CMake
-                arguments "-DNO_OPUS_OGG_LIBS=${System.getenv('NO_OPUS_OGG_LIBS') ?: 'false'}"
-                
+                // Pass NO_OPUS_OGG_LIBS to CMake from multiple sources:
+                // 1. gradle project property (preferred)
+                // 2. system environment variable (fallback)
+                def noOpusOggLibs = project.hasProperty('NO_OPUS_OGG_LIBS') ?
+                    project.property('NO_OPUS_OGG_LIBS') :
+                    (System.getenv('NO_OPUS_OGG_LIBS') ?: 'false')
+
+                arguments "-DNO_OPUS_OGG_LIBS=${noOpusOggLibs}"
+
                 // Specify the correct target name
                 targets "flutter_soloud_plugin"
             }
