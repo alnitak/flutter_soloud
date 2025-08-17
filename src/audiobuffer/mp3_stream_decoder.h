@@ -30,7 +30,7 @@ public:
 
     void cleanup();
 
-    std::vector<float> decode(std::vector<unsigned char>& buffer, int* samplerate, int* channels) override;
+    std::pair<std::vector<float>, DecoderError> decode(std::vector<unsigned char>& buffer, int* samplerate, int* channels) override;
 
     static bool checkForValidFrames(const std::vector<unsigned char>& buffer);
 

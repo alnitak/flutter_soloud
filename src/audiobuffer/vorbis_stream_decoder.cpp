@@ -41,13 +41,13 @@ bool VorbisDecoderWrapper::initializeDecoder(int engineSamplerate, int engineCha
 }
 
 
-std::vector<float> VorbisDecoderWrapper::decode(std::vector<unsigned char>& buffer,
+std::pair<std::vector<float>, DecoderError> VorbisDecoderWrapper::decode(std::vector<unsigned char>& buffer,
                                                int* samplerate,
                                                int* channels) {
     std::vector<float> decodedData;
 
     if (buffer.empty()) {
-        return decodedData;
+        return {decodedData, DecoderError::NoError};
     }
 
     // Reset sync for new data
@@ -63,13 +63,13 @@ std::vector<float> VorbisDecoderWrapper::decode(std::vector<unsigned char>& buff
         
         if (!streamInitialized) {
             if (ogg_stream_init(&os, ogg_page_serialno(&og))) {
-                throw FailedToCreateOpusOggDecoder("Failed to init Ogg decoder.");
+                return {decodedData, DecoderError::FailedToCreateDecoder};
             }
             streamInitialized = true;
         }
 
         if (ogg_stream_pagein(&os, &og) < 0) {
-            throw ErrorReadingOggPage("Error reading Vorbis Ogg page");
+            return {decodedData, DecoderError::ErrorReadingPage};
         }
 
         // Extract packets from page
@@ -94,7 +94,7 @@ std::vector<float> VorbisDecoderWrapper::decode(std::vector<unsigned char>& buff
         *channels   = vi.channels;
     }
 
-    return decodedData;
+    return {decodedData, DecoderError::NoError};
 }
 
 

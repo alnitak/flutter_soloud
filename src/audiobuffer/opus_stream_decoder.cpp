@@ -40,13 +40,13 @@ bool OpusDecoderWrapper::initializeDecoder(int engineSamplerate, int engineChann
     return true;
 }
 
-std::vector<float> OpusDecoderWrapper::decode(std::vector<unsigned char>& buffer, int* samplerate, int* channels)
+std::pair<std::vector<float>, DecoderError> OpusDecoderWrapper::decode(std::vector<unsigned char>& buffer, int* samplerate, int* channels)
 {
     std::vector<float> decodedData;
 
     if (buffer.empty())
     {
-        return decodedData;
+        return {decodedData, DecoderError::NoError};
     }
 
     ogg_sync_reset(&oy);
@@ -63,14 +63,14 @@ std::vector<float> OpusDecoderWrapper::decode(std::vector<unsigned char>& buffer
         {
             if (ogg_stream_init(&os, ogg_page_serialno(&og)))
             {
-                throw FailedToCreateOpusOggDecoder(std::string("Failed to init Ogg decoder."));
+                return {decodedData, DecoderError::FailedToCreateDecoder};
             }
             streamInitialized = true;
         }
 
         if (ogg_stream_pagein(&os, &og) < 0)
         {
-            throw ErrorReadingOggPage("Error reading Ogg page");
+            return {decodedData, DecoderError::ErrorReadingPage};
         }
 
         // Extract packets from page
@@ -91,7 +91,7 @@ std::vector<float> OpusDecoderWrapper::decode(std::vector<unsigned char>& buffer
         }
     }
 
-    return decodedData;
+    return {decodedData, DecoderError::NoError};
 }
 
 std::vector<float> OpusDecoderWrapper::decodePacket(const unsigned char *packetData, size_t packetSize)

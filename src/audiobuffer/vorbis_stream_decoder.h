@@ -12,7 +12,7 @@ public:
 
     bool initializeDecoder(int engineSamplerate, int engineChannels) override;
 
-    std::vector<float> decode(std::vector<unsigned char>& buffer, int* samplerate, int* channels) override;
+    std::pair<std::vector<float>, DecoderError> decode(std::vector<unsigned char>& buffer, int* samplerate, int* channels) override;
 
 private:
     std::vector<float> decodePacket(ogg_packet* packet);

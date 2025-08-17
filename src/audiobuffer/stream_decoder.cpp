@@ -40,22 +40,21 @@ DetectedType StreamDecoder::detectAudioFormat(const std::vector<unsigned char>& 
     return DetectedType::BUFFER_UNKNOWN;
 }
 
-std::vector<float> StreamDecoder::decode(std::vector<unsigned char>& buffer, int* samplerate, int* channels)
+std::pair<std::vector<float>, DecoderError> StreamDecoder::decode(std::vector<unsigned char>& buffer, int* samplerate, int* channels)
 {
     if (!isFormatDetected) {
         detectedType = detectAudioFormat(buffer);
         if (detectedType == DetectedType::BUFFER_NO_ENOUGH_DATA)
-            return {};
+            return {{}, DecoderError::NoError};
 
         if (detectedType == DetectedType::BUFFER_UNKNOWN) {
-            throw FormatNotSupportedDecoder();
-            return {};
+            return {{}, DecoderError::FormatNotSupported};
         }
         
         if (detectedType == DetectedType::BUFFER_OGG_OPUS
             || detectedType == DetectedType::BUFFER_OGG_VORBIS) {
             #if defined(NO_OPUS_OGG_LIBS)
-                throw NoOpusOggVorbisDecoder();
+                return {{}, DecoderError::NoOpusOggLibs};
             #else
                 if (detectedType == DetectedType::BUFFER_OGG_VORBIS) {
                     mWrapper = std::make_unique<VorbisDecoderWrapper>();

@@ -28,10 +28,10 @@ void MP3DecoderWrapper::cleanup()
     validFramesFound = false;
 }
 
-std::vector<float> MP3DecoderWrapper::decode(std::vector<unsigned char>& buffer, int* samplerate, int* channels)
+std::pair<std::vector<float>, DecoderError> MP3DecoderWrapper::decode(std::vector<unsigned char>& buffer, int* samplerate, int* channels)
 {
     if (buffer.empty())
-        return {};
+        return {{}, DecoderError::NoError};
 
     std::vector<float> decodedData;
     mp3d_sample_t pcm[MINIMP3_MAX_SAMPLES_PER_FRAME];
@@ -100,7 +100,7 @@ std::vector<float> MP3DecoderWrapper::decode(std::vector<unsigned char>& buffer,
     // Keep any remaining bytes in the buffer for the next call
     buffer.erase(buffer.begin(), buffer.end() - bytes_left);
 
-    return decodedData;
+    return {decodedData, DecoderError::NoError};
 }
 
 bool MP3DecoderWrapper::initializeDecoder(int engineSamplerate, int engineChannels)
