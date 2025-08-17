@@ -1,11 +1,13 @@
 // TODO: don't know why, bu on iOS and MacOS these defines should be put in the header!
+#include "../common.h"
+#if !defined(__APPLE__)
 #define MINIMP3_FLOAT_OUTPUT
 #define MINIMP3_ONLY_MP3
 #if !defined(__EMSCRIPTEN__)
 #define MINIMP3_ONLY_SIMD
 #endif
 #define MINIMP3_IMPLEMENTATION
-
+#endif
 #include "minimp3.h"
 
 #include "mp3_stream_decoder.h"

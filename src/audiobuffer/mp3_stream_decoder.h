@@ -8,12 +8,14 @@
 #include <cstring>
 #include <deque>
 
-// #define MINIMP3_FLOAT_OUTPUT
-// #define MINIMP3_ONLY_MP3
-// #if !defined(__EMSCRIPTEN__)
-// #define MINIMP3_ONLY_SIMD
-// #endif
-// #define MINIMP3_IMPLEMENTATION
+#if defined(__APPLE__)
+#define MINIMP3_FLOAT_OUTPUT
+#define MINIMP3_ONLY_MP3
+#if !defined(__EMSCRIPTEN__)
+#define MINIMP3_ONLY_SIMD
+#endif
+#define MINIMP3_IMPLEMENTATION
+#endif
 #include "minimp3.h"
 
 /// Wrapper class for MP3 stream decoder using minimp3

@@ -1,3 +1,5 @@
+#if !defined(NO_OPUS_OGG_LIBS)
+
 #include "opus_stream_decoder.h"
 
 OpusDecoderWrapper::OpusDecoderWrapper()
@@ -152,3 +154,4 @@ std::vector<float> OpusDecoderWrapper::decodePacket(const unsigned char *packetD
     }
     return packetPcm;
 }
+#endif // #if defined(NO_OPUS_OGG_LIBS)

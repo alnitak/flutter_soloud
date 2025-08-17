@@ -56,15 +56,16 @@ std::vector<float> StreamDecoder::decode(std::vector<unsigned char>& buffer, int
             || detectedType == DetectedType::BUFFER_OGG_VORBIS) {
             #if defined(NO_OPUS_OGG_LIBS)
                 throw NoOpusOggVorbisDecoder();
+            #else
+                if (detectedType == DetectedType::BUFFER_OGG_VORBIS) {
+                    mWrapper = std::make_unique<VorbisDecoderWrapper>();
+                    static_cast<VorbisDecoderWrapper*>(mWrapper.get())->initializeDecoder(*samplerate, *channels);
+                } else {
+                    mWrapper = std::make_unique<OpusDecoderWrapper>();
+                    static_cast<OpusDecoderWrapper*>(mWrapper.get())->initializeDecoder(*samplerate, *channels);
+                }
+                isFormatDetected = true;
             #endif
-            if (detectedType == DetectedType::BUFFER_OGG_VORBIS) {
-                mWrapper = std::make_unique<VorbisDecoderWrapper>();
-                static_cast<VorbisDecoderWrapper*>(mWrapper.get())->initializeDecoder(*samplerate, *channels);
-            } else {
-                mWrapper = std::make_unique<OpusDecoderWrapper>();
-                static_cast<OpusDecoderWrapper*>(mWrapper.get())->initializeDecoder(*samplerate, *channels);
-            }
-            isFormatDetected = true;
         } else if (detectedType == DetectedType::BUFFER_MP3) {
             mWrapper = std::make_unique<MP3DecoderWrapper>();
             static_cast<MP3DecoderWrapper*>(mWrapper.get())->initializeDecoder(*samplerate, *channels);
@@ -73,13 +74,15 @@ std::vector<float> StreamDecoder::decode(std::vector<unsigned char>& buffer, int
     }
     
     if (mWrapper) {
-        if (detectedType == DetectedType::BUFFER_OGG_OPUS) {
-            return static_cast<OpusDecoderWrapper*>(mWrapper.get())->decode(buffer, samplerate, channels);
-        }
-        else if (detectedType == DetectedType::BUFFER_OGG_VORBIS) {
-            return static_cast<VorbisDecoderWrapper*>(mWrapper.get())->decode(buffer, samplerate, channels);
-        }
-        else if (detectedType == DetectedType::BUFFER_MP3) {
+        #if !defined(NO_OPUS_OGG_LIBS)
+            if (detectedType == DetectedType::BUFFER_OGG_OPUS) {
+                return static_cast<OpusDecoderWrapper*>(mWrapper.get())->decode(buffer, samplerate, channels);
+            }
+            else if (detectedType == DetectedType::BUFFER_OGG_VORBIS) {
+                return static_cast<VorbisDecoderWrapper*>(mWrapper.get())->decode(buffer, samplerate, channels);
+            }
+        #endif
+        if (detectedType == DetectedType::BUFFER_MP3) {
             return static_cast<MP3DecoderWrapper*>(mWrapper.get())->decode(buffer, samplerate, channels);
         }
     }
