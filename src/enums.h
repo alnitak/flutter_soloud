@@ -71,12 +71,10 @@ typedef enum PlayerErrors
     wrongBufferTypeToAskForTimeConsumed = 27,
     /// Buffer stream with released buffer type, cannot be seeked.
     bufferStreamWithReleasedBufferTypeCannotBeSeeked = 28,
-    /// Failed to create MP3 decoder
-    failedToCreateMp3Decoder = 29,
-    /// Failed to decode MP3 frame
-    failedToDecodeMp3Frame = 30,
-    /// Invalid MP3 frame or unsupported format
-    invalidMp3Format = 31
+    /// Audio format not supported.
+    audioFormatNotSupported = 29,
+    /// Opus ogg vorbis libraries not found.
+    opusOggVorbisLibsNotFound = 30,
 } PlayerErrors_t;
 
 /// Possible read sample errors

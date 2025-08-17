@@ -170,6 +170,8 @@ em++ -O3 \
     -s INITIAL_MEMORY=67108864 \
     -s MAXIMUM_MEMORY=2147483648 \
     -s MODULARIZE=1 \
+    -s ASSERTIONS=1 \
+    -s NO_DISABLE_EXCEPTION_CATCHING=1 \
     -s EXPORT_NAME="'Module_soloud'" \
     -o ../web/libflutter_soloud_plugin.js
 

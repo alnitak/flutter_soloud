@@ -351,30 +351,27 @@ class SoLoudBufferStreamWithReleasedBufferTypeCannotBeSeekedCppException
       'cannot be seeked. (on the C++ side).';
 }
 
-/// Failed to create MP3 decoder.
-class SoLoudFailedToCreateMp3DecoderCppException extends SoLoudCppException {
-  /// Creates a new [SoLoudFailedToCreateMp3DecoderCppException].
-  const SoLoudFailedToCreateMp3DecoderCppException([super.message]);
+/// Audio format not supported.
+class SoLoudAudioFormatNotSupportedCppException extends SoLoudCppException {
+  /// Creates a new [SoLoudAudioFormatNotSupportedCppException].
+  const SoLoudAudioFormatNotSupportedCppException([super.message]);
 
   @override
-  String get description => 'Failed to create MP3 decoder. (on the C++ side).';
+  String get description => 'Audio format not supported. Please check the '
+      'audio file format and ensure it is supported by the player. '
+      '(on the C++ side).';
 }
 
-/// Failed to decode MP3 frame.
-class SoLoudFailedToDecodeMp3FrameCppException extends SoLoudCppException {
-  /// Creates a new [SoLoudFailedToDecodeMp3FrameCppException].
-  const SoLoudFailedToDecodeMp3FrameCppException([super.message]);
+/// An error occurred while trying to initialize an audio decoder.
+class SoLoudOpusOggVorbisLibsNotFoundCppException extends SoLoudCppException {
+  /// Creates a new [SoLoudOpusOggVorbisLibsNotFoundCppException].
+  const SoLoudOpusOggVorbisLibsNotFoundCppException([super.message]);
 
   @override
-  String get description => 'Failed to decode MP3 frame. (on the C++ side).';
-}
-
-/// Invalid MP3 frame or unsupported format.
-class SoLoudInvalidMp3FormatCppException extends SoLoudCppException {
-  /// Creates a new [SoLoudInvalidMp3FormatCppException].
-  const SoLoudInvalidMp3FormatCppException([super.message]);
-
-  @override
-  String get description => 'Invalid MP3 frame or unsupported format. '
+  String get description => 'An error occurred while trying to initialize an '
+      'audio decoder. Probably for an unsupported or broken format. '
+      'If you are trying to open an OGG/OPUS/VORBIS stream, please make sure '
+      'that you have unset NO_OPUS_OGG_LIBS environment variable. Ref: '
+      'https://docs.page/alnitak/flutter_soloud_docs/get_started/no_opus_ogg_libs  '
       '(on the C++ side).';
 }

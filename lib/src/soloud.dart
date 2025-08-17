@@ -614,6 +614,7 @@ interface class SoLoud {
   /// means that when playing it, it will stop at that point (if loop is
   /// not set). Note that the engine store floats internally, so even if you
   /// add data as `s8`, it will be converted to `f32` internally.
+  /// Default is 100 MB (1024 * 1024 * 100).
   ///
   /// [maxBufferSizeDuration] same as [maxBufferSizeBytes] but the size is
   /// calculated based on the [sampleRate] and [channels] parameters.

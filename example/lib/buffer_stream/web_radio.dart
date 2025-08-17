@@ -29,7 +29,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   /// Initialize the player.
-  await SoLoud.instance.init();
+  await SoLoud.instance.init(sampleRate: 24000);
 
   runApp(
     const MaterialApp(
@@ -48,6 +48,7 @@ class WebRadioExample extends StatefulWidget {
 class _WebRadioExampleState extends State<WebRadioExample> {
   AudioSource? source;
   final streamBuffering = ValueNotifier(false);
+  final TextEditingController urlController = TextEditingController(text: '');
 
   // https://dir.xiph.org/codecs
   /// MP3s
@@ -56,91 +57,123 @@ class _WebRadioExampleState extends State<WebRadioExample> {
     'http://as.fm1.be:8000/rand',
     'http://as.fm1.be:8000/vlar1.mp3',
     'http://xfer.hirschmilch.de:8000/techno.mp3',
+    'http://as.fm1.be:8000/wrgm1',
+    'http://stream.danubiusradio.hu:8081/danubius_192k',
+    'http://live.coolradio.rs/cool128',
+    'http://stream.lazaradio.com:8100/live.mp3',
+    'http://www.appradio.app:8010/live',
+    'http://streaming.radiominerva.be:8000/minerva',
+    'http://ice37.fluidstream.net/ric.mp3',
   ];
 
   /// OGGs
   final oggUrls = [
-    'http://streaming.cuacfm.org/cuacfm.ogg',
+    'http://play.global.audio/nova.ogg',
     'http://superaudio.radio.br:8074/stream',
-    'http://icecast.ithost.it:8000/retesport.ogg',
+    'http://stream.lazaradio.com:8100/live.ogg',
+    'http://stream.trendyradio.pl:8000/m',
+    'http://superaudio.radio.br:8074/stream',
+    'http://play.global.audio/nrj.ogg',
+    'http://play.global.audio/radio1rock.ogg',
+    'http://stream.danubiusradio.hu:8091/danubius_HiFi',
   ];
 
   /// OPUSes
   final opusUrls = [
     'http://radio.glafir.ru:7000/pop-mix',
     'http://icecast.err.ee/klarajazz.opus',
+    'http://xfer.hirschmilch.de:8000/prog-house.opus',
+    'http://emisoras.dip-badajoz.es:8239/stream',
+    'http://icecast.walmradio.com:8000/otr_opus',
+    'http://xfer.hirschmilch.de:8000/techno.opus',
+    'http://icecast.err.ee/raadio2.opus',
+    'http://radio.glafir.ru:7000/humor',
+    'http://icecast.err.ee/vikerraadio.opus',
+    'http://radio.glafir.ru:7000/classic',
+    'http://radio.glafir.ru:7000/easy-listen',
   ];
 
   int mp3UrlId = 0;
   int oggUrlId = 0;
   int opusUrlId = 0;
-  http.Client? _client;
-  http.StreamedResponse? _currentStream;
+  http.Client? client;
+  http.StreamedResponse? currentStream;
   final connectionError = ValueNotifier<String>('');
 
   Future<void> connectToUrl(String url) async {
     connectionError.value = '';
+    urlController.text = url;
     try {
       // Cancel any existing connection
       // await _currentStream?.stream.drain<void>();
-      _currentStream = null;
-      _client?.close();
-      _client = null;
+      currentStream = null;
+      client?.close();
+      client = null;
 
       // Create a new client and request
-      _client = http.Client();
+      client = http.Client();
       final request = http.Request('GET', Uri.parse(url));
-      _currentStream = await _client!.send(request);
+      currentStream = await client!.send(request);
 
       // Handle redirections
-      if (_currentStream!.statusCode == 301 ||
-          _currentStream!.statusCode == 302) {
-        final redirectUrl = _currentStream!.headers['location'];
+      if (currentStream!.statusCode == 301 ||
+          currentStream!.statusCode == 302) {
+        final redirectUrl = currentStream!.headers['location'];
         if (redirectUrl != null) {
           // Close current connection and try with new URL
-          await _currentStream!.stream.drain<void>();
-          _currentStream = null;
-          _client!.close();
-          _client = null;
+          await currentStream!.stream.drain<void>();
+          currentStream = null;
+          client!.close();
+          client = null;
           await connectToUrl(redirectUrl);
           return;
         }
       }
 
       // Check for successful connection
-      if (_currentStream!.statusCode != 200) {
-        connectionError.value = 'error: ${_currentStream!.statusCode} - '
-            '${_currentStream!.reasonPhrase}';
+      if (currentStream!.statusCode != 200) {
+        connectionError.value = 'error: ${currentStream!.statusCode} - '
+            '${currentStream!.reasonPhrase}';
 
-        _currentStream = null;
-        _client?.close();
-        _client = null;
+        currentStream = null;
+        client?.close();
+        client = null;
         return;
       }
 
       // Listen to the stream and feed data to the audio source
-      _currentStream!.stream.listen(
+      currentStream!.stream.listen(
         (data) {
           if (source != null) {
-            SoLoud.instance
-                .addAudioDataStream(source!, Uint8List.fromList(data));
+            try {
+              SoLoud.instance
+                  .addAudioDataStream(source!, Uint8List.fromList(data));
+            } on SoLoudStreamEndedAlreadyCppException catch (e) {
+              debugPrint('The buffer has been filled: $e');
+              client?.close();
+              client = null;
+            } catch (e) {
+              debugPrint('Error adding audio data: $e');
+              client?.close();
+              client = null;
+            }
           }
         },
         onError: (Object error) {
           debugPrint('Stream error: $error');
-          _client?.close();
-          _client = null;
+          client?.close();
+          client = null;
         },
         onDone: () {
           debugPrint('Stream closed');
-          _client?.close();
-          _client = null;
+          client?.close();
+          client = null;
         },
       );
     } catch (e) {
       debugPrint('Connection error: $e');
-      _client?.close();
-      _client = null;
+      client?.close();
+      client = null;
       rethrow;
     }
   }
@@ -149,7 +182,8 @@ class _WebRadioExampleState extends State<WebRadioExample> {
     await SoLoud.instance.disposeAllSources();
     streamBuffering.value = true;
     source = SoLoud.instance.setBufferStream(
-      bufferingTimeNeeds: 1,
+      maxBufferSizeBytes: 1024 * 1024 * 200, // 100 MB
+      bufferingTimeNeeds: 3,
       format: type,
       bufferingType: BufferingType.released,
       channels: Channels.stereo,
@@ -168,138 +202,153 @@ class _WebRadioExampleState extends State<WebRadioExample> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          spacing: 16,
-          children: [
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text('MP3 radio:  '),
-                DropdownButton(
-                  value: mp3UrlId,
-                  items: List.generate(mp3Urls.length, (index) {
-                    return DropdownMenuItem(
-                      value: index,
-                      child: Row(
-                        children: [
-                          Text(
-                            mp3Urls[index],
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                        ],
-                      ),
-                    );
-                  }),
-                  onChanged: (value) {
-                    mp3UrlId = value ?? 0;
-                    playUrl(mp3Urls[mp3UrlId], BufferType.mp3);
-                    if (context.mounted) {
-                      setState(() {});
-                    }
-                  },
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            spacing: 30,
+            children: [
+              TextField(
+                controller: urlController,
+                decoration: const InputDecoration(
+                  labelText: 'Choose below or enter a URL to stream',
+                  hintText: 'e.g. http://example.com/stream.mp3',
                 ),
-              ],
-            ),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text('OGG radio:  '),
-                DropdownButton(
-                  value: oggUrlId,
-                  items: List.generate(oggUrls.length, (index) {
-                    return DropdownMenuItem(
-                      value: index,
-                      child: Row(
-                        children: [
-                          Text(
-                            oggUrls[index],
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                        ],
+                onSubmitted: (value) {
+                  if (value.isNotEmpty) {
+                    playUrl(value, BufferType.mp3);
+                  }
+                },
+              ),
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'MP3 radio:  ',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  DropdownButton(
+                    value: mp3UrlId,
+                    items: List.generate(mp3Urls.length, (index) {
+                      return DropdownMenuItem(
+                        value: index,
+                        child: Text(
+                          mp3Urls[index],
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      );
+                    }),
+                    onChanged: (value) {
+                      mp3UrlId = value ?? 0;
+                      playUrl(mp3Urls[mp3UrlId], BufferType.mp3);
+                      if (context.mounted) {
+                        setState(() {});
+                      }
+                    },
+                  ),
+                ],
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'OGG/VORBIS radio:',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  DropdownButton(
+                    value: oggUrlId,
+                    items: List.generate(oggUrls.length, (index) {
+                      return DropdownMenuItem(
+                        value: index,
+                        child: Text(
+                          oggUrls[index],
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      );
+                    }),
+                    onChanged: (value) {
+                      oggUrlId = value ?? 0;
+                      playUrl(oggUrls[oggUrlId], BufferType.opus);
+                      if (context.mounted) {
+                        setState(() {});
+                      }
+                    },
+                  ),
+                ],
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'OPUS radio:',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  DropdownButton(
+                    value: opusUrlId,
+                    items: List.generate(opusUrls.length, (index) {
+                      return DropdownMenuItem(
+                        value: index,
+                        child: Text(
+                          opusUrls[index],
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      );
+                    }),
+                    onChanged: (value) {
+                      opusUrlId = value ?? 0;
+                      playUrl(opusUrls[opusUrlId], BufferType.opus);
+                      if (context.mounted) {
+                        setState(() {});
+                      }
+                    },
+                  ),
+                ],
+              ),
+              ValueListenableBuilder(
+                valueListenable: streamBuffering,
+                builder: (context, value, child) {
+                  return Column(
+                    spacing: 16,
+                    children: [
+                      BufferBar(
+                        bufferingType: BufferingType.released,
+                        isBuffering: value,
+                        sound: source,
                       ),
-                    );
-                  }),
-                  onChanged: (value) {
-                    oggUrlId = value ?? 0;
-                    playUrl(oggUrls[oggUrlId], BufferType.opus);
-                    if (context.mounted) {
-                      setState(() {});
-                    }
-                  },
-                ),
-              ],
-            ),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text('OPUS radio:  '),
-                DropdownButton(
-                  value: opusUrlId,
-                  items: List.generate(opusUrls.length, (index) {
-                    return DropdownMenuItem(
-                      value: index,
-                      child: Row(
-                        children: [
-                          Text(
-                            opusUrls[index],
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                        ],
+                      ValueListenableBuilder(
+                        valueListenable: streamBuffering,
+                        builder: (_, value, __) {
+                          if (value) {
+                            return const Text('BUFFERING!');
+                          }
+                          return const SizedBox.shrink();
+                        },
                       ),
-                    );
-                  }),
-                  onChanged: (value) {
-                    opusUrlId = value ?? 0;
-                    playUrl(opusUrls[opusUrlId], BufferType.opus);
-                    if (context.mounted) {
-                      setState(() {});
-                    }
-                  },
-                ),
-              ],
-            ),
-            ValueListenableBuilder(
-              valueListenable: streamBuffering,
-              builder: (context, value, child) {
-                return Column(
-                  spacing: 16,
-                  children: [
-                    BufferBar(
-                      bufferingType: BufferingType.released,
-                      isBuffering: value,
-                      sound: source,
-                    ),
-                    ValueListenableBuilder(
-                      valueListenable: streamBuffering,
-                      builder: (_, value, __) {
-                        if (value) {
-                          return const Text('BUFFERING!');
-                        }
-                        return const SizedBox.shrink();
-                      },
-                    ),
-                  ],
-                );
-              },
-            ),
-            ValueListenableBuilder(
-              valueListenable: connectionError,
-              builder: (context, error, child) {
-                if (error.isNotEmpty) {
-                  return Text(
-                    'Connection Error: $error',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.red,
-                    ),
+                    ],
                   );
-                }
-                return const SizedBox.shrink();
-              },
-            ),
-          ],
+                },
+              ),
+              ValueListenableBuilder(
+                valueListenable: connectionError,
+                builder: (context, error, child) {
+                  if (error.isNotEmpty) {
+                    return Text(
+                      'Connection Error: $error',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.red,
+                      ),
+                    );
+                  }
+                  return const SizedBox.shrink();
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );

@@ -98,14 +98,11 @@ enum PlayerErrors {
   /// BufferStream with released buffer type cannot be seeked!
   bufferStreamWithReleasedBufferTypeCannotBeSeeked(28),
   
-  /// Failed to create MP3 decoder
-  failedToCreateMp3Decoder(29),
-
-  /// Failed to decode MP3 frame
-  failedToDecodeMp3Frame(30),
-
-  /// Invalid MP3 frame or unsupported format
-  invalidMp3Format(31);
+  /// Audio format not supported
+  audioFormatNotSupported(29),
+  
+  /// Opus ogg vorbis libraries not found.
+  opusOggVorbisLibsNotFound(30);
 
   const PlayerErrors(this.value);
 
@@ -192,12 +189,12 @@ enum PlayerErrors {
             'This is only available for `BufferingType.preserved` buffers.';
       case PlayerErrors.bufferStreamWithReleasedBufferTypeCannotBeSeeked:
         return 'BufferStream with released buffer type cannot be seeked.';
-      case PlayerErrors.failedToCreateMp3Decoder:
-        return 'Failed to create MP3 decoder';
-      case PlayerErrors.failedToDecodeMp3Frame:
-        return 'Failed to decode MP3 frame';
-      case PlayerErrors.invalidMp3Format:
-        return 'Invalid MP3 frame or unsupported format';
+      case PlayerErrors.audioFormatNotSupported:
+        return 'Audio format not supported. Please check the audio file format '
+            'and ensure it is supported by the player.';
+      case PlayerErrors.opusOggVorbisLibsNotFound:
+        return 'Opus Ogg Vorbis libraries not found. Please check the '
+            'installation and ensure the required libraries are available.';
     }
   }
 

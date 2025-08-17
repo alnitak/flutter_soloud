@@ -131,12 +131,10 @@ abstract class SoLoudCppException extends SoLoudException {
       case PlayerErrors.bufferStreamWithReleasedBufferTypeCannotBeSeeked:
         // ignore: lines_longer_than_80_chars
         return const SoLoudBufferStreamWithReleasedBufferTypeCannotBeSeekedCppException();
-      case PlayerErrors.failedToCreateMp3Decoder:
-        return const SoLoudFailedToCreateMp3DecoderCppException();
-      case PlayerErrors.failedToDecodeMp3Frame:
-        return const SoLoudFailedToDecodeMp3FrameCppException();
-      case PlayerErrors.invalidMp3Format:
-        return const SoLoudInvalidMp3FormatCppException();
+      case PlayerErrors.audioFormatNotSupported:
+        return const SoLoudAudioFormatNotSupportedCppException();
+      case PlayerErrors.opusOggVorbisLibsNotFound:
+        return const SoLoudOpusOggVorbisLibsNotFoundCppException();
     }
   }
 

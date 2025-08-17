@@ -845,14 +845,14 @@ float Player::getPan(SoLoud::handle handle)
 
 void Player::setPan(SoLoud::handle handle, float pan)
 {
-    std::clamp(pan, -1.0f, 1.0f);
+    pan = std::clamp(pan, -1.0f, 1.0f);
     soloud.setPan(handle, pan);
 }
 
 void Player::setPanAbsolute(SoLoud::handle handle, float panLeft, float panRight)
 { 
-    std::clamp(panLeft, -1.0f, 1.0f);
-    std::clamp(panRight, -1.0f, 1.0f);
+    panLeft = std::clamp(panLeft, -1.0f, 1.0f);
+    panRight = std::clamp(panRight, -1.0f, 1.0f);
     soloud.setPanAbsolute(handle, panLeft, panRight);
 }
 
