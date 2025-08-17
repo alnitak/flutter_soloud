@@ -15,6 +15,7 @@
 #include "opus_stream_decoder.h"
 #endif
 #include "mp3_stream_decoder.h"
+#include "stream_decoder.h"
 
 class Player;
 
@@ -55,12 +56,8 @@ namespace SoLoud
     bool dataIsEnded;
     bool mIsBuffering;
     BufferStreamInstance *mInstance;
-#if !defined(NO_OPUS_OGG_LIBS)
-    std::unique_ptr<OpusDecoderWrapper> oggOpusdecoder;
-#endif
 
-    std::unique_ptr<MP3DecoderWrapper> mp3Decoder;
-    size_t minRequiredMp3Bytes;
+    std::unique_ptr<StreamDecoder> streamDecoder;
 
     BufferStream();
     virtual ~BufferStream();

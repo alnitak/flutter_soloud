@@ -12,7 +12,7 @@
 
 MP3DecoderWrapper::MP3DecoderWrapper()
     : isInitialized(false),
-      validFramesFound(false)
+    validFramesFound(false)
 {	
 }
 
@@ -26,7 +26,7 @@ void MP3DecoderWrapper::cleanup()
     validFramesFound = false;
 }
 
-std::vector<float> MP3DecoderWrapper::decode(std::vector<unsigned char>& buffer, int* sampleRate, int* channels)
+std::vector<float> MP3DecoderWrapper::decode(std::vector<unsigned char>& buffer, int* samplerate, int* channels)
 {
     if (buffer.empty())
         return {};
@@ -36,14 +36,8 @@ std::vector<float> MP3DecoderWrapper::decode(std::vector<unsigned char>& buffer,
     mp3dec_frame_info_t frame_info;
     int bytes_left = buffer.size();
     const uint8_t *mp3_ptr = buffer.data();
-    *sampleRate = -1;
+    *samplerate = -1;
     *channels = -1;
-
-    if (!isInitialized)
-    {
-        initializeDecoder();
-        isInitialized = true;
-    }
 
     // Wait at least 2 valid mp3 frames to start decoding if we haven't found them yet
     if (!validFramesFound && bytes_left > 0) {
@@ -62,7 +56,7 @@ std::vector<float> MP3DecoderWrapper::decode(std::vector<unsigned char>& buffer,
                 if (temp_info.frame_bytes <= 0) break;
                 frame_ptr += temp_info.frame_bytes;
                 remaining -= temp_info.frame_bytes;
-                *sampleRate = temp_info.hz;
+                *samplerate = temp_info.hz;
                 *channels = temp_info.channels;
             }
             else
@@ -107,9 +101,44 @@ std::vector<float> MP3DecoderWrapper::decode(std::vector<unsigned char>& buffer,
     return decodedData;
 }
 
-bool MP3DecoderWrapper::initializeDecoder()
+bool MP3DecoderWrapper::initializeDecoder(int engineSamplerate, int engineChannels)
 {
     cleanup(); // Ensure clean state
     mp3dec_init(&decoder);
+    isInitialized = true;
     return true;
+}
+
+bool MP3DecoderWrapper::checkForValidFrames(const std::vector<unsigned char>& buffer)
+{
+    int bytes_left = buffer.size();
+    const uint8_t *mp3_ptr = buffer.data();
+    int validFrames = 0;
+    mp3dec_t decoder;
+
+    mp3dec_init(&decoder);
+    if (bytes_left > 0) {
+        const uint8_t *frame_ptr = mp3_ptr;
+        int remaining = bytes_left;
+
+         while (remaining >= 4 && validFrames < 2) {  // Need at least 4 bytes for header check
+            if (hdr_valid(frame_ptr))
+            {
+                validFrames++;
+                // Skip to next possible frame using current frame's length
+                mp3dec_frame_info_t temp_info;
+                mp3d_sample_t temp_pcm[MINIMP3_MAX_SAMPLES_PER_FRAME];
+                mp3dec_decode_frame(&decoder, frame_ptr, remaining, temp_pcm, &temp_info);
+                if (temp_info.frame_bytes <= 0) break;
+                frame_ptr += temp_info.frame_bytes;
+                remaining -= temp_info.frame_bytes;
+            }
+            else
+            {
+                frame_ptr++;
+                remaining--;
+            }
+        }
+    }
+    return validFrames >= 2;
 }

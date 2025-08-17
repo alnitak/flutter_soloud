@@ -1,16 +1,8 @@
 #include "opus_stream_decoder.h"
 
-OpusDecoderWrapper::OpusDecoderWrapper(int sampleRate, int channels)
-    : sampleRate(sampleRate), channels(channels), streamInitialized(false)
+OpusDecoderWrapper::OpusDecoderWrapper()
+    : streamInitialized(false)
 {
-    int error;
-    decoder = opus_decoder_create(sampleRate, channels, &error);
-    if (error != OPUS_OK)
-    {
-        throw std::runtime_error("Failed to create Opus decoder: " + std::string(opus_strerror(error)));
-    }
-
-    ogg_sync_init(&oy);
 }
 
 OpusDecoderWrapper::~OpusDecoderWrapper()
@@ -25,9 +17,37 @@ OpusDecoderWrapper::~OpusDecoderWrapper()
     ogg_sync_clear(&oy);
 }
 
-std::vector<float> OpusDecoderWrapper::decode(std::vector<unsigned char>& buffer)
+bool OpusDecoderWrapper::initializeDecoder(int engineSamplerate, int engineChannels)
+{
+    decodingChannels = engineChannels > 2 ? 2 : (engineChannels<=0 ? 1 : engineChannels);
+    // Choose the best sample rate nearest to the engine samplerate
+    if (engineSamplerate <= 8000) decodingSamplerate = 8000;
+    else if (engineSamplerate <= 12000) decodingSamplerate = 12000;
+    else if (engineSamplerate <= 16000) decodingSamplerate = 16000;
+    else if (engineSamplerate <= 24000) decodingSamplerate = 24000;
+    else if (engineSamplerate <= 48000) decodingSamplerate = 48000;
+    else decodingSamplerate = 96000;
+    int error;
+    decoder = opus_decoder_create(decodingSamplerate, decodingChannels, &error);
+    if (error != OPUS_OK)
+    {
+        throw FailedToCreateOpusOggDecoder(std::string("Failed to create Opus Ogg decoder: " + std::string(opus_strerror(error))));
+    }
+
+    ogg_sync_init(&oy);
+    return true;
+}
+
+std::vector<float> OpusDecoderWrapper::decode(std::vector<unsigned char>& buffer, int* samplerate, int* channels)
 {
     std::vector<float> decodedData;
+
+    if (buffer.empty())
+    {
+        return decodedData;
+    }
+
+    ogg_sync_reset(&oy);
 
     // Write data into ogg sync buffer
     char *oggBuffer = ogg_sync_buffer(&oy, buffer.size());
@@ -39,13 +59,16 @@ std::vector<float> OpusDecoderWrapper::decode(std::vector<unsigned char>& buffer
     {
         if (!streamInitialized)
         {
-            ogg_stream_init(&os, ogg_page_serialno(&og));
+            if (ogg_stream_init(&os, ogg_page_serialno(&og)))
+            {
+                throw FailedToCreateOpusOggDecoder(std::string("Failed to init Ogg decoder."));
+            }
             streamInitialized = true;
         }
 
         if (ogg_stream_pagein(&os, &og) < 0)
         {
-            throw std::runtime_error("Error reading Ogg page");
+            throw ErrorReadingOggPage("Error reading Ogg page");
         }
 
         // Extract packets from page
@@ -53,6 +76,16 @@ std::vector<float> OpusDecoderWrapper::decode(std::vector<unsigned char>& buffer
         {
             auto packetData = decodePacket(op.packet, op.bytes);
             decodedData.insert(decodedData.end(), packetData.begin(), packetData.end());
+        }
+    }
+
+    if (oy.returned > 0)
+    {
+        if (buffer.size() >= oy.returned)
+        {
+            buffer.erase(buffer.begin(), buffer.begin() + oy.returned);
+        } else {
+            buffer.erase(buffer.begin(), buffer.end());
         }
     }
 
@@ -83,8 +116,8 @@ std::vector<float> OpusDecoderWrapper::decodePacket(const unsigned char *packetD
 
     // Opus can handle frame sizes from 2.5ms to 60ms
     // We'll use buffer size to accommodate any frame size
-    const int maxFrameSize = sampleRate * 60 / 1000; // 60ms frame size
-    std::vector<float> outputBuffer(maxFrameSize * channels);
+    const int maxFrameSize = decodingSamplerate * 60 / 1000; // 60ms frame size
+    std::vector<float> outputBuffer(maxFrameSize * decodingChannels);
 
     // Try decoding the packet
     int samples = opus_decode_float(decoder,
@@ -115,7 +148,7 @@ std::vector<float> OpusDecoderWrapper::decodePacket(const unsigned char *packetD
     {
         packetPcm.insert(packetPcm.end(),
                          outputBuffer.begin(),
-                         outputBuffer.begin() + samples * channels);
+                         outputBuffer.begin() + samples * decodingChannels);
     }
     return packetPcm;
 }

@@ -1,6 +1,7 @@
 #ifndef MP3_STREAM_DECODER_H
 #define MP3_STREAM_DECODER_H
 
+#include "stream_decoder.h"
 #include <vector>
 #include <iostream>
 #include <stdexcept>
@@ -16,22 +17,23 @@
 #include "minimp3.h"
 
 /// Wrapper class for MP3 stream decoder using minimp3
-class MP3DecoderWrapper
+class MP3DecoderWrapper : public IDecoderWrapper
 {
 public:
     MP3DecoderWrapper();
 
     ~MP3DecoderWrapper();
 
+    bool initializeDecoder(int engineSamplerate, int engineChannels) override;
+
     void cleanup();
 
-    std::vector<float> decode(std::vector<unsigned char>& buffer, int* sampleRate, int* channels);
+    std::vector<float> decode(std::vector<unsigned char>& buffer, int* samplerate, int* channels) override;
 
-private:
-    bool initializeDecoder();
+    static bool checkForValidFrames(const std::vector<unsigned char>& buffer);
 
-public:
     mp3dec_t decoder;
+
 private:
     bool isInitialized;
     bool validFramesFound;

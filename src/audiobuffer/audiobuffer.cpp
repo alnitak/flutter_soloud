@@ -226,17 +226,13 @@ namespace SoLoud
 		mBuffer.setBufferType(bufferingType);
 		mIsBuffering = true;
 
-#if !defined(NO_OPUS_OGG_LIBS)
-		oggOpusdecoder = nullptr;
-#else
+#if defined(NO_OPUS_OGG_LIBS)
 		if (pcmFormat.dataType == BufferType::OPUS)
 		{
 			return PlayerErrors::failedToCreateOpusDecoder;
 		}
 #endif
 
-		mp3Decoder = nullptr;
-		minRequiredMp3Bytes = 0;
 		return PlayerErrors::noError;
 	}
 
@@ -256,10 +252,8 @@ namespace SoLoud
 		}
 	}
 
-	int counter = 0;
 	void BufferStream::setDataIsEnded()
 	{
-		// printf("***** setDataIsEnded()   mBytesReceived %d    bytes still on buffer: %d\n", mBytesReceived, buffer.size());
 		// Eventually add any remaining data
 		if (buffer.size() > 0)
 		{
@@ -268,12 +262,11 @@ namespace SoLoud
 
 		buffer.clear();
 		dataIsEnded = true;
-		counter = 0;
 		checkBuffering(0);
 	}
+
 	PlayerErrors BufferStream::addData(const void *aData, unsigned int aDataLen, bool dontAdd)
 	{
-		// printf("***** dataIsEnded %d    counter %d   mBuffer size %d    buffer size %d   aDataLen %d\n", dataIsEnded, counter++, mBuffer.buffer.size(), buffer.size(), aDataLen);
 		if (dataIsEnded)
 		{
 			return PlayerErrors::streamEndedAlready;
@@ -299,7 +292,7 @@ namespace SoLoud
 				}
 				else
 				{
-					// When using opus we don't need to align.
+					// When using opus,ogg or mp3 we don't need to align.
 					bufferDataToAdd = buffer.size();
 				}
 			} else
@@ -308,89 +301,65 @@ namespace SoLoud
 		} else {
 			bufferDataToAdd = buffer.size();
 		}
+		
 
-		// It's time to decode the data already in the buffer
-		if (mPCMformat.dataType == BufferType::OPUS)
+
+
+		// It's time to decode the data already stored in the buffer
+		if (mPCMformat.dataType == BufferType::OPUS || mPCMformat.dataType == BufferType::MP3)
 		{
-#if !defined(NO_OPUS_OGG_LIBS)
-			// Decode the OGG/Opus data
-			try
-			{
-				// Initialize the ogg/opus decoder if needed
-				if (!oggOpusdecoder) {
-					try
-					{
-						oggOpusdecoder = std::make_unique<OpusDecoderWrapper>(
-							mPCMformat.sampleRate, mPCMformat.channels);
-					}
-					catch (const std::exception &e)
-					{
-						return PlayerErrors::failedToCreateOpusDecoder;
-					}
-				}
-			
-				std::vector<float> decoded = oggOpusdecoder->decode(buffer);
+			// Initialize the decoder if needed
+			if (!streamDecoder) {
+				streamDecoder = std::make_unique<StreamDecoder>();
+			}
+
+			try {
+				int sampleRate = mThePlayer->mSampleRate;
+				int channels = mThePlayer->mChannels;
+				// Ogg Opus will decode to the sampleRate and channels of the engine settings and the AudioSource will be set to them
+				// For the mp3 this AudioSource will impose the mp3 settings (the engine will convert to its settings)
+				std::vector<float> decoded = streamDecoder->decode(buffer, &sampleRate, &channels);
 
 				if (!decoded.empty())
 				{
+					if (mPCMformat.dataType == BufferType::MP3 || mPCMformat.dataType == BufferType::OPUS) {
+						if (sampleRate != -1) { 
+							mPCMformat.sampleRate = sampleRate;
+							mBaseSamplerate = sampleRate;
+							mInstance->mSamplerate = sampleRate;
+							mInstance->mBaseSamplerate = sampleRate;
+						}
+						if (channels != -1) {
+							mPCMformat.channels = channels;
+							mChannels = channels;
+							mInstance->mChannels = channels;
+						}
+					}
+
 					bytesWritten = mBuffer.addData(
-						BufferType::PCM_F32LE,
-						decoded.data(),
-						decoded.size(),
-						&allDataAdded) * sizeof(float);
+										BufferType::PCM_F32LE,
+										decoded.data(),
+										decoded.size(),
+										&allDataAdded) *
+									sizeof(float);
 				}
-				// Remove the processed data from the buffer
-				if (bytesWritten > 0) {
-					buffer.erase(buffer.begin(), buffer.begin() + bufferDataToAdd);
+				else {
+					// Continue buffering. Maybe we are still adding artwork image data.
+					return PlayerErrors::noError;
 				}
+			} catch (const FormatNotSupportedDecoder &e) {
+				// The audio codec of this stream is not detected/supported.
+				// For example, an Opus format could have a FLAC codec which is not supported.
+				return PlayerErrors::audioFormatNotSupported;
+			} catch (const NoOpusOggVorbisDecoder &e) {
+				// NO_OPUS_OGG_LIBS is defined, so we can't decode Ogg/Opus/Vorbis
+				return PlayerErrors::opusOggVorbisLibsNotFound;
+			} catch (const FailedToCreateOpusOggDecoder &e) {
+				// The ogg_stream_init could throw
+				return PlayerErrors::failedToCreateOpusDecoder;
 			}
-			catch (const std::exception &e)
-			{
+			catch (const ErrorReadingOggPage &e) {
 				return PlayerErrors::failedToDecodeOpusPacket;
-			}
-#else
-			return PlayerErrors::failedToDecodeOpusPacket;
-#endif
-		}
-		else if (mPCMformat.dataType == BufferType::MP3)
-		{
-			// Initialize the mp3 decoder if needed
-			if (!mp3Decoder) {
-				try {
-					mp3Decoder = std::make_unique<MP3DecoderWrapper>();
-					minRequiredMp3Bytes = 0;  // Will be set after first successful decode
-				} catch (const std::exception &e) {
-					return PlayerErrors::failedToCreateMp3Decoder;
-				}
-			}
-
-			int sr, ch;
-			std::vector<float> decoded = mp3Decoder->decode(buffer, &sr, &ch);
-
-            if (!decoded.empty())
-            {
-				if (sr != -1) { 
-					mPCMformat.sampleRate = sr;
-					mBaseSamplerate = sr;
-					mInstance->mSamplerate = sr;
-					mInstance->mBaseSamplerate = sr;
-				}
-				if (ch != -1) {
-					mPCMformat.channels = ch;
-					mChannels = ch;
-					mInstance->mChannels = ch;
-				}
-
-				bytesWritten = mBuffer.addData(
-									BufferType::PCM_F32LE,
-									decoded.data(),
-									decoded.size(),
-									&allDataAdded) *
-								sizeof(float);
-			} 
-			else {
-				// Continue buffering. Maybe we are still adding artwork image data.
-				return PlayerErrors::noError; //failedToDecodeMp3Frame;
 			}
 		}
 		else

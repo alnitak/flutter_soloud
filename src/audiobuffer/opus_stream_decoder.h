@@ -1,6 +1,7 @@
 #ifndef OPUS_STREAM_DECODER_H
 #define OPUS_STREAM_DECODER_H
 
+#include "stream_decoder.h"
 #include <vector>
 #include <iostream>
 #include <stdexcept>
@@ -22,20 +23,24 @@
 ///
 /// The supported sampleRate for Opus format are 8, 12, 16, 24 amd 48 KHz.
 /// The channels is the number of channels in the audio data. Only 1 or 2 allowed.
-class OpusDecoderWrapper
+class OpusDecoderWrapper : public IDecoderWrapper
 {
 public:
-    OpusDecoderWrapper(int sampleRate, int channels);
+    OpusDecoderWrapper();
     ~OpusDecoderWrapper();
 
-    std::vector<float> decode(std::vector<unsigned char>& buffer);
+    bool initializeDecoder(int engineSamplerate, int engineChannels) override;
+
+    std::vector<float> decode(std::vector<unsigned char>& buffer, int* samplerate, int* channels) override;
 
 private:
     std::vector<float> decodePacket(const unsigned char *packetData, size_t packetSize);
 
     OpusDecoder *decoder;
-    int sampleRate;
-    int channels;
+    int engineSamplerate;
+    int engineChannels;
+    int decodingSamplerate;
+    int decodingChannels;
 
     // Ogg state variables
     ogg_sync_state oy;
