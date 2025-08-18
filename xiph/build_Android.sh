@@ -83,8 +83,8 @@ build_lib() {
             -DCMAKE_INSTALL_PREFIX="$temp_install_path" \
             -DBUILD_SHARED_LIBS=ON \
             -DCMAKE_C_FLAGS="-Os -flto -ffunction-sections -fdata-sections" \
-            -DCMAKE_EXE_LINKER_FLAGS="-Wl,--gc-sections -flto" \
-            -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--gc-sections -flto" \
+            -DCMAKE_EXE_LINKER_FLAGS="-Wl,-z,max-page-size=16384,--gc-sections -flto" \
+            -DCMAKE_SHARED_LINKER_FLAGS="-Wl,-z,max-page-size=16384,--gc-sections -flto" \
             -DCMAKE_C_FLAGS_RELEASE="-O2 -DNDEBUG" \
             -DOGG_LIBRARY="$install_path/libogg.so" \
             -DOGG_INCLUDE_DIR="$OUTPUT_DIR/../include" \
@@ -98,8 +98,8 @@ build_lib() {
             -DCMAKE_INSTALL_PREFIX="$temp_install_path" \
             -DBUILD_SHARED_LIBS=ON \
             -DCMAKE_C_FLAGS="-Os -flto -ffunction-sections -fdata-sections" \
-            -DCMAKE_EXE_LINKER_FLAGS="-Wl,--gc-sections -flto" \
-            -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--gc-sections -flto" \
+            -DCMAKE_EXE_LINKER_FLAGS="-Wl,-z,max-page-size=16384,--gc-sections -flto" \
+            -DCMAKE_SHARED_LINKER_FLAGS="-Wl,-z,max-page-size=16384,--gc-sections -flto" \
             -DCMAKE_C_FLAGS_RELEASE="-O2 -DNDEBUG" \
             -DCMAKE_POLICY_VERSION_MINIMUM=3.5
     fi
