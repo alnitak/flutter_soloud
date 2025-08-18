@@ -3,7 +3,7 @@
 #include "opus_stream_decoder.h"
 
 OpusDecoderWrapper::OpusDecoderWrapper()
-    : streamInitialized(false)
+    : streamInitialized(false), headerParsed(false), packetCount(0)
 {
 }
 

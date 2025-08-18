@@ -8,7 +8,6 @@
 #include <cstring>
 
 #ifdef __EMSCRIPTEN__
-#include <emscripten.h>
 // For Web include dirs downloaded from git for build
 #include "../../xiph/opus/include/opus.h"
 #include "../../xiph/ogg/include/ogg/ogg.h"

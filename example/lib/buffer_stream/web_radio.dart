@@ -98,6 +98,7 @@ class _WebRadioExampleState extends State<WebRadioExample> {
   int opusUrlId = 0;
   http.Client? client;
   http.StreamedResponse? currentStream;
+  StreamSubscription<List<int>>? subscription;
   final connectionError = ValueNotifier<String>('');
 
   Future<void> connectToUrl(String url) async {
@@ -105,7 +106,7 @@ class _WebRadioExampleState extends State<WebRadioExample> {
     urlController.text = url;
     try {
       // Cancel any existing connection
-      // await _currentStream?.stream.drain<void>();
+      await subscription?.cancel();
       currentStream = null;
       client?.close();
       client = null;
@@ -142,7 +143,7 @@ class _WebRadioExampleState extends State<WebRadioExample> {
       }
 
       // Listen to the stream and feed data to the audio source
-      currentStream!.stream.listen(
+      subscription = currentStream!.stream.listen(
         (data) {
           if (source != null) {
             try {

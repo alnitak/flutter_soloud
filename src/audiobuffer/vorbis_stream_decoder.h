@@ -2,8 +2,14 @@
 #define VORBIS_DECODER_H
 
 #include "stream_decoder.h"
+#ifdef __EMSCRIPTEN__
+// For Web include dirs downloaded from git for build
+#include "../../xiph/vorbis/include/vorbis/codec.h"
+#include "../../xiph/ogg/include/ogg/ogg.h"
+#else
 #include <vorbis/codec.h>
 #include <ogg/ogg.h>
+#endif
 
 class VorbisDecoderWrapper : public IDecoderWrapper {
 public:
