@@ -33,7 +33,7 @@ bool OpusDecoderWrapper::initializeDecoder(int engineSamplerate, int engineChann
     decoder = opus_decoder_create(decodingSamplerate, decodingChannels, &error);
     if (error != OPUS_OK)
     {
-        throw FailedToCreateOpusOggDecoder(std::string("Failed to create Opus Ogg decoder: " + std::string(opus_strerror(error))));
+        return false;
     }
 
     ogg_sync_init(&oy);

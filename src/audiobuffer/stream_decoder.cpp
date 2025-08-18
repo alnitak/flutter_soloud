@@ -58,17 +58,17 @@ std::pair<std::vector<float>, DecoderError> StreamDecoder::decode(std::vector<un
             #else
                 if (detectedType == DetectedType::BUFFER_OGG_VORBIS) {
                     mWrapper = std::make_unique<VorbisDecoderWrapper>();
-                    static_cast<VorbisDecoderWrapper*>(mWrapper.get())->initializeDecoder(*samplerate, *channels);
+                    isFormatDetected = static_cast<VorbisDecoderWrapper*>(mWrapper.get())->initializeDecoder(*samplerate, *channels);
                 } else {
                     mWrapper = std::make_unique<OpusDecoderWrapper>();
-                    static_cast<OpusDecoderWrapper*>(mWrapper.get())->initializeDecoder(*samplerate, *channels);
+                    isFormatDetected = static_cast<OpusDecoderWrapper*>(mWrapper.get())->initializeDecoder(*samplerate, *channels);
+                    if (!isFormatDetected)
+                        return {{}, DecoderError::FailedToCreateDecoder};
                 }
-                isFormatDetected = true;
             #endif
         } else if (detectedType == DetectedType::BUFFER_MP3) {
             mWrapper = std::make_unique<MP3DecoderWrapper>();
-            static_cast<MP3DecoderWrapper*>(mWrapper.get())->initializeDecoder(*samplerate, *channels);
-            isFormatDetected = true;
+            isFormatDetected = static_cast<MP3DecoderWrapper*>(mWrapper.get())->initializeDecoder(*samplerate, *channels);
         }
     }
     
