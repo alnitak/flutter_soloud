@@ -4,6 +4,8 @@ import 'package:flutter_soloud/src/bindings/audio_data_ffi.dart'
 import 'package:flutter_soloud/src/bindings/soloud_controller.dart';
 import 'package:flutter_soloud/src/exceptions/exceptions.dart';
 import 'package:flutter_soloud/src/soloud.dart';
+// ignore: unnecessary_import
+import 'package:meta/meta.dart';
 
 /// The way the audio data should be acquired.
 ///

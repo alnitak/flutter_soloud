@@ -1,6 +1,7 @@
-#### 3.2.6 (18 Aug 2025)
+#### 3.2.7 (18 Aug 2025)
 - feat: allow to specify NO_OPUS_OGG_LIBS in Android build config #282. Thanks to @ekuleshov
 - fix: 16KB memory page size for Android because of Play Console warning #283
+- fix pub points
 
 #### 3.2.5 (10 Aug 2025)
 - macos fix: `abseil` not found when using this plugin with some other native plugins like firebase #280. Thanks to @jochy.
