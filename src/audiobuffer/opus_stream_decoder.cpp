@@ -70,7 +70,14 @@ std::pair<std::vector<float>, DecoderError> OpusDecoderWrapper::decode(std::vect
 
         if (ogg_stream_pagein(&os, &og) < 0)
         {
-            return {decodedData, DecoderError::ErrorReadingOggOpusPage};
+            // Stream changed, reinitialize the stream
+            if (streamInitialized) {
+                ogg_stream_clear(&os);
+                streamInitialized = false;
+                headerParsed = false;
+                packetCount = 0;
+            }
+            continue;
         }
 
         // Extract packets from page

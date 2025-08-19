@@ -68,17 +68,41 @@ std::pair<std::vector<float>, DecoderError> VorbisDecoderWrapper::decode(std::ve
             streamInitialized = true;
         }
 
-        if (ogg_stream_pagein(&os, &og) < 0) {
-            uint8_t seg_count = buffer[26];
-            size_t payload_offset = 27 + seg_count;
-            if (std::memcmp(buffer.data() + payload_offset, "\x01vorbis", 7) == 0) {
-                printf("@@@@@@@@@@@@@@@@@@@@@@@@@@@@ decode another VORBIS detected\n");
+        // Check if this is a new stream (different serial number)
+        if (streamInitialized && ogg_page_serialno(&og) != os.serialno) {
+            // Clean up the old stream state
+            ogg_stream_clear(&os);
+            if (vorbisInitialized) {
+                vorbis_block_clear(&vb);
+                vorbis_dsp_clear(&vd);
+                vorbisInitialized = false;
             }
-            return {decodedData, DecoderError::ErrorReadingOggOpusPage};
+            vorbis_info_clear(&vi);
+            vorbis_comment_clear(&vc);
             
+            // Initialize for new stream
+            vorbis_info_init(&vi);
+            vorbis_comment_init(&vc);
+            ogg_stream_init(&os, ogg_page_serialno(&og));
+            headerParsed = false;
+            packetCount = 0;
             
-            // Non breaking. Maybe, is decoding a stream, the tags are changing? Reinitialize stream.
-            // return {decodedData, DecoderError::NoError};
+            // Try to process the new page
+            if (ogg_stream_pagein(&os, &og) < 0) {
+                continue;  // Skip this page if it's corrupted
+            }
+        } else if (!streamInitialized) {
+            // First time initialization
+            if (ogg_stream_init(&os, ogg_page_serialno(&og))) {
+                return {decodedData, DecoderError::FailedToCreateDecoder};
+            }
+            streamInitialized = true;
+            
+            if (ogg_stream_pagein(&os, &og) < 0) {
+                continue;  // Skip this page if it's corrupted
+            }
+        } else if (ogg_stream_pagein(&os, &og) < 0) {
+            continue;  // Skip this page if it's corrupted
         }
 
         // Extract packets from page

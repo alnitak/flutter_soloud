@@ -77,6 +77,7 @@ class _WebRadioExampleState extends State<WebRadioExample> {
   /// OPUSes
   final opusUrls = [
     'http://localhost:8080',
+    'http://192.168.1.11:8080',
     'http://radio.glafir.ru:7000/pop-mix',
     'http://icecast.err.ee/klarajazz.opus',
     'http://xfer.hirschmilch.de:8000/prog-house.opus',
@@ -165,13 +166,14 @@ class _WebRadioExampleState extends State<WebRadioExample> {
         onDone: () {
           connectionError.value = 'Stream closed.';
           debugPrint('Stream closed. Maybe a stream changed track?');
-          client?.close();
-          client = null;
+          // client?.close();
+          // client = null;
+
           // Some streams may close automatically after a song ends.
           // You can try to reconnect or just leave it.
-          Future.delayed(const Duration(milliseconds: 500), () {
-            unawaited(connectToUrl(url));
-          });
+          // Future.delayed(const Duration(milliseconds: 500), () {
+          //   unawaited(connectToUrl(url));
+          // });
         },
       );
     } catch (e) {
@@ -184,6 +186,9 @@ class _WebRadioExampleState extends State<WebRadioExample> {
   }
 
   Future<void> playUrl(String url, BufferType type) async {
+    connectionError.value = '';
+    await SoLoud.instance.disposeAllSources();
+
     streamBuffering.value = true;
     source = SoLoud.instance.setBufferStream(
       maxBufferSizeBytes: 1024 * 1024 * 200, // 100 MB
