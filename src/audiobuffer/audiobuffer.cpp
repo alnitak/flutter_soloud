@@ -327,7 +327,7 @@ namespace SoLoud
 					return PlayerErrors::opusOggVorbisLibsNotFound;
 				case DecoderError::FailedToCreateDecoder:
 					return PlayerErrors::failedToCreateOpusDecoder;
-				case DecoderError::ErrorReadingPage:
+				case DecoderError::ErrorReadingOggOpusPage:
 					return PlayerErrors::failedToDecodeOpusPacket;
 				default:
 					break;

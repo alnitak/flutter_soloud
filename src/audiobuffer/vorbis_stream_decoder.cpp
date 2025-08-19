@@ -69,7 +69,16 @@ std::pair<std::vector<float>, DecoderError> VorbisDecoderWrapper::decode(std::ve
         }
 
         if (ogg_stream_pagein(&os, &og) < 0) {
-            return {decodedData, DecoderError::ErrorReadingPage};
+            uint8_t seg_count = buffer[26];
+            size_t payload_offset = 27 + seg_count;
+            if (std::memcmp(buffer.data() + payload_offset, "\x01vorbis", 7) == 0) {
+                printf("@@@@@@@@@@@@@@@@@@@@@@@@@@@@ decode another VORBIS detected\n");
+            }
+            return {decodedData, DecoderError::ErrorReadingOggOpusPage};
+            
+            
+            // Non breaking. Maybe, is decoding a stream, the tags are changing? Reinitialize stream.
+            // return {decodedData, DecoderError::NoError};
         }
 
         // Extract packets from page

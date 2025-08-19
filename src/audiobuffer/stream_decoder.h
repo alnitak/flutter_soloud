@@ -21,7 +21,7 @@ enum class DecoderError {
     FormatNotSupported,
     NoOpusOggLibs,
     FailedToCreateDecoder,
-    ErrorReadingPage
+    ErrorReadingOggOpusPage
 };
 
 class IDecoderWrapper {

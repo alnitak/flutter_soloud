@@ -46,10 +46,6 @@ class WebRadioExample extends StatefulWidget {
 }
 
 class _WebRadioExampleState extends State<WebRadioExample> {
-  AudioSource? source;
-  final streamBuffering = ValueNotifier(false);
-  final TextEditingController urlController = TextEditingController(text: '');
-
   // https://dir.xiph.org/codecs
   /// MP3s
   final mp3Urls = [
@@ -80,6 +76,7 @@ class _WebRadioExampleState extends State<WebRadioExample> {
 
   /// OPUSes
   final opusUrls = [
+    'http://localhost:8080',
     'http://radio.glafir.ru:7000/pop-mix',
     'http://icecast.err.ee/klarajazz.opus',
     'http://xfer.hirschmilch.de:8000/prog-house.opus',
@@ -96,16 +93,18 @@ class _WebRadioExampleState extends State<WebRadioExample> {
   int mp3UrlId = 0;
   int oggUrlId = 0;
   int opusUrlId = 0;
+  AudioSource? source;
+  final streamBuffering = ValueNotifier(false);
+  final TextEditingController urlController = TextEditingController(text: '');
+  final connectionError = ValueNotifier<String>('');
   http.Client? client;
   http.StreamedResponse? currentStream;
-  final connectionError = ValueNotifier<String>('');
 
   Future<void> connectToUrl(String url) async {
     connectionError.value = '';
     urlController.text = url;
     try {
       // Cancel any existing connection
-      // await _currentStream?.stream.drain<void>();
       currentStream = null;
       client?.close();
       client = null;
@@ -154,23 +153,29 @@ class _WebRadioExampleState extends State<WebRadioExample> {
               client = null;
             } catch (e) {
               debugPrint('Error adding audio data: $e');
-              client?.close();
-              client = null;
             }
           }
         },
         onError: (Object error) {
+          connectionError.value = 'Stream error: $error';
           debugPrint('Stream error: $error');
           client?.close();
           client = null;
         },
         onDone: () {
-          debugPrint('Stream closed');
+          connectionError.value = 'Stream closed.';
+          debugPrint('Stream closed. Maybe a stream changed track?');
           client?.close();
           client = null;
+          // Some streams may close automatically after a song ends.
+          // You can try to reconnect or just leave it.
+          Future.delayed(const Duration(milliseconds: 500), () {
+            unawaited(connectToUrl(url));
+          });
         },
       );
     } catch (e) {
+      connectionError.value = 'Connection error: $e';
       debugPrint('Connection error: $e');
       client?.close();
       client = null;
@@ -179,7 +184,6 @@ class _WebRadioExampleState extends State<WebRadioExample> {
   }
 
   Future<void> playUrl(String url, BufferType type) async {
-    await SoLoud.instance.disposeAllSources();
     streamBuffering.value = true;
     source = SoLoud.instance.setBufferStream(
       maxBufferSizeBytes: 1024 * 1024 * 200, // 100 MB
