@@ -788,6 +788,54 @@ interface class SoLoud {
     return result.value.toDuration();
   }
 
+  /// Set the icy metadata integer value. Must be set once before calling
+  /// the first time [addAudioDataStream] to be able to get MP3 metadata
+  /// of a stream.
+  ///
+  /// **Note:** this function is only for MP3 streams. It must
+  /// be called before calling [addAudioDataStream] to be able to get MP3
+  /// metadata of a stream. It will set the `icy-metaint` value of the
+  /// MP3 stream to retrieve the metadata from the stream.
+  /// When adding data, for example from an online stream, the request
+  /// must contain the `icy-metaint` header:
+  /// ```dart
+  ///   http.StreamedResponse? currentStream;
+  ///   client = http.Client();
+  ///   final request = http.Request('GET', Uri.parse(url));
+  ///   request.headers.addAll({'Icy-MetaData': '1'});
+  /// ```
+  /// When the first chunk of data has been received, the `icy-metaint`
+  /// value can be read as follows:
+  /// ```dart
+  /// bool mp3IcyMetaIntSent = false;
+  /// currentStream!.stream.listen(
+  ///   (data) {
+  ///     if (!mp3IcyMetaIntSent) {
+  ///         mp3IcyMetaIntSent = true;
+  ///         // set it when receiving the first audio chunk
+  ///         SoLoud.instance.setMp3BufferIcyMetaInt(
+  ///             sound,
+  ///             int.parse(currentStream!.headers['icy-metaint'] ?? '0'),
+  ///         );
+  ///     }
+  ///     ...
+  ///   ```
+  ///
+  /// [hash] the hash of the stream sound.
+  /// [icyMetaInt] the icy metadata integer value. Default is 16000 which
+  /// is the most used value.
+  ///
+  /// An online radio example is included in
+  /// `example/lib/buffer_stream/web_radio.dart`.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  void setMp3BufferIcyMetaInt(AudioSource sound, int icyMetaInt) {
+    SoLoudController().soLoudFFI.setMp3BufferIcyMetaInt(
+          sound.soundHash,
+          icyMetaInt,
+        );
+  }
+
   /// Add PCM audio data to the stream.
   ///
   /// This method can be called within an `Isolate` making it possible

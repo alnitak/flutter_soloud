@@ -35,7 +35,8 @@ public:
     
 private:
     AudioMetadata getMetadata(ogg_packet* packet);
-    std::vector<float> decodePacket(ogg_packet* packet);
+    OpusInfo parseOpusHead(ogg_packet *packet);
+    std::vector<float> decodePacket(ogg_packet *packet);
 
     OpusDecoder *decoder;
     int engineSamplerate;

@@ -390,10 +390,23 @@ PlayerErrors Player::resetBufferStream(unsigned int hash)
 {
     auto const s = findByHash(hash);
 
-    if (s == nullptr || s->soundType != SoundType::TYPE_BUFFER_STREAM)
+    if (s == nullptr || s->soundType != SoundType::TYPE_BUFFER_STREAM) {
         return PlayerErrors::soundHashNotFound;
+    }
 
     static_cast<SoLoud::BufferStream *>(s->sound.get())->resetBuffer();
+    return PlayerErrors::noError;
+}
+
+PlayerErrors Player::setMp3BufferIcyMetaInt(unsigned int hash, int icyMetaInt)
+{
+    auto const s = findByHash(hash);
+
+    if (s == nullptr || s->soundType != SoundType::TYPE_BUFFER_STREAM) { 
+        return PlayerErrors::soundHashNotFound;
+    }
+
+    static_cast<SoLoud::BufferStream *>(s->sound.get())->setMp3BufferIcyMetaInt(icyMetaInt);
     return PlayerErrors::noError;
 }
 

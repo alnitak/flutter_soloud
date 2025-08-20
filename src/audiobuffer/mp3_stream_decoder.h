@@ -28,6 +28,9 @@ public:
 
     bool initializeDecoder(int engineSamplerate, int engineChannels) override;
 
+    // call this only once before decoding
+    void setMp3BufferIcyMetaInt(int icyMetaInt);
+
     void cleanup();
 
     std::pair<std::vector<float>, DecoderError> decode(std::vector<unsigned char>& buffer, int* samplerate, int* channels) override;
@@ -41,6 +44,10 @@ private:
     bool isInitialized;
     bool validFramesFound;
     AudioMetadata lastMetadata;
+    size_t bytes_until_meta;
+    size_t metadata_remaining;
+    std::string metadata_buffer;
+    int mIcyMetaInt;
 };
 
 #endif // MP3_STREAM_DECODER_H

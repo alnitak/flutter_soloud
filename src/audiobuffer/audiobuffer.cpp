@@ -225,6 +225,12 @@ namespace SoLoud
 		buffer = std::vector<unsigned char>();
 		mBuffer.setBufferType(bufferingType);
 		mIsBuffering = true;
+		mIcyMetaInt = 16000; // for mp3 streaming audio only. Most online streaming use 16000
+
+		if (pcmFormat.dataType == BufferType::OPUS || pcmFormat.dataType == BufferType::MP3) {
+			streamDecoder = std::make_unique<StreamDecoder>();
+		}
+
 
 #if defined(NO_OPUS_OGG_LIBS)
 		if (pcmFormat.dataType == BufferType::OPUS)
@@ -265,6 +271,12 @@ namespace SoLoud
 		checkBuffering(0);
 	}
 
+	void BufferStream::setMp3BufferIcyMetaInt(int icyMetaInt)
+	{
+		mIcyMetaInt = icyMetaInt;
+		streamDecoder->setMp3BufferIcyMetaInt(icyMetaInt);
+	}
+
 	PlayerErrors BufferStream::addData(const void *aData, unsigned int aDataLen, bool dontAdd)
 	{
 		if (dataIsEnded)
@@ -303,16 +315,9 @@ namespace SoLoud
 		}
 		
 
-
-
 		// It's time to decode the data already stored in the buffer
 		if (mPCMformat.dataType == BufferType::OPUS || mPCMformat.dataType == BufferType::MP3)
 		{
-			// Initialize the decoder if needed
-			if (!streamDecoder) {
-				streamDecoder = std::make_unique<StreamDecoder>();
-			}
-
 			int sampleRate = mThePlayer->mSampleRate;
 			int channels = mThePlayer->mChannels;
 			// Ogg Opus will decode to the sampleRate and channels of the engine settings and the AudioSource will be set to them

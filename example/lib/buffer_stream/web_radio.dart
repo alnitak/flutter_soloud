@@ -8,6 +8,24 @@ import 'package:flutter_soloud_example/buffer_stream/ui/buffer_widget.dart';
 import 'package:http/http.dart' as http;
 import 'package:logging/logging.dart';
 
+class Mp3MetaData {
+  const Mp3MetaData({
+    required this.description,
+    required this.url,
+    required this.pub,
+    required this.br,
+    required this.genre,
+    required this.audioInfo,
+  });
+
+  final String description;
+  final String url;
+  final String pub;
+  final String br;
+  final String genre;
+  final String audioInfo;
+}
+
 void main() async {
   // The `flutter_soloud` package logs everything
   // (from severe warnings to fine debug messages)
@@ -100,6 +118,7 @@ class _WebRadioExampleState extends State<WebRadioExample> {
   final connectionError = ValueNotifier<String>('');
   http.Client? client;
   http.StreamedResponse? currentStream;
+  bool mp3IcyMetaIntSent = false;
 
   Future<void> connectToUrl(String url) async {
     connectionError.value = '';
@@ -113,7 +132,16 @@ class _WebRadioExampleState extends State<WebRadioExample> {
       // Create a new client and request
       client = http.Client();
       final request = http.Request('GET', Uri.parse(url));
+
+      /// MP3 streams require the Icy-MetaData header to get back the position
+      /// of the metadata in the packets received.
+      /// In the `currentStream.headers` map, you will get this value
+      /// in the `icy-metaint` key. This value should be told to flutter_soloud
+      /// using `SoLoud.setMp3BufferIcyMetaInt(value)` before any call
+      /// to `SoLoud.addAudioDataStream`.
+      request.headers.addAll({'Icy-MetaData': '1'});
       currentStream = await client!.send(request);
+      mp3IcyMetaIntSent = false;
 
       // Handle redirections
       if (currentStream!.statusCode == 301 ||
@@ -145,6 +173,15 @@ class _WebRadioExampleState extends State<WebRadioExample> {
       currentStream!.stream.listen(
         (data) {
           connectionError.value = '';
+          if (!mp3IcyMetaIntSent) {
+            mp3IcyMetaIntSent = true;
+            // set it when receiving the first audio chunk
+            debugPrint('icy-metaint: ${currentStream!.headers['icy-metaint']}');
+            SoLoud.instance.setMp3BufferIcyMetaInt(
+              source!,
+              int.parse(currentStream!.headers['icy-metaint'] ?? '0'),
+            );
+          }
           if (source != null) {
             try {
               SoLoud.instance

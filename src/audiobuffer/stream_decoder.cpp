@@ -6,6 +6,10 @@
 #endif
 #include <cstring>
 
+void StreamDecoder::setMp3BufferIcyMetaInt(int icyMetaInt) {
+    mIcyMetaInt = icyMetaInt;
+}
+
 DetectedType StreamDecoder::detectAudioFormat(const std::vector<unsigned char>& buffer) {
     size_t size = buffer.size();
     if (size < 4) return DetectedType::BUFFER_NO_ENOUGH_DATA;
@@ -29,9 +33,11 @@ DetectedType StreamDecoder::detectAudioFormat(const std::vector<unsigned char>& 
     }
 
     // --- Detect MP3 ---
-    else if (size >= 3 && std::memcmp(buffer.data(), "ID3", 3) == 0 ||
-    MP3DecoderWrapper::checkForValidFrames(buffer)) {
-        return DetectedType::BUFFER_MP3; // ID3 tag found
+    else if (size >= 3 && std::memcmp(buffer.data(), "ID3", 3) == 0) {
+        return DetectedType::BUFFER_MP3_WITH_ID3; // ID3 tag found
+    } 
+    else if (MP3DecoderWrapper::checkForValidFrames(buffer)) {
+        return DetectedType::BUFFER_MP3_STREAM;
     }
 
     return DetectedType::BUFFER_UNKNOWN;
@@ -43,7 +49,7 @@ std::pair<std::vector<float>, DecoderError> StreamDecoder::decode(std::vector<un
     TrackChangeCallback metadataChangeCallback)
 {
     if (!isFormatDetected) {
-        detectedType = detectAudioFormat(buffer);
+        DetectedType detectedType = detectAudioFormat(buffer);
         if (detectedType == DetectedType::BUFFER_NO_ENOUGH_DATA)
             return {{}, DecoderError::NoError};
 
@@ -66,26 +72,32 @@ std::pair<std::vector<float>, DecoderError> StreamDecoder::decode(std::vector<un
                         return {{}, DecoderError::FailedToCreateDecoder};
                 }
             #endif
-        } else if (detectedType == DetectedType::BUFFER_MP3) {
+        } else if (detectedType == DetectedType::BUFFER_MP3_WITH_ID3 || detectedType == DetectedType::BUFFER_MP3_STREAM) {
             mWrapper = std::make_unique<MP3DecoderWrapper>();
             isFormatDetected = static_cast<MP3DecoderWrapper*>(mWrapper.get())->initializeDecoder(*samplerate, *channels);
+            if (!isFormatDetected)
+            return {{}, DecoderError::FailedToCreateDecoder};
+            if (mIcyMetaInt != 0)
+                static_cast<MP3DecoderWrapper*>(mWrapper.get())->setMp3BufferIcyMetaInt(mIcyMetaInt);
         }
         if (metadataChangeCallback) {
             mWrapper->setTrackChangeCallback(metadataChangeCallback);
         }
+        mWrapper->detectedType = detectedType;
     }
     
     if (mWrapper) {
         #if !defined(NO_OPUS_OGG_LIBS)
-            if (detectedType == DetectedType::BUFFER_OGG_OPUS) {
+            if (mWrapper->detectedType == DetectedType::BUFFER_OGG_OPUS) {
                 return static_cast<OpusDecoderWrapper*>(mWrapper.get())->decode(buffer, samplerate, channels);
             }
-            else if (detectedType == DetectedType::BUFFER_OGG_VORBIS) {
+            else if (mWrapper->detectedType == DetectedType::BUFFER_OGG_VORBIS) {
                 return static_cast<VorbisDecoderWrapper*>(mWrapper.get())->decode(buffer, samplerate, channels);
             }
         #endif
-        if (detectedType == DetectedType::BUFFER_MP3) {
-            return static_cast<MP3DecoderWrapper*>(mWrapper.get())->decode(buffer, samplerate, channels);
+        if (mWrapper->detectedType == DetectedType::BUFFER_MP3_WITH_ID3 ||
+            mWrapper->detectedType == DetectedType::BUFFER_MP3_STREAM) {
+            return static_cast<MP3DecoderWrapper *>(mWrapper.get())->decode(buffer, samplerate, channels);
         }
     }
     return {};

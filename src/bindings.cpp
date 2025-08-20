@@ -474,6 +474,49 @@ extern "C"
         return player.get()->getStreamTimeConsumed(hash, timeConsumed);
     }
 
+    /// Set the icy metadata integer value. Must be set once before calling
+    /// the first time [addAudioDataStream] to be able to get MP3 metadata
+    /// of a stream.
+    ///
+    /// **Note:** this function is only for MP3 streams. It must
+    /// be called before calling [addAudioDataStream] to be able to get MP3
+    /// metadata of a stream. It will set the `icy-metaint` value of the
+    /// MP3 stream to retrieve the metadata from the stream.
+    /// When adding data, for example from an online stream, the request
+    /// must contain the `icy-metaint` header:
+    /// ```dart
+    ///   http.StreamedResponse? currentStream;
+    ///   client = http.Client();
+    ///   final request = http.Request('GET', Uri.parse(url));
+    ///   request.headers.addAll({'Icy-MetaData': '1'});
+    /// ```
+    /// When the first chunk of data has been received, the `icy-metaint`
+    /// value can be read as follows:
+    /// ```dart
+    /// bool mp3IcyMetaIntSent = false;
+    /// currentStream!.stream.listen(
+    ///   (data) {
+    ///     if (!mp3IcyMetaIntSent) {
+    ///         mp3IcyMetaIntSent = true;
+    ///         // set it when receiving the first audio chunk
+    ///         SoLoud.instance.setMp3BufferIcyMetaInt(
+    ///             sound,
+    ///             int.parse(currentStream!.headers['icy-metaint'] ?? '0'),
+    ///         );
+    ///     }
+    ///     ...
+    ///   ```
+    ///
+    /// [hash] the hash of the stream sound.
+    /// [icyMetaInt] the icy metadata integer value. Default is 16000 which
+    /// is the most used value.
+    FFI_PLUGIN_EXPORT enum PlayerErrors setMp3BufferIcyMetaInt(unsigned int hash, int icyMetaInt)
+    {
+        if (player.get() == nullptr || !player.get()->isInited())
+            return backendNotInited;
+        return player.get()->setMp3BufferIcyMetaInt(hash, icyMetaInt);
+    }
+
     /// Add a chunk of audio data to the buffer stream.
     ///
     /// [hash] the hash of the sound.

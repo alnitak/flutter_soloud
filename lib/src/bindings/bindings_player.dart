@@ -172,6 +172,16 @@ abstract class FlutterSoLoud {
     SoundHash soundHash,
   );
 
+  /// Set the icy metadata integer value. Must be set once before calling
+  /// the first time [addAudioDataStream] to be able to get MP3 metadata
+  /// of a stream.
+  /// 
+  /// [hash] the hash of the stream sound.
+  /// [icyMetaInt] the icy metadata integer value. Default is 16000 which
+  /// is the most used value.
+  @mustBeOverridden
+  PlayerErrors setMp3BufferIcyMetaInt(SoundHash soundHash, int icyMetaInt);
+
   /// Add a chunk of audio data to the buffer stream.
   ///
   /// [hash] the hash of the sound.

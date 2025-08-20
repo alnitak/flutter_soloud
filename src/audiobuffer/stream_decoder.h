@@ -16,7 +16,8 @@ typedef enum
     BUFFER_NO_ENOUGH_DATA,
     BUFFER_OGG_OPUS,
     BUFFER_OGG_VORBIS,
-    BUFFER_MP3
+    BUFFER_MP3_WITH_ID3,
+    BUFFER_MP3_STREAM
 } DetectedType;
 
 enum class DecoderError {
@@ -76,9 +77,18 @@ struct OggOpusVorbisMetadata {
     OpusInfo opusInfo;
 };
 
+struct Mp3Metadata {
+    std::string title;
+    std::string artist;
+    std::string album;
+    std::string date;
+    std::string genre;
+};
+
 struct AudioMetadata
 {
     DetectedType type;
+    Mp3Metadata mp3Metadata;
     OggOpusVorbisMetadata oggMetadata;
 
 public:
@@ -91,14 +101,24 @@ public:
             case BUFFER_OGG_VORBIS:
                 format = "Ogg Vorbis";
                 break;
-            case BUFFER_MP3:
-                format = "MP3";
+            case BUFFER_MP3_STREAM:
+                format = "MP3 stream";
+                break;
+            case BUFFER_MP3_WITH_ID3:
+                format = "MP3 with ID3";
                 break;
             default:
                 break;
         }
         std::cout << "|-------------" << format <<  "--------------------|" << std::endl;
         std::cout << "Format: " << format << std::endl;
+        if (type == BUFFER_MP3_WITH_ID3 || type == BUFFER_MP3_STREAM) {
+            std::cout << "Title: " << mp3Metadata.title << std::endl;
+            std::cout << "Artist: " << mp3Metadata.artist << std::endl;
+            std::cout << "Album: " << mp3Metadata.album << std::endl;
+            std::cout << "Date: " << mp3Metadata.date << std::endl;
+            std::cout << "Genre: " << mp3Metadata.genre << std::endl;
+        } else
         if (type == BUFFER_OGG_OPUS || type == BUFFER_OGG_VORBIS) {
             std::cout << "Vendor: " << oggMetadata.vendor << std::endl;
             std::cout << "Comments: " << oggMetadata.commentsCount << std::endl;
@@ -119,14 +139,14 @@ public:
             // Specific Opus information
             if (type == BUFFER_OGG_OPUS) {
                 std::cout << "Opus info" << std::endl;
-                std::cout << "\t" << "Opus Version: " << oggMetadata.opusInfo.version << std::endl;
-                std::cout << "\t" << "Channels: " << oggMetadata.opusInfo.channels << std::endl;
+                std::cout << "\t" << "Opus Version: " << static_cast<int16_t>(oggMetadata.opusInfo.version) << std::endl;
+                std::cout << "\t" << "Channels: " << static_cast<int16_t>(oggMetadata.opusInfo.channels) << std::endl;
                 std::cout << "\t" << "Pre Skip: " << oggMetadata.opusInfo.pre_skip << std::endl;
                 std::cout << "\t" << "Input Sample Rate: " << oggMetadata.opusInfo.input_sample_rate << std::endl;
                 std::cout << "\t" << "Output Gain: " << oggMetadata.opusInfo.output_gain << std::endl;
-                std::cout << "\t" << "Mapping Family: " << oggMetadata.opusInfo.mapping_family << std::endl;
-                std::cout << "\t" << "Stream Count: " << oggMetadata.opusInfo.stream_count << std::endl;
-                std::cout << "\t" << "Coupled Count: " << oggMetadata.opusInfo.coupled_count << std::endl;
+                std::cout << "\t" << "Mapping Family: " << static_cast<int16_t>(oggMetadata.opusInfo.mapping_family) << std::endl;
+                std::cout << "\t" << "Stream Count: " << static_cast<int16_t>(oggMetadata.opusInfo.stream_count) << std::endl;
+                std::cout << "\t" << "Coupled Count: " << static_cast<int16_t>(oggMetadata.opusInfo.coupled_count) << std::endl;
                 for (int i = 0; i < oggMetadata.opusInfo.channel_mapping.size(); i++) {
                     std::cout << "\t" << "Channel Mapping[" << i << "]: " << oggMetadata.opusInfo.channel_mapping[i] << std::endl;
                 }
@@ -149,7 +169,9 @@ public:
         onTrackChange = callback;
     }
 
-protected:
+    DetectedType detectedType;
+
+    protected:
     TrackChangeCallback onTrackChange;
 };
 
@@ -159,10 +181,12 @@ public:
     StreamDecoder()
         : mWrapper(nullptr),
           isFormatDetected(false),
-          detectedType(BUFFER_UNKNOWN)
+          mIcyMetaInt(0)
     {}
 
     ~StreamDecoder() = default;
+
+    void setMp3BufferIcyMetaInt(int icyMetaInt);
 
     std::pair<std::vector<float>, DecoderError> decode(std::vector<unsigned char> &buffer,
         int *sampleRate,
@@ -175,8 +199,7 @@ private:
     /// Wrapper to the detected decoder.
     std::unique_ptr<IDecoderWrapper> mWrapper;
     bool isFormatDetected;
-    DetectedType detectedType;
-
+    int mIcyMetaInt;
 };
 
 #endif // STREAM_DECODER_H

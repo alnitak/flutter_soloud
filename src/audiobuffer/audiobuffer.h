@@ -55,6 +55,7 @@ namespace SoLoud
     uint64_t mUncompressedBytesReceived;
     bool dataIsEnded;
     bool mIsBuffering;
+    int mIcyMetaInt;
     BufferStreamInstance *mInstance;
 
     std::unique_ptr<StreamDecoder> streamDecoder;
@@ -71,6 +72,7 @@ namespace SoLoud
         dartOnBufferingCallback_t onBufferingCallback = nullptr);
     void resetBuffer();
     void setDataIsEnded();
+    void setMp3BufferIcyMetaInt(int icyMetaInt);
     PlayerErrors addData(const void *aData, unsigned int numSamples, bool forceAdd = false);
     void checkBuffering(unsigned int afterAddingBytesCount);
     void callOnBufferingCallback(bool isBuffering, unsigned int handle, double time);

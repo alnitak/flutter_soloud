@@ -165,7 +165,7 @@ std::pair<std::vector<float>, DecoderError> OpusDecoderWrapper::decode(std::vect
     return {decodedData, DecoderError::NoError};
 }
 
-OpusInfo parseOpusHead(ogg_packet* packet) {
+OpusInfo OpusDecoderWrapper::parseOpusHead(ogg_packet* packet) {
     OpusInfo head{};
     unsigned char* data = (unsigned char*)packet->packet;
     size_t len = packet->bytes;

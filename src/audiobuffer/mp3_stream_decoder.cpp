@@ -14,7 +14,10 @@
 
 MP3DecoderWrapper::MP3DecoderWrapper()
     : isInitialized(false),
-    validFramesFound(false)
+    validFramesFound(false),
+    bytes_until_meta(16000), // most common value
+    metadata_remaining(0),
+    metadata_buffer("")
 {	
 }
 
@@ -28,42 +31,49 @@ void MP3DecoderWrapper::cleanup()
     validFramesFound = false;
 }
 
+void MP3DecoderWrapper::setMp3BufferIcyMetaInt(int icyMetaInt)
+{
+    if (mIcyMetaInt == icyMetaInt) return;
+
+    mIcyMetaInt = icyMetaInt;
+    bytes_until_meta = mIcyMetaInt;
+}
+
 bool MP3DecoderWrapper::extractID3Tags(const std::vector<unsigned char>& buffer, AudioMetadata& metadata) {
     // Look for ID3v2 tag
-    // if (buffer.size() > 10 && memcmp(buffer.data(), "ID3", 3) == 0) {
-    //     size_t pos = 10;  // Skip ID3v2 header
-    //     uint32_t size = ((buffer[6] & 0x7f) << 21) | 
-    //                    ((buffer[7] & 0x7f) << 14) |
-    //                    ((buffer[8] & 0x7f) << 7) |
-    //                    (buffer[9] & 0x7f);
+    if (buffer.size() > 10 && memcmp(buffer.data(), "ID3", 3) == 0) {
+        size_t pos = 10;  // Skip ID3v2 header
+        uint32_t size = ((buffer[6] & 0x7f) << 21) | 
+                       ((buffer[7] & 0x7f) << 14) |
+                       ((buffer[8] & 0x7f) << 7) |
+                       (buffer[9] & 0x7f);
         
-    //     while (pos < size + 10 && pos + 10 < buffer.size()) {
-    //         char frame_id[5] = {0};
-    //         memcpy(frame_id, buffer.data() + pos, 4);
-    //         uint32_t frame_size = ((buffer[pos+4] & 0x7f) << 21) |
-    //                             ((buffer[pos+5] & 0x7f) << 14) |
-    //                             ((buffer[pos+6] & 0x7f) << 7) |
-    //                             (buffer[pos+7] & 0x7f);
+        while (pos < size + 10 && pos + 10 < buffer.size()) {
+            char frame_id[5] = {0};
+            memcpy(frame_id, buffer.data() + pos, 4);
+            uint32_t frame_size = ((buffer[pos+4] & 0x7f) << 21) |
+                                ((buffer[pos+5] & 0x7f) << 14) |
+                                ((buffer[pos+6] & 0x7f) << 7) |
+                                (buffer[pos+7] & 0x7f);
             
-    //         pos += 10;  // Skip frame header
-    //         if (pos + frame_size > buffer.size())
-    //             break;
+            pos += 10;  // Skip frame header
+            if (pos + frame_size > buffer.size())
+                break;
 
-    //         // Skip text encoding byte for text frames
-    //         size_t text_start = (frame_id[0] == 'T') ? 1 : 0;
-    //         std::string value(reinterpret_cast<const char *>(buffer.data() + pos + text_start), frame_size - text_start);
+            // Skip text encoding byte for text frames
+            size_t text_start = (frame_id[0] == 'T') ? 1 : 0;
+            std::string value(reinterpret_cast<const char *>(buffer.data() + pos + text_start), frame_size - text_start);
 
-    //         if (strcmp(frame_id, "TIT2") == 0) metadata.title = value;
-    //         else if (strcmp(frame_id, "TPE1") == 0) metadata.artist = value;
-    //         else if (strcmp(frame_id, "TALB") == 0) metadata.album = value;
-    //         else if (strcmp(frame_id, "TYER") == 0) metadata.date = value;
-    //         else if (strcmp(frame_id, "TCON") == 0) metadata.genre = value;
-    //         else metadata.additionalTags[frame_id] = value;
+            if (strcmp(frame_id, "TIT2") == 0) metadata.mp3Metadata.title = value;
+            else if (strcmp(frame_id, "TPE1") == 0) metadata.mp3Metadata.artist = value;
+            else if (strcmp(frame_id, "TALB") == 0) metadata.mp3Metadata.album = value;
+            else if (strcmp(frame_id, "TYER") == 0) metadata.mp3Metadata.date = value;
+            else if (strcmp(frame_id, "TCON") == 0) metadata.mp3Metadata.genre = value;
             
-    //         pos += frame_size;
-    //     }
-    //     return true;
-    // }
+            pos += frame_size;
+        }
+        return true;
+    }
     return false;
 }
 
@@ -74,18 +84,19 @@ std::pair<std::vector<float>, DecoderError> MP3DecoderWrapper::decode(std::vecto
         
     // Check for new metadata
     AudioMetadata newMetadata;
-    
-    // if (extractID3Tags(buffer, newMetadata)) {
-    //     // Compare with last metadata to detect changes
-    //     if (newMetadata.title != lastMetadata.title || 
-    //         newMetadata.artist != lastMetadata.artist ||
-    //         newMetadata.album != lastMetadata.album) {
-    //         lastMetadata = newMetadata;
-    //         if (onTrackChange) {
-    //             onTrackChange(newMetadata);
-    //         }
-    //     }
-    // }
+
+
+    if (extractID3Tags(buffer, newMetadata)) {
+        // Compare with last metadata to detect changes
+        if (newMetadata.mp3Metadata.title != lastMetadata.mp3Metadata.title || 
+            newMetadata.mp3Metadata.artist != lastMetadata.mp3Metadata.artist ||
+            newMetadata.mp3Metadata.album != lastMetadata.mp3Metadata.album) {
+            lastMetadata = newMetadata;
+            if (onTrackChange) {
+                onTrackChange(newMetadata);
+            }
+        }
+    }
 
     std::vector<float> decodedData;
     mp3d_sample_t pcm[MINIMP3_MAX_SAMPLES_PER_FRAME];
@@ -151,6 +162,43 @@ std::pair<std::vector<float>, DecoderError> MP3DecoderWrapper::decode(std::vecto
             bytes_left -= frame_info.frame_bytes;
         }
     }
+
+
+    // With MP3 stream, the metadata is extracted from the icy-metaint value in bytes
+    if (detectedType == DetectedType::BUFFER_MP3_STREAM) {
+        size_t pos = 0;
+        while (pos < buffer.size()) {
+            if (metadata_remaining > 0) {
+                // Still reading metadata from previous chunk
+                size_t to_copy = std::min(metadata_remaining, buffer.size() - pos);
+                metadata_buffer.append((char*)buffer.data() + pos, to_copy);
+                pos += to_copy;
+                metadata_remaining -= to_copy;
+
+                if (metadata_remaining == 0) {
+                    // Metadata complete, parse StreamTitle
+                    printf("metadata_remaining == 0 - MP3 metadata: %s\n", metadata_buffer.c_str());
+                    metadata_buffer.clear();
+                    bytes_until_meta = mIcyMetaInt;
+                }
+            } else if (bytes_until_meta > 0) {
+                // Regular audio bytes
+                size_t to_copy = std::min(bytes_until_meta, buffer.size() - pos);
+                pos += to_copy;
+                bytes_until_meta -= to_copy;
+            } else {
+                // Start of metadata: read length byte
+                uint8_t len_byte = buffer[pos++];
+                metadata_remaining = len_byte * 16;
+                metadata_buffer.clear();
+                if (metadata_remaining == 0) {
+                    bytes_until_meta = mIcyMetaInt; // No metadata this time
+                }
+            }
+        }
+    }
+
+
     // Keep any remaining bytes in the buffer for the next call
     buffer.erase(buffer.begin(), buffer.end() - bytes_left);
 
