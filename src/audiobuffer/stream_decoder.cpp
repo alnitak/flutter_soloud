@@ -20,11 +20,9 @@ DetectedType StreamDecoder::detectAudioFormat(const std::vector<unsigned char>& 
         if (size < payload_offset + 7) return DetectedType::BUFFER_NO_ENOUGH_DATA; // need enough for "OpusHead"/"vorbis"
         
         if (std::memcmp(buffer.data() + payload_offset, "OpusHead", 8) == 0) {
-            printf("@@@@@@@@@@@@@@@@@@@@@@@@@@@@ OGG/OPUS detected\n");
             return DetectedType::BUFFER_OGG_OPUS;
         }
         if (std::memcmp(buffer.data() + payload_offset, "\x01vorbis", 7) == 0) {
-            printf("@@@@@@@@@@@@@@@@@@@@@@@@@@@@ VORBIS detected\n");
             return DetectedType::BUFFER_OGG_VORBIS;
         }
         return DetectedType::BUFFER_UNKNOWN;
@@ -33,14 +31,16 @@ DetectedType StreamDecoder::detectAudioFormat(const std::vector<unsigned char>& 
     // --- Detect MP3 ---
     else if (size >= 3 && std::memcmp(buffer.data(), "ID3", 3) == 0 ||
     MP3DecoderWrapper::checkForValidFrames(buffer)) {
-        printf("@@@@@@@@@@@@@@@@@@@@@@@@@@@@ MP3 detected\n");
         return DetectedType::BUFFER_MP3; // ID3 tag found
     }
 
     return DetectedType::BUFFER_UNKNOWN;
 }
 
-std::pair<std::vector<float>, DecoderError> StreamDecoder::decode(std::vector<unsigned char>& buffer, int* samplerate, int* channels)
+std::pair<std::vector<float>, DecoderError> StreamDecoder::decode(std::vector<unsigned char>& buffer,
+    int* samplerate,
+    int* channels,
+    TrackChangeCallback metadataChangeCallback)
 {
     if (!isFormatDetected) {
         detectedType = detectAudioFormat(buffer);
@@ -69,6 +69,9 @@ std::pair<std::vector<float>, DecoderError> StreamDecoder::decode(std::vector<un
         } else if (detectedType == DetectedType::BUFFER_MP3) {
             mWrapper = std::make_unique<MP3DecoderWrapper>();
             isFormatDetected = static_cast<MP3DecoderWrapper*>(mWrapper.get())->initializeDecoder(*samplerate, *channels);
+        }
+        if (metadataChangeCallback) {
+            mWrapper->setTrackChangeCallback(metadataChangeCallback);
         }
     }
     

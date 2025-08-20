@@ -28,10 +28,64 @@ void MP3DecoderWrapper::cleanup()
     validFramesFound = false;
 }
 
+bool MP3DecoderWrapper::extractID3Tags(const std::vector<unsigned char>& buffer, AudioMetadata& metadata) {
+    // Look for ID3v2 tag
+    // if (buffer.size() > 10 && memcmp(buffer.data(), "ID3", 3) == 0) {
+    //     size_t pos = 10;  // Skip ID3v2 header
+    //     uint32_t size = ((buffer[6] & 0x7f) << 21) | 
+    //                    ((buffer[7] & 0x7f) << 14) |
+    //                    ((buffer[8] & 0x7f) << 7) |
+    //                    (buffer[9] & 0x7f);
+        
+    //     while (pos < size + 10 && pos + 10 < buffer.size()) {
+    //         char frame_id[5] = {0};
+    //         memcpy(frame_id, buffer.data() + pos, 4);
+    //         uint32_t frame_size = ((buffer[pos+4] & 0x7f) << 21) |
+    //                             ((buffer[pos+5] & 0x7f) << 14) |
+    //                             ((buffer[pos+6] & 0x7f) << 7) |
+    //                             (buffer[pos+7] & 0x7f);
+            
+    //         pos += 10;  // Skip frame header
+    //         if (pos + frame_size > buffer.size())
+    //             break;
+
+    //         // Skip text encoding byte for text frames
+    //         size_t text_start = (frame_id[0] == 'T') ? 1 : 0;
+    //         std::string value(reinterpret_cast<const char *>(buffer.data() + pos + text_start), frame_size - text_start);
+
+    //         if (strcmp(frame_id, "TIT2") == 0) metadata.title = value;
+    //         else if (strcmp(frame_id, "TPE1") == 0) metadata.artist = value;
+    //         else if (strcmp(frame_id, "TALB") == 0) metadata.album = value;
+    //         else if (strcmp(frame_id, "TYER") == 0) metadata.date = value;
+    //         else if (strcmp(frame_id, "TCON") == 0) metadata.genre = value;
+    //         else metadata.additionalTags[frame_id] = value;
+            
+    //         pos += frame_size;
+    //     }
+    //     return true;
+    // }
+    return false;
+}
+
 std::pair<std::vector<float>, DecoderError> MP3DecoderWrapper::decode(std::vector<unsigned char>& buffer, int* samplerate, int* channels)
 {
     if (buffer.empty())
         return {{}, DecoderError::NoError};
+        
+    // Check for new metadata
+    AudioMetadata newMetadata;
+    
+    // if (extractID3Tags(buffer, newMetadata)) {
+    //     // Compare with last metadata to detect changes
+    //     if (newMetadata.title != lastMetadata.title || 
+    //         newMetadata.artist != lastMetadata.artist ||
+    //         newMetadata.album != lastMetadata.album) {
+    //         lastMetadata = newMetadata;
+    //         if (onTrackChange) {
+    //             onTrackChange(newMetadata);
+    //         }
+    //     }
+    // }
 
     std::vector<float> decodedData;
     mp3d_sample_t pcm[MINIMP3_MAX_SAMPLES_PER_FRAME];

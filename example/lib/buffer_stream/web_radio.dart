@@ -144,6 +144,7 @@ class _WebRadioExampleState extends State<WebRadioExample> {
       // Listen to the stream and feed data to the audio source
       currentStream!.stream.listen(
         (data) {
+          connectionError.value = '';
           if (source != null) {
             try {
               SoLoud.instance

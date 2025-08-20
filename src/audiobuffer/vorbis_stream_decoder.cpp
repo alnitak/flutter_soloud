@@ -40,6 +40,38 @@ bool VorbisDecoderWrapper::initializeDecoder(int engineSamplerate, int engineCha
     return true;
 }
 
+AudioMetadata VorbisDecoderWrapper::getMetadata() {
+    AudioMetadata metadata;
+
+    metadata.type = DetectedType::BUFFER_OGG_VORBIS;
+
+    metadata.oggMetadata.vorbisInfo.version = vi.version;
+    metadata.oggMetadata.vorbisInfo.rate = vi.rate;
+    metadata.oggMetadata.vorbisInfo.channels = vi.channels;
+    metadata.oggMetadata.vorbisInfo.bitrate_upper = vi.bitrate_upper;
+    metadata.oggMetadata.vorbisInfo.bitrate_nominal = vi.bitrate_nominal;
+    metadata.oggMetadata.vorbisInfo.bitrate_lower = vi.bitrate_lower;
+    metadata.oggMetadata.vorbisInfo.bitrate_window = vi.bitrate_window;
+
+    for (uint32_t i = 0; i < vc.comments; i++) {
+        char* comment = vc.user_comments[i];
+        int length = vc.comment_lengths[i];
+        std::string commentStr(comment, length);
+        size_t separator = commentStr.find('=');
+        if (separator != std::string::npos) {
+            std::string key = commentStr.substr(0, separator);
+            std::string value = commentStr.substr(separator + 1);
+            
+            metadata.oggMetadata.comments[key] = value;
+        }
+    }
+
+    if (onTrackChange) {
+        onTrackChange(metadata);
+    }
+
+    return metadata;
+}
 
 std::pair<std::vector<float>, DecoderError> VorbisDecoderWrapper::decode(std::vector<unsigned char>& buffer,
                                                int* samplerate,
@@ -149,6 +181,7 @@ std::vector<float> VorbisDecoderWrapper::decodePacket(ogg_packet* packet) {
                     vorbis_block_init(&vd, &vb);
                     vorbisInitialized = true;
                     headerParsed = true;
+                    getMetadata();
                 }
             }
             return packetPcm; // no PCM yet

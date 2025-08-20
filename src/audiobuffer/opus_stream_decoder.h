@@ -28,12 +28,14 @@ public:
     OpusDecoderWrapper();
     ~OpusDecoderWrapper();
 
+    
     bool initializeDecoder(int engineSamplerate, int engineChannels) override;
-
+    
     std::pair<std::vector<float>, DecoderError> decode(std::vector<unsigned char>& buffer, int* samplerate, int* channels) override;
-
+    
 private:
-    std::vector<float> decodePacket(const unsigned char *packetData, size_t packetSize);
+    AudioMetadata getMetadata(ogg_packet* packet);
+    std::vector<float> decodePacket(ogg_packet* packet);
 
     OpusDecoder *decoder;
     int engineSamplerate;
@@ -49,8 +51,10 @@ private:
     bool streamInitialized;
 
     // Header parsing state
-    bool headerParsed{false};
-    int packetCount{0};
+    bool headerParsed;
+    int packetCount;
+
+    OpusInfo opusInfo;
 };
 
 #endif // OPUS_STREAM_DECODER_H

@@ -222,6 +222,10 @@ const std::string Player::getErrorString(PlayerErrors errorCode) const
         return "error: trying to get time consumed from wrong buffer type!";
     case bufferStreamWithReleasedBufferTypeCannotBeSeeked:
         return "error: buffer stream with released buffer type cannot be seeked!";
+    case audioFormatNotSupported:
+        return "error: audio format not supported!";
+    case opusOggVorbisLibsNotFound:
+        return "error: opus ogg vorbis libraries not found!";
     }
     return "Other error";
 }

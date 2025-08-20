@@ -1,10 +1,8 @@
 #ifndef MP3_STREAM_DECODER_H
 #define MP3_STREAM_DECODER_H
 
-#include "stream_decoder.h"
 #include <vector>
 #include <iostream>
-#include <stdexcept>
 #include <cstring>
 #include <deque>
 
@@ -17,6 +15,8 @@
 #define MINIMP3_IMPLEMENTATION
 #endif
 #include "minimp3.h"
+
+#include "stream_decoder.h"
 
 /// Wrapper class for MP3 stream decoder using minimp3
 class MP3DecoderWrapper : public IDecoderWrapper
@@ -37,8 +37,10 @@ public:
     mp3dec_t decoder;
 
 private:
+    bool extractID3Tags(const std::vector<unsigned char>& buffer, AudioMetadata& metadata);
     bool isInitialized;
     bool validFramesFound;
+    AudioMetadata lastMetadata;
 };
 
 #endif // MP3_STREAM_DECODER_H

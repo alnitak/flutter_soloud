@@ -16,11 +16,13 @@ public:
     VorbisDecoderWrapper();
     ~VorbisDecoderWrapper();
 
+    
     bool initializeDecoder(int engineSamplerate, int engineChannels) override;
-
+    
     std::pair<std::vector<float>, DecoderError> decode(std::vector<unsigned char>& buffer, int* samplerate, int* channels) override;
-
+    
 private:
+    AudioMetadata getMetadata();
     std::vector<float> decodePacket(ogg_packet* packet);
     
     int engineSamplerate;

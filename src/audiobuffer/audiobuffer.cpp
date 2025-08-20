@@ -317,7 +317,11 @@ namespace SoLoud
 			int channels = mThePlayer->mChannels;
 			// Ogg Opus will decode to the sampleRate and channels of the engine settings and the AudioSource will be set to them
 			// For the mp3 this AudioSource will impose the mp3 settings (the engine will convert to its settings)
-			auto [decoded, error] = streamDecoder->decode(buffer, &sampleRate, &channels);
+			auto [decoded, error] = streamDecoder->decode(buffer, &sampleRate, &channels,
+				[](AudioMetadata meta) {
+					meta.debug();
+				}
+			);
 
 			// Handle decoder errors
 			switch (error) {
