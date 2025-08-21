@@ -57,7 +57,6 @@ struct VorbisInfo {
 };
 
 struct OpusInfo {
-    std::string vendor;
     uint8_t version;
     uint8_t channels;
     uint16_t pre_skip;
@@ -71,6 +70,7 @@ struct OpusInfo {
 };
 
 struct OggMetadata {
+    std::string vendor;
     int commentsCount = 0;
     std::map<std::string, std::string> comments;
     VorbisInfo vorbisInfo;
@@ -120,6 +120,7 @@ public:
             std::cout << "Genre: " << mp3Metadata.genre << std::endl;
         } else
         if (type == DetectedType::BUFFER_OGG_OPUS || type == DetectedType::BUFFER_OGG_VORBIS) {
+            std::cout << "Vendor: " << oggMetadata.vendor << std::endl;
             std::cout << "Comments: " << oggMetadata.commentsCount << std::endl;
             for (const auto& tag : oggMetadata.comments) {
                 std::cout << "\t" << tag.first << ": " << tag.second << std::endl;
@@ -138,7 +139,6 @@ public:
             // Specific Opus information
             if (type == DetectedType::BUFFER_OGG_OPUS) {
                 std::cout << "Opus info" << std::endl;
-                std::cout << "\t" << "Vendor: " << oggMetadata.opusInfo.vendor << std::endl;
                 std::cout << "\t" << "Opus Version: " << static_cast<int16_t>(oggMetadata.opusInfo.version) << std::endl;
                 std::cout << "\t" << "Channels: " << static_cast<int16_t>(oggMetadata.opusInfo.channels) << std::endl;
                 std::cout << "\t" << "Pre Skip: " << oggMetadata.opusInfo.pre_skip << std::endl;

@@ -42,7 +42,7 @@ AudioMetadata OpusDecoderWrapper::getMetadata(ogg_packet* packet) {
     uint32_t comment_count = *((uint32_t*)(packet->packet + pos));
     pos += 4;
 
-    metadata.oggMetadata.opusInfo.vendor = vendor;
+    metadata.oggMetadata.vendor = vendor;
     metadata.oggMetadata.commentsCount = comment_count;
 
     for (uint32_t i = 0; i < comment_count && pos + 4 <= packet->bytes; i++) {

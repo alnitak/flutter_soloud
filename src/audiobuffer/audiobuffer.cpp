@@ -328,7 +328,7 @@ namespace SoLoud
 			// For the mp3 this AudioSource will impose the mp3 settings (the engine will convert to its settings).
 			auto [decoded, error] = streamDecoder->decode(buffer, &sampleRate, &channels,
 				[&](AudioMetadata meta) {
-					meta.debug();
+					// meta.debug();
 					this->callOnMetadataCallback(meta);
 				}
 			);
@@ -537,7 +537,7 @@ namespace SoLoud
 		strncpy(ffi.mp3Metadata.genre, metadata.mp3Metadata.genre.c_str(), MAX_STRING_LENGTH - 1);
 
 		// Convert OGG metadata
-		strncpy(ffi.oggMetadata.vendor, metadata.oggMetadata.opusInfo.vendor.c_str(), MAX_STRING_LENGTH - 1);
+		strncpy(ffi.oggMetadata.vendor, metadata.oggMetadata.vendor.c_str(), MAX_STRING_LENGTH - 1);
 		ffi.oggMetadata.commentsCount = std::min((int)metadata.oggMetadata.comments.size(), MAX_COMMENTS);
 
 		int i = 0;
