@@ -514,6 +514,8 @@ extern "C"
     {
         if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
+        if (icyMetaInt < 0)
+            icyMetaInt = 0;
         return player.get()->setMp3BufferIcyMetaInt(hash, icyMetaInt);
     }
 

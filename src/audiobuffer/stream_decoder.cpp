@@ -68,17 +68,18 @@ std::pair<std::vector<float>, DecoderError> StreamDecoder::decode(std::vector<un
                 } else {
                     mWrapper = std::make_unique<OpusDecoderWrapper>();
                     isFormatDetected = static_cast<OpusDecoderWrapper*>(mWrapper.get())->initializeDecoder(*samplerate, *channels);
-                    if (!isFormatDetected)
+                    if (!isFormatDetected) {
                         return {{}, DecoderError::FailedToCreateDecoder};
+                    }
                 }
             #endif
         } else if (detectedType == DetectedType::BUFFER_MP3_WITH_ID3 || detectedType == DetectedType::BUFFER_MP3_STREAM) {
             mWrapper = std::make_unique<MP3DecoderWrapper>();
             isFormatDetected = static_cast<MP3DecoderWrapper*>(mWrapper.get())->initializeDecoder(*samplerate, *channels);
-            if (!isFormatDetected)
-            return {{}, DecoderError::FailedToCreateDecoder};
-            if (mIcyMetaInt != 0)
-                static_cast<MP3DecoderWrapper*>(mWrapper.get())->setMp3BufferIcyMetaInt(mIcyMetaInt);
+            if (!isFormatDetected) {
+                return {{}, DecoderError::FailedToCreateDecoder};
+            }
+            static_cast<MP3DecoderWrapper*>(mWrapper.get())->setMp3BufferIcyMetaInt(mIcyMetaInt);
         }
         if (metadataChangeCallback) {
             mWrapper->setTrackChangeCallback(metadataChangeCallback);

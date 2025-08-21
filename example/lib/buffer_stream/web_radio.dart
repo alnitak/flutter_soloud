@@ -114,11 +114,24 @@ class _WebRadioExampleState extends State<WebRadioExample> {
   int opusUrlId = 0;
   AudioSource? source;
   final streamBuffering = ValueNotifier(false);
-  final TextEditingController urlController = TextEditingController(text: '');
+  final urlController = TextEditingController(text: '');
   final connectionError = ValueNotifier<String>('');
+  final connectionInfo = TextEditingController(text: '');
   http.Client? client;
   http.StreamedResponse? currentStream;
   bool mp3IcyMetaIntSent = false;
+
+  void parseConnectionInfo(Map<String, String> headers) {
+    final info = StringBuffer();
+
+    /// Build a string with all headers on each line starting with `icy-`
+    for (final key in headers.keys) {
+      if (key.startsWith('icy-')) {
+        info.writeln('$key: ${headers[key]}');
+      }
+    }
+    connectionInfo.text = info.toString();
+  }
 
   Future<void> connectToUrl(String url) async {
     connectionError.value = '';
@@ -139,8 +152,11 @@ class _WebRadioExampleState extends State<WebRadioExample> {
       /// in the `icy-metaint` key. This value should be told to flutter_soloud
       /// using `SoLoud.setMp3BufferIcyMetaInt(value)` before any call
       /// to `SoLoud.addAudioDataStream`.
+      /// Aside the `icy-metaint` value, you will also have othe `icy-*' values
+      /// to consider for the metadata available for all stream formats.
       request.headers.addAll({'Icy-MetaData': '1'});
       currentStream = await client!.send(request);
+      parseConnectionInfo(currentStream!.headers);
       mp3IcyMetaIntSent = false;
 
       // Handle redirections
@@ -176,7 +192,6 @@ class _WebRadioExampleState extends State<WebRadioExample> {
           if (!mp3IcyMetaIntSent) {
             mp3IcyMetaIntSent = true;
             // set it when receiving the first audio chunk
-            debugPrint('icy-metaint: ${currentStream!.headers['icy-metaint']}');
             SoLoud.instance.setMp3BufferIcyMetaInt(
               source!,
               int.parse(currentStream!.headers['icy-metaint'] ?? '0'),
@@ -230,7 +245,7 @@ class _WebRadioExampleState extends State<WebRadioExample> {
     streamBuffering.value = true;
     source = SoLoud.instance.setBufferStream(
       maxBufferSizeBytes: 1024 * 1024 * 200, // 100 MB
-      bufferingTimeNeeds: 3,
+      bufferingTimeNeeds: 1,
       format: type,
       bufferingType: BufferingType.released,
       channels: Channels.stereo,
@@ -251,151 +266,159 @@ class _WebRadioExampleState extends State<WebRadioExample> {
     return Scaffold(
       body: Padding(
         padding: const EdgeInsets.all(16),
-        child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            spacing: 30,
-            children: [
-              TextField(
-                controller: urlController,
-                decoration: const InputDecoration(
-                  labelText: 'Choose below or enter a URL to stream',
-                  hintText: 'e.g. http://example.com/stream.mp3',
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          spacing: 30,
+          children: [
+            TextField(
+              controller: urlController,
+              decoration: const InputDecoration(
+                labelText: 'Choose below or enter a URL to stream',
+                hintText: 'e.g. http://example.com/stream.mp3',
+              ),
+              onSubmitted: (value) {
+                if (value.isNotEmpty) {
+                  playUrl(value, BufferType.mp3);
+                }
+              },
+            ),
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'MP3 radio:  ',
+                  style: TextStyle(fontWeight: FontWeight.bold),
                 ),
-                onSubmitted: (value) {
-                  if (value.isNotEmpty) {
-                    playUrl(value, BufferType.mp3);
-                  }
-                },
-              ),
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'MP3 radio:  ',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  DropdownButton(
-                    value: mp3UrlId,
-                    items: List.generate(mp3Urls.length, (index) {
-                      return DropdownMenuItem(
-                        value: index,
-                        child: Text(
-                          mp3Urls[index],
-                          style: const TextStyle(fontSize: 12),
-                        ),
-                      );
-                    }),
-                    onChanged: (value) {
-                      mp3UrlId = value ?? 0;
-                      playUrl(mp3Urls[mp3UrlId], BufferType.mp3);
-                      if (context.mounted) {
-                        setState(() {});
-                      }
-                    },
-                  ),
-                ],
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text(
-                    'OGG/VORBIS radio:',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  DropdownButton(
-                    value: oggUrlId,
-                    items: List.generate(oggUrls.length, (index) {
-                      return DropdownMenuItem(
-                        value: index,
-                        child: Text(
-                          oggUrls[index],
-                          style: const TextStyle(fontSize: 12),
-                        ),
-                      );
-                    }),
-                    onChanged: (value) {
-                      oggUrlId = value ?? 0;
-                      playUrl(oggUrls[oggUrlId], BufferType.opus);
-                      if (context.mounted) {
-                        setState(() {});
-                      }
-                    },
-                  ),
-                ],
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text(
-                    'OPUS radio:',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  DropdownButton(
-                    value: opusUrlId,
-                    items: List.generate(opusUrls.length, (index) {
-                      return DropdownMenuItem(
-                        value: index,
-                        child: Text(
-                          opusUrls[index],
-                          style: const TextStyle(fontSize: 12),
-                        ),
-                      );
-                    }),
-                    onChanged: (value) {
-                      opusUrlId = value ?? 0;
-                      playUrl(opusUrls[opusUrlId], BufferType.opus);
-                      if (context.mounted) {
-                        setState(() {});
-                      }
-                    },
-                  ),
-                ],
-              ),
-              ValueListenableBuilder(
-                valueListenable: streamBuffering,
-                builder: (context, value, child) {
-                  return Column(
-                    spacing: 16,
-                    children: [
-                      BufferBar(
-                        bufferingType: BufferingType.released,
-                        isBuffering: value,
-                        sound: source,
-                      ),
-                      ValueListenableBuilder(
-                        valueListenable: streamBuffering,
-                        builder: (_, value, __) {
-                          if (value) {
-                            return const Text('BUFFERING!');
-                          }
-                          return const SizedBox.shrink();
-                        },
-                      ),
-                    ],
-                  );
-                },
-              ),
-              ValueListenableBuilder(
-                valueListenable: connectionError,
-                builder: (context, error, child) {
-                  if (error.isNotEmpty) {
-                    return Text(
-                      'Connection Error: $error',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.red,
+                DropdownButton(
+                  value: mp3UrlId,
+                  items: List.generate(mp3Urls.length, (index) {
+                    return DropdownMenuItem(
+                      value: index,
+                      child: Text(
+                        mp3Urls[index],
+                        style: const TextStyle(fontSize: 12),
                       ),
                     );
-                  }
-                  return const SizedBox.shrink();
-                },
+                  }),
+                  onChanged: (value) {
+                    mp3UrlId = value ?? 0;
+                    playUrl(mp3Urls[mp3UrlId], BufferType.mp3);
+                    if (context.mounted) {
+                      setState(() {});
+                    }
+                  },
+                ),
+              ],
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'OGG/VORBIS radio:',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                DropdownButton(
+                  value: oggUrlId,
+                  items: List.generate(oggUrls.length, (index) {
+                    return DropdownMenuItem(
+                      value: index,
+                      child: Text(
+                        oggUrls[index],
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                    );
+                  }),
+                  onChanged: (value) {
+                    oggUrlId = value ?? 0;
+                    playUrl(oggUrls[oggUrlId], BufferType.opus);
+                    if (context.mounted) {
+                      setState(() {});
+                    }
+                  },
+                ),
+              ],
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'OPUS radio:',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                DropdownButton(
+                  value: opusUrlId,
+                  items: List.generate(opusUrls.length, (index) {
+                    return DropdownMenuItem(
+                      value: index,
+                      child: Text(
+                        opusUrls[index],
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                    );
+                  }),
+                  onChanged: (value) {
+                    opusUrlId = value ?? 0;
+                    playUrl(opusUrls[opusUrlId], BufferType.opus);
+                    if (context.mounted) {
+                      setState(() {});
+                    }
+                  },
+                ),
+              ],
+            ),
+            ValueListenableBuilder(
+              valueListenable: streamBuffering,
+              builder: (context, value, child) {
+                return Column(
+                  spacing: 16,
+                  children: [
+                    BufferBar(
+                      bufferingType: BufferingType.released,
+                      isBuffering: value,
+                      sound: source,
+                    ),
+                    ValueListenableBuilder(
+                      valueListenable: streamBuffering,
+                      builder: (_, value, __) {
+                        if (value) {
+                          return const Text('BUFFERING!');
+                        }
+                        return const SizedBox.shrink();
+                      },
+                    ),
+                  ],
+                );
+              },
+            ),
+            TextField(
+              controller: connectionInfo,
+              readOnly: true,
+              minLines: 5,
+              maxLines: 15,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                labelText: 'Connection info',
               ),
-            ],
-          ),
+            ),
+            ValueListenableBuilder(
+              valueListenable: connectionError,
+              builder: (context, error, child) {
+                if (error.isNotEmpty) {
+                  return Text(
+                    'Connection Error: $error',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.red,
+                    ),
+                  );
+                }
+                return const SizedBox.shrink();
+              },
+            ),
+          ],
         ),
       ),
     );

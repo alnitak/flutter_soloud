@@ -74,7 +74,7 @@ bool MP3DecoderWrapper::extractID3Tags(const std::vector<unsigned char>& buffer,
         }
         return true;
     }
-    return false;
+    return false; 
 }
 
 std::pair<std::vector<float>, DecoderError> MP3DecoderWrapper::decode(std::vector<unsigned char>& buffer, int* samplerate, int* channels)
@@ -84,7 +84,6 @@ std::pair<std::vector<float>, DecoderError> MP3DecoderWrapper::decode(std::vecto
         
     // Check for new metadata
     AudioMetadata newMetadata;
-
 
     if (extractID3Tags(buffer, newMetadata)) {
         // Compare with last metadata to detect changes
@@ -165,7 +164,7 @@ std::pair<std::vector<float>, DecoderError> MP3DecoderWrapper::decode(std::vecto
 
 
     // With MP3 stream, the metadata is extracted from the icy-metaint value in bytes
-    if (detectedType == DetectedType::BUFFER_MP3_STREAM) {
+    if (detectedType == DetectedType::BUFFER_MP3_STREAM && mIcyMetaInt != 0) {
         size_t pos = 0;
         while (pos < buffer.size()) {
             if (metadata_remaining > 0) {
@@ -178,6 +177,16 @@ std::pair<std::vector<float>, DecoderError> MP3DecoderWrapper::decode(std::vecto
                 if (metadata_remaining == 0) {
                     // Metadata complete, parse StreamTitle
                     printf("metadata_remaining == 0 - MP3 metadata: %s\n", metadata_buffer.c_str());
+                    AudioMetadata newMetadata;
+                    newMetadata.type = DetectedType::BUFFER_MP3_STREAM;
+                    newMetadata.mp3Metadata.title = metadata_buffer;
+                    newMetadata.mp3Metadata.artist = "";
+                    newMetadata.mp3Metadata.album = "";
+                    newMetadata.mp3Metadata.date = "";
+                    newMetadata.mp3Metadata.genre = "";
+                    if (onTrackChange) {
+                        onTrackChange(newMetadata);
+                    }
                     metadata_buffer.clear();
                     bytes_until_meta = mIcyMetaInt;
                 }
