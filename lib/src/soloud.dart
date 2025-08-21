@@ -6,11 +6,13 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_soloud/src/audio_source.dart';
 import 'package:flutter_soloud/src/bindings/bindings_player.dart';
+import 'package:flutter_soloud/src/bindings/metadata_ffi.dart';
 import 'package:flutter_soloud/src/bindings/soloud_controller.dart';
 import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/exceptions/exceptions.dart';
 import 'package:flutter_soloud/src/filters/filters.dart';
 import 'package:flutter_soloud/src/helpers/playback_device.dart';
+import 'package:flutter_soloud/src/metadata.dart';
 import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
 import 'package:flutter_soloud/src/utils/loader.dart';
@@ -668,6 +670,7 @@ interface class SoLoud {
     Channels channels = Channels.mono,
     BufferType format = BufferType.s16le,
     void Function(bool isBuffering, int handle, double time)? onBuffering,
+    void Function(AudioMetadata)? onMetadata, 
   }) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -721,6 +724,12 @@ interface class SoLoud {
           1000;
     }
 
+    void onMetadataCallback(AudioMetadataFFI metadataFFI) {
+      if (onMetadata != null) {
+        onMetadata(metadataFFI.toAudioMetadata());
+      }
+    }
+
     final ret = SoLoudController().soLoudFFI.setBufferStream(
           bufferSize,
           bufferingType,
@@ -729,6 +738,7 @@ interface class SoLoud {
           channels.count,
           format.value,
           onBuffering,
+          onMetadataCallback,
         );
 
     if (ret.error != PlayerErrors.noError) {

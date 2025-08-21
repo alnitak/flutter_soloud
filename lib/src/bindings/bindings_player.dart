@@ -4,6 +4,7 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter_soloud/src/bindings/audio_data.dart';
+import 'package:flutter_soloud/src/bindings/metadata_ffi.dart';
 import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/filters/filters.dart';
 import 'package:flutter_soloud/src/helpers/playback_device.dart';
@@ -20,6 +21,9 @@ typedef OnBufferingCallbackTFunction = void Function(
   int handle,
   double time,
 );
+
+/// Callback set in `setBufferStream` for the `onMetadata` closure.
+typedef OnMetadataCallbackTFunction = void Function(AudioMetadataFFI metadata);
 
 /// Abstract class defining the interface for the platform-specific
 /// implementations.
@@ -157,6 +161,7 @@ abstract class FlutterSoLoud {
     int channels,
     int format,
     OnBufferingCallbackTFunction? onBuffering,
+    OnMetadataCallbackTFunction? onMetadata,
   );
 
   /// Reset the buffer of the audio stream.
@@ -175,7 +180,7 @@ abstract class FlutterSoLoud {
   /// Set the icy metadata integer value. Must be set once before calling
   /// the first time [addAudioDataStream] to be able to get MP3 metadata
   /// of a stream.
-  /// 
+  ///
   /// [hash] the hash of the stream sound.
   /// [icyMetaInt] the icy metadata integer value. Default is 16000 which
   /// is the most used value.

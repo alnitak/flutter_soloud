@@ -57,6 +57,7 @@ struct VorbisInfo {
 };
 
 struct OpusInfo {
+    std::string vendor;
     uint8_t version;
     uint8_t channels;
     uint16_t pre_skip;
@@ -69,8 +70,7 @@ struct OpusInfo {
     std::vector<uint8_t> channel_mapping;
 };
 
-struct OggOpusVorbisMetadata {
-    std::string vendor;
+struct OggMetadata {
     int commentsCount = 0;
     std::map<std::string, std::string> comments;
     VorbisInfo vorbisInfo;
@@ -89,22 +89,22 @@ struct AudioMetadata
 {
     DetectedType type;
     Mp3Metadata mp3Metadata;
-    OggOpusVorbisMetadata oggMetadata;
+    OggMetadata oggMetadata;
 
 public:
     void debug() {
         std::string format = "Unknown";
         switch (type) {
-            case BUFFER_OGG_OPUS:
+            case DetectedType::BUFFER_OGG_OPUS:
                 format = "Ogg Opus";
                 break;
-            case BUFFER_OGG_VORBIS:
+            case DetectedType::BUFFER_OGG_VORBIS:
                 format = "Ogg Vorbis";
                 break;
-            case BUFFER_MP3_STREAM:
+            case DetectedType::BUFFER_MP3_STREAM:
                 format = "MP3 stream";
                 break;
-            case BUFFER_MP3_WITH_ID3:
+            case DetectedType::BUFFER_MP3_WITH_ID3:
                 format = "MP3 with ID3";
                 break;
             default:
@@ -112,21 +112,20 @@ public:
         }
         std::cout << "|-------------" << format <<  "--------------------|" << std::endl;
         std::cout << "Format: " << format << std::endl;
-        if (type == BUFFER_MP3_WITH_ID3 || type == BUFFER_MP3_STREAM) {
+        if (type == DetectedType::BUFFER_MP3_WITH_ID3 || type == DetectedType::BUFFER_MP3_STREAM) {
             std::cout << "Title: " << mp3Metadata.title << std::endl;
             std::cout << "Artist: " << mp3Metadata.artist << std::endl;
             std::cout << "Album: " << mp3Metadata.album << std::endl;
             std::cout << "Date: " << mp3Metadata.date << std::endl;
             std::cout << "Genre: " << mp3Metadata.genre << std::endl;
         } else
-        if (type == BUFFER_OGG_OPUS || type == BUFFER_OGG_VORBIS) {
-            std::cout << "Vendor: " << oggMetadata.vendor << std::endl;
+        if (type == DetectedType::BUFFER_OGG_OPUS || type == DetectedType::BUFFER_OGG_VORBIS) {
             std::cout << "Comments: " << oggMetadata.commentsCount << std::endl;
             for (const auto& tag : oggMetadata.comments) {
                 std::cout << "\t" << tag.first << ": " << tag.second << std::endl;
             }
             // Specific Vorbis information
-            if (type == BUFFER_OGG_VORBIS) {
+            if (type == DetectedType::BUFFER_OGG_VORBIS) {
                 std::cout << "Vorbis info" << std::endl;
                 std::cout << "\t" << "Vorbis Version: " << oggMetadata.vorbisInfo.version << std::endl;
                 std::cout << "\t" << "Channels: " << oggMetadata.vorbisInfo.channels << std::endl;
@@ -137,8 +136,9 @@ public:
                 std::cout << "\t" << "Bitrate Window: " << oggMetadata.vorbisInfo.bitrate_window << std::endl;
             }
             // Specific Opus information
-            if (type == BUFFER_OGG_OPUS) {
+            if (type == DetectedType::BUFFER_OGG_OPUS) {
                 std::cout << "Opus info" << std::endl;
+                std::cout << "\t" << "Vendor: " << oggMetadata.opusInfo.vendor << std::endl;
                 std::cout << "\t" << "Opus Version: " << static_cast<int16_t>(oggMetadata.opusInfo.version) << std::endl;
                 std::cout << "\t" << "Channels: " << static_cast<int16_t>(oggMetadata.opusInfo.channels) << std::endl;
                 std::cout << "\t" << "Pre Skip: " << oggMetadata.opusInfo.pre_skip << std::endl;

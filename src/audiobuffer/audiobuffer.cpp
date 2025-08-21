@@ -4,6 +4,7 @@
 #include <mutex>
 
 #include "audiobuffer.h"
+#include "metadata_ffi.h"
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten/emscripten.h>
@@ -199,7 +200,8 @@ namespace SoLoud
 		BufferingType bufferingType,
 		SoLoud::time bufferingTimeNeeds,
 		PCMformat pcmFormat,
-		dartOnBufferingCallback_t onBufferingCallback)
+		dartOnBufferingCallback_t onBufferingCallback,
+        dartOnMetadataCallback_t onMetadataCallback)
 	{
 		/// maxBufferSize must be a number divisible by channels * sizeof(float)
 		if (maxBufferSize % (pcmFormat.channels * sizeof(float)) != 0)
@@ -222,6 +224,7 @@ namespace SoLoud
 		mChannels = pcmFormat.channels;
 		mBaseSamplerate = (float)pcmFormat.sampleRate;
 		mOnBufferingCallback = onBufferingCallback;
+		mOnMetadataCallback = onMetadataCallback;
 		buffer = std::vector<unsigned char>();
 		mBuffer.setBufferType(bufferingType);
 		mIsBuffering = true;
@@ -320,11 +323,13 @@ namespace SoLoud
 		{
 			int sampleRate = mThePlayer->mSampleRate;
 			int channels = mThePlayer->mChannels;
-			// Ogg Opus will decode to the sampleRate and channels of the engine settings and the AudioSource will be set to them
-			// For the mp3 this AudioSource will impose the mp3 settings (the engine will convert to its settings)
+			// Ogg Opus will decode to the sampleRate and channels of the current engine settings and
+			// the AudioSource will be set to use them.
+			// For the mp3 this AudioSource will impose the mp3 settings (the engine will convert to its settings).
 			auto [decoded, error] = streamDecoder->decode(buffer, &sampleRate, &channels,
-				[](AudioMetadata meta) {
+				[&](AudioMetadata meta) {
 					meta.debug();
+					this->callOnMetadataCallback(meta);
 				}
 			);
 
@@ -451,6 +456,15 @@ namespace SoLoud
 		}
 	}
 
+	void BufferStream::callOnMetadataCallback(AudioMetadata &metadata)
+	{
+		if (mOnMetadataCallback != nullptr)
+		{
+			AudioMetadataFFI ffi = this->convertMetadataToFFI(metadata);
+			mOnMetadataCallback(ffi);
+		}
+	}
+
 	void BufferStream::callOnBufferingCallback(bool isBuffering, unsigned int handle, double time)
 	{
 		if (mOnBufferingCallback != nullptr)
@@ -492,6 +506,79 @@ namespace SoLoud
 	SoLoud::time BufferStream::getStreamTimeConsumed()
 	{
 		return (double)(mBytesConsumed / mPCMformat.bytesPerSample) / (mBaseSamplerate * mPCMformat.channels);
+	}
+
+	AudioMetadataFFI BufferStream::convertMetadataToFFI(const AudioMetadata& metadata) {
+		AudioMetadataFFI ffi = {};
+
+		// Set detected type
+		switch (metadata.type) {
+			case BUFFER_OGG_OPUS:
+				ffi.detectedType = DetectedTypeFFI::OGG_OPUS;
+				break;
+			case BUFFER_OGG_VORBIS:
+				ffi.detectedType = DetectedTypeFFI::OGG_VORBIS;
+				break;
+			case BUFFER_MP3_WITH_ID3:
+				ffi.detectedType = DetectedTypeFFI::MP3_WITH_ID3;
+				break;
+			case BUFFER_MP3_STREAM:
+				ffi.detectedType = DetectedTypeFFI::MP3_STREAM;
+				break;
+			default:
+				ffi.detectedType = DetectedTypeFFI::UNKNOWN;
+		}
+
+		// Convert MP3 metadata
+		strncpy(ffi.mp3Metadata.title, metadata.mp3Metadata.title.c_str(), MAX_STRING_LENGTH - 1);
+		strncpy(ffi.mp3Metadata.artist, metadata.mp3Metadata.artist.c_str(), MAX_STRING_LENGTH - 1);
+		strncpy(ffi.mp3Metadata.album, metadata.mp3Metadata.album.c_str(), MAX_STRING_LENGTH - 1);
+		strncpy(ffi.mp3Metadata.date, metadata.mp3Metadata.date.c_str(), MAX_STRING_LENGTH - 1);
+		strncpy(ffi.mp3Metadata.genre, metadata.mp3Metadata.genre.c_str(), MAX_STRING_LENGTH - 1);
+
+		// Convert OGG metadata
+		strncpy(ffi.oggMetadata.vendor, metadata.oggMetadata.opusInfo.vendor.c_str(), MAX_STRING_LENGTH - 1);
+		ffi.oggMetadata.commentsCount = std::min((int)metadata.oggMetadata.comments.size(), MAX_COMMENTS);
+
+		int i = 0;
+		for (const auto& comment : metadata.oggMetadata.comments) {
+			if (i >= MAX_COMMENTS) break;
+			strncpy(ffi.oggMetadata.comments[i].key, comment.first.c_str(), MAX_STRING_LENGTH - 1);
+			strncpy(ffi.oggMetadata.comments[i].value, comment.second.c_str(), MAX_STRING_LENGTH - 1);
+			i++;
+		}
+
+		// Convert Vorbis info
+		ffi.oggMetadata.vorbisInfo = {
+			metadata.oggMetadata.vorbisInfo.version,
+			metadata.oggMetadata.vorbisInfo.channels,
+			metadata.oggMetadata.vorbisInfo.rate,
+			metadata.oggMetadata.vorbisInfo.bitrate_upper,
+			metadata.oggMetadata.vorbisInfo.bitrate_nominal,
+			metadata.oggMetadata.vorbisInfo.bitrate_lower,
+			metadata.oggMetadata.vorbisInfo.bitrate_window
+		};
+
+		// Convert Opus info
+		ffi.oggMetadata.opusInfo = {
+			metadata.oggMetadata.opusInfo.version,
+			metadata.oggMetadata.opusInfo.channels,
+			metadata.oggMetadata.opusInfo.pre_skip,
+			metadata.oggMetadata.opusInfo.input_sample_rate,
+			metadata.oggMetadata.opusInfo.output_gain,
+			metadata.oggMetadata.opusInfo.mapping_family,
+			metadata.oggMetadata.opusInfo.stream_count,
+			metadata.oggMetadata.opusInfo.coupled_count,
+			{0}, // Initialize channel_mapping array to zeros
+			(int)metadata.oggMetadata.opusInfo.channel_mapping.size()
+		};
+
+		// Copy channel mapping
+		for (size_t i = 0; i < metadata.oggMetadata.opusInfo.channel_mapping.size() && i < MAX_CHANNEL_MAPPING; i++) {
+			ffi.oggMetadata.opusInfo.channel_mapping[i] = metadata.oggMetadata.opusInfo.channel_mapping[i];
+		}
+
+		return ffi;
 	}
 
 	AudioSourceInstance *BufferStream::createInstance()

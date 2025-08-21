@@ -1,4 +1,4 @@
-# Run with `flutter pub run ffigen --config ffigen.yaml`.
+# Run with `dart run ffigen --config ffigen.yaml`.
 name: FlutterSoLoudFfi
 description: 'FFI bindings to SoLoud'
 output: 'lib/flutter_soloud_FFIGEN.dart'
@@ -14,3 +14,5 @@ preamble: |
 comments:
   style: any
   length: full
+compiler-opts:
+  - "-I/usr/lib/clang/20/include"

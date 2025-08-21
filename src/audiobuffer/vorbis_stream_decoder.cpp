@@ -45,6 +45,8 @@ AudioMetadata VorbisDecoderWrapper::getMetadata() {
 
     metadata.type = DetectedType::BUFFER_OGG_VORBIS;
 
+    metadata.oggMetadata.commentsCount = vc.comments;
+
     metadata.oggMetadata.vorbisInfo.version = vi.version;
     metadata.oggMetadata.vorbisInfo.rate = vi.rate;
     metadata.oggMetadata.vorbisInfo.channels = vi.channels;

@@ -39,7 +39,8 @@ dependencies:
   web: ^1.1.0
 
 dev_dependencies:
-  ffigen: ^13.0.0
+  # ffigen: ^13.0.0
+  ffigen: ^19.1.0
   flutter_test:
     sdk: flutter
   test: ^1.24.9

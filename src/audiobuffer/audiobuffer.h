@@ -16,6 +16,7 @@
 #endif
 #include "mp3_stream_decoder.h"
 #include "stream_decoder.h"
+#include "metadata_ffi.h"
 
 class Player;
 
@@ -45,6 +46,7 @@ namespace SoLoud
     // Used to access the AudioSource this stream belongs to
     ActiveSound* mParent;
     dartOnBufferingCallback_t mOnBufferingCallback;
+    dartOnMetadataCallback_t mOnMetadataCallback;
     unsigned int mMaxBufferSize;
     int64_t mSampleCount;
     uint64_t mBytesConsumed;
@@ -69,17 +71,20 @@ namespace SoLoud
         BufferingType bufferingType = BufferingType::PRESERVED,
         time bufferingTimeNeeds = 2.0f, // 2 seconds of data to wait
         PCMformat pcmFormat = {44100, 2, 2, PCM_S16LE},
-        dartOnBufferingCallback_t onBufferingCallback = nullptr);
+        dartOnBufferingCallback_t onBufferingCallback = nullptr,
+        dartOnMetadataCallback_t onMetadataCallback = nullptr);
     void resetBuffer();
     void setDataIsEnded();
     void setMp3BufferIcyMetaInt(int icyMetaInt);
     PlayerErrors addData(const void *aData, unsigned int numSamples, bool forceAdd = false);
     void checkBuffering(unsigned int afterAddingBytesCount);
+    void callOnMetadataCallback(AudioMetadata &metadata);
     void callOnBufferingCallback(bool isBuffering, unsigned int handle, double time);
     BufferingType getBufferingType();
     virtual AudioSourceInstance *createInstance();
     SoLoud::time getLength();
     SoLoud::time getStreamTimeConsumed();
+    AudioMetadataFFI convertMetadataToFFI(const AudioMetadata& metadata);
 
     std::vector<unsigned char> buffer;
   };

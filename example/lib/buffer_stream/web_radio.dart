@@ -254,6 +254,9 @@ class _WebRadioExampleState extends State<WebRadioExample> {
             'handle: $handle at time $time');
         streamBuffering.value = isBuffering;
       },
+      onMetadata: (metadata) {
+        debugPrint(metadata.toString());
+      },
     );
 
     await SoLoud.instance.play(source!);
