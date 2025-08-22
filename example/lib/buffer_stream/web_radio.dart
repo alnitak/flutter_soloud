@@ -238,7 +238,7 @@ class _WebRadioExampleState extends State<WebRadioExample> {
     }
   }
 
-  Future<void> playUrl(String url, BufferType type) async {
+  Future<void> playUrl(String url) async {
     connectionError.value = '';
     await SoLoud.instance.disposeAllSources();
 
@@ -246,7 +246,7 @@ class _WebRadioExampleState extends State<WebRadioExample> {
     source = SoLoud.instance.setBufferStream(
       maxBufferSizeBytes: 1024 * 1024 * 200, // 100 MB
       bufferingTimeNeeds: 1,
-      format: type,
+      format: BufferType.auto,
       bufferingType: BufferingType.released,
       channels: Channels.stereo,
       onBuffering: (isBuffering, handle, time) async {
@@ -281,7 +281,7 @@ class _WebRadioExampleState extends State<WebRadioExample> {
               ),
               onSubmitted: (value) {
                 if (value.isNotEmpty) {
-                  playUrl(value, BufferType.mp3);
+                  playUrl(value);
                 }
               },
             ),
@@ -306,7 +306,7 @@ class _WebRadioExampleState extends State<WebRadioExample> {
                   }),
                   onChanged: (value) {
                     mp3UrlId = value ?? 0;
-                    playUrl(mp3Urls[mp3UrlId], BufferType.mp3);
+                    playUrl(mp3Urls[mp3UrlId]);
                     if (context.mounted) {
                       setState(() {});
                     }
@@ -335,7 +335,7 @@ class _WebRadioExampleState extends State<WebRadioExample> {
                   }),
                   onChanged: (value) {
                     oggUrlId = value ?? 0;
-                    playUrl(oggUrls[oggUrlId], BufferType.opus);
+                    playUrl(oggUrls[oggUrlId]);
                     if (context.mounted) {
                       setState(() {});
                     }
@@ -364,7 +364,7 @@ class _WebRadioExampleState extends State<WebRadioExample> {
                   }),
                   onChanged: (value) {
                     opusUrlId = value ?? 0;
-                    playUrl(opusUrls[opusUrlId], BufferType.opus);
+                    playUrl(opusUrls[opusUrlId]);
                     if (context.mounted) {
                       setState(() {});
                     }
