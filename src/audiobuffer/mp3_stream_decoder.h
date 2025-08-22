@@ -43,11 +43,11 @@ private:
     bool extractID3Tags(const std::vector<unsigned char>& buffer, AudioMetadata& metadata);
     bool isInitialized;
     bool validFramesFound;
-    AudioMetadata lastMetadata;
     size_t bytes_until_meta;
     size_t metadata_remaining;
     std::string metadata_buffer;
     int mIcyMetaInt;
+    bool ID3TagsFound;
 };
 
 #endif // MP3_STREAM_DECODER_H

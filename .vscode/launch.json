@@ -8,11 +8,11 @@
             "name": "Flutter debug",
             "type": "dart",
             "request": "launch",
-            "program": "lib/buffer_stream/web_radio.dart",
+            "program": "lib/buffer_stream/websocket.dart",
             "flutterMode": "debug",
-            // "env": {
-            //     "NO_OPUS_OGG_LIBS": "1"
-            // },
+            "env": {
+                "NO_OPUS_OGG_LIBS": "1"
+            },
             "cwd": "${workspaceFolder}/example"
         },
         {

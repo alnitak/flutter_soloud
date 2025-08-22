@@ -17,7 +17,8 @@ MP3DecoderWrapper::MP3DecoderWrapper()
     validFramesFound(false),
     bytes_until_meta(16000), // most common value
     metadata_remaining(0),
-    metadata_buffer("")
+    metadata_buffer(""),
+    ID3TagsFound(false)
 {	
 }
 
@@ -40,7 +41,7 @@ void MP3DecoderWrapper::setMp3BufferIcyMetaInt(int icyMetaInt)
 }
 
 bool MP3DecoderWrapper::extractID3Tags(const std::vector<unsigned char>& buffer, AudioMetadata& metadata) {
-    // Look for ID3v2 tag
+    // Look for ID3v2 tag. ID3v1 is not supported (metadata is at the end of the file)
     if (buffer.size() > 10 && memcmp(buffer.data(), "ID3", 3) == 0) {
         size_t pos = 10;  // Skip ID3v2 header
         uint32_t size = ((buffer[6] & 0x7f) << 21) | 
@@ -63,6 +64,8 @@ bool MP3DecoderWrapper::extractID3Tags(const std::vector<unsigned char>& buffer,
             // Skip text encoding byte for text frames
             size_t text_start = (frame_id[0] == 'T') ? 1 : 0;
             std::string value(reinterpret_cast<const char *>(buffer.data() + pos + text_start), frame_size - text_start);
+            if (frame_id[0] != 0)
+                printf("ID3 tag: %s = %s\n", frame_id, value.c_str());
 
             if (strcmp(frame_id, "TIT2") == 0) metadata.mp3Metadata.title = value;
             else if (strcmp(frame_id, "TPE1") == 0) metadata.mp3Metadata.artist = value;
@@ -72,6 +75,7 @@ bool MP3DecoderWrapper::extractID3Tags(const std::vector<unsigned char>& buffer,
             
             pos += frame_size;
         }
+        metadata.type = BUFFER_MP3_WITH_ID3;
         return true;
     }
     return false; 
@@ -81,21 +85,6 @@ std::pair<std::vector<float>, DecoderError> MP3DecoderWrapper::decode(std::vecto
 {
     if (buffer.empty())
         return {{}, DecoderError::NoError};
-        
-    // Check for new metadata
-    AudioMetadata newMetadata;
-
-    if (extractID3Tags(buffer, newMetadata)) {
-        // Compare with last metadata to detect changes
-        if (newMetadata.mp3Metadata.title != lastMetadata.mp3Metadata.title || 
-            newMetadata.mp3Metadata.artist != lastMetadata.mp3Metadata.artist ||
-            newMetadata.mp3Metadata.album != lastMetadata.mp3Metadata.album) {
-            lastMetadata = newMetadata;
-            if (onTrackChange) {
-                onTrackChange(newMetadata);
-            }
-        }
-    }
 
     std::vector<float> decodedData;
     mp3d_sample_t pcm[MINIMP3_MAX_SAMPLES_PER_FRAME];
@@ -162,6 +151,17 @@ std::pair<std::vector<float>, DecoderError> MP3DecoderWrapper::decode(std::vecto
         }
     }
 
+
+        
+    // With MP3 with ID3 TAG, the metadata is extracted with the extractID3Tags function
+    if (detectedType == DetectedType::BUFFER_MP3_WITH_ID3 && !ID3TagsFound) {
+        // Check for new metadata
+        AudioMetadata newMetadata;
+        if (extractID3Tags(buffer, newMetadata)) {
+            ID3TagsFound = true;
+            if (onTrackChange) onTrackChange(newMetadata);
+        }
+    }
 
     // With MP3 stream, the metadata is extracted from the icy-metaint value in bytes
     if (detectedType == DetectedType::BUFFER_MP3_STREAM && mIcyMetaInt != 0) {

@@ -48,7 +48,7 @@ public:
         *allDataAdded = false;
         switch (format)
         {
-            case BufferType::MP3:
+            case BufferType::AUTO:
             case BufferType::OPUS:
             case BufferType::PCM_F32LE:
             {

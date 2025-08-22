@@ -207,6 +207,10 @@ namespace SoLoud
 		if (maxBufferSize % (pcmFormat.channels * sizeof(float)) != 0)
 			maxBufferSize -= maxBufferSize % (pcmFormat.channels * sizeof(float));
 
+		// Force OPUS to AUTO since Mp3, Ogg Opus and Ogg Vorbis are auto detected
+		// There is no more need to use BufferType::OPUS
+		if (pcmFormat.dataType == BufferType::OPUS) pcmFormat.dataType = BufferType::AUTO;
+
 		mBytesReceived = 0;
 		mUncompressedBytesReceived = 0;
 		mSampleCount = 0;
@@ -230,7 +234,7 @@ namespace SoLoud
 		mIsBuffering = true;
 		mIcyMetaInt = 16000; // for mp3 streaming audio only. Most online streaming use 16000
 
-		if (pcmFormat.dataType == BufferType::OPUS || pcmFormat.dataType == BufferType::MP3) {
+		if (pcmFormat.dataType == BufferType::AUTO) {
 			streamDecoder = std::make_unique<StreamDecoder>();
 		}
 
@@ -300,7 +304,7 @@ namespace SoLoud
 			if (buffer.size() > 1024 * 16) // 16 KB of data.
 			{
 				// For PCM data we must align the data to the bytes per sample.
-				if (!(mPCMformat.dataType == BufferType::OPUS || mPCMformat.dataType == BufferType::MP3))
+				if (!(mPCMformat.dataType == BufferType::AUTO))
 				{
 					int alignment = mPCMformat.bytesPerSample * mPCMformat.channels;
 					bufferDataToAdd = (int)(buffer.size() / alignment) * alignment;
@@ -319,7 +323,7 @@ namespace SoLoud
 		
 
 		// It's time to decode the data already stored in the buffer
-		if (mPCMformat.dataType == BufferType::OPUS || mPCMformat.dataType == BufferType::MP3)
+		if (mPCMformat.dataType == BufferType::AUTO)
 		{
 			int sampleRate = mThePlayer->mSampleRate;
 			int channels = mThePlayer->mChannels;
@@ -349,7 +353,7 @@ namespace SoLoud
 
 			if (!decoded.empty())
 			{
-				if (mPCMformat.dataType == BufferType::MP3 || mPCMformat.dataType == BufferType::OPUS) {
+				if (mPCMformat.dataType == BufferType::AUTO) {
 					if (sampleRate != -1) { 
 						mPCMformat.sampleRate = sampleRate;
 						mBaseSamplerate = sampleRate;
@@ -417,7 +421,6 @@ namespace SoLoud
 		// to reach [TIME_FOR_BUFFERING] and restart playing it.
 		SoLoud::time currBufferTime = getLength();
 		SoLoud::time addedDataTime = (afterAddingBytesCount / mPCMformat.bytesPerSample) / (mBaseSamplerate * mChannels);
-		SoLoud::time bufferLength = (double)mBuffer.getFloatsBufferSize() / (mBaseSamplerate * mChannels);
 
 		for (int i = 0; i < mParent->handle.size(); i++)
 		{

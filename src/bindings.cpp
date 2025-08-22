@@ -428,11 +428,15 @@ extern "C"
         if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
 
+        // BufferType::OPUS is deprecated in favor of BufferType::AUTO wich
+        // autodetects MP3, OGG Opus and OGG Vorbis formats
+        if (format == BufferType::OPUS)
+            format = BufferType::AUTO;
+
         unsigned int bytesPerSample;
         switch (format)
         {
-        case BufferType::OPUS:
-        case BufferType::MP3:
+        case BufferType::AUTO:
         case BufferType::PCM_F32LE:
             bytesPerSample = 4;
             break;

@@ -136,7 +136,7 @@ typedef enum BufferType
     PCM_S16LE = 2,
     PCM_S32LE = 3,
     OPUS = 4,
-    MP3 = 5,
+    AUTO = 5,
 } BufferType_t;
 
 
