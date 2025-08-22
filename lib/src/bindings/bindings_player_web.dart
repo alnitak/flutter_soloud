@@ -214,6 +214,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     int channels,
     int format,
     OnBufferingCallbackTFunction? onBuffering,
+    OnMetadataCallbackTFunction? onMetadata,
   ) {
     final hashPtr = wasmMalloc(4); // 4 bytes for an int32
     final result = wasmSetBufferStream(
@@ -227,6 +228,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
       // not used on C side. The callback is set below on the JS side. Setting
       // this to 1 to tell C that we have a callback.
       onBuffering == null ? 0 : 1,
+      onMetadata == null ? 0 : 1,
     );
     final hash = wasmGetI32Value(hashPtr, 'i32');
     final soundHash = SoundHash(hash);
@@ -249,6 +251,13 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
       );
     }
 
+    if (onMetadata != null) {
+      globalThis.setProperty(
+        'dartOnMetadataCallback_$hash'.toJS,
+        onMetadata.toJS,
+      );
+    }
+
     return ret;
   }
 
@@ -268,6 +277,12 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     wasmFree(valuePtr);
 
     return (error: PlayerErrors.values[result], value: value);
+  }
+
+  @override
+  PlayerErrors setMp3BufferIcyMetaInt(SoundHash soundHash, int icyMetaInt,) {
+    final result = wasmSetMp3BufferIcyMetaInt(soundHash.hash, icyMetaInt);
+    return PlayerErrors.values[result];
   }
 
   @override

@@ -64,6 +64,7 @@ external int wasmSetBufferStream(
   int channels,
   int format,
   int onBufferingPtr,
+  int onMetadataPtr,
 );
 
 @JS('Module_soloud._resetBufferStream')
@@ -71,6 +72,9 @@ external int wasmResetBufferStream(int hash);
 
 @JS('Module_soloud._getStreamTimeConsumed')
 external int wasmGetStreamTimeConsumed(int hash, int timeConsumedPtr);
+
+@JS('Module_soloud._setMp3BufferIcyMetaInt')
+external int wasmSetMp3BufferIcyMetaInt(int hash, int icyMetaInt);
 
 @JS('Module_soloud._addAudioDataStream')
 external int wasmAddAudioDataStream(int hash, int audioChunkPtr, int dataLen);
