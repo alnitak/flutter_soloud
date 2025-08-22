@@ -272,8 +272,6 @@ interface class SoLoud {
       deinit();
     }
 
-    _areOpusOggLibsAvailable = _controller.soLoudFFI.areOpusOggLibsAvailable();
-
     _activeSounds.clear();
 
     // Initialize native callbacks
@@ -658,9 +656,6 @@ interface class SoLoud {
   /// the `time` in seconds.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
-  /// Throws [SoLoudOpusOggLibsNotAvailableException] if trying to use the
-  /// `opus` format but the Opus and Ogg libraries are not available. Please
-  /// check the `README.md` file for more information.
   AudioSource setBufferStream({
     int? maxBufferSizeBytes,
     Duration? maxBufferSizeDuration,
@@ -670,43 +665,18 @@ interface class SoLoud {
     Channels channels = Channels.mono,
     BufferType format = BufferType.s16le,
     void Function(bool isBuffering, int handle, double time)? onBuffering,
-    void Function(AudioMetadata)? onMetadata, 
+    void Function(AudioMetadata)? onMetadata,
   }) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
-
-    if (!_areOpusOggLibsAvailable && format == BufferType.opus) {
-      throw const SoLoudOpusOggLibsNotAvailableException();
-    }
-
-    final opusA = () {
-      if (format == BufferType.opus) {
-        return sampleRate == 48000 ||
-            sampleRate == 24000 ||
-            sampleRate == 16000 ||
-            sampleRate == 12000 ||
-            sampleRate == 8000;
-      }
-      return true;
-    }();
-    final opusB = () {
-      if (format == BufferType.opus) {
-        return channels == Channels.mono || channels == Channels.stereo;
-      }
-      return true;
-    }();
-    assert(
-      opusA,
-      'Opus format only supports 48, 24, 16, 12 and 8 KHz sample rates',
-    );
-    assert(
-      opusB,
-      'Only mono and stereo channels are supported for Opus format',
-    );
-
-    if (!opusA || !opusB) {
-      throw const SoLoudWrongOpusParamsException();
+    
+    var forcedFormat = format;
+    if (format == BufferType.opus) {
+      forcedFormat = BufferType.auto;
+      debugPrint('BufferType.opus has been deprecated. Use "BufferType.auto" '
+          'instead which will automatically determine from MP3, OGG Opus '
+          'or OGG Vorbis.');
     }
 
     // Only [maxBufferSizeDuration] or [maxBufferSizeBytes] must be set.
@@ -724,22 +694,20 @@ interface class SoLoud {
           1000;
     }
 
-    void onMetadataCallback(AudioMetadataFFI metadataFFI) {
-      if (onMetadata != null) {
-        onMetadata(metadataFFI.toAudioMetadata());
-      }
-    }
-
     final ret = SoLoudController().soLoudFFI.setBufferStream(
-          bufferSize,
-          bufferingType,
-          bufferingTimeNeeds,
-          sampleRate,
-          channels.count,
-          format.value,
-          onBuffering,
-          onMetadataCallback,
-        );
+      bufferSize,
+      bufferingType,
+      bufferingTimeNeeds,
+      sampleRate,
+      channels.count,
+      forcedFormat.value,
+      onBuffering,
+      (AudioMetadataFFI metadataFFI) {
+        if (onMetadata != null) {
+          onMetadata(metadataFFI.toAudioMetadata());
+        }
+      },
+    );
 
     if (ret.error != PlayerErrors.noError) {
       _logPlayerError(ret.error, from: 'addAudioDataStream() result');
@@ -905,6 +873,11 @@ interface class SoLoud {
   /// automatically marked to be ended.
   /// Thows [SoLoudOutOfMemoryException] if the buffer is out of OS memory or
   /// the given `maxBufferSize` of the `setBufferStream` call is too small.
+  /// Throws [SoLoudOpusOggLibsNotAvailableException] if the Ogg, Opus and
+  /// Vorbis libraries are not linked and trying to add audio data in those
+  /// formats. Probably you need to unset NO_OPUS_OGG_LIBS environment
+  /// variable. Ref: 
+  /// https://docs.page/alnitak/flutter_soloud_docs/get_started/no_opus_ogg_libs
   void addAudioDataStream(
     AudioSource source,
     Uint8List audioChunk,
@@ -919,6 +892,10 @@ interface class SoLoud {
         );
 
     if (e != PlayerErrors.noError) {
+      if (e == PlayerErrors.opusOggVorbisLibsNotFound) {
+        _logPlayerError(e, from: 'addAudioDataStream() result');
+        throw const SoLoudOpusOggLibsNotAvailableException();
+      }
       _logPlayerError(e, from: 'addAudioDataStream() result');
       throw SoLoudCppException.fromPlayerError(e);
     }
