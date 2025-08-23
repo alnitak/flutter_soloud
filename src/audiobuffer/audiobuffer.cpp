@@ -464,18 +464,20 @@ namespace SoLoud
 		if (mOnMetadataCallback != nullptr)
 		{
 #ifdef __EMSCRIPTEN__
+			AudioMetadataFFI ffi = this->convertMetadataToFFI(metadata);
 			// Call the Dart callback stored on globalThis, if it exists.
-			// The `dartOnBufferingCallback_$hash` function is created in
+			// The `dartOnMetadataCallback_$hash` function is created in
 			// `setBufferStream()` in `bindings_player_web.dart` and it's
 			// meant to call the Dart callback passed to `setBufferStream()`.
-			EM_ASM({
+			// It will pass the JS pointer to the AudioMetadata struct.
+			EM_ASM_({
 					// Compose the function name for this soundHash
 					var functionName = "dartOnMetadataCallback_" + $1;
 					if (typeof window[functionName] === "function") {
-						window[functionName](metadata); // Call it
+						window[functionName]($0); // Call it with the pointer
 					} else {
 						console.log("EM_ASM 'dartOnMetadataCallback_$hash' not found.");
-					} }, metadata, mParent->soundHash);
+					} }, &ffi, mParent->soundHash);
 #else
 			AudioMetadataFFI ffi = this->convertMetadataToFFI(metadata);
 			mOnMetadataCallback(ffi);
