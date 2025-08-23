@@ -265,25 +265,24 @@ final class OggMetadata {
 }
 
 /// The main container for all audio metadata, supporting various audio formats
-/// The main container for all audio metadata, supporting various audio formats
 final class AudioMetadata {
   /// Creates a new [AudioMetadata] instance with metadata for different
   /// audio formats
   AudioMetadata({
     required this.detectedType,
-    required this.mp3Metadata,
-    required this.oggMetadata,
+    this.mp3Metadata,
+    this.oggMetadata,
   });
 
   /// The detected audio format type (e.g., "MP3", "OGG", etc.)
   DetectedType detectedType;
 
   /// Metadata specific to MP3 audio format
-  Mp3Metadata mp3Metadata;
+  Mp3Metadata? mp3Metadata;
 
   /// Metadata specific to OGG container format, including Opus and Vorbis
   /// information
-  OggMetadata oggMetadata;
+  OggMetadata? oggMetadata;
 
   /// Returns a string representation of the [AudioMetadata] object
   @override
@@ -298,7 +297,9 @@ final class AudioMetadata {
         buffer.writeln(mp3Metadata.toString());
       case DetectedType.oggOpus:
       case DetectedType.oggVorbis:
-        buffer.writeln(oggMetadata.toStringWithFormat(detectedType));
+        if (oggMetadata != null) {
+          buffer.writeln(oggMetadata!.toStringWithFormat(detectedType));
+        }
       case DetectedType.unknown:
         buffer.writeln('Unknown audio format');
     }

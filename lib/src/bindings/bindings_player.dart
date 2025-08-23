@@ -4,16 +4,14 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter_soloud/src/bindings/audio_data.dart';
-import 'package:flutter_soloud/src/bindings/metadata_ffi.dart';
+import 'package:flutter_soloud/src/bindings/native_metadata_ffi.dart'
+    if (dart.library.js_interop) 'package:flutter_soloud/src/bindings/native_metadata_web.dart';
 import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/filters/filters.dart';
 import 'package:flutter_soloud/src/helpers/playback_device.dart';
 import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
 import 'package:meta/meta.dart';
-
-export 'package:flutter_soloud/src/bindings/bindings_player_ffi.dart'
-    if (dart.library.js_interop) 'package:flutter_soloud/src/bindings/bindings_player_web.dart';
 
 /// Callback set in `setBufferStream` for the `onBuffering` closure.
 typedef OnBufferingCallbackTFunction = void Function(
@@ -23,7 +21,9 @@ typedef OnBufferingCallbackTFunction = void Function(
 );
 
 /// Callback set in `setBufferStream` for the `onMetadata` closure.
-typedef OnMetadataCallbackTFunction = void Function(AudioMetadataFFI metadata);
+typedef OnMetadataCallbackTFunction = void Function(
+  NativeAudioMetadata metadata,
+);
 
 /// Abstract class defining the interface for the platform-specific
 /// implementations.

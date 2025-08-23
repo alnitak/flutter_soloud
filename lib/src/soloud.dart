@@ -6,7 +6,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_soloud/src/audio_source.dart';
 import 'package:flutter_soloud/src/bindings/bindings_player.dart';
-import 'package:flutter_soloud/src/bindings/metadata_ffi.dart';
+import 'package:flutter_soloud/src/bindings/native_metadata_ffi.dart'
+    if (dart.library.js_interop) 'package:flutter_soloud/src/bindings/native_metadata_web.dart';
 import 'package:flutter_soloud/src/bindings/soloud_controller.dart';
 import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/exceptions/exceptions.dart';
@@ -670,7 +671,7 @@ interface class SoLoud {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
-    
+
     var forcedFormat = format;
     if (format == BufferType.opus) {
       forcedFormat = BufferType.auto;
@@ -702,9 +703,15 @@ interface class SoLoud {
       channels.count,
       forcedFormat.value,
       onBuffering,
-      (AudioMetadataFFI metadataFFI) {
+      (dynamic metadata) {
         if (onMetadata != null) {
-          onMetadata(metadataFFI.toAudioMetadata());
+          late final AudioMetadata data;
+          if (kIsWeb) {
+            data = NativeAudioMetadata.fromJSPointer(metadata as int);
+          } else {
+            data = (metadata as NativeAudioMetadata).toAudioMetadata();
+          }
+          onMetadata(data);
         }
       },
     );
@@ -876,7 +883,7 @@ interface class SoLoud {
   /// Throws [SoLoudOpusOggLibsNotAvailableException] if the Ogg, Opus and
   /// Vorbis libraries are not linked and trying to add audio data in those
   /// formats. Probably you need to unset NO_OPUS_OGG_LIBS environment
-  /// variable. Ref: 
+  /// variable. Ref:
   /// https://docs.page/alnitak/flutter_soloud_docs/get_started/no_opus_ogg_libs
   void addAudioDataStream(
     AudioSource source,

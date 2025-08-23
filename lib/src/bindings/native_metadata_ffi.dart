@@ -1,19 +1,24 @@
-// ignore_for_file: public_member_api_docs, constant_identifier_names, non_constant_identifier_names, camel_case_types
+// ignore_for_file: public_member_api_docs, constant_identifier_names, camel_case_types
+// ignore_for_file: non_constant_identifier_names
 
 import 'dart:ffi' as ffi;
 import 'package:flutter_soloud/src/metadata.dart';
 
-enum DetectedTypeFFI {
+/// Convert native FFI or Web metadata to AudioMetadata.
+/// This are classes that when a native metadata is received from the JS or
+/// from the Dart FFI, it's converted to Dart AudioMetadata.
+
+enum NativeDetectedType {
   UNKNOWN(0),
   OGG_OPUS(1),
   OGG_VORBIS(2),
   MP3_WITH_ID3(3),
   MP3_STREAM(4);
 
-  const DetectedTypeFFI(this.value);
+  const NativeDetectedType(this.value);
   final int value;
 
-  static DetectedTypeFFI fromValue(int value) => switch (value) {
+  static NativeDetectedType fromValue(int value) => switch (value) {
         0 => UNKNOWN,
         1 => OGG_OPUS,
         2 => OGG_VORBIS,
@@ -38,7 +43,7 @@ enum DetectedTypeFFI {
   }
 }
 
-final class Mp3MetadataFFI extends ffi.Struct {
+final class NativeMp3Metadata extends ffi.Struct {
   @ffi.Array.multi([1024])
   external ffi.Array<ffi.Char> title;
 
@@ -56,7 +61,7 @@ final class Mp3MetadataFFI extends ffi.Struct {
 }
 
 /// Comment key-value pair structure
-final class CommentPairFFI extends ffi.Struct {
+final class NativeCommentPair extends ffi.Struct {
   @ffi.Array.multi([1024])
   external ffi.Array<ffi.Char> key;
 
@@ -65,7 +70,7 @@ final class CommentPairFFI extends ffi.Struct {
 }
 
 /// Structure to hold track metadata
-final class VorbisInfoFFI extends ffi.Struct {
+final class NativeVorbisInfo extends ffi.Struct {
   /// Dont' use here the vorbis_info struct because the lib could be not linked
   @ffi.Int()
   external int version;
@@ -102,7 +107,7 @@ final class VorbisInfoFFI extends ffi.Struct {
   external int bitrate_window;
 }
 
-final class OpusInfoFFI extends ffi.Struct {
+final class NativeOpusInfo extends ffi.Struct {
   @ffi.Uint8()
   external int version;
 
@@ -136,7 +141,7 @@ final class OpusInfoFFI extends ffi.Struct {
   external int channel_mapping_size;
 }
 
-final class OggMetadataFFI extends ffi.Struct {
+final class NativeOggMetadata extends ffi.Struct {
   @ffi.Array.multi([1024])
   external ffi.Array<ffi.Char> vendor;
 
@@ -144,32 +149,38 @@ final class OggMetadataFFI extends ffi.Struct {
   external int commentsCount;
 
   @ffi.Array.multi([32])
-  external ffi.Array<CommentPairFFI> comments;
+  external ffi.Array<NativeCommentPair> comments;
 
-  external VorbisInfoFFI vorbisInfo;
+  external NativeVorbisInfo vorbisInfo;
 
-  external OpusInfoFFI opusInfo;
+  external NativeOpusInfo opusInfo;
 }
 
-final class AudioMetadataFFI extends ffi.Struct {
+final class NativeAudioMetadata extends ffi.Struct {
   @ffi.UnsignedInt()
   external int detectedTypeAsInt;
 
-  DetectedTypeFFI get detectedTypeFFI =>
-      DetectedTypeFFI.fromValue(detectedTypeAsInt);
+  NativeDetectedType get detectedTypeFFI =>
+      NativeDetectedType.fromValue(detectedTypeAsInt);
 
-  external Mp3MetadataFFI mp3Metadata;
+  external NativeMp3Metadata mp3Metadata;
 
-  external OggMetadataFFI oggMetadata;
+  external NativeOggMetadata oggMetadata;
 
   /// Helper function to convert FFI char array to String
   String _arrayToString(ffi.Array<ffi.Char> array) {
     final buffer = StringBuffer();
-    for (var i = 0; i < 1024; i++) { // Using 1024 as it's the size we defined for our arrays
+    for (var i = 0; i < 1024; i++) {
+      // Using 1024 as it's the size we defined for our arrays
       if (array[i] == 0) break; // Stop at null terminator
       buffer.writeCharCode(array[i]);
     }
     return buffer.toString().trim();
+  }
+
+  // Dummy method to reflect the web implementation. Not used with FFI
+  static AudioMetadata fromJSPointer(dynamic metadataPtr) {
+    return (metadataPtr as NativeAudioMetadata).toAudioMetadata();
   }
 
   /// Converts this FFI struct to the Dart-friendly [AudioMetadata] class
@@ -232,9 +243,11 @@ final class AudioMetadataFFI extends ffi.Struct {
 }
 
 typedef dartOnMetadataCallback_tFunction = ffi.Void Function(
-    AudioMetadataFFI metadata);
+  NativeAudioMetadata metadata,
+);
 typedef DartdartOnMetadataCallback_tFunction = void Function(
-    AudioMetadataFFI metadata);
+  NativeAudioMetadata metadata,
+);
 
 /// callback to tell dart the metadata
 typedef dartOnMetadataCallback_t
