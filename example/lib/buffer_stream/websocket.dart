@@ -85,7 +85,7 @@ class _WebsocketExampleState extends State<WebsocketExample> {
   @override
   Widget build(BuildContext context) {
     if (!SoLoud.instance.isInitialized) return const SizedBox.shrink();
-    final pcmValuesEnabled = format[fmtId] == 'auto';
+    final pcmValuesEnabled = format[fmtId] != 'auto';
 
     return Scaffold(
       appBar: AppBar(
@@ -100,108 +100,87 @@ class _WebsocketExampleState extends State<WebsocketExample> {
             children: [
               /// SAMPLERATE
               Expanded(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    RadioGroup<int>(
-                      groupValue: srId,
-                      onChanged: (int? value) {
-                        setState(() {
-                          srId = value!;
-                        });
-                      },
-                      child: Column(
-                        children: <Widget>[
-                          for (var i = 0; i < sampleRate.length; i++)
-                            RadioListTile<int>(
-                              title: Text(
-                                sampleRate[i].toString(),
-                                style: const TextStyle(fontSize: 12),
-                              ),
-                              value: i,
-                              enabled: pcmValuesEnabled,
-                              visualDensity: const VisualDensity(
-                                horizontal: VisualDensity.minimumDensity,
-                                vertical: VisualDensity.minimumDensity,
-                              ),
-                              materialTapTargetSize:
-                                  MaterialTapTargetSize.shrinkWrap,
-                            ),
-                        ],
-                      ),
-                    ),
-                  ],
+                child: RadioGroup<int>(
+                  groupValue: srId,
+                  onChanged: (int? value) {
+                    setState(() {
+                      srId = value!;
+                    });
+                  },
+                  child: Column(
+                    children: <Widget>[
+                      for (var i = 0; i < sampleRate.length; i++)
+                        RadioListTile<int>(
+                          title: Text(
+                            sampleRate[i].toString(),
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          value: i,
+                          enabled: pcmValuesEnabled,
+                          visualDensity: const VisualDensity(
+                            horizontal: VisualDensity.minimumDensity,
+                            vertical: VisualDensity.minimumDensity,
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
               ),
 
               /// CHANNELS
               Expanded(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    RadioGroup<int>(
-                      groupValue: chId,
-                      onChanged: (int? value) {
-                        setState(() {
-                          chId = value!;
-                        });
-                      },
-                      child: Column(
-                        children: <Widget>[
-                          for (var i = 0; i < Channels.values.length; i++)
-                            RadioListTile<int>(
-                              title: Text(
-                                Channels.values[i].toString(),
-                                style: const TextStyle(fontSize: 12),
-                              ),
-                              value: i,
-                              enabled: pcmValuesEnabled,
-                              visualDensity: const VisualDensity(
-                                horizontal: VisualDensity.minimumDensity,
-                                vertical: VisualDensity.minimumDensity,
-                              ),
-                              materialTapTargetSize:
-                                  MaterialTapTargetSize.shrinkWrap,
-                            ),
-                        ],
-                      ),
-                    ),
-                  ],
+                child: RadioGroup<int>(
+                  groupValue: chId,
+                  onChanged: (int? value) {
+                    setState(() {
+                      chId = value!;
+                    });
+                  },
+                  child: Column(
+                    children: <Widget>[
+                      for (var i = 0; i < Channels.values.length; i++)
+                        RadioListTile<int>(
+                          title: Text(
+                            Channels.values[i].toString(),
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          value: i,
+                          enabled: pcmValuesEnabled,
+                          visualDensity: const VisualDensity(
+                            horizontal: VisualDensity.minimumDensity,
+                            vertical: VisualDensity.minimumDensity,
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
               ),
 
               /// FORMAT
               Expanded(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    RadioGroup<int>(
-                      groupValue: fmtId,
-                      onChanged: (int? value) {
-                        setState(() {
-                          fmtId = value!;
-                        });
-                      },
-                      child: Column(
-                        children: <Widget>[
-                          for (var i = 0; i < format.length; i++)
-                            RadioListTile<int>(
-                              title: Text(
-                                format[i],
-                                style: const TextStyle(fontSize: 12),
-                              ),
-                              value: i,
-                              visualDensity: const VisualDensity(
-                                horizontal: VisualDensity.minimumDensity,
-                                vertical: VisualDensity.minimumDensity,
-                              ),
-                              materialTapTargetSize:
-                                  MaterialTapTargetSize.shrinkWrap,
-                            ),
-                        ],
-                      ),
-                    ),
-                  ],
+                child: RadioGroup<int>(
+                  groupValue: fmtId,
+                  onChanged: (int? value) {
+                    setState(() {
+                      fmtId = value!;
+                    });
+                  },
+                  child: Column(
+                    children: <Widget>[
+                      for (var i = 0; i < format.length; i++)
+                        RadioListTile<int>(
+                          title: Text(
+                            format[i],
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          value: i,
+                          visualDensity: const VisualDensity(
+                            horizontal: VisualDensity.minimumDensity,
+                            vertical: VisualDensity.minimumDensity,
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
               ),
             ],
