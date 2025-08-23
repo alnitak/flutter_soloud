@@ -8,11 +8,11 @@
             "name": "Flutter debug",
             "type": "dart",
             "request": "launch",
-            "program": "lib/buffer_stream/websocket.dart",
+            "program": "lib/buffer_stream/web_radio.dart",
             "flutterMode": "debug",
-            "env": {
-                "NO_OPUS_OGG_LIBS": "1"
-            },
+            // "env": {
+            //     "NO_OPUS_OGG_LIBS": "1"
+            // },
             "cwd": "${workspaceFolder}/example"
         },
         {
@@ -30,7 +30,7 @@
             "name": "Flutter release",
             "type": "dart",
             "request": "launch",
-            "program": "lib/buffer_stream/websocket.dart",
+            "program": "lib/buffer_stream/web_radio.dart",
             "flutterMode": "release",
             // "env": {
             //     "NO_OPUS_OGG_LIBS": "1"

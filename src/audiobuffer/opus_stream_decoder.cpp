@@ -23,37 +23,40 @@ AudioMetadata OpusDecoderWrapper::getMetadata(ogg_packet* packet) {
     AudioMetadata metadata;
 
     metadata.type = DetectedType::BUFFER_OGG_OPUS;
-
+    
     if (packet->bytes < 8 || std::memcmp(packet->packet, "OpusTags", 8) != 0) {
         std::cerr << "Not an OpusTags packet\n";
         return metadata;
     }
-
+    
     size_t pos = 8;
     if (pos + 4 > packet->bytes) return metadata;
-    uint32_t vendor_len = *((uint32_t*)(packet->packet + pos));
+    uint32_t vendor_len;
+    memcpy(&vendor_len, packet->packet + pos, sizeof(vendor_len));
     pos += 4;
-
+    
     if (pos + vendor_len > packet->bytes) return metadata;
     std::string vendor((const char*)(packet->packet + pos), vendor_len);
     pos += vendor_len;
-
+    
     if (pos + 4 > packet->bytes) return metadata;
-    uint32_t comment_count = *((uint32_t*)(packet->packet + pos));
+    uint32_t comment_count;
+    memcpy(&comment_count, packet->packet + pos, sizeof(comment_count));
     pos += 4;
-
+    
     metadata.oggMetadata.vendor = vendor;
     metadata.oggMetadata.commentsCount = comment_count;
-
+    
     for (uint32_t i = 0; i < comment_count && pos + 4 <= packet->bytes; i++) {
-        uint32_t clen = *((uint32_t*)(packet->packet + pos));
+        uint32_t clen;
+        memcpy(&clen, packet->packet + pos, sizeof(clen));
         pos += 4;
         if (pos + clen > packet->bytes) return metadata;
         std::string comment((const char*)(packet->packet + pos), clen);
         pos += clen;
         metadata.oggMetadata.comments[comment.substr(0, comment.find('='))] = comment.substr(comment.find('=') + 1);
     }
-
+    
     // Fill the OpusInfo struct already stored in opusInfo
     metadata.oggMetadata.opusInfo.version = opusInfo.version;
     metadata.oggMetadata.opusInfo.channels = opusInfo.channels;
@@ -166,7 +169,7 @@ std::pair<std::vector<float>, DecoderError> OpusDecoderWrapper::decode(std::vect
 }
 
 OpusInfo OpusDecoderWrapper::parseOpusHead(ogg_packet* packet) {
-    OpusInfo head{};
+    OpusInfo head {};
     unsigned char* data = (unsigned char*)packet->packet;
     size_t len = packet->bytes;
 
