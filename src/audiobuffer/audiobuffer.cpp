@@ -195,8 +195,8 @@ namespace SoLoud
 
 	BufferStream::~BufferStream()
 	{
-		stop();
-		resetBuffer();
+		// stop();
+		// resetBuffer();
 	}
 
 	PlayerErrors BufferStream::setBufferStream(
