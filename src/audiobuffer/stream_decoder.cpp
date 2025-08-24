@@ -10,30 +10,83 @@ void StreamDecoder::setMp3BufferIcyMetaInt(int icyMetaInt) {
     mIcyMetaInt = icyMetaInt;
 }
 
+// Helper to get the size of an ID3v2 tag. Returns 0 if not an ID3v2 tag.
+static size_t getID3TagSize(const std::vector<unsigned char>& buffer) {
+    if (buffer.size() >= 10 && memcmp(buffer.data(), "ID3", 3) == 0) {
+        // It's an ID3v2 tag. The size is a 28-bit integer, stored as 4x7-bit bytes (synchsafe).
+        uint32_t size = ((buffer[6] & 0x7f) << 21) |
+                       ((buffer[7] & 0x7f) << 14) |
+                       ((buffer[8] & 0x7f) << 7) |
+                       (buffer[9] & 0x7f);
+        return size + 10; // +10 for the header.
+    }
+    return 0;
+}
+
 DetectedType StreamDecoder::detectAudioFormat(const std::vector<unsigned char>& buffer) {
     size_t size = buffer.size();
     if (size < 4) return DetectedType::BUFFER_NO_ENOUGH_DATA;
     
     // --- Detect OGG, OPUS and VORBIS containers ---
     else if (size >= 4 && std::memcmp(buffer.data(), "OggS", 4) == 0) {
-        if (size < 27) return DetectedType::BUFFER_NO_ENOUGH_DATA; // need at least segment count
-        uint8_t seg_count = buffer[26];
-        if (size < 27 + seg_count) return DetectedType::BUFFER_NO_ENOUGH_DATA; // need full segment table
+        // Scan through multiple Ogg pages to find the format
+        size_t scan_offset = 0;
         
-        size_t payload_offset = 27 + seg_count;
-        if (size < payload_offset + 7) return DetectedType::BUFFER_NO_ENOUGH_DATA; // need enough for "OpusHead"/"vorbis"
+        while (scan_offset + 27 < size) {  // 27 is minimum Ogg page header size
+            // Check for Ogg page signature
+            if (std::memcmp(buffer.data() + scan_offset, "OggS", 4) != 0) {
+                scan_offset++;
+                continue;
+            }
+            
+            // Get segment count for this page
+            uint8_t seg_count = buffer[scan_offset + 26];
+            size_t page_offset = scan_offset + 27;  // Start of segment table
+            
+            // Check if we have enough data to read segment table
+            if (page_offset + seg_count >= size) {
+                return DetectedType::BUFFER_NO_ENOUGH_DATA;
+            }
+            
+            // Calculate payload size for this page
+            size_t payload_size = 0;
+            for (int i = 0; i < seg_count; i++) {
+                payload_size += buffer[page_offset + i];
+            }
+            
+            // Move to payload start
+            size_t payload_offset = page_offset + seg_count;
+            
+            // Check if we have enough data for the payload
+            if (payload_offset + payload_size > size) {
+                return DetectedType::BUFFER_NO_ENOUGH_DATA;
+            }
+            
+            // Check for Opus in this page
+            if (payload_size >= 8 && 
+                std::memcmp(buffer.data() + payload_offset, "OpusHead", 8) == 0) {
+                return DetectedType::BUFFER_OGG_OPUS;
+            }
+            
+            // Check for Vorbis in this page
+            // Look through the entire payload for the Vorbis pattern
+            for (size_t i = 0; i < payload_size - 6; i++) {
+                if (buffer[payload_offset + i] == 0x01 && 
+                    std::memcmp(buffer.data() + payload_offset + i + 1, "vorbis", 6) == 0) {
+                    return DetectedType::BUFFER_OGG_VORBIS;
+                }
+            }
+            
+            // Move to next potential page
+            scan_offset = payload_offset + payload_size;
+        }
         
-        if (std::memcmp(buffer.data() + payload_offset, "OpusHead", 8) == 0) {
-            return DetectedType::BUFFER_OGG_OPUS;
-        }
-        if (std::memcmp(buffer.data() + payload_offset, "\x01vorbis", 7) == 0) {
-            return DetectedType::BUFFER_OGG_VORBIS;
-        }
+        // If we've checked all available data and found nothing, consider it unknown
         return DetectedType::BUFFER_UNKNOWN;
     }
 
     // --- Detect MP3 ---
-    else if (size >= 3 && std::memcmp(buffer.data(), "ID3", 3) == 0) {
+    else if (size >= 3 && getID3TagSize(buffer) != 0) {
         return DetectedType::BUFFER_MP3_WITH_ID3; // ID3 tag found
     } 
     else if (MP3DecoderWrapper::checkForValidFrames(buffer)) {
@@ -49,6 +102,7 @@ std::pair<std::vector<float>, DecoderError> StreamDecoder::decode(std::vector<un
     TrackChangeCallback metadataChangeCallback)
 {
     if (!isFormatDetected) {
+        printf("DTECTING FORMAT\n");
         DetectedType detectedType = detectAudioFormat(buffer);
         if (detectedType == DetectedType::BUFFER_NO_ENOUGH_DATA)
             return {{}, DecoderError::NoError};
@@ -85,6 +139,8 @@ std::pair<std::vector<float>, DecoderError> StreamDecoder::decode(std::vector<un
             mWrapper->setTrackChangeCallback(metadataChangeCallback);
         }
         mWrapper->detectedType = detectedType;
+        printf("DTECTED FORMAT %d\n", detectedType);
+
     }
     
     if (mWrapper) {

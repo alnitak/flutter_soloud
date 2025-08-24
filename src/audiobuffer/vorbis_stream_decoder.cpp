@@ -102,41 +102,47 @@ std::pair<std::vector<float>, DecoderError> VorbisDecoderWrapper::decode(std::ve
             streamInitialized = true;
         }
 
-        // Check if this is a new stream (different serial number)
-        if (streamInitialized && ogg_page_serialno(&og) != os.serialno) {
-            // Clean up the old stream state
-            ogg_stream_clear(&os);
-            if (vorbisInitialized) {
-                vorbis_block_clear(&vb);
-                vorbis_dsp_clear(&vd);
-                vorbisInitialized = false;
+        // Check for beginning of stream or new stream
+        bool isNewStream = !streamInitialized || ogg_page_serialno(&og) != os.serialno;
+        bool isBOS = ogg_page_bos(&og);
+
+        // Reset decoder state for new streams or when we see a BOS page
+        if (isNewStream || isBOS) {
+            // Clean up existing state if any
+            if (streamInitialized) {
+                ogg_stream_clear(&os);
+                if (vorbisInitialized) {
+                    vorbis_block_clear(&vb);
+                    vorbis_dsp_clear(&vd);
+                    vorbisInitialized = false;
+                }
+                vorbis_info_clear(&vi);
+                vorbis_comment_clear(&vc);
             }
-            vorbis_info_clear(&vi);
-            vorbis_comment_clear(&vc);
             
             // Initialize for new stream
             vorbis_info_init(&vi);
             vorbis_comment_init(&vc);
-            ogg_stream_init(&os, ogg_page_serialno(&og));
-            headerParsed = false;
-            packetCount = 0;
             
-            // Try to process the new page
-            if (ogg_stream_pagein(&os, &og) < 0) {
-                continue;  // Skip this page if it's corrupted
-            }
-        } else if (!streamInitialized) {
-            // First time initialization
             if (ogg_stream_init(&os, ogg_page_serialno(&og))) {
                 return {decodedData, DecoderError::FailedToCreateDecoder};
             }
-            streamInitialized = true;
             
-            if (ogg_stream_pagein(&os, &og) < 0) {
-                continue;  // Skip this page if it's corrupted
-            }
-        } else if (ogg_stream_pagein(&os, &og) < 0) {
-            continue;  // Skip this page if it's corrupted
+            streamInitialized = true;
+            headerParsed = false;
+            packetCount = 0;
+        }
+        
+        // Process the page
+        if (ogg_stream_pagein(&os, &og) < 0) {
+            // Skip corrupted pages
+            continue;
+        }
+        
+        // If this is a BOS page, ensure we're ready for header processing
+        if (isBOS) {
+            headerParsed = false;
+            packetCount = 0;
         }
 
         // Extract packets from page
@@ -168,25 +174,65 @@ std::pair<std::vector<float>, DecoderError> VorbisDecoderWrapper::decode(std::ve
 std::vector<float> VorbisDecoderWrapper::decodePacket(ogg_packet* packet) {
     std::vector<float> packetPcm;
 
+    // Handle header packets
     if (!headerParsed) {
-        // Header parsing phase (3 packets: identification, comment, setup)
+        // First packet must be BOS for proper Vorbis stream
+        if (packetCount == 0) {
+            // Debug output for first packet
+            fprintf(stderr, "First packet info - size: %ld, b_o_s: %ld, packetno: %lld, bytes[0]: %02x\n",
+                packet->bytes, packet->b_o_s, packet->packetno,
+                packet->bytes > 0 ? (unsigned char)packet->packet[0] : 0);
+                
+            // Check if this looks like a Vorbis header packet (should start with 0x01)
+            if (packet->bytes > 0 && packet->packet[0] != 0x01) {
+                fprintf(stderr, "First packet is not a Vorbis identification header\n");
+                return packetPcm;
+            }
+        }
+
+        // Only process headers if we're within the first 3 packets
         if (packetCount < 3) {
-            if (vorbis_synthesis_headerin(&vi, &vc, packet) < 0) {
-                fprintf(stderr, "Error processing Vorbis header %d\n", packetCount);
+            // Verify packet numbers are sequential and small
+            if (packet->packetno != packetCount) {
+                fprintf(stderr, "Unexpected packet number %lld for header %d\n", 
+                    packet->packetno, packetCount);
+                return packetPcm;
+            }
+
+            int ret = vorbis_synthesis_headerin(&vi, &vc, packet);
+            if (ret != 0) {
+                fprintf(stderr, "Error processing Vorbis header %d: code %d\n", packetCount, ret);
+                fprintf(stderr, "Packet size: %ld, B_O_S: %ld, packetno: %lld\n", 
+                    packet->bytes, packet->b_o_s, packet->packetno);
+                // Reset state on header failure
+                headerParsed = false;
+                packetCount = 0;
                 return packetPcm;
             }
 
             packetCount++;
+            
+            // Initialize decoder after all headers are processed
             if (packetCount == 3) {
-                // All headers parsed → initialize decoder
-                if (vorbis_synthesis_init(&vd, &vi) == 0) {
-                    vorbis_block_init(&vd, &vb);
-                    vorbisInitialized = true;
-                    headerParsed = true;
-                    getMetadata();
+                ret = vorbis_synthesis_init(&vd, &vi);
+                if (ret == 0) {
+                    ret = vorbis_block_init(&vd, &vb);
+                    if (ret == 0) {
+                        vorbisInitialized = true;
+                        headerParsed = true;
+                        getMetadata();
+                    } else {
+                        fprintf(stderr, "Failed to initialize vorbis block: code %d\n", ret);
+                        headerParsed = false;
+                        packetCount = 0;
+                    }
+                } else {
+                    fprintf(stderr, "Failed to initialize vorbis synthesis: code %d\n", ret);
+                    headerParsed = false;
+                    packetCount = 0;
                 }
             }
-            return packetPcm; // no PCM yet
+            return packetPcm; // no PCM during header parsing
         }
     }
 
