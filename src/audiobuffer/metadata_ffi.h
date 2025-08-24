@@ -6,6 +6,10 @@
 #define MAX_COMMENTS 32
 #define MAX_CHANNEL_MAPPING 8
 
+/// Strucs to send metadata from C to Dart.
+/// The "AudioMetadata" strucs got from *_stream_decoder.cpp in the getMetadata(), 
+/// will be converted to these to be sent to Dart.
+
 typedef enum
 {
     UNKNOWN,

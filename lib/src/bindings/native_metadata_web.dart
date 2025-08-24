@@ -1,11 +1,9 @@
 // ignore_for_file: public_member_api_docs
 
-import 'dart:js_interop';
-
 import 'package:flutter_soloud/src/bindings/js_extension.dart';
 import 'package:flutter_soloud/src/metadata.dart';
 
-/// Mirror of the C enum `DetectedTypeFFI`
+/// Reflection of metadata_ffi.h
 enum NativeDetectedType {
   unknown(0),
   oggOpus(1),
@@ -49,7 +47,7 @@ abstract class _MetadataJS {
   String _readString(int offset, int length) {
     final bytes = <int>[];
     for (var i = 0; i < length; i++) {
-      final charCode = wasmGetI32Value(ptr + offset + i, 'i8') as int;
+      final charCode = wasmGetI32Value(ptr + offset + i, 'i8');
       if (charCode == 0) break;
       bytes.add(charCode);
     }
@@ -142,15 +140,15 @@ class NativeAudioMetadata extends _MetadataJS {
 
   NativeOggMetadata get oggMetadata => NativeOggMetadata(ptr + 4 + 5 * 1024);
 
-  // Dummy method to reflect the FFI implementation. Not used with Web
+  // Dummy method to reflect the FFI implementation. Not used with Web.
   AudioMetadata toAudioMetadata() {
     return AudioMetadata(
       detectedType: DetectedType.unknown,
     );
   }
-  
+
   /// Converts the struct pointed by [metadataPtr] to the Dart-friendly
-  /// [AudioMetadata] class
+  /// [AudioMetadata] class.
   static AudioMetadata fromJSPointer(dynamic metadataPtr) {
     final instance = NativeAudioMetadata(metadataPtr as int);
     final mp3Meta = Mp3Metadata(

@@ -84,7 +84,7 @@ final class Mp3Metadata {
       ..writeln('Artist: $artist')
       ..writeln('Album: $album')
       ..writeln('Date: $date')
-      ..writeln('Genre: $genre');
+      ..write('Genre: $genre');
     return buffer.toString();
   }
 }
@@ -138,7 +138,7 @@ final class VorbisInfo {
       ..writeln('\tUpper: $bitrateUpper')
       ..writeln('\tNominal: $bitrateNominal')
       ..writeln('\tLower: $bitrateLower')
-      ..writeln('\tWindow: $bitrateWindow');
+      ..write('\tWindow: $bitrateWindow');
     return buffer.toString();
   }
 }
@@ -204,7 +204,7 @@ final class OpusInfo {
       ..writeln('\tStreamCount: $streamCount')
       ..writeln('\tCoupledCount: $coupledCount')
       ..writeln('\tChannelMapping: $channelMapping')
-      ..writeln('\tChannelMappingSize: $channelMappingSize');
+      ..write('\tChannelMappingSize: $channelMappingSize');
     return buffer.toString();
   }
 }
@@ -242,22 +242,23 @@ final class OggMetadata {
       ..writeln('Vendor: $vendor')
       ..writeln('CommentsCount: $commentsCount');
 
-      // Write comments in lines
-      for (final comment in comments.entries) {
-        buffer.writeln('\t${comment.key}: ${comment.value}');
-      }
+    // Write comments in lines
+    for (final comment in comments.entries) {
+      buffer.writeln('\t${comment.key}: ${comment.value}');
+    }
     switch (format) {
       case DetectedType.oggOpus:
         buffer
-        ..writeln('OpusInfo')
-        ..writeln(opusInfo);
+          ..writeln('OpusInfo')
+          ..write(opusInfo);
       case DetectedType.oggVorbis:
         buffer
-        ..writeln('Vorbis Info')
-        ..writeln(vorbisInfo);
+          ..writeln('Vorbis Info')
+          ..write(vorbisInfo);
       case DetectedType.unknown:
       case DetectedType.mp3WithId3:
       case DetectedType.mp3Stream:
+        break;
     }
 
     return buffer.toString();
@@ -288,8 +289,7 @@ final class AudioMetadata {
   @override
   String toString() {
     final buffer = StringBuffer()
-      ..writeln('|-------------- $detectedType --------------|')
-      ..writeln('format: $detectedType');
+      ..writeln('|-------------- $detectedType --------------|');
 
     switch (detectedType) {
       case DetectedType.mp3WithId3:
@@ -303,7 +303,7 @@ final class AudioMetadata {
       case DetectedType.unknown:
         buffer.writeln('Unknown audio format');
     }
-    buffer.writeln('|---------------------------------------|');
+    buffer.write('|---------------------------------------|');
     return buffer.toString();
   }
 }

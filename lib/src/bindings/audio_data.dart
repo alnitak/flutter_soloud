@@ -1,4 +1,5 @@
-import 'package:flutter/foundation.dart';
+import 'dart:typed_data';
+
 import 'package:flutter_soloud/src/bindings/audio_data_ffi.dart'
     if (dart.library.js_interop) 'audio_data_web.dart';
 import 'package:flutter_soloud/src/bindings/soloud_controller.dart';

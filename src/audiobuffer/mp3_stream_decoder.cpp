@@ -176,7 +176,7 @@ std::pair<std::vector<float>, DecoderError> MP3DecoderWrapper::decode(std::vecto
 
                 if (metadata_remaining == 0) {
                     // Metadata complete, parse StreamTitle
-                    printf("metadata_remaining == 0 - MP3 metadata: %s\n", metadata_buffer.c_str());
+                    // printf("MP3 metadata: %s\n", metadata_buffer.c_str());
                     AudioMetadata newMetadata;
                     newMetadata.type = DetectedType::BUFFER_MP3_STREAM;
                     newMetadata.mp3Metadata.title = metadata_buffer;

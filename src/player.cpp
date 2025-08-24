@@ -354,8 +354,9 @@ PlayerErrors Player::setBufferStream(
     auto newSound = std::make_unique<ActiveSound>();
     newSound.get()->completeFileName = "";
     newSound.get()->soundHash = hash;
-
+    
     newSound.get()->sound = std::make_unique<SoLoud::BufferStream>();
+
     newSound.get()->soundType = SoundType::TYPE_BUFFER_STREAM;
     PlayerErrors e = static_cast<SoLoud::BufferStream *>(newSound.get()->sound.get())->setBufferStream(
         this, newSound.get(),
@@ -385,7 +386,7 @@ PlayerErrors Player::addAudioDataStream(
     if (s->soundType != SoundType::TYPE_BUFFER_STREAM)
         return hashIsNotABufferStream;
 
-    return static_cast<SoLoud::BufferStream *>(s->sound.get())->addData(data, aDataLen);
+    return static_cast<SoLoud::BufferStream *>(s->sound.get())->addData(data, aDataLen, false);
 }
 
 PlayerErrors Player::resetBufferStream(unsigned int hash)
@@ -669,7 +670,7 @@ void Player::disposeSound(unsigned int soundHash)
     }
 
     auto it = std::find_if(sounds.begin(), sounds.end(),
-                           [soundHash](const std::unique_ptr<ActiveSound> &sound)
+                           [soundHash](const std::unique_ptr<ActiveSound> &sound) 
                            {
                                return sound->soundHash == soundHash;
                            });
@@ -690,7 +691,6 @@ void Player::disposeSound(unsigned int soundHash)
             }
             it->get()->filters.reset();
         }
-
         sounds.erase(it);
     }
 }
@@ -957,7 +957,7 @@ ActiveSound *Player::findByHandle(SoLoud::handle handle)
 ActiveSound *Player::findByHash(unsigned int soundHash)
 {
     auto const &s = std::find_if(sounds.begin(), sounds.end(),
-                                 [&](std::unique_ptr<ActiveSound> const &f)
+                                 [&](std::unique_ptr<ActiveSound> const &f) 
                                  { return f->soundHash == soundHash; });
     if (s == sounds.end())
         return nullptr;

@@ -1,12 +1,10 @@
-// ignore_for_file: public_member_api_docs, constant_identifier_names, camel_case_types
-// ignore_for_file: non_constant_identifier_names
+// ignore_for_file: public_member_api_docs, constant_identifier_names
+// ignore_for_file: non_constant_identifier_names, camel_case_types
 
 import 'dart:ffi' as ffi;
 import 'package:flutter_soloud/src/metadata.dart';
 
-/// Convert native FFI or Web metadata to AudioMetadata.
-/// This are classes that when a native metadata is received from the JS or
-/// from the Dart FFI, it's converted to Dart AudioMetadata.
+/// Reflection of metadata_ffi.h
 
 enum NativeDetectedType {
   UNKNOWN(0),
@@ -178,12 +176,13 @@ final class NativeAudioMetadata extends ffi.Struct {
     return buffer.toString().trim();
   }
 
-  // Dummy method to reflect the web implementation. Not used with FFI
+  // Dummy method to reflect the web implementation. Not used with FFI.
   static AudioMetadata fromJSPointer(dynamic metadataPtr) {
     return (metadataPtr as NativeAudioMetadata).toAudioMetadata();
   }
 
-  /// Converts this FFI struct to the Dart-friendly [AudioMetadata] class
+  /// Convert native FFI or Web metadata to the Dart-friendly
+  /// [AudioMetadata] class.
   AudioMetadata toAudioMetadata() {
     final mp3Meta = Mp3Metadata(
       title: _arrayToString(mp3Metadata.title),

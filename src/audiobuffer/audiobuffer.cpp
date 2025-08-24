@@ -14,9 +14,9 @@
 
 namespace SoLoud
 {
-    std::mutex buffer_lock_mutex;
-    std::mutex check_buffer_mutex;
-	
+	std::mutex buffer_lock_mutex;
+	std::mutex check_buffer_mutex;
+
 	BufferStreamInstance::BufferStreamInstance(BufferStream *aParent)
 	{
 		mParent = aParent;
@@ -38,11 +38,11 @@ namespace SoLoud
 			// Calculate mStreamPosition based on mOffset
 			mStreamPosition = mOffset / (float)(mBaseSamplerate * mChannels);
 
-
 			// This is not nice to do in the audio callback, but I didn't
 			// find a better way to get lenght and pause the sound and the
 			// `checkBuffering` function is fast enough.
-			if (!mParent->mIsBuffering) {
+			if (!mParent->mIsBuffering)
+			{
 				mParent->mThePlayer->soloud.unlockAudioMutex_internal();
 				mParent->checkBuffering(0);
 				mParent->mThePlayer->soloud.lockAudioMutex_internal();
@@ -62,7 +62,8 @@ namespace SoLoud
 			// This is not nice to do in the audio callback, but I didn't
 			// find a better way to get lenght and pause the sound and the
 			// `chakeBuffering` function is fast enough.
-			if (!mParent->mIsBuffering) {
+			if (!mParent->mIsBuffering)
+			{
 				mParent->mThePlayer->soloud.unlockAudioMutex_internal();
 				mParent->checkBuffering(0);
 				mParent->mThePlayer->soloud.lockAudioMutex_internal();
@@ -97,22 +98,23 @@ namespace SoLoud
 
 		unsigned int totalBytesRead = samplesToRead * mChannels * sizeof(float);
 		size_t samplesRemoved = mParent->mBuffer.removeData(totalBytesRead);
-		
-		 // Update stream position regardless of buffering type
-        mStreamTime += samplesToRead / (float)mBaseSamplerate;
-        
+
+		// Update stream position regardless of buffering type
+		mStreamTime += samplesToRead / (float)mBaseSamplerate;
+
 		// If buffering type is RELEASED, adjust mSampleCount and don't increment mOffset
-		if (mParent->mBuffer.bufferingType == BufferingType::RELEASED) {
+		if (mParent->mBuffer.bufferingType == BufferingType::RELEASED)
+		{
 			mParent->mSampleCount -= samplesRemoved / mParent->mPCMformat.bytesPerSample;
 			// For RELEASED type, streamPosition is always at the start of the remaining buffer
-            mStreamPosition = 0;
+			mStreamPosition = 0;
 			mParent->mBytesConsumed += totalBytesRead;
 		}
 		else
 		{
 			mOffset += samplesToRead * mChannels;
 			// For PRESERVED type, streamPosition advances with the offset
-            // mStreamPosition = mOffset / (float)(sizeof(float) * mBaseSamplerate * mChannels);
+			// mStreamPosition = mOffset / (float)(sizeof(float) * mBaseSamplerate * mChannels);
 			mStreamPosition = mOffset / (float)(mBaseSamplerate * mChannels);
 		}
 
@@ -121,15 +123,17 @@ namespace SoLoud
 
 	result BufferStreamInstance::seek(double aSeconds, float *mScratch, unsigned int mScratchSize)
 	{
-		if (aSeconds <= 0.0) {
+		if (aSeconds <= 0.0)
+		{
 			rewind();
 			return SO_NO_ERROR;
 		}
-		if (mParent->mBuffer.bufferingType == BufferingType::RELEASED) {
-            // Seeking not supported in RELEASED mode since data is discarded
+		if (mParent->mBuffer.bufferingType == BufferingType::RELEASED)
+		{
+			// Seeking not supported in RELEASED mode since data is discarded
 			// TODO: Support seeking forward in RELEASED mode
-            return INVALID_PARAMETER;
-        }
+			return INVALID_PARAMETER;
+		}
 		double offset = aSeconds - mStreamPosition;
 		if (offset <= 0)
 		{
@@ -167,16 +171,17 @@ namespace SoLoud
 	{
 		auto b = mParent->mBuffer.bufferingType == BufferingType::PRESERVED;
 		// PRESERVED
-		if (b && mParent->dataIsEnded && 
+		if (b && mParent->dataIsEnded &&
 			mOffset >= mParent->mSampleCount)
 		{
 			return 1;
-		} else 
-		// RELEASED
-		if (!b && mParent->dataIsEnded && mParent->mBuffer.getFloatsBufferSize() == 0)
-		{
-			return 1;
 		}
+		else
+			// RELEASED
+			if (!b && mParent->dataIsEnded && mParent->mBuffer.getFloatsBufferSize() == 0)
+			{
+				return 1;
+			}
 		return 0;
 	}
 
@@ -191,6 +196,7 @@ namespace SoLoud
 	BufferStream::~BufferStream()
 	{
 		stop();
+		resetBuffer();
 	}
 
 	PlayerErrors BufferStream::setBufferStream(
@@ -201,7 +207,7 @@ namespace SoLoud
 		SoLoud::time bufferingTimeNeeds,
 		PCMformat pcmFormat,
 		dartOnBufferingCallback_t onBufferingCallback,
-        dartOnMetadataCallback_t onMetadataCallback)
+		dartOnMetadataCallback_t onMetadataCallback)
 	{
 		/// maxBufferSize must be a number divisible by channels * sizeof(float)
 		if (maxBufferSize % (pcmFormat.channels * sizeof(float)) != 0)
@@ -209,7 +215,8 @@ namespace SoLoud
 
 		// Force OPUS to AUTO since Mp3, Ogg Opus and Ogg Vorbis are auto detected
 		// There is no more need to use BufferType::OPUS
-		if (pcmFormat.dataType == BufferType::OPUS) pcmFormat.dataType = BufferType::AUTO;
+		if (pcmFormat.dataType == BufferType::OPUS)
+			pcmFormat.dataType = BufferType::AUTO;
 
 		mBytesReceived = 0;
 		mUncompressedBytesReceived = 0;
@@ -234,10 +241,10 @@ namespace SoLoud
 		mIsBuffering = true;
 		mIcyMetaInt = 16000; // for mp3 streaming audio only. Most online streaming use 16000
 
-		if (pcmFormat.dataType == BufferType::AUTO) {
+		if (pcmFormat.dataType == BufferType::AUTO)
+		{
 			streamDecoder = std::make_unique<StreamDecoder>();
 		}
-
 
 #if defined(NO_OPUS_OGG_LIBS)
 		if (pcmFormat.dataType == BufferType::OPUS)
@@ -293,12 +300,13 @@ namespace SoLoud
 
 		size_t bytesWritten = 0;
 		bool allDataAdded = -1;
-		int bufferDataToAdd = 0;
+		int32_t bufferDataToAdd = 0;
 
-		if (!dontAdd) {
+		if (!dontAdd)
+		{
 			buffer.insert(buffer.end(),
-				static_cast<const unsigned char *>(aData),
-				static_cast<const unsigned char *>(aData) + aDataLen);
+						  static_cast<const unsigned char *>(aData),
+						  static_cast<const unsigned char *>(aData) + aDataLen);
 			mBytesReceived += aDataLen;
 			// Performing some buffering. We need some data to be added expecially when using opus or mp3.
 			if (buffer.size() > 1024 * 16) // 16 KB of data.
@@ -314,13 +322,17 @@ namespace SoLoud
 					// When using opus,ogg or mp3 we don't need to align.
 					bufferDataToAdd = buffer.size();
 				}
-			} else
+			}
+			else
+			{
 				// Return if there is not enough data to add.
 				return PlayerErrors::noError;
-		} else {
+			}
+		}
+		else
+		{
 			bufferDataToAdd = buffer.size();
 		}
-		
 
 		// It's time to decode the data already stored in the buffer
 		if (mPCMformat.dataType == BufferType::AUTO)
@@ -331,36 +343,40 @@ namespace SoLoud
 			// the AudioSource will be set to use them.
 			// For the mp3 this AudioSource will impose the mp3 settings (the engine will convert to its settings).
 			auto [decoded, error] = streamDecoder->decode(buffer, &sampleRate, &channels,
-				[&](AudioMetadata meta) {
-					// meta.debug();
-					this->callOnMetadataCallback(meta);
-				}
-			);
+					[&](AudioMetadata meta)
+					{
+					//   meta.debug();
+						this->callOnMetadataCallback(meta);
+					});
 
 			// Handle decoder errors
-			switch (error) {
-				case DecoderError::FormatNotSupported:
-					return PlayerErrors::audioFormatNotSupported;
-				case DecoderError::NoOpusOggLibs:
-					return PlayerErrors::opusOggVorbisLibsNotFound;
-				case DecoderError::FailedToCreateDecoder:
-					return PlayerErrors::failedToCreateOpusDecoder;
-				case DecoderError::ErrorReadingOggOpusPage:
-					return PlayerErrors::failedToDecodeOpusPacket;
-				default:
-					break;
+			switch (error)
+			{
+			case DecoderError::FormatNotSupported:
+				return PlayerErrors::audioFormatNotSupported;
+			case DecoderError::NoOpusOggLibs:
+				return PlayerErrors::opusOggVorbisLibsNotFound;
+			case DecoderError::FailedToCreateDecoder:
+				return PlayerErrors::failedToCreateOpusDecoder;
+			case DecoderError::ErrorReadingOggOpusPage:
+				return PlayerErrors::failedToDecodeOpusPacket;
+			default:
+				break;
 			}
 
 			if (!decoded.empty())
 			{
-				if (mPCMformat.dataType == BufferType::AUTO) {
-					if (sampleRate != -1) { 
+				if (mPCMformat.dataType == BufferType::AUTO)
+				{
+					if (sampleRate != -1)
+					{
 						mPCMformat.sampleRate = sampleRate;
 						mBaseSamplerate = sampleRate;
 						mInstance->mSamplerate = sampleRate;
 						mInstance->mBaseSamplerate = sampleRate;
 					}
-					if (channels != -1) {
+					if (channels != -1)
+					{
 						mPCMformat.channels = channels;
 						mChannels = channels;
 						mInstance->mChannels = channels;
@@ -368,32 +384,34 @@ namespace SoLoud
 				}
 
 				bytesWritten = mBuffer.addData(
-									BufferType::PCM_F32LE,
-									decoded.data(),
-									decoded.size(),
-									&allDataAdded) *
-								sizeof(float);
+								   BufferType::PCM_F32LE,
+								   decoded.data(),
+								   decoded.size(),
+								   &allDataAdded) *
+							   sizeof(float);
 			}
-			else {
+			else
+			{
 				// Continue buffering. Maybe we are still adding artwork image data.
 				return PlayerErrors::noError;
 			}
 		}
 		else
-		{   // PCM data
+		{
+			// PCM data
 			bytesWritten = mBuffer.addData(
-				mPCMformat.dataType,
-				buffer.data(),
-				bufferDataToAdd / mPCMformat.bytesPerSample,
-				&allDataAdded) *
-					mPCMformat.bytesPerSample;
+							   mPCMformat.dataType,
+							   buffer.data(),
+							   bufferDataToAdd / mPCMformat.bytesPerSample,
+							   &allDataAdded) *
+						   mPCMformat.bytesPerSample;
 			// Remove the processed data from the buffer
-			if (bytesWritten > 0) {
+			if (bytesWritten > 0)
+			{
 				buffer.erase(buffer.begin(), buffer.begin() + bufferDataToAdd);
 			}
 		}
-		
-		
+
 		if (mIsBuffering)
 			checkBuffering(bytesWritten);
 		mUncompressedBytesReceived += bytesWritten;
@@ -429,7 +447,7 @@ namespace SoLoud
 			// SoLoud::time pos = mThePlayer->getPosition(handle);
 			bool isPaused = mThePlayer->getPause(handle);
 
-			// printf("checkBuffering -- bufferLength: %lf, currBufferTime: %lf\n", 
+			// printf("checkBuffering -- bufferLength: %lf, currBufferTime: %lf\n",
 			// 	bufferLength, currBufferTime);
 
 			// This handle needs to wait for [TIME_FOR_BUFFERING]. Pause it.
@@ -439,15 +457,16 @@ namespace SoLoud
 				mThePlayer->setPause(handle, true);
 				isPaused = true;
 				callOnBufferingCallback(true, handle, currBufferTime);
-			} else
-			// This handle has reached [TIME_FOR_BUFFERING]. Unpause it.
-			if (currBufferTime + addedDataTime - mParent->handle[i].bufferingTime >= mBufferingTimeNeeds && isPaused)
-			{
-				mThePlayer->setPause(handle, false);
-				isPaused = false;
-				mParent->handle[i].bufferingTime = currBufferTime + addedDataTime;
-				callOnBufferingCallback(false, handle, currBufferTime);
 			}
+			else
+				// This handle has reached [TIME_FOR_BUFFERING]. Unpause it.
+				if (currBufferTime + addedDataTime - mParent->handle[i].bufferingTime >= mBufferingTimeNeeds && isPaused)
+				{
+					mThePlayer->setPause(handle, false);
+					isPaused = false;
+					mParent->handle[i].bufferingTime = currBufferTime + addedDataTime;
+					callOnBufferingCallback(false, handle, currBufferTime);
+				}
 			// If data is ended and the handle is paused, unpause it to listen to the rest of the data.
 			if (dataIsEnded && isPaused)
 			{
@@ -528,25 +547,27 @@ namespace SoLoud
 		return (double)(mBytesConsumed / mPCMformat.bytesPerSample) / (mBaseSamplerate * mPCMformat.channels);
 	}
 
-	AudioMetadataFFI BufferStream::convertMetadataToFFI(const AudioMetadata& metadata) {
+	AudioMetadataFFI BufferStream::convertMetadataToFFI(const AudioMetadata &metadata)
+	{
 		AudioMetadataFFI ffi = {};
 
 		// Set detected type
-		switch (metadata.type) {
-			case BUFFER_OGG_OPUS:
-				ffi.detectedType = DetectedTypeFFI::OGG_OPUS;
-				break;
-			case BUFFER_OGG_VORBIS:
-				ffi.detectedType = DetectedTypeFFI::OGG_VORBIS;
-				break;
-			case BUFFER_MP3_WITH_ID3:
-				ffi.detectedType = DetectedTypeFFI::MP3_WITH_ID3;
-				break;
-			case BUFFER_MP3_STREAM:
-				ffi.detectedType = DetectedTypeFFI::MP3_STREAM;
-				break;
-			default:
-				ffi.detectedType = DetectedTypeFFI::UNKNOWN;
+		switch (metadata.type)
+		{
+		case BUFFER_OGG_OPUS:
+			ffi.detectedType = DetectedTypeFFI::OGG_OPUS;
+			break;
+		case BUFFER_OGG_VORBIS:
+			ffi.detectedType = DetectedTypeFFI::OGG_VORBIS;
+			break;
+		case BUFFER_MP3_WITH_ID3:
+			ffi.detectedType = DetectedTypeFFI::MP3_WITH_ID3;
+			break;
+		case BUFFER_MP3_STREAM:
+			ffi.detectedType = DetectedTypeFFI::MP3_STREAM;
+			break;
+		default:
+			ffi.detectedType = DetectedTypeFFI::UNKNOWN;
 		}
 
 		// Convert MP3 metadata
@@ -561,8 +582,10 @@ namespace SoLoud
 		ffi.oggMetadata.commentsCount = std::min((int)metadata.oggMetadata.comments.size(), MAX_COMMENTS);
 
 		int i = 0;
-		for (const auto& comment : metadata.oggMetadata.comments) {
-			if (i >= MAX_COMMENTS) break;
+		for (const auto &comment : metadata.oggMetadata.comments)
+		{
+			if (i >= MAX_COMMENTS)
+				break;
 			strncpy(ffi.oggMetadata.comments[i].key, comment.first.c_str(), MAX_STRING_LENGTH - 1);
 			strncpy(ffi.oggMetadata.comments[i].value, comment.second.c_str(), MAX_STRING_LENGTH - 1);
 			i++;
@@ -576,8 +599,7 @@ namespace SoLoud
 			metadata.oggMetadata.vorbisInfo.bitrate_upper,
 			metadata.oggMetadata.vorbisInfo.bitrate_nominal,
 			metadata.oggMetadata.vorbisInfo.bitrate_lower,
-			metadata.oggMetadata.vorbisInfo.bitrate_window
-		};
+			metadata.oggMetadata.vorbisInfo.bitrate_window};
 
 		// Convert Opus info
 		ffi.oggMetadata.opusInfo = {
@@ -590,11 +612,11 @@ namespace SoLoud
 			metadata.oggMetadata.opusInfo.stream_count,
 			metadata.oggMetadata.opusInfo.coupled_count,
 			{0}, // Initialize channel_mapping array to zeros
-			(int)metadata.oggMetadata.opusInfo.channel_mapping.size()
-		};
+			(int)metadata.oggMetadata.opusInfo.channel_mapping.size()};
 
 		// Copy channel mapping
-		for (size_t i = 0; i < metadata.oggMetadata.opusInfo.channel_mapping.size() && i < MAX_CHANNEL_MAPPING; i++) {
+		for (size_t i = 0; i < metadata.oggMetadata.opusInfo.channel_mapping.size() && i < MAX_CHANNEL_MAPPING; i++)
+		{
 			ffi.oggMetadata.opusInfo.channel_mapping[i] = metadata.oggMetadata.opusInfo.channel_mapping[i];
 		}
 

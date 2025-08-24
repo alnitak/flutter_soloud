@@ -171,9 +171,6 @@ interface class SoLoud {
   /// A helper for loading files that aren't on disk.
   final SoLoudLoader _loader = SoLoudLoader();
 
-  /// Wheter or not the Opus and Ogg libraries are available.
-  bool _areOpusOggLibsAvailable = false;
-
   /// Whether or not is it possible to ask for wave and FFT data.
   bool _isVisualizationEnabled = false;
 
