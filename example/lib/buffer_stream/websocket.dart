@@ -91,288 +91,288 @@ class _WebsocketExampleState extends State<WebsocketExample> {
       appBar: AppBar(
         title: const Text('Receive audio data from a websocket Example'),
       ),
-      body: Column(
-        mainAxisSize: MainAxisSize.min,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              /// SAMPLERATE
-              Expanded(
-                child: RadioGroup<int>(
-                  groupValue: srId,
-                  onChanged: (int? value) {
-                    setState(() {
-                      srId = value!;
-                    });
-                  },
-                  child: Column(
-                    children: <Widget>[
-                      for (var i = 0; i < sampleRate.length; i++)
-                        RadioListTile<int>(
-                          title: Text(
-                            sampleRate[i].toString(),
-                            style: const TextStyle(fontSize: 12),
+      body: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                /// SAMPLERATE
+                Expanded(
+                  child: RadioGroup<int>(
+                    groupValue: srId,
+                    onChanged: (int? value) {
+                      setState(() {
+                        srId = value!;
+                      });
+                    },
+                    child: Column(
+                      children: <Widget>[
+                        for (var i = 0; i < sampleRate.length; i++)
+                          RadioListTile<int>(
+                            title: Text(
+                              sampleRate[i].toString(),
+                              style: const TextStyle(fontSize: 10),
+                            ),
+                            value: i,
+                            enabled: pcmValuesEnabled,
+                            visualDensity: const VisualDensity(
+                              horizontal: VisualDensity.minimumDensity,
+                              vertical: VisualDensity.minimumDensity,
+                            ),
                           ),
-                          value: i,
-                          enabled: pcmValuesEnabled,
-                          visualDensity: const VisualDensity(
-                            horizontal: VisualDensity.minimumDensity,
-                            vertical: VisualDensity.minimumDensity,
-                          ),
-                        ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
-              ),
 
-              /// CHANNELS
-              Expanded(
-                child: RadioGroup<int>(
-                  groupValue: chId,
-                  onChanged: (int? value) {
-                    setState(() {
-                      chId = value!;
-                    });
-                  },
-                  child: Column(
-                    children: <Widget>[
-                      for (var i = 0; i < Channels.values.length; i++)
-                        RadioListTile<int>(
-                          title: Text(
-                            Channels.values[i].toString(),
-                            style: const TextStyle(fontSize: 12),
+                /// CHANNELS
+                Expanded(
+                  child: RadioGroup<int>(
+                    groupValue: chId,
+                    onChanged: (int? value) {
+                      setState(() {
+                        chId = value!;
+                      });
+                    },
+                    child: Column(
+                      children: <Widget>[
+                        for (var i = 0; i < Channels.values.length; i++)
+                          RadioListTile<int>(
+                            title: Text(
+                              Channels.values[i].toString(),
+                              style: const TextStyle(fontSize: 10),
+                            ),
+                            value: i,
+                            enabled: pcmValuesEnabled,
+                            visualDensity: const VisualDensity(
+                              horizontal: VisualDensity.minimumDensity,
+                              vertical: VisualDensity.minimumDensity,
+                            ),
                           ),
-                          value: i,
-                          enabled: pcmValuesEnabled,
-                          visualDensity: const VisualDensity(
-                            horizontal: VisualDensity.minimumDensity,
-                            vertical: VisualDensity.minimumDensity,
-                          ),
-                        ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
-              ),
 
-              /// FORMAT
-              Expanded(
-                child: RadioGroup<int>(
-                  groupValue: fmtId,
-                  onChanged: (int? value) {
-                    setState(() {
-                      fmtId = value!;
-                    });
-                  },
-                  child: Column(
-                    children: <Widget>[
-                      for (var i = 0; i < format.length; i++)
-                        RadioListTile<int>(
-                          title: Text(
-                            format[i],
-                            style: const TextStyle(fontSize: 12),
+                /// FORMAT
+                Expanded(
+                  child: RadioGroup<int>(
+                    groupValue: fmtId,
+                    onChanged: (int? value) {
+                      setState(() {
+                        fmtId = value!;
+                      });
+                    },
+                    child: Column(
+                      children: <Widget>[
+                        for (var i = 0; i < format.length; i++)
+                          RadioListTile<int>(
+                            title: Text(
+                              format[i],
+                              style: const TextStyle(fontSize: 10),
+                            ),
+                            value: i,
+                            visualDensity: const VisualDensity(
+                              horizontal: VisualDensity.minimumDensity,
+                              vertical: VisualDensity.minimumDensity,
+                            ),
                           ),
-                          value: i,
-                          visualDensity: const VisualDensity(
-                            horizontal: VisualDensity.minimumDensity,
-                            vertical: VisualDensity.minimumDensity,
-                          ),
-                        ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            ],
-          ),
-          OutlinedButton(
-            onPressed: () async {
-              await channel?.sink.close();
-              await SoLoud.instance.disposeAllSources();
-              streamBuffering.value = false;
+              ],
+            ),
+            OutlinedButton(
+              onPressed: () async {
+                await channel?.sink.close();
+                await SoLoud.instance.disposeAllSources();
+                streamBuffering.value = false;
 
-              currentSound = SoLoud.instance.setBufferStream(
-                // maxBufferSizeBytes: 1024 * 1024 * 200, // 200 MB
-                maxBufferSizeDuration: const Duration(minutes: 5),
-                bufferingTimeNeeds: 0.5,
-                sampleRate: sampleRate[srId],
-                channels: Channels.values[chId],
-                format: BufferType.values[fmtId],
-                // ignore: avoid_redundant_argument_values
-                bufferingType: bufferingType.value,
-                onBuffering: (isBuffering, handle, time) async {
-                  debugPrint('started buffering? $isBuffering  with '
-                      'handle: $handle at time $time');
-                  if (context.mounted) {
-                    setState(() {
-                      streamBuffering.value = !streamBuffering.value;
-                    });
-                  }
-                },
-                onMetadata: (metadata) {
-                  debugPrint(metadata.toString());
-                },
-              );
-              setState(() {});
-            },
-            child: const Text('set chosen stream type'),
-          ),
-          const SizedBox(height: 16),
-          OutlinedButton(
-            onPressed: () async {
-              /// This could be a way to receive PCM data from some sources and
-              /// use it to create a new [AudioSource].
-              /// Could be done inside an Isolate for example to manage received
-              /// data if it is in JSON format or the audio data is base64.
-              if (currentSound == null) {
-                debugPrint('A stream has not been set yet!');
-                return;
-              }
-
-              /// Connect to the websocket
-              final wsUrl = Uri.parse(websocketUri);
-              channel = WebSocketChannel.connect(wsUrl);
-
-              /// Wait for the websocket to be ready
-              try {
-                await channel?.ready;
-              } on SocketException catch (e) {
-                debugPrint(e.toString());
-              } on WebSocketChannelException catch (e) {
-                debugPrint(e.toString());
-              }
-
-              /// Listen to the websocket
-              channel?.stream.listen(
-                (message) async {
-                  numberOfChunks++;
-                  byteSize += (message as List<int>).length;
-
-                  try {
-                    SoLoud.instance.addAudioDataStream(
-                      currentSound!,
-                      Uint8List.fromList(message),
-                    );
-                  } on Exception catch (e) {
-                    debugPrint('error adding audio data: $e');
-                    await channel?.sink.close();
-                  }
-
-                  // start playing at first audio chunk received
-                  if (numberOfChunks == 1) {
-                    handle = await SoLoud.instance.play(currentSound!);
-                  }
-                },
-                onDone: () {
-                  if (currentSound != null) {
-                    SoLoud.instance.setDataIsEnded(currentSound!);
-                  }
-                  debugPrint('ws channel closed. '
-                      'numberOfChunks: $numberOfChunks  byteSize: $byteSize');
-                  numberOfChunks = 0;
-                  byteSize = 0;
-                },
-                onError: (Object error) {
-                  debugPrint('ws error: $error');
-                },
-              );
-            },
-            child: const Text('connect to WS and receive audio data'),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              OutlinedButton(
-                onPressed: () async {
-                  if (currentSound == null) return;
-                  handle = await SoLoud.instance.play(
-                    currentSound!,
-                    volume: 0.6,
-                    // looping: true,
-                  );
-                  Timer.periodic(const Duration(milliseconds: 1000), (timer) {
-                    if (currentSound == null ||
-                        SoLoud.instance.getIsValidVoiceHandle(handle!) ==
-                            false) {
-                      timer.cancel();
-                      setState(() {});
+                currentSound = SoLoud.instance.setBufferStream(
+                  // maxBufferSizeBytes: 1024 * 1024 * 200, // 200 MB
+                  maxBufferSizeDuration: const Duration(minutes: 5),
+                  bufferingTimeNeeds: 0.5,
+                  sampleRate: sampleRate[srId],
+                  channels: Channels.values[chId],
+                  format: BufferType.values[fmtId],
+                  // ignore: avoid_redundant_argument_values
+                  bufferingType: bufferingType.value,
+                  onBuffering: (isBuffering, handle, time) async {
+                    debugPrint('started buffering? $isBuffering  with '
+                        'handle: $handle at time $time');
+                    if (context.mounted) {
+                      setState(() {
+                        streamBuffering.value = !streamBuffering.value;
+                      });
                     }
-                  });
-                },
-                child: const Text('play'),
-              ),
-              const SizedBox(width: 8),
-              OutlinedButton(
-                onPressed: () async {
-                  if (currentSound == null) return;
-                  SoLoud.instance.resetBufferStream(currentSound!);
-                  streamBuffering.value = false;
-                },
-                child: const Text('reset buffer'),
-              ),
-              const SizedBox(width: 8),
-              OutlinedButton(
-                onPressed: () async {
-                  currentSound = null;
-                  await SoLoud.instance.disposeAllSources();
-                  await channel?.sink.close();
-                  streamBuffering.value = false;
-                  setState(() {});
-                },
-                child: const Text('stop sounds and close'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
+                  },
+                  onMetadata: (metadata) {
+                    debugPrint(metadata.toString());
+                  },
+                );
+                setState(() {});
+              },
+              child: const Text('set chosen stream type'),
+            ),
+            const SizedBox(height: 16),
+            OutlinedButton(
+              onPressed: () async {
+                /// This could be a way to receive PCM data from some sources and
+                /// use it to create a new [AudioSource].
+                /// Could be done inside an Isolate for example to manage received
+                /// data if it is in JSON format or the audio data is base64.
+                if (currentSound == null) {
+                  debugPrint('A stream has not been set yet!');
+                  return;
+                }
 
-          /// released or preserved the buffer
-          ValueListenableBuilder(
-            valueListenable: bufferingType,
-            builder: (_, v, __) {
-              return Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Checkbox(
-                    value: v == BufferingType.released,
-                    onChanged: (value) {
-                      bufferingType.value = (value ?? true)
-                          ? BufferingType.released
-                          : BufferingType.preserved;
-                    },
-                  ),
-                  const Text('released'),
-                  const SizedBox(width: 8),
-                  Checkbox(
-                    value: v == BufferingType.preserved,
-                    onChanged: (value) {
-                      bufferingType.value = (value ?? true)
-                          ? BufferingType.preserved
-                          : BufferingType.released;
-                    },
-                  ),
-                  const Text('preserved'),
-                ],
-              );
-            },
-          ),
-          const SizedBox(height: 16),
-          BufferBar(
-            bufferingType: bufferingType.value,
-            isBuffering: streamBuffering.value,
-            sound: currentSound,
-          ),
-          const SizedBox(height: 16),
-          ValueListenableBuilder(
-            valueListenable: streamBuffering,
-            builder: (_, value, __) {
-              if (value) {
-                return const Text('BUFFERING!');
-              }
-              return const SizedBox.shrink();
-            },
-          ),
-        ],
+                /// Connect to the websocket
+                final wsUrl = Uri.parse(websocketUri);
+                channel = WebSocketChannel.connect(wsUrl);
+
+                /// Wait for the websocket to be ready
+                try {
+                  await channel?.ready;
+                } on SocketException catch (e) {
+                  debugPrint(e.toString());
+                } on WebSocketChannelException catch (e) {
+                  debugPrint(e.toString());
+                }
+
+                /// Listen to the websocket
+                channel?.stream.listen(
+                  (message) async {
+                    numberOfChunks++;
+                    byteSize += (message as List<int>).length;
+
+                    try {
+                      SoLoud.instance.addAudioDataStream(
+                        currentSound!,
+                        Uint8List.fromList(message),
+                      );
+                    } on Exception catch (e) {
+                      debugPrint('error adding audio data: $e');
+                      await channel?.sink.close();
+                    }
+
+                    // start playing at first audio chunk received
+                    if (numberOfChunks == 1) {
+                      handle = await SoLoud.instance.play(currentSound!);
+                    }
+                  },
+                  onDone: () {
+                    if (currentSound != null) {
+                      SoLoud.instance.setDataIsEnded(currentSound!);
+                    }
+                    debugPrint('ws channel closed. '
+                        'numberOfChunks: $numberOfChunks  byteSize: $byteSize');
+                    numberOfChunks = 0;
+                    byteSize = 0;
+                  },
+                  onError: (Object error) {
+                    debugPrint('ws error: $error');
+                  },
+                );
+              },
+              child: const Text('connect to WS and receive audio data'),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                OutlinedButton(
+                  onPressed: () async {
+                    if (currentSound == null) return;
+                    handle = await SoLoud.instance.play(
+                      currentSound!,
+                      volume: 0.6,
+                      // looping: true,
+                    );
+                    Timer.periodic(const Duration(milliseconds: 1000), (timer) {
+                      if (currentSound == null ||
+                          SoLoud.instance.getIsValidVoiceHandle(handle!) ==
+                              false) {
+                        timer.cancel();
+                        setState(() {});
+                      }
+                    });
+                  },
+                  child: const Text('play'),
+                ),
+                OutlinedButton(
+                  onPressed: () async {
+                    if (currentSound == null) return;
+                    SoLoud.instance.resetBufferStream(currentSound!);
+                    streamBuffering.value = false;
+                  },
+                  child: const Text('reset buffer'),
+                ),
+                OutlinedButton(
+                  onPressed: () async {
+                    currentSound = null;
+                    await SoLoud.instance.disposeAllSources();
+                    await channel?.sink.close();
+                    streamBuffering.value = false;
+                    setState(() {});
+                  },
+                  child: const Text('stop and close'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            /// released or preserved the buffer
+            ValueListenableBuilder(
+              valueListenable: bufferingType,
+              builder: (_, v, __) {
+                return Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Checkbox(
+                      value: v == BufferingType.released,
+                      onChanged: (value) {
+                        bufferingType.value = (value ?? true)
+                            ? BufferingType.released
+                            : BufferingType.preserved;
+                      },
+                    ),
+                    const Text('released'),
+                    const SizedBox(width: 8),
+                    Checkbox(
+                      value: v == BufferingType.preserved,
+                      onChanged: (value) {
+                        bufferingType.value = (value ?? true)
+                            ? BufferingType.preserved
+                            : BufferingType.released;
+                      },
+                    ),
+                    const Text('preserved'),
+                  ],
+                );
+              },
+            ),
+            const SizedBox(height: 16),
+            BufferBar(
+              bufferingType: bufferingType.value,
+              isBuffering: streamBuffering.value,
+              sound: currentSound,
+            ),
+            const SizedBox(height: 16),
+            ValueListenableBuilder(
+              valueListenable: streamBuffering,
+              builder: (_, value, __) {
+                if (value) {
+                  return const Text('BUFFERING!');
+                }
+                return const SizedBox.shrink();
+              },
+            ),
+          ],
+        ),
       ),
     );
   }

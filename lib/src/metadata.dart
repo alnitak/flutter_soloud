@@ -289,7 +289,7 @@ final class AudioMetadata {
   @override
   String toString() {
     final buffer = StringBuffer()
-      ..writeln('|-------------- $detectedType --------------|');
+      ..writeln('|---------- $detectedType ----------|');
 
     switch (detectedType) {
       case DetectedType.mp3WithId3:
@@ -303,7 +303,7 @@ final class AudioMetadata {
       case DetectedType.unknown:
         buffer.writeln('Unknown audio format');
     }
-    buffer.write('|---------------------------------------|');
+    buffer.write('|-------------------------------|');
     return buffer.toString();
   }
 }

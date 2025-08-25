@@ -50,8 +50,6 @@ class WebRadioExample extends StatefulWidget {
 class _WebRadioExampleState extends State<WebRadioExample> {
   // https://dir.xiph.org/codecs
   final urls = [
-    {'local': 'http://localhost:8080'},
-    {'local': 'http://192.168.1.11:8080'},
     {'MP3': 'http://as.fm1.be:8000/media'},
     {'MP3': 'http://as.fm1.be:8000/rand'},
     {'MP3': 'http://as.fm1.be:8000/vlar1.mp3'},
@@ -235,128 +233,130 @@ class _WebRadioExampleState extends State<WebRadioExample> {
     return Scaffold(
       body: Padding(
         padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          spacing: 20,
-          children: [
-            TextField(
-              controller: urlController,
-              decoration: const InputDecoration(
-                labelText: 'Choose below or enter a URL to stream',
-                hintText: 'e.g. http://example.com/stream.mp3',
-              ),
-              onSubmitted: (value) {
-                if (value.isNotEmpty) {
-                  playUrl(value);
-                }
-              },
-            ),
-            Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Choose icecast radio:  ',
-                  style: TextStyle(fontWeight: FontWeight.bold),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            spacing: 20,
+            children: [
+              TextField(
+                controller: urlController,
+                decoration: const InputDecoration(
+                  labelText: 'Choose below or enter a URL to stream',
+                  hintText: 'e.g. http://example.com/stream.mp3',
                 ),
-                DropdownButton(
-                  value: urlId,
-                  isDense: true,
-                  items: List.generate(urls.length, (index) {
-                    return DropdownMenuItem(
-                      value: index,
-                      child: Text(
-                        '${urls[index].keys.first} - '
-                        '${urls[index].values.first}',
-                        style: const TextStyle(fontSize: 12),
+                onSubmitted: (value) {
+                  if (value.isNotEmpty) {
+                    playUrl(value);
+                  }
+                },
+              ),
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Choose icecast radio:  ',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  DropdownButton(
+                    value: urlId,
+                    isDense: true,
+                    items: List.generate(urls.length, (index) {
+                      return DropdownMenuItem(
+                        value: index,
+                        child: Text(
+                          '${urls[index].keys.first} - '
+                          '${urls[index].values.first}',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      );
+                    }),
+                    onChanged: (value) {
+                      urlId = value ?? 0;
+                      playUrl(urls[urlId].values.first);
+                      if (context.mounted) {
+                        setState(() {});
+                      }
+                    },
+                  ),
+                ],
+              ),
+              OutlinedButton(
+                onPressed: () async {
+                  await SoLoud.instance.disposeAllSources();
+                  connectionError.value = 'STOPPED';
+                  await subscription?.cancel();
+                  subscription = null;
+                  currentStream = null;
+                  client?.close();
+                  client = null;
+                },
+                child: const Text('stop'),
+              ),
+              ValueListenableBuilder(
+                valueListenable: streamBuffering,
+                builder: (context, value, child) {
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    spacing: 16,
+                    children: [
+                      BufferBar(
+                        bufferingType: BufferingType.released,
+                        isBuffering: value,
+                        sound: source,
+                      ),
+                      ValueListenableBuilder(
+                        valueListenable: streamBuffering,
+                        builder: (_, value, __) {
+                          if (value) {
+                            return const Text('BUFFERING!');
+                          }
+                          return const SizedBox.shrink();
+                        },
+                      ),
+                    ],
+                  );
+                },
+              ),
+              TextField(
+                controller: connectionInfo,
+                readOnly: true,
+                minLines: 3,
+                maxLines: 10,
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  labelText: 'Connection info',
+                ),
+              ),
+              TextField(
+                controller: metadataText,
+                readOnly: true,
+                minLines: 3,
+                maxLines: 10,
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  labelText: 'metadata',
+                ),
+              ),
+              ValueListenableBuilder(
+                valueListenable: connectionError,
+                builder: (context, error, child) {
+                  if (error.isNotEmpty) {
+                    return Text(
+                      'Connection Error: $error',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.red,
                       ),
                     );
-                  }),
-                  onChanged: (value) {
-                    urlId = value ?? 0;
-                    playUrl(urls[urlId].values.first);
-                    if (context.mounted) {
-                      setState(() {});
-                    }
-                  },
-                ),
-              ],
-            ),
-            OutlinedButton(
-              onPressed: () async {
-                await SoLoud.instance.disposeAllSources();
-                connectionError.value = 'STOPPED';
-                await subscription?.cancel();
-                subscription = null;
-                currentStream = null;
-                client?.close();
-                client = null;
-              },
-              child: const Text('stop'),
-            ),
-            ValueListenableBuilder(
-              valueListenable: streamBuffering,
-              builder: (context, value, child) {
-                return Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  spacing: 16,
-                  children: [
-                    BufferBar(
-                      bufferingType: BufferingType.released,
-                      isBuffering: value,
-                      sound: source,
-                    ),
-                    ValueListenableBuilder(
-                      valueListenable: streamBuffering,
-                      builder: (_, value, __) {
-                        if (value) {
-                          return const Text('BUFFERING!');
-                        }
-                        return const SizedBox.shrink();
-                      },
-                    ),
-                  ],
-                );
-              },
-            ),
-            TextField(
-              controller: connectionInfo,
-              readOnly: true,
-              minLines: 3,
-              maxLines: 10,
-              style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                labelText: 'Connection info',
+                  }
+                  return const SizedBox.shrink();
+                },
               ),
-            ),
-            TextField(
-              controller: metadataText,
-              readOnly: true,
-              minLines: 3,
-              maxLines: 10,
-              style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                labelText: 'metadata',
-              ),
-            ),
-            ValueListenableBuilder(
-              valueListenable: connectionError,
-              builder: (context, error, child) {
-                if (error.isNotEmpty) {
-                  return Text(
-                    'Connection Error: $error',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.red,
-                    ),
-                  );
-                }
-                return const SizedBox.shrink();
-              },
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
