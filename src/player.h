@@ -6,6 +6,7 @@
 #include "soloud.h"
 #include "soloud_speech.h"
 #include "enums.h"
+#include "audiobuffer/metadata_ffi.h"
 #include "audiobuffer/buffer.h"
 #include "filters/filters.h"
 #include "active_sound.h"
@@ -113,12 +114,19 @@ public:
         BufferingType bufferingType,
         SoLoud::time bufferingTimeNeeds,
         PCMformat pcmFormat = {44100, 2, 4, PCM_F32LE},
-        dartOnBufferingCallback_t onBufferingCallback = nullptr);
+        dartOnBufferingCallback_t onBufferingCallback = nullptr,
+        dartOnMetadataCallback_t onMetadataCallback = nullptr);
 
     /// @brief Resets the buffer of the data stream.
     /// @param hash the hash of the sound.
     /// @return Returns [PlayerErrors.SO_NO_ERROR] if success.
     PlayerErrors resetBufferStream(unsigned int hash);
+    
+    /// @brief Set the mp3 buffer icy meta int.
+    /// @param hash the hash of the sound.
+    /// @param icyMetaInt the icy meta int.
+    /// @return Returns [PlayerErrors.SO_NO_ERROR] if success.
+    PlayerErrors setMp3BufferIcyMetaInt(unsigned int hash, int icyMetaInt);
 
     /// @brief Get the time consumed by the data stream of type `BufferingType.RELEASED`.
     /// @param hash the hash of the stream sound.

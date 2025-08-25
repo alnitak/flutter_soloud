@@ -131,6 +131,10 @@ abstract class SoLoudCppException extends SoLoudException {
       case PlayerErrors.bufferStreamWithReleasedBufferTypeCannotBeSeeked:
         // ignore: lines_longer_than_80_chars
         return const SoLoudBufferStreamWithReleasedBufferTypeCannotBeSeekedCppException();
+      case PlayerErrors.audioFormatNotSupported:
+        return const SoLoudAudioFormatNotSupportedCppException();
+      case PlayerErrors.opusOggVorbisLibsNotFound:
+        return const SoLoudOpusOggVorbisLibsNotFoundCppException();
     }
   }
 

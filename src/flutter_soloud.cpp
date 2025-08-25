@@ -66,10 +66,7 @@
 
 // 	# wav
 #include "soloud/src/audiosource/wav/stb_vorbis.c"
-#include "soloud/src/audiosource/wav/dr_flac.h"
 #include "soloud/src/audiosource/wav/dr_impl.cpp"
-#include "soloud/src/audiosource/wav/dr_mp3.h"
-#include "soloud/src/audiosource/wav/dr_wav.h"
 #include "soloud/src/audiosource/wav/soloud_wav.cpp"
 #include "soloud/src/audiosource/wav/soloud_wavstream.cpp"
 
@@ -107,30 +104,12 @@
 #include "waveform/waveform.cpp"
 #include "waveform/miniaudio_libvorbis.cpp"
 #include "audiobuffer/audiobuffer.cpp"
+#include "audiobuffer/stream_decoder.cpp"
+#include "audiobuffer/opus_stream_decoder.cpp"
+#include "audiobuffer/vorbis_stream_decoder.cpp"
+#include "audiobuffer/mp3_stream_decoder.cpp"
 #include "filters/filters.cpp"
 #include "filters/pitch_shift_filter.cpp"
 #include "filters/smbPitchShift.cpp"
 #include "filters/limiter.cpp"
 #include "filters/compressor.cpp"
-
-// A very short-lived native function.
-//
-// For very short-lived functions, it is fine to call them on the main isolate.
-// They will block the Dart execution while running the native function, so
-// only do this for native functions which are guaranteed to be short-lived.
-FFI_PLUGIN_EXPORT intptr_t sum(intptr_t a, intptr_t b) { return a + b; }
-
-// A longer-lived native function, which occupies the thread calling it.
-//
-// Do not call these kind of native functions in the main isolate. They will
-// block Dart execution. This will cause dropped frames in Flutter applications.
-// Instead, call these native functions on a separate isolate.
-FFI_PLUGIN_EXPORT intptr_t sum_long_running(intptr_t a, intptr_t b) {
-  // Simulate work.
-#if _WIN32
-  Sleep(5000);
-#else
-  usleep(5000 * 1000);
-#endif
-  return a + b;
-}

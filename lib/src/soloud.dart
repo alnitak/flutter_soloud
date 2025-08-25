@@ -6,11 +6,14 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_soloud/src/audio_source.dart';
 import 'package:flutter_soloud/src/bindings/bindings_player.dart';
+import 'package:flutter_soloud/src/bindings/native_metadata_ffi.dart'
+    if (dart.library.js_interop) 'package:flutter_soloud/src/bindings/native_metadata_web.dart';
 import 'package:flutter_soloud/src/bindings/soloud_controller.dart';
 import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/exceptions/exceptions.dart';
 import 'package:flutter_soloud/src/filters/filters.dart';
 import 'package:flutter_soloud/src/helpers/playback_device.dart';
+import 'package:flutter_soloud/src/metadata.dart';
 import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
 import 'package:flutter_soloud/src/utils/loader.dart';
@@ -168,9 +171,6 @@ interface class SoLoud {
   /// A helper for loading files that aren't on disk.
   final SoLoudLoader _loader = SoLoudLoader();
 
-  /// Wheter or not the Opus and Ogg libraries are available.
-  bool _areOpusOggLibsAvailable = false;
-
   /// Whether or not is it possible to ask for wave and FFT data.
   bool _isVisualizationEnabled = false;
 
@@ -270,8 +270,6 @@ interface class SoLoud {
       deinit();
     }
 
-    _areOpusOggLibsAvailable = _controller.soLoudFFI.areOpusOggLibsAvailable();
-
     _activeSounds.clear();
 
     // Initialize native callbacks
@@ -307,6 +305,7 @@ interface class SoLoud {
   /// default device (iOS and MacOS?).
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
   /// Throws [SoLoudNoPlaybackDevicesFoundCppException] if the given [newDevice]
   /// is not found.
   void changeDevice({PlaybackDevice? newDevice}) {
@@ -499,11 +498,13 @@ interface class SoLoud {
   /// If [LoadMode.disk] is used instead, the audio data is loaded
   /// from the given file when needed (more CPU, less memory allocated).
   /// See the [seek] note problem when using [LoadMode.disk].
+  ///
   /// The default is [LoadMode.memory].
   ///
   /// Returns the new sound as [AudioSource].
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
   /// Throws [SoLoudFileLoadFailedException] if the file could not be loaded.
   ///
   /// If the file is already loaded, this is a no-op (but a warning
@@ -558,10 +559,12 @@ interface class SoLoud {
   /// When [mode] is [LoadMode.memory], the whole compressed bytes of the audio
   /// file is loaded into memory. Used to prevent gaps or lags
   /// when seeking/starting a sound (less CPU, more memory allocated).
+  ///
   /// If [LoadMode.disk] is used instead, the audio data is loaded
   /// from the given file when needed (more CPU, less memory allocated).
   /// See the [seek] note problem when using [LoadMode.disk].
   /// The default is [LoadMode.memory].
+  ///
   /// IMPORTANT: on Web [LoadMode.disk] is is overridden to [LoadMode.memory].
   /// This could cause UI freeze problems for long duration audio files so
   /// it is recommended to load them when the app starts.
@@ -614,12 +617,12 @@ interface class SoLoud {
   /// means that when playing it, it will stop at that point (if loop is
   /// not set). Note that the engine store floats internally, so even if you
   /// add data as `s8`, it will be converted to `f32` internally.
+  /// Default is 100 MB (1024 * 1024 * 100).
   ///
   /// [maxBufferSizeDuration] same as [maxBufferSizeBytes] but the size is
   /// calculated based on the [sampleRate] and [channels] parameters.
-  ///
-  /// **Note:** these parameters don't allocate any memory, but it is just a
-  /// limitation on the amount of data that can be added.
+  /// <br/>**Note:** these parameters don't allocate any memory, but it is just
+  /// a limitation on the amount of data that can be added.
   ///
   /// [bufferingType] enum to choose how the buffering will work while playing
   /// the stream. Using [BufferingType.preserved] will preserve the data already
@@ -632,8 +635,8 @@ interface class SoLoud {
   /// [bufferingTimeNeeds] the buffering time needed in seconds. If a handle
   /// reaches the current buffer length, it will start to buffer pausing it and
   /// waiting until the buffer will have enough data to cover this time.
-  /// *NOTE*: when using [BufferingType.released], the position of the stream
-  /// is always 0: [getPosition] will always return 0.
+  /// <br/>**Note:** when using [BufferingType.released], the position of the
+  /// stream is always 0: [getPosition] will always return 0.
   ///
   /// [sampleRate] the sample rate. Usually is 22050 or 44100 (CD quality).
   /// When using [format] as `opus`, the sample rate can be 48000, 24000,
@@ -644,20 +647,21 @@ interface class SoLoud {
   /// [channels] enum to choose the number of channels. The `opus` format
   /// supports only mono and stereo.
   ///
-  /// [format] enum to choose from `f32le`, `s8`, `s16le`, `s32le` and
-  /// `opus`. The last one is a special format that uses the Opus codec with
-  /// Ogg container. It supports 48, 24, 16, 12 and 8 KHz sample rates
-  /// and mono and stereo.
+  /// [format] Audio data format. Options: `f32le`, `s8`, `s16le`, `s32le`, or
+  /// `auto` (OGG/Opus, OGG/Vorbis, or MP3 formats are automatically detected).
+  /// <br/>**Note:** the `auto` autodetect MP3 and Ogg container with Opus
+  /// or Vorbis. With this format, the samplerate and channels parameters
+  /// are ignored.
   ///
   /// [onBuffering] a callback that is called when starting to buffer
   /// (isBuffering = true) and when the buffering is done (isBuffering = false).
   /// The callback is called with the `handle` which triggered the event and
   /// the `time` in seconds.
   ///
+  /// [onMetadata] Callback triggered when starting to add audio data or when
+  /// metadata changes while streaming. It returns a `[AudioMetadata] object.
+  ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
-  /// Throws [SoLoudOpusOggLibsNotAvailableException] if trying to use the
-  /// `opus` format but the Opus and Ogg libraries are not available. Please
-  /// check the `README.md` file for more information.
   AudioSource setBufferStream({
     int? maxBufferSizeBytes,
     Duration? maxBufferSizeDuration,
@@ -667,42 +671,18 @@ interface class SoLoud {
     Channels channels = Channels.mono,
     BufferType format = BufferType.s16le,
     void Function(bool isBuffering, int handle, double time)? onBuffering,
+    void Function(AudioMetadata)? onMetadata,
   }) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
 
-    if (!_areOpusOggLibsAvailable && format == BufferType.opus) {
-      throw const SoLoudOpusOggLibsNotAvailableException();
-    }
-
-    final opusA = () {
-      if (format == BufferType.opus) {
-        return sampleRate == 48000 ||
-            sampleRate == 24000 ||
-            sampleRate == 16000 ||
-            sampleRate == 12000 ||
-            sampleRate == 8000;
-      }
-      return true;
-    }();
-    final opusB = () {
-      if (format == BufferType.opus) {
-        return channels == Channels.mono || channels == Channels.stereo;
-      }
-      return true;
-    }();
-    assert(
-      opusA,
-      'Opus format only supports 48, 24, 16, 12 and 8 KHz sample rates',
-    );
-    assert(
-      opusB,
-      'Only mono and stereo channels are supported for Opus format',
-    );
-
-    if (!opusA || !opusB) {
-      throw const SoLoudWrongOpusParamsException();
+    var forcedFormat = format;
+    if (format == BufferType.opus) {
+      forcedFormat = BufferType.auto;
+      debugPrint('BufferType.opus has been deprecated. Use "BufferType.auto" '
+          'instead which will automatically determine from MP3, OGG Opus '
+          'or OGG Vorbis.');
     }
 
     // Only [maxBufferSizeDuration] or [maxBufferSizeBytes] must be set.
@@ -721,14 +701,25 @@ interface class SoLoud {
     }
 
     final ret = SoLoudController().soLoudFFI.setBufferStream(
-          bufferSize,
-          bufferingType,
-          bufferingTimeNeeds,
-          sampleRate,
-          channels.count,
-          format.value,
-          onBuffering,
-        );
+      bufferSize,
+      bufferingType,
+      bufferingTimeNeeds,
+      sampleRate,
+      channels.count,
+      forcedFormat.value,
+      onBuffering,
+      (dynamic metadata) {
+        if (onMetadata != null) {
+          late final AudioMetadata data;
+          if (kIsWeb) {
+            data = NativeAudioMetadata.fromJSPointer(metadata as int);
+          } else {
+            data = (metadata as NativeAudioMetadata).toAudioMetadata();
+          }
+          onMetadata(data);
+        }
+      },
+    );
 
     if (ret.error != PlayerErrors.noError) {
       _logPlayerError(ret.error, from: 'addAudioDataStream() result');
@@ -749,6 +740,7 @@ interface class SoLoud {
   /// [hash] the hash of the stream sound.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
   /// Throws [SoLoudSoundHashNotFoundDartException] if the [sound] is not found.
   void resetBufferStream(AudioSource sound) {
     if (!isInitialized) {
@@ -767,7 +759,9 @@ interface class SoLoud {
   /// is always 0, this method is useful to know the time already played.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
   /// Throws [SoLoudSoundHashNotFoundDartException] if the [sound] is not found.
+  ///
   /// Throws a cpp error if the [sound] is not a buffer stream
   /// of type [BufferingType.released].
   Duration getStreamTimeConsumed(AudioSource sound) {
@@ -785,6 +779,55 @@ interface class SoLoud {
     }
 
     return result.value.toDuration();
+  }
+
+  /// Set the icy metadata integer value. Must be set once before calling
+  /// the first time [addAudioDataStream] to be able to get MP3 metadata
+  /// of a stream.
+  ///
+  /// **Note:** this function is only for MP3 streams. It must
+  /// be called before calling [addAudioDataStream] to be able to get MP3
+  /// metadata of a stream. It will set the `icy-metaint` value of the
+  /// MP3 stream to retrieve the metadata from the stream.
+  /// When adding data, for example from an online stream, the request
+  /// must contain the `icy-metaint` header:
+  /// ```dart
+  ///   http.StreamedResponse? currentStream;
+  ///   client = http.Client();
+  ///   final request = http.Request('GET', Uri.parse(url));
+  ///   request.headers.addAll({'Icy-MetaData': '1'});
+  /// ```
+  /// When the first chunk of data has been received, the `icy-metaint`
+  /// value can be read as follows:
+  /// ```dart
+  /// bool mp3IcyMetaIntSent = false;
+  /// currentStream!.stream.listen(
+  ///   (data) {
+  ///     if (!mp3IcyMetaIntSent) {
+  ///         mp3IcyMetaIntSent = true;
+  ///         // set it when receiving the first audio chunk
+  ///         SoLoud.instance.setMp3BufferIcyMetaInt(
+  ///             sound,
+  ///             int.parse(currentStream!.headers['icy-metaint'] ?? '0'),
+  ///         );
+  ///     }
+  ///     ...
+  ///   ```
+  ///
+  /// [hash] the hash of the stream sound.
+  ///
+  /// [icyMetaInt] the icy metadata integer value. Default is 16000 which
+  /// is the most used value.
+  ///
+  /// An online radio example is included in
+  /// `example/lib/buffer_stream/web_radio.dart`.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  void setMp3BufferIcyMetaInt(AudioSource sound, int icyMetaInt) {
+    SoLoudController().soLoudFFI.setMp3BufferIcyMetaInt(
+          sound.soundHash,
+          icyMetaInt,
+        );
   }
 
   /// Add PCM audio data to the stream.
@@ -836,16 +879,26 @@ interface class SoLoud {
   /// An example is also included in `example/lib/buffer_stream/generate.dart`.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
   /// Throws [SoLoudPcmBufferFullCppException] if trying to add data and the
   /// buffer is full.
+  ///
   /// Throws [SoLoudHashIsNotABufferStreamCppException] if the given [source]
   /// is not a buffer stream.
+  ///
   /// Throws [SoLoudStreamEndedAlreadyCppException] if trying to add PCM data
   /// but the stream is marked to be ended already, by the user or when the
   /// stream reached its maximum capacity, in this case the stream is
   /// automatically marked to be ended.
+  ///
   /// Thows [SoLoudOutOfMemoryException] if the buffer is out of OS memory or
   /// the given `maxBufferSize` of the `setBufferStream` call is too small.
+  ///
+  /// Throws [SoLoudOpusOggLibsNotAvailableException] if the Ogg, Opus and
+  /// Vorbis libraries are not linked and trying to add audio data in those
+  /// formats. Probably you need to unset NO_OPUS_OGG_LIBS environment
+  /// variable. Ref:
+  /// https://docs.page/alnitak/flutter_soloud_docs/get_started/no_opus_ogg_libs
   void addAudioDataStream(
     AudioSource source,
     Uint8List audioChunk,
@@ -860,6 +913,10 @@ interface class SoLoud {
         );
 
     if (e != PlayerErrors.noError) {
+      if (e == PlayerErrors.opusOggVorbisLibsNotFound) {
+        _logPlayerError(e, from: 'addAudioDataStream() result');
+        throw const SoLoudOpusOggLibsNotAvailableException();
+      }
       _logPlayerError(e, from: 'addAudioDataStream() result');
       throw SoLoudCppException.fromPlayerError(e);
     }
@@ -874,6 +931,7 @@ interface class SoLoud {
   /// [hash] the hash of the stream sound.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
   /// Throws [SoLoudSoundHashNotFoundDartException] if the [sound] is not found.
   void setDataIsEnded(AudioSource sound) {
     if (!isInitialized) {
@@ -895,6 +953,7 @@ interface class SoLoud {
   /// to have the number of samples.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
   /// Throws [SoLoudSoundHashNotFoundDartException] if the [sound] is not found.
   int getBufferSize(AudioSource sound) {
     if (!isInitialized) {
@@ -921,9 +980,12 @@ interface class SoLoud {
   /// a temporary file, and that file will be used to load the sound.
   ///
   /// Throws a [FlutterError] if the asset is not found.
+  ///
   /// Throws a [SoLoudTemporaryFolderFailedException] if there was a problem
   /// creating the temporary file that the asset will be copied to.
+  ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
   /// Throws [SoLoudFileLoadFailedException] if the file could not be loaded.
   ///
   /// Returns the new sound as [AudioSource].
@@ -962,11 +1024,15 @@ interface class SoLoud {
   /// copied to a temporary file, and that file will be used to load the sound.
   ///
   /// Throws [FormatException] if the [url] is invalid.
+  ///
   /// Throws [SoLoudNetworkStatusCodeException] if the request fails
   /// with a non-`200` status code.
+  ///
   /// Throws a [SoLoudTemporaryFolderFailedException] if there was a problem
   /// creating the temporary file that the asset will be copied to.
+  ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
   /// Throws [SoLoudFileLoadFailedException] if the file could not be loaded.
   ///
   /// Returns the new sound as [AudioSource].
@@ -1143,8 +1209,10 @@ interface class SoLoud {
   /// sound will not play.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
   /// Throws [SoLoudBufferStreamCanBePlayedOnlyOnceCppException] if we try to
   /// play a BufferStream using `release` buffer type more than once.
+  ///
   /// Throws [SoLoudSoundHashNotFoundDartException] if the given [sound]
   /// is not found.
   Future<SoundHandle> play(
@@ -1433,11 +1501,12 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   ///
-  /// NOTE: when seeking an MP3 file loaded using [LoadMode.disk], the
+  /// **Note**: when seeking an MP3 file loaded using [LoadMode.disk], the
   /// seek operation is performed but there will be a delay. This occurs because
   /// the MP3 codec must compute each frame length to gain a new position.
   /// The problem is explained in `souloud_wavstream.cpp`,
   /// in the `WavStreamInstance::seek` function.
+  ///
   /// Therefore, [LoadMode.disk] is useful for things like the background music,
   /// and not for things like a music player where the user
   /// expects being able to seek anywhere inside a playing track immediately.
@@ -1599,7 +1668,9 @@ interface class SoLoud {
   /// Note that this does not affect the value returned by getPan.
   ///
   /// [handle] the sound handle.
+  ///
   /// [panLeft] value for the left pan. Must be >= -1 and <= 1.
+  ///
   /// [panRight] value for the right pan. Must be >= -1 and <= 1.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
@@ -1855,7 +1926,9 @@ interface class SoLoud {
 
   /// Adds voice handle to the voice group. The voice handles can still be
   /// used separate from the group.
+  ///
   /// [voiceGroupHandle] the group handle to add the new [voiceHandles].
+  ///
   /// [voiceHandles] voice handle to add to the [voiceGroupHandle].
   void addVoicesToGroup(
     SoundHandle voiceGroupHandle,
@@ -1871,6 +1944,7 @@ interface class SoLoud {
   /// voice group is empty.
   ///
   /// [handle] the group handle to check.
+  ///
   /// Return true if [handle] is a group handle.
   bool isVoiceGroup(SoundHandle handle) {
     return _controller.soLoudFFI.isVoiceGroup(handle);
@@ -1881,6 +1955,7 @@ interface class SoLoud {
   /// empty even though you've added valid voice handles to it.
   ///
   /// [handle] group handle to check.
+  ///
   /// Return true if the group handle doesn't have any voices.
   bool isVoiceGroupEmpty(SoundHandle handle) {
     return _controller.soLoudFFI.isVoiceGroupEmpty(handle);
@@ -1993,7 +2068,9 @@ interface class SoLoud {
   /// The sound instance is specified via its [handle].
   ///
   /// The value of [from] is the lowest value for the oscillation.
+  ///
   /// The value of [to] is the highest value for the oscillation.
+  ///
   /// The specified [time] is the period of oscillation.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
@@ -2014,7 +2091,9 @@ interface class SoLoud {
   /// The sound instance is specified via its [handle].
   ///
   /// The value of [from] is the leftmost value for the oscillation.
+  ///
   /// The value of [to] is the rightmost value for the oscillation.
+  ///
   /// The specified [time] is the period of oscillation.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
@@ -2034,7 +2113,9 @@ interface class SoLoud {
   /// The sound instance is specified via its [handle].
   ///
   /// The value of [from] is the lowest value for the oscillation.
+  ///
   /// The value of [to] is the highest value for the oscillation.
+  ///
   /// The specified [time] is the period of oscillation.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
@@ -2054,7 +2135,9 @@ interface class SoLoud {
   /// Set fader to oscillate the global volume at specified frequency.
   ///
   /// The value of [from] is the lowest value for the oscillation.
+  ///
   /// The value of [to] is the highest value for the oscillation.
+  ///
   /// The specified [time] is the period of oscillation.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
@@ -2071,10 +2154,14 @@ interface class SoLoud {
 
   /// Fade a parameter of a filter.
   ///
-  /// it fades the global filter.
+  /// It fades the global filter.
+  ///
   /// [filterType] filter to modify a param.
+  ///
   /// [attributeId] the attribute index to fade.
+  ///
   /// [to] value the attribute should go in [time] duration.
+  ///
   /// [time] the fade slope duration.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
@@ -2101,11 +2188,16 @@ interface class SoLoud {
 
   /// Oscillate a parameter of a filter.
   ///
-  /// it fades the global filter.
+  /// It fades the global filter.
+  ///
   /// [filterType] filter to modify a param.
+  ///
   /// [attributeId] the attribute index to fade.
+  ///
   /// [from] the starting value the attribute sould start to oscillate.
+  ///
   /// [to] the ending value the attribute sould end to oscillate.
+  ///
   /// [time] the fade slope duration.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
@@ -2167,6 +2259,7 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudMaxFilterNumberReachedException] when the max number of
   ///     concurrent filter is reached (default max filter is 8).
+  ///
   /// Throws [SoLoudFilterAlreadyAddedException] when trying to add a filter
   ///     that has already been added.
   @Deprecated('Please, to manage global filters use SoLoud.filters instead')
@@ -2194,8 +2287,10 @@ interface class SoLoud {
   /// Specify the [attributeId] of the parameter (which you can learn from
   /// [getFilterParamNames]), and its new [value].
   ///
-  /// applyed to the global filter.
+  /// Applyed to the global filter.
+  ///
   /// [filterType] filter to modify a param.
+  ///
   /// Returns [PlayerErrors.noError] if no errors.
   @Deprecated('Please, to manage global filters use SoLoud.filters instead')
   void setGlobalFilterParameter(
@@ -2229,8 +2324,10 @@ interface class SoLoud {
   /// Specify the [attributeId] of the parameter (which you can learn from
   /// [getFilterParamNames]).
   ///
-  /// it gets the global filter value.
+  /// It gets the global filter value.
+  ///
   /// [filterType] the filter to modify a parameter.
+  ///
   /// Returns the value of the parameter.
   @Deprecated('Please, to manage global filters use SoLoud.filters instead')
   double getGlobalFilterParameter(
@@ -2293,7 +2390,7 @@ interface class SoLoud {
   ///
   /// Returns the [SoundHandle] of this new sound.
   ///
-  /// **NOTE**: by default, the maximum number of sounds you can play is 16 and
+  /// **Note**: by default, the maximum number of sounds you can play is 16 and
   /// it can be changed with [setMaxActiveVoiceCount]. If this limit is reached
   /// and other instances of the same sound are played, the oldest one will be
   /// stopped to make room to play the new sound. If there are no instances of
@@ -2301,6 +2398,7 @@ interface class SoLoud {
   /// sound will not play.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
   /// Throws [SoLoudBufferStreamCanBePlayedOnlyOnceCppException] if we try to
   /// play a BufferStream using `release` buffer type more than once.
   Future<SoundHandle> play3d(
@@ -2437,6 +2535,7 @@ interface class SoLoud {
 
   /// Sets the minimum and maximum distance parameters
   /// of a live 3D audio source.
+  ///
   /// Default values are 1 and 1000000.
   void set3dSourceMinMaxDistance(
       SoundHandle handle, double minDistance, double maxDistance) {
@@ -2486,12 +2585,16 @@ interface class SoLoud {
   /// NOTE: this is not available on Web. Use [readSamplesFromMem] instead.
   ///
   /// [completeFileName] the complete path to the audio file.
+  ///
   /// [numSamplesNeeded] is not guaranteed to be the same length as the returned
   /// Float32List. This could happen if the [endTime] is greater than the audio
   /// lenght.
+  ///
   /// [startTime] in seconds. Defaults to 0.
+  ///
   /// [endTime] in seconds. Defaults to -1. If -1, the audio will be read until
   /// the end of the file.
+  ///
   /// [average] if true, the returned Float32List will be filled with the
   /// average of the samples from the previous index sample. Defaults to false.
   /// When true it does not affect performance much.
@@ -2509,10 +2612,13 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudReadSamplesNoBackendCppException] if an error occurred
   /// while initializing the backend to read samples.
+  ///
   /// Throws [SoLoudReadSamplesFailedToGetDataFormatCppException] if an error
   /// occurred while reading the decoder data format.
+  ///
   /// Throws [SoLoudReadSamplesFailedToSeekPcmCppException] if an error
   /// occurred when seeking audio data.
+  ///
   /// Throws [SoLoudReadSamplesFailedToReadPcmFramesCppException] if an error
   /// occurred when reading PCM frames.
   ///
@@ -2550,12 +2656,16 @@ interface class SoLoud {
   /// NOTE: on Web this is synchronous and could freeze the UI.
   ///
   /// [buffer] the audio file buffer.
+  ///
   /// [numSamplesNeeded] is not guaranteed to be the same length as the returned
   /// Float32List. This could happen if the [endTime] is greater than the audio
   /// lenght.
+  ///
   /// [startTime] in seconds. Defaults to 0.
+  ///
   /// [endTime] in seconds. Defaults to -1. If -1, the audio will be read until
   /// the end of the file.
+  ///
   /// [average] if true, the returned Float32List will be filled with the
   /// average of the samples from the previous index sample. Defaults to false.
   /// When true it does not affect performance much.
@@ -2573,10 +2683,13 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudReadSamplesNoBackendCppException] if an error occurred
   /// while initializing the backend to read samples.
+  ///
   /// Throws [SoLoudReadSamplesFailedToGetDataFormatCppException] if an error
   /// occurred while reading the decoder data format.
+  ///
   /// Throws [SoLoudReadSamplesFailedToSeekPcmCppException] if an error
   /// occurred when seeking audio data.
+  ///
   /// Throws [SoLoudReadSamplesFailedToReadPcmFramesCppException] if an error
   /// occurred when reading PCM frames.
   ///

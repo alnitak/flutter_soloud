@@ -16,7 +16,8 @@ A high-performance audio plugin designed primarily for games and immersive appli
 
 - ⚡ Low latency, high performance audio
 - 🎮 3D positional audio with Doppler effect
-- 🔄 Gapless looping and streaming
+- 🔄 Gapless looping
+- 🔄 Stream audio with buffering support for PCM, MP3, Ogg with Opus and Vorbis container
 - 📊 Get audio wave and/or FFT audio data in real-time (useful for visualization)
 - 🎛️ Rich effects system (reverb, echo, limiter, bassboost, etc.)
 - ⚙️ Faders for attributes (e.g. fade out for 2 seconds, then stop)
@@ -25,7 +26,6 @@ A high-performance audio plugin designed primarily for games and immersive appli
 - 🔊 Multiple voices, playing different or even the same sound multiple times
 - 🎵 Support for MP3, WAV, OGG, and FLAC
 - ⏱️ Read audio data samples from a file with a given time range
-- 🔄 Stream audio from given audio data with buffering support for PCM and Opus
 - 🌊 Generate waveforms in real-time with various types (sine, square, saw, triangle, etc.)
 
 ## Documentation

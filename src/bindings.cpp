@@ -244,7 +244,7 @@ extern "C"
             bool hasSpecialChar = false;
             /// check if the device name has some strange chars (happens on Linux)
             /// It happens that some results had the name composed of non-text
-            /// ASCII characters with values ​​<0x20 (blank space) which cannot be
+            /// ASCII characters with values <0x20 (blank space) which cannot be
             /// real devices and should be ignored. Doesn't happen on my Linux
             /// anymore (maybe was a bug on audio drivers?), but worth checking
             /// to be sure.
@@ -420,17 +420,23 @@ extern "C"
         unsigned int sampleRate,
         unsigned int channels,
         int format,
-        dartOnBufferingCallback_t onBufferingCallback)
+        dartOnBufferingCallback_t onBufferingCallback,
+        dartOnMetadataCallback_t onMetadataCallback)
     {
         std::lock_guard<std::mutex> guard_init(init_deinit_mutex);
         std::lock_guard<std::mutex> guard_load(loadMutex);
         if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
 
+        // BufferType::OPUS is deprecated in favor of BufferType::AUTO wich
+        // autodetects MP3, OGG Opus and OGG Vorbis formats
+        if (format == BufferType::OPUS)
+            format = BufferType::AUTO;
+
         unsigned int bytesPerSample;
         switch (format)
         {
-        case BufferType::OPUS:
+        case BufferType::AUTO:
         case BufferType::PCM_F32LE:
             bytesPerSample = 4;
             break;
@@ -451,7 +457,8 @@ extern "C"
             (BufferingType)bufferingType,
             bufferingTimeNeeds,
             dataType,
-            onBufferingCallback);
+            onBufferingCallback,
+            onMetadataCallback);
         return e;
     }
 
@@ -471,6 +478,51 @@ extern "C"
             return backendNotInited;
 
         return player.get()->getStreamTimeConsumed(hash, timeConsumed);
+    }
+
+    /// Set the icy metadata integer value. Must be set once before calling
+    /// the first time [addAudioDataStream] to be able to get MP3 metadata
+    /// of a stream.
+    ///
+    /// **Note:** this function is only for MP3 streams. It must
+    /// be called before calling [addAudioDataStream] to be able to get MP3
+    /// metadata of a stream. It will set the `icy-metaint` value of the
+    /// MP3 stream to retrieve the metadata from the stream.
+    /// When adding data, for example from an online stream, the request
+    /// must contain the `icy-metaint` header:
+    /// ```dart
+    ///   http.StreamedResponse? currentStream;
+    ///   client = http.Client();
+    ///   final request = http.Request('GET', Uri.parse(url));
+    ///   request.headers.addAll({'Icy-MetaData': '1'});
+    /// ```
+    /// When the first chunk of data has been received, the `icy-metaint`
+    /// value can be read as follows:
+    /// ```dart
+    /// bool mp3IcyMetaIntSent = false;
+    /// currentStream!.stream.listen(
+    ///   (data) {
+    ///     if (!mp3IcyMetaIntSent) {
+    ///         mp3IcyMetaIntSent = true;
+    ///         // set it when receiving the first audio chunk
+    ///         SoLoud.instance.setMp3BufferIcyMetaInt(
+    ///             sound,
+    ///             int.parse(currentStream!.headers['icy-metaint'] ?? '0'),
+    ///         );
+    ///     }
+    ///     ...
+    ///   ```
+    ///
+    /// [hash] the hash of the stream sound.
+    /// [icyMetaInt] the icy metadata integer value. Default is 16000 which
+    /// is the most used value.
+    FFI_PLUGIN_EXPORT enum PlayerErrors setMp3BufferIcyMetaInt(unsigned int hash, int icyMetaInt)
+    {
+        if (player.get() == nullptr || !player.get()->isInited())
+            return backendNotInited;
+        if (icyMetaInt < 0)
+            icyMetaInt = 0;
+        return player.get()->setMp3BufferIcyMetaInt(hash, icyMetaInt);
     }
 
     /// Add a chunk of audio data to the buffer stream.

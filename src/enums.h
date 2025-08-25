@@ -3,8 +3,6 @@
 #ifndef ENUMS_H
 #define ENUMS_H
 
-#include <stdbool.h> // for ffigen to not complain about bool type
-
 /// Possible player errors.
 ///
 /// WARNING: Keep these in sync with `lib/src/enums.dart`.
@@ -70,7 +68,11 @@ typedef enum PlayerErrors
     /// Trying to get time consumed from wrong buffer type.
     wrongBufferTypeToAskForTimeConsumed = 27,
     /// Buffer stream with released buffer type, cannot be seeked.
-    bufferStreamWithReleasedBufferTypeCannotBeSeeked = 28
+    bufferStreamWithReleasedBufferTypeCannotBeSeeked = 28,
+    /// Audio format not supported.
+    audioFormatNotSupported = 29,
+    /// Opus ogg vorbis libraries not found.
+    opusOggVorbisLibsNotFound = 30,
 } PlayerErrors_t;
 
 /// Possible read sample errors
@@ -134,6 +136,7 @@ typedef enum BufferType
     PCM_S16LE = 2,
     PCM_S32LE = 3,
     OPUS = 4,
+    AUTO = 5,
 } BufferType_t;
 
 
@@ -142,10 +145,10 @@ typedef struct PCMformat
   unsigned int sampleRate;
   unsigned int channels;
   unsigned int bytesPerSample;
-  BufferType dataType;
+  enum BufferType dataType;
 } PCMformat;
 
-
+// callback to tell dart that we are buffering/unbuffering
 typedef void (*dartOnBufferingCallback_t)(bool isBuffering, unsigned int handle, double time);
 
 #endif // ENUMS_H

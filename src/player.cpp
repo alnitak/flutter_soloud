@@ -222,6 +222,10 @@ const std::string Player::getErrorString(PlayerErrors errorCode) const
         return "error: trying to get time consumed from wrong buffer type!";
     case bufferStreamWithReleasedBufferTypeCannotBeSeeked:
         return "error: buffer stream with released buffer type cannot be seeked!";
+    case audioFormatNotSupported:
+        return "error: audio format not supported!";
+    case opusOggVorbisLibsNotFound:
+        return "error: opus ogg vorbis libraries not found!";
     }
     return "Other error";
 }
@@ -335,7 +339,8 @@ PlayerErrors Player::setBufferStream(
     BufferingType bufferingType,
     SoLoud::time bufferingTimeNeeds,
     PCMformat pcmFormat,
-    dartOnBufferingCallback_t onBufferingCallback)
+    dartOnBufferingCallback_t onBufferingCallback,
+    dartOnMetadataCallback_t onMetadataCallback)
 {
     if (!mInited)
         return backendNotInited;
@@ -349,10 +354,18 @@ PlayerErrors Player::setBufferStream(
     auto newSound = std::make_unique<ActiveSound>();
     newSound.get()->completeFileName = "";
     newSound.get()->soundHash = hash;
-
+    
     newSound.get()->sound = std::make_unique<SoLoud::BufferStream>();
+
     newSound.get()->soundType = SoundType::TYPE_BUFFER_STREAM;
-    PlayerErrors e = static_cast<SoLoud::BufferStream *>(newSound.get()->sound.get())->setBufferStream(this, newSound.get(), maxBufferSize, bufferingType, bufferingTimeNeeds, pcmFormat, onBufferingCallback);
+    PlayerErrors e = static_cast<SoLoud::BufferStream *>(newSound.get()->sound.get())->setBufferStream(
+        this, newSound.get(),
+        maxBufferSize,
+        bufferingType,
+        bufferingTimeNeeds,
+        pcmFormat,
+        onBufferingCallback,
+        onMetadataCallback);
 
     newSound.get()->filters = std::make_unique<Filters>(&soloud, newSound.get());
     sounds.push_back(std::move(newSound));
@@ -373,17 +386,30 @@ PlayerErrors Player::addAudioDataStream(
     if (s->soundType != SoundType::TYPE_BUFFER_STREAM)
         return hashIsNotABufferStream;
 
-    return static_cast<SoLoud::BufferStream *>(s->sound.get())->addData(data, aDataLen);
+    return static_cast<SoLoud::BufferStream *>(s->sound.get())->addData(data, aDataLen, false);
 }
 
 PlayerErrors Player::resetBufferStream(unsigned int hash)
 {
     auto const s = findByHash(hash);
 
-    if (s == nullptr || s->soundType != SoundType::TYPE_BUFFER_STREAM)
+    if (s == nullptr || s->soundType != SoundType::TYPE_BUFFER_STREAM) {
         return PlayerErrors::soundHashNotFound;
+    }
 
     static_cast<SoLoud::BufferStream *>(s->sound.get())->resetBuffer();
+    return PlayerErrors::noError;
+}
+
+PlayerErrors Player::setMp3BufferIcyMetaInt(unsigned int hash, int icyMetaInt)
+{
+    auto const s = findByHash(hash);
+
+    if (s == nullptr || s->soundType != SoundType::TYPE_BUFFER_STREAM) { 
+        return PlayerErrors::soundHashNotFound;
+    }
+
+    static_cast<SoLoud::BufferStream *>(s->sound.get())->setMp3BufferIcyMetaInt(icyMetaInt);
     return PlayerErrors::noError;
 }
 
@@ -644,7 +670,7 @@ void Player::disposeSound(unsigned int soundHash)
     }
 
     auto it = std::find_if(sounds.begin(), sounds.end(),
-                           [soundHash](const std::unique_ptr<ActiveSound> &sound)
+                           [soundHash](const std::unique_ptr<ActiveSound> &sound) 
                            {
                                return sound->soundHash == soundHash;
                            });
@@ -665,7 +691,6 @@ void Player::disposeSound(unsigned int soundHash)
             }
             it->get()->filters.reset();
         }
-
         sounds.erase(it);
     }
 }
@@ -839,14 +864,14 @@ float Player::getPan(SoLoud::handle handle)
 
 void Player::setPan(SoLoud::handle handle, float pan)
 {
-    std::clamp(pan, -1.0f, 1.0f);
+    pan = std::clamp(pan, -1.0f, 1.0f);
     soloud.setPan(handle, pan);
 }
 
 void Player::setPanAbsolute(SoLoud::handle handle, float panLeft, float panRight)
 { 
-    std::clamp(panLeft, -1.0f, 1.0f);
-    std::clamp(panRight, -1.0f, 1.0f);
+    panLeft = std::clamp(panLeft, -1.0f, 1.0f);
+    panRight = std::clamp(panRight, -1.0f, 1.0f);
     soloud.setPanAbsolute(handle, panLeft, panRight);
 }
 
@@ -932,7 +957,7 @@ ActiveSound *Player::findByHandle(SoLoud::handle handle)
 ActiveSound *Player::findByHash(unsigned int soundHash)
 {
     auto const &s = std::find_if(sounds.begin(), sounds.end(),
-                                 [&](std::unique_ptr<ActiveSound> const &f)
+                                 [&](std::unique_ptr<ActiveSound> const &f) 
                                  { return f->soundHash == soundHash; });
     if (s == sounds.end())
         return nullptr;

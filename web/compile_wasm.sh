@@ -154,7 +154,10 @@ if [ "${SKIP_OPUS_OGG}" = "1" ]; then
 fi
 
 # Now compile everything together
-em++ -O3 \
+    # -s ASSERTIONS=1 \
+    # -g -fdebug-compilation-dir=./debug \
+    # -s NO_DISABLE_EXCEPTION_CATCHING=1 \
+em++ -O2 \
     ${INCLUDE_DIRS[@]} \
     ${SOURCES[@]} \
     ${LIBS[@]} \

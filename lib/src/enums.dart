@@ -96,7 +96,13 @@ enum PlayerErrors {
   wrongBufferTypeToAskForTimeConsumed(27),
 
   /// BufferStream with released buffer type cannot be seeked!
-  bufferStreamWithReleasedBufferTypeCannotBeSeeked(28);
+  bufferStreamWithReleasedBufferTypeCannotBeSeeked(28),
+
+  /// Audio format not supported
+  audioFormatNotSupported(29),
+
+  /// Opus ogg vorbis libraries not found.
+  opusOggVorbisLibsNotFound(30);
 
   const PlayerErrors(this.value);
 
@@ -183,6 +189,14 @@ enum PlayerErrors {
             'This is only available for `BufferingType.preserved` buffers.';
       case PlayerErrors.bufferStreamWithReleasedBufferTypeCannotBeSeeked:
         return 'BufferStream with released buffer type cannot be seeked.';
+      case PlayerErrors.audioFormatNotSupported:
+        return 'Audio format not supported. Please check the audio file format '
+            'and ensure it is supported by the player.';
+      case PlayerErrors.opusOggVorbisLibsNotFound:
+        return 'Opus Ogg Vorbis libraries not found. Please check the '
+            'installation and ensure the required libraries are available. '
+            'Ref:'
+            'https://github.com/alnitak/flutter_soloud/blob/main/NO_OPUS_OGG_LIBS.md';
     }
   }
 
@@ -365,8 +379,13 @@ enum BufferType {
   /// 32-bit signed, little-endian.
   s32le(3),
 
+  /// Auto detect the type from  MP3, OGG Opus or OGG Vorbis formats.
+  auto(4),
+
   /// Opus encoded audio.
-  opus(4);
+  /// `opus` is deprecated, use `auto` instead which will automatically
+  /// determine from MP3, OGG Opus or OGG Vorbis.
+  opus(5);
 
   /// The integer value of the PCM type.
   final int value;
@@ -389,6 +408,8 @@ enum BufferType {
         return 'Little Endian Float 32-bit';
       case BufferType.opus:
         return 'Opus Encoded Audio';
+      case BufferType.auto:
+        return 'MP3, Opus or Vorbis Encoded Audio';
     }
   }
 }

@@ -37,7 +37,7 @@ class _BufferBarState extends State<BufferBar> {
     currentMaxBytes *= widget.startingMb;
     super.initState();
     timer = Timer.periodic(const Duration(milliseconds: 100), (timer) {
-      setState(() {});
+      if (context.mounted) setState(() {});
     });
   }
 

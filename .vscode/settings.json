@@ -1,6 +1,7 @@
 {
     "cmake.sourceDirectory": "/home/deimos/FLUTTER/libs/flutter_soloud/android",
     "files.associations": {
+        "*.mdx": "markdown",
         "iostream": "cpp",
         "memory": "cpp",
         "cctype": "cpp",
@@ -107,7 +108,11 @@
         "netfwd": "cpp",
         "timer": "cpp",
         "text_encoding": "cpp",
-        "coroutine": "cpp"
+        "coroutine": "cpp",
+        "regex": "cpp",
+        "queue": "cpp",
+        "ranges": "cpp",
+        "stack": "cpp"
     },
     "java.configuration.updateBuildConfiguration": "automatic"
 }

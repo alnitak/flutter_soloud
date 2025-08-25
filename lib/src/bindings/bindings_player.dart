@@ -4,6 +4,8 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter_soloud/src/bindings/audio_data.dart';
+import 'package:flutter_soloud/src/bindings/native_metadata_ffi.dart'
+    if (dart.library.js_interop) 'package:flutter_soloud/src/bindings/native_metadata_web.dart';
 import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/filters/filters.dart';
 import 'package:flutter_soloud/src/helpers/playback_device.dart';
@@ -11,14 +13,16 @@ import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
 import 'package:meta/meta.dart';
 
-export 'package:flutter_soloud/src/bindings/bindings_player_ffi.dart'
-    if (dart.library.js_interop) 'package:flutter_soloud/src/bindings/bindings_player_web.dart';
-
 /// Callback set in `setBufferStream` for the `onBuffering` closure.
 typedef OnBufferingCallbackTFunction = void Function(
   bool isBuffering,
   int handle,
   double time,
+);
+
+/// Callback set in `setBufferStream` for the `onMetadata` closure.
+typedef OnMetadataCallbackTFunction = void Function(
+  NativeAudioMetadata metadata,
 );
 
 /// Abstract class defining the interface for the platform-specific
@@ -157,6 +161,7 @@ abstract class FlutterSoLoud {
     int channels,
     int format,
     OnBufferingCallbackTFunction? onBuffering,
+    OnMetadataCallbackTFunction? onMetadata,
   );
 
   /// Reset the buffer of the audio stream.
@@ -171,6 +176,16 @@ abstract class FlutterSoLoud {
   ({PlayerErrors error, double value}) getStreamTimeConsumed(
     SoundHash soundHash,
   );
+
+  /// Set the icy metadata integer value. Must be set once before calling
+  /// the first time [addAudioDataStream] to be able to get MP3 metadata
+  /// of a stream.
+  ///
+  /// [hash] the hash of the stream sound.
+  /// [icyMetaInt] the icy metadata integer value. Default is 16000 which
+  /// is the most used value.
+  @mustBeOverridden
+  PlayerErrors setMp3BufferIcyMetaInt(SoundHash soundHash, int icyMetaInt);
 
   /// Add a chunk of audio data to the buffer stream.
   ///

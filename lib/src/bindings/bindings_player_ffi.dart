@@ -10,6 +10,7 @@ import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 import 'package:flutter_soloud/src/bindings/audio_data.dart';
 import 'package:flutter_soloud/src/bindings/bindings_player.dart';
+import 'package:flutter_soloud/src/bindings/native_metadata_ffi.dart';
 import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/exceptions/exceptions.dart';
 import 'package:flutter_soloud/src/filters/filters.dart';
@@ -404,6 +405,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     int channels,
     int format,
     OnBufferingCallbackTFunction? onBuffering,
+    OnMetadataCallbackTFunction? onMetadata,
   ) {
     // Create a NativeCallable for the given [onBuffering] callback.
     ffi.NativeCallable<ffi.Void Function(ffi.Bool, ffi.Int, ffi.Double)>?
@@ -412,6 +414,16 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       nativeOnBufferingCallable = ffi.NativeCallable<
           ffi.Void Function(ffi.Bool, ffi.Int, ffi.Double)>.listener(
         onBuffering,
+      );
+    }
+
+    // Create a NativeCallable for the given [onMetadata] callback.
+    ffi.NativeCallable<ffi.Void Function(NativeAudioMetadata)>?
+        nativeOnMetadataCallable;
+    if (onMetadata != null) {
+      nativeOnMetadataCallable =
+          ffi.NativeCallable<ffi.Void Function(NativeAudioMetadata)>.listener(
+        onMetadata,
       );
     }
 
@@ -426,6 +438,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       channels,
       format,
       nativeOnBufferingCallable?.nativeFunction ?? ffi.nullptr,
+      nativeOnMetadataCallable?.nativeFunction ?? ffi.nullptr,
     );
     final soundHash = SoundHash(hash.value);
     final ret = (error: PlayerErrors.values[e], soundHash: soundHash);
@@ -445,21 +458,26 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
               ffi.Int,
               ffi.Pointer<
                   ffi.NativeFunction<
-                      ffi.Void Function(ffi.Bool, ffi.Int,
-                          ffi.Double)>>)>>('setBufferStream');
+                      ffi.Void Function(ffi.Bool, ffi.Int, ffi.Double)>>,
+              ffi.Pointer<
+                  ffi.NativeFunction<
+                      ffi.Void Function(
+                          NativeAudioMetadata)>>)>>('setBufferStream');
+
   late final _setBufferStream = _setBufferStreamPtr.asFunction<
       int Function(
-        ffi.Pointer<ffi.UnsignedInt>,
-        int,
-        int,
-        double,
-        int,
-        int,
-        int,
-        ffi.Pointer<
-            ffi
-            .NativeFunction<ffi.Void Function(ffi.Bool, ffi.Int, ffi.Double)>>,
-      )>();
+          ffi.Pointer<ffi.UnsignedInt>,
+          int,
+          int,
+          double,
+          int,
+          int,
+          int,
+          ffi.Pointer<
+              ffi.NativeFunction<
+                  ffi.Void Function(ffi.Bool, ffi.Int, ffi.Double)>>,
+          ffi.Pointer<
+              ffi.NativeFunction<ffi.Void Function(NativeAudioMetadata)>>)>();
 
   @override
   PlayerErrors resetBufferStream(SoundHash soundHash) {
@@ -492,6 +510,19 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
               ffi.Pointer<ffi.Float>)>>('getStreamTimeConsumed');
   late final _getStreamTimeConsumed = _getStreamTimeConsumedPtr
       .asFunction<int Function(int, ffi.Pointer<ffi.Float>)>();
+
+  @override
+  PlayerErrors setMp3BufferIcyMetaInt(SoundHash soundHash, int icyMetaInt) {
+    final e = _setMp3BufferIcyMetaInt(soundHash.hash, icyMetaInt);
+    return PlayerErrors.values[e];
+  }
+
+  late final _setMp3BufferIcyMetaIntPtr = _lookup<
+          ffi
+          .NativeFunction<ffi.UnsignedInt Function(ffi.UnsignedInt, ffi.Int)>>(
+      'setMp3BufferIcyMetaInt');
+  late final _setMp3BufferIcyMetaInt =
+      _setMp3BufferIcyMetaIntPtr.asFunction<int Function(int, int)>();
 
   @override
   PlayerErrors addAudioDataStream(
