@@ -3,6 +3,9 @@ allprojects {
         google()
         mavenCentral()
     }
+
+    // uncomment to disable opus support
+    // extra["NO_OPUS_OGG_LIBS"] = "true"
 }
 
 val newBuildDir: Directory = rootProject.layout.buildDirectory.dir("../../build").get()

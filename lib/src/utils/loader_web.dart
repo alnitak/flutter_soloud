@@ -6,6 +6,7 @@ import 'package:flutter_soloud/src/exceptions/exceptions.dart';
 import 'package:flutter_soloud/src/soloud.dart';
 import 'package:http/http.dart' as http;
 import 'package:logging/logging.dart';
+// ignore: unnecessary_import
 import 'package:meta/meta.dart';
 
 /// A long-living helper class that loads assets and URLs into temporary files
