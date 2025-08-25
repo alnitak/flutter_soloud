@@ -1,3 +1,11 @@
+#### 3.3.0 (25 Aug 2025)
+- Added support for mp3 streams
+- Added support for Vorbis streams
+- Added `web_radio.dart` example to demonstrate how to receive an audio stream (ie, an icecast stream) and then add the audio chunks to BufferStream
+- Add `BufferType.auto` to auto detect ogg/opus/vorbis/mp3 streams
+- Deprecate `BufferType.opus` in favor of `BufferType.auto`
+- Get TAGs info also while streaming and not only by sending chunks of an audio file. For MP3s, the TAGs are obtained from ID3V2 or passing `icy-metaint` (obtained from the header of the online stream) before adding audio chunks to the BufferStream. New metadata are notifified by the `onMetadata` callback of `setBufferStream`
+
 #### 3.2.7 (18 Aug 2025)
 - feat: allow to specify NO_OPUS_OGG_LIBS in Android build config #282. Thanks to @ekuleshov
 - fix: 16KB memory page size for Android because of Play Console warning #283
