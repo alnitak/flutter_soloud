@@ -134,20 +134,34 @@ std::pair<std::vector<float>, DecoderError> MP3DecoderWrapper::decode(std::vecto
     {
         int samples = mp3dec_decode_frame(&decoder, mp3_ptr, bytes_left, pcm, &frame_info);
 
-        if (samples)
+        if (samples > 0)
         {
+            // Valid samples decoded, add them to output
             decodedData.insert(decodedData.end(), pcm, pcm + samples * frame_info.channels);
             mp3_ptr += frame_info.frame_bytes;
             bytes_left -= frame_info.frame_bytes;
         } else {
-            // Error or not enough data for a full frame
-            if (frame_info.frame_bytes == 0) { // No frame found, break to avoid infinite loop
-                break;
+            // No samples decoded
+            if (frame_info.frame_bytes == 0) {
+                // No valid frame found at current position
+                if (bytes_left < 4) { // Not enough data for a header
+                    break;
+                }
+                // Try to find next valid frame header
+                if (hdr_valid(mp3_ptr)) {
+                    // Found what looks like a valid header but not enough data to decode
+                    // Keep remaining data for next decode attempt
+                    break;
+                }
+                // Skip one byte and continue searching
+                mp3_ptr++;
+                bytes_left--;
+            } else {
+                // Frame was found but couldn't be decoded (possibly corrupted)
+                // Skip this frame
+                mp3_ptr += frame_info.frame_bytes;
+                bytes_left -= frame_info.frame_bytes;
             }
-            // If frame_info.frame_bytes > 0 but samples == 0, it means an error occurred
-            // or not enough data for a full frame. We should advance to avoid getting stuck.
-            mp3_ptr += frame_info.frame_bytes;
-            bytes_left -= frame_info.frame_bytes;
         }
     }
 

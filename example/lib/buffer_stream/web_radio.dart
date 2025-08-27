@@ -48,19 +48,19 @@ class WebRadioExample extends StatefulWidget {
 }
 
 class _WebRadioExampleState extends State<WebRadioExample> {
-  // https://dir.xiph.org/codecs
   final urls = [
-    {'MP3': 'http://as.fm1.be:8000/media'},
-    {'MP3': 'http://as.fm1.be:8000/rand'},
-    {'MP3': 'http://as.fm1.be:8000/vlar1.mp3'},
-    {'MP3': 'http://xfer.hirschmilch.de:8000/techno.mp3'},
-    {'MP3': 'http://as.fm1.be:8000/wrgm1'},
-    {'MP3': 'http://stream.danubiusradio.hu:8081/danubius_192k'},
-    {'MP3': 'http://live.coolradio.rs/cool128'},
-    {'MP3': 'http://stream.lazaradio.com:8100/live.mp3'},
-    {'MP3': 'http://www.appradio.app:8010/live'},
-    {'MP3': 'http://streaming.radiominerva.be:8000/minerva'},
-    {'MP3': 'http://ice37.fluidstream.net/ric.mp3'},
+    // https://fmstream.org/index.php
+    // 90s
+    {'MP3': 'https://frontend.streamonkey.net/nostalgie-90er/stream/mp3'},
+    {'MP3': 'https://ice-sov.musicradio.com/Heart90sMP3'},
+    {'MP3': 'https://streams.90s90s.de/pop/mp3-128'},
+    {'MP3': 'https://regiocast.streamabc.net/regc-90s90seurodance7558633-mp3-128-2300952'},
+    // 80s
+    {'MP3': 'https://streams.80s80s.de/web/mp3-128'},
+    {'MP3': 'https://p8.p4groupaudio.com/P08_MM'},
+    {'MP3': 'https://frontend.streamonkey.net/nostalgie-80er/stream/mp3'},
+
+    // https://dir.xiph.org/codecs
     {'Vorbis': 'http://play.global.audio/nova.ogg'},
     {'Vorbis': 'http://superaudio.radio.br:8074/stream'},
     {'Vorbis': 'http://stream.lazaradio.com:8100/live.ogg'},
