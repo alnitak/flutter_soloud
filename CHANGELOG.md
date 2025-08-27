@@ -1,3 +1,6 @@
+#### 3.3.1 (27 Aug 2025)
+- fix win: fix build error #292
+
 #### 3.3.0 (25 Aug 2025)
 - Added support for mp3 streams
 - Added support for Vorbis streams
