@@ -169,7 +169,7 @@ std::pair<std::vector<float>, DecoderError> MP3DecoderWrapper::decode(std::vecto
         while (pos < buffer.size()) {
             if (metadata_remaining > 0) {
                 // Still reading metadata from previous chunk
-                size_t to_copy = std::min(metadata_remaining, buffer.size() - pos);
+                size_t to_copy = MIN(metadata_remaining, buffer.size() - pos);
                 metadata_buffer.append((char*)buffer.data() + pos, to_copy);
                 pos += to_copy;
                 metadata_remaining -= to_copy;
@@ -192,7 +192,7 @@ std::pair<std::vector<float>, DecoderError> MP3DecoderWrapper::decode(std::vecto
                 }
             } else if (bytes_until_meta > 0) {
                 // Regular audio bytes
-                size_t to_copy = std::min(bytes_until_meta, buffer.size() - pos);
+                size_t to_copy = MIN(bytes_until_meta, buffer.size() - pos);
                 pos += to_copy;
                 bytes_until_meta -= to_copy;
             } else {

@@ -53,4 +53,6 @@
 void platform_log(const char *fmt, ...);
 #endif
 
+#define MIN(a, b) (((a) < (b)) ? (a) : (b))
+
 #endif // COMMON_H
