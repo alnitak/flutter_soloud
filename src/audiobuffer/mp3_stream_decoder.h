@@ -41,7 +41,7 @@ public:
 
 private:
     bool extractID3Tags(const std::vector<unsigned char>& buffer, AudioMetadata& metadata);
-    bool checkIcyMeta(std::vector<unsigned char>& buffer);
+    bool checkIcyMeta(std::vector<unsigned char>& buffer, int *bytes_removed);
     bool isInitialized;
     bool validFramesFound;
     size_t bytes_until_meta;

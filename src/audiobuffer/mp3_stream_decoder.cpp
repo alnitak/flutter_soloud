@@ -82,7 +82,7 @@ bool MP3DecoderWrapper::extractID3Tags(const std::vector<unsigned char>& buffer,
 }
 
 
-bool MP3DecoderWrapper::checkIcyMeta(std::vector<unsigned char>& buffer)
+bool MP3DecoderWrapper::checkIcyMeta(std::vector<unsigned char>& buffer, int *bytes_removed)
 {
     size_t pos = 0;
     startinMetaPos = 0;
@@ -112,6 +112,8 @@ bool MP3DecoderWrapper::checkIcyMeta(std::vector<unsigned char>& buffer)
                 lastMetadata = metadata_buffer;
                 metadata_buffer.clear();
                 bytes_until_meta = mIcyMetaInt;
+
+                *bytes_removed = lenMetaPos;
                 
                 // Erase the entire metadata block (length byte + content)
                 printf("MP3 metadata erasing %zu bytes starting from %zu\n", lenMetaPos, startinMetaPos);
@@ -215,13 +217,19 @@ std::pair<std::vector<float>, DecoderError> MP3DecoderWrapper::decode(std::vecto
 
     // With MP3 stream, the metadata is extracted from the icy-metaint value in bytes
     if (detectedType == DetectedType::BUFFER_MP3_STREAM && mIcyMetaInt != 0) {
-        if (!checkIcyMeta(buffer)) {
-            // the buffer trucated the metadata, keep the buffer for next time
+        int bytes_removed = 0;
+        if (!checkIcyMeta(buffer, &bytes_removed)) {
+            // the buffer trucated the metadata, keep the buffer for the next time
             return {decodedData, DecoderError::NoError};
         }
+        bytes_left = buffer.size();
+        mp3_ptr = buffer.data();
     }
 
+    printf("     -- DECODING %d bytes\n", bytes_left);
 
+    int decodedSamples = 0;
+    int counter = 0;
     while (bytes_left > 0)
     {
         int samples = mp3dec_decode_frame(&decoder, mp3_ptr, bytes_left, pcm, &frame_info);
@@ -232,7 +240,10 @@ std::pair<std::vector<float>, DecoderError> MP3DecoderWrapper::decode(std::vecto
             decodedData.insert(decodedData.end(), pcm, pcm + samples * frame_info.channels);
             mp3_ptr += frame_info.frame_bytes;
             bytes_left -= frame_info.frame_bytes;
-        } else {
+            decodedSamples++;
+        }
+        else
+        {
             // No samples decoded
             if (frame_info.frame_bytes == 0) {
                 // No valid frame found at current position
@@ -249,18 +260,21 @@ std::pair<std::vector<float>, DecoderError> MP3DecoderWrapper::decode(std::vecto
                 mp3_ptr++;
                 bytes_left--;
             } else {
-                // Frame was found but couldn't be decoded (possibly corrupted)
                 // Skip this frame
                 mp3_ptr += frame_info.frame_bytes;
                 bytes_left -= frame_info.frame_bytes;
                 corruptedFrames++;
-                printf("Corrupted frame: %d  with length: %d\n", corruptedFrames, frame_info.frame_bytes);
+                printf("Corrupted frame: %d  with length: %d   bytes left: %d\n", corruptedFrames, frame_info.frame_bytes, bytes_left);
             }
-        }
-    }
+        } // end samples<=0
+        counter++;
+        printf("     ** COUNTER %d\n", counter);
+    } // end while
 
     // Keep any remaining bytes in the buffer for the next call
     buffer.erase(buffer.begin(), buffer.end() - bytes_left);
+
+    printf("     -- DECODED %d SAMPLES   buffer size: %d   bytes left: %d\n", decodedSamples, buffer.size(), bytes_left);
 
     return {decodedData, DecoderError::NoError};
 }
