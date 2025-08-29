@@ -41,13 +41,19 @@ public:
 
 private:
     bool extractID3Tags(const std::vector<unsigned char>& buffer, AudioMetadata& metadata);
+    bool checkIcyMeta(std::vector<unsigned char>& buffer);
     bool isInitialized;
     bool validFramesFound;
     size_t bytes_until_meta;
     size_t metadata_remaining;
     std::string metadata_buffer;
+    std::string lastMetadata;
     int mIcyMetaInt;
     bool ID3TagsFound;
+    size_t m_meta_start_pos = 0;
+    size_t m_meta_len = 0;
+    size_t startinMetaPos = 0;
+    size_t lenMetaPos = 0;
 };
 
 #endif // MP3_STREAM_DECODER_H

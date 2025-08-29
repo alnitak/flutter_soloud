@@ -307,6 +307,7 @@ namespace SoLoud
 			buffer.insert(buffer.end(),
 						  static_cast<const unsigned char *>(aData),
 						  static_cast<const unsigned char *>(aData) + aDataLen);
+			printf("ADDING %d bytes\n", aDataLen);
 			mBytesReceived += aDataLen;
 			// Performing some buffering. We need some data to be added expecially when using opus or mp3.
 			if (buffer.size() > 1024 * 16) // 16 KB of data.

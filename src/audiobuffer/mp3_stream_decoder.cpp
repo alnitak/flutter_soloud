@@ -44,7 +44,7 @@ bool MP3DecoderWrapper::extractID3Tags(const std::vector<unsigned char>& buffer,
     // Look for ID3v2 tag. ID3v1 is not supported (metadata is at the end of the file)
     if (buffer.size() > 10 && memcmp(buffer.data(), "ID3", 3) == 0) {
         size_t pos = 10;  // Skip ID3v2 header
-        uint32_t size = ((buffer[6] & 0x7f) << 21) | 
+        uint32_t size = ((buffer[6] & 0x7f) << 21) |
                        ((buffer[7] & 0x7f) << 14) |
                        ((buffer[8] & 0x7f) << 7) |
                        (buffer[9] & 0x7f);
@@ -81,6 +81,78 @@ bool MP3DecoderWrapper::extractID3Tags(const std::vector<unsigned char>& buffer,
     return false; 
 }
 
+
+bool MP3DecoderWrapper::checkIcyMeta(std::vector<unsigned char>& buffer)
+{
+    size_t pos = 0;
+    startinMetaPos = 0;
+    lenMetaPos = 0;
+
+    while (pos < buffer.size()) {
+        if (metadata_remaining > 0) {
+            // Still reading metadata from previous chunk
+            size_t to_copy = std::min((size_t)metadata_remaining, buffer.size() - pos);
+            metadata_buffer.append((char*)buffer.data() + pos, to_copy);
+            pos += to_copy;
+            metadata_remaining -= to_copy;
+
+            if (metadata_remaining == 0) {
+                // Metadata complete, parse StreamTitle
+                // printf("MP3 metadata: %s\n", metadata_buffer.c_str());
+                AudioMetadata newMetadata;
+                newMetadata.type = DetectedType::BUFFER_MP3_STREAM;
+                newMetadata.mp3Metadata.title = metadata_buffer;
+                newMetadata.mp3Metadata.artist = "";
+                newMetadata.mp3Metadata.album = "";
+                newMetadata.mp3Metadata.date = "";
+                newMetadata.mp3Metadata.genre = "";
+                if (lastMetadata != metadata_buffer && onTrackChange) {
+                    onTrackChange(newMetadata);
+                }
+                lastMetadata = metadata_buffer;
+                metadata_buffer.clear();
+                bytes_until_meta = mIcyMetaInt;
+                
+                // Erase the entire metadata block (length byte + content)
+                printf("MP3 metadata erasing %zu bytes starting from %zu\n", lenMetaPos, startinMetaPos);
+                if (startinMetaPos + lenMetaPos <= buffer.size()) {
+                    buffer.erase(buffer.begin() + startinMetaPos, buffer.begin() + startinMetaPos + lenMetaPos);
+                    // Adjust pos after erase to continue scanning the rest of the buffer correctly
+                    pos -= lenMetaPos;
+                }
+            }
+        } else if (bytes_until_meta > 0) {
+            // Regular audio bytes
+            size_t to_copy = std::min((size_t)bytes_until_meta, buffer.size() - pos);
+            pos += to_copy;
+            bytes_until_meta -= to_copy;
+        } else {
+            // Start of metadata: read length byte
+            startinMetaPos = pos;
+            uint8_t len_byte = buffer[pos++];
+            metadata_remaining = len_byte * 16;
+            lenMetaPos = metadata_remaining + 1; // +1 for the length byte itself
+
+            if (metadata_remaining > 0) {
+                 if (buffer.size() - pos < metadata_remaining) {
+                    // Not enough data for the full metadata block in this buffer.
+                    // Return false to signal the caller to wait for more data.
+                    return false;
+                }
+                metadata_buffer.clear();
+            } else {
+                // No metadata this time (len_byte is 0).
+                bytes_until_meta = mIcyMetaInt;
+                // We just consumed the 0-length byte, it should be removed.
+                buffer.erase(buffer.begin() + startinMetaPos);
+                pos--;
+            }
+        }
+    }
+    return true;
+}
+
+int corruptedFrames = 0;
 std::pair<std::vector<float>, DecoderError> MP3DecoderWrapper::decode(std::vector<unsigned char>& buffer, int* samplerate, int* channels)
 {
     if (buffer.empty())
@@ -123,9 +195,29 @@ std::pair<std::vector<float>, DecoderError> MP3DecoderWrapper::decode(std::vecto
 
         if (validFrames >= 2) {
             validFramesFound = true;
+            corruptedFrames = 0;
         } else {
             // Not enough valid frames yet, keep the buffer for next time
             return {};
+        }
+    }
+
+
+    // With MP3 with ID3 TAG, the metadata is extracted with the extractID3Tags function
+    if (detectedType == DetectedType::BUFFER_MP3_WITH_ID3 && !ID3TagsFound) {
+        // Check for new metadata
+        AudioMetadata newMetadata;
+        if (extractID3Tags(buffer, newMetadata)) {
+            ID3TagsFound = true;
+            if (onTrackChange) onTrackChange(newMetadata);
+        }
+    }
+
+    // With MP3 stream, the metadata is extracted from the icy-metaint value in bytes
+    if (detectedType == DetectedType::BUFFER_MP3_STREAM && mIcyMetaInt != 0) {
+        if (!checkIcyMeta(buffer)) {
+            // the buffer trucated the metadata, keep the buffer for next time
+            return {decodedData, DecoderError::NoError};
         }
     }
 
@@ -161,66 +253,11 @@ std::pair<std::vector<float>, DecoderError> MP3DecoderWrapper::decode(std::vecto
                 // Skip this frame
                 mp3_ptr += frame_info.frame_bytes;
                 bytes_left -= frame_info.frame_bytes;
+                corruptedFrames++;
+                printf("Corrupted frame: %d  with length: %d\n", corruptedFrames, frame_info.frame_bytes);
             }
         }
     }
-
-
-        
-    // With MP3 with ID3 TAG, the metadata is extracted with the extractID3Tags function
-    if (detectedType == DetectedType::BUFFER_MP3_WITH_ID3 && !ID3TagsFound) {
-        // Check for new metadata
-        AudioMetadata newMetadata;
-        if (extractID3Tags(buffer, newMetadata)) {
-            ID3TagsFound = true;
-            if (onTrackChange) onTrackChange(newMetadata);
-        }
-    }
-
-    // With MP3 stream, the metadata is extracted from the icy-metaint value in bytes
-    if (detectedType == DetectedType::BUFFER_MP3_STREAM && mIcyMetaInt != 0) {
-        size_t pos = 0;
-        while (pos < buffer.size()) {
-            if (metadata_remaining > 0) {
-                // Still reading metadata from previous chunk
-                size_t to_copy = std::min(metadata_remaining, buffer.size() - pos);
-                metadata_buffer.append((char*)buffer.data() + pos, to_copy);
-                pos += to_copy;
-                metadata_remaining -= to_copy;
-
-                if (metadata_remaining == 0) {
-                    // Metadata complete, parse StreamTitle
-                    // printf("MP3 metadata: %s\n", metadata_buffer.c_str());
-                    AudioMetadata newMetadata;
-                    newMetadata.type = DetectedType::BUFFER_MP3_STREAM;
-                    newMetadata.mp3Metadata.title = metadata_buffer;
-                    newMetadata.mp3Metadata.artist = "";
-                    newMetadata.mp3Metadata.album = "";
-                    newMetadata.mp3Metadata.date = "";
-                    newMetadata.mp3Metadata.genre = "";
-                    if (onTrackChange) {
-                        onTrackChange(newMetadata);
-                    }
-                    metadata_buffer.clear();
-                    bytes_until_meta = mIcyMetaInt;
-                }
-            } else if (bytes_until_meta > 0) {
-                // Regular audio bytes
-                size_t to_copy = std::min(bytes_until_meta, buffer.size() - pos);
-                pos += to_copy;
-                bytes_until_meta -= to_copy;
-            } else {
-                // Start of metadata: read length byte
-                uint8_t len_byte = buffer[pos++];
-                metadata_remaining = len_byte * 16;
-                metadata_buffer.clear();
-                if (metadata_remaining == 0) {
-                    bytes_until_meta = mIcyMetaInt; // No metadata this time
-                }
-            }
-        }
-    }
-
 
     // Keep any remaining bytes in the buffer for the next call
     buffer.erase(buffer.begin(), buffer.end() - bytes_left);
