@@ -49,12 +49,12 @@ class WebRadioExample extends StatefulWidget {
 
 class _WebRadioExampleState extends State<WebRadioExample> {
   final urls = [
+    {'MP3': 'http://localhost:8080/'},
     // https://fmstream.org/index.php
     // 90s
     {'MP3': 'https://frontend.streamonkey.net/nostalgie-90er/stream/mp3'},
     {'MP3': 'https://ice-sov.musicradio.com/Heart90sMP3'},
     {'MP3': 'https://streams.90s90s.de/pop/mp3-128'},
-    {'MP3': 'https://regiocast.streamabc.net/regc-90s90seurodance7558633-mp3-128-2300952'},
     // 80s
     {'MP3': 'https://streams.80s80s.de/web/mp3-128'},
     {'MP3': 'https://p8.p4groupaudio.com/P08_MM'},
@@ -116,7 +116,6 @@ class _WebRadioExampleState extends State<WebRadioExample> {
   }
 
   Future<void> connectToUrl(String url) async {
-    connectionError.value = '';
     urlController.text = url;
     try {
       await resetConnections();
@@ -201,6 +200,7 @@ class _WebRadioExampleState extends State<WebRadioExample> {
   }
 
   Future<void> playUrl(String url) async {
+    metadataText.text = '';
     connectionError.value = '';
     await resetConnections();
     await SoLoud.instance.disposeAllSources();
