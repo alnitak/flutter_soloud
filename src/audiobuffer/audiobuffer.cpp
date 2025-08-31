@@ -348,7 +348,8 @@ namespace SoLoud
 					[&](AudioMetadata meta)
 					{
 					//   meta.debug();
-						this->callOnMetadataCallback(meta);
+						if (this->mOnMetadataCallback != nullptr)
+							this->callOnMetadataCallback(meta);
 					});
 
 			// Handle decoder errors

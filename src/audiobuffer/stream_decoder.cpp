@@ -96,7 +96,8 @@ DetectedType StreamDecoder::detectAudioFormat(const std::vector<unsigned char>& 
     return DetectedType::BUFFER_UNKNOWN;
 }
 
-std::pair<std::vector<float>, DecoderError> StreamDecoder::decode(std::vector<unsigned char>& buffer,
+std::pair<std::vector<float>, DecoderError> StreamDecoder::decode(
+    std::vector<unsigned char>& buffer,
     int* samplerate,
     int* channels,
     TrackChangeCallback metadataChangeCallback)

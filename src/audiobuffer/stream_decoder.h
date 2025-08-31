@@ -188,7 +188,8 @@ public:
 
     void setMp3BufferIcyMetaInt(int icyMetaInt);
 
-    std::pair<std::vector<float>, DecoderError> decode(std::vector<unsigned char> &buffer,
+    std::pair<std::vector<float>, DecoderError> decode(
+        std::vector<unsigned char> &buffer,
         int *sampleRate,
         int *channels,
         TrackChangeCallback metadataChangeCallback);

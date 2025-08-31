@@ -242,6 +242,8 @@ class _WebsocketExampleState extends State<WebsocketExample> {
                   debugPrint(e.toString());
                 }
 
+                SoLoud.instance.setMp3BufferIcyMetaInt(currentSound!, 8192);
+
                 /// Listen to the websocket
                 channel?.stream.listen(
                   (message) async {

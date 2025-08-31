@@ -701,25 +701,25 @@ interface class SoLoud {
     }
 
     final ret = SoLoudController().soLoudFFI.setBufferStream(
-      bufferSize,
-      bufferingType,
-      bufferingTimeNeeds,
-      sampleRate,
-      channels.count,
-      forcedFormat.value,
-      onBuffering,
-      (dynamic metadata) {
-        if (onMetadata != null) {
-          late final AudioMetadata data;
-          if (kIsWeb) {
-            data = NativeAudioMetadata.fromJSPointer(metadata as int);
-          } else {
-            data = (metadata as NativeAudioMetadata).toAudioMetadata();
-          }
-          onMetadata(data);
-        }
-      },
-    );
+          bufferSize,
+          bufferingType,
+          bufferingTimeNeeds,
+          sampleRate,
+          channels.count,
+          forcedFormat.value,
+          onBuffering,
+          onMetadata == null
+              ? null
+              : (dynamic metadata) {
+                  late final AudioMetadata data;
+                  if (kIsWeb) {
+                    data = NativeAudioMetadata.fromJSPointer(metadata as int);
+                  } else {
+                    data = (metadata as NativeAudioMetadata).toAudioMetadata();
+                  }
+                  onMetadata(data);
+                },
+        );
 
     if (ret.error != PlayerErrors.noError) {
       _logPlayerError(ret.error, from: 'addAudioDataStream() result');
