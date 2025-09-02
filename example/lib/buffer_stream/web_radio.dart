@@ -64,10 +64,8 @@ class _WebRadioExampleState extends State<WebRadioExample> {
     {'Vorbis': 'http://superaudio.radio.br:8074/stream'},
     {'Vorbis': 'http://stream.lazaradio.com:8100/live.ogg'},
     {'Vorbis': 'http://stream.trendyradio.pl:8000/m'},
-    {'Vorbis': 'http://superaudio.radio.br:8074/stream'},
     {'Vorbis': 'http://play.global.audio/nrj.ogg'},
     {'Vorbis': 'http://play.global.audio/radio1rock.ogg'},
-    {'Vorbis': 'http://stream.danubiusradio.hu:8091/danubius_HiFi'},
     {'Opus': 'http://radio.glafir.ru:7000/pop-mix'},
     {'Opus': 'http://icecast.err.ee/klarajazz.opus'},
     {'Opus': 'http://xfer.hirschmilch.de:8000/prog-house.opus'},
@@ -75,8 +73,6 @@ class _WebRadioExampleState extends State<WebRadioExample> {
     {'Opus': 'http://icecast.walmradio.com:8000/otr_opus'},
     {'Opus': 'http://xfer.hirschmilch.de:8000/techno.opus'},
     {'Opus': 'http://icecast.err.ee/raadio2.opus'},
-    {'Opus': 'http://radio.glafir.ru:7000/humor'},
-    {'Opus': 'http://icecast.err.ee/vikerraadio.opus'},
     {'Opus': 'http://radio.glafir.ru:7000/classic'},
     {'Opus': 'http://radio.glafir.ru:7000/easy-listen'},
   ];
@@ -216,10 +212,10 @@ class _WebRadioExampleState extends State<WebRadioExample> {
         //     'handle: $handle at time $time');
         streamBuffering.value = isBuffering;
       },
-      // onMetadata: (metadata) {
-      //   debugPrint(metadata.toString());
-      //   metadataText.text = metadata.toString();
-      // },
+      onMetadata: (metadata) {
+        debugPrint(metadata.toString());
+        metadataText.text = metadata.toString();
+      },
     );
 
     await SoLoud.instance.play(source!);

@@ -10,6 +10,7 @@
 #endif
 #include "minimp3.h"
 
+#include "../common.h"
 #include "mp3_stream_decoder.h"
 
 MP3DecoderWrapper::MP3DecoderWrapper()
@@ -20,9 +21,7 @@ MP3DecoderWrapper::MP3DecoderWrapper()
       lastMetadata(""),
       mIcyMetaInt(0),
       validFramesFound(false),
-      ID3TagsFound(false),
-      chunkNumber(0),
-      corruptedFrames(0)
+      ID3TagsFound(false)
 {
 }
 
@@ -86,17 +85,33 @@ bool MP3DecoderWrapper::extractID3Tags(const std::vector<unsigned char> &buffer,
 size_t MP3DecoderWrapper::getLastFrameStartingPos(std::vector<unsigned char> &buffer, size_t *bytes_discarded_at_end)
 {
     const uint8_t *mp3_ptr = buffer.data();
-    size_t readingPos = buffer.size() - 1;
-    while (readingPos < buffer.size())
+    size_t buffer_size = buffer.size();
+
+    if (buffer_size < 4) // An MP3 frame header is 4 bytes.
     {
-        if (hdr_valid(mp3_ptr + readingPos))
+        *bytes_discarded_at_end = buffer_size;
+        return 0;
+    }
+
+    // Iterate backwards from the last possible header position.
+    for (size_t i = buffer_size - 4; ; i--)
+    {
+        if (hdr_valid(mp3_ptr + i))
         {
+            // Found a valid header. This is the start of the last potential frame.
+            *bytes_discarded_at_end = buffer_size - i;
+            return i;
+        }
+        if (i == 0)
+        {
+            // We've checked the start of the buffer and found no header.
             break;
         }
-        readingPos--;
     }
-    *bytes_discarded_at_end = buffer.size() - readingPos;
-    return readingPos;
+
+    // No valid header found in the buffer.
+    *bytes_discarded_at_end = buffer_size;
+    return 0;
 }
 
 // Return a vector of char containing only valid MP3 frames stripped of metadata and of the last truncated frame
@@ -121,7 +136,7 @@ std::vector<unsigned char> MP3DecoderWrapper::checkIcyMeta(
 
     while (readingPos < bufferSize)
     {
-        size_t bytes_to_read = std::min((size_t)bytes_until_meta, bufferSize - readingPos);
+        size_t bytes_to_read = MIN((size_t)bytes_until_meta, bufferSize - readingPos);
 
         // Append audio data
         onlyFrames.insert(onlyFrames.end(), buffer.begin() + readingPos, buffer.begin() + readingPos + bytes_to_read);
@@ -216,8 +231,8 @@ std::pair<std::vector<float>, DecoderError> MP3DecoderWrapper::decode(std::vecto
         const uint8_t *frame_ptr = buffer.data();
         int remaining = bytes_left;
 
-        while (remaining >= 4 && validFrames < 2)
-        { // Need at least 4 bytes for header check
+        while (remaining >= 4 && validFrames < 2) // Need at least 4 bytes for header check
+        {
             if (hdr_valid(frame_ptr))
             {
                 validFrames++;
@@ -283,8 +298,6 @@ std::pair<std::vector<float>, DecoderError> MP3DecoderWrapper::decode(std::vecto
         audioData = checkIcyMeta(buffer, &bytes_discarded_at_end);
         // Leave only bytes_discarded_at_end bytes at the end of the buffer
         buffer.erase(buffer.begin(), buffer.end() - bytes_discarded_at_end);
-        // Print the first 2 bytes in hex for debugging
-        printf("0x%02x 0x%02x\n", buffer[0], buffer[1]);
     }
 
     // finally decode audioData
@@ -294,7 +307,6 @@ std::pair<std::vector<float>, DecoderError> MP3DecoderWrapper::decode(std::vecto
     mp3dec_frame_info_t frame_info;
     int decoded_samples = 0;
     bytes_left = audioData.size();
-    corruptedFrames = 0;
 
     while (bytes_left > 0)
     {
@@ -311,11 +323,10 @@ std::pair<std::vector<float>, DecoderError> MP3DecoderWrapper::decode(std::vecto
         else
         {
             // Error or not enough data for a full frame
-            if (frame_info.frame_bytes == 0)
-            { // No frame found, break to avoid infinite loop
+            if (frame_info.frame_bytes == 0) // No frame found, break to avoid infinite loop
+            {
                 mp3_ptr++;
                 bytes_left--;
-                corruptedFrames++;
                 continue;
             }
             // If frame_info.frame_bytes > 0 but samples == 0, it means an error occurred
@@ -326,9 +337,6 @@ std::pair<std::vector<float>, DecoderError> MP3DecoderWrapper::decode(std::vecto
     }
 
     audioData.clear();
-
-    if (corruptedFrames > 0)
-        printf("     **** Corrupted frames: %d  at chunk %d ****\n", corruptedFrames, chunkNumber++);
 
     return {decodedData, DecoderError::NoError};
 }
@@ -352,8 +360,8 @@ bool MP3DecoderWrapper::checkForValidFrames(const std::vector<unsigned char> &bu
         const uint8_t *frame_ptr = mp3_ptr;
         int remaining = bytes_left;
 
-        while (remaining >= 4 && validFrames < 2)
-        { // Need at least 4 bytes for header check
+        while (remaining >= 4 && validFrames < 2) // Need at least 4 bytes for header check
+        {
             if (hdr_valid(frame_ptr))
             {
                 validFrames++;

@@ -49,8 +49,6 @@ private:
     int mIcyMetaInt;
     bool validFramesFound;
     bool ID3TagsFound;
-    int chunkNumber;
-    int corruptedFrames;
 };
 
 #endif // MP3_STREAM_DECODER_H

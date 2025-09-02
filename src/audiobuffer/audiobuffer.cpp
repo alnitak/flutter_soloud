@@ -5,6 +5,7 @@
 
 #include "audiobuffer.h"
 #include "metadata_ffi.h"
+#include "../common.h"
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten/emscripten.h>
@@ -580,7 +581,7 @@ namespace SoLoud
 
 		// Convert OGG metadata
 		strncpy(ffi.oggMetadata.vendor, metadata.oggMetadata.vendor.c_str(), MAX_STRING_LENGTH - 1);
-		ffi.oggMetadata.commentsCount = std::min((int)metadata.oggMetadata.comments.size(), MAX_COMMENTS);
+		ffi.oggMetadata.commentsCount = MIN((int)metadata.oggMetadata.comments.size(), MAX_COMMENTS);
 
 		int i = 0;
 		for (const auto &comment : metadata.oggMetadata.comments)
