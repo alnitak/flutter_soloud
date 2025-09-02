@@ -53,6 +53,8 @@ typedef DartStateChangedCallbackTFunction = ffi.Void Function(
 typedef DartdartStateChangedCallbackTFunction = void Function(
     ffi.Pointer<ffi.Int32>);
 
+typedef OnMetadataCallbackTFunction = void Function(NativeAudioMetadata);
+
 /// FFI bindings to SoLoud
 @internal
 class FlutterSoLoudFfi extends FlutterSoLoud {

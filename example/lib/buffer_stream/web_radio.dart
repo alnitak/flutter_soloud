@@ -11,7 +11,7 @@ import 'package:logging/logging.dart';
 /// Example of how to play a web radio stream.
 /// Please read the comments in the code to have clear understanding of
 /// how to make the http request and how to set the icy-metaint for the stream.
-/// 
+///
 /// On the web, please run without web security:
 /// flutter run -d chrome --web-browser-flag "--disable-web-security"
 

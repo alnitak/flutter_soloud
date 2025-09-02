@@ -711,12 +711,9 @@ interface class SoLoud {
           onMetadata == null
               ? null
               : (dynamic metadata) {
-                  late final AudioMetadata data;
-                  if (kIsWeb) {
-                    data = NativeAudioMetadata.fromJSPointer(metadata as int);
-                  } else {
-                    data = (metadata as NativeAudioMetadata).toAudioMetadata();
-                  }
+                  final data = kIsWeb
+                      ? NativeAudioMetadata.fromJSPointer(metadata as int)
+                      : (metadata as NativeAudioMetadata).toAudioMetadata();
                   onMetadata(data);
                 },
         );

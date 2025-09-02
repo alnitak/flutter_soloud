@@ -8,6 +8,7 @@ import 'dart:typed_data';
 import 'package:flutter_soloud/src/bindings/audio_data.dart';
 import 'package:flutter_soloud/src/bindings/bindings_player.dart';
 import 'package:flutter_soloud/src/bindings/js_extension.dart';
+import 'package:flutter_soloud/src/bindings/native_metadata_web.dart';
 import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/exceptions/exceptions.dart';
 import 'package:flutter_soloud/src/filters/filters.dart';
@@ -26,6 +27,11 @@ import 'package:meta/meta.dart';
 ///
 /// Call Dart method from JS in Flutter Web
 /// https://stackoverflow.com/questions/65423861/call-dart-method-from-js-in-flutter-web
+
+/// Callback set in `setBufferStream` for the `onMetadata` closure.
+typedef OnMetadataCallbackTFunction = void Function(
+  int metadataPtr,
+);
 
 /// JS/WASM bindings to SoLoud
 @internal
@@ -252,9 +258,17 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     }
 
     if (onMetadata != null) {
+      // For web, create a JS-interop compatible callback wrapper
+      @JSExport()
+      void webMetadataCallback(JSNumber metadataPtr) {
+        onMetadata(metadataPtr.toDartInt);
+        // onMetadata(nativeMetadata2);
+      }
+
+      // Register the callback with the JS runtime
       globalThis.setProperty(
         'dartOnMetadataCallback_$hash'.toJS,
-        onMetadata.jsify(),
+        webMetadataCallback.toJS,
       );
     }
 
