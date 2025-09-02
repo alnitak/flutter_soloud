@@ -193,7 +193,7 @@ class _WebsocketExampleState extends State<WebsocketExample> {
                 streamBuffering.value = false;
 
                 currentSound = SoLoud.instance.setBufferStream(
-                  maxBufferSizeBytes: 1024 * 1024 * 100, // 100 MB
+                  maxBufferSizeBytes: 1024 * 1024 * 300, // 100 MB
                   bufferingTimeNeeds: 0.5,
                   sampleRate: sampleRate[srId],
                   channels: Channels.values[chId],
@@ -241,8 +241,6 @@ class _WebsocketExampleState extends State<WebsocketExample> {
                 } on WebSocketChannelException catch (e) {
                   debugPrint(e.toString());
                 }
-
-                SoLoud.instance.setMp3BufferIcyMetaInt(currentSound!, 8192);
 
                 /// Listen to the websocket
                 channel?.stream.listen(

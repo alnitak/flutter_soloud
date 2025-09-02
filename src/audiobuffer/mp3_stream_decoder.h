@@ -31,8 +31,6 @@ public:
     // call this only once before decoding
     void setMp3BufferIcyMetaInt(int icyMetaInt);
 
-    void cleanup();
-
     std::pair<std::vector<float>, DecoderError> decode(std::vector<unsigned char>& buffer, int* samplerate, int* channels) override;
 
     static bool checkForValidFrames(const std::vector<unsigned char>& buffer);
@@ -41,13 +39,18 @@ public:
 
 private:
     bool extractID3Tags(const std::vector<unsigned char>& buffer, AudioMetadata& metadata);
-    std::vector<unsigned char> &audioData;
+    std::vector<unsigned char> checkIcyMeta(std::vector<unsigned char> &buffer, size_t *bytes_discarded_at_end);
+    size_t getLastFrameStartingPos(std::vector<unsigned char> &buffer, size_t *bytes_discarded_at_end);
+    std::vector<unsigned char> audioData;
     size_t bytes_until_meta;
     size_t metadata_remaining;
     std::string metadata_buffer;
     std::string lastMetadata;
     int mIcyMetaInt;
+    bool validFramesFound;
     bool ID3TagsFound;
+    int chunkNumber;
+    int corruptedFrames;
 };
 
 #endif // MP3_STREAM_DECODER_H

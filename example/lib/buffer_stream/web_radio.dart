@@ -49,7 +49,6 @@ class WebRadioExample extends StatefulWidget {
 
 class _WebRadioExampleState extends State<WebRadioExample> {
   final urls = [
-    {'MP3': 'http://localhost:8080/'},
     // https://fmstream.org/index.php
     // 90s
     {'MP3': 'https://frontend.streamonkey.net/nostalgie-90er/stream/mp3'},
@@ -208,7 +207,7 @@ class _WebRadioExampleState extends State<WebRadioExample> {
     streamBuffering.value = true;
     source = SoLoud.instance.setBufferStream(
       maxBufferSizeBytes: 1024 * 1024 * 200, // 100 MB
-      bufferingTimeNeeds: 1,
+      bufferingTimeNeeds: 3,
       format: BufferType.auto,
       bufferingType: BufferingType.released,
       channels: Channels.stereo,
@@ -217,10 +216,10 @@ class _WebRadioExampleState extends State<WebRadioExample> {
         //     'handle: $handle at time $time');
         streamBuffering.value = isBuffering;
       },
-      onMetadata: (metadata) {
-        debugPrint(metadata.toString());
-        metadataText.text = metadata.toString();
-      },
+      // onMetadata: (metadata) {
+      //   debugPrint(metadata.toString());
+      //   metadataText.text = metadata.toString();
+      // },
     );
 
     await SoLoud.instance.play(source!);

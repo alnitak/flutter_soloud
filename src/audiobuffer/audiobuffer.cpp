@@ -334,8 +334,6 @@ namespace SoLoud
 			bufferDataToAdd = buffer.size();
 		}
 
-		printf("  BUFFER SIZE before decoding: %d\n", bufferDataToAdd);
-
 		// It's time to decode the data already stored in the buffer
 		if (mPCMformat.dataType == BufferType::AUTO)
 		{

@@ -103,7 +103,6 @@ std::pair<std::vector<float>, DecoderError> StreamDecoder::decode(
     TrackChangeCallback metadataChangeCallback)
 {
     if (!isFormatDetected) {
-        printf("DTECTING FORMAT\n");
         DetectedType detectedType = detectAudioFormat(buffer);
         if (detectedType == DetectedType::BUFFER_NO_ENOUGH_DATA)
             return {{}, DecoderError::NoError};
@@ -140,8 +139,6 @@ std::pair<std::vector<float>, DecoderError> StreamDecoder::decode(
             mWrapper->setTrackChangeCallback(metadataChangeCallback);
         }
         mWrapper->detectedType = detectedType;
-        printf("DTECTED FORMAT %d\n", detectedType);
-
     }
     
     if (mWrapper) {
