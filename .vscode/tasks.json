@@ -29,7 +29,7 @@
         },
         {
             "label": "compile web wasm release",
-            "command": "cd ${workspaceFolder}/example; flutter run -d chrome --wasm --web-browser-flag '--disable-web-security' -t lib/buffer_stream/websocket.dart --release",
+            "command": "cd ${workspaceFolder}/example; flutter run -d chrome --wasm --web-browser-flag '--disable-web-security' -t lib/buffer_stream/web_radio.dart --release",
             "type": "shell"
         },
         {
