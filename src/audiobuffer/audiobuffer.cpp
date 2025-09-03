@@ -3,6 +3,13 @@
 #include <stdlib.h>
 #include <mutex>
 
+// #if defined(_IS_WIN_)
+// #define NOMINMAX
+// #include <windows.h>
+// #include <windows.h>
+// #endif
+
+#include "../common.h"
 #include "audiobuffer.h"
 #include "metadata_ffi.h"
 #include "../common.h"
