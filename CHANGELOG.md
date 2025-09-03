@@ -1,3 +1,7 @@
+#### 3.3.2 (3 Sep 2025)
+- fixed stuttering with MP3 streams #301
+- fixed a Web bug when compiling with WASM in release mode.
+
 #### 3.3.1 (27 Aug 2025)
 - fix win: fix build error #292
 
