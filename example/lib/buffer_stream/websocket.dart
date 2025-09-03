@@ -220,10 +220,11 @@ class _WebsocketExampleState extends State<WebsocketExample> {
             const SizedBox(height: 16),
             OutlinedButton(
               onPressed: () async {
-                /// This could be a way to receive PCM data from some sources and
-                /// use it to create a new [AudioSource].
-                /// Could be done inside an Isolate for example to manage received
-                /// data if it is in JSON format or the audio data is base64.
+                /// This could be a way to receive PCM data from some sources
+                /// and use it to create a new [AudioSource].
+                /// Could be done inside an Isolate for example to manage
+                /// received data if it is in JSON format or the audio data
+                /// is base64.
                 if (currentSound == null) {
                   debugPrint('A stream has not been set yet!');
                   return;
