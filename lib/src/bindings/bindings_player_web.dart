@@ -261,7 +261,6 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
       @JSExport()
       void webMetadataCallback(JSNumber metadataPtr) {
         onMetadata(metadataPtr.toDartInt);
-        // onMetadata(nativeMetadata2);
       }
 
       // Register the callback with the JS runtime
