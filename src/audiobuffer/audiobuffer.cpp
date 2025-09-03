@@ -12,6 +12,7 @@
 #include "../common.h"
 #include "audiobuffer.h"
 #include "metadata_ffi.h"
+#include "../common.h"
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten/emscripten.h>
@@ -353,7 +354,8 @@ namespace SoLoud
 					[&](AudioMetadata meta)
 					{
 					//   meta.debug();
-						this->callOnMetadataCallback(meta);
+						if (this->mOnMetadataCallback != nullptr)
+							this->callOnMetadataCallback(meta);
 					});
 
 			// Handle decoder errors

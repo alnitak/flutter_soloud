@@ -96,13 +96,13 @@ DetectedType StreamDecoder::detectAudioFormat(const std::vector<unsigned char>& 
     return DetectedType::BUFFER_UNKNOWN;
 }
 
-std::pair<std::vector<float>, DecoderError> StreamDecoder::decode(std::vector<unsigned char>& buffer,
+std::pair<std::vector<float>, DecoderError> StreamDecoder::decode(
+    std::vector<unsigned char>& buffer,
     int* samplerate,
     int* channels,
     TrackChangeCallback metadataChangeCallback)
 {
     if (!isFormatDetected) {
-        printf("DTECTING FORMAT\n");
         DetectedType detectedType = detectAudioFormat(buffer);
         if (detectedType == DetectedType::BUFFER_NO_ENOUGH_DATA)
             return {{}, DecoderError::NoError};
@@ -139,8 +139,6 @@ std::pair<std::vector<float>, DecoderError> StreamDecoder::decode(std::vector<un
             mWrapper->setTrackChangeCallback(metadataChangeCallback);
         }
         mWrapper->detectedType = detectedType;
-        printf("DTECTED FORMAT %d\n", detectedType);
-
     }
     
     if (mWrapper) {

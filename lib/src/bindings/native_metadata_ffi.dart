@@ -170,7 +170,7 @@ final class NativeAudioMetadata extends ffi.Struct {
     final buffer = StringBuffer();
     for (var i = 0; i < 1024; i++) {
       // Using 1024 as it's the size we defined for our arrays
-      if (array[i] == 0) break; // Stop at null terminator
+      if (array[i] <= 0) break; // Stop at null terminator
       buffer.writeCharCode(array[i]);
     }
     return buffer.toString().trim();

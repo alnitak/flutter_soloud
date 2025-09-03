@@ -4,8 +4,6 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter_soloud/src/bindings/audio_data.dart';
-import 'package:flutter_soloud/src/bindings/native_metadata_ffi.dart'
-    if (dart.library.js_interop) 'package:flutter_soloud/src/bindings/native_metadata_web.dart';
 import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/filters/filters.dart';
 import 'package:flutter_soloud/src/helpers/playback_device.dart';
@@ -22,7 +20,7 @@ typedef OnBufferingCallbackTFunction = void Function(
 
 /// Callback set in `setBufferStream` for the `onMetadata` closure.
 typedef OnMetadataCallbackTFunction = void Function(
-  NativeAudioMetadata metadata,
+  dynamic metadata,
 );
 
 /// Abstract class defining the interface for the platform-specific

@@ -9,6 +9,11 @@ import 'package:http/http.dart' as http;
 import 'package:logging/logging.dart';
 
 /// Example of how to play a web radio stream.
+/// Please read the comments in the code to have clear understanding of
+/// how to make the http request and how to set the icy-metaint for the stream.
+///
+/// On the web, please run without web security:
+/// flutter run -d chrome --web-browser-flag "--disable-web-security"
 
 void main() async {
   // The `flutter_soloud` package logs everything
@@ -48,27 +53,24 @@ class WebRadioExample extends StatefulWidget {
 }
 
 class _WebRadioExampleState extends State<WebRadioExample> {
-  // https://dir.xiph.org/codecs
   final urls = [
-    {'MP3': 'http://as.fm1.be:8000/media'},
-    {'MP3': 'http://as.fm1.be:8000/rand'},
-    {'MP3': 'http://as.fm1.be:8000/vlar1.mp3'},
-    {'MP3': 'http://xfer.hirschmilch.de:8000/techno.mp3'},
-    {'MP3': 'http://as.fm1.be:8000/wrgm1'},
-    {'MP3': 'http://stream.danubiusradio.hu:8081/danubius_192k'},
-    {'MP3': 'http://live.coolradio.rs/cool128'},
-    {'MP3': 'http://stream.lazaradio.com:8100/live.mp3'},
-    {'MP3': 'http://www.appradio.app:8010/live'},
-    {'MP3': 'http://streaming.radiominerva.be:8000/minerva'},
-    {'MP3': 'http://ice37.fluidstream.net/ric.mp3'},
+    // https://fmstream.org/index.php
+    // 90s
+    {'MP3': 'https://frontend.streamonkey.net/nostalgie-90er/stream/mp3'},
+    {'MP3': 'https://ice-sov.musicradio.com/Heart90sMP3'},
+    {'MP3': 'https://streams.90s90s.de/pop/mp3-128'},
+    // 80s
+    {'MP3': 'https://streams.80s80s.de/web/mp3-128'},
+    {'MP3': 'https://p8.p4groupaudio.com/P08_MM'},
+    {'MP3': 'https://frontend.streamonkey.net/nostalgie-80er/stream/mp3'},
+
+    // https://dir.xiph.org/codecs
     {'Vorbis': 'http://play.global.audio/nova.ogg'},
     {'Vorbis': 'http://superaudio.radio.br:8074/stream'},
     {'Vorbis': 'http://stream.lazaradio.com:8100/live.ogg'},
     {'Vorbis': 'http://stream.trendyradio.pl:8000/m'},
-    {'Vorbis': 'http://superaudio.radio.br:8074/stream'},
     {'Vorbis': 'http://play.global.audio/nrj.ogg'},
     {'Vorbis': 'http://play.global.audio/radio1rock.ogg'},
-    {'Vorbis': 'http://stream.danubiusradio.hu:8091/danubius_HiFi'},
     {'Opus': 'http://radio.glafir.ru:7000/pop-mix'},
     {'Opus': 'http://icecast.err.ee/klarajazz.opus'},
     {'Opus': 'http://xfer.hirschmilch.de:8000/prog-house.opus'},
@@ -76,8 +78,6 @@ class _WebRadioExampleState extends State<WebRadioExample> {
     {'Opus': 'http://icecast.walmradio.com:8000/otr_opus'},
     {'Opus': 'http://xfer.hirschmilch.de:8000/techno.opus'},
     {'Opus': 'http://icecast.err.ee/raadio2.opus'},
-    {'Opus': 'http://radio.glafir.ru:7000/humor'},
-    {'Opus': 'http://icecast.err.ee/vikerraadio.opus'},
     {'Opus': 'http://radio.glafir.ru:7000/classic'},
     {'Opus': 'http://radio.glafir.ru:7000/easy-listen'},
   ];
@@ -116,7 +116,6 @@ class _WebRadioExampleState extends State<WebRadioExample> {
   }
 
   Future<void> connectToUrl(String url) async {
-    connectionError.value = '';
     urlController.text = url;
     try {
       await resetConnections();
@@ -201,6 +200,7 @@ class _WebRadioExampleState extends State<WebRadioExample> {
   }
 
   Future<void> playUrl(String url) async {
+    metadataText.text = '';
     connectionError.value = '';
     await resetConnections();
     await SoLoud.instance.disposeAllSources();
@@ -208,7 +208,7 @@ class _WebRadioExampleState extends State<WebRadioExample> {
     streamBuffering.value = true;
     source = SoLoud.instance.setBufferStream(
       maxBufferSizeBytes: 1024 * 1024 * 200, // 100 MB
-      bufferingTimeNeeds: 1,
+      bufferingTimeNeeds: 3,
       format: BufferType.auto,
       bufferingType: BufferingType.released,
       channels: Channels.stereo,

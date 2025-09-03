@@ -3,13 +3,13 @@
     "tasks": [
         {
             "label": "compile linux debug verbose",
-            "command": "cd ${workspaceFolder}/example; flutter build linux -t lib/buffer_stream/web_radio.dart --debug --verbose",
+            "command": "cd ${workspaceFolder}/example; flutter build linux -t lib/buffer_stream/websocket.dart --debug --verbose",
             // "args": ["build", "linux", "--verbose"],
             "type": "shell"
         },
         {
             "label": "compile linux debug",
-            "command": "cd ${workspaceFolder}/example; flutter build linux -t lib/buffer_stream/websocket.dart --debug",
+            "command": "cd ${workspaceFolder}/example; flutter build linux -t lib/buffer_stream/web_radio.dart --debug",
             "type": "shell"
         },
         {
@@ -19,12 +19,12 @@
         },
         {
             "label": "compile windows debug verbose",
-            "command": "cd ${workspaceFolder}/example; flutter build windows -t lib/buffer_stream/web_radio.dart --debug --verbose",
+            "command": "cd ${workspaceFolder}/example; flutter build windows -t lib/buffer_stream/websocket.dart --debug --verbose",
             "type": "shell"
         },
         {
             "label": "compile windows debug",
-            "command": "cd ${workspaceFolder}/example; flutter build windows -t lib/buffer_stream/web_radio.dart --debug",
+            "command": "cd ${workspaceFolder}/example; flutter build windows -t lib/buffer_stream/websocket.dart --debug",
             "type": "shell"
         },
         {
