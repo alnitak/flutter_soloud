@@ -1,3 +1,6 @@
+#### 3.3.3 (4 Sep 2025)
+- fix seek a buffer stream actually seeks at half the wanted position #296
+
 #### 3.3.2 (3 Sep 2025)
 - fixed stuttering with MP3 streams #301
 - fixed a Web bug when compiling with WASM in release mode.

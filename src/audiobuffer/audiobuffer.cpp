@@ -152,7 +152,7 @@ namespace SoLoud
 			}
 			offset = aSeconds;
 		}
-		long samples_to_discard = (long)floor(mBaseSamplerate * offset);
+		long samples_to_discard = (long)floor(mBaseSamplerate * offset * mChannels);
 
 		while (samples_to_discard)
 		{
@@ -162,7 +162,7 @@ namespace SoLoud
 			getAudio(mScratch, samples, samples);
 			samples_to_discard -= samples;
 		}
-		int pos = (int)floor(mBaseSamplerate * aSeconds);
+		int pos = (int)floor(mBaseSamplerate * mChannels * aSeconds);
 		mOffset = pos;
 		mStreamPosition = float(pos / mBaseSamplerate);
 		return SO_NO_ERROR;
