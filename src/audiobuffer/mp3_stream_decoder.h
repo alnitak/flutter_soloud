@@ -33,10 +33,11 @@ public:
 private:
     static size_t on_read(void* pUserData, void* pBufferOut, size_t bytesToRead);
     static drmp3_bool32 on_seek(void* pUserData, int offset, drmp3_seek_origin origin);
+    static void on_meta(void* pUserData, const drmp3_metadata* pMetadata);
 
-    bool extractID3Tags(const std::vector<unsigned char>& buffer, AudioMetadata& metadata);
-    std::vector<unsigned char> checkIcyMeta(std::vector<unsigned char> &buffer, size_t *bytes_discarded_at_end);
-    size_t getLastFrameStartingPos(std::vector<unsigned char> &buffer, size_t *bytes_discarded_at_end);
+    // bool extractID3Tags(const std::vector<unsigned char>& buffer, AudioMetadata& metadata);
+    void processIcyStream(std::vector<unsigned char> &buffer);
+    // size_t getLastFrameStartingPos(std::vector<unsigned char> &buffer, size_t *bytes_discarded_at_end);
     bool isInitialized;
     std::vector<unsigned char> audioData;
     size_t m_read_pos;
