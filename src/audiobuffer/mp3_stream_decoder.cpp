@@ -1,8 +1,10 @@
+#define DR_MP3_IMPLEMENTATION
+#define DR_MP3_NO_STDIO
+#define DR_MP3_FLOAT_OUTPUT
+#include "../soloud/src/audiosource/wav/dr_mp3.h"
+
 #include "mp3_stream_decoder.h"
 #include "../common.h"
-
-// #define DR_MP3_IMPLEMENTATION
-#include "../soloud/src/audiosource/wav/dr_mp3.h"
 
 
 size_t MP3DecoderWrapper::on_read(void* pUserData, void* pBufferOut, size_t bytesToRead) {
@@ -106,18 +108,6 @@ bool MP3DecoderWrapper::extractID3Tags(const std::vector<unsigned char> &buffer,
     return false;
 }
 
-// A helper function to check for a valid MP3 header.
-// This is a simplified version for demonstration.
-// dr_mp3 does this internally, but we might need it for finding frame boundaries when dealing with ICY metadata.
-bool hdr_valid(const uint8_t *hdr) {
-    if (hdr[0] != 0xFF || (hdr[1] & 0xE0) != 0xE0) {
-        return false; // Sync word check
-    }
-    // Further checks for bitrate, sample rate, etc., can be added here.
-    return true;
-}
-
-
 size_t MP3DecoderWrapper::getLastFrameStartingPos(std::vector<unsigned char> &buffer, size_t *bytes_discarded_at_end)
 {
     const uint8_t *mp3_ptr = buffer.data();
@@ -132,7 +122,7 @@ size_t MP3DecoderWrapper::getLastFrameStartingPos(std::vector<unsigned char> &bu
     // Iterate backwards from the last possible header position.
     for (size_t i = buffer_size - 4; ; i--)
     {
-        if (hdr_valid(mp3_ptr + i))
+        if (drmp3_hdr_valid(mp3_ptr + i))
         {
             // Found a valid header. This is the start of the last potential frame.
             *bytes_discarded_at_end = buffer_size - i;
@@ -158,7 +148,7 @@ std::vector<unsigned char> MP3DecoderWrapper::checkIcyMeta(
     std::vector<unsigned char> onlyFrames;
     if (detectedType != DetectedType::BUFFER_MP3_STREAM || mIcyMetaInt == 0)
     {
-        // Not a stream with metadata, just find the last frame and return the rest
+        // Not a stream with metadata, just find the last frame and return until that
         size_t pos = getLastFrameStartingPos(buffer, bytes_discarded_at_end);
         if (pos > 0)
         {
@@ -292,14 +282,7 @@ std::pair<std::vector<float>, DecoderError> MP3DecoderWrapper::decode(std::vecto
 
     if (!isInitialized)
     {
-        struct TempData {
-            const unsigned char* buffer;
-            size_t size;
-            size_t pos;
-        };
-        TempData temp_data = { audioData.data(), audioData.size(), 0 };
-
-        if (!drmp3_init(&decoder, MP3DecoderWrapper::on_read, MP3DecoderWrapper::on_seek, nullptr, nullptr, &temp_data, nullptr))
+        if (!drmp3_init(&decoder, MP3DecoderWrapper::on_read, nullptr, nullptr, nullptr, this, nullptr))
             return {{}, DecoderError::NoError};
         isInitialized = true;
     }
@@ -311,6 +294,16 @@ std::pair<std::vector<float>, DecoderError> MP3DecoderWrapper::decode(std::vecto
     const int MAX_FRAMES_PER_RUN = 4096;
     float pcm_frames[MAX_FRAMES_PER_RUN];
     drmp3_uint64 frames_read;
+
+    // calling drmp3_reset() will produce glitches because of drmp3dec_init().
+    // Replacing with drmp3_reset() content without calling it.
+    // drmp3_reset(&decoder);
+    decoder.pcmFramesConsumedInMP3Frame = 0;
+    decoder.pcmFramesRemainingInMP3Frame = 0;
+    decoder.currentPCMFrame = 0;
+    decoder.dataSize = 0;
+    decoder.atEnd = DRMP3_FALSE;
+    // drmp3dec_init(&decoder.decoder);
 
     do {
         frames_read = drmp3_read_pcm_frames_f32(&decoder, MAX_FRAMES_PER_RUN / decoder.channels, pcm_frames);
@@ -337,9 +330,7 @@ std::pair<std::vector<float>, DecoderError> MP3DecoderWrapper::decode(std::vecto
 
 bool MP3DecoderWrapper::initializeDecoder(int engineSamplerate, int engineChannels)
 {
-    // if (!drmp3_init(&decoder, MP3DecoderWrapper::on_read, MP3DecoderWrapper::on_seek, nullptr, nullptr, this, nullptr)) {
-    //     return false;
-    // }
+    // Initialization is done in the decode function because it needs some data.
     return true;
 }
 

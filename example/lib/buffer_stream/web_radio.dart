@@ -54,6 +54,7 @@ class WebRadioExample extends StatefulWidget {
 
 class _WebRadioExampleState extends State<WebRadioExample> {
   final urls = [
+    {'MP3': 'http://localhost:8080/'},
     // https://fmstream.org/index.php
     // 90s
     {'MP3': 'https://frontend.streamonkey.net/nostalgie-90er/stream/mp3'},

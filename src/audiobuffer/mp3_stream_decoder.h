@@ -6,7 +6,9 @@
 #include <cstring>
 #include <deque>
 
+// #define DR_MP3_IMPLEMENTATION
 #include "../soloud/src/audiosource/wav/dr_mp3.h"
+
 #include "stream_decoder.h"
 
 /// Wrapper class for MP3 stream decoder using dr_mp3
