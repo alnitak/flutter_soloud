@@ -39,6 +39,15 @@ namespace SoLoud
 	{
 		std::lock_guard<std::mutex> lock(buffer_lock_mutex);
 
+		// When using BufferType::AUTO, samplerate and channels are got from the stream. Hence we need to update them
+		// regardless of how are set by setBufferStream. But these parameters need to be set after the play
+		// function is called and the instance of this class is created.
+		if (mParent->autoTypeSamplerate != 0.f) {
+			mBaseSamplerate = mParent->autoTypeSamplerate;
+			mSamplerate = mParent->autoTypeSamplerate;
+			mChannels = mParent->autoTypeChannels;
+		}
+
 		// This happens when using RELEASED buffer type
 		if (mParent->mBuffer.getFloatsBufferSize() == 0)
 		{
@@ -226,6 +235,9 @@ namespace SoLoud
 		if (pcmFormat.dataType == BufferType::OPUS)
 			pcmFormat.dataType = BufferType::AUTO;
 
+		mInstance = nullptr;
+		autoTypeChannels = 0;
+		autoTypeSamplerate = 0.f;
 		mBytesReceived = 0;
 		mUncompressedBytesReceived = 0;
 		mSampleCount = 0;
@@ -381,14 +393,13 @@ namespace SoLoud
 					{
 						mPCMformat.sampleRate = sampleRate;
 						mBaseSamplerate = sampleRate;
-						mInstance->mSamplerate = sampleRate;
-						mInstance->mBaseSamplerate = sampleRate;
+						autoTypeSamplerate = sampleRate;
 					}
 					if (channels != -1)
 					{
 						mPCMformat.channels = channels;
 						mChannels = channels;
-						mInstance->mChannels = channels;
+						autoTypeChannels = channels;
 					}
 				}
 

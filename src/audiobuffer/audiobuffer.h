@@ -47,6 +47,8 @@ namespace SoLoud
     ActiveSound* mParent;
     dartOnBufferingCallback_t mOnBufferingCallback;
     dartOnMetadataCallback_t mOnMetadataCallback;
+    unsigned int autoTypeChannels;
+    float autoTypeSamplerate;
     unsigned int mMaxBufferSize;
     int64_t mSampleCount;
     uint64_t mBytesConsumed;
