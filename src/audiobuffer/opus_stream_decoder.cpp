@@ -95,22 +95,28 @@ bool OpusDecoderWrapper::initializeDecoder(int engineSamplerate, int engineChann
 std::pair<std::vector<float>, DecoderError> OpusDecoderWrapper::decode(std::vector<unsigned char>& buffer, int* samplerate, int* channels)
 {
     std::vector<float> decodedData;
+    ogg_int64_t total_samples_at_48khz = -1;
+    bool eos_seen = false;
 
     if (buffer.empty())
     {
         return {decodedData, DecoderError::NoError};
     }
 
-    ogg_sync_reset(&oy);
-
     // Write data into ogg sync buffer
     char *oggBuffer = ogg_sync_buffer(&oy, buffer.size());
     memcpy(oggBuffer, buffer.data(), buffer.size());
     ogg_sync_wrote(&oy, buffer.size());
+    buffer.clear();
 
     // Read and process pages
     while (ogg_sync_pageout(&oy, &og) == 1)
     {
+        if (ogg_page_eos(&og)) {
+            total_samples_at_48khz = ogg_page_granulepos(&og);
+            eos_seen = true;
+        }
+
         if (!streamInitialized)
         {
             if (ogg_stream_init(&os, ogg_page_serialno(&og)))
@@ -155,13 +161,25 @@ std::pair<std::vector<float>, DecoderError> OpusDecoderWrapper::decode(std::vect
         }
     }
 
-    if (oy.returned > 0)
-    {
-        if (buffer.size() >= oy.returned)
-        {
-            buffer.erase(buffer.begin(), buffer.begin() + oy.returned);
-        } else {
-            buffer.erase(buffer.begin(), buffer.end());
+    if (total_samples_at_48khz != -1) {
+        size_t total_samples = (size_t)(total_samples_at_48khz * (double)decodingSamplerate / 48000.0);
+        size_t total_floats = total_samples * decodingChannels;
+        if (decodedData.size() > total_floats) {
+            decodedData.resize(total_floats);
+        }
+    }
+
+    if (eos_seen) {
+        const size_t fade_samples = (size_t)(decodingSamplerate * 0.005); // 5ms fade
+        if (fade_samples > 0 && decodingChannels > 0) {
+            const size_t fade_floats = fade_samples * decodingChannels;
+            if (decodedData.size() > fade_floats) {
+                size_t start_fade = decodedData.size() - fade_floats;
+                for (size_t i = 0; i < fade_floats; ++i) {
+                    float multiplier = 1.0f - (float)(i / decodingChannels) / (float)fade_samples;
+                    decodedData[start_fade + i] *= multiplier;
+                }
+            }
         }
     }
 
