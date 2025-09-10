@@ -6,19 +6,12 @@
 #include <cstring>
 #include <deque>
 
-#if defined(__APPLE__)
-#define MINIMP3_FLOAT_OUTPUT
-#define MINIMP3_ONLY_MP3
-#if !defined(__EMSCRIPTEN__)
-#define MINIMP3_ONLY_SIMD
-#endif
-#define MINIMP3_IMPLEMENTATION
-#endif
-#include "minimp3.h"
+// #define DR_MP3_IMPLEMENTATION
+#include "../soloud/src/audiosource/wav/dr_mp3.h"
 
 #include "stream_decoder.h"
 
-/// Wrapper class for MP3 stream decoder using minimp3
+/// Wrapper class for MP3 stream decoder using dr_mp3
 class MP3DecoderWrapper : public IDecoderWrapper
 {
 public:
@@ -35,19 +28,23 @@ public:
 
     static bool checkForValidFrames(const std::vector<unsigned char>& buffer);
 
-    mp3dec_t decoder;
+    drmp3 decoder;
 
 private:
-    bool extractID3Tags(const std::vector<unsigned char>& buffer, AudioMetadata& metadata);
-    std::vector<unsigned char> checkIcyMeta(std::vector<unsigned char> &buffer, size_t *bytes_discarded_at_end);
-    size_t getLastFrameStartingPos(std::vector<unsigned char> &buffer, size_t *bytes_discarded_at_end);
+    static size_t on_read(void* pUserData, void* pBufferOut, size_t bytesToRead);
+    static drmp3_bool32 on_seek(void* pUserData, int offset, drmp3_seek_origin origin);
+    static void on_meta(void* pUserData, const drmp3_metadata* pMetadata);
+
+    // bool extractID3Tags(const std::vector<unsigned char>& buffer, AudioMetadata& metadata);
+    void processIcyStream(std::vector<unsigned char> &buffer);
+    // size_t getLastFrameStartingPos(std::vector<unsigned char> &buffer, size_t *bytes_discarded_at_end);
+    bool isInitialized;
     std::vector<unsigned char> audioData;
+    size_t m_read_pos;
     size_t bytes_until_meta;
-    size_t metadata_remaining;
     std::string metadata_buffer;
     std::string lastMetadata;
     int mIcyMetaInt;
-    bool validFramesFound;
     bool ID3TagsFound;
 };
 

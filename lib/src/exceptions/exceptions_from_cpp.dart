@@ -289,15 +289,15 @@ class SoLoudStreamEndedAlreadyCppException extends SoLoudCppException {
 }
 
 /// An error occurred while creating an Opus decoder.
-class SoLoudFailedToCreateOpusDecoderCppException extends SoLoudCppException {
-  /// Creates a new [SoLoudFailedToCreateOpusDecoderCppException].
-  const SoLoudFailedToCreateOpusDecoderCppException([super.message]);
+class SoLoudFailedToCreateDecoderCppException extends SoLoudCppException {
+  /// Creates a new [SoLoudFailedToCreateDecoderCppException].
+  const SoLoudFailedToCreateDecoderCppException([super.message]);
 
   @override
   String get description =>
-      'Failed to create an Opus decoder. This could happen when some internal '
-      'error occurred while creating the decoder. Maybe not enough memory. '
-      '(on the C++ side).';
+      'Failed to create decoder. This could happen when some internal '
+      'error occurred while creating the decoder. Maybe not enough memory or '
+      'maybe the data is corrupted. (on the C++ side).';
 }
 
 /// An error occurred while decoding Opus data.

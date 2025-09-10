@@ -1,3 +1,7 @@
+#### 3.3.4 (10 Sep 2025)
+- use of dr_mp3.h instead of minimp3 for streaming MP3
+- fix crash when calling addAudioDataStream before play #306
+
 #### 3.3.3 (4 Sep 2025)
 - fix seek a buffer stream actually seeks at half the wanted position #296
 

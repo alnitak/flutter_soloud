@@ -79,21 +79,25 @@ std::pair<std::vector<float>, DecoderError> VorbisDecoderWrapper::decode(std::ve
                                                int* samplerate,
                                                int* channels) {
     std::vector<float> decodedData;
+    ogg_int64_t total_samples = -1;
+    bool eos_seen = false;
 
     if (buffer.empty()) {
         return {decodedData, DecoderError::NoError};
     }
 
-    // Reset sync for new data
-    ogg_sync_reset(&oy);
-
     // Write new bytes into ogg buffer
     char* oggBuffer = ogg_sync_buffer(&oy, buffer.size());
     memcpy(oggBuffer, buffer.data(), buffer.size());
     ogg_sync_wrote(&oy, buffer.size());
+    buffer.clear();
 
     // Process available pages
     while (ogg_sync_pageout(&oy, &og) == 1) {
+        if (ogg_page_eos(&og)) {
+            total_samples = ogg_page_granulepos(&og);
+            eos_seen = true;
+        }
         
         if (!streamInitialized) {
             if (ogg_stream_init(&os, ogg_page_serialno(&og))) {
@@ -152,12 +156,24 @@ std::pair<std::vector<float>, DecoderError> VorbisDecoderWrapper::decode(std::ve
         }
     }
 
-    // Discard processed input
-    if (oy.returned > 0) {
-        if (buffer.size() >= static_cast<size_t>(oy.returned)) {
-            buffer.erase(buffer.begin(), buffer.begin() + oy.returned);
-        } else {
-            buffer.clear();
+    if (total_samples != -1 && vi.channels > 0) {
+        size_t total_floats = total_samples * vi.channels;
+        if (decodedData.size() > total_floats) {
+            decodedData.resize(total_floats);
+        }
+    }
+
+    if (eos_seen) {
+        const size_t fade_samples = (size_t)(vi.rate * 0.005); // 5ms fade
+        if (fade_samples > 0 && vi.channels > 0) {
+            const size_t fade_floats = fade_samples * vi.channels;
+            if (decodedData.size() > fade_floats) {
+                size_t start_fade = decodedData.size() - fade_floats;
+                for (size_t i = 0; i < fade_floats; ++i) {
+                    float multiplier = 1.0f - (float)(i / vi.channels) / (float)fade_samples;
+                    decodedData[start_fade + i] *= multiplier;
+                }
+            }
         }
     }
 
