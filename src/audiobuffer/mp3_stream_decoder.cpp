@@ -12,7 +12,7 @@
 size_t MP3DecoderWrapper::on_read(void* pUserData, void* pBufferOut, size_t bytesToRead) {
     MP3DecoderWrapper* decoder = (MP3DecoderWrapper*)pUserData;
     size_t bytes_remaining = decoder->audioData.size() - decoder->m_read_pos;
-    size_t bytes_to_copy = std::min(bytesToRead, bytes_remaining);
+    size_t bytes_to_copy = MIN(bytesToRead, bytes_remaining);
 
     if (bytes_to_copy > 0) {
         memcpy(pBufferOut, decoder->audioData.data() + decoder->m_read_pos, bytes_to_copy);
@@ -135,7 +135,7 @@ void MP3DecoderWrapper::processIcyStream(std::vector<unsigned char> &buffer)
 
     while (readingPos < bufferSize)
     {
-        size_t bytes_to_read = std::min((size_t)bytes_until_meta, bufferSize - readingPos);
+        size_t bytes_to_read = MIN((size_t)bytes_until_meta, bufferSize - readingPos);
 
         // Append audio data to our internal buffer
         audioData.insert(audioData.end(), buffer.begin() + readingPos, buffer.begin() + readingPos + bytes_to_read);
@@ -299,7 +299,7 @@ bool MP3DecoderWrapper::checkForValidFrames(const std::vector<unsigned char> &bu
     auto temp_on_read = [](void* pUserData, void* pBufferOut, size_t bytesToRead) -> size_t {
         TempData* data = (TempData*)pUserData;
         size_t bytes_remaining = data->size - data->pos;
-        size_t bytes_to_copy = std::min(bytesToRead, bytes_remaining);
+        size_t bytes_to_copy = MIN(bytesToRead, bytes_remaining);
         if (bytes_to_copy > 0) {
             memcpy(pBufferOut, data->buffer + data->pos, bytes_to_copy);
             data->pos += bytes_to_copy;

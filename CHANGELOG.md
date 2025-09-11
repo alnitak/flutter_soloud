@@ -1,3 +1,6 @@
+#### 3.3.6 (11 Sep 2025)
+- win fix: compilation error #309
+
 #### 3.3.5 (11 Sep 2025)
 - fix sample rate detection for Opus and Vorbis audio streams
 
