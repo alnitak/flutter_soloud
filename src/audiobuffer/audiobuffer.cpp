@@ -29,6 +29,7 @@ namespace SoLoud
 	{
 		mParent = aParent;
 		mOffset = 0;
+		samplerateAlreadySet = false;
 	}
 
 	BufferStreamInstance::~BufferStreamInstance()
@@ -42,10 +43,11 @@ namespace SoLoud
 		// When using BufferType::AUTO, samplerate and channels are got from the stream. Hence we need to update them
 		// regardless of how are set by setBufferStream. But these parameters need to be set after the play
 		// function is called and the instance of this class is created.
-		if (mParent->autoTypeSamplerate != 0.f) {
+		if (!samplerateAlreadySet && mParent->autoTypeSamplerate != 0.f) {
 			mBaseSamplerate = mParent->autoTypeSamplerate;
 			mSamplerate = mParent->autoTypeSamplerate;
 			mChannels = mParent->autoTypeChannels;
+			samplerateAlreadySet = true;
 		}
 
 		// This happens when using RELEASED buffer type
@@ -387,7 +389,7 @@ namespace SoLoud
 
 			if (!decoded.empty())
 			{
-				if (mPCMformat.dataType == BufferType::AUTO)
+				if (autoTypeSamplerate == 0.f)
 				{
 					if (sampleRate != -1)
 					{

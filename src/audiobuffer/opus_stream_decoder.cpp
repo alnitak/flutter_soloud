@@ -103,6 +103,9 @@ std::pair<std::vector<float>, DecoderError> OpusDecoderWrapper::decode(std::vect
         return {decodedData, DecoderError::NoError};
     }
 
+    *samplerate = decodingSamplerate;
+    *channels = decodingChannels;
+    
     // Write data into ogg sync buffer
     char *oggBuffer = ogg_sync_buffer(&oy, buffer.size());
     memcpy(oggBuffer, buffer.data(), buffer.size());

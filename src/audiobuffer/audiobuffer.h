@@ -28,14 +28,15 @@ namespace SoLoud
   {
     BufferStream *mParent;
     unsigned int mOffset;
-
-  public:
+    
+    public:
     BufferStreamInstance(BufferStream *aParent);
     virtual unsigned int getAudio(float *aBuffer, unsigned int aSamplesToRead, unsigned int aBufferSize);
     virtual result seek(double aSeconds, float *mScratch, unsigned int mScratchSize);
     virtual result rewind();
     virtual bool hasEnded();
     virtual ~BufferStreamInstance();
+    bool samplerateAlreadySet;
   };
 
   class BufferStream : public AudioSource
