@@ -122,7 +122,7 @@ class AudioSource {
   ///
   /// **IMPORTANT**: the filter must be added before playing. Only voice handles
   /// played after adding a filter will play with the filter chosen:
-  /// 
+  ///
   /// **IMPORTANT**: freeverb supports only 2 channels. So using freeverb as
   /// global filter, the engine should be inited using the default 2 channels
   /// and when using it as sound filter the sound must be with 2 channels.
