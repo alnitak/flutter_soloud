@@ -85,6 +85,10 @@ final class FiltersSingle {
   FlangerSingle get flangerFilter => FlangerSingle(soundHash);
 
   /// The `Freeverb` filter for this sound.
+  /// 
+  /// **IMPORTANT**: freeverb supports only 2 channels. So using freeverb as
+  /// global filter, the engine should be inited using the default 2 channels
+  /// and when using it as sound filter the sound must be with 2 channels.
   FreeverbSingle get freeverbFilter => FreeverbSingle(soundHash);
 
   /// The `Lofi` filter for this sound.
@@ -169,6 +173,10 @@ final class FiltersGlobal {
   FlangerGlobal get flangerFilter => const FlangerGlobal();
 
   /// The `Freeverb` filter used globally.
+  /// 
+  /// **IMPORTANT**: freeverb supports only 2 channels. So using freeverb as
+  /// global filter, the engine should be inited using the default 2 channels
+  /// and when using it as sound filter the sound must be with 2 channels.
   FreeverbGlobal get freeverbFilter => const FreeverbGlobal();
 
   /// The `Lofi` filter used globally.
