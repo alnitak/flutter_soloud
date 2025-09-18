@@ -1,10 +1,13 @@
 import 'dart:async';
+import 'dart:developer' as dev;
+import 'dart:math';
 import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:flutter_soloud/src/bindings/soloud_controller.dart';
+import 'package:logging/logging.dart';
 
 enum TestStatus {
   none,
@@ -74,6 +77,7 @@ class _MyHomePageState extends State<MyHomePage> {
       _Test(name: 'testPlaySeekPause', callback: testPlaySeekPause),
       _Test(name: 'testPan', callback: testPan),
       _Test(name: 'testHandles', callback: testHandles),
+      _Test(name: 'testStopFutures', callback: testStopFutures),
       _Test(name: 'loopingTests', callback: loopingTests),
       _Test(name: 'testSynchronousDeinit', callback: testSynchronousDeinit),
       _Test(name: 'testAsynchronousDeinit', callback: testAsynchronousDeinit),
@@ -511,6 +515,55 @@ Future<StringBuffer> testHandles() async {
 
   deinit();
   return StringBuffer();
+}
+
+/// Test instancing playing handles and their disposal
+Future<StringBuffer> testStopFutures() async {
+  final output = StringBuffer();
+
+  Logger.root.level = kDebugMode ? Level.FINE : Level.INFO;
+  Logger.root.onRecord.listen((record) {
+    dev.log(
+      record.message,
+      time: record.time,
+      level: record.level.value,
+      name: record.loggerName,
+      zone: record.zone,
+      error: record.error,
+      stackTrace: record.stackTrace,
+    );
+
+    if (record.level > Level.INFO) {
+      output.writeln(record.message);
+    }
+  });
+
+  /// Start audio isolate
+  await initialize();
+
+  /// Load sample
+  final currentSound =
+      await SoLoud.instance.loadAsset('assets/audio/tic-1.wav');
+
+  final random = Random(42);
+  for (var i = 0; i < 50; i++) {
+    final handle = await SoLoud.instance.play(currentSound);
+    output.writeln('$handle started');
+    await Future<void>.delayed(Duration(milliseconds: random.nextInt(5)));
+    unawaited(
+      SoLoud.instance
+          .stop(handle)
+          .then((_) => output.writeln('$handle stopped')),
+    );
+  }
+
+  /// Wait for the sample to finish and see in log:
+  /// "SoundEvent.handleIsNoMoreValid .* has [3-2-1-0] active handles"
+  /// 3798ms explosion.mp3 sample duration
+  await delay(4500);
+
+  deinit();
+  return output;
 }
 
 /// Test looping state and `loopingStartAt`
