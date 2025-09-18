@@ -51,7 +51,6 @@ Flutter audio plugin using SoLoud library and FFI
     ],
     'GCC_PREPROCESSOR_DEFINITIONS' => preprocessor_definitions.join(' '),
     'DEFINES_MODULE' => 'YES', 
-    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'arm64',
     'VALID_ARCHS' => 'arm64 x86_64',
     'LIBRARY_SEARCH_PATHS' => [
       '$(PODS_TARGET_SRCROOT)/libs',
