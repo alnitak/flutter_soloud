@@ -520,6 +520,7 @@ Future<StringBuffer> testHandles() async {
 /// Test instancing playing handles and their disposal
 Future<StringBuffer> testStopFutures() async {
   final output = StringBuffer();
+  final severeLogs = <LogRecord>[];
 
   Logger.root.level = kDebugMode ? Level.FINE : Level.INFO;
   Logger.root.onRecord.listen((record) {
@@ -535,6 +536,9 @@ Future<StringBuffer> testStopFutures() async {
 
     if (record.level > Level.INFO) {
       output.writeln(record.message);
+      if (record.level >= Level.SEVERE) {
+        severeLogs.add(record);
+      }
     }
   });
 
@@ -557,12 +561,16 @@ Future<StringBuffer> testStopFutures() async {
     );
   }
 
-  /// Wait for the sample to finish and see in log:
-  /// "SoundEvent.handleIsNoMoreValid .* has [3-2-1-0] active handles"
-  /// 3798ms explosion.mp3 sample duration
-  await delay(4500);
+  /// Wait a bit so that we can hear a sound to verify it's working as intended.
+  await delay(500);
 
   deinit();
+
+  if (severeLogs.isNotEmpty) {
+    throw Exception('Severe logs produced:\n'
+        '${severeLogs.map((r) => '[${r.level}] ${r.message}').join('\n')}');
+  }
+
   return output;
 }
 
