@@ -51,7 +51,6 @@ Flutter audio plugin using SoLoud library and FFI
     ],
     'GCC_PREPROCESSOR_DEFINITIONS' => preprocessor_definitions.join(' '),
     'DEFINES_MODULE' => 'YES', 
-    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'arm64',
     'VALID_ARCHS' => 'arm64 x86_64',
     'LIBRARY_SEARCH_PATHS' => [
       '$(PODS_TARGET_SRCROOT)/libs',
@@ -63,8 +62,6 @@ Flutter audio plugin using SoLoud library and FFI
     "CLANG_CXX_LIBRARY" => "libc++"
   }
   
-  s.user_target_xcconfig = { 'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'arm64' }
-
   # Only include libraries if opus/ogg is enabled
   if !disable_opus_ogg
     s.ios.vendored_libraries = [
