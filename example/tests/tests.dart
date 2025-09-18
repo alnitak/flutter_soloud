@@ -562,7 +562,7 @@ Future<StringBuffer> testStopFutures() async {
   }
 
   /// Wait a bit so that we can hear a sound to verify it's working as intended.
-  await delay(500);
+  await delay(SoLoud.stopSoundTimeout.inMilliseconds + 500);
 
   deinit();
 

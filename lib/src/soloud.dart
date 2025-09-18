@@ -67,6 +67,16 @@ Float32List _readSamplesFromMem(Map<String, dynamic> args) {
 /// This class has a singleton [instance] which represents the (also singleton)
 /// instance of the SoLoud (C++) engine.
 interface class SoLoud {
+  /// The maximum duration allowed for the [stop] method to finish.
+  ///
+  /// If it takes more time for a sound to stop, the [stop] method
+  /// will produce a [Level.SEVERE] log message. This helps identify issues
+  /// with the engine, such as dangling sound handles.
+  ///
+  /// Defaults to a second. This should cover all but the busiest
+  /// of applications.
+  static Duration stopSoundTimeout = const Duration(seconds: 1);
+
   /// The private constructor of [SoLoud]. This prevents developers from
   /// instantiating new instances.
   SoLoud._();
@@ -365,21 +375,24 @@ interface class SoLoud {
 
     // Listen when a handle becomes invalid because has been stopped/ended.
     if (!_controller.soLoudFFI.voiceEndedEventController.hasListener) {
-      _controller.soLoudFFI.voiceEndedEvents.listen((handle) {
+      _log.fine('Starting to listen to soLoudFFI.voiceEndedEventController');
+      _controller.soLoudFFI.voiceEndedEvents.listen((int handle) {
+        _log.fine(() => 'Received voiceEndedEvent for $handle');
         // Removing this UNIQUE [handle] from the `AudioSource` that owns it.
+        final soundHandle = SoundHandle(handle);
 
-        final soundHandleFound = _isHandlePresent(SoundHandle(handle));
-
+        final soundHandleFound = _isHandlePresent(soundHandle);
         if (soundHandleFound != null) {
           soundHandleFound.soundEventsController.add((
             event: SoundEventType.handleIsNoMoreValid,
             sound: soundHandleFound,
-            handle: SoundHandle(handle),
+            handle: soundHandle,
           ));
 
           /// Remove this handle from the list
           soundHandleFound.handlesInternal.removeWhere((element) {
-            _log.finest('Voice ended event received. Removing handle $handle');
+            _log.finest(
+                () => 'Voice ended event received. Removing handle $handle');
             return element.id == handle;
           });
 
@@ -387,7 +400,11 @@ interface class SoLoud {
             // All instances of the sound have finished.
             soundHandleFound.allInstancesFinishedController.add(null);
           }
-          voiceEndedCompleters[SoundHandle(handle)]?.complete();
+          voiceEndedCompleters[soundHandle]?.complete();
+        } else {
+          _log.warning(() => 'Voice ended event received for $soundHandle '
+              'but it was not found among _activeSounds');
+          voiceEndedCompleters[soundHandle]?.complete();
         }
       });
     }
@@ -1326,14 +1343,18 @@ interface class SoLoud {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+
+    final existingCompleter = voiceEndedCompleters[handle];
+    if (existingCompleter != null) {
+      return existingCompleter.future;
+    }
+
     final completer = Completer<void>();
     voiceEndedCompleters[handle] = completer;
 
     _controller.soLoudFFI.stop(handle);
 
-    return completer.future
-        .timeout(const Duration(milliseconds: 300))
-        .onError((e, s) {
+    return completer.future.timeout(stopSoundTimeout).onError((e, s) {
       _log.severe('stop() takes too much time for handle $handle. '
           'This is not expected but not blocking. Worth to file a bug with '
           'a simple reproducible code.');
