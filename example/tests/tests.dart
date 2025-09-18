@@ -1,10 +1,13 @@
 import 'dart:async';
+import 'dart:developer' as dev;
+import 'dart:math';
 import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:flutter_soloud/src/bindings/soloud_controller.dart';
+import 'package:logging/logging.dart';
 
 enum TestStatus {
   none,
@@ -74,6 +77,7 @@ class _MyHomePageState extends State<MyHomePage> {
       _Test(name: 'testPlaySeekPause', callback: testPlaySeekPause),
       _Test(name: 'testPan', callback: testPan),
       _Test(name: 'testHandles', callback: testHandles),
+      _Test(name: 'testStopFutures', callback: testStopFutures),
       _Test(name: 'loopingTests', callback: loopingTests),
       _Test(name: 'testSynchronousDeinit', callback: testSynchronousDeinit),
       _Test(name: 'testAsynchronousDeinit', callback: testAsynchronousDeinit),
@@ -511,6 +515,63 @@ Future<StringBuffer> testHandles() async {
 
   deinit();
   return StringBuffer();
+}
+
+/// Test instancing playing handles and their disposal
+Future<StringBuffer> testStopFutures() async {
+  final output = StringBuffer();
+  final severeLogs = <LogRecord>[];
+
+  Logger.root.level = kDebugMode ? Level.FINE : Level.INFO;
+  Logger.root.onRecord.listen((record) {
+    dev.log(
+      record.message,
+      time: record.time,
+      level: record.level.value,
+      name: record.loggerName,
+      zone: record.zone,
+      error: record.error,
+      stackTrace: record.stackTrace,
+    );
+
+    if (record.level > Level.INFO) {
+      output.writeln(record.message);
+      if (record.level >= Level.SEVERE) {
+        severeLogs.add(record);
+      }
+    }
+  });
+
+  /// Start audio isolate
+  await initialize();
+
+  /// Load sample
+  final currentSound =
+      await SoLoud.instance.loadAsset('assets/audio/tic-1.wav');
+
+  final random = Random(42);
+  for (var i = 0; i < 50; i++) {
+    final handle = await SoLoud.instance.play(currentSound);
+    output.writeln('$handle started');
+    await Future<void>.delayed(Duration(milliseconds: random.nextInt(5)));
+    unawaited(
+      SoLoud.instance
+          .stop(handle)
+          .then((_) => output.writeln('$handle stopped')),
+    );
+  }
+
+  /// Wait a bit so that we can hear a sound to verify it's working as intended.
+  await delay(500);
+
+  deinit();
+
+  if (severeLogs.isNotEmpty) {
+    throw Exception('Severe logs produced:\n'
+        '${severeLogs.map((r) => '[${r.level}] ${r.message}').join('\n')}');
+  }
+
+  return output;
 }
 
 /// Test looping state and `loopingStartAt`
