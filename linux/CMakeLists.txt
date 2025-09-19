@@ -47,6 +47,7 @@ list(APPEND PLUGIN_SOURCES
   "${SRC_DIR}/audiobuffer/opus_stream_decoder.cpp"
   "${SRC_DIR}/audiobuffer/vorbis_stream_decoder.cpp"
   "${SRC_DIR}/audiobuffer/mp3_stream_decoder.cpp"
+  "${SRC_DIR}/audiobuffer/flac_stream_decoder.cpp"
   "${SRC_DIR}/filters/filters.cpp"
   "${SRC_DIR}/filters/pitch_shift_filter.cpp"
   "${SRC_DIR}/filters/smbPitchShift.cpp"
