@@ -634,7 +634,6 @@ PlayerErrors Player::play(
 
 void Player::stop(unsigned int handle)
 {
-    removeHandle(handle);
     soloud.stop(handle);
 }
 

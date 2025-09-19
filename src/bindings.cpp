@@ -108,8 +108,15 @@ extern "C"
     /// and comes from the audio thread (so on the web, from a different web worker).
     FFI_PLUGIN_EXPORT void voiceEndedCallback(unsigned int *handle)
     {
+        bool isHandleFound;
         if (player != nullptr)
-            player->removeHandle(*handle);
+        {
+            isHandleFound = player->findByHandle(*handle) != nullptr;
+            if (isHandleFound)
+                player->removeHandle(*handle);
+            else
+                return;
+        }
 
 #ifdef __EMSCRIPTEN__
         // Calling JavaScript from C/C++
@@ -120,6 +127,8 @@ extern "C"
 
         // The `dartVoiceEndedCallback` is not set on Web.
         if (dartVoiceEndedCallback == nullptr)
+            return;
+        if (!isHandleFound)
             return;
         // [n] pointer must be deleted on Dart.
         unsigned int *n = (unsigned int *)malloc(sizeof(unsigned int *));
@@ -770,10 +779,10 @@ extern "C"
     /// [handle]
     FFI_PLUGIN_EXPORT void stop(unsigned int handle)
     {
-        if (player.get() == nullptr || !player.get()->isInited() ||
-            !player.get()->isValidHandle(handle))
+        if (player.get() == nullptr || !player.get()->isInited())
             return;
         player.get()->stop(handle);
+        voiceEndedCallback(&handle);
     }
 
     /// Stop all handles of the already loaded sound identified by [hash] and dispose it
