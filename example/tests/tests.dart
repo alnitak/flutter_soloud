@@ -552,8 +552,8 @@ Future<StringBuffer> testStopFutures() async {
   /// Fast call to `stop` after `play`
   var handle = await SoLoud.instance.play(currentSound);
   output
-  ..writeln('fast play/stop')
-  ..writeln('$handle started');
+    ..writeln('fast play/stop')
+    ..writeln('$handle started');
   unawaited(
     SoLoud.instance.stop(handle).then((_) => output.writeln('$handle stopped')),
   );

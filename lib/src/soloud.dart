@@ -1333,8 +1333,8 @@ interface class SoLoud {
     // we should check if it is still valid.
     if (!getIsValidVoiceHandle(handle)) {
       _log.finest(
-                () => 'The handle $handle has already been removed by another '
-                'event like scheduleStop or ended sound.');
+          () => 'The handle $handle has already been removed by another '
+              'event like scheduleStop or ended sound.');
       completer.complete();
     } else {
       _controller.soLoudFFI.stop(handle);
