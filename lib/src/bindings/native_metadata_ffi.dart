@@ -10,8 +10,9 @@ enum NativeDetectedType {
   UNKNOWN(0),
   OGG_OPUS(1),
   OGG_VORBIS(2),
-  MP3_WITH_ID3(3),
-  MP3_STREAM(4);
+  OGG_FLAC(3),
+  MP3_WITH_ID3(4),
+  MP3_STREAM(5);
 
   const NativeDetectedType(this.value);
   final int value;
@@ -20,8 +21,9 @@ enum NativeDetectedType {
         0 => UNKNOWN,
         1 => OGG_OPUS,
         2 => OGG_VORBIS,
-        3 => MP3_WITH_ID3,
-        4 => MP3_STREAM,
+        3 => OGG_FLAC,
+        4 => MP3_WITH_ID3,
+        5 => MP3_STREAM,
         _ => throw ArgumentError('Unknown value for DetectedTypeFFI: $value'),
       };
 
@@ -33,6 +35,8 @@ enum NativeDetectedType {
         return DetectedType.oggOpus;
       case OGG_VORBIS:
         return DetectedType.oggVorbis;
+      case OGG_FLAC:
+        return DetectedType.oggFlac;
       case MP3_WITH_ID3:
         return DetectedType.mp3WithId3;
       case MP3_STREAM:
@@ -139,6 +143,32 @@ final class NativeOpusInfo extends ffi.Struct {
   external int channel_mapping_size;
 }
 
+final class FlacInfoFFI extends ffi.Struct {
+  @ffi.Uint32()
+  external int min_blocksize;
+
+  @ffi.Uint32()
+  external int max_blocksize;
+
+  @ffi.Uint32()
+  external int min_framesize;
+
+  @ffi.Uint32()
+  external int max_framesize;
+
+  @ffi.Uint32()
+  external int sample_rate;
+
+  @ffi.Uint32()
+  external int channels;
+
+  @ffi.Uint32()
+  external int bits_per_sample;
+
+  @ffi.Uint64()
+  external int total_samples;
+}
+
 final class NativeOggMetadata extends ffi.Struct {
   @ffi.Array.multi([1024])
   external ffi.Array<ffi.Char> vendor;
@@ -152,6 +182,8 @@ final class NativeOggMetadata extends ffi.Struct {
   external NativeVorbisInfo vorbisInfo;
 
   external NativeOpusInfo opusInfo;
+
+  external FlacInfoFFI flacInfo;
 }
 
 final class NativeAudioMetadata extends ffi.Struct {
@@ -230,6 +262,16 @@ final class NativeAudioMetadata extends ffi.Struct {
         coupledCount: oggMetadata.opusInfo.coupled_count,
         channelMapping: channelMapping,
         channelMappingSize: oggMetadata.opusInfo.channel_mapping_size,
+      ),
+      flacInfo: FlacInfo(
+        minBlockSize: oggMetadata.flacInfo.min_blocksize,
+        maxBlockSize: oggMetadata.flacInfo.max_blocksize,
+        minFrameSize: oggMetadata.flacInfo.min_framesize,
+        maxFrameSize: oggMetadata.flacInfo.max_framesize,
+        sampleRate: oggMetadata.flacInfo.sample_rate,
+        channels: oggMetadata.flacInfo.channels,
+        bitsPerSample: oggMetadata.flacInfo.bits_per_sample,
+        totalSamples: oggMetadata.flacInfo.total_samples,
       ),
     );
 

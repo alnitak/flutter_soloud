@@ -9,8 +9,7 @@
 #define DR_WAV_NO_STDIO
 #include "dr_wav.h"
 
-/// As for dr_mp3
-// #define DR_FLAC_IMPLEMENTATION
-// #define DR_FLAC_NO_STDIO
-// #define DR_FLAC_NO_CRC
+#define DR_FLAC_IMPLEMENTATION
+#define DR_FLAC_NO_STDIO
+#define DR_FLAC_NO_CRC
 #include "dr_flac.h"

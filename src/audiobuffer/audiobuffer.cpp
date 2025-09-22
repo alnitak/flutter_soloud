@@ -323,6 +323,8 @@ namespace SoLoud
 		size_t bytesWritten = 0;
 		bool allDataAdded = -1;
 		int32_t bufferDataToAdd = 0;
+		/// It seems that FLAC need a bigger buffer size
+		int bufferMinSize = streamDecoder->getWrapperType() == DetectedType::BUFFER_OGG_FLAC ? 32 : 32;
 
 		if (!dontAdd)
 		{
@@ -331,7 +333,7 @@ namespace SoLoud
 						  static_cast<const unsigned char *>(aData) + aDataLen);
 			mBytesReceived += aDataLen;
 			// Performing some buffering. We need some data to be added expecially when using opus or mp3.
-			if (buffer.size() > 1024 * 32) // 16 KB of data.
+			if (buffer.size() > 1024 * bufferMinSize) // 16 KB of data.
 			{
 				// For PCM data we must align the data to the bytes per sample.
 				if (!(mPCMformat.dataType == BufferType::AUTO))
@@ -582,6 +584,9 @@ namespace SoLoud
 		case BUFFER_OGG_VORBIS:
 			ffi.detectedType = DetectedTypeFFI::OGG_VORBIS;
 			break;
+		case BUFFER_OGG_FLAC:
+			ffi.detectedType = DetectedTypeFFI::OGG_FLAC;
+			break;
 		case BUFFER_MP3_WITH_ID3:
 			ffi.detectedType = DetectedTypeFFI::MP3_WITH_ID3;
 			break;
@@ -635,6 +640,17 @@ namespace SoLoud
 			metadata.oggMetadata.opusInfo.coupled_count,
 			{0}, // Initialize channel_mapping array to zeros
 			(int)metadata.oggMetadata.opusInfo.channel_mapping.size()};
+
+		// Convert Flac info
+		ffi.oggMetadata.flacInfo = {
+			metadata.oggMetadata.flacInfo.min_blocksize,
+			metadata.oggMetadata.flacInfo.max_blocksize,
+			metadata.oggMetadata.flacInfo.min_framesize,
+			metadata.oggMetadata.flacInfo.max_framesize,
+			metadata.oggMetadata.flacInfo.sample_rate,
+			metadata.oggMetadata.flacInfo.channels,
+			metadata.oggMetadata.flacInfo.bits_per_sample,
+			metadata.oggMetadata.flacInfo.total_samples};
 
 		// Copy channel mapping
 		for (size_t i = 0; i < metadata.oggMetadata.opusInfo.channel_mapping.size() && i < MAX_CHANNEL_MAPPING; i++)

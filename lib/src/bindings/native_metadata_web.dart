@@ -8,8 +8,9 @@ enum NativeDetectedType {
   unknown(0),
   oggOpus(1),
   oggVorbis(2),
-  mp3WithId3(3),
-  mp3Stream(4);
+  oggFlac(3),
+  mp3WithId3(4),
+  mp3Stream(5);
 
   const NativeDetectedType(this.value);
   final int value;
@@ -18,8 +19,9 @@ enum NativeDetectedType {
         0 => unknown,
         1 => oggOpus,
         2 => oggVorbis,
-        3 => mp3WithId3,
-        4 => mp3Stream,
+        3 => oggFlac,
+        4 => mp3WithId3,
+        5 => mp3Stream,
         _ => throw ArgumentError(r'Unknown value for DetectedTypeJS: $value'),
       };
 
@@ -31,6 +33,8 @@ enum NativeDetectedType {
         return DetectedType.oggOpus;
       case oggVorbis:
         return DetectedType.oggVorbis;
+      case oggFlac:
+        return DetectedType.oggFlac;
       case mp3WithId3:
         return DetectedType.mp3WithId3;
       case mp3Stream:
@@ -110,6 +114,20 @@ class NativeOpusInfo extends _MetadataJS {
   int get channelMappingSize => wasmGetI32Value(ptr + 24, 'i32');
 }
 
+/// Ogg/Flac info
+class NativeFlacInfo extends _MetadataJS {
+  NativeFlacInfo(super.ptr);
+
+  int get minBlockSize => wasmGetI32Value(ptr + 3, 'i32');
+  int get maxBlockSize => wasmGetI32Value(ptr + 5, 'i32');
+  int get minFrameSize => wasmGetI32Value(ptr + 7, 'i32');
+  int get maxFrameSize => wasmGetI32Value(ptr + 11, 'i32');
+  int get sampleRate => wasmGetI32Value(ptr + 15, 'i32');
+  int get channels => wasmGetI32Value(ptr + 23, 'i32');
+  int get bitsPerSample => wasmGetI32Value(ptr + 19, 'i32');
+  int get totalSamples => wasmGetI32Value(ptr + 27, 'i64');
+}
+
 /// OGG metadata from stream
 class NativeOggMetadata extends _MetadataJS {
   NativeOggMetadata(super.ptr);
@@ -127,6 +145,7 @@ class NativeOggMetadata extends _MetadataJS {
 
   NativeVorbisInfo get vorbisInfo => NativeVorbisInfo(ptr + 1028 + 32 * 2048);
   NativeOpusInfo get opusInfo => NativeOpusInfo(ptr + 1028 + 32 * 2048 + 28);
+  NativeFlacInfo get flacInfo => NativeFlacInfo(ptr + 1028 + 32 * 2048);
 }
 
 /// Both MP3 and OGG metadata
@@ -189,6 +208,16 @@ class NativeAudioMetadata extends _MetadataJS {
         coupledCount: instance.oggMetadata.opusInfo.coupledCount,
         channelMapping: instance.oggMetadata.opusInfo.channelMapping,
         channelMappingSize: instance.oggMetadata.opusInfo.channelMappingSize,
+      ),
+      flacInfo: FlacInfo(
+        minBlockSize: instance.oggMetadata.flacInfo.minBlockSize,
+        maxBlockSize: instance.oggMetadata.flacInfo.maxBlockSize,
+        minFrameSize: instance.oggMetadata.flacInfo.minFrameSize,
+        maxFrameSize: instance.oggMetadata.flacInfo.maxFrameSize,
+        sampleRate: instance.oggMetadata.flacInfo.sampleRate,
+        channels: instance.oggMetadata.flacInfo.channels,
+        bitsPerSample: instance.oggMetadata.flacInfo.bitsPerSample,
+        totalSamples: instance.oggMetadata.flacInfo.totalSamples,
       ),
     );
 

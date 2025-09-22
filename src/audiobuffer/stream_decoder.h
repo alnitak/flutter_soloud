@@ -16,6 +16,7 @@ typedef enum
     BUFFER_NO_ENOUGH_DATA,
     BUFFER_OGG_OPUS,
     BUFFER_OGG_VORBIS,
+    BUFFER_OGG_FLAC,
     BUFFER_MP3_WITH_ID3,
     BUFFER_MP3_STREAM
 } DetectedType;
@@ -69,10 +70,20 @@ struct OpusInfo {
     std::vector<uint8_t> channel_mapping;
 };
 
+struct FlacInfo {
+    uint32_t min_blocksize, max_blocksize;
+	uint32_t min_framesize, max_framesize;
+	uint32_t sample_rate;
+	uint32_t channels;
+	uint32_t bits_per_sample;
+	uint64_t total_samples;
+};
+
 struct OggMetadata {
     std::string vendor;
     int commentsCount = 0;
     std::map<std::string, std::string> comments;
+    FlacInfo flacInfo;
     VorbisInfo vorbisInfo;
     OpusInfo opusInfo;
 };
@@ -101,6 +112,9 @@ public:
             case DetectedType::BUFFER_OGG_VORBIS:
                 format = "Ogg Vorbis";
                 break;
+            case DetectedType::BUFFER_OGG_FLAC:
+                format = "Ogg FLAC";
+                break;
             case DetectedType::BUFFER_MP3_STREAM:
                 format = "MP3 stream";
                 break;
@@ -119,7 +133,9 @@ public:
             std::cout << "Date: " << mp3Metadata.date << std::endl;
             std::cout << "Genre: " << mp3Metadata.genre << std::endl;
         } else
-        if (type == DetectedType::BUFFER_OGG_OPUS || type == DetectedType::BUFFER_OGG_VORBIS) {
+        if (type == DetectedType::BUFFER_OGG_OPUS ||
+            type == DetectedType::BUFFER_OGG_VORBIS ||
+            type == DetectedType::BUFFER_OGG_FLAC) {
             std::cout << "Vendor: " << oggMetadata.vendor << std::endl;
             std::cout << "Comments: " << oggMetadata.commentsCount << std::endl;
             for (const auto& tag : oggMetadata.comments) {
@@ -150,6 +166,18 @@ public:
                 for (int i = 0; i < oggMetadata.opusInfo.channel_mapping.size(); i++) {
                     std::cout << "\t" << "Channel Mapping[" << i << "]: " << oggMetadata.opusInfo.channel_mapping[i] << std::endl;
                 }
+            }
+            // Specific FLAC information
+            if (type == DetectedType::BUFFER_OGG_FLAC) {
+                std::cout << "FLAC info" << std::endl;
+                std::cout << "\t" << "Min Block Size: " << oggMetadata.flacInfo.min_blocksize << std::endl;
+                std::cout << "\t" << "Max Block Size: " << oggMetadata.flacInfo.max_blocksize << std::endl;
+                std::cout << "\t" << "Min Frame Size: " << oggMetadata.flacInfo.min_framesize << std::endl;
+                std::cout << "\t" << "Max Frame Size: " << oggMetadata.flacInfo.max_framesize << std::endl;
+                std::cout << "\t" << "Sample Rate: " << oggMetadata.flacInfo.sample_rate << std::endl;
+                std::cout << "\t" << "Channels: " << oggMetadata.flacInfo.channels << std::endl;
+                std::cout << "\t" << "Bits Per Sample: " << oggMetadata.flacInfo.bits_per_sample << std::endl;
+                std::cout << "\t" << "Total Samples: " << oggMetadata.flacInfo.total_samples << std::endl;
             }
         }
         std::cout << "|---------------------------------|" << std::endl;
@@ -193,6 +221,8 @@ public:
         int *sampleRate,
         int *channels,
         TrackChangeCallback metadataChangeCallback);
+
+    DetectedType getWrapperType();
 
 private:
     DetectedType detectAudioFormat(const std::vector<unsigned char> &buffer);

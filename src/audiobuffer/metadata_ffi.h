@@ -15,6 +15,7 @@ typedef enum
     UNKNOWN,
     OGG_OPUS,
     OGG_VORBIS,
+    OGG_FLAC,
     MP3_WITH_ID3,
     MP3_STREAM
 } DetectedTypeFFI;
@@ -67,12 +68,22 @@ struct OpusInfoFFI {
     int channel_mapping_size;
 };
 
+struct FlacInfoFFI {
+  uint32_t min_blocksize, max_blocksize;
+	uint32_t min_framesize, max_framesize;
+	uint32_t sample_rate;
+	uint32_t channels;
+	uint32_t bits_per_sample;
+	uint64_t total_samples;
+};
+
 struct OggMetadataFFI {
     char vendor[MAX_STRING_LENGTH];
     int commentsCount;
     struct CommentPairFFI comments[MAX_COMMENTS];
     struct VorbisInfoFFI vorbisInfo;
     struct OpusInfoFFI opusInfo;
+    struct FlacInfoFFI flacInfo;
 };
 
 struct Mp3MetadataFFI {
