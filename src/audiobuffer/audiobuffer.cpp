@@ -506,23 +506,24 @@ namespace SoLoud
 	{
 		if (mOnMetadataCallback != nullptr)
 		{
-#ifdef __EMSCRIPTEN__
 			AudioMetadataFFI ffi = this->convertMetadataToFFI(metadata);
+			metadata.debug();
+			printf("callOnMetadataCallback commentsCount: %d\n", ffi.oggMetadata.commentsCount);
+#ifdef __EMSCRIPTEN__
 			// Call the Dart callback stored on globalThis, if it exists.
 			// The `dartOnMetadataCallback_$hash` function is created in
 			// `setBufferStream()` in `bindings_player_web.dart` and it's
 			// meant to call the Dart callback passed to `setBufferStream()`.
 			// It will pass the JS pointer to the AudioMetadata struct.
 			EM_ASM_({
-					// Compose the function name for this soundHash
-					var functionName = "dartOnMetadataCallback_" + $1;
-					if (typeof window[functionName] === "function") {
-						window[functionName]($0); // Call it with the pointer
-					} else {
-						console.log("EM_ASM 'dartOnMetadataCallback_$hash' not found.");
-					} }, &ffi, mParent->soundHash);
+				// Compose the function name for this soundHash
+				var functionName = "dartOnMetadataCallback_" + $1;
+				if (typeof window[functionName] === "function") {
+					window[functionName]($0); // Call it with the pointer
+				} else {
+					console.log("EM_ASM 'dartOnMetadataCallback_$hash' not found.");
+				} }, &ffi, mParent->soundHash);
 #else
-			AudioMetadataFFI ffi = this->convertMetadataToFFI(metadata);
 			mOnMetadataCallback(ffi);
 #endif
 		}
@@ -657,6 +658,8 @@ namespace SoLoud
 		{
 			ffi.oggMetadata.opusInfo.channel_mapping[i] = metadata.oggMetadata.opusInfo.channel_mapping[i];
 		}
+
+		printf("C++ offsetof(commentsCount): %zu\n", offsetof(OggMetadataFFI, commentsCount));
 
 		return ffi;
 	}

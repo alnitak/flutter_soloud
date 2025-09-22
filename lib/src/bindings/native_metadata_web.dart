@@ -71,11 +71,10 @@ class NativeMp3Metadata extends _MetadataJS {
 }
 
 /// Comment key-value pair structure
-class NativeCommentPair extends _MetadataJS {
-  NativeCommentPair(super.ptr);
-
-  String get key => _readString(0, 1024);
-  String get value => _readString(1024, 1024);
+class NativeCommentPair {
+  const NativeCommentPair(this.key, this.value);
+  final String key;
+  final String value;
 }
 
 /// Structure to hold track metadata
@@ -118,14 +117,14 @@ class NativeOpusInfo extends _MetadataJS {
 class NativeFlacInfo extends _MetadataJS {
   NativeFlacInfo(super.ptr);
 
-  int get minBlockSize => wasmGetI32Value(ptr + 3, 'i32');
-  int get maxBlockSize => wasmGetI32Value(ptr + 5, 'i32');
-  int get minFrameSize => wasmGetI32Value(ptr + 7, 'i32');
-  int get maxFrameSize => wasmGetI32Value(ptr + 11, 'i32');
-  int get sampleRate => wasmGetI32Value(ptr + 15, 'i32');
-  int get channels => wasmGetI32Value(ptr + 23, 'i32');
-  int get bitsPerSample => wasmGetI32Value(ptr + 19, 'i32');
-  int get totalSamples => wasmGetI32Value(ptr + 27, 'i64');
+  int get minBlockSize => wasmGetI32Value(ptr, 'i32');
+  int get maxBlockSize => wasmGetI32Value(ptr + 4, 'i32');
+  int get minFrameSize => wasmGetI32Value(ptr + 8, 'i32');
+  int get maxFrameSize => wasmGetI32Value(ptr + 12, 'i32');
+  int get sampleRate => wasmGetI32Value(ptr + 16, 'i32');
+  int get channels => wasmGetI32Value(ptr + 20, 'i32');
+  int get bitsPerSample => wasmGetI32Value(ptr + 24, 'i32');
+  int get totalSamples => wasmGetI32Value(ptr + 28, 'i32');
 }
 
 /// OGG metadata from stream
@@ -136,16 +135,19 @@ class NativeOggMetadata extends _MetadataJS {
   int get commentsCount => wasmGetI32Value(ptr + 1024, 'i32');
   List<NativeCommentPair> get comments {
     final commentsList = <NativeCommentPair>[];
-    final commentsPtr = ptr + 1028;
+    const commentsOffset = 1028;
     for (var i = 0; i < commentsCount; i++) {
-      commentsList.add(NativeCommentPair(commentsPtr + i * 2048));
+      final commentOffset = commentsOffset + i * 2048;
+      final key = _readString(commentOffset, 1024);
+      final value = _readString(commentOffset + 1024, 1024);
+      commentsList.add(NativeCommentPair(key, value));
     }
     return commentsList;
   }
 
   NativeVorbisInfo get vorbisInfo => NativeVorbisInfo(ptr + 1028 + 32 * 2048);
   NativeOpusInfo get opusInfo => NativeOpusInfo(ptr + 1028 + 32 * 2048 + 28);
-  NativeFlacInfo get flacInfo => NativeFlacInfo(ptr + 1028 + 32 * 2048);
+  NativeFlacInfo get flacInfo => NativeFlacInfo(ptr + 1028 + 32 * 2048 + 64);
 }
 
 /// Both MP3 and OGG metadata

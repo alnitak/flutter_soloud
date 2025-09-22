@@ -224,8 +224,8 @@ final class FlacInfo {
     required this.maxBlockSize,
     required this.minFrameSize,
     required this.maxFrameSize,
-    required this.channels,
     required this.sampleRate,
+    required this.channels,
     required this.bitsPerSample,
     required this.totalSamples,
   });
@@ -242,11 +242,11 @@ final class FlacInfo {
   /// The maximum frame size in bytes
   int maxFrameSize;
 
-  /// The number of audio channels in the stream
-  int channels;
-
   /// The sampling rate of the audio in Hz
   int sampleRate;
+
+  /// The number of audio channels in the stream
+  int channels;
 
   /// The bitrate of the audio stream
   int bitsPerSample;
@@ -261,8 +261,8 @@ final class FlacInfo {
       ..writeln('\tMaxBlockSize: $maxBlockSize')
       ..writeln('\tMinFrameSize: $minFrameSize')
       ..writeln('\tMaxFrameSize: $maxFrameSize')
-      ..writeln('\tChannels: $channels')
       ..writeln('\tSampleRate: $sampleRate')
+      ..writeln('\tChannels: $channels')
       ..writeln('\tBitrate: $bitsPerSample')
       ..writeln('\tTotalSamples: $totalSamples');
     return buffer.toString();
@@ -365,9 +365,6 @@ final class AudioMetadata {
         buffer.writeln(mp3Metadata.toString());
       case DetectedType.oggOpus:
       case DetectedType.oggVorbis:
-        if (oggMetadata != null) {
-          buffer.writeln(oggMetadata!.toStringWithFormat(detectedType));
-        }
       case DetectedType.oggFlac:
         if (oggMetadata != null) {
           buffer.writeln(oggMetadata!.toStringWithFormat(detectedType));

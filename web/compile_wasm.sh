@@ -107,7 +107,7 @@ if [ "${SKIP_OPUS_OGG}" != "1" ]; then
 
     # Build Flac if not built or force rebuild is set
     echo -e "${BOLD_WHITE_ON_GREEN}Building Flac${RESET}"
-    if [ ! -f "$FLAC_DIR/src/libFLAC/.libs/libFLAC.a" ] || [ $FORCE_REBUILD_LIBS -eq 1 ]; then
+    if [ ! -f "$FLAC_DIR/src/libFLAC/.libs/libFLAC-static.a" ] || [ $FORCE_REBUILD_LIBS -eq 1 ]; then
         cd "$FLAC_DIR"
         ./autogen.sh
         emconfigure ./configure \
@@ -116,7 +116,9 @@ if [ "${SKIP_OPUS_OGG}" != "1" ]; then
             --disable-cpplibs \
             --disable-doxygen-docs \
             --disable-xmms-plugin \
-            --disable-programs
+            --disable-cpplibs \
+            --disable-programs \
+            --disable-examples
         emmake make -j$CORES
         cd -
     fi
@@ -170,7 +172,7 @@ if [ "${SKIP_OPUS_OGG}" != "1" ]; then
         "$OGG_DIR/src/.libs/libogg.a"
         "$VORBIS_DIR/lib/.libs/libvorbis.a"
         "$VORBIS_DIR/lib/.libs/libvorbisfile.a"
-        "$FLAC_DIR/src/libFLAC/.libs/libFLAC.a"
+        "$FLAC_DIR/src/libFLAC/.libs/libFLAC-static.a"
     )
 fi
 
