@@ -74,12 +74,12 @@ struct FlacInfoFFI {
 	uint32_t sample_rate;
 	uint32_t channels;
 	uint32_t bits_per_sample;
-	uint64_t total_samples;
+	uint32_t total_samples;
 };
 
 struct OggMetadataFFI {
     char vendor[MAX_STRING_LENGTH];
-    int commentsCount;
+    uint32_t commentsCount;
     struct CommentPairFFI comments[MAX_COMMENTS];
     struct VorbisInfoFFI vorbisInfo;
     struct OpusInfoFFI opusInfo;

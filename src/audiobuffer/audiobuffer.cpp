@@ -324,7 +324,7 @@ namespace SoLoud
 		bool allDataAdded = -1;
 		int32_t bufferDataToAdd = 0;
 		/// It seems that FLAC need a bigger buffer size
-		int bufferMinSize = streamDecoder->getWrapperType() == DetectedType::BUFFER_OGG_FLAC ? 32 : 32;
+		int bufferMinSize = streamDecoder->getWrapperType() == DetectedType::BUFFER_OGG_FLAC ? 16 : 32;
 
 		if (!dontAdd)
 		{
@@ -507,8 +507,7 @@ namespace SoLoud
 		if (mOnMetadataCallback != nullptr)
 		{
 			AudioMetadataFFI ffi = this->convertMetadataToFFI(metadata);
-			metadata.debug();
-			printf("callOnMetadataCallback commentsCount: %d\n", ffi.oggMetadata.commentsCount);
+			// metadata.debug();
 #ifdef __EMSCRIPTEN__
 			// Call the Dart callback stored on globalThis, if it exists.
 			// The `dartOnMetadataCallback_$hash` function is created in
@@ -519,9 +518,9 @@ namespace SoLoud
 				// Compose the function name for this soundHash
 				var functionName = "dartOnMetadataCallback_" + $1;
 				if (typeof window[functionName] === "function") {
+					console.log("EM_ASM 'dartOnMetadataCallback_$hash' struct ptr is " + $0);
 					window[functionName]($0); // Call it with the pointer
 				} else {
-					console.log("EM_ASM 'dartOnMetadataCallback_$hash' not found.");
 				} }, &ffi, mParent->soundHash);
 #else
 			mOnMetadataCallback(ffi);

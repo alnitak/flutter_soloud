@@ -54,6 +54,7 @@ class WebRadioExample extends StatefulWidget {
 
 class _WebRadioExampleState extends State<WebRadioExample> {
   final urls = [
+    {'FLAC': 'http://stream.radioparadise.com/mellow-flacm'},
     {'FLAC': 'https://stream.radioparadise.com/rock-flac'},
     {'FLAC': 'http://s2.audiostream.hu:8091/bdpstrock_FLAC'},
     {'FLAC': 'https://mscp4.live-streams.nl:8142/lounge.ogg'},

@@ -165,7 +165,7 @@ final class FlacInfoFFI extends ffi.Struct {
   @ffi.Uint32()
   external int bits_per_sample;
 
-  @ffi.Uint64()
+  @ffi.Uint32()
   external int total_samples;
 }
 
