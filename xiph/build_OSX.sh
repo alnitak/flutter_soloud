@@ -36,8 +36,15 @@ if [ ! -d "opus" ]; then
     cd ..
 fi
 
+if [ ! -d "flac" ]; then
+    git clone https://github.com/xiph/flac
+    cd flac
+    git reset --hard 9547dbc
+    cd ..
+fi
+
 # Directories for source code and build output
-LIBS=("ogg" "opus" "vorbis")
+LIBS=("ogg" "opus" "vorbis" "flac")
 BASE_DIR="$PWD"
 BUILD_DIR="$BASE_DIR/macos/build"
 OUTPUT_DIR="$BASE_DIR/../macos/libs"
@@ -87,6 +94,18 @@ build_lib() {
         CFLAGS="-arch $arch -isysroot $MACOS_SDK -mmacosx-version-min=10.13 -O2" \
         ./configure --host=$host_triplet --prefix="$output_dir" --disable-shared --with-ogg="$BUILD_DIR/ogg/$arch"
     fi
+    if [ "$lib_name" == "flac" ]; then
+        PKG_CONFIG_PATH="$BUILD_DIR/ogg/$arch/lib/pkgconfig" \
+        LDFLAGS="-L$BUILD_DIR/ogg/$arch/lib" \
+        CPPFLAGS="-I$BUILD_DIR/ogg/$arch/include" \
+        CFLAGS="-arch $arch -isysroot $MACOS_SDK -mmacosx-version-min=10.13 -O2" \
+        ./configure --host=$host_triplet --prefix="$output_dir" --disable-shared --with-ogg="$BUILD_DIR/ogg/$arch" \
+            --disable-cpplibs \
+            --disable-doxygen-docs \
+            --disable-xmms-plugin \
+            --disable-programs \
+            --disable-examples
+    fi
 
     make clean
     make -j$(sysctl -n hw.ncpu)
@@ -111,11 +130,18 @@ done
 for lib in "${LIBS[@]}"; do
     echo "${BOLD_WHITE_ON_GREEN}Creating universal binary for $lib...=${RESET}"
 
-    # Create universal binary
-    lipo -create \
-        "$BUILD_DIR/$lib/arm64/lib/lib${lib}.a" \
-        "$BUILD_DIR/$lib/x86_64/lib/lib${lib}.a" \
-        -output "$OUTPUT_DIR/lib${lib}.a"
+    if [ "$lib" == "flac" ]; then
+        lipo -create \
+            "$BUILD_DIR/$lib/arm64/lib/libFLAC.a" \
+            "$BUILD_DIR/$lib/x86_64/lib/libFLAC.a" \
+            -output "$OUTPUT_DIR/libFLAC.a"
+    else
+        lipo -create \
+            "$BUILD_DIR/$lib/arm64/lib/lib${lib}.a" \
+            "$BUILD_DIR/$lib/x86_64/lib/lib${lib}.a" \
+            -output "$OUTPUT_DIR/lib${lib}.a"
+    fi
+
     if [ "$lib" == "vorbis" ]; then
         echo "${BOLD_WHITE_ON_GREEN}Creating universal binary for vorbisfile...=${RESET}"
         lipo -create \
@@ -128,10 +154,16 @@ for lib in "${LIBS[@]}"; do
     cp -R "$BUILD_DIR/$lib/arm64/include/"* "$INCLUDE_DIR/"
 done
 
+cp -R "$BASE_DIR/flac/include/share" "$INCLUDE_DIR/"
+
 # After creating universal binaries, strip them
 for lib in "${LIBS[@]}"; do
     echo "${BOLD_WHITE_ON_GREEN}Stripping symbols from $lib...=${RESET}"
-    strip -x "$OUTPUT_DIR/lib${lib}.a"
+    if [ "$lib" == "flac" ]; then
+        strip -x "$OUTPUT_DIR/libFLAC.a"
+    else
+        strip -x "$OUTPUT_DIR/lib${lib}.a"
+    fi
     if [ "$lib" == "vorbis" ]; then
         echo "${BOLD_WHITE_ON_GREEN}Stripping symbols from vorbisfile...=${RESET}"
         strip -x "$OUTPUT_DIR/libvorbisfile.a"

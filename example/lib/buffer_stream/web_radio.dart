@@ -61,7 +61,6 @@ class _WebRadioExampleState extends State<WebRadioExample> {
     {'FLAC': 'https://frequence3.net-radio.fr/frequence3gold.flac'},
     // https://fmstream.org/index.php
     // 90s
-    {'MP3': 'https://ice-sov.musicradio.com/Heart90sMP3'},
     {'MP3': 'https://streams.90s90s.de/pop/mp3-128'},
     // 80s
     {'MP3': 'https://streams.80s80s.de/web/mp3-128'},

@@ -42,36 +42,31 @@ Flutter audio plugin using SoLoud library and FFI
   s.pod_target_xcconfig = { 
     'HEADER_SEARCH_PATHS' => [
       '$(PODS_TARGET_SRCROOT)/include',
-      '$(PODS_TARGET_SRCROOT)/include/opus',
-      '$(PODS_TARGET_SRCROOT)/include/ogg',
-      '$(PODS_TARGET_SRCROOT)/include/vorbis',
       '$(PODS_TARGET_SRCROOT)/../src',
       '$(PODS_TARGET_SRCROOT)/../src/soloud/include',
       '${PODS_ROOT}/abseil',
     ],
     'GCC_PREPROCESSOR_DEFINITIONS' => preprocessor_definitions.join(' '),
-    'DEFINES_MODULE' => 'YES', 
-    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'arm64',
+    'DEFINES_MODULE' => 'YES',
     'VALID_ARCHS' => 'arm64 x86_64',
     'LIBRARY_SEARCH_PATHS' => [
       '$(PODS_TARGET_SRCROOT)/libs',
       '$(SRCROOT)/libs'
     ],
-    'OTHER_LDFLAGS[sdk=iphonesimulator*]' => disable_opus_ogg ? '' : '-logg_iOS-simulator -lopus_iOS-simulator -lvorbis_iOS-simulator -lvorbisfile_iOS-simulator',
-    'OTHER_LDFLAGS[sdk=iphoneos*]' => disable_opus_ogg ? '' : '-logg_iOS-device -lopus_iOS-device -lvorbis_iOS-device -lvorbisfile_iOS-device',
+    'OTHER_LDFLAGS[sdk=iphonesimulator*]' => disable_opus_ogg ? '' : '-logg_iOS-simulator -lopus_iOS-simulator -lvorbis_iOS-simulator -lvorbisfile_iOS-simulator -lFLAC_iOS-simulator',
+    'OTHER_LDFLAGS[sdk=iphoneos*]' => disable_opus_ogg ? '' : '-logg_iOS-device -lopus_iOS-device -lvorbis_iOS-device -lvorbisfile_iOS-device -lFLAC_iOS-device',
     "CLANG_CXX_LANGUAGE_STANDARD" => "c++17",
     "CLANG_CXX_LIBRARY" => "libc++"
   }
   
-  s.user_target_xcconfig = { 'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'arm64' }
-
   # Only include libraries if opus/ogg is enabled
   if !disable_opus_ogg
     s.ios.vendored_libraries = [
       'libs/libopus_iOS-device.a',
       'libs/libogg_iOS-device.a',
       'libs/libvorbis_iOS-device.a',
-      'libs/libvorbisfile_iOS-device.a'
+      'libs/libvorbisfile_iOS-device.a',
+      'libs/libFLAC_iOS-device.a'
     ]
     s.preserve_paths = [
       'libs/libopus_iOS-device.a',
@@ -81,7 +76,9 @@ Flutter audio plugin using SoLoud library and FFI
       'libs/libvorbis_iOS-device.a',
       'libs/libvorbis_iOS-simulator.a',
       'libs/libvorbisfile_iOS-device.a',
-      'libs/libvorbisfile_iOS-simulator.a'
+      'libs/libvorbisfile_iOS-simulator.a',
+      'libs/libFLAC_iOS-device.a',
+      'libs/libFLAC_iOS-simulator.a'
     ]
   end
 
