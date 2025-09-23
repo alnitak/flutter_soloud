@@ -324,7 +324,7 @@ namespace SoLoud
 		bool allDataAdded = -1;
 		int32_t bufferDataToAdd = 0;
 		/// It seems that FLAC need a bigger buffer size
-		int bufferMinSize = streamDecoder->getWrapperType() == DetectedType::BUFFER_OGG_FLAC ? 16 : 32;
+		int bufferMinSize = streamDecoder->getWrapperType() == DetectedType::BUFFER_OGG_FLAC ? 32 : 32;
 
 		if (!dontAdd)
 		{

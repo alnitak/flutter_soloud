@@ -9,7 +9,9 @@ FlacDecoderWrapper::FlacDecoderWrapper()
       m_streamInitialized(false),
       m_channels(0),
       m_samplerate(0),
-      m_bitsPerSample(0)
+      m_bitsPerSample(0),
+      m_read_pos(0),
+      mIcyMetaInt(0)
 {
 }
 
@@ -25,6 +27,14 @@ FlacDecoderWrapper::~FlacDecoderWrapper()
         ogg_stream_clear(&m_os);
     }
     ogg_sync_clear(&m_oy);
+}
+
+void FlacDecoderWrapper::setBufferIcyMetaInt(int icyMetaInt)
+{
+    if (mIcyMetaInt == icyMetaInt)
+        return;
+
+    mIcyMetaInt = icyMetaInt;
 }
 
 bool FlacDecoderWrapper::initializeDecoder(int engineSamplerate, int engineChannels)
@@ -90,12 +100,17 @@ std::pair<std::vector<float>, DecoderError> FlacDecoderWrapper::decode(std::vect
         }
     }
 
-    while (m_audioData.size() > 0)
+    m_read_pos = 0;
+    while (m_read_pos < m_audioData.size())
     {
-        size_t data_size_before = m_audioData.size();
+        const size_t read_pos_before = m_read_pos;
 
         if (!FLAC__stream_decoder_process_single(m_pFlacDecoder))
         {
+            // On error, reset the decoder and discard the buffer to avoid getting stuck.
+            FLAC__stream_decoder_reset(m_pFlacDecoder);
+            m_audioData.clear();
+            m_read_pos = 0;
             break;
         }
 
@@ -104,11 +119,18 @@ std::pair<std::vector<float>, DecoderError> FlacDecoderWrapper::decode(std::vect
             break;
         }
 
-        if (m_audioData.size() == data_size_before)
+        if (m_read_pos == read_pos_before)
         {
+            // The decoder is stalled, break and wait for more data.
             break;
         }
     }
+
+    if (m_read_pos > 0)
+    {
+        m_audioData.erase(m_audioData.begin(), m_audioData.begin() + m_read_pos);
+    }
+    m_read_pos = 0;
 
     *samplerate = m_samplerate;
     *channels = m_channels;
@@ -120,16 +142,16 @@ FLAC__StreamDecoderReadStatus FlacDecoderWrapper::read_callback(const FLAC__Stre
 {
     FlacDecoderWrapper *self = static_cast<FlacDecoderWrapper *>(client_data);
 
-    if (self->m_audioData.empty())
+    const size_t available_data = self->m_audioData.size() - self->m_read_pos;
+    if (available_data == 0)
     {
         *bytes = 0;
         return FLAC__STREAM_DECODER_READ_STATUS_CONTINUE;
     }
 
-    size_t bytes_to_copy = MIN(*bytes, self->m_audioData.size());
-    memcpy(buffer, self->m_audioData.data(), bytes_to_copy);
-
-    self->m_audioData.erase(self->m_audioData.begin(), self->m_audioData.begin() + bytes_to_copy);
+    const size_t bytes_to_copy = MIN(*bytes, available_data);
+    memcpy(buffer, self->m_audioData.data() + self->m_read_pos, bytes_to_copy);
+    self->m_read_pos += bytes_to_copy;
 
     *bytes = bytes_to_copy;
     return FLAC__STREAM_DECODER_READ_STATUS_CONTINUE;

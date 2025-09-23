@@ -129,9 +129,16 @@ std::pair<std::vector<float>, DecoderError> StreamDecoder::decode(
                 if (detectedType == DetectedType::BUFFER_OGG_VORBIS) {
                     mWrapper = std::make_unique<VorbisDecoderWrapper>();
                     isFormatDetected = static_cast<VorbisDecoderWrapper*>(mWrapper.get())->initializeDecoder(*samplerate, *channels);
+                    if (!isFormatDetected) {
+                        return {{}, DecoderError::FailedToCreateDecoder};
+                    }
                 } else if (detectedType == DetectedType::BUFFER_OGG_FLAC) {
                     mWrapper = std::make_unique<FlacDecoderWrapper>();
                     isFormatDetected = static_cast<FlacDecoderWrapper*>(mWrapper.get())->initializeDecoder(*samplerate, *channels);
+                    if (!isFormatDetected) {
+                        return {{}, DecoderError::FailedToCreateDecoder};
+                    }
+                    static_cast<FlacDecoderWrapper*>(mWrapper.get())->setBufferIcyMetaInt(mIcyMetaInt);
                 } else {
                     mWrapper = std::make_unique<OpusDecoderWrapper>();
                     isFormatDetected = static_cast<OpusDecoderWrapper*>(mWrapper.get())->initializeDecoder(*samplerate, *channels);
