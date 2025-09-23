@@ -307,10 +307,10 @@ namespace SoLoud
 		checkBuffering(0);
 	}
 
-	void BufferStream::setMp3BufferIcyMetaInt(int icyMetaInt)
+	void BufferStream::setBufferIcyMetaInt(int icyMetaInt)
 	{
 		mIcyMetaInt = icyMetaInt;
-		streamDecoder->setMp3BufferIcyMetaInt(icyMetaInt);
+		streamDecoder->setBufferIcyMetaInt(icyMetaInt);
 	}
 
 	PlayerErrors BufferStream::addData(const void *aData, unsigned int aDataLen, bool dontAdd)
@@ -518,7 +518,6 @@ namespace SoLoud
 				// Compose the function name for this soundHash
 				var functionName = "dartOnMetadataCallback_" + $1;
 				if (typeof window[functionName] === "function") {
-					console.log("EM_ASM 'dartOnMetadataCallback_$hash' struct ptr is " + $0);
 					window[functionName]($0); // Call it with the pointer
 				} else {
 				} }, &ffi, mParent->soundHash);
@@ -657,8 +656,6 @@ namespace SoLoud
 		{
 			ffi.oggMetadata.opusInfo.channel_mapping[i] = metadata.oggMetadata.opusInfo.channel_mapping[i];
 		}
-
-		printf("C++ offsetof(commentsCount): %zu\n", offsetof(OggMetadataFFI, commentsCount));
 
 		return ffi;
 	}

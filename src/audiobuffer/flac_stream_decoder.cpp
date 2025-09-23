@@ -11,7 +11,9 @@ FlacDecoderWrapper::FlacDecoderWrapper()
       m_samplerate(0),
       m_bitsPerSample(0),
       m_read_pos(0),
-      mIcyMetaInt(0)
+      mIcyMetaInt(0),
+      mAudioBytesCount(0),
+      mIcyMetaSize(0)
 {
 }
 
@@ -29,7 +31,7 @@ FlacDecoderWrapper::~FlacDecoderWrapper()
     ogg_sync_clear(&m_oy);
 }
 
-void FlacDecoderWrapper::setBufferIcyMetaInt(int icyMetaInt)
+void FlacDecoderWrapper::setIcyMetaInt(int icyMetaInt)
 {
     if (mIcyMetaInt == icyMetaInt)
         return;
@@ -72,11 +74,60 @@ bool FlacDecoderWrapper::initializeDecoder(int engineSamplerate, int engineChann
 std::pair<std::vector<float>, DecoderError> FlacDecoderWrapper::decode(std::vector<unsigned char> &buffer, int *samplerate, int *channels)
 {
     m_decodedPcm.clear();
+    std::vector<unsigned char> clean_audio_data;
 
-    char *ogg_buffer = ogg_sync_buffer(&m_oy, buffer.size());
-    memcpy(ogg_buffer, buffer.data(), buffer.size());
-    ogg_sync_wrote(&m_oy, buffer.size());
-    buffer.clear();
+    if (mIcyMetaInt > 0)
+    {
+        for (unsigned char byte : buffer)
+        {
+            if (mIcyMetaSize > 0)
+            {
+                mIcyMetadata.push_back(byte);
+                mIcyMetaSize--;
+                if (mIcyMetaSize == 0)
+                {
+                    // Parse metadata
+                    std::string meta(mIcyMetadata.begin(), mIcyMetadata.end());
+                    size_t title_pos = meta.find("StreamTitle='");
+                    if (title_pos != std::string::npos) {
+                        size_t end_pos = meta.find("';", title_pos + 13);
+                        if (end_pos != std::string::npos) {
+                            std::string title = meta.substr(title_pos + 13, end_pos - (title_pos + 13));
+                            if (title != mStreamTitle) {
+                                mStreamTitle = title;
+                                m_metadata.oggMetadata.comments["StreamTitle"] = title;
+                                getMetadata();
+                            }
+                        }
+                    }
+                    mIcyMetadata.clear();
+                }
+            }
+            else if (mAudioBytesCount == mIcyMetaInt)
+            {
+                mIcyMetaSize = byte * 16;
+                mAudioBytesCount = 0;
+            }
+            else
+            {
+                clean_audio_data.push_back(byte);
+                mAudioBytesCount++;
+            }
+        }
+    }
+    else
+    {
+        clean_audio_data = buffer;
+    }
+
+    // Now, use 'clean_audio_data' with the existing OGG/FLAC pipeline
+    if (!clean_audio_data.empty())
+    {
+        char *ogg_buffer = ogg_sync_buffer(&m_oy, clean_audio_data.size());
+        memcpy(ogg_buffer, clean_audio_data.data(), clean_audio_data.size());
+        ogg_sync_wrote(&m_oy, clean_audio_data.size());
+    }
+    buffer.clear(); // Clear the original buffer as it has been processed
 
     while (ogg_sync_pageout(&m_oy, &m_og) == 1)
     {
@@ -107,7 +158,6 @@ std::pair<std::vector<float>, DecoderError> FlacDecoderWrapper::decode(std::vect
 
         if (!FLAC__stream_decoder_process_single(m_pFlacDecoder))
         {
-            // On error, reset the decoder and discard the buffer to avoid getting stuck.
             FLAC__stream_decoder_reset(m_pFlacDecoder);
             m_audioData.clear();
             m_read_pos = 0;
@@ -121,7 +171,6 @@ std::pair<std::vector<float>, DecoderError> FlacDecoderWrapper::decode(std::vect
 
         if (m_read_pos == read_pos_before)
         {
-            // The decoder is stalled, break and wait for more data.
             break;
         }
     }

@@ -13,7 +13,7 @@ public:
     ~FlacDecoderWrapper() override;
 
     // call this only once before decoding
-    void setBufferIcyMetaInt(int icyMetaInt);
+    void setIcyMetaInt(int icyMetaInt);
 
     bool initializeDecoder(int engineSamplerate, int engineChannels) override;
     std::pair<std::vector<float>, DecoderError> decode(std::vector<unsigned char>& buffer, int* sampleRate, int* channels) override;
@@ -44,7 +44,13 @@ private:
     int m_bitsPerSample;
 
     AudioMetadata m_metadata;
+
+    // ICY Metadata state
     int mIcyMetaInt;
+    int mAudioBytesCount;
+    int mIcyMetaSize;
+    std::vector<unsigned char> mIcyMetadata;
+    std::string mStreamTitle;
 };
 
 #endif // FLAC_STREAM_DECODER_H

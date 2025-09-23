@@ -401,7 +401,7 @@ PlayerErrors Player::resetBufferStream(unsigned int hash)
     return PlayerErrors::noError;
 }
 
-PlayerErrors Player::setMp3BufferIcyMetaInt(unsigned int hash, int icyMetaInt)
+PlayerErrors Player::setBufferIcyMetaInt(unsigned int hash, int icyMetaInt)
 {
     auto const s = findByHash(hash);
 
@@ -409,7 +409,7 @@ PlayerErrors Player::setMp3BufferIcyMetaInt(unsigned int hash, int icyMetaInt)
         return PlayerErrors::soundHashNotFound;
     }
 
-    static_cast<SoLoud::BufferStream *>(s->sound.get())->setMp3BufferIcyMetaInt(icyMetaInt);
+    static_cast<SoLoud::BufferStream *>(s->sound.get())->setBufferIcyMetaInt(icyMetaInt);
     return PlayerErrors::noError;
 }
 

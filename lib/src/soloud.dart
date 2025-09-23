@@ -779,20 +779,20 @@ interface class SoLoud {
   }
 
   /// Set the icy metadata integer value. Must be set once before calling
-  /// the first time [addAudioDataStream] to be able to get MP3 metadata
-  /// of a stream.
+  /// the first time [addAudioDataStream] to be able to get MP3 or OGG Flac
+  /// metadata of a stream.
   ///
-  /// **Note:** this function is only for MP3 streams. It must
-  /// be called before calling [addAudioDataStream] to be able to get MP3
-  /// metadata of a stream. It will set the `icy-metaint` value of the
-  /// MP3 stream to retrieve the metadata from the stream.
+  /// **Note:** this function is only needed for MP3 and Flac streams. It must
+  /// be called before calling [addAudioDataStream] to be able to get the
+  /// metadata of a stream. It will set the `icy-metaint` got in the returned
+  /// headers of the connection.
   /// When adding data, for example from an online stream, the request
   /// must contain the `icy-metaint` header:
   /// ```dart
   ///   http.StreamedResponse? currentStream;
-  ///   client = http.Client();
-  ///   final request = http.Request('GET', Uri.parse(url));
+  ///   http.Client? client = http.Client();
   ///   request.headers.addAll({'Icy-MetaData': '1'});
+  ///   currentStream = await client!.send(request);
   /// ```
   /// When the first chunk of data has been received, the `icy-metaint`
   /// value can be read as follows:
@@ -811,7 +811,7 @@ interface class SoLoud {
   ///     ...
   ///   ```
   ///
-  /// [hash] the hash of the stream sound.
+  /// [sound] the audio source.
   ///
   /// [icyMetaInt] the icy metadata integer value. Default is 16000 which
   /// is the most used value.
@@ -820,8 +820,19 @@ interface class SoLoud {
   /// `example/lib/buffer_stream/web_radio.dart`.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  void setBufferIcyMetaInt(AudioSource sound, int icyMetaInt) {
+    SoLoudController().soLoudFFI.setBufferIcyMetaInt(
+          sound.soundHash,
+          icyMetaInt,
+        );
+  }
+
+  /// This is now deprecated because setting the icy metadata value
+  /// is also for Ogg Flac.
+  @Deprecated('Use setBufferIcyMetaInt instead. '
+      'This will be removed in a future version.')
   void setMp3BufferIcyMetaInt(AudioSource sound, int icyMetaInt) {
-    SoLoudController().soLoudFFI.setMp3BufferIcyMetaInt(
+    SoLoudController().soLoudFFI.setBufferIcyMetaInt(
           sound.soundHash,
           icyMetaInt,
         );

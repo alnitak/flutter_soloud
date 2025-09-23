@@ -214,7 +214,7 @@ public:
 
     ~StreamDecoder() = default;
 
-    void setMp3BufferIcyMetaInt(int icyMetaInt);
+    void setBufferIcyMetaInt(int icyMetaInt);
 
     std::pair<std::vector<float>, DecoderError> decode(
         std::vector<unsigned char> &buffer,

@@ -7,7 +7,7 @@
 #endif
 #include <cstring>
 
-void StreamDecoder::setMp3BufferIcyMetaInt(int icyMetaInt) {
+void StreamDecoder::setBufferIcyMetaInt(int icyMetaInt) {
     mIcyMetaInt = icyMetaInt;
 }
 
@@ -138,7 +138,7 @@ std::pair<std::vector<float>, DecoderError> StreamDecoder::decode(
                     if (!isFormatDetected) {
                         return {{}, DecoderError::FailedToCreateDecoder};
                     }
-                    static_cast<FlacDecoderWrapper*>(mWrapper.get())->setBufferIcyMetaInt(mIcyMetaInt);
+                    static_cast<FlacDecoderWrapper*>(mWrapper.get())->setIcyMetaInt(mIcyMetaInt);
                 } else {
                     mWrapper = std::make_unique<OpusDecoderWrapper>();
                     isFormatDetected = static_cast<OpusDecoderWrapper*>(mWrapper.get())->initializeDecoder(*samplerate, *channels);
@@ -153,7 +153,7 @@ std::pair<std::vector<float>, DecoderError> StreamDecoder::decode(
             if (!isFormatDetected) {
                 return {{}, DecoderError::FailedToCreateDecoder};
             }
-            static_cast<MP3DecoderWrapper*>(mWrapper.get())->setMp3BufferIcyMetaInt(mIcyMetaInt);
+            static_cast<MP3DecoderWrapper*>(mWrapper.get())->setIcyMetaInt(mIcyMetaInt);
         }
         if (metadataChangeCallback) {
             mWrapper->setTrackChangeCallback(metadataChangeCallback);

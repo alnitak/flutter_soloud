@@ -78,7 +78,7 @@ namespace SoLoud
         dartOnMetadataCallback_t onMetadataCallback = nullptr);
     void resetBuffer();
     void setDataIsEnded();
-    void setMp3BufferIcyMetaInt(int icyMetaInt);
+    void setBufferIcyMetaInt(int icyMetaInt);
     PlayerErrors addData(const void *aData, unsigned int numSamples, bool forceAdd = false);
     void checkBuffering(unsigned int afterAddingBytesCount);
     void callOnMetadataCallback(AudioMetadata &metadata);

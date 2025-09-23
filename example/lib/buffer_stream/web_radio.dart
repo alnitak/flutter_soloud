@@ -78,12 +78,9 @@ class _WebRadioExampleState extends State<WebRadioExample> {
     {'Opus': 'http://radio.glafir.ru:7000/pop-mix'},
     {'Opus': 'http://icecast.err.ee/klarajazz.opus'},
     {'Opus': 'http://xfer.hirschmilch.de:8000/prog-house.opus'},
-    {'Opus': 'http://emisoras.dip-badajoz.es:8239/stream'},
     {'Opus': 'http://icecast.walmradio.com:8000/otr_opus'},
     {'Opus': 'http://xfer.hirschmilch.de:8000/techno.opus'},
-    {'Opus': 'http://icecast.err.ee/raadio2.opus'},
     {'Opus': 'http://radio.glafir.ru:7000/classic'},
-    {'Opus': 'http://radio.glafir.ru:7000/easy-listen'},
   ];
 
   int urlId = 0;
@@ -169,7 +166,7 @@ class _WebRadioExampleState extends State<WebRadioExample> {
           if (!mp3IcyMetaIntSent) {
             mp3IcyMetaIntSent = true;
             // set it when receiving the first audio chunk
-            SoLoud.instance.setMp3BufferIcyMetaInt(
+            SoLoud.instance.setBufferIcyMetaInt(
               source!,
               int.parse(currentStream!.headers['icy-metaint'] ?? '0'),
             );

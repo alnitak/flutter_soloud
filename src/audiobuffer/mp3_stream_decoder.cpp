@@ -116,7 +116,7 @@ MP3DecoderWrapper::~MP3DecoderWrapper()
     }
 }
 
-void MP3DecoderWrapper::setMp3BufferIcyMetaInt(int icyMetaInt)
+void MP3DecoderWrapper::setIcyMetaInt(int icyMetaInt)
 {
     if (mIcyMetaInt == icyMetaInt)
         return;
