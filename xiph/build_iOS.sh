@@ -133,7 +133,7 @@ echo "${BOLD_WHITE_ON_GREEN}=== Removing not used libvorbisenc* ===${RESET}"
     done
 echo
 
-# Create output libraries
+# Create output libraries. The *_device have arm64 arch, the *_simulator are universal
 for lib in "${LIBS[@]}"; do
     echo "${BOLD_WHITE_ON_GREEN}Creating device and simulator libraries for $lib...${RESET}"
 
