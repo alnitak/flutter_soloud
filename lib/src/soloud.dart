@@ -1329,7 +1329,16 @@ interface class SoLoud {
     final completer = Completer<void>();
     voiceEndedCompleters[handle] = completer;
 
-    _controller.soLoudFFI.stop(handle);
+    // In the case this handle has been ended or stopped by [scheduleStop],
+    // we should check if it is still valid.
+    if (!getIsValidVoiceHandle(handle)) {
+      _log.finest(
+          () => 'The handle $handle has already been removed by another '
+              'event like scheduleStop or ended sound.');
+      completer.complete();
+    } else {
+      _controller.soLoudFFI.stop(handle);
+    }
 
     return completer.future
         .timeout(const Duration(milliseconds: 300))

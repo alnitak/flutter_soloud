@@ -108,8 +108,23 @@ extern "C"
     /// and comes from the audio thread (so on the web, from a different web worker).
     FFI_PLUGIN_EXPORT void voiceEndedCallback(unsigned int *handle)
     {
+        bool isHandleFound;
         if (player != nullptr)
-            player->removeHandle(*handle);
+        {
+            isHandleFound = player->findByHandle(*handle) != nullptr;
+            if (isHandleFound)
+                player->removeHandle(*handle);
+            else
+                // If the handle is not found, for sure it is already
+                // removed by a previous call to `voiceEndedCallback`.
+                // For example triggering a `stop` in a `Future` after the sound is ended or
+                // vice versa.
+                return;
+        }
+
+        // Here the internal flutter_soloud handle, doesn't exist anymore, whether this
+        // callback is called directly from `stop`, or whether it is called from an
+        // event in `Soloud::stopVoice_internal (unsigned int aVoice)`.
 
 #ifdef __EMSCRIPTEN__
         // Calling JavaScript from C/C++
@@ -121,7 +136,12 @@ extern "C"
         // The `dartVoiceEndedCallback` is not set on Web.
         if (dartVoiceEndedCallback == nullptr)
             return;
-        // [n] pointer must be deleted on Dart.
+        // So, if the handle was already found before (henche the handle is not found), the
+        // callback to Dart has been already called. If this is the fist time this handle 
+        // is found, the callback to Dart must be called.
+        if (!isHandleFound)
+            return;
+        // [n] pointer must be deleted in Dart.
         unsigned int *n = (unsigned int *)malloc(sizeof(unsigned int *));
         *n = *handle;
         dartVoiceEndedCallback(n);
@@ -770,10 +790,10 @@ extern "C"
     /// [handle]
     FFI_PLUGIN_EXPORT void stop(unsigned int handle)
     {
-        if (player.get() == nullptr || !player.get()->isInited() ||
-            !player.get()->isValidHandle(handle))
+        if (player.get() == nullptr || !player.get()->isInited())
             return;
         player.get()->stop(handle);
+        voiceEndedCallback(&handle);
     }
 
     /// Stop all handles of the already loaded sound identified by [hash] and dispose it
