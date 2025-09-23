@@ -135,45 +135,46 @@ echo
 
 # Create output libraries
 for lib in "${LIBS[@]}"; do
-    echo "${BOLD_WHITE_ON_GREEN}Creating libraries for $lib...${RESET}"
+    echo "${BOLD_WHITE_ON_GREEN}Creating device and simulator libraries for $lib...${RESET}"
 
     if [ "$lib" == "flac" ]; then
-        cp "$BUILD_DIR/$lib/iOS/arm64/lib/libFLAC.a" "$OUTPUT_DIR/libFLAC_iOS-device.a"
+        cp "$BUILD_DIR/$lib/iOS/arm64/lib/libFLAC.a" "$OUTPUT_DIR/libFLAC_device.a"
         lipo -create \
             "$BUILD_DIR/$lib/iOS_Simulator/arm64/lib/libFLAC.a" \
             "$BUILD_DIR/$lib/iOS_Simulator/x86_64/lib/libFLAC.a" \
-            -output "$OUTPUT_DIR/libFLAC_iOS-simulator.a"
+            -output "$OUTPUT_DIR/libFLAC_simulator.a"
     else
-        cp "$BUILD_DIR/$lib/iOS/arm64/lib/lib${lib}.a" "$OUTPUT_DIR/lib${lib}_iOS-device.a"
+        cp "$BUILD_DIR/$lib/iOS/arm64/lib/lib${lib}.a" "$OUTPUT_DIR/lib${lib}_device.a"
         lipo -create \
             "$BUILD_DIR/$lib/iOS_Simulator/arm64/lib/lib${lib}.a" \
             "$BUILD_DIR/$lib/iOS_Simulator/x86_64/lib/lib${lib}.a" \
-            -output "$OUTPUT_DIR/lib${lib}_iOS-simulator.a"
+            -output "$OUTPUT_DIR/lib${lib}_simulator.a"
     fi
     
     if [ "$lib" == "vorbis" ]; then
-        cp "$BUILD_DIR/$lib/iOS/arm64/lib/libvorbisfile.a" "$OUTPUT_DIR/libvorbisfile_iOS-device.a"
+        echo "${BOLD_WHITE_ON_GREEN}Creating device and simulator libraries for vorbisfile...${RESET}"
+        cp "$BUILD_DIR/$lib/iOS/arm64/lib/libvorbisfile.a" "$OUTPUT_DIR/libvorbisfile_device.a"
         lipo -create \
             "$BUILD_DIR/$lib/iOS_Simulator/arm64/lib/libvorbisfile.a" \
             "$BUILD_DIR/$lib/iOS_Simulator/x86_64/lib/libvorbisfile.a" \
-            -output "$OUTPUT_DIR/libvorbisfile_iOS-simulator.a"
+            -output "$OUTPUT_DIR/libvorbisfile_simulator.a"
     fi
 
     # Copy include files (from either arch, they're the same)
     cp -R "$BUILD_DIR/$lib/iOS/arm64/include/"* "$INCLUDE_DIR/"
     
-    # Strip symbols from both device and simulator libraries
+    # Strip symbols from the new libraries
     echo "${BOLD_WHITE_ON_GREEN}Stripping symbols from $lib libraries...${RESET}"
     if [ "$lib" == "flac" ]; then
-        strip -x "$OUTPUT_DIR/libFLAC_iOS-device.a"
-        strip -x "$OUTPUT_DIR/libFLAC_iOS-simulator.a"
+        strip -x "$OUTPUT_DIR/libFLAC_device.a"
+        strip -x "$OUTPUT_DIR/libFLAC_simulator.a"
     else
-        strip -x "$OUTPUT_DIR/lib${lib}_iOS-device.a"
-        strip -x "$OUTPUT_DIR/lib${lib}_iOS-simulator.a"
+        strip -x "$OUTPUT_DIR/lib${lib}_device.a"
+        strip -x "$OUTPUT_DIR/lib${lib}_simulator.a"
     fi
     if [ "$lib" == "vorbis" ]; then
-        strip -x "$OUTPUT_DIR/libvorbisfile_iOS-device.a"
-        strip -x "$OUTPUT_DIR/libvorbisfile_iOS-simulator.a"
+        strip -x "$OUTPUT_DIR/libvorbisfile_device.a"
+        strip -x "$OUTPUT_DIR/libvorbisfile_simulator.a"
     fi
 done
 
