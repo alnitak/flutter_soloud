@@ -90,16 +90,14 @@ build_lib() {
 
 # Build iOS libraries
 for lib in "${LIBS[@]}"; do
-    for arch in "${ARCHS_IOS[@]}"; do
-        if [ "$arch" == "x86_64" ]; then
-            sdk=$SIMULATOR_SDK  # iOS Simulator
-            platform="iOS_Simulator"
-        else
-            sdk=$IOS_SDK  # iOS Device
-            platform="iOS"
-        fi
-        build_lib $lib $arch "$platform" "$sdk"
-    done
+  # device: arm64 (iphoneos)
+  build_lib $lib arm64 "iOS" "$IOS_SDK"
+
+  # simulator: x86_64 (iphonesimulator)
+  build_lib $lib x86_64 "iOS_Simulator" "$SIMULATOR_SDK"
+
+  # simulator: arm64 (iphonesimulator)
+  build_lib $lib arm64 "iOS_Simulator" "$SIMULATOR_SDK"
 done
 
 echo "${BOLD_WHITE_ON_GREEN}=== Removing not used libvorbisenc* ===${RESET}"
@@ -122,12 +120,18 @@ for lib in "${LIBS[@]}"; do
     # iOS device library (arm64)
     cp "$BUILD_DIR/$lib/iOS/arm64/lib/lib${lib}.a" "$OUTPUT_DIR/lib${lib}_iOS-device.a"
 
-    # iOS simulator library (x86_64)
-    cp "$BUILD_DIR/$lib/iOS_Simulator/x86_64/lib/lib${lib}.a" "$OUTPUT_DIR/lib${lib}_iOS-simulator.a"
+    # iOS simulator FAT (x86_64 + arm64)
+    lipo -create \
+        "$BUILD_DIR/$lib/iOS_Simulator/x86_64/lib/lib${lib}.a" \
+        "$BUILD_DIR/$lib/iOS_Simulator/arm64/lib/lib${lib}.a" \
+        -output "$OUTPUT_DIR/lib${lib}_iOS-simulator.a"
 
     if [ "$lib" == "vorbis" ]; then
         cp "$BUILD_DIR/$lib/iOS/arm64/lib/libvorbisfile.a" "$OUTPUT_DIR/libvorbisfile_iOS-device.a"
-        cp "$BUILD_DIR/$lib/iOS_Simulator/x86_64/lib/libvorbisfile.a" "$OUTPUT_DIR/libvorbisfile_iOS-simulator.a"
+        lipo -create \
+            "$BUILD_DIR/$lib/iOS_Simulator/x86_64/lib/libvorbisfile.a" \
+            "$BUILD_DIR/$lib/iOS_Simulator/arm64/lib/libvorbisfile.a" \
+            -output "$OUTPUT_DIR/libvorbisfile_iOS-simulator.a"
     fi
 
     # Copy include files (from either arch, they're the same)
