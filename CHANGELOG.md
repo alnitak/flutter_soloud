@@ -1,3 +1,7 @@
+#### 3.3.7 (25 Sep 2025)
+- iOS fix: update build_iOS.sh to make fat libraries #315. Thanks to @kumamotone
+- fix: stop() takes too much time #312
+
 #### 3.3.6 (11 Sep 2025)
 - win fix: compilation error #309
 
