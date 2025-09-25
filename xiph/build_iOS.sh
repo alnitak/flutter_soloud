@@ -52,8 +52,7 @@ BASE_DIR="$PWD"
 BUILD_DIR="$BASE_DIR/iOS/build"
 OUTPUT_DIR="$BASE_DIR/../iOS/libs"
 INCLUDE_DIR="$BASE_DIR/../iOS/include"
-ARCHS_DEVICE=("arm64")
-ARCHS_SIMULATOR=("x86_64" "arm64") # x86_64 (Intel) and arm64 (Apple Silicon)
+ARCHS_IOS=("arm64" "x86_64")  # iOS arm64 (device) and x86_64 (Simulator)
 
 # iOS-specific flags
 IOS_SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
@@ -79,12 +78,12 @@ build_lib() {
 
     # Configure and build
     if [ "$lib_name" == "vorbis" ]; then
-        PKG_CONFIG_PATH="$BUILD_DIR/ogg/$platform/$arch/lib/pkgconfig" \
+        PKG_CONFIG_PATH="$BUILD_DIR/ogg/$arch/lib/pkgconfig" \
         # vorbis is the last build so it can depend on already compiled ogg lib
-        LDFLAGS="-L$BUILD_DIR/ogg/$platform/$arch/lib" \
-        CPPFLAGS="-I$BUILD_DIR/ogg/$platform/$arch/include" \
+        LDFLAGS="-L$BUILD_DIR/ogg/$arch/lib" \
+        CPPFLAGS="-I$BUILD_DIR/ogg/$arch/include" \
         CFLAGS="-arch $arch -isysroot $sdk -O2" \
-        ./configure --host=$arch-apple-darwin --prefix="$output_dir" --disable-shared --with-ogg="$BUILD_DIR/ogg/$platform/$arch"
+        ./configure --host=$arch-apple-darwin --prefix="$output_dir" --disable-shared --with-ogg="$BUILD_DIR/ogg/$arch"
     elif [ "$lib_name" == "flac" ]; then
         PKG_CONFIG_PATH="$BUILD_DIR/ogg/$platform/$arch/lib/pkgconfig" \
         LDFLAGS="-L$BUILD_DIR/ogg/$platform/$arch/lib" \
@@ -109,14 +108,14 @@ build_lib() {
 
 # Build iOS libraries
 for lib in "${LIBS[@]}"; do
-    # Build for device
-    for arch in "${ARCHS_DEVICE[@]}"; do
-        build_lib $lib $arch "iOS" "$IOS_SDK"
-    done
-    # Build for simulator
-    for arch in "${ARCHS_SIMULATOR[@]}"; do
-        build_lib $lib $arch "iOS_Simulator" "$SIMULATOR_SDK"
-    done
+  # device: arm64 (iphoneos)
+  build_lib $lib arm64 "iOS" "$IOS_SDK"
+
+  # simulator: x86_64 (iphonesimulator)
+  build_lib $lib x86_64 "iOS_Simulator" "$SIMULATOR_SDK"
+
+  # simulator: arm64 (iphonesimulator)
+  build_lib $lib arm64 "iOS_Simulator" "$SIMULATOR_SDK"
 done
 
 echo "${BOLD_WHITE_ON_GREEN}=== Removing not used libvorbisenc* ===${RESET}"
@@ -125,57 +124,49 @@ echo "${BOLD_WHITE_ON_GREEN}=== Removing not used libvorbisenc* ===${RESET}"
     echo "${BOLD_WHITE_ON_GREEN}Removing: $BUILD_DIR/vorbis/iOS/arm64/include/vorbis/vorbisenc.h${RESET}"
     rm "$BUILD_DIR/vorbis/iOS/arm64/include/vorbis/vorbisenc.h"
 
-    for arch in "${ARCHS_SIMULATOR[@]}"; do
-        echo "${BOLD_WHITE_ON_GREEN}Removing: $BUILD_DIR/vorbis/iOS_Simulator/$arch/lib/libvorbisenc.*${RESET}"
-        rm "$BUILD_DIR/vorbis/iOS_Simulator/$arch/lib/libvorbisenc."*
-        echo "${BOLD_WHITE_ON_GREEN}Removing: $BUILD_DIR/vorbis/iOS_Simulator/$arch/include/vorbis/vorbisenc.h${RESET}"
-        rm "$BUILD_DIR/vorbis/iOS_Simulator/$arch/include/vorbis/vorbisenc.h"
-    done
+
+    echo "${BOLD_WHITE_ON_GREEN}Removing: $BUILD_DIR/vorbis/iOS_Simulator/x86_64/lib/libvorbisenc..*${RESET}"
+    rm "$BUILD_DIR/vorbis/iOS_Simulator/x86_64/lib/libvorbisenc."*
+    echo "${BOLD_WHITE_ON_GREEN}Removing: $BUILD_DIR/vorbis/iOS_Simulator/x86_64/include/vorbis/vorbisenc.h${RESET}"
+    rm "$BUILD_DIR/vorbis/iOS_Simulator/x86_64/include/vorbis/vorbisenc.h"
 echo
 
-# Create output libraries. The *_device have arm64 arch, the *_simulator are universal
+# Create output libraries
 for lib in "${LIBS[@]}"; do
-    echo "${BOLD_WHITE_ON_GREEN}Creating device and simulator libraries for $lib...${RESET}"
+    echo "${BOLD_WHITE_ON_GREEN}Creating libraries for $lib...${RESET}"
+
+    # iOS device library (arm64)
+    cp "$BUILD_DIR/$lib/iOS/arm64/lib/lib${lib}.a" "$OUTPUT_DIR/lib${lib}_iOS-device.a"
+
+    # iOS simulator FAT (x86_64 + arm64)
+    lipo -create \
+        "$BUILD_DIR/$lib/iOS_Simulator/x86_64/lib/lib${lib}.a" \
+        "$BUILD_DIR/$lib/iOS_Simulator/arm64/lib/lib${lib}.a" \
+        -output "$OUTPUT_DIR/lib${lib}_iOS-simulator.a"
 
     if [ "$lib" == "flac" ]; then
-        cp "$BUILD_DIR/$lib/iOS/arm64/lib/libFLAC.a" "$OUTPUT_DIR/libFLAC_device.a"
+        cp "$BUILD_DIR/$lib/iOS/arm64/lib/libFLAC.a" "$OUTPUT_DIR/libFLAC_iOS-device.a"
         lipo -create \
-            "$BUILD_DIR/$lib/iOS_Simulator/arm64/lib/libFLAC.a" \
             "$BUILD_DIR/$lib/iOS_Simulator/x86_64/lib/libFLAC.a" \
-            -output "$OUTPUT_DIR/libFLAC_simulator.a"
-    else
-        cp "$BUILD_DIR/$lib/iOS/arm64/lib/lib${lib}.a" "$OUTPUT_DIR/lib${lib}_device.a"
-        lipo -create \
-            "$BUILD_DIR/$lib/iOS_Simulator/arm64/lib/lib${lib}.a" \
-            "$BUILD_DIR/$lib/iOS_Simulator/x86_64/lib/lib${lib}.a" \
-            -output "$OUTPUT_DIR/lib${lib}_simulator.a"
+            "$BUILD_DIR/$lib/iOS_Simulator/arm64/lib/libFLAC.a" \
+            -output "$OUTPUT_DIR/libFLAC_iOS-simulator.a"
     fi
-    
+
     if [ "$lib" == "vorbis" ]; then
-        echo "${BOLD_WHITE_ON_GREEN}Creating device and simulator libraries for vorbisfile...${RESET}"
-        cp "$BUILD_DIR/$lib/iOS/arm64/lib/libvorbisfile.a" "$OUTPUT_DIR/libvorbisfile_device.a"
+        cp "$BUILD_DIR/$lib/iOS/arm64/lib/libvorbisfile.a" "$OUTPUT_DIR/libvorbisfile_iOS-device.a"
         lipo -create \
-            "$BUILD_DIR/$lib/iOS_Simulator/arm64/lib/libvorbisfile.a" \
             "$BUILD_DIR/$lib/iOS_Simulator/x86_64/lib/libvorbisfile.a" \
-            -output "$OUTPUT_DIR/libvorbisfile_simulator.a"
+            "$BUILD_DIR/$lib/iOS_Simulator/arm64/lib/libvorbisfile.a" \
+            -output "$OUTPUT_DIR/libvorbisfile_iOS-simulator.a"
     fi
 
     # Copy include files (from either arch, they're the same)
     cp -R "$BUILD_DIR/$lib/iOS/arm64/include/"* "$INCLUDE_DIR/"
-    
-    # Strip symbols from the new libraries
+
+    # Strip symbols from both device and simulator libraries
     echo "${BOLD_WHITE_ON_GREEN}Stripping symbols from $lib libraries...${RESET}"
-    if [ "$lib" == "flac" ]; then
-        strip -x "$OUTPUT_DIR/libFLAC_device.a"
-        strip -x "$OUTPUT_DIR/libFLAC_simulator.a"
-    else
-        strip -x "$OUTPUT_DIR/lib${lib}_device.a"
-        strip -x "$OUTPUT_DIR/lib${lib}_simulator.a"
-    fi
-    if [ "$lib" == "vorbis" ]; then
-        strip -x "$OUTPUT_DIR/libvorbisfile_device.a"
-        strip -x "$OUTPUT_DIR/libvorbisfile_simulator.a"
-    fi
+    strip -x "$OUTPUT_DIR/lib${lib}_iOS-device.a"
+    strip -x "$OUTPUT_DIR/lib${lib}_iOS-simulator.a"
 done
 
 cp -R "$BASE_DIR/flac/include/share" "$INCLUDE_DIR/"

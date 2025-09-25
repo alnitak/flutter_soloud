@@ -87,7 +87,7 @@ POST_INSTALL = :
 NORMAL_UNINSTALL = :
 PRE_UNINSTALL = :
 POST_UNINSTALL = :
-build_triplet = aarch64-apple-darwin24.6.0
+build_triplet = aarch64-apple-darwin25.0.0
 host_triplet = aarch64-apple-darwin
 subdir = include/share/grabbag
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
@@ -146,9 +146,9 @@ AWK = awk
 CC = gcc
 CCAS = gcc
 CCASDEPMODE = depmode=gcc3
-CCASFLAGS = -arch arm64 -isysroot /Volumes/NVME/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator18.5.sdk -O2
+CCASFLAGS = -arch arm64 -isysroot /Volumes/NVME/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.0.sdk -O2
 CCDEPMODE = depmode=gcc3
-CFLAGS = -O3 -funroll-loops -arch arm64 -isysroot /Volumes/NVME/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator18.5.sdk -O2 -pthread -Wall -Wextra -Wstrict-prototypes -Wmissing-prototypes -Waggregate-return -Wcast-align -Wnested-externs -Wshadow -Wundef -Wmissing-declarations -Winline  -Wdeclaration-after-statement -fvisibility=hidden
+CFLAGS = -O3 -funroll-loops -arch arm64 -isysroot /Volumes/NVME/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.0.sdk -O2 -pthread -Wall -Wextra -Wstrict-prototypes -Wmissing-prototypes -Waggregate-return -Wcast-align -Wnested-externs -Wshadow -Wundef -Wmissing-declarations -Winline  -Wdeclaration-after-statement -fvisibility=hidden
 CPP = gcc -E
 CPPFLAGS = -DFLAC__NO_DLL -I/Volumes/NVME/workspace/libs/flutter_soloud/xiph/iOS/build/ogg/iOS_Simulator/arm64/include -DFLAC__USE_VISIBILITY_ATTR
 CSCOPE = cscope
@@ -251,10 +251,10 @@ am__untar = tar -xf -
 am__xargs_n = xargs -n
 ax_pthread_config = 
 bindir = ${exec_prefix}/bin
-build = aarch64-apple-darwin24.6.0
+build = aarch64-apple-darwin25.0.0
 build_alias = 
 build_cpu = aarch64
-build_os = darwin24.6.0
+build_os = darwin25.0.0
 build_vendor = apple
 builddir = .
 datadir = ${datarootdir}

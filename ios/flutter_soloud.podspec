@@ -42,38 +42,46 @@ Flutter audio plugin using SoLoud library and FFI
   s.pod_target_xcconfig = { 
     'HEADER_SEARCH_PATHS' => [
       '$(PODS_TARGET_SRCROOT)/include',
+      '$(PODS_TARGET_SRCROOT)/include/opus',
+      '$(PODS_TARGET_SRCROOT)/include/ogg',
+      '$(PODS_TARGET_SRCROOT)/include/vorbis',
       '$(PODS_TARGET_SRCROOT)/../src',
       '$(PODS_TARGET_SRCROOT)/../src/soloud/include',
       '${PODS_ROOT}/abseil',
     ],
     'GCC_PREPROCESSOR_DEFINITIONS' => preprocessor_definitions.join(' '),
-    'DEFINES_MODULE' => 'YES',
+    'DEFINES_MODULE' => 'YES', 
     'VALID_ARCHS' => 'arm64 x86_64',
     'LIBRARY_SEARCH_PATHS' => [
       '$(PODS_TARGET_SRCROOT)/libs',
       '$(SRCROOT)/libs'
     ],
-    'OTHER_LDFLAGS[sdk=iphonesimulator*]' => disable_opus_ogg ? '' : '-logg_simulator -lopus_simulator -lvorbis_simulator -lvorbisfile_simulator -lFLAC_simulator',
-    'OTHER_LDFLAGS[sdk=iphoneos*]' => disable_opus_ogg ? '' : '-logg_device -lopus_device -lvorbis_device -lvorbisfile_device -lFLAC_device',
+    'OTHER_LDFLAGS[sdk=iphonesimulator*]' => disable_opus_ogg ? '' : '-logg_iOS-simulator -lopus_iOS-simulator -lvorbis_iOS-simulator -lvorbisfile_iOS-simulator -lflac_iOS-simulator',
+    'OTHER_LDFLAGS[sdk=iphoneos*]' => disable_opus_ogg ? '' : '-logg_iOS-device -lopus_iOS-device -lvorbis_iOS-device -lvorbisfile_iOS-device -lflac_iOS-device',
     "CLANG_CXX_LANGUAGE_STANDARD" => "c++17",
     "CLANG_CXX_LIBRARY" => "libc++"
   }
   
   # Only include libraries if opus/ogg is enabled
   if !disable_opus_ogg
-    # vendored_libraries tells CocoaPods to include these files in the build.
-    # The linker will then pick the correct one based on the architecture and OTHER_LDFLAGS.
     s.ios.vendored_libraries = [
-      'libs/libogg_device.a',
-      'libs/libogg_simulator.a',
-      'libs/libopus_device.a',
-      'libs/libopus_simulator.a',
-      'libs/libvorbis_device.a',
-      'libs/libvorbis_simulator.a',
-      'libs/libvorbisfile_device.a',
-      'libs/libvorbisfile_simulator.a',
-      'libs/libFLAC_device.a',
-      'libs/libFLAC_simulator.a'
+      'libs/libopus_iOS-device.a',
+      'libs/libogg_iOS-device.a',
+      'libs/libvorbis_iOS-device.a',
+      'libs/libvorbisfile_iOS-device.a',
+      'libs/libflac_iOS-device.a'
+    ]
+    s.preserve_paths = [
+      'libs/libopus_iOS-device.a',
+      'libs/libogg_iOS-device.a',
+      'libs/libopus_iOS-simulator.a',
+      'libs/libogg_iOS-simulator.a',
+      'libs/libvorbis_iOS-device.a',
+      'libs/libvorbis_iOS-simulator.a',
+      'libs/libvorbisfile_iOS-device.a',
+      'libs/libvorbisfile_iOS-simulator.a',
+      'libs/libflac_iOS-device.a',
+      'libs/libflac_iOS-simulator.a'
     ]
   end
 
