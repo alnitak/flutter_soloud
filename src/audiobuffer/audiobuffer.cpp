@@ -175,7 +175,7 @@ namespace SoLoud
 		}
 		int pos = (int)floor(mBaseSamplerate * mChannels * aSeconds);
 		mOffset = pos;
-		mStreamPosition = float(pos / mBaseSamplerate);
+		mStreamPosition = float(pos) / (float)(mBaseSamplerate * mChannels);
 		return SO_NO_ERROR;
 	}
 
