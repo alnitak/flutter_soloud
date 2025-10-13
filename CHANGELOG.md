@@ -1,3 +1,8 @@
+#### 3.3.8 (13 Oct 2025)
+- fix: audio stream with released mode failed to consume BufferStream #335 #318
+- iOS fix: maybe fixe No sound probably in older iOS devices without AirPods #330
+- fix: incorrect seek position on multi channel audio streams #328
+
 #### 3.3.7 (25 Sep 2025)
 - iOS fix: update build_iOS.sh to make fat libraries #315. Thanks to @kumamotone
 - fix: stop() takes too much time #312

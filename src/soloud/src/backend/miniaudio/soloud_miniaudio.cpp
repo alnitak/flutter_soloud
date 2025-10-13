@@ -154,7 +154,8 @@ namespace SoLoud
 #if defined(MA_HAS_COREAUDIO)
         // Disable CoreAudio context
         ma_context_config contextConfig = ma_context_config_init();
-        contextConfig.coreaudio.sessionCategory = ma_ios_session_category_none;
+        // Removing this as discussed in https://github.com/alnitak/flutter_soloud/issues/330
+        // contextConfig.coreaudio.sessionCategory = ma_ios_session_category_none;
         contextConfig.coreaudio.noAudioSessionActivate = true;
         contextConfig.coreaudio.noAudioSessionDeactivate = true;
 
