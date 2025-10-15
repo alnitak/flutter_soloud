@@ -106,7 +106,7 @@ class _LimiterExampleState extends State<LimiterExample> {
         child: Column(
           children: [
             const Text(
-              'WARNING: lower the volume down!',
+              'WARNING: turn down the volume!',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
