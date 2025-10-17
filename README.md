@@ -28,6 +28,8 @@ A high-performance audio plugin designed primarily for games and immersive appli
 - ⏱️ Read audio data samples from a file with a given time range
 - 🌊 Generate waveforms in real-time with various types (sine, square, saw, triangle, etc.)
 
+Watch Flutter [Package of the Week](https://www.youtube.com/watch?v=2t6Bt04EyLw) video.
+
 If you are looking for a package to visualize audio using shaders or CustomPainter, please check out [audio_flux](https://pub.dev/packages/audio_flux). It uses this plugin for output and [flutter_recorder](https://pub.dev/packages/flutter_recorder) for input.
 
 ## Documentation
