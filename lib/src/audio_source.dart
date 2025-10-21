@@ -110,7 +110,6 @@ class AudioSource {
   /// );
   /// soloud.play(source);
   /// ```
-  @experimental
   Stream<void> get allInstancesFinished =>
       allInstancesFinishedController.stream;
 
