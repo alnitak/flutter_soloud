@@ -144,14 +144,6 @@ for lib in "${LIBS[@]}"; do
         "$BUILD_DIR/$lib/iOS_Simulator/arm64/lib/lib${lib}.a" \
         -output "$OUTPUT_DIR/lib${lib}_iOS-simulator.a"
 
-    if [ "$lib" == "flac" ]; then
-        cp "$BUILD_DIR/$lib/iOS/arm64/lib/libFLAC.a" "$OUTPUT_DIR/libFLAC_iOS-device.a"
-        lipo -create \
-            "$BUILD_DIR/$lib/iOS_Simulator/x86_64/lib/libFLAC.a" \
-            "$BUILD_DIR/$lib/iOS_Simulator/arm64/lib/libFLAC.a" \
-            -output "$OUTPUT_DIR/libFLAC_iOS-simulator.a"
-    fi
-
     if [ "$lib" == "vorbis" ]; then
         cp "$BUILD_DIR/$lib/iOS/arm64/lib/libvorbisfile.a" "$OUTPUT_DIR/libvorbisfile_iOS-device.a"
         lipo -create \

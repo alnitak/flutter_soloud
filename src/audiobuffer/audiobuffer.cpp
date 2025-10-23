@@ -175,7 +175,7 @@ namespace SoLoud
 		}
 		int pos = (int)floor(mBaseSamplerate * mChannels * aSeconds);
 		mOffset = pos;
-		mStreamPosition = float(pos / mBaseSamplerate);
+		mStreamPosition = float(pos) / (float)(mBaseSamplerate * mChannels);
 		return SO_NO_ERROR;
 	}
 
@@ -332,26 +332,27 @@ namespace SoLoud
 						  static_cast<const unsigned char *>(aData),
 						  static_cast<const unsigned char *>(aData) + aDataLen);
 			mBytesReceived += aDataLen;
-			// Performing some buffering. We need some data to be added expecially when using opus or mp3.
-			if (buffer.size() > 1024 * bufferMinSize) // 16 KB of data.
+			// For PCM data we must align the data to the bytes per sample.
+			if (!(mPCMformat.dataType == BufferType::AUTO))
 			{
-				// For PCM data we must align the data to the bytes per sample.
-				if (!(mPCMformat.dataType == BufferType::AUTO))
-				{
-					int alignment = mPCMformat.bytesPerSample * mPCMformat.channels;
-					bufferDataToAdd = (int)(buffer.size() / alignment) * alignment;
-				}
-				else
+				int alignment = mPCMformat.bytesPerSample * mPCMformat.channels;
+				bufferDataToAdd = (int)(buffer.size() / alignment) * alignment;
+			}
+			else
+			{
+				// Performing some buffering. We need some data to be added expecially when using opus or mp3.
+				if (buffer.size() > 1024 * 32) // 32 KB of data.
 				{
 					// When using opus,ogg or mp3 we don't need to align.
 					bufferDataToAdd = buffer.size();
 				}
+				else
+				{
+					// Return if there is not enough data to add.
+					return PlayerErrors::noError;
+				}
 			}
-			else
-			{
-				// Return if there is not enough data to add.
-				return PlayerErrors::noError;
-			}
+			
 		}
 		else
 		{

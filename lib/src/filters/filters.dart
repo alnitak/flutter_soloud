@@ -70,21 +70,39 @@ final class FiltersSingle {
   final SoundHash soundHash;
 
   /// The `Bass Boost` filter for this sound.
+  ///
+  /// This filter is documented in the SoLoud C++ lib docs web page
+  /// [here](https://solhsa.com/soloud/bassboostfilter.html)
   BassBoostSingle get bassBoostFilter => BassBoostSingle(soundHash);
 
   /// The `Biquad Resonant` filter for this sound.
+  ///
+  /// This filter is documented in the SoLoud C++ lib docs web page
+  /// [here](https://solhsa.com/soloud/biquadfilter.html)
   BiquadResonantSingle get biquadFilter => BiquadResonantSingle(soundHash);
 
   /// The `Echo` filter for this sound.
+  ///
+  /// This filter is documented in the SoLoud C++ lib docs web page
+  /// [here](https://solhsa.com/soloud/echofilter.html)
   EchoSingle get echoFilter => EchoSingle(soundHash);
 
   /// The `Equalizer` filter for this sound.
+  ///
+  /// This filter is not documented in the SoLoud C++ lib, the source code is
+  /// [here](https://github.com/alnitak/flutter_soloud/blob/main/src/soloud/src/filter/soloud_eqfilter.cpp)
   EqualizerSingle get equalizerFilter => EqualizerSingle(soundHash);
 
   /// The `Flanger` filter for this sound.
+  ///
+  /// This filter is documented in the SoLoud C++ lib docs web page
+  /// [here](https://solhsa.com/soloud/flangerfilter.html)
   FlangerSingle get flangerFilter => FlangerSingle(soundHash);
 
   /// The `Freeverb` filter for this sound.
+  ///
+  /// This filter is documented in the SoLoud C++ lib docs web page
+  /// [here](https://solhsa.com/soloud/freeverbfilter.html)
   ///
   /// **IMPORTANT**: freeverb supports only 2 channels. So using freeverb as
   /// global filter, the engine should be inited using the default 2 channels
@@ -92,16 +110,30 @@ final class FiltersSingle {
   FreeverbSingle get freeverbFilter => FreeverbSingle(soundHash);
 
   /// The `Lofi` filter for this sound.
+  ///
+  /// This filter is documented in the SoLoud C++ lib docs web page
+  /// [here](https://solhsa.com/soloud/lofifilter.html)
   LofiSingle get lofiFilter => LofiSingle(soundHash);
 
-  /// The `Pitch Shift` filter for this sound.
-  PitchShiftSingle get pitchShiftFilter => PitchShiftSingle(soundHash);
-
   /// The `Robotize` filter for this sound.
+  ///
+  /// This filter is documented in the SoLoud C++ lib docs web page
+  /// [here](https://solhsa.com/soloud/robotizefilter.html)
   RobotizeSingle get robotizeFilter => RobotizeSingle(soundHash);
 
   /// The `Wave Shaper` filter for this sound.
+  ///
+  /// This filter is documented in the SoLoud C++ lib docs web page
+  /// [here](https://solhsa.com/soloud/waveshaperfilter.html)
   WaveShaperSingle get waveShaperFilter => WaveShaperSingle(soundHash);
+
+  /// The `Pitch Shift` filter for this sound.
+  ///
+  /// This filter is not part of SoLoud C++ lib and the source code is
+  /// experimental and can be found
+  /// [here](https://github.com/alnitak/flutter_soloud/blob/main/src/filters/pitch_shift_filter.cpp#L16)
+  @experimental
+  PitchShiftSingle get pitchShiftFilter => PitchShiftSingle(soundHash);
 
   /// The `Limiter` filter for this sound.
   ///
@@ -147,6 +179,10 @@ final class FiltersSingle {
   ///
   /// `releaseTime`: The time in ms for the compressor to release the gain
   /// reduction after the input level falls below the threshold.
+  ///
+  /// This filter is not part of SoLoud C++ lib and the source code is
+  /// experimental and can be found
+  /// [here](https://github.com/alnitak/flutter_soloud/blob/main/src/filters/compressor.cpp#L24)
   CompressorSingle get compressorFilter => CompressorSingle(soundHash);
 }
 
@@ -158,21 +194,39 @@ final class FiltersGlobal {
   const FiltersGlobal();
 
   /// The `Bass Boost` filter used globally.
+  ///
+  /// This filter is documented in the SoLoud C++ lib docs web page
+  /// [here](https://solhsa.com/soloud/bassboostfilter.html)
   BassBoostGlobal get bassBoostFilter => const BassBoostGlobal();
 
   /// The `Biquad Resonant` filter used globally.
+  ///
+  /// This filter is documented in the SoLoud C++ lib docs web page
+  /// [here](https://solhsa.com/soloud/biquadfilter.html)
   BiquadResonantGlobal get biquadResonantFilter => const BiquadResonantGlobal();
 
   /// The `Echo` filter used globally.
+  ///
+  /// This filter is documented in the SoLoud C++ lib docs web page
+  /// [here](https://solhsa.com/soloud/echofilter.html)
   EchoGlobal get echoFilter => const EchoGlobal();
 
   /// The `Equalizer` filter used globally.
+  ///
+  /// This filter is not documented in the SoLoud C++ lib, the source code is
+  /// [here](https://github.com/alnitak/flutter_soloud/blob/main/src/soloud/src/filter/soloud_eqfilter.cpp)
   EqualizerGlobal get equalizerFilter => const EqualizerGlobal();
 
   /// The `Flanger` filter used globally.
+  ///
+  /// This filter is documented in the SoLoud C++ lib docs web page
+  /// [here](https://solhsa.com/soloud/flangerfilter.html)
   FlangerGlobal get flangerFilter => const FlangerGlobal();
 
   /// The `Freeverb` filter used globally.
+  ///
+  /// This filter is documented in the SoLoud C++ lib docs web page
+  /// [here](https://solhsa.com/soloud/freeverbfilter.html)
   ///
   /// **IMPORTANT**: freeverb supports only 2 channels. So using freeverb as
   /// global filter, the engine should be inited using the default 2 channels
@@ -180,16 +234,30 @@ final class FiltersGlobal {
   FreeverbGlobal get freeverbFilter => const FreeverbGlobal();
 
   /// The `Lofi` filter used globally.
+  ///
+  /// This filter is documented in the SoLoud C++ lib docs web page
+  /// [here](https://solhsa.com/soloud/lofifilter.html)
   LofiGlobal get lofiFilter => const LofiGlobal();
 
-  /// The `Pitch Shift` filter used globally.
-  PitchShiftGlobal get pitchShiftFilter => const PitchShiftGlobal();
-
   /// The `Robotize` filter used globally.
+  ///
+  /// This filter is documented in the SoLoud C++ lib docs web page
+  /// [here](https://solhsa.com/soloud/robotizefilter.html)
   RobotizeGlobal get robotizeFilter => const RobotizeGlobal();
 
   /// The `Wave Shaper` filter used globally.
+  ///
+  /// This filter is documented in the SoLoud C++ lib docs web page
+  /// [here](https://solhsa.com/soloud/waveshaperfilter.html)
   WaveShaperGlobal get waveShaperFilter => const WaveShaperGlobal();
+
+  /// The `Pitch Shift` filter used globally.
+  ///
+  /// This filter is not part of SoLoud C++ lib and the source code is
+  /// experimental and can be found
+  /// [here](https://github.com/alnitak/flutter_soloud/blob/main/src/filters/pitch_shift_filter.cpp#L16)
+  @experimental
+  PitchShiftGlobal get pitchShiftFilter => const PitchShiftGlobal();
 
   /// The `Limiter` filter used globally.
   ///
@@ -207,6 +275,10 @@ final class FiltersGlobal {
   ///
   /// - `releaseTime`: The release time in milliseconds. Determines how quickly
   /// the gain reduction recovers after a signal drops below the threshold.
+  ///
+  /// This filter is not part of SoLoud C++ lib and the source code is
+  /// experimental and can be found
+  /// [here](https://github.com/alnitak/flutter_soloud/blob/main/src/filters/limiter.cpp#L20)
   @experimental
   LimiterGlobal get limiterFilter => const LimiterGlobal();
 
@@ -233,6 +305,10 @@ final class FiltersGlobal {
   ///
   /// `releaseTime`: The time in ms for the compressor to release the gain
   /// reduction after the input level falls below the threshold.
+  ///
+  /// This filter is not part of SoLoud C++ lib and the source code is
+  /// experimental and can be found
+  /// [here](https://github.com/alnitak/flutter_soloud/blob/main/src/filters/compressor.cpp#L24)
   @experimental
   CompressorGlobal get compressorFilter => const CompressorGlobal();
 }

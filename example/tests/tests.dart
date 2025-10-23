@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:developer' as dev;
-import 'dart:math';
 import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
@@ -547,22 +546,32 @@ Future<StringBuffer> testStopFutures() async {
 
   /// Load sample
   final currentSound =
-      await SoLoud.instance.loadAsset('assets/audio/tic-1.wav');
+      await SoLoud.instance.loadAsset('assets/audio/explosion.mp3');
 
-  final random = Random(42);
-  for (var i = 0; i < 50; i++) {
-    final handle = await SoLoud.instance.play(currentSound);
-    output.writeln('$handle started');
-    await Future<void>.delayed(Duration(milliseconds: random.nextInt(5)));
-    unawaited(
-      SoLoud.instance
-          .stop(handle)
-          .then((_) => output.writeln('$handle stopped')),
-    );
-  }
+  /// Fast call to `stop` after `play`
+  var handle = await SoLoud.instance.play(currentSound);
+  output
+    ..writeln('fast play/stop')
+    ..writeln('$handle started');
+  unawaited(
+    SoLoud.instance.stop(handle).then((_) => output.writeln('$handle stopped')),
+  );
 
-  /// Wait a bit so that we can hear a sound to verify it's working as intended.
   await delay(500);
+
+  /// Schedule a stop and call `stop` after the scheduled time
+  handle = await SoLoud.instance.play(currentSound);
+  output
+    ..writeln('\nscheduleStop')
+    ..writeln('$handle started');
+  SoLoud.instance.scheduleStop(handle, const Duration(milliseconds: 500));
+  await delay(1000);
+  unawaited(
+    SoLoud.instance.stop(handle).then((_) => output.writeln('$handle stopped')),
+  );
+
+  /// Wait a bit.
+  await delay(1000);
 
   deinit();
 
