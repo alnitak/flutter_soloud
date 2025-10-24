@@ -940,7 +940,7 @@ ActiveSound *Player::findByHandle(SoLoud::handle handle)
     while (i < (int)sounds.size())
     {
         int index = 0;
-        while (index < (int)sounds[i].get()->handle.size())
+        while (sounds[i].get() && index < (int)sounds[i].get()->handle.size())
         {
             if (sounds[i].get()->handle[index].handle == handle)
             {
