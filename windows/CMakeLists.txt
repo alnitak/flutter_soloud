@@ -159,6 +159,10 @@ if(MSVC)
     /RTC-   # Disable runtime checks explicitly
   )
 
+  # Add debug info generation for release builds
+  set(OPTIMIZATION_FLAGS "${OPTIMIZATION_FLAGS} /Zi")
+  set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} /DEBUG /OPT:REF /OPT:ICF")
+  set(CMAKE_SHARED_LINKER_FLAGS_RELEASE "${CMAKE_SHARED_LINKER_FLAGS_RELEASE} /DEBUG /OPT:REF /OPT:ICF")
   # Apply optimization flags to all configurations
   foreach(FLAG ${OPTIMIZATION_FLAGS})
     target_compile_options(${PLUGIN_NAME} PRIVATE ${FLAG})
@@ -174,6 +178,13 @@ if(MSVC)
     /WX-    # Disable warnings as errors
     ${OPTIMIZATION_FLAGS}
   )
+
+  # Copy PDB file to output directory for Release configuration... DOESN'T WORK @#@#][!
+  # add_custom_command(TARGET ${PLUGIN_NAME} POST_BUILD
+  #     COMMAND ${CMAKE_COMMAND} -E copy_if_different
+  #     "$<TARGET_PDB_FILE:${PLUGIN_NAME}>"
+  #     "${CMAKE_BINARY_DIR}/runner/$<CONFIG>/${PLUGIN_NAME}.pdb"
+  #     CONFIGURATIONS Release)
 endif()
 
 # List of absolute paths to libraries that should be bundled with the plugin.
