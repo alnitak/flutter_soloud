@@ -153,7 +153,7 @@ if(MSVC)
     /Ot     # Favor fast code
     /Ox     # Full optimization
     /fp:fast # Fast floating-point model
-    /arch:AVX2  # Use AVX2 instructions
+    /arch:SSE2  # Use SSE2 instructions
     /Qpar   # Auto-parallelize loops
     /O2     # Maximize speed
     /RTC-   # Disable runtime checks explicitly
@@ -179,12 +179,21 @@ if(MSVC)
     ${OPTIMIZATION_FLAGS}
   )
 
-  # Copy PDB file to output directory for Release configuration... DOESN'T WORK @#@#][!
-  # add_custom_command(TARGET ${PLUGIN_NAME} POST_BUILD
-  #     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-  #     "$<TARGET_PDB_FILE:${PLUGIN_NAME}>"
-  #     "${CMAKE_BINARY_DIR}/runner/$<CONFIG>/${PLUGIN_NAME}.pdb"
-  #     CONFIGURATIONS Release)
+  # Create a custom target for copying PDB files
+  add_custom_target(copy_pdbs ALL
+    # copy to "build/windows/x64/runner/Release" dir
+    # COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    # "$<TARGET_FILE_DIR:${PLUGIN_NAME}>/${PLUGIN_NAME}.pdb"
+    # "${CMAKE_BINARY_DIR}/runner/$<CONFIG>/${PLUGIN_NAME}.pdb"
+    # copy to "build" dir
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    "$<TARGET_FILE_DIR:${PLUGIN_NAME}>/${PLUGIN_NAME}.pdb"
+    "${CMAKE_BINARY_DIR}/../../${PLUGIN_NAME}.pdb"
+    DEPENDS ${PLUGIN_NAME}
+    COMMENT "Copying PDB files to runner directory"
+    VERBATIM
+  )
+
 endif()
 
 # List of absolute paths to libraries that should be bundled with the plugin.
