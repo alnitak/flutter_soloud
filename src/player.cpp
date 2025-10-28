@@ -62,9 +62,6 @@ PlayerErrors Player::init(unsigned int sampleRate, unsigned int bufferSize, unsi
             SoLoud::Soloud::CLIP_ROUNDOFF,
             SoLoud::Soloud::MINIAUDIO, sampleRate, bufferSize, channels, playbackInfos_id);
     } catch (...) {
-#ifdef _IS_WIN_
-        printf("SoLoud initialization failed with EXCEPTION_ILLEGAL_INSTRUCTION error?\n");
-#endif
         return backendNotInited;
     }
 
