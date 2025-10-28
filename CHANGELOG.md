@@ -1,3 +1,9 @@
+#### 3.4.0 (28 Oct 2025)
+- added support for OGG FLAC and its metadata to BufferStream #294
+- fix Opus BufferStream end clicks on short sounds #344. Thanks to @eddyleelin
+- fixex a crash on old Widnows PCs with CPUs that don't support AVX2 extensions (using now SSE2) #340
+- fixed `Player::findByHandle` crash in some circumstancies #342
+
 #### 3.3.9 (21 Oct 2025)
 - iOS: revert the fix for #330
 - removed experimental tag for `allInstancesFinished`
