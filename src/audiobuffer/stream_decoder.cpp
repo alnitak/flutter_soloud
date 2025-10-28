@@ -3,10 +3,11 @@
 #if !defined(NO_OPUS_OGG_LIBS)
 #   include "opus_stream_decoder.h"
 #   include "vorbis_stream_decoder.h"
+#   include "flac_stream_decoder.h"
 #endif
 #include <cstring>
 
-void StreamDecoder::setMp3BufferIcyMetaInt(int icyMetaInt) {
+void StreamDecoder::setBufferIcyMetaInt(int icyMetaInt) {
     mIcyMetaInt = icyMetaInt;
 }
 
@@ -67,6 +68,14 @@ DetectedType StreamDecoder::detectAudioFormat(const std::vector<unsigned char>& 
                 std::memcmp(buffer.data() + payload_offset, "OpusHead", 8) == 0) {
                 return DetectedType::BUFFER_OGG_OPUS;
             }
+
+            // Check for FLAC in this page
+            if (payload_size >= 13 &&
+                buffer[payload_offset] == 0x7F &&
+                std::memcmp(buffer.data() + payload_offset + 1, "FLAC", 4) == 0 &&
+                std::memcmp(buffer.data() + payload_offset + 9, "fLaC", 4) == 0) {
+                return DetectedType::BUFFER_OGG_FLAC;
+            }
             
             // Check for Vorbis in this page
             // Look through the entire payload for the Vorbis pattern
@@ -112,13 +121,24 @@ std::pair<std::vector<float>, DecoderError> StreamDecoder::decode(
         }
         
         if (detectedType == DetectedType::BUFFER_OGG_OPUS
-            || detectedType == DetectedType::BUFFER_OGG_VORBIS) {
+            || detectedType == DetectedType::BUFFER_OGG_VORBIS
+            || detectedType == DetectedType::BUFFER_OGG_FLAC) {
             #if defined(NO_OPUS_OGG_LIBS)
                 return {{}, DecoderError::NoOpusOggLibs};
             #else
                 if (detectedType == DetectedType::BUFFER_OGG_VORBIS) {
                     mWrapper = std::make_unique<VorbisDecoderWrapper>();
                     isFormatDetected = static_cast<VorbisDecoderWrapper*>(mWrapper.get())->initializeDecoder(*samplerate, *channels);
+                    if (!isFormatDetected) {
+                        return {{}, DecoderError::FailedToCreateDecoder};
+                    }
+                } else if (detectedType == DetectedType::BUFFER_OGG_FLAC) {
+                    mWrapper = std::make_unique<FlacDecoderWrapper>();
+                    isFormatDetected = static_cast<FlacDecoderWrapper*>(mWrapper.get())->initializeDecoder(*samplerate, *channels);
+                    if (!isFormatDetected) {
+                        return {{}, DecoderError::FailedToCreateDecoder};
+                    }
+                    static_cast<FlacDecoderWrapper*>(mWrapper.get())->setIcyMetaInt(mIcyMetaInt);
                 } else {
                     mWrapper = std::make_unique<OpusDecoderWrapper>();
                     isFormatDetected = static_cast<OpusDecoderWrapper*>(mWrapper.get())->initializeDecoder(*samplerate, *channels);
@@ -133,7 +153,7 @@ std::pair<std::vector<float>, DecoderError> StreamDecoder::decode(
             if (!isFormatDetected) {
                 return {{}, DecoderError::FailedToCreateDecoder};
             }
-            static_cast<MP3DecoderWrapper*>(mWrapper.get())->setMp3BufferIcyMetaInt(mIcyMetaInt);
+            static_cast<MP3DecoderWrapper*>(mWrapper.get())->setIcyMetaInt(mIcyMetaInt);
         }
         if (metadataChangeCallback) {
             mWrapper->setTrackChangeCallback(metadataChangeCallback);
@@ -149,6 +169,9 @@ std::pair<std::vector<float>, DecoderError> StreamDecoder::decode(
             else if (mWrapper->detectedType == DetectedType::BUFFER_OGG_VORBIS) {
                 return static_cast<VorbisDecoderWrapper*>(mWrapper.get())->decode(buffer, samplerate, channels);
             }
+            else if (mWrapper->detectedType == DetectedType::BUFFER_OGG_FLAC) {
+                return static_cast<FlacDecoderWrapper*>(mWrapper.get())->decode(buffer, samplerate, channels);
+            }
         #endif
         if (mWrapper->detectedType == DetectedType::BUFFER_MP3_WITH_ID3 ||
             mWrapper->detectedType == DetectedType::BUFFER_MP3_STREAM) {
@@ -156,4 +179,11 @@ std::pair<std::vector<float>, DecoderError> StreamDecoder::decode(
         }
     }
     return {};
+}
+
+DetectedType StreamDecoder::getWrapperType()
+{
+    if (mWrapper)
+        return mWrapper->detectedType;
+    return DetectedType::BUFFER_UNKNOWN;
 }

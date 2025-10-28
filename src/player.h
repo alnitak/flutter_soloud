@@ -122,11 +122,11 @@ public:
     /// @return Returns [PlayerErrors.SO_NO_ERROR] if success.
     PlayerErrors resetBufferStream(unsigned int hash);
     
-    /// @brief Set the mp3 buffer icy meta int.
+    /// @brief Set the mp3 and Flac buffer icy meta int.
     /// @param hash the hash of the sound.
     /// @param icyMetaInt the icy meta int.
     /// @return Returns [PlayerErrors.SO_NO_ERROR] if success.
-    PlayerErrors setMp3BufferIcyMetaInt(unsigned int hash, int icyMetaInt);
+    PlayerErrors setBufferIcyMetaInt(unsigned int hash, int icyMetaInt);
 
     /// @brief Get the time consumed by the data stream of type `BufferingType.RELEASED`.
     /// @param hash the hash of the stream sound.

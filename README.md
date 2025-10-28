@@ -17,7 +17,7 @@ A high-performance audio plugin designed primarily for games and immersive appli
 - ⚡ Low latency, high performance audio
 - 🎮 3D positional audio with Doppler effect
 - 🔄 Gapless looping
-- 🔄 Stream audio with auto-pause for buffering, support for PCM, MP3, Ogg with Opus and Vorbis container
+- 🔄 Stream audio with auto-pause for buffering, support for PCM, MP3, Ogg with Opus, Vorbis and FLAC containers
 - 📊 Get audio wave and/or FFT audio data in real-time (useful for visualization)
 - 🎛️ Rich effects system (reverb, echo, limiter, bassboost, etc.)
 - ⚙️ Faders for attributes (e.g. fade out for 2 seconds, then stop)
@@ -28,7 +28,9 @@ A high-performance audio plugin designed primarily for games and immersive appli
 - ⏱️ Read audio data samples from a file with a given time range
 - 🌊 Generate waveforms in real-time with various types (sine, square, saw, triangle, etc.)
 
-Watch Flutter [Package of the Week](https://www.youtube.com/watch?v=2t6Bt04EyLw) video.
+## Getting Started
+- Watch Flutter [Package of the Week](https://www.youtube.com/watch?v=2t6Bt04EyLw) video.
+- Read CodeLab [Add sound and music to your Flutter game](https://codelabs.developers.google.com/codelabs/flutter-codelab-soloud#0).
 
 If you are looking for a package to visualize audio using shaders or CustomPainter, please check out [audio_flux](https://pub.dev/packages/audio_flux). It uses this plugin for output and [flutter_recorder](https://pub.dev/packages/flutter_recorder) for input.
 
@@ -56,4 +58,3 @@ void example() async {
 ## License
 
 The Dart plugin is covered by the MIT license. For information about the underlying SoLoud engine license, see the [documentation](https://docs.page/alnitak/flutter_soloud/get_started/license).
-

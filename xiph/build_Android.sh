@@ -51,6 +51,13 @@ if [ ! -d "opus" ]; then
     cd ..
 fi
 
+if [ ! -d "flac" ]; then
+    git clone https://github.com/xiph/flac
+    cd flac
+    git reset --hard 9547dbc
+    cd ..
+fi
+
 # Function to build library for specific architecture
 build_lib() {
     local lib=$1
@@ -89,6 +96,25 @@ build_lib() {
             -DOGG_LIBRARY="$install_path/libogg.so" \
             -DOGG_INCLUDE_DIR="$OUTPUT_DIR/../include" \
             -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+    elif [ "$lib" = "flac" ]; then
+        cmake "$BASE_DIR/$lib" \
+            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI="$arch" \
+            -DANDROID_PLATFORM=android-21 \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$temp_install_path" \
+            -DBUILD_SHARED_LIBS=ON \
+            -DCMAKE_C_FLAGS="-Os -flto -ffunction-sections -fdata-sections" \
+            -DCMAKE_EXE_LINKER_FLAGS="-Wl,-z,max-page-size=16384,--gc-sections -flto" \
+            -DCMAKE_SHARED_LINKER_FLAGS="-Wl,-z,max-page-size=16384,--gc-sections -flto" \
+            -DCMAKE_C_FLAGS_RELEASE="-O2 -DNDEBUG" \
+            -DOGG_LIBRARY="$install_path/libogg.so" \
+            -DOGG_INCLUDE_DIR="$OUTPUT_DIR/../include" \
+            -DBUILD_PROGRAMS=OFF \
+            -DBUILD_EXAMPLES=OFF \
+            -DBUILD_TESTING=OFF \
+            -DBUILD_DOCS=OFF \
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5
     else
         cmake "$BASE_DIR/$lib" \
             -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
@@ -121,6 +147,9 @@ build_lib() {
             cp -r "$temp_install_path/include/opus" "$OUTPUT_INCLUDE_DIR/"
         elif [ "$lib" = "vorbis" ]; then
             cp -r "$temp_install_path/include/vorbis" "$OUTPUT_INCLUDE_DIR/"
+        elif [ "$lib" = "flac" ]; then
+            cp -r "$temp_install_path/include/FLAC" "$OUTPUT_INCLUDE_DIR/"
+            cp -r "$BASE_DIR/flac/include/share" "$OUTPUT_INCLUDE_DIR/"
         fi
     fi
     
@@ -134,11 +163,14 @@ for arch in "${ARCHS[@]}"; do
     build_lib "ogg" "$arch"
     build_lib "opus" "$arch"
     build_lib "vorbis" "$arch"
+    build_lib "flac" "$arch"
 done
 
 for arch in "${ARCHS[@]}"; do
     echo -e "${BOLD_WHITE_ON_GREEN}=== Removing not used libvorbisenc.so* for $arch ===${RESET}"
     rm "$OUTPUT_DIR/$arch/libvorbisenc.so"*
+    echo -e "${BOLD_WHITE_ON_GREEN}=== Removing not used libFLAC++.so* ===${RESET}"
+    rm -f "$OUTPUT_DIR/$arch/libFLAC++.so"*
 done
 rm "$OUTPUT_INCLUDE_DIR/vorbis/vorbisenc.h"
 

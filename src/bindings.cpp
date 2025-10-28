@@ -536,13 +536,13 @@ extern "C"
     /// [hash] the hash of the stream sound.
     /// [icyMetaInt] the icy metadata integer value. Default is 16000 which
     /// is the most used value.
-    FFI_PLUGIN_EXPORT enum PlayerErrors setMp3BufferIcyMetaInt(unsigned int hash, int icyMetaInt)
+    FFI_PLUGIN_EXPORT enum PlayerErrors setBufferIcyMetaInt(unsigned int hash, int icyMetaInt)
     {
         if (player.get() == nullptr || !player.get()->isInited())
             return backendNotInited;
         if (icyMetaInt < 0)
             icyMetaInt = 0;
-        return player.get()->setMp3BufferIcyMetaInt(hash, icyMetaInt);
+        return player.get()->setBufferIcyMetaInt(hash, icyMetaInt);
     }
 
     /// Add a chunk of audio data to the buffer stream.

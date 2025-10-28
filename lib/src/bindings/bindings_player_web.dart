@@ -292,11 +292,11 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }
 
   @override
-  PlayerErrors setMp3BufferIcyMetaInt(
+  PlayerErrors setBufferIcyMetaInt(
     SoundHash soundHash,
     int icyMetaInt,
   ) {
-    final result = wasmSetMp3BufferIcyMetaInt(soundHash.hash, icyMetaInt);
+    final result = wasmSetBufferIcyMetaInt(soundHash.hash, icyMetaInt);
     return PlayerErrors.values[result];
   }
 

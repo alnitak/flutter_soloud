@@ -45,6 +45,7 @@ list(APPEND PLUGIN_SOURCES
   "${SRC_DIR}/waveform/miniaudio_libvorbis.cpp"
   "${SRC_DIR}/audiobuffer/audiobuffer.cpp"
   "${SRC_DIR}/audiobuffer/stream_decoder.cpp"
+  "${SRC_DIR}/audiobuffer/flac_stream_decoder.cpp"
   "${SRC_DIR}/audiobuffer/opus_stream_decoder.cpp"
   "${SRC_DIR}/audiobuffer/vorbis_stream_decoder.cpp"
   "${SRC_DIR}/audiobuffer/mp3_stream_decoder.cpp"
@@ -96,7 +97,12 @@ if(NOT DEFINED ENV{NO_OPUS_OGG_LIBS})
     target_link_libraries(${PLUGIN_NAME} PRIVATE ${VORBIS_LIBRARY})
     target_link_libraries(${PLUGIN_NAME} PRIVATE ${VORBISFILE_LIBRARY})
 
-    # Set the ogg and opus include directory
+    # Add FLAC library
+    set(FLAC_LIBRARY ${CMAKE_CURRENT_SOURCE_DIR}/libs/FLAC.lib)
+    # Link the library to your target
+    target_link_libraries(${PLUGIN_NAME} PRIVATE ${FLAC_LIBRARY})
+
+    # Set the ogg, opus, vorbis, vorbisfile and flac include directory
     include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 
     # Copy DLLs to output directory for both Debug and Release configurations
@@ -122,6 +128,12 @@ if(NOT DEFINED ENV{NO_OPUS_OGG_LIBS})
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_SOURCE_DIR}/libs/vorbisfile.dll"
         "${CMAKE_BINARY_DIR}/runner/$<CONFIG>/vorbisfile.dll"
+    )
+
+    add_custom_command(TARGET ${PLUGIN_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/libs/FLAC.dll"
+        "${CMAKE_BINARY_DIR}/runner/$<CONFIG>/FLAC.dll"
     )
 else()
     message("NO_OPUS_OGG_LIBS has been set. Not linking Opus and Ogg libraries!")

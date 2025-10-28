@@ -39,8 +39,15 @@ if [ ! -d "opus" ]; then
     cd ..
 fi
 
+if [ ! -d "flac" ]; then
+    git clone https://github.com/xiph/flac
+    cd flac
+    git reset --hard 9547dbc
+    cd ..
+fi
+
 # Directories for source code and build output
-LIBS=("ogg" "opus" "vorbis")
+LIBS=("ogg" "opus" "vorbis" "flac")
 BASE_DIR="$PWD"
 BUILD_DIR="$BASE_DIR/iOS/build"
 OUTPUT_DIR="$BASE_DIR/../iOS/libs"
@@ -77,6 +84,17 @@ build_lib() {
         CPPFLAGS="-I$BUILD_DIR/ogg/$arch/include" \
         CFLAGS="-arch $arch -isysroot $sdk -O2" \
         ./configure --host=$arch-apple-darwin --prefix="$output_dir" --disable-shared --with-ogg="$BUILD_DIR/ogg/$arch"
+    elif [ "$lib_name" == "flac" ]; then
+        PKG_CONFIG_PATH="$BUILD_DIR/ogg/$platform/$arch/lib/pkgconfig" \
+        LDFLAGS="-L$BUILD_DIR/ogg/$platform/$arch/lib" \
+        CPPFLAGS="-I$BUILD_DIR/ogg/$platform/$arch/include" \
+        CFLAGS="-arch $arch -isysroot $sdk -O2" \
+        ./configure --host=$arch-apple-darwin --prefix="$output_dir" --disable-shared --with-ogg="$BUILD_DIR/ogg/$platform/$arch" \
+            --disable-cpplibs \
+            --disable-doxygen-docs \
+            --disable-xmms-plugin \
+            --disable-programs \
+            --disable-examples
     else
         CFLAGS="-arch $arch -isysroot $sdk -O2" \
         ./configure --host=$arch-apple-darwin --prefix="$output_dir" --disable-shared
@@ -142,6 +160,8 @@ for lib in "${LIBS[@]}"; do
     strip -x "$OUTPUT_DIR/lib${lib}_iOS-device.a"
     strip -x "$OUTPUT_DIR/lib${lib}_iOS-simulator.a"
 done
+
+cp -R "$BASE_DIR/flac/include/share" "$INCLUDE_DIR/"
 
 echo
 echo "${BOLD_WHITE_ON_GREEN}Libraries created in $OUTPUT_DIR:${RESET}"

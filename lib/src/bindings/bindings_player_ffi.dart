@@ -514,17 +514,17 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       .asFunction<int Function(int, ffi.Pointer<ffi.Float>)>();
 
   @override
-  PlayerErrors setMp3BufferIcyMetaInt(SoundHash soundHash, int icyMetaInt) {
-    final e = _setMp3BufferIcyMetaInt(soundHash.hash, icyMetaInt);
+  PlayerErrors setBufferIcyMetaInt(SoundHash soundHash, int icyMetaInt) {
+    final e = _setBufferIcyMetaInt(soundHash.hash, icyMetaInt);
     return PlayerErrors.values[e];
   }
 
-  late final _setMp3BufferIcyMetaIntPtr = _lookup<
+  late final _setBufferIcyMetaIntPtr = _lookup<
           ffi
           .NativeFunction<ffi.UnsignedInt Function(ffi.UnsignedInt, ffi.Int)>>(
-      'setMp3BufferIcyMetaInt');
-  late final _setMp3BufferIcyMetaInt =
-      _setMp3BufferIcyMetaIntPtr.asFunction<int Function(int, int)>();
+      'setBufferIcyMetaInt');
+  late final _setBufferIcyMetaInt =
+      _setBufferIcyMetaIntPtr.asFunction<int Function(int, int)>();
 
   @override
   PlayerErrors addAudioDataStream(

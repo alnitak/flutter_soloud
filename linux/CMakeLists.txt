@@ -47,6 +47,7 @@ list(APPEND PLUGIN_SOURCES
   "${SRC_DIR}/audiobuffer/opus_stream_decoder.cpp"
   "${SRC_DIR}/audiobuffer/vorbis_stream_decoder.cpp"
   "${SRC_DIR}/audiobuffer/mp3_stream_decoder.cpp"
+  "${SRC_DIR}/audiobuffer/flac_stream_decoder.cpp"
   "${SRC_DIR}/filters/filters.cpp"
   "${SRC_DIR}/filters/pitch_shift_filter.cpp"
   "${SRC_DIR}/filters/smbPitchShift.cpp"
@@ -72,6 +73,10 @@ target_link_libraries(${PLUGIN_NAME} PRIVATE PkgConfig::GTK)
 
 if(NOT DEFINED ENV{NO_OPUS_OGG_LIBS})
     message("NO_OPUS_OGG_LIBS has not been set. Linking Opus and Ogg libraries!")
+    # Add FLAC library
+    set(FLAC_LIBRARY ${CMAKE_CURRENT_SOURCE_DIR}/libs/libFLAC.so)
+    target_link_libraries(${PLUGIN_NAME} PRIVATE ${FLAC_LIBRARY})
+
     # Add opus library
     set(OPUS_LIBRARY ${CMAKE_CURRENT_SOURCE_DIR}/libs/libopus.so)
     target_link_libraries(${PLUGIN_NAME} PRIVATE ${OPUS_LIBRARY})

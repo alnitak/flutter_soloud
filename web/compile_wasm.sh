@@ -28,6 +28,7 @@ XIPH_DIR="$PWD/../xiph"
 OPUS_DIR="$XIPH_DIR/opus"
 OGG_DIR="$XIPH_DIR/ogg"
 VORBIS_DIR="$XIPH_DIR/vorbis"
+FLAC_DIR="$XIPH_DIR/flac"
 
 # Clean and create build directory
 rm -f libflutter_soloud_plugin.*
@@ -56,6 +57,14 @@ if [ "${SKIP_OPUS_OGG}" != "1" ]; then
         # reset to a known good commit
         cd "$VORBIS_DIR"
         git reset --hard 84c0236
+        cd -
+    fi
+
+    if [ ! -d "$FLAC_DIR" ]; then
+        git clone https://github.com/xiph/flac "$FLAC_DIR"
+        # reset to a known good commit
+        cd "$FLAC_DIR"
+        git reset --hard 9547dbc
         cd -
     fi
 
@@ -92,6 +101,24 @@ if [ "${SKIP_OPUS_OGG}" != "1" ]; then
         emconfigure ./configure \
             CFLAGS="-O2 -fPIC -L$OGG_DIR/src/.libs -I$OGG_DIR/include" \
             --with-ogg="$OGG_DIR"
+        emmake make -j$CORES
+        cd -
+    fi
+
+    # Build Flac if not built or force rebuild is set
+    echo -e "${BOLD_WHITE_ON_GREEN}Building Flac${RESET}"
+    if [ ! -f "$FLAC_DIR/src/libFLAC/.libs/libFLAC-static.a" ] || [ $FORCE_REBUILD_LIBS -eq 1 ]; then
+        cd "$FLAC_DIR"
+        ./autogen.sh
+        emconfigure ./configure \
+            CFLAGS="-O2 -fPIC -L$OGG_DIR/src/.libs -I$OGG_DIR/include" \
+            --with-ogg="$OGG_DIR" \
+            --disable-cpplibs \
+            --disable-doxygen-docs \
+            --disable-xmms-plugin \
+            --disable-cpplibs \
+            --disable-programs \
+            --disable-examples
         emmake make -j$CORES
         cd -
     fi
@@ -134,6 +161,7 @@ if [ "${SKIP_OPUS_OGG}" != "1" ]; then
         -I "$OPUS_DIR/include"
         -I "$OGG_DIR/include"
         -I "$VORBIS_DIR/include"
+        -I "$FLAC_DIR/include"
     )
 fi
 
@@ -144,6 +172,7 @@ if [ "${SKIP_OPUS_OGG}" != "1" ]; then
         "$OGG_DIR/src/.libs/libogg.a"
         "$VORBIS_DIR/lib/.libs/libvorbis.a"
         "$VORBIS_DIR/lib/.libs/libvorbisfile.a"
+        "$FLAC_DIR/src/libFLAC/.libs/libFLAC-static.a"
     )
 fi
 

@@ -9,6 +9,9 @@ enum DetectedType {
   /// Ogg Vorbis audio format
   oggVorbis,
 
+  /// FLAC audio format
+  oggFlac,
+
   /// MP3 audio format
   mp3WithId3,
 
@@ -25,8 +28,10 @@ enum DetectedType {
       case 2:
         return DetectedType.oggVorbis;
       case 3:
-        return DetectedType.mp3WithId3;
+        return DetectedType.oggFlac;
       case 4:
+        return DetectedType.mp3WithId3;
+      case 5:
         return DetectedType.mp3Stream;
       default:
         return DetectedType.unknown;
@@ -43,6 +48,8 @@ enum DetectedType {
         return 'Ogg Opus';
       case DetectedType.oggVorbis:
         return 'Ogg Vorbis';
+      case DetectedType.oggFlac:
+        return 'Ogg FLAC';
       case DetectedType.mp3WithId3:
         return 'MP3 with ID3';
       case DetectedType.mp3Stream:
@@ -209,6 +216,59 @@ final class OpusInfo {
   }
 }
 
+/// Contains detailed information about an Flac audio stream
+final class FlacInfo {
+  /// Creates a new [FlacInfo] instance with the metadata fields
+  FlacInfo({
+    required this.minBlockSize,
+    required this.maxBlockSize,
+    required this.minFrameSize,
+    required this.maxFrameSize,
+    required this.sampleRate,
+    required this.channels,
+    required this.bitsPerSample,
+    required this.totalSamples,
+  });
+
+  /// The minimum block size in samples
+  int minBlockSize;
+
+  /// The maximum block size in samples
+  int maxBlockSize;
+
+  /// The minimum frame size in bytes
+  int minFrameSize;
+
+  /// The maximum frame size in bytes
+  int maxFrameSize;
+
+  /// The sampling rate of the audio in Hz
+  int sampleRate;
+
+  /// The number of audio channels in the stream
+  int channels;
+
+  /// The bitrate of the audio stream
+  int bitsPerSample;
+
+  /// The total number of samples in the audio stream
+  int totalSamples;
+
+  @override
+  String toString() {
+    final buffer = StringBuffer()
+      ..writeln('\tMinBlockSize: $minBlockSize')
+      ..writeln('\tMaxBlockSize: $maxBlockSize')
+      ..writeln('\tMinFrameSize: $minFrameSize')
+      ..writeln('\tMaxFrameSize: $maxFrameSize')
+      ..writeln('\tSampleRate: $sampleRate')
+      ..writeln('\tChannels: $channels')
+      ..writeln('\tBitrate: $bitsPerSample')
+      ..writeln('\tTotalSamples: $totalSamples');
+    return buffer.toString();
+  }
+}
+
 /// Combines metadata from Ogg container format, including Opus and Vorbis
 /// specific information
 final class OggMetadata {
@@ -219,6 +279,7 @@ final class OggMetadata {
     required this.comments,
     required this.vorbisInfo,
     required this.opusInfo,
+    required this.flacInfo,
   });
 
   /// The vendor string identifying the software used to encode the audio
@@ -235,6 +296,9 @@ final class OggMetadata {
 
   /// Detailed information about the Opus audio stream configuration
   OpusInfo opusInfo;
+
+  /// Detailed information about the Flac audio stream configuration
+  FlacInfo flacInfo;
 
   /// Returns a string representation of the metadata with the specified format
   String toStringWithFormat(DetectedType format) {
@@ -255,6 +319,10 @@ final class OggMetadata {
         buffer
           ..writeln('Vorbis Info')
           ..write(vorbisInfo);
+      case DetectedType.oggFlac:
+        buffer
+          ..writeln('Flac Info')
+          ..write(flacInfo);
       case DetectedType.unknown:
       case DetectedType.mp3WithId3:
       case DetectedType.mp3Stream:
@@ -297,6 +365,7 @@ final class AudioMetadata {
         buffer.writeln(mp3Metadata.toString());
       case DetectedType.oggOpus:
       case DetectedType.oggVorbis:
+      case DetectedType.oggFlac:
         if (oggMetadata != null) {
           buffer.writeln(oggMetadata!.toStringWithFormat(detectedType));
         }

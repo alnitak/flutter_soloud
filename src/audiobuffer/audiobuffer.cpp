@@ -307,10 +307,10 @@ namespace SoLoud
 		checkBuffering(0);
 	}
 
-	void BufferStream::setMp3BufferIcyMetaInt(int icyMetaInt)
+	void BufferStream::setBufferIcyMetaInt(int icyMetaInt)
 	{
 		mIcyMetaInt = icyMetaInt;
-		streamDecoder->setMp3BufferIcyMetaInt(icyMetaInt);
+		streamDecoder->setBufferIcyMetaInt(icyMetaInt);
 	}
 
 	PlayerErrors BufferStream::addData(const void *aData, unsigned int aDataLen, bool dontAdd)
@@ -323,6 +323,8 @@ namespace SoLoud
 		size_t bytesWritten = 0;
 		bool allDataAdded = -1;
 		int32_t bufferDataToAdd = 0;
+		/// It seems that FLAC need a bigger buffer size
+		int bufferMinSize = streamDecoder->getWrapperType() == DetectedType::BUFFER_OGG_FLAC ? 32 : 32;
 
 		if (!dontAdd)
 		{
@@ -505,23 +507,22 @@ namespace SoLoud
 	{
 		if (mOnMetadataCallback != nullptr)
 		{
-#ifdef __EMSCRIPTEN__
 			AudioMetadataFFI ffi = this->convertMetadataToFFI(metadata);
+			// metadata.debug();
+#ifdef __EMSCRIPTEN__
 			// Call the Dart callback stored on globalThis, if it exists.
 			// The `dartOnMetadataCallback_$hash` function is created in
 			// `setBufferStream()` in `bindings_player_web.dart` and it's
 			// meant to call the Dart callback passed to `setBufferStream()`.
 			// It will pass the JS pointer to the AudioMetadata struct.
 			EM_ASM_({
-					// Compose the function name for this soundHash
-					var functionName = "dartOnMetadataCallback_" + $1;
-					if (typeof window[functionName] === "function") {
-						window[functionName]($0); // Call it with the pointer
-					} else {
-						console.log("EM_ASM 'dartOnMetadataCallback_$hash' not found.");
-					} }, &ffi, mParent->soundHash);
+				// Compose the function name for this soundHash
+				var functionName = "dartOnMetadataCallback_" + $1;
+				if (typeof window[functionName] === "function") {
+					window[functionName]($0); // Call it with the pointer
+				} else {
+				} }, &ffi, mParent->soundHash);
 #else
-			AudioMetadataFFI ffi = this->convertMetadataToFFI(metadata);
 			mOnMetadataCallback(ffi);
 #endif
 		}
@@ -583,6 +584,9 @@ namespace SoLoud
 		case BUFFER_OGG_VORBIS:
 			ffi.detectedType = DetectedTypeFFI::OGG_VORBIS;
 			break;
+		case BUFFER_OGG_FLAC:
+			ffi.detectedType = DetectedTypeFFI::OGG_FLAC;
+			break;
 		case BUFFER_MP3_WITH_ID3:
 			ffi.detectedType = DetectedTypeFFI::MP3_WITH_ID3;
 			break;
@@ -636,6 +640,17 @@ namespace SoLoud
 			metadata.oggMetadata.opusInfo.coupled_count,
 			{0}, // Initialize channel_mapping array to zeros
 			(int)metadata.oggMetadata.opusInfo.channel_mapping.size()};
+
+		// Convert Flac info
+		ffi.oggMetadata.flacInfo = {
+			metadata.oggMetadata.flacInfo.min_blocksize,
+			metadata.oggMetadata.flacInfo.max_blocksize,
+			metadata.oggMetadata.flacInfo.min_framesize,
+			metadata.oggMetadata.flacInfo.max_framesize,
+			metadata.oggMetadata.flacInfo.sample_rate,
+			metadata.oggMetadata.flacInfo.channels,
+			metadata.oggMetadata.flacInfo.bits_per_sample,
+			metadata.oggMetadata.flacInfo.total_samples};
 
 		// Copy channel mapping
 		for (size_t i = 0; i < metadata.oggMetadata.opusInfo.channel_mapping.size() && i < MAX_CHANNEL_MAPPING; i++)

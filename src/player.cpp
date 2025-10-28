@@ -407,7 +407,7 @@ PlayerErrors Player::resetBufferStream(unsigned int hash)
     return PlayerErrors::noError;
 }
 
-PlayerErrors Player::setMp3BufferIcyMetaInt(unsigned int hash, int icyMetaInt)
+PlayerErrors Player::setBufferIcyMetaInt(unsigned int hash, int icyMetaInt)
 {
     auto const s = findByHash(hash);
 
@@ -415,7 +415,7 @@ PlayerErrors Player::setMp3BufferIcyMetaInt(unsigned int hash, int icyMetaInt)
         return PlayerErrors::soundHashNotFound;
     }
 
-    static_cast<SoLoud::BufferStream *>(s->sound.get())->setMp3BufferIcyMetaInt(icyMetaInt);
+    static_cast<SoLoud::BufferStream *>(s->sound.get())->setBufferIcyMetaInt(icyMetaInt);
     return PlayerErrors::noError;
 }
 
@@ -451,7 +451,8 @@ PlayerErrors Player::getBufferSize(unsigned int hash, unsigned int *sizeInBytes)
     if (s == nullptr || s->soundType != SoundType::TYPE_BUFFER_STREAM)
         return PlayerErrors::soundHashNotFound;
 
-    *sizeInBytes = static_cast<SoLoud::BufferStream *>(s->sound.get())->mBuffer.buffer.size();
+    *sizeInBytes = static_cast<SoLoud::BufferStream *>(s->sound.get())->mBuffer.buffer.size() +
+        static_cast<SoLoud::BufferStream *>(s->sound.get())->buffer.size();
     return PlayerErrors::noError;
 }
 
@@ -945,7 +946,7 @@ ActiveSound *Player::findByHandle(SoLoud::handle handle)
     while (i < (int)sounds.size())
     {
         int index = 0;
-        while (index < (int)sounds[i].get()->handle.size())
+        while (sounds[i].get() && index < (int)sounds[i].get()->handle.size())
         {
             if (sounds[i].get()->handle[index].handle == handle)
             {
