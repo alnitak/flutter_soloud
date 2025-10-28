@@ -6,6 +6,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <cstring>
+#include <cstdint>
 
 #ifdef __EMSCRIPTEN__
 // For Web include dirs downloaded from git for build
@@ -37,6 +38,7 @@ private:
     AudioMetadata getMetadata(ogg_packet* packet);
     OpusInfo parseOpusHead(ogg_packet *packet);
     std::vector<float> decodePacket(ogg_packet *packet);
+    bool ensureDecoder(int newSampleRate, int newChannels);
 
     OpusDecoder *decoder;
     int engineSamplerate;
@@ -54,6 +56,9 @@ private:
     // Header parsing state
     bool headerParsed;
     int packetCount;
+    int skipSamplesPending;
+    int64_t totalOutputSamples;
+    int64_t totalSamplesExpected;
 
     OpusInfo opusInfo;
 };
