@@ -56,9 +56,15 @@ PlayerErrors Player::init(unsigned int sampleRate, unsigned int bufferSize, unsi
     }
 
     // initialize SoLoud.
-    SoLoud::result result = soloud.init(
-        SoLoud::Soloud::CLIP_ROUNDOFF,
-        SoLoud::Soloud::MINIAUDIO, sampleRate, bufferSize, channels, playbackInfos_id);
+    SoLoud::result result;
+    try {
+        result = soloud.init(
+            SoLoud::Soloud::CLIP_ROUNDOFF,
+            SoLoud::Soloud::MINIAUDIO, sampleRate, bufferSize, channels, playbackInfos_id);
+    } catch (...) {
+        return backendNotInited;
+    }
+
     if (result == SoLoud::SO_NO_ERROR)
     {
         mInited = true;

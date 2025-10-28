@@ -1,22 +1,78 @@
 #if !defined(NO_OPUS_OGG_LIBS)
 
 #include "opus_stream_decoder.h"
+#include <algorithm>
 
 OpusDecoderWrapper::OpusDecoderWrapper()
-    : streamInitialized(false), headerParsed(false), packetCount(0)
+    : decoder(nullptr),
+      engineSamplerate(48000),
+      engineChannels(2),
+      decodingSamplerate(48000),
+      decodingChannels(2),
+      streamInitialized(false),
+      headerParsed(false),
+      packetCount(0),
+      skipSamplesPending(0),
+      totalOutputSamples(0),
+      totalSamplesExpected(-1)
 {
 }
 
 OpusDecoderWrapper::~OpusDecoderWrapper()
 {
     if (decoder)
+    {
         opus_decoder_destroy(decoder);
+        decoder = nullptr;
+    }
 
     if (streamInitialized)
     {
         ogg_stream_clear(&os);
     }
     ogg_sync_clear(&oy);
+}
+
+bool OpusDecoderWrapper::ensureDecoder(int newSampleRate, int newChannels)
+{
+    if (newSampleRate <= 0)
+        newSampleRate = 48000;
+    if (newSampleRate < 8000)
+        newSampleRate = 8000;
+    if (newSampleRate > 48000)
+        newSampleRate = 48000;
+
+    if (newChannels <= 0)
+        newChannels = 1;
+    if (newChannels > 2)
+        newChannels = 2;
+
+    if (decoder &&
+        newSampleRate == decodingSamplerate &&
+        newChannels == decodingChannels)
+    {
+        opus_decoder_ctl(decoder, OPUS_RESET_STATE);
+        return true;
+    }
+
+    if (decoder)
+    {
+        opus_decoder_destroy(decoder);
+        decoder = nullptr;
+    }
+
+    int error = OPUS_OK;
+    decoder = opus_decoder_create(newSampleRate, newChannels, &error);
+    if (error != OPUS_OK || decoder == nullptr)
+    {
+        decoder = nullptr;
+        return false;
+    }
+
+    decodingSamplerate = newSampleRate;
+    decodingChannels = newChannels;
+    opus_decoder_ctl(decoder, OPUS_RESET_STATE);
+    return true;
 }
 
 AudioMetadata OpusDecoderWrapper::getMetadata(ogg_packet* packet) {
@@ -71,22 +127,25 @@ AudioMetadata OpusDecoderWrapper::getMetadata(ogg_packet* packet) {
     return metadata;
 }
 
-bool OpusDecoderWrapper::initializeDecoder(int engineSamplerate, int engineChannels)
+bool OpusDecoderWrapper::initializeDecoder(int engineSamplerateIn, int engineChannelsIn)
 {
-    decodingChannels = engineChannels > 2 ? 2 : (engineChannels<=0 ? 1 : engineChannels);
-    // Choose the best sample rate nearest to the engine samplerate
-    if (engineSamplerate <= 8000) decodingSamplerate = 8000;
-    else if (engineSamplerate <= 12000) decodingSamplerate = 12000;
-    else if (engineSamplerate <= 16000) decodingSamplerate = 16000;
-    else if (engineSamplerate <= 24000) decodingSamplerate = 24000;
-    else if (engineSamplerate <= 48000) decodingSamplerate = 48000;
-    else decodingSamplerate = 96000;
-    int error;
-    decoder = opus_decoder_create(decodingSamplerate, decodingChannels, &error);
-    if (error != OPUS_OK)
+    engineSamplerate = engineSamplerateIn;
+    engineChannels = engineChannelsIn;
+
+    const int initialChannels = std::max(1, std::min(engineChannelsIn > 0 ? engineChannelsIn : 2, 2));
+    const int initialSampleRate = 48000;
+
+    if (!ensureDecoder(initialSampleRate, initialChannels))
     {
         return false;
     }
+
+    streamInitialized = false;
+    headerParsed = false;
+    packetCount = 0;
+    skipSamplesPending = 0;
+    totalOutputSamples = 0;
+    totalSamplesExpected = -1;
 
     ogg_sync_init(&oy);
     return true;
@@ -95,7 +154,6 @@ bool OpusDecoderWrapper::initializeDecoder(int engineSamplerate, int engineChann
 std::pair<std::vector<float>, DecoderError> OpusDecoderWrapper::decode(std::vector<unsigned char>& buffer, int* samplerate, int* channels)
 {
     std::vector<float> decodedData;
-    ogg_int64_t total_samples_at_48khz = -1;
     bool eos_seen = false;
 
     if (buffer.empty())
@@ -103,9 +161,6 @@ std::pair<std::vector<float>, DecoderError> OpusDecoderWrapper::decode(std::vect
         return {decodedData, DecoderError::NoError};
     }
 
-    *samplerate = decodingSamplerate;
-    *channels = decodingChannels;
-    
     // Write data into ogg sync buffer
     char *oggBuffer = ogg_sync_buffer(&oy, buffer.size());
     memcpy(oggBuffer, buffer.data(), buffer.size());
@@ -115,8 +170,23 @@ std::pair<std::vector<float>, DecoderError> OpusDecoderWrapper::decode(std::vect
     // Read and process pages
     while (ogg_sync_pageout(&oy, &og) == 1)
     {
-        if (ogg_page_eos(&og)) {
-            total_samples_at_48khz = ogg_page_granulepos(&og);
+        if (ogg_page_eos(&og))
+        {
+            const ogg_int64_t granule = ogg_page_granulepos(&og);
+            if (granule >= 0)
+            {
+                if (headerParsed)
+                {
+                    int64_t trimmed = granule - opusInfo.pre_skip;
+                    if (trimmed < 0)
+                        trimmed = 0;
+                    totalSamplesExpected = (trimmed * decodingSamplerate + 47999) / 48000;
+                }
+                else
+                {
+                    totalSamplesExpected = (granule * decodingSamplerate + 47999) / 48000;
+                }
+            }
             eos_seen = true;
         }
 
@@ -130,29 +200,32 @@ std::pair<std::vector<float>, DecoderError> OpusDecoderWrapper::decode(std::vect
         }
 
         // Check if this is a new stream (different serial number)
-        if (streamInitialized && ogg_page_serialno(&og) != os.serialno) {
-            // Clean up old stream state
+        if (streamInitialized && ogg_page_serialno(&og) != os.serialno)
+        {
             ogg_stream_clear(&os);
-            opus_decoder_destroy(decoder);
-            decoder = opus_decoder_create(decodingSamplerate, decodingChannels, nullptr);
             streamInitialized = false;
             headerParsed = false;
             packetCount = 0;
-
-            // Initialize new stream
-            if (ogg_stream_init(&os, ogg_page_serialno(&og)) == 0) {
-                streamInitialized = true;
+            skipSamplesPending = 0;
+            totalOutputSamples = 0;
+            totalSamplesExpected = -1;
+            if (decoder)
+            {
+                opus_decoder_ctl(decoder, OPUS_RESET_STATE);
             }
         }
 
-        if (!streamInitialized) {
-            if (ogg_stream_init(&os, ogg_page_serialno(&og)) != 0) {
+        if (!streamInitialized)
+        {
+            if (ogg_stream_init(&os, ogg_page_serialno(&og)) != 0)
+            {
                 return {decodedData, DecoderError::FailedToCreateDecoder};
             }
             streamInitialized = true;
         }
 
-        if (ogg_stream_pagein(&os, &og) < 0) {
+        if (ogg_stream_pagein(&os, &og) < 0)
+        {
             continue;  // Skip corrupted page
         }
 
@@ -160,25 +233,27 @@ std::pair<std::vector<float>, DecoderError> OpusDecoderWrapper::decode(std::vect
         while (ogg_stream_packetout(&os, &op) == 1)
         {
             auto packetData = decodePacket(&op);
-            decodedData.insert(decodedData.end(), packetData.begin(), packetData.end());
+            if (!packetData.empty())
+            {
+                decodedData.insert(decodedData.end(), packetData.begin(), packetData.end());
+            }
         }
     }
 
-    if (total_samples_at_48khz != -1) {
-        size_t total_samples = (size_t)(total_samples_at_48khz * (double)decodingSamplerate / 48000.0);
-        size_t total_floats = total_samples * decodingChannels;
-        if (decodedData.size() > total_floats) {
-            decodedData.resize(total_floats);
-        }
-    }
+    *samplerate = decodingSamplerate;
+    *channels = decodingChannels;
 
-    if (eos_seen) {
-        const size_t fade_samples = (size_t)(decodingSamplerate * 0.005); // 5ms fade
-        if (fade_samples > 0 && decodingChannels > 0) {
+    if (eos_seen)
+    {
+        const size_t fade_samples = static_cast<size_t>(decodingSamplerate * 0.005); // 5ms fade
+        if (fade_samples > 0 && decodingChannels > 0)
+        {
             const size_t fade_floats = fade_samples * decodingChannels;
-            if (decodedData.size() > fade_floats) {
+            if (decodedData.size() > fade_floats)
+            {
                 size_t start_fade = decodedData.size() - fade_floats;
-                for (size_t i = 0; i < fade_floats; ++i) {
+                for (size_t i = 0; i < fade_floats; ++i)
+                {
                     float multiplier = 1.0f - (float)(i / decodingChannels) / (float)fade_samples;
                     decodedData[start_fade + i] *= multiplier;
                 }
@@ -246,17 +321,53 @@ std::vector<float> OpusDecoderWrapper::decodePacket(ogg_packet* packet)
         // Try to identify if this is an Opus header
         if (packet->bytes >= 8 && memcmp(packet->packet, "OpusHead", 8) == 0)
         {
-            // This is the Opus header, we could parse it for more info if needed
-            headerParsed = false;
-            opusInfo = parseOpusHead(packet);
+            try
+            {
+                opusInfo = parseOpusHead(packet);
+            }
+            catch (const std::exception &)
+            {
+                return packetPcm;
+            }
+
+            int desiredSampleRate = opusInfo.input_sample_rate > 0
+                                        ? static_cast<int>(opusInfo.input_sample_rate)
+                                        : 48000;
+            if (desiredSampleRate < 8000)
+                desiredSampleRate = 8000;
+            if (desiredSampleRate > 48000)
+                desiredSampleRate = 48000;
+
+            int desiredChannels = opusInfo.channels > 0 ? opusInfo.channels : decodingChannels;
+            if (desiredChannels <= 0)
+                desiredChannels = 1;
+            if (desiredChannels > 2)
+                desiredChannels = 2;
+
+            if (!ensureDecoder(desiredSampleRate, desiredChannels))
+            {
+                return packetPcm;
+            }
+
+            skipSamplesPending = static_cast<int>(
+                (static_cast<int64_t>(opusInfo.pre_skip) * decodingSamplerate + 47999) / 48000);
+            totalOutputSamples = 0;
+            totalSamplesExpected = -1;
         }
         else if (packet->bytes >= 8 && memcmp(packet->packet, "OpusTags", 8) == 0)
         {
             // This is the OpusTags packet
             headerParsed = true;
             getMetadata(packet);
+            skipSamplesPending = static_cast<int>(
+                (static_cast<int64_t>(opusInfo.pre_skip) * decodingSamplerate + 47999) / 48000);
         }
         packetCount++;
+        return packetPcm;
+    }
+
+    if (decoder == nullptr)
+    {
         return packetPcm;
     }
 
@@ -292,9 +403,48 @@ std::vector<float> OpusDecoderWrapper::decodePacket(ogg_packet* packet)
 
     if (samples > 0)
     {
+        int usableSamples = samples;
+        int skippedSamples = 0;
+
+        if (skipSamplesPending > 0)
+        {
+            const int toSkip = std::min(skipSamplesPending, usableSamples);
+            skipSamplesPending -= toSkip;
+            usableSamples -= toSkip;
+            skippedSamples = toSkip;
+        }
+
+        if (usableSamples <= 0)
+        {
+            return packetPcm;
+        }
+
+        int64_t allowedSamples = usableSamples;
+        if (totalSamplesExpected >= 0)
+        {
+            const int64_t remaining = totalSamplesExpected - totalOutputSamples;
+            if (remaining <= 0)
+            {
+                return packetPcm;
+            }
+            if (allowedSamples > remaining)
+            {
+                allowedSamples = remaining;
+            }
+        }
+
+        if (allowedSamples <= 0)
+        {
+            return packetPcm;
+        }
+
+        const size_t startIndex = static_cast<size_t>(skippedSamples) * decodingChannels;
+        const size_t floatsToCopy = static_cast<size_t>(allowedSamples) * decodingChannels;
+
         packetPcm.insert(packetPcm.end(),
-                         outputBuffer.begin(),
-                         outputBuffer.begin() + samples * decodingChannels);
+                         outputBuffer.begin() + startIndex,
+                         outputBuffer.begin() + startIndex + floatsToCopy);
+        totalOutputSamples += allowedSamples;
     }
     return packetPcm;
 }

@@ -19,7 +19,7 @@
             "name": "Flutter profile",
             "type": "dart",
             "request": "launch",
-            "program": "lib/main.dart",
+            "program": "lib/web_radio.dart",
             "flutterMode": "profile",
             // "env": {
             //     "NO_OPUS_OGG_LIBS": "1"
@@ -30,7 +30,7 @@
             "name": "Flutter release",
             "type": "dart",
             "request": "launch",
-            "program": "lib/buffer_stream/web_radio.dart",
+            "program": "lib/web_radio.dart",
             "flutterMode": "release",
             // "env": {
             //     "NO_OPUS_OGG_LIBS": "1"

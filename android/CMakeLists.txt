@@ -108,7 +108,7 @@ endif()
 # Support Android 15 16k page size
 target_link_options("${PLUGIN_NAME}" PRIVATE "-Wl,-z,max-page-size=16384")
 
-target_compile_options("${PLUGIN_NAME}" PRIVATE -Wall -Wno-error -fPIC -O3) #  -ldl -lpthread -lm
+target_compile_options("${PLUGIN_NAME}" PRIVATE -Wall -Wno-error -fPIC -O2) #  -ldl -lpthread -lm
 
 # List of absolute paths to libraries that should be bundled with the plugin.
 set(flutter_soloud_bundled_libraries
