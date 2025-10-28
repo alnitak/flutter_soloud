@@ -153,12 +153,17 @@ if(MSVC)
     /Ot     # Favor fast code
     /Ox     # Full optimization
     /fp:fast # Fast floating-point model
-    /arch:AVX2  # Use AVX2 instructions
+    /arch:SSE2  # Use SSE2 instructions
     /Qpar   # Auto-parallelize loops
     /O2     # Maximize speed
     /RTC-   # Disable runtime checks explicitly
   )
 
+  # Add debug info generation for release builds
+  set(OPTIMIZATION_FLAGS "${OPTIMIZATION_FLAGS} /Zi")
+  set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} /DEBUG /OPT:REF /OPT:ICF")
+  set(CMAKE_SHARED_LINKER_FLAGS_RELEASE "${CMAKE_SHARED_LINKER_FLAGS_RELEASE} /DEBUG /OPT:REF /OPT:ICF")
+  
   # Apply optimization flags to all configurations
   foreach(FLAG ${OPTIMIZATION_FLAGS})
     target_compile_options(${PLUGIN_NAME} PRIVATE ${FLAG})
@@ -174,6 +179,22 @@ if(MSVC)
     /WX-    # Disable warnings as errors
     ${OPTIMIZATION_FLAGS}
   )
+
+  # Create a custom target for copying PDB files
+  add_custom_target(copy_pdbs ALL
+    # copy to "build/windows/x64/runner/Release" dir
+    # COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    # "$<TARGET_FILE_DIR:${PLUGIN_NAME}>/${PLUGIN_NAME}.pdb"
+    # "${CMAKE_BINARY_DIR}/runner/$<CONFIG>/${PLUGIN_NAME}.pdb"
+    # copy to "build" dir
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    "$<TARGET_FILE_DIR:${PLUGIN_NAME}>/${PLUGIN_NAME}.pdb"
+    "${CMAKE_BINARY_DIR}/../../${PLUGIN_NAME}.pdb"
+    DEPENDS ${PLUGIN_NAME}
+    COMMENT "Copying PDB files to runner directory"
+    VERBATIM
+  )
+
 endif()
 
 # List of absolute paths to libraries that should be bundled with the plugin.
