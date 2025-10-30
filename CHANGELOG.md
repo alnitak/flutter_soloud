@@ -1,3 +1,8 @@
+#### 3.4.1 (30 Oct 2025)
+- crash when adding data as PCM data on v3.4.0 #348
+- builds failing for macOS with NO_OPUS_OGG_LIBS=1 #350
+- using AudioData.getAudioData, when wave data is zero, also the FFT data should be zero #349
+
 #### 3.4.0 (28 Oct 2025)
 - added support for OGG FLAC and its metadata to BufferStream #294
 - fix Opus BufferStream end clicks on short sounds #344. Thanks to @eddyleelin

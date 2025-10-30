@@ -954,12 +954,13 @@ extern "C"
         }
         float *wave = player.get()->getWave(isTheSameAsBefore);
         float *fft = analyzer.get()->calcFFT(wave);
+        
         if (*isTheSameAsBefore)
         {
             *samples = texture;
             return;
         }
-
+    
         memcpy(texture, fft, sizeof(float) * 256);
         memcpy(texture + 256, wave, sizeof(float) * 256);
         *samples = texture;
