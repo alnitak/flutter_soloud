@@ -49,7 +49,7 @@ public:
 	float mFreq[EQ_BANDS];
 	float mQ[EQ_BANDS];
 
-	ParametricEq3();
+	ParametricEq3(int channels);
 	virtual int getParamCount();
 	virtual const char* getParamName(unsigned int aParamIndex);
 	virtual unsigned int getParamType(unsigned int aParamIndex);
@@ -57,6 +57,8 @@ public:
 	virtual float getParamMin(unsigned int aParamIndex);
 	SoLoud::result setParam(unsigned int aParamIndex, float aValue);
 	virtual SoLoud::FilterInstance *createInstance();
+
+	int mChannels;
 };
 
 #endif

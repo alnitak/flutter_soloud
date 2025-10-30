@@ -16,15 +16,16 @@ ParametricEq3Instance::ParametricEq3Instance(ParametricEq3 *aParent)
     mParam[ParametricEq3::MID] = aParent->mGain[1];
     mParam[ParametricEq3::TREBLE] = aParent->mGain[2];
 
-	mInputBuffer[0] = 0;
-	mMixBuffer[0] = 0;
-	mTemp = 0;
-	for (int i = 0; i < MAX_CHANNELS; i++)
-	{
-		mInputOffset[i] = STFT_WINDOW_SIZE;
-		mMixOffset[i] = STFT_WINDOW_HALF;
-		mReadOffset[i] = 0;
-	}
+    // Initialize all pointers to null
+    mTemp = nullptr;
+    for (int i = 0; i < MAX_CHANNELS; i++)
+    {
+        mInputBuffer[i] = nullptr;
+        mMixBuffer[i] = nullptr;
+        mInputOffset[i] = STFT_WINDOW_SIZE;
+        mMixOffset[i] = STFT_WINDOW_HALF;
+        mReadOffset[i] = 0;
+    }
 }
 
 void ParametricEq3Instance::comp2MagPhase(float* aFFTBuffer, unsigned int aSamples)
@@ -51,29 +52,51 @@ void ParametricEq3Instance::magPhase2Comp(float* aFFTBuffer, unsigned int aSampl
 
 ParametricEq3Instance::~ParametricEq3Instance()
 {
-	for (int i = 0; i < MAX_CHANNELS; i++)
-	{
-		delete[] mInputBuffer[i];
-		delete[] mMixBuffer[i];
-	}
-	delete[] mTemp;
+    // Safely delete all allocated buffers
+    for (int i = 0; i < MAX_CHANNELS; i++)
+    {
+        if (mInputBuffer[i] != nullptr)
+        {
+            delete[] mInputBuffer[i];
+            mInputBuffer[i] = nullptr;
+        }
+        if (mMixBuffer[i] != nullptr)
+        {
+            delete[] mMixBuffer[i];
+            mMixBuffer[i] = nullptr;
+        }
+    }
+    if (mTemp != nullptr)
+    {
+        delete[] mTemp;
+        mTemp = nullptr;
+    }
 }
 
 void ParametricEq3Instance::filterChannel(float *aBuffer, unsigned int aSamples, float aSamplerate, SoLoud::time aTime, unsigned int aChannel, unsigned int aChannels)
 {
     if (aChannel == 0)
-	{
-		updateParams(aTime);
-	}
+    {
+        updateParams(aTime);
+    }
 
-	if (mInputBuffer[aChannel] == 0)
-	{
-		mInputBuffer[aChannel] = new float[STFT_WINDOW_TWICE];
-		mMixBuffer[aChannel] = new float[STFT_WINDOW_TWICE];
-		mTemp = new float[STFT_WINDOW_SIZE];
-		memset(mInputBuffer[aChannel], 0, sizeof(float) * STFT_WINDOW_TWICE);
-		memset(mMixBuffer[aChannel], 0, sizeof(float) * STFT_WINDOW_TWICE);
-	}
+    // Check if we're within bounds
+    if (aChannel >= MAX_CHANNELS)
+    {
+        return;
+    }
+
+    // Lazy initialization of buffers
+    if (mInputBuffer[aChannel] == nullptr)
+    {
+        mInputBuffer[aChannel] = new float[STFT_WINDOW_TWICE]();  // () initializes to zero
+        mMixBuffer[aChannel] = new float[STFT_WINDOW_TWICE]();
+        
+        if (mTemp == nullptr)
+        {
+            mTemp = new float[STFT_WINDOW_SIZE]();
+        }
+    }
 
 	unsigned int ofs = 0;
 	unsigned int chofs = 0;
@@ -195,7 +218,7 @@ unsigned int ParametricEq3::getParamType(unsigned int aParamIndex)
 float ParametricEq3::getParamMax(unsigned int aParamIndex)
 {
 	if (aParamIndex == 0) return 1; 
-	return 2.0f;
+	return 4.0f;
 }
 
 float ParametricEq3::getParamMin(unsigned int aParamIndex)
@@ -204,8 +227,10 @@ float ParametricEq3::getParamMin(unsigned int aParamIndex)
 	return 0.0f;
 }
 
-ParametricEq3::ParametricEq3()
+ParametricEq3::ParametricEq3(int channels)
 {
+	mChannels = channels;
+	
 	mGain[0] = 1.0f;
 	mFreq[0] = 250.0f;
 	mQ[0] = 0.707f;

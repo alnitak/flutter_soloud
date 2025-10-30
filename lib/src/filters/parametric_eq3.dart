@@ -11,7 +11,7 @@ enum ParametricEq3Enum {
   treble;
 
   final List<double> _mins = const [0, 0, 0, 0];
-  final List<double> _maxs = const [1, 2, 2, 2];
+  final List<double> _maxs = const [1, 4, 4, 4];
   final List<double> _defs = const [1, 1, 1, 1];
 
   double get min => _mins[index];
@@ -29,7 +29,7 @@ enum ParametricEq3Enum {
 
 abstract class _ParametricEq3Internal extends FilterBase {
   const _ParametricEq3Internal(SoundHash? soundHash)
-      : super(FilterType.echoFilter, soundHash);
+      : super(FilterType.parametricEq3, soundHash);
 
   ParametricEq3Enum get queryWet => ParametricEq3Enum.wet;
   ParametricEq3Enum get queryBass => ParametricEq3Enum.bass;

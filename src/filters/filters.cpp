@@ -162,7 +162,7 @@ std::vector<std::string> Filters::getFilterParamNames(FilterType filterType)
     break;
     case ParametricEQ3Filter:
     {
-        ParametricEq3 f;
+        ParametricEq3 f(mSoloud->mChannels);
         int nParams = f.getParamCount();
         for (int i = 0; i < nParams; i++)
         {
@@ -227,7 +227,7 @@ PlayerErrors Filters::addFilter(FilterType filterType)
         newFilter = new Compressor(mSoloud->mSamplerate);
         break;
     case ParametricEQ3Filter:
-        newFilter = new ParametricEq3();
+        newFilter = new ParametricEq3(mSoloud->mChannels);
         break;
     default:
         return filterNotFound;
