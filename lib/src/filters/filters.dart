@@ -13,6 +13,7 @@ import 'package:flutter_soloud/src/filters/flanger_filter.dart';
 import 'package:flutter_soloud/src/filters/freeverb_filter.dart';
 import 'package:flutter_soloud/src/filters/limiter.dart';
 import 'package:flutter_soloud/src/filters/lofi_filter.dart';
+import 'package:flutter_soloud/src/filters/parametric_eq3.dart';
 import 'package:flutter_soloud/src/filters/pitchshift_filter.dart';
 import 'package:flutter_soloud/src/filters/robotize_filter.dart';
 import 'package:flutter_soloud/src/filters/wave_shaper_filter.dart';
@@ -154,6 +155,7 @@ final class FiltersSingle {
   ///
   /// - `releaseTime`: The release time in milliseconds. Determines how quickly
   /// the gain reduction recovers after a signal drops below the threshold.
+  @experimental
   LimiterSingle get limiterFilter => LimiterSingle(soundHash);
 
   /// The `Compressor` filter for this sound.
@@ -183,7 +185,11 @@ final class FiltersSingle {
   /// This filter is not part of SoLoud C++ lib and the source code is
   /// experimental and can be found
   /// [here](https://github.com/alnitak/flutter_soloud/blob/main/src/filters/compressor.cpp#L24)
+  @experimental
   CompressorSingle get compressorFilter => CompressorSingle(soundHash);
+
+  @experimental
+  ParametricEq3Single get parametricEq3 => ParametricEq3Single(soundHash);
 }
 
 /// Filters instance used in [SoLoud.filters]. This differentiate from the
@@ -311,6 +317,9 @@ final class FiltersGlobal {
   /// [here](https://github.com/alnitak/flutter_soloud/blob/main/src/filters/compressor.cpp#L24)
   @experimental
   CompressorGlobal get compressorFilter => const CompressorGlobal();
+  
+  @experimental
+  ParametricEq3Global get parametricEq3Filter => const ParametricEq3Global();
 }
 
 /// Common class for single and global filters.
@@ -443,7 +452,10 @@ enum FilterType {
   limiterFilter,
 
   /// A compressor filter.
-  compressorFilter;
+  compressorFilter,
+  
+  /// A parametric 3 bands equalizer filter.
+  parametricEq3;
 
   @override
   String toString() => switch (this) {
@@ -459,6 +471,7 @@ enum FilterType {
         FilterType.pitchShiftFilter => 'Pitchshift',
         FilterType.limiterFilter => 'Limiter',
         FilterType.compressorFilter => 'Compressor',
+        FilterType.parametricEq3 => 'Parametric EQ3',
       };
 
   /// The number of parameter this filter owns.
@@ -475,6 +488,7 @@ enum FilterType {
         FilterType.pitchShiftFilter => 3,
         FilterType.limiterFilter => 5,
         FilterType.compressorFilter => 8,
+        FilterType.parametricEq3 => 4,
       };
 
   /// Activate this filter. If [soundHash] is null this filter is applied

@@ -20,6 +20,7 @@
 #include "soloud_freeverbfilter.h"
 #include "limiter.h"
 #include "compressor.h"
+#include "parametric_eq3_filter.h"
 
 Filters::Filters(SoLoud::Soloud *soloud, ActiveSound *sound)
     : mSoloud(soloud), mSound(sound) {}
@@ -159,6 +160,16 @@ std::vector<std::string> Filters::getFilterParamNames(FilterType filterType)
         }
     }
     break;
+    case ParametricEQ3Filter:
+    {
+        ParametricEq3 f;
+        int nParams = f.getParamCount();
+        for (int i = 0; i < nParams; i++)
+        {
+            ret.push_back(f.getParamName(i));
+        }
+    }
+    break;
     }
 
     return ret;
@@ -214,6 +225,9 @@ PlayerErrors Filters::addFilter(FilterType filterType)
         break;
     case CompressorFilter:
         newFilter = new Compressor(mSoloud->mSamplerate);
+        break;
+    case ParametricEQ3Filter:
+        newFilter = new ParametricEq3();
         break;
     default:
         return filterNotFound;
