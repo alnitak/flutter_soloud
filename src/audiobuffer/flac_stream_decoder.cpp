@@ -1,3 +1,5 @@
+#if !defined(NO_OPUS_OGG_LIBS)
+
 #include "flac_stream_decoder.h"
 #include "../common.h"
 #include <iostream>
@@ -298,3 +300,5 @@ void FlacDecoderWrapper::getMetadata()
         onTrackChange(m_metadata);
     }
 }
+
+#endif // #if !defined(NO_OPUS_OGG_LIBS)
