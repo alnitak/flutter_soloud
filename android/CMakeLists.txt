@@ -53,6 +53,7 @@ list(APPEND PLUGIN_SOURCES
   "${SRC_DIR}/filters/smbPitchShift.cpp"
   "${SRC_DIR}/filters/limiter.cpp"
   "${SRC_DIR}/filters/compressor.cpp"
+  "${SRC_DIR}/filters/parametric_eq3_filter.cpp"
   ${TARGET_SOURCES}
 )
 
