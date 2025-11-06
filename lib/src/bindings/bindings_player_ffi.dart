@@ -540,6 +540,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       audioChunkPtr,
       audioChunk.length,
     );
+    calloc.free(audioChunkPtr);
     return PlayerErrors.values[e];
   }
 
