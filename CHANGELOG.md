@@ -1,3 +1,6 @@
+#### 3.4.2 (X XXX 2025)
+- fix Android: NO_OPUS_OGG_LIBS for Android build used in `gradle.properties` not always worked #358 
+
 #### 3.4.1 (30 Oct 2025)
 - crash when adding data as PCM data on v3.4.0 #348
 - builds failing for macOS with NO_OPUS_OGG_LIBS=1 #350

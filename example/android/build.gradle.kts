@@ -4,7 +4,7 @@ allprojects {
         mavenCentral()
     }
 
-    // uncomment to disable opus support
+    // uncomment to disable OGG support
     // extra["NO_OPUS_OGG_LIBS"] = "true"
 }
 
