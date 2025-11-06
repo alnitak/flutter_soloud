@@ -76,7 +76,7 @@ target_include_directories(${PLUGIN_NAME} INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}
 target_link_libraries(${PLUGIN_NAME} PRIVATE ${log-lib} android)
 
 
-if(NOT DEFINED ENV{NO_OPUS_OGG_LIBS})
+if(NOT DEFINED NO_OPUS_OGG_LIBS AND NOT DEFINED ENV{NO_OPUS_OGG_LIBS})
     message("NO_OPUS_OGG_LIBS has not been set. Linking Opus and Ogg libraries!")
 
     # Add FLAC library
