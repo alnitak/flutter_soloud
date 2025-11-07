@@ -1,4 +1,6 @@
+
 #### 3.4.2 (XX XXX 2025)
+- fix Android: NO_OPUS_OGG_LIBS for Android build used in `gradle.properties` not always worked #358. And Thanks to @mingjunsiek #361 #354
 - fix: memory leak in FlutterSoLoudFfi.addAudioDataStream #359. Thanks to @DarthRainbows
 
 #### 3.4.1 (30 Oct 2025)
