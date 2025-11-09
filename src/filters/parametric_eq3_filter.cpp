@@ -1,31 +1,60 @@
 #include <string.h>
 #include <math.h>
+#include <string>
+#include <algorithm>
 #include "soloud.h"
-#include "soloud_fft.h"
 #include "parametric_eq3_filter.h"
 
-#define STFT_WINDOW_SIZE 256
+// TODO: make this globally in the SoLoud Engine and let the user set it. To be used also for visualization?
+#define STFT_WINDOW_SIZE 1024  // Increased for better frequency resolution
 #define STFT_WINDOW_HALF (STFT_WINDOW_SIZE / 2)
 #define STFT_WINDOW_TWICE (STFT_WINDOW_SIZE * 2)
+#define FFT_SCALE (1.0f / STFT_WINDOW_SIZE)
 
 ParametricEq3Instance::ParametricEq3Instance(ParametricEq3 *aParent)
 {
     mParent = aParent;
-    initParams(ParametricEq3::PARAM_COUNT);
-    mParam[ParametricEq3::BASS] = aParent->mGain[0];
-    mParam[ParametricEq3::MID] = aParent->mGain[1];
-    mParam[ParametricEq3::TREBLE] = aParent->mGain[2];
+    // initialize filter parameters (wet + bands)
+    initParams(aParent->getParamCount());
+    // ensure internal Wet param is set to 1, not used in EQ (yet?)
+    mParam[0] = 1.0f;
 
-    // Initialize all pointers to null
-    mTemp = nullptr;
-    for (int i = 0; i < MAX_CHANNELS; i++)
+    // copy band gains into parameter slots (params[1..bands])
+    mBands = aParent->mBands;
+    for (int i = 0; i < mBands; i++)
     {
-        mInputBuffer[i] = nullptr;
-        mMixBuffer[i] = nullptr;
+        mParam[1 + i] = aParent->mGain[i];
+    }
+
+    // Initialize FFT setup for complex transforms
+    mFFTSetup = pffft_new_setup(STFT_WINDOW_SIZE, PFFFT_COMPLEX);
+    
+    // Allocate aligned buffers for FFT
+    mFFTBuffer = (float*)pffft_aligned_malloc(STFT_WINDOW_TWICE * sizeof(float));
+    mFFTWork = (float*)pffft_aligned_malloc(STFT_WINDOW_TWICE * sizeof(float));
+    mTemp = (float*)pffft_aligned_malloc(STFT_WINDOW_TWICE * sizeof(float));
+
+    // Initialize channel buffers and offsets
+    for (int i = 0; i < mParent->mChannels; i++)
+    {
+        mInputBuffer[i] = nullptr;  // Will be lazily initialized when needed
+        mMixBuffer[i] = nullptr;    // Will be lazily initialized when needed
         mInputOffset[i] = STFT_WINDOW_SIZE;
         mMixOffset[i] = STFT_WINDOW_HALF;
         mReadOffset[i] = 0;
     }
+
+    // Precompute band centers and boundaries (boundaries are midpoints)
+    mBandCenter.resize(mBands);
+    mBandBoundary.resize(mBands + 1);
+    for (int i = 0; i < mBands; i++) mBandCenter[i] = aParent->mFreq[i];
+    // boundaries: first = 0, last = +inf (will be clamped to Nyquist when used)
+    mBandBoundary[0] = 0.0f;
+    for (int i = 0; i < mBands - 1; i++)
+    {
+        mBandBoundary[i + 1] = 0.5f * (mBandCenter[i] + mBandCenter[i + 1]);
+    }
+    mBandBoundary[mBands] = 1e9f; // effectively infinity for the upper bound
 }
 
 void ParametricEq3Instance::comp2MagPhase(float* aFFTBuffer, unsigned int aSamples)
@@ -52,8 +81,32 @@ void ParametricEq3Instance::magPhase2Comp(float* aFFTBuffer, unsigned int aSampl
 
 ParametricEq3Instance::~ParametricEq3Instance()
 {
-    // Safely delete all allocated buffers
-    for (int i = 0; i < MAX_CHANNELS; i++)
+    // Free PFFFT resources
+    if (mFFTSetup != nullptr)
+    {
+        pffft_destroy_setup(mFFTSetup);
+        mFFTSetup = nullptr;
+    }
+    
+    // Free aligned buffers
+    if (mFFTBuffer != nullptr)
+    {
+        pffft_aligned_free(mFFTBuffer);
+        mFFTBuffer = nullptr;
+    }
+    if (mFFTWork != nullptr)
+    {
+        pffft_aligned_free(mFFTWork);
+        mFFTWork = nullptr;
+    }
+    if (mTemp != nullptr)
+    {
+        pffft_aligned_free(mTemp);
+        mTemp = nullptr;
+    }
+    
+    // Free channel buffers
+    for (int i = 0; i < mParent->mChannels; i++)
     {
         if (mInputBuffer[i] != nullptr)
         {
@@ -66,11 +119,6 @@ ParametricEq3Instance::~ParametricEq3Instance()
             mMixBuffer[i] = nullptr;
         }
     }
-    if (mTemp != nullptr)
-    {
-        delete[] mTemp;
-        mTemp = nullptr;
-    }
 }
 
 void ParametricEq3Instance::filterChannel(float *aBuffer, unsigned int aSamples, float aSamplerate, SoLoud::time aTime, unsigned int aChannel, unsigned int aChannels)
@@ -80,22 +128,11 @@ void ParametricEq3Instance::filterChannel(float *aBuffer, unsigned int aSamples,
         updateParams(aTime);
     }
 
-    // Check if we're within bounds
-    if (aChannel >= MAX_CHANNELS)
-    {
-        return;
-    }
-
-    // Lazy initialization of buffers
+    // Lazy initialization of buffers for this channel
     if (mInputBuffer[aChannel] == nullptr)
     {
         mInputBuffer[aChannel] = new float[STFT_WINDOW_TWICE]();  // () initializes to zero
         mMixBuffer[aChannel] = new float[STFT_WINDOW_TWICE]();
-        
-        if (mTemp == nullptr)
-        {
-            mTemp = new float[STFT_WINDOW_SIZE]();
-        }
     }
 
 	unsigned int ofs = 0;
@@ -117,20 +154,31 @@ void ParametricEq3Instance::filterChannel(float *aBuffer, unsigned int aSamples,
 					
 		if ((inputofs & (STFT_WINDOW_HALF - 1)) == 0)
 		{
+			// Copy input to FFT buffer (interleaved real/imag format)
 			for (int i = 0; i < STFT_WINDOW_SIZE; i++)
 			{
-				mTemp[i] = mInputBuffer[aChannel][chofs + ((inputofs + STFT_WINDOW_TWICE - STFT_WINDOW_HALF + i) & (STFT_WINDOW_TWICE - 1))];
+				float sample = mInputBuffer[aChannel][chofs + ((inputofs + STFT_WINDOW_TWICE - STFT_WINDOW_HALF + i) & (STFT_WINDOW_TWICE - 1))];
+				mFFTBuffer[i * 2] = sample;     // Real part
+				mFFTBuffer[i * 2 + 1] = 0.0f;   // Imaginary part
 			}
 			
-			SoLoud::FFT::fft(mTemp, STFT_WINDOW_SIZE);
 
-			fftFilterChannel(mTemp, STFT_WINDOW_HALF, aSamplerate, aTime, aChannel, aChannels);
+            // Forward FFT (ordered output: interleaved complex numbers)
+            pffft_transform_ordered(mFFTSetup, mFFTBuffer, mTemp, mFFTWork, PFFFT_FORWARD);
 
-			SoLoud::FFT::ifft(mTemp, STFT_WINDOW_SIZE);
+            // Apply EQ on the transformed complex bins (process all N complex bins)
+            fftFilterChannel(mTemp, STFT_WINDOW_SIZE, aSamplerate, aTime, aChannel, aChannels);
+
+
+            // Inverse FFT (ordered output)
+            pffft_transform_ordered(mFFTSetup, mTemp, mFFTBuffer, mFFTWork, PFFFT_BACKWARD);
 			
+			// Apply scaling and Hann window for overlap-add
 			for (int i = 0; i < STFT_WINDOW_SIZE; i++)
 			{
-				mMixBuffer[aChannel][chofs + (mixofs & (STFT_WINDOW_TWICE - 1))] += mTemp[i] * ((float)STFT_WINDOW_HALF - abs(STFT_WINDOW_HALF - i)) * (1.0f / (float)STFT_WINDOW_HALF);
+                float window = 0.5f * (1.0f - cosf((2.0f * M_PI * i) / STFT_WINDOW_SIZE));
+                float sample = mFFTBuffer[i * 2] * FFT_SCALE * window;  // Only use real part
+                mMixBuffer[aChannel][chofs + (mixofs & (STFT_WINDOW_TWICE - 1))] += sample;
 				mixofs++;					
 			}
 			mixofs -= STFT_WINDOW_HALF;
@@ -152,34 +200,53 @@ void ParametricEq3Instance::filterChannel(float *aBuffer, unsigned int aSamples,
 void ParametricEq3Instance::fftFilterChannel(float *aFFTBuffer, unsigned int aSamples, float aSamplerate, SoLoud::time /*aTime*/, unsigned int /*aChannel*/, unsigned int /*aChannels*/)
 {
     comp2MagPhase(aFFTBuffer, aSamples);
-
-    float bass_gain = mParam[ParametricEq3::BASS];
-    float mid_gain = mParam[ParametricEq3::MID];
-    float treble_gain = mParam[ParametricEq3::TREBLE];
-
-    float bass_freq_end = mParent->mFreq[0];
-    float mid_freq_start = bass_freq_end;
-    float mid_freq_end = mParent->mFreq[1];
-    float treble_freq_start = mid_freq_end;
-
+    // Triangular interpolation across user-configured bands.
+    // mBandCenter holds band centers, mBandBoundary has midpoints between centers (size mBands+1)
+    float nyquist = aSamplerate * 0.5f;
     for (unsigned int i = 0; i < aSamples; i++)
     {
         float current_freq = (float)i * aSamplerate / (float)(aSamples*2);
-        
-        float gain = 1.0f;
-        if (current_freq <= bass_freq_end)
+
+        float gain = 0.0f;
+        float weight_sum = 0.0f;
+
+        for (int b = 0; b < mBands; b++)
         {
-            gain = bass_gain;
+            float center = mBandCenter[b];
+            float low = mBandBoundary[b];
+            float high = mBandBoundary[b + 1];
+            // clamp upper boundary to nyquist
+            if (high > nyquist) high = nyquist;
+
+            // half width for triangular window
+            float halfwidth = std::max(center - low, high - center);
+            float weight = 0.0f;
+            if (halfwidth > 0.0f)
+            {
+                float d = fabsf(current_freq - center);
+                float w = 1.0f - (d / halfwidth);
+                if (w > 0.0f) weight = w;
+            }
+            else
+            {
+                // degenerate: treat only exact center
+                weight = (fabsf(current_freq - center) < 1e-6f) ? 1.0f : 0.0f;
+            }
+
+            float bandGain = mParam[1 + b]; // param index 1..mBands -> band gains
+            gain += bandGain * weight;
+            weight_sum += weight;
         }
-        else if (current_freq > mid_freq_start && current_freq <= mid_freq_end)
+
+        if (weight_sum > 0.0f)
         {
-            gain = mid_gain;
+            gain /= weight_sum; // normalize so overlapping triangles sum to 1
         }
-        else if (current_freq > treble_freq_start)
+        else
         {
-            gain = treble_gain;
+            gain = 0.0f; // default: unity if no band matches
         }
-        
+
         aFFTBuffer[i*2] *= gain;
     }
 
@@ -188,60 +255,69 @@ void ParametricEq3Instance::fftFilterChannel(float *aFFTBuffer, unsigned int aSa
 
 SoLoud::result ParametricEq3::setParam(unsigned int aParamIndex, float aValue)
 {
-	if (aParamIndex < 1 || aParamIndex > 3) return SoLoud::INVALID_PARAMETER;
-
-	mGain[aParamIndex - 1] = aValue;
-	return SoLoud::SO_NO_ERROR;
+    // Not used. PArameters are read in the ParametricEq3Instance and set in the FilterInstance
+    return SoLoud::SO_NO_ERROR;
 }
 
 int ParametricEq3::getParamCount()
 {
-	return PARAM_COUNT;
+    return 1 + mBands; // wet + per-band gains
 }
 
 const char* ParametricEq3::getParamName(unsigned int aParamIndex)
 {
-	switch (aParamIndex)
-	{
-	case BASS: return "Bass";
-	case MID: return "Mid";
-	case TREBLE: return "Treble";
-	}
-	return "Wet";
+    if (aParamIndex == 0) return "Wet";
+    static thread_local std::string s;
+    unsigned int band = aParamIndex; // 1-based
+    s = std::string("Band") + std::to_string(band);
+    return s.c_str();
 }
 
 unsigned int ParametricEq3::getParamType(unsigned int aParamIndex)
 {
-	return FLOAT_PARAM;
+    return FLOAT_PARAM;
 }
 
 float ParametricEq3::getParamMax(unsigned int aParamIndex)
 {
-	if (aParamIndex == 0) return 1; 
-	return 4.0f;
+    if (aParamIndex == 0) return 1;
+    return 4.0f;
 }
 
 float ParametricEq3::getParamMin(unsigned int aParamIndex)
 {
-	if (aParamIndex == 0) return 0;
-	return 0.0f;
+    if (aParamIndex == 0) return 0;
+    return 0.0f;
 }
 
-ParametricEq3::ParametricEq3(int channels)
+ParametricEq3::ParametricEq3(int channels, int bands)
 {
-	mChannels = channels;
-	
-	mGain[0] = 1.0f;
-	mFreq[0] = 250.0f;
-	mQ[0] = 0.707f;
+    mChannels = channels;
+    mBands = std::max(1, bands);
 
-	mGain[1] = 1.0f;
-	mFreq[1] = 2000.0f;
-	mQ[1] = 1.0f;
+    // resize vectors
+    mGain.assign(mBands, 1.0f);
+    mFreq.resize(mBands);
+    // Not used because the filter's shape is determined by triangular windows
+    // calculated from the midpoints between band center frequencies.
+    // Will be removed.
+    mQ.assign(mBands, 0.707f);
 
-	mGain[2] = 1.0f;
-	mFreq[2] = 6000.0f;
-	mQ[2] = 0.707f;
+    // default frequency distribution: geometric spacing between 60Hz and 10000Hz
+    float f0 = 60.0f;
+    float f1 = 10000.0f;
+    if (mBands == 1)
+    {
+        mFreq[0] = 1000.0f;
+    }
+    else
+    {
+        for (int i = 0; i < mBands; i++)
+        {
+            float t = (float)i / (float)(mBands - 1);
+            mFreq[i] = f0 * powf(f1 / f0, t);
+        }
+    }
 }
 
 SoLoud::FilterInstance *ParametricEq3::createInstance()
