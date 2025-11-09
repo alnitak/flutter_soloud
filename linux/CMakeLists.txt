@@ -39,6 +39,7 @@ list(APPEND PLUGIN_SOURCES
   "${SRC_DIR}/bindings.cpp"
   "${SRC_DIR}/player.cpp"
   "${SRC_DIR}/analyzer.cpp"
+  "${SRC_DIR}/pffft/pffft.c"
   "${SRC_DIR}/synth/basic_wave.cpp"
   "${SRC_DIR}/waveform/waveform.cpp"
   "${SRC_DIR}/waveform/miniaudio_libvorbis.cpp"
