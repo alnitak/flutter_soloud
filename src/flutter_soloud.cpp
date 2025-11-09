@@ -104,6 +104,7 @@
 #include "waveform/waveform.cpp"
 #include "waveform/miniaudio_libvorbis.cpp"
 #include "audiobuffer/audiobuffer.cpp"
+#include "pffft/pffft.c"
 #include "audiobuffer/stream_decoder.cpp"
 #include "audiobuffer/flac_stream_decoder.cpp"
 #include "audiobuffer/opus_stream_decoder.cpp"

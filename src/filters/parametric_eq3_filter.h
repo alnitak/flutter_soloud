@@ -11,10 +11,10 @@ class ParametricEq3;
 class ParametricEq3Instance : public SoLoud::FilterInstance
 {
 	ParametricEq3 *mParent;
-	float* mBuffer;          // Temporary buffer for FFT processing
-	float* mWindow;          // Window function coefficients
-	unsigned int mBufferSize;
-	unsigned int mBufferPos;
+	// float* mBuffer;          // Temporary buffer for FFT processing
+	// float* mWindow;          // Window function coefficients
+	// unsigned int mBufferSize;
+	// unsigned int mBufferPos;
 	float *mInputBuffer[MAX_CHANNELS];
 	float *mMixBuffer[MAX_CHANNELS];
 	float *mTemp;
