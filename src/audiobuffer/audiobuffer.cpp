@@ -71,10 +71,14 @@ namespace SoLoud
 
 		unsigned int bufferSize = mParent->mBuffer.getFloatsBufferSize();
 		float *buffer = reinterpret_cast<float *>(mParent->mBuffer.buffer.data());
-		int samplesToRead = mOffset + aSamplesToRead > bufferSize ? bufferSize - mOffset : aSamplesToRead;
+		int samplesToRead = aSamplesToRead;
+		if (mOffset + (unsigned int)samplesToRead * mChannels > bufferSize)
+		{
+			samplesToRead = (bufferSize - mOffset) / mChannels;
+		}
 		if (samplesToRead <= 0)
 		{
-			memset(aBuffer, 0, sizeof(float) * aSamplesToRead);
+			memset(aBuffer, 0, sizeof(float) * aSamplesToRead * mChannels);
 			// Calculate mStreamPosition based on mOffset
 			mStreamPosition = mOffset / (float)(mBaseSamplerate * mChannels);
 
@@ -92,7 +96,7 @@ namespace SoLoud
 
 		if (samplesToRead != aSamplesToRead)
 		{
-			memset(aBuffer, 0, sizeof(float) * aSamplesToRead);
+			memset(aBuffer, 0, sizeof(float) * aSamplesToRead * mChannels);
 		}
 
 		if (mChannels == 1)
@@ -110,7 +114,7 @@ namespace SoLoud
 			{
 				for (i = 0; i < samplesToRead; i++)
 				{
-					aBuffer[j * samplesToRead + i] = buffer[mOffset + i * mChannels + j];
+					aBuffer[j * aSamplesToRead + i] = buffer[mOffset + i * mChannels + j];
 				}
 			}
 		}
