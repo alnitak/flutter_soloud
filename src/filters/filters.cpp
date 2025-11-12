@@ -141,7 +141,7 @@ std::vector<std::string> Filters::getFilterParamNames(FilterType filterType)
     break;
     case LimiterFilter:
     {
-        Limiter f;
+        Limiter f(mSoloud->mSamplerate);
         int nParams = f.getParamCount();
         for (int i = 0; i < nParams; i++)
         {
@@ -210,7 +210,7 @@ PlayerErrors Filters::addFilter(FilterType filterType)
         newFilter = new PitchShift();
         break;
     case LimiterFilter:
-        newFilter = new Limiter();
+        newFilter = new Limiter(mSoloud->mSamplerate);
         break;
     case CompressorFilter:
         newFilter = new Compressor(mSoloud->mSamplerate);

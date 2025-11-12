@@ -1,6 +1,7 @@
 
 #### 3.4.3 (XX Xxx 2025)
 - fix Android: crashes after opus stream playback #365
+- fix: Compressor seems to introduce "choppy" sound #367
 
 #### 3.4.2 (8 Nov 2025)
 - fix Android: NO_OPUS_OGG_LIBS for Android build used in `gradle.properties` not always worked #358. And Thanks to @mingjunsiek #361 #354

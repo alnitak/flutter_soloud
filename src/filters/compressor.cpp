@@ -19,6 +19,8 @@ CompressorInstance::CompressorInstance(Compressor *aParent)
 
     attackCoef = expf(-1.0f / (mParam[Compressor::ATTACK_TIME] * 0.001f * mParent->mSamplerate));
     releaseCoef = expf(-1.0f / (mParam[Compressor::RELEASE_TIME] * 0.001f * mParent->mSamplerate));
+
+    mEnvelope.assign(8, 0.0f);
 }
 
 void CompressorInstance::filter(
@@ -34,9 +36,11 @@ void CompressorInstance::filter(
     // Convert makeup gain to a linear scale
     float makeupGainLin = powf(10.0f, mParam[Compressor::MAKEUP_GAIN] / 20.0f);
 
-    float envelope = 0.0f;
+    if (mEnvelope.size() != aChannels) {
+        mEnvelope.resize(aChannels, 0.0f);
+    }
 
-    for (unsigned int i = 0; i < aBufferSize; ++i) {
+    for (unsigned int i = 0; i < aSamples; ++i) {
         for (unsigned int ch = 0; ch < aChannels; ++ch) {
             float *sample = &aBuffer[i * aChannels + ch];
             float inputLevel = fabsf(*sample);
@@ -45,22 +49,23 @@ void CompressorInstance::filter(
             float inputLevelDb = 20.0f * log10f(fmaxf(inputLevel, 1e-8f));
 
             // Smooth the envelope
-            if (inputLevelDb > envelope) {
-                envelope = attackCoef * (envelope - inputLevelDb) + inputLevelDb;
+            if (inputLevelDb > mEnvelope[ch]) {
+                mEnvelope[ch] = attackCoef * (mEnvelope[ch] - inputLevelDb) + inputLevelDb;
             } else {
-                envelope = releaseCoef * (envelope - inputLevelDb) + inputLevelDb;
+                mEnvelope[ch] = releaseCoef * (mEnvelope[ch] - inputLevelDb) + inputLevelDb;
             }
 
             // Determine gain reduction in dB
             float gainReductionDb = 0.0f;
-            if (envelope > mParam[Compressor::THRESHOLD]) {
-                if (envelope < (mParam[Compressor::THRESHOLD] + mParam[Compressor::KNEE_WIDTH])) {
+            float knee = mParam[Compressor::KNEE_WIDTH];
+            if (mEnvelope[ch] > (mParam[Compressor::THRESHOLD] - knee / 2.0f)) {
+                if (knee > 0 && mEnvelope[ch] < (mParam[Compressor::THRESHOLD] + knee / 2.0f)) {
                     // Soft knee region
-                    float delta = envelope - mParam[Compressor::THRESHOLD];
-                    gainReductionDb = (1.0f - (1.0f / mParam[Compressor::RATIO])) * powf(delta / mParam[Compressor::KNEE_WIDTH], 2.0f) * delta;
+                    float x = mEnvelope[ch] - mParam[Compressor::THRESHOLD] + knee / 2.0f;
+                    gainReductionDb = (1.0f / mParam[Compressor::RATIO] - 1.0f) * (x * x) / (2.0f * knee);
                 } else {
                     // Hard knee
-                    gainReductionDb = (mParam[Compressor::THRESHOLD] - envelope) * (1.0f - (1.0f / mParam[Compressor::RATIO]));
+                    gainReductionDb = (mEnvelope[ch] - mParam[Compressor::THRESHOLD]) * (1.0f / mParam[Compressor::RATIO] - 1.0f);
                 }
             }
 
@@ -68,10 +73,9 @@ void CompressorInstance::filter(
             float gainReductionLin = powf(10.0f, gainReductionDb / 20.0f);
 
             // Apply gain reduction, makeup gain, and wet/dry mix
-            *sample = mParam[Compressor::WET] * 
-                    (*sample * gainReductionLin * makeupGainLin) + 
-                    (1.0f - mParam[Compressor::WET]) * 
-                    (*sample);
+            float compressedSample = *sample * gainReductionLin * makeupGainLin;
+            *sample = mParam[Compressor::WET] * compressedSample +
+                      (1.0f - mParam[Compressor::WET]) * (*sample);
         }
     }
 

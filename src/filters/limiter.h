@@ -10,6 +10,8 @@ class LimiterInstance : public SoLoud::FilterInstance
 {
     Limiter *mParent;
     std::vector<float> mCurrentGain; // Store gain per channel
+    float attackCoef;
+    float releaseCoef;
 
 public:
     virtual void filter(
@@ -36,6 +38,7 @@ public:
         RELEASE_TIME = 4,
         ATTACK_TIME = 5
     };
+    unsigned int mSamplerate;
     float mWet;           // Wet/dry mix ratio, 1.0 means fully wet, 0.0 means fully dry
     float mThreshold;     // The threshold in dB. Signals above this level are reduced in gain. A lower value means more aggressive limiting.
     float mOutputCeiling; // The maximum output level in dB (should be < 0dB to prevent clipping)
@@ -50,7 +53,7 @@ public:
     virtual float getParamMin(unsigned int aParamIndex);
     SoLoud::result setParam(unsigned int aParamIndex, float aValue);
     virtual SoLoud::FilterInstance *createInstance();
-    Limiter();
+    Limiter(unsigned int aSamplerate);
 };
 
 #endif // LIMITER_H
