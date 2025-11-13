@@ -1,5 +1,5 @@
 
-#### 3.4.3 (XX Xxx 2025)
+#### 3.4.3 (13 Nov 2025)
 - fix Android: crashes after opus stream playback #365
 - fix: Compressor seems to introduce "choppy" sound #367
 
