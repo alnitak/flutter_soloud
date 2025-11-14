@@ -98,7 +98,9 @@ float Analyzer::getBinFrequency(int binIndex) const {
 float* Analyzer::calcFFT(float* waveData, float minFrequency, float maxFrequency)
 {
     if (waveData == nullptr)
+    {
         return nullptr;
+    }
 
     // https://en.wikipedia.org/wiki/Window_function
     blackmanWindow(temp, waveData);
@@ -122,6 +124,10 @@ float* Analyzer::calcFFT(float* waveData, float minFrequency, float maxFrequency
     {
         float real = temp[i * 2];
         float imag = temp[i * 2 + 1];
+        if (real == 0 && imag == 0) {
+            FFTData[i] = 0.0f;
+            continue;
+        }
         float mag = sqrtf(real*real+imag*imag);
 
         // Apply frequency-dependent scaling

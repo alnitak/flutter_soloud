@@ -55,17 +55,23 @@ android {
     defaultConfig {
         minSdk = 21
 
+        // Define the variable once and use it everywhere.
+        // This checks for the project property first, then falls back to the environment variable.
+        def noOpusOggLibsValue = project.hasProperty('NO_OPUS_OGG_LIBS') ?
+                project.property('NO_OPUS_OGG_LIBS').toString() :
+                (System.getenv('NO_OPUS_OGG_LIBS') ?: 'false')
+
         // Add this inside defaultConfig to affect all variants
         externalNativeBuild {
             cmake {
-                // Pass NO_OPUS_OGG_LIBS to CMake from multiple sources:
-                // 1. gradle project property (preferred)
-                // 2. system environment variable (fallback)
-                def noOpusOggLibs = project.hasProperty('NO_OPUS_OGG_LIBS') ?
-                    project.property('NO_OPUS_OGG_LIBS') :
-                    (System.getenv('NO_OPUS_OGG_LIBS') ?: 'false')
+                // println "=== Flutter SoLoud Plugin CMAKE ==="
+                // println "Passing to CMake: -DNO_OPUS_OGG_LIBS=${noOpusOggLibsValue}"
 
-                arguments "-DNO_OPUS_OGG_LIBS=${noOpusOggLibs}"
+                // Pass the determined value to CMake
+                if (noOpusOggLibsValue == 'true') {
+                    arguments "-DNO_OPUS_OGG_LIBS=${noOpusOggLibsValue}",
+                            "-DCMAKE_VERBOSE_MAKEFILE:BOOL=ON"
+                }
 
                 // Specify the correct target name
                 targets "flutter_soloud_plugin"
@@ -73,14 +79,20 @@ android {
         }
     }
 
-    // Task to check if NO_OPUS_OGG_LIBS has changed. If yes the cmake task will be re-run
+    // Task to properly re-run CMake only when the variable changes.
     tasks.whenTaskAdded { task ->
         if (task.name.contains("externalNativeBuild")) {
-            // println "=== Flutter SoLoud Plugin ==="
-            // println "NO_OPUS_OGG_LIBS=${System.getenv('NO_OPUS_OGG_LIBS') ?: 'false'}"
-            
-            // Always run CMake configuration
-            task.outputs.upToDateWhen { false }
+            // Read the variable the exact same way as in defaultConfig
+            def noOpusOggLibsValue = project.hasProperty('NO_OPUS_OGG_LIBS') ?
+                    project.property('NO_OPUS_OGG_LIBS').toString() :
+                    (System.getenv('NO_OPUS_OGG_LIBS') ?: 'false')
+
+            // println "=== Flutter SoLoud Plugin Task Configuration ==="
+            // println "Task sees NO_OPUS_OGG_LIBS as: ${noOpusOggLibsValue}"
+
+            // Make the task's execution depend on the value of the variable.
+            // This will cause CMake to re-run only if the value has changed since the last build.
+            task.inputs.property("NO_OPUS_OGG_LIBS", noOpusOggLibsValue)
         }
     }
 

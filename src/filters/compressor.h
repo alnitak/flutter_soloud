@@ -11,6 +11,7 @@ class CompressorInstance : public SoLoud::FilterInstance
     Compressor *mParent;
     float attackCoef;
     float releaseCoef;
+    std::vector<float> mEnvelope;
 
 public:
     virtual void filter(

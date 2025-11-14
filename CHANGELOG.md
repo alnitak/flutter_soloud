@@ -1,3 +1,17 @@
+
+#### 3.4.3 (13 Nov 2025)
+- fix Android: crashes after opus stream playback #365
+- fix: Compressor seems to introduce "choppy" sound #367
+
+#### 3.4.2 (8 Nov 2025)
+- fix Android: NO_OPUS_OGG_LIBS for Android build used in `gradle.properties` not always worked #358. And Thanks to @mingjunsiek #361 #354
+- fix: memory leak in FlutterSoLoudFfi.addAudioDataStream #359. Thanks to @DarthRainbows
+
+#### 3.4.1 (30 Oct 2025)
+- crash when adding data as PCM data on v3.4.0 #348
+- builds failing for macOS with NO_OPUS_OGG_LIBS=1 #350
+- using AudioData.getAudioData, when wave data is zero, also the FFT data should be zero #349
+
 #### 3.4.0 (28 Oct 2025)
 - added support for OGG FLAC and its metadata to BufferStream #294
 - fix Opus BufferStream end clicks on short sounds #344. Thanks to @eddyleelin

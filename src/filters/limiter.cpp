@@ -1,9 +1,9 @@
 #include "limiter.h"
 
 #include <algorithm>
-#include <cmath>
 #include <vector>
 #include <stdio.h>
+#include <cmath>
 
 LimiterInstance::LimiterInstance(Limiter *aParent)
 {
@@ -15,6 +15,9 @@ LimiterInstance::LimiterInstance(Limiter *aParent)
     mParam[Limiter::KNEE_WIDTH] = aParent->mKneeWidth;
     mParam[Limiter::RELEASE_TIME] = aParent->mReleaseTime;
     mParam[Limiter::ATTACK_TIME] = aParent->mAttackTime;
+
+    attackCoef = expf(-1.0f / (mParam[Limiter::ATTACK_TIME] * 0.001f * mParent->mSamplerate));
+    releaseCoef = expf(-1.0f / (mParam[Limiter::RELEASE_TIME] * 0.001f * mParent->mSamplerate));
 }
 
 void LimiterInstance::filter(
@@ -27,72 +30,54 @@ void LimiterInstance::filter(
 {
     updateParams(aTime);
 
-    const float threshold = std::pow(10.0f, mParam[Limiter::THRESHOLD] / 20.0f); // Convert threshold dB to linear
-    const float outputCeiling = std::pow(10.0f, mParam[Limiter::OUTPUT_CEILING] / 20.0f); // Convert output ceiling dB to linear
-    const float kneeWidth = mParam[Limiter::KNEE_WIDTH]; // In dB, defines the width of the knee
-    const float kneeStart = mParam[Limiter::THRESHOLD] - (kneeWidth / 2.0f);
-    const float kneeEnd = mParam[Limiter::THRESHOLD] + (kneeWidth / 2.0f);
-    
-    // Time constants
-    const float releaseTime = mParam[Limiter::RELEASE_TIME] / 1000.0f; // Convert release time to seconds
-    const float attackTime = mParam[Limiter::ATTACK_TIME] / 1000.0f; // Convert attack time to seconds
-    const float releaseCoef = std::exp(-1.0f / (aSamplerate * releaseTime));
-    const float attackCoef = std::exp(-1.0f / (aSamplerate * attackTime));
+    const float thresholdDb = mParam[Limiter::THRESHOLD];
+    const float ceilingDb = mParam[Limiter::OUTPUT_CEILING];
+    const float kneeDb = mParam[Limiter::KNEE_WIDTH];
 
     // Initialize per-channel gain tracking if needed
     if (mCurrentGain.size() != aChannels) {
         mCurrentGain.resize(aChannels, 1.0f);
     }
 
-    // Process each channel
-    for (unsigned int ch = 0; ch < aChannels; ++ch) {
-        float &currentGain = mCurrentGain[ch];
-        
-        for (unsigned int sample = 0; sample < aSamples; ++sample) {
-            unsigned int index = sample * aChannels + ch; // Index for the sample in the interleaved buffer
-            
-            // Get the sample value for this channel
-            float input = aBuffer[index];
-            float inputAbs = std::fabs(input);
+    for (unsigned int i = 0; i < aSamples; ++i) {
+        for (unsigned int ch = 0; ch < aChannels; ++ch) {
+            float* sample = &aBuffer[i * aChannels + ch];
+            float inputAbs = fabsf(*sample);
 
             // Calculate input level in dB
-            float inputDB = 20.0f * std::log10(inputAbs + 1e-6f);
-            
-            // Calculate gain reduction
-            float targetGain = 1.0f;
-            if (inputDB > kneeEnd) {
-                // Full limiting above knee
-                float excess = inputDB - mParam[Limiter::OUTPUT_CEILING];
-                targetGain = std::pow(10.0f, -excess / 20.0f);
-            }
-            else if (inputDB > kneeStart) {
-                // Soft knee zone
-                float kneePosition = (inputDB - kneeStart) / kneeWidth;
-                float excess = (inputDB - mParam[Limiter::OUTPUT_CEILING]) * kneePosition;
-                targetGain = std::pow(10.0f, -excess / 20.0f);
+            float inputDb = 20.0f * log10f(fmaxf(inputAbs, 1e-8f));
+
+            float gainReductionDb = 0.0f;
+            if (inputDb > (thresholdDb - kneeDb / 2.0f)) {
+                if (kneeDb > 0 && inputDb < (thresholdDb + kneeDb / 2.0f)) {
+                    // Soft knee
+                    float x = inputDb - thresholdDb + kneeDb / 2.0f;
+                    gainReductionDb = (x * x) / (2.0f * kneeDb);
+                } else {
+                    // Hard knee (limiter)
+                    gainReductionDb = inputDb - thresholdDb;
+                }
             }
 
+            // Apply ceiling
+            gainReductionDb = fmaxf(gainReductionDb, inputDb - ceilingDb);
+
+            float targetGain = powf(10.0f, -gainReductionDb / 20.0f);
+
             // Smooth gain changes
-            if (targetGain < currentGain) {
+            if (targetGain < mCurrentGain[ch]) {
                 // Attack phase
-                currentGain = attackCoef * currentGain + (1.0f - attackCoef) * targetGain;
+                mCurrentGain[ch] = attackCoef * mCurrentGain[ch] + (1.0f - attackCoef) * targetGain;
             } else {
                 // Release phase
-                currentGain = releaseCoef * currentGain + (1.0f - releaseCoef) * targetGain;
+                mCurrentGain[ch] = releaseCoef * mCurrentGain[ch] + (1.0f - releaseCoef) * targetGain;
             }
 
             // Apply the gain and wet/dry mix
-            float outputSample = input * currentGain;
-            aBuffer[index] = (mParam[Limiter::WET] * outputSample) + 
-                            ((1.0f - mParam[Limiter::WET]) * input);
+            float limitedSample = *sample * mCurrentGain[ch];
+            *sample = (mParam[Limiter::WET] * limitedSample) + ((1.0f - mParam[Limiter::WET]) * *sample);
         }
     }
-
-    // printf("LimiterInstance::filter(%f, %f, %f, %f,   gain=%f)\n",
-    //        mParam[Limiter::THRESHOLD],
-    //        mParam[Limiter::OUTPUT_CEILING],
-    //        mParam[Limiter::KNEE_WIDTH],
-    //        mParam[Limiter::RELEASE_TIME], gain);
 }
 
 void LimiterInstance::setFilterParameter(unsigned int aAttributeId, float aValue)
@@ -132,12 +117,14 @@ void LimiterInstance::setFilterParameter(unsigned int aAttributeId, float aValue
             aValue > mParent->getParamMax(Limiter::RELEASE_TIME))
             return;
         mParam[Limiter::RELEASE_TIME] = aValue;
+        releaseCoef = expf(-1.0f / (mParam[Limiter::RELEASE_TIME] * 0.001f * mParent->mSamplerate));
         break;
     case Limiter::ATTACK_TIME:
         if (aValue < mParent->getParamMin(Limiter::ATTACK_TIME) ||
             aValue > mParent->getParamMax(Limiter::ATTACK_TIME))
             return;
         mParam[Limiter::ATTACK_TIME] = aValue;
+        attackCoef = expf(-1.0f / (mParam[Limiter::ATTACK_TIME] * 0.001f * mParent->mSamplerate));
         break;
     }
 
@@ -252,9 +239,10 @@ float Limiter::getParamMin(unsigned int aParamIndex)
     return 1;
 }
 
-Limiter::Limiter()
+Limiter::Limiter(unsigned int aSamplerate)
 {
     mWet = 1.0f;
+    mSamplerate = aSamplerate;
     mThreshold = -6.0f;
     mOutputCeiling = -1.0f;
     mKneeWidth = 6.0f;    // Wider knee for smoother transition

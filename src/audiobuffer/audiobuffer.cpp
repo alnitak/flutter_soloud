@@ -71,10 +71,14 @@ namespace SoLoud
 
 		unsigned int bufferSize = mParent->mBuffer.getFloatsBufferSize();
 		float *buffer = reinterpret_cast<float *>(mParent->mBuffer.buffer.data());
-		int samplesToRead = mOffset + aSamplesToRead > bufferSize ? bufferSize - mOffset : aSamplesToRead;
+		int samplesToRead = aSamplesToRead;
+		if (mOffset + (unsigned int)samplesToRead * mChannels > bufferSize)
+		{
+			samplesToRead = (bufferSize - mOffset) / mChannels;
+		}
 		if (samplesToRead <= 0)
 		{
-			memset(aBuffer, 0, sizeof(float) * aSamplesToRead);
+			memset(aBuffer, 0, sizeof(float) * aSamplesToRead * mChannels);
 			// Calculate mStreamPosition based on mOffset
 			mStreamPosition = mOffset / (float)(mBaseSamplerate * mChannels);
 
@@ -92,7 +96,7 @@ namespace SoLoud
 
 		if (samplesToRead != aSamplesToRead)
 		{
-			memset(aBuffer, 0, sizeof(float) * aSamplesToRead);
+			memset(aBuffer, 0, sizeof(float) * aSamplesToRead * mChannels);
 		}
 
 		if (mChannels == 1)
@@ -110,7 +114,7 @@ namespace SoLoud
 			{
 				for (i = 0; i < samplesToRead; i++)
 				{
-					aBuffer[j * samplesToRead + i] = buffer[mOffset + i * mChannels + j];
+					aBuffer[j * aSamplesToRead + i] = buffer[mOffset + i * mChannels + j];
 				}
 			}
 		}
@@ -323,8 +327,6 @@ namespace SoLoud
 		size_t bytesWritten = 0;
 		bool allDataAdded = -1;
 		int32_t bufferDataToAdd = 0;
-		/// It seems that FLAC need a bigger buffer size
-		int bufferMinSize = streamDecoder->getWrapperType() == DetectedType::BUFFER_OGG_FLAC ? 32 : 32;
 
 		if (!dontAdd)
 		{
