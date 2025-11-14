@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.10)
 set(PROJECT_NAME "flutter_soloud")
-project(${PROJECT_NAME} LANGUAGES CXX)
+project(${PROJECT_NAME} LANGUAGES CXX C)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 

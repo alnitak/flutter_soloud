@@ -1,0 +1,54 @@
+Linux AMD 5950x
+------------------
+Samples : 256
+SoLoud: 75 ms
+pffft: 58 ms
+pffft is 21,928833% faster than SoLoud
+------------------
+Samples : 512
+SoLoud: 155 ms
+pffft: 130 ms
+pffft is 15,681330% faster than SoLoud
+------------------
+Samples : 1024
+SoLoud: 361 ms
+pffft: 271 ms
+pffft is 24,721832% faster than SoLoud
+------------------
+Samples : 2048
+SoLoud: 748 ms
+pffft: 643 ms
+pffft is 14,069370% faster than SoLoud
+------------------
+Samples : 4096
+SoLoud: 1755 ms
+pffft: 1330 ms
+pffft is 24,178282% faster than SoLoud
+
+
+Samsumg S22
+------------------
+Samples : 256
+SoLoud: 90 ms
+pffft: 86 ms
+pffft is 4.704295% faster than SoLoud
+------------------
+Samples : 512
+SoLoud: 193 ms
+pffft: 189 ms
+pffft is 1.824605% faster than SoLoud
+------------------
+Samples : 1024
+SoLoud: 464 ms
+pffft: 398 ms
+pffft is 14.229814% faster than SoLoud
+------------------
+Samples : 2048
+SoLoud: 975 ms
+pffft: 885 ms
+pffft is 9.160179% faster than SoLoud
+------------------
+Samples : 4096
+SoLoud: 2269 ms
+pffft: 1897 ms
+pffft is 16.406812% faster than SoLoud
