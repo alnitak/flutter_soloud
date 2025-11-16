@@ -364,7 +364,7 @@ extern "C"
         // std::thread loadThread([p, pa, completeFileName, loadIntoMem, hash]()
         //                        {
         PlayerErrors error = p->loadFile(pa.string(), loadIntoMem, (unsigned int *)&hash);
-        // printf("*** LOAD FILE FROM THREAD error: %d  hash: %u\n", error,  *hash);
+        // platform_log("LOAD FILE FROM THREAD error: %d  hash: %u\n", error, hash);
         fileLoadedCallback(error, completeFileName, (unsigned int *)&hash, timeStamp);
         // });
         // // TODO(marco): use .detach()? Use std::atomic somewhere
