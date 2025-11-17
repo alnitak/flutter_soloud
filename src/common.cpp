@@ -20,9 +20,7 @@ void platform_log(const char *fmt, ...) {
     delete[] buf;
 #else
     vprintf(fmt, args);
-    va_end(args);
-    fflush(nullptr);
-    setvbuf(stdout, (char*)NULL, _IONBF, 0);
+    fflush(stdout);
 #endif
-
+    va_end(args);
 }

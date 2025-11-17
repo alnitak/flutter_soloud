@@ -32,7 +32,8 @@ void _loadFile(Map<String, dynamic> args) {
 
 @pragma('vm:entry-point')
 ({PlayerErrors error, SoundHash soundHash}) _loadMem(
-    Map<String, dynamic> args) {
+  Map<String, dynamic> args,
+) {
   return SoLoudController().soLoudFFI.loadMem(
         args['path'] as String,
         args['buffer'] as Uint8List,
@@ -257,23 +258,44 @@ interface class SoLoud {
   }) async {
     _log.finest('init() called');
 
+    // Initialize native callbacks
+    await _initializeNativeCallbacks();
+
+    // Making extra sure no state is dangling after a hot-restart.
+    assert(
+        voiceEndedCompleters.isEmpty,
+        'voiceEndedCompleters is not empty. '
+        'Probably the developer forgot to call deinit().');
+    assert(
+        loadedFileCompleters.isEmpty,
+        'loadedFileCompleters is not empty. '
+        'Probably the developer forgot to call deinit().');
+    assert(
+        _activeSounds.isEmpty,
+        '_activeSounds is not empty. '
+        'Probably the developer forgot to call deinit().');
+    voiceEndedCompleters.clear();
+    loadedFileCompleters.clear();
+    _activeSounds.clear();
+
     // if `!isInitialized` but the engine is initialized in native, therefore
     // the developer may have carried out a hot reload which does not imply
     // the release of the native player.
     // Just deinit the engine to be re-inited later.
     if (isInitialized) {
-      _log.warning('init() called when the native player is already '
-          'initialized. This is expected after a hot restart but not '
-          "otherwise. If you see this in production logs, there's probably "
-          'a bug in your code. You may have neglected to deinit() SoLoud '
-          'during the current lifetime of the app.');
+      _log.warning(
+        'init() called when the native player is already '
+        'initialized. This is expected after a hot restart but not '
+        "otherwise. If you see this in production logs, there's probably "
+        'a bug in your code. You may have neglected to deinit() SoLoud '
+        'during the current lifetime of the app.',
+      );
       deinit();
+
+      /// Re-initialize native callbacks because the above call to `deinit()`
+      /// has released them.
+      await _initializeNativeCallbacks();
     }
-
-    _activeSounds.clear();
-
-    // Initialize native callbacks
-    await _initializeNativeCallbacks();
 
     final error = _controller.soLoudFFI.initEngine(
       device?.id ?? -1,
@@ -404,8 +426,9 @@ interface class SoLoud {
         final exists = loadedFileCompleters.containsKey(key);
         if (exists) {
           if (hash == 0) {
-            loadedFileCompleters[key]
-                ?.completeError(SoLoudCppException.fromPlayerError(error));
+            loadedFileCompleters[key]?.completeError(
+              SoLoudCppException.fromPlayerError(error),
+            );
             return;
           }
 
@@ -423,15 +446,18 @@ interface class SoLoud {
             // If we are here, the file has been already loaded on C++ side.
             // Check if it is already in [_activeSounds], if not add it.
             if (alreadyLoaded) {
-              _log.warning(() => "Sound '$completeFileName' was already "
-                  'loaded. Prefer loading only once, and reusing the loaded '
-                  'sound when playing.');
+              _log.warning(
+                () => "Sound '$completeFileName' was already "
+                    'loaded. Prefer loading only once, and reusing the loaded '
+                    'sound when playing.',
+              );
             } else {
               _activeSounds.add(newSound);
             }
           } else {
-            loadedFileCompleters[key]
-                ?.completeError(SoLoudCppException.fromPlayerError(error));
+            loadedFileCompleters[key]?.completeError(
+              SoLoudCppException.fromPlayerError(error),
+            );
             throw SoLoudCppException.fromPlayerError(error);
           }
           loadedFileCompleters[key]?.complete(newSound);
@@ -470,9 +496,11 @@ interface class SoLoud {
       // In any case return the existing sound.
       // Check if it is already in [_activeSounds], if not add it.
       if (alreadyLoaded) {
-        _log.warning(() => "Sound '$completeFileName' was already "
-            'loaded. Prefer loading only once, and reusing the loaded '
-            'sound when playing.');
+        _log.warning(
+          () => "Sound '$completeFileName' was already "
+              'loaded. Prefer loading only once, and reusing the loaded '
+              'sound when playing.',
+        );
       } else {
         _activeSounds.add(newSound);
       }
@@ -530,16 +558,18 @@ interface class SoLoud {
     // In this case, the second call overwrites the first key in
     // the `loadedFileCompleters` Map because they use the same key (file path).
     // Adding a time stamp fixes #247.
-    loadedFileCompleters.addAll({
-      '$path-$now': completer,
+    loadedFileCompleters.addAll({'$path-$now': completer});
+
+    await compute(_loadFile, {
+      'path': path,
+      'mode': mode.index,
+      'timeStamp': now,
     });
 
-    await compute(
-        _loadFile, {'path': path, 'mode': mode.index, 'timeStamp': now});
-
     return completer.future.whenComplete(() {
-      loadedFileCompleters
-          .removeWhere((key, __) => key.compareTo('$path-$now') == 0);
+      loadedFileCompleters.removeWhere(
+        (key, __) => key.compareTo('$path-$now') == 0,
+      );
     });
   }
 
@@ -584,9 +614,7 @@ interface class SoLoud {
 
     final completer = Completer<AudioSource>();
     final now = DateTime.now().microsecondsSinceEpoch;
-    loadedFileCompleters.addAll({
-      '$path-$now': completer,
-    });
+    loadedFileCompleters.addAll({'$path-$now': completer});
 
     final ret = await compute(_loadMem, {
       'path': path,
@@ -680,9 +708,11 @@ interface class SoLoud {
     var forcedFormat = format;
     if (format == BufferType.opus) {
       forcedFormat = BufferType.auto;
-      debugPrint('BufferType.opus has been deprecated. Use "BufferType.auto" '
-          'instead which will automatically determine from MP3, OGG Opus '
-          'or OGG Vorbis.');
+      debugPrint(
+        'BufferType.opus has been deprecated. Use "BufferType.auto" '
+        'instead which will automatically determine from MP3, OGG Opus '
+        'or OGG Vorbis.',
+      );
     }
 
     // Only [maxBufferSizeDuration] or [maxBufferSizeBytes] must be set.
@@ -829,8 +859,10 @@ interface class SoLoud {
 
   /// This is now deprecated because setting the icy metadata value
   /// is also for Ogg Flac.
-  @Deprecated('Use setBufferIcyMetaInt instead. '
-      'This will be removed in a future version.')
+  @Deprecated(
+    'Use setBufferIcyMetaInt instead. '
+    'This will be removed in a future version.',
+  )
   void setMp3BufferIcyMetaInt(AudioSource sound, int icyMetaInt) {
     SoLoudController().soLoudFFI.setBufferIcyMetaInt(
           sound.soundHash,
@@ -907,10 +939,7 @@ interface class SoLoud {
   /// formats. Probably you need to unset NO_OPUS_OGG_LIBS environment
   /// variable. Ref:
   /// https://docs.page/alnitak/flutter_soloud_docs/get_started/no_opus_ogg_libs
-  void addAudioDataStream(
-    AudioSource source,
-    Uint8List audioChunk,
-  ) {
+  void addAudioDataStream(AudioSource source, Uint8List audioChunk) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
@@ -1056,8 +1085,11 @@ interface class SoLoud {
       throw const SoLoudNotInitializedException();
     }
 
-    final newAudioSource =
-        await _loader.loadUrl(url, mode, httpClient: httpClient);
+    final newAudioSource = await _loader.loadUrl(
+      url,
+      mode,
+      httpClient: httpClient,
+    );
 
     return newAudioSource;
   }
@@ -1344,8 +1376,9 @@ interface class SoLoud {
     // we should check if it is still valid.
     if (!getIsValidVoiceHandle(handle)) {
       _log.finest(
-          () => 'The handle $handle has already been removed by another '
-              'event like scheduleStop or ended sound.');
+        () => 'The handle $handle has already been removed by another '
+            'event like scheduleStop or ended sound.',
+      );
       completer.complete();
     } else {
       _controller.soLoudFFI.stop(handle);
@@ -1354,9 +1387,11 @@ interface class SoLoud {
     return completer.future
         .timeout(const Duration(milliseconds: 300))
         .onError((e, s) {
-      _log.severe('stop() takes too much time for handle $handle. '
-          'This is not expected but not blocking. Worth to file a bug with '
-          'a simple reproducible code.');
+      _log.severe(
+        'stop() takes too much time for handle $handle. '
+        'This is not expected but not blocking. Worth to file a bug with '
+        'a simple reproducible code.',
+      );
       voiceEndedCompleters[handle]?.complete();
     }).whenComplete(() {
       voiceEndedCompleters.removeWhere((key, __) => key == handle);
@@ -1385,11 +1420,9 @@ interface class SoLoud {
     await source.soundEventsController.close();
 
     /// remove the sound with [soundHash]
-    _activeSounds.removeWhere(
-      (element) {
-        return element.soundHash == source.soundHash;
-      },
-    );
+    _activeSounds.removeWhere((element) {
+      return element.soundHash == source.soundHash;
+    });
   }
 
   /// Disposes all audio sources that are currently loaded.
@@ -2092,7 +2125,11 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void oscillateVolume(
-      SoundHandle handle, double from, double to, Duration time) {
+    SoundHandle handle,
+    double from,
+    double to,
+    Duration time,
+  ) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
@@ -2137,12 +2174,20 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void oscillateRelativePlaySpeed(
-      SoundHandle handle, double from, double to, Duration time) {
+    SoundHandle handle,
+    double from,
+    double to,
+    Duration time,
+  ) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
-    final error = _controller.soLoudFFI
-        .oscillateRelativePlaySpeed(handle, from, to, time);
+    final error = _controller.soLoudFFI.oscillateRelativePlaySpeed(
+      handle,
+      from,
+      to,
+      time,
+    );
     if (error != PlayerErrors.noError) {
       _log.severe(() => 'oscillateRelativePlaySpeed(): $error');
       throw SoLoudCppException.fromPlayerError(error);
@@ -2347,14 +2392,8 @@ interface class SoLoud {
   ///
   /// Returns the value of the parameter.
   @Deprecated('Please, to manage global filters use SoLoud.filters instead')
-  double getGlobalFilterParameter(
-    FilterType filterType,
-    int attributeId,
-  ) {
-    final ret = _controller.soLoudFFI.getFilterParams(
-      filterType,
-      attributeId,
-    );
+  double getGlobalFilterParameter(FilterType filterType, int attributeId) {
+    final ret = _controller.soLoudFFI.getFilterParams(filterType, attributeId);
 
     _logPlayerError(ret.error, from: 'getGlobalFilterParameter()');
     if (ret.error != PlayerErrors.noError) {
@@ -2489,20 +2528,33 @@ interface class SoLoud {
   /// Sets the position, at-vector, up-vector and velocity
   /// parameters of the 3D audio listener with one call.
   void set3dListenerParameters(
-      double posX,
-      double posY,
-      double posZ,
-      double atX,
-      double atY,
-      double atZ,
-      double upX,
-      double upY,
-      double upZ,
-      double velocityX,
-      double velocityY,
-      double velocityZ) {
-    _controller.soLoudFFI.set3dListenerParameters(posX, posY, posZ, atX, atY,
-        atZ, upX, upY, upZ, velocityX, velocityY, velocityZ);
+    double posX,
+    double posY,
+    double posZ,
+    double atX,
+    double atY,
+    double atZ,
+    double upX,
+    double upY,
+    double upZ,
+    double velocityX,
+    double velocityY,
+    double velocityZ,
+  ) {
+    _controller.soLoudFFI.set3dListenerParameters(
+      posX,
+      posY,
+      posZ,
+      atX,
+      atY,
+      atZ,
+      upX,
+      upY,
+      upZ,
+      velocityX,
+      velocityY,
+      velocityZ,
+    );
   }
 
   /// Sets the position parameter of the 3D audio listener.
@@ -2522,32 +2574,64 @@ interface class SoLoud {
 
   /// Sets the 3D listener's velocity vector.
   void set3dListenerVelocity(
-      double velocityX, double velocityY, double velocityZ) {
-    _controller.soLoudFFI
-        .set3dListenerVelocity(velocityX, velocityY, velocityZ);
+    double velocityX,
+    double velocityY,
+    double velocityZ,
+  ) {
+    _controller.soLoudFFI.set3dListenerVelocity(
+      velocityX,
+      velocityY,
+      velocityZ,
+    );
   }
 
   /// Sets the position and velocity parameters of a live
   /// 3D audio source with one call.
   ///
   /// The sound instance is provided via its [handle].
-  void set3dSourceParameters(SoundHandle handle, double posX, double posY,
-      double posZ, double velocityX, double velocityY, double velocityZ) {
+  void set3dSourceParameters(
+    SoundHandle handle,
+    double posX,
+    double posY,
+    double posZ,
+    double velocityX,
+    double velocityY,
+    double velocityZ,
+  ) {
     _controller.soLoudFFI.set3dSourceParameters(
-        handle, posX, posY, posZ, velocityX, velocityY, velocityZ);
+      handle,
+      posX,
+      posY,
+      posZ,
+      velocityX,
+      velocityY,
+      velocityZ,
+    );
   }
 
   /// Sets the position of a live 3D audio source.
   void set3dSourcePosition(
-      SoundHandle handle, double posX, double posY, double posZ) {
+    SoundHandle handle,
+    double posX,
+    double posY,
+    double posZ,
+  ) {
     _controller.soLoudFFI.set3dSourcePosition(handle, posX, posY, posZ);
   }
 
   /// Set the velocity parameter of a live 3D audio source.
-  void set3dSourceVelocity(SoundHandle handle, double velocityX,
-      double velocityY, double velocityZ) {
-    _controller.soLoudFFI
-        .set3dSourceVelocity(handle, velocityX, velocityY, velocityZ);
+  void set3dSourceVelocity(
+    SoundHandle handle,
+    double velocityX,
+    double velocityY,
+    double velocityZ,
+  ) {
+    _controller.soLoudFFI.set3dSourceVelocity(
+      handle,
+      velocityX,
+      velocityY,
+      velocityZ,
+    );
   }
 
   /// Sets the minimum and maximum distance parameters
@@ -2555,9 +2639,15 @@ interface class SoLoud {
   ///
   /// Default values are 1 and 1000000.
   void set3dSourceMinMaxDistance(
-      SoundHandle handle, double minDistance, double maxDistance) {
-    _controller.soLoudFFI
-        .set3dSourceMinMaxDistance(handle, minDistance, maxDistance);
+    SoundHandle handle,
+    double minDistance,
+    double maxDistance,
+  ) {
+    _controller.soLoudFFI.set3dSourceMinMaxDistance(
+      handle,
+      minDistance,
+      maxDistance,
+    );
   }
 
   /// You can change the attenuation model and rolloff factor parameters of

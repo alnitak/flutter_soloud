@@ -1,4 +1,7 @@
 
+#### 3.4.4 (17 Nov 2025)
+- fix: Crash during hot-restart using Dart 3.10 #369
+
 #### 3.4.3 (13 Nov 2025)
 - fix Android: crashes after opus stream playback #365
 - fix: Compressor seems to introduce "choppy" sound #367
