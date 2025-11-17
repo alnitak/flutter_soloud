@@ -24,10 +24,10 @@ import 'package:meta/meta.dart';
 @pragma('vm:entry-point')
 void _loadFile(Map<String, dynamic> args) {
   SoLoudController().soLoudFFI.loadFile(
-    args['path'] as String,
-    LoadMode.values[args['mode'] as int],
-    args['timeStamp'] as int,
-  );
+        args['path'] as String,
+        LoadMode.values[args['mode'] as int],
+        args['timeStamp'] as int,
+      );
 }
 
 @pragma('vm:entry-point')
@@ -35,32 +35,32 @@ void _loadFile(Map<String, dynamic> args) {
   Map<String, dynamic> args,
 ) {
   return SoLoudController().soLoudFFI.loadMem(
-    args['path'] as String,
-    args['buffer'] as Uint8List,
-    LoadMode.values[args['mode'] as int],
-  );
+        args['path'] as String,
+        args['buffer'] as Uint8List,
+        LoadMode.values[args['mode'] as int],
+      );
 }
 
 @pragma('vm:entry-point')
 Float32List _readSamplesFromFile(Map<String, dynamic> args) {
   return SoLoudController().soLoudFFI.readSamplesFromFile(
-    args['completeFileName'] as String,
-    args['numSamplesNeeded'] as int,
-    startTime: args['startTime'] as double,
-    endTime: args['endTime'] as double,
-    average: args['average'] as bool,
-  );
+        args['completeFileName'] as String,
+        args['numSamplesNeeded'] as int,
+        startTime: args['startTime'] as double,
+        endTime: args['endTime'] as double,
+        average: args['average'] as bool,
+      );
 }
 
 @pragma('vm:entry-point')
 Float32List _readSamplesFromMem(Map<String, dynamic> args) {
   return SoLoudController().soLoudFFI.readSamplesFromMem(
-    args['buffer'] as Uint8List,
-    args['numSamplesNeeded'] as int,
-    startTime: args['startTime'] as double,
-    endTime: args['endTime'] as double,
-    average: args['average'] as bool,
-  );
+        args['buffer'] as Uint8List,
+        args['numSamplesNeeded'] as int,
+        startTime: args['startTime'] as double,
+        endTime: args['endTime'] as double,
+        average: args['average'] as bool,
+      );
 }
 
 /// The main class to call all the audio methods that play sounds.
@@ -277,6 +277,7 @@ interface class SoLoud {
         'during the current lifetime of the app.',
       );
       deinit();
+
       /// Re-initialize native callbacks because the above call to `deinit()`
       /// has released them.
       await _initializeNativeCallbacks();
@@ -418,8 +419,7 @@ interface class SoLoud {
           }
 
           final newSound = AudioSource(SoundHash(hash));
-          final alreadyLoaded =
-              _activeSounds
+          final alreadyLoaded = _activeSounds
                   .where((sound) => sound.soundHash == newSound.soundHash)
                   .length ==
               1;
@@ -433,8 +433,7 @@ interface class SoLoud {
             // Check if it is already in [_activeSounds], if not add it.
             if (alreadyLoaded) {
               _log.warning(
-                () =>
-                    "Sound '$completeFileName' was already "
+                () => "Sound '$completeFileName' was already "
                     'loaded. Prefer loading only once, and reusing the loaded '
                     'sound when playing.',
               );
@@ -469,8 +468,7 @@ interface class SoLoud {
     int hash,
   ) {
     final newSound = AudioSource(SoundHash(hash));
-    final alreadyLoaded =
-        _activeSounds
+    final alreadyLoaded = _activeSounds
             .where((sound) => sound.soundHash == newSound.soundHash)
             .length ==
         1;
@@ -485,8 +483,7 @@ interface class SoLoud {
       // Check if it is already in [_activeSounds], if not add it.
       if (alreadyLoaded) {
         _log.warning(
-          () =>
-              "Sound '$completeFileName' was already "
+          () => "Sound '$completeFileName' was already "
               'loaded. Prefer loading only once, and reusing the loaded '
               'sound when playing.',
         );
@@ -712,8 +709,7 @@ interface class SoLoud {
 
     var bufferSize = maxBufferSizeBytes ?? 1024 * 1024 * 100; // 100 MB
     if (maxBufferSizeDuration != null) {
-      bufferSize =
-          (maxBufferSizeDuration.inMilliseconds *
+      bufferSize = (maxBufferSizeDuration.inMilliseconds *
               sampleRate *
               channels.count *
               4) ~/
@@ -721,22 +717,22 @@ interface class SoLoud {
     }
 
     final ret = SoLoudController().soLoudFFI.setBufferStream(
-      bufferSize,
-      bufferingType,
-      bufferingTimeNeeds,
-      sampleRate,
-      channels.count,
-      forcedFormat.value,
-      onBuffering,
-      onMetadata == null
-          ? null
-          : (dynamic metadata) {
-              final data = kIsWeb
-                  ? NativeAudioMetadata.fromJSPointer(metadata as int)
-                  : (metadata as NativeAudioMetadata).toAudioMetadata();
-              onMetadata(data);
-            },
-    );
+          bufferSize,
+          bufferingType,
+          bufferingTimeNeeds,
+          sampleRate,
+          channels.count,
+          forcedFormat.value,
+          onBuffering,
+          onMetadata == null
+              ? null
+              : (dynamic metadata) {
+                  final data = kIsWeb
+                      ? NativeAudioMetadata.fromJSPointer(metadata as int)
+                      : (metadata as NativeAudioMetadata).toAudioMetadata();
+                  onMetadata(data);
+                },
+        );
 
     if (ret.error != PlayerErrors.noError) {
       _logPlayerError(ret.error, from: 'addAudioDataStream() result');
@@ -787,8 +783,8 @@ interface class SoLoud {
     }
 
     final result = SoLoudController().soLoudFFI.getStreamTimeConsumed(
-      sound.soundHash,
-    );
+          sound.soundHash,
+        );
 
     if (result.error != PlayerErrors.noError) {
       _logPlayerError(result.error, from: 'getStreamTimeConsumed() result');
@@ -842,9 +838,9 @@ interface class SoLoud {
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void setBufferIcyMetaInt(AudioSource sound, int icyMetaInt) {
     SoLoudController().soLoudFFI.setBufferIcyMetaInt(
-      sound.soundHash,
-      icyMetaInt,
-    );
+          sound.soundHash,
+          icyMetaInt,
+        );
   }
 
   /// This is now deprecated because setting the icy metadata value
@@ -855,9 +851,9 @@ interface class SoLoud {
   )
   void setMp3BufferIcyMetaInt(AudioSource sound, int icyMetaInt) {
     SoLoudController().soLoudFFI.setBufferIcyMetaInt(
-      sound.soundHash,
-      icyMetaInt,
-    );
+          sound.soundHash,
+          icyMetaInt,
+        );
   }
 
   /// Add PCM audio data to the stream.
@@ -935,9 +931,9 @@ interface class SoLoud {
     }
 
     final e = SoLoudController().soLoudFFI.addAudioDataStream(
-      source.soundHash.hash,
-      audioChunk,
-    );
+          source.soundHash.hash,
+          audioChunk,
+        );
 
     if (e != PlayerErrors.noError) {
       if (e == PlayerErrors.opusOggVorbisLibsNotFound) {
@@ -1270,9 +1266,8 @@ interface class SoLoud {
       throw SoLoudCppException.fromPlayerError(ret.error);
     }
 
-    final filtered = _activeSounds
-        .where((s) => s.soundHash == sound.soundHash)
-        .toSet();
+    final filtered =
+        _activeSounds.where((s) => s.soundHash == sound.soundHash).toSet();
     if (filtered.isEmpty) {
       _log.severe(() => 'play(): soundHash ${sound.soundHash} not found');
       throw SoLoudSoundHashNotFoundDartException(sound.soundHash);
@@ -1367,8 +1362,7 @@ interface class SoLoud {
     // we should check if it is still valid.
     if (!getIsValidVoiceHandle(handle)) {
       _log.finest(
-        () =>
-            'The handle $handle has already been removed by another '
+        () => 'The handle $handle has already been removed by another '
             'event like scheduleStop or ended sound.',
       );
       completer.complete();
@@ -1379,16 +1373,15 @@ interface class SoLoud {
     return completer.future
         .timeout(const Duration(milliseconds: 300))
         .onError((e, s) {
-          _log.severe(
-            'stop() takes too much time for handle $handle. '
-            'This is not expected but not blocking. Worth to file a bug with '
-            'a simple reproducible code.',
-          );
-          voiceEndedCompleters[handle]?.complete();
-        })
-        .whenComplete(() {
-          voiceEndedCompleters.removeWhere((key, __) => key == handle);
-        });
+      _log.severe(
+        'stop() takes too much time for handle $handle. '
+        'This is not expected but not blocking. Worth to file a bug with '
+        'a simple reproducible code.',
+      );
+      voiceEndedCompleters[handle]?.complete();
+    }).whenComplete(() {
+      voiceEndedCompleters.removeWhere((key, __) => key == handle);
+    });
   }
 
   /// Stops all handles of the already loaded [source], and reclaims memory.
@@ -1730,10 +1723,10 @@ interface class SoLoud {
       'The panRight argument must be in range -1 to 1 inclusive!',
     );
     return SoLoudController().soLoudFFI.setPanAbsolute(
-      handle,
-      panLeft.clamp(-1, 1),
-      panRight.clamp(-1, 1),
-    );
+          handle,
+          panLeft.clamp(-1, 1),
+          panRight.clamp(-1, 1),
+        );
   }
 
   /// Check if the [handle] is still valid.
@@ -2371,7 +2364,8 @@ interface class SoLoud {
     FilterType filterType,
     int attributeId,
     double value,
-  ) => setGlobalFilterParameter(filterType, attributeId, value);
+  ) =>
+      setGlobalFilterParameter(filterType, attributeId, value);
 
   /// Get the effect parameter value with id [attributeId] of [filterType].
   ///
@@ -2400,7 +2394,8 @@ interface class SoLoud {
     FilterType filterType,
     int attributeId, {
     SoundHandle handle = const SoundHandle.error(),
-  }) => getGlobalFilterParameter(filterType, attributeId);
+  }) =>
+      getGlobalFilterParameter(filterType, attributeId);
 
   // ////////////////////////////////////////////////
   // Below all the methods implemented with FFI for the 3D audio
@@ -2485,9 +2480,8 @@ interface class SoLoud {
       throw SoLoudCppException.fromPlayerError(ret.error);
     }
 
-    final filtered = _activeSounds
-        .where((s) => s.soundHash == sound.soundHash)
-        .toSet();
+    final filtered =
+        _activeSounds.where((s) => s.soundHash == sound.soundHash).toSet();
     if (filtered.isEmpty) {
       _log.severe(() => 'play3d(): soundHash ${sound.soundHash} not found');
       throw SoLoudSoundHashNotFoundDartException(sound.soundHash);
