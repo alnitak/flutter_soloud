@@ -79,6 +79,11 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   // Callbacks impl
   // ////////////////////////////////////////////////
 
+  ffi.NativeCallable<DartVoiceEndedCallbackTFunction>? nativeVoiceEndedCallable;
+  ffi.NativeCallable<DartFileLoadedCallbackTFunction>? nativeFileLoadedCallable;
+  ffi.NativeCallable<DartStateChangedCallbackTFunction>?
+      nativeStateChangedCallable;
+
   void _voiceEndedCallback(ffi.Pointer<ffi.UnsignedInt> handle) {
     _log.finest(() => 'VOICE ENDED EVENT handle: ${handle.value}');
     voiceEndedEventController.add(handle.value);
@@ -124,25 +129,33 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   }
 
   @override
+  void disposeNativeCallables() {
+    nativeVoiceEndedCallable?.close();
+    nativeFileLoadedCallable?.close();
+    nativeStateChangedCallable?.close();
+    _setDartEventCallback(ffi.nullptr, ffi.nullptr, ffi.nullptr);
+  }
+
+  @override
   Future<void> setDartEventCallbacks() async {
     // Create a NativeCallable for the Dart functions
-    final nativeVoiceEndedCallable =
+    nativeVoiceEndedCallable =
         ffi.NativeCallable<DartVoiceEndedCallbackTFunction>.listener(
       _voiceEndedCallback,
     );
-    final nativeFileLoadedCallable =
+    nativeFileLoadedCallable =
         ffi.NativeCallable<DartFileLoadedCallbackTFunction>.listener(
       _fileLoadedCallback,
     );
-    final nativeStateChangedCallable =
+    nativeStateChangedCallable =
         ffi.NativeCallable<DartStateChangedCallbackTFunction>.listener(
       _stateChangedCallback,
     );
 
     _setDartEventCallback(
-      nativeVoiceEndedCallable.nativeFunction,
-      nativeFileLoadedCallable.nativeFunction,
-      nativeStateChangedCallable.nativeFunction,
+      nativeVoiceEndedCallable!.nativeFunction,
+      nativeFileLoadedCallable!.nativeFunction,
+      nativeStateChangedCallable!.nativeFunction,
     );
   }
 
