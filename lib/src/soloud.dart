@@ -425,8 +425,9 @@ interface class SoLoud {
 
         final exists = loadedFileCompleters.containsKey(key);
         if (exists) {
+          final loadedFileCompleter = loadedFileCompleters[key]!;
           if (hash == 0) {
-            loadedFileCompleters[key]?.completeError(
+            loadedFileCompleter.completeError(
               SoLoudCppException.fromPlayerError(error),
             );
             return;
@@ -455,12 +456,14 @@ interface class SoLoud {
               _activeSounds.add(newSound);
             }
           } else {
-            loadedFileCompleters[key]?.completeError(
+            loadedFileCompleter.completeError(
               SoLoudCppException.fromPlayerError(error),
             );
             throw SoLoudCppException.fromPlayerError(error);
           }
-          loadedFileCompleters[key]?.complete(newSound);
+          if (!loadedFileCompleter.isCompleted) {
+            loadedFileCompleter.complete(newSound);
+          }
         }
       });
     }
