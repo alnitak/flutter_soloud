@@ -1,4 +1,8 @@
 
+#### 3.4.5 (22 Nov 2025)
+- fixed `Bad state: Future already completed` error during integrations tests. Thanks to @Taormina #373
+- win: don't copy pdb file when in profile mode avoiding build error. Fixes #372
+
 #### 3.4.4 (17 Nov 2025)
 - fix: Crash during hot-restart using Dart 3.10 #369
 
