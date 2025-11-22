@@ -356,7 +356,8 @@ interface class SoLoud {
   /// or inside "AppLifecycleListener.onExitRequested".
   void deinit() {
     _log.finest('deinit() called');
-
+    print('SOLOUD DEINIT ******************@@@@@@@@@@@@@@###############');
+    _controller.soLoudFFI.disposeNativeCallables();
     _controller.soLoudFFI.disposeAllSound();
     _controller.soLoudFFI.deinit();
     _activeSounds.clear();

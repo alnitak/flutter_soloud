@@ -39,6 +39,11 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
 
   WorkerController? workerController;
 
+  @override
+  void disposeNativeCallables() {
+    /// Nothing to do on web.
+  }
+
   /// Create the worker in the WASM Module and listen for events coming
   /// from `web/worker.dart.js`
   @override

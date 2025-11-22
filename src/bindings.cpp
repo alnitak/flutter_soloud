@@ -218,6 +218,7 @@ extern "C"
         std::lock_guard<std::mutex> guard(init_deinit_mutex);
         std::lock_guard<std::mutex> guard_load(loadMutex);
 
+        platform_log(" ********** C initEngine player.get(): %p\n", player.get());
         if (player.get() == nullptr)
             player = std::make_unique<Player>();
 
@@ -306,6 +307,7 @@ extern "C"
     ///
     FFI_PLUGIN_EXPORT void dispose()
     {
+        platform_log(" ********** C Dispose player.get(): %p\n", player.get());
         if (player.get() == nullptr)
             return;
         player.get()->disposeAllSound();
