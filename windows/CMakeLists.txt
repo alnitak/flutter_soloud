@@ -193,17 +193,14 @@ if(MSVC)
   )
 
   # Create a custom target for copying PDB files
-  add_custom_target(copy_pdbs ALL
-    # copy to "build/windows/x64/runner/Release" dir
-    # COMMAND ${CMAKE_COMMAND} -E copy_if_different
-    # "$<TARGET_FILE_DIR:${PLUGIN_NAME}>/${PLUGIN_NAME}.pdb"
-    # "${CMAKE_BINARY_DIR}/runner/$<CONFIG>/${PLUGIN_NAME}.pdb"
+  # This target will only be part of the default build for configurations other than Profile.
+  add_custom_target(copy_pdbs $<IF:$<NOT:$<CONFIG:Profile>>,ALL,>>
     # copy to "build" dir
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-    "$<TARGET_FILE_DIR:${PLUGIN_NAME}>/${PLUGIN_NAME}.pdb"
-    "${CMAKE_BINARY_DIR}/../../${PLUGIN_NAME}.pdb"
+      "$<TARGET_FILE_DIR:${PLUGIN_NAME}>/${PLUGIN_NAME}.pdb"
+      "${CMAKE_BINARY_DIR}/../../${PLUGIN_NAME}.pdb"
     DEPENDS ${PLUGIN_NAME}
-    COMMENT "Copying PDB files to runner directory"
+    COMMENT "Copying PDB files to build directory"
     VERBATIM
   )
 
