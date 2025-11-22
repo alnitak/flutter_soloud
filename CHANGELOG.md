@@ -1,4 +1,3 @@
-
 #### 3.4.5 (22 Nov 2025)
 - fixed `Bad state: Future already completed` error during integrations tests. Thanks to @Taormina #373
 - win: don't copy pdb file when in profile mode avoiding build error. Fixes #372
