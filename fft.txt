@@ -52,3 +52,58 @@ Samples : 4096
 SoLoud: 2269 ms
 pffft: 1897 ms
 pffft is 16.406812% faster than SoLoud
+
+
+Mac Mini M4
+Samples : 256
+SoLoud: 51 ms
+pffft: 36 ms
+pffft is 29.839155% faster than SoLoud
+------------------
+Samples : 512
+SoLoud: 88 ms
+pffft: 84 ms
+pffft is 4.737825% faster than SoLoud
+------------------
+Samples : 1024
+SoLoud: 214 ms
+pffft: 177 ms
+pffft is 17.408538% faster than SoLoud
+------------------
+Samples : 2048
+SoLoud: 453 ms
+pffft: 386 ms
+pffft is 14.877659% faster than SoLoud
+------------------
+Samples : 4096
+SoLoud: 1062 ms
+pffft: 851 ms
+pffft is 19.868472% faster than SoLoud
+
+
+iPhone 16
+------------------
+Samples : 256
+SoLoud: 43 ms
+pffft: 37 ms
+pffft is 13.985167% faster than SoLoud
+------------------
+Samples : 512
+SoLoud: 91 ms
+pffft: 85 ms
+pffft is 6.054178% faster than SoLoud
+------------------
+Samples : 1024
+SoLoud: 216 ms
+pffft: 178 ms
+pffft is 17.666837% faster than SoLoud
+------------------
+Samples : 2048
+SoLoud: 462 ms
+pffft: 413 ms
+pffft is 10.621960% faster than SoLoud
+------------------
+Samples : 4096
+SoLoud: 1106 ms
+pffft: 948 ms
+pffft is 14.294961% faster than SoLoud
