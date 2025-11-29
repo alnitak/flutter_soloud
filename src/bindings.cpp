@@ -34,12 +34,12 @@ extern "C"
     std::unique_ptr<Analyzer> analyzer = std::make_unique<Analyzer>(256);
 
     typedef void (*dartVoiceEndedCallback_t)(unsigned int *);
-    typedef void (*dartFileLoadedCallback_t)(enum PlayerErrors *, char *completeFileName, unsigned int *, uint64_t *timeStamp);
+    typedef void (*dartFileLoadedCallback_t)(enum PlayerErrors *, char *completeFileName, unsigned int *, uint64_t *counter);
     typedef void (*dartStateChangedCallback_t)(enum PlayerStateEvents *);
 
     // to be used by `NativeCallable`, these functions must return void.
     void (*dartVoiceEndedCallback)(unsigned int *) = nullptr;
-    void (*dartFileLoadedCallback)(enum PlayerErrors *, char *completeFileName, unsigned int *, uint64_t *timeStamp) = nullptr;
+    void (*dartFileLoadedCallback)(enum PlayerErrors *, char *completeFileName, unsigned int *, uint64_t *counter) = nullptr;
     void (*dartStateChangedCallback)(enum PlayerStateEvents *) = nullptr;
 
     //////////////////////////////////////////////////////////////
@@ -148,7 +148,7 @@ extern "C"
     }
 
     /// The callback to monitor when a file is loaded.
-    void fileLoadedCallback(enum PlayerErrors error, char *completeFileName, unsigned int *hash, uint64_t timeStamp)
+    void fileLoadedCallback(enum PlayerErrors error, char *completeFileName, unsigned int *hash, uint64_t counter)
     {
         if (dartFileLoadedCallback == nullptr)
             return;
@@ -159,7 +159,7 @@ extern "C"
         unsigned int *n = (unsigned int *)malloc(sizeof(unsigned int *));
         *n = *hash;
         uint64_t *ts = (uint64_t *)malloc(sizeof(uint64_t *));
-        *ts = timeStamp;
+        *ts = counter;
         dartFileLoadedCallback(e, name, n, ts);
     }
 
@@ -345,7 +345,7 @@ extern "C"
     FFI_PLUGIN_EXPORT void loadFile(
         char *completeFileName,
         bool loadIntoMem,
-        uint64_t timeStamp)
+        uint64_t counter)
     {
         std::lock_guard<std::mutex> guard_init(init_deinit_mutex);
         std::lock_guard<std::mutex> guard_load(loadMutex);
@@ -365,7 +365,7 @@ extern "C"
         //                        {
         PlayerErrors error = p->loadFile(pa.string(), loadIntoMem, (unsigned int *)&hash);
         // platform_log("LOAD FILE FROM THREAD error: %d  hash: %u\n", error, hash);
-        fileLoadedCallback(error, completeFileName, (unsigned int *)&hash, timeStamp);
+        fileLoadedCallback(error, completeFileName, (unsigned int *)&hash, counter);
         // });
         // // TODO(marco): use .detach()? Use std::atomic somewhere
         // loadThread.join();

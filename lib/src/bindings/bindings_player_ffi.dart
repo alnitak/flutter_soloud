@@ -97,18 +97,18 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     ffi.Pointer<ffi.Int32> error,
     ffi.Pointer<ffi.Char> completeFileName,
     ffi.Pointer<ffi.UnsignedInt> hash,
-    ffi.Pointer<ffi.Uint64> timeStamp,
+    ffi.Pointer<ffi.Uint64> counter,
   ) {
     _log.finest(() =>
         'FILE LOADED EVENT error: ${PlayerErrors.values[error.value].name}  '
         'hash: ${hash.value}  '
         'file: ${completeFileName.cast<Utf8>().toDartString()}  '
-        'timeStamp: ${timeStamp.value}');
+        'counter: ${counter.value}');
     final result = <String, dynamic>{
       'error': error.value,
       'completeFileName': completeFileName.cast<Utf8>().toDartString(),
       'hash': hash.value,
-      'timeStamp': timeStamp.value,
+      'counter': counter.value,
     };
     fileLoadedEventsController.add(result);
     // Must free a pointer made on cpp. On Windows this must be freed
@@ -116,7 +116,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     nativeFree(error.cast<ffi.Void>());
     nativeFree(completeFileName.cast<ffi.Void>());
     nativeFree(hash.cast<ffi.Void>());
-    nativeFree(timeStamp.cast<ffi.Void>());
+    nativeFree(counter.cast<ffi.Void>());
   }
 
   void _stateChangedCallback(ffi.Pointer<ffi.Int32> state) {
@@ -349,7 +349,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   void loadFile(
     String completeFileName,
     LoadMode mode,
-    int timeStamp,
+    int counter,
   ) {
     final ffi.Pointer<ffi.UnsignedInt> h =
         calloc(ffi.sizeOf<ffi.UnsignedInt>());
@@ -357,7 +357,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     _loadFile(
       cString,
       mode == LoadMode.memory ? 1 : 0,
-      timeStamp,
+      counter,
     );
     calloc
       ..free(cString)
