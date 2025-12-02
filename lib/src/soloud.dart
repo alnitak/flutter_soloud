@@ -26,7 +26,7 @@ void _loadFile(Map<String, dynamic> args) {
   SoLoudController().soLoudFFI.loadFile(
         args['path'] as String,
         LoadMode.values[args['mode'] as int],
-        args['timeStamp'] as int,
+        args['counter'] as int,
       );
 }
 
@@ -195,6 +195,9 @@ interface class SoLoud {
 
   /// The sounds that are _currently being loaded_.
   Iterable<AudioSource> get activeSounds => _activeSounds;
+
+  /// The current load counter to build a unique loading key
+  int _currentLoadCounter = 0;
 
   /// Completers for the [loadFile] method
   @internal
@@ -420,8 +423,8 @@ interface class SoLoud {
         final error = PlayerErrors.values[result['error'] as int];
         final completeFileName = result['completeFileName'] as String;
         final hash = result['hash'] as int;
-        final timeStamp = result['timeStamp'] as int;
-        final key = '$completeFileName-$timeStamp';
+        final counter = result['counter'] as int;
+        final key = '$completeFileName-$counter';
 
         final exists = loadedFileCompleters.containsKey(key);
         if (exists) {
@@ -549,8 +552,8 @@ interface class SoLoud {
     }
 
     final completer = Completer<AudioSource>();
-    final now = DateTime.now().microsecondsSinceEpoch;
-    // Use the path and the time stamp as a key to avoid collisions.
+    final counter = _currentLoadCounter++;
+    // Use the path and the counter as a key to avoid collisions.
     // Happens when the same file is loaded multiple times like:
     // ```dart
     // final s1 = SoLoud.instance.loadAsset(path);
@@ -560,18 +563,22 @@ interface class SoLoud {
     //
     // In this case, the second call overwrites the first key in
     // the `loadedFileCompleters` Map because they use the same key (file path).
-    // Adding a time stamp fixes #247.
-    loadedFileCompleters.addAll({'$path-$now': completer});
+    // Adding an unique key fixes #247.
+    // Also on Windows the DateTime.now().microsecondsSinceEpoch' doesn't have
+    // a microsecond precision and could cause collisions when loading the same
+    // file multiple times in a short span of time #376, so, instead of that,
+    // we use a counter.
+    loadedFileCompleters.addAll({'$path-$counter': completer});
 
     await compute(_loadFile, {
       'path': path,
       'mode': mode.index,
-      'timeStamp': now,
+      'counter': counter,
     });
 
     return completer.future.whenComplete(() {
       loadedFileCompleters.removeWhere(
-        (key, __) => key.compareTo('$path-$now') == 0,
+        (key, __) => key.compareTo('$path-$counter') == 0,
       );
     });
   }
@@ -616,8 +623,8 @@ interface class SoLoud {
     }
 
     final completer = Completer<AudioSource>();
-    final now = DateTime.now().microsecondsSinceEpoch;
-    loadedFileCompleters.addAll({'$path-$now': completer});
+    final counter = _currentLoadCounter++;
+    loadedFileCompleters.addAll({'$path-$counter': completer});
 
     final ret = await compute(_loadMem, {
       'path': path,
@@ -632,7 +639,7 @@ interface class SoLoud {
       'error': ret.error.index,
       'completeFileName': path,
       'hash': ret.soundHash.hash,
-      'timeStamp': now,
+      'counter': counter,
     });
 
     return completer.future.whenComplete(() {
