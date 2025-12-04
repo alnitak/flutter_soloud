@@ -1,4 +1,4 @@
-#### 3.4.6 (XX Xxx 2025)
+#### 3.4.6 (4 Dec 2025)
 - win fix: loadMem/loadAsset futures never finish when run in parallel with the same file #376 
 
 #### 3.4.5 (22 Nov 2025)
