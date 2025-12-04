@@ -33,6 +33,12 @@ class ParametricEqInstance : public SoLoud::FilterInstance {
   void comp2MagPhase(float *aFFTBuffer, unsigned int aSamples);
   void magPhase2Comp(float *aFFTBuffer, unsigned int aSamples);
 
+  // Initialize band parameters (centers, boundaries, gains)
+  void initBandParameters();
+
+  // Initialize FFT setup and allocate buffers
+  void initFFTBuffers();
+
 public:
   ParametricEqInstance(ParametricEq *aParent);
   virtual ~ParametricEqInstance();
@@ -57,7 +63,7 @@ public:
   int mSTFT_WINDOW_TWICE;
   float mFFT_SCALE;
 
-  ParametricEq(int channels, int bands = 3);
+  ParametricEq(SoLoud::Soloud *aSoloud, int bands = 3);
   virtual int getParamCount();
   virtual const char *getParamName(unsigned int aParamIndex);
   virtual unsigned int getParamType(unsigned int aParamIndex);
@@ -66,6 +72,9 @@ public:
   SoLoud::result setParam(unsigned int aParamIndex, float aValue);
   void setFreqs(unsigned int nBands);
   virtual SoLoud::FilterInstance *createInstance();
+
+  /// main SoLoud engine, the one used by player.cpp
+  SoLoud::Soloud *mSoloud;
 
   int mChannels;
 };
