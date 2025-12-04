@@ -48,7 +48,6 @@ public:
 	int mBands;                        // number of EQ bands (user configurable)
 	std::vector<float> mGain;          // per-band gain
 	std::vector<float> mFreq;          // per-band center frequency
-	std::vector<float> mQ;             // per-band Q
 
 	ParametricEq3(int channels, int bands = 3);
 	virtual int getParamCount();

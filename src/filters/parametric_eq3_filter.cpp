@@ -6,7 +6,7 @@
 #include "parametric_eq3_filter.h"
 
 // TODO: make this globally in the SoLoud Engine and let the user set it. To be used also for visualization?
-#define STFT_WINDOW_SIZE 1024  // Increased for better frequency resolution
+#define STFT_WINDOW_SIZE 1024  // Increased for better frequency resolution. Must be a power of 2.
 #define STFT_WINDOW_HALF (STFT_WINDOW_SIZE / 2)
 #define STFT_WINDOW_TWICE (STFT_WINDOW_SIZE * 2)
 #define FFT_SCALE (1.0f / STFT_WINDOW_SIZE)
@@ -255,7 +255,7 @@ void ParametricEq3Instance::fftFilterChannel(float *aFFTBuffer, unsigned int aSa
 
 SoLoud::result ParametricEq3::setParam(unsigned int aParamIndex, float aValue)
 {
-    // Not used. PArameters are read in the ParametricEq3Instance and set in the FilterInstance
+    // Not used. Parameters are read in the ParametricEq3Instance and set in the FilterInstance
     return SoLoud::SO_NO_ERROR;
 }
 
@@ -298,10 +298,6 @@ ParametricEq3::ParametricEq3(int channels, int bands)
     // resize vectors
     mGain.assign(mBands, 1.0f);
     mFreq.resize(mBands);
-    // Not used because the filter's shape is determined by triangular windows
-    // calculated from the midpoints between band center frequencies.
-    // Will be removed.
-    mQ.assign(mBands, 0.707f);
 
     // default frequency distribution: geometric spacing between 60Hz and 10000Hz
     float f0 = 60.0f;
