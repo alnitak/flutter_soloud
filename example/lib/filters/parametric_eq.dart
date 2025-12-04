@@ -46,13 +46,14 @@ class ParametricEq extends StatefulWidget {
 }
 
 class _ParametricEqState extends State<ParametricEq> {
+  final windowSize = ValueNotifier<int>(1024);
   final bandsNumber = ValueNotifier<int>(3);
   static const maxBandsNumber = 64;
   static const minGain = 0.0;
   static const maxGain = 4.0;
   final gains = List<ValueNotifier<double>>.generate(
     maxBandsNumber,
-    (index) => ValueNotifier<double>(0),
+    (index) => ValueNotifier<double>(1),
   );
   final soloud = SoLoud.instance;
   AudioSource? source;
@@ -67,6 +68,17 @@ class _ParametricEqState extends State<ParametricEq> {
     });
   }
 
+  int nextPowerOf2(int x) {
+    if (x < 1) return 1;
+    var y = x - 1;
+    y |= y >> 1;
+    y |= y >> 2;
+    y |= y >> 4;
+    y |= y >> 8;
+    y |= y >> 16;
+    return y + 1;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -75,6 +87,33 @@ class _ParametricEqState extends State<ParametricEq> {
         child: SingleChildScrollView(
           child: Column(
             children: [
+              /// Window size (must be power of 2)
+              ValueListenableBuilder(
+                valueListenable: windowSize,
+                builder: (context, value, child) {
+                  return Row(
+                    children: [
+                      const Text('Window Size'),
+                      Expanded(
+                        child: Slider(
+                          value: value.toDouble(),
+                          min: 32,
+                          max: 4096,
+                          label: value.toString(),
+                          onChanged: (value) {
+                            /// Find nearest power of 2
+                            final p2 = nextPowerOf2(value.toInt());
+                            windowSize.value = p2;
+                            soloud.filters.parametricEqFilter.stftWindowSize.value = p2.toDouble();
+                          },
+                        ),
+                      ),
+                      Text(value.toString()),
+                    ],
+                  );
+                },
+              ),
+
               /// Number of bands
               ValueListenableBuilder(
                 valueListenable: bandsNumber,
@@ -91,7 +130,7 @@ class _ParametricEqState extends State<ParametricEq> {
                           label: value.toString(),
                           onChanged: (value) {
                             bandsNumber.value = value.toInt();
-                            // soloud.filters.parametricEqFilter.
+                            soloud.filters.parametricEqFilter.numBands.value = value;
                           },
                         ),
                       ),
@@ -122,6 +161,7 @@ class _ParametricEqState extends State<ParametricEq> {
                                   label: index.toString(),
                                   onChanged: (value) {
                                     gains[index].value = value;
+                                    soloud.filters.parametricEqFilter.bandGain(index).value = value;
                                   },
                                 ),
                               ),
