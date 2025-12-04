@@ -13,7 +13,7 @@ import 'package:flutter_soloud/src/filters/flanger_filter.dart';
 import 'package:flutter_soloud/src/filters/freeverb_filter.dart';
 import 'package:flutter_soloud/src/filters/limiter.dart';
 import 'package:flutter_soloud/src/filters/lofi_filter.dart';
-import 'package:flutter_soloud/src/filters/parametric_eq3.dart';
+import 'package:flutter_soloud/src/filters/parametric_eq.dart';
 import 'package:flutter_soloud/src/filters/pitchshift_filter.dart';
 import 'package:flutter_soloud/src/filters/robotize_filter.dart';
 import 'package:flutter_soloud/src/filters/wave_shaper_filter.dart';
@@ -189,7 +189,7 @@ final class FiltersSingle {
   CompressorSingle get compressorFilter => CompressorSingle(soundHash);
 
   @experimental
-  ParametricEq3Single get parametricEq3 => ParametricEq3Single(soundHash);
+  ParametricEqSingle get parametricEq => ParametricEqSingle(soundHash);
 }
 
 /// Filters instance used in [SoLoud.filters]. This differentiate from the
@@ -319,7 +319,7 @@ final class FiltersGlobal {
   CompressorGlobal get compressorFilter => const CompressorGlobal();
   
   @experimental
-  ParametricEq3Global get parametricEq3Filter => const ParametricEq3Global();
+  ParametricEqGlobal get parametricEqFilter => const ParametricEqGlobal();
 }
 
 /// Common class for single and global filters.
@@ -455,7 +455,7 @@ enum FilterType {
   compressorFilter,
   
   /// A parametric 3 bands equalizer filter.
-  parametricEq3;
+  parametricEq;
 
   @override
   String toString() => switch (this) {
@@ -471,10 +471,10 @@ enum FilterType {
         FilterType.pitchShiftFilter => 'Pitchshift',
         FilterType.limiterFilter => 'Limiter',
         FilterType.compressorFilter => 'Compressor',
-        FilterType.parametricEq3 => 'Parametric EQ3',
+        FilterType.parametricEq => 'Parametric EQ',
       };
 
-  /// The number of parameter this filter owns.
+  /// The number of parameters this filter owns.
   int get numParameters => switch (this) {
         FilterType.biquadResonantFilter => 4,
         FilterType.eqFilter => 9,
@@ -488,7 +488,7 @@ enum FilterType {
         FilterType.pitchShiftFilter => 3,
         FilterType.limiterFilter => 5,
         FilterType.compressorFilter => 8,
-        FilterType.parametricEq3 => 4,
+        FilterType.parametricEq => 67,
       };
 
   /// Activate this filter. If [soundHash] is null this filter is applied

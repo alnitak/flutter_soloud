@@ -115,4 +115,4 @@
 #include "filters/smbPitchShift.cpp"
 #include "filters/limiter.cpp"
 #include "filters/compressor.cpp"
-#include "filters/parametric_eq3_filter.cpp"
+#include "filters/parametric_eq_filter.cpp"
