@@ -9,7 +9,7 @@
         },
         {
             "label": "compile linux debug",
-            "command": "cd ${workspaceFolder}/example; flutter build linux -t lib/buffer_stream/web_radio.dart --debug",
+            "command": "cd ${workspaceFolder}/example; flutter build linux -t lib/filters/parametric_eq.dart --debug",
             "type": "shell"
         },
         {

@@ -52,8 +52,12 @@ Flutter audio plugin using SoLoud library and FFI
     "CLANG_CXX_LANGUAGE_STANDARD" => "c++17",
     "CLANG_CXX_LIBRARY" => "libc++",
     'OTHER_LDFLAGS' => disable_opus_ogg ? '' : "-L#{local_lib_path} -logg -lopus -lvorbis -lvorbisfile -lFLAC",
-    'OTHER_CFLAGS' => "-O3 -ffast-math -flto",
-    'OTHER_CPLUSPLUSFLAGS' => "-O3 -ffast-math -flto",
+    'OTHER_CFLAGS' => "-O3 -ffast-math -flto -fvectorize -fslp-vectorize",
+    'OTHER_CPLUSPLUSFLAGS' => "-O3 -ffast-math -flto -fvectorize -fslp-vectorize",
+    'OTHER_CFLAGS[arch=x86_64]' => "$(inherited) -msse -msse2 -msse3 -mssse3",
+    'OTHER_CPLAGS[arch=arm64]' => "$(inherited)",
+    'OTHER_CPLUSPLUSFLAGS[arch=x86_64]' => "$(inherited) -msse -msse2 -msse3 -mssse3",
+    'OTHER_CPLUSPLUSFLAGS[arch=arm64]' => "$(inherited)",
     'VALID_ARCHS' => 'x86_64 arm64',
    }
 

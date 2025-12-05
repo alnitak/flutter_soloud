@@ -32,7 +32,7 @@ import 'package:logging/logging.dart';
 
 /// Use the filter globally or attached to the sound. Filters for single sounds
 /// are not supported in the Web platform.
-const bool useGlobalFilter = false;
+const bool useGlobalFilter = true;
 
 void main() async {
   // The `flutter_soloud` package logs everything
@@ -419,6 +419,50 @@ class _PitchShiftState extends State<PitchShift> {
                       });
                     },
                     child: const Text('Fade shift'),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  /// Activate / deactivate filter
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      OutlinedButton(
+                        onPressed: () {
+                          if (useGlobalFilter) {
+                            if (SoLoud
+                                .instance.filters.pitchShiftFilter.isActive) {
+                              return;
+                            }
+                            SoLoud.instance.filters.pitchShiftFilter.activate();
+                          } else {
+                            if (sound!.filters.pitchShiftFilter.isActive) {
+                              return;
+                            }
+                            sound!.filters.pitchShiftFilter.activate();
+                          }
+                        },
+                        child: const Text('Activate'),
+                      ),
+                      OutlinedButton(
+                        onPressed: () {
+                          if (useGlobalFilter) {
+                            if (!SoLoud
+                                .instance.filters.pitchShiftFilter.isActive) {
+                              return;
+                            }
+                            SoLoud.instance.filters.pitchShiftFilter
+                                .deactivate();
+                          } else {
+                            if (!sound!.filters.pitchShiftFilter.isActive) {
+                              return;
+                            }
+                            sound!.filters.pitchShiftFilter.deactivate();
+                          }
+                        },
+                        child: const Text('Deactivate'),
+                      ),
+                    ],
                   ),
                 ],
               ),

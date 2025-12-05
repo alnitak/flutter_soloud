@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.10)
 set(PROJECT_NAME "flutter_soloud")
-project(${PROJECT_NAME} LANGUAGES CXX)
+project(${PROJECT_NAME} LANGUAGES CXX C)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -39,6 +39,7 @@ list(APPEND PLUGIN_SOURCES
   "${SRC_DIR}/bindings.cpp"
   "${SRC_DIR}/player.cpp"
   "${SRC_DIR}/analyzer.cpp"
+  "${SRC_DIR}/pffft/pffft.c"
   "${SRC_DIR}/synth/basic_wave.cpp"
   "${SRC_DIR}/waveform/waveform.cpp"
   "${SRC_DIR}/waveform/miniaudio_libvorbis.cpp"
@@ -53,6 +54,7 @@ list(APPEND PLUGIN_SOURCES
   "${SRC_DIR}/filters/smbPitchShift.cpp"
   "${SRC_DIR}/filters/limiter.cpp"
   "${SRC_DIR}/filters/compressor.cpp"
+  "${SRC_DIR}/filters/parametric_eq_filter.cpp"
   ${TARGET_SOURCES}
 )
 
