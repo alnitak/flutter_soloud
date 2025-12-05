@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:flutter_soloud_example/buffer_stream/ui/buffer_widget.dart';
+import 'package:flutter_soloud_example/buffer_stream/ui/seek_bar.dart';
 import 'package:http/http.dart' as http;
 import 'package:logging/logging.dart';
 
@@ -53,7 +54,7 @@ class WebRadioExample extends StatefulWidget {
 }
 
 class _WebRadioExampleState extends State<WebRadioExample> {
-  final urls = [
+  static const urls = [
     {'FLAC': 'http://stream.radioparadise.com/mellow-flacm'},
     {'FLAC': 'https://stream.radioparadise.com/rock-flac'},
     {'FLAC': 'http://s2.audiostream.hu:8091/bdpstrock_FLAC'},
@@ -81,6 +82,8 @@ class _WebRadioExampleState extends State<WebRadioExample> {
     {'Opus': 'http://xfer.hirschmilch.de:8000/techno.opus'},
     {'Opus': 'http://radio.glafir.ru:7000/classic'},
   ];
+
+  static const bufferingType = BufferingType.released;
 
   int urlId = 0;
   AudioSource? source;
@@ -210,7 +213,7 @@ class _WebRadioExampleState extends State<WebRadioExample> {
       maxBufferSizeBytes: 1024 * 1024 * 200, // 100 MB
       bufferingTimeNeeds: 3,
       format: BufferType.auto,
-      bufferingType: BufferingType.released,
+      bufferingType: bufferingType,
       channels: Channels.stereo,
       onBuffering: (isBuffering, handle, time) async {
         // debugPrint('started buffering? $isBuffering  with '
@@ -248,6 +251,7 @@ class _WebRadioExampleState extends State<WebRadioExample> {
                   if (value.isNotEmpty) {
                     playUrl(value);
                   }
+                  setState(() {});
                 },
               ),
               Column(
@@ -293,6 +297,11 @@ class _WebRadioExampleState extends State<WebRadioExample> {
                 },
                 child: const Text('stop'),
               ),
+
+              /// Only with preserved buffering is possible to seek
+              if (bufferingType == BufferingType.preserved)
+                SeekBar(source: source),
+
               ValueListenableBuilder(
                 valueListenable: streamBuffering,
                 builder: (context, value, child) {
@@ -301,7 +310,7 @@ class _WebRadioExampleState extends State<WebRadioExample> {
                     spacing: 16,
                     children: [
                       BufferBar(
-                        bufferingType: BufferingType.released,
+                        bufferingType: bufferingType,
                         isBuffering: value,
                         sound: source,
                       ),
