@@ -11,18 +11,17 @@ import 'package:logging/logging.dart';
 /// Fast Fourier Transform (FFT) to analyze the frequency spectrum of the
 /// audio signal and apply a gain to each frequency band.
 ///
-/// The filter has the following parameters:
+/// ** Equalizer parameters**:
 /// - `numBands`: the number of frequency bands (default: 3. 1 is the minimum
 ///   value and 64 is the maximum value)
+/// 
 /// - `stftWindowSize`: the size of the FFT window (default: 1024, must be a
-///   power of 2. 32 is the minimum value and 4096 is the maximum value)
+///   power of 2. 32 is the minimum value and 4096 is the maximum value).
+///   A larger window size will provide more accurate frequency analysis but
+///   will also increase the latency of the filter.
+/// 
 /// - `bandGain`: the gain of each frequency band (default: 1. 0 means no gain,
 ///   values > 1. 0 increase the gain, values < 1. 0 decrease the gain)
-///
-/// The `stftWindowSize` parameter controls the size of the FFT window used to
-/// analyze the frequency spectrum of the audio signal. A larger window size
-/// will provide more accurate frequency analysis but will also increase the
-/// latency of the filter.
 ///
 /// The filter is activated by calling the `activate` method and deactivated by
 /// calling the `deactivate` method.
@@ -102,132 +101,134 @@ class _ParametricEqState extends State<ParametricEq> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: SingleChildScrollView(
-          child: Column(
-            children: [
-              /// Activate / deactivate filter
-              Row(
-                spacing: 32,
-                children: [
-                  OutlinedButton(
-                    onPressed: () {
-                      if (soloud.filters.parametricEqFilter.isActive) return;
-                      soloud.filters.parametricEqFilter.activate();
-                      soloud.filters.parametricEqFilter.numBands.value =
-                          bandsNumber.value.toDouble();
-                      for (var i = 0; i < bandsNumber.value; i++) {
-                        soloud.filters.parametricEqFilter.bandGain(i).value =
-                            gains[i].value;
-                      }
-                      soloud.filters.parametricEqFilter.stftWindowSize.value =
-                          windowSize.value.toDouble();
-                    },
-                    child: const Text('Activate'),
-                  ),
-                  OutlinedButton(
-                    onPressed: () {
-                      if (!soloud.filters.parametricEqFilter.isActive) return;
-                      soloud.filters.parametricEqFilter.deactivate();
-                    },
-                    child: const Text('Deactivate'),
-                  ),
-                ],
-              ),
-
-              /// Window size (must be power of 2)
-              ValueListenableBuilder(
-                valueListenable: windowSize,
-                builder: (context, value, child) {
-                  return Row(
-                    children: [
-                      const Text('Window Size'),
-                      Expanded(
-                        child: Slider(
-                          value: value.toDouble(),
-                          min: 32,
-                          max: 4096,
-                          label: value.toString(),
-                          onChanged: (value) {
-                            /// Find nearest power of 2
-                            final p2 = nextPowerOf2(value.toInt());
-                            windowSize.value = p2;
-                            soloud.filters.parametricEqFilter.stftWindowSize
-                                .value = p2.toDouble();
-                          },
-                        ),
-                      ),
-                      Text(value.toString()),
-                    ],
-                  );
-                },
-              ),
-
-              /// Number of bands
-              ValueListenableBuilder(
-                valueListenable: bandsNumber,
-                builder: (context, value, child) {
-                  return Row(
-                    children: [
-                      const Text('Bands Number'),
-                      Expanded(
-                        child: Slider(
-                          value: value.toDouble(),
-                          min: 1,
-                          max: maxBandsNumber.toDouble(),
-                          divisions: maxBandsNumber,
-                          label: value.toString(),
-                          onChanged: (value) {
-                            bandsNumber.value = value.toInt();
-                            soloud.filters.parametricEqFilter.numBands.value =
-                                value;
-                          },
-                        ),
-                      ),
-                      Text(value.toString()),
-                    ],
-                  );
-                },
-              ),
-
-              /// Band sliders
-              ValueListenableBuilder(
-                valueListenable: bandsNumber,
-                builder: (context, value, child) {
-                  return Column(
-                    children: List.generate(
-                      value,
-                      (index) => ValueListenableBuilder(
-                        valueListenable: gains[index],
-                        builder: (context, value, child) {
-                          return Row(
-                            children: [
-                              Text('#$index'),
-                              Expanded(
-                                child: Slider(
-                                  value: value,
-                                  min: minGain,
-                                  max: maxGain,
-                                  label: index.toString(),
-                                  onChanged: (value) {
-                                    gains[index].value = value;
-                                    soloud.filters.parametricEqFilter
-                                        .bandGain(index)
-                                        .value = value;
-                                  },
-                                ),
-                              ),
-                              Text(value.toStringAsFixed(2)),
-                            ],
-                          );
-                        },
-                      ),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: SingleChildScrollView(
+            child: Column(
+              children: [
+                /// Activate / deactivate filter
+                Row(
+                  spacing: 32,
+                  children: [
+                    OutlinedButton(
+                      onPressed: () {
+                        if (soloud.filters.parametricEqFilter.isActive) return;
+                        soloud.filters.parametricEqFilter.activate();
+                        soloud.filters.parametricEqFilter.numBands.value =
+                            bandsNumber.value.toDouble();
+                        for (var i = 0; i < bandsNumber.value; i++) {
+                          soloud.filters.parametricEqFilter.bandGain(i).value =
+                              gains[i].value;
+                        }
+                        soloud.filters.parametricEqFilter.stftWindowSize.value =
+                            windowSize.value.toDouble();
+                      },
+                      child: const Text('Activate'),
                     ),
-                  );
-                },
-              ),
-            ],
+                    OutlinedButton(
+                      onPressed: () {
+                        if (!soloud.filters.parametricEqFilter.isActive) return;
+                        soloud.filters.parametricEqFilter.deactivate();
+                      },
+                      child: const Text('Deactivate'),
+                    ),
+                  ],
+                ),
+        
+                /// Window size (must be power of 2)
+                ValueListenableBuilder(
+                  valueListenable: windowSize,
+                  builder: (context, value, child) {
+                    return Row(
+                      children: [
+                        const Text('Window Size'),
+                        Expanded(
+                          child: Slider(
+                            value: value.toDouble(),
+                            min: 32,
+                            max: 4096,
+                            label: value.toString(),
+                            onChanged: (value) {
+                              /// Find nearest power of 2
+                              final p2 = nextPowerOf2(value.toInt());
+                              windowSize.value = p2;
+                              soloud.filters.parametricEqFilter.stftWindowSize
+                                  .value = p2.toDouble();
+                            },
+                          ),
+                        ),
+                        Text(value.toString()),
+                      ],
+                    );
+                  },
+                ),
+        
+                /// Number of bands
+                ValueListenableBuilder(
+                  valueListenable: bandsNumber,
+                  builder: (context, value, child) {
+                    return Row(
+                      children: [
+                        const Text('Bands Number'),
+                        Expanded(
+                          child: Slider(
+                            value: value.toDouble(),
+                            min: 1,
+                            max: maxBandsNumber.toDouble(),
+                            divisions: maxBandsNumber,
+                            label: value.toString(),
+                            onChanged: (value) {
+                              bandsNumber.value = value.toInt();
+                              soloud.filters.parametricEqFilter.numBands.value =
+                                  value;
+                            },
+                          ),
+                        ),
+                        Text(value.toString()),
+                      ],
+                    );
+                  },
+                ),
+        
+                /// Band sliders
+                ValueListenableBuilder(
+                  valueListenable: bandsNumber,
+                  builder: (context, value, child) {
+                    return Column(
+                      children: List.generate(
+                        value,
+                        (index) => ValueListenableBuilder(
+                          valueListenable: gains[index],
+                          builder: (context, value, child) {
+                            return Row(
+                              children: [
+                                Text('#$index'),
+                                Expanded(
+                                  child: Slider(
+                                    value: value,
+                                    min: minGain,
+                                    max: maxGain,
+                                    label: index.toString(),
+                                    onChanged: (value) {
+                                      gains[index].value = value;
+                                      soloud.filters.parametricEqFilter
+                                          .bandGain(index)
+                                          .value = value;
+                                    },
+                                  ),
+                                ),
+                                Text(value.toStringAsFixed(2)),
+                              ],
+                            );
+                          },
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
           ),
         ),
       ),
