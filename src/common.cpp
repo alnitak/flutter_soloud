@@ -22,7 +22,5 @@ void platform_log(const char *fmt, ...) {
     vprintf(fmt, args);
     fflush(stdout);
 #endif
-    fflush(stdout);
-#endif
     va_end(args);
 }
