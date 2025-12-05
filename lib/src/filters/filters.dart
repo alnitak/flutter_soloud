@@ -92,6 +92,7 @@ final class FiltersSingle {
   ///
   /// This filter is not documented in the SoLoud C++ lib, the source code is
   /// [here](https://github.com/alnitak/flutter_soloud/blob/main/src/soloud/src/filter/soloud_eqfilter.cpp)
+  @Deprecated('Use parametricEqFilter instead')
   EqualizerSingle get equalizerFilter => EqualizerSingle(soundHash);
 
   /// The `Flanger` filter for this sound.
@@ -155,6 +156,10 @@ final class FiltersSingle {
   ///
   /// - `releaseTime`: The release time in milliseconds. Determines how quickly
   /// the gain reduction recovers after a signal drops below the threshold.
+  ///
+  /// This filter is not part of SoLoud C++ lib and the source code is
+  /// experimental and can be found
+  /// [here](https://github.com/alnitak/flutter_soloud/blob/main/src/filters/limiter.cpp)
   @experimental
   LimiterSingle get limiterFilter => LimiterSingle(soundHash);
 
@@ -188,6 +193,22 @@ final class FiltersSingle {
   @experimental
   CompressorSingle get compressorFilter => CompressorSingle(soundHash);
 
+  /// The `Equalizer` filter used globally.
+  ///
+  /// **Parameters**:
+  /// - `numBands`: the number of frequency bands (default: 3. 1 is the minimum
+  ///   value and 64 is the maximum value)
+  ///
+  /// - `stftWindowSize`: the size of the FFT window (default: 1024, must be a
+  ///   power of 2. 32 is the minimum value and 4096 is the maximum value).
+  ///   A larger window size will provide more accurate frequency analysis but
+  ///   will also increase the latency of the filter.
+  ///
+  /// - `bandGain`: the gain of each frequency band (default: 1. 0 means no
+  ///   gain, values > 1. 0 increase the gain, values < 1. 0 decrease the gain)
+  ///
+  /// This filter is not documented in the SoLoud C++ lib, the source code is
+  /// [here](https://github.com/alnitak/flutter_soloud/blob/main/src/soloud/src/filter/parametric_eq.cpp)
   @experimental
   ParametricEqSingle get parametricEq => ParametricEqSingle(soundHash);
 }
@@ -221,6 +242,7 @@ final class FiltersGlobal {
   ///
   /// This filter is not documented in the SoLoud C++ lib, the source code is
   /// [here](https://github.com/alnitak/flutter_soloud/blob/main/src/soloud/src/filter/soloud_eqfilter.cpp)
+  @Deprecated('Use parametricEqFilter instead')
   EqualizerGlobal get equalizerFilter => const EqualizerGlobal();
 
   /// The `Flanger` filter used globally.
@@ -317,7 +339,23 @@ final class FiltersGlobal {
   /// [here](https://github.com/alnitak/flutter_soloud/blob/main/src/filters/compressor.cpp#L24)
   @experimental
   CompressorGlobal get compressorFilter => const CompressorGlobal();
-  
+
+  /// The `Equalizer` filter used globally.
+  ///
+  /// **Parameters**:
+  /// - `numBands`: the number of frequency bands (default: 3. 1 is the minimum
+  ///   value and 64 is the maximum value)
+  ///
+  /// - `stftWindowSize`: the size of the FFT window (default: 1024, must be a
+  ///   power of 2. 32 is the minimum value and 4096 is the maximum value).
+  ///   A larger window size will provide more accurate frequency analysis but
+  ///   will also increase the latency of the filter.
+  ///
+  /// - `bandGain`: the gain of each frequency band (default: 1. 0 means no
+  ///   gain, values > 1. 0 increase the gain, values < 1. 0 decrease the gain)
+  ///
+  /// This filter is not documented in the SoLoud C++ lib, the source code is
+  /// [here](https://github.com/alnitak/flutter_soloud/blob/main/src/soloud/src/filter/parametric_eq.cpp)
   @experimental
   ParametricEqGlobal get parametricEqFilter => const ParametricEqGlobal();
 }
@@ -361,6 +399,8 @@ class FilterParam {
     return ret.value;
   }
 
+  bool _isPowerOfTwo(int val) => (val & (val - 1)) == 0;
+
   /// Set the parameter value.
   ///
   /// Throws [SoLoudFilterForSingleSoundOnWebDartException] if trying to use
@@ -374,6 +414,19 @@ class FilterParam {
           .warning(() => 'value [$val] out of accepted range [$_min, $_max]');
       return;
     }
+    // Check if the filter is the parametric EQ and if we are setting
+    // the `stftWindowSize` parameter it must be a power of 2 in [32-4096] range
+    if (_type == FilterType.parametricEq &&
+        _attributeId == ParametricEqParam.stftWindowSize) {
+      if (!_isPowerOfTwo(val.toInt()) || val < 32 || val > 4096) {
+        Logger('flutter_soloud.${_type.name}Filter').warning(
+          () => 'value [$val] out of accepted range [32, 4096] or '
+              'not a power of 2',
+        );
+        return;
+      }
+    }
+
     final error = SoLoudController().soLoudFFI.setFilterParams(
           handle: _soundHandle,
           _type,
@@ -453,8 +506,8 @@ enum FilterType {
 
   /// A compressor filter.
   compressorFilter,
-  
-  /// A parametric 3 bands equalizer filter.
+
+  /// A parametric N bands equalizer filter.
   parametricEq;
 
   @override
