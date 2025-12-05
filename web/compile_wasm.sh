@@ -140,6 +140,7 @@ SOURCES=(
     ../src/common.cpp
     ../src/bindings.cpp
     ../src/player.cpp
+    ../src/pffft/*.c*
     ../src/analyzer.cpp
     ../src/synth/*.cpp
     ../src/filters/*.cpp
