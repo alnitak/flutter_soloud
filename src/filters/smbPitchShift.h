@@ -24,7 +24,8 @@ private:
 
   float gInFIFO[MAX_FRAME_LENGTH];
   float gOutFIFO[MAX_FRAME_LENGTH];
-  float gFFTworksp[2 * MAX_FRAME_LENGTH];
+  float *gFFTworksp =
+      nullptr; // Allocated with pffft_aligned_malloc for SIMD alignment
   float gLastPhase[MAX_FRAME_LENGTH / 2 + 1];
   float gSumPhase[MAX_FRAME_LENGTH / 2 + 1];
   float gOutputAccum[2 * MAX_FRAME_LENGTH];

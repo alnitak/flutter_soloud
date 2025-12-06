@@ -8,6 +8,10 @@
 #include <algorithm>
 #endif
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten/emscripten.h>
+#endif
+
 void platform_log(const char *fmt, ...) {
   va_list args;
   va_start(args, fmt);
@@ -19,6 +23,10 @@ void platform_log(const char *fmt, ...) {
   _vsprintf_p(buf, 4096, fmt, args);
   OutputDebugStringA(buf);
   delete[] buf;
+#elif defined(__EMSCRIPTEN__)
+  char buf[4096];
+  vsnprintf(buf, sizeof(buf), fmt, args);
+  emscripten_log(EM_LOG_CONSOLE, "%s", buf);
 #else
   vprintf(fmt, args);
   fflush(stdout);

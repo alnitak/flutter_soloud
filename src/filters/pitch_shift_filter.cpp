@@ -1,6 +1,7 @@
 #include <cmath>
 
 #include "pitch_shift_filter.h"
+#include <common.h>
 
 PitchShiftInstance::PitchShiftInstance(PitchShift *aParent) {
   mParent = aParent;
@@ -14,6 +15,7 @@ void PitchShiftInstance::filter(float *aBuffer, unsigned int aSamples,
                                 unsigned int aBufferSize,
                                 unsigned int aChannels, float aSamplerate,
                                 SoLoud::time aTime) {
+
   updateParams(aTime);
   float *in = (float *)calloc((aSamples), sizeof(float));
   for (int j = 0; j < aSamples; j++) {
@@ -22,7 +24,7 @@ void PitchShiftInstance::filter(float *aBuffer, unsigned int aSamples,
       in[j] += aBuffer[j + aSamples * n];
     in[j] /= (float)aChannels;
   }
-
+  
   pitchShift.smbPitchShift(mParam[PitchShift::SHIFT], aSamples, 2048, 32,
                            aSamplerate, in, in);
 
@@ -35,6 +37,7 @@ void PitchShiftInstance::filter(float *aBuffer, unsigned int aSamples,
           in[j] * mParam[PitchShift::WET]; // R chan
   }
   free(in);
+
 }
 
 void PitchShiftInstance::setFilterParameter(unsigned int aAttributeId,

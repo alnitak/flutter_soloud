@@ -1,10 +1,10 @@
 #include "filters.h"
+#include "../common.h"
 #include "../active_sound.h" // Add this include for complete type definition
 
 #include <stdarg.h>
 
 #include "../soloud/include/soloud_biquadresonantfilter.h"
-#include "pitch_shift_filter.h"
 // #include "soloud_duckfilter.h"
 #include "../soloud/include/soloud_echofilter.h"
 #include "../soloud/include/soloud_eqfilter.h"
@@ -15,6 +15,7 @@
 #include "../soloud/include/soloud_freeverbfilter.h"
 #include "../soloud/include/soloud_robotizefilter.h"
 #include "../soloud/include/soloud_waveshaperfilter.h"
+#include "pitch_shift_filter.h"
 #include "compressor.h"
 #include "limiter.h"
 #include "parametric_eq_filter.h"
@@ -190,10 +191,10 @@ PlayerErrors Filters::addFilter(FilterType filterType) {
   } else {
     mSound->sound.get()->setFilter(filtersSize, newFilter);
   }
-
+  
   // Create FilterObject taking ownership of raw pointer
   std::unique_ptr<FilterObject> nfo =
-      std::make_unique<FilterObject>(filterType, newFilter);
+  std::make_unique<FilterObject>(filterType, newFilter);
   filters.push_back(std::move(nfo));
 
   return noError;

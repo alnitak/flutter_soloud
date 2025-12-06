@@ -420,50 +420,6 @@ class _PitchShiftState extends State<PitchShift> {
                     },
                     child: const Text('Fade shift'),
                   ),
-
-                  const SizedBox(height: 16),
-
-                  /// Activate / deactivate filter
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      OutlinedButton(
-                        onPressed: () {
-                          if (useGlobalFilter) {
-                            if (SoLoud
-                                .instance.filters.pitchShiftFilter.isActive) {
-                              return;
-                            }
-                            SoLoud.instance.filters.pitchShiftFilter.activate();
-                          } else {
-                            if (sound!.filters.pitchShiftFilter.isActive) {
-                              return;
-                            }
-                            sound!.filters.pitchShiftFilter.activate();
-                          }
-                        },
-                        child: const Text('Activate'),
-                      ),
-                      OutlinedButton(
-                        onPressed: () {
-                          if (useGlobalFilter) {
-                            if (!SoLoud
-                                .instance.filters.pitchShiftFilter.isActive) {
-                              return;
-                            }
-                            SoLoud.instance.filters.pitchShiftFilter
-                                .deactivate();
-                          } else {
-                            if (!sound!.filters.pitchShiftFilter.isActive) {
-                              return;
-                            }
-                            sound!.filters.pitchShiftFilter.deactivate();
-                          }
-                        },
-                        child: const Text('Deactivate'),
-                      ),
-                    ],
-                  ),
                 ],
               ),
             ),

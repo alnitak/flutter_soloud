@@ -146,6 +146,10 @@ CSmbPitchShift::~CSmbPitchShift() {
     pffft_aligned_free(mFFTTemp);
     mFFTTemp = nullptr;
   }
+  if (gFFTworksp != nullptr) {
+    pffft_aligned_free(gFFTworksp);
+    gFFTworksp = nullptr;
+  }
 }
 
 void CSmbPitchShift::initFFT(long fftSize) {
@@ -163,6 +167,9 @@ void CSmbPitchShift::initFFT(long fftSize) {
   if (mFFTTemp != nullptr) {
     pffft_aligned_free(mFFTTemp);
   }
+  if (gFFTworksp != nullptr) {
+    pffft_aligned_free(gFFTworksp);
+  }
 
   // Initialize new pffft setup for complex transforms
   mFFTSetup = pffft_new_setup(fftSize, PFFFT_COMPLEX);
@@ -170,6 +177,7 @@ void CSmbPitchShift::initFFT(long fftSize) {
   // Allocate aligned work buffers (2 * fftSize for complex interleaved format)
   mFFTWork = (float *)pffft_aligned_malloc(2 * fftSize * sizeof(float));
   mFFTTemp = (float *)pffft_aligned_malloc(2 * fftSize * sizeof(float));
+  gFFTworksp = (float *)pffft_aligned_malloc(2 * fftSize * sizeof(float));
 
   mCurrentFFTSize = fftSize;
 }
@@ -201,7 +209,7 @@ void CSmbPitchShift::smbPitchShift(float pitchShift, long numSampsToProcess,
   if (!gInit) {
     memset(gInFIFO, 0, MAX_FRAME_LENGTH * sizeof(float));
     memset(gOutFIFO, 0, MAX_FRAME_LENGTH * sizeof(float));
-    memset(gFFTworksp, 0, 2 * MAX_FRAME_LENGTH * sizeof(float));
+    memset(gFFTworksp, 0, 2 * mCurrentFFTSize * sizeof(float));
     memset(gLastPhase, 0, (MAX_FRAME_LENGTH / 2 + 1) * sizeof(float));
     memset(gSumPhase, 0, (MAX_FRAME_LENGTH / 2 + 1) * sizeof(float));
     memset(gOutputAccum, 0, 2 * MAX_FRAME_LENGTH * sizeof(float));
