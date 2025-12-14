@@ -34,6 +34,8 @@ private:
   float gSynFreq[MAX_FRAME_LENGTH];
   float gSynMagn[MAX_FRAME_LENGTH];
 
+  float gWindow[MAX_FRAME_LENGTH];
+
   float gErrors[MAX_FRAME_LENGTH];
 
   long gRover = 0;
@@ -42,8 +44,8 @@ private:
   // PFFFT members
   PFFFT_Setup *mFFTSetup = nullptr;
   float *mFFTWork = nullptr;
-  float *mFFTTemp = nullptr;
   long mCurrentFFTSize = 0;
+  long mWindowFFTSize = 0;
 };
 
 #endif

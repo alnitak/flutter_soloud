@@ -3,12 +3,17 @@
 #include "pitch_shift_filter.h"
 #include <common.h>
 
+#include <algorithm>
+#include <vector>
+
 PitchShiftInstance::PitchShiftInstance(PitchShift *aParent) {
   mParent = aParent;
   pitchShift = CSmbPitchShift();
   initParams(3);
   mParam[PitchShift::SHIFT] = aParent->mShift;
   mParam[PitchShift::SEMITONES] = aParent->mSemitones;
+
+  mMonoBuffer.resize(kMaxFrameLength, 0.0f);
 }
 
 void PitchShiftInstance::filter(float *aBuffer, unsigned int aSamples,
@@ -17,27 +22,37 @@ void PitchShiftInstance::filter(float *aBuffer, unsigned int aSamples,
                                 SoLoud::time aTime) {
 
   updateParams(aTime);
-  float *in = (float *)calloc((aSamples), sizeof(float));
-  for (int j = 0; j < aSamples; j++) {
-    // shrink channels to one to feed smbPitchShift.
-    for (int n = 0; n < aChannels; n++)
-      in[j] += aBuffer[j + aSamples * n];
-    in[j] /= (float)aChannels;
+
+  if (aSamples > mMonoBuffer.size()) {
+    mMonoBuffer.resize(aSamples);
   }
-  
+
+  std::fill_n(mMonoBuffer.begin(), aSamples, 0.0f);
+
+  const float invChannels = 1.0f / static_cast<float>(aChannels);
+  for (unsigned int j = 0; j < aSamples; j++) {
+    float mixedSample = 0.0f;
+    const unsigned int baseIndex = j;
+    for (unsigned int n = 0; n < aChannels; n++) {
+      mixedSample += aBuffer[baseIndex + aSamples * n];
+    }
+    mMonoBuffer[j] = mixedSample * invChannels;
+  }
+
   pitchShift.smbPitchShift(mParam[PitchShift::SHIFT], aSamples, 2048, 32,
-                           aSamplerate, in, in);
+                           aSamplerate, mMonoBuffer.data(),
+                           mMonoBuffer.data());
 
-  for (int j = 0; j < aSamples; j++) {
-    aBuffer[j] = aBuffer[j] * (1.0f - mParam[PitchShift::WET]) +
-                 in[j] * mParam[PitchShift::WET]; // L chan
-    for (int n = 1; n < aChannels; n++)
+  const float dryRatio = 1.0f - mParam[PitchShift::WET];
+  const float wetRatio = mParam[PitchShift::WET];
+
+  for (unsigned int j = 0; j < aSamples; j++) {
+    const float shifted = mMonoBuffer[j];
+    aBuffer[j] = aBuffer[j] * dryRatio + shifted * wetRatio; // L chan
+    for (unsigned int n = 1; n < aChannels; n++)
       aBuffer[j + aSamples] =
-          aBuffer[j + aSamples] * (1.0f - mParam[PitchShift::WET]) +
-          in[j] * mParam[PitchShift::WET]; // R chan
+          aBuffer[j + aSamples] * dryRatio + shifted * wetRatio; // R chan
   }
-  free(in);
-
 }
 
 void PitchShiftInstance::setFilterParameter(unsigned int aAttributeId,

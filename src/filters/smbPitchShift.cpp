@@ -41,7 +41,6 @@
 #include "soloud.h"
 
 #include <math.h>
-#include <memory>
 #include <string.h>
 
 #ifndef M_PI_2
@@ -129,7 +128,6 @@ FFI_PLUGIN_EXPORT double smbAtan2(double y, double x) {
 CSmbPitchShift::CSmbPitchShift() {
   mFFTSetup = nullptr;
   mFFTWork = nullptr;
-  mFFTTemp = nullptr;
   mCurrentFFTSize = 0;
 }
 
@@ -141,10 +139,6 @@ CSmbPitchShift::~CSmbPitchShift() {
   if (mFFTWork != nullptr) {
     pffft_aligned_free(mFFTWork);
     mFFTWork = nullptr;
-  }
-  if (mFFTTemp != nullptr) {
-    pffft_aligned_free(mFFTTemp);
-    mFFTTemp = nullptr;
   }
   if (gFFTworksp != nullptr) {
     pffft_aligned_free(gFFTworksp);
@@ -164,9 +158,6 @@ void CSmbPitchShift::initFFT(long fftSize) {
   if (mFFTWork != nullptr) {
     pffft_aligned_free(mFFTWork);
   }
-  if (mFFTTemp != nullptr) {
-    pffft_aligned_free(mFFTTemp);
-  }
   if (gFFTworksp != nullptr) {
     pffft_aligned_free(gFFTworksp);
   }
@@ -176,10 +167,12 @@ void CSmbPitchShift::initFFT(long fftSize) {
 
   // Allocate aligned work buffers (2 * fftSize for complex interleaved format)
   mFFTWork = (float *)pffft_aligned_malloc(2 * fftSize * sizeof(float));
-  mFFTTemp = (float *)pffft_aligned_malloc(2 * fftSize * sizeof(float));
   gFFTworksp = (float *)pffft_aligned_malloc(2 * fftSize * sizeof(float));
 
   mCurrentFFTSize = fftSize;
+  mWindowFFTSize = 0; // Force window regeneration
+  gInit = false;      // Reinitialize state for the new frame size
+  gRover = 0;
 }
 
 void CSmbPitchShift::smbPitchShift(float pitchShift, long numSampsToProcess,
@@ -215,15 +208,22 @@ void CSmbPitchShift::smbPitchShift(float pitchShift, long numSampsToProcess,
     memset(gOutputAccum, 0, 2 * MAX_FRAME_LENGTH * sizeof(float));
     memset(gAnaFreq, 0, MAX_FRAME_LENGTH * sizeof(float));
     memset(gAnaMagn, 0, MAX_FRAME_LENGTH * sizeof(float));
+    memset(gSynMagn, 0, MAX_FRAME_LENGTH * sizeof(float));
+    memset(gSynFreq, 0, MAX_FRAME_LENGTH * sizeof(float));
 
     memset(gErrors, 0, MAX_FRAME_LENGTH * sizeof(float));
 
     gInit = true;
   }
 
-  auto window = std::make_unique<double[]>(fftFrameSize);
-  for (long k = 0; k < fftFrameSize; k++) {
-    window[k] = -.5 * cos(2. * M_PI * (double)k / (double)fftFrameSize) + .5;
+  if (mWindowFFTSize != fftFrameSize) {
+    mWindowFFTSize = fftFrameSize;
+    for (long k = 0; k < fftFrameSize; k++) {
+      gWindow[k] =
+          -.5f * cosf(2.f * static_cast<float>(M_PI) * static_cast<float>(k) /
+                      static_cast<float>(fftFrameSize)) +
+          .5f;
+    }
   }
 
   /* main processing loop */
@@ -240,17 +240,14 @@ void CSmbPitchShift::smbPitchShift(float pitchShift, long numSampsToProcess,
 
       /* do windowing and re,im interleave */
       for (long k = 0; k < fftFrameSize; k++) {
-        gFFTworksp[2 * k] = gInFIFO[k] * window[k];
+        gFFTworksp[2 * k] = gInFIFO[k] * gWindow[k];
         gFFTworksp[2 * k + 1] = 0.;
       }
 
       /* ***************** ANALYSIS ******************* */
       /* do transform using pffft */
-      pffft_transform_ordered(mFFTSetup, gFFTworksp, mFFTTemp, mFFTWork,
+      pffft_transform_ordered(mFFTSetup, gFFTworksp, gFFTworksp, mFFTWork,
                               PFFFT_FORWARD);
-
-      // Copy result back to gFFTworksp for processing
-      memcpy(gFFTworksp, mFFTTemp, 2 * fftFrameSize * sizeof(float));
 
       /* this is the analysis step */
       for (long k = 0; k <= fftFrameSize2; k++) {
@@ -338,13 +335,13 @@ void CSmbPitchShift::smbPitchShift(float pitchShift, long numSampsToProcess,
         gFFTworksp[k] = 0.;
 
       /* do inverse transform using pffft */
-      pffft_transform_ordered(mFFTSetup, gFFTworksp, mFFTTemp, mFFTWork,
+      pffft_transform_ordered(mFFTSetup, gFFTworksp, gFFTworksp, mFFTWork,
                               PFFFT_BACKWARD);
 
       /* do windowing and add to output accumulator */
       for (long k = 0; k < fftFrameSize; k++) {
         gOutputAccum[k] +=
-            2. * window[k] * mFFTTemp[2 * k] / (fftFrameSize2 * osamp);
+            2. * gWindow[k] * gFFTworksp[2 * k] / (fftFrameSize2 * osamp);
       }
       for (long k = 0; k < stepSize; k++)
         gOutFIFO[k] = gOutputAccum[k];

@@ -4,11 +4,16 @@
 #include "../soloud/include/soloud.h"
 #include "smbPitchShift.h"
 
+#include <vector>
+
 class PitchShift;
 
 class PitchShiftInstance : public SoLoud::FilterInstance {
   CSmbPitchShift pitchShift;
   PitchShift *mParent;
+
+  static constexpr unsigned int kMaxFrameLength = 8192;
+  std::vector<float> mMonoBuffer;
 
 public:
   virtual void filter(float *aBuffer, unsigned int aSamples,
