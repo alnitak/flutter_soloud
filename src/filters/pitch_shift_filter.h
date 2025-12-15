@@ -9,11 +9,9 @@
 class PitchShift;
 
 class PitchShiftInstance : public SoLoud::FilterInstance {
-  CSmbPitchShift pitchShift;
+  std::vector<CSmbPitchShift> mPitchShifters;
   PitchShift *mParent;
-
-  static constexpr unsigned int kMaxFrameLength = 8192;
-  std::vector<float> mMonoBuffer;
+  unsigned int mChannelCount = 0;
 
 public:
   virtual void filter(float *aBuffer, unsigned int aSamples,

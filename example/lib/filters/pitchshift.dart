@@ -86,6 +86,7 @@ class _PitchShiftState extends State<PitchShift> {
     try {
       SoLoud.instance
           .loadAsset('assets/audio/8_bit_mentality.mp3')
+          // .loadAsset('assets/audio/IveSeenThings.mp3')
           .then((value) async {
         sound = value;
 
@@ -366,6 +367,7 @@ class _PitchShiftState extends State<PitchShift> {
                   const SizedBox(height: 32),
 
                   Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
                     spacing: 24,
                     children: [
                       OutlinedButton(
@@ -428,6 +430,7 @@ class _PitchShiftState extends State<PitchShift> {
 
                   /// Activate / Deactivate filter
                   Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
                     spacing: 24,
                     children: [
                       OutlinedButton(

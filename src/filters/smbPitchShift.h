@@ -36,8 +36,6 @@ private:
 
   float gWindow[MAX_FRAME_LENGTH];
 
-  float gErrors[MAX_FRAME_LENGTH];
-
   long gRover = 0;
   bool gInit = false;
 

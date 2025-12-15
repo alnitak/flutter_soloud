@@ -8,12 +8,9 @@
 
 PitchShiftInstance::PitchShiftInstance(PitchShift *aParent) {
   mParent = aParent;
-  pitchShift = CSmbPitchShift();
   initParams(3);
   mParam[PitchShift::SHIFT] = aParent->mShift;
   mParam[PitchShift::SEMITONES] = aParent->mSemitones;
-
-  mMonoBuffer.resize(kMaxFrameLength, 0.0f);
 }
 
 void PitchShiftInstance::filter(float *aBuffer, unsigned int aSamples,
@@ -23,35 +20,41 @@ void PitchShiftInstance::filter(float *aBuffer, unsigned int aSamples,
 
   updateParams(aTime);
 
-  if (aSamples > mMonoBuffer.size()) {
-    mMonoBuffer.resize(aSamples);
+  // Allocate per-channel pitch shifters on first call or if channel count
+  // changes
+  if (mChannelCount != aChannels) {
+    mChannelCount = aChannels;
+    mPitchShifters.clear();
+    mPitchShifters.resize(aChannels);
   }
-
-  std::fill_n(mMonoBuffer.begin(), aSamples, 0.0f);
-
-  const float invChannels = 1.0f / static_cast<float>(aChannels);
-  for (unsigned int j = 0; j < aSamples; j++) {
-    float mixedSample = 0.0f;
-    const unsigned int baseIndex = j;
-    for (unsigned int n = 0; n < aChannels; n++) {
-      mixedSample += aBuffer[baseIndex + aSamples * n];
-    }
-    mMonoBuffer[j] = mixedSample * invChannels;
-  }
-
-  pitchShift.smbPitchShift(mParam[PitchShift::SHIFT], aSamples, 2048, 32,
-                           aSamplerate, mMonoBuffer.data(),
-                           mMonoBuffer.data());
 
   const float dryRatio = 1.0f - mParam[PitchShift::WET];
   const float wetRatio = mParam[PitchShift::WET];
 
-  for (unsigned int j = 0; j < aSamples; j++) {
-    const float shifted = mMonoBuffer[j];
-    aBuffer[j] = aBuffer[j] * dryRatio + shifted * wetRatio; // L chan
-    for (unsigned int n = 1; n < aChannels; n++)
-      aBuffer[j + aSamples] =
-          aBuffer[j + aSamples] * dryRatio + shifted * wetRatio; // R chan
+  // Process each channel independently to preserve stereo separation
+  for (unsigned int ch = 0; ch < aChannels; ch++) {
+    float *channelData = aBuffer + ch * aSamples;
+
+    if (wetRatio < 1.0f) {
+      // Need to save original samples for wet/dry mixing
+      std::vector<float> original(channelData, channelData + aSamples);
+
+      // Use osamp=32 for best quality (recommended by smbPitchShift
+      // documentation)
+      mPitchShifters[ch].smbPitchShift(mParam[PitchShift::SHIFT], aSamples,
+                                       2048, 32, aSamplerate, channelData,
+                                       channelData);
+
+      // Apply wet/dry mix
+      for (unsigned int j = 0; j < aSamples; j++) {
+        channelData[j] = original[j] * dryRatio + channelData[j] * wetRatio;
+      }
+    } else {
+      // Full wet - no need for temp buffer
+      mPitchShifters[ch].smbPitchShift(mParam[PitchShift::SHIFT], aSamples,
+                                       2048, 32, aSamplerate, channelData,
+                                       channelData);
+    }
   }
 }
 

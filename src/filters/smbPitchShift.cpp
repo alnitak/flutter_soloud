@@ -211,8 +211,6 @@ void CSmbPitchShift::smbPitchShift(float pitchShift, long numSampsToProcess,
     memset(gSynMagn, 0, MAX_FRAME_LENGTH * sizeof(float));
     memset(gSynFreq, 0, MAX_FRAME_LENGTH * sizeof(float));
 
-    memset(gErrors, 0, MAX_FRAME_LENGTH * sizeof(float));
-
     gInit = true;
   }
 
@@ -258,7 +256,7 @@ void CSmbPitchShift::smbPitchShift(float pitchShift, long numSampsToProcess,
 
         /* compute magnitude and phase */
         const auto magn = 2. * hypotf(real, imag);
-        const auto phase = smbAtan2(imag, real);
+        const auto phase = atan2(imag, real);
 
         /* compute phase difference */
         double tmp = phase - gLastPhase[k];
@@ -268,9 +266,16 @@ void CSmbPitchShift::smbPitchShift(float pitchShift, long numSampsToProcess,
         tmp -= (double)k * expct;
 
         /* map delta phase into +/- Pi interval */
+        /* wrap to -pi..pi range */
+        long qpd = static_cast<long>(tmp / M_PI);
+        if (qpd >= 0)
+          qpd += qpd & 1;
+        else
+          qpd -= qpd & 1;
+        tmp -= M_PI * static_cast<double>(qpd);
+
         /* get deviation from bin frequency from the +/- Pi interval */
-        tmp /= (2. * M_PI);
-        tmp = osamp * (tmp - floor(tmp + 0.5)); // faster than round
+        tmp = osamp * tmp / (2. * M_PI);
 
         /* compute the k-th partials' true frequency */
         tmp = (k + tmp) * freqPerBin;
@@ -286,10 +291,7 @@ void CSmbPitchShift::smbPitchShift(float pitchShift, long numSampsToProcess,
       memset(gSynFreq, 0, fftFrameSize * sizeof(float));
       for (long k = 0; k <= fftFrameSize2; k++) {
 
-        // const long index = k*pitchShift;
-        const auto originalIndex = k * pitchShift + gErrors[k];
-        const long index = originalIndex;
-        gErrors[k] = originalIndex - index;
+        const long index = static_cast<long>(k * pitchShift);
 
         if (index <= fftFrameSize2) {
           const bool useSynFreq = gSynMagn[index] < gAnaMagn[k];
@@ -339,9 +341,12 @@ void CSmbPitchShift::smbPitchShift(float pitchShift, long numSampsToProcess,
                               PFFFT_BACKWARD);
 
       /* do windowing and add to output accumulator */
+      // PFFFT note: Transforms are not scaled -
+      // PFFFT_BACKWARD(PFFFT_FORWARD(x)) = N*x So we divide by fftFrameSize (N)
+      // instead of fftFrameSize2 (N/2)
       for (long k = 0; k < fftFrameSize; k++) {
         gOutputAccum[k] +=
-            2. * gWindow[k] * gFFTworksp[2 * k] / (fftFrameSize2 * osamp);
+            2. * gWindow[k] * gFFTworksp[2 * k] / (fftFrameSize * osamp);
       }
       for (long k = 0; k < stepSize; k++)
         gOutFIFO[k] = gOutputAccum[k];
