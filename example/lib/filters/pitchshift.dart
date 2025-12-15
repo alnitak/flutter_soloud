@@ -32,7 +32,7 @@ import 'package:logging/logging.dart';
 
 /// Use the filter globally or attached to the sound. Filters for single sounds
 /// are not supported in the Web platform.
-const bool useGlobalFilter = true;
+const bool useGlobalFilter = false;
 
 void main() async {
   // The `flutter_soloud` package logs everything
@@ -85,7 +85,7 @@ class _PitchShiftState extends State<PitchShift> {
     super.initState();
     try {
       SoLoud.instance
-          .loadAsset('assets/audio/IveSeenThings.mp3')
+          .loadAsset('assets/audio/8_bit_mentality.mp3')
           .then((value) async {
         sound = value;
 
@@ -365,60 +365,109 @@ class _PitchShiftState extends State<PitchShift> {
                   ),
                   const SizedBox(height: 32),
 
-                  OutlinedButton(
-                    onPressed: () {
-                      if (soundHandle == null || sound == null) return;
+                  Row(
+                    spacing: 24,
+                    children: [
+                      OutlinedButton(
+                        onPressed: () {
+                          if (soundHandle == null || sound == null) return;
 
-                      /// Oscillate shift parameter from 0.4 to 1.6 in 1500ms
-                      if (useGlobalFilter) {
-                        SoLoud.instance.filters.pitchShiftFilter.shift
-                            .oscillateFilterParameter(
-                          from: 0.4,
-                          to: 1.6,
-                          time: const Duration(milliseconds: 1500),
-                        );
-                      } else {
-                        sound!.filters.pitchShiftFilter
-                            .shift(soundHandle: soundHandle)
-                            .oscillateFilterParameter(
+                          /// Oscillate shift parameter from 0.4 to 1.6 in 1500ms
+                          if (useGlobalFilter) {
+                            SoLoud.instance.filters.pitchShiftFilter.shift
+                                .oscillateFilterParameter(
                               from: 0.4,
                               to: 1.6,
                               time: const Duration(milliseconds: 1500),
                             );
-                      }
-                    },
-                    child: const Text('Oscillate shift'),
-                  ),
+                          } else {
+                            sound!.filters.pitchShiftFilter
+                                .shift(soundHandle: soundHandle)
+                                .oscillateFilterParameter(
+                                  from: 0.4,
+                                  to: 1.6,
+                                  time: const Duration(milliseconds: 1500),
+                                );
+                          }
+                        },
+                        child: const Text('Oscillate shift'),
+                      ),
+                      OutlinedButton(
+                        onPressed: () {
+                          if (soundHandle == null || sound == null) return;
 
-                  OutlinedButton(
-                    onPressed: () {
-                      if (soundHandle == null || sound == null) return;
-
-                      /// Fade shift parameter from the current value to 3.0
-                      /// in 1500ms
-                      if (useGlobalFilter) {
-                        SoLoud.instance.filters.pitchShiftFilter.shift
-                            .fadeFilterParameter(
-                          to: 3,
-                          time: const Duration(milliseconds: 1500),
-                        );
-                      } else {
-                        sound!.filters.pitchShiftFilter
-                            .shift(soundHandle: soundHandle)
-                            .fadeFilterParameter(
+                          /// Fade shift parameter from the current value to 3.0
+                          /// in 1500ms
+                          if (useGlobalFilter) {
+                            SoLoud.instance.filters.pitchShiftFilter.shift
+                                .fadeFilterParameter(
                               to: 3,
                               time: const Duration(milliseconds: 1500),
                             );
-                      }
+                          } else {
+                            sound!.filters.pitchShiftFilter
+                                .shift(soundHandle: soundHandle)
+                                .fadeFilterParameter(
+                                  to: 3,
+                                  time: const Duration(milliseconds: 1500),
+                                );
+                          }
 
-                      /// Restore shift
-                      Future.delayed(const Duration(milliseconds: 1500), () {
-                        sound!.filters.pitchShiftFilter
-                            .shift(soundHandle: soundHandle)
-                            .value = 1;
-                      });
-                    },
-                    child: const Text('Fade shift'),
+                          /// Restore shift
+                          Future.delayed(const Duration(milliseconds: 1500),
+                              () {
+                            sound!.filters.pitchShiftFilter
+                                .shift(soundHandle: soundHandle)
+                                .value = 1;
+                          });
+                        },
+                        child: const Text('Fade shift'),
+                      ),
+                    ],
+                  ),
+
+                  /// Activate / Deactivate filter
+                  Row(
+                    spacing: 24,
+                    children: [
+                      OutlinedButton(
+                        onPressed: () {
+                          if (soundHandle == null || sound == null) return;
+                          if (useGlobalFilter) {
+                            if (SoLoud
+                                .instance.filters.pitchShiftFilter.isActive) {
+                              return;
+                            }
+                            SoLoud.instance.filters.pitchShiftFilter.activate();
+                          } else {
+                            if (sound!.filters.pitchShiftFilter.isActive) {
+                              return;
+                            }
+                            sound!.filters.pitchShiftFilter.activate();
+                          }
+                        },
+                        child: const Text('Activate'),
+                      ),
+                      OutlinedButton(
+                        onPressed: () {
+                          if (soundHandle == null || sound == null) return;
+                          if (useGlobalFilter) {
+                            if (!SoLoud
+                                .instance.filters.pitchShiftFilter.isActive) {
+                              return;
+                            }
+                            SoLoud.instance.filters.pitchShiftFilter
+                                .deactivate();
+                          } else {
+                            if (!sound!.filters.pitchShiftFilter.isActive) {
+                              return;
+                            }
+                            sound!.filters.pitchShiftFilter.deactivate();
+                          }
+                        },
+                        child: const Text('Deactivate'),
+                      ),
+                    ],
                   ),
                 ],
               ),
