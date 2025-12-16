@@ -194,7 +194,7 @@ PlayerErrors Filters::addFilter(FilterType filterType) {
   
   // Create FilterObject taking ownership of raw pointer
   std::unique_ptr<FilterObject> nfo =
-  std::make_unique<FilterObject>(filterType, newFilter);
+    std::make_unique<FilterObject>(filterType, newFilter);
   filters.push_back(std::move(nfo));
 
   return noError;

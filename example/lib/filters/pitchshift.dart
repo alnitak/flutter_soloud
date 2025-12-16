@@ -434,8 +434,8 @@ class _PitchShiftState extends State<PitchShift> {
                     spacing: 24,
                     children: [
                       OutlinedButton(
-                        onPressed: () {
-                          if (soundHandle == null || sound == null) return;
+                        onPressed: () async {
+                          if (sound == null) return;
                           if (useGlobalFilter) {
                             if (SoLoud
                                 .instance.filters.pitchShiftFilter.isActive) {
@@ -446,14 +446,22 @@ class _PitchShiftState extends State<PitchShift> {
                             if (sound!.filters.pitchShiftFilter.isActive) {
                               return;
                             }
+                            /// Add the filter to this sound handle before
+                            /// playing it.
                             sound!.filters.pitchShiftFilter.activate();
+
+                            /// start playing.
+                            soundHandle = await SoLoud.instance.play(
+                              sound!,
+                              looping: true,
+                            );
                           }
                         },
                         child: const Text('Activate'),
                       ),
                       OutlinedButton(
                         onPressed: () {
-                          if (soundHandle == null || sound == null) return;
+                          if (sound == null) return;
                           if (useGlobalFilter) {
                             if (!SoLoud
                                 .instance.filters.pitchShiftFilter.isActive) {
@@ -466,6 +474,11 @@ class _PitchShiftState extends State<PitchShift> {
                               return;
                             }
                             sound!.filters.pitchShiftFilter.deactivate();
+
+                            /// Since the filter must attached to the sound
+                            /// before playing it, stop it.
+                            SoLoud.instance.stop(soundHandle!);
+                            soundHandle = null;
                           }
                         },
                         child: const Text('Deactivate'),
