@@ -32,7 +32,7 @@ import 'package:logging/logging.dart';
 
 /// Use the filter globally or attached to the sound. Filters for single sounds
 /// are not supported in the Web platform.
-const bool useGlobalFilter = false;
+const bool useGlobalFilter = true;
 
 void main() async {
   // The `flutter_soloud` package logs everything
