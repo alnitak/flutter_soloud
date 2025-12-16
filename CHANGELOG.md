@@ -1,5 +1,5 @@
-#### 3.5.0-dev
-- improved quality and performance of the pitchshift filter
+#### 3.5.0-dev.1
+- improved quality and performance of the pitchshift filter #313
 - added `filters/parametric_eq.dart` example
 - added parametric equalizer with 1 to 64 bands and FFT window size 32 to 4096 for quality and performance
 
