@@ -52,7 +52,6 @@ class _SeekBarState extends State<SeekBar> with SingleTickerProviderStateMixin {
         Expanded(
           child: Slider.adaptive(
             value: _position.toDouble(),
-            min: 0,
             max: _length.toDouble(),
             onChanged: (value) {
               SoLoud.instance.seek(

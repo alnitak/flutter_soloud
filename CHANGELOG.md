@@ -1,3 +1,6 @@
+#### 3.4.7 (18 Dec 2025)
+- fix: null check before accessing sound in seek() #384. Thanks to @9AZX
+
 #### 3.4.6 (4 Dec 2025)
 - win fix: loadMem/loadAsset futures never finish when run in parallel with the same file #376 
 
