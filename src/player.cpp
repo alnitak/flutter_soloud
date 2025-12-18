@@ -821,17 +821,17 @@ PlayerErrors Player::seek(SoLoud::handle handle, float time)
         return backendNotInited;
 
     ActiveSound *sound = findByHandle(handle);
+    bool isGroupHandle = soloud.isVoiceGroup(handle);
     
+    if ((sound == nullptr || sound->soundType == TYPE_SYNTH) && !isGroupHandle)
+        return invalidParameter;
+
     // A BufferStream using `release` buffer type cannot use seek.
-    if (sound->soundType == SoundType::TYPE_BUFFER_STREAM &&
+    if (sound != nullptr && sound->soundType == SoundType::TYPE_BUFFER_STREAM &&
         static_cast<SoLoud::BufferStream *>(sound->sound.get())->getBufferingType() == BufferingType::RELEASED)
     {
         return bufferStreamWithReleasedBufferTypeCannotBeSeeked;
     }
-
-    bool isGroupHandle = soloud.isVoiceGroup(handle);
-    if ((sound == nullptr || sound->soundType == TYPE_SYNTH) && !isGroupHandle)
-        return invalidParameter;
 
     SoLoud::result result = soloud.seek(handle, time);
     return (PlayerErrors)result;
