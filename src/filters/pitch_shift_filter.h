@@ -1,17 +1,19 @@
 #ifndef PITCH_SHIFT_FILTER_H
 #define PITCH_SHIFT_FILTER_H
 
-#include "../soloud/include/soloud.h"
-#include "smbPitchShift.h"
-
+#include <cstring>
 #include <vector>
+
+#include "../soloud/include/soloud.h"
+#include "signalsmith-stretch/signalsmith-stretch.h"
 
 class PitchShift;
 
 class PitchShiftInstance : public SoLoud::FilterInstance {
-  std::vector<CSmbPitchShift> mPitchShifters;
+  signalsmith::stretch::SignalsmithStretch<float> mStretch;
   PitchShift *mParent;
   unsigned int mChannelCount = 0;
+  float mSampleRate = 0;
 
 public:
   virtual void filter(float *aBuffer, unsigned int aSamples,
