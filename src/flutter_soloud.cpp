@@ -30,6 +30,7 @@
 #include "soloud/src/core/soloud_queue.cpp"
 #include "soloud/src/core/soloud_thread.cpp"
 
+
 // Audiosources
 // 	ay
 #include "soloud/src/audiosource/ay/chipplayer.cpp"
@@ -64,15 +65,16 @@
 #include "soloud/src/audiosource/vic/soloud_vic.cpp"
 
 // 	# wav
+#include "soloud/src/audiosource/wav/stb_vorbis.c"
 #include "soloud/src/audiosource/wav/dr_impl.cpp"
 #include "soloud/src/audiosource/wav/soloud_wav.cpp"
 #include "soloud/src/audiosource/wav/soloud_wavstream.cpp"
-#include "soloud/src/audiosource/wav/stb_vorbis.c"
+
 
 // Backends
-#include "soloud/src/backend/miniaudio/soloud_miniaudio.cpp"
-#include "soloud/src/backend/nosound/soloud_nosound.cpp"
 #include "soloud/src/backend/null/soloud_null.cpp"
+#include "soloud/src/backend/nosound/soloud_nosound.cpp"
+#include "soloud/src/backend/miniaudio/soloud_miniaudio.cpp"
 
 // Filters
 #include "soloud/src/filter/soloud_bassboostfilter.cpp"
@@ -88,25 +90,28 @@
 #include "soloud/src/filter/soloud_robotizefilter.cpp"
 #include "soloud/src/filter/soloud_waveshaperfilter.cpp"
 
+
+
 // 	vizsn
 // #include "soloud/src/audiosource/vizsn/soloud_vizsn.cpp"
 
-#include "analyzer.cpp"
-#include "audiobuffer/audiobuffer.cpp"
-#include "audiobuffer/flac_stream_decoder.cpp"
-#include "audiobuffer/mp3_stream_decoder.cpp"
-#include "audiobuffer/opus_stream_decoder.cpp"
-#include "audiobuffer/stream_decoder.cpp"
-#include "audiobuffer/vorbis_stream_decoder.cpp"
-#include "bindings.cpp"
+
 #include "common.cpp"
-#include "filters/compressor.cpp"
+#include "bindings.cpp"
+#include "player.cpp"
+#include "analyzer.cpp"
+#include "synth/basic_wave.cpp"
+#include "waveform/waveform.cpp"
+#include "waveform/miniaudio_libvorbis.cpp"
+#include "audiobuffer/audiobuffer.cpp"
+#include "audiobuffer/stream_decoder.cpp"
+#include "audiobuffer/flac_stream_decoder.cpp"
+#include "audiobuffer/opus_stream_decoder.cpp"
+#include "audiobuffer/vorbis_stream_decoder.cpp"
+#include "audiobuffer/mp3_stream_decoder.cpp"
+#include "pffft/pffft.c"
 #include "filters/filters.cpp"
-#include "filters/limiter.cpp"
 #include "filters/parametric_eq_filter.cpp"
 #include "filters/pitch_shift_filter.cpp"
-#include "pffft/pffft.c"
-#include "player.cpp"
-#include "synth/basic_wave.cpp"
-#include "waveform/miniaudio_libvorbis.cpp"
-#include "waveform/waveform.cpp"
+#include "filters/limiter.cpp"
+#include "filters/compressor.cpp"
