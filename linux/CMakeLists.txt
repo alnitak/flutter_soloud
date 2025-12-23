@@ -27,6 +27,7 @@ endif ()
 
 include_directories(${SRC_DIR}/soloud/include)
 include_directories(${SRC_DIR}/soloud/src)
+include_directories(${SRC_DIR}/pffft)
 include_directories(${SRC_DIR})
 include (src.cmake)
 message("**************** SOLOUD SRC.CMAKE END  ${TARGET_NAME}")
@@ -51,7 +52,6 @@ list(APPEND PLUGIN_SOURCES
   "${SRC_DIR}/audiobuffer/flac_stream_decoder.cpp"
   "${SRC_DIR}/filters/filters.cpp"
   "${SRC_DIR}/filters/pitch_shift_filter.cpp"
-  "${SRC_DIR}/filters/smbPitchShift.cpp"
   "${SRC_DIR}/filters/limiter.cpp"
   "${SRC_DIR}/filters/compressor.cpp"
   "${SRC_DIR}/filters/parametric_eq_filter.cpp"
@@ -68,6 +68,7 @@ set_target_properties(${PLUGIN_NAME} PROPERTIES
 
   
 target_compile_definitions(${PLUGIN_NAME} PRIVATE FLUTTER_PLUGIN_IMPL)
+target_compile_definitions(${PLUGIN_NAME} PRIVATE SIGNALSMITH_USE_PFFFT)
 target_include_directories(${PLUGIN_NAME} INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_link_libraries(${PLUGIN_NAME} PRIVATE flutter)
 target_link_libraries(${PLUGIN_NAME} PRIVATE PkgConfig::GTK)

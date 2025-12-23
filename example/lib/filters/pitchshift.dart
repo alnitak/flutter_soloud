@@ -85,8 +85,8 @@ class _PitchShiftState extends State<PitchShift> {
     super.initState();
     try {
       SoLoud.instance
-          .loadAsset('assets/audio/8_bit_mentality.mp3')
-          // .loadAsset('assets/audio/IveSeenThings.mp3')
+          // .loadAsset('assets/audio/8_bit_mentality.mp3')
+          .loadAsset('assets/audio/IveSeenThings.mp3')
           .then((value) async {
         sound = value;
 
@@ -402,11 +402,16 @@ class _PitchShiftState extends State<PitchShift> {
                           /// in 1500ms
                           if (useGlobalFilter) {
                             SoLoud.instance.filters.pitchShiftFilter.shift
+                                .value = 0.5;
+                            SoLoud.instance.filters.pitchShiftFilter.shift
                                 .fadeFilterParameter(
                               to: 3,
                               time: const Duration(milliseconds: 1500),
                             );
                           } else {
+                            sound!.filters.pitchShiftFilter
+                                .shift(soundHandle: soundHandle)
+                                .value = 0.5;
                             sound!.filters.pitchShiftFilter
                                 .shift(soundHandle: soundHandle)
                                 .fadeFilterParameter(
@@ -446,6 +451,7 @@ class _PitchShiftState extends State<PitchShift> {
                             if (sound!.filters.pitchShiftFilter.isActive) {
                               return;
                             }
+
                             /// Add the filter to this sound handle before
                             /// playing it.
                             sound!.filters.pitchShiftFilter.activate();

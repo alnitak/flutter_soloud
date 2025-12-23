@@ -29,6 +29,7 @@ Flutter audio plugin using SoLoud library and FFI
   if disable_opus_ogg
     preprocessor_definitions << 'NO_OPUS_OGG_LIBS'
   end
+  preprocessor_definitions << 'SIGNALSMITH_USE_PFFFT'
 
   s.compiler_flags = [
     '-w',

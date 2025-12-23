@@ -155,6 +155,7 @@ INCLUDE_DIRS=(
     -I ../src
     -I ../src/filters
     -I ../src/synth
+    -I ../src/pffft
 )
 
 if [ "${SKIP_OPUS_OGG}" != "1" ]; then
@@ -178,7 +179,7 @@ if [ "${SKIP_OPUS_OGG}" != "1" ]; then
 fi
 
 # Define compiler flags based on NO_OPUS_OGG_LIBS
-COMPILER_DEFINES="-D WITH_MINIAUDIO"
+COMPILER_DEFINES="-D WITH_MINIAUDIO -D SIGNALSMITH_USE_PFFFT"
 if [ "${SKIP_OPUS_OGG}" = "1" ]; then
     COMPILER_DEFINES="$COMPILER_DEFINES -D NO_OPUS_OGG_LIBS"
 fi

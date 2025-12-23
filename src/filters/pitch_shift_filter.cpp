@@ -1,9 +1,6 @@
-#include <cmath>
-
 #include "pitch_shift_filter.h"
-#include <common.h>
 
-#include <algorithm>
+#include <cmath>
 #include <vector>
 
 PitchShiftInstance::PitchShiftInstance(PitchShift *aParent) {
@@ -17,43 +14,50 @@ void PitchShiftInstance::filter(float *aBuffer, unsigned int aSamples,
                                 unsigned int aBufferSize,
                                 unsigned int aChannels, float aSamplerate,
                                 SoLoud::time aTime) {
-
   updateParams(aTime);
 
-  // Allocate per-channel pitch shifters on first call or if channel count
-  // changes
-  if (mChannelCount != aChannels) {
+  // Reconfigure the stretcher if sample rate or channel count changes
+  if (mChannelCount != aChannels || mSampleRate != aSamplerate) {
     mChannelCount = aChannels;
-    mPitchShifters.clear();
-    mPitchShifters.resize(aChannels);
+    mSampleRate = aSamplerate;
+    mStretch.presetDefault(static_cast<int>(aChannels), aSamplerate);
   }
+
+  // Set the pitch shift factor
+  mStretch.setTransposeFactor(mParam[PitchShift::SHIFT]);
 
   const float dryRatio = 1.0f - mParam[PitchShift::WET];
   const float wetRatio = mParam[PitchShift::WET];
 
-  // Process each channel independently to preserve stereo separation
+  // SignalSmith expects channel-separated buffers (float**)
+  // SoLoud provides data where each channel's samples are contiguous.
+  // I'd prefer using this way instead of using per channel stretcher
+  // with SoLoud::FilterInstance::filterChannels because SignalSmith
+  // is optimized for multichannels.
+  std::vector<float *> inputChannels(aChannels);
+  std::vector<float *> outputChannels(aChannels);
+  std::vector<float> outputBuffer(aSamples * aChannels);
+
   for (unsigned int ch = 0; ch < aChannels; ch++) {
-    float *channelData = aBuffer + ch * aSamples;
+    inputChannels[ch] = aBuffer + ch * aSamples;
+    outputChannels[ch] = outputBuffer.data() + ch * aSamples;
+  }
+
+  // Process all channels together
+  mStretch.process(inputChannels.data(), static_cast<int>(aSamples),
+                   outputChannels.data(), static_cast<int>(aSamples));
+
+  // Apply wet/dry mix and copy back to buffer
+  for (unsigned int ch = 0; ch < aChannels; ch++) {
+    float *channelIn = aBuffer + ch * aSamples;
+    float *channelOut = outputChannels[ch];
 
     if (wetRatio < 1.0f) {
-      // Need to save original samples for wet/dry mixing
-      std::vector<float> original(channelData, channelData + aSamples);
-
-      // Use osamp=32 for best quality (recommended by smbPitchShift
-      // documentation)
-      mPitchShifters[ch].smbPitchShift(mParam[PitchShift::SHIFT], aSamples,
-                                       2048, 32, aSamplerate, channelData,
-                                       channelData);
-
-      // Apply wet/dry mix
       for (unsigned int j = 0; j < aSamples; j++) {
-        channelData[j] = original[j] * dryRatio + channelData[j] * wetRatio;
+        channelIn[j] = channelIn[j] * dryRatio + channelOut[j] * wetRatio;
       }
     } else {
-      // Full wet - no need for temp buffer
-      mPitchShifters[ch].smbPitchShift(mParam[PitchShift::SHIFT], aSamples,
-                                       2048, 32, aSamplerate, channelData,
-                                       channelData);
+      std::memcpy(channelIn, channelOut, aSamples * sizeof(float));
     }
   }
 }

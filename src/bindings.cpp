@@ -189,102 +189,6 @@ FFI_PLUGIN_EXPORT bool areOpusOggLibsAvailable() {
 #endif
 }
 
-#include "pffft/pffft.h"
-#include "soloud_fftfilter.h"
-void testFFT() {
-  for (int n = 256; n <= 4096; n *= 2) {
-    int stft_window_size = n;
-    int stft_window_half = stft_window_size / 2;
-    int stft_window_twice = stft_window_size * 2;
-    float *mData = new float[stft_window_size];
-
-    // fill mData with random values in the -1.0f to 1.0f range
-    for (int i = 0; i < stft_window_size; i++)
-      mData[i] = ((float)rand() / (float)RAND_MAX) * 2.0f - 1.0f;
-
-    // Start the timer
-    auto start = std::chrono::high_resolution_clock::now();
-
-    for (int i = 0; i < 100000; i++) {
-      // Call the FFT function using SoLoud FFT
-      SoLoud::FFT::fft(mData, stft_window_size);
-
-      // Calc the inverse FFT using SoLoud FFT
-      SoLoud::FFT::ifft(mData, stft_window_size);
-    }
-    delete[] mData;
-
-    // Stop the timer
-    auto end = std::chrono::high_resolution_clock::now();
-    // Calculate the elapsed time
-    auto soloud_fft_time =
-        std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
-
-    //////////////////////////////////////
-    //////////////////////////////////////
-    //////////////////////////////////////
-    // do the same using pffft
-    float *mTemp;
-    float *mFFTBuffer; // Aligned buffer for PFFFT
-    float *mFFTWork;   // Work buffer for PFFFT
-    PFFFT_Setup *mFFTSetup;
-
-    // Initialize FFT setup for complex transforms
-    mFFTSetup = pffft_new_setup(stft_window_size, PFFFT_COMPLEX);
-
-    // Allocate aligned buffers for FFT
-    mFFTBuffer =
-        (float *)pffft_aligned_malloc(stft_window_twice * sizeof(float));
-    mFFTWork = (float *)pffft_aligned_malloc(stft_window_twice * sizeof(float));
-    mTemp = (float *)pffft_aligned_malloc(stft_window_twice * sizeof(float));
-
-    // fill mTemp with random values in the -1.0f to 1.0f range
-    for (int i = 0; i < stft_window_size; i++)
-      mTemp[i] = ((float)rand() / (float)RAND_MAX) * 2.0f - 1.0f;
-
-    // Start the timer
-    start = std::chrono::high_resolution_clock::now();
-
-    for (int i = 0; i < 100000; i++) {
-      // Forward FFT (ordered output: interleaved complex numbers)
-      pffft_transform_ordered(mFFTSetup, mFFTBuffer, mTemp, mFFTWork,
-                              PFFFT_FORWARD);
-
-      // Inverse FFT (ordered output)
-      pffft_transform_ordered(mFFTSetup, mTemp, mFFTBuffer, mFFTWork,
-                              PFFFT_BACKWARD);
-    }
-
-    // Stop the timer
-    end = std::chrono::high_resolution_clock::now();
-    // Calculate the elapsed time
-    auto pffft_fft_time =
-        std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
-
-    platform_log("------------------\n");
-    platform_log("Samples : %d\n", stft_window_size);
-    platform_log("SoLoud: %d ms\n", soloud_fft_time.count() / 1000000);
-    platform_log("pffft: %d ms\n", pffft_fft_time.count() / 1000000);
-    /// Calculate how much pffft is faster than SoLoud in percentage
-    double soloud_ns = soloud_fft_time.count();
-    double pffft_ns = pffft_fft_time.count();
-    double faster_percent = (1.0 - (pffft_ns / soloud_ns)) * 100.0;
-    platform_log("pffft is %f%% faster than SoLoud\n", faster_percent);
-
-    // Free PFFFT resources
-    pffft_destroy_setup(mFFTSetup);
-    mFFTSetup = nullptr;
-
-    // Free aligned buffers
-    pffft_aligned_free(mFFTBuffer);
-    mFFTBuffer = nullptr;
-    pffft_aligned_free(mFFTWork);
-    mFFTWork = nullptr;
-    pffft_aligned_free(mTemp);
-    mTemp = nullptr;
-  }
-}
-
 /// Initialize the player. Must be called before any other player functions.
 ///
 /// [sampleRate] the sample rate. Usually is 22050, 44100 (CD quality) or 48000.
@@ -318,7 +222,6 @@ FFI_PLUGIN_EXPORT enum PlayerErrors initEngine(int deviceID,
   // Set the callback for when a voice is ended/stopped
   player.get()->setVoiceEndedCallback(voiceEndedCallback);
 
-  // testFFT();
   return (PlayerErrors)noError;
 }
 

@@ -51,7 +51,6 @@ list(APPEND PLUGIN_SOURCES
   "${SRC_DIR}/audiobuffer/mp3_stream_decoder.cpp"
   "${SRC_DIR}/filters/filters.cpp"
   "${SRC_DIR}/filters/pitch_shift_filter.cpp"
-  "${SRC_DIR}/filters/smbPitchShift.cpp"
   "${SRC_DIR}/filters/limiter.cpp"
   "${SRC_DIR}/filters/compressor.cpp"
   "${SRC_DIR}/filters/parametric_eq_filter.cpp"
@@ -74,6 +73,7 @@ find_library( # Sets the name of the path variable.
 
   
 target_compile_definitions(${PLUGIN_NAME} PRIVATE FLUTTER_PLUGIN_IMPL)
+target_compile_definitions(${PLUGIN_NAME} PRIVATE SIGNALSMITH_USE_PFFFT)
 target_include_directories(${PLUGIN_NAME} INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_link_libraries(${PLUGIN_NAME} PRIVATE ${log-lib} android)
 
