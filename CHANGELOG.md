@@ -1,3 +1,6 @@
+#### 3.4.8 (29 Dec 2025)
+- fix MP3 stream decoding missing last few seconds of audio #381
+
 #### 3.4.7 (18 Dec 2025)
 - fix: null check before accessing sound in seek() #384. Thanks to @9AZX
 
