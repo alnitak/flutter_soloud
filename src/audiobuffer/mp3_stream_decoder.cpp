@@ -242,7 +242,6 @@ MP3DecoderWrapper::decode(std::vector<unsigned char> &buffer, int *samplerate,
                            ((audioData[7] & 0x7f) << 14) |
                            ((audioData[8] & 0x7f) << 7) | (audioData[9] & 0x7f);
         uint32_t totalTagLength = tagSize + 10;
-        printf("MP3 decode: ID3 tag detected, size=%u\n", totalTagLength);
 
         // If we don't have the full tag yet, return and wait for more data.
         if (audioData.size() < totalTagLength) {
@@ -261,20 +260,9 @@ MP3DecoderWrapper::decode(std::vector<unsigned char> &buffer, int *samplerate,
                     MP3DecoderWrapper::on_meta, this, nullptr)) {
       // If init fails, it might be because there's not enough data to find a
       // valid frame yet. This is not a fatal error in a streaming context.
-      printf("MP3 decode: drmp3_init failed, audioData.size()=%zu, "
-             "m_read_pos=%zu\n",
-             audioData.size(), m_read_pos);
       return {{}, DecoderError::NoError};
     }
     isInitialized = true;
-    printf("MP3 decode: drmp3_init success, sampleRate=%u, channels=%u\n",
-           decoder.sampleRate, decoder.channels);
-    printf("MP3 decode: init consumed %zu bytes (m_read_pos: %zu->%zu)\n",
-           m_read_pos - readPosBeforeInit, readPosBeforeInit, m_read_pos);
-    printf("MP3 decode: dr_mp3 internal: dataSize=%zu, dataConsumed=%zu, "
-           "buffered=%zu\n",
-           decoder.dataSize, decoder.dataConsumed,
-           decoder.dataSize - decoder.dataConsumed);
 
     // Update readPosBefore to track only what the decode loop consumes
     readPosBefore = m_read_pos;
@@ -294,7 +282,6 @@ MP3DecoderWrapper::decode(std::vector<unsigned char> &buffer, int *samplerate,
     // a frame header yet. In this state, channels will also be 0, causing a
     // division by zero. We can wait until the sampleRate is known.
     if (decoder.sampleRate == 0) {
-      printf("MP3 decode: sampleRate is 0, breaking\n");
       break;
     }
 
@@ -335,20 +322,6 @@ MP3DecoderWrapper::decode(std::vector<unsigned char> &buffer, int *samplerate,
                                ? (double)totalFramesOut / decoder.sampleRate
                                : 0.0;
 
-  printf("MP3 decode: input=%zu, audioDataBefore=%zu, bytesConsumed=%zu, "
-         "bytesRemaining=%zu, "
-         "framesDecoded=%llu (%.3fs), m_read_pos=%zu, mDataIsEnded=%d\n",
-         inputBufferSize, audioDataSizeBefore, bytesConsumed, bytesRemaining,
-         (unsigned long long)totalFramesDecoded, decodedSeconds, m_read_pos,
-         mDataIsEnded ? 1 : 0);
-  printf(
-      "MP3 decode: CUMULATIVE: totalBytesIn=%zu, totalFramesOut=%llu (%.3fs)\n",
-      totalBytesIn, (unsigned long long)totalFramesOut, totalSecondsOut);
-  printf("MP3 decode: dr_mp3 internal: dataSize=%zu, dataConsumed=%zu, "
-         "pcmFramesRemaining=%u\n",
-         decoder.dataSize, decoder.dataConsumed,
-         decoder.pcmFramesRemainingInMP3Frame);
-
   // --- Buffer Cleanup ---
   // After decoding, erase the portion of audioData that has been successfully
   // read. Any remaining data is a partial frame, which will be used in the next
@@ -357,13 +330,9 @@ MP3DecoderWrapper::decode(std::vector<unsigned char> &buffer, int *samplerate,
   if (m_read_pos > 0) {
     if (mDataIsEnded && m_read_pos >= audioData.size()) {
       // Stream has ended and all data has been consumed
-      printf("MP3 decode: clearing all audioData (stream ended)\n");
       audioData.clear();
       m_read_pos = 0;
     } else {
-      printf(
-          "MP3 decode: erasing %zu bytes from audioData, keeping %zu bytes\n",
-          m_read_pos, audioData.size() - m_read_pos);
       audioData.erase(audioData.begin(), audioData.begin() + m_read_pos);
       m_read_pos = 0;
     }

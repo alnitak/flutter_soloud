@@ -269,8 +269,6 @@ void BufferStream::resetBuffer() {
 }
 
 void BufferStream::setDataIsEnded() {
-  printf("setDataIsEnded  buffer.size(): %d\n", buffer.size());
-
   // Signal the decoder that no more data will be added.
   // This must happen BEFORE the final addData call so the decoder
   // knows to flush all remaining audio from its internal buffers.
@@ -297,7 +295,6 @@ void BufferStream::setBufferIcyMetaInt(int icyMetaInt) {
 PlayerErrors BufferStream::addData(const void *aData, unsigned int aDataLen,
                                    bool dontAdd) {
   if (dataIsEnded) {
-    printf("addData dataIsEnded \n");
     return PlayerErrors::streamEndedAlready;
   }
 
@@ -405,8 +402,6 @@ PlayerErrors BufferStream::addData(const void *aData, unsigned int aDataLen,
     return PlayerErrors::pcmBufferFull;
   }
 
-  printf("addData %d   mBytesReceived %d   getLength() %f\n", aDataLen,
-         mBytesReceived / 1024, getLength());
   return PlayerErrors::noError;
 }
 
@@ -474,7 +469,7 @@ void BufferStream::callOnMetadataCallback(AudioMetadata &metadata) {
         {
           // Compose the function name for this soundHash
           var functionName = "dartOnMetadataCallback_" + $1;
-          if (typeof window[functionName] == = "function") {
+          if (typeof window[functionName] === "function") {
             window[functionName]($0); // Call it with the pointer
           } else {
           }
@@ -498,7 +493,7 @@ void BufferStream::callOnBufferingCallback(bool isBuffering,
         {
           // Compose the function name for this soundHash
           var functionName = "dartOnBufferingCallback_" + $3;
-          if (typeof window[functionName] == = "function") {
+          if (typeof window[functionName] === "function") {
             var buffering = $0 == 1 ? true : false;
             window[functionName](buffering, $1, $2); // Call it
           } else {
