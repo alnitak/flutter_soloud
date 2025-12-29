@@ -300,11 +300,8 @@ namespace SoLoud
 
 	void BufferStream::setDataIsEnded()
 	{
-		// Eventually add any remaining data
-		if (buffer.size() > 0)
-		{
-			addData(nullptr, 0, true);
-		}
+		// Force a final decode to process any data remaining in the decoder's internal buffer.
+		addData(nullptr, 0, true);
 
 		buffer.clear();
 		dataIsEnded = true;
@@ -354,7 +351,7 @@ namespace SoLoud
 					return PlayerErrors::noError;
 				}
 			}
-			
+
 		}
 		else
 		{
@@ -410,12 +407,16 @@ namespace SoLoud
 					}
 				}
 
-				bytesWritten = mBuffer.addData(
-								   BufferType::PCM_F32LE,
-								   decoded.data(),
-								   decoded.size(),
-								   &allDataAdded) *
-							   sizeof(float);
+				{
+					// Lock to protect mBuffer from concurrent access with getAudio()
+					std::lock_guard<std::mutex> lock(buffer_lock_mutex);
+					bytesWritten = mBuffer.addData(
+									   BufferType::PCM_F32LE,
+									   decoded.data(),
+									   decoded.size(),
+									   &allDataAdded) *
+								   sizeof(float);
+				}
 			}
 			else
 			{
@@ -426,12 +427,16 @@ namespace SoLoud
 		else
 		{
 			// PCM data
-			bytesWritten = mBuffer.addData(
-							   mPCMformat.dataType,
-							   buffer.data(),
-							   bufferDataToAdd / mPCMformat.bytesPerSample,
-							   &allDataAdded) *
-						   mPCMformat.bytesPerSample;
+			{
+				// Lock to protect mBuffer from concurrent access with getAudio()
+				std::lock_guard<std::mutex> lock(buffer_lock_mutex);
+				bytesWritten = mBuffer.addData(
+								   mPCMformat.dataType,
+								   buffer.data(),
+								   bufferDataToAdd / mPCMformat.bytesPerSample,
+								   &allDataAdded) *
+							   mPCMformat.bytesPerSample;
+			}
 			// Remove the processed data from the buffer
 			if (bytesWritten > 0)
 			{
