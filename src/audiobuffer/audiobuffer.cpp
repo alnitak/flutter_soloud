@@ -435,10 +435,11 @@ void BufferStream::checkBuffering(unsigned int afterAddingBytesCount) {
       isPaused = true;
       callOnBufferingCallback(true, handle, currBufferTime);
     } else
-      // This handle has reached [TIME_FOR_BUFFERING]. Unpause it.
-      if (currBufferTime + addedDataTime - mParent->handle[i].bufferingTime >=
-              mBufferingTimeNeeds &&
-          isPaused) {
+    // This handle has reached [TIME_FOR_BUFFERING]. Unpause it.
+	// Only unpause when buffer covers playback position + margin,
+	// not just when new data >= margin (which caused play/pause toggling
+	// when seeking beyond buffered data)
+	if (currBufferTime + addedDataTime >= pos + mBufferingTimeNeeds && isPaused){
         mThePlayer->setPause(handle, false);
         isPaused = false;
         mParent->handle[i].bufferingTime = currBufferTime + addedDataTime;
