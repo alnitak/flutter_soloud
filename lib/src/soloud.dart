@@ -1561,6 +1561,8 @@ interface class SoLoud {
   /// you want to move the play head to a point 200 milliseconds into
   /// the audio source. Seeking to [Duration.zero] means "go to the beginning
   /// of the sound".
+  /// 
+  /// If [time] is negative, it will be set to [Duration.zero].
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   ///
@@ -1579,7 +1581,11 @@ interface class SoLoud {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
-    final ret = _controller.soLoudFFI.seek(handle, time);
+    var newTime = time;
+    if (time.isNegative) {
+      newTime = Duration.zero;
+    }
+    final ret = _controller.soLoudFFI.seek(handle, newTime);
     final error = PlayerErrors.values[ret];
     if (error != PlayerErrors.noError) {
       _log.severe(() => 'seek(): $error');
