@@ -1,5 +1,6 @@
 #### 3.4.9 (XX Xxx 2026)
 - fix crash when seeking with a negative value #386
+- linux fix: don't use -msse on arm64 builds #395. Thanks to @adil192
 
 #### 3.4.8 (29 Dec 2025)
 - fix MP3 stream decoding missing last few seconds of audio #381
