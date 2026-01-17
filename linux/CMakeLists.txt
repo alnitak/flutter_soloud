@@ -100,7 +100,10 @@ else()
     add_definitions(-DNO_OPUS_OGG_LIBS)
 endif()
 
-target_compile_options("${PLUGIN_NAME}" PRIVATE -Wall -Wno-error -Wno-vla -O2 -msse3 -msse2) #  -ldl -lpthread -lm
+target_compile_options("${PLUGIN_NAME}" PRIVATE -Wall -Wno-error -Wno-vla -O2) #  -ldl -lpthread -lm
+if (CMAKE_SYSTEM_PROCESSOR MATCHES "(x86)|(X86)|(amd64)|(AMD64)")
+    target_compile_options("${PLUGIN_NAME}" PRIVATE -msse3 -msse2)
+endif()
 
 # List of absolute paths to libraries that should be bundled with the plugin.
 set(flutter_soloud_bundled_libraries

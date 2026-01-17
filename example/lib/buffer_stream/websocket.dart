@@ -313,6 +313,13 @@ class _WebsocketExampleState extends State<WebsocketExample> {
                 ),
                 OutlinedButton(
                   onPressed: () async {
+                    SoLoud.instance.setDataIsEnded(currentSound!);
+                    setState(() {});
+                  },
+                  child: const Text('setDataIsEnded'),
+                ),
+                OutlinedButton(
+                  onPressed: () async {
                     currentSound = null;
                     await SoLoud.instance.disposeAllSources();
                     await channel?.sink.close();

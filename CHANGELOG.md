@@ -3,6 +3,16 @@
 - added `filters/parametric_eq.dart` example
 - added parametric equalizer with 1 to 64 bands and FFT window size 32 to 4096 for quality and performance
 
+#### 3.4.9 (XX Xxx 2026)
+- fix crash when seeking with a negative value #386
+- linux fix: don't use -msse on arm64 builds #395. Thanks to @adil192
+
+#### 3.4.8 (29 Dec 2025)
+- fix MP3 stream decoding missing last few seconds of audio #381
+
+#### 3.4.7 (18 Dec 2025)
+- fix: null check before accessing sound in seek() #384. Thanks to @9AZX
+
 #### 3.4.6 (4 Dec 2025)
 - win fix: loadMem/loadAsset futures never finish when run in parallel with the same file #376 
 
