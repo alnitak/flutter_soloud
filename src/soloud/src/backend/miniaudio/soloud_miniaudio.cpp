@@ -52,11 +52,14 @@ namespace SoLoud
 // addressed by this issue: https://github.com/mackron/miniaudio/issues/466
 // For me this happens using AAudio on android <= 10 (but not on Samsung Galaxy S9+).
 // Disablig AAudio in favor of OpenSL is a workaround to prevent the crash.
-#if defined(__ANDROID__) && (__ANDROID_API__ <= 29)
-#define MA_NO_AAUDIO
-#endif
+// #if defined(__ANDROID__) && (__ANDROID_API__ <= 29)
+// #define MA_NO_AAUDIO
+// #endif
 // #define MA_DEBUG_OUTPUT
 #include "miniaudio.h"
+#ifdef __ANDROID__
+#include <android/api-level.h>
+#endif
 #include <math.h>
 
 namespace SoLoud
@@ -125,7 +128,7 @@ namespace SoLoud
     {
         ma_device_stop(&gDevice);
         ma_device_uninit(&gDevice);
-#if defined(MA_HAS_COREAUDIO)
+#if defined(MA_HAS_COREAUDIO) || defined(__ANDROID__)
         ma_context_uninit(&context);
 #endif
     }
@@ -164,6 +167,22 @@ namespace SoLoud
         }
         if (ma_device_init(&context, &deviceConfig, &gDevice) != MA_SUCCESS)
         {
+            ma_context_uninit(&context);
+            return UNKNOWN_ERROR;
+        }
+#elif defined(__ANDROID__)
+        ma_backend backends[] = { ma_backend_aaudio, ma_backend_opensl };
+        ma_uint32 backendCount = 2;
+        if (android_get_device_api_level() <= 29) {
+            backends[0] = ma_backend_opensl;
+            backendCount = 1;
+        }
+
+        ma_context_config contextConfig = ma_context_config_init();
+        if (ma_context_init(backends, backendCount, &contextConfig, &context) != MA_SUCCESS) {
+            return UNKNOWN_ERROR;
+        }
+        if (ma_device_init(&context, &deviceConfig, &gDevice) != MA_SUCCESS) {
             ma_context_uninit(&context);
             return UNKNOWN_ERROR;
         }
