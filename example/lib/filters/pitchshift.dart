@@ -374,7 +374,8 @@ class _PitchShiftState extends State<PitchShift> {
                         onPressed: () {
                           if (soundHandle == null || sound == null) return;
 
-                          /// Oscillate shift parameter from 0.4 to 1.6 in 1500ms
+                          /// Oscillate shift parameter
+                          /// from 0.4 to 1.6 in 1500ms
                           if (useGlobalFilter) {
                             SoLoud.instance.filters.pitchShiftFilter.shift
                                 .oscillateFilterParameter(
