@@ -30,7 +30,7 @@ A high-performance audio plugin designed primarily for games and immersive appli
 
 ## Getting Started
 - Watch Flutter [Package of the Week](https://www.youtube.com/watch?v=2t6Bt04EyLw) video.
-- Read CodeLab [Add sound and music to your Flutter game](https://codelabs.developers.google.com/codelabs/flutter-codelab-soloud#0).
+- Especially for web use, please look at the [setup guide docs](https://docs.page/alnitak/flutter_soloud_docs/get_started/setup).
 
 If you are looking for a package to visualize audio using shaders or CustomPainter, please check out [audio_flux](https://pub.dev/packages/audio_flux). It uses this plugin for output and [flutter_recorder](https://pub.dev/packages/flutter_recorder) for input.
 
