@@ -1,12 +1,13 @@
-#### 3.5.0-dev.1 (XX Xxx 2026)
+#### 3.5.0-pre.0 (21 Jan 2026)
 - improved quality and performance of the pitchshift filter #313
 - added `filters/parametric_eq.dart` example
 - added parametric equalizer with 1 to 64 bands and FFT window size 32 to 4096 for quality and performance
+- Android fix: elevate audio thread priority on Android #396. Thanks to @djkingCanada
 
 #### 3.4.9 (21 Jan 2026)
 - fix crash when seeking with a negative value #386
 - Linux fix: don't use -msse on arm64 builds #395. Thanks to @adil192
-- Android fix: enable AAudio with runtime API level check for safe fallback #397. Thanks to djkingCanada
+- Android fix: enable AAudio with runtime API level check for safe fallback #397. Thanks to @djkingCanada
 
 #### 3.4.8 (29 Dec 2025)
 - fix MP3 stream decoding missing last few seconds of audio #381
