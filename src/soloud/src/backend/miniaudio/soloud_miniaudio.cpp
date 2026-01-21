@@ -58,6 +58,9 @@ namespace SoLoud
 // #define MA_DEBUG_OUTPUT
 #include "miniaudio.h"
 #include <math.h>
+#include <chrono>
+#include <pthread.h>
+#include <sys/resource.h>
 
 namespace SoLoud
 {
@@ -117,6 +120,30 @@ namespace SoLoud
 
     void soloud_miniaudio_audiomixer(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount)
     {
+        static bool first_call = true;
+        if (first_call) {
+#ifdef __ANDROID__
+            int policy;
+            struct sched_param param;
+            if (pthread_getschedparam(pthread_self(), &policy, &param) == 0) {
+                // Attempt to elevate to Realtime FIFO
+                param.sched_priority = 1;
+                if (pthread_setschedparam(pthread_self(), SCHED_FIFO, &param) != 0) {
+                    if (pthread_setschedparam(pthread_self(), SCHED_RR, &param) != 0) {
+                        // If denied Realtime, check if we are stuck in SCHED_BATCH (3)
+                        // and try to escape to SCHED_OTHER (0)
+                        if (policy == 3) {
+                             param.sched_priority = 0;
+                             pthread_setschedparam(pthread_self(), 0, &param);
+                        }
+                    }
+                }
+                // Plus set highest niceness
+                setpriority(PRIO_PROCESS, 0, -20);
+            }
+#endif
+        }
+        first_call = false;
         SoLoud::Soloud *soloud = (SoLoud::Soloud *)pDevice->pUserData;
         soloud->mix((float *)pOutput, frameCount);
     }
