@@ -1,3 +1,6 @@
+#### 3.5.0-pre.1 (26 Jan 2026)
+- Windows fix build
+
 #### 3.5.0-pre.0 (21 Jan 2026)
 - improved quality and performance of the pitchshift filter #313
 - added `filters/parametric_eq.dart` example
