@@ -5,6 +5,14 @@
 #include <string.h>
 #include <string>
 
+// MSVC fix: Undefine min/max macros that may be defined by Windows.h
+#ifdef min
+#undef min
+#endif
+#ifdef max
+#undef max
+#endif
+
 ParametricEqInstance::ParametricEqInstance(ParametricEq *aParent) {
   mParent = aParent;
 

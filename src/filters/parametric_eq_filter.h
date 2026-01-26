@@ -1,5 +1,5 @@
-#ifndef PARAMETRIC_EQ3_FILTER_H
-#define PARAMETRIC_EQ3_FILTER_H
+#ifndef PARAMETRIC_EQ_FILTER_H
+#define PARAMETRIC_EQ_FILTER_H
 
 #include "../pffft/pffft.h"
 #include "../soloud/include/soloud.h"

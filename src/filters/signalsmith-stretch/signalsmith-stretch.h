@@ -1,6 +1,27 @@
 #ifndef SIGNALSMITH_STRETCH_H
 #define SIGNALSMITH_STRETCH_H
 
+// =============================================================================
+// LOCAL MODIFICATION for flutter_soloud (MSVC compatibility)
+// -----------------------------------------------------------------------------
+// This file has been modified from the upstream signalsmith-stretch library.
+// See: https://github.com/Signalsmith-Audio/signalsmith-stretch
+//
+// MSVC does not support the `structInstance = {}` syntax for resetting
+// anonymous structs (error C2679). This is a known issue:
+// https://github.com/Signalsmith-Audio/signalsmith-stretch/issues/6
+//
+// Fix applied:
+//   1. Named the anonymous `blockProcess` struct as `BlockProcess`
+//   2. Added a `reset()` method to restore default values
+//   3. Replaced `blockProcess = {}` with `blockProcess.reset()` (3 occurrences)
+//   4. Wrapped `std::numeric_limits<size_t>::max()` in parentheses to prevent
+//      Windows.h `max` macro interference (error C2589)
+//
+// When updating this library, re-apply this fix or check if upstream has
+// resolved issue #6.
+// =============================================================================
+
 #include "../signalsmith-linear/stft.h" // https://github.com/Signalsmith-Audio/linear
 
 #include <algorithm>
@@ -53,7 +74,7 @@ struct SignalsmithStretch {
     channelBands.assign(channelBands.size(), Band());
     silenceCounter = 0;
     didSeek = false;
-    blockProcess = {};
+    blockProcess.reset(); // MSVC fix: was `blockProcess = {}`
     freqEstimateWeighted = freqEstimateWeight = 0;
   }
 
@@ -88,7 +109,7 @@ struct SignalsmithStretch {
     outputMap.resize(bands);
     channelPredictions.resize(channels * bands);
 
-    blockProcess = {};
+    blockProcess.reset(); // MSVC fix: was `blockProcess = {}`
     formantMetric.resize(bands + 2);
 
     tmpProcessBuffer.resize(blockSamples + intervalSamples);
@@ -252,7 +273,7 @@ struct SignalsmithStretch {
         if (silenceFirst) { // first block of silence processing
           silenceFirst = false;
           // stft.reset();
-          blockProcess = {};
+          blockProcess.reset(); // MSVC fix: was `blockProcess = {}`
           for (auto &b : channelBands) {
             b.input = b.prevInput = b.output = 0;
             b.inputEnergy = 0;
@@ -525,8 +546,10 @@ struct SignalsmithStretch {
 
 private:
   bool _splitComputation = false;
-  struct {
-    size_t samplesSinceLast = std::numeric_limits<size_t>::max();
+  // MSVC fix: Named struct with reset() method (was anonymous struct)
+  // See comment at top of file for details.
+  struct BlockProcess {
+    size_t samplesSinceLast = (std::numeric_limits<size_t>::max)(); // MSVC fix: parentheses prevent max macro expansion
     size_t steps = 0;
     size_t step = 0;
 
@@ -534,7 +557,18 @@ private:
     bool reanalysePrev = false;
     bool mappedFrequencies = false;
     bool processFormants = false;
-    Sample timeFactor;
+    Sample timeFactor{};
+
+    void reset() {
+      samplesSinceLast = (std::numeric_limits<size_t>::max)(); // MSVC fix: parentheses prevent max macro expansion
+      steps = 0;
+      step = 0;
+      newSpectrum = false;
+      reanalysePrev = false;
+      mappedFrequencies = false;
+      processFormants = false;
+      timeFactor = Sample{};
+    }
   } blockProcess;
 
   using Complex = std::complex<Sample>;

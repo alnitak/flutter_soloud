@@ -62,8 +62,12 @@ namespace SoLoud
 #endif
 #include <math.h>
 #include <chrono>
-#include <pthread.h>
-#include <sys/resource.h>
+#if defined(_WIN32) || defined(_WIN64)
+#  include <windows.h>
+#else
+#  include <pthread.h>
+#  include <sys/resource.h>
+#endif
 
 namespace SoLoud
 {

@@ -1,6 +1,29 @@
 #ifndef SIGNALSMITH_AUDIO_LINEAR_STFT_H
 #define SIGNALSMITH_AUDIO_LINEAR_STFT_H
 
+// =============================================================================
+// LOCAL MODIFICATION for flutter_soloud (MSVC compatibility)
+// -----------------------------------------------------------------------------
+// This file has been modified from the upstream signalsmith-linear library.
+// See: https://github.com/Signalsmith-Audio/linear
+//
+// Windows.h defines `min` and `max` as macros, which break calls to
+// `std::min` and `std::max` (error C2589/C2059).
+//
+// Fix applied:
+//   Undefine `min` and `max` macros if they exist to prevent conflicts.
+//
+// When updating this library, re-apply this fix.
+// =============================================================================
+
+// MSVC fix: Undefine min/max macros that may be defined by Windows.h
+#ifdef min
+#undef min
+#endif
+#ifdef max
+#undef max
+#endif
+
 #include "./fft.h"
 
 namespace signalsmith { namespace linear {
