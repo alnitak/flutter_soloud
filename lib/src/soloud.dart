@@ -759,7 +759,7 @@ interface class SoLoud {
         );
 
     if (ret.error != PlayerErrors.noError) {
-      _logPlayerError(ret.error, from: 'addAudioDataStream() result');
+      _logPlayerError(ret.error, from: 'setBufferStream() result');
       throw SoLoudCppException.fromPlayerError(ret.error);
     }
 
@@ -952,6 +952,10 @@ interface class SoLoud {
   void addAudioDataStream(AudioSource source, Uint8List audioChunk) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
+    }
+
+    if (audioChunk.isEmpty) {
+      return;
     }
 
     final e = SoLoudController().soLoudFFI.addAudioDataStream(
