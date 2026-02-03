@@ -111,6 +111,9 @@ class _AudioContextState extends State<AudioContext> {
                         .loadAsset('assets/audio/8_bit_mentality.mp3');
                     soundHandle = await soloud.play(sound!, looping: true);
 
+                    // Be sure the volume is not muted.
+                    soloud.setGlobalVolume(1);
+
                     await session.setActive(true);
                     isPlaying.value = ContextState.playing;
                   },
@@ -118,13 +121,12 @@ class _AudioContextState extends State<AudioContext> {
                 ),
 
                 ElevatedButton(
-                  onPressed: () async {
-                    await session.setActive(true);
-                    soloud
-                      ..setPause(soundHandle!, false)
-                      ..fadeGlobalVolume(1, const Duration(milliseconds: 300));
-                    isPlaying.value = ContextState.playing;
-                  },
+                  onPressed: () async => fadeoutThenPause(),
+                  child: const Text('pause'),
+                ),
+
+                ElevatedButton(
+                  onPressed: () async => fadeinThenResume(),
                   child: const Text('unpause'),
                 ),
 
