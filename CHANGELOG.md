@@ -1,3 +1,6 @@
+#### 3.4.10 (2 Feb 2026)
+- fix loadMem issue after deinit #399
+
 #### 3.4.9 (21 Jan 2026)
 - fix crash when seeking with a negative value #386
 - Linux fix: don't use -msse on arm64 builds #395. Thanks to @adil192

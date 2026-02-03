@@ -643,7 +643,9 @@ interface class SoLoud {
     });
 
     return completer.future.whenComplete(() {
-      loadedFileCompleters.removeWhere((key, __) => key == path);
+      loadedFileCompleters.removeWhere(
+        (key, __) => key.compareTo('$path-$counter') == 0,
+      );
     });
   }
 
