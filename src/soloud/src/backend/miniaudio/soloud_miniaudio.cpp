@@ -25,6 +25,10 @@ distribution.
 
 #include "soloud.h"
 
+#ifndef _IS_WIN_
+#include <unistd.h>
+#endif
+
 #if !defined(WITH_MINIAUDIO)
 
 namespace SoLoud
@@ -64,6 +68,7 @@ namespace SoLoud
     ma_device gDevice;
     SoLoud::Soloud *soloud;
     ma_context context;
+    volatile bool gDeviceStopped = true;  // Track device stopped state for proper cleanup
 
     // Added by Marco Bavagnoli
     void on_notification(const ma_device_notification* pNotification)
@@ -76,12 +81,14 @@ namespace SoLoud
         {
             case ma_device_notification_type_started:
             {
+                gDeviceStopped = false;
                 soloud->_stateChangedCallback(0);
             }
             break;
 
             case ma_device_notification_type_stopped:
             {
+                gDeviceStopped = true;
                 soloud->_stateChangedCallback(1);
             } break;
 
@@ -123,7 +130,33 @@ namespace SoLoud
 
     static void soloud_miniaudio_deinit(SoLoud::Soloud *aSoloud)
     {
-        ma_device_stop(&gDevice);
+        // Check if device is already stopped before calling ma_device_stop()
+        // (which can cause an ANR on Android using OpenSSL #333).
+        // This should prevent ANR on Android where ma_device_stop() can block indefinitely
+        // if the device is in an unknown state
+        if (ma_device_get_state(&gDevice) != ma_device_state_stopped)
+        {
+            ma_device_stop(&gDevice);
+            
+            // Wait for device to actually stop before uninitializing
+            // Timeout after 500ms to prevent infinite blocking
+            int timeoutMs = 0;
+            int maxTimeoutMs = 500;
+            while (!gDeviceStopped && timeoutMs < maxTimeoutMs)
+            {
+                // Small sleep to avoid busy-waiting
+#ifdef _IS_WIN_
+                Sleep(1);
+#else
+                usleep(1000);  // 1ms sleep
+#endif
+                timeoutMs += 1;
+            }
+        }
+        
+        // Set flag to stopped in case notification wasn't received
+        gDeviceStopped = true;
+        
         ma_device_uninit(&gDevice);
 #if defined(MA_HAS_COREAUDIO)
         ma_context_uninit(&context);
@@ -179,6 +212,7 @@ namespace SoLoud
 
         aSoloud->mBackendCleanupFunc = soloud_miniaudio_deinit;
 
+        gDeviceStopped = false;  // Device is about to start
         ma_device_start(&gDevice);
         aSoloud->mBackendString = "MiniAudio";
         return 0;
@@ -202,6 +236,7 @@ namespace SoLoud
         {
             return UNKNOWN_ERROR;
         }
+        gDeviceStopped = false;  // Device is about to start
         ma_device_start(&gDevice);
         return 0;
     }
