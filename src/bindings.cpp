@@ -290,6 +290,7 @@ FFI_PLUGIN_EXPORT void dispose() {
   dartVoiceEndedCallback = nullptr;
   dartFileLoadedCallback = nullptr;
   dartStateChangedCallback = nullptr;
+  player.get()->dispose();
   player.reset();
   player = nullptr;
   player = std::make_unique<Player>();

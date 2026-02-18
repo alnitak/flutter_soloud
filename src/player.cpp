@@ -25,9 +25,29 @@
 
 Player::Player() : mInited(false), mFilters(&soloud, nullptr) {}
 
-Player::~Player()
-{
-    dispose();
+Player::~Player() {
+    // Don't call dispose() here - let the OS clean up resources
+    // when the process terminates. This prevents ANR on Android
+    // when the destructor is called during static destruction.
+    //
+    // Users should call dispose() explicitly before app shutdown
+    // if they need clean resource release.
+    //
+
+    // dispose();
+}
+
+void Player::dispose() {
+    if (!mInited)
+        return;
+
+    mInited = false;
+
+    // Clean up SoLoud
+    setVoiceEndedCallback(nullptr);
+    setStateChangedCallback(nullptr);
+    sounds.clear();
+    soloud.deinit();
 }
 
 void Player::setVoiceEndedCallback(void (*voiceEndedCallback)(unsigned int *))
@@ -144,16 +164,6 @@ std::vector<PlaybackDevice> Player::listPlaybackDevices()
     }
     // printf("***************** LIST DEVICES END\n");
     return ret;
-}
-
-void Player::dispose()
-{
-    // Clean up SoLoud
-    setVoiceEndedCallback(nullptr);
-    setStateChangedCallback(nullptr);
-    soloud.deinit();
-    mInited = false;
-    sounds.clear();
 }
 
 bool Player::isInited()
