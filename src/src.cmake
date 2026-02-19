@@ -1,10 +1,15 @@
+# Common SoLoud source file list
+# This file is shared across all platforms (android, ios, linux, macos, windows).
+
 # set this to TRUE if you have installed OpenMPT https://lib.openmpt.org/
-set(USE_OPENMPT FALSE)
+if (NOT DEFINED USE_OPENMPT)
+  set(USE_OPENMPT FALSE)
+endif ()
 
 set (TARGET_NAME soloud)
 
-set (HEADER_PATH ${CMAKE_CURRENT_SOURCE_DIR}/../src/soloud/include)
-set (SOURCE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/../src/soloud/src)
+set (HEADER_PATH ${CMAKE_CURRENT_LIST_DIR}/soloud/include)
+set (SOURCE_PATH ${CMAKE_CURRENT_LIST_DIR}/soloud/src)
 
 set (LINK_LIBRARIES)
 
@@ -78,7 +83,7 @@ set (CORE_SOURCES
 set (AUDIOSOURCES_PATH ${SOURCE_PATH}/audiosource)
 set (AUDIOSOURCES_SOURCES)
 if(WIN32 AND USE_OPENMPT)
-	# openmpt only in Windows
+	# openmpt only on Windows with explicit opt-in
 	set (AUDIOSOURCES_SOURCES
 		${AUDIOSOURCES_PATH}/openmpt/soloud_openmpt.cpp
 		${AUDIOSOURCES_PATH}/openmpt/soloud_openmpt_dll.c
@@ -88,14 +93,9 @@ set (AUDIOSOURCES_SOURCES
 	${AUDIOSOURCES_SOURCES}
 	# ay
 	${AUDIOSOURCES_PATH}/ay/chipplayer.cpp
-	# ${AUDIOSOURCES_PATH}/ay/chipplayer.h
-	# ${AUDIOSOURCES_PATH}/ay/readme.txt
 	${AUDIOSOURCES_PATH}/ay/sndbuffer.cpp
-	# ${AUDIOSOURCES_PATH}/ay/sndbuffer.h
 	${AUDIOSOURCES_PATH}/ay/sndchip.cpp
-	# ${AUDIOSOURCES_PATH}/ay/sndchip.h
 	${AUDIOSOURCES_PATH}/ay/sndrender.cpp
-	# ${AUDIOSOURCES_PATH}/ay/sndrender.h
 	${AUDIOSOURCES_PATH}/ay/soloud_ay.cpp
 
 	# monotone
@@ -108,23 +108,16 @@ set (AUDIOSOURCES_SOURCES
 	${AUDIOSOURCES_PATH}/sfxr/soloud_sfxr.cpp
 
 	# speech
-	# ${AUDIOSOURCES_PATH}/speech/Elements.def
 	${AUDIOSOURCES_PATH}/speech/darray.cpp
-	# ${AUDIOSOURCES_PATH}/speech/darray.h
 	${AUDIOSOURCES_PATH}/speech/klatt.cpp
-	# ${AUDIOSOURCES_PATH}/speech/klatt.h
 	${AUDIOSOURCES_PATH}/speech/resonator.cpp
-	# ${AUDIOSOURCES_PATH}/speech/resonator.h
 	${AUDIOSOURCES_PATH}/speech/soloud_speech.cpp
 	${AUDIOSOURCES_PATH}/speech/tts.cpp
-	# ${AUDIOSOURCES_PATH}/speech/tts.h
 
 	# tedsid
 	${AUDIOSOURCES_PATH}/tedsid/sid.cpp
-	# ${AUDIOSOURCES_PATH}/tedsid/sid.h
 	${AUDIOSOURCES_PATH}/tedsid/soloud_tedsid.cpp
 	${AUDIOSOURCES_PATH}/tedsid/ted.cpp
-	# ${AUDIOSOURCES_PATH}/tedsid/ted.h
 
 	# vic
 	${AUDIOSOURCES_PATH}/vic/soloud_vic.cpp
@@ -140,7 +133,6 @@ set (AUDIOSOURCES_SOURCES
 	${AUDIOSOURCES_PATH}/wav/soloud_wav.cpp
 	${AUDIOSOURCES_PATH}/wav/soloud_wavstream.cpp
 	${AUDIOSOURCES_PATH}/wav/stb_vorbis.c
-	# ${AUDIOSOURCES_PATH}/wav/stb_vorbis.h
 )
 
 
@@ -261,7 +253,7 @@ if (SOLOUD_BACKEND_MINIAUDIO)
 			)
 
 	add_definitions(-DWITH_MINIAUDIO)
-	# remove PulseAudio since it can cause stutters and glitches
+	# Remove PulseAudio since it can cause stutters and glitches
 	add_definitions(-DMA_NO_PULSEAUDIO)
 	set (BACKENDS_SOURCES
 			${BACKENDS_SOURCES}
@@ -304,7 +296,6 @@ set (TARGET_SOURCES
 if (SOLOUD_C_API)
 	set (TARGET_SOURCES
 		${TARGET_SOURCES}
-		# ${SOURCE_PATH}/c_api/soloud.def
 		${SOURCE_PATH}/c_api/soloud_c.cpp
 	)
 	set (TARGET_HEADERS
@@ -313,21 +304,4 @@ if (SOLOUD_C_API)
 	)
 endif()
 
-# Removed since ${TARGET_SOURCES} is added in CMakeList.txt
-# if (SOLOUD_DYNAMIC)
-# 	add_library(${TARGET_NAME} SHARED ${TARGET_SOURCES})
-# endif ()
-
-# if (SOLOUD_STATIC)
-# 	add_library(${TARGET_NAME} STATIC ${TARGET_SOURCES})
-# endif()
-
-# target_link_libraries (${TARGET_NAME} ${LINK_LIBRARIES})
-
-
 set_source_files_properties(${AUDIOSOURCES_PATH}/wav/stb_vorbis.c PROPERTIES LANGUAGE CXX )
-# set_source_files_properties(${AUDIOSOURCES_PATH}/openmpt/soloud_openmpt_dll.c PROPERTIES LANGUAGE CXX )
-# target_compile_options(${TARGET_NAME} PRIVATE -Wall -Wno-error -ldl -fPIC -O2 -DNDEBUG -fno-exceptions -fno-rtti) #  -lpthread -ldl
-
-# include (${CMAKE_CURRENT_SOURCE_DIR}/src/soloud/contrib/cmake/Install.cmake)
-# INSTALL(FILES ${TARGET_HEADERS} DESTINATION ${CMAKE_CURRENT_SOURCE_DIR}/src/soloud/lib/${TARGET_NAME})

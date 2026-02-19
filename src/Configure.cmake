@@ -1,12 +1,24 @@
-# CMake configuration for iOS builds of flutter_soloud plugin
+# Common SoLoud CMake configuration options
+# This file is shared across all platforms (android, ios, linux, macos, windows).
 
-include (${CMAKE_CURRENT_SOURCE_DIR}/../src/soloud/contrib/cmake/OptionDependentOnPackage.cmake)
-include (${CMAKE_CURRENT_SOURCE_DIR}/../src/soloud/contrib/cmake/PrintOptionStatus.cmake)
+include (${CMAKE_CURRENT_LIST_DIR}/soloud/contrib/cmake/OptionDependentOnPackage.cmake)
+include (${CMAKE_CURRENT_LIST_DIR}/soloud/contrib/cmake/PrintOptionStatus.cmake)
 
-option (SOLOUD_DYNAMIC "Set to ON to build dynamic SoLoud" OFF)
+# Default DYNAMIC/STATIC based on platform.
+# Desktop platforms that produce shared plugins (linux, windows) default to DYNAMIC.
+# Apple platforms use static libs linked into the framework.
+if (APPLE OR ANDROID)
+  set (_DEFAULT_DYNAMIC OFF)
+  set (_DEFAULT_STATIC ON)
+else ()
+  set (_DEFAULT_DYNAMIC ON)
+  set (_DEFAULT_STATIC OFF)
+endif ()
+
+option (SOLOUD_DYNAMIC "Set to ON to build dynamic SoLoud" ${_DEFAULT_DYNAMIC})
 print_option_status (SOLOUD_DYNAMIC "Build dynamic library")
 
-option (SOLOUD_STATIC "Set to ON to build static SoLoud" ON)
+option (SOLOUD_STATIC "Set to ON to build static SoLoud" ${_DEFAULT_STATIC})
 print_option_status (SOLOUD_STATIC "Build static library")
 
 option (SOLOUD_C_API "Set to ON to include the C API" OFF)
