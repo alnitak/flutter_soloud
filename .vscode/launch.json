@@ -89,6 +89,19 @@
             "cwd": "${workspaceFolder}"
         },
         {
+            // install CodeLLDB extension for macOS debugging
+            // and remember to replace "-O2 -DNDEBUG" with "-O0 -g" in "target_compile_options" in "macos/CMakeLists.txt"
+            "name": "Debug native macOS",
+            "preLaunchTask": "compile macos debug",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/example/build/macos/Build/Products/Debug/flutter_soloud_example.app/Contents/MacOS/flutter_soloud_example",
+            "cwd": "${workspaceFolder}",
+            "sourceMap": {
+                "${workspaceFolder}/example/macos/Flutter/ephemeral/.symlinks/plugins/flutter_soloud": "${workspaceFolder}"
+            }
+        },
+        {
             "name": "Chrome wasm release",
             "type": "chrome",
             "preLaunchTask": "compile web wasm release",
