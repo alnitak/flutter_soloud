@@ -26,15 +26,27 @@
 Player::Player() : mInited(false), mFilters(&soloud, nullptr) {}
 
 Player::~Player() {
-    // Don't call dispose() here - let the OS clean up resources
-    // when the process terminates. This prevents ANR on Android
-    // when the destructor is called during static destruction.
-    //
-    // Users should call dispose() explicitly before app shutdown
-    // if they need clean resource release.
-    //
+    if (!mInited) { 
+        // dispose() was called properly — Soloud is already deinited and safe.
+        // Let ~Soloud() run normally to free its remaining allocations.
+        return;
+    }
 
-    // dispose();
+    // Neutralize the Soloud member so ~Soloud() and its deinit() call become
+    // harmless no-ops. The OS will reclaim all resources on process exit.
+    //
+    // We intentionally leak here — this only runs during abnormal exit
+    // (app closed without calling dispose()), and the process is terminating.
+    soloud.mBackendCleanupFunc = nullptr;
+    soloud.mAudioThreadMutex = nullptr;
+    soloud.mHighestVoice = 0;
+    soloud.mVoiceGroup = nullptr;
+    soloud.mVoiceGroupCount = 0;
+    soloud.mResampleData = nullptr;
+    soloud.mResampleDataOwner = nullptr;
+    for (int i = 0; i < FILTERS_PER_STREAM; i++) {
+        soloud.mFilterInstance[i] = nullptr;
+    }
 }
 
 void Player::dispose() {
