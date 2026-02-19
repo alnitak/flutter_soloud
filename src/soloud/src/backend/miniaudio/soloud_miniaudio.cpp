@@ -24,6 +24,7 @@ distribution.
 #include <stdlib.h>
 
 #include "soloud.h"
+#include "soloud_internal.h"
 
 #ifndef _IS_WIN_
 #include <unistd.h>

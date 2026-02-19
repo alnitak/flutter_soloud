@@ -1,3 +1,2 @@
-// Relative import to be able to reuse the C sources.
-// See the comment in ../{projectName}}.podspec for more information.
-#include "../../src/flutter_soloud.cpp"
+// Native sources are now built by CMake via the podspec's script_phase.
+// See build_cmake.sh for the CMake build configuration.
