@@ -1,3 +1,10 @@
+#### 3.5.0-pre.X (XX Xxx 2026)
+- now using cmake to compile the plugin in release mode for macOS and iOS
+- made a common CMakeLists in src folder
+- fixed a possible crash during app shutdown
+- conditional import of js and wasm only on web (no more included on other platforms)
+- possible fix for #333
+
 #### 3.5.0-pre.1 (26 Jan 2026)
 - Windows fix build
 
