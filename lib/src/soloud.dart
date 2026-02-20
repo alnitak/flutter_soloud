@@ -14,6 +14,7 @@ import 'package:flutter_soloud/src/exceptions/exceptions.dart';
 import 'package:flutter_soloud/src/filters/filters.dart';
 import 'package:flutter_soloud/src/helpers/playback_device.dart';
 import 'package:flutter_soloud/src/metadata.dart';
+import 'package:flutter_soloud/src/mixing_bus.dart';
 import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
 import 'package:flutter_soloud/src/utils/loader.dart';
@@ -2849,6 +2850,19 @@ interface class SoLoud {
 
     return samples;
   }
+
+  /////////////////////////////////////////
+  /// Mixing Bus
+  /// How it works:
+  /// https://solhsa.com/soloud/mixbus.html
+  /// https://solhsa.com/soloud/soloud_20200207.html#mixing-bus
+  /////////////////////////////////////////
+
+  /// Create a new mixing bus.
+  Bus createBus() {
+    return Bus();
+  }
+
 
   /// Utility method that logs a [Level.SEVERE] message if [playerError]
   /// is anything other than [PlayerErrors.noError] or [Level.INFO] if

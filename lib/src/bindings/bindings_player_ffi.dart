@@ -2045,4 +2045,249 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   late final _readSamplesFromMem = _readSamplesFromMemPtr.asFunction<
       int Function(ffi.Pointer<ffi.Uint8>, int, double, double, int, bool,
           ffi.Pointer<ffi.Float>)>();
+
+  /////////////////////////////////////////
+  /// Mixing Bus
+  /// https://solhsa.com/soloud/mixbus.html
+  /// https://solhsa.com/soloud/soloud_20200207.html#mixing-bus
+  ///
+  /// A mixing bus is a special audio source that plays other audio sources
+  /// through it. Useful for grouped volume control, per-bus filtering,
+  /// and per-bus visualization (FFT/wave). Busses can also be nested.
+  /// Only one instance of a bus can play at a time.
+  /// Busses are protected by default and marked as "must tick".
+  /////////////////////////////////////////
+
+  /// Create a new mixing bus.
+  /// Returns a unique bus ID (>0) to reference this bus in other calls.
+  @override
+  int createBus() {
+    return _createBus();
+  }
+
+  late final _createBusPtr =
+      _lookup<ffi.NativeFunction<ffi.UnsignedInt Function()>>('createBus');
+  late final _createBus = _createBusPtr.asFunction<int Function()>();
+
+  /// Destroy a mixing bus by its ID.
+  /// Does not stop voices that were playing through the bus.
+  @override
+  void destroyBus(int busId) {
+    return _destroyBus(busId);
+  }
+
+  late final _destroyBusPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt)>>(
+          'destroyBus');
+  late final _destroyBus = _destroyBusPtr.asFunction<void Function(int)>();
+
+  /// Play the bus itself on the main SoLoud engine so it becomes audible.
+  /// You must call this before sounds routed through the bus can be heard.
+  ///
+  /// [busId] the bus ID returned by createBus.
+  /// [volume] playback volume (1.0 = full).
+  /// [paused] whether to start paused.
+  /// Returns the voice handle for the bus, or 0 on error.
+  @override
+  int busPlayOnEngine(int busId, double volume, bool paused) {
+    return _busPlayOnEngine(
+      busId,
+      volume,
+      paused,
+    );
+  }
+
+  late final _busPlayOnEnginePtr = _lookup<
+      ffi.NativeFunction<
+          ffi.UnsignedInt Function(
+              ffi.UnsignedInt, ffi.Float, ffi.Bool)>>('busPlayOnEngine');
+  late final _busPlayOnEngine =
+      _busPlayOnEnginePtr.asFunction<int Function(int, double, bool)>();
+
+  /// Play a loaded sound (identified by [soundHash]) through a mixing bus.
+  /// The sound must have been previously loaded via loadFile/loadMem.
+  ///
+  /// [busId] the bus to route the sound through.
+  /// [soundHash] hash of the loaded audio source.
+  /// [volume] playback volume.
+  /// [pan] panning (-1 left, 0 center, 1 right).
+  /// [paused] whether to start paused.
+  /// Returns the voice handle, or 0 on error.
+  @override
+  int busPlay(
+    int busId,
+    int soundHash,
+    double volume,
+    double pan,
+    bool paused,
+  ) {
+    return _busPlay(
+      busId,
+      soundHash,
+      volume,
+      pan,
+      paused,
+    );
+  }
+
+  late final _busPlayPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.UnsignedInt Function(ffi.UnsignedInt, ffi.UnsignedInt, ffi.Float,
+              ffi.Float, ffi.Bool)>>('busPlay');
+  late final _busPlay =
+      _busPlayPtr.asFunction<int Function(int, int, double, double, bool)>();
+
+  /// Set the number of output channels for the bus (default is 2 = stereo).
+  ///
+  /// [busId] the bus ID.
+  /// [channels] number of channels (1 = mono, 2 = stereo, etc.).
+  @override
+  void busSetChannels(
+    int busId,
+    int channels,
+  ) {
+    _busSetChannels(
+      busId,
+      channels,
+    );
+  }
+
+  late final _busSetChannelsPtr = _lookup<
+          ffi
+          .NativeFunction<ffi.Int Function(ffi.UnsignedInt, ffi.UnsignedInt)>>(
+      'busSetChannels');
+  late final _busSetChannels =
+      _busSetChannelsPtr.asFunction<int Function(int, int)>();
+
+  /// Enable or disable visualization data gathering for this bus.
+  /// Must be enabled before calling busCalcFFT, busGetWave,
+  /// or busGetApproximateVolume.
+  ///
+  /// [busId] the bus ID.
+  /// [enable] true to enable, false to disable.
+  // @override
+  // void busSetVisualizationEnable(
+  //   int busId,
+  //   bool enable,
+  // ) {
+  //   return _busSetVisualizationEnable(
+  //     busId,
+  //     enable,
+  //   );
+  // }
+
+  // late final _busSetVisualizationEnablePtr =
+  //     _lookup<ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt, ffi.Bool)>>(
+  //         'busSetVisualizationEnable');
+  // late final _busSetVisualizationEnable =
+  //     _busSetVisualizationEnablePtr.asFunction<void Function(int, bool)>();
+
+  /// Calculate and return 256 floats of FFT data for this bus.
+  /// The data ranges from low to high frequencies.
+  /// Visualization must be enabled first with busSetVisualizationEnable.
+  ///
+  /// [busId] the bus ID.
+  /// Returns a pointer to 256 floats, or nullptr if the bus is not found.
+  // @override
+  // ffi.Pointer<ffi.Float> busCalcFFT(
+  //   int busId,
+  // ) {
+  //   return _busCalcFFT(
+  //     busId,
+  //   );
+  // }
+
+  // late final _busCalcFFTPtr = _lookup<
+  //         ffi.NativeFunction<ffi.Pointer<ffi.Float> Function(ffi.UnsignedInt)>>(
+  //     'busCalcFFT');
+  // late final _busCalcFFT =
+  //     _busCalcFFTPtr.asFunction<ffi.Pointer<ffi.Float> Function(int)>();
+
+  /// Get 256 samples of wave data currently playing through this bus.
+  /// Visualization must be enabled first with busSetVisualizationEnable.
+  ///
+  /// [busId] the bus ID.
+  /// Returns a pointer to 256 floats, or nullptr if the bus is not found.
+  // @override
+  // ffi.Pointer<ffi.Float> busGetWave(
+  //   int busId,
+  // ) {
+  //   return _busGetWave(
+  //     busId,
+  //   );
+  // }
+
+  // late final _busGetWavePtr = _lookup<
+  //         ffi.NativeFunction<ffi.Pointer<ffi.Float> Function(ffi.UnsignedInt)>>(
+  //     'busGetWave');
+  // late final _busGetWave =
+  //     _busGetWavePtr.asFunction<ffi.Pointer<ffi.Float> Function(int)>();
+
+  /// Get the approximate output volume for a specific channel of this bus.
+  /// Useful for VU meters or level indicators.
+  /// Visualization must be enabled first.
+  ///
+  /// [busId] the bus ID.
+  /// [channel] the output channel index (0 = left, 1 = right, etc.).
+  /// Returns the approximate volume, or 0 if the bus is not found.
+  @override
+  double busGetApproximateVolume(
+    int busId,
+    int channel,
+  ) {
+    return _busGetApproximateVolume(
+      busId,
+      channel,
+    );
+  }
+
+  late final _busGetApproximateVolumePtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Float Function(
+              ffi.UnsignedInt, ffi.UnsignedInt)>>('busGetApproximateVolume');
+  late final _busGetApproximateVolume =
+      _busGetApproximateVolumePtr.asFunction<double Function(int, int)>();
+
+  /// Move a live voice (identified by its handle) into this bus.
+  /// The voice will be reparented so it plays through the bus.
+  /// Useful for dynamically routing sounds in/out of filtered busses.
+  ///
+  /// [busId] the bus ID.
+  /// [voiceHandle] handle of the voice to annex.
+  @override
+  void busAnnexSound(
+    int busId,
+    int voiceHandle,
+  ) {
+    return _busAnnexSound(
+      busId,
+      voiceHandle,
+    );
+  }
+
+  late final _busAnnexSoundPtr = _lookup<
+          ffi
+          .NativeFunction<ffi.Void Function(ffi.UnsignedInt, ffi.UnsignedInt)>>(
+      'busAnnexSound');
+  late final _busAnnexSound =
+      _busAnnexSoundPtr.asFunction<void Function(int, int)>();
+
+  /// Get the number of voices currently playing through this bus.
+  ///
+  /// [busId] the bus ID.
+  /// Returns the active voice count, or 0 if the bus is not found.
+  @override
+  int busGetActiveVoiceCount(
+    int busId,
+  ) {
+    return _busGetActiveVoiceCount(
+      busId,
+    );
+  }
+
+  late final _busGetActiveVoiceCountPtr =
+      _lookup<ffi.NativeFunction<ffi.UnsignedInt Function(ffi.UnsignedInt)>>(
+          'busGetActiveVoiceCount');
+  late final _busGetActiveVoiceCount =
+      _busGetActiveVoiceCountPtr.asFunction<int Function(int)>();
 }
