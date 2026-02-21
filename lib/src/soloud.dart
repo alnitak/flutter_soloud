@@ -2859,8 +2859,10 @@ interface class SoLoud {
   /////////////////////////////////////////
 
   /// Create a new mixing bus.
-  Bus createBus() {
-    return Bus();
+  /// 
+  /// [name] optional name of the bus to later identify it.
+  Bus createBus({String name = ''}) {
+    return Bus(name: name);
   }
 
 

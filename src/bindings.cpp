@@ -13,7 +13,6 @@
 #include <emscripten/emscripten.h>
 #endif
 
-#include <filesystem>
 #include <map>
 #include <memory.h>
 #include <memory>
@@ -33,18 +32,14 @@ std::mutex loadMutex;
 std::unique_ptr<Player> player = std::make_unique<Player>();
 std::unique_ptr<Analyzer> analyzer = std::make_unique<Analyzer>(256);
 
-/// Storage for mixing bus instances, keyed by auto-incrementing ID.
-std::map<unsigned int, SoLoud::Bus> busMap;
-unsigned int busIdCounter = 0;
+typedef void (*dartVoiceEndedCallback_t)(unsigned int *);
+typedef void (*dartFileLoadedCallback_t)(enum PlayerErrors *, char *completeFileName, unsigned int *, uint64_t *counter);
+typedef void (*dartStateChangedCallback_t)(enum PlayerStateEvents *);
 
-    typedef void (*dartVoiceEndedCallback_t)(unsigned int *);
-    typedef void (*dartFileLoadedCallback_t)(enum PlayerErrors *, char *completeFileName, unsigned int *, uint64_t *counter);
-    typedef void (*dartStateChangedCallback_t)(enum PlayerStateEvents *);
-
-    // to be used by `NativeCallable`, these functions must return void.
-    void (*dartVoiceEndedCallback)(unsigned int *) = nullptr;
-    void (*dartFileLoadedCallback)(enum PlayerErrors *, char *completeFileName, unsigned int *, uint64_t *counter) = nullptr;
-    void (*dartStateChangedCallback)(enum PlayerStateEvents *) = nullptr;
+// to be used by `NativeCallable`, these functions must return void.
+void (*dartVoiceEndedCallback)(unsigned int *) = nullptr;
+void (*dartFileLoadedCallback)(enum PlayerErrors *, char *completeFileName, unsigned int *, uint64_t *counter) = nullptr;
+void (*dartStateChangedCallback)(enum PlayerStateEvents *) = nullptr;
 
 //////////////////////////////////////////////////////////////
 /// WEB WORKER
@@ -1741,6 +1736,10 @@ readSamplesFromMem(const unsigned char *buffer, unsigned long dataSize,
 /// Only one instance of a bus can play at a time.
 /// Busses are protected by default and marked as "must tick".
 /////////////////////////////////////////
+
+/// Storage for mixing bus instances, keyed by auto-incrementing ID.
+std::map<unsigned int, SoLoud::Bus> busMap;
+unsigned int busIdCounter = 0;
 
 /// Create a new mixing bus.
 /// Returns a unique bus ID (>0) to reference this bus in other calls.

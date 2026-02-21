@@ -1,5 +1,35 @@
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:flutter_soloud/src/bindings/soloud_controller.dart';
+import 'package:flutter_soloud/src/filters/filters.dart';
+import 'package:logging/logging.dart';
+
+/// Helper class to manage all buses.
+class Buses {
+  /// The singleton instance of this class.
+  factory Buses() => _instance;
+
+  Buses._internal();
+
+  static final Buses _instance = Buses._internal();
+
+  final List<Bus> buses = [];
+
+  /// Get a bus by name.
+  ///
+  /// [name] the name of the bus.
+  /// [orElse] the function to call if the bus is not found.
+  Bus? byName(String name, {Bus Function()? orElse}) {
+    return buses.firstWhere((bus) => bus.name == name, orElse: orElse);
+  }
+
+  /// Get a bus by ID.
+  ///
+  /// [id] the ID of the bus.
+  /// [orElse] the function to call if the bus is not found.
+  Bus? byId(int id, {Bus Function()? orElse}) {
+    return buses.firstWhere((bus) => bus.busId == id, orElse: orElse);
+  }
+}
 
 /// A Set of mixing buses to have a global control of all active buses.
 ///
@@ -12,19 +42,46 @@ import 'package:flutter_soloud/src/bindings/soloud_controller.dart';
 /// - [SoLoud.createBus] to create a new bus.
 class Bus {
   /// Creates a new bus.
-  Bus() {
-    _busId = SoLoudController().soLoudFFI.createBus();
+  Bus({this.name = ''}) {
+    busId = SoLoudController().soLoudFFI.createBus();
+    if (busId > 0) {
+      _isValid = true;
+      Buses().buses.add(this);
+    }
   }
 
-  /// The ID of this bus.
-  late final int _busId;
+  static final Logger _log = Logger('flutter_soloud.Bus');
 
-  /// The channels of this bus.
+  /// Please see [SoLoud.filters]
+  late final filters = const FiltersGlobal();
+
+  /// The name of this bus.
+  final String name;
+
+  /// The ID of this bus.
+  /// Internally managed on native side. The first bus has ID 1.
+  late final int busId;
+
+  /// Whether this bus is valid.
+  bool _isValid = false;
+
+  /// The number of channels of this bus.
   var _channels = Channels.stereo;
 
   /// Destroys this bus.
+  ///
+  /// All the sounds playing through this bus will be stopped.
+  ///
+  /// Throws [SoLoudBusDisposedDartException] if the bus has already
+  /// been disposed.
   void dispose() {
-    SoLoudController().soLoudFFI.destroyBus(_busId);
+    if (!_isValid) {
+      _log.warning('bus $busId is already disposed');
+      throw const SoLoudBusDisposedDartException();
+    }
+    Buses().buses.remove(this);
+    SoLoudController().soLoudFFI.destroyBus(busId);
+    _isValid = false;
   }
 
   /// Play the bus itself on the main SoLoud engine so it becomes audible.
@@ -33,32 +90,45 @@ class Bus {
   /// [volume] playback volume (1.0 = full).
   /// [paused] whether to start paused.
   /// Returns the voice handle for the bus, or 0 on error.
+  ///
+  /// Throws [SoLoudBusDisposedDartException] if the bus has already
+  /// been disposed.
   SoundHandle playOnEngine({double volume = 1.0, bool paused = false}) {
+    if (!_isValid) {
+      _log.warning('bus $busId is already disposed');
+      throw const SoLoudBusDisposedDartException();
+    }
     final handle = SoLoudController().soLoudFFI.busPlayOnEngine(
-          _busId,
+          busId,
           volume,
           paused,
         );
     return SoundHandle(handle);
   }
 
-  /// Play a loaded sound (identified by [soundHash]) through a mixing bus.
-  /// The sound must have been previously loaded via loadFile/loadMem.
+  /// Play an audio source through a mixing bus.
   ///
-  /// [soundHash] hash of the loaded audio source.
+  /// [source] the audio source to play.
   /// [volume] playback volume.
   /// [pan] panning (-1 left, 0 center, 1 right).
   /// [paused] whether to start paused.
   /// Returns the voice handle, or 0 on error.
+  ///
+  /// Throws [SoLoudBusDisposedDartException] if the bus has already
+  /// been disposed.
   SoundHandle play(
-    int soundHash, {
+    AudioSource source, {
     double volume = 1.0,
     double pan = 0.0,
     bool paused = false,
   }) {
+    if (!_isValid) {
+      _log.warning('bus $busId is already disposed');
+      throw const SoLoudBusDisposedDartException();
+    }
     final handle = SoLoudController().soLoudFFI.busPlay(
-          _busId,
-          soundHash,
+          busId,
+          source.soundHash.hash,
           volume,
           pan,
           paused,
@@ -69,9 +139,16 @@ class Bus {
   /// Set the number of output channels for the bus (default is 2 = stereo).
   ///
   /// [channels] number of channels.
+  ///
+  /// Throws [SoLoudBusDisposedDartException] if the bus has already
+  /// been disposed.
   void setChannels({Channels channels = Channels.stereo}) {
+    if (!_isValid) {
+      _log.warning('bus $busId is already disposed');
+      throw const SoLoudBusDisposedDartException();
+    }
     _channels = channels;
-    SoLoudController().soLoudFFI.busSetChannels(_busId, channels.count);
+    SoLoudController().soLoudFFI.busSetChannels(busId, channels.count);
   }
 
   /// Get the approximate output volume for a specific channel of this bus.
@@ -80,14 +157,18 @@ class Bus {
   ///
   /// [channel] the output channel index (0 = left, 1 = right, etc.).
   /// Returns the approximate volume, or 0 if the bus is not found.
+  ///
+  /// Throws [SoLoudBusDisposedDartException] if the bus has already
+  /// been disposed.
   double getChannelVolume(int channel) {
-    if (channel < 0 || channel >= _channels.count) {
-      // TODO(alnitak): maybe return 0 instead of throwing an error?
-      throw RangeError('Channel index out of range');
+    if (!_isValid) {
+      _log.warning('bus $busId is already disposed');
+      throw const SoLoudBusDisposedDartException();
     }
-    return SoLoudController()
-        .soLoudFFI
-        .busGetApproximateVolume(_busId, channel);
+    if (channel < 0 || channel >= _channels.count) {
+      return 0;
+    }
+    return SoLoudController().soLoudFFI.busGetApproximateVolume(busId, channel);
   }
 
   /// Move a live voice (identified by its handle) into this bus.
@@ -95,14 +176,28 @@ class Bus {
   /// Useful for dynamically routing sounds in/out of filtered busses.
   ///
   /// [handle] handle of the voice to annex.
-  void annexSound({required SoundHandle handle}) {
-    SoLoudController().soLoudFFI.busAnnexSound(_busId, handle.id);
+  ///
+  /// Throws [SoLoudBusDisposedDartException] if the bus has already
+  /// been disposed.
+  void annexSound(SoundHandle handle) {
+    if (!_isValid) {
+      _log.warning('bus $busId is already disposed');
+      throw const SoLoudBusDisposedDartException();
+    }
+    SoLoudController().soLoudFFI.busAnnexSound(busId, handle.id);
   }
 
   /// Get the number of voices currently playing through this bus.
   ///
   /// Returns the active voice count, or 0 if the bus is not found.
+  ///
+  /// Throws [SoLoudBusDisposedDartException] if the bus has already
+  /// been disposed.
   int getActiveVoiceCount() {
-    return SoLoudController().soLoudFFI.busGetActiveVoiceCount(_busId);
+    if (!_isValid) {
+      _log.warning('bus $busId is already disposed');
+      throw const SoLoudBusDisposedDartException();
+    }
+    return SoLoudController().soLoudFFI.busGetActiveVoiceCount(busId);
   }
 }
