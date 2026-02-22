@@ -1431,9 +1431,11 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     double to,
     double time, {
     SoundHandle? handle,
+    int? busId,
   }) {
     final e = _fadeFilterParameter(
       handle?.id ?? 0,
+      busId ?? 0,
       filterType.index,
       attributeId,
       to,
@@ -1444,10 +1446,10 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
 
   late final _fadeFilterParameterPtr = _lookup<
       ffi.NativeFunction<
-          ffi.Int32 Function(ffi.UnsignedInt, ffi.Int32, ffi.Int, ffi.Float,
+          ffi.Int32 Function(ffi.UnsignedInt, ffi.UnsignedInt, ffi.Int32, ffi.Int, ffi.Float,
               ffi.Float)>>('fadeFilterParameter');
   late final _fadeFilterParameter = _fadeFilterParameterPtr
-      .asFunction<int Function(int, int, int, double, double)>();
+      .asFunction<int Function(int, int, int, int, double, double)>();
 
   @override
   PlayerErrors oscillateFilterParameter(
@@ -1457,9 +1459,11 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     double to,
     double time, {
     SoundHandle? handle,
+    int? busId,
   }) {
     final e = _oscillateFilterParameter(
       handle?.id ?? 0,
+      busId ?? 0,
       filterType.index,
       attributeId,
       from,
@@ -1471,10 +1475,10 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
 
   late final _oscillateFilterParameterPtr = _lookup<
       ffi.NativeFunction<
-          ffi.Int32 Function(ffi.UnsignedInt, ffi.Int32, ffi.Int, ffi.Float,
+          ffi.Int32 Function(ffi.UnsignedInt, ffi.UnsignedInt, ffi.Int32, ffi.Int, ffi.Float,
               ffi.Float, ffi.Float)>>('oscillateFilterParameter');
   late final _oscillateFilterParameter = _oscillateFilterParameterPtr
-      .asFunction<int Function(int, int, int, double, double, double)>();
+      .asFunction<int Function(int, int, int, int, double, double, double)>();
 
   // ///////////////////////////////////////
   //  Filters
@@ -1487,8 +1491,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     int? busId,
   }) {
     final ffi.Pointer<ffi.Int> id = calloc(ffi.sizeOf<ffi.Int>());
-    final e =
-        _isFilterActive(soundHash?.hash ?? 0, busId ?? 0, filterType.index, id);
+    final e = _isFilterActive(soundHash?.hash ?? 0, busId ?? 0, filterType.index, id);
     final ret = (error: PlayerErrors.values[e], index: id.value);
     calloc.free(id);
     return ret;

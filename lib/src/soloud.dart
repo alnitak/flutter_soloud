@@ -2756,7 +2756,6 @@ interface class SoLoud {
   /// occurred when reading PCM frames.
   ///
   /// See also [readSamplesFromMem].
-  @experimental
   Future<Float32List> readSamplesFromFile(
     String completeFileName,
     int numSamplesNeeded, {
@@ -2827,7 +2826,6 @@ interface class SoLoud {
   /// occurred when reading PCM frames.
   ///
   /// See also [readSamplesFromFile].
-  @experimental
   Future<Float32List> readSamplesFromMem(
     Uint8List buffer,
     int numSamplesNeeded, {

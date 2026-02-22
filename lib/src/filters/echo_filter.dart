@@ -28,8 +28,8 @@ enum EchoEnum {
 }
 
 abstract class _EchoInternal extends FilterBase {
-  const _EchoInternal(SoundHash? soundHash)
-      : super(FilterType.echoFilter, soundHash);
+  const _EchoInternal(SoundHash? soundHash, int? busId)
+      : super(FilterType.echoFilter, soundHash, busId);
 
   EchoEnum get queryWet => EchoEnum.wet;
   EchoEnum get queryDelay => EchoEnum.delay;
@@ -38,10 +38,11 @@ abstract class _EchoInternal extends FilterBase {
 }
 
 class EchoSingle extends _EchoInternal {
-  EchoSingle(super.soundHash);
+  EchoSingle(super.soundHash, super.busId);
 
   FilterParam wet({SoundHandle? soundHandle}) => FilterParam(
         soundHandle,
+        super.busId,
         filterType,
         EchoEnum.wet.index,
         EchoEnum.wet.min,
@@ -50,6 +51,7 @@ class EchoSingle extends _EchoInternal {
 
   FilterParam delay({SoundHandle? soundHandle}) => FilterParam(
         soundHandle,
+        super.busId,
         filterType,
         EchoEnum.delay.index,
         EchoEnum.delay.min,
@@ -58,6 +60,7 @@ class EchoSingle extends _EchoInternal {
 
   FilterParam decay({SoundHandle? soundHandle}) => FilterParam(
         soundHandle,
+        super.busId,
         filterType,
         EchoEnum.decay.index,
         EchoEnum.decay.min,
@@ -66,6 +69,7 @@ class EchoSingle extends _EchoInternal {
 
   FilterParam filter({SoundHandle? soundHandle}) => FilterParam(
         soundHandle,
+        super.busId,
         filterType,
         EchoEnum.filter.index,
         EchoEnum.filter.min,
@@ -74,9 +78,10 @@ class EchoSingle extends _EchoInternal {
 }
 
 class EchoGlobal extends _EchoInternal {
-  const EchoGlobal() : super(null);
+  const EchoGlobal() : super(null, null);
 
   FilterParam get wet => FilterParam(
+        null,
         null,
         filterType,
         EchoEnum.wet.index,
@@ -86,6 +91,7 @@ class EchoGlobal extends _EchoInternal {
 
   FilterParam get delay => FilterParam(
         null,
+        null,
         filterType,
         EchoEnum.delay.index,
         EchoEnum.delay.min,
@@ -94,6 +100,7 @@ class EchoGlobal extends _EchoInternal {
 
   FilterParam get decay => FilterParam(
         null,
+        null,
         filterType,
         EchoEnum.decay.index,
         EchoEnum.decay.min,
@@ -101,6 +108,7 @@ class EchoGlobal extends _EchoInternal {
       );
 
   FilterParam get filter => FilterParam(
+        null,
         null,
         filterType,
         EchoEnum.filter.index,

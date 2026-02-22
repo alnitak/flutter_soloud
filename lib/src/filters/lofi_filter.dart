@@ -26,8 +26,8 @@ enum LofiEnum {
 }
 
 abstract class _LofiInternal extends FilterBase {
-  const _LofiInternal(SoundHash? soundHash)
-      : super(FilterType.lofiFilter, soundHash);
+  const _LofiInternal(SoundHash? soundHash, int? busId)
+      : super(FilterType.lofiFilter, soundHash, busId);
 
   LofiEnum get queryWet => LofiEnum.wet;
   LofiEnum get querySamplerate => LofiEnum.samplerate;
@@ -35,10 +35,11 @@ abstract class _LofiInternal extends FilterBase {
 }
 
 class LofiSingle extends _LofiInternal {
-  LofiSingle(super.soundHash);
+  LofiSingle(super.soundHash, super.busId);
 
   FilterParam wet({SoundHandle? soundHandle}) => FilterParam(
         soundHandle,
+        super.busId,
         filterType,
         LofiEnum.wet.index,
         LofiEnum.wet.min,
@@ -47,6 +48,7 @@ class LofiSingle extends _LofiInternal {
 
   FilterParam samplerate({SoundHandle? soundHandle}) => FilterParam(
         soundHandle,
+        super.busId,
         filterType,
         LofiEnum.samplerate.index,
         LofiEnum.samplerate.min,
@@ -55,6 +57,7 @@ class LofiSingle extends _LofiInternal {
 
   FilterParam bitdepth({SoundHandle? soundHandle}) => FilterParam(
         soundHandle,
+        super.busId,
         filterType,
         LofiEnum.bitdepth.index,
         LofiEnum.bitdepth.min,
@@ -63,9 +66,10 @@ class LofiSingle extends _LofiInternal {
 }
 
 class LofiGlobal extends _LofiInternal {
-  const LofiGlobal() : super(null);
+  const LofiGlobal() : super(null, null);
 
   FilterParam get wet => FilterParam(
+        null,
         null,
         filterType,
         LofiEnum.wet.index,
@@ -75,6 +79,7 @@ class LofiGlobal extends _LofiInternal {
 
   FilterParam get samplerate => FilterParam(
         null,
+        null,
         filterType,
         LofiEnum.samplerate.index,
         LofiEnum.samplerate.min,
@@ -82,6 +87,7 @@ class LofiGlobal extends _LofiInternal {
       );
 
   FilterParam get bitdepth => FilterParam(
+        null,
         null,
         filterType,
         LofiEnum.bitdepth.index,

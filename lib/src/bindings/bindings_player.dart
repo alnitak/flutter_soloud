@@ -713,6 +713,7 @@ abstract class FlutterSoLoud {
     double to,
     double time, {
     SoundHandle? handle,
+    int? busId,
   });
 
   /// Oscillate a parameter of a filter.
@@ -733,6 +734,7 @@ abstract class FlutterSoLoud {
     double to,
     double time, {
     SoundHandle? handle,
+    int? busId,
   });
 
   // ///////////////////////////////////////

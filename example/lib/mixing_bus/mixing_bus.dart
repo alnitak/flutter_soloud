@@ -158,7 +158,7 @@ class BusControls extends StatelessWidget {
           ElevatedButton(
             onPressed: () async {
               bus.filters.pitchShiftFilter.activate();
-              bus.filters.pitchShiftFilter.shift.value = 1.5;
+              bus.filters.pitchShiftFilter.shift().value = 2.5;
             },
             child: const Text('pitch shift filter'),
           ),

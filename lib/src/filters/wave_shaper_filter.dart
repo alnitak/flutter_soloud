@@ -24,18 +24,19 @@ enum WaveShaperEnum {
 }
 
 abstract class _WaveShaperInternal extends FilterBase {
-  const _WaveShaperInternal(SoundHash? soundHash)
-      : super(FilterType.waveShaperFilter, soundHash);
+  const _WaveShaperInternal(SoundHash? soundHash, int? busId)
+      : super(FilterType.waveShaperFilter, soundHash, busId);
 
   WaveShaperEnum get queryWet => WaveShaperEnum.wet;
   WaveShaperEnum get queryAmount => WaveShaperEnum.amount;
 }
 
 class WaveShaperSingle extends _WaveShaperInternal {
-  WaveShaperSingle(super.soundHash);
+  WaveShaperSingle(super.soundHash, super.busId);
 
   FilterParam wet({SoundHandle? soundHandle}) => FilterParam(
         soundHandle,
+        super.busId,
         filterType,
         WaveShaperEnum.wet.index,
         WaveShaperEnum.wet.min,
@@ -44,6 +45,7 @@ class WaveShaperSingle extends _WaveShaperInternal {
 
   FilterParam amount({SoundHandle? soundHandle}) => FilterParam(
         soundHandle,
+        super.busId,
         filterType,
         WaveShaperEnum.amount.index,
         WaveShaperEnum.amount.min,
@@ -52,9 +54,10 @@ class WaveShaperSingle extends _WaveShaperInternal {
 }
 
 class WaveShaperGlobal extends _WaveShaperInternal {
-  const WaveShaperGlobal() : super(null);
+  const WaveShaperGlobal() : super(null, null);
 
   FilterParam get wet => FilterParam(
+        null,
         null,
         filterType,
         WaveShaperEnum.wet.index,
@@ -63,6 +66,7 @@ class WaveShaperGlobal extends _WaveShaperInternal {
       );
 
   FilterParam get amount => FilterParam(
+        null,
         null,
         filterType,
         WaveShaperEnum.amount.index,

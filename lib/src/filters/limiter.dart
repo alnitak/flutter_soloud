@@ -32,8 +32,8 @@ enum Limiter {
 }
 
 abstract class _LimiterInternal extends FilterBase {
-  const _LimiterInternal(SoundHash? soundHash)
-      : super(FilterType.limiterFilter, soundHash);
+  const _LimiterInternal(SoundHash? soundHash, int? busId)
+      : super(FilterType.limiterFilter, soundHash, busId);
 
   Limiter get queryWet => Limiter.wet;
   Limiter get queryThreshold => Limiter.threshold;
@@ -44,10 +44,11 @@ abstract class _LimiterInternal extends FilterBase {
 }
 
 class LimiterSingle extends _LimiterInternal {
-  LimiterSingle(super.soundHash);
+  LimiterSingle(super.soundHash, super.busId);
 
   FilterParam wet({SoundHandle? soundHandle}) => FilterParam(
         soundHandle,
+        super.busId,
         filterType,
         Limiter.wet.index,
         Limiter.wet.min,
@@ -56,6 +57,7 @@ class LimiterSingle extends _LimiterInternal {
 
   FilterParam threshold({SoundHandle? soundHandle}) => FilterParam(
         soundHandle,
+        super.busId,
         filterType,
         Limiter.threshold.index,
         Limiter.threshold.min,
@@ -64,6 +66,7 @@ class LimiterSingle extends _LimiterInternal {
 
   FilterParam outputCeiling({SoundHandle? soundHandle}) => FilterParam(
         soundHandle,
+        super.busId,
         filterType,
         Limiter.outputCeiling.index,
         Limiter.outputCeiling.min,
@@ -72,6 +75,7 @@ class LimiterSingle extends _LimiterInternal {
 
   FilterParam kneeWidth({SoundHandle? soundHandle}) => FilterParam(
         soundHandle,
+        super.busId,
         filterType,
         Limiter.kneeWidth.index,
         Limiter.kneeWidth.min,
@@ -80,6 +84,7 @@ class LimiterSingle extends _LimiterInternal {
 
   FilterParam releaseTime({SoundHandle? soundHandle}) => FilterParam(
         soundHandle,
+        super.busId,
         filterType,
         Limiter.releaseTime.index,
         Limiter.releaseTime.min,
@@ -88,6 +93,7 @@ class LimiterSingle extends _LimiterInternal {
 
   FilterParam attackTime({SoundHandle? soundHandle}) => FilterParam(
         soundHandle,
+        super.busId,
         filterType,
         Limiter.attackTime.index,
         Limiter.attackTime.min,
@@ -96,9 +102,10 @@ class LimiterSingle extends _LimiterInternal {
 }
 
 class LimiterGlobal extends _LimiterInternal {
-  const LimiterGlobal() : super(null);
+  const LimiterGlobal() : super(null, null);
 
   FilterParam get wet => FilterParam(
+        null,
         null,
         filterType,
         Limiter.wet.index,
@@ -108,6 +115,7 @@ class LimiterGlobal extends _LimiterInternal {
 
   FilterParam get threshold => FilterParam(
         null,
+        null,
         filterType,
         Limiter.threshold.index,
         Limiter.threshold.min,
@@ -115,6 +123,7 @@ class LimiterGlobal extends _LimiterInternal {
       );
 
   FilterParam get outputCeiling => FilterParam(
+        null,
         null,
         filterType,
         Limiter.outputCeiling.index,
@@ -124,6 +133,7 @@ class LimiterGlobal extends _LimiterInternal {
 
   FilterParam get kneeWidth => FilterParam(
         null,
+        null,
         filterType,
         Limiter.kneeWidth.index,
         Limiter.kneeWidth.min,
@@ -132,6 +142,7 @@ class LimiterGlobal extends _LimiterInternal {
 
   FilterParam get releaseTime => FilterParam(
         null,
+        null,
         filterType,
         Limiter.releaseTime.index,
         Limiter.releaseTime.min,
@@ -139,6 +150,7 @@ class LimiterGlobal extends _LimiterInternal {
       );
 
   FilterParam get attackTime => FilterParam(
+        null,
         null,
         filterType,
         Limiter.attackTime.index,

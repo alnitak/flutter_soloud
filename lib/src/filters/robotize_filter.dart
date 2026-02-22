@@ -26,8 +26,8 @@ enum RobotizeEnum {
 }
 
 abstract class _RobotizeInternal extends FilterBase {
-  const _RobotizeInternal(SoundHash? soundHash)
-      : super(FilterType.robotizeFilter, soundHash);
+  const _RobotizeInternal(SoundHash? soundHash, int? busId)
+      : super(FilterType.robotizeFilter, soundHash, busId);
 
   RobotizeEnum get queryWet => RobotizeEnum.wet;
   RobotizeEnum get queryFrequency => RobotizeEnum.frequency;
@@ -35,10 +35,11 @@ abstract class _RobotizeInternal extends FilterBase {
 }
 
 class RobotizeSingle extends _RobotizeInternal {
-  RobotizeSingle(super.soundHash);
+  RobotizeSingle(super.soundHash, super.busId);
 
   FilterParam wet({SoundHandle? soundHandle}) => FilterParam(
         soundHandle,
+        super.busId,
         filterType,
         RobotizeEnum.wet.index,
         RobotizeEnum.wet.min,
@@ -47,6 +48,7 @@ class RobotizeSingle extends _RobotizeInternal {
 
   FilterParam frequency({SoundHandle? soundHandle}) => FilterParam(
         soundHandle,
+        super.busId,
         filterType,
         RobotizeEnum.frequency.index,
         RobotizeEnum.frequency.min,
@@ -55,6 +57,7 @@ class RobotizeSingle extends _RobotizeInternal {
 
   FilterParam waveform({SoundHandle? soundHandle}) => FilterParam(
         soundHandle,
+        super.busId,
         filterType,
         RobotizeEnum.waveform.index,
         RobotizeEnum.waveform.min,
@@ -63,9 +66,10 @@ class RobotizeSingle extends _RobotizeInternal {
 }
 
 class RobotizeGlobal extends _RobotizeInternal {
-  const RobotizeGlobal() : super(null);
+  const RobotizeGlobal() : super(null, null);
 
   FilterParam get wet => FilterParam(
+        null,
         null,
         filterType,
         RobotizeEnum.wet.index,
@@ -75,6 +79,7 @@ class RobotizeGlobal extends _RobotizeInternal {
 
   FilterParam get frequency => FilterParam(
         null,
+        null,
         filterType,
         RobotizeEnum.frequency.index,
         RobotizeEnum.frequency.min,
@@ -82,6 +87,7 @@ class RobotizeGlobal extends _RobotizeInternal {
       );
 
   FilterParam get waveform => FilterParam(
+        null,
         null,
         filterType,
         RobotizeEnum.waveform.index,

@@ -48,12 +48,15 @@ class Bus {
       _isValid = true;
       Buses().buses.add(this);
     }
+    filters = FiltersSingle(busId: busId);
   }
 
   static final Logger _log = Logger('flutter_soloud.Bus');
 
+  /// The filters for this bus.
+  /// 
   /// Please see [SoLoud.filters]
-  late final filters = const FiltersGlobal();
+  late FiltersSingle filters;
 
   /// The name of this bus.
   final String name;
