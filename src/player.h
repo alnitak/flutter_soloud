@@ -599,7 +599,7 @@ public:
   float busGetApproximateVolume(unsigned int busId, unsigned int channel);
   void busAnnexSound(unsigned int busId, unsigned int voiceHandle);
   unsigned int busGetActiveVoiceCount(unsigned int busId);
-  Filters *findBusFilters(unsigned int busId);
+  BusData *findBusData(unsigned int busId);
   
 public:
   /// all the sounds loaded
@@ -626,14 +626,6 @@ private:
   std::mutex remove_handle_mutex;
   unsigned int mBufferSize;
 
-  /// Storage for mixing bus instances, keyed by auto-incrementing ID.
-  struct BusData {
-      unsigned int id;
-      SoLoud::Bus bus;
-      Filters filters;
-
-      explicit BusData(unsigned int busId, SoLoud::Soloud *soloud) : id(busId), filters(soloud, nullptr, nullptr) {}
-  };
   std::map<unsigned int, BusData> busMap;
   unsigned int busIdCounter = 0;
 };

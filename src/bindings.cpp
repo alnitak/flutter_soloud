@@ -1334,12 +1334,12 @@ isFilterActive(unsigned int soundHash, unsigned int busId, enum FilterType filte
         return soundHashNotFound;
       *index = s->filters->isFilterActive(filterType);
     } else {
-      auto *busFilters = player.get()->findBusFilters(busId);
-      if (busFilters == nullptr)
+      auto *busData = player.get()->findBusData(busId);
+      if (busData == nullptr)
         return busIdNotFound;
-      *index = busFilters->isFilterActive(filterType);
+      *index = busData->filters.isFilterActive(filterType);
     }
-  }
+  } 
 
   return noError;
 }
@@ -1388,10 +1388,10 @@ FFI_PLUGIN_EXPORT enum PlayerErrors addFilter(unsigned int soundHash,
       return soundHashNotFound;
     return s->filters->addFilter(filterType);
   } else {
-    auto *busFilters = player.get()->findBusFilters(busId);
+    auto *busFilters = player.get()->findBusData(busId);
     if (busFilters == nullptr)
       return busIdNotFound;
-    return busFilters->addFilter(filterType);
+    return busFilters->filters.addFilter(filterType);
   }
 }
 
@@ -1419,10 +1419,10 @@ FFI_PLUGIN_EXPORT enum PlayerErrors removeFilter(unsigned int soundHash,
       if (!s->filters->removeFilter(filterType))
         return filterNotFound;
     } else {
-      auto *busFilters = player.get()->findBusFilters(busId);
+      auto *busFilters = player.get()->findBusData(busId);
       if (busFilters == nullptr)
         return busIdNotFound;
-      if (!busFilters->removeFilter(filterType))
+      if (!busFilters->filters.removeFilter(filterType))
         return filterNotFound;
     }
   }
@@ -1460,11 +1460,11 @@ FFI_PLUGIN_EXPORT enum PlayerErrors setFilterParams(unsigned int handle,
         s->filters.get()->setFilterParams(handle, filterType, attributeId, value);
       }
     } else {
-      auto *busFilters = player.get()->findBusFilters(busId);
+      auto *busFilters = player.get()->findBusData(busId);
       if (busFilters == nullptr) {
         return busIdNotFound;
       } else {
-        busFilters->setFilterParams(handle, filterType, attributeId, value);
+        busFilters->filters.setFilterParams(busFilters->handle, filterType, attributeId, value);
       }
     }
   }
@@ -1508,12 +1508,12 @@ FFI_PLUGIN_EXPORT enum PlayerErrors getFilterParams(unsigned int handle,
       return noError;
       }
     } else {
-      auto *busFilters = player.get()->findBusFilters(busId);
+      auto *busFilters = player.get()->findBusData(busId);
       if (busFilters == nullptr) {
         return busIdNotFound;
       } else {
         *filterValue =
-            busFilters->getFilterParams(handle, filterType, attributeId);
+            busFilters->filters.getFilterParams(handle, filterType, attributeId);
         if (!(isnormal(*filterValue) || isnan(*filterValue)))
           return filterParameterGetError;
         if (*filterValue == 9999.0f)
@@ -1554,11 +1554,11 @@ fadeFilterParameter(unsigned int handle, unsigned int busId, enum FilterType fil
                                             time);
       }
     } else {
-      auto *busFilters = player.get()->findBusFilters(busId);
+      auto *busFilters = player.get()->findBusData(busId);
       if (busFilters == nullptr) {
         return busIdNotFound;
       } else {
-        busFilters->fadeFilterParameter(handle, filterType, attributeId, to,
+        busFilters->filters.fadeFilterParameter(handle, filterType, attributeId, to,
                                         time);
       }
     }
@@ -1596,11 +1596,11 @@ oscillateFilterParameter(unsigned int handle, unsigned int busId, enum FilterTyp
                                                  attributeId, from, to, time);
       }
     } else {
-      auto *busFilters = player.get()->findBusFilters(busId);
+      auto *busFilters = player.get()->findBusData(busId);
       if (busFilters == nullptr) {
         return busIdNotFound;
       } else {
-        busFilters->oscillateFilterParameter(handle, filterType, attributeId,
+        busFilters->filters.oscillateFilterParameter(handle, filterType, attributeId,
                                              from, to, time);
       }
     }

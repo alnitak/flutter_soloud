@@ -1,6 +1,8 @@
 #include "common.h"
 #include "player.h"
+#include "filters/filters.h"
 #include "soloud.h"
+#include "soloud/include/soloud.h"
 #include "soloud_wav.h"
 // #include "soloud_thread.h"
 #include "soloud_wavstream.h"
@@ -1292,7 +1294,9 @@ unsigned int Player::busPlayOnEngine(unsigned int busId, float volume,
     auto it = busMap.find(busId);
     if (it == busMap.end())
         return 0;
-    return soloud.play(it->second.bus, volume, 0.0f, paused);
+    SoLoud::handle handle = soloud.play(it->second.bus, volume, 0.0f, paused);
+    it->second.handle = handle;
+    return handle;
 }
 
 unsigned int Player::busPlay(unsigned int busId, unsigned int soundHash,
@@ -1358,9 +1362,9 @@ unsigned int Player::busGetActiveVoiceCount(unsigned int busId) {
     return it->second.bus.getActiveVoiceCount();
 }
 
-Filters *Player::findBusFilters(unsigned int busId) {
+BusData *Player::findBusData(unsigned int busId) {
     auto it = busMap.find(busId);
     if (it == busMap.end())
         return nullptr;
-    return &it->second.filters;
+    return &it->second;
 }

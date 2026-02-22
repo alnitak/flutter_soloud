@@ -27,7 +27,7 @@ class Filters {
   /// The default maximum number of global filters active is 4, but this
   /// can be changed in a global constant in soloud.h (and rebuilding SoLoud).
 public:
-  Filters(SoLoud::Soloud *soloud, ActiveSound *sound, SoLoud::Bus *bus);
+  Filters(SoLoud::Soloud *soloud, ActiveSound *sound, BusData *busData);
   ~Filters() {}
 
   int isFilterActive(FilterType filter);
@@ -65,9 +65,19 @@ private:
 
   /// The bus to manage filters for. If this and mSound are null the filters
   /// are managed globally.
-  SoLoud::Bus *mBus;
+  BusData *mBusData;
 
   std::vector<std::unique_ptr<FilterObject>> filters;
+};
+
+/// Storage for mixing bus instances, keyed by auto-incrementing ID.
+struct BusData {
+    unsigned int id;
+    SoLoud::Bus bus;
+    SoLoud::handle handle; // set when bus is played on engine
+    Filters filters;
+
+    explicit BusData(unsigned int busId, SoLoud::Soloud *soloud) : id(busId), filters(soloud, nullptr, this) {}
 };
 
 #endif // PLAYER_H
