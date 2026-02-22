@@ -748,6 +748,7 @@ abstract class FlutterSoLoud {
   ({PlayerErrors error, int index}) isFilterActive(
     FilterType filterType, {
     SoundHash? soundHash,
+    int? busId,
   });
 
   /// Get parameters names of the given filter.
@@ -773,6 +774,7 @@ abstract class FlutterSoLoud {
   PlayerErrors addFilter(
     FilterType filterType, {
     SoundHash? soundHash,
+    int? busId,
   });
 
   /// Remove the filter [filterType].
@@ -783,6 +785,7 @@ abstract class FlutterSoLoud {
   PlayerErrors removeFilter(
     FilterType filterType, {
     SoundHash? soundHash,
+    int? busId,
   });
 
   /// Set the effect parameter with id [attributeId] of [filterType]
@@ -798,6 +801,7 @@ abstract class FlutterSoLoud {
     int attributeId,
     double value, {
     SoundHandle? handle,
+    int? busId,
   });
 
   /// Get the effect parameter value with id [attributeId] of [filterType].
@@ -811,6 +815,7 @@ abstract class FlutterSoLoud {
     FilterType filterType,
     int attributeId, {
     SoundHandle? handle,
+    int? busId,
   });
 
   // ///////////////////////////////////////

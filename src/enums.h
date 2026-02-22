@@ -72,6 +72,8 @@ typedef enum PlayerErrors {
   audioFormatNotSupported = 29,
   /// Opus ogg vorbis libraries not found.
   opusOggVorbisLibsNotFound = 30,
+  /// Bus ID not found.
+  busIdNotFound = 31,
 } PlayerErrors_t;
 
 /// Possible read sample errors

@@ -581,6 +581,26 @@ public:
                               float attenuationRolloffFactor);
   void set3dSourceDopplerFactor(unsigned int handle, float dopplerFactor);
 
+  /////////////////////////////////////////
+  /// Mixing Bus
+  /// https://solhsa.com/soloud/mixbus.html
+  /// https://solhsa.com/soloud/soloud_20200207.html#mixing-bus
+  /////////////////////////////////////////
+
+  unsigned int createBus();
+  void destroyBus(unsigned int busId);
+  unsigned int busPlayOnEngine(unsigned int busId, float volume, bool paused);
+  unsigned int busPlay(unsigned int busId, unsigned int soundHash, float volume,
+                       float pan, bool paused);
+  int busSetChannels(unsigned int busId, unsigned int channels);
+  void busSetVisualizationEnable(unsigned int busId, bool enable);
+  float *busCalcFFT(unsigned int busId);
+  float *busGetWave(unsigned int busId);
+  float busGetApproximateVolume(unsigned int busId, unsigned int channel);
+  void busAnnexSound(unsigned int busId, unsigned int voiceHandle);
+  unsigned int busGetActiveVoiceCount(unsigned int busId);
+  Filters *findBusFilters(unsigned int busId);
+  
 public:
   /// all the sounds loaded
   std::vector<std::unique_ptr<ActiveSound>> sounds;
@@ -605,6 +625,17 @@ private:
   ma_device_info *pPlaybackInfos;
   std::mutex remove_handle_mutex;
   unsigned int mBufferSize;
+
+  /// Storage for mixing bus instances, keyed by auto-incrementing ID.
+  struct BusData {
+      unsigned int id;
+      SoLoud::Bus bus;
+      Filters filters;
+
+      explicit BusData(unsigned int busId, SoLoud::Soloud *soloud) : id(busId), filters(soloud, nullptr, nullptr) {}
+  };
+  std::map<unsigned int, BusData> busMap;
+  unsigned int busIdCounter = 0;
 };
 
 #endif // PLAYER_H

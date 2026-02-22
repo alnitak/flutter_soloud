@@ -23,7 +23,7 @@
 #define __WEB__ 0
 #endif
 
-Player::Player() : mInited(false), mFilters(&soloud, nullptr) {}
+Player::Player() : mInited(false), mFilters(&soloud, nullptr, nullptr) {}
 
 Player::~Player() {
     if (!mInited) { 
@@ -253,7 +253,9 @@ const std::string Player::getErrorString(PlayerErrors errorCode) const
     case audioFormatNotSupported:
         return "error: audio format not supported!";
     case opusOggVorbisLibsNotFound:
-        return "error: opus ogg vorbis libraries not found!";
+      return "error: opus ogg vorbis libraries not found!";
+    case busIdNotFound:
+      return "error: bus id not found!";
     }
     return "Other error";
 }
@@ -305,7 +307,7 @@ PlayerErrors Player::loadFile(
     else
     {
         *hash = newHash;
-        newSound.get()->filters = std::make_unique<Filters>(&soloud, newSound.get());
+        newSound.get()->filters = std::make_unique<Filters>(&soloud, newSound.get(), nullptr);
         sounds.push_back(std::move(newSound));
     }
 
@@ -354,7 +356,7 @@ PlayerErrors Player::loadMem(
 
     if (result == SoLoud::SO_NO_ERROR)
     {
-        newSound.get()->filters = std::make_unique<Filters>(&soloud, newSound.get());
+        newSound.get()->filters = std::make_unique<Filters>(&soloud, newSound.get(), nullptr);
         sounds.push_back(std::move(newSound));
     }
 
@@ -395,7 +397,7 @@ PlayerErrors Player::setBufferStream(
         onBufferingCallback,
         onMetadataCallback);
 
-    newSound.get()->filters = std::make_unique<Filters>(&soloud, newSound.get());
+    newSound.get()->filters = std::make_unique<Filters>(&soloud, newSound.get(), nullptr);
     sounds.push_back(std::move(newSound));
 
     return e;
@@ -501,7 +503,7 @@ PlayerErrors Player::loadWaveform(
     sounds.back().get()->soundHash = hash;
     sounds.back().get()->sound = std::make_unique<Basicwave>((SoLoud::Soloud::WAVEFORM)waveform, superWave, detune, scale);
     sounds.back().get()->soundType = TYPE_SYNTH;
-    sounds.back().get()->filters = std::make_unique<Filters>(&soloud, sounds.back().get());
+    sounds.back().get()->filters = std::make_unique<Filters>(&soloud, sounds.back().get(), nullptr);
 
     return noError;
 }
@@ -766,7 +768,7 @@ PlayerErrors Player::textToSpeech(const std::string &textToSpeech, unsigned int 
     if (result == SoLoud::SO_NO_ERROR)
     {
         handle = soloud.play(speech);
-        sounds.back().get()->filters = std::make_unique<Filters>(&soloud, sounds.back().get());
+        sounds.back().get()->filters = std::make_unique<Filters>(&soloud, sounds.back().get(), nullptr);
         sounds.back().get()->handle.push_back({handle, MAX_DOUBLE});
     }
     else
@@ -1267,4 +1269,98 @@ void Player::set3dSourceDopplerFactor(
     float aDopplerFactor)
 {
     soloud.set3dSourceDopplerFactor(aVoiceHandle, aDopplerFactor);
+}
+
+/////////////////////////////////////////
+/// Mixing Bus
+/////////////////////////////////////////
+
+unsigned int Player::createBus() {
+    unsigned int id = ++busIdCounter;
+    busMap.try_emplace(id, id, &soloud);
+    return id;
+}
+
+void Player::destroyBus(unsigned int busId) {
+    busMap.erase(busId);
+}
+
+unsigned int Player::busPlayOnEngine(unsigned int busId, float volume,
+                                     bool paused) {
+    if (!mInited)
+        return 0;
+    auto it = busMap.find(busId);
+    if (it == busMap.end())
+        return 0;
+    return soloud.play(it->second.bus, volume, 0.0f, paused);
+}
+
+unsigned int Player::busPlay(unsigned int busId, unsigned int soundHash,
+                             float volume, float pan, bool paused) {
+    if (!mInited)
+        return 0;
+    auto it = busMap.find(busId);
+    if (it == busMap.end())
+        return 0;
+    auto *s = findByHash(soundHash);
+    if (s == nullptr)
+        return 0;
+    return it->second.bus.play(*s->sound, volume, pan, paused);
+}
+
+int Player::busSetChannels(unsigned int busId, unsigned int channels) {
+    auto it = busMap.find(busId);
+    if (it == busMap.end())
+        return -1; // bus not found
+    return static_cast<int>(it->second.bus.setChannels(channels));
+}
+
+void Player::busSetVisualizationEnable(unsigned int busId, bool enable) {
+    auto it = busMap.find(busId);
+    if (it == busMap.end())
+        return;
+    it->second.bus.setVisualizationEnable(enable);
+}
+
+float *Player::busCalcFFT(unsigned int busId) {
+    auto it = busMap.find(busId);
+    if (it == busMap.end())
+        return nullptr;
+    return it->second.bus.calcFFT();
+}
+
+float *Player::busGetWave(unsigned int busId) {
+    auto it = busMap.find(busId);
+    if (it == busMap.end())
+        return nullptr;
+    return it->second.bus.getWave();
+}
+
+float Player::busGetApproximateVolume(unsigned int busId,
+                                      unsigned int channel) {
+    auto it = busMap.find(busId);
+    if (it == busMap.end())
+        return 0.0f;
+    return it->second.bus.getApproximateVolume(channel);
+}
+
+void Player::busAnnexSound(unsigned int busId, unsigned int voiceHandle) {
+    auto it = busMap.find(busId);
+    if (it == busMap.end())
+        return;
+    it->second.bus.annexSound(voiceHandle);
+}
+
+unsigned int Player::busGetActiveVoiceCount(unsigned int busId) {
+    auto it = busMap.find(busId);
+    if (it == busMap.end())
+        return 0;
+    return it->second.bus.getActiveVoiceCount();
+}
+
+Filters *Player::findBusFilters(unsigned int busId) {
+    auto it = busMap.find(busId);
+    if (it == busMap.end())
+        return nullptr;
+    return &it->second.filters;
 }

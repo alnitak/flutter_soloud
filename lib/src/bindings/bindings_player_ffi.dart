@@ -1484,9 +1484,11 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   ({PlayerErrors error, int index}) isFilterActive(
     FilterType filterType, {
     SoundHash? soundHash,
+    int? busId,
   }) {
     final ffi.Pointer<ffi.Int> id = calloc(ffi.sizeOf<ffi.Int>());
-    final e = _isFilterActive(soundHash?.hash ?? 0, filterType.index, id);
+    final e =
+        _isFilterActive(soundHash?.hash ?? 0, busId ?? 0, filterType.index, id);
     final ret = (error: PlayerErrors.values[e], index: id.value);
     calloc.free(id);
     return ret;
@@ -1494,10 +1496,10 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
 
   late final _isFilterActivePtr = _lookup<
       ffi.NativeFunction<
-          ffi.Int32 Function(ffi.UnsignedInt, ffi.Int32,
+          ffi.Int32 Function(ffi.UnsignedInt, ffi.UnsignedInt, ffi.Int32,
               ffi.Pointer<ffi.Int>)>>('isFilterActive');
   late final _isFilterActive = _isFilterActivePtr
-      .asFunction<int Function(int, int, ffi.Pointer<ffi.Int>)>();
+      .asFunction<int Function(int, int, int, ffi.Pointer<ffi.Int>)>();
 
   @override
   ({PlayerErrors error, List<String> names}) getFilterParamNames(
@@ -1542,30 +1544,35 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   PlayerErrors addFilter(
     FilterType filterType, {
     SoundHash? soundHash,
+    int? busId,
   }) {
-    final e = _addFilter(soundHash?.hash ?? 0, filterType.index);
+    final e = _addFilter(soundHash?.hash ?? 0, busId ?? 0, filterType.index);
     return PlayerErrors.values[e];
   }
 
   late final _addFilterPtr = _lookup<
-          ffi.NativeFunction<ffi.Int32 Function(ffi.UnsignedInt, ffi.Int32)>>(
-      'addFilter');
-  late final _addFilter = _addFilterPtr.asFunction<int Function(int, int)>();
+      ffi.NativeFunction<
+          ffi.Int32 Function(
+              ffi.UnsignedInt, ffi.UnsignedInt, ffi.Int32)>>('addFilter');
+  late final _addFilter =
+      _addFilterPtr.asFunction<int Function(int, int, int)>();
 
   @override
   PlayerErrors removeFilter(
     FilterType filterType, {
     SoundHash? soundHash,
+    int? busId,
   }) {
-    final e = _removeFilter(soundHash?.hash ?? 0, filterType.index);
+    final e = _removeFilter(soundHash?.hash ?? 0, busId ?? 0, filterType.index);
     return PlayerErrors.values[e];
   }
 
   late final _removeFilterPtr = _lookup<
-          ffi.NativeFunction<ffi.Int32 Function(ffi.UnsignedInt, ffi.Int32)>>(
-      'removeFilter');
+      ffi.NativeFunction<
+          ffi.Int32 Function(
+              ffi.UnsignedInt, ffi.UnsignedInt, ffi.Int32)>>('removeFilter');
   late final _removeFilter =
-      _removeFilterPtr.asFunction<int Function(int, int)>();
+      _removeFilterPtr.asFunction<int Function(int, int, int)>();
 
   @override
   PlayerErrors setFilterParams(
@@ -1573,9 +1580,11 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     int attributeId,
     double value, {
     SoundHandle? handle,
+    int? busId,
   }) {
     final e = _setFilterParams(
       handle?.id ?? 0,
+      busId ?? 0,
       filterType.index,
       attributeId,
       value,
@@ -1585,20 +1594,22 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
 
   late final _setFilterParamsPtr = _lookup<
       ffi.NativeFunction<
-          ffi.Int32 Function(ffi.UnsignedInt, ffi.Int32, ffi.Int,
-              ffi.Float)>>('setFilterParams');
-  late final _setFilterParams =
-      _setFilterParamsPtr.asFunction<int Function(int, int, int, double)>();
+          ffi.Int32 Function(ffi.UnsignedInt, ffi.UnsignedInt, ffi.Int32,
+              ffi.Int, ffi.Float)>>('setFilterParams');
+  late final _setFilterParams = _setFilterParamsPtr
+      .asFunction<int Function(int, int, int, int, double)>();
 
   @override
   ({PlayerErrors error, double value}) getFilterParams(
     FilterType filterType,
     int attributeId, {
     SoundHandle? handle,
+    int? busId,
   }) {
     final ffi.Pointer<ffi.Float> paramValue = calloc();
     final error = _getFilterParams(
       handle?.id ?? 0,
+      busId ?? 0,
       filterType.index,
       attributeId,
       paramValue,
@@ -1610,10 +1621,10 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
 
   late final _getFilterParamsPtr = _lookup<
       ffi.NativeFunction<
-          ffi.Int32 Function(ffi.UnsignedInt, ffi.Int32, ffi.Int,
-              ffi.Pointer<ffi.Float>)>>('getFilterParams');
+          ffi.Int32 Function(ffi.UnsignedInt, ffi.UnsignedInt, ffi.Int32,
+              ffi.Int, ffi.Pointer<ffi.Float>)>>('getFilterParams');
   late final _getFilterParams = _getFilterParamsPtr
-      .asFunction<int Function(int, int, int, ffi.Pointer<ffi.Float>)>();
+      .asFunction<int Function(int, int, int, int, ffi.Pointer<ffi.Float>)>();
 
   /////////////////////////////////////////
   /// 3D audio methods

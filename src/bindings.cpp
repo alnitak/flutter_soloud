@@ -1313,24 +1313,32 @@ FFI_PLUGIN_EXPORT enum PlayerErrors oscillateGlobalVolume(float from, float to,
 
 /// Check if the given filter is active or not.
 ///
-/// [soundHash] the sound to check the filter. If this is =0 this function
-/// searches in the global filters.
+/// [soundHash] the sound to check the filter. If this is =0 this function searches in the global filters.
+/// [busId] the bus to check the filter.
+/// If both [soundHash] and [busId] are =0 this function searches in the global filters.
 /// [filterType] filter to check.
 /// Returns [PlayerErrors.noError] if no errors and the index of
 /// the given filter (-1 if the filter is not active).
 FFI_PLUGIN_EXPORT enum PlayerErrors
-isFilterActive(unsigned int soundHash, enum FilterType filterType, int *index) {
+isFilterActive(unsigned int soundHash, unsigned int busId, enum FilterType filterType, int *index) {
   *index = -1;
   if (player.get() == nullptr || !player.get()->isInited())
     return backendNotInited;
 
-  if (soundHash == 0)
+  if (soundHash == 0 && busId == 0)
     *index = player.get()->mFilters.isFilterActive(filterType);
   else {
-    auto const s = player.get()->findByHash(soundHash);
-    if (s == nullptr)
-      return soundHashNotFound;
-    *index = s->filters->isFilterActive(filterType);
+    if (soundHash != 0) {
+      auto const s = player.get()->findByHash(soundHash);
+      if (s == nullptr)
+        return soundHashNotFound;
+      *index = s->filters->isFilterActive(filterType);
+    } else {
+      auto *busFilters = player.get()->findBusFilters(busId);
+      if (busFilters == nullptr)
+        return busIdNotFound;
+      *index = busFilters->isFilterActive(filterType);
+    }
   }
 
   return noError;
@@ -1362,40 +1370,61 @@ getFilterParamNames(enum FilterType filterType, int *paramsCount,
 /// filter is added to global filters.
 ///
 /// [soundHash] the sound to add the filter to.
+/// [busId] the bus to check the filter.
+/// If both [soundHash] and [busId] are =0 this function searches in the global filters.
 /// [filterType] filter to add.
 /// Returns [PlayerErrors.noError] if no errors.
 FFI_PLUGIN_EXPORT enum PlayerErrors addFilter(unsigned int soundHash,
+                                              unsigned int busId,
                                               enum FilterType filterType) {
   if (player.get() == nullptr || !player.get()->isInited())
     return backendNotInited;
-  if (soundHash == 0)
+  if (soundHash == 0 && busId == 0)
     return player.get()->mFilters.addFilter(filterType);
 
-  auto const s = player.get()->findByHash(soundHash);
-  if (s == nullptr)
-    return soundHashNotFound;
-
-  return s->filters->addFilter(filterType);
+  if (soundHash != 0) {
+    auto const s = player.get()->findByHash(soundHash);
+    if (s == nullptr)
+      return soundHashNotFound;
+    return s->filters->addFilter(filterType);
+  } else {
+    auto *busFilters = player.get()->findBusFilters(busId);
+    if (busFilters == nullptr)
+      return busIdNotFound;
+    return busFilters->addFilter(filterType);
+  }
 }
 
 /// Remove the filter [filterType] from [soundHash]. If [soundHash]==0 the
 /// filter is removed from the global filters.
 ///
+/// [soundHash] the sound to add the filter to.
+/// [busId] the bus to check the filter.
+/// If both [soundHash] and [busId] are =0 this function searches in the global filters.
 /// [filterType] filter to remove.
 /// Returns [PlayerErrors.noError] if no errors.
 FFI_PLUGIN_EXPORT enum PlayerErrors removeFilter(unsigned int soundHash,
+                                                 unsigned int busId,
                                                  enum FilterType filterType) {
   if (player.get() == nullptr || !player.get()->isInited())
     return backendNotInited;
-  if (soundHash == 0) {
+  if (soundHash == 0 && busId == 0) {
     if (!player.get()->mFilters.removeFilter(filterType))
       return filterNotFound;
   } else {
-    auto const s = player.get()->findByHash(soundHash);
-    if (s == nullptr)
-      return soundHashNotFound;
-    if (!s->filters->removeFilter(filterType))
-      return filterNotFound;
+    if (soundHash != 0) {
+      auto const s = player.get()->findByHash(soundHash);
+      if (s == nullptr)
+        return soundHashNotFound;
+      if (!s->filters->removeFilter(filterType))
+        return filterNotFound;
+    } else {
+      auto *busFilters = player.get()->findBusFilters(busId);
+      if (busFilters == nullptr)
+        return busIdNotFound;
+      if (!busFilters->removeFilter(filterType))
+        return filterNotFound;
+    }
   }
 
   return noError;
@@ -1405,9 +1434,13 @@ FFI_PLUGIN_EXPORT enum PlayerErrors removeFilter(unsigned int soundHash,
 /// of [filterType] with [value] value.
 ///
 /// [handle] the handle to set the filter to. If equal to 0, the filter is
-/// applyed globally. [filterType] filter to modify a param. Returns
-/// [PlayerErrors.noError] if no errors.
+/// applyed globally.
+/// [busId] the bus to check the filter.
+/// If both [handle] and [busId] are =0 this function searches in the global filters.
+/// [filterType] filter to modify a param.
+/// Returns [PlayerErrors.noError] if no errors.
 FFI_PLUGIN_EXPORT enum PlayerErrors setFilterParams(unsigned int handle,
+                                                    unsigned int busId,
                                                     enum FilterType filterType,
                                                     int attributeId,
                                                     float value) {
@@ -1415,15 +1448,24 @@ FFI_PLUGIN_EXPORT enum PlayerErrors setFilterParams(unsigned int handle,
     return backendNotInited;
   /// Not important to call the [SoLoud::AudioSource].setFilterParams() here,
   /// SoLoud will set the param globally or by [handle] if  [handle] is not ==0.
-  if (handle == 0)
+  if (handle == 0 && busId == 0) {
     player.get()->mFilters.setFilterParams(handle, filterType, attributeId,
                                            value);
-  else {
-    auto const &s = player.get()->findByHandle(handle);
-    if (s == nullptr) {
-      return soundHandleNotFound;
+  } else {
+    if (handle != 0) {
+      auto const &s = player.get()->findByHandle(handle);
+      if (s == nullptr) {
+        return soundHandleNotFound;
+      } else {
+        s->filters.get()->setFilterParams(handle, filterType, attributeId, value);
+      }
     } else {
-      s->filters.get()->setFilterParams(handle, filterType, attributeId, value);
+      auto *busFilters = player.get()->findBusFilters(busId);
+      if (busFilters == nullptr) {
+        return busIdNotFound;
+      } else {
+        busFilters->setFilterParams(handle, filterType, attributeId, value);
+      }
     }
   }
   return noError;
@@ -1432,9 +1474,13 @@ FFI_PLUGIN_EXPORT enum PlayerErrors setFilterParams(unsigned int handle,
 /// Get the effect parameter with id [attributeId] of [filterType].
 ///
 /// [handle] the handle to get the filter to. If equal to 0, it gets the global
-/// filter. [filterType] filter to modify a param. Returns the value of param or
+/// filter.
+/// [busId] the bus to check the filter.
+/// If both [handle] and [busId] are =0 this function searches in the global filters.
+/// [filterType] filter to modify a param. Returns the value of param or
 /// 9999.0 if the filter is not found.
 FFI_PLUGIN_EXPORT enum PlayerErrors getFilterParams(unsigned int handle,
+                                                    unsigned int busId,
                                                     enum FilterType filterType,
                                                     int attributeId,
                                                     float *filterValue) {
@@ -1443,22 +1489,37 @@ FFI_PLUGIN_EXPORT enum PlayerErrors getFilterParams(unsigned int handle,
     return backendNotInited;
   /// If [handle] == 0 get the parameter from global filters else from
   /// the sound which owns [handle].
-  if (handle == 0) {
+  if (handle == 0 && busId == 0) {
     *filterValue =
         player.get()->mFilters.getFilterParams(handle, filterType, attributeId);
     return noError;
   } else {
-    auto const &s = player.get()->findByHandle(handle);
-    if (s == nullptr)
-      return soundHandleNotFound;
-    else {
-      *filterValue =
-          s->filters.get()->getFilterParams(handle, filterType, attributeId);
+    if (handle != 0) {
+      auto const &s = player.get()->findByHandle(handle);
+      if (s == nullptr)
+        return soundHandleNotFound;
+      else {
+        *filterValue =
+            s->filters.get()->getFilterParams(handle, filterType, attributeId);
       if (!(isnormal(*filterValue) || isnan(*filterValue)))
         return filterParameterGetError;
       if (*filterValue == 9999.0f)
         return filterNotFound;
       return noError;
+      }
+    } else {
+      auto *busFilters = player.get()->findBusFilters(busId);
+      if (busFilters == nullptr) {
+        return busIdNotFound;
+      } else {
+        *filterValue =
+            busFilters->getFilterParams(handle, filterType, attributeId);
+        if (!(isnormal(*filterValue) || isnan(*filterValue)))
+          return filterParameterGetError;
+        if (*filterValue == 9999.0f)
+          return filterNotFound;
+        return noError;
+      }
     }
   }
   return noError;
@@ -1467,25 +1528,39 @@ FFI_PLUGIN_EXPORT enum PlayerErrors getFilterParams(unsigned int handle,
 /// Fades a parameter of a filter.
 ///
 /// [handle] the handle of the voice to apply the fade. If equal to 0, it fades
-/// the global filter. [filterType] filter to modify a param. [attributeId] the
-/// attribute index to fade. [to] value the attribute should go in [time]
-/// duration. [time] the fade slope duration. Returns [PlayerErrors.noError] if
+/// the global filter.
+/// [busId] the bus to check the filter.
+/// If both [handle] and [busId] are =0 this function searches in the global filters.
+/// [filterType] filter to modify a param.
+/// [attributeId] the attribute index to fade.
+/// [to] value the attribute should go in [time] duration.
+/// [time] the fade slope duration. Returns [PlayerErrors.noError] if
 /// no errors.
 FFI_PLUGIN_EXPORT enum PlayerErrors
-fadeFilterParameter(unsigned int handle, enum FilterType filterType,
+fadeFilterParameter(unsigned int handle, unsigned int busId, enum FilterType filterType,
                     int attributeId, float to, float time) {
   if (player.get() == nullptr || !player.get()->isInited())
     return backendNotInited;
-  if (handle == 0)
+  if (handle == 0 && busId == 0) {
     player.get()->mFilters.fadeFilterParameter(handle, filterType, attributeId,
                                                to, time);
-  else {
-    auto const &s = player.get()->findByHandle(handle);
-    if (s == nullptr) {
-      return soundHandleNotFound;
-    } else {
-      s->filters.get()->fadeFilterParameter(handle, filterType, attributeId, to,
+  } else {
+    if (handle != 0) {
+      auto const &s = player.get()->findByHandle(handle);
+      if (s == nullptr) {
+        return soundHandleNotFound;
+      } else {
+        s->filters.get()->fadeFilterParameter(handle, filterType, attributeId, to,
                                             time);
+      }
+    } else {
+      auto *busFilters = player.get()->findBusFilters(busId);
+      if (busFilters == nullptr) {
+        return busIdNotFound;
+      } else {
+        busFilters->fadeFilterParameter(handle, filterType, attributeId, to,
+                                        time);
+      }
     }
   }
   return noError;
@@ -1494,26 +1569,40 @@ fadeFilterParameter(unsigned int handle, enum FilterType filterType,
 /// Oscillate a parameter of a filter.
 ///
 /// [handle] the handle of the voice to apply the fade. If equal to 0, it fades
-/// the global filter. [filterType] filter to modify a param. [attributeId] the
-/// attribute index to fade. [from] the starting value the attribute sould start
-/// to oscillate. [to] the ending value the attribute sould end to oscillate.
+/// the global filter.
+/// [busId] the bus to check the filter.
+/// If both [handle] and [busId] are =0 this function searches in the global filters.
+/// [filterType] filter to modify a param.
+/// [attributeId] the attribute index to fade.
+/// [from] the starting value the attribute sould start to oscillate.
+/// [to] the ending value the attribute sould end to oscillate.
 /// [time] the fade slope duration.
 /// Returns [PlayerErrors.noError] if no errors.
 FFI_PLUGIN_EXPORT enum PlayerErrors
-oscillateFilterParameter(unsigned int handle, enum FilterType filterType,
+oscillateFilterParameter(unsigned int handle, unsigned int busId, enum FilterType filterType,
                          int attributeId, float from, float to, float time) {
   if (player.get() == nullptr || !player.get()->isInited())
     return backendNotInited;
-  if (handle == 0)
+  if (handle == 0 && busId == 0) {
     player.get()->mFilters.oscillateFilterParameter(
         handle, filterType, attributeId, from, to, time);
-  else {
-    auto const &s = player.get()->findByHandle(handle);
-    if (s == nullptr) {
-      return soundHandleNotFound;
-    } else {
-      s->filters.get()->oscillateFilterParameter(handle, filterType,
+  } else {
+    if (handle != 0) {
+      auto const &s = player.get()->findByHandle(handle);
+      if (s == nullptr) {
+        return soundHandleNotFound;
+      } else {
+        s->filters.get()->oscillateFilterParameter(handle, filterType,
                                                  attributeId, from, to, time);
+      }
+    } else {
+      auto *busFilters = player.get()->findBusFilters(busId);
+      if (busFilters == nullptr) {
+        return busIdNotFound;
+      } else {
+        busFilters->oscillateFilterParameter(handle, filterType, attributeId,
+                                             from, to, time);
+      }
     }
   }
   return noError;
@@ -1737,22 +1826,20 @@ readSamplesFromMem(const unsigned char *buffer, unsigned long dataSize,
 /// Busses are protected by default and marked as "must tick".
 /////////////////////////////////////////
 
-/// Storage for mixing bus instances, keyed by auto-incrementing ID.
-std::map<unsigned int, SoLoud::Bus> busMap;
-unsigned int busIdCounter = 0;
-
 /// Create a new mixing bus.
 /// Returns a unique bus ID (>0) to reference this bus in other calls.
 FFI_PLUGIN_EXPORT unsigned int createBus() {
-  unsigned int id = ++busIdCounter;
-  busMap[id]; // default-constructs a SoLoud::Bus
-  return id;
+  if (player.get() == nullptr)
+    return 0;
+  return player.get()->createBus();
 }
 
 /// Destroy a mixing bus by its ID.
 /// Does not stop voices that were playing through the bus.
 FFI_PLUGIN_EXPORT void destroyBus(unsigned int busId) {
-  busMap.erase(busId);
+  if (player.get() == nullptr)
+    return;
+  player.get()->destroyBus(busId);
 }
 
 /// Play the bus itself on the main SoLoud engine so it becomes audible.
@@ -1764,12 +1851,9 @@ FFI_PLUGIN_EXPORT void destroyBus(unsigned int busId) {
 /// Returns the voice handle for the bus, or 0 on error.
 FFI_PLUGIN_EXPORT unsigned int busPlayOnEngine(unsigned int busId,
                                                float volume, bool paused) {
-  if (player.get() == nullptr || !player.get()->isInited())
+  if (player.get() == nullptr)
     return 0;
-  auto it = busMap.find(busId);
-  if (it == busMap.end())
-    return 0;
-  return player.get()->soloud.play(it->second, volume, 0.0f, paused);
+  return player.get()->busPlayOnEngine(busId, volume, paused);
 }
 
 /// Play a loaded sound (identified by [soundHash]) through a mixing bus.
@@ -1784,15 +1868,9 @@ FFI_PLUGIN_EXPORT unsigned int busPlayOnEngine(unsigned int busId,
 FFI_PLUGIN_EXPORT unsigned int busPlay(unsigned int busId,
                                        unsigned int soundHash, float volume,
                                        float pan, bool paused) {
-  if (player.get() == nullptr || !player.get()->isInited())
+  if (player.get() == nullptr)
     return 0;
-  auto it = busMap.find(busId);
-  if (it == busMap.end())
-    return 0;
-  auto *s = player.get()->findByHash(soundHash);
-  if (s == nullptr)
-    return 0;
-  return it->second.play(*s->sound, volume, pan, paused);
+  return player.get()->busPlay(busId, soundHash, volume, pan, paused);
 }
 
 /// Set the number of output channels for the bus (default is 2 = stereo).
@@ -1801,10 +1879,9 @@ FFI_PLUGIN_EXPORT unsigned int busPlay(unsigned int busId,
 /// [channels] number of channels (1 = mono, 2 = stereo, etc.).
 FFI_PLUGIN_EXPORT int busSetChannels(unsigned int busId,
                                      unsigned int channels) {
-  auto it = busMap.find(busId);
-  if (it == busMap.end())
-    return -1; // bus not found
-  return static_cast<int>(it->second.setChannels(channels));
+  if (player.get() == nullptr)
+    return -1;
+  return player.get()->busSetChannels(busId, channels);
 }
 
 /// Enable or disable visualization data gathering for this bus.
@@ -1815,10 +1892,9 @@ FFI_PLUGIN_EXPORT int busSetChannels(unsigned int busId,
 /// [enable] true to enable, false to disable.
 FFI_PLUGIN_EXPORT void busSetVisualizationEnable(unsigned int busId,
                                                  bool enable) {
-  auto it = busMap.find(busId);
-  if (it == busMap.end())
+  if (player.get() == nullptr)
     return;
-  it->second.setVisualizationEnable(enable);
+  player.get()->busSetVisualizationEnable(busId, enable);
 }
 
 /// Calculate and return 256 floats of FFT data for this bus.
@@ -1828,10 +1904,9 @@ FFI_PLUGIN_EXPORT void busSetVisualizationEnable(unsigned int busId,
 /// [busId] the bus ID.
 /// Returns a pointer to 256 floats, or nullptr if the bus is not found.
 FFI_PLUGIN_EXPORT float *busCalcFFT(unsigned int busId) {
-  auto it = busMap.find(busId);
-  if (it == busMap.end())
+  if (player.get() == nullptr)
     return nullptr;
-  return it->second.calcFFT();
+  return player.get()->busCalcFFT(busId);
 }
 
 /// Get 256 samples of wave data currently playing through this bus.
@@ -1840,10 +1915,9 @@ FFI_PLUGIN_EXPORT float *busCalcFFT(unsigned int busId) {
 /// [busId] the bus ID.
 /// Returns a pointer to 256 floats, or nullptr if the bus is not found.
 FFI_PLUGIN_EXPORT float *busGetWave(unsigned int busId) {
-  auto it = busMap.find(busId);
-  if (it == busMap.end())
+  if (player.get() == nullptr)
     return nullptr;
-  return it->second.getWave();
+  return player.get()->busGetWave(busId);
 }
 
 /// Get the approximate output volume for a specific channel of this bus.
@@ -1855,10 +1929,9 @@ FFI_PLUGIN_EXPORT float *busGetWave(unsigned int busId) {
 /// Returns the approximate volume, or 0 if the bus is not found.
 FFI_PLUGIN_EXPORT float busGetApproximateVolume(unsigned int busId,
                                                 unsigned int channel) {
-  auto it = busMap.find(busId);
-  if (it == busMap.end())
+  if (player.get() == nullptr)
     return 0.0f;
-  return it->second.getApproximateVolume(channel);
+  return player.get()->busGetApproximateVolume(busId, channel);
 }
 
 /// Move a live voice (identified by its handle) into this bus.
@@ -1869,10 +1942,9 @@ FFI_PLUGIN_EXPORT float busGetApproximateVolume(unsigned int busId,
 /// [voiceHandle] handle of the voice to annex.
 FFI_PLUGIN_EXPORT void busAnnexSound(unsigned int busId,
                                      unsigned int voiceHandle) {
-  auto it = busMap.find(busId);
-  if (it == busMap.end())
+  if (player.get() == nullptr)
     return;
-  it->second.annexSound(voiceHandle);
+  player.get()->busAnnexSound(busId, voiceHandle);
 }
 
 /// Get the number of voices currently playing through this bus.
@@ -1880,10 +1952,9 @@ FFI_PLUGIN_EXPORT void busAnnexSound(unsigned int busId,
 /// [busId] the bus ID.
 /// Returns the active voice count, or 0 if the bus is not found.
 FFI_PLUGIN_EXPORT unsigned int busGetActiveVoiceCount(unsigned int busId) {
-  auto it = busMap.find(busId);
-  if (it == busMap.end())
+  if (player.get() == nullptr)
     return 0;
-  return it->second.getActiveVoiceCount();
+  return player.get()->busGetActiveVoiceCount(busId);
 }
 
 #ifdef __cplusplus

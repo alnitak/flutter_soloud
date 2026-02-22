@@ -20,8 +20,8 @@
 #include "limiter.h"
 #include "parametric_eq_filter.h"
 
-Filters::Filters(SoLoud::Soloud *soloud, ActiveSound *sound)
-    : mSoloud(soloud), mSound(sound) {}
+Filters::Filters(SoLoud::Soloud *soloud, ActiveSound *sound, SoLoud::Bus *bus)
+    : mSoloud(soloud), mSound(sound), mBus(bus) {}
 
 int Filters::isFilterActive(FilterType filter) {
   for (int i = 0; i < filters.size(); i++) {
@@ -186,10 +186,12 @@ PlayerErrors Filters::addFilter(FilterType filterType) {
     return filterNotFound;
   }
 
-  if (mSound == nullptr) {
+  if (mSound == nullptr && mBus == nullptr) {
     mSoloud->setGlobalFilter(filtersSize, newFilter);
-  } else {
+  } else if (mSound != nullptr) {
     mSound->sound.get()->setFilter(filtersSize, newFilter);
+  } else {
+    mBus->setFilter(filtersSize, newFilter);
   }
   
   // Create FilterObject taking ownership of raw pointer
@@ -206,24 +208,32 @@ bool Filters::removeFilter(FilterType filterType) {
   if (index < 0)
     return false;
 
-  if (mSound == nullptr) {
+  if (mSound == nullptr && mBus == nullptr) {
     mSoloud->setGlobalFilter(index, 0);
-  } else {
+  } else if (mSound != nullptr) {
     mSound->sound.get()->setFilter(index, 0);
+  } else {
+    mBus->setFilter(index, 0);
   }
 
   filters[index].get()->filter.reset();
 
   /// shift filters down by 1 from [index]
   for (int i = index; i < filters.size() - 1; i++) {
-    if (mSound == nullptr)
+    if (mSound == nullptr && mBus == nullptr) {
       mSoloud->setGlobalFilter(i + 1, 0);
-    else
+    } else if (mSound != nullptr) {
       mSound->sound.get()->setFilter(i + 1, 0);
-    if (mSound == nullptr)
+    } else {
+      mBus->setFilter(i + 1, 0);
+    }
+    if (mSound == nullptr && mBus == nullptr) {
       mSoloud->setGlobalFilter(i, filters[i + 1].get()->filter.get());
-    else
+    } else if (mSound != nullptr) {
       mSound->sound.get()->setFilter(i, filters[i + 1].get()->filter.get());
+    } else {
+      mBus->setFilter(i, filters[i + 1].get()->filter.get());
+    }
   }
   /// remove the filter from the list
   filters.erase(filters.begin() + index);

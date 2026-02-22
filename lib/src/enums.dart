@@ -102,7 +102,10 @@ enum PlayerErrors {
   audioFormatNotSupported(29),
 
   /// Opus ogg vorbis libraries not found.
-  opusOggVorbisLibsNotFound(30);
+  opusOggVorbisLibsNotFound(30),
+
+  /// Bus id not found.
+  busIdNotFound(31);
 
   const PlayerErrors(this.value);
 
@@ -197,6 +200,8 @@ enum PlayerErrors {
             'installation and ensure the required libraries are available. '
             'Ref:'
             'https://github.com/alnitak/flutter_soloud/blob/main/NO_OPUS_OGG_LIBS.md';
+      case PlayerErrors.busIdNotFound:
+        return 'Bus id not found!';
     }
   }
 
