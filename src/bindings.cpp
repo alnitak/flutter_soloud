@@ -1433,11 +1433,13 @@ FFI_PLUGIN_EXPORT enum PlayerErrors removeFilter(unsigned int soundHash,
 /// Set the effect parameter with id [attributeId]
 /// of [filterType] with [value] value.
 ///
-/// [handle] the handle to set the filter to. If equal to 0, the filter is
-/// applyed globally.
-/// [busId] the bus to check the filter.
-/// If both [handle] and [busId] are =0 this function searches in the global filters.
+/// [handle] the handle to set the filter to. If equal to 0, the filter is applyed globally.
+/// [busId] the bus to set the filter to.
+/// If both [handle] and [busId] are =0 this function sets the global filters.
 /// [filterType] filter to modify a param.
+/// [attributeId] the attribute id of the filter to modify.
+/// [value] the value to set the attribute to.
+/// 
 /// Returns [PlayerErrors.noError] if no errors.
 FFI_PLUGIN_EXPORT enum PlayerErrors setFilterParams(unsigned int handle,
                                                     unsigned int busId,
@@ -1449,22 +1451,21 @@ FFI_PLUGIN_EXPORT enum PlayerErrors setFilterParams(unsigned int handle,
   /// Not important to call the [SoLoud::AudioSource].setFilterParams() here,
   /// SoLoud will set the param globally or by [handle] if  [handle] is not ==0.
   if (handle == 0 && busId == 0) {
-    player.get()->mFilters.setFilterParams(handle, filterType, attributeId,
-                                           value);
+    player.get()->mFilters.setFilterParams(handle, filterType, attributeId, value);
   } else {
-    if (handle != 0) {
+    if (busId > 0) {
+      auto *busFilters = player.get()->findBusData(busId);
+      if (busFilters == nullptr) {
+        return busIdNotFound;
+      } else {
+        busFilters->filters.setFilterParams(handle > 0 ? handle : busFilters->handle, filterType, attributeId, value);
+      }
+    } else if (handle > 0) {
       auto const &s = player.get()->findByHandle(handle);
       if (s == nullptr) {
         return soundHandleNotFound;
       } else {
         s->filters.get()->setFilterParams(handle, filterType, attributeId, value);
-      }
-    } else {
-      auto *busFilters = player.get()->findBusData(busId);
-      if (busFilters == nullptr) {
-        return busIdNotFound;
-      } else {
-        busFilters->filters.setFilterParams(busFilters->handle, filterType, attributeId, value);
       }
     }
   }
@@ -1494,7 +1495,20 @@ FFI_PLUGIN_EXPORT enum PlayerErrors getFilterParams(unsigned int handle,
         player.get()->mFilters.getFilterParams(handle, filterType, attributeId);
     return noError;
   } else {
-    if (handle != 0) {
+    if (busId > 0) {
+      auto *busFilters = player.get()->findBusData(busId);
+      if (busFilters == nullptr) {
+        return busIdNotFound;
+      } else {
+        *filterValue =
+            busFilters->filters.getFilterParams(handle > 0 ? handle : busFilters->handle, filterType, attributeId);
+        if (!(isnormal(*filterValue) || isnan(*filterValue)))
+          return filterParameterGetError;
+        if (*filterValue == 9999.0f)
+          return filterNotFound;
+        return noError;
+      }
+    } else {
       auto const &s = player.get()->findByHandle(handle);
       if (s == nullptr)
         return soundHandleNotFound;
@@ -1506,19 +1520,6 @@ FFI_PLUGIN_EXPORT enum PlayerErrors getFilterParams(unsigned int handle,
       if (*filterValue == 9999.0f)
         return filterNotFound;
       return noError;
-      }
-    } else {
-      auto *busFilters = player.get()->findBusData(busId);
-      if (busFilters == nullptr) {
-        return busIdNotFound;
-      } else {
-        *filterValue =
-            busFilters->filters.getFilterParams(handle, filterType, attributeId);
-        if (!(isnormal(*filterValue) || isnan(*filterValue)))
-          return filterParameterGetError;
-        if (*filterValue == 9999.0f)
-          return filterNotFound;
-        return noError;
       }
     }
   }
@@ -1545,21 +1546,22 @@ fadeFilterParameter(unsigned int handle, unsigned int busId, enum FilterType fil
     player.get()->mFilters.fadeFilterParameter(handle, filterType, attributeId,
                                                to, time);
   } else {
-    if (handle != 0) {
+    if (busId > 0) {
+      auto *busFilters = player.get()->findBusData(busId);
+      if (busFilters == nullptr) {
+        return busIdNotFound;
+      } else {
+        busFilters->filters.fadeFilterParameter(handle > 0 ? handle : busFilters->handle,
+                                                filterType, attributeId, to,
+                                                time);
+      }
+    } else {
       auto const &s = player.get()->findByHandle(handle);
       if (s == nullptr) {
         return soundHandleNotFound;
       } else {
         s->filters.get()->fadeFilterParameter(handle, filterType, attributeId, to,
                                             time);
-      }
-    } else {
-      auto *busFilters = player.get()->findBusData(busId);
-      if (busFilters == nullptr) {
-        return busIdNotFound;
-      } else {
-        busFilters->filters.fadeFilterParameter(handle, filterType, attributeId, to,
-                                        time);
       }
     }
   }
@@ -1587,21 +1589,22 @@ oscillateFilterParameter(unsigned int handle, unsigned int busId, enum FilterTyp
     player.get()->mFilters.oscillateFilterParameter(
         handle, filterType, attributeId, from, to, time);
   } else {
-    if (handle != 0) {
+    if (busId > 0) {
+      auto *busFilters = player.get()->findBusData(busId);
+      if (busFilters == nullptr) {
+        return busIdNotFound;
+      } else {
+        busFilters->filters.oscillateFilterParameter(handle > 0 ? handle : busFilters->handle,
+                                                     filterType, attributeId,
+                                                     from, to, time);
+      }
+    } else {
       auto const &s = player.get()->findByHandle(handle);
       if (s == nullptr) {
         return soundHandleNotFound;
       } else {
         s->filters.get()->oscillateFilterParameter(handle, filterType,
                                                  attributeId, from, to, time);
-      }
-    } else {
-      auto *busFilters = player.get()->findBusData(busId);
-      if (busFilters == nullptr) {
-        return busIdNotFound;
-      } else {
-        busFilters->filters.oscillateFilterParameter(handle, filterType, attributeId,
-                                             from, to, time);
       }
     }
   }

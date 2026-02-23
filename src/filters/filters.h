@@ -72,12 +72,19 @@ private:
 
 /// Storage for mixing bus instances, keyed by auto-incrementing ID.
 struct BusData {
-    unsigned int id;
-    SoLoud::Bus bus;
-    SoLoud::handle handle; // set when bus is played on engine
-    Filters filters;
+  unsigned int id;
+  SoLoud::Bus bus;
+  // From SoLoud docs:
+  // "Only one instance of a mixing bus can play at the same time,
+  // however; trying to play the same bus several times stops the earlier
+  // instance."
+  // This implies that only one handle is needed for each bus and it is stored
+  // here.
+  SoLoud::handle handle; // set when bus is played on engine
+  Filters filters;
 
-    explicit BusData(unsigned int busId, SoLoud::Soloud *soloud) : id(busId), filters(soloud, nullptr, this) {}
+  explicit BusData(unsigned int busId, SoLoud::Soloud *soloud)
+      : id(busId), filters(soloud, nullptr, this) {}
 };
 
 #endif // PLAYER_H

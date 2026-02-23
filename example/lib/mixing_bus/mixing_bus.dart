@@ -55,11 +55,12 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
     return Scaffold(
       body: Center(
         child: Column(
+          spacing: 8,
           children: [
             ElevatedButton(
               onPressed: () {
                 SoLoud.instance
-                    .createBus(name: 'bus ${Buses().buses.length + 1}');
+                    .createMixingBus(name: 'bus ${Buses().buses.length + 1}');
                 setState(() {});
               },
               child: const Text('create bus'),
@@ -77,7 +78,7 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
                 for (final bus in Buses().buses)
                   BusControls(
                     bus: bus,
-                    onDispose: () => setState(() {}),
+                    onMustRefresh: () => setState(() {}),
                   ),
               ],
             ),
@@ -89,14 +90,20 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
 }
 
 class BusControls extends StatelessWidget {
-  const BusControls({required this.bus, this.onDispose, super.key});
+  const BusControls({required this.bus, this.onMustRefresh, super.key});
 
   final Bus bus;
 
-  final VoidCallback? onDispose;
+  final VoidCallback? onMustRefresh;
 
   @override
   Widget build(BuildContext context) {
+    /// The volume of the bus.
+    final volumeNotifier = ValueNotifier<double>(1);
+
+    /// The voice count of the bus.
+    final voiceCountNotifier = ValueNotifier<int>(0);
+
     return Container(
       margin: const EdgeInsets.all(8),
       padding: const EdgeInsets.all(20),
@@ -107,29 +114,44 @@ class BusControls extends StatelessWidget {
       child: Column(
         spacing: 8,
         children: [
-          Text(
-            bus.name,
-            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              bus.dispose();
-              onDispose?.call();
+          ValueListenableBuilder(
+            valueListenable: voiceCountNotifier,
+            builder: (context, value, child) {
+              return Text(
+                '${bus.name} - voices: $value',
+                style:
+                    const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              );
             },
-            child: const Text('dispose bus'),
           ),
-          ElevatedButton(
-            onPressed: bus.playOnEngine,
-            child: const Text('play bus'),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            spacing: 8,
+            children: [
+              ElevatedButton(
+                onPressed: () => bus.playOnEngine(volume: volumeNotifier.value),
+                child: const Text('play bus'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  bus.dispose();
+                  onMustRefresh?.call();
+                },
+                child: const Text('dispose bus'),
+              ),
+            ],
           ),
+          const SizedBox(height: 8),
           ElevatedButton(
             onPressed: () async {
               final sound = await SoLoud.instance
                   .loadAsset('assets/audio/8_bit_mentality.mp3');
               sound.soundEvents.listen((event) {
                 dev.log('background sound event $event');
+                voiceCountNotifier.value = bus.getActiveVoiceCount();
               });
               bus.play(sound, volume: 0.2);
+              voiceCountNotifier.value = bus.getActiveVoiceCount();
             },
             child: const Text('play background sound'),
           ),
@@ -139,8 +161,14 @@ class BusControls extends StatelessWidget {
                   await SoLoud.instance.loadAsset('assets/audio/explosion.mp3');
               sound.soundEvents.listen((event) {
                 dev.log('explosion sound event $event');
+                voiceCountNotifier.value = bus.getActiveVoiceCount();
+              });
+              sound.allInstancesFinished.listen((_) {
+                dev.log('explosion sound all instances finished');
+                voiceCountNotifier.value = bus.getActiveVoiceCount();
               });
               bus.play(sound);
+              voiceCountNotifier.value = bus.getActiveVoiceCount();
             },
             child: const Text('play explosion sound'),
           ),
@@ -150,15 +178,41 @@ class BusControls extends StatelessWidget {
                   .loadAsset('assets/audio/IveSeenThings.mp3');
               sound.soundEvents.listen((event) {
                 dev.log('ive seen things sound event $event');
+                voiceCountNotifier.value = bus.getActiveVoiceCount();
               });
               bus.play(sound);
+              voiceCountNotifier.value = bus.getActiveVoiceCount();
             },
             child: const Text('play ive seen things sound'),
+          ),
+          const SizedBox(height: 8),
+          ValueListenableBuilder<double>(
+            valueListenable: volumeNotifier,
+            builder: (context, volume, child) {
+              return Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('Volume: ${volume.toStringAsFixed(2)}'),
+                  Slider(
+                    value: volume,
+                    max: 3,
+                    onChanged: (value) {
+                      volumeNotifier.value = value;
+                      if (bus.soundHandle != null) {
+                        SoLoud.instance.setVolume(bus.soundHandle!, value);
+                      }
+                    },
+                  ),
+                ],
+              );
+            },
           ),
           ElevatedButton(
             onPressed: () async {
               bus.filters.pitchShiftFilter.activate();
-              bus.filters.pitchShiftFilter.shift().value = 2.5;
+              bus.filters.pitchShiftFilter
+                  .shift(soundHandle: bus.soundHandle)
+                  .value = 2.5;
             },
             child: const Text('pitch shift filter'),
           ),

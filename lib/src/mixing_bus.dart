@@ -12,6 +12,7 @@ class Buses {
 
   static final Buses _instance = Buses._internal();
 
+  /// The list of all buses.
   final List<Bus> buses = [];
 
   /// Get a bus by name.
@@ -39,7 +40,7 @@ class Buses {
 /// routing.
 ///
 /// See also:
-/// - [SoLoud.createBus] to create a new bus.
+/// - [SoLoud.createMixingBus] to create a new bus.
 class Bus {
   /// Creates a new bus.
   Bus({this.name = ''}) {
@@ -54,9 +55,12 @@ class Bus {
   static final Logger _log = Logger('flutter_soloud.Bus');
 
   /// The filters for this bus.
-  /// 
+  ///
   /// Please see [SoLoud.filters]
   late FiltersSingle filters;
+
+  /// The sound handle of the bus itself once it's playing on the engine.
+  SoundHandle? soundHandle;
 
   /// The name of this bus.
   final String name;
@@ -85,6 +89,7 @@ class Bus {
     Buses().buses.remove(this);
     SoLoudController().soLoudFFI.destroyBus(busId);
     _isValid = false;
+    soundHandle = const SoundHandle.error();
   }
 
   /// Play the bus itself on the main SoLoud engine so it becomes audible.
@@ -106,7 +111,8 @@ class Bus {
           volume,
           paused,
         );
-    return SoundHandle(handle);
+    soundHandle = SoundHandle(handle);
+    return soundHandle!;
   }
 
   /// Play an audio source through a mixing bus.
