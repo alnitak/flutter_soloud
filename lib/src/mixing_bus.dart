@@ -117,32 +117,80 @@ class Bus {
 
   /// Play an audio source through a mixing bus.
   ///
-  /// [source] the audio source to play.
-  /// [volume] playback volume.
-  /// [pan] panning (-1 left, 0 center, 1 right).
-  /// [paused] whether to start paused.
-  /// Returns the voice handle, or 0 on error.
+  /// This is a convenience method that calls [SoLoud.play] with the
+  /// [busId] set to this bus.
+  ///
+  /// Please see [SoLoud.play] for more information on the parameters.
   ///
   /// Throws [SoLoudBusDisposedDartException] if the bus has already
   /// been disposed.
-  SoundHandle play(
-    AudioSource source, {
-    double volume = 1.0,
-    double pan = 0.0,
+  // TODO(alnitak): make this sync
+  Future<SoundHandle> play(
+    AudioSource sound, {
+    double volume = 1,
+    double pan = 0,
     bool paused = false,
+    bool looping = false,
+    Duration loopingStartAt = Duration.zero,
   }) {
     if (!_isValid) {
       _log.warning('bus $busId is already disposed');
       throw const SoLoudBusDisposedDartException();
     }
-    final handle = SoLoudController().soLoudFFI.busPlay(
-          busId,
-          source.soundHash.hash,
-          volume,
-          pan,
-          paused,
-        );
-    return SoundHandle(handle);
+    return SoLoud.instance.play(
+      sound,
+      busId: busId,
+      volume: volume,
+      pan: pan,
+      paused: paused,
+      looping: looping,
+      loopingStartAt: loopingStartAt,
+    );
+  }
+
+
+  /// This function is the 3D version of the [play] call.
+  ///
+  /// This is a convenience method that calls [SoLoud.play3d] with the
+  /// [busId] set to this bus.
+  ///
+  /// Please see [SoLoud.play3d] for more information on the parameters.
+  ///
+  /// Throws [SoLoudBusDisposedDartException] if the bus has already
+  /// been disposed.
+  // TODO(alnitak): make this sync
+  Future<SoundHandle> play3d(
+    AudioSource sound,
+    double posX,
+    double posY,
+    double posZ, {
+    double velX = 0,
+    double velY = 0,
+    double velZ = 0,
+    int busId = 0,
+    double volume = 1,
+    bool paused = false,
+    bool looping = false,
+    Duration loopingStartAt = Duration.zero,
+  }) async {
+    if (!_isValid) {
+      _log.warning('bus $busId is already disposed');
+      throw const SoLoudBusDisposedDartException();
+    }
+    return SoLoud.instance.play3d(
+      sound,
+      posX,
+      posY,
+      posZ,
+      velX: velX,
+      velY: velY,
+      velZ: velZ,
+      busId: busId,
+      volume: volume,
+      paused: paused,
+      looping: looping,
+      loopingStartAt: loopingStartAt,
+    );
   }
 
   /// Set the number of output channels for the bus (default is 2 = stereo).

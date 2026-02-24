@@ -719,13 +719,13 @@ FFI_PLUGIN_EXPORT float getRelativePlaySpeed(unsigned int handle) {
 /// parameter, and current loop point can be queried with [getLoopingPoint] and
 /// changed by [setLoopingPoint].
 /// Return the error if any and a new [handle] of this sound
-FFI_PLUGIN_EXPORT enum PlayerErrors play(unsigned int soundHash, float volume,
+FFI_PLUGIN_EXPORT enum PlayerErrors play(unsigned int soundHash, unsigned int busId, float volume,
                                          float pan, bool paused, bool looping,
                                          double loopingStartAt,
                                          unsigned int *handle) {
   if (player.get() == nullptr || !player.get()->isInited())
     return backendNotInited;
-  PlayerErrors result = player.get()->play(soundHash, *handle, volume, pan,
+  PlayerErrors result = player.get()->play(soundHash, *handle, busId, volume, pan,
                                            paused, looping, loopingStartAt);
   return result;
 }
@@ -1626,11 +1626,11 @@ oscillateFilterParameter(unsigned int handle, unsigned int busId, enum FilterTyp
 /// changed by [setLoopingPoint].
 /// [handle] pointer to the handle for this new sound
 /// Return the error if any
-FFI_PLUGIN_EXPORT PlayerErrors play3d(unsigned int soundHash, float posX,
-                                      float posY, float posZ, float velX,
-                                      float velY, float velZ, float volume,
-                                      bool paused, bool looping,
-                                      double loopingStartAt,
+FFI_PLUGIN_EXPORT PlayerErrors play3d(unsigned int soundHash, unsigned int busId,
+                                      float posX, float posY, float posZ,
+                                      float velX, float velY, float velZ,
+                                      float volume, bool paused,
+                                      bool looping, double loopingStartAt,
                                       unsigned int *handle) {
   if (player.get() == nullptr || !player.get()->isInited() ||
       player.get()->getSoundsCount() == 0)
@@ -1638,7 +1638,7 @@ FFI_PLUGIN_EXPORT PlayerErrors play3d(unsigned int soundHash, float posX,
 
   PlayerErrors result =
       player.get()->play3d(soundHash, *handle, posX, posY, posZ, velX, velY,
-                           velZ, volume, paused, 0, looping, loopingStartAt);
+                           velZ, volume, paused, busId, looping, loopingStartAt);
   return result;
 }
 
@@ -1852,28 +1852,14 @@ FFI_PLUGIN_EXPORT void destroyBus(unsigned int busId) {
 /// [volume] playback volume (1.0 = full).
 /// [paused] whether to start paused.
 /// Returns the voice handle for the bus, or 0 on error.
+///
+/// Note: to play a sound through a bus, the play() function is used with the
+/// bus ID as an argument. See play() for more information.
 FFI_PLUGIN_EXPORT unsigned int busPlayOnEngine(unsigned int busId,
                                                float volume, bool paused) {
   if (player.get() == nullptr)
     return 0;
   return player.get()->busPlayOnEngine(busId, volume, paused);
-}
-
-/// Play a loaded sound (identified by [soundHash]) through a mixing bus.
-/// The sound must have been previously loaded via loadFile/loadMem.
-///
-/// [busId] the bus to route the sound through.
-/// [soundHash] hash of the loaded audio source.
-/// [volume] playback volume.
-/// [pan] panning (-1 left, 0 center, 1 right).
-/// [paused] whether to start paused.
-/// Returns the voice handle, or 0 on error.
-FFI_PLUGIN_EXPORT unsigned int busPlay(unsigned int busId,
-                                       unsigned int soundHash, float volume,
-                                       float pan, bool paused) {
-  if (player.get() == nullptr)
-    return 0;
-  return player.get()->busPlay(busId, soundHash, volume, pan, paused);
 }
 
 /// Set the number of output channels for the bus (default is 2 = stereo).

@@ -117,6 +117,7 @@ class BusControls extends StatelessWidget {
           ValueListenableBuilder(
             valueListenable: voiceCountNotifier,
             builder: (context, value, child) {
+              debugPrint('**********DART2 getActiveVoiceCount: $value  busId: ${bus.busId}');
               return Text(
                 '${bus.name} - voices: $value',
                 style:
@@ -150,7 +151,7 @@ class BusControls extends StatelessWidget {
                 dev.log('background sound event $event');
                 voiceCountNotifier.value = bus.getActiveVoiceCount();
               });
-              bus.play(sound, volume: 0.2);
+              await bus.play(sound, volume: 0.2);
               voiceCountNotifier.value = bus.getActiveVoiceCount();
             },
             child: const Text('play background sound'),
@@ -162,12 +163,13 @@ class BusControls extends StatelessWidget {
               sound.soundEvents.listen((event) {
                 dev.log('explosion sound event $event');
                 voiceCountNotifier.value = bus.getActiveVoiceCount();
+                debugPrint('**********DART1 getActiveVoiceCount: ${voiceCountNotifier.value}    busId: ${bus.busId}');
               });
               sound.allInstancesFinished.listen((_) {
                 dev.log('explosion sound all instances finished');
                 voiceCountNotifier.value = bus.getActiveVoiceCount();
               });
-              bus.play(sound);
+              await bus.play(sound);
               voiceCountNotifier.value = bus.getActiveVoiceCount();
             },
             child: const Text('play explosion sound'),
@@ -180,7 +182,7 @@ class BusControls extends StatelessWidget {
                 dev.log('ive seen things sound event $event');
                 voiceCountNotifier.value = bus.getActiveVoiceCount();
               });
-              bus.play(sound);
+              await bus.play(sound);
               voiceCountNotifier.value = bus.getActiveVoiceCount();
             },
             child: const Text('play ive seen things sound'),

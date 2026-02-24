@@ -606,6 +606,7 @@ unsigned int Player::getActiveVoiceCount_internal()
 PlayerErrors Player::play(
     unsigned int soundHash,
     unsigned int &handle,
+    unsigned int busId,
     float volume,
     float pan,
     bool paused,
@@ -623,6 +624,14 @@ PlayerErrors Player::play(
         sound->handle.size() > 0)
     {
         return bufferStreamCanBePlayedOnlyOnce;
+    }
+
+    // When trying to play a sound in a mixing bus, we need its handle to pass to the play function.
+    unsigned int busHandle = 0;
+    if (busId > 0)
+    {
+        auto it = busMap.find(busId);
+        if (it != busMap.end()) busHandle = it->second.bus.mChannelHandle;
     }
 
     // Check if playing this sound will exceed the maximum number of voice counts. If true, then
@@ -645,8 +654,16 @@ PlayerErrors Player::play(
     soloud.miniaudio_ensureDeviceStarted();
 
     handle = 0;
-    SoLoud::handle newHandle = soloud.play(
-        *sound->sound.get(), volume, pan, paused, 0);
+    auto it = busMap.find(busId);
+    SoLoud::handle newHandle;
+    SoLoud::Bus *bus;
+    if (it != busMap.end()) {
+        bus = &it->second.bus;
+        newHandle = bus->play(*sound->sound.get(), volume, pan, paused);
+    } else {
+        newHandle = soloud.play(*sound->sound.get(), volume, pan, paused, busHandle);
+    }
+    
     if (newHandle != 0) {
         sound->handle.push_back({newHandle, MAX_DOUBLE});
         // Check if this buffer has enough data to be played
@@ -1115,7 +1132,7 @@ PlayerErrors Player::play3d(
     float velZ,
     float volume,
     bool paused,
-    unsigned int bus,
+    unsigned int busId,
     bool looping,
     double loopingStartAt)
 {
@@ -1129,6 +1146,14 @@ PlayerErrors Player::play3d(
         sound->handle.size() > 0)
     {
         return bufferStreamCanBePlayedOnlyOnce;
+    }
+
+    // When trying to play a sound in a mixing bus, we need its handle to pass to the play function.
+    unsigned int busHandle = 0;
+    if (busId > 0)
+    {
+        auto it = busMap.find(busId);
+        if (it != busMap.end()) busHandle = it->second.bus.mChannelHandle;
     }
 
     // Check if by playing this sound will exceed the maximum number of voice count. If true, then
@@ -1157,7 +1182,7 @@ PlayerErrors Player::play3d(
         velX, velY, velZ,
         volume,
         paused,
-        bus);
+        busHandle);
     if (newHandle != 0)
         sound->handle.push_back({newHandle, MAX_DOUBLE});
     if (looping)
@@ -1359,7 +1384,9 @@ unsigned int Player::busGetActiveVoiceCount(unsigned int busId) {
     auto it = busMap.find(busId);
     if (it == busMap.end())
         return 0;
-    return it->second.bus.getActiveVoiceCount();
+    unsigned int ret = it->second.bus.getActiveVoiceCount();
+    printf("********** getActiveVoiceCount: %u\n", ret);
+    return ret;
 }
 
 BusData *Player::findBusData(unsigned int busId) {

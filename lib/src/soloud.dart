@@ -1241,6 +1241,12 @@ interface class SoLoud {
   /// Play an already-loaded sound identified by [sound]. Creates a new
   /// playing instance of the sound, and returns its [SoundHandle].
   ///
+  /// [busId] is the bus on which to play the sound. By default it is 0,
+  /// which means the sound will be played on the default player engine. If
+  /// a mixing bus has already been created, you can provide its [busId] to
+  /// play the sound on that bus or you can use the comfy [Bus.play] method.
+  /// See [Bus] for more information.
+  ///
   /// You can provide the [volume], where `1.0` is full volume and `0.0`
   /// is silent. Defaults to `1.0`.
   ///
@@ -1275,8 +1281,10 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudSoundHashNotFoundDartException] if the given [sound]
   /// is not found.
+  // TODO(alnitak): make this sync
   Future<SoundHandle> play(
     AudioSource sound, {
+    int busId = 0,
     double volume = 1,
     double pan = 0,
     bool paused = false,
@@ -1288,6 +1296,7 @@ interface class SoLoud {
     }
     final ret = _controller.soLoudFFI.play(
       sound.soundHash,
+      busId: busId,
       volume: volume,
       pan: pan,
       paused: paused,
@@ -2467,6 +2476,12 @@ interface class SoLoud {
   /// The parameters [velX], [velY] and [velZ] are the audio source's velocity.
   /// Defaults to `(0, 0, 0)`.
   ///
+  /// [busId] is the bus on which to play the sound. By default it is 0,
+  /// which means the sound will be played on the default player engine. If
+  /// a mixing bus has already been created, you can provide its [busId] to
+  /// play the sound on that bus or you can use the comfy [Bus.play] method.
+  /// See [Bus] for more information.
+  ///
   /// The rest of the parameters are equivalent to the non-3D version of this
   /// method ([play]).
   ///
@@ -2483,6 +2498,7 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudBufferStreamCanBePlayedOnlyOnceCppException] if we try to
   /// play a BufferStream using `release` buffer type more than once.
+  // TODO(alnitak): make this sync
   Future<SoundHandle> play3d(
     AudioSource sound,
     double posX,
@@ -2491,6 +2507,7 @@ interface class SoLoud {
     double velX = 0,
     double velY = 0,
     double velZ = 0,
+    int busId = 0,
     double volume = 1,
     bool paused = false,
     bool looping = false,
@@ -2508,6 +2525,7 @@ interface class SoLoud {
       velX: velX,
       velY: velY,
       velZ: velZ,
+      busId: busId,
       volume: volume,
       paused: paused,
       looping: looping,

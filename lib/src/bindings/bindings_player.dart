@@ -1016,18 +1016,6 @@ abstract class FlutterSoLoud {
   @mustBeOverridden
   int busPlayOnEngine(int busId, double volume, bool paused);
 
-  /// Play a loaded sound (identified by [soundHash]) through a mixing bus.
-  /// The sound must have been previously loaded via loadFile/loadMem.
-  ///
-  /// [busId] the bus to route the sound through.
-  /// [soundHash] hash of the loaded audio source.
-  /// [volume] playback volume.
-  /// [pan] panning (-1 left, 0 center, 1 right).
-  /// [paused] whether to start paused.
-  /// Returns the voice handle, or 0 on error.
-  @mustBeOverridden
-  int busPlay(int busId, int soundHash, double volume, double pan, bool paused);
-
   /// Set the number of output channels for the bus (default is 2 = stereo).
   ///
   /// [busId] the bus ID.

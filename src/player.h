@@ -235,6 +235,7 @@ public:
   /// [getLoopingPoint] and changed by [setLoopingPoint].
   /// @return the handle of the sound, 0 if error.
   PlayerErrors play(unsigned int soundHash, unsigned int &handle,
+                    unsigned int busId = 0,
                     float volume = 1.0f, float pan = 0.0f, bool paused = false,
                     bool looping = false, double loopingStartAt = 0.0);
 
@@ -542,7 +543,7 @@ public:
   PlayerErrors play3d(unsigned int soundHash, unsigned int &handle, float posX,
                       float posY, float posZ, float velX = 0.0f,
                       float velY = 0.0f, float velZ = 0.0f, float volume = 1.0f,
-                      bool paused = 0, unsigned int bus = 0,
+                      bool paused = 0, unsigned int busId = 0,
                       bool looping = false, double loopingStartAt = 0.0);
 
   /// You can set and get the current value of the speed of
