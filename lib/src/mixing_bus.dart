@@ -247,13 +247,9 @@ class Bus {
   /// Get the number of voices currently playing through this bus.
   ///
   /// Returns the active voice count, or 0 if the bus is not found.
-  ///
-  /// Throws [SoLoudBusDisposedDartException] if the bus has already
-  /// been disposed.
   int getActiveVoiceCount() {
     if (!_isValid) {
       _log.warning('bus $busId is already disposed');
-      throw const SoLoudBusDisposedDartException();
     }
     return SoLoudController().soLoudFFI.busGetActiveVoiceCount(busId);
   }

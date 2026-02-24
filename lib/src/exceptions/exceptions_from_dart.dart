@@ -141,5 +141,6 @@ class SoLoudBusDisposedDartException extends SoLoudDartException {
   const SoLoudBusDisposedDartException([super.message]);
 
   @override
-  String get description => 'The bus has been disposed.';
+  String get description => 'The bus has already been disposed or not yet '
+      'created.';
 }

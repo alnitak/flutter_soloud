@@ -438,28 +438,20 @@ interface class SoLoud {
           }
 
           final newSound = AudioSource(SoundHash(hash));
-          final alreadyLoaded = _activeSounds
-                  .where((sound) => sound.soundHash == newSound.soundHash)
-                  .length ==
-              1;
           _logPlayerError(error, from: 'loadFile() result');
           if (error == PlayerErrors.noError) {
-            if (!alreadyLoaded) {
-              _activeSounds.add(newSound);
-            }
+            _activeSounds.add(newSound);
           } else if (error == PlayerErrors.fileAlreadyLoaded) {
             // If we are here, the file has been already loaded on C++ side.
-            // Check if it is already in [_activeSounds], if not add it.
-            if (alreadyLoaded) {
-              _log.warning(
-                () => "Sound '$completeFileName' was already "
-                    'loaded. Prefer loading only once, and reusing the loaded '
-                    'sound when playing.',
-              );
-            } else {
-              _activeSounds.add(newSound);
-            }
+            // Add it anyway and display the warning.
+            _log.warning(
+              () => "Sound '$completeFileName' was already "
+                  'loaded. Prefer loading only once, and reusing the loaded '
+                  'sound when playing.',
+            );
+            _activeSounds.add(newSound);
           } else {
+            // other errors are not recoverable.
             loadedFileCompleter.completeError(
               SoLoudCppException.fromPlayerError(error),
             );
@@ -489,28 +481,18 @@ interface class SoLoud {
     int hash,
   ) {
     final newSound = AudioSource(SoundHash(hash));
-    final alreadyLoaded = _activeSounds
-            .where((sound) => sound.soundHash == newSound.soundHash)
-            .length ==
-        1;
     _logPlayerError(error, from: 'loadFile() result');
     if (error == PlayerErrors.noError) {
-      if (!alreadyLoaded) {
-        _activeSounds.add(newSound);
-      }
+      _activeSounds.add(newSound);
     } else if (error == PlayerErrors.fileAlreadyLoaded) {
       // If we are here, the file has been already loaded on C++ side.
-      // In any case return the existing sound.
-      // Check if it is already in [_activeSounds], if not add it.
-      if (alreadyLoaded) {
-        _log.warning(
-          () => "Sound '$completeFileName' was already "
-              'loaded. Prefer loading only once, and reusing the loaded '
-              'sound when playing.',
-        );
-      } else {
-        _activeSounds.add(newSound);
-      }
+      // Add it anyway and display the warning.
+      _log.warning(
+        () => "Sound '$completeFileName' was already "
+            'loaded. Prefer loading only once, and reusing the loaded '
+            'sound when playing.',
+      );
+      _activeSounds.add(newSound);
     } else {
       throw SoLoudCppException.fromPlayerError(error);
     }

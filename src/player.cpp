@@ -276,10 +276,15 @@ PlayerErrors Player::loadFile(
     /// check if the sound has already been loaded
     auto const s = findByHash(newHash);
 
-    if (s != nullptr)
-    {
-        *hash = newHash;
-        return fileAlreadyLoaded;
+    // If the hash already exists, create a new unique random hash.
+    // This allows loading the same file multiple times with unique identifiers.
+    if (s != nullptr) {
+        std::random_device rd;
+        std::mt19937 g(rd());
+        std::uniform_int_distribution<unsigned int> dist(0, 0x7fffffff);
+        do {
+            newHash = dist(g);
+        } while (findByHash(newHash) != nullptr);
     }
 
     std::unique_ptr<ActiveSound> newSound = std::make_unique<ActiveSound>();
@@ -313,6 +318,12 @@ PlayerErrors Player::loadFile(
         sounds.push_back(std::move(newSound));
     }
 
+    // Return fileAlreadyLoaded if the filename hash was already in use,
+    // even though we've now loaded a new instance with a unique hash.
+    if (s != nullptr && result == SoLoud::SO_NO_ERROR) {
+        return fileAlreadyLoaded;
+    }
+
     return (PlayerErrors)result;
 }
 
@@ -332,10 +343,14 @@ PlayerErrors Player::loadMem(
     /// check if the sound has already been loaded
     auto const s = findByHash(newHash);
 
-    if (s != nullptr)
-    {
-        hash = newHash;
-        return fileAlreadyLoaded;
+    // If already loaded, generate a unique hash
+    if (s != nullptr) {
+        std::random_device rd;
+        std::mt19937 g(rd());
+        std::uniform_int_distribution<unsigned int> dist(0, 0x7fffffff);
+        do {
+            newHash = dist(g);
+        } while (findByHash(newHash) != nullptr);
     }
 
     auto newSound = std::make_unique<ActiveSound>();
@@ -360,6 +375,12 @@ PlayerErrors Player::loadMem(
     {
         newSound.get()->filters = std::make_unique<Filters>(&soloud, newSound.get(), nullptr);
         sounds.push_back(std::move(newSound));
+    }
+
+    // Return fileAlreadyLoaded if the unique name hash was already in use,
+    // even though we've now loaded a new instance with a unique hash.
+    if (s != nullptr && result == SoLoud::SO_NO_ERROR) {
+        return fileAlreadyLoaded;
     }
 
     return (PlayerErrors)result;
@@ -654,16 +675,8 @@ PlayerErrors Player::play(
     soloud.miniaudio_ensureDeviceStarted();
 
     handle = 0;
-    auto it = busMap.find(busId);
-    SoLoud::handle newHandle;
-    SoLoud::Bus *bus;
-    if (it != busMap.end()) {
-        bus = &it->second.bus;
-        newHandle = bus->play(*sound->sound.get(), volume, pan, paused);
-    } else {
-        newHandle = soloud.play(*sound->sound.get(), volume, pan, paused, busHandle);
-    }
-    
+    SoLoud::handle newHandle = soloud.play(*sound->sound.get(), volume, pan, paused, busHandle);
+
     if (newHandle != 0) {
         sound->handle.push_back({newHandle, MAX_DOUBLE});
         // Check if this buffer has enough data to be played

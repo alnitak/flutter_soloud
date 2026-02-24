@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:developer' as dev;
 
 import 'package:flutter/foundation.dart';
@@ -45,6 +46,14 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
   AudioSource? currentSound;
 
   @override
+  void initState() {
+    super.initState();
+    SoLoud.instance
+        .loadAsset('assets/audio/IveSeenThings.mp3')
+        .then((sound) => currentSound = sound);
+  }
+
+  @override
   void dispose() {
     SoLoud.instance.deinit();
     super.dispose();
@@ -65,13 +74,24 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
               },
               child: const Text('create bus'),
             ),
-            ElevatedButton(
-              onPressed: () async {
-                final sound = await SoLoud.instance
-                    .loadAsset('assets/audio/IveSeenThings.mp3');
-                await SoLoud.instance.play(sound, looping: true);
-              },
-              child: const Text('play sound on engine'),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              spacing: 8,
+              children: [
+                ElevatedButton(
+                  onPressed: () async {
+                    await SoLoud.instance.play(currentSound!, looping: true);
+                  },
+                  child: const Text('play sound on engine'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    Buses().buses.first.annexSound(currentSound!.handles.first);
+                    setState(() {});
+                  },
+                  child: const Text('move 1st handle of sound on bus 1'),
+                ),
+              ],
             ),
             Wrap(
               children: [
@@ -104,6 +124,37 @@ class BusControls extends StatelessWidget {
     /// The voice count of the bus.
     final voiceCountNotifier = ValueNotifier<int>(0);
 
+    AudioSource? background;
+    AudioSource? explosion;
+    AudioSource? iVeSeenThings;
+
+    SoLoud.instance
+        .loadAsset('assets/audio/8_bit_mentality.mp3')
+        .then((sound) => background = sound);
+
+    SoLoud.instance
+        .loadAsset('assets/audio/explosion.mp3')
+        .then((sound) => explosion = sound);
+
+    SoLoud.instance
+        .loadAsset('assets/audio/IveSeenThings.mp3')
+        .then((sound) => iVeSeenThings = sound);
+
+    background?.soundEvents.listen((event) {
+      dev.log('background sound event $event');
+      voiceCountNotifier.value = bus.getActiveVoiceCount();
+    });
+
+    explosion?.soundEvents.listen((event) {
+      dev.log('explosion sound event $event');
+      voiceCountNotifier.value = bus.getActiveVoiceCount();
+    });
+
+    iVeSeenThings?.soundEvents.listen((event) {
+      dev.log('ive seen things sound event $event');
+      voiceCountNotifier.value = bus.getActiveVoiceCount();
+    });
+
     return Container(
       margin: const EdgeInsets.all(8),
       padding: const EdgeInsets.all(20),
@@ -117,7 +168,6 @@ class BusControls extends StatelessWidget {
           ValueListenableBuilder(
             valueListenable: voiceCountNotifier,
             builder: (context, value, child) {
-              debugPrint('**********DART2 getActiveVoiceCount: $value  busId: ${bus.busId}');
               return Text(
                 '${bus.name} - voices: $value',
                 style:
@@ -145,44 +195,24 @@ class BusControls extends StatelessWidget {
           const SizedBox(height: 8),
           ElevatedButton(
             onPressed: () async {
-              final sound = await SoLoud.instance
-                  .loadAsset('assets/audio/8_bit_mentality.mp3');
-              sound.soundEvents.listen((event) {
-                dev.log('background sound event $event');
-                voiceCountNotifier.value = bus.getActiveVoiceCount();
-              });
-              await bus.play(sound, volume: 0.2);
+              if (background == null) return;
+              await bus.play(background!, volume: 0.2);
               voiceCountNotifier.value = bus.getActiveVoiceCount();
             },
             child: const Text('play background sound'),
           ),
           ElevatedButton(
             onPressed: () async {
-              final sound =
-                  await SoLoud.instance.loadAsset('assets/audio/explosion.mp3');
-              sound.soundEvents.listen((event) {
-                dev.log('explosion sound event $event');
-                voiceCountNotifier.value = bus.getActiveVoiceCount();
-                debugPrint('**********DART1 getActiveVoiceCount: ${voiceCountNotifier.value}    busId: ${bus.busId}');
-              });
-              sound.allInstancesFinished.listen((_) {
-                dev.log('explosion sound all instances finished');
-                voiceCountNotifier.value = bus.getActiveVoiceCount();
-              });
-              await bus.play(sound);
+              if (explosion == null) return;
+              await bus.play(explosion!);
               voiceCountNotifier.value = bus.getActiveVoiceCount();
             },
             child: const Text('play explosion sound'),
           ),
           ElevatedButton(
             onPressed: () async {
-              final sound = await SoLoud.instance
-                  .loadAsset('assets/audio/IveSeenThings.mp3');
-              sound.soundEvents.listen((event) {
-                dev.log('ive seen things sound event $event');
-                voiceCountNotifier.value = bus.getActiveVoiceCount();
-              });
-              await bus.play(sound);
+              if (iVeSeenThings == null) return;
+              await bus.play(iVeSeenThings!);
               voiceCountNotifier.value = bus.getActiveVoiceCount();
             },
             child: const Text('play ive seen things sound'),
