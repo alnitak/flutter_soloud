@@ -72,7 +72,8 @@ class SoLoudLoader {
 
       if (results.any((success) => !success)) {
         _log.warning(
-            'Cannot clean up temporary directory. See warnings above.');
+          'Cannot clean up temporary directory. See warnings above.',
+        );
       }
     } on FileSystemException catch (e, s) {
       _log.warning('Cannot clean up temporary directory: $e', e, s);
