@@ -647,14 +647,6 @@ PlayerErrors Player::play(
         return bufferStreamCanBePlayedOnlyOnce;
     }
 
-    // When trying to play a sound in a mixing bus, we need its handle to pass to the play function.
-    unsigned int busHandle = 0;
-    if (busId > 0)
-    {
-        auto it = busMap.find(busId);
-        if (it != busMap.end()) busHandle = it->second.bus.mChannelHandle;
-    }
-
     // Check if playing this sound will exceed the maximum number of voice counts. If true, then
     // check if [soudHash] has other instances playing. If true remove the first and play the new one.
     // If no other instances are playing, this sound cannot be played and return an error.
@@ -675,7 +667,16 @@ PlayerErrors Player::play(
     soloud.miniaudio_ensureDeviceStarted();
 
     handle = 0;
-    SoLoud::handle newHandle = soloud.play(*sound->sound.get(), volume, pan, paused, busHandle);
+    SoLoud::handle newHandle = 0;
+    if (busId == 0) {
+        newHandle = soloud.play(*sound->sound.get(), volume, pan, paused, 0);
+    } else {
+        auto it = busMap.find(busId);
+        if (it != busMap.end())
+            newHandle = it->second.bus.play(*sound->sound.get(), volume, pan, paused);
+        else
+            return PlayerErrors::busIdNotFound;
+    }
 
     if (newHandle != 0) {
         sound->handle.push_back({newHandle, MAX_DOUBLE});
@@ -1161,14 +1162,6 @@ PlayerErrors Player::play3d(
         return bufferStreamCanBePlayedOnlyOnce;
     }
 
-    // When trying to play a sound in a mixing bus, we need its handle to pass to the play function.
-    unsigned int busHandle = 0;
-    if (busId > 0)
-    {
-        auto it = busMap.find(busId);
-        if (it != busMap.end()) busHandle = it->second.bus.mChannelHandle;
-    }
-
     // Check if by playing this sound will exceed the maximum number of voice count. If true, then
     // check if [soudHash] has other instances playing. If true remove the first and play the new one.
     // If there are no other instances playing, this sound cannot be played and return an error.
@@ -1189,13 +1182,29 @@ PlayerErrors Player::play3d(
     soloud.miniaudio_ensureDeviceStarted();
 
     handle = 0;
-    SoLoud::handle newHandle = soloud.play3d(
-        *sound->sound.get(),
-        posX, posY, posZ,
-        velX, velY, velZ,
-        volume,
-        paused,
-        busHandle);
+    SoLoud::handle newHandle = 0;
+    if (busId == 0) {
+        newHandle = soloud.play3d(
+            *sound->sound.get(),
+            posX, posY, posZ,
+            velX, velY, velZ,
+            volume,
+            paused,
+            0);
+    } else {
+        auto it = busMap.find(busId);
+        if (it != busMap.end())
+            newHandle = it->second.bus.play3d(
+                *sound->sound.get(),
+                posX, posY, posZ,
+                velX, velY, velZ,
+                volume,
+                paused
+            );
+        else
+            return PlayerErrors::busIdNotFound;
+    }
+
     if (newHandle != 0)
         sound->handle.push_back({newHandle, MAX_DOUBLE});
     if (looping)
@@ -1385,7 +1394,6 @@ unsigned int Player::busGetActiveVoiceCount(unsigned int busId) {
     if (it == busMap.end())
         return 0;
     unsigned int ret = it->second.bus.getActiveVoiceCount();
-    printf("********** getActiveVoiceCount: %u\n", ret);
     return ret;
 }
 
