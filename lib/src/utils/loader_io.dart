@@ -71,12 +71,11 @@ class SoLoudLoader {
       final results = await Future.wait(files.map(deleteFile));
 
       if (results.any((success) => !success)) {
-        _log.severe('Cannot clean up temporary directory. See warnings above.');
+        _log.warning(
+            'Cannot clean up temporary directory. See warnings above.');
       }
-
-      await _temporaryDirectory?.delete(recursive: true);
-    } on FileSystemException catch (e) {
-      _log.severe('Cannot clean up temporary directory: $e');
+    } on FileSystemException catch (e, s) {
+      _log.warning('Cannot clean up temporary directory: $e', e, s);
     }
   }
 
@@ -99,11 +98,12 @@ class SoLoudLoader {
     final directory = Directory(directoryPath);
 
     try {
-      _temporaryDirectory = await directory.create();
-    } catch (e) {
+      _temporaryDirectory = await directory.create(recursive: true);
+    } catch (e, s) {
       _log.severe(
         "Couldn't initialize loader. Temporary directory couldn't be created.",
         e,
+        s,
       );
       // There is no way we can recover from this. If we have nowhere to save
       // files, we can't play anything.
