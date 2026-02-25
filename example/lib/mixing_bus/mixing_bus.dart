@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:developer' as dev;
 
 import 'package:flutter/foundation.dart';
@@ -68,6 +67,9 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
           children: [
             ElevatedButton(
               onPressed: () {
+                // Create a new mixing bus via the Core instance.
+                // The newly created bus acts like a virtual audio device where
+                // other sounds can be routed into.
                 SoLoud.instance
                     .createMixingBus(name: 'bus ${Buses().buses.length + 1}');
                 setState(() {});
@@ -86,6 +88,7 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
                 ),
                 ElevatedButton(
                   onPressed: () {
+                    // Annex the first handle of the sound to the first bus.
                     Buses().buses.first.annexSound(currentSound!.handles.first);
                     setState(() {});
                   },
@@ -140,6 +143,7 @@ class BusControls extends StatelessWidget {
         .loadAsset('assets/audio/IveSeenThings.mp3')
         .then((sound) => iVeSeenThings = sound);
 
+    // Update the voice count UI when sounds finish playing
     background?.soundEvents.listen((event) {
       dev.log('background sound event $event');
       voiceCountNotifier.value = bus.getActiveVoiceCount();
@@ -180,6 +184,9 @@ class BusControls extends StatelessWidget {
             spacing: 8,
             children: [
               ElevatedButton(
+                // Play the bus on the engine.
+                // Like any SoundHandle, a bus must be played on the main
+                // SoLoud engine in order for its output to be audible.
                 onPressed: () => bus.playOnEngine(volume: volumeNotifier.value),
                 child: const Text('play bus'),
               ),
@@ -196,6 +203,9 @@ class BusControls extends StatelessWidget {
           ElevatedButton(
             onPressed: () async {
               if (background == null) return;
+              // Route sounds through the bus.
+              // By calling `play()` on the Bus instance itself, the audio
+              // source is automatically routed through this mixing bus.
               await bus.play(background!, volume: 0.2);
               voiceCountNotifier.value = bus.getActiveVoiceCount();
             },
@@ -231,6 +241,9 @@ class BusControls extends StatelessWidget {
                     onChanged: (value) {
                       volumeNotifier.value = value;
                       if (bus.soundHandle != null) {
+                        // Adjust volume of the entire bus.
+                        // Setting the volume on the bus's SoundHandle affects
+                        // all audio sources currently routed through it.
                         SoLoud.instance.setVolume(bus.soundHandle!, value);
                       }
                     },
@@ -241,6 +254,9 @@ class BusControls extends StatelessWidget {
           ),
           ElevatedButton(
             onPressed: () async {
+              // Apply effects to the entire bus.
+              // Activating a filter on the bus will automatically apply
+              // the effect to all audio sources routed through it.
               bus.filters.pitchShiftFilter.activate();
               bus.filters.pitchShiftFilter
                   .shift(soundHandle: bus.soundHandle)

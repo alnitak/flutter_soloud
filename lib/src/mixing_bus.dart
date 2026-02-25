@@ -3,7 +3,9 @@ import 'package:flutter_soloud/src/bindings/soloud_controller.dart';
 import 'package:flutter_soloud/src/filters/filters.dart';
 import 'package:logging/logging.dart';
 
-/// Helper class to manage all buses.
+/// A singleton helper class to manage all active mixing buses.
+///
+/// Provides methods to look up a [Bus] by its name or ID.
 class Buses {
   /// The singleton instance of this class.
   factory Buses() => _instance;
@@ -32,12 +34,30 @@ class Buses {
   }
 }
 
-/// A Set of mixing buses to have a global control of all active buses.
+/// A mixing bus to have control over a group of audio sources.
 ///
-
 /// A mixing bus is a special audio source that plays other audio sources
-/// through it. Useful for grouped volume control, per-bus filtering, and
-/// routing.
+/// through it. It is particularly useful for grouped volume control, per-bus
+/// filtering, and routing of multiple sounds. You can play multiple sounds
+/// on a single bus and apply effects or adjust the volume of the entire bus
+/// at once.
+///
+/// **Workflow example:**
+/// ```dart
+/// // 1. Create a new mixing bus
+/// final myBus = SoLoud.instance.createMixingBus();
+///
+/// // 2. Play the bus on the SoLoud engine so its output becomes audible
+/// myBus.playOnEngine();
+///
+/// // 3. Play sounds through the bus
+/// final sound = await SoLoud.instance.loadAsset('audio.mp3');
+/// myBus.play(sound);
+///
+/// // 4. Apply filters or change volume to affect all sounds on the bus
+/// SoLoud.instance.setVolume(myBus.soundHandle!, 0.5);
+/// myBus.filters.echoFilter.activate();
+/// ```
 ///
 /// See also:
 /// - [SoLoud.createMixingBus] to create a new bus.
@@ -94,6 +114,9 @@ class Bus {
 
   /// Play the bus itself on the main SoLoud engine so it becomes audible.
   /// You must call this before sounds routed through the bus can be heard.
+  ///
+  /// Only one instance of a mixing bus can play at the same time.
+  /// Trying to play the same bus several times stops the earlier instance.
   ///
   /// [volume] playback volume (1.0 = full).
   /// [paused] whether to start paused.
