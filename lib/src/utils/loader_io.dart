@@ -70,11 +70,12 @@ class SoLoudLoader {
       // Delete files in parallel.
       final results = await Future.wait(files.map(deleteFile));
 
-      if (results.any((success) => !success)) {
-        _log.warning(
-          'Cannot clean up temporary directory. See warnings above.',
-        );
+      final successes = results.where((success) => success == true).length;
+      if (successes < files.length) {
+        _log.warning('Could not delete some files in temporary directory.');
       }
+
+      _log.fine(() => 'Deleted $successes file(s) during cleanUp()');
     } on FileSystemException catch (e, s) {
       _log.warning('Cannot clean up temporary directory: $e', e, s);
     }
