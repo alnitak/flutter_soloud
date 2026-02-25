@@ -89,6 +89,7 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
                 ElevatedButton(
                   onPressed: () {
                     // Annex the first handle of the sound to the first bus.
+                    // (the bus must be already created and playing)
                     Buses().buses.first.annexSound(currentSound!.handles.first);
                     setState(() {});
                   },
@@ -100,6 +101,7 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
               children: [
                 for (final bus in Buses().buses)
                   BusControls(
+                    key: ValueKey(bus.name),
                     bus: bus,
                     onMustRefresh: () => setState(() {}),
                   ),
@@ -123,40 +125,45 @@ class BusControls extends StatelessWidget {
   Widget build(BuildContext context) {
     /// The volume of the bus.
     final volumeNotifier = ValueNotifier<double>(1);
+    if (bus.soundHandle != null) {
+      volumeNotifier.value = SoLoud.instance.getVolume(bus.soundHandle!);
+    }
 
     /// The voice count of the bus.
-    final voiceCountNotifier = ValueNotifier<int>(0);
+    final voiceCountNotifier = ValueNotifier<int>(bus.getActiveVoiceCount());
+    if (bus.soundHandle != null) {
+      voiceCountNotifier.value = bus.getActiveVoiceCount();
+    }
 
     AudioSource? background;
     AudioSource? explosion;
     AudioSource? iVeSeenThings;
 
-    SoLoud.instance
-        .loadAsset('assets/audio/8_bit_mentality.mp3')
-        .then((sound) => background = sound);
-
-    SoLoud.instance
-        .loadAsset('assets/audio/explosion.mp3')
-        .then((sound) => explosion = sound);
-
-    SoLoud.instance
-        .loadAsset('assets/audio/IveSeenThings.mp3')
-        .then((sound) => iVeSeenThings = sound);
-
-    // Update the voice count UI when sounds finish playing
-    background?.soundEvents.listen((event) {
-      dev.log('background sound event $event');
-      voiceCountNotifier.value = bus.getActiveVoiceCount();
+    SoLoud.instance.loadAsset('assets/audio/8_bit_mentality.mp3').then((sound) {
+      background = sound;
+      // Update the voice count UI when sounds finish playing
+      background?.soundEvents.listen((event) {
+        dev.log('background sound event $event');
+        voiceCountNotifier.value = bus.getActiveVoiceCount();
+      });
     });
 
-    explosion?.soundEvents.listen((event) {
-      dev.log('explosion sound event $event');
-      voiceCountNotifier.value = bus.getActiveVoiceCount();
+    SoLoud.instance.loadAsset('assets/audio/explosion.mp3').then((sound) {
+      explosion = sound;
+      // Update the voice count UI when sounds finish playing
+      explosion?.soundEvents.listen((event) {
+        dev.log('explosion sound event $event');
+        voiceCountNotifier.value = bus.getActiveVoiceCount();
+      });
     });
 
-    iVeSeenThings?.soundEvents.listen((event) {
-      dev.log('ive seen things sound event $event');
-      voiceCountNotifier.value = bus.getActiveVoiceCount();
+    SoLoud.instance.loadAsset('assets/audio/IveSeenThings.mp3').then((sound) {
+      iVeSeenThings = sound;
+      // Update the voice count UI when sounds finish playing
+      iVeSeenThings?.soundEvents.listen((event) {
+        dev.log('ive seen things sound event $event');
+        voiceCountNotifier.value = bus.getActiveVoiceCount();
+      });
     });
 
     return Container(

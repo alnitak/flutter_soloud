@@ -171,7 +171,6 @@ class Bus {
     );
   }
 
-
   /// This function is the 3D version of the [play] call.
   ///
   /// This is a convenience method that calls [SoLoud.play3d] with the
@@ -271,8 +270,10 @@ class Bus {
   ///
   /// Returns the active voice count, or 0 if the bus is not found.
   int getActiveVoiceCount() {
-    if (!_isValid) {
+    if (soundHandle == null ||
+        !SoLoud.instance.getIsValidVoiceHandle(soundHandle!)) {
       _log.warning('bus $busId is already disposed');
+      return 0;
     }
     return SoLoudController().soLoudFFI.busGetActiveVoiceCount(busId);
   }
