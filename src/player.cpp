@@ -1337,19 +1337,6 @@ unsigned int Player::busPlayOnEngine(unsigned int busId, float volume,
     return handle;
 }
 
-unsigned int Player::busPlay(unsigned int busId, unsigned int soundHash,
-                             float volume, float pan, bool paused) {
-    if (!mInited)
-        return 0;
-    auto it = busMap.find(busId);
-    if (it == busMap.end())
-        return 0;
-    auto *s = findByHash(soundHash);
-    if (s == nullptr)
-        return 0;
-    return it->second.bus.play(*s->sound, volume, pan, paused);
-}
-
 int Player::busSetChannels(unsigned int busId, unsigned int channels) {
     auto it = busMap.find(busId);
     if (it == busMap.end())

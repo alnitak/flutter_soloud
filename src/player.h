@@ -591,8 +591,6 @@ public:
   unsigned int createBus();
   void destroyBus(unsigned int busId);
   unsigned int busPlayOnEngine(unsigned int busId, float volume, bool paused);
-  unsigned int busPlay(unsigned int busId, unsigned int soundHash, float volume,
-                       float pan, bool paused);
   int busSetChannels(unsigned int busId, unsigned int channels);
   void busSetVisualizationEnable(unsigned int busId, bool enable);
   float *busCalcFFT(unsigned int busId);
