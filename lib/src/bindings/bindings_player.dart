@@ -324,6 +324,7 @@ abstract class FlutterSoLoud {
   @mustBeOverridden
   ({PlayerErrors error, SoundHandle newHandle}) play(
     SoundHash soundHash, {
+    int busId = 0,
     double volume = 1,
     double pan = 0,
     bool paused = false,
@@ -840,6 +841,7 @@ abstract class FlutterSoLoud {
     double posX,
     double posY,
     double posZ, {
+    int busId = 0,
     double velX = 0,
     double velY = 0,
     double velZ = 0,

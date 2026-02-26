@@ -593,6 +593,7 @@ enum FilterType {
     final error = SoLoudController().soLoudFFI.removeFilter(
           this,
           soundHash: soundHash ?? const SoundHash.invalid(),
+          busId: busId ?? 0,
         );
     if (error != PlayerErrors.noError) {
       final scope =

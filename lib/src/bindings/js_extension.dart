@@ -183,6 +183,7 @@ external double wasmGetRelativePlaySpeed(int handle);
 @JS('Module_soloud._play')
 external int wasmPlay(
   int soundHash,
+  int busId,
   double volume,
   double pan,
   // ignore: avoid_positional_boolean_parameters
@@ -360,6 +361,7 @@ external int wasmOscillateGlobalVolume(double from, double to, double time);
 @JS('Module_soloud._fadeFilterParameter')
 external int wasmFadeFilterParameter(
   int handle,
+  int busId,
   int filterType,
   int attributeId,
   double to,
@@ -369,6 +371,7 @@ external int wasmFadeFilterParameter(
 @JS('Module_soloud._oscillateFilterParameter')
 external int wasmOscillateFilterParameter(
   int handle,
+  int busId,
   int filterType,
   int attributeId,
   double from,
@@ -381,7 +384,7 @@ external int wasmOscillateFilterParameter(
 // ///////////////////////////////////////
 
 @JS('Module_soloud._isFilterActive')
-external int wasmIsFilterActive(int soundHash, int filterType, int idPtr);
+external int wasmIsFilterActive(int soundHash, int busId, int filterType, int idPtr);
 
 @JS('Module_soloud._getFilterParamNames')
 external int wasmGetFilterParamNames(
@@ -391,14 +394,15 @@ external int wasmGetFilterParamNames(
 );
 
 @JS('Module_soloud._addFilter')
-external int wasmAddFilter(int soundHash, int filterType);
+external int wasmAddFilter(int soundHash, int busId, int filterType);
 
 @JS('Module_soloud._removeFilter')
-external int wasmRemoveFilter(int soundHash, int filterType);
+external int wasmRemoveFilter(int soundHash, int busId, int filterType);
 
 @JS('Module_soloud._setFilterParams')
 external int wasmSetFilterParams(
   int handle,
+  int busId,
   int filterType,
   int attributeId,
   double value,
@@ -407,6 +411,7 @@ external int wasmSetFilterParams(
 @JS('Module_soloud._getFilterParams')
 external int wasmGetFilterParams(
   int handle,
+  int busId,
   int filterType,
   int attributeId,
   int paramValuePtr,
@@ -415,6 +420,7 @@ external int wasmGetFilterParams(
 @JS('Module_soloud._play3d')
 external int wasmPlay3d(
   int soundHash,
+  int busId,
   double posX,
   double posY,
   double posZ,
@@ -521,3 +527,24 @@ external int wasmReadSamplesFromMem(
   bool average,
   int pSamplesPtr,
 );
+
+@JS('Module_soloud._createBus')
+external int wasmCreateBus();
+
+@JS('Module_soloud._destroyBus')
+external void wasmDestroyBus(int busId);
+
+@JS('Module_soloud._busPlayOnEngine')
+external int wasmBusPlayOnEngine(int busId, double volume, int paused);
+
+@JS('Module_soloud._busSetChannels')
+external void wasmBusSetChannels(int busId, int channels);
+
+@JS('Module_soloud._busGetApproximateVolume')
+external double wasmBusGetApproximateVolume(int busId, int channel);
+
+@JS('Module_soloud._busAnnexSound')
+external void wasmBusAnnexSound(int busId, int voiceHandle);
+
+@JS('Module_soloud._busGetActiveVoiceCount')
+external int wasmBusGetActiveVoiceCount(int busId);

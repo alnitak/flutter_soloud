@@ -17,6 +17,7 @@
 #include <memory.h>
 #include <memory>
 #include <stdio.h>
+#include <filesystem>
 
 #ifdef __cplusplus
 extern "C" {

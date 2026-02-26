@@ -61,53 +61,61 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Center(
-        child: Column(
-          spacing: 8,
-          children: [
-            ElevatedButton(
-              onPressed: () {
-                // Create a new mixing bus via the Core instance.
-                // The newly created bus acts like a virtual audio device where
-                // other sounds can be routed into.
-                SoLoud.instance
-                    .createMixingBus(name: 'bus ${Buses().buses.length + 1}');
-                setState(() {});
-              },
-              child: const Text('create bus'),
-            ),
-            Row(
-              mainAxisSize: MainAxisSize.min,
+      body: SingleChildScrollView(
+        child: SafeArea(
+          child: Center(
+            child: Column(
               spacing: 8,
               children: [
                 ElevatedButton(
-                  onPressed: () async {
-                    await SoLoud.instance.play(currentSound!, looping: true);
-                  },
-                  child: const Text('play sound on engine'),
-                ),
-                ElevatedButton(
                   onPressed: () {
-                    // Annex the first handle of the sound to the first bus.
-                    // (the bus must be already created and playing)
-                    Buses().buses.first.annexSound(currentSound!.handles.first);
+                    // Create a new mixing bus via the Core instance.
+                    // The newly created bus acts like a virtual audio device
+                    // where other sounds can be routed into.
+                    SoLoud.instance.createMixingBus(
+                        name: 'bus ${Buses().buses.length + 1}');
                     setState(() {});
                   },
-                  child: const Text('move 1st handle of sound on bus 1'),
+                  child: const Text('create bus'),
+                ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  spacing: 8,
+                  children: [
+                    ElevatedButton(
+                      onPressed: () async {
+                        await SoLoud.instance
+                            .play(currentSound!, looping: true);
+                      },
+                      child: const Text('play sound on engine'),
+                    ),
+                    ElevatedButton(
+                      onPressed: () {
+                        // Annex the first handle of the sound to the first bus.
+                        // (the bus must be already created and playing)
+                        Buses()
+                            .buses
+                            .first
+                            .annexSound(currentSound!.handles.first);
+                        setState(() {});
+                      },
+                      child: const Text('move 1st handle of sound on bus 1'),
+                    ),
+                  ],
+                ),
+                Wrap(
+                  children: [
+                    for (final bus in Buses().buses)
+                      BusControls(
+                        key: ValueKey(bus.name),
+                        bus: bus,
+                        onMustRefresh: () => setState(() {}),
+                      ),
+                  ],
                 ),
               ],
             ),
-            Wrap(
-              children: [
-                for (final bus in Buses().buses)
-                  BusControls(
-                    key: ValueKey(bus.name),
-                    bus: bus,
-                    onMustRefresh: () => setState(() {}),
-                  ),
-              ],
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -264,10 +272,14 @@ class BusControls extends StatelessWidget {
               // Apply effects to the entire bus.
               // Activating a filter on the bus will automatically apply
               // the effect to all audio sources routed through it.
-              bus.filters.pitchShiftFilter.activate();
-              bus.filters.pitchShiftFilter
-                  .shift(soundHandle: bus.soundHandle)
-                  .value = 2.5;
+              if (bus.filters.pitchShiftFilter.isActive) {
+                bus.filters.pitchShiftFilter.deactivate();
+              } else {
+                bus.filters.pitchShiftFilter.activate();
+                bus.filters.pitchShiftFilter
+                    .shift(soundHandle: bus.soundHandle)
+                    .value = 2.5;
+              }
             },
             child: const Text('pitch shift filter'),
           ),
