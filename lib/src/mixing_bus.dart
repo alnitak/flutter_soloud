@@ -92,6 +92,9 @@ class Bus {
   /// Whether this bus is valid.
   bool _isValid = false;
 
+  /// Whether this bus is active (playOnEngine alredy called successfully).
+  bool get isActive => soundHandle != null && soundHandle!.id > 0;
+
   /// The number of channels of this bus.
   var _channels = Channels.stereo;
 
@@ -140,7 +143,7 @@ class Bus {
 
   /// Play an audio source through a mixing bus.
   ///
-  /// This is a convenience method that calls [SoLoud.play] with the
+  /// This is a convenience method that calls [SoLoud.play] with its
   /// [busId] set to this bus.
   ///
   /// Please see [SoLoud.play] for more information on the parameters.
@@ -268,11 +271,10 @@ class Bus {
 
   /// Get the number of voices currently playing through this bus.
   ///
-  /// Returns the active voice count, or 0 if the bus is not found.
+  /// Returns the active voice count, or 0 if the bus is not found on not ready.
   int getActiveVoiceCount() {
-    if (soundHandle == null ||
-        !SoLoud.instance.getIsValidVoiceHandle(soundHandle!)) {
-      _log.warning('bus $busId is already disposed');
+    if (!isActive) {
+      // _log.warning('bus $busId is already disposed');
       return 0;
     }
     return SoLoudController().soLoudFFI.busGetActiveVoiceCount(busId);

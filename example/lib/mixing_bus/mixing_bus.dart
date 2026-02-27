@@ -73,7 +73,8 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
                     // The newly created bus acts like a virtual audio device
                     // where other sounds can be routed into.
                     SoLoud.instance.createMixingBus(
-                        name: 'bus ${Buses().buses.length + 1}');
+                      name: 'bus ${Buses().buses.length + 1}',
+                    );
                     setState(() {});
                   },
                   child: const Text('create bus'),
@@ -122,7 +123,7 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
   }
 }
 
-class BusControls extends StatelessWidget {
+class BusControls extends StatefulWidget {
   const BusControls({required this.bus, this.onMustRefresh, super.key});
 
   final Bus bus;
@@ -130,29 +131,41 @@ class BusControls extends StatelessWidget {
   final VoidCallback? onMustRefresh;
 
   @override
-  Widget build(BuildContext context) {
+  State<BusControls> createState() => _BusControlsState();
+}
+
+class _BusControlsState extends State<BusControls> {
+
     /// The volume of the bus.
-    final volumeNotifier = ValueNotifier<double>(1);
-    if (bus.soundHandle != null) {
-      volumeNotifier.value = SoLoud.instance.getVolume(bus.soundHandle!);
-    }
+    late final ValueNotifier<double> volumeNotifier;
 
     /// The voice count of the bus.
-    final voiceCountNotifier = ValueNotifier<int>(bus.getActiveVoiceCount());
-    if (bus.soundHandle != null) {
-      voiceCountNotifier.value = bus.getActiveVoiceCount();
-    }
+    late final ValueNotifier<int> voiceCountNotifier;
 
     AudioSource? background;
     AudioSource? explosion;
     AudioSource? iVeSeenThings;
+
+  @override
+  void initState() {
+    super.initState();
+    volumeNotifier = ValueNotifier<double>(1);
+    voiceCountNotifier = ValueNotifier<int>(widget.bus.getActiveVoiceCount());
+
+    if (widget.bus.soundHandle != null) {
+      volumeNotifier.value = SoLoud.instance.getVolume(widget.bus.soundHandle!);
+    }
+
+    if (widget.bus.soundHandle != null) {
+      voiceCountNotifier.value = widget.bus.getActiveVoiceCount();
+    }
 
     SoLoud.instance.loadAsset('assets/audio/8_bit_mentality.mp3').then((sound) {
       background = sound;
       // Update the voice count UI when sounds finish playing
       background?.soundEvents.listen((event) {
         dev.log('background sound event $event');
-        voiceCountNotifier.value = bus.getActiveVoiceCount();
+        voiceCountNotifier.value = widget.bus.getActiveVoiceCount();
       });
     });
 
@@ -161,7 +174,7 @@ class BusControls extends StatelessWidget {
       // Update the voice count UI when sounds finish playing
       explosion?.soundEvents.listen((event) {
         dev.log('explosion sound event $event');
-        voiceCountNotifier.value = bus.getActiveVoiceCount();
+        voiceCountNotifier.value = widget.bus.getActiveVoiceCount();
       });
     });
 
@@ -170,9 +183,13 @@ class BusControls extends StatelessWidget {
       // Update the voice count UI when sounds finish playing
       iVeSeenThings?.soundEvents.listen((event) {
         dev.log('ive seen things sound event $event');
-        voiceCountNotifier.value = bus.getActiveVoiceCount();
+        voiceCountNotifier.value = widget.bus.getActiveVoiceCount();
       });
     });
+  }
+
+  @override
+  Widget build(BuildContext context) {
 
     return Container(
       margin: const EdgeInsets.all(8),
@@ -188,7 +205,7 @@ class BusControls extends StatelessWidget {
             valueListenable: voiceCountNotifier,
             builder: (context, value, child) {
               return Text(
-                '${bus.name} - voices: $value',
+                '${widget.bus.name} - voices: $value',
                 style:
                     const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               );
@@ -202,13 +219,13 @@ class BusControls extends StatelessWidget {
                 // Play the bus on the engine.
                 // Like any SoundHandle, a bus must be played on the main
                 // SoLoud engine in order for its output to be audible.
-                onPressed: () => bus.playOnEngine(volume: volumeNotifier.value),
+                onPressed: () => widget.bus.playOnEngine(volume: volumeNotifier.value),
                 child: const Text('play bus'),
               ),
               ElevatedButton(
                 onPressed: () {
-                  bus.dispose();
-                  onMustRefresh?.call();
+                  widget.bus.dispose();
+                  widget.onMustRefresh?.call();
                 },
                 child: const Text('dispose bus'),
               ),
@@ -221,24 +238,24 @@ class BusControls extends StatelessWidget {
               // Route sounds through the bus.
               // By calling `play()` on the Bus instance itself, the audio
               // source is automatically routed through this mixing bus.
-              await bus.play(background!, volume: 0.2);
-              voiceCountNotifier.value = bus.getActiveVoiceCount();
+              await widget.bus.play(background!, volume: 0.2);
+              voiceCountNotifier.value = widget.bus.getActiveVoiceCount();
             },
             child: const Text('play background sound'),
           ),
           ElevatedButton(
             onPressed: () async {
               if (explosion == null) return;
-              await bus.play(explosion!);
-              voiceCountNotifier.value = bus.getActiveVoiceCount();
+              await widget.bus.play(explosion!);
+              voiceCountNotifier.value = widget.bus.getActiveVoiceCount();
             },
             child: const Text('play explosion sound'),
           ),
           ElevatedButton(
             onPressed: () async {
               if (iVeSeenThings == null) return;
-              await bus.play(iVeSeenThings!);
-              voiceCountNotifier.value = bus.getActiveVoiceCount();
+              await widget.bus.play(iVeSeenThings!);
+              voiceCountNotifier.value = widget.bus.getActiveVoiceCount();
             },
             child: const Text('play ive seen things sound'),
           ),
@@ -255,11 +272,11 @@ class BusControls extends StatelessWidget {
                     max: 3,
                     onChanged: (value) {
                       volumeNotifier.value = value;
-                      if (bus.soundHandle != null) {
+                      if (widget.bus.soundHandle != null) {
                         // Adjust volume of the entire bus.
                         // Setting the volume on the bus's SoundHandle affects
                         // all audio sources currently routed through it.
-                        SoLoud.instance.setVolume(bus.soundHandle!, value);
+                        SoLoud.instance.setVolume(widget.bus.soundHandle!, value);
                       }
                     },
                   ),
@@ -272,12 +289,12 @@ class BusControls extends StatelessWidget {
               // Apply effects to the entire bus.
               // Activating a filter on the bus will automatically apply
               // the effect to all audio sources routed through it.
-              if (bus.filters.pitchShiftFilter.isActive) {
-                bus.filters.pitchShiftFilter.deactivate();
+              if (widget.bus.filters.pitchShiftFilter.isActive) {
+                widget.bus.filters.pitchShiftFilter.deactivate();
               } else {
-                bus.filters.pitchShiftFilter.activate();
-                bus.filters.pitchShiftFilter
-                    .shift(soundHandle: bus.soundHandle)
+                widget.bus.filters.pitchShiftFilter.activate();
+                widget.bus.filters.pitchShiftFilter
+                    .shift(soundHandle: widget.bus.soundHandle)
                     .value = 2.5;
               }
             },
