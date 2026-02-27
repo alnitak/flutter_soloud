@@ -309,6 +309,14 @@ abstract class FlutterSoLoud {
   @mustBeOverridden
   double getRelativePlaySpeed(SoundHandle handle);
 
+  /// Gets the approximate volume for output per output
+  /// channel (i.e, per speaker).
+  ///
+  /// [channel] the channel.
+  /// Return zero for invalid parameters.
+  @mustBeOverridden
+  double getApproximateVolume(int channel);
+
   /// Play already loaded sound identified by [soundHash].
   ///
   /// [soundHash] the unique sound hash of a sound.

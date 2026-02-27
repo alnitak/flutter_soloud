@@ -180,6 +180,9 @@ external void wasmSetRelativePlaySpeed(int handle, double speed);
 @JS('Module_soloud._getRelativePlaySpeed')
 external double wasmGetRelativePlaySpeed(int handle);
 
+@JS('Module_soloud._getApproximateVolume')
+external double wasmGetApproximateVolume(int channel);
+
 @JS('Module_soloud._play')
 external int wasmPlay(
   int soundHash,

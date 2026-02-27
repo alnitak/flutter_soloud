@@ -223,6 +223,11 @@ public:
   /// @return the current play speed.
   float getRelativePlaySpeed(unsigned int handle);
 
+  /// @brief Gets the approximate volume for output per output channel (i.e, per speaker).
+  /// @param channel the channel.
+  /// @return zero for invalid parameters.
+  float getApproximateVolume(unsigned int channel);
+
   /// @brief Play already loaded sound identified by [soundHash].
   /// @param soundHash the unique hash of the sound to play.
   /// @param volume 1.0f full volume.

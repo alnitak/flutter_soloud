@@ -743,9 +743,6 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   late final _setRelativePlaySpeed =
       _setRelativePlaySpeedPtr.asFunction<void Function(int, double)>();
 
-  /// Return the current play speed.
-  ///
-  /// [handle] the sound handle
   @override
   double getRelativePlaySpeed(SoundHandle handle) {
     return _getRelativePlaySpeed(handle.id);
@@ -756,6 +753,17 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
           'getRelativePlaySpeed');
   late final _getRelativePlaySpeed =
       _getRelativePlaySpeedPtr.asFunction<double Function(int)>();
+
+  @override
+  double getApproximateVolume(int channel) {
+    return _getApproximateVolume(channel);
+  }
+
+  late final _getApproximateVolumePtr =
+      _lookup<ffi.NativeFunction<ffi.Float Function(ffi.UnsignedInt)>>(
+          'getApproximateVolume');
+  late final _getApproximateVolume =
+      _getApproximateVolumePtr.asFunction<double Function(int)>();
 
   @override
   ({PlayerErrors error, SoundHandle newHandle}) play(

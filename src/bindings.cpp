@@ -697,14 +697,24 @@ FFI_PLUGIN_EXPORT void setRelativePlaySpeed(unsigned int handle, float speed) {
 
 /// Get a sound's relative play speed.
 /// If an invalid handle is given to getRelativePlaySpeed, it will return 1.
-
-/// Return the current play speed.
+///
 /// [handle] the sound handle
+/// Return the current play speed.
 FFI_PLUGIN_EXPORT float getRelativePlaySpeed(unsigned int handle) {
   if (player.get() == nullptr || !player.get()->isInited() ||
       !player.get()->isValidHandle(handle))
     return 1;
   return player.get()->getRelativePlaySpeed(handle);
+}
+
+/// Gets the approximate volume for output per output channel (i.e, per speaker).
+///
+/// [channel] the channel.
+/// Return zero for invalid parameters.
+FFI_PLUGIN_EXPORT float getApproximateVolume(unsigned int channel) {
+  if (player.get() == nullptr || !player.get()->isInited())
+    return 0;
+  return player.get()->getApproximateVolume(channel);
 }
 
 /// Play already loaded sound identified by [hash]

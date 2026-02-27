@@ -1370,6 +1370,18 @@ interface class SoLoud {
     return _controller.soLoudFFI.getRelativePlaySpeed(handle);
   }
 
+  /// Gets the approximate volume for output per output
+  /// channel (i.e, per speaker).
+  ///
+  /// [channel] the channel.
+  /// Return zero for invalid parameters.
+  double getApproximateVolume(int channel) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    return _controller.soLoudFFI.getApproximateVolume(channel);
+  }
+
   /// Stop a currently playing sound identified by [handle]
   /// and clear it from the sound handle list.
   ///

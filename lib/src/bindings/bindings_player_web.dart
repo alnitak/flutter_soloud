@@ -435,6 +435,11 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }
 
   @override
+  double getApproximateVolume(int channel) {
+    return wasmGetApproximateVolume(channel);
+  }
+
+  @override
   ({PlayerErrors error, SoundHandle newHandle}) play(
     SoundHash soundHash, {
     int busId = 0,

@@ -614,6 +614,11 @@ float Player::getRelativePlaySpeed(unsigned int handle)
     return soloud.getRelativePlaySpeed(handle);
 }
 
+float Player::getApproximateVolume(unsigned int channel)
+{
+    return soloud.getApproximateVolume(channel);
+}
+
 unsigned int Player::getActiveVoiceCount_internal()
 {
     unsigned int count = 0;
