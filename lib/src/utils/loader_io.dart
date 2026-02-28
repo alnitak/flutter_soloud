@@ -70,13 +70,14 @@ class SoLoudLoader {
       // Delete files in parallel.
       final results = await Future.wait(files.map(deleteFile));
 
-      if (results.any((success) => !success)) {
-        _log.severe('Cannot clean up temporary directory. See warnings above.');
+      final successes = results.where((success) => success == true).length;
+      if (successes < files.length) {
+        _log.warning('Could not delete some files in temporary directory.');
       }
 
-      await _temporaryDirectory?.delete(recursive: true);
-    } on FileSystemException catch (e) {
-      _log.severe('Cannot clean up temporary directory: $e');
+      _log.fine(() => 'Deleted $successes file(s) during cleanUp()');
+    } on FileSystemException catch (e, s) {
+      _log.warning('Cannot clean up temporary directory: $e', e, s);
     }
   }
 
@@ -93,24 +94,45 @@ class SoLoudLoader {
       return;
     }
 
-    final systemTempDir = await path_provider.getTemporaryDirectory();
-    final directoryPath =
-        path.join(systemTempDir.path, _temporaryDirectoryName);
-    final directory = Directory(directoryPath);
+    Directory? directory;
 
-    try {
-      _temporaryDirectory = await directory.create();
-    } catch (e) {
-      _log.severe(
-        "Couldn't initialize loader. Temporary directory couldn't be created.",
-        e,
-      );
-      // There is no way we can recover from this. If we have nowhere to save
-      // files, we can't play anything.
-      rethrow;
+    {
+      final tempDir = await path_provider.getTemporaryDirectory();
+      final directoryPath = path.join(tempDir.path, _temporaryDirectoryName);
+      directory = Directory(directoryPath);
+
+      try {
+        directory = await Directory(directoryPath).create(recursive: true);
+      } catch (e, s) {
+        _log.info(
+          "Temporary directory couldn't be created using path_provider.",
+          e,
+          s,
+        );
+      }
     }
 
-    _log.info(() => 'Temporary directory initialized at ${directory.path}');
+    if (directory == null) {
+      // path_provider's path failed. We'll try the system temp dir instead.
+      final tempDir = Directory.systemTemp;
+      final directoryPath = path.join(tempDir.path, _temporaryDirectoryName);
+
+      try {
+        directory = await Directory(directoryPath).create(recursive: true);
+      } catch (e, s) {
+        _log.info(
+          "Temporary directory couldn't be created in system temp.",
+          e,
+          s,
+        );
+        // There is no way we can recover from this. If we have nowhere to save
+        // files, we can't play anything.
+        rethrow;
+      }
+    }
+
+    _temporaryDirectory = directory;
+    _log.info('Temporary directory initialized at ${directory.path}');
 
     if (automaticCleanup) {
       await cleanUp();
