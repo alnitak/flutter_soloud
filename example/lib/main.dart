@@ -72,7 +72,7 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
             } else {
               /// load the audio file
               currentSound = await SoLoud.instance
-                  .loadFile(r'C:\5\Zookëper, Goshfather - For Real.mp3', mode: LoadMode.disk);
+                  .loadAsset('assets/audio/8_bit_mentality.mp3');
             }
 
             /// play it
