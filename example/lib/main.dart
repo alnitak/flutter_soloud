@@ -25,6 +25,8 @@ void main() async {
 
   WidgetsFlutterBinding.ensureInitialized();
 
+  /// Initialize the player.
+  await SoLoud.instance.init();
 
   runApp(
     const MaterialApp(
@@ -52,12 +54,29 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
 
   @override
   Widget build(BuildContext context) {
+    if (!SoLoud.instance.isInitialized) return const SizedBox.shrink();
 
     return Scaffold(
       body: Center(
         child: ElevatedButton(
           onPressed: () async {
-              await SoLoud.instance.init();
+            await SoLoud.instance.disposeAllSources();
+
+            if (kIsWeb) {
+              /// load the audio file using [LoadMode.disk] (better for the
+              /// Web platform).
+              currentSound = await SoLoud.instance.loadAsset(
+                'assets/audio/8_bit_mentality.mp3',
+                mode: LoadMode.disk,
+              );
+            } else {
+              /// load the audio file
+              currentSound = await SoLoud.instance
+                  .loadFile(r'C:\5\Zookëper, Goshfather - For Real.mp3', mode: LoadMode.disk);
+            }
+
+            /// play it
+            await SoLoud.instance.play(currentSound!);
           },
           child: const Text(
             'play asset',
