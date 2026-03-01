@@ -1,4 +1,4 @@
-#### 3.4.11 (1 Mar 2026)
+#### 3.5.0 (1 Mar 2026)
 - Harden loader temp directory logic #404. Thanks to @filiph
 - updated audio_context example
 
