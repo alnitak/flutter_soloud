@@ -26,7 +26,7 @@ distribution.
 #include "soloud.h"
 #include "soloud_internal.h"
 
-#ifndef _IS_WIN_
+#if !defined(_WIN32) && !defined(_WIN64)
 #include <unistd.h>
 #endif
 
@@ -180,7 +180,7 @@ namespace SoLoud
             while (!gDeviceStopped && timeoutMs < maxTimeoutMs)
             {
                 // Small sleep to avoid busy-waiting
-#ifdef _IS_WIN_
+#if defined(_WIN32) || defined(_WIN64)
                 Sleep(1);
 #else
                 usleep(1000);  // 1ms sleep
