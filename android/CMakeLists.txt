@@ -9,6 +9,11 @@ set(CMAKE_BUILD_TYPE Release CACHE STRING "" FORCE)
 set(CMAKE_C_FLAGS_RELEASE "-DNDEBUG" CACHE STRING "" FORCE)
 set(CMAKE_CXX_FLAGS_RELEASE "-DNDEBUG" CACHE STRING "" FORCE)
 
+# ─── Always compile in Release mode for maximum performance ───
+set(CMAKE_BUILD_TYPE Release CACHE STRING "" FORCE)
+set(CMAKE_C_FLAGS_RELEASE "-DNDEBUG" CACHE STRING "" FORCE)
+set(CMAKE_CXX_FLAGS_RELEASE "-DNDEBUG" CACHE STRING "" FORCE)
+
 set(PLUGIN_NAME "${PROJECT_NAME}_plugin")
 
 set(SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../src")
@@ -71,7 +76,6 @@ target_link_options("${PLUGIN_NAME}" PRIVATE "-Wl,-z,max-page-size=16384")
 
 # ─── Optimization flags ───
 # Base flags: -O3 for aggressive optimization, -ffast-math for relaxed FP
-# (safe for audio DSP where strict IEEE 754 compliance is not required).
 target_compile_options("${PLUGIN_NAME}" PRIVATE
   -Wall -Wno-error -fPIC
   -O3

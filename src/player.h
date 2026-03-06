@@ -223,6 +223,11 @@ public:
   /// @return the current play speed.
   float getRelativePlaySpeed(unsigned int handle);
 
+  /// @brief Gets the approximate volume for output per output channel (i.e, per speaker).
+  /// @param channel the channel.
+  /// @return zero for invalid parameters.
+  float getApproximateVolume(unsigned int channel);
+
   /// @brief Play already loaded sound identified by [soundHash].
   /// @param soundHash the unique hash of the sound to play.
   /// @param volume 1.0f full volume.
@@ -235,6 +240,7 @@ public:
   /// [getLoopingPoint] and changed by [setLoopingPoint].
   /// @return the handle of the sound, 0 if error.
   PlayerErrors play(unsigned int soundHash, unsigned int &handle,
+                    unsigned int busId = 0,
                     float volume = 1.0f, float pan = 0.0f, bool paused = false,
                     bool looping = false, double loopingStartAt = 0.0);
 
@@ -542,7 +548,7 @@ public:
   PlayerErrors play3d(unsigned int soundHash, unsigned int &handle, float posX,
                       float posY, float posZ, float velX = 0.0f,
                       float velY = 0.0f, float velZ = 0.0f, float volume = 1.0f,
-                      bool paused = 0, unsigned int bus = 0,
+                      bool paused = 0, unsigned int busId = 0,
                       bool looping = false, double loopingStartAt = 0.0);
 
   /// You can set and get the current value of the speed of
@@ -581,6 +587,24 @@ public:
                               float attenuationRolloffFactor);
   void set3dSourceDopplerFactor(unsigned int handle, float dopplerFactor);
 
+  /////////////////////////////////////////
+  /// Mixing Bus
+  /// https://solhsa.com/soloud/mixbus.html
+  /// https://solhsa.com/soloud/soloud_20200207.html#mixing-bus
+  /////////////////////////////////////////
+
+  unsigned int createBus();
+  void destroyBus(unsigned int busId);
+  unsigned int busPlayOnEngine(unsigned int busId, float volume, bool paused);
+  int busSetChannels(unsigned int busId, unsigned int channels);
+  void busSetVisualizationEnable(unsigned int busId, bool enable);
+  float *busCalcFFT(unsigned int busId);
+  float *busGetWave(unsigned int busId);
+  float busGetApproximateVolume(unsigned int busId, unsigned int channel);
+  void busAnnexSound(unsigned int busId, unsigned int voiceHandle);
+  unsigned int busGetActiveVoiceCount(unsigned int busId);
+  BusData *findBusData(unsigned int busId);
+  
 public:
   /// all the sounds loaded
   std::vector<std::unique_ptr<ActiveSound>> sounds;
@@ -605,6 +629,9 @@ private:
   ma_device_info *pPlaybackInfos;
   std::mutex remove_handle_mutex;
   unsigned int mBufferSize;
+
+  std::map<unsigned int, BusData> busMap;
+  unsigned int busIdCounter = 0;
 };
 
 #endif // PLAYER_H

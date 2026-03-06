@@ -135,6 +135,8 @@ abstract class SoLoudCppException extends SoLoudException {
         return const SoLoudAudioFormatNotSupportedCppException();
       case PlayerErrors.opusOggVorbisLibsNotFound:
         return const SoLoudOpusOggVorbisLibsNotFoundCppException();
+      case PlayerErrors.busIdNotFound:
+        return const SoLoudBusIdNotFoundCppException();
     }
   }
 

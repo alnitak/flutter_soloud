@@ -4,8 +4,6 @@
             "name": "Linux",
             "includePath": [
                 "${workspaceFolder}/**",
-                "${workspaceFolder}/flutter_soloud_ios/ios/Classes/src",
-                "${workspaceFolder}/flutter_soloud_ios/ios/Classes/src/soloud/include",
                 "${workspaceFolder}/src"
             ],
             "defines": ["WITH_MINIAUDIO", "DR_MP3_IMPLEMENTATION", "DR_MP3_FLOAT_OUTPUT", "MINIMP3_IMPLEMENTATION"], // to see the code in between "#if defined"
@@ -32,7 +30,8 @@
         {
             "name": "Win32",
             "includePath": [
-                "${workspaceFolder}/**"
+                "${workspaceFolder}/**",
+                "${workspaceFolder}/src"
             ],
             "defines": [
                 "_DEBUG",
@@ -54,8 +53,6 @@
             "name": "MacOS",
             "includePath": [
                 "${workspaceFolder}/**",
-                "${workspaceFolder}/flutter_soloud_ios/ios/Classes/src",
-                "${workspaceFolder}/flutter_soloud_ios/ios/Classes/src/soloud/include",
                 "${workspaceFolder}/src"
             ],
             "defines": ["WITH_MINIAUDIO", "DR_MP3_IMPLEMENTATION", "DR_MP3_FLOAT_OUTPUT"],
@@ -63,21 +60,6 @@
             "cStandard": "c17",
             "cppStandard": "c++17",
             "intelliSenseMode": "macos-clang-x64",
-            "configurationProvider": "ms-vscode.cmake-tools"
-        },
-        {
-            "name": "iOS",
-            "includePath": [
-                "${workspaceFolder}/**",
-                "${workspaceFolder}/flutter_soloud_ios/ios/Classes/src",
-                "${workspaceFolder}/flutter_soloud_ios/ios/Classes/src/soloud/include",
-                "${workspaceFolder}/src"
-            ],
-            "defines": ["WITH_MINIAUDIO", "DR_MP3_IMPLEMENTATION", "DR_MP3_FLOAT_OUTPUT"],
-            "compilerPath": "/usr/bin/clang",
-            "cStandard": "c17",
-            "cppStandard": "c++17",
-            "intelliSenseMode": "ios-clang-arm64",
             "configurationProvider": "ms-vscode.cmake-tools"
         }
     ],

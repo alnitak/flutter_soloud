@@ -19,7 +19,7 @@
             "name": "Flutter profile",
             "type": "dart",
             "request": "launch",
-            "program": "lib/buffer_stream/web_radio.dart",
+            "program": "lib/mixing_bus/mixing_bus.dart",
             "flutterMode": "profile",
             // "env": {
             //     "NO_OPUS_OGG_LIBS": "1"

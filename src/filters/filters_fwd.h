@@ -3,6 +3,7 @@
 
 #include "../enums.h"
 
+struct BusData;
 class Filters;
 struct FilterObject;
 

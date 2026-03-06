@@ -375,3 +375,12 @@ class SoLoudOpusOggVorbisLibsNotFoundCppException extends SoLoudCppException {
       'https://docs.page/alnitak/flutter_soloud_docs/get_started/no_opus_ogg_libs  '
       '(on the C++ side).';
 }
+
+/// Bus id not found.
+class SoLoudBusIdNotFoundCppException extends SoLoudCppException {
+  /// Creates a new [SoLoudBusIdNotFoundCppException].
+  const SoLoudBusIdNotFoundCppException([super.message]);
+
+  @override
+  String get description => 'Bus id not found! (on the C++ side).';
+}

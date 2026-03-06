@@ -14,6 +14,7 @@ import 'package:flutter_soloud/src/exceptions/exceptions.dart';
 import 'package:flutter_soloud/src/filters/filters.dart';
 import 'package:flutter_soloud/src/helpers/playback_device.dart';
 import 'package:flutter_soloud/src/metadata.dart';
+import 'package:flutter_soloud/src/mixing_bus.dart';
 import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
 import 'package:flutter_soloud/src/utils/loader.dart';
@@ -437,28 +438,20 @@ interface class SoLoud {
           }
 
           final newSound = AudioSource(SoundHash(hash));
-          final alreadyLoaded = _activeSounds
-                  .where((sound) => sound.soundHash == newSound.soundHash)
-                  .length ==
-              1;
           _logPlayerError(error, from: 'loadFile() result');
           if (error == PlayerErrors.noError) {
-            if (!alreadyLoaded) {
-              _activeSounds.add(newSound);
-            }
+            _activeSounds.add(newSound);
           } else if (error == PlayerErrors.fileAlreadyLoaded) {
             // If we are here, the file has been already loaded on C++ side.
-            // Check if it is already in [_activeSounds], if not add it.
-            if (alreadyLoaded) {
-              _log.warning(
-                () => "Sound '$completeFileName' was already "
-                    'loaded. Prefer loading only once, and reusing the loaded '
-                    'sound when playing.',
-              );
-            } else {
-              _activeSounds.add(newSound);
-            }
+            // Add it anyway and display the warning.
+            _log.warning(
+              () => "Sound '$completeFileName' was already "
+                  'loaded. Prefer loading only once, and reusing the loaded '
+                  'sound when playing.',
+            );
+            _activeSounds.add(newSound);
           } else {
+            // other errors are not recoverable.
             loadedFileCompleter.completeError(
               SoLoudCppException.fromPlayerError(error),
             );
@@ -488,28 +481,18 @@ interface class SoLoud {
     int hash,
   ) {
     final newSound = AudioSource(SoundHash(hash));
-    final alreadyLoaded = _activeSounds
-            .where((sound) => sound.soundHash == newSound.soundHash)
-            .length ==
-        1;
     _logPlayerError(error, from: 'loadFile() result');
     if (error == PlayerErrors.noError) {
-      if (!alreadyLoaded) {
-        _activeSounds.add(newSound);
-      }
+      _activeSounds.add(newSound);
     } else if (error == PlayerErrors.fileAlreadyLoaded) {
       // If we are here, the file has been already loaded on C++ side.
-      // In any case return the existing sound.
-      // Check if it is already in [_activeSounds], if not add it.
-      if (alreadyLoaded) {
-        _log.warning(
-          () => "Sound '$completeFileName' was already "
-              'loaded. Prefer loading only once, and reusing the loaded '
-              'sound when playing.',
-        );
-      } else {
-        _activeSounds.add(newSound);
-      }
+      // Add it anyway and display the warning.
+      _log.warning(
+        () => "Sound '$completeFileName' was already "
+            'loaded. Prefer loading only once, and reusing the loaded '
+            'sound when playing.',
+      );
+      _activeSounds.add(newSound);
     } else {
       throw SoLoudCppException.fromPlayerError(error);
     }
@@ -1240,6 +1223,12 @@ interface class SoLoud {
   /// Play an already-loaded sound identified by [sound]. Creates a new
   /// playing instance of the sound, and returns its [SoundHandle].
   ///
+  /// [busId] is the bus on which to play the sound. By default it is 0,
+  /// which means the sound will be played on the default player engine. If
+  /// a mixing bus has already been created, you can provide its [busId] to
+  /// play the sound on that bus or you can use the comfy [Bus.play] method.
+  /// See [Bus] for more information.
+  ///
   /// You can provide the [volume], where `1.0` is full volume and `0.0`
   /// is silent. Defaults to `1.0`.
   ///
@@ -1274,8 +1263,10 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudSoundHashNotFoundDartException] if the given [sound]
   /// is not found.
+  // TODO(alnitak): make this sync
   Future<SoundHandle> play(
     AudioSource sound, {
+    int busId = 0,
     double volume = 1,
     double pan = 0,
     bool paused = false,
@@ -1287,6 +1278,7 @@ interface class SoLoud {
     }
     final ret = _controller.soLoudFFI.play(
       sound.soundHash,
+      busId: busId,
       volume: volume,
       pan: pan,
       paused: paused,
@@ -1376,6 +1368,18 @@ interface class SoLoud {
       throw const SoLoudNotInitializedException();
     }
     return _controller.soLoudFFI.getRelativePlaySpeed(handle);
+  }
+
+  /// Gets the approximate volume for output per output
+  /// channel (i.e, per speaker).
+  ///
+  /// [channel] the channel.
+  /// Return zero for invalid parameters.
+  double getApproximateVolume(int channel) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    return _controller.soLoudFFI.getApproximateVolume(channel);
   }
 
   /// Stop a currently playing sound identified by [handle]
@@ -2466,6 +2470,12 @@ interface class SoLoud {
   /// The parameters [velX], [velY] and [velZ] are the audio source's velocity.
   /// Defaults to `(0, 0, 0)`.
   ///
+  /// [busId] is the bus on which to play the sound. By default it is 0,
+  /// which means the sound will be played on the default player engine. If
+  /// a mixing bus has already been created, you can provide its [busId] to
+  /// play the sound on that bus or you can use the comfy [Bus.play] method.
+  /// See [Bus] for more information.
+  ///
   /// The rest of the parameters are equivalent to the non-3D version of this
   /// method ([play]).
   ///
@@ -2482,6 +2492,7 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudBufferStreamCanBePlayedOnlyOnceCppException] if we try to
   /// play a BufferStream using `release` buffer type more than once.
+  // TODO(alnitak): make this sync
   Future<SoundHandle> play3d(
     AudioSource sound,
     double posX,
@@ -2490,6 +2501,7 @@ interface class SoLoud {
     double velX = 0,
     double velY = 0,
     double velZ = 0,
+    int busId = 0,
     double volume = 1,
     bool paused = false,
     bool looping = false,
@@ -2507,6 +2519,7 @@ interface class SoLoud {
       velX: velX,
       velY: velY,
       velZ: velZ,
+      busId: busId,
       volume: volume,
       paused: paused,
       looping: looping,
@@ -2755,7 +2768,6 @@ interface class SoLoud {
   /// occurred when reading PCM frames.
   ///
   /// See also [readSamplesFromMem].
-  @experimental
   Future<Float32List> readSamplesFromFile(
     String completeFileName,
     int numSamplesNeeded, {
@@ -2826,7 +2838,6 @@ interface class SoLoud {
   /// occurred when reading PCM frames.
   ///
   /// See also [readSamplesFromFile].
-  @experimental
   Future<Float32List> readSamplesFromMem(
     Uint8List buffer,
     int numSamplesNeeded, {
@@ -2849,6 +2860,21 @@ interface class SoLoud {
 
     return samples;
   }
+
+  /////////////////////////////////////////
+  /// Mixing Bus
+  /// How it works:
+  /// https://solhsa.com/soloud/mixbus.html
+  /// https://solhsa.com/soloud/soloud_20200207.html#mixing-bus
+  /////////////////////////////////////////
+
+  /// Create a new mixing bus.
+  /// 
+  /// [name] optional name of the bus to later identify it.
+  Bus createMixingBus({String name = ''}) {
+    return Bus(name: name);
+  }
+
 
   /// Utility method that logs a [Level.SEVERE] message if [playerError]
   /// is anything other than [PlayerErrors.noError] or [Level.INFO] if

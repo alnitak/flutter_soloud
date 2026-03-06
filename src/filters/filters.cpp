@@ -2,6 +2,7 @@
 #include "../common.h"
 #include "../active_sound.h" // Add this include for complete type definition
 
+#include <cstddef>
 #include <stdarg.h>
 
 #include "../soloud/include/soloud_biquadresonantfilter.h"
@@ -20,8 +21,8 @@
 #include "limiter.h"
 #include "parametric_eq_filter.h"
 
-Filters::Filters(SoLoud::Soloud *soloud, ActiveSound *sound)
-    : mSoloud(soloud), mSound(sound) {}
+Filters::Filters(SoLoud::Soloud *soloud, ActiveSound *sound, BusData *busData)
+    : mSoloud(soloud), mSound(sound), mBusData(busData) {}
 
 int Filters::isFilterActive(FilterType filter) {
   for (int i = 0; i < filters.size(); i++) {
@@ -186,10 +187,12 @@ PlayerErrors Filters::addFilter(FilterType filterType) {
     return filterNotFound;
   }
 
-  if (mSound == nullptr) {
+  if (mSound == nullptr && mBusData == nullptr) {
     mSoloud->setGlobalFilter(filtersSize, newFilter);
-  } else {
+  } else if (mSound != nullptr) {
     mSound->sound.get()->setFilter(filtersSize, newFilter);
+  } else {
+    mBusData->bus.setFilter(filtersSize, newFilter);
   }
   
   // Create FilterObject taking ownership of raw pointer
@@ -206,24 +209,32 @@ bool Filters::removeFilter(FilterType filterType) {
   if (index < 0)
     return false;
 
-  if (mSound == nullptr) {
+  if (mSound == nullptr && mBusData == nullptr) {
     mSoloud->setGlobalFilter(index, 0);
-  } else {
+  } else if (mSound != nullptr) {
     mSound->sound.get()->setFilter(index, 0);
+  } else {
+    mBusData->bus.setFilter(index, 0);
   }
 
   filters[index].get()->filter.reset();
 
   /// shift filters down by 1 from [index]
   for (int i = index; i < filters.size() - 1; i++) {
-    if (mSound == nullptr)
+    if (mSound == nullptr && mBusData == nullptr) {
       mSoloud->setGlobalFilter(i + 1, 0);
-    else
+    } else if (mSound != nullptr) {
       mSound->sound.get()->setFilter(i + 1, 0);
-    if (mSound == nullptr)
+    } else {
+      mBusData->bus.setFilter(i + 1, 0);
+    }
+    if (mSound == nullptr && mBusData == nullptr) {
       mSoloud->setGlobalFilter(i, filters[i + 1].get()->filter.get());
-    else
+    } else if (mSound != nullptr) {
       mSound->sound.get()->setFilter(i, filters[i + 1].get()->filter.get());
+    } else {
+      mBusData->bus.setFilter(i, filters[i + 1].get()->filter.get());
+    }
   }
   /// remove the filter from the list
   filters.erase(filters.begin() + index);
@@ -236,7 +247,13 @@ void Filters::setFilterParams(SoLoud::handle handle, FilterType filterType,
   int index = isFilterActive(filterType);
   if (index < 0)
     return;
-  mSoloud->setFilterParameter(handle, index, attributeId, value);
+  if (mBusData != nullptr) {
+    /// bus filter
+    mSoloud->setFilterParameter(mBusData->handle, index, attributeId, value);
+  } else {
+    /// global or single sound filter
+    mSoloud->setFilterParameter(handle, index, attributeId, value);
+  }
 }
 
 float Filters::getFilterParams(SoLoud::handle handle, FilterType filterType,

@@ -24,18 +24,19 @@ enum BassBoostEnum {
 }
 
 abstract class _BassBoostInternal extends FilterBase {
-  const _BassBoostInternal(SoundHash? soundHash)
-      : super(FilterType.bassboostFilter, soundHash);
+  const _BassBoostInternal(SoundHash? soundHash, int? busId)
+      : super(FilterType.bassboostFilter, soundHash, busId);
 
   BassBoostEnum get queryWet => BassBoostEnum.wet;
   BassBoostEnum get queryBoost => BassBoostEnum.boost;
 }
 
 class BassBoostSingle extends _BassBoostInternal {
-  BassBoostSingle(super.soundHash);
+  BassBoostSingle(super.soundHash, super.busId);
 
   FilterParam wet({SoundHandle? soundHandle}) => FilterParam(
         soundHandle,
+        super.busId,
         filterType,
         BassBoostEnum.wet.index,
         BassBoostEnum.wet.min,
@@ -44,6 +45,7 @@ class BassBoostSingle extends _BassBoostInternal {
 
   FilterParam boost({SoundHandle? soundHandle}) => FilterParam(
         soundHandle,
+        super.busId,
         filterType,
         BassBoostEnum.boost.index,
         BassBoostEnum.boost.min,
@@ -52,9 +54,10 @@ class BassBoostSingle extends _BassBoostInternal {
 }
 
 class BassBoostGlobal extends _BassBoostInternal {
-  const BassBoostGlobal() : super(null);
+  const BassBoostGlobal() : super(null, null);
 
   FilterParam get wet => FilterParam(
+        null,
         null,
         filterType,
         BassBoostEnum.wet.index,
@@ -63,6 +66,7 @@ class BassBoostGlobal extends _BassBoostInternal {
       );
 
   FilterParam get boost => FilterParam(
+        null,
         null,
         filterType,
         BassBoostEnum.boost.index,

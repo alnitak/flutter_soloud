@@ -30,8 +30,8 @@ enum FreeverbEnum {
 }
 
 abstract class _FreeverbInternal extends FilterBase {
-  const _FreeverbInternal(SoundHash? soundHash)
-      : super(FilterType.freeverbFilter, soundHash);
+  const _FreeverbInternal(SoundHash? soundHash, int? busId)
+      : super(FilterType.freeverbFilter, soundHash, busId);
 
   FreeverbEnum get queryWet => FreeverbEnum.wet;
   FreeverbEnum get queryFreeze => FreeverbEnum.freeze;
@@ -41,10 +41,11 @@ abstract class _FreeverbInternal extends FilterBase {
 }
 
 class FreeverbSingle extends _FreeverbInternal {
-  FreeverbSingle(super.soundHash);
+  FreeverbSingle(super.soundHash, super.busId);
 
   FilterParam wet({SoundHandle? soundHandle}) => FilterParam(
         soundHandle,
+        super.busId,
         filterType,
         FreeverbEnum.wet.index,
         FreeverbEnum.wet.min,
@@ -53,6 +54,7 @@ class FreeverbSingle extends _FreeverbInternal {
 
   FilterParam freeze({SoundHandle? soundHandle}) => FilterParam(
         soundHandle,
+        super.busId,
         filterType,
         FreeverbEnum.freeze.index,
         FreeverbEnum.freeze.min,
@@ -61,6 +63,7 @@ class FreeverbSingle extends _FreeverbInternal {
 
   FilterParam roomSize({SoundHandle? soundHandle}) => FilterParam(
         soundHandle,
+        super.busId,
         filterType,
         FreeverbEnum.roomSize.index,
         FreeverbEnum.roomSize.min,
@@ -69,6 +72,7 @@ class FreeverbSingle extends _FreeverbInternal {
 
   FilterParam damp({SoundHandle? soundHandle}) => FilterParam(
         soundHandle,
+        super.busId,
         filterType,
         FreeverbEnum.damp.index,
         FreeverbEnum.damp.min,
@@ -77,6 +81,7 @@ class FreeverbSingle extends _FreeverbInternal {
 
   FilterParam width({SoundHandle? soundHandle}) => FilterParam(
         soundHandle,
+        super.busId,
         filterType,
         FreeverbEnum.width.index,
         FreeverbEnum.width.min,
@@ -85,9 +90,10 @@ class FreeverbSingle extends _FreeverbInternal {
 }
 
 class FreeverbGlobal extends _FreeverbInternal {
-  const FreeverbGlobal() : super(null);
+  const FreeverbGlobal() : super(null, null);
 
   FilterParam get wet => FilterParam(
+        null,
         null,
         filterType,
         FreeverbEnum.wet.index,
@@ -97,6 +103,7 @@ class FreeverbGlobal extends _FreeverbInternal {
 
   FilterParam get freeze => FilterParam(
         null,
+        null,
         filterType,
         FreeverbEnum.freeze.index,
         FreeverbEnum.freeze.min,
@@ -104,6 +111,7 @@ class FreeverbGlobal extends _FreeverbInternal {
       );
 
   FilterParam get roomSize => FilterParam(
+        null,
         null,
         filterType,
         FreeverbEnum.roomSize.index,
@@ -113,6 +121,7 @@ class FreeverbGlobal extends _FreeverbInternal {
 
   FilterParam get damp => FilterParam(
         null,
+        null,
         filterType,
         FreeverbEnum.damp.index,
         FreeverbEnum.damp.min,
@@ -120,6 +129,7 @@ class FreeverbGlobal extends _FreeverbInternal {
       );
 
   FilterParam get width => FilterParam(
+        null,
         null,
         filterType,
         FreeverbEnum.width.index,

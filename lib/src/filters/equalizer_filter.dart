@@ -38,8 +38,8 @@ enum EqualizerEnum {
 }
 
 abstract class _EqualizerInternal extends FilterBase {
-  const _EqualizerInternal(SoundHash? soundHash)
-      : super(FilterType.eqFilter, soundHash);
+  const _EqualizerInternal(SoundHash? soundHash, int? busId)
+      : super(FilterType.eqFilter, soundHash, busId);
 
   EqualizerEnum get queryWet => EqualizerEnum.wet;
   EqualizerEnum get queryBand1 => EqualizerEnum.band1;
@@ -53,10 +53,11 @@ abstract class _EqualizerInternal extends FilterBase {
 }
 
 class EqualizerSingle extends _EqualizerInternal {
-  EqualizerSingle(super.soundHash);
+  EqualizerSingle(super.soundHash, super.busId);
 
   FilterParam wet({SoundHandle? soundHandle}) => FilterParam(
         soundHandle,
+        super.busId,
         filterType,
         EqualizerEnum.wet.index,
         EqualizerEnum.wet.min,
@@ -65,6 +66,7 @@ class EqualizerSingle extends _EqualizerInternal {
 
   FilterParam band1({SoundHandle? soundHandle}) => FilterParam(
         soundHandle,
+        super.busId,
         filterType,
         EqualizerEnum.band1.index,
         EqualizerEnum.band1.min,
@@ -73,6 +75,7 @@ class EqualizerSingle extends _EqualizerInternal {
 
   FilterParam band2({SoundHandle? soundHandle}) => FilterParam(
         soundHandle,
+        super.busId,
         filterType,
         EqualizerEnum.band2.index,
         EqualizerEnum.band2.min,
@@ -81,6 +84,7 @@ class EqualizerSingle extends _EqualizerInternal {
 
   FilterParam band3({SoundHandle? soundHandle}) => FilterParam(
         soundHandle,
+        super.busId,
         filterType,
         EqualizerEnum.band3.index,
         EqualizerEnum.band3.min,
@@ -89,6 +93,7 @@ class EqualizerSingle extends _EqualizerInternal {
 
   FilterParam band4({SoundHandle? soundHandle}) => FilterParam(
         soundHandle,
+        super.busId,
         filterType,
         EqualizerEnum.band4.index,
         EqualizerEnum.band4.min,
@@ -97,6 +102,7 @@ class EqualizerSingle extends _EqualizerInternal {
 
   FilterParam band5({SoundHandle? soundHandle}) => FilterParam(
         soundHandle,
+        super.busId,
         filterType,
         EqualizerEnum.band5.index,
         EqualizerEnum.band5.min,
@@ -105,6 +111,7 @@ class EqualizerSingle extends _EqualizerInternal {
 
   FilterParam band6({SoundHandle? soundHandle}) => FilterParam(
         soundHandle,
+        super.busId,
         filterType,
         EqualizerEnum.band6.index,
         EqualizerEnum.band6.min,
@@ -113,6 +120,7 @@ class EqualizerSingle extends _EqualizerInternal {
 
   FilterParam band7({SoundHandle? soundHandle}) => FilterParam(
         soundHandle,
+        super.busId,
         filterType,
         EqualizerEnum.band7.index,
         EqualizerEnum.band7.min,
@@ -121,6 +129,7 @@ class EqualizerSingle extends _EqualizerInternal {
 
   FilterParam band8({SoundHandle? soundHandle}) => FilterParam(
         soundHandle,
+        super.busId,
         filterType,
         EqualizerEnum.band8.index,
         EqualizerEnum.band8.min,
@@ -129,9 +138,10 @@ class EqualizerSingle extends _EqualizerInternal {
 }
 
 class EqualizerGlobal extends _EqualizerInternal {
-  const EqualizerGlobal() : super(null);
+  const EqualizerGlobal() : super(null, null);
 
   FilterParam get wet => FilterParam(
+        null,
         null,
         filterType,
         EqualizerEnum.wet.index,
@@ -141,6 +151,7 @@ class EqualizerGlobal extends _EqualizerInternal {
 
   FilterParam get band1 => FilterParam(
         null,
+        null,
         filterType,
         EqualizerEnum.band1.index,
         EqualizerEnum.band1.min,
@@ -148,6 +159,7 @@ class EqualizerGlobal extends _EqualizerInternal {
       );
 
   FilterParam get band2 => FilterParam(
+        null,
         null,
         filterType,
         EqualizerEnum.band2.index,
@@ -157,6 +169,7 @@ class EqualizerGlobal extends _EqualizerInternal {
 
   FilterParam get band3 => FilterParam(
         null,
+        null,
         filterType,
         EqualizerEnum.band3.index,
         EqualizerEnum.band3.min,
@@ -164,6 +177,7 @@ class EqualizerGlobal extends _EqualizerInternal {
       );
 
   FilterParam get band4 => FilterParam(
+        null,
         null,
         filterType,
         EqualizerEnum.band4.index,
@@ -173,6 +187,7 @@ class EqualizerGlobal extends _EqualizerInternal {
 
   FilterParam get band5 => FilterParam(
         null,
+        null,
         filterType,
         EqualizerEnum.band5.index,
         EqualizerEnum.band5.min,
@@ -180,6 +195,7 @@ class EqualizerGlobal extends _EqualizerInternal {
       );
 
   FilterParam get band6 => FilterParam(
+        null,
         null,
         filterType,
         EqualizerEnum.band6.index,
@@ -189,6 +205,7 @@ class EqualizerGlobal extends _EqualizerInternal {
 
   FilterParam get band7 => FilterParam(
         null,
+        null,
         filterType,
         EqualizerEnum.band7.index,
         EqualizerEnum.band7.min,
@@ -196,6 +213,7 @@ class EqualizerGlobal extends _EqualizerInternal {
       );
 
   FilterParam get band8 => FilterParam(
+        null,
         null,
         filterType,
         EqualizerEnum.band8.index,

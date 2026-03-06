@@ -27,8 +27,8 @@ enum PitchShiftEnum {
 }
 
 abstract class _PitchShiftInternal extends FilterBase {
-  const _PitchShiftInternal(SoundHash? soundHash)
-      : super(FilterType.pitchShiftFilter, soundHash);
+  const _PitchShiftInternal(SoundHash? soundHash, int? busId)
+      : super(FilterType.pitchShiftFilter, soundHash, busId);
 
   PitchShiftEnum get queryWet => PitchShiftEnum.wet;
   PitchShiftEnum get queryShift => PitchShiftEnum.shift;
@@ -36,10 +36,11 @@ abstract class _PitchShiftInternal extends FilterBase {
 }
 
 class PitchShiftSingle extends _PitchShiftInternal {
-  PitchShiftSingle(super.soundHash);
+  PitchShiftSingle(super.soundHash, super.busId);
 
   FilterParam wet({SoundHandle? soundHandle}) => FilterParam(
         soundHandle,
+        super.busId,
         filterType,
         PitchShiftEnum.wet.index,
         PitchShiftEnum.wet.min,
@@ -56,6 +57,7 @@ class PitchShiftSingle extends _PitchShiftInternal {
   /// ```
   FilterParam shift({SoundHandle? soundHandle}) => FilterParam(
         soundHandle,
+        super.busId,
         filterType,
         PitchShiftEnum.shift.index,
         PitchShiftEnum.shift.min,
@@ -72,6 +74,7 @@ class PitchShiftSingle extends _PitchShiftInternal {
   /// ```
   FilterParam semitones({SoundHandle? soundHandle}) => FilterParam(
         soundHandle,
+        super.busId,
         filterType,
         PitchShiftEnum.semitones.index,
         PitchShiftEnum.semitones.min,
@@ -90,9 +93,10 @@ class PitchShiftSingle extends _PitchShiftInternal {
 }
 
 class PitchShiftGlobal extends _PitchShiftInternal {
-  const PitchShiftGlobal() : super(null);
+  const PitchShiftGlobal() : super(null, null);
 
   FilterParam get wet => FilterParam(
+        null,
         null,
         filterType,
         PitchShiftEnum.wet.index,
@@ -110,6 +114,7 @@ class PitchShiftGlobal extends _PitchShiftInternal {
   /// ```
   FilterParam get shift => FilterParam(
         null,
+        null,
         filterType,
         PitchShiftEnum.shift.index,
         PitchShiftEnum.shift.min,
@@ -125,6 +130,7 @@ class PitchShiftGlobal extends _PitchShiftInternal {
   /// semitones = 12 * log2f(value);
   /// ```
   FilterParam get semitones => FilterParam(
+        null,
         null,
         filterType,
         PitchShiftEnum.semitones.index,

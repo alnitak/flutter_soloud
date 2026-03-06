@@ -435,8 +435,14 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }
 
   @override
+  double getApproximateVolume(int channel) {
+    return wasmGetApproximateVolume(channel);
+  }
+
+  @override
   ({PlayerErrors error, SoundHandle newHandle}) play(
     SoundHash soundHash, {
+    int busId = 0,
     double volume = 1,
     double pan = 0,
     bool paused = false,
@@ -446,6 +452,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     final handlePtr = wasmMalloc(4); // 4 bytes for an int32
     final result = wasmPlay(
       soundHash.hash,
+      busId,
       volume,
       pan,
       paused,
@@ -787,9 +794,11 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     double to,
     double time, {
     SoundHandle? handle,
+    int? busId,
   }) {
     final e = wasmFadeFilterParameter(
       handle?.id ?? 0,
+      busId ?? 0,
       filterType.index,
       attributeId,
       to,
@@ -806,9 +815,11 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     double to,
     double time, {
     SoundHandle? handle,
+    int? busId,
   }) {
     final e = wasmOscillateFilterParameter(
       handle?.id ?? 0,
+      busId ?? 0,
       filterType.index,
       attributeId,
       from,
@@ -826,10 +837,11 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   ({PlayerErrors error, int index}) isFilterActive(
     FilterType filterType, {
     SoundHash? soundHash,
+    int? busId,
   }) {
     // ignore: omit_local_variable_types
     final idPtr = wasmMalloc(4); // 4 bytes for an int32
-    final e = wasmIsFilterActive(soundHash?.hash ?? 0, filterType.index, idPtr);
+    final e = wasmIsFilterActive(soundHash?.hash ?? 0,  busId ?? 0, filterType.index, idPtr);
     final index = wasmGetI32Value(idPtr, 'i32');
     final ret = (error: PlayerErrors.values[e], index: index);
     wasmFree(idPtr);
@@ -866,8 +878,9 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   PlayerErrors addFilter(
     FilterType filterType, {
     SoundHash? soundHash,
+    int? busId,
   }) {
-    final e = wasmAddFilter(soundHash?.hash ?? 0, filterType.index);
+    final e = wasmAddFilter(soundHash?.hash ?? 0,  busId ?? 0, filterType.index);
     return PlayerErrors.values[e];
   }
 
@@ -875,8 +888,9 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   PlayerErrors removeFilter(
     FilterType filterType, {
     SoundHash? soundHash,
+    int? busId,
   }) {
-    final e = wasmRemoveFilter(soundHash?.hash ?? 0, filterType.index);
+    final e = wasmRemoveFilter(soundHash?.hash ?? 0,  busId ?? 0, filterType.index);
     return PlayerErrors.values[e];
   }
 
@@ -886,9 +900,11 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     int attributeId,
     double value, {
     SoundHandle? handle,
+    int? busId,
   }) {
     final e = wasmSetFilterParams(
       handle?.id ?? 0,
+      busId ?? 0,
       filterType.index,
       attributeId,
       value,
@@ -901,10 +917,12 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     FilterType filterType,
     int attributeId, {
     SoundHandle? handle,
+    int? busId,
   }) {
     final paramValuePtr = wasmMalloc(4);
     final error = wasmGetFilterParams(
       handle?.id ?? 0,
+      busId ?? 0,
       filterType.index,
       attributeId,
       paramValuePtr,
@@ -924,6 +942,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     double posX,
     double posY,
     double posZ, {
+    int busId = 0,
     double velX = 0,
     double velY = 0,
     double velZ = 0,
@@ -935,6 +954,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     final handlePtr = wasmMalloc(4); // 4 bytes for an int32
     final result = wasmPlay3d(
       soundHash.hash,
+      busId,
       posX,
       posY,
       posZ,
@@ -1149,5 +1169,52 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
       );
     }
     return samples;
+  }
+
+  /////////////////////////////////////////
+  /// Mixing Bus
+  /// https://solhsa.com/soloud/mixbus.html
+  /// https://solhsa.com/soloud/soloud_20200207.html#mixing-bus
+  ///
+  /// A mixing bus is a special audio source that plays other audio sources
+  /// through it. Useful for grouped volume control, per-bus filtering,
+  /// and per-bus visualization (FFT/wave). Busses can also be nested.
+  /// Only one instance of a bus can play at a time.
+  /// Busses are protected by default and marked as "must tick".
+  /////////////////////////////////////////
+
+  @override
+  int createBus() {
+    return wasmCreateBus();
+  }
+
+  @override
+  void destroyBus(int busId) {
+    return wasmDestroyBus(busId);
+  }
+
+  @override
+  int busPlayOnEngine(int busId, double volume, bool paused) {
+    return wasmBusPlayOnEngine(busId, volume, paused ? 1 : 0);
+  }
+
+  @override
+  void busSetChannels(int busId, int channels) {
+    return wasmBusSetChannels(busId, channels);
+  }
+
+  @override
+  double busGetApproximateVolume(int busId, int channel) {
+    return wasmBusGetApproximateVolume(busId, channel);
+  }
+
+  @override
+  void busAnnexSound(int busId, int voiceHandle) {
+    return wasmBusAnnexSound(busId, voiceHandle);
+  }
+
+  @override
+  int busGetActiveVoiceCount(int busId) {
+    return wasmBusGetActiveVoiceCount(busId);
   }
 }

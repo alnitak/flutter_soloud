@@ -1,4 +1,5 @@
 #### 3.5.0-pre.X (XX Xxx 2026)
+- added `getApproximateVolume` to get the approximate volume of a channel of the player.
 - now using cmake to compile the plugin in release mode for macOS and iOS
 - made a common CMakeLists in src folder
 - fixed a possible crash during app shutdown

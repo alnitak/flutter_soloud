@@ -45,8 +45,8 @@ enum BiquadResonantEnum {
 }
 
 abstract class _BiquadResonantInternal extends FilterBase {
-  const _BiquadResonantInternal(SoundHash? soundHash)
-      : super(FilterType.biquadResonantFilter, soundHash);
+  const _BiquadResonantInternal(SoundHash? soundHash, int? busId)
+      : super(FilterType.biquadResonantFilter, soundHash, busId);
 
   BiquadResonantEnum get queryWet => BiquadResonantEnum.wet;
   BiquadResonantEnum get queryType => BiquadResonantEnum.type;
@@ -55,10 +55,11 @@ abstract class _BiquadResonantInternal extends FilterBase {
 }
 
 class BiquadResonantSingle extends _BiquadResonantInternal {
-  BiquadResonantSingle(super.soundHash);
+  BiquadResonantSingle(super.soundHash, super.busId);
 
   FilterParam wet({SoundHandle? soundHandle}) => FilterParam(
         soundHandle,
+        super.busId,
         filterType,
         BiquadResonantEnum.wet.index,
         BiquadResonantEnum.wet.min,
@@ -67,6 +68,7 @@ class BiquadResonantSingle extends _BiquadResonantInternal {
 
   FilterParam type({SoundHandle? soundHandle}) => FilterParam(
         soundHandle,
+        super.busId,
         filterType,
         BiquadResonantEnum.type.index,
         BiquadResonantEnum.type.min,
@@ -75,6 +77,7 @@ class BiquadResonantSingle extends _BiquadResonantInternal {
 
   FilterParam frequency({SoundHandle? soundHandle}) => FilterParam(
         soundHandle,
+        super.busId,
         filterType,
         BiquadResonantEnum.frequency.index,
         BiquadResonantEnum.frequency.min,
@@ -83,6 +86,7 @@ class BiquadResonantSingle extends _BiquadResonantInternal {
 
   FilterParam resonance({SoundHandle? soundHandle}) => FilterParam(
         soundHandle,
+        super.busId,
         filterType,
         BiquadResonantEnum.resonance.index,
         BiquadResonantEnum.resonance.min,
@@ -91,9 +95,10 @@ class BiquadResonantSingle extends _BiquadResonantInternal {
 }
 
 class BiquadResonantGlobal extends _BiquadResonantInternal {
-  const BiquadResonantGlobal() : super(null);
+  const BiquadResonantGlobal() : super(null, null);
 
   FilterParam get wet => FilterParam(
+        null,
         null,
         filterType,
         BiquadResonantEnum.wet.index,
@@ -103,6 +108,7 @@ class BiquadResonantGlobal extends _BiquadResonantInternal {
 
   FilterParam get type => FilterParam(
         null,
+        null,
         filterType,
         BiquadResonantEnum.type.index,
         BiquadResonantEnum.type.min,
@@ -111,6 +117,7 @@ class BiquadResonantGlobal extends _BiquadResonantInternal {
 
   FilterParam get frequency => FilterParam(
         null,
+        null,
         filterType,
         BiquadResonantEnum.frequency.index,
         BiquadResonantEnum.frequency.min,
@@ -118,6 +125,7 @@ class BiquadResonantGlobal extends _BiquadResonantInternal {
       );
 
   FilterParam get resonance => FilterParam(
+        null,
         null,
         filterType,
         BiquadResonantEnum.resonance.index,

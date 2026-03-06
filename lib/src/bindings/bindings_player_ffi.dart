@@ -743,9 +743,6 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   late final _setRelativePlaySpeed =
       _setRelativePlaySpeedPtr.asFunction<void Function(int, double)>();
 
-  /// Return the current play speed.
-  ///
-  /// [handle] the sound handle
   @override
   double getRelativePlaySpeed(SoundHandle handle) {
     return _getRelativePlaySpeed(handle.id);
@@ -758,8 +755,20 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       _getRelativePlaySpeedPtr.asFunction<double Function(int)>();
 
   @override
+  double getApproximateVolume(int channel) {
+    return _getApproximateVolume(channel);
+  }
+
+  late final _getApproximateVolumePtr =
+      _lookup<ffi.NativeFunction<ffi.Float Function(ffi.UnsignedInt)>>(
+          'getApproximateVolume');
+  late final _getApproximateVolume =
+      _getApproximateVolumePtr.asFunction<double Function(int)>();
+
+  @override
   ({PlayerErrors error, SoundHandle newHandle}) play(
     SoundHash soundHash, {
+    int busId = 0,
     double volume = 1,
     double pan = 0,
     bool paused = false,
@@ -770,6 +779,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     final hash = soundHash.hash;
     final e = _play(
       hash,
+      busId,
       volume,
       pan,
       paused ? 1 : 0,
@@ -785,10 +795,17 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
 
   late final _playPtr = _lookup<
       ffi.NativeFunction<
-          ffi.Int32 Function(ffi.UnsignedInt, ffi.Float, ffi.Float, ffi.Int,
-              ffi.Int, ffi.Double, ffi.Pointer<ffi.UnsignedInt>)>>('play');
+          ffi.Int32 Function(
+              ffi.UnsignedInt,
+              ffi.UnsignedInt,
+              ffi.Float,
+              ffi.Float,
+              ffi.Int,
+              ffi.Int,
+              ffi.Double,
+              ffi.Pointer<ffi.UnsignedInt>)>>('play');
   late final _play = _playPtr.asFunction<
-      int Function(int, double, double, int, int, double,
+      int Function(int, int, double, double, int, int, double,
           ffi.Pointer<ffi.UnsignedInt>)>();
 
   @override
@@ -1431,9 +1448,11 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     double to,
     double time, {
     SoundHandle? handle,
+    int? busId,
   }) {
     final e = _fadeFilterParameter(
       handle?.id ?? 0,
+      busId ?? 0,
       filterType.index,
       attributeId,
       to,
@@ -1444,10 +1463,10 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
 
   late final _fadeFilterParameterPtr = _lookup<
       ffi.NativeFunction<
-          ffi.Int32 Function(ffi.UnsignedInt, ffi.Int32, ffi.Int, ffi.Float,
-              ffi.Float)>>('fadeFilterParameter');
+          ffi.Int32 Function(ffi.UnsignedInt, ffi.UnsignedInt, ffi.Int32,
+              ffi.Int, ffi.Float, ffi.Float)>>('fadeFilterParameter');
   late final _fadeFilterParameter = _fadeFilterParameterPtr
-      .asFunction<int Function(int, int, int, double, double)>();
+      .asFunction<int Function(int, int, int, int, double, double)>();
 
   @override
   PlayerErrors oscillateFilterParameter(
@@ -1457,9 +1476,11 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     double to,
     double time, {
     SoundHandle? handle,
+    int? busId,
   }) {
     final e = _oscillateFilterParameter(
       handle?.id ?? 0,
+      busId ?? 0,
       filterType.index,
       attributeId,
       from,
@@ -1471,10 +1492,16 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
 
   late final _oscillateFilterParameterPtr = _lookup<
       ffi.NativeFunction<
-          ffi.Int32 Function(ffi.UnsignedInt, ffi.Int32, ffi.Int, ffi.Float,
-              ffi.Float, ffi.Float)>>('oscillateFilterParameter');
+          ffi.Int32 Function(
+              ffi.UnsignedInt,
+              ffi.UnsignedInt,
+              ffi.Int32,
+              ffi.Int,
+              ffi.Float,
+              ffi.Float,
+              ffi.Float)>>('oscillateFilterParameter');
   late final _oscillateFilterParameter = _oscillateFilterParameterPtr
-      .asFunction<int Function(int, int, int, double, double, double)>();
+      .asFunction<int Function(int, int, int, int, double, double, double)>();
 
   // ///////////////////////////////////////
   //  Filters
@@ -1484,9 +1511,11 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   ({PlayerErrors error, int index}) isFilterActive(
     FilterType filterType, {
     SoundHash? soundHash,
+    int? busId,
   }) {
     final ffi.Pointer<ffi.Int> id = calloc(ffi.sizeOf<ffi.Int>());
-    final e = _isFilterActive(soundHash?.hash ?? 0, filterType.index, id);
+    final e =
+        _isFilterActive(soundHash?.hash ?? 0, busId ?? 0, filterType.index, id);
     final ret = (error: PlayerErrors.values[e], index: id.value);
     calloc.free(id);
     return ret;
@@ -1494,10 +1523,10 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
 
   late final _isFilterActivePtr = _lookup<
       ffi.NativeFunction<
-          ffi.Int32 Function(ffi.UnsignedInt, ffi.Int32,
+          ffi.Int32 Function(ffi.UnsignedInt, ffi.UnsignedInt, ffi.Int32,
               ffi.Pointer<ffi.Int>)>>('isFilterActive');
   late final _isFilterActive = _isFilterActivePtr
-      .asFunction<int Function(int, int, ffi.Pointer<ffi.Int>)>();
+      .asFunction<int Function(int, int, int, ffi.Pointer<ffi.Int>)>();
 
   @override
   ({PlayerErrors error, List<String> names}) getFilterParamNames(
@@ -1542,30 +1571,35 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   PlayerErrors addFilter(
     FilterType filterType, {
     SoundHash? soundHash,
+    int? busId,
   }) {
-    final e = _addFilter(soundHash?.hash ?? 0, filterType.index);
+    final e = _addFilter(soundHash?.hash ?? 0, busId ?? 0, filterType.index);
     return PlayerErrors.values[e];
   }
 
   late final _addFilterPtr = _lookup<
-          ffi.NativeFunction<ffi.Int32 Function(ffi.UnsignedInt, ffi.Int32)>>(
-      'addFilter');
-  late final _addFilter = _addFilterPtr.asFunction<int Function(int, int)>();
+      ffi.NativeFunction<
+          ffi.Int32 Function(
+              ffi.UnsignedInt, ffi.UnsignedInt, ffi.Int32)>>('addFilter');
+  late final _addFilter =
+      _addFilterPtr.asFunction<int Function(int, int, int)>();
 
   @override
   PlayerErrors removeFilter(
     FilterType filterType, {
     SoundHash? soundHash,
+    int? busId,
   }) {
-    final e = _removeFilter(soundHash?.hash ?? 0, filterType.index);
+    final e = _removeFilter(soundHash?.hash ?? 0, busId ?? 0, filterType.index);
     return PlayerErrors.values[e];
   }
 
   late final _removeFilterPtr = _lookup<
-          ffi.NativeFunction<ffi.Int32 Function(ffi.UnsignedInt, ffi.Int32)>>(
-      'removeFilter');
+      ffi.NativeFunction<
+          ffi.Int32 Function(
+              ffi.UnsignedInt, ffi.UnsignedInt, ffi.Int32)>>('removeFilter');
   late final _removeFilter =
-      _removeFilterPtr.asFunction<int Function(int, int)>();
+      _removeFilterPtr.asFunction<int Function(int, int, int)>();
 
   @override
   PlayerErrors setFilterParams(
@@ -1573,9 +1607,11 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     int attributeId,
     double value, {
     SoundHandle? handle,
+    int? busId,
   }) {
     final e = _setFilterParams(
       handle?.id ?? 0,
+      busId ?? 0,
       filterType.index,
       attributeId,
       value,
@@ -1585,20 +1621,22 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
 
   late final _setFilterParamsPtr = _lookup<
       ffi.NativeFunction<
-          ffi.Int32 Function(ffi.UnsignedInt, ffi.Int32, ffi.Int,
-              ffi.Float)>>('setFilterParams');
-  late final _setFilterParams =
-      _setFilterParamsPtr.asFunction<int Function(int, int, int, double)>();
+          ffi.Int32 Function(ffi.UnsignedInt, ffi.UnsignedInt, ffi.Int32,
+              ffi.Int, ffi.Float)>>('setFilterParams');
+  late final _setFilterParams = _setFilterParamsPtr
+      .asFunction<int Function(int, int, int, int, double)>();
 
   @override
   ({PlayerErrors error, double value}) getFilterParams(
     FilterType filterType,
     int attributeId, {
     SoundHandle? handle,
+    int? busId,
   }) {
     final ffi.Pointer<ffi.Float> paramValue = calloc();
     final error = _getFilterParams(
       handle?.id ?? 0,
+      busId ?? 0,
       filterType.index,
       attributeId,
       paramValue,
@@ -1610,10 +1648,10 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
 
   late final _getFilterParamsPtr = _lookup<
       ffi.NativeFunction<
-          ffi.Int32 Function(ffi.UnsignedInt, ffi.Int32, ffi.Int,
-              ffi.Pointer<ffi.Float>)>>('getFilterParams');
+          ffi.Int32 Function(ffi.UnsignedInt, ffi.UnsignedInt, ffi.Int32,
+              ffi.Int, ffi.Pointer<ffi.Float>)>>('getFilterParams');
   late final _getFilterParams = _getFilterParamsPtr
-      .asFunction<int Function(int, int, int, ffi.Pointer<ffi.Float>)>();
+      .asFunction<int Function(int, int, int, int, ffi.Pointer<ffi.Float>)>();
 
   /////////////////////////////////////////
   /// 3D audio methods
@@ -1625,6 +1663,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     double posX,
     double posY,
     double posZ, {
+    int busId = 0,
     double velX = 0,
     double velY = 0,
     double velZ = 0,
@@ -1636,6 +1675,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     final ffi.Pointer<ffi.UnsignedInt> handle = calloc();
     final e = _play3d(
       soundHash.hash,
+      busId,
       posX,
       posY,
       posZ,
@@ -1658,6 +1698,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       ffi.NativeFunction<
           ffi.UnsignedInt Function(
               ffi.UnsignedInt,
+              ffi.UnsignedInt,
               ffi.Float,
               ffi.Float,
               ffi.Float,
@@ -1670,8 +1711,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
               ffi.Double,
               ffi.Pointer<ffi.UnsignedInt>)>>('play3d');
   late final _play3d = _play3dPtr.asFunction<
-      int Function(int, double, double, double, double, double, double, double,
-          int, int, double, ffi.Pointer<ffi.UnsignedInt>)>();
+      int Function(int, int, double, double, double, double, double, double,
+          double, int, int, double, ffi.Pointer<ffi.UnsignedInt>)>();
 
   @override
   void set3dSoundSpeed(double speed) {
@@ -2045,4 +2086,216 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   late final _readSamplesFromMem = _readSamplesFromMemPtr.asFunction<
       int Function(ffi.Pointer<ffi.Uint8>, int, double, double, int, bool,
           ffi.Pointer<ffi.Float>)>();
+
+  /////////////////////////////////////////
+  /// Mixing Bus
+  /// https://solhsa.com/soloud/mixbus.html
+  /// https://solhsa.com/soloud/soloud_20200207.html#mixing-bus
+  ///
+  /// A mixing bus is a special audio source that plays other audio sources
+  /// through it. Useful for grouped volume control, per-bus filtering,
+  /// and per-bus visualization (FFT/wave). Busses can also be nested.
+  /// Only one instance of a bus can play at a time.
+  /// Busses are protected by default and marked as "must tick".
+  /////////////////////////////////////////
+
+  /// Create a new mixing bus.
+  /// Returns a unique bus ID (>0) to reference this bus in other calls.
+  @override
+  int createBus() {
+    return _createBus();
+  }
+
+  late final _createBusPtr =
+      _lookup<ffi.NativeFunction<ffi.UnsignedInt Function()>>('createBus');
+  late final _createBus = _createBusPtr.asFunction<int Function()>();
+
+  /// Destroy a mixing bus by its ID.
+  /// Does not stop voices that were playing through the bus.
+  @override
+  void destroyBus(int busId) {
+    return _destroyBus(busId);
+  }
+
+  late final _destroyBusPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt)>>(
+          'destroyBus');
+  late final _destroyBus = _destroyBusPtr.asFunction<void Function(int)>();
+
+  /// Play the bus itself on the main SoLoud engine so it becomes audible.
+  /// You must call this before sounds routed through the bus can be heard.
+  ///
+  /// [busId] the bus ID returned by createBus.
+  /// [volume] playback volume (1.0 = full).
+  /// [paused] whether to start paused.
+  /// Returns the voice handle for the bus, or 0 on error.
+  @override
+  int busPlayOnEngine(int busId, double volume, bool paused) {
+    return _busPlayOnEngine(
+      busId,
+      volume,
+      paused,
+    );
+  }
+
+  late final _busPlayOnEnginePtr = _lookup<
+      ffi.NativeFunction<
+          ffi.UnsignedInt Function(
+              ffi.UnsignedInt, ffi.Float, ffi.Bool)>>('busPlayOnEngine');
+  late final _busPlayOnEngine =
+      _busPlayOnEnginePtr.asFunction<int Function(int, double, bool)>();
+
+  /// Set the number of output channels for the bus (default is 2 = stereo).
+  ///
+  /// [busId] the bus ID.
+  /// [channels] number of channels (1 = mono, 2 = stereo, etc.).
+  @override
+  void busSetChannels(
+    int busId,
+    int channels,
+  ) {
+    _busSetChannels(
+      busId,
+      channels,
+    );
+  }
+
+  late final _busSetChannelsPtr = _lookup<
+          ffi
+          .NativeFunction<ffi.Int Function(ffi.UnsignedInt, ffi.UnsignedInt)>>(
+      'busSetChannels');
+  late final _busSetChannels =
+      _busSetChannelsPtr.asFunction<int Function(int, int)>();
+
+  /// Enable or disable visualization data gathering for this bus.
+  /// Must be enabled before calling busCalcFFT, busGetWave,
+  /// or busGetApproximateVolume.
+  ///
+  /// [busId] the bus ID.
+  /// [enable] true to enable, false to disable.
+  // @override
+  // void busSetVisualizationEnable(
+  //   int busId,
+  //   bool enable,
+  // ) {
+  //   return _busSetVisualizationEnable(
+  //     busId,
+  //     enable,
+  //   );
+  // }
+
+  // late final _busSetVisualizationEnablePtr =
+  //     _lookup<ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt, ffi.Bool)>>(
+  //         'busSetVisualizationEnable');
+  // late final _busSetVisualizationEnable =
+  //     _busSetVisualizationEnablePtr.asFunction<void Function(int, bool)>();
+
+  /// Calculate and return 256 floats of FFT data for this bus.
+  /// The data ranges from low to high frequencies.
+  /// Visualization must be enabled first with busSetVisualizationEnable.
+  ///
+  /// [busId] the bus ID.
+  /// Returns a pointer to 256 floats, or nullptr if the bus is not found.
+  // @override
+  // ffi.Pointer<ffi.Float> busCalcFFT(
+  //   int busId,
+  // ) {
+  //   return _busCalcFFT(
+  //     busId,
+  //   );
+  // }
+
+  // late final _busCalcFFTPtr = _lookup<
+  //         ffi.NativeFunction<ffi.Pointer<ffi.Float> Function(ffi.UnsignedInt)>>(
+  //     'busCalcFFT');
+  // late final _busCalcFFT =
+  //     _busCalcFFTPtr.asFunction<ffi.Pointer<ffi.Float> Function(int)>();
+
+  /// Get 256 samples of wave data currently playing through this bus.
+  /// Visualization must be enabled first with busSetVisualizationEnable.
+  ///
+  /// [busId] the bus ID.
+  /// Returns a pointer to 256 floats, or nullptr if the bus is not found.
+  // @override
+  // ffi.Pointer<ffi.Float> busGetWave(
+  //   int busId,
+  // ) {
+  //   return _busGetWave(
+  //     busId,
+  //   );
+  // }
+
+  // late final _busGetWavePtr = _lookup<
+  //         ffi.NativeFunction<ffi.Pointer<ffi.Float> Function(ffi.UnsignedInt)>>(
+  //     'busGetWave');
+  // late final _busGetWave =
+  //     _busGetWavePtr.asFunction<ffi.Pointer<ffi.Float> Function(int)>();
+
+  /// Get the approximate output volume for a specific channel of this bus.
+  /// Useful for VU meters or level indicators.
+  /// Visualization must be enabled first.
+  ///
+  /// [busId] the bus ID.
+  /// [channel] the output channel index (0 = left, 1 = right, etc.).
+  /// Returns the approximate volume, or 0 if the bus is not found.
+  @override
+  double busGetApproximateVolume(
+    int busId,
+    int channel,
+  ) {
+    return _busGetApproximateVolume(
+      busId,
+      channel,
+    );
+  }
+
+  late final _busGetApproximateVolumePtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Float Function(
+              ffi.UnsignedInt, ffi.UnsignedInt)>>('busGetApproximateVolume');
+  late final _busGetApproximateVolume =
+      _busGetApproximateVolumePtr.asFunction<double Function(int, int)>();
+
+  /// Move a live voice (identified by its handle) into this bus.
+  /// The voice will be reparented so it plays through the bus.
+  /// Useful for dynamically routing sounds in/out of filtered busses.
+  ///
+  /// [busId] the bus ID.
+  /// [voiceHandle] handle of the voice to annex.
+  @override
+  void busAnnexSound(
+    int busId,
+    int voiceHandle,
+  ) {
+    return _busAnnexSound(
+      busId,
+      voiceHandle,
+    );
+  }
+
+  late final _busAnnexSoundPtr = _lookup<
+          ffi
+          .NativeFunction<ffi.Void Function(ffi.UnsignedInt, ffi.UnsignedInt)>>(
+      'busAnnexSound');
+  late final _busAnnexSound =
+      _busAnnexSoundPtr.asFunction<void Function(int, int)>();
+
+  /// Get the number of voices currently playing through this bus.
+  ///
+  /// [busId] the bus ID.
+  /// Returns the active voice count, or 0 if the bus is not found.
+  @override
+  int busGetActiveVoiceCount(
+    int busId,
+  ) {
+    return _busGetActiveVoiceCount(
+      busId,
+    );
+  }
+
+  late final _busGetActiveVoiceCountPtr =
+      _lookup<ffi.NativeFunction<ffi.UnsignedInt Function(ffi.UnsignedInt)>>(
+          'busGetActiveVoiceCount');
+  late final _busGetActiveVoiceCount =
+      _busGetActiveVoiceCountPtr.asFunction<int Function(int)>();
 }

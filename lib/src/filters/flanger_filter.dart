@@ -26,8 +26,8 @@ enum FlangerEnum {
 }
 
 abstract class _FlangerInternal extends FilterBase {
-  const _FlangerInternal(SoundHash? soundHash)
-      : super(FilterType.flangerFilter, soundHash);
+  const _FlangerInternal(SoundHash? soundHash, int? busId)
+      : super(FilterType.flangerFilter, soundHash, busId);
 
   FlangerEnum get queryWet => FlangerEnum.wet;
   FlangerEnum get queryDelay => FlangerEnum.delay;
@@ -35,10 +35,11 @@ abstract class _FlangerInternal extends FilterBase {
 }
 
 class FlangerSingle extends _FlangerInternal {
-  FlangerSingle(super.soundHash);
+  FlangerSingle(super.soundHash, super.busId);
 
   FilterParam wet({SoundHandle? soundHandle}) => FilterParam(
         soundHandle,
+        super.busId,
         filterType,
         FlangerEnum.wet.index,
         FlangerEnum.wet.min,
@@ -47,6 +48,7 @@ class FlangerSingle extends _FlangerInternal {
 
   FilterParam delay({SoundHandle? soundHandle}) => FilterParam(
         soundHandle,
+        super.busId,
         filterType,
         FlangerEnum.delay.index,
         FlangerEnum.delay.min,
@@ -55,6 +57,7 @@ class FlangerSingle extends _FlangerInternal {
 
   FilterParam freq({SoundHandle? soundHandle}) => FilterParam(
         soundHandle,
+        super.busId,
         filterType,
         FlangerEnum.freq.index,
         FlangerEnum.freq.min,
@@ -63,9 +66,10 @@ class FlangerSingle extends _FlangerInternal {
 }
 
 class FlangerGlobal extends _FlangerInternal {
-  const FlangerGlobal() : super(null);
+  const FlangerGlobal() : super(null, null);
 
   FilterParam get wet => FilterParam(
+        null,
         null,
         filterType,
         FlangerEnum.wet.index,
@@ -75,6 +79,7 @@ class FlangerGlobal extends _FlangerInternal {
 
   FilterParam get delay => FilterParam(
         null,
+        null,
         filterType,
         FlangerEnum.delay.index,
         FlangerEnum.delay.min,
@@ -82,6 +87,7 @@ class FlangerGlobal extends _FlangerInternal {
       );
 
   FilterParam get freq => FilterParam(
+        null,
         null,
         filterType,
         FlangerEnum.freq.index,

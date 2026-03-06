@@ -134,3 +134,13 @@ class SoLoudOpusOggLibsNotAvailableException extends SoLoudDartException {
       'more about enablig/disabling the libs, please read the documentation: '
       'https://github.com/alnitak/flutter_soloud/blob/main/NO_OPUS_OGG_LIBS.md';
 }
+
+/// An exception that is thrown when trying to use a bus that has been disposed.
+class SoLoudBusDisposedDartException extends SoLoudDartException {
+  /// Creates a new [SoLoudBusDisposedDartException].
+  const SoLoudBusDisposedDartException([super.message]);
+
+  @override
+  String get description => 'The bus has already been disposed or not yet '
+      'created.';
+}
