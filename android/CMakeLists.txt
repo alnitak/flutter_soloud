@@ -4,6 +4,11 @@ project(${PROJECT_NAME} LANGUAGES CXX C)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# ─── Always compile in Release mode for maximum performance ───
+set(CMAKE_BUILD_TYPE Release CACHE STRING "" FORCE)
+set(CMAKE_C_FLAGS_RELEASE "-DNDEBUG" CACHE STRING "" FORCE)
+set(CMAKE_CXX_FLAGS_RELEASE "-DNDEBUG" CACHE STRING "" FORCE)
+
 set(PLUGIN_NAME "${PROJECT_NAME}_plugin")
 
 set(SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../src")
@@ -64,7 +69,44 @@ endif()
 # Support Android 15 16k page size
 target_link_options("${PLUGIN_NAME}" PRIVATE "-Wl,-z,max-page-size=16384")
 
-target_compile_options("${PLUGIN_NAME}" PRIVATE -Wall -Wno-error -fPIC -O2) #  -ldl -lpthread -lm
+# ─── Optimization flags ───
+# Base flags: -O3 for aggressive optimization, -ffast-math for relaxed FP
+target_compile_options("${PLUGIN_NAME}" PRIVATE
+  -Wall -Wno-error -fPIC
+  -O3
+  -ffast-math
+  -funroll-loops
+  -fomit-frame-pointer
+  -ffunction-sections
+  -fdata-sections
+  -DNDEBUG
+)
+
+# ─── NEON / SIMD: per-ABI intrinsics ───
+# arm64-v8a: NEON is mandatory — no extra flags needed.
+# armeabi-v7a: explicitly enable NEON. Safe since minSdk 21 (Lollipop)
+#   guarantees ARMv7 + NEON on all real-world devices.
+# x86 / x86_64: enable SSE2/SSE3 for emulator and Chromebook builds.
+if (ANDROID_ABI STREQUAL "armeabi-v7a")
+    target_compile_options("${PLUGIN_NAME}" PRIVATE -mfpu=neon -mfloat-abi=softfp)
+elseif (ANDROID_ABI STREQUAL "x86")
+    target_compile_options("${PLUGIN_NAME}" PRIVATE -msse2 -msse3)
+elseif (ANDROID_ABI STREQUAL "x86_64")
+    target_compile_options("${PLUGIN_NAME}" PRIVATE -msse2 -msse3)
+endif()
+
+# ─── Link-Time Optimization ───
+# Enables cross-TU inlining — significant win for many small cpp files.
+include(CheckIPOSupported)
+check_ipo_supported(RESULT IPO_SUPPORTED OUTPUT IPO_OUTPUT)
+if (IPO_SUPPORTED)
+    set_target_properties("${PLUGIN_NAME}" PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
+else()
+    message(WARNING "LTO not supported: ${IPO_OUTPUT}")
+endif()
+
+# Strip unused sections from the final .so
+target_link_options("${PLUGIN_NAME}" PRIVATE "-Wl,--gc-sections")
 
 # List of absolute paths to libraries that should be bundled with the plugin.
 set(flutter_soloud_bundled_libraries
