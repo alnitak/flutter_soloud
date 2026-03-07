@@ -92,7 +92,6 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     // Must free a pointer made on cpp. On Windows this must be freed
     // there and cannot use `calloc.free(...)`
     nativeFree(handle.cast<ffi.Void>());
-
   }
 
   ///

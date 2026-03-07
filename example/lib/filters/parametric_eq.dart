@@ -16,12 +16,12 @@ import 'package:logging/logging.dart';
 /// ** Equalizer parameters**:
 /// - `numBands`: the number of frequency bands (default: 3. 1 is the minimum
 ///   value and 64 is the maximum value)
-/// 
+///
 /// - `stftWindowSize`: the size of the FFT window (default: 1024, must be a
 ///   power of 2. 32 is the minimum value and 4096 is the maximum value).
 ///   A larger window size will provide more accurate frequency analysis but
 ///   will also increase the latency of the filter.
-/// 
+///
 /// - `bandGain`: the gain of each frequency band (default: 1. 0 means no gain,
 ///   values > 1. 0 increase the gain, values < 1. 0 decrease the gain)
 ///
@@ -137,7 +137,7 @@ class _ParametricEqState extends State<ParametricEq> {
                     ),
                   ],
                 ),
-        
+
                 /// Window size (must be power of 2)
                 ValueListenableBuilder(
                   valueListenable: windowSize,
@@ -165,7 +165,7 @@ class _ParametricEqState extends State<ParametricEq> {
                     );
                   },
                 ),
-        
+
                 /// Number of bands
                 ValueListenableBuilder(
                   valueListenable: bandsNumber,
@@ -192,7 +192,7 @@ class _ParametricEqState extends State<ParametricEq> {
                     );
                   },
                 ),
-        
+
                 /// Band sliders
                 ValueListenableBuilder(
                   valueListenable: bandsNumber,

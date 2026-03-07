@@ -135,16 +135,15 @@ class BusControls extends StatefulWidget {
 }
 
 class _BusControlsState extends State<BusControls> {
+  /// The volume of the bus.
+  late final ValueNotifier<double> volumeNotifier;
 
-    /// The volume of the bus.
-    late final ValueNotifier<double> volumeNotifier;
+  /// The voice count of the bus.
+  late final ValueNotifier<int> voiceCountNotifier;
 
-    /// The voice count of the bus.
-    late final ValueNotifier<int> voiceCountNotifier;
-
-    AudioSource? background;
-    AudioSource? explosion;
-    AudioSource? iVeSeenThings;
+  AudioSource? background;
+  AudioSource? explosion;
+  AudioSource? iVeSeenThings;
 
   @override
   void initState() {
@@ -190,7 +189,6 @@ class _BusControlsState extends State<BusControls> {
 
   @override
   Widget build(BuildContext context) {
-
     return Container(
       margin: const EdgeInsets.all(8),
       padding: const EdgeInsets.all(20),
@@ -219,7 +217,8 @@ class _BusControlsState extends State<BusControls> {
                 // Play the bus on the engine.
                 // Like any SoundHandle, a bus must be played on the main
                 // SoLoud engine in order for its output to be audible.
-                onPressed: () => widget.bus.playOnEngine(volume: volumeNotifier.value),
+                onPressed: () =>
+                    widget.bus.playOnEngine(volume: volumeNotifier.value),
                 child: const Text('play bus'),
               ),
               ElevatedButton(
@@ -276,7 +275,8 @@ class _BusControlsState extends State<BusControls> {
                         // Adjust volume of the entire bus.
                         // Setting the volume on the bus's SoundHandle affects
                         // all audio sources currently routed through it.
-                        SoLoud.instance.setVolume(widget.bus.soundHandle!, value);
+                        SoLoud.instance
+                            .setVolume(widget.bus.soundHandle!, value);
                       }
                     },
                   ),

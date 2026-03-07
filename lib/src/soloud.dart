@@ -1351,11 +1351,11 @@ interface class SoLoud {
   /// `play` is that this method will start playing the sound as soon as it
   /// will take to load it. This means that there will be a lag between
   /// the call to this method and the actual start of the sound.
-  /// 
+  ///
   /// By default, the [mode] parameter is set to [LoadMode.disk] to speedup
   /// the loading process and to have web compatibility.
   ///
-  /// See [play] for more information about the parameters. 
+  /// See [play] for more information about the parameters.
   ///
   /// Returns the [AudioSource] for the playing source.
   ///

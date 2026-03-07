@@ -191,7 +191,6 @@ class AudioSource {
     _autoDispose = value;
   }
 
-
   @override
   String toString() {
     return 'soundHash: $soundHash has ${handles.length} active handles';

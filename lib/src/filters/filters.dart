@@ -26,8 +26,7 @@ import 'package:logging/logging.dart';
 abstract class FilterBase {
   /// The base class common to all filters. It can be used to [activate],
   /// [deactivate] or query its status and its index in the filter list.
-  const FilterBase(FilterType ft, this.soundHash, this.busId)
-      : filterType = ft;
+  const FilterBase(FilterType ft, this.soundHash, this.busId) : filterType = ft;
 
   /// The unique hash code of the sound.
   final SoundHash? soundHash;
