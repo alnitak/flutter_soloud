@@ -31,7 +31,6 @@ build/
 
 images/
 lib/flutter_soloud_FFIGEN.dart
-TODO.md
 
 web/build
 web/worker.dart.js.deps

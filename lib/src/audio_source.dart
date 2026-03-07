@@ -175,6 +175,23 @@ class AudioSource {
   ///
   late final filters = FiltersSingle(soundHash: soundHash);
 
+  /// Wheter the sound should be disposed when all instances are finished.
+  ///
+  /// If true, the sound will be disposed when all instances are finished.
+  ///
+  /// ```dart
+  /// AudioSource sound = await SoLoud.instance.loadAsset(...);
+  /// sound.autoDispose = true;
+  /// ```
+  bool _autoDispose = false;
+
+  bool get autoDispose => _autoDispose;
+
+  set autoDispose(bool value) {
+    _autoDispose = value;
+  }
+
+
   @override
   String toString() {
     return 'soundHash: $soundHash has ${handles.length} active handles';

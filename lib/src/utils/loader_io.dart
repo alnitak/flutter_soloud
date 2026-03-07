@@ -123,6 +123,10 @@ class SoLoudLoader {
   /// Provide [assetBundle] if needed. By default, the method uses
   /// [rootBundle].
   ///
+  /// [autoDispose] if set to true, this source will be automatically disposed
+  /// when all its handles have finished playing. There will be no need to call
+  /// [SoLoud.disposeSource] manually.
+  ///
   /// Returns `null` if there's a problem with some implementation detail
   /// (e.g. cannot create temporary file).
   ///
@@ -132,6 +136,7 @@ class SoLoudLoader {
     String key,
     LoadMode mode, {
     AssetBundle? assetBundle,
+    bool autoDispose = false,
   }) async {
     final id = _TemporaryFileIdentifier(_Source.asset, key);
 
@@ -143,8 +148,11 @@ class SoLoudLoader {
       final existingFile = _temporaryFiles[id]!;
       if (existingFile.existsSync()) {
         _log.finest(() => 'Asset $key already exists as a temporary file.');
-        final audioSource =
-            SoLoud.instance.loadFile(existingFile.path, mode: mode);
+        final audioSource = SoLoud.instance.loadFile(
+          existingFile.path,
+          mode: mode,
+          autoDispose: autoDispose,
+        );
         return audioSource;
       }
     }
@@ -188,7 +196,8 @@ class SoLoudLoader {
 
     _temporaryFiles[id] = newFile;
 
-    final audioSource = SoLoud.instance.loadFile(newFile.path, mode: mode);
+    final audioSource = SoLoud.instance
+        .loadFile(newFile.path, mode: mode, autoDispose: autoDispose);
     return audioSource;
   }
 
@@ -197,12 +206,17 @@ class SoLoudLoader {
   /// on program startup). When no [httpClient] is provided, this method
   /// will create a new one and close it afterwards.
   ///
+  /// [autoDispose] if set to true, this source will be automatically disposed
+  /// when all its handles have finished playing. There will be no need to call
+  /// [SoLoud.disposeSource] manually.
+  ///
   /// Throws [FormatException] if the [url] is invalid.
   /// Throws [SoLoudNetworkStatusCodeException] if the request fails.
   Future<AudioSource> loadUrl(
     String url,
     LoadMode mode, {
     http.Client? httpClient,
+    bool autoDispose = false,
   }) async {
     final uri = Uri.parse(url);
 
@@ -221,6 +235,7 @@ class SoLoudLoader {
         final newAudioSource = await SoLoud.instance.loadFile(
           existingFile.path,
           mode: mode,
+          autoDispose: autoDispose,
         );
         return newAudioSource;
       }

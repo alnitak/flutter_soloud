@@ -192,7 +192,6 @@ class Bus {
     double velX = 0,
     double velY = 0,
     double velZ = 0,
-    int busId = 0,
     double volume = 1,
     bool paused = false,
     bool looping = false,

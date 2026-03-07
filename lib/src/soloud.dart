@@ -366,8 +366,8 @@ interface class SoLoud {
     _activeSounds.clear();
   }
 
-  /// Get the [AudioSource] which own the [handle]
-  AudioSource? _isHandlePresent(SoundHandle handle) {
+  /// Find the [AudioSource] which owns the given [handle].
+  AudioSource? findAudioSourceByHandle(SoundHandle handle) {
     for (final sound in _activeSounds) {
       if (sound.handlesInternal.contains(handle)) return sound;
     }
@@ -394,7 +394,7 @@ interface class SoLoud {
       _controller.soLoudFFI.voiceEndedEvents.listen((handle) {
         // Removing this UNIQUE [handle] from the `AudioSource` that owns it.
 
-        final soundHandleFound = _isHandlePresent(SoundHandle(handle));
+        final soundHandleFound = findAudioSourceByHandle(SoundHandle(handle));
 
         if (soundHandleFound != null) {
           soundHandleFound.soundEventsController.add((
@@ -414,6 +414,13 @@ interface class SoLoud {
             soundHandleFound.allInstancesFinishedController.add(null);
           }
           voiceEndedCompleters[SoundHandle(handle)]?.complete();
+
+          // if there are no more handles palying and the "autoDispose"
+          // parameter has been set, dispose the sound.
+          if (soundHandleFound.autoDispose &&
+              soundHandleFound.handlesInternal.isEmpty) {
+            disposeSource(soundHandleFound);
+          }
         }
       });
     }
@@ -517,6 +524,10 @@ interface class SoLoud {
   /// See the [seek] note problem when using [LoadMode.disk].
   ///
   /// The default is [LoadMode.memory].
+  /// 
+  /// [autoDispose] if set to true, this source will be automatically disposed
+  /// when all its handles have finished playing. There will be no need to call
+  /// [disposeSource] manually.
   ///
   /// Returns the new sound as [AudioSource].
   ///
@@ -529,6 +540,7 @@ interface class SoLoud {
   Future<AudioSource> loadFile(
     String path, {
     LoadMode mode = LoadMode.memory,
+    bool autoDispose = false,
   }) async {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -563,6 +575,9 @@ interface class SoLoud {
       loadedFileCompleters.removeWhere(
         (key, __) => key.compareTo('$path-$counter') == 0,
       );
+    }).then((source) {
+      source.autoDispose = autoDispose;
+      return source;
     });
   }
 
@@ -595,11 +610,16 @@ interface class SoLoud {
   /// This is the only choice to load a file when using this plugin on the Web
   /// because browsers cannot read directly files from the loal storage.
   ///
+  /// [autoDispose] if set to true, this source will be automatically disposed
+  /// when all its handles have finished playing. There will be no need to call
+  /// [disposeSource] manually.
+  ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   Future<AudioSource> loadMem(
     String path,
     Uint8List buffer, {
     LoadMode mode = LoadMode.memory,
+    bool autoDispose = false,
   }) async {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -629,6 +649,9 @@ interface class SoLoud {
       loadedFileCompleters.removeWhere(
         (key, __) => key.compareTo('$path-$counter') == 0,
       );
+    }).then((source) {
+      source.autoDispose = autoDispose;
+      return source;
     });
   }
 
@@ -1018,6 +1041,10 @@ interface class SoLoud {
   /// Since SoLoud can only play from files, the asset will be copied to
   /// a temporary file, and that file will be used to load the sound.
   ///
+  /// [autoDispose] if set to true, this source will be automatically disposed
+  /// when all its handles have finished playing. There will be no need to call
+  /// [disposeSource] manually.
+  ///
   /// Throws a [FlutterError] if the asset is not found.
   ///
   /// Throws a [SoLoudTemporaryFolderFailedException] if there was a problem
@@ -1035,6 +1062,7 @@ interface class SoLoud {
     String key, {
     LoadMode mode = LoadMode.memory,
     AssetBundle? assetBundle,
+    bool autoDispose = false,
   }) async {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1044,6 +1072,7 @@ interface class SoLoud {
       key,
       mode,
       assetBundle: assetBundle,
+      autoDispose: autoDispose,
     );
 
     return newAudioSource;
@@ -1061,6 +1090,10 @@ interface class SoLoud {
   ///
   /// Since SoLoud can only play from files, the downloaded data will be
   /// copied to a temporary file, and that file will be used to load the sound.
+  ///
+  /// [autoDispose] if set to true, this source will be automatically disposed
+  /// when all its handles have finished playing. There will be no need to call
+  /// [disposeSource] manually.
   ///
   /// Throws [FormatException] if the [url] is invalid.
   ///
@@ -1082,6 +1115,7 @@ interface class SoLoud {
     String url, {
     LoadMode mode = LoadMode.memory,
     http.Client? httpClient,
+    bool autoDispose = false,
   }) async {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1091,6 +1125,7 @@ interface class SoLoud {
       url,
       mode,
       httpClient: httpClient,
+      autoDispose: autoDispose,
     );
 
     return newAudioSource;
@@ -2869,12 +2904,11 @@ interface class SoLoud {
   /////////////////////////////////////////
 
   /// Create a new mixing bus.
-  /// 
+  ///
   /// [name] optional name of the bus to later identify it.
   Bus createMixingBus({String name = ''}) {
     return Bus(name: name);
   }
-
 
   /// Utility method that logs a [Level.SEVERE] message if [playerError]
   /// is anything other than [PlayerErrors.noError] or [Level.INFO] if
