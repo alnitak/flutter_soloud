@@ -107,6 +107,29 @@ abstract class FlutterSoLoud {
   @mustBeOverridden
   bool isInited();
 
+  /// Pause the audio device at the platform level (stop the OS audio render
+  /// thread / CoreAudio AudioUnit). Unlike [setPauseAll], this actually stops
+  /// the hardware-level output, which on iOS preserves [AVAudioSession] state
+  /// and keeps [MPRemoteCommandCenter] routing intact.
+  ///
+  /// On iOS you must call this **before** calling
+  /// `AudioSession.instance.setActive(false)` when pausing, and call
+  /// [resumeAudioDevice] **after** `AudioSession.instance.setActive(true)`
+  /// when resuming.
+  ///
+  /// Returns 0 on success, non-zero on failure (or on platforms / backends
+  /// where the operation is not supported).
+  @mustBeOverridden
+  int pauseAudioDevice();
+
+  /// Resume the audio device after [pauseAudioDevice].
+  ///
+  /// On iOS the [AVAudioSession] must already be active before calling this.
+  ///
+  /// Returns 0 on success, non-zero on failure.
+  @mustBeOverridden
+  int resumeAudioDevice();
+
   /// Load a new sound to be played once or multiple times later.
   /// This is not supported on the web, use [loadMem] instead.
   ///

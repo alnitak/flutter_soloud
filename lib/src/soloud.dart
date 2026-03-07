@@ -365,6 +365,43 @@ interface class SoLoud {
     _activeSounds.clear();
   }
 
+  /// Pause the audio device at the platform level.
+  ///
+  /// Unlike [setPause]/[setPauseAll], this stops the OS-level audio render
+  /// thread (e.g. the CoreAudio AudioUnit on iOS/macOS), so the system
+  /// properly recognises the app as "paused" rather than "silently active."
+  ///
+  /// **iOS usage** — this is the key fix for Lock Screen / AirPod remote
+  /// command routing breaking after a UI or AirPods pause:
+  ///
+  /// ```dart
+  /// // Pausing
+  /// await SoLoud.instance.pauseAudioDevice();
+  /// await AudioSession.instance.setActive(false);
+  ///
+  /// // Resuming (e.g. from a remote command handler)
+  /// await AudioSession.instance.setActive(true);
+  /// await SoLoud.instance.resumeAudioDevice();
+  /// ```
+  ///
+  /// On other platforms the call is a no-op if the backend does not support
+  /// it, and returns 0.
+  ///
+  /// Returns 0 on success.
+  int pauseAudioDevice() {
+    return _controller.soLoudFFI.pauseAudioDevice();
+  }
+
+  /// Resume the audio device after [pauseAudioDevice].
+  ///
+  /// On iOS the `AVAudioSession` must already be active before calling this
+  /// (call `AudioSession.instance.setActive(true)` first).
+  ///
+  /// Returns 0 on success.
+  int resumeAudioDevice() {
+    return _controller.soLoudFFI.resumeAudioDevice();
+  }
+
   /// Get the [AudioSource] which own the [handle]
   AudioSource? _isHandlePresent(SoundHandle handle) {
     for (final sound in _activeSounds) {
