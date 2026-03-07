@@ -524,7 +524,7 @@ interface class SoLoud {
   /// See the [seek] note problem when using [LoadMode.disk].
   ///
   /// The default is [LoadMode.memory].
-  /// 
+  ///
   /// [autoDispose] if set to true, this source will be automatically disposed
   /// when all its handles have finished playing. There will be no need to call
   /// [disposeSource] manually.
@@ -1339,6 +1339,71 @@ interface class SoLoud {
     }
 
     return ret.newHandle;
+  }
+
+  /// A simpler way to process the loading of the sound and then play it.
+  ///
+  /// Provide either [asset], [file], or [url] (assert only one of these 3).
+  /// Depending on the parameter given, the relative `load*` method is called
+  /// with their `autoDispose` parameter set to true.
+  ///
+  /// The difference between this method and calling `load*` and then
+  /// `play` is that this method will start playing the sound as soon as it
+  /// will take to load it. This means that there will be a lag between
+  /// the call to this method and the actual start of the sound.
+  /// 
+  /// By default, the [mode] parameter is set to [LoadMode.disk] to speedup
+  /// the loading process and to have web compatibility.
+  ///
+  /// See [play] for more information about the parameters. 
+  ///
+  /// Returns the [AudioSource] for the playing source.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  Future<AudioSource> playSource({
+    String? asset,
+    String? file,
+    String? url,
+    LoadMode mode = LoadMode.disk,
+    int busId = 0,
+    double volume = 1,
+    double pan = 0,
+    bool paused = false,
+    bool looping = false,
+    Duration loopingStartAt = Duration.zero,
+  }) async {
+    final providedCount = (asset != null ? 1 : 0) +
+        (file != null ? 1 : 0) +
+        (url != null ? 1 : 0);
+    assert(
+      providedCount == 1,
+      'Exactly one of asset, file, or url must be provided.',
+    );
+
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+
+    late final AudioSource sound;
+    if (asset != null) {
+      sound = await loadAsset(asset, mode: mode, autoDispose: true);
+    } else if (file != null) {
+      sound = await loadFile(file, mode: mode, autoDispose: true);
+    } else if (url != null) {
+      sound = await loadUrl(url, mode: mode, autoDispose: true);
+    }
+
+    await play(
+      sound,
+      busId: busId,
+      volume: volume,
+      pan: pan,
+      paused: paused,
+      looping: looping,
+      loopingStartAt: loopingStartAt,
+    );
+
+    return sound;
   }
 
   /// Pause or unpause a currently playing sound identified by [handle].
