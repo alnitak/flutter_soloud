@@ -387,7 +387,8 @@ external int wasmOscillateFilterParameter(
 // ///////////////////////////////////////
 
 @JS('Module_soloud._isFilterActive')
-external int wasmIsFilterActive(int soundHash, int busId, int filterType, int idPtr);
+external int wasmIsFilterActive(
+    int soundHash, int busId, int filterType, int idPtr);
 
 @JS('Module_soloud._getFilterParamNames')
 external int wasmGetFilterParamNames(

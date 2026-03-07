@@ -17,6 +17,7 @@ interface class SoLoudLoader {
     String key,
     LoadMode mode, {
     AssetBundle? assetBundle,
+    bool autoDispose = false,
   }) async =>
       throw UnsupportedError('platform not supported');
 
@@ -24,6 +25,7 @@ interface class SoLoudLoader {
     String url,
     LoadMode mode, {
     http.Client? httpClient,
+    bool autoDispose = false,
   }) async =>
       throw UnsupportedError('platform not supported');
 }

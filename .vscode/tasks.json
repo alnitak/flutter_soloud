@@ -29,7 +29,7 @@
         },
         {
             "label": "compile macos debug",
-            "command": "cd ${workspaceFolder}/example; flutter build macos -t lib/mixing_bus/mixing_bus.dart --debug",
+            "command": "cd ${workspaceFolder}/example; flutter build macos -t lib/main.dart --debug",
             "type": "shell"
         },
         {

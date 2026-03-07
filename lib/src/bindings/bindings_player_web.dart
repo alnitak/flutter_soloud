@@ -841,7 +841,8 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }) {
     // ignore: omit_local_variable_types
     final idPtr = wasmMalloc(4); // 4 bytes for an int32
-    final e = wasmIsFilterActive(soundHash?.hash ?? 0,  busId ?? 0, filterType.index, idPtr);
+    final e = wasmIsFilterActive(
+        soundHash?.hash ?? 0, busId ?? 0, filterType.index, idPtr);
     final index = wasmGetI32Value(idPtr, 'i32');
     final ret = (error: PlayerErrors.values[e], index: index);
     wasmFree(idPtr);
@@ -880,7 +881,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     SoundHash? soundHash,
     int? busId,
   }) {
-    final e = wasmAddFilter(soundHash?.hash ?? 0,  busId ?? 0, filterType.index);
+    final e = wasmAddFilter(soundHash?.hash ?? 0, busId ?? 0, filterType.index);
     return PlayerErrors.values[e];
   }
 
@@ -890,7 +891,8 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     SoundHash? soundHash,
     int? busId,
   }) {
-    final e = wasmRemoveFilter(soundHash?.hash ?? 0,  busId ?? 0, filterType.index);
+    final e =
+        wasmRemoveFilter(soundHash?.hash ?? 0, busId ?? 0, filterType.index);
     return PlayerErrors.values[e];
   }
 

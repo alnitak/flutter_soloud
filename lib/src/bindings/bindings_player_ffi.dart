@@ -15,6 +15,7 @@ import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/exceptions/exceptions.dart';
 import 'package:flutter_soloud/src/filters/filters.dart';
 import 'package:flutter_soloud/src/helpers/playback_device.dart';
+import 'package:flutter_soloud/src/soloud.dart';
 import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
 import 'package:logging/logging.dart';
@@ -86,6 +87,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
 
   void _voiceEndedCallback(ffi.Pointer<ffi.UnsignedInt> handle) {
     _log.finest(() => 'VOICE ENDED EVENT handle: ${handle.value}');
+
     voiceEndedEventController.add(handle.value);
     // Must free a pointer made on cpp. On Windows this must be freed
     // there and cannot use `calloc.free(...)`

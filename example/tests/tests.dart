@@ -67,6 +67,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
     /// Add all testing functions.
     tests.addAll([
+      _Test(name: 'testAutoDispose', callback: testAutoDispose),
       _Test(name: 'testProtectVoice', callback: testProtectVoice),
       _Test(
         name: 'testAllInstancesFinished',
@@ -947,6 +948,38 @@ Future<StringBuffer> testAsyncMultiLoad() async {
   await SoLoud.instance.loadAsset('assets/audio/tic-1.wav');
   await SoLoud.instance.loadAsset('assets/audio/tic-1.wav');
   await SoLoud.instance.loadAsset('assets/audio/tic-1.wav');
+
+  deinit();
+  return strBuf;
+}
+
+Future<StringBuffer> testAutoDispose() async {
+  final strBuf = StringBuffer();
+  await initialize();
+
+  final sound = await SoLoud.instance.loadAsset(
+    'assets/audio/explosion.mp3',
+    autoDispose: true,
+  );
+
+  sound.soundEvents.listen((event) {
+    if (event.event == SoundEventType.soundDisposed) {
+      strBuf.write('SoundEvent.soundDisposed');
+    }
+  });
+
+  /// Play sample
+  await SoLoud.instance.play(sound);
+  await delay(300);
+  await SoLoud.instance.play(sound);
+
+  /// 3798ms explosion.mp3 sample duration
+  await delay(5000);
+  assert(
+    strBuf.toString() == 'SoundEvent.soundDisposed',
+    'Sound disposed event not triggered!',
+  );
+  strBuf.writeln();
 
   deinit();
   return strBuf;
