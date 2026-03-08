@@ -78,6 +78,7 @@ namespace SoLoud
 	result miniaudio_init(SoLoud::Soloud* aSoloud, unsigned int aFlags = Soloud::CLIP_ROUNDOFF, unsigned int aSamplerate = 44100, unsigned int aBuffer = 2048, unsigned int aChannels = 2, void *pPlaybackInfos_id = nullptr);
 	result miniaudio_changeDevice_impl(void *pPlaybackInfos_id);
 	result miniaudio_ensureDeviceStarted_impl();
+	result miniaudio_ensure_device_started();
 
 	// nosound back-end initialization call
 	result nosound_init(SoLoud::Soloud* aSoloud, unsigned int aFlags = Soloud::CLIP_ROUNDOFF, unsigned int aSamplerate = 44100, unsigned int aBuffer = 2048, unsigned int aChannels = 2);
