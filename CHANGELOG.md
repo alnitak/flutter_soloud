@@ -2,6 +2,7 @@
 - win fix: hang on app exit #413
 - win fix: prevent Windows message pump goes irresponsive with plugins like `desktop_drop` and maybe others #401
 - fix: only unpause when buffer covers playback position #393. Thanks to @nukes
+- wasm fix: runtimeType error when voice ended #414
 
 #### 3.5.0 (1 Mar 2026)
 - Harden loader temp directory logic #404. Thanks to @filiph
