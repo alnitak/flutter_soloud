@@ -15,8 +15,6 @@ dependencies:
   cupertino_icons: ^1.0.8
   
   file_picker: ^10.3.2
-  desktop_drop: ^0.7.0
-  path: ^1.9.1
 
   flutter:
     sdk: flutter
