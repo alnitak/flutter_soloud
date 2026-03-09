@@ -15,7 +15,7 @@ external JSObject get globalScopeSelf;
 external JSAny _importScript(String path);
 
 void jsSendMessage(dynamic m) {
-  globalContext.callMethod('postMessage'.toJS, (m as Object).jsify());
+  globalContext.callMethod('postMessage'.toJS, (m as Object?).jsify());
 }
 
 Stream<T> callbackToStream<J, T>(
@@ -40,7 +40,7 @@ class Worker {
   Worker() {
     _outputController = StreamController();
     callbackToStream(globalScopeSelf, 'onmessage', (web.MessageEvent e) {
-      final data = (e as JSObject).getProperty('data'.toJS);
+      final data = e.getProperty('data'.toJS);
       _outputController.add(data);
     });
   }

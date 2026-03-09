@@ -73,16 +73,19 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
             final decodedMap = jsonDecode(event) as Map;
             if (decodedMap['message'] == 'voiceEndedCallback') {
               _log.finest(
-                () => 'VOICE ENDED EVENT handle: ${decodedMap['value']}\n',
+                () => 'VOICE ENDED EVENT handle: '
+                    '${(decodedMap['value'] as num).toInt()}\n',
               );
-              voiceEndedEventController.add(decodedMap['value'] as int);
+              voiceEndedEventController
+                  .add((decodedMap['value'] as num).toInt());
             }
           case Map():
             if (event['message'] == 'voiceEndedCallback') {
               _log.finest(
-                () => 'VOICE ENDED EVENT handle: ${event['value']}\n',
+                () => 'VOICE ENDED EVENT handle: '
+                    '${(event['value'] as num).toInt()}\n',
               );
-              voiceEndedEventController.add(event['value'] as int);
+              voiceEndedEventController.add((event['value'] as num).toInt());
             }
         }
       },
