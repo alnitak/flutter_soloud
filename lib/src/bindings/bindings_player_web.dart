@@ -168,6 +168,13 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   @override
   bool isInited() => wasmIsInited() == 1;
 
+  // Not applicable on the web — the WASM audio context is managed differently.
+  @override
+  int pauseAudioDevice() => 0;
+
+  @override
+  int resumeAudioDevice() => 0;
+
   @override
   ({PlayerErrors error, SoundHash soundHash}) loadFile(
     String completeFileName,

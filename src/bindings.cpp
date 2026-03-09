@@ -326,6 +326,30 @@ extern "C"
         return player.get()->isInited() ? 1 : 0;
     }
 
+    /// Pause the audio device at the platform level (stop the AudioUnit / audio
+    /// render thread). Unlike [setPauseAll], this actually stops the OS-level
+    /// audio output, which is necessary on iOS to preserve AVAudioSession state
+    /// and remote command routing when the app is "paused".
+    ///
+    /// Returns 0 on success.
+    FFI_PLUGIN_EXPORT int pauseAudioDevice()
+    {
+        if (player.get() == nullptr)
+            return -1;
+        return (int)player.get()->soloud.pause();
+    }
+
+    /// Resume the audio device after [pauseAudioDevice]. The AVAudioSession
+    /// must already be active before calling this on iOS.
+    ///
+    /// Returns 0 on success.
+    FFI_PLUGIN_EXPORT int resumeAudioDevice()
+    {
+        if (player.get() == nullptr)
+            return -1;
+        return (int)player.get()->soloud.resume();
+    }
+
     /// Load a new sound to be played once or multiple times later.
     ///
     /// After loading the file, the [fileLoadedCallback] will call the

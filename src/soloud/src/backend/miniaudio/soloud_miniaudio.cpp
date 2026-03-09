@@ -133,6 +133,35 @@ namespace SoLoud
 #endif
     }
 
+    // Pause the audio device: stops the CoreAudio AudioUnit (or platform equivalent)
+    // without uninitialising it. This is the correct way to "pause" on iOS/macOS —
+    // it tells the OS the app has nothing to render, which preserves AVAudioSession
+    // state and keeps MPRemoteCommandCenter routing intact.
+    static result soloud_miniaudio_pause(SoLoud::Soloud *aSoloud)
+    {
+        if (ma_device_get_state(&gDevice) == ma_device_state_started)
+        {
+            ma_result res = ma_device_stop(&gDevice);
+            if (res != MA_SUCCESS)
+                return UNKNOWN_ERROR;
+        }
+        return 0;
+    }
+
+    // Resume the audio device after soloud_miniaudio_pause(). On iOS, the
+    // AVAudioSession must already be active (the app is responsible for calling
+    // [AVAudioSession setActive:YES]) before calling this.
+    static result soloud_miniaudio_resume(SoLoud::Soloud *aSoloud)
+    {
+        if (ma_device_get_state(&gDevice) == ma_device_state_stopped)
+        {
+            ma_result res = ma_device_start(&gDevice);
+            if (res != MA_SUCCESS)
+                return UNKNOWN_ERROR;
+        }
+        return 0;
+    }
+
     result miniaudio_init(SoLoud::Soloud *aSoloud, unsigned int aFlags, unsigned int aSamplerate, unsigned int aBuffer, unsigned int aChannels, void *pPlaybackInfos_id)
     {
         soloud = aSoloud;
@@ -197,6 +226,8 @@ namespace SoLoud
         aSoloud->postinit_internal(gDevice.sampleRate, gDevice.playback.internalPeriodSizeInFrames, aFlags, gDevice.playback.channels);
 
         aSoloud->mBackendCleanupFunc = soloud_miniaudio_deinit;
+        aSoloud->mBackendPauseFunc   = soloud_miniaudio_pause;
+        aSoloud->mBackendResumeFunc  = soloud_miniaudio_resume;
 
         ma_device_start(&gDevice);
         aSoloud->mBackendString = "MiniAudio";
@@ -237,6 +268,25 @@ namespace SoLoud
         // Check if device is stopped and start it if needed
         if (ma_device_get_state(&gDevice) == ma_device_state_stopped)
         {
+#if defined(MA_APPLE_MOBILE)
+            // On iOS, after any audio interruption the AVAudioSession MUST be
+            // explicitly re-activated before restarting the Audio Unit.
+            //
+            // Without this call, iOS does not restore remote command routing
+            // (Lock Screen controls, AirPods) to this app after the device
+            // restarts. This is because:
+            //   1. miniaudio registers its own AVAudioSessionInterruptionNotification
+            //      observer alongside audio_session (the Flutter package), so both
+            //      handle interruptions concurrently.
+            //   2. miniaudio can restart AudioOutputUnit before audio_session has
+            //      had a chance to call setActive:YES, leaving the unit running
+            //      against an inactive session — breaking remote command routing.
+            //   3. Apple's audio interruption recovery guidelines explicitly require
+            //      setActive:YES before restarting the Audio Unit.
+            @autoreleasepool {
+                [[AVAudioSession sharedInstance] setActive:YES error:nil];
+            }
+#endif
             ma_result result = ma_device_start(&gDevice);
             if (result != MA_SUCCESS)
             {

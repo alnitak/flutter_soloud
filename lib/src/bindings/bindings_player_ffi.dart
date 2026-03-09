@@ -342,6 +342,26 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   );
   late final _isInited = _isInitedPtr.asFunction<int Function()>();
 
+  @override
+  int pauseAudioDevice() {
+    return _pauseAudioDevice();
+  }
+
+  late final _pauseAudioDevicePtr =
+      _lookup<ffi.NativeFunction<ffi.Int Function()>>('pauseAudioDevice');
+  late final _pauseAudioDevice =
+      _pauseAudioDevicePtr.asFunction<int Function()>();
+
+  @override
+  int resumeAudioDevice() {
+    return _resumeAudioDevice();
+  }
+
+  late final _resumeAudioDevicePtr =
+      _lookup<ffi.NativeFunction<ffi.Int Function()>>('resumeAudioDevice');
+  late final _resumeAudioDevice =
+      _resumeAudioDevicePtr.asFunction<int Function()>();
+
   /// After loading the file, the [_fileLoadedCallback] will call the
   /// Dart function defined with [_setDartEventCallback] which gives back
   /// the error and the new hash.
