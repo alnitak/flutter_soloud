@@ -376,20 +376,20 @@ interface class SoLoud {
   ///
   /// ```dart
   /// // Pausing
-  /// await SoLoud.instance.pauseAudioDevice();
+  /// SoLoud.instance.pauseAudioDevice();
   /// await AudioSession.instance.setActive(false);
   ///
   /// // Resuming (e.g. from a remote command handler)
   /// await AudioSession.instance.setActive(true);
-  /// await SoLoud.instance.resumeAudioDevice();
+  /// SoLoud.instance.resumeAudioDevice();
   /// ```
   ///
   /// On other platforms the call is a no-op if the backend does not support
-  /// it, and returns 0.
+  /// it, and returns true.
   ///
-  /// Returns 0 on success.
-  int pauseAudioDevice() {
-    return _controller.soLoudFFI.pauseAudioDevice();
+  /// Returns true on success.
+  bool pauseAudioDevice() {
+    return _controller.soLoudFFI.pauseAudioDevice() == 0;
   }
 
   /// Resume the audio device after [pauseAudioDevice].
@@ -397,9 +397,9 @@ interface class SoLoud {
   /// On iOS the `AVAudioSession` must already be active before calling this
   /// (call `AudioSession.instance.setActive(true)` first).
   ///
-  /// Returns 0 on success.
-  int resumeAudioDevice() {
-    return _controller.soLoudFFI.resumeAudioDevice();
+  /// Returns true on success.
+  bool resumeAudioDevice() {
+    return _controller.soLoudFFI.resumeAudioDevice() == 0;
   }
 
   /// Get the [AudioSource] which own the [handle]
