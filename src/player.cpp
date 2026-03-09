@@ -124,6 +124,7 @@ std::vector<PlaybackDevice> Player::listPlaybackDevices()
              &captureCount)) != MA_SUCCESS)
     {
         printf("Failed to get devices %d\n", result);
+        ma_context_uninit(&context);
         return ret;
     }
 
@@ -143,6 +144,7 @@ std::vector<PlaybackDevice> Player::listPlaybackDevices()
         ret.push_back(cd);
     }
     // printf("***************** LIST DEVICES END\n");
+    ma_context_uninit(&context);
     return ret;
 }
 

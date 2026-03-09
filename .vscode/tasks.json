@@ -24,7 +24,7 @@
         },
         {
             "label": "compile windows debug",
-            "command": "cd ${workspaceFolder}/example; flutter build windows -t lib/buffer_stream/websocket.dart --debug",
+            "command": "cd ${workspaceFolder}/example; flutter build windows -t lib/main.dart --debug",
             "type": "shell"
         },
         {
