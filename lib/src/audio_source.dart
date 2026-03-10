@@ -182,14 +182,11 @@ class AudioSource {
   /// ```dart
   /// AudioSource sound = await SoLoud.instance.loadAsset(...);
   /// sound.autoDispose = true;
+  /// 
+  /// // or just
+  /// AudioSource sound = await SoLoud.instance.loadAsset(..., autoDispose: true);
   /// ```
-  bool _autoDispose = false;
-
-  bool get autoDispose => _autoDispose;
-
-  set autoDispose(bool value) {
-    _autoDispose = value;
-  }
+  bool autoDispose = false;
 
   @override
   String toString() {
