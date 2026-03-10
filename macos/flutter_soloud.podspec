@@ -14,9 +14,7 @@ Flutter audio plugin using SoLoud library and FFI
   s.author           = { 'Your Company' => 'email@example.com' }
 
   s.source           = { :path => '.' }
-  # Keep source_files so CocoaPods creates a valid pod target.
-  # The .mm file is minimal — the real code is built by CMake via script_phase.
-  s.source_files = 'Classes/**/*'
+  s.source_files     = 'flutter_soloud/Sources/flutter_soloud/**/*.{h,mm}'
   s.dependency 'FlutterMacOS'
   s.platform = :osx, '10.15'
 
