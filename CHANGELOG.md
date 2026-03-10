@@ -1,19 +1,18 @@
-#### 3.5.0-pre.X (XX Xxx 2026)
-- added `getApproximateVolume` to get the approximate volume of a channel of the player.
+#### 4.0.0-pre.1 (XX Xxx 2026)
+- added Mixing Bus feature
+- added `getApproximateVolume` to get the approximate volume of a channel of the player
 - now using cmake to compile the plugin in release mode for macOS and iOS
-- made a common CMakeLists in src folder
 - fixed a possible crash during app shutdown
 - conditional import of js and wasm only on web (no more included on other platforms)
 - possible fix for #333
-
-#### 3.5.0-pre.1 (26 Jan 2026)
-- Windows fix build
-
-#### 3.5.0-pre.0 (21 Jan 2026)
 - improved quality and performance of the pitchshift filter #313
 - added `filters/parametric_eq.dart` example
 - added parametric equalizer with 1 to 64 bands and FFT window size 32 to 4096 for quality and performance
 - Android fix: elevate audio thread priority on Android #396. Thanks to @djkingCanada
+- Android: cmake optimizations
+- breaking change: bump Flutter version to 3.41.0 and Dart to 3.11.0
+- added Swift Package Manager support
+- previously wasm module was included on all platforms, now it is included only on web
 
 #### 3.4.9 (21 Jan 2026)
 - fix crash when seeking with a negative value #386
