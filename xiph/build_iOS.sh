@@ -50,8 +50,8 @@ fi
 LIBS=("ogg" "opus" "vorbis" "flac")
 BASE_DIR="$PWD"
 BUILD_DIR="$BASE_DIR/iOS/build"
-OUTPUT_DIR="$BASE_DIR/../iOS/libs"
-INCLUDE_DIR="$BASE_DIR/../iOS/include"
+OUTPUT_DIR="$BASE_DIR/../ios/flutter_soloud/libs"
+INCLUDE_DIR="$BASE_DIR/../ios/flutter_soloud/include"
 
 # iOS-specific paths
 IOS_SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
@@ -206,3 +206,40 @@ ls -l "$OUTPUT_DIR"
 echo
 echo "${BOLD_WHITE_ON_GREEN}Include files copied to $INCLUDE_DIR:${RESET}"
 ls -l "$INCLUDE_DIR"
+
+echo
+echo "${BOLD_WHITE_ON_GREEN}Creating XCFrameworks for iOS...${RESET}"
+FRAMEWORKS_DIR="$BASE_DIR/../ios/flutter_soloud/Frameworks"
+rm -rf "$FRAMEWORKS_DIR"
+mkdir -p "$FRAMEWORKS_DIR"
+
+for lib in "${LIBS[@]}"; do
+    local_lib_name="$lib"
+    if [ "$lib" == "flac" ]; then
+        local_lib_name="FLAC"
+    fi
+
+    echo "${BOLD_WHITE_ON_GREEN}Creating ${lib}.xcframework...${RESET}"
+    xcodebuild -create-xcframework \
+        -library "$OUTPUT_DIR/lib${local_lib_name}_iOS-device.a" \
+        -library "$OUTPUT_DIR/lib${local_lib_name}_iOS-simulator.a" \
+        -output "$FRAMEWORKS_DIR/${lib}.xcframework" > /dev/null
+
+    if [ "$lib" == "vorbis" ]; then
+        echo "${BOLD_WHITE_ON_GREEN}Creating vorbisfile.xcframework...${RESET}"
+        xcodebuild -create-xcframework \
+            -library "$OUTPUT_DIR/libvorbisfile_iOS-device.a" \
+            -library "$OUTPUT_DIR/libvorbisfile_iOS-simulator.a" \
+            -output "$FRAMEWORKS_DIR/vorbisfile.xcframework" > /dev/null
+    fi
+done
+
+echo
+echo "${BOLD_WHITE_ON_GREEN}XCFrameworks created successfully in $FRAMEWORKS_DIR${RESET}"
+ls -l "$FRAMEWORKS_DIR"
+
+echo
+echo "${BOLD_WHITE_ON_GREEN}Creating SPM symlink to include folder...${RESET}"
+mkdir -p "$BASE_DIR/../ios/flutter_soloud/Sources/flutter_soloud"
+rm -f "$BASE_DIR/../ios/flutter_soloud/Sources/flutter_soloud/include"
+ln -s ../../include "$BASE_DIR/../ios/flutter_soloud/Sources/flutter_soloud/include"

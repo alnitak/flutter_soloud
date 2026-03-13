@@ -25,7 +25,7 @@ target_compile_definitions(${PLUGIN_NAME} PRIVATE SIGNALSMITH_USE_PFFFT)
 # Xiph library include paths (for compilation only; linking is handled by the podspec)
 if(NOT DEFINED ENV{NO_OPUS_OGG_LIBS})
     message("NO_OPUS_OGG_LIBS has not been set. Including Opus/Ogg headers.")
-    include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
+    include_directories(${CMAKE_CURRENT_SOURCE_DIR}/flutter_soloud/include)
 else()
     message("NO_OPUS_OGG_LIBS has been set. Not including Opus/Ogg headers.")
     add_definitions(-DNO_OPUS_OGG_LIBS)
@@ -33,7 +33,7 @@ endif()
 
 # Force release optimization flags regardless of build configuration
 # For native debug purpose, use -g -O0 but remember to restore -O2 -DNDEBUG for release
-target_compile_options("${PLUGIN_NAME}" PRIVATE -Wall -Wno-error -Wno-vla -g -O0) #-O2 -DNDEBUG)
+target_compile_options("${PLUGIN_NAME}" PRIVATE -Wall -Wno-error -Wno-vla -O2 -DNDEBUG)
 
 # On Apple platforms, miniaudio.h includes AVFoundation Objective-C headers,
 # so soloud_miniaudio.cpp must be compiled as Objective-C++.

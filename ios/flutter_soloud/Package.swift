@@ -18,7 +18,11 @@ let package = Package(
         .target(
             name: "flutter_soloud",
             dependencies: [
-                .product(name: "FlutterFramework", package: "FlutterFramework")
+                .product(name: "FlutterFramework", package: "FlutterFramework"),
+                "opus", "ogg", "vorbis", "vorbisfile", "flac"
+            ],
+            exclude: [
+                "src"
             ],
             resources: [
                 // TODO: If your plugin requires a privacy manifest
@@ -29,25 +33,33 @@ let package = Package(
                 // .process("PrivacyInfo.xcprivacy"),
             ],
             cSettings: [
-                .headerSearchPath("../../../include"),
-                .headerSearchPath("../../../include/opus"),
-                .headerSearchPath("../../../include/ogg"),
-                .headerSearchPath("../../../include/vorbis"),
-                .headerSearchPath("../../../../src"),
-                .headerSearchPath("../../../../src/soloud/include"),
+                .headerSearchPath("../../include"),
+                .headerSearchPath("../../include/opus"),
+                .headerSearchPath("../../include/ogg"),
+                .headerSearchPath("../../include/vorbis"),
+                .headerSearchPath("src"),
+                .headerSearchPath("src/soloud/include"),
+                .unsafeFlags(["-O3", "-ffast-math", "-flto"]),
             ],
             cxxSettings: [
-                .headerSearchPath("../../../include"),
-                .headerSearchPath("../../../include/opus"),
-                .headerSearchPath("../../../include/ogg"),
-                .headerSearchPath("../../../include/vorbis"),
-                .headerSearchPath("../../../../src"),
-                .headerSearchPath("../../../../src/soloud/include"),
+                .headerSearchPath("../../include"),
+                .headerSearchPath("../../include/opus"),
+                .headerSearchPath("../../include/ogg"),
+                .headerSearchPath("../../include/vorbis"),
+                .headerSearchPath("src"),
+                .headerSearchPath("src/soloud/include"),
+                .unsafeFlags(["-O3", "-ffast-math", "-flto"]),
             ],
             linkerSettings: [
                 .linkedFramework("AudioToolbox"),
                 .linkedFramework("AVFAudio"),
             ]
-        )
-    ]
+        ),
+        .binaryTarget(name: "opus", path: "Frameworks/opus.xcframework"),
+        .binaryTarget(name: "ogg", path: "Frameworks/ogg.xcframework"),
+        .binaryTarget(name: "vorbis", path: "Frameworks/vorbis.xcframework"),
+        .binaryTarget(name: "vorbisfile", path: "Frameworks/vorbisfile.xcframework"),
+        .binaryTarget(name: "flac", path: "Frameworks/flac.xcframework")
+    ],
+    cxxLanguageStandard: .cxx17
 )

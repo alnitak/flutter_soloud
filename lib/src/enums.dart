@@ -199,7 +199,7 @@ enum PlayerErrors {
         return 'Opus Ogg Vorbis libraries not found. Please check the '
             'installation and ensure the required libraries are available. '
             'Ref:'
-            'https://github.com/alnitak/flutter_soloud/blob/main/NO_OPUS_OGG_LIBS.md';
+            'https://docs.page/alnitak/flutter_soloud_docs/get_started/no_opus_ogg_libs';
       case PlayerErrors.busIdNotFound:
         return 'Bus id not found!';
     }
