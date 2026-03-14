@@ -414,7 +414,7 @@ void BufferStream::checkBuffering(unsigned int afterAddingBytesCount) {
   // has enough data to reach [TIME_FOR_BUFFERING] and restart playing it.
   SoLoud::time currBufferTime = getLength();
   SoLoud::time addedDataTime =
-      (afterAddingBytesCount / mPCMformat.bytesPerSample) /
+      (afterAddingBytesCount / sizeof(float)) /
       (mBaseSamplerate * mChannels);
 
   for (int i = 0; i < mParent->handle.size(); i++) {
@@ -512,16 +512,17 @@ void BufferStream::callOnBufferingCallback(bool isBuffering,
 BufferingType BufferStream::getBufferingType() { return mBuffer.bufferingType; }
 
 SoLoud::time BufferStream::getLength() {
-  if (mBaseSamplerate == 0 || mUncompressedBytesReceived == 0 ||
-      mPCMformat.bytesPerSample == 0)
+  if (mBaseSamplerate == 0 || mUncompressedBytesReceived == 0)
     return 0;
-  return (mUncompressedBytesReceived / mPCMformat.bytesPerSample) /
+  // the internal buffer always stores float samples
+  return (mUncompressedBytesReceived / sizeof(float)) /
          (mBaseSamplerate * mPCMformat.channels);
 }
 
 /// Get the time consumed by this stream of type RELEASED
 SoLoud::time BufferStream::getStreamTimeConsumed() {
-  return (double)(mBytesConsumed / mPCMformat.bytesPerSample) /
+  // the internal buffer always stores float samples
+  return (double)(mBytesConsumed / sizeof(float)) /
          (mBaseSamplerate * mPCMformat.channels);
 }
 
