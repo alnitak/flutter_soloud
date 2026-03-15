@@ -10,6 +10,7 @@ environment:
   sdk: '>=3.0.0 <4.0.0'
 
 dependencies:
+  audio_service: ^0.18.17
   audio_session: ^0.2.2
 
   cupertino_icons: ^1.0.8
