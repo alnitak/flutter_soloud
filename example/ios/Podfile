@@ -1,12 +1,8 @@
 # Uncomment this line to define a global platform for your project
-platform :ios, '13.0'
+# platform :ios, '13.0'
 
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
-
-# Comment this line to build with opus and ogg libs.
-# Uncomment this line to build without opus and ogg libs.
-# ENV['NO_OPUS_OGG_LIBS'] = '1'
 
 project 'Runner', {
   'Debug' => :debug,
@@ -33,7 +29,6 @@ flutter_ios_podfile_setup
 
 target 'Runner' do
   use_frameworks!
-  use_modular_headers!
 
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
   target 'RunnerTests' do

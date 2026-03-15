@@ -2,7 +2,7 @@ name: flutter_soloud_example
 description: Demonstrates how to use the flutter_soloud plugin.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 homepage: https://github.com/alnitak/flutter_soloud
-maintainer: Marco Bavagnoli (@lildeimos)
+maintainer: Marco Bavagnoli (@alnitak)
 
 version: 0.1.0+1
 
@@ -14,7 +14,7 @@ dependencies:
 
   cupertino_icons: ^1.0.8
   
-  file_picker: ^10.3.2
+  file_picker: ^10.3.10
 
   flutter:
     sdk: flutter

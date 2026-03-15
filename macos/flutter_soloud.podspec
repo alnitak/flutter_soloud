@@ -14,17 +14,18 @@ Flutter audio plugin using SoLoud library and FFI
   s.author           = { 'Your Company' => 'email@example.com' }
 
   s.source           = { :path => '.' }
-  # Keep source_files so CocoaPods creates a valid pod target.
-  # The .mm file is minimal — the real code is built by CMake via script_phase.
-  s.source_files = 'Classes/**/*'
+  s.source_files     = 'flutter_soloud/Sources/flutter_soloud/**/*.{h,mm}'
   s.dependency 'FlutterMacOS'
   s.platform = :osx, '10.15'
+
+  # Declare vendored Xiph libraries (only when not disabled)
+  s.vendored_libraries = 'flutter_soloud/libs/lib*.a' unless ENV['NO_OPUS_OGG_LIBS'] == '1'
 
   # Check if we should disable opus/ogg support (must exist and be '1')
   disable_opus_ogg = !ENV['NO_OPUS_OGG_LIBS'].nil? && ENV['NO_OPUS_OGG_LIBS'] == '1'
   
-  local_lib_path = '$(PODS_TARGET_SRCROOT)/libs'
-  local_include_path = '$(PODS_TARGET_SRCROOT)/include'
+  local_lib_path = '$(PODS_TARGET_SRCROOT)/flutter_soloud/libs'
+  local_include_path = '$(PODS_TARGET_SRCROOT)/flutter_soloud/include'
 
   # Path to the plugin's source root from PODS_ROOT (available in app target context)
   plugin_root = '${PODS_ROOT}/../Flutter/ephemeral/.symlinks/plugins/flutter_soloud/macos'
@@ -42,6 +43,7 @@ Flutter audio plugin using SoLoud library and FFI
     :name => 'Build flutter_soloud with CMake',
     :script => 'bash "${PODS_TARGET_SRCROOT}/build_cmake.sh"',
     :execution_position => :before_compile,
+    :output_files => ['$(PODS_TARGET_SRCROOT)/cmake_build/macosx/libflutter_soloud_plugin.a'],
   }
 
   # pod_target_xcconfig: settings for the pod's own compilation target.
@@ -71,10 +73,13 @@ Flutter audio plugin using SoLoud library and FFI
   # We use PODS_ROOT-based paths because PODS_TARGET_SRCROOT is not available
   # in the app target's context.
   force_load_lib = "-force_load #{plugin_root}/cmake_build/macosx/libflutter_soloud_plugin.a"
-  xiph_flags = disable_opus_ogg ? '' : " -L#{plugin_root}/libs -logg -lopus -lvorbis -lvorbisfile -lFLAC"
+  
+  # With vendored_libraries declared above, CocoaPods handles xiph lib linking automatically.
+  # We only need the library search path for the cmake_build output and ensure inherited flags.
+  xiph_flags = disable_opus_ogg ? '' : '-logg -lopus -lvorbis -lvorbisfile -lFLAC'
 
   s.user_target_xcconfig = {
-    'OTHER_LDFLAGS' => "$(inherited) #{force_load_lib}#{xiph_flags}",
+    'OTHER_LDFLAGS' => "$(inherited) #{force_load_lib} #{xiph_flags}",
     'LIBRARY_SEARCH_PATHS' => "$(inherited) \"#{plugin_root}/cmake_build/macosx\" \"#{plugin_root}/libs\"",
   }
 

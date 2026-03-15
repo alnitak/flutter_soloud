@@ -14,9 +14,7 @@ Flutter audio plugin using SoLoud library and FFI
   s.author           = { 'Your Company' => 'email@example.com' }
 
   s.source           = { :path => '.' }
-  # Keep source_files so CocoaPods creates a valid pod target.
-  # The .mm file is minimal — the real code is built by CMake via script_phase.
-  s.source_files = 'Classes/**/*'
+  s.source_files = 'flutter_soloud/Sources/flutter_soloud/**/*'
   s.dependency 'Flutter'
   s.platform = :ios, '13.0'
 
@@ -39,16 +37,17 @@ Flutter audio plugin using SoLoud library and FFI
     :name => 'Build flutter_soloud with CMake',
     :script => 'bash "${PODS_TARGET_SRCROOT}/build_cmake.sh"',
     :execution_position => :before_compile,
+    :output_files => ['$(PODS_TARGET_SRCROOT)/cmake_build/$(PLATFORM_NAME)/libflutter_soloud_plugin.a'],
   }
 
   # Flutter.framework does not contain a i386 slice.
   # pod_target_xcconfig: settings for the pod's own compilation target.
   s.pod_target_xcconfig = { 
     'HEADER_SEARCH_PATHS' => [
-      '$(PODS_TARGET_SRCROOT)/include',
-      '$(PODS_TARGET_SRCROOT)/include/opus',
-      '$(PODS_TARGET_SRCROOT)/include/ogg',
-      '$(PODS_TARGET_SRCROOT)/include/vorbis',
+      '$(PODS_TARGET_SRCROOT)/flutter_soloud/include',
+      '$(PODS_TARGET_SRCROOT)/flutter_soloud/include/opus',
+      '$(PODS_TARGET_SRCROOT)/flutter_soloud/include/ogg',
+      '$(PODS_TARGET_SRCROOT)/flutter_soloud/include/vorbis',
       '$(PODS_TARGET_SRCROOT)/../src',
       '$(PODS_TARGET_SRCROOT)/../src/soloud/include',
       '${PODS_ROOT}/abseil',
@@ -58,7 +57,7 @@ Flutter audio plugin using SoLoud library and FFI
     'VALID_ARCHS' => 'arm64 x86_64',
     'LIBRARY_SEARCH_PATHS' => [
       '$(PODS_TARGET_SRCROOT)/cmake_build/$(PLATFORM_NAME)',
-      '$(PODS_TARGET_SRCROOT)/libs',
+      '$(PODS_TARGET_SRCROOT)/flutter_soloud/libs',
     ],
     "CLANG_CXX_LANGUAGE_STANDARD" => "c++17",
     "CLANG_CXX_LIBRARY" => "libc++"
@@ -74,36 +73,36 @@ Flutter audio plugin using SoLoud library and FFI
     user_ldflags_device = force_load_lib
     user_ldflags_sim = force_load_lib
   else
-    user_ldflags_device = "#{force_load_lib} -L#{plugin_root}/libs -logg_iOS-device -lopus_iOS-device -lvorbis_iOS-device -lvorbisfile_iOS-device -lflac_iOS-device"
-    user_ldflags_sim = "#{force_load_lib} -L#{plugin_root}/libs -logg_iOS-simulator -lopus_iOS-simulator -lvorbis_iOS-simulator -lvorbisfile_iOS-simulator -lflac_iOS-simulator"
+    user_ldflags_device = "#{force_load_lib} -L#{plugin_root}/flutter_soloud/libs -logg_iOS-device -lopus_iOS-device -lvorbis_iOS-device -lvorbisfile_iOS-device -lflac_iOS-device"
+    user_ldflags_sim = "#{force_load_lib} -L#{plugin_root}/flutter_soloud/libs -logg_iOS-simulator -lopus_iOS-simulator -lvorbis_iOS-simulator -lvorbisfile_iOS-simulator -lflac_iOS-simulator"
   end
 
   s.user_target_xcconfig = {
     'OTHER_LDFLAGS[sdk=iphoneos*]' => "$(inherited) #{user_ldflags_device}",
     'OTHER_LDFLAGS[sdk=iphonesimulator*]' => "$(inherited) #{user_ldflags_sim}",
-    'LIBRARY_SEARCH_PATHS' => "$(inherited) \"#{plugin_root}/cmake_build/$(PLATFORM_NAME)\" \"#{plugin_root}/libs\"",
+    'LIBRARY_SEARCH_PATHS' => "$(inherited) \"#{plugin_root}/cmake_build/$(PLATFORM_NAME)\" \"#{plugin_root}/flutter_soloud/libs\"",
   }
   
   # Only include libraries if opus/ogg is enabled
   if !disable_opus_ogg
     s.ios.vendored_libraries = [
-      'libs/libopus_iOS-device.a',
-      'libs/libogg_iOS-device.a',
-      'libs/libvorbis_iOS-device.a',
-      'libs/libvorbisfile_iOS-device.a',
-      'libs/libflac_iOS-device.a'
+      'flutter_soloud/libs/libopus_iOS-device.a',
+      'flutter_soloud/libs/libogg_iOS-device.a',
+      'flutter_soloud/libs/libvorbis_iOS-device.a',
+      'flutter_soloud/libs/libvorbisfile_iOS-device.a',
+      'flutter_soloud/libs/libflac_iOS-device.a'
     ]
     s.preserve_paths = [
-      'libs/libopus_iOS-device.a',
-      'libs/libogg_iOS-device.a',
-      'libs/libopus_iOS-simulator.a',
-      'libs/libogg_iOS-simulator.a',
-      'libs/libvorbis_iOS-device.a',
-      'libs/libvorbis_iOS-simulator.a',
-      'libs/libvorbisfile_iOS-device.a',
-      'libs/libvorbisfile_iOS-simulator.a',
-      'libs/libflac_iOS-device.a',
-      'libs/libflac_iOS-simulator.a'
+      'flutter_soloud/libs/libopus_iOS-device.a',
+      'flutter_soloud/libs/libogg_iOS-device.a',
+      'flutter_soloud/libs/libopus_iOS-simulator.a',
+      'flutter_soloud/libs/libogg_iOS-simulator.a',
+      'flutter_soloud/libs/libvorbis_iOS-device.a',
+      'flutter_soloud/libs/libvorbis_iOS-simulator.a',
+      'flutter_soloud/libs/libvorbisfile_iOS-device.a',
+      'flutter_soloud/libs/libvorbisfile_iOS-simulator.a',
+      'flutter_soloud/libs/libflac_iOS-device.a',
+      'flutter_soloud/libs/libflac_iOS-simulator.a'
     ]
   end
 

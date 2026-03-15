@@ -15,7 +15,6 @@ import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/exceptions/exceptions.dart';
 import 'package:flutter_soloud/src/filters/filters.dart';
 import 'package:flutter_soloud/src/helpers/playback_device.dart';
-import 'package:flutter_soloud/src/soloud.dart';
 import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
 import 'package:logging/logging.dart';
@@ -2208,7 +2207,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   // }
 
   // late final _busCalcFFTPtr = _lookup<
-  //         ffi.NativeFunction<ffi.Pointer<ffi.Float> Function(ffi.UnsignedInt)>>(
+  //         ffi.NativeFunction<ffi.Pointer<ffi.Float>
+  // Function(ffi.UnsignedInt)>>(
   //     'busCalcFFT');
   // late final _busCalcFFT =
   //     _busCalcFFTPtr.asFunction<ffi.Pointer<ffi.Float> Function(int)>();
@@ -2228,7 +2228,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   // }
 
   // late final _busGetWavePtr = _lookup<
-  //         ffi.NativeFunction<ffi.Pointer<ffi.Float> Function(ffi.UnsignedInt)>>(
+  //         ffi.NativeFunction<ffi.Pointer<ffi.Float>
+  // Function(ffi.UnsignedInt)>>(
   //     'busGetWave');
   // late final _busGetWave =
   //     _busGetWavePtr.asFunction<ffi.Pointer<ffi.Float> Function(int)>();

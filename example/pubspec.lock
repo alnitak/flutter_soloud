@@ -109,10 +109,10 @@ packages:
     dependency: "direct main"
     description:
       name: file_picker
-      sha256: "7872545770c277236fd32b022767576c562ba28366204ff1a5628853cf8f2200"
+      sha256: "57d9a1dd5063f85fa3107fb42d1faffda52fdc948cefd5fe5ea85267a5fc7343"
       url: "https://pub.dev"
     source: hosted
-    version: "10.3.7"
+    version: "10.3.10"
   flutter:
     dependency: "direct main"
     description: flutter
@@ -132,7 +132,7 @@ packages:
       path: ".."
       relative: true
     source: path
-    version: "3.5.0-pre.1"
+    version: "4.0.0-pre.1"
   flutter_test:
     dependency: "direct dev"
     description: flutter
@@ -437,5 +437,5 @@ packages:
     source: hosted
     version: "6.6.1"
 sdks:
-  dart: ">=3.9.0 <4.0.0"
-  flutter: ">=3.35.0"
+  dart: ">=3.11.0 <4.0.0"
+  flutter: ">=3.41.0"
