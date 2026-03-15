@@ -61,6 +61,9 @@ public:
   bool mIsBuffering;
   int mIcyMetaInt;
   BufferStreamInstance *mInstance;
+  
+  // Flag to indicate the BufferStream is being destroyed
+  std::atomic<bool> mIsDestroyed{false};
 
   std::unique_ptr<StreamDecoder> streamDecoder;
 
@@ -85,6 +88,12 @@ public:
                                double time);
   BufferingType getBufferingType();
   virtual AudioSourceInstance *createInstance();
+  
+  // Check if the BufferStream is still valid (not being destroyed)
+  bool isValid() const { return !mIsDestroyed.load(); }
+  
+  // Mark the stream as being destroyed - call before destruction
+  void markForDestruction() { mIsDestroyed.store(true); }
   SoLoud::time getLength();
   SoLoud::time getStreamTimeConsumed();
   AudioMetadataFFI convertMetadataToFFI(const AudioMetadata &metadata);
