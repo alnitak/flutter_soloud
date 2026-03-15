@@ -97,8 +97,6 @@ namespace SoLoud
             case ma_device_notification_type_interruption_began:
             {
                 // Automatically pause the audio device when the OS signals an interruption.
-                // This ensures the audio device is properly paused without requiring the
-                // developer to manually call pauseAudioDevice().
                 soloud_miniaudio_pause(soloud);
                 if (soloud->_stateChangedCallback != nullptr) soloud->_stateChangedCallback(3);
             } break;

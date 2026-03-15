@@ -365,54 +365,6 @@ interface class SoLoud {
     _activeSounds.clear();
   }
 
-  /// Pause the audio device at the platform level.
-  ///
-  /// Unlike [setPause]/[setPauseAll], this stops the OS-level audio render
-  /// thread (e.g. the CoreAudio AudioUnit on iOS/macOS), so the system
-  /// properly recognises the app as "paused" rather than "silently active."
-  ///
-  /// **Automatic handling**: This method is now called automatically when the
-  /// OS signals an audio interruption (e.g., incoming call, Siri activation,
-  /// app moving to background). You typically don't need to call this manually
-  /// unless you have specific custom requirements.
-  ///
-  /// **Manual iOS usage** — if you need to manually control the audio device,
-  /// this is the key fix for Lock Screen / AirPod remote command routing
-  /// breaking after a UI or AirPods pause:
-  ///
-  /// ```dart
-  /// // Pausing
-  /// SoLoud.instance.pauseAudioDevice();
-  /// await AudioSession.instance.setActive(false);
-  ///
-  /// // Resuming (e.g. from a remote command handler)
-  /// await AudioSession.instance.setActive(true);
-  /// SoLoud.instance.resumeAudioDevice();
-  /// ```
-  ///
-  /// On other platforms the call is a no-op if the backend does not support
-  /// it, and returns true.
-  ///
-  /// Returns true on success.
-  bool pauseAudioDevice() {
-    return _controller.soLoudFFI.pauseAudioDevice() == 0;
-  }
-
-  /// Resume the audio device after [pauseAudioDevice].
-  ///
-  /// **Automatic handling**: This method is now called automatically when the
-  /// OS signals that an audio interruption has ended (e.g., call ended,
-  /// app returning to foreground). You typically don't need to call this
-  /// manually unless you have specific custom requirements.
-  ///
-  /// If calling manually on iOS, the `AVAudioSession` must already be active
-  /// before calling this (call `AudioSession.instance.setActive(true)` first).
-  ///
-  /// Returns true on success.
-  bool resumeAudioDevice() {
-    return _controller.soLoudFFI.resumeAudioDevice() == 0;
-  }
-
   /// Get the [AudioSource] which own the [handle]
   AudioSource? _isHandlePresent(SoundHandle handle) {
     for (final sound in _activeSounds) {
