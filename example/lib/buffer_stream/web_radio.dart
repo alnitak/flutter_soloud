@@ -266,13 +266,18 @@ class _WebRadioExampleState extends State<WebRadioExample> {
                   DropdownButton(
                     value: urlId,
                     isDense: true,
+                    isExpanded: true,
                     items: List.generate(urls.length, (index) {
                       return DropdownMenuItem(
                         value: index,
-                        child: Text(
-                          '${urls[index].keys.first} - '
-                          '${urls[index].values.first}',
-                          style: const TextStyle(fontSize: 12),
+                        child: Tooltip(
+                          message: urls[index].values.first,
+                          child: Text(
+                            '${urls[index].keys.first} - '
+                            '${urls[index].values.first}',
+                            style: const TextStyle(fontSize: 12),
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       );
                     }),
