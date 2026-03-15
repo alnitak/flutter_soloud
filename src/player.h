@@ -628,6 +628,7 @@ public:
 private:
   ma_device_info *pPlaybackInfos;
   std::mutex remove_handle_mutex;
+  mutable std::mutex sounds_mutex;  // Protects the sounds vector
   unsigned int mBufferSize;
 
   std::map<unsigned int, BusData> busMap;
