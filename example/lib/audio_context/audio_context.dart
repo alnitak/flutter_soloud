@@ -221,8 +221,6 @@ class SoLoudAudioHandler extends BaseAudioHandler with SeekHandler {
 
       sound = await soloud.loadAsset('assets/audio/8_bit_mentality.mp3');
 
-      // soloud.resumeAudioDevice();
-
       soundHandle = await soloud.play(sound!, looping: true);
 
       // Ensure the volume is not muted.
@@ -251,8 +249,6 @@ class SoLoudAudioHandler extends BaseAudioHandler with SeekHandler {
     await Future.delayed(const Duration(milliseconds: 300), () => null);
     soloud.setPause(soundHandle!, true);
 
-    // soloud.pauseAudioDevice();
-
     // Update playback state.
     playbackState.add(
       PlaybackState(
@@ -278,8 +274,6 @@ class SoLoudAudioHandler extends BaseAudioHandler with SeekHandler {
     await soloud.disposeAllSources();
     sound = null;
 
-    // soloud.pauseAudioDevice();
-    
     await session.setActive(false);
 
     // Update playback state.

@@ -541,13 +541,27 @@ void Player::pauseSwitch(unsigned int handle)
 
 void Player::setPause(unsigned int handle, bool pause)
 {
-    // Ensure miniaudio device is started if it's stopped, ie by an interruption.
     if (!pause)
     {
-        soloud.miniaudio_ensureDeviceStarted();
+        // When unpausing, ensure the audio device is started.
+        // This handles cases where the OS stopped the device without notifying us
+        // (e.g., Control Center pause on iOS).
+        soloud.resume();
     }
     
     soloud.setPause(handle, pause);
+    
+    if (pause)
+    {
+        // When pausing, check if there are any remaining active voices.
+        // If no voices are active, pause the audio device to allow the OS
+        // to properly manage the audio session (important for Control Center
+        // and remote command handling on iOS).
+        if (soloud.getActiveVoiceCount() == 0)
+        {
+            soloud.pause();
+        }
+    }
 }
 
 bool Player::getPause(unsigned int handle)
@@ -616,7 +630,7 @@ PlayerErrors Player::play(
     }
 
     // Ensure miniaudio device is started if it's stopped, ie by an interruption.
-    soloud.miniaudio_ensureDeviceStarted();
+    soloud.resume();
 
     handle = 0;
     SoLoud::handle newHandle = soloud.play(
@@ -642,6 +656,14 @@ PlayerErrors Player::play(
 void Player::stop(unsigned int handle)
 {
     soloud.stop(handle);
+    
+    // After stopping, check if there are any remaining active voices.
+    // If no voices are active, pause the audio device to allow the OS
+    // to properly manage the audio session.
+    if (soloud.getActiveVoiceCount() == 0)
+    {
+        soloud.pause();
+    }
 }
 
 void Player::removeHandle(unsigned int handle)
@@ -699,6 +721,13 @@ void Player::disposeSound(unsigned int soundHash)
         }
         sounds.erase(it);
     }
+    
+    // After disposing a sound, check if there are any remaining active voices.
+    // If no voices are active, pause the audio device.
+    if (soloud.getActiveVoiceCount() == 0)
+    {
+        soloud.pause();
+    }
 }
 
 void Player::disposeAllSound()
@@ -708,6 +737,8 @@ void Player::disposeAllSound()
     {
         disposeSound(sounds[0]->soundHash);
     }
+    // All sounds have been disposed, pause the audio device.
+    soloud.pause();
 }
 
 bool Player::getLooping(unsigned int handle)
@@ -736,7 +767,7 @@ PlayerErrors Player::textToSpeech(const std::string &textToSpeech, unsigned int 
         return backendNotInited;
 
     // Ensure miniaudio device is started if it's stopped, ie by an interruption.
-    soloud.miniaudio_ensureDeviceStarted();
+    soloud.resume();
 
     sounds.push_back(std::make_unique<ActiveSound>());
     sounds.back().get()->completeFileName = std::string("");
@@ -1122,7 +1153,7 @@ PlayerErrors Player::play3d(
     }
 
     // Ensure miniaudio device is started if it's stopped, ie by an interruption.
-    soloud.miniaudio_ensureDeviceStarted();
+    soloud.resume();
 
     handle = 0;
     SoLoud::handle newHandle = soloud.play3d(

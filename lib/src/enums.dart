@@ -300,26 +300,34 @@ enum LoadMode {
   disk,
 }
 
-/// Audio state changes. Not doing much now. Notifications should work
-/// on iOS but none of the Android backends will report this notification.
-/// However the started and stopped events should be reliable for all backends.
+/// Audio state changes. These notifications are sent when the OS reports
+/// audio device state changes. The [interruptionBegan] and [interruptionEnded]
+/// events are now handled automatically by the plugin to pause and resume
+/// the audio device. You can listen to these events if you need to update
+/// your UI or perform additional actions.
+///
+/// Note: Notifications should work on iOS but not all Android backends will
+/// report this notification. However the started and stopped events should
+/// be reliable for all backends.
 enum PlayerStateNotification {
-  ///
+  /// The audio device has started.
   started,
 
-  ///
+  /// The audio device has stopped.
   stopped,
 
-  ///
+  /// The audio route has changed (e.g., headphones plugged/unplugged).
   rerouted,
 
-  ///
+  /// An audio interruption has begun (e.g., incoming call, Siri).
+  /// The plugin automatically pauses the audio device when this occurs.
   interruptionBegan,
 
-  ///
+  /// An audio interruption has ended.
+  /// The plugin automatically resumes the audio device when this occurs.
   interruptionEnded,
 
-  ///
+  /// The audio session is unlocked and ready for use.
   unlocked,
 }
 

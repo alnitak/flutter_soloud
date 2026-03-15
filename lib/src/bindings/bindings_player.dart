@@ -112,9 +112,14 @@ abstract class FlutterSoLoud {
   /// the hardware-level output, which on iOS preserves [AVAudioSession] state
   /// and keeps [MPRemoteCommandCenter] routing intact.
   ///
-  /// On iOS you must call this **before** calling
-  /// `AudioSession.instance.setActive(false)` when pausing, and call
-  /// [resumeAudioDevice] **after** `AudioSession.instance.setActive(true)`
+  /// **Automatic handling**: This method is now called automatically when the
+  /// OS signals an audio interruption (e.g., incoming call, Siri, app backgrounding).
+  /// You typically don't need to call this manually unless you have specific
+  /// custom requirements.
+  ///
+  /// If you need to manually control the audio device state, call this
+  /// **before** calling `AudioSession.instance.setActive(false)` when pausing,
+  /// and call [resumeAudioDevice] **after** `AudioSession.instance.setActive(true)`
   /// when resuming.
   ///
   /// Returns 0 on success, non-zero on failure (or on platforms / backends
@@ -124,7 +129,12 @@ abstract class FlutterSoLoud {
 
   /// Resume the audio device after [pauseAudioDevice].
   ///
-  /// On iOS the [AVAudioSession] must already be active before calling this.
+  /// **Automatic handling**: This method is now called automatically when the
+  /// OS signals that an audio interruption has ended. You typically don't need
+  /// to call this manually unless you have specific custom requirements.
+  ///
+  /// If calling manually on iOS, the [AVAudioSession] must already be active
+  /// before calling this.
   ///
   /// Returns 0 on success, non-zero on failure.
   @mustBeOverridden
