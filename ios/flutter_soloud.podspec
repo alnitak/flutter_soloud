@@ -37,6 +37,7 @@ Flutter audio plugin using SoLoud library and FFI
     :name => 'Build flutter_soloud with CMake',
     :script => 'bash "${PODS_TARGET_SRCROOT}/build_cmake.sh"',
     :execution_position => :before_compile,
+    :output_files => ['$(PODS_TARGET_SRCROOT)/cmake_build/$(PLATFORM_NAME)/libflutter_soloud_plugin.a'],
   }
 
   # Flutter.framework does not contain a i386 slice.
