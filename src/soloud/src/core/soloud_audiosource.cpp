@@ -173,7 +173,7 @@ namespace SoLoud
 			long samples = mScratchSize / mChannels;
 			if (samples > samples_to_discard)
 				samples = samples_to_discard;
-			getAudio(mScratch, samples, samples);
+			getAudio(mScratch, (unsigned int)samples, (unsigned int)samples);
 			samples_to_discard -= samples;
 		}
 		mStreamPosition = aSeconds;

@@ -26,9 +26,9 @@
 //
 
 // Test a bit. Returns 1 if bit is set.
-inline static long bit(long val, unsigned int bitnr) 
+inline static unsigned int bit(long val, unsigned int bitnr)
 {
-	return (val >> bitnr) & 1;
+	return (unsigned int)((val >> bitnr) & 1);
 }
 
 inline void SIDsound::updateShiftReg(SIDVoice &v)

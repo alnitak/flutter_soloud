@@ -222,7 +222,7 @@ namespace SoLoud
 		{
 			struct timespec spec;
 			clock_gettime(CLOCK_REALTIME, &spec);
-			return spec.tv_sec * 1000 + (int)(spec.tv_nsec / 1.0e6);
+			return (int)(spec.tv_sec * 1000) + (int)(spec.tv_nsec / 1.0e6);
 		}
 #endif
 

@@ -32,7 +32,7 @@ void SNDCHIP::end_frame(unsigned clk_ticks)
 {
         // adjusting 't' with whole history will fix accumulation of rounding errors
 
-        unsigned end_chip_tick = ((passed_clk_ticks + (long long)clk_ticks) * chip_clock_rate) / system_clock_rate;
+        unsigned end_chip_tick = (unsigned)(((passed_clk_ticks + (long long)clk_ticks) * chip_clock_rate) / system_clock_rate);
 
         flush( (unsigned) (end_chip_tick - passed_chip_ticks) );
         SNDRENDER::end_frame(t);

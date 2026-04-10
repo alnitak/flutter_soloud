@@ -42,7 +42,7 @@ void SNDRENDER::end_frame(unsigned endframe_sys_tick)
 {
         // adjusting 'endframe_sys_tick' with whole history will fix accumulation of rounding errors
         //uint64_t endtick = ((passed_sys_ticks + endframe_sys_tick) * mult_const) >> MULT_C;
-        unsigned endtick = ((passed_sys_ticks + endframe_sys_tick) * (long long)sample_rate * TICK_F) / sys_clock_rate;
+        unsigned endtick = (unsigned)(((passed_sys_ticks + endframe_sys_tick) * (long long)sample_rate * TICK_F) / sys_clock_rate);
         flush( (unsigned) (endtick - passed_snd_ticks) );
 
         // update global system_tick counter

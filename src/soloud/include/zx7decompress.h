@@ -78,7 +78,7 @@ static void zx7_write_byte(struct zx7_io *io, int value) {
 static void zx7_write_bytes(struct zx7_io *io, int offset, int length) {
     int i;
     while (length-- > 0) {
-        i = io->output_index - offset;
+        i = (int)io->output_index - offset;
         zx7_write_byte(io, io->output_data[i]);
     }
 }
@@ -101,7 +101,7 @@ static int zx7_decompress(unsigned char *input_data, unsigned char *output_data)
         } else {
             length = zx7_read_elias_gamma(&io) + 1;
             if (length == 0) {
-                return io.input_index;
+                return (int)io.input_index;
             }
             zx7_write_bytes(&io, zx7_read_offset(&io) + 1, length);
         }
