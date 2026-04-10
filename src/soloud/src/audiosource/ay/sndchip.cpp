@@ -45,15 +45,16 @@ void SNDCHIP::flush(unsigned chiptick)
 {
    while (t < chiptick) {
       t++;
-      if (++ta >= fa) ta = 0, bitA ^= -1;
-      if (++tb >= fb) tb = 0, bitB ^= -1;
-      if (++tc >= fc) tc = 0, bitC ^= -1;
-      if (++tn >= fn)
-         tn = 0,
-         ns = (ns*2+1) ^ (((ns>>16)^(ns>>13)) & 1),
+      if (++ta >= fa) { ta = 0; bitA ^= -1; }
+      if (++tb >= fb) { tb = 0; bitB ^= -1; }
+      if (++tc >= fc) { tc = 0; bitC ^= -1; }
+      if (++tn >= fn) {
+         tn = 0;
+         ns = (ns*2+1) ^ (((ns>>16)^(ns>>13)) & 1);
          bitN = 0 - ((ns >> 16) & 1);
+      }
       if (++te >= fe) {
-         te = 0, env += denv;
+         te = 0; env += denv;
          if (env & ~31) {
             unsigned mask = (1<<r.env);
             if (mask & ((1<<0)|(1<<1)|(1<<2)|(1<<3)|(1<<4)|(1<<5)|(1<<6)|(1<<7)|(1<<9)|(1<<15)))
@@ -61,8 +62,8 @@ void SNDCHIP::flush(unsigned chiptick)
             else if (mask & ((1<<8)|(1<<12)))
                env &= 31;
             else if (mask & ((1<<10)|(1<<14)))
-               denv = -(int)denv, env = env + denv;
-            else env = 31, denv = 0; //11,13
+               { denv = -(int)denv; env = env + denv; }
+            else { env = 31; denv = 0; } //11,13
          }
       }
 
@@ -145,8 +146,8 @@ void SNDCHIP::write(unsigned timestamp, unsigned char val)
       case 13:
          r13_reloaded = 1;
          te = 0;
-         if (r.env & 4) env = 0, denv = 1; // attack
-         else env = 31, denv = -1; // decay
+         if (r.env & 4) { env = 0; denv = 1; } // attack
+         else { env = 31; denv = -1; } // decay
          break;
    }
 }

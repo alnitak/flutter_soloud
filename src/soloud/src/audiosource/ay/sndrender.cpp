@@ -35,7 +35,7 @@ void SNDRENDER::update(unsigned sys_tick, unsigned l, unsigned r)
 
         unsigned endtick = (sys_tick * mult_const) >> MULT_C; // = sys_tick * (sample_rate*TICK_F) / sys_clock_rate
         flush(base_tick + endtick);
-        mix_l = l, mix_r = r;
+        mix_l = l; mix_r = r;
 }
 
 void SNDRENDER::end_frame(unsigned endframe_sys_tick)
@@ -117,7 +117,7 @@ void SNDRENDER::flush(unsigned endtick)
                                 dstpos = (dstpos+1) & (bufsize-1);
 
                                 tick += TICK_F;
-                                s2_l = val_l, s2_r = val_r; // s2=s1, s1=0;
+                                s2_l = val_l; s2_r = val_r; // s2=s1, s1=0;
 
                         } while ((endtick ^ tick) & ~(TICK_F-1));
                 }
