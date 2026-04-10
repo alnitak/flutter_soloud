@@ -59,3 +59,6 @@ list(APPEND PLUGIN_SOURCES
   "${SRC_DIR}/filters/parametric_eq_filter.cpp"
   ${TARGET_SOURCES}
 )
+
+# pffft.c is C99 — force C language so Clang doesn't apply C++ VLA restrictions
+set_source_files_properties("${SRC_DIR}/pffft/pffft.c" PROPERTIES LANGUAGE C)
