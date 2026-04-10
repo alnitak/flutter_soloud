@@ -25,19 +25,30 @@ if disableXiphLibs {
     ]
 }
 
+// Suppress warnings from vendored third-party files (pffft.c, stb_vorbis.c,
+// miniaudio.h) that we do not modify directly. Applied to both C and C++
+// settings because SPM may compile .c files as C++ when cxxLanguageStandard
+// is set on the target.
+let vendoredWarningSuppressions: [String] = [
+    "-Wno-vla-cxx-extension",    // pffft.c: C99 VLAs in C++ context
+    "-Wno-comma",                // stb_vorbis.c: comma operator usage
+    "-Wno-shorten-64-to-32",     // stb_vorbis.c, miniaudio.h: 64→32 narrowing
+    "-Wno-writable-strings",     // stb_vorbis.c: string literal to char*
+]
+
 // Base compiler settings (always included)
 var baseCSettings: [CSetting] = [
     .headerSearchPath("../../include"),
     .headerSearchPath("src"),
     .headerSearchPath("src/soloud/include"),
-    .unsafeFlags(["-O3", "-ffast-math", "-flto"]),
+    .unsafeFlags(["-O3", "-ffast-math", "-flto"] + vendoredWarningSuppressions),
 ]
 
 var baseCXXSettings: [CXXSetting] = [
     .headerSearchPath("../../include"),
     .headerSearchPath("src"),
     .headerSearchPath("src/soloud/include"),
-    .unsafeFlags(["-O3", "-ffast-math", "-flto"]),
+    .unsafeFlags(["-O3", "-ffast-math", "-flto"] + vendoredWarningSuppressions),
 ]
 
 // Add Xiph include paths only when not disabled

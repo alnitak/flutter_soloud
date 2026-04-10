@@ -62,3 +62,13 @@ list(APPEND PLUGIN_SOURCES
 
 # pffft.c is C99 — force C language so Clang doesn't apply C++ VLA restrictions
 set_source_files_properties("${SRC_DIR}/pffft/pffft.c" PROPERTIES LANGUAGE C)
+
+# Suppress warnings from vendored third-party files that we do not modify directly.
+# stb_vorbis.c and miniaudio.h are embedded single-file libraries;
+# pffft.c is also vendored and may still get C++ diagnostics on some generators.
+set_source_files_properties(
+  "${SRC_DIR}/soloud/src/audiosource/wav/stb_vorbis.c"
+  "${SRC_DIR}/soloud/src/backend/miniaudio/miniaudio.h"
+  "${SRC_DIR}/pffft/pffft.c"
+  PROPERTIES COMPILE_OPTIONS "-w"
+)
