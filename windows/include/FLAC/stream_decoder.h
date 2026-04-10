@@ -826,7 +826,7 @@ FLAC_API FLAC__bool FLAC__stream_decoder_set_ogg_serial_number(FLAC__StreamDecod
  *
  * \default \c false
  * \param  decoder          A decoder instance to set.
- * \param  allow            Whether to allow chained streams.
+ * \param  value            Whether to allow chained streams.
  * \assert
  *    \code decoder != NULL \endcode
  * \retval FLAC__bool
