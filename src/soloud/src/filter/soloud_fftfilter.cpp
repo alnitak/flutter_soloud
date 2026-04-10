@@ -172,7 +172,6 @@ namespace SoLoud
 		float freqPerBin = aSamplerate / aSamples;
 		for (unsigned int i = 0; i < aSamples; i++)
 		{
-			float mag = aFFTBuffer[i * 2];
 			float pha = aFFTBuffer[i * 2 + 1];
 
 			/* compute phase difference */
@@ -207,7 +206,6 @@ namespace SoLoud
 		for (unsigned int i = 0; i < aSamples; i++)
 		{
 			/* get magnitude and true frequency from synthesis arrays */
-			float mag = aFFTBuffer[i * 2];
 			float freq = aFFTBuffer[i * 2 + 1];
 
 			/* subtract bin mid frequency */
