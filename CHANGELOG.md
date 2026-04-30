@@ -1,3 +1,6 @@
+#### 4.0.4 (XX Xxx 2026)
+- fix Apple: build forcing to add c++ std lib #456
+
 #### 4.0.3 (24 Apr 2026)
 - fix: rebind Dart callbacks after hot restart #444. Thanks to @skylartaylor
 - fix: retain BufferStream callbacks until disposal #445. Thanks to @skylartaylor
