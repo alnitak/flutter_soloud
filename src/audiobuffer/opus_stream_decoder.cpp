@@ -42,6 +42,14 @@ bool OpusDecoderWrapper::ensureDecoder(int newSampleRate, int newChannels)
     if (newSampleRate > 48000)
         newSampleRate = 48000;
 
+    // Opus decoder only supports 8, 12, 16, 24, and 48 kHz.
+    if (newSampleRate != 8000 && newSampleRate != 12000 &&
+        newSampleRate != 16000 && newSampleRate != 24000 &&
+        newSampleRate != 48000)
+    {
+        newSampleRate = 48000;
+    }
+
     if (newChannels <= 0)
         newChannels = 1;
     if (newChannels > 2)
@@ -330,13 +338,16 @@ std::vector<float> OpusDecoderWrapper::decodePacket(ogg_packet* packet)
                 return packetPcm;
             }
 
-            int desiredSampleRate = opusInfo.input_sample_rate > 0
-                                        ? static_cast<int>(opusInfo.input_sample_rate)
-                                        : 48000;
-            if (desiredSampleRate < 8000)
-                desiredSampleRate = 8000;
-            if (desiredSampleRate > 48000)
+            // Opus only supports specific output sample rates.
+            // input_sample_rate from OpusHead is informational and may
+            // not be a valid decoder rate (e.g. 44100).
+            int desiredSampleRate = engineSamplerate;
+            if (desiredSampleRate != 8000 && desiredSampleRate != 12000 &&
+                desiredSampleRate != 16000 && desiredSampleRate != 24000 &&
+                desiredSampleRate != 48000)
+            {
                 desiredSampleRate = 48000;
+            }
 
             int desiredChannels = opusInfo.channels > 0 ? opusInfo.channels : decodingChannels;
             if (desiredChannels <= 0)
