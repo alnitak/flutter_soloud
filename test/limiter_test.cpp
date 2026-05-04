@@ -119,10 +119,21 @@ struct LimiterRig {
     }
     ~LimiterRig() { delete inst; }
 
+    // Buffers are planar: channel ch lives at [ch*frames, ch*frames + frames).
     void run(float* buf, unsigned int frames, unsigned int channels) {
         inst->filter(buf, frames, frames, channels, SAMPLERATE, 0.0);
     }
 };
+
+// Helpers to read/write planar stereo buffers in the test.
+static inline float& planar(std::vector<float>& buf, unsigned int frames,
+                            unsigned int frameIdx, unsigned int ch) {
+    return buf[(size_t)ch * frames + frameIdx];
+}
+static inline float planarRead(const std::vector<float>& buf, unsigned int frames,
+                               unsigned int frameIdx, unsigned int ch) {
+    return buf[(size_t)ch * frames + frameIdx];
+}
 
 // Allow a tiny float tolerance above the ceiling for cumulative FP error.
 constexpr float CEILING_EPS = 1e-5f;
@@ -146,9 +157,9 @@ static void testCeilingHonoredOnImpulse() {
     constexpr unsigned int CHANNELS = 2;
     constexpr unsigned int FRAMES = 4096;
     std::vector<float> buf(FRAMES * CHANNELS, 0.0f);
-    // Full-scale spike on both channels at frame 100.
-    buf[100 * CHANNELS + 0] = 1.0f;
-    buf[100 * CHANNELS + 1] = 1.0f;
+    // Full-scale spike on both channels at frame 100 (planar).
+    planar(buf, FRAMES, 100, 0) = 1.0f;
+    planar(buf, FRAMES, 100, 1) = 1.0f;
 
     rig.run(buf.data(), FRAMES, CHANNELS);
 
@@ -170,16 +181,20 @@ static void testCeilingHonoredOnLoudSine() {
     const float amp = 2.0f; // +6 dB above 0 dBFS
     for (unsigned int i = 0; i < FRAMES; ++i) {
         float v = amp * std::sin(2.0f * (float)M_PI * freq * (float)i / SAMPLERATE);
-        buf[i * CHANNELS + 0] = v;
-        buf[i * CHANNELS + 1] = v;
+        planar(buf, FRAMES, i, 0) = v;
+        planar(buf, FRAMES, i, 1) = v;
     }
 
     rig.run(buf.data(), FRAMES, CHANNELS);
 
-    // Skip the lookahead priming region (first ~50 samples) when measuring.
+    // Skip the lookahead priming region when measuring.
     const size_t startFrame = 200;
-    float peak = maxAbs(buf.data() + startFrame * CHANNELS,
-                        (FRAMES - startFrame) * CHANNELS);
+    float peakL = 0.f, peakR = 0.f;
+    for (size_t i = startFrame; i < FRAMES; ++i) {
+        peakL = std::max(peakL, std::fabs(planarRead(buf, FRAMES, i, 0)));
+        peakR = std::max(peakR, std::fabs(planarRead(buf, FRAMES, i, 1)));
+    }
+    float peak = std::max(peakL, peakR);
     EXPECT(peak <= rig.ceilingLin + CEILING_EPS,
            "peak %.6f > ceiling %.6f", peak, rig.ceilingLin);
     std::printf("    steady-state peak: %.6f (ceiling %.6f)\n", peak, rig.ceilingLin);
@@ -198,8 +213,8 @@ static void testQuietPassesThrough() {
     const float amp = 0.1f; // -20 dB, well below -6 dB threshold knee
     for (unsigned int i = 0; i < FRAMES; ++i) {
         float v = amp * std::sin(2.0f * (float)M_PI * freq * (float)i / SAMPLERATE);
-        in[i * CHANNELS + 0] = v;
-        in[i * CHANNELS + 1] = v;
+        planar(in, FRAMES, i, 0) = v;
+        planar(in, FRAMES, i, 1) = v;
     }
     std::vector<float> buf = in;
     rig.run(buf.data(), FRAMES, CHANNELS);
@@ -211,7 +226,8 @@ static void testQuietPassesThrough() {
     float maxErr = 0.f;
     for (unsigned int i = delay; i < FRAMES; ++i) {
         for (unsigned int c = 0; c < CHANNELS; ++c) {
-            float err = std::fabs(buf[i * CHANNELS + c] - in[(i - delay) * CHANNELS + c]);
+            float err = std::fabs(planarRead(buf, FRAMES, i, c) -
+                                  planarRead(in, FRAMES, i - delay, c));
             if (err > maxErr) maxErr = err;
         }
     }
@@ -233,8 +249,8 @@ static void testStereoLinked() {
     const float freq = 1000.0f;
     for (unsigned int i = 0; i < FRAMES; ++i) {
         float t = 2.0f * (float)M_PI * freq * (float)i / SAMPLERATE;
-        buf[i * CHANNELS + 0] = ampL * std::sin(t);
-        buf[i * CHANNELS + 1] = ampR * std::sin(t);
+        planar(buf, FRAMES, i, 0) = ampL * std::sin(t);
+        planar(buf, FRAMES, i, 1) = ampR * std::sin(t);
     }
     rig.run(buf.data(), FRAMES, CHANNELS);
 
@@ -243,8 +259,8 @@ static void testStereoLinked() {
     const size_t startFrame = 200;
     float peakL = 0.f, peakR = 0.f;
     for (size_t i = startFrame; i < FRAMES; ++i) {
-        peakL = std::max(peakL, std::fabs(buf[i * CHANNELS + 0]));
-        peakR = std::max(peakR, std::fabs(buf[i * CHANNELS + 1]));
+        peakL = std::max(peakL, std::fabs(planarRead(buf, FRAMES, i, 0)));
+        peakR = std::max(peakR, std::fabs(planarRead(buf, FRAMES, i, 1)));
     }
     float ratio = peakL / std::max(peakR, 1e-9f);
     float expectedRatio = ampL / ampR; // 3.0
@@ -284,11 +300,17 @@ static void testCeilingHonoredUnderFuzz() {
         }
         rig.run(buf.data(), FRAMES, CHANNELS);
 
-        // Skip the lookahead window for the peak measurement.
+        // Skip the lookahead window for the peak measurement (planar: skip
+        // the first `look` frames in each channel slab).
         const unsigned int look = std::max(2u,
             (unsigned int)(p.attack * 0.001f * SAMPLERATE + 0.5f));
-        float peak = maxAbs(buf.data() + look * CHANNELS,
-                            (FRAMES - look) * CHANNELS);
+        float peak = 0.f;
+        for (unsigned int c = 0; c < CHANNELS; ++c) {
+            for (unsigned int i = look; i < FRAMES; ++i) {
+                float a = std::fabs(planarRead(buf, FRAMES, i, c));
+                if (a > peak) peak = a;
+            }
+        }
         EXPECT(peak <= rig.ceilingLin + CEILING_EPS,
                "thr=%.1f ceil=%.2f knee=%.1f rel=%.0f atk=%.1f -> peak %.6f > ceil %.6f",
                p.threshold, p.ceiling, p.knee, p.release, p.attack, peak, rig.ceilingLin);
@@ -345,6 +367,45 @@ static void testLookaheadRampPrecedesPeak() {
                 farBeforeSample, preSpike, spikeOut, rig.ceilingLin);
 }
 
+// 7. Regression test for the planar-vs-interleaved buffer layout bug.
+//    SoLoud passes audio in PLANAR layout: channel ch occupies the contiguous
+//    range [ch*aBufferSize, ch*aBufferSize + aSamples). If the limiter
+//    indexes the buffer as interleaved, samples get scrambled across
+//    channels and the output is heavy distortion.
+//
+//    To catch this: feed two completely different signals into L and R
+//    (1 kHz sine into L, 7 kHz sine into R, both BELOW threshold so no
+//    limiting kicks in) and verify each output channel matches its OWN
+//    delayed input — no cross-channel bleed.
+static void testPlanarLayoutNoCrossChannelBleed() {
+    std::printf("Test: planar buffer layout — no cross-channel bleed\n");
+    LimiterRig rig;
+    constexpr unsigned int CHANNELS = 2;
+    constexpr unsigned int FRAMES = 2048;
+    std::vector<float> in(FRAMES * CHANNELS, 0.0f);
+    const float ampL = 0.1f, freqL = 1000.0f; // L: 1 kHz quiet
+    const float ampR = 0.1f, freqR = 7000.0f; // R: 7 kHz quiet (well below thr)
+    for (unsigned int i = 0; i < FRAMES; ++i) {
+        planar(in, FRAMES, i, 0) = ampL * std::sin(2.0f * (float)M_PI * freqL * (float)i / SAMPLERATE);
+        planar(in, FRAMES, i, 1) = ampR * std::sin(2.0f * (float)M_PI * freqR * (float)i / SAMPLERATE);
+    }
+    std::vector<float> buf = in;
+    rig.run(buf.data(), FRAMES, CHANNELS);
+
+    const unsigned int delay = (unsigned int)(1.0f * 0.001f * SAMPLERATE + 0.5f) - 1;
+    float maxErrL = 0.f, maxErrR = 0.f;
+    for (unsigned int i = delay; i < FRAMES; ++i) {
+        maxErrL = std::max(maxErrL, std::fabs(planarRead(buf, FRAMES, i, 0) -
+                                              planarRead(in, FRAMES, i - delay, 0)));
+        maxErrR = std::max(maxErrR, std::fabs(planarRead(buf, FRAMES, i, 1) -
+                                              planarRead(in, FRAMES, i - delay, 1)));
+    }
+    EXPECT(maxErrL < 1e-5f, "L channel corrupted, err = %.3e", maxErrL);
+    EXPECT(maxErrR < 1e-5f, "R channel corrupted, err = %.3e", maxErrR);
+    std::printf("    max err L=%.3e, R=%.3e (both below threshold, expect identity)\n",
+                maxErrL, maxErrR);
+}
+
 // ---- main -----------------------------------------------------------------
 
 int main() {
@@ -356,6 +417,7 @@ int main() {
     testStereoLinked();
     testCeilingHonoredUnderFuzz();
     testLookaheadRampPrecedesPeak();
+    testPlanarLayoutNoCrossChannelBleed();
 
     std::printf("\n%d/%d assertions passed, %d failures\n",
                 g_assertions - g_failures, g_assertions, g_failures);

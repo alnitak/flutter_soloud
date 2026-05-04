@@ -35,7 +35,7 @@ void LimiterInstance::resizeBuffers(int lookaheadSamples, int channels)
 void LimiterInstance::filter(
     float *aBuffer,
     unsigned int aSamples,
-    unsigned int /*aBufferSize*/,
+    unsigned int aBufferSize,
     unsigned int aChannels,
     float aSamplerate,
     SoLoud::time aTime)
@@ -69,11 +69,17 @@ void LimiterInstance::filter(
     const int ringSize = mRingSize;
     const float perStepBase = 1.0f / (float)(ringSize - 1);
 
+    // SoLoud passes audio in PLANAR layout: channel ch occupies the contiguous
+    // range [ch*aBufferSize, ch*aBufferSize + aSamples). The internal delay
+    // buffer remains frame-major (channel-interleaved) for cache locality of
+    // the per-frame read/write.
+    const size_t stride = (size_t)aBufferSize;
+
     for (unsigned int i = 0; i < aSamples; ++i) {
         // 1. Stereo-linked peak across all channels for this sample frame.
         float peak = 0.0f;
         for (unsigned int ch = 0; ch < aChannels; ++ch) {
-            float a = fabsf(aBuffer[i * aChannels + ch]);
+            float a = fabsf(aBuffer[i + (size_t)ch * stride]);
             if (a > peak) peak = a;
         }
 
@@ -100,7 +106,7 @@ void LimiterInstance::filter(
         // 3. Write the new sample frame and its required gain into the ring.
         for (unsigned int ch = 0; ch < aChannels; ++ch) {
             mDelayBuffer[(size_t)mWritePos * (size_t)aChannels + ch] =
-                aBuffer[i * aChannels + ch];
+                aBuffer[i + (size_t)ch * stride];
         }
         mGainEnv[mWritePos] = reqGain;
 
@@ -152,7 +158,7 @@ void LimiterInstance::filter(
             float out = wet * limited + (1.0f - wet) * dry;
             if (out > ceilingLin) out = ceilingLin;
             else if (out < -ceilingLin) out = -ceilingLin;
-            aBuffer[i * aChannels + ch] = out;
+            aBuffer[i + (size_t)ch * stride] = out;
         }
 
         // 8. Advance the write head.
