@@ -91,8 +91,7 @@ static int g_assertions = 0;
 
 constexpr float SAMPLERATE = 48000.0f;
 
-// Build a fresh limiter with the given parameters (defaults match the
-// gphil-flutter app's audio_effects_snapshot.dart).
+// Build a fresh limiter with maximizer-style defaults.
 struct LimiterRig {
     Limiter parent;
     LimiterInstance* inst;
@@ -101,7 +100,7 @@ struct LimiterRig {
 
     explicit LimiterRig(
         float wet = 1.0f,
-        float thresholdDb = -6.0f,
+        float thresholdDb = -3.0f,
         float ceilingDb = -1.0f,
         float kneeDb = 6.0f,
         float releaseMs = 50.0f,
@@ -200,11 +199,10 @@ static void testCeilingHonoredOnLoudSine() {
     std::printf("    steady-state peak: %.6f (ceiling %.6f)\n", peak, rig.ceilingLin);
 }
 
-// 3. Quiet input below threshold should pass through at unity gain (after
-//    the lookahead delay). This catches accidental gain reduction on signals
-//    that shouldn't trigger any limiting.
-static void testQuietPassesThrough() {
-    std::printf("Test: -20 dB sine passes through at unity gain\n");
+// 3. Quiet input below the output ceiling should pass through with maximizer
+//    drive (after the lookahead delay), without extra gain reduction.
+static void testQuietGetsMaximizerDrive() {
+    std::printf("Test: -20 dB sine gets threshold autogain\n");
     LimiterRig rig;
     constexpr unsigned int CHANNELS = 2;
     constexpr unsigned int FRAMES = (unsigned int)(SAMPLERATE * 0.05f); // 50 ms
@@ -219,20 +217,22 @@ static void testQuietPassesThrough() {
     std::vector<float> buf = in;
     rig.run(buf.data(), FRAMES, CHANNELS);
 
+    const float driveLin = std::pow(10.0f, -rig.parent.mThreshold / 20.0f);
+
     // Internal delay = ringSize - 1 = lookaheadSamples - 1 samples. After
-    // priming, output[i] should equal input[i - delay] sample-accurately.
+    // priming, output[i] should equal driven input[i - delay] sample-accurately.
     const unsigned int lookahead = (unsigned int)(1.0f * 0.001f * SAMPLERATE + 0.5f);
     const unsigned int delay = lookahead - 1;
     float maxErr = 0.f;
     for (unsigned int i = delay; i < FRAMES; ++i) {
         for (unsigned int c = 0; c < CHANNELS; ++c) {
             float err = std::fabs(planarRead(buf, FRAMES, i, c) -
-                                  planarRead(in, FRAMES, i - delay, c));
+                                  planarRead(in, FRAMES, i - delay, c) * driveLin);
             if (err > maxErr) maxErr = err;
         }
     }
-    EXPECT(maxErr < 1e-6f, "quiet signal altered, max sample error = %.3e", maxErr);
-    std::printf("    max sample error vs delayed input: %.3e\n", maxErr);
+    EXPECT(maxErr < 1e-6f, "quiet signal not driven cleanly, max sample error = %.3e", maxErr);
+    std::printf("    max sample error vs delayed driven input: %.3e\n", maxErr);
 }
 
 // 4. Stereo-linked gain — asymmetric L/R input should preserve the L:R
@@ -326,7 +326,7 @@ static void testCeilingHonoredUnderFuzz() {
 //    gain down BEFORE the peak arrived, not after.
 static void testLookaheadRampPrecedesPeak() {
     std::printf("Test: gain ramps DOWN before the peak (true look-ahead)\n");
-    // threshold = ceiling so the spike output should land exactly on ceiling.
+    // With -1 dB threshold, the maximizer applies +1 dB drive before limiting.
     LimiterRig rig(1.0f, -1.0f, -1.0f, 0.0f, 50.0f, 2.0f /*2 ms look-ahead*/);
     constexpr unsigned int CHANNELS = 1;
     constexpr unsigned int FRAMES = 4096;
@@ -349,18 +349,18 @@ static void testLookaheadRampPrecedesPeak() {
            "spike fell well below ceiling — limiter overreacting? %.6f vs %.6f",
            spikeOut, rig.ceilingLin);
 
-    // Sample emitted RIGHT before the spike: tone (0.5) attenuated by the
-    // ramp. Required gain at the spike is ceiling/4 ≈ 0.223, so the sample
-    // one step before should be ~0.223 + (1-0.223)/lookahead, applied to 0.5.
+    // Sample emitted RIGHT before the spike: driven tone attenuated by the
+    // ramp. Required gain at the spike is ceiling/(4 dB driven by +1 dB).
     float preSpike = std::fabs(buf[outSpikeIdx - 1]);
-    EXPECT(preSpike < 0.4f,
+    EXPECT(preSpike < 0.45f,
            "no pre-emptive gain reduction before peak: pre-spike sample = %.4f", preSpike);
 
     // And a sample well before the look-ahead window started attenuating:
-    // should still be at full 0.5 (the tone, unmodified).
+    // should still be the tone with maximizer drive applied.
     const unsigned int farBefore = outSpikeIdx - lookahead - 200;
     float farBeforeSample = std::fabs(buf[farBefore]);
-    EXPECT(farBeforeSample > 0.49f && farBeforeSample < 0.51f,
+    const float drivenTone = 0.5f * std::pow(10.0f, 1.0f / 20.0f);
+    EXPECT(std::fabs(farBeforeSample - drivenTone) < 1e-5f,
            "tone was attenuated outside the lookahead window: %.4f", farBeforeSample);
 
     std::printf("    far-before %.4f, pre-spike %.4f, spike %.4f (ceiling %.4f)\n",
@@ -374,9 +374,9 @@ static void testLookaheadRampPrecedesPeak() {
 //    channels and the output is heavy distortion.
 //
 //    To catch this: feed two completely different signals into L and R
-//    (1 kHz sine into L, 7 kHz sine into R, both BELOW threshold so no
-//    limiting kicks in) and verify each output channel matches its OWN
-//    delayed input — no cross-channel bleed.
+//    (1 kHz sine into L, 7 kHz sine into R, both below the output ceiling
+//    after drive) and verify each output channel matches its OWN delayed,
+//    driven input — no cross-channel bleed.
 static void testPlanarLayoutNoCrossChannelBleed() {
     std::printf("Test: planar buffer layout — no cross-channel bleed\n");
     LimiterRig rig;
@@ -393,16 +393,17 @@ static void testPlanarLayoutNoCrossChannelBleed() {
     rig.run(buf.data(), FRAMES, CHANNELS);
 
     const unsigned int delay = (unsigned int)(1.0f * 0.001f * SAMPLERATE + 0.5f) - 1;
+    const float driveLin = std::pow(10.0f, -rig.parent.mThreshold / 20.0f);
     float maxErrL = 0.f, maxErrR = 0.f;
     for (unsigned int i = delay; i < FRAMES; ++i) {
         maxErrL = std::max(maxErrL, std::fabs(planarRead(buf, FRAMES, i, 0) -
-                                              planarRead(in, FRAMES, i - delay, 0)));
+                                              planarRead(in, FRAMES, i - delay, 0) * driveLin));
         maxErrR = std::max(maxErrR, std::fabs(planarRead(buf, FRAMES, i, 1) -
-                                              planarRead(in, FRAMES, i - delay, 1)));
+                                              planarRead(in, FRAMES, i - delay, 1) * driveLin));
     }
     EXPECT(maxErrL < 1e-5f, "L channel corrupted, err = %.3e", maxErrL);
     EXPECT(maxErrR < 1e-5f, "R channel corrupted, err = %.3e", maxErrR);
-    std::printf("    max err L=%.3e, R=%.3e (both below threshold, expect identity)\n",
+    std::printf("    max err L=%.3e, R=%.3e (both below ceiling, expect driven identity)\n",
                 maxErrL, maxErrR);
 }
 
@@ -413,7 +414,7 @@ int main() {
 
     testCeilingHonoredOnImpulse();
     testCeilingHonoredOnLoudSine();
-    testQuietPassesThrough();
+    testQuietGetsMaximizerDrive();
     testStereoLinked();
     testCeilingHonoredUnderFuzz();
     testLookaheadRampPrecedesPeak();

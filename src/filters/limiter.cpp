@@ -44,15 +44,13 @@ void LimiterInstance::filter(
 
     const float thresholdDb = mParam[Limiter::THRESHOLD];
     const float ceilingDb = mParam[Limiter::OUTPUT_CEILING];
-    const float kneeDb = mParam[Limiter::KNEE_WIDTH];
     const float wet = mParam[Limiter::WET];
     const float lookaheadMs = mParam[Limiter::ATTACK_TIME];
     const float releaseMs = mParam[Limiter::RELEASE_TIME];
 
     const float ceilingLin = powf(10.0f, ceilingDb / 20.0f);
-    const float halfKnee = kneeDb * 0.5f;
-    const float kneeLow = thresholdDb - halfKnee;
-    const float kneeHigh = thresholdDb + halfKnee;
+    const float driveDb = -thresholdDb;
+    const float driveLin = powf(10.0f, driveDb / 20.0f);
 
     // Look-ahead window in samples. Need at least 2 for a meaningful ramp.
     int desiredLookahead = (int)(lookaheadMs * 0.001f * aSamplerate + 0.5f);
@@ -76,28 +74,19 @@ void LimiterInstance::filter(
     const size_t stride = (size_t)aBufferSize;
 
     for (unsigned int i = 0; i < aSamples; ++i) {
-        // 1. Stereo-linked peak across all channels for this sample frame.
+        // 1. Stereo-linked driven peak across all channels for this sample frame.
         float peak = 0.0f;
         for (unsigned int ch = 0; ch < aChannels; ++ch) {
-            float a = fabsf(aBuffer[i + (size_t)ch * stride]);
+            float a = fabsf(aBuffer[i + (size_t)ch * stride]) * driveLin;
             if (a > peak) peak = a;
         }
 
-        // 2. Required gain reduction (dB), combining soft-knee threshold
-        //    behaviour with hard ceiling enforcement. Always pick the larger
-        //    reduction so the ceiling wins when in conflict.
+        // 2. Required gain reduction (dB) after maximizer drive. THRESHOLD is
+        //    interpreted as DAW-style limiter drive/autogain: -6 dB means
+        //    +6 dB into the brickwall. OUTPUT_CEILING is the only final peak
+        //    target.
         float peakDb = 20.0f * log10f(fmaxf(peak, 1e-8f));
-        float reductionDb = 0.0f;
-
-        if (kneeDb > 0.0f && peakDb > kneeLow && peakDb < kneeHigh) {
-            float over = peakDb - kneeLow;
-            reductionDb = (over * over) / (2.0f * kneeDb);
-        } else if (peakDb >= kneeHigh) {
-            reductionDb = peakDb - thresholdDb;
-        }
-
-        float ceilReductionDb = peakDb - ceilingDb;
-        if (ceilReductionDb > reductionDb) reductionDb = ceilReductionDb;
+        float reductionDb = peakDb - ceilingDb;
         if (reductionDb < 0.0f) reductionDb = 0.0f;
 
         float reqGain = powf(10.0f, -reductionDb / 20.0f);
@@ -154,7 +143,7 @@ void LimiterInstance::filter(
         //    net for any dry-path overshoot.
         for (unsigned int ch = 0; ch < aChannels; ++ch) {
             float dry = mDelayBuffer[(size_t)readPos * (size_t)aChannels + ch];
-            float limited = dry * mSmoothedGain;
+            float limited = dry * driveLin * mSmoothedGain;
             float out = wet * limited + (1.0f - wet) * dry;
             if (out > ceilingLin) out = ceilingLin;
             else if (out < -ceilingLin) out = -ceilingLin;
@@ -268,7 +257,7 @@ const char *Limiter::getParamName(unsigned int aParamIndex)
     case WET:
         return "Wet";
     case THRESHOLD:
-        return "Threshold";
+        return "Threshold / Drive";
     case OUTPUT_CEILING:
         return "Output Ceiling";
     case KNEE_WIDTH:
@@ -330,7 +319,7 @@ Limiter::Limiter(unsigned int aSamplerate)
 {
     mWet = 1.0f;
     mSamplerate = aSamplerate;
-    mThreshold = -6.0f;
+    mThreshold = -3.0f;
     mOutputCeiling = -1.0f;
     mKneeWidth = 6.0f;
     mReleaseTime = 50.0f;

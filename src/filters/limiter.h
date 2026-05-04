@@ -6,12 +6,14 @@
 
 class Limiter;
 
-// True look-ahead brick-wall peak limiter.
+// True look-ahead brick-wall limiter/maximizer.
 //
 // Replaces the original feed-forward soft-knee compressor that smoothed the
 // gain envelope AFTER computing the required reduction (which let transients
 // leak through the "ceiling"). The new implementation:
 //
+//   * applies THRESHOLD as DAW-style drive/autogain (-6 dB = +6 dB into the
+//     limiter), while OUTPUT_CEILING remains the final brickwall level;
 //   * delays the audio by ATTACK_TIME (now interpreted as a look-ahead
 //     window in milliseconds) so the gain has time to ramp DOWN to the
 //     required value BEFORE the offending sample is emitted;
@@ -67,9 +69,9 @@ public:
   };
   unsigned int mSamplerate;
   float mWet;           // wet/dry mix, 1.0 = fully limited, 0.0 = bypass
-  float mThreshold;     // dB at which gain reduction starts (knee centred here)
+  float mThreshold;     // dB drive/autogain control: -6 dB means +6 dB drive
   float mOutputCeiling; // dB hard maximum output (guaranteed)
-  float mKneeWidth;     // dB width of the soft-knee transition into limiting
+  float mKneeWidth;     // retained for API compatibility; unused by maximizer
   float mReleaseTime;   // ms one-pole release time constant
   float mAttackTime;    // ms look-ahead window length (was: envelope attack)
 
