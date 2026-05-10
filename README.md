@@ -64,7 +64,7 @@ A showcase of apps and games built with this plugin:
 | GPhil</br>[web](https://app.g-phil.app/) [macOS](https://apps.apple.com/it/app/gphil/id6740543718) [Windows](https://apps.microsoft.com/detail/9pkkz2p2dldg?ocid=webpdpshare)| Vyacheslav Gryaznov | Innovative app designed for musicians to play instrumental concertos with flexible virtual orchestral accompaniment.|
 | [Forcebar](https://forcebar.xyz) | Doug Todd | Forcebar is a pure reflex game. |
 | [RadioVisualizer](https://radiovisualizer.com) | Marco Bavagnoli | Stream over 35,000 live radio stations from every corner of the globe. |
-| Stellar Bastion [web](https://www.crazygames.com/game/stellar-bastion) [iOS]([https://apps.apple.com/it/app/gphil/id6740543718](https://play.google.com/store/apps/details?id=com.coconutisland.stellar_bastion)) [Android](https://play.google.com/store/apps/details?id=com.coconutisland.stellar_bastion) | Coconut Island Apps | 2D Tower Defense game. |
+| Stellar Bastion [web](https://www.crazygames.com/game/stellar-bastion) [Android](https://play.google.com/store/apps/details?id=com.coconutisland.stellar_bastion) [iOS](https://apps.apple.com/us/app/stellar-bastion/id6761073618) | Coconut Island Apps | 2D Tower Defense game. |
 
 *Want to add your app? Feel free to open a PR!*
 
