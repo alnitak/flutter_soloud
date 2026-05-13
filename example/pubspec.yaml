@@ -19,7 +19,7 @@ dependencies:
 
   flutter:
     sdk: flutter
-  flutter_zxing: ^2.3.0
+
   flutter_soloud:
     path: ../
 
