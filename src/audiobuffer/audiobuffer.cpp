@@ -423,11 +423,7 @@ void BufferStream::checkBuffering(unsigned int afterAddingBytesCount) {
     SoLoud::time pos = mBuffer.bufferingType == BufferingType::RELEASED
                            ? getStreamTimeConsumed()
                            : mThePlayer->getPosition(handle);
-    // SoLoud::time pos = mThePlayer->getPosition(handle);
     bool isPaused = mThePlayer->getPause(handle);
-
-    // printf("checkBuffering -- bufferLength: %lf, currBufferTime: %lf\n",
-    // 	bufferLength, currBufferTime);
 
     // This handle needs to wait for [TIME_FOR_BUFFERING]. Pause it.
     if (pos >= currBufferTime + addedDataTime && !isPaused) {
@@ -437,10 +433,10 @@ void BufferStream::checkBuffering(unsigned int afterAddingBytesCount) {
       callOnBufferingCallback(true, handle, currBufferTime);
     } else
     // This handle has reached [TIME_FOR_BUFFERING]. Unpause it.
-	// Only unpause when buffer covers playback position + margin,
-	// not just when new data >= margin (which caused play/pause toggling
-	// when seeking beyond buffered data)
-	if (currBufferTime + addedDataTime >= pos + mBufferingTimeNeeds && isPaused){
+    // Only unpause when buffer covers playback position + margin,
+    // not just when new data >= margin (which caused play/pause toggling
+    // when seeking beyond buffered data)
+    if (currBufferTime + addedDataTime >= pos + mBufferingTimeNeeds && isPaused){
         mThePlayer->setPause(handle, false);
         isPaused = false;
         mParent->handle[i].bufferingTime = currBufferTime + addedDataTime;
