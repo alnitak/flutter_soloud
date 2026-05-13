@@ -1,3 +1,8 @@
+#### 4.0.5 (13 May 2026)
+- fix sample count calculations in BufferStreamInstance and BufferStream #462
+- fix Apple: removed hardcoded `-flto` compile arg in Package.swift #463
+- prevent header name collision build error when the app uses other native plugins like `flutter_zxing` which uses the common.h source file name too #464
+
 #### 4.0.4 (4 May 2026)
 - fix Apple: build forcing to add c++ std lib #456
 - fix reading Opus with not standard samplerate #457
