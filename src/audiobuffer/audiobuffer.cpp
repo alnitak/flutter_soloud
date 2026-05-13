@@ -108,8 +108,7 @@ unsigned int BufferStreamInstance::getAudio(float *aBuffer,
   // If buffering type is RELEASED, adjust mSampleCount and don't increment
   // mOffset
   if (mParent->mBuffer.bufferingType == BufferingType::RELEASED) {
-    mParent->mSampleCount -=
-        samplesRemoved / mParent->mPCMformat.bytesPerSample;
+    mParent->mSampleCount -= samplesRemoved;
     // For RELEASED type, streamPosition is always at the start of the remaining
     // buffer
     mStreamPosition = 0;
@@ -117,8 +116,6 @@ unsigned int BufferStreamInstance::getAudio(float *aBuffer,
   } else {
     mOffset += samplesToRead * mChannels;
     // For PRESERVED type, streamPosition advances with the offset
-    // mStreamPosition = mOffset / (float)(sizeof(float) * mBaseSamplerate *
-    // mChannels);
     mStreamPosition = mOffset / (float)(mBaseSamplerate * mChannels);
   }
 
@@ -383,7 +380,7 @@ PlayerErrors BufferStream::addData(const void *aData, unsigned int aDataLen,
     bytesWritten = mBuffer.addData(mPCMformat.dataType, buffer.data(),
                                    bufferDataToAdd / mPCMformat.bytesPerSample,
                                    &allDataAdded) *
-                   mPCMformat.bytesPerSample;
+                   sizeof(float);
     // Remove the processed data from the buffer
     if (bytesWritten > 0) {
       buffer.erase(buffer.begin(), buffer.begin() + bufferDataToAdd);
@@ -394,7 +391,7 @@ PlayerErrors BufferStream::addData(const void *aData, unsigned int aDataLen,
     checkBuffering(static_cast<unsigned int>(bytesWritten));
   mUncompressedBytesReceived += bytesWritten;
 
-  mSampleCount += static_cast<unsigned int>(bytesWritten / mPCMformat.bytesPerSample);
+  mSampleCount += static_cast<unsigned int>(bytesWritten / sizeof(float));
 
   // data has been added to the buffer, but not all because reached its full
   // capacity. So mark this stream as ended and no more data can be added.
