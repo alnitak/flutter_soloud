@@ -38,7 +38,7 @@ unsigned int BufferStreamInstance::getAudio(float *aBuffer,
 
   // Check if parent is still valid before accessing it
   if (mParent == nullptr || !mParent->isValid()) {
-    memset(aBuffer, 0, sizeof(float) * aSamplesToRead);
+    memset(aBuffer, 0, sizeof(float) * aSamplesToRead * mChannels);
     return 0;
   }
 
@@ -55,7 +55,7 @@ unsigned int BufferStreamInstance::getAudio(float *aBuffer,
 
   // This happens when using RELEASED buffer type
   if (mParent->mBuffer.getFloatsBufferSize() == 0) {
-    memset(aBuffer, 0, sizeof(float) * aSamplesToRead);
+    memset(aBuffer, 0, sizeof(float) * aSamplesToRead * mChannels);
     // Calculate mStreamPosition based on mOffset
     mStreamPosition = mOffset / (float)(mBaseSamplerate * mChannels);
 
@@ -102,14 +102,10 @@ unsigned int BufferStreamInstance::getAudio(float *aBuffer,
   unsigned int totalBytesRead = samplesToRead * mChannels * sizeof(float);
   size_t samplesRemoved = mParent->mBuffer.removeData(totalBytesRead);
 
-  // Update stream position regardless of buffering type
-  mStreamTime += samplesToRead / (float)mBaseSamplerate;
-
   // If buffering type is RELEASED, adjust mSampleCount and don't increment
   // mOffset
   if (mParent->mBuffer.bufferingType == BufferingType::RELEASED) {
-    mParent->mSampleCount -=
-        samplesRemoved / mParent->mPCMformat.bytesPerSample;
+    mParent->mSampleCount -= samplesRemoved;
     // For RELEASED type, streamPosition is always at the start of the remaining
     // buffer
     mStreamPosition = 0;
@@ -117,8 +113,6 @@ unsigned int BufferStreamInstance::getAudio(float *aBuffer,
   } else {
     mOffset += samplesToRead * mChannels;
     // For PRESERVED type, streamPosition advances with the offset
-    // mStreamPosition = mOffset / (float)(sizeof(float) * mBaseSamplerate *
-    // mChannels);
     mStreamPosition = mOffset / (float)(mBaseSamplerate * mChannels);
   }
 
@@ -262,6 +256,15 @@ void BufferStream::resetBuffer() {
   mSampleCount = 0;
   mBytesReceived = 0;
   mUncompressedBytesReceived = 0;
+  mBytesConsumed = 0;
+  dataIsEnded = false;
+  mIsBuffering = true;
+  autoTypeChannels = 0;
+  autoTypeSamplerate = 0.f;
+  if (streamDecoder) {
+    streamDecoder = std::make_unique<StreamDecoder>();
+    streamDecoder->setBufferIcyMetaInt(mIcyMetaInt);
+  }
 
   for (int i = 0; i < mParent->handle.size(); i++) {
     mThePlayer->soloud.seek(mParent->handle[i].handle, 0.0f);
@@ -383,7 +386,7 @@ PlayerErrors BufferStream::addData(const void *aData, unsigned int aDataLen,
     bytesWritten = mBuffer.addData(mPCMformat.dataType, buffer.data(),
                                    bufferDataToAdd / mPCMformat.bytesPerSample,
                                    &allDataAdded) *
-                   mPCMformat.bytesPerSample;
+                   sizeof(float);
     // Remove the processed data from the buffer
     if (bytesWritten > 0) {
       buffer.erase(buffer.begin(), buffer.begin() + bufferDataToAdd);
@@ -394,7 +397,7 @@ PlayerErrors BufferStream::addData(const void *aData, unsigned int aDataLen,
     checkBuffering(static_cast<unsigned int>(bytesWritten));
   mUncompressedBytesReceived += bytesWritten;
 
-  mSampleCount += static_cast<unsigned int>(bytesWritten / mPCMformat.bytesPerSample);
+  mSampleCount += static_cast<unsigned int>(bytesWritten / sizeof(float));
 
   // data has been added to the buffer, but not all because reached its full
   // capacity. So mark this stream as ended and no more data can be added.
@@ -423,11 +426,7 @@ void BufferStream::checkBuffering(unsigned int afterAddingBytesCount) {
     SoLoud::time pos = mBuffer.bufferingType == BufferingType::RELEASED
                            ? getStreamTimeConsumed()
                            : mThePlayer->getPosition(handle);
-    // SoLoud::time pos = mThePlayer->getPosition(handle);
     bool isPaused = mThePlayer->getPause(handle);
-
-    // printf("checkBuffering -- bufferLength: %lf, currBufferTime: %lf\n",
-    // 	bufferLength, currBufferTime);
 
     // This handle needs to wait for [TIME_FOR_BUFFERING]. Pause it.
     if (pos >= currBufferTime + addedDataTime && !isPaused) {
@@ -437,10 +436,10 @@ void BufferStream::checkBuffering(unsigned int afterAddingBytesCount) {
       callOnBufferingCallback(true, handle, currBufferTime);
     } else
     // This handle has reached [TIME_FOR_BUFFERING]. Unpause it.
-	// Only unpause when buffer covers playback position + margin,
-	// not just when new data >= margin (which caused play/pause toggling
-	// when seeking beyond buffered data)
-	if (currBufferTime + addedDataTime >= pos + mBufferingTimeNeeds && isPaused){
+    // Only unpause when buffer covers playback position + margin,
+    // not just when new data >= margin (which caused play/pause toggling
+    // when seeking beyond buffered data)
+    if (currBufferTime + addedDataTime >= pos + mBufferingTimeNeeds && isPaused){
         mThePlayer->setPause(handle, false);
         isPaused = false;
         mParent->handle[i].bufferingTime = currBufferTime + addedDataTime;

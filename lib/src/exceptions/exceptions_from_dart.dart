@@ -14,9 +14,9 @@ class SoLoudIsolateSpawnFailedException extends SoLoudDartException {
 }
 
 /// An exception that is thrown when a SoLoud method is accessed before
-/// the engine is initialized (by calling `SoLoud.initialize()` and either
-/// awaiting that method call, or awaiting the `SoLoud.initialized` Future
-/// elsewhere, or by checking the synchronous `SoLoud.isInitialized` bool).
+/// the engine is initialized (by calling `SoLoud.init()` and either
+/// awaiting that method call, or by checking the synchronous
+/// `SoLoud.isInitialized` bool).
 class SoLoudNotInitializedException extends SoLoudDartException {
   /// Creates a new [SoLoudNotInitializedException].
   const SoLoudNotInitializedException([super.message]);
@@ -24,8 +24,7 @@ class SoLoudNotInitializedException extends SoLoudDartException {
   @override
   String get description =>
       'SoLoud has not been initialized yet. '
-      'Call `SoLoud.initialize()` first and await it, or await the '
-      '`SoLoud.initialized` Future elsewhere. Alternately, you can check '
+      'Call `SoLoud.init()` first and await it. Alternately, you can check '
       'the synchronous `SoLoud.isInitialized` bool just before calling '
       'any SoLoud method.';
 }
