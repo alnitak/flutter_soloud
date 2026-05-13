@@ -1,4 +1,4 @@
-#include "common.h"
+#include "soloud_common.h"
 
 #ifdef _IS_ANDROID_
 #include <android/log.h>
@@ -12,7 +12,7 @@
 #include <emscripten/emscripten.h>
 #endif
 
-void platform_log(const char *fmt, ...) {
+void soloud_platform_log(const char *fmt, ...) {
   va_list args;
   va_start(args, fmt);
 #ifdef _IS_ANDROID_

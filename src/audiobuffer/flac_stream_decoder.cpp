@@ -1,7 +1,7 @@
 #if !defined(NO_XIPH_LIBS)
 
 #include "flac_stream_decoder.h"
-#include "../common.h"
+#include "../soloud_common.h"
 #include <iostream>
 #include <cstring> // For memcpy
 

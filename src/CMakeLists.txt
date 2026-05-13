@@ -38,7 +38,7 @@ message("**************** SOLOUD SRC.CMAKE END  ${TARGET_NAME}")
 
 # --- Plugin source files (common across all platforms) ---
 list(APPEND PLUGIN_SOURCES
-  "${SRC_DIR}/common.cpp"
+  "${SRC_DIR}/soloud_common.cpp"
   "${SRC_DIR}/bindings.cpp"
   "${SRC_DIR}/player.cpp"
   "${SRC_DIR}/analyzer.cpp"

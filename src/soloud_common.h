@@ -1,7 +1,7 @@
 #pragma once
 
-#ifndef COMMON_H
-#define COMMON_H
+#ifndef SOLOUD_COMMON_H
+#define SOLOUD_COMMON_H
 
 #ifdef __ANDROID__
 #define _IS_ANDROID_
@@ -51,10 +51,10 @@
   __attribute__((visibility("default"))) __attribute__((used))
 #endif
 
-void platform_log(const char *fmt, ...);
+void soloud_platform_log(const char *fmt, ...);
 
 #ifndef MIN
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
 #endif
 
-#endif // COMMON_H
+#endif // SOLOUD_COMMON_H

@@ -1,5 +1,5 @@
 #include "filters.h"
-#include "../common.h"
+#include "../soloud_common.h"
 #include "../active_sound.h" // Add this include for complete type definition
 
 #include <cstddef>

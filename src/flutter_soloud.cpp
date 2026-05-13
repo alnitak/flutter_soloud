@@ -99,7 +99,7 @@
 // #include "soloud/src/audiosource/vizsn/soloud_vizsn.cpp"
 
 
-#include "common.cpp"
+#include "soloud_common.cpp"
 #include "bindings.cpp"
 #include "player.cpp"
 #include "analyzer.cpp"

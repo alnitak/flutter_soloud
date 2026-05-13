@@ -9,7 +9,7 @@
 // #include <windows.h>
 // #endif
 
-#include "../common.h"
+#include "../soloud_common.h"
 #include "audiobuffer.h"
 #include "metadata_ffi.h"
 

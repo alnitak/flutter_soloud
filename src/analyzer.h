@@ -1,7 +1,7 @@
 #ifndef ANALYZER_H
 #define ANALYZER_H
 
-#include "common.h"
+#include "soloud_common.h"
 
 class Analyzer {
 public:
