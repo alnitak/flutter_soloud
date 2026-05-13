@@ -2,7 +2,7 @@
 #if !defined(NO_XIPH_LIBS)
     #include "miniaudio_libvorbis.h"
 #endif
-#include "common.h"
+#include "soloud_common.h"
 #include "waveform.h"
 
 #include <cstdio>
@@ -209,7 +209,7 @@ namespace Waveform
 #if defined(NO_XIPH_LIBS)
         if (isOgg)
         {
-            platform_log("No OGG support. If you want OGG support, please undefine NO_XIPH_LIBS\n");
+            soloud_platform_log("No OGG support. If you want OGG support, please undefine NO_XIPH_LIBS\n");
             return ReadSamplesErrors::noBackend;
         }
 #endif
