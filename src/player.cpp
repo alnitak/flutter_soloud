@@ -1,4 +1,4 @@
-#include "common.h"
+#include "soloud_common.h"
 #include "player.h"
 #include "filters/filters.h"
 #include "soloud.h"

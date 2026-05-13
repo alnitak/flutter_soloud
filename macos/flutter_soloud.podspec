@@ -97,7 +97,7 @@ Flutter audio plugin using SoLoud library and FFI
   xiph_flags = disable_xiph_libs ? '' : '-logg -lopus -lvorbis -lvorbisfile -lFLAC'
 
   s.user_target_xcconfig = {
-    'OTHER_LDFLAGS' => "$(inherited) #{force_load_lib} #{xiph_flags}",
+    'OTHER_LDFLAGS' => "$(inherited) #{force_load_lib} #{xiph_flags} -lc++",
     'LIBRARY_SEARCH_PATHS' => "$(inherited) \"#{plugin_root}/cmake_build/macosx\" \"#{plugin_root}/flutter_soloud/libs\"",
     # Fix for FFI symbol stripping on macOS Release builds
     'STRIP_STYLE' => 'debugging',

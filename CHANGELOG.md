@@ -1,7 +1,18 @@
-#### 4.0.3 (XX Xxx 2026)
+#### 4.0.5 (13 May 2026)
+- fix sample count calculations in BufferStreamInstance and BufferStream #462
+- fix Apple: removed hardcoded `-flto` compile arg in Package.swift #463
+- prevent header name collision build error when the app uses other native plugins like `flutter_zxing` which uses the common.h source file name too #464
+
+#### 4.0.4 (4 May 2026)
+- fix Apple: build forcing to add c++ std lib #456
+- fix reading Opus with not standard samplerate #457
+
+#### 4.0.3 (24 Apr 2026)
 - fix: rebind Dart callbacks after hot restart #444. Thanks to @skylartaylor
 - fix: retain BufferStream callbacks until disposal #445. Thanks to @skylartaylor
-- fix web: small sound bleed after stop and play #446
+- fix: removed the asserts in the init method #453
+- web fix: small sound bleed after stop and play #446
+- web fix: new way to load audio from memory (loadAssets and loadMem) on web to solve UI freeze when loading
 
 #### 4.0.2 (10 Apr 2026)
 - apple: fix building issue with XCode

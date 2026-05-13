@@ -6,8 +6,8 @@
 #include "soloud_thread.h"
 #include "waveform/waveform.h"
 
-#ifndef COMMON_H
-#include "common.h"
+#ifndef SOLOUD_COMMON_H
+#include "soloud_common.h"
 #endif
 
 #ifdef __EMSCRIPTEN__
@@ -361,7 +361,7 @@ FFI_PLUGIN_EXPORT int isInited() {
         // std::thread loadThread([p, completeFileName, loadIntoMem, hash]()
         //                        {
         PlayerErrors error = p->loadFile(completeFileName, loadIntoMem, (unsigned int *)&hash);
-        // platform_log("LOAD FILE FROM THREAD error: %d  hash: %u\n", error, hash);
+        // soloud_platform_log("LOAD FILE FROM THREAD error: %d  hash: %u\n", error, hash);
         fileLoadedCallback(error, completeFileName, (unsigned int *)&hash, counter);
         // });
         // // TODO(marco): use .detach()? Use std::atomic somewhere

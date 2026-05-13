@@ -20,8 +20,15 @@ class SoLoudLoader {
   /// To reflect [SoLoudLoader] for `io`.
   bool automaticCleanup = false;
 
+  bool _isInitialized = false;
+
+  /// Whether the loader has been initialized.
+  bool get isInitialized => _isInitialized;
+
   /// To reflect [SoLoudLoader] for `io`.
-  Future<void> initialize() async {}
+  Future<void> initialize() async {
+    _isInitialized = true;
+  }
 
   /// Loads the asset with [key] (e.g. `assets/sound.mp3`), and return
   /// the file byte as `Uint8List` to be passed to `SoLoud.LoadMem` for

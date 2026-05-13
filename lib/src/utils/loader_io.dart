@@ -27,6 +27,11 @@ class SoLoudLoader {
   /// deleting files in the temporary directory at various points.
   bool automaticCleanup = false;
 
+  bool _isInitialized = false;
+
+  /// Whether the loader has been initialized.
+  bool get isInitialized => _isInitialized;
+
   final Map<_TemporaryFileIdentifier, File> _temporaryFiles = {};
 
   Directory? _temporaryDirectory;
@@ -134,6 +139,7 @@ class SoLoudLoader {
     }
 
     _temporaryDirectory = directory;
+    _isInitialized = true;
     _log.info('Temporary directory initialized at ${directory.path}');
 
     if (automaticCleanup) {

@@ -3,7 +3,7 @@
 #define DR_MP3_FLOAT_OUTPUT
 #include "../soloud/src/audiosource/wav/dr_mp3.h"
 
-#include "../common.h"
+#include "../soloud_common.h"
 #include "mp3_stream_decoder.h"
 #include <algorithm>
 #include <fstream>
