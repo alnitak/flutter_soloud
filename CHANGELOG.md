@@ -1,3 +1,6 @@
+#### 4.X.X (XX Xxx 2026)
+- Fix iOS SPM miniaudio duplicate symbols #465. Thanks to @coolswood
+
 #### 4.0.5 (13 May 2026)
 - fix sample count calculations in BufferStreamInstance and BufferStream #462
 - fix Apple: removed hardcoded `-flto` compile arg in Package.swift #463
