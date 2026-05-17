@@ -1,4 +1,4 @@
-#### 4.X.X (XX Xxx 2026)
+#### 4.0.6 (17 May 2026)
 - Fix iOS SPM miniaudio duplicate symbols #465. Thanks to @coolswood
 
 #### 4.0.5 (13 May 2026)
