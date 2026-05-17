@@ -14,7 +14,7 @@ enum Limiter {
 
   final List<double> _mins = const [0, -60, -60, 0, 1, 0.1];
   final List<double> _maxs = const [1, 0, 0, 30, 1000, 200];
-  final List<double> _defs = const [1, -6, -1, 2, 100, 1];
+  final List<double> _defs = const [1, -3, -1, 2, 100, 1];
 
   double get min => _mins[index];
   double get max => _maxs[index];
@@ -23,7 +23,7 @@ enum Limiter {
   @override
   String toString() => switch (this) {
     Limiter.wet => 'Wet',
-    Limiter.threshold => 'Threshold',
+    Limiter.threshold => 'Threshold / Drive',
     Limiter.outputCeiling => 'Output Ceiling',
     Limiter.kneeWidth => 'Knee Width',
     Limiter.releaseTime => 'Release Time',

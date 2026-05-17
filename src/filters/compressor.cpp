@@ -42,7 +42,7 @@ void CompressorInstance::filter(
 
     for (unsigned int i = 0; i < aSamples; ++i) {
         for (unsigned int ch = 0; ch < aChannels; ++ch) {
-            float *sample = &aBuffer[i * aChannels + ch];
+            float *sample = &aBuffer[i + (size_t)ch * (size_t)aBufferSize];
             float inputLevel = fabsf(*sample);
 
             // Convert the input level to dB for comparison
