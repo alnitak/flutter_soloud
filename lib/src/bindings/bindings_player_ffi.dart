@@ -2388,6 +2388,125 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
         )
       >();
 
+  // ///////////////////////////////////////
+  // output capture
+  // ///////////////////////////////////////
+
+  @override
+  PlayerErrors setOutputCaptureEnabled(
+    bool enabled, {
+    int maxBufferedFrames = 44100,
+  }) {
+    final error = _setOutputCaptureEnabled(enabled, maxBufferedFrames);
+    return PlayerErrors.values[error];
+  }
+
+  late final _setOutputCaptureEnabledPtr =
+      _lookup<
+        ffi.NativeFunction<ffi.UnsignedInt Function(ffi.Bool, ffi.UnsignedInt)>
+      >('setOutputCaptureEnabled');
+  late final _setOutputCaptureEnabled = _setOutputCaptureEnabledPtr
+      .asFunction<int Function(bool, int)>();
+
+  @override
+  Float32List readOutputCapture(int maxFrames) {
+    final format = getOutputCaptureFormat();
+    if (format.error != PlayerErrors.noError ||
+        format.channels <= 0 ||
+        maxFrames <= 0) {
+      return Float32List(0);
+    }
+
+    final out = calloc<ffi.Float>(maxFrames * format.channels);
+    final framesRead = calloc<ffi.UnsignedInt>();
+    try {
+      final error = _readOutputCapture(out, maxFrames, framesRead);
+      if (PlayerErrors.values[error] != PlayerErrors.noError ||
+          framesRead.value == 0) {
+        return Float32List(0);
+      }
+
+      final sampleCount = framesRead.value * format.channels;
+      return Float32List.fromList(out.asTypedList(sampleCount));
+    } finally {
+      calloc
+        ..free(out)
+        ..free(framesRead);
+    }
+  }
+
+  late final _readOutputCapturePtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.UnsignedInt Function(
+            ffi.Pointer<ffi.Float>,
+            ffi.UnsignedInt,
+            ffi.Pointer<ffi.UnsignedInt>,
+          )
+        >
+      >('readOutputCapture');
+  late final _readOutputCapture = _readOutputCapturePtr
+      .asFunction<
+        int Function(ffi.Pointer<ffi.Float>, int, ffi.Pointer<ffi.UnsignedInt>)
+      >();
+
+  @override
+  int getOutputCaptureAvailableFrames() {
+    return _getOutputCaptureAvailableFrames();
+  }
+
+  late final _getOutputCaptureAvailableFramesPtr =
+      _lookup<ffi.NativeFunction<ffi.UnsignedInt Function()>>(
+        'getOutputCaptureAvailableFrames',
+      );
+  late final _getOutputCaptureAvailableFrames =
+      _getOutputCaptureAvailableFramesPtr.asFunction<int Function()>();
+
+  @override
+  int getOutputCaptureDroppedFrames() {
+    return _getOutputCaptureDroppedFrames();
+  }
+
+  late final _getOutputCaptureDroppedFramesPtr =
+      _lookup<ffi.NativeFunction<ffi.UnsignedInt Function()>>(
+        'getOutputCaptureDroppedFrames',
+      );
+  late final _getOutputCaptureDroppedFrames = _getOutputCaptureDroppedFramesPtr
+      .asFunction<int Function()>();
+
+  @override
+  ({PlayerErrors error, int sampleRate, int channels})
+  getOutputCaptureFormat() {
+    final sampleRate = calloc<ffi.UnsignedInt>();
+    final channels = calloc<ffi.UnsignedInt>();
+    try {
+      final error = _getOutputCaptureFormat(sampleRate, channels);
+      return (
+        error: PlayerErrors.values[error],
+        sampleRate: sampleRate.value,
+        channels: channels.value,
+      );
+    } finally {
+      calloc
+        ..free(sampleRate)
+        ..free(channels);
+    }
+  }
+
+  late final _getOutputCaptureFormatPtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.UnsignedInt Function(
+            ffi.Pointer<ffi.UnsignedInt>,
+            ffi.Pointer<ffi.UnsignedInt>,
+          )
+        >
+      >('getOutputCaptureFormat');
+  late final _getOutputCaptureFormat = _getOutputCaptureFormatPtr
+      .asFunction<
+        int Function(ffi.Pointer<ffi.UnsignedInt>, ffi.Pointer<ffi.UnsignedInt>)
+      >();
+
   /////////////////////////////////////////
   /// Mixing Bus
   /// https://solhsa.com/soloud/mixbus.html

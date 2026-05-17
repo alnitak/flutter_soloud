@@ -985,6 +985,39 @@ abstract class FlutterSoLoud {
     bool average = false,
   });
 
+  // ///////////////////////////////////////
+  // output capture
+  // ///////////////////////////////////////
+
+  /// Enables or disables capture of the final mixed output.
+  ///
+  /// Captured samples are interleaved float32 PCM in the engine output format.
+  @mustBeOverridden
+  PlayerErrors setOutputCaptureEnabled(
+    bool enabled, {
+    int maxBufferedFrames = 44100,
+  });
+
+  /// Reads up to [maxFrames] captured frames.
+  ///
+  /// The returned list contains interleaved float32 samples. Its length is
+  /// `framesRead * channels`, where `channels` comes from
+  /// [getOutputCaptureFormat].
+  @mustBeOverridden
+  Float32List readOutputCapture(int maxFrames);
+
+  /// Returns captured frames currently available to read.
+  @mustBeOverridden
+  int getOutputCaptureAvailableFrames();
+
+  /// Returns frames dropped because the capture buffer was full.
+  @mustBeOverridden
+  int getOutputCaptureDroppedFrames();
+
+  /// Returns the capture sample rate and channel count.
+  @mustBeOverridden
+  ({PlayerErrors error, int sampleRate, int channels}) getOutputCaptureFormat();
+
   /////////////////////////////////////////
   /// Mixing Bus
   /// https://solhsa.com/soloud/mixbus.html

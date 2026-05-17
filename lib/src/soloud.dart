@@ -3073,6 +3073,48 @@ interface class SoLoud {
     return samples;
   }
 
+  /// Enables capture of the final mixed output produced by SoLoud.
+  ///
+  /// Captured data is interleaved float32 PCM in the same sample rate and
+  /// channel count as the initialized engine. Call [readOutputCapture] to drain
+  /// the internal buffer.
+  void setOutputCaptureEnabled(bool enabled, {int maxBufferedFrames = 44100}) {
+    final error = _controller.soLoudFFI.setOutputCaptureEnabled(
+      enabled,
+      maxBufferedFrames: maxBufferedFrames,
+    );
+    if (error != PlayerErrors.noError) {
+      throw SoLoudCppException.fromPlayerError(error);
+    }
+  }
+
+  /// Reads up to [maxFrames] captured output frames.
+  ///
+  /// The returned list contains interleaved float32 samples. It is empty when
+  /// no captured data is currently available.
+  Float32List readOutputCapture(int maxFrames) {
+    return _controller.soLoudFFI.readOutputCapture(maxFrames);
+  }
+
+  /// Returns captured output frames currently available to read.
+  int getOutputCaptureAvailableFrames() {
+    return _controller.soLoudFFI.getOutputCaptureAvailableFrames();
+  }
+
+  /// Returns output frames dropped because the capture buffer was full.
+  int getOutputCaptureDroppedFrames() {
+    return _controller.soLoudFFI.getOutputCaptureDroppedFrames();
+  }
+
+  /// Returns the sample rate and channel count of captured output.
+  ({int sampleRate, int channels}) getOutputCaptureFormat() {
+    final format = _controller.soLoudFFI.getOutputCaptureFormat();
+    if (format.error != PlayerErrors.noError) {
+      throw SoLoudCppException.fromPlayerError(format.error);
+    }
+    return (sampleRate: format.sampleRate, channels: format.channels);
+  }
+
   /////////////////////////////////////////
   /// Mixing Bus
   /// How it works:
