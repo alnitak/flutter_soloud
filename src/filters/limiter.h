@@ -6,11 +6,47 @@
 
 class Limiter;
 
+// True look-ahead brick-wall limiter/maximizer.
+//
+// Replaces the original feed-forward soft-knee compressor that smoothed the
+// gain envelope AFTER computing the required reduction (which let transients
+// leak through the "ceiling"). The new implementation:
+//
+//   * applies THRESHOLD as DAW-style drive/autogain (-6 dB = +6 dB into the
+//     limiter), while OUTPUT_CEILING remains the final brickwall level;
+//   * delays the audio by ATTACK_TIME (now interpreted as a look-ahead
+//     window in milliseconds) so the gain has time to ramp DOWN to the
+//     required value BEFORE the offending sample is emitted;
+//   * uses a stereo-linked peak detector (max across channels) so the
+//     stereo image stays stable on transients;
+//   * walks the gain envelope backward across the look-ahead window with a
+//     linear attack ramp, guaranteeing that the gain at output position
+//     equals the required reduction;
+//   * applies a one-pole release smoother (attack is instantaneous via the
+//     envelope; only release is smoothed);
+//   * hard-clips the post-mix output at the ceiling as a safety net so the
+//     output is mathematically guaranteed to stay <= ceiling even when the
+//     wet/dry mix introduces dry-path overshoot.
+//
+// Public parameter IDs and ranges are unchanged so the Dart wrapper and
+// existing presets continue to work. The semantic of ATTACK_TIME shifts
+// from "envelope smoothing time constant" to "look-ahead window length";
+// in practice the typical value (1 ms) means the same thing to the user.
 class LimiterInstance : public SoLoud::FilterInstance {
   Limiter *mParent;
-  std::vector<float> mCurrentGain; // Store gain per channel
-  float attackCoef;
-  float releaseCoef;
+
+  // Ring buffer holding delayed audio: size = mRingSize * mChannels
+  std::vector<float> mDelayBuffer;
+  // Ring buffer holding the per-sample required gain envelope: size = mRingSize
+  std::vector<float> mGainEnv;
+
+  int mRingSize;       // look-ahead in samples
+  int mChannels;       // cached channel count
+  int mWritePos;       // ring index for the newest sample
+  float mSmoothedGain; // gain after release smoothing
+  float mReleaseCoef;  // one-pole release coefficient (recomputed per block)
+
+  void resizeBuffers(int lookaheadSamples, int channels);
 
 public:
   virtual void filter(float *aBuffer, unsigned int aSamples,
@@ -32,17 +68,12 @@ public:
     ATTACK_TIME = 5
   };
   unsigned int mSamplerate;
-  float mWet; // Wet/dry mix ratio, 1.0 means fully wet, 0.0 means fully dry
-  float mThreshold; // The threshold in dB. Signals above this level are reduced
-                    // in gain. A lower value means more aggressive limiting.
-  float mOutputCeiling; // The maximum output level in dB (should be < 0dB to
-                        // prevent clipping)
-  float mKneeWidth; // The width of the knee in dB. A larger value results in a
-                    // softer transition into limiting.
-  float mReleaseTime; // The release time in milliseconds. Determines how
-                      // quickly the gain reduction recovers after a signal
-                      // drops below the threshold.
-  float mAttackTime;  // Attack time in milliseconds
+  float mWet;           // wet/dry mix, 1.0 = fully limited, 0.0 = bypass
+  float mThreshold;     // dB drive/autogain control: -6 dB means +6 dB drive
+  float mOutputCeiling; // dB hard maximum output (guaranteed)
+  float mKneeWidth;     // retained for API compatibility; unused by maximizer
+  float mReleaseTime;   // ms one-pole release time constant
+  float mAttackTime;    // ms look-ahead window length (was: envelope attack)
 
   virtual int getParamCount();
   virtual const char *getParamName(unsigned int aParamIndex);
