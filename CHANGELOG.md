@@ -1,3 +1,7 @@
+#### 4.0.7 (XX Xxx 2026)
+- add look-ahead brickwall limiter and fix planar DSP indexing #468. Thanks to @Kunstderfug
+- fix iOS CocoaPods wrapper double compile #467. Thanks to @DavidPluxia
+
 #### 4.0.6 (17 May 2026)
 - Fix iOS SPM miniaudio duplicate symbols #465. Thanks to @coolswood
 
