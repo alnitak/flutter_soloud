@@ -30,14 +30,14 @@ var baseCSettings: [CSetting] = [
     .headerSearchPath("../../include"),
     .headerSearchPath("src"),
     .headerSearchPath("src/soloud/include"),
-    .unsafeFlags(["-O3", "-ffast-math"]),
+    .unsafeFlags(["-O3"]),
 ]
 
 var baseCXXSettings: [CXXSetting] = [
     .headerSearchPath("../../include"),
     .headerSearchPath("src"),
     .headerSearchPath("src/soloud/include"),
-    .unsafeFlags(["-O3", "-ffast-math"]),
+    .unsafeFlags(["-O3"]),
 ]
 
 // Add Xiph include paths only when not disabled
