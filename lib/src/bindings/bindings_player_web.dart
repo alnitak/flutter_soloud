@@ -1207,6 +1207,34 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     return samples;
   }
 
+  // ///////////////////////////////////////
+  // output capture
+  // ///////////////////////////////////////
+
+  @override
+  PlayerErrors setOutputCaptureEnabled(
+    bool enabled, {
+    int maxBufferedFrames = 44100,
+  }) {
+    return PlayerErrors.notImplemented;
+  }
+
+  @override
+  Float32List readOutputCapture(int maxFrames) {
+    return Float32List(0);
+  }
+
+  @override
+  int getOutputCaptureAvailableFrames() {
+    return 0;
+  }
+
+  @override
+  ({PlayerErrors error, int sampleRate, int channels})
+  getOutputCaptureFormat() {
+    return (error: PlayerErrors.notImplemented, sampleRate: 0, channels: 0);
+  }
+
   /////////////////////////////////////////
   /// Mixing Bus
   /// https://solhsa.com/soloud/mixbus.html
