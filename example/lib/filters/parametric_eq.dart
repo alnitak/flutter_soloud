@@ -66,6 +66,7 @@ class ParametricEq extends StatefulWidget {
 }
 
 class _ParametricEqState extends State<ParametricEq> {
+  final wet = ValueNotifier<double>(1);
   final windowSize = ValueNotifier<int>(1024);
   final bandsNumber = ValueNotifier<int>(3);
   static const maxBandsNumber = 64;
@@ -145,6 +146,32 @@ class _ParametricEqState extends State<ParametricEq> {
                       child: const Text('Deactivate'),
                     ),
                   ],
+                ),
+
+                /// Wet / dry mix
+                ValueListenableBuilder(
+                  valueListenable: wet,
+                  builder: (context, value, child) {
+                    return Row(
+                      children: [
+                        const Text('Wet / Dry Mix'),
+                        Expanded(
+                          child: Slider(
+                            value: value,
+                            min: 0,
+                            max: 1,
+                            label: value.toStringAsFixed(2),
+                            onChanged: (value) {
+                              wet.value = value;
+                              soloud.filters.parametricEqFilter.wet.value =
+                                  value;
+                            },
+                          ),
+                        ),
+                        Text(value.toStringAsFixed(2)),
+                      ],
+                    );
+                  },
                 ),
 
                 /// Window size (must be power of 2)

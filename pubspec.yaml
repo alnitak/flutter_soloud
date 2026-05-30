@@ -46,8 +46,6 @@ dev_dependencies:
   very_good_analysis: ^6.0.0
 
 flutter:
-  config:
-    enable-swift-package-manager: true
 
   plugin:
     platforms:

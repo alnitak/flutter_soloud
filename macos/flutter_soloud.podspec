@@ -15,6 +15,11 @@ Flutter audio plugin using SoLoud library and FFI
 
   s.source           = { :path => '.' }
   s.source_files     = 'flutter_soloud/Sources/flutter_soloud/*.{h,mm}'
+    # flutter_soloud.mm is the SwiftPM wrapper that includes the full C++
+  # implementation. CocoaPods builds the same implementation through the
+  # CMake script phase below, so compiling the wrapper here defines duplicate
+  # symbols when the app also force-loads libflutter_soloud_plugin.a.
+  s.exclude_files = 'flutter_soloud/Sources/flutter_soloud/flutter_soloud.mm'
   s.dependency 'FlutterMacOS'
   s.platform = :osx, '10.15'
 
