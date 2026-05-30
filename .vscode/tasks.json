@@ -29,7 +29,7 @@
         },
         {
             "label": "compile macos debug",
-            "command": "cd ${workspaceFolder}/example; flutter build macos -t lib/main.dart --debug",
+            "command": "cd ${workspaceFolder}/example; flutter build macos -t lib/filters/parametric_eq.dart --debug",
             "type": "shell"
         },
         {

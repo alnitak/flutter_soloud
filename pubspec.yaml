@@ -47,7 +47,7 @@ dev_dependencies:
 
 flutter:
   config:
-    enable-swift-package-manager: true
+    enable-swift-package-manager: false
 
   plugin:
     platforms:

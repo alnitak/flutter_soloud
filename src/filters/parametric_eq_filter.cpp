@@ -344,6 +344,7 @@ void ParametricEqInstance::fftFilterChannel(float *aFFTBuffer,
   // (size mBands+1)
   float nyquist = aSamplerate * 0.5f;
   unsigned int halfSamples = aSamples / 2;
+  float wet = mParam[0];
 
   for (unsigned int i = 0; i < aSamples; i++) {
     // For a real signal FFT: bins 0..N/2 are positive frequencies,
@@ -396,7 +397,7 @@ void ParametricEqInstance::fftFilterChannel(float *aFFTBuffer,
       gain = 1.0f; // pass-through: unity gain if no band matches
     }
 
-    aFFTBuffer[i * 2] *= gain;
+    aFFTBuffer[i * 2] *= (gain * wet + (1.0f - wet));
   }
 
   magPhase2Comp(aFFTBuffer, aSamples);
