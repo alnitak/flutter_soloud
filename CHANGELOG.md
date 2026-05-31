@@ -1,10 +1,10 @@
-#### 4.0.7 (XX Xxx 2026)
+#### 4.0.7 (1 Jun 2026)
 - add look-ahead brickwall limiter and fix planar DSP indexing #468. Thanks to @Kunstderfug
 - fix iOS CocoaPods wrapper double compile #467. Thanks to @DavidPluxia
+- fix Apple: added linker settings to do not stripe symbols when building the ipa using SPM #472
 - Android fix: fix audio crackling using `BufferingType.released` on some Android devices #476
 - Android fix: quick play & stop causes glitches and probably UI jank #478
 - fix: the `wet` parameter of parametric eq was not evaluated #477
-- fix Apple: added linker settings to do not stripe symbols when building the ipa using SPM #472
 
 #### 4.0.6 (17 May 2026)
 - Fix iOS SPM miniaudio duplicate symbols #465. Thanks to @coolswood
