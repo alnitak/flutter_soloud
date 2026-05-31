@@ -84,6 +84,7 @@ var targets: [Target] = [
         linkerSettings: [
             .linkedFramework("AudioToolbox"),
             .linkedFramework("AVFAudio"),
+            .unsafeFlags(["-Wl,-undefined,dynamic_lookup"]),
         ]
     )
 ]
@@ -105,7 +106,7 @@ let package = Package(
         .iOS("13.0")
     ],
     products: [
-        .library(name: "flutter-soloud", targets: ["flutter_soloud"])
+        .library(name: "flutter-soloud", type: .dynamic, targets: ["flutter_soloud"])
     ],
     dependencies: [
         .package(name: "FlutterFramework", path: "../FlutterFramework")
