@@ -3,6 +3,7 @@
 - fix iOS CocoaPods wrapper double compile #467. Thanks to @DavidPluxia
 - Android fix: fix audio crackling using `BufferingType.released` on some Android devices #476
 - fix: the wet parameter of parametric eq was not evaluated #477
+- fix Apple: added linker settings to do not stripe symbols when building the ipa using SPM #472
 
 #### 4.0.6 (17 May 2026)
 - Fix iOS SPM miniaudio duplicate symbols #465. Thanks to @coolswood

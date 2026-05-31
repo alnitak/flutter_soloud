@@ -9,10 +9,11 @@
 # Existing source files in macos/Runner/ (like AppDelegate.swift, MainMenu.xib, Info.plist) are preserved because flutter create does not overwrite existing files.
 # CocoaPods integration is restored by running pod install in the regenerated project.
 
-cd example
+cd ../example
 rm -rf macos/Runner.xcodeproj macos/Runner.xcworkspace
-rm -rf ioos/Runner.xcodeproj ios/Runner.xcworkspace
-flutter create . --platforms=macos,ios
+rm -rf ios/Runner.xcodeproj ios/Runner.xcworkspace
+flutter create . --platforms=macos
+flutter create . --platforms=ios
 cd macos
 pod install
 cd -
