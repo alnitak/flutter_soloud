@@ -519,9 +519,11 @@ PlayerErrors Player::getBufferSize(unsigned int hash, unsigned int *sizeInBytes)
     if (s == nullptr || s->soundType != SoundType::TYPE_BUFFER_STREAM)
         return PlayerErrors::soundHashNotFound;
 
+    auto *bufferStream = static_cast<SoLoud::BufferStream *>(s->sound.get());
+    std::lock_guard<std::recursive_mutex> lock(bufferStream->mBuffer.bufferMutex);
     *sizeInBytes = static_cast<unsigned int>(
-        static_cast<SoLoud::BufferStream *>(s->sound.get())->mBuffer.buffer.size() +
-        static_cast<SoLoud::BufferStream *>(s->sound.get())->buffer.size());
+        bufferStream->mBuffer.getActiveSizeInBytes() +
+        bufferStream->buffer.size());
     return PlayerErrors::noError;
 }
 

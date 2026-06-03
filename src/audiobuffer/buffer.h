@@ -29,6 +29,11 @@ public:
 
     size_t getReadOffset() const { return readOffset; }
 
+    size_t getActiveSizeInBytes() const {
+        if (buffer.size() <= readOffset) return 0;
+        return buffer.size() - readOffset;
+    }
+
     // Constructor that accepts the maxBytes parameter
     Buffer() : bufferingType(BufferingType::PRESERVED), maxBytes(0), readOffset(0) {}
 
@@ -150,8 +155,7 @@ public:
     size_t getFloatsBufferSize()
     {
         std::lock_guard<std::recursive_mutex> lock(bufferMutex); // Lock during read
-        if (buffer.size() <= readOffset) return 0;
-        return (buffer.size() - readOffset) / sizeof(float);
+        return getActiveSizeInBytes() / sizeof(float);
     }
 
     // Clear the buffer
