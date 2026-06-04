@@ -1,3 +1,6 @@
+#### 4.0.8 (X Xxx 2026)
+- fix released buffer stream size reporting #480. Thanks to @Kunstderfug
+
 #### 4.0.7 (1 Jun 2026)
 - add look-ahead brickwall limiter and fix planar DSP indexing #468. Thanks to @Kunstderfug
 - fix iOS CocoaPods wrapper double compile #467. Thanks to @DavidPluxia
