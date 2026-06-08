@@ -1855,6 +1855,38 @@ readSamplesFromMem(const unsigned char *buffer, unsigned long dataSize,
 }
 
 /////////////////////////////////////////
+/// Output capture
+/////////////////////////////////////////
+
+FFI_PLUGIN_EXPORT enum PlayerErrors
+setOutputCaptureEnabled(bool enabled, unsigned int maxBufferedFrames) {
+  if (player.get() == nullptr || !player.get()->isInited())
+    return backendNotInited;
+  return player.get()->setOutputCaptureEnabled(enabled, maxBufferedFrames);
+}
+
+FFI_PLUGIN_EXPORT enum PlayerErrors
+readOutputCapture(float *out, unsigned int maxFrames,
+                  unsigned int *framesRead) {
+  if (player.get() == nullptr || !player.get()->isInited())
+    return backendNotInited;
+  return player.get()->readOutputCapture(out, maxFrames, framesRead);
+}
+
+FFI_PLUGIN_EXPORT unsigned int getOutputCaptureAvailableFrames() {
+  if (player.get() == nullptr || !player.get()->isInited())
+    return 0;
+  return player.get()->getOutputCaptureAvailableFrames();
+}
+
+FFI_PLUGIN_EXPORT enum PlayerErrors
+getOutputCaptureFormat(unsigned int *sampleRate, unsigned int *channels) {
+  if (player.get() == nullptr || !player.get()->isInited())
+    return backendNotInited;
+  return player.get()->getOutputCaptureFormat(sampleRate, channels);
+}
+
+/////////////////////////////////////////
 /// Mixing Bus
 /// https://solhsa.com/soloud/mixbus.html
 /// https://solhsa.com/soloud/soloud_20200207.html#mixing-bus

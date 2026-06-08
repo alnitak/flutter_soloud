@@ -25,6 +25,12 @@
 #define __WEB__ 0
 #endif
 
+namespace SoLoud
+{
+    typedef void (*miniaudio_output_capture_callback_t)(const float *samples, unsigned int frames, unsigned int channels, void *userData);
+    void miniaudio_set_output_capture_callback(miniaudio_output_capture_callback_t callback, void *userData);
+}
+
 Player::Player() : mInited(false), mFilters(&soloud, nullptr, nullptr) {}
 
 Player::~Player() {
@@ -55,6 +61,7 @@ void Player::dispose() {
     if (!mInited)
         return;
 
+    setOutputCaptureEnabled(false, 0);
     mInited = false;
 
     // Clean up SoLoud
@@ -1376,6 +1383,116 @@ PlayerErrors Player::play3d(
     }
     handle = newHandle;
     return PlayerErrors::noError;
+}
+
+/////////////////////////////////////////
+/// Output capture
+/////////////////////////////////////////
+
+PlayerErrors Player::setOutputCaptureEnabled(bool enabled,
+                                             unsigned int maxBufferedFrames)
+{
+    if (!mInited)
+        return backendNotInited;
+
+    if (!enabled)
+    {
+        mOutputCaptureEnabled.store(false, std::memory_order_release);
+        SoLoud::miniaudio_set_output_capture_callback(nullptr, nullptr);
+        std::atomic_store_explicit(
+            &mOutputCaptureBuffer,
+            std::shared_ptr<OutputCaptureBuffer>(),
+            std::memory_order_release);
+        return noError;
+    }
+
+    if (maxBufferedFrames == 0)
+        return invalidParameter;
+
+    auto buffer = std::make_shared<OutputCaptureBuffer>();
+    if (!buffer->init(static_cast<size_t>(maxBufferedFrames),
+                      static_cast<size_t>(mChannels)))
+        return outOfMemory;
+
+    std::atomic_store_explicit(
+        &mOutputCaptureBuffer,
+        buffer,
+        std::memory_order_release);
+    mOutputCaptureEnabled.store(true, std::memory_order_release);
+    SoLoud::miniaudio_set_output_capture_callback(
+        &Player::outputCaptureCallback, this);
+    return noError;
+}
+
+PlayerErrors Player::readOutputCapture(float *out, unsigned int maxFrames,
+                                       unsigned int *framesRead)
+{
+    if (!mInited)
+        return backendNotInited;
+    if (out == nullptr || framesRead == nullptr)
+        return invalidParameter;
+
+    *framesRead = 0;
+    auto buffer = std::atomic_load_explicit(
+        &mOutputCaptureBuffer,
+        std::memory_order_acquire);
+
+    if (!mOutputCaptureEnabled.load(std::memory_order_acquire) || !buffer)
+        return noError;
+
+    const size_t read = buffer->pop(out, static_cast<size_t>(maxFrames),
+                                    static_cast<size_t>(mChannels));
+    *framesRead = static_cast<unsigned int>(read);
+    return noError;
+}
+
+unsigned int Player::getOutputCaptureAvailableFrames()
+{
+    auto buffer = std::atomic_load_explicit(
+        &mOutputCaptureBuffer,
+        std::memory_order_acquire);
+
+    if (!mOutputCaptureEnabled.load(std::memory_order_acquire) || !buffer)
+        return 0;
+
+    return static_cast<unsigned int>(buffer->available());
+}
+
+PlayerErrors Player::getOutputCaptureFormat(unsigned int *sampleRate,
+                                            unsigned int *channels)
+{
+    if (!mInited)
+        return backendNotInited;
+    if (sampleRate == nullptr || channels == nullptr)
+        return invalidParameter;
+
+    *sampleRate = mSampleRate;
+    *channels = mChannels;
+    return noError;
+}
+
+void Player::outputCaptureCallback(const float *samples, unsigned int frames,
+                                   unsigned int channels, void *userData)
+{
+    if (userData == nullptr)
+        return;
+
+    static_cast<Player *>(userData)->writeOutputCapture(samples, frames, channels);
+}
+
+void Player::writeOutputCapture(const float *samples, unsigned int frames,
+                                unsigned int channels)
+{
+    auto buffer = std::atomic_load_explicit(
+        &mOutputCaptureBuffer,
+        std::memory_order_acquire);
+
+    if (!mOutputCaptureEnabled.load(std::memory_order_acquire) || !buffer ||
+        channels != mChannels)
+        return;
+
+    buffer->push(samples, static_cast<size_t>(frames),
+                 static_cast<size_t>(channels));
 }
 
 void Player::set3dSoundSpeed(float speed)

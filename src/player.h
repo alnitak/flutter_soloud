@@ -9,6 +9,7 @@
 #include "audiobuffer/metadata_ffi.h"
 #include "enums.h"
 #include "filters/filters.h"
+#include "output_capture.h"
 #include "soloud/include/soloud.h"
 #include "soloud/include/soloud_speech.h"
 #include "soloud/src/backend/miniaudio/miniaudio.h"
@@ -593,6 +594,17 @@ public:
   void set3dSourceDopplerFactor(unsigned int handle, float dopplerFactor);
 
   /////////////////////////////////////////
+  /// Output capture
+  /////////////////////////////////////////
+  PlayerErrors setOutputCaptureEnabled(bool enabled,
+                                       unsigned int maxBufferedFrames);
+  PlayerErrors readOutputCapture(float *out, unsigned int maxFrames,
+                                 unsigned int *framesRead);
+  unsigned int getOutputCaptureAvailableFrames();
+  PlayerErrors getOutputCaptureFormat(unsigned int *sampleRate,
+                                      unsigned int *channels);
+
+  /////////////////////////////////////////
   /// Mixing Bus
   /// https://solhsa.com/soloud/mixbus.html
   /// https://solhsa.com/soloud/soloud_20200207.html#mixing-bus
@@ -638,6 +650,14 @@ private:
 
   std::map<unsigned int, BusData> busMap;
   unsigned int busIdCounter = 0;
+
+  std::shared_ptr<OutputCaptureBuffer> mOutputCaptureBuffer;
+  std::atomic<bool> mOutputCaptureEnabled{false};
+
+  static void outputCaptureCallback(const float *samples, unsigned int frames,
+                                    unsigned int channels, void *userData);
+  void writeOutputCapture(const float *samples, unsigned int frames,
+                          unsigned int channels);
 };
 
 #endif // PLAYER_H

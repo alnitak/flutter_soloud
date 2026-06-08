@@ -34,9 +34,17 @@ distribution.
 
 namespace SoLoud
 {
+    typedef void (*miniaudio_output_capture_callback_t)(const float *samples, unsigned int frames, unsigned int channels, void *userData);
+
     result miniaudio_init(SoLoud::Soloud *aSoloud, unsigned int aFlags, unsigned int aSamplerate, unsigned int aBuffer)
     {
         return NOT_IMPLEMENTED;
+    }
+
+    void miniaudio_set_output_capture_callback(miniaudio_output_capture_callback_t callback, void *userData)
+    {
+        (void)callback;
+        (void)userData;
     }
 }
 
@@ -65,6 +73,7 @@ namespace SoLoud
 #ifdef __ANDROID__
 #include <android/api-level.h>
 #endif
+#include <atomic>
 #include <math.h>
 #include <chrono>
 #include <thread>
@@ -79,10 +88,14 @@ namespace SoLoud
 
 namespace SoLoud
 {
+    typedef void (*miniaudio_output_capture_callback_t)(const float *samples, unsigned int frames, unsigned int channels, void *userData);
+
     ma_device gDevice;
     SoLoud::Soloud *soloud;
     ma_context context;
     volatile bool gDeviceStopped = true;  // Track device stopped state for proper cleanup
+    static std::atomic<miniaudio_output_capture_callback_t> gOutputCaptureCallback{nullptr};
+    static std::atomic<void *> gOutputCaptureUserData{nullptr};
 
     // Forward declarations for functions used in on_notification
     result soloud_miniaudio_pause(SoLoud::Soloud *aSoloud);
@@ -187,6 +200,22 @@ namespace SoLoud
         first_call = false;
         SoLoud::Soloud *soloud = (SoLoud::Soloud *)pDevice->pUserData;
         soloud->mix((float *)pOutput, frameCount);
+
+        auto captureCallback = gOutputCaptureCallback.load(std::memory_order_acquire);
+        if (captureCallback != nullptr)
+        {
+            captureCallback(
+                (const float *)pOutput,
+                frameCount,
+                pDevice->playback.channels,
+                gOutputCaptureUserData.load(std::memory_order_acquire));
+        }
+    }
+
+    void miniaudio_set_output_capture_callback(miniaudio_output_capture_callback_t callback, void *userData)
+    {
+        gOutputCaptureUserData.store(userData, std::memory_order_release);
+        gOutputCaptureCallback.store(callback, std::memory_order_release);
     }
 
     static void soloud_miniaudio_deinit(SoLoud::Soloud *aSoloud)

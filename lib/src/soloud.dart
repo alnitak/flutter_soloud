@@ -293,6 +293,9 @@ interface class SoLoud {
   /// The channels the engine was initialized with.
   Channels _channels = Channels.stereo;
 
+  StreamController<Float32List>? _outputCaptureController;
+  Timer? _outputCaptureTimer;
+
   /// Initializes the audio engine.
   ///
   /// Run this before anything else, and `await` its result in a try/catch.
@@ -455,6 +458,7 @@ interface class SoLoud {
   /// or inside "AppLifecycleListener.onExitRequested".
   void deinit() {
     _log.finest('deinit() called');
+    _stopOutputCaptureStream();
     _nativeCallbacksInitialized = false;
     _controller.soLoudFFI.disposeNativeCallables();
     _controller.soLoudFFI.disposeAllSound();
@@ -3071,6 +3075,165 @@ interface class SoLoud {
     });
 
     return samples;
+  }
+
+  /// Creates a stream of captured master output with its audio format.
+  ///
+  /// This is the simplest API for output capture. Listen to the returned
+  /// [stream] to enable native capture; cancel the subscription to disable it.
+  ///
+  /// [maxBufferedFrames] controls the native ring buffer size.
+  /// [chunkFrames] controls the maximum frames emitted in a single stream
+  /// event.
+  /// [interval] controls how often Dart drains the native capture buffer.
+  ({int sampleRate, int channels, Stream<Float32List> stream}) outputCapture({
+    int maxBufferedFrames = 44100,
+    int chunkFrames = 2048,
+    Duration interval = const Duration(milliseconds: 20),
+  }) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    final format = _getOutputCaptureFormat();
+    return (
+      sampleRate: format.sampleRate,
+      channels: format.channels,
+      stream: _outputCaptureStream(
+        maxBufferedFrames: maxBufferedFrames,
+        chunkFrames: chunkFrames,
+        interval: interval,
+      ),
+    );
+  }
+
+  Stream<Float32List> _outputCaptureStream({
+    int maxBufferedFrames = 44100,
+    int chunkFrames = 2048,
+    Duration interval = const Duration(milliseconds: 20),
+  }) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    if (maxBufferedFrames <= 0) {
+      throw ArgumentError.value(
+        maxBufferedFrames,
+        'maxBufferedFrames',
+        'Must be greater than zero.',
+      );
+    }
+    if (chunkFrames <= 0) {
+      throw ArgumentError.value(
+        chunkFrames,
+        'chunkFrames',
+        'Must be greater than zero.',
+      );
+    }
+
+    late final StreamController<Float32List> controller;
+
+    void drainCapture() {
+      if (!isInitialized || controller.isClosed) {
+        _stopOutputCaptureStream();
+        return;
+      }
+
+      try {
+        final availableFrames = _getOutputCaptureAvailableFrames();
+        if (availableFrames <= 0 || controller.isClosed) {
+          return;
+        }
+
+        final framesToRead = availableFrames < chunkFrames
+            ? availableFrames
+            : chunkFrames;
+        final samples = _readOutputCapture(framesToRead);
+        if (samples.isNotEmpty) {
+          controller.add(samples);
+        }
+      } catch (error, stackTrace) {
+        controller.addError(error, stackTrace);
+        _stopOutputCaptureStream();
+      }
+    }
+
+    controller = StreamController<Float32List>(
+      onListen: () {
+        if (_outputCaptureController != null) {
+          controller.addError(
+            StateError('An output capture stream is already active.'),
+          );
+          unawaited(controller.close());
+          return;
+        }
+
+        _outputCaptureController = controller;
+        try {
+          _setOutputCaptureEnabled(
+            true,
+            maxBufferedFrames: maxBufferedFrames,
+          );
+        } catch (error, stackTrace) {
+          controller.addError(error, stackTrace);
+          _stopOutputCaptureStream();
+          return;
+        }
+        _outputCaptureTimer = Timer.periodic(interval, (_) => drainCapture());
+      },
+      onCancel: () {
+        if (_outputCaptureController == controller) {
+          _stopOutputCaptureStream(closeController: false);
+        }
+      },
+    );
+    return controller.stream;
+  }
+
+  void _setOutputCaptureEnabled(
+    bool enabled, {
+    int maxBufferedFrames = 44100,
+  }) {
+    final error = _controller.soLoudFFI.setOutputCaptureEnabled(
+      enabled,
+      maxBufferedFrames: maxBufferedFrames,
+    );
+    if (error != PlayerErrors.noError) {
+      throw SoLoudCppException.fromPlayerError(error);
+    }
+  }
+
+  Float32List _readOutputCapture(int maxFrames) {
+    return _controller.soLoudFFI.readOutputCapture(maxFrames);
+  }
+
+  int _getOutputCaptureAvailableFrames() {
+    return _controller.soLoudFFI.getOutputCaptureAvailableFrames();
+  }
+
+  ({int sampleRate, int channels}) _getOutputCaptureFormat() {
+    final format = _controller.soLoudFFI.getOutputCaptureFormat();
+    if (format.error != PlayerErrors.noError) {
+      throw SoLoudCppException.fromPlayerError(format.error);
+    }
+    return (sampleRate: format.sampleRate, channels: format.channels);
+  }
+
+  void _stopOutputCaptureStream({bool closeController = true}) {
+    _outputCaptureTimer?.cancel();
+    _outputCaptureTimer = null;
+
+    if (_controller.soLoudFFI.isInited()) {
+      final error = _controller.soLoudFFI.setOutputCaptureEnabled(false);
+      if (error != PlayerErrors.noError &&
+          error != PlayerErrors.notImplemented) {
+        _logPlayerError(error, from: 'setOutputCaptureEnabled(false)');
+      }
+    }
+
+    final controller = _outputCaptureController;
+    _outputCaptureController = null;
+    if (closeController && controller != null && !controller.isClosed) {
+      unawaited(controller.close());
+    }
   }
 
   /////////////////////////////////////////
