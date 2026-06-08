@@ -27,7 +27,7 @@
 #endif
 
 namespace {
-constexpr unsigned int kOggOpusBufferStreamMaxBytes = 512u * 1024u * 1024u;
+constexpr unsigned int kOggXiphBufferStreamMaxBytes = 512u * 1024u * 1024u;
 
 bool readFileBytes(const std::string &filePath,
                    std::vector<unsigned char> &bytes)
@@ -48,7 +48,7 @@ bool readFileBytes(const std::string &filePath,
     return file.gcount() == fileSize;
 }
 
-bool isOggOpusBytes(const std::vector<unsigned char> &bytes)
+bool isOggXiphBytes(const std::vector<unsigned char> &bytes)
 {
     if (bytes.size() < 35 || std::memcmp(bytes.data(), "OggS", 4) != 0) {
         return false;
@@ -83,13 +83,19 @@ bool isOggOpusBytes(const std::vector<unsigned char> &bytes)
             return true;
         }
 
+        if (payloadSize >= 13 &&
+            std::memcmp(bytes.data() + payloadOffset + 1, "FLAC", 4) == 0 &&
+            std::memcmp(bytes.data() + payloadOffset + 9, "fLaC", 4) == 0) {
+            return true;
+        }
+
         scanOffset = payloadOffset + payloadSize;
     }
 
     return false;
 }
 
-PlayerErrors loadOggOpusBufferStream(Player *player,
+PlayerErrors loadOggXiphBufferStream(Player *player,
                                      ActiveSound *activeSound,
                                      const std::vector<unsigned char> &bytes)
 {
@@ -105,7 +111,7 @@ PlayerErrors loadOggOpusBufferStream(Player *player,
     PlayerErrors error = bufferStream->setBufferStream(
         player,
         activeSound,
-        kOggOpusBufferStreamMaxBytes,
+        kOggXiphBufferStreamMaxBytes,
         BufferingType::PRESERVED,
         0.0f,
         pcmFormat);
@@ -422,8 +428,8 @@ PlayerErrors Player::loadFile(
     if (result != SoLoud::SO_NO_ERROR)
     {
         std::vector<unsigned char> bytes;
-        if (readFileBytes(completeFileName, bytes) && isOggOpusBytes(bytes)) {
-            loadError = loadOggOpusBufferStream(this, newSound.get(), bytes);
+        if (readFileBytes(completeFileName, bytes) && isOggXiphBytes(bytes)) {
+            loadError = loadOggXiphBufferStream(this, newSound.get(), bytes);
         }
     }
 
@@ -494,7 +500,16 @@ PlayerErrors Player::loadMem(
         result = static_cast<SoLoud::WavStream *>(newSound.get()->sound.get())->loadMem(mem, length, false, true);
     }
 
-    if (result == SoLoud::SO_NO_ERROR)
+    PlayerErrors loadError = static_cast<PlayerErrors>(result);
+    if (result != SoLoud::SO_NO_ERROR && mem != nullptr && length > 0)
+    {
+        std::vector<unsigned char> bytes(mem, mem + length);
+        if (isOggXiphBytes(bytes)) {
+            loadError = loadOggXiphBufferStream(this, newSound.get(), bytes);
+        }
+    }
+
+    if (loadError == noError)
     {
         newSound.get()->filters = std::make_unique<Filters>(&soloud, newSound.get(), nullptr);
         {
@@ -505,11 +520,11 @@ PlayerErrors Player::loadMem(
 
     // Return fileAlreadyLoaded if the unique name hash was already in use,
     // even though we've now loaded a new instance with a unique hash.
-    if (s != nullptr && result == SoLoud::SO_NO_ERROR) {
+    if (s != nullptr && loadError == noError) {
         return fileAlreadyLoaded;
     }
 
-    return (PlayerErrors)result;
+    return loadError;
 }
 
 PlayerErrors Player::setBufferStream(
