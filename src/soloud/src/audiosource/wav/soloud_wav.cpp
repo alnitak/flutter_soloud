@@ -211,7 +211,7 @@ namespace SoLoud
 				{
 					for (int ch = 0; ch < mChannels; ch++)
 					{
-						tempBuffer.push_back(tmp[i * mChannels + ch]);
+						tempBuffer.push_back(tmp[ch * 512 + i]);
 					}
 				}
 			}
@@ -250,7 +250,7 @@ namespace SoLoud
 			{
 				for (unsigned int i = 0; i < got; i++)
 				{
-					mData[ch * mSampleCount + decodedSamples + i] = tmp[i * mChannels + ch];
+					mData[ch * mSampleCount + decodedSamples + i] = tmp[ch * toRead + i];
 				}
 			}
 			decodedSamples += got;

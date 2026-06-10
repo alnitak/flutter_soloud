@@ -105,8 +105,6 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
                   ),
                 ],
               ),
-
-
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -131,8 +129,6 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
                   ),
                 ],
               ),
-
-
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -163,8 +159,46 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
                 onPressed: () async {
                   position.value = Duration.zero;
                   final bytes =
+                      await rootBundle.load('assets/audio/explosion_opus.ogg');
+                  currentSound.value = soloud.setBufferStream(
+                    format: BufferType.auto,
+                  );
+                  soloud
+                    ..addAudioDataStream(
+                      currentSound.value!,
+                      bytes.buffer.asUint8List(),
+                    )
+                    ..play(currentSound.value!);
+                },
+                child: const Text('load and play Opus Buffer'),
+              ),
+
+              ElevatedButton(
+                onPressed: () async {
+                  position.value = Duration.zero;
+                  final bytes =
+                      await rootBundle.load('assets/audio/explosion_vorbis.ogg');
+                  currentSound.value = soloud.setBufferStream(
+                    format: BufferType.auto,
+                  );
+                  soloud
+                    ..addAudioDataStream(
+                      currentSound.value!,
+                      bytes.buffer.asUint8List(),
+                    )
+                    ..play(currentSound.value!);
+                },
+                child: const Text('load and play Vorbis Buffer'),
+              ),
+
+              ElevatedButton(
+                onPressed: () async {
+                  position.value = Duration.zero;
+                  final bytes =
                       await rootBundle.load('assets/audio/explosion_flac.ogg');
-                  currentSound.value = soloud.setBufferStream();
+                  currentSound.value = soloud.setBufferStream(
+                    format: BufferType.auto,
+                  );
                   soloud
                     ..addAudioDataStream(
                       currentSound.value!,
@@ -174,6 +208,8 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
                 },
                 child: const Text('load and play FLAC Buffer'),
               ),
+
+
               ValueListenableBuilder<AudioSource?>(
                 valueListenable: currentSound,
                 builder: (context, sound, child) {
