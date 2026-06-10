@@ -109,6 +109,7 @@
 #include "audiobuffer/audiobuffer.cpp"
 #include "audiobuffer/stream_decoder.cpp"
 #include "audiobuffer/flac_stream_decoder.cpp"
+#include "audiobuffer/ogg_flac_stream_decoder.cpp"
 #include "audiobuffer/opus_stream_decoder.cpp"
 #include "audiobuffer/vorbis_stream_decoder.cpp"
 #include "audiobuffer/mp3_stream_decoder.cpp"

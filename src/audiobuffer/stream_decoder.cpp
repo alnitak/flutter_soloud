@@ -4,6 +4,7 @@
 #   include "opus_stream_decoder.h"
 #   include "vorbis_stream_decoder.h"
 #   include "flac_stream_decoder.h"
+#   include "ogg_flac_stream_decoder.h"
 #endif
 #include <cstring>
 
@@ -133,12 +134,12 @@ std::pair<std::vector<float>, DecoderError> StreamDecoder::decode(
                         return {{}, DecoderError::FailedToCreateDecoder};
                     }
                 } else if (detectedType == DetectedType::BUFFER_OGG_FLAC) {
-                    mWrapper = std::make_unique<FlacDecoderWrapper>();
-                    isFormatDetected = static_cast<FlacDecoderWrapper*>(mWrapper.get())->initializeDecoder(*samplerate, *channels);
+                    mWrapper = std::make_unique<OggFlacDecoderWrapper>();
+                    isFormatDetected = static_cast<OggFlacDecoderWrapper*>(mWrapper.get())->initializeDecoder(*samplerate, *channels);
                     if (!isFormatDetected) {
                         return {{}, DecoderError::FailedToCreateDecoder};
                     }
-                    static_cast<FlacDecoderWrapper*>(mWrapper.get())->setIcyMetaInt(mIcyMetaInt);
+                    static_cast<OggFlacDecoderWrapper*>(mWrapper.get())->setIcyMetaInt(mIcyMetaInt);
                 } else {
                     mWrapper = std::make_unique<OpusDecoderWrapper>();
                     isFormatDetected = static_cast<OpusDecoderWrapper*>(mWrapper.get())->initializeDecoder(*samplerate, *channels);
@@ -177,7 +178,7 @@ std::pair<std::vector<float>, DecoderError> StreamDecoder::decode(
                 return static_cast<VorbisDecoderWrapper*>(mWrapper.get())->decode(buffer, samplerate, channels);
             }
             else if (mWrapper->detectedType == DetectedType::BUFFER_OGG_FLAC) {
-                return static_cast<FlacDecoderWrapper*>(mWrapper.get())->decode(buffer, samplerate, channels);
+                return static_cast<OggFlacDecoderWrapper*>(mWrapper.get())->decode(buffer, samplerate, channels);
             }
         #endif
         if (mWrapper->detectedType == DetectedType::BUFFER_MP3_WITH_ID3 ||
