@@ -27,8 +27,6 @@ freely, subject to the following restrictions:
 
 #include "soloud.h"
 
-struct stb_vorbis;
-
 namespace SoLoud
 {
 	class Wav;

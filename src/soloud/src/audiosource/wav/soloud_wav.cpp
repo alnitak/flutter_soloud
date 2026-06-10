@@ -28,7 +28,9 @@ freely, subject to the following restrictions:
 #include "soloud.h"
 #include "soloud_wav.h"
 #include "soloud_file.h"
-#include "stb_vorbis.h"
+#if !defined(NO_XIPH_LIBS)
+#include "mb_ogg.h"
+#endif
 #include "dr_mp3.h"
 #include "dr_wav.h"
 #include "dr_flac.h"
@@ -163,56 +165,107 @@ namespace SoLoud
 	}
 
 	result Wav::loadogg(MemoryFile *aReader)
-	{	
-		int e = 0;
-		stb_vorbis *vorbis = 0;
-		vorbis = stb_vorbis_open_memory(aReader->getMemPtr(), aReader->length(), &e, 0);
-
-		if (0 == vorbis)
+	{
+#if defined(NO_XIPH_LIBS)
+        printf("[Wav::loadogg] NO_XIPH_LIBS defined, returning FILE_LOAD_FAILED\n");
+		return FILE_LOAD_FAILED;
+#else
+        printf("[Wav::loadogg] loading from memory, len=%u\n", aReader->length());
+		MBOggDecoder decoder;
+		if (!decoder.open(aReader->getMemPtr(), aReader->length()))
 		{
+            printf("[Wav::loadogg] decoder.open failed\n");
 			return FILE_LOAD_FAILED;
 		}
 
-        stb_vorbis_info info = stb_vorbis_get_info(vorbis);
-		mBaseSamplerate = (float)info.sample_rate;
-        int samples = stb_vorbis_stream_length_in_samples(vorbis);
+        printf("[Wav::loadogg] decoder opened - codec=%d, sampleRate=%d, channels=%d, lengthInSamples=%u\n",
+               decoder.getCodecType(), decoder.getSampleRate(), decoder.getChannels(), decoder.getLengthInSamples());
 
-		if (info.channels > MAX_CHANNELS)
+		mBaseSamplerate = (float)decoder.getSampleRate();
+		int totalSamples = (int)decoder.getLengthInSamples();
+
+		if (decoder.getChannels() > MAX_CHANNELS)
 		{
 			mChannels = MAX_CHANNELS;
 		}
 		else
 		{
-			mChannels = info.channels;
+			mChannels = decoder.getChannels();
 		}
-		mData = new float[samples * mChannels];
-		memset(mData, 0, samples * mChannels * sizeof(float));
-		mSampleCount = samples;
-		samples = 0;
-		while(1)
+
+		if (totalSamples == 0)
 		{
-			float **outputs;
-            int n = stb_vorbis_get_frame_float(vorbis, NULL, &outputs);
-			if (n == 0)
-            {
-				break;
-            }
-
-			unsigned int ch;
-			for (ch = 0; ch < mChannels; ch++)
-				memcpy(mData + samples + mSampleCount * ch, outputs[ch], sizeof(float) * n);
-
-			samples += n;
+			// Unknown length (e.g. OGG/FLAC) - read dynamically into temp buffer
+			printf("[Wav::loadogg] totalSamples is 0, reading dynamically\n");
+			std::vector<float> tempBuffer;
+			float tmp[512 * MAX_CHANNELS];
+			while (true)
+			{
+				unsigned int got = decoder.read(tmp, 512, 512);
+				if (got == 0)
+				{
+					printf("[Wav::loadogg] dynamic read returned 0 at tempBuffer.size=%zu\n", tempBuffer.size());
+					break;
+				}
+				for (unsigned int i = 0; i < got; i++)
+				{
+					for (int ch = 0; ch < mChannels; ch++)
+					{
+						tempBuffer.push_back(tmp[i * mChannels + ch]);
+					}
+				}
+			}
+			totalSamples = (int)(tempBuffer.size() / mChannels);
+			printf("[Wav::loadogg] dynamic read complete - totalSamples=%d\n", totalSamples);
+			mData = new float[totalSamples * mChannels];
+			memset(mData, 0, totalSamples * mChannels * sizeof(float));
+			mSampleCount = totalSamples;
+			for (int ch = 0; ch < mChannels; ch++)
+			{
+				for (int i = 0; i < totalSamples; i++)
+				{
+					mData[ch * mSampleCount + i] = tempBuffer[i * mChannels + ch];
+				}
+			}
+			mActualSampleCount = totalSamples;
+			printf("[Wav::loadogg] done - mActualSampleCount=%u\n", mActualSampleCount);
+			return 0;
 		}
-        stb_vorbis_close(vorbis);
+
+		mData = new float[totalSamples * mChannels];
+		memset(mData, 0, totalSamples * mChannels * sizeof(float));
+		mSampleCount = totalSamples;
+		unsigned int decodedSamples = 0;
+		float tmp[512 * MAX_CHANNELS];
+		while (decodedSamples < (unsigned int)totalSamples)
+		{
+			unsigned int toRead = ((unsigned int)totalSamples - decodedSamples) > 512 ? 512 : ((unsigned int)totalSamples - decodedSamples);
+			unsigned int got = decoder.read(tmp, toRead, toRead);
+			if (got == 0)
+			{
+                printf("[Wav::loadogg] decoder.read returned 0 at decodedSamples=%u/%d\n", decodedSamples, totalSamples);
+				break;
+			}
+			for (int ch = 0; ch < mChannels; ch++)
+			{
+				for (unsigned int i = 0; i < got; i++)
+				{
+					mData[ch * mSampleCount + decodedSamples + i] = tmp[i * mChannels + ch];
+				}
+			}
+			decodedSamples += got;
+		}
 
 		// Set mActualSampleCount to the actual decoded samples.
-		// This is necessary because stb_vorbis_stream_length_in_samples() returns
+		// This is necessary because getLengthInSamples() returns
 		// the granule position from the last page header, which may not match the
 		// actual decoded sample count if the file has an empty final page.
-		mActualSampleCount = samples;
+		mActualSampleCount = decodedSamples;
+
+        printf("[Wav::loadogg] done - decodedSamples=%u, mActualSampleCount=%u\n", decodedSamples, mActualSampleCount);
 
 		return 0;
+#endif
 	}
 
 	result Wav::loadmp3(MemoryFile *aReader)
@@ -308,24 +361,31 @@ namespace SoLoud
 		mSampleCount = 0;
 		mChannels = 1;
         int tag = aReader->read32();
+        printf("[Wav::testAndLoadFile] tag=0x%08x ('%c%c%c%c')\n", tag,
+               (tag >> 0) & 0xff, (tag >> 8) & 0xff, (tag >> 16) & 0xff, (tag >> 24) & 0xff);
 		if (tag == MAKEDWORD('O','g','g','S')) 
         {
+            printf("[Wav::testAndLoadFile] -> loadogg\n");
 			return loadogg(aReader);
 
 		} 
         else if (tag == MAKEDWORD('R','I','F','F')) 
         {
+            printf("[Wav::testAndLoadFile] -> loadwav\n");
 			return loadwav(aReader);
 		}
 		else if (tag == MAKEDWORD('f', 'L', 'a', 'C'))
 		{
+            printf("[Wav::testAndLoadFile] -> loadflac\n");
 			return loadflac(aReader);
 		}
 		else if (loadmp3(aReader) == SO_NO_ERROR)
 		{
+            printf("[Wav::testAndLoadFile] -> loadmp3\n");
 			return SO_NO_ERROR;
 		}
 
+        printf("[Wav::testAndLoadFile] -> FILE_LOAD_FAILED\n");
 		return FILE_LOAD_FAILED;
     }
 

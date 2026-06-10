@@ -32,7 +32,9 @@ freely, subject to the following restrictions:
 #include "dr_wav.h"
 #include "soloud_wavstream.h"
 #include "soloud_file.h"
-#include "stb_vorbis.h"
+#if !defined(NO_XIPH_LIBS)
+#include "mb_ogg.h"
+#endif
 
 namespace SoLoud
 {
@@ -83,7 +85,6 @@ namespace SoLoud
 
 	WavStreamInstance::WavStreamInstance(WavStream *aParent)
 	{
-		mOggFrameSize = 0;
 		mParent = aParent;
 		mOffset = 0;
 		mCodec.mOgg = 0;
@@ -107,7 +108,7 @@ namespace SoLoud
 		if (aParent->mStreamFile)
 		{
 			mFile = aParent->mStreamFile;
-			mFile->seek(0); // stb_vorbis assumes file offset to be at start of ogg
+			mFile->seek(0);
 		}
 		else
 		{
@@ -129,23 +130,21 @@ namespace SoLoud
 				}
 			}
 			else
+#if !defined(NO_XIPH_LIBS)
 			if (mParent->mFiletype == WAVSTREAM_OGG)
 			{
-				int e;
-
-				mCodec.mOgg = stb_vorbis_open_file((Soloud_Filehack *)mFile, 0, &e, 0);
-
-				if (!mCodec.mOgg)
+				mCodec.mOgg = new MBOggDecoder();
+				if (!mCodec.mOgg->open(mFile))
 				{
+					delete mCodec.mOgg;
+					mCodec.mOgg = 0;
 					if (mFile != mParent->mStreamFile)
 						delete mFile;
 					mFile = 0;
 				}
-				mOggFrameSize = 0;
-				mOggFrameOffset = 0;
-				mOggOutputs = 0;
 			}
 			else
+#endif
 			if (mParent->mFiletype == WAVSTREAM_FLAC)
 			{
 				mCodec.mFlac = drflac_open(drflac_read_func, drflac_seek_func, NULL, (void*)mFile, NULL);
@@ -186,7 +185,7 @@ namespace SoLoud
 		case WAVSTREAM_OGG:
 			if (mCodec.mOgg)
 			{
-				stb_vorbis_close(mCodec.mOgg);
+				delete mCodec.mOgg;
 			}
 			break;
 		case WAVSTREAM_FLAC:
@@ -217,27 +216,6 @@ namespace SoLoud
 			delete mFile;
 		}
 	}
-
-	static int getOggData(float **aOggOutputs, float *aBuffer, int aSamples, int aPitch, int aFrameSize, int aFrameOffset, int aChannels)
-	{			
-		if (aFrameSize <= 0)
-			return 0;
-
-		int samples = aSamples;
-		if (aFrameSize - aFrameOffset < samples)
-		{
-			samples = aFrameSize - aFrameOffset;
-		}
-
-		int i;
-		for (i = 0; i < aChannels; i++)
-		{
-			memcpy(aBuffer + aPitch * i, aOggOutputs[i] + aFrameOffset, sizeof(float) * samples);
-		}
-		return samples;
-	}
-
-	
 
 	unsigned int WavStreamInstance::getAudio(float *aBuffer, unsigned int aSamplesToRead, unsigned int aBufferSize)
 	{			
@@ -291,30 +269,20 @@ namespace SoLoud
 		break;
 		case WAVSTREAM_OGG:
 			{
-				if (mOggFrameOffset < mOggFrameSize)
+				unsigned int i;
+				for (i = 0; i < aSamplesToRead; i += 512)
 				{
-					int b = getOggData(mOggOutputs, aBuffer, aSamplesToRead, aBufferSize, mOggFrameSize, mOggFrameOffset, mChannels);
-					mOffset += b;
-					offset += b;
-					mOggFrameOffset += b;
-				}
-
-				while (offset < aSamplesToRead)
-				{
-					mOggFrameSize = stb_vorbis_get_frame_float(mCodec.mOgg, NULL, &mOggOutputs);
-					mOggFrameOffset = 0;
-					int b = getOggData(mOggOutputs, aBuffer + offset, aSamplesToRead - offset, aBufferSize, mOggFrameSize, mOggFrameOffset, mChannels);
-					mOffset += b;
-					offset += b;
-					mOggFrameOffset += b;
-
-					// End of stream: no more data available from decoder
-					if (b == 0)
+					unsigned int blockSize = (aSamplesToRead - i) > 512 ? 512 : aSamplesToRead - i;
+					unsigned int got = mCodec.mOgg->read(aBuffer + i, blockSize, aBufferSize);
+					offset += got;
+					if (got == 0)
 					{
 						mStreamEnded = true;
 						return offset;
 					}
 				}
+				mOffset += offset;
+				return offset;
 			}
 			break;
 		case WAVSTREAM_WAV:
@@ -352,13 +320,11 @@ namespace SoLoud
 			switch (mParent->mFiletype)
 			{
 			case WAVSTREAM_OGG:
-				stb_vorbis_seek(mCodec.mOgg, pos);
-				// Since the position that we just sought to might not be *exactly*
-				// the position we asked for, we're re-calculating the position just
-				// for the sake of correctness.
-				mOffset = stb_vorbis_get_sample_offset(mCodec.mOgg);
-				newPosition = float(mOffset / mBaseSamplerate);
+				mCodec.mOgg->seek(pos);
+				mOffset = pos;
+				newPosition = float(pos / mBaseSamplerate);
 				mStreamPosition = newPosition;
+				mStreamEnded = false;
 				return 0;
 			case WAVSTREAM_FLAC:
 				drflac_seek_to_pcm_frame(mCodec.mFlac, pos);
@@ -401,7 +367,7 @@ namespace SoLoud
 		case WAVSTREAM_OGG:
 			if (mCodec.mOgg)
 			{
-				stb_vorbis_seek_start(mCodec.mOgg);
+				mCodec.mOgg->rewind();
 			}
 			break;
 		case WAVSTREAM_FLAC:
@@ -425,16 +391,18 @@ namespace SoLoud
 		}
 		mOffset = 0;
 		mStreamPosition = 0.0f;
+		mStreamEnded = false;
 		return 0;
 	}
 
 	bool WavStreamInstance::hasEnded()
 	{
 		// For OGG streams, use the stream ended flag since mSampleCount may not
-		// match actual decoded samples (empty final page in OGG)
-		if (mParent->mFiletype == WAVSTREAM_OGG && mStreamEnded)
+		// match actual decoded samples (empty final page in OGG), and for OGG/FLAC
+		// the STREAMINFO total_samples can be 0 so we must not check mOffset >= mSampleCount.
+		if (mParent->mFiletype == WAVSTREAM_OGG)
 		{
-			return 1;
+			return mStreamEnded;
 		}
 		if (mOffset >= mParent->mSampleCount)
 		{
@@ -485,26 +453,31 @@ namespace SoLoud
 
 	result WavStream::loadogg(File * fp)
 	{
+#if defined(NO_XIPH_LIBS)
+        printf("[WavStream::loadogg] NO_XIPH_LIBS defined, returning FILE_LOAD_FAILED\n");
+		return FILE_LOAD_FAILED;
+#else
 		fp->seek(0);
-		int e;
-		stb_vorbis *v;
-		v = stb_vorbis_open_file((Soloud_Filehack *)fp, 0, &e, 0);
-		if (v == NULL)
+		MBOggDecoder decoder;
+		if (!decoder.open(fp))
+		{
+            printf("[WavStream::loadogg] decoder.open failed\n");
 			return FILE_LOAD_FAILED;
-		stb_vorbis_info info = stb_vorbis_get_info(v);
-		mChannels = info.channels;
-		if (info.channels > MAX_CHANNELS)
+		}
+        printf("[WavStream::loadogg] decoder opened - codec=%d, sampleRate=%d, channels=%d, lengthInSamples=%u\n",
+               decoder.getCodecType(), decoder.getSampleRate(), decoder.getChannels(), decoder.getLengthInSamples());
+		mChannels = decoder.getChannels();
+		if (mChannels > MAX_CHANNELS)
 		{
 			mChannels = MAX_CHANNELS;
 		}
-		mBaseSamplerate = (float)info.sample_rate;
-		int samples = stb_vorbis_stream_length_in_samples(v);
-		stb_vorbis_close(v);
+		mBaseSamplerate = (float)decoder.getSampleRate();
+		int samples = (int)decoder.getLengthInSamples();
 		mFiletype = WAVSTREAM_OGG;
-
 		mSampleCount = samples;
-
+        printf("[WavStream::loadogg] success - filetype=WAVSTREAM_OGG, sampleCount=%d\n", samples);
 		return 0;
+#endif
 	}
 
 	result WavStream::loadflac(File * fp)
@@ -681,28 +654,35 @@ namespace SoLoud
 	result WavStream::parse(File *aFile)
 	{
 		int tag = aFile->read32();
+        printf("[WavStream::parse] tag=0x%08x ('%c%c%c%c')\n", tag,
+               (tag >> 0) & 0xff, (tag >> 8) & 0xff, (tag >> 16) & 0xff, (tag >> 24) & 0xff);
 		int res = SO_NO_ERROR;
 		if (tag == MAKEDWORD('O', 'g', 'g', 'S'))
 		{
+            printf("[WavStream::parse] -> loadogg\n");
 			res = loadogg(aFile);
 		}
 		else
 		if (tag == MAKEDWORD('R', 'I', 'F', 'F'))
 		{
+            printf("[WavStream::parse] -> loadwav\n");
 			res = loadwav(aFile);
 		}
 		else
 		if (tag == MAKEDWORD('f', 'L', 'a', 'C'))
 		{
+            printf("[WavStream::parse] -> loadflac\n");
 			res = loadflac(aFile);
 		}
 		else
 		if (loadmp3(aFile) == SO_NO_ERROR)
 		{
+            printf("[WavStream::parse] -> loadmp3\n");
 			res = SO_NO_ERROR;
 		}
 		else
 		{
+            printf("[WavStream::parse] -> FILE_LOAD_FAILED\n");
 			res = FILE_LOAD_FAILED;
 		}
 		return res;

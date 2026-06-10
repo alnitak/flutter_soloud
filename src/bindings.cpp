@@ -349,13 +349,13 @@ FFI_PLUGIN_EXPORT int isInited() {
         std::lock_guard<std::mutex> guard_init(init_deinit_mutex);
         std::lock_guard<std::mutex> guard_load(loadMutex);
 
-  Player *p = player.get();
-  if (p == nullptr || !p->isInited()) {
-    printf("WARNING (from SoLoud C++ binding code): the player has "
-           "not yet been initialized. This is likely a bug in flutter_soloud. "
-           "Please report the bug.\n");
-    return;
-  }
+        Player *p = player.get();
+        if (p == nullptr || !p->isInited()) {
+          printf("WARNING (from SoLoud C++ binding code): the player has "
+                "not yet been initialized. This is likely a bug in flutter_soloud. "
+                "Please report the bug.\n");
+          return;
+        }
 
         unsigned int hash = 0;
         // std::thread loadThread([p, completeFileName, loadIntoMem, hash]()
