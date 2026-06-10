@@ -1,4 +1,4 @@
-#### 4.0.8 (X Xxx 2026)
+#### 4.0.8 (10 Jun 2026)
 - fix released buffer stream size reporting #480. Thanks to @Kunstderfug
 - load Ogg Opus/flac files through buffer stream fallback #479. Thanks to @Kunstderfug
 
