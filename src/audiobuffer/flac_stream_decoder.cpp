@@ -46,11 +46,13 @@ bool FlacDecoderWrapper::initializeDecoder(int engineSamplerate, int engineChann
     m_pFlacDecoder = FLAC__stream_decoder_new();
     if (m_pFlacDecoder == nullptr)
     {
+        printf("[FlacDecoderWrapper] FLAC__stream_decoder_new failed\n");
         return false;
     }
 
     FLAC__stream_decoder_set_metadata_respond_all(m_pFlacDecoder);
 
+    printf("[FlacDecoderWrapper] initializeDecoder called\n");
     FLAC__StreamDecoderInitStatus init_status = FLAC__stream_decoder_init_stream(
         m_pFlacDecoder,
         read_callback,
@@ -66,10 +68,11 @@ bool FlacDecoderWrapper::initializeDecoder(int engineSamplerate, int engineChann
 
     if (init_status != FLAC__STREAM_DECODER_INIT_STATUS_OK)
     {
+        printf("[FlacDecoderWrapper] init_stream failed with status %d\n", init_status);
         return false;
     }
 
-    ogg_sync_init(&m_oy);
+    printf("[FlacDecoderWrapper] decoder initialized OK\n");
     return true;
 }
 
@@ -122,59 +125,54 @@ std::pair<std::vector<float>, DecoderError> FlacDecoderWrapper::decode(std::vect
         clean_audio_data = buffer;
     }
 
-    // Now, use 'clean_audio_data' with the existing OGG/FLAC pipeline
+    printf("[FlacDecoderWrapper::decode] input buffer size=%zu, clean_audio_data size=%zu, m_audioData before=%zu\n",
+           buffer.size(), clean_audio_data.size(), m_audioData.size());
+
+    // Feed raw FLAC bytes directly to the decoder. Do NOT use Ogg parsing here;
+    // this wrapper is for native FLAC files (magic 'fLaC').
     if (!clean_audio_data.empty())
     {
-        char *ogg_buffer = ogg_sync_buffer(&m_oy, clean_audio_data.size());
-        memcpy(ogg_buffer, clean_audio_data.data(), clean_audio_data.size());
-        ogg_sync_wrote(&m_oy, clean_audio_data.size());
+        m_audioData.insert(m_audioData.end(), clean_audio_data.begin(), clean_audio_data.end());
     }
     buffer.clear(); // Clear the original buffer as it has been processed
 
-    while (ogg_sync_pageout(&m_oy, &m_og) == 1)
-    {
-        if (!m_streamInitialized)
-        {
-            if (ogg_stream_init(&m_os, ogg_page_serialno(&m_og)) != 0)
-            {
-                return {m_decodedPcm, DecoderError::FailedToCreateDecoder};
-            }
-            m_streamInitialized = true;
-        }
-
-        if (ogg_stream_pagein(&m_os, &m_og) < 0)
-        {
-            continue; // Skip corrupted page
-        }
-
-        while (ogg_stream_packetout(&m_os, &m_op) == 1)
-        {
-            m_audioData.insert(m_audioData.end(), m_op.packet, m_op.packet + m_op.bytes);
-        }
-    }
-
     m_read_pos = 0;
-    while (m_read_pos < m_audioData.size())
+    unsigned int processCount = 0;
+    unsigned int noProgressCount = 0;
+    while (m_read_pos < m_audioData.size() && noProgressCount < 1000 && processCount < 100000)
     {
         const size_t read_pos_before = m_read_pos;
 
         if (!FLAC__stream_decoder_process_single(m_pFlacDecoder))
         {
+            FLAC__StreamDecoderState state = FLAC__stream_decoder_get_state(m_pFlacDecoder);
+            printf("[FlacDecoderWrapper::decode] process_single returned false at iter %u, state=%d\n", processCount, state);
+            if (state == FLAC__STREAM_DECODER_END_OF_STREAM)
+            {
+                break;
+            }
             FLAC__stream_decoder_reset(m_pFlacDecoder);
             m_audioData.clear();
             m_read_pos = 0;
             break;
         }
 
-        if (FLAC__stream_decoder_get_state(m_pFlacDecoder) == FLAC__STREAM_DECODER_END_OF_STREAM)
+        FLAC__StreamDecoderState state = FLAC__stream_decoder_get_state(m_pFlacDecoder);
+        if (state == FLAC__STREAM_DECODER_END_OF_STREAM)
         {
+            printf("[FlacDecoderWrapper::decode] end of stream at iter %u\n", processCount);
             break;
         }
 
         if (m_read_pos == read_pos_before)
         {
-            break;
+            noProgressCount++;
         }
+        else
+        {
+            noProgressCount = 0;
+        }
+        processCount++;
     }
 
     if (m_read_pos > 0)
@@ -182,6 +180,9 @@ std::pair<std::vector<float>, DecoderError> FlacDecoderWrapper::decode(std::vect
         m_audioData.erase(m_audioData.begin(), m_audioData.begin() + m_read_pos);
     }
     m_read_pos = 0;
+
+    printf("[FlacDecoderWrapper::decode] done - processCount=%u, noProgressCount=%u, m_read_pos=%zu/%zu, decodedPcm size=%zu, samplerate=%d, channels=%d\n",
+           processCount, noProgressCount, m_read_pos, m_audioData.size(), m_decodedPcm.size(), m_samplerate, m_channels);
 
     *samplerate = m_samplerate;
     *channels = m_channels;

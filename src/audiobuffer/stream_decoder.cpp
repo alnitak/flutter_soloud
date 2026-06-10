@@ -95,6 +95,11 @@ DetectedType StreamDecoder::detectAudioFormat(const std::vector<unsigned char>& 
         return DetectedType::BUFFER_UNKNOWN;
     }
 
+    // --- Detect FLAC ---
+    else if (size >= 4 && std::memcmp(buffer.data(), "fLaC", 4) == 0) {
+        return DetectedType::BUFFER_FLAC;
+    }
+
     // --- Detect MP3 ---
     else if (size >= 3 && getID3TagSize(buffer) != 0) {
         return DetectedType::BUFFER_MP3_WITH_ID3; // ID3 tag found
@@ -123,7 +128,8 @@ std::pair<std::vector<float>, DecoderError> StreamDecoder::decode(
         
         if (detectedType == DetectedType::BUFFER_OGG_OPUS
             || detectedType == DetectedType::BUFFER_OGG_VORBIS
-            || detectedType == DetectedType::BUFFER_OGG_FLAC) {
+            || detectedType == DetectedType::BUFFER_OGG_FLAC
+            || detectedType == DetectedType::BUFFER_FLAC) {
             #if defined(NO_XIPH_LIBS)
                 return {{}, DecoderError::NoXiphLibs};
             #else
@@ -140,6 +146,13 @@ std::pair<std::vector<float>, DecoderError> StreamDecoder::decode(
                         return {{}, DecoderError::FailedToCreateDecoder};
                     }
                     static_cast<OggFlacDecoderWrapper*>(mWrapper.get())->setIcyMetaInt(mIcyMetaInt);
+                } else if (detectedType == DetectedType::BUFFER_FLAC) {
+                    mWrapper = std::make_unique<FlacDecoderWrapper>();
+                    isFormatDetected = static_cast<FlacDecoderWrapper*>(mWrapper.get())->initializeDecoder(*samplerate, *channels);
+                    if (!isFormatDetected) {
+                        return {{}, DecoderError::FailedToCreateDecoder};
+                    }
+                    static_cast<FlacDecoderWrapper*>(mWrapper.get())->setIcyMetaInt(mIcyMetaInt);
                 } else {
                     mWrapper = std::make_unique<OpusDecoderWrapper>();
                     isFormatDetected = static_cast<OpusDecoderWrapper*>(mWrapper.get())->initializeDecoder(*samplerate, *channels);
@@ -179,6 +192,9 @@ std::pair<std::vector<float>, DecoderError> StreamDecoder::decode(
             }
             else if (mWrapper->detectedType == DetectedType::BUFFER_OGG_FLAC) {
                 return static_cast<OggFlacDecoderWrapper*>(mWrapper.get())->decode(buffer, samplerate, channels);
+            }
+            else if (mWrapper->detectedType == DetectedType::BUFFER_FLAC) {
+                return static_cast<FlacDecoderWrapper*>(mWrapper.get())->decode(buffer, samplerate, channels);
             }
         #endif
         if (mWrapper->detectedType == DetectedType::BUFFER_MP3_WITH_ID3 ||

@@ -34,8 +34,6 @@ private:
 
     ogg_sync_state m_oy;
     ogg_stream_state m_os;
-    ogg_page m_og;
-    ogg_packet m_op;
     bool m_streamInitialized;
 
     std::vector<float> m_decodedPcm;

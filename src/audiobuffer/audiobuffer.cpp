@@ -620,6 +620,11 @@ BufferStream::convertMetadataToFFI(const AudioMetadata &metadata) {
                               metadata.oggMetadata.flacInfo.bits_per_sample,
                               metadata.oggMetadata.flacInfo.total_samples};
 
+  // Also populate FLAC info for raw FLAC streams
+  if (metadata.type == DetectedType::BUFFER_FLAC) {
+    ffi.detectedType = DetectedTypeFFI::OGG_FLAC;
+  }
+
   // Copy channel mapping
   for (size_t i = 0; i < metadata.oggMetadata.opusInfo.channel_mapping.size() &&
                      i < MAX_CHANNEL_MAPPING;
