@@ -138,10 +138,10 @@ std::pair<std::vector<float>, DecoderError> OggFlacDecoderWrapper::decode(std::v
     }
     buffer.clear(); // Clear the original buffer as it has been processed
 
-    m_read_pos = 0;
+    // NOTE: DO NOT reset m_read_pos here - it must persist across decode() calls
+    // to maintain state when streaming data arrives incrementally
     unsigned int processCount = 0;
-    unsigned int noProgressCount = 0;
-    while (m_read_pos < m_audioData.size() && noProgressCount < 1000 && processCount < 100000)
+    while (m_read_pos < m_audioData.size() && processCount < 100000)
     {
         const size_t read_pos_before = m_read_pos;
 
@@ -152,11 +152,15 @@ std::pair<std::vector<float>, DecoderError> OggFlacDecoderWrapper::decode(std::v
                    processCount, read_pos_before, m_read_pos, state);
             if (state == FLAC__STREAM_DECODER_END_OF_STREAM)
             {
+                // Normal end of current data buffer. Do NOT clear m_audioData since
+                // more data may arrive later. Just break to return decoded samples.
+                printf("[OggFlacDecoderWrapper::decode] reached end of current data buffer\n");
                 break;
             }
-            FLAC__stream_decoder_reset(m_pFlacDecoder);
-            m_audioData.clear();
-            m_read_pos = 0;
+            // For other errors, log but continue - the read_callback will signal
+            // END_OF_STREAM when buffer is empty, allowing graceful handling of
+            // incomplete Ogg pages or data arriving in chunks
+            printf("[OggFlacDecoderWrapper::decode] decoder error state %d, continuing\n", state);
             break;
         }
 
@@ -167,25 +171,19 @@ std::pair<std::vector<float>, DecoderError> OggFlacDecoderWrapper::decode(std::v
             break;
         }
 
-        if (m_read_pos == read_pos_before)
-        {
-            noProgressCount++;
-        }
-        else
-        {
-            noProgressCount = 0;
-        }
         processCount++;
     }
 
-    printf("[OggFlacDecoderWrapper::decode] done - processCount=%u, noProgressCount=%u, m_read_pos=%zu/%zu, decodedPcm size=%zu, samplerate=%d, channels=%d\n",
-           processCount, noProgressCount, m_read_pos, m_audioData.size(), m_decodedPcm.size(), m_samplerate, m_channels);
+    printf("[OggFlacDecoderWrapper::decode] done - processCount=%u, m_read_pos=%zu/%zu, decodedPcm size=%zu, samplerate=%d, channels=%d\n",
+           processCount, m_read_pos, m_audioData.size(), m_decodedPcm.size(), m_samplerate, m_channels);
 
-    if (m_read_pos > 0)
-    {
-        m_audioData.erase(m_audioData.begin(), m_audioData.begin() + m_read_pos);
-    }
-    m_read_pos = 0;
+    // CRITICAL: Do NOT erase consumed data or reset m_read_pos here.
+    // The libFLAC Ogg stream decoder may be in the middle of parsing an Ogg
+    // page when the current buffer is exhausted. If we erase the buffer and
+    // reset the position, the next chunk of data appears as a discontinuity
+    // to the decoder, causing it to skip/lose frames. The read position must
+    // remain persistent across decode() calls to present a continuous byte
+    // stream to the decoder.
 
     *samplerate = m_samplerate;
     *channels = m_channels;
