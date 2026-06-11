@@ -198,7 +198,7 @@ FLAC__StreamDecoderReadStatus FlacDecoderWrapper::read_callback(const FLAC__Stre
     if (available_data == 0)
     {
         *bytes = 0;
-        return FLAC__STREAM_DECODER_READ_STATUS_CONTINUE;
+        return FLAC__STREAM_DECODER_READ_STATUS_END_OF_STREAM;
     }
 
     const size_t bytes_to_copy = MIN(*bytes, available_data);

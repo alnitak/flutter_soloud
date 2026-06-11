@@ -177,13 +177,11 @@ std::pair<std::vector<float>, DecoderError> OggFlacDecoderWrapper::decode(std::v
     printf("[OggFlacDecoderWrapper::decode] done - processCount=%u, m_read_pos=%zu/%zu, decodedPcm size=%zu, samplerate=%d, channels=%d\n",
            processCount, m_read_pos, m_audioData.size(), m_decodedPcm.size(), m_samplerate, m_channels);
 
-    // CRITICAL: Do NOT erase consumed data or reset m_read_pos here.
-    // The libFLAC Ogg stream decoder may be in the middle of parsing an Ogg
-    // page when the current buffer is exhausted. If we erase the buffer and
-    // reset the position, the next chunk of data appears as a discontinuity
-    // to the decoder, causing it to skip/lose frames. The read position must
-    // remain persistent across decode() calls to present a continuous byte
-    // stream to the decoder.
+    if (m_read_pos > 0)
+    {
+        m_audioData.erase(m_audioData.begin(), m_audioData.begin() + m_read_pos);
+    }
+    m_read_pos = 0;
 
     *samplerate = m_samplerate;
     *channels = m_channels;
