@@ -10,6 +10,7 @@ FlacDecoderWrapper::FlacDecoderWrapper()
       m_streamInfoProcessed(false),
       m_read_pos(0),
       m_streamInitialized(false),
+      m_dataEnded(false),
       m_channels(0),
       m_samplerate(0),
       m_bitsPerSample(0),
@@ -138,8 +139,8 @@ std::pair<std::vector<float>, DecoderError> FlacDecoderWrapper::decode(std::vect
 
     m_read_pos = 0;
     unsigned int processCount = 0;
-    unsigned int noProgressCount = 0;
-    while (m_read_pos < m_audioData.size() && noProgressCount < 1000 && processCount < 100000)
+    size_t last_successful_read_pos = 0;
+    while (m_read_pos < m_audioData.size() && processCount < 100000)
     {
         const size_t read_pos_before = m_read_pos;
 
@@ -147,13 +148,26 @@ std::pair<std::vector<float>, DecoderError> FlacDecoderWrapper::decode(std::vect
         {
             FLAC__StreamDecoderState state = FLAC__stream_decoder_get_state(m_pFlacDecoder);
             printf("[FlacDecoderWrapper::decode] process_single returned false at iter %u, state=%d\n", processCount, state);
+            if (state == FLAC__STREAM_DECODER_ABORTED)
+            {
+                // read_callback returned ABORT because the buffer is temporarily
+                // exhausted but more data is expected. Roll back m_read_pos to
+                // the last successful frame boundary, and flush the decoder so it
+                // transitions to SEARCH_FOR_FRAME_SYNC and can resume on the
+                // next decode() call.
+                m_read_pos = last_successful_read_pos;
+                FLAC__stream_decoder_flush(m_pFlacDecoder);
+                printf("[FlacDecoderWrapper::decode] flushed decoder after temporary buffer exhaustion\n");
+                break;
+            }
             if (state == FLAC__STREAM_DECODER_END_OF_STREAM)
             {
                 break;
             }
-            FLAC__stream_decoder_reset(m_pFlacDecoder);
-            m_audioData.clear();
-            m_read_pos = 0;
+            // For other decoder errors, attempt recovery by flushing and rolling back
+            m_read_pos = last_successful_read_pos;
+            FLAC__stream_decoder_flush(m_pFlacDecoder);
+            printf("[FlacDecoderWrapper::decode] decoder error state %d, recovered & breaking\n", state);
             break;
         }
 
@@ -164,14 +178,7 @@ std::pair<std::vector<float>, DecoderError> FlacDecoderWrapper::decode(std::vect
             break;
         }
 
-        if (m_read_pos == read_pos_before)
-        {
-            noProgressCount++;
-        }
-        else
-        {
-            noProgressCount = 0;
-        }
+        last_successful_read_pos = m_read_pos;
         processCount++;
     }
 
@@ -181,8 +188,8 @@ std::pair<std::vector<float>, DecoderError> FlacDecoderWrapper::decode(std::vect
     }
     m_read_pos = 0;
 
-    printf("[FlacDecoderWrapper::decode] done - processCount=%u, noProgressCount=%u, m_read_pos=%zu/%zu, decodedPcm size=%zu, samplerate=%d, channels=%d\n",
-           processCount, noProgressCount, m_read_pos, m_audioData.size(), m_decodedPcm.size(), m_samplerate, m_channels);
+    printf("[FlacDecoderWrapper::decode] done - processCount=%u, m_read_pos=%zu/%zu, decodedPcm size=%zu, samplerate=%d, channels=%d\n",
+           processCount, m_read_pos, m_audioData.size(), m_decodedPcm.size(), m_samplerate, m_channels);
 
     *samplerate = m_samplerate;
     *channels = m_channels;
@@ -198,7 +205,15 @@ FLAC__StreamDecoderReadStatus FlacDecoderWrapper::read_callback(const FLAC__Stre
     if (available_data == 0)
     {
         *bytes = 0;
-        return FLAC__STREAM_DECODER_READ_STATUS_END_OF_STREAM;
+        if (self->m_dataEnded)
+        {
+            // Stream has truly ended — no more data will arrive.
+            return FLAC__STREAM_DECODER_READ_STATUS_END_OF_STREAM;
+        }
+        // Buffer temporarily exhausted but more data is expected.
+        // Return ABORT so process_single returns false without
+        // permanently terminating the decoder.
+        return FLAC__STREAM_DECODER_READ_STATUS_ABORT;
     }
 
     const size_t bytes_to_copy = MIN(*bytes, available_data);

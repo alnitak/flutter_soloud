@@ -10,6 +10,7 @@ OggFlacDecoderWrapper::OggFlacDecoderWrapper()
       m_streamInfoProcessed(false),
       m_read_pos(0),
       m_streamInitialized(false),
+      m_dataEnded(false),
       m_channels(0),
       m_samplerate(0),
       m_bitsPerSample(0),
@@ -53,7 +54,7 @@ bool OggFlacDecoderWrapper::initializeDecoder(int engineSamplerate, int engineCh
     FLAC__stream_decoder_set_metadata_respond_all(m_pFlacDecoder);
 
     printf("[OggFlacDecoderWrapper] initializeDecoder called\n");
-    FLAC__StreamDecoderInitStatus init_status = FLAC__stream_decoder_init_ogg_stream(
+    FLAC__StreamDecoderInitStatus init_status = FLAC__stream_decoder_init_stream(
         m_pFlacDecoder,
         read_callback,
         nullptr, // seek_callback
@@ -129,18 +130,82 @@ std::pair<std::vector<float>, DecoderError> OggFlacDecoderWrapper::decode(std::v
     printf("[OggFlacDecoderWrapper::decode] input buffer size=%zu, clean_audio_data size=%zu, m_audioData before=%zu\n",
            buffer.size(), clean_audio_data.size(), m_audioData.size());
 
-    // Feed raw Ogg bytes directly to libFLAC's Ogg-aware decoder.
-    // init_ogg_stream() handles Ogg page parsing internally; do NOT
-    // extract packets manually or the decoder will see invalid framing.
+    // Write new bytes into ogg sync buffer
     if (!clean_audio_data.empty())
     {
-        m_audioData.insert(m_audioData.end(), clean_audio_data.begin(), clean_audio_data.end());
+        char* oggBuffer = ogg_sync_buffer(&m_oy, clean_audio_data.size());
+        memcpy(oggBuffer, clean_audio_data.data(), clean_audio_data.size());
+        ogg_sync_wrote(&m_oy, clean_audio_data.size());
     }
     buffer.clear(); // Clear the original buffer as it has been processed
 
-    // NOTE: DO NOT reset m_read_pos here - it must persist across decode() calls
-    // to maintain state when streaming data arrives incrementally
+    // Extract pages and packets from Ogg container manually
+    ogg_page og;
+    while (ogg_sync_pageout(&m_oy, &og) == 1)
+    {
+        if (!m_streamInitialized)
+        {
+            if (ogg_stream_init(&m_os, ogg_page_serialno(&og)))
+            {
+                return {m_decodedPcm, DecoderError::FailedToCreateDecoder};
+            }
+            m_streamInitialized = true;
+        }
+
+        bool isNewStream = !m_streamInitialized || ogg_page_serialno(&og) != m_os.serialno;
+        bool isBOS = ogg_page_bos(&og);
+
+        if (isNewStream || isBOS)
+        {
+            if (m_streamInitialized)
+            {
+                ogg_stream_clear(&m_os);
+            }
+            if (ogg_stream_init(&m_os, ogg_page_serialno(&og)))
+            {
+                return {m_decodedPcm, DecoderError::FailedToCreateDecoder};
+            }
+            m_streamInitialized = true;
+        }
+
+        if (ogg_stream_pagein(&m_os, &og) < 0)
+        {
+            continue;
+        }
+
+        ogg_packet op;
+        while (ogg_stream_packetout(&m_os, &op) == 1)
+        {
+            if (op.bytes > 0)
+            {
+                if (op.packetno == 0)
+                {
+                    // First packet (BOS) contains Ogg FLAC mapping headers.
+                    // It starts with 0x7F 'FLAC', followed by version, header count,
+                    // 'fLaC' signature, and STREAMINFO.
+                    // We must skip the first 9 bytes of Ogg FLAC mapping headers
+                    // to get the native FLAC signature ('fLaC') and STREAMINFO.
+                    if (op.bytes >= 9 && op.packet[0] == 0x7F && memcmp(op.packet + 1, "FLAC", 4) == 0)
+                    {
+                        m_audioData.insert(m_audioData.end(), op.packet + 9, op.packet + op.bytes);
+                    }
+                    else
+                    {
+                        m_audioData.insert(m_audioData.end(), op.packet, op.packet + op.bytes);
+                    }
+                }
+                else
+                {
+                    // Subsequent packets contain a native FLAC metadata block or frame.
+                    m_audioData.insert(m_audioData.end(), op.packet, op.packet + op.bytes);
+                }
+            }
+        }
+    }
+
+    // Now decode the accumulated native FLAC bytes
     unsigned int processCount = 0;
+    size_t last_successful_read_pos = 0;
     while (m_read_pos < m_audioData.size() && processCount < 100000)
     {
         const size_t read_pos_before = m_read_pos;
@@ -150,17 +215,27 @@ std::pair<std::vector<float>, DecoderError> OggFlacDecoderWrapper::decode(std::v
             FLAC__StreamDecoderState state = FLAC__stream_decoder_get_state(m_pFlacDecoder);
             printf("[OggFlacDecoderWrapper::decode] process_single returned false at iter %u, read_pos_before=%zu, m_read_pos=%zu, state=%d\n",
                    processCount, read_pos_before, m_read_pos, state);
-            if (state == FLAC__STREAM_DECODER_END_OF_STREAM)
+            if (state == FLAC__STREAM_DECODER_ABORTED)
             {
-                // Normal end of current data buffer. Do NOT clear m_audioData since
-                // more data may arrive later. Just break to return decoded samples.
-                printf("[OggFlacDecoderWrapper::decode] reached end of current data buffer\n");
+                // read_callback returned ABORT because the buffer is temporarily
+                // exhausted but more data is expected. Roll back m_read_pos to
+                // the last successful frame boundary, and flush the decoder so it
+                // transitions to SEARCH_FOR_FRAME_SYNC and can resume on the
+                // next decode() call.
+                m_read_pos = last_successful_read_pos;
+                FLAC__stream_decoder_flush(m_pFlacDecoder);
+                printf("[OggFlacDecoderWrapper::decode] flushed decoder after temporary buffer exhaustion\n");
                 break;
             }
-            // For other errors, log but continue - the read_callback will signal
-            // END_OF_STREAM when buffer is empty, allowing graceful handling of
-            // incomplete Ogg pages or data arriving in chunks
-            printf("[OggFlacDecoderWrapper::decode] decoder error state %d, continuing\n", state);
+            if (state == FLAC__STREAM_DECODER_END_OF_STREAM)
+            {
+                printf("[OggFlacDecoderWrapper::decode] reached true end of stream\n");
+                break;
+            }
+            // For other decoder errors, attempt recovery by flushing and rolling back
+            m_read_pos = last_successful_read_pos;
+            FLAC__stream_decoder_flush(m_pFlacDecoder);
+            printf("[OggFlacDecoderWrapper::decode] decoder error state %d, recovered & breaking\n", state);
             break;
         }
 
@@ -171,6 +246,7 @@ std::pair<std::vector<float>, DecoderError> OggFlacDecoderWrapper::decode(std::v
             break;
         }
 
+        last_successful_read_pos = m_read_pos;
         processCount++;
     }
 
@@ -197,7 +273,15 @@ FLAC__StreamDecoderReadStatus OggFlacDecoderWrapper::read_callback(const FLAC__S
     if (available_data == 0)
     {
         *bytes = 0;
-        return FLAC__STREAM_DECODER_READ_STATUS_END_OF_STREAM;
+        if (self->m_dataEnded)
+        {
+            // Stream has truly ended — no more data will arrive.
+            return FLAC__STREAM_DECODER_READ_STATUS_END_OF_STREAM;
+        }
+        // Buffer temporarily exhausted but more data is expected.
+        // Return ABORT so process_single returns false without
+        // permanently terminating the decoder.
+        return FLAC__STREAM_DECODER_READ_STATUS_ABORT;
     }
 
     const size_t bytes_to_copy = MIN(*bytes, available_data);

@@ -17,6 +17,7 @@ public:
 
     bool initializeDecoder(int engineSamplerate, int engineChannels) override;
     std::pair<std::vector<float>, DecoderError> decode(std::vector<unsigned char>& buffer, int* sampleRate, int* channels) override;
+    void setDataEnded() override { m_dataEnded = true; }
 
 private:
     static FLAC__StreamDecoderReadStatus read_callback(const FLAC__StreamDecoder *decoder, FLAC__byte buffer[], size_t *bytes, void *client_data);
@@ -35,6 +36,7 @@ private:
     ogg_sync_state m_oy;
     ogg_stream_state m_os;
     bool m_streamInitialized;
+    bool m_dataEnded;
 
     std::vector<float> m_decodedPcm;
     int m_channels;
