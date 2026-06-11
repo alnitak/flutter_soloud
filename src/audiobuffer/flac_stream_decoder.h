@@ -37,6 +37,7 @@ private:
     ogg_stream_state m_os;
     bool m_streamInitialized;
     bool m_dataEnded;
+    uint64_t m_streamStartOffset;
 
     std::vector<float> m_decodedPcm;
     int m_channels;

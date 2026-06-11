@@ -11,6 +11,7 @@ FlacDecoderWrapper::FlacDecoderWrapper()
       m_read_pos(0),
       m_streamInitialized(false),
       m_dataEnded(false),
+      m_streamStartOffset(0),
       m_channels(0),
       m_samplerate(0),
       m_bitsPerSample(0),
@@ -54,6 +55,7 @@ bool FlacDecoderWrapper::initializeDecoder(int engineSamplerate, int engineChann
     FLAC__stream_decoder_set_metadata_respond_all(m_pFlacDecoder);
 
     printf("[FlacDecoderWrapper] initializeDecoder called\n");
+    m_streamStartOffset = 0;
     FLAC__StreamDecoderInitStatus init_status = FLAC__stream_decoder_init_stream(
         m_pFlacDecoder,
         read_callback,
@@ -140,7 +142,7 @@ std::pair<std::vector<float>, DecoderError> FlacDecoderWrapper::decode(std::vect
     m_read_pos = 0;
     unsigned int processCount = 0;
     size_t last_successful_read_pos = 0;
-    while (m_read_pos < m_audioData.size() && processCount < 100000)
+    while ((m_read_pos < m_audioData.size() || m_dataEnded) && processCount < 100000)
     {
         const size_t read_pos_before = m_read_pos;
 
@@ -178,12 +180,26 @@ std::pair<std::vector<float>, DecoderError> FlacDecoderWrapper::decode(std::vect
             break;
         }
 
-        last_successful_read_pos = m_read_pos;
+        // Query the exact byte position processed by the decoder (excluding lookahead FIFO)
+        FLAC__uint64 absolute_pos = 0;
+        if (FLAC__stream_decoder_get_decode_position(m_pFlacDecoder, &absolute_pos))
+        {
+            if (absolute_pos >= m_streamStartOffset)
+            {
+                last_successful_read_pos = absolute_pos - m_streamStartOffset;
+            }
+        }
+        else
+        {
+            // Fallback during metadata phase
+            last_successful_read_pos = m_read_pos;
+        }
         processCount++;
     }
 
     if (m_read_pos > 0)
     {
+        m_streamStartOffset += m_read_pos;
         m_audioData.erase(m_audioData.begin(), m_audioData.begin() + m_read_pos);
     }
     m_read_pos = 0;
