@@ -736,7 +736,7 @@ void Player::pauseSwitch(unsigned int handle)
     setPause(handle, !soloud.getPause(handle));
 }
 
-void Player::setPause(unsigned int handle, bool pause)
+void Player::setPause(unsigned int handle, bool pause, bool isUserAction)
 {
     if (!pause)
     {
@@ -745,8 +745,28 @@ void Player::setPause(unsigned int handle, bool pause)
         // (e.g., Control Center pause on iOS).
         soloud.resume();
     }
-    
+
     soloud.setPause(handle, pause);
+
+    // Track whether this handle was paused by the user, so the BufferStream
+    // buffering logic does not automatically unpause it when data becomes
+    // available. The user must explicitly unpause it again.
+    auto s = findByHandle(handle);
+    if (s != nullptr)
+    {
+        for (size_t i = 0; i < s->handle.size(); i++)
+        {
+            if (s->handle[i].handle == handle)
+            {
+                bool newUserPaused = pause && isUserAction;
+                fprintf(stderr, "[setPause] handle=%u pause=%d isUserAction=%d oldUserPaused=%d newUserPaused=%d\n",
+                        handle, pause ? 1 : 0, isUserAction ? 1 : 0,
+                        s->handle[i].isUserPaused ? 1 : 0, newUserPaused ? 1 : 0);
+                s->handle[i].isUserPaused = newUserPaused;
+                break;
+            }
+        }
+    }
     
     if (pause)
     {
@@ -849,7 +869,7 @@ PlayerErrors Player::play(
     }
 
     if (newHandle != 0) {
-        sound->handle.push_back({newHandle, MAX_DOUBLE});
+        sound->handle.push_back({newHandle, MAX_DOUBLE, false});
         // Check if this buffer has enough data to be played
         if (sound->soundType == SoundType::TYPE_BUFFER_STREAM)
         {
@@ -1076,7 +1096,7 @@ PlayerErrors Player::textToSpeech(const std::string &textToSpeech, unsigned int 
         handle = soloud.play(speech);
         sounds.back().get()->soundHash = handle;
         sounds.back().get()->filters = std::make_unique<Filters>(&soloud, sounds.back().get(), nullptr);
-        sounds.back().get()->handle.push_back({handle, MAX_DOUBLE});
+        sounds.back().get()->handle.push_back({handle, MAX_DOUBLE, false});
     }
     else
     {
@@ -1483,7 +1503,7 @@ PlayerErrors Player::play3d(
     }
 
     if (newHandle != 0) {
-        sound->handle.push_back({newHandle, MAX_DOUBLE});
+        sound->handle.push_back({newHandle, MAX_DOUBLE, false});
         // Check if this buffer has enough data to be played
         if (sound->soundType == SoundType::TYPE_BUFFER_STREAM)
         {

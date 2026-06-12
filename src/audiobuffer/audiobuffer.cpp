@@ -427,31 +427,50 @@ void BufferStream::checkBuffering(unsigned int afterAddingBytesCount) {
                            : mThePlayer->getPosition(handle);
     bool isPaused = mThePlayer->getPause(handle);
 
+    fprintf(stderr,
+            "[checkBuffering] handle=%u currBufferTime=%.3f addedDataTime=%.3f "
+            "pos=%.3f needs=%.3f isPaused=%d isUserPaused=%d dataIsEnded=%d\n",
+            handle, currBufferTime, addedDataTime, pos, mBufferingTimeNeeds,
+            isPaused ? 1 : 0, mParent->handle[i].isUserPaused ? 1 : 0,
+            dataIsEnded ? 1 : 0);
+
     // This handle needs to wait for [TIME_FOR_BUFFERING]. Pause it.
     // Pause only when the play position has reached the end of the data that
     // was already buffered before this addData() call. The unpause below will
     // then wait until at least [bufferingTimeNeeds] seconds of audio are
     // available ahead of position.
     if (!dataIsEnded && pos >= currBufferTime && !isPaused) {
+      fprintf(stderr, "[checkBuffering] -> PAUSE handle=%u (reached end)\n", handle);
       mParent->handle[i].bufferingTime = currBufferTime + addedDataTime;
-      mThePlayer->setPause(handle, true);
+      // This is an automatic buffering pause, so the user-paused flag should
+      // not prevent a future buffering unpause.
+      mParent->handle[i].isUserPaused = false;
+      mThePlayer->setPause(handle, true, false);
       isPaused = true;
       callOnBufferingCallback(true, handle, currBufferTime + addedDataTime);
     } else
     // This handle has reached [TIME_FOR_BUFFERING]. Unpause it.
     // Only unpause when buffer covers playback position + margin,
     // not just when new data >= margin (which caused play/pause toggling
-    // when seeking beyond buffered data)
-    if (currBufferTime + addedDataTime >= pos + mBufferingTimeNeeds && isPaused){
-        mThePlayer->setPause(handle, false);
-        isPaused = false;
+    // when seeking beyond buffered data).
+    // Also respect a user-initiated pause: if the user pressed pause, do not
+    // automatically resume even when enough data is buffered.
+    if (currBufferTime + addedDataTime >= pos + mBufferingTimeNeeds && isPaused &&
+        !mParent->handle[i].isUserPaused){
+        fprintf(stderr, "[checkBuffering] -> UNPAUSE handle=%u (enough data)\n", handle);
         mParent->handle[i].bufferingTime = currBufferTime + addedDataTime;
+        mThePlayer->setPause(handle, false, false);
+        isPaused = false;
         callOnBufferingCallback(false, handle, currBufferTime + addedDataTime);
+      } else if (isPaused && mParent->handle[i].isUserPaused) {
+        fprintf(stderr, "[checkBuffering] -> STAY PAUSED handle=%u (user paused)\n", handle);
       }
     // If data is ended and the handle is paused, unpause it to listen to the
-    // rest of the data.
-    if (dataIsEnded && isPaused) {
-      mThePlayer->setPause(handle, false);
+    // rest of the data. This also clears the user-paused flag so that a
+    // user-paused stream drains its remaining buffer when the stream ends.
+    if (dataIsEnded && isPaused && !mParent->handle[i].isUserPaused) {
+      fprintf(stderr, "[checkBuffering] -> UNPAUSE handle=%u (data ended, drain)\n", handle);
+      mThePlayer->setPause(handle, false, false);
       isPaused = false;
       mParent->handle[i].bufferingTime = MAX_DOUBLE;
       callOnBufferingCallback(false, handle, currBufferTime);

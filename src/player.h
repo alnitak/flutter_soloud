@@ -197,7 +197,10 @@ public:
   /// @brief Pause or unpause already loaded sound identified by [handle].
   /// @param handle the sound handle.
   /// @param pause whether this sound should be paused or not.
-  void setPause(unsigned int handle, bool pause);
+  /// @param isUserAction true if this pause/unpause comes from the user
+  /// (Dart setPause/pauseSwitch). Automatic buffering pauses pass false so
+  /// they do not flip the user-paused flag.
+  void setPause(unsigned int handle, bool pause, bool isUserAction = true);
 
   /// @brief Gets the pause state.
   /// @param handle the sound handle.
