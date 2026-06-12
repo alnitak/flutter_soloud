@@ -30,14 +30,14 @@ var baseCSettings: [CSetting] = [
     .headerSearchPath("../../include"),
     .headerSearchPath("src"),
     .headerSearchPath("src/soloud/include"),
-    .unsafeFlags(["-O3", "-ffast-math"]),
+    .unsafeFlags(["-O3"]),
 ]
 
 var baseCXXSettings: [CXXSetting] = [
     .headerSearchPath("../../include"),
     .headerSearchPath("src"),
     .headerSearchPath("src/soloud/include"),
-    .unsafeFlags(["-O3", "-ffast-math"]),
+    .unsafeFlags(["-O3"]),
 ]
 
 // Add Xiph include paths only when not disabled
@@ -84,6 +84,7 @@ var targets: [Target] = [
         linkerSettings: [
             .linkedFramework("AudioToolbox"),
             .linkedFramework("AVFAudio"),
+            .unsafeFlags(["-Wl,-undefined,dynamic_lookup"]),
         ]
     )
 ]
@@ -105,7 +106,7 @@ let package = Package(
         .macOS("10.15")
     ],
     products: [
-        .library(name: "flutter-soloud", targets: ["flutter_soloud"])
+        .library(name: "flutter-soloud", type: .dynamic, targets: ["flutter_soloud"])
     ],
     dependencies: [
         .package(name: "FlutterFramework", path: "../FlutterFramework")

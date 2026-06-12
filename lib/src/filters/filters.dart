@@ -522,7 +522,7 @@ enum FilterType {
     FilterType.robotizeFilter => 3,
     FilterType.freeverbFilter => 5,
     FilterType.pitchShiftFilter => 3,
-    FilterType.limiterFilter => 5,
+    FilterType.limiterFilter => 6,
     FilterType.compressorFilter => 8,
     FilterType.parametricEq => 67,
   };

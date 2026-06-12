@@ -22,11 +22,20 @@ public:
 
 private:
     size_t maxBytes; // Maximum capacity in bytes
-    std::mutex bufferMutex; // Add mutex for thread safety
+    size_t readOffset; // Byte offset to active data (used in RELEASED mode)
 
 public:
+    std::recursive_mutex bufferMutex; // Add mutex for thread safety
+
+    size_t getReadOffset() const { return readOffset; }
+
+    size_t getActiveSizeInBytes() const {
+        if (buffer.size() <= readOffset) return 0;
+        return buffer.size() - readOffset;
+    }
+
     // Constructor that accepts the maxBytes parameter
-    Buffer() : bufferingType(BufferingType::PRESERVED), maxBytes(0) {}
+    Buffer() : bufferingType(BufferingType::PRESERVED), maxBytes(0), readOffset(0) {}
 
     ~Buffer()
     {
@@ -98,7 +107,18 @@ public:
     // Overload for float data, directly adding its bytes to the buffer.
     // Return the number of floats written.
     size_t addData(const float* data, size_t numSamples, bool *allDataAdded) {
-        std::lock_guard<std::mutex> lock(bufferMutex); // Lock during modification
+        std::lock_guard<std::recursive_mutex> lock(bufferMutex); // Lock during modification
+
+        // Compact buffer when more than half has been consumed
+        if (readOffset > 0 && (buffer.size() - readOffset) < readOffset) {
+            size_t remaining = buffer.size() - readOffset;
+            if (remaining > 0) {
+                memmove(buffer.data(), buffer.data() + readOffset, remaining);
+            }
+            buffer.resize(remaining);
+            readOffset = 0;
+        }
+
         uint64_t bytesNeeded = numSamples * sizeof(float);
         int64_t newNumSamples = numSamples;
         if (buffer.size() + bytesNeeded > maxBytes)
@@ -116,31 +136,34 @@ public:
 
     // Remove data from the start of the buffer
     size_t removeData(size_t bytesToRemove) {
-        std::lock_guard<std::mutex> lock(bufferMutex); // Lock during modification
+        std::lock_guard<std::recursive_mutex> lock(bufferMutex); // Lock during modification
         size_t samplesRemoved = 0;
         if (bufferingType == BufferingType::RELEASED && bytesToRemove > 0) {
             samplesRemoved = bytesToRemove / sizeof(float);
-            if (bytesToRemove >= buffer.size()) {
+            size_t activeSize = buffer.size() > readOffset ? buffer.size() - readOffset : 0;
+            if (bytesToRemove >= activeSize) {
                 buffer.clear();
+                readOffset = 0;
             } else {
-                buffer.erase(buffer.begin(), buffer.begin() + bytesToRemove);
+                readOffset += bytesToRemove;
             }
         }
         return samplesRemoved;
     }
 
-    // Function to get the current size of the buffer in bytes
+    // Function to get the current size of the buffer in floats
     size_t getFloatsBufferSize()
     {
-        std::lock_guard<std::mutex> lock(bufferMutex); // Lock during read
-        return buffer.size() / sizeof(float);
+        std::lock_guard<std::recursive_mutex> lock(bufferMutex); // Lock during read
+        return getActiveSizeInBytes() / sizeof(float);
     }
 
     // Clear the buffer
     void clear()
     {
-        std::lock_guard<std::mutex> lock(bufferMutex); // Lock during modification
+        std::lock_guard<std::recursive_mutex> lock(bufferMutex); // Lock during modification
         buffer.clear();
+        readOffset = 0;
     }
 };
 

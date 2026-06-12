@@ -1,3 +1,18 @@
+#### 4.0.8 (10 Jun 2026)
+- fix released buffer stream size reporting #480. Thanks to @Kunstderfug
+- load Ogg Opus/flac files through buffer stream fallback #479. Thanks to @Kunstderfug
+
+#### 4.0.7 (1 Jun 2026)
+- add look-ahead brickwall limiter and fix planar DSP indexing #468. Thanks to @Kunstderfug
+- fix iOS CocoaPods wrapper double compile #467. Thanks to @DavidPluxia
+- fix Apple: added linker settings to do not stripe symbols when building the ipa using SPM #472
+- Android fix: fix audio crackling using `BufferingType.released` on some Android devices #476
+- Android fix: quick play & stop causes glitches and probably UI jank #478
+- fix: the `wet` parameter of parametric eq was not evaluated #477
+
+#### 4.0.6 (17 May 2026)
+- Fix iOS SPM miniaudio duplicate symbols #465. Thanks to @coolswood
+
 #### 4.0.5 (13 May 2026)
 - fix sample count calculations in BufferStreamInstance and BufferStream #462
 - fix Apple: removed hardcoded `-flto` compile arg in Package.swift #463

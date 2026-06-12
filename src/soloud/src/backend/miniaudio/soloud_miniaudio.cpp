@@ -69,6 +69,7 @@ namespace SoLoud
 #include <chrono>
 #include <thread>
 #include <mutex>
+#include "soloud_common.h"
 #if defined(_WIN32) || defined(_WIN64)
 #  include <windows.h>
 #else
@@ -254,15 +255,14 @@ namespace SoLoud
     {
         if (ma_device_get_state(&gDevice) == ma_device_state_started)
         {
-#if defined(__EMSCRIPTEN__)
-            /* On Web, don't suspend the AudioContext to avoid a bug where
-               ScriptProcessorNode's onaudioprocess can fire with stale data
-               after AudioContext.suspend() is called but before it takes effect.
-               When stop() and play() are called in quick succession, those stale
-               buffers get queued and play after resume(). Keeping the context
-               running is safe: soloud->mix() produces silence when no voices
-               are active, which has negligible overhead. 
-               This solves #446 */
+#if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
+            /* On Web and Android, don't suspend the audio device to avoid a bug where
+               stale buffered audio data can fire after the device is stopped but before
+               it takes effect. When stop() and play() are called in quick succession,
+               those stale buffers get queued and play after resume(), causing audio
+               glitches and lag. Keeping the device running is safe: soloud->mix()
+               produces silence when no voices are active, which has negligible overhead.
+               This solves #446 on both Web and Android. */
             (void)aSoloud;
             return 0;
 #else
@@ -367,7 +367,14 @@ namespace SoLoud
         }
         gDeviceInitialized = true;
         aSoloud->postinit_internal(gDevice.sampleRate, gDevice.playback.internalPeriodSizeInFrames, aFlags, gDevice.playback.channels);
-        ma_device_start(&gDevice);
+        ma_result startResult = ma_device_start(&gDevice);
+        if (startResult != MA_SUCCESS) {
+            soloud_platform_log("miniaudio_init: ma_device_start failed with error %d\n", startResult);
+            ma_device_uninit(&gDevice);
+            ma_context_uninit(&context);
+            gDeviceInitialized = false;
+            return UNKNOWN_ERROR;
+        }
         gDeviceInitDeferred = false;
         gDeviceStartDeferred = false;
         
@@ -389,7 +396,14 @@ namespace SoLoud
         }
         gDeviceInitialized = true;
         aSoloud->postinit_internal(gDevice.sampleRate, gDevice.playback.internalPeriodSizeInFrames, aFlags, gDevice.playback.channels);
-        ma_device_start(&gDevice);
+        ma_result startResult = ma_device_start(&gDevice);
+        if (startResult != MA_SUCCESS) {
+            soloud_platform_log("miniaudio_init: ma_device_start failed with error %d\n", startResult);
+            ma_device_uninit(&gDevice);
+            ma_context_uninit(&context);
+            gDeviceInitialized = false;
+            return UNKNOWN_ERROR;
+        }
         gDeviceInitDeferred = false;
         gDeviceStartDeferred = false;
         
@@ -401,7 +415,13 @@ namespace SoLoud
         }
         gDeviceInitialized = true;
         aSoloud->postinit_internal(gDevice.sampleRate, gDevice.playback.internalPeriodSizeInFrames, aFlags, gDevice.playback.channels);
-        ma_device_start(&gDevice);
+        ma_result startResult = ma_device_start(&gDevice);
+        if (startResult != MA_SUCCESS) {
+            soloud_platform_log("miniaudio_init: ma_device_start failed with error %d\n", startResult);
+            ma_device_uninit(&gDevice);
+            gDeviceInitialized = false;
+            return UNKNOWN_ERROR;
+        }
         gDeviceInitDeferred = false;
         gDeviceStartDeferred = false;
 #endif
@@ -423,13 +443,19 @@ namespace SoLoud
 
         if (ma_device_init(NULL, &gDeferredConfig.config, &gDevice) == MA_SUCCESS)
         {
-            gDeviceInitDeferred = false;
             gDeviceInitialized = true;
             // Start the device after initialization
             if (ma_device_get_state(&gDevice) != ma_device_state_started)
             {
-                ma_device_start(&gDevice);
+                ma_result startResult = ma_device_start(&gDevice);
+                if (startResult != MA_SUCCESS) {
+                    soloud_platform_log("miniaudio_init_thread_func: ma_device_start failed with error %d\n", startResult);
+                    ma_device_uninit(&gDevice);
+                    gDeviceInitialized = false;
+                    return;
+                }
             }
+            gDeviceInitDeferred = false;
             gDeviceStartDeferred = false;
         }
     }
@@ -509,7 +535,14 @@ namespace SoLoud
 
         gDeviceInitialized = true;
         gDeviceStopped = false;  // Device is about to start
-        ma_device_start(&gDevice);
+        ma_result startResult = ma_device_start(&gDevice);
+        if (startResult != MA_SUCCESS) {
+            soloud_platform_log("miniaudio_changeDevice_impl: ma_device_start failed with error %d\n", startResult);
+            ma_device_uninit(&gDevice);
+            gDeviceInitialized = false;
+            soloud->unlockAudioMutex_internal();
+            return UNKNOWN_ERROR;
+        }
 
         soloud->unlockAudioMutex_internal();
         return 0;

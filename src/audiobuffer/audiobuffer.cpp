@@ -34,13 +34,13 @@ BufferStreamInstance::~BufferStreamInstance() {}
 unsigned int BufferStreamInstance::getAudio(float *aBuffer,
                                             unsigned int aSamplesToRead,
                                             unsigned int aBufferSize) {
-  std::lock_guard<std::mutex> lock(buffer_lock_mutex);
-
   // Check if parent is still valid before accessing it
   if (mParent == nullptr || !mParent->isValid()) {
     memset(aBuffer, 0, sizeof(float) * aSamplesToRead * mChannels);
     return 0;
   }
+
+  std::lock_guard<std::recursive_mutex> lock(mParent->mBuffer.bufferMutex);
 
   // When using BufferType::AUTO, samplerate and channels are got from the
   // stream. Hence we need to update them regardless of how are set by
@@ -64,7 +64,7 @@ unsigned int BufferStreamInstance::getAudio(float *aBuffer,
   }
 
   unsigned int bufferSize = static_cast<unsigned int>(mParent->mBuffer.getFloatsBufferSize());
-  float *buffer = reinterpret_cast<float *>(mParent->mBuffer.buffer.data());
+  float *buffer = reinterpret_cast<float *>(mParent->mBuffer.buffer.data() + mParent->mBuffer.getReadOffset());
   int samplesToRead = aSamplesToRead;
   if (mOffset + (unsigned int)samplesToRead * mChannels > bufferSize) {
     samplesToRead = (bufferSize - mOffset) / mChannels;
