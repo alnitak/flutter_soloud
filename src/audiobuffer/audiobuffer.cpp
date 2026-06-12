@@ -463,7 +463,13 @@ void BufferStream::checkBuffering(unsigned int afterAddingBytesCount) {
         isPaused = false;
         callOnBufferingCallback(false, handle, currBufferTime + addedDataTime);
       } else if (isPaused && mParent->handle[i].isUserPaused) {
-        fprintf(stderr, "[checkBuffering] -> STAY PAUSED handle=%u (user paused)\n", handle);
+        if (currBufferTime + addedDataTime >= pos + mBufferingTimeNeeds && mIsBuffering) {
+          fprintf(stderr, "[checkBuffering] -> STAY PAUSED handle=%u (user paused) enough data, callback false\n", handle);
+          mParent->handle[i].bufferingTime = currBufferTime + addedDataTime;
+          callOnBufferingCallback(false, handle, currBufferTime + addedDataTime);
+        } else {
+          fprintf(stderr, "[checkBuffering] -> STAY PAUSED handle=%u (user paused)\n", handle);
+        }
       }
     // If data is ended and the handle is paused, unpause it to listen to the
     // rest of the data. This also clears the user-paused flag so that a
