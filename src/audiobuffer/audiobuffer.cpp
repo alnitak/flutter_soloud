@@ -317,7 +317,7 @@ PlayerErrors BufferStream::addData(const void *aData, unsigned int aDataLen,
     } else {
       // Performing some buffering. We need some data to be added expecially
       // when using opus or mp3.
-      if (buffer.size() > 1024 * 8) // 8 KB of data.
+      if (buffer.size() > 1024 * 4) // 4 KB of data.
       {
         // When using opus,ogg or mp3 we don't need to align.
         bufferDataToAdd = static_cast<int32_t>(buffer.size());
