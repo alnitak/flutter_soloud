@@ -434,8 +434,6 @@ public:
   /// @return If not found, return nullptr.
   ActiveSound *findByHash(unsigned int hash);
 
-  void debug();
-
   /////////////////////////////////////////
   /// voice groups
   /////////////////////////////////////////

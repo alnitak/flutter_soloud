@@ -170,16 +170,12 @@ namespace SoLoud
         printf("[Wav::loadogg] NO_XIPH_LIBS defined, returning FILE_LOAD_FAILED\n");
 		return FILE_LOAD_FAILED;
 #else
-        printf("[Wav::loadogg] loading from memory, len=%u\n", aReader->length());
 		MBOggDecoder decoder;
 		if (!decoder.open(aReader->getMemPtr(), aReader->length()))
 		{
             printf("[Wav::loadogg] decoder.open failed\n");
 			return FILE_LOAD_FAILED;
 		}
-
-        printf("[Wav::loadogg] decoder opened - codec=%d, sampleRate=%d, channels=%d, lengthInSamples=%u\n",
-               decoder.getCodecType(), decoder.getSampleRate(), decoder.getChannels(), decoder.getLengthInSamples());
 
 		mBaseSamplerate = (float)decoder.getSampleRate();
 		int totalSamples = (int)decoder.getLengthInSamples();
@@ -196,7 +192,6 @@ namespace SoLoud
 		if (totalSamples == 0)
 		{
 			// Unknown length (e.g. OGG/FLAC) - read dynamically into temp buffer
-			printf("[Wav::loadogg] totalSamples is 0, reading dynamically\n");
 			std::vector<float> tempBuffer;
 			float tmp[512 * MAX_CHANNELS];
 			while (true)
@@ -204,7 +199,6 @@ namespace SoLoud
 				unsigned int got = decoder.read(tmp, 512, 512);
 				if (got == 0)
 				{
-					printf("[Wav::loadogg] dynamic read returned 0 at tempBuffer.size=%zu\n", tempBuffer.size());
 					break;
 				}
 				for (unsigned int i = 0; i < got; i++)
@@ -216,7 +210,6 @@ namespace SoLoud
 				}
 			}
 			totalSamples = (int)(tempBuffer.size() / mChannels);
-			printf("[Wav::loadogg] dynamic read complete - totalSamples=%d\n", totalSamples);
 			mData = new float[totalSamples * mChannels];
 			memset(mData, 0, totalSamples * mChannels * sizeof(float));
 			mSampleCount = totalSamples;
@@ -228,7 +221,6 @@ namespace SoLoud
 				}
 			}
 			mActualSampleCount = totalSamples;
-			printf("[Wav::loadogg] done - mActualSampleCount=%u\n", mActualSampleCount);
 			return 0;
 		}
 
@@ -243,7 +235,6 @@ namespace SoLoud
 			unsigned int got = decoder.read(tmp, toRead, toRead);
 			if (got == 0)
 			{
-                printf("[Wav::loadogg] decoder.read returned 0 at decodedSamples=%u/%d\n", decodedSamples, totalSamples);
 				break;
 			}
 			for (int ch = 0; ch < mChannels; ch++)
@@ -261,8 +252,6 @@ namespace SoLoud
 		// the granule position from the last page header, which may not match the
 		// actual decoded sample count if the file has an empty final page.
 		mActualSampleCount = decodedSamples;
-
-        printf("[Wav::loadogg] done - decodedSamples=%u, mActualSampleCount=%u\n", decodedSamples, mActualSampleCount);
 
 		return 0;
 #endif
@@ -361,8 +350,6 @@ namespace SoLoud
 		mSampleCount = 0;
 		mChannels = 1;
         int tag = aReader->read32();
-        printf("[Wav::testAndLoadFile] tag=0x%08x ('%c%c%c%c')\n", tag,
-               (tag >> 0) & 0xff, (tag >> 8) & 0xff, (tag >> 16) & 0xff, (tag >> 24) & 0xff);
 		if (tag == MAKEDWORD('O','g','g','S')) 
         {
             printf("[Wav::testAndLoadFile] -> loadogg\n");

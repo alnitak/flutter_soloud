@@ -464,8 +464,6 @@ namespace SoLoud
             printf("[WavStream::loadogg] decoder.open failed\n");
 			return FILE_LOAD_FAILED;
 		}
-        printf("[WavStream::loadogg] decoder opened - codec=%d, sampleRate=%d, channels=%d, lengthInSamples=%u\n",
-               decoder.getCodecType(), decoder.getSampleRate(), decoder.getChannels(), decoder.getLengthInSamples());
 		mChannels = decoder.getChannels();
 		if (mChannels > MAX_CHANNELS)
 		{
@@ -475,7 +473,6 @@ namespace SoLoud
 		int samples = (int)decoder.getLengthInSamples();
 		mFiletype = WAVSTREAM_OGG;
 		mSampleCount = samples;
-        printf("[WavStream::loadogg] success - filetype=WAVSTREAM_OGG, sampleCount=%d\n", samples);
 		return 0;
 #endif
 	}
@@ -654,8 +651,6 @@ namespace SoLoud
 	result WavStream::parse(File *aFile)
 	{
 		int tag = aFile->read32();
-        printf("[WavStream::parse] tag=0x%08x ('%c%c%c%c')\n", tag,
-               (tag >> 0) & 0xff, (tag >> 8) & 0xff, (tag >> 16) & 0xff, (tag >> 24) & 0xff);
 		int res = SO_NO_ERROR;
 		if (tag == MAKEDWORD('O', 'g', 'g', 'S'))
 		{

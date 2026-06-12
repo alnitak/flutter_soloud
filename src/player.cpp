@@ -758,11 +758,7 @@ void Player::setPause(unsigned int handle, bool pause, bool isUserAction)
         {
             if (s->handle[i].handle == handle)
             {
-                bool newUserPaused = pause && isUserAction;
-                fprintf(stderr, "[setPause] handle=%u pause=%d isUserAction=%d oldUserPaused=%d newUserPaused=%d\n",
-                        handle, pause ? 1 : 0, isUserAction ? 1 : 0,
-                        s->handle[i].isUserPaused ? 1 : 0, newUserPaused ? 1 : 0);
-                s->handle[i].isUserPaused = newUserPaused;
+                s->handle[i].isUserPaused = pause && isUserAction;
                 break;
             }
         }
@@ -1322,21 +1318,6 @@ ActiveSound *Player::findByHash(unsigned int soundHash)
         return nullptr;
 
     return s->get();
-}
-
-void Player::debug()
-{
-    std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
-    int n = 0;
-    for (auto &sound : sounds)
-    {
-        printf("%d: \thandle: ", n);
-        for (auto &handle : sound.get()->handle)
-            printf("%d ", handle.handle);
-        printf("  %s\n", sound.get()->completeFileName.c_str());
-
-        n++;
-    }
 }
 
 /////////////////////////////////////////

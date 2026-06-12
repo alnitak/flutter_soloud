@@ -54,7 +54,6 @@ bool FlacDecoderWrapper::initializeDecoder(int engineSamplerate, int engineChann
 
     FLAC__stream_decoder_set_metadata_respond_all(m_pFlacDecoder);
 
-    printf("[FlacDecoderWrapper] initializeDecoder called\n");
     m_streamStartOffset = 0;
     FLAC__StreamDecoderInitStatus init_status = FLAC__stream_decoder_init_stream(
         m_pFlacDecoder,
@@ -128,9 +127,6 @@ std::pair<std::vector<float>, DecoderError> FlacDecoderWrapper::decode(std::vect
         clean_audio_data = buffer;
     }
 
-    // printf("[FlacDecoderWrapper::decode] input buffer size=%zu, clean_audio_data size=%zu, m_audioData before=%zu\n",
-    //        buffer.size(), clean_audio_data.size(), m_audioData.size());
-
     // Feed raw FLAC bytes directly to the decoder. Do NOT use Ogg parsing here;
     // this wrapper is for native FLAC files (magic 'fLaC').
     if (!clean_audio_data.empty())
@@ -149,7 +145,6 @@ std::pair<std::vector<float>, DecoderError> FlacDecoderWrapper::decode(std::vect
         if (!FLAC__stream_decoder_process_single(m_pFlacDecoder))
         {
             FLAC__StreamDecoderState state = FLAC__stream_decoder_get_state(m_pFlacDecoder);
-            // printf("[FlacDecoderWrapper::decode] process_single returned false at iter %u, state=%d\n", processCount, state);
             if (state == FLAC__STREAM_DECODER_ABORTED)
             {
                 // read_callback returned ABORT because the buffer is temporarily
@@ -159,7 +154,7 @@ std::pair<std::vector<float>, DecoderError> FlacDecoderWrapper::decode(std::vect
                 // next decode() call.
                 m_read_pos = last_successful_read_pos;
                 FLAC__stream_decoder_flush(m_pFlacDecoder);
-                // printf("[FlacDecoderWrapper::decode] flushed decoder after temporary buffer exhaustion\n");
+                printf("[FlacDecoderWrapper::decode] flushed decoder after temporary buffer exhaustion\n");
                 break;
             }
             if (state == FLAC__STREAM_DECODER_END_OF_STREAM)
@@ -169,14 +164,12 @@ std::pair<std::vector<float>, DecoderError> FlacDecoderWrapper::decode(std::vect
             // For other decoder errors, attempt recovery by flushing and rolling back
             m_read_pos = last_successful_read_pos;
             FLAC__stream_decoder_flush(m_pFlacDecoder);
-            printf("[FlacDecoderWrapper::decode] decoder error state %d, recovered & breaking\n", state);
             break;
         }
 
         FLAC__StreamDecoderState state = FLAC__stream_decoder_get_state(m_pFlacDecoder);
         if (state == FLAC__STREAM_DECODER_END_OF_STREAM)
         {
-            printf("[FlacDecoderWrapper::decode] end of stream at iter %u\n", processCount);
             break;
         }
 
@@ -203,9 +196,6 @@ std::pair<std::vector<float>, DecoderError> FlacDecoderWrapper::decode(std::vect
         m_audioData.erase(m_audioData.begin(), m_audioData.begin() + m_read_pos);
     }
     m_read_pos = 0;
-
-    // printf("[FlacDecoderWrapper::decode] done - processCount=%u, m_read_pos=%zu/%zu, decodedPcm size=%zu, samplerate=%d, channels=%d\n",
-    //        processCount, m_read_pos, m_audioData.size(), m_decodedPcm.size(), m_samplerate, m_channels);
 
     *samplerate = m_samplerate;
     *channels = m_channels;

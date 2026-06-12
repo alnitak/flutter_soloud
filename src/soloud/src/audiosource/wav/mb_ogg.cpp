@@ -142,7 +142,6 @@ namespace SoLoud
         mDataSource.memLen = 0;
         mDataSource.memPos = 0;
 
-        printf("[MBOggDecoder] open(File) called\n");
 
         if (!detectCodec()) {
             printf("[MBOggDecoder] detectCodec() failed\n");
@@ -160,7 +159,6 @@ namespace SoLoud
             default: break;
         }
         mValid = ok;
-        printf("[MBOggDecoder] open result: %s\n", ok ? "OK" : "FAILED");
         return ok;
     }
 
@@ -172,7 +170,6 @@ namespace SoLoud
         mDataSource.memLen = aLength;
         mDataSource.memPos = 0;
 
-        printf("[MBOggDecoder] open(mem, len=%u) called\n", aLength);
 
         if (!detectCodec()) {
             printf("[MBOggDecoder] detectCodec() failed\n");
@@ -190,7 +187,6 @@ namespace SoLoud
             default: break;
         }
         mValid = ok;
-        printf("[MBOggDecoder] open result: %s\n", ok ? "OK" : "FAILED");
         return ok;
     }
 
@@ -201,9 +197,7 @@ namespace SoLoud
 
         unsigned char probe[4096];
         unsigned int bytesRead = mDataSource.read(probe, 4096);
-        printf("[MBOggDecoder] detectCodec: read %u bytes\n", bytesRead);
         if (bytesRead >= 4 && memcmp(probe, "OggS", 4) == 0) {
-            printf("[MBOggDecoder] detectCodec: OggS magic found\n");
             ogg_sync_state oy;
             ogg_page og;
             ogg_sync_init(&oy);
@@ -211,47 +205,28 @@ namespace SoLoud
             memcpy(buf, probe, bytesRead);
             ogg_sync_wrote(&oy, bytesRead);
             int pageOut = ogg_sync_pageout(&oy, &og);
-            printf("[MBOggDecoder] detectCodec: ogg_sync_pageout returned %d\n", pageOut);
             if (pageOut == 1) {
                 ogg_stream_state os;
                 ogg_packet op;
                 if (ogg_stream_init(&os, ogg_page_serialno(&og)) == 0) {
                     ogg_stream_pagein(&os, &og);
                     int packetOut = ogg_stream_packetout(&os, &op);
-                    printf("[MBOggDecoder] detectCodec: ogg_stream_packetout returned %d, packet bytes=%ld\n", packetOut, (long)op.bytes);
                     if (packetOut == 1) {
                         if (op.bytes >= 8 && memcmp(op.packet, "OpusHead", 8) == 0) {
                             mCodecType = CODEC_OPUS;
-                            printf("[MBOggDecoder] detectCodec: detected OPUS\n");
                         } else if (op.bytes >= 7 && op.packet[0] == 0x01 && memcmp(op.packet + 1, "vorbis", 6) == 0) {
                             mCodecType = CODEC_VORBIS;
-                            printf("[MBOggDecoder] detectCodec: detected VORBIS\n");
                         } else if (op.bytes >= 5 && op.packet[0] == 0x7f && memcmp(op.packet + 1, "FLAC", 4) == 0) {
                             mCodecType = CODEC_FLAC;
-                            printf("[MBOggDecoder] detectCodec: detected FLAC\n");
-                        } else {
-                            printf("[MBOggDecoder] detectCodec: unknown packet signature, first bytes: %02x %02x %02x %02x %02x\n",
-                                   op.bytes > 0 ? (unsigned char)op.packet[0] : 0,
-                                   op.bytes > 1 ? (unsigned char)op.packet[1] : 0,
-                                   op.bytes > 2 ? (unsigned char)op.packet[2] : 0,
-                                   op.bytes > 3 ? (unsigned char)op.packet[3] : 0,
-                                   op.bytes > 4 ? (unsigned char)op.packet[4] : 0);
                         }
                     }
                     ogg_stream_clear(&os);
                 }
             }
             ogg_sync_clear(&oy);
-        } else {
-            printf("[MBOggDecoder] detectCodec: no OggS magic (first 4 bytes: %02x %02x %02x %02x)\n",
-                   bytesRead > 0 ? probe[0] : 0,
-                   bytesRead > 1 ? probe[1] : 0,
-                   bytesRead > 2 ? probe[2] : 0,
-                   bytesRead > 3 ? probe[3] : 0);
         }
 
         mDataSource.seek(savedPos);
-        printf("[MBOggDecoder] detectCodec: returning %s\n", mCodecType != CODEC_UNKNOWN ? "true" : "false");
         return mCodecType != CODEC_UNKNOWN;
     }
 
@@ -347,7 +322,6 @@ namespace SoLoud
     // ------------------------------------------------------------------
     bool MBOggDecoder::initOpus()
     {
-        printf("[MBOggDecoder] initOpus: starting\n");
         mSampleRate = 48000;
         mChannels = 2;
         mOpusPreSkip = 0;
@@ -615,8 +589,6 @@ namespace SoLoud
     // ------------------------------------------------------------------
     bool MBOggDecoder::initFlac()
     {
-        printf("[MBOggDecoder] initFlac: starting\n");
-
         // For OGG/FLAC, STREAMINFO may report total_samples=0.
         // Scan Ogg pages for the last granule position before initializing the decoder.
         unsigned int savedPos = mDataSource.tell();
@@ -645,7 +617,6 @@ namespace SoLoud
         unsigned int scannedLength = 0;
         if (lastGranule >= 0) {
             scannedLength = (unsigned int)lastGranule;
-            printf("[MBOggDecoder] initFlac: scanned Ogg last granule = %u\n", scannedLength);
         }
 
         mFlacDecoder = FLAC__stream_decoder_new();
@@ -676,7 +647,6 @@ namespace SoLoud
             return false;
         }
 
-        printf("[MBOggDecoder] initFlac: decoder initialized, processing metadata...\n");
         if (!FLAC__stream_decoder_process_until_end_of_metadata(mFlacDecoder)) {
             printf("[MBOggDecoder] initFlac: process_until_end_of_metadata failed\n");
             FLAC__stream_decoder_finish(mFlacDecoder);
@@ -691,7 +661,6 @@ namespace SoLoud
         // If STREAMINFO didn't provide length, use scanned value
         if (mLengthInSamples == 0 && scannedLength > 0) {
             mLengthInSamples = scannedLength;
-            printf("[MBOggDecoder] initFlac: using scanned length = %u\n", mLengthInSamples);
         }
 
         if (mChannels == 0 || mSampleRate == 0) {
@@ -825,11 +794,6 @@ namespace SoLoud
             self->mChannels = metadata->data.stream_info.channels;
             self->mFlacBitsPerSample = metadata->data.stream_info.bits_per_sample;
             self->mLengthInSamples = (unsigned int)metadata->data.stream_info.total_samples;
-            printf("[MBOggDecoder] flacMetadataCb: STREAMINFO - channels=%d, sampleRate=%d, bitsPerSample=%d, totalSamples=%llu\n",
-                   self->mChannels, self->mSampleRate, self->mFlacBitsPerSample,
-                   (unsigned long long)metadata->data.stream_info.total_samples);
-        } else {
-            printf("[MBOggDecoder] flacMetadataCb: metadata type=%d\n", metadata->type);
         }
     }
 
