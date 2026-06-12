@@ -393,8 +393,7 @@ PlayerErrors BufferStream::addData(const void *aData, unsigned int aDataLen,
     }
   }
 
-  if (mIsBuffering)
-    checkBuffering(static_cast<unsigned int>(bytesWritten));
+  checkBuffering(static_cast<unsigned int>(bytesWritten));
   mUncompressedBytesReceived += bytesWritten;
 
   mSampleCount += static_cast<unsigned int>(bytesWritten / sizeof(float));
@@ -429,11 +428,15 @@ void BufferStream::checkBuffering(unsigned int afterAddingBytesCount) {
     bool isPaused = mThePlayer->getPause(handle);
 
     // This handle needs to wait for [TIME_FOR_BUFFERING]. Pause it.
-    if (pos >= currBufferTime + addedDataTime && !isPaused) {
-      mParent->handle[i].bufferingTime = currBufferTime;
+    // Pause only when the play position has reached the end of the data that
+    // was already buffered before this addData() call. The unpause below will
+    // then wait until at least [bufferingTimeNeeds] seconds of audio are
+    // available ahead of position.
+    if (!dataIsEnded && pos >= currBufferTime && !isPaused) {
+      mParent->handle[i].bufferingTime = currBufferTime + addedDataTime;
       mThePlayer->setPause(handle, true);
       isPaused = true;
-      callOnBufferingCallback(true, handle, currBufferTime);
+      callOnBufferingCallback(true, handle, currBufferTime + addedDataTime);
     } else
     // This handle has reached [TIME_FOR_BUFFERING]. Unpause it.
     // Only unpause when buffer covers playback position + margin,
@@ -443,7 +446,7 @@ void BufferStream::checkBuffering(unsigned int afterAddingBytesCount) {
         mThePlayer->setPause(handle, false);
         isPaused = false;
         mParent->handle[i].bufferingTime = currBufferTime + addedDataTime;
-        callOnBufferingCallback(false, handle, currBufferTime);
+        callOnBufferingCallback(false, handle, currBufferTime + addedDataTime);
       }
     // If data is ended and the handle is paused, unpause it to listen to the
     // rest of the data.
