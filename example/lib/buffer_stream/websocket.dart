@@ -90,7 +90,8 @@ class _WebsocketExampleState extends State<WebsocketExample> {
   void startTimer() {
     _timer?.cancel();
     _timer = Timer.periodic(const Duration(milliseconds: 20), (timer) {
-      if (currentSound == null || handle == null ||
+      if (currentSound == null ||
+          handle == null ||
           SoLoud.instance.getIsValidVoiceHandle(handle!) == false) {
         _timer?.cancel();
         setState(() {});
@@ -403,53 +404,6 @@ class _WebsocketExampleState extends State<WebsocketExample> {
                 }
                 return const SizedBox.shrink();
               },
-            ),
-
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Play/pause button
-                if (handle != null)
-                  ValueListenableBuilder(
-                    valueListenable: pause,
-                    builder: (context, value, child) {
-                      return IconButton(
-                        onPressed: () async {
-                          SoLoud.instance.setPause(handle!, value);
-                          pause.value = !value;
-                        },
-                        icon: Icon(value ? Icons.pause : Icons.play_arrow),
-                      );
-                    },
-                  ),
-                const SizedBox(width: 8),
-                // Position slider
-                if (handle != null)
-                  Expanded(
-                    child: ValueListenableBuilder(
-                      valueListenable: position,
-                      builder: (context, pos, child) {
-                        return ValueListenableBuilder(
-                          valueListenable: lenght,
-                          builder: (context, len, child) {
-                            return Slider(
-                              value: pos,
-                              max: len,
-                              onChanged: (value) {
-                                SoLoud.instance.seek(
-                                  handle!,
-                                  Duration(
-                                    milliseconds: (value * 1000).toInt(),
-                                  ),
-                                );
-                              },
-                            );
-                          },
-                        );
-                      },
-                    ),
-                  ),
-              ],
             ),
           ],
         ),
