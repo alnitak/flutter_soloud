@@ -60,7 +60,7 @@ bool OggFlacDecoderWrapper::initializeDecoder(int engineSamplerate, int engineCh
         m_pFlacDecoder,
         read_callback,
         nullptr, // seek_callback
-        nullptr, // tell_callback
+        tell_callback,
         nullptr, // length_callback
         nullptr, // eof_callback
         write_callback,
@@ -129,8 +129,8 @@ std::pair<std::vector<float>, DecoderError> OggFlacDecoderWrapper::decode(std::v
         clean_audio_data = buffer;
     }
 
-    printf("[OggFlacDecoderWrapper::decode] input buffer size=%zu, clean_audio_data size=%zu, m_audioData before=%zu\n",
-           buffer.size(), clean_audio_data.size(), m_audioData.size());
+    // printf("[OggFlacDecoderWrapper::decode] input buffer size=%zu, clean_audio_data size=%zu, m_audioData before=%zu\n",
+    //        buffer.size(), clean_audio_data.size(), m_audioData.size());
 
     // Write new bytes into ogg sync buffer
     if (!clean_audio_data.empty())
@@ -264,8 +264,8 @@ std::pair<std::vector<float>, DecoderError> OggFlacDecoderWrapper::decode(std::v
         processCount++;
     }
 
-    printf("[OggFlacDecoderWrapper::decode] done - processCount=%u, m_read_pos=%zu/%zu, decodedPcm size=%zu, samplerate=%d, channels=%d\n",
-           processCount, m_read_pos, m_audioData.size(), m_decodedPcm.size(), m_samplerate, m_channels);
+    // printf("[OggFlacDecoderWrapper::decode] done - processCount=%u, m_read_pos=%zu/%zu, decodedPcm size=%zu, samplerate=%d, channels=%d\n",
+    //        processCount, m_read_pos, m_audioData.size(), m_decodedPcm.size(), m_samplerate, m_channels);
 
     if (m_read_pos > 0)
     {
@@ -303,11 +303,18 @@ FLAC__StreamDecoderReadStatus OggFlacDecoderWrapper::read_callback(const FLAC__S
     memcpy(buffer, self->m_audioData.data() + self->m_read_pos, bytes_to_copy);
     self->m_read_pos += bytes_to_copy;
 
-    printf("[OggFlacDecoderWrapper] read_callback requested=%zu returned=%zu read_pos=%zu/%zu\n",
-           *bytes, bytes_to_copy, self->m_read_pos, self->m_audioData.size());
+    // printf("[OggFlacDecoderWrapper] read_callback requested=%zu returned=%zu read_pos=%zu/%zu\n",
+    //        *bytes, bytes_to_copy, self->m_read_pos, self->m_audioData.size());
 
     *bytes = bytes_to_copy;
     return FLAC__STREAM_DECODER_READ_STATUS_CONTINUE;
+}
+
+FLAC__StreamDecoderTellStatus OggFlacDecoderWrapper::tell_callback(const FLAC__StreamDecoder *decoder, FLAC__uint64 *absolute_byte_offset, void *client_data)
+{
+    OggFlacDecoderWrapper *self = static_cast<OggFlacDecoderWrapper *>(client_data);
+    *absolute_byte_offset = self->m_streamStartOffset + self->m_read_pos;
+    return FLAC__STREAM_DECODER_TELL_STATUS_OK;
 }
 
 void OggFlacDecoderWrapper::metadata_callback(const FLAC__StreamDecoder *decoder, const FLAC__StreamMetadata *metadata, void *client_data)
@@ -395,8 +402,8 @@ FLAC__StreamDecoderWriteStatus OggFlacDecoderWrapper::write_callback(const FLAC_
         }
     }
 
-    printf("[OggFlacDecoderWrapper] write_callback blocksize=%zu channels=%u bps=%u divisor=%f decodedPcm=%zu\n",
-           num_samples, channels, bps, divisor, self->m_decodedPcm.size());
+    // printf("[OggFlacDecoderWrapper] write_callback blocksize=%zu channels=%u bps=%u divisor=%f decodedPcm=%zu\n",
+    //        num_samples, channels, bps, divisor, self->m_decodedPcm.size());
 
     return FLAC__STREAM_DECODER_WRITE_STATUS_CONTINUE;
 }

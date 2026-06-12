@@ -60,7 +60,7 @@ bool FlacDecoderWrapper::initializeDecoder(int engineSamplerate, int engineChann
         m_pFlacDecoder,
         read_callback,
         nullptr, // seek_callback
-        nullptr, // tell_callback
+        tell_callback,
         nullptr, // length_callback
         nullptr, // eof_callback
         write_callback,
@@ -238,6 +238,13 @@ FLAC__StreamDecoderReadStatus FlacDecoderWrapper::read_callback(const FLAC__Stre
 
     *bytes = bytes_to_copy;
     return FLAC__STREAM_DECODER_READ_STATUS_CONTINUE;
+}
+
+FLAC__StreamDecoderTellStatus FlacDecoderWrapper::tell_callback(const FLAC__StreamDecoder *decoder, FLAC__uint64 *absolute_byte_offset, void *client_data)
+{
+    FlacDecoderWrapper *self = static_cast<FlacDecoderWrapper *>(client_data);
+    *absolute_byte_offset = self->m_streamStartOffset + self->m_read_pos;
+    return FLAC__STREAM_DECODER_TELL_STATUS_OK;
 }
 
 void FlacDecoderWrapper::metadata_callback(const FLAC__StreamDecoder *decoder, const FLAC__StreamMetadata *metadata, void *client_data)
