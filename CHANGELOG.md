@@ -1,3 +1,6 @@
+#### 4.0.9 (13 Jun 2026)
+- Windows: prevent compiler to complain about `min` and `max` macros. Fixes #483
+
 #### 4.0.8 (10 Jun 2026)
 - fix released buffer stream size reporting #480. Thanks to @Kunstderfug
 - load Ogg Opus/flac files through buffer stream fallback #479. Thanks to @Kunstderfug
