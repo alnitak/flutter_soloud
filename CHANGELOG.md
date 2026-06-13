@@ -5,6 +5,9 @@
 - now the auto-pause when the buffer needs more audio works as expected and respect the player pause state (it doesn't automatically unpause when there is enough data in the buffer if the player was paused)
 - websocket example: added play/pause and touch to seek to the buffer visual widget
 
+#### 4.0.9 (13 Jun 2026)
+- Windows: prevent compiler to complain about `min` and `max` macros. Fixes #483
+
 #### 4.0.8 (10 Jun 2026)
 - fix released buffer stream size reporting #480. Thanks to @Kunstderfug
 - load Ogg Opus/flac files through buffer stream fallback #479. Thanks to @Kunstderfug
