@@ -9,10 +9,12 @@
 #include "synth/basic_wave.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cstdarg>
 #include <cstring>
 #include <fstream>
 #include <random>
+#include <thread>
 
 #ifdef _IS_WIN_
 #include <stddef.h> // for size_t
@@ -754,11 +756,34 @@ void Player::setPause(unsigned int handle, bool pause)
         // If no voices are active, pause the audio device to allow the OS
         // to properly manage the audio session (important for Control Center
         // and remote command handling on iOS).
+        pauseEngine();
+    }
+}
+
+// On some platforms (notably iOS) the OS can take a short time to fully
+// tear down or hand back the audio session after the last active voice is
+// stopped/paused. If we pause the SoLoud engine immediately, a subsequent
+// play/resume request can arrive while the audio device is still settling,
+// which can cause the OS to keep the Control Center / lock-screen media
+// controls in an inconsistent state or to fail to restart playback cleanly.
+//
+// To avoid this, we defer the engine pause by ~100 ms. This gives the audio
+// backend and the OS enough time to stabilize, while still pausing the
+// engine promptly once no voices remain active. It also coalesces rapid
+// stop/pause events so we don't pause/unpause the device repeatedly. The
+// latter happens when stopping many sounds in a short time and new sounds
+// are then started causing a lag when starting to play again.
+void Player::pauseEngine()
+{
+    std::thread([this]() {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        if (!mInited)
+            return;
         if (soloud.getActiveVoiceCount() == 0)
         {
             soloud.pause();
         }
-    }
+    }).detach();
 }
 
 bool Player::getPause(unsigned int handle)
@@ -869,14 +894,10 @@ PlayerErrors Player::play(
 void Player::stop(unsigned int handle)
 {
     soloud.stop(handle);
-    
     // After stopping, check if there are any remaining active voices.
     // If no voices are active, pause the audio device to allow the OS
     // to properly manage the audio session.
-    if (soloud.getActiveVoiceCount() == 0)
-    {
-        soloud.pause();
-    }
+    pauseEngine();
 }
 
 void Player::removeHandle(unsigned int handle)
@@ -907,7 +928,6 @@ void Player::removeHandle(unsigned int handle)
 void Player::disposeSound(unsigned int soundHash)
 {
     std::unique_ptr<ActiveSound> soundToDestroy;
-    bool shouldPause = false;
     
     {
         std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
@@ -955,19 +975,13 @@ void Player::disposeSound(unsigned int soundHash)
             // Move the sound out of the vector before erasing
             soundToDestroy = std::move(*it);
             sounds.erase(it);
-            
-            // Check if we should pause the device after destroying
-            shouldPause = (soloud.getActiveVoiceCount() == 0);
         }
     }
     // Sound (and its filters) is destroyed here when soundToDestroy goes out of scope
     
     // After disposing a sound, check if there are any remaining active voices.
     // If no voices are active, pause the audio device.
-    if (shouldPause)
-    {
-        soloud.pause();
-    }
+    pauseEngine();
 }
 
 void Player::disposeAllSound()

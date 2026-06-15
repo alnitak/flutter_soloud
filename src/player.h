@@ -201,6 +201,13 @@ public:
   /// @param pause whether this sound should be paused or not.
   void setPause(unsigned int handle, bool pause);
 
+  /// @brief Pause the audio device after a short delay if no voices remain
+  /// active. Called after stopping or pausing the last active voice to give
+  /// the audio backend and OS time to stabilize the audio session before the
+  /// engine is paused. This avoids issues with rapid stop/pause events and
+  /// with the OS audio session state (e.g. Control Center on iOS).
+  void pauseEngine();
+
   /// @brief Gets the pause state.
   /// @param handle the sound handle.
   /// @return true if paused.
