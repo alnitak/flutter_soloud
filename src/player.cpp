@@ -767,7 +767,7 @@ void Player::setPause(unsigned int handle, bool pause)
 // which can cause the OS to keep the Control Center / lock-screen media
 // controls in an inconsistent state or to fail to restart playback cleanly.
 //
-// To avoid this, we defer the engine pause by ~100 ms. This gives the audio
+// To avoid this, we defer the engine pause by ~500 ms. This gives the audio
 // backend and the OS enough time to stabilize, while still pausing the
 // engine promptly once no voices remain active. It also coalesces rapid
 // stop/pause events so we don't pause/unpause the device repeatedly. The
@@ -776,7 +776,7 @@ void Player::setPause(unsigned int handle, bool pause)
 void Player::pauseEngine()
 {
     std::thread([this]() {
-        std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
         if (!mInited)
             return;
         if (soloud.getActiveVoiceCount() == 0)
