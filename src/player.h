@@ -647,17 +647,20 @@ private:
   std::map<unsigned int, BusData> busMap;
   unsigned int busIdCounter = 0;
 
-  // Background scheduler for deferred engine pause. Coalesces multiple
-  // stop/pause requests into a single delayed pause to avoid spawning a
-  // thread per request and to let the audio backend/OS stabilize.
+  // Background scheduler for deferred engine pause. Started lazily on
+  // init() and stopped on dispose() so that the global Player object can
+  // be recreated by bindings.cpp without leaving a stray background thread.
   static constexpr unsigned int kPauseEngineDelayMs = 500;
   std::thread mPauseThread;
   std::mutex mPauseMutex;
   std::condition_variable mPauseCv;
   std::atomic<bool> mPauseRequested{false};
   std::atomic<bool> mStopPauseThread{false};
+  bool mPauseThreadRunning = false;
 
   void pauseEngineScheduler();
+  void startPauseEngineScheduler();
+  void stopPauseEngineScheduler();
 };
 
 #endif // PLAYER_H

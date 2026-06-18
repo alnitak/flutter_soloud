@@ -133,24 +133,16 @@ PlayerErrors loadOggXiphBufferStream(Player *player,
 }
 
 Player::Player() : mInited(false), mFilters(&soloud, nullptr, nullptr),
-                   mPauseRequested(false), mStopPauseThread(false)
+                   mPauseRequested(false), mStopPauseThread(false),
+                   mPauseThreadRunning(false)
 {
-    mPauseThread = std::thread(&Player::pauseEngineScheduler, this);
 }
 
 Player::~Player() {
-    // Stop the deferred pause scheduler so it cannot touch Soloud while
-    // we are destroying or after we return.
-    {
-        std::lock_guard<std::mutex> lock(mPauseMutex);
-        mStopPauseThread = true;
-    }
-    mPauseCv.notify_all();
-    if (mPauseThread.joinable()) {
-        mPauseThread.join();
-    }
+    // If the scheduler was started, stop it before touching Soloud.
+    stopPauseEngineScheduler();
 
-    if (!mInited) { 
+    if (!mInited) {
         // dispose() was called properly — Soloud is already deinited and safe.
         // Let ~Soloud() run normally to free its remaining allocations.
         return;
@@ -178,14 +170,7 @@ void Player::dispose() {
         return;
 
     // Stop accepting new pause requests and wake the scheduler so it exits.
-    {
-        std::lock_guard<std::mutex> lock(mPauseMutex);
-        mStopPauseThread = true;
-    }
-    mPauseCv.notify_all();
-    if (mPauseThread.joinable()) {
-        mPauseThread.join();
-    }
+    stopPauseEngineScheduler();
 
     mInited = false;
 
@@ -245,6 +230,8 @@ PlayerErrors Player::init(unsigned int sampleRate, unsigned int bufferSize, unsi
         mSampleRate = sampleRate;
         mBufferSize = bufferSize;
         mChannels = channels;
+        // Start the deferred-pause scheduler now that the engine is in use.
+        startPauseEngineScheduler();
     }
     else
         result = backendNotInited;
@@ -805,9 +792,40 @@ void Player::pauseEngine()
 {
     {
         std::lock_guard<std::mutex> lock(mPauseMutex);
+        if (!mPauseThreadRunning)
+            return;
         mPauseRequested = true;
     }
     mPauseCv.notify_one();
+}
+
+void Player::startPauseEngineScheduler()
+{
+    std::lock_guard<std::mutex> lock(mPauseMutex);
+    if (mPauseThreadRunning)
+        return;
+    mStopPauseThread = false;
+    mPauseRequested = false;
+    mPauseThread = std::thread(&Player::pauseEngineScheduler, this);
+    mPauseThreadRunning = true;
+}
+
+void Player::stopPauseEngineScheduler()
+{
+    {
+        std::lock_guard<std::mutex> lock(mPauseMutex);
+        if (!mPauseThreadRunning)
+            return;
+        mStopPauseThread = true;
+    }
+    mPauseCv.notify_all();
+    if (mPauseThread.joinable()) {
+        mPauseThread.join();
+    }
+    {
+        std::lock_guard<std::mutex> lock(mPauseMutex);
+        mPauseThreadRunning = false;
+    }
 }
 
 void Player::pauseEngineScheduler()
