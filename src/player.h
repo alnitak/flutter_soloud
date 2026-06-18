@@ -14,6 +14,7 @@
 #include "soloud/src/backend/miniaudio/miniaudio.h"
 
 #include <atomic>
+#include <condition_variable>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -201,11 +202,11 @@ public:
   /// @param pause whether this sound should be paused or not.
   void setPause(unsigned int handle, bool pause);
 
-  /// @brief Pause the audio device after a short delay if no voices remain
-  /// active. Called after stopping or pausing the last active voice to give
-  /// the audio backend and OS time to stabilize the audio session before the
-  /// engine is paused. This avoids issues with rapid stop/pause events and
-  /// with the OS audio session state (e.g. Control Center on iOS).
+  /// @brief Schedule a deferred pause of the audio device. If no voices
+  /// remain active after a short delay, the engine is paused. Requests are
+  /// coalesced so that a burst of stop/pause calls results in a single
+  /// background pause, giving the audio backend and OS time to stabilize the
+  /// audio session (e.g. Control Center on iOS).
   void pauseEngine();
 
   /// @brief Gets the pause state.
@@ -645,6 +646,18 @@ private:
 
   std::map<unsigned int, BusData> busMap;
   unsigned int busIdCounter = 0;
+
+  // Background scheduler for deferred engine pause. Coalesces multiple
+  // stop/pause requests into a single delayed pause to avoid spawning a
+  // thread per request and to let the audio backend/OS stabilize.
+  static constexpr unsigned int kPauseEngineDelayMs = 500;
+  std::thread mPauseThread;
+  std::mutex mPauseMutex;
+  std::condition_variable mPauseCv;
+  std::atomic<bool> mPauseRequested{false};
+  std::atomic<bool> mStopPauseThread{false};
+
+  void pauseEngineScheduler();
 };
 
 #endif // PLAYER_H

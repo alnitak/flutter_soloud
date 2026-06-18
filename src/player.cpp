@@ -132,9 +132,24 @@ PlayerErrors loadOggXiphBufferStream(Player *player,
 }
 }
 
-Player::Player() : mInited(false), mFilters(&soloud, nullptr, nullptr) {}
+Player::Player() : mInited(false), mFilters(&soloud, nullptr, nullptr),
+                   mPauseRequested(false), mStopPauseThread(false)
+{
+    mPauseThread = std::thread(&Player::pauseEngineScheduler, this);
+}
 
 Player::~Player() {
+    // Stop the deferred pause scheduler so it cannot touch Soloud while
+    // we are destroying or after we return.
+    {
+        std::lock_guard<std::mutex> lock(mPauseMutex);
+        mStopPauseThread = true;
+    }
+    mPauseCv.notify_all();
+    if (mPauseThread.joinable()) {
+        mPauseThread.join();
+    }
+
     if (!mInited) { 
         // dispose() was called properly — Soloud is already deinited and safe.
         // Let ~Soloud() run normally to free its remaining allocations.
@@ -161,6 +176,16 @@ Player::~Player() {
 void Player::dispose() {
     if (!mInited)
         return;
+
+    // Stop accepting new pause requests and wake the scheduler so it exits.
+    {
+        std::lock_guard<std::mutex> lock(mPauseMutex);
+        mStopPauseThread = true;
+    }
+    mPauseCv.notify_all();
+    if (mPauseThread.joinable()) {
+        mPauseThread.join();
+    }
 
     mInited = false;
 
@@ -773,17 +798,47 @@ void Player::setPause(unsigned int handle, bool pause)
 // stop/pause events so we don't pause/unpause the device repeatedly. The
 // latter happens when stopping many sounds in a short time and new sounds
 // are then started causing a lag when starting to play again.
+//
+// Instead of spawning a detached thread for every request, a single
+// persistent scheduler thread handles all pause requests.
 void Player::pauseEngine()
 {
-    std::thread([this]() {
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
-        if (!mInited)
-            return;
-        if (soloud.getActiveVoiceCount() == 0)
+    {
+        std::lock_guard<std::mutex> lock(mPauseMutex);
+        mPauseRequested = true;
+    }
+    mPauseCv.notify_one();
+}
+
+void Player::pauseEngineScheduler()
+{
+    while (!mStopPauseThread)
+    {
+        std::unique_lock<std::mutex> lock(mPauseMutex);
+        mPauseCv.wait(lock, [this] { return mPauseRequested || mStopPauseThread; });
+        if (mStopPauseThread)
+            break;
+
+        // A request arrived. Reset it and wait for the delay, but wake early
+        // if another request arrives (coalescing rapid calls).
+        mPauseRequested = false;
+        mPauseCv.wait_for(lock, std::chrono::milliseconds(kPauseEngineDelayMs),
+                          [this] { return mPauseRequested || mStopPauseThread; });
+
+        if (mStopPauseThread)
+            break;
+
+        // If another request arrived during the wait, loop back and restart
+        // the delay so the pause happens only after the burst of requests ends.
+        if (mPauseRequested)
+            continue;
+
+        lock.unlock();
+        if (mInited && soloud.getActiveVoiceCount() == 0)
         {
             soloud.pause();
         }
-    }).detach();
+    }
 }
 
 bool Player::getPause(unsigned int handle)
