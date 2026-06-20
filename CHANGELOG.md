@@ -1,3 +1,6 @@
+#### 4.0.10 (20 Jun 2026)
+- wait some ms to pause device when there are no more sounds playing #486
+
 #### 4.0.9 (13 Jun 2026)
 - Windows: prevent compiler to complain about `min` and `max` macros. Fixes #483
 

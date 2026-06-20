@@ -14,6 +14,7 @@
 #include "soloud/src/backend/miniaudio/miniaudio.h"
 
 #include <atomic>
+#include <condition_variable>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -200,6 +201,13 @@ public:
   /// @param handle the sound handle.
   /// @param pause whether this sound should be paused or not.
   void setPause(unsigned int handle, bool pause);
+
+  /// @brief Schedule a deferred pause of the audio device. If no voices
+  /// remain active after a short delay, the engine is paused. Requests are
+  /// coalesced so that a burst of stop/pause calls results in a single
+  /// background pause, giving the audio backend and OS time to stabilize the
+  /// audio session (e.g. Control Center on iOS).
+  void pauseEngine();
 
   /// @brief Gets the pause state.
   /// @param handle the sound handle.
@@ -638,6 +646,21 @@ private:
 
   std::map<unsigned int, BusData> busMap;
   unsigned int busIdCounter = 0;
+
+  // Background scheduler for deferred engine pause. Started lazily on
+  // init() and stopped on dispose() so that the global Player object can
+  // be recreated by bindings.cpp without leaving a stray background thread.
+  static constexpr unsigned int kPauseEngineDelayMs = 500;
+  std::thread mPauseThread;
+  std::mutex mPauseMutex;
+  std::condition_variable mPauseCv;
+  std::atomic<bool> mPauseRequested{false};
+  std::atomic<bool> mStopPauseThread{false};
+  bool mPauseThreadRunning = false;
+
+  void pauseEngineScheduler();
+  void startPauseEngineScheduler();
+  void stopPauseEngineScheduler();
 };
 
 #endif // PLAYER_H
