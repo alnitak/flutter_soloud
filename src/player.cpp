@@ -790,6 +790,14 @@ void Player::setPause(unsigned int handle, bool pause)
 // persistent scheduler thread handles all pause requests.
 void Player::pauseEngine()
 {
+#ifdef __EMSCRIPTEN__
+    // Web: the wasm build is single-threaded (no pthreads), so the deferred
+    // scheduler thread cannot run. Pause the device immediately instead. The
+    // browser's AudioContext does not have the OS audio-session settling issue
+    // that motivates the delay on native platforms.
+    if (mInited && soloud.getActiveVoiceCount() == 0)
+        soloud.pause();
+#else
     {
         std::lock_guard<std::mutex> lock(mPauseMutex);
         if (!mPauseThreadRunning)
@@ -797,10 +805,12 @@ void Player::pauseEngine()
         mPauseRequested = true;
     }
     mPauseCv.notify_one();
+#endif
 }
 
 void Player::startPauseEngineScheduler()
 {
+#ifndef __EMSCRIPTEN__
     std::lock_guard<std::mutex> lock(mPauseMutex);
     if (mPauseThreadRunning)
         return;
@@ -808,10 +818,12 @@ void Player::startPauseEngineScheduler()
     mPauseRequested = false;
     mPauseThread = std::thread(&Player::pauseEngineScheduler, this);
     mPauseThreadRunning = true;
+#endif
 }
 
 void Player::stopPauseEngineScheduler()
 {
+#ifndef __EMSCRIPTEN__
     {
         std::lock_guard<std::mutex> lock(mPauseMutex);
         if (!mPauseThreadRunning)
@@ -826,6 +838,7 @@ void Player::stopPauseEngineScheduler()
         std::lock_guard<std::mutex> lock(mPauseMutex);
         mPauseThreadRunning = false;
     }
+#endif
 }
 
 void Player::pauseEngineScheduler()
