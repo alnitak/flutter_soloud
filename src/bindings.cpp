@@ -770,8 +770,6 @@ FFI_PLUGIN_EXPORT enum PlayerErrors play(unsigned int soundHash, unsigned int bu
 FFI_PLUGIN_EXPORT void stop(unsigned int handle) {
   if (player.get() == nullptr || !player.get()->isInited())
     return;
-  if (!player.get()->isValidHandle(handle))
-    return;
   player.get()->stop(handle);
   voiceEndedCallback(&handle);
 }

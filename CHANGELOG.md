@@ -5,6 +5,12 @@
 - now the auto-pause when the buffer needs more audio works as expected and respect the player pause state (it doesn't automatically unpause when there is enough data in the buffer if the player was paused)
 - websocket example: added play/pause and touch to seek to the buffer visual widget
 
+#### 4.0.11 (22 Jun 2026)
+- fix web: don't spawn the deferred-pause std::thread on web (Aborted() in initEngine) #488. Thanks to @felixmin
+
+#### 4.0.10 (20 Jun 2026)
+- wait some ms to pause device when there are no more sounds playing #486
+
 #### 4.0.9 (13 Jun 2026)
 - Windows: prevent compiler to complain about `min` and `max` macros. Fixes #483
 
