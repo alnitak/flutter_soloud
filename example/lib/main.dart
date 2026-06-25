@@ -1,9 +1,7 @@
-import 'dart:async';
 import 'dart:developer' as dev;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:logging/logging.dart';
 
@@ -47,33 +45,18 @@ class HelloFlutterSoLoud extends StatefulWidget {
 
 class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
   final soloud = SoLoud.instance;
-  ValueNotifier<AudioSource?> currentSound = ValueNotifier<AudioSource?>(null);
-  ValueNotifier<Duration> position = ValueNotifier<Duration>(Duration.zero);
-  Timer? _positionTimer;
+  AudioSource? currentSound;
 
   @override
   void dispose() {
     soloud.deinit();
-    _positionTimer?.cancel();
     super.dispose();
-  }
-
-  void _startPositionTimer() {
-    _positionTimer?.cancel();
-    _positionTimer = Timer.periodic(const Duration(milliseconds: 100), (_) {
-      if (currentSound.value != null &&
-          currentSound.value!.handles.isNotEmpty) {
-        position.value = soloud.getPosition(currentSound.value!.handles.first);
-      }
-    });
-  }
-
-  void _stopPositionTimer() {
-    _positionTimer?.cancel();
   }
 
   @override
   Widget build(BuildContext context) {
+    if (!soloud.isInitialized) return const SizedBox.shrink();
+
     return Scaffold(
       body: Center(
         child: SingleChildScrollView(
@@ -81,207 +64,42 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
             mainAxisSize: MainAxisSize.min,
             spacing: 30,
             children: [
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  ElevatedButton(
-                    onPressed: () async {
-                      position.value = Duration.zero;
-                      currentSound.value = await soloud.playSource(
-                          asset: 'assets/audio/explosion_vorbis.ogg');
-                    },
-                    child: const Text('play vorbis'),
-                  ),
-                  ElevatedButton(
-                    onPressed: () async {
-                      position.value = Duration.zero;
-                      currentSound.value = await soloud.loadAsset(
-                        'assets/audio/explosion_vorbis.ogg',
-                        autoDispose: true,
-                      );
-                      soloud.play(currentSound.value!);
-                    },
-                    child: const Text('load and play vorbis'),
-                  ),
-                ],
-              ),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  ElevatedButton(
-                    onPressed: () async {
-                      position.value = Duration.zero;
-                      currentSound.value = await soloud.playSource(
-                          asset: 'assets/audio/explosion_opus.ogg');
-                    },
-                    child: const Text('play opus'),
-                  ),
-                  ElevatedButton(
-                    onPressed: () async {
-                      position.value = Duration.zero;
-                      currentSound.value = await soloud.loadAsset(
-                        'assets/audio/explosion_opus.ogg',
-                        autoDispose: true,
-                      );
-                      soloud.play(currentSound.value!);
-                    },
-                    child: const Text('load and play opus'),
-                  ),
-                ],
-              ),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  ElevatedButton(
-                    onPressed: () async {
-                      position.value = Duration.zero;
-                      currentSound.value = await soloud.playSource(
-                          asset: 'assets/audio/explosion_flac.ogg');
-                    },
-                    child: const Text('play FLAC'),
-                  ),
-                  ElevatedButton(
-                    onPressed: () async {
-                      position.value = Duration.zero;
-                      currentSound.value = await soloud.loadAsset(
-                        'assets/audio/explosion_flac.ogg',
-                        autoDispose: true,
-                      );
-                      soloud.play(currentSound.value!);
-                    },
-                    child: const Text('load and play FLAC'),
-                  ),
-                ],
+              ElevatedButton(
+                onPressed: () async {
+                  /// This will eventually dispose (and stop) any previously
+                  /// loaded sources.
+                  await soloud.disposeAllSources();
+
+                  /// Load the audio source. Note that the audio is loaded
+                  /// into memory and should manually disposed to free it.
+                  if (kIsWeb) {
+                    /// Load the audio file using [LoadMode.disk] (mandatory for
+                    /// the Web platform).
+                    currentSound = await soloud.loadAsset(
+                      'assets/audio/8_bit_mentality.mp3',
+                      mode: LoadMode.disk,
+                    );
+                  } else {
+                    /// Load the audio file
+                    currentSound = await soloud
+                        .loadAsset('assets/audio/8_bit_mentality.mp3');
+                  }
+
+                  /// Play it. The sound will be instantly available when it
+                  /// needs to be played until it's disposed.
+                  soloud.play(currentSound!);
+                },
+                child: const Text('play asset'),
               ),
               ElevatedButton(
                 onPressed: () async {
-                  position.value = Duration.zero;
-                  final bytes =
-                      await rootBundle.load('assets/audio/explosion_opus.ogg');
-                  currentSound.value = soloud.setBufferStream(
-                    format: BufferType.auto,
-                  );
-                  soloud
-                    ..addAudioDataStream(
-                      currentSound.value!,
-                      bytes.buffer.asUint8List(),
-                    )
-                    ..play(currentSound.value!);
+                  /// Just play a sound from a source. It will start playing
+                  /// as soon as it will take to load it.
+                  /// The sound will be disposed automatically when
+                  /// it's finished.
+                  await soloud.playSource(asset: 'assets/audio/explosion.mp3');
                 },
-                child: const Text('load and play Opus Buffer'),
-              ),
-              ElevatedButton(
-                onPressed: () async {
-                  position.value = Duration.zero;
-                  final bytes = await rootBundle
-                      .load('assets/audio/explosion_vorbis.ogg');
-                  currentSound.value = soloud.setBufferStream(
-                    format: BufferType.auto,
-                  );
-                  soloud
-                    ..addAudioDataStream(
-                      currentSound.value!,
-                      bytes.buffer.asUint8List(),
-                    )
-                    ..play(currentSound.value!);
-                },
-                child: const Text('load and play Vorbis Buffer'),
-              ),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  ElevatedButton(
-                    onPressed: () async {
-                      position.value = Duration.zero;
-                      final bytes =
-                          await rootBundle.load('assets/audio/explosion_flac.ogg');
-                      currentSound.value = soloud.setBufferStream(
-                        format: BufferType.auto,
-                      );
-                      soloud
-                        ..addAudioDataStream(
-                          currentSound.value!,
-                          bytes.buffer.asUint8List(),
-                        )
-                        ..play(currentSound.value!);
-                    },
-                    child: const Text('load and play OGG/FLAC Buffer'),
-                  ),
-                  ElevatedButton(
-                    onPressed: () async {
-                      position.value = Duration.zero;
-                      final bytes =
-                          await rootBundle.load('assets/audio/explosion.flac');
-                      currentSound.value = soloud.setBufferStream(
-                        format: BufferType.auto,
-                      );
-                      soloud
-                        ..addAudioDataStream(
-                          currentSound.value!,
-                          bytes.buffer.asUint8List(),
-                        )
-                        ..play(currentSound.value!);
-                    },
-                    child: const Text('load and play FLAC Buffer'),
-                  ),
-                ],
-              ),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  ElevatedButton(
-                    onPressed: () async {
-                      position.value = Duration.zero;
-                      currentSound.value = await soloud.loadAsset(
-                        'assets/audio/explosion.flac',
-                        autoDispose: true,
-                        mode: LoadMode.disk,
-                      );
-                      soloud.play(currentSound.value!);
-                    },
-                    child: const Text('load and play FLAC LoadMode.disk'),
-                  ),
-                  ElevatedButton(
-                    onPressed: () async {
-                      position.value = Duration.zero;
-                      currentSound.value = await soloud.loadAsset(
-                        'assets/audio/explosion.flac',
-                        autoDispose: true,
-                        mode: LoadMode.memory,
-                      );
-                      soloud.play(currentSound.value!);
-                    },
-                    child: const Text('load and play FLAC LoadMode.memory'),
-                  ),
-                ],
-              ),
-              ValueListenableBuilder<AudioSource?>(
-                valueListenable: currentSound,
-                builder: (context, sound, child) {
-                  final l =
-                      sound == null ? Duration.zero : soloud.getLength(sound);
-                  debugPrint('**** Sound length: $l');
-                  _startPositionTimer();
-                  return ValueListenableBuilder(
-                    valueListenable: _positionTimer == null
-                        ? ValueNotifier(Duration.zero)
-                        : position,
-                    builder: (context, value, child) {
-                      return Slider(
-                        value: _positionTimer == null
-                            ? 0
-                            : value.inMilliseconds.toDouble(),
-                        max: l.inMilliseconds.toDouble() + 0.0001,
-                        onChanged: (value) {
-                          soloud.seek(
-                            currentSound.value!.handles.first,
-                            Duration(milliseconds: value.toInt()),
-                          );
-                        },
-                      );
-                    },
-                  );
-                },
+                child: const Text('play source'),
               ),
             ],
           ),
