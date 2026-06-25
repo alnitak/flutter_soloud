@@ -87,10 +87,8 @@ public:
   /// @param hash return the hash of the sound.
   /// @return Returns [PlayerErrors.SO_NO_ERROR] if success
   ///
-  /// NOTE: non standard OGGs file with a custom header introduced by `xiph`
-  /// cannot be playd and the `stb_vorbis::start_decoder` returns
-  /// VORBIS_invalid_first_page error. ref:
-  /// https://github.com/nothings/stb/issues/676
+  /// NOTE: non-standard OGG files with custom headers may fail to decode
+  /// depending on the codec backend used.
   PlayerErrors loadFile(const std::string &completeFileName,
                         const bool loadIntoMem, unsigned int *hash);
 
@@ -200,7 +198,10 @@ public:
   /// @brief Pause or unpause already loaded sound identified by [handle].
   /// @param handle the sound handle.
   /// @param pause whether this sound should be paused or not.
-  void setPause(unsigned int handle, bool pause);
+  /// @param isUserAction true if this pause/unpause comes from the user
+  /// (Dart setPause/pauseSwitch). Automatic buffering pauses pass false so
+  /// they do not flip the user-paused flag.
+  void setPause(unsigned int handle, bool pause, bool isUserAction = true);
 
   /// @brief Schedule a deferred pause of the audio device. If no voices
   /// remain active after a short delay, the engine is paused. Requests are
@@ -440,8 +441,6 @@ public:
   /// @param hash the hash to search.
   /// @return If not found, return nullptr.
   ActiveSound *findByHash(unsigned int hash);
-
-  void debug();
 
   /////////////////////////////////////////
   /// voice groups

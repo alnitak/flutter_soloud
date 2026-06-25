@@ -17,6 +17,10 @@ struct ActiveHandle {
   // know when a handle reaches the end or when there is not enough data
   // in the buffer to resume playing. Used also to send the buffering events.
   SoLoud::time bufferingTime;
+  // true if the player was paused by the user (via setPause), as opposed to
+  // being paused automatically by the buffering logic. The BufferStream must
+  // not unpause a user-paused handle even when enough data is buffered.
+  bool isUserPaused;
 };
 
 /// The default number of concurrent voices - maximum number of "streams" - is

@@ -317,7 +317,7 @@ PlayerErrors BufferStream::addData(const void *aData, unsigned int aDataLen,
     } else {
       // Performing some buffering. We need some data to be added expecially
       // when using opus or mp3.
-      if (buffer.size() > 1024 * 32) // 32 KB of data.
+      if (buffer.size() > 1024 * 4) // 4 KB of data.
       {
         // When using opus,ogg or mp3 we don't need to align.
         bufferDataToAdd = static_cast<int32_t>(buffer.size());
@@ -393,8 +393,7 @@ PlayerErrors BufferStream::addData(const void *aData, unsigned int aDataLen,
     }
   }
 
-  if (mIsBuffering)
-    checkBuffering(static_cast<unsigned int>(bytesWritten));
+  checkBuffering(static_cast<unsigned int>(bytesWritten));
   mUncompressedBytesReceived += bytesWritten;
 
   mSampleCount += static_cast<unsigned int>(bytesWritten / sizeof(float));
@@ -429,26 +428,44 @@ void BufferStream::checkBuffering(unsigned int afterAddingBytesCount) {
     bool isPaused = mThePlayer->getPause(handle);
 
     // This handle needs to wait for [TIME_FOR_BUFFERING]. Pause it.
-    if (pos >= currBufferTime + addedDataTime && !isPaused) {
-      mParent->handle[i].bufferingTime = currBufferTime;
-      mThePlayer->setPause(handle, true);
+    // Pause only when the play position has reached the end of the data that
+    // was already buffered before this addData() call. The unpause below will
+    // then wait until at least [bufferingTimeNeeds] seconds of audio are
+    // available ahead of position.
+    if (!dataIsEnded && pos >= currBufferTime && !isPaused) {
+      mParent->handle[i].bufferingTime = currBufferTime + addedDataTime;
+      // This is an automatic buffering pause, so the user-paused flag should
+      // not prevent a future buffering unpause.
+      mParent->handle[i].isUserPaused = false;
+      mThePlayer->setPause(handle, true, false);
       isPaused = true;
-      callOnBufferingCallback(true, handle, currBufferTime);
+      callOnBufferingCallback(true, handle, currBufferTime + addedDataTime);
     } else
     // This handle has reached [TIME_FOR_BUFFERING]. Unpause it.
     // Only unpause when buffer covers playback position + margin,
     // not just when new data >= margin (which caused play/pause toggling
-    // when seeking beyond buffered data)
-    if (currBufferTime + addedDataTime >= pos + mBufferingTimeNeeds && isPaused){
-        mThePlayer->setPause(handle, false);
-        isPaused = false;
+    // when seeking beyond buffered data).
+    // Also respect a user-initiated pause: if the user pressed pause, do not
+    // automatically resume even when enough data is buffered.
+    if (currBufferTime + addedDataTime >= pos + mBufferingTimeNeeds && isPaused &&
+        !mParent->handle[i].isUserPaused){
         mParent->handle[i].bufferingTime = currBufferTime + addedDataTime;
-        callOnBufferingCallback(false, handle, currBufferTime);
+        mThePlayer->setPause(handle, false, false);
+        isPaused = false;
+        callOnBufferingCallback(false, handle, currBufferTime + addedDataTime);
+      } else if (isPaused && mParent->handle[i].isUserPaused) {
+        if (currBufferTime + addedDataTime >= pos + mBufferingTimeNeeds && mIsBuffering) {
+          mParent->handle[i].bufferingTime = currBufferTime + addedDataTime;
+          callOnBufferingCallback(false, handle, currBufferTime + addedDataTime);
+        } else {
+          // fprintf(stderr, "[checkBuffering] -> STAY PAUSED handle=%u (user paused)\n", handle);
+        }
       }
     // If data is ended and the handle is paused, unpause it to listen to the
-    // rest of the data.
-    if (dataIsEnded && isPaused) {
-      mThePlayer->setPause(handle, false);
+    // rest of the data. This also clears the user-paused flag so that a
+    // user-paused stream drains its remaining buffer when the stream ends.
+    if (dataIsEnded && isPaused && !mParent->handle[i].isUserPaused) {
+      mThePlayer->setPause(handle, false, false);
       isPaused = false;
       mParent->handle[i].bufferingTime = MAX_DOUBLE;
       callOnBufferingCallback(false, handle, currBufferTime);
@@ -619,6 +636,11 @@ BufferStream::convertMetadataToFFI(const AudioMetadata &metadata) {
                               metadata.oggMetadata.flacInfo.channels,
                               metadata.oggMetadata.flacInfo.bits_per_sample,
                               metadata.oggMetadata.flacInfo.total_samples};
+
+  // Also populate FLAC info for raw FLAC streams
+  if (metadata.type == DetectedType::BUFFER_FLAC) {
+    ffi.detectedType = DetectedTypeFFI::OGG_FLAC;
+  }
 
   // Copy channel mapping
   for (size_t i = 0; i < metadata.oggMetadata.opusInfo.channel_mapping.size() &&

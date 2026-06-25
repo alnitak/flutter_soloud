@@ -75,11 +75,37 @@ class _WebsocketExampleState extends State<WebsocketExample> {
   int byteSize = 0;
   final streamBuffering = ValueNotifier(false);
   final bufferingType = ValueNotifier(BufferingType.preserved);
+  Timer? _timer;
+  final pause = ValueNotifier<bool>(true);
+  final position = ValueNotifier<double>(0);
+  final lenght = ValueNotifier<double>(0);
 
   @override
   void dispose() {
+    _timer?.cancel();
     SoLoud.instance.deinit();
     super.dispose();
+  }
+
+  void startTimer() {
+    _timer?.cancel();
+    _timer = Timer.periodic(const Duration(milliseconds: 20), (timer) {
+      if (currentSound == null ||
+          handle == null ||
+          SoLoud.instance.getIsValidVoiceHandle(handle!) == false) {
+        _timer?.cancel();
+        setState(() {});
+      } else {
+        lenght.value =
+            SoLoud.instance.getLength(currentSound!).inMilliseconds.toDouble();
+        position.value =
+            SoLoud.instance.getPosition(handle!).inMilliseconds.toDouble();
+      }
+    });
+  }
+
+  void stopTimer() {
+    _timer?.cancel();
   }
 
   @override
@@ -194,7 +220,7 @@ class _WebsocketExampleState extends State<WebsocketExample> {
 
                 currentSound = SoLoud.instance.setBufferStream(
                   maxBufferSizeBytes: 1024 * 1024 * 200, // 200 MB
-                  bufferingTimeNeeds: 1.5,
+                  bufferingTimeNeeds: 3.0,
                   sampleRate: sampleRate[srId],
                   channels: Channels.values[chId],
                   format: BufferType.values[fmtId],
@@ -277,6 +303,7 @@ class _WebsocketExampleState extends State<WebsocketExample> {
                     debugPrint('ws error: $error');
                   },
                 );
+                startTimer();
               },
               child: const Text('connect to WS and receive audio data'),
             ),
@@ -284,25 +311,25 @@ class _WebsocketExampleState extends State<WebsocketExample> {
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                OutlinedButton(
-                  onPressed: () async {
-                    if (currentSound == null) return;
-                    handle = SoLoud.instance.play(
-                      currentSound!,
-                      volume: 0.6,
-                      // looping: true,
-                    );
-                    Timer.periodic(const Duration(milliseconds: 1000), (timer) {
-                      if (currentSound == null ||
-                          SoLoud.instance.getIsValidVoiceHandle(handle!) ==
-                              false) {
-                        timer.cancel();
-                        setState(() {});
-                      }
-                    });
-                  },
-                  child: const Text('play'),
-                ),
+                // OutlinedButton(
+                //   onPressed: () async {
+                //     if (currentSound == null) return;
+                //     handle = SoLoud.instance.play(
+                //       currentSound!,
+                //       volume: 0.6,
+                //       // looping: true,
+                //     );
+                //     Timer.periodic(const Duration(milliseconds: 1000), (timer) {
+                //       if (currentSound == null ||
+                //           SoLoud.instance.getIsValidVoiceHandle(handle!) ==
+                //               false) {
+                //         timer.cancel();
+                //         setState(() {});
+                //       }
+                //     });
+                //   },
+                //   child: const Text('play'),
+                // ),
                 OutlinedButton(
                   onPressed: () async {
                     if (currentSound == null) return;

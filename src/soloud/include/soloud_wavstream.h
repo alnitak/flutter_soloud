@@ -29,7 +29,7 @@ freely, subject to the following restrictions:
 #include <chrono>
 #include "soloud.h"
 
-struct stb_vorbis;
+namespace SoLoud { class MBOggDecoder; }
 #ifndef dr_flac_h
 struct drflac;
 #endif
@@ -52,14 +52,11 @@ namespace SoLoud
 		File *mFile;
 		union codec
 		{
-			stb_vorbis *mOgg;
+			MBOggDecoder *mOgg;
 			drflac *mFlac;
 			drmp3 *mMp3;
 			drwav *mWav;
 		} mCodec;
-		unsigned int mOggFrameSize;
-		unsigned int mOggFrameOffset;
-		float **mOggOutputs;
 		bool mStreamEnded; // Set to true when decoder reaches end of stream
 		
 	public:

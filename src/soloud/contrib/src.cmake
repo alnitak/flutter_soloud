@@ -130,8 +130,8 @@ set (AUDIOSOURCES_SOURCES
 	${AUDIOSOURCES_PATH}/wav/dr_wav.h
 	${AUDIOSOURCES_PATH}/wav/soloud_wav.cpp
 	${AUDIOSOURCES_PATH}/wav/soloud_wavstream.cpp
-	${AUDIOSOURCES_PATH}/wav/stb_vorbis.c
-	${AUDIOSOURCES_PATH}/wav/stb_vorbis.h
+	${AUDIOSOURCES_PATH}/wav/mb_ogg.cpp
+	${AUDIOSOURCES_PATH}/wav/mb_ogg.h
 )
 
 

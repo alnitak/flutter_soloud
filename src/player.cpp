@@ -750,7 +750,7 @@ void Player::pauseSwitch(unsigned int handle)
     setPause(handle, !soloud.getPause(handle));
 }
 
-void Player::setPause(unsigned int handle, bool pause)
+void Player::setPause(unsigned int handle, bool pause, bool isUserAction)
 {
     if (!pause)
     {
@@ -759,8 +759,24 @@ void Player::setPause(unsigned int handle, bool pause)
         // (e.g., Control Center pause on iOS).
         soloud.resume();
     }
-    
+
     soloud.setPause(handle, pause);
+
+    // Track whether this handle was paused by the user, so the BufferStream
+    // buffering logic does not automatically unpause it when data becomes
+    // available. The user must explicitly unpause it again.
+    auto s = findByHandle(handle);
+    if (s != nullptr)
+    {
+        for (size_t i = 0; i < s->handle.size(); i++)
+        {
+            if (s->handle[i].handle == handle)
+            {
+                s->handle[i].isUserPaused = pause && isUserAction;
+                break;
+            }
+        }
+    }
     
     if (pause)
     {
@@ -960,7 +976,7 @@ PlayerErrors Player::play(
     }
 
     if (newHandle != 0) {
-        sound->handle.push_back({newHandle, MAX_DOUBLE});
+        sound->handle.push_back({newHandle, MAX_DOUBLE, false});
         // Check if this buffer has enough data to be played
         if (sound->soundType == SoundType::TYPE_BUFFER_STREAM)
         {
@@ -1176,7 +1192,7 @@ PlayerErrors Player::textToSpeech(const std::string &textToSpeech, unsigned int 
         handle = soloud.play(speech);
         sounds.back().get()->soundHash = handle;
         sounds.back().get()->filters = std::make_unique<Filters>(&soloud, sounds.back().get(), nullptr);
-        sounds.back().get()->handle.push_back({handle, MAX_DOUBLE});
+        sounds.back().get()->handle.push_back({handle, MAX_DOUBLE, false});
     }
     else
     {
@@ -1404,21 +1420,6 @@ ActiveSound *Player::findByHash(unsigned int soundHash)
     return s->get();
 }
 
-void Player::debug()
-{
-    std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
-    int n = 0;
-    for (auto &sound : sounds)
-    {
-        printf("%d: \thandle: ", n);
-        for (auto &handle : sound.get()->handle)
-            printf("%d ", handle.handle);
-        printf("  %s\n", sound.get()->completeFileName.c_str());
-
-        n++;
-    }
-}
-
 /////////////////////////////////////////
 /// voice groups
 /////////////////////////////////////////
@@ -1583,7 +1584,7 @@ PlayerErrors Player::play3d(
     }
 
     if (newHandle != 0) {
-        sound->handle.push_back({newHandle, MAX_DOUBLE});
+        sound->handle.push_back({newHandle, MAX_DOUBLE, false});
         // Check if this buffer has enough data to be played
         if (sound->soundType == SoundType::TYPE_BUFFER_STREAM)
         {

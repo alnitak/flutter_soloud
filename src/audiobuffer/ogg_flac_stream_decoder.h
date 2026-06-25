@@ -1,5 +1,5 @@
-#ifndef FLAC_STREAM_DECODER_H
-#define FLAC_STREAM_DECODER_H
+#ifndef OGG_FLAC_STREAM_DECODER_H
+#define OGG_FLAC_STREAM_DECODER_H
 
 #include "stream_decoder.h"
 #include <FLAC/stream_decoder.h>
@@ -7,10 +7,10 @@
 #include <vector>
 #include <string>
 
-class FlacDecoderWrapper : public IDecoderWrapper {
+class OggFlacDecoderWrapper : public IDecoderWrapper {
 public:
-    FlacDecoderWrapper();
-    ~FlacDecoderWrapper() override;
+    OggFlacDecoderWrapper();
+    ~OggFlacDecoderWrapper() override;
 
     // call this only once before decoding
     void setIcyMetaInt(int icyMetaInt);
@@ -55,4 +55,4 @@ private:
     std::string mStreamTitle;
 };
 
-#endif // FLAC_STREAM_DECODER_H
+#endif // OGG_FLAC_STREAM_DECODER_H

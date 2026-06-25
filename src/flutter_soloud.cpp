@@ -68,7 +68,7 @@
 #include "soloud/src/audiosource/vic/soloud_vic.cpp"
 
 // 	# wav
-#include "soloud/src/audiosource/wav/stb_vorbis.c"
+#include "soloud/src/audiosource/wav/mb_ogg.cpp"
 #include "soloud/src/audiosource/wav/dr_impl.cpp"
 #include "soloud/src/audiosource/wav/soloud_wav.cpp"
 #include "soloud/src/audiosource/wav/soloud_wavstream.cpp"
@@ -109,6 +109,7 @@
 #include "audiobuffer/audiobuffer.cpp"
 #include "audiobuffer/stream_decoder.cpp"
 #include "audiobuffer/flac_stream_decoder.cpp"
+#include "audiobuffer/ogg_flac_stream_decoder.cpp"
 #include "audiobuffer/opus_stream_decoder.cpp"
 #include "audiobuffer/vorbis_stream_decoder.cpp"
 #include "audiobuffer/mp3_stream_decoder.cpp"
