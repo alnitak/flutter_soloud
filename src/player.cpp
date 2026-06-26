@@ -194,10 +194,17 @@ void Player::setStateChangedCallback(void (*stateChangedCallback)(unsigned int))
     soloud.setStateChangedCallback(stateChangedCallback);
 }
 
-PlayerErrors Player::init(unsigned int sampleRate, unsigned int bufferSize, unsigned int channels, int deviceID)
+// Defined in the miniaudio backend (soloud_miniaudio.cpp). Forward-declared
+// here so we don't need to pull in the backend-internal header.
+namespace SoLoud { void miniaudio_setLowLatency(bool aLowLatency); }
+
+PlayerErrors Player::init(unsigned int sampleRate, unsigned int bufferSize, unsigned int channels, int deviceID, bool lowLatency)
 {
     if (mInited)
         return playerAlreadyInited;
+
+    // Choose the device performance profile before SoLoud opens the backend.
+    SoLoud::miniaudio_setLowLatency(lowLatency);
 
     void *playbackInfos_id = nullptr;
     if (deviceID != -1)

@@ -85,6 +85,7 @@ abstract class FlutterSoLoud {
     int sampleRate,
     int bufferSize,
     Channels channels,
+    bool lowLatency,
   );
 
   /// Change the playback device.

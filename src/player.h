@@ -44,7 +44,8 @@ public:
   /// @param deviceID the device ID. -1 for default OS output device.
   /// @return Returns [PlayerErrors.SO_NO_ERROR] if success.
   PlayerErrors init(unsigned int sampleRate, unsigned int bufferSize,
-                    unsigned int channels, int deviceID = -1);
+                    unsigned int channels, int deviceID = -1,
+                    bool lowLatency = true);
 
   /// @brief Change the playback device.
   /// @param deviceID the device ID. -1 for default OS output device.

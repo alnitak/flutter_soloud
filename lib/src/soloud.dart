@@ -338,12 +338,22 @@ interface class SoLoud {
   /// The default value is 2048.
   ///
   /// [channels] mono, stereo, quad, 5.1, 7.1.
+  ///
+  /// [lowLatency] selects the audio backend's performance profile and defaults
+  /// to `true` (the historical behavior). On Android the low-latency profile
+  /// uses AAudio's MMAP path, which cannot be captured by system screen
+  /// recorders and leaves little CPU headroom for heavy filters (e.g. the FFT
+  /// pitch shift). Pass `false` to use the conservative (legacy mixer) profile
+  /// instead: the output becomes capturable by screen recording and gains
+  /// callback headroom for DSP, at the cost of higher output latency. Only the
+  /// native (miniaudio) backends honor this; the Web backend ignores it.
   Future<void> init({
     PlaybackDevice? device,
     bool automaticCleanup = false,
     int sampleRate = 44100,
     int bufferSize = 2048,
     Channels channels = Channels.stereo,
+    bool lowLatency = true,
   }) async {
     final nativeIsInitialized = _controller.soLoudFFI.isInited();
     _log.finest('init() called');
@@ -391,6 +401,7 @@ interface class SoLoud {
       sampleRate,
       bufferSize,
       channels,
+      lowLatency,
     );
     _logPlayerError(error, from: 'initialize() result');
     if (error == PlayerErrors.noError) {

@@ -121,12 +121,16 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     int sampleRate,
     int bufferSize,
     Channels channels,
+    bool lowLatency,
   ) {
+    // [lowLatency] only affects the native miniaudio backends (it selects the
+    // AAudio/CoreAudio performance profile); the Web Audio backend ignores it.
     final ret = wasmInitEngine(
       deviceId,
       sampleRate,
       bufferSize,
       channels.count,
+      lowLatency ? 1 : 0,
     );
     return PlayerErrors.values[ret];
   }
