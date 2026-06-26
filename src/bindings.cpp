@@ -1,4 +1,5 @@
 #include "analyzer.h"
+#include "mixeroutput/mixer_output.h"
 #include "player.h"
 #include "soloud/include/soloud_bus.h"
 #include "soloud/include/soloud_fft.h"
@@ -38,12 +39,14 @@ extern "C"
   typedef void (*dartVoiceEndedCallback_t)(unsigned int *);
   typedef void (*dartFileLoadedCallback_t)(enum PlayerErrors *, char *completeFileName, unsigned int *, uint64_t *counter);
   typedef void (*dartStateChangedCallback_t)(enum PlayerStateEvents *);
+  typedef void (*dartMixerOutputDataCallback_t)(unsigned char *, uint64_t);
 
   // to be used by `NativeCallable`, these functions must return void.
   // Atomic so the audio thread can safely snapshot the pointer before calling.
   std::atomic<dartVoiceEndedCallback_t> dartVoiceEndedCallback{nullptr};
   std::atomic<dartFileLoadedCallback_t> dartFileLoadedCallback{nullptr};
   std::atomic<dartStateChangedCallback_t> dartStateChangedCallback{nullptr};
+  std::atomic<dartMixerOutputDataCallback_t> dartMixerOutputDataCallback{nullptr};
 
   //////////////////////////////////////////////////////////////
   /// WEB WORKER
@@ -206,11 +209,101 @@ extern "C"
     dartVoiceEndedCallback.store(nullptr);
     dartFileLoadedCallback.store(nullptr);
     dartStateChangedCallback.store(nullptr);
+    dartMixerOutputDataCallback.store(nullptr);
+    MixerOutput::instance().setDataCallback(nullptr);
+    MixerOutput::instance().stop();
 
     if (player.get() != nullptr)
     {
       player.get()->clearDartCallbackRegistrations();
     }
+  }
+
+  // Mixer output capture exports.
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors startMixerCapture(
+      int format, int sampleRate, int channels,
+      uint64_t bufferSizeBytes,
+      uint64_t notificationThresholdBytes)
+  {
+    MixerOutputFormat outputFormat = static_cast<MixerOutputFormat>(format);
+
+    int sr = sampleRate;
+    int ch = channels;
+    if (sr <= 0 || ch <= 0)
+    {
+      std::lock_guard<std::mutex> guard(init_deinit_mutex);
+      if (player.get() != nullptr && player.get()->isInited())
+      {
+        if (sr <= 0)
+          sr = static_cast<int>(player.get()->soloud.getBackendSamplerate());
+        if (ch <= 0)
+          ch = static_cast<int>(player.get()->soloud.getBackendChannels());
+      }
+    }
+
+    if (sr <= 0)
+      sr = 44100;
+    if (ch <= 0)
+      ch = 2;
+
+    return MixerOutput::instance().start(
+        outputFormat, sr, ch,
+        static_cast<size_t>(bufferSizeBytes),
+        static_cast<size_t>(notificationThresholdBytes));
+  }
+
+  FFI_PLUGIN_EXPORT void stopMixerCapture()
+  {
+    MixerOutput::instance().stop();
+  }
+
+  FFI_PLUGIN_EXPORT int isMixerCaptureRunning()
+  {
+    return MixerOutput::instance().isRunning() ? 1 : 0;
+  }
+
+  FFI_PLUGIN_EXPORT unsigned char *getMixerCaptureBufferPointer()
+  {
+    return MixerOutput::instance().getBufferPointer();
+  }
+
+  FFI_PLUGIN_EXPORT uint64_t getMixerCaptureBufferSize()
+  {
+    return static_cast<uint64_t>(MixerOutput::instance().getBufferSize());
+  }
+
+  FFI_PLUGIN_EXPORT uint64_t getMixerCaptureAvailableBytes()
+  {
+    return static_cast<uint64_t>(
+        MixerOutput::instance().getAvailableBytes());
+  }
+
+  FFI_PLUGIN_EXPORT uint64_t getMixerCaptureReadOffset()
+  {
+    return static_cast<uint64_t>(MixerOutput::instance().getReadOffset());
+  }
+
+  FFI_PLUGIN_EXPORT void advanceMixerCaptureReadPosition(
+      uint64_t bytes)
+  {
+    MixerOutput::instance().advanceReadPosition(
+        static_cast<size_t>(bytes));
+  }
+
+  FFI_PLUGIN_EXPORT void setMixerOutputCallback(
+      dartMixerOutputDataCallback_t callback)
+  {
+    dartMixerOutputDataCallback.store(callback);
+    MixerOutput::instance().setDataCallback(
+        [](uint8_t *data, size_t length)
+        {
+          auto cb = dartMixerOutputDataCallback.load();
+          if (cb != nullptr)
+          {
+            cb(data, static_cast<uint64_t>(length));
+          }
+        });
   }
 
   //////////////////////////////////////////////////////////////////////////////////

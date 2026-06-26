@@ -151,15 +151,6 @@ for lib in "${LIBS[@]}"; do
     build_lib "$lib" arm64 "iOS_Simulator" "$SIMULATOR_SDK"
 done
 
-# Remove unwanted vorbisenc files
-echo "${BOLD_WHITE_ON_GREEN}=== Removing not used libvorbisenc* ===${RESET}"
-for platform in "iOS" "iOS_Simulator"; do
-    for arch_dir in "$BUILD_DIR/vorbis/$platform/"*/; do
-        rm -f "$arch_dir/install/lib/libvorbisenc."* 2>/dev/null || true
-        rm -f "$arch_dir/install/include/vorbis/vorbisenc.h" 2>/dev/null || true
-    done
-done
-
 # Create output libraries
 for lib in "${LIBS[@]}"; do
     echo "${BOLD_WHITE_ON_GREEN}Creating libraries for $lib...${RESET}"
@@ -179,6 +170,12 @@ for lib in "${LIBS[@]}"; do
         -output "$OUTPUT_DIR/lib${local_lib_name}_iOS-simulator.a"
 
     if [ "$lib" == "vorbis" ]; then
+        cp "$BUILD_DIR/$lib/iOS/arm64/install/lib/libvorbisenc.a" "$OUTPUT_DIR/libvorbisenc_iOS-device.a"
+        lipo -create \
+            "$BUILD_DIR/$lib/iOS_Simulator/x86_64/install/lib/libvorbisenc.a" \
+            "$BUILD_DIR/$lib/iOS_Simulator/arm64/install/lib/libvorbisenc.a" \
+            -output "$OUTPUT_DIR/libvorbisenc_iOS-simulator.a"
+
         cp "$BUILD_DIR/$lib/iOS/arm64/install/lib/libvorbisfile.a" "$OUTPUT_DIR/libvorbisfile_iOS-device.a"
         lipo -create \
             "$BUILD_DIR/$lib/iOS_Simulator/x86_64/install/lib/libvorbisfile.a" \
@@ -193,6 +190,13 @@ for lib in "${LIBS[@]}"; do
     echo "${BOLD_WHITE_ON_GREEN}Stripping symbols from $lib libraries...${RESET}"
     strip -x "$OUTPUT_DIR/lib${local_lib_name}_iOS-device.a"
     strip -x "$OUTPUT_DIR/lib${local_lib_name}_iOS-simulator.a"
+
+    if [ "$lib" == "vorbis" ]; then
+        strip -x "$OUTPUT_DIR/libvorbisenc_iOS-device.a"
+        strip -x "$OUTPUT_DIR/libvorbisenc_iOS-simulator.a"
+        strip -x "$OUTPUT_DIR/libvorbisfile_iOS-device.a"
+        strip -x "$OUTPUT_DIR/libvorbisfile_iOS-simulator.a"
+    fi
 done
 
 # Copy FLAC share headers
@@ -226,6 +230,12 @@ for lib in "${LIBS[@]}"; do
         -output "$FRAMEWORKS_DIR/${lib}.xcframework" > /dev/null
 
     if [ "$lib" == "vorbis" ]; then
+        echo "${BOLD_WHITE_ON_GREEN}Creating vorbisenc.xcframework...${RESET}"
+        xcodebuild -create-xcframework \
+            -library "$OUTPUT_DIR/libvorbisenc_iOS-device.a" \
+            -library "$OUTPUT_DIR/libvorbisenc_iOS-simulator.a" \
+            -output "$FRAMEWORKS_DIR/vorbisenc.xcframework" > /dev/null
+
         echo "${BOLD_WHITE_ON_GREEN}Creating vorbisfile.xcframework...${RESET}"
         xcodebuild -create-xcframework \
             -library "$OUTPUT_DIR/libvorbisfile_iOS-device.a" \

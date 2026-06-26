@@ -57,6 +57,15 @@ typedef DartStateChangedCallbackTFunction =
 typedef DartdartStateChangedCallbackTFunction =
     void Function(ffi.Pointer<ffi.Int32>);
 
+typedef DartMixerOutputDataCallbackT =
+    ffi.Pointer<ffi.NativeFunction<DartMixerOutputDataCallbackTFunction>>;
+
+typedef DartMixerOutputDataCallbackTFunction =
+    ffi.Void Function(ffi.Pointer<ffi.UnsignedChar>, ffi.Uint64);
+
+typedef DartdartMixerOutputDataCallbackTFunction =
+    void Function(ffi.Pointer<ffi.UnsignedChar>, int);
+
 typedef OnMetadataCallbackTFunction = void Function(NativeAudioMetadata);
 
 final class _BufferStreamNativeCallbacks {
@@ -102,6 +111,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   ffi.NativeCallable<DartFileLoadedCallbackTFunction>? nativeFileLoadedCallable;
   ffi.NativeCallable<DartStateChangedCallbackTFunction>?
   nativeStateChangedCallable;
+  ffi.NativeCallable<DartMixerOutputDataCallbackTFunction>?
+  nativeMixerOutputDataCallable;
   final Map<int, _BufferStreamNativeCallbacks> _bufferStreamNativeCallables =
       {};
 
@@ -163,6 +174,17 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     stateChangedController.add(s);
   }
 
+  void _mixerOutputDataCallback(
+    ffi.Pointer<ffi.UnsignedChar> data,
+    int length,
+  ) {
+    // The native buffer remains valid until the read position is advanced.
+    mixerOutputDataAvailableController.add((
+      pointer: data.cast<ffi.Uint8>(),
+      length: length,
+    ));
+  }
+
   @override
   void disposeNativeCallables() {
     _disposeAllBufferStreamCallbacks();
@@ -173,6 +195,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     nativeFileLoadedCallable = null;
     nativeStateChangedCallable?.close();
     nativeStateChangedCallable = null;
+    nativeMixerOutputDataCallable?.close();
+    nativeMixerOutputDataCallable = null;
   }
 
   @override
@@ -195,12 +219,17 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
         ffi.NativeCallable<DartStateChangedCallbackTFunction>.listener(
           _stateChangedCallback,
         );
+    nativeMixerOutputDataCallable ??=
+        ffi.NativeCallable<DartMixerOutputDataCallbackTFunction>.listener(
+          _mixerOutputDataCallback,
+        );
 
     _setDartEventCallback(
       nativeVoiceEndedCallable!.nativeFunction,
       nativeFileLoadedCallable!.nativeFunction,
       nativeStateChangedCallable!.nativeFunction,
     );
+    _setMixerOutputCallback(nativeMixerOutputDataCallable!.nativeFunction);
   }
 
   late final _setDartEventCallbackPtr =
@@ -228,6 +257,130 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       );
   late final _clearDartCallbackRegistrations =
       _clearDartCallbackRegistrationsPtr.asFunction<void Function()>();
+
+  // ////////////////////////////////////////////////
+  // Mixer output capture bindings
+  // ////////////////////////////////////////////////
+
+  @override
+  PlayerErrors startMixerOutputCapture(
+    MixerOutputFormat format,
+    int sampleRate,
+    int channels,
+    int bufferSizeBytes,
+    int notificationThresholdBytes,
+  ) {
+    final ret = _startMixerCapture(
+      format.value,
+      sampleRate,
+      channels,
+      bufferSizeBytes,
+      notificationThresholdBytes,
+    );
+    return PlayerErrors.values[ret];
+  }
+
+  late final _startMixerCapturePtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.Int32 Function(
+            ffi.Int32,
+            ffi.Int32,
+            ffi.Int32,
+            ffi.Uint64,
+            ffi.Uint64,
+          )
+        >
+      >('startMixerCapture');
+  late final _startMixerCapture = _startMixerCapturePtr
+      .asFunction<int Function(int, int, int, int, int)>();
+
+  @override
+  void stopMixerOutputCapture() {
+    _stopMixerCapture();
+  }
+
+  late final _stopMixerCapturePtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function()>>('stopMixerCapture');
+  late final _stopMixerCapture = _stopMixerCapturePtr
+      .asFunction<void Function()>();
+
+  @override
+  bool isMixerOutputCaptureRunning() {
+    return _isMixerCaptureRunning() != 0;
+  }
+
+  late final _isMixerCaptureRunningPtr =
+      _lookup<ffi.NativeFunction<ffi.Int Function()>>('isMixerCaptureRunning');
+  late final _isMixerCaptureRunning = _isMixerCaptureRunningPtr
+      .asFunction<int Function()>();
+
+  @override
+  ffi.Pointer<ffi.Void> getMixerOutputBufferPointer() {
+    return _getMixerCaptureBufferPointer().cast<ffi.Void>();
+  }
+
+  late final _getMixerCaptureBufferPointerPtr =
+      _lookup<ffi.NativeFunction<ffi.Pointer<ffi.UnsignedChar> Function()>>(
+        'getMixerCaptureBufferPointer',
+      );
+  late final _getMixerCaptureBufferPointer = _getMixerCaptureBufferPointerPtr
+      .asFunction<ffi.Pointer<ffi.UnsignedChar> Function()>();
+
+  @override
+  int getMixerOutputBufferSize() {
+    return _getMixerCaptureBufferSize();
+  }
+
+  late final _getMixerCaptureBufferSizePtr =
+      _lookup<ffi.NativeFunction<ffi.Uint64 Function()>>(
+        'getMixerCaptureBufferSize',
+      );
+  late final _getMixerCaptureBufferSize = _getMixerCaptureBufferSizePtr
+      .asFunction<int Function()>();
+
+  @override
+  int getMixerOutputAvailableBytes() {
+    return _getMixerCaptureAvailableBytes();
+  }
+
+  late final _getMixerCaptureAvailableBytesPtr =
+      _lookup<ffi.NativeFunction<ffi.Uint64 Function()>>(
+        'getMixerCaptureAvailableBytes',
+      );
+  late final _getMixerCaptureAvailableBytes = _getMixerCaptureAvailableBytesPtr
+      .asFunction<int Function()>();
+
+  @override
+  int getMixerOutputReadOffset() {
+    return _getMixerCaptureReadOffset();
+  }
+
+  late final _getMixerCaptureReadOffsetPtr =
+      _lookup<ffi.NativeFunction<ffi.Uint64 Function()>>(
+        'getMixerCaptureReadOffset',
+      );
+  late final _getMixerCaptureReadOffset = _getMixerCaptureReadOffsetPtr
+      .asFunction<int Function()>();
+
+  @override
+  void advanceMixerOutputReadPosition(int bytes) {
+    _advanceMixerCaptureReadPosition(bytes);
+  }
+
+  late final _advanceMixerCaptureReadPositionPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Uint64)>>(
+        'advanceMixerCaptureReadPosition',
+      );
+  late final _advanceMixerCaptureReadPosition =
+      _advanceMixerCaptureReadPositionPtr.asFunction<void Function(int)>();
+
+  late final _setMixerOutputCallbackPtr =
+      _lookup<
+        ffi.NativeFunction<ffi.Void Function(DartMixerOutputDataCallbackT)>
+      >('setMixerOutputCallback');
+  late final _setMixerOutputCallback = _setMixerOutputCallbackPtr
+      .asFunction<void Function(DartMixerOutputDataCallbackT)>();
 
   // ////////////////////////////////////////////////
   // Navtive bindings

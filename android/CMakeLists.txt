@@ -64,6 +64,8 @@ if(NOT DEFINED NO_XIPH_LIBS AND NOT DEFINED ENV{NO_XIPH_LIBS})
     target_link_libraries(${PLUGIN_NAME} PRIVATE ${VORBIS_LIBRARY})
     set(VORBISFILE_LIBRARY ${CMAKE_CURRENT_SOURCE_DIR}/libs/${ANDROID_ABI}/libvorbisfile.so)
     target_link_libraries(${PLUGIN_NAME} PRIVATE ${VORBISFILE_LIBRARY})
+    set(VORBISENC_LIBRARY ${CMAKE_CURRENT_SOURCE_DIR}/libs/${ANDROID_ABI}/libvorbisenc.so)
+    target_link_libraries(${PLUGIN_NAME} PRIVATE ${VORBISENC_LIBRARY})
 
     include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 else()

@@ -427,6 +427,60 @@ enum BufferType {
   }
 }
 
+/// The output format for mixer capture.
+///
+/// WARNING: Keep these in sync with `src/enums.h`.
+enum MixerOutputFormat {
+  /// 32-bit floating point, little-endian.
+  pcmF32le(0),
+
+  /// 8-bit signed, little-endian.
+  pcmS8(1),
+
+  /// 16-bit signed, little-endian.
+  pcmS16le(2),
+
+  /// 32-bit signed, little-endian.
+  pcmS32le(3),
+
+  /// Opus encoded audio.
+  opus(4),
+
+  /// Vorbis encoded audio.
+  vorbis(5),
+
+  /// FLAC encoded audio.
+  flac(6);
+
+  /// The integer value of the format.
+  final int value;
+
+  /// Constructs a valid mixer output format with [value].
+  // ignore: sort_constructors_first
+  const MixerOutputFormat(this.value);
+
+  /// Returns a human-friendly format name.
+  @override
+  String toString() {
+    switch (this) {
+      case MixerOutputFormat.pcmF32le:
+        return 'PCM F32LE';
+      case MixerOutputFormat.pcmS8:
+        return 'PCM S8';
+      case MixerOutputFormat.pcmS16le:
+        return 'PCM S16LE';
+      case MixerOutputFormat.pcmS32le:
+        return 'PCM S32LE';
+      case MixerOutputFormat.opus:
+        return 'Opus';
+      case MixerOutputFormat.vorbis:
+        return 'Vorbis';
+      case MixerOutputFormat.flac:
+        return 'FLAC';
+    }
+  }
+}
+
 /// How the buffering should work when using the BufferStream.
 enum BufferingType {
   /// Preserve the data already in the buffer while adding new data.

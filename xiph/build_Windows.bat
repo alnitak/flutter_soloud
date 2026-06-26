@@ -161,11 +161,6 @@ xcopy /Y /S "%FLAC_DIR%\\include\\FLAC" "%INCLUDE_DIR%\\FLAC\"
 xcopy /Y /S "%FLAC_DIR%\\include\\share" "%INCLUDE_DIR%\\share\"
 
 
-:: Remove vorbisenc files
-echo Removing vorbisenc files...
-del /F /Q "%LIBS_DIR%\\vorbisenc.*"
-del /F /Q "%INCLUDE_DIR%\\vorbis\\vorbisenc.h"
-
 cd "%BASE_DIR%"
 echo Done!
 pause

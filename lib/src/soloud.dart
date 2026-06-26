@@ -1,6 +1,7 @@
 // ignore_for_file: require_trailing_commas, avoid_positional_boolean_parameters
 
 import 'dart:async';
+import 'dart:ffi' as ffi;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -456,10 +457,145 @@ interface class SoLoud {
   void deinit() {
     _log.finest('deinit() called');
     _nativeCallbacksInitialized = false;
+    if (_controller.soLoudFFI.isMixerOutputCaptureRunning()) {
+      _controller.soLoudFFI.stopMixerOutputCapture();
+    }
     _controller.soLoudFFI.disposeNativeCallables();
     _controller.soLoudFFI.disposeAllSound();
     _controller.soLoudFFI.deinit();
     _activeSounds.clear();
+  }
+
+  ////////////////////////////////////////////////////////////////////
+  // Mixer output capture
+  ////////////////////////////////////////////////////////////////////
+
+  /// Subscription that reads mixer output data from the native circular
+  /// buffer and emits it through [startMixerOutputStream].
+  StreamSubscription<({ffi.Pointer<ffi.Uint8> pointer, int length})>?
+  _mixerOutputSubscription;
+
+  /// The broadcast stream of captured mixer output data.
+  StreamController<Uint8List>? _mixerOutputStreamController;
+
+  /// Captures the master mixer output as a [Stream] of [Uint8List] chunks.
+  ///
+  /// [format] the desired output format. PCM formats are supported on all
+  /// platforms. Compressed formats (Opus, Vorbis, FLAC) are available when
+  /// the plugin is built with Xiph libraries.
+  /// [sampleRate] the sample rate. Use -1 to follow the engine sample rate.
+  /// [channels] the channel count. Use -1 to follow the engine channels.
+  /// [bufferSizeBytes] total size of the circular capture buffer.
+  /// [notificationThresholdBytes] bytes that must be available before a chunk
+  /// is emitted.
+  ///
+  /// Returns a [Stream] that yields captured audio data. The stream is closed
+  /// when [stopMixerOutputStream] is called or when the engine is deinited.
+  Stream<Uint8List> startMixerOutputStream({
+    MixerOutputFormat format = MixerOutputFormat.pcmF32le,
+    int sampleRate = -1,
+    int channels = -1,
+    int bufferSizeBytes = 1024 * 1024,
+    int notificationThresholdBytes = 4096,
+  }) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+
+    if (_mixerOutputStreamController != null) {
+      return _mixerOutputStreamController!.stream;
+    }
+
+    _mixerOutputStreamController = StreamController<Uint8List>.broadcast();
+
+    final error = _controller.soLoudFFI.startMixerOutputCapture(
+      format,
+      sampleRate,
+      channels,
+      bufferSizeBytes,
+      notificationThresholdBytes,
+    );
+
+    if (error != PlayerErrors.noError) {
+      _mixerOutputStreamController!.close();
+      _mixerOutputStreamController = null;
+      throw SoLoudCppException.fromPlayerError(error);
+    }
+
+    _mixerOutputSubscription = _controller
+        .soLoudFFI
+        .mixerOutputDataAvailableEvents
+        .listen((event) => _emitMixerOutputData(event.pointer, event.length));
+
+    return _mixerOutputStreamController!.stream;
+  }
+
+  void _emitMixerOutputData(ffi.Pointer<ffi.Uint8> pointer, int length) {
+    if (_mixerOutputStreamController == null ||
+        _mixerOutputStreamController!.isClosed) {
+      return;
+    }
+
+    if (pointer == ffi.nullptr || length <= 0) {
+      return;
+    }
+
+    // Read the contiguous region that the native side notified us about.
+    final bytes = pointer.asTypedList(length);
+    final chunk = Uint8List.fromList(bytes);
+    _controller.soLoudFFI.advanceMixerOutputReadPosition(length);
+
+    _mixerOutputStreamController!.add(chunk);
+  }
+
+  /// Stops the mixer output capture stream and releases associated resources.
+  void stopMixerOutputStream() {
+    _mixerOutputSubscription?.cancel();
+    _mixerOutputSubscription = null;
+    _controller.soLoudFFI.stopMixerOutputCapture();
+    _mixerOutputStreamController?.close();
+    _mixerOutputStreamController = null;
+  }
+
+  /// Whether mixer output capture is currently active.
+  bool get isMixerOutputStreamRunning =>
+      _controller.soLoudFFI.isMixerOutputCaptureRunning();
+
+  /// Direct, zero-copy access to the native mixer capture buffer.
+  ///
+  /// The returned pointer points to the first unread byte and `bytes` is the
+  /// number of contiguous unread bytes. It is only valid while capture is
+  /// running and until the read position is advanced with
+  /// [advanceMixerOutputReadPosition]. This is intended for advanced users
+  /// who want to avoid the copy performed by [startMixerOutputStream].
+  ///
+  /// Returns `null` if capture is not running or no data is available.
+  ({ffi.Pointer<ffi.Uint8> pointer, int bytes})? getMixerOutputBuffer() {
+    if (!_controller.soLoudFFI.isMixerOutputCaptureRunning()) {
+      return null;
+    }
+    final available = _controller.soLoudFFI.getMixerOutputAvailableBytes();
+    if (available == 0) {
+      return null;
+    }
+    final bufferPointer = _controller.soLoudFFI.getMixerOutputBufferPointer();
+    if (bufferPointer == ffi.nullptr) {
+      return null;
+    }
+    final readOffset = _controller.soLoudFFI.getMixerOutputReadOffset();
+    final bufferSize = _controller.soLoudFFI.getMixerOutputBufferSize();
+    final contiguous = available < bufferSize - readOffset
+        ? available
+        : bufferSize - readOffset;
+    return (
+      pointer: bufferPointer.cast<ffi.Uint8>() + readOffset,
+      bytes: contiguous,
+    );
+  }
+
+  /// Advance the mixer capture read position by [bytes].
+  void advanceMixerOutputReadPosition(int bytes) {
+    _controller.soLoudFFI.advanceMixerOutputReadPosition(bytes);
   }
 
   /// Find the [AudioSource] which owns the given [handle].

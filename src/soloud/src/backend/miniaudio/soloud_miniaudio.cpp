@@ -70,6 +70,7 @@ namespace SoLoud
 #include <thread>
 #include <mutex>
 #include "soloud_common.h"
+#include "mixeroutput/mixer_output.h"
 #if defined(_WIN32) || defined(_WIN64)
 #include <windows.h>
 #else
@@ -205,6 +206,8 @@ namespace SoLoud
         first_call = false;
         SoLoud::Soloud *soloud = (SoLoud::Soloud *)pDevice->pUserData;
         soloud->mix((float *)pOutput, frameCount);
+
+        MixerOutput::instance().onAudioData((float *)pOutput, frameCount);
     }
 
     static void soloud_miniaudio_deinit(SoLoud::Soloud *aSoloud)

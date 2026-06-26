@@ -1,6 +1,7 @@
 // ignore_for_file: avoid_positional_boolean_parameters
 
 import 'dart:convert';
+import 'dart:ffi' as ffi;
 import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
 import 'dart:typed_data';
@@ -114,6 +115,42 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
 
   @override
   bool areXiphLibsAvailable() => wasmAreXiphLibsAvailable() == 1;
+
+  @override
+  PlayerErrors startMixerOutputCapture(
+    MixerOutputFormat format,
+    int sampleRate,
+    int channels,
+    int bufferSizeBytes,
+    int notificationThresholdBytes,
+  ) {
+    // TODO(alnitak): implement web mixer output capture using
+    // SharedArrayBuffer.
+    return PlayerErrors.notImplemented;
+  }
+
+  @override
+  void stopMixerOutputCapture() {
+    // TODO(alnitak): implement web mixer output capture.
+  }
+
+  @override
+  bool isMixerOutputCaptureRunning() => false;
+
+  @override
+  ffi.Pointer<ffi.Void> getMixerOutputBufferPointer() => ffi.nullptr;
+
+  @override
+  int getMixerOutputBufferSize() => 0;
+
+  @override
+  int getMixerOutputAvailableBytes() => 0;
+
+  @override
+  int getMixerOutputReadOffset() => 0;
+
+  @override
+  void advanceMixerOutputReadPosition(int bytes) {}
 
   @override
   PlayerErrors initEngine(

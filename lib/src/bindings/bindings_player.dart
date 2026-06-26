@@ -1,6 +1,7 @@
 // ignore_for_file: avoid_positional_boolean_parameters
 
 import 'dart:async';
+import 'dart:ffi' as ffi;
 import 'dart:typed_data';
 
 import 'package:flutter_soloud/src/bindings/audio_data.dart';
@@ -68,6 +69,66 @@ abstract class FlutterSoLoud {
   /// Check if the libopus and libogg are available at build time.
   @mustBeOverridden
   bool areXiphLibsAvailable();
+
+  /// Controller that fires whenever new mixer output data is available.
+  ///
+  /// The event contains a pointer to the start of the contiguous unread
+  /// region and the number of valid bytes. The pointer remains valid until
+  /// the read position is advanced with [advanceMixerOutputReadPosition].
+  late final StreamController<({ffi.Pointer<ffi.Uint8> pointer, int length})>
+  mixerOutputDataAvailableController = StreamController.broadcast();
+
+  /// Stream of notifications that new mixer output data is available.
+  Stream<({ffi.Pointer<ffi.Uint8> pointer, int length})>
+  get mixerOutputDataAvailableEvents =>
+      mixerOutputDataAvailableController.stream;
+
+  /// Start capturing the master mixer output.
+  ///
+  /// [format] the desired output format.
+  /// [sampleRate] the sample rate. Use -1 to follow the engine rate.
+  /// [channels] the channel count. Use -1 to follow the engine channels.
+  /// [bufferSizeBytes] total size of the circular capture buffer.
+  /// [notificationThresholdBytes] bytes that must be available before
+  /// [mixerOutputDataAvailableEvents] fires.
+  ///
+  /// Returns [PlayerErrors.noError] if success.
+  @mustBeOverridden
+  PlayerErrors startMixerOutputCapture(
+    MixerOutputFormat format,
+    int sampleRate,
+    int channels,
+    int bufferSizeBytes,
+    int notificationThresholdBytes,
+  );
+
+  /// Stop capturing the master mixer output.
+  @mustBeOverridden
+  void stopMixerOutputCapture();
+
+  /// Whether mixer output capture is currently active.
+  @mustBeOverridden
+  bool isMixerOutputCaptureRunning();
+
+  /// Pointer to the native circular capture buffer.
+  @mustBeOverridden
+  ffi.Pointer<ffi.Void> getMixerOutputBufferPointer();
+
+  /// Total size of the native capture buffer in bytes.
+  @mustBeOverridden
+  int getMixerOutputBufferSize();
+
+  /// Number of unread bytes currently available in the capture buffer.
+  @mustBeOverridden
+  int getMixerOutputAvailableBytes();
+
+  /// Current read offset in the capture buffer.
+  @mustBeOverridden
+  int getMixerOutputReadOffset();
+
+  /// Advance the read position by [bytes].
+  @mustBeOverridden
+  void advanceMixerOutputReadPosition(int bytes);
 
   /// Initialize the player. Must be called before any other player functions.
   ///

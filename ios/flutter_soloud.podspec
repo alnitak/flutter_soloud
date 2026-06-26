@@ -92,8 +92,8 @@ Flutter audio plugin using SoLoud library and FFI
 
   # Add SDK-conditioned linker flags for Xiph libs to the pod's own target
   if !disable_xiph_libs
-    pod_xcconfig['OTHER_LDFLAGS[sdk=iphoneos*]'] = '$(inherited) -logg_iOS-device -lopus_iOS-device -lvorbis_iOS-device -lvorbisfile_iOS-device -lFLAC_iOS-device'
-    pod_xcconfig['OTHER_LDFLAGS[sdk=iphonesimulator*]'] = '$(inherited) -logg_iOS-simulator -lopus_iOS-simulator -lvorbis_iOS-simulator -lvorbisfile_iOS-simulator -lFLAC_iOS-simulator'
+    pod_xcconfig['OTHER_LDFLAGS[sdk=iphoneos*]'] = '$(inherited) -logg_iOS-device -lopus_iOS-device -lvorbis_iOS-device -lvorbisenc_iOS-device -lvorbisfile_iOS-device -lFLAC_iOS-device'
+    pod_xcconfig['OTHER_LDFLAGS[sdk=iphonesimulator*]'] = '$(inherited) -logg_iOS-simulator -lopus_iOS-simulator -lvorbis_iOS-simulator -lvorbisenc_iOS-simulator -lvorbisfile_iOS-simulator -lFLAC_iOS-simulator'
   end
 
   s.pod_target_xcconfig = pod_xcconfig
@@ -108,8 +108,8 @@ Flutter audio plugin using SoLoud library and FFI
     user_ldflags_device = force_load_lib
     user_ldflags_sim = force_load_lib
   else
-    user_ldflags_device = "#{force_load_lib} -L#{plugin_root}/flutter_soloud/libs -logg_iOS-device -lopus_iOS-device -lvorbis_iOS-device -lvorbisfile_iOS-device -lFLAC_iOS-device"
-    user_ldflags_sim = "#{force_load_lib} -L#{plugin_root}/flutter_soloud/libs -logg_iOS-simulator -lopus_iOS-simulator -lvorbis_iOS-simulator -lvorbisfile_iOS-simulator -lFLAC_iOS-simulator"
+    user_ldflags_device = "#{force_load_lib} -L#{plugin_root}/flutter_soloud/libs -logg_iOS-device -lopus_iOS-device -lvorbis_iOS-device -lvorbisenc_iOS-device -lvorbisfile_iOS-device -lFLAC_iOS-device"
+    user_ldflags_sim = "#{force_load_lib} -L#{plugin_root}/flutter_soloud/libs -logg_iOS-simulator -lopus_iOS-simulator -lvorbis_iOS-simulator -lvorbisenc_iOS-simulator -lvorbisfile_iOS-simulator -lFLAC_iOS-simulator"
   end
 
   s.user_target_xcconfig = {
@@ -133,6 +133,8 @@ Flutter audio plugin using SoLoud library and FFI
       'flutter_soloud/libs/libogg_iOS-simulator.a',
       'flutter_soloud/libs/libvorbis_iOS-device.a',
       'flutter_soloud/libs/libvorbis_iOS-simulator.a',
+      'flutter_soloud/libs/libvorbisenc_iOS-device.a',
+      'flutter_soloud/libs/libvorbisenc_iOS-simulator.a',
       'flutter_soloud/libs/libvorbisfile_iOS-device.a',
       'flutter_soloud/libs/libvorbisfile_iOS-simulator.a',
       'flutter_soloud/libs/libFLAC_iOS-device.a',

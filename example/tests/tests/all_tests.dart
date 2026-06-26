@@ -15,6 +15,8 @@ import 'hot_restart_lifecycle.dart' as hot_restart_lifecycle;
 import 'limiter_filter.dart' as limiter_filter;
 import 'load_mem.dart' as load_mem;
 import 'looping.dart' as looping;
+import 'mixer_capture_save_file.dart' as mixer_capture_save_file;
+import 'mixer_output_capture.dart' as mixer_output_capture;
 import 'mixing_bus.dart' as mixing_bus;
 import 'pan.dart' as pan;
 import 'pitch_shifter_filter.dart' as pitch_shifter_filter;
@@ -119,6 +121,14 @@ final List<TestEntry> allTests = [
   const TestEntry(
     name: 'MixingBus',
     run: mixing_bus.testMixingBus,
+  ),
+  const TestEntry(
+    name: 'MixerOutputCapture',
+    run: mixer_output_capture.testMixerOutputCapture,
+  ),
+  const TestEntry(
+    name: 'MixerCaptureSaveFile',
+    run: mixer_capture_save_file.testMixerCaptureSaveFile,
   ),
   const TestEntry(
     name: 'PlaybackDevices',

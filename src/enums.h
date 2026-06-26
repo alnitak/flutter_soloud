@@ -135,6 +135,17 @@ typedef enum BufferType {
   AUTO = 5,
 } BufferType_t;
 
+/// WARNING: Keep these in sync with `lib/src/enums.dart`.
+typedef enum MixerOutputFormat {
+  MIXER_OUTPUT_PCM_F32LE = 0,
+  MIXER_OUTPUT_PCM_S8 = 1,
+  MIXER_OUTPUT_PCM_S16LE = 2,
+  MIXER_OUTPUT_PCM_S32LE = 3,
+  MIXER_OUTPUT_OPUS = 4,
+  MIXER_OUTPUT_VORBIS = 5,
+  MIXER_OUTPUT_FLAC = 6,
+} MixerOutputFormat_t;
+
 typedef struct PCMformat {
   unsigned int sampleRate;
   unsigned int channels;
