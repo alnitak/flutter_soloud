@@ -22,14 +22,16 @@
 #include <thread>
 #include <vector>
 
-struct PlaybackDevice {
+struct PlaybackDevice
+{
   char *name;
   unsigned int isDefault;
   unsigned int id;
-  ma_device_id deviceId;  // Store the actual device ID, not just the index
+  ma_device_id deviceId; // Store the actual device ID, not just the index
 };
 
-class Player {
+class Player
+{
 public:
   Player();
   ~Player();
@@ -616,7 +618,7 @@ public:
   void busAnnexSound(unsigned int busId, unsigned int voiceHandle);
   unsigned int busGetActiveVoiceCount(unsigned int busId);
   BusData *findBusData(unsigned int busId);
-  
+
 public:
   /// all the sounds loaded
   std::vector<std::unique_ptr<ActiveSound>> sounds;
@@ -640,7 +642,7 @@ public:
 private:
   ma_device_info *pPlaybackInfos;
   std::mutex remove_handle_mutex;
-  mutable std::recursive_mutex sounds_mutex;  // Protects the sounds vector (recursive to avoid deadlock in destructors)
+  mutable std::recursive_mutex sounds_mutex; // Protects the sounds vector (recursive to avoid deadlock in destructors)
   unsigned int mBufferSize;
 
   std::map<unsigned int, BusData> busMap;
