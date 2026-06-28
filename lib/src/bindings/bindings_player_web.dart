@@ -1,7 +1,6 @@
 // ignore_for_file: avoid_positional_boolean_parameters
 
 import 'dart:convert';
-import 'dart:ffi' as ffi;
 import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
 import 'dart:typed_data';
@@ -75,6 +74,11 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     workerController = WorkerController();
     await workerController!.setWasmWorker(wasmWorker);
 
+    // Register the native mixer output callback. On the web the callback does
+    // not call Dart directly; it posts a message to the worker from the audio
+    // thread with the buffer offset and length.
+    wasmSetMixerOutputCallback(0);
+
     _eventCallbacksSetUp = true;
     workerController!.onReceive().listen((event) {
       /// The [event] coming from `web/worker.dart.js` is of String type.
@@ -82,25 +86,40 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
       switch (event) {
         case String():
           final decodedMap = jsonDecode(event) as Map;
-          if (decodedMap['message'] == 'voiceEndedCallback') {
-            _log.finest(
-              () =>
-                  'VOICE ENDED EVENT handle: '
-                  '${(decodedMap['value'] as num).toInt()}\n',
-            );
-            voiceEndedEventController.add((decodedMap['value'] as num).toInt());
-          }
+          _handleWorkerMessage(decodedMap);
         case Map():
-          if (event['message'] == 'voiceEndedCallback') {
-            _log.finest(
-              () =>
-                  'VOICE ENDED EVENT handle: '
-                  '${(event['value'] as num).toInt()}\n',
-            );
-            voiceEndedEventController.add((event['value'] as num).toInt());
-          }
+          _handleWorkerMessage(event);
       }
     });
+  }
+
+  void _handleWorkerMessage(Map<dynamic, dynamic> message) {
+    final msg = message['message'] as String?;
+    if (msg == null) return;
+
+    switch (msg) {
+      case 'voiceEndedCallback':
+        _log.finest(
+          () =>
+              'VOICE ENDED EVENT handle: '
+              '${(message['value'] as num).toInt()}\n',
+        );
+        voiceEndedEventController.add((message['value'] as num).toInt());
+      case 'mixerOutputData':
+        final offset = (message['offset'] as num).toInt();
+        final length = (message['length'] as num).toInt();
+        _log.finest(
+          () => 'MIXER OUTPUT DATA EVENT offset: $offset length: $length',
+        );
+        if (length <= 0) return;
+
+        // Copy the data out of the WASM memory buffer and advance the native
+        // read position so the circular buffer can reuse the memory.
+        final heapBuffer = wasmHeapU8Buffer;
+        final bytes = Uint8List.view(heapBuffer.toDart, offset, length);
+        mixerOutputChunkController.add(Uint8List.fromList(bytes));
+        advanceMixerOutputReadPosition(length);
+    }
   }
 
   /// If we will need to send messages to the native. Not used now.
@@ -124,33 +143,47 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     int bufferSizeBytes,
     int notificationThresholdBytes,
   ) {
-    // TODO(alnitak): implement web mixer output capture using
-    // SharedArrayBuffer.
-    return PlayerErrors.notImplemented;
+    final ret = wasmStartMixerCapture(
+      format.value,
+      sampleRate,
+      channels,
+      bufferSizeBytes,
+      notificationThresholdBytes,
+    );
+    return PlayerErrors.values[ret];
   }
 
   @override
-  void stopMixerOutputCapture() {
-    // TODO(alnitak): implement web mixer output capture.
+  void stopMixerOutputCapture() => wasmStopMixerCapture();
+
+  @override
+  bool isMixerOutputCaptureRunning() => wasmIsMixerCaptureRunning() == 1;
+
+  @override
+  int getMixerOutputBufferSize() => wasmGetMixerCaptureBufferSize();
+
+  @override
+  int getMixerOutputAvailableBytes() => wasmGetMixerCaptureAvailableBytes();
+
+  @override
+  int getMixerOutputReadOffset() => wasmGetMixerCaptureReadOffset();
+
+  @override
+  void advanceMixerOutputReadPosition(int bytes) {
+    if (bytes > 0) {
+      wasmAdvanceMixerCaptureReadPosition(bytes);
+    }
   }
 
   @override
-  bool isMixerOutputCaptureRunning() => false;
-
-  @override
-  ffi.Pointer<ffi.Void> getMixerOutputBufferPointer() => ffi.nullptr;
-
-  @override
-  int getMixerOutputBufferSize() => 0;
-
-  @override
-  int getMixerOutputAvailableBytes() => 0;
-
-  @override
-  int getMixerOutputReadOffset() => 0;
-
-  @override
-  void advanceMixerOutputReadPosition(int bytes) {}
+  Uint8List copyMixerOutputBuffer(int offset, int length) {
+    if (length <= 0) {
+      return Uint8List(0);
+    }
+    final heapBuffer = wasmHeapU8Buffer;
+    final bytes = Uint8List.view(heapBuffer.toDart, offset, length);
+    return Uint8List.fromList(bytes);
+  }
 
   @override
   PlayerErrors initEngine(

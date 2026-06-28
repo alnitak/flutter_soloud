@@ -43,6 +43,10 @@ PlayerErrors MixerOutput::start(MixerOutputFormat format, int sampleRate,
   m_bufferSize = bufferSizeBytes;
   m_notificationThreshold = notificationThresholdBytes;
 
+  // Increment the capture id so any in-flight callbacks from a previous
+  // capture session can be identified and discarded by the Dart side.
+  m_captureId.fetch_add(1);
+
   const size_t bps = bytesPerSample(format);
   if (isCompressedFormat()) {
     m_encoder.reset(MixerOutputEncoder::create(format));
@@ -111,10 +115,8 @@ void MixerOutput::stop() {
   m_encoder.reset();
   m_pcmQueue.reset();
 
-  m_buffer.clear();
-  m_bufferSize = 0;
-  m_writeOffset.store(0);
-  m_readOffset.store(0);
+  // Keep the circular buffer and offsets intact so the Dart side can read
+  // any tail data that did not reach the notification threshold.
   m_notified.store(false);
 }
 

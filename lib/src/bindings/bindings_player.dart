@@ -1,7 +1,6 @@
 // ignore_for_file: avoid_positional_boolean_parameters
 
 import 'dart:async';
-import 'dart:ffi' as ffi;
 import 'dart:typed_data';
 
 import 'package:flutter_soloud/src/bindings/audio_data.dart';
@@ -70,18 +69,17 @@ abstract class FlutterSoLoud {
   @mustBeOverridden
   bool areXiphLibsAvailable();
 
-  /// Controller that fires whenever new mixer output data is available.
+  /// Controller that fires copied mixer output chunks.
   ///
-  /// The event contains a pointer to the start of the contiguous unread
-  /// region and the number of valid bytes. The pointer remains valid until
-  /// the read position is advanced with [advanceMixerOutputReadPosition].
-  late final StreamController<({ffi.Pointer<ffi.Uint8> pointer, int length})>
-  mixerOutputDataAvailableController = StreamController.broadcast();
+  /// Platform implementations copy data out of the native circular buffer
+  /// and advance the read position before emitting here. This provides a
+  /// single, safe stream for `SoLoud.startMixerOutputStream`.
+  late final StreamController<Uint8List> mixerOutputChunkController =
+      StreamController.broadcast();
 
-  /// Stream of notifications that new mixer output data is available.
-  Stream<({ffi.Pointer<ffi.Uint8> pointer, int length})>
-  get mixerOutputDataAvailableEvents =>
-      mixerOutputDataAvailableController.stream;
+  /// Stream of copied mixer output chunks.
+  Stream<Uint8List> get mixerOutputChunkEvents =>
+      mixerOutputChunkController.stream;
 
   /// Start capturing the master mixer output.
   ///
@@ -90,7 +88,7 @@ abstract class FlutterSoLoud {
   /// [channels] the channel count. Use -1 to follow the engine channels.
   /// [bufferSizeBytes] total size of the circular capture buffer.
   /// [notificationThresholdBytes] bytes that must be available before
-  /// [mixerOutputDataAvailableEvents] fires.
+  /// [mixerOutputChunkEvents] fires.
   ///
   /// Returns [PlayerErrors.noError] if success.
   @mustBeOverridden
@@ -110,10 +108,6 @@ abstract class FlutterSoLoud {
   @mustBeOverridden
   bool isMixerOutputCaptureRunning();
 
-  /// Pointer to the native circular capture buffer.
-  @mustBeOverridden
-  ffi.Pointer<ffi.Void> getMixerOutputBufferPointer();
-
   /// Total size of the native capture buffer in bytes.
   @mustBeOverridden
   int getMixerOutputBufferSize();
@@ -129,6 +123,10 @@ abstract class FlutterSoLoud {
   /// Advance the read position by [bytes].
   @mustBeOverridden
   void advanceMixerOutputReadPosition(int bytes);
+
+  /// Copy [length] bytes from the native capture buffer starting at [offset].
+  @mustBeOverridden
+  Uint8List copyMixerOutputBuffer(int offset, int length);
 
   /// Initialize the player. Must be called before any other player functions.
   ///

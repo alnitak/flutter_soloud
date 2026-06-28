@@ -1,7 +1,10 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
+// ignore: avoid_web_libraries_in_flutter
+import 'package:flutter_soloud/src/bindings/js_extension.dart' as js;
 
 import 'common.dart';
 
@@ -11,13 +14,23 @@ Future<StringBuffer> testMixerOutputCapture() async {
 
   await initialize();
 
-  final sound = await loadAsset();
-  assert(sound.soundHash.isValid, 'Failed to load asset');
+  final sound = await SoLoud.instance.loadWaveform(
+    WaveForm.square,
+    false,
+    1.0,
+    0.0,
+  );
+  assert(sound.soundHash.isValid, 'Failed to load waveform');
   SoLoud.instance.play(sound, looping: true);
   assert(sound.handles.length == 1, 'play() failed');
 
+  // ignore: avoid_print
+  print('active voices after play: ${SoLoud.instance.getActiveVoiceCount()}');
+
   // Let the engine produce a few mix buffers.
   await delay(500);
+  // ignore: avoid_print
+  print('active voices before capture: ${SoLoud.instance.getActiveVoiceCount()}');
 
   for (final format in MixerOutputFormat.values) {
     output.writeln('Testing format: $format');
@@ -29,19 +42,45 @@ Future<StringBuffer> testMixerOutputCapture() async {
     );
 
     final subscription = stream.listen(
-      chunks.add,
+      (chunk) {
+        // ignore: avoid_print
+        print('MixerOutputCapture $format chunk received: ${chunk.length}');
+        chunks.add(chunk);
+      },
       onError: (Object e) => output.writeln('  stream error: $e'),
     );
 
     // Capture for one second, which is plenty for all formats.
+    Timer? debugTimer;
+    if (kIsWeb) {
+      debugTimer = Timer.periodic(const Duration(milliseconds: 200), (_) {
+        // ignore: avoid_print
+        print('MixerOutputCapture $format available='
+            '${js.wasmGetMixerCaptureAvailableBytes()}');
+      });
+    }
     await delay(1000);
-    await subscription.cancel();
+    debugTimer?.cancel();
+    // ignore: avoid_print
+    print('MixerOutputCapture $format running='
+        '${SoLoud.instance.isMixerOutputStreamRunning}');
+    // Stop capture before canceling the subscription so the synchronous tail
+    // flush is delivered through the stream.
     SoLoud.instance.stopMixerOutputStream();
+    await subscription.cancel();
 
     final totalBytes = chunks.fold<int>(0, (sum, c) => sum + c.length);
     assert(totalBytes > 0, 'No data captured for $format');
 
     output.writeln('  captured $totalBytes bytes in ${chunks.length} chunks');
+    if (chunks.isNotEmpty) {
+      final debug =
+        '  first chunk length: ${chunks.first.length}, '
+        'bytes: ${chunks.first.take(16).map((b) => b.toRadixString(16)).join(' ')}';
+      output.writeln(debug);
+      // ignore: avoid_print
+      print('MixerOutputCapture $format: $debug');
+    }
 
     // Compressed formats should be wrapped in their container.
     if (format == MixerOutputFormat.opus) {
