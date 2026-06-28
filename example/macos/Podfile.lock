@@ -1,0 +1,48 @@
+PODS:
+  - audio_service (0.0.1):
+    - Flutter
+    - FlutterMacOS
+  - audio_session (0.0.1):
+    - FlutterMacOS
+  - file_picker (0.0.1):
+    - FlutterMacOS
+  - flutter_soloud (0.0.1):
+    - FlutterMacOS
+  - FlutterMacOS (1.0.0)
+  - sqflite_darwin (0.0.4):
+    - Flutter
+    - FlutterMacOS
+
+DEPENDENCIES:
+  - audio_service (from `Flutter/ephemeral/.symlinks/plugins/audio_service/darwin`)
+  - audio_session (from `Flutter/ephemeral/.symlinks/plugins/audio_session/macos`)
+  - file_picker (from `Flutter/ephemeral/.symlinks/plugins/file_picker/macos`)
+  - flutter_soloud (from `Flutter/ephemeral/.symlinks/plugins/flutter_soloud/macos`)
+  - FlutterMacOS (from `Flutter/ephemeral`)
+  - sqflite_darwin (from `Flutter/ephemeral/.symlinks/plugins/sqflite_darwin/darwin`)
+
+EXTERNAL SOURCES:
+  audio_service:
+    :path: Flutter/ephemeral/.symlinks/plugins/audio_service/darwin
+  audio_session:
+    :path: Flutter/ephemeral/.symlinks/plugins/audio_session/macos
+  file_picker:
+    :path: Flutter/ephemeral/.symlinks/plugins/file_picker/macos
+  flutter_soloud:
+    :path: Flutter/ephemeral/.symlinks/plugins/flutter_soloud/macos
+  FlutterMacOS:
+    :path: Flutter/ephemeral
+  sqflite_darwin:
+    :path: Flutter/ephemeral/.symlinks/plugins/sqflite_darwin/darwin
+
+SPEC CHECKSUMS:
+  audio_service: aa99a6ba2ae7565996015322b0bb024e1d25c6fd
+  audio_session: eaca2512cf2b39212d724f35d11f46180ad3a33e
+  file_picker: 7584aae6fa07a041af2b36a2655122d42f578c1a
+  flutter_soloud: 7c7fe8f2067868981037aa9928c9abba59de4383
+  FlutterMacOS: d0db08ddef1a9af05a5ec4b724367152bb0500b1
+  sqflite_darwin: 20b2a3a3b70e43edae938624ce550a3cbf66a3d0
+
+PODFILE CHECKSUM: 79e0db88ae71eb624677a707542cb15bdc7d34b6
+
+COCOAPODS: 1.16.2
