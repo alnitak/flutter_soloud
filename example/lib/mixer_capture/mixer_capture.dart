@@ -191,7 +191,7 @@ class _MixerCaptureExampleState extends State<MixerCaptureExample> {
       case MixerOutputFormat.opus:
       case MixerOutputFormat.vorbis:
       case MixerOutputFormat.flac:
-        return format.toString();
+        return 'OGG/$format';
     }
   }
 
@@ -251,10 +251,13 @@ class _MixerCaptureExampleState extends State<MixerCaptureExample> {
                       _isCapturing ? 'stop capture' : 'start capture',
                     ),
                   ),
-                  ElevatedButton(
-                    onPressed: _isCapturing ? null : _pickOutputFile,
-                    child: const Text('choose file'),
-                  ),
+                  if (defaultTargetPlatform == TargetPlatform.windows ||
+                      defaultTargetPlatform == TargetPlatform.linux ||
+                      defaultTargetPlatform == TargetPlatform.macOS)
+                    ElevatedButton(
+                      onPressed: _isCapturing ? null : _pickOutputFile,
+                      child: const Text('choose file'),
+                    ),
                 ],
               ),
               Text(
