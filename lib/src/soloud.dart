@@ -134,8 +134,8 @@ Float32List _readSamplesFromMem(Map<String, dynamic> args) {
 }
 
 /// How SoLoud sets the Android (AAudio) stream's `AudioAttributes` when
-/// low-latency is disabled. See [SoLoud.init]'s `androidAudioAttributes`.
-enum AndroidAudioAttributes {
+/// low-latency is disabled. See [SoLoud.init]'s `androidAAudioAttributes`.
+enum AndroidAAudioAttributes {
   /// Tag the stream as `usage = media` / `contentType = music` (default).
   /// Sensible for a media app and capturable by system screen recorders.
   mediaMusic,
@@ -361,11 +361,11 @@ interface class SoLoud {
   /// callback headroom for DSP, at the cost of higher output latency. Only the
   /// native (miniaudio) backends honor this; the Web backend ignores it.
   ///
-  /// [androidAudioAttributes] (Android, native, `lowLatency: false` only)
+  /// [androidAAudioAttributes] (Android, native, `lowLatency: false` only)
   /// controls the AAudio stream's `AudioAttributes`. The default
-  /// [AndroidAudioAttributes.mediaMusic] tags the stream as `usage = media` /
+  /// [AndroidAAudioAttributes.mediaMusic] tags the stream as `usage = media` /
   /// `contentType = music` — sensible for a media app and capturable by screen
-  /// recorders. Pass [AndroidAudioAttributes.unmanaged] if you set the app's
+  /// recorders. Pass [AndroidAAudioAttributes.unmanaged] if you set the app's
   /// attributes/focus yourself (e.g. via the `audio_session` plugin): SoLoud
   /// then leaves usage/contentType unset so they don't fight your
   /// configuration. Either way the choice is preserved across output-device
@@ -379,8 +379,8 @@ interface class SoLoud {
     int bufferSize = 2048,
     Channels channels = Channels.stereo,
     bool lowLatency = true,
-    AndroidAudioAttributes androidAudioAttributes =
-        AndroidAudioAttributes.mediaMusic,
+    AndroidAAudioAttributes androidAAudioAttributes =
+        AndroidAAudioAttributes.mediaMusic,
   }) async {
     final nativeIsInitialized = _controller.soLoudFFI.isInited();
     _log.finest('init() called');
@@ -425,8 +425,8 @@ interface class SoLoud {
 
     // Must be set before the engine opens the device so the backend picks it
     // up at stream creation (and re-applies it on device changes).
-    _controller.soLoudFFI.setAndroidAudioAttributes(
-      androidAudioAttributes == AndroidAudioAttributes.mediaMusic,
+    _controller.soLoudFFI.setAndroidAAudioAttributes(
+      androidAAudioAttributes == AndroidAAudioAttributes.mediaMusic,
     );
 
     final error = _controller.soLoudFFI.initEngine(

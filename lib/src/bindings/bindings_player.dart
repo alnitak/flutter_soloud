@@ -94,7 +94,7 @@ abstract class FlutterSoLoud {
   /// affects the native backends with low-latency disabled; call before
   /// [initEngine]. No effect on web.
   @mustBeOverridden
-  void setAndroidAudioAttributes(bool managed);
+  void setAndroidAAudioAttributes(bool managed);
 
   /// Change the playback device.
   ///
