@@ -248,6 +248,15 @@ FFI_PLUGIN_EXPORT enum PlayerErrors initEngine(int deviceID,
         return PlayerErrors::noError;
     }
 
+/// Android only: choose whether SoLoud tags the AAudio stream's
+/// usage/contentType (media/music) or leaves them unset so the app can manage
+/// AudioAttributes externally (e.g. via the audio_session plugin). Only takes
+/// effect with low-latency disabled. Call before initEngine(). No effect on
+/// other backends. [managed] != 0 → media/music (default); 0 → leave unset.
+FFI_PLUGIN_EXPORT void setAndroidAudioAttributes(unsigned int managed) {
+  SoLoud::miniaudio_setAndroidAudioAttributes(managed != 0);
+}
+
 /// Change the playback device.
 ///
 /// [deviceID] the device ID. -1 for default OS output device.

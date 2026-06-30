@@ -136,6 +136,11 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }
 
   @override
+  void setAndroidAudioAttributes(bool managed) {
+    // No-op on web: AAudio stream attributes are Android-only.
+  }
+
+  @override
   PlayerErrors changeDevice(int deviceId) {
     final ret = wasmChangeDevice(deviceId);
     return PlayerErrors.values[ret];
