@@ -16,7 +16,10 @@ enum DetectedType {
   mp3WithId3,
 
   /// MP3 Stream audio format
-  mp3Stream;
+  mp3Stream,
+
+  /// WAV audio format
+  wav;
 
   /// Converts an integer value to a [DetectedType] enum value
   static DetectedType fromInt(int value) {
@@ -33,6 +36,8 @@ enum DetectedType {
         return DetectedType.mp3WithId3;
       case 5:
         return DetectedType.mp3Stream;
+      case 6:
+        return DetectedType.wav;
       default:
         return DetectedType.unknown;
     }
@@ -54,6 +59,8 @@ enum DetectedType {
         return 'MP3 with ID3';
       case DetectedType.mp3Stream:
         return 'MP3 Stream';
+      case DetectedType.wav:
+        return 'WAV';
     }
   }
 }
@@ -326,6 +333,7 @@ final class OggMetadata {
       case DetectedType.unknown:
       case DetectedType.mp3WithId3:
       case DetectedType.mp3Stream:
+      case DetectedType.wav:
         break;
     }
 
@@ -369,6 +377,8 @@ final class AudioMetadata {
         if (oggMetadata != null) {
           buffer.writeln(oggMetadata!.toStringWithFormat(detectedType));
         }
+      case DetectedType.wav:
+        buffer.writeln('WAV audio format');
       case DetectedType.unknown:
         buffer.writeln('Unknown audio format');
     }
