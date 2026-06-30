@@ -144,6 +144,7 @@ SOURCES=(
     ../src/soloud/src/audiosource/ay/*.c*
     ../src/soloud/src/audiosource/speech/*.c*
     ../src/soloud/src/audiosource/wav/*.c*
+    ../src/mixeroutput/*.cpp
     ../src/soloud_common.cpp
     ../src/bindings.cpp
     ../src/player.cpp

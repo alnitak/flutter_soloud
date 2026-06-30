@@ -360,94 +360,7 @@ extern "C"
 #else
   return false;
 #endif
-
-/// Initialize the player. Must be called before any other player functions.
-///
-/// [sampleRate] the sample rate. Usually is 22050, 44100 (CD quality) or 48000.
-/// [bufferSize] the audio buffer size. Usually is 2048, but can be also 512
-/// when low latency is needed for example in games. [channels] 1=mono,
-/// 2=stereo, 4=quad, 6=5.1, 8=7.1.
-///
-/// Returns [PlayerErrors.noError] if success.
-FFI_PLUGIN_EXPORT enum PlayerErrors initEngine(int deviceID,
-                                               unsigned int sampleRate,
-                                               unsigned int bufferSize,
-                                               unsigned int channels,
-                                               unsigned int lowLatency) {
-  std::lock_guard<std::mutex> guard(init_deinit_mutex);
-  std::lock_guard<std::mutex> guard_load(loadMutex);
-
-  if (player.get() == nullptr)
-    player = std::make_unique<Player>();
-
-  player.get()->setStateChangedCallback(stateChangedCallback);
-  PlayerErrors res = (PlayerErrors)player.get()->init(sampleRate, bufferSize,
-                                                      channels, deviceID,
-                                                      lowLatency != 0);
-  if (res != noError)
-    return res;
-
-  // Set window size for filters
-  const int windowSize = (player.get()->soloud.getBackendBufferSize() /
-                          player.get()->soloud.getBackendChannels()) -
-                         1;
-  analyzer.get()->setWindowsSize(windowSize);
-
-  // Set the callback for when a voice is ended/stopped
-  player.get()->setVoiceEndedCallback(voiceEndedCallback);
-
-        return PlayerErrors::noError;
-}
-
-/// Android only: choose whether SoLoud tags the AAudio stream's
-/// usage/contentType (media/music) or leaves them unset so the app can manage
-/// AudioAttributes externally (e.g. via the audio_session plugin). Only takes
-/// effect with low-latency disabled. Call before initEngine(). No effect on
-/// other backends. [managed] != 0 → media/music (default); 0 → leave unset.
-FFI_PLUGIN_EXPORT void setAndroidAAudioAttributes(unsigned int managed) {
-  SoLoud::miniaudio_setAndroidAAudioAttributes(managed != 0);
-}
-
-/// Change the playback device.
-///
-/// [deviceID] the device ID. -1 for default OS output device.
-FFI_PLUGIN_EXPORT enum PlayerErrors changeDevice(int deviceID) {
-  if (player.get() == nullptr)
-    return backendNotInited;
-
-  return player.get()->changeDevice(deviceID);
-}
-
-/// List playback devices.
-FFI_PLUGIN_EXPORT void listPlaybackDevices(char **devicesName, int **deviceId,
-                                           int **isDefault, int *n_devices) {
-  std::vector<PlaybackDevice> d = player.get()->listPlaybackDevices();
-
-  int numDevices = 0;
-  for (int i = 0; i < (int)d.size(); i++) {
-    bool hasSpecialChar = false;
-    /// check if the device name has some strange chars (happens on Linux)
-    /// It happens that some results had the name composed of non-text
-    /// ASCII characters with values <0x20 (blank space) which cannot be
-    /// real devices and should be ignored. Doesn't happen on my Linux
-    /// anymore (maybe was a bug on audio drivers?), but worth checking
-    /// to be sure.
-    for (int n = 0; n < 5; n++) {
-      if (d[i].name[n] < 0x20 && d[i].name[n] >= 0)
-        hasSpecialChar = true;
-    }
-    if (strlen(d[i].name) <= 5 || hasSpecialChar)
-      continue;
-
-    devicesName[numDevices] = strdup(d[i].name);
-    isDefault[numDevices] = (int *)malloc(sizeof(int));
-    *isDefault[numDevices] = d[i].isDefault;
-    deviceId[numDevices] = (int *)malloc(sizeof(int));
-    *deviceId[numDevices] = d[i].id;
-
-    numDevices++;
   }
-}
 
   /// Initialize the player. Must be called before any other player functions.
   ///
@@ -460,7 +373,8 @@ FFI_PLUGIN_EXPORT void listPlaybackDevices(char **devicesName, int **deviceId,
   FFI_PLUGIN_EXPORT enum PlayerErrors initEngine(int deviceID,
                                                  unsigned int sampleRate,
                                                  unsigned int bufferSize,
-                                                 unsigned int channels)
+                                                 unsigned int channels,
+                                                 unsigned int lowLatency)
   {
     std::lock_guard<std::mutex> guard(init_deinit_mutex);
     std::lock_guard<std::mutex> guard_load(loadMutex);
@@ -470,7 +384,8 @@ FFI_PLUGIN_EXPORT void listPlaybackDevices(char **devicesName, int **deviceId,
 
     player.get()->setStateChangedCallback(stateChangedCallback);
     PlayerErrors res = (PlayerErrors)player.get()->init(sampleRate, bufferSize,
-                                                        channels, deviceID);
+                                                        channels, deviceID,
+                                                        lowLatency != 0);
     if (res != noError)
       return res;
 
@@ -486,15 +401,14 @@ FFI_PLUGIN_EXPORT void listPlaybackDevices(char **devicesName, int **deviceId,
     return PlayerErrors::noError;
   }
 
-  /// Change the playback device.
-  ///
-  /// [deviceID] the device ID. -1 for default OS output device.
-  FFI_PLUGIN_EXPORT enum PlayerErrors changeDevice(int deviceID)
+  /// Android only: choose whether SoLoud tags the AAudio stream's
+  /// usage/contentType (media/music) or leaves them unset so the app can manage
+  /// AudioAttributes externally (e.g. via the audio_session plugin). Only takes
+  /// effect with low-latency disabled. Call before initEngine(). No effect on
+  /// other backends. [managed] != 0 → media/music (default); 0 → leave unset.
+  FFI_PLUGIN_EXPORT void setAndroidAAudioAttributes(unsigned int managed)
   {
-    if (player.get() == nullptr)
-      return backendNotInited;
-
-    return player.get()->changeDevice(deviceID);
+    SoLoud::miniaudio_setAndroidAAudioAttributes(managed != 0);
   }
 
   /// List playback devices.
@@ -529,7 +443,17 @@ FFI_PLUGIN_EXPORT void listPlaybackDevices(char **devicesName, int **deviceId,
 
       numDevices++;
     }
-    *n_devices = numDevices;
+  }
+
+  /// Change the playback device.
+  ///
+  /// [deviceID] the device ID. -1 for default OS output device.
+  FFI_PLUGIN_EXPORT enum PlayerErrors changeDevice(int deviceID)
+  {
+    if (player.get() == nullptr)
+      return backendNotInited;
+
+    return player.get()->changeDevice(deviceID);
   }
 
   /// Free the list of playback devices.
