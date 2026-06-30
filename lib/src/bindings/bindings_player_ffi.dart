@@ -293,16 +293,16 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       .asFunction<int Function(int, int, int, int, int)>();
 
   @override
-  void setAndroidAudioAttributes(bool managed) {
-    _setAndroidAudioAttributes(managed ? 1 : 0);
+  void setAndroidAAudioAttributes(bool managed) {
+    _setAndroidAAudioAttributes(managed ? 1 : 0);
   }
 
-  late final _setAndroidAudioAttributesPtr =
+  late final _setAndroidAAudioAttributesPtr =
       _lookup<ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt)>>(
-        'setAndroidAudioAttributes',
+        'setAndroidAAudioAttributes',
       );
-  late final _setAndroidAudioAttributes =
-      _setAndroidAudioAttributesPtr.asFunction<void Function(int)>();
+  late final _setAndroidAAudioAttributes = _setAndroidAAudioAttributesPtr
+      .asFunction<void Function(int)>();
 
   @override
   PlayerErrors changeDevice(int deviceId) {

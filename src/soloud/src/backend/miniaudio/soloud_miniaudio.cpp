@@ -30,42 +30,6 @@ distribution.
 #include <unistd.h>
 #endif
 
-namespace SoLoud
-{
-    // Selects the miniaudio performance profile used when (re)initializing the
-    // device. Low-latency (the historical default) maps to AAudio's
-    // PERFORMANCE_MODE_LOW_LATENCY / MMAP path on Android; that path can't be
-    // captured by system screen recorders and leaves little callback headroom
-    // for CPU-heavy filters. When this is false, the conservative (legacy
-    // mixer) profile is used instead. Defined outside the WITH_MINIAUDIO guard
-    // so the setter symbol always exists for the C bindings to call.
-    static bool gMiniaudioLowLatency = true;
-
-    void miniaudio_setLowLatency(bool aLowLatency)
-    {
-        gMiniaudioLowLatency = aLowLatency;
-    }
-
-    // Android (AAudio) stream attributes applied when low-latency is disabled.
-    // Default to media/music (sensible for a media app, and capturable). When
-    // [aManaged] is false the app wants to own AudioAttributes externally (e.g.
-    // via the audio_session plugin), so we leave usage/contentType unset
-    // (`_default`) and let AAudio pick its defaults. Stored in globals so the
-    // SAME choice is re-applied on device changes (see both call sites) rather
-    // than reverting. Defined outside the WITH_MINIAUDIO guard so the setter
-    // symbol always exists for the C bindings to call.
-    static ma_aaudio_usage gMiniaudioAaudioUsage = ma_aaudio_usage_media;
-    static ma_aaudio_content_type gMiniaudioAaudioContentType = ma_aaudio_content_type_music;
-
-    void miniaudio_setAndroidAudioAttributes(bool aManaged)
-    {
-        gMiniaudioAaudioUsage =
-            aManaged ? ma_aaudio_usage_media : ma_aaudio_usage_default;
-        gMiniaudioAaudioContentType =
-            aManaged ? ma_aaudio_content_type_music : ma_aaudio_content_type_default;
-    }
-}
-
 #if !defined(WITH_MINIAUDIO)
 
 namespace SoLoud
@@ -119,6 +83,26 @@ namespace SoLoud
     SoLoud::Soloud *soloud;
     ma_context context;
     volatile bool gDeviceStopped = true;  // Track device stopped state for proper cleanup
+    
+    // Selects the miniaudio performance profile used when (re)initializing the
+    // device. Low-latency (the historical default) maps to AAudio's
+    // PERFORMANCE_MODE_LOW_LATENCY / MMAP path on Android; that path can't be
+    // captured by system screen recorders and leaves little callback headroom
+    // for CPU-heavy filters. When this is false, the conservative (legacy
+    // mixer) profile is used instead. Defined outside the WITH_MINIAUDIO guard
+    // so the setter symbol always exists for the C bindings to call.
+    static bool gMiniaudioLowLatency = true;
+
+    // Android (AAudio) stream attributes applied when low-latency is disabled.
+    // Default to media/music (sensible for a media app, and capturable). When
+    // [aManaged] is false the app wants to own AudioAttributes externally (e.g.
+    // via the audio_session plugin), so we leave usage/contentType unset
+    // (`_default`) and let AAudio pick its defaults. Stored in globals so the
+    // SAME choice is re-applied on device changes (see both call sites) rather
+    // than reverting. Defined outside the WITH_MINIAUDIO guard so the setter
+    // symbol always exists for the C bindings to call.
+    static ma_aaudio_usage gMiniaudioAAudioUsage = ma_aaudio_usage_media;
+    static ma_aaudio_content_type gMiniaudioAAudioContentType = ma_aaudio_content_type_music;
 
     // Forward declarations for functions used in on_notification
     result soloud_miniaudio_pause(SoLoud::Soloud *aSoloud);
@@ -193,6 +177,19 @@ namespace SoLoud
 
             default: break;
         }
+    }
+
+    void miniaudio_setLowLatency(bool aLowLatency)
+    {
+        gMiniaudioLowLatency = aLowLatency;
+    }
+
+    void miniaudio_setAndroidAAudioAttributes(bool aManaged)
+    {
+        gMiniaudioAAudioUsage =
+            aManaged ? ma_aaudio_usage_media : ma_aaudio_usage_default;
+        gMiniaudioAAudioContentType =
+            aManaged ? ma_aaudio_content_type_music : ma_aaudio_content_type_default;
     }
 
     void soloud_miniaudio_audiomixer(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount)
@@ -426,14 +423,14 @@ namespace SoLoud
         // (set above). Tag the AAudio stream with the configured usage/contentType
         // (media/music by default; left unset when the app opts to manage
         // AudioAttributes externally via audio_session — see
-        // miniaudio_setAndroidAudioAttributes) and explicitly allow capture so
+        // miniaudio_setAndroidAAudioAttributes) and explicitly allow capture so
         // system screen recorders pick up the audio. miniaudio skips the setter
         // for `_default`, so opting out truly leaves the attributes untouched.
         // The same globals are re-applied on device changes (changeDevice_impl).
         if (!gMiniaudioLowLatency)
         {
-            deviceConfig.aaudio.usage                = gMiniaudioAaudioUsage;
-            deviceConfig.aaudio.contentType          = gMiniaudioAaudioContentType;
+            deviceConfig.aaudio.usage                = gMiniaudioAAudioUsage;
+            deviceConfig.aaudio.contentType          = gMiniaudioAAudioContentType;
             deviceConfig.aaudio.allowedCapturePolicy = ma_aaudio_allow_capture_by_all;
         }
 
@@ -586,12 +583,12 @@ namespace SoLoud
         {
             // Re-apply the SAME attributes chosen at init so a device change
             // doesn't silently revert them. If the app opted out
-            // (miniaudio_setAndroidAudioAttributes(false)), these are `_default`
+            // (miniaudio_setAndroidAAudioAttributes(false)), these are `_default`
             // and miniaudio leaves them unset — so an externally-managed
             // configuration (e.g. via audio_session) is preserved across device
             // changes rather than being forced back to media/music.
-            deviceConfig.aaudio.usage                = gMiniaudioAaudioUsage;
-            deviceConfig.aaudio.contentType          = gMiniaudioAaudioContentType;
+            deviceConfig.aaudio.usage                = gMiniaudioAAudioUsage;
+            deviceConfig.aaudio.contentType          = gMiniaudioAAudioContentType;
             deviceConfig.aaudio.allowedCapturePolicy = ma_aaudio_allow_capture_by_all;
         }
 #endif

@@ -84,7 +84,7 @@ namespace SoLoud
 	// as media/music; when false, leaves them unset so the app can manage
 	// AudioAttributes externally (e.g. via audio_session). Must be called before
 	// init. No-op effect on non-Android backends.
-	void miniaudio_setAndroidAudioAttributes(bool aManaged);
+	void miniaudio_setAndroidAAudioAttributes(bool aManaged);
 
 	// nosound back-end initialization call
 	result nosound_init(SoLoud::Soloud* aSoloud, unsigned int aFlags = Soloud::CLIP_ROUNDOFF, unsigned int aSamplerate = 44100, unsigned int aBuffer = 2048, unsigned int aChannels = 2);
