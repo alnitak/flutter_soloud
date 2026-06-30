@@ -137,6 +137,7 @@ SOURCES=(
     ../src/soloud/src/audiosource/ay/*.c*
     ../src/soloud/src/audiosource/speech/*.c*
     ../src/soloud/src/audiosource/wav/*.c*
+    ../src/mixeroutput/*.cpp
     ../src/soloud_common.cpp
     ../src/bindings.cpp
     ../src/player.cpp
@@ -173,6 +174,7 @@ if [ "${SKIP_OPUS_OGG}" != "1" ]; then
         "$OPUS_DIR/.libs/libopus.a"
         "$OGG_DIR/src/.libs/libogg.a"
         "$VORBIS_DIR/lib/.libs/libvorbis.a"
+        "$VORBIS_DIR/lib/.libs/libvorbisenc.a"
         "$VORBIS_DIR/lib/.libs/libvorbisfile.a"
         "$FLAC_DIR/src/libFLAC/.libs/libFLAC-static.a"
     )
