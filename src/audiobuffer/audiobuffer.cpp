@@ -555,6 +555,9 @@ BufferStream::convertMetadataToFFI(const AudioMetadata &metadata) {
   case BUFFER_MP3_STREAM:
     ffi.detectedType = DetectedTypeFFI::MP3_STREAM;
     break;
+  case BUFFER_WAV:
+    ffi.detectedType = DetectedTypeFFI::WAV;
+    break;
   default:
     ffi.detectedType = DetectedTypeFFI::UNKNOWN;
   }

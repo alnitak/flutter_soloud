@@ -1,5 +1,6 @@
 #include "stream_decoder.h"
 #include "mp3_stream_decoder.h"
+#include "wav_stream_decoder.h"
 #if !defined(NO_XIPH_LIBS)
 #   include "opus_stream_decoder.h"
 #   include "vorbis_stream_decoder.h"
@@ -94,6 +95,11 @@ DetectedType StreamDecoder::detectAudioFormat(const std::vector<unsigned char>& 
         return DetectedType::BUFFER_UNKNOWN;
     }
 
+    // --- Detect WAV ---
+    else if (WavDecoderWrapper::checkForValidWavHeader(buffer)) {
+        return DetectedType::BUFFER_WAV;
+    }
+
     // --- Detect MP3 ---
     else if (size >= 3 && getID3TagSize(buffer) != 0) {
         return DetectedType::BUFFER_MP3_WITH_ID3; // ID3 tag found
@@ -154,6 +160,12 @@ std::pair<std::vector<float>, DecoderError> StreamDecoder::decode(
                 return {{}, DecoderError::FailedToCreateDecoder};
             }
             static_cast<MP3DecoderWrapper*>(mWrapper.get())->setIcyMetaInt(mIcyMetaInt);
+        } else if (detectedType == DetectedType::BUFFER_WAV) {
+            mWrapper = std::make_unique<WavDecoderWrapper>();
+            isFormatDetected = static_cast<WavDecoderWrapper*>(mWrapper.get())->initializeDecoder(*samplerate, *channels);
+            if (!isFormatDetected) {
+                return {{}, DecoderError::FailedToCreateDecoder};
+            }
         }
         if (metadataChangeCallback) {
             mWrapper->setTrackChangeCallback(metadataChangeCallback);
@@ -183,6 +195,9 @@ std::pair<std::vector<float>, DecoderError> StreamDecoder::decode(
         if (mWrapper->detectedType == DetectedType::BUFFER_MP3_WITH_ID3 ||
             mWrapper->detectedType == DetectedType::BUFFER_MP3_STREAM) {
             return static_cast<MP3DecoderWrapper *>(mWrapper.get())->decode(buffer, samplerate, channels);
+        }
+        if (mWrapper->detectedType == DetectedType::BUFFER_WAV) {
+            return static_cast<WavDecoderWrapper *>(mWrapper.get())->decode(buffer, samplerate, channels);
         }
     }
     return {};
