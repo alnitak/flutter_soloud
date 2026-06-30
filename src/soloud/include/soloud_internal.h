@@ -77,6 +77,14 @@ namespace SoLoud
 	// MiniAudio back-end initialization call
 	result miniaudio_init(SoLoud::Soloud* aSoloud, unsigned int aFlags = Soloud::CLIP_ROUNDOFF, unsigned int aSamplerate = 44100, unsigned int aBuffer = 2048, unsigned int aChannels = 2, void *pPlaybackInfos_id = nullptr);
 	result miniaudio_changeDevice_impl(void *pPlaybackInfos_id);
+	// When false, opens the device on the conservative (legacy mixer) profile
+	// instead of the default low-latency/MMAP path. Must be called before init.
+	void miniaudio_setLowLatency(bool aLowLatency);
+	// Android only: when true (default), tags the AAudio stream usage/contentType
+	// as media/music; when false, leaves them unset so the app can manage
+	// AudioAttributes externally (e.g. via audio_session). Must be called before
+	// init. No-op effect on non-Android backends.
+	void miniaudio_setAndroidAAudioAttributes(bool aManaged);
 
 	// nosound back-end initialization call
 	result nosound_init(SoLoud::Soloud* aSoloud, unsigned int aFlags = Soloud::CLIP_ROUNDOFF, unsigned int aSamplerate = 44100, unsigned int aBuffer = 2048, unsigned int aChannels = 2);

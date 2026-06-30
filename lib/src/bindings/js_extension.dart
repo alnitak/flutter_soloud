@@ -133,6 +133,7 @@ external int wasmInitEngine(
   int sampleRate,
   int bufferSize,
   int channels,
+  int lowLatency,
 );
 
 @JS('Module_soloud._changeDevice')

@@ -12,7 +12,8 @@ enum NativeDetectedType {
   OGG_VORBIS(2),
   OGG_FLAC(3),
   MP3_WITH_ID3(4),
-  MP3_STREAM(5);
+  MP3_STREAM(5),
+  WAV(6);
 
   const NativeDetectedType(this.value);
   final int value;
@@ -24,6 +25,7 @@ enum NativeDetectedType {
     3 => OGG_FLAC,
     4 => MP3_WITH_ID3,
     5 => MP3_STREAM,
+    6 => WAV,
     _ => throw ArgumentError('Unknown value for DetectedTypeFFI: $value'),
   };
 
@@ -41,6 +43,8 @@ enum NativeDetectedType {
         return DetectedType.mp3WithId3;
       case MP3_STREAM:
         return DetectedType.mp3Stream;
+      case WAV:
+        return DetectedType.wav;
     }
   }
 }

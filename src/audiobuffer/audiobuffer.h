@@ -17,6 +17,7 @@
 #include "metadata_ffi.h"
 #include "mp3_stream_decoder.h"
 #include "stream_decoder.h"
+#include "wav_stream_decoder.h"
 
 class Player;
 

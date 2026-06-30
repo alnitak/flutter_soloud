@@ -83,7 +83,27 @@ namespace SoLoud
     ma_device gDevice;
     SoLoud::Soloud *soloud;
     ma_context context;
-    volatile bool gDeviceStopped = true; // Track device stopped state for proper cleanup
+    volatile bool gDeviceStopped = true;  // Track device stopped state for proper cleanup
+    
+    // Selects the miniaudio performance profile used when (re)initializing the
+    // device. Low-latency (the historical default) maps to AAudio's
+    // PERFORMANCE_MODE_LOW_LATENCY / MMAP path on Android; that path can't be
+    // captured by system screen recorders and leaves little callback headroom
+    // for CPU-heavy filters. When this is false, the conservative (legacy
+    // mixer) profile is used instead. Defined outside the WITH_MINIAUDIO guard
+    // so the setter symbol always exists for the C bindings to call.
+    static bool gMiniaudioLowLatency = true;
+
+    // Android (AAudio) stream attributes applied when low-latency is disabled.
+    // Default to media/music (sensible for a media app, and capturable). When
+    // [aManaged] is false the app wants to own AudioAttributes externally (e.g.
+    // via the audio_session plugin), so we leave usage/contentType unset
+    // (`_default`) and let AAudio pick its defaults. Stored in globals so the
+    // SAME choice is re-applied on device changes (see both call sites) rather
+    // than reverting. Defined outside the WITH_MINIAUDIO guard so the setter
+    // symbol always exists for the C bindings to call.
+    static ma_aaudio_usage gMiniaudioAAudioUsage = ma_aaudio_usage_media;
+    static ma_aaudio_content_type gMiniaudioAAudioContentType = ma_aaudio_content_type_music;
 
     // Forward declarations for functions used in on_notification
     result soloud_miniaudio_pause(SoLoud::Soloud *aSoloud);
@@ -173,7 +193,20 @@ namespace SoLoud
         }
     }
 
-    void soloud_miniaudio_audiomixer(ma_device *pDevice, void *pOutput, const void *pInput, ma_uint32 frameCount)
+    void miniaudio_setLowLatency(bool aLowLatency)
+    {
+        gMiniaudioLowLatency = aLowLatency;
+    }
+
+    void miniaudio_setAndroidAAudioAttributes(bool aManaged)
+    {
+        gMiniaudioAAudioUsage =
+            aManaged ? ma_aaudio_usage_media : ma_aaudio_usage_default;
+        gMiniaudioAAudioContentType =
+            aManaged ? ma_aaudio_content_type_music : ma_aaudio_content_type_default;
+    }
+
+    void soloud_miniaudio_audiomixer(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount)
     {
         static bool first_call = true;
         if (first_call)
@@ -353,6 +386,13 @@ namespace SoLoud
         // deviceConfig.aaudio.inputPreset = ma_aaudio_input_preset_default;
         deviceConfig.notificationCallback = on_notification;
 
+        // Honor the requested performance profile (see gMiniaudioLowLatency).
+        // Conservative keeps Android off the un-capturable MMAP path and gives
+        // heavy DSP more headroom; the trade-off is higher output latency.
+        deviceConfig.performanceProfile = gMiniaudioLowLatency
+            ? ma_performance_profile_low_latency
+            : ma_performance_profile_conservative;
+
 #ifdef _WIN32
         // On Windows, defer the entire device initialization to avoid interfering with
         // the main thread's message pump. This fixes compatibility with plugins like
@@ -403,7 +443,22 @@ namespace SoLoud
         gDeviceStartDeferred = false;
 
 #elif defined(__ANDROID__)
-        ma_backend backends[] = {ma_backend_aaudio, ma_backend_opensl};
+        // When low-latency is disabled the device runs on the legacy mixer path
+        // (set above). Tag the AAudio stream with the configured usage/contentType
+        // (media/music by default; left unset when the app opts to manage
+        // AudioAttributes externally via audio_session — see
+        // miniaudio_setAndroidAAudioAttributes) and explicitly allow capture so
+        // system screen recorders pick up the audio. miniaudio skips the setter
+        // for `_default`, so opting out truly leaves the attributes untouched.
+        // The same globals are re-applied on device changes (changeDevice_impl).
+        if (!gMiniaudioLowLatency)
+        {
+            deviceConfig.aaudio.usage                = gMiniaudioAAudioUsage;
+            deviceConfig.aaudio.contentType          = gMiniaudioAAudioContentType;
+            deviceConfig.aaudio.allowedCapturePolicy = ma_aaudio_allow_capture_by_all;
+        }
+
+        ma_backend backends[] = { ma_backend_aaudio, ma_backend_opensl };
         ma_uint32 backendCount = 2;
         if (android_get_device_api_level() <= 29)
         {
@@ -546,6 +601,27 @@ namespace SoLoud
         deviceConfig.dataCallback = soloud_miniaudio_audiomixer;
         deviceConfig.pUserData = (void *)soloud;
         deviceConfig.notificationCallback = on_notification;
+
+        // Preserve the performance profile chosen at init across device changes,
+        // otherwise switching the output device would silently revert to the
+        // default low-latency/MMAP path (see gMiniaudioLowLatency).
+        deviceConfig.performanceProfile = gMiniaudioLowLatency
+            ? ma_performance_profile_low_latency
+            : ma_performance_profile_conservative;
+#if defined(__ANDROID__)
+        if (!gMiniaudioLowLatency)
+        {
+            // Re-apply the SAME attributes chosen at init so a device change
+            // doesn't silently revert them. If the app opted out
+            // (miniaudio_setAndroidAAudioAttributes(false)), these are `_default`
+            // and miniaudio leaves them unset — so an externally-managed
+            // configuration (e.g. via audio_session) is preserved across device
+            // changes rather than being forced back to media/music.
+            deviceConfig.aaudio.usage                = gMiniaudioAAudioUsage;
+            deviceConfig.aaudio.contentType          = gMiniaudioAAudioContentType;
+            deviceConfig.aaudio.allowedCapturePolicy = ma_aaudio_allow_capture_by_all;
+        }
+#endif
 
         ma_result result;
 #if defined(MA_HAS_COREAUDIO) || defined(__ANDROID__)
