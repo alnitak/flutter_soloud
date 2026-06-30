@@ -85,7 +85,16 @@ abstract class FlutterSoLoud {
     int sampleRate,
     int bufferSize,
     Channels channels,
+    bool lowLatency,
   );
+
+  /// Android only: when [managed] is true (default) SoLoud tags the AAudio
+  /// stream as media/music; when false it leaves usage/contentType unset so the
+  /// app can manage AudioAttributes externally (e.g. via audio_session). Only
+  /// affects the native backends with low-latency disabled; call before
+  /// [initEngine]. No effect on web.
+  @mustBeOverridden
+  void setAndroidAudioAttributes(bool managed);
 
   /// Change the playback device.
   ///

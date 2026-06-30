@@ -221,7 +221,8 @@ FFI_PLUGIN_EXPORT bool areXiphLibsAvailable() {
 FFI_PLUGIN_EXPORT enum PlayerErrors initEngine(int deviceID,
                                                unsigned int sampleRate,
                                                unsigned int bufferSize,
-                                               unsigned int channels) {
+                                               unsigned int channels,
+                                               unsigned int lowLatency) {
   std::lock_guard<std::mutex> guard(init_deinit_mutex);
   std::lock_guard<std::mutex> guard_load(loadMutex);
 
@@ -230,7 +231,8 @@ FFI_PLUGIN_EXPORT enum PlayerErrors initEngine(int deviceID,
 
   player.get()->setStateChangedCallback(stateChangedCallback);
   PlayerErrors res = (PlayerErrors)player.get()->init(sampleRate, bufferSize,
-                                                      channels, deviceID);
+                                                      channels, deviceID,
+                                                      lowLatency != 0);
   if (res != noError)
     return res;
 
@@ -245,6 +247,15 @@ FFI_PLUGIN_EXPORT enum PlayerErrors initEngine(int deviceID,
 
         return PlayerErrors::noError;
     }
+
+/// Android only: choose whether SoLoud tags the AAudio stream's
+/// usage/contentType (media/music) or leaves them unset so the app can manage
+/// AudioAttributes externally (e.g. via the audio_session plugin). Only takes
+/// effect with low-latency disabled. Call before initEngine(). No effect on
+/// other backends. [managed] != 0 → media/music (default); 0 → leave unset.
+FFI_PLUGIN_EXPORT void setAndroidAudioAttributes(unsigned int managed) {
+  SoLoud::miniaudio_setAndroidAudioAttributes(managed != 0);
+}
 
 /// Change the playback device.
 ///

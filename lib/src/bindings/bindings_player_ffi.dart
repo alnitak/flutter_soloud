@@ -265,8 +265,15 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     int sampleRate,
     int bufferSize,
     Channels channels,
+    bool lowLatency,
   ) {
-    final ret = _initEngine(deviceId, sampleRate, bufferSize, channels.count);
+    final ret = _initEngine(
+      deviceId,
+      sampleRate,
+      bufferSize,
+      channels.count,
+      lowLatency ? 1 : 0,
+    );
     return PlayerErrors.values[ret];
   }
 
@@ -278,11 +285,24 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
             ffi.UnsignedInt,
             ffi.UnsignedInt,
             ffi.UnsignedInt,
+            ffi.UnsignedInt,
           )
         >
       >('initEngine');
   late final _initEngine = _initEnginePtr
-      .asFunction<int Function(int, int, int, int)>();
+      .asFunction<int Function(int, int, int, int, int)>();
+
+  @override
+  void setAndroidAudioAttributes(bool managed) {
+    _setAndroidAudioAttributes(managed ? 1 : 0);
+  }
+
+  late final _setAndroidAudioAttributesPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt)>>(
+        'setAndroidAudioAttributes',
+      );
+  late final _setAndroidAudioAttributes =
+      _setAndroidAudioAttributesPtr.asFunction<void Function(int)>();
 
   @override
   PlayerErrors changeDevice(int deviceId) {
