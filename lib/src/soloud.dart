@@ -133,6 +133,19 @@ Float32List _readSamplesFromMem(Map<String, dynamic> args) {
   );
 }
 
+/// How SoLoud sets the Android (AAudio) stream's `AudioAttributes` when
+/// low-latency is disabled. See [SoLoud.init]'s `androidAAudioAttributes`.
+enum AndroidAAudioAttributes {
+  /// Tag the stream as `usage = media` / `contentType = music` (default).
+  /// Sensible for a media app and capturable by system screen recorders.
+  mediaMusic,
+
+  /// Leave usage/contentType unset so the app can manage `AudioAttributes`
+  /// externally (e.g. via the `audio_session` plugin) without SoLoud
+  /// overriding them. The screen-record capture policy is still applied.
+  unmanaged,
+}
+
 /// The main class to call all the audio methods that play sounds.
 ///
 /// This class has a singleton [instance] which represents the (also singleton)
@@ -338,12 +351,36 @@ interface class SoLoud {
   /// The default value is 2048.
   ///
   /// [channels] mono, stereo, quad, 5.1, 7.1.
+  ///
+  /// [lowLatency] selects the audio backend's performance profile and defaults
+  /// to `true` (the historical behavior). On Android the low-latency profile
+  /// uses AAudio's MMAP path, which cannot be captured by system screen
+  /// recorders and leaves little CPU headroom for heavy filters (e.g. the FFT
+  /// pitch shift). Pass `false` to use the conservative (legacy mixer) profile
+  /// instead: the output becomes capturable by screen recording and gains
+  /// callback headroom for DSP, at the cost of higher output latency. Only the
+  /// native (miniaudio) backends honor this; the Web backend ignores it.
+  ///
+  /// [androidAAudioAttributes] (Android, native, `lowLatency: false` only)
+  /// controls the AAudio stream's `AudioAttributes`. The default
+  /// [AndroidAAudioAttributes.mediaMusic] tags the stream as `usage = media` /
+  /// `contentType = music` — sensible for a media app and capturable by screen
+  /// recorders. Pass [AndroidAAudioAttributes.unmanaged] if you set the app's
+  /// attributes/focus yourself (e.g. via the `audio_session` plugin): SoLoud
+  /// then leaves usage/contentType unset so they don't fight your
+  /// configuration. Either way the choice is preserved across output-device
+  /// changes. (Note these are the *stream's* attributes; `audio_session`
+  /// controls the *focus request* — for correct ducking they should match.)
+  /// Ignored when `lowLatency` is true, on non-Android platforms, and on web.
   Future<void> init({
     PlaybackDevice? device,
     bool automaticCleanup = false,
     int sampleRate = 44100,
     int bufferSize = 2048,
     Channels channels = Channels.stereo,
+    bool lowLatency = true,
+    AndroidAAudioAttributes androidAAudioAttributes =
+        AndroidAAudioAttributes.mediaMusic,
   }) async {
     final nativeIsInitialized = _controller.soLoudFFI.isInited();
     _log.finest('init() called');
@@ -386,11 +423,18 @@ interface class SoLoud {
       deinit();
     }
 
+    // Must be set before the engine opens the device so the backend picks it
+    // up at stream creation (and re-applies it on device changes).
+    _controller.soLoudFFI.setAndroidAAudioAttributes(
+      androidAAudioAttributes == AndroidAAudioAttributes.mediaMusic,
+    );
+
     final error = _controller.soLoudFFI.initEngine(
       device?.id ?? -1,
       sampleRate,
       bufferSize,
       channels,
+      lowLatency,
     );
     _logPlayerError(error, from: 'initialize() result');
     if (error == PlayerErrors.noError) {
