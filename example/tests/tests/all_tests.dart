@@ -15,7 +15,9 @@ import 'hot_restart_lifecycle.dart' as hot_restart_lifecycle;
 import 'limiter_filter.dart' as limiter_filter;
 import 'load_mem.dart' as load_mem;
 import 'looping.dart' as looping;
-import 'mixer_output_capture.dart' as mixer_output_capture;
+import 'mixer_output_capture.dart'
+    if (dart.library.js_interop) 'mixer_output_capture_web.dart'
+    as mixer_output_capture;
 import 'mixing_bus.dart' as mixing_bus;
 import 'pan.dart' as pan;
 import 'pitch_shifter_filter.dart' as pitch_shifter_filter;
