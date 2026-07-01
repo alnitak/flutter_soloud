@@ -33,8 +33,36 @@
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
-  <script src="flutter_bootstrap.js" async></script>
-  <script src="assets/packages/flutter_soloud/web/libflutter_soloud_plugin.js" defer></script>
-  <script src="assets/packages/flutter_soloud/web/init_module.dart.js" defer></script>
+  <!--
+    flutter_soloud loads a WebAssembly module through the plugin's JS glue.
+    The module must be initialized (and `Module_soloud` set to the resolved
+    module object) before the Flutter app starts calling any C functions.
+    Load the plugin scripts synchronously first, wait for the module to be
+    ready, and only then load `flutter_bootstrap.js`.
+  -->
+  <script src="assets/packages/flutter_soloud/web/libflutter_soloud_plugin.js"></script>
+  <script src="assets/packages/flutter_soloud/web/init_module.dart.js"></script>
+  <script>
+    (function () {
+      function waitForModuleSoloud() {
+        return new Promise(function (resolve) {
+          function check() {
+            var module = window.Module_soloud;
+            if (module != null && typeof module === 'object' && typeof module._isInited === 'function') {
+              resolve();
+            } else {
+              setTimeout(check, 10);
+            }
+          }
+          check();
+        });
+      }
+      waitForModuleSoloud().then(function () {
+        var script = document.createElement('script');
+        script.src = 'flutter_bootstrap.js';
+        document.body.appendChild(script);
+      });
+    })();
+  </script>
 </body>
 </html>
