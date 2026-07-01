@@ -131,6 +131,12 @@ build_lib() {
             -DBUILD_EXAMPLES=OFF
             -DBUILD_DOCS=OFF
             -DINSTALL_MANPAGES=OFF
+            # iOS does not ship libintl/gettext, and CMake's FindIconv can
+            # reference a stale/non-existent SDK include path on recent Xcode
+            # versions. FLAC itself does not need iconv for decoding, so skip
+            # these optional dependencies.
+            -DIconv_FOUND=OFF
+            -DIntl_FOUND=OFF
         )
     fi
 
