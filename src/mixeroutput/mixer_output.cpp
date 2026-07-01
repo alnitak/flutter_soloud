@@ -18,7 +18,7 @@ bool MixerOutput::isRunning() const { return m_running.load(); }
 
 bool MixerOutput::isCompressedFormat() const {
   return m_format == MIXER_OUTPUT_OPUS || m_format == MIXER_OUTPUT_VORBIS ||
-         m_format == MIXER_OUTPUT_FLAC;
+         m_format == MIXER_OUTPUT_FLAC || m_format == MIXER_OUTPUT_WAV;
 }
 
 PlayerErrors MixerOutput::start(MixerOutputFormat format, int sampleRate,

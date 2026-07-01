@@ -107,6 +107,15 @@ Future<StringBuffer> testMixerOutputCapture() async {
             chunks.first[3] == 0x43, // 'C'
         'FLAC output does not start with fLaC magic',
       );
+    } else if (format == MixerOutputFormat.wav) {
+      assert(
+        chunks.first.length > 4 &&
+            chunks.first[0] == 0x52 && // 'R'
+            chunks.first[1] == 0x49 && // 'I'
+            chunks.first[2] == 0x46 && // 'F'
+            chunks.first[3] == 0x46, // 'F'
+        'WAV output does not start with RIFF magic',
+      );
     }
 
     await delay(100);

@@ -3,6 +3,7 @@
 #include "flac_output_encoder.h"
 #include "opus_output_encoder.h"
 #include "vorbis_output_encoder.h"
+#include "wav_output_encoder.h"
 
 MixerOutputEncoder *MixerOutputEncoder::create(MixerOutputFormat format) {
   switch (format) {
@@ -12,6 +13,8 @@ MixerOutputEncoder *MixerOutputEncoder::create(MixerOutputFormat format) {
       return new VorbisOutputEncoder();
     case MIXER_OUTPUT_FLAC:
       return new FlacOutputEncoder();
+    case MIXER_OUTPUT_WAV:
+      return new WavOutputEncoder();
     default:
       return nullptr;
   }

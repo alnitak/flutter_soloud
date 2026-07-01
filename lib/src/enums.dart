@@ -450,7 +450,10 @@ enum MixerOutputFormat {
   vorbis(5),
 
   /// FLAC encoded audio.
-  flac(6);
+  flac(6),
+
+  /// WAV encoded audio (16-bit PCM in a RIFF/WAVE container).
+  wav(7);
 
   /// The integer value of the format.
   final int value;
@@ -477,6 +480,8 @@ enum MixerOutputFormat {
         return 'Vorbis';
       case MixerOutputFormat.flac:
         return 'FLAC';
+      case MixerOutputFormat.wav:
+        return 'WAV';
     }
   }
 }

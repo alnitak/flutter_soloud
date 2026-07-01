@@ -144,6 +144,7 @@ typedef enum MixerOutputFormat {
   MIXER_OUTPUT_OPUS = 4,
   MIXER_OUTPUT_VORBIS = 5,
   MIXER_OUTPUT_FLAC = 6,
+  MIXER_OUTPUT_WAV = 7,
 } MixerOutputFormat_t;
 
 typedef struct PCMformat {
