@@ -509,140 +509,6 @@ interface class SoLoud {
     _activeSounds.clear();
   }
 
-  ////////////////////////////////////////////////////////////////////
-  // Mixer output capture
-  ////////////////////////////////////////////////////////////////////
-
-  /// Subscription that reads mixer output data from the native circular
-  /// buffer and emits it through [startMixerOutputStream].
-  StreamSubscription<Uint8List>? _mixerOutputSubscription;
-
-  /// The broadcast stream of captured mixer output data.
-  StreamController<Uint8List>? _mixerOutputStreamController;
-
-  /// Captures the master mixer output as a [Stream] of [Uint8List] chunks.
-  ///
-  /// [format] the desired output format. PCM formats are supported on all
-  /// platforms. Compressed formats (Opus, Vorbis, FLAC) are available when
-  /// the plugin is built with Xiph libraries.
-  /// [sampleRate] the sample rate. Use -1 to follow the engine sample rate.
-  /// [channels] the channel count. Use -1 to follow the engine channels.
-  /// [bufferSizeBytes] total size of the circular capture buffer.
-  /// [notificationThresholdBytes] bytes that must be available before a chunk
-  /// is emitted.
-  ///
-  /// Returns a [Stream] that yields captured audio data. The stream is closed
-  /// when [stopMixerOutputStream] is called or when the engine is deinited.
-  Stream<Uint8List> startMixerOutputStream({
-    MixerOutputFormat format = MixerOutputFormat.pcmF32le,
-    int sampleRate = -1,
-    int channels = -1,
-    int bufferSizeBytes = 1024 * 1024,
-    int notificationThresholdBytes = 4096,
-  }) {
-    if (!isInitialized) {
-      throw const SoLoudNotInitializedException();
-    }
-
-    if (_mixerOutputStreamController != null) {
-      return _mixerOutputStreamController!.stream;
-    }
-
-    _mixerOutputStreamController = StreamController<Uint8List>.broadcast(
-      sync: true,
-    );
-
-    final error = _controller.soLoudFFI.startMixerOutputCapture(
-      format,
-      sampleRate,
-      channels,
-      bufferSizeBytes,
-      notificationThresholdBytes,
-    );
-
-    if (error != PlayerErrors.noError) {
-      _mixerOutputStreamController!.close();
-      _mixerOutputStreamController = null;
-      throw SoLoudCppException.fromPlayerError(error);
-    }
-
-    _mixerOutputSubscription = _controller.soLoudFFI.mixerOutputChunkEvents
-        .listen(_emitMixerOutputChunk);
-
-    return _mixerOutputStreamController!.stream;
-  }
-
-  void _emitMixerOutputChunk(Uint8List chunk) {
-    if (_mixerOutputStreamController == null ||
-        _mixerOutputStreamController!.isClosed) {
-      return;
-    }
-
-    if (chunk.isEmpty) {
-      return;
-    }
-
-    _mixerOutputStreamController!.add(chunk);
-  }
-
-  /// Stops the mixer output capture stream and releases associated resources.
-  void stopMixerOutputStream() {
-    _mixerOutputSubscription?.cancel();
-    _mixerOutputSubscription = null;
-    _controller.soLoudFFI.stopMixerOutputCapture();
-
-    // Flush any captured data that did not reach the notification threshold.
-    // The native side keeps the buffer alive after stopping so we can copy the
-    // tail synchronously and avoid losing compressed-format headers.
-    _flushRemainingMixerOutput();
-
-    _mixerOutputStreamController?.close();
-    _mixerOutputStreamController = null;
-  }
-
-  void _flushRemainingMixerOutput() {
-    final controller = _mixerOutputStreamController;
-    if (controller == null || controller.isClosed) {
-      return;
-    }
-
-    final available = _controller.soLoudFFI.getMixerOutputAvailableBytes();
-    if (available <= 0) {
-      return;
-    }
-
-    final bufferSize = _controller.soLoudFFI.getMixerOutputBufferSize();
-    final readOffset = _controller.soLoudFFI.getMixerOutputReadOffset();
-    final firstLength = available < bufferSize - readOffset
-        ? available
-        : bufferSize - readOffset;
-
-    if (firstLength > 0) {
-      final chunk = _controller.soLoudFFI.copyMixerOutputBuffer(
-        readOffset,
-        firstLength,
-      );
-      if (chunk.isNotEmpty) {
-        controller.add(chunk);
-      }
-    }
-
-    if (available > firstLength) {
-      final secondLength = available - firstLength;
-      final chunk = _controller.soLoudFFI.copyMixerOutputBuffer(
-        0,
-        secondLength,
-      );
-      if (chunk.isNotEmpty) {
-        controller.add(chunk);
-      }
-    }
-  }
-
-  /// Whether mixer output capture is currently active.
-  bool get isMixerOutputStreamRunning =>
-      _controller.soLoudFFI.isMixerOutputCaptureRunning();
-
   /// Find the [AudioSource] which owns the given [handle].
   AudioSource? findAudioSourceByHandle(SoundHandle handle) {
     for (final sound in _activeSounds) {
@@ -945,6 +811,147 @@ interface class SoLoud {
           return source;
         });
   }
+
+  ////////////////////////////////////////////////////////////////////
+  // Mixer output capture
+  ////////////////////////////////////////////////////////////////////
+
+  /// Subscription that reads mixer output data from the native circular
+  /// buffer and emits it through [startMixerOutputStream].
+  StreamSubscription<Uint8List>? _mixerOutputSubscription;
+
+  /// The broadcast stream of captured mixer output data.
+  StreamController<Uint8List>? _mixerOutputStreamController;
+
+  /// Captures the master mixer output as a [Stream] of [Uint8List] chunks.
+  ///
+  /// [format] the desired output format. PCM formats are supported on all
+  /// platforms. Compressed formats (Opus, Vorbis, FLAC) are available when
+  /// the plugin is built with Xiph libraries.
+  /// 
+  /// [sampleRate] the sample rate. Use -1 to follow the engine sample rate.
+  /// 
+  /// [channels] the channel count. Use -1 to follow the engine channels.
+  /// 
+  /// [bufferSizeBytes] total size of the circular capture buffer.
+  /// 
+  /// [notificationThresholdBytes] bytes that must be available before a chunk
+  /// is emitted.
+  ///
+  /// Returns a [Stream] that yields captured audio data. The stream is closed
+  /// when [stopMixerOutputStream] is called or when the engine is deinited.
+  @experimental
+  Stream<Uint8List> startMixerOutputStream({
+    MixerOutputFormat format = MixerOutputFormat.pcmF32le,
+    int sampleRate = -1,
+    int channels = -1,
+    int bufferSizeBytes = 1024 * 1024,
+    int notificationThresholdBytes = 4096,
+  }) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+
+    if (_mixerOutputStreamController != null) {
+      return _mixerOutputStreamController!.stream;
+    }
+
+    _mixerOutputStreamController = StreamController<Uint8List>.broadcast(
+      sync: true,
+    );
+
+    final error = _controller.soLoudFFI.startMixerOutputCapture(
+      format,
+      sampleRate,
+      channels,
+      bufferSizeBytes,
+      notificationThresholdBytes,
+    );
+
+    if (error != PlayerErrors.noError) {
+      _mixerOutputStreamController!.close();
+      _mixerOutputStreamController = null;
+      throw SoLoudCppException.fromPlayerError(error);
+    }
+
+    _mixerOutputSubscription = _controller.soLoudFFI.mixerOutputChunkEvents
+        .listen(_emitMixerOutputChunk);
+
+    return _mixerOutputStreamController!.stream;
+  }
+
+  void _emitMixerOutputChunk(Uint8List chunk) {
+    if (_mixerOutputStreamController == null ||
+        _mixerOutputStreamController!.isClosed) {
+      return;
+    }
+
+    if (chunk.isEmpty) {
+      return;
+    }
+
+    _mixerOutputStreamController!.add(chunk);
+  }
+
+  /// Stops the mixer output capture stream and releases associated resources.
+  @experimental
+  void stopMixerOutputStream() {
+    _mixerOutputSubscription?.cancel();
+    _mixerOutputSubscription = null;
+    _controller.soLoudFFI.stopMixerOutputCapture();
+
+    // Flush any captured data that did not reach the notification threshold.
+    // The native side keeps the buffer alive after stopping so we can copy the
+    // tail synchronously and avoid losing compressed-format headers.
+    _flushRemainingMixerOutput();
+
+    _mixerOutputStreamController?.close();
+    _mixerOutputStreamController = null;
+  }
+
+  void _flushRemainingMixerOutput() {
+    final controller = _mixerOutputStreamController;
+    if (controller == null || controller.isClosed) {
+      return;
+    }
+
+    final available = _controller.soLoudFFI.getMixerOutputAvailableBytes();
+    if (available <= 0) {
+      return;
+    }
+
+    final bufferSize = _controller.soLoudFFI.getMixerOutputBufferSize();
+    final readOffset = _controller.soLoudFFI.getMixerOutputReadOffset();
+    final firstLength = available < bufferSize - readOffset
+        ? available
+        : bufferSize - readOffset;
+
+    if (firstLength > 0) {
+      final chunk = _controller.soLoudFFI.copyMixerOutputBuffer(
+        readOffset,
+        firstLength,
+      );
+      if (chunk.isNotEmpty) {
+        controller.add(chunk);
+      }
+    }
+
+    if (available > firstLength) {
+      final secondLength = available - firstLength;
+      final chunk = _controller.soLoudFFI.copyMixerOutputBuffer(
+        0,
+        secondLength,
+      );
+      if (chunk.isNotEmpty) {
+        controller.add(chunk);
+      }
+    }
+  }
+
+  /// Whether mixer output capture is currently active.
+  @experimental
+  bool get isMixerOutputStreamRunning =>
+      _controller.soLoudFFI.isMixerOutputCaptureRunning();
 
   /// Set up an audio stream.
   ///

@@ -1,6 +1,6 @@
 #### 4.1.0 (XX Xxx 2026)
 - get rid of stb_vorbis c file in favor of the Xiph OGG libraries for Opus, Vorbis, and FLAC
-- buffer stream now supports FLAC format besides Ogg with Opus, Vorbis, and FLAC containers
+- buffer stream now supports FLAC and WAV formats besides Ogg with Opus, Vorbis, and FLAC containers
 - reduced initial buffer data from 32 to 4 KB to let the buffer to start playing faster
 - now the auto-pause when the buffer needs more audio works as expected and respect the player pause state (it doesn't automatically unpause when there is enough data in the buffer if the player was paused)
 - websocket example: added play/pause and touch to seek to the buffer visual widget
