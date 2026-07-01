@@ -126,20 +126,33 @@ class _MyHomePageState extends State<MyHomePage> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // Run All button
-        SizedBox(
-          width: double.infinity,
-          child: FilledButton.icon(
-            onPressed: isRunningAll ? null : _runAllTests,
-            icon: isRunningAll
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.play_arrow),
-            label: const Text('Run All Tests'),
-          ),
+        // Run All / Run Selected buttons
+        Row(
+          children: [
+            Expanded(
+              child: FilledButton.icon(
+                onPressed: isRunningAll ? null : _runAllTests,
+                icon: isRunningAll
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.play_arrow),
+                label: const Text('Run All Tests'),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: FilledButton.icon(
+                onPressed: isRunningAll || selectedTest == null
+                    ? null
+                    : _runFromSelectedTest,
+                icon: const Icon(Icons.play_arrow),
+                label: const Text('Run from Selected'),
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 12),
         // Single test selector
@@ -238,6 +251,27 @@ class _MyHomePageState extends State<MyHomePage> {
     });
 
     for (var i = 0; i < tests.length; i++) {
+      await _runTestByIndex(i);
+    }
+
+    setState(() {
+      isRunningAll = false;
+    });
+  }
+
+  Future<void> _runFromSelectedTest() async {
+    final startIndex = tests.indexWhere((t) => t.entry == selectedTest);
+    if (startIndex < 0) return;
+
+    setState(() {
+      isRunningAll = true;
+      output.clear();
+      for (final test in tests) {
+        test.status = TestStatus.none;
+      }
+    });
+
+    for (var i = startIndex; i < tests.length; i++) {
       await _runTestByIndex(i);
     }
 
