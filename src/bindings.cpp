@@ -443,6 +443,7 @@ extern "C"
 
       numDevices++;
     }
+    *n_devices = numDevices;
   }
 
   /// Change the playback device.
