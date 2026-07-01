@@ -64,6 +64,7 @@ class _MyHomePageState extends State<MyHomePage> {
   void initState() {
     super.initState();
     tests = allTests.map((e) => _Test(entry: e)).toList();
+    tests.sort((a, b) => a.entry.name.compareTo(b.entry.name));
     selectedTest = tests.first.entry;
   }
 
