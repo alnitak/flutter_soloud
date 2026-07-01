@@ -410,6 +410,24 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     return Uint8List.fromList((ptr + offset).asTypedList(length));
   }
 
+  @override
+  Uint8List getMixerOutputWavHeader() {
+    final ptr = _getMixerOutputWavHeader();
+    if (ptr == ffi.nullptr) {
+      return Uint8List(0);
+    }
+    final bytes = Uint8List.fromList(ptr.asTypedList(44));
+    nativeFree(ptr.cast<ffi.Void>());
+    return bytes;
+  }
+
+  late final _getMixerOutputWavHeaderPtr =
+      _lookup<ffi.NativeFunction<ffi.Pointer<ffi.Uint8> Function()>>(
+        'getMixerOutputWavHeader',
+      );
+  late final _getMixerOutputWavHeader = _getMixerOutputWavHeaderPtr
+      .asFunction<ffi.Pointer<ffi.Uint8> Function()>();
+
   late final _setMixerOutputCallbackPtr =
       _lookup<
         ffi.NativeFunction<ffi.Void Function(DartMixerOutputDataCallbackT)>

@@ -7,9 +7,11 @@ bool WavOutputEncoder::initialize(int sampleRate, int channels) {
   m_sampleRate = sampleRate;
   m_channels = channels;
   m_totalSamples = 0;
-  m_pcmData.clear();
   m_inputBuffer.clear();
   m_initialized = true;
+
+  // Emit the header immediately so the stream starts with a valid-ish WAV
+  // header. The size fields will be patched when the caller stops capture.
   return true;
 }
 
@@ -25,13 +27,10 @@ bool WavOutputEncoder::encode(const float *input, size_t samples,
     m_inputBuffer[i] = static_cast<int16_t>(clamped * 32767.0f);
   }
 
-  m_pcmData.insert(m_pcmData.end(),
-                   reinterpret_cast<const uint8_t *>(m_inputBuffer.data()),
-                   reinterpret_cast<const uint8_t *>(m_inputBuffer.data()) +
-                       samples * sizeof(int16_t));
-
   m_totalSamples += samples;
-  output.clear();
+
+  output.resize(samples * sizeof(int16_t));
+  std::memcpy(output.data(), m_inputBuffer.data(), output.size());
   return true;
 }
 
@@ -40,16 +39,23 @@ bool WavOutputEncoder::finalize(std::vector<uint8_t> &output) {
     return false;
   }
 
+  // Nothing to emit at finalize; the stream already received the header and
+  // all PCM chunks. The caller should request the updated header separately.
   output.clear();
-  writeHeader(output);
-  output.insert(output.end(), m_pcmData.begin(), m_pcmData.end());
-  m_pcmData.clear();
   return true;
 }
 
-void WavOutputEncoder::writeHeader(std::vector<uint8_t> &output) {
+void WavOutputEncoder::writeHeader(std::vector<uint8_t> &output,
+                                   size_t totalPcmBytes) {
+  const size_t pcmDataSize =
+      totalPcmBytes == 0 ? m_totalSamples * sizeof(int16_t) : totalPcmBytes;
+  buildHeader(output, pcmDataSize);
+}
+
+void WavOutputEncoder::buildHeader(std::vector<uint8_t> &output,
+                                   size_t pcmDataSize) {
   const uint32_t byteRate = m_sampleRate * m_channels * sizeof(int16_t);
-  const uint32_t dataSize = static_cast<uint32_t>(m_totalSamples * sizeof(int16_t));
+  const uint32_t dataSize = static_cast<uint32_t>(pcmDataSize);
   const uint32_t chunkSize = 36 + dataSize;
   const uint16_t blockAlign = static_cast<uint16_t>(m_channels * sizeof(int16_t));
   const uint16_t bitsPerSample = 16;

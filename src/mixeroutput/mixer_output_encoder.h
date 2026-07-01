@@ -32,6 +32,16 @@ class MixerOutputEncoder {
   /// Returns true on success.
   virtual bool finalize(std::vector<uint8_t> &output) = 0;
 
+  /// Write the current WAV header into [output]. Only valid for WAV encoders;
+  /// other implementations should leave [output] unchanged.
+  virtual bool writeCurrentHeader(std::vector<uint8_t> &output) {
+    output.clear();
+    return false;
+  }
+
+  /// Total number of payload bytes emitted so far. Meaningful for WAV only.
+  virtual size_t totalPayloadBytes() const { return 0; }
+
   /// Bytes per sample of the input PCM expected by this encoder.
   virtual size_t inputBytesPerSample() const = 0;
 

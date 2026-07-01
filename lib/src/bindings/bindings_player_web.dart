@@ -176,6 +176,19 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }
 
   @override
+  Uint8List getMixerOutputWavHeader() {
+    final ptr = wasmGetMixerOutputWavHeader();
+    if (ptr == 0) {
+      return Uint8List(0);
+    }
+    final heapBuffer = wasmHeapU8Buffer;
+    final bytes = Uint8List.view(heapBuffer.toDart, ptr, 44);
+    final copy = Uint8List.fromList(bytes);
+    wasmFree(ptr);
+    return copy;
+  }
+
+  @override
   Uint8List copyMixerOutputBuffer(int offset, int length) {
     if (length <= 0) {
       return Uint8List(0);

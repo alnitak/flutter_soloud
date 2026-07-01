@@ -128,6 +128,16 @@ abstract class FlutterSoLoud {
   @mustBeOverridden
   Uint8List copyMixerOutputBuffer(int offset, int length);
 
+  /// Returns the current 44-byte WAV header for the active capture session.
+  ///
+  /// This is only meaningful when the capture format is
+  /// [MixerOutputFormat.wav].
+  /// The header's size fields reflect the PCM data emitted so far; callers
+  /// should overwrite the first 44 bytes of the saved file with the returned
+  /// header after stopping capture to ensure the WAV file is valid.
+  @mustBeOverridden
+  Uint8List getMixerOutputWavHeader();
+
   /// Initialize the player. Must be called before any other player functions.
   ///
   /// [deviceId] the device ID. -1 for default OS output device.

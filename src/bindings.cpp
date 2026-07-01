@@ -1,5 +1,6 @@
 #include "analyzer.h"
 #include "mixeroutput/mixer_output.h"
+#include "mixeroutput/wav_output_encoder.h"
 #include "player.h"
 #include "soloud/include/soloud_bus.h"
 #include "soloud/include/soloud_fft.h"
@@ -316,6 +317,23 @@ extern "C"
   {
     MixerOutput::instance().advanceReadPosition(
         static_cast<size_t>(bytes));
+  }
+
+  FFI_PLUGIN_EXPORT unsigned char *getMixerOutputWavHeader()
+  {
+    const auto &header = MixerOutput::instance().getWavHeader();
+    if (header.empty())
+    {
+      return nullptr;
+    }
+
+    auto *result = static_cast<unsigned char *>(malloc(header.size()));
+    if (result == nullptr)
+    {
+      return nullptr;
+    }
+    std::memcpy(result, header.data(), header.size());
+    return result;
   }
 
   FFI_PLUGIN_EXPORT void setMixerOutputCallback(

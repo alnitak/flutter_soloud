@@ -826,18 +826,25 @@ interface class SoLoud {
   /// Captures the master mixer output as a [Stream] of [Uint8List] chunks.
   ///
   /// [format] the desired output format. PCM formats are supported on all
-  /// platforms. Compressed formats (Opus, Vorbis, FLAC) are available when
+  /// platforms. Compressed formats (Opus, Vorbis, FLAC, WAV) are available when
   /// the plugin is built with Xiph libraries. The default is PCM F32LE and
   /// it is the only format that doesn't require conversion (when [sampleRate]
   /// and [channels] are set to -1) on the native side, so it is
   /// the most efficient and preferred on mobile.
-  /// 
+  ///
+  /// **WAV caveat:** When [format] is [MixerOutputFormat.wav], the stream emits
+  /// a 44-byte header followed by PCM chunks incrementally, just like the other
+  /// formats. However, the header size fields are placeholders until capture
+  /// stops. To produce a valid WAV file, call [getMixerOutputWavHeader] after
+  /// [stopMixerOutputStream] and overwrite the first 44 bytes of the saved file
+  /// with the returned header.
+  ///
   /// [sampleRate] the sample rate. Use -1 to follow the engine sample rate.
-  /// 
+  ///
   /// [channels] the channel count. Use -1 to follow the engine channels.
-  /// 
+  ///
   /// [bufferSizeBytes] total size of the circular capture buffer.
-  /// 
+  ///
   /// [notificationThresholdBytes] bytes that must be available before a chunk
   /// is emitted.
   ///
@@ -955,6 +962,28 @@ interface class SoLoud {
   @experimental
   bool get isMixerOutputStreamRunning =>
       _controller.soLoudFFI.isMixerOutputCaptureRunning();
+
+  /// Returns the current 44-byte WAV header for the active mixer output
+  /// capture.
+  ///
+  /// This is only meaningful when the capture format is
+  /// [MixerOutputFormat.wav].
+  /// Because the WAV container stores the total PCM size in its header, the
+  /// header emitted at the start of the stream has placeholder size values.
+  /// The stream emits PCM bytes incrementally like the other formats, but the
+  /// file is not fully valid until the caller overwrites the first 44 bytes
+  /// with the header returned by this method after [stopMixerOutputStream] is
+  /// called.
+  ///
+  /// Returns an empty [Uint8List] if WAV capture is not active or the header
+  /// is unavailable.
+  @experimental
+  Uint8List getMixerOutputWavHeader() {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    return _controller.soLoudFFI.getMixerOutputWavHeader();
+  }
 
   /// Set up an audio stream.
   ///

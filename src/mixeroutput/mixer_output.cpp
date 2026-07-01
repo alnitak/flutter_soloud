@@ -6,6 +6,7 @@
 #include <cstring>
 
 #include "pcm_converter.h"
+#include "wav_output_encoder.h"
 
 MixerOutput &MixerOutput::instance() {
   static MixerOutput instance;
@@ -42,6 +43,7 @@ PlayerErrors MixerOutput::start(MixerOutputFormat format, int sampleRate,
   m_channels = channels;
   m_bufferSize = bufferSizeBytes;
   m_notificationThreshold = notificationThresholdBytes;
+  m_wavHeader.clear();
 
   // Increment the capture id so any in-flight callbacks from a previous
   // capture session can be identified and discarded by the Dart side.
@@ -110,6 +112,12 @@ void MixerOutput::stop() {
 
   if (m_notificationThread.joinable()) {
     m_notificationThread.join();
+  }
+
+  // Cache the final WAV header after the encoder thread has finished so the
+  // total sample count reflects all queued PCM data.
+  if (m_encoder != nullptr) {
+    m_encoder->writeCurrentHeader(m_wavHeader);
   }
 
   m_encoder.reset();
@@ -206,6 +214,13 @@ void MixerOutput::encoderThreadFunc() {
 
   std::vector<float> chunk;
   std::vector<uint8_t> encoded;
+
+  // Write the WAV header at the start of the stream so the file begins with
+  // a valid-ish RIFF/WAVE header. The size fields are patched after capture.
+  std::vector<uint8_t> header;
+  if (m_encoder->writeCurrentHeader(header) && !header.empty()) {
+    writeToBuffer(header.data(), header.size());
+  }
 
   while (m_pcmQueue->pop(chunk)) {
     if (!m_encoder->encode(chunk.data(), chunk.size(), encoded)) {

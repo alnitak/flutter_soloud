@@ -124,6 +124,9 @@ external int wasmGetMixerCaptureReadOffset();
 @JS('Module_soloud._advanceMixerCaptureReadPosition')
 external void wasmAdvanceMixerCaptureReadPosition(int bytes);
 
+@JS('Module_soloud._getMixerOutputWavHeader')
+external int wasmGetMixerOutputWavHeader();
+
 @JS('Module_soloud._setMixerOutputCallback')
 external void wasmSetMixerOutputCallback(int callbackPtr);
 

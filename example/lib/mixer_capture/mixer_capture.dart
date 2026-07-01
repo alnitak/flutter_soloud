@@ -74,8 +74,10 @@ class _MixerCaptureExampleState extends State<MixerCaptureExample> {
 
   @override
   void dispose() {
-    _captureSubscription?.cancel();
+    // Stop the native capture first so the stream can flush its final chunk
+    // and the subscription's onDone handler can close the output file.
     SoLoud.instance.stopMixerOutputStream();
+    _captureSubscription?.cancel();
     SoLoud.instance.deinit();
     super.dispose();
   }
@@ -112,6 +114,23 @@ class _MixerCaptureExampleState extends State<MixerCaptureExample> {
     setState(() => _outputFilePath = result);
   }
 
+  Future<void> _patchWavHeader(String path) async {
+    final header = SoLoud.instance.getMixerOutputWavHeader();
+    if (header.length != 44) {
+      dev.log('WAV header unavailable; skipping patch.');
+      return;
+    }
+
+    try {
+      final raf = File(path).openSync(mode: FileMode.writeOnlyAppend)
+        ..setPositionSync(0)
+        ..writeFromSync(header);
+      await raf.close();
+    } on FileSystemException catch (e) {
+      dev.log('Failed to patch WAV header: $e');
+    }
+  }
+
   String _suggestedFileName() {
     final extension = switch (_format) {
       MixerOutputFormat.pcmF32le => 'f32le.raw',
@@ -128,15 +147,21 @@ class _MixerCaptureExampleState extends State<MixerCaptureExample> {
 
   void _toggleCapture() {
     if (_isCapturing) {
+      // Stop the native capture first so the WAV encoder flushes its final
+      // chunk into the stream. The stream will close and the subscription's
+      // onDone will fire; after that we can cancel the listener.
+      SoLoud.instance.stopMixerOutputStream();
       _captureSubscription?.cancel();
       _captureSubscription = null;
-      SoLoud.instance.stopMixerOutputStream();
       setState(() => _isCapturing = false);
       return;
     }
 
     _totalBytes = 0;
-    final stream = SoLoud.instance.startMixerOutputStream(format: _format);
+    final captureFormat = _format;
+    final stream = SoLoud.instance.startMixerOutputStream(
+      format: captureFormat,
+    );
 
     RandomAccessFile? outputFile;
     if (_outputFilePath != null) {
@@ -160,6 +185,14 @@ class _MixerCaptureExampleState extends State<MixerCaptureExample> {
       onDone: () async {
         try {
           await outputFile?.close();
+
+          // WAV writes its header at the start of the stream with placeholder
+          // sizes. Patch the first 44 bytes with the final header after the
+          // capture stops so the saved file is valid.
+          if (captureFormat == MixerOutputFormat.wav &&
+              _outputFilePath != null) {
+            await _patchWavHeader(_outputFilePath!);
+          }
         } on FileSystemException catch (e) {
           dev.log('Failed to close output file: $e');
         }

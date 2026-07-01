@@ -69,6 +69,13 @@ class MixerOutput {
   /// proxied asynchronously to the main thread).
   uint32_t captureId() const { return m_captureId.load(); }
 
+  /// Encoder currently in use, or nullptr for PCM formats.
+  MixerOutputEncoder *encoder() const { return m_encoder.get(); }
+
+  /// Returns the cached WAV header, or an empty vector if no WAV capture has
+  /// been started or if the encoder did not produce a header.
+  const std::vector<uint8_t> &getWavHeader() const { return m_wavHeader; }
+
  private:
   MixerOutput() = default;
   ~MixerOutput();
@@ -108,4 +115,8 @@ class MixerOutput {
   std::unique_ptr<PcmChunkQueue> m_pcmQueue;
   std::unique_ptr<MixerOutputEncoder> m_encoder;
   std::thread m_encoderThread;
+
+  // WAV header cached on stop so callers can retrieve it after the encoder
+  // has been released.
+  std::vector<uint8_t> m_wavHeader;
 };
