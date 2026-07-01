@@ -1,7 +1,6 @@
 // ignore_for_file: require_trailing_commas, avoid_positional_boolean_parameters
 
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -549,7 +548,9 @@ interface class SoLoud {
       return _mixerOutputStreamController!.stream;
     }
 
-    _mixerOutputStreamController = StreamController<Uint8List>.broadcast();
+    _mixerOutputStreamController = StreamController<Uint8List>.broadcast(
+      sync: true,
+    );
 
     final error = _controller.soLoudFFI.startMixerOutputCapture(
       format,
@@ -606,7 +607,6 @@ interface class SoLoud {
     }
 
     final available = _controller.soLoudFFI.getMixerOutputAvailableBytes();
-    print('FLUSH available=$available');
     if (available <= 0) {
       return;
     }
@@ -617,13 +617,11 @@ interface class SoLoud {
         ? available
         : bufferSize - readOffset;
 
-    print('FLUSH bufferSize=$bufferSize readOffset=$readOffset firstLength=$firstLength');
     if (firstLength > 0) {
       final chunk = _controller.soLoudFFI.copyMixerOutputBuffer(
         readOffset,
         firstLength,
       );
-      print('FLUSH chunk length=${chunk.length}');
       if (chunk.isNotEmpty) {
         controller.add(chunk);
       }

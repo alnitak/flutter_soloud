@@ -387,7 +387,6 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   late final _advanceMixerCaptureReadPosition =
       _advanceMixerCaptureReadPositionPtr.asFunction<void Function(int)>();
 
-  @override
   int getMixerOutputBufferPointer() {
     return _getMixerCaptureBufferPointer().address;
   }
@@ -396,8 +395,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       _lookup<ffi.NativeFunction<ffi.Pointer<ffi.Uint8> Function()>>(
         'getMixerCaptureBufferPointer',
       );
-  late final _getMixerCaptureBufferPointer =
-      _getMixerCaptureBufferPointerPtr.asFunction<ffi.Pointer<ffi.Uint8> Function()>();
+  late final _getMixerCaptureBufferPointer = _getMixerCaptureBufferPointerPtr
+      .asFunction<ffi.Pointer<ffi.Uint8> Function()>();
 
   @override
   Uint8List copyMixerOutputBuffer(int offset, int length) {
@@ -408,9 +407,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     if (ptr == ffi.nullptr) {
       return Uint8List(0);
     }
-    return Uint8List.fromList(
-      ptr.elementAt(offset).asTypedList(length),
-    );
+    return Uint8List.fromList((ptr + offset).asTypedList(length));
   }
 
   late final _setMixerOutputCallbackPtr =

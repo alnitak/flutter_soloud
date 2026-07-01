@@ -180,8 +180,13 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     if (length <= 0) {
       return Uint8List(0);
     }
+    final basePointer = wasmGetMixerCaptureBufferPointer();
     final heapBuffer = wasmHeapU8Buffer;
-    final bytes = Uint8List.view(heapBuffer.toDart, offset, length);
+    final bytes = Uint8List.view(
+      heapBuffer.toDart,
+      basePointer + offset,
+      length,
+    );
     return Uint8List.fromList(bytes);
   }
 

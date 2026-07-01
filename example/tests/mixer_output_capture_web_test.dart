@@ -10,8 +10,11 @@ import 'package:flutter_soloud/src/bindings/js_extension.dart' as js;
 ///
 /// Run with:
 ///   flutter run -d chrome --wasm -t tests/mixer_output_capture_web_test.dart
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  await SoLoud.instance.init();
+
   runApp(const CaptureWebTestApp());
 }
 
@@ -40,14 +43,13 @@ class _CaptureWebTestAppState extends State<CaptureWebTestApp> {
   Future<void> _run() async {
     log('=== MixerOutputCaptureWebTest starting ===');
 
-    await SoLoud.instance.init();
     SoLoud.instance.setGlobalVolume(0.2);
 
     final sound = await SoLoud.instance.loadWaveform(
       WaveForm.square,
       false,
-      1.0,
-      0.0,
+      1,
+      0,
     );
     SoLoud.instance.play(sound, looping: true);
 
@@ -70,8 +72,9 @@ class _CaptureWebTestAppState extends State<CaptureWebTestApp> {
 
     final subscription = stream.listen(
       (chunk) {
-        log('$format chunk: ${chunk.length} '
-            'bytes: ${chunk.take(16).map((b) => b.toRadixString(16)).join(' ')}');
+        final bytesHex =
+            chunk.take(16).map((b) => b.toRadixString(16)).join(' ');
+        log('$format chunk: ${chunk.length} bytes: $bytesHex');
         chunks.add(chunk);
       },
       onError: (Object e) => log('$format stream error: $e'),
@@ -82,7 +85,7 @@ class _CaptureWebTestAppState extends State<CaptureWebTestApp> {
       log('$format available=${js.wasmGetMixerCaptureAvailableBytes()}');
     });
 
-    await Future<void>.delayed(Duration(milliseconds: duration));
+    await Future<void>.delayed(const Duration(milliseconds: duration));
     debugTimer.cancel();
     // Stop capture before canceling the subscription so the synchronous tail
     // flush is delivered through the stream.

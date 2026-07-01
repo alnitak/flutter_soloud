@@ -1,10 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
-// ignore: avoid_web_libraries_in_flutter
-import 'package:flutter_soloud/src/bindings/js_extension.dart' as js;
 
 import 'common.dart';
 
@@ -17,20 +14,26 @@ Future<StringBuffer> testMixerOutputCapture() async {
   final sound = await SoLoud.instance.loadWaveform(
     WaveForm.square,
     false,
-    1.0,
-    0.0,
+    1,
+    0,
   );
   assert(sound.soundHash.isValid, 'Failed to load waveform');
   SoLoud.instance.play(sound, looping: true);
   assert(sound.handles.length == 1, 'play() failed');
 
   // ignore: avoid_print
-  print('active voices after play: ${SoLoud.instance.getActiveVoiceCount()}');
+  print(
+    'active voices after play: '
+    '${SoLoud.instance.getActiveVoiceCount()}',
+  );
 
   // Let the engine produce a few mix buffers.
   await delay(500);
   // ignore: avoid_print
-  print('active voices before capture: ${SoLoud.instance.getActiveVoiceCount()}');
+  print(
+    'active voices before capture: '
+    '${SoLoud.instance.getActiveVoiceCount()}',
+  );
 
   for (final format in MixerOutputFormat.values) {
     output.writeln('Testing format: $format');
@@ -44,23 +47,16 @@ Future<StringBuffer> testMixerOutputCapture() async {
     final subscription = stream.listen(
       (chunk) {
         // ignore: avoid_print
-        print('MixerOutputCapture $format chunk received: ${chunk.length}');
+        print(
+          'MixerOutputCapture $format chunk received: ${chunk.length}',
+        );
         chunks.add(chunk);
       },
       onError: (Object e) => output.writeln('  stream error: $e'),
     );
 
     // Capture for one second, which is plenty for all formats.
-    Timer? debugTimer;
-    if (kIsWeb) {
-      debugTimer = Timer.periodic(const Duration(milliseconds: 200), (_) {
-        // ignore: avoid_print
-        print('MixerOutputCapture $format available='
-            '${js.wasmGetMixerCaptureAvailableBytes()}');
-      });
-    }
     await delay(1000);
-    debugTimer?.cancel();
     // ignore: avoid_print
     print('MixerOutputCapture $format running='
         '${SoLoud.instance.isMixerOutputStreamRunning}');
@@ -74,9 +70,10 @@ Future<StringBuffer> testMixerOutputCapture() async {
 
     output.writeln('  captured $totalBytes bytes in ${chunks.length} chunks');
     if (chunks.isNotEmpty) {
+      final bytesHex =
+          chunks.first.take(16).map((b) => b.toRadixString(16)).join(' ');
       final debug =
-        '  first chunk length: ${chunks.first.length}, '
-        'bytes: ${chunks.first.take(16).map((b) => b.toRadixString(16)).join(' ')}';
+          '  first chunk length: ${chunks.first.length}, bytes: $bytesHex';
       output.writeln(debug);
       // ignore: avoid_print
       print('MixerOutputCapture $format: $debug');

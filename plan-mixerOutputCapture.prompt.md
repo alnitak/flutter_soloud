@@ -167,19 +167,24 @@ bool get isMixerOutputStreamRunning;
 10. **Verification**
     - Encode to each format, validate headers/streams with external tools.
 
-### Phase 3 — Web support
-*Goal: Web capture via SharedArrayBuffer.*
+### Phase 3 — Web support (deferred follow-up)
+*Goal: Web capture via SharedArrayBuffer / AudioWorklet when the platform constraints are acceptable.*
+
+**Rationale**: The web build currently requires `-pthread` + `SharedArrayBuffer`, which forces the hosting web server to emit `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` headers. This is a significant deployment constraint and the worker/message plumbing is still being stabilized. Desktop/mobile FFI capture is therefore being finalized first.
 
 11. **WASM shared memory**
-    - Update `web/compile_wasm.sh` with `-s SHARED_MEMORY=1`.
-    - Allocate `SharedArrayBuffer` and expose to WASM.
+    - Update `web/compile_wasm.sh` with `-s SHARED_MEMORY=1` (and optionally AudioWorklet flags if later desired).
+    - Allocate a `SharedArrayBuffer` (or reuse the WASM heap) and expose it to Dart.
+    - Increment a capture session id on every `startMixerCapture` so Dart/JS can ignore stale callbacks from a previous capture session (important when using async proxies or `postMessage`).
 
 12. **Web callback plumbing**
     - Implement web bindings in `bindings_player_web.dart`.
     - Update `web/worker.dart` to forward `mixerOutputData` messages.
+    - Ensure the synchronous tail-flush on `stopMixerCapture` works within the web event model.
 
 13. **Verification**
-    - Build web WASM and run example with required headers.
+    - Build web WASM with `web/compile_wasm.sh` and run the example with the required COOP/COEP headers.
+    - Validate PCM and compressed formats produce non-zero, correctly-headed output.
 
 ### Phase 4 — Polish
 *Goal: API stability and tests.*
@@ -210,7 +215,7 @@ bool get isMixerOutputStreamRunning;
 3. `dart test` passes.
 4. Build example on Linux/macOS/Windows and verify PCM stream bytes match expected sample rate × channels × bytes-per-sample.
 5. Verify Opus/Vorbis/FLAC output streams start with valid codec headers.
-6. Build web WASM with `web/compile_wasm.sh` and confirm `SharedArrayBuffer` data flows.
+6. (Web follow-up) Build web WASM with `web/compile_wasm.sh` and confirm `SharedArrayBuffer` data flows once COOP/COEP deployment is sorted out.
 
 ## Scope boundaries
 - **Included**: master mix capture, PCM + Opus/Vorbis/FLAC output, FFI shared-memory read, web SharedArrayBuffer support, start/stop/notification API.

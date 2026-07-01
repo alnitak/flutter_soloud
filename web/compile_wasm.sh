@@ -154,7 +154,6 @@ SOURCES=(
     ../src/filters/*.cpp
     ../src/waveform/*.cpp
     ../src/audiobuffer/*.cpp
-    ../src/mixeroutput/*.cpp
 )
 
 # Prepare include directories and libraries based on configuration
