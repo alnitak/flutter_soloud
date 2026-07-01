@@ -3,8 +3,8 @@ import 'package:flutter_soloud/flutter_soloud.dart';
 import 'common.dart';
 
 /// Test play, pause, seek, position.
-Future<StringBuffer> testPlaySeekPause() async {
-  final strBuf = StringBuffer();
+Future<OutputBuffer> testPlaySeekPause() async {
+  final strBuf = OutputBuffer();
 
   /// Start audio isolate
   await initialize();

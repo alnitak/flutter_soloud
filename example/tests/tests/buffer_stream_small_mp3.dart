@@ -20,8 +20,8 @@ import 'common.dart';
 ///
 /// Also tests a larger MPEG1 44.1 kHz MP3 (typical music) to verify
 /// no regression for files that exceed the 32 KB threshold.
-Future<StringBuffer> testBufferStreamSmallMp3() async {
-  final strBuf = StringBuffer();
+Future<OutputBuffer> testBufferStreamSmallMp3() async {
+  final strBuf = OutputBuffer();
   await initialize();
 
   Future<int> measureBufferStreamMs(Uint8List bytes) async {

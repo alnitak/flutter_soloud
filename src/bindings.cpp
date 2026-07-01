@@ -110,6 +110,34 @@ extern "C"
         },
         message, value);
   }
+
+  /// Notify the web worker that new mixer output data is available.
+  /// [offset] byte offset into the mixer output circular buffer.
+  /// [length] number of contiguous valid bytes.
+  /// [captureId] identifies the active capture session so the Dart side
+  /// can discard stale notifications.
+  static void sendMixerOutputToWorker(size_t offset, size_t length,
+                                      uint32_t captureId)
+  {
+    // The mixer-output notification thread is a pthread worker; it cannot
+    // access Module_soloud (which lives on the main browser thread). Use an
+    // async proxy so the postMessage runs on the main thread where the
+    // wasmWorker reference is valid.
+    MAIN_THREAD_ASYNC_EM_ASM(
+        {
+          if (Module_soloud.wasmWorker)
+          {
+            Module_soloud.wasmWorker.postMessage({
+              message : 'mixerOutputData',
+              offset : $0,
+              length : $1,
+              captureId : $2,
+            });
+          }
+        },
+        static_cast<int>(offset), static_cast<int>(length),
+        static_cast<int>(captureId));
+  }
 #endif
 
   FFI_PLUGIN_EXPORT void nativeFree(void *pointer) { free(pointer); }
@@ -223,8 +251,8 @@ extern "C"
 
   FFI_PLUGIN_EXPORT enum PlayerErrors startMixerCapture(
       int format, int sampleRate, int channels,
-      uint64_t bufferSizeBytes,
-      uint64_t notificationThresholdBytes)
+      int bufferSizeBytes,
+      int notificationThresholdBytes)
   {
     MixerOutputFormat outputFormat = static_cast<MixerOutputFormat>(format);
 
@@ -268,24 +296,23 @@ extern "C"
     return MixerOutput::instance().getBufferPointer();
   }
 
-  FFI_PLUGIN_EXPORT uint64_t getMixerCaptureBufferSize()
+  FFI_PLUGIN_EXPORT int getMixerCaptureBufferSize()
   {
-    return static_cast<uint64_t>(MixerOutput::instance().getBufferSize());
+    return static_cast<int>(MixerOutput::instance().getBufferSize());
   }
 
-  FFI_PLUGIN_EXPORT uint64_t getMixerCaptureAvailableBytes()
+  FFI_PLUGIN_EXPORT int getMixerCaptureAvailableBytes()
   {
-    return static_cast<uint64_t>(
-        MixerOutput::instance().getAvailableBytes());
+    return static_cast<int>(MixerOutput::instance().getAvailableBytes());
   }
 
-  FFI_PLUGIN_EXPORT uint64_t getMixerCaptureReadOffset()
+  FFI_PLUGIN_EXPORT int getMixerCaptureReadOffset()
   {
-    return static_cast<uint64_t>(MixerOutput::instance().getReadOffset());
+    return static_cast<int>(MixerOutput::instance().getReadOffset());
   }
 
   FFI_PLUGIN_EXPORT void advanceMixerCaptureReadPosition(
-      uint64_t bytes)
+      int bytes)
   {
     MixerOutput::instance().advanceReadPosition(
         static_cast<size_t>(bytes));
@@ -298,11 +325,22 @@ extern "C"
     MixerOutput::instance().setDataCallback(
         [](uint8_t *data, size_t length)
         {
+#ifdef __EMSCRIPTEN__
+          // On the web the callback may fire from the audio thread, so we
+          // cannot call Dart directly. Send the offset/length to the web
+          // worker, which forwards it to the main isolate.
+          if (length == 0)
+            return;
+          const size_t offset = reinterpret_cast<size_t>(data);
+          sendMixerOutputToWorker(offset, length,
+                                  MixerOutput::instance().captureId());
+#else
           auto cb = dartMixerOutputDataCallback.load();
           if (cb != nullptr)
           {
             cb(data, static_cast<uint64_t>(length));
           }
+#endif
         });
   }
 
@@ -405,6 +443,7 @@ extern "C"
 
       numDevices++;
     }
+    *n_devices = numDevices;
   }
 
   /// Change the playback device.

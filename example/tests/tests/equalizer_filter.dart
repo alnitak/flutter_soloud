@@ -4,8 +4,8 @@ import 'package:flutter_soloud/flutter_soloud.dart';
 import 'common.dart';
 
 /// Test parametric equalizer filter as a single (per-sound) filter.
-Future<StringBuffer> testEqualizerFilterSingle() async {
-  final strBuf = StringBuffer();
+Future<OutputBuffer> testEqualizerFilterSingle() async {
+  final strBuf = OutputBuffer();
 
   if (kIsWeb || kIsWasm) {
     return strBuf
@@ -89,8 +89,8 @@ Future<StringBuffer> testEqualizerFilterSingle() async {
 }
 
 /// Test parametric equalizer filter as a global filter.
-Future<StringBuffer> testEqualizerFilterGlobal() async {
-  final strBuf = StringBuffer();
+Future<OutputBuffer> testEqualizerFilterGlobal() async {
+  final strBuf = OutputBuffer();
   await initialize();
 
   // Get the global parametric EQ filter

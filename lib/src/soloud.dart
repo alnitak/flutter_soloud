@@ -1,7 +1,6 @@
 // ignore_for_file: require_trailing_commas, avoid_positional_boolean_parameters
 
 import 'dart:async';
-import 'dart:ffi' as ffi;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -516,8 +515,7 @@ interface class SoLoud {
 
   /// Subscription that reads mixer output data from the native circular
   /// buffer and emits it through [startMixerOutputStream].
-  StreamSubscription<({ffi.Pointer<ffi.Uint8> pointer, int length})>?
-  _mixerOutputSubscription;
+  StreamSubscription<Uint8List>? _mixerOutputSubscription;
 
   /// The broadcast stream of captured mixer output data.
   StreamController<Uint8List>? _mixerOutputStreamController;
@@ -550,7 +548,9 @@ interface class SoLoud {
       return _mixerOutputStreamController!.stream;
     }
 
-    _mixerOutputStreamController = StreamController<Uint8List>.broadcast();
+    _mixerOutputStreamController = StreamController<Uint8List>.broadcast(
+      sync: true,
+    );
 
     final error = _controller.soLoudFFI.startMixerOutputCapture(
       format,
@@ -566,28 +566,21 @@ interface class SoLoud {
       throw SoLoudCppException.fromPlayerError(error);
     }
 
-    _mixerOutputSubscription = _controller
-        .soLoudFFI
-        .mixerOutputDataAvailableEvents
-        .listen((event) => _emitMixerOutputData(event.pointer, event.length));
+    _mixerOutputSubscription = _controller.soLoudFFI.mixerOutputChunkEvents
+        .listen(_emitMixerOutputChunk);
 
     return _mixerOutputStreamController!.stream;
   }
 
-  void _emitMixerOutputData(ffi.Pointer<ffi.Uint8> pointer, int length) {
+  void _emitMixerOutputChunk(Uint8List chunk) {
     if (_mixerOutputStreamController == null ||
         _mixerOutputStreamController!.isClosed) {
       return;
     }
 
-    if (pointer == ffi.nullptr || length <= 0) {
+    if (chunk.isEmpty) {
       return;
     }
-
-    // Read the contiguous region that the native side notified us about.
-    final bytes = pointer.asTypedList(length);
-    final chunk = Uint8List.fromList(bytes);
-    _controller.soLoudFFI.advanceMixerOutputReadPosition(length);
 
     _mixerOutputStreamController!.add(chunk);
   }
@@ -597,50 +590,58 @@ interface class SoLoud {
     _mixerOutputSubscription?.cancel();
     _mixerOutputSubscription = null;
     _controller.soLoudFFI.stopMixerOutputCapture();
+
+    // Flush any captured data that did not reach the notification threshold.
+    // The native side keeps the buffer alive after stopping so we can copy the
+    // tail synchronously and avoid losing compressed-format headers.
+    _flushRemainingMixerOutput();
+
     _mixerOutputStreamController?.close();
     _mixerOutputStreamController = null;
+  }
+
+  void _flushRemainingMixerOutput() {
+    final controller = _mixerOutputStreamController;
+    if (controller == null || controller.isClosed) {
+      return;
+    }
+
+    final available = _controller.soLoudFFI.getMixerOutputAvailableBytes();
+    if (available <= 0) {
+      return;
+    }
+
+    final bufferSize = _controller.soLoudFFI.getMixerOutputBufferSize();
+    final readOffset = _controller.soLoudFFI.getMixerOutputReadOffset();
+    final firstLength = available < bufferSize - readOffset
+        ? available
+        : bufferSize - readOffset;
+
+    if (firstLength > 0) {
+      final chunk = _controller.soLoudFFI.copyMixerOutputBuffer(
+        readOffset,
+        firstLength,
+      );
+      if (chunk.isNotEmpty) {
+        controller.add(chunk);
+      }
+    }
+
+    if (available > firstLength) {
+      final secondLength = available - firstLength;
+      final chunk = _controller.soLoudFFI.copyMixerOutputBuffer(
+        0,
+        secondLength,
+      );
+      if (chunk.isNotEmpty) {
+        controller.add(chunk);
+      }
+    }
   }
 
   /// Whether mixer output capture is currently active.
   bool get isMixerOutputStreamRunning =>
       _controller.soLoudFFI.isMixerOutputCaptureRunning();
-
-  /// Direct, zero-copy access to the native mixer capture buffer.
-  ///
-  /// The returned pointer points to the first unread byte and `bytes` is the
-  /// number of contiguous unread bytes. It is only valid while capture is
-  /// running and until the read position is advanced with
-  /// [advanceMixerOutputReadPosition]. This is intended for advanced users
-  /// who want to avoid the copy performed by [startMixerOutputStream].
-  ///
-  /// Returns `null` if capture is not running or no data is available.
-  ({ffi.Pointer<ffi.Uint8> pointer, int bytes})? getMixerOutputBuffer() {
-    if (!_controller.soLoudFFI.isMixerOutputCaptureRunning()) {
-      return null;
-    }
-    final available = _controller.soLoudFFI.getMixerOutputAvailableBytes();
-    if (available == 0) {
-      return null;
-    }
-    final bufferPointer = _controller.soLoudFFI.getMixerOutputBufferPointer();
-    if (bufferPointer == ffi.nullptr) {
-      return null;
-    }
-    final readOffset = _controller.soLoudFFI.getMixerOutputReadOffset();
-    final bufferSize = _controller.soLoudFFI.getMixerOutputBufferSize();
-    final contiguous = available < bufferSize - readOffset
-        ? available
-        : bufferSize - readOffset;
-    return (
-      pointer: bufferPointer.cast<ffi.Uint8>() + readOffset,
-      bytes: contiguous,
-    );
-  }
-
-  /// Advance the mixer capture read position by [bytes].
-  void advanceMixerOutputReadPosition(int bytes) {
-    _controller.soLoudFFI.advanceMixerOutputReadPosition(bytes);
-  }
 
   /// Find the [AudioSource] which owns the given [handle].
   AudioSource? findAudioSourceByHandle(SoundHandle handle) {

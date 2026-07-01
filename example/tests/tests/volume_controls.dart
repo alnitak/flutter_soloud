@@ -4,8 +4,8 @@ import 'common.dart';
 
 /// Test volume controls including setVolume, getVolume,
 /// fadeVolume, and oscillateVolume.
-Future<StringBuffer> testVolumeControls() async {
-  final strBuf = StringBuffer();
+Future<OutputBuffer> testVolumeControls() async {
+  final strBuf = OutputBuffer();
   await initialize();
 
   // Load and play a sound

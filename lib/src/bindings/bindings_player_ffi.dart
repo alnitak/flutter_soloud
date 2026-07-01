@@ -4,6 +4,7 @@
 // ignore_for_file: avoid_positional_boolean_parameters,require_trailing_commas
 // ignore_for_file: omit_local_variable_types,public_member_api_docs
 
+import 'dart:async';
 import 'dart:ffi' as ffi;
 import 'dart:typed_data';
 
@@ -113,6 +114,20 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   nativeStateChangedCallable;
   ffi.NativeCallable<DartMixerOutputDataCallbackTFunction>?
   nativeMixerOutputDataCallable;
+
+  /// Controller that fires whenever new mixer output data is available.
+  ///
+  /// The event contains a pointer to the start of the contiguous unread
+  /// region and the number of valid bytes. The pointer remains valid until
+  /// the read position is advanced with [advanceMixerOutputReadPosition].
+  late final StreamController<({ffi.Pointer<ffi.Uint8> pointer, int length})>
+  mixerOutputDataAvailableController = StreamController.broadcast();
+
+  /// Stream of notifications that new mixer output data is available.
+  Stream<({ffi.Pointer<ffi.Uint8> pointer, int length})>
+  get mixerOutputDataAvailableEvents =>
+      mixerOutputDataAvailableController.stream;
+
   final Map<int, _BufferStreamNativeCallbacks> _bufferStreamNativeCallables =
       {};
 
@@ -183,6 +198,15 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       pointer: data.cast<ffi.Uint8>(),
       length: length,
     ));
+
+    // Also emit a copied chunk for the cross-platform stream. Copying here
+    // keeps the FFI pointer-based API available for zero-copy consumers while
+    // ensuring the public Dart stream works the same way on all platforms.
+    if (length > 0) {
+      final bytes = data.cast<ffi.Uint8>().asTypedList(length);
+      mixerOutputChunkController.add(Uint8List.fromList(bytes));
+      advanceMixerOutputReadPosition(length);
+    }
   }
 
   @override
@@ -287,8 +311,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
             ffi.Int32,
             ffi.Int32,
             ffi.Int32,
-            ffi.Uint64,
-            ffi.Uint64,
+            ffi.Int32,
+            ffi.Int32,
           )
         >
       >('startMixerCapture');
@@ -316,24 +340,12 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       .asFunction<int Function()>();
 
   @override
-  ffi.Pointer<ffi.Void> getMixerOutputBufferPointer() {
-    return _getMixerCaptureBufferPointer().cast<ffi.Void>();
-  }
-
-  late final _getMixerCaptureBufferPointerPtr =
-      _lookup<ffi.NativeFunction<ffi.Pointer<ffi.UnsignedChar> Function()>>(
-        'getMixerCaptureBufferPointer',
-      );
-  late final _getMixerCaptureBufferPointer = _getMixerCaptureBufferPointerPtr
-      .asFunction<ffi.Pointer<ffi.UnsignedChar> Function()>();
-
-  @override
   int getMixerOutputBufferSize() {
     return _getMixerCaptureBufferSize();
   }
 
   late final _getMixerCaptureBufferSizePtr =
-      _lookup<ffi.NativeFunction<ffi.Uint64 Function()>>(
+      _lookup<ffi.NativeFunction<ffi.Int32 Function()>>(
         'getMixerCaptureBufferSize',
       );
   late final _getMixerCaptureBufferSize = _getMixerCaptureBufferSizePtr
@@ -345,7 +357,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   }
 
   late final _getMixerCaptureAvailableBytesPtr =
-      _lookup<ffi.NativeFunction<ffi.Uint64 Function()>>(
+      _lookup<ffi.NativeFunction<ffi.Int32 Function()>>(
         'getMixerCaptureAvailableBytes',
       );
   late final _getMixerCaptureAvailableBytes = _getMixerCaptureAvailableBytesPtr
@@ -357,7 +369,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   }
 
   late final _getMixerCaptureReadOffsetPtr =
-      _lookup<ffi.NativeFunction<ffi.Uint64 Function()>>(
+      _lookup<ffi.NativeFunction<ffi.Int32 Function()>>(
         'getMixerCaptureReadOffset',
       );
   late final _getMixerCaptureReadOffset = _getMixerCaptureReadOffsetPtr
@@ -369,11 +381,34 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   }
 
   late final _advanceMixerCaptureReadPositionPtr =
-      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Uint64)>>(
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Int32)>>(
         'advanceMixerCaptureReadPosition',
       );
   late final _advanceMixerCaptureReadPosition =
       _advanceMixerCaptureReadPositionPtr.asFunction<void Function(int)>();
+
+  int getMixerOutputBufferPointer() {
+    return _getMixerCaptureBufferPointer().address;
+  }
+
+  late final _getMixerCaptureBufferPointerPtr =
+      _lookup<ffi.NativeFunction<ffi.Pointer<ffi.Uint8> Function()>>(
+        'getMixerCaptureBufferPointer',
+      );
+  late final _getMixerCaptureBufferPointer = _getMixerCaptureBufferPointerPtr
+      .asFunction<ffi.Pointer<ffi.Uint8> Function()>();
+
+  @override
+  Uint8List copyMixerOutputBuffer(int offset, int length) {
+    if (length <= 0) {
+      return Uint8List(0);
+    }
+    final ptr = _getMixerCaptureBufferPointer();
+    if (ptr == ffi.nullptr) {
+      return Uint8List(0);
+    }
+    return Uint8List.fromList((ptr + offset).asTypedList(length));
+  }
 
   late final _setMixerOutputCallbackPtr =
       _lookup<

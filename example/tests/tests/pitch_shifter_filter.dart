@@ -4,8 +4,8 @@ import 'package:flutter_soloud/flutter_soloud.dart';
 import 'common.dart';
 
 /// Test pitch shifter filter as a single (per-sound) filter.
-Future<StringBuffer> testPitchShifterFilterSingle() async {
-  final strBuf = StringBuffer();
+Future<OutputBuffer> testPitchShifterFilterSingle() async {
+  final strBuf = OutputBuffer();
 
   if (kIsWeb || kIsWasm) {
     return strBuf
@@ -71,8 +71,8 @@ Future<StringBuffer> testPitchShifterFilterSingle() async {
 }
 
 /// Test pitch shifter filter as a global filter.
-Future<StringBuffer> testPitchShifterFilterGlobal() async {
-  final strBuf = StringBuffer();
+Future<OutputBuffer> testPitchShifterFilterGlobal() async {
+  final strBuf = OutputBuffer();
   await initialize();
 
   // Get the global pitch shift filter

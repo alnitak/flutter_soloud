@@ -63,6 +63,12 @@ class MixerOutput {
   /// Set the Dart notification callback.
   void setDataCallback(MixerOutputDataCallback callback);
 
+  /// Monotonic identifier for the current capture session. Changes every
+  /// time [start] is called, so callers can ignore stale messages from a
+  /// previous capture (especially important on the web where callbacks are
+  /// proxied asynchronously to the main thread).
+  uint32_t captureId() const { return m_captureId.load(); }
+
  private:
   MixerOutput() = default;
   ~MixerOutput();
@@ -78,6 +84,7 @@ class MixerOutput {
 
   std::atomic<bool> m_running{false};
   std::atomic<bool> m_shouldStop{false};
+  std::atomic<uint32_t> m_captureId{0};
 
   MixerOutputFormat m_format = MIXER_OUTPUT_PCM_F32LE;
   int m_sampleRate = 44100;

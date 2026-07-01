@@ -31,8 +31,8 @@ Uint8List _generatePcmData({
 /// PR #445 fixes a bug where NativeCallable wrappers for onBuffering /
 /// onMetadata were dropped immediately after setBufferStream(), letting the
 /// GC free the trampoline while native still held its address.
-Future<StringBuffer> testBufferStreamCallbacks() async {
-  final buf = StringBuffer();
+Future<OutputBuffer> testBufferStreamCallbacks() async {
+  final buf = OutputBuffer();
   await initialize();
   final pcm = _generatePcmData();
 

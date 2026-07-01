@@ -66,6 +66,7 @@ list(APPEND PLUGIN_SOURCES
   "${SRC_DIR}/mixeroutput/opus_output_encoder.cpp"
   "${SRC_DIR}/mixeroutput/vorbis_output_encoder.cpp"
   "${SRC_DIR}/mixeroutput/flac_output_encoder.cpp"
+  "${SRC_DIR}/mixeroutput/wav_output_encoder.cpp"
   ${TARGET_SOURCES}
 )
 

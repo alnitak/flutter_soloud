@@ -1223,6 +1223,7 @@ PlayerErrors Player::textToSpeech(const std::string &textToSpeech, unsigned int 
     {
         handle = soloud.play(speech);
         sounds.back().get()->soundHash = handle;
+        sounds.back().get()->soundType = TYPE_TEXT_TO_SPEECH;
         sounds.back().get()->filters = std::make_unique<Filters>(&soloud, sounds.back().get(), nullptr);
         sounds.back().get()->handle.push_back({handle, MAX_DOUBLE, false});
     }
@@ -1282,7 +1283,7 @@ double Player::getLength(unsigned int soundHash)
 {
     auto const &s = findByHash(soundHash);
 
-    if (s == nullptr || s->soundType == TYPE_SYNTH)
+    if (s == nullptr || s->soundType == TYPE_SYNTH || s->soundType == TYPE_TEXT_TO_SPEECH)
         return 0.0;
     if (s->soundType == TYPE_WAV)
         return static_cast<SoLoud::Wav *>(s->sound.get())->getLength();

@@ -121,6 +121,7 @@ class _MixerCaptureExampleState extends State<MixerCaptureExample> {
       MixerOutputFormat.opus => 'opus',
       MixerOutputFormat.vorbis => 'ogg',
       MixerOutputFormat.flac => 'flac',
+      MixerOutputFormat.wav => 'wav',
     };
     return 'mixer_capture.$extension';
   }
@@ -192,6 +193,8 @@ class _MixerCaptureExampleState extends State<MixerCaptureExample> {
       case MixerOutputFormat.vorbis:
       case MixerOutputFormat.flac:
         return 'OGG/$format';
+      case MixerOutputFormat.wav:
+        return 'WAV';
     }
   }
 

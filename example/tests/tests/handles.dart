@@ -3,7 +3,7 @@ import 'package:flutter_soloud/flutter_soloud.dart';
 import 'common.dart';
 
 /// Test instancing playing handles and their disposal.
-Future<StringBuffer> testHandles() async {
+Future<OutputBuffer> testHandles() async {
   var output = '';
 
   /// Start audio isolate
@@ -56,5 +56,5 @@ Future<StringBuffer> testHandles() async {
   );
 
   deinit();
-  return StringBuffer();
+  return OutputBuffer();
 }

@@ -2,8 +2,8 @@ import 'package:flutter_soloud/flutter_soloud.dart';
 
 import 'common.dart';
 
-Future<StringBuffer> testAutoDispose() async {
-  final strBuf = StringBuffer();
+Future<OutputBuffer> testAutoDispose() async {
+  final strBuf = OutputBuffer();
   await initialize();
 
   final sound = await SoLoud.instance.loadAsset(

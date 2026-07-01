@@ -108,6 +108,8 @@ typedef enum SoundType {
   TYPE_SYNTH,
   // this sound is a streaming buffer
   TYPE_BUFFER_STREAM,
+  // this sound is a text to speech
+  TYPE_TEXT_TO_SPEECH
 } SoundType_t;
 
 typedef enum FilterType {
@@ -144,6 +146,7 @@ typedef enum MixerOutputFormat {
   MIXER_OUTPUT_OPUS = 4,
   MIXER_OUTPUT_VORBIS = 5,
   MIXER_OUTPUT_FLAC = 6,
+  MIXER_OUTPUT_WAV = 7,
 } MixerOutputFormat_t;
 
 typedef struct PCMformat {

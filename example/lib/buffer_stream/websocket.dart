@@ -220,7 +220,7 @@ class _WebsocketExampleState extends State<WebsocketExample> {
 
                 currentSound = SoLoud.instance.setBufferStream(
                   maxBufferSizeBytes: 1024 * 1024 * 200, // 200 MB
-                  bufferingTimeNeeds: 3.0,
+                  bufferingTimeNeeds: 3,
                   sampleRate: sampleRate[srId],
                   channels: Channels.values[chId],
                   format: BufferType.values[fmtId],
@@ -311,25 +311,6 @@ class _WebsocketExampleState extends State<WebsocketExample> {
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // OutlinedButton(
-                //   onPressed: () async {
-                //     if (currentSound == null) return;
-                //     handle = SoLoud.instance.play(
-                //       currentSound!,
-                //       volume: 0.6,
-                //       // looping: true,
-                //     );
-                //     Timer.periodic(const Duration(milliseconds: 1000), (timer) {
-                //       if (currentSound == null ||
-                //           SoLoud.instance.getIsValidVoiceHandle(handle!) ==
-                //               false) {
-                //         timer.cancel();
-                //         setState(() {});
-                //       }
-                //     });
-                //   },
-                //   child: const Text('play'),
-                // ),
                 OutlinedButton(
                   onPressed: () async {
                     if (currentSound == null) return;
