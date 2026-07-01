@@ -6,8 +6,8 @@ import 'common.dart';
 
 /// Test 3D audio functionality including positioning, attenuation,
 /// and doppler effects.
-Future<StringBuffer> test3dAudio() async {
-  final strBuf = StringBuffer();
+Future<OutputBuffer> test3dAudio() async {
+  final strBuf = OutputBuffer();
   await initialize();
 
   // Load a sound

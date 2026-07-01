@@ -4,8 +4,8 @@ import 'package:flutter_soloud/flutter_soloud.dart';
 import 'common.dart';
 
 /// Test limiter filter as a single (per-sound) filter.
-Future<StringBuffer> testLimiterFilterSingle() async {
-  final strBuf = StringBuffer();
+Future<OutputBuffer> testLimiterFilterSingle() async {
+  final strBuf = OutputBuffer();
 
   if (kIsWeb || kIsWasm) {
     return strBuf
@@ -74,8 +74,8 @@ Future<StringBuffer> testLimiterFilterSingle() async {
 }
 
 /// Test limiter filter as a global filter.
-Future<StringBuffer> testLimiterFilterGlobal() async {
-  final strBuf = StringBuffer();
+Future<OutputBuffer> testLimiterFilterGlobal() async {
+  final strBuf = OutputBuffer();
   await initialize();
 
   // Get the global limiter filter

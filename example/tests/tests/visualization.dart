@@ -14,8 +14,8 @@ double sumList(Float32List data) {
 
 /// Test audio visualization including FFT data, wave data,
 /// and FFT smoothing.
-Future<StringBuffer> testVisualization() async {
-  final strBuf = StringBuffer();
+Future<OutputBuffer> testVisualization() async {
+  final strBuf = OutputBuffer();
   await initialize();
 
   // Enable visualization
