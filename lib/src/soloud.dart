@@ -827,7 +827,10 @@ interface class SoLoud {
   ///
   /// [format] the desired output format. PCM formats are supported on all
   /// platforms. Compressed formats (Opus, Vorbis, FLAC) are available when
-  /// the plugin is built with Xiph libraries.
+  /// the plugin is built with Xiph libraries. The default is PCM F32LE and
+  /// it is the only format that doesn't require conversion (when [sampleRate]
+  /// and [channels] are set to -1) on the native side, so it is
+  /// the most efficient and preferred on mobile.
   /// 
   /// [sampleRate] the sample rate. Use -1 to follow the engine sample rate.
   /// 
