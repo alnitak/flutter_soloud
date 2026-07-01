@@ -38,43 +38,13 @@
             "type": "shell"
         },
         {
-            "label": "run macos mixer capture test",
-            "command": "cd ${workspaceFolder}/example; flutter run -d macos -t tests/run_mixer_capture_test.dart --debug",
-            "type": "shell"
-        },
-        {
             "label": "compile web wasm release",
             "command": "cd ${workspaceFolder}/example; flutter run -d chrome --wasm --web-browser-flag '--disable-web-security' -t tests/tests.dart --release",
             "type": "shell"
         },
         {
             "label": "compile WASM",
-            "command": "cd ${workspaceFolder}/web; bash compile_wasm.sh",
-            "type": "shell"
-        },
-        {
-            "label": "build web mixer capture test",
-            "command": "cd ${workspaceFolder}/example; flutter build web -t tests/mixer_output_capture_web_test.dart --wasm --release",
-            "type": "shell"
-        },
-        {
-            "label": "run web mixer capture test non wasm",
-            "command": "cd ${workspaceFolder}/example; flutter run -d chrome -t tests/mixer_output_capture_web_test.dart --debug",
-            "type": "shell"
-        },
-        {
-            "label": "run web mixer capture test",
-            "command": "cd ${workspaceFolder}/example; flutter run -d chrome --wasm --web-browser-flag '--disable-web-security' -t tests/mixer_output_capture_web_test.dart --release",
-            "type": "shell"
-        },
-        {
-            "label": "run dart analyze",
-            "command": "cd ${workspaceFolder}; dart analyze",
-            "type": "shell"
-        },
-        {
-            "label": "run dart tests",
-            "command": "cd ${workspaceFolder}; dart test",
+            "command": "sh ${workspaceFolder}/wasm.sh",
             "type": "shell"
         }
     ]
