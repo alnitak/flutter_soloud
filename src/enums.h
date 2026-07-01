@@ -108,6 +108,8 @@ typedef enum SoundType {
   TYPE_SYNTH,
   // this sound is a streaming buffer
   TYPE_BUFFER_STREAM,
+  // this sound is a text to speech
+  TYPE_TEXT_TO_SPEECH
 } SoundType_t;
 
 typedef enum FilterType {
