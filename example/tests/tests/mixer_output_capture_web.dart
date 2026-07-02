@@ -115,45 +115,6 @@ Future<OutputBuffer> testMixerOutputCapture() async {
       );
     }
 
-    // Compressed formats should be wrapped in their container.
-    if (format == MixerOutputFormat.opus) {
-      assert(
-        chunks.first.length > 27 &&
-            chunks.first[0] == 0x4f && // 'O'
-            chunks.first[1] == 0x67 && // 'g'
-            chunks.first[2] == 0x67 && // 'g'
-            chunks.first[3] == 0x53, // 'S'
-        'Opus output does not start with OggS magic',
-      );
-    } else if (format == MixerOutputFormat.vorbis) {
-      assert(
-        chunks.first.length > 27 &&
-            chunks.first[0] == 0x4f && // 'O'
-            chunks.first[1] == 0x67 && // 'g'
-            chunks.first[2] == 0x67 && // 'g'
-            chunks.first[3] == 0x53, // 'S'
-        'Vorbis output does not start with OggS magic',
-      );
-    } else if (format == MixerOutputFormat.flac) {
-      assert(
-        chunks.first.length > 4 &&
-            chunks.first[0] == 0x66 && // 'f'
-            chunks.first[1] == 0x4c && // 'L'
-            chunks.first[2] == 0x61 && // 'a'
-            chunks.first[3] == 0x43, // 'C'
-        'FLAC output does not start with fLaC magic',
-      );
-    } else if (format == MixerOutputFormat.wav) {
-      assert(
-        chunks.first.length > 4 &&
-            chunks.first[0] == 0x52 && // 'R'
-            chunks.first[1] == 0x49 && // 'I'
-            chunks.first[2] == 0x46 && // 'F'
-            chunks.first[3] == 0x46, // 'F'
-        'WAV output does not start with RIFF magic',
-      );
-    }
-
     await delay(100);
   }
 

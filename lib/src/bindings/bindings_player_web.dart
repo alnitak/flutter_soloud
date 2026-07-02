@@ -275,7 +275,22 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   void deinit() => wasmDeinit();
 
   @override
-  bool isInited() => wasmIsInited() == 1;
+  bool isInited() {
+    // The WASM module uses SharedArrayBuffer for the audio thread. Warn the
+    // developer if the page is not cross-origin isolated, because the audio
+    // engine will fail to spawn its worker without it.
+    if (isCrossOriginIsolated != true) {
+      // ignore: avoid_print
+      print(
+        'flutter_soloud: WARNING! This web page is not cross-origin isolated. '
+        'SharedArrayBuffer is required for the audio thread. '
+        'Run with `flutter run -d chrome --wasm` or serve the app with '
+        '`Cross-Origin-Opener-Policy: same-origin` and '
+        '`Cross-Origin-Embedder-Policy: require-corp` headers.',
+      );
+    }
+    return wasmIsInited() == 1;
+  }
 
   @override
   ({PlayerErrors error, SoundHash soundHash}) loadFile(

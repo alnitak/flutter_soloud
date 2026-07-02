@@ -12,6 +12,9 @@ external void jsEval(String code);
 @JS('window.miniaudio.devices[0].webaudio.state')
 external String? get miniaudioAudioContextState;
 
+@JS('globalThis.crossOriginIsolated')
+external bool? get isCrossOriginIsolated;
+
 @JS('Module_soloud._malloc')
 external int wasmMalloc(int bytesCount);
 
