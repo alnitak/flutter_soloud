@@ -1029,6 +1029,10 @@ interface class SoLoud {
   /// or Vorbis. With this format, the samplerate and channels parameters
   /// are ignored.
   ///
+  /// [autoDispose] if set to true, this source will be automatically disposed
+  /// when all its handles have finished playing. There will be no need to call
+  /// [disposeSource] manually.
+  ///
   /// [onBuffering] a callback that is called when starting to buffer
   /// (isBuffering = true) and when the buffering is done (isBuffering = false).
   /// The callback is called with the `handle` which triggered the event and
@@ -1046,6 +1050,7 @@ interface class SoLoud {
     int sampleRate = 24000,
     Channels channels = Channels.mono,
     BufferType format = BufferType.s16le,
+    bool autoDispose = false,
     void Function(bool isBuffering, int handle, double time)? onBuffering,
     void Function(AudioMetadata)? onMetadata,
   }) {
@@ -1102,7 +1107,8 @@ interface class SoLoud {
       throw SoLoudCppException.fromPlayerError(ret.error);
     }
 
-    final newSound = _addNewSound(ret.error, '', ret.soundHash.hash);
+    final newSound = _addNewSound(ret.error, '', ret.soundHash.hash)
+      ..autoDispose = autoDispose;
     return newSound;
   }
 
@@ -1905,6 +1911,10 @@ interface class SoLoud {
 
     /// remove all sounds
     _activeSounds.clear();
+  }
+
+  bool isValidAudioSource(AudioSource source) {
+    return _activeSounds.contains(source);
   }
 
   /// Query whether a sound (supplied via [handle]) is set to loop.
