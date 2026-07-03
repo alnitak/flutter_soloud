@@ -1913,6 +1913,8 @@ interface class SoLoud {
     _activeSounds.clear();
   }
 
+  /// Query whether [source] is a valid audio source.
+  ///
   bool isValidAudioSource(AudioSource source) {
     return _activeSounds.contains(source);
   }
