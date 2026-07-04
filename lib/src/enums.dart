@@ -462,6 +462,38 @@ enum MixerOutputFormat {
   // ignore: sort_constructors_first
   const MixerOutputFormat(this.value);
 
+  /// Whether this is a PCM (uncompressed) format.
+  bool get isPcm =>
+      this == MixerOutputFormat.pcmF32le ||
+      this == MixerOutputFormat.pcmS8 ||
+      this == MixerOutputFormat.pcmS16le ||
+      this == MixerOutputFormat.pcmS32le;
+
+  /// The number of bytes per sample for this format, or 0 for compressed
+  /// formats.
+  int get bytesPerSample {
+    switch (this) {
+      case MixerOutputFormat.pcmF32le:
+        return 4;
+      case MixerOutputFormat.pcmS8:
+        return 1;
+      case MixerOutputFormat.pcmS16le:
+        return 2;
+      case MixerOutputFormat.pcmS32le:
+        return 4;
+      case MixerOutputFormat.opus:
+      case MixerOutputFormat.vorbis:
+      case MixerOutputFormat.flac:
+      case MixerOutputFormat.wav:
+        return 0;
+    }
+  }
+
+  /// The number of bytes per frame for a given channel count.
+  ///
+  /// Returns 0 for compressed formats.
+  int bytesPerFrame(int channels) => bytesPerSample * channels;
+
   /// Returns a human-friendly format name.
   @override
   String toString() {

@@ -253,7 +253,8 @@ extern "C"
   FFI_PLUGIN_EXPORT enum PlayerErrors startMixerCapture(
       int format, int sampleRate, int channels,
       int bufferSizeBytes,
-      int notificationThresholdBytes)
+      int notificationThresholdBytes,
+      int chunkPCMFrames)
   {
     MixerOutputFormat outputFormat = static_cast<MixerOutputFormat>(format);
 
@@ -279,7 +280,8 @@ extern "C"
     return MixerOutput::instance().start(
         outputFormat, sr, ch,
         static_cast<size_t>(bufferSizeBytes),
-        static_cast<size_t>(notificationThresholdBytes));
+        static_cast<size_t>(notificationThresholdBytes),
+        chunkPCMFrames);
   }
 
   FFI_PLUGIN_EXPORT void stopMixerCapture()

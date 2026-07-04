@@ -118,6 +118,101 @@ Future<OutputBuffer> testMixerOutputCapture() async {
     await delay(100);
   }
 
+  // Test fixed-size PCM chunking with chunkPCMFrames.
+  output.writeln('Testing PCM chunking with chunkPCMFrames');
+
+  const chunkFrames = 4096;
+  const sampleRate = 44100;
+  const channelCount = 2;
+
+  for (final format in [
+    MixerOutputFormat.pcmF32le,
+    MixerOutputFormat.pcmS16le,
+  ]) {
+    output.writeln('Testing format: $format with chunkPCMFrames=$chunkFrames');
+
+    final chunks = <Uint8List>[];
+    final expectedChunkBytes =
+        chunkFrames * channelCount * format.bytesPerSample;
+
+    final stream = SoLoud.instance.startMixerOutputStream(
+      format: format,
+      sampleRate: sampleRate,
+      channels: channelCount,
+      chunkPCMFrames: chunkFrames,
+    );
+
+    final subscription = stream.listen(
+      (chunk) {
+        output.writeln(
+          'MixerOutputCapture $format chunk received: ${chunk.length} '
+          '(expected $expectedChunkBytes)',
+        );
+        chunks.add(chunk);
+      },
+      onError: (Object e) => output.writeln('  stream error: $e'),
+    );
+
+    await delay(1000);
+    output.writeln(
+      'MixerOutputCapture $format chunking running='
+      '${SoLoud.instance.isMixerOutputStreamRunning}',
+    );
+    SoLoud.instance.stopMixerOutputStream();
+    await subscription.cancel();
+
+    final totalBytes = chunks.fold<int>(0, (sum, c) => sum + c.length);
+    assert(totalBytes > 0, 'No data captured for $format chunking test');
+    output.writeln('  captured $totalBytes bytes in ${chunks.length} chunks');
+
+    // All chunks except the final tail should be exactly the expected size.
+    for (var i = 0; i < chunks.length - 1; i++) {
+      assert(
+        chunks[i].length == expectedChunkBytes,
+        'Chunk $i has length ${chunks[i].length}, '
+        'expected $expectedChunkBytes',
+      );
+    }
+
+    await delay(100);
+  }
+
+  // Test that compressed formats still capture correctly with
+  // notificationThresholdBytes.
+  output.writeln('Testing compressed format with notificationThresholdBytes');
+  for (final format in [
+    MixerOutputFormat.opus,
+    MixerOutputFormat.vorbis,
+  ]) {
+    output.writeln('Testing compressed format: $format');
+
+    final chunks = <Uint8List>[];
+    final stream = SoLoud.instance.startMixerOutputStream(
+      format: format,
+      notificationThresholdBytes: 8192,
+    );
+
+    final subscription = stream.listen(
+      (chunk) {
+        output.writeln(
+          'MixerOutputCapture $format chunk received: ${chunk.length}',
+        );
+        chunks.add(chunk);
+      },
+      onError: (Object e) => output.writeln('  stream error: $e'),
+    );
+
+    await delay(1000);
+    SoLoud.instance.stopMixerOutputStream();
+    await subscription.cancel();
+
+    final totalBytes = chunks.fold<int>(0, (sum, c) => sum + c.length);
+    assert(totalBytes > 0, 'No data captured for compressed $format');
+    output.writeln('  captured $totalBytes bytes in ${chunks.length} chunks');
+
+    await delay(100);
+  }
+
   deinit();
 
   return output;

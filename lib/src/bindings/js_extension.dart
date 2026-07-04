@@ -104,6 +104,7 @@ external int wasmStartMixerCapture(
   int channels,
   int bufferSizeBytes,
   int notificationThresholdBytes,
+  int chunkPCMFrames,
 );
 
 @JS('Module_soloud._stopMixerCapture')

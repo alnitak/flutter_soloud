@@ -88,7 +88,9 @@ abstract class FlutterSoLoud {
   /// [channels] the channel count. Use -1 to follow the engine channels.
   /// [bufferSizeBytes] total size of the circular capture buffer.
   /// [notificationThresholdBytes] bytes that must be available before
-  /// [mixerOutputChunkEvents] fires.
+  /// [mixerOutputChunkEvents] fires. Used for compressed formats.
+  /// [chunkPCMFrames] fixed number of PCM frames per emitted chunk.
+  /// Used for PCM formats; -1 to disable.
   ///
   /// Returns [PlayerErrors.noError] if success.
   @mustBeOverridden
@@ -98,6 +100,7 @@ abstract class FlutterSoLoud {
     int channels,
     int bufferSizeBytes,
     int notificationThresholdBytes,
+    int chunkPCMFrames,
   );
 
   /// Stop capturing the master mixer output.

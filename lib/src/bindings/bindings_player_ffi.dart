@@ -293,6 +293,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     int channels,
     int bufferSizeBytes,
     int notificationThresholdBytes,
+    int chunkPCMFrames,
   ) {
     final ret = _startMixerCapture(
       format.value,
@@ -300,6 +301,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       channels,
       bufferSizeBytes,
       notificationThresholdBytes,
+      chunkPCMFrames,
     );
     return PlayerErrors.values[ret];
   }
@@ -313,11 +315,12 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
             ffi.Int32,
             ffi.Int32,
             ffi.Int32,
+            ffi.Int32,
           )
         >
       >('startMixerCapture');
   late final _startMixerCapture = _startMixerCapturePtr
-      .asFunction<int Function(int, int, int, int, int)>();
+      .asFunction<int Function(int, int, int, int, int, int)>();
 
   @override
   void stopMixerOutputCapture() {

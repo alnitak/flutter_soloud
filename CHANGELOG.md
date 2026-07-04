@@ -4,7 +4,7 @@
 - reduced initial buffer data from 32 to 4 KB to let the buffer to start playing faster.
 - now the auto-pause when the buffer needs more audio works as expected and respect the player pause state (it doesn't automatically unpause when there is enough data in the buffer if the player was paused).
 - websocket example: added play/pause and touch to seek to the buffer visual widget.
-- added `autoDispose` parameter to `setBufferStream` to automatically dispose the sound when it is finished. This eliminates the need to manually call disposeSource .
+- added `autoDispose` parameter to `setBufferStream` to automatically dispose the sound when it is finished. This eliminates the need to manually call disposeSource.
 - **added mixer output capture**: capture the master mixer output as a `Stream<Uint8List>` in PCM (F32LE, S8, S16LE, S32LE) or compressed formats (Opus, Vorbis, FLAC, WAV). See `SoLoud.startMixerOutputStream` / `stopMixerOutputStream` / `isMixerOutputStreamRunning`.
 - **added `mixer_capture` example** (`example/lib/mixer_capture/mixer_capture.dart`) that shows how to capture the master mix and save it to a file.
 - **web note**: the web build requires `--wasm` (or any server that sends `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` headers) because the WASM module uses `SharedArrayBuffer` for the audio thread. Running with `flutter run -d chrome` without `--wasm` is not supported by the default dev server.

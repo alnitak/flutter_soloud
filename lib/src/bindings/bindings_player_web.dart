@@ -142,6 +142,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     int channels,
     int bufferSizeBytes,
     int notificationThresholdBytes,
+    int chunkPCMFrames,
   ) {
     final ret = wasmStartMixerCapture(
       format.value,
@@ -149,6 +150,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
       channels,
       bufferSizeBytes,
       notificationThresholdBytes,
+      chunkPCMFrames,
     );
     return PlayerErrors.values[ret];
   }

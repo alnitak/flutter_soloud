@@ -24,7 +24,8 @@ bool MixerOutput::isCompressedFormat() const {
 
 PlayerErrors MixerOutput::start(MixerOutputFormat format, int sampleRate,
                                 int channels, size_t bufferSizeBytes,
-                                size_t notificationThresholdBytes) {
+                                size_t notificationThresholdBytes,
+                                int chunkPCMFrames) {
   if (m_running.load()) {
     return playerAlreadyInited;
   }
@@ -38,6 +39,33 @@ PlayerErrors MixerOutput::start(MixerOutputFormat format, int sampleRate,
     return invalidParameter;
   }
 
+  const bool isCompressed = format == MIXER_OUTPUT_OPUS ||
+                            format == MIXER_OUTPUT_VORBIS ||
+                            format == MIXER_OUTPUT_FLAC ||
+                            format == MIXER_OUTPUT_WAV;
+
+  const size_t bps = bytesPerSample(format);
+  if (!isCompressed && bps == 0) {
+    return audioFormatNotSupported;
+  }
+  const size_t bytesPerFrame = bps * channels;
+
+  if (isCompressed && chunkPCMFrames > 0) {
+    return invalidParameter;
+  }
+
+  if (chunkPCMFrames > 0) {
+    if (chunkPCMFrames < 2048) {
+      return invalidParameter;
+    }
+    const size_t chunkBytes =
+        static_cast<size_t>(chunkPCMFrames) * bytesPerFrame;
+    if (chunkBytes == 0 || chunkBytes > bufferSizeBytes ||
+        chunkPCMFrames % bytesPerFrame != 0) {
+      return invalidParameter;
+    }
+  }
+
   m_format = format;
   m_sampleRate = sampleRate;
   m_channels = channels;
@@ -49,7 +77,6 @@ PlayerErrors MixerOutput::start(MixerOutputFormat format, int sampleRate,
   // capture session can be identified and discarded by the Dart side.
   m_captureId.fetch_add(1);
 
-  const size_t bps = bytesPerSample(format);
   if (isCompressedFormat()) {
     m_encoder.reset(MixerOutputEncoder::create(format));
     if (m_encoder == nullptr || !m_encoder->initialize(sampleRate, channels)) {
@@ -69,16 +96,26 @@ PlayerErrors MixerOutput::start(MixerOutputFormat format, int sampleRate,
     m_shouldStop.store(false);
     m_running.store(true);
 
+    m_chunkPCMFrames = 0;
+    m_chunkBytes = 0;
+    m_chunkBuffer.clear();
+
     m_encoderThread = std::thread(&MixerOutput::encoderThreadFunc, this);
     m_notificationThread =
         std::thread(&MixerOutput::notificationThreadFunc, this);
   } else {
-    if (bps == 0) {
-      return audioFormatNotSupported;
-    }
-
     m_bytesPerSample = bps;
-    m_bytesPerFrame = bps * channels;
+    m_bytesPerFrame = bytesPerFrame;
+
+    if (chunkPCMFrames > 0) {
+      m_chunkPCMFrames = static_cast<size_t>(chunkPCMFrames);
+      m_chunkBytes = m_chunkPCMFrames * m_bytesPerFrame;
+      m_chunkBuffer.assign(m_chunkBytes, 0);
+    } else {
+      m_chunkPCMFrames = 0;
+      m_chunkBytes = 0;
+      m_chunkBuffer.clear();
+    }
 
     m_buffer.assign(m_bufferSize, 0);
     m_writeOffset.store(0);
@@ -272,7 +309,9 @@ void MixerOutput::advanceReadPosition(size_t bytes) {
   m_readOffset.store((readOffset + toAdvance) % m_bufferSize,
                      std::memory_order_release);
 
-  if (toAdvance > 0 && getAvailableBytes() < m_notificationThreshold) {
+  const size_t threshold =
+      m_chunkBytes > 0 ? m_chunkBytes : m_notificationThreshold;
+  if (toAdvance > 0 && getAvailableBytes() < threshold) {
     m_notified.store(false, std::memory_order_release);
   }
 }
@@ -285,6 +324,39 @@ void MixerOutput::notificationThreadFunc() {
   while (!m_shouldStop.load()) {
     const size_t available = getAvailableBytes();
 
+    // Fixed-size PCM chunk mode: emit exactly m_chunkBytes at a time. The data
+    // is copied into a local contiguous buffer so the receiver can always
+    // advance the read position by m_chunkBytes without worrying about wrap.
+    if (m_chunkBytes > 0) {
+      if (available >= m_chunkBytes && !m_notified.load()) {
+        m_notified.store(true, std::memory_order_release);
+
+        size_t readOffset = m_readOffset.load(std::memory_order_relaxed);
+        size_t firstPart = std::min(m_chunkBytes, m_bufferSize - readOffset);
+        std::memcpy(m_chunkBuffer.data(), m_buffer.data() + readOffset,
+                    firstPart);
+
+        if (firstPart < m_chunkBytes) {
+          size_t secondPart = m_chunkBytes - firstPart;
+          std::memcpy(m_chunkBuffer.data() + firstPart, m_buffer.data(),
+                      secondPart);
+        }
+
+        if (m_callback) {
+          m_callback(m_chunkBuffer.data(), m_chunkBytes);
+        }
+      }
+
+      if (available < m_chunkBytes) {
+        m_notified.store(false, std::memory_order_release);
+      }
+
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+      continue;
+    }
+
+    // Threshold-based mode (used by default and by compressed formats):
+    // notify when at least notificationThresholdBytes are available.
     if (available >= m_notificationThreshold && !m_notified.load()) {
       m_notified.store(true, std::memory_order_release);
 

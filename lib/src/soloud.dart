@@ -846,7 +846,13 @@ interface class SoLoud {
   /// [bufferSizeBytes] total size of the circular capture buffer.
   ///
   /// [notificationThresholdBytes] bytes that must be available before a chunk
-  /// is emitted.
+  /// is emitted. Used for compressed formats and for PCM when
+  /// [chunkPCMFrames] is -1; ignored when [chunkPCMFrames] is set.
+  ///
+  /// [chunkPCMFrames] when set, the stream emits fixed-size chunks containing
+  /// exactly this many PCM frames. Only valid for PCM formats; must be at least
+  /// 2048 and a multiple of [channels] * bytes per sample for the chosen
+  /// format.
   ///
   /// Returns a [Stream] that yields captured audio data. The stream is closed
   /// when [stopMixerOutputStream] is called or when the engine is deinited.
@@ -857,9 +863,28 @@ interface class SoLoud {
     int channels = -1,
     int bufferSizeBytes = 1024 * 1024,
     int notificationThresholdBytes = 4096,
+    int chunkPCMFrames = -1,
   }) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
+    }
+
+    if (format.isPcm) {
+      assert(
+        chunkPCMFrames == -1 || chunkPCMFrames >= 2048,
+        'chunkPCMFrames must be at least 2048 when provided',
+      );
+      assert(
+        chunkPCMFrames == -1 ||
+            chunkPCMFrames % format.bytesPerFrame(channels) == 0,
+        'chunkPCMFrames must be a multiple of channels * bytesPerSample '
+        'for the selected format',
+      );
+    } else {
+      assert(
+        chunkPCMFrames == -1,
+        'chunkPCMFrames is only supported for PCM formats',
+      );
     }
 
     if (_mixerOutputStreamController != null) {
@@ -876,6 +901,7 @@ interface class SoLoud {
       channels,
       bufferSizeBytes,
       notificationThresholdBytes,
+      chunkPCMFrames,
     );
 
     if (error != PlayerErrors.noError) {

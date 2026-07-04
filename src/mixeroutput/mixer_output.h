@@ -34,10 +34,13 @@ class MixerOutput {
   /// [channels] the channel count. Use -1 to follow the engine channels.
   /// [bufferSizeBytes] the total size of the circular buffer.
   /// [notificationThresholdBytes] how many bytes must be available before
-  /// the Dart callback is triggered.
+  /// the Dart callback is triggered. Used for compressed formats.
+  /// [chunkPCMFrames] fixed number of PCM frames per emitted chunk. Used for
+  /// PCM formats; use -1 to disable and fall back to the threshold behavior.
   PlayerErrors start(MixerOutputFormat format, int sampleRate, int channels,
                      size_t bufferSizeBytes,
-                     size_t notificationThresholdBytes);
+                     size_t notificationThresholdBytes,
+                     int chunkPCMFrames = -1);
 
   /// Stop capturing and release resources.
   void stop();
@@ -98,6 +101,10 @@ class MixerOutput {
   int m_channels = 2;
   size_t m_bytesPerSample = 4;
   size_t m_bytesPerFrame = 8;
+
+  size_t m_chunkPCMFrames = 0;
+  size_t m_chunkBytes = 0;
+  std::vector<uint8_t> m_chunkBuffer;
 
   std::vector<uint8_t> m_buffer;
   size_t m_bufferSize = 0;
