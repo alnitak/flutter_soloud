@@ -851,8 +851,8 @@ interface class SoLoud {
   ///
   /// [chunkPCMFrames] when set, the stream emits fixed-size chunks containing
   /// exactly this many PCM frames. Only valid for PCM formats; must be at least
-  /// 2048 and a multiple of [channels] * bytes per sample for the chosen
-  /// format.
+  /// 2048. Set to -1 to disable fixed-size chunking and use
+  /// [notificationThresholdBytes] instead.
   ///
   /// Returns a [Stream] that yields captured audio data. The stream is closed
   /// when [stopMixerOutputStream] is called or when the engine is deinited.
@@ -874,12 +874,6 @@ interface class SoLoud {
         chunkPCMFrames == -1 || chunkPCMFrames >= 2048,
         'chunkPCMFrames must be at least 2048 when provided',
       );
-      assert(
-        chunkPCMFrames == -1 ||
-            chunkPCMFrames % format.bytesPerFrame(channels) == 0,
-        'chunkPCMFrames must be a multiple of channels * bytesPerSample '
-        'for the selected format',
-      );
     } else {
       assert(
         chunkPCMFrames == -1,
@@ -891,9 +885,7 @@ interface class SoLoud {
       return _mixerOutputStreamController!.stream;
     }
 
-    _mixerOutputStreamController = StreamController<Uint8List>.broadcast(
-      sync: true,
-    );
+    _mixerOutputStreamController = StreamController<Uint8List>.broadcast();
 
     final error = _controller.soLoudFFI.startMixerOutputCapture(
       format,

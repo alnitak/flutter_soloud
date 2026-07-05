@@ -60,8 +60,7 @@ PlayerErrors MixerOutput::start(MixerOutputFormat format, int sampleRate,
     }
     const size_t chunkBytes =
         static_cast<size_t>(chunkPCMFrames) * bytesPerFrame;
-    if (chunkBytes == 0 || chunkBytes > bufferSizeBytes ||
-        chunkPCMFrames % bytesPerFrame != 0) {
+    if (chunkBytes == 0 || chunkBytes > bufferSizeBytes) {
       return invalidParameter;
     }
   }
@@ -309,9 +308,7 @@ void MixerOutput::advanceReadPosition(size_t bytes) {
   m_readOffset.store((readOffset + toAdvance) % m_bufferSize,
                      std::memory_order_release);
 
-  const size_t threshold =
-      m_chunkBytes > 0 ? m_chunkBytes : m_notificationThreshold;
-  if (toAdvance > 0 && getAvailableBytes() < threshold) {
+  if (toAdvance > 0) {
     m_notified.store(false, std::memory_order_release);
   }
 }
@@ -325,8 +322,9 @@ void MixerOutput::notificationThreadFunc() {
     const size_t available = getAvailableBytes();
 
     // Fixed-size PCM chunk mode: emit exactly m_chunkBytes at a time. The data
-    // is copied into a local contiguous buffer so the receiver can always
-    // advance the read position by m_chunkBytes without worrying about wrap.
+    // is copied into a local contiguous buffer, the read position is advanced
+    // immediately, and the callback is invoked. Dart must not advance the
+    // circular buffer again for these chunks.
     if (m_chunkBytes > 0) {
       if (available >= m_chunkBytes && !m_notified.load()) {
         m_notified.store(true, std::memory_order_release);
@@ -341,6 +339,10 @@ void MixerOutput::notificationThreadFunc() {
           std::memcpy(m_chunkBuffer.data() + firstPart, m_buffer.data(),
                       secondPart);
         }
+
+        const size_t newReadOffset =
+            (readOffset + m_chunkBytes) % m_bufferSize;
+        m_readOffset.store(newReadOffset, std::memory_order_release);
 
         if (m_callback) {
           m_callback(m_chunkBuffer.data(), m_chunkBytes);

@@ -205,7 +205,11 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     if (length > 0) {
       final bytes = data.cast<ffi.Uint8>().asTypedList(length);
       mixerOutputChunkController.add(Uint8List.fromList(bytes));
-      advanceMixerOutputReadPosition(length);
+      // In fixed PCM chunk mode the native side advances the read position
+      // before invoking the callback, so Dart must not advance it again.
+      if (!_mixerOutputChunkMode) {
+        advanceMixerOutputReadPosition(length);
+      }
     }
   }
 
@@ -286,6 +290,11 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   // Mixer output capture bindings
   // ////////////////////////////////////////////////
 
+  /// Whether the current mixer output capture is using fixed-size PCM chunks.
+  /// When true, the native side advances the circular buffer read position
+  /// before invoking the callback, so Dart must not advance it again.
+  bool _mixerOutputChunkMode = false;
+
   @override
   PlayerErrors startMixerOutputCapture(
     MixerOutputFormat format,
@@ -295,6 +304,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     int notificationThresholdBytes,
     int chunkPCMFrames,
   ) {
+    _mixerOutputChunkMode = format.isPcm && chunkPCMFrames > 0;
     final ret = _startMixerCapture(
       format.value,
       sampleRate,
@@ -324,6 +334,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
 
   @override
   void stopMixerOutputCapture() {
+    _mixerOutputChunkMode = false;
     _stopMixerCapture();
   }
 

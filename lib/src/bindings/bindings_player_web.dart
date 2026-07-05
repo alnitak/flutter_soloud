@@ -38,6 +38,11 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   WorkerController? workerController;
   bool _eventCallbacksSetUp = false;
 
+  /// Whether the current mixer output capture is using fixed-size PCM chunks.
+  /// When true, the native side advances the circular buffer read position
+  /// before invoking the callback, so Dart must not advance it again.
+  bool _mixerOutputChunkMode = false;
+
   @override
   void disposeNativeCallables() {
     /// Nothing to do on web.
@@ -114,11 +119,15 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
         if (length <= 0) return;
 
         // Copy the data out of the WASM memory buffer and advance the native
-        // read position so the circular buffer can reuse the memory.
+        // read position so the circular buffer can reuse the memory. In fixed
+        // PCM chunk mode the native side already advances the read position,
+        // so Dart must not advance it again.
         final heapBuffer = wasmHeapU8Buffer;
         final bytes = Uint8List.view(heapBuffer.toDart, offset, length);
         mixerOutputChunkController.add(Uint8List.fromList(bytes));
-        advanceMixerOutputReadPosition(length);
+        if (!_mixerOutputChunkMode) {
+          advanceMixerOutputReadPosition(length);
+        }
     }
   }
 
@@ -144,6 +153,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     int notificationThresholdBytes,
     int chunkPCMFrames,
   ) {
+    _mixerOutputChunkMode = format.isPcm && chunkPCMFrames > 0;
     final ret = wasmStartMixerCapture(
       format.value,
       sampleRate,
@@ -156,7 +166,10 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }
 
   @override
-  void stopMixerOutputCapture() => wasmStopMixerCapture();
+  void stopMixerOutputCapture() {
+    _mixerOutputChunkMode = false;
+    wasmStopMixerCapture();
+  }
 
   @override
   bool isMixerOutputCaptureRunning() => wasmIsMixerCaptureRunning() == 1;
