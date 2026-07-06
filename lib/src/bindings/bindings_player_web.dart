@@ -98,6 +98,15 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     });
   }
 
+  @override
+  void registerMixerOutputCallback() {
+    // On the web there is no separate isolate boundary, so we just ensure the
+    // worker-based event plumbing (including the mixer output callback) is set
+    // up. This is idempotent and safe to call from any place that needs to
+    // listen to [mixerOutputChunkEvents].
+    setDartEventCallbacks();
+  }
+
   void _handleWorkerMessage(Map<dynamic, dynamic> message) {
     final msg = message['message'] as String?;
     if (msg == null) return;

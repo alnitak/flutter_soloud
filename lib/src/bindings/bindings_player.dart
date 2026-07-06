@@ -81,6 +81,16 @@ abstract class FlutterSoLoud {
   Stream<Uint8List> get mixerOutputChunkEvents =>
       mixerOutputChunkController.stream;
 
+  /// Register the mixer output callback so that this isolate's
+  /// [mixerOutputChunkEvents] stream receives copied chunks.
+  ///
+  /// This is intended for non-main isolates that want to start capture after
+  /// the engine has been initialized in the main isolate. It does not touch the
+  /// voice-ended, file-loaded, or state-changed callbacks, which must remain
+  /// owned by the main isolate. Implementations must be idempotent.
+  @mustBeOverridden
+  void registerMixerOutputCallback();
+
   /// Start capturing the master mixer output.
   ///
   /// [format] the desired output format.
