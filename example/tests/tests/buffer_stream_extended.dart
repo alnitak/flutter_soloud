@@ -7,8 +7,8 @@ import 'common.dart';
 
 /// Extended buffer stream testing including reset, time consumed,
 /// and buffer size.
-Future<StringBuffer> testBufferStreamExtended() async {
-  final strBuf = StringBuffer();
+Future<OutputBuffer> testBufferStreamExtended() async {
+  final strBuf = OutputBuffer();
   await initialize();
 
   // Test BufferingType.preserved

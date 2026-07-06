@@ -93,6 +93,13 @@ if [ "${SKIP_OPUS_OGG}" != "1" ]; then
         cd -
     fi
 
+    # Opus keeps its public headers directly in include/, but the source
+    # includes them as <opus/opus.h>. Create a compatibility symlink so the
+    # same include path works for Opus as for the other Xiph libraries.
+    if [ ! -L "$OPUS_DIR/include/opus" ]; then
+        ln -sf . "$OPUS_DIR/include/opus"
+    fi
+
     # Build Vorbis if not built or force rebuild is set
     echo -e "${BOLD_WHITE_ON_GREEN}Building Vorbis${RESET}"
     if [ ! -f "$VORBIS_DIR/lib/.libs/libvorbis.a" ] || [ $FORCE_REBUILD_LIBS -eq 1 ]; then
@@ -137,6 +144,7 @@ SOURCES=(
     ../src/soloud/src/audiosource/ay/*.c*
     ../src/soloud/src/audiosource/speech/*.c*
     ../src/soloud/src/audiosource/wav/*.c*
+    ../src/mixeroutput/*.cpp
     ../src/soloud_common.cpp
     ../src/bindings.cpp
     ../src/player.cpp
@@ -173,6 +181,7 @@ if [ "${SKIP_OPUS_OGG}" != "1" ]; then
         "$OPUS_DIR/.libs/libopus.a"
         "$OGG_DIR/src/.libs/libogg.a"
         "$VORBIS_DIR/lib/.libs/libvorbis.a"
+        "$VORBIS_DIR/lib/.libs/libvorbisenc.a"
         "$VORBIS_DIR/lib/.libs/libvorbisfile.a"
         "$FLAC_DIR/src/libFLAC/.libs/libFLAC-static.a"
     )
@@ -185,10 +194,10 @@ if [ "${SKIP_OPUS_OGG}" = "1" ]; then
 fi
 
 # Now compile everything together
-    # -s ASSERTIONS=1 \
     # -g -fdebug-compilation-dir=./debug \
     # -s NO_DISABLE_EXCEPTION_CATCHING=1 \
-em++ -O2 \
+em++ -O2 -pthread \
+    -s ASSERTIONS=1 \
     ${INCLUDE_DIRS[@]} \
     ${SOURCES[@]} \
     ${LIBS[@]} \
@@ -203,6 +212,9 @@ em++ -O2 \
     -s ALLOW_MEMORY_GROWTH=1 \
     -s INITIAL_MEMORY=67108864 \
     -s MAXIMUM_MEMORY=2147483648 \
+    -s SHARED_MEMORY=1 \
+    -s PTHREAD_POOL_SIZE=8 \
+    -s ALLOW_BLOCKING_ON_MAIN_THREAD=1 \
     -s MODULARIZE=1 \
     -s EXPORT_NAME="'Module_soloud'" \
     -o ../web/libflutter_soloud_plugin.js

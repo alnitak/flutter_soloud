@@ -7,7 +7,7 @@ import 'package:flutter_soloud/src/bindings/soloud_controller.dart';
 import 'common.dart';
 
 /// Test asynchronous `init()`-`deinit()`.
-Future<StringBuffer> testAsynchronousDeinit() async {
+Future<OutputBuffer> testAsynchronousDeinit() async {
   /// test asynchronous init-deinit looping with a short decreasing time
   for (var t = 10; t >= 0; t--) {
     var error = '';
@@ -43,5 +43,5 @@ Future<StringBuffer> testAsynchronousDeinit() async {
 
     debugPrint('------------- awaited init delay $t passed\n');
   }
-  return StringBuffer();
+  return OutputBuffer();
 }

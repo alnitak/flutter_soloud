@@ -138,9 +138,6 @@ build_lib "vorbis"
 build_lib "opus"
 build_lib "flac"
 
-echo -e "${BOLD_WHITE_ON_GREEN}=== Removing not used libvorbisenc.so* ===${RESET}"
-rm -f "$OUTPUT_DIR/libvorbisenc.so"*
-rm -f "$OUTPUT_INCLUDE_DIR/vorbis/vorbisenc.h"
 echo -e "${BOLD_WHITE_ON_GREEN}=== Removing not used libFLAC++.so* ===${RESET}"
 rm -f "$OUTPUT_DIR/libFLAC++.so"*
 

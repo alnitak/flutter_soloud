@@ -8,10 +8,10 @@ import 'package:logging/logging.dart';
 import 'common.dart';
 
 /// Test instancing playing handles and their disposal.
-Future<StringBuffer> testStopFutures() async {
-  final output = StringBuffer();
+Future<OutputBuffer> testStopFutures() async {
+  final output = OutputBuffer();
   final severeLogs = <LogRecord>[];
-  final strBuf = StringBuffer();
+  final strBuf = OutputBuffer();
 
   Logger.root.level = kDebugMode ? Level.FINE : Level.INFO;
   Logger.root.onRecord.listen((record) {

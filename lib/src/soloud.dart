@@ -267,6 +267,15 @@ interface class SoLoud {
 
   /// The current status of the engine. This is `true` when the engine
   /// has been initialized and is immediately ready.
+  /// 
+  /// It will be always true if checking from another isolate than the main
+  /// isolate. This is because it is supposed the user has already initialized
+  /// the engine in the main isolate, and the engine is a singleton in C++ land.
+  /// This behavior is meant to use the engine in a separate isolate for
+  /// various tools like output mixer capture, waveform reading, etc. having
+  /// the main isolate free for UI and other tasks.
+  /// NOTE: operations like `load*` and `play*` will fail if not in the
+  /// main isolate.
   ///
   /// The result will be `false` in all the following cases:
   ///
@@ -279,9 +288,13 @@ interface class SoLoud {
   /// Use [isInitialized] only if you want to check the current status of
   /// the engine synchronously and you don't care that it might be ready soon.
   bool get isInitialized =>
+      _isMainIsolate &&
       _nativeCallbacksInitialized &&
       _controller.soLoudFFI.isInited() &&
       _loader.isInitialized;
+
+  /// Whether this is the main isolate.
+  bool get _isMainIsolate => ServicesBinding.rootIsolateToken != null;
 
   /// Backing of [activeSounds].
   final List<AudioSource> _activeSounds = [];
@@ -500,6 +513,9 @@ interface class SoLoud {
   void deinit() {
     _log.finest('deinit() called');
     _nativeCallbacksInitialized = false;
+    if (_controller.soLoudFFI.isMixerOutputCaptureRunning()) {
+      _controller.soLoudFFI.stopMixerOutputCapture();
+    }
     _controller.soLoudFFI.disposeNativeCallables();
     _controller.soLoudFFI.disposeAllSound();
     _controller.soLoudFFI.deinit();
@@ -809,6 +825,197 @@ interface class SoLoud {
         });
   }
 
+  ////////////////////////////////////////////////////////////////////
+  // Mixer output capture
+  ////////////////////////////////////////////////////////////////////
+
+  /// Subscription that reads mixer output data from the native circular
+  /// buffer and emits it through [startMixerOutputStream].
+  StreamSubscription<Uint8List>? _mixerOutputSubscription;
+
+  /// The broadcast stream of captured mixer output data.
+  StreamController<Uint8List>? _mixerOutputStreamController;
+
+  /// Captures the master mixer output as a [Stream] of [Uint8List] chunks.
+  ///
+  /// [format] the desired output format. PCM formats are supported on all
+  /// platforms. Compressed formats (Opus, Vorbis, FLAC, WAV) are available when
+  /// the plugin is built with Xiph libraries. The default is PCM F32LE and
+  /// it is the only format that doesn't require conversion (when [sampleRate]
+  /// and [channels] are set to -1) on the native side, so it is
+  /// the most efficient and preferred on mobile.
+  ///
+  /// **WAV caveat:** When [format] is [MixerOutputFormat.wav], the stream emits
+  /// a 44-byte header followed by PCM chunks incrementally, just like the other
+  /// formats. However, the header size fields are placeholders until capture
+  /// stops. To produce a valid WAV file, call [getMixerOutputWavHeader] after
+  /// [stopMixerOutputStream] and overwrite the first 44 bytes of the saved file
+  /// with the returned header.
+  ///
+  /// [sampleRate] the sample rate. Use -1 to follow the engine sample rate.
+  ///
+  /// [channels] the channel count. Use -1 to follow the engine channels.
+  ///
+  /// [bufferSizeBytes] total size of the circular capture buffer.
+  ///
+  /// [notificationThresholdBytes] bytes that must be available before a chunk
+  /// is emitted. Used for compressed formats and for PCM when
+  /// [chunkPCMFrames] is -1; ignored when [chunkPCMFrames] is set.
+  ///
+  /// [chunkPCMFrames] when set, the stream emits fixed-size chunks containing
+  /// exactly this many PCM frames. Only valid for PCM formats; must be at least
+  /// 2048. Set to -1 to disable fixed-size chunking and use
+  /// [notificationThresholdBytes] instead.
+  ///
+  /// Returns a [Stream] that yields captured audio data. The stream is closed
+  /// when [stopMixerOutputStream] is called or when the engine is deinited.
+  @experimental
+  Stream<Uint8List> startMixerOutputStream({
+    MixerOutputFormat format = MixerOutputFormat.pcmF32le,
+    int sampleRate = -1,
+    int channels = -1,
+    int bufferSizeBytes = 1024 * 1024,
+    int notificationThresholdBytes = 4096,
+    int chunkPCMFrames = -1,
+  }) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+
+    if (format.isPcm) {
+      assert(
+        chunkPCMFrames == -1 || chunkPCMFrames >= 2048,
+        'chunkPCMFrames must be at least 2048 when provided',
+      );
+    } else {
+      assert(
+        chunkPCMFrames == -1,
+        'chunkPCMFrames is only supported for PCM formats',
+      );
+    }
+
+    if (_mixerOutputStreamController != null) {
+      return _mixerOutputStreamController!.stream;
+    }
+
+    _mixerOutputStreamController = StreamController<Uint8List>.broadcast();
+
+    final error = _controller.soLoudFFI.startMixerOutputCapture(
+      format,
+      sampleRate,
+      channels,
+      bufferSizeBytes,
+      notificationThresholdBytes,
+      chunkPCMFrames,
+    );
+
+    if (error != PlayerErrors.noError) {
+      _mixerOutputStreamController!.close();
+      _mixerOutputStreamController = null;
+      throw SoLoudCppException.fromPlayerError(error);
+    }
+
+    _mixerOutputSubscription = _controller.soLoudFFI.mixerOutputChunkEvents
+        .listen(_emitMixerOutputChunk);
+
+    return _mixerOutputStreamController!.stream;
+  }
+
+  void _emitMixerOutputChunk(Uint8List chunk) {
+    if (_mixerOutputStreamController == null ||
+        _mixerOutputStreamController!.isClosed) {
+      return;
+    }
+
+    if (chunk.isEmpty) {
+      return;
+    }
+
+    _mixerOutputStreamController!.add(chunk);
+  }
+
+  /// Stops the mixer output capture stream and releases associated resources.
+  @experimental
+  void stopMixerOutputStream() {
+    _mixerOutputSubscription?.cancel();
+    _mixerOutputSubscription = null;
+    _controller.soLoudFFI.stopMixerOutputCapture();
+
+    // Flush any captured data that did not reach the notification threshold.
+    // The native side keeps the buffer alive after stopping so we can copy the
+    // tail synchronously and avoid losing compressed-format headers.
+    _flushRemainingMixerOutput();
+
+    _mixerOutputStreamController?.close();
+    _mixerOutputStreamController = null;
+  }
+
+  void _flushRemainingMixerOutput() {
+    final controller = _mixerOutputStreamController;
+    if (controller == null || controller.isClosed) {
+      return;
+    }
+
+    final available = _controller.soLoudFFI.getMixerOutputAvailableBytes();
+    if (available <= 0) {
+      return;
+    }
+
+    final bufferSize = _controller.soLoudFFI.getMixerOutputBufferSize();
+    final readOffset = _controller.soLoudFFI.getMixerOutputReadOffset();
+    final firstLength = available < bufferSize - readOffset
+        ? available
+        : bufferSize - readOffset;
+
+    if (firstLength > 0) {
+      final chunk = _controller.soLoudFFI.copyMixerOutputBuffer(
+        readOffset,
+        firstLength,
+      );
+      if (chunk.isNotEmpty) {
+        controller.add(chunk);
+      }
+    }
+
+    if (available > firstLength) {
+      final secondLength = available - firstLength;
+      final chunk = _controller.soLoudFFI.copyMixerOutputBuffer(
+        0,
+        secondLength,
+      );
+      if (chunk.isNotEmpty) {
+        controller.add(chunk);
+      }
+    }
+  }
+
+  /// Whether mixer output capture is currently active.
+  @experimental
+  bool get isMixerOutputStreamRunning =>
+      _controller.soLoudFFI.isMixerOutputCaptureRunning();
+
+  /// Returns the current 44-byte WAV header for the active mixer output
+  /// capture.
+  ///
+  /// This is only meaningful when the capture format is
+  /// [MixerOutputFormat.wav].
+  /// Because the WAV container stores the total PCM size in its header, the
+  /// header emitted at the start of the stream has placeholder size values.
+  /// The stream emits PCM bytes incrementally like the other formats, but the
+  /// file is not fully valid until the caller overwrites the first 44 bytes
+  /// with the header returned by this method after [stopMixerOutputStream] is
+  /// called.
+  ///
+  /// Returns an empty [Uint8List] if WAV capture is not active or the header
+  /// is unavailable.
+  @experimental
+  Uint8List getMixerOutputWavHeader() {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    return _controller.soLoudFFI.getMixerOutputWavHeader();
+  }
+
   /// Set up an audio stream.
   ///
   /// [maxBufferSizeBytes] the max buffer size in **bytes**. When adding audio
@@ -853,6 +1060,10 @@ interface class SoLoud {
   /// or Vorbis. With this format, the samplerate and channels parameters
   /// are ignored.
   ///
+  /// [autoDispose] if set to true, this source will be automatically disposed
+  /// when all its handles have finished playing. There will be no need to call
+  /// [disposeSource] manually.
+  ///
   /// [onBuffering] a callback that is called when starting to buffer
   /// (isBuffering = true) and when the buffering is done (isBuffering = false).
   /// The callback is called with the `handle` which triggered the event and
@@ -870,6 +1081,7 @@ interface class SoLoud {
     int sampleRate = 24000,
     Channels channels = Channels.mono,
     BufferType format = BufferType.s16le,
+    bool autoDispose = false,
     void Function(bool isBuffering, int handle, double time)? onBuffering,
     void Function(AudioMetadata)? onMetadata,
   }) {
@@ -926,7 +1138,8 @@ interface class SoLoud {
       throw SoLoudCppException.fromPlayerError(ret.error);
     }
 
-    final newSound = _addNewSound(ret.error, '', ret.soundHash.hash);
+    final newSound = _addNewSound(ret.error, '', ret.soundHash.hash)
+      ..autoDispose = autoDispose;
     return newSound;
   }
 
@@ -1729,6 +1942,12 @@ interface class SoLoud {
 
     /// remove all sounds
     _activeSounds.clear();
+  }
+
+  /// Query whether [source] is a valid audio source.
+  ///
+  bool isValidAudioSource(AudioSource source) {
+    return _activeSounds.contains(source);
   }
 
   /// Query whether a sound (supplied via [handle]) is set to loop.

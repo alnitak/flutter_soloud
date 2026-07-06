@@ -4,8 +4,8 @@ import 'package:flutter_soloud/flutter_soloud.dart';
 import 'common.dart';
 
 /// Test playback device enumeration and switching.
-Future<StringBuffer> testPlaybackDevices() async {
-  final strBuf = StringBuffer();
+Future<OutputBuffer> testPlaybackDevices() async {
+  final strBuf = OutputBuffer();
   await initialize();
 
   // List all playback devices

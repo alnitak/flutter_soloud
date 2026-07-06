@@ -107,3 +107,41 @@ FFI_PLUGIN_EXPORT void busAnnexSound(unsigned int busId,
 /// [busId] the bus ID.
 /// Returns the active voice count, or 0 if the bus is not found.
 FFI_PLUGIN_EXPORT unsigned int busGetActiveVoiceCount(unsigned int busId);
+
+/// Start capturing the master mixer output.
+///
+/// [format] the output format from the MixerOutputFormat enum.
+/// [sampleRate] desired sample rate, or -1 to use the engine sample rate.
+/// [channels] desired channel count, or -1 to use the engine channel count.
+/// [bufferSizeBytes] size of the circular buffer in bytes.
+/// [notificationThresholdBytes] number of available bytes before a callback is fired.
+/// Returns [PlayerErrors.noError] if success.
+FFI_PLUGIN_EXPORT enum PlayerErrors startMixerCapture(
+    int format, int sampleRate, int channels,
+    uint64_t bufferSizeBytes,
+    uint64_t notificationThresholdBytes);
+
+/// Stop capturing the master mixer output.
+FFI_PLUGIN_EXPORT void stopMixerCapture();
+
+/// Returns 1 if mixer capture is running, 0 otherwise.
+FFI_PLUGIN_EXPORT int isMixerCaptureRunning();
+
+/// Get the pointer to the circular capture buffer.
+FFI_PLUGIN_EXPORT unsigned char *getMixerCaptureBufferPointer();
+
+/// Get the total size of the circular capture buffer in bytes.
+FFI_PLUGIN_EXPORT uint64_t getMixerCaptureBufferSize();
+
+/// Get the number of bytes available to read in the capture buffer.
+FFI_PLUGIN_EXPORT uint64_t getMixerCaptureAvailableBytes();
+
+/// Get the current read offset in the capture buffer.
+FFI_PLUGIN_EXPORT uint64_t getMixerCaptureReadOffset();
+
+/// Advance the read position by [bytes].
+FFI_PLUGIN_EXPORT void advanceMixerCaptureReadPosition(uint64_t bytes);
+
+/// Set the callback invoked when [notificationThresholdBytes] are available.
+FFI_PLUGIN_EXPORT void setMixerOutputCallback(
+    void (*callback)(unsigned char *, uint64_t));

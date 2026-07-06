@@ -52,6 +52,7 @@ org-dartlang-sdk:///lib/_internal/js_runtime/lib/synced/invocation_mirror_consta
 org-dartlang-sdk:///lib/_internal/js_runtime/lib/typed_data_patch.dart
 org-dartlang-sdk:///lib/_internal/js_shared/lib/convert_utf_patch.dart
 org-dartlang-sdk:///lib/_internal/js_shared/lib/date_time_patch.dart
+org-dartlang-sdk:///lib/_internal/js_shared/lib/http_patch.dart
 org-dartlang-sdk:///lib/_internal/js_shared/lib/js_interop_patch.dart
 org-dartlang-sdk:///lib/_internal/js_shared/lib/js_interop_unsafe_patch.dart
 org-dartlang-sdk:///lib/_internal/js_shared/lib/js_types.dart
@@ -169,7 +170,6 @@ org-dartlang-sdk:///lib/internal/iterable.dart
 org-dartlang-sdk:///lib/internal/linked_list.dart
 org-dartlang-sdk:///lib/internal/list.dart
 org-dartlang-sdk:///lib/internal/patch.dart
-org-dartlang-sdk:///lib/internal/print.dart
 org-dartlang-sdk:///lib/internal/sort.dart
 org-dartlang-sdk:///lib/internal/symbol.dart
 org-dartlang-sdk:///lib/io/common.dart

@@ -28,108 +28,122 @@
 #define __WEB__ 0
 #endif
 
-namespace {
-constexpr unsigned int kOggXiphBufferStreamMaxBytes = 512u * 1024u * 1024u;
-
-bool readFileBytes(const std::string &filePath,
-                   std::vector<unsigned char> &bytes)
+namespace
 {
-    std::ifstream file(filePath, std::ios::binary | std::ios::ate);
-    if (!file.good()) {
-        return false;
-    }
+    constexpr unsigned int kOggXiphBufferStreamMaxBytes = 512u * 1024u * 1024u;
 
-    const std::streamoff fileSize = file.tellg();
-    if (fileSize <= 0) {
-        return false;
-    }
-
-    bytes.resize(static_cast<size_t>(fileSize));
-    file.seekg(0, std::ios::beg);
-    file.read(reinterpret_cast<char *>(bytes.data()), fileSize);
-    return file.gcount() == fileSize;
-}
-
-bool isOggXiphBytes(const std::vector<unsigned char> &bytes)
-{
-    if (bytes.size() < 35 || std::memcmp(bytes.data(), "OggS", 4) != 0) {
-        return false;
-    }
-
-    size_t scanOffset = 0;
-    const size_t scanLimit = std::min(bytes.size(), static_cast<size_t>(64 * 1024));
-    while (scanOffset + 27 < scanLimit) {
-        if (std::memcmp(bytes.data() + scanOffset, "OggS", 4) != 0) {
-            ++scanOffset;
-            continue;
-        }
-
-        const uint8_t segmentCount = bytes[scanOffset + 26];
-        const size_t segmentTableOffset = scanOffset + 27;
-        if (segmentTableOffset + segmentCount > scanLimit) {
+    bool readFileBytes(const std::string &filePath,
+                       std::vector<unsigned char> &bytes)
+    {
+        std::ifstream file(filePath, std::ios::binary | std::ios::ate);
+        if (!file.good())
+        {
             return false;
         }
 
-        size_t payloadSize = 0;
-        for (uint8_t i = 0; i < segmentCount; ++i) {
-            payloadSize += bytes[segmentTableOffset + i];
-        }
-
-        const size_t payloadOffset = segmentTableOffset + segmentCount;
-        if (payloadOffset + payloadSize > bytes.size()) {
+        const std::streamoff fileSize = file.tellg();
+        if (fileSize <= 0)
+        {
             return false;
         }
 
-        if (payloadSize >= 8 &&
-            std::memcmp(bytes.data() + payloadOffset, "OpusHead", 8) == 0) {
-            return true;
+        bytes.resize(static_cast<size_t>(fileSize));
+        file.seekg(0, std::ios::beg);
+        file.read(reinterpret_cast<char *>(bytes.data()), fileSize);
+        return file.gcount() == fileSize;
+    }
+
+    bool isOggXiphBytes(const std::vector<unsigned char> &bytes)
+    {
+        if (bytes.size() < 35 || std::memcmp(bytes.data(), "OggS", 4) != 0)
+        {
+            return false;
         }
 
-        if (payloadSize >= 13 &&
-            std::memcmp(bytes.data() + payloadOffset + 1, "FLAC", 4) == 0 &&
-            std::memcmp(bytes.data() + payloadOffset + 9, "fLaC", 4) == 0) {
-            return true;
+        size_t scanOffset = 0;
+        const size_t scanLimit = std::min(bytes.size(), static_cast<size_t>(64 * 1024));
+        while (scanOffset + 27 < scanLimit)
+        {
+            if (std::memcmp(bytes.data() + scanOffset, "OggS", 4) != 0)
+            {
+                ++scanOffset;
+                continue;
+            }
+
+            const uint8_t segmentCount = bytes[scanOffset + 26];
+            const size_t segmentTableOffset = scanOffset + 27;
+            if (segmentTableOffset + segmentCount > scanLimit)
+            {
+                return false;
+            }
+
+            size_t payloadSize = 0;
+            for (uint8_t i = 0; i < segmentCount; ++i)
+            {
+                payloadSize += bytes[segmentTableOffset + i];
+            }
+
+            const size_t payloadOffset = segmentTableOffset + segmentCount;
+            if (payloadOffset + payloadSize > bytes.size())
+            {
+                return false;
+            }
+
+            if (payloadSize >= 8 &&
+                std::memcmp(bytes.data() + payloadOffset, "OpusHead", 8) == 0)
+            {
+                return true;
+            }
+
+            if (payloadSize >= 13 &&
+                std::memcmp(bytes.data() + payloadOffset + 1, "FLAC", 4) == 0 &&
+                std::memcmp(bytes.data() + payloadOffset + 9, "fLaC", 4) == 0)
+            {
+                return true;
+            }
+
+            scanOffset = payloadOffset + payloadSize;
         }
 
-        scanOffset = payloadOffset + payloadSize;
+        return false;
     }
 
-    return false;
-}
+    PlayerErrors loadOggXiphBufferStream(Player *player,
+                                         ActiveSound *activeSound,
+                                         const std::vector<unsigned char> &bytes)
+    {
+        if (player == nullptr || activeSound == nullptr || bytes.empty())
+        {
+            return invalidParameter;
+        }
 
-PlayerErrors loadOggXiphBufferStream(Player *player,
-                                     ActiveSound *activeSound,
-                                     const std::vector<unsigned char> &bytes)
-{
-    if (player == nullptr || activeSound == nullptr || bytes.empty()) {
-        return invalidParameter;
+        activeSound->sound = std::make_unique<SoLoud::BufferStream>();
+        activeSound->soundType = TYPE_BUFFER_STREAM;
+        PCMformat pcmFormat = {player->mSampleRate, player->mChannels, 4, AUTO};
+        auto *bufferStream =
+            static_cast<SoLoud::BufferStream *>(activeSound->sound.get());
+        PlayerErrors error = bufferStream->setBufferStream(
+            player,
+            activeSound,
+            kOggXiphBufferStreamMaxBytes,
+            BufferingType::PRESERVED,
+            0.0f,
+            pcmFormat);
+        if (error != noError)
+        {
+            return error;
+        }
+
+        error = bufferStream->addData(bytes.data(),
+                                      static_cast<unsigned int>(bytes.size()));
+        if (error != noError)
+        {
+            return error;
+        }
+
+        bufferStream->setDataIsEnded();
+        return noError;
     }
-
-    activeSound->sound = std::make_unique<SoLoud::BufferStream>();
-    activeSound->soundType = TYPE_BUFFER_STREAM;
-    PCMformat pcmFormat = {player->mSampleRate, player->mChannels, 4, AUTO};
-    auto *bufferStream =
-        static_cast<SoLoud::BufferStream *>(activeSound->sound.get());
-    PlayerErrors error = bufferStream->setBufferStream(
-        player,
-        activeSound,
-        kOggXiphBufferStreamMaxBytes,
-        BufferingType::PRESERVED,
-        0.0f,
-        pcmFormat);
-    if (error != noError) {
-        return error;
-    }
-
-    error = bufferStream->addData(bytes.data(),
-                                  static_cast<unsigned int>(bytes.size()));
-    if (error != noError) {
-        return error;
-    }
-
-    bufferStream->setDataIsEnded();
-    return noError;
-}
 }
 
 Player::Player() : mInited(false), mFilters(&soloud, nullptr, nullptr),
@@ -138,11 +152,13 @@ Player::Player() : mInited(false), mFilters(&soloud, nullptr, nullptr),
 {
 }
 
-Player::~Player() {
+Player::~Player()
+{
     // If the scheduler was started, stop it before touching Soloud.
     stopPauseEngineScheduler();
 
-    if (!mInited) {
+    if (!mInited)
+    {
         // dispose() was called properly — Soloud is already deinited and safe.
         // Let ~Soloud() run normally to free its remaining allocations.
         return;
@@ -160,12 +176,14 @@ Player::~Player() {
     soloud.mVoiceGroupCount = 0;
     soloud.mResampleData = nullptr;
     soloud.mResampleDataOwner = nullptr;
-    for (int i = 0; i < FILTERS_PER_STREAM; i++) {
+    for (int i = 0; i < FILTERS_PER_STREAM; i++)
+    {
         soloud.mFilterInstance[i] = nullptr;
     }
 }
 
-void Player::dispose() {
+void Player::dispose()
+{
     if (!mInited)
         return;
 
@@ -219,20 +237,14 @@ PlayerErrors Player::init(unsigned int sampleRate, unsigned int bufferSize, unsi
 
     // initialize SoLoud.
     SoLoud::result result;
-    try {
-        result = soloud.init(
-            0,
-            SoLoud::Soloud::MINIAUDIO, sampleRate, bufferSize, channels, playbackInfos_id);
-        if (result == SoLoud::SO_NO_ERROR)
-        {
-            soloud.setPostClipScaler(1.0f);
-        }
-    } catch (...) {
+    result = soloud.init(0, SoLoud::Soloud::MINIAUDIO, sampleRate, bufferSize, channels, playbackInfos_id);
+    if (result != SoLoud::SO_NO_ERROR)
+    {
         return backendNotInited;
     }
-
-    if (result == SoLoud::SO_NO_ERROR)
+    else
     {
+        soloud.setPostClipScaler(1.0f);
         mInited = true;
         mSampleRate = sampleRate;
         mBufferSize = bufferSize;
@@ -240,8 +252,6 @@ PlayerErrors Player::init(unsigned int sampleRate, unsigned int bufferSize, unsi
         // Start the deferred-pause scheduler now that the engine is in use.
         startPauseEngineScheduler();
     }
-    else
-        result = backendNotInited;
     return (PlayerErrors)result;
 }
 
@@ -254,7 +264,7 @@ PlayerErrors Player::changeDevice(int deviceID)
     auto const devices = listPlaybackDevices();
     if (devices.size() == 0 || deviceID >= devices.size())
         return noPlaybackDevicesFound;
-    
+
     // Use the stored device ID from the PlaybackDevice struct
     void *playbackInfos_id = (void *)&devices[deviceID].deviceId;
 
@@ -309,7 +319,7 @@ std::vector<PlaybackDevice> Player::listPlaybackDevices()
         cd.name = strdup(pPlaybackInfos[i].name);
         cd.isDefault = pPlaybackInfos[i].isDefault;
         cd.id = i;
-        cd.deviceId = pPlaybackInfos[i].id;  // Copy the device ID
+        cd.deviceId = pPlaybackInfos[i].id; // Copy the device ID
         ret.push_back(cd);
     }
     // printf("***************** LIST DEVICES END\n");
@@ -393,9 +403,9 @@ const std::string Player::getErrorString(PlayerErrors errorCode) const
     case audioFormatNotSupported:
         return "error: audio format not supported!";
     case xiphLibsNotFound:
-      return "error: Xiph libraries not found!";
+        return "error: Xiph libraries not found!";
     case busIdNotFound:
-      return "error: bus id not found!";
+        return "error: bus id not found!";
     }
     return "Other error";
 }
@@ -416,11 +426,13 @@ PlayerErrors Player::loadFile(
 
     // If the hash already exists, create a new unique random hash.
     // This allows loading the same file multiple times with unique identifiers.
-    if (s != nullptr) {
+    if (s != nullptr)
+    {
         std::random_device rd;
         std::mt19937 g(rd());
         std::uniform_int_distribution<unsigned int> dist(0, 0x7fffffff);
-        do {
+        do
+        {
             newHash = dist(g);
         } while (findByHash(newHash) != nullptr);
     }
@@ -449,7 +461,8 @@ PlayerErrors Player::loadFile(
     if (result != SoLoud::SO_NO_ERROR)
     {
         std::vector<unsigned char> bytes;
-        if (readFileBytes(completeFileName, bytes) && isOggXiphBytes(bytes)) {
+        if (readFileBytes(completeFileName, bytes) && isOggXiphBytes(bytes))
+        {
             loadError = loadOggXiphBufferStream(this, newSound.get(), bytes);
         }
     }
@@ -470,7 +483,8 @@ PlayerErrors Player::loadFile(
 
     // Return fileAlreadyLoaded if the filename hash was already in use,
     // even though we've now loaded a new instance with a unique hash.
-    if (s != nullptr && loadError == noError) {
+    if (s != nullptr && loadError == noError)
+    {
         return fileAlreadyLoaded;
     }
 
@@ -494,11 +508,13 @@ PlayerErrors Player::loadMem(
     auto const s = findByHash(newHash);
 
     // If already loaded, generate a unique hash
-    if (s != nullptr) {
+    if (s != nullptr)
+    {
         std::random_device rd;
         std::mt19937 g(rd());
         std::uniform_int_distribution<unsigned int> dist(0, 0x7fffffff);
-        do {
+        do
+        {
             newHash = dist(g);
         } while (findByHash(newHash) != nullptr);
     }
@@ -525,7 +541,8 @@ PlayerErrors Player::loadMem(
     if (result != SoLoud::SO_NO_ERROR && mem != nullptr && length > 0)
     {
         std::vector<unsigned char> bytes(mem, mem + length);
-        if (isOggXiphBytes(bytes)) {
+        if (isOggXiphBytes(bytes))
+        {
             loadError = loadOggXiphBufferStream(this, newSound.get(), bytes);
         }
     }
@@ -541,7 +558,8 @@ PlayerErrors Player::loadMem(
 
     // Return fileAlreadyLoaded if the unique name hash was already in use,
     // even though we've now loaded a new instance with a unique hash.
-    if (s != nullptr && loadError == noError) {
+    if (s != nullptr && loadError == noError)
+    {
         return fileAlreadyLoaded;
     }
 
@@ -569,18 +587,11 @@ PlayerErrors Player::setBufferStream(
     auto newSound = std::make_unique<ActiveSound>();
     newSound.get()->completeFileName = "";
     newSound.get()->soundHash = hash;
-    
+
     newSound.get()->sound = std::make_unique<SoLoud::BufferStream>();
 
     newSound.get()->soundType = SoundType::TYPE_BUFFER_STREAM;
-    PlayerErrors e = static_cast<SoLoud::BufferStream *>(newSound.get()->sound.get())->setBufferStream(
-        this, newSound.get(),
-        static_cast<unsigned int>(maxBufferSize),
-        bufferingType,
-        bufferingTimeNeeds,
-        pcmFormat,
-        onBufferingCallback,
-        onMetadataCallback);
+    PlayerErrors e = static_cast<SoLoud::BufferStream *>(newSound.get()->sound.get())->setBufferStream(this, newSound.get(), static_cast<unsigned int>(maxBufferSize), bufferingType, bufferingTimeNeeds, pcmFormat, onBufferingCallback, onMetadataCallback);
 
     newSound.get()->filters = std::make_unique<Filters>(&soloud, newSound.get(), nullptr);
     {
@@ -611,7 +622,8 @@ PlayerErrors Player::resetBufferStream(unsigned int hash)
 {
     auto const s = findByHash(hash);
 
-    if (s == nullptr || s->soundType != SoundType::TYPE_BUFFER_STREAM) {
+    if (s == nullptr || s->soundType != SoundType::TYPE_BUFFER_STREAM)
+    {
         return PlayerErrors::soundHashNotFound;
     }
 
@@ -623,7 +635,8 @@ PlayerErrors Player::setBufferIcyMetaInt(unsigned int hash, int icyMetaInt)
 {
     auto const s = findByHash(hash);
 
-    if (s == nullptr || s->soundType != SoundType::TYPE_BUFFER_STREAM) { 
+    if (s == nullptr || s->soundType != SoundType::TYPE_BUFFER_STREAM)
+    {
         return PlayerErrors::soundHashNotFound;
     }
 
@@ -784,7 +797,7 @@ void Player::setPause(unsigned int handle, bool pause, bool isUserAction)
             }
         }
     }
-    
+
     if (pause)
     {
         // When pausing, check if there are any remaining active voices.
@@ -854,7 +867,8 @@ void Player::stopPauseEngineScheduler()
         mStopPauseThread = true;
     }
     mPauseCv.notify_all();
-    if (mPauseThread.joinable()) {
+    if (mPauseThread.joinable())
+    {
         mPauseThread.join();
     }
     {
@@ -869,7 +883,8 @@ void Player::pauseEngineScheduler()
     while (!mStopPauseThread)
     {
         std::unique_lock<std::mutex> lock(mPauseMutex);
-        mPauseCv.wait(lock, [this] { return mPauseRequested || mStopPauseThread; });
+        mPauseCv.wait(lock, [this]
+                      { return mPauseRequested || mStopPauseThread; });
         if (mStopPauseThread)
             break;
 
@@ -877,7 +892,8 @@ void Player::pauseEngineScheduler()
         // if another request arrives (coalescing rapid calls).
         mPauseRequested = false;
         mPauseCv.wait_for(lock, std::chrono::milliseconds(kPauseEngineDelayMs),
-                          [this] { return mPauseRequested || mStopPauseThread; });
+                          [this]
+                          { return mPauseRequested || mStopPauseThread; });
 
         if (mStopPauseThread)
             break;
@@ -972,9 +988,12 @@ PlayerErrors Player::play(
 
     handle = 0;
     SoLoud::handle newHandle = 0;
-    if (busId == 0) {
+    if (busId == 0)
+    {
         newHandle = soloud.play(*sound->sound.get(), volume, pan, paused, 0);
-    } else {
+    }
+    else
+    {
         auto it = busMap.find(busId);
         if (it != busMap.end())
             newHandle = it->second.bus.play(*sound->sound.get(), volume, pan, paused);
@@ -982,7 +1001,8 @@ PlayerErrors Player::play(
             return PlayerErrors::busIdNotFound;
     }
 
-    if (newHandle != 0) {
+    if (newHandle != 0)
+    {
         sound->handle.push_back({newHandle, MAX_DOUBLE, false});
         // Check if this buffer has enough data to be played
         if (sound->soundType == SoundType::TYPE_BUFFER_STREAM)
@@ -1012,18 +1032,23 @@ void Player::stop(unsigned int handle)
 void Player::removeHandle(unsigned int handle)
 {
     std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
-    if (sounds.empty()) {
+    if (sounds.empty())
+    {
         return;
     }
 
     bool found = false;
     size_t i = 0;
-    while (i < sounds.size() && !found) {
-        auto const& sound = sounds[i];
-        if (sound) {  // Check if unique_ptr is valid
+    while (i < sounds.size() && !found)
+    {
+        auto const &sound = sounds[i];
+        if (sound)
+        { // Check if unique_ptr is valid
             size_t n = 0;
-            while (n < sound->handle.size() && !found) {
-                if (sound->handle[n].handle == handle) {
+            while (n < sound->handle.size() && !found)
+            {
+                if (sound->handle[n].handle == handle)
+                {
                     sound->handle.erase(sound->handle.begin() + n);
                     found = true;
                 }
@@ -1037,7 +1062,7 @@ void Player::removeHandle(unsigned int handle)
 void Player::disposeSound(unsigned int soundHash)
 {
     std::unique_ptr<ActiveSound> soundToDestroy;
-    
+
     {
         std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
         if (sounds.empty())
@@ -1046,7 +1071,7 @@ void Player::disposeSound(unsigned int soundHash)
         }
 
         auto it = std::find_if(sounds.begin(), sounds.end(),
-                               [soundHash](const std::unique_ptr<ActiveSound> &sound) 
+                               [soundHash](const std::unique_ptr<ActiveSound> &sound)
                                {
                                    return sound->soundHash == soundHash;
                                });
@@ -1059,7 +1084,7 @@ void Player::disposeSound(unsigned int soundHash)
             {
                 soloud.stop(handleInfo.handle);
             }
-            
+
             // Mark BufferStream for destruction before removing it
             if (it->get()->soundType == SoundType::TYPE_BUFFER_STREAM)
             {
@@ -1069,7 +1094,7 @@ void Player::disposeSound(unsigned int soundHash)
                     bufferStream->markForDestruction();
                 }
             }
-            
+
             // Clear all filters from this sound BEFORE moving it out.
             // This prevents the audio thread from accessing filter instances
             // when the sound is destroyed.
@@ -1080,14 +1105,14 @@ void Player::disposeSound(unsigned int soundHash)
                     it->get()->sound->setFilter(i, nullptr);
                 }
             }
-            
+
             // Move the sound out of the vector before erasing
             soundToDestroy = std::move(*it);
             sounds.erase(it);
         }
     }
     // Sound (and its filters) is destroyed here when soundToDestroy goes out of scope
-    
+
     // After disposing a sound, check if there are any remaining active voices.
     // If no voices are active, pause the audio device.
     pauseEngine();
@@ -1097,17 +1122,17 @@ void Player::disposeAllSound()
 {
     // Stop all voices first. This stops all active audio processing.
     soloud.stopAll();
-    
+
     // Pause the audio device BEFORE destroying sounds to ensure the audio thread
     // is not accessing filter memory. This prevents race conditions where the
     // audio thread crashes trying to access freed filter instances.
     soloud.pause();
-    
+
     std::vector<std::unique_ptr<ActiveSound>> soundsToDestroy;
-    
+
     {
         std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
-        
+
         // First, remove all filters from sounds while the audio thread is paused.
         // This prevents the audio thread from accessing filter instances during destruction.
         for (auto &sound : sounds)
@@ -1129,13 +1154,13 @@ void Player::disposeAllSound()
                 }
             }
         }
-        
+
         // Clear global filters
         for (int i = 0; i < FILTERS_PER_STREAM; i++)
         {
             soloud.setGlobalFilter(i, nullptr);
         }
-        
+
         // Move all sounds out to destroy them after releasing the lock
         soundsToDestroy = std::move(sounds);
         sounds.clear();
@@ -1190,7 +1215,7 @@ PlayerErrors Player::textToSpeech(const std::string &textToSpeech, unsigned int 
     soloud.resume();
 
     SoLoud::result result = speech.setText(textToSpeech.c_str());
-    
+
     std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
     sounds.push_back(std::make_unique<ActiveSound>());
     sounds.back().get()->completeFileName = std::string("");
@@ -1198,6 +1223,7 @@ PlayerErrors Player::textToSpeech(const std::string &textToSpeech, unsigned int 
     {
         handle = soloud.play(speech);
         sounds.back().get()->soundHash = handle;
+        sounds.back().get()->soundType = TYPE_TEXT_TO_SPEECH;
         sounds.back().get()->filters = std::make_unique<Filters>(&soloud, sounds.back().get(), nullptr);
         sounds.back().get()->handle.push_back({handle, MAX_DOUBLE, false});
     }
@@ -1257,7 +1283,7 @@ double Player::getLength(unsigned int soundHash)
 {
     auto const &s = findByHash(soundHash);
 
-    if (s == nullptr || s->soundType == TYPE_SYNTH)
+    if (s == nullptr || s->soundType == TYPE_SYNTH || s->soundType == TYPE_TEXT_TO_SPEECH)
         return 0.0;
     if (s->soundType == TYPE_WAV)
         return static_cast<SoLoud::Wav *>(s->sound.get())->getLength();
@@ -1276,7 +1302,7 @@ PlayerErrors Player::seek(SoLoud::handle handle, float time)
 
     ActiveSound *sound = findByHandle(handle);
     bool isGroupHandle = soloud.isVoiceGroup(handle);
-    
+
     if ((sound == nullptr || sound->soundType == TYPE_SYNTH) && !isGroupHandle)
         return invalidParameter;
 
@@ -1329,7 +1355,7 @@ void Player::setPan(SoLoud::handle handle, float pan)
 }
 
 void Player::setPanAbsolute(SoLoud::handle handle, float panLeft, float panRight)
-{ 
+{
     panLeft = std::clamp(panLeft, -1.0f, 1.0f);
     panRight = std::clamp(panRight, -1.0f, 1.0f);
     soloud.setPanAbsolute(handle, panLeft, panRight);
@@ -1419,7 +1445,7 @@ ActiveSound *Player::findByHash(unsigned int soundHash)
 {
     std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
     auto const &s = std::find_if(sounds.begin(), sounds.end(),
-                                 [&](std::unique_ptr<ActiveSound> const &f) 
+                                 [&](std::unique_ptr<ActiveSound> const &f)
                                  { return f->soundHash == soundHash; });
     if (s == sounds.end())
         return nullptr;
@@ -1568,7 +1594,8 @@ PlayerErrors Player::play3d(
 
     handle = 0;
     SoLoud::handle newHandle = 0;
-    if (busId == 0) {
+    if (busId == 0)
+    {
         newHandle = soloud.play3d(
             *sound->sound.get(),
             posX, posY, posZ,
@@ -1576,7 +1603,9 @@ PlayerErrors Player::play3d(
             volume,
             paused,
             0);
-    } else {
+    }
+    else
+    {
         auto it = busMap.find(busId);
         if (it != busMap.end())
             newHandle = it->second.bus.play3d(
@@ -1584,13 +1613,13 @@ PlayerErrors Player::play3d(
                 posX, posY, posZ,
                 velX, velY, velZ,
                 volume,
-                paused
-            );
+                paused);
         else
             return PlayerErrors::busIdNotFound;
     }
 
-    if (newHandle != 0) {
+    if (newHandle != 0)
+    {
         sound->handle.push_back({newHandle, MAX_DOUBLE, false});
         // Check if this buffer has enough data to be played
         if (sound->soundType == SoundType::TYPE_BUFFER_STREAM)
@@ -1715,18 +1744,21 @@ void Player::set3dSourceDopplerFactor(
 /// Mixing Bus
 /////////////////////////////////////////
 
-unsigned int Player::createBus() {
+unsigned int Player::createBus()
+{
     unsigned int id = ++busIdCounter;
     busMap.try_emplace(id, id, &soloud);
     return id;
 }
 
-void Player::destroyBus(unsigned int busId) {
+void Player::destroyBus(unsigned int busId)
+{
     busMap.erase(busId);
 }
 
 unsigned int Player::busPlayOnEngine(unsigned int busId, float volume,
-                                     bool paused) {
+                                     bool paused)
+{
     if (!mInited)
         return 0;
     auto it = busMap.find(busId);
@@ -1740,28 +1772,32 @@ unsigned int Player::busPlayOnEngine(unsigned int busId, float volume,
     return handle;
 }
 
-int Player::busSetChannels(unsigned int busId, unsigned int channels) {
+int Player::busSetChannels(unsigned int busId, unsigned int channels)
+{
     auto it = busMap.find(busId);
     if (it == busMap.end())
         return -1; // bus not found
     return static_cast<int>(it->second.bus.setChannels(channels));
 }
 
-void Player::busSetVisualizationEnable(unsigned int busId, bool enable) {
+void Player::busSetVisualizationEnable(unsigned int busId, bool enable)
+{
     auto it = busMap.find(busId);
     if (it == busMap.end())
         return;
     it->second.bus.setVisualizationEnable(enable);
 }
 
-float *Player::busCalcFFT(unsigned int busId) {
+float *Player::busCalcFFT(unsigned int busId)
+{
     auto it = busMap.find(busId);
     if (it == busMap.end())
         return nullptr;
     return it->second.bus.calcFFT();
 }
 
-float *Player::busGetWave(unsigned int busId) {
+float *Player::busGetWave(unsigned int busId)
+{
     auto it = busMap.find(busId);
     if (it == busMap.end())
         return nullptr;
@@ -1769,21 +1805,24 @@ float *Player::busGetWave(unsigned int busId) {
 }
 
 float Player::busGetApproximateVolume(unsigned int busId,
-                                      unsigned int channel) {
+                                      unsigned int channel)
+{
     auto it = busMap.find(busId);
     if (it == busMap.end())
         return 0.0f;
     return it->second.bus.getApproximateVolume(channel);
 }
 
-void Player::busAnnexSound(unsigned int busId, unsigned int voiceHandle) {
+void Player::busAnnexSound(unsigned int busId, unsigned int voiceHandle)
+{
     auto it = busMap.find(busId);
     if (it == busMap.end())
         return;
     it->second.bus.annexSound(voiceHandle);
 }
 
-unsigned int Player::busGetActiveVoiceCount(unsigned int busId) {
+unsigned int Player::busGetActiveVoiceCount(unsigned int busId)
+{
     auto it = busMap.find(busId);
     if (it == busMap.end())
         return 0;
@@ -1791,7 +1830,8 @@ unsigned int Player::busGetActiveVoiceCount(unsigned int busId) {
     return ret;
 }
 
-BusData *Player::findBusData(unsigned int busId) {
+BusData *Player::findBusData(unsigned int busId)
+{
     auto it = busMap.find(busId);
     if (it == busMap.end())
         return nullptr;

@@ -3,8 +3,8 @@ import 'package:flutter_soloud/flutter_soloud.dart';
 import 'common.dart';
 
 /// Test advanced panning including setPanAbsolute, fadePan, and oscillatePan.
-Future<StringBuffer> testAdvancedPan() async {
-  final strBuf = StringBuffer();
+Future<OutputBuffer> testAdvancedPan() async {
+  final strBuf = OutputBuffer();
   await initialize();
 
   // Load and play a sound

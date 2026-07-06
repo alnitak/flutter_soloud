@@ -6,6 +6,15 @@ import 'package:web/web.dart' as web;
 @JS('globalThis')
 external JSObject get globalThis;
 
+@JS('eval')
+external void jsEval(String code);
+
+@JS('window.miniaudio.devices[0].webaudio.state')
+external String? get miniaudioAudioContextState;
+
+@JS('globalThis.crossOriginIsolated')
+external bool? get isCrossOriginIsolated;
+
 @JS('Module_soloud._malloc')
 external int wasmMalloc(int bytesCount);
 
@@ -87,6 +96,43 @@ external int wasmGetBufferSize(int hash, int sizeInBytesPtr);
 
 @JS('Module_soloud._areXiphLibsAvailable')
 external int wasmAreXiphLibsAvailable();
+
+@JS('Module_soloud._startMixerCapture')
+external int wasmStartMixerCapture(
+  int format,
+  int sampleRate,
+  int channels,
+  int bufferSizeBytes,
+  int notificationThresholdBytes,
+  int chunkPCMFrames,
+);
+
+@JS('Module_soloud._stopMixerCapture')
+external void wasmStopMixerCapture();
+
+@JS('Module_soloud._isMixerCaptureRunning')
+external int wasmIsMixerCaptureRunning();
+
+@JS('Module_soloud._getMixerCaptureBufferPointer')
+external int wasmGetMixerCaptureBufferPointer();
+
+@JS('Module_soloud._getMixerCaptureBufferSize')
+external int wasmGetMixerCaptureBufferSize();
+
+@JS('Module_soloud._getMixerCaptureAvailableBytes')
+external int wasmGetMixerCaptureAvailableBytes();
+
+@JS('Module_soloud._getMixerCaptureReadOffset')
+external int wasmGetMixerCaptureReadOffset();
+
+@JS('Module_soloud._advanceMixerCaptureReadPosition')
+external void wasmAdvanceMixerCaptureReadPosition(int bytes);
+
+@JS('Module_soloud._getMixerOutputWavHeader')
+external int wasmGetMixerOutputWavHeader();
+
+@JS('Module_soloud._setMixerOutputCallback')
+external void wasmSetMixerOutputCallback(int callbackPtr);
 
 @JS('Module_soloud._initEngine')
 external int wasmInitEngine(

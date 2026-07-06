@@ -4,8 +4,8 @@ import 'package:flutter_soloud/flutter_soloud.dart';
 import 'common.dart';
 
 /// Test reading audio samples from file and memory.
-Future<StringBuffer> testReadSamples() async {
-  final strBuf = StringBuffer();
+Future<OutputBuffer> testReadSamples() async {
+  final strBuf = OutputBuffer();
   await initialize();
 
   // Load asset bytes for memory reading

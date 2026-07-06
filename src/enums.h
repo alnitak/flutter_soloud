@@ -108,6 +108,8 @@ typedef enum SoundType {
   TYPE_SYNTH,
   // this sound is a streaming buffer
   TYPE_BUFFER_STREAM,
+  // this sound is a text to speech
+  TYPE_TEXT_TO_SPEECH
 } SoundType_t;
 
 typedef enum FilterType {
@@ -134,6 +136,18 @@ typedef enum BufferType {
   OPUS = 4,
   AUTO = 5,
 } BufferType_t;
+
+/// WARNING: Keep these in sync with `lib/src/enums.dart`.
+typedef enum MixerOutputFormat {
+  MIXER_OUTPUT_PCM_F32LE = 0,
+  MIXER_OUTPUT_PCM_S8 = 1,
+  MIXER_OUTPUT_PCM_S16LE = 2,
+  MIXER_OUTPUT_PCM_S32LE = 3,
+  MIXER_OUTPUT_OPUS = 4,
+  MIXER_OUTPUT_VORBIS = 5,
+  MIXER_OUTPUT_FLAC = 6,
+  MIXER_OUTPUT_WAV = 7,
+} MixerOutputFormat_t;
 
 typedef struct PCMformat {
   unsigned int sampleRate;

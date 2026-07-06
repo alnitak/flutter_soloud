@@ -2,8 +2,8 @@ import 'package:flutter_soloud/flutter_soloud.dart';
 
 import 'common.dart';
 
-Future<StringBuffer> testAsyncMultiLoad() async {
-  final strBuf = StringBuffer();
+Future<OutputBuffer> testAsyncMultiLoad() async {
+  final strBuf = OutputBuffer();
   await initialize();
 
   final sounds = [

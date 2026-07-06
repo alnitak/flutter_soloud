@@ -5,7 +5,7 @@ import 'package:flutter_soloud/src/bindings/soloud_controller.dart';
 import 'common.dart';
 
 /// Test synchronous `init()`-`deinit()`.
-Future<StringBuffer> testSynchronousDeinit() async {
+Future<OutputBuffer> testSynchronousDeinit() async {
   /// test synchronous init-deinit looping with a short decreasing time
   /// waiting for `initialize()` to finish
   for (var t = 10; t >= 0; t--) {
@@ -76,5 +76,5 @@ Future<StringBuffer> testSynchronousDeinit() async {
   );
   SoLoud.instance.deinit();
 
-  return StringBuffer();
+  return OutputBuffer();
 }

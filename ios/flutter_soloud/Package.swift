@@ -21,7 +21,7 @@ if disableXiphLibs {
     targetDependencies = baseDependencies
 } else {
     targetDependencies = baseDependencies + [
-        "opus", "ogg", "vorbis", "vorbisfile", "flac"
+        "opus", "ogg", "vorbis", "vorbisenc", "vorbisfile", "flac"
     ]
 }
 
@@ -95,6 +95,7 @@ if !disableXiphLibs {
         .binaryTarget(name: "opus", path: "Frameworks/opus.xcframework"),
         .binaryTarget(name: "ogg", path: "Frameworks/ogg.xcframework"),
         .binaryTarget(name: "vorbis", path: "Frameworks/vorbis.xcframework"),
+        .binaryTarget(name: "vorbisenc", path: "Frameworks/vorbisenc.xcframework"),
         .binaryTarget(name: "vorbisfile", path: "Frameworks/vorbisfile.xcframework"),
         .binaryTarget(name: "flac", path: "Frameworks/flac.xcframework")
     ])

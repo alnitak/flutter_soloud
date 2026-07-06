@@ -150,6 +150,12 @@ for lib in "${LIBS[@]}"; do
             "$BUILD_DIR/$lib/x86_64/install/lib/libvorbis.a" \
             -output "$OUTPUT_DIR/libvorbis.a"
 
+        echo "${BOLD_WHITE_ON_GREEN}Creating universal binary for vorbisenc...${RESET}"
+        lipo -create \
+            "$BUILD_DIR/$lib/arm64/install/lib/libvorbisenc.a" \
+            "$BUILD_DIR/$lib/x86_64/install/lib/libvorbisenc.a" \
+            -output "$OUTPUT_DIR/libvorbisenc.a"
+
         echo "${BOLD_WHITE_ON_GREEN}Creating universal binary for vorbisfile...${RESET}"
         lipo -create \
             "$BUILD_DIR/$lib/arm64/install/lib/libvorbisfile.a" \
@@ -180,6 +186,8 @@ for lib in "${LIBS[@]}"; do
         strip -x "$OUTPUT_DIR/lib${lib}.a"
     fi
     if [ "$lib" == "vorbis" ]; then
+        echo "${BOLD_WHITE_ON_GREEN}Stripping symbols from vorbisenc...${RESET}"
+        strip -x "$OUTPUT_DIR/libvorbisenc.a"
         echo "${BOLD_WHITE_ON_GREEN}Stripping symbols from vorbisfile...${RESET}"
         strip -x "$OUTPUT_DIR/libvorbisfile.a"
     fi
@@ -210,6 +218,10 @@ for lib in "${LIBS[@]}"; do
         -output "$FRAMEWORKS_DIR/${lib}.xcframework" > /dev/null
 
     if [ "$lib" == "vorbis" ]; then
+        echo "${BOLD_WHITE_ON_GREEN}Creating vorbisenc.xcframework...${RESET}"
+        xcodebuild -create-xcframework \
+            -library "$OUTPUT_DIR/libvorbisenc.a" \
+            -output "$FRAMEWORKS_DIR/vorbisenc.xcframework" > /dev/null
         echo "${BOLD_WHITE_ON_GREEN}Creating vorbisfile.xcframework...${RESET}"
         xcodebuild -create-xcframework \
             -library "$OUTPUT_DIR/libvorbisfile.a" \

@@ -69,6 +69,78 @@ abstract class FlutterSoLoud {
   @mustBeOverridden
   bool areXiphLibsAvailable();
 
+  /// Controller that fires copied mixer output chunks.
+  ///
+  /// Platform implementations copy data out of the native circular buffer
+  /// and advance the read position before emitting here. This provides a
+  /// single, safe stream for `SoLoud.startMixerOutputStream`.
+  late final StreamController<Uint8List> mixerOutputChunkController =
+      StreamController.broadcast();
+
+  /// Stream of copied mixer output chunks.
+  Stream<Uint8List> get mixerOutputChunkEvents =>
+      mixerOutputChunkController.stream;
+
+  /// Start capturing the master mixer output.
+  ///
+  /// [format] the desired output format.
+  /// [sampleRate] the sample rate. Use -1 to follow the engine rate.
+  /// [channels] the channel count. Use -1 to follow the engine channels.
+  /// [bufferSizeBytes] total size of the circular capture buffer.
+  /// [notificationThresholdBytes] bytes that must be available before
+  /// [mixerOutputChunkEvents] fires. Used for compressed formats.
+  /// [chunkPCMFrames] fixed number of PCM frames per emitted chunk.
+  /// Used for PCM formats; -1 to disable.
+  ///
+  /// Returns [PlayerErrors.noError] if success.
+  @mustBeOverridden
+  PlayerErrors startMixerOutputCapture(
+    MixerOutputFormat format,
+    int sampleRate,
+    int channels,
+    int bufferSizeBytes,
+    int notificationThresholdBytes,
+    int chunkPCMFrames,
+  );
+
+  /// Stop capturing the master mixer output.
+  @mustBeOverridden
+  void stopMixerOutputCapture();
+
+  /// Whether mixer output capture is currently active.
+  @mustBeOverridden
+  bool isMixerOutputCaptureRunning();
+
+  /// Total size of the native capture buffer in bytes.
+  @mustBeOverridden
+  int getMixerOutputBufferSize();
+
+  /// Number of unread bytes currently available in the capture buffer.
+  @mustBeOverridden
+  int getMixerOutputAvailableBytes();
+
+  /// Current read offset in the capture buffer.
+  @mustBeOverridden
+  int getMixerOutputReadOffset();
+
+  /// Advance the read position by [bytes].
+  @mustBeOverridden
+  void advanceMixerOutputReadPosition(int bytes);
+
+  /// Copy [length] bytes from the native capture buffer starting at [offset].
+  @mustBeOverridden
+  Uint8List copyMixerOutputBuffer(int offset, int length);
+
+  /// Returns the current 44-byte WAV header for the active capture session.
+  ///
+  /// This is only meaningful when the capture format is
+  /// [MixerOutputFormat.wav].
+  /// The header's size fields reflect the PCM data emitted so far; callers
+  /// should overwrite the first 44 bytes of the saved file with the returned
+  /// header after stopping capture to ensure the WAV file is valid.
+  @mustBeOverridden
+  Uint8List getMixerOutputWavHeader();
+
   /// Initialize the player. Must be called before any other player functions.
   ///
   /// [deviceId] the device ID. -1 for default OS output device.

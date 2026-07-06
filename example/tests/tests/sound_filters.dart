@@ -6,8 +6,8 @@ import 'package:flutter_soloud/flutter_soloud.dart';
 import 'common.dart';
 
 /// Test sound filters.
-Future<StringBuffer> testSoundFilters() async {
-  final strBuf = StringBuffer();
+Future<OutputBuffer> testSoundFilters() async {
+  final strBuf = OutputBuffer();
 
   if (kIsWeb || kIsWasm) {
     return strBuf

@@ -5,8 +5,8 @@ import 'common.dart';
 
 /// Test mixing bus functionality including basic usage,
 /// nested buses, and multiple buses with different effects.
-Future<StringBuffer> testMixingBus() async {
-  final strBuf = StringBuffer();
+Future<OutputBuffer> testMixingBus() async {
+  final strBuf = OutputBuffer();
   await initialize();
 
   // Load sounds

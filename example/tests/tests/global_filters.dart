@@ -3,8 +3,8 @@ import 'package:flutter_soloud/flutter_soloud.dart';
 import 'common.dart';
 
 /// Test global filters.
-Future<StringBuffer> testGlobalFilters() async {
-  final strBuf = StringBuffer();
+Future<OutputBuffer> testGlobalFilters() async {
+  final strBuf = OutputBuffer();
   await initialize();
 
   late final AudioSource sound;

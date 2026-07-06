@@ -38,6 +38,11 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   WorkerController? workerController;
   bool _eventCallbacksSetUp = false;
 
+  /// Whether the current mixer output capture is using fixed-size PCM chunks.
+  /// When true, the native side advances the circular buffer read position
+  /// before invoking the callback, so Dart must not advance it again.
+  bool _mixerOutputChunkMode = false;
+
   @override
   void disposeNativeCallables() {
     /// Nothing to do on web.
@@ -74,6 +79,11 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     workerController = WorkerController();
     await workerController!.setWasmWorker(wasmWorker);
 
+    // Register the native mixer output callback. On the web the callback does
+    // not call Dart directly; it posts a message to the worker from the audio
+    // thread with the buffer offset and length.
+    wasmSetMixerOutputCallback(0);
+
     _eventCallbacksSetUp = true;
     workerController!.onReceive().listen((event) {
       /// The [event] coming from `web/worker.dart.js` is of String type.
@@ -81,25 +91,44 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
       switch (event) {
         case String():
           final decodedMap = jsonDecode(event) as Map;
-          if (decodedMap['message'] == 'voiceEndedCallback') {
-            _log.finest(
-              () =>
-                  'VOICE ENDED EVENT handle: '
-                  '${(decodedMap['value'] as num).toInt()}\n',
-            );
-            voiceEndedEventController.add((decodedMap['value'] as num).toInt());
-          }
+          _handleWorkerMessage(decodedMap);
         case Map():
-          if (event['message'] == 'voiceEndedCallback') {
-            _log.finest(
-              () =>
-                  'VOICE ENDED EVENT handle: '
-                  '${(event['value'] as num).toInt()}\n',
-            );
-            voiceEndedEventController.add((event['value'] as num).toInt());
-          }
+          _handleWorkerMessage(event);
       }
     });
+  }
+
+  void _handleWorkerMessage(Map<dynamic, dynamic> message) {
+    final msg = message['message'] as String?;
+    if (msg == null) return;
+
+    switch (msg) {
+      case 'voiceEndedCallback':
+        _log.finest(
+          () =>
+              'VOICE ENDED EVENT handle: '
+              '${(message['value'] as num).toInt()}\n',
+        );
+        voiceEndedEventController.add((message['value'] as num).toInt());
+      case 'mixerOutputData':
+        final offset = (message['offset'] as num).toInt();
+        final length = (message['length'] as num).toInt();
+        _log.finest(
+          () => 'MIXER OUTPUT DATA EVENT offset: $offset length: $length',
+        );
+        if (length <= 0) return;
+
+        // Copy the data out of the WASM memory buffer and advance the native
+        // read position so the circular buffer can reuse the memory. In fixed
+        // PCM chunk mode the native side already advances the read position,
+        // so Dart must not advance it again.
+        final heapBuffer = wasmHeapU8Buffer;
+        final bytes = Uint8List.view(heapBuffer.toDart, offset, length);
+        mixerOutputChunkController.add(Uint8List.fromList(bytes));
+        if (!_mixerOutputChunkMode) {
+          advanceMixerOutputReadPosition(length);
+        }
+    }
   }
 
   /// If we will need to send messages to the native. Not used now.
@@ -114,6 +143,80 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
 
   @override
   bool areXiphLibsAvailable() => wasmAreXiphLibsAvailable() == 1;
+
+  @override
+  PlayerErrors startMixerOutputCapture(
+    MixerOutputFormat format,
+    int sampleRate,
+    int channels,
+    int bufferSizeBytes,
+    int notificationThresholdBytes,
+    int chunkPCMFrames,
+  ) {
+    _mixerOutputChunkMode = format.isPcm && chunkPCMFrames > 0;
+    final ret = wasmStartMixerCapture(
+      format.value,
+      sampleRate,
+      channels,
+      bufferSizeBytes,
+      notificationThresholdBytes,
+      chunkPCMFrames,
+    );
+    return PlayerErrors.values[ret];
+  }
+
+  @override
+  void stopMixerOutputCapture() {
+    _mixerOutputChunkMode = false;
+    wasmStopMixerCapture();
+  }
+
+  @override
+  bool isMixerOutputCaptureRunning() => wasmIsMixerCaptureRunning() == 1;
+
+  @override
+  int getMixerOutputBufferSize() => wasmGetMixerCaptureBufferSize();
+
+  @override
+  int getMixerOutputAvailableBytes() => wasmGetMixerCaptureAvailableBytes();
+
+  @override
+  int getMixerOutputReadOffset() => wasmGetMixerCaptureReadOffset();
+
+  @override
+  void advanceMixerOutputReadPosition(int bytes) {
+    if (bytes > 0) {
+      wasmAdvanceMixerCaptureReadPosition(bytes);
+    }
+  }
+
+  @override
+  Uint8List getMixerOutputWavHeader() {
+    final ptr = wasmGetMixerOutputWavHeader();
+    if (ptr == 0) {
+      return Uint8List(0);
+    }
+    final heapBuffer = wasmHeapU8Buffer;
+    final bytes = Uint8List.view(heapBuffer.toDart, ptr, 44);
+    final copy = Uint8List.fromList(bytes);
+    wasmFree(ptr);
+    return copy;
+  }
+
+  @override
+  Uint8List copyMixerOutputBuffer(int offset, int length) {
+    if (length <= 0) {
+      return Uint8List(0);
+    }
+    final basePointer = wasmGetMixerCaptureBufferPointer();
+    final heapBuffer = wasmHeapU8Buffer;
+    final bytes = Uint8List.view(
+      heapBuffer.toDart,
+      basePointer + offset,
+      length,
+    );
+    return Uint8List.fromList(bytes);
+  }
 
   @override
   PlayerErrors initEngine(
@@ -187,7 +290,22 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   void deinit() => wasmDeinit();
 
   @override
-  bool isInited() => wasmIsInited() == 1;
+  bool isInited() {
+    // The WASM module uses SharedArrayBuffer for the audio thread. Warn the
+    // developer if the page is not cross-origin isolated, because the audio
+    // engine will fail to spawn its worker without it.
+    if (isCrossOriginIsolated != true) {
+      // ignore: avoid_print
+      print(
+        'flutter_soloud: WARNING! This web page is not cross-origin isolated. '
+        'SharedArrayBuffer is required for the audio thread. '
+        'Run with `flutter run -d chrome --wasm` or serve the app with '
+        '`Cross-Origin-Opener-Policy: same-origin` and '
+        '`Cross-Origin-Embedder-Policy: require-corp` headers.',
+      );
+    }
+    return wasmIsInited() == 1;
+  }
 
   @override
   ({PlayerErrors error, SoundHash soundHash}) loadFile(
