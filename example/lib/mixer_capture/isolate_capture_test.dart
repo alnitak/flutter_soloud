@@ -33,7 +33,6 @@ class _IsolateCaptureTestState extends State<IsolateCaptureTest> {
   StreamSubscription<dynamic>? _receiveSub;
   Isolate? _isolate;
   Completer<void>? _doneCompleter;
-  SoundHandle? _handle;
 
   @override
   void initState() {
@@ -69,7 +68,6 @@ class _IsolateCaptureTestState extends State<IsolateCaptureTest> {
     _doneCompleter = null;
 
     SoLoud.instance.deinit();
-    _handle = null;
     setState(() => _running = false);
   }
 
@@ -87,8 +85,7 @@ class _IsolateCaptureTestState extends State<IsolateCaptureTest> {
       1,
       0,
     );
-    _handle = SoLoud.instance.play(sound, looping: true, volume: 0.5);
-    // Store it so we can stop it when the user stops capture.
+    SoLoud.instance.play(sound, looping: true, volume: 0.5);
     setState(() {});
 
     _log('Main: spawning capture isolate...');
