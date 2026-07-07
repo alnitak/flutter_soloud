@@ -181,7 +181,6 @@ Future<void> _captureIsolate(SendPort mainSendPort) async {
       if (message == 'stop') {
         await subscription?.cancel();
         SoLoudIsolate.instance.stopMixerOutputStream();
-        // Do NOT deinit the engine here; the main isolate owns it.
       }
     });
 

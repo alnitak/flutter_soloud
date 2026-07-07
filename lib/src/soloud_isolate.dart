@@ -36,6 +36,9 @@ import 'package:meta/meta.dart';
 /// );
 /// isolateCapture.listen((chunk) { /* process audio bytes */ });
 /// ```
+///
+/// See also the `example/lib/mixer_capture/isolate_capture_test.dart` for
+/// a complete example of running mixer output capture in a separate isolate.
 @experimental
 class SoLoudIsolate {
   SoLoudIsolate._();
@@ -101,5 +104,63 @@ class SoLoudIsolate {
   @experimental
   Uint8List getMixerOutputWavHeader() {
     return _mixerOutputStreamManager.getWavHeader();
+  }
+
+  ///////////////////////////////////////////////////
+  /// Read samples from file and memory.
+  ///////////////////////////////////////////////////
+
+  /// This method has the same behavior as [SoLoud.readSamplesFromFile] and
+  /// can be safely called from a non-main isolate. Is not mandatory that the
+  /// engine is initialized in the main isolate to use this method.
+  ///
+  /// See also [readSamplesFromMem].
+  Future<Float32List> readSamplesFromFile(
+    String completeFileName,
+    int numSamplesNeeded, {
+    double startTime = 0,
+    double endTime = -1,
+    bool average = false,
+  }) async {
+    assert(
+      endTime == -1 || endTime > startTime,
+      '[endTime] must be greater than [startTime].',
+    );
+    assert(startTime >= 0, '[startTime] must be greater than or equal to 0.');
+    return bindings.readSamplesFromFile(
+      completeFileName,
+      numSamplesNeeded,
+      startTime: startTime,
+      endTime: endTime,
+      average: average,
+    );
+  }
+
+  /// This method has the same behavior as [SoLoud.readSamplesFromMem] and
+  /// can be safely called from a non-main isolate. Is not mandatory that the
+  /// engine is initialized in the main isolate to use this method.
+  ///
+  /// See also [readSamplesFromFile].
+  Future<Float32List> readSamplesFromMem(
+    Uint8List buffer,
+    int numSamplesNeeded, {
+    double startTime = 0,
+    double endTime = -1,
+    bool average = false,
+  }) async {
+    assert(
+      endTime == -1 || endTime > startTime,
+      '[endTime] must be greater than [startTime].',
+    );
+    assert(startTime >= 0, '[startTime] must be greater than or equal to 0.');
+    final samples = bindings.readSamplesFromMem(
+      buffer,
+      numSamplesNeeded,
+      startTime: startTime,
+      endTime: endTime,
+      average: average,
+    );
+
+    return samples;
   }
 }
