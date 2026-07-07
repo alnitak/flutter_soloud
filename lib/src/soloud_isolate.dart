@@ -110,9 +110,10 @@ class SoLoudIsolate {
   /// Read samples from file and memory.
   ///////////////////////////////////////////////////
 
-  /// This method has the same behavior as [SoLoud.readSamplesFromFile] and
-  /// can be safely called from a non-main isolate. Is not mandatory that the
-  /// engine is initialized in the main isolate to use this method.
+  /// This method has the same behavior as [SoLoud.readSamplesFromFile] (refer
+  /// to it for a complete documentation) and can be safely called from a
+  /// non-main isolate. Is not mandatory that the engine is initialized in
+  /// the main isolate to use this method.
   ///
   /// See also [readSamplesFromMem].
   Future<Float32List> readSamplesFromFile(
@@ -136,9 +137,10 @@ class SoLoudIsolate {
     );
   }
 
-  /// This method has the same behavior as [SoLoud.readSamplesFromMem] and
-  /// can be safely called from a non-main isolate. Is not mandatory that the
-  /// engine is initialized in the main isolate to use this method.
+  /// This method has the same behavior as [SoLoud.readSamplesFromMem] (refer
+  /// to it for a complete documentation) and can be safely called from a
+  /// non-main isolate. Is not mandatory that the engine is initialized in
+  /// the main isolate to use this method.
   ///
   /// See also [readSamplesFromFile].
   Future<Float32List> readSamplesFromMem(
