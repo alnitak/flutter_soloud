@@ -260,6 +260,15 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     _setMixerOutputCallback(nativeMixerOutputDataCallable!.nativeFunction);
   }
 
+  @override
+  void registerMixerOutputCallback() {
+    nativeMixerOutputDataCallable ??=
+        ffi.NativeCallable<DartMixerOutputDataCallbackTFunction>.listener(
+          _mixerOutputDataCallback,
+        );
+    _setMixerOutputCallback(nativeMixerOutputDataCallable!.nativeFunction);
+  }
+
   late final _setDartEventCallbackPtr =
       _lookup<
         ffi.NativeFunction<

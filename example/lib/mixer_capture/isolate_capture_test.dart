@@ -1,4 +1,4 @@
-// ignore_for_file: avoid_print
+// ignore_for_file: avoid_print, experimental_member_use
 
 import 'dart:async';
 import 'dart:developer' as dev;
@@ -7,8 +7,6 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
-// ignore: implementation_imports
-import 'package:flutter_soloud/src/bindings/soloud_controller_ffi.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -147,8 +145,9 @@ class _IsolateCaptureTestState extends State<IsolateCaptureTest> {
 }
 
 /// Runs inside a separate isolate. The SoLoud engine is already initialized in
-/// C++ land by the main isolate, so here we just create a new FFI controller,
-/// register callbacks, and listen to the capture stream.
+/// C++ land by the main isolate, so here we just use [SoLoudIsolate.instance]
+/// to listen to the capture stream without touching the main isolate's
+/// callbacks, filters, or loader state.
 @pragma('vm:entry-point')
 Future<void> _captureIsolate(SendPort mainSendPort) async {
   final isolateReceivePort = ReceivePort();
@@ -156,35 +155,22 @@ Future<void> _captureIsolate(SendPort mainSendPort) async {
 
   void send(String message) => mainSendPort.send(message);
 
+  StreamSubscription<Uint8List>? subscription;
+
   try {
-    send('Isolate: creating FFI controller...');
+    send('Isolate: starting mixer output capture via SoLoudIsolate...');
 
-    final controller = SoLoudController();
-    final bindings = controller.soLoudFFI;
-
-    await bindings.setDartEventCallbacks();
-
-    send('Isolate: starting mixer output capture...');
-    final captureResult = bindings.startMixerOutputCapture(
-      MixerOutputFormat.pcmS16le,
-      -1,
-      -1,
-      1024 * 1024,
-      4096,
-      2048, // fixed PCM chunk
+    final captureStream = SoLoudIsolate.instance.startMixerOutputStream(
+      format: MixerOutputFormat.pcmS16le,
+      chunkPCMFrames: 2048, // fixed PCM chunk
     );
-    if (captureResult.value != 0) {
-      send('Isolate: startMixerOutputCapture failed: '
-          'code ${captureResult.value}');
-      return;
-    }
 
     var chunkCount = 0;
 
-    final subscription = bindings.mixerOutputChunkEvents.listen(
+    subscription = captureStream.listen(
       (Uint8List chunk) {
         chunkCount++;
-        if (chunkCount % 10 == 0) {
+        if (chunkCount % 5 == 0) {
           print('Isolate: chunk #$chunkCount - ${chunk.length} bytes');
         }
       },
@@ -193,18 +179,18 @@ Future<void> _captureIsolate(SendPort mainSendPort) async {
     print('Isolate: capturing...');
     isolateReceivePort.listen((message) async {
       if (message == 'stop') {
-        await subscription.cancel();
-        bindings.stopMixerOutputCapture();
-        // Do NOT deinit the engine here; the main isolate owns it.
+        await subscription?.cancel();
+        SoLoudIsolate.instance.stopMixerOutputStream();
       }
     });
-
 
     send(
       'Isolate: done. Continue to listen to capture stream until '
       'main isolate stops us.',
     );
   } on Object catch (e, stackTrace) {
+    await subscription?.cancel();
+    SoLoudIsolate.instance.stopMixerOutputStream();
     send('Isolate: error: $e');
     send(stackTrace.toString());
   }

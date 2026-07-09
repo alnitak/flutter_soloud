@@ -10,6 +10,7 @@ export 'src/helpers/playback_device.dart';
 export 'src/metadata.dart';
 export 'src/mixing_bus.dart';
 export 'src/soloud.dart';
+export 'src/soloud_isolate.dart';
 export 'src/sound_handle.dart';
 export 'src/sound_hash.dart';
 export 'src/tools/soloud_tools.dart';
