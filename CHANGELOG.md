@@ -6,9 +6,9 @@
 - websocket example: added play/pause and touch to seek to the buffer visual widget.
 - added `autoDispose` parameter to `setBufferStream` to automatically dispose the sound when it is finished. This eliminates the need to manually call disposeSource.
 - **added mixer output capture**: capture the master mixer output as a `Stream<Uint8List>` in PCM (F32LE, S8, S16LE, S32LE) or compressed formats (Opus, Vorbis, FLAC, WAV). See `SoLoud.startMixerOutputStream` / `stopMixerOutputStream` / `isMixerOutputStreamRunning`.
-- **added `mixer_capture` example** (`example/lib/mixer_capture/mixer_capture.dart`) that shows how to capture the master mix and save it to a file.
+- added `mixer_capture` example (`example/lib/mixer_capture/mixer_capture.dart`) that shows how to capture the master mix and save it to a file.
 - **web note**: the web build requires `--wasm` (or any server that sends `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` headers) because the WASM module uses `SharedArrayBuffer` for the audio thread. Running with `flutter run -d chrome` without `--wasm` is not supported by the default dev server.
-- added **`SoLoudIsolate`**, an isolate-safe singleton for running mixer output capture (and other safe operations, for now only `readSamplesFrom*`) from a non-main isolate without touching the main isolate's loader, filters, or event callbacks.
+- **added `SoLoudIsolate`**, an isolate-safe singleton for running mixer output capture (and other safe operations, for now only `readSamplesFrom*`) from a non-main isolate without touching the main isolate's loader, filters, or event callbacks.
 - added `example/lib/mixer_capture/isolate_capture_test.dart` to demostrate mixer output capture from a separate isolate.
 
 #### 4.0.12 (30 Jun 2026)
