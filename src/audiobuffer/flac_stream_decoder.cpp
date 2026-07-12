@@ -78,7 +78,7 @@ bool FlacDecoderWrapper::initializeDecoder(int engineSamplerate, int engineChann
     return true;
 }
 
-std::pair<std::vector<float>, DecoderError> FlacDecoderWrapper::decode(std::vector<unsigned char> &buffer, int *samplerate, int *channels)
+std::pair<std::vector<float>, DecoderError> FlacDecoderWrapper::decode(std::vector<unsigned char> &buffer, int *sampleRate, int *channels, size_t maxOutputSamples)
 {
     m_decodedPcm.clear();
     std::vector<unsigned char> clean_audio_data;
@@ -126,6 +126,7 @@ std::pair<std::vector<float>, DecoderError> FlacDecoderWrapper::decode(std::vect
     {
         clean_audio_data = buffer;
     }
+    mTotalEncodedBytes += clean_audio_data.size();
 
     // Feed raw FLAC bytes directly to the decoder. Do NOT use Ogg parsing here;
     // this wrapper is for native FLAC files (magic 'fLaC').
@@ -188,6 +189,11 @@ std::pair<std::vector<float>, DecoderError> FlacDecoderWrapper::decode(std::vect
             last_successful_read_pos = m_read_pos;
         }
         processCount++;
+
+        if (maxOutputSamples > 0 && m_decodedPcm.size() >= maxOutputSamples)
+        {
+            break;
+        }
     }
 
     if (m_read_pos > 0)
@@ -197,7 +203,7 @@ std::pair<std::vector<float>, DecoderError> FlacDecoderWrapper::decode(std::vect
     }
     m_read_pos = 0;
 
-    *samplerate = m_samplerate;
+    *sampleRate = m_samplerate;
     *channels = m_channels;
 
     return {m_decodedPcm, DecoderError::NoError};
@@ -245,7 +251,8 @@ void FlacDecoderWrapper::metadata_callback(const FLAC__StreamDecoder *decoder, c
         self->m_metadata.oggMetadata.flacInfo.sample_rate = self->m_samplerate = metadata->data.stream_info.sample_rate;
         self->m_metadata.oggMetadata.flacInfo.channels = self->m_channels = metadata->data.stream_info.channels;
         self->m_metadata.oggMetadata.flacInfo.bits_per_sample = self->m_bitsPerSample = metadata->data.stream_info.bits_per_sample;
-        self->m_metadata.oggMetadata.flacInfo.total_samples = (uint32_t)metadata->data.stream_info.total_samples;  
+        self->m_metadata.oggMetadata.flacInfo.total_samples = (uint32_t)metadata->data.stream_info.total_samples;
+        self->mTotalSamples = metadata->data.stream_info.total_samples;  
         self->m_metadata.oggMetadata.flacInfo.min_blocksize = metadata->data.stream_info.min_blocksize;
         self->m_metadata.oggMetadata.flacInfo.max_blocksize = metadata->data.stream_info.max_blocksize;
         self->m_metadata.oggMetadata.flacInfo.min_framesize = metadata->data.stream_info.min_framesize;
@@ -328,6 +335,29 @@ void FlacDecoderWrapper::getMetadata()
     {
         onTrackChange(m_metadata);
     }
+}
+
+bool FlacDecoderWrapper::canSeekToTime(double seconds) const
+{
+    return m_samplerate > 0 && mTotalSamples > 0 && seconds > 0.0;
+}
+
+uint64_t FlacDecoderWrapper::timeToByteOffset(double seconds)
+{
+    if (m_samplerate == 0 || mTotalSamples == 0 || seconds <= 0.0)
+        return 0;
+    const double totalSeconds = static_cast<double>(mTotalSamples) / static_cast<double>(m_samplerate);
+    if (totalSeconds <= 0.0)
+        return 0;
+    const double ratio = seconds / totalSeconds;
+    return static_cast<uint64_t>(ratio * static_cast<double>(mTotalEncodedBytes));
+}
+
+double FlacDecoderWrapper::getDuration() const
+{
+    if (m_samplerate == 0 || mTotalSamples == 0)
+        return -1.0;
+    return static_cast<double>(mTotalSamples) / static_cast<double>(m_samplerate);
 }
 
 #endif // #if !defined(NO_XIPH_LIBS)

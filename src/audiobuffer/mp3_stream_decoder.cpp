@@ -6,6 +6,7 @@
 #include "../soloud_common.h"
 #include "mp3_stream_decoder.h"
 #include <algorithm>
+#include <cmath>
 #include <fstream>
 
 size_t MP3DecoderWrapper::on_read(void *pUserData, void *pBufferOut,
@@ -200,7 +201,7 @@ void MP3DecoderWrapper::processIcyStream(std::vector<unsigned char> &buffer) {
 
 std::pair<std::vector<float>, DecoderError>
 MP3DecoderWrapper::decode(std::vector<unsigned char> &buffer, int *samplerate,
-                          int *channels) {
+                          int *channels, size_t maxOutputSamples) {
   // For ICY streams, process the buffer to strip metadata first.
   if (detectedType == DetectedType::BUFFER_MP3_STREAM && mIcyMetaInt > 0) {
     processIcyStream(buffer);
@@ -251,6 +252,7 @@ MP3DecoderWrapper::decode(std::vector<unsigned char> &buffer, int *samplerate,
       return {{}, DecoderError::NoError};
     }
     isInitialized = true;
+    buildSeekTable();
   }
 
   // --- Decoding Loop ---
@@ -270,6 +272,17 @@ MP3DecoderWrapper::decode(std::vector<unsigned char> &buffer, int *samplerate,
     }
 
     int framesToRequest = MAX_FRAMES_PER_RUN / decoder.channels;
+
+    if (maxOutputSamples > 0) {
+      const size_t remainingSamples =
+          maxOutputSamples - decodedData.size();
+      const size_t remainingFrames = remainingSamples / decoder.channels;
+      if (remainingFrames == 0) {
+        break;
+      }
+      framesToRequest =
+          std::min(framesToRequest, static_cast<int>(remainingFrames));
+    }
 
     frames_read =
         drmp3_read_pcm_frames_f32(&decoder, framesToRequest, pcm_frames);
@@ -295,22 +308,68 @@ MP3DecoderWrapper::decode(std::vector<unsigned char> &buffer, int *samplerate,
   *channels = decoder.channels;
 
   // --- Buffer Cleanup ---
-  // After decoding, erase the portion of audioData that has been successfully
-  // read. Any remaining data is a partial frame, which will be used in the next
-  // `decode` call.
-  // When mDataEnded is true and we've consumed all data, clear everything.
-  if (m_read_pos > 0) {
-    if (mDataEnded && m_read_pos >= audioData.size()) {
-      // Stream has ended and all data has been consumed
-      audioData.clear();
-      m_read_pos = 0;
-    } else {
-      audioData.erase(audioData.begin(), audioData.begin() + m_read_pos);
-      m_read_pos = 0;
-    }
-  }
+  // dr_mp3 buffers some input internally, so we cannot safely discard bytes
+  // that have been passed to on_read() and reset m_read_pos. Keep the entire
+  // accumulated stream so that dr_mp3 can seek back for frame synchronization
+  // and buffering. The caller manages the overall decoded circular buffer; this
+  // encoded scratch buffer is temporary and will be freed when the decoder is
+  // destroyed.
+  // (If memory growth becomes a concern, a sliding window can be added here,
+  // but it must stay at least a few MP3 frames behind m_read_pos.)
 
   return {decodedData, DecoderError::NoError};
+}
+
+void MP3DecoderWrapper::buildSeekTable() {
+  if (!isInitialized || !mSeekPoints.empty()) {
+    return;
+  }
+
+  drmp3_uint32 desiredCount = 4096;
+  std::vector<drmp3_seek_point> seekPoints(desiredCount);
+  if (drmp3_calculate_seek_points(&decoder, &desiredCount, seekPoints.data())) {
+    seekPoints.resize(desiredCount);
+    mSeekPoints = std::move(seekPoints);
+    drmp3_bind_seek_table(
+        &decoder,
+        static_cast<drmp3_uint32>(mSeekPoints.size()),
+        mSeekPoints.data());
+  }
+}
+
+bool MP3DecoderWrapper::canSeekToTime(double seconds) const {
+  return isInitialized && !mSeekPoints.empty() && seconds > 0.0;
+}
+
+uint64_t MP3DecoderWrapper::timeToByteOffset(double seconds) {
+  if (mSeekPoints.empty()) {
+    buildSeekTable();
+  }
+  if (mSeekPoints.empty()) {
+    return 0;
+  }
+
+  const uint64_t targetFrame = static_cast<uint64_t>(
+      std::floor(seconds * decoder.sampleRate));
+
+  const drmp3_seek_point *best = nullptr;
+  for (const auto &sp : mSeekPoints) {
+    if (sp.pcmFrameIndex <= targetFrame) {
+      best = &sp;
+    } else {
+      break;
+    }
+  }
+  if (best == nullptr) {
+    return 0;
+  }
+
+  // Block out-of-buffer seeks until the table covers the target.
+  if (targetFrame > mSeekPoints.back().pcmFrameIndex && !mDataEnded) {
+    return 0;
+  }
+
+  return best->seekPosInBytes;
 }
 
 bool MP3DecoderWrapper::initializeDecoder(int engineSamplerate,
@@ -357,4 +416,118 @@ bool MP3DecoderWrapper::checkForValidFrames(
   drmp3_uninit(&temp_decoder);
 
   return frames_read > 0;
+}
+
+double MP3DecoderWrapper::getDuration() const {
+  if (!isInitialized || decoder.sampleRate == 0) return -1.0;
+  if (decoder.totalPCMFrameCount != DRMP3_UINT64_MAX) {
+    return static_cast<double>(decoder.totalPCMFrameCount) /
+           static_cast<double>(decoder.sampleRate);
+  }
+  return parseDurationFromXingVbri();
+}
+
+double MP3DecoderWrapper::parseDurationFromXingVbri() const {
+  // Skip ID3v2 tag if present.
+  size_t pos = 0;
+  if (audioData.size() >= 10 && std::memcmp(audioData.data(), "ID3", 3) == 0) {
+    const uint32_t tagSize = ((audioData[6] & 0x7f) << 21) |
+                             ((audioData[7] & 0x7f) << 14) |
+                             ((audioData[8] & 0x7f) << 7) |
+                             (audioData[9] & 0x7f);
+    pos = tagSize + 10;
+    if (pos >= audioData.size()) return -1.0;
+  }
+
+  // Find first MP3 frame sync word.
+  while (pos + 4 < audioData.size()) {
+    if (audioData[pos] == 0xff && (audioData[pos + 1] & 0xe0) == 0xe0) {
+      const uint8_t byte1 = audioData[pos + 1];
+      const uint8_t version = (byte1 >> 3) & 0x3; // 3=MPEG1, 2=MPEG2, 0=MPEG2.5
+      const uint8_t layer = (byte1 >> 1) & 0x3;    // 1=Layer3, 2=Layer2, 3=Layer1
+      const bool protection = (byte1 & 0x1) != 0;  // false = CRC present
+      const uint8_t byte2 = audioData[pos + 2];
+      const uint8_t sampleRateIndex = (byte2 >> 2) & 0x3;
+      const uint8_t byte3 = audioData[pos + 3];
+      const uint8_t channelMode = (byte3 >> 6) & 0x3; // 3=mono
+
+      static const int kSampleRatesMpeg1[4] = {44100, 48000, 32000, 0};
+      static const int kSampleRatesMpeg2[4] = {22050, 24000, 16000, 0};
+      static const int kSampleRatesMpeg25[4] = {11025, 12000, 8000, 0};
+      int sampleRate = 0;
+      if (version == 3)
+        sampleRate = kSampleRatesMpeg1[sampleRateIndex];
+      else if (version == 2)
+        sampleRate = kSampleRatesMpeg2[sampleRateIndex];
+      else
+        sampleRate = kSampleRatesMpeg25[sampleRateIndex];
+      if (sampleRate == 0) return -1.0;
+
+      int sideInfoSize = 0;
+      if (layer == 1) { // Layer3
+        if (version == 3) { // MPEG1
+          sideInfoSize = (channelMode == 3) ? 17 : 32;
+        } else { // MPEG2/2.5
+          sideInfoSize = (channelMode == 3) ? 9 : 17;
+        }
+      }
+      const int headerOffset = 4 + sideInfoSize + (protection ? 0 : 2);
+      if (pos + headerOffset + 4 > audioData.size()) return -1.0;
+
+      const size_t xingOffset = pos + headerOffset;
+      // Check Xing/Info
+      if (std::memcmp(audioData.data() + xingOffset, "Xing", 4) == 0 ||
+          std::memcmp(audioData.data() + xingOffset, "Info", 4) == 0) {
+        if (xingOffset + 16 > audioData.size()) return -1.0;
+        const uint32_t flags = (audioData[xingOffset + 4] << 24) |
+                               (audioData[xingOffset + 5] << 16) |
+                               (audioData[xingOffset + 6] << 8) |
+                               audioData[xingOffset + 7];
+        if (flags & 0x1) {
+          const uint32_t frames = (audioData[xingOffset + 8] << 24) |
+                                  (audioData[xingOffset + 9] << 16) |
+                                  (audioData[xingOffset + 10] << 8) |
+                                  audioData[xingOffset + 11];
+          int samplesPerFrame = 0;
+          if (layer == 1) { // Layer3
+            samplesPerFrame = (version == 3) ? 1152 : 576;
+          } else if (layer == 2) { // Layer2
+            samplesPerFrame = 1152;
+          } else { // Layer1
+            samplesPerFrame = 384;
+          }
+          if (frames > 0 && samplesPerFrame > 0) {
+            return static_cast<double>(frames * samplesPerFrame) /
+                   static_cast<double>(sampleRate);
+          }
+        }
+      }
+
+      // Check VBRI (commonly placed at the end of the side info).
+      if (pos + headerOffset + 4 <= audioData.size()) {
+        const size_t vbriOffset = pos + headerOffset;
+        if (std::memcmp(audioData.data() + vbriOffset, "VBRI", 4) == 0) {
+          if (vbriOffset + 18 > audioData.size()) return -1.0;
+          const uint32_t frames = (audioData[vbriOffset + 14] << 24) |
+                                  (audioData[vbriOffset + 15] << 16) |
+                                  (audioData[vbriOffset + 16] << 8) |
+                                  audioData[vbriOffset + 17];
+          int samplesPerFrame = 0;
+          if (layer == 1)
+            samplesPerFrame = (version == 3) ? 1152 : 576;
+          else if (layer == 2)
+            samplesPerFrame = 1152;
+          else
+            samplesPerFrame = 384;
+          if (frames > 0 && samplesPerFrame > 0) {
+            return static_cast<double>(frames * samplesPerFrame) /
+                   static_cast<double>(sampleRate);
+          }
+        }
+      }
+      return -1.0;
+    }
+    ++pos;
+  }
+  return -1.0;
 }

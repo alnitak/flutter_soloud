@@ -2,6 +2,7 @@
 
 #include "opus_stream_decoder.h"
 #include <algorithm>
+#include <cmath>
 
 OpusDecoderWrapper::OpusDecoderWrapper()
     : decoder(nullptr),
@@ -14,7 +15,8 @@ OpusDecoderWrapper::OpusDecoderWrapper()
       packetCount(0),
       skipSamplesPending(0),
       totalOutputSamples(0),
-      totalSamplesExpected(-1)
+      totalSamplesExpected(-1),
+      mOggBytesConsumed(0)
 {
 }
 
@@ -159,7 +161,7 @@ bool OpusDecoderWrapper::initializeDecoder(int engineSamplerateIn, int engineCha
     return true;
 }
 
-std::pair<std::vector<float>, DecoderError> OpusDecoderWrapper::decode(std::vector<unsigned char>& buffer, int* samplerate, int* channels)
+std::pair<std::vector<float>, DecoderError> OpusDecoderWrapper::decode(std::vector<unsigned char>& buffer, int* samplerate, int* channels, size_t maxOutputSamples)
 {
     std::vector<float> decodedData;
     bool eos_seen = false;
@@ -175,9 +177,26 @@ std::pair<std::vector<float>, DecoderError> OpusDecoderWrapper::decode(std::vect
     ogg_sync_wrote(&oy, buffer.size());
     buffer.clear();
 
-    // Read and process pages
-    while (ogg_sync_pageout(&oy, &og) == 1)
+    // Read and process pages, tracking byte offsets for seeking.
+    while (true)
     {
+        long ret = ogg_sync_pageseek(&oy, &og);
+        if (ret <= 0)
+            break;
+
+        mOggBytesConsumed += static_cast<uint64_t>(ret);
+        const long pageSize = og.header_len + og.body_len;
+        if (pageSize > 0)
+        {
+            const uint64_t pageStart = mOggBytesConsumed - static_cast<uint64_t>(pageSize);
+            const ogg_int64_t granule = ogg_page_granulepos(&og);
+            if (granule >= 0 &&
+                (mTimeByteOffsets.empty() || mTimeByteOffsets.back().granule != granule))
+            {
+                mTimeByteOffsets.push_back({granule, pageStart});
+            }
+        }
+
         if (ogg_page_eos(&og))
         {
             const ogg_int64_t granule = ogg_page_granulepos(&og);
@@ -245,6 +264,14 @@ std::pair<std::vector<float>, DecoderError> OpusDecoderWrapper::decode(std::vect
             {
                 decodedData.insert(decodedData.end(), packetData.begin(), packetData.end());
             }
+            if (maxOutputSamples > 0 && decodedData.size() >= maxOutputSamples)
+            {
+                break;
+            }
+        }
+        if (maxOutputSamples > 0 && decodedData.size() >= maxOutputSamples)
+        {
+            break;
         }
     }
 
@@ -459,4 +486,72 @@ std::vector<float> OpusDecoderWrapper::decodePacket(ogg_packet* packet)
     }
     return packetPcm;
 }
+
+void OpusDecoderWrapper::prepareForSeek(uint64_t targetSample)
+{
+    // Preserve the already-parsed header and decoder configuration, but reset
+    // the Ogg page-level state so that mid-stream data can be synced again.
+    ogg_sync_clear(&oy);
+    ogg_sync_init(&oy);
+    if (streamInitialized)
+    {
+        const long serial = os.serialno;
+        ogg_stream_clear(&os);
+        ogg_stream_init(&os, serial);
+    }
+    mOggBytesConsumed = 0;
+    mTimeByteOffsets.clear();
+    skipSamplesPending = 0;
+    totalOutputSamples = static_cast<int64_t>(targetSample);
+    packetCount = 2; // OpusHead and OpusTags have already been parsed.
+}
+
+bool OpusDecoderWrapper::canSeekToTime(double seconds) const
+{
+    if (!headerParsed || mTimeByteOffsets.empty())
+        return false;
+    if (seconds <= 0.0)
+        return false;
+    const ogg_int64_t targetGranule = static_cast<ogg_int64_t>(
+        std::floor(seconds * 48000.0)) + opusInfo.pre_skip;
+    return mTimeByteOffsets.back().granule >= targetGranule;
+}
+
+uint64_t OpusDecoderWrapper::timeToByteOffset(double seconds)
+{
+    if (!headerParsed || mTimeByteOffsets.empty())
+        return 0;
+    if (seconds <= 0.0)
+        return 0;
+
+    const ogg_int64_t targetGranule = static_cast<ogg_int64_t>(
+        std::floor(seconds * 48000.0)) + opusInfo.pre_skip;
+    if (mTimeByteOffsets.back().granule < targetGranule)
+        return 0;
+
+    for (size_t i = 1; i < mTimeByteOffsets.size(); ++i)
+    {
+        if (mTimeByteOffsets[i].granule >= targetGranule)
+        {
+            const auto &a = mTimeByteOffsets[i - 1];
+            const auto &b = mTimeByteOffsets[i];
+            if (b.granule == a.granule)
+                return a.byteOffset;
+            const double t = static_cast<double>(targetGranule - a.granule) /
+                             static_cast<double>(b.granule - a.granule);
+            return a.byteOffset + static_cast<uint64_t>(
+                                      t * static_cast<double>(b.byteOffset - a.byteOffset));
+        }
+    }
+    return mTimeByteOffsets.back().byteOffset;
+}
+
+double OpusDecoderWrapper::getDuration() const
+{
+    if (totalSamplesExpected <= 0 || decodingSamplerate <= 0)
+        return -1.0;
+    return static_cast<double>(totalSamplesExpected) /
+           static_cast<double>(decodingSamplerate);
+}
+
 #endif // #if defined(NO_XIPH_LIBS)

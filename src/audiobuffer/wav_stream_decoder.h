@@ -20,7 +20,11 @@ public:
 
   std::pair<std::vector<float>, DecoderError>
   decode(std::vector<unsigned char> &buffer, int *sampleRate,
-         int *channels) override;
+         int *channels, size_t maxOutputSamples = 0) override;
+
+  bool canSeekToTime(double seconds) const override;
+  uint64_t timeToByteOffset(double seconds) override;
+  double getDuration() const override;
 
   static bool checkForValidWavHeader(const std::vector<unsigned char> &buffer);
 

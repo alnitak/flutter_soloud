@@ -1,51 +1,436 @@
 {
-    "version": "2.0.0",
-    "tasks": [
-        {
-            "label": "compile linux debug verbose",
-            "command": "cd ${workspaceFolder}/example; flutter build linux -t lib/mixing_bus/mixing_bus.dart --debug --verbose",
-            // "args": ["build", "linux", "--verbose"],
-            "type": "shell"
-        },
-        {
-            "label": "compile linux debug",
-            "command": "cd ${workspaceFolder}/example; flutter build linux -t lib/mixing_bus/mixing_bus.dart --debug",
-            "type": "shell"
-        },
-        {
-            "label": "compile linux test debug",
-            "command": "cd ${workspaceFolder}/example; flutter build linux -t tests/tests.dart --debug",
-            "type": "shell"
-        },
-        {
-            "label": "compile windows debug verbose",
-            "command": "cd ${workspaceFolder}/example; flutter build windows -t lib/mixing_bus/mixing_bus.dart --debug --verbose",
-            "type": "shell"
-        },
-        {
-            "label": "compile windows debug",
-            "command": "cd ${workspaceFolder}/example; flutter build windows -t lib/buffer_stream/simple_noise_stream.dart --debug",
-            "type": "shell"
-        },
-        {
-            "label": "compile macos debug",
-            "command": "cd ${workspaceFolder}/example; flutter build macos -t lib/buffer_stream/websocket.dart --debug",
-            "type": "shell"
-        },
-        {
-            "label": "compile macos test debug",
-            "command": "cd ${workspaceFolder}/example; flutter build macos -t tests/tests.dart --debug",
-            "type": "shell"
-        },
-        {
-            "label": "compile web wasm release",
-            "command": "cd ${workspaceFolder}/example; flutter run -d chrome --wasm -t tests/tests.dart --release",
-            "type": "shell"
-        },
-        {
-            "label": "compile WASM",
-            "command": "sh ${workspaceFolder}/wasm.sh",
-            "type": "shell"
-        }
-    ]
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "compile linux debug verbose",
+			"command": "cd ${workspaceFolder}/example; flutter build linux -t lib/mixing_bus/mixing_bus.dart --debug --verbose",
+			"type": "shell"
+		},
+		{
+			"label": "compile linux debug",
+			"command": "cd ${workspaceFolder}/example; flutter build linux -t lib/mixing_bus/mixing_bus.dart --debug",
+			"type": "shell"
+		},
+		{
+			"label": "compile linux test debug",
+			"command": "cd ${workspaceFolder}/example; flutter build linux -t tests/tests.dart --debug",
+			"type": "shell"
+		},
+		{
+			"label": "compile windows debug verbose",
+			"command": "cd ${workspaceFolder}/example; flutter build windows -t lib/mixing_bus/mixing_bus.dart --debug --verbose",
+			"type": "shell"
+		},
+		{
+			"label": "compile windows debug",
+			"command": "cd ${workspaceFolder}/example; flutter build windows -t lib/buffer_stream/simple_noise_stream.dart --debug",
+			"type": "shell"
+		},
+		{
+			"label": "compile macos debug",
+			"command": "cd ${workspaceFolder}/example; flutter build macos -t lib/buffer_stream/websocket.dart --debug",
+			"type": "shell"
+		},
+		{
+			"label": "compile macos test debug",
+			"command": "cd ${workspaceFolder}/example; flutter build macos -t tests/tests.dart --debug",
+			"type": "shell"
+		},
+		{
+			"label": "compile macos pull buffer test",
+			"command": "cd ${workspaceFolder}/example; flutter build macos -t tests/run_pull_buffer_test.dart --debug",
+			"type": "shell"
+		},
+		{
+			"label": "run macos pull buffer test",
+			"command": "cd ${workspaceFolder}/example; ./build/macos/Build/Products/Debug/flutter_soloud_example.app/Contents/MacOS/flutter_soloud_example & PID=$!; sleep 60; kill $PID 2>/dev/null; wait $PID 2>/dev/null",
+			"type": "shell"
+		},
+		{
+			"label": "compile web wasm release",
+			"command": "cd ${workspaceFolder}/example; flutter run -d chrome --wasm -t tests/tests.dart --release",
+			"type": "shell"
+		},
+		{
+			"label": "dart analyze",
+			"command": "cd ${workspaceFolder}; dart analyze",
+			"type": "shell"
+		},
+		{
+			"label": "dart format",
+			"command": "cd ${workspaceFolder}; dart format .",
+			"type": "shell"
+		},
+		{
+			"label": "stop flutter web servers",
+			"command": "pkill -f 'flutter run -d web-server --wasm -t tests/run_pull_buffer_test.dart' || true; pkill -f 'flutter run -d chrome --wasm -t tests/run_pull_buffer_test.dart' || true; pkill -f 'dart' || true; pkill -f 'flutter' || true; pkill -f 'serve_web.py' || true; sleep 1; echo 'done'",
+			"type": "shell"
+		},
+		{
+			"label": "build web pull buffer test",
+			"command": "cd ${workspaceFolder}/example; flutter clean; rm -rf build/web; flutter build web --wasm -t tests/run_pull_buffer_test.dart --release",
+			"type": "shell"
+		},
+		{
+			"label": "serve web pull buffer test",
+			"command": "cd ${workspaceFolder}/example; python3 serve_web.py 8081 build/web",
+			"type": "shell",
+			"isBackground": true
+		},
+		{
+			"label": "recompile WASM",
+			"command": "cd ${workspaceFolder}/web && bash compile_wasm.sh",
+			"type": "shell"
+		},
+		{
+			"label": "compile macos file_stream debug",
+			"type": "shell",
+			"command": "cd ${workspaceFolder}/example && flutter build macos -t lib/pull_buffer/file_stream.dart --debug"
+		},
+		{
+			"label": "run pull buffer seek test",
+			"type": "shell",
+			"command": "cd /Volumes/NVME/workspace/libs/flutter_soloud/example && flutter run -d macos tests/run_pull_buffer_seek_test.dart --debug"
+		},
+		{
+			"label": "read subagent output",
+			"type": "shell",
+			"command": ": 'cat /Volumes/NVME/Users/deimos/Library/Application Support/Code/User/workspaceStorage/068b4d59ce1d53146e8d8fbca4a7123b/GitHub.copilot-chat/chat-session-resources/ebe0c0ed-0ee8-4cc3-8f6b-009f8817bf8f/tool_4nKGJXGu1CQlk0YkCsaumwMd__vscode-1783673682323/content.txt'"
+		},
+		{
+			"label": "read subagent output",
+			"type": "shell",
+			"command": ": 'cat /Volumes/NVME/Users/deimos/Library/Application Support/Code/User/workspaceStorage/068b4d59ce1d53146e8d8fbca4a7123b/GitHub.copilot-chat/chat-session-resources/ebe0c0ed-0ee8-4cc3-8f6b-009f8817bf8f/tool_4nKGJXGu1CQlk0YkCsaumwMd__vscode-1783673682323/content.txt'"
+		},
+		{
+			"label": "read subagent output",
+			"type": "shell",
+			"command": ": 'cat /Volumes/NVME/Users/deimos/Library/Application Support/Code/User/workspaceStorage/068b4d59ce1d53146e8d8fbca4a7123b/GitHub.copilot-chat/chat-session-resources/ebe0c0ed-0ee8-4cc3-8f6b-009f8817bf8f/tool_4nKGJXGu1CQlk0YkCsaumwMd__vscode-1783673682323/content.txt'"
+		},
+		{
+			"label": "read subagent output",
+			"type": "shell",
+			"command": "tail -n 200 /Volumes/NVME/Users/deimos/Library/Application Support/Code/User/workspaceStorage/068b4d59ce1d53146e8d8fbca4a7123b/GitHub.copilot-chat/chat-session-resources/ebe0c0ed-0ee8-4cc3-8f6b-009f8817bf8f/tool_4nKGJXGu1CQlk0YkCsaumwMd__vscode-1783673682323/content.txt"
+		},
+		{
+			"label": "read subagent output",
+			"type": "shell",
+			"command": ": 'cat /Volumes/NVME/Users/deimos/Library/Application Support/Code/User/workspaceStorage/068b4d59ce1d53146e8d8fbca4a7123b/GitHub.copilot-chat/chat-session-resources/ebe0c0ed-0ee8-4cc3-8f6b-009f8817bf8f/tool_4nKGJXGu1CQlk0YkCsaumwMd__vscode-1783673682323/content.txt'"
+		},
+		{
+			"label": "read seek test output",
+			"type": "shell",
+			"command": "tail -n 100 /Volumes/NVME/Users/deimos/Library/Application Support/Code/User/workspaceStorage/068b4d59ce1d53146e8d8fbca4a7123b/GitHub.copilot-chat/chat-session-resources/ebe0c0ed-0ee8-4cc3-8f6b-009f8817bf8f/tool_f0b3KMSrRfjjDtYZJpXA79nL__vscode-1783673682312/content.txt"
+		},
+		{
+			"label": "read seek test output quoted",
+			"type": "shell",
+			"command": ": 'tail -n 100 \"/Volumes/NVME/Users/deimos/Library/Application Support/Code/User/workspaceStorage/068b4d59ce1d53146e8d8fbca4a7123b/GitHub.copilot-chat/chat-session-resources/ebe0c0ed-0ee8-4cc3-8f6b-009f8817bf8f/tool_f0b3KMSrRfjjDtYZJpXA79nL__vscode-1783673682312/content.txt\"'"
+		},
+		{
+			"label": "read seek test output quoted2",
+			"type": "shell",
+			"command": "tail -n 100 \"/Volumes/NVME/Users/deimos/Library/Application Support/Code/User/workspaceStorage/068b4d59ce1d53146e8d8fbca4a7123b/GitHub.copilot-chat/chat-session-resources/ebe0c0ed-0ee8-4cc3-8f6b-009f8817bf8f/tool_f0b3KMSrRfjjDtYZJpXA79nL__vscode-1783673682312/content.txt\""
+		},
+		{
+			"label": "run pull buffer test",
+			"type": "shell",
+			"command": "cd /Volumes/NVME/workspace/libs/flutter_soloud/example && flutter run -d macos tests/run_pull_buffer_test.dart --debug"
+		},
+		{
+			"label": "read pull buffer test output",
+			"type": "shell",
+			"command": "tail -n 50 \"/Volumes/NVME/Users/deimos/Library/Application Support/Code/User/workspaceStorage/068b4d59ce1d53146e8d8fbca4a7123b/GitHub.copilot-chat/chat-session-resources/ebe0c0ed-0ee8-4cc3-8f6b-009f8817bf8f/tool_i6vFG13cuEtaENPFdFPTjb6N__vscode-1783673682353/content.txt\""
+		},
+		{
+			"label": "search pull buffer test output",
+			"type": "shell",
+			"command": "grep -E \"PULL_BUFFER_TEST|PULL_BUFFER_SEEK|FAILED|Exception|Error\" \"/Volumes/NVME/Users/deimos/Library/Application Support/Code/User/workspaceStorage/068b4d59ce1d53146e8d8fbca4a7123b/GitHub.copilot-chat/chat-session-resources/ebe0c0ed-0ee8-4cc3-8f6b-009f8817bf8f/tool_i6vFG13cuEtaENPFdFPTjb6N__vscode-1783673682353/content.txt\""
+		},
+		{
+			"label": ": 'run pull buffer test'",
+			"type": "shell",
+			"command": ": 'cd /Volumes/NVME/workspace/libs/flutter_soloud/example && flutter run -d macos tests/run_pull_buffer_test.dart --debug'"
+		},
+		{
+			"label": "run pull buffer test v2",
+			"type": "shell",
+			"command": "cd /Volumes/NVME/workspace/libs/flutter_soloud/example && flutter run -d macos tests/run_pull_buffer_test.dart --debug"
+		},
+		{
+			"label": "read pull buffer test output",
+			"type": "shell",
+			"command": "tail -n 50 \"/Volumes/NVME/Users/deimos/Library/Application Support/Code/User/workspaceStorage/068b4d59ce1d53146e8d8fbca4a7123b/GitHub.copilot-chat/chat-session-resources/ebe0c0ed-0ee8-4cc3-8f6b-009f8817bf8f/tool_Or5YqP88GjKT6rwvYPyMKq6Z__vscode-1783673682504/content.txt\""
+		},
+		{
+			"label": ": 'grep new pull buffer test output'",
+			"type": "shell",
+			"command": ": 'grep -E \"PULL_BUFFER_TEST|PULL_BUFFER_SEEK|FAILED|Exception|Error\" \"/Volumes/NVME/Users/deimos/Library/Application Support/Code/User/workspaceStorage/068b4d59ce1d53146e8d8fbca4a7123b/GitHub.copilot-chat/chat-session-resources/ebe0c0ed-0ee8-4cc3-8f6b-009f8817bf8f/tool_Or5YqP88GjKT6rwvYPyMKq6Z__vscode-1783673682504/content.txt\"'"
+		},
+		{
+			"label": ": 'grep new pull buffer test output 2'",
+			"type": "shell",
+			"command": ": 'grep -E \"PULL_BUFFER_TEST|PULL_BUFFER_SEEK|FAILED|Exception|Error\" \"/Volumes/NVME/Users/deimos/Library/Application Support/Code/User/workspaceStorage/068b4d59ce1d53146e8d8fbca4a7123b/GitHub.copilot-chat/chat-session-resources/ebe0c0ed-0ee8-4cc3-8f6b-009f8817bf8f/tool_Or5YqP88GjKT6rwvYPyMKq6Z__vscode-1783673682504/content.txt\"'"
+		},
+		{
+			"label": ": 'grep new pull buffer test output 3'",
+			"type": "shell",
+			"command": ": 'grep -E \"PULL_BUFFER_TEST|PULL_BUFFER_SEEK|FAILED|Exception|Error\" \"/Volumes/NVME/Users/deimos/Library/Application Support/Code/User/workspaceStorage/068b4d59ce1d53146e8d8fbca4a7123b/GitHub.copilot-chat/chat-session-resources/ebe0c0ed-0ee8-4cc3-8f6b-009f8817bf8f/tool_Or5YqP88GjKT6rwvYPyMKq6Z__vscode-1783673682504/content.txt\"'"
+		},
+		{
+			"label": ": 'grep new pull buffer test output 4'",
+			"type": "shell",
+			"command": ": 'grep -E \"PULL_BUFFER_TEST|PULL_BUFFER_SEEK|FAILED|Exception|Error\" \"/Volumes/NVME/Users/deimos/Library/Application Support/Code/User/workspaceStorage/068b4d59ce1d53146e8d8fbca4a7123b/GitHub.copilot-chat/chat-session-resources/ebe0c0ed-0ee8-4cc3-8f6b-009f8817bf8f/tool_Or5YqP88GjKT6rwvYPyMKq6Z__vscode-1783673682504/content.txt\"'"
+		},
+		{
+			"label": "grep new pull buffer test output 5",
+			"type": "shell",
+			"command": "grep -E \"PULL_BUFFER_TEST|PULL_BUFFER_SEEK|FAILED|Exception|Error\" \"/Volumes/NVME/Users/deimos/Library/Application Support/Code/User/workspaceStorage/068b4d59ce1d53146e8d8fbca4a7123b/GitHub.copilot-chat/chat-session-resources/ebe0c0ed-0ee8-4cc3-8f6b-009f8817bf8f/tool_Or5YqP88GjKT6rwvYPyMKq6Z__vscode-1783673682504/content.txt\""
+		},
+		{
+			"label": "run pull buffer seek test v2",
+			"type": "shell",
+			"command": "cd /Volumes/NVME/workspace/libs/flutter_soloud/example && flutter run -d macos tests/run_pull_buffer_seek_test.dart --debug"
+		},
+		{
+			"label": "grep new seek test output",
+			"type": "shell",
+			"command": "grep -E \"PULL_BUFFER_SEEK|FAILED|Exception|Error|final position\" \"/Volumes/NVME/Users/deimos/Library/Application Support/Code/User/workspaceStorage/068b4d59ce1d53146e8d8fbca4a7123b/GitHub.copilot-chat/chat-session-resources/ebe0c0ed-0ee8-4cc3-8f6b-009f8817bf8f/tool_zorkybziOGBgD4sSZmWZzPDo__vscode-1783673682511/content.txt\""
+		},
+		{
+			"label": "run pull buffer test large chunks",
+			"type": "shell",
+			"command": "cd /Volumes/NVME/workspace/libs/flutter_soloud/example && flutter run -d macos tests/run_pull_buffer_test.dart --debug"
+		},
+		{
+			"label": "grep large chunk test output",
+			"type": "shell",
+			"command": "grep -E \"PULL_BUFFER_TEST|FAILED|Exception|Error|stream=|ref=\" \"/Volumes/NVME/Users/deimos/Library/Application Support/Code/User/workspaceStorage/068b4d59ce1d53146e8d8fbca4a7123b/GitHub.copilot-chat/chat-session-resources/ebe0c0ed-0ee8-4cc3-8f6b-009f8817bf8f/tool_Mw97IFDTVYj3BrYUUUdsT1zx__vscode-1783673682515/content.txt\""
+		},
+		{
+			"label": ": 'run pull buffer test original chunks'",
+			"type": "shell",
+			"command": ": 'cd /Volumes/NVME/workspace/libs/flutter_soloud/example && flutter run -d macos tests/run_pull_buffer_test.dart --debug'"
+		},
+		{
+			"label": "run pull buffer test original chunks v2",
+			"type": "shell",
+			"command": "cd /Volumes/NVME/workspace/libs/flutter_soloud/example && flutter run -d macos tests/run_pull_buffer_test.dart --debug"
+		},
+		{
+			"label": ": 'grep original chunk test output'",
+			"type": "shell",
+			"command": ": 'grep -E \"PULL_BUFFER_TEST|FAILED|Exception|Error\" \"/Volumes/NVME/Users/deimos/Library/Application Support/Code/User/workspaceStorage/068b4d59ce1d53146e8d8fbca4a7123b/GitHub.copilot-chat/chat-session-resources/ebe0c0ed-0ee8-4cc3-8f6b-009f8817bf8f/tool_aXwcEJ6FkGm7un0baGC7aKmz__vscode-1783673682519/content.txt\"'"
+		},
+		{
+			"label": "grep original chunk test output v2",
+			"type": "shell",
+			"command": "grep -E \"PULL_BUFFER_TEST|FAILED|Exception|Error\" \"/Volumes/NVME/Users/deimos/Library/Application Support/Code/User/workspaceStorage/068b4d59ce1d53146e8d8fbca4a7123b/GitHub.copilot-chat/chat-session-resources/ebe0c0ed-0ee8-4cc3-8f6b-009f8817bf8f/tool_aXwcEJ6FkGm7un0baGC7aKmz__vscode-1783673682519/content.txt\""
+		},
+		{
+			"label": "run seek test final",
+			"type": "shell",
+			"command": "cd /Volumes/NVME/workspace/libs/flutter_soloud/example && flutter run -d macos tests/run_pull_buffer_seek_test.dart --debug"
+		},
+		{
+			"label": ": 'grep seek test final output'",
+			"type": "shell",
+			"command": ": 'grep -E \"PULL_BUFFER_SEEK|FAILED|Exception|Error|final position\" \"/Volumes/NVME/Users/deimos/Library/Application Support/Code/User/workspaceStorage/068b4d59ce1d53146e8d8fbca4a7123b/GitHub.copilot-chat/chat-session-resources/ebe0c0ed-0ee8-4cc3-8f6b-009f8817bf8f/tool_s4IHXBpqZIAOuvuSTQ0MRoRB__vscode-1783673682522/content.txt\"'"
+		},
+		{
+			"label": ": 'grep seek test final output v2'",
+			"type": "shell",
+			"command": ": 'grep -E \"PULL_BUFFER_SEEK|FAILED|Exception|Error|final position\" \"/Volumes/NVME/Users/deimos/Library/Application Support/Code/User/workspaceStorage/068b4d59ce1d53146e8d8fbca4a7123b/GitHub.copilot-chat/chat-session-resources/ebe0c0ed-0ee8-4cc3-8f6b-009f8817bf8f/tool_s4IHXBpqZIAOuvuSTQ0MRoRB__vscode-1783673682522/content.txt\"'"
+		},
+		{
+			"label": "grep seek test final output v3",
+			"type": "shell",
+			"command": "grep -E \"PULL_BUFFER_SEEK|FAILED|Exception|Error|final position\" \"/Volumes/NVME/Users/deimos/Library/Application Support/Code/User/workspaceStorage/068b4d59ce1d53146e8d8fbca4a7123b/GitHub.copilot-chat/chat-session-resources/ebe0c0ed-0ee8-4cc3-8f6b-009f8817bf8f/tool_s4IHXBpqZIAOuvuSTQ0MRoRB__vscode-1783673682522/content.txt\""
+		},
+		{
+			"label": "dart analyze flutter_soloud",
+			"type": "shell",
+			"command": "dart analyze"
+		},
+		{
+			"label": "dart analyze flutter_soloud final",
+			"type": "shell",
+			"command": "dart analyze"
+		},
+		{
+			"label": "compile macos test debug after seek fix",
+			"type": "shell",
+			"command": "cd /Volumes/NVME/workspace/libs/flutter_soloud/example && flutter build macos -t tests/tests.dart --debug"
+		},
+		{
+			"label": "run seek test after fix",
+			"type": "shell",
+			"command": "cd /Volumes/NVME/workspace/libs/flutter_soloud/example && flutter run -d macos tests/run_pull_buffer_seek_test.dart --debug"
+		},
+		{
+			"label": ": 'grep seek test after fix'",
+			"type": "shell",
+			"command": ": 'grep -E \"PULL_BUFFER_SEEK|FAILED|Exception|Error|final position\" \"/Volumes/NVME/Users/deimos/Library/Application Support/Code/User/workspaceStorage/068b4d59ce1d53146e8d8fbca4a7123b/GitHub.copilot-chat/chat-session-resources/ebe0c0ed-0ee8-4cc3-8f6b-009f8817bf8f/tool_xJG1id0X2Z7CXDSFIH4bmFwJ__vscode-1783673682536/content.txt\"'"
+		},
+		{
+			"label": "grep seek test after fix v2",
+			"type": "shell",
+			"command": "grep -E \"PULL_BUFFER_SEEK|FAILED|Exception|Error|final position\" \"/Volumes/NVME/Users/deimos/Library/Application Support/Code/User/workspaceStorage/068b4d59ce1d53146e8d8fbca4a7123b/GitHub.copilot-chat/chat-session-resources/ebe0c0ed-0ee8-4cc3-8f6b-009f8817bf8f/tool_xJG1id0X2Z7CXDSFIH4bmFwJ__vscode-1783673682536/content.txt\""
+		},
+		{
+			"label": ": 'run pull buffer test after fix'",
+			"type": "shell",
+			"command": ": 'cd /Volumes/NVME/workspace/libs/flutter_soloud/example && flutter run -d macos tests/run_pull_buffer_test.dart --debug'"
+		},
+		{
+			"label": "run pull buffer test after fix v2",
+			"type": "shell",
+			"command": "cd /Volumes/NVME/workspace/libs/flutter_soloud/example && flutter run -d macos tests/run_pull_buffer_test.dart --debug"
+		},
+		{
+			"label": "grep pull buffer test after fix",
+			"type": "shell",
+			"command": "grep -E \"PULL_BUFFER_TEST|FAILED|Exception|Error\" \"/Volumes/NVME/Users/deimos/Library/Application Support/Code/User/workspaceStorage/068b4d59ce1d53146e8d8fbca4a7123b/GitHub.copilot-chat/chat-session-resources/ebe0c0ed-0ee8-4cc3-8f6b-009f8817bf8f/tool_X4Glq2c4C47LswsVJNWMNAVI__vscode-1783673682540/content.txt\""
+		},
+		{
+			"label": ": 'dart analyze final'",
+			"type": "shell",
+			"command": ": 'dart analyze'"
+		},
+		{
+			"label": ": 'dart analyze final v2'",
+			"type": "shell",
+			"command": ": 'dart analyze'"
+		},
+		{
+			"label": ": 'dart analyze final v3'",
+			"type": "shell",
+			"command": ": 'dart analyze'"
+		},
+		{
+			"label": "dart analyze final v4",
+			"type": "shell",
+			"command": "dart analyze"
+		},
+		{
+			"label": ": 'run large chunk test after fix'",
+			"type": "shell",
+			"command": ": 'cd /Volumes/NVME/workspace/libs/flutter_soloud/example && flutter run -d macos tests/run_pull_buffer_test.dart --debug'"
+		},
+		{
+			"label": "run large chunk test after fix v2",
+			"type": "shell",
+			"command": "cd /Volumes/NVME/workspace/libs/flutter_soloud/example && flutter run -d macos tests/run_pull_buffer_test.dart --debug"
+		},
+		{
+			"label": "grep large chunk test after fix",
+			"type": "shell",
+			"command": "grep -E \"PULL_BUFFER_TEST|FAILED|Exception|Error|stream=|ref=\" \"/Volumes/NVME/Users/deimos/Library/Application Support/Code/User/workspaceStorage/068b4d59ce1d53146e8d8fbca4a7123b/GitHub.copilot-chat/chat-session-resources/ebe0c0ed-0ee8-4cc3-8f6b-009f8817bf8f/tool_obKtvuGIUHgtxi7QEwJzQHkw__vscode-1783673682549/content.txt\""
+		},
+		{
+			"label": "final dart analyze v2",
+			"type": "shell",
+			"command": "dart analyze"
+		},
+		{
+			"label": "final pull buffer test",
+			"type": "shell",
+			"command": "cd /Volumes/NVME/workspace/libs/flutter_soloud/example && flutter run -d macos tests/run_pull_buffer_test.dart --debug"
+		},
+		{
+			"label": "grep final pull buffer test v2",
+			"type": "shell",
+			"command": "grep -E \"PULL_BUFFER_TEST|FAILED|Exception|Error\" \"/Volumes/NVME/Users/deimos/Library/Application Support/Code/User/workspaceStorage/068b4d59ce1d53146e8d8fbca4a7123b/GitHub.copilot-chat/chat-session-resources/ebe0c0ed-0ee8-4cc3-8f6b-009f8817bf8f/tool_sX1wPzUhXip6Y1bZEfeup8XW__vscode-1783673682555/content.txt\""
+		},
+		{
+			"label": "run 10mb chunk test v2",
+			"type": "shell",
+			"command": "cd /Volumes/NVME/workspace/libs/flutter_soloud/example && flutter run -d macos tests/run_pull_buffer_test.dart --debug"
+		},
+		{
+			"label": "grep 10mb chunk test output",
+			"type": "shell",
+			"command": "grep -E \"PULL_BUFFER_TEST|FAILED|Exception|Error|stream=|ref=\" \"/Volumes/NVME/Users/deimos/Library/Application Support/Code/User/workspaceStorage/068b4d59ce1d53146e8d8fbca4a7123b/GitHub.copilot-chat/chat-session-resources/ebe0c0ed-0ee8-4cc3-8f6b-009f8817bf8f/tool_htrqK6i4W96W6syI7uSJLehQ__vscode-1783673682561/content.txt\""
+		},
+		{
+			"label": "final dart analyze check",
+			"type": "shell",
+			"command": "dart analyze"
+		},
+		{
+			"label": "final original chunk test v3",
+			"type": "shell",
+			"command": "cd /Volumes/NVME/workspace/libs/flutter_soloud/example && flutter run -d macos tests/run_pull_buffer_test.dart --debug"
+		},
+		{
+			"label": "grep final original chunk test",
+			"type": "shell",
+			"command": "grep -E \"PULL_BUFFER_TEST|FAILED|Exception|Error\" \"/Volumes/NVME/Users/deimos/Library/Application Support/Code/User/workspaceStorage/068b4d59ce1d53146e8d8fbca4a7123b/GitHub.copilot-chat/chat-session-resources/ebe0c0ed-0ee8-4cc3-8f6b-009f8817bf8f/tool_deEGS1rQEgOp6BwnylLbGzBN__vscode-1783673682567/content.txt\""
+		},
+		{
+			"label": "run pull buffer seek test",
+			"type": "shell",
+			"command": "cd /Volumes/NVME/workspace/libs/flutter_soloud/example && flutter run -d macos -t tests/run_pull_buffer_seek_test.dart --debug"
+		},
+		{
+			"label": "kill flutter processes",
+			"type": "shell",
+			"command": "pkill -f \"flutter_soloud_example\" || true; pkill -f \"flutter run -d macos\" || true; echo \"killed\""
+		},
+		{
+			"label": "build and run macos pull buffer seek test",
+			"type": "shell",
+			"command": "cd /Volumes/NVME/workspace/libs/flutter_soloud/example && flutter build macos -t tests/run_pull_buffer_seek_test.dart --debug && ./build/macos/Build/Products/Debug/flutter_soloud_example.app/Contents/MacOS/flutter_soloud_example"
+		},
+		{
+			"label": "run seek binary with log file",
+			"type": "shell",
+			"command": "cd /Volumes/NVME/workspace/libs/flutter_soloud/example && ./build/macos/Build/Products/Debug/flutter_soloud_example.app/Contents/MacOS/flutter_soloud_example > /tmp/seek_test_full.log 2>&1; echo \"EXIT: $?\"; tail -n 50 /tmp/seek_test_full.log"
+		},
+		{
+			"label": "build and run seek test after fix",
+			"type": "shell",
+			"command": "cd /Volumes/NVME/workspace/libs/flutter_soloud/example && flutter build macos -t tests/run_pull_buffer_seek_test.dart --debug && ./build/macos/Build/Products/Debug/flutter_soloud_example.app/Contents/MacOS/flutter_soloud_example > /tmp/seek_after_fix.log 2>&1; echo \"EXIT: $?\"; tail -n 50 /tmp/seek_after_fix.log"
+		},
+		{
+			"label": "build and run seek test after force recompile",
+			"type": "shell",
+			"command": "cd /Volumes/NVME/workspace/libs/flutter_soloud/example && flutter build macos -t tests/run_pull_buffer_seek_test.dart --debug && ./build/macos/Build/Products/Debug/flutter_soloud_example.app/Contents/MacOS/flutter_soloud_example > /tmp/seek_after_fix2.log 2>&1; echo \"EXIT: $?\"; tail -n 50 /tmp/seek_after_fix2.log"
+		},
+		{
+			"label": "inspect sample mp3",
+			"type": "shell",
+			"command": "cd /Volumes/NVME/workspace/libs/flutter_soloud/example/assets/audio; file sample-MP3.mp3; ls -l sample-MP3.mp3; xxd -l 64 sample-MP3.mp3"
+		},
+		{
+			"label": "build and run pull buffer tiny test 16kb",
+			"type": "shell",
+			"command": "cd /Volumes/NVME/workspace/libs/flutter_soloud/example && rm -rf build/macos && flutter build macos -t tests/run_pull_buffer_tiny_test.dart --debug && flutter run -d macos -t tests/run_pull_buffer_tiny_test.dart --debug"
+		},
+		{
+			"label": "read end of test output",
+			"type": "shell",
+			"command": "tail -n 80 /Volumes/NVME/Users/deimos/Library/Application Support/Code/User/workspaceStorage/068b4d59ce1d53146e8d8fbca4a7123b/GitHub.copilot-chat/chat-session-resources/ebe0c0ed-0ee8-4cc3-8f6b-009f8817bf8f/tool_twBHgMD9EWC4xYKthespuvZt__vscode-1783673682922/content.txt"
+		},
+		{
+			"label": "build and run pull buffer test original 16kb",
+			"type": "shell",
+			"command": "cd /Volumes/NVME/workspace/libs/flutter_soloud/example && rm -rf build/macos && flutter build macos -t tests/run_pull_buffer_test.dart --debug && flutter run -d macos -t tests/run_pull_buffer_test.dart --debug"
+		},
+		{
+			"label": "build and run pull buffer seek test original 16kb",
+			"type": "shell",
+			"command": "cd /Volumes/NVME/workspace/libs/flutter_soloud/example && rm -rf build/macos && flutter build macos -t tests/run_pull_buffer_seek_test.dart --debug && flutter run -d macos -t tests/run_pull_buffer_seek_test.dart --debug"
+		},
+		{
+			"label": "build and run pull buffer file stream test",
+			"type": "shell",
+			"command": "cd /Volumes/NVME/workspace/libs/flutter_soloud/example && rm -rf build/macos && flutter build macos -t tests/run_pull_buffer_file_stream_test.dart --debug && flutter run -d macos -t tests/run_pull_buffer_file_stream_test.dart --debug",
+			"isBackground": false,
+			"problemMatcher": [
+				"$flutter"
+			],
+			"group": "test"
+		}
+	]
 }

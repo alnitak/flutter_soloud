@@ -3,9 +3,10 @@
 #include "vorbis_stream_decoder.h"
 #include <stdexcept>
 #include <cstring>
+#include <cmath>
 
 VorbisDecoderWrapper::VorbisDecoderWrapper()
-    : vorbisInitialized(false), streamInitialized(false), headerParsed(false), packetCount(0)
+    : vorbisInitialized(false), streamInitialized(false), headerParsed(false), packetCount(0), mOggBytesConsumed(0)
 {
 }
 
@@ -77,7 +78,7 @@ AudioMetadata VorbisDecoderWrapper::getMetadata() {
 
 std::pair<std::vector<float>, DecoderError> VorbisDecoderWrapper::decode(std::vector<unsigned char>& buffer,
                                                int* samplerate,
-                                               int* channels) {
+                                               int* channels, size_t maxOutputSamples) {
     std::vector<float> decodedData;
     ogg_int64_t total_samples = -1;
     bool eos_seen = false;
@@ -92,10 +93,26 @@ std::pair<std::vector<float>, DecoderError> VorbisDecoderWrapper::decode(std::ve
     ogg_sync_wrote(&oy, buffer.size());
     buffer.clear();
 
-    // Process available pages
-    while (ogg_sync_pageout(&oy, &og) == 1) {
+    // Process available pages, tracking byte offsets for seeking.
+    while (true) {
+        long ret = ogg_sync_pageseek(&oy, &og);
+        if (ret <= 0)
+            break;
+
+        mOggBytesConsumed += static_cast<uint64_t>(ret);
+        const long pageSize = og.header_len + og.body_len;
+        if (pageSize > 0) {
+            const uint64_t pageStart = mOggBytesConsumed - static_cast<uint64_t>(pageSize);
+            const ogg_int64_t granule = ogg_page_granulepos(&og);
+            if (granule >= 0 &&
+                (mTimeByteOffsets.empty() || mTimeByteOffsets.back().granule != granule)) {
+                mTimeByteOffsets.push_back({granule, pageStart});
+            }
+        }
+
         if (ogg_page_eos(&og)) {
             total_samples = ogg_page_granulepos(&og);
+            mTotalSamples = total_samples;
             eos_seen = true;
         }
         
@@ -152,7 +169,15 @@ std::pair<std::vector<float>, DecoderError> VorbisDecoderWrapper::decode(std::ve
         // Extract packets from page
         while (ogg_stream_packetout(&os, &op) == 1) {
             auto packetData = decodePacket(&op);
-            decodedData.insert(decodedData.end(), packetData.begin(), packetData.end());
+            if (!packetData.empty()) {
+                decodedData.insert(decodedData.end(), packetData.begin(), packetData.end());
+            }
+            if (maxOutputSamples > 0 && decodedData.size() >= maxOutputSamples) {
+                break;
+            }
+        }
+        if (maxOutputSamples > 0 && decodedData.size() >= maxOutputSamples) {
+            break;
         }
     }
 
@@ -274,4 +299,69 @@ std::vector<float> VorbisDecoderWrapper::decodePacket(ogg_packet* packet) {
 
     return packetPcm;
 }
+
+void VorbisDecoderWrapper::prepareForSeek(uint64_t targetSample)
+{
+    (void)targetSample;
+    // Preserve the already-parsed headers and decoder state, but reset the
+    // Ogg page-level state so that mid-stream data can be synced again.
+    ogg_sync_clear(&oy);
+    ogg_sync_init(&oy);
+    if (streamInitialized)
+    {
+        const long serial = os.serialno;
+        ogg_stream_clear(&os);
+        ogg_stream_init(&os, serial);
+    }
+    mOggBytesConsumed = 0;
+    mTimeByteOffsets.clear();
+}
+
+bool VorbisDecoderWrapper::canSeekToTime(double seconds) const
+{
+    if (!headerParsed || mTimeByteOffsets.empty())
+        return false;
+    if (seconds <= 0.0)
+        return false;
+    const ogg_int64_t targetGranule = static_cast<ogg_int64_t>(
+        std::floor(seconds * static_cast<double>(vi.rate)));
+    return mTimeByteOffsets.back().granule >= targetGranule;
+}
+
+uint64_t VorbisDecoderWrapper::timeToByteOffset(double seconds)
+{
+    if (!headerParsed || mTimeByteOffsets.empty())
+        return 0;
+    if (seconds <= 0.0)
+        return 0;
+
+    const ogg_int64_t targetGranule = static_cast<ogg_int64_t>(
+        std::floor(seconds * static_cast<double>(vi.rate)));
+    if (mTimeByteOffsets.back().granule < targetGranule)
+        return 0;
+
+    for (size_t i = 1; i < mTimeByteOffsets.size(); ++i)
+    {
+        if (mTimeByteOffsets[i].granule >= targetGranule)
+        {
+            const auto &a = mTimeByteOffsets[i - 1];
+            const auto &b = mTimeByteOffsets[i];
+            if (b.granule == a.granule)
+                return a.byteOffset;
+            const double t = static_cast<double>(targetGranule - a.granule) /
+                             static_cast<double>(b.granule - a.granule);
+            return a.byteOffset + static_cast<uint64_t>(
+                                      t * static_cast<double>(b.byteOffset - a.byteOffset));
+        }
+    }
+    return mTimeByteOffsets.back().byteOffset;
+}
+
+double VorbisDecoderWrapper::getDuration() const
+{
+    if (mTotalSamples <= 0 || vi.rate <= 0)
+        return -1.0;
+    return static_cast<double>(mTotalSamples) / static_cast<double>(vi.rate);
+}
+
 #endif // #if defined(NO_XIPH_LIBS)

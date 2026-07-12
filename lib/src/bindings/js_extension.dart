@@ -25,6 +25,9 @@ external void wasmFree(int ptrAddress);
 external int wasmGetI32Value(int ptrAddress, String type);
 
 @JS('Module_soloud.getValue')
+external double wasmGetF64Value(int ptrAddress, String type);
+
+@JS('Module_soloud.getValue')
 external double wasmGetF32Value(int ptrAddress, String type);
 
 @JS('Module_soloud.HEAPU8.buffer')
@@ -76,8 +79,26 @@ external int wasmSetBufferStream(
   int onMetadataPtr,
 );
 
+@JS('Module_soloud._setPullBufferStream')
+external int wasmSetPullBufferStream(
+  int hashPtr,
+  int bufferSizeBytes,
+  double bufferTriggerPosition,
+  int sampleRate,
+  int channels,
+  int format,
+  int audioSizeBytes,
+  int onBufferingPtr,
+  int onMetadataPtr,
+  int onMoreDataIsNeededPtr,
+  int onAudioDurationPtr,
+);
+
 @JS('Module_soloud._resetBufferStream')
 external int wasmResetBufferStream(int hash);
+
+@JS('Module_soloud._resetPullBufferStream')
+external int wasmResetPullBufferStream(int hash);
 
 @JS('Module_soloud._getStreamTimeConsumed')
 external int wasmGetStreamTimeConsumed(int hash, int timeConsumedPtr);
@@ -88,8 +109,26 @@ external int wasmSetBufferIcyMetaInt(int hash, int icyMetaInt);
 @JS('Module_soloud._addAudioDataStream')
 external int wasmAddAudioDataStream(int hash, int audioChunkPtr, int dataLen);
 
+@JS('Module_soloud._addPullBufferDataStream')
+external int wasmAddPullBufferDataStream(
+  int hash,
+  int audioChunkPtr,
+  int dataLen,
+  int offset,
+);
+
+@JS('Module_soloud._getPullBufferTimeRange')
+external int wasmGetPullBufferTimeRange(
+  int hash,
+  int startTimePtr,
+  int endTimePtr,
+);
+
 @JS('Module_soloud._setDataIsEnded')
 external int wasmSetDataIsEnded(int hash);
+
+@JS('Module_soloud._setPullBufferDataIsEnded')
+external int wasmSetPullBufferDataIsEnded(int hash);
 
 @JS('Module_soloud._getBufferSize')
 external int wasmGetBufferSize(int hash, int sizeInBytesPtr);

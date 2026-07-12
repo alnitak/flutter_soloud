@@ -16,8 +16,12 @@ public:
     void setIcyMetaInt(int icyMetaInt);
 
     bool initializeDecoder(int engineSamplerate, int engineChannels) override;
-    std::pair<std::vector<float>, DecoderError> decode(std::vector<unsigned char>& buffer, int* sampleRate, int* channels) override;
+    std::pair<std::vector<float>, DecoderError> decode(std::vector<unsigned char>& buffer, int* sampleRate, int* channels, size_t maxOutputSamples = 0) override;
     void setDataEnded() override { m_dataEnded = true; }
+
+    bool canSeekToTime(double seconds) const override;
+    uint64_t timeToByteOffset(double seconds) override;
+    double getDuration() const override;
 
 private:
     static FLAC__StreamDecoderReadStatus read_callback(const FLAC__StreamDecoder *decoder, FLAC__byte buffer[], size_t *bytes, void *client_data);
@@ -44,6 +48,9 @@ private:
     int m_channels;
     int m_samplerate;
     int m_bitsPerSample;
+
+    uint64_t mTotalSamples = 0;
+    uint64_t mTotalEncodedBytes = 0;
 
     AudioMetadata m_metadata;
 

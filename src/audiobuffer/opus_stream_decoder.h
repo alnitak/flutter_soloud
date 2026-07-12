@@ -32,8 +32,15 @@ public:
     
     bool initializeDecoder(int engineSamplerate, int engineChannels) override;
     
-    std::pair<std::vector<float>, DecoderError> decode(std::vector<unsigned char>& buffer, int* samplerate, int* channels) override;
-    
+    std::pair<std::vector<float>, DecoderError> decode(std::vector<unsigned char>& buffer, int* samplerate, int* channels, size_t maxOutputSamples = 0) override;
+
+    bool canSeekToTime(double seconds) const override;
+    uint64_t timeToByteOffset(double seconds) override;
+    double getDuration() const override;
+    int preSkip() const override { return static_cast<int>(opusInfo.pre_skip); }
+    int granuleSampleRate() const override { return 48000; }
+    void prepareForSeek(uint64_t targetSample) override;
+
 private:
     AudioMetadata getMetadata(ogg_packet* packet);
     OpusInfo parseOpusHead(ogg_packet *packet);
@@ -61,6 +68,13 @@ private:
     int64_t totalSamplesExpected;
 
     OpusInfo opusInfo;
+
+    struct TimeByteOffset {
+        ogg_int64_t granule;
+        uint64_t byteOffset;
+    };
+    std::vector<TimeByteOffset> mTimeByteOffsets;
+    uint64_t mOggBytesConsumed = 0;
 };
 
 #endif // OPUS_STREAM_DECODER_H

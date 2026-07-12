@@ -69,18 +69,35 @@ typedef DartdartMixerOutputDataCallbackTFunction =
 
 typedef OnMetadataCallbackTFunction = void Function(NativeAudioMetadata);
 
+typedef OnAudioDurationCallbackTFunction = void Function(double duration);
+
+typedef OnMoreDataIsNeededCallbackTFunction = void Function(int offset);
+
 final class _BufferStreamNativeCallbacks {
-  _BufferStreamNativeCallbacks({this.onBuffering, this.onMetadata});
+  _BufferStreamNativeCallbacks({
+    this.onBuffering,
+    this.onMetadata,
+    this.onMoreDataIsNeeded,
+    this.onAudioDuration,
+  });
 
   final ffi.NativeCallable<ffi.Void Function(ffi.Bool, ffi.Int, ffi.Double)>?
   onBuffering;
   final ffi.NativeCallable<ffi.Void Function(NativeAudioMetadata)>? onMetadata;
+  final ffi.NativeCallable<ffi.Void Function(ffi.Uint64)>? onMoreDataIsNeeded;
+  final ffi.NativeCallable<ffi.Void Function(ffi.Double)>? onAudioDuration;
 
-  bool get hasCallbacks => onBuffering != null || onMetadata != null;
+  bool get hasCallbacks =>
+      onBuffering != null ||
+      onMetadata != null ||
+      onMoreDataIsNeeded != null ||
+      onAudioDuration != null;
 
   void close() {
     onBuffering?.close();
     onMetadata?.close();
+    onMoreDataIsNeeded?.close();
+    onAudioDuration?.close();
   }
 }
 
@@ -873,6 +890,72 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       .asFunction<int Function(int, int)>();
 
   @override
+  PlayerErrors addPullBufferDataStream(
+    int hash,
+    Uint8List audioChunk, {
+    int offset = 0,
+  }) {
+    final ffi.Pointer<ffi.Uint8> audioChunkPtr = calloc(audioChunk.length);
+    for (var i = 0; i < audioChunk.length; i++) {
+      audioChunkPtr[i] = audioChunk[i];
+    }
+    final e = _addPullBufferDataStream(
+      hash,
+      audioChunkPtr,
+      audioChunk.length,
+      offset,
+    );
+    calloc.free(audioChunkPtr);
+    return PlayerErrors.values[e];
+  }
+
+  late final _addPullBufferDataStreamPtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.UnsignedInt Function(
+            ffi.UnsignedInt,
+            ffi.Pointer<ffi.Uint8>,
+            ffi.UnsignedInt,
+            ffi.Uint64,
+          )
+        >
+      >('addPullBufferDataStream');
+  late final _addPullBufferDataStream = _addPullBufferDataStreamPtr
+      .asFunction<int Function(int, ffi.Pointer<ffi.Uint8>, int, int)>();
+
+  @override
+  ({PlayerErrors error, double startTime, double endTime})
+  getPullBufferTimeRange(int hash) {
+    final startTimePtr = calloc<ffi.Double>();
+    final endTimePtr = calloc<ffi.Double>();
+    final e = _getPullBufferTimeRange(hash, startTimePtr, endTimePtr);
+    final result = (
+      error: PlayerErrors.values[e],
+      startTime: startTimePtr.value,
+      endTime: endTimePtr.value,
+    );
+    calloc
+      ..free(startTimePtr)
+      ..free(endTimePtr);
+    return result;
+  }
+
+  late final _getPullBufferTimeRangePtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.UnsignedInt Function(
+            ffi.UnsignedInt,
+            ffi.Pointer<ffi.Double>,
+            ffi.Pointer<ffi.Double>,
+          )
+        >
+      >('getPullBufferTimeRange');
+  late final _getPullBufferTimeRange = _getPullBufferTimeRangePtr
+      .asFunction<
+        int Function(int, ffi.Pointer<ffi.Double>, ffi.Pointer<ffi.Double>)
+      >();
+
+  @override
   PlayerErrors addAudioDataStream(int hash, Uint8List audioChunk) {
     final ffi.Pointer<ffi.Uint8> audioChunkPtr = calloc(audioChunk.length);
     for (var i = 0; i < audioChunk.length; i++) {
@@ -895,6 +978,141 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       >('addAudioDataStream');
   late final _addAudioDataStream = _addAudioDataStreamPtr
       .asFunction<int Function(int, ffi.Pointer<ffi.Uint8>, int)>();
+
+  @override
+  PlayerErrors setPullBufferDataIsEnded(SoundHash soundHash) {
+    final e = _setPullBufferDataIsEnded(soundHash.hash);
+    return PlayerErrors.values[e];
+  }
+
+  late final _setPullBufferDataIsEndedPtr =
+      _lookup<ffi.NativeFunction<ffi.UnsignedInt Function(ffi.UnsignedInt)>>(
+        'setPullBufferDataIsEnded',
+      );
+  late final _setPullBufferDataIsEnded = _setPullBufferDataIsEndedPtr
+      .asFunction<int Function(int)>();
+
+  @override
+  ({PlayerErrors error, SoundHash soundHash}) setPullBufferStream(
+    int bufferSizeBytes,
+    double bufferTriggerPosition,
+    int sampleRate,
+    int channels,
+    int format,
+    int audioSizeBytes,
+    OnBufferingCallbackTFunction? onBuffering,
+    OnMetadataCallbackTFunction? onMetadata,
+    OnMoreDataIsNeededCallbackTFunction? onMoreDataIsNeeded,
+    OnAudioDurationCallbackTFunction? onAudioDuration,
+  ) {
+    final nativeCallbacks = _BufferStreamNativeCallbacks(
+      onBuffering: onBuffering == null
+          ? null
+          : ffi.NativeCallable<
+              ffi.Void Function(ffi.Bool, ffi.Int, ffi.Double)
+            >.listener(onBuffering),
+      onMetadata: onMetadata == null
+          ? null
+          : ffi.NativeCallable<ffi.Void Function(NativeAudioMetadata)>.listener(
+              onMetadata,
+            ),
+      onMoreDataIsNeeded: onMoreDataIsNeeded == null
+          ? null
+          : ffi.NativeCallable<ffi.Void Function(ffi.Uint64)>.listener(
+              (int offset) => onMoreDataIsNeeded(offset),
+            ),
+      onAudioDuration: onAudioDuration == null
+          ? null
+          : ffi.NativeCallable<ffi.Void Function(ffi.Double)>.listener(
+              (double duration) => onAudioDuration(duration),
+            ),
+    );
+
+    final ffi.Pointer<ffi.UnsignedInt> hash = calloc(
+      ffi.sizeOf<ffi.UnsignedInt>(),
+    );
+    final e = _setPullBufferStream(
+      hash,
+      bufferSizeBytes,
+      bufferTriggerPosition,
+      sampleRate,
+      channels,
+      format,
+      audioSizeBytes,
+      nativeCallbacks.onBuffering?.nativeFunction ?? ffi.nullptr,
+      nativeCallbacks.onMetadata?.nativeFunction ?? ffi.nullptr,
+      nativeCallbacks.onMoreDataIsNeeded?.nativeFunction ?? ffi.nullptr,
+      nativeCallbacks.onAudioDuration?.nativeFunction ?? ffi.nullptr,
+    );
+    final soundHash = SoundHash(hash.value);
+    final ret = (error: PlayerErrors.values[e], soundHash: soundHash);
+    if (ret.error == PlayerErrors.noError && nativeCallbacks.hasCallbacks) {
+      _bufferStreamNativeCallables[soundHash.hash] = nativeCallbacks;
+    } else {
+      nativeCallbacks.close();
+    }
+    calloc.free(hash);
+    return ret;
+  }
+
+  late final _setPullBufferStreamPtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.UnsignedInt Function(
+            ffi.Pointer<ffi.UnsignedInt>,
+            ffi.UnsignedInt,
+            ffi.Double,
+            ffi.UnsignedInt,
+            ffi.UnsignedInt,
+            ffi.Int,
+            ffi.Uint64,
+            ffi.Pointer<
+              ffi.NativeFunction<
+                ffi.Void Function(ffi.Bool, ffi.Int, ffi.Double)
+              >
+            >,
+            ffi.Pointer<
+              ffi.NativeFunction<ffi.Void Function(NativeAudioMetadata)>
+            >,
+            ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Uint64)>>,
+            ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Double)>>,
+          )
+        >
+      >('setPullBufferStream');
+
+  late final _setPullBufferStream = _setPullBufferStreamPtr
+      .asFunction<
+        int Function(
+          ffi.Pointer<ffi.UnsignedInt>,
+          int,
+          double,
+          int,
+          int,
+          int,
+          int,
+          ffi.Pointer<
+            ffi.NativeFunction<ffi.Void Function(ffi.Bool, ffi.Int, ffi.Double)>
+          >,
+          ffi.Pointer<
+            ffi.NativeFunction<ffi.Void Function(NativeAudioMetadata)>
+          >,
+          ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Uint64)>>,
+          ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Double)>>,
+        )
+      >();
+
+  @override
+  PlayerErrors resetPullBufferStream(SoundHash soundHash) {
+    final e = _resetPullBufferStream(soundHash.hash);
+    return PlayerErrors.values[e];
+  }
+
+  late final _resetPullBufferStreamPtr =
+      _lookup<ffi.NativeFunction<ffi.UnsignedInt Function(ffi.UnsignedInt)>>(
+        'resetPullBufferStream',
+      );
+  late final _resetPullBufferStream = _resetPullBufferStreamPtr
+      .asFunction<int Function(int)>();
 
   @override
   PlayerErrors setDataIsEnded(SoundHash soundHash) {

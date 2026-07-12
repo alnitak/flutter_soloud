@@ -1,6 +1,7 @@
 #include "wav_stream_decoder.h"
 #include "../soloud_common.h"
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 
 size_t WavDecoderWrapper::on_read(void *pUserData, void *pBufferOut,
@@ -82,7 +83,7 @@ bool WavDecoderWrapper::checkForValidWavHeader(
 
 std::pair<std::vector<float>, DecoderError>
 WavDecoderWrapper::decode(std::vector<unsigned char> &buffer, int *sampleRate,
-                          int *channels) {
+                          int *channels, size_t maxOutputSamples) {
   // Append all new data from the input buffer to the internal audioData buffer.
   if (!buffer.empty()) {
     audioData.insert(audioData.end(), buffer.begin(), buffer.end());
@@ -136,6 +137,17 @@ WavDecoderWrapper::decode(std::vector<unsigned char> &buffer, int *sampleRate,
 
     int framesToRequest = MAX_FRAMES_PER_RUN / decoder.channels;
 
+    if (maxOutputSamples > 0) {
+      const size_t remainingSamples =
+          maxOutputSamples - decodedData.size();
+      const size_t remainingFrames = remainingSamples / decoder.channels;
+      if (remainingFrames == 0) {
+        break;
+      }
+      framesToRequest =
+          std::min(framesToRequest, static_cast<int>(remainingFrames));
+    }
+
     frames_read =
         drwav_read_pcm_frames_f32(&decoder, framesToRequest, pcm_frames);
     if (frames_read > 0) {
@@ -173,4 +185,25 @@ WavDecoderWrapper::decode(std::vector<unsigned char> &buffer, int *sampleRate,
   }
 
   return {decodedData, DecoderError::NoError};
+}
+
+bool WavDecoderWrapper::canSeekToTime(double seconds) const {
+  return isInitialized && seconds >= 0.0;
+}
+
+uint64_t WavDecoderWrapper::timeToByteOffset(double seconds) {
+  if (!isInitialized || seconds <= 0.0) return 0;
+  const uint64_t frame = static_cast<uint64_t>(
+      std::floor(seconds * decoder.sampleRate));
+  const uint32_t bitsPerSample =
+      decoder.bitsPerSample > 0 ? decoder.bitsPerSample : 16;
+  return decoder.dataChunkDataPos +
+         frame * decoder.channels * (bitsPerSample / 8);
+}
+
+double WavDecoderWrapper::getDuration() const {
+  if (!isInitialized || decoder.sampleRate == 0) return -1.0;
+  if (decoder.totalPCMFrameCount == 0) return -1.0;
+  return static_cast<double>(decoder.totalPCMFrameCount) /
+         static_cast<double>(decoder.sampleRate);
 }

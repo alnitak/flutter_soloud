@@ -25,6 +25,18 @@ import 'play_seek_pause.dart' as play_seek_pause;
 import 'playback_devices.dart' as playback_devices;
 import 'playback_speed.dart' as playback_speed;
 import 'protect_voice.dart' as protect_voice;
+import 'pull_buffer_file_stream_test.dart' as pull_buffer_file_stream;
+import 'pull_buffer_range_test.dart'
+    if (dart.library.js_interop) 'pull_buffer_range_test_web.dart'
+    as pull_buffer_range;
+import 'pull_buffer_seek_test.dart'
+    if (dart.library.js_interop) 'pull_buffer_seek_test_web.dart'
+    as pull_buffer_seek;
+import 'pull_buffer_test.dart'
+    if (dart.library.js_interop) 'pull_buffer_test_web.dart' as pull_buffer;
+import 'pull_buffer_tiny_test.dart'
+    if (dart.library.js_interop) 'pull_buffer_tiny_test_web.dart'
+    as pull_buffer_tiny;
 import 'read_samples.dart' as read_samples;
 import 'sound_filters.dart' as sound_filters;
 import 'speech_text.dart' as speech_text;
@@ -158,6 +170,26 @@ final List<TestEntry> allTests = [
   const TestEntry(
     name: 'PlaySeekPause',
     run: play_seek_pause.testPlaySeekPause,
+  ),
+  const TestEntry(
+    name: 'PullBuffer',
+    run: pull_buffer.testPullBuffer,
+  ),
+  const TestEntry(
+    name: 'PullBufferFileStream',
+    run: pull_buffer_file_stream.testPullBufferFileStream,
+  ),
+  const TestEntry(
+    name: 'PullBufferRange',
+    run: pull_buffer_range.testPullBufferRange,
+  ),
+  const TestEntry(
+    name: 'PullBufferSeek',
+    run: pull_buffer_seek.testPullBufferSeek,
+  ),
+  const TestEntry(
+    name: 'PullBufferTiny',
+    run: pull_buffer_tiny.testPullBufferTiny,
   ),
   const TestEntry(
     name: 'PlaybackDevices',

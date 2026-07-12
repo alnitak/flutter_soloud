@@ -105,7 +105,13 @@ enum PlayerErrors {
   xiphLibsNotFound(30),
 
   /// Bus id not found.
-  busIdNotFound(31);
+  busIdNotFound(31),
+
+  /// Given hash doesn't belong to a pull buffer stream.
+  hashIsNotAPullBufferStream(32),
+
+  /// The pull buffer stream is in an invalid state for this operation.
+  invalidPullBufferState(33);
 
   const PlayerErrors(this.value);
 
@@ -202,6 +208,11 @@ enum PlayerErrors {
             'https://docs.page/alnitak/flutter_soloud_docs/get_started/no_xiph_libs';
       case PlayerErrors.busIdNotFound:
         return 'Bus id not found!';
+      case PlayerErrors.hashIsNotAPullBufferStream:
+        return "Given hash doesn't belong to a pull buffer stream.";
+      case PlayerErrors.invalidPullBufferState:
+        return 'The pull buffer stream is in an invalid state for this '
+            'operation.';
     }
   }
 

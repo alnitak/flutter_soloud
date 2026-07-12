@@ -237,10 +237,46 @@ public:
   virtual bool initializeDecoder(int engineSamplerate, int engineChannels) = 0;
   virtual std::pair<std::vector<float>, DecoderError>
   decode(std::vector<unsigned char> &buffer, int *sampleRate,
-         int *channels) = 0;
+         int *channels, size_t maxOutputSamples = 0) = 0;
 
   // Called when no more data will be added to signal end-of-stream
   virtual void setDataEnded() {}
+
+  /// Return true if this decoder can currently map a target time to a byte
+  /// offset in the encoded stream. For compressed formats this may become
+  /// true only after enough data/metadata has been seen.
+  virtual bool canSeekToTime(double seconds) const {
+    (void)seconds;
+    return false;
+  }
+
+  /// Return the encoded byte offset that corresponds to the given time, or 0
+  /// if the mapping is not yet known.
+  virtual uint64_t timeToByteOffset(double seconds) {
+    (void)seconds;
+    return 0;
+  }
+
+  /// Return the total stream duration in seconds, or a negative value if
+  /// the duration is not yet known.
+  virtual double getDuration() const { return -1.0; }
+
+  /// Return the number of samples to skip at the start of the stream.
+  /// Relevant for Ogg Opus (header pre_skip); zero for other formats.
+  virtual int preSkip() const { return 0; }
+
+  /// Return the sample rate used by the Ogg granule position. For Opus this
+  /// is always 48000 Hz; for Vorbis it is the stream sample rate.
+  virtual int granuleSampleRate() const { return 0; }
+
+  /// Prepare the decoder for an out-of-buffer seek. The wrapper should keep
+  /// any header/initialization state that is still valid and reset only the
+  /// parts that depend on the current stream position. For Ogg-based
+  /// wrappers this clears the Ogg sync state while preserving the header
+  /// info so that mid-stream data can be decoded after a seek.
+  /// [targetSample] is the absolute decoded sample position the caller will
+  /// continue from, in the wrapper's output sample rate.
+  virtual void prepareForSeek(uint64_t targetSample) { (void)targetSample; }
 
   void setTrackChangeCallback(TrackChangeCallback callback) {
     onTrackChange = callback;
@@ -278,9 +314,23 @@ public:
 
   std::pair<std::vector<float>, DecoderError>
   decode(std::vector<unsigned char> &buffer, int *sampleRate, int *channels,
-         TrackChangeCallback metadataChangeCallback);
+         TrackChangeCallback metadataChangeCallback,
+         size_t maxOutputSamples = 0);
 
   DetectedType getWrapperType();
+
+  bool canSeekToTime(double seconds) const;
+  uint64_t timeToByteOffset(double seconds);
+  double getDuration() const;
+
+  /// Return the Ogg header pre-skip, if any.
+  int preSkip() const;
+
+  /// Return the sample rate of the Ogg granule position.
+  int granuleSampleRate() const;
+
+  /// Prepare the wrapped decoder for a seek to [targetSample].
+  void prepareForSeek(uint64_t targetSample);
 
 private:
   DetectedType detectAudioFormat(const std::vector<unsigned char> &buffer);

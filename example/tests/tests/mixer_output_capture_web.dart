@@ -5,6 +5,8 @@ import 'package:flutter_soloud/flutter_soloud.dart';
 
 import 'common.dart';
 
+// ignore_for_file: experimental_member_use
+
 /// Web version of the mixer output capture test.
 ///
 /// This is conditionally imported by `tests.dart` when running on the web
