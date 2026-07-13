@@ -250,13 +250,15 @@ public:
   /// @param looping whether to start the sound in looping state.
   /// @param loopingStartAt If looping is enabled, the loop point is, by
   /// default, the start of the stream. The loop start point can be set with
-  /// this parameter, and current loop point can be queried with
-  /// [getLoopingPoint] and changed by [setLoopingPoint].
+  /// this parameter.
+  /// @param loopingEndAt If greater than zero, loop before this time. Zero
+  /// uses the natural end of the stream.
   /// @return the handle of the sound, 0 if error.
   PlayerErrors play(unsigned int soundHash, unsigned int &handle,
                     unsigned int busId = 0,
                     float volume = 1.0f, float pan = 0.0f, bool paused = false,
-                    bool looping = false, double loopingStartAt = 0.0);
+                    bool looping = false, double loopingStartAt = 0.0,
+                    double loopingEndAt = 0.0);
 
   /// @brief Stop already loaded sound identified by [handle] and clear it.
   /// @param handle handle of the sound.
@@ -295,6 +297,16 @@ public:
   /// @param handle handle of the sound.
   /// @param time in seconds.
   void setLoopPoint(unsigned int handle, double time);
+
+  /// @brief Get the sound loop end point value.
+  /// @param handle handle of the sound.
+  /// @return the time in seconds, or zero for the natural stream end.
+  double getLoopEndPoint(unsigned int handle);
+
+  /// @brief Set the sound loop end point value.
+  /// @param handle handle of the sound.
+  /// @param time in seconds, or zero to use the natural stream end.
+  void setLoopEndPoint(unsigned int handle, double time);
 
   /// @brief Speech the given text.
   /// @param textToSpeech the text to be spoken.
@@ -513,8 +525,6 @@ public:
   /// @brief After specified time, pause the channel.
   /// @param handle the sound handle.
   /// @param time the time in seconds to pause.
-  // TODO(marco): see if it is possible to use scheduleStop() to use it as
-  // loop-end position
   void scheduleStop(SoLoud::handle handle, float time);
 
   /// @brief Set fader to oscillate the volume at specified frequency.
@@ -557,14 +567,16 @@ public:
   /// @param looping whether to start the sound in looping state.
   /// @param loopingStartAt If looping is enabled, the loop point is, by
   /// default, the start of the stream. The loop start point can be set with
-  /// this parameter, and current loop point can be queried with
-  /// [getLoopingPoint] and changed by [setLoopingPoint].
+  /// this parameter.
+  /// @param loopingEndAt If greater than zero, loop before this time. Zero
+  /// uses the natural end of the stream.
   /// @return the handle of the sound, 0 if error.
   PlayerErrors play3d(unsigned int soundHash, unsigned int &handle, float posX,
                       float posY, float posZ, float velX = 0.0f,
                       float velY = 0.0f, float velZ = 0.0f, float volume = 1.0f,
                       bool paused = 0, unsigned int busId = 0,
-                      bool looping = false, double loopingStartAt = 0.0);
+                      bool looping = false, double loopingStartAt = 0.0,
+                      double loopingEndAt = 0.0);
 
   /// You can set and get the current value of the speed of
   /// sound width the get3dSoundSpeed() and set3dSoundSpeed() functions.

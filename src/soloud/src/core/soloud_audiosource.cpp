@@ -86,6 +86,8 @@ namespace SoLoud
 		mBusHandle = ~0u;
 		mLoopCount = 0;
 		mLoopPoint = 0;
+		mLoopEndPoint = 0;
+		mSourceSamplePosition = 0;
 		for (i = 0; i < FILTERS_PER_STREAM; i++)
 		{
 			mFilter[i] = NULL;
@@ -122,6 +124,8 @@ namespace SoLoud
 		mStreamTime = 0.0f;
 		mStreamPosition = 0.0f;
 		mLoopPoint = aSource.mLoopPoint;
+		mLoopEndPoint = 0;
+		mSourceSamplePosition = 0;
 
 		if (aSource.mFlags & AudioSource::SHOULD_LOOP)
 		{
@@ -350,4 +354,3 @@ namespace SoLoud
 
 
 };
-

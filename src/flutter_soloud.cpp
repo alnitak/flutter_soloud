@@ -21,6 +21,7 @@
 #include "soloud/src/core/soloud_core_faderops.cpp"
 #include "soloud/src/core/soloud_core_filterops.cpp"
 #include "soloud/src/core/soloud_core_getters.cpp"
+#include "soloud/src/core/soloud_core_looping.cpp"
 #include "soloud/src/core/soloud_core_setters.cpp"
 #include "soloud/src/core/soloud_core_voicegroup.cpp"
 #include "soloud/src/core/soloud_core_voiceops.cpp"

@@ -230,7 +230,7 @@ external double wasmGetRelativePlaySpeed(int handle);
 @JS('Module_soloud._getApproximateVolume')
 external double wasmGetApproximateVolume(int channel);
 
-@JS('Module_soloud._play')
+@JS('Module_soloud._playWithLoopPoints')
 external int wasmPlay(
   int soundHash,
   int busId,
@@ -240,6 +240,7 @@ external int wasmPlay(
   bool paused,
   bool looping,
   double loopingStartAt,
+  double loopingEndAt,
   int handlePtr,
 );
 
@@ -263,6 +264,12 @@ external double wasmGetLoopPoint(int handle);
 
 @JS('Module_soloud._setLoopPoint')
 external void wasmSetLoopPoint(int handle, double time);
+
+@JS('Module_soloud._getLoopEndPoint')
+external double wasmGetLoopEndPoint(int handle);
+
+@JS('Module_soloud._setLoopEndPoint')
+external void wasmSetLoopEndPoint(int handle, double time);
 
 @JS('Module_soloud._setVisualizationEnabled')
 external void wasmSetVisualizationEnabled(int enabled);
@@ -473,7 +480,7 @@ external int wasmGetFilterParams(
   int paramValuePtr,
 );
 
-@JS('Module_soloud._play3d')
+@JS('Module_soloud._play3dWithLoopPoints')
 external int wasmPlay3d(
   int soundHash,
   int busId,
@@ -487,6 +494,7 @@ external int wasmPlay3d(
   int paused,
   int looping,
   double loopingStartAt,
+  double loopingEndAt,
   int handlePtr,
 );
 

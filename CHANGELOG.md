@@ -10,6 +10,7 @@
 - **web note**: the web build requires `--wasm` (or any server that sends `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` headers) because the WASM module uses `SharedArrayBuffer` for the audio thread. Running with `flutter run -d chrome` without `--wasm` is not supported by the default dev server.
 - **added `SoLoudIsolate`**, an isolate-safe singleton for running mixer output capture (and other safe operations, for now only `readSamplesFrom*`) from a non-main isolate without touching the main isolate's loader, filters, or event callbacks.
 - added `example/lib/mixer_capture/isolate_capture_test.dart` to demostrate mixer output capture from a separate isolate.
+- added native loop end points through `loopingEndAt` and the live `getLoopEndPoint` / `setLoopEndPoint` APIs, allowing half-open `[start, end)` loop regions.
 
 #### 4.0.12 (30 Jun 2026)
 - add `lowLatency` init option to allow recordable Android output #492. Thanks to @MjnMixael
@@ -655,4 +656,3 @@ Initial release:
 * Includes a speech synthesizer
 * Supports various common formats such as 8, 16, and 32-bit WAVs, floating point WAVs, OGG, MP3, and FLAC
 * Enables real-time retrieval of audio FFT and wave data
-

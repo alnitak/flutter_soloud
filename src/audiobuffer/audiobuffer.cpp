@@ -23,6 +23,13 @@ namespace SoLoud {
 std::mutex buffer_lock_mutex;
 std::mutex check_buffer_mutex;
 
+static void clearPlanarBuffer(float *buffer, unsigned int frames,
+                              unsigned int stride, unsigned int channels) {
+  for (unsigned int channel = 0; channel < channels; ++channel) {
+    memset(buffer + channel * stride, 0, sizeof(float) * frames);
+  }
+}
+
 BufferStreamInstance::BufferStreamInstance(BufferStream *aParent) {
   mParent = aParent;
   mOffset = 0;
@@ -36,7 +43,7 @@ unsigned int BufferStreamInstance::getAudio(float *aBuffer,
                                             unsigned int aBufferSize) {
   // Check if parent is still valid before accessing it
   if (mParent == nullptr || !mParent->isValid()) {
-    memset(aBuffer, 0, sizeof(float) * aSamplesToRead * mChannels);
+    clearPlanarBuffer(aBuffer, aSamplesToRead, aBufferSize, mChannels);
     return 0;
   }
 
@@ -55,7 +62,7 @@ unsigned int BufferStreamInstance::getAudio(float *aBuffer,
 
   // This happens when using RELEASED buffer type
   if (mParent->mBuffer.getFloatsBufferSize() == 0) {
-    memset(aBuffer, 0, sizeof(float) * aSamplesToRead * mChannels);
+    clearPlanarBuffer(aBuffer, aSamplesToRead, aBufferSize, mChannels);
     // Calculate mStreamPosition based on mOffset
     mStreamPosition = mOffset / (float)(mBaseSamplerate * mChannels);
 
@@ -70,7 +77,7 @@ unsigned int BufferStreamInstance::getAudio(float *aBuffer,
     samplesToRead = (bufferSize - mOffset) / mChannels;
   }
   if (samplesToRead <= 0) {
-    memset(aBuffer, 0, sizeof(float) * aSamplesToRead * mChannels);
+    clearPlanarBuffer(aBuffer, aSamplesToRead, aBufferSize, mChannels);
     // Calculate mStreamPosition based on mOffset
     mStreamPosition = mOffset / (float)(mBaseSamplerate * mChannels);
 
@@ -79,7 +86,7 @@ unsigned int BufferStreamInstance::getAudio(float *aBuffer,
   }
 
   if (samplesToRead != aSamplesToRead) {
-    memset(aBuffer, 0, sizeof(float) * aSamplesToRead * mChannels);
+    clearPlanarBuffer(aBuffer, aSamplesToRead, aBufferSize, mChannels);
   }
 
   if (mChannels == 1) {
@@ -94,7 +101,7 @@ unsigned int BufferStreamInstance::getAudio(float *aBuffer,
     unsigned int i, j;
     for (j = 0; j < mChannels; j++) {
       for (i = 0; i < samplesToRead; i++) {
-        aBuffer[j * aSamplesToRead + i] = buffer[mOffset + i * mChannels + j];
+        aBuffer[j * aBufferSize + i] = buffer[mOffset + i * mChannels + j];
       }
     }
   }
