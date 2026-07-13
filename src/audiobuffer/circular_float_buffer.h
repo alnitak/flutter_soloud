@@ -56,6 +56,12 @@ public:
   /// Advance the read pointer by [count] samples. Must not exceed available().
   void advanceRead(size_t count);
 
+  /// Move the read pointer backward by [count] samples, restoring samples
+  /// that were previously consumed but are still physically in the buffer.
+  /// Returns the number of samples actually rewound, which may be less than
+  /// [count] if the data behind the read pointer has been overwritten.
+  size_t rewindRead(size_t count);
+
   /// Reset to empty.
   void clear();
 

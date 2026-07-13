@@ -99,11 +99,11 @@ class _FileStreamExampleState extends State<FileStreamExample> {
       }
       final newPos = SoLoud.instance.getPosition(_handle!);
       final range = SoLoud.instance.getPullBufferTimeRange(_source!);
-      // The circular buffer is a sliding window of decoded audio *ahead* of
-      // the playhead. Therefore the playhead is always near the left edge of
-      // the red bar (just after bufferedStart). The trigger position only
-      // controls when more encoded data is requested, not where the playhead
-      // is drawn.
+      // The red bar shows the circular-buffer window. The window is steady
+      // while the playhead advances; it only shifts when new decoded data
+      // is added after the trigger position is reached. The playhead can
+      // seek anywhere inside the red bar as long as the decoded samples are
+      // still in the buffer.
       // ignore: avoid_print
       print(
         'ticker: bufferedStart=${range.startTime.inMilliseconds}ms '

@@ -130,6 +130,20 @@ void CircularFloatBuffer::advanceRead(size_t count) {
   m_size.fetch_sub(toAdvance, std::memory_order_release);
 }
 
+size_t CircularFloatBuffer::rewindRead(size_t count) {
+  if (count == 0 || m_capacity == 0) return 0;
+
+  std::lock_guard<std::recursive_mutex> lock(m_mutex);
+  const size_t read = m_readOffset.load(std::memory_order_relaxed);
+  const size_t currentSize = m_size.load(std::memory_order_relaxed);
+  const size_t free = m_capacity - currentSize;
+  const size_t toRewind = std::min(count, free);
+  m_readOffset.store((read + m_capacity - toRewind) % m_capacity,
+                     std::memory_order_release);
+  m_size.fetch_add(toRewind, std::memory_order_release);
+  return toRewind;
+}
+
 void CircularFloatBuffer::clear() {
   std::lock_guard<std::recursive_mutex> lock(m_mutex);
   m_readOffset.store(0);

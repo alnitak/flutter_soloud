@@ -28,7 +28,7 @@
 		},
 		{
 			"label": "compile macos debug",
-			"command": "cd ${workspaceFolder}/example; flutter build macos -t lib/buffer_stream/websocket.dart --debug",
+			"command": "cd ${workspaceFolder}/example; flutter build macos -t lib/pull_buffer/file_stream.dart --debug",
 			"type": "shell"
 		},
 		{

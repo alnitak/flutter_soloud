@@ -102,24 +102,67 @@ result PullBufferStreamInstance::seek(double aSeconds, float *aScratch,
       std::floor(aSeconds * mParent->mPCMformat.sampleRate *
                  mParent->mPCMformat.channels));
 
-  // Move decoded samples that did not fit earlier into the circular buffer so
-  // they become part of the seekable range.
-  mParent->drainBacklog();
+  bool didInBufferSeek = false;
+  {
+    std::lock_guard<std::mutex> lock(mParent->mDecodeMutex);
 
-  // The buffered range is expressed in absolute decoded sample positions.
-  // Only consider samples actually inside the circular buffer; samples that
-  // have been decoded but are waiting in the backlog are not yet seekable.
-  const uint64_t bufferedStart = mParent->mDecodedSamplesRead;
-  const uint64_t bufferedEnd =
-      mParent->mDecodedSamplesRead + mParent->mCircularBuffer.available();
+    // Move decoded samples that did not fit earlier into the circular buffer so
+    // they become part of the seekable range.
+    mParent->drainBacklogLocked();
 
-  if (targetSample >= bufferedStart && targetSample <= bufferedEnd) {
-    // Smart in-buffer seek: just move the play head.
-    const uint64_t advance = targetSample - bufferedStart;
-    mParent->mCircularBuffer.advanceRead(static_cast<size_t>(advance));
-    mParent->mDecodedSamplesRead = targetSample;
-    mStreamPosition = aSeconds;
-    mParent->mWaitingForData.store(false);
+    // The visual red bar is the circular-buffer window:
+    // [read + available - capacity, read + available]. As the playhead advances,
+    // read grows and available shrinks, so the window stays steady until new
+    // data is decoded. Seeking anywhere inside this window should be in-buffer.
+    const uint64_t bufferedEnd =
+        mParent->mDecodedSamplesRead + mParent->mCircularBuffer.available();
+    const uint64_t bufferedStart = bufferedEnd > mParent->mCircularBuffer.capacity()
+        ? bufferedEnd - mParent->mCircularBuffer.capacity()
+        : 0;
+
+    if (targetSample >= bufferedStart && targetSample <= bufferedEnd) {
+      if (targetSample >= mParent->mDecodedSamplesRead) {
+        // Forward in-buffer seek: advance the read pointer to the target.
+        const size_t advance = targetSample - mParent->mDecodedSamplesRead;
+        const size_t before = mParent->mCircularBuffer.available();
+        mParent->mCircularBuffer.advanceRead(advance);
+        const size_t after = mParent->mCircularBuffer.available();
+        mParent->mDecodedSamplesRead += before - after;
+      } else {
+        // Backward in-buffer seek: restore samples that are still physically
+        // in the circular buffer. The safe rewind distance is the amount of
+        // valid decoded data that is still physically present behind the read
+        // pointer. Before the buffer has wrapped, that's everything from the
+        // start of the stream up to the current read position. After it has
+        // wrapped, the entire free gap behind the read pointer is still valid
+        // because it holds the most recently decoded samples that were already
+        // consumed.
+        const size_t desiredRewind =
+            mParent->mDecodedSamplesRead - targetSample;
+        const size_t free =
+            mParent->mCircularBuffer.capacity() -
+            mParent->mCircularBuffer.available();
+        const size_t maxSafeRewind =
+            mParent->mDecodedSamplesWritten <= mParent->mCircularBuffer.capacity()
+                ? static_cast<size_t>(mParent->mDecodedSamplesRead)
+                : free;
+        if (desiredRewind <= maxSafeRewind) {
+          mParent->mCircularBuffer.rewindRead(desiredRewind);
+          mParent->mDecodedSamplesRead = targetSample;
+        } else {
+          // Not enough data is still physically present; fall through to the
+          // out-of-buffer seek path.
+        }
+      }
+      if (mParent->mDecodedSamplesRead == targetSample) {
+        mStreamPosition = aSeconds;
+        mParent->mWaitingForData.store(false);
+        didInBufferSeek = true;
+      }
+    }
+  }
+
+  if (didInBufferSeek) {
     mParent->requestMoreDataIfNeeded();
     return SO_NO_ERROR;
   }
@@ -367,23 +410,29 @@ double PullBufferStream::getBufferStartTime() const {
   const unsigned int channels = mPCMformat.channels;
   if (sampleRate == 0 || channels == 0) return 0.0;
 
-  const double totalLength = getLength();
+  // The decoded window is the actual contents of the circular buffer, not the
+  // playhead. As the playhead consumes samples, mDecodedSamplesRead advances
+  // and mCircularBuffer.available() shrinks by the same amount, so their sum
+  // (the decoded end) stays constant until new data is loaded. The red bar
+  // drawn from [startTime, endTime] therefore stays steady and the playhead
+  // moves inside it until the trigger position requests more data.
   const double endTime = getBufferEndTime();
   const double startTimeFromCapacity =
       endTime - static_cast<double>(mCircularBuffer.capacity()) /
                     static_cast<double>(sampleRate * channels);
-  const double startTime =
-      totalLength > 0.0
-          ? std::max(0.0, std::min(startTimeFromCapacity, totalLength))
-          : std::max(0.0, startTimeFromCapacity);
-  return startTime;
+  const double totalLength = getLength();
+  if (totalLength > 0.0) {
+    return std::max(0.0, std::min(startTimeFromCapacity, totalLength));
+  }
+  return std::max(0.0, startTimeFromCapacity);
 }
 
 double PullBufferStream::getBufferEndTime() const {
   const unsigned int sampleRate = mPCMformat.sampleRate;
   const unsigned int channels = mPCMformat.channels;
   if (sampleRate == 0 || channels == 0) return 0.0;
-  const double endTime = static_cast<double>(mDecodedSamplesWritten) /
+  const double endTime = static_cast<double>(mDecodedSamplesRead +
+                                              mCircularBuffer.available()) /
                          static_cast<double>(sampleRate * channels);
   const double totalLength = getLength();
   if (totalLength > 0.0) {
