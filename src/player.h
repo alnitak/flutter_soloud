@@ -197,10 +197,6 @@ public:
                                        double *startTime,
                                        double *endTime);
 
-  /// @brief Set the end of the pull buffer data stream.
-  /// @param hash the hash of the sound.
-  PlayerErrors setPullBufferDataIsEnded(unsigned int hash);
-
   /// @brief Get the current buffer size in bytes of this sound with hash
   /// [hash].
   /// @param hash the hash of the stream sound.

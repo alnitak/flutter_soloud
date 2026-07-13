@@ -11,7 +11,8 @@ import 'common.dart';
 /// Verifies that:
 /// - `onMoreDataIsNeeded` fires with monotonically increasing offsets.
 /// - Feeding chunks via `addPullBufferDataStream` drives playback.
-/// - `setPullBufferDataIsEnded` is reached and playback completes.
+/// - The engine detects the end of the stream automatically when the total
+///   number of bytes has been fed and playback completes.
 Future<OutputBuffer> testPullBufferFileStream() async {
   final strBuf = OutputBuffer();
   await initialize();
@@ -61,8 +62,7 @@ Future<OutputBuffer> testPullBufferFileStream() async {
         'endTime=${range.endTime.inMilliseconds}ms',
       );
       if (end >= bytes.length) {
-        strBuf.writeln('  reached end, calling setPullBufferDataIsEnded');
-        SoLoud.instance.setPullBufferDataIsEnded(source);
+        strBuf.writeln('  reached end of file');
         ended = true;
       }
     },
@@ -102,7 +102,7 @@ Future<OutputBuffer> testPullBufferFileStream() async {
   strBuf.writeln('ended=$ended fetchedChunks=${fetchedOffsets.length} '
       'timedOut=$timedOut');
   if (!ended) {
-    throw Exception('setPullBufferDataIsEnded was never reached');
+    throw Exception('end of file was never reached');
   }
   if (timedOut) {
     throw Exception('playback did not complete before timeout');

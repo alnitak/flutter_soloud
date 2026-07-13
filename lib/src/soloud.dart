@@ -1498,27 +1498,6 @@ interface class SoLoud {
     );
   }
 
-  /// Set the end of the pull buffer data stream.
-  ///
-  /// [sound] the pull buffer stream sound.
-  ///
-  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
-  ///
-  /// Throws [SoLoudSoundHashNotFoundDartException] if the [sound] is not found.
-  void setPullBufferDataIsEnded(AudioSource sound) {
-    if (!isInitialized) {
-      throw const SoLoudNotInitializedException();
-    }
-    final e = SoLoudController().soLoudFFI.setPullBufferDataIsEnded(
-      sound.soundHash,
-    );
-
-    if (e != PlayerErrors.noError) {
-      _logPlayerError(e, from: 'setPullBufferDataIsEnded() result');
-      throw SoLoudCppException.fromPlayerError(e);
-    }
-  }
-
   /// Load a new sound to be played once or multiple times later, from
   /// an asset.
   ///

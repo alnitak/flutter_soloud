@@ -563,12 +563,6 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }
 
   @override
-  PlayerErrors setPullBufferDataIsEnded(SoundHash soundHash) {
-    final result = wasmSetPullBufferDataIsEnded(soundHash.hash);
-    return PlayerErrors.values[result];
-  }
-
-  @override
   PlayerErrors resetBufferStream(SoundHash soundHash) {
     final result = wasmResetBufferStream(soundHash.hash);
     return PlayerErrors.values[result];

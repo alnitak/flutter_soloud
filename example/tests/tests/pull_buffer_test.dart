@@ -50,19 +50,8 @@ Future<OutputBuffer> testPullBuffer() async {
     },
     onMoreDataIsNeeded: (offset) {
       strBuf.writeln('moreDataIsNeeded($offset)');
-      if (offset < 0 || offset > bytes.length) {
+      if (offset < 0 || offset >= bytes.length) {
         strBuf.writeln('  offset out of range, ignoring');
-        return;
-      }
-      if (offset == bytes.length) {
-        // The C++ sequential reader has reached the end of the file; no more
-        // encoded bytes are available. Mark the stream as ended if this is
-        // the expected sequential end marker.
-        if (offset == nextSequentialOffset && !ended) {
-          strBuf.writeln('setting data ended at EOF');
-          SoLoud.instance.setPullBufferDataIsEnded(source);
-          ended = true;
-        }
         return;
       }
       if (!firstOffsetCompleter.isCompleted) {
@@ -110,8 +99,7 @@ Future<OutputBuffer> testPullBuffer() async {
         nextSequentialOffset = end;
       }
       if (end >= bytes.length && !isTailProbe) {
-        strBuf.writeln('setting data ended');
-        SoLoud.instance.setPullBufferDataIsEnded(source);
+        strBuf.writeln('reached end of file');
         ended = true;
       }
     },
@@ -208,7 +196,7 @@ Future<OutputBuffer> testPullBuffer() async {
     )
     ..writeln('ended=$ended fetchedChunks=${fetchedOffsets.length}');
   if (!ended) {
-    throw Exception('setPullBufferDataIsEnded was never reached');
+    throw Exception('end of file was never reached');
   }
 
   assert(

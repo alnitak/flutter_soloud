@@ -798,13 +798,6 @@ extern "C"
     return player.get()->getPullBufferTimeRange(hash, startTime, endTime);
   }
 
-  FFI_PLUGIN_EXPORT enum PlayerErrors setPullBufferDataIsEnded(unsigned int hash)
-  {
-    if (player.get() == nullptr || !player.get()->isInited())
-      return backendNotInited;
-    return player.get()->setPullBufferDataIsEnded(hash);
-  }
-
   FFI_PLUGIN_EXPORT enum PlayerErrors
   addAudioDataStream(unsigned int hash, const unsigned char *data,
                      unsigned int aDataLen)

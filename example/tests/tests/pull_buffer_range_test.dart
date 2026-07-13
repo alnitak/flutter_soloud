@@ -104,8 +104,6 @@ Future<OutputBuffer> testPullBufferRange() async {
         offset: offset,
       );
       if (end >= bytes.length) {
-        strBuf.writeln('  setting data ended');
-        SoLoud.instance.setPullBufferDataIsEnded(source);
         ended = true;
       }
     },
@@ -173,7 +171,7 @@ Future<OutputBuffer> testPullBufferRange() async {
     ..writeln('ended=$ended fetchedChunks=${fetchedOffsets.length}');
 
   if (!ended) {
-    throw Exception('setPullBufferDataIsEnded was never reached');
+    throw Exception('end of file was never reached');
   }
 
   // Allow 400 ms of timing jitter between the audio thread and the Dart

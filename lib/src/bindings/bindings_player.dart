@@ -352,11 +352,6 @@ abstract class FlutterSoLoud {
   ({PlayerErrors error, double startTime, double endTime})
   getPullBufferTimeRange(int hash);
 
-  /// Set the end of the pull buffer data stream.
-  /// [soundHash] the hash of the stream sound.
-  @mustBeOverridden
-  PlayerErrors setPullBufferDataIsEnded(SoundHash soundHash);
-
   /// Load a new waveform to be played once or multiple times later.
   ///
   /// [waveform]

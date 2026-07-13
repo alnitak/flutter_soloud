@@ -51,13 +51,13 @@ class _FileStreamExampleState extends State<FileStreamExample> {
   /// At ~128 kbps MP3, 128 KB is roughly 8 seconds of audio, which decodes to
   /// ~2.8 MB of float PCM and fits comfortably in the 5 MB circular buffer
   /// below.
-  static const _chunkSize = 128 * 1024;
+  static const _chunkSize = 10 * 1024;
 
   /// Decoded circular buffer size. At 44.1 kHz stereo float PCM this holds
   /// roughly 14 seconds of audio. The encoded chunk size is independent of this
   /// value because decoded samples that do not fit are queued for later.
   static const _bufferSizeBytes = 5 * 1024 * 1024;
-  static const _bufferTriggerPosition = 0.5;
+  static const _bufferTriggerPosition = 0.75;
 
   static const audioAsset = 'assets/audio/sample-MP3.mp3';
 
@@ -208,10 +208,6 @@ class _FileStreamExampleState extends State<FileStreamExample> {
         setState(() {
           _status = 'Feeding $end / $_totalBytes bytes';
         });
-        if (end >= _totalBytes) {
-          SoLoud.instance.setPullBufferDataIsEnded(_source!);
-          _logger.info('setPullBufferDataIsEnded: all data fed');
-        }
       },
     );
 

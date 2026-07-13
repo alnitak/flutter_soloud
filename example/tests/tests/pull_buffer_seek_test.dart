@@ -32,8 +32,8 @@ Future<OutputBuffer> testPullBufferSeek() async {
   source = SoLoud.instance.setPullBufferStream(
     // Use a decoded buffer that is large enough to keep playback fed but small
     // enough that a seek to ~70% of the file is outside the decoded window.
-    bufferSizeBytes: 1024 * 1024,
-    bufferTriggerPosition: 0.5,
+    bufferSizeBytes: 1024 * 1024 * 10,
+    bufferTriggerPosition: 0.7,
     audioSizeBytes: bytes.length,
     onAudioDuration: (duration) {
       strBuf.writeln('audioDuration=${(duration * 1000).round()}ms');
@@ -64,8 +64,6 @@ Future<OutputBuffer> testPullBufferSeek() async {
         chunk,
         offset: offset,
       );
-      strBuf.writeln('setting data ended');
-      SoLoud.instance.setPullBufferDataIsEnded(source);
       ended = true;
     },
   );
@@ -124,12 +122,50 @@ Future<OutputBuffer> testPullBufferSeek() async {
     'Playback did not advance after seek',
   );
 
+  // Seek a few times near the end of the file. The decoded buffer window
+  // should never extend past the audio duration. The pull buffer engine uses
+  // the probed duration to clamp the encoded byte offset and the decoded
+  // time range, so these seeks should be stable and keep the window within
+  // the file bounds.
+  const endSeekCount = 3;
+  for (var i = 0; i < endSeekCount; i++) {
+    final nearEnd = Duration(
+      milliseconds: (refDuration.inMilliseconds - 500 - i * 100).clamp(
+        refDuration.inMilliseconds ~/ 2,
+        refDuration.inMilliseconds - 100,
+      ),
+    );
+    SoLoud.instance.seek(handle, nearEnd);
+    strBuf.writeln('seeked near end to $nearEnd');
+    await delay(100);
+    final nearEndPosition = SoLoud.instance.getPosition(handle);
+    final range = SoLoud.instance.getPullBufferTimeRange(source);
+    strBuf.writeln(
+      'position after near-end seek: $nearEndPosition '
+      'buffer=[${range.startTime.inMilliseconds}ms, '
+      '${range.endTime.inMilliseconds}ms]',
+    );
+    assert(
+      range.endTime <= refDuration + const Duration(milliseconds: 500),
+      'Buffer end ${range.endTime.inMilliseconds}ms exceeds audio duration '
+      '${refDuration.inMilliseconds}ms',
+    );
+    assert(
+      range.startTime <= range.endTime && range.startTime >= Duration.zero,
+      'Buffer range is invalid: start=${range.startTime.inMilliseconds}ms '
+      'end=${range.endTime.inMilliseconds}ms',
+    );
+    // After seeking near the end, allow time for data to arrive and playback
+    // to advance a bit.
+    await delay(50);
+  }
+
   // Let the stream run for a while so we can verify it stays alive.
   await delay(3000);
   strBuf.writeln('final position: ${SoLoud.instance.getPosition(handle)}');
 
   if (!ended) {
-    throw Exception('setPullBufferDataIsEnded was never reached');
+    throw Exception('end of file was never reached');
   }
 
   deinit();

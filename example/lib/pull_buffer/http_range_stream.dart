@@ -107,6 +107,11 @@ class _HttpRangeStreamExampleState extends State<HttpRangeStreamExample> {
     _pendingOffsets.clear();
     _bufferedEnd = Duration.zero;
 
+    if (_totalBytes <= 0) {
+      setState(() => _status = 'Could not determine content length');
+      return;
+    }
+
     _source = SoLoud.instance.setPullBufferStream(
       audioSizeBytes: _totalBytes,
       onAudioDuration: (duration) {
@@ -123,23 +128,18 @@ class _HttpRangeStreamExampleState extends State<HttpRangeStreamExample> {
     _startTicker();
     setState(() {
       _isPlaying = true;
-      _status = _totalBytes > 0
-          ? 'Streaming $_totalBytes bytes via HTTP Range'
-          : 'Streaming (unknown length)';
+      _status = 'Streaming $_totalBytes bytes via HTTP Range';
     });
   }
 
   Future<void> _fetchChunk(String url, int offset) async {
     if (_totalBytes > 0 && offset >= _totalBytes) {
-      SoLoud.instance.setPullBufferDataIsEnded(_source!);
       return;
     }
     if (!_pendingOffsets.add(offset)) return;
 
     try {
-      final end = _totalBytes > 0
-          ? (offset + _chunkSize - 1).clamp(0, _totalBytes - 1)
-          : offset + _chunkSize - 1;
+      final end = (offset + _chunkSize - 1).clamp(0, _totalBytes - 1);
       final request = http.Request('GET', Uri.parse(url))
         ..headers['Range'] = 'bytes=$offset-$end';
       final streamedResponse = await _client.send(request);
@@ -170,12 +170,6 @@ class _HttpRangeStreamExampleState extends State<HttpRangeStreamExample> {
         _bufferedEnd = range.endTime;
         _status = 'Buffered $endPosition / $_totalBytes bytes';
       });
-
-      if (_totalBytes > 0 && endPosition >= _totalBytes) {
-        SoLoud.instance.setPullBufferDataIsEnded(_source!);
-      } else if (bytes.length < _chunkSize) {
-        SoLoud.instance.setPullBufferDataIsEnded(_source!);
-      }
     } catch (e, st) {
       setState(() => _status = 'Network error: $e');
       debugPrintStack(stackTrace: st);

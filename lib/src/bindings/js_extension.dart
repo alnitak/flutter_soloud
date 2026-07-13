@@ -127,9 +127,6 @@ external int wasmGetPullBufferTimeRange(
 @JS('Module_soloud._setDataIsEnded')
 external int wasmSetDataIsEnded(int hash);
 
-@JS('Module_soloud._setPullBufferDataIsEnded')
-external int wasmSetPullBufferDataIsEnded(int hash);
-
 @JS('Module_soloud._getBufferSize')
 external int wasmGetBufferSize(int hash, int sizeInBytesPtr);
 

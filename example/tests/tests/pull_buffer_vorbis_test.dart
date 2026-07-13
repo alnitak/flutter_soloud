@@ -63,8 +63,7 @@ Future<OutputBuffer> testPullBufferVorbis() async {
         'endTime=${range.endTime.inMilliseconds}ms',
       );
       if (end >= bytes.length) {
-        strBuf.writeln('setting data ended');
-        SoLoud.instance.setPullBufferDataIsEnded(source);
+        strBuf.writeln('reached end of file');
         ended = true;
       }
     },
@@ -117,6 +116,9 @@ Future<OutputBuffer> testPullBufferVorbis() async {
 
   const seekTarget = Duration(seconds: 1);
   SoLoud.instance.seek(handle, seekTarget);
+  // After seeking, the engine may request data at offsets that were already
+  // fed before the seek. Clear the set so the seek target can be served again.
+  fetchedOffsets.clear();
   await delay(100);
   final afterSeek = SoLoud.instance.getPosition(handle);
   strBuf.writeln('after seek position: $afterSeek');
@@ -152,7 +154,7 @@ Future<OutputBuffer> testPullBufferVorbis() async {
     )
     ..writeln('ended=$ended fetchedChunks=${fetchedOffsets.length}');
   if (!ended) {
-    throw Exception('setPullBufferDataIsEnded was never reached');
+    throw Exception('end of file was never reached');
   }
 
   assert(

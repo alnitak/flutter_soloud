@@ -50,9 +50,6 @@ Future<OutputBuffer> testPullBufferDuration(String assetName) async {
         chunk,
         offset: offset,
       );
-      if (end >= bytes.length) {
-        SoLoud.instance.setPullBufferDataIsEnded(source);
-      }
     },
   );
 

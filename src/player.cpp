@@ -704,17 +704,6 @@ PlayerErrors Player::getPullBufferTimeRange(
     return PlayerErrors::noError;
 }
 
-PlayerErrors Player::setPullBufferDataIsEnded(unsigned int hash)
-{
-    auto const s = findByHash(hash);
-
-    if (s == nullptr || s->soundType != SoundType::TYPE_PULL_BUFFER_STREAM)
-        return PlayerErrors::soundHashNotFound;
-
-    static_cast<SoLoud::PullBufferStream *>(s->sound.get())->setDataIsEnded();
-    return PlayerErrors::noError;
-}
-
 PlayerErrors Player::addAudioDataStream(
     unsigned int hash,
     const unsigned char *data,

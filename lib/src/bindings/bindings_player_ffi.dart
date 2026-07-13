@@ -980,19 +980,6 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       .asFunction<int Function(int, ffi.Pointer<ffi.Uint8>, int)>();
 
   @override
-  PlayerErrors setPullBufferDataIsEnded(SoundHash soundHash) {
-    final e = _setPullBufferDataIsEnded(soundHash.hash);
-    return PlayerErrors.values[e];
-  }
-
-  late final _setPullBufferDataIsEndedPtr =
-      _lookup<ffi.NativeFunction<ffi.UnsignedInt Function(ffi.UnsignedInt)>>(
-        'setPullBufferDataIsEnded',
-      );
-  late final _setPullBufferDataIsEnded = _setPullBufferDataIsEndedPtr
-      .asFunction<int Function(int)>();
-
-  @override
   ({PlayerErrors error, SoundHash soundHash}) setPullBufferStream(
     int bufferSizeBytes,
     double bufferTriggerPosition,

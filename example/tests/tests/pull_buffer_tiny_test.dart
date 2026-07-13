@@ -63,8 +63,7 @@ Future<OutputBuffer> testPullBufferTiny() async {
         offset: offset,
       );
       if (end >= bytes.length) {
-        strBuf.writeln('setting data ended');
-        SoLoud.instance.setPullBufferDataIsEnded(source);
+        strBuf.writeln('reached end of file');
         ended = true;
       }
     },
@@ -125,7 +124,7 @@ Future<OutputBuffer> testPullBufferTiny() async {
     )
     ..writeln('ended=$ended fetchedChunks=${fetchedOffsets.length}');
   if (!ended) {
-    throw Exception('setPullBufferDataIsEnded was never reached');
+    throw Exception('end of file was never reached');
   }
   if (elapsed < 0) {
     throw Exception('playback did not complete before timeout');

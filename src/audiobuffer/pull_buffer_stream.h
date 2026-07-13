@@ -66,8 +66,6 @@ public:
 
   void resetPullBufferStream();
 
-  void setDataIsEnded();
-
   PlayerErrors addAudioData(const void *aData, unsigned int aDataLen,
                             uint64_t aOffset = 0);
 
@@ -127,6 +125,7 @@ private:
   void probeDurationFromFirstChunk();
   void probeDurationFromOggTail(uint64_t aOffset);
   void finishDurationProbe(double duration);
+  void setDataIsEnded();
 
   /// Current start/end of the decoded circular buffer in seconds.
   double getBufferStartTime() const;

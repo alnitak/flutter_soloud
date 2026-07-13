@@ -367,20 +367,29 @@ double PullBufferStream::getBufferStartTime() const {
   const unsigned int channels = mPCMformat.channels;
   if (sampleRate == 0 || channels == 0) return 0.0;
 
-  const size_t capacitySamples = mCircularBuffer.capacity();
-  const uint64_t startSample = mDecodedSamplesWritten > capacitySamples
-                                     ? mDecodedSamplesWritten - capacitySamples
-                                     : 0;
-  return static_cast<double>(startSample) /
-         static_cast<double>(sampleRate * channels);
+  const double totalLength = getLength();
+  const double endTime = getBufferEndTime();
+  const double startTimeFromCapacity =
+      endTime - static_cast<double>(mCircularBuffer.capacity()) /
+                    static_cast<double>(sampleRate * channels);
+  const double startTime =
+      totalLength > 0.0
+          ? std::max(0.0, std::min(startTimeFromCapacity, totalLength))
+          : std::max(0.0, startTimeFromCapacity);
+  return startTime;
 }
 
 double PullBufferStream::getBufferEndTime() const {
   const unsigned int sampleRate = mPCMformat.sampleRate;
   const unsigned int channels = mPCMformat.channels;
   if (sampleRate == 0 || channels == 0) return 0.0;
-  return static_cast<double>(mDecodedSamplesWritten) /
-         static_cast<double>(sampleRate * channels);
+  const double endTime = static_cast<double>(mDecodedSamplesWritten) /
+                         static_cast<double>(sampleRate * channels);
+  const double totalLength = getLength();
+  if (totalLength > 0.0) {
+    return std::min(endTime, totalLength);
+  }
+  return endTime;
 }
 
 PlayerErrors PullBufferStream::addAudioData(const void *aData,
@@ -460,6 +469,14 @@ PlayerErrors PullBufferStream::addAudioData(const void *aData,
       aDataLen, static_cast<unsigned long long>(aOffset), isSequential,
       static_cast<unsigned long long>(mTotalReceivedBytes),
       mEncodedBuffer.size());
+
+  // If the sequential feed has reached the declared end of the file, mark
+  // the stream as ended so the decoder can flush its final frames and the
+  // voice can finish cleanly. Callers no longer need to explicitly call
+  // setDataIsEnded once the total audioSizeBytes is known.
+  if (mSequentialReadOffset >= mAudioSizeBytes) {
+    setDataIsEnded();
+  }
 
   decodePendingData();
 
@@ -862,6 +879,9 @@ void PullBufferStream::requestMoreDataIfNeeded() {
   if (callback == nullptr) return;
   if (mDataIsEnded.load()) return;
   if (mWaitingForData.load()) return;
+  // The sequential feed has already reached the declared end of the file;
+  // there is no more data to request.
+  if (mSequentialReadOffset >= mAudioSizeBytes) return;
 
   // A pending seek has the highest priority so it can resolve quickly and
   // does not get stuck behind the duration-probe tail. Once the seek offset
