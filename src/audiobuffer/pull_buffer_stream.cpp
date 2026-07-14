@@ -63,22 +63,45 @@ unsigned int PullBufferStreamInstance::getAudio(float *aBuffer,
     return 0;
   }
 
-  // Pull interleaved samples from the circular buffer. They are already floats.
-  const size_t read = mParent->mCircularBuffer.read(aBuffer, samplesToRead);
-  if (read < requestedSamples) {
-    std::memset(aBuffer + read, 0,
-                sizeof(float) * (requestedSamples - read));
+  // Pull interleaved samples from the circular buffer and de-interleave them
+  // into the planar layout the SoLoud mixer expects (each channel is a
+  // contiguous block of aBufferSize frames).
+  const size_t framesToRead = samplesToRead / mChannels;
+  if (framesToRead > 0) {
+    float temp[SAMPLE_GRANULARITY * MAX_CHANNELS];
+    const size_t readSamples =
+        mParent->mCircularBuffer.read(temp, samplesToRead);
+    const size_t readFrames = readSamples / mChannels;
+    if (readFrames > 0) {
+      for (unsigned int ch = 0; ch < mChannels; ++ch) {
+        for (size_t i = 0; i < readFrames; ++i) {
+          aBuffer[ch * aBufferSize + i] = temp[i * mChannels + ch];
+        }
+      }
+    }
+    if (readSamples < requestedSamples) {
+      // Zero the remaining frames in every channel.
+      for (unsigned int ch = 0; ch < mChannels; ++ch) {
+        std::memset(aBuffer + ch * aBufferSize + readFrames, 0,
+                    sizeof(float) * (aSamplesToRead - readFrames));
+      }
+    }
+    mParent->mDecodedSamplesRead += readSamples;
+    // Do not call checkBuffering from the audio thread: getPause/getPosition
+    // acquire the Soloud mixer lock and would deadlock with the thread that
+    // is currently calling getAudio(). Buffering checks are done when the user
+    // adds data or marks the end of the stream (main thread).
+    mParent->requestMoreDataIfNeeded();
+    return readFrames;
   }
 
-  // Track absolute decoded sample position.
-  mParent->mDecodedSamplesRead += read;
-
+  // No samples available; the buffer was already zeroed above.
   // Do not call checkBuffering from the audio thread: getPause/getPosition
   // acquire the Soloud mixer lock and would deadlock with the thread that
   // is currently calling getAudio(). Buffering checks are done when the user
   // adds data or marks the end of the stream (main thread).
   mParent->requestMoreDataIfNeeded();
-  return read / mChannels;
+  return 0;
 }
 
 result PullBufferStreamInstance::seek(double aSeconds, float *aScratch,
@@ -130,24 +153,12 @@ result PullBufferStreamInstance::seek(double aSeconds, float *aScratch,
         mParent->mDecodedSamplesRead += before - after;
       } else {
         // Backward in-buffer seek: restore samples that are still physically
-        // in the circular buffer. The safe rewind distance is the amount of
-        // valid decoded data that is still physically present behind the read
-        // pointer. Before the buffer has wrapped, that's everything from the
-        // start of the stream up to the current read position. After it has
-        // wrapped, the entire free gap behind the read pointer is still valid
-        // because it holds the most recently decoded samples that were already
-        // consumed.
+        // in the circular buffer. rewindRead() enforces the safe rewind limit
+        // (before the first wrap it will not cross into uninitialized data).
         const size_t desiredRewind =
             mParent->mDecodedSamplesRead - targetSample;
-        const size_t free =
-            mParent->mCircularBuffer.capacity() -
-            mParent->mCircularBuffer.available();
-        const size_t maxSafeRewind =
-            mParent->mDecodedSamplesWritten <= mParent->mCircularBuffer.capacity()
-                ? static_cast<size_t>(mParent->mDecodedSamplesRead)
-                : free;
-        if (desiredRewind <= maxSafeRewind) {
-          mParent->mCircularBuffer.rewindRead(desiredRewind);
+        const size_t rewound = mParent->mCircularBuffer.rewindRead(desiredRewind);
+        if (rewound == desiredRewind) {
           mParent->mDecodedSamplesRead = targetSample;
         } else {
           // Not enough data is still physically present; fall through to the
@@ -424,9 +435,6 @@ double PullBufferStream::getBufferStartTime() const {
   const double startTimeFromCapacity =
       endTime - static_cast<double>(mCircularBuffer.capacity()) /
                     static_cast<double>(sampleRate * channels);
-  const double startTimeFromRead =
-      static_cast<double>(mDecodedSamplesRead) /
-      static_cast<double>(sampleRate * channels);
 
   // Out-of-buffer seeks set mBufferStartTime to the seek position. Only when
   // an explicit start time has been set (after an out-of-buffer seek) clamp the
@@ -529,13 +537,6 @@ PlayerErrors PullBufferStream::addAudioData(const void *aData,
   if (mDurationProbeState == DurationProbeState::BuildingSeekTable) {
     ++mSeekTableBuildChunks;
   }
-
-  soloud_platform_log(
-      "[PullBuffer] addAudioData len=%u offset=%llu seq=%d "
-      "totalReceived=%llu encodedBuffer=%zu\n",
-      aDataLen, static_cast<unsigned long long>(aOffset), isSequential,
-      static_cast<unsigned long long>(mTotalReceivedBytes),
-      mEncodedBuffer.size());
 
   // If the sequential feed has reached the declared end of the file, mark
   // the stream as ended so the decoder can flush its final frames and the

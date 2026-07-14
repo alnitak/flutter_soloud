@@ -65,6 +65,10 @@ public:
   /// Reset to empty.
   void clear();
 
+  /// True once the buffer has been completely filled at least once. Before that,
+  /// the region behind the read pointer may contain uninitialized zeroed data.
+  bool hasWrapped() const { return m_hasWrapped; }
+
   /// Current absolute read position (modulo capacity). Useful for debugging
   /// and for the seeking logic.
   size_t readPosition() const { return m_readOffset.load(); }
@@ -79,6 +83,7 @@ private:
   std::atomic<size_t> m_readOffset{0};
   std::atomic<size_t> m_writeOffset{0};
   std::atomic<size_t> m_size{0};  // Number of floats currently stored.
+  std::atomic<bool> m_hasWrapped{false};  // True once the buffer has been full.
 
   size_t contiguousFree() const;
   size_t contiguousAvailable() const;

@@ -124,6 +124,7 @@ std::pair<std::vector<float>, DecoderError> StreamDecoder::decode(
     TrackChangeCallback metadataChangeCallback,
     size_t maxOutputSamples)
 {
+
     if (!isFormatDetected) {
         DetectedType detectedType = detectAudioFormat(buffer);
         if (detectedType == DetectedType::BUFFER_NO_ENOUGH_DATA)
