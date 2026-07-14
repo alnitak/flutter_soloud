@@ -127,6 +127,19 @@ private:
   void finishDurationProbe(double duration);
   void setDataIsEnded();
 
+  /// Reset the decoded playback window and stream offsets without zeroing the
+  /// underlying storage.
+  void resetBufferWindow(uint64_t decodedSamplesRead,
+                         uint64_t decodedSamplesWritten,
+                         double bufferStartTime,
+                         uint64_t totalReceivedBytes,
+                         uint64_t sequentialReadOffset);
+
+  void resetProbeState();
+
+  /// Reset the decoder state for an out-of-buffer seek.
+  void resetDecoderForSeek(uint64_t targetSample);
+
   /// Current start/end of the decoded circular buffer in seconds.
   double getBufferStartTime() const;
   double getBufferEndTime() const;
@@ -145,7 +158,6 @@ private:
   std::unique_ptr<StreamDecoder> mStreamDecoder;
 
   PCMformat mPCMformat;
-  unsigned int mBufferSizeBytes = 0;
   double mBufferTriggerPosition = 0.0;
   uint64_t mAudioSizeBytes = 0; ///< Total encoded/PCM file size in bytes.
   uint64_t mSequentialReadOffset = 0; ///< Next byte offset for sequential requests.
@@ -159,7 +171,6 @@ private:
   std::atomic<bool> mIsBuffering{false};
   std::atomic<bool> mWaitingForData{false};
   std::atomic<bool> mMetadataReceived{false};
-  std::atomic<bool> mHasInstance{false};
   PullBufferStreamInstance *mInstance = nullptr;
   std::atomic<bool> mPendingSeek{false};
   double mPendingSeekTime = 0.0;

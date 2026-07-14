@@ -25,7 +25,6 @@ PullBufferStreamInstance::PullBufferStreamInstance(PullBufferStream *aParent)
 PullBufferStreamInstance::~PullBufferStreamInstance() {
   if (mParent != nullptr) {
     mParent->mInstance = nullptr;
-    mParent->mHasInstance.store(false);
   }
 }
 
@@ -51,14 +50,11 @@ unsigned int PullBufferStreamInstance::getAudio(float *aBuffer,
   const size_t samplesToRead =
       std::min(static_cast<size_t>(requestedSamples), availableSamples);
 
-  // soloud_platform_log(
-  //     "[PullBuffer] getAudio requested=%u available=%zu read=%zu\n",
-  //     requestedSamples, availableSamples, samplesToRead);
-
+  // No decoded samples available: zero the whole output buffer and ask for
+  // more data. Do not call checkBuffering here: it runs on the audio thread
+  // and would deadlock when calling getPause/getPosition.
   if (samplesToRead == 0) {
     std::memset(aBuffer, 0, sizeof(float) * aSamplesToRead * mChannels);
-    // Do not call checkBuffering here: it runs on the audio thread and would
-    // deadlock when calling getPause/getPosition.
     mParent->requestMoreDataIfNeeded();
     return 0;
   }
@@ -66,42 +62,31 @@ unsigned int PullBufferStreamInstance::getAudio(float *aBuffer,
   // Pull interleaved samples from the circular buffer and de-interleave them
   // into the planar layout the SoLoud mixer expects (each channel is a
   // contiguous block of aBufferSize frames).
-  const size_t framesToRead = samplesToRead / mChannels;
-  if (framesToRead > 0) {
-    float temp[SAMPLE_GRANULARITY * MAX_CHANNELS];
-    const size_t readSamples =
-        mParent->mCircularBuffer.read(temp, samplesToRead);
-    const size_t readFrames = readSamples / mChannels;
-    if (readFrames > 0) {
-      for (unsigned int ch = 0; ch < mChannels; ++ch) {
-        for (size_t i = 0; i < readFrames; ++i) {
-          aBuffer[ch * aBufferSize + i] = temp[i * mChannels + ch];
-        }
+  std::vector<float> temp(samplesToRead);
+  const size_t readSamples =
+      mParent->mCircularBuffer.read(temp.data(), samplesToRead);
+  const size_t readFrames = readSamples / mChannels;
+  if (readFrames > 0) {
+    for (unsigned int ch = 0; ch < mChannels; ++ch) {
+      for (size_t i = 0; i < readFrames; ++i) {
+        aBuffer[ch * aBufferSize + i] = temp[i * mChannels + ch];
       }
     }
-    if (readSamples < requestedSamples) {
-      // Zero the remaining frames in every channel.
-      for (unsigned int ch = 0; ch < mChannels; ++ch) {
-        std::memset(aBuffer + ch * aBufferSize + readFrames, 0,
-                    sizeof(float) * (aSamplesToRead - readFrames));
-      }
-    }
-    mParent->mDecodedSamplesRead += readSamples;
-    // Do not call checkBuffering from the audio thread: getPause/getPosition
-    // acquire the Soloud mixer lock and would deadlock with the thread that
-    // is currently calling getAudio(). Buffering checks are done when the user
-    // adds data or marks the end of the stream (main thread).
-    mParent->requestMoreDataIfNeeded();
-    return readFrames;
+  }
+  mParent->mDecodedSamplesRead += readSamples;
+
+  // Zero any frames that were not filled.
+  for (unsigned int ch = 0; ch < mChannels; ++ch) {
+    std::memset(aBuffer + ch * aBufferSize + readFrames, 0,
+                sizeof(float) * (aSamplesToRead - readFrames));
   }
 
-  // No samples available; the buffer was already zeroed above.
   // Do not call checkBuffering from the audio thread: getPause/getPosition
   // acquire the Soloud mixer lock and would deadlock with the thread that
   // is currently calling getAudio(). Buffering checks are done when the user
   // adds data or marks the end of the stream (main thread).
   mParent->requestMoreDataIfNeeded();
-  return 0;
+  return readFrames;
 }
 
 result PullBufferStreamInstance::seek(double aSeconds, float *aScratch,
@@ -195,30 +180,15 @@ result PullBufferStreamInstance::seek(double aSeconds, float *aScratch,
 
   // Discard the currently buffered decoded range without zeroing the
   // underlying memory, matching the circular-buffer plan.
-  mParent->mCircularBuffer.advanceRead(mParent->mCircularBuffer.available());
-  mParent->mEncodedBuffer.clear();
-  mParent->mDecodedBacklog.clear();
-  mParent->mDecodedSamplesRead = targetSample;
-  mParent->mDecodedSamplesWritten = targetSample;
-  mParent->mBufferStartTime = aSeconds;
-  mParent->mTotalReceivedBytes = newOffset;
-  mParent->mSequentialReadOffset = newOffset;
+  mParent->resetBufferWindow(targetSample, targetSample, aSeconds, newOffset,
+                             newOffset);
   mStreamPosition = aSeconds;
   mParent->mPendingSeek.store(true);
   mParent->mPendingSeekTime = aSeconds;
   mParent->mPendingSeekByteOffset = newOffset;
   mParent->mDataIsEnded.store(false);
   mParent->mWaitingForData.store(false);
-  if (mParent->mPCMformat.dataType == BufferType::AUTO &&
-      mParent->mStreamDecoder) {
-    const DetectedType type = mParent->mStreamDecoder->getWrapperType();
-    if (type == DetectedType::BUFFER_OGG_OPUS ||
-        type == DetectedType::BUFFER_OGG_VORBIS) {
-      mParent->mStreamDecoder->prepareForSeek(targetSample);
-    } else {
-      mParent->mStreamDecoder = std::make_unique<StreamDecoder>();
-    }
-  }
+  mParent->resetDecoderForSeek(targetSample);
   mParent->applyPendingSeek();
   return SO_NO_ERROR;
 }
@@ -229,13 +199,7 @@ result PullBufferStreamInstance::rewind() {
   }
   // Rewind: discard the currently buffered decoded range without zeroing the
   // underlying memory so the circular buffer can continue from the start.
-  mParent->mCircularBuffer.advanceRead(mParent->mCircularBuffer.available());
-  mParent->mEncodedBuffer.clear();
-  mParent->mDecodedBacklog.clear();
-  mParent->mDecodedSamplesRead = 0;
-  mParent->mDecodedSamplesWritten = 0;
-  mParent->mBufferStartTime = 0.0;
-  mParent->mTotalReceivedBytes = 0;
+  mParent->resetBufferWindow(0, 0, 0.0, 0, 0);
   mStreamPosition = 0.0;
   mParent->mPendingSeek.store(false);
   mParent->mPendingSeekTime = 0.0;
@@ -265,6 +229,42 @@ PullBufferStream::PullBufferStream() = default;
 
 PullBufferStream::~PullBufferStream() = default;
 
+void PullBufferStream::resetBufferWindow(uint64_t decodedSamplesRead,
+                                         uint64_t decodedSamplesWritten,
+                                         double bufferStartTime,
+                                         uint64_t totalReceivedBytes,
+                                         uint64_t sequentialReadOffset) {
+  mCircularBuffer.advanceRead(mCircularBuffer.available());
+  mEncodedBuffer.clear();
+  mDecodedBacklog.clear();
+  mDecodedSamplesRead = decodedSamplesRead;
+  mDecodedSamplesWritten = decodedSamplesWritten;
+  mBufferStartTime = bufferStartTime;
+  mTotalReceivedBytes = totalReceivedBytes;
+  mSequentialReadOffset = sequentialReadOffset;
+}
+
+void PullBufferStream::resetProbeState() {
+  mProbedDuration = 0.0;
+  mTailProbeChunkSeen = false;
+  mDurationProbeTailRangeStart = 0;
+  mDurationProbeTailRangeEnd = 0;
+  mNextTailOffset = 0;
+  mSeekTableBuildChunks = 0;
+  mTailProbeBuffer.clear();
+}
+
+void PullBufferStream::resetDecoderForSeek(uint64_t targetSample) {
+  if (mPCMformat.dataType != BufferType::AUTO || !mStreamDecoder) return;
+  const DetectedType type = mStreamDecoder->getWrapperType();
+  if (type == DetectedType::BUFFER_OGG_OPUS ||
+      type == DetectedType::BUFFER_OGG_VORBIS) {
+    mStreamDecoder->prepareForSeek(targetSample);
+  } else {
+    mStreamDecoder = std::make_unique<StreamDecoder>();
+  }
+}
+
 PlayerErrors PullBufferStream::setPullBufferStream(
     Player *aPlayer, ActiveSound *aParent,
     unsigned int bufferSizeBytes, double bufferTriggerPosition,
@@ -293,7 +293,6 @@ PlayerErrors PullBufferStream::setPullBufferStream(
 
   mThePlayer = aPlayer;
   mParent = aParent;
-  mBufferSizeBytes = bufferSizeBytes;
   mBufferTriggerPosition = bufferTriggerPosition;
   mAudioSizeBytes = audioSizeBytes;
   mPCMformat = {sampleRate, channels, sizeof(float), format};
@@ -306,7 +305,6 @@ PlayerErrors PullBufferStream::setPullBufferStream(
   mIsBuffering.store(false);
   mWaitingForData.store(false);
   mMetadataReceived.store(false);
-  mHasInstance.store(false);
   mPendingSeek.store(false);
   mPendingSeekTime = 0.0;
   mPendingSeekByteOffset = 0;
@@ -315,13 +313,7 @@ PlayerErrors PullBufferStream::setPullBufferStream(
   mOnMoreDataIsNeededCallback.store(onMoreDataIsNeededCallback);
   mOnAudioDurationCallback.store(onAudioDurationCallback);
   mDurationProbeState = DurationProbeState::None;
-  mProbedDuration = 0.0;
-  mTailProbeChunkSeen = false;
-  mDurationProbeTailRangeStart = 0;
-  mDurationProbeTailRangeEnd = 0;
-  mNextTailOffset = 0;
-  mSeekTableBuildChunks = 0;
-  mTailProbeBuffer.clear();
+  resetProbeState();
 
   // Align buffer size to a whole number of float frames.
   const size_t frameSize = channels * sizeof(float);
@@ -378,20 +370,13 @@ void PullBufferStream::resetPullBufferStream() {
   mPendingSeek.store(false);
   mPendingSeekTime = 0.0;
   mPendingSeekByteOffset = 0;
-  mProbedDuration = 0.0;
-  mTailProbeChunkSeen = false;
-  mDurationProbeTailRangeStart = 0;
-  mDurationProbeTailRangeEnd = 0;
-  mNextTailOffset = 0;
-  mSeekTableBuildChunks = 0;
-  mTailProbeBuffer.clear();
+  resetProbeState();
   if (mPCMformat.dataType == BufferType::AUTO) {
     mStreamDecoder = std::make_unique<StreamDecoder>();
     mDurationProbeState = DurationProbeState::Probing;
   } else {
     mDurationProbeState = DurationProbeState::Done;
   }
-  mWaitingForData.store(false);
   requestMoreDataIfNeeded();
 }
 
@@ -876,26 +861,12 @@ void PullBufferStream::applyPendingSeek() {
     const uint64_t targetSample = static_cast<uint64_t>(
         std::floor(mPendingSeekTime * mPCMformat.sampleRate *
                    mPCMformat.channels));
-    mCircularBuffer.advanceRead(mCircularBuffer.available());
-    mEncodedBuffer.clear();
-    mDecodedBacklog.clear();
-    mDecodedSamplesRead = targetSample;
-    mDecodedSamplesWritten = targetSample;
-    mBufferStartTime = mPendingSeekTime;
-    mTotalReceivedBytes = newOffset;
-    mSequentialReadOffset = newOffset;
+    resetBufferWindow(targetSample, targetSample, mPendingSeekTime, newOffset,
+                      newOffset);
     if (mInstance != nullptr) {
       mInstance->mStreamPosition = mPendingSeekTime;
     }
-    if (mPCMformat.dataType == BufferType::AUTO && mStreamDecoder) {
-      const DetectedType type = mStreamDecoder->getWrapperType();
-      if (type == DetectedType::BUFFER_OGG_OPUS ||
-          type == DetectedType::BUFFER_OGG_VORBIS) {
-        mStreamDecoder->prepareForSeek(targetSample);
-      } else {
-        mStreamDecoder = std::make_unique<StreamDecoder>();
-      }
-    }
+    resetDecoderForSeek(targetSample);
     mPendingSeekByteOffset = newOffset;
     mDataIsEnded.store(false);
     mWaitingForData.store(false);
@@ -1179,7 +1150,6 @@ void PullBufferStream::clearDartCallbacks() {
 }
 
 AudioSourceInstance *PullBufferStream::createInstance() {
-  mHasInstance.store(true);
   return new PullBufferStreamInstance(this);
 }
 
