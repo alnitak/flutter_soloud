@@ -189,6 +189,7 @@ result PullBufferStreamInstance::seek(double aSeconds, float *aScratch,
   mParent->mDecodedBacklog.clear();
   mParent->mDecodedSamplesRead = targetSample;
   mParent->mDecodedSamplesWritten = targetSample;
+  mParent->mBufferStartTime = aSeconds;
   mParent->mTotalReceivedBytes = newOffset;
   mParent->mSequentialReadOffset = newOffset;
   mStreamPosition = aSeconds;
@@ -222,6 +223,7 @@ result PullBufferStreamInstance::rewind() {
   mParent->mDecodedBacklog.clear();
   mParent->mDecodedSamplesRead = 0;
   mParent->mDecodedSamplesWritten = 0;
+  mParent->mBufferStartTime = 0.0;
   mParent->mTotalReceivedBytes = 0;
   mStreamPosition = 0.0;
   mParent->mPendingSeek.store(false);
@@ -288,6 +290,7 @@ PlayerErrors PullBufferStream::setPullBufferStream(
   mSequentialReadOffset = 0;
   mDecodedSamplesRead = 0;
   mDecodedSamplesWritten = 0;
+  mBufferStartTime = 0.0;
   mDataIsEnded.store(false);
   mIsBuffering.store(false);
   mWaitingForData.store(false);
@@ -356,6 +359,7 @@ void PullBufferStream::resetPullBufferStream() {
   mSequentialReadOffset = 0;
   mDecodedSamplesRead = 0;
   mDecodedSamplesWritten = 0;
+  mBufferStartTime = 0.0;
   mDataIsEnded.store(false);
   mIsBuffering.store(false);
   mWaitingForData.store(false);
@@ -410,21 +414,35 @@ double PullBufferStream::getBufferStartTime() const {
   const unsigned int channels = mPCMformat.channels;
   if (sampleRate == 0 || channels == 0) return 0.0;
 
-  // The decoded window is the actual contents of the circular buffer, not the
-  // playhead. As the playhead consumes samples, mDecodedSamplesRead advances
-  // and mCircularBuffer.available() shrinks by the same amount, so their sum
-  // (the decoded end) stays constant until new data is loaded. The red bar
-  // drawn from [startTime, endTime] therefore stays steady and the playhead
-  // moves inside it until the trigger position requests more data.
+  // The decoded window is the actual contents of the circular buffer. As the
+  // playhead consumes samples, mDecodedSamplesRead advances and
+  // mCircularBuffer.available() shrinks by the same amount, so their sum (the
+  // decoded end) stays constant until new data is loaded. The red bar drawn
+  // from [startTime, endTime] therefore stays steady and the playhead moves
+  // inside it until the trigger position requests more data.
   const double endTime = getBufferEndTime();
   const double startTimeFromCapacity =
       endTime - static_cast<double>(mCircularBuffer.capacity()) /
                     static_cast<double>(sampleRate * channels);
+  const double startTimeFromRead =
+      static_cast<double>(mDecodedSamplesRead) /
+      static_cast<double>(sampleRate * channels);
+
+  // Out-of-buffer seeks set mBufferStartTime to the seek position. Only when
+  // an explicit start time has been set (after an out-of-buffer seek) clamp the
+  // computed start to it; this makes the red bar start at the playhead while the
+  // buffer refills. During normal playback the sliding capacity-based window is
+  // used from the start, so the red bar stays steady as the playhead advances.
+  double startTime = startTimeFromCapacity;
+  if (mBufferStartTime > 0.0) {
+    startTime = std::max(startTime, mBufferStartTime);
+  }
+
   const double totalLength = getLength();
   if (totalLength > 0.0) {
-    return std::max(0.0, std::min(startTimeFromCapacity, totalLength));
+    return std::max(0.0, std::min(startTime, totalLength));
   }
-  return std::max(0.0, startTimeFromCapacity);
+  return std::max(0.0, startTime);
 }
 
 double PullBufferStream::getBufferEndTime() const {
@@ -862,6 +880,7 @@ void PullBufferStream::applyPendingSeek() {
     mDecodedBacklog.clear();
     mDecodedSamplesRead = targetSample;
     mDecodedSamplesWritten = targetSample;
+    mBufferStartTime = mPendingSeekTime;
     mTotalReceivedBytes = newOffset;
     mSequentialReadOffset = newOffset;
     if (mInstance != nullptr) {

@@ -236,8 +236,6 @@ class _FileStreamExampleState extends State<FileStreamExample> {
       _flashColor = flashColor;
       if (!isSmart) {
         _fetchedOffsets.clear();
-        _bufferedStart = pos;
-        _bufferedEnd = pos;
       }
     });
     SoLoud.instance.seek(_handle!, pos);
