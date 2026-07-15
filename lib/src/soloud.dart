@@ -486,6 +486,48 @@ interface class SoLoud {
     }
   }
 
+  /// Stops the audio output device without deinitializing the engine.
+  ///
+  /// Only the underlying audio device is stopped. Loaded [AudioSource]s, active
+  /// voices, filters and the [isInitialized] state are all left untouched, so
+  /// playback resumes exactly where it left off once [startAudioDevice] is
+  /// called. The device is stopped even while sounds are actively playing.
+  ///
+  /// This is idempotent: calling it while the device is already stopped does
+  /// nothing.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  Future<void> stopAudioDevice() async {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+
+    final error = _controller.soLoudFFI.stopAudioDevice();
+    _logPlayerError(error, from: 'stopAudioDevice() result');
+    if (error != PlayerErrors.noError) {
+      throw SoLoudCppException.fromPlayerError(error);
+    }
+  }
+
+  /// Restarts the audio output device previously stopped by [stopAudioDevice],
+  /// so existing voices and loaded [AudioSource]s keep operating.
+  ///
+  /// This is idempotent: calling it while the device is already started does
+  /// nothing.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  Future<void> startAudioDevice() async {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+
+    final error = _controller.soLoudFFI.startAudioDevice();
+    _logPlayerError(error, from: 'startAudioDevice() result');
+    if (error != PlayerErrors.noError) {
+      throw SoLoudCppException.fromPlayerError(error);
+    }
+  }
+
   /// Lists all OS available playback devices.
   /// Could be called safely even if the engin has not been initialized yet.
   List<PlaybackDevice> listPlaybackDevices() {

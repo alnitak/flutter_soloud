@@ -220,6 +220,20 @@ public:
   /// @param enable whether the device should be stopped while idle.
   void setAndroidPauseDeviceWhenIdle(bool enable);
 
+  /// @brief Stop the audio output device without deinitializing the engine.
+  /// Only the miniaudio device is stopped; loaded sounds, active voices and
+  /// the initialized state are all preserved so playback can be resumed later
+  /// with startAudioDevice(). Stops the device even while voices are actively
+  /// playing. Idempotent: a no-op if the device is already stopped.
+  /// @return Returns [PlayerErrors.SO_NO_ERROR] if success.
+  PlayerErrors stopAudioDevice();
+
+  /// @brief Restart the audio output device previously stopped by
+  /// stopAudioDevice(), so existing voices and loaded sounds keep operating.
+  /// Idempotent: a no-op if the device is already started.
+  /// @return Returns [PlayerErrors.SO_NO_ERROR] if success.
+  PlayerErrors startAudioDevice();
+
   /// @brief Gets the pause state.
   /// @param handle the sound handle.
   /// @return true if paused.

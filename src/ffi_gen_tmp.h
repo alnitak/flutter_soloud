@@ -114,3 +114,14 @@ FFI_PLUGIN_EXPORT unsigned int busGetActiveVoiceCount(unsigned int busId);
 /// behavior of leaving the device running. Can be called any time. No effect on
 /// other backends.
 FFI_PLUGIN_EXPORT void setAndroidPauseDeviceWhenIdle(unsigned int enable);
+
+/// Stop the audio output device without deinitializing the engine. Only the
+/// miniaudio device is stopped; loaded sounds, active voices and the
+/// initialized state are preserved so playback can be resumed later with
+/// startAudioDevice(). Idempotent: a no-op if the device is already stopped.
+FFI_PLUGIN_EXPORT enum PlayerErrors stopAudioDevice();
+
+/// Restart the audio output device previously stopped by stopAudioDevice(), so
+/// existing voices and loaded sounds keep operating. Idempotent: a no-op if the
+/// device is already started.
+FFI_PLUGIN_EXPORT enum PlayerErrors startAudioDevice();

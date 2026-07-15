@@ -146,6 +146,18 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }
 
   @override
+  PlayerErrors stopAudioDevice() {
+    final ret = wasmStopAudioDevice();
+    return PlayerErrors.values[ret];
+  }
+
+  @override
+  PlayerErrors startAudioDevice() {
+    final ret = wasmStartAudioDevice();
+    return PlayerErrors.values[ret];
+  }
+
+  @override
   PlayerErrors changeDevice(int deviceId) {
     final ret = wasmChangeDevice(deviceId);
     return PlayerErrors.values[ret];

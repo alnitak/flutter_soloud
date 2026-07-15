@@ -377,6 +377,36 @@ namespace SoLoud
         return 0;
     }
 
+    // Unconditionally stop the miniaudio output device, regardless of platform
+    // idle-pause policy or whether voices are still active. Only the device is
+    // touched: SoLoud is not deinitialised and its voices/sources are left
+    // untouched, so miniaudio_startAudioDevice() can resume rendering exactly
+    // where it left off. Idempotent: a no-op if the device is already stopped.
+    result miniaudio_stopAudioDevice()
+    {
+        if (ma_device_get_state(&gDevice) == ma_device_state_started)
+        {
+            ma_result res = ma_device_stop(&gDevice);
+            if (res != MA_SUCCESS)
+                return UNKNOWN_ERROR;
+        }
+        return 0;
+    }
+
+    // Restart the miniaudio output device previously stopped by
+    // miniaudio_stopAudioDevice(). Idempotent: a no-op if the device is already
+    // started.
+    result miniaudio_startAudioDevice()
+    {
+        if (ma_device_get_state(&gDevice) == ma_device_state_stopped)
+        {
+            ma_result res = ma_device_start(&gDevice);
+            if (res != MA_SUCCESS)
+                return UNKNOWN_ERROR;
+        }
+        return 0;
+    }
+
     result miniaudio_init(SoLoud::Soloud *aSoloud, unsigned int aFlags, unsigned int aSamplerate, unsigned int aBuffer, unsigned int aChannels, void *pPlaybackInfos_id)
     {
         soloud = aSoloud;

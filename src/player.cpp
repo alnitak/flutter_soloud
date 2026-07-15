@@ -198,6 +198,8 @@ void Player::setStateChangedCallback(void (*stateChangedCallback)(unsigned int))
 // here so we don't need to pull in the backend-internal header.
 namespace SoLoud { void miniaudio_setLowLatency(bool aLowLatency); }
 namespace SoLoud { void miniaudio_setAndroidPauseDeviceWhenIdle(bool aEnable); }
+namespace SoLoud { SoLoud::result miniaudio_stopAudioDevice(); }
+namespace SoLoud { SoLoud::result miniaudio_startAudioDevice(); }
 
 PlayerErrors Player::init(unsigned int sampleRate, unsigned int bufferSize, unsigned int channels, int deviceID, bool lowLatency)
 {
@@ -848,6 +850,28 @@ void Player::setAndroidPauseDeviceWhenIdle(bool enable)
 #else
     (void)enable;
 #endif
+}
+
+PlayerErrors Player::stopAudioDevice()
+{
+    if (!mInited)
+        return backendNotInited;
+
+    SoLoud::result result = SoLoud::miniaudio_stopAudioDevice();
+    if (result != SoLoud::SO_NO_ERROR)
+        return unknownError;
+    return noError;
+}
+
+PlayerErrors Player::startAudioDevice()
+{
+    if (!mInited)
+        return backendNotInited;
+
+    SoLoud::result result = SoLoud::miniaudio_startAudioDevice();
+    if (result != SoLoud::SO_NO_ERROR)
+        return unknownError;
+    return noError;
 }
 
 void Player::startPauseEngineScheduler()

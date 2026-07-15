@@ -91,6 +91,14 @@ namespace SoLoud
 	// leaving the device running to avoid rare stale-buffer glitches (#446).
 	// Can be called any time. No-op effect on non-Android backends.
 	void miniaudio_setAndroidPauseDeviceWhenIdle(bool aEnable);
+	// Unconditionally stop the miniaudio output device (regardless of platform
+	// idle-pause policy or active voices) without deinitialising SoLoud or
+	// touching its voices/sources. Idempotent: no-op if already stopped.
+	result miniaudio_stopAudioDevice();
+	// Restart the miniaudio output device stopped by miniaudio_stopAudioDevice()
+	// so existing voices and sources keep operating. Idempotent: no-op if
+	// already started.
+	result miniaudio_startAudioDevice();
 
 	// nosound back-end initialization call
 	result nosound_init(SoLoud::Soloud* aSoloud, unsigned int aFlags = Soloud::CLIP_ROUNDOFF, unsigned int aSamplerate = 44100, unsigned int aBuffer = 2048, unsigned int aChannels = 2);

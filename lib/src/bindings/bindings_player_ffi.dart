@@ -317,6 +317,32 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       .asFunction<void Function(int)>();
 
   @override
+  PlayerErrors stopAudioDevice() {
+    final ret = _stopAudioDevice();
+    return PlayerErrors.values[ret];
+  }
+
+  late final _stopAudioDevicePtr =
+      _lookup<ffi.NativeFunction<ffi.UnsignedInt Function()>>(
+        'stopAudioDevice',
+      );
+  late final _stopAudioDevice = _stopAudioDevicePtr
+      .asFunction<int Function()>();
+
+  @override
+  PlayerErrors startAudioDevice() {
+    final ret = _startAudioDevice();
+    return PlayerErrors.values[ret];
+  }
+
+  late final _startAudioDevicePtr =
+      _lookup<ffi.NativeFunction<ffi.UnsignedInt Function()>>(
+        'startAudioDevice',
+      );
+  late final _startAudioDevice = _startAudioDevicePtr
+      .asFunction<int Function()>();
+
+  @override
   PlayerErrors changeDevice(int deviceId) {
     final ret = _changeDevice(deviceId);
     return PlayerErrors.values[ret];

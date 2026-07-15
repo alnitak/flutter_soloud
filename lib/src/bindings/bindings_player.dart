@@ -103,6 +103,19 @@ abstract class FlutterSoLoud {
   @mustBeOverridden
   void setAndroidPauseDeviceWhenIdle(bool enable);
 
+  /// Stop the audio output device without deinitializing the engine. Only the
+  /// miniaudio device is stopped; loaded sounds, active voices and the
+  /// initialized state are preserved so playback can resume later with
+  /// [startAudioDevice]. Idempotent: a no-op if the device is already stopped.
+  @mustBeOverridden
+  PlayerErrors stopAudioDevice();
+
+  /// Restart the audio output device previously stopped by [stopAudioDevice],
+  /// so existing voices and loaded sounds keep operating. Idempotent: a no-op
+  /// if the device is already started.
+  @mustBeOverridden
+  PlayerErrors startAudioDevice();
+
   /// Change the playback device.
   ///
   /// [deviceId] the device ID. -1 for default OS output device.
