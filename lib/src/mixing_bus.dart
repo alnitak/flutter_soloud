@@ -176,6 +176,7 @@ class Bus {
     bool paused = false,
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
+    Duration? loopingEndAt,
   }) {
     if (!_isValid) {
       _log.warning('bus $busId is already disposed');
@@ -189,6 +190,7 @@ class Bus {
       paused: paused,
       looping: looping,
       loopingStartAt: loopingStartAt,
+      loopingEndAt: loopingEndAt,
     );
   }
 
@@ -213,6 +215,7 @@ class Bus {
     bool paused = false,
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
+    Duration? loopingEndAt,
   }) {
     if (!_isValid) {
       _log.warning('bus $busId is already disposed');
@@ -231,6 +234,7 @@ class Bus {
       paused: paused,
       looping: looping,
       loopingStartAt: loopingStartAt,
+      loopingEndAt: loopingEndAt,
     );
   }
 

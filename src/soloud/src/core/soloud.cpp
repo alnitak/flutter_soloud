@@ -1674,23 +1674,12 @@ namespace SoLoud
 
 						// Get a block of source data
 
-						int readcount = 0;
+						unsigned int readcount = 0;
 						if (!voice->hasEnded() || voice->mFlags & AudioSourceInstance::LOOPING)
 						{
-							readcount = voice->getAudio(voice->mResampleData[0], SAMPLE_GRANULARITY, SAMPLE_GRANULARITY);
-							if (readcount < SAMPLE_GRANULARITY)
-							{
-								if (voice->mFlags & AudioSourceInstance::LOOPING)
-								{
-									while (readcount < SAMPLE_GRANULARITY && voice->seek(voice->mLoopPoint, mScratch.mData, mScratchSize) == SO_NO_ERROR)
-									{
-										voice->mLoopCount++;
-										int inc = voice->getAudio(voice->mResampleData[0] + readcount, SAMPLE_GRANULARITY - readcount, SAMPLE_GRANULARITY);
-										readcount += inc;
-										if (inc == 0) break;
-									}
-								}
-							}
+							readcount = readSourceSamples_internal(voice,
+								voice->mResampleData[0], SAMPLE_GRANULARITY,
+								SAMPLE_GRANULARITY);
 						}
 
                         // Clear remaining of the resample data if the full scratch wasn't used
@@ -1851,21 +1840,11 @@ namespace SoLoud
 
 						// Get a block of source data
 
-						int readcount = 0;
 						if (!voice->hasEnded() || voice->mFlags & AudioSourceInstance::LOOPING)
 						{
-							readcount = voice->getAudio(voice->mResampleData[0], SAMPLE_GRANULARITY, SAMPLE_GRANULARITY);
-							if (readcount < SAMPLE_GRANULARITY)
-							{
-								if (voice->mFlags & AudioSourceInstance::LOOPING)
-								{
-									while (readcount < SAMPLE_GRANULARITY && voice->seek(voice->mLoopPoint, mScratch.mData, mScratchSize) == SO_NO_ERROR)
-									{
-										voice->mLoopCount++;
-										readcount += voice->getAudio(voice->mResampleData[0] + readcount, SAMPLE_GRANULARITY - readcount, SAMPLE_GRANULARITY);
-									}
-								}
-							}
+							readSourceSamples_internal(voice,
+								voice->mResampleData[0], SAMPLE_GRANULARITY,
+								SAMPLE_GRANULARITY);
 						}
 
 						// If we go past zero, crop to zero (a bit of a kludge)

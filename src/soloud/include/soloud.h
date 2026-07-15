@@ -342,9 +342,16 @@ namespace SoLoud
 		bool getAutoStop(handle aVoiceHandle);
 		// Get voice loop point value
 		time getLoopPoint(handle aVoiceHandle);
+		// Get voice loop end point value. Zero uses the natural source end.
+		time getLoopEndPoint(handle aVoiceHandle);
 
-		// Set voice loop point value
+		// Set voice loop point value. Live playback applies the change at the
+		// next source refill; the getter reflects it immediately.
 		void setLoopPoint(handle aVoiceHandle, time aLoopPoint);
+		// Set voice loop end point value. Zero uses the natural source end.
+		// Live playback applies the change at the next source refill; the getter
+		// reflects it immediately.
+		void setLoopEndPoint(handle aVoiceHandle, time aLoopEndPoint);
 		// Set voice's loop state
 		void setLooping(handle aVoiceHandle, bool aLooping);
 		// Set whether sound should auto-stop when it ends
@@ -484,6 +491,8 @@ namespace SoLoud
 		void mapResampleBuffers_internal();
 		// Perform mixing for a specific bus
 		void mixBus_internal(float *aBuffer, unsigned int aSamplesToRead, unsigned int aBufferSize, float *aScratch, unsigned int aBus, float aSamplerate, unsigned int aChannels, unsigned int aResampler);
+		// Fill a source block while enforcing its optional loop end point.
+		unsigned int readSourceSamples_internal(AudioSourceInstance *aVoice, float *aBuffer, unsigned int aSamplesToRead, unsigned int aBufferSize);
 		// Find a free voice, stopping the oldest if no free voice is found.
 		int findFreeVoice_internal();
 		// Converts handle to voice, if the handle is valid. Returns -1 if not.

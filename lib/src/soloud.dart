@@ -12,6 +12,7 @@ import 'package:flutter_soloud/src/bindings/soloud_controller.dart';
 import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/exceptions/exceptions.dart';
 import 'package:flutter_soloud/src/filters/filters.dart';
+import 'package:flutter_soloud/src/helpers/looping_region.dart';
 import 'package:flutter_soloud/src/helpers/playback_device.dart';
 import 'package:flutter_soloud/src/metadata.dart';
 import 'package:flutter_soloud/src/mixer_output_stream_manager.dart';
@@ -1544,10 +1545,11 @@ interface class SoLoud {
   /// un-pausing it.
   ///
   /// To play a looping sound, set [looping] to `true`. You can also
-  /// define the region to loop by setting [loopingStartAt]
-  /// (which defaults to the beginning of the sound otherwise).
-  /// There is no way to set the end of the looping region — it will
-  /// always be the end of the [sound].
+  /// define the half-open region to loop by setting [loopingStartAt] and
+  /// [loopingEndAt]. The start defaults to the beginning of the sound, and a
+  /// `null` end uses the natural end of the [sound]. An end beyond the source
+  /// duration also loops at the natural end. Looping requires a source that
+  /// can seek back to the start, so [BufferingType.released] is unsupported.
   ///
   /// Returns the [SoundHandle] of the new sound instance.
   ///
@@ -1573,10 +1575,12 @@ interface class SoLoud {
     bool paused = false,
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
+    Duration? loopingEndAt,
   }) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    validateLoopRegion(start: loopingStartAt, end: loopingEndAt);
     final ret = _controller.soLoudFFI.play(
       sound.soundHash,
       busId: busId,
@@ -1585,6 +1589,7 @@ interface class SoLoud {
       paused: paused,
       looping: looping,
       loopingStartAt: loopingStartAt,
+      loopingEndAt: loopingEndAt,
     );
     _logPlayerError(ret.error, from: 'play()');
     if (!(ret.error == PlayerErrors.noError ||
@@ -1638,6 +1643,7 @@ interface class SoLoud {
     bool paused = false,
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
+    Duration? loopingEndAt,
   }) async {
     final providedCount =
         (asset != null ? 1 : 0) +
@@ -1651,6 +1657,7 @@ interface class SoLoud {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    validateLoopRegion(start: loopingStartAt, end: loopingEndAt);
 
     late final AudioSource sound;
     if (asset != null) {
@@ -1669,6 +1676,7 @@ interface class SoLoud {
       paused: paused,
       looping: looping,
       loopingStartAt: loopingStartAt,
+      loopingEndAt: loopingEndAt,
     );
 
     return sound;
@@ -1889,13 +1897,57 @@ interface class SoLoud {
   /// its [handle].
   ///
   /// Specify the loop point with [time] (a [Duration]).
+  /// Getters reflect the requested region immediately. Playback applies a
+  /// live change at the next source refill, so up to 512 already-decoded
+  /// source frames, plus backend latency, can still use the previous region.
+  /// Pass loop bounds to [play] or [play3d] when they must apply before the
+  /// first decoded sample.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void setLoopPoint(SoundHandle handle, Duration time) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    validateLoopRegion(
+      start: time,
+      end: _controller.soLoudFFI.getLoopEndPoint(handle),
+    );
     _controller.soLoudFFI.setLoopPoint(handle, time);
+  }
+
+  /// Get the exclusive loop end point of a currently playing sound.
+  ///
+  /// Returns `null` when the sound loops at its natural end.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  Duration? getLoopEndPoint(SoundHandle handle) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    return _controller.soLoudFFI.getLoopEndPoint(handle);
+  }
+
+  /// Set the exclusive loop end point of a currently playing sound.
+  ///
+  /// Set [time] to `null` to loop at the sound's natural end.
+  /// Getters reflect the requested region immediately. Playback applies a
+  /// live change at the next source refill, so up to 512 already-decoded
+  /// source frames, plus backend latency, can still use the previous region.
+  /// Pass loop bounds to [play] or [play3d] when they must apply before the
+  /// first decoded sample.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  void setLoopEndPoint(SoundHandle handle, Duration? time) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    if (time != null) {
+      validateLoopRegion(
+        start: _controller.soLoudFFI.getLoopPoint(handle),
+        end: time,
+      );
+    }
+    _controller.soLoudFFI.setLoopEndPoint(handle, time);
   }
 
   /// Enable or disable visualization.
@@ -2879,10 +2931,12 @@ interface class SoLoud {
     bool paused = false,
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
+    Duration? loopingEndAt,
   }) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    validateLoopRegion(start: loopingStartAt, end: loopingEndAt);
 
     final ret = _controller.soLoudFFI.play3d(
       sound.soundHash,
@@ -2897,6 +2951,7 @@ interface class SoLoud {
       paused: paused,
       looping: looping,
       loopingStartAt: loopingStartAt,
+      loopingEndAt: loopingEndAt,
     );
 
     _logPlayerError(ret.error, from: 'play3d()');

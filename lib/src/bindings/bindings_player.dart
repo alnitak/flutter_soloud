@@ -409,8 +409,8 @@ abstract class FlutterSoLoud {
   /// [looping] whether to start the sound in looping state.
   /// [loopingStartAt] If looping is enabled, the loop point is, by default,
   /// the start of the stream. The loop start point can be set with this
-  /// parameter, and current loop point can be queried with `getLoopingPoint()`
-  /// and changed by `setLoopingPoint()`.
+  /// parameter. [loopingEndAt] optionally sets the exclusive end of the loop;
+  /// when it is `null`, the stream's natural end is used.
   /// Return the error if any and a new `newHandle` of this sound.
   @mustBeOverridden
   ({PlayerErrors error, SoundHandle newHandle}) play(
@@ -421,6 +421,7 @@ abstract class FlutterSoLoud {
     bool paused = false,
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
+    Duration? loopingEndAt,
   });
 
   /// Stop already loaded sound identified by [handle] and clear it.
@@ -466,8 +467,24 @@ abstract class FlutterSoLoud {
   ///
   /// [handle] the sound handle.
   /// [timestamp] the time in which the loop will restart.
+  /// The requested value is visible immediately and takes effect on playback
+  /// at the next 512-frame source refill.
   @mustBeOverridden
   void setLoopPoint(SoundHandle handle, Duration timestamp);
+
+  /// Get the exclusive end point of the sound's looping region.
+  ///
+  /// Returns `null` when the stream's natural end is used.
+  @mustBeOverridden
+  Duration? getLoopEndPoint(SoundHandle handle);
+
+  /// Set the exclusive end point of the sound's looping region.
+  ///
+  /// Set [timestamp] to `null` to use the stream's natural end.
+  /// The requested value is visible immediately and takes effect on playback
+  /// at the next 512-frame source refill.
+  @mustBeOverridden
+  void setLoopEndPoint(SoundHandle handle, Duration? timestamp);
 
   /// Enable or disable visualization.
   /// Not yet supported on the web.
@@ -923,8 +940,8 @@ abstract class FlutterSoLoud {
   /// [looping] whether to start the sound in looping state.
   /// [loopingStartAt] If looping is enabled, the loop point is, by default,
   /// the start of the stream. The loop start point can be set with this
-  /// parameter, and current loop point can be queried with `getLoopingPoint()`
-  /// and changed by `setLoopingPoint()`.
+  /// parameter. [loopingEndAt] optionally sets the exclusive end of the loop;
+  /// when it is `null`, the stream's natural end is used.
   /// Returns the handle of the sound, 0 if error.
   @mustBeOverridden
   ({PlayerErrors error, SoundHandle newHandle}) play3d(
@@ -940,6 +957,7 @@ abstract class FlutterSoLoud {
     bool paused = false,
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
+    Duration? loopingEndAt,
   });
 
   /// Since SoLoud has no knowledge of the scale of your coordinates,
