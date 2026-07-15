@@ -305,6 +305,18 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       .asFunction<void Function(int)>();
 
   @override
+  void setAndroidPauseDeviceWhenIdle(bool enable) {
+    _setAndroidPauseDeviceWhenIdle(enable ? 1 : 0);
+  }
+
+  late final _setAndroidPauseDeviceWhenIdlePtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt)>>(
+        'setAndroidPauseDeviceWhenIdle',
+      );
+  late final _setAndroidPauseDeviceWhenIdle = _setAndroidPauseDeviceWhenIdlePtr
+      .asFunction<void Function(int)>();
+
+  @override
   PlayerErrors changeDevice(int deviceId) {
     final ret = _changeDevice(deviceId);
     return PlayerErrors.values[ret];

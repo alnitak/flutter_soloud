@@ -85,6 +85,12 @@ namespace SoLoud
 	// AudioAttributes externally (e.g. via audio_session). Must be called before
 	// init. No-op effect on non-Android backends.
 	void miniaudio_setAndroidAAudioAttributes(bool aManaged);
+	// Android only: when true, stops the miniaudio device once the engine goes
+	// idle (no active voices), releasing the audioserver AudioMix partial
+	// wakelock (#250). Defaults to false, keeping the historical behavior of
+	// leaving the device running to avoid rare stale-buffer glitches (#446).
+	// Can be called any time. No-op effect on non-Android backends.
+	void miniaudio_setAndroidPauseDeviceWhenIdle(bool aEnable);
 
 	// nosound back-end initialization call
 	result nosound_init(SoLoud::Soloud* aSoloud, unsigned int aFlags = Soloud::CLIP_ROUNDOFF, unsigned int aSamplerate = 44100, unsigned int aBuffer = 2048, unsigned int aChannels = 2);

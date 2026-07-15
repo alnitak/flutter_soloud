@@ -2223,6 +2223,29 @@ interface class SoLoud {
     _controller.soLoudFFI.setMaxActiveVoiceCount(maxVoiceCount);
   }
 
+  /// Controls whether the audio device is stopped on Android when no voices
+  /// are active (after SoLoud's internal ~500 ms idle-pause delay).
+  ///
+  /// Stopping the device does NOT invalidate any [AudioSource]s, sound
+  /// handles, or filters — engine state is preserved and the device restarts
+  /// automatically on the next play/resume, at the cost of a device-restart
+  /// latency of roughly tens of milliseconds.
+  ///
+  /// While the device is running — even rendering silence — Android's
+  /// audioserver holds an `AudioMix` partial wakelock attributed to your app.
+  /// Enabling this releases that wakelock while idle, which otherwise counts
+  /// toward Google Play's excessive-partial-wake-locks metric.
+  ///
+  /// Defaults to `false`: the historical Android behavior, which avoids rare
+  /// stale-buffer glitches on very rapid stop→play cycles. Recommended `true`
+  /// for apps where playback commonly sits paused in the background.
+  ///
+  /// No effect on iOS/macOS/desktop (already stop the device when idle) or
+  /// Web (no-op). Can be called any time, before or after [init].
+  void setAndroidPauseDeviceWhenIdle(bool enable) {
+    _controller.soLoudFFI.setAndroidPauseDeviceWhenIdle(enable);
+  }
+
   /// Smooth FFT data.
   /// When new data is read and the values are decreasing, the new value
   /// will be decreased with an amplitude between the old and the new value.

@@ -66,6 +66,7 @@ namespace SoLoud
 #include <android/api-level.h>
 #endif
 #include <math.h>
+#include <atomic>
 #include <chrono>
 #include <thread>
 #include <mutex>
@@ -103,6 +104,16 @@ namespace SoLoud
     // symbol always exists for the C bindings to call.
     static ma_aaudio_usage gMiniaudioAAudioUsage = ma_aaudio_usage_media;
     static ma_aaudio_content_type gMiniaudioAAudioContentType = ma_aaudio_content_type_music;
+
+    // Android only: opt-in flag controlling whether soloud_miniaudio_pause()
+    // actually stops the miniaudio device when the engine goes idle (no active
+    // voices). Default false preserves the historical Android behavior of
+    // keeping the device running (see #446). When true, Android behaves like
+    // every other native platform and stops the device, releasing the
+    // audioserver AudioMix partial wakelock (see #250). Written rarely from the
+    // caller thread, read on the pause path — made atomic for that cross-thread
+    // read/write.
+    static std::atomic<bool> gAndroidPauseDeviceWhenIdle{false};
 
     // Forward declarations for functions used in on_notification
     result soloud_miniaudio_pause(SoLoud::Soloud *aSoloud);
@@ -190,6 +201,11 @@ namespace SoLoud
             aManaged ? ma_aaudio_usage_media : ma_aaudio_usage_default;
         gMiniaudioAAudioContentType =
             aManaged ? ma_aaudio_content_type_music : ma_aaudio_content_type_default;
+    }
+
+    void miniaudio_setAndroidPauseDeviceWhenIdle(bool aEnable)
+    {
+        gAndroidPauseDeviceWhenIdle.store(aEnable);
     }
 
     void soloud_miniaudio_audiomixer(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount)
@@ -288,16 +304,33 @@ namespace SoLoud
     {
         if (ma_device_get_state(&gDevice) == ma_device_state_started)
         {
-#if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
-            /* On Web and Android, don't suspend the audio device to avoid a bug where
+#if defined(__EMSCRIPTEN__)
+            /* On Web, don't suspend the audio device to avoid a bug where
                stale buffered audio data can fire after the device is stopped but before
                it takes effect. When stop() and play() are called in quick succession,
                those stale buffers get queued and play after resume(), causing audio
                glitches and lag. Keeping the device running is safe: soloud->mix()
                produces silence when no voices are active, which has negligible overhead.
-               This solves #446 on both Web and Android. */
+               This solves #446 on Web. */
             (void)aSoloud;
             return 0;
+#elif defined(__ANDROID__)
+            /* On Android the same #446 stale-buffer glitch can occur on very rapid
+               stop->play cycles, so the device is kept running by default (mix()
+               renders silence when idle, negligible overhead). But leaving the device
+               started also keeps the audioserver AudioMix partial wakelock alive
+               against the app's UID, which counts toward Google Play's
+               excessive-partial-wake-locks metric (#250). Opt in via
+               miniaudio_setAndroidPauseDeviceWhenIdle(true) to stop the device when
+               idle and release that wakelock, accepting the rare #446 risk. */
+            if (!gAndroidPauseDeviceWhenIdle.load())
+            {
+                (void)aSoloud;
+                return 0;
+            }
+            ma_result res = ma_device_stop(&gDevice);
+            if (res != MA_SUCCESS)
+                return UNKNOWN_ERROR;
 #else
             ma_result res = ma_device_stop(&gDevice);
             if (res != MA_SUCCESS)

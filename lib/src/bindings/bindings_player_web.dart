@@ -141,6 +141,11 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }
 
   @override
+  void setAndroidPauseDeviceWhenIdle(bool enable) {
+    // No-op on web: no wakelock concept, device lifecycle differs.
+  }
+
+  @override
   PlayerErrors changeDevice(int deviceId) {
     final ret = wasmChangeDevice(deviceId);
     return PlayerErrors.values[ret];
