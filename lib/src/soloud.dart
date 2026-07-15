@@ -2240,6 +2240,12 @@ interface class SoLoud {
   /// stale-buffer glitches on very rapid stop→play cycles. Recommended `true`
   /// for apps where playback commonly sits paused in the background.
   ///
+  /// Takes effect immediately: enabling this while nothing is playing schedules
+  /// the device to stop (after SoLoud's ~500 ms idle-pause delay) rather than
+  /// waiting for the next pause/stop; disabling it restarts a device that a
+  /// previous idle-pause had stopped. The ~500 ms delay before the device stops
+  /// on pause is always applied.
+  ///
   /// No effect on iOS/macOS/desktop (already stop the device when idle) or
   /// Web (no-op). Can be called any time, before or after [init].
   void setAndroidPauseDeviceWhenIdle(bool enable) {

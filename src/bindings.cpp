@@ -263,7 +263,7 @@ FFI_PLUGIN_EXPORT void setAndroidAAudioAttributes(unsigned int managed) {
 /// behavior of leaving the device running. Can be called any time. No effect on
 /// other backends.
 FFI_PLUGIN_EXPORT void setAndroidPauseDeviceWhenIdle(unsigned int enable) {
-  SoLoud::miniaudio_setAndroidPauseDeviceWhenIdle(enable != 0);
+  player.get()->setAndroidPauseDeviceWhenIdle(enable != 0);
 }
 
 /// Change the playback device.

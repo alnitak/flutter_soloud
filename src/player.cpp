@@ -197,6 +197,7 @@ void Player::setStateChangedCallback(void (*stateChangedCallback)(unsigned int))
 // Defined in the miniaudio backend (soloud_miniaudio.cpp). Forward-declared
 // here so we don't need to pull in the backend-internal header.
 namespace SoLoud { void miniaudio_setLowLatency(bool aLowLatency); }
+namespace SoLoud { void miniaudio_setAndroidPauseDeviceWhenIdle(bool aEnable); }
 
 PlayerErrors Player::init(unsigned int sampleRate, unsigned int bufferSize, unsigned int channels, int deviceID, bool lowLatency)
 {
@@ -814,6 +815,38 @@ void Player::pauseEngine()
         mPauseRequested = true;
     }
     mPauseCv.notify_one();
+#endif
+}
+
+void Player::setAndroidPauseDeviceWhenIdle(bool enable)
+{
+#if defined(__ANDROID__)
+    // Update the backend flag first so any subsequent pause honors the choice.
+    SoLoud::miniaudio_setAndroidPauseDeviceWhenIdle(enable);
+
+    // Apply the change to the running device immediately, based on the current
+    // state, instead of waiting for the next pause/stop event.
+    if (!mInited)
+        return;
+
+    if (enable)
+    {
+        // If nothing is actively playing, the device may be sitting started
+        // but idle (holding the AudioMix wakelock). Schedule the deferred stop
+        // now; this reuses pauseEngine()'s ~500 ms coalescing so it behaves
+        // exactly like an idle-pause triggered by the last voice stopping.
+        if (soloud.getActiveVoiceCount() == 0)
+            pauseEngine();
+    }
+    else
+    {
+        // Reverting to the historical always-on behavior: if a previous
+        // idle-pause already stopped the device, start it back up right away.
+        // resume() is a no-op when the device is already running.
+        soloud.resume();
+    }
+#else
+    (void)enable;
 #endif
 }
 
