@@ -496,13 +496,16 @@ interface class SoLoud {
   /// This is idempotent: calling it while the device is already stopped does
   /// nothing.
   ///
+  /// The blocking native device operation runs off the UI thread, so this does
+  /// not freeze the app; await the returned future to know when it completed.
+  ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   Future<void> stopAudioDevice() async {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
 
-    final error = _controller.soLoudFFI.stopAudioDevice();
+    final error = await _controller.soLoudFFI.stopAudioDevice();
     _logPlayerError(error, from: 'stopAudioDevice() result');
     if (error != PlayerErrors.noError) {
       throw SoLoudCppException.fromPlayerError(error);
@@ -515,13 +518,17 @@ interface class SoLoud {
   /// This is idempotent: calling it while the device is already started does
   /// nothing.
   ///
+  /// The blocking native device operation runs off the UI thread, so this does
+  /// not freeze the app; await the returned future to know when the device is
+  /// running again.
+  ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   Future<void> startAudioDevice() async {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
 
-    final error = _controller.soLoudFFI.startAudioDevice();
+    final error = await _controller.soLoudFFI.startAudioDevice();
     _logPlayerError(error, from: 'startAudioDevice() result');
     if (error != PlayerErrors.noError) {
       throw SoLoudCppException.fromPlayerError(error);
