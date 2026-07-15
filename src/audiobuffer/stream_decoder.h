@@ -261,6 +261,10 @@ public:
   /// the duration is not yet known.
   virtual double getDuration() const { return -1.0; }
 
+  /// Set the total encoded audio size in bytes. Wrappers may use this to
+  /// estimate duration for formats that do not store it in the header.
+  virtual void setTotalAudioSizeBytes(uint64_t size) { (void)size; }
+
   /// Return the number of samples to skip at the start of the stream.
   /// Relevant for Ogg Opus (header pre_skip); zero for other formats.
   virtual int preSkip() const { return 0; }
@@ -292,7 +296,7 @@ class StreamDecoder {
 public:
   StreamDecoder()
       : mWrapper(nullptr), isFormatDetected(false), mIcyMetaInt(0),
-        mDataEndedPending(false) {}
+        mTotalAudioSizeBytes(0), mDataEndedPending(false) {}
 
   ~StreamDecoder() = default;
 
@@ -332,6 +336,16 @@ public:
   /// Prepare the wrapped decoder for a seek to [targetSample].
   void prepareForSeek(uint64_t targetSample);
 
+  /// Set the total encoded audio size in bytes. The value is forwarded to the
+  /// wrapped decoder as soon as it is created, so wrappers can estimate
+  /// duration for formats that do not store it in the header.
+  void setTotalAudioSizeBytes(uint64_t size) {
+    mTotalAudioSizeBytes = size;
+    if (mWrapper) {
+      mWrapper->setTotalAudioSizeBytes(size);
+    }
+  }
+
 private:
   DetectedType detectAudioFormat(const std::vector<unsigned char> &buffer);
 
@@ -339,6 +353,7 @@ private:
   std::unique_ptr<IDecoderWrapper> mWrapper;
   bool isFormatDetected;
   int mIcyMetaInt;
+  uint64_t mTotalAudioSizeBytes;
 
   /// Deferred end-of-stream flag. Set by setDataEnded() when the wrapper
   /// does not exist yet. Forwarded to the wrapper in decode() once created.

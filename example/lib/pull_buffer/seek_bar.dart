@@ -85,7 +85,10 @@ class _PullBufferSeekBarState extends State<PullBufferSeekBar>
   }
 
   double _ratioFor(Duration value) {
-    return value.inMilliseconds.toDouble() / widget.duration.inMilliseconds;
+    final total = widget.duration.inMilliseconds;
+    if (total <= 0) return 0;
+    final ms = value.inMilliseconds.clamp(0, total).toDouble();
+    return ms / total;
   }
 
   @override

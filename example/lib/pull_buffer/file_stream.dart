@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:developer' as dev;
-import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -8,7 +7,6 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:flutter_soloud_example/pull_buffer/seek_bar.dart';
 import 'package:logging/logging.dart';
-import 'package:path_provider/path_provider.dart';
 
 /// This example reads a local audio file in chunks and feeds it to an
 /// [AudioSource]. It demonstrates the callback-driven pull model and the custom
@@ -220,30 +218,6 @@ class _FileStreamExampleState extends State<FileStreamExample> {
       _status = 'Playing from local file';
     });
     _logger.info('Started playback, handle=$_handle');
-
-    /// Start capturing output mixer after 1 second
-    await Future.delayed(const Duration(seconds: 1), () {});
-
-    final dir = await getTemporaryDirectory();
-    final fileSink = File('${dir.path}/mixer-pcmF32le.pcm').openWrite();
-    final stream = SoLoud.instance.startMixerOutputStream(
-      format: MixerOutputFormat.pcmF32le,
-      sampleRate: 44100, // Use the engine sample rate
-      channels: 2, // Use the engine channel count
-      bufferSizeBytes: 1024 * 1024, // 1 MB circular buffer
-      notificationThresholdBytes:
-          4096, // Emit a chunk every 4 KB (compressed/PCM threshold mode)
-    );
-
-    final subscription = stream.listen((Uint8List chunk) {
-      // Append the chunk to a file or send it over the network
-      fileSink.add(chunk);
-    });
-
-    Future.delayed(const Duration(seconds: 3), () {
-      subscription.cancel();
-      fileSink.close();
-    });
   }
 
   void _onSeek(Duration pos) {

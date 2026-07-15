@@ -36,6 +36,7 @@ public:
   bool canSeekToTime(double seconds) const override;
   uint64_t timeToByteOffset(double seconds) override;
   double getDuration() const override;
+  void setTotalAudioSizeBytes(uint64_t size) override;
 
   static bool checkForValidFrames(const std::vector<unsigned char> &buffer);
 
@@ -61,8 +62,10 @@ private:
   int mIcyMetaInt;
   bool ID3TagsFound;
   bool mDataEnded; // Signals that no more data will be added
+  uint64_t mTotalAudioSizeBytes;
 
   void buildSeekTable();
+  double estimateBitrateFromFirstFrame() const;
   double parseDurationFromXingVbri() const;
   mutable std::vector<drmp3_seek_point> mSeekPoints;
 };

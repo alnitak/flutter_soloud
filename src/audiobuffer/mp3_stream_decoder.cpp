@@ -117,7 +117,7 @@ MP3DecoderWrapper::MP3DecoderWrapper()
     : isInitialized(false), audioData({}), m_read_pos(0),
       bytes_until_meta(0), // no metadata expected by default
       lastMetadata(""), mIcyMetaInt(0), ID3TagsFound(false),
-      mDataEnded(false) {}
+      mDataEnded(false), mTotalAudioSizeBytes(0) {}
 
 MP3DecoderWrapper::~MP3DecoderWrapper() { cleanup(); }
 
@@ -143,6 +143,10 @@ void MP3DecoderWrapper::setIcyMetaInt(int icyMetaInt) {
 
   mIcyMetaInt = icyMetaInt;
   bytes_until_meta = mIcyMetaInt;
+}
+
+void MP3DecoderWrapper::setTotalAudioSizeBytes(uint64_t size) {
+  mTotalAudioSizeBytes = size;
 }
 
 // Processes a buffer for an ICY stream (internet radio).
@@ -214,8 +218,7 @@ MP3DecoderWrapper::decode(std::vector<unsigned char> &buffer, int *samplerate,
     buffer.clear(); // Signal to the caller that we've consumed the buffer.
   }
 
-
-  // Only return early if audioData is empty AND either:
+  // Only return early if audioData is empty AND either
   // - decoder is not initialized (need data to init), OR
   // - mDataEnded is false (more data may come)
   // When mDataEnded is true and decoder is initialized, dr_mp3 may still have
@@ -425,7 +428,83 @@ double MP3DecoderWrapper::getDuration() const {
     return static_cast<double>(decoder.totalPCMFrameCount) /
            static_cast<double>(decoder.sampleRate);
   }
-  return parseDurationFromXingVbri();
+  const double xingDuration = parseDurationFromXingVbri();
+  if (xingDuration > 0.0) {
+    return xingDuration;
+  }
+  // Fall back to a file-size + bitrate estimate. This is exact for CBR MP3s
+  // and approximate for VBR files when the total encoded size is known.
+  const double bitrate = estimateBitrateFromFirstFrame();
+  if (bitrate > 0.0 && mTotalAudioSizeBytes > 0) {
+    size_t id3Size = 0;
+    if (audioData.size() >= 10 && std::memcmp(audioData.data(), "ID3", 3) == 0) {
+      const uint32_t tagSize = ((audioData[6] & 0x7f) << 21) |
+                               ((audioData[7] & 0x7f) << 14) |
+                               ((audioData[8] & 0x7f) << 7) |
+                               (audioData[9] & 0x7f);
+      id3Size = static_cast<size_t>(tagSize) + 10;
+    }
+    const uint64_t audioBytes =
+        mTotalAudioSizeBytes > id3Size ? mTotalAudioSizeBytes - id3Size : 0;
+    return static_cast<double>(audioBytes) * 8.0 / bitrate;
+  }
+  return -1.0;
+}
+
+double MP3DecoderWrapper::estimateBitrateFromFirstFrame() const {
+  if (audioData.size() < 4) return 0.0;
+
+  size_t pos = 0;
+  if (audioData.size() >= 10 && std::memcmp(audioData.data(), "ID3", 3) == 0) {
+    const uint32_t tagSize = ((audioData[6] & 0x7f) << 21) |
+                             ((audioData[7] & 0x7f) << 14) |
+                             ((audioData[8] & 0x7f) << 7) |
+                             (audioData[9] & 0x7f);
+    pos = static_cast<size_t>(tagSize) + 10;
+    if (pos >= audioData.size()) return 0.0;
+  }
+
+  while (pos + 4 < audioData.size()) {
+    if (audioData[pos] == 0xff && (audioData[pos + 1] & 0xe0) == 0xe0) {
+      const uint8_t byte1 = audioData[pos + 1];
+      const uint8_t version = (byte1 >> 3) & 0x3;
+      const uint8_t layer = (byte1 >> 1) & 0x3;
+      const uint8_t byte2 = audioData[pos + 2];
+      const uint8_t bitrateIndex = (byte2 >> 4) & 0xf;
+      const uint8_t sampleRateIndex = (byte2 >> 2) & 0x3;
+
+      if (bitrateIndex == 0 || bitrateIndex == 0xf) return 0.0;
+      if (sampleRateIndex == 0x3) return 0.0;
+
+      static const int kBitratesMpeg1Layer3[16] = {
+          0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 0};
+      static const int kBitratesMpeg1Layer2[16] = {
+          0, 32, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 384, 0};
+      static const int kBitratesMpeg1Layer1[16] = {
+          0, 32, 64, 96, 128, 160, 192, 224, 256, 288, 320, 352, 384, 416, 448, 0};
+      static const int kBitratesMpeg2Layer3[16] = {
+          0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160, 0};
+      static const int kBitratesMpeg2Layer2[16] = {
+          0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160, 0};
+      static const int kBitratesMpeg2Layer1[16] = {
+          0, 32, 48, 56, 64, 80, 96, 112, 128, 144, 160, 176, 192, 224, 256, 0};
+
+      int bitrateKbps = 0;
+      if (version == 3) { // MPEG1
+        if (layer == 1) bitrateKbps = kBitratesMpeg1Layer3[bitrateIndex];
+        else if (layer == 2) bitrateKbps = kBitratesMpeg1Layer2[bitrateIndex];
+        else if (layer == 3) bitrateKbps = kBitratesMpeg1Layer1[bitrateIndex];
+      } else { // MPEG2 / MPEG2.5
+        if (layer == 1) bitrateKbps = kBitratesMpeg2Layer3[bitrateIndex];
+        else if (layer == 2) bitrateKbps = kBitratesMpeg2Layer2[bitrateIndex];
+        else if (layer == 3) bitrateKbps = kBitratesMpeg2Layer1[bitrateIndex];
+      }
+      if (bitrateKbps <= 0) return 0.0;
+      return static_cast<double>(bitrateKbps) * 1000.0;
+    }
+    ++pos;
+  }
+  return 0.0;
 }
 
 double MP3DecoderWrapper::parseDurationFromXingVbri() const {

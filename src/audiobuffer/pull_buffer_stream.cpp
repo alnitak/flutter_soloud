@@ -207,6 +207,7 @@ result PullBufferStreamInstance::rewind() {
   if (mParent->mPCMformat.dataType == BufferType::AUTO &&
       mParent->mStreamDecoder) {
     mParent->mStreamDecoder = std::make_unique<StreamDecoder>();
+    mParent->mStreamDecoder->setTotalAudioSizeBytes(mParent->mAudioSizeBytes);
   }
   mParent->mWaitingForData.store(false);
   mParent->requestMoreDataIfNeeded();
@@ -328,6 +329,7 @@ PlayerErrors PullBufferStream::setPullBufferStream(
 
   if (format == BufferType::AUTO) {
     mStreamDecoder = std::make_unique<StreamDecoder>();
+    mStreamDecoder->setTotalAudioSizeBytes(mAudioSizeBytes);
     mDurationProbeState = DurationProbeState::Probing;
   } else {
     // PCM formats: duration is known from the declared size and format.
@@ -373,6 +375,7 @@ void PullBufferStream::resetPullBufferStream() {
   resetProbeState();
   if (mPCMformat.dataType == BufferType::AUTO) {
     mStreamDecoder = std::make_unique<StreamDecoder>();
+    mStreamDecoder->setTotalAudioSizeBytes(mAudioSizeBytes);
     mDurationProbeState = DurationProbeState::Probing;
   } else {
     mDurationProbeState = DurationProbeState::Done;
