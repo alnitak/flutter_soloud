@@ -407,6 +407,16 @@ namespace SoLoud
         return 0;
     }
 
+    // Return the current state of the miniaudio output device as the raw
+    // ma_device_state value. When the device has not been initialized there is
+    // no valid device to query, so report ma_device_state_uninitialized.
+    unsigned int miniaudio_getAudioDeviceState()
+    {
+        if (!gDeviceInitialized)
+            return ma_device_state_uninitialized;
+        return (unsigned int)ma_device_get_state(&gDevice);
+    }
+
     result miniaudio_init(SoLoud::Soloud *aSoloud, unsigned int aFlags, unsigned int aSamplerate, unsigned int aBuffer, unsigned int aChannels, void *pPlaybackInfos_id)
     {
         soloud = aSoloud;

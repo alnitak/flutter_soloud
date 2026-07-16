@@ -99,6 +99,27 @@ typedef enum PlayerStateEvents {
   event_unlocked,
 } PlayerEvents_t;
 
+/// The state of the audio output device.
+///
+/// The values mirror miniaudio's `ma_device_state` so they can be returned
+/// directly from the backend without translation.
+///
+/// WARNING: Keep these in sync with `lib/src/enums.dart`.
+typedef enum AudioDeviceState {
+  /// The device is uninitialized. Also returned before the engine is
+  /// initialized or after it has been deinitialized.
+  audioDeviceUninitialized = 0,
+  /// The device is stopped. This is the device's default state right after
+  /// initialization.
+  audioDeviceStopped = 1,
+  /// The device is started and is requesting and/or delivering audio data.
+  audioDeviceStarted = 2,
+  /// The device is transitioning from a stopped state to a started state.
+  audioDeviceStarting = 3,
+  /// The device is transitioning from a started state to a stopped state.
+  audioDeviceStopping = 4,
+} AudioDeviceState_t;
+
 typedef enum SoundType {
   // using Soloud::wav
   TYPE_WAV,

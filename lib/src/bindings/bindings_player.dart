@@ -122,6 +122,11 @@ abstract class FlutterSoLoud {
   @mustBeOverridden
   Future<PlayerErrors> startAudioDevice();
 
+  /// Get the current state of the audio output device. Returns
+  /// [AudioDeviceState.uninitialized] if the engine is not initialized.
+  @mustBeOverridden
+  AudioDeviceState getAudioDeviceState();
+
   /// Change the playback device.
   ///
   /// [deviceId] the device ID. -1 for default OS output device.

@@ -234,6 +234,12 @@ public:
   /// @return Returns [PlayerErrors.SO_NO_ERROR] if success.
   PlayerErrors startAudioDevice();
 
+  /// @brief Get the current state of the audio output device.
+  /// @return The current [AudioDeviceState]. Returns
+  /// [AudioDeviceState.audioDeviceUninitialized] if the engine is not
+  /// initialized.
+  AudioDeviceState getAudioDeviceState();
+
   /// @brief Gets the pause state.
   /// @param handle the sound handle.
   /// @return true if paused.

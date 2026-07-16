@@ -162,6 +162,11 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }
 
   @override
+  AudioDeviceState getAudioDeviceState() {
+    return AudioDeviceState.fromValue(wasmGetAudioDeviceState());
+  }
+
+  @override
   PlayerErrors changeDevice(int deviceId) {
     final ret = wasmChangeDevice(deviceId);
     return PlayerErrors.values[ret];

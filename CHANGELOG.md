@@ -2,6 +2,7 @@
 - fix: Waveform audio sources do not match engine sample rate #501. Thanks to @Colton127
 - add `setAndroidPauseDeviceWhenIdle` (opt-in, default off) to stop the audio device when idle on Android, releasing the audioserver `AudioMix` partial wakelock #250
 - add `stopAudioDevice()` / `startAudioDevice()` to stop and restart the audio output device without deinitializing the engine (loaded sounds and voices are preserved); the blocking native device operation runs off the UI thread so it does not freeze the app
+- add `getAudioDeviceState()` returning an `AudioDeviceState` enum to query the current state of the audio output device (uninitialized, stopped, started, starting, stopping)
 
 #### 4.0.12 (30 Jun 2026)
 - add `lowLatency` init option to allow recordable Android output #492. Thanks to @MjnMixael

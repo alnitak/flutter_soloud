@@ -287,6 +287,16 @@ FFI_PLUGIN_EXPORT enum PlayerErrors startAudioDevice() {
   return player.get()->startAudioDevice();
 }
 
+/// Get the current state of the audio output device. Returns
+/// [AudioDeviceState.audioDeviceUninitialized] if the engine is not
+/// initialized.
+FFI_PLUGIN_EXPORT enum AudioDeviceState getAudioDeviceState() {
+  if (player.get() == nullptr)
+    return audioDeviceUninitialized;
+
+  return player.get()->getAudioDeviceState();
+}
+
 /// Change the playback device.
 ///
 /// [deviceID] the device ID. -1 for default OS output device.
