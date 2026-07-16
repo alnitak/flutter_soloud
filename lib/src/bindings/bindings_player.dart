@@ -79,8 +79,12 @@ abstract class FlutterSoLoud {
   /// [channels] mono, stereo, quad, 5.1, 7.1.
   ///
   /// Returns [PlayerErrors.noError] if success.
+  ///
+  /// The blocking native engine/device initialization runs off the UI thread so
+  /// it does not freeze the app (#481); the future completes once the engine is
+  /// initialized.
   @mustBeOverridden
-  PlayerErrors initEngine(
+  Future<PlayerErrors> initEngine(
     int deviceId,
     int sampleRate,
     int bufferSize,
@@ -139,6 +143,11 @@ abstract class FlutterSoLoud {
   /// Must be called when the player is no more needed or when closing the app.
   @mustBeOverridden
   void deinit();
+
+  /// Like [deinit], but runs the blocking native teardown off the UI thread so
+  /// it does not freeze the app; the future completes once teardown is done.
+  @mustBeOverridden
+  Future<void> deinitAsync();
 
   /// Gets the state of player
   ///
