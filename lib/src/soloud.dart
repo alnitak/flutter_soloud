@@ -486,6 +486,55 @@ interface class SoLoud {
     }
   }
 
+  /// Stops the audio output device without deinitializing the engine.
+  ///
+  /// Only the underlying audio device is stopped. Loaded [AudioSource]s, active
+  /// voices, filters and the [isInitialized] state are all left untouched, so
+  /// playback resumes exactly where it left off once [startAudioDevice] is
+  /// called. The device is stopped even while sounds are actively playing.
+  ///
+  /// This is idempotent: calling it while the device is already stopped does
+  /// nothing.
+  ///
+  /// The blocking native device operation runs off the UI thread, so this does
+  /// not freeze the app; await the returned future to know when it completed.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  Future<void> stopAudioDevice() async {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+
+    final error = await _controller.soLoudFFI.stopAudioDevice();
+    _logPlayerError(error, from: 'stopAudioDevice() result');
+    if (error != PlayerErrors.noError) {
+      throw SoLoudCppException.fromPlayerError(error);
+    }
+  }
+
+  /// Restarts the audio output device previously stopped by [stopAudioDevice],
+  /// so existing voices and loaded [AudioSource]s keep operating.
+  ///
+  /// This is idempotent: calling it while the device is already started does
+  /// nothing.
+  ///
+  /// The blocking native device operation runs off the UI thread, so this does
+  /// not freeze the app; await the returned future to know when the device is
+  /// running again.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  Future<void> startAudioDevice() async {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+
+    final error = await _controller.soLoudFFI.startAudioDevice();
+    _logPlayerError(error, from: 'startAudioDevice() result');
+    if (error != PlayerErrors.noError) {
+      throw SoLoudCppException.fromPlayerError(error);
+    }
+  }
+
   /// Lists all OS available playback devices.
   /// Could be called safely even if the engin has not been initialized yet.
   List<PlaybackDevice> listPlaybackDevices() {
@@ -2221,6 +2270,35 @@ interface class SoLoud {
       throw const SoLoudNotInitializedException();
     }
     _controller.soLoudFFI.setMaxActiveVoiceCount(maxVoiceCount);
+  }
+
+  /// Controls whether the audio device is stopped on Android when no voices
+  /// are active (after SoLoud's internal ~500 ms idle-pause delay).
+  ///
+  /// Stopping the device does NOT invalidate any [AudioSource]s, sound
+  /// handles, or filters — engine state is preserved and the device restarts
+  /// automatically on the next play/resume, at the cost of a device-restart
+  /// latency of roughly tens of milliseconds.
+  ///
+  /// While the device is running — even rendering silence — Android's
+  /// audioserver holds an `AudioMix` partial wakelock attributed to your app.
+  /// Enabling this releases that wakelock while idle, which otherwise counts
+  /// toward Google Play's excessive-partial-wake-locks metric.
+  ///
+  /// Defaults to `false`: the historical Android behavior, which avoids rare
+  /// stale-buffer glitches on very rapid stop→play cycles. Recommended `true`
+  /// for apps where playback commonly sits paused in the background.
+  ///
+  /// Takes effect immediately: enabling this while nothing is playing schedules
+  /// the device to stop (after SoLoud's ~500 ms idle-pause delay) rather than
+  /// waiting for the next pause/stop; disabling it restarts a device that a
+  /// previous idle-pause had stopped. The ~500 ms delay before the device stops
+  /// on pause is always applied.
+  ///
+  /// No effect on iOS/macOS/desktop (already stop the device when idle) or
+  /// Web (no-op). Can be called any time, before or after [init].
+  void setAndroidPauseDeviceWhenIdle(bool enable) {
+    _controller.soLoudFFI.setAndroidPauseDeviceWhenIdle(enable);
   }
 
   /// Smooth FFT data.

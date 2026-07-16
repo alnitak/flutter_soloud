@@ -97,6 +97,12 @@ external int wasmInitEngine(
   int lowLatency,
 );
 
+@JS('Module_soloud._stopAudioDevice')
+external int wasmStopAudioDevice();
+
+@JS('Module_soloud._startAudioDevice')
+external int wasmStartAudioDevice();
+
 @JS('Module_soloud._changeDevice')
 external int wasmChangeDevice(int deviceId);
 

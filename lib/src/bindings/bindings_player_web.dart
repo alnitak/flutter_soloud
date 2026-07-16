@@ -141,6 +141,27 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }
 
   @override
+  void setAndroidPauseDeviceWhenIdle(bool enable) {
+    // No-op on web: no wakelock concept, device lifecycle differs.
+  }
+
+  @override
+  Future<PlayerErrors> stopAudioDevice() async {
+    // Web is single-threaded (no isolates) and the device change is instant,
+    // so call the wasm function directly.
+    final ret = wasmStopAudioDevice();
+    return PlayerErrors.values[ret];
+  }
+
+  @override
+  Future<PlayerErrors> startAudioDevice() async {
+    // Web is single-threaded (no isolates) and the device change is instant,
+    // so call the wasm function directly.
+    final ret = wasmStartAudioDevice();
+    return PlayerErrors.values[ret];
+  }
+
+  @override
   PlayerErrors changeDevice(int deviceId) {
     final ret = wasmChangeDevice(deviceId);
     return PlayerErrors.values[ret];

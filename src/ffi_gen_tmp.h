@@ -107,3 +107,21 @@ FFI_PLUGIN_EXPORT void busAnnexSound(unsigned int busId,
 /// [busId] the bus ID.
 /// Returns the active voice count, or 0 if the bus is not found.
 FFI_PLUGIN_EXPORT unsigned int busGetActiveVoiceCount(unsigned int busId);
+
+/// Android only: choose whether SoLoud stops the audio device when the engine
+/// goes idle (no active voices), releasing the audioserver AudioMix partial
+/// wakelock. [enable] != 0 turns this on; 0 (default) keeps the historical
+/// behavior of leaving the device running. Can be called any time. No effect on
+/// other backends.
+FFI_PLUGIN_EXPORT void setAndroidPauseDeviceWhenIdle(unsigned int enable);
+
+/// Stop the audio output device without deinitializing the engine. Only the
+/// miniaudio device is stopped; loaded sounds, active voices and the
+/// initialized state are preserved so playback can be resumed later with
+/// startAudioDevice(). Idempotent: a no-op if the device is already stopped.
+FFI_PLUGIN_EXPORT enum PlayerErrors stopAudioDevice();
+
+/// Restart the audio output device previously stopped by stopAudioDevice(), so
+/// existing voices and loaded sounds keep operating. Idempotent: a no-op if the
+/// device is already started.
+FFI_PLUGIN_EXPORT enum PlayerErrors startAudioDevice();

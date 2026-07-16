@@ -96,6 +96,32 @@ abstract class FlutterSoLoud {
   @mustBeOverridden
   void setAndroidAAudioAttributes(bool managed);
 
+  /// Android only: when [enable] is true, SoLoud stops the audio device once
+  /// the engine goes idle (no active voices), releasing the audioserver
+  /// AudioMix partial wakelock. Defaults to false, keeping the device running.
+  /// Can be called any time. No effect on non-Android backends or on web.
+  @mustBeOverridden
+  void setAndroidPauseDeviceWhenIdle(bool enable);
+
+  /// Stop the audio output device without deinitializing the engine. Only the
+  /// miniaudio device is stopped; loaded sounds, active voices and the
+  /// initialized state are preserved so playback can resume later with
+  /// [startAudioDevice]. Idempotent: a no-op if the device is already stopped.
+  ///
+  /// The blocking native device call runs off the UI thread so it does not
+  /// freeze the app; the returned future completes once the device is stopped.
+  @mustBeOverridden
+  Future<PlayerErrors> stopAudioDevice();
+
+  /// Restart the audio output device previously stopped by [stopAudioDevice],
+  /// so existing voices and loaded sounds keep operating. Idempotent: a no-op
+  /// if the device is already started.
+  ///
+  /// The blocking native device call runs off the UI thread so it does not
+  /// freeze the app; the returned future completes once the device is running.
+  @mustBeOverridden
+  Future<PlayerErrors> startAudioDevice();
+
   /// Change the playback device.
   ///
   /// [deviceId] the device ID. -1 for default OS output device.

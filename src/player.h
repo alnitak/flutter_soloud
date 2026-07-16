@@ -210,6 +210,30 @@ public:
   /// audio session (e.g. Control Center on iOS).
   void pauseEngine();
 
+  /// @brief Android only: opt in/out of stopping the audio device when the
+  /// engine goes idle (no active voices), releasing the audioserver AudioMix
+  /// partial wakelock. Takes effect immediately based on the current state:
+  /// when enabling while already idle, a deferred device stop is scheduled
+  /// (honoring the same ~500 ms coalescing delay as any other pause); when
+  /// disabling, a device previously stopped by an idle-pause is restarted at
+  /// once. No effect on non-Android backends.
+  /// @param enable whether the device should be stopped while idle.
+  void setAndroidPauseDeviceWhenIdle(bool enable);
+
+  /// @brief Stop the audio output device without deinitializing the engine.
+  /// Only the miniaudio device is stopped; loaded sounds, active voices and
+  /// the initialized state are all preserved so playback can be resumed later
+  /// with startAudioDevice(). Stops the device even while voices are actively
+  /// playing. Idempotent: a no-op if the device is already stopped.
+  /// @return Returns [PlayerErrors.SO_NO_ERROR] if success.
+  PlayerErrors stopAudioDevice();
+
+  /// @brief Restart the audio output device previously stopped by
+  /// stopAudioDevice(), so existing voices and loaded sounds keep operating.
+  /// Idempotent: a no-op if the device is already started.
+  /// @return Returns [PlayerErrors.SO_NO_ERROR] if success.
+  PlayerErrors startAudioDevice();
+
   /// @brief Gets the pause state.
   /// @param handle the sound handle.
   /// @return true if paused.
