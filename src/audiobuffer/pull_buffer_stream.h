@@ -164,7 +164,7 @@ private:
   uint64_t mTotalReceivedBytes = 0; ///< Total encoded bytes ever added (including probes).
   uint64_t mDecodedSamplesRead = 0;      // Total decoded samples consumed by playback.
   uint64_t mDecodedSamplesWritten = 0; // Total decoded samples written to the buffer.
-  double mBufferStartTime = 0.0;       // Valid start time of the decoded window; set by out-of-buffer seek.
+  double mBufferStartTime = 0.0;       // Logical start time of the valid decoded window; set by out-of-buffer seek.
 
   std::atomic<bool> mIsDestroyed{false};
   std::atomic<bool> mDataIsEnded{false};

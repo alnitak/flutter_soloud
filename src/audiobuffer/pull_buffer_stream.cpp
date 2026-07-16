@@ -126,7 +126,18 @@ result PullBufferStreamInstance::seek(double aSeconds, float *aScratch,
         ? bufferedEnd - mParent->mCircularBuffer.capacity()
         : 0;
 
-    if (targetSample >= bufferedStart && targetSample <= bufferedEnd) {
+    // mBufferStartTime marks the logical start of valid decoded data (set by
+    // out-of-buffer seeks). The physical circular buffer can still hold older
+    // samples before this point, so clamp the seek window to the logical start
+    // to prevent seeking into stale decoded audio.
+    const uint64_t logicalStartSamples = mParent->mBufferStartTime > 0.0
+        ? static_cast<uint64_t>(std::floor(mParent->mBufferStartTime *
+                                           mParent->mPCMformat.sampleRate *
+                                           mParent->mPCMformat.channels))
+        : 0;
+    const uint64_t effectiveStart = std::max(bufferedStart, logicalStartSamples);
+
+    if (targetSample >= effectiveStart && targetSample <= bufferedEnd) {
       if (targetSample >= mParent->mDecodedSamplesRead) {
         // Forward in-buffer seek: advance the read pointer to the target.
         const size_t advance = targetSample - mParent->mDecodedSamplesRead;
@@ -424,11 +435,11 @@ double PullBufferStream::getBufferStartTime() const {
       endTime - static_cast<double>(mCircularBuffer.capacity()) /
                     static_cast<double>(sampleRate * channels);
 
-  // Out-of-buffer seeks set mBufferStartTime to the seek position. Only when
-  // an explicit start time has been set (after an out-of-buffer seek) clamp the
-  // computed start to it; this makes the red bar start at the playhead while the
-  // buffer refills. During normal playback the sliding capacity-based window is
-  // used from the start, so the red bar stays steady as the playhead advances.
+  // Out-of-buffer seeks set mBufferStartTime to the logical start of the valid
+  // decoded window. Clamp the computed start to it so the red bar never shows
+  // stale decoded audio to the left of the playhead.
+  // During normal playback the sliding capacity-based window is used from the
+  // start, so the red bar stays steady as the playhead advances.
   double startTime = startTimeFromCapacity;
   if (mBufferStartTime > 0.0) {
     startTime = std::max(startTime, mBufferStartTime);
