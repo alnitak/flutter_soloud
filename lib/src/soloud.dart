@@ -535,6 +535,20 @@ interface class SoLoud {
     }
   }
 
+  /// Gets the current state of the audio output device.
+  ///
+  /// Use this to check whether the device is currently
+  /// [AudioDeviceState.started] (actively delivering audio),
+  /// [AudioDeviceState.stopped] (for example after [stopAudioDevice]), or in a
+  /// transitional state. Returns [AudioDeviceState.uninitialized] if the engine
+  /// has not been initialized.
+  ///
+  /// This is a cheap, synchronous read and is safe to call at any time,
+  /// including before the engine is initialized.
+  AudioDeviceState getAudioDeviceState() {
+    return _controller.soLoudFFI.getAudioDeviceState();
+  }
+
   /// Lists all OS available playback devices.
   /// Could be called safely even if the engin has not been initialized yet.
   List<PlaybackDevice> listPlaybackDevices() {

@@ -200,6 +200,7 @@ namespace SoLoud { void miniaudio_setLowLatency(bool aLowLatency); }
 namespace SoLoud { void miniaudio_setAndroidPauseDeviceWhenIdle(bool aEnable); }
 namespace SoLoud { SoLoud::result miniaudio_stopAudioDevice(); }
 namespace SoLoud { SoLoud::result miniaudio_startAudioDevice(); }
+namespace SoLoud { unsigned int miniaudio_getAudioDeviceState(); }
 
 PlayerErrors Player::init(unsigned int sampleRate, unsigned int bufferSize, unsigned int channels, int deviceID, bool lowLatency)
 {
@@ -872,6 +873,14 @@ PlayerErrors Player::startAudioDevice()
     if (result != SoLoud::SO_NO_ERROR)
         return unknownError;
     return noError;
+}
+
+AudioDeviceState Player::getAudioDeviceState()
+{
+    if (!mInited)
+        return audioDeviceUninitialized;
+
+    return (AudioDeviceState)SoLoud::miniaudio_getAudioDeviceState();
 }
 
 void Player::startPauseEngineScheduler()

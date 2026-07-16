@@ -363,6 +363,20 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       );
 
   @override
+  AudioDeviceState getAudioDeviceState() {
+    // Reading the device state is a cheap, non-blocking atomic load, so call
+    // it directly on the UI isolate.
+    return AudioDeviceState.fromValue(_getAudioDeviceState());
+  }
+
+  late final _getAudioDeviceStatePtr =
+      _lookup<ffi.NativeFunction<ffi.UnsignedInt Function()>>(
+        'getAudioDeviceState',
+      );
+  late final _getAudioDeviceState = _getAudioDeviceStatePtr
+      .asFunction<int Function()>();
+
+  @override
   PlayerErrors changeDevice(int deviceId) {
     final ret = _changeDevice(deviceId);
     return PlayerErrors.values[ret];

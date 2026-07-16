@@ -125,3 +125,7 @@ FFI_PLUGIN_EXPORT enum PlayerErrors stopAudioDevice();
 /// existing voices and loaded sounds keep operating. Idempotent: a no-op if the
 /// device is already started.
 FFI_PLUGIN_EXPORT enum PlayerErrors startAudioDevice();
+
+/// Get the current state of the audio output device. Returns
+/// audioDeviceUninitialized if the engine is not initialized.
+FFI_PLUGIN_EXPORT enum AudioDeviceState getAudioDeviceState();

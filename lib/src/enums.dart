@@ -336,6 +336,45 @@ enum PlayerStateNotification {
   unlocked,
 }
 
+/// The state of the audio output device, as reported by
+/// `SoLoud.getAudioDeviceState`.
+///
+/// The values mirror miniaudio's `ma_device_state`.
+///
+/// WARNING: Keep these in sync with `src/enums.h`.
+enum AudioDeviceState {
+  /// The device is uninitialized. Also returned before the engine is
+  /// initialized or after it has been deinitialized.
+  uninitialized(0),
+
+  /// The device is stopped. This is the device's default state right after
+  /// initialization (for example after `SoLoud.stopAudioDevice`).
+  stopped(1),
+
+  /// The device is started and is requesting and/or delivering audio data.
+  started(2),
+
+  /// The device is transitioning from a stopped state to a started state.
+  starting(3),
+
+  /// The device is transitioning from a started state to a stopped state.
+  stopping(4);
+
+  const AudioDeviceState(this.value);
+
+  /// Returns the [AudioDeviceState] for the given native integer [value],
+  /// falling back to [uninitialized] for any unknown value.
+  factory AudioDeviceState.fromValue(int value) {
+    return AudioDeviceState.values.firstWhere(
+      (state) => state.value == value,
+      orElse: () => AudioDeviceState.uninitialized,
+    );
+  }
+
+  /// The native integer value of the state.
+  final int value;
+}
+
 /// The channels to be used while initializing the player.
 enum Channels {
   /// One channel.

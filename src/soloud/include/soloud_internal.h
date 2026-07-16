@@ -99,6 +99,11 @@ namespace SoLoud
 	// so existing voices and sources keep operating. Idempotent: no-op if
 	// already started.
 	result miniaudio_startAudioDevice();
+	// Returns the current state of the miniaudio output device as the raw
+	// ma_device_state value (0 = uninitialized, 1 = stopped, 2 = started,
+	// 3 = starting, 4 = stopping). Returns 0 (uninitialized) if the device has
+	// not been initialized.
+	unsigned int miniaudio_getAudioDeviceState();
 
 	// nosound back-end initialization call
 	result nosound_init(SoLoud::Soloud* aSoloud, unsigned int aFlags = Soloud::CLIP_ROUNDOFF, unsigned int aSamplerate = 44100, unsigned int aBuffer = 2048, unsigned int aChannels = 2);
