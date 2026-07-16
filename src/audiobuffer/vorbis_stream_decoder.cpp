@@ -83,15 +83,16 @@ std::pair<std::vector<float>, DecoderError> VorbisDecoderWrapper::decode(std::ve
     ogg_int64_t total_samples = -1;
     bool eos_seen = false;
 
-    if (buffer.empty()) {
-        return {decodedData, DecoderError::NoError};
+    // Feed any newly arrived data into the Ogg sync buffer. If [buffer] is empty,
+    // we still need to process pages that were already buffered by a previous
+    // call, otherwise a single-shot full-file feed cannot continue after the
+    // first decode run.
+    if (!buffer.empty()) {
+        char* oggBuffer = ogg_sync_buffer(&oy, buffer.size());
+        memcpy(oggBuffer, buffer.data(), buffer.size());
+        ogg_sync_wrote(&oy, buffer.size());
+        buffer.clear();
     }
-
-    // Write new bytes into ogg buffer
-    char* oggBuffer = ogg_sync_buffer(&oy, buffer.size());
-    memcpy(oggBuffer, buffer.data(), buffer.size());
-    ogg_sync_wrote(&oy, buffer.size());
-    buffer.clear();
 
     // Process available pages, tracking byte offsets for seeking.
     while (true) {

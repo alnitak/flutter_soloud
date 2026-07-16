@@ -21,6 +21,7 @@ public:
 
     bool canSeekToTime(double seconds) const override;
     uint64_t timeToByteOffset(double seconds) override;
+    void prepareForSeek(uint64_t targetSample) override;
     double getDuration() const override;
 
 private:
@@ -59,7 +60,22 @@ private:
     int mAudioBytesCount;
     int mIcyMetaSize;
     std::vector<unsigned char> mIcyMetadata;
+    void setTotalAudioSizeBytes(uint64_t size) override { mTotalAudioSizeBytes = size; }
+
     std::string mStreamTitle;
+
+    /// Header bytes of the FLAC file (fLaC magic + all metadata blocks). Kept
+    /// across out-of-buffer seeks so the decoder can reinitialize from a
+    /// mid-stream chunk.
+    std::vector<unsigned char> mHeader;
+
+    /// Target sample (interleaved samples) the decoder should skip after the
+    /// next reinitialization. Used after an out-of-buffer seek.
+    uint64_t mPendingSkipTargetSample = 0;
+
+    /// Total encoded size of the stream, used to estimate byte offsets for
+    /// out-of-buffer seeks.
+    uint64_t mTotalAudioSizeBytes = 0;
 };
 
 #endif // FLAC_STREAM_DECODER_H

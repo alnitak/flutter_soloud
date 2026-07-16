@@ -153,10 +153,33 @@ class _PullBufferSeekBarState extends State<PullBufferSeekBar>
           children: [
             bar,
             const SizedBox(height: 4),
+            Row(
+              children: [
+                Text(
+                  '${_formatDuration(widget.position)} / '
+                  '${_formatDuration(widget.duration)}',
+                ),
+                const Spacer(),
+                Text(
+                  'buffer: ${_formatDuration(widget.bufferedStart)} - '
+                  '${_formatDuration(widget.bufferedEnd)}',
+                ),
+              ],
+            ),
           ],
         );
       },
     );
+  }
+
+  static String _formatDuration(Duration value) {
+    final hours = value.inHours;
+    final minutes = value.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final seconds = value.inSeconds.remainder(60).toString().padLeft(2, '0');
+    if (hours > 0) {
+      return '$hours:$minutes:$seconds';
+    }
+    return '$minutes:$seconds';
   }
 }
 

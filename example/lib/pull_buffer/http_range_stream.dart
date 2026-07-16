@@ -49,11 +49,16 @@ class _HttpRangeStreamExampleState extends State<HttpRangeStreamExample> {
   /// Decoded circular buffer size. At 44.1 kHz stereo float PCM this holds
   /// roughly 14 seconds of audio. Decoded samples that do not fit are queued
   /// for later.
-  static const _bufferSizeBytes = 25 * 1024 * 1024;
+  static const _bufferSizeBytes = 5 * 1024 * 1024;
   static const _bufferTriggerPosition = 0.75;
 
   static const _defaultUrl =
       'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3';
+  static const _defaultMP3Url = 'http://localhost:8088/sample-MP3.mp3';
+  static const _defaultFLACUrl = 'http://localhost:8088/sample-FLAC.flac';
+  static const _defaultOPUSUrl = 'http://localhost:8088/sample-OPUS.opus';
+  static const _defaultVORBISUrl = 'http://localhost:8088/sample-VORBIS.ogg';
+  static const _defaultWAVUrl = 'http://localhost:8088/sample-WAV.wav';
 
   static final _logger = Logger('PullBufferHttpRangeStream');
 
@@ -63,6 +68,7 @@ class _HttpRangeStreamExampleState extends State<HttpRangeStreamExample> {
   AudioSource? _source;
   SoundHandle? _handle;
   int _totalBytes = 0;
+  Uint8List? _fileBytes;
   final _fetchedOffsets = <int>{};
   final _pendingOffsets = <int>{};
   Duration _duration = Duration.zero;
@@ -75,7 +81,7 @@ class _HttpRangeStreamExampleState extends State<HttpRangeStreamExample> {
   Timer? _timer;
   Timer? _flashTimer;
   Color? _flashColor;
-  String _status = 'Enter a URL and tap Load';
+  String _status = 'Enter a URL and tap Load stream';
 
   @override
   void dispose() {
@@ -97,11 +103,6 @@ class _HttpRangeStreamExampleState extends State<HttpRangeStreamExample> {
       }
       final newPos = SoLoud.instance.getPosition(_handle!);
       final range = SoLoud.instance.getPullBufferTimeRange(_source!);
-      _logger.fine(
-        'ticker: bufferedStart=${range.startTime.inMilliseconds}ms '
-        'bufferedEnd=${range.endTime.inMilliseconds}ms '
-        'position=${newPos.inMilliseconds}ms',
-      );
       setState(() {
         _position = newPos;
         _bufferedStart = range.startTime;
@@ -117,6 +118,14 @@ class _HttpRangeStreamExampleState extends State<HttpRangeStreamExample> {
         _logger.warning('HEAD returned ${response.statusCode}');
         return 0;
       }
+      final acceptRanges = response.headers['accept-ranges'];
+      final serverSupportsRange = acceptRanges == 'bytes';
+      _logger.info(
+        serverSupportsRange ? 'Server supports HTTP Range requests' :
+            'Server does not support HTTP Range requests. '
+            'Audio will not get the audio duration for OGG audios.\n',
+        'Accept-Ranges: $acceptRanges; supportsRange=$serverSupportsRange',
+      );
       final length = response.headers['content-length'];
       if (length != null && length.isNotEmpty) {
         return int.parse(length);
@@ -129,17 +138,28 @@ class _HttpRangeStreamExampleState extends State<HttpRangeStreamExample> {
     return 0;
   }
 
-  Future<void> _loadStream() async {
-    final url = _urlController.text.trim();
-    if (url.isEmpty) return;
+  Future<void> _loadStream(String? url) async {
+    final newUrl = url ?? _defaultUrl;
 
-    _totalBytes = await _fetchContentLength(url);
+    // Stop any previous playback and clean up the old stream before starting a
+    // new one. This prevents concurrent requests from overlapping and avoids
+    // feeding data into the wrong [AudioSource].
+    if (_handle != null) {
+      unawaited(SoLoud.instance.stop(_handle!));
+      _handle = null;
+    }
+    _source = null;
+    _timer?.cancel();
+    _fileBytes = null;
     _fetchedOffsets.clear();
     _pendingOffsets.clear();
     _bufferedStart = Duration.zero;
     _bufferedEnd = Duration.zero;
     _duration = Duration.zero;
     _position = Duration.zero;
+
+    _totalBytes = await _fetchContentLength(newUrl);
+    _urlController.text = newUrl;
 
     if (_totalBytes <= 0) {
       setState(() => _status = 'Could not determine content length');
@@ -159,14 +179,13 @@ class _HttpRangeStreamExampleState extends State<HttpRangeStreamExample> {
           ),
         );
       },
-      onMoreDataIsNeeded: (offset) => _fetchChunk(url, offset),
+      onMoreDataIsNeeded: (offset) => _fetchChunk(newUrl, offset),
     );
 
     _handle = SoLoud.instance.play(_source!);
     _startTicker();
     setState(() {
       _isPlaying = true;
-      _status = 'Streaming $_totalBytes bytes via HTTP Range';
     });
   }
 
@@ -320,12 +339,31 @@ class _HttpRangeStreamExampleState extends State<HttpRangeStreamExample> {
               enabled: _source == null,
             ),
             Text(_status),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+            Wrap(
               children: [
                 ElevatedButton(
-                  onPressed: _source == null ? _loadStream : null,
+                  onPressed: () => _loadStream(_defaultUrl),
                   child: const Text('Load stream'),
+                ),
+                ElevatedButton(
+                  onPressed: () => _loadStream(_defaultMP3Url),
+                  child: const Text('MP3 stream'),
+                ),
+                ElevatedButton(
+                  onPressed: () => _loadStream(_defaultFLACUrl),
+                  child: const Text('FLAC stream'),
+                ),
+                ElevatedButton(
+                  onPressed: () => _loadStream(_defaultOPUSUrl),
+                  child: const Text('OPUS stream'),
+                ),
+                ElevatedButton(
+                  onPressed: () => _loadStream(_defaultVORBISUrl),
+                  child: const Text('VORBIS stream'),
+                ),
+                ElevatedButton(
+                  onPressed: () => _loadStream(_defaultWAVUrl),
+                  child: const Text('WAV stream'),
                 ),
               ],
             ),

@@ -1,5 +1,6 @@
 // ignore_for_file: avoid_positional_boolean_parameters
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
@@ -451,7 +452,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
       sampleRate,
       channels,
       format,
-      audioSizeBytes,
+      wasmBigInt(audioSizeBytes.toString()),
       onBuffering == null ? 0 : 1,
       onMetadata == null ? 0 : 1,
       onMoreDataIsNeeded == null ? 0 : 1,
@@ -483,8 +484,11 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
 
     if (onMoreDataIsNeeded != null) {
       @JSExport()
-      void webMoreDataIsNeededCallback(JSNumber offset) {
-        onMoreDataIsNeeded(offset.toDartInt);
+      void webMoreDataIsNeededCallback(int offset) {
+        // The C++ side passes the offset as a 64-bit integer, which the
+        // web target represents as a JS BigInt. Accepting [int] here lets
+        // the runtime convert the BigInt to a Dart integer automatically.
+        onMoreDataIsNeeded(offset);
       }
 
       globalThis.setProperty(
@@ -493,8 +497,9 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
       );
       // The C++ side does not request the first chunk on the web because the
       // callback is registered only after the WASM call returns. Fire the
-      // initial request manually so callers can start feeding data.
-      onMoreDataIsNeeded(0);
+      // initial request after the current call stack so callers can finish
+      // assigning the returned [SoundHash] before the callback runs.
+      scheduleMicrotask(() => onMoreDataIsNeeded(0));
     }
 
     if (onAudioDuration != null) {
@@ -524,21 +529,34 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     Uint8List audioChunk, {
     int offset = 0,
   }) {
-    final audioChunkPtr = wasmMalloc(audioChunk.length);
+    // On the web, `onMoreDataIsNeeded` can be invoked synchronously from the
+    // audio thread's `onaudioprocess` callback. Calling back into the WASM
+    // module from that same thread re-enters the pull-buffer mutex and
+    // deadlocks. Copy the chunk and defer the native call so it runs after the
+    // audio callback has returned and released the mutex.
+    final chunkCopy = Uint8List.fromList(audioChunk);
 
-    final heapBuffer = wasmHeapU8Buffer;
-    Uint8List.view(heapBuffer.toDart).setAll(audioChunkPtr, audioChunk);
+    scheduleMicrotask(() {
+      final audioChunkPtr = wasmMalloc(chunkCopy.length);
 
-    final result = wasmAddPullBufferDataStream(
-      hash,
-      audioChunkPtr,
-      audioChunk.length,
-      offset,
-    );
+      final heapBuffer = wasmHeapU8Buffer;
+      Uint8List.view(heapBuffer.toDart).setAll(audioChunkPtr, chunkCopy);
 
-    wasmFree(audioChunkPtr);
+      try {
+        wasmAddPullBufferDataStream(
+          hash,
+          audioChunkPtr,
+          chunkCopy.length,
+          wasmBigInt(offset.toString()),
+        );
+      } on Object catch (e, st) {
+        _log.warning('addPullBufferDataStream failed: $e\n$st');
+      } finally {
+        wasmFree(audioChunkPtr);
+      }
+    });
 
-    return PlayerErrors.values[result];
+    return PlayerErrors.noError;
   }
 
   @override

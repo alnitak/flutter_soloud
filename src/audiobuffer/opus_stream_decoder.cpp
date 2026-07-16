@@ -166,16 +166,17 @@ std::pair<std::vector<float>, DecoderError> OpusDecoderWrapper::decode(std::vect
     std::vector<float> decodedData;
     bool eos_seen = false;
 
-    if (buffer.empty())
+    // Feed any newly arrived data into the Ogg sync buffer. If [buffer] is empty,
+    // we still need to process pages that were already buffered by a previous
+    // call, otherwise a single-shot full-file feed cannot continue after the
+    // first decode run.
+    if (!buffer.empty())
     {
-        return {decodedData, DecoderError::NoError};
+        char *oggBuffer = ogg_sync_buffer(&oy, buffer.size());
+        memcpy(oggBuffer, buffer.data(), buffer.size());
+        ogg_sync_wrote(&oy, buffer.size());
+        buffer.clear();
     }
-
-    // Write data into ogg sync buffer
-    char *oggBuffer = ogg_sync_buffer(&oy, buffer.size());
-    memcpy(oggBuffer, buffer.data(), buffer.size());
-    ogg_sync_wrote(&oy, buffer.size());
-    buffer.clear();
 
     // Read and process pages, tracking byte offsets for seeking.
     while (true)

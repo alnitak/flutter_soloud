@@ -15,6 +15,15 @@ external String? get miniaudioAudioContextState;
 @JS('globalThis.crossOriginIsolated')
 external bool? get isCrossOriginIsolated;
 
+/// Construct a JavaScript `BigInt` from a string value.
+///
+/// Emscripten represents 64-bit integers (e.g. `uint64_t`) as JavaScript
+/// `BigInt`s on the WebAssembly boundary. Dart `int` values are converted to
+/// JS `Number`s, which cannot be passed directly to these exports, so callers
+/// must wrap the value with this helper first.
+@JS('BigInt')
+external JSAny wasmBigInt(String value);
+
 @JS('Module_soloud._malloc')
 external int wasmMalloc(int bytesCount);
 
@@ -87,7 +96,7 @@ external int wasmSetPullBufferStream(
   int sampleRate,
   int channels,
   int format,
-  int audioSizeBytes,
+  JSAny audioSizeBytes,
   int onBufferingPtr,
   int onMetadataPtr,
   int onMoreDataIsNeededPtr,
@@ -114,7 +123,7 @@ external int wasmAddPullBufferDataStream(
   int hash,
   int audioChunkPtr,
   int dataLen,
-  int offset,
+  JSAny offset,
 );
 
 @JS('Module_soloud._getPullBufferTimeRange')

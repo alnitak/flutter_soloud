@@ -5,6 +5,54 @@
 #include <iostream>
 #include <cstring> // For memcpy
 
+namespace
+{
+    /// Returns the offset of the next FLAC frame sync in the given data, or
+    /// std::string::npos if not found.
+    size_t findNextFlacFrame(const std::vector<unsigned char> &data, size_t start = 0)
+    {
+        for (size_t i = start; i + 1 < data.size(); ++i)
+        {
+            if (data[i] == 0xFF && (data[i + 1] & 0xFC) == 0xF8)
+            {
+                return i;
+            }
+        }
+        return std::string::npos;
+    }
+
+    /// Returns the byte length of the FLAC header (magic + all metadata blocks)
+    /// or 0 if the header is not yet complete in the provided buffer.
+    size_t findFlacHeaderLength(const std::vector<unsigned char> &data)
+    {
+        if (data.size() < 4)
+            return 0;
+        if (data[0] != 'f' || data[1] != 'L' || data[2] != 'a' || data[3] != 'C')
+            return 0; // not a FLAC file
+
+        size_t pos = 4;
+        while (true)
+        {
+            if (pos + 4 > data.size())
+                return 0; // need more data
+
+            const unsigned char blockType = data[pos];
+            const size_t blockSize =
+                (static_cast<size_t>(data[pos + 1]) << 16) |
+                (static_cast<size_t>(data[pos + 2]) << 8) |
+                static_cast<size_t>(data[pos + 3]);
+
+            pos += 4 + blockSize;
+
+            if (blockType & 0x80)
+            {
+                // Last-metadata-block flag set; audio frames follow.
+                return pos;
+            }
+        }
+    }
+}
+
 FlacDecoderWrapper::FlacDecoderWrapper()
     : m_pFlacDecoder(nullptr),
       m_streamInfoProcessed(false),
@@ -45,6 +93,13 @@ void FlacDecoderWrapper::setIcyMetaInt(int icyMetaInt)
 
 bool FlacDecoderWrapper::initializeDecoder(int engineSamplerate, int engineChannels)
 {
+    if (m_pFlacDecoder)
+    {
+        FLAC__stream_decoder_finish(m_pFlacDecoder);
+        FLAC__stream_decoder_delete(m_pFlacDecoder);
+        m_pFlacDecoder = nullptr;
+    }
+
     m_pFlacDecoder = FLAC__stream_decoder_new();
     if (m_pFlacDecoder == nullptr)
     {
@@ -136,13 +191,73 @@ std::pair<std::vector<float>, DecoderError> FlacDecoderWrapper::decode(std::vect
     }
     buffer.clear(); // Clear the original buffer as it has been processed
 
+    // Capture the FLAC header on the first decode if we haven't already.
+    if (mHeader.empty() && m_audioData.size() >= 4 &&
+        m_audioData[0] == 'f' && m_audioData[1] == 'L' &&
+        m_audioData[2] == 'a' && m_audioData[3] == 'C')
+    {
+        const size_t headerLen = findFlacHeaderLength(m_audioData);
+        if (headerLen > 0)
+        {
+            mHeader.assign(m_audioData.begin(), m_audioData.begin() + headerLen);
+            printf("[FlacDecoderWrapper] captured %zu header bytes\n", headerLen);
+        }
+        else if (m_pFlacDecoder == nullptr)
+        {
+            // Need the full header before we can initialize the decoder.
+            return {{}, DecoderError::NoError};
+        }
+    }
+
+    // If the decoder was reset (or hasn't been initialized yet), make sure the
+    // buffer starts with the header so we can reinitialize. After a seek, the
+    // chunk may begin mid-frame; trim the partial frame bytes before the first
+    // FLAC frame boundary so the decoder can find sync.
+    if (m_pFlacDecoder == nullptr)
+    {
+        if (mHeader.empty())
+        {
+            printf("[FlacDecoderWrapper] cannot initialize, no header captured\n");
+            return {{}, DecoderError::NoError};
+        }
+
+        if (m_audioData.size() < 4 ||
+            m_audioData[0] != 'f' || m_audioData[1] != 'L' ||
+            m_audioData[2] != 'a' || m_audioData[3] != 'C')
+        {
+            // Find the first frame boundary in the seek chunk. If the chunk is
+            // too small to contain a sync code, wait for more data.
+            const size_t frameStart = findNextFlacFrame(m_audioData);
+            if (frameStart == std::string::npos)
+            {
+                return {{}, DecoderError::NoError};
+            }
+            if (frameStart > 0)
+            {
+                printf("[FlacDecoderWrapper] trimming %zu bytes before first frame boundary\n",
+                       frameStart);
+                m_audioData.erase(m_audioData.begin(), m_audioData.begin() + frameStart);
+            }
+
+            // Prepend the previously captured header to the seek chunk.
+            std::vector<unsigned char> withHeader;
+            withHeader.reserve(mHeader.size() + m_audioData.size());
+            withHeader.insert(withHeader.end(), mHeader.begin(), mHeader.end());
+            withHeader.insert(withHeader.end(), m_audioData.begin(), m_audioData.end());
+            m_audioData = std::move(withHeader);
+        }
+
+        if (!initializeDecoder(0, 0))
+        {
+            return {{}, DecoderError::FailedToCreateDecoder};
+        }
+    }
+
     m_read_pos = 0;
     unsigned int processCount = 0;
     size_t last_successful_read_pos = 0;
     while ((m_read_pos < m_audioData.size() || m_dataEnded) && processCount < 100000)
     {
-        const size_t read_pos_before = m_read_pos;
-
         if (!FLAC__stream_decoder_process_single(m_pFlacDecoder))
         {
             FLAC__StreamDecoderState state = FLAC__stream_decoder_get_state(m_pFlacDecoder);
@@ -318,12 +433,32 @@ FLAC__StreamDecoderWriteStatus FlacDecoderWrapper::write_callback(const FLAC__St
         divisor = 128.0f;
     }
 
-    for (size_t i = 0; i < num_samples; ++i)
+    const size_t frameTotalSamples = num_samples * self->m_channels;
+    const uint64_t frameStartSample =
+        static_cast<uint64_t>(frame->header.number.sample_number) * self->m_channels;
+
+    size_t startSample = 0;
+    if (self->mPendingSkipTargetSample > 0 &&
+        frameStartSample < self->mPendingSkipTargetSample)
     {
-        for (unsigned channel = 0; channel < self->m_channels; ++channel)
+        if (frameStartSample + frameTotalSamples <= self->mPendingSkipTargetSample)
         {
-            self->m_decodedPcm.push_back(static_cast<float>(buffer[channel][i]) / divisor);
+            // Whole frame is before the seek target; skip it entirely.
+            return FLAC__STREAM_DECODER_WRITE_STATUS_CONTINUE;
         }
+        startSample = static_cast<size_t>(self->mPendingSkipTargetSample - frameStartSample);
+    }
+
+    for (size_t sample = startSample; sample < frameTotalSamples; ++sample)
+    {
+        const unsigned channel = sample % self->m_channels;
+        const size_t i = sample / self->m_channels;
+        self->m_decodedPcm.push_back(static_cast<float>(buffer[channel][i]) / divisor);
+    }
+
+    if (frameStartSample + frameTotalSamples >= self->mPendingSkipTargetSample)
+    {
+        self->mPendingSkipTargetSample = 0;
     }
 
     return FLAC__STREAM_DECODER_WRITE_STATUS_CONTINUE;
@@ -350,7 +485,10 @@ uint64_t FlacDecoderWrapper::timeToByteOffset(double seconds)
     if (totalSeconds <= 0.0)
         return 0;
     const double ratio = seconds / totalSeconds;
-    return static_cast<uint64_t>(ratio * static_cast<double>(mTotalEncodedBytes));
+    const uint64_t totalBytes = mTotalAudioSizeBytes > 0 ? mTotalAudioSizeBytes : mTotalEncodedBytes;
+    if (totalBytes == 0)
+        return 0;
+    return static_cast<uint64_t>(ratio * static_cast<double>(totalBytes));
 }
 
 double FlacDecoderWrapper::getDuration() const
@@ -358,6 +496,26 @@ double FlacDecoderWrapper::getDuration() const
     if (m_samplerate == 0 || mTotalSamples == 0)
         return -1.0;
     return static_cast<double>(mTotalSamples) / static_cast<double>(m_samplerate);
+}
+
+void FlacDecoderWrapper::prepareForSeek(uint64_t targetSample)
+{
+    if (m_pFlacDecoder)
+    {
+        FLAC__stream_decoder_finish(m_pFlacDecoder);
+        FLAC__stream_decoder_delete(m_pFlacDecoder);
+        m_pFlacDecoder = nullptr;
+    }
+    m_audioData.clear();
+    m_read_pos = 0;
+    m_streamStartOffset = 0;
+    m_streamInfoProcessed = false;
+    mTotalEncodedBytes = 0;
+    m_decodedPcm.clear();
+    m_dataEnded = false;
+    mPendingSkipTargetSample = targetSample;
+    printf("[FlacDecoderWrapper] prepareForSeek targetSample=%llu\n",
+           static_cast<unsigned long long>(targetSample));
 }
 
 #endif // #if !defined(NO_XIPH_LIBS)

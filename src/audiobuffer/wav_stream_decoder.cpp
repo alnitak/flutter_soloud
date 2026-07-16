@@ -101,6 +101,16 @@ WavDecoderWrapper::decode(std::vector<unsigned char> &buffer, int *sampleRate,
 
   // --- Decoder Initialization ---
   if (!isInitialized) {
+    // Out-of-buffer seeks feed data starting deep in the WAV data chunk. The
+    // dr_wav parser needs the RIFF header to initialize, so prepend the captured
+    // header if the current buffer doesn't contain one.
+    if (!audioData.empty() &&
+        !WavDecoderWrapper::checkForValidWavHeader(audioData)) {
+      if (!mHeader.empty()) {
+        audioData.insert(audioData.begin(), mHeader.begin(), mHeader.end());
+      }
+    }
+
     size_t read_pos_before = m_read_pos;
 
     // drwav_init will read some initial data via the on_read callback to parse
@@ -114,6 +124,26 @@ WavDecoderWrapper::decode(std::vector<unsigned char> &buffer, int *sampleRate,
       return {{}, DecoderError::NoError};
     }
     isInitialized = true;
+
+    // Capture the header bytes so future seeks can reinitialize from a
+    // mid-stream chunk. The header spans from the start of the file to the
+    // beginning of the data chunk.
+    if (mHeader.empty() && decoder.dataChunkDataPos > 0 &&
+        static_cast<uint64_t>(decoder.dataChunkDataPos) <= audioData.size()) {
+      mHeader.assign(audioData.begin(),
+                       audioData.begin() + decoder.dataChunkDataPos);
+    }
+
+    // If this decode call is part of an out-of-buffer seek, jump to the
+    // target frame before producing samples.
+    if (mPendingSeekTargetSample > 0) {
+      if (decoder.channels > 0) {
+        const drwav_uint64 targetFrame =
+            mPendingSeekTargetSample / decoder.channels;
+        drwav_seek_to_pcm_frame(&decoder, targetFrame);
+      }
+      mPendingSeekTargetSample = 0;
+    }
 
     if (onTrackChange) {
       AudioMetadata metadata;
@@ -206,4 +236,21 @@ double WavDecoderWrapper::getDuration() const {
   if (decoder.totalPCMFrameCount == 0) return -1.0;
   return static_cast<double>(decoder.totalPCMFrameCount) /
          static_cast<double>(decoder.sampleRate);
+}
+
+void WavDecoderWrapper::prepareForSeek(uint64_t targetSample) {
+  if (isInitialized) {
+    // Capture the header before uninitializing, if it wasn't already captured
+    // during a previous decode() call.
+    if (mHeader.empty() && decoder.dataChunkDataPos > 0) {
+      // audioData has already been consumed, so we cannot recover the header
+      // here. It should have been captured right after drwav_init succeeded.
+    }
+    drwav_uninit(&decoder);
+    isInitialized = false;
+  }
+  mPendingSeekTargetSample = targetSample;
+  m_read_pos = 0;
+  audioData.clear();
+  mDataEnded = false;
 }

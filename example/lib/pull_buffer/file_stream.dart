@@ -59,7 +59,11 @@ class _FileStreamExampleState extends State<FileStreamExample> {
   static const _bufferSizeBytes = 5 * 1024 * 1024;
   static const _bufferTriggerPosition = 0.75;
 
-  static const audioAsset = 'assets/audio/sample-MP3.mp3';
+  static const audioMP3 = 'assets/audio/sample-MP3.mp3';
+  static const audioFLAC = 'assets/audio/sample-FLAC.flac';
+  static const audioOPUS = 'assets/audio/sample-OPUS.opus';
+  static const audioVORBIS = 'assets/audio/sample-vorbis.ogg';
+  static const audioWAV = 'assets/audio/sample-WAV.wav';
 
   static final _logger = Logger('PullBufferFileStream');
 
@@ -104,12 +108,6 @@ class _FileStreamExampleState extends State<FileStreamExample> {
       // is added after the trigger position is reached. The playhead can
       // seek anywhere inside the red bar as long as the decoded samples are
       // still in the buffer.
-      // ignore: avoid_print
-      print(
-        'ticker: bufferedStart=${range.startTime.inMilliseconds}ms '
-        'bufferedEnd=${range.endTime.inMilliseconds}ms '
-        'position=${newPos.inMilliseconds}ms',
-      );
       setState(() {
         _position = newPos;
         _bufferedStart = range.startTime;
@@ -127,49 +125,38 @@ class _FileStreamExampleState extends State<FileStreamExample> {
     await _startStream();
   }
 
-  void _onMetadata(AudioMetadata metadata) {
-    var sampleRate = _sampleRate;
-    var channels = _channels;
-    switch (metadata.detectedType) {
-      case DetectedType.oggVorbis:
-        sampleRate = metadata.oggMetadata?.vorbisInfo.rate ?? sampleRate;
-        channels = metadata.oggMetadata?.vorbisInfo.channels ?? channels;
-      case DetectedType.oggOpus:
-        sampleRate =
-            metadata.oggMetadata?.opusInfo.inputSampleRate ?? sampleRate;
-        channels = metadata.oggMetadata?.opusInfo.channels ?? channels;
-      case DetectedType.oggFlac:
-        sampleRate = metadata.oggMetadata?.flacInfo.sampleRate ?? sampleRate;
-        channels = metadata.oggMetadata?.flacInfo.channels ?? channels;
-      case DetectedType.mp3WithId3:
-      case DetectedType.mp3Stream:
-      case DetectedType.wav:
-      case DetectedType.unknown:
-        break;
-    }
-    final metadataString = metadata.mp3Metadata?.title ??
-        metadata.oggMetadata?.opusInfo ??
-        metadata.oggMetadata?.vorbisInfo ??
-        metadata.oggMetadata?.flacInfo ??
-        'null';
-    _logger.info(
-      'onMetadata: detectedType=${metadata.detectedType} '
-      '$metadataString '
-      'sampleRate=$sampleRate channels=$channels',
-    );
-    setState(() {
-      _sampleRate = sampleRate;
-      _channels = channels;
-    });
-  }
-
   Future<void> _startStream() async {
-    _source = SoLoud.instance.setPullBufferStream(
+    _timer?.cancel();
+    _flashTimer?.cancel();
+
+    final oldHandle = _handle;
+    _handle = null;
+    _source = null;
+    _fetchedOffsets.clear();
+    _bufferedStart = Duration.zero;
+    _bufferedEnd = Duration.zero;
+    _position = Duration.zero;
+    _flashColor = null;
+
+    if (oldHandle != null && SoLoud.instance.getIsValidVoiceHandle(oldHandle)) {
+      await SoLoud.instance.stop(oldHandle);
+    }
+
+    // On the web, disposing the old source while the audio thread is still
+    // processing it can cause a segfault or mutex deadlock. We leave the old
+    // source in the engine; it will be cleaned up when the widget is disposed.
+    // Each callback closure captures its own source reference so only the
+    // current source gets data.
+    AudioSource? currentSource;
+    _source = currentSource = SoLoud.instance.setPullBufferStream(
       bufferSizeBytes: _bufferSizeBytes,
       bufferTriggerPosition: _bufferTriggerPosition,
       audioSizeBytes: _totalBytes,
-      onMetadata: _onMetadata,
+      onMetadata: (metadata) {
+        _logger.info('onMetadata: detectedType=${metadata.detectedType} ');
+      },
       onAudioDuration: (duration) {
+        if (currentSource != _source || !mounted) return;
         _logger.info('onAudioDuration: ${duration}s');
         setState(
           () => _duration = Duration(
@@ -178,9 +165,15 @@ class _FileStreamExampleState extends State<FileStreamExample> {
         );
       },
       onMoreDataIsNeeded: (offset) {
-        if (_fileBytes == null || offset < 0 || offset >= _totalBytes) {
+        if (currentSource != _source ||
+            currentSource == null ||
+            _fileBytes == null ||
+            offset < 0 ||
+            offset >= _totalBytes ||
+            !mounted) {
           _logger.fine(
-            'onMoreDataIsNeeded: offset $offset out of range, skipping',
+            'onMoreDataIsNeeded: offset $offset out of range or stale, '
+            'skipping',
           );
           return;
         }
@@ -201,13 +194,15 @@ class _FileStreamExampleState extends State<FileStreamExample> {
         //     'position=${_position.inMilliseconds}ms');
 
         SoLoud.instance.addPullBufferDataStream(
-          _source!,
+          currentSource,
           chunk,
           offset: offset,
         );
-        setState(() {
-          _status = 'Feeding $end / $_totalBytes bytes';
-        });
+        if (mounted) {
+          setState(() {
+            _status = 'Feeding $end / $_totalBytes bytes';
+          });
+        }
       },
     );
 
@@ -255,17 +250,15 @@ class _FileStreamExampleState extends State<FileStreamExample> {
   }
 
   void _reset() {
-    if (_source == null) return;
-    _logger.info('Reset pull buffer stream');
-    SoLoud.instance.resetPullBufferStream(_source!);
-    setState(() {
-      _fetchedOffsets.clear();
-      _bufferedStart = Duration.zero;
-      _bufferedEnd = Duration.zero;
-      _position = Duration.zero;
-      _flashColor = null;
-    });
+    if (_source == null || _fileBytes == null) return;
+    _logger.info('Restarting pull buffer stream');
+    _fetchedOffsets.clear();
+    _bufferedStart = Duration.zero;
+    _bufferedEnd = Duration.zero;
+    _position = Duration.zero;
+    _flashColor = null;
     _flashTimer?.cancel();
+    unawaited(_startStream());
   }
 
   @override
@@ -278,13 +271,28 @@ class _FileStreamExampleState extends State<FileStreamExample> {
           spacing: 16,
           children: [
             Text(_status),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+            Wrap(
+              alignment: WrapAlignment.center,
               children: [
                 ElevatedButton(
-                  onPressed:
-                      _source == null ? () => _loadFromAsset(audioAsset) : null,
+                  onPressed: () => _loadFromAsset(audioMP3),
                   child: const Text('Load sample MP3'),
+                ),
+                ElevatedButton(
+                  onPressed: () => _loadFromAsset(audioFLAC),
+                  child: const Text('Load sample FLAC'),
+                ),
+                ElevatedButton(
+                  onPressed: () => _loadFromAsset(audioOPUS),
+                  child: const Text('Load sample OPUS'),
+                ),
+                ElevatedButton(
+                  onPressed: () => _loadFromAsset(audioVORBIS),
+                  child: const Text('Load sample VORBIS'),
+                ),
+                ElevatedButton(
+                  onPressed: () => _loadFromAsset(audioWAV),
+                  child: const Text('Load sample WAV'),
                 ),
               ],
             ),

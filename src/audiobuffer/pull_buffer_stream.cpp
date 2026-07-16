@@ -13,8 +13,6 @@
 
 namespace SoLoud {
 
-constexpr size_t kMaxEncodedBufferForDetection = 16 * 1024 * 1024; // 16 MB
-
 PullBufferStreamInstance::PullBufferStreamInstance(PullBufferStream *aParent)
     : mParent(aParent) {
   if (mParent != nullptr) {
@@ -259,7 +257,9 @@ void PullBufferStream::resetDecoderForSeek(uint64_t targetSample) {
   if (mPCMformat.dataType != BufferType::AUTO || !mStreamDecoder) return;
   const DetectedType type = mStreamDecoder->getWrapperType();
   if (type == DetectedType::BUFFER_OGG_OPUS ||
-      type == DetectedType::BUFFER_OGG_VORBIS) {
+      type == DetectedType::BUFFER_OGG_VORBIS ||
+      type == DetectedType::BUFFER_WAV ||
+      type == DetectedType::BUFFER_FLAC) {
     mStreamDecoder->prepareForSeek(targetSample);
   } else {
     mStreamDecoder = std::make_unique<StreamDecoder>();
@@ -700,14 +700,6 @@ void PullBufferStream::decodePendingDataLocked() {
     constexpr size_t kMinEncodedBufferForDecode = 16 * 1024;
     if (mEncodedBuffer.size() < kMinEncodedBufferForDecode && !mDataIsEnded.load()) {
       return;
-    }
-
-    // Limit how much encoded data we keep for format detection.
-    if (mEncodedBuffer.size() > kMaxEncodedBufferForDetection) {
-      mEncodedBuffer.erase(
-          mEncodedBuffer.begin(),
-          mEncodedBuffer.begin() +
-              (mEncodedBuffer.size() - kMaxEncodedBufferForDetection));
     }
 
     int sampleRate = mThePlayer->mSampleRate;
