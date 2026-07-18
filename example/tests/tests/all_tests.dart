@@ -15,9 +15,7 @@ import 'hot_restart_lifecycle.dart' as hot_restart_lifecycle;
 import 'limiter_filter.dart' as limiter_filter;
 import 'load_mem.dart' as load_mem;
 import 'looping.dart' as looping;
-import 'mixer_output_capture.dart'
-    if (dart.library.js_interop) 'mixer_output_capture_web.dart'
-    as mixer_output_capture;
+import 'mixer_output_capture.dart' as mixer_output_capture;
 import 'mixing_bus.dart' as mixing_bus;
 import 'pan.dart' as pan;
 import 'pitch_shifter_filter.dart' as pitch_shifter_filter;
@@ -26,17 +24,10 @@ import 'playback_devices.dart' as playback_devices;
 import 'playback_speed.dart' as playback_speed;
 import 'protect_voice.dart' as protect_voice;
 import 'pull_buffer_file_stream_test.dart' as pull_buffer_file_stream;
-import 'pull_buffer_range_test.dart'
-    if (dart.library.js_interop) 'pull_buffer_range_test_web.dart'
-    as pull_buffer_range;
-import 'pull_buffer_seek_test.dart'
-    if (dart.library.js_interop) 'pull_buffer_seek_test_web.dart'
-    as pull_buffer_seek;
-import 'pull_buffer_test.dart'
-    if (dart.library.js_interop) 'pull_buffer_test_web.dart' as pull_buffer;
-import 'pull_buffer_tiny_test.dart'
-    if (dart.library.js_interop) 'pull_buffer_tiny_test_web.dart'
-    as pull_buffer_tiny;
+import 'pull_buffer_range_test.dart' as pull_buffer_range;
+import 'pull_buffer_seek_test.dart' as pull_buffer_seek;
+import 'pull_buffer_test.dart' as pull_buffer;
+import 'pull_buffer_tiny_test.dart' as pull_buffer_tiny;
 import 'read_samples.dart' as read_samples;
 import 'sound_filters.dart' as sound_filters;
 import 'speech_text.dart' as speech_text;
@@ -173,7 +164,7 @@ final List<TestEntry> allTests = [
   ),
   const TestEntry(
     name: 'PullBuffer',
-    run: pull_buffer.testPu\llBuffer,
+    run: pull_buffer.testPullBuffer,
   ),
   const TestEntry(
     name: 'PullBufferFileStream',
