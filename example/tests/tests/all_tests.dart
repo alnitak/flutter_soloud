@@ -173,7 +173,7 @@ final List<TestEntry> allTests = [
   ),
   const TestEntry(
     name: 'PullBuffer',
-    run: pull_buffer.testPullBuffer,
+    run: pull_buffer.testPu\llBuffer,
   ),
   const TestEntry(
     name: 'PullBufferFileStream',
