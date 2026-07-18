@@ -68,8 +68,10 @@ private:
   size_t m_readOffset = 0;       // Guarded by m_mutex.
   size_t m_writeOffset = 0;      // Guarded by m_mutex.
   std::atomic<size_t> m_size{0}; // Number of floats currently stored.
-  bool m_hasWrapped = false;     // Guarded by m_mutex. True once the buffer
-                                 // has been completely filled at least once.
+  size_t m_totalWritten = 0;     // Guarded by m_mutex. Cumulative floats ever written.
+  bool m_hasWrapped = false;     // Guarded by m_mutex. True once the write pointer
+                                 // has lapped (m_totalWritten >= m_capacity), i.e.
+                                 // every slot holds valid data.
 
   size_t contiguousFree() const;
 };

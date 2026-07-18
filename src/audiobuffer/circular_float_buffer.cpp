@@ -16,6 +16,7 @@ void CircularFloatBuffer::setCapacity(size_t capacitySamples) {
   m_readOffset = 0;
   m_writeOffset = 0;
   m_size.store(0, std::memory_order_relaxed);
+  m_totalWritten = 0;
   m_hasWrapped = false;
 }
 
@@ -48,10 +49,12 @@ size_t CircularFloatBuffer::write(const float *data, size_t count) {
     std::memcpy(m_buffer.data() + m_writeOffset, data + written,
                 toWrite * sizeof(float));
     m_writeOffset = (m_writeOffset + toWrite) % m_capacity;
-    // Track the size immediately so subsequent contiguousFree() calls can
-    // distinguish a full buffer from an empty one when write == read.
-    const size_t oldSize = m_size.fetch_add(toWrite, std::memory_order_relaxed);
-    if (oldSize + toWrite >= m_capacity) {
+    m_size.fetch_add(toWrite, std::memory_order_relaxed);
+    // Once the cumulative writes reach the capacity, every slot has been
+    // written at least once: the whole free gap behind the read pointer is
+    // valid recently-consumed data that rewindRead() can restore.
+    m_totalWritten += toWrite;
+    if (m_totalWritten >= m_capacity) {
       m_hasWrapped = true;
     }
     written += toWrite;
@@ -109,10 +112,11 @@ size_t CircularFloatBuffer::rewindRead(size_t count) {
   std::lock_guard<std::mutex> lock(m_mutex);
   const size_t currentSize = m_size.load(std::memory_order_relaxed);
   const size_t free = m_capacity - currentSize;
-  // Before the buffer has been full, the free area behind the read pointer is a
-  // mix of valid already-read data and never-written space. Limit the rewind
-  // to the valid region. After the buffer has been full, the whole free gap
-  // is valid recent data.
+  // Before the write pointer has lapped the ring, the free area behind the
+  // read pointer is a mix of valid already-read data and never-written space;
+  // limit the rewind to the valid region. After lapping, the whole free gap
+  // is valid recent data. Note the buffer rarely becomes completely full in
+  // practice, so lapping (not fullness) is the correct condition.
   const size_t maxRewind = m_hasWrapped ? free : std::min(m_readOffset, free);
   const size_t toRewind = std::min(count, maxRewind);
   m_readOffset = (m_readOffset + m_capacity - toRewind) % m_capacity;
@@ -125,6 +129,7 @@ void CircularFloatBuffer::clear() {
   m_readOffset = 0;
   m_writeOffset = 0;
   m_size.store(0, std::memory_order_relaxed);
+  m_totalWritten = 0;
   m_hasWrapped = false;
 }
 
