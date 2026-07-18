@@ -1351,6 +1351,7 @@ interface class SoLoud {
   /// to feed the data back.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  @experimental
   AudioSource setPullBufferStream({
     int bufferSizeBytes = 1024 * 1024 * 10, // 10 MB
     double bufferTriggerPosition = 0.8,
@@ -1407,6 +1408,7 @@ interface class SoLoud {
   /// [sound] the pull buffer stream sound.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  @experimental
   void resetPullBufferStream(AudioSource sound) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1438,6 +1440,7 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudSoundHashNotFoundDartException] if the [source] is not
   /// found.
+  @experimental
   PlayerErrors addPullBufferDataStream(
     AudioSource source,
     Uint8List audioChunk, {
@@ -1476,6 +1479,7 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudSoundHashNotFoundDartException] if the [source] is not
   /// found.
+  @experimental
   ({PlayerErrors error, Duration startTime, Duration endTime})
   getPullBufferTimeRange(AudioSource source) {
     if (!isInitialized) {

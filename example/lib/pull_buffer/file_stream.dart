@@ -59,6 +59,35 @@ class _FileStreamExampleState extends State<FileStreamExample> {
   static const _bufferSizeBytes = 5 * 1024 * 1024;
   static const _bufferTriggerPosition = 0.75;
 
+
+  /// To run the example on the web, you could set up the following nginx
+  /// configuration.
+  /// ```json
+  /// events {}
+  ///
+  /// http {
+  ///     server {
+  ///         listen 8088;
+  ///         server_name localhost;
+  ///
+  ///         root /Volumes/NVME/workspace/libs/flutter_soloud/example/assets/audio;
+  ///         autoindex on;
+  ///
+  ///         location / {
+  ///             try_files $uri $uri/ =404;
+  ///         }
+  ///     }
+  /// }
+  /// ```
+  /// 
+  /// To start the server, run the following command in the example/assets/audio
+  /// directory
+  /// nginx -c "$(pwd)/nginx.conf" -p "$(pwd)"
+  ///
+  /// To stop the server, run the following command in the example/assets/audio
+  /// directory
+  /// nginx -s stop -c "$(pwd)/nginx.conf" -p "$(pwd)"
+  /// 
   static const audioMP3 = 'assets/audio/sample-MP3.mp3';
   static const audioFLAC = 'assets/audio/sample-FLAC.flac';
   static const audioOPUS = 'assets/audio/sample-OPUS.opus';
