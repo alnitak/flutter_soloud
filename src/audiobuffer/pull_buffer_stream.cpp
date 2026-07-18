@@ -16,6 +16,11 @@ namespace SoLoud {
 PullBufferStreamInstance::PullBufferStreamInstance(PullBufferStream *aParent)
     : mParent(aParent) {
   if (mParent != nullptr) {
+    // Seed the format so the first callbacks use valid values even when the
+    // decode mutex is contended (see getAudio).
+    mBaseSamplerate = static_cast<float>(mParent->mPCMformat.sampleRate);
+    mSamplerate = mBaseSamplerate;
+    mChannels = mParent->mPCMformat.channels;
     mParent->mInstance = this;
   }
 }
@@ -34,9 +39,17 @@ unsigned int PullBufferStreamInstance::getAudio(float *aBuffer,
     return 0;
   }
 
-  mBaseSamplerate = static_cast<float>(mParent->mPCMformat.sampleRate);
-  mSamplerate = static_cast<float>(mParent->mPCMformat.sampleRate);
-  mChannels = mParent->mPCMformat.channels;
+  // Refresh the stream format under the decode mutex: the main thread updates
+  // mPCMformat when the decoder reports the real sample rate/channels. If the
+  // mutex is contended, keep the last known values for this callback.
+  {
+    std::unique_lock<std::mutex> lock(mParent->mDecodeMutex, std::try_to_lock);
+    if (lock.owns_lock()) {
+      mBaseSamplerate = static_cast<float>(mParent->mPCMformat.sampleRate);
+      mSamplerate = static_cast<float>(mParent->mPCMformat.sampleRate);
+      mChannels = mParent->mPCMformat.channels;
+    }
+  }
 
   // Move any decoded samples that did not fit earlier into the circular
   // buffer so they become available for playback.
@@ -59,15 +72,16 @@ unsigned int PullBufferStreamInstance::getAudio(float *aBuffer,
 
   // Pull interleaved samples from the circular buffer and de-interleave them
   // into the planar layout the SoLoud mixer expects (each channel is a
-  // contiguous block of aBufferSize frames).
-  std::vector<float> temp(samplesToRead);
+  // contiguous block of aBufferSize frames). The scratch buffer is reused
+  // across callbacks to avoid allocating on the audio thread.
+  mReadScratch.resize(samplesToRead);
   const size_t readSamples =
-      mParent->mCircularBuffer.read(temp.data(), samplesToRead);
+      mParent->mCircularBuffer.read(mReadScratch.data(), samplesToRead);
   const size_t readFrames = readSamples / mChannels;
   if (readFrames > 0) {
     for (unsigned int ch = 0; ch < mChannels; ++ch) {
       for (size_t i = 0; i < readFrames; ++i) {
-        aBuffer[ch * aBufferSize + i] = temp[i * mChannels + ch];
+        aBuffer[ch * aBufferSize + i] = mReadScratch[i * mChannels + ch];
       }
     }
   }
@@ -228,7 +242,7 @@ bool PullBufferStreamInstance::hasEnded() {
     return true;
   }
   return mParent->isDataEnded() && mParent->mCircularBuffer.empty() &&
-         mParent->mDecodedBacklog.empty();
+         mParent->mDecodedBacklogSize.load(std::memory_order_relaxed) == 0;
 }
 
 // /////////////////////////////////////////////////////////////////////////////
@@ -247,6 +261,7 @@ void PullBufferStream::resetBufferWindow(uint64_t decodedSamplesRead,
   mCircularBuffer.advanceRead(mCircularBuffer.available());
   mEncodedBuffer.clear();
   mDecodedBacklog.clear();
+  mDecodedBacklogSize.store(0, std::memory_order_relaxed);
   mDecodedSamplesRead = decodedSamplesRead;
   mDecodedSamplesWritten = decodedSamplesWritten;
   mBufferStartTime = bufferStartTime;
@@ -307,7 +322,23 @@ PlayerErrors PullBufferStream::setPullBufferStream(
   mParent = aParent;
   mBufferTriggerPosition = bufferTriggerPosition;
   mAudioSizeBytes = audioSizeBytes;
-  mPCMformat = {sampleRate, channels, sizeof(float), format};
+  // Bytes per sample of the incoming data. The decoded output is always
+  // float, but the PCM decode path needs the input width to frame the
+  // encoded buffer correctly (and getLength() needs it for PCM durations).
+  unsigned int bytesPerSample = 4;
+  switch (format) {
+  case BufferType::PCM_S8:
+    bytesPerSample = 1;
+    break;
+  case BufferType::PCM_S16LE:
+    bytesPerSample = 2;
+    break;
+  default:
+    // PCM_F32LE, PCM_S32LE and AUTO (decoders output float) are 4 bytes.
+    bytesPerSample = 4;
+    break;
+  }
+  mPCMformat = {sampleRate, channels, bytesPerSample, format};
   mTotalReceivedBytes = 0;
   mSequentialReadOffset = 0;
   mDecodedSamplesRead = 0;
@@ -371,6 +402,7 @@ void PullBufferStream::resetPullBufferStream() {
   mEncodedBuffer.clear();
   mDecodeScratch.clear();
   mDecodedBacklog.clear();
+  mDecodedBacklogSize.store(0, std::memory_order_relaxed);
   mTotalReceivedBytes = 0;
   mSequentialReadOffset = 0;
   mDecodedSamplesRead = 0;
@@ -513,7 +545,7 @@ PlayerErrors PullBufferStream::addAudioData(const void *aData,
     if (aOffset == mNextTailOffset.load()) {
       mNextTailOffset.store(aOffset + aDataLen);
     }
-    soloud_platform_log(
+    SOLOUD_DEBUG_LOG(
         "[PullBuffer] addAudioData tail probe len=%u offset=%llu "
         "nextTailOffset=%llu\n",
         aDataLen, static_cast<unsigned long long>(aOffset),
@@ -695,9 +727,18 @@ void PullBufferStream::decodePendingDataLocked() {
   // any newly decoded samples either, so stop here.
   drainBacklogLocked();
   if (!mDecodedBacklog.empty()) {
-    soloud_platform_log(
+    SOLOUD_DEBUG_LOG(
         "[PullBuffer] decodePendingData: buffer full, backlog=%zu\n",
         mDecodedBacklog.size());
+    return;
+  }
+
+  // Maximum number of decoded samples the circular buffer can still accept.
+  const size_t maxAllowedSamples =
+      mDecodedSamplesRead + mCircularBuffer.capacity() > mDecodedSamplesWritten
+          ? (mDecodedSamplesRead + mCircularBuffer.capacity()) - mDecodedSamplesWritten
+          : 0;
+  if (maxAllowedSamples == 0) {
     return;
   }
 
@@ -715,13 +756,6 @@ void PullBufferStream::decodePendingDataLocked() {
 
     int sampleRate = mThePlayer->mSampleRate;
     int channels = mThePlayer->mChannels;
-    const size_t maxAllowedSamples =
-        mDecodedSamplesRead + mCircularBuffer.capacity() > mDecodedSamplesWritten
-            ? (mDecodedSamplesRead + mCircularBuffer.capacity()) - mDecodedSamplesWritten
-            : 0;
-    if (maxAllowedSamples == 0) {
-      return;
-    }
     auto [decoded, error] = mStreamDecoder->decode(
         mEncodedBuffer, &sampleRate, &channels, [&](AudioMetadata meta) {
           if (this->mOnMetadataCallback != nullptr)
@@ -761,10 +795,9 @@ void PullBufferStream::decodePendingDataLocked() {
         mDecodedBacklog.insert(mDecodedBacklog.end(),
                                decoded.data() + written,
                                decoded.data() + decoded.size());
+        mDecodedBacklogSize.store(mDecodedBacklog.size(),
+                                  std::memory_order_relaxed);
       }
-      // soloud_platform_log(
-      //     "[PullBuffer] decodePendingData decoded=%zu written=%zu backlog=%zu\n",
-      //     decoded.size(), written, mDecodedBacklog.size());
       // Once decoded, the encoded data is consumed from the pending buffer.
       mEncodedBuffer.clear();
       applyPendingSeek();
@@ -779,11 +812,6 @@ void PullBufferStream::decodePendingDataLocked() {
   } else {
     // Raw PCM: convert to float and write into the circular buffer.
     const size_t frameSize = mPCMformat.bytesPerSample * mPCMformat.channels;
-    const size_t maxAllowedSamples =
-        mDecodedSamplesRead + mCircularBuffer.capacity() > mDecodedSamplesWritten
-            ? (mDecodedSamplesRead + mCircularBuffer.capacity()) - mDecodedSamplesWritten
-            : 0;
-    if (maxAllowedSamples == 0) return;
     const size_t framesToProcess = std::min(
         mEncodedBuffer.size() / frameSize,
         maxAllowedSamples / mPCMformat.channels);
@@ -800,7 +828,7 @@ void PullBufferStream::decodePendingDataLocked() {
       break;
     case BufferType::PCM_S8:
       for (size_t i = 0; i < samples; ++i) {
-        floatData[i] = static_cast<float>(src[i]) / 128.0f;
+        floatData[i] = static_cast<float>(static_cast<int8_t>(src[i])) / 128.0f;
       }
       break;
     case BufferType::PCM_S16LE: {
@@ -828,11 +856,13 @@ void PullBufferStream::decodePendingDataLocked() {
     if (written < samples) {
       mDecodedBacklog.insert(mDecodedBacklog.end(), floatData + written,
                              floatData + samples);
+      mDecodedBacklogSize.store(mDecodedBacklog.size(),
+                                std::memory_order_relaxed);
     }
     mEncodedBuffer.erase(mEncodedBuffer.begin(),
                          mEncodedBuffer.begin() + framesToProcess * frameSize);
     mMetadataReceived.store(true);
-    soloud_platform_log(
+    SOLOUD_DEBUG_LOG(
         "[PullBuffer] decodePendingData PCM frames=%zu written=%zu backlog=%zu\n",
         framesToProcess, written, mDecodedBacklog.size());
     applyPendingSeek();
@@ -869,8 +899,8 @@ void PullBufferStream::applyPendingSeek() {
                    mPCMformat.channels));
     resetBufferWindow(targetSample, targetSample, mPendingSeekTime, newOffset,
                       newOffset);
-    if (mInstance != nullptr) {
-      mInstance->mStreamPosition = mPendingSeekTime;
+    if (auto *instance = mInstance.load(); instance != nullptr) {
+      instance->mStreamPosition = mPendingSeekTime;
     }
     resetDecoderForSeek(targetSample);
     mPendingSeekByteOffset = newOffset;
@@ -908,19 +938,12 @@ void PullBufferStream::drainBacklogLocked() {
   if (written > 0) {
     mDecodedBacklog.erase(mDecodedBacklog.begin(),
                           mDecodedBacklog.begin() + written);
+    mDecodedBacklogSize.store(mDecodedBacklog.size(),
+                              std::memory_order_relaxed);
   }
 }
 
 void PullBufferStream::requestMoreDataIfNeeded() {
-  // soloud_platform_log(
-  //     "[PullBuffer] requestMoreDataIfNeeded enter callback=%s dataIsEnded=%d waitingForData=%d probeState=%d availablePlusBacklog=%zu aheadThresholdSamples=%zu\n",
-  //     mOnMoreDataIsNeededCallback.load() == nullptr ? "null" : "set",
-  //     mDataIsEnded.load() ? 1 : 0,
-  //     mWaitingForData.load() ? 1 : 0,
-  //     static_cast<int>(mDurationProbeState),
-  //     mCircularBuffer.available() + mDecodedBacklog.size(),
-  //     mBufferTriggerPosition / sizeof(float));
-
   auto callback = mOnMoreDataIsNeededCallback.load();
   if (callback == nullptr) return;
   if (mDataIsEnded.load()) return;
@@ -936,20 +959,20 @@ void PullBufferStream::requestMoreDataIfNeeded() {
   if (mPendingSeek.load()) {
     const uint64_t offset = mSequentialReadOffset;
     mWaitingForData.store(true);
-    soloud_platform_log(
+    SOLOUD_DEBUG_LOG(
         "[PullBuffer] requestMoreDataIfNeeded pending seek offset=%llu\n",
         static_cast<unsigned long long>(offset));
     callOnMoreDataIsNeededCallback(offset);
     return;
   }
 
-  // If we are waiting for the Ogg tail-probe chunk, request the next byte
-  // within the tail range until the whole tail has been fetched or the
-  // duration has been determined.
+  // While building the Ogg seek table, request a few sequential chunks before
+  // switching to the tail probe so short seeks are covered early on.
   if (mDurationProbeState == DurationProbeState::BuildingSeekTable) {
     const bool seekTableReady =
         mStreamDecoder && mStreamDecoder->canSeekToTime(1.0);
-    const bool decoderBlocked = mDecodedBacklog.size() > 0;
+    const bool decoderBlocked =
+        mDecodedBacklogSize.load(std::memory_order_relaxed) > 0;
     if (seekTableReady || mSeekTableBuildChunks >= kMaxSeekTableBuildChunks ||
         decoderBlocked) {
       mDurationProbeState = DurationProbeState::TailRequested;
@@ -959,68 +982,52 @@ void PullBufferStream::requestMoreDataIfNeeded() {
     }
     mWaitingForData.store(true);
     const uint64_t offset = mSequentialReadOffset;
-    soloud_platform_log(
+    SOLOUD_DEBUG_LOG(
         "[PullBuffer] requestMoreDataIfNeeded build seek table offset=%llu\n",
         static_cast<unsigned long long>(offset));
     callOnMoreDataIsNeededCallback(offset);
     return;
   }
 
-  if (mDurationProbeState == DurationProbeState::TailRequested) {
-    const size_t available = mCircularBuffer.available();
-    const size_t backlog = mDecodedBacklog.size();
-    const size_t availablePlusBacklog = available + backlog;
-    const size_t capacity = mCircularBuffer.capacity();
-    if (capacity == 0) return;
-    const double fraction = std::clamp(mBufferTriggerPosition, 0.0, 1.0);
-    const size_t aheadThresholdSamples =
-        static_cast<size_t>((1.0 - fraction) * capacity);
-
-    soloud_platform_log(
-        "[PullBuffer] requestMoreDataIfNeeded TailRequested availablePlusBacklog=%zu aheadThresholdSamples=%zu aboveThreshold=%s\n",
-        availablePlusBacklog, aheadThresholdSamples,
-        availablePlusBacklog > aheadThresholdSamples ? "yes" : "no");
-
-    // Keep playback fed while probing the tail. If the decoded buffer is below
-    // the ahead threshold, fall through to the normal sequential request.
-    if (availablePlusBacklog > aheadThresholdSamples) {
-      if (mNextTailOffset.load() >= mDurationProbeTailRangeEnd.load()) {
-        return;
-      }
-      mWaitingForData.store(true);
-      const uint64_t offset = mNextTailOffset.load();
-      soloud_platform_log(
-          "[PullBuffer] requestMoreDataIfNeeded tail offset=%llu\n",
-          static_cast<unsigned long long>(offset));
-      callOnMoreDataIsNeededCallback(offset);
-      return;
-    }
-    soloud_platform_log(
-        "[PullBuffer] requestMoreDataIfNeeded TailRequested below threshold, falling through to sequential request\n");
-  }
-
-  const size_t available = mCircularBuffer.available();
-  const size_t backlog = mDecodedBacklog.size();
-  const size_t availablePlusBacklog = available + backlog;
-  const size_t capacity = mCircularBuffer.capacity();
-  if (capacity == 0) return;
-
   // If the available data is below the ahead threshold, request more.
   // Include the backlog so decoded-but-not-yet-buffered samples count toward
   // the target and we do not get stuck when the circular buffer is tiny.
+  const size_t availablePlusBacklog =
+      mCircularBuffer.available() +
+      mDecodedBacklogSize.load(std::memory_order_relaxed);
+  const size_t capacity = mCircularBuffer.capacity();
+  if (capacity == 0) return;
   const double fraction = std::clamp(mBufferTriggerPosition, 0.0, 1.0);
   const size_t aheadThresholdSamples =
       static_cast<size_t>((1.0 - fraction) * capacity);
+
+  // While probing the Ogg tail for the duration, keep playback fed: only when
+  // the decoded buffer is comfortably ahead do we spend a request on the
+  // tail, otherwise we fall through to the normal sequential request.
+  if (mDurationProbeState == DurationProbeState::TailRequested &&
+      availablePlusBacklog > aheadThresholdSamples) {
+    if (mNextTailOffset.load() >= mDurationProbeTailRangeEnd.load()) {
+      return;
+    }
+    mWaitingForData.store(true);
+    const uint64_t offset = mNextTailOffset.load();
+    SOLOUD_DEBUG_LOG(
+        "[PullBuffer] requestMoreDataIfNeeded tail offset=%llu\n",
+        static_cast<unsigned long long>(offset));
+    callOnMoreDataIsNeededCallback(offset);
+    return;
+  }
+
   if (availablePlusBacklog > aheadThresholdSamples) {
     return;
   }
 
   mWaitingForData.store(true);
   const uint64_t offset = mSequentialReadOffset;
-  soloud_platform_log(
-      "[PullBuffer] requestMoreDataIfNeeded offset=%llu available=%zu capacity=%zu\n",
-      static_cast<unsigned long long>(offset),
-      mCircularBuffer.available(), mCircularBuffer.capacity());
+  SOLOUD_DEBUG_LOG(
+      "[PullBuffer] requestMoreDataIfNeeded offset=%llu "
+      "availablePlusBacklog=%zu capacity=%zu\n",
+      static_cast<unsigned long long>(offset), availablePlusBacklog, capacity);
   callOnMoreDataIsNeededCallback(offset);
 }
 

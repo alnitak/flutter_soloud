@@ -2,6 +2,7 @@
 #define OGG_FLAC_STREAM_DECODER_H
 
 #include "stream_decoder.h"
+#include "icy_metadata.h"
 #include <FLAC/stream_decoder.h>
 #include <ogg/ogg.h>
 #include <vector>
@@ -22,6 +23,7 @@ public:
     bool canSeekToTime(double seconds) const override;
     uint64_t timeToByteOffset(double seconds) override;
     double getDuration() const override;
+    void setTotalAudioSizeBytes(uint64_t size) override { mTotalAudioSizeBytes = size; }
 
 private:
     static FLAC__StreamDecoderReadStatus read_callback(const FLAC__StreamDecoder *decoder, FLAC__byte buffer[], size_t *bytes, void *client_data);
@@ -52,14 +54,15 @@ private:
     uint64_t mTotalSamples = 0;
     uint64_t mTotalEncodedBytes = 0;
 
+    /// Total encoded size of the stream, used to estimate byte offsets for
+    /// out-of-buffer seeks. Falls back to mTotalEncodedBytes when unset.
+    uint64_t mTotalAudioSizeBytes = 0;
+
     AudioMetadata m_metadata;
 
     // ICY Metadata state
     int mIcyMetaInt;
-    int mAudioBytesCount;
-    int mIcyMetaSize;
-    std::vector<unsigned char> mIcyMetadata;
-    std::string mStreamTitle;
+    IcyStripState mIcy;
 };
 
 #endif // OGG_FLAC_STREAM_DECODER_H

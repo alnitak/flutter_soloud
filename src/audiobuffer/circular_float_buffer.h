@@ -5,17 +5,15 @@
 
 #include <atomic>
 #include <cstddef>
-#include <cstdint>
 #include <mutex>
 #include <vector>
 
 namespace SoLoud {
 
-/// A lock-free(ish) circular buffer of 32-bit floats with a single producer
+/// A mutex-protected circular buffer of 32-bit floats with a single producer
 /// (the Dart thread via addAudioDataStream) and a single consumer (the audio
-/// thread via getAudio). All public methods are protected by a mutex so that
-/// the decoder can safely modify the buffer from one thread while the mixer
-/// reads from another.
+/// thread via getAudio). All mutating methods are serialized by the mutex;
+/// available()/freeSpace()/empty() are wait-free reads of an atomic counter.
 ///
 /// The buffer stores interleaved float samples. Capacity is expressed in
 /// samples, not bytes, to make the channel math trivial.
@@ -50,9 +48,6 @@ public:
   /// Returns the number of floats actually read. The read pointer is advanced.
   size_t read(float *out, size_t count);
 
-  /// Read without advancing the read pointer.
-  size_t peek(float *out, size_t count) const;
-
   /// Advance the read pointer by [count] samples. Must not exceed available().
   void advanceRead(size_t count);
 
@@ -62,31 +57,21 @@ public:
   /// [count] if the data behind the read pointer has been overwritten.
   size_t rewindRead(size_t count);
 
-  /// Reset to empty.
+  /// Reset to empty. Previously stored samples are not zeroed; the
+  /// bookkeeping alone makes them unreachable.
   void clear();
-
-  /// True once the buffer has been completely filled at least once. Before that,
-  /// the region behind the read pointer may contain uninitialized zeroed data.
-  bool hasWrapped() const { return m_hasWrapped; }
-
-  /// Current absolute read position (modulo capacity). Useful for debugging
-  /// and for the seeking logic.
-  size_t readPosition() const { return m_readOffset.load(); }
-
-  /// Current absolute write position (modulo capacity).
-  size_t writePosition() const { return m_writeOffset.load(); }
 
 private:
   std::vector<float> m_buffer;
   size_t m_capacity = 0;
-  mutable std::recursive_mutex m_mutex;
-  std::atomic<size_t> m_readOffset{0};
-  std::atomic<size_t> m_writeOffset{0};
-  std::atomic<size_t> m_size{0};  // Number of floats currently stored.
-  std::atomic<bool> m_hasWrapped{false};  // True once the buffer has been full.
+  mutable std::mutex m_mutex;
+  size_t m_readOffset = 0;       // Guarded by m_mutex.
+  size_t m_writeOffset = 0;      // Guarded by m_mutex.
+  std::atomic<size_t> m_size{0}; // Number of floats currently stored.
+  bool m_hasWrapped = false;     // Guarded by m_mutex. True once the buffer
+                                 // has been completely filled at least once.
 
   size_t contiguousFree() const;
-  size_t contiguousAvailable() const;
 };
 
 } // namespace SoLoud

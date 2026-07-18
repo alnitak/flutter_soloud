@@ -2,8 +2,8 @@
 #define FLAC_STREAM_DECODER_H
 
 #include "stream_decoder.h"
+#include "icy_metadata.h"
 #include <FLAC/stream_decoder.h>
-#include <ogg/ogg.h>
 #include <vector>
 #include <string>
 
@@ -35,13 +35,10 @@ private:
 
     FLAC__StreamDecoder *m_pFlacDecoder;
     bool m_streamInfoProcessed;
-    
+
     std::vector<unsigned char> m_audioData;
     size_t m_read_pos;
 
-    ogg_sync_state m_oy;
-    ogg_stream_state m_os;
-    bool m_streamInitialized;
     bool m_dataEnded;
     uint64_t m_streamStartOffset;
 
@@ -57,12 +54,8 @@ private:
 
     // ICY Metadata state
     int mIcyMetaInt;
-    int mAudioBytesCount;
-    int mIcyMetaSize;
-    std::vector<unsigned char> mIcyMetadata;
+    IcyStripState mIcy;
     void setTotalAudioSizeBytes(uint64_t size) override { mTotalAudioSizeBytes = size; }
-
-    std::string mStreamTitle;
 
     /// Header bytes of the FLAC file (fLaC magic + all metadata blocks). Kept
     /// across out-of-buffer seeks so the decoder can reinitialize from a

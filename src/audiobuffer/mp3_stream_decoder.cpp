@@ -73,11 +73,20 @@ void MP3DecoderWrapper::on_meta(void *pUserData,
       if (frame_id[0] == 0)
         break; // Padding or end of tags
 
-      // Frame size is a synchsafe integer in ID3v2.3/4
-      uint32_t frame_size = ((rawData[pos + 4] & 0x7f) << 21) |
-                            ((rawData[pos + 5] & 0x7f) << 14) |
-                            ((rawData[pos + 6] & 0x7f) << 7) |
-                            (rawData[pos + 7] & 0x7f);
+      // Frame size is a synchsafe integer in ID3v2.4, a plain big-endian
+      // integer in ID3v2.3 and earlier.
+      uint32_t frame_size;
+      if (rawData[3] >= 4) {
+        frame_size = ((rawData[pos + 4] & 0x7f) << 21) |
+                     ((rawData[pos + 5] & 0x7f) << 14) |
+                     ((rawData[pos + 6] & 0x7f) << 7) |
+                     (rawData[pos + 7] & 0x7f);
+      } else {
+        frame_size = (static_cast<uint32_t>(rawData[pos + 4]) << 24) |
+                     (static_cast<uint32_t>(rawData[pos + 5]) << 16) |
+                     (static_cast<uint32_t>(rawData[pos + 6]) << 8) |
+                     static_cast<uint32_t>(rawData[pos + 7]);
+      }
 
       pos += 10; // Move to frame content
 
@@ -115,6 +124,7 @@ void MP3DecoderWrapper::on_meta(void *pUserData,
 
 MP3DecoderWrapper::MP3DecoderWrapper()
     : isInitialized(false), audioData({}), m_read_pos(0),
+      m_audioDataBaseOffset(0), m_seekTableBaseOffset(0), m_id3Size(0),
       bytes_until_meta(0), // no metadata expected by default
       lastMetadata(""), mIcyMetaInt(0), ID3TagsFound(false),
       mDataEnded(false), mTotalAudioSizeBytes(0) {}
@@ -128,6 +138,9 @@ void MP3DecoderWrapper::cleanup() {
   }
   audioData.clear();
   m_read_pos = 0;
+  m_audioDataBaseOffset = 0;
+  m_seekTableBaseOffset = 0;
+  m_id3Size = 0;
   bytes_until_meta = mIcyMetaInt;
   metadata_buffer.clear();
   lastMetadata = "";
@@ -233,13 +246,13 @@ MP3DecoderWrapper::decode(std::vector<unsigned char> &buffer, int *samplerate,
     // fully buffered yet.
     if (detectedType == DetectedType::BUFFER_MP3_WITH_ID3) {
       if (audioData.size() >= 10 && memcmp(audioData.data(), "ID3", 3) == 0) {
-        uint32_t tagSize = ((audioData[6] & 0x7f) << 21) |
-                           ((audioData[7] & 0x7f) << 14) |
-                           ((audioData[8] & 0x7f) << 7) | (audioData[9] & 0x7f);
-        uint32_t totalTagLength = tagSize + 10;
+        m_id3Size = ((audioData[6] & 0x7f) << 21) |
+                    ((audioData[7] & 0x7f) << 14) |
+                    ((audioData[8] & 0x7f) << 7) | (audioData[9] & 0x7f);
+        m_id3Size += 10;
 
         // If we don't have the full tag yet, return and wait for more data.
-        if (audioData.size() < totalTagLength) {
+        if (audioData.size() < m_id3Size) {
           return {{}, DecoderError::NoError};
         }
       }
@@ -261,6 +274,9 @@ MP3DecoderWrapper::decode(std::vector<unsigned char> &buffer, int *samplerate,
 
   // --- Decoding Loop ---
   std::vector<float> decodedData;
+  if (maxOutputSamples > 0) {
+    decodedData.reserve(maxOutputSamples);
+  }
   const int MAX_FRAMES_PER_RUN = 4096;
   float pcm_frames[MAX_FRAMES_PER_RUN];
   drmp3_uint64 frames_read;
@@ -312,14 +328,19 @@ MP3DecoderWrapper::decode(std::vector<unsigned char> &buffer, int *samplerate,
   *channels = decoder.channels;
 
   // --- Buffer Cleanup ---
-  // dr_mp3 buffers some input internally, so we cannot safely discard bytes
-  // that have been passed to on_read() and reset m_read_pos. Keep the entire
-  // accumulated stream so that dr_mp3 can seek back for frame synchronization
-  // and buffering. The caller manages the overall decoded circular buffer; this
-  // encoded scratch buffer is temporary and will be freed when the decoder is
-  // destroyed.
-  // (If memory growth becomes a concern, a sliding window can be added here,
-  // but it must stay at least a few MP3 frames behind m_read_pos.)
+  // Discard the bytes dr_mp3 has already consumed so the internal buffer stays
+  // a sliding window over the stream instead of growing without bound. A
+  // safety margin is kept behind the read position because dr_mp3 may seek
+  // back a few frames for synchronization; positions dr_mp3 sees are relative
+  // to the window start, and m_audioDataBaseOffset tracks where the window
+  // begins in the stream so seek-table entries stay absolute.
+  constexpr size_t kKeepBehindBytes = 32 * 1024;
+  if (m_read_pos > kKeepBehindBytes) {
+    const size_t toDiscard = m_read_pos - kKeepBehindBytes;
+    audioData.erase(audioData.begin(), audioData.begin() + toDiscard);
+    m_read_pos -= toDiscard;
+    m_audioDataBaseOffset += toDiscard;
+  }
 
   return {decodedData, DecoderError::NoError};
 }
@@ -338,6 +359,9 @@ void MP3DecoderWrapper::buildSeekTable() {
         &decoder,
         static_cast<drmp3_uint32>(mSeekPoints.size()),
         mSeekPoints.data());
+    // Seek point byte positions are relative to the current window start;
+    // remember the base so timeToByteOffset can return absolute offsets.
+    m_seekTableBaseOffset = m_audioDataBaseOffset;
   }
 }
 
@@ -356,24 +380,24 @@ uint64_t MP3DecoderWrapper::timeToByteOffset(double seconds) {
   const uint64_t targetFrame = static_cast<uint64_t>(
       std::floor(seconds * decoder.sampleRate));
 
-  const drmp3_seek_point *best = nullptr;
-  for (const auto &sp : mSeekPoints) {
-    if (sp.pcmFrameIndex <= targetFrame) {
-      best = &sp;
-    } else {
-      break;
-    }
-  }
-  if (best == nullptr) {
+  // Seek points are sorted by pcmFrameIndex; binary-search the last one at or
+  // before the target frame.
+  const auto it = std::upper_bound(
+      mSeekPoints.begin(), mSeekPoints.end(), targetFrame,
+      [](uint64_t frame, const drmp3_seek_point &sp) {
+        return frame < static_cast<uint64_t>(sp.pcmFrameIndex);
+      });
+  if (it == mSeekPoints.begin()) {
     return 0;
   }
+  const drmp3_seek_point &best = *(it - 1);
 
   // Block out-of-buffer seeks until the table covers the target.
   if (targetFrame > mSeekPoints.back().pcmFrameIndex && !mDataEnded) {
     return 0;
   }
 
-  return best->seekPosInBytes;
+  return m_seekTableBaseOffset + best.seekPosInBytes;
 }
 
 bool MP3DecoderWrapper::initializeDecoder(int engineSamplerate,
@@ -436,16 +460,8 @@ double MP3DecoderWrapper::getDuration() const {
   // and approximate for VBR files when the total encoded size is known.
   const double bitrate = estimateBitrateFromFirstFrame();
   if (bitrate > 0.0 && mTotalAudioSizeBytes > 0) {
-    size_t id3Size = 0;
-    if (audioData.size() >= 10 && std::memcmp(audioData.data(), "ID3", 3) == 0) {
-      const uint32_t tagSize = ((audioData[6] & 0x7f) << 21) |
-                               ((audioData[7] & 0x7f) << 14) |
-                               ((audioData[8] & 0x7f) << 7) |
-                               (audioData[9] & 0x7f);
-      id3Size = static_cast<size_t>(tagSize) + 10;
-    }
     const uint64_t audioBytes =
-        mTotalAudioSizeBytes > id3Size ? mTotalAudioSizeBytes - id3Size : 0;
+        mTotalAudioSizeBytes > m_id3Size ? mTotalAudioSizeBytes - m_id3Size : 0;
     return static_cast<double>(audioBytes) * 8.0 / bitrate;
   }
   return -1.0;
@@ -454,8 +470,11 @@ double MP3DecoderWrapper::getDuration() const {
 double MP3DecoderWrapper::estimateBitrateFromFirstFrame() const {
   if (audioData.size() < 4) return 0.0;
 
+  // The ID3 tag can only be at the start of audioData when the sliding window
+  // still begins at the start of the stream.
   size_t pos = 0;
-  if (audioData.size() >= 10 && std::memcmp(audioData.data(), "ID3", 3) == 0) {
+  if (m_audioDataBaseOffset == 0 && audioData.size() >= 10 &&
+      std::memcmp(audioData.data(), "ID3", 3) == 0) {
     const uint32_t tagSize = ((audioData[6] & 0x7f) << 21) |
                              ((audioData[7] & 0x7f) << 14) |
                              ((audioData[8] & 0x7f) << 7) |
@@ -508,9 +527,11 @@ double MP3DecoderWrapper::estimateBitrateFromFirstFrame() const {
 }
 
 double MP3DecoderWrapper::parseDurationFromXingVbri() const {
-  // Skip ID3v2 tag if present.
+  // Skip ID3v2 tag if present. The tag can only be at the start of audioData
+  // when the sliding window still begins at the start of the stream.
   size_t pos = 0;
-  if (audioData.size() >= 10 && std::memcmp(audioData.data(), "ID3", 3) == 0) {
+  if (m_audioDataBaseOffset == 0 && audioData.size() >= 10 &&
+      std::memcmp(audioData.data(), "ID3", 3) == 0) {
     const uint32_t tagSize = ((audioData[6] & 0x7f) << 21) |
                              ((audioData[7] & 0x7f) << 14) |
                              ((audioData[8] & 0x7f) << 7) |

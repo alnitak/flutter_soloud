@@ -80,8 +80,10 @@ DetectedType StreamDecoder::detectAudioFormat(const std::vector<unsigned char>& 
             }
             
             // Check for Vorbis in this page
-            // Look through the entire payload for the Vorbis pattern
-            for (size_t i = 0; i < payload_size - 6; i++) {
+            // Look through the entire payload for the Vorbis pattern.
+            // The loop bound stays unsigned-safe for payloads shorter than
+            // the 7-byte pattern.
+            for (size_t i = 0; i + 7 <= payload_size; i++) {
                 if (buffer[payload_offset + i] == 0x01 && 
                     std::memcmp(buffer.data() + payload_offset + i + 1, "vorbis", 6) == 0) {
                     return DetectedType::BUFFER_OGG_VORBIS;
@@ -198,27 +200,7 @@ std::pair<std::vector<float>, DecoderError> StreamDecoder::decode(
     }
     
     if (mWrapper) {
-        #if !defined(NO_XIPH_LIBS)
-            if (mWrapper->detectedType == DetectedType::BUFFER_OGG_OPUS) {
-                return static_cast<OpusDecoderWrapper*>(mWrapper.get())->decode(buffer, samplerate, channels, maxOutputSamples);
-            }
-            else if (mWrapper->detectedType == DetectedType::BUFFER_OGG_VORBIS) {
-                return static_cast<VorbisDecoderWrapper*>(mWrapper.get())->decode(buffer, samplerate, channels, maxOutputSamples);
-            }
-            else if (mWrapper->detectedType == DetectedType::BUFFER_OGG_FLAC) {
-                return static_cast<OggFlacDecoderWrapper*>(mWrapper.get())->decode(buffer, samplerate, channels, maxOutputSamples);
-            }
-            else if (mWrapper->detectedType == DetectedType::BUFFER_FLAC) {
-                return static_cast<FlacDecoderWrapper*>(mWrapper.get())->decode(buffer, samplerate, channels, maxOutputSamples);
-            }
-        #endif
-        if (mWrapper->detectedType == DetectedType::BUFFER_MP3_WITH_ID3 ||
-            mWrapper->detectedType == DetectedType::BUFFER_MP3_STREAM) {
-            return static_cast<MP3DecoderWrapper *>(mWrapper.get())->decode(buffer, samplerate, channels, maxOutputSamples);
-        }
-        if (mWrapper->detectedType == DetectedType::BUFFER_WAV) {
-            return static_cast<WavDecoderWrapper *>(mWrapper.get())->decode(buffer, samplerate, channels, maxOutputSamples);
-        }
+        return mWrapper->decode(buffer, samplerate, channels, maxOutputSamples);
     }
     return {};
 }

@@ -2,8 +2,8 @@
 #define OPUS_STREAM_DECODER_H
 
 #include "stream_decoder.h"
+#include "ogg_seek_index.h"
 #include <vector>
-#include <iostream>
 #include <stdexcept>
 #include <cstring>
 #include <cstdint>
@@ -42,9 +42,9 @@ public:
     void prepareForSeek(uint64_t targetSample) override;
 
 private:
-    AudioMetadata getMetadata(ogg_packet* packet);
+    void getMetadata(ogg_packet* packet);
     OpusInfo parseOpusHead(ogg_packet *packet);
-    std::vector<float> decodePacket(ogg_packet *packet);
+    void decodePacket(ogg_packet *packet, std::vector<float> &out);
     bool ensureDecoder(int newSampleRate, int newChannels);
 
     OpusDecoder *decoder;
@@ -69,12 +69,11 @@ private:
 
     OpusInfo opusInfo;
 
-    struct TimeByteOffset {
-        ogg_int64_t granule;
-        uint64_t byteOffset;
-    };
-    std::vector<TimeByteOffset> mTimeByteOffsets;
-    uint64_t mOggBytesConsumed = 0;
+    OggSeekIndex mSeekIndex;
+
+    /// Scratch buffer for opus_decode_float, reused across packets to avoid
+    /// allocating per packet.
+    std::vector<float> mOutputScratch;
 };
 
 #endif // OPUS_STREAM_DECODER_H

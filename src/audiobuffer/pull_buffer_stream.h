@@ -45,6 +45,9 @@ public:
 
 private:
   PullBufferStream *mParent;
+  /// Scratch for the interleaved read in getAudio(), reused across callbacks
+  /// to avoid allocating on the audio thread.
+  std::vector<float> mReadScratch;
 };
 
 /// AudioSource that requests encoded data on demand and stores decoded floats
@@ -162,8 +165,9 @@ private:
   uint64_t mAudioSizeBytes = 0; ///< Total encoded/PCM file size in bytes.
   uint64_t mSequentialReadOffset = 0; ///< Next byte offset for sequential requests.
   uint64_t mTotalReceivedBytes = 0; ///< Total encoded bytes ever added (including probes).
-  uint64_t mDecodedSamplesRead = 0;      // Total decoded samples consumed by playback.
-  uint64_t mDecodedSamplesWritten = 0; // Total decoded samples written to the buffer.
+  // Read on the audio thread and written on the main thread, hence atomic.
+  std::atomic<uint64_t> mDecodedSamplesRead{0};    // Total decoded samples consumed by playback.
+  std::atomic<uint64_t> mDecodedSamplesWritten{0}; // Total decoded samples written to the buffer.
   double mBufferStartTime = 0.0;       // Logical start time of the valid decoded window; set by out-of-buffer seek.
 
   std::atomic<bool> mIsDestroyed{false};
@@ -171,7 +175,7 @@ private:
   std::atomic<bool> mIsBuffering{false};
   std::atomic<bool> mWaitingForData{false};
   std::atomic<bool> mMetadataReceived{false};
-  PullBufferStreamInstance *mInstance = nullptr;
+  std::atomic<PullBufferStreamInstance *> mInstance{nullptr};
   std::atomic<bool> mPendingSeek{false};
   double mPendingSeekTime = 0.0;
   uint64_t mPendingSeekByteOffset = 0;
@@ -192,6 +196,9 @@ private:
   std::vector<unsigned char> mEncodedBuffer;
   std::vector<unsigned char> mDecodeScratch;
   std::vector<float> mDecodedBacklog;
+  /// Size of mDecodedBacklog, mirrored in an atomic so lock-free readers
+  /// (audio thread) do not race with vector mutations on the main thread.
+  std::atomic<size_t> mDecodedBacklogSize{0};
 };
 
 } // namespace SoLoud

@@ -1,12 +1,13 @@
 #if !defined(NO_XIPH_LIBS)
 
 #include "vorbis_stream_decoder.h"
+#include "../soloud_common.h"
 #include <stdexcept>
 #include <cstring>
 #include <cmath>
 
 VorbisDecoderWrapper::VorbisDecoderWrapper()
-    : vorbisInitialized(false), streamInitialized(false), headerParsed(false), packetCount(0), mOggBytesConsumed(0)
+    : vorbisInitialized(false), streamInitialized(false), headerParsed(false), packetCount(0)
 {
 }
 
@@ -80,6 +81,9 @@ std::pair<std::vector<float>, DecoderError> VorbisDecoderWrapper::decode(std::ve
                                                int* samplerate,
                                                int* channels, size_t maxOutputSamples) {
     std::vector<float> decodedData;
+    if (maxOutputSamples > 0) {
+        decodedData.reserve(maxOutputSamples);
+    }
     ogg_int64_t total_samples = -1;
     bool eos_seen = false;
 
@@ -97,26 +101,25 @@ std::pair<std::vector<float>, DecoderError> VorbisDecoderWrapper::decode(std::ve
     // Process available pages, tracking byte offsets for seeking.
     while (true) {
         long ret = ogg_sync_pageseek(&oy, &og);
-        if (ret <= 0)
-            break;
-
-        mOggBytesConsumed += static_cast<uint64_t>(ret);
-        const long pageSize = og.header_len + og.body_len;
-        if (pageSize > 0) {
-            const uint64_t pageStart = mOggBytesConsumed - static_cast<uint64_t>(pageSize);
-            const ogg_int64_t granule = ogg_page_granulepos(&og);
-            if (granule >= 0 &&
-                (mTimeByteOffsets.empty() || mTimeByteOffsets.back().granule != granule)) {
-                mTimeByteOffsets.push_back({granule, pageStart});
-            }
+        if (ret == 0)
+            break; // No complete page buffered yet; wait for more data.
+        if (ret < 0)
+        {
+            // Bytes were skipped while searching for the next page capture
+            // pattern. This always happens after a seek to a mid-page offset;
+            // account for them and keep looking instead of giving up.
+            mSeekIndex.bytesConsumed += static_cast<uint64_t>(-ret);
+            continue;
         }
+
+        mSeekIndex.trackPage(ret, og);
 
         if (ogg_page_eos(&og)) {
             total_samples = ogg_page_granulepos(&og);
             mTotalSamples = total_samples;
             eos_seen = true;
         }
-        
+
         if (!streamInitialized) {
             if (ogg_stream_init(&os, ogg_page_serialno(&og))) {
                 return {decodedData, DecoderError::FailedToCreateDecoder};
@@ -124,8 +127,8 @@ std::pair<std::vector<float>, DecoderError> VorbisDecoderWrapper::decode(std::ve
             streamInitialized = true;
         }
 
-        // Check for beginning of stream or new stream
-        bool isNewStream = !streamInitialized || ogg_page_serialno(&og) != os.serialno;
+        // Check for a new stream (different serial number) or a BOS page
+        const bool isNewStream = ogg_page_serialno(&og) != os.serialno;
         bool isBOS = ogg_page_bos(&og);
 
         // Reset decoder state for new streams or when we see a BOS page
@@ -169,10 +172,7 @@ std::pair<std::vector<float>, DecoderError> VorbisDecoderWrapper::decode(std::ve
 
         // Extract packets from page
         while (ogg_stream_packetout(&os, &op) == 1) {
-            auto packetData = decodePacket(&op);
-            if (!packetData.empty()) {
-                decodedData.insert(decodedData.end(), packetData.begin(), packetData.end());
-            }
+            decodePacket(&op, decodedData);
             if (maxOutputSamples > 0 && decodedData.size() >= maxOutputSamples) {
                 break;
             }
@@ -213,22 +213,19 @@ std::pair<std::vector<float>, DecoderError> VorbisDecoderWrapper::decode(std::ve
 }
 
 
-std::vector<float> VorbisDecoderWrapper::decodePacket(ogg_packet* packet) {
-    std::vector<float> packetPcm;
-
+void VorbisDecoderWrapper::decodePacket(ogg_packet* packet, std::vector<float>& out) {
     // Handle header packets
     if (!headerParsed) {
         // First packet must be BOS for proper Vorbis stream
         if (packetCount == 0) {
-            // Debug output for first packet
-            fprintf(stderr, "First packet info - size: %ld, b_o_s: %ld, packetno: %lld, bytes[0]: %02x\n",
+            SOLOUD_DEBUG_LOG("First packet info - size: %ld, b_o_s: %ld, packetno: %lld, bytes[0]: %02x\n",
                 packet->bytes, packet->b_o_s, packet->packetno,
                 packet->bytes > 0 ? (unsigned char)packet->packet[0] : 0);
-                
+
             // Check if this looks like a Vorbis header packet (should start with 0x01)
             if (packet->bytes > 0 && packet->packet[0] != 0x01) {
-                fprintf(stderr, "First packet is not a Vorbis identification header\n");
-                return packetPcm;
+                SOLOUD_DEBUG_LOG("First packet is not a Vorbis identification header\n");
+                return;
             }
         }
 
@@ -236,24 +233,24 @@ std::vector<float> VorbisDecoderWrapper::decodePacket(ogg_packet* packet) {
         if (packetCount < 3) {
             // Verify packet numbers are sequential and small
             if (packet->packetno != packetCount) {
-                fprintf(stderr, "Unexpected packet number %lld for header %d\n", 
+                SOLOUD_DEBUG_LOG("Unexpected packet number %lld for header %d\n",
                     packet->packetno, packetCount);
-                return packetPcm;
+                return;
             }
 
             int ret = vorbis_synthesis_headerin(&vi, &vc, packet);
             if (ret != 0) {
-                fprintf(stderr, "Error processing Vorbis header %d: code %d\n", packetCount, ret);
-                fprintf(stderr, "Packet size: %ld, B_O_S: %ld, packetno: %lld\n", 
+                SOLOUD_DEBUG_LOG("Error processing Vorbis header %d: code %d\n", packetCount, ret);
+                SOLOUD_DEBUG_LOG("Packet size: %ld, B_O_S: %ld, packetno: %lld\n",
                     packet->bytes, packet->b_o_s, packet->packetno);
                 // Reset state on header failure
                 headerParsed = false;
                 packetCount = 0;
-                return packetPcm;
+                return;
             }
 
             packetCount++;
-            
+
             // Initialize decoder after all headers are processed
             if (packetCount == 3) {
                 ret = vorbis_synthesis_init(&vd, &vi);
@@ -264,22 +261,22 @@ std::vector<float> VorbisDecoderWrapper::decodePacket(ogg_packet* packet) {
                         headerParsed = true;
                         getMetadata();
                     } else {
-                        fprintf(stderr, "Failed to initialize vorbis block: code %d\n", ret);
+                        SOLOUD_DEBUG_LOG("Failed to initialize vorbis block: code %d\n", ret);
                         headerParsed = false;
                         packetCount = 0;
                     }
                 } else {
-                    fprintf(stderr, "Failed to initialize vorbis synthesis: code %d\n", ret);
+                    SOLOUD_DEBUG_LOG("Failed to initialize vorbis synthesis: code %d\n", ret);
                     headerParsed = false;
                     packetCount = 0;
                 }
             }
-            return packetPcm; // no PCM during header parsing
+            return; // no PCM during header parsing
         }
     }
 
     if (!vorbisInitialized) {
-        return packetPcm;
+        return;
     }
 
     // Decode an audio packet
@@ -290,15 +287,14 @@ std::vector<float> VorbisDecoderWrapper::decodePacket(ogg_packet* packet) {
     float** pcm;
     int samples;
     while ((samples = vorbis_synthesis_pcmout(&vd, &pcm)) > 0) {
+        out.reserve(out.size() + static_cast<size_t>(samples) * vi.channels);
         for (int i = 0; i < samples; i++) {
             for (int ch = 0; ch < vi.channels; ch++) {
-                packetPcm.push_back(pcm[ch][i]);
+                out.push_back(pcm[ch][i]);
             }
         }
         vorbis_synthesis_read(&vd, samples);
     }
-
-    return packetPcm;
 }
 
 void VorbisDecoderWrapper::prepareForSeek(uint64_t targetSample)
@@ -314,48 +310,25 @@ void VorbisDecoderWrapper::prepareForSeek(uint64_t targetSample)
         ogg_stream_clear(&os);
         ogg_stream_init(&os, serial);
     }
-    mOggBytesConsumed = 0;
-    mTimeByteOffsets.clear();
+    mSeekIndex.clear();
 }
 
 bool VorbisDecoderWrapper::canSeekToTime(double seconds) const
 {
-    if (!headerParsed || mTimeByteOffsets.empty())
-        return false;
-    if (seconds <= 0.0)
+    if (!headerParsed || seconds <= 0.0)
         return false;
     const ogg_int64_t targetGranule = static_cast<ogg_int64_t>(
         std::floor(seconds * static_cast<double>(vi.rate)));
-    return mTimeByteOffsets.back().granule >= targetGranule;
+    return mSeekIndex.covers(targetGranule);
 }
 
 uint64_t VorbisDecoderWrapper::timeToByteOffset(double seconds)
 {
-    if (!headerParsed || mTimeByteOffsets.empty())
+    if (!headerParsed || seconds <= 0.0)
         return 0;
-    if (seconds <= 0.0)
-        return 0;
-
     const ogg_int64_t targetGranule = static_cast<ogg_int64_t>(
         std::floor(seconds * static_cast<double>(vi.rate)));
-    if (mTimeByteOffsets.back().granule < targetGranule)
-        return 0;
-
-    for (size_t i = 1; i < mTimeByteOffsets.size(); ++i)
-    {
-        if (mTimeByteOffsets[i].granule >= targetGranule)
-        {
-            const auto &a = mTimeByteOffsets[i - 1];
-            const auto &b = mTimeByteOffsets[i];
-            if (b.granule == a.granule)
-                return a.byteOffset;
-            const double t = static_cast<double>(targetGranule - a.granule) /
-                             static_cast<double>(b.granule - a.granule);
-            return a.byteOffset + static_cast<uint64_t>(
-                                      t * static_cast<double>(b.byteOffset - a.byteOffset));
-        }
-    }
-    return mTimeByteOffsets.back().byteOffset;
+    return mSeekIndex.byteOffsetFor(targetGranule);
 }
 
 double VorbisDecoderWrapper::getDuration() const

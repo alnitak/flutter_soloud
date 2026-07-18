@@ -154,6 +154,9 @@ WavDecoderWrapper::decode(std::vector<unsigned char> &buffer, int *sampleRate,
 
   // --- Decoding Loop ---
   std::vector<float> decodedData;
+  if (maxOutputSamples > 0) {
+    decodedData.reserve(maxOutputSamples);
+  }
   const int MAX_FRAMES_PER_RUN = 4096;
   float pcm_frames[MAX_FRAMES_PER_RUN];
   drwav_uint64 frames_read;

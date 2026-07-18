@@ -76,8 +76,6 @@ class _FileStreamExampleState extends State<FileStreamExample> {
   Duration _position = Duration.zero;
   Duration _bufferedStart = Duration.zero;
   Duration _bufferedEnd = Duration.zero;
-  int _sampleRate = 44100;
-  int _channels = 2;
   bool _isPlaying = false;
   Timer? _timer;
   Timer? _flashTimer;

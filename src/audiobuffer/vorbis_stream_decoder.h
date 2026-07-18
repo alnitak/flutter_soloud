@@ -2,6 +2,7 @@
 #define VORBIS_DECODER_H
 
 #include "stream_decoder.h"
+#include "ogg_seek_index.h"
 #ifdef __EMSCRIPTEN__
 // For Web include dirs downloaded from git for build
 #include "../../xiph/vorbis/include/vorbis/codec.h"
@@ -29,7 +30,7 @@ public:
 
 private:
     AudioMetadata getMetadata();
-    std::vector<float> decodePacket(ogg_packet* packet);
+    void decodePacket(ogg_packet* packet, std::vector<float> &out);
 
     int decodingSamplerate;
     int decodingChannels;
@@ -49,12 +50,7 @@ private:
     bool headerParsed;
     int packetCount;
 
-    struct TimeByteOffset {
-        ogg_int64_t granule;
-        uint64_t byteOffset;
-    };
-    std::vector<TimeByteOffset> mTimeByteOffsets;
-    uint64_t mOggBytesConsumed = 0;
+    OggSeekIndex mSeekIndex;
     ogg_int64_t mTotalSamples = -1;
 };
 
