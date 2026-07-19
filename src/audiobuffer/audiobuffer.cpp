@@ -14,6 +14,13 @@
 namespace SoLoud {
 std::mutex check_buffer_mutex;
 
+static void clearPlanarBuffer(float *buffer, unsigned int frames,
+                              unsigned int stride, unsigned int channels) {
+  for (unsigned int channel = 0; channel < channels; ++channel) {
+    memset(buffer + channel * stride, 0, sizeof(float) * frames);
+  }
+}
+
 BufferStreamInstance::BufferStreamInstance(BufferStream *aParent) {
   mParent = aParent;
   mOffset = 0;
@@ -27,7 +34,7 @@ unsigned int BufferStreamInstance::getAudio(float *aBuffer,
                                             unsigned int aBufferSize) {
   // Check if parent is still valid before accessing it
   if (mParent == nullptr || !mParent->isValid()) {
-    memset(aBuffer, 0, sizeof(float) * aSamplesToRead * mChannels);
+    clearPlanarBuffer(aBuffer, aSamplesToRead, aBufferSize, mChannels);
     return 0;
   }
 

@@ -238,7 +238,7 @@ namespace SoLoud
 					{
 						for (k = 0; k < mChannels; k++)
 						{
-							aBuffer[k * aSamplesToRead + i + j] = tmp[j * mCodec.mFlac->channels + k];
+							aBuffer[k * aBufferSize + i + j] = tmp[j * mCodec.mFlac->channels + k];
 						}
 					}
 				}
@@ -259,7 +259,7 @@ namespace SoLoud
 					{
 						for (k = 0; k < mChannels; k++)
 						{
-							aBuffer[k * aSamplesToRead + i + j] = tmp[j * mCodec.mMp3->channels + k];
+							aBuffer[k * aBufferSize + i + j] = tmp[j * mCodec.mMp3->channels + k];
 						}
 					}
 				}
@@ -298,7 +298,7 @@ namespace SoLoud
 					{
 						for (k = 0; k < mChannels; k++)
 						{
-							aBuffer[k * aSamplesToRead + i + j] = tmp[j * mCodec.mWav->channels + k];
+							aBuffer[k * aBufferSize + i + j] = tmp[j * mCodec.mWav->channels + k];
 						}
 					}
 				}

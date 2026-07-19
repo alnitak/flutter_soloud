@@ -1025,8 +1025,7 @@ extern "C"
   /// [looping] whether to start the sound in looping state.
   /// [loopingStartAt] If looping is enabled, the loop point is, by default,
   /// the start of the stream. The loop start point can be set with this
-  /// parameter, and current loop point can be queried with [getLoopingPoint] and
-  /// changed by [setLoopingPoint].
+  /// parameter.
   /// Return the error if any and a new [handle] of this sound
   FFI_PLUGIN_EXPORT enum PlayerErrors play(unsigned int soundHash, unsigned int busId, float volume,
                                            float pan, bool paused, bool looping,
@@ -1036,7 +1035,25 @@ extern "C"
     if (player.get() == nullptr || !player.get()->isInited())
       return backendNotInited;
     PlayerErrors result = player.get()->play(soundHash, *handle, busId, volume, pan,
-                                             paused, looping, loopingStartAt);
+                                             paused, looping, loopingStartAt, 0);
+    return result;
+  }
+
+  /// Play an already loaded sound with an optional bounded loop region.
+  ///
+  /// This additive entry point preserves the ABI of [play].
+  /// [loopingEndAt] If greater than zero, loop before this time. Zero uses the
+  /// natural end of the stream.
+  FFI_PLUGIN_EXPORT enum PlayerErrors playWithLoopPoints(
+      unsigned int soundHash, unsigned int busId, float volume, float pan,
+      bool paused, bool looping, double loopingStartAt, double loopingEndAt,
+      unsigned int *handle)
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return backendNotInited;
+    PlayerErrors result = player.get()->play(soundHash, *handle, busId, volume, pan,
+                                             paused, looping, loopingStartAt,
+                                             loopingEndAt);
     return result;
   }
 
@@ -1133,6 +1150,30 @@ extern "C"
         !player.get()->isValidHandle(handle))
       return;
     player.get()->setLoopPoint(handle, time);
+  }
+
+  /// Get the sound loop end point value.
+  ///
+  /// [handle]
+  /// Returns the time in seconds, or zero for the natural stream end.
+  FFI_PLUGIN_EXPORT double getLoopEndPoint(unsigned int handle)
+  {
+    if (player.get() == nullptr || !player.get()->isInited() ||
+        !player.get()->isValidHandle(handle))
+      return 0;
+    return player.get()->getLoopEndPoint(handle);
+  }
+
+  /// Set the sound loop end point value.
+  ///
+  /// [handle]
+  /// [time] in seconds, or zero to use the natural stream end.
+  FFI_PLUGIN_EXPORT void setLoopEndPoint(unsigned int handle, double time)
+  {
+    if (player.get() == nullptr || !player.get()->isInited() ||
+        !player.get()->isValidHandle(handle))
+      return;
+    player.get()->setLoopEndPoint(handle, time);
   }
 
   /// Enable or disable visualization
@@ -2059,8 +2100,7 @@ extern "C"
   /// [looping] whether to start the sound in looping state.
   /// [loopingStartAt] If looping is enabled, the loop point is, by default,
   /// the start of the stream. The loop start point can be set with this
-  /// parameter, and current loop point can be queried with [getLoopingPoint] and
-  /// changed by [setLoopingPoint].
+  /// parameter.
   /// [handle] pointer to the handle for this new sound
   /// Return the error if any
   FFI_PLUGIN_EXPORT PlayerErrors play3d(unsigned int soundHash, unsigned int busId,
@@ -2076,7 +2116,31 @@ extern "C"
 
     PlayerErrors result =
         player.get()->play3d(soundHash, *handle, posX, posY, posZ, velX, velY,
-                             velZ, volume, paused, busId, looping, loopingStartAt);
+                             velZ, volume, paused, busId, looping, loopingStartAt,
+                             0);
+    return result;
+  }
+
+  /// Play a 3D sound with an optional bounded loop region.
+  ///
+  /// This additive entry point preserves the ABI of [play3d].
+  /// [loopingEndAt] If greater than zero, loop before this time. Zero uses the
+  /// natural end of the stream.
+  FFI_PLUGIN_EXPORT PlayerErrors play3dWithLoopPoints(
+      unsigned int soundHash, unsigned int busId,
+      float posX, float posY, float posZ,
+      float velX, float velY, float velZ,
+      float volume, bool paused, bool looping, double loopingStartAt,
+      double loopingEndAt, unsigned int *handle)
+  {
+    if (player.get() == nullptr || !player.get()->isInited() ||
+        player.get()->getSoundsCount() == 0)
+      return backendNotInited;
+
+    PlayerErrors result =
+        player.get()->play3d(soundHash, *handle, posX, posY, posZ, velX, velY,
+                             velZ, volume, paused, busId, looping, loopingStartAt,
+                             loopingEndAt);
     return result;
   }
 

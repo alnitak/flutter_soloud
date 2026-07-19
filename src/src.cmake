@@ -65,6 +65,7 @@ set (CORE_SOURCES
 	${CORE_PATH}/soloud_core_faderops.cpp
 	${CORE_PATH}/soloud_core_filterops.cpp
 	${CORE_PATH}/soloud_core_getters.cpp
+	${CORE_PATH}/soloud_core_looping.cpp
 	${CORE_PATH}/soloud_core_setters.cpp
 	${CORE_PATH}/soloud_core_voicegroup.cpp
 	${CORE_PATH}/soloud_core_voiceops.cpp
@@ -303,5 +304,4 @@ if (SOLOUD_C_API)
 		${HEADER_PATH}/soloud_c.h
 	)
 endif()
-
 

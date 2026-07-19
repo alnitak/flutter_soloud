@@ -52,6 +52,8 @@ EXPORTS
 	Soloud_getAutoStop
 	Soloud_getLoopPoint
 	Soloud_setLoopPoint
+	Soloud_getLoopEndPoint
+	Soloud_setLoopEndPoint
 	Soloud_setLooping
 	Soloud_setAutoStop
 	Soloud_setMaxActiveVoiceCount

@@ -218,6 +218,8 @@ int Soloud_getLooping(Soloud * aSoloud, unsigned int aVoiceHandle);
 int Soloud_getAutoStop(Soloud * aSoloud, unsigned int aVoiceHandle);
 double Soloud_getLoopPoint(Soloud * aSoloud, unsigned int aVoiceHandle);
 void Soloud_setLoopPoint(Soloud * aSoloud, unsigned int aVoiceHandle, double aLoopPoint);
+double Soloud_getLoopEndPoint(Soloud * aSoloud, unsigned int aVoiceHandle);
+void Soloud_setLoopEndPoint(Soloud * aSoloud, unsigned int aVoiceHandle, double aLoopEndPoint);
 void Soloud_setLooping(Soloud * aSoloud, unsigned int aVoiceHandle, int aLooping);
 void Soloud_setAutoStop(Soloud * aSoloud, unsigned int aVoiceHandle, int aAutoStop);
 int Soloud_setMaxActiveVoiceCount(Soloud * aSoloud, unsigned int aVoiceCount);
@@ -758,4 +760,3 @@ void WavStream_stop(WavStream * aWavStream);
 #endif
 
 #endif // SOLOUD_C_H_INCLUDED
-

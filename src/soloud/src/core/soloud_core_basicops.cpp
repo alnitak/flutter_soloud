@@ -143,6 +143,11 @@ namespace SoLoud
 		result singleres = SO_NO_ERROR;
 		FOR_ALL_VOICES_PRE
 			singleres = mVoice[ch]->seek(aSeconds, mScratch.mData, mScratchSize);
+		if (singleres == SO_NO_ERROR)
+		{
+			mVoice[ch]->mSourceSamplePosition = (uint64_t)floor(
+				aSeconds * mVoice[ch]->mBaseSamplerate);
+		}
 		if (singleres != SO_NO_ERROR)
 			res = singleres;
 		FOR_ALL_VOICES_POST
