@@ -260,6 +260,42 @@ public:
                     bool looping = false, double loopingStartAt = 0.0,
                     double loopingEndAt = 0.0);
 
+  /// @brief Variant of [play] that takes an additional parameter, the time
+  /// offset for the sound.
+  ///
+  /// While the vanilla [play] tries to play sounds as soon as possible,
+  /// [playClocked] will delay the start of sounds so that rapidly launched
+  /// sounds don't all get clumped to the start of the next outgoing sound
+  /// buffer.
+  /// @param soundHash the unique hash of the sound to play.
+  /// @param handle the handle of this new sound.
+  /// @param soundTime your app's "physics time", in seconds. SoLoud will use
+  /// that time (as well as the time previously used) to calculate the delay
+  /// between two sound effects.
+  /// @param busId the bus ID to play the sound on. 0 means the main engine.
+  /// @param volume 1.0f full volume.
+  /// @param pan 0.0f centered.
+  /// @return the error if any and the [handle] of this new sound.
+  PlayerErrors playClocked(unsigned int soundHash, unsigned int &handle,
+                           double soundTime, unsigned int busId = 0,
+                           float volume = 1.0f, float pan = 0.0f);
+
+  /// @brief Set the number of samples to delay before starting to play
+  /// a sound.
+  ///
+  /// This is used internally by [playClocked]. In the unlikely event that
+  /// you may want to use it manually, it's available here. Note that calling
+  /// this on a "live" voice will cause silence to be inserted at the start
+  /// of the next audio buffer.
+  /// @param handle handle of the sound.
+  /// @param samples the number of samples to delay the sound with.
+  void setDelaySamples(unsigned int handle, unsigned int samples);
+
+  /// @brief Get the current stream time of a voice, in seconds.
+  /// @param handle handle of the sound.
+  /// @return the stream time in seconds. 0 if [handle] is invalid.
+  double getStreamTime(unsigned int handle);
+
   /// @brief Stop already loaded sound identified by [handle] and clear it.
   /// @param handle handle of the sound.
   void stop(unsigned int handle);
@@ -577,6 +613,27 @@ public:
                       bool paused = 0, unsigned int busId = 0,
                       bool looping = false, double loopingStartAt = 0.0,
                       double loopingEndAt = 0.0);
+
+  /// @brief play3dClocked() is the 3d version of the playClocked() call.
+  ///
+  /// Instead of panning like with the "2d" version of the call, the 3d
+  /// version requires 3d position and optionally velocity vector. Like its
+  /// 2d version, this one delays the start of the sound based on the
+  /// [soundTime] parameter, so that firing off sounds rapidly won't cause
+  /// the sounds to "clump" together at the start of the next sound buffer.
+  /// @param soundHash the unique hash of the sound to play.
+  /// @param handle the handle of this new sound.
+  /// @param soundTime your app's "physics time", in seconds.
+  /// @param posX, posY, posZ the audio source position coordinates.
+  /// @param velX, velY, velZ the audio source velocity.
+  /// @param volume 1.0f full volume.
+  /// @param busId the bus ID to play the sound on. 0 means the main engine.
+  /// @return the error if any and the [handle] of this new sound.
+  PlayerErrors play3dClocked(unsigned int soundHash, unsigned int &handle,
+                             double soundTime, float posX, float posY,
+                             float posZ, float velX = 0.0f, float velY = 0.0f,
+                             float velZ = 0.0f, float volume = 1.0f,
+                             unsigned int busId = 0);
 
   /// You can set and get the current value of the speed of
   /// sound width the get3dSoundSpeed() and set3dSoundSpeed() functions.

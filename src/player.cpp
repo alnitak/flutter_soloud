@@ -1029,6 +1029,86 @@ PlayerErrors Player::play(
     return PlayerErrors::noError;
 }
 
+PlayerErrors Player::playClocked(
+    unsigned int soundHash,
+    unsigned int &handle,
+    double soundTime,
+    unsigned int busId,
+    float volume,
+    float pan)
+{
+    ActiveSound *sound = findByHash(soundHash);
+
+    if (sound == nullptr)
+        return soundHashNotFound;
+
+    // A BufferStream using `release` buffer type can only have one instance.
+    if (sound->soundType == SoundType::TYPE_BUFFER_STREAM &&
+        static_cast<SoLoud::BufferStream *>(sound->sound.get())->getBufferingType() == BufferingType::RELEASED &&
+        sound->handle.size() > 0)
+    {
+        return bufferStreamCanBePlayedOnlyOnce;
+    }
+
+    // Check if playing this sound will exceed the maximum number of voice counts. If true, then
+    // check if [soudHash] has other instances playing. If true remove the first and play the new one.
+    // If no other instances are playing, this sound cannot be played and return an error.
+    // Issue https://github.com/alnitak/flutter_soloud/issues/204
+    if (getActiveVoiceCount_internal() >= getMaxActiveVoiceCount())
+    {
+        if (sound->handle.size() > 0)
+        {
+            stop(sound->handle[0].handle);
+        }
+        else
+        {
+            return PlayerErrors::maxActiveVoiceCountReached;
+        }
+    }
+
+    // Ensure miniaudio device is started if it's stopped, ie by an interruption.
+    soloud.resume();
+
+    handle = 0;
+    SoLoud::handle newHandle = 0;
+    if (busId == 0)
+    {
+        newHandle = soloud.playClocked(
+            soundTime, *sound->sound.get(), volume, pan, 0);
+    }
+    else
+    {
+        auto it = busMap.find(busId);
+        if (it != busMap.end())
+            newHandle = it->second.bus.playClocked(
+                soundTime, *sound->sound.get(), volume, pan);
+        else
+            return PlayerErrors::busIdNotFound;
+    }
+
+    if (newHandle != 0)
+    {
+        sound->handle.push_back({newHandle, MAX_DOUBLE, false});
+        // Check if this buffer has enough data to be played
+        if (sound->soundType == SoundType::TYPE_BUFFER_STREAM)
+        {
+            static_cast<SoLoud::BufferStream *>(sound->sound.get())->checkBuffering(0);
+        }
+    }
+    handle = newHandle;
+    return PlayerErrors::noError;
+}
+
+void Player::setDelaySamples(unsigned int handle, unsigned int samples)
+{
+    soloud.setDelaySamples(handle, samples);
+}
+
+double Player::getStreamTime(unsigned int handle)
+{
+    return soloud.getStreamTime(handle);
+}
+
 void Player::stop(unsigned int handle)
 {
     soloud.stop(handle);
@@ -1650,6 +1730,89 @@ PlayerErrors Player::play3d(
             seek(newHandle, loopingStartAt);
             setPause(newHandle, paused);
         }
+        // Check if this buffer has enough data to be played
+        if (sound->soundType == SoundType::TYPE_BUFFER_STREAM)
+        {
+            static_cast<SoLoud::BufferStream *>(sound->sound.get())->checkBuffering(0);
+        }
+    }
+    handle = newHandle;
+    return PlayerErrors::noError;
+}
+
+PlayerErrors Player::play3dClocked(
+    unsigned int soundHash,
+    unsigned int &handle,
+    double soundTime,
+    float posX,
+    float posY,
+    float posZ,
+    float velX,
+    float velY,
+    float velZ,
+    float volume,
+    unsigned int busId)
+{
+    ActiveSound *sound = findByHash(soundHash);
+    if (sound == 0)
+        return soundHashNotFound;
+
+    // A BufferStream using `release` buffer type can only have one instance.
+    if (sound->soundType == SoundType::TYPE_BUFFER_STREAM &&
+        static_cast<SoLoud::BufferStream *>(sound->sound.get())->getBufferingType() == BufferingType::RELEASED &&
+        sound->handle.size() > 0)
+    {
+        return bufferStreamCanBePlayedOnlyOnce;
+    }
+
+    // Check if by playing this sound will exceed the maximum number of voice count. If true, then
+    // check if [soudHash] has other instances playing. If true remove the first and play the new one.
+    // If there are no other instances playing, this sound cannot be played and return an error.
+    // Issue https://github.com/alnitak/flutter_soloud/issues/204
+    if (getActiveVoiceCount_internal() >= getMaxActiveVoiceCount())
+    {
+        if (sound->handle.size() > 0)
+        {
+            stop(sound->handle[0].handle);
+        }
+        else
+        {
+            return PlayerErrors::maxActiveVoiceCountReached;
+        }
+    }
+
+    // Ensure miniaudio device is started if it's stopped, ie by an interruption.
+    soloud.resume();
+
+    handle = 0;
+    SoLoud::handle newHandle = 0;
+    if (busId == 0)
+    {
+        newHandle = soloud.play3dClocked(
+            soundTime,
+            *sound->sound.get(),
+            posX, posY, posZ,
+            velX, velY, velZ,
+            volume,
+            0);
+    }
+    else
+    {
+        auto it = busMap.find(busId);
+        if (it != busMap.end())
+            newHandle = it->second.bus.play3dClocked(
+                soundTime,
+                *sound->sound.get(),
+                posX, posY, posZ,
+                velX, velY, velZ,
+                volume);
+        else
+            return PlayerErrors::busIdNotFound;
+    }
+
+    if (newHandle != 0)
+    {
+        sound->handle.push_back({newHandle, MAX_DOUBLE, false});
         // Check if this buffer has enough data to be played
         if (sound->soundType == SoundType::TYPE_BUFFER_STREAM)
         {

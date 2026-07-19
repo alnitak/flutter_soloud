@@ -424,6 +424,50 @@ abstract class FlutterSoLoud {
     Duration? loopingEndAt,
   });
 
+  /// Variant of [play] that takes an additional parameter, the time offset
+  /// for the sound.
+  ///
+  /// While the vanilla [play] tries to play sounds as soon as possible,
+  /// [playClocked] will delay the start of sounds so that rapidly launched
+  /// sounds don't all get clumped to the start of the next outgoing sound
+  /// buffer.
+  ///
+  /// [soundHash] the unique sound hash of a sound.
+  /// [soundTime] your app's "physics time". The engine will use that time
+  /// (as well as the time previously used) to calculate the delay between
+  /// two sound effects.
+  /// [busId] the bus ID to play the sound on. 0 means the main engine.
+  /// [volume] 1.0 full volume.
+  /// [pan] 0.0 centered.
+  /// Return the error if any and a new `newHandle` of this sound.
+  @mustBeOverridden
+  ({PlayerErrors error, SoundHandle newHandle}) playClocked(
+    SoundHash soundHash,
+    Duration soundTime, {
+    int busId = 0,
+    double volume = 1,
+    double pan = 0,
+  });
+
+  /// Set the number of samples to delay before starting to play a sound.
+  ///
+  /// This is used internally by [playClocked]. In the unlikely event that
+  /// you may want to use it manually, it's available here. Note that calling
+  /// this on a "live" voice will cause silence to be inserted at the start
+  /// of the next audio buffer.
+  ///
+  /// [handle] the sound handle.
+  /// [samples] the number of samples to delay the sound with.
+  @mustBeOverridden
+  void setDelaySamples(SoundHandle handle, int samples);
+
+  /// Get the current stream time of a voice.
+  ///
+  /// [handle] the sound handle.
+  /// Returns the stream time. [Duration.zero] if [handle] is invalid.
+  @mustBeOverridden
+  Duration getStreamTime(SoundHandle handle);
+
   /// Stop already loaded sound identified by [handle] and clear it.
   ///
   /// [handle] the sound handle.
@@ -958,6 +1002,35 @@ abstract class FlutterSoLoud {
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
     Duration? loopingEndAt,
+  });
+
+  /// play3dClocked() is the 3d version of the [playClocked] call.
+  ///
+  /// Instead of panning like with the "2d" version of the call, the 3d
+  /// version requires 3d position and optionally velocity vector. Like its
+  /// 2d version, this one delays the start of the sound based on the
+  /// [soundTime] parameter, so that firing off sounds rapidly won't cause
+  /// the sounds to "clump" together at the start of the next sound buffer.
+  ///
+  /// [soundHash] the unique sound hash of a sound.
+  /// [soundTime] your app's "physics time".
+  /// [posX], [posY], [posZ] are the audio source position coordinates.
+  /// [busId] the bus ID to play the sound on. 0 means the main engine.
+  /// [velX], [velY], [velZ] are the audio source velocity.
+  /// [volume] 1.0 full volume.
+  /// Return the error if any and a new `newHandle` of this sound.
+  @mustBeOverridden
+  ({PlayerErrors error, SoundHandle newHandle}) play3dClocked(
+    SoundHash soundHash,
+    Duration soundTime,
+    double posX,
+    double posY,
+    double posZ, {
+    int busId = 0,
+    double velX = 0,
+    double velY = 0,
+    double velZ = 0,
+    double volume = 1,
   });
 
   /// Since SoLoud has no knowledge of the scale of your coordinates,

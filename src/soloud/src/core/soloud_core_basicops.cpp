@@ -109,23 +109,63 @@ namespace SoLoud
 		return handle;
 	}
 
+	unsigned int Soloud::getClockedDelaySamples(time aSoundTime)
+	{
+		lockAudioMutex_internal();
+		// A voice's delay starts counting down from the first sample of the
+		// next output buffer. Since the audio mutex is held by the audio
+		// thread while a buffer is being mixed, that position is exactly
+		// mStreamTime (advanced at the start of every mix).
+		long long now = (long long)floor(mStreamTime * mSamplerate + 0.5);
+		long long delay = 0;
+		// Detect the caller's clock being restarted (time going backwards).
+		bool restarted = aSoundTime < mClockedLastTime - 0.001;
+		mClockedLastTime = aSoundTime;
+		if (mClockedAnchorSample < 0 || restarted)
+		{
+			// First clocked play (or the caller's clock was restarted):
+			// anchor the caller's clock to the audio clock. The anchor leads
+			// by two output buffers: a voice can only be delayed, never
+			// advanced, so the effective scheduling slack of a clocked call
+			// is (lead - (elapsed % bufferSize)) which, with a lead of one
+			// buffer, would shrink to ~0 at unlucky phases of the schedule.
+			// A lead of two buffers guarantees at least one full buffer of
+			// slack at any phase, absorbing the jitter of the caller's
+			// clock, so that subsequent clocked plays can land exactly on
+			// their scheduled time.
+			mClockedAnchorTime = aSoundTime;
+			mClockedAnchorSample = now + 2 * (long long)mBufferSize;
+			delay = 2 * (long long)mBufferSize;
+		}
+		else
+		{
+			long long expected = mClockedAnchorSample +
+				(long long)floor((aSoundTime - mClockedAnchorTime) * mSamplerate + 0.5);
+			delay = expected - now;
+			if (delay < -2 * (long long)mSamplerate ||
+				delay > 2 * (long long)mSamplerate)
+			{
+				// The caller's clock jumped (eg the app was paused):
+				// re-anchor instead of delaying by an absurd amount.
+				mClockedAnchorTime = aSoundTime;
+				mClockedAnchorSample = now + 2 * (long long)mBufferSize;
+				delay = 2 * (long long)mBufferSize;
+			}
+			if (delay < 0)
+			{
+				// The scheduled time is already in the past: play as soon
+				// as possible.
+				delay = 0;
+			}
+		}
+		unlockAudioMutex_internal();
+		return (unsigned int)delay;
+	}
+
 	handle Soloud::playClocked(time aSoundTime, AudioSource &aSound, float aVolume, float aPan, unsigned int aBus)
 	{
 		handle h = play(aSound, aVolume, aPan, 1, aBus);
-		lockAudioMutex_internal();
-		// mLastClockedTime is cleared to zero at start of every output buffer
-		time lasttime = mLastClockedTime;
-		if (lasttime == 0)
-		{
-			mLastClockedTime = aSoundTime;
-			lasttime = aSoundTime;
-		}
-		unlockAudioMutex_internal();
-		int samples = (int)floor((aSoundTime - lasttime) * mSamplerate);
-		// Make sure we don't delay too much (or overflow)
-		if (samples < 0 || samples > 2048)		
-			samples = 0;
-		setDelaySamples(h, samples);
+		setDelaySamples(h, getClockedDelaySamples(aSoundTime));
 		setPause(h, 0);
 		return h;
 	}

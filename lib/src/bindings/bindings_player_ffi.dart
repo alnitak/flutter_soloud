@@ -1189,6 +1189,80 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       >();
 
   @override
+  ({PlayerErrors error, SoundHandle newHandle}) playClocked(
+    SoundHash soundHash,
+    Duration soundTime, {
+    int busId = 0,
+    double volume = 1,
+    double pan = 0,
+  }) {
+    final ffi.Pointer<ffi.UnsignedInt> handle = calloc();
+    final e = _playClocked(
+      soundHash.hash,
+      soundTime.toDouble(),
+      busId,
+      volume,
+      pan,
+      handle,
+    );
+    final ret = (
+      error: PlayerErrors.values[e],
+      newHandle: SoundHandle(handle.value),
+    );
+    calloc.free(handle);
+    return ret;
+  }
+
+  late final _playClockedPtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.UnsignedInt Function(
+            ffi.UnsignedInt,
+            ffi.Double,
+            ffi.UnsignedInt,
+            ffi.Float,
+            ffi.Float,
+            ffi.Pointer<ffi.UnsignedInt>,
+          )
+        >
+      >('playClocked');
+  late final _playClocked = _playClockedPtr
+      .asFunction<
+        int Function(
+          int,
+          double,
+          int,
+          double,
+          double,
+          ffi.Pointer<ffi.UnsignedInt>,
+        )
+      >();
+
+  @override
+  void setDelaySamples(SoundHandle handle, int samples) {
+    _setDelaySamples(handle.id, samples);
+  }
+
+  late final _setDelaySamplesPtr =
+      _lookup<
+        ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt, ffi.UnsignedInt)>
+      >('setDelaySamples');
+  late final _setDelaySamples = _setDelaySamplesPtr
+      .asFunction<void Function(int, int)>();
+
+  @override
+  Duration getStreamTime(SoundHandle handle) {
+    return _getStreamTime(handle.id).toDuration();
+  }
+
+  late final _getStreamTimePtr =
+      _lookup<ffi.NativeFunction<ffi.Double Function(ffi.UnsignedInt)>>(
+        'getStreamTime',
+      );
+  late final _getStreamTime = _getStreamTimePtr
+      .asFunction<double Function(int)>();
+
+  @override
   void stop(SoundHandle handle) {
     return _stop(handle.id);
   }
@@ -2266,6 +2340,76 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
           double,
           int,
           int,
+          double,
+          double,
+          ffi.Pointer<ffi.UnsignedInt>,
+        )
+      >();
+
+  @override
+  ({PlayerErrors error, SoundHandle newHandle}) play3dClocked(
+    SoundHash soundHash,
+    Duration soundTime,
+    double posX,
+    double posY,
+    double posZ, {
+    int busId = 0,
+    double velX = 0,
+    double velY = 0,
+    double velZ = 0,
+    double volume = 1,
+  }) {
+    final ffi.Pointer<ffi.UnsignedInt> handle = calloc();
+    final e = _play3dClocked(
+      soundHash.hash,
+      soundTime.toDouble(),
+      busId,
+      posX,
+      posY,
+      posZ,
+      velX,
+      velY,
+      velZ,
+      volume,
+      handle,
+    );
+    final ret = (
+      error: PlayerErrors.values[e],
+      newHandle: SoundHandle(handle.value),
+    );
+    calloc.free(handle);
+    return ret;
+  }
+
+  late final _play3dClockedPtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.UnsignedInt Function(
+            ffi.UnsignedInt,
+            ffi.Double,
+            ffi.UnsignedInt,
+            ffi.Float,
+            ffi.Float,
+            ffi.Float,
+            ffi.Float,
+            ffi.Float,
+            ffi.Float,
+            ffi.Float,
+            ffi.Pointer<ffi.UnsignedInt>,
+          )
+        >
+      >('play3dClocked');
+  late final _play3dClocked = _play3dClockedPtr
+      .asFunction<
+        int Function(
+          int,
+          double,
+          int,
+          double,
+          double,
+          double,
+          double,
+          double,
           double,
           double,
           ffi.Pointer<ffi.UnsignedInt>,

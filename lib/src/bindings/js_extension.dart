@@ -244,6 +244,22 @@ external int wasmPlay(
   int handlePtr,
 );
 
+@JS('Module_soloud._playClocked')
+external int wasmPlayClocked(
+  int soundHash,
+  double soundTime,
+  int busId,
+  double volume,
+  double pan,
+  int handlePtr,
+);
+
+@JS('Module_soloud._setDelaySamples')
+external void wasmSetDelaySamples(int handle, int samples);
+
+@JS('Module_soloud._getStreamTime')
+external double wasmGetStreamTime(int handle);
+
 @JS('Module_soloud._stop')
 external void wasmStop(int handle);
 
@@ -495,6 +511,21 @@ external int wasmPlay3d(
   int looping,
   double loopingStartAt,
   double loopingEndAt,
+  int handlePtr,
+);
+
+@JS('Module_soloud._play3dClocked')
+external int wasmPlay3dClocked(
+  int soundHash,
+  double soundTime,
+  int busId,
+  double posX,
+  double posY,
+  double posZ,
+  double velX,
+  double velY,
+  double velZ,
+  double volume,
   int handlePtr,
 );
 
