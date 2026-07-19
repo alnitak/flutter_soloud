@@ -11,6 +11,8 @@
 - **added `SoLoudIsolate`**, an isolate-safe singleton for running mixer output capture (and other safe operations, for now only `readSamplesFrom*`) from a non-main isolate without touching the main isolate's loader, filters, or event callbacks.
 - added `example/lib/mixer_capture/isolate_capture_test.dart` to demostrate mixer output capture from a separate isolate.
 - added native loop end points through `loopingEndAt` and the live `getLoopEndPoint` / `setLoopEndPoint` APIs, allowing half-open `[start, end)` loop regions #499. Thanks to @Kunstderfug
+- **added `playClocked` and `play3dClocked`** (plus `Bus.playClocked` / `Bus.play3dClocked`) for sample-accurate scheduled playback, along with the related `setDelaySamples` and `getStreamTime` APIs. The sounds are spaced with sub-millisecond accuracy regardless of the buffer size instead of clumping at buffer boundaries.
+- added a "use playClocked" checkbox to the **metronome example** to show the difference between `play` and `playClocked`.
 
 #### 4.0.13 (XX Xxx 2026)
 - fix: Waveform audio sources do not match engine sample rate #501. Thanks to @Colton127
