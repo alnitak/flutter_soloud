@@ -1,4 +1,4 @@
-#### 4.0.13 (XX Xxx 2026)
+#### 4.0.13 (20 Jul 2026)
 - fix: Waveform audio sources do not match engine sample rate #501. Thanks to @Colton127
 
 #### 4.0.12 (30 Jun 2026)
