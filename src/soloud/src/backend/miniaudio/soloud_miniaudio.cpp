@@ -114,6 +114,9 @@ namespace SoLoud
     static bool gDeviceInitialized = false;    // Track if device is actually initialized
     static std::thread *gInitThread = nullptr; // Background thread for device init
     static std::mutex gInitMutex;              // Protect device init state
+    // Serializes device start/stop operations (e.g. resume) against device
+    // teardown in soloud_miniaudio_deinit().
+    static std::mutex gDeviceOpsMutex;
 
     // Configuration to store for deferred initialization
     struct DeferredDeviceConfig
@@ -262,6 +265,11 @@ namespace SoLoud
         // destroyed SoLoud instance through the on_notification callback.
         soloud = nullptr;
 
+        // Hold the device-ops lock while tearing down the device so a
+        // concurrent soloud_miniaudio_resume() cannot call ma_device_start()
+        // on a stream that is being closed (SIGABRT crash on Android).
+        std::lock_guard<std::mutex> deviceOpsLock(gDeviceOpsMutex);
+
         if (gDeviceInitialized)
         {
             // Check if device is already stopped before calling ma_device_stop()
@@ -336,7 +344,22 @@ namespace SoLoud
         if (aSoloud == nullptr)
             return UNKNOWN_ERROR;
 
+        // Serialize against device teardown in soloud_miniaudio_deinit() and,
+        // on Android, against miniaudio's internal AAudio reroute job, which
+        // closes and reopens the AAudioStream on its own job thread. Starting
+        // the device while the old stream is being freed crashes with SIGABRT
+        // (CFI) inside AAudioStream_waitForStateChange.
+        std::lock_guard<std::mutex> deviceOpsLock(gDeviceOpsMutex);
+        if (!gDeviceInitialized)
+            return UNKNOWN_ERROR;
+
         // Check if device is stopped and start it if needed
+        ma_result result = MA_SUCCESS;
+#if defined(MA_HAS_AAUDIO)
+        // ma_device_reinit__aaudio (reroute job) and ma_device_uninit__aaudio
+        // hold this lock while closing streams; ma_device_start does not.
+        ma_mutex_lock(&gDevice.aaudio.rerouteLock);
+#endif
         if (ma_device_get_state(&gDevice) == ma_device_state_stopped)
         {
 #if defined(MA_APPLE_MOBILE)
@@ -359,11 +382,12 @@ namespace SoLoud
                 [[AVAudioSession sharedInstance] setActive:YES error:nil];
             }
 #endif
-            ma_result result = ma_device_start(&gDevice);
-            if (result != MA_SUCCESS)
-                return UNKNOWN_ERROR;
+            result = ma_device_start(&gDevice);
         }
-        return 0;
+#if defined(MA_HAS_AAUDIO)
+        ma_mutex_unlock(&gDevice.aaudio.rerouteLock);
+#endif
+        return result == MA_SUCCESS ? 0 : UNKNOWN_ERROR;
     }
 
     result miniaudio_init(SoLoud::Soloud *aSoloud, unsigned int aFlags, unsigned int aSamplerate, unsigned int aBuffer, unsigned int aChannels, void *pPlaybackInfos_id)
