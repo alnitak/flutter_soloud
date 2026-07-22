@@ -13,6 +13,7 @@
 // copy the generated definition into flutter_soloud_bindings_ffi.dart
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #include "enums.h"
 #include "audiobuffer/metadata_ffi.h"
@@ -107,3 +108,26 @@ FFI_PLUGIN_EXPORT void busAnnexSound(unsigned int busId,
 /// [busId] the bus ID.
 /// Returns the active voice count, or 0 if the bus is not found.
 FFI_PLUGIN_EXPORT unsigned int busGetActiveVoiceCount(unsigned int busId);
+
+/// Set how long the audio output device keeps running while the engine is idle
+/// (no active voices) before it is automatically stopped, on every platform.
+/// [timeoutMs] < 0 keeps the device running indefinitely while idle (the
+/// deferred idle-pause is suppressed, so the device keeps rendering silence and
+/// the app keeps its OS audio session alive) and starts it immediately if it
+/// was stopped. [timeoutMs] == 0 stops the device as soon as possible once
+/// idle. [timeoutMs] > 0 keeps it running for that many milliseconds after
+/// going idle. Any play/unpause before the deadline cancels the pending stop.
+/// The default is 500. Can be called any time.
+FFI_PLUGIN_EXPORT void setAudioDeviceIdleTimeout(int64_t timeoutMs);
+
+/// Stop the device while idle, or regardless of active voices when force != 0.
+FFI_PLUGIN_EXPORT enum PlayerErrors stopAudioDevice(unsigned int force);
+
+/// Restart the audio output device previously stopped by stopAudioDevice(), so
+/// existing voices and loaded sounds keep operating. Idempotent: a no-op if the
+/// device is already started.
+FFI_PLUGIN_EXPORT enum PlayerErrors startAudioDevice();
+
+/// Get the current state of the audio output device. Returns
+/// audioDeviceUninitialized if the engine is not initialized.
+FFI_PLUGIN_EXPORT enum AudioDeviceState getAudioDeviceState();

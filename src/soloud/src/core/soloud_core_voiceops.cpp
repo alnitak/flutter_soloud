@@ -54,10 +54,14 @@ namespace SoLoud
 		if (mVoice[aVoice])
 		{
 			mVoice[aVoice]->mPauseScheduler.mActive = 0;
+			const bool wasPaused =
+				(mVoice[aVoice]->mFlags & AudioSourceInstance::PAUSED) != 0;
 
 			if (aPause)
 			{
 				mVoice[aVoice]->mFlags |= AudioSourceInstance::PAUSED;
+				if (!wasPaused)
+					mVoiceInactiveCallbackPending = true;
 			}
 			else
 			{
@@ -120,6 +124,7 @@ namespace SoLoud
 		mActiveVoiceDirty = true;
 		if (mVoice[aVoice])
 		{
+			mVoiceInactiveCallbackPending = true;
 			// Delete via temporary variable to avoid recursion
 			AudioSourceInstance * v = mVoice[aVoice];
 			mVoice[aVoice] = 0;

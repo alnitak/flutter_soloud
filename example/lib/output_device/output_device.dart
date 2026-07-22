@@ -100,8 +100,8 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
       body: Center(
         child: DropdownMenu(
           controller: textEditingController,
-          onSelected: (value) {
-            SoLoud.instance.changeDevice(newDevice: devices[value!]);
+          onSelected: (value) async {
+            await SoLoud.instance.changeDevice(newDevice: devices[value!]);
           },
           dropdownMenuEntries: [
             for (var i = 0; i < devices.length; i++)

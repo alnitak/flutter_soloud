@@ -49,9 +49,9 @@ Future<StringBuffer> testHotRestartLifecycle() async {
 
   // ── 4. Hot-restart recovery: init() while native is still alive ─────────
   //    This is the actual hot-restart code path (soloud.dart ~line 298).
-  //    When init() detects native is already initialized, it calls
-  //    clearDartCallbackRegistrations() + deinit() internally, then
-  //    re-initializes everything with fresh callbacks.
+  //    When init() detects native is already initialized, it awaits the full
+  //    off-isolate native teardown, then re-initializes everything with fresh
+  //    callbacks.
   await SoLoud.instance.init();
   assert(
     SoLoud.instance.isInitialized,

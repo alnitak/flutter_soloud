@@ -36,7 +36,7 @@ Future<StringBuffer> testPlaybackDevices() async {
     for (final device in devices) {
       strBuf.writeln('Testing device: ${device.name}');
       debugPrint('Testing device: ${device.name}');
-      SoLoud.instance.changeDevice(newDevice: device);
+      await SoLoud.instance.changeDevice(newDevice: device);
 
       await delay(3000);
     }

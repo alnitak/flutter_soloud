@@ -55,6 +55,37 @@ void example() async {
 }
 ```
 
+## Output-Device Lifecycle
+
+Voice state and output-device state are separate. Pausing a voice preserves its
+`SoundHandle` and its SoLoud state. Device lifecycle operations only stop,
+start, or prewarm the platform audio output; they do not maintain a second copy
+of voice volume, pan, speed, fades, looping, seek position, or other properties.
+
+`play()` and `play3d()` are synchronous and return a `SoundHandle` immediately.
+An unpaused voice starts the output device after the voice has been created
+successfully. Creating a paused voice does not start the device; unpausing it
+later does.
+
+When no unpaused voices remain, the output device follows the configured idle
+timeout:
+
+- `setAudioDeviceIdleTimeout(Duration.zero)` stops it as soon as possible.
+- A positive duration keeps it running for that grace period.
+- `setAudioDeviceIdleTimeout(null)` keeps it running indefinitely, including
+  across `deinit()` and a later `init()`.
+
+`startAudioDevice()` temporarily starts or prewarms the output and completes
+after startup finishes. It does not enable permanent keep-alive; if the engine
+is still idle, the configured timeout begins again. `stopAudioDevice()` is an
+idle-only conditional stop by default, so it succeeds without interrupting
+active playback. Use `stopAudioDevice(force: true)` only when the output must be
+stopped while voices remain active; their voice state is not changed.
+
+`getAudioDeviceState()` is a cheap synchronous read of the actual backend state:
+`uninitialized`, `stopped`, `started`, `starting`, or `stopping`. It does not
+report a pending scheduler request.
+
 ## Apps & Games Using flutter_soloud
 
 A showcase of apps and games built with this plugin:

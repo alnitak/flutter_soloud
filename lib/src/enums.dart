@@ -307,9 +307,10 @@ enum LoadMode {
 
 /// Audio state changes. These notifications are sent when the OS reports
 /// audio device state changes. The [interruptionBegan] and [interruptionEnded]
-/// events are now handled automatically by the plugin to pause and resume
-/// the audio device. You can listen to these events if you need to update
-/// your UI or perform additional actions.
+/// events are handled automatically by the output-device lifecycle
+/// coordinator. Interruption end restarts the device only when active playback
+/// requires it or the idle timeout is disabled. You can listen to these events
+/// if you need to update your UI or perform additional actions.
 ///
 /// Note: Notifications should work on iOS but not all Android backends will
 /// report this notification. However the started and stopped events should
@@ -325,15 +326,56 @@ enum PlayerStateNotification {
   rerouted,
 
   /// An audio interruption has begun (e.g., incoming call, Siri).
-  /// The plugin automatically pauses the audio device when this occurs.
+  /// The plugin safely stops the audio device without mutating voice state.
   interruptionBegan,
 
   /// An audio interruption has ended.
-  /// The plugin automatically resumes the audio device when this occurs.
+  /// The plugin restarts the device when active playback requires it or
+  /// indefinite keep-alive is configured.
   interruptionEnded,
 
   /// The audio session is unlocked and ready for use.
   unlocked,
+}
+
+/// The state of the audio output device, as reported by
+/// `SoLoud.getAudioDeviceState`.
+///
+/// The values mirror miniaudio's actual `ma_device_state`; they do not describe
+/// lifecycle scheduler intent or a pending operation.
+///
+/// WARNING: Keep these in sync with `src/enums.h`.
+enum AudioDeviceState {
+  /// The device is uninitialized. Also returned before the engine is
+  /// initialized or after it has been deinitialized.
+  uninitialized(0),
+
+  /// The device exists but is currently stopped, for example after the engine
+  /// has remained idle for its configured timeout.
+  stopped(1),
+
+  /// The device is started and is requesting and/or delivering audio data.
+  started(2),
+
+  /// The device is transitioning from a stopped state to a started state.
+  starting(3),
+
+  /// The device is transitioning from a started state to a stopped state.
+  stopping(4);
+
+  const AudioDeviceState(this.value);
+
+  /// Returns the [AudioDeviceState] for the given native integer [value],
+  /// falling back to [uninitialized] for any unknown value.
+  factory AudioDeviceState.fromValue(int value) {
+    return AudioDeviceState.values.firstWhere(
+      (state) => state.value == value,
+      orElse: () => AudioDeviceState.uninitialized,
+    );
+  }
+
+  /// The native integer value of the state.
+  final int value;
 }
 
 /// The channels to be used while initializing the player.

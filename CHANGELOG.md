@@ -1,5 +1,13 @@
 #### 4.0.13 (XX Xxx 2026)
 - fix: Waveform audio sources do not match engine sample rate #501. Thanks to @Colton127
+- Android now stops the audio device when idle (no active voices) like every other platform, releasing the audioserver `AudioMix` partial wakelock #250; use `setAudioDeviceIdleTimeout()` to keep it running
+- add `stopAudioDevice()` / `startAudioDevice()` to control the audio output device without deinitializing the engine (loaded sounds and voice state are preserved); `stopAudioDevice()` is an idle-only no-op while an unpaused voice is active unless `force: true` is passed, while `startAudioDevice()` temporarily starts or prewarms the output and remains subject to the configured idle timeout; blocking native device operations run off the UI thread
+- add `getAudioDeviceState()` returning the actual current miniaudio state as an `AudioDeviceState` enum (uninitialized, stopped, started, starting, stopping), rather than scheduler intent
+- add `setAudioDeviceIdleTimeout()` to configure how long the audio output device keeps running while the engine is idle before it is stopped, on every platform: a `null` timeout is the indefinite keep-alive mechanism and persists across `deinit()` / `init()`, `Duration.zero` stops it as soon as possible, and a positive timeout sets the grace period (default 500 ms); the timeout is also applied right after `init()`
+- fix: `init()` no longer blocks the UI thread — the blocking native engine/device initialization now runs off the UI thread, preventing ANRs on startup #481
+- add `deinitAsync()`, a non-blocking alternative to `deinit()` that runs the native teardown off the UI thread (the synchronous `deinit()` is unchanged)
+- fix: the automatic audio device start/stop (triggered when a sound is played or all sounds are paused, e.g. on iOS or Android) no longer blocks the UI thread — the blocking native device start now runs on the background scheduler thread that already handles the deferred device stop
+- fix: `play()` and `play3d()` remain synchronous while device startup is ordered after successful unpaused voice creation; paused or failed playback no longer starts the output device
 
 #### 4.0.12 (30 Jun 2026)
 - add `lowLatency` init option to allow recordable Android output #492. Thanks to @MjnMixael
@@ -645,4 +653,3 @@ Initial release:
 * Includes a speech synthesizer
 * Supports various common formats such as 8, 16, and 32-bit WAVs, floating point WAVs, OGG, MP3, and FLAC
 * Enables real-time retrieval of audio FFT and wave data
-
