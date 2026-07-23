@@ -998,6 +998,74 @@ extern "C"
     return result;
   }
 
+  /// Variant of [play] that takes an additional parameter, the time offset
+  /// for the sound.
+  ///
+  /// While the vanilla [play] tries to play sounds as soon as possible,
+  /// [playClocked] will delay the start of sounds so that rapidly launched
+  /// sounds don't all get clumped to the start of the next outgoing sound
+  /// buffer.
+  ///
+  /// [soundHash] the unique sound hash of a sound
+  /// [soundTime] your app's "physics time", in seconds. SoLoud will use that
+  /// time (as well as the time previously used) to calculate the delay
+  /// between two sound effects.
+  /// [volume] 1.0f full volume
+  /// [pan] 0.0f centered
+  /// [busId] the bus ID to play the sound on. 0 means the main engine.
+  /// [handle] pointer to the handle for this new sound
+  /// Return the error if any and a new [handle] of this sound
+  FFI_PLUGIN_EXPORT enum PlayerErrors playClocked(
+      unsigned int soundHash, double soundTime, unsigned int busId,
+      float volume, float pan, unsigned int *handle)
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return backendNotInited;
+    PlayerErrors result = player.get()->playClocked(
+        soundHash, *handle, soundTime, busId, volume, pan);
+    return result;
+  }
+
+  /// Set the number of samples to delay before starting to play a sound.
+  ///
+  /// This is used internally by [playClocked]. In the unlikely event that
+  /// you may want to use it manually, it's available here. Note that calling
+  /// this on a "live" voice will cause silence to be inserted at the start
+  /// of the next audio buffer.
+  ///
+  /// [handle] the sound handle
+  /// [samples] the number of samples to delay the sound with
+  FFI_PLUGIN_EXPORT void setDelaySamples(unsigned int handle,
+                                         unsigned int samples)
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return;
+    player.get()->setDelaySamples(handle, samples);
+  }
+
+  /// Get the current stream time of a voice, in seconds.
+  ///
+  /// [handle] the sound handle
+  /// Return the stream time in seconds. 0 if [handle] is invalid.
+  FFI_PLUGIN_EXPORT double getStreamTime(unsigned int handle)
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return 0.0;
+    return player.get()->getStreamTime(handle);
+  }
+
+  /// Reset the clock used by [playClocked] and [play3dClocked] to the state
+  /// as if they were never called.
+  ///
+  /// The next clocked play will anchor the caller's "physics time" to the
+  /// audio clock again (leading by two output buffers).
+  FFI_PLUGIN_EXPORT void resetStreamTime()
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return;
+    player.get()->resetStreamTime();
+  }
+
   /// Stop already loaded sound identified by [handle] and clear it
   ///
   /// [handle]
@@ -2082,6 +2150,39 @@ extern "C"
         player.get()->play3d(soundHash, *handle, posX, posY, posZ, velX, velY,
                              velZ, volume, paused, busId, looping, loopingStartAt,
                              loopingEndAt);
+    return result;
+  }
+
+  /// play3dClocked() is the 3d version of the playClocked() call.
+  ///
+  /// Instead of panning like with the "2d" version of the call, the 3d
+  /// version requires 3d position and optionally velocity vector. Like its
+  /// 2d version, this one delays the start of the sound based on the
+  /// [soundTime] parameter, so that firing off sounds rapidly won't cause
+  /// the sounds to "clump" together at the start of the next sound buffer.
+  ///
+  /// [soundHash] the unique sound hash of a sound
+  /// [soundTime] your app's "physics time", in seconds.
+  /// [posX], [posY], [posZ] are the audio source position coordinates.
+  /// [velX], [velY], [velZ] are the audio source velocity.
+  /// [volume] 1.0f full volume
+  /// [busId] the bus ID to play the sound on. 0 means the main engine.
+  /// [handle] pointer to the handle for this new sound
+  /// Return the error if any and a new [handle] of this sound
+  FFI_PLUGIN_EXPORT PlayerErrors play3dClocked(
+      unsigned int soundHash, double soundTime, unsigned int busId,
+      float posX, float posY, float posZ,
+      float velX, float velY, float velZ,
+      float volume, unsigned int *handle)
+  {
+    if (player.get() == nullptr || !player.get()->isInited() ||
+        player.get()->getSoundsCount() == 0)
+      return backendNotInited;
+
+    PlayerErrors result =
+        player.get()->play3dClocked(soundHash, *handle, soundTime,
+                                    posX, posY, posZ, velX, velY, velZ,
+                                    volume, busId);
     return result;
   }
 

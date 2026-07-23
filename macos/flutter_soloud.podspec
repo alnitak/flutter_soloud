@@ -42,8 +42,11 @@ Flutter audio plugin using SoLoud library and FFI
   preprocessor_definitions << 'SIGNALSMITH_USE_PFFFT'
 
   # Build the plugin's native code using CMake with release optimizations.
-  # CMake handles incremental builds internally — if no source files changed,
-  # this is a fast no-op.
+  # No input/output files are declared on purpose: the phase runs on every
+  # build and CMake's incremental tracking makes it a fast no-op when no
+  # source file changed. Declaring only :output_files would let Xcode skip
+  # the phase once the library exists, silently linking stale native code
+  # after plugin source edits.
   build_script = <<-SCRIPT
     # Xcode's build environment has a restricted PATH that may not include cmake.
     # Add common locations where cmake might be installed before checking.
@@ -66,7 +69,6 @@ Flutter audio plugin using SoLoud library and FFI
     :name => 'Build flutter_soloud with CMake',
     :script => build_script,
     :execution_position => :before_compile,
-    :output_files => ['$(PODS_TARGET_SRCROOT)/cmake_build/macosx/libflutter_soloud_plugin.a'],
   }
 
   # pod_target_xcconfig: settings for the pod's own compilation target.

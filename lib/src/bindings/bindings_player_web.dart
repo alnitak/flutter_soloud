@@ -622,6 +622,50 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }
 
   @override
+  ({PlayerErrors error, SoundHandle newHandle}) playClocked(
+    SoundHash soundHash,
+    Duration soundTime, {
+    int busId = 0,
+    double volume = 1,
+    double pan = 0,
+  }) {
+    final handlePtr = wasmMalloc(4); // 4 bytes for an int32
+    final result = wasmPlayClocked(
+      soundHash.hash,
+      soundTime.toDouble(),
+      busId,
+      volume,
+      pan,
+      handlePtr,
+    );
+
+    /// "*" means unsigned int 32
+    final newHandle = wasmGetI32Value(handlePtr, 'i32');
+    final ret = (
+      error: PlayerErrors.values[result],
+      newHandle: SoundHandle(newHandle),
+    );
+    wasmFree(handlePtr);
+
+    return ret;
+  }
+
+  @override
+  void setDelaySamples(SoundHandle handle, int samples) {
+    wasmSetDelaySamples(handle.id, samples);
+  }
+
+  @override
+  Duration getStreamTime(SoundHandle handle) {
+    return wasmGetStreamTime(handle.id).toDuration();
+  }
+
+  @override
+  void resetStreamTime() {
+    wasmResetStreamTime();
+  }
+
+  @override
   void stop(SoundHandle handle) {
     return wasmStop(handle.id);
   }
@@ -1148,6 +1192,45 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
       looping ? 1 : 0,
       loopingStartAt.toDouble(),
       loopingEndAt?.toDouble() ?? 0,
+      handlePtr,
+    );
+
+    /// "*" means unsigned int 32
+    final newHandle = wasmGetI32Value(handlePtr, 'i32');
+    final ret = (
+      error: PlayerErrors.values[result],
+      newHandle: SoundHandle(newHandle),
+    );
+    wasmFree(handlePtr);
+
+    return ret;
+  }
+
+  @override
+  ({PlayerErrors error, SoundHandle newHandle}) play3dClocked(
+    SoundHash soundHash,
+    Duration soundTime,
+    double posX,
+    double posY,
+    double posZ, {
+    int busId = 0,
+    double velX = 0,
+    double velY = 0,
+    double velZ = 0,
+    double volume = 1,
+  }) {
+    final handlePtr = wasmMalloc(4); // 4 bytes for an int32
+    final result = wasmPlay3dClocked(
+      soundHash.hash,
+      soundTime.toDouble(),
+      busId,
+      posX,
+      posY,
+      posZ,
+      velX,
+      velY,
+      velZ,
+      volume,
       handlePtr,
     );
 

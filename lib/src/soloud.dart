@@ -1551,6 +1551,17 @@ interface class SoLoud {
   /// duration also loops at the natural end. Looping requires a source that
   /// can seek back to the start, so [BufferingType.released] is unsupported.
   ///
+  /// **When to use [play] vs [playClocked]:** [play] starts the sound at the
+  /// next output buffer boundary, so it has the lowest possible latency
+  /// (0–1 buffer) and supports [paused] and [looping]. The downside is that
+  /// the start time is quantized to buffer boundaries: sounds launched
+  /// rapidly within the same buffer all start at the same sample and
+  /// "clump" together, and periodic sounds (eg a metronome) get audibly
+  /// irregular spacing, especially with large buffer sizes. Use [playClocked]
+  /// instead when the *timing* of the sounds matters (scheduled or rhythmic
+  /// playback); use [play] for one-shot, reactive sounds where "as soon as
+  /// possible" is the right answer.
+  ///
   /// Returns the [SoundHandle] of the new sound instance.
   ///
   /// **NOTE**: by default, the maximum number of sounds you can play is 16 and
@@ -1611,6 +1622,157 @@ interface class SoLoud {
     }
 
     return ret.newHandle;
+  }
+
+  /// Variant of [play] that takes an additional parameter, the time offset
+  /// for the sound.
+  ///
+  /// While the vanilla [play] tries to play sounds as soon as possible,
+  /// [playClocked] will delay the start of sounds so that rapidly launched
+  /// sounds don't all get clumped to the start of the next outgoing sound
+  /// buffer.
+  ///
+  /// [soundTime] is your app's "physics time". The first clocked play (after
+  /// init, or after the physics clock is restarted) anchors that time to the
+  /// audio output clock, leading by two output buffers to keep at least one
+  /// buffer of scheduling slack at any phase and absorb the jitter of the
+  /// caller's clock. Subsequent calls are then scheduled with sample
+  /// accuracy relative to that anchor, so the spacing between sounds matches
+  /// the spacing of the given times even when several calls land inside the
+  /// same output buffer or the buffer size is large.
+  ///
+  /// **Note**: the given times must be monotonically increasing. If the
+  /// engine detects the clock going backwards (eg a new session with its own
+  /// time base) or a jump of more than 2 seconds, it re-anchors to the new
+  /// time. A call whose scheduled time is already in the past plays as soon
+  /// as possible, so make sure to call slightly ahead of time.
+  ///
+  /// **Pros vs [play]:** sample-accurate spacing between sounds (sub-ms),
+  /// independent of the engine buffer size; no clumping of rapidly launched
+  /// sounds; no rhythm drift over time.
+  ///
+  /// **Cons vs [play]:** higher, constant latency (about two output buffers
+  /// behind the given times, by design); the caller must provide a
+  /// monotonically increasing time and call slightly ahead of the scheduled
+  /// time; no `paused` or looping parameters; all clocked calls share
+  /// a single anchor, so they must use the same time base.
+  ///
+  /// Example of use for a metronome:
+  /// ```dart
+  /// var physicsTime = Duration.zero;
+  /// Timer.periodic(const Duration(milliseconds: 100), (_) {
+  ///   physicsTime += const Duration(milliseconds: 100);
+  ///   SoLoud.instance.playClocked(tickSound, physicsTime);
+  /// });
+  /// ```
+  ///
+  /// [busId] if not 0, the sound will be played on the mixing bus with this
+  /// ID instead of the main engine. See [Bus.playClocked].
+  ///
+  /// The rest of the parameters are equivalent to [play].
+  ///
+  /// Returns the [SoundHandle] of the new sound instance.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Throws [SoLoudBufferStreamCanBePlayedOnlyOnceCppException] if we try to
+  /// play a BufferStream using `release` buffer type more than once.
+  ///
+  /// Throws [SoLoudSoundHashNotFoundDartException] if the given [sound]
+  /// is not found.
+  SoundHandle playClocked(
+    AudioSource sound,
+    Duration soundTime, {
+    int busId = 0,
+    double volume = 1,
+    double pan = 0,
+  }) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    final ret = _controller.soLoudFFI.playClocked(
+      sound.soundHash,
+      soundTime,
+      busId: busId,
+      volume: volume,
+      pan: pan,
+    );
+    _logPlayerError(ret.error, from: 'playClocked()');
+    if (!(ret.error == PlayerErrors.noError ||
+        ret.error == PlayerErrors.maxActiveVoiceCountReached)) {
+      throw SoLoudCppException.fromPlayerError(ret.error);
+    }
+
+    final filtered = _activeSounds
+        .where((s) => s.soundHash == sound.soundHash)
+        .toSet();
+    if (filtered.isEmpty) {
+      _log.severe(
+        () => 'playClocked(): soundHash ${sound.soundHash} not found',
+      );
+      throw SoLoudSoundHashNotFoundDartException(sound.soundHash);
+    }
+
+    assert(filtered.length == 1, 'Duplicate sounds found');
+    for (final activeSound in filtered) {
+      activeSound.handlesInternal.add(ret.newHandle);
+    }
+
+    return ret.newHandle;
+  }
+
+  /// Set the number of samples to delay before starting to play a sound.
+  ///
+  /// This is used internally by [playClocked]. In the unlikely event that
+  /// you may want to use it manually, it's available here:
+  /// ```dart
+  /// final handle = SoLoud.instance.play(sound, paused: true);
+  /// SoLoud.instance.setDelaySamples(handle, 44100); // delay for a second
+  /// SoLoud.instance.setPause(handle, false);
+  /// ```
+  ///
+  /// **Note**: calling this on a "live" voice will cause silence to be
+  /// inserted at the start of the next audio buffer. Since this is rather
+  /// unpredictable (as audio buffer sizes may vary), it's not recommended,
+  /// even if it may be a rather funky effect.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  void setDelaySamples(SoundHandle handle, int samples) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    _controller.soLoudFFI.setDelaySamples(handle, samples);
+  }
+
+  /// Get the current stream time of a voice identified by its [handle].
+  ///
+  /// Returns [Duration.zero] if [handle] is invalid.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  Duration getStreamTime(SoundHandle handle) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    return _controller.soLoudFFI.getStreamTime(handle);
+  }
+
+  /// Reset the clock used by [playClocked] and [play3dClocked] to the state
+  /// as if they were never called.
+  ///
+  /// The next clocked play will anchor the given "physics time" to the
+  /// audio clock again (leading by two output buffers). This is useful when
+  /// starting a new scheduling session or when resuming a clock that was
+  /// paused for a while: without a reset, the first calls after the pause
+  /// would still be placed against the old anchor (playing as soon as
+  /// possible until the gap exceeds ~2 seconds and the engine re-anchors by
+  /// itself).
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  void resetStreamTime() {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    _controller.soLoudFFI.resetStreamTime();
   }
 
   /// A simpler way to process the loading of the sound and then play it.
@@ -2905,6 +3067,11 @@ interface class SoLoud {
   /// The rest of the parameters are equivalent to the non-3D version of this
   /// method ([play]).
   ///
+  /// As with [play], the start of the sound is quantized to output buffer
+  /// boundaries. Use [play3dClocked] when the *timing* of the sounds matters
+  /// (scheduled or rhythmic playback); use [play3d] for one-shot, reactive
+  /// 3D sounds where the lowest latency is preferred.
+  ///
   /// Returns the [SoundHandle] of this new sound.
   ///
   /// **Note**: by default, the maximum number of sounds you can play is 16 and
@@ -2973,6 +3140,89 @@ interface class SoLoud {
       activeSound.handlesInternal.add(ret.newHandle);
     }
     sound.handlesInternal.add(ret.newHandle);
+    return ret.newHandle;
+  }
+
+  /// play3dClocked() is the 3d version of the [playClocked] call.
+  ///
+  /// Instead of panning like with the "2d" version of the call, the 3d
+  /// version requires 3d position and optionally velocity vector. Like its
+  /// 2d version, this one delays the start of the sound based on the
+  /// [soundTime] parameter, so that firing off sounds rapidly won't cause
+  /// the sounds to "clump" together at the start of the next sound buffer.
+  ///
+  /// [soundTime] is your app's "physics time". The engine will use that time
+  /// (as well as the time previously used) to calculate the delay between
+  /// two sound effects.
+  ///
+  /// The scheduling behavior and the pros/cons versus [play3d] are the same
+  /// as for [playClocked] (see its documentation): sample-accurate spacing
+  /// at the cost of a constant ~2 output buffers of latency, a monotonically
+  /// increasing time to provide, and no paused/looping parameters.
+  ///
+  /// [busId] if not 0, the sound will be played on the mixing bus with this
+  /// ID instead of the main engine. See [Bus.play3dClocked].
+  ///
+  /// The rest of the parameters are equivalent to [play3d].
+  ///
+  /// Returns the [SoundHandle] of this new sound.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Throws [SoLoudBufferStreamCanBePlayedOnlyOnceCppException] if we try to
+  /// play a BufferStream using `release` buffer type more than once.
+  ///
+  /// Throws [SoLoudSoundHashNotFoundDartException] if the given [sound]
+  /// is not found.
+  SoundHandle play3dClocked(
+    AudioSource sound,
+    Duration soundTime,
+    double posX,
+    double posY,
+    double posZ, {
+    double velX = 0,
+    double velY = 0,
+    double velZ = 0,
+    int busId = 0,
+    double volume = 1,
+  }) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+
+    final ret = _controller.soLoudFFI.play3dClocked(
+      sound.soundHash,
+      soundTime,
+      posX,
+      posY,
+      posZ,
+      velX: velX,
+      velY: velY,
+      velZ: velZ,
+      busId: busId,
+      volume: volume,
+    );
+
+    _logPlayerError(ret.error, from: 'play3dClocked()');
+    if (!(ret.error == PlayerErrors.noError ||
+        ret.error == PlayerErrors.maxActiveVoiceCountReached)) {
+      throw SoLoudCppException.fromPlayerError(ret.error);
+    }
+
+    final filtered = _activeSounds
+        .where((s) => s.soundHash == sound.soundHash)
+        .toSet();
+    if (filtered.isEmpty) {
+      _log.severe(
+        () => 'play3dClocked(): soundHash ${sound.soundHash} not found',
+      );
+      throw SoLoudSoundHashNotFoundDartException(sound.soundHash);
+    }
+
+    assert(filtered.length == 1, 'Duplicate sounds found');
+    for (final activeSound in filtered) {
+      activeSound.handlesInternal.add(ret.newHandle);
+    }
     return ret.newHandle;
   }
 

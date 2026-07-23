@@ -121,7 +121,9 @@ namespace SoLoud
 		mBackendResumeFunc = NULL;
 		mChannels = 2;		
 		mStreamTime = 0;
-		mLastClockedTime = 0;
+		mClockedAnchorTime = 0;
+		mClockedAnchorSample = -1;
+		mClockedLastTime = 0;
 		mAudioSourceID = 1;
 		mBackendString = 0;
 		mBackendID = 0;
@@ -225,6 +227,11 @@ namespace SoLoud
 			return INVALID_PARAMETER;
 
 		deinit();
+
+		// Invalidate the playClocked anchor on (re)init.
+		mClockedAnchorTime = 0;
+		mClockedAnchorSample = -1;
+		mClockedLastTime = 0;
 
 		mAudioThreadMutex = Thread::createMutex();
 
@@ -2108,7 +2115,6 @@ namespace SoLoud
 		float buffertime = aSamples / (float)mSamplerate;
 		float globalVolume[2];
 		mStreamTime += buffertime;
-		mLastClockedTime = 0;
 
 		globalVolume[0] = mGlobalVolume;
 		if (mGlobalVolumeFader.mActive)

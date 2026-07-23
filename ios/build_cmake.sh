@@ -6,10 +6,17 @@
 #
 # CMake's internal dependency tracking handles incremental builds — if no
 # source files changed, this is a fast no-op.
+#
+# NOTE: SCRIPT_DIR is resolved to its physical path (pwd -P). When invoked
+# by CocoaPods, BASH_SOURCE points into the Flutter .symlinks tree, which
+# is a different absolute path than the real plugin directory. Using the
+# physical path everywhere keeps a single CMake source/build registration,
+# so incremental builds work no matter which path this script is invoked
+# through.
 
 set -e
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 
 # Xcode's build environment has a restricted PATH that may not include cmake.
 # Add common locations where cmake might be installed.
@@ -47,6 +54,17 @@ fi
 CMAKE_ARCHS=$(echo "$ARCHS" | tr ' ' ';')
 
 BUILD_DIR="${SCRIPT_DIR}/cmake_build/${PLATFORM_NAME}"
+
+# If this platform's build directory was configured with a different source
+# path (e.g. via the CocoaPods symlink before SCRIPT_DIR was normalized to
+# its physical path), CMake would refuse to reconfigure or silently reuse
+# stale objects. Wipe only this platform's build dir in that case, leaving
+# other platforms' build dirs (and their incremental caches) untouched.
+if [ -f "${BUILD_DIR}/CMakeCache.txt" ] &&
+    ! grep -q "^CMAKE_HOME_DIRECTORY[A-Z:]*=${SCRIPT_DIR}\$" "${BUILD_DIR}/CMakeCache.txt"; then
+    echo "  Build dir was configured with a different source path, wiping it."
+    rm -rf "${BUILD_DIR}"
+fi
 
 echo "=== flutter_soloud: CMake build for iOS ==="
 echo "  PLATFORM_NAME: ${PLATFORM_NAME}"
