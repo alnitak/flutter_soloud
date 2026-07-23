@@ -1,4 +1,4 @@
-#### 4.0.13 (XX Xxx 2026)
+#### 4.0.13 (20 Jul 2026)
 - fix: Waveform audio sources do not match engine sample rate #501. Thanks to @Colton127
 - Android now stops the audio device when idle (no active voices) like every other platform, releasing the audioserver `AudioMix` partial wakelock #250; use `setAudioDeviceIdleTimeout()` to keep it running
 - add `stopAudioDevice()` / `startAudioDevice()` to control the audio output device without deinitializing the engine (loaded sounds and voice state are preserved); `stopAudioDevice()` is an idle-only no-op while an unpaused voice is active unless `force: true` is passed, while `startAudioDevice()` temporarily starts or prewarms the output and remains subject to the configured idle timeout; blocking native device operations run off the UI thread
