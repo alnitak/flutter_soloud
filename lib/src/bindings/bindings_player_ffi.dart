@@ -1263,6 +1263,16 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       .asFunction<double Function(int)>();
 
   @override
+  void resetStreamTime() {
+    _resetStreamTime();
+  }
+
+  late final _resetStreamTimePtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function()>>('resetStreamTime');
+  late final _resetStreamTime = _resetStreamTimePtr
+      .asFunction<void Function()>();
+
+  @override
   void stop(SoundHandle handle) {
     return _stop(handle.id);
   }

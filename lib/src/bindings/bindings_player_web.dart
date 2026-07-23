@@ -661,6 +661,11 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }
 
   @override
+  void resetStreamTime() {
+    wasmResetStreamTime();
+  }
+
+  @override
   void stop(SoundHandle handle) {
     return wasmStop(handle.id);
   }

@@ -45,7 +45,7 @@ void main() async {
 
   /// Initialize the player.
   // ignore: avoid_redundant_argument_values
-  await SoLoud.instance.init(bufferSize: 2048, channels: Channels.stereo);
+  await SoLoud.instance.init(bufferSize: 4096, channels: Channels.stereo);
 
   runApp(
     const MaterialApp(
@@ -74,6 +74,12 @@ class _MetronomeState extends State<Metronome> {
   Timer? timer;
   AudioSource? tick1;
   AudioSource? tick2;
+
+  int count = 0;
+
+  /// The accumulated ideal time of the ticks used as the "physics time"
+  /// for `playClocked`.
+  Duration physicsTime = Duration.zero;
 
   @override
   void initState() {
@@ -121,11 +127,12 @@ class _MetronomeState extends State<Metronome> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Slider.adaptive(
-                            min: 15,
+                            min: 20,
                             max: 500,
                             value: ms.toDouble(),
                             onChanged: (value) {
                               physicsTime = Duration.zero;
+                              SoLoud.instance.resetStreamTime();
                               delay.value = value.toInt();
                               start();
                             },
@@ -147,6 +154,7 @@ class _MetronomeState extends State<Metronome> {
                         value: clocked,
                         onChanged: (value) {
                           physicsTime = Duration.zero;
+                          SoLoud.instance.resetStreamTime();
                           useClocked.value = value ?? false;
                         },
                       );
@@ -161,15 +169,10 @@ class _MetronomeState extends State<Metronome> {
     );
   }
 
-  int count = 0;
-
-  /// The accumulated ideal time of the ticks used as the "physics time"
-  /// for `playClocked`.
-  Duration physicsTime = Duration.zero;
-
   void start() {
     timer?.cancel();
     physicsTime = Duration.zero;
+    SoLoud.instance.resetStreamTime();
     timer = Timer.periodic(Duration(milliseconds: delay.value), (_) {
       final sound = count % 8 == 0 ? tick2 : tick1;
       if (sound != null) {

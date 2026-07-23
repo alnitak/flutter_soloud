@@ -162,6 +162,15 @@ namespace SoLoud
 		return (unsigned int)delay;
 	}
 
+	void Soloud::resetClockedAnchor()
+	{
+		lockAudioMutex_internal();
+		mClockedAnchorTime = 0;
+		mClockedAnchorSample = -1;
+		mClockedLastTime = 0;
+		unlockAudioMutex_internal();
+	}
+
 	handle Soloud::playClocked(time aSoundTime, AudioSource &aSound, float aVolume, float aPan, unsigned int aBus)
 	{
 		handle h = play(aSound, aVolume, aPan, 1, aBus);

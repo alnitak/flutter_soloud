@@ -260,6 +260,9 @@ external void wasmSetDelaySamples(int handle, int samples);
 @JS('Module_soloud._getStreamTime')
 external double wasmGetStreamTime(int handle);
 
+@JS('Module_soloud._resetStreamTime')
+external void wasmResetStreamTime();
+
 @JS('Module_soloud._stop')
 external void wasmStop(int handle);
 

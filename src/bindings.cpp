@@ -1054,6 +1054,18 @@ extern "C"
     return player.get()->getStreamTime(handle);
   }
 
+  /// Reset the clock used by [playClocked] and [play3dClocked] to the state
+  /// as if they were never called.
+  ///
+  /// The next clocked play will anchor the caller's "physics time" to the
+  /// audio clock again (leading by two output buffers).
+  FFI_PLUGIN_EXPORT void resetStreamTime()
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return;
+    player.get()->resetStreamTime();
+  }
+
   /// Stop already loaded sound identified by [handle] and clear it
   ///
   /// [handle]

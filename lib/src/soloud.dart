@@ -1756,6 +1756,25 @@ interface class SoLoud {
     return _controller.soLoudFFI.getStreamTime(handle);
   }
 
+  /// Reset the clock used by [playClocked] and [play3dClocked] to the state
+  /// as if they were never called.
+  ///
+  /// The next clocked play will anchor the given "physics time" to the
+  /// audio clock again (leading by two output buffers). This is useful when
+  /// starting a new scheduling session or when resuming a clock that was
+  /// paused for a while: without a reset, the first calls after the pause
+  /// would still be placed against the old anchor (playing as soon as
+  /// possible until the gap exceeds ~2 seconds and the engine re-anchors by
+  /// itself).
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  void resetStreamTime() {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    _controller.soLoudFFI.resetStreamTime();
+  }
+
   /// A simpler way to process the loading of the sound and then play it.
   ///
   /// Provide either [asset], [file], or [url] (assert only one of these 3).

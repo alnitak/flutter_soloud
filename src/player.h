@@ -296,6 +296,13 @@ public:
   /// @return the stream time in seconds. 0 if [handle] is invalid.
   double getStreamTime(unsigned int handle);
 
+  /// @brief Reset the clock used by [playClocked] and [play3dClocked] to the
+  /// state as if they were never called.
+  ///
+  /// The next clocked play will anchor the caller's "physics time" to the
+  /// audio clock again (leading by two output buffers).
+  void resetStreamTime();
+
   /// @brief Stop already loaded sound identified by [handle] and clear it.
   /// @param handle handle of the sound.
   void stop(unsigned int handle);

@@ -1109,6 +1109,11 @@ double Player::getStreamTime(unsigned int handle)
     return soloud.getStreamTime(handle);
 }
 
+void Player::resetStreamTime()
+{
+    soloud.resetClockedAnchor();
+}
+
 void Player::stop(unsigned int handle)
 {
     soloud.stop(handle);

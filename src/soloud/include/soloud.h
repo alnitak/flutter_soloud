@@ -283,6 +283,8 @@ namespace SoLoud
 		handle play3dClocked(time aSoundTime, AudioSource &aSound, float aPosX, float aPosY, float aPosZ, float aVelX = 0.0f, float aVelY = 0.0f, float aVelZ = 0.0f, float aVolume = 1.0f, unsigned int aBus = 0);
 		// Calculate the delay in samples for a clocked play call. Maps the caller's "physics time" to the output sample timeline using a persistent anchor, so sounds can be scheduled with sample accuracy across output buffers. Used internally by playClocked and play3dClocked.
 		unsigned int getClockedDelaySamples(time aSoundTime);
+		// Reset the clocked play anchor to the state as if no playClocked/play3dClocked call was ever made. The next clocked play will anchor the caller's clock to the audio clock again.
+		void resetClockedAnchor();
 		// Start playing a sound without any panning. It will be played at full volume.
 		handle playBackground(AudioSource &aSound, float aVolume = -1.0f, bool aPaused = 0, unsigned int aBus = 0);
 

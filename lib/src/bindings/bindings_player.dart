@@ -468,6 +468,14 @@ abstract class FlutterSoLoud {
   @mustBeOverridden
   Duration getStreamTime(SoundHandle handle);
 
+  /// Reset the clock used by [playClocked] and [play3dClocked] to the state
+  /// as if they were never called.
+  ///
+  /// The next clocked play will anchor the caller's "physics time" to the
+  /// audio clock again (leading by two output buffers).
+  @mustBeOverridden
+  void resetStreamTime();
+
   /// Stop already loaded sound identified by [handle] and clear it.
   ///
   /// [handle] the sound handle.
