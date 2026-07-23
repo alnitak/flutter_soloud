@@ -27,6 +27,11 @@ extern "C" {
 /// mutex to lock the init and dispose methods.
 std::mutex init_deinit_mutex;
 
+// Set synchronously by Dart before it dispatches init/dispose to worker
+// isolates. This preserves request ordering even when the workers reach
+// init_deinit_mutex in the opposite order.
+std::atomic<bool> engine_shutdown_requested{false};
+
 /// mutex to lock the loading audio methods and make safe operations on
 /// player.sounds list.
 std::mutex loadMutex;
@@ -144,6 +149,13 @@ FFI_PLUGIN_EXPORT void voiceEndedCallback(unsigned int *handle) {
   voiceEndedCb(n);
 }
 
+/// Requests a device-idle evaluation after SoLoud stops or pauses a voice.
+/// SoLoud invokes this only after releasing its audio mutex.
+FFI_PLUGIN_EXPORT void voiceInactiveCallback() {
+  if (player != nullptr)
+    player->evaluateAudioDeviceIdle();
+}
+
     /// The callback to monitor when a file is loaded.
     void fileLoadedCallback(enum PlayerErrors error, char *completeFileName, unsigned int *hash, uint64_t counter)
     {
@@ -218,6 +230,14 @@ FFI_PLUGIN_EXPORT bool areXiphLibsAvailable() {
 /// 2=stereo, 4=quad, 6=5.1, 8=7.1.
 ///
 /// Returns [PlayerErrors.noError] if success.
+FFI_PLUGIN_EXPORT void prepareEngineInit() {
+  engine_shutdown_requested.store(false, std::memory_order_release);
+}
+
+FFI_PLUGIN_EXPORT void requestEngineShutdown() {
+  engine_shutdown_requested.store(true, std::memory_order_release);
+}
+
 FFI_PLUGIN_EXPORT enum PlayerErrors initEngine(int deviceID,
                                                unsigned int sampleRate,
                                                unsigned int bufferSize,
@@ -225,6 +245,12 @@ FFI_PLUGIN_EXPORT enum PlayerErrors initEngine(int deviceID,
                                                unsigned int lowLatency) {
   std::lock_guard<std::mutex> guard(init_deinit_mutex);
   std::lock_guard<std::mutex> guard_load(loadMutex);
+
+  // A teardown request may have reached its worker before this initialization
+  // worker. In that case dispose() has already completed as a no-op, so the
+  // delayed init must not recreate the engine afterward.
+  if (engine_shutdown_requested.load(std::memory_order_acquire))
+    return backendNotInited;
 
   if (player.get() == nullptr)
     player = std::make_unique<Player>();
@@ -244,6 +270,7 @@ FFI_PLUGIN_EXPORT enum PlayerErrors initEngine(int deviceID,
 
   // Set the callback for when a voice is ended/stopped
   player.get()->setVoiceEndedCallback(voiceEndedCallback);
+  player.get()->setVoiceInactiveCallback(voiceInactiveCallback);
 
         return PlayerErrors::noError;
     }
@@ -257,10 +284,66 @@ FFI_PLUGIN_EXPORT void setAndroidAAudioAttributes(unsigned int managed) {
   SoLoud::miniaudio_setAndroidAAudioAttributes(managed != 0);
 }
 
+/// Set how long the audio output device keeps running while the engine is idle
+/// (no active voices) before it is automatically stopped, on every platform.
+/// [timeoutMs] < 0 keeps the device running indefinitely while idle (the
+/// deferred idle-pause is suppressed, so the device keeps rendering silence and
+/// the app keeps its OS audio session alive) and starts it immediately if it
+/// was stopped. [timeoutMs] == 0 stops the device as soon as possible once
+/// idle. [timeoutMs] > 0 keeps it running for that many milliseconds after
+/// going idle. Any play/unpause before the deadline cancels the pending stop.
+/// The default is 500. Can be called any time.
+FFI_PLUGIN_EXPORT void setAudioDeviceIdleTimeout(int64_t timeoutMs) {
+  std::lock_guard<std::mutex> guard(init_deinit_mutex);
+  if (player.get() != nullptr)
+    player.get()->setAudioDeviceIdleTimeout(timeoutMs);
+}
+
+/// Stop the audio output device without deinitializing the engine. By default
+/// this is a successful no-op while voices are active. [force] stops the device
+/// even during active playback without mutating any voice.
+FFI_PLUGIN_EXPORT enum PlayerErrors stopAudioDevice(unsigned int force) {
+  std::lock_guard<std::mutex> guard(init_deinit_mutex);
+  if (player.get() == nullptr)
+    return backendNotInited;
+
+  return player.get()->stopAudioDevice(force != 0);
+}
+
+/// Restart the audio output device previously stopped by stopAudioDevice(), so
+/// existing voices and loaded sounds keep operating. Idempotent: a no-op if the
+/// device is already started.
+FFI_PLUGIN_EXPORT enum PlayerErrors startAudioDevice() {
+  std::lock_guard<std::mutex> guard(init_deinit_mutex);
+  if (player.get() == nullptr)
+    return backendNotInited;
+
+  return player.get()->startAudioDevice();
+}
+
+/// Get the current state of the audio output device. Returns
+/// [AudioDeviceState.audioDeviceUninitialized] if the engine is not
+/// initialized.
+FFI_PLUGIN_EXPORT enum AudioDeviceState getAudioDeviceState() {
+  // Read the process-global backend state directly so this cheap synchronous
+  // query never waits behind an initialization or lifecycle API call.
+  return (AudioDeviceState)SoLoud::miniaudio_getAudioDeviceState();
+}
+
+/// Test-only hook that sends an interruption through miniaudio's normal
+/// notification callback. This is intentionally absent from the public API.
+FFI_PLUGIN_EXPORT void debugTriggerAudioInterruption(unsigned int began) {
+  std::lock_guard<std::mutex> guard(init_deinit_mutex);
+  if (player.get() == nullptr || !player.get()->isInited())
+    return;
+  SoLoud::miniaudio_debugTriggerAudioInterruption(began != 0);
+}
+
 /// Change the playback device.
 ///
 /// [deviceID] the device ID. -1 for default OS output device.
 FFI_PLUGIN_EXPORT enum PlayerErrors changeDevice(int deviceID) {
+  std::lock_guard<std::mutex> guard(init_deinit_mutex);
   if (player.get() == nullptr)
     return backendNotInited;
 
@@ -314,14 +397,20 @@ FFI_PLUGIN_EXPORT void freeListPlaybackDevices(char **devicesName,
 /// app
 ///
 FFI_PLUGIN_EXPORT void dispose() {
-  if (player.get() == nullptr)
-    return;
-  player.get()->disposeAllSound();
+  // Keep direct native callers safe too; Dart normally sets this before
+  // dispatching dispose() so request order is recorded without waiting for
+  // this worker to start.
+  engine_shutdown_requested.store(true, std::memory_order_release);
   std::lock_guard<std::mutex> guard(init_deinit_mutex);
   std::lock_guard<std::mutex> guard_load(loadMutex);
+  // Make every native-to-Dart bridge inert before Player::dispose() stops
+  // voices and destroys sources. Dart keeps its NativeCallables alive until
+  // this off-isolate native teardown has completed.
   dartVoiceEndedCallback = nullptr;
   dartFileLoadedCallback = nullptr;
   dartStateChangedCallback = nullptr;
+  if (player.get() == nullptr)
+    return;
   player.get()->dispose();
   player.reset();
   player = nullptr;
@@ -331,6 +420,7 @@ FFI_PLUGIN_EXPORT void dispose() {
 }
 
 FFI_PLUGIN_EXPORT int isInited() {
+  std::lock_guard<std::mutex> guard(init_deinit_mutex);
   if (player.get() == nullptr)
     return 0;
   return player.get()->isInited() ? 1 : 0;

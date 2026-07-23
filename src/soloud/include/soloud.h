@@ -25,6 +25,7 @@ freely, subject to the following restrictions:
 #ifndef SOLOUD_H
 #define SOLOUD_H
 
+#include <atomic>
 #include <stdlib.h> // rand
 #include <math.h> // sin
 
@@ -176,10 +177,37 @@ namespace SoLoud
 			_voiceEndedCallback = voiceEndedCallback;
 		}
 
+		// Called after a mix cycle in which a voice stopped or became paused.
+		// The callback runs after the audio mutex has been released.
+		std::atomic<void (*)()> _voiceInactiveCallback{nullptr};
+		bool mVoiceInactiveCallbackPending = false;
+		void setVoiceInactiveCallback(void (*voiceInactiveCallback)()) {
+			_voiceInactiveCallback.store(voiceInactiveCallback,
+				std::memory_order_release);
+		}
+
 		// Set the callback to call when the device receive a state changed
 		void (*_stateChangedCallback)(unsigned int) = nullptr;
 		void setStateChangedCallback(void (*stateChangedCallback)(unsigned int)) {
 			_stateChangedCallback = stateChangedCallback;
+		}
+
+		// Device-interruption callback used by the embedding lifecycle owner.
+		// The context is published before the callback and cleared afterward so
+		// notification threads never call through a non-null callback with a
+		// partially registered context.
+		std::atomic<void (*)(void *, bool)> _audioInterruptionCallback{nullptr};
+		std::atomic<void *> _audioInterruptionContext{nullptr};
+		void setAudioInterruptionCallback(
+			void (*audioInterruptionCallback)(void *, bool), void *context) {
+			if (audioInterruptionCallback == nullptr) {
+				_audioInterruptionCallback.store(nullptr, std::memory_order_release);
+				_audioInterruptionContext.store(nullptr, std::memory_order_release);
+				return;
+			}
+			_audioInterruptionContext.store(context, std::memory_order_release);
+			_audioInterruptionCallback.store(
+				audioInterruptionCallback, std::memory_order_release);
 		}
 
 		// CTor

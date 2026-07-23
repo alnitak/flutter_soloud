@@ -48,7 +48,9 @@ namespace SoLoud
 		{
 			unlockAudioMutex_internal();
 			delete instance;
-			return UNKNOWN_ERROR;
+			// This API returns a voice handle, so failure must use the invalid
+			// handle value. Error enum values can collide with real handles.
+			return 0;
 		}
 		if (!aSound.mAudioSourceID)
 		{

@@ -256,12 +256,10 @@ class _MyHomePageState extends State<MyHomePage> {
     tests[index].status = TestStatus.running;
     if (mounted) setState(() {});
 
-    // Ensure clean state before running test
-    // (in case previous test didn't clean up properly)
+    // Ensure clean state before running the test, including when the previous
+    // test left initialization in progress (where isInitialized is false).
     try {
-      if (SoLoud.instance.isInitialized) {
-        SoLoud.instance.deinit();
-      }
+      await SoLoud.instance.deinitAsync();
     } catch (_) {
       // Ignore - may not be initialized
     }

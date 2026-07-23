@@ -66,6 +66,7 @@ namespace SoLoud
 #include <android/api-level.h>
 #endif
 #include <math.h>
+#include <atomic>
 #include <chrono>
 #include <thread>
 #include <mutex>
@@ -80,9 +81,14 @@ namespace SoLoud
 namespace SoLoud
 {
     ma_device gDevice;
-    SoLoud::Soloud *soloud;
+    std::atomic<SoLoud::Soloud *> gSoloud{nullptr};
     ma_context context;
-    volatile bool gDeviceStopped = true;  // Track device stopped state for proper cleanup
+    std::atomic<bool> gDeviceStopped{true};
+
+    // Every operation that can initialize, start, stop, uninitialize, or
+    // replace gDevice passes through this mutex. It is recursive because some
+    // miniaudio backends can deliver notifications inline from an operation.
+    static std::recursive_mutex gDeviceOperationMutex;
     
     // Selects the miniaudio performance profile used when (re)initializing the
     // device. Low-latency (the historical default) maps to AAudio's
@@ -91,7 +97,7 @@ namespace SoLoud
     // for CPU-heavy filters. When this is false, the conservative (legacy
     // mixer) profile is used instead. Defined outside the WITH_MINIAUDIO guard
     // so the setter symbol always exists for the C bindings to call.
-    static bool gMiniaudioLowLatency = true;
+    static std::atomic<bool> gMiniaudioLowLatency{true};
 
     // Android (AAudio) stream attributes applied when low-latency is disabled.
     // Default to media/music (sensible for a media app, and capturable). When
@@ -108,9 +114,9 @@ namespace SoLoud
     result soloud_miniaudio_pause(SoLoud::Soloud *aSoloud);
     result soloud_miniaudio_resume(SoLoud::Soloud *aSoloud);
     result miniaudio_ensure_thread_device_started();
-    static bool gDeviceStartDeferred = false; // Track deferred device start on Windows
-    static bool gDeviceInitDeferred = false;  // Track deferred device init on Windows
-    static bool gDeviceInitialized = false;   // Track if device is actually initialized
+    static std::atomic<bool> gDeviceStartDeferred{false};
+    static std::atomic<bool> gDeviceInitDeferred{false};
+    static std::atomic<bool> gDeviceInitialized{false};
     static std::thread* gInitThread = nullptr; // Background thread for device init
     static std::mutex gInitMutex; // Protect device init state
     
@@ -128,64 +134,99 @@ namespace SoLoud
     {
         MA_ASSERT(pNotification != NULL);
 
+        // Device-state notifications remain authoritative during teardown,
+        // after the callback target has deliberately been cleared.
+        if (pNotification->type == ma_device_notification_type_started)
+            gDeviceStopped.store(false, std::memory_order_release);
+        else if (pNotification->type == ma_device_notification_type_stopped)
+            gDeviceStopped.store(true, std::memory_order_release);
+
         // Guard against notifications delivered after deinitialization.
         // The notifications may be pending on the main thread when the
         // device is torn down.
-        if (soloud == nullptr)
+        SoLoud::Soloud *currentSoloud =
+            gSoloud.load(std::memory_order_acquire);
+        if (currentSoloud == nullptr)
             return;
 
         switch (pNotification->type)
         {
             case ma_device_notification_type_started:
             {
-                gDeviceStopped = false;
-                if (soloud->_stateChangedCallback != nullptr) soloud->_stateChangedCallback(0);
+                if (currentSoloud->_stateChangedCallback != nullptr) currentSoloud->_stateChangedCallback(0);
             } break;
 
             case ma_device_notification_type_stopped:
             {
-                gDeviceStopped = true;
-                if (soloud->_stateChangedCallback != nullptr) soloud->_stateChangedCallback(1);
+                if (currentSoloud->_stateChangedCallback != nullptr) currentSoloud->_stateChangedCallback(1);
             } break;
 
             case ma_device_notification_type_rerouted:
             {
-                if (soloud->_stateChangedCallback != nullptr) soloud->_stateChangedCallback(2);
+                if (currentSoloud->_stateChangedCallback != nullptr) currentSoloud->_stateChangedCallback(2);
             } break;
 
             case ma_device_notification_type_interruption_began:
             {
-                // Automatically pause the audio device when the OS signals an interruption.
-                soloud_miniaudio_pause(soloud);
-                if (soloud->_stateChangedCallback != nullptr) soloud->_stateChangedCallback(3);
+                auto interruptionCallback =
+                    currentSoloud->_audioInterruptionCallback.load(
+                        std::memory_order_acquire);
+                void *interruptionContext =
+                    currentSoloud->_audioInterruptionContext.load(
+                        std::memory_order_acquire);
+                if (interruptionCallback != nullptr &&
+                    interruptionContext != nullptr)
+                    interruptionCallback(interruptionContext, true);
+                if (currentSoloud->_stateChangedCallback != nullptr) currentSoloud->_stateChangedCallback(3);
             } break;
 
             case ma_device_notification_type_interruption_ended:
             {
-                // On CoreAudio platforms (macOS/iOS) when the the interruption begins
-                // the device is automatically stopped (not uninited with ma_device_uninit).
-                // So we need to start it again when the interruption ends.
-                soloud->resume();
-                if (soloud->_stateChangedCallback != nullptr)
-                    soloud->_stateChangedCallback(4);
+                auto interruptionCallback =
+                    currentSoloud->_audioInterruptionCallback.load(
+                        std::memory_order_acquire);
+                void *interruptionContext =
+                    currentSoloud->_audioInterruptionContext.load(
+                        std::memory_order_acquire);
+                if (interruptionCallback != nullptr &&
+                    interruptionContext != nullptr)
+                    interruptionCallback(interruptionContext, false);
+                if (currentSoloud->_stateChangedCallback != nullptr)
+                    currentSoloud->_stateChangedCallback(4);
             } break;
 
             case ma_device_notification_type_unlocked:
             {
-                if (soloud->_stateChangedCallback != nullptr) soloud->_stateChangedCallback(5);
+                if (currentSoloud->_stateChangedCallback != nullptr) currentSoloud->_stateChangedCallback(5);
             } break;
 
             default: break;
         }
     }
 
+    void miniaudio_debugTriggerAudioInterruption(bool aBegan)
+    {
+        if (!gDeviceInitialized.load(std::memory_order_acquire) ||
+            gSoloud.load(std::memory_order_acquire) == nullptr)
+            return;
+
+        ma_device_notification notification = {};
+        notification.pDevice = &gDevice;
+        notification.type = aBegan
+            ? ma_device_notification_type_interruption_began
+            : ma_device_notification_type_interruption_ended;
+        on_notification(&notification);
+    }
+
     void miniaudio_setLowLatency(bool aLowLatency)
     {
-        gMiniaudioLowLatency = aLowLatency;
+        std::lock_guard<std::recursive_mutex> lock(gDeviceOperationMutex);
+        gMiniaudioLowLatency.store(aLowLatency, std::memory_order_release);
     }
 
     void miniaudio_setAndroidAAudioAttributes(bool aManaged)
     {
+        std::lock_guard<std::recursive_mutex> lock(gDeviceOperationMutex);
         gMiniaudioAAudioUsage =
             aManaged ? ma_aaudio_usage_media : ma_aaudio_usage_default;
         gMiniaudioAAudioContentType =
@@ -224,6 +265,8 @@ namespace SoLoud
 
     static void soloud_miniaudio_deinit(SoLoud::Soloud *aSoloud)
     {
+        std::lock_guard<std::recursive_mutex> operationLock(gDeviceOperationMutex);
+
         // Clean up initialization thread if it's still running
         if (gInitThread != nullptr)
         {
@@ -239,9 +282,9 @@ namespace SoLoud
         // This prevents any pending platform notifications (e.g. iOS route
         // changes delivered on the main thread) from dereferencing a
         // destroyed SoLoud instance through the on_notification callback.
-        soloud = nullptr;
+        gSoloud.store(nullptr, std::memory_order_release);
 
-        if (gDeviceInitialized)
+        if (gDeviceInitialized.load(std::memory_order_acquire))
         {
             // Check if device is already stopped before calling ma_device_stop()
             // (which can cause an ANR on Android using OpenSSL #333).
@@ -255,7 +298,8 @@ namespace SoLoud
                 // Timeout after 500ms to prevent infinite blocking
                 int timeoutMs = 0;
                 int maxTimeoutMs = 500;
-                while (!gDeviceStopped && timeoutMs < maxTimeoutMs)
+                while (!gDeviceStopped.load(std::memory_order_acquire) &&
+                       timeoutMs < maxTimeoutMs)
                 {
                     // Small sleep to avoid busy-waiting
 #if defined(_WIN32) || defined(_WIN64)
@@ -268,12 +312,12 @@ namespace SoLoud
             }
             
             // Set flag to stopped in case notification wasn't received
-            gDeviceStopped = true;
+            gDeviceStopped.store(true, std::memory_order_release);
             
             // From miniaudio.h doc:
             // "This will explicitly stop the device. You do not need to call `ma_device_stop()` beforehand, but it's harmless if you do."
             ma_device_uninit(&gDevice);
-            gDeviceInitialized = false;
+            gDeviceInitialized.store(false, std::memory_order_release);
         }
 #if defined(MA_HAS_COREAUDIO) || defined(__ANDROID__)
         ma_context_uninit(&context);
@@ -286,16 +330,18 @@ namespace SoLoud
     // state and keeps MPRemoteCommandCenter routing intact.
     result soloud_miniaudio_pause(SoLoud::Soloud *aSoloud)
     {
+        std::lock_guard<std::recursive_mutex> operationLock(gDeviceOperationMutex);
+
         if (ma_device_get_state(&gDevice) == ma_device_state_started)
         {
-#if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
-            /* On Web and Android, don't suspend the audio device to avoid a bug where
+#if defined(__EMSCRIPTEN__)
+            /* On Web, don't suspend the audio device to avoid a bug where
                stale buffered audio data can fire after the device is stopped but before
                it takes effect. When stop() and play() are called in quick succession,
                those stale buffers get queued and play after resume(), causing audio
                glitches and lag. Keeping the device running is safe: soloud->mix()
                produces silence when no voices are active, which has negligible overhead.
-               This solves #446 on both Web and Android. */
+               This solves #446 on Web. */
             (void)aSoloud;
             return 0;
 #else
@@ -312,6 +358,8 @@ namespace SoLoud
     // [AVAudioSession setActive:YES]) before calling this.
     result soloud_miniaudio_resume(SoLoud::Soloud *aSoloud)
     {
+        std::lock_guard<std::recursive_mutex> operationLock(gDeviceOperationMutex);
+
         if (aSoloud == nullptr)
             return UNKNOWN_ERROR;
 
@@ -344,9 +392,54 @@ namespace SoLoud
         return 0;
     }
 
+    // Unconditionally stop the miniaudio output device, regardless of platform
+    // idle-pause policy or whether voices are still active. Only the device is
+    // touched: SoLoud is not deinitialised and its voices/sources are left
+    // untouched, so miniaudio_startAudioDevice() can resume rendering exactly
+    // where it left off. Idempotent: a no-op if the device is already stopped.
+    result miniaudio_stopAudioDevice()
+    {
+        std::lock_guard<std::recursive_mutex> operationLock(gDeviceOperationMutex);
+
+        if (ma_device_get_state(&gDevice) == ma_device_state_started)
+        {
+            ma_result res = ma_device_stop(&gDevice);
+            if (res != MA_SUCCESS)
+                return UNKNOWN_ERROR;
+        }
+        return 0;
+    }
+
+    // Restart the miniaudio output device previously stopped by
+    // miniaudio_stopAudioDevice(). Idempotent: a no-op if the device is already
+    // started.
+    result miniaudio_startAudioDevice()
+    {
+        std::lock_guard<std::recursive_mutex> operationLock(gDeviceOperationMutex);
+
+        if (ma_device_get_state(&gDevice) == ma_device_state_stopped)
+        {
+            ma_result res = ma_device_start(&gDevice);
+            if (res != MA_SUCCESS)
+                return UNKNOWN_ERROR;
+        }
+        return 0;
+    }
+
+    // Return the current state of the miniaudio output device as the raw
+    // ma_device_state value. When the device has not been initialized there is
+    // no valid device to query, so report ma_device_state_uninitialized.
+    unsigned int miniaudio_getAudioDeviceState()
+    {
+        if (!gDeviceInitialized.load(std::memory_order_acquire))
+            return ma_device_state_uninitialized;
+        return (unsigned int)ma_device_get_state(&gDevice);
+    }
+
     result miniaudio_init(SoLoud::Soloud *aSoloud, unsigned int aFlags, unsigned int aSamplerate, unsigned int aBuffer, unsigned int aChannels, void *pPlaybackInfos_id)
     {
-        soloud = aSoloud;
+        std::unique_lock<std::recursive_mutex> operationLock(gDeviceOperationMutex);
+        gSoloud.store(aSoloud, std::memory_order_release);
         ma_device_config deviceConfig = ma_device_config_init(ma_device_type_playback);
         if (pPlaybackInfos_id != NULL)
         {
@@ -367,7 +460,7 @@ namespace SoLoud
         // Honor the requested performance profile (see gMiniaudioLowLatency).
         // Conservative keeps Android off the un-capturable MMAP path and gives
         // heavy DSP more headroom; the trade-off is higher output latency.
-        deviceConfig.performanceProfile = gMiniaudioLowLatency
+        deviceConfig.performanceProfile = gMiniaudioLowLatency.load(std::memory_order_acquire)
             ? ma_performance_profile_low_latency
             : ma_performance_profile_conservative;
 
@@ -386,8 +479,12 @@ namespace SoLoud
         // without blocking the main thread's message pump.
         aSoloud->postinit_internal(aSamplerate, aBuffer, aFlags, aChannels);
 
-        // Use safe default values for postinit
+        // The initialization thread acquires the operation mutex itself. Drop
+        // this thread's ownership while waiting for it so the actual device
+        // initialization and start still pass through the serialization point.
+        operationLock.unlock();
         miniaudio_ensure_thread_device_started();
+        operationLock.lock();
 
 #elif defined(MA_HAS_COREAUDIO)
         // Disable CoreAudio context
@@ -427,7 +524,7 @@ namespace SoLoud
         // system screen recorders pick up the audio. miniaudio skips the setter
         // for `_default`, so opting out truly leaves the attributes untouched.
         // The same globals are re-applied on device changes (changeDevice_impl).
-        if (!gMiniaudioLowLatency)
+        if (!gMiniaudioLowLatency.load(std::memory_order_acquire))
         {
             deviceConfig.aaudio.usage                = gMiniaudioAAudioUsage;
             deviceConfig.aaudio.contentType          = gMiniaudioAAudioContentType;
@@ -491,6 +588,7 @@ namespace SoLoud
     // Background thread function to initialize the audio device
     static void miniaudio_init_thread_func()
     {
+        std::lock_guard<std::recursive_mutex> operationLock(gDeviceOperationMutex);
         std::lock_guard<std::mutex> lock(gInitMutex);
         
         if (!gDeviceInitDeferred)
@@ -519,7 +617,7 @@ namespace SoLoud
     // On Windows, this runs device init on a background thread to avoid blocking the message pump.
     result miniaudio_ensure_thread_device_started()
     {
-        if (!gDeviceInitDeferred)
+        if (!gDeviceInitDeferred.load(std::memory_order_acquire))
             return 0; // Already initialized and started
 
         // Create a background thread to initialize and start the device
@@ -539,7 +637,7 @@ namespace SoLoud
         }
 
         // Verify the device is ready
-        if (gDeviceInitDeferred)
+        if (gDeviceInitDeferred.load(std::memory_order_acquire))
             return UNKNOWN_ERROR; // Init failed
             
         return 0;
@@ -547,7 +645,10 @@ namespace SoLoud
 
     result miniaudio_changeDevice_impl(void *pPlaybackInfos_id)
     {
-        if (soloud == nullptr)
+        std::lock_guard<std::recursive_mutex> operationLock(gDeviceOperationMutex);
+        SoLoud::Soloud *currentSoloud =
+            gSoloud.load(std::memory_order_acquire);
+        if (currentSoloud == nullptr)
             return UNKNOWN_ERROR;
 
         // Stop the device before uninitializing to ensure clean shutdown
@@ -556,30 +657,30 @@ namespace SoLoud
             ma_device_stop(&gDevice);
         }
 
-        // Lock the audio mutex to prevent race conditions during device change
-        soloud->lockAudioMutex_internal();
-
+        // ma_device_stop() above waits for the callback to leave the mixer.
+        // Do not hold SoLoud's audio mutex across the blocking device
+        // uninitialization/reinitialization calls.
         ma_device_uninit(&gDevice);
         gDeviceInitialized = false;
 
         ma_device_config deviceConfig = ma_device_config_init(ma_device_type_playback);
         deviceConfig.playback.pDeviceID = (ma_device_id *)pPlaybackInfos_id;
-        deviceConfig.periodSizeInFrames = soloud->mBufferSize;
+        deviceConfig.periodSizeInFrames = currentSoloud->mBufferSize;
         deviceConfig.playback.format    = ma_format_f32;
-        deviceConfig.playback.channels  = soloud->mChannels;
-        deviceConfig.sampleRate         = soloud->mSamplerate;
+        deviceConfig.playback.channels  = currentSoloud->mChannels;
+        deviceConfig.sampleRate         = currentSoloud->mSamplerate;
         deviceConfig.dataCallback       = soloud_miniaudio_audiomixer;
-        deviceConfig.pUserData          = (void *)soloud;
+        deviceConfig.pUserData          = (void *)currentSoloud;
         deviceConfig.notificationCallback = on_notification;
 
         // Preserve the performance profile chosen at init across device changes,
         // otherwise switching the output device would silently revert to the
         // default low-latency/MMAP path (see gMiniaudioLowLatency).
-        deviceConfig.performanceProfile = gMiniaudioLowLatency
+        deviceConfig.performanceProfile = gMiniaudioLowLatency.load(std::memory_order_acquire)
             ? ma_performance_profile_low_latency
             : ma_performance_profile_conservative;
 #if defined(__ANDROID__)
-        if (!gMiniaudioLowLatency)
+        if (!gMiniaudioLowLatency.load(std::memory_order_acquire))
         {
             // Re-apply the SAME attributes chosen at init so a device change
             // doesn't silently revert them. If the app opted out
@@ -605,22 +706,14 @@ namespace SoLoud
         if (result != MA_SUCCESS)
         {
             gDeviceInitialized = false;
-            soloud->unlockAudioMutex_internal();
             return UNKNOWN_ERROR;
         }
 
         gDeviceInitialized = true;
-        gDeviceStopped = false;  // Device is about to start
-        ma_result startResult = ma_device_start(&gDevice);
-        if (startResult != MA_SUCCESS) {
-            soloud_platform_log("miniaudio_changeDevice_impl: ma_device_start failed with error %d\n", startResult);
-            ma_device_uninit(&gDevice);
-            gDeviceInitialized = false;
-            soloud->unlockAudioMutex_internal();
-            return UNKNOWN_ERROR;
-        }
-
-        soloud->unlockAudioMutex_internal();
+        gDeviceStopped = true;
+        // Leave the replacement device stopped. Player's serialized lifecycle
+        // coordinator decides whether active playback, an in-flight timeout,
+        // or indefinite keep-alive policy requires it to be started.
         return 0;
     }
 };

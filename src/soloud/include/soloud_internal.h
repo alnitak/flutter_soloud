@@ -77,6 +77,9 @@ namespace SoLoud
 	// MiniAudio back-end initialization call
 	result miniaudio_init(SoLoud::Soloud* aSoloud, unsigned int aFlags = Soloud::CLIP_ROUNDOFF, unsigned int aSamplerate = 44100, unsigned int aBuffer = 2048, unsigned int aChannels = 2, void *pPlaybackInfos_id = nullptr);
 	result miniaudio_changeDevice_impl(void *pPlaybackInfos_id);
+	// Test hook: deliver an interruption notification through the same backend
+	// callback used by the OS. Not exposed by the public Dart API.
+	void miniaudio_debugTriggerAudioInterruption(bool aBegan);
 	// When false, opens the device on the conservative (legacy mixer) profile
 	// instead of the default low-latency/MMAP path. Must be called before init.
 	void miniaudio_setLowLatency(bool aLowLatency);
@@ -85,6 +88,19 @@ namespace SoLoud
 	// AudioAttributes externally (e.g. via audio_session). Must be called before
 	// init. No-op effect on non-Android backends.
 	void miniaudio_setAndroidAAudioAttributes(bool aManaged);
+	// Unconditionally stop the miniaudio output device (regardless of platform
+	// idle-pause policy or active voices) without deinitialising SoLoud or
+	// touching its voices/sources. Idempotent: no-op if already stopped.
+	result miniaudio_stopAudioDevice();
+	// Restart the miniaudio output device stopped by miniaudio_stopAudioDevice()
+	// so existing voices and sources keep operating. Idempotent: no-op if
+	// already started.
+	result miniaudio_startAudioDevice();
+	// Returns the current state of the miniaudio output device as the raw
+	// ma_device_state value (0 = uninitialized, 1 = stopped, 2 = started,
+	// 3 = starting, 4 = stopping). Returns 0 (uninitialized) if the device has
+	// not been initialized.
+	unsigned int miniaudio_getAudioDeviceState();
 
 	// nosound back-end initialization call
 	result nosound_init(SoLoud::Soloud* aSoloud, unsigned int aFlags = Soloud::CLIP_ROUNDOFF, unsigned int aSamplerate = 44100, unsigned int aBuffer = 2048, unsigned int aChannels = 2);
