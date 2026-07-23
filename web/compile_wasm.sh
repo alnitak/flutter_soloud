@@ -188,7 +188,11 @@ if [ "${SKIP_OPUS_OGG}" != "1" ]; then
 fi
 
 # Define compiler flags based on NO_XIPH_LIBS
-COMPILER_DEFINES="-D WITH_MINIAUDIO -D SIGNALSMITH_USE_PFFFT"
+# SOLOUD_NO_ASSERTS: on web the engine runs entirely on the main browser
+# thread, so the audio mutex (recursive, see Thread::createMutex) can be
+# re-entered by the same thread. SoLoud's internal asserts assume the mutex
+# is never re-entered (mInsideAudioThreadMutex) and would fire spuriously.
+COMPILER_DEFINES="-D WITH_MINIAUDIO -D SIGNALSMITH_USE_PFFFT -D SOLOUD_NO_ASSERTS"
 if [ "${SKIP_OPUS_OGG}" = "1" ]; then
     COMPILER_DEFINES="$COMPILER_DEFINES -D NO_XIPH_LIBS"
 fi

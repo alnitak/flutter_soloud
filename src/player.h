@@ -138,17 +138,64 @@ public:
   /// @return Returns [PlayerErrors.SO_NO_ERROR] if success.
   PlayerErrors getStreamTimeConsumed(unsigned int hash, float *timeConsumed);
 
-  /// @brief Add an audio data stream.
+  /// @brief Add a chunk of audio data to the buffer stream.
   /// @param hash the hash of the sound.
   /// @param data the audio data to add.
   /// @param aDataLen the length of [data].
+  /// @return Returns [PlayerErrors.SO_NO_ERROR] if success.
   PlayerErrors addAudioDataStream(unsigned int hash, const unsigned char *data,
                                   unsigned int aDataLen);
 
-  /// @brief Set the end of the data stream.
+  /// @brief Set the end of the buffer data stream.
   /// @param hash the hash of the sound.
   /// @return Returns [PlayerErrors.SO_NO_ERROR] if success.
   PlayerErrors setDataIsEnded(unsigned int hash);
+
+  /// @brief Set up a pull-based audio stream.
+  /// @param hash return the hash of the sound.
+  /// @param bufferSizeBytes the decoded circular buffer size in bytes.
+  /// @param bufferTriggerPosition normalized fraction in `[0.0, 1.0]` that
+  /// controls when the engine requests more data.
+  /// @param sampleRate the sample rate of the decoded audio.
+  /// @param channels the number of channels.
+  /// @param format the audio format (PCM variants or AUTO).
+  /// @param audioSizeBytes total encoded or PCM file size in bytes.
+  /// @param onBufferingCallback callback for buffering events.
+  /// @param onMetadataCallback callback for metadata events.
+  /// @param onMoreDataIsNeededCallback callback for pull data requests.
+  /// @param onAudioDurationCallback callback for total duration.
+  PlayerErrors setPullBufferStream(
+      unsigned int &hash, unsigned int bufferSizeBytes,
+      double bufferTriggerPosition, unsigned int sampleRate,
+      unsigned int channels, BufferType format, uint64_t audioSizeBytes,
+      dartOnBufferingCallback_t onBufferingCallback,
+      dartOnMetadataCallback_t onMetadataCallback,
+      dartOnMoreDataIsNeededCallback_t onMoreDataIsNeededCallback,
+      dartOnAudioDurationCallback_t onAudioDurationCallback = nullptr);
+
+  /// @brief Resets the pull buffer stream.
+  /// @param hash the hash of the sound.
+  PlayerErrors resetPullBufferStream(unsigned int hash);
+
+  /// @brief Add a chunk of audio data to the pull buffer stream.
+  /// @param hash the hash of the sound.
+  /// @param data the audio data to add.
+  /// @param aDataLen the length of [data].
+  /// @param offset the byte offset of this chunk in the original stream, or 0
+  /// for the next sequential chunk.
+  PlayerErrors addPullBufferDataStream(unsigned int hash,
+                                       const unsigned char *data,
+                                       unsigned int aDataLen,
+                                       uint64_t offset);
+
+  /// @brief Get the current decoded buffer time range for a pull buffer stream.
+  /// @param hash the hash of the sound.
+  /// @param startTime returns the start time in seconds of the decoded buffer.
+  /// @param endTime returns the end time in seconds of the decoded buffer.
+  /// @return Returns [PlayerErrors.SO_NO_ERROR] if success.
+  PlayerErrors getPullBufferTimeRange(unsigned int hash,
+                                       double *startTime,
+                                       double *endTime);
 
   /// @brief Get the current buffer size in bytes of this sound with hash
   /// [hash].

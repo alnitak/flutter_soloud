@@ -1,5 +1,6 @@
 // ignore_for_file: avoid_positional_boolean_parameters
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
@@ -428,6 +429,155 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     }
 
     return ret;
+  }
+
+  @override
+  ({PlayerErrors error, SoundHash soundHash}) setPullBufferStream(
+    int bufferSizeBytes,
+    double bufferTriggerPosition,
+    int sampleRate,
+    int channels,
+    int format,
+    int audioSizeBytes,
+    OnBufferingCallbackTFunction? onBuffering,
+    OnMetadataCallbackTFunction? onMetadata,
+    OnMoreDataIsNeededCallbackTFunction? onMoreDataIsNeeded,
+    OnAudioDurationCallbackTFunction? onAudioDuration,
+  ) {
+    final hashPtr = wasmMalloc(4); // 4 bytes for an int32
+    final result = wasmSetPullBufferStream(
+      hashPtr,
+      bufferSizeBytes,
+      bufferTriggerPosition,
+      sampleRate,
+      channels,
+      format,
+      wasmBigInt(audioSizeBytes.toString()),
+      onBuffering == null ? 0 : 1,
+      onMetadata == null ? 0 : 1,
+      onMoreDataIsNeeded == null ? 0 : 1,
+      onAudioDuration == null ? 0 : 1,
+    );
+    final hash = wasmGetI32Value(hashPtr, 'i32');
+    final soundHash = SoundHash(hash);
+    final ret = (error: PlayerErrors.values[result], soundHash: soundHash);
+    wasmFree(hashPtr);
+
+    if (onBuffering != null) {
+      globalThis.setProperty(
+        'dartOnBufferingCallback_$hash'.toJS,
+        onBuffering.toJS,
+      );
+    }
+
+    if (onMetadata != null) {
+      @JSExport()
+      void webMetadataCallback(JSNumber metadataPtr) {
+        onMetadata(metadataPtr.toDartInt);
+      }
+
+      globalThis.setProperty(
+        'dartOnMetadataCallback_$hash'.toJS,
+        webMetadataCallback.toJS,
+      );
+    }
+
+    if (onMoreDataIsNeeded != null) {
+      @JSExport()
+      void webMoreDataIsNeededCallback(int offset) {
+        // The C++ side passes the offset as a 64-bit integer, which the
+        // web target represents as a JS BigInt. Accepting [int] here lets
+        // the runtime convert the BigInt to a Dart integer automatically.
+        onMoreDataIsNeeded(offset);
+      }
+
+      globalThis.setProperty(
+        'dartOnMoreDataIsNeededCallback_$hash'.toJS,
+        webMoreDataIsNeededCallback.toJS,
+      );
+      // The C++ side does not request the first chunk on the web because the
+      // callback is registered only after the WASM call returns. Fire the
+      // initial request after the current call stack so callers can finish
+      // assigning the returned [SoundHash] before the callback runs.
+      scheduleMicrotask(() => onMoreDataIsNeeded(0));
+    }
+
+    if (onAudioDuration != null) {
+      @JSExport()
+      void webAudioDurationCallback(JSNumber duration) {
+        onAudioDuration(duration.toDartDouble);
+      }
+
+      globalThis.setProperty(
+        'dartOnAudioDurationCallback_$hash'.toJS,
+        webAudioDurationCallback.toJS,
+      );
+    }
+
+    return ret;
+  }
+
+  @override
+  PlayerErrors resetPullBufferStream(SoundHash soundHash) {
+    final result = wasmResetPullBufferStream(soundHash.hash);
+    return PlayerErrors.values[result];
+  }
+
+  @override
+  PlayerErrors addPullBufferDataStream(
+    int hash,
+    Uint8List audioChunk, {
+    int offset = 0,
+  }) {
+    // On the web, `onMoreDataIsNeeded` can be invoked synchronously from the
+    // audio thread's `onaudioprocess` callback. Calling back into the WASM
+    // module from that same thread re-enters the pull-buffer mutex and
+    // deadlocks. Copy the chunk and defer the native call so it runs after the
+    // audio callback has returned and released the mutex.
+    final chunkCopy = Uint8List.fromList(audioChunk);
+
+    scheduleMicrotask(() {
+      final audioChunkPtr = wasmMalloc(chunkCopy.length);
+
+      final heapBuffer = wasmHeapU8Buffer;
+      Uint8List.view(heapBuffer.toDart).setAll(audioChunkPtr, chunkCopy);
+
+      try {
+        wasmAddPullBufferDataStream(
+          hash,
+          audioChunkPtr,
+          chunkCopy.length,
+          wasmBigInt(offset.toString()),
+        );
+      } on Object catch (e, st) {
+        _log.warning('addPullBufferDataStream failed: $e\n$st');
+      } finally {
+        wasmFree(audioChunkPtr);
+      }
+    });
+
+    return PlayerErrors.noError;
+  }
+
+  @override
+  ({PlayerErrors error, double startTime, double endTime})
+  getPullBufferTimeRange(int hash) {
+    final startTimePtr = wasmMalloc(8); // 8 bytes for a double
+    final endTimePtr = wasmMalloc(8);
+
+    final result = wasmGetPullBufferTimeRange(hash, startTimePtr, endTimePtr);
+
+    final startTime = wasmGetF64Value(startTimePtr, 'double');
+    final endTime = wasmGetF64Value(endTimePtr, 'double');
+
+    wasmFree(startTimePtr);
+    wasmFree(endTimePtr);
+
+    return (
+      error: PlayerErrors.values[result],
+      startTime: startTime,
+      endTime: endTime,
+    );
   }
 
   @override

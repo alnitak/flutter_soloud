@@ -734,11 +734,70 @@ extern "C"
     return player.get()->setBufferIcyMetaInt(hash, icyMetaInt);
   }
 
-  /// Add a chunk of audio data to the buffer stream.
+  /// [audioSizeBytes] the total size in **bytes** of the original encoded or
+  /// PCM stream. This is used to compute the total audio duration and to
+  /// request the tail chunk for formats where the duration is not in the
+  /// header (Ogg Vorbis/Opus).
   ///
-  /// [hash] the hash of the sound.
-  /// [data] the audio data to add.
-  /// [aDataLen] the length of [data].
+  /// [onBufferingCallback] a callback that is called when starting to buffer
+  /// and when the buffering is done.
+  ///
+  /// [onMetadataCallback] a callback that is called when metadata is detected.
+  ///
+  /// [onMoreDataIsNeededCallback] a callback that is called when the engine
+  /// needs more encoded audio data. The parameter is the byte offset in the
+  /// original encoded stream.
+  ///
+  /// [onAudioDurationCallback] a callback that is called once the total audio
+  /// duration has been determined.
+  FFI_PLUGIN_EXPORT enum PlayerErrors setPullBufferStream(
+      unsigned int *hash, unsigned int bufferSizeBytes,
+      double bufferTriggerPosition, unsigned int sampleRate,
+      unsigned int channels, int format, uint64_t audioSizeBytes,
+      dartOnBufferingCallback_t onBufferingCallback,
+      dartOnMetadataCallback_t onMetadataCallback,
+      dartOnMoreDataIsNeededCallback_t onMoreDataIsNeededCallback,
+      dartOnAudioDurationCallback_t onAudioDurationCallback)
+  {
+    std::lock_guard<std::mutex> guard_init(init_deinit_mutex);
+    std::lock_guard<std::mutex> guard_load(loadMutex);
+    if (player.get() == nullptr || !player.get()->isInited())
+      return backendNotInited;
+
+    if (format == BufferType::OPUS)
+      format = BufferType::AUTO;
+
+    PlayerErrors e = (PlayerErrors)player.get()->setPullBufferStream(
+        *hash, bufferSizeBytes, bufferTriggerPosition, sampleRate, channels,
+        (BufferType)format, audioSizeBytes, onBufferingCallback,
+        onMetadataCallback, onMoreDataIsNeededCallback, onAudioDurationCallback);
+    return e;
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors resetPullBufferStream(unsigned int hash)
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return backendNotInited;
+    return player.get()->resetPullBufferStream(hash);
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors
+  addPullBufferDataStream(unsigned int hash, const unsigned char *data,
+                          unsigned int aDataLen, uint64_t offset)
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return backendNotInited;
+    return player.get()->addPullBufferDataStream(hash, data, aDataLen, offset);
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors
+  getPullBufferTimeRange(unsigned int hash, double *startTime, double *endTime)
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return backendNotInited;
+    return player.get()->getPullBufferTimeRange(hash, startTime, endTime);
+  }
+
   FFI_PLUGIN_EXPORT enum PlayerErrors
   addAudioDataStream(unsigned int hash, const unsigned char *data,
                      unsigned int aDataLen)

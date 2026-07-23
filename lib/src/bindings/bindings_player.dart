@@ -18,6 +18,13 @@ typedef OnBufferingCallbackTFunction =
 /// Callback set in `setBufferStream` for the `onMetadata` closure.
 typedef OnMetadataCallbackTFunction = void Function(dynamic metadata);
 
+/// Callback set in `setPullBufferStream` for the `onAudioDuration` closure.
+typedef OnAudioDurationCallbackTFunction = void Function(double duration);
+
+/// Callback set in `setPullBufferStream` for the `onMoreDataIsNeeded` closure.
+/// [offset] is the byte position in the original encoded stream.
+typedef OnMoreDataIsNeededCallbackTFunction = void Function(int offset);
+
 /// Abstract class defining the interface for the platform-specific
 /// implementations.
 abstract class FlutterSoLoud {
@@ -292,6 +299,58 @@ abstract class FlutterSoLoud {
   /// [hash] the hash of the stream sound.
   @mustBeOverridden
   ({PlayerErrors error, int sizeInBytes}) getBufferSize(SoundHash soundHash);
+
+  /// Set up a pull-based audio stream.
+  ///
+  /// [bufferSizeBytes] the decoded circular buffer size in bytes.
+  /// [bufferTriggerPosition] normalized fraction in `[0.0, 1.0]` that controls
+  /// when [onMoreDataIsNeeded] is fired.
+  /// [sampleRate] the sample rate of the decoded audio.
+  /// [channels] the number of channels.
+  /// [format] the audio format (PCM variants or AUTO).
+  /// [audioSizeBytes] total encoded or PCM file size in bytes.
+  @mustBeOverridden
+  ({PlayerErrors error, SoundHash soundHash}) setPullBufferStream(
+    int bufferSizeBytes,
+    double bufferTriggerPosition,
+    int sampleRate,
+    int channels,
+    int format,
+    int audioSizeBytes,
+    OnBufferingCallbackTFunction? onBuffering,
+    OnMetadataCallbackTFunction? onMetadata,
+    OnMoreDataIsNeededCallbackTFunction? onMoreDataIsNeeded,
+    OnAudioDurationCallbackTFunction? onAudioDuration,
+  );
+
+  /// Reset the pull buffer stream.
+  /// [soundHash] the hash of the stream sound.
+  @mustBeOverridden
+  PlayerErrors resetPullBufferStream(SoundHash soundHash);
+
+  /// Add a chunk of audio data to the pull buffer stream.
+  ///
+  /// [hash] the hash of the sound.
+  /// [audioChunk] the audio data to add.
+  /// [offset] the byte offset of this chunk in the original stream, or 0 for
+  /// the next sequential chunk.
+  ///
+  /// Returns [PlayerErrors.noError] if success.
+  @mustBeOverridden
+  PlayerErrors addPullBufferDataStream(
+    int hash,
+    Uint8List audioChunk, {
+    int offset = 0,
+  });
+
+  /// Get the decoded time range of the pull buffer stream.
+  ///
+  /// [hash] the hash of the sound.
+  /// Returns a record with the player error and the decoded buffer start/end
+  /// positions in seconds.
+  @mustBeOverridden
+  ({PlayerErrors error, double startTime, double endTime})
+  getPullBufferTimeRange(int hash);
 
   /// Load a new waveform to be played once or multiple times later.
   ///

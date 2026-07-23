@@ -136,12 +136,27 @@ namespace SoLoud
 		{
 			pthread_mutex_t *mutex;
 			mutex = new pthread_mutex_t;
-		
+
 			pthread_mutexattr_t attr;
 			pthread_mutexattr_init(&attr);
 
+#ifdef __EMSCRIPTEN__
+			// On the web the audio device callback runs on the main browser
+			// thread (ScriptProcessorNode), i.e. the same thread that calls
+			// the public API. Synchronous EM_ASM callbacks into Dart fired
+			// from inside the mix (or from API calls such as seek() that hold
+			// the audio lock) can call back into the engine and re-lock this
+			// mutex on the same thread, and engine code itself also re-enters
+			// it (e.g. PullBufferStream::checkBuffering() -> getPause() from
+			// within getAudio()). musl aborts on non-recursive self-deadlock
+			// ("pthread mutex deadlock detected"), so the mutex must be
+			// recursive: same-thread re-entry is safe because the whole engine
+			// runs on that single thread.
+			pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
+#endif
+
 			pthread_mutex_init(mutex, &attr);
-		
+
 			return (void*)mutex;
 		}
 

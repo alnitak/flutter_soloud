@@ -91,6 +91,12 @@ class MixerOutput {
   size_t contiguousAvailable() const;
   bool isCompressedFormat() const;
   void writeToBuffer(const uint8_t *data, size_t bytes);
+#ifdef __EMSCRIPTEN__
+  /// Single notification pass used on web, where there are no worker
+  /// threads: called from [onAudioData] (the main/browser thread, which is
+  /// also the audio thread there) after new data has been written.
+  void processNotifications();
+#endif
 
   std::atomic<bool> m_running{false};
   std::atomic<bool> m_shouldStop{false};
@@ -122,6 +128,12 @@ class MixerOutput {
   std::unique_ptr<PcmChunkQueue> m_pcmQueue;
   std::unique_ptr<MixerOutputEncoder> m_encoder;
   std::thread m_encoderThread;
+
+#ifdef __EMSCRIPTEN__
+  // Scratch buffer for inline (thread-free) encoding on web. Reused across
+  // audio callbacks to avoid allocating on the audio thread.
+  std::vector<uint8_t> m_encodeScratch;
+#endif
 
   // WAV header cached on stop so callers can retrieve it after the encoder
   // has been released.

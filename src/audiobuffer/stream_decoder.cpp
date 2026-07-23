@@ -80,8 +80,10 @@ DetectedType StreamDecoder::detectAudioFormat(const std::vector<unsigned char>& 
             }
             
             // Check for Vorbis in this page
-            // Look through the entire payload for the Vorbis pattern
-            for (size_t i = 0; i < payload_size - 6; i++) {
+            // Look through the entire payload for the Vorbis pattern.
+            // The loop bound stays unsigned-safe for payloads shorter than
+            // the 7-byte pattern.
+            for (size_t i = 0; i + 7 <= payload_size; i++) {
                 if (buffer[payload_offset + i] == 0x01 && 
                     std::memcmp(buffer.data() + payload_offset + i + 1, "vorbis", 6) == 0) {
                     return DetectedType::BUFFER_OGG_VORBIS;
@@ -121,8 +123,10 @@ std::pair<std::vector<float>, DecoderError> StreamDecoder::decode(
     std::vector<unsigned char>& buffer,
     int* samplerate,
     int* channels,
-    TrackChangeCallback metadataChangeCallback)
+    TrackChangeCallback metadataChangeCallback,
+    size_t maxOutputSamples)
 {
+
     if (!isFormatDetected) {
         DetectedType detectedType = detectAudioFormat(buffer);
         if (detectedType == DetectedType::BUFFER_NO_ENOUGH_DATA)
@@ -185,6 +189,7 @@ std::pair<std::vector<float>, DecoderError> StreamDecoder::decode(
             mWrapper->setTrackChangeCallback(metadataChangeCallback);
         }
         mWrapper->detectedType = detectedType;
+        mWrapper->setTotalAudioSizeBytes(mTotalAudioSizeBytes);
 
         // Forward deferred end-of-stream signal. When total data is below the
         // 32 KB addData threshold, setDataEnded() is called before the wrapper
@@ -195,27 +200,7 @@ std::pair<std::vector<float>, DecoderError> StreamDecoder::decode(
     }
     
     if (mWrapper) {
-        #if !defined(NO_XIPH_LIBS)
-            if (mWrapper->detectedType == DetectedType::BUFFER_OGG_OPUS) {
-                return static_cast<OpusDecoderWrapper*>(mWrapper.get())->decode(buffer, samplerate, channels);
-            }
-            else if (mWrapper->detectedType == DetectedType::BUFFER_OGG_VORBIS) {
-                return static_cast<VorbisDecoderWrapper*>(mWrapper.get())->decode(buffer, samplerate, channels);
-            }
-            else if (mWrapper->detectedType == DetectedType::BUFFER_OGG_FLAC) {
-                return static_cast<OggFlacDecoderWrapper*>(mWrapper.get())->decode(buffer, samplerate, channels);
-            }
-            else if (mWrapper->detectedType == DetectedType::BUFFER_FLAC) {
-                return static_cast<FlacDecoderWrapper*>(mWrapper.get())->decode(buffer, samplerate, channels);
-            }
-        #endif
-        if (mWrapper->detectedType == DetectedType::BUFFER_MP3_WITH_ID3 ||
-            mWrapper->detectedType == DetectedType::BUFFER_MP3_STREAM) {
-            return static_cast<MP3DecoderWrapper *>(mWrapper.get())->decode(buffer, samplerate, channels);
-        }
-        if (mWrapper->detectedType == DetectedType::BUFFER_WAV) {
-            return static_cast<WavDecoderWrapper *>(mWrapper.get())->decode(buffer, samplerate, channels);
-        }
+        return mWrapper->decode(buffer, samplerate, channels, maxOutputSamples);
     }
     return {};
 }
@@ -225,4 +210,45 @@ DetectedType StreamDecoder::getWrapperType()
     if (mWrapper)
         return mWrapper->detectedType;
     return DetectedType::BUFFER_UNKNOWN;
+}
+
+bool StreamDecoder::canSeekToTime(double seconds) const
+{
+    if (mWrapper)
+        return mWrapper->canSeekToTime(seconds);
+    return false;
+}
+
+uint64_t StreamDecoder::timeToByteOffset(double seconds)
+{
+    if (mWrapper)
+        return mWrapper->timeToByteOffset(seconds);
+    return 0;
+}
+
+double StreamDecoder::getDuration() const
+{
+    if (mWrapper)
+        return mWrapper->getDuration();
+    return -1.0;
+}
+
+int StreamDecoder::preSkip() const
+{
+    if (mWrapper)
+        return mWrapper->preSkip();
+    return 0;
+}
+
+int StreamDecoder::granuleSampleRate() const
+{
+    if (mWrapper)
+        return mWrapper->granuleSampleRate();
+    return 0;
+}
+
+void StreamDecoder::prepareForSeek(uint64_t targetSample)
+{
+    if (mWrapper)
+        mWrapper->prepareForSeek(targetSample);
 }

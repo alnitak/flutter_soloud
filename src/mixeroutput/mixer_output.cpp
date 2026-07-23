@@ -87,7 +87,9 @@ PlayerErrors MixerOutput::start(MixerOutputFormat format, int sampleRate,
     m_bytesPerSample = m_encoder->inputBytesPerSample();
     m_bytesPerFrame = m_bytesPerSample * channels;
 
+#ifndef __EMSCRIPTEN__
     m_pcmQueue = std::make_unique<PcmChunkQueue>();
+#endif
     m_buffer.assign(m_bufferSize, 0);
     m_writeOffset.store(0);
     m_readOffset.store(0);
@@ -99,9 +101,20 @@ PlayerErrors MixerOutput::start(MixerOutputFormat format, int sampleRate,
     m_chunkBytes = 0;
     m_chunkBuffer.clear();
 
+#ifdef __EMSCRIPTEN__
+    // On web there are no worker threads: encoding runs inline in
+    // onAudioData(), which is called on the main browser thread (the audio
+    // thread there). Write the stream header up front like the encoder
+    // thread does on native.
+    std::vector<uint8_t> header;
+    if (m_encoder->writeCurrentHeader(header) && !header.empty()) {
+      writeToBuffer(header.data(), header.size());
+    }
+#else
     m_encoderThread = std::thread(&MixerOutput::encoderThreadFunc, this);
     m_notificationThread =
         std::thread(&MixerOutput::notificationThreadFunc, this);
+#endif
   } else {
     m_bytesPerSample = bps;
     m_bytesPerFrame = bytesPerFrame;
@@ -123,8 +136,10 @@ PlayerErrors MixerOutput::start(MixerOutputFormat format, int sampleRate,
     m_shouldStop.store(false);
     m_running.store(true);
 
+#ifndef __EMSCRIPTEN__
     m_notificationThread =
         std::thread(&MixerOutput::notificationThreadFunc, this);
+#endif
   }
 
   return noError;
@@ -141,6 +156,19 @@ void MixerOutput::stop() {
   if (m_pcmQueue != nullptr) {
     m_pcmQueue->stop();
   }
+
+#ifdef __EMSCRIPTEN__
+  // On web there is no encoder thread: flush the encoder tail inline so the
+  // circular buffer is complete when this returns. The Dart side reads the
+  // remaining data synchronously right after stop (_flushRemaining), and
+  // joining a pthread here would block the main browser thread.
+  if (m_encoder != nullptr) {
+    m_encodeScratch.clear();
+    if (m_encoder->finalize(m_encodeScratch) && !m_encodeScratch.empty()) {
+      writeToBuffer(m_encodeScratch.data(), m_encodeScratch.size());
+    }
+  }
+#endif
 
   if (m_encoderThread.joinable()) {
     m_encoderThread.join();
@@ -176,8 +204,21 @@ void MixerOutput::onAudioData(const float *data, unsigned int frames) {
   }
 
   if (isCompressedFormat()) {
+#ifdef __EMSCRIPTEN__
+    // On web the audio callback runs on the main browser thread, so there
+    // are no queue/encoder threads: encode inline and notify directly.
+    if (m_encoder != nullptr) {
+      m_encodeScratch.clear();
+      if (m_encoder->encode(data, totalSamples, m_encodeScratch) &&
+          !m_encodeScratch.empty()) {
+        writeToBuffer(m_encodeScratch.data(), m_encodeScratch.size());
+      }
+    }
+    processNotifications();
+#else
     std::vector<float> chunk(data, data + totalSamples);
     m_pcmQueue->push(std::move(chunk));
+#endif
     return;
   }
 
@@ -211,7 +252,59 @@ void MixerOutput::onAudioData(const float *data, unsigned int frames) {
 
   m_writeOffset.store((writeOffset + bytesToWrite) % m_bufferSize,
                       std::memory_order_release);
+
+#ifdef __EMSCRIPTEN__
+  processNotifications();
+#endif
 }
+
+#ifdef __EMSCRIPTEN__
+void MixerOutput::processNotifications() {
+  if (!m_callback) {
+    return;
+  }
+
+  // Fixed-size PCM chunk mode: emit every complete chunk. The data is copied
+  // into m_chunkBuffer, the read position is advanced immediately, and the
+  // callback is invoked. Dart must not advance the circular buffer again for
+  // these chunks.
+  if (m_chunkBytes > 0) {
+    while (getAvailableBytes() >= m_chunkBytes) {
+      const size_t readOffset = m_readOffset.load(std::memory_order_relaxed);
+      const size_t firstPart =
+          std::min(m_chunkBytes, m_bufferSize - readOffset);
+      std::memcpy(m_chunkBuffer.data(), m_buffer.data() + readOffset,
+                  firstPart);
+
+      if (firstPart < m_chunkBytes) {
+        const size_t secondPart = m_chunkBytes - firstPart;
+        std::memcpy(m_chunkBuffer.data() + firstPart, m_buffer.data(),
+                    secondPart);
+      }
+
+      m_readOffset.store((readOffset + m_chunkBytes) % m_bufferSize,
+                         std::memory_order_release);
+      m_callback(m_chunkBuffer.data(), m_chunkBytes);
+    }
+    m_notified.store(false, std::memory_order_release);
+    return;
+  }
+
+  // Threshold-based mode (used by default and by compressed formats):
+  // notify when at least notificationThresholdBytes are available.
+  const size_t available = getAvailableBytes();
+  if (available >= m_notificationThreshold && !m_notified.load()) {
+    m_notified.store(true, std::memory_order_release);
+    const size_t readOffset = m_readOffset.load(std::memory_order_relaxed);
+    const size_t length = std::min(available, m_bufferSize - readOffset);
+    m_callback(m_buffer.data() + readOffset, length);
+  }
+
+  if (available < m_notificationThreshold) {
+    m_notified.store(false, std::memory_order_release);
+  }
+}
+#endif
 
 void MixerOutput::writeToBuffer(const uint8_t *data, size_t bytes) {
   if (bytes == 0 || data == nullptr || m_bufferSize == 0) {

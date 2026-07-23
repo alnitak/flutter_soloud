@@ -1,5 +1,7 @@
 #include "soloud_common.h"
 #include "player.h"
+#include "audiobuffer/circular_float_buffer.h"
+#include "audiobuffer/pull_buffer_stream.h"
 #include "filters/filters.h"
 #include "soloud.h"
 #include "soloud/include/soloud.h"
@@ -406,6 +408,10 @@ const std::string Player::getErrorString(PlayerErrors errorCode) const
         return "error: Xiph libraries not found!";
     case busIdNotFound:
         return "error: bus id not found!";
+    case hashIsNotAPullBufferStream:
+        return "error: hash is not a pull buffer stream!";
+    case invalidPullBufferState:
+        return "error: pull buffer stream is in an invalid state!";
     }
     return "Other error";
 }
@@ -600,6 +606,102 @@ PlayerErrors Player::setBufferStream(
     }
 
     return e;
+}
+
+PlayerErrors Player::setPullBufferStream(
+    unsigned int &hash,
+    unsigned int bufferSizeBytes,
+    double bufferTriggerPosition,
+    unsigned int sampleRate,
+    unsigned int channels,
+    BufferType format,
+    uint64_t audioSizeBytes,
+    dartOnBufferingCallback_t onBufferingCallback,
+    dartOnMetadataCallback_t onMetadataCallback,
+    dartOnMoreDataIsNeededCallback_t onMoreDataIsNeededCallback,
+    dartOnAudioDurationCallback_t onAudioDurationCallback)
+{
+    if (!mInited)
+        return backendNotInited;
+
+    std::random_device rd;
+    std::mt19937 g(rd());
+    std::uniform_int_distribution<unsigned int> dist(0, INT32_MAX);
+
+    hash = dist(g);
+
+    auto newSound = std::make_unique<ActiveSound>();
+    newSound.get()->completeFileName = "";
+    newSound.get()->soundHash = hash;
+
+    newSound.get()->sound = std::make_unique<SoLoud::PullBufferStream>();
+    newSound.get()->soundType = SoundType::TYPE_PULL_BUFFER_STREAM;
+
+    auto *pullStream = static_cast<SoLoud::PullBufferStream *>(newSound.get()->sound.get());
+    PlayerErrors e = pullStream->setPullBufferStream(
+        this, newSound.get(), bufferSizeBytes, bufferTriggerPosition,
+        sampleRate, channels, format, audioSizeBytes,
+        onBufferingCallback, onMetadataCallback, onMoreDataIsNeededCallback,
+        onAudioDurationCallback);
+
+    newSound.get()->filters = std::make_unique<Filters>(&soloud, newSound.get(), nullptr);
+    {
+        std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
+        sounds.push_back(std::move(newSound));
+    }
+
+    return e;
+}
+
+PlayerErrors Player::resetPullBufferStream(unsigned int hash)
+{
+    auto const s = findByHash(hash);
+
+    if (s == nullptr || s->soundType != SoundType::TYPE_PULL_BUFFER_STREAM)
+        return PlayerErrors::soundHashNotFound;
+
+    static_cast<SoLoud::PullBufferStream *>(s->sound.get())->resetPullBufferStream();
+    return PlayerErrors::noError;
+}
+
+PlayerErrors Player::addPullBufferDataStream(
+    unsigned int hash,
+    const unsigned char *data,
+    unsigned int aDataLen,
+    uint64_t offset)
+{
+    auto const s = findByHash(hash);
+
+    if (s == nullptr)
+        return PlayerErrors::soundHashNotFound;
+
+    if (s->soundType != SoundType::TYPE_PULL_BUFFER_STREAM)
+        return PlayerErrors::hashIsNotAPullBufferStream;
+
+    return static_cast<SoLoud::PullBufferStream *>(s->sound.get())
+        ->addAudioData(data, aDataLen, offset);
+}
+
+PlayerErrors Player::getPullBufferTimeRange(
+    unsigned int hash,
+    double *startTime,
+    double *endTime)
+{
+    auto const s = findByHash(hash);
+
+    if (s == nullptr)
+        return PlayerErrors::soundHashNotFound;
+
+    if (s->soundType != SoundType::TYPE_PULL_BUFFER_STREAM)
+        return PlayerErrors::hashIsNotAPullBufferStream;
+
+    auto *pullStream = static_cast<SoLoud::PullBufferStream *>(s->sound.get());
+    double start = 0.0;
+    double end = 0.0;
+    pullStream->getBufferTimeRange(start, end);
+    if (startTime != nullptr) *startTime = start;
+    if (endTime != nullptr) *endTime = end;
+    return PlayerErrors::noError;
 }
 
 PlayerErrors Player::addAudioDataStream(
@@ -1119,6 +1221,14 @@ void Player::disposeSound(unsigned int soundHash)
                     bufferStream->markForDestruction();
                 }
             }
+            else if (it->get()->soundType == SoundType::TYPE_PULL_BUFFER_STREAM)
+            {
+                auto *pullStream = static_cast<SoLoud::PullBufferStream *>(it->get()->sound.get());
+                if (pullStream != nullptr)
+                {
+                    pullStream->markForDestruction();
+                }
+            }
 
             // Clear all filters from this sound BEFORE moving it out.
             // This prevents the audio thread from accessing filter instances
@@ -1170,6 +1280,14 @@ void Player::disposeAllSound()
                     bufferStream->markForDestruction();
                 }
             }
+            else if (sound->soundType == SoundType::TYPE_PULL_BUFFER_STREAM)
+            {
+                auto *pullStream = static_cast<SoLoud::PullBufferStream *>(sound->sound.get());
+                if (pullStream != nullptr)
+                {
+                    pullStream->markForDestruction();
+                }
+            }
             // Clear all filters from this sound
             if (sound->sound)
             {
@@ -1201,12 +1319,18 @@ void Player::clearDartCallbackRegistrations()
     std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
     for (auto &sound : sounds)
     {
-        if (sound != nullptr &&
-            sound->soundType == SoundType::TYPE_BUFFER_STREAM &&
-            sound->sound != nullptr)
+        if (sound != nullptr && sound->sound != nullptr)
         {
-            static_cast<SoLoud::BufferStream *>(sound->sound.get())
-                ->clearDartCallbacks();
+            if (sound->soundType == SoundType::TYPE_BUFFER_STREAM)
+            {
+                static_cast<SoLoud::BufferStream *>(sound->sound.get())
+                    ->clearDartCallbacks();
+            }
+            else if (sound->soundType == SoundType::TYPE_PULL_BUFFER_STREAM)
+            {
+                static_cast<SoLoud::PullBufferStream *>(sound->sound.get())
+                    ->clearDartCallbacks();
+            }
         }
     }
 }

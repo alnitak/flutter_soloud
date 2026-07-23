@@ -15,6 +15,15 @@ external String? get miniaudioAudioContextState;
 @JS('globalThis.crossOriginIsolated')
 external bool? get isCrossOriginIsolated;
 
+/// Construct a JavaScript `BigInt` from a string value.
+///
+/// Emscripten represents 64-bit integers (e.g. `uint64_t`) as JavaScript
+/// `BigInt`s on the WebAssembly boundary. Dart `int` values are converted to
+/// JS `Number`s, which cannot be passed directly to these exports, so callers
+/// must wrap the value with this helper first.
+@JS('BigInt')
+external JSAny wasmBigInt(String value);
+
 @JS('Module_soloud._malloc')
 external int wasmMalloc(int bytesCount);
 
@@ -23,6 +32,9 @@ external void wasmFree(int ptrAddress);
 
 @JS('Module_soloud.getValue')
 external int wasmGetI32Value(int ptrAddress, String type);
+
+@JS('Module_soloud.getValue')
+external double wasmGetF64Value(int ptrAddress, String type);
 
 @JS('Module_soloud.getValue')
 external double wasmGetF32Value(int ptrAddress, String type);
@@ -76,8 +88,26 @@ external int wasmSetBufferStream(
   int onMetadataPtr,
 );
 
+@JS('Module_soloud._setPullBufferStream')
+external int wasmSetPullBufferStream(
+  int hashPtr,
+  int bufferSizeBytes,
+  double bufferTriggerPosition,
+  int sampleRate,
+  int channels,
+  int format,
+  JSAny audioSizeBytes,
+  int onBufferingPtr,
+  int onMetadataPtr,
+  int onMoreDataIsNeededPtr,
+  int onAudioDurationPtr,
+);
+
 @JS('Module_soloud._resetBufferStream')
 external int wasmResetBufferStream(int hash);
+
+@JS('Module_soloud._resetPullBufferStream')
+external int wasmResetPullBufferStream(int hash);
 
 @JS('Module_soloud._getStreamTimeConsumed')
 external int wasmGetStreamTimeConsumed(int hash, int timeConsumedPtr);
@@ -87,6 +117,21 @@ external int wasmSetBufferIcyMetaInt(int hash, int icyMetaInt);
 
 @JS('Module_soloud._addAudioDataStream')
 external int wasmAddAudioDataStream(int hash, int audioChunkPtr, int dataLen);
+
+@JS('Module_soloud._addPullBufferDataStream')
+external int wasmAddPullBufferDataStream(
+  int hash,
+  int audioChunkPtr,
+  int dataLen,
+  JSAny offset,
+);
+
+@JS('Module_soloud._getPullBufferTimeRange')
+external int wasmGetPullBufferTimeRange(
+  int hash,
+  int startTimePtr,
+  int endTimePtr,
+);
 
 @JS('Module_soloud._setDataIsEnded')
 external int wasmSetDataIsEnded(int hash);

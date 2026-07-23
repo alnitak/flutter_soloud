@@ -296,7 +296,11 @@ interface class SoLoud {
       _loader.isInitialized;
 
   /// Whether this is the main isolate.
-  bool get _isMainIsolate => ServicesBinding.rootIsolateToken != null;
+  ///
+  /// On the web there is only one isolate, so this always returns true. On
+  /// native platforms it checks the root isolate token to avoid running
+  /// SoLoud calls from background isolates.
+  bool get _isMainIsolate => kIsWeb || ServicesBinding.rootIsolateToken != null;
 
   /// Backing of [activeSounds].
   final List<AudioSource> _activeSounds = [];
@@ -1296,6 +1300,207 @@ interface class SoLoud {
       throw SoLoudCppException.fromPlayerError(e.error);
     }
     return e.sizeInBytes;
+  }
+
+  /// Set up a pull-based audio stream.
+  ///
+  /// The engine requests encoded data on demand via the [onMoreDataIsNeeded]
+  /// callback. The user fetches the bytes from any source (network, file,
+  /// decryption) and feeds them back with [addPullBufferDataStream].
+  ///
+  /// [bufferSizeBytes] the decoded circular buffer size in **bytes**. This is
+  /// the maximum amount of decoded audio that will be kept in memory. For
+  /// example, 10 MB at 44100 Hz stereo float32 holds roughly 30 seconds of
+  /// audio. Default is 10 MB (1024 * 1024 * 10).
+  ///
+  /// [bufferTriggerPosition] the position inside the decoded circular buffer,
+  /// as a normalized fraction in the range `[0.0, 1.0]`, where
+  /// [onMoreDataIsNeeded] is fired. A value of `0.0` means the callback is
+  /// fired as soon as the buffer has any room (i.e. at the start), `1.0` means
+  /// it is fired only when the buffer is exhausted (at the end), and `0.5`
+  /// means it is fired when playback reaches the middle of the buffer. Values
+  /// outside this range are clamped. Default is `0.8` (request more data when
+  /// the buffer is down to the last 20%).
+  ///
+  /// [sampleRate] the sample rate of the decoded audio. Usually 22050 or
+  /// 44100. Ignored when [format] is [BufferType.auto].
+  ///
+  /// [channels] the number of channels. Ignored when format is
+  /// [BufferType.auto].
+  ///
+  /// [format] audio data format. Options: `f32le`, `s8`, `s16le`, `s32le`, or
+  /// `auto` (MP3, OGG/Opus, OGG/Vorbis, FLAC, WAV are automatically detected).
+  ///
+  /// [audioSizeBytes] total size in **bytes** of the original encoded or PCM
+  /// stream. Used to determine the total audio duration and to request the
+  /// tail chunk for Ogg formats where the duration is not in the header.
+  ///
+  /// [autoDispose] if true, this source will be automatically disposed when
+  /// all its handles have finished playing.
+  ///
+  /// [onBuffering] called when the engine starts buffering or stops buffering.
+  ///
+  /// [onMetadata] called when the stream format is detected and metadata is
+  /// available.
+  ///
+  /// [onAudioDuration] called once the total audio duration has been
+  /// determined.
+  ///
+  /// [onMoreDataIsNeeded] called when the engine needs more encoded audio data.
+  /// The parameter is the byte offset in the original encoded stream. The user
+  /// decides how many bytes to fetch and must call [addPullBufferDataStream]
+  /// to feed the data back.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  @experimental
+  AudioSource setPullBufferStream({
+    int bufferSizeBytes = 1024 * 1024 * 10, // 10 MB
+    double bufferTriggerPosition = 0.8,
+    int sampleRate = 44100,
+    Channels channels = Channels.stereo,
+    BufferType format = BufferType.auto,
+    int audioSizeBytes = 0,
+    bool autoDispose = false,
+    void Function(bool isBuffering, int handle, double time)? onBuffering,
+    void Function(AudioMetadata)? onMetadata,
+    void Function(double duration)? onAudioDuration,
+    void Function(int offset)? onMoreDataIsNeeded,
+  }) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+
+    if (audioSizeBytes == 0) {
+      throw SoLoudCppException.fromPlayerError(PlayerErrors.invalidParameter);
+    }
+
+    final ret = SoLoudController().soLoudFFI.setPullBufferStream(
+      bufferSizeBytes,
+      bufferTriggerPosition,
+      sampleRate,
+      channels.count,
+      format.value,
+      audioSizeBytes,
+      onBuffering,
+      onMetadata == null
+          ? null
+          : (dynamic metadata) {
+              final data = kIsWeb
+                  ? NativeAudioMetadata.fromJSPointer(metadata as int)
+                  : (metadata as NativeAudioMetadata).toAudioMetadata();
+              onMetadata(data);
+            },
+      onMoreDataIsNeeded,
+      onAudioDuration,
+    );
+
+    if (ret.error != PlayerErrors.noError) {
+      _logPlayerError(ret.error, from: 'setPullBufferStream() result');
+      throw SoLoudCppException.fromPlayerError(ret.error);
+    }
+
+    final newSound = _addNewSound(ret.error, '', ret.soundHash.hash)
+      ..autoDispose = autoDispose;
+    return newSound;
+  }
+
+  /// Reset the pull buffer stream.
+  ///
+  /// [sound] the pull buffer stream sound.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  @experimental
+  void resetPullBufferStream(AudioSource sound) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    final e = SoLoudController().soLoudFFI.resetPullBufferStream(
+      sound.soundHash,
+    );
+
+    if (e != PlayerErrors.noError) {
+      _logPlayerError(e, from: 'resetPullBufferStream() result');
+      throw SoLoudCppException.fromPlayerError(e);
+    }
+  }
+
+  /// Add encoded audio data to a pull buffer stream.
+  ///
+  /// [source] the pull buffer audio source.
+  ///
+  /// [audioChunk] the encoded audio data to add. The format is determined by
+  /// the format parameter passed to [setPullBufferStream].
+  ///
+  /// [offset] the byte offset of this chunk in the original encoded stream,
+  /// or 0 to append the next sequential chunk. Out-of-order chunks are
+  /// supported for special cases like duration probing.
+  ///
+  /// Returns [PlayerErrors.noError] if success.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Throws [SoLoudSoundHashNotFoundDartException] if the [source] is not
+  /// found.
+  @experimental
+  PlayerErrors addPullBufferDataStream(
+    AudioSource source,
+    Uint8List audioChunk, {
+    int offset = 0,
+  }) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+
+    if (audioChunk.isEmpty) {
+      return PlayerErrors.noError;
+    }
+
+    final result = SoLoudController().soLoudFFI.addPullBufferDataStream(
+      source.soundHash.hash,
+      audioChunk,
+      offset: offset,
+    );
+
+    if (result != PlayerErrors.noError) {
+      _logPlayerError(result, from: 'addPullBufferDataStream() result');
+      throw SoLoudCppException.fromPlayerError(result);
+    }
+
+    return result;
+  }
+
+  /// Get the current decoded time range of the pull buffer stream.
+  ///
+  /// [source] the pull buffer stream sound.
+  ///
+  /// Returns the start and end positions, in seconds, of the decoded audio
+  /// currently stored in the pull buffer stream.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Throws [SoLoudSoundHashNotFoundDartException] if the [source] is not
+  /// found.
+  @experimental
+  ({PlayerErrors error, Duration startTime, Duration endTime})
+  getPullBufferTimeRange(AudioSource source) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+
+    final result = SoLoudController().soLoudFFI.getPullBufferTimeRange(
+      source.soundHash.hash,
+    );
+
+    if (result.error != PlayerErrors.noError) {
+      _logPlayerError(result.error, from: 'getPullBufferTimeRange() result');
+      throw SoLoudCppException.fromPlayerError(result.error);
+    }
+
+    return (
+      error: result.error,
+      startTime: result.startTime.toDuration(),
+      endTime: result.endTime.toDuration(),
+    );
   }
 
   /// Load a new sound to be played once or multiple times later, from

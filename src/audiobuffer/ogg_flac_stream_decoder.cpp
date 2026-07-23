@@ -2,7 +2,6 @@
 
 #include "ogg_flac_stream_decoder.h"
 #include "../soloud_common.h"
-#include <iostream>
 #include <cstring> // For memcpy
 
 OggFlacDecoderWrapper::OggFlacDecoderWrapper()
@@ -15,9 +14,7 @@ OggFlacDecoderWrapper::OggFlacDecoderWrapper()
       m_channels(0),
       m_samplerate(0),
       m_bitsPerSample(0),
-      mIcyMetaInt(0),
-      mAudioBytesCount(0),
-      mIcyMetaSize(0)
+      mIcyMetaInt(0)
 {
 }
 
@@ -48,7 +45,7 @@ bool OggFlacDecoderWrapper::initializeDecoder(int engineSamplerate, int engineCh
     m_pFlacDecoder = FLAC__stream_decoder_new();
     if (m_pFlacDecoder == nullptr)
     {
-        printf("[OggFlacDecoderWrapper] FLAC__stream_decoder_new failed\n");
+        SOLOUD_DEBUG_LOG("[OggFlacDecoderWrapper] FLAC__stream_decoder_new failed\n");
         return false;
     }
 
@@ -70,70 +67,40 @@ bool OggFlacDecoderWrapper::initializeDecoder(int engineSamplerate, int engineCh
 
     if (init_status != FLAC__STREAM_DECODER_INIT_STATUS_OK)
     {
-        printf("[OggFlacDecoderWrapper] init_ogg_stream failed with status %d\n", init_status);
+        SOLOUD_DEBUG_LOG("[OggFlacDecoderWrapper] init_ogg_stream failed with status %d\n", init_status);
         return false;
     }
 
-    printf("[OggFlacDecoderWrapper] decoder initialized OK\n");
+    SOLOUD_DEBUG_LOG("[OggFlacDecoderWrapper] decoder initialized OK\n");
     ogg_sync_init(&m_oy);
     return true;
 }
 
-std::pair<std::vector<float>, DecoderError> OggFlacDecoderWrapper::decode(std::vector<unsigned char> &buffer, int *samplerate, int *channels)
+std::pair<std::vector<float>, DecoderError> OggFlacDecoderWrapper::decode(std::vector<unsigned char> &buffer, int *sampleRate, int *channels, size_t maxOutputSamples)
 {
     m_decodedPcm.clear();
-    std::vector<unsigned char> clean_audio_data;
 
+    // Strip ICY metadata when present; otherwise use the input chunk as-is,
+    // avoiding an intermediate copy.
+    std::vector<unsigned char> clean_audio_data;
+    const std::vector<unsigned char> *audioBytes = &buffer;
     if (mIcyMetaInt > 0)
     {
-        for (unsigned char byte : buffer)
-        {
-            if (mIcyMetaSize > 0)
-            {
-                mIcyMetadata.push_back(byte);
-                mIcyMetaSize--;
-                if (mIcyMetaSize == 0)
-                {
-                    // Parse metadata
-                    std::string meta(mIcyMetadata.begin(), mIcyMetadata.end());
-                    size_t title_pos = meta.find("StreamTitle='");
-                    if (title_pos != std::string::npos) {
-                        size_t end_pos = meta.find("';", title_pos + 13);
-                        if (end_pos != std::string::npos) {
-                            std::string title = meta.substr(title_pos + 13, end_pos - (title_pos + 13));
-                            if (title != mStreamTitle) {
-                                mStreamTitle = title;
-                                m_metadata.oggMetadata.comments["StreamTitle"] = title;
-                                getMetadata();
-                            }
-                        }
-                    }
-                    mIcyMetadata.clear();
-                }
-            }
-            else if (mAudioBytesCount == mIcyMetaInt)
-            {
-                mIcyMetaSize = byte * 16;
-                mAudioBytesCount = 0;
-            }
-            else
-            {
-                clean_audio_data.push_back(byte);
-                mAudioBytesCount++;
-            }
-        }
+        stripIcyMetadata(buffer, mIcyMetaInt, mIcy, clean_audio_data,
+                         [this](const std::string &title) {
+                             m_metadata.oggMetadata.comments["StreamTitle"] = title;
+                             getMetadata();
+                         });
+        audioBytes = &clean_audio_data;
     }
-    else
-    {
-        clean_audio_data = buffer;
-    }
+    mTotalEncodedBytes += audioBytes->size();
 
     // Write new bytes into ogg sync buffer
-    if (!clean_audio_data.empty())
+    if (!audioBytes->empty())
     {
-        char* oggBuffer = ogg_sync_buffer(&m_oy, clean_audio_data.size());
-        memcpy(oggBuffer, clean_audio_data.data(), clean_audio_data.size());
-        ogg_sync_wrote(&m_oy, clean_audio_data.size());
+        char* oggBuffer = ogg_sync_buffer(&m_oy, audioBytes->size());
+        memcpy(oggBuffer, audioBytes->data(), audioBytes->size());
+        ogg_sync_wrote(&m_oy, audioBytes->size());
     }
     buffer.clear(); // Clear the original buffer as it has been processed
 
@@ -150,7 +117,7 @@ std::pair<std::vector<float>, DecoderError> OggFlacDecoderWrapper::decode(std::v
             m_streamInitialized = true;
         }
 
-        bool isNewStream = !m_streamInitialized || ogg_page_serialno(&og) != m_os.serialno;
+        const bool isNewStream = ogg_page_serialno(&og) != m_os.serialno;
         bool isBOS = ogg_page_bos(&og);
 
         if (isNewStream || isBOS)
@@ -205,8 +172,6 @@ std::pair<std::vector<float>, DecoderError> OggFlacDecoderWrapper::decode(std::v
     size_t last_successful_read_pos = 0;
     while ((m_read_pos < m_audioData.size() || m_dataEnded) && processCount < 100000)
     {
-        const size_t read_pos_before = m_read_pos;
-
         if (!FLAC__stream_decoder_process_single(m_pFlacDecoder))
         {
             FLAC__StreamDecoderState state = FLAC__stream_decoder_get_state(m_pFlacDecoder);
@@ -219,7 +184,7 @@ std::pair<std::vector<float>, DecoderError> OggFlacDecoderWrapper::decode(std::v
                 // next decode() call.
                 m_read_pos = last_successful_read_pos;
                 FLAC__stream_decoder_flush(m_pFlacDecoder);
-                printf("[OggFlacDecoderWrapper::decode] flushed decoder after temporary buffer exhaustion\n");
+                SOLOUD_DEBUG_LOG("[OggFlacDecoderWrapper::decode] flushed decoder after temporary buffer exhaustion\n");
                 break;
             }
             if (state == FLAC__STREAM_DECODER_END_OF_STREAM)
@@ -229,7 +194,7 @@ std::pair<std::vector<float>, DecoderError> OggFlacDecoderWrapper::decode(std::v
             // For other decoder errors, attempt recovery by flushing and rolling back
             m_read_pos = last_successful_read_pos;
             FLAC__stream_decoder_flush(m_pFlacDecoder);
-            printf("[OggFlacDecoderWrapper::decode] decoder error state %d, recovered & breaking\n", state);
+            SOLOUD_DEBUG_LOG("[OggFlacDecoderWrapper::decode] decoder error state %d, recovered & breaking\n", state);
             break;
         }
 
@@ -254,6 +219,11 @@ std::pair<std::vector<float>, DecoderError> OggFlacDecoderWrapper::decode(std::v
             last_successful_read_pos = m_read_pos;
         }
         processCount++;
+
+        if (maxOutputSamples > 0 && m_decodedPcm.size() >= maxOutputSamples)
+        {
+            break;
+        }
     }
 
     if (m_read_pos > 0)
@@ -263,10 +233,10 @@ std::pair<std::vector<float>, DecoderError> OggFlacDecoderWrapper::decode(std::v
     }
     m_read_pos = 0;
 
-    *samplerate = m_samplerate;
+    *sampleRate = m_samplerate;
     *channels = m_channels;
 
-    return {m_decodedPcm, DecoderError::NoError};
+    return {std::move(m_decodedPcm), DecoderError::NoError};
 }
 
 FLAC__StreamDecoderReadStatus OggFlacDecoderWrapper::read_callback(const FLAC__StreamDecoder *decoder, FLAC__byte buffer[], size_t *bytes, void *client_data)
@@ -311,7 +281,8 @@ void OggFlacDecoderWrapper::metadata_callback(const FLAC__StreamDecoder *decoder
         self->m_metadata.oggMetadata.flacInfo.sample_rate = self->m_samplerate = metadata->data.stream_info.sample_rate;
         self->m_metadata.oggMetadata.flacInfo.channels = self->m_channels = metadata->data.stream_info.channels;
         self->m_metadata.oggMetadata.flacInfo.bits_per_sample = self->m_bitsPerSample = metadata->data.stream_info.bits_per_sample;
-        self->m_metadata.oggMetadata.flacInfo.total_samples = (uint32_t)metadata->data.stream_info.total_samples;  
+        self->m_metadata.oggMetadata.flacInfo.total_samples = (uint32_t)metadata->data.stream_info.total_samples;
+        self->mTotalSamples = metadata->data.stream_info.total_samples;  
         self->m_metadata.oggMetadata.flacInfo.min_blocksize = metadata->data.stream_info.min_blocksize;
         self->m_metadata.oggMetadata.flacInfo.max_blocksize = metadata->data.stream_info.max_blocksize;
         self->m_metadata.oggMetadata.flacInfo.min_framesize = metadata->data.stream_info.min_framesize;
@@ -346,7 +317,7 @@ void OggFlacDecoderWrapper::metadata_callback(const FLAC__StreamDecoder *decoder
 
 void OggFlacDecoderWrapper::error_callback(const FLAC__StreamDecoder *decoder, FLAC__StreamDecoderErrorStatus status, void *client_data)
 {
-    printf("[OggFlacDecoderWrapper] error_callback: FLAC decoder error: %s\n", FLAC__StreamDecoderErrorStatusString[status]);
+    SOLOUD_DEBUG_LOG("[OggFlacDecoderWrapper] error_callback: FLAC decoder error: %s\n", FLAC__StreamDecoderErrorStatusString[status]);
 }
 
 FLAC__StreamDecoderWriteStatus OggFlacDecoderWrapper::write_callback(const FLAC__StreamDecoder *decoder, const FLAC__Frame *frame, const FLAC__int32 *const buffer[], void *client_data)
@@ -375,6 +346,7 @@ FLAC__StreamDecoderWriteStatus OggFlacDecoderWrapper::write_callback(const FLAC_
         divisor = 2147483648.0f;
     }
 
+    self->m_decodedPcm.reserve(self->m_decodedPcm.size() + num_samples * channels);
     for (size_t i = 0; i < num_samples; ++i)
     {
         for (unsigned channel = 0; channel < channels; ++channel)
@@ -392,6 +364,35 @@ void OggFlacDecoderWrapper::getMetadata()
     {
         onTrackChange(m_metadata);
     }
+}
+
+bool OggFlacDecoderWrapper::canSeekToTime(double seconds) const
+{
+    return m_samplerate > 0 && mTotalSamples > 0 && seconds > 0.0;
+}
+
+uint64_t OggFlacDecoderWrapper::timeToByteOffset(double seconds)
+{
+    if (m_samplerate == 0 || mTotalSamples == 0 || seconds <= 0.0)
+        return 0;
+    const double totalSeconds = static_cast<double>(mTotalSamples) / static_cast<double>(m_samplerate);
+    if (totalSeconds <= 0.0)
+        return 0;
+    const double ratio = seconds / totalSeconds;
+    // Prefer the declared total stream size; fall back to the number of bytes
+    // received so far only when the total is unknown.
+    const uint64_t totalBytes =
+        mTotalAudioSizeBytes > 0 ? mTotalAudioSizeBytes : mTotalEncodedBytes;
+    if (totalBytes == 0)
+        return 0;
+    return static_cast<uint64_t>(ratio * static_cast<double>(totalBytes));
+}
+
+double OggFlacDecoderWrapper::getDuration() const
+{
+    if (m_samplerate == 0 || mTotalSamples == 0)
+        return -1.0;
+    return static_cast<double>(mTotalSamples) / static_cast<double>(m_samplerate);
 }
 
 #endif // #if !defined(NO_XIPH_LIBS)

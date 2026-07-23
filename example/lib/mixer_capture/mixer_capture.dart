@@ -8,6 +8,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:logging/logging.dart';
 
+// ignore_for_file: experimental_member_use
+
 /// Mixer Output Capture Example
 ///
 /// This example demonstrates how to capture the master mixer output as a

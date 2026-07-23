@@ -5,6 +5,8 @@ import 'package:flutter_soloud/flutter_soloud.dart';
 
 import 'common.dart';
 
+// ignore_for_file: experimental_member_use
+
 /// Test mixer output capture for PCM and compressed formats.
 Future<OutputBuffer> testMixerOutputCapture() async {
   final output = OutputBuffer();
