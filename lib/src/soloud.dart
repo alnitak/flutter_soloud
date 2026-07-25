@@ -295,8 +295,10 @@ interface class SoLoud {
       _controller.soLoudFFI.isInited() &&
       _loader.isInitialized;
 
-  /// Whether this is the main isolate.
-  bool get _isMainIsolate => ServicesBinding.rootIsolateToken != null;
+  /// Whether this is the main isolate. Always true on web: there are no
+  /// isolates there and accessing the root isolate token throws an
+  /// [UnsupportedError].
+  bool get _isMainIsolate => kIsWeb || ServicesBinding.rootIsolateToken != null;
 
   /// Backing of [activeSounds].
   final List<AudioSource> _activeSounds = [];
