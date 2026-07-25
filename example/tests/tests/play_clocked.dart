@@ -77,18 +77,37 @@ Future<OutputBuffer> testPlayClocked() async {
       'detected ${onsets.length} ticks, expected $ticksPerRun',
     );
 
-    var maxDeviationMs = 0.0;
-    for (var n = 1; n < onsets.length; n++) {
-      final deviationMs = ((onsets[n] - onsets[n - 1]) * 1000 - delayMs).abs();
-      if (deviationMs > maxDeviationMs) maxDeviationMs = deviationMs;
-    }
+    final spacingsMs = [
+      for (var n = 1; n < onsets.length; n++)
+        (onsets[n] - onsets[n - 1]) * 1000,
+    ];
     output.writeln(
-      'delay=${delayMs}ms max spacing deviation: '
-      '${maxDeviationMs.toStringAsFixed(2)} ms',
+      'delay=${delayMs}ms spacings: '
+      '[${spacingsMs.map((s) => s.toStringAsFixed(1)).join(', ')}]',
+    );
+
+    // Assert on the median spacing deviation: systematic quantization by
+    // the engine buffer (the regression this test guards against) shifts
+    // every spacing, while a single late Dart timer tick on a busy device
+    // (common on Android) only produces two adjacent outliers.
+    final deviations = [
+      for (final s in spacingsMs) (s - delayMs).abs(),
+    ]..sort();
+    final medianDeviationMs = deviations[deviations.length ~/ 2];
+    final outliers = deviations.where((d) => d > 10).length;
+    output.writeln(
+      'delay=${delayMs}ms median spacing deviation: '
+      '${medianDeviationMs.toStringAsFixed(2)} ms, outliers: $outliers',
     );
     assert(
-      maxDeviationMs <= 10,
-      'spacing deviation ${maxDeviationMs}ms exceeds 10ms at delay $delayMs',
+      medianDeviationMs <= 5,
+      'median spacing deviation ${medianDeviationMs}ms exceeds 5ms '
+      'at delay $delayMs (systematic quantization?)',
+    );
+    assert(
+      outliers <= 2,
+      '$outliers spacing outliers at delay $delayMs '
+      '(expected at most 2 from a single late timer tick)',
     );
 
     await delay(300);

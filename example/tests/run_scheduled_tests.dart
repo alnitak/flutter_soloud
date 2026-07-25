@@ -1,7 +1,6 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 
+import 'exit_app.dart';
 import 'tests/play_clocked.dart';
 import 'tests/play_scheduled.dart';
 
@@ -9,6 +8,7 @@ import 'tests/play_scheduled.dart';
 /// tests.
 ///
 /// Run with: flutter run -d macos tests/run_scheduled_tests.dart
+/// Run on web with: flutter run -d chrome --wasm -t tests/run_scheduled_tests.dart
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -31,5 +31,5 @@ void main() async {
       print(st);
     }
   }
-  exit(failed ? 1 : 0);
+  exitApp(failed ? 1 : 0);
 }
