@@ -66,15 +66,11 @@ class MixerOutputStreamManager {
       return _streamController!.stream;
     }
 
-    // Use a synchronous controller so that the tail data flushed in
-    // [_flushRemaining] during [stop] is delivered to listeners before the
-    // stream is closed. With an async broadcast controller the flush event can
-    // be scheduled after the stream has already been closed and canceled,
-    // which causes compressed formats (especially FLAC) to lose their final
-    // header chunk and report zero captured bytes.
-    _streamController = StreamController<Uint8List>.broadcast(
-      sync: true,
-    );
+    // The controller must be synchronous: [stop] flushes the captured tail
+    // into the stream and callers typically cancel their subscription right
+    // after [stop] returns. With the default asynchronous delivery those
+    // pending events would be discarded by the cancellation.
+    _streamController = StreamController<Uint8List>.broadcast(sync: true);
 
     // Ensure the mixer output callback is registered in this isolate so that
     // [bindings.mixerOutputChunkEvents] receives the copied chunks. On FFI
