@@ -607,6 +607,12 @@ PlayerErrors Player::addAudioDataStream(
     const unsigned char *data,
     unsigned int aDataLen)
 {
+    // Hold sounds_mutex for the whole call: disposeSound()/disposeAllSound()
+    // destroy the ActiveSound (and its Buffer's mutex) only after acquiring
+    // it, so this guarantees the BufferStream outlives the addData() call.
+    // Otherwise a feeder thread can lock a destroyed std::mutex, which
+    // aborts on Android (HandleUsingDestroyedMutex).
+    std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
     auto const s = findByHash(hash);
 
     if (s == nullptr)
@@ -620,6 +626,8 @@ PlayerErrors Player::addAudioDataStream(
 
 PlayerErrors Player::resetBufferStream(unsigned int hash)
 {
+    // See addAudioDataStream() for why the lock must span the whole call.
+    std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
     auto const s = findByHash(hash);
 
     if (s == nullptr || s->soundType != SoundType::TYPE_BUFFER_STREAM)
@@ -633,6 +641,8 @@ PlayerErrors Player::resetBufferStream(unsigned int hash)
 
 PlayerErrors Player::setBufferIcyMetaInt(unsigned int hash, int icyMetaInt)
 {
+    // See addAudioDataStream() for why the lock must span the whole call.
+    std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
     auto const s = findByHash(hash);
 
     if (s == nullptr || s->soundType != SoundType::TYPE_BUFFER_STREAM)
@@ -646,6 +656,8 @@ PlayerErrors Player::setBufferIcyMetaInt(unsigned int hash, int icyMetaInt)
 
 PlayerErrors Player::getStreamTimeConsumed(unsigned int hash, float *timeConsumed)
 {
+    // See addAudioDataStream() for why the lock must span the whole call.
+    std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
     auto const s = findByHash(hash);
 
     if (s == nullptr || s->soundType != SoundType::TYPE_BUFFER_STREAM)
@@ -660,6 +672,8 @@ PlayerErrors Player::getStreamTimeConsumed(unsigned int hash, float *timeConsume
 
 PlayerErrors Player::setDataIsEnded(unsigned int hash)
 {
+    // See addAudioDataStream() for why the lock must span the whole call.
+    std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
     auto const s = findByHash(hash);
 
     if (s == nullptr || s->soundType != SoundType::TYPE_BUFFER_STREAM)
@@ -671,13 +685,15 @@ PlayerErrors Player::setDataIsEnded(unsigned int hash)
 
 PlayerErrors Player::getBufferSize(unsigned int hash, unsigned int *sizeInBytes)
 {
+    // See addAudioDataStream() for why the lock must span the whole call.
+    std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
     auto const s = findByHash(hash);
 
     if (s == nullptr || s->soundType != SoundType::TYPE_BUFFER_STREAM)
         return PlayerErrors::soundHashNotFound;
 
     auto *bufferStream = static_cast<SoLoud::BufferStream *>(s->sound.get());
-    std::lock_guard<std::recursive_mutex> lock(bufferStream->mBuffer.bufferMutex);
+    std::lock_guard<std::recursive_mutex> bufferLock(bufferStream->mBuffer.bufferMutex);
     *sizeInBytes = static_cast<unsigned int>(
         bufferStream->mBuffer.getActiveSizeInBytes() +
         bufferStream->buffer.size());
