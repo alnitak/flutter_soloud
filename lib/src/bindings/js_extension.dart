@@ -263,6 +263,32 @@ external double wasmGetStreamTime(int handle);
 @JS('Module_soloud._resetStreamTime')
 external void wasmResetStreamTime();
 
+@JS('Module_soloud._getEngineTime')
+external double wasmGetEngineTime();
+
+@JS('Module_soloud._playScheduled')
+external int wasmPlayScheduled(
+  int soundHash,
+  double atTime,
+  double duration,
+  int busId,
+  double volume,
+  double pan,
+  int handlePtr,
+);
+
+@JS('Module_soloud._stopScheduled')
+external void wasmStopScheduled(int handle, double atTime);
+
+@JS('Module_soloud._fadeScheduled')
+external void wasmFadeScheduled(
+  int handle,
+  double atTime,
+  double to,
+  double fadeTime,
+  int thenStop,
+);
+
 @JS('Module_soloud._stop')
 external void wasmStop(int handle);
 

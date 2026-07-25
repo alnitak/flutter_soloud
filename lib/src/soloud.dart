@@ -518,9 +518,15 @@ interface class SoLoud {
     if (_controller.soLoudFFI.isMixerOutputCaptureRunning()) {
       _controller.soLoudFFI.stopMixerOutputCapture();
     }
+    // Stop the engine first: natively this stops all sounds, clears the
+    // Dart callback registrations and stops the audio device, joining the
+    // audio thread. Closing the NativeCallable trampolines before this
+    // point races with the audio thread invoking them (voices ending from
+    // the mixing thread) and crashes with "Callback invoked after it has
+    // been deleted".
+    _controller.soLoudFFI.deinit();
     _controller.soLoudFFI.disposeNativeCallables();
     _controller.soLoudFFI.disposeAllSound();
-    _controller.soLoudFFI.deinit();
     _activeSounds.clear();
   }
 
@@ -1773,6 +1779,163 @@ interface class SoLoud {
       throw const SoLoudNotInitializedException();
     }
     _controller.soLoudFFI.resetStreamTime();
+  }
+
+  /// Get the engine's global stream time.
+  ///
+  /// This is the clock the mixer advances at the start of every output
+  /// buffer and the time base used by [playScheduled], [stopScheduled] and
+  /// [fadeScheduled]. Read it once, then schedule a batch of sounds against
+  /// it — everything lands sample-accurately on the engine's own timeline.
+  ///
+  /// **Note**: the engine time only advances while the audio device is
+  /// mixing. A pending [playScheduled] voice keeps the device running, so
+  /// the clock keeps advancing while anything is scheduled.
+  ///
+  /// Not to be confused with [getStreamTime], which returns the stream
+  /// time of a single voice.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  Duration getEngineTime() {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    return _controller.soLoudFFI.getEngineTime();
+  }
+
+  /// Start playing [sound] at an absolute engine time (see [getEngineTime]),
+  /// with sample accuracy.
+  ///
+  /// While [play] starts sounds as soon as possible and [playClocked]
+  /// schedules sounds relative to your own "physics time" (within a ~2
+  /// seconds window), [playScheduled] pins the start to the engine's own
+  /// clock with no anchor and no time-window limit, so sounds can be
+  /// scheduled arbitrarily far in the future. An [atTime] in the past
+  /// plays as soon as possible.
+  ///
+  /// The typical workflow is to read [getEngineTime] once and schedule a
+  /// batch of sounds against it (think score or "playback manifest"
+  /// playback):
+  /// ```dart
+  /// final now = SoLoud.instance.getEngineTime();
+  /// for (final note in upcomingNotes) {
+  ///   final atTime = now + note.offsetFromNow;
+  ///   final handle = SoLoud.instance.playScheduled(
+  ///     note.audioSource,
+  ///     atTime,
+  ///     duration: note.duration,
+  ///   );
+  /// }
+  /// ```
+  ///
+  /// [atTime] the absolute engine time at which the sound should start.
+  ///
+  /// [duration] if provided, the sound is automatically stopped at
+  /// [atTime] + [duration], scheduled atomically on the native side in the
+  /// same call (unlike [scheduleStop], which measures from call time). The
+  /// cutoff is sample-accurate, so durations shorter than one output
+  /// buffer are honored.
+  ///
+  /// [busId] if not 0, the sound will be played on the mixing bus with this
+  /// ID instead of the main engine. See [Bus.playScheduled].
+  ///
+  /// The rest of the parameters are equivalent to [play].
+  ///
+  /// Returns the [SoundHandle] of the new sound instance. The handle can be
+  /// used to cancel a still-pending sound with [stop].
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Throws [SoLoudBufferStreamCanBePlayedOnlyOnceCppException] if we try to
+  /// play a BufferStream using `release` buffer type more than once.
+  ///
+  /// Throws [SoLoudSoundHashNotFoundDartException] if the given [sound]
+  /// is not found.
+  SoundHandle playScheduled(
+    AudioSource sound,
+    Duration atTime, {
+    Duration? duration,
+    int busId = 0,
+    double volume = 1,
+    double pan = 0,
+  }) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    final ret = _controller.soLoudFFI.playScheduled(
+      sound.soundHash,
+      atTime,
+      duration: duration ?? Duration.zero,
+      busId: busId,
+      volume: volume,
+      pan: pan,
+    );
+    _logPlayerError(ret.error, from: 'playScheduled()');
+    if (!(ret.error == PlayerErrors.noError ||
+        ret.error == PlayerErrors.maxActiveVoiceCountReached)) {
+      throw SoLoudCppException.fromPlayerError(ret.error);
+    }
+
+    final filtered = _activeSounds
+        .where((s) => s.soundHash == sound.soundHash)
+        .toSet();
+    if (filtered.isEmpty) {
+      _log.severe(
+        () => 'playScheduled(): soundHash ${sound.soundHash} not found',
+      );
+      throw SoLoudSoundHashNotFoundDartException(sound.soundHash);
+    }
+
+    assert(filtered.length == 1, 'Duplicate sounds found');
+    for (final activeSound in filtered) {
+      activeSound.handlesInternal.add(ret.newHandle);
+    }
+
+    return ret.newHandle;
+  }
+
+  /// Stop [handle] at an absolute engine time (see [getEngineTime]).
+  ///
+  /// Unlike [scheduleStop], which measures from the time of the call, this
+  /// is pinned to the engine clock, so it composes with sounds whose start
+  /// is itself scheduled in the future (see [playScheduled]). An [atTime]
+  /// in the past stops the sound immediately. The stop is sample-accurate:
+  /// it is not quantized to output buffer boundaries.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  void stopScheduled(SoundHandle handle, Duration atTime) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    _controller.soLoudFFI.stopScheduled(handle, atTime);
+  }
+
+  /// Fade the volume of [handle] starting at an absolute engine time
+  /// (see [getEngineTime]).
+  ///
+  /// The fade goes from the volume the sound has at call time to [to] over
+  /// [time]. If [thenStop] is true, the sound is stopped when the fade
+  /// ends (at [atTime] + [time]). An [atTime] in the past starts the fade
+  /// immediately, like [fadeVolume].
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  void fadeScheduled(
+    SoundHandle handle,
+    Duration atTime,
+    double to,
+    Duration time, {
+    bool thenStop = false,
+  }) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    _controller.soLoudFFI.fadeScheduled(
+      handle,
+      atTime,
+      to,
+      time,
+      thenStop: thenStop,
+    );
   }
 
   /// A simpler way to process the loading of the sound and then play it.

@@ -13,6 +13,8 @@
 - added native loop end points through `loopingEndAt` and the live `getLoopEndPoint` / `setLoopEndPoint` APIs, allowing half-open `[start, end)` loop regions #499. Thanks to @Kunstderfug
 - **added `playClocked` and `play3dClocked`** (plus `Bus.playClocked` / `Bus.play3dClocked`) for sample-accurate scheduled playback, along with the related `setDelaySamples`, `getStreamTime` and `resetStreamTime` (re-anchor the clocked-play clock) APIs. The sounds are spaced with sub-millisecond accuracy regardless of the engine buffer size instead of clumping at buffer boundaries.
 - added a "use playClocked" checkbox to the **metronome example** to show the difference between `play` and `playClocked`.
+- **added `getEngineTime`, `playScheduled`, `stopScheduled` and `fadeScheduled`** (plus `Bus.playScheduled`) for score/manifest-style scheduling pinned to the engine's own clock: read `getEngineTime` once and schedule a batch of sounds at absolute engine times, with sample accuracy and no ~2 s window limit like `playClocked`. `playScheduled` accepts an optional `duration` to stop the sound automatically, and `fadeScheduled` a `thenStop` flag to stop the sound when the fade ends. Scheduled stops are sample-accurate (not quantized to output buffer boundaries like `scheduleStop`).
+- fix shutdown crash "Callback invoked after it has been deleted": `deinit()` now stops the engine (joining the audio thread) before closing the Dart `NativeCallable` trampolines, so voices ending from the mixing thread can no longer call into deleted callbacks while tearing down.
 
 #### 4.0.13 (XX Xxx 2026)
 - fix: Waveform audio sources do not match engine sample rate #501. Thanks to @Colton127

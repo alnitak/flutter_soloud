@@ -1273,6 +1273,113 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       .asFunction<void Function()>();
 
   @override
+  Duration getEngineTime() {
+    return _getEngineTime().toDuration();
+  }
+
+  late final _getEngineTimePtr =
+      _lookup<ffi.NativeFunction<ffi.Double Function()>>('getEngineTime');
+  late final _getEngineTime = _getEngineTimePtr.asFunction<double Function()>();
+
+  @override
+  ({PlayerErrors error, SoundHandle newHandle}) playScheduled(
+    SoundHash soundHash,
+    Duration atTime, {
+    Duration duration = Duration.zero,
+    int busId = 0,
+    double volume = 1,
+    double pan = 0,
+  }) {
+    final ffi.Pointer<ffi.UnsignedInt> handle = calloc();
+    final e = _playScheduled(
+      soundHash.hash,
+      atTime.toDouble(),
+      duration.toDouble(),
+      busId,
+      volume,
+      pan,
+      handle,
+    );
+    final ret = (
+      error: PlayerErrors.values[e],
+      newHandle: SoundHandle(handle.value),
+    );
+    calloc.free(handle);
+    return ret;
+  }
+
+  late final _playScheduledPtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.UnsignedInt Function(
+            ffi.UnsignedInt,
+            ffi.Double,
+            ffi.Double,
+            ffi.UnsignedInt,
+            ffi.Float,
+            ffi.Float,
+            ffi.Pointer<ffi.UnsignedInt>,
+          )
+        >
+      >('playScheduled');
+  late final _playScheduled = _playScheduledPtr
+      .asFunction<
+        int Function(
+          int,
+          double,
+          double,
+          int,
+          double,
+          double,
+          ffi.Pointer<ffi.UnsignedInt>,
+        )
+      >();
+
+  @override
+  void stopScheduled(SoundHandle handle, Duration atTime) {
+    _stopScheduled(handle.id, atTime.toDouble());
+  }
+
+  late final _stopScheduledPtr =
+      _lookup<
+        ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt, ffi.Double)>
+      >('stopScheduled');
+  late final _stopScheduled = _stopScheduledPtr
+      .asFunction<void Function(int, double)>();
+
+  @override
+  void fadeScheduled(
+    SoundHandle handle,
+    Duration atTime,
+    double to,
+    Duration time, {
+    bool thenStop = false,
+  }) {
+    _fadeScheduled(
+      handle.id,
+      atTime.toDouble(),
+      to,
+      time.toDouble(),
+      thenStop ? 1 : 0,
+    );
+  }
+
+  late final _fadeScheduledPtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.Void Function(
+            ffi.UnsignedInt,
+            ffi.Double,
+            ffi.Float,
+            ffi.Double,
+            ffi.Int,
+          )
+        >
+      >('fadeScheduled');
+  late final _fadeScheduled = _fadeScheduledPtr
+      .asFunction<void Function(int, double, double, double, int)>();
+
+  @override
   void stop(SoundHandle handle) {
     return _stop(handle.id);
   }

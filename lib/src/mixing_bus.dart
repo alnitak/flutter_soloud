@@ -223,6 +223,38 @@ class Bus {
     );
   }
 
+  /// Start playing [sound] through this bus at an absolute engine time
+  /// (see [SoLoud.getEngineTime]), with sample accuracy.
+  ///
+  /// This is a convenience method that calls [SoLoud.playScheduled] with
+  /// its [busId] set to this bus.
+  ///
+  /// Please see [SoLoud.playScheduled] for more information on the
+  /// parameters.
+  ///
+  /// Throws [SoLoudBusDisposedDartException] if the bus has already
+  /// been disposed.
+  SoundHandle playScheduled(
+    AudioSource sound,
+    Duration atTime, {
+    Duration? duration,
+    double volume = 1,
+    double pan = 0,
+  }) {
+    if (!_isValid) {
+      _log.warning('bus $busId is already disposed');
+      throw const SoLoudBusDisposedDartException();
+    }
+    return SoLoud.instance.playScheduled(
+      sound,
+      atTime,
+      duration: duration,
+      busId: busId,
+      volume: volume,
+      pan: pan,
+    );
+  }
+
   /// This function is the 3D version of the [play] call.
   ///
   /// This is a convenience method that calls [SoLoud.play3d] with the

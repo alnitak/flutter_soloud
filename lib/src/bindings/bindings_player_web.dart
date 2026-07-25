@@ -666,6 +666,64 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }
 
   @override
+  Duration getEngineTime() {
+    return wasmGetEngineTime().toDuration();
+  }
+
+  @override
+  ({PlayerErrors error, SoundHandle newHandle}) playScheduled(
+    SoundHash soundHash,
+    Duration atTime, {
+    Duration duration = Duration.zero,
+    int busId = 0,
+    double volume = 1,
+    double pan = 0,
+  }) {
+    final handlePtr = wasmMalloc(4); // 4 bytes for an int32
+    final result = wasmPlayScheduled(
+      soundHash.hash,
+      atTime.toDouble(),
+      duration.toDouble(),
+      busId,
+      volume,
+      pan,
+      handlePtr,
+    );
+
+    /// "*" means unsigned int 32
+    final newHandle = wasmGetI32Value(handlePtr, 'i32');
+    final ret = (
+      error: PlayerErrors.values[result],
+      newHandle: SoundHandle(newHandle),
+    );
+    wasmFree(handlePtr);
+
+    return ret;
+  }
+
+  @override
+  void stopScheduled(SoundHandle handle, Duration atTime) {
+    wasmStopScheduled(handle.id, atTime.toDouble());
+  }
+
+  @override
+  void fadeScheduled(
+    SoundHandle handle,
+    Duration atTime,
+    double to,
+    Duration time, {
+    bool thenStop = false,
+  }) {
+    wasmFadeScheduled(
+      handle.id,
+      atTime.toDouble(),
+      to,
+      time.toDouble(),
+      thenStop ? 1 : 0,
+    );
+  }
+
+  @override
   void stop(SoundHandle handle) {
     return wasmStop(handle.id);
   }
