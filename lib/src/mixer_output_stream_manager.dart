@@ -66,7 +66,11 @@ class MixerOutputStreamManager {
       return _streamController!.stream;
     }
 
-    _streamController = StreamController<Uint8List>.broadcast();
+    // The controller must be synchronous: [stop] flushes the captured tail
+    // into the stream and callers typically cancel their subscription right
+    // after [stop] returns. With the default asynchronous delivery those
+    // pending events would be discarded by the cancellation.
+    _streamController = StreamController<Uint8List>.broadcast(sync: true);
 
     // Ensure the mixer output callback is registered in this isolate so that
     // [bindings.mixerOutputChunkEvents] receives the copied chunks. On FFI
