@@ -2232,7 +2232,7 @@ namespace SoLoud
 				// ticking): count down here and stop when it expires.
 				// Audible and ticking voices count down in mixBus_internal,
 				// where the stop is applied with sample accuracy.
-				if (mVoice[i]->mStopSamplesLeft >= 0 &&
+				if (mVoice[i] && mVoice[i]->mStopSamplesLeft >= 0 &&
 					(mVoice[i]->mFlags & AudioSourceInstance::INAUDIBLE) &&
 					!(mVoice[i]->mFlags & AudioSourceInstance::INAUDIBLE_TICK))
 				{
