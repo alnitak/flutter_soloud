@@ -356,9 +356,16 @@ namespace SoLoud
         // Check if device is stopped and start it if needed
         ma_result result = MA_SUCCESS;
 #if defined(MA_HAS_AAUDIO)
+        // Only take the AAudio reroute lock when the device actually uses the
+        // AAudio backend. gDevice.aaudio shares a union with the other
+        // backends (e.g. OpenSL ES, selected at runtime on Android API <= 29),
+        // so locking rerouteLock on a non-AAudio device operates on
+        // uninitialized union memory and deadlocks.
         // ma_device_reinit__aaudio (reroute job) and ma_device_uninit__aaudio
         // hold this lock while closing streams; ma_device_start does not.
-        ma_mutex_lock(&gDevice.aaudio.rerouteLock);
+        const bool isAAudio = gDevice.pContext->backend == ma_backend_aaudio;
+        if (isAAudio)
+            ma_mutex_lock(&gDevice.aaudio.rerouteLock);
 #endif
         if (ma_device_get_state(&gDevice) == ma_device_state_stopped)
         {
@@ -385,7 +392,8 @@ namespace SoLoud
             result = ma_device_start(&gDevice);
         }
 #if defined(MA_HAS_AAUDIO)
-        ma_mutex_unlock(&gDevice.aaudio.rerouteLock);
+        if (isAAudio)
+            ma_mutex_unlock(&gDevice.aaudio.rerouteLock);
 #endif
         return result == MA_SUCCESS ? 0 : UNKNOWN_ERROR;
     }
