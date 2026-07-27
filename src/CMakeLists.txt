@@ -47,6 +47,8 @@ list(APPEND PLUGIN_SOURCES
   "${SRC_DIR}/waveform/waveform.cpp"
   "${SRC_DIR}/waveform/miniaudio_libvorbis.cpp"
   "${SRC_DIR}/audiobuffer/audiobuffer.cpp"
+  "${SRC_DIR}/audiobuffer/circular_float_buffer.cpp"
+  "${SRC_DIR}/audiobuffer/pull_buffer_stream.cpp"
   "${SRC_DIR}/audiobuffer/stream_decoder.cpp"
   "${SRC_DIR}/audiobuffer/opus_stream_decoder.cpp"
   "${SRC_DIR}/audiobuffer/vorbis_stream_decoder.cpp"

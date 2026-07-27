@@ -29,7 +29,7 @@
         },
         {
             "label": "compile macos debug",
-            "command": "cd ${workspaceFolder}/example; flutter build macos -t lib/buffer_stream/websocket.dart --debug",
+            "command": "cd ${workspaceFolder}/example; flutter build macos -t lib/filters/parametric_eq.dart --debug",
             "type": "shell"
         },
         {
@@ -39,7 +39,7 @@
         },
         {
             "label": "compile web wasm release",
-            "command": "cd ${workspaceFolder}/example; flutter run -d chrome --wasm -t tests/tests.dart --release",
+            "command": "cd ${workspaceFolder}/example; flutter run -d chrome --wasm -t lib/pull_buffer/file_stream.dart --release",
             "type": "shell"
         },
         {

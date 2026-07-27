@@ -61,7 +61,6 @@ public:
   bool dataIsEnded;
   bool mIsBuffering;
   int mIcyMetaInt;
-  BufferStreamInstance *mInstance;
   
   // Flag to indicate the BufferStream is being destroyed
   std::atomic<bool> mIsDestroyed{false};

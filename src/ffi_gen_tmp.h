@@ -12,6 +12,8 @@
 // the generated code will be placed into flutter_soloud_FFIGEN.dart
 // copy the generated definition into flutter_soloud_bindings_ffi.dart
 
+#include <stdint.h>
+
 #include <stdbool.h>
 
 #include "enums.h"
@@ -52,12 +54,50 @@ FFI_PLUGIN_EXPORT unsigned int busPlay(unsigned int busId,
                                        unsigned int soundHash, float volume,
                                        float pan, bool paused);
 
-/// Set the number of output channels for the bus (default is 2 = stereo).
+/// Set up a pull-based audio stream.
 ///
-/// [busId] the bus ID.
-/// [channels] number of channels (1 = mono, 2 = stereo, etc.).
-FFI_PLUGIN_EXPORT int busSetChannels(unsigned int busId,
-                                     unsigned int channels);
+/// [bufferSizeBytes] the decoded circular buffer size in bytes.
+/// [bufferTriggerPosition] normalized fraction in `[0.0, 1.0]` that controls
+/// when the engine requests more data.
+/// [sampleRate] the sample rate of the decoded audio.
+/// [channels] the number of channels.
+/// [format] the audio format (PCM variants or AUTO).
+/// [audioSizeBytes] total encoded or PCM file size in bytes.
+/// [onBufferingCallback] a callback that is called when starting to buffer
+/// and when the buffering is done.
+/// [onMetadataCallback] a callback that is called when metadata is detected.
+/// [onMoreDataIsNeededCallback] a callback that is called when the engine
+/// needs more encoded audio data. The parameter is the byte offset in the
+/// original encoded stream.
+/// [onAudioDurationCallback] a callback that is called once the total audio
+/// duration is known.
+FFI_PLUGIN_EXPORT enum PlayerErrors setPullBufferStream(
+    unsigned int *hash, unsigned int bufferSizeBytes,
+    double bufferTriggerPosition, unsigned int sampleRate,
+    unsigned int channels, int format, uint64_t audioSizeBytes,
+    dartOnBufferingCallback_t onBufferingCallback,
+    dartOnMetadataCallback_t onMetadataCallback,
+    dartOnMoreDataIsNeededCallback_t onMoreDataIsNeededCallback,
+    dartOnAudioDurationCallback_t onAudioDurationCallback);
+
+/// Resets the pull buffer stream.
+FFI_PLUGIN_EXPORT enum PlayerErrors resetPullBufferStream(unsigned int hash);
+
+/// Add a chunk of audio data to the pull buffer stream.
+/// [offset] the byte offset of this chunk in the original stream, or 0 for
+/// the next sequential chunk.
+FFI_PLUGIN_EXPORT enum PlayerErrors
+addPullBufferDataStream(unsigned int hash, const unsigned char *data,
+                        unsigned int aDataLen, uint64_t offset);
+
+/// Get the decoded time range of the pull buffer stream.
+/// [startTime] returns the start time in seconds of the decoded buffer.
+/// [endTime] returns the end time in seconds of the decoded buffer.
+FFI_PLUGIN_EXPORT enum PlayerErrors
+getPullBufferTimeRange(unsigned int hash, double *startTime, double *endTime);
+
+/// Set the end of the pull buffer data stream.
+FFI_PLUGIN_EXPORT enum PlayerErrors setPullBufferDataIsEnded(unsigned int hash);
 
 /// Enable or disable visualization data gathering for this bus.
 /// Must be enabled before calling busCalcFFT, busGetWave,
