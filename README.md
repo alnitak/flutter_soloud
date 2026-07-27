@@ -15,11 +15,14 @@ A high-performance audio plugin designed primarily for games and immersive appli
 ## Key Features
 
 - ⚡ Low latency, high performance audio
+- ⏱️ Sample-accurate scheduled playback: `playClocked` for sub-millisecond spaced playback regardless of buffer size, and `playScheduled` for score/manifest-style scheduling of whole batches of sounds on the engine's own clock (with optional scheduled stop/fade). Perfect for metronomes, music sequencers, rhythm games and precisely timed audio cues
 - 🎮 3D positional audio with Doppler effect
-- 🔄 Gapless looping
+- 🔄 Gapless looping with half-open `[start, end)` loop regions
 - 🔄 Stream audio with auto-pause for buffering, support for PCM, MP3, WAV, Ogg with Opus, Vorbis and FLAC containers
+- 📥 Pull-buffer streaming: the engine requests encoded data on demand (MP3, WAV, FLAC, Ogg Opus/Vorbis/FLAC), with seek support and callbacks for buffering, metadata, duration and data requests — ideal for network streams and custom data sources
+- 🚌 Mixing buses: group voices (music, SFX, UI...) into sub-mixes with their own volume, filters and visualization
 - 📊 Get audio wave and/or FFT audio data in real-time (useful for visualization)
-- 🎛️ Rich effects system (reverb, echo, limiter, equalizer, pitch shift, etc.)
+- 🎛️ Rich effects system (reverb, echo, limiter, parametric equalizer, pitch shift, etc.)
 - ⚙️ Faders for attributes (e.g. fade out for 2 seconds, then stop)
 - 🎚️ Oscillators for attributes
 - 🌊 Waveform generation and visualization
@@ -28,6 +31,8 @@ A high-performance audio plugin designed primarily for games and immersive appli
 - 🔴 Capture the master mixer output as a stream for recording, processing, or streaming (with different PCM formats and Opus, Vorbis, FLAC, WAV encoded stream formats)
 - ⏱️ Read audio data samples from a file with a given time range
 - 🌊 Generate waveforms in real-time with various types (sine, square, saw, triangle, etc.)
+
+Whether you are building a game (3D positional SFX, mixing buses, low-latency playback) or any other kind of audio app — music tools, metronomes, radio/streaming apps, visualizers, recorders — the plugin exposes the low-level control you need.
 
 ## Getting Started
 - Watch the Flutter [Package of the Week](https://www.youtube.com/watch?v=2t6Bt04EyLw) video.
