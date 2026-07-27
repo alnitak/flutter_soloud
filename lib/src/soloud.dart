@@ -2701,10 +2701,12 @@ interface class SoLoud {
   /// clipping. The default number of maximum concurrent voices is 16,
   /// but this can be adjusted at runtime using [setMaxActiveVoiceCount].
   ///
-  /// The hard maximum count is 4095, but if more are
-  /// required, SoLoud can be modified to support more. But seriously, if you
-  /// need more than 4095 sounds playing _at once_,
-  /// you're probably going to need some serious changes anyway.
+  /// The hard maximum count is 1023 (the engine's internal voice pool,
+  /// `VOICE_COUNT`, holds 1024 voices). Passing a value of 0 or greater than
+  /// 1023 is rejected by the native engine and silently ignored, leaving the
+  /// previous count unchanged. But seriously, if you need more than 1023
+  /// sounds playing _at once_, you're probably going to need some serious
+  /// changes anyway.
   ///
   /// See also:
   ///
