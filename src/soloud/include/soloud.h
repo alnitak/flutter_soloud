@@ -281,6 +281,10 @@ namespace SoLoud
 		handle play3d(AudioSource &aSound, float aPosX, float aPosY, float aPosZ, float aVelX = 0.0f, float aVelY = 0.0f, float aVelZ = 0.0f, float aVolume = 1.0f, bool aPaused = 0, unsigned int aBus = 0);
 		// Start playing a 3d audio source, delayed in relation to other sounds called via this function.
 		handle play3dClocked(time aSoundTime, AudioSource &aSound, float aPosX, float aPosY, float aPosZ, float aVelX = 0.0f, float aVelY = 0.0f, float aVelZ = 0.0f, float aVolume = 1.0f, unsigned int aBus = 0);
+		// Calculate the delay in samples for a clocked play call. Maps the caller's "physics time" to the output sample timeline using a persistent anchor, so sounds can be scheduled with sample accuracy across output buffers. Used internally by playClocked and play3dClocked.
+		unsigned int getClockedDelaySamples(time aSoundTime);
+		// Reset the clocked play anchor to the state as if no playClocked/play3dClocked call was ever made. The next clocked play will anchor the caller's clock to the audio clock again.
+		void resetClockedAnchor();
 		// Start playing a sound without any panning. It will be played at full volume.
 		handle playBackground(AudioSource &aSound, float aVolume = -1.0f, bool aPaused = 0, unsigned int aBus = 0);
 
@@ -571,8 +575,14 @@ namespace SoLoud
 		Fader mGlobalVolumeFader;
 		// Global stream time, for the global volume fader.
 		time mStreamTime;
-		// Last time seen by the playClocked call
-		time mLastClockedTime;
+		// Anchor for the playClocked calls: maps the "physics time" given by
+		// the caller to the output sample timeline. A negative
+		// mClockedAnchorSample means the anchor has not been set yet.
+		time mClockedAnchorTime;
+		long long mClockedAnchorSample;
+		// Last "physics time" seen by a clocked play call. Used to detect
+		// when the caller's clock is restarted (time going backwards).
+		time mClockedLastTime;
 		// Global filter
 		Filter *mFilter[FILTERS_PER_STREAM];
 		// Global filter instance

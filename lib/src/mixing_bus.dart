@@ -194,6 +194,35 @@ class Bus {
     );
   }
 
+  /// Variant of [play] that takes an additional parameter, the time offset
+  /// for the sound.
+  ///
+  /// This is a convenience method that calls [SoLoud.playClocked] with its
+  /// [busId] set to this bus.
+  ///
+  /// Please see [SoLoud.playClocked] for more information on the parameters.
+  ///
+  /// Throws [SoLoudBusDisposedDartException] if the bus has already
+  /// been disposed.
+  SoundHandle playClocked(
+    AudioSource sound,
+    Duration soundTime, {
+    double volume = 1,
+    double pan = 0,
+  }) {
+    if (!_isValid) {
+      _log.warning('bus $busId is already disposed');
+      throw const SoLoudBusDisposedDartException();
+    }
+    return SoLoud.instance.playClocked(
+      sound,
+      soundTime,
+      busId: busId,
+      volume: volume,
+      pan: pan,
+    );
+  }
+
   /// This function is the 3D version of the [play] call.
   ///
   /// This is a convenience method that calls [SoLoud.play3d] with the
@@ -235,6 +264,45 @@ class Bus {
       looping: looping,
       loopingStartAt: loopingStartAt,
       loopingEndAt: loopingEndAt,
+    );
+  }
+
+  /// This function is the 3D version of the [playClocked] call.
+  ///
+  /// This is a convenience method that calls [SoLoud.play3dClocked] with the
+  /// [busId] set to this bus.
+  ///
+  /// Please see [SoLoud.play3dClocked] for more information on the
+  /// parameters.
+  ///
+  /// Throws [SoLoudBusDisposedDartException] if the bus has already
+  /// been disposed.
+  SoundHandle play3dClocked(
+    AudioSource sound,
+    Duration soundTime,
+    double posX,
+    double posY,
+    double posZ, {
+    double velX = 0,
+    double velY = 0,
+    double velZ = 0,
+    double volume = 1,
+  }) {
+    if (!_isValid) {
+      _log.warning('bus $busId is already disposed');
+      throw const SoLoudBusDisposedDartException();
+    }
+    return SoLoud.instance.play3dClocked(
+      sound,
+      soundTime,
+      posX,
+      posY,
+      posZ,
+      velX: velX,
+      velY: velY,
+      velZ: velZ,
+      busId: busId,
+      volume: volume,
     );
   }
 
