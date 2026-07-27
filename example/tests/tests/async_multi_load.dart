@@ -10,7 +10,7 @@ Future<OutputBuffer> testAsyncMultiLoad() async {
     SoLoud.instance.loadAsset('assets/audio/8_bit_mentality.mp3'),
     SoLoud.instance.loadAsset('assets/audio/explosion.mp3'),
     SoLoud.instance.loadAsset('assets/audio/IveSeenThings.mp3'),
-    SoLoud.instance.loadAsset('assets/audio/sample-1.ogg'),
+    SoLoud.instance.loadAsset('assets/audio/sample-vorbis.ogg'),
     SoLoud.instance.loadAsset('assets/audio/tic-1.wav'),
     SoLoud.instance.loadAsset('assets/audio/tic-2.wav'),
   ];

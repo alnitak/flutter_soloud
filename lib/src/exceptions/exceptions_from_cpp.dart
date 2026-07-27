@@ -405,3 +405,25 @@ class SoLoudBusIdNotFoundCppException extends SoLoudCppException {
   @override
   String get description => 'Bus id not found! (on the C++ side).';
 }
+
+/// Given hash doesn't belong to a pull buffer stream.
+class SoLoudHashIsNotAPullBufferStreamCppException extends SoLoudCppException {
+  /// Creates a new [SoLoudHashIsNotAPullBufferStreamCppException].
+  const SoLoudHashIsNotAPullBufferStreamCppException([super.message]);
+
+  @override
+  String get description =>
+      "The given hash doesn't belong to a pull buffer stream. "
+      '(on the C++ side).';
+}
+
+/// The pull buffer stream is in an invalid state for this operation.
+class SoLoudInvalidPullBufferStateCppException extends SoLoudCppException {
+  /// Creates a new [SoLoudInvalidPullBufferStateCppException].
+  const SoLoudInvalidPullBufferStateCppException([super.message]);
+
+  @override
+  String get description =>
+      'The pull buffer stream is in an invalid state for this operation. '
+      '(on the C++ side).';
+}
