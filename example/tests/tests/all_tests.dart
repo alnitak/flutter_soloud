@@ -19,6 +19,8 @@ import 'mixer_output_capture.dart' as mixer_output_capture;
 import 'mixing_bus.dart' as mixing_bus;
 import 'pan.dart' as pan;
 import 'pitch_shifter_filter.dart' as pitch_shifter_filter;
+import 'play_clocked.dart' as play_clocked;
+import 'play_scheduled.dart' as play_scheduled;
 import 'play_seek_pause.dart' as play_seek_pause;
 import 'playback_devices.dart' as playback_devices;
 import 'playback_speed.dart' as playback_speed;
@@ -157,6 +159,14 @@ final List<TestEntry> allTests = [
   const TestEntry(
     name: 'PitchShifterFilterSingle',
     run: pitch_shifter_filter.testPitchShifterFilterSingle,
+  ),
+  const TestEntry(
+    name: 'PlayClocked',
+    run: play_clocked.testPlayClocked,
+  ),
+  const TestEntry(
+    name: 'PlayScheduled',
+    run: play_scheduled.testPlayScheduled,
   ),
   const TestEntry(
     name: 'PlaySeekPause',

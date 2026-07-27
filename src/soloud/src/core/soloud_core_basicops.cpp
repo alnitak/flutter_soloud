@@ -179,6 +179,42 @@ namespace SoLoud
 		return h;
 	}
 
+	time Soloud::getEngineTime()
+	{
+		lockAudioMutex_internal();
+		time t = mStreamTime;
+		unlockAudioMutex_internal();
+		return t;
+	}
+
+	unsigned int Soloud::getScheduledDelaySamples(time aEngineTime)
+	{
+		lockAudioMutex_internal();
+		// A voice's delay starts counting down from the first sample of the
+		// next output buffer, whose position is exactly mStreamTime (see
+		// getClockedDelaySamples). Unlike the clocked variant there is no
+		// anchor and no re-anchor guard: the given time is already on the
+		// engine's own clock, so sounds can be scheduled arbitrarily far
+		// in the future.
+		long long delay = (long long)floor((aEngineTime - mStreamTime) * mSamplerate + 0.5);
+		if (delay < 0)
+		{
+			// The scheduled time is already in the past: play as soon
+			// as possible.
+			delay = 0;
+		}
+		unlockAudioMutex_internal();
+		return (unsigned int)delay;
+	}
+
+	handle Soloud::playScheduled(time aEngineTime, AudioSource &aSound, float aVolume, float aPan, unsigned int aBus)
+	{
+		handle h = play(aSound, aVolume, aPan, 1, aBus);
+		setDelaySamples(h, getScheduledDelaySamples(aEngineTime));
+		setPause(h, 0);
+		return h;
+	}
+
 	handle Soloud::playBackground(AudioSource &aSound, float aVolume, bool aPaused, unsigned int aBus)
 	{
 		handle h = play(aSound, aVolume, 0.0f, aPaused, aBus);

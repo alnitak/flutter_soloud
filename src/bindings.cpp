@@ -1125,6 +1125,84 @@ extern "C"
     player.get()->resetStreamTime();
   }
 
+  /// Get the engine's global stream time, in seconds.
+  ///
+  /// This is the clock the mixer advances at the start of every output
+  /// buffer and the time base used by [playScheduled], [stopScheduled] and
+  /// [fadeScheduled]. It only advances while the audio device is mixing.
+  ///
+  /// Return the engine time in seconds.
+  FFI_PLUGIN_EXPORT double getEngineTime()
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return 0.0;
+    return player.get()->getEngineTime();
+  }
+
+  /// Start playing a sound at an absolute engine time (see [getEngineTime]),
+  /// with sample accuracy.
+  ///
+  /// Unlike [playClocked] there is no anchor and no re-anchor guard, so
+  /// sounds can be scheduled arbitrarily far in the future. A time in the
+  /// past plays as soon as possible.
+  ///
+  /// [soundHash] the unique sound hash of a sound
+  /// [atTime] the absolute engine time, in seconds, at which the sound
+  /// should start
+  /// [duration] if greater than zero, the sound is automatically stopped
+  /// at [atTime] + [duration]
+  /// [busId] the bus ID to play the sound on. 0 means the main engine.
+  /// [volume] 1.0f full volume
+  /// [pan] 0.0f centered
+  /// [handle] pointer to the handle for this new sound
+  /// Return the error if any and a new [handle] of this sound
+  FFI_PLUGIN_EXPORT enum PlayerErrors playScheduled(
+      unsigned int soundHash, double atTime, double duration,
+      unsigned int busId, float volume, float pan, unsigned int *handle)
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return backendNotInited;
+    PlayerErrors result = player.get()->playScheduled(
+        soundHash, *handle, atTime, duration, busId, volume, pan);
+    return result;
+  }
+
+  /// Stop a sound at an absolute engine time (see [getEngineTime]).
+  ///
+  /// A time in the past stops the sound immediately.
+  ///
+  /// [handle] the sound handle
+  /// [atTime] the absolute engine time, in seconds, at which the sound
+  /// should stop
+  FFI_PLUGIN_EXPORT void stopScheduled(unsigned int handle, double atTime)
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return;
+    player.get()->stopScheduled(handle, atTime);
+  }
+
+  /// Fade the volume of a sound starting at an absolute engine time
+  /// (see [getEngineTime]).
+  ///
+  /// The fade goes from the volume the sound has at call time to [to] over
+  /// [fadeTime] seconds. If [thenStop] is true, the sound is stopped when
+  /// the fade ends (at [atTime] + [fadeTime]).
+  ///
+  /// [handle] the sound handle
+  /// [atTime] the absolute engine time, in seconds, at which the fade
+  /// should start. A time in the past starts the fade immediately.
+  /// [to] the ending volume of the fade
+  /// [fadeTime] the duration of the fade, in seconds
+  /// [thenStop] whether to stop the sound when the fade ends
+  FFI_PLUGIN_EXPORT void fadeScheduled(unsigned int handle, double atTime,
+                                       float to, double fadeTime,
+                                       bool thenStop)
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return;
+    player.get()->fadeScheduled(handle, atTime, to, fadeTime, thenStop);
+  }
+
   /// Stop already loaded sound identified by [handle] and clear it
   ///
   /// [handle]

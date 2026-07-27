@@ -285,6 +285,12 @@ namespace SoLoud
 		unsigned int getClockedDelaySamples(time aSoundTime);
 		// Reset the clocked play anchor to the state as if no playClocked/play3dClocked call was ever made. The next clocked play will anchor the caller's clock to the audio clock again.
 		void resetClockedAnchor();
+		// Get the engine's global stream time, in seconds. This is the clock the mixer advances at the start of every output buffer and the time base used by playScheduled, scheduleStopAt and scheduleFadeAt. It only advances while the audio device is mixing.
+		time getEngineTime();
+		// Start playing a sound at an absolute engine time (see getEngineTime), with sample accuracy. Unlike playClocked there is no anchor and no re-anchor guard, so sounds can be scheduled arbitrarily far in the future. A time in the past plays as soon as possible. Negative volume means to use default.
+		handle playScheduled(time aEngineTime, AudioSource &aSound, float aVolume = -1.0f, float aPan = 0.0f, unsigned int aBus = 0);
+		// Calculate the delay in samples for a scheduled play call. Maps an absolute engine time to the output sample timeline. Used internally by playScheduled.
+		unsigned int getScheduledDelaySamples(time aEngineTime);
 		// Start playing a sound without any panning. It will be played at full volume.
 		handle playBackground(AudioSource &aSound, float aVolume = -1.0f, bool aPaused = 0, unsigned int aBus = 0);
 
@@ -403,6 +409,10 @@ namespace SoLoud
 		void schedulePause(handle aVoiceHandle, time aTime);
 		// Schedule a stream to stop
 		void scheduleStop(handle aVoiceHandle, time aTime);
+		// Schedule a stream to stop at an absolute engine time (see getEngineTime). A time in the past stops immediately.
+		void scheduleStopAt(handle aVoiceHandle, time aEngineTime);
+		// Schedule a volume fade to start at an absolute engine time (see getEngineTime), fading from the current volume to aTo over aFadeTime seconds. If aThenStop is true, the voice is stopped when the fade ends.
+		void scheduleFadeAt(handle aVoiceHandle, time aEngineTime, float aTo, time aFadeTime, bool aThenStop);
 
 		// Set up volume oscillator
 		void oscillateVolume(handle aVoiceHandle, float aFrom, float aTo, time aTime);

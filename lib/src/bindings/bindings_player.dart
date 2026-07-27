@@ -535,6 +535,72 @@ abstract class FlutterSoLoud {
   @mustBeOverridden
   void resetStreamTime();
 
+  /// Get the engine's global stream time.
+  ///
+  /// This is the clock the mixer advances at the start of every output
+  /// buffer and the time base used by [playScheduled], [stopScheduled] and
+  /// [fadeScheduled]. It only advances while the audio device is mixing.
+  ///
+  /// Returns the engine time.
+  @mustBeOverridden
+  Duration getEngineTime();
+
+  /// Start playing a sound at an absolute engine time (see [getEngineTime]),
+  /// with sample accuracy.
+  ///
+  /// Unlike [playClocked] there is no anchor and no re-anchor guard, so
+  /// sounds can be scheduled arbitrarily far in the future. A time in the
+  /// past plays as soon as possible.
+  ///
+  /// [soundHash] the unique sound hash of a sound.
+  /// [atTime] the absolute engine time at which the sound should start.
+  /// [duration] if greater than zero, the sound is automatically stopped
+  /// at [atTime] + [duration].
+  /// [busId] the bus ID to play the sound on. 0 means the main engine.
+  /// [volume] 1.0 full volume.
+  /// [pan] 0.0 centered.
+  /// Return the error if any and a new `newHandle` of this sound.
+  @mustBeOverridden
+  ({PlayerErrors error, SoundHandle newHandle}) playScheduled(
+    SoundHash soundHash,
+    Duration atTime, {
+    Duration duration = Duration.zero,
+    int busId = 0,
+    double volume = 1,
+    double pan = 0,
+  });
+
+  /// Stop a sound at an absolute engine time (see [getEngineTime]).
+  ///
+  /// A time in the past stops the sound immediately.
+  ///
+  /// [handle] the sound handle.
+  /// [atTime] the absolute engine time at which the sound should stop.
+  @mustBeOverridden
+  void stopScheduled(SoundHandle handle, Duration atTime);
+
+  /// Fade the volume of a sound starting at an absolute engine time
+  /// (see [getEngineTime]).
+  ///
+  /// The fade goes from the volume the sound has at call time to [to] over
+  /// [time]. If [thenStop] is true, the sound is stopped when the fade
+  /// ends (at [atTime] + [time]).
+  ///
+  /// [handle] the sound handle.
+  /// [atTime] the absolute engine time at which the fade should start.
+  /// A time in the past starts the fade immediately.
+  /// [to] the ending volume of the fade.
+  /// [time] the duration of the fade.
+  /// [thenStop] whether to stop the sound when the fade ends.
+  @mustBeOverridden
+  void fadeScheduled(
+    SoundHandle handle,
+    Duration atTime,
+    double to,
+    Duration time, {
+    bool thenStop = false,
+  });
+
   /// Stop already loaded sound identified by [handle] and clear it.
   ///
   /// [handle] the sound handle.

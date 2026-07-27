@@ -1670,7 +1670,25 @@ namespace SoLoud
 					}
 				}												
 
-				while (step_fixed != 0 && outofs < aSamplesToRead)
+				// Scheduled absolute-time stop (scheduleStopAt): limit how
+				// many samples this voice may still produce in this pass
+				// and stop it once the final partial window is panned.
+				unsigned int samplesToProduce = aSamplesToRead;
+				bool stopAfterProduce = false;
+				if (voice->mStopSamplesLeft >= 0)
+				{
+					if (voice->mStopSamplesLeft <= (long long)aSamplesToRead)
+					{
+						samplesToProduce = (unsigned int)voice->mStopSamplesLeft;
+						stopAfterProduce = true;
+					}
+					else
+					{
+						voice->mStopSamplesLeft -= aSamplesToRead;
+					}
+				}
+
+				while (step_fixed != 0 && outofs < samplesToProduce)
 				{
 					if (voice->mLeftoverSamples == 0)
 					{
@@ -1746,10 +1764,10 @@ namespace SoLoud
 
 
 					// If this is too much for our output buffer, don't write that many:
-					if (writesamples + outofs > aSamplesToRead)
+					if (writesamples + outofs > samplesToProduce)
 					{
-						voice->mLeftoverSamples = (writesamples + outofs) - aSamplesToRead;
-						writesamples = aSamplesToRead - outofs;
+						voice->mLeftoverSamples = (writesamples + outofs) - samplesToProduce;
+						writesamples = samplesToProduce - outofs;
 					}
 
 					// Call resampler to generate the samples, once per channel
@@ -1802,10 +1820,17 @@ namespace SoLoud
 				}
 				
 				// Handle panning and channel expansion (and/or shrinking)
-				panAndExpand(voice, aBuffer, aSamplesToRead, aBufferSize, aScratch, aChannels);
+				panAndExpand(voice, aBuffer, samplesToProduce, aBufferSize, aScratch, aChannels);
 
-				// clear voice if the sound is over
-				if (!(voice->mFlags & (AudioSourceInstance::LOOPING | AudioSourceInstance::DISABLE_AUTOSTOP)) && voice->hasEnded())
+				// stop the voice if a scheduled absolute-time stop cut it
+				// in this pass (even if it is looping), otherwise clear it
+				// if the sound is over
+				if (stopAfterProduce)
+				{
+					voice->mStopSamplesLeft = -1;
+					stopVoice_internal(mActiveVoice[i]);
+				}
+				else if (!(voice->mFlags & (AudioSourceInstance::LOOPING | AudioSourceInstance::DISABLE_AUTOSTOP)) && voice->hasEnded())
 				{
 					stopVoice_internal(mActiveVoice[i]);
 				}
@@ -1834,6 +1859,20 @@ namespace SoLoud
 						outofs = voice->mDelaySamples;
 						voice->mDelaySamples = 0;
 					}
+				}
+
+				// Scheduled absolute-time stop (scheduleStopAt): ticking
+				// voices produce no audible output, so counting down here
+				// keeps them in lockstep with the audible mixing path.
+				if (voice->mStopSamplesLeft >= 0)
+				{
+					if (voice->mStopSamplesLeft <= (long long)aSamplesToRead)
+					{
+						voice->mStopSamplesLeft = -1;
+						stopVoice_internal(mActiveVoice[i]);
+						continue;
+					}
+					voice->mStopSamplesLeft -= aSamplesToRead;
 				}
 
 				while (step_fixed != 0 && outofs < aSamplesToRead)
@@ -1914,8 +1953,8 @@ namespace SoLoud
 
 	void Soloud::mapResampleBuffers_internal()
 	{
-		SOLOUD_ASSERT(mMaxActiveVoices < 256);
-		char live[256];
+		SOLOUD_ASSERT(mMaxActiveVoices < VOICE_COUNT);
+		char live[VOICE_COUNT];
 		memset(live, 0, mMaxActiveVoices);
 		unsigned int i, j;
 		for (i = 0; i < mMaxActiveVoices; i++)
@@ -2184,6 +2223,23 @@ namespace SoLoud
 					if (mVoice[i]->mStopScheduler.mActive == -1)
 					{
 						mVoice[i]->mStopScheduler.mActive = 0;
+						stopVoice_internal(i);
+					}
+				}
+
+				// Scheduled absolute-time stop (scheduleStopAt) for voices
+				// that never reach the mixing pass (inaudible without
+				// ticking): count down here and stop when it expires.
+				// Audible and ticking voices count down in mixBus_internal,
+				// where the stop is applied with sample accuracy.
+				if (mVoice[i] && mVoice[i]->mStopSamplesLeft >= 0 &&
+					(mVoice[i]->mFlags & AudioSourceInstance::INAUDIBLE) &&
+					!(mVoice[i]->mFlags & AudioSourceInstance::INAUDIBLE_TICK))
+				{
+					mVoice[i]->mStopSamplesLeft -= aSamples;
+					if (mVoice[i]->mStopSamplesLeft <= 0)
+					{
+						mVoice[i]->mStopSamplesLeft = -1;
 						stopVoice_internal(i);
 					}
 				}

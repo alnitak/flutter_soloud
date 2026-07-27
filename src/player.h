@@ -350,6 +350,58 @@ public:
   /// audio clock again (leading by two output buffers).
   void resetStreamTime();
 
+  /// @brief Get the engine's global stream time, in seconds.
+  ///
+  /// This is the clock the mixer advances at the start of every output
+  /// buffer and the time base used by [playScheduled], [stopScheduled] and
+  /// [fadeScheduled]. It only advances while the audio device is mixing.
+  /// @return the engine time in seconds.
+  double getEngineTime();
+
+  /// @brief Start playing a sound at an absolute engine time (see
+  /// [getEngineTime]), with sample accuracy.
+  ///
+  /// Unlike [playClocked] there is no anchor and no re-anchor guard, so
+  /// sounds can be scheduled arbitrarily far in the future. A time in the
+  /// past plays as soon as possible.
+  /// @param soundHash the unique hash of the sound to play.
+  /// @param handle the handle of this new sound.
+  /// @param atTime the absolute engine time, in seconds, at which the sound
+  /// should start.
+  /// @param duration if greater than zero, the sound is automatically
+  /// stopped at [atTime] + [duration].
+  /// @param busId the bus ID to play the sound on. 0 means the main engine.
+  /// @param volume 1.0f full volume.
+  /// @param pan 0.0f centered.
+  /// @return the error if any and the [handle] of this new sound.
+  PlayerErrors playScheduled(unsigned int soundHash, unsigned int &handle,
+                             double atTime, double duration = 0.0,
+                             unsigned int busId = 0,
+                             float volume = 1.0f, float pan = 0.0f);
+
+  /// @brief Stop a sound at an absolute engine time (see [getEngineTime]).
+  ///
+  /// A time in the past stops the sound immediately.
+  /// @param handle handle of the sound.
+  /// @param atTime the absolute engine time, in seconds, at which the sound
+  /// should stop.
+  void stopScheduled(unsigned int handle, double atTime);
+
+  /// @brief Fade the volume of a sound starting at an absolute engine time
+  /// (see [getEngineTime]).
+  ///
+  /// The fade goes from the volume the sound has at call time to [to] over
+  /// [fadeTime] seconds. If [thenStop] is true, the sound is stopped when
+  /// the fade ends (at [atTime] + [fadeTime]).
+  /// @param handle handle of the sound.
+  /// @param atTime the absolute engine time, in seconds, at which the fade
+  /// should start. A time in the past starts the fade immediately.
+  /// @param to the ending volume of the fade.
+  /// @param fadeTime the duration of the fade, in seconds.
+  /// @param thenStop whether to stop the sound when the fade ends.
+  void fadeScheduled(unsigned int handle, double atTime, float to,
+                     double fadeTime, bool thenStop);
+
   /// @brief Stop already loaded sound identified by [handle] and clear it.
   /// @param handle handle of the sound.
   void stop(unsigned int handle);

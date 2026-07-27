@@ -127,3 +127,4 @@
 #include "mixeroutput/opus_output_encoder.cpp"
 #include "mixeroutput/vorbis_output_encoder.cpp"
 #include "mixeroutput/flac_output_encoder.cpp"
+#include "mixeroutput/wav_output_encoder.cpp"

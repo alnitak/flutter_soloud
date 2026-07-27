@@ -18,11 +18,20 @@ import 'package:logging/logging.dart';
 /// system hits buffer underruns (ie, the play head marches on but there's no
 /// data ready to be played) and the sound breaks down horribly.
 ///
-/// By enabling the `use playClocked` checkbox, the ticks are scheduled with
-/// `playClocked()` instead of `play()`: the engine uses the given "physics
-/// time" to delay the start of the sounds with sample accuracy, so the
-/// ticks won't get clumped to the start of the next outgoing audio buffer
-/// even with the default buffer size of 2048.
+/// By enabling one of the `playClocked` / `playScheduled` checkboxes, the
+/// ticks are scheduled with sample accuracy instead of `play()`: the engine
+/// delays the start of the sounds so the ticks won't get clumped to the
+/// start of the next outgoing audio buffer even with the default buffer
+/// size of 2048.
+///
+/// `playClocked()` is fed with the accumulated ideal "physics time" of the
+/// ticks: the first call anchors that time to the audio clock and the
+/// following calls are placed relative to that anchor.
+///
+/// `playScheduled()` instead takes an absolute time on the engine's own
+/// clock: the anchor is done explicitly by reading `getEngineTime()` once
+/// when the metronome (re)starts and adding the accumulated ideal tick
+/// times to it.
 
 void main() async {
   // The `flutter_soloud` package logs everything
@@ -54,6 +63,19 @@ void main() async {
   );
 }
 
+/// The method used to play the metronome ticks.
+enum _PlayMode {
+  /// Plain [SoLoud.play]: ticks start at the next output buffer boundary.
+  play,
+
+  /// [SoLoud.playClocked]: ticks spaced with sample accuracy against the
+  /// accumulated "physics time".
+  clocked,
+
+  /// [SoLoud.playScheduled]: ticks pinned to absolute engine times.
+  scheduled,
+}
+
 class Metronome extends StatefulWidget {
   const Metronome({super.key});
 
@@ -68,8 +90,8 @@ class _MetronomeState extends State<Metronome> {
   /// duration of the tick sound.
   final tickDurationMs = ValueNotifier<int>(45);
 
-  /// whether to use `playClocked` instead of `play` for the ticks.
-  final useClocked = ValueNotifier<bool>(false);
+  /// which method to use to play the ticks.
+  final playMode = ValueNotifier<_PlayMode>(_PlayMode.play);
 
   Timer? timer;
   AudioSource? tick1;
@@ -78,8 +100,14 @@ class _MetronomeState extends State<Metronome> {
   int count = 0;
 
   /// The accumulated ideal time of the ticks used as the "physics time"
-  /// for `playClocked`.
+  /// for `playClocked` and as the offset from [engineAnchor] for
+  /// `playScheduled`.
   Duration physicsTime = Duration.zero;
+
+  /// The engine-clock time (see [SoLoud.getEngineTime]) corresponding to
+  /// [physicsTime] zero, used by `playScheduled`. A small lead is added so
+  /// scheduled ticks always land comfortably in the future.
+  Duration engineAnchor = Duration.zero;
 
   @override
   void initState() {
@@ -127,7 +155,7 @@ class _MetronomeState extends State<Metronome> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Slider.adaptive(
-                            min: 20,
+                            min: 30,
                             max: 500,
                             value: ms.toDouble(),
                             onChanged: (value) {
@@ -143,20 +171,48 @@ class _MetronomeState extends State<Metronome> {
                     },
                   ),
                   const SizedBox(height: 16),
-                  ValueListenableBuilder<bool>(
-                    valueListenable: useClocked,
-                    builder: (_, clocked, __) {
-                      return CheckboxListTile(
-                        title: const Text('use playClocked'),
-                        subtitle: const Text(
-                          'schedule the ticks with sample accuracy',
-                        ),
-                        value: clocked,
-                        onChanged: (value) {
-                          physicsTime = Duration.zero;
-                          SoLoud.instance.resetStreamTime();
-                          useClocked.value = value ?? false;
-                        },
+                  ValueListenableBuilder<_PlayMode>(
+                    valueListenable: playMode,
+                    builder: (_, mode, __) {
+                      return Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          CheckboxListTile(
+                            title: const Text('use play'),
+                            subtitle: const Text(
+                              'play the ticks as soon as possible '
+                              '(clumps at buffer boundaries)',
+                            ),
+                            value: mode == _PlayMode.play,
+                            onChanged: (_) => setMode(_PlayMode.play),
+                          ),
+                          CheckboxListTile(
+                            title: const Text('use playClocked'),
+                            subtitle: const Text(
+                              'schedule the ticks with sample accuracy '
+                              'against an accumulated physics time',
+                            ),
+                            value: mode == _PlayMode.clocked,
+                            onChanged: (value) => setMode(
+                              (value ?? false)
+                                  ? _PlayMode.clocked
+                                  : _PlayMode.play,
+                            ),
+                          ),
+                          CheckboxListTile(
+                            title: const Text('use playScheduled'),
+                            subtitle: const Text(
+                              'schedule the ticks with sample accuracy '
+                              'at absolute engine times',
+                            ),
+                            value: mode == _PlayMode.scheduled,
+                            onChanged: (value) => setMode(
+                              (value ?? false)
+                                  ? _PlayMode.scheduled
+                                  : _PlayMode.play,
+                            ),
+                          ),
+                        ],
                       );
                     },
                   ),
@@ -169,22 +225,55 @@ class _MetronomeState extends State<Metronome> {
     );
   }
 
+  void setMode(_PlayMode mode) {
+    physicsTime = Duration.zero;
+    SoLoud.instance.resetStreamTime();
+    if (mode == _PlayMode.scheduled) {
+      anchorEngineClock();
+    }
+    playMode.value = mode;
+  }
+
+  /// Anchor [physicsTime] to the engine clock for `playScheduled`, with a
+  /// small lead so scheduled ticks always land comfortably in the future
+  /// (a voice can only be delayed, never advanced, and Dart timers often
+  /// fire a few ms late).
+  void anchorEngineClock() {
+    engineAnchor =
+        SoLoud.instance.getEngineTime() + const Duration(milliseconds: 200);
+  }
+
   void start() {
     timer?.cancel();
     physicsTime = Duration.zero;
     SoLoud.instance.resetStreamTime();
+    if (playMode.value == _PlayMode.scheduled) {
+      anchorEngineClock();
+    }
     timer = Timer.periodic(Duration(milliseconds: delay.value), (_) {
       final sound = count % 8 == 0 ? tick2 : tick1;
       if (sound != null) {
-        if (useClocked.value) {
-          /// Accumulate the ideal tick time and pass it to
-          /// [SoLoud.playClocked]: the ticks will be spread with sample
-          /// accuracy inside the audio buffer instead of being clumped
-          /// to its start.
-          physicsTime += Duration(milliseconds: delay.value);
-          SoLoud.instance.playClocked(sound, physicsTime);
-        } else {
-          SoLoud.instance.play(sound);
+        switch (playMode.value) {
+          case _PlayMode.clocked:
+
+            /// Accumulate the ideal tick time and pass it to
+            /// [SoLoud.playClocked]: the ticks will be spread with sample
+            /// accuracy inside the audio buffer instead of being clumped
+            /// to its start.
+            physicsTime += Duration(milliseconds: delay.value);
+            SoLoud.instance.playClocked(sound, physicsTime);
+          case _PlayMode.scheduled:
+
+            /// The same, but pinned to the engine clock: [engineAnchor]
+            /// maps [physicsTime] zero to an absolute engine time.
+            physicsTime += Duration(milliseconds: delay.value);
+            SoLoud.instance.playScheduled(
+              sound,
+              engineAnchor + physicsTime,
+              duration: const Duration(milliseconds: 20),
+            );
+          case _PlayMode.play:
+            SoLoud.instance.play(sound);
         }
       }
       count++;

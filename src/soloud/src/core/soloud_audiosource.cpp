@@ -102,6 +102,7 @@ namespace SoLoud
 		mSrcOffset = 0;
 		mLeftoverSamples = 0;
 		mDelaySamples = 0;
+		mStopSamplesLeft = -1;
 		mOverallVolume = 0;
 		mOverallRelativePlaySpeed = 1;
 	}
