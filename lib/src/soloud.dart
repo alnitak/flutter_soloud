@@ -579,7 +579,10 @@ interface class SoLoud {
             // All instances of the sound have finished.
             soundHandleFound.allInstancesFinishedController.add(null);
           }
-          voiceEndedCompleters[SoundHandle(handle)]?.complete();
+          final voiceEndedCompleter = voiceEndedCompleters[SoundHandle(handle)];
+          if (voiceEndedCompleter != null && !voiceEndedCompleter.isCompleted) {
+            voiceEndedCompleter.complete();
+          }
 
           // if there are no more handles palying and the "autoDispose"
           // parameter has been set, dispose the sound.
@@ -2320,7 +2323,7 @@ interface class SoLoud {
             'This is not expected but not blocking. Worth to file a bug with '
             'a simple reproducible code.',
           );
-          voiceEndedCompleters[handle]?.complete();
+          if (!completer.isCompleted) completer.complete();
         })
         .whenComplete(() {
           voiceEndedCompleters.removeWhere((key, __) => key == handle);
