@@ -144,8 +144,14 @@ class _MetronomeState extends State<Metronome> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   const Text(
-                    'Metronome example',
-                    textScaler: TextScaler.linear(3),
+                    'Metronome example\n(4096 buffer size, 2 channels)',
+                    textScaler: TextScaler.linear(1.5),
+                    textAlign: TextAlign.center,
+                  ),
+                  const Text(
+                    'sample-accurate playback and scheduling of ticks with playClocked/playScheduled\n'
+                    'perfect for metronomes, rhythm games, sequencers, etc.',
+                    textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 32),
                   ValueListenableBuilder<int>(
@@ -202,8 +208,8 @@ class _MetronomeState extends State<Metronome> {
                           CheckboxListTile(
                             title: const Text('use playScheduled'),
                             subtitle: const Text(
-                              'schedule the ticks with sample accuracy '
-                              'at absolute engine times',
+                              'schedule the ticks start and stop with sample '
+                              'accuracy at absolute engine times',
                             ),
                             value: mode == _PlayMode.scheduled,
                             onChanged: (value) => setMode(
