@@ -3,10 +3,10 @@ A low-level audio plugin for Flutter.
 [![Pub Version](https://img.shields.io/pub/v/flutter_soloud?logo=dart)](https://pub.dev/packages/flutter_soloud)
 [![style: very good analysis](https://img.shields.io/badge/style-very_good_analysis-B22C89.svg)](https://pub.dev/packages/very_good_analysis)
 
-||Linux|Windows|Android|MacOS|iOS|Web|
+||Linux|Windows|Android|macOS|iOS|Web|
 |-|:-:|:-:|:-:|:-:|:-:|:-:|
 |Support|💙|💙|💙|💙|💙|💙|
-|Minimum Version|Any|Any|21+|10.15+|13.0+|iOS 16.4+</br>Safari 16.4+</br>Chrome 91+</br>Edge 91+</br>Firefox 89+</br>|
+|Minimum Version|Any|Any|21+|10.15+|13.0+|iOS 16.4+<br>Safari 16.4+<br>Chrome 91+<br>Edge 91+<br>Firefox 89+|
 
 ## Overview
 
@@ -15,26 +15,32 @@ A high-performance audio plugin designed primarily for games and immersive appli
 ## Key Features
 
 - ⚡ Low latency, high performance audio
+- ⏱️ Sample-accurate scheduled playback: `playClocked` for sub-millisecond spaced playback regardless of buffer size, and `playScheduled` for score/manifest-style scheduling of whole batches of sounds on the engine's own clock (with optional scheduled stop/fade). Perfect for metronomes, music sequencers, rhythm games and precisely timed audio cues
 - 🎮 3D positional audio with Doppler effect
-- 🔄 Gapless looping
-- 🔄 Stream audio with auto-pause for buffering, support for PCM, MP3, Ogg with Opus, Vorbis and FLAC containers
+- 🔄 Gapless looping with half-open `[start, end)` loop regions
+- 🔄 Stream audio with auto-pause for buffering, support for PCM, MP3, WAV, Ogg with Opus, Vorbis and FLAC containers
+- 📥 Pull-buffer streaming: the engine requests encoded data on demand (MP3, WAV, FLAC, Ogg Opus/Vorbis/FLAC), with seek support and callbacks for buffering, metadata, duration and data requests — ideal for network streams and custom data sources
+- 🚌 Mixing buses: group voices (music, SFX, UI...) into sub-mixes with their own volume, filters and visualization
 - 📊 Get audio wave and/or FFT audio data in real-time (useful for visualization)
-- 🎛️ Rich effects system (reverb, echo, limiter, equalizer, pitch shift, etc.)
+- 🎛️ Rich effects system (reverb, echo, limiter, parametric equalizer, pitch shift, etc.)
 - ⚙️ Faders for attributes (e.g. fade out for 2 seconds, then stop)
 - 🎚️ Oscillators for attributes
 - 🌊 Waveform generation and visualization
 - 🔊 Multiple voices, playing different or even the same sound multiple times
 - 🎵 Support for MP3, WAV, OGG, and FLAC
+- 🔴 Capture the master mixer output as a stream for recording, processing, or streaming (with different PCM formats and Opus, Vorbis, FLAC, WAV encoded stream formats)
 - ⏱️ Read audio data samples from a file with a given time range
 - 🌊 Generate waveforms in real-time with various types (sine, square, saw, triangle, etc.)
 
+Whether you are building a game (3D positional SFX, mixing buses, low-latency playback) or any other kind of audio app — music tools, metronomes, radio/streaming apps, visualizers, recorders — the plugin exposes the low-level control you need.
+
 ## Getting Started
-- Watch Flutter [Package of the Week](https://www.youtube.com/watch?v=2t6Bt04EyLw) video.
+- Watch the Flutter [Package of the Week](https://www.youtube.com/watch?v=2t6Bt04EyLw) video.
 - Especially for web use, please look at the [setup guide docs](https://docs.page/alnitak/flutter_soloud_docs/get_started/setup).
 
 If you are looking for a package to visualize audio using shaders or CustomPainter, please check out [audio_flux](https://pub.dev/packages/audio_flux). It uses this plugin for output and [flutter_recorder](https://pub.dev/packages/flutter_recorder) for input.
 
-Also, if you are building using Swift Package Manager (SPM), please check out [iOS and MacOS Configuration](https://docs.page/alnitak/flutter_soloud_docs/get_started/setup#ios-and-macos-configuration).
+Also, if you are building using Swift Package Manager (SPM), please check out [iOS and macOS Configuration](https://docs.page/alnitak/flutter_soloud_docs/get_started/setup#ios-and-macos-configuration).
 
 ## Documentation
 
@@ -44,14 +50,20 @@ Also, if you are building using Swift Package Manager (SPM), please check out [i
 ## Simple Example
 
 ```dart
+import 'package:flutter_soloud/flutter_soloud.dart';
+
 void example() async {
   final soloud = SoLoud.instance;
   await soloud.init();
 
   await soloud.playSource(asset: 'assets/sound.mp3');
+  // or
+  final sound = await soloud.loadAsset('assets/sound.mp3');
+  final handle = soloud.play(sound);
   
   [...]
-  await soloud.deinit();
+
+  soloud.deinit();
 }
 ```
 

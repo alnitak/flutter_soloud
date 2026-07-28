@@ -56,6 +56,7 @@ set (CORE_SOURCES
 	${CORE_PATH}/soloud_core_faderops.cpp
 	${CORE_PATH}/soloud_core_filterops.cpp
 	${CORE_PATH}/soloud_core_getters.cpp
+	${CORE_PATH}/soloud_core_looping.cpp
 	${CORE_PATH}/soloud_core_setters.cpp
 	${CORE_PATH}/soloud_core_voicegroup.cpp
 	${CORE_PATH}/soloud_core_voiceops.cpp
@@ -130,8 +131,8 @@ set (AUDIOSOURCES_SOURCES
 	${AUDIOSOURCES_PATH}/wav/dr_wav.h
 	${AUDIOSOURCES_PATH}/wav/soloud_wav.cpp
 	${AUDIOSOURCES_PATH}/wav/soloud_wavstream.cpp
-	${AUDIOSOURCES_PATH}/wav/stb_vorbis.c
-	${AUDIOSOURCES_PATH}/wav/stb_vorbis.h
+	${AUDIOSOURCES_PATH}/wav/mb_ogg.cpp
+	${AUDIOSOURCES_PATH}/wav/mb_ogg.h
 )
 
 

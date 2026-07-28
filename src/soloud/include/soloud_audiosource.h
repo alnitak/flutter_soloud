@@ -25,6 +25,8 @@ freely, subject to the following restrictions:
 #ifndef SOLOUD_AUDIOSOURCE_H
 #define SOLOUD_AUDIOSOURCE_H
 
+#include <stdint.h>
+
 #include "soloud.h"
 #include "soloud_fader.h"
 #include "soloud_filter.h"
@@ -185,8 +187,18 @@ namespace SoLoud
 		unsigned int mLeftoverSamples;
 		// Number of samples to delay streaming
 		unsigned int mDelaySamples;
+		// Samples this voice may still produce before being stopped by a
+		// scheduled absolute-time stop (scheduleStopAt). -1 means inactive.
+		// Decremented while the voice is not paused, in lockstep with
+		// mDelaySamples: in mixBus_internal for audible and ticking voices,
+		// in the fader pass for inaudible non-ticking ones.
+		long long mStopSamplesLeft;
 		// When looping, start playing from this time
 		time mLoopPoint;
+		// When looping, wrap before this time. Zero uses the natural source end.
+		time mLoopEndPoint;
+		// Number of source frames decoded since the last seek.
+		uint64_t mSourceSamplePosition;
 
 		// Get N samples from the stream to the buffer. Report samples written.
 		virtual unsigned int getAudio(float *aBuffer, unsigned int aSamplesToRead, unsigned int aBufferSize) = 0;

@@ -31,7 +31,12 @@ public:
 
   std::pair<std::vector<float>, DecoderError>
   decode(std::vector<unsigned char> &buffer, int *samplerate,
-         int *channels) override;
+         int *channels, size_t maxOutputSamples = 0) override;
+
+  bool canSeekToTime(double seconds) const override;
+  uint64_t timeToByteOffset(double seconds) override;
+  double getDuration() const override;
+  void setTotalAudioSizeBytes(uint64_t size) override;
 
   static bool checkForValidFrames(const std::vector<unsigned char> &buffer);
 
@@ -51,12 +56,27 @@ private:
   bool isInitialized;
   std::vector<unsigned char> audioData;
   size_t m_read_pos;
+  /// Absolute stream offset of audioData[0]. The buffer is a sliding window
+  /// over the stream: consumed bytes are discarded and this base is advanced
+  /// accordingly, so dr_mp3 always works in window-relative positions.
+  uint64_t m_audioDataBaseOffset;
+  /// Value of m_audioDataBaseOffset in effect when mSeekPoints was built;
+  /// added to seek point byte positions to get absolute stream offsets.
+  uint64_t m_seekTableBaseOffset;
+  /// Size of the ID3v2 tag detected at initialization (0 when absent).
+  size_t m_id3Size;
   size_t bytes_until_meta;
   std::string metadata_buffer;
   std::string lastMetadata;
   int mIcyMetaInt;
   bool ID3TagsFound;
   bool mDataEnded; // Signals that no more data will be added
+  uint64_t mTotalAudioSizeBytes;
+
+  void buildSeekTable();
+  double estimateBitrateFromFirstFrame() const;
+  double parseDurationFromXingVbri() const;
+  mutable std::vector<drmp3_seek_point> mSeekPoints;
 };
 
 #endif // MP3_STREAM_DECODER_H

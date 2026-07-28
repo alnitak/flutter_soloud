@@ -5,8 +5,8 @@ import 'package:flutter_soloud/flutter_soloud.dart';
 import 'common.dart';
 
 /// Test setMaxActiveVoiceCount, setProtectedVoice and getProtectedVoice.
-Future<StringBuffer> testProtectVoice() async {
-  final strBuf = StringBuffer();
+Future<OutputBuffer> testProtectVoice() async {
+  final strBuf = OutputBuffer();
   await initialize();
   final defaultVoiceCount = SoLoud.instance.getMaxActiveVoiceCount();
 

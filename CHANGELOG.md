@@ -1,3 +1,23 @@
+#### 4.1.0 (XX Xxx 2026)
+- added **pull-buffer streaming API** (`setPullBufferStream`, `addPullBufferDataStream`, `getPullBufferTimeRange`) with support for MP3, WAV, FLAC, Ogg Opus, Ogg Vorbis, and Ogg FLAC.
+- get rid of stb_vorbis c file in favor of the Xiph OGG libraries for Opus, Vorbis, and FLAC.
+- buffer stream now supports FLAC and WAV formats besides Ogg with Opus, Vorbis, and FLAC containers.
+- reduced initial buffer data from 32 to 4 KB to let the buffer to start playing faster.
+- now the auto-pause when the buffer needs more audio works as expected and respect the player pause state (it doesn't automatically unpause when there is enough data in the buffer if the player was paused).
+- websocket example: added play/pause and touch to seek to the buffer visual widget.
+- added `autoDispose` parameter to `setBufferStream` to automatically dispose the sound when it is finished. This eliminates the need to manually call disposeSource.
+- **added mixer output capture**: capture the master mixer output as a `Stream<Uint8List>` in PCM (F32LE, S8, S16LE, S32LE) or compressed formats (Opus, Vorbis, FLAC, WAV). See `SoLoud.startMixerOutputStream` / `stopMixerOutputStream` / `isMixerOutputStreamRunning`.
+- added `mixer_capture` example (`example/lib/mixer_capture/mixer_capture.dart`) that shows how to capture the master mix and save it to a file.
+- **web note**: the web build requires `--wasm` (or any server that sends `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` headers) because the WASM module uses `SharedArrayBuffer` for the audio thread. Running with `flutter run -d chrome` without `--wasm` is not supported by the default dev server.
+- **added `SoLoudIsolate`**, an isolate-safe singleton for running mixer output capture (and other safe operations, for now only `readSamplesFrom*`) from a non-main isolate without touching the main isolate's loader, filters, or event callbacks.
+- added `example/lib/mixer_capture/isolate_capture_test.dart` to demostrate mixer output capture from a separate isolate.
+- added native loop end points through `loopingEndAt` and the live `getLoopEndPoint` / `setLoopEndPoint` APIs, allowing half-open `[start, end)` loop regions #499. Thanks to @Kunstderfug
+- **added `playClocked` and `play3dClocked`** (plus `Bus.playClocked` / `Bus.play3dClocked`) for sample-accurate scheduled playback, along with the related `setDelaySamples`, `getStreamTime` and `resetStreamTime` (re-anchor the clocked-play clock) APIs. The sounds are spaced with sub-millisecond accuracy regardless of the engine buffer size instead of clumping at buffer boundaries.
+- added a "use playClocked" checkbox to the **metronome example** to show the difference between `play` and `playClocked`.
+- **added `getEngineTime`, `playScheduled`, `stopScheduled` and `fadeScheduled`** (plus `Bus.playScheduled`) for score/manifest-style scheduling pinned to the engine's own clock: read `getEngineTime` once and schedule a batch of sounds at absolute engine times, with sample accuracy and no ~2 s window limit like `playClocked`. `playScheduled` accepts an optional `duration` to stop the sound automatically, and `fadeScheduled` a `thenStop` flag to stop the sound when the fade ends. Scheduled stops are sample-accurate (not quantized to output buffer boundaries like `scheduleStop`).
+- fix shutdown crash "Callback invoked after it has been deleted": `deinit()` now stops the engine (joining the audio thread) before closing the Dart `NativeCallable` trampolines, so voices ending from the mixing thread can no longer call into deleted callbacks while tearing down.
+- fix: stop() can throw uncaught "Bad state: Future already completed" when the native voiceEnded event races the internal 300 ms timeout #510
+
 #### 4.0.13 (20 Jul 2026)
 - fix: Waveform audio sources do not match engine sample rate #501. Thanks to @Colton127
 
@@ -645,4 +665,3 @@ Initial release:
 * Includes a speech synthesizer
 * Supports various common formats such as 8, 16, and 32-bit WAVs, floating point WAVs, OGG, MP3, and FLAC
 * Enables real-time retrieval of audio FFT and wave data
-

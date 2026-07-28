@@ -3,8 +3,8 @@ import 'package:flutter_soloud/flutter_soloud.dart';
 import 'common.dart';
 
 /// Test text-to-speech functionality.
-Future<StringBuffer> testSpeechText() async {
-  final strBuf = StringBuffer();
+Future<OutputBuffer> testSpeechText() async {
+  final strBuf = OutputBuffer();
   await initialize();
 
   // Generate speech from text

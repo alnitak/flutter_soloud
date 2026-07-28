@@ -193,6 +193,23 @@ namespace SoLoud
 		return mSoloud->playClocked(aSoundTime, aSound, aVolume, aPan, mChannelHandle);
 	}	
 
+	handle Bus::playScheduled(time aEngineTime, AudioSource &aSound, float aVolume, float aPan)
+	{
+		if (!mInstance || !mSoloud)
+		{
+			return 0;
+		}
+
+		findBusHandle();
+
+		if (mChannelHandle == 0)
+		{
+			return 0;
+		}
+
+		return mSoloud->playScheduled(aEngineTime, aSound, aVolume, aPan, mChannelHandle);
+	}	
+
 	handle Bus::play3d(AudioSource &aSound, float aPosX, float aPosY, float aPosZ, float aVelX, float aVelY, float aVelZ, float aVolume, bool aPaused)
 	{
 		if (!mInstance || !mSoloud)

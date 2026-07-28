@@ -182,7 +182,28 @@ namespace SoLoud
 	void Soloud::setLoopPoint(handle aVoiceHandle, time aLoopPoint)
 	{
 		FOR_ALL_VOICES_PRE
-			mVoice[ch]->mLoopPoint = aLoopPoint;
+			mVoice[ch]->mLoopPoint = aLoopPoint < 0 ? 0 : aLoopPoint;
+			if (mVoice[ch]->mLoopEndPoint != 0 &&
+				mVoice[ch]->mLoopEndPoint <= mVoice[ch]->mLoopPoint)
+			{
+				mVoice[ch]->mLoopEndPoint = 0;
+			}
+		FOR_ALL_VOICES_POST
+	}
+
+	void Soloud::setLoopEndPoint(handle aVoiceHandle, time aLoopEndPoint)
+	{
+		FOR_ALL_VOICES_PRE
+			// Keep the decoded block intact: the new boundary is observed by the
+			// next source refill without skipping cached audio or rerunning filters.
+			if (aLoopEndPoint > mVoice[ch]->mLoopPoint)
+			{
+				mVoice[ch]->mLoopEndPoint = aLoopEndPoint;
+			}
+			else
+			{
+				mVoice[ch]->mLoopEndPoint = 0;
+			}
 		FOR_ALL_VOICES_POST
 	}
 

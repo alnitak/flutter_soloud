@@ -1,4 +1,5 @@
-#pragma once
+#include <stdint.h>
+#include <stdio.h>
 
 #ifndef ENUMS_H
 #define ENUMS_H
@@ -74,6 +75,10 @@ typedef enum PlayerErrors {
   xiphLibsNotFound = 30,
   /// Bus ID not found.
   busIdNotFound = 31,
+  /// Given hash doesn't belong to a pull buffer stream.
+  hashIsNotAPullBufferStream = 32,
+  /// The pull buffer stream is in an invalid state for this operation.
+  invalidPullBufferState = 33,
 } PlayerErrors_t;
 
 /// Possible read sample errors
@@ -108,6 +113,10 @@ typedef enum SoundType {
   TYPE_SYNTH,
   // this sound is a streaming buffer
   TYPE_BUFFER_STREAM,
+  // this sound is a text to speech
+  TYPE_TEXT_TO_SPEECH,
+  // this sound is a pull-based streaming buffer
+  TYPE_PULL_BUFFER_STREAM
 } SoundType_t;
 
 typedef enum FilterType {
@@ -135,6 +144,18 @@ typedef enum BufferType {
   AUTO = 5,
 } BufferType_t;
 
+/// WARNING: Keep these in sync with `lib/src/enums.dart`.
+typedef enum MixerOutputFormat {
+  MIXER_OUTPUT_PCM_F32LE = 0,
+  MIXER_OUTPUT_PCM_S8 = 1,
+  MIXER_OUTPUT_PCM_S16LE = 2,
+  MIXER_OUTPUT_PCM_S32LE = 3,
+  MIXER_OUTPUT_OPUS = 4,
+  MIXER_OUTPUT_VORBIS = 5,
+  MIXER_OUTPUT_FLAC = 6,
+  MIXER_OUTPUT_WAV = 7,
+} MixerOutputFormat_t;
+
 typedef struct PCMformat {
   unsigned int sampleRate;
   unsigned int channels;
@@ -145,5 +166,11 @@ typedef struct PCMformat {
 // callback to tell dart that we are buffering/unbuffering
 typedef void (*dartOnBufferingCallback_t)(bool isBuffering, unsigned int handle,
                                           double time);
+
+// callback to tell dart that more encoded data is needed
+typedef void (*dartOnMoreDataIsNeededCallback_t)(uint64_t offset);
+
+// callback to tell dart the total audio duration of a pull-buffer stream
+typedef void (*dartOnAudioDurationCallback_t)(double duration);
 
 #endif // ENUMS_H

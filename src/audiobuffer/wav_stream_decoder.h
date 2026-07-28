@@ -20,7 +20,12 @@ public:
 
   std::pair<std::vector<float>, DecoderError>
   decode(std::vector<unsigned char> &buffer, int *sampleRate,
-         int *channels) override;
+         int *channels, size_t maxOutputSamples = 0) override;
+
+  bool canSeekToTime(double seconds) const override;
+  uint64_t timeToByteOffset(double seconds) override;
+  void prepareForSeek(uint64_t targetSample) override;
+  double getDuration() const override;
 
   static bool checkForValidWavHeader(const std::vector<unsigned char> &buffer);
 
@@ -36,6 +41,15 @@ private:
   std::vector<unsigned char> audioData;
   size_t m_read_pos;
   bool mDataEnded; // Signals that no more data will be added
+
+  /// Header bytes of the WAV file (everything before the data chunk). Kept
+  /// across out-of-buffer seeks so the decoder can reinitialize from a
+  /// mid-stream chunk.
+  std::vector<unsigned char> mHeader;
+
+  /// Target sample (interleaved samples) to seek to after the next decoder
+  /// initialization.
+  uint64_t mPendingSeekTargetSample = 0;
 };
 
 #endif // WAV_STREAM_DECODER_H

@@ -12,8 +12,8 @@ import 'common.dart';
 /// real hot restart from an integration test, but we CAN exercise the same
 /// code path: call `init()` when the native player is already alive (which
 /// `init()` treats as the hot-restart recovery branch).
-Future<StringBuffer> testHotRestartLifecycle() async {
-  final buf = StringBuffer();
+Future<OutputBuffer> testHotRestartLifecycle() async {
+  final buf = OutputBuffer();
 
   // ── 1. Fresh init ───────────────────────────────────────────────────────
   await SoLoud.instance.init();
