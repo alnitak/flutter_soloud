@@ -1,4 +1,4 @@
-#### 4.1.0 (XX Xxx 2026)
+#### 4.1.0 (28 Jul 2026)
 - added **pull-buffer streaming API** (`setPullBufferStream`, `addPullBufferDataStream`, `getPullBufferTimeRange`) with support for MP3, WAV, FLAC, Ogg Opus, Ogg Vorbis, and Ogg FLAC.
 - get rid of stb_vorbis c file in favor of the Xiph OGG libraries for Opus, Vorbis, and FLAC.
 - buffer stream now supports FLAC and WAV formats besides Ogg with Opus, Vorbis, and FLAC containers.
