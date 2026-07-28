@@ -1,3 +1,5 @@
+// ignore_for_file: experimental_member_use
+
 import 'dart:async';
 import 'dart:developer' as dev;
 
@@ -59,7 +61,6 @@ class _FileStreamExampleState extends State<FileStreamExample> {
   static const _bufferSizeBytes = 5 * 1024 * 1024;
   static const _bufferTriggerPosition = 0.75;
 
-
   /// To run the example on the web, you could set up the following nginx
   /// configuration.
   /// ```json
@@ -79,7 +80,7 @@ class _FileStreamExampleState extends State<FileStreamExample> {
   ///     }
   /// }
   /// ```
-  /// 
+  ///
   /// To start the server, run the following command in the example/assets/audio
   /// directory
   /// nginx -c "$(pwd)/nginx.conf" -p "$(pwd)"
@@ -87,7 +88,7 @@ class _FileStreamExampleState extends State<FileStreamExample> {
   /// To stop the server, run the following command in the example/assets/audio
   /// directory
   /// nginx -s stop -c "$(pwd)/nginx.conf" -p "$(pwd)"
-  /// 
+  ///
   static const audioMP3 = 'assets/audio/sample-MP3.mp3';
   static const audioFLAC = 'assets/audio/sample-FLAC.flac';
   static const audioOPUS = 'assets/audio/sample-OPUS.opus';

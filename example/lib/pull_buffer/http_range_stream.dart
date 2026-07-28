@@ -1,3 +1,5 @@
+// ignore_for_file: experimental_member_use
+
 import 'dart:async';
 import 'dart:developer' as dev;
 
@@ -121,9 +123,10 @@ class _HttpRangeStreamExampleState extends State<HttpRangeStreamExample> {
       final acceptRanges = response.headers['accept-ranges'];
       final serverSupportsRange = acceptRanges == 'bytes';
       _logger.info(
-        serverSupportsRange ? 'Server supports HTTP Range requests' :
-            'Server does not support HTTP Range requests. '
-            'Audio will not get the audio duration for OGG audios.\n',
+        serverSupportsRange
+            ? 'Server supports HTTP Range requests'
+            : 'Server does not support HTTP Range requests. '
+                'Audio will not get the audio duration for OGG audios.\n',
         'Accept-Ranges: $acceptRanges; supportsRange=$serverSupportsRange',
       );
       final length = response.headers['content-length'];
