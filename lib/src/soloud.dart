@@ -776,9 +776,9 @@ interface class SoLoud {
   /// See the [seek] note problem when using [LoadMode.disk].
   /// The default is [LoadMode.memory].
   ///
-  /// IMPORTANT: on Web [LoadMode.disk] is is overridden to [LoadMode.memory].
-  /// This could cause UI freeze problems for long duration audio files so
-  /// it is recommended to load them when the app starts.
+  /// NOTE: on Web the [mode] parameter is ignored. The audio data is fed
+  /// to the engine in chunks, yielding to the event loop between each
+  /// chunk to keep the UI responsive.
   ///
   /// This is the only choice to load a file when using this plugin on the Web
   /// because browsers cannot read directly files from the loal storage.
