@@ -281,6 +281,16 @@ namespace SoLoud
 		handle play3d(AudioSource &aSound, float aPosX, float aPosY, float aPosZ, float aVelX = 0.0f, float aVelY = 0.0f, float aVelZ = 0.0f, float aVolume = 1.0f, bool aPaused = 0, unsigned int aBus = 0);
 		// Start playing a 3d audio source, delayed in relation to other sounds called via this function.
 		handle play3dClocked(time aSoundTime, AudioSource &aSound, float aPosX, float aPosY, float aPosZ, float aVelX = 0.0f, float aVelY = 0.0f, float aVelZ = 0.0f, float aVolume = 1.0f, unsigned int aBus = 0);
+		// Calculate the delay in samples for a clocked play call. Maps the caller's "physics time" to the output sample timeline using a persistent anchor, so sounds can be scheduled with sample accuracy across output buffers. Used internally by playClocked and play3dClocked.
+		unsigned int getClockedDelaySamples(time aSoundTime);
+		// Reset the clocked play anchor to the state as if no playClocked/play3dClocked call was ever made. The next clocked play will anchor the caller's clock to the audio clock again.
+		void resetClockedAnchor();
+		// Get the engine's global stream time, in seconds. This is the clock the mixer advances at the start of every output buffer and the time base used by playScheduled, scheduleStopAt and scheduleFadeAt. It only advances while the audio device is mixing.
+		time getEngineTime();
+		// Start playing a sound at an absolute engine time (see getEngineTime), with sample accuracy. Unlike playClocked there is no anchor and no re-anchor guard, so sounds can be scheduled arbitrarily far in the future. A time in the past plays as soon as possible. Negative volume means to use default.
+		handle playScheduled(time aEngineTime, AudioSource &aSound, float aVolume = -1.0f, float aPan = 0.0f, unsigned int aBus = 0);
+		// Calculate the delay in samples for a scheduled play call. Maps an absolute engine time to the output sample timeline. Used internally by playScheduled.
+		unsigned int getScheduledDelaySamples(time aEngineTime);
 		// Start playing a sound without any panning. It will be played at full volume.
 		handle playBackground(AudioSource &aSound, float aVolume = -1.0f, bool aPaused = 0, unsigned int aBus = 0);
 
@@ -342,9 +352,16 @@ namespace SoLoud
 		bool getAutoStop(handle aVoiceHandle);
 		// Get voice loop point value
 		time getLoopPoint(handle aVoiceHandle);
+		// Get voice loop end point value. Zero uses the natural source end.
+		time getLoopEndPoint(handle aVoiceHandle);
 
-		// Set voice loop point value
+		// Set voice loop point value. Live playback applies the change at the
+		// next source refill; the getter reflects it immediately.
 		void setLoopPoint(handle aVoiceHandle, time aLoopPoint);
+		// Set voice loop end point value. Zero uses the natural source end.
+		// Live playback applies the change at the next source refill; the getter
+		// reflects it immediately.
+		void setLoopEndPoint(handle aVoiceHandle, time aLoopEndPoint);
 		// Set voice's loop state
 		void setLooping(handle aVoiceHandle, bool aLooping);
 		// Set whether sound should auto-stop when it ends
@@ -392,6 +409,10 @@ namespace SoLoud
 		void schedulePause(handle aVoiceHandle, time aTime);
 		// Schedule a stream to stop
 		void scheduleStop(handle aVoiceHandle, time aTime);
+		// Schedule a stream to stop at an absolute engine time (see getEngineTime). A time in the past stops immediately.
+		void scheduleStopAt(handle aVoiceHandle, time aEngineTime);
+		// Schedule a volume fade to start at an absolute engine time (see getEngineTime), fading from the current volume to aTo over aFadeTime seconds. If aThenStop is true, the voice is stopped when the fade ends.
+		void scheduleFadeAt(handle aVoiceHandle, time aEngineTime, float aTo, time aFadeTime, bool aThenStop);
 
 		// Set up volume oscillator
 		void oscillateVolume(handle aVoiceHandle, float aFrom, float aTo, time aTime);
@@ -484,6 +505,8 @@ namespace SoLoud
 		void mapResampleBuffers_internal();
 		// Perform mixing for a specific bus
 		void mixBus_internal(float *aBuffer, unsigned int aSamplesToRead, unsigned int aBufferSize, float *aScratch, unsigned int aBus, float aSamplerate, unsigned int aChannels, unsigned int aResampler);
+		// Fill a source block while enforcing its optional loop end point.
+		unsigned int readSourceSamples_internal(AudioSourceInstance *aVoice, float *aBuffer, unsigned int aSamplesToRead, unsigned int aBufferSize);
 		// Find a free voice, stopping the oldest if no free voice is found.
 		int findFreeVoice_internal();
 		// Converts handle to voice, if the handle is valid. Returns -1 if not.
@@ -562,8 +585,14 @@ namespace SoLoud
 		Fader mGlobalVolumeFader;
 		// Global stream time, for the global volume fader.
 		time mStreamTime;
-		// Last time seen by the playClocked call
-		time mLastClockedTime;
+		// Anchor for the playClocked calls: maps the "physics time" given by
+		// the caller to the output sample timeline. A negative
+		// mClockedAnchorSample means the anchor has not been set yet.
+		time mClockedAnchorTime;
+		long long mClockedAnchorSample;
+		// Last "physics time" seen by a clocked play call. Used to detect
+		// when the caller's clock is restarted (time going backwards).
+		time mClockedLastTime;
 		// Global filter
 		Filter *mFilter[FILTERS_PER_STREAM];
 		// Global filter instance

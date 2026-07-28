@@ -114,6 +114,7 @@ build_lib() {
             -DBUILD_EXAMPLES=OFF \
             -DBUILD_TESTING=OFF \
             -DBUILD_DOCS=OFF \
+            -DINSTALL_MANPAGES=OFF \
             -DCMAKE_POLICY_VERSION_MINIMUM=3.5
     else
         cmake "$BASE_DIR/$lib" \
@@ -136,7 +137,8 @@ build_lib() {
     cp "$temp_install_path/lib/lib"*.so "$install_path/"
     
     # Strip debug symbols after copying
-    $ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip "$install_path/lib"*.so
+    # $ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip "$install_path/lib"*.so
+    $ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-strip "$install_path/lib"*.so
     
     # Copy headers (only needs to be done once per library)
     if [ "$arch" = "arm64-v8a" ]; then
@@ -167,12 +169,9 @@ for arch in "${ARCHS[@]}"; do
 done
 
 for arch in "${ARCHS[@]}"; do
-    echo -e "${BOLD_WHITE_ON_GREEN}=== Removing not used libvorbisenc.so* for $arch ===${RESET}"
-    rm "$OUTPUT_DIR/$arch/libvorbisenc.so"*
     echo -e "${BOLD_WHITE_ON_GREEN}=== Removing not used libFLAC++.so* ===${RESET}"
     rm -f "$OUTPUT_DIR/$arch/libFLAC++.so"*
 done
-rm "$OUTPUT_INCLUDE_DIR/vorbis/vorbisenc.h"
 
 echo
 echo -e "${BOLD_WHITE_ON_GREEN}Libraries created in $OUTPUT_DIR:${RESET}"

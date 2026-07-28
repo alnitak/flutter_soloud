@@ -5,8 +5,8 @@ import 'package:flutter_soloud/flutter_soloud.dart';
 import 'common.dart';
 
 /// Test allInstancesFinished stream.
-Future<StringBuffer> testAllInstancesFinished() async {
-  final strBuf = StringBuffer();
+Future<OutputBuffer> testAllInstancesFinished() async {
+  final strBuf = OutputBuffer();
   await initialize();
 
   await SoLoud.instance.disposeAllSources();

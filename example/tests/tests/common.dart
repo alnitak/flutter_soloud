@@ -1,10 +1,13 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 
 Future<void> initialize() async {
   await SoLoud.instance.init();
-  SoLoud.instance.setGlobalVolume(0.2);
+  if (!kIsWeb) {
+    SoLoud.instance.setGlobalVolume(0.2);
+  }
 }
 
 void deinit() {
@@ -22,3 +25,6 @@ bool closeTo(num value, num expected, num epsilon) {
 Future<AudioSource> loadAsset() async {
   return SoLoud.instance.loadAsset('assets/audio/explosion.mp3');
 }
+
+/// A buffer that accumulates test output.
+class OutputBuffer extends StringBuffer {}

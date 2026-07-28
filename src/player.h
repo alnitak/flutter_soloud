@@ -22,14 +22,16 @@
 #include <thread>
 #include <vector>
 
-struct PlaybackDevice {
+struct PlaybackDevice
+{
   char *name;
   unsigned int isDefault;
   unsigned int id;
-  ma_device_id deviceId;  // Store the actual device ID, not just the index
+  ma_device_id deviceId; // Store the actual device ID, not just the index
 };
 
-class Player {
+class Player
+{
 public:
   Player();
   ~Player();
@@ -88,10 +90,8 @@ public:
   /// @param hash return the hash of the sound.
   /// @return Returns [PlayerErrors.SO_NO_ERROR] if success
   ///
-  /// NOTE: non standard OGGs file with a custom header introduced by `xiph`
-  /// cannot be playd and the `stb_vorbis::start_decoder` returns
-  /// VORBIS_invalid_first_page error. ref:
-  /// https://github.com/nothings/stb/issues/676
+  /// NOTE: non-standard OGG files with custom headers may fail to decode
+  /// depending on the codec backend used.
   PlayerErrors loadFile(const std::string &completeFileName,
                         const bool loadIntoMem, unsigned int *hash);
 
@@ -138,17 +138,64 @@ public:
   /// @return Returns [PlayerErrors.SO_NO_ERROR] if success.
   PlayerErrors getStreamTimeConsumed(unsigned int hash, float *timeConsumed);
 
-  /// @brief Add an audio data stream.
+  /// @brief Add a chunk of audio data to the buffer stream.
   /// @param hash the hash of the sound.
   /// @param data the audio data to add.
   /// @param aDataLen the length of [data].
+  /// @return Returns [PlayerErrors.SO_NO_ERROR] if success.
   PlayerErrors addAudioDataStream(unsigned int hash, const unsigned char *data,
                                   unsigned int aDataLen);
 
-  /// @brief Set the end of the data stream.
+  /// @brief Set the end of the buffer data stream.
   /// @param hash the hash of the sound.
   /// @return Returns [PlayerErrors.SO_NO_ERROR] if success.
   PlayerErrors setDataIsEnded(unsigned int hash);
+
+  /// @brief Set up a pull-based audio stream.
+  /// @param hash return the hash of the sound.
+  /// @param bufferSizeBytes the decoded circular buffer size in bytes.
+  /// @param bufferTriggerPosition normalized fraction in `[0.0, 1.0]` that
+  /// controls when the engine requests more data.
+  /// @param sampleRate the sample rate of the decoded audio.
+  /// @param channels the number of channels.
+  /// @param format the audio format (PCM variants or AUTO).
+  /// @param audioSizeBytes total encoded or PCM file size in bytes.
+  /// @param onBufferingCallback callback for buffering events.
+  /// @param onMetadataCallback callback for metadata events.
+  /// @param onMoreDataIsNeededCallback callback for pull data requests.
+  /// @param onAudioDurationCallback callback for total duration.
+  PlayerErrors setPullBufferStream(
+      unsigned int &hash, unsigned int bufferSizeBytes,
+      double bufferTriggerPosition, unsigned int sampleRate,
+      unsigned int channels, BufferType format, uint64_t audioSizeBytes,
+      dartOnBufferingCallback_t onBufferingCallback,
+      dartOnMetadataCallback_t onMetadataCallback,
+      dartOnMoreDataIsNeededCallback_t onMoreDataIsNeededCallback,
+      dartOnAudioDurationCallback_t onAudioDurationCallback = nullptr);
+
+  /// @brief Resets the pull buffer stream.
+  /// @param hash the hash of the sound.
+  PlayerErrors resetPullBufferStream(unsigned int hash);
+
+  /// @brief Add a chunk of audio data to the pull buffer stream.
+  /// @param hash the hash of the sound.
+  /// @param data the audio data to add.
+  /// @param aDataLen the length of [data].
+  /// @param offset the byte offset of this chunk in the original stream, or 0
+  /// for the next sequential chunk.
+  PlayerErrors addPullBufferDataStream(unsigned int hash,
+                                       const unsigned char *data,
+                                       unsigned int aDataLen,
+                                       uint64_t offset);
+
+  /// @brief Get the current decoded buffer time range for a pull buffer stream.
+  /// @param hash the hash of the sound.
+  /// @param startTime returns the start time in seconds of the decoded buffer.
+  /// @param endTime returns the end time in seconds of the decoded buffer.
+  /// @return Returns [PlayerErrors.SO_NO_ERROR] if success.
+  PlayerErrors getPullBufferTimeRange(unsigned int hash,
+                                       double *startTime,
+                                       double *endTime);
 
   /// @brief Get the current buffer size in bytes of this sound with hash
   /// [hash].
@@ -201,7 +248,10 @@ public:
   /// @brief Pause or unpause already loaded sound identified by [handle].
   /// @param handle the sound handle.
   /// @param pause whether this sound should be paused or not.
-  void setPause(unsigned int handle, bool pause);
+  /// @param isUserAction true if this pause/unpause comes from the user
+  /// (Dart setPause/pauseSwitch). Automatic buffering pauses pass false so
+  /// they do not flip the user-paused flag.
+  void setPause(unsigned int handle, bool pause, bool isUserAction = true);
 
   /// @brief Schedule a deferred pause of the audio device. If no voices
   /// remain active after a short delay, the engine is paused. Requests are
@@ -247,13 +297,110 @@ public:
   /// @param looping whether to start the sound in looping state.
   /// @param loopingStartAt If looping is enabled, the loop point is, by
   /// default, the start of the stream. The loop start point can be set with
-  /// this parameter, and current loop point can be queried with
-  /// [getLoopingPoint] and changed by [setLoopingPoint].
+  /// this parameter.
+  /// @param loopingEndAt If greater than zero, loop before this time. Zero
+  /// uses the natural end of the stream.
   /// @return the handle of the sound, 0 if error.
   PlayerErrors play(unsigned int soundHash, unsigned int &handle,
                     unsigned int busId = 0,
                     float volume = 1.0f, float pan = 0.0f, bool paused = false,
-                    bool looping = false, double loopingStartAt = 0.0);
+                    bool looping = false, double loopingStartAt = 0.0,
+                    double loopingEndAt = 0.0);
+
+  /// @brief Variant of [play] that takes an additional parameter, the time
+  /// offset for the sound.
+  ///
+  /// While the vanilla [play] tries to play sounds as soon as possible,
+  /// [playClocked] will delay the start of sounds so that rapidly launched
+  /// sounds don't all get clumped to the start of the next outgoing sound
+  /// buffer.
+  /// @param soundHash the unique hash of the sound to play.
+  /// @param handle the handle of this new sound.
+  /// @param soundTime your app's "physics time", in seconds. SoLoud will use
+  /// that time (as well as the time previously used) to calculate the delay
+  /// between two sound effects.
+  /// @param busId the bus ID to play the sound on. 0 means the main engine.
+  /// @param volume 1.0f full volume.
+  /// @param pan 0.0f centered.
+  /// @return the error if any and the [handle] of this new sound.
+  PlayerErrors playClocked(unsigned int soundHash, unsigned int &handle,
+                           double soundTime, unsigned int busId = 0,
+                           float volume = 1.0f, float pan = 0.0f);
+
+  /// @brief Set the number of samples to delay before starting to play
+  /// a sound.
+  ///
+  /// This is used internally by [playClocked]. In the unlikely event that
+  /// you may want to use it manually, it's available here. Note that calling
+  /// this on a "live" voice will cause silence to be inserted at the start
+  /// of the next audio buffer.
+  /// @param handle handle of the sound.
+  /// @param samples the number of samples to delay the sound with.
+  void setDelaySamples(unsigned int handle, unsigned int samples);
+
+  /// @brief Get the current stream time of a voice, in seconds.
+  /// @param handle handle of the sound.
+  /// @return the stream time in seconds. 0 if [handle] is invalid.
+  double getStreamTime(unsigned int handle);
+
+  /// @brief Reset the clock used by [playClocked] and [play3dClocked] to the
+  /// state as if they were never called.
+  ///
+  /// The next clocked play will anchor the caller's "physics time" to the
+  /// audio clock again (leading by two output buffers).
+  void resetStreamTime();
+
+  /// @brief Get the engine's global stream time, in seconds.
+  ///
+  /// This is the clock the mixer advances at the start of every output
+  /// buffer and the time base used by [playScheduled], [stopScheduled] and
+  /// [fadeScheduled]. It only advances while the audio device is mixing.
+  /// @return the engine time in seconds.
+  double getEngineTime();
+
+  /// @brief Start playing a sound at an absolute engine time (see
+  /// [getEngineTime]), with sample accuracy.
+  ///
+  /// Unlike [playClocked] there is no anchor and no re-anchor guard, so
+  /// sounds can be scheduled arbitrarily far in the future. A time in the
+  /// past plays as soon as possible.
+  /// @param soundHash the unique hash of the sound to play.
+  /// @param handle the handle of this new sound.
+  /// @param atTime the absolute engine time, in seconds, at which the sound
+  /// should start.
+  /// @param duration if greater than zero, the sound is automatically
+  /// stopped at [atTime] + [duration].
+  /// @param busId the bus ID to play the sound on. 0 means the main engine.
+  /// @param volume 1.0f full volume.
+  /// @param pan 0.0f centered.
+  /// @return the error if any and the [handle] of this new sound.
+  PlayerErrors playScheduled(unsigned int soundHash, unsigned int &handle,
+                             double atTime, double duration = 0.0,
+                             unsigned int busId = 0,
+                             float volume = 1.0f, float pan = 0.0f);
+
+  /// @brief Stop a sound at an absolute engine time (see [getEngineTime]).
+  ///
+  /// A time in the past stops the sound immediately.
+  /// @param handle handle of the sound.
+  /// @param atTime the absolute engine time, in seconds, at which the sound
+  /// should stop.
+  void stopScheduled(unsigned int handle, double atTime);
+
+  /// @brief Fade the volume of a sound starting at an absolute engine time
+  /// (see [getEngineTime]).
+  ///
+  /// The fade goes from the volume the sound has at call time to [to] over
+  /// [fadeTime] seconds. If [thenStop] is true, the sound is stopped when
+  /// the fade ends (at [atTime] + [fadeTime]).
+  /// @param handle handle of the sound.
+  /// @param atTime the absolute engine time, in seconds, at which the fade
+  /// should start. A time in the past starts the fade immediately.
+  /// @param to the ending volume of the fade.
+  /// @param fadeTime the duration of the fade, in seconds.
+  /// @param thenStop whether to stop the sound when the fade ends.
+  void fadeScheduled(unsigned int handle, double atTime, float to,
+                     double fadeTime, bool thenStop);
 
   /// @brief Stop already loaded sound identified by [handle] and clear it.
   /// @param handle handle of the sound.
@@ -292,6 +439,16 @@ public:
   /// @param handle handle of the sound.
   /// @param time in seconds.
   void setLoopPoint(unsigned int handle, double time);
+
+  /// @brief Get the sound loop end point value.
+  /// @param handle handle of the sound.
+  /// @return the time in seconds, or zero for the natural stream end.
+  double getLoopEndPoint(unsigned int handle);
+
+  /// @brief Set the sound loop end point value.
+  /// @param handle handle of the sound.
+  /// @param time in seconds, or zero to use the natural stream end.
+  void setLoopEndPoint(unsigned int handle, double time);
 
   /// @brief Speech the given text.
   /// @param textToSpeech the text to be spoken.
@@ -442,8 +599,6 @@ public:
   /// @return If not found, return nullptr.
   ActiveSound *findByHash(unsigned int hash);
 
-  void debug();
-
   /////////////////////////////////////////
   /// voice groups
   /////////////////////////////////////////
@@ -512,8 +667,6 @@ public:
   /// @brief After specified time, pause the channel.
   /// @param handle the sound handle.
   /// @param time the time in seconds to pause.
-  // TODO(marco): see if it is possible to use scheduleStop() to use it as
-  // loop-end position
   void scheduleStop(SoLoud::handle handle, float time);
 
   /// @brief Set fader to oscillate the volume at specified frequency.
@@ -556,14 +709,37 @@ public:
   /// @param looping whether to start the sound in looping state.
   /// @param loopingStartAt If looping is enabled, the loop point is, by
   /// default, the start of the stream. The loop start point can be set with
-  /// this parameter, and current loop point can be queried with
-  /// [getLoopingPoint] and changed by [setLoopingPoint].
+  /// this parameter.
+  /// @param loopingEndAt If greater than zero, loop before this time. Zero
+  /// uses the natural end of the stream.
   /// @return the handle of the sound, 0 if error.
   PlayerErrors play3d(unsigned int soundHash, unsigned int &handle, float posX,
                       float posY, float posZ, float velX = 0.0f,
                       float velY = 0.0f, float velZ = 0.0f, float volume = 1.0f,
                       bool paused = 0, unsigned int busId = 0,
-                      bool looping = false, double loopingStartAt = 0.0);
+                      bool looping = false, double loopingStartAt = 0.0,
+                      double loopingEndAt = 0.0);
+
+  /// @brief play3dClocked() is the 3d version of the playClocked() call.
+  ///
+  /// Instead of panning like with the "2d" version of the call, the 3d
+  /// version requires 3d position and optionally velocity vector. Like its
+  /// 2d version, this one delays the start of the sound based on the
+  /// [soundTime] parameter, so that firing off sounds rapidly won't cause
+  /// the sounds to "clump" together at the start of the next sound buffer.
+  /// @param soundHash the unique hash of the sound to play.
+  /// @param handle the handle of this new sound.
+  /// @param soundTime your app's "physics time", in seconds.
+  /// @param posX, posY, posZ the audio source position coordinates.
+  /// @param velX, velY, velZ the audio source velocity.
+  /// @param volume 1.0f full volume.
+  /// @param busId the bus ID to play the sound on. 0 means the main engine.
+  /// @return the error if any and the [handle] of this new sound.
+  PlayerErrors play3dClocked(unsigned int soundHash, unsigned int &handle,
+                             double soundTime, float posX, float posY,
+                             float posZ, float velX = 0.0f, float velY = 0.0f,
+                             float velZ = 0.0f, float volume = 1.0f,
+                             unsigned int busId = 0);
 
   /// You can set and get the current value of the speed of
   /// sound width the get3dSoundSpeed() and set3dSoundSpeed() functions.
@@ -618,7 +794,7 @@ public:
   void busAnnexSound(unsigned int busId, unsigned int voiceHandle);
   unsigned int busGetActiveVoiceCount(unsigned int busId);
   BusData *findBusData(unsigned int busId);
-  
+
 public:
   /// all the sounds loaded
   std::vector<std::unique_ptr<ActiveSound>> sounds;
@@ -642,7 +818,7 @@ public:
 private:
   ma_device_info *pPlaybackInfos;
   std::mutex remove_handle_mutex;
-  mutable std::recursive_mutex sounds_mutex;  // Protects the sounds vector (recursive to avoid deadlock in destructors)
+  mutable std::recursive_mutex sounds_mutex; // Protects the sounds vector (recursive to avoid deadlock in destructors)
   unsigned int mBufferSize;
 
   std::map<unsigned int, BusData> busMap;

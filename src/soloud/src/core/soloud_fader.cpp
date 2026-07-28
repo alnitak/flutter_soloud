@@ -58,8 +58,26 @@ namespace SoLoud
 		mEndTime = (float)M_PI * 2 / mTime;
 	}
 
+	void Fader::setScheduled(float aFrom, float aTo, double aTime, double aStartTime)
+	{
+		set(aFrom, aTo, aTime, aStartTime);
+		// Scheduled mode: hold at aFrom until aStartTime is reached (get()
+		// would otherwise treat a future start time as a clock rollover and
+		// restart the fade immediately).
+		mActive = 3;
+	}
+
 	float Fader::get(double aCurrentTime)
 	{
+		if (mActive == 3)
+		{
+			// Scheduled fader waiting for its start time.
+			if (aCurrentTime < mStartTime)
+			{
+				return mFrom;
+			}
+			mActive = 1;
+		}
 		if (mActive == 2)
 		{
 			// LFO mode

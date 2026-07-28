@@ -4,8 +4,8 @@ import 'common.dart';
 
 /// Test waveform controls including different waveform types,
 /// frequency changes, scale, detune, and super wave.
-Future<StringBuffer> testWaveformControls() async {
-  final strBuf = StringBuffer();
+Future<OutputBuffer> testWaveformControls() async {
+  final strBuf = OutputBuffer();
   await initialize();
 
   // Test all waveform types

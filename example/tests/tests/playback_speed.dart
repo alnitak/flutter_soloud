@@ -4,8 +4,8 @@ import 'common.dart';
 
 /// Test playback speed controls including setRelativePlaySpeed,
 /// fadeRelativePlaySpeed, and oscillateRelativePlaySpeed.
-Future<StringBuffer> testPlaybackSpeed() async {
-  final strBuf = StringBuffer();
+Future<OutputBuffer> testPlaybackSpeed() async {
+  final strBuf = OutputBuffer();
   await initialize();
 
   // Load and play a sound

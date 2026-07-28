@@ -3,8 +3,8 @@ import 'package:flutter_soloud/flutter_soloud.dart';
 import 'common.dart';
 
 /// Test waveform.
-Future<StringBuffer> testCreateNotes() async {
-  final strBuf = StringBuffer();
+Future<OutputBuffer> testCreateNotes() async {
+  final strBuf = OutputBuffer();
   await initialize();
 
   final notes0 = await SoLoudTools.createNotes(

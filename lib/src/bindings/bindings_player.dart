@@ -18,6 +18,13 @@ typedef OnBufferingCallbackTFunction =
 /// Callback set in `setBufferStream` for the `onMetadata` closure.
 typedef OnMetadataCallbackTFunction = void Function(dynamic metadata);
 
+/// Callback set in `setPullBufferStream` for the `onAudioDuration` closure.
+typedef OnAudioDurationCallbackTFunction = void Function(double duration);
+
+/// Callback set in `setPullBufferStream` for the `onMoreDataIsNeeded` closure.
+/// [offset] is the byte position in the original encoded stream.
+typedef OnMoreDataIsNeededCallbackTFunction = void Function(int offset);
+
 /// Abstract class defining the interface for the platform-specific
 /// implementations.
 abstract class FlutterSoLoud {
@@ -68,6 +75,88 @@ abstract class FlutterSoLoud {
   /// Check if the libopus and libogg are available at build time.
   @mustBeOverridden
   bool areXiphLibsAvailable();
+
+  /// Controller that fires copied mixer output chunks.
+  ///
+  /// Platform implementations copy data out of the native circular buffer
+  /// and advance the read position before emitting here. This provides a
+  /// single, safe stream for `SoLoud.startMixerOutputStream`.
+  late final StreamController<Uint8List> mixerOutputChunkController =
+      StreamController.broadcast();
+
+  /// Stream of copied mixer output chunks.
+  Stream<Uint8List> get mixerOutputChunkEvents =>
+      mixerOutputChunkController.stream;
+
+  /// Register the mixer output callback so that this isolate's
+  /// [mixerOutputChunkEvents] stream receives copied chunks.
+  ///
+  /// This is intended for non-main isolates that want to start capture after
+  /// the engine has been initialized in the main isolate. It does not touch the
+  /// voice-ended, file-loaded, or state-changed callbacks, which must remain
+  /// owned by the main isolate. Implementations must be idempotent.
+  @mustBeOverridden
+  void registerMixerOutputCallback();
+
+  /// Start capturing the master mixer output.
+  ///
+  /// [format] the desired output format.
+  /// [sampleRate] the sample rate. Use -1 to follow the engine rate.
+  /// [channels] the channel count. Use -1 to follow the engine channels.
+  /// [bufferSizeBytes] total size of the circular capture buffer.
+  /// [notificationThresholdBytes] bytes that must be available before
+  /// [mixerOutputChunkEvents] fires. Used for compressed formats.
+  /// [chunkPCMFrames] fixed number of PCM frames per emitted chunk.
+  /// Used for PCM formats; -1 to disable.
+  ///
+  /// Returns [PlayerErrors.noError] if success.
+  @mustBeOverridden
+  PlayerErrors startMixerOutputCapture(
+    MixerOutputFormat format,
+    int sampleRate,
+    int channels,
+    int bufferSizeBytes,
+    int notificationThresholdBytes,
+    int chunkPCMFrames,
+  );
+
+  /// Stop capturing the master mixer output.
+  @mustBeOverridden
+  void stopMixerOutputCapture();
+
+  /// Whether mixer output capture is currently active.
+  @mustBeOverridden
+  bool isMixerOutputCaptureRunning();
+
+  /// Total size of the native capture buffer in bytes.
+  @mustBeOverridden
+  int getMixerOutputBufferSize();
+
+  /// Number of unread bytes currently available in the capture buffer.
+  @mustBeOverridden
+  int getMixerOutputAvailableBytes();
+
+  /// Current read offset in the capture buffer.
+  @mustBeOverridden
+  int getMixerOutputReadOffset();
+
+  /// Advance the read position by [bytes].
+  @mustBeOverridden
+  void advanceMixerOutputReadPosition(int bytes);
+
+  /// Copy [length] bytes from the native capture buffer starting at [offset].
+  @mustBeOverridden
+  Uint8List copyMixerOutputBuffer(int offset, int length);
+
+  /// Returns the current 44-byte WAV header for the active capture session.
+  ///
+  /// This is only meaningful when the capture format is
+  /// [MixerOutputFormat.wav].
+  /// The header's size fields reflect the PCM data emitted so far; callers
+  /// should overwrite the first 44 bytes of the saved file with the returned
+  /// header after stopping capture to ensure the WAV file is valid.
+  @mustBeOverridden
+  Uint8List getMixerOutputWavHeader();
 
   /// Initialize the player. Must be called before any other player functions.
   ///
@@ -211,6 +300,58 @@ abstract class FlutterSoLoud {
   @mustBeOverridden
   ({PlayerErrors error, int sizeInBytes}) getBufferSize(SoundHash soundHash);
 
+  /// Set up a pull-based audio stream.
+  ///
+  /// [bufferSizeBytes] the decoded circular buffer size in bytes.
+  /// [bufferTriggerPosition] normalized fraction in `[0.0, 1.0]` that controls
+  /// when [onMoreDataIsNeeded] is fired.
+  /// [sampleRate] the sample rate of the decoded audio.
+  /// [channels] the number of channels.
+  /// [format] the audio format (PCM variants or AUTO).
+  /// [audioSizeBytes] total encoded or PCM file size in bytes.
+  @mustBeOverridden
+  ({PlayerErrors error, SoundHash soundHash}) setPullBufferStream(
+    int bufferSizeBytes,
+    double bufferTriggerPosition,
+    int sampleRate,
+    int channels,
+    int format,
+    int audioSizeBytes,
+    OnBufferingCallbackTFunction? onBuffering,
+    OnMetadataCallbackTFunction? onMetadata,
+    OnMoreDataIsNeededCallbackTFunction? onMoreDataIsNeeded,
+    OnAudioDurationCallbackTFunction? onAudioDuration,
+  );
+
+  /// Reset the pull buffer stream.
+  /// [soundHash] the hash of the stream sound.
+  @mustBeOverridden
+  PlayerErrors resetPullBufferStream(SoundHash soundHash);
+
+  /// Add a chunk of audio data to the pull buffer stream.
+  ///
+  /// [hash] the hash of the sound.
+  /// [audioChunk] the audio data to add.
+  /// [offset] the byte offset of this chunk in the original stream, or 0 for
+  /// the next sequential chunk.
+  ///
+  /// Returns [PlayerErrors.noError] if success.
+  @mustBeOverridden
+  PlayerErrors addPullBufferDataStream(
+    int hash,
+    Uint8List audioChunk, {
+    int offset = 0,
+  });
+
+  /// Get the decoded time range of the pull buffer stream.
+  ///
+  /// [hash] the hash of the sound.
+  /// Returns a record with the player error and the decoded buffer start/end
+  /// positions in seconds.
+  @mustBeOverridden
+  ({PlayerErrors error, double startTime, double endTime})
+  getPullBufferTimeRange(int hash);
+
   /// Load a new waveform to be played once or multiple times later.
   ///
   /// [waveform]
@@ -327,8 +468,8 @@ abstract class FlutterSoLoud {
   /// [looping] whether to start the sound in looping state.
   /// [loopingStartAt] If looping is enabled, the loop point is, by default,
   /// the start of the stream. The loop start point can be set with this
-  /// parameter, and current loop point can be queried with `getLoopingPoint()`
-  /// and changed by `setLoopingPoint()`.
+  /// parameter. [loopingEndAt] optionally sets the exclusive end of the loop;
+  /// when it is `null`, the stream's natural end is used.
   /// Return the error if any and a new `newHandle` of this sound.
   @mustBeOverridden
   ({PlayerErrors error, SoundHandle newHandle}) play(
@@ -339,6 +480,125 @@ abstract class FlutterSoLoud {
     bool paused = false,
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
+    Duration? loopingEndAt,
+  });
+
+  /// Variant of [play] that takes an additional parameter, the time offset
+  /// for the sound.
+  ///
+  /// While the vanilla [play] tries to play sounds as soon as possible,
+  /// [playClocked] will delay the start of sounds so that rapidly launched
+  /// sounds don't all get clumped to the start of the next outgoing sound
+  /// buffer.
+  ///
+  /// [soundHash] the unique sound hash of a sound.
+  /// [soundTime] your app's "physics time". The engine will use that time
+  /// (as well as the time previously used) to calculate the delay between
+  /// two sound effects.
+  /// [busId] the bus ID to play the sound on. 0 means the main engine.
+  /// [volume] 1.0 full volume.
+  /// [pan] 0.0 centered.
+  /// Return the error if any and a new `newHandle` of this sound.
+  @mustBeOverridden
+  ({PlayerErrors error, SoundHandle newHandle}) playClocked(
+    SoundHash soundHash,
+    Duration soundTime, {
+    int busId = 0,
+    double volume = 1,
+    double pan = 0,
+  });
+
+  /// Set the number of samples to delay before starting to play a sound.
+  ///
+  /// This is used internally by [playClocked]. In the unlikely event that
+  /// you may want to use it manually, it's available here. Note that calling
+  /// this on a "live" voice will cause silence to be inserted at the start
+  /// of the next audio buffer.
+  ///
+  /// [handle] the sound handle.
+  /// [samples] the number of samples to delay the sound with.
+  @mustBeOverridden
+  void setDelaySamples(SoundHandle handle, int samples);
+
+  /// Get the current stream time of a voice.
+  ///
+  /// [handle] the sound handle.
+  /// Returns the stream time. [Duration.zero] if [handle] is invalid.
+  @mustBeOverridden
+  Duration getStreamTime(SoundHandle handle);
+
+  /// Reset the clock used by [playClocked] and [play3dClocked] to the state
+  /// as if they were never called.
+  ///
+  /// The next clocked play will anchor the caller's "physics time" to the
+  /// audio clock again (leading by two output buffers).
+  @mustBeOverridden
+  void resetStreamTime();
+
+  /// Get the engine's global stream time.
+  ///
+  /// This is the clock the mixer advances at the start of every output
+  /// buffer and the time base used by [playScheduled], [stopScheduled] and
+  /// [fadeScheduled]. It only advances while the audio device is mixing.
+  ///
+  /// Returns the engine time.
+  @mustBeOverridden
+  Duration getEngineTime();
+
+  /// Start playing a sound at an absolute engine time (see [getEngineTime]),
+  /// with sample accuracy.
+  ///
+  /// Unlike [playClocked] there is no anchor and no re-anchor guard, so
+  /// sounds can be scheduled arbitrarily far in the future. A time in the
+  /// past plays as soon as possible.
+  ///
+  /// [soundHash] the unique sound hash of a sound.
+  /// [atTime] the absolute engine time at which the sound should start.
+  /// [duration] if greater than zero, the sound is automatically stopped
+  /// at [atTime] + [duration].
+  /// [busId] the bus ID to play the sound on. 0 means the main engine.
+  /// [volume] 1.0 full volume.
+  /// [pan] 0.0 centered.
+  /// Return the error if any and a new `newHandle` of this sound.
+  @mustBeOverridden
+  ({PlayerErrors error, SoundHandle newHandle}) playScheduled(
+    SoundHash soundHash,
+    Duration atTime, {
+    Duration duration = Duration.zero,
+    int busId = 0,
+    double volume = 1,
+    double pan = 0,
+  });
+
+  /// Stop a sound at an absolute engine time (see [getEngineTime]).
+  ///
+  /// A time in the past stops the sound immediately.
+  ///
+  /// [handle] the sound handle.
+  /// [atTime] the absolute engine time at which the sound should stop.
+  @mustBeOverridden
+  void stopScheduled(SoundHandle handle, Duration atTime);
+
+  /// Fade the volume of a sound starting at an absolute engine time
+  /// (see [getEngineTime]).
+  ///
+  /// The fade goes from the volume the sound has at call time to [to] over
+  /// [time]. If [thenStop] is true, the sound is stopped when the fade
+  /// ends (at [atTime] + [time]).
+  ///
+  /// [handle] the sound handle.
+  /// [atTime] the absolute engine time at which the fade should start.
+  /// A time in the past starts the fade immediately.
+  /// [to] the ending volume of the fade.
+  /// [time] the duration of the fade.
+  /// [thenStop] whether to stop the sound when the fade ends.
+  @mustBeOverridden
+  void fadeScheduled(
+    SoundHandle handle,
+    Duration atTime,
+    double to,
+    Duration time, {
+    bool thenStop = false,
   });
 
   /// Stop already loaded sound identified by [handle] and clear it.
@@ -384,8 +644,24 @@ abstract class FlutterSoLoud {
   ///
   /// [handle] the sound handle.
   /// [timestamp] the time in which the loop will restart.
+  /// The requested value is visible immediately and takes effect on playback
+  /// at the next 512-frame source refill.
   @mustBeOverridden
   void setLoopPoint(SoundHandle handle, Duration timestamp);
+
+  /// Get the exclusive end point of the sound's looping region.
+  ///
+  /// Returns `null` when the stream's natural end is used.
+  @mustBeOverridden
+  Duration? getLoopEndPoint(SoundHandle handle);
+
+  /// Set the exclusive end point of the sound's looping region.
+  ///
+  /// Set [timestamp] to `null` to use the stream's natural end.
+  /// The requested value is visible immediately and takes effect on playback
+  /// at the next 512-frame source refill.
+  @mustBeOverridden
+  void setLoopEndPoint(SoundHandle handle, Duration? timestamp);
 
   /// Enable or disable visualization.
   /// Not yet supported on the web.
@@ -841,8 +1117,8 @@ abstract class FlutterSoLoud {
   /// [looping] whether to start the sound in looping state.
   /// [loopingStartAt] If looping is enabled, the loop point is, by default,
   /// the start of the stream. The loop start point can be set with this
-  /// parameter, and current loop point can be queried with `getLoopingPoint()`
-  /// and changed by `setLoopingPoint()`.
+  /// parameter. [loopingEndAt] optionally sets the exclusive end of the loop;
+  /// when it is `null`, the stream's natural end is used.
   /// Returns the handle of the sound, 0 if error.
   @mustBeOverridden
   ({PlayerErrors error, SoundHandle newHandle}) play3d(
@@ -858,6 +1134,36 @@ abstract class FlutterSoLoud {
     bool paused = false,
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
+    Duration? loopingEndAt,
+  });
+
+  /// play3dClocked() is the 3d version of the [playClocked] call.
+  ///
+  /// Instead of panning like with the "2d" version of the call, the 3d
+  /// version requires 3d position and optionally velocity vector. Like its
+  /// 2d version, this one delays the start of the sound based on the
+  /// [soundTime] parameter, so that firing off sounds rapidly won't cause
+  /// the sounds to "clump" together at the start of the next sound buffer.
+  ///
+  /// [soundHash] the unique sound hash of a sound.
+  /// [soundTime] your app's "physics time".
+  /// [posX], [posY], [posZ] are the audio source position coordinates.
+  /// [busId] the bus ID to play the sound on. 0 means the main engine.
+  /// [velX], [velY], [velZ] are the audio source velocity.
+  /// [volume] 1.0 full volume.
+  /// Return the error if any and a new `newHandle` of this sound.
+  @mustBeOverridden
+  ({PlayerErrors error, SoundHandle newHandle}) play3dClocked(
+    SoundHash soundHash,
+    Duration soundTime,
+    double posX,
+    double posY,
+    double posZ, {
+    int busId = 0,
+    double velX = 0,
+    double velY = 0,
+    double velZ = 0,
+    double volume = 1,
   });
 
   /// Since SoLoud has no knowledge of the scale of your coordinates,

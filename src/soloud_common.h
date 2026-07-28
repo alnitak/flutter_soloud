@@ -53,6 +53,14 @@
 
 void soloud_platform_log(const char *fmt, ...);
 
+/// Debug logging for hot paths. Compiles to a no-op unless SOLOUD_DEBUG_LOGGING
+/// is defined at build time, so release builds do not pay for formatting or I/O.
+#ifdef SOLOUD_DEBUG_LOGGING
+#define SOLOUD_DEBUG_LOG(...) soloud_platform_log(__VA_ARGS__)
+#else
+#define SOLOUD_DEBUG_LOG(...) ((void)0)
+#endif
+
 #ifndef MIN
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
 #endif

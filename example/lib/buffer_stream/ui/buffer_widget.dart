@@ -26,11 +26,12 @@ class BufferBar extends StatefulWidget {
 }
 
 class _BufferBarState extends State<BufferBar> {
-  final width = 190.0;
+  final width = 300.0;
   final height = 30.0;
   Timer? timer;
   int currentMaxBytes = 1024 * 1024; // 1 MB
   String firstHandleHumanPos = '';
+  final pause = ValueNotifier<bool>(true);
 
   @override
   void initState() {
@@ -105,34 +106,82 @@ class _BufferBarState extends State<BufferBar> {
             Text('pos: $firstHandleHumanPos'),
           ],
         ),
-        ColoredBox(
-          color: Colors.grey,
-          child: Padding(
-            padding: const EdgeInsets.all(10),
-            child: Stack(
-              children: [
-                SizedBox(
-                  height: height,
-                  width: width,
-                  child: LinearProgressIndicator(
-                    value: progressValue,
-                    backgroundColor: Colors.black,
-                    valueColor: const AlwaysStoppedAnimation(Colors.red),
-                    minHeight: height,
-                  ),
-                ),
-                for (var i = 0; i < handlesPos.length; i++)
-                  Positioned(
-                    left: handlesPos[i] * progressValue * width,
-                    child: SizedBox(
-                      height: height,
-                      width: 3,
-                      child: const ColoredBox(color: Colors.yellowAccent),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ColoredBox(
+              color: Colors.grey,
+              child: Padding(
+                padding: const EdgeInsets.all(10),
+                child: Stack(
+                  children: [
+                    GestureDetector(
+                      onTapDown: (details) {
+                        final bufferedWidth = progressValue * width;
+                        if (bufferedWidth <= 0) return;
+
+                        final relative =
+                            (details.localPosition.dx / bufferedWidth)
+                                .clamp(0.0, 1.0);
+                        final touchPosition = Duration(
+                          milliseconds:
+                              (relative * soundLength.inMilliseconds).round(),
+                        );
+                        debugPrint(
+                          'Touched progress bar at '
+                          '${relative.toStringAsFixed(3)} -> $touchPosition',
+                        );
+                        if (widget.sound!.handles.isNotEmpty) {
+                          SoLoud.instance.seek(
+                            widget.sound!.handles.first,
+                            touchPosition,
+                          );
+                        }
+                      },
+                      child: SizedBox(
+                        height: height,
+                        width: width,
+                        child: LinearProgressIndicator(
+                          value: progressValue,
+                          backgroundColor: Colors.black,
+                          valueColor: const AlwaysStoppedAnimation(Colors.red),
+                          minHeight: height,
+                          borderRadius: BorderRadius.circular(5),
+                        ),
+                      ),
                     ),
-                  ),
-              ],
+                    for (var i = 0; i < handlesPos.length; i++)
+                      Positioned(
+                        left: handlesPos[i] * progressValue * width,
+                        child: SizedBox(
+                          height: height,
+                          width: 3,
+                          child: const ColoredBox(color: Colors.yellowAccent),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
             ),
-          ),
+
+            // Play/pause button
+            if (widget.sound!.handles.isNotEmpty)
+              ValueListenableBuilder(
+                valueListenable: pause,
+                builder: (context, value, child) {
+                  return IconButton(
+                    onPressed: () async {
+                      SoLoud.instance.setPause(
+                        widget.sound!.handles.first,
+                        value,
+                      );
+                      pause.value = !value;
+                    },
+                    icon: Icon(value ? Icons.pause : Icons.play_arrow),
+                  );
+                },
+              ),
+          ],
         ),
       ],
     );
