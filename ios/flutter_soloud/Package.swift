@@ -4,6 +4,16 @@
 import PackageDescription
 import class Foundation.ProcessInfo
 
+// --- Backward-compatibility warning for renamed env variable ---
+if ProcessInfo.processInfo.environment["NO_OPUS_OGG_LIBS"] != nil {
+    print(
+        "warning: NO_OPUS_OGG_LIBS is set. This has no effect because " +
+        "the setting has been renamed to NO_XIPH_LIBS. In your command line " +
+        "invocations and build scripts, simply replace all occurrences of " +
+        "NO_OPUS_OGG_LIBS (old) with NO_XIPH_LIBS (new)."
+    )
+}
+
 // Check if Xiph libraries should be disabled via environment variable
 // Usage: NO_XIPH_LIBS=1 swift build
 var disableXiphLibs: Bool {

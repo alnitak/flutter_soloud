@@ -36,6 +36,11 @@ include_directories(${SRC_DIR})
 include (${SRC_DIR}/src.cmake)
 message("**************** SOLOUD SRC.CMAKE END  ${TARGET_NAME}")
 
+# --- Backward-compatibility warning for renamed env variable ---
+if(DEFINED ENV{NO_OPUS_OGG_LIBS})
+    message(WARNING "NO_OPUS_OGG_LIBS is set. This has no effect because the setting has been renamed to NO_XIPH_LIBS. In your command line invocations and build scripts, simply replace all occurrences of NO_OPUS_OGG_LIBS (old) with NO_XIPH_LIBS (new).")
+endif()
+
 # --- Plugin source files (common across all platforms) ---
 list(APPEND PLUGIN_SOURCES
   "${SRC_DIR}/soloud_common.cpp"
