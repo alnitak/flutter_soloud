@@ -17,6 +17,7 @@
 - **added `getEngineTime`, `playScheduled`, `stopScheduled` and `fadeScheduled`** (plus `Bus.playScheduled`) for score/manifest-style scheduling pinned to the engine's own clock: read `getEngineTime` once and schedule a batch of sounds at absolute engine times, with sample accuracy and no ~2 s window limit like `playClocked`. `playScheduled` accepts an optional `duration` to stop the sound automatically, and `fadeScheduled` a `thenStop` flag to stop the sound when the fade ends. Scheduled stops are sample-accurate (not quantized to output buffer boundaries like `scheduleStop`).
 - fix shutdown crash "Callback invoked after it has been deleted": `deinit()` now stops the engine (joining the audio thread) before closing the Dart `NativeCallable` trampolines, so voices ending from the mixing thread can no longer call into deleted callbacks while tearing down.
 - fix: stop() can throw uncaught "Bad state: Future already completed" when the native voiceEnded event races the internal 300 ms timeout #510
+- output a warning when NO_OPUS_OGG_LIBS is set #511. Thanks to @filiph
 
 #### 4.0.13 (20 Jul 2026)
 - fix: Waveform audio sources do not match engine sample rate #501. Thanks to @Colton127
