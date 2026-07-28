@@ -1,3 +1,6 @@
+#### 4.1.1 (28 Jul 2026)
+- ios SPM fix: include mixer_output with relative path #514
+
 #### 4.1.0 (28 Jul 2026)
 - added **pull-buffer streaming API** (`setPullBufferStream`, `addPullBufferDataStream`, `getPullBufferTimeRange`) with support for MP3, WAV, FLAC, Ogg Opus, Ogg Vorbis, and Ogg FLAC.
 - get rid of stb_vorbis c file in favor of the Xiph OGG libraries for Opus, Vorbis, and FLAC.

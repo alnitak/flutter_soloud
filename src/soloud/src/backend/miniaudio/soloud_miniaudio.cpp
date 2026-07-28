@@ -70,7 +70,7 @@ namespace SoLoud
 #include <thread>
 #include <mutex>
 #include "soloud_common.h"
-#include "mixeroutput/mixer_output.h"
+#include "../../../../mixeroutput/mixer_output.h"
 #if defined(_WIN32) || defined(_WIN64)
 #include <windows.h>
 #else
