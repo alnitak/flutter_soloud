@@ -42,6 +42,11 @@ Flutter audio plugin using SoLoud library and FFI
   # the phase once the library exists, silently linking stale native code
   # after plugin source edits.
   build_script = <<-SCRIPT
+    # Backward-compatibility warning for renamed env variable
+    if [ -n "$NO_OPUS_OGG_LIBS" ]; then
+      echo "warning: NO_OPUS_OGG_LIBS is set. This has no effect because the setting has been renamed to NO_XIPH_LIBS. In your command line invocations and build scripts, simply replace all occurrences of NO_OPUS_OGG_LIBS (old) with NO_XIPH_LIBS (new)."
+    fi
+
     # Xcode's build environment has a restricted PATH that may not include cmake.
     # Add common locations where cmake might be installed before checking.
     export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
