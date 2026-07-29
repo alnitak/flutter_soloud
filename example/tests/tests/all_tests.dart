@@ -117,6 +117,10 @@ final List<TestEntry> allTests = [
     run: global_filters.testGlobalFilters,
   ),
   const TestEntry(
+    name: 'SetGetGlobalFilters',
+    run: global_filters.testSetGetGlobalFilters,
+  ),
+  const TestEntry(
     name: 'Handles',
     run: handles.testHandles,
   ),

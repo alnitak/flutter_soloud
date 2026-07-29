@@ -1,4 +1,5 @@
 import 'package:flutter_soloud/flutter_soloud.dart';
+import 'package:flutter_soloud/src/filters/filters.dart';
 
 import 'common.dart';
 
@@ -86,5 +87,164 @@ Future<OutputBuffer> testGlobalFilters() async {
   );
 
   deinit();
+  return strBuf;
+}
+
+/// Test setting and getting back all the parameters of all the available
+/// global filters.
+///
+Future<OutputBuffer> testSetGetGlobalFilters() async {
+  final strBuf = OutputBuffer();
+  await initialize();
+
+  final filters = SoLoud.instance.filters;
+
+  /// All the filters with a valid (in range and not default) value for
+  /// each of their parameters.
+  final tests = <(FilterBase, List<(String, FilterParam, double)>)>[
+    (
+      filters.biquadResonantFilter,
+      [
+        ('wet', filters.biquadResonantFilter.wet, 0.5),
+        ('type', filters.biquadResonantFilter.type, 1),
+        ('frequency', filters.biquadResonantFilter.frequency, 2135),
+        ('resonance', filters.biquadResonantFilter.resonance, 2),
+      ],
+    ),
+    (
+      filters.echoFilter,
+      [
+        ('wet', filters.echoFilter.wet, 0.5),
+        ('delay', filters.echoFilter.delay, 0.2),
+        ('decay', filters.echoFilter.decay, 0.5),
+        ('filter', filters.echoFilter.filter, 0.5),
+      ],
+    ),
+    (
+      filters.lofiFilter,
+      [
+        ('wet', filters.lofiFilter.wet, 0.5),
+        ('samplerate', filters.lofiFilter.samplerate, 8000),
+        ('bitdepth', filters.lofiFilter.bitdepth, 4),
+      ],
+    ),
+    (
+      filters.flangerFilter,
+      [
+        ('wet', filters.flangerFilter.wet, 0.5),
+        ('delay', filters.flangerFilter.delay, 0.1),
+        ('freq', filters.flangerFilter.freq, 10),
+      ],
+    ),
+    (
+      filters.bassBoostFilter,
+      [
+        ('wet', filters.bassBoostFilter.wet, 0.5),
+        ('boost', filters.bassBoostFilter.boost, 2),
+      ],
+    ),
+    (
+      filters.waveShaperFilter,
+      [
+        ('wet', filters.waveShaperFilter.wet, 0.5),
+        ('amount', filters.waveShaperFilter.amount, 0.5),
+      ],
+    ),
+    (
+      filters.robotizeFilter,
+      [
+        ('wet', filters.robotizeFilter.wet, 0.5),
+        ('frequency', filters.robotizeFilter.frequency, 30),
+        ('waveform', filters.robotizeFilter.waveform, 2),
+      ],
+    ),
+    (
+      filters.freeverbFilter,
+      [
+        ('wet', filters.freeverbFilter.wet, 0.5),
+        ('freeze', filters.freeverbFilter.freeze, 0.5),
+        ('roomSize', filters.freeverbFilter.roomSize, 0.8),
+        ('damp', filters.freeverbFilter.damp, 0.5),
+        ('width', filters.freeverbFilter.width, 0.5),
+      ],
+    ),
+    (
+      filters.pitchShiftFilter,
+      [
+        ('wet', filters.pitchShiftFilter.wet, 0.5),
+        ('shift', filters.pitchShiftFilter.shift, 1.5),
+        ('semitones', filters.pitchShiftFilter.semitones, -3),
+      ],
+    ),
+    (
+      filters.limiterFilter,
+      [
+        ('wet', filters.limiterFilter.wet, 0.5),
+        ('threshold', filters.limiterFilter.threshold, -10),
+        ('outputCeiling', filters.limiterFilter.outputCeiling, -1),
+        ('kneeWidth', filters.limiterFilter.kneeWidth, 5),
+        ('releaseTime', filters.limiterFilter.releaseTime, 100),
+        ('attackTime', filters.limiterFilter.attackTime, 10),
+      ],
+    ),
+    (
+      filters.compressorFilter,
+      [
+        ('wet', filters.compressorFilter.wet, 0.5),
+        ('threshold', filters.compressorFilter.threshold, -20),
+        ('makeupGain', filters.compressorFilter.makeupGain, 5),
+        ('kneeWidth', filters.compressorFilter.kneeWidth, 10),
+        ('ratio', filters.compressorFilter.ratio, 4),
+        ('attackTime', filters.compressorFilter.attackTime, 20),
+        ('releaseTime', filters.compressorFilter.releaseTime, 200),
+      ],
+    ),
+  ];
+
+  for (final (filter, params) in tests) {
+    filter.activate();
+    assert(filter.isActive, '${filter.filterType} has not been activated!');
+    strBuf.writeln('${filter.filterType}:');
+    for (final (name, param, value) in params) {
+      param.value = value;
+      final read = param.value;
+      strBuf.writeln('  $name set:$value read:$read');
+      assert(
+        closeTo(read, value, 0.01),
+        '${filter.filterType}.$name set:$value but read:$read',
+      );
+    }
+    filter.deactivate();
+    assert(!filter.isActive, '${filter.filterType} has not been deactivated!');
+  }
+
+  /// The parametric EQ is tested separately because its band gain
+  /// parameters depend on the `numBands` parameter.
+  final eq = filters.parametricEqFilter..activate();
+  assert(eq.isActive, 'Parametric EQ has not been activated!');
+  strBuf.writeln('${eq.filterType}:');
+
+  final eqParams = <(String, FilterParam, double)>[
+    ('wet', eq.wet, 0.5),
+    ('stftWindowSize', eq.stftWindowSize, 512),
+    ('numBands', eq.numBands, 8),
+    for (var i = 0; i < 8; i++)
+      ('bandGain($i)', eq.bandGain(i), 0.5 + i * 0.25),
+  ];
+  for (final (name, param, value) in eqParams) {
+    param.value = value;
+    final read = param.value;
+    strBuf.writeln('  $name set:$value read:$read');
+    assert(
+      closeTo(read, value, 0.01),
+      '${eq.filterType}.$name set:$value but read:$read',
+    );
+  }
+  eq.deactivate();
+  assert(!eq.isActive, 'Parametric EQ has not been deactivated!');
+
+  deinit();
+
+  strBuf.writeln('All global filters set/get tests passed');
   return strBuf;
 }
