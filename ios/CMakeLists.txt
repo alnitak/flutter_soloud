@@ -33,6 +33,7 @@ else()
 endif()
 
 # Force release optimization flags regardless of build configuration
+# For native debug purpose, use -g -O0 but remember to restore -O2 -DNDEBUG for release
 target_compile_options("${PLUGIN_NAME}" PRIVATE -Wall -Wno-error -Wno-vla -O2 -DNDEBUG)
 
 # Workaround for iOS 26.4+ / Xcode 16+ duplicate symbol issue with miniaudio's

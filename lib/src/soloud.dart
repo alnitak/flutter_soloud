@@ -527,8 +527,12 @@ interface class SoLoud {
     // the mixing thread) and crashes with "Callback invoked after it has
     // been deleted".
     _controller.soLoudFFI.deinit();
-    _controller.soLoudFFI.disposeNativeCallables();
+    // Destroy the sounds (and their BufferStreams) before closing the
+    // NativeCallable trampolines: an in-flight addData on another isolate
+    // could otherwise invoke a freed metadata/buffering trampoline while
+    // its BufferStream is still alive.
     _controller.soLoudFFI.disposeAllSound();
+    _controller.soLoudFFI.disposeNativeCallables();
     _activeSounds.clear();
   }
 
