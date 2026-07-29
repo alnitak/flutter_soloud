@@ -194,7 +194,10 @@ void ParametricEqInstance::setFilterParameter(unsigned int aAttributeId,
 
   switch (aAttributeId) {
   case 0: // wet
-    if (mParent->mWet == aValue)
+    // Guard on mParam[0] (the authoritative value read by fftFilterChannel,
+    // getFilterParameter and updateParams): mParent->mWet may be stale
+    // after a fade/oscillation, which never updates the parent.
+    if (mParam[0] == aValue)
       return;
     mParam[0] = aValue; // Update wet param (index 0)
     mParent->mWet = aValue;
@@ -250,6 +253,11 @@ void ParametricEqInstance::filterChannel(float *aBuffer, unsigned int aSamples,
   // Safety check: ensure window size is valid before processing
   if (mParent->mSTFT_WINDOW_TWICE <= 0 || mParent->mSTFT_WINDOW_TWICE > 131072) {
     return;  // Invalid window size, pass through audio unchanged
+  }
+
+  // Advance parameter fades/oscillations once per audio callback
+  if (aChannel == 0) {
+    updateParams(aTime);
   }
   
   // Lazy initialization of buffers for this channel

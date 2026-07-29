@@ -1,3 +1,7 @@
+#### 4.1.2 (29 Jul 2026)
+- now when passing a `time` <= 0 to `fadeFilterParameter` or to `oscillateFilterParameter` the value is set. Before was a no-op #519
+- added tests to check set, get, fade parameters for all the filters.
+
 #### 4.1.1 (28 Jul 2026)
 - ios SPM fix: include mixer_output with relative path #514
 
