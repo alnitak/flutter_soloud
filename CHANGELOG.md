@@ -1,4 +1,5 @@
 #### 4.1.1 (28 Jul 2026)
+- fix: the voice-ended callback is no longer invoked while SoLoud's audio mutex is held. It ran there via `stopVoice_internal()` and reached back into `Player` state guarded by `sounds_mutex`, which deadlocked against `disposeSound()` (which holds `sounds_mutex` across `soloud.stop()`). The symptom was a wedged engine: handles and sources still looked valid, no audio was produced, and `deinit()` never completed. Ended voices are now queued and dispatched once the mutex is released
 - ios SPM fix: include mixer_output with relative path #514
 
 #### 4.1.0 (28 Jul 2026)
