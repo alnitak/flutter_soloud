@@ -129,16 +129,28 @@ namespace SoLoud
 
 	void FilterInstance::fadeFilterParameter(unsigned int aAttributeId, float aTo, double aTime, double aStartTime)
 	{
-		if (aAttributeId >= mNumParams || aTime <= 0 || aTo == mParam[aAttributeId])
+		if (aAttributeId >= mNumParams)
 			return;
+
+		if (aTime <= 0 || aTo == mParam[aAttributeId])
+		{
+			setFilterParameter(aAttributeId, aTo);
+			return;
+		}
 
 		mParamFader[aAttributeId].set(mParam[aAttributeId], aTo, aTime, aStartTime);
 	}
 
 	void FilterInstance::oscillateFilterParameter(unsigned int aAttributeId, float aFrom, float aTo, double aTime, double aStartTime)
 	{
-		if (aAttributeId >= mNumParams || aTime <= 0 || aFrom == aTo)
+		if (aAttributeId >= mNumParams)
 			return;
+
+		if (aTime <= 0 || aFrom == aTo)
+		{
+			setFilterParameter(aAttributeId, aTo);
+			return;
+		}
 
 		mParamFader[aAttributeId].setLFO(aFrom, aTo, aTime, aStartTime);
 	}
