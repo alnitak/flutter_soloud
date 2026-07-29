@@ -97,11 +97,185 @@ Future<OutputBuffer> testSetGetGlobalFilters() async {
   final strBuf = OutputBuffer();
   await initialize();
 
-  final filters = SoLoud.instance.filters;
+  final tests = _filterTests();
 
-  /// All the filters with a valid (in range and not default) value for
-  /// each of their parameters.
-  final tests = <(FilterBase, List<(String, FilterParam, double)>)>[
+  for (final (filter, params) in tests) {
+    filter.activate();
+    assert(filter.isActive, '${filter.filterType} has not been activated!');
+    strBuf.writeln('${filter.filterType}:');
+    for (final (name, param, value) in params) {
+      param.value = value;
+      final read = param.value;
+      strBuf.writeln('  $name set:$value read:$read');
+      assert(
+        closeTo(read, value, 0.01),
+        '${filter.filterType}.$name set:$value but read:$read',
+      );
+    }
+    filter.deactivate();
+    assert(!filter.isActive, '${filter.filterType} has not been deactivated!');
+  }
+
+  /// The parametric EQ is tested separately because its band gain
+  /// parameters depend on the `numBands` parameter.
+  final eq = SoLoud.instance.filters.parametricEqFilter..activate();
+  assert(eq.isActive, 'Parametric EQ has not been activated!');
+  strBuf.writeln('${eq.filterType}:');
+
+  final eqParams = <(String, FilterParam, double)>[
+    ('wet', eq.wet, 0.5),
+    ('stftWindowSize', eq.stftWindowSize, 512),
+    ('numBands', eq.numBands, 8),
+    for (var i = 0; i < 8; i++)
+      ('bandGain($i)', eq.bandGain(i), 0.5 + i * 0.25),
+  ];
+  for (final (name, param, value) in eqParams) {
+    param.value = value;
+    final read = param.value;
+    strBuf.writeln('  $name set:$value read:$read');
+    assert(
+      closeTo(read, value, 0.01),
+      '${eq.filterType}.$name set:$value but read:$read',
+    );
+  }
+  eq.deactivate();
+  assert(!eq.isActive, 'Parametric EQ has not been deactivated!');
+
+  deinit();
+
+  strBuf.writeln('All global filters set/get tests passed');
+  return strBuf;
+}
+
+/// Test fading all the parameters of all the available global filters.
+Future<OutputBuffer> testFadeParamsGlobalFilters() async {
+  final strBuf = OutputBuffer();
+  await initialize();
+
+  /// Play a sound to make sure the audio callbacks are running and the
+  /// fades progress.
+  late final AudioSource sound;
+  try {
+    sound = await SoLoud.instance.loadAsset(
+      'assets/audio/8_bit_mentality.mp3',
+      mode: LoadMode.disk,
+    );
+  } on Exception catch (e) {
+    return strBuf
+      ..write(e)
+      ..writeln();
+  }
+  SoLoud.instance.play(sound);
+
+  const fadeTime = Duration(milliseconds: 300);
+
+  for (final (filter, params) in _filterTests()) {
+    filter.activate();
+    assert(filter.isActive, '${filter.filterType} has not been activated!');
+    strBuf.writeln('${filter.filterType}:');
+
+    /// Start the fade of all the parameters at once.
+    for (final (_, param, value) in params) {
+      param.fadeFilterParameter(to: value, time: fadeTime);
+    }
+
+    /// Wait for the fades to complete.
+    await delay(500);
+
+    for (final (name, param, value) in params) {
+      final read = param.value;
+      strBuf.writeln('  $name fadedTo:$value read:$read');
+      assert(
+        closeTo(read, value, 0.01),
+        '${filter.filterType}.$name fadedTo:$value but read:$read',
+      );
+    }
+
+    /// A zero-duration fade or oscillation must act as an immediate set.
+    /// The first parameter of every filter is `wet`.
+    final wet = params.first;
+    wet.$2.fadeFilterParameter(to: 1, time: Duration.zero);
+    var readZero = wet.$2.value;
+    strBuf.writeln('  ${wet.$1} zeroFadeTo:1.0 read:$readZero');
+    assert(
+      closeTo(readZero, 1, 0.01),
+      '${filter.filterType}.${wet.$1} zeroFadeTo:1.0 but read:$readZero',
+    );
+    wet.$2.oscillateFilterParameter(
+      from: 0.2,
+      to: 0.8,
+      time: Duration.zero,
+    );
+    readZero = wet.$2.value;
+    strBuf.writeln('  ${wet.$1} zeroOscillateTo:0.8 read:$readZero');
+    assert(
+      closeTo(readZero, 0.8, 0.01),
+      '${filter.filterType}.${wet.$1} zeroOscillateTo:0.8 but read:$readZero',
+    );
+
+    filter.deactivate();
+    assert(!filter.isActive, '${filter.filterType} has not been deactivated!');
+  }
+
+  /// The parametric EQ is tested separately because its band gain
+  /// parameters depend on the `numBands` parameter. The `stftWindowSize`
+  /// and `numBands` parameters are discrete, so fading them is not
+  /// meaningful: only `wet` and the band gains are faded.
+  final eq = SoLoud.instance.filters.parametricEqFilter..activate();
+  assert(eq.isActive, 'Parametric EQ has not been activated!');
+  strBuf.writeln('${eq.filterType}:');
+  eq.numBands.value = 8;
+
+  final eqParams = <(String, FilterParam, double)>[
+    ('wet', eq.wet, 0.5),
+    for (var i = 0; i < 8; i++)
+      ('bandGain($i)', eq.bandGain(i), 0.5 + i * 0.25),
+  ];
+  for (final (_, param, value) in eqParams) {
+    param.fadeFilterParameter(to: value, time: fadeTime);
+  }
+
+  await delay(500);
+
+  for (final (name, param, value) in eqParams) {
+    final read = param.value;
+    strBuf.writeln('  $name fadedTo:$value read:$read');
+    assert(
+      closeTo(read, value, 0.01),
+      '${eq.filterType}.$name fadedTo:$value but read:$read',
+    );
+  }
+
+  /// A zero-duration fade or oscillation must act as an immediate set.
+  eq.wet.fadeFilterParameter(to: 1, time: Duration.zero);
+  var eqReadZero = eq.wet.value;
+  strBuf.writeln('  wet zeroFadeTo:1.0 read:$eqReadZero');
+  assert(
+    closeTo(eqReadZero, 1, 0.01),
+    '${eq.filterType}.wet zeroFadeTo:1.0 but read:$eqReadZero',
+  );
+  eq.wet.oscillateFilterParameter(from: 0.2, to: 0.8, time: Duration.zero);
+  eqReadZero = eq.wet.value;
+  strBuf.writeln('  wet zeroOscillateTo:0.8 read:$eqReadZero');
+  assert(
+    closeTo(eqReadZero, 0.8, 0.01),
+    '${eq.filterType}.wet zeroOscillateTo:0.8 but read:$eqReadZero',
+  );
+
+  eq.deactivate();
+  assert(!eq.isActive, 'Parametric EQ has not been deactivated!');
+
+  deinit();
+
+  strBuf.writeln('All global filters fade tests passed');
+  return strBuf;
+}
+
+/// All the global filters with a valid (in range and not default) value
+/// for each of their parameters.
+List<(FilterBase, List<(String, FilterParam, double)>)> _filterTests() {
+  final filters = SoLoud.instance.filters;
+  return [
     (
       filters.biquadResonantFilter,
       [
@@ -200,51 +374,4 @@ Future<OutputBuffer> testSetGetGlobalFilters() async {
       ],
     ),
   ];
-
-  for (final (filter, params) in tests) {
-    filter.activate();
-    assert(filter.isActive, '${filter.filterType} has not been activated!');
-    strBuf.writeln('${filter.filterType}:');
-    for (final (name, param, value) in params) {
-      param.value = value;
-      final read = param.value;
-      strBuf.writeln('  $name set:$value read:$read');
-      assert(
-        closeTo(read, value, 0.01),
-        '${filter.filterType}.$name set:$value but read:$read',
-      );
-    }
-    filter.deactivate();
-    assert(!filter.isActive, '${filter.filterType} has not been deactivated!');
-  }
-
-  /// The parametric EQ is tested separately because its band gain
-  /// parameters depend on the `numBands` parameter.
-  final eq = filters.parametricEqFilter..activate();
-  assert(eq.isActive, 'Parametric EQ has not been activated!');
-  strBuf.writeln('${eq.filterType}:');
-
-  final eqParams = <(String, FilterParam, double)>[
-    ('wet', eq.wet, 0.5),
-    ('stftWindowSize', eq.stftWindowSize, 512),
-    ('numBands', eq.numBands, 8),
-    for (var i = 0; i < 8; i++)
-      ('bandGain($i)', eq.bandGain(i), 0.5 + i * 0.25),
-  ];
-  for (final (name, param, value) in eqParams) {
-    param.value = value;
-    final read = param.value;
-    strBuf.writeln('  $name set:$value read:$read');
-    assert(
-      closeTo(read, value, 0.01),
-      '${eq.filterType}.$name set:$value but read:$read',
-    );
-  }
-  eq.deactivate();
-  assert(!eq.isActive, 'Parametric EQ has not been deactivated!');
-
-  deinit();
-
-  strBuf.writeln('All global filters set/get tests passed');
-  return strBuf;
 }

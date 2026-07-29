@@ -121,6 +121,10 @@ final List<TestEntry> allTests = [
     run: global_filters.testSetGetGlobalFilters,
   ),
   const TestEntry(
+    name: 'FadeParamsGlobalFilters',
+    run: global_filters.testFadeParamsGlobalFilters,
+  ),
+  const TestEntry(
     name: 'Handles',
     run: handles.testHandles,
   ),
