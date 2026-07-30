@@ -523,7 +523,7 @@ enum FilterType {
     FilterType.freeverbFilter => 5,
     FilterType.pitchShiftFilter => 3,
     FilterType.limiterFilter => 6,
-    FilterType.compressorFilter => 8,
+    FilterType.compressorFilter => 7,
     FilterType.parametricEq => 67,
   };
 

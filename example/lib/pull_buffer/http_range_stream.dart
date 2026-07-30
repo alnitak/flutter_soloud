@@ -70,7 +70,6 @@ class _HttpRangeStreamExampleState extends State<HttpRangeStreamExample> {
   AudioSource? _source;
   SoundHandle? _handle;
   int _totalBytes = 0;
-  Uint8List? _fileBytes;
   final _fetchedOffsets = <int>{};
   final _pendingOffsets = <int>{};
   Duration _duration = Duration.zero;
@@ -153,7 +152,6 @@ class _HttpRangeStreamExampleState extends State<HttpRangeStreamExample> {
     }
     _source = null;
     _timer?.cancel();
-    _fileBytes = null;
     _fetchedOffsets.clear();
     _pendingOffsets.clear();
     _bufferedStart = Duration.zero;

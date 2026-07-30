@@ -1,3 +1,5 @@
+// ignore_for_file: avoid_redundant_argument_values, experimental_member_use
+
 import 'dart:async';
 
 import 'package:flutter/services.dart';
