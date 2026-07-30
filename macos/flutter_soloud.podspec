@@ -42,11 +42,15 @@ Flutter audio plugin using SoLoud library and FFI
   preprocessor_definitions << 'SIGNALSMITH_USE_PFFFT'
 
   # Build the plugin's native code using CMake with release optimizations.
-  # No input/output files are declared on purpose: the phase runs on every
-  # build and CMake's incremental tracking makes it a fast no-op when no
-  # source file changed. Declaring only :output_files would let Xcode skip
-  # the phase once the library exists, silently linking stale native code
-  # after plugin source edits.
+  # The built library IS declared as an output file: the app target
+  # force_loads it, and Xcode's new build system validates force_load'd
+  # inputs when planning the build — without a declared producer, the first
+  # (clean) build fails with "Build input file cannot be found" before this
+  # phase has ever run, while the second build succeeds because the library
+  # already exists on disk. :always_out_of_date makes the phase run on every
+  # build anyway (CMake's incremental tracking makes it a fast no-op when no
+  # source file changed), so plugin source edits never link stale native
+  # code — the problem declaring only :output_files would cause.
   build_script = <<-SCRIPT
     # Backward-compatibility warning for renamed env variable
     if [ -n "$NO_OPUS_OGG_LIBS" ]; then
@@ -74,6 +78,8 @@ Flutter audio plugin using SoLoud library and FFI
     :name => 'Build flutter_soloud with CMake',
     :script => build_script,
     :execution_position => :before_compile,
+    :output_files => ['${PODS_TARGET_SRCROOT}/cmake_build/macosx/libflutter_soloud_plugin.a'],
+    :always_out_of_date => '1',
   }
 
   # pod_target_xcconfig: settings for the pod's own compilation target.

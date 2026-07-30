@@ -1,4 +1,19 @@
-#### 4.1.0 (28 Jul 2026)
+
+#### 4.1.4 (XX Xxx 2026)
+- fix: the voice-ended callback is no longer invoked while SoLoud's audio mutex is held. The symptom was a wedged engine: handles and sources still looked valid, no audio was produced, and `deinit()` never completed. Ended voices are now queued and dispatched once the mutex is released. Thanks to @Colton127
+- fix: on macOS/iOS, the first CocoaPods build after a clean no longer fails with "Build input file cannot be found: libflutter_soloud_plugin.a"
+
+##### 4.1.3 (29 Jul 2026)
+- another SPM fix: add wav_stream_decoder.cpp to SPM unity build (crash on Apple platforms)
+
+##### 4.1.2 (29 Jul 2026)
+- now when passing a `time` <= 0 to `fadeFilterParameter` or to `oscillateFilterParameter` the value is set. Before was a no-op #519
+- added tests to check set, get, fade parameters for all the filters.
+
+##### 4.1.1 (28 Jul 2026)
+- ios SPM fix: include mixer_output with relative path #514
+
+##### 4.1.0 (28 Jul 2026)
 - added **pull-buffer streaming API** (`setPullBufferStream`, `addPullBufferDataStream`, `getPullBufferTimeRange`) with support for MP3, WAV, FLAC, Ogg Opus, Ogg Vorbis, and Ogg FLAC.
 - get rid of stb_vorbis c file in favor of the Xiph OGG libraries for Opus, Vorbis, and FLAC.
 - buffer stream now supports FLAC and WAV formats besides Ogg with Opus, Vorbis, and FLAC containers.
@@ -8,7 +23,7 @@
 - added `autoDispose` parameter to `setBufferStream` to automatically dispose the sound when it is finished. This eliminates the need to manually call disposeSource.
 - **added mixer output capture**: capture the master mixer output as a `Stream<Uint8List>` in PCM (F32LE, S8, S16LE, S32LE) or compressed formats (Opus, Vorbis, FLAC, WAV). See `SoLoud.startMixerOutputStream` / `stopMixerOutputStream` / `isMixerOutputStreamRunning`.
 - added `mixer_capture` example (`example/lib/mixer_capture/mixer_capture.dart`) that shows how to capture the master mix and save it to a file.
-- **web note**: the web build requires `--wasm` (or any server that sends `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` headers) because the WASM module uses `SharedArrayBuffer` for the audio thread. Running with `flutter run -d chrome` without `--wasm` is not supported by the default dev server. Please see the doc [here](https://docs.page/alnitak/flutter_soloud_docs~dev/get_started/web_notes).
+- **web note**: the web build requires `--wasm` (or any server that sends `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` headers) because the WASM module uses `SharedArrayBuffer` for the audio thread. Running with `flutter run -d chrome` without `--wasm` is not supported by the default dev server. Please see the doc [here](https://docs.page/alnitak/flutter_soloud_docs/get_started/web_notes).
 - **added `SoLoudIsolate`**, an isolate-safe singleton for running mixer output capture (and other safe operations, for now only `readSamplesFrom*`) from a non-main isolate without touching the main isolate's loader, filters, or event callbacks.
 - added `example/lib/mixer_capture/isolate_capture_test.dart` to demostrate mixer output capture from a separate isolate.
 - added native loop end points through `loopingEndAt` and the live `getLoopEndPoint` / `setLoopEndPoint` APIs, allowing half-open `[start, end)` loop regions #499. Thanks to @Kunstderfug
@@ -19,27 +34,27 @@
 - fix: stop() can throw uncaught "Bad state: Future already completed" when the native voiceEnded event races the internal 300 ms timeout #510
 - output a warning when NO_OPUS_OGG_LIBS is set #511. Thanks to @filiph
 
-#### 4.0.13 (20 Jul 2026)
+##### 4.0.13 (20 Jul 2026)
 - fix: Waveform audio sources do not match engine sample rate #501. Thanks to @Colton127
 
-#### 4.0.12 (30 Jun 2026)
+##### 4.0.12 (30 Jun 2026)
 - add `lowLatency` init option to allow recordable Android output #492. Thanks to @MjnMixael
 - added WAV to Buffer streams supported formats. Fixes loading wav files from web #494
 
-#### 4.0.11 (22 Jun 2026)
+##### 4.0.11 (22 Jun 2026)
 - fix web: don't spawn the deferred-pause std::thread on web (Aborted() in initEngine) #488. Thanks to @felixmin
 
-#### 4.0.10 (20 Jun 2026)
+##### 4.0.10 (20 Jun 2026)
 - wait some ms to pause device when there are no more sounds playing #486
 
-#### 4.0.9 (13 Jun 2026)
+##### 4.0.9 (13 Jun 2026)
 - Windows: prevent the compiler from complaining about `min` and `max` macros. Fixes #483
 
-#### 4.0.8 (10 Jun 2026)
+##### 4.0.8 (10 Jun 2026)
 - fix released buffer stream size reporting #480. Thanks to @Kunstderfug
 - load Ogg Opus/flac files through buffer stream fallback #479. Thanks to @Kunstderfug
 
-#### 4.0.7 (1 Jun 2026)
+##### 4.0.7 (1 Jun 2026)
 - add look-ahead brickwall limiter and fix planar DSP indexing #468. Thanks to @Kunstderfug
 - fix iOS CocoaPods wrapper double compile #467. Thanks to @DavidPluxia
 - fix Apple: added linker settings to not strip symbols when building the ipa using SPM #472
@@ -47,35 +62,35 @@
 - Android fix: quick play & stop causes glitches and probably UI jank #478
 - fix: the `wet` parameter of parametric eq was not evaluated #477
 
-#### 4.0.6 (17 May 2026)
+##### 4.0.6 (17 May 2026)
 - Fix iOS SPM miniaudio duplicate symbols #465. Thanks to @coolswood
 
-#### 4.0.5 (13 May 2026)
+##### 4.0.5 (13 May 2026)
 - fix sample count calculations in BufferStreamInstance and BufferStream #462
 - fix Apple: removed hardcoded `-flto` compile arg in Package.swift #463
 - prevent header name collision build error when the app uses other native plugins like `flutter_zxing` which uses the common.h source file name too #464
 
-#### 4.0.4 (4 May 2026)
+##### 4.0.4 (4 May 2026)
 - fix Apple: build forcing to add c++ std lib #456
 - fix reading Opus with non-standard samplerate #457
 
-#### 4.0.3 (24 Apr 2026)
+##### 4.0.3 (24 Apr 2026)
 - fix: rebind Dart callbacks after hot restart #444. Thanks to @skylartaylor
 - fix: retain BufferStream callbacks until disposal #445. Thanks to @skylartaylor
 - fix: removed the asserts in the init method #453
 - web fix: small sound bleed after stop and play #446
 - web fix: new way to load audio from memory (loadAssets and loadMem) on web to solve UI freeze when loading
 
-#### 4.0.2 (10 Apr 2026)
+##### 4.0.2 (10 Apr 2026)
 - apple: fix building issue with XCode
 
-#### 4.0.1 (9 Apr 2026)
+##### 4.0.1 (9 Apr 2026)
 - fixed get eq params other than bands values
 - added frequency getter to parametric equalizer (ie: `soloud.filters.parametricEqFilter.bandFrequency(index)`)
 - removed some warnings from native build
 - warn mac users to install cmake if not already installed
 
-#### 4.0.0 (3 Apr 2026)
+##### 4.0.0 (3 Apr 2026)
 - fix: some OGG audio files don't trigger `SoundEventType.handleIsNoMoreValid`
 - fix: setBufferStream fails to decode small MP3 files under 32 KB #434. Thanks to @chaudharydeepanshu
 - fix web: `createVoiceGroup` return was interpreted as a signed int instead of an unsigned because it always has the sign bit flag
@@ -83,18 +98,18 @@
 - added some more tests
 - removed deprecated `equalizerFilter` in favor of `parametricEqFilter`
 
-#### 4.0.0-pre.3 (29 Mar 2026)
+##### 4.0.0-pre.3 (29 Mar 2026)
 - fix: FFI symbol stripping causing "symbol not found" errors in iOS/macOS when uploading to App Store #431
 - fix decreasing volume when adding a bus to another
 
-#### 4.0.0-pre.2 (28 Mar 2026)
+##### 4.0.0-pre.2 (28 Mar 2026)
 - macOS/iOS fix: check for cmake in the path while building
 - iOS simulator: fix libs linking
 
-#### 4.0.0-pre.1 (26 Mar 2026)
+##### 4.0.0-pre.1 (26 Mar 2026)
 - macOS fix: build error
 
-#### 4.0.0-pre.0 (24 Mar 2026)
+##### 4.0.0-pre.0 (24 Mar 2026)
 - added Mixing Bus feature and example https://docs.page/alnitak/flutter_soloud_docs/advanced/mixing_bus
 - added `getApproximateVolume` to get the approximate volume of a channel of the player
 - added `autoDispose` parameter to `load*` methods to automatically dispose the sound when it is finished. This eliminates the need to manually call disposeSource
@@ -119,104 +134,104 @@
 - renamed `SoLoudOpusOggVorbisLibsNotAvailableException` to `SoLoudXiphLibsNotAvailableException`
 - renamed `areOpusOggLibsAvailable` to `areXiphLibsAvailable`
 
-#### 3.5.4 (22 Mar 2026)
+##### 3.5.4 (22 Mar 2026)
 - remove wasm/js assets for non-web builds#425. Thanks to @adil192
 
-#### 3.5.3 (21 Mar 2026)
+##### 3.5.3 (21 Mar 2026)
 - fix: compilation error on Windows #423
 
-#### 3.5.2 (18 Mar 2026)
+##### 3.5.2 (18 Mar 2026)
 - fix: wire miniaudio backend pause/resume to stop AudioUnit on iOS #406. Thanks to @sbauly
 - updated audio_context example to demostrate how to integrate with `audio_session` and `audio_service`
 
-#### 3.5.1 (14 Mar 2026)
+##### 3.5.1 (14 Mar 2026)
 - `getStreamTimeConsumed` returns the wrong time for s16le and s8 #419
 - win fix: hang on app exit #413
 - win fix: prevent Windows message pump from going unresponsive with plugins like `desktop_drop` and maybe others #401
 - fix: only unpause when buffer covers playback position #393. Thanks to @nukes
 - wasm fix: runtimeType error when voice ended #414
 
-#### 3.5.0 (1 Mar 2026)
+##### 3.5.0 (1 Mar 2026)
 - Harden loader temp directory logic #404. Thanks to @filiph
 - updated audio_context example
 
-#### 3.4.10 (2 Feb 2026)
+##### 3.4.10 (2 Feb 2026)
 - fix loadMem issue after deinit #399
 
-#### 3.4.9 (21 Jan 2026)
+##### 3.4.9 (21 Jan 2026)
 - fix crash when seeking with a negative value #386
 - Linux fix: don't use -msse on arm64 builds #395. Thanks to @adil192
 - Android fix: enable AAudio with runtime API level check for safe fallback #397. Thanks to @djkingCanada
 
-#### 3.4.8 (29 Dec 2025)
+##### 3.4.8 (29 Dec 2025)
 - fix MP3 stream decoding missing last few seconds of audio #381
 
-#### 3.4.7 (18 Dec 2025)
+##### 3.4.7 (18 Dec 2025)
 - fix: null check before accessing sound in seek() #384. Thanks to @9AZX
 
-#### 3.4.6 (4 Dec 2025)
+##### 3.4.6 (4 Dec 2025)
 - win fix: loadMem/loadAsset futures never finish when run in parallel with the same file #376 
 
-#### 3.4.5 (22 Nov 2025)
+##### 3.4.5 (22 Nov 2025)
 - fixed `Bad state: Future already completed` error during integration tests. Thanks to @Taormina #373
 - win: don't copy pdb file when in profile mode avoiding build error. Fixes #372
 
-#### 3.4.4 (17 Nov 2025)
+##### 3.4.4 (17 Nov 2025)
 - fix: Crash during hot-restart using Dart 3.10 #369
 
-#### 3.4.3 (13 Nov 2025)
+##### 3.4.3 (13 Nov 2025)
 - fix Android: crashes after opus stream playback #365
 - fix: Compressor seems to introduce "choppy" sound #367
 
-#### 3.4.2 (8 Nov 2025)
+##### 3.4.2 (8 Nov 2025)
 - fix Android: NO_OPUS_OGG_LIBS for Android build used in `gradle.properties` not always worked #358. And Thanks to @mingjunsiek #361 #354
 - fix: memory leak in FlutterSoLoudFfi.addAudioDataStream #359. Thanks to @DarthRainbows
 
-#### 3.4.1 (30 Oct 2025)
+##### 3.4.1 (30 Oct 2025)
 - crash when adding data as PCM data on v3.4.0 #348
 - builds failing for macOS with NO_OPUS_OGG_LIBS=1 #350
 - using AudioData.getAudioData, when wave data is zero, also the FFT data should be zero #349
 
-#### 3.4.0 (28 Oct 2025)
+##### 3.4.0 (28 Oct 2025)
 - added support for OGG FLAC and its metadata to BufferStream #294
 - fix Opus BufferStream end clicks on short sounds #344. Thanks to @eddyleelin
 - fix a crash on old Windows PCs with CPUs that don't support AVX2 extensions (using now SSE2) #340
 - fixed `Player::findByHandle` crash in some circumstancies #342
 
-#### 3.3.9 (21 Oct 2025)
+##### 3.3.9 (21 Oct 2025)
 - iOS: revert the fix for #330
 - removed experimental tag for `allInstancesFinished`
 
-#### 3.3.8 (13 Oct 2025)
+##### 3.3.8 (13 Oct 2025)
 - fix: audio stream with released mode failed to consume BufferStream #335 #318
 - iOS fix: maybe fixed no sound probably in older iOS devices without AirPods #330
 - fix: incorrect seek position on multi-channel audio streams #328
 
-#### 3.3.7 (25 Sep 2025)
+##### 3.3.7 (25 Sep 2025)
 - iOS fix: update build_iOS.sh to make fat libraries #315. Thanks to @kumamotone
 - fix: stop() takes too much time #312
 
-#### 3.3.6 (11 Sep 2025)
+##### 3.3.6 (11 Sep 2025)
 - win fix: compilation error #309
 
-#### 3.3.5 (11 Sep 2025)
+##### 3.3.5 (11 Sep 2025)
 - fix sample rate detection for Opus and Vorbis audio streams
 
-#### 3.3.4 (10 Sep 2025)
+##### 3.3.4 (10 Sep 2025)
 - use of dr_mp3.h instead of minimp3 for streaming MP3
 - fix crash when calling addAudioDataStream before play #306
 
-#### 3.3.3 (4 Sep 2025)
+##### 3.3.3 (4 Sep 2025)
 - fix seek a buffer stream actually seeks at half the wanted position #296
 
-#### 3.3.2 (3 Sep 2025)
+##### 3.3.2 (3 Sep 2025)
 - fixed stuttering with MP3 streams #301
 - fixed a Web bug when compiling with WASM in release mode.
 
-#### 3.3.1 (27 Aug 2025)
+##### 3.3.1 (27 Aug 2025)
 - fix win: fix build error #292
 
-#### 3.3.0 (25 Aug 2025)
+##### 3.3.0 (25 Aug 2025)
 - Added support for mp3 streams
 - Added support for Vorbis streams
 - Added `web_radio.dart` example to demonstrate how to receive an audio stream (ie, an icecast stream) and then add the audio chunks to BufferStream
@@ -224,93 +239,93 @@
 - Deprecate `BufferType.opus` in favor of `BufferType.auto`
 - Get TAGs info also while streaming and not only by sending chunks of an audio file. For MP3s, the TAGs are obtained from ID3V2 or passing `icy-metaint` (obtained from the header of the online stream) before adding audio chunks to the BufferStream. New metadata is notified by the `onMetadata` callback of `setBufferStream`
 
-#### 3.2.7 (18 Aug 2025)
+##### 3.2.7 (18 Aug 2025)
 - feat: allow to specify NO_OPUS_OGG_LIBS in Android build config #282. Thanks to @ekuleshov
 - fix: 16KB memory page size for Android because of Play Console warning #283
 - fix pub points
 
-#### 3.2.5 (10 Aug 2025)
+##### 3.2.5 (10 Aug 2025)
 - macos fix: `abseil` not found when using this plugin with some other native plugins like firebase #280. Thanks to @jochy.
 
-#### 3.2.4 (5 Aug 2025)
+##### 3.2.4 (5 Aug 2025)
 - ios fix: `abseil` not found when using this plugin with some other native plugins like firebase #271
 
-#### 3.2.3 (3 Aug 2025)
+##### 3.2.3 (3 Aug 2025)
 - fix 16 KB native library alignment on Android #248
 - fix build issue on iOS and macOS #265 #266
 - fix: the `seek` method was causing inconsistent behavior when using `BufferStream` in `BufferingType.released` mode. It is now supported in `BufferingType.preserved` mode.
 
-#### 3.2.2 (16 Jul 2025)
+##### 3.2.2 (16 Jul 2025)
 - OGG is now also supported using `readSamplesFrom*` methods.
 - fix getPosition and buffering for released buffer.
 
-#### 3.2.1 (28 Jun 2025)
+##### 3.2.1 (28 Jun 2025)
 - fix #104, #245, #249. It is now possible to use a 3rd party plugin like `audio_session` to manage audio context.
 - new audio context example in `example/lib/audio_context/audio_context.dart`.
 - fix GetPosition returned value for buffer streams.
 - fix Web hot reload/restart #258 and #259.
 
-#### 3.1.12 (21 Jun 2025)
+##### 3.1.12 (21 Jun 2025)
 - added `getStreamTimeConsumed()` to get the time consumed by a buffer stream of kind `BufferingType.released`. Since the position of this kind of stream is always 0, this method is useful to know the time already played.
 - fix pause/unpause on audio stream buffering.
 - added `buffer_stream/simple_noise_stream.dart` example.
 
-#### 3.1.11 (16 Jun 2025)
+##### 3.1.11 (16 Jun 2025)
 - fix: Loading the same AudioSource twice (in parallel) crashes #247
 - fix win: force cmake to build the plugin in release mode even if building in debug
 
-#### 3.1.10 (8 May 2025)
+##### 3.1.10 (8 May 2025)
 - fix: Setting pan doesn't cancel pan oscillation #239
 
-#### 3.1.9 (8 May 2025)
+##### 3.1.9 (8 May 2025)
 - fix: `disposeSource` crash on Android #240
 
-#### 3.1.8 (2 May 2025)
+##### 3.1.8 (2 May 2025)
 - fix: adding audio data to an unended BufferStream throws error #235
 
-#### 3.1.7 (23 Apr 2025)
+##### 3.1.7 (23 Apr 2025)
 - docs: clarify docs regarding `semitones` and `shift` parameters of the `pitchShiftFilter` #233 by @bemain
 - fix: `readSamplesFrom*()` works again
 - more accurate samples average in `readSamplesFrom*`
 
-#### 3.1.6 (19 Apr 2025)
+##### 3.1.6 (19 Apr 2025)
 - fix: passing a group handle to `seek()` throws error #228
 - fix: `listPlaybackDevices` fails to retrieve devices when the device prefix contains Chinese characters #227 by @WHYBBE
 
-#### 3.1.5 (17 Apr 2025)
+##### 3.1.5 (17 Apr 2025)
 - fix: when the speed is changed, after seeking, the `getPosition()` returns the wrong position #223
 
-#### 3.1.4 (6 Apr 2025)
+##### 3.1.4 (6 Apr 2025)
 - fix building issue with XCode 16.3 #217
 
-#### 3.1.3 (31 Mar 2025)
+##### 3.1.3 (31 Mar 2025)
 - fix `listPlaybackDevices` on Web #214
 - log `maxActiveVoiceCountReached` exception with Level.INFO #212
 
-#### 3.1.2 (27 Mar 2025)
+##### 3.1.2 (27 Mar 2025)
 - enhanced documentation clarity and organization by moving it to the dedicated [flutter_soloud_docs](https://github.com/alnitak/flutter_soloud_docs) repo. Powered by [docs.page](https://docs.page/) from Invertase and can be viewed [here](https://docs.page/alnitak/flutter_soloud_docs).
 - Web fix: Uncaught (in promise) TypeError #208
 - fix: error when loading very short MP3 files #181
 
-#### 3.1.1 (21 Mar 2025)
+##### 3.1.1 (21 Mar 2025)
 - fix: Sounds seemingly "backed up in a queue" when playing too many at once #204
 
-#### 3.1.0 (18 Mar 2025)
+##### 3.1.0 (18 Mar 2025)
 - when calling `AudioData.getAudioData` is now possible to check if the audio data is the same as before. Useful to visualize waveforms. This is because `AudioData.getAudioData` returns the current data in the buffer and if it is called before the buffer has been updated, it will return the previous data.
 - better FFT data for a better visualization.
 - added `resetBufferStream` method to `SoLoud`. It happens that when playing a stream, maybe from the web, it is necessary to change it to another source. The player continues to play the already added audio data to the buffer. This method can be used to reset the buffer and start with the new audio data.
 
-#### 3.0.3 (7 Mar 2025)
+##### 3.0.3 (7 Mar 2025)
 - it's now possible to choose to not link opus and ogg libraries (see `NO_OPUS_OGG_LIBS.md`). Fix for #191 and #192.
 
-#### 3.0.2 (25 Feb 2025)
+##### 3.0.2 (25 Feb 2025)
 - fixed crash when trying to play a sound after deactivating its active filter #189
 
-#### 3.0.1 (20 Feb 2025)
+##### 3.0.1 (20 Feb 2025)
 - fix: error while calling listPlaybackDevices() #186.
 - Android example folder recreated.
 
-#### 3.0.0 (13 Feb 2025)
+##### 3.0.0 (13 Feb 2025)
 - `BufferStream` now supports 2 type of buffering:
   - `BufferingType.preserved` (default): preserve the data already in the buffer while playing.
   - `BufferingType.released`: free the memory of the already played data for longer playback.
@@ -322,7 +337,7 @@
 - fix: on some unclear conditions `isInitialized` returns false on MacOS after the engine starts with no error #177
 - fix: Call `loadMem` will crash the application #174.
 
-#### 3.0.0-pre.0 (2 Feb 2025)
+##### 3.0.0-pre.0 (2 Feb 2025)
 - fix: clicks and pops when changing waveform frequency #156.
 - added `Limiter` and `Compressor` filters (see `example/lib/filters/`).
 - added BufferStream #148. Now it's possible to add audio data and listen to it. It provides a customizable buffering length which automatically pauses the playing handle if there is not enough data, for example, when receiving audio data from the web. It also provides a callback that allows you to know when the buffering is started and stopped. The audio data can of of the following formats:
@@ -342,39 +357,39 @@
   <script src="assets/packages/flutter_soloud/web/init_module.dart.js" defer></script>
   ```
 
-#### 2.1.7 (29 Oct 2024)
+##### 2.1.7 (29 Oct 2024)
 - added `listPlaybackDevices` to get all the OS output devices available.
 - added `deviceId` parameter to the `init()` method. You can choose which device is delegated to output the audio.
 - added `changeDevice` method to change the output playback device on-the-fly.
 - fix: now throws when loading a file that might be corrupt #145.
 
-#### 2.1.6 (17 Oct 2024)
+##### 2.1.6 (17 Oct 2024)
 - fixed a bug that caused an error when loading a sound more than twice.
 
-#### 2.1.5 (11 Oct 2024)
+##### 2.1.5 (11 Oct 2024)
 - added `readSamplesFrom*()` methods to read N audio data within a time range from a file or memory #75. Example in `example/lib/wave_data/wave_data.dart`.
 
-#### 2.1.4 (18 Sep 2024)
+##### 2.1.4 (18 Sep 2024)
 - fixed waveform generation, which somehow oscillates frequencies after some time #129.
 - fixed iOS compilation by rising minimum iOS version to 13 #128.
 - fixed iOS compilation on the new MacOS 15 with XCode 16 #130.
 
-#### 2.1.3 (7 Sep 2024)
+##### 2.1.3 (7 Sep 2024)
 - added audio_data example.
 - added compatibility for Web platform in the pubspec.
 - bug fix when loading multiple audio files asynchronously.
 - better error message when something goes wrong loading a file.
 
-#### 2.1.2 (29 Aug 2024)
+##### 2.1.2 (29 Aug 2024)
 - bug fix when loading multiple audio files asynchronously.
 
-#### 2.1.1 (28 Aug 2024)
+##### 2.1.1 (28 Aug 2024)
 - added `bool isActive` and `int index` getters to filters.
 - added a `timeStretch()` method to the single pitchshift filter.
 - fixed building error on Windows.
 - updated examples.
 
-#### 2.1.0 (23 Aug 2024)
+##### 2.1.0 (23 Aug 2024)
 - added support for the Web platform.
 - added `getPan()`, `setPan()` and `setPanAbsolute()`.
 - added `loadMem()` to read the given audio file bytes buffer (not RAW data). Useful for the Web platform.
@@ -387,13 +402,13 @@
 - experimental capture feature removed.
 - now accessing the filter has been simplified with the use of `SoLoud.filters` and `AudioSource.filters` to use global and single sound filters.
 
-#### 2.0.2 (23 May 2024)
+##### 2.0.2 (23 May 2024)
 - Fixed wrong exception raised by `setVolume()` when a handle is no more valid.
 
-#### 2.0.1 (6 May 2024)
+##### 2.0.1 (6 May 2024)
 - Fix init error on hot restart.
 
-#### 2.0.0 (5 Apr 2024)
+##### 2.0.0 (5 Apr 2024)
 - A giant leap forward from the previous version (many thanks to Filip Hráček).
 - Major changes to API. There are quick fixes (`dart fix`) to automatically rename many changed APIs.
 - `SoLoud` methods now throw instead of returning a PlayerErrors object.
@@ -436,7 +451,7 @@
 - The Web platform is a work in progress, stay tuned!
 - Switched LICENSE from Apache-2.0 to MIT.
 
-#### 2.0.0-pre.5 (4 Apr 2024)
+##### 2.0.0-pre.5 (4 Apr 2024)
 - getLoopPoint now returns Duration.
 - Major changes to API docs and README.
 - Renamed `SoLoud.disposeSound` to `SoLoud.disposeSource`.
@@ -446,10 +461,10 @@
 - Removed unused `AudioSource.keys` property.
 - Switched LICENSE from Apache-2.0 to MIT.
 
-#### 2.0.0-pre.4 (21 Mar 2024)
+##### 2.0.0-pre.4 (21 Mar 2024)
 - some little fixes.
 
-#### 2.0.0-pre.3 (20 Mar 2024)
+##### 2.0.0-pre.3 (20 Mar 2024)
 - added `getActiveVoiceCount()` to get concurrent sounds that are playing at the moment.
 - added `countAudioSource()` to get concurrent sounds that are playing a specific audio source.
 - added `getVoiceCount()` to get the number of voices the application has told SoLoud to play.
@@ -492,7 +507,7 @@
   C++ API, and also to have a symmetry (`init`/`deinit`).
   Quick fix available.
 
-#### 2.0.0-pre.2 (14 Mar 2024)
+##### 2.0.0-pre.2 (14 Mar 2024)
 
 NOTE: This version is much more breaking than the ones before it.
 It might be worth it to first upgrade your code to `2.0.0-pre.1`,
@@ -525,7 +540,7 @@ to `2.0.0-pre.2` and beyond.
   }
   ```
 
-#### 2.0.0-pre.1 (12 Mar 2024)
+##### 2.0.0-pre.1 (12 Mar 2024)
 - added `looping` and `loopingStartAt` properties to `SoLoud.play()` and `SoLoud.play3d()`.
 - added `SoLoud.getLooping()` to retrieve the looping state of a sound.
 - added `SoLoud.getLoopPoint()` and `SoLoud.setLoopPoint()` to get and set the looping start position of a sound.
@@ -539,7 +554,7 @@ to `2.0.0-pre.2` and beyond.
 - Rename `SoLoudTools.initSounds` to `SoLoudTools.createNotes` for clarity.
   (Quick fix available.)
 
-#### 2.0.0-pre.0 (11 Mar 2024)
+##### 2.0.0-pre.0 (11 Mar 2024)
 - added `bool SoLoud.getVisualizationEnabled()` to get the current state of the visualization.
 - added `mode` property to `SoLoud.loadFile()` and `SoloudTools.loadFrom*` to prevent loading the whole audio data into memory:
     - *LoadMode.memory* by default. Means less CPU, more memory allocated.
@@ -594,18 +609,18 @@ to `2.0.0-pre.2` and beyond.
   but unlikely to have an effect (as most users hopefully don't assign
   to these fields).
 
-#### 1.2.5 (2 Mar 2024)
+##### 1.2.5 (2 Mar 2024)
 - updated mp3, flac and wav decoders
 - updated miniaudio to 0.11.21
 - fixed the doppler effect in 3D audio example
 
-#### 1.2.4
+##### 1.2.4
 fixed compilation on Windows
 
-#### 1.2.3
+##### 1.2.3
 - fixed compilation on iOS and macOS
 
-#### 1.2.2
+##### 1.2.2
 - waveform example page updated with sound FXs
 - added sound FXs
     - biquadResonantFilter
@@ -618,7 +633,7 @@ fixed compilation on Windows
     - robotizeFilter
     - freeverbFilter
 
-#### 1.2.1
+##### 1.2.1
 - bound some more SoLoud functionalities:
     - fadeGlobalVolume
     - fadeVolume
@@ -632,19 +647,19 @@ fixed compilation on Windows
     - oscillateGlobalVolume
 - waveform example page updated
 
-#### 1.2.0
+##### 1.2.0
 - added waveform generator
 - added a test page for waveform
 - added some tests in `tests` dir
 - miniaudio updated to v0.11.18
 
-#### 1.1.1
+##### 1.1.1
 - *SoLoud().loadFile* now can return *PlayerErrors.fileAlreadyLoaded* when a sound has already been loaded previously. It still returns the SoundProps sound. It's not a breaking error.
 - added *Soloud().disposeAllSound* to stop and dispose all active sounds
 
 **breaking change**: *Soloud().stopSound* has been renamed to *Soloud().disposeSound*
 
-#### 1.1.0
+##### 1.1.0
 added load sound tools:
 - SoloudLoadingTool.loadFromAssets()
 - SoloudLoadingTool.loadFromFile()
@@ -652,13 +667,13 @@ added load sound tools:
 
 added also a spin around example
 
-#### 1.0.0
+##### 1.0.0
 - added 3D audio with example
 
-#### 0.9.0
+##### 0.9.0
 - added capture from the microphone with an example
 
-#### 0.1.0
+##### 0.1.0
 
 Initial release:
 * Supported on Linux, Windows, Mac, Android, and iOS

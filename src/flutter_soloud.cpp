@@ -109,6 +109,7 @@
 #include "waveform/miniaudio_libvorbis.cpp"
 #include "audiobuffer/audiobuffer.cpp"
 #include "audiobuffer/stream_decoder.cpp"
+#include "audiobuffer/wav_stream_decoder.cpp"
 #include "audiobuffer/flac_stream_decoder.cpp"
 #include "audiobuffer/ogg_flac_stream_decoder.cpp"
 #include "audiobuffer/opus_stream_decoder.cpp"
