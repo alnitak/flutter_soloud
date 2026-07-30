@@ -1,3 +1,7 @@
+
+#### 4.1.4 (XX Xxx 2026)
+- fix: the voice-ended callback is no longer invoked while SoLoud's audio mutex is held. It ran there via `stopVoice_internal()` and reached back into `Player` state guarded by `sounds_mutex`, which deadlocked against `disposeSound()` (which holds `sounds_mutex` across `soloud.stop()`). The symptom was a wedged engine: handles and sources still looked valid, no audio was produced, and `deinit()` never completed. Ended voices are now queued and dispatched once the mutex is released
+
 ##### 4.1.3 (29 Jul 2026)
 - another SPM fix: add wav_stream_decoder.cpp to SPM unity build (crash on Apple platforms)
 
