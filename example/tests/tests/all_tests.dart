@@ -24,6 +24,7 @@ import 'play_scheduled.dart' as play_scheduled;
 import 'play_seek_pause.dart' as play_seek_pause;
 import 'playback_devices.dart' as playback_devices;
 import 'playback_speed.dart' as playback_speed;
+import 'player_error_propagation.dart' as player_error_propagation;
 import 'protect_voice.dart' as protect_voice;
 import 'pull_buffer_file_stream_test.dart' as pull_buffer_file_stream;
 import 'pull_buffer_range_test.dart' as pull_buffer_range;
@@ -207,6 +208,10 @@ final List<TestEntry> allTests = [
   const TestEntry(
     name: 'PlaybackSpeed',
     run: playback_speed.testPlaybackSpeed,
+  ),
+  const TestEntry(
+    name: 'PlayerErrorPropagation',
+    run: player_error_propagation.testPlayerErrorPropagation,
   ),
   const TestEntry(
     name: 'ProtectVoice',
