@@ -707,13 +707,13 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }
 
   @override
-  void pauseSwitch(SoundHandle handle) {
-    return wasmPauseSwitch(handle.id);
+  PlayerErrors pauseSwitch(SoundHandle handle) {
+    return PlayerErrors.values[wasmPauseSwitch(handle.id)];
   }
 
   @override
-  void setPause(SoundHandle handle, int pause) {
-    return wasmSetPause(handle.id, pause);
+  PlayerErrors setPause(SoundHandle handle, int pause) {
+    return PlayerErrors.values[wasmSetPause(handle.id, pause)];
   }
 
   @override
@@ -874,8 +874,8 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }
 
   @override
-  void stop(SoundHandle handle) {
-    return wasmStop(handle.id);
+  PlayerErrors stop(SoundHandle handle) {
+    return PlayerErrors.values[wasmStop(handle.id)];
   }
 
   @override
@@ -1672,8 +1672,25 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }
 
   @override
-  int busPlayOnEngine(int busId, double volume, bool paused) {
-    return wasmBusPlayOnEngine(busId, volume, paused ? 1 : 0);
+  ({PlayerErrors error, SoundHandle handle}) busPlayOnEngine(
+    int busId,
+    double volume,
+    bool paused,
+  ) {
+    final handlePtr = wasmMalloc(4); // 4 bytes for an int32
+    final result = wasmBusPlayOnEngine(
+      busId,
+      volume,
+      paused ? 1 : 0,
+      handlePtr,
+    );
+    final ret = (
+      error: PlayerErrors.values[result],
+      handle: SoundHandle(wasmGetI32Value(handlePtr, 'i32')),
+    );
+    wasmFree(handlePtr);
+
+    return ret;
   }
 
   @override

@@ -258,10 +258,10 @@ external void wasmSetWaveform(int soundHash, int newWaveform);
 external int wasmSpeechText(int textToSpeechPtr, int handlePtr);
 
 @JS('Module_soloud._pauseSwitch')
-external void wasmPauseSwitch(int handle);
+external int wasmPauseSwitch(int handle);
 
 @JS('Module_soloud._setPause')
-external void wasmSetPause(int handle, int pause);
+external int wasmSetPause(int handle, int pause);
 
 @JS('Module_soloud._getPause')
 external int wasmGetPause(int handle);
@@ -335,7 +335,7 @@ external void wasmFadeScheduled(
 );
 
 @JS('Module_soloud._stop')
-external void wasmStop(int handle);
+external int wasmStop(int handle);
 
 @JS('Module_soloud._disposeSound')
 external void wasmDisposeSound(int soundHash);
@@ -704,7 +704,12 @@ external int wasmCreateBus();
 external void wasmDestroyBus(int busId);
 
 @JS('Module_soloud._busPlayOnEngine')
-external int wasmBusPlayOnEngine(int busId, double volume, int paused);
+external int wasmBusPlayOnEngine(
+  int busId,
+  double volume,
+  int paused,
+  int handlePtr,
+);
 
 @JS('Module_soloud._busSetChannels')
 external void wasmBusSetChannels(int busId, int channels);

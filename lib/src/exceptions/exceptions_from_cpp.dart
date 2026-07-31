@@ -427,3 +427,26 @@ class SoLoudInvalidPullBufferStateCppException extends SoLoudCppException {
       'The pull buffer stream is in an invalid state for this operation. '
       '(on the C++ side).';
 }
+
+/// The output audio device could not be started or resumed.
+class SoLoudAudioDeviceFailedToStartCppException extends SoLoudCppException {
+  /// Creates a new [SoLoudAudioDeviceFailedToStartCppException].
+  const SoLoudAudioDeviceFailedToStartCppException([super.message]);
+
+  @override
+  String get description =>
+      'The output audio device could not be started or resumed. The audio '
+      'session may have been taken over by another app, the device may have '
+      'been unplugged, or the OS denied the request. (on the C++ side).';
+}
+
+/// SoLoud didn't return a valid voice handle when starting the playback.
+class SoLoudFailedToStartPlaybackCppException extends SoLoudCppException {
+  /// Creates a new [SoLoudFailedToStartPlaybackCppException].
+  const SoLoudFailedToStartPlaybackCppException([super.message]);
+
+  @override
+  String get description =>
+      'Failed to start the playback. The audio engine could not create a '
+      'valid voice for this sound. (on the C++ side).';
+}

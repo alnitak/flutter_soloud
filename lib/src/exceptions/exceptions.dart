@@ -141,6 +141,10 @@ abstract class SoLoudCppException extends SoLoudException {
         return const SoLoudHashIsNotAPullBufferStreamCppException();
       case PlayerErrors.invalidPullBufferState:
         return const SoLoudInvalidPullBufferStateCppException();
+      case PlayerErrors.audioDeviceFailedToStart:
+        return const SoLoudAudioDeviceFailedToStartCppException();
+      case PlayerErrors.failedToStartPlayback:
+        return const SoLoudFailedToStartPlaybackCppException();
     }
   }
 

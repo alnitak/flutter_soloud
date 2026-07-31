@@ -939,24 +939,31 @@ extern "C"
   /// Switch pause state for an already loaded sound identified by [handle]
   ///
   /// [handle] the sound handle
-  FFI_PLUGIN_EXPORT void pauseSwitch(unsigned int handle)
+  /// Returns [PlayerErrors.noError] if success, [PlayerErrors.backendNotInited]
+  /// if the engine is not initialized, [PlayerErrors.soundHandleNotFound] if
+  /// [handle] is not valid, [PlayerErrors.audioDeviceFailedToStart] if
+  /// unpausing could not start the output device.
+  FFI_PLUGIN_EXPORT enum PlayerErrors pauseSwitch(unsigned int handle)
   {
-    if (player.get() == nullptr || !player.get()->isInited() ||
-        !player.get()->isValidHandle(handle))
-      return;
-    player.get()->pauseSwitch(handle);
+    if (player.get() == nullptr || !player.get()->isInited())
+      return backendNotInited;
+    return player.get()->pauseSwitch(handle);
   }
 
   /// Pause or unpause already loaded sound identified by [handle]
   ///
   /// [handle] the sound handle
   /// [pause] the sound handle
-  FFI_PLUGIN_EXPORT void setPause(unsigned int handle, bool pause)
+  /// Returns [PlayerErrors.noError] if success, [PlayerErrors.backendNotInited]
+  /// if the engine is not initialized, [PlayerErrors.soundHandleNotFound] if
+  /// [handle] is not valid, [PlayerErrors.audioDeviceFailedToStart] if
+  /// unpausing could not start the output device. When the device cannot be
+  /// started, the voice is left paused.
+  FFI_PLUGIN_EXPORT enum PlayerErrors setPause(unsigned int handle, bool pause)
   {
-    if (player.get() == nullptr || !player.get()->isInited() ||
-        !player.get()->isValidHandle(handle))
-      return;
-    player.get()->setPause(handle, pause);
+    if (player.get() == nullptr || !player.get()->isInited())
+      return backendNotInited;
+    return player.get()->setPause(handle, pause);
   }
 
   /// Gets the pause state
@@ -1206,12 +1213,18 @@ extern "C"
   /// Stop already loaded sound identified by [handle] and clear it
   ///
   /// [handle]
-  FFI_PLUGIN_EXPORT void stop(unsigned int handle)
+  /// Returns [PlayerErrors.noError] if success, [PlayerErrors.backendNotInited]
+  /// if the engine is not initialized, [PlayerErrors.soundHandleNotFound] if
+  /// [handle] is not valid (for example the voice has already ended).
+  FFI_PLUGIN_EXPORT enum PlayerErrors stop(unsigned int handle)
   {
     if (player.get() == nullptr || !player.get()->isInited())
-      return;
-    player.get()->stop(handle);
+      return backendNotInited;
+    const enum PlayerErrors error = player.get()->stop(handle);
+    if (error != noError)
+      return error;
     voiceEndedCallback(&handle);
+    return noError;
   }
 
   /// Stop all handles of the already loaded sound identified by [hash] and
@@ -2549,16 +2562,28 @@ extern "C"
   /// [busId] the bus ID returned by createBus.
   /// [volume] playback volume (1.0 = full).
   /// [paused] whether to start paused.
-  /// Returns the voice handle for the bus, or 0 on error.
+  /// [handle] set to the voice handle of the bus, or 0 on error.
+  /// Returns [PlayerErrors.noError] if success, [PlayerErrors.backendNotInited]
+  /// if the engine is not initialized, [PlayerErrors.busIdNotFound] if [busId]
+  /// is unknown, [PlayerErrors.audioDeviceFailedToStart] if the output device
+  /// could not be started (only checked when [paused] is false),
+  /// [PlayerErrors.failedToStartPlayback] if no voice could be created for the
+  /// bus.
   ///
   /// Note: to play a sound through a bus, the play() function is used with the
   /// bus ID as an argument. See play() for more information.
-  FFI_PLUGIN_EXPORT unsigned int busPlayOnEngine(unsigned int busId,
-                                                 float volume, bool paused)
+  FFI_PLUGIN_EXPORT enum PlayerErrors busPlayOnEngine(unsigned int busId,
+                                                      float volume, bool paused,
+                                                      unsigned int *handle)
   {
+    // Zero it before the guard below: `Player::busPlayOnEngine()` always sets
+    // it, but this early return would otherwise leave the caller's buffer
+    // untouched. On the web that buffer comes from `_malloc()`, which does not
+    // zero, so Dart would read uninitialized memory as a handle.
+    *handle = 0;
     if (player.get() == nullptr)
-      return 0;
-    return player.get()->busPlayOnEngine(busId, volume, paused);
+      return backendNotInited;
+    return player.get()->busPlayOnEngine(busId, volume, paused, *handle);
   }
 
   /// Set the number of output channels for the bus (default is 2 = stereo).

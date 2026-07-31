@@ -413,15 +413,25 @@ abstract class FlutterSoLoud {
   /// Switch pause state of an already loaded sound identified by [handle].
   ///
   /// [handle] the sound handle.
+  /// Returns [PlayerErrors.noError] if success,
+  /// [PlayerErrors.backendNotInited] if the engine is not initialized,
+  /// [PlayerErrors.soundHandleNotFound] if [handle] is not valid,
+  /// [PlayerErrors.audioDeviceFailedToStart] if unpausing could not start
+  /// the output device.
   @mustBeOverridden
-  void pauseSwitch(SoundHandle handle);
+  PlayerErrors pauseSwitch(SoundHandle handle);
 
   /// Pause or unpause already loaded sound identified by [handle].
   ///
   /// [handle] the sound handle.
   /// [pause] the new state.
+  /// Returns [PlayerErrors.noError] if success,
+  /// [PlayerErrors.backendNotInited] if the engine is not initialized,
+  /// [PlayerErrors.soundHandleNotFound] if [handle] is not valid,
+  /// [PlayerErrors.audioDeviceFailedToStart] if unpausing could not start
+  /// the output device. In the latter case the voice is left paused.
   @mustBeOverridden
-  void setPause(SoundHandle handle, int pause);
+  PlayerErrors setPause(SoundHandle handle, int pause);
 
   /// Gets the pause state.
   ///
@@ -604,8 +614,12 @@ abstract class FlutterSoLoud {
   /// Stop already loaded sound identified by [handle] and clear it.
   ///
   /// [handle] the sound handle.
+  /// Returns [PlayerErrors.noError] if success,
+  /// [PlayerErrors.backendNotInited] if the engine is not initialized,
+  /// [PlayerErrors.soundHandleNotFound] if [handle] is not valid (for
+  /// example the voice has already ended).
   @mustBeOverridden
-  void stop(SoundHandle handle);
+  PlayerErrors stop(SoundHandle handle);
 
   /// Stop all handles of the already loaded sound identified
   /// by [soundHash] and dispose it.
@@ -1329,9 +1343,17 @@ abstract class FlutterSoLoud {
   /// [busId] the bus ID returned by createBus.
   /// [volume] playback volume (1.0 = full).
   /// [paused] whether to start paused.
-  /// Returns the voice handle for the bus, or 0 on error.
+  /// When [paused] is false the output audio device is started first, so
+  /// this can also fail with [PlayerErrors.audioDeviceFailedToStart].
+  ///
+  /// Returns [PlayerErrors.noError] and the voice handle of the bus on
+  /// success, or the error and a zeroed handle on failure.
   @mustBeOverridden
-  int busPlayOnEngine(int busId, double volume, bool paused);
+  ({PlayerErrors error, SoundHandle handle}) busPlayOnEngine(
+    int busId,
+    double volume,
+    bool paused,
+  );
 
   /// Set the number of output channels for the bus (default is 2 = stereo).
   ///

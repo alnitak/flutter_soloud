@@ -1265,26 +1265,26 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       >();
 
   @override
-  void pauseSwitch(SoundHandle handle) {
-    return _pauseSwitch(handle.id);
+  PlayerErrors pauseSwitch(SoundHandle handle) {
+    return PlayerErrors.values[_pauseSwitch(handle.id)];
   }
 
   late final _pauseSwitchPtr =
-      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt)>>(
+      _lookup<ffi.NativeFunction<ffi.Int32 Function(ffi.UnsignedInt)>>(
         'pauseSwitch',
       );
-  late final _pauseSwitch = _pauseSwitchPtr.asFunction<void Function(int)>();
+  late final _pauseSwitch = _pauseSwitchPtr.asFunction<int Function(int)>();
 
   @override
-  void setPause(SoundHandle handle, int pause) {
-    return _setPause(handle.id, pause);
+  PlayerErrors setPause(SoundHandle handle, int pause) {
+    return PlayerErrors.values[_setPause(handle.id, pause)];
   }
 
   late final _setPausePtr =
-      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt, ffi.Int)>>(
+      _lookup<ffi.NativeFunction<ffi.Int32 Function(ffi.UnsignedInt, ffi.Int)>>(
         'setPause',
       );
-  late final _setPause = _setPausePtr.asFunction<void Function(int, int)>();
+  late final _setPause = _setPausePtr.asFunction<int Function(int, int)>();
 
   @override
   bool getPause(SoundHandle handle) {
@@ -1588,13 +1588,13 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       .asFunction<void Function(int, double, double, double, int)>();
 
   @override
-  void stop(SoundHandle handle) {
-    return _stop(handle.id);
+  PlayerErrors stop(SoundHandle handle) {
+    return PlayerErrors.values[_stop(handle.id)];
   }
 
   late final _stopPtr =
-      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt)>>('stop');
-  late final _stop = _stopPtr.asFunction<void Function(int)>();
+      _lookup<ffi.NativeFunction<ffi.Int32 Function(ffi.UnsignedInt)>>('stop');
+  late final _stop = _stopPtr.asFunction<int Function(int)>();
 
   @override
   void disposeSound(SoundHash soundHash) {
@@ -3181,20 +3181,42 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   /// [busId] the bus ID returned by createBus.
   /// [volume] playback volume (1.0 = full).
   /// [paused] whether to start paused.
-  /// Returns the voice handle for the bus, or 0 on error.
+  /// When [paused] is false the output audio device is started first, so
+  /// this can also fail with [PlayerErrors.audioDeviceFailedToStart].
+  ///
+  /// Returns [PlayerErrors.noError] and the voice handle of the bus on
+  /// success, or the error and a zeroed handle on failure.
   @override
-  int busPlayOnEngine(int busId, double volume, bool paused) {
-    return _busPlayOnEngine(busId, volume, paused);
+  ({PlayerErrors error, SoundHandle handle}) busPlayOnEngine(
+    int busId,
+    double volume,
+    bool paused,
+  ) {
+    final ffi.Pointer<ffi.UnsignedInt> handle = calloc();
+    final e = _busPlayOnEngine(busId, volume, paused, handle);
+    final ret = (
+      error: PlayerErrors.values[e],
+      handle: SoundHandle(handle.value),
+    );
+    calloc.free(handle);
+    return ret;
   }
 
   late final _busPlayOnEnginePtr =
       _lookup<
         ffi.NativeFunction<
-          ffi.UnsignedInt Function(ffi.UnsignedInt, ffi.Float, ffi.Bool)
+          ffi.Int32 Function(
+            ffi.UnsignedInt,
+            ffi.Float,
+            ffi.Bool,
+            ffi.Pointer<ffi.UnsignedInt>,
+          )
         >
       >('busPlayOnEngine');
   late final _busPlayOnEngine = _busPlayOnEnginePtr
-      .asFunction<int Function(int, double, bool)>();
+      .asFunction<
+        int Function(int, double, bool, ffi.Pointer<ffi.UnsignedInt>)
+      >();
 
   /// Set the number of output channels for the bus (default is 2 = stereo).
   ///

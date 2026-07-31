@@ -111,7 +111,13 @@ enum PlayerErrors {
   hashIsNotAPullBufferStream(32),
 
   /// The pull buffer stream is in an invalid state for this operation.
-  invalidPullBufferState(33);
+  invalidPullBufferState(33),
+
+  /// The output audio device could not be started or resumed.
+  audioDeviceFailedToStart(34),
+
+  /// SoLoud didn't return a valid voice handle when starting the playback.
+  failedToStartPlayback(35);
 
   const PlayerErrors(this.value);
 
@@ -213,6 +219,11 @@ enum PlayerErrors {
       case PlayerErrors.invalidPullBufferState:
         return 'The pull buffer stream is in an invalid state for this '
             'operation.';
+      case PlayerErrors.audioDeviceFailedToStart:
+        return 'The output audio device could not be started or resumed!';
+      case PlayerErrors.failedToStartPlayback:
+        return 'Failed to start the playback. The audio engine could not '
+            'create a valid voice for this sound.';
     }
   }
 
