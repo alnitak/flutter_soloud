@@ -45,6 +45,20 @@ namespace SoLoud
 		unlockAudioMutex_internal();
 	}
 
+	void Soloud::moveGlobalFilter(unsigned int aFromSlot, unsigned int aToSlot)
+	{
+		if (aFromSlot >= FILTERS_PER_STREAM || aToSlot >= FILTERS_PER_STREAM)
+			return;
+
+		lockAudioMutex_internal();
+		delete mFilterInstance[aToSlot];
+		mFilter[aToSlot] = mFilter[aFromSlot];
+		mFilterInstance[aToSlot] = mFilterInstance[aFromSlot];
+		mFilter[aFromSlot] = 0;
+		mFilterInstance[aFromSlot] = 0;
+		unlockAudioMutex_internal();
+	}
+
 	float Soloud::getFilterParameter(handle aVoiceHandle, unsigned int aFilterId, unsigned int aAttributeId)
 	{
 		float ret = INVALID_PARAMETER;
@@ -99,6 +113,39 @@ namespace SoLoud
 			mVoice[ch]->mFilter[aFilterId])
 		{
 			mVoice[ch]->mFilter[aFilterId]->setFilterParameter(aAttributeId, aValue);
+		}
+		FOR_ALL_VOICES_POST
+	}
+
+	void Soloud::removeVoiceFilter(handle aVoiceHandle, unsigned int aFilterId)
+	{
+		if (aFilterId >= FILTERS_PER_STREAM)
+			return;
+
+		FOR_ALL_VOICES_PRE
+		if (mVoice[ch])
+		{
+			// delete of a NULL instance is a no-op
+			delete mVoice[ch]->mFilter[aFilterId];
+			unsigned int i;
+			for (i = aFilterId; i < FILTERS_PER_STREAM - 1; i++)
+			{
+				mVoice[ch]->mFilter[i] = mVoice[ch]->mFilter[i + 1];
+			}
+			mVoice[ch]->mFilter[FILTERS_PER_STREAM - 1] = NULL;
+		}
+		FOR_ALL_VOICES_POST
+	}
+
+	void Soloud::addVoiceFilter(handle aVoiceHandle, unsigned int aFilterId, Filter *aFilter)
+	{
+		if (aFilterId >= FILTERS_PER_STREAM || aFilter == NULL)
+			return;
+
+		FOR_ALL_VOICES_PRE
+		if (mVoice[ch] && mVoice[ch]->mFilter[aFilterId] == NULL)
+		{
+			mVoice[ch]->mFilter[aFilterId] = aFilter->createInstance();
 		}
 		FOR_ALL_VOICES_POST
 	}

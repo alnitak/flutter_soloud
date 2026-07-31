@@ -271,6 +271,24 @@ namespace SoLoud
 		}
 	}
 
+	void Bus::moveFilter(unsigned int aFromSlot, unsigned int aToSlot)
+	{
+		if (aFromSlot >= FILTERS_PER_STREAM || aToSlot >= FILTERS_PER_STREAM)
+			return;
+
+		mFilter[aToSlot] = mFilter[aFromSlot];
+		mFilter[aFromSlot] = 0;
+
+		if (mInstance)
+		{
+			mSoloud->lockAudioMutex_internal();
+			delete mInstance->mFilter[aToSlot];
+			mInstance->mFilter[aToSlot] = mInstance->mFilter[aFromSlot];
+			mInstance->mFilter[aFromSlot] = 0;
+			mSoloud->unlockAudioMutex_internal();
+		}
+	}
+
 	result Bus::setChannels(unsigned int aChannels)
 	{
 		if (aChannels == 0 || aChannels == 3 || aChannels == 5 || aChannels == 7 || aChannels > MAX_CHANNELS)
