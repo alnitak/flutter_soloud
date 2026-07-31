@@ -182,6 +182,13 @@ PlayerErrors Filters::addFilter(FilterType filterType) {
     mSoloud->setGlobalFilter(filtersSize, newFilter);
   } else if (mSound != nullptr) {
     mSound->sound.get()->setFilter(filtersSize, newFilter);
+    // Voices snapshot the source filters only when they start playing.
+    // Attach a live instance of the new filter to the voices already
+    // playing this sound so the filter takes effect immediately (e.g.
+    // when re-adding a filter that was just removed).
+    for (const auto &h : mSound->handle) {
+      mSoloud->addVoiceFilter(h.handle, filtersSize, newFilter);
+    }
   } else {
     mBusData->bus.setFilter(filtersSize, newFilter);
   }
@@ -203,6 +210,18 @@ bool Filters::removeFilter(FilterType filterType) {
   if (mSound == nullptr && mBusData == nullptr) {
     mSoloud->setGlobalFilter(index, 0);
   } else if (mSound != nullptr) {
+    // Voices playing this sound created their own live instances of this
+    // filter, and those instances keep a reference to the filter object
+    // itself (mParent). Deleting the filter while a voice still holds its
+    // instance is a use-after-free: the audio thread keeps dereferencing
+    // the freed filter (e.g. ParametricEqInstance reads the FFT window
+    // sizes from it and can end up writing out of bounds, corrupting the
+    // heap). Detach (delete + shift down) the live instances from every
+    // active voice of this sound first. This also keeps the voice filter
+    // slots in sync with the filter list shift done below.
+    for (const auto &h : mSound->handle) {
+      mSoloud->removeVoiceFilter(h.handle, index);
+    }
     mSound->sound.get()->setFilter(index, 0);
   } else {
     mBusData->bus.setFilter(index, 0);
@@ -213,18 +232,17 @@ bool Filters::removeFilter(FilterType filterType) {
   /// shift filters down by 1 from [index]
   for (int i = index; i < filters.size() - 1; i++) {
     if (mSound == nullptr && mBusData == nullptr) {
-      mSoloud->setGlobalFilter(i + 1, 0);
+      // Move the live instance along with the filter instead of clearing
+      // and recreating it, so its current parameter values are preserved.
+      mSoloud->moveGlobalFilter(i + 1, i);
     } else if (mSound != nullptr) {
+      // AudioSource only holds filter pointers; the live instances belong
+      // to the voices and were already shifted by removeVoiceFilter above.
       mSound->sound.get()->setFilter(i + 1, 0);
-    } else {
-      mBusData->bus.setFilter(i + 1, 0);
-    }
-    if (mSound == nullptr && mBusData == nullptr) {
-      mSoloud->setGlobalFilter(i, filters[i + 1].get()->filter.get());
-    } else if (mSound != nullptr) {
       mSound->sound.get()->setFilter(i, filters[i + 1].get()->filter.get());
     } else {
-      mBusData->bus.setFilter(i, filters[i + 1].get()->filter.get());
+      // Move the live instance along with the filter (see above).
+      mBusData->bus.moveFilter(i + 1, i);
     }
   }
   /// remove the filter from the list

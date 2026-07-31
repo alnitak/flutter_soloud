@@ -1,7 +1,8 @@
 
-#### 4.1.4 (XX Xxx 2026)
-- fix: the voice-ended callback is no longer invoked while SoLoud's audio mutex is held. The symptom was a wedged engine: handles and sources still looked valid, no audio was produced, and `deinit()` never completed. Ended voices are now queued and dispatched once the mutex is released. Thanks to @Colton127
+##### 4.1.4 (31 Jul 2026)
+- fix: the voice-ended callback is no longer invoked while SoLoud's audio mutex is held. The symptom was a wedged engine: handles and sources still looked valid, no audio was produced, and `deinit()` never completed. Ended voices are now queued and dispatched once the mutex is released. Thanks to @Colton127 #518
 - fix: on macOS/iOS, the first CocoaPods build after a clean no longer fails with "Build input file cannot be found: libflutter_soloud_plugin.a"
+- fix: deactivate a sound filter couldn't be activate again #525
 
 ##### 4.1.3 (29 Jul 2026)
 - another SPM fix: add wav_stream_decoder.cpp to SPM unity build (crash on Apple platforms)

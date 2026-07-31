@@ -56,6 +56,10 @@ namespace SoLoud
 		virtual BusInstance *createInstance();
 		// Set filter. Set to NULL to clear the filter.
 		virtual void setFilter(unsigned int aFilterId, Filter *aFilter);
+		// Move the filter and its live instance from aFromSlot to aToSlot,
+		// leaving aFromSlot empty. Unlike setFilter, the live instance is
+		// moved as-is, preserving its current parameter values.
+		virtual void moveFilter(unsigned int aFromSlot, unsigned int aToSlot);
 		// Play sound through the bus
 		handle play(AudioSource &aSound, float aVolume = 1.0f, float aPan = 0.0f, bool aPaused = 0);
 		// Play sound through the bus, delayed in relation to other sounds called via this function.

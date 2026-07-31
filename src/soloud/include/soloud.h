@@ -334,6 +334,16 @@ namespace SoLoud
 		void fadeFilterParameter(handle aVoiceHandle, unsigned int aFilterId, unsigned int aAttributeId, float aTo, time aTime);
 		// Oscillate a live filter parameter. Use 0 for the global filters.
 		void oscillateFilterParameter(handle aVoiceHandle, unsigned int aFilterId, unsigned int aAttributeId, float aFrom, float aTo, time aTime);
+		// Delete the live filter instance at aFilterId from a voice and shift the
+		// remaining instances down by one slot, keeping the voice filter slots in
+		// sync with the sound source filter list. Must be called for every active
+		// voice of a sound before deleting a Filter object, since voice filter
+		// instances keep a reference to their parent filter.
+		void removeVoiceFilter(handle aVoiceHandle, unsigned int aFilterId);
+		// Create a live instance of aFilter at aFilterId for a voice. Voices
+		// snapshot the source filters only at play time, so this is needed to
+		// make a filter added to a sound affect its already playing voices.
+		void addVoiceFilter(handle aVoiceHandle, unsigned int aFilterId, Filter *aFilter);
 
 		// Get current play time, in seconds.
 		time getStreamTime(handle aVoiceHandle);
@@ -446,6 +456,10 @@ namespace SoLoud
 
 		// Set global filters. Set to NULL to clear the filter.
 		void setGlobalFilter(unsigned int aFilterId, Filter *aFilter);
+		// Move the global filter and its live instance from aFromSlot to aToSlot,
+		// leaving aFromSlot empty. Unlike setGlobalFilter, the live instance is
+		// moved as-is, preserving its current parameter values.
+		void moveGlobalFilter(unsigned int aFromSlot, unsigned int aToSlot);
 
 		// Enable or disable visualization data gathering
 		void setVisualizationEnable(bool aEnable);
