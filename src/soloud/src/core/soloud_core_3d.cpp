@@ -366,9 +366,12 @@ namespace SoLoud
 	handle Soloud::play3d(AudioSource &aSound, float aPosX, float aPosY, float aPosZ, float aVelX, float aVelY, float aVelZ, float aVolume, bool aPaused, unsigned int aBus)
 	{
 		handle h = play(aSound, aVolume, 0, 1, aBus);
+		// No voice was allocated: don't resolve the sentinel as a handle.
+		if (h == 0)
+			return 0;
 		lockAudioMutex_internal();
 		int v = getVoiceFromHandle_internal(h);
-		if (v < 0) 
+		if (v < 0)
 		{
 			unlockAudioMutex_internal();
 			return h;
@@ -436,9 +439,12 @@ namespace SoLoud
 	handle Soloud::play3dClocked(time aSoundTime, AudioSource &aSound, float aPosX, float aPosY, float aPosZ, float aVelX, float aVelY, float aVelZ, float aVolume, unsigned int aBus)
 	{
 		handle h = play(aSound, aVolume, 0, 1, aBus);
+		// No voice was allocated: don't resolve the sentinel as a handle.
+		if (h == 0)
+			return 0;
 		lockAudioMutex_internal();
 		int v = getVoiceFromHandle_internal(h);
-		if (v < 0) 
+		if (v < 0)
 		{
 			unlockAudioMutex_internal();
 			return h;
