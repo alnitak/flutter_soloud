@@ -132,8 +132,12 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
         // read position so the circular buffer can reuse the memory. In fixed
         // PCM chunk mode the native side already advances the read position,
         // so Dart must not advance it again.
-        final heapBuffer = wasmHeapU8Buffer;
-        final bytes = Uint8List.view(heapBuffer.toDart, offset, length);
+        final heapU8 = wasmHeapU8;
+        final bytes = Uint8List.sublistView(
+          heapU8.toDart,
+          offset,
+          offset + length,
+        );
         mixerOutputChunkController.add(Uint8List.fromList(bytes));
         if (!_mixerOutputChunkMode) {
           advanceMixerOutputReadPosition(length);
@@ -206,8 +210,8 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     if (ptr == 0) {
       return Uint8List(0);
     }
-    final heapBuffer = wasmHeapU8Buffer;
-    final bytes = Uint8List.view(heapBuffer.toDart, ptr, 44);
+    final heapU8 = wasmHeapU8;
+    final bytes = Uint8List.sublistView(heapU8.toDart, ptr, ptr + 44);
     final copy = Uint8List.fromList(bytes);
     wasmFree(ptr);
     return copy;
@@ -219,11 +223,11 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
       return Uint8List(0);
     }
     final basePointer = wasmGetMixerCaptureBufferPointer();
-    final heapBuffer = wasmHeapU8Buffer;
-    final bytes = Uint8List.view(
-      heapBuffer.toDart,
+    final heapU8 = wasmHeapU8;
+    final bytes = Uint8List.sublistView(
+      heapU8.toDart,
       basePointer + offset,
-      length,
+      basePointer + offset + length,
     );
     return Uint8List.fromList(bytes);
   }
@@ -340,8 +344,8 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     final pathPtr = wasmMalloc(uniqueName.length);
 
     /// Copy the buffer into WASM memory using the HEAPU8 view.
-    final heapBuffer = wasmHeapU8Buffer;
-    Uint8List.view(heapBuffer.toDart).setAll(bytesPtr, buffer);
+    final heapU8 = wasmHeapU8;
+    heapU8.toDart.setAll(bytesPtr, buffer);
 
     /// Copy the path string into WASM memory.
     for (var i = 0; i < uniqueName.length; i++) {
@@ -539,8 +543,8 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     scheduleMicrotask(() {
       final audioChunkPtr = wasmMalloc(chunkCopy.length);
 
-      final heapBuffer = wasmHeapU8Buffer;
-      Uint8List.view(heapBuffer.toDart).setAll(audioChunkPtr, chunkCopy);
+      final heapU8 = wasmHeapU8;
+      heapU8.toDart.setAll(audioChunkPtr, chunkCopy);
 
       try {
         wasmAddPullBufferDataStream(
@@ -609,8 +613,8 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     final audioChunkPtr = wasmMalloc(audioChunk.length);
 
     /// Copy the audio chunk into WASM memory using the HEAPU8 view.
-    final heapBuffer = wasmHeapU8Buffer;
-    Uint8List.view(heapBuffer.toDart).setAll(audioChunkPtr, audioChunk);
+    final heapU8 = wasmHeapU8;
+    heapU8.toDart.setAll(audioChunkPtr, audioChunk);
 
     final result = wasmAddAudioDataStream(
       hash,
@@ -1614,8 +1618,8 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     final bufferPtr = wasmMalloc(buffer.length);
 
     /// Copy the buffer into WASM memory using the HEAPU8 view.
-    final heapBuffer = wasmHeapU8Buffer;
-    Uint8List.view(heapBuffer.toDart).setAll(bufferPtr, buffer);
+    final heapU8 = wasmHeapU8;
+    heapU8.toDart.setAll(bufferPtr, buffer);
 
     final samplesPtr = wasmMalloc(numSamplesNeeded * 4);
     final error = wasmReadSamplesFromMem(
@@ -1629,7 +1633,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     );
 
     // Create a view of the WASM memory using JSFloat32Array first
-    final jsHeapF32 = wasmHeapF32Buffer;
+    final jsHeapF32 = wasmHeapF32;
     // Convert the TypedArray view to a Dart Float32List
     final samples = Float32List.sublistView(
       jsHeapF32.toDart,

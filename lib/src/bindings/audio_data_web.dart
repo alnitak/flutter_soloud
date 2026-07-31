@@ -55,23 +55,35 @@ class AudioDataCtrl {
     if (!alwaysReturnData && dataIsTheSameAsBefore || _samplesPtr == 0) {
       return Float32List(0);
     }
-    // Convert the JSArrayBuffer to a Dart Float32List
-    return wasmHeapU8Buffer.toDart.asFloat32List(_samplePtrPtr, 256);
+    // Read the floats through the HEAPF32 view of the WASM memory.
+    return Float32List.sublistView(
+      wasmHeapF32.toDart,
+      _samplePtrPtr ~/ 4,
+      (_samplePtrPtr ~/ 4) + 256,
+    );
   }
 
   Float32List getFftAndWave({bool alwaysReturnData = true}) {
     if (!alwaysReturnData && dataIsTheSameAsBefore || _samplesPtr == 0) {
       return Float32List(0);
     }
-    // Convert the JSArrayBuffer to a Dart Float32List
-    return wasmHeapU8Buffer.toDart.asFloat32List(_samplePtrPtr, 512);
+    // Read the floats through the HEAPF32 view of the WASM memory.
+    return Float32List.sublistView(
+      wasmHeapF32.toDart,
+      _samplePtrPtr ~/ 4,
+      (_samplePtrPtr ~/ 4) + 512,
+    );
   }
 
   Float32List get2DTexture({bool alwaysReturnData = true}) {
     if (!alwaysReturnData && dataIsTheSameAsBefore || _samplesPtr == 0) {
       return Float32List(0);
     }
-    // Convert the JSArrayBuffer to a Dart Float32List
-    return wasmHeapU8Buffer.toDart.asFloat32List(_samplePtrPtr, 512 * 256);
+    // Read the floats through the HEAPF32 view of the WASM memory.
+    return Float32List.sublistView(
+      wasmHeapF32.toDart,
+      _samplePtrPtr ~/ 4,
+      (_samplePtrPtr ~/ 4) + 512 * 256,
+    );
   }
 }
