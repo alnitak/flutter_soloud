@@ -39,11 +39,19 @@ external double wasmGetF64Value(int ptrAddress, String type);
 @JS('Module_soloud.getValue')
 external double wasmGetF32Value(int ptrAddress, String type);
 
-@JS('Module_soloud.HEAPU8.buffer')
-external JSArrayBuffer get wasmHeapU8Buffer;
+/// The WASM heap as a [JSUint8Array].
+///
+/// NOTE: the underlying buffer (`Module_soloud.HEAPU8.buffer`) must not be
+/// declared as a `JSArrayBuffer`: the module is compiled with `-pthread` and
+/// `SHARED_MEMORY=1`, so the buffer is actually a `SharedArrayBuffer` and the
+/// implicit downcast would throw on the JS build (dart2js) whenever runtime
+/// type checks are enabled (e.g. with `--optimization-level=0`). Using the
+/// typed-array views instead works for both buffer kinds.
+@JS('Module_soloud.HEAPU8')
+external JSUint8Array get wasmHeapU8;
 
 @JS('Module_soloud.HEAPF32')
-external JSFloat32Array get wasmHeapF32Buffer;
+external JSFloat32Array get wasmHeapF32;
 
 @JS('Module_soloud.UTF8ToString')
 external String wasmUtf8ToString(int ptrAddress);
