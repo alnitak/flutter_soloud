@@ -15,7 +15,7 @@ Future<OutputBuffer> testMixingBus() async {
   final iveSeenThings =
       await SoLoud.instance.loadAsset('assets/audio/IveSeenThings.mp3');
   final sample =
-      await SoLoud.instance.loadAsset('assets/audio/sample-vorbis.ogg');
+      await SoLoud.instance.loadAsset('assets/audio/sample-MP3.mp3');
 
   // Get initial bus count
   final initialBusCount = Buses().buses.length;

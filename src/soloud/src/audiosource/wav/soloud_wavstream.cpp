@@ -182,12 +182,14 @@ namespace SoLoud
 	{
 		switch (mParent->mFiletype)
 		{
+#if !defined(NO_XIPH_LIBS)
 		case WAVSTREAM_OGG:
 			if (mCodec.mOgg)
 			{
 				delete mCodec.mOgg;
 			}
 			break;
+#endif
 		case WAVSTREAM_FLAC:
 			if (mCodec.mFlac)
 			{
@@ -267,6 +269,7 @@ namespace SoLoud
 				return offset;
 			}
 		break;
+#if !defined(NO_XIPH_LIBS)
 		case WAVSTREAM_OGG:
 			{
 				unsigned int i;
@@ -285,6 +288,7 @@ namespace SoLoud
 				return offset;
 			}
 			break;
+#endif
 		case WAVSTREAM_WAV:
 			{
 				unsigned int i, j, k;
@@ -319,6 +323,7 @@ namespace SoLoud
 
 			switch (mParent->mFiletype)
 			{
+#if !defined(NO_XIPH_LIBS)
 			case WAVSTREAM_OGG:
 				mCodec.mOgg->seek(pos);
 				mOffset = pos;
@@ -326,6 +331,7 @@ namespace SoLoud
 				mStreamPosition = newPosition;
 				mStreamEnded = false;
 				return 0;
+#endif
 			case WAVSTREAM_FLAC:
 				drflac_seek_to_pcm_frame(mCodec.mFlac, pos);
 				mOffset = pos;
@@ -364,12 +370,14 @@ namespace SoLoud
 	{
 		switch (mParent->mFiletype)
 		{
+#if !defined(NO_XIPH_LIBS)
 		case WAVSTREAM_OGG:
 			if (mCodec.mOgg)
 			{
 				mCodec.mOgg->rewind();
 			}
 			break;
+#endif
 		case WAVSTREAM_FLAC:
 			if (mCodec.mFlac)
 			{
