@@ -39,6 +39,15 @@ PlayerErrors MixerOutput::start(MixerOutputFormat format, int sampleRate,
     return invalidParameter;
   }
 
+#if defined(NO_XIPH_LIBS)
+  // Without the Xiph libraries only the PCM formats (and the WAV encoder,
+  // which does not depend on them) are supported.
+  if (format == MIXER_OUTPUT_OPUS || format == MIXER_OUTPUT_VORBIS ||
+      format == MIXER_OUTPUT_FLAC) {
+    return xiphLibsNotFound;
+  }
+#endif
+
   const bool isCompressed = format == MIXER_OUTPUT_OPUS ||
                             format == MIXER_OUTPUT_VORBIS ||
                             format == MIXER_OUTPUT_FLAC ||

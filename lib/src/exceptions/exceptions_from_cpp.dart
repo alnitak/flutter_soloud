@@ -34,8 +34,8 @@ class SoLoudFileLoadFailedException extends SoLoudCppException {
   @override
   String get description =>
       'File found, but could not be loaded! '
-      'Could be a permission error or the file is corrupted. '
-      '(on the C++ side).';
+      'Could be a permission error, or the file is corrupted, '
+      'or the format is not supported. (on the C++ side).';
 }
 
 // Note: PlayerErrors.fileAlreadyLoaded is not thrown as an exception.

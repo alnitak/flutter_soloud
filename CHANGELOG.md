@@ -1,6 +1,6 @@
-
 ##### 4.1.5 (XX Xxx 2026)
 - fix web: crash with `--optimization-level=0` due to HEAPU8.buffer declared as JSArrayBuffer #526
+- fix: missing guard for NO_XIPH_LIBS that prevents building when using it #528
 
 ##### 4.1.4 (31 Jul 2026)
 - fix: the voice-ended callback is no longer invoked while SoLoud's audio mutex is held. The symptom was a wedged engine: handles and sources still looked valid, no audio was produced, and `deinit()` never completed. Ended voices are now queued and dispatched once the mutex is released. Thanks to @Colton127 #518

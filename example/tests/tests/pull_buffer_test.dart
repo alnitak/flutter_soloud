@@ -19,7 +19,7 @@ Future<OutputBuffer> testPullBuffer() async {
   final strBuf = OutputBuffer();
   await initialize();
 
-  final bytes = (await rootBundle.load('assets/audio/sample-OPUS.opus'))
+  final bytes = (await rootBundle.load('assets/audio/sample-MP3.mp3'))
       .buffer
       .asUint8List();
 

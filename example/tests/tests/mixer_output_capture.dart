@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter_soloud/flutter_soloud.dart';
+import 'package:flutter_soloud/src/bindings/soloud_controller_ffi.dart'
+    if (dart.library.js_interop) 'package:flutter_soloud/src/bindings/soloud_controller_web.dart';
 
 import 'common.dart';
 
@@ -10,6 +12,15 @@ import 'common.dart';
 /// Test mixer output capture for PCM and compressed formats.
 Future<OutputBuffer> testMixerOutputCapture() async {
   final output = OutputBuffer();
+
+  final isXiphAvailable = SoLoudController().soLoudFFI.areXiphLibsAvailable();
+
+  if (!isXiphAvailable) {
+    output.writeln(
+      'Skipping mixer output capture test: Xiph libraries not available',
+    );
+    return output;
+  }
 
   await initialize();
 
