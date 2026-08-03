@@ -12,9 +12,6 @@ external void jsEval(String code);
 @JS('window.miniaudio.devices[0].webaudio.state')
 external String? get miniaudioAudioContextState;
 
-@JS('globalThis.crossOriginIsolated')
-external bool? get isCrossOriginIsolated;
-
 /// Construct a JavaScript `BigInt` from a string value.
 ///
 /// Emscripten represents 64-bit integers (e.g. `uint64_t`) as JavaScript
@@ -42,11 +39,11 @@ external double wasmGetF32Value(int ptrAddress, String type);
 /// The WASM heap as a [JSUint8Array].
 ///
 /// NOTE: the underlying buffer (`Module_soloud.HEAPU8.buffer`) must not be
-/// declared as a `JSArrayBuffer`: the module is compiled with `-pthread` and
-/// `SHARED_MEMORY=1`, so the buffer is actually a `SharedArrayBuffer` and the
-/// implicit downcast would throw on the JS build (dart2js) whenever runtime
-/// type checks are enabled (e.g. with `--optimization-level=0`). Using the
-/// typed-array views instead works for both buffer kinds.
+/// declared as a `JSArrayBuffer`: the module could in principle be compiled
+/// with `-pthread`/`SHARED_MEMORY=1`, making the buffer a `SharedArrayBuffer`,
+/// and the implicit downcast would throw on the JS build (dart2js) whenever
+/// runtime type checks are enabled (e.g. with `--optimization-level=0`).
+/// Using the typed-array views instead works for both buffer kinds.
 @JS('Module_soloud.HEAPU8')
 external JSUint8Array get wasmHeapU8;
 

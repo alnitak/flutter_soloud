@@ -1,5 +1,6 @@
-##### 4.1.6 (X Xxx 2026)
+##### 4.1.6 (3 Aug 2026)
 - fix: iOS/macOS SPM build fails with error: unknown argument: '-Wl,-undefined,dynamic_lookup' #530
+- web: dropped `-pthread`/`SharedArrayBuffer` from the WASM build. The requirement for COOP/COEP headers (cross-origin isolation) is gone and the plugin now works on hosts that cannot set them (e.g. game portals like CrazyGames/Poki). Moving the use of threads for a future release #523
 
 ##### 4.1.5 (3 Aug 2026)
 - fix web: crash with `--optimization-level=0` due to HEAPU8.buffer declared as JSArrayBuffer #526

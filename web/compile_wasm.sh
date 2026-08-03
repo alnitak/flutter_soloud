@@ -198,9 +198,15 @@ if [ "${SKIP_OPUS_OGG}" = "1" ]; then
 fi
 
 # Now compile everything together
+# NOTE: no `-pthread`/`SHARED_MEMORY` here. The engine runs entirely on the
+# main browser thread on the web (all thread creation is guarded out under
+# `__EMSCRIPTEN__`), so pthreads are never used at runtime. Compiling without
+# them keeps the WASM memory a plain ArrayBuffer, which means the hosting
+# page does NOT need to be cross-origin isolated (no COOP/COEP headers —
+# see issue #523).
     # -g -fdebug-compilation-dir=./debug \
     # -s NO_DISABLE_EXCEPTION_CATCHING=1 \
-em++ -O2 -pthread \
+em++ -O2 \
     -s ASSERTIONS=1 \
     ${INCLUDE_DIRS[@]} \
     ${SOURCES[@]} \
@@ -216,9 +222,6 @@ em++ -O2 -pthread \
     -s ALLOW_MEMORY_GROWTH=1 \
     -s INITIAL_MEMORY=67108864 \
     -s MAXIMUM_MEMORY=2147483648 \
-    -s SHARED_MEMORY=1 \
-    -s PTHREAD_POOL_SIZE=8 \
-    -s ALLOW_BLOCKING_ON_MAIN_THREAD=1 \
     -s MODULARIZE=1 \
     -s EXPORT_NAME="'Module_soloud'" \
     -o ../web/libflutter_soloud_plugin.js
