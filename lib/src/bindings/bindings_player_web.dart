@@ -265,7 +265,16 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     if (moduleSoloudInstance != null) return;
     final ready = flutterSoloudReady;
     if (ready != null) {
-      await ready.toDart;
+      await ready.toDart.timeout(
+        const Duration(seconds: 15),
+        onTimeout: () => throw TimeoutException(
+          'flutter_soloud: the WASM module did not finish initializing in '
+          '15 seconds. If you serve the app with COOP/COEP headers, make '
+          'sure they are not duplicated or conflicting (e.g. '
+          'Cross-Origin-Embedder-Policy: credentialless, require-corp), '
+          'which blocks the worker threads the module needs.',
+        ),
+      );
       return;
     }
     // init_module.dart.js has not started yet (or is not included in the
@@ -356,15 +365,19 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   bool isInited() {
     // The module may still be loading (init_module.dart.js instantiates it
     // asynchronously); treat that as "not initialized" instead of crashing.
+    // Note that between the glue load and the end of the instantiation
+    // `Module_soloud` is the factory function, so also guard against calling
+    // into a module whose exports are not there yet (e.g. when instantiation
+    // hangs or fails).
+    if (moduleSoloudInstance == null) {
+      return false;
+    }
     // The multi-threaded WASM build uses SharedArrayBuffer for its memory and
     // therefore needs cross-origin isolation. That combination cannot happen
     // when the flavor is picked automatically (init_module.dart.js loads the
     // MT build only when the page is isolated), but it can happen if the page
     // loads the MT glue script manually (`manual` flavor) without COOP/COEP
     // headers. Warn only in that case.
-    if (moduleSoloudInstance == null) {
-      return false;
-    }
     if (flutterSoloudBuild != 'st' && isCrossOriginIsolated != true) {
       // ignore: avoid_print
       print(
@@ -376,7 +389,11 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
         'init_module.dart.js pick the build automatically.',
       );
     }
-    return wasmIsInited() == 1;
+    try {
+      return wasmIsInited() == 1;
+    } on Object {
+      return false;
+    }
   }
 
   @override
