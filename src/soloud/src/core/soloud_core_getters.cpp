@@ -347,6 +347,14 @@ namespace SoLoud
 				lowest_play_index = i;
 			}
 		}
+		if (lowest_play_index < 0)
+		{
+			// Every voice is taken and protected, so there is nothing that can
+			// be stopped to make room. Report the failure instead of falling
+			// through to stopVoice_internal(-1), which would convert -1 to
+			// UINT_MAX and index mVoice[] out of bounds.
+			return -1;
+		}
 		stopVoice_internal(lowest_play_index);
 		return lowest_play_index;
 	}

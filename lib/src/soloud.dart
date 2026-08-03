@@ -632,11 +632,16 @@ interface class SoLoud {
             );
             _activeSounds.add(newSound);
           } else {
-            // other errors are not recoverable.
+            // Other errors are not recoverable. `completeError()` is the only
+            // channel that reaches the caller: this runs in a stream listener,
+            // and an exception thrown from `onData` bypasses the
+            // subscription's `onError` and escapes to the zone, where nobody
+            // can catch it. Throwing here would also report the very same
+            // failure twice.
             loadedFileCompleter.completeError(
               SoLoudCppException.fromPlayerError(error),
             );
-            throw SoLoudCppException.fromPlayerError(error);
+            return;
           }
           if (!loadedFileCompleter.isCompleted) {
             loadedFileCompleter.complete(newSound);
@@ -656,6 +661,14 @@ interface class SoLoud {
     }
   }
 
+  /// Registers a freshly loaded sound, or throws if [error] says it did not
+  /// load.
+  ///
+  /// NOTE: this throws, so it may only be called from a synchronous context
+  /// where the exception reaches the caller. Do not use it (or copy its body)
+  /// inside a stream listener or another callback invoked by the event loop:
+  /// the exception would escape to the zone instead, where it cannot be
+  /// caught. Complete a completer with the error there.
   AudioSource _addNewSound(
     PlayerErrors error,
     String completeFileName,
@@ -740,22 +753,36 @@ interface class SoLoud {
     // we use a counter.
     loadedFileCompleters.addAll({'$path-$counter': completer});
 
+    // Build the result chain *before* awaiting the load below: the native
+    // file-loaded callback can fire while `compute()` is still awaited, so the
+    // completer may already carry an error by the time this method returns.
+    //
+    // The trailing `ignore()` matters: a future that receives an error while
+    // nothing is listening to it yet is reported to the zone as an unhandled
+    // async error, which callers cannot catch — so a failed load surfaced
+    // twice, once that way and once from the `await` of the returned future.
+    // `ignore()` marks it as handled without consuming it, so the caller
+    // still gets the exception.
+    final result =
+        completer.future
+            .whenComplete(() {
+              loadedFileCompleters.removeWhere(
+                (key, __) => key.compareTo('$path-$counter') == 0,
+              );
+            })
+            .then((source) {
+              source.autoDispose = autoDispose;
+              return source;
+            })
+          ..ignore();
+
     await compute(_loadFile, {
       'path': path,
       'mode': mode.index,
       'counter': counter,
     });
 
-    return completer.future
-        .whenComplete(() {
-          loadedFileCompleters.removeWhere(
-            (key, __) => key.compareTo('$path-$counter') == 0,
-          );
-        })
-        .then((source) {
-          source.autoDispose = autoDispose;
-          return source;
-        });
+    return result;
   }
 
   /// Load a new sound to be played once or multiple times later, from
@@ -1724,6 +1751,13 @@ interface class SoLoud {
   /// Returns the new sound as [AudioSource].
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Throws [SoLoudAudioDeviceFailedToStartCppException] if the output audio
+  /// device could not be started.
+  ///
+  /// Throws [SoLoudFailedToStartPlaybackCppException] if the audio engine
+  /// could not create a voice for the speech. In that case no audio source
+  /// is created.
   AudioSource speechText(String textToSpeech) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1785,7 +1819,8 @@ interface class SoLoud {
   /// and other instances of the same sound are played, the oldest one will be
   /// stopped to make room to play the new sound. If there are no instances of
   /// the sound and the max limit is reached, a warning will be printed and the
-  /// sound will not play.
+  /// sound will not play. This is not an error: no exception is thrown and the
+  /// returned handle does not address any voice.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   ///
@@ -1794,6 +1829,14 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudSoundHashNotFoundDartException] if the given [sound]
   /// is not found.
+  ///
+  /// Throws [SoLoudAudioDeviceFailedToStartCppException] if the output audio
+  /// device could not be started. Only checked when the sound will actually
+  /// play: with [paused] set to `true` no device is needed until you unpause
+  /// it, so a voice can be created and configured during an interruption.
+  ///
+  /// Throws [SoLoudFailedToStartPlaybackCppException] if the audio engine
+  /// could not create a voice for this sound.
   SoundHandle play(
     AudioSource sound, {
     int busId = 0,
@@ -1818,10 +1861,10 @@ interface class SoLoud {
       loopingStartAt: loopingStartAt,
       loopingEndAt: loopingEndAt,
     );
-    _logPlayerError(ret.error, from: 'play()');
-    if (!(ret.error == PlayerErrors.noError ||
-        ret.error == PlayerErrors.maxActiveVoiceCountReached)) {
-      throw SoLoudCppException.fromPlayerError(ret.error);
+    if (!_checkPlaybackResult(ret, from: 'play()')) {
+      // Non-blocking failure: nothing is playing, so don't register
+      // the zeroed handle against the audio source.
+      return ret.newHandle;
     }
 
     final filtered = _activeSounds
@@ -1896,6 +1939,12 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudSoundHashNotFoundDartException] if the given [sound]
   /// is not found.
+  ///
+  /// Throws [SoLoudAudioDeviceFailedToStartCppException] if the output audio
+  /// device could not be started.
+  ///
+  /// Throws [SoLoudFailedToStartPlaybackCppException] if the audio engine
+  /// could not create a voice for this sound.
   SoundHandle playClocked(
     AudioSource sound,
     Duration soundTime, {
@@ -1913,10 +1962,10 @@ interface class SoLoud {
       volume: volume,
       pan: pan,
     );
-    _logPlayerError(ret.error, from: 'playClocked()');
-    if (!(ret.error == PlayerErrors.noError ||
-        ret.error == PlayerErrors.maxActiveVoiceCountReached)) {
-      throw SoLoudCppException.fromPlayerError(ret.error);
+    if (!_checkPlaybackResult(ret, from: 'playClocked()')) {
+      // Non-blocking failure: nothing is playing, so don't register
+      // the zeroed handle against the audio source.
+      return ret.newHandle;
     }
 
     final filtered = _activeSounds
@@ -2061,6 +2110,12 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudSoundHashNotFoundDartException] if the given [sound]
   /// is not found.
+  ///
+  /// Throws [SoLoudAudioDeviceFailedToStartCppException] if the output audio
+  /// device could not be started.
+  ///
+  /// Throws [SoLoudFailedToStartPlaybackCppException] if the audio engine
+  /// could not create a voice for this sound.
   SoundHandle playScheduled(
     AudioSource sound,
     Duration atTime, {
@@ -2080,10 +2135,10 @@ interface class SoLoud {
       volume: volume,
       pan: pan,
     );
-    _logPlayerError(ret.error, from: 'playScheduled()');
-    if (!(ret.error == PlayerErrors.noError ||
-        ret.error == PlayerErrors.maxActiveVoiceCountReached)) {
-      throw SoLoudCppException.fromPlayerError(ret.error);
+    if (!_checkPlaybackResult(ret, from: 'playScheduled()')) {
+      // Non-blocking failure: nothing is playing, so don't register
+      // the zeroed handle against the audio source.
+      return ret.newHandle;
     }
 
     final filtered = _activeSounds
@@ -2219,22 +2274,48 @@ interface class SoLoud {
 
   /// Pause or unpause a currently playing sound identified by [handle].
   ///
+  /// When unpausing, the output audio device is (re)started first. If it
+  /// cannot be started, the sound is left paused and an exception is thrown.
+  ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Throws [SoLoudSoundHandleNotFoundCppException] if [handle] is not a
+  /// valid voice handle (for example the sound has already ended).
+  ///
+  /// Throws [SoLoudAudioDeviceFailedToStartCppException] if unpausing could
+  /// not start the output audio device.
   void pauseSwitch(SoundHandle handle) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
-    _controller.soLoudFFI.pauseSwitch(handle);
+    final error = _controller.soLoudFFI.pauseSwitch(handle);
+    if (error != PlayerErrors.noError) {
+      _logPlayerError(error, from: 'pauseSwitch()');
+      throw SoLoudCppException.fromPlayerError(error);
+    }
   }
 
   /// Pause or unpause a currently playing sound identified by [handle].
   ///
+  /// When unpausing, the output audio device is (re)started first. If it
+  /// cannot be started, the sound is left paused and an exception is thrown.
+  ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Throws [SoLoudSoundHandleNotFoundCppException] if [handle] is not a
+  /// valid voice handle (for example the sound has already ended).
+  ///
+  /// Throws [SoLoudAudioDeviceFailedToStartCppException] if unpausing could
+  /// not start the output audio device.
   void setPause(SoundHandle handle, bool pause) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
-    _controller.soLoudFFI.setPause(handle, pause ? 1 : 0);
+    final error = _controller.soLoudFFI.setPause(handle, pause ? 1 : 0);
+    if (error != PlayerErrors.noError) {
+      _logPlayerError(error, from: 'setPause()');
+      throw SoLoudCppException.fromPlayerError(error);
+    }
   }
 
   /// Gets the pause state of a currently playing sound identified by [handle].
@@ -2298,7 +2379,12 @@ interface class SoLoud {
   ///
   /// This does _not_ dispose the audio source. Use [disposeSource] for that.
   ///
+  /// Stopping a sound that has already ended is not an error: this method
+  /// completes normally in that case.
+  ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Throws a [SoLoudCppException] if the C++ side could not stop the sound.
   Future<void> stop(SoundHandle handle) async {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -2316,7 +2402,21 @@ interface class SoLoud {
       );
       completer.complete();
     } else {
-      _controller.soLoudFFI.stop(handle);
+      final error = _controller.soLoudFFI.stop(handle);
+      if (error == PlayerErrors.soundHandleNotFound) {
+        // The voice ended by itself between the validity check above and the
+        // native call. Stopping an already ended voice is a no-op, not a
+        // failure.
+        _log.finest(
+          () => 'The handle $handle ended while it was being stopped.',
+        );
+        if (!completer.isCompleted) completer.complete();
+      } else if (error != PlayerErrors.noError) {
+        // Don't leak the completer: nothing will ever complete it.
+        voiceEndedCompleters.remove(handle);
+        _logPlayerError(error, from: 'stop()');
+        throw SoLoudCppException.fromPlayerError(error);
+      }
     }
 
     return completer.future
@@ -2538,6 +2638,18 @@ interface class SoLoud {
   /// If [time] is negative, it will be set to [Duration.zero].
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Throws [SoLoudNotImplementedException] when the audio source cannot seek
+  /// backwards because it cannot rewind. No built-in source does this, but
+  /// before v4.1.4 such a source would have reported
+  /// [SoLoudOutOfMemoryException] instead.
+  ///
+  /// Throws [SoLoudInvalidParameterException] if [handle] does not belong to
+  /// a seekable sound.
+  ///
+  /// Throws
+  /// [SoLoudBufferStreamWithReleasedBufferTypeCannotBeSeekedCppException]
+  /// when the sound is a buffer stream using [BufferingType.released].
   ///
   /// **Note**: when seeking an MP3 file loaded using [LoadMode.disk], the
   /// seek operation is performed but there will be a delay. This occurs because
@@ -3454,12 +3566,21 @@ interface class SoLoud {
   /// and other instances of the same sound are played, the oldest one will be
   /// stopped to make room to play the new sound. If there are no instances of
   /// the sound and the max limit is reached, a warning will be printed and the
-  /// sound will not play.
+  /// sound will not play. This is not an error: no exception is thrown and the
+  /// returned handle does not address any voice.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   ///
   /// Throws [SoLoudBufferStreamCanBePlayedOnlyOnceCppException] if we try to
   /// play a BufferStream using `release` buffer type more than once.
+  ///
+  /// Throws [SoLoudAudioDeviceFailedToStartCppException] if the output audio
+  /// device could not be started. Only checked when the sound will actually
+  /// play: with [paused] set to `true` no device is needed until you unpause
+  /// it, so a voice can be created and configured during an interruption.
+  ///
+  /// Throws [SoLoudFailedToStartPlaybackCppException] if the audio engine
+  /// could not create a voice for this sound.
   SoundHandle play3d(
     AudioSource sound,
     double posX,
@@ -3496,10 +3617,10 @@ interface class SoLoud {
       loopingEndAt: loopingEndAt,
     );
 
-    _logPlayerError(ret.error, from: 'play3d()');
-    if (!(ret.error == PlayerErrors.noError ||
-        ret.error == PlayerErrors.maxActiveVoiceCountReached)) {
-      throw SoLoudCppException.fromPlayerError(ret.error);
+    if (!_checkPlaybackResult(ret, from: 'play3d()')) {
+      // Non-blocking failure: nothing is playing, so don't register
+      // the zeroed handle against the audio source.
+      return ret.newHandle;
     }
 
     final filtered = _activeSounds
@@ -3549,6 +3670,12 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudSoundHashNotFoundDartException] if the given [sound]
   /// is not found.
+  ///
+  /// Throws [SoLoudAudioDeviceFailedToStartCppException] if the output audio
+  /// device could not be started.
+  ///
+  /// Throws [SoLoudFailedToStartPlaybackCppException] if the audio engine
+  /// could not create a voice for this sound.
   SoundHandle play3dClocked(
     AudioSource sound,
     Duration soundTime,
@@ -3578,10 +3705,10 @@ interface class SoLoud {
       volume: volume,
     );
 
-    _logPlayerError(ret.error, from: 'play3dClocked()');
-    if (!(ret.error == PlayerErrors.noError ||
-        ret.error == PlayerErrors.maxActiveVoiceCountReached)) {
-      throw SoLoudCppException.fromPlayerError(ret.error);
+    if (!_checkPlaybackResult(ret, from: 'play3dClocked()')) {
+      // Non-blocking failure: nothing is playing, so don't register
+      // the zeroed handle against the audio source.
+      return ret.newHandle;
     }
 
     final filtered = _activeSounds
@@ -3927,6 +4054,39 @@ interface class SoLoud {
   /// [name] optional name of the bus to later identify it.
   Bus createMixingBus({String name = ''}) {
     return Bus(name: name);
+  }
+
+  /// Utility method used by every playback method to check a native result.
+  ///
+  /// The C++ side only reports [PlayerErrors.noError] when it actually
+  /// created a valid voice, so anything else means the sound is not playing
+  /// and the returned handle must never be used nor stored.
+  ///
+  /// Returns whether playback started.
+  /// [PlayerErrors.maxActiveVoiceCountReached] is non-blocking by design: it
+  /// is logged and reported as "not started", but it is never thrown. Every
+  /// other error is thrown.
+  bool _checkPlaybackResult(
+    ({PlayerErrors error, SoundHandle newHandle}) ret, {
+    required String from,
+  }) {
+    _logPlayerError(ret.error, from: from);
+    if (ret.error == PlayerErrors.maxActiveVoiceCountReached) {
+      // The sound did not play, but this is a warning, not a failure: the
+      // caller gets the zeroed handle back and no bookkeeping is created.
+      return false;
+    }
+    if (ret.error != PlayerErrors.noError) {
+      throw SoLoudCppException.fromPlayerError(ret.error);
+    }
+    if (ret.newHandle.id == 0) {
+      // Defensive: the native side promises a valid voice handle together
+      // with `noError`. Never hand back (or register) a handle that cannot
+      // address a voice.
+      _log.severe(() => '$from: no valid handle was returned');
+      throw const SoLoudFailedToStartPlaybackCppException();
+    }
+    return true;
   }
 
   /// Utility method that logs a [Level.SEVERE] message if [playerError]

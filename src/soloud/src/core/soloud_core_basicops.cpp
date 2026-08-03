@@ -44,11 +44,20 @@ namespace SoLoud
 
 		lockAudioMutex_internal();
 		int ch = findFreeVoice_internal();
-		if (ch < 0) 
+		if (ch < 0)
 		{
 			unlockAudioMutex_internal();
 			delete instance;
-			return UNKNOWN_ERROR;
+			// Return the invalid-handle sentinel, not an error enum. Handles
+			// are encoded as (voice + 1) | (playIndex << 12), so the old
+			// UNKNOWN_ERROR (7) is a legal encoding: voice slot 6 with play
+			// index 0. mPlayIndex wraps at 0xfffff, so once it comes back
+			// around while slots 0..5 are busy, a live voice really does own
+			// handle 7 and a failure became indistinguishable from it --
+			// isValidVoiceHandle() included. Callers then operated on an
+			// unrelated voice. 0 can never encode a voice and is already what
+			// getHandleFromVoice_internal() and Bus::play() return on failure.
+			return 0;
 		}
 		if (!aSound.mAudioSourceID)
 		{
@@ -174,6 +183,9 @@ namespace SoLoud
 	handle Soloud::playClocked(time aSoundTime, AudioSource &aSound, float aVolume, float aPan, unsigned int aBus)
 	{
 		handle h = play(aSound, aVolume, aPan, 1, aBus);
+		// No voice was allocated: don't delay/unpause anything.
+		if (h == 0)
+			return 0;
 		setDelaySamples(h, getClockedDelaySamples(aSoundTime));
 		setPause(h, 0);
 		return h;
@@ -210,6 +222,9 @@ namespace SoLoud
 	handle Soloud::playScheduled(time aEngineTime, AudioSource &aSound, float aVolume, float aPan, unsigned int aBus)
 	{
 		handle h = play(aSound, aVolume, aPan, 1, aBus);
+		// No voice was allocated: don't delay/unpause anything.
+		if (h == 0)
+			return 0;
 		setDelaySamples(h, getScheduledDelaySamples(aEngineTime));
 		setPause(h, 0);
 		return h;
