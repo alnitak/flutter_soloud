@@ -234,7 +234,6 @@ build_flavor() {
         -s "EXPORTED_RUNTIME_METHODS=['ccall','cwrap','setValue','getValue','UTF8ToString','HEAPF32','HEAPU8']" \
         -s "EXPORTED_FUNCTIONS=['_free', '_malloc', '_memcpy', '_memset']" \
         -s NO_EXIT_RUNTIME=1 \
-        -s SAFE_HEAP=1 \
         -s STACK_SIZE=4194304 \
         -s ALLOW_MEMORY_GROWTH=1 \
         -s INITIAL_MEMORY=67108864 \
@@ -246,15 +245,29 @@ build_flavor() {
 
 # ST flavor (default, keeps the historical file names).
 echo -e "${BOLD_WHITE_ON_GREEN}Building single-threaded flavor (libflutter_soloud_plugin)${RESET}"
-build_flavor "libflutter_soloud_plugin"
+build_flavor "libflutter_soloud_plugin" -s SAFE_HEAP=1
 
 # MT flavor (requires COOP/COEP; selected at runtime only when isolated).
+# MA_ENABLE_AUDIO_WORKLETS: render audio on a real-time AudioWorklet thread
+# instead of the deprecated main-thread ScriptProcessorNode. This needs
+# AUDIO_WORKLET/WASM_WORKERS (shared WASM memory with the worklet thread,
+# hence SHARED_MEMORY) and ASYNCIFY (miniaudio spin-waits on
+# emscripten_sleep() while the worklet thread starts up, see
+# ma_device_init__webaudio in miniaudio.h; only initEngine/changeDevice can
+# reach that sleep, and on web they are invoked via async ccall from Dart).
+# NOTE: no SAFE_HEAP here — SAFE_HEAP aborts on legitimate TLS accesses
+# (errno/__pthread_self) made by libc on the AudioWorklet rendering thread.
 echo -e "${BOLD_WHITE_ON_GREEN}Building multi-threaded flavor (libflutter_soloud_plugin_mt)${RESET}"
 build_flavor "libflutter_soloud_plugin_mt" \
     -pthread \
+    -DMA_ENABLE_AUDIO_WORKLETS \
     -s SHARED_MEMORY=1 \
     -s PTHREAD_POOL_SIZE=8 \
-    -s ALLOW_BLOCKING_ON_MAIN_THREAD=1
+    -s ALLOW_BLOCKING_ON_MAIN_THREAD=1 \
+    -s AUDIO_WORKLET=1 \
+    -s WASM_WORKERS=1 \
+    -s ASYNCIFY=1 \
+    -s ASYNCIFY_STACK_SIZE=65536
 
 echo
 echo -e "${BOLD_WHITE_ON_GREEN}Build completed successfully...${RESET}"

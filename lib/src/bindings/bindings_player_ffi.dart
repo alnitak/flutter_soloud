@@ -509,7 +509,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       .asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 
   @override
-  PlayerErrors initEngine(
+  FutureOr<PlayerErrors> initEngine(
     int deviceId,
     int sampleRate,
     int bufferSize,
@@ -554,7 +554,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       .asFunction<void Function(int)>();
 
   @override
-  PlayerErrors changeDevice(int deviceId) {
+  FutureOr<PlayerErrors> changeDevice(int deviceId) {
     final ret = _changeDevice(deviceId);
     return PlayerErrors.values[ret];
   }

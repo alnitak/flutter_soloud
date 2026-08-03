@@ -39,9 +39,29 @@ external JSObject moduleConstructor(); // Represents the IIFE
 @JS('self.Module_soloud') // Attach Module_soloud to the global scope
 external set globalModule(JSObject module);
 
+/// The module instance, once [globalModule] has been assigned. Null while
+/// the module is still initializing (or when the glue failed to load).
+@JS('self.Module_soloud')
+external JSObject? get moduleSoloudInstance;
+
+/// Promise resolving when [initializeModule] completes. Lets the plugin's
+/// bindings wait for module readiness instead of racing it at app startup.
+@JS('self.flutter_soloud_ready')
+external set flutterSoloudReady(JSPromise promise);
+
 /// Records which build flavor is in use (`mt`, `st` or `manual`).
 @JS('self.flutter_soloud_build')
 external set buildFlavor(JSString flavor);
+
+/// Records whether the loaded build supports ASYNCIFY (only the
+/// multi-threaded AudioWorklet build is compiled with it). The bindings use
+/// this to decide whether `initEngine`/`changeDevice` must be called with
+/// `ccall({async: true})`.
+@JS('self.flutter_soloud_has_asyncify')
+external set flutterSoloudHasAsyncify(bool hasAsyncify);
+
+@JS('Module_soloud.Asyncify')
+external JSObject? get moduleAsyncify;
 
 @JS('globalThis.crossOriginIsolated')
 external bool? get isCrossOriginIsolated;
@@ -66,6 +86,17 @@ Future<void> _loadScript(String src) {
   return completer.future;
 }
 
+/// Whether the loaded module was built with ASYNCIFY. Reading
+/// `Module.Asyncify` on a non-ASYNCIFY build throws (Emscripten guards
+/// unexported runtime methods), so sniff with a try/catch.
+bool _sniffAsyncify() {
+  try {
+    return moduleAsyncify != null;
+  } on Object {
+    return false;
+  }
+}
+
 Future<void> initializeModule() async {
   try {
     if (moduleFactory == null) {
@@ -76,6 +107,7 @@ Future<void> initializeModule() async {
           sharedArrayBuffer != null;
       final flavor = useMt ? 'mt' : 'st';
       buildFlavor = flavor.toJS;
+      flutterSoloudHasAsyncify = useMt;
       print('flutter_soloud: loading $flavor WASM build '
           '(crossOriginIsolated: $isCrossOriginIsolated)');
       await _loadScript(
@@ -87,6 +119,7 @@ Future<void> initializeModule() async {
     } else {
       // The page loaded a glue script explicitly (old-style index.html).
       buildFlavor = 'manual'.toJS;
+      flutterSoloudHasAsyncify = _sniffAsyncify();
     }
 
     // Convert JavaScript Promise to Dart Future
@@ -104,6 +137,9 @@ Future<void> initializeModule() async {
 }
 
 /// The main Web Worker
-void main() async {
-  await initializeModule();
+void main() {
+  // Expose the initialization as a global promise so the plugin bindings can
+  // await module readiness instead of crashing when SoLoud.init() is called
+  // while the module is still loading (see bindings_player_web.dart).
+  flutterSoloudReady = initializeModule().toJS;
 }

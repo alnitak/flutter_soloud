@@ -1083,7 +1083,12 @@ void PullBufferStream::callOnBufferingCallback(bool isBuffering,
   auto callback = mOnBufferingCallback.load();
   if (callback == nullptr) return;
 #ifdef __EMSCRIPTEN__
-  EM_ASM(
+  // MAIN_THREAD_ASYNC_EM_ASM: these callbacks can fire from the audio
+  // thread, which under AudioWorklet is a separate worklet thread without
+  // access to `window`. The proxy runs the callback on the main thread; on
+  // the main thread (and in the single-threaded build) it runs
+  // synchronously. All arguments here are passed by value.
+  MAIN_THREAD_ASYNC_EM_ASM(
       {
         var functionName = "dartOnBufferingCallback_" + $3;
         if (typeof window[functionName] === "function") {
@@ -1103,14 +1108,21 @@ void PullBufferStream::callOnMetadataCallback(AudioMetadata &metadata) {
 
   AudioMetadataFFI ffi = convertMetadataToFFI(metadata);
 #ifdef __EMSCRIPTEN__
-  EM_ASM_(
+  // The JS may run asynchronously on the main thread (see the comment in
+  // callOnBufferingCallback), so the struct is heap-allocated to outlive
+  // this stack frame and freed in the JS block after the callback returns.
+  auto *ffiPtr = static_cast<AudioMetadataFFI *>(malloc(sizeof(ffi)));
+  if (ffiPtr == nullptr) return;
+  *ffiPtr = ffi;
+  MAIN_THREAD_ASYNC_EM_ASM(
       {
         var functionName = "dartOnMetadataCallback_" + $1;
         if (typeof window[functionName] === "function") {
           window[functionName]($0);
         }
+        Module_soloud._free($0);
       },
-      &ffi, mParent->soundHash);
+      ffiPtr, mParent->soundHash);
 #else
   callback(ffi);
 #endif
@@ -1121,7 +1133,7 @@ void PullBufferStream::callOnMoreDataIsNeededCallback(uint64_t offset) {
   if (callback == nullptr) return;
 
 #ifdef __EMSCRIPTEN__
-  EM_ASM_(
+  MAIN_THREAD_ASYNC_EM_ASM(
       {
         var functionName = "dartOnMoreDataIsNeededCallback_" + $1;
         if (typeof window[functionName] === "function") {
@@ -1142,7 +1154,7 @@ void PullBufferStream::callOnAudioDurationCallback(double duration) {
   if (callback == nullptr) return;
 
 #ifdef __EMSCRIPTEN__
-  EM_ASM_(
+  MAIN_THREAD_ASYNC_EM_ASM(
       {
         var functionName = "dartOnAudioDurationCallback_" + $1;
         if (typeof window[functionName] === "function") {

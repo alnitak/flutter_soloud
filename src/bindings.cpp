@@ -92,7 +92,12 @@ extern "C"
   /// Post a message with the web worker.
   FFI_PLUGIN_EXPORT void sendToWorker(const char *message, int value)
   {
-    EM_ASM(
+    // MAIN_THREAD_ASYNC_EM_ASM: `voiceEndedCallback` can fire from the audio
+    // thread, which under AudioWorklet is a separate worklet thread that
+    // cannot access Module_soloud (it lives on the main browser thread). The
+    // proxy runs the postMessage on the main thread; when already on the main
+    // thread (or in the single-threaded build) it executes synchronously.
+    MAIN_THREAD_ASYNC_EM_ASM(
         {
           if (Module_soloud.wasmWorker)
           {

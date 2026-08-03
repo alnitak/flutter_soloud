@@ -168,8 +168,13 @@ abstract class FlutterSoLoud {
   /// [channels] mono, stereo, quad, 5.1, 7.1.
   ///
   /// Returns [PlayerErrors.noError] if success.
+  ///
+  /// On web with the multi-threaded (AudioWorklet) WASM build this completes
+  /// asynchronously: starting the worklet thread suspends the WASM call with
+  /// ASYNCIFY, so the web implementation returns a [Future]. Native
+  /// implementations return the result synchronously.
   @mustBeOverridden
-  PlayerErrors initEngine(
+  FutureOr<PlayerErrors> initEngine(
     int deviceId,
     int sampleRate,
     int bufferSize,
@@ -188,8 +193,12 @@ abstract class FlutterSoLoud {
   /// Change the playback device.
   ///
   /// [deviceId] the device ID. -1 for default OS output device.
+  ///
+  /// On web with the multi-threaded (AudioWorklet) WASM build this completes
+  /// asynchronously (see [initEngine]); native implementations return the
+  /// result synchronously.
   @mustBeOverridden
-  PlayerErrors changeDevice(int deviceId);
+  FutureOr<PlayerErrors> changeDevice(int deviceId);
 
   /// List available playback devices.
   List<PlaybackDevice> listPlaybackDevices();

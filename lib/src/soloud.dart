@@ -446,7 +446,7 @@ interface class SoLoud {
       androidAAudioAttributes == AndroidAAudioAttributes.mediaMusic,
     );
 
-    final error = _controller.soLoudFFI.initEngine(
+    final error = await _controller.soLoudFFI.initEngine(
       device?.id ?? -1,
       sampleRate,
       bufferSize,
@@ -496,7 +496,19 @@ interface class SoLoud {
     }
 
     final deviceId = newDevice?.id ?? -1;
-    final error = _controller.soLoudFFI.changeDevice(deviceId);
+    final result = _controller.soLoudFFI.changeDevice(deviceId);
+    if (result is Future<PlayerErrors>) {
+      // On web with the multi-threaded (AudioWorklet) WASM build the device
+      // change completes asynchronously; the result is logged when it
+      // settles. Synchronous error reporting is not possible there.
+      unawaited(
+        result.then(
+          (error) => _logPlayerError(error, from: 'changeDevice() result'),
+        ),
+      );
+      return;
+    }
+    final error = result;
     _logPlayerError(error, from: 'changeDevice() result');
     if (error != PlayerErrors.noError) {
       throw SoLoudCppException.fromPlayerError(error);

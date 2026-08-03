@@ -30,6 +30,11 @@ distribution.
 #include <unistd.h>
 #endif
 
+#ifdef __EMSCRIPTEN__
+#include <cstring>
+#include <pthread.h>
+#endif
+
 #if !defined(WITH_MINIAUDIO)
 
 namespace SoLoud
@@ -241,9 +246,38 @@ namespace SoLoud
         }
         first_call = false;
         SoLoud::Soloud *soloud = (SoLoud::Soloud *)pDevice->pUserData;
+#ifdef __EMSCRIPTEN__
+        // On the multi-threaded (AudioWorklet) build this callback runs on
+        // the AudioWorklet rendering thread, where blocking is forbidden:
+        // pthread_mutex_lock() on a contended mutex lowers to Atomics.wait(),
+        // which throws on the rendering thread and kills audio for good. The
+        // main browser thread takes the audio mutex for every engine API
+        // call (play, pause, getters...), so contention is routine. Try to
+        // take the mutex instead; on contention emit silence for this block
+        // and retry on the next one. The mutex is recursive (see
+        // Thread::createMutex in soloud_thread.cpp), so when the try-lock
+        // succeeds the lock/unlock inside mix() simply re-enters it. On the
+        // main thread (single-threaded build) the try-lock always succeeds
+        // because the mutex can only be held by this same thread, so
+        // behavior there is unchanged.
+        if (pthread_mutex_trylock(
+                (pthread_mutex_t *)soloud->mAudioThreadMutex) != 0)
+        {
+            const unsigned int channels = pDevice->playback.channels;
+            std::memset(pOutput, 0,
+                        frameCount * (channels != 0 ? channels : 1) *
+                            sizeof(float));
+            return;
+        }
         soloud->mix((float *)pOutput, frameCount);
-
         MixerOutput::instance().onAudioData((float *)pOutput, frameCount);
+        // Use the SoLoud unlock (not raw pthread_mutex_unlock) so the
+        // ended-voice queue is drained with correct bookkeeping.
+        soloud->unlockAudioMutex_internal();
+#else
+        soloud->mix((float *)pOutput, frameCount);
+        MixerOutput::instance().onAudioData((float *)pOutput, frameCount);
+#endif
     }
 
     static void soloud_miniaudio_deinit(SoLoud::Soloud *aSoloud)
@@ -542,7 +576,25 @@ namespace SoLoud
             return UNKNOWN_ERROR;
         }
         gDeviceInitialized = true;
+#ifdef __EMSCRIPTEN__
+        // On the web the engine buffer size must match what miniaudio's
+        // fixed-size callback aggregation actually delivers to the data
+        // callback, which is `periodSizeInFrames` from the device config
+        // (aBuffer). With the AudioWorklet backend the async worklet startup
+        // rewrites the descriptor and shrinks `internalPeriodSizeInFrames` to
+        // the 128-frame render quantum; using that value would misreport the
+        // engine buffer size (it drives scheduling, timing and buffer sizing
+        // throughout the engine) while the data callback is invoked with
+        // aBuffer frames. With the ScriptProcessorNode backend
+        // aBuffer == internalPeriodSizeInFrames, so this is a no-op there.
+        // When aBuffer is 0 (AUTO) both the aggregation and SoLoud fall back
+        // to the internal period, so use it.
+        const unsigned int postinitBufferSize =
+            aBuffer != 0 ? aBuffer : gDevice.playback.internalPeriodSizeInFrames;
+        aSoloud->postinit_internal(gDevice.sampleRate, postinitBufferSize, aFlags, gDevice.playback.channels);
+#else
         aSoloud->postinit_internal(gDevice.sampleRate, gDevice.playback.internalPeriodSizeInFrames, aFlags, gDevice.playback.channels);
+#endif
         ma_result startResult = ma_device_start(&gDevice);
         if (startResult != MA_SUCCESS)
         {

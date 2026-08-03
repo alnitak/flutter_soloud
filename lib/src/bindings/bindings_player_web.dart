@@ -232,8 +232,56 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     return Uint8List.fromList(bytes);
   }
 
+  /// Calls `initEngine`/`changeDevice`. In the multi-threaded (AudioWorklet)
+  /// build these can reach `emscripten_sleep` (miniaudio spin-waits while the
+  /// worklet thread starts up), and the ASYNCIFY build requires them to be
+  /// called with `{async: true}`. The single-threaded build has no ASYNCIFY,
+  /// so there they are plain synchronous calls.
+  Future<PlayerErrors> _callEngineAsync(String fn, List<int> args) async {
+    await _ensureModuleReady();
+    if (flutterSoloudHasAsyncify != true) {
+      final ret =
+          fn == 'initEngine'
+              ? wasmInitEngine(args[0], args[1], args[2], args[3], args[4])
+              : wasmChangeDevice(args[0]);
+      return PlayerErrors.values[ret];
+    }
+    final promise = wasmCcallAsync(
+      fn.toJS,
+      'number'.toJS,
+      List.filled(args.length, 'number'.toJS).toJS,
+      args.map((a) => a.toJS).toList().toJS,
+      <String, Object>{'async': true}.jsify()! as JSObject,
+    );
+    final ret = (await promise.toDart).toDartInt;
+    return PlayerErrors.values[ret];
+  }
+
+  /// Waits for the WASM module to finish loading. `SoLoud.init()` can be
+  /// called by the app while `init_module.dart.js` is still instantiating
+  /// the module (especially with the larger multi-threaded build); without
+  /// this the first bindings call would hit a not-yet-defined `Module_soloud`.
+  Future<void> _ensureModuleReady() async {
+    if (moduleSoloudInstance != null) return;
+    final ready = flutterSoloudReady;
+    if (ready != null) {
+      await ready.toDart;
+      return;
+    }
+    // init_module.dart.js has not started yet (or is not included in the
+    // page); poll briefly for it to appear and finish.
+    for (var i = 0; i < 100 && moduleSoloudInstance == null; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      final r = flutterSoloudReady;
+      if (r != null) {
+        await r.toDart;
+        return;
+      }
+    }
+  }
+
   @override
-  PlayerErrors initEngine(
+  FutureOr<PlayerErrors> initEngine(
     int deviceId,
     int sampleRate,
     int bufferSize,
@@ -242,14 +290,16 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   ) {
     // [lowLatency] only affects the native miniaudio backends (it selects the
     // AAudio/CoreAudio performance profile); the Web Audio backend ignores it.
-    final ret = wasmInitEngine(
-      deviceId,
-      sampleRate,
-      bufferSize,
-      channels.count,
-      lowLatency ? 1 : 0,
+    return _callEngineAsync(
+      'initEngine',
+      [
+        deviceId,
+        sampleRate,
+        bufferSize,
+        channels.count,
+        if (lowLatency) 1 else 0,
+      ],
     );
-    return PlayerErrors.values[ret];
   }
 
   @override
@@ -258,9 +308,8 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }
 
   @override
-  PlayerErrors changeDevice(int deviceId) {
-    final ret = wasmChangeDevice(deviceId);
-    return PlayerErrors.values[ret];
+  FutureOr<PlayerErrors> changeDevice(int deviceId) {
+    return _callEngineAsync('changeDevice', [deviceId]);
   }
 
   @override
@@ -305,12 +354,17 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
 
   @override
   bool isInited() {
+    // The module may still be loading (init_module.dart.js instantiates it
+    // asynchronously); treat that as "not initialized" instead of crashing.
     // The multi-threaded WASM build uses SharedArrayBuffer for its memory and
     // therefore needs cross-origin isolation. That combination cannot happen
     // when the flavor is picked automatically (init_module.dart.js loads the
     // MT build only when the page is isolated), but it can happen if the page
     // loads the MT glue script manually (`manual` flavor) without COOP/COEP
     // headers. Warn only in that case.
+    if (moduleSoloudInstance == null) {
+      return false;
+    }
     if (flutterSoloudBuild != 'st' && isCrossOriginIsolated != true) {
       // ignore: avoid_print
       print(

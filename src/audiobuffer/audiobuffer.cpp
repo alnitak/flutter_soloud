@@ -472,7 +472,18 @@ void BufferStream::callOnMetadataCallback(AudioMetadata &metadata) {
     // `setBufferStream()` in `bindings_player_web.dart` and it's
     // meant to call the Dart callback passed to `setBufferStream()`.
     // It will pass the JS pointer to the AudioMetadata struct.
-    EM_ASM_(
+    //
+    // MAIN_THREAD_ASYNC_EM_ASM: this can fire from the audio thread, which
+    // under AudioWorklet is a separate worklet thread without access to
+    // `window`. When called from a worklet thread the JS runs asynchronously
+    // on the main thread, so the struct is heap-allocated to outlive this
+    // stack frame and freed in the JS block after the callback returns.
+    // On the main thread (and in the single-threaded build) the JS runs
+    // synchronously, so this is equivalent to the previous EM_ASM.
+    auto *ffiPtr = static_cast<AudioMetadataFFI *>(malloc(sizeof(ffi)));
+    if (ffiPtr == nullptr) return;
+    *ffiPtr = ffi;
+    MAIN_THREAD_ASYNC_EM_ASM(
         {
           // Compose the function name for this soundHash
           var functionName = "dartOnMetadataCallback_" + $1;
@@ -480,8 +491,9 @@ void BufferStream::callOnMetadataCallback(AudioMetadata &metadata) {
             window[functionName]($0); // Call it with the pointer
           } else {
           }
+          Module_soloud._free($0);
         },
-        &ffi, mParent->soundHash);
+        ffiPtr, mParent->soundHash);
 #else
     metadataCb(ffi);
 #endif
@@ -498,7 +510,13 @@ void BufferStream::callOnBufferingCallback(bool isBuffering,
     // `setBufferStream()` in `bindings_player_web.dart` and it's
     // meant to call the Dart callback passed to `setBufferStream()`.
     // This event is used for this.
-    EM_ASM(
+    //
+    // MAIN_THREAD_ASYNC_EM_ASM: this fires from the audio thread, which
+    // under AudioWorklet is a separate worklet thread without access to
+    // `window`. The proxy runs the callback on the main thread; on the main
+    // thread (and in the single-threaded build) it runs synchronously.
+    // All arguments are passed by value.
+    MAIN_THREAD_ASYNC_EM_ASM(
         {
           // Compose the function name for this soundHash
           var functionName = "dartOnBufferingCallback_" + $3;
