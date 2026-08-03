@@ -1,3 +1,6 @@
+##### 4.1.6 (X Xxx 2026)
+- fix: iOS/macOS SPM build fails with error: unknown argument: '-Wl,-undefined,dynamic_lookup' #530
+
 ##### 4.1.5 (3 Aug 2026)
 - fix web: crash with `--optimization-level=0` due to HEAPU8.buffer declared as JSArrayBuffer #526
 - fix: missing guard for NO_XIPH_LIBS that prevents building when using it #528
