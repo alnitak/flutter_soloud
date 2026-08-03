@@ -71,6 +71,10 @@ flutter:
       platforms: [web]
     - path: web/libflutter_soloud_plugin.wasm
       platforms: [web]
+    - path: web/libflutter_soloud_plugin_mt.js
+      platforms: [web]
+    - path: web/libflutter_soloud_plugin_mt.wasm
+      platforms: [web]
     - path: web/init_module.dart.js
       platforms: [web]
 

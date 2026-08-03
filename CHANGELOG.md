@@ -1,3 +1,6 @@
+##### 4.1.7 (X Xxx 2026)
+- web: added a multi-threaded WASM build flavor (`libflutter_soloud_plugin_mt.js/.wasm`, compiled with `-pthread`/`SharedArrayBuffer`) alongside the single-threaded one. `init_module.dart.js` now picks the best flavor at runtime: MT when the page is cross-origin isolated (COOP/COEP headers), ST otherwise. The `<script>` tag for `libflutter_soloud_plugin.js` in `index.html` is no longer needed (only `init_module.dart.js`); the old two-tag setup keeps working. This lays the groundwork for threading-based features on the web (AudioWorklet rendering, off-thread encode/decode) while keeping compatibility with hosts that cannot send COOP/COEP headers #523
+
 ##### 4.1.6 (3 Aug 2026)
 - fix: iOS/macOS SPM build fails with error: unknown argument: '-Wl,-undefined,dynamic_lookup' #530
 - web: dropped `-pthread`/`SharedArrayBuffer` from the WASM build. The requirement for COOP/COEP headers (cross-origin isolation) is gone and the plugin now works on hosts that cannot set them (e.g. game portals like CrazyGames/Poki). Moving the use of threads for a future release #523

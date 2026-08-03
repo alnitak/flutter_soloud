@@ -12,6 +12,15 @@ external void jsEval(String code);
 @JS('window.miniaudio.devices[0].webaudio.state')
 external String? get miniaudioAudioContextState;
 
+@JS('globalThis.crossOriginIsolated')
+external bool? get isCrossOriginIsolated;
+
+/// The WASM build flavor in use, set by `init_module.dart.js`:
+/// `mt` (multi-threaded, requires cross-origin isolation),
+/// `st` (single-threaded) or `manual` (glue script loaded by the page).
+@JS('self.flutter_soloud_build')
+external String? get flutterSoloudBuild;
+
 /// Construct a JavaScript `BigInt` from a string value.
 ///
 /// Emscripten represents 64-bit integers (e.g. `uint64_t`) as JavaScript

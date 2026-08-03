@@ -305,6 +305,23 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
 
   @override
   bool isInited() {
+    // The multi-threaded WASM build uses SharedArrayBuffer for its memory and
+    // therefore needs cross-origin isolation. That combination cannot happen
+    // when the flavor is picked automatically (init_module.dart.js loads the
+    // MT build only when the page is isolated), but it can happen if the page
+    // loads the MT glue script manually (`manual` flavor) without COOP/COEP
+    // headers. Warn only in that case.
+    if (flutterSoloudBuild != 'st' && isCrossOriginIsolated != true) {
+      // ignore: avoid_print
+      print(
+        'flutter_soloud: WARNING! This web page is not cross-origin isolated. '
+        'If you are loading the multi-threaded WASM build '
+        '(libflutter_soloud_plugin_mt.js) manually, serve the app with '
+        '`Cross-Origin-Opener-Policy: same-origin` and '
+        '`Cross-Origin-Embedder-Policy: require-corp` headers, or let '
+        'init_module.dart.js pick the build automatically.',
+      );
+    }
     return wasmIsInited() == 1;
   }
 
