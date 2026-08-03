@@ -384,9 +384,22 @@ namespace SoLoud
             //      against an inactive session — breaking remote command routing.
             //   3. Apple's audio interruption recovery guidelines explicitly require
             //      setActive:YES before restarting the Audio Unit.
+            //
+            // If the session cannot be activated (another app is holding an
+            // exclusive session, the interruption is still ongoing, ...) then
+            // starting the Audio Unit would leave it running against an
+            // inactive session and produce no audio. Report the failure to the
+            // caller instead of pretending the device was resumed.
+            bool sessionActivated = true;
             @autoreleasepool
             {
-                [[AVAudioSession sharedInstance] setActive:YES error:nil];
+                NSError *sessionError = nil;
+                sessionActivated = [[AVAudioSession sharedInstance] setActive:YES
+                                                                       error:&sessionError] == YES;
+            }
+            if (!sessionActivated)
+            {
+                return UNKNOWN_ERROR;
             }
 #endif
             result = ma_device_start(&gDevice);

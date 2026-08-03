@@ -240,10 +240,24 @@ public:
   /// @param newWaveform the new waveform type.
   void setWaveform(unsigned int soundHash, int newWaveform);
 
+  /// @brief Make sure the output audio device is running.
+  ///
+  /// The OS can stop the device without notifying us (an interruption, the
+  /// Control Center on iOS, a device change, ...) and every operation that
+  /// needs to produce sound must therefore resume it first. This is the
+  /// single place where the result of `soloud.resume()` is inspected.
+  /// @return [noError] if the device is running, [backendNotInited] if the
+  /// engine is not initialized, [audioDeviceFailedToStart] if the device
+  /// could not be started.
+  PlayerErrors ensureAudioDeviceStarted();
+
   /// @brief Switch pause state for an already loaded sound identified by
   /// [handle].
   /// @param handle the sound handle
-  void pauseSwitch(unsigned int handle);
+  /// @return [noError] if success, [backendNotInited] if the engine is not
+  /// initialized, [soundHandleNotFound] if [handle] is not valid,
+  /// [audioDeviceFailedToStart] if unpausing could not start the device.
+  PlayerErrors pauseSwitch(unsigned int handle);
 
   /// @brief Pause or unpause already loaded sound identified by [handle].
   /// @param handle the sound handle.
@@ -251,7 +265,12 @@ public:
   /// @param isUserAction true if this pause/unpause comes from the user
   /// (Dart setPause/pauseSwitch). Automatic buffering pauses pass false so
   /// they do not flip the user-paused flag.
-  void setPause(unsigned int handle, bool pause, bool isUserAction = true);
+  /// @return [noError] if success, [backendNotInited] if the engine is not
+  /// initialized, [soundHandleNotFound] if [handle] is not valid,
+  /// [audioDeviceFailedToStart] if unpausing could not start the device. When
+  /// the device cannot be started the voice is left paused.
+  PlayerErrors setPause(unsigned int handle, bool pause,
+                        bool isUserAction = true);
 
   /// @brief Schedule a deferred pause of the audio device. If no voices
   /// remain active after a short delay, the engine is paused. Requests are
@@ -404,7 +423,9 @@ public:
 
   /// @brief Stop already loaded sound identified by [handle] and clear it.
   /// @param handle handle of the sound.
-  void stop(unsigned int handle);
+  /// @return [noError] if success, [backendNotInited] if the engine is not
+  /// initialized, [soundHandleNotFound] if [handle] is not valid.
+  PlayerErrors stop(unsigned int handle);
 
   /// @brief Remove the unique [handle] form the list of internal sounds.
   /// @param handle handle of the sound.
@@ -785,7 +806,19 @@ public:
 
   unsigned int createBus();
   void destroyBus(unsigned int busId);
-  unsigned int busPlayOnEngine(unsigned int busId, float volume, bool paused);
+  /// @brief Play the bus itself on the main SoLoud engine so it becomes
+  /// audible.
+  /// @param busId the bus ID returned by `createBus()`.
+  /// @param volume playback volume (1.0 = full).
+  /// @param paused whether to start paused.
+  /// @param handle set to the voice handle of the bus, or zero on error.
+  /// @return [noError] if success, [backendNotInited] if the engine is not
+  /// initialized, [busIdNotFound] if [busId] is unknown,
+  /// [audioDeviceFailedToStart] if the output device could not be started
+  /// (only checked when [paused] is false), [failedToStartPlayback] if no
+  /// voice could be created.
+  PlayerErrors busPlayOnEngine(unsigned int busId, float volume, bool paused,
+                               unsigned int &handle);
   int busSetChannels(unsigned int busId, unsigned int channels);
   void busSetVisualizationEnable(unsigned int busId, bool enable);
   float *busCalcFFT(unsigned int busId);

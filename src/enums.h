@@ -79,6 +79,10 @@ typedef enum PlayerErrors {
   hashIsNotAPullBufferStream = 32,
   /// The pull buffer stream is in an invalid state for this operation.
   invalidPullBufferState = 33,
+  /// The output audio device could not be started or resumed.
+  audioDeviceFailedToStart = 34,
+  /// SoLoud didn't return a valid voice handle when starting the playback.
+  failedToStartPlayback = 35,
 } PlayerErrors_t;
 
 /// Possible read sample errors

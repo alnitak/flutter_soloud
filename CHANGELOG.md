@@ -1,6 +1,10 @@
-##### 4.1.5 (XX Xxx 2026)
+##### 4.1.5 (3 Aug 2026)
 - fix web: crash with `--optimization-level=0` due to HEAPU8.buffer declared as JSArrayBuffer #526
 - fix: missing guard for NO_XIPH_LIBS that prevents building when using it #528
+- fix: playback errors are no longer silently ignored. `play` (and its variants), `pauseSwitch`, `setPause` and `stop` now report failures instead of returning success with an unusable handle. Note: these methods can now throw where they previously failed silently. Thanks to @Colton127 #527
+  - added `PlayerErrors.audioDeviceFailedToStart` and `PlayerErrors.failedToStartPlayback` (with matching exceptions), so you can catch device/playback startup failures specifically.
+- fix: wrong exceptions for `loadFile`/`loadMem`/`seek`. Out-of-memory and not-implemented errors were mapped to unrelated exceptions (e.g. "DLL not found" for low memory); they now throw the correct ones. Thanks to @Colton127 #527
+- fix: a failed load no longer also raises an uncatchable async error — the future you `await` is the only error channel now. Thanks to @Colton127 #527
 
 ##### 4.1.4 (31 Jul 2026)
 - fix: the voice-ended callback is no longer invoked while SoLoud's audio mutex is held. The symptom was a wedged engine: handles and sources still looked valid, no audio was produced, and `deinit()` never completed. Ended voices are now queued and dispatched once the mutex is released. Thanks to @Colton127 #518

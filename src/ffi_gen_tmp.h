@@ -37,9 +37,16 @@ FFI_PLUGIN_EXPORT void destroyBus(unsigned int busId);
 /// [busId] the bus ID returned by createBus.
 /// [volume] playback volume (1.0 = full).
 /// [paused] whether to start paused.
-/// Returns the voice handle for the bus, or 0 on error.
-FFI_PLUGIN_EXPORT unsigned int busPlayOnEngine(unsigned int busId,
-                                               float volume, bool paused);
+/// [handle] set to the voice handle of the bus, or 0 on error.
+/// Returns [PlayerErrors.noError] if success, [PlayerErrors.backendNotInited]
+/// if the engine is not initialized, [PlayerErrors.busIdNotFound] if [busId]
+/// is unknown, [PlayerErrors.audioDeviceFailedToStart] if the output device
+/// could not be started (only checked when [paused] is false),
+/// [PlayerErrors.failedToStartPlayback] if no voice could be created for the
+/// bus.
+FFI_PLUGIN_EXPORT enum PlayerErrors busPlayOnEngine(unsigned int busId,
+                                                    float volume, bool paused,
+                                                    unsigned int *handle);
 
 /// Play a loaded sound (identified by [soundHash]) through a mixing bus.
 /// The sound must have been previously loaded via loadFile/loadMem.
@@ -185,3 +192,31 @@ FFI_PLUGIN_EXPORT void advanceMixerCaptureReadPosition(uint64_t bytes);
 /// Set the callback invoked when [notificationThresholdBytes] are available.
 FFI_PLUGIN_EXPORT void setMixerOutputCallback(
     void (*callback)(unsigned char *, uint64_t));
+
+/// Switch pause state for an already loaded sound identified by [handle]
+///
+/// [handle] the sound handle
+/// Returns [PlayerErrors.noError] if success, [PlayerErrors.backendNotInited]
+/// if the engine is not initialized, [PlayerErrors.soundHandleNotFound] if
+/// [handle] is not valid, [PlayerErrors.audioDeviceFailedToStart] if
+/// unpausing could not start the output device.
+FFI_PLUGIN_EXPORT enum PlayerErrors pauseSwitch(unsigned int handle);
+
+/// Pause or unpause already loaded sound identified by [handle]
+///
+/// [handle] the sound handle
+/// [pause] the sound handle
+/// Returns [PlayerErrors.noError] if success, [PlayerErrors.backendNotInited]
+/// if the engine is not initialized, [PlayerErrors.soundHandleNotFound] if
+/// [handle] is not valid, [PlayerErrors.audioDeviceFailedToStart] if
+/// unpausing could not start the output device. When the device cannot be
+/// started, the voice is left paused.
+FFI_PLUGIN_EXPORT enum PlayerErrors setPause(unsigned int handle, bool pause);
+
+/// Stop already loaded sound identified by [handle] and clear it
+///
+/// [handle]
+/// Returns [PlayerErrors.noError] if success, [PlayerErrors.backendNotInited]
+/// if the engine is not initialized, [PlayerErrors.soundHandleNotFound] if
+/// [handle] is not valid (for example the voice has already ended).
+FFI_PLUGIN_EXPORT enum PlayerErrors stop(unsigned int handle);
