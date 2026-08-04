@@ -44,6 +44,34 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   /// before invoking the callback, so Dart must not advance it again.
   bool _mixerOutputChunkMode = false;
 
+  /// Serializes native engine lifecycle calls (initEngine / changeDevice /
+  /// deinit / disposeAllSound).
+  ///
+  /// In the multi-threaded (AudioWorklet) build, initEngine and changeDevice
+  /// run through ASYNCIFY: while the AudioWorklet thread starts up, the WASM
+  /// call is suspended with the native side still holding the non-recursive
+  /// `init_deinit_mutex`/`loadMutex`. A concurrent native call from the main
+  /// thread (e.g. `deinit()` racing `init()`, see the AsynchronousDeinit
+  /// test) would then lock a mutex the same thread already holds, and musl
+  /// aborts with "pthread mutex deadlock detected". Queueing the lifecycle
+  /// calls keeps them strictly sequential. On the single-threaded build the
+  /// ops complete synchronously and the queue is a no-op pass-through.
+  Future<void> _engineOpQueue = Future<void>.value();
+
+  /// Set when [deinit] has been called but the native dispose is still
+  /// queued behind an in-flight engine op. Makes [isInited] report false
+  /// right away, as the app considers the engine gone.
+  bool _deinitQueued = false;
+
+  /// Runs [op] after every previously queued engine op has completed.
+  Future<T> _enqueueEngineOp<T>(Future<T> Function() op) {
+    final result = _engineOpQueue.then((_) => op());
+    // Keep the queue itself error-transparent: a failing op must not wedge
+    // the ops queued behind it.
+    _engineOpQueue = result.then((_) {}, onError: (Object _) {});
+    return result;
+  }
+
   @override
   void disposeNativeCallables() {
     /// Nothing to do on web.
@@ -299,16 +327,19 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   ) {
     // [lowLatency] only affects the native miniaudio backends (it selects the
     // AAudio/CoreAudio performance profile); the Web Audio backend ignores it.
-    return _callEngineAsync(
-      'initEngine',
-      [
-        deviceId,
-        sampleRate,
-        bufferSize,
-        channels.count,
-        if (lowLatency) 1 else 0,
-      ],
-    );
+    return _enqueueEngineOp(() {
+      _deinitQueued = false;
+      return _callEngineAsync(
+        'initEngine',
+        [
+          deviceId,
+          sampleRate,
+          bufferSize,
+          channels.count,
+          if (lowLatency) 1 else 0,
+        ],
+      );
+    });
   }
 
   @override
@@ -318,7 +349,9 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
 
   @override
   FutureOr<PlayerErrors> changeDevice(int deviceId) {
-    return _callEngineAsync('changeDevice', [deviceId]);
+    return _enqueueEngineOp(
+      () => _callEngineAsync('changeDevice', [deviceId]),
+    );
   }
 
   @override
@@ -359,10 +392,26 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }
 
   @override
-  void deinit() => wasmDeinit();
+  void deinit() {
+    _deinitQueued = true;
+    unawaited(
+      _enqueueEngineOp(() async {
+        try {
+          wasmDeinit();
+        } on Object catch (e) {
+          _log.warning('deinit() error: $e');
+        }
+      }),
+    );
+  }
 
   @override
   bool isInited() {
+    // A deinit was requested but is still queued behind an in-flight engine
+    // op: the app already considers the engine gone.
+    if (_deinitQueued) {
+      return false;
+    }
     // The module may still be loading (init_module.dart.js instantiates it
     // asynchronously); treat that as "not initialized" instead of crashing.
     // Note that between the glue load and the end of the instantiation
@@ -968,7 +1017,18 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
 
   @override
   void disposeAllSound() {
-    return wasmDisposeAllSound();
+    // Queued like deinit(): the native call takes the non-recursive
+    // init_deinit_mutex, which would self-deadlock on the main thread if an
+    // ASYNCIFY-suspended initEngine/changeDevice is still holding it.
+    unawaited(
+      _enqueueEngineOp(() async {
+        try {
+          wasmDisposeAllSound();
+        } on Object catch (e) {
+          _log.warning('disposeAllSound() error: $e');
+        }
+      }),
+    );
   }
 
   @override
