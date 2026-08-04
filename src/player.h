@@ -19,12 +19,15 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <string>
 #include <thread>
 #include <vector>
 
 struct PlaybackDevice
 {
-  char *name;
+  // Owns its name: the `ma_device_info` array it is built from belongs to the
+  // miniaudio context and dies with it.
+  std::string name;
   unsigned int isDefault;
   unsigned int id;
   ma_device_id deviceId; // Store the actual device ID, not just the index
@@ -849,7 +852,6 @@ public:
   unsigned int mChannels;
 
 private:
-  ma_device_info *pPlaybackInfos;
   std::mutex remove_handle_mutex;
   mutable std::recursive_mutex sounds_mutex; // Protects the sounds vector (recursive to avoid deadlock in destructors)
   unsigned int mBufferSize;

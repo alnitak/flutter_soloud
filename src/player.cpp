@@ -255,15 +255,23 @@ PlayerErrors Player::init(unsigned int sampleRate, unsigned int bufferSize, unsi
     // Choose the device performance profile before SoLoud opens the backend.
     SoLoud::miniaudio_setLowLatency(lowLatency);
 
+    // Anything below -1 is never a valid device selector.
+    if (deviceID < -1)
+        return invalidParameter;
+
+    // -1 leaves this null, which asks miniaudio for the OS default device.
     void *playbackInfos_id = nullptr;
-    if (deviceID != -1)
+    // Must outlive `soloud.init()`: `playbackInfos_id` points into it.
+    std::vector<PlaybackDevice> devices;
+    if (deviceID >= 0)
     {
         // Get the device list and find the requested device
-        auto const devices = listPlaybackDevices();
-        if (devices.size() == 0 || deviceID >= devices.size())
+        devices = listPlaybackDevices();
+        size_t const index = (size_t)deviceID;
+        if (index >= devices.size())
             return noPlaybackDevicesFound;
         // Use the stored device ID from the PlaybackDevice struct
-        playbackInfos_id = (void *)&devices[deviceID].deviceId;
+        playbackInfos_id = (void *)&devices[index].deviceId;
     }
 
     // initialize SoLoud.
@@ -293,21 +301,40 @@ PlayerErrors Player::changeDevice(int deviceID)
     if (!mInited)
         return backendNotInited;
 
-    // Get the device list and find the requested device
-    auto const devices = listPlaybackDevices();
-    if (devices.size() == 0 || deviceID >= devices.size())
-        return noPlaybackDevicesFound;
+    // Anything below -1 is never a valid device selector.
+    if (deviceID < -1)
+        return invalidParameter;
 
-    // Use the stored device ID from the PlaybackDevice struct
-    void *playbackInfos_id = (void *)&devices[deviceID].deviceId;
+    // `nullptr` asks miniaudio for the current OS default output device. The
+    // default device doesn't depend on a successful enumeration, so only
+    // explicit IDs need the device list (same as `init()` does).
+    void *playbackInfos_id = nullptr;
+    // Must outlive `miniaudio_changeDevice()`: `playbackInfos_id` points into it.
+    std::vector<PlaybackDevice> devices;
+    if (deviceID >= 0)
+    {
+        // Get the device list and find the requested device
+        devices = listPlaybackDevices();
+        size_t const index = (size_t)deviceID;
+        if (index >= devices.size())
+            return noPlaybackDevicesFound;
+        // Use the stored device ID from the PlaybackDevice struct
+        playbackInfos_id = (void *)&devices[index].deviceId;
+    }
 
-    SoLoud::result result = soloud.miniaudio_changeDevice(playbackInfos_id);
+    SoLoud::result const result = soloud.miniaudio_changeDevice(playbackInfos_id);
 
-    // miniaudio_changeDevice can only throw UNKNOWN_ERROR. This means that
-    // for some reasons the device could not be changed (maybe the engine
-    // was turned off in the meantime?).
+    // `NOT_IMPLEMENTED` means the engine was built without the miniaudio
+    // backend, so there is no device to swap at all.
+    if (result == SoLoud::NOT_IMPLEMENTED)
+        return notImplemented;
+
+    // Anything else non-zero is `UNKNOWN_ERROR`: the replacement device could
+    // not be initialized or started. The engine itself may well still be
+    // initialized, hence not `backendNotInited`.
     if (result != SoLoud::SO_NO_ERROR)
-        result = backendNotInited;
+        return audioDeviceFailedToStart;
+
     return noError;
 }
 
@@ -317,6 +344,10 @@ std::vector<PlaybackDevice> Player::listPlaybackDevices()
     // printf("***************** LIST DEVICES START\n");
     ma_context context;
     ma_uint32 playbackCount;
+    // Both info arrays belong to `context` and are freed by `ma_context_uninit`
+    // below, so they must stay local: keeping them alive past this function
+    // (as a member) would only leave a dangling pointer behind.
+    ma_device_info *pPlaybackInfos;
     ma_device_info *pCaptureInfos;
     ma_uint32 captureCount;
     std::vector<PlaybackDevice> ret;
@@ -349,7 +380,9 @@ std::vector<PlaybackDevice> Player::listPlaybackDevices()
         //        i,
         //        pPlaybackInfos[i].name);
         PlaybackDevice cd;
-        cd.name = strdup(pPlaybackInfos[i].name);
+        // `std::string` takes a copy: the source dies with the context, and a
+        // `strdup()` here would leak since nothing ever freed these names.
+        cd.name = pPlaybackInfos[i].name;
         cd.isDefault = pPlaybackInfos[i].isDefault;
         cd.id = i;
         cd.deviceId = pPlaybackInfos[i].id; // Copy the device ID

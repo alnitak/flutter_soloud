@@ -211,14 +211,18 @@ namespace SoLoud
 	// Added by Marco Bavagnoli
 	result Soloud::miniaudio_changeDevice(void *pPlaybackInfos_id)
 	{
-		int ret = 0;
 #if defined(WITH_MINIAUDIO)
-		if (mAudioThreadMutex != NULL)
-		{
-			ret = miniaudio_changeDevice_impl(pPlaybackInfos_id);
-		}
+		// A null mutex means the engine is not (or no longer) running, so the
+		// device was not replaced. Reporting success here would tell the caller
+		// its output moved when nothing happened.
+		if (mAudioThreadMutex == NULL)
+			return UNKNOWN_ERROR;
+
+		return miniaudio_changeDevice_impl(pPlaybackInfos_id);
+#else
+		(void)pPlaybackInfos_id;
+		return NOT_IMPLEMENTED;
 #endif
-		return ret;
 	}
 
 	result Soloud::init(unsigned int aFlags, unsigned int aBackend, unsigned int aSamplerate, unsigned int aBufferSize, unsigned int aChannels, void *pPlaybackInfos_id)
