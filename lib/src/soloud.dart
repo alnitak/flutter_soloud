@@ -481,15 +481,21 @@ interface class SoLoud {
   }
 
   /// Changes the output audio device to the one specified in the [newDevice].
-  /// If [newDevice] is not provided, the default OS device will be used.
+  ///
+  /// When [newDevice] is omitted, the current system default output device
+  /// is selected.
   ///
   /// Note: Android and Web, only support one output device which is the
   /// default device (iOS and MacOS?).
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   ///
-  /// Throws [SoLoudNoPlaybackDevicesFoundCppException] if the given [newDevice]
-  /// is not found.
+  /// Throws [SoLoudNoPlaybackDevicesFoundCppException] if the explicitly
+  /// selected [newDevice] is no longer present.
+  ///
+  /// Throws [SoLoudAudioDeviceFailedToStartCppException] if the replacement
+  /// output device could not be initialized or started. The engine stays
+  /// initialized, but its output device is unavailable.
   void changeDevice({PlaybackDevice? newDevice}) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
