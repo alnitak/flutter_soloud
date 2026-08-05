@@ -1,5 +1,5 @@
 ##### 4.1.7 (X Xxx 2026)
-- fix: `changeDevice()` now selects the system default device when called without an argument and reports device-change failures instead of silently succeeding.
+- fix: `changeDevice()` now selects the system default device when called without an argument and reports device-change failures instead of silently succeeding. Thanks to @Colton127 #532
 
 ##### 4.1.6 (3 Aug 2026)
 - fix: iOS/macOS SPM build fails with error: unknown argument: '-Wl,-undefined,dynamic_lookup' #530
