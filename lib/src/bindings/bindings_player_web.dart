@@ -39,6 +39,15 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   WorkerController? workerController;
   bool _eventCallbacksSetUp = false;
 
+  /// The engine session the currently initialized native engine belongs to.
+  /// Read from the native side after every successful `initEngine` (the
+  /// native counter is bumped at each engine teardown). `voiceEnded` events
+  /// posted by a previous engine travel asynchronously and can arrive after
+  /// re-initialization; since voice handle ids restart from scratch in the
+  /// new engine, stale events would otherwise kill voices of the current
+  /// session (see engineGeneration in bindings.cpp).
+  int _engineGeneration = 0;
+
   /// Whether the current mixer output capture is using fixed-size PCM chunks.
   /// When true, the native side advances the circular buffer read position
   /// before invoking the callback, so Dart must not advance it again.
@@ -53,9 +62,11 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   /// `init_deinit_mutex`/`loadMutex`. A concurrent native call from the main
   /// thread (e.g. `deinit()` racing `init()`, see the AsynchronousDeinit
   /// test) would then lock a mutex the same thread already holds, and musl
-  /// aborts with "pthread mutex deadlock detected". Queueing the lifecycle
-  /// calls keeps them strictly sequential. On the single-threaded build the
-  /// ops complete synchronously and the queue is a no-op pass-through.
+  /// aborts with "pthread mutex deadlock detected". Engine ops therefore run
+  /// through this queue, and deinit/disposeAllSound are deferred only while
+  /// an op is actually in flight (otherwise they run synchronously, like on
+  /// every other platform). On the single-threaded build ops complete
+  /// synchronously and the queue is a no-op pass-through.
   Future<void> _engineOpQueue = Future<void>.value();
 
   /// Set when [deinit] has been called but the native dispose is still
@@ -63,9 +74,21 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   /// right away, as the app considers the engine gone.
   bool _deinitQueued = false;
 
+  /// Number of engine ops currently executing (including while suspended in
+  /// an ASYNCIFY sleep). When zero, the native lifecycle locks are free and
+  /// deinit/disposeAllSound can run synchronously.
+  int _engineOpsInFlight = 0;
+
   /// Runs [op] after every previously queued engine op has completed.
   Future<T> _enqueueEngineOp<T>(Future<T> Function() op) {
-    final result = _engineOpQueue.then((_) => op());
+    final result = _engineOpQueue.then((_) async {
+      _engineOpsInFlight++;
+      try {
+        return await op();
+      } finally {
+        _engineOpsInFlight--;
+      }
+    });
     // Keep the queue itself error-transparent: a failing op must not wedge
     // the ops queued behind it.
     _engineOpQueue = result.then((_) {}, onError: (Object _) {});
@@ -96,8 +119,16 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     // create the worker in the WASM `Module`.
     final result = wasmCreateWorkerInWasm();
     if (result == 0) {
-      // The worker has been already created.
-      _eventCallbacksSetUp = true;
+      // The worker could not be created (the EM_ASM catch path). Don't mark
+      // the callbacks as set up, so the next call retries: a transient
+      // failure here would otherwise leave `Module_soloud.wasmWorker` null
+      // forever and every voiceEnded event would log "Worker not found.".
+      _log.warning(
+        'The web event worker (worker.dart.js) could not be created. '
+        'voiceEnded and mixer output events will not be delivered until '
+        'it is created successfully. If you serve the app with COOP/COEP '
+        'headers, check for duplicated or conflicting values.',
+      );
       return;
     }
 
@@ -142,6 +173,18 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
 
     switch (msg) {
       case 'voiceEndedCallback':
+        // Drop events emitted by a previous engine session: they can arrive
+        // after re-initialization and would otherwise invalidate a voice of
+        // the current session that happens to reuse the same handle id.
+        final generation = (message['generation'] as num?)?.toInt();
+        if (generation != null && generation != _engineGeneration) {
+          _log.finest(
+            () => 'VOICE ENDED EVENT from stale engine session '
+                '(generation $generation, current $_engineGeneration); '
+                'dropping handle ${(message['value'] as num).toInt()}',
+          );
+          return;
+        }
         _log.finest(
           () =>
               'VOICE ENDED EVENT handle: '
@@ -327,9 +370,9 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   ) {
     // [lowLatency] only affects the native miniaudio backends (it selects the
     // AAudio/CoreAudio performance profile); the Web Audio backend ignores it.
-    return _enqueueEngineOp(() {
+    return _enqueueEngineOp(() async {
       _deinitQueued = false;
-      return _callEngineAsync(
+      final error = await _callEngineAsync(
         'initEngine',
         [
           deviceId,
@@ -339,6 +382,13 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
           if (lowLatency) 1 else 0,
         ],
       );
+      if (error == PlayerErrors.noError) {
+        // Adopt the current engine session counter so voiceEnded events
+        // posted by the previous engine (still in flight in the worker
+        // pipeline) are recognized as stale and dropped.
+        _engineGeneration = wasmGetEngineGeneration();
+      }
+      return error;
     });
   }
 
@@ -393,16 +443,27 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
 
   @override
   void deinit() {
+    // Synchronous when no engine op is in flight (the native lifecycle locks
+    // are free then). Deferred only while an ASYNCIFY-suspended
+    // initEngine/changeDevice holds them.
+    if (_engineOpsInFlight == 0) {
+      _doDeinit();
+      return;
+    }
     _deinitQueued = true;
     unawaited(
       _enqueueEngineOp(() async {
-        try {
-          wasmDeinit();
-        } on Object catch (e) {
-          _log.warning('deinit() error: $e');
-        }
+        _doDeinit();
       }),
     );
+  }
+
+  void _doDeinit() {
+    try {
+      wasmDeinit();
+    } on Object catch (e) {
+      _log.warning('deinit() error: $e');
+    }
   }
 
   @override
@@ -1017,18 +1078,25 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
 
   @override
   void disposeAllSound() {
-    // Queued like deinit(): the native call takes the non-recursive
-    // init_deinit_mutex, which would self-deadlock on the main thread if an
-    // ASYNCIFY-suspended initEngine/changeDevice is still holding it.
+    // See deinit(): the native call takes the non-recursive init_deinit_mutex,
+    // so it is deferred only while an engine op is in flight.
+    if (_engineOpsInFlight == 0) {
+      _doDisposeAllSound();
+      return;
+    }
     unawaited(
       _enqueueEngineOp(() async {
-        try {
-          wasmDisposeAllSound();
-        } on Object catch (e) {
-          _log.warning('disposeAllSound() error: $e');
-        }
+        _doDisposeAllSound();
       }),
     );
+  }
+
+  void _doDisposeAllSound() {
+    try {
+      wasmDisposeAllSound();
+    } on Object catch (e) {
+      _log.warning('disposeAllSound() error: $e');
+    }
   }
 
   @override

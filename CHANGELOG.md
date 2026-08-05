@@ -2,9 +2,6 @@
 - web: **AudioWorklet rendering**. A second, multi-threaded WASM build flavor (`libflutter_soloud_plugin_mt.js/.wasm`, compiled with `-pthread`/`SharedArrayBuffer` + `MA_ENABLE_AUDIO_WORKLETS` + `-sAUDIO_WORKLET=1 -sWASM_WORKERS=1 -sASYNCIFY=1`) renders audio on a real-time AudioWorklet thread instead of the deprecated main-thread `ScriptProcessorNode`, making mixing immune to Flutter UI/GC jank. `init_module.dart.js` picks it automatically only when the page is cross-origin isolated (COOP/COEP headers); everywhere else the single-threaded `ScriptProcessorNode` flavor is used, so hosts that cannot send those headers (e.g. game portals) keep working unchanged #523
 - **web NOTE**: due to the latter, in the `index.html` only the row below should be left:
 `<script src="assets/packages/flutter_soloud/web/init_module.dart.js" defer></script>`
-- web: the audio callback never blocks on the AudioWorklet rendering thread: when the audio mutex is held by the main thread, the current block is rendered as silence and retried on the next one (blocking lowers to `Atomics.wait`, which is forbidden on rendering threads).
-- web: the multi-threaded WASM flavor is built without SAFE_HEAP (it aborts on legitimate TLS accesses from the AudioWorklet thread).
-- web: fixed a startup crash when `SoLoud.init()` was called while the WASM module was still loading (bindings now await the `flutter_soloud_ready` promise), and a "pthread mutex deadlock detected" abort when `deinit()` raced an in-flight `init()` (native engine lifecycle calls are now serialized through a queue in the web bindings).
 
 ##### 4.1.6 (3 Aug 2026)
 - fix: iOS/macOS SPM build fails with error: unknown argument: '-Wl,-undefined,dynamic_lookup' #530

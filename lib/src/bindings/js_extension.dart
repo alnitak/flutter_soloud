@@ -119,6 +119,9 @@ external JSPromise<JSNumber> wasmCcallAsync(
 @JS('Module_soloud._createWorkerInWasm')
 external int wasmCreateWorkerInWasm();
 
+@JS('Module_soloud._getEngineGeneration')
+external int wasmGetEngineGeneration();
+
 @JS('Module_soloud._sendToWorker')
 external void wasmSendToWorker(int message, int value);
 

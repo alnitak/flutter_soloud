@@ -14,6 +14,11 @@
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten/emscripten.h>
+#include <pthread.h>
+#ifdef MA_ENABLE_AUDIO_WORKLETS
+#include <emscripten/threading.h>
+#include <emscripten/webaudio.h>
+#endif
 #endif
 
 #include <atomic>
@@ -49,6 +54,16 @@ extern "C"
   std::atomic<dartStateChangedCallback_t> dartStateChangedCallback{nullptr};
   std::atomic<dartMixerOutputDataCallback_t> dartMixerOutputDataCallback{nullptr};
 
+  /// Monotonic engine session counter, bumped every time the native player
+  /// is torn down and recreated by `dispose()`. Voice handles restart from
+  /// scratch in the new Player, and on the web the voiceEnded events posted
+  /// by the old engine travel asynchronously (web worker round-trip, plus a
+  /// main-thread proxy hop on the AudioWorklet build), so they can arrive
+  /// after the new engine has started and kill a new voice that reused the
+  /// same handle id. Events are tagged with the generation of the engine
+  /// that emitted them, letting the Dart side drop stale ones.
+  std::atomic<unsigned int> engineGeneration{0};
+
   //////////////////////////////////////////////////////////////
   /// WEB WORKER
 
@@ -59,26 +74,27 @@ extern "C"
     printf("CPP bool createWorkerInWasm()\n");
 
     return EM_ASM_INT({
-      if (Module_soloud.wasmWorker)
-      {
-        // Terminate the existing worker before creating a new one
-        try
-        {
-          Module_soloud.wasmWorker.terminate();
-          console.log("EM_ASM terminated existing Web Worker.");
-        }
-        catch (e)
-        {
-          console.error('Failed to terminate existing worker:', e);
-        }
-        Module_soloud.wasmWorker = null;
-      }
       // Create a new Worker from the URI
       var workerUri = "assets/packages/flutter_soloud/web/worker.dart.js";
       console.log("EM_ASM creating Web Worker!");
       try
       {
-        Module_soloud.wasmWorker = new Worker(workerUri);
+        var newWorker = new Worker(workerUri);
+        // Replace the existing worker only after the new one was created,
+        // so a failed (re)creation doesn't lose a working worker.
+        if (Module_soloud.wasmWorker)
+        {
+          try
+          {
+            Module_soloud.wasmWorker.terminate();
+            console.log("EM_ASM terminated existing Web Worker.");
+          }
+          catch (e)
+          {
+            console.error('Failed to terminate existing worker:', e);
+          }
+        }
+        Module_soloud.wasmWorker = newWorker;
         return 1;
       }
       catch (e)
@@ -89,15 +105,11 @@ extern "C"
     });
   }
 
-  /// Post a message with the web worker.
-  FFI_PLUGIN_EXPORT void sendToWorker(const char *message, int value)
+  /// Posts an event message to the web event worker. MUST run on the main
+  /// browser thread, which is where Module_soloud.wasmWorker lives.
+  static void postMessageToEventWorker(int message, int value, int generation)
   {
-    // MAIN_THREAD_ASYNC_EM_ASM: `voiceEndedCallback` can fire from the audio
-    // thread, which under AudioWorklet is a separate worklet thread that
-    // cannot access Module_soloud (it lives on the main browser thread). The
-    // proxy runs the postMessage on the main thread; when already on the main
-    // thread (or in the single-threaded build) it executes synchronously.
-    MAIN_THREAD_ASYNC_EM_ASM(
+    EM_ASM(
         {
           if (Module_soloud.wasmWorker)
           {
@@ -105,31 +117,69 @@ extern "C"
             Module_soloud.wasmWorker.postMessage({
               message : UTF8ToString($0),
               value : $1,
+              generation : $2,
             });
             // console.log("EM_ASM posting message " + UTF8ToString($0) +
             //     " with value " + $1);
           }
           else
           {
-            console.error('Worker not found.');
+            console.error('flutter_soloud: the event worker is not created; dropping message "' + UTF8ToString($0) + '"');
           }
         },
-        message, value);
+        message, value, generation);
   }
 
-  /// Notify the web worker that new mixer output data is available.
-  /// [offset] byte offset into the mixer output circular buffer.
-  /// [length] number of contiguous valid bytes.
-  /// [captureId] identifies the active capture session so the Dart side
-  /// can discard stale notifications.
-  static void sendMixerOutputToWorker(size_t offset, size_t length,
-                                      uint32_t captureId)
+  /// Posts an event message to the web event worker with an explicit engine
+  /// session [generation] (see engineGeneration). Safe to call from any
+  /// thread: off the main browser thread the post is routed through the
+  /// AudioWorklet message port.
+  static void sendToWorkerGen(const char *message, int value,
+                              unsigned int generation)
   {
-    // The mixer-output notification thread is a pthread worker; it cannot
-    // access Module_soloud (which lives on the main browser thread). Use an
-    // async proxy so the postMessage runs on the main thread where the
-    // wasmWorker reference is valid.
-    MAIN_THREAD_ASYNC_EM_ASM(
+#ifdef MA_ENABLE_AUDIO_WORKLETS
+    if (!emscripten_is_main_browser_thread())
+    {
+      // On the multi-threaded (AudioWorklet) build `voiceEndedCallback` fires
+      // from the AudioWorklet rendering thread. MAIN_THREAD_ASYNC_EM_ASM does
+      // NOT proxy to the main browser thread from there: it executes in the
+      // worklet's own JS realm, where Module_soloud.wasmWorker does not exist
+      // and every event would be dropped. Route the post through the
+      // AudioWorklet message port instead; it runs postMessageToEventWorker
+      // on the main thread.
+      emscripten_audio_worklet_post_function_viii(
+          EMSCRIPTEN_AUDIO_MAIN_THREAD, postMessageToEventWorker,
+          (int)(uintptr_t)message, value, (int)generation);
+      return;
+    }
+#endif
+    // Main browser thread (or the single-threaded build): post directly.
+    postMessageToEventWorker((int)(uintptr_t)message, value, (int)generation);
+  }
+
+  /// Post a message with the web worker.
+  FFI_PLUGIN_EXPORT void sendToWorker(const char *message, int value)
+  {
+    // The generation is captured now, on the calling thread: delivery to the
+    // main thread is asynchronous and can complete after the engine has been
+    // torn down and re-initialized, and the event must stay tagged with the
+    // session that produced it.
+    sendToWorkerGen(message, value,
+                    engineGeneration.load(std::memory_order_acquire));
+  }
+
+  /// Returns the current engine session counter (see [engineGeneration]).
+  FFI_PLUGIN_EXPORT unsigned int getEngineGeneration()
+  {
+    return engineGeneration.load(std::memory_order_acquire);
+  }
+
+  /// Posts a mixer output notification to the web event worker. MUST run on
+  /// the main browser thread, which is where Module_soloud.wasmWorker lives.
+  static void postMixerOutputToEventWorker(int offset, int length,
+                                           int captureId)
+  {
+    EM_ASM(
         {
           if (Module_soloud.wasmWorker)
           {
@@ -141,19 +191,45 @@ extern "C"
             });
           }
         },
-        static_cast<int>(offset), static_cast<int>(length),
-        static_cast<int>(captureId));
+        offset, length, captureId);
+  }
+
+  /// Notify the web worker that new mixer output data is available.
+  /// [offset] byte offset into the mixer output circular buffer.
+  /// [length] number of contiguous valid bytes.
+  /// [captureId] identifies the active capture session so the Dart side
+  /// can discard stale notifications.
+  static void sendMixerOutputToWorker(size_t offset, size_t length,
+                                      uint32_t captureId)
+  {
+#ifdef MA_ENABLE_AUDIO_WORKLETS
+    if (!emscripten_is_main_browser_thread())
+    {
+      // Same AudioWorklet routing as sendToWorker(): on the multi-threaded
+      // build the notification runs inline in the audio callback, i.e. on the
+      // AudioWorklet rendering thread (see MixerOutput::onAudioData), where
+      // MAIN_THREAD_ASYNC_EM_ASM would execute in the worklet's own JS realm
+      // and never reach the event worker on the main thread.
+      emscripten_audio_worklet_post_function_viii(
+          EMSCRIPTEN_AUDIO_MAIN_THREAD, postMixerOutputToEventWorker,
+          static_cast<int>(offset), static_cast<int>(length),
+          static_cast<int>(captureId));
+      return;
+    }
+#endif
+    // Main browser thread (or the single-threaded build): post directly.
+    postMixerOutputToEventWorker(static_cast<int>(offset),
+                                 static_cast<int>(length),
+                                 static_cast<int>(captureId));
   }
 #endif
 
   FFI_PLUGIN_EXPORT void nativeFree(void *pointer) { free(pointer); }
 
-  /// The callback to monitor when a voice ends.
-  ///
-  /// It is called by void `Soloud::stopVoice_internal(unsigned int aVoice)` when
-  /// a voice ends and comes from the audio thread (so on the web, from a
-  /// different web worker).
-  FFI_PLUGIN_EXPORT void voiceEndedCallback(unsigned int *handle)
+  /// Body of [voiceEndedCallback], factored out so the whole body can run on
+  /// the main browser thread with the engine session [generation] captured
+  /// on the thread that produced the event.
+  static void voiceEndedBody(unsigned int *handle, unsigned int generation)
   {
     bool isHandleFound = false;
     if (player != nullptr)
@@ -177,7 +253,7 @@ extern "C"
     // Calling JavaScript from C/C++
     // https://emscripten.org/docs/porting/connecting_cpp_and_javascript/Interacting-with-code.html#interacting-with-code-call-javascript-from-native
     // emscripten_run_script("voiceEndedCallbackJS('1234')");
-    sendToWorker("voiceEndedCallback", *handle);
+    sendToWorkerGen("voiceEndedCallback", *handle, generation);
 #endif
 
     // The `dartVoiceEndedCallback` is not set on Web.
@@ -194,6 +270,46 @@ extern "C"
     unsigned int *n = (unsigned int *)malloc(sizeof(unsigned int));
     *n = *handle;
     voiceEndedCb(n);
+  }
+
+#if defined(__EMSCRIPTEN__) && defined(MA_ENABLE_AUDIO_WORKLETS)
+  /// Entry point posted from the AudioWorklet rendering thread to the main
+  /// browser thread (see voiceEndedCallback).
+  static void voiceEndedForwardToMain(int handle, int generation)
+  {
+    unsigned int h = (unsigned int)handle;
+    voiceEndedBody(&h, (unsigned int)generation);
+  }
+#endif
+
+  /// The callback to monitor when a voice ends.
+  ///
+  /// It is called by void `Soloud::stopVoice_internal(unsigned int aVoice)` when
+  /// a voice ends and comes from the audio thread (so on the web, from a
+  /// different web worker).
+  FFI_PLUGIN_EXPORT void voiceEndedCallback(unsigned int *handle)
+  {
+#if defined(__EMSCRIPTEN__) && defined(MA_ENABLE_AUDIO_WORKLETS)
+    if (!emscripten_is_main_browser_thread())
+    {
+      // On the AudioWorklet rendering thread the body would take the player's
+      // sounds_mutex (findByHandle/removeHandle); a contended lock on this
+      // thread lowers to a futex wait, which Emscripten aborts on (futex
+      // waits are illegal on AudioWorklet threads). Do everything on the
+      // main browser thread instead. The generation must be captured now:
+      // the engine may be re-initialized before the main thread runs the
+      // body, and the event must stay tagged with the session that produced
+      // it.
+      const unsigned int h = *handle;
+      const unsigned int generation =
+          engineGeneration.load(std::memory_order_acquire);
+      emscripten_audio_worklet_post_function_vii(
+          EMSCRIPTEN_AUDIO_MAIN_THREAD, voiceEndedForwardToMain,
+          (int)h, (int)generation);
+      return;
+    }
+#endif
+    voiceEndedBody(handle, engineGeneration.load(std::memory_order_acquire));
   }
 
   /// The callback to monitor when a file is loaded.
@@ -291,6 +407,22 @@ extern "C"
 
   FFI_PLUGIN_EXPORT void stopMixerCapture()
   {
+#ifdef __EMSCRIPTEN__
+    // On the multi-threaded (AudioWorklet) build the audio callback runs on
+    // the worklet rendering thread and encodes inline in onAudioData().
+    // Synchronize with it before finalizing/freeing the encoder, otherwise
+    // stop() can race an in-flight encode (use-after-free / OOB). The main
+    // thread may block on the mutex (ALLOW_BLOCKING_ON_MAIN_THREAD); the
+    // worklet side never blocks — it try-locks and emits silence on
+    // contention (see soloud_miniaudio_audiomixer).
+    if (player.get() != nullptr && player.get()->isInited())
+    {
+      player.get()->soloud.lockAudioMutex_internal();
+      MixerOutput::instance().stop();
+      player.get()->soloud.unlockAudioMutex_internal();
+      return;
+    }
+#endif
     MixerOutput::instance().stop();
   }
 
@@ -512,6 +644,11 @@ extern "C"
     player.reset();
     player = nullptr;
     player = std::make_unique<Player>();
+    // Bump the engine session counter only now that the old engine is fully
+    // torn down: voiceEnded events posted while it was stopping its voices
+    // keep the old generation, and the Dart side (which reads the counter
+    // after the next successful initEngine) can drop them as stale.
+    engineGeneration.fetch_add(1, std::memory_order_acq_rel);
     analyzer.reset();
     analyzer = std::make_unique<Analyzer>(256);
   }

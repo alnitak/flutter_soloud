@@ -27,6 +27,9 @@ freely, subject to the following restrictions:
 #include <math.h> // sin
 #include <float.h> // _controlfp
 #include <algorithm> // stable_sort
+#ifdef __EMSCRIPTEN__
+#include <emscripten/threading.h>
+#endif
 #include "soloud_internal.h"
 #include "soloud_thread.h"
 #include "soloud_fft.h"
@@ -194,6 +197,9 @@ namespace SoLoud
 
 	void Soloud::deinit()
 	{
+		// Stop the audio callback from mixing (see mEngineReady) before
+		// tearing anything down.
+		mEngineReady = 0;
 		// Make sure no audio operation is currently pending
 		lockAudioMutex_internal();
 		unlockAudioMutex_internal();
@@ -590,6 +596,9 @@ namespace SoLoud
 			return NOT_IMPLEMENTED;
 		if (!inited)
 			return UNKNOWN_ERROR;
+		// The engine is fully initialized; let the audio callback mix (see
+		// mEngineReady).
+		mEngineReady = 1;
 		return 0;
 	}
 
@@ -2372,6 +2381,21 @@ namespace SoLoud
 			unlockAudioMutexAndDispatchEndedVoices_internal();
 			return;
 		}
+
+#ifdef __EMSCRIPTEN__
+		// Free voice instances whose deletion was deferred because
+		// stopVoice_internal() ran on the AudioWorklet rendering thread (see
+		// mPendingVoiceFree). Only the main browser thread may take the heap
+		// lock safely: on the worklet a contended lock lowers to a futex
+		// wait, which Emscripten aborts on.
+		if (mPendingVoiceFreeCount != 0 && emscripten_is_main_browser_thread())
+		{
+			unsigned int i;
+			for (i = 0; i < mPendingVoiceFreeCount; i++)
+				delete mPendingVoiceFree[i];
+			mPendingVoiceFreeCount = 0;
+		}
+#endif
 
 		mInsideAudioThreadMutex = false;
 		if (mAudioThreadMutex)

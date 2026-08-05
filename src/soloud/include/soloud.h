@@ -162,6 +162,13 @@ namespace SoLoud
 		void * mBackendData;
 		// Pointer for the audio thread mutex.
 		void * mAudioThreadMutex;
+		// Set only when the engine is fully initialized (end of init()) and
+		// cleared at the start of deinit(). The audio callback checks it
+		// before mixing: on the web, a stale AudioWorklet from a previous
+		// engine session can still fire while the global miniaudio device is
+		// being re-initialized, and mixing would touch half-initialized or
+		// torn-down engine state (see soloud_miniaudio_audiomixer).
+		volatile unsigned int mEngineReady = 0;
 		// Flag for when we're inside the mutex, used for debugging.
 		bool mInsideAudioThreadMutex;
 		// Called by SoLoud to shut down the back-end. If NULL, not called. Should be set by back-end.
@@ -196,6 +203,18 @@ namespace SoLoud
 		// VOICE_COUNT-sized snapshot per level. With the guard set, the nested
 		// unlock just leaves its handle queued for the running drain loop.
 		bool mDispatchingEndedVoices = false;
+
+#ifdef __EMSCRIPTEN__
+		// Voice instances whose deletion was deferred because
+		// stopVoice_internal() ran on the AudioWorklet rendering thread (of
+		// the multi-threaded build). Freeing there would take the heap lock,
+		// and a contended lock on that thread lowers to a futex wait, which
+		// Emscripten aborts on (futex waits are illegal on AudioWorklet
+		// threads). Drained by unlockAudioMutex_internal() on the main
+		// browser thread. Only touched with the audio mutex held.
+		AudioSourceInstance* mPendingVoiceFree[VOICE_COUNT];
+		unsigned int mPendingVoiceFreeCount = 0;
+#endif
 
 		// Set the callback to call when the device receive a state changed
 		void (*_stateChangedCallback)(unsigned int) = nullptr;

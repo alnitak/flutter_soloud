@@ -261,6 +261,7 @@ echo -e "${BOLD_WHITE_ON_GREEN}Building multi-threaded flavor (libflutter_soloud
 build_flavor "libflutter_soloud_plugin_mt" \
     -pthread \
     -DMA_ENABLE_AUDIO_WORKLETS \
+    -g \
     -s SHARED_MEMORY=1 \
     -s PTHREAD_POOL_SIZE=8 \
     -s ALLOW_BLOCKING_ON_MAIN_THREAD=1 \

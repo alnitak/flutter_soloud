@@ -74,6 +74,7 @@ namespace SoLoud
 #include <chrono>
 #include <thread>
 #include <mutex>
+#include <atomic>
 #include "soloud_common.h"
 #include "../../../../mixeroutput/mixer_output.h"
 #if defined(_WIN32) || defined(_WIN64)
@@ -247,6 +248,23 @@ namespace SoLoud
         first_call = false;
         SoLoud::Soloud *soloud = (SoLoud::Soloud *)pDevice->pUserData;
 #ifdef __EMSCRIPTEN__
+        const unsigned int outChannels = pDevice->playback.channels;
+        // Stale-callback guard: on the web the miniaudio device is a global,
+        // re-used across engine sessions, and a stale AudioWorklet (or a
+        // ScriptProcessorNode callback) from a previous session can still
+        // fire while the engine is being torn down or re-initialized.
+        // pUserData then points at the new, not yet fully initialized engine
+        // (or, while the backend global is cleared, at nothing valid), and
+        // mixing would touch half-initialized or freed engine state. Emit
+        // silence instead.
+        if (soloud == nullptr || soloud != SoLoud::soloud ||
+            soloud->mEngineReady == 0)
+        {
+            std::memset(pOutput, 0,
+                        frameCount * (outChannels != 0 ? outChannels : 1) *
+                            sizeof(float));
+            return;
+        }
         // On the multi-threaded (AudioWorklet) build this callback runs on
         // the AudioWorklet rendering thread, where blocking is forbidden:
         // pthread_mutex_lock() on a contended mutex lowers to Atomics.wait(),
@@ -263,9 +281,8 @@ namespace SoLoud
         if (pthread_mutex_trylock(
                 (pthread_mutex_t *)soloud->mAudioThreadMutex) != 0)
         {
-            const unsigned int channels = pDevice->playback.channels;
             std::memset(pOutput, 0,
-                        frameCount * (channels != 0 ? channels : 1) *
+                        frameCount * (outChannels != 0 ? outChannels : 1) *
                             sizeof(float));
             return;
         }

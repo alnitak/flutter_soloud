@@ -24,6 +24,10 @@ freely, subject to the following restrictions:
 
 #include "soloud.h"
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten/threading.h>
+#endif
+
 // Direct voice operations (no mutexes - called from other functions)
 
 namespace SoLoud
@@ -143,6 +147,19 @@ namespace SoLoud
 				}
 			}
 
+#ifdef __EMSCRIPTEN__
+			// Freeing the instance takes the heap lock, and a contended lock
+			// on the AudioWorklet rendering thread lowers to a futex wait,
+			// which Emscripten aborts on (futex waits are illegal there).
+			// Defer the deletion to the main browser thread; it is drained by
+			// unlockAudioMutex_internal() (see mPendingVoiceFree).
+			if (!emscripten_is_main_browser_thread() &&
+				mPendingVoiceFreeCount < VOICE_COUNT)
+			{
+				mPendingVoiceFree[mPendingVoiceFreeCount++] = v;
+			}
+			else
+#endif
 			delete v;
 		}
 	}

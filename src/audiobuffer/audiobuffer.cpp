@@ -7,12 +7,61 @@
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten/emscripten.h>
+#ifdef MA_ENABLE_AUDIO_WORKLETS
+#include <emscripten/threading.h>
+#include <emscripten/webaudio.h>
+#endif
 #endif
 
 // TODO: readSamplesFromBuffer as for waveform
 
 namespace SoLoud {
 std::mutex check_buffer_mutex;
+
+#ifdef MA_ENABLE_AUDIO_WORKLETS
+// Main-thread entry points for the stream event callbacks. On the
+// multi-threaded (AudioWorklet) build the callbacks can fire from the
+// AudioWorklet rendering thread, which has no `window` and where
+// MAIN_THREAD_ASYNC_EM_ASM would execute in the worklet's own JS realm
+// (ReferenceError: window is not defined). The callers route through
+// emscripten_audio_worklet_post_function_* so these run on the main
+// browser thread.
+
+// Static slot for the metadata struct: heap-allocating it on the audio
+// thread could take the contended heap lock, and a futex wait there aborts
+// the program. Metadata callbacks are rare (once per stream open), so a
+// last-wins static slot is fine.
+static AudioMetadataFFI gBsMetadataSlot;
+
+static void bsOnMetadataMainThread(int metadataPtr, int soundHash)
+{
+  EM_ASM(
+      {
+        var functionName = "dartOnMetadataCallback_" + $1;
+        if (typeof window[functionName] === "function") {
+          window[functionName]($0); // Call it with the pointer
+        } else {
+        }
+      },
+      metadataPtr, soundHash);
+}
+
+static void bsOnBufferingMainThread(int isBuffering, int handle, double time,
+                                    int soundHash)
+{
+  EM_ASM(
+      {
+        var functionName = "dartOnBufferingCallback_" + $3;
+        if (typeof window[functionName] === "function") {
+          var buffering = $0 == 1 ? true : false;
+          window[functionName](buffering, $1, $2); // Call it
+        } else {
+          console.log("EM_ASM 'dartOnBufferingCallback_$hash' not found.");
+        }
+      },
+      isBuffering, handle, time, soundHash);
+}
+#endif // MA_ENABLE_AUDIO_WORKLETS
 
 static void clearPlanarBuffer(float *buffer, unsigned int frames,
                               unsigned int stride, unsigned int channels) {
@@ -472,14 +521,18 @@ void BufferStream::callOnMetadataCallback(AudioMetadata &metadata) {
     // `setBufferStream()` in `bindings_player_web.dart` and it's
     // meant to call the Dart callback passed to `setBufferStream()`.
     // It will pass the JS pointer to the AudioMetadata struct.
-    //
-    // MAIN_THREAD_ASYNC_EM_ASM: this can fire from the audio thread, which
-    // under AudioWorklet is a separate worklet thread without access to
-    // `window`. When called from a worklet thread the JS runs asynchronously
-    // on the main thread, so the struct is heap-allocated to outlive this
-    // stack frame and freed in the JS block after the callback returns.
-    // On the main thread (and in the single-threaded build) the JS runs
-    // synchronously, so this is equivalent to the previous EM_ASM.
+#ifdef MA_ENABLE_AUDIO_WORKLETS
+    if (!emscripten_is_main_browser_thread()) {
+      // No heap allocation on the audio thread (see gBsMetadataSlot).
+      gBsMetadataSlot = ffi;
+      emscripten_audio_worklet_post_function_sig(
+          EMSCRIPTEN_AUDIO_MAIN_THREAD, (void *)bsOnMetadataMainThread, "ii",
+          (int)(uintptr_t)&gBsMetadataSlot, (int)mParent->soundHash);
+      return;
+    }
+    bsOnMetadataMainThread((int)(uintptr_t)&ffi, (int)mParent->soundHash);
+#else
+    // Single-threaded build: everything runs on the main browser thread.
     auto *ffiPtr = static_cast<AudioMetadataFFI *>(malloc(sizeof(ffi)));
     if (ffiPtr == nullptr) return;
     *ffiPtr = ffi;
@@ -494,6 +547,7 @@ void BufferStream::callOnMetadataCallback(AudioMetadata &metadata) {
           Module_soloud._free($0);
         },
         ffiPtr, mParent->soundHash);
+#endif
 #else
     metadataCb(ffi);
 #endif
@@ -510,12 +564,19 @@ void BufferStream::callOnBufferingCallback(bool isBuffering,
     // `setBufferStream()` in `bindings_player_web.dart` and it's
     // meant to call the Dart callback passed to `setBufferStream()`.
     // This event is used for this.
-    //
-    // MAIN_THREAD_ASYNC_EM_ASM: this fires from the audio thread, which
-    // under AudioWorklet is a separate worklet thread without access to
-    // `window`. The proxy runs the callback on the main thread; on the main
-    // thread (and in the single-threaded build) it runs synchronously.
-    // All arguments are passed by value.
+#ifdef MA_ENABLE_AUDIO_WORKLETS
+    if (!emscripten_is_main_browser_thread()) {
+      // See bsOnBufferingMainThread: on the AudioWorklet rendering thread
+      // `window` does not exist. All arguments are passed by value.
+      emscripten_audio_worklet_post_function_sig(
+          EMSCRIPTEN_AUDIO_MAIN_THREAD, (void *)bsOnBufferingMainThread,
+          "iidi", (int)isBuffering, (int)handle, time,
+          (int)mParent->soundHash);
+      return;
+    }
+    bsOnBufferingMainThread((int)isBuffering, (int)handle, time,
+                            (int)mParent->soundHash);
+#else
     MAIN_THREAD_ASYNC_EM_ASM(
         {
           // Compose the function name for this soundHash
@@ -528,6 +589,7 @@ void BufferStream::callOnBufferingCallback(bool isBuffering,
           }
         },
         isBuffering, handle, time, mParent->soundHash);
+#endif
 #else
     bufferingCb(isBuffering, handle, time);
 #endif
