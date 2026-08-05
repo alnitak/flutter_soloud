@@ -440,6 +440,11 @@ extern "C"
     int numDevices = 0;
     for (int i = 0; i < (int)d.size(); i++)
     {
+      /// Check the length first: the character scan below reads the first 5
+      /// bytes, which is only in bounds once the name is known to be longer.
+      if (d[i].name.size() <= 5)
+        continue;
+
       bool hasSpecialChar = false;
       /// check if the device name has some strange chars (happens on Linux)
       /// It happens that some results had the name composed of non-text
@@ -452,10 +457,10 @@ extern "C"
         if (d[i].name[n] < 0x20 && d[i].name[n] >= 0)
           hasSpecialChar = true;
       }
-      if (strlen(d[i].name) <= 5 || hasSpecialChar)
+      if (hasSpecialChar)
         continue;
 
-      devicesName[numDevices] = strdup(d[i].name);
+      devicesName[numDevices] = strdup(d[i].name.c_str());
       isDefault[numDevices] = (int *)malloc(sizeof(int));
       *isDefault[numDevices] = d[i].isDefault;
       deviceId[numDevices] = (int *)malloc(sizeof(int));
