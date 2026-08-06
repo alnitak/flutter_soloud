@@ -459,7 +459,13 @@ extern "C"
   FFI_PLUGIN_EXPORT void listPlaybackDevices(char **devicesName, int **deviceId,
                                              int **isDefault, int *n_devices)
   {
-    std::vector<PlaybackDevice> d = player.get()->listPlaybackDevices();
+    // Deliberately not routed through the global `player`: `dispose()` now runs
+    // on a worker isolate, so reading that `unique_ptr` here would race with it
+    // being reset and replaced. Enumeration needs no player state, so call it
+    // directly instead of guarding with the lifecycle mutex — taking that lock
+    // would stall this (UI-thread) call for the whole of an in-flight
+    // `initEngine()`, which is the very block this release removes.
+    std::vector<PlaybackDevice> d = Player::listPlaybackDevices();
 
     int numDevices = 0;
     for (int i = 0; i < (int)d.size(); i++)

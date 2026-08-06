@@ -56,7 +56,15 @@ public:
   /// @param deviceID the device ID. -1 for default OS output device.
   PlayerErrors changeDevice(int deviceID);
 
-  std::vector<PlaybackDevice> listPlaybackDevices();
+  /// @brief Enumerate the OS playback devices.
+  ///
+  /// Static because it reads no player state: it spins up its own local
+  /// `ma_context` and tears it down before returning. Callers must be able to
+  /// enumerate devices while the engine is being created or destroyed on
+  /// another thread, so this must not depend on the lifetime of the global
+  /// `player` instance nor take the lifecycle lock (which an in-flight
+  /// `init()` can hold for the whole audio-device startup).
+  static std::vector<PlaybackDevice> listPlaybackDevices();
 
   /// @brief Set a function callback triggered when a voice is stopped/ended.
   void setVoiceEndedCallback(void (*voiceEndedCallback)(unsigned int *));
