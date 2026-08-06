@@ -836,7 +836,7 @@ public:
   std::vector<std::unique_ptr<ActiveSound>> sounds;
 
   /// true when the backend is initialized
-  bool mInited;
+  std::atomic<bool> mInited;
 
   /// main SoLoud engine
   SoLoud::Soloud soloud;

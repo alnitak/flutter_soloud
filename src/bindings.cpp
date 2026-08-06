@@ -30,6 +30,13 @@ extern "C"
   /// mutex to lock the init and dispose methods.
   std::mutex init_deinit_mutex;
 
+  /// Set by Dart as soon as a shutdown is requested, so worker scheduling
+  /// cannot make a later init resurrect the engine.
+  std::atomic<bool> engine_shutdown_requested{false};
+
+  /// Lock-free readiness publication for UI-side isInitialized queries.
+  std::atomic<bool> engine_initialized{false};
+
   /// mutex to lock the loading audio methods and make safe operations on
   /// player.sounds list.
   std::mutex loadMutex;
@@ -399,6 +406,12 @@ extern "C"
     std::lock_guard<std::mutex> guard(init_deinit_mutex);
     std::lock_guard<std::mutex> guard_load(loadMutex);
 
+    if (engine_shutdown_requested.load(std::memory_order_acquire))
+    {
+      engine_initialized.store(false, std::memory_order_release);
+      return backendNotInited;
+    }
+
     if (player.get() == nullptr)
       player = std::make_unique<Player>();
 
@@ -407,7 +420,10 @@ extern "C"
                                                         channels, deviceID,
                                                         lowLatency != 0);
     if (res != noError)
+    {
+      engine_initialized.store(false, std::memory_order_release);
       return res;
+    }
 
     // Set window size for filters
     const int windowSize = (player.get()->soloud.getBackendBufferSize() /
@@ -417,6 +433,14 @@ extern "C"
 
     // Set the callback for when a voice is ended/stopped
     player.get()->setVoiceEndedCallback(voiceEndedCallback);
+
+    if (engine_shutdown_requested.load(std::memory_order_acquire))
+    {
+      engine_initialized.store(false, std::memory_order_release);
+      return backendNotInited;
+    }
+
+    engine_initialized.store(true, std::memory_order_release);
 
     return PlayerErrors::noError;
   }
@@ -500,11 +524,16 @@ extern "C"
   ///
   FFI_PLUGIN_EXPORT void dispose()
   {
+    engine_shutdown_requested.store(true, std::memory_order_release);
+    engine_initialized.store(false, std::memory_order_release);
+    std::lock_guard<std::mutex> guard(init_deinit_mutex);
+    std::lock_guard<std::mutex> guard_load(loadMutex);
+    // An in-flight init may have published readiness before releasing the
+    // lifecycle lock. Reassert shutdown after acquiring it.
+    engine_initialized.store(false, std::memory_order_release);
     if (player.get() == nullptr)
       return;
     player.get()->disposeAllSound();
-    std::lock_guard<std::mutex> guard(init_deinit_mutex);
-    std::lock_guard<std::mutex> guard_load(loadMutex);
     dartVoiceEndedCallback = nullptr;
     dartFileLoadedCallback = nullptr;
     dartStateChangedCallback = nullptr;
@@ -516,11 +545,20 @@ extern "C"
     analyzer = std::make_unique<Analyzer>(256);
   }
 
+  FFI_PLUGIN_EXPORT void prepareEngineInit()
+  {
+    engine_shutdown_requested.store(false, std::memory_order_release);
+    engine_initialized.store(false, std::memory_order_release);
+  }
+
+  FFI_PLUGIN_EXPORT void requestEngineShutdown()
+  {
+    engine_shutdown_requested.store(true, std::memory_order_release);
+  }
+
   FFI_PLUGIN_EXPORT int isInited()
   {
-    if (player.get() == nullptr)
-      return 0;
-    return player.get()->isInited() ? 1 : 0;
+    return engine_initialized.load(std::memory_order_acquire) ? 1 : 0;
   }
 
   /// Load a new sound to be played once or multiple times later.

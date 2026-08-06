@@ -169,7 +169,7 @@ abstract class FlutterSoLoud {
   ///
   /// Returns [PlayerErrors.noError] if success.
   @mustBeOverridden
-  PlayerErrors initEngine(
+  Future<PlayerErrors> initEngine(
     int deviceId,
     int sampleRate,
     int bufferSize,
@@ -197,6 +197,18 @@ abstract class FlutterSoLoud {
   /// Must be called when the player is no more needed or when closing the app.
   @mustBeOverridden
   void deinit();
+
+  /// Dispose the native engine without blocking the calling isolate.
+  @mustBeOverridden
+  Future<void> deinitAsync();
+
+  /// Prepare native init state before dispatching an asynchronous init.
+  @mustBeOverridden
+  void prepareEngineInit();
+
+  /// Publish a native shutdown request before dispatching asynchronous dispose.
+  @mustBeOverridden
+  void requestEngineShutdown();
 
   /// Gets the state of player
   ///
