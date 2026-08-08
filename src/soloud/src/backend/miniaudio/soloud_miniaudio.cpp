@@ -114,8 +114,12 @@ namespace SoLoud
     static bool gDeviceInitialized = false;    // Track if device is actually initialized
     static std::thread *gInitThread = nullptr; // Background thread for device init
     static std::mutex gInitMutex;              // Protect device init state
-    // Serializes device start/stop operations (e.g. resume) against device
-    // teardown in soloud_miniaudio_deinit().
+    // Serializes every operation that touches `gDevice`: pause, resume, the
+    // device swap in miniaudio_changeDevice_impl() and teardown in
+    // soloud_miniaudio_deinit(). Any two of these running at once act on a
+    // half-initialized or already-freed device. Note this is NOT SoLoud's
+    // audio-thread mutex and must not be confused with it: the data callback
+    // never takes this one, so holding it cannot starve the audio thread.
     static std::mutex gDeviceOpsMutex;
 
     // Configuration to store for deferred initialization
@@ -315,6 +319,15 @@ namespace SoLoud
     // state and keeps MPRemoteCommandCenter routing intact.
     result soloud_miniaudio_pause(SoLoud::Soloud *aSoloud)
     {
+        // Take the same device-ops lock as resume()/deinit()/changeDevice().
+        // Without it this is the one device operation that can still land on a
+        // `gDevice` another thread is swapping or tearing down — and it is the
+        // most likely one to do so, since Player's pause scheduler fires it
+        // from its own thread ~500ms after the last voice ends.
+        std::lock_guard<std::mutex> deviceOpsLock(gDeviceOpsMutex);
+        if (!gDeviceInitialized)
+            return 0; // No device to pause.
+
         if (ma_device_get_state(&gDevice) == ma_device_state_started)
         {
 #if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
@@ -625,17 +638,37 @@ namespace SoLoud
         if (soloud == nullptr)
             return UNKNOWN_ERROR;
 
+        // Serialize the whole swap against the other operations that act on
+        // `gDevice`: soloud_miniaudio_pause(), soloud_miniaudio_resume() and
+        // soloud_miniaudio_deinit(). Between the uninit and the init below
+        // there is no device at all, and a concurrent start/stop on that torn
+        // struct is the SIGABRT documented in soloud_miniaudio_resume().
+        // This is reachable in ordinary use, not just on lifecycle events:
+        // Player's pause scheduler runs on its own thread and calls
+        // Soloud::pause() ~500ms after the last voice ends.
+        std::lock_guard<std::mutex> deviceOpsLock(gDeviceOpsMutex);
+
         // Stop the device before uninitializing to ensure clean shutdown
         if (ma_device_get_state(&gDevice) == ma_device_state_started)
         {
             ma_device_stop(&gDevice);
         }
 
-        // Lock the audio mutex to prevent race conditions during device change
-        soloud->lockAudioMutex_internal();
-
+        // SoLoud's audio-thread mutex is deliberately NOT held across the swap
+        // below, even though it guards the mixer, because it does not protect
+        // `gDevice`: the data callback reaches the engine through
+        // `pDevice->pUserData` and takes that mutex itself inside
+        // `Soloud::mix()`, and `ma_device_uninit()` already guarantees the
+        // callback has stopped before it returns. Holding it here only starves
+        // the audio thread, and on Android that is fatal: on AAudio's legacy
+        // (non-MMAP) path a stream reports STARTED only once its first data
+        // callback has run, so a held mutex makes that callback block,
+        // `ma_device_start()` time out after 5s, and the cleanup
+        // `ma_device_uninit()` then wait forever on the very callback the
+        // caller is blocking. That deadlock is the Android ANR.
         ma_device_uninit(&gDevice);
         gDeviceInitialized = false;
+        gDeviceStopped = true;
 
         ma_device_config deviceConfig = ma_device_config_init(ma_device_type_playback);
         deviceConfig.playback.pDeviceID = (ma_device_id *)pPlaybackInfos_id;
@@ -679,8 +712,8 @@ namespace SoLoud
 #endif
         if (result != MA_SUCCESS)
         {
+            soloud_platform_log("miniaudio_changeDevice_impl: ma_device_init failed with error %d\n", result);
             gDeviceInitialized = false;
-            soloud->unlockAudioMutex_internal();
             return UNKNOWN_ERROR;
         }
 
@@ -692,11 +725,13 @@ namespace SoLoud
             soloud_platform_log("miniaudio_changeDevice_impl: ma_device_start failed with error %d\n", startResult);
             ma_device_uninit(&gDevice);
             gDeviceInitialized = false;
-            soloud->unlockAudioMutex_internal();
+            // The device never reached a running state and is now gone, so
+            // don't leave `deinit()` polling for a "stopped" notification that
+            // can no longer arrive.
+            gDeviceStopped = true;
             return UNKNOWN_ERROR;
         }
 
-        soloud->unlockAudioMutex_internal();
         return 0;
     }
 };
