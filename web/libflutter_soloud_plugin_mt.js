@@ -6257,7 +6257,7 @@ function checkIncomingModuleAPI() {
 }
 
 var ASM_CONSTS = {
-  725180: ($0, $1, $2, $3, $4) => {
+  725244: ($0, $1, $2, $3, $4) => {
     if (typeof window === "undefined" || (window.AudioContext || window.webkitAudioContext) === undefined) {
       return 0;
     }
@@ -6329,7 +6329,7 @@ var ASM_CONSTS = {
     window.miniaudio.referenceCount += 1;
     return 1;
   },
-  727358: () => {
+  727422: () => {
     if (typeof (window.miniaudio) !== "undefined") {
       window.miniaudio.unlock_event_types.map(function(event_type) {
         document.removeEventListener(event_type, window.miniaudio.unlock, true);
@@ -6340,8 +6340,8 @@ var ASM_CONSTS = {
       }
     }
   },
-  727662: () => (navigator.mediaDevices !== undefined && navigator.mediaDevices.getUserMedia !== undefined),
-  727766: () => {
+  727726: () => (navigator.mediaDevices !== undefined && navigator.mediaDevices.getUserMedia !== undefined),
+  727830: () => {
     try {
       var temp = new (window.AudioContext || window.webkitAudioContext);
       var sampleRate = temp.sampleRate;
@@ -6351,12 +6351,12 @@ var ASM_CONSTS = {
       return 0;
     }
   },
-  727937: ($0, $1) => window.miniaudio.track_device({
+  728001: ($0, $1) => window.miniaudio.track_device({
     webaudio: emscriptenGetAudioObject($0),
     state: 1,
     pDevice: $1
   }),
-  728046: ($0, $1) => {
+  728110: ($0, $1) => {
     var getUserMediaResult = 0;
     var audioWorklet = emscriptenGetAudioObject($0);
     var audioContext = emscriptenGetAudioObject($1);
@@ -6374,14 +6374,14 @@ var ASM_CONSTS = {
     });
     return getUserMediaResult;
   },
-  728608: ($0, $1) => {
+  728672: ($0, $1) => {
     var audioWorklet = emscriptenGetAudioObject($0);
     var audioContext = emscriptenGetAudioObject($1);
     audioWorklet.connect(audioContext.destination);
     return 0;
   },
-  728768: $0 => emscriptenGetAudioObject($0).sampleRate,
-  728820: $0 => {
+  728832: $0 => emscriptenGetAudioObject($0).sampleRate,
+  728884: $0 => {
     var device = window.miniaudio.get_device_by_index($0);
     if (device.streamNode !== undefined) {
       device.streamNode.disconnect();
@@ -6389,20 +6389,20 @@ var ASM_CONSTS = {
     }
     device.pDevice = undefined;
   },
-  729011: $0 => {
+  729075: $0 => {
     window.miniaudio.untrack_device_by_index($0);
   },
-  729061: $0 => {
+  729125: $0 => {
     var device = window.miniaudio.get_device_by_index($0);
     device.webaudio.resume();
     device.state = window.miniaudio.device_state.started;
   },
-  729200: $0 => {
+  729264: $0 => {
     var device = window.miniaudio.get_device_by_index($0);
     device.webaudio.suspend();
     device.state = window.miniaudio.device_state.stopped;
   },
-  729340: () => {
+  729404: () => {
     var workerUri = "assets/packages/flutter_soloud/web/worker.dart.js";
     console.log("EM_ASM creating Web Worker!");
     try {
@@ -6422,7 +6422,7 @@ var ASM_CONSTS = {
       return 0;
     }
   },
-  729829: ($0, $1, $2) => {
+  729893: ($0, $1, $2) => {
     if (Module_soloud.wasmWorker) {
       Module_soloud.wasmWorker.postMessage({
         message: UTF8ToString($0),
@@ -6433,7 +6433,7 @@ var ASM_CONSTS = {
       console.error('flutter_soloud: the event worker is not created; dropping message "' + UTF8ToString($0) + '"');
     }
   },
-  730087: ($0, $1, $2) => {
+  730151: ($0, $1, $2) => {
     if (Module_soloud.wasmWorker) {
       Module_soloud.wasmWorker.postMessage({
         message: "mixerOutputData",
@@ -6443,13 +6443,13 @@ var ASM_CONSTS = {
       });
     }
   },
-  730239: ($0, $1) => {
+  730303: ($0, $1) => {
     var functionName = "dartOnMetadataCallback_" + $1;
     if (typeof window[functionName] === "function") {
       window[functionName]($0);
     } else {}
   },
-  730381: ($0, $1, $2, $3) => {
+  730445: ($0, $1, $2, $3) => {
     var functionName = "dartOnBufferingCallback_" + $3;
     if (typeof window[functionName] === "function") {
       var buffering = $0 == 1 ? true : false;
@@ -6458,25 +6458,25 @@ var ASM_CONSTS = {
       console.log("EM_ASM 'dartOnBufferingCallback_$hash' not found.");
     }
   },
-  730645: ($0, $1, $2, $3) => {
+  730709: ($0, $1, $2, $3) => {
     var functionName = "dartOnBufferingCallback_" + $3;
     if (typeof window[functionName] === "function") {
       window[functionName]($0 == 1 ? true : false, $1, $2);
     }
   },
-  730807: ($0, $1) => {
+  730871: ($0, $1) => {
     var functionName = "dartOnMetadataCallback_" + $1;
     if (typeof window[functionName] === "function") {
       window[functionName]($0);
     }
   },
-  730940: ($0, $1) => {
+  731004: ($0, $1) => {
     var functionName = "dartOnMoreDataIsNeededCallback_" + $1;
     if (typeof window[functionName] === "function") {
       window[functionName]($0);
     }
   },
-  731081: ($0, $1) => {
+  731145: ($0, $1) => {
     var functionName = "dartOnAudioDurationCallback_" + $1;
     if (typeof window[functionName] === "function") {
       window[functionName]($0);
@@ -6546,6 +6546,10 @@ var _changeDevice = Module["_changeDevice"] = makeInvalidEarlyAccess("_changeDev
 var _freeListPlaybackDevices = Module["_freeListPlaybackDevices"] = makeInvalidEarlyAccess("_freeListPlaybackDevices");
 
 var _dispose = Module["_dispose"] = makeInvalidEarlyAccess("_dispose");
+
+var _prepareEngineInit = Module["_prepareEngineInit"] = makeInvalidEarlyAccess("_prepareEngineInit");
+
+var _requestEngineShutdown = Module["_requestEngineShutdown"] = makeInvalidEarlyAccess("_requestEngineShutdown");
 
 var _isInited = Module["_isInited"] = makeInvalidEarlyAccess("_isInited");
 
@@ -6965,6 +6969,8 @@ function assignWasmExports(wasmExports) {
   assert(typeof wasmExports["changeDevice"] != "undefined", "missing Wasm export: changeDevice");
   assert(typeof wasmExports["freeListPlaybackDevices"] != "undefined", "missing Wasm export: freeListPlaybackDevices");
   assert(typeof wasmExports["dispose"] != "undefined", "missing Wasm export: dispose");
+  assert(typeof wasmExports["prepareEngineInit"] != "undefined", "missing Wasm export: prepareEngineInit");
+  assert(typeof wasmExports["requestEngineShutdown"] != "undefined", "missing Wasm export: requestEngineShutdown");
   assert(typeof wasmExports["isInited"] != "undefined", "missing Wasm export: isInited");
   assert(typeof wasmExports["loadFile"] != "undefined", "missing Wasm export: loadFile");
   assert(typeof wasmExports["loadMem"] != "undefined", "missing Wasm export: loadMem");
@@ -7188,6 +7194,8 @@ function assignWasmExports(wasmExports) {
   _changeDevice = Module["_changeDevice"] = createExportWrapper("changeDevice", 1);
   _freeListPlaybackDevices = Module["_freeListPlaybackDevices"] = createExportWrapper("freeListPlaybackDevices", 4);
   _dispose = Module["_dispose"] = createExportWrapper("dispose", 0);
+  _prepareEngineInit = Module["_prepareEngineInit"] = createExportWrapper("prepareEngineInit", 0);
+  _requestEngineShutdown = Module["_requestEngineShutdown"] = createExportWrapper("requestEngineShutdown", 0);
   _isInited = Module["_isInited"] = createExportWrapper("isInited", 0);
   _loadFile = Module["_loadFile"] = createExportWrapper("loadFile", 3);
   _loadMem = Module["_loadMem"] = createExportWrapper("loadMem", 5);
