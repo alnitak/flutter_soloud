@@ -718,7 +718,7 @@ namespace SoLoud
         std::lock_guard<std::mutex> deviceOpsLock(gDeviceOpsMutex);
 
         // Stop the device before uninitializing to ensure clean shutdown
-        if (ma_device_get_state(&gDevice) == ma_device_state_started)
+        if (ma_device_get_state(&gDevice) != ma_device_state_stopped)
         {
             ma_device_stop(&gDevice);
         }
