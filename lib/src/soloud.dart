@@ -267,6 +267,15 @@ interface class SoLoud {
   /// engine must be treated as not ready from Dart.
   bool _nativeCallbacksInitialized = false;
 
+  /// Invalidates initialization continuations after deinitialization starts.
+  int _lifecycleGeneration = 0;
+
+  /// The single in-flight asynchronous native teardown, if any.
+  Future<void>? _pendingAsyncDeinit;
+
+  /// Serializes init calls while preserving reinitialization behavior.
+  Future<void>? _pendingInitialization;
+
   /// The current status of the engine. This is `true` when the engine
   /// has been initialized and is immediately ready.
   ///
@@ -398,9 +407,85 @@ interface class SoLoud {
     bool lowLatency = true,
     AndroidAAudioAttributes androidAAudioAttributes =
         AndroidAAudioAttributes.mediaMusic,
+  }) {
+    final requestGeneration = _lifecycleGeneration;
+    final previous = _pendingInitialization;
+    final initialization = _runQueuedInitialization(
+      previous: previous,
+      requestGeneration: requestGeneration,
+      device: device,
+      automaticCleanup: automaticCleanup,
+      sampleRate: sampleRate,
+      bufferSize: bufferSize,
+      channels: channels,
+      lowLatency: lowLatency,
+      androidAAudioAttributes: androidAAudioAttributes,
+    );
+    _pendingInitialization = initialization;
+    return initialization.whenComplete(() {
+      if (identical(_pendingInitialization, initialization)) {
+        _pendingInitialization = null;
+      }
+    });
+  }
+
+  Future<void> _runQueuedInitialization({
+    required Future<void>? previous,
+    required int requestGeneration,
+    required PlaybackDevice? device,
+    required bool automaticCleanup,
+    required int sampleRate,
+    required int bufferSize,
+    required Channels channels,
+    required bool lowLatency,
+    required AndroidAAudioAttributes androidAAudioAttributes,
   }) async {
-    final nativeIsInitialized = _controller.soLoudFFI.isInited();
+    if (previous != null) {
+      try {
+        await previous;
+      } catch (_) {
+        // A failed initialization must not permanently block a retry.
+      }
+    }
+
+    if (requestGeneration != _lifecycleGeneration) {
+      await _waitForInitializationTeardownAndThrow();
+    }
+    await _initialize(
+      initializationGeneration: requestGeneration,
+      device: device,
+      automaticCleanup: automaticCleanup,
+      sampleRate: sampleRate,
+      bufferSize: bufferSize,
+      channels: channels,
+      lowLatency: lowLatency,
+      androidAAudioAttributes: androidAAudioAttributes,
+    );
+  }
+
+  Future<void> _initialize({
+    required int initializationGeneration,
+    PlaybackDevice? device,
+    bool automaticCleanup = false,
+    int sampleRate = 44100,
+    int bufferSize = 2048,
+    Channels channels = Channels.stereo,
+    bool lowLatency = true,
+    AndroidAAudioAttributes androidAAudioAttributes =
+        AndroidAAudioAttributes.mediaMusic,
+  }) async {
     _log.finest('init() called');
+
+    final pendingDeinit = _pendingAsyncDeinit;
+    if (pendingDeinit != null) {
+      await pendingDeinit;
+    }
+
+    if (initializationGeneration != _lifecycleGeneration) {
+      await _waitForInitializationTeardownAndThrow();
+    }
+
+    final nativeIsInitialized = _controller.soLoudFFI.isInited();
 
     // Removing these asserts because they could not be true after a
     // hot restart or after calling deinit(). Discussed in #452.
@@ -437,8 +522,13 @@ interface class SoLoud {
         'during the current lifetime of the app.',
       );
       _controller.soLoudFFI.clearDartCallbackRegistrations();
-      deinit();
+      await _deinitAsync(invalidateInitialization: false);
+      if (initializationGeneration != _lifecycleGeneration) {
+        await _waitForInitializationTeardownAndThrow();
+      }
     }
+
+    _controller.soLoudFFI.prepareEngineInit();
 
     // Must be set before the engine opens the device so the backend picks it
     // up at stream creation (and re-applies it on device changes).
@@ -453,6 +543,9 @@ interface class SoLoud {
       channels,
       lowLatency,
     );
+    if (initializationGeneration != _lifecycleGeneration) {
+      await _waitForInitializationTeardownAndThrow();
+    }
     _logPlayerError(error, from: 'initialize() result');
     if (error == PlayerErrors.noError) {
       /// get the visualization flag from the player on C side.
@@ -467,12 +560,25 @@ interface class SoLoud {
       // Initialize [SoLoudLoader]
       _loader.automaticCleanup = automaticCleanup;
 
-      // Register fresh Dart callbacks only after the native player has been
-      // reset and re-initialized.
-      await _initializeNativeCallbacks();
-      _nativeCallbacksInitialized = true;
+      try {
+        // Register fresh Dart callbacks only after the native player has been
+        // reset and re-initialized.
+        await _initializeNativeCallbacks();
+        if (initializationGeneration != _lifecycleGeneration) {
+          await _waitForInitializationTeardownAndThrow();
+        }
 
-      await _loader.initialize();
+        await _loader.initialize();
+        if (initializationGeneration != _lifecycleGeneration) {
+          await _waitForInitializationTeardownAndThrow();
+        }
+        _nativeCallbacksInitialized = true;
+      } catch (_) {
+        if (_controller.soLoudFFI.isInited()) {
+          await deinitAsync();
+        }
+        rethrow;
+      }
     } else {
       _nativeCallbacksInitialized = false;
       _log.severe('initialize() failed with error: $error');
@@ -534,24 +640,68 @@ interface class SoLoud {
   /// or inside "AppLifecycleListener.onExitRequested".
   void deinit() {
     _log.finest('deinit() called');
+    _predeinit();
+    _controller.soLoudFFI.deinit();
+    _postdeinit();
+  }
+
+  /// Stops the engine and disposes native resources without blocking the UI
+  /// isolate while the native audio device is being stopped.
+  Future<void> deinitAsync() async {
+    await _deinitAsync(invalidateInitialization: true);
+  }
+
+  Future<void> _deinitAsync({required bool invalidateInitialization}) async {
+    final existing = _pendingAsyncDeinit;
+    if (existing != null) {
+      if (invalidateInitialization) {
+        _predeinit();
+      }
+      await existing;
+      return;
+    }
+
+    _predeinit(invalidateInitialization: invalidateInitialization);
+    final teardown = _deinitNativeAsync();
+    _pendingAsyncDeinit = teardown;
+    try {
+      await teardown;
+    } finally {
+      if (identical(_pendingAsyncDeinit, teardown)) {
+        _pendingAsyncDeinit = null;
+      }
+    }
+  }
+
+  void _predeinit({bool invalidateInitialization = true}) {
+    _controller.soLoudFFI.requestEngineShutdown();
+    if (invalidateInitialization) {
+      _lifecycleGeneration++;
+    }
     _nativeCallbacksInitialized = false;
     if (_controller.soLoudFFI.isMixerOutputCaptureRunning()) {
       _controller.soLoudFFI.stopMixerOutputCapture();
     }
-    // Stop the engine first: natively this stops all sounds, clears the
-    // Dart callback registrations and stops the audio device, joining the
-    // audio thread. Closing the NativeCallable trampolines before this
-    // point races with the audio thread invoking them (voices ending from
-    // the mixing thread) and crashes with "Callback invoked after it has
-    // been deleted".
-    _controller.soLoudFFI.deinit();
-    // Destroy the sounds (and their BufferStreams) before closing the
-    // NativeCallable trampolines: an in-flight addData on another isolate
-    // could otherwise invoke a freed metadata/buffering trampoline while
-    // its BufferStream is still alive.
-    _controller.soLoudFFI.disposeAllSound();
+  }
+
+  Future<void> _deinitNativeAsync() async {
+    await _controller.soLoudFFI.deinitAsync();
+    _postdeinit();
+  }
+
+  void _postdeinit() {
+    // Native teardown has completed before this runs, so no native thread can
+    // invoke a callback while its owning NativeCallable is being closed.
     _controller.soLoudFFI.disposeNativeCallables();
     _activeSounds.clear();
+  }
+
+  Future<void> _waitForInitializationTeardownAndThrow() async {
+    final pendingDeinit = _pendingAsyncDeinit;
+    if (pendingDeinit != null) {
+      await pendingDeinit;
+    }
+    throw const SoLoudInitializationStoppedByDeinitException();
   }
 
   /// Find the [AudioSource] which owns the given [handle].

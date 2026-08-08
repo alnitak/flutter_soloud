@@ -21,6 +21,9 @@
 
 #define FFI_PLUGIN_EXPORT
 
+FFI_PLUGIN_EXPORT void prepareEngineInit();
+FFI_PLUGIN_EXPORT void requestEngineShutdown();
+
 //--------------------- copy here the new functions to generate
 
  /// Create a new mixing bus.

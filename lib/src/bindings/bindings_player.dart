@@ -207,6 +207,18 @@ abstract class FlutterSoLoud {
   @mustBeOverridden
   void deinit();
 
+  /// Dispose the native engine without blocking the calling isolate.
+  @mustBeOverridden
+  Future<void> deinitAsync();
+
+  /// Prepare native init state before dispatching an asynchronous init.
+  @mustBeOverridden
+  void prepareEngineInit();
+
+  /// Publish a native shutdown request before dispatching asynchronous dispose.
+  @mustBeOverridden
+  void requestEngineShutdown();
+
   /// Gets the state of player
   ///
   /// Return true if initilized

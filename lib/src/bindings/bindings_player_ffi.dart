@@ -6,6 +6,7 @@
 
 import 'dart:async';
 import 'dart:ffi' as ffi;
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
@@ -72,6 +73,36 @@ typedef OnMetadataCallbackTFunction = void Function(NativeAudioMetadata);
 typedef OnAudioDurationCallbackTFunction = void Function(double duration);
 
 typedef OnMoreDataIsNeededCallbackTFunction = void Function(int offset);
+
+int _invokeInitEngine(
+  int address,
+  int deviceId,
+  int sampleRate,
+  int bufferSize,
+  int channels,
+  int lowLatency,
+) {
+  final function =
+      ffi.Pointer<
+            ffi.NativeFunction<
+              ffi.Int32 Function(
+                ffi.Int,
+                ffi.UnsignedInt,
+                ffi.UnsignedInt,
+                ffi.UnsignedInt,
+                ffi.UnsignedInt,
+              )
+            >
+          >.fromAddress(address)
+          .asFunction<int Function(int, int, int, int, int)>();
+  return function(deviceId, sampleRate, bufferSize, channels, lowLatency);
+}
+
+void _invokeVoidNative(int address) {
+  ffi.Pointer<ffi.NativeFunction<ffi.Void Function()>>.fromAddress(
+    address,
+  ).asFunction<void Function()>()();
+}
 
 final class _BufferStreamNativeCallbacks {
   _BufferStreamNativeCallbacks({
@@ -515,15 +546,21 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     int bufferSize,
     Channels channels,
     bool lowLatency,
-  ) {
-    final ret = _initEngine(
-      deviceId,
-      sampleRate,
-      bufferSize,
-      channels.count,
-      lowLatency ? 1 : 0,
+  ) async {
+    final address = _initEnginePtr.address;
+    final channelCount = channels.count;
+    final lowLatencyValue = lowLatency ? 1 : 0;
+    final result = await Isolate.run(
+      () => _invokeInitEngine(
+        address,
+        deviceId,
+        sampleRate,
+        bufferSize,
+        channelCount,
+        lowLatencyValue,
+      ),
     );
-    return PlayerErrors.values[ret];
+    return PlayerErrors.values[result];
   }
 
   late final _initEnginePtr =
@@ -538,8 +575,6 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
           )
         >
       >('initEngine');
-  late final _initEngine = _initEnginePtr
-      .asFunction<int Function(int, int, int, int, int)>();
 
   @override
   void setAndroidAAudioAttributes(bool managed) {
@@ -662,6 +697,28 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   void deinit() {
     return _dispose();
   }
+
+  @override
+  Future<void> deinitAsync() async {
+    final address = _disposePtr.address;
+    await Isolate.run(() => _invokeVoidNative(address));
+  }
+
+  @override
+  void prepareEngineInit() => _prepareEngineInit();
+
+  late final _prepareEngineInit = _prepareEngineInitPtr
+      .asFunction<void Function()>();
+  late final _prepareEngineInitPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function()>>('prepareEngineInit');
+
+  @override
+  void requestEngineShutdown() => _requestEngineShutdown();
+
+  late final _requestEngineShutdown = _requestEngineShutdownPtr
+      .asFunction<void Function()>();
+  late final _requestEngineShutdownPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function()>>('requestEngineShutdown');
 
   late final _disposePtr = _lookup<ffi.NativeFunction<ffi.Void Function()>>(
     'dispose',
