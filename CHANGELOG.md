@@ -1,4 +1,4 @@
-##### 4.1.7 (X Xxx 2026)
+##### 4.1.7 (8 Aug 2026)
 - fix: a device change that still fails now reports `SoLoudAudioDeviceFailedToStartCppException` instead of hanging. Thanks to @Colton127 #533
 - fix: `changeDevice()` now selects the system default device when called without an argument and reports device-change failures instead of silently succeeding. Thanks to @Colton127 #533
 - fix: `init()` no longer blocks the UI thread while the audio device starts. On Android a slow or busy audio HAL could stall the platform thread long enough for the app to be reported as not responding; engine startup and teardown now run on a short-lived worker isolate. Thanks to @Colton127 #533
