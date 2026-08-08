@@ -10,30 +10,25 @@ import 'common.dart';
 Future<OutputBuffer> testAsynchronousDeinit() async {
   /// test asynchronous init-deinit looping with a short decreasing time
   for (var t = 10; t >= 0; t--) {
-    var error = '';
+    final initResult =
+        SoLoud.instance.init().then<({Object? error, StackTrace? stack})>(
+              (_) => (error: null, stack: null),
+              onError: (Object error, StackTrace stack) =>
+                  (error: error, stack: stack),
+            );
 
-    /// Initialize the player
-    unawaited(
-      SoLoud.instance.init().then(
-        (_) {},
-        onError: (Object e) {
-          deinit();
-          if (e is SoLoudInitializationStoppedByDeinitException) {
-            // This is to be expected.
-            debugPrint('$e\n');
-            return;
-          }
-          debugPrint('TEST FAILED delay: $t. Player starting error: $e\n');
-          error = e.toString();
-        },
-      ),
-    );
-
-    assert(error.isEmpty, error);
-
-    /// wait for [t] ms and deinit()
     await delay(t);
-    deinit();
+    await SoLoud.instance.deinitAsync();
+
+    final result = await initResult;
+    final error = result.error;
+
+    if (error is SoLoudInitializationStoppedByDeinitException) {
+      debugPrint('$error\n');
+    } else if (error != null) {
+      Error.throwWithStackTrace(error, result.stack!);
+    }
+
     final after = SoLoudController().soLoudFFI.isInited();
 
     assert(

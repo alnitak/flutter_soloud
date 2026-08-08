@@ -233,13 +233,13 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }
 
   @override
-  PlayerErrors initEngine(
+  Future<PlayerErrors> initEngine(
     int deviceId,
     int sampleRate,
     int bufferSize,
     Channels channels,
     bool lowLatency,
-  ) {
+  ) async {
     // [lowLatency] only affects the native miniaudio backends (it selects the
     // AAudio/CoreAudio performance profile); the Web Audio backend ignores it.
     final ret = wasmInitEngine(
@@ -251,6 +251,15 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     );
     return PlayerErrors.values[ret];
   }
+
+  @override
+  Future<void> deinitAsync() async => deinit();
+
+  @override
+  void prepareEngineInit() {}
+
+  @override
+  void requestEngineShutdown() {}
 
   @override
   void setAndroidAAudioAttributes(bool managed) {
