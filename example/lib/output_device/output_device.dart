@@ -1,9 +1,7 @@
-import 'dart:developer' as dev;
+// ignore_for_file: avoid_print
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
-import 'package:logging/logging.dart';
 
 /// Output device example.
 ///
@@ -25,23 +23,6 @@ import 'package:logging/logging.dart';
 /// the default.
 
 void main() async {
-  // The `flutter_soloud` package logs everything
-  // (from severe warnings to fine debug messages)
-  // using the standard `package:logging`.
-  // You can listen to the logs as shown below.
-  Logger.root.level = kDebugMode ? Level.FINE : Level.INFO;
-  Logger.root.onRecord.listen((record) {
-    dev.log(
-      record.message,
-      time: record.time,
-      level: record.level.value,
-      name: record.loggerName,
-      zone: record.zone,
-      error: record.error,
-      stackTrace: record.stackTrace,
-    );
-  });
-
   WidgetsFlutterBinding.ensureInitialized();
 
   /// Initialize the player.
@@ -64,17 +45,13 @@ class HelloFlutterSoLoud extends StatefulWidget {
 
 class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
   late TextEditingController textEditingController;
-  late final List<PlaybackDevice> devices;
+  late List<PlaybackDevice> devices;
   late PlaybackDevice currentDevice;
   AudioSource? currentSound;
 
   @override
   void initState() {
     super.initState();
-    SoLoud.instance.loadAsset('assets/audio/8_bit_mentality.mp3').then((value) {
-      currentSound = value;
-      SoLoud.instance.play(currentSound!, looping: true, volume: 0.5);
-    });
 
     devices = SoLoud.instance.listPlaybackDevices();
     assert(devices.isNotEmpty, 'No devices found!');
@@ -98,17 +75,53 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
 
     return Scaffold(
       body: Center(
-        child: DropdownMenu(
-          controller: textEditingController,
-          onSelected: (value) {
-            SoLoud.instance.changeDevice(newDevice: devices[value!]);
-          },
-          dropdownMenuEntries: [
-            for (var i = 0; i < devices.length; i++)
-              DropdownMenuEntry(
-                value: i,
-                label: '(${devices[i].id}) - ${devices[i].name}',
-              ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          spacing: 16,
+          children: [
+            ElevatedButton(
+              onPressed: () async {
+                devices = SoLoud.instance.listPlaybackDevices();
+                final deviceNames = devices.map((d) => d.name).join(', ');
+                print('Available devices: $deviceNames');
+                setState(() {});
+              },
+              child: const Text('Refresh available devices'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                if (currentSound != null) {
+                  await SoLoud.instance.disposeAllSources();
+                  currentSound = null;
+                  print('Playing...');
+                  setState(() {});
+                } else {
+                  currentSound = await SoLoud.instance
+                      .loadAsset('assets/audio/8_bit_mentality.mp3');
+                  SoLoud.instance.play(
+                    currentSound!,
+                    looping: true,
+                    volume: 0.5,
+                  );
+                  print('Playing...');
+                  setState(() {});
+                }
+              },
+              child: Text(currentSound == null ? 'Play' : 'Stop'),
+            ),
+            DropdownMenu(
+              controller: textEditingController,
+              onSelected: (value) {
+                SoLoud.instance.changeDevice(newDevice: devices[value!]);
+              },
+              dropdownMenuEntries: [
+                for (var i = 0; i < devices.length; i++)
+                  DropdownMenuEntry(
+                    value: i,
+                    label: '(${devices[i].id}) - ${devices[i].name}',
+                  ),
+              ],
+            ),
           ],
         ),
       ),
