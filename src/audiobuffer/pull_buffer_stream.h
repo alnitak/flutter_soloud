@@ -4,6 +4,7 @@
 #define PULL_BUFFER_STREAM_H
 
 #include "../active_sound.h"
+#include "../dart_callback_gate.h"
 #include "../enums.h"
 #include "../player.h"
 #include "../soloud/include/soloud.h"
@@ -157,6 +158,10 @@ private:
   std::atomic<dartOnMoreDataIsNeededCallback_t> mOnMoreDataIsNeededCallback{
       nullptr};
   std::atomic<dartOnAudioDurationCallback_t> mOnAudioDurationCallback{nullptr};
+  /// The Dart callback generation the four callables above were registered at.
+  /// Checked on every invocation so a retirement makes them inert without
+  /// having to reach into this object. See `src/dart_callback_gate.h`.
+  std::atomic<uint64_t> mDartCallbackGeneration{dart_callbacks::kNoGeneration};
 
   std::unique_ptr<StreamDecoder> mStreamDecoder;
 

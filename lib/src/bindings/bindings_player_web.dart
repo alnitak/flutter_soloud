@@ -259,6 +259,12 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   void prepareEngineInit() {}
 
   @override
+  bool get usesAsyncEnginePrepare => false;
+
+  @override
+  Future<void> prepareEngineInitAsync() async {}
+
+  @override
   void requestEngineShutdown() {}
 
   @override

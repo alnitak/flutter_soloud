@@ -42,6 +42,69 @@ If you are looking for a package to visualize audio using shaders or CustomPaint
 
 Also, if you are building using Swift Package Manager (SPM), please check out [iOS and macOS Configuration](https://docs.page/alnitak/flutter_soloud_docs/get_started/setup#ios-and-macos-configuration).
 
+### Android: FlutterEngine lifecycle
+
+The native engine is process-global, while the Dart isolate driving it belongs
+to one FlutterEngine. On Android the plugin observes that engine's lifecycle so
+the two cannot drift apart:
+
+- **Hot restart** retires the callbacks belonging to the discarded isolate, so
+  nothing calls into it — including the per-stream buffering, metadata and
+  data-request callbacks that the audio thread drives. The engine stays up and
+  the new isolate's `init()` replaces it as usual.
+- **FlutterEngine destroyed** (a cached engine behind `audio_service` being
+  disposed, an add-to-app host destroying an engine) tears down the player, the
+  output device and the scheduler that engine owned, even if your Dart code
+  never got to call `deinit()`. The blocking part runs on a native worker
+  thread, so the platform thread is never held.
+- **Activity recreation is not engine destruction.** A cached FlutterEngine
+  deliberately outlives its Activity; rotating the screen or recreating the
+  Activity tears nothing down.
+
+None of this needs any setup: the plugin registers itself, and does no native
+work at all until one of those transitions happens.
+
+**Supported scope:** one active FlutterEngine at a time, including replacing it
+with a new one. Two FlutterEngines using the plugin *simultaneously* is not
+supported — the engine they would share is process-global, and the last one to
+initialize wins.
+
+### iOS and macOS: FlutterEngine lifecycle
+
+Both get the same native teardown, with honest differences in timing.
+
+- **FlutterEngine deallocated** tears down the player, output device and
+  scheduler that engine owned, and cannot tear down an engine that has since
+  replaced it. The blocking part runs on a native worker, so the platform
+  thread is never held.
+- **Callback retirement is not guaranteed to happen before the isolate goes.**
+  Android can retire callbacks while the engine is still valid
+  (`onEngineWillDestroy`) and before a hot restart (`onPreEngineRestart`).
+  Flutter's public iOS plugin API offers neither: the only hook is plugin
+  detach during `FlutterEngine` deallocation, and a hot restart gives no hook at
+  all. So on iOS there is a window — between the old isolate going away and
+  either detach arriving or the next `init()` running — in which a native
+  callback belonging to the departed isolate has not yet been retired. Recovery
+  happens at the next initialization, which retires the stale registrations
+  before claiming afresh. We do not close this with private Flutter APIs.
+
+On **macOS** the difference is sharper still. Its plugin API has no detach hook
+of any kind — the protocol is only `registerWithRegistrar:` and
+`handleMethodCall:result:` — so the plugin takes its own deallocation as the
+signal that the engine has gone. That works because FlutterEngine's `dealloc`
+releases the references holding the plugin, but it is reference-count timing
+rather than a documented contract: an app that retains the plugin instance (via
+`valuePublishedByPlugin:`, say) delays or prevents it, and the result is simply
+that the engine is not released automatically, exactly as before this existed.
+
+Arming this needs one round trip to the platform thread, because neither Apple
+platform exposes the engine's identity to a plugin the way Android does. If Flutter's
+messaging is not available — for instance `SoLoud.init()` called without
+`WidgetsFlutterBinding.ensureInitialized()`, which this package has never
+required and still does not — initialization proceeds exactly as before and
+logs a warning that automatic teardown was not armed. An explicit `deinit()`,
+and recovery at the next `init()`, keep working either way.
+
 ## Documentation
 
 - [Full Documentation](https://docs.page/alnitak/flutter_soloud_docs)

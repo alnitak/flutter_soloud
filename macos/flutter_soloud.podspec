@@ -14,7 +14,17 @@ Flutter audio plugin using SoLoud library and FFI
   s.author           = { 'Your Company' => 'email@example.com' }
 
   s.source           = { :path => '.' }
-  s.source_files     = 'flutter_soloud/Sources/flutter_soloud/*.{h,mm}'
+  # FlutterSoloudPlugin.h lives in the include directory rather than beside its
+  # .mm because SwiftPM has no explicit publicHeadersPath and therefore uses the
+  # target's default `include` (a symlink to the same directory). Listing it
+  # here matters more on macOS than on iOS: the generated registrant is Swift
+  # and does a plain `import flutter_soloud`, with no __has_include fallback, so
+  # the class has to reach the module's public headers or the build fails.
+  s.source_files     = [
+    'flutter_soloud/Sources/flutter_soloud/*.{h,mm}',
+    'flutter_soloud/include/FlutterSoloudPlugin.h',
+  ]
+  s.public_header_files = 'flutter_soloud/include/FlutterSoloudPlugin.h'
     # flutter_soloud.mm is the SwiftPM wrapper that includes the full C++
   # implementation. CocoaPods builds the same implementation through the
   # CMake script phase below, so compiling the wrapper here defines duplicate
@@ -101,6 +111,18 @@ Flutter audio plugin using SoLoud library and FFI
       local_lib_path,
     ],
     'VALID_ARCHS' => 'x86_64 arm64',
+    # FlutterSoloudPlugin.mm calls the engine-lifecycle exports, which live in
+    # libflutter_soloud_plugin.a -- force-loaded into the *app* target, not into
+    # this pod. With the default static pod there is no link step here and the
+    # references resolve when the app links. With `use_frameworks!` this pod
+    # becomes a dynamic framework with its own link step, and they would be
+    # undefined; dynamic lookup resolves them at load time against the app
+    # binary, which is the same approach Package.swift already takes.
+    #
+    # Deliberately NOT linking another copy of libflutter_soloud_plugin.a here:
+    # that would give the framework its own SoLoud engine and lifecycle state,
+    # separate from the app's.
+    'OTHER_LDFLAGS' => '$(inherited) -undefined dynamic_lookup',
    }
 
   # user_target_xcconfig: settings propagated to the APP target's linker.

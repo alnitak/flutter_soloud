@@ -7,6 +7,7 @@
 #include "../enums.h"
 #include "../player.h"
 #include "../soloud/include/soloud.h"
+#include "../dart_callback_gate.h"
 #include "buffer.h"
 #include <atomic>
 #include <chrono>
@@ -48,6 +49,10 @@ public:
   ActiveSound *mParent;
   std::atomic<dartOnBufferingCallback_t> mOnBufferingCallback{nullptr};
   std::atomic<dartOnMetadataCallback_t> mOnMetadataCallback{nullptr};
+  /// The Dart callback generation the two callables above were registered at.
+  /// Checked on every invocation so a retirement makes them inert without
+  /// having to reach into this object. See `src/dart_callback_gate.h`.
+  std::atomic<uint64_t> mDartCallbackGeneration{dart_callbacks::kNoGeneration};
   unsigned int autoTypeChannels;
   float autoTypeSamplerate;
   unsigned int mMaxBufferSize;
