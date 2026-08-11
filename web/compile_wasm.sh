@@ -31,7 +31,12 @@ VORBIS_DIR="$XIPH_DIR/vorbis"
 FLAC_DIR="$XIPH_DIR/flac"
 
 # Clean and create build directory
-rm -f libflutter_soloud_plugin.*
+if [ "${SKIP_ST:-0}" != "1" ]; then
+    rm -f libflutter_soloud_plugin.js libflutter_soloud_plugin.wasm
+fi
+if [ "${SKIP_MT:-0}" != "1" ]; then
+    rm -f libflutter_soloud_plugin_mt.js libflutter_soloud_plugin_mt.wasm
+fi
 
 # Handle Opus and Ogg compilation only if not skipped
 if [ "${SKIP_OPUS_OGG}" != "1" ]; then
@@ -244,8 +249,10 @@ build_flavor() {
 }
 
 # ST flavor (default, keeps the historical file names).
-echo -e "${BOLD_WHITE_ON_GREEN}Building single-threaded flavor (libflutter_soloud_plugin)${RESET}"
-build_flavor "libflutter_soloud_plugin" -s SAFE_HEAP=1
+if [ "${SKIP_ST:-0}" != "1" ]; then
+    echo -e "${BOLD_WHITE_ON_GREEN}Building single-threaded flavor (libflutter_soloud_plugin)${RESET}"
+    build_flavor "libflutter_soloud_plugin" -s SAFE_HEAP=1
+fi
 
 # MT flavor (requires COOP/COEP; selected at runtime only when isolated).
 # MA_ENABLE_AUDIO_WORKLETS: render audio on a real-time AudioWorklet thread
@@ -258,17 +265,19 @@ build_flavor "libflutter_soloud_plugin" -s SAFE_HEAP=1
 # NOTE: no SAFE_HEAP here — SAFE_HEAP aborts on legitimate TLS accesses
 # (errno/__pthread_self) made by libc on the AudioWorklet rendering thread.
 echo -e "${BOLD_WHITE_ON_GREEN}Building multi-threaded flavor (libflutter_soloud_plugin_mt)${RESET}"
-build_flavor "libflutter_soloud_plugin_mt" \
-    -pthread \
-    -DMA_ENABLE_AUDIO_WORKLETS \
-    -g \
-    -s SHARED_MEMORY=1 \
-    -s PTHREAD_POOL_SIZE=8 \
-    -s ALLOW_BLOCKING_ON_MAIN_THREAD=1 \
-    -s AUDIO_WORKLET=1 \
-    -s WASM_WORKERS=1 \
-    -s ASYNCIFY=1 \
-    -s ASYNCIFY_STACK_SIZE=65536
+if [ "${SKIP_MT:-0}" != "1" ]; then
+    build_flavor "libflutter_soloud_plugin_mt" \
+        -pthread \
+        -DMA_ENABLE_AUDIO_WORKLETS \
+        -g \
+        -s SHARED_MEMORY=1 \
+        -s PTHREAD_POOL_SIZE=8 \
+        -s ALLOW_BLOCKING_ON_MAIN_THREAD=1 \
+        -s AUDIO_WORKLET=1 \
+        -s WASM_WORKERS=1 \
+        -s ASYNCIFY=1 \
+        -s ASYNCIFY_STACK_SIZE=65536
+fi
 
 echo
 echo -e "${BOLD_WHITE_ON_GREEN}Build completed successfully...${RESET}"

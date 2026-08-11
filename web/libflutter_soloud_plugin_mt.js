@@ -6257,7 +6257,7 @@ function checkIncomingModuleAPI() {
 }
 
 var ASM_CONSTS = {
-  725244: ($0, $1, $2, $3, $4) => {
+  725292: ($0, $1, $2, $3, $4) => {
     if (typeof window === "undefined" || (window.AudioContext || window.webkitAudioContext) === undefined) {
       return 0;
     }
@@ -6329,7 +6329,7 @@ var ASM_CONSTS = {
     window.miniaudio.referenceCount += 1;
     return 1;
   },
-  727422: () => {
+  727470: () => {
     if (typeof (window.miniaudio) !== "undefined") {
       window.miniaudio.unlock_event_types.map(function(event_type) {
         document.removeEventListener(event_type, window.miniaudio.unlock, true);
@@ -6340,8 +6340,8 @@ var ASM_CONSTS = {
       }
     }
   },
-  727726: () => (navigator.mediaDevices !== undefined && navigator.mediaDevices.getUserMedia !== undefined),
-  727830: () => {
+  727774: () => (navigator.mediaDevices !== undefined && navigator.mediaDevices.getUserMedia !== undefined),
+  727878: () => {
     try {
       var temp = new (window.AudioContext || window.webkitAudioContext);
       var sampleRate = temp.sampleRate;
@@ -6351,12 +6351,12 @@ var ASM_CONSTS = {
       return 0;
     }
   },
-  728001: ($0, $1) => window.miniaudio.track_device({
+  728049: ($0, $1) => window.miniaudio.track_device({
     webaudio: emscriptenGetAudioObject($0),
     state: 1,
     pDevice: $1
   }),
-  728110: ($0, $1) => {
+  728158: ($0, $1) => {
     var getUserMediaResult = 0;
     var audioWorklet = emscriptenGetAudioObject($0);
     var audioContext = emscriptenGetAudioObject($1);
@@ -6374,14 +6374,14 @@ var ASM_CONSTS = {
     });
     return getUserMediaResult;
   },
-  728672: ($0, $1) => {
+  728720: ($0, $1) => {
     var audioWorklet = emscriptenGetAudioObject($0);
     var audioContext = emscriptenGetAudioObject($1);
     audioWorklet.connect(audioContext.destination);
     return 0;
   },
-  728832: $0 => emscriptenGetAudioObject($0).sampleRate,
-  728884: $0 => {
+  728880: $0 => emscriptenGetAudioObject($0).sampleRate,
+  728932: $0 => {
     var device = window.miniaudio.get_device_by_index($0);
     if (device.streamNode !== undefined) {
       device.streamNode.disconnect();
@@ -6389,20 +6389,20 @@ var ASM_CONSTS = {
     }
     device.pDevice = undefined;
   },
-  729075: $0 => {
+  729123: $0 => {
     window.miniaudio.untrack_device_by_index($0);
   },
-  729125: $0 => {
+  729173: $0 => {
     var device = window.miniaudio.get_device_by_index($0);
     device.webaudio.resume();
     device.state = window.miniaudio.device_state.started;
   },
-  729264: $0 => {
+  729312: $0 => {
     var device = window.miniaudio.get_device_by_index($0);
     device.webaudio.suspend();
     device.state = window.miniaudio.device_state.stopped;
   },
-  729404: () => {
+  729452: () => {
     var workerUri = "assets/packages/flutter_soloud/web/worker.dart.js";
     console.log("EM_ASM creating Web Worker!");
     try {
@@ -6422,7 +6422,7 @@ var ASM_CONSTS = {
       return 0;
     }
   },
-  729893: ($0, $1, $2) => {
+  729941: ($0, $1, $2) => {
     if (Module_soloud.wasmWorker) {
       Module_soloud.wasmWorker.postMessage({
         message: UTF8ToString($0),
@@ -6433,7 +6433,7 @@ var ASM_CONSTS = {
       console.error('flutter_soloud: the event worker is not created; dropping message "' + UTF8ToString($0) + '"');
     }
   },
-  730151: ($0, $1, $2) => {
+  730199: ($0, $1, $2) => {
     if (Module_soloud.wasmWorker) {
       Module_soloud.wasmWorker.postMessage({
         message: "mixerOutputData",
@@ -6443,13 +6443,13 @@ var ASM_CONSTS = {
       });
     }
   },
-  730303: ($0, $1) => {
+  730351: ($0, $1) => {
     var functionName = "dartOnMetadataCallback_" + $1;
     if (typeof window[functionName] === "function") {
       window[functionName]($0);
     } else {}
   },
-  730445: ($0, $1, $2, $3) => {
+  730493: ($0, $1, $2, $3) => {
     var functionName = "dartOnBufferingCallback_" + $3;
     if (typeof window[functionName] === "function") {
       var buffering = $0 == 1 ? true : false;
@@ -6458,25 +6458,25 @@ var ASM_CONSTS = {
       console.log("EM_ASM 'dartOnBufferingCallback_$hash' not found.");
     }
   },
-  730709: ($0, $1, $2, $3) => {
+  730757: ($0, $1, $2, $3) => {
     var functionName = "dartOnBufferingCallback_" + $3;
     if (typeof window[functionName] === "function") {
       window[functionName]($0 == 1 ? true : false, $1, $2);
     }
   },
-  730871: ($0, $1) => {
+  730919: ($0, $1) => {
     var functionName = "dartOnMetadataCallback_" + $1;
     if (typeof window[functionName] === "function") {
       window[functionName]($0);
     }
   },
-  731004: ($0, $1) => {
+  731052: ($0, $1) => {
     var functionName = "dartOnMoreDataIsNeededCallback_" + $1;
     if (typeof window[functionName] === "function") {
       window[functionName]($0);
     }
   },
-  731145: ($0, $1) => {
+  731193: ($0, $1) => {
     var functionName = "dartOnAudioDurationCallback_" + $1;
     if (typeof window[functionName] === "function") {
       window[functionName]($0);

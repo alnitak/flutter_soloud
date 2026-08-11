@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'exit_app.dart';
 import 'tests/all_tests.dart';
+import 'wait_module.dart';
 
 /// One-shot test runner
 ///
@@ -41,6 +42,11 @@ void main(List<String> args) async {
   }
 
   WidgetsFlutterBinding.ensureInitialized();
+
+  // On web the WASM module loads asynchronously; wait for it so tests that
+  // touch the raw bindings before `SoLoud.init()` don't race instantiation.
+  // No-op on native.
+  await waitForModule();
 
   try {
     final output = await allTests[index].run();

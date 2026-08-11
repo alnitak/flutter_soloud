@@ -263,6 +263,12 @@ external void wasmFreeListPlaybackDevices(
 @JS('Module_soloud._dispose')
 external void wasmDeinit();
 
+@JS('Module_soloud._prepareEngineInit')
+external void wasmPrepareEngineInit();
+
+@JS('Module_soloud._requestEngineShutdown')
+external void wasmRequestEngineShutdown();
+
 @JS('Module_soloud._isInited')
 external int wasmIsInited();
 

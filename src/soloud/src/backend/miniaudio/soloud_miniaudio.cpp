@@ -413,7 +413,23 @@ namespace SoLoud
         // closes and reopens the AAudioStream on its own job thread. Starting
         // the device while the old stream is being freed crashes with SIGABRT
         // (CFI) inside AAudioStream_waitForStateChange.
+#ifdef __EMSCRIPTEN__
+        // On the web every device op runs on the single browser main thread,
+        // but the ASYNCIFY build can interleave them: a changeDevice() swap
+        // suspends inside ma_device_init() (emscripten_sleep while the
+        // AudioWorklet starts) while still holding gDeviceOpsMutex, and a
+        // play() arriving meanwhile would re-lock the same non-recursive
+        // mutex from the same thread (SIGABRT in debug builds, deadlock
+        // otherwise). A failed try_lock means a swap or teardown is in
+        // flight, and that operation is what leaves the device in its final
+        // state (a completed swap starts the device itself), so resuming is
+        // already taken care of.
+        if (!gDeviceOpsMutex.try_lock())
+            return 0;
+        std::lock_guard<std::mutex> deviceOpsLock(gDeviceOpsMutex, std::adopt_lock);
+#else
         std::lock_guard<std::mutex> deviceOpsLock(gDeviceOpsMutex);
+#endif
         if (!gDeviceInitialized)
             return UNKNOWN_ERROR;
 
@@ -601,8 +617,10 @@ namespace SoLoud
 
 #else
         // Linux and other platforms
-        if (ma_device_init(NULL, &deviceConfig, &gDevice) != MA_SUCCESS)
+        ma_result deviceInitResult = ma_device_init(NULL, &deviceConfig, &gDevice);
+        if (deviceInitResult != MA_SUCCESS)
         {
+            soloud_platform_log("miniaudio_init: ma_device_init failed with error %d\n", deviceInitResult);
             return UNKNOWN_ERROR;
         }
         gDeviceInitialized = true;

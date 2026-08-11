@@ -186,10 +186,13 @@ result BufferStreamInstance::seek(double aSeconds, float *mScratch,
   }
 
   // For PRESERVED mode the decoded buffer is kept from the start, so we can
-  // jump directly to the target sample.
+  // jump directly to the target sample. Align the offset down to a whole
+  // frame: getAudio() consumes data in units of `mChannels` floats, so an
+  // unaligned offset would leave an unplayable sub-frame remainder at the
+  // end of the buffer and the voice could never reach its end.
   const int pos = static_cast<int>(floor(mBaseSamplerate * mChannels * aSeconds));
-  mOffset = pos;
-  mStreamPosition = static_cast<float>(pos) / (mBaseSamplerate * mChannels);
+  mOffset = mChannels > 0 ? pos - (pos % static_cast<int>(mChannels)) : pos;
+  mStreamPosition = static_cast<float>(mOffset) / (mBaseSamplerate * mChannels);
   return SO_NO_ERROR;
 }
 
@@ -208,7 +211,19 @@ bool BufferStreamInstance::hasEnded() {
     return false;
   }
   if (mParent->mBuffer.bufferingType == BufferingType::PRESERVED) {
-    return mOffset >= mParent->mSampleCount;
+    // `mOffset` advances in whole frames (`mChannels` floats at a time) and
+    // getAudio() cannot play a sub-frame remainder, so being within one
+    // frame of the end counts as ended. This covers two cases:
+    // - `mSampleCount` overshooting the actual decoded data (for compressed
+    //   formats it comes from the decoder's frame-count estimate, e.g.
+    //   drmp3_get_pcm_frame_count, which may exceed the frames the decoder
+    //   really yields: encoder delay/padding, truncated final frame);
+    // - a buffer whose float count is not a multiple of `mChannels`.
+    // Without this, a voice reaching such a buffer's end underruns forever
+    // and is never stopped.
+    const unsigned int slack = mChannels > 0 ? mChannels - 1 : 0;
+    return mOffset + slack >= mParent->mSampleCount ||
+           mOffset + slack >= mParent->mBuffer.getFloatsBufferSize();
   }
   // RELEASED
   return mParent->mBuffer.getFloatsBufferSize() == 0;

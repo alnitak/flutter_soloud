@@ -257,7 +257,15 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }
 
   @override
-  bool isMixerOutputCaptureRunning() => wasmIsMixerCaptureRunning() == 1;
+  bool isMixerOutputCaptureRunning() {
+    // A deinit can arrive while the WASM module is still instantiating
+    // (init and deinit raced at startup): there is no capture running yet,
+    // and the exports are not callable anyway.
+    if (!_isModuleInstantiated()) {
+      return false;
+    }
+    return wasmIsMixerCaptureRunning() == 1;
+  }
 
   @override
   int getMixerOutputBufferSize() => wasmGetMixerCaptureBufferSize();
@@ -333,7 +341,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   /// the module (especially with the larger multi-threaded build); without
   /// this the first bindings call would hit a not-yet-defined `Module_soloud`.
   Future<void> _ensureModuleReady() async {
-    if (moduleSoloudInstance != null) return;
+    if (_isModuleInstantiated()) return;
     final ready = flutterSoloudReady;
     if (ready != null) {
       await ready.toDart.timeout(
@@ -350,7 +358,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     }
     // init_module.dart.js has not started yet (or is not included in the
     // page); poll briefly for it to appear and finish.
-    for (var i = 0; i < 100 && moduleSoloudInstance == null; i++) {
+    for (var i = 0; i < 100 && !_isModuleInstantiated(); i++) {
       await Future<void>.delayed(const Duration(milliseconds: 50));
       final r = flutterSoloudReady;
       if (r != null) {
@@ -358,6 +366,17 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
         return;
       }
     }
+  }
+
+  /// Whether `self.Module_soloud` is the fully instantiated WASM module.
+  ///
+  /// After the glue script loads but before the MODULARIZE factory promise
+  /// resolves, `self.Module_soloud` is the factory function (not the module
+  /// instance): it has no `ccall`/`_malloc`/exports yet, so it must be
+  /// treated as "not ready". The instantiated module is a plain object.
+  bool _isModuleInstantiated() {
+    final instance = moduleSoloudInstance;
+    return instance != null && !instance.isA<JSFunction>();
   }
 
   @override
@@ -396,10 +415,30 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   Future<void> deinitAsync() async => deinit();
 
   @override
-  void prepareEngineInit() {}
+  void prepareEngineInit() {
+    // The C++ `dispose()` latches `engine_shutdown_requested`; the next
+    // `initEngine` short-circuits with `backendNotInited` unless this resets
+    // the flag first (same protocol as the native bindings). It must run
+    // through the engine-op queue: `dispose()` itself executes inside the
+    // queue, so resetting the flag synchronously here would be overwritten
+    // by the queued teardown before the queued `initEngine` runs.
+    if (!_isModuleInstantiated()) {
+      return;
+    }
+    unawaited(
+      _enqueueEngineOp(() async {
+        wasmPrepareEngineInit();
+      }),
+    );
+  }
 
   @override
-  void requestEngineShutdown() {}
+  void requestEngineShutdown() {
+    if (!_isModuleInstantiated()) {
+      return;
+    }
+    wasmRequestEngineShutdown();
+  }
 
   @override
   void setAndroidAAudioAttributes(bool managed) {
@@ -488,7 +527,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     // `Module_soloud` is the factory function, so also guard against calling
     // into a module whose exports are not there yet (e.g. when instantiation
     // hangs or fails).
-    if (moduleSoloudInstance == null) {
+    if (!_isModuleInstantiated()) {
       return false;
     }
     // The multi-threaded WASM build uses SharedArrayBuffer for its memory and
