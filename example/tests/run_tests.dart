@@ -7,24 +7,24 @@ import 'tests/all_tests.dart';
 
 /// One-shot test runner
 ///
-/// On desktop, pass the test name or index with `-a`:
-///   flutter run -d <device> -t tests/run_tests.dart -a [<test_name>|<test_index>]
-///
-/// On web (where `-a` is not supported), use `--dart-define` instead:
+/// Run with:
 ///   flutter run -d chrome -t tests/run_tests.dart --wasm \
-///       --dart-define=TEST_ARG=[<test_name>|<test_index>]
+///       --dart-define=TEST_ARG=[<test_name>|<test_index>] \
+///      --web-browser-flag="--autoplay-policy=no-user-gesture-required"
 ///
 void main(List<String> args) async {
   const dartDefineArg = String.fromEnvironment('TEST_ARG');
-  final effectiveArgs =
-      args.isNotEmpty ? args : (dartDefineArg.isEmpty ? const <String>[] : <String>[dartDefineArg]);
+  final effectiveArgs = args.isNotEmpty
+      ? args
+      : (dartDefineArg.isEmpty ? const <String>[] : <String>[dartDefineArg]);
 
   print('********* args: $effectiveArgs *********');
   if (effectiveArgs.isEmpty) {
     print('Usage: flutter run -d <device> -t tests/run_tests.dart '
         '-a [<test_name>|<test_index>]');
-    print('Web usage: flutter run -d chrome -t tests/run_tests.dart '
-        '--wasm --dart-define=TEST_ARG=[<test_name>|<test_index>]');
+    print('Usage: flutter run -d chrome -t tests/run_tests.dart '
+        '--wasm --dart-define=TEST_ARG=[<test_name>|<test_index>] '
+        '--web-browser-flag="--autoplay-policy=no-user-gesture-required"');
     return;
   }
   final arg = effectiveArgs.first;
