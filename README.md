@@ -15,16 +15,20 @@ A high-performance audio plugin designed primarily for games and immersive appli
 ## Key Features
 
 - ⚡ Low latency, high performance audio
+- ⏱️ Sample-accurate scheduled playback: `playClocked` for sub-millisecond spaced playback regardless of buffer size, and `playScheduled` for score/manifest-style scheduling of whole batches of sounds on the engine's own clock (with optional scheduled stop/fade). Perfect for metronomes, music sequencers, rhythm games and precisely timed audio cues
 - 🎮 3D positional audio with Doppler effect
-- 🔄 Gapless looping
-- 🔄 Stream audio with auto-pause for buffering, support for PCM, MP3, Ogg with Opus, Vorbis and FLAC containers
+- 🔄 Gapless looping with half-open `[start, end)` loop regions
+- 🔄 Stream audio with auto-pause for buffering, support for PCM, MP3, WAV, Ogg with Opus, Vorbis and FLAC containers
+- 📥 Pull-buffer streaming: the engine requests encoded data on demand (MP3, WAV, FLAC, Ogg Opus/Vorbis/FLAC), with seek support and callbacks for buffering, metadata, duration and data requests — ideal for network streams and custom data sources
+- 🚌 Mixing buses: group voices (music, SFX, UI...) into sub-mixes with their own volume, filters and visualization
 - 📊 Get audio wave and/or FFT audio data in real-time (useful for visualization)
-- 🎛️ Rich effects system (reverb, echo, limiter, equalizer, pitch shift, etc.)
+- 🎛️ Rich effects system (reverb, echo, limiter, parametric equalizer, pitch shift, etc.)
 - ⚙️ Faders for attributes (e.g. fade out for 2 seconds, then stop)
 - 🎚️ Oscillators for attributes
 - 🌊 Waveform generation and visualization
 - 🔊 Multiple voices, playing different or even the same sound multiple times
 - 🎵 Support for MP3, WAV, OGG, and FLAC
+- 🔴 Capture the master mixer output as a stream for recording, processing, or streaming (with different PCM formats and Opus, Vorbis, FLAC, WAV encoded stream formats)
 - ⏱️ Read audio data samples from a file with a given time range
 - 🌊 Generate waveforms in real-time with various types (sine, square, saw, triangle, etc.)
 
@@ -49,42 +53,14 @@ void example() async {
   await soloud.init();
 
   await soloud.playSource(asset: 'assets/sound.mp3');
+  // or
+  final sound = await soloud.loadAsset('assets/sound.mp3');
+  final handle = soloud.play(sound);
   
   [...]
   await soloud.deinit();
 }
 ```
-
-## Output-Device Lifecycle
-
-Voice state and output-device state are separate. Pausing a voice preserves its
-`SoundHandle` and its SoLoud state. Device lifecycle operations only stop,
-start, or prewarm the platform audio output; they do not maintain a second copy
-of voice volume, pan, speed, fades, looping, seek position, or other properties.
-
-`play()` and `play3d()` are synchronous and return a `SoundHandle` immediately.
-An unpaused voice starts the output device after the voice has been created
-successfully. Creating a paused voice does not start the device; unpausing it
-later does.
-
-When no unpaused voices remain, the output device follows the configured idle
-timeout:
-
-- `setAudioDeviceIdleTimeout(Duration.zero)` stops it as soon as possible.
-- A positive duration keeps it running for that grace period.
-- `setAudioDeviceIdleTimeout(null)` keeps it running indefinitely, including
-  across `deinit()` and a later `init()`.
-
-`startAudioDevice()` temporarily starts or prewarms the output and completes
-after startup finishes. It does not enable permanent keep-alive; if the engine
-is still idle, the configured timeout begins again. `stopAudioDevice()` is an
-idle-only conditional stop by default, so it succeeds without interrupting
-active playback. Use `stopAudioDevice(force: true)` only when the output must be
-stopped while voices remain active; their voice state is not changed.
-
-`getAudioDeviceState()` is a cheap synchronous read of the actual backend state:
-`uninitialized`, `stopped`, `started`, `starting`, or `stopping`. It does not
-report a pending scheduler request.
 
 ## Apps & Games Using flutter_soloud
 

@@ -1,6 +1,5 @@
-##### 4.1.8 (9 Aug 2026)
-
-* fix: native engine and callback lifetime now follows the owning FlutterEngine on Android, iOS, and macOS, preventing stale callbacks and orphaned audio resources after hot restart or engine destruction. Thanks to @Colton127
+##### 4.1.8 (X Xxx 2026)
+- fix: native engine and callback lifetime now follows the owning FlutterEngine on Android, iOS, and macOS, preventing stale callbacks and orphaned audio resources after hot restart or engine destruction. Fixes #126. Thanks to @Colton127 #355
 
 ##### 4.1.7 (8 Aug 2026)
 - fix: a device change that still fails now reports `SoLoudAudioDeviceFailedToStartCppException` instead of hanging. Thanks to @Colton127 #533
