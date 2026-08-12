@@ -213,6 +213,10 @@ PlayerErrors BufferStream::setBufferStream(
   mBaseSamplerate = (float)pcmFormat.sampleRate;
   mOnBufferingCallback.store(onBufferingCallback);
   mOnMetadataCallback.store(onMetadataCallback);
+  // Recorded with the callables: the gate retires by generation, so a
+  // registration made after a retirement must carry the new one.
+  mDartCallbackGeneration.store(dart_callbacks::currentGeneration(),
+                                std::memory_order_release);
   buffer = std::vector<unsigned char>();
   mBuffer.setBufferType(bufferingType);
   mIsBuffering = true;
@@ -462,6 +466,12 @@ void BufferStream::checkBuffering(unsigned int afterAddingBytesCount) {
 }
 
 void BufferStream::callOnMetadataCallback(AudioMetadata &metadata) {
+  // Gated, not merely null-checked: a bare load-then-call can invoke a
+  // callable whose isolate has gone away between the two. The pass also
+  // blocks a concurrent retirement from returning mid-invocation.
+  const dart_callbacks::InvocationPass pass;
+  if (!pass.isLive(mDartCallbackGeneration.load(std::memory_order_acquire)))
+    return;
   auto metadataCb = mOnMetadataCallback.load();
   if (metadataCb != nullptr) {
     AudioMetadataFFI ffi = this->convertMetadataToFFI(metadata);
@@ -490,34 +500,48 @@ void BufferStream::callOnMetadataCallback(AudioMetadata &metadata) {
 
 void BufferStream::callOnBufferingCallback(bool isBuffering,
                                            unsigned int handle, double time) {
-  auto bufferingCb = mOnBufferingCallback.load();
-  if (bufferingCb != nullptr) {
+  // Scoped around the invocation only: `mIsBuffering` below is native state
+  // and must keep tracking the stream whether or not a Dart isolate is
+  // listening.
+  {
+    // Gated, not merely null-checked: a bare load-then-call can invoke a
+    // callable whose isolate has gone away between the two. The pass also
+    // blocks a concurrent retirement from returning mid-invocation.
+    const dart_callbacks::InvocationPass pass;
+    auto bufferingCb =
+        pass.isLive(mDartCallbackGeneration.load(std::memory_order_acquire))
+            ? mOnBufferingCallback.load()
+            : nullptr;
+    if (bufferingCb != nullptr) {
 #ifdef __EMSCRIPTEN__
-    // Call the Dart callback stored on globalThis, if it exists.
-    // The `dartOnBufferingCallback_$hash` function is created in
-    // `setBufferStream()` in `bindings_player_web.dart` and it's
-    // meant to call the Dart callback passed to `setBufferStream()`.
-    // This event is used for this.
-    EM_ASM(
-        {
-          // Compose the function name for this soundHash
-          var functionName = "dartOnBufferingCallback_" + $3;
-          if (typeof window[functionName] === "function") {
-            var buffering = $0 == 1 ? true : false;
-            window[functionName](buffering, $1, $2); // Call it
-          } else {
-            console.log("EM_ASM 'dartOnBufferingCallback_$hash' not found.");
-          }
-        },
-        isBuffering, handle, time, mParent->soundHash);
+      // Call the Dart callback stored on globalThis, if it exists.
+      // The `dartOnBufferingCallback_$hash` function is created in
+      // `setBufferStream()` in `bindings_player_web.dart` and it's
+      // meant to call the Dart callback passed to `setBufferStream()`.
+      // This event is used for this.
+      EM_ASM(
+          {
+            // Compose the function name for this soundHash
+            var functionName = "dartOnBufferingCallback_" + $3;
+            if (typeof window[functionName] === "function") {
+              var buffering = $0 == 1 ? true : false;
+              window[functionName](buffering, $1, $2); // Call it
+            } else {
+              console.log("EM_ASM 'dartOnBufferingCallback_$hash' not found.");
+            }
+          },
+          isBuffering, handle, time, mParent->soundHash);
 #else
-    bufferingCb(isBuffering, handle, time);
+      bufferingCb(isBuffering, handle, time);
 #endif
+    }
   }
   mIsBuffering = isBuffering;
 }
 
 void BufferStream::clearDartCallbacks() {
+  mDartCallbackGeneration.store(dart_callbacks::kNoGeneration,
+                                std::memory_order_release);
   mOnBufferingCallback.store(nullptr);
   mOnMetadataCallback.store(nullptr);
 }

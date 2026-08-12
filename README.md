@@ -3,10 +3,10 @@ A low-level audio plugin for Flutter.
 [![Pub Version](https://img.shields.io/pub/v/flutter_soloud?logo=dart)](https://pub.dev/packages/flutter_soloud)
 [![style: very good analysis](https://img.shields.io/badge/style-very_good_analysis-B22C89.svg)](https://pub.dev/packages/very_good_analysis)
 
-||Linux|Windows|Android|macOS|iOS|Web|
+||Linux|Windows|Android|MacOS|iOS|Web|
 |-|:-:|:-:|:-:|:-:|:-:|:-:|
 |Support|💙|💙|💙|💙|💙|💙|
-|Minimum Version|Any|Any|21+|10.15+|13.0+|iOS 16.4+<br>Safari 16.4+<br>Chrome 91+<br>Edge 91+<br>Firefox 89+|
+|Minimum Version|Any|Any|21+|10.15+|13.0+|iOS 16.4+</br>Safari 16.4+</br>Chrome 91+</br>Edge 91+</br>Firefox 89+</br>|
 
 ## Overview
 
@@ -32,15 +32,13 @@ A high-performance audio plugin designed primarily for games and immersive appli
 - ⏱️ Read audio data samples from a file with a given time range
 - 🌊 Generate waveforms in real-time with various types (sine, square, saw, triangle, etc.)
 
-Whether you are building a game (3D positional SFX, mixing buses, low-latency playback) or any other kind of audio app — music tools, metronomes, radio/streaming apps, visualizers, recorders — the plugin exposes the low-level control you need.
-
 ## Getting Started
-- Watch the Flutter [Package of the Week](https://www.youtube.com/watch?v=2t6Bt04EyLw) video.
+- Watch Flutter [Package of the Week](https://www.youtube.com/watch?v=2t6Bt04EyLw) video.
 - Especially for web use, please look at the [setup guide docs](https://docs.page/alnitak/flutter_soloud_docs/get_started/setup).
 
 If you are looking for a package to visualize audio using shaders or CustomPainter, please check out [audio_flux](https://pub.dev/packages/audio_flux). It uses this plugin for output and [flutter_recorder](https://pub.dev/packages/flutter_recorder) for input.
 
-Also, if you are building using Swift Package Manager (SPM), please check out [iOS and macOS Configuration](https://docs.page/alnitak/flutter_soloud_docs/get_started/setup#ios-and-macos-configuration).
+Also, if you are building using Swift Package Manager (SPM), please check out [iOS and MacOS Configuration](https://docs.page/alnitak/flutter_soloud_docs/get_started/setup#ios-and-macos-configuration).
 
 ## Documentation
 
@@ -50,8 +48,6 @@ Also, if you are building using Swift Package Manager (SPM), please check out [i
 ## Simple Example
 
 ```dart
-import 'package:flutter_soloud/flutter_soloud.dart';
-
 void example() async {
   final soloud = SoLoud.instance;
   await soloud.init();
@@ -62,8 +58,7 @@ void example() async {
   final handle = soloud.play(sound);
   
   [...]
-
-  soloud.deinit();
+  await soloud.deinit();
 }
 ```
 
@@ -79,7 +74,6 @@ A showcase of apps and games built with this plugin:
 | Stellar Bastion</br>[web](https://www.crazygames.com/game/stellar-bastion) [Android](https://play.google.com/store/apps/details?id=com.coconutisland.stellar_bastion) [iOS](https://apps.apple.com/us/app/stellar-bastion/id6761073618) | Coconut Island Apps | 2D Tower Defense game. |
 | Mortigen</br>[web](https://koldo92.github.io/mortigen/) [Android](https://play.google.com/store/apps/details?id=com.ler.mortigen) [iOS](https://apps.apple.com/us/app/mortigen/id6761758806) | Luis Enrique Ruiz | Roguelite survival shooter. |
 | SUMOJI</br>[web](https://straspool.eu/sumoji/) [Android](https://play.google.com/store/apps/details?id=eu.straspool.sumoji) [iOS](https://apps.apple.com/us/app/sumoji/id6751641875) | Valentin Martinet | Fun Emoji-based Sudoku. |
-| GuanDan</br>[web](https://guandan.app/) [macOS](https://apps.apple.com/us/app/%E6%8E%BC%E8%9B%8B-guandan/id6757966323) [Windows](https://apps.microsoft.com/detail/9pbv1xp2lc50) [Android](https://play.google.com/store/apps/details?id=org.rockstudio.guandan) [iOS](https://apps.apple.com/us/app/%E6%8E%BC%E8%9B%8B-guandan/id6757966323) | [yangyuan](https://github.com/yangyuan) | GuanDan (掼蛋) is a popular four-player Chinese card game. |
 
 *Want to add your app? Feel free to open a PR!*
 

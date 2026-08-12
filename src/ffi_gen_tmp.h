@@ -21,8 +21,15 @@
 
 #define FFI_PLUGIN_EXPORT
 
-FFI_PLUGIN_EXPORT void prepareEngineInit();
+FFI_PLUGIN_EXPORT void prepareEngineInit(int64_t owner_engine_id);
 FFI_PLUGIN_EXPORT void requestEngineShutdown();
+FFI_PLUGIN_EXPORT bool clearDartCallbackRegistrationsForEngine(int64_t engine_id);
+FFI_PLUGIN_EXPORT bool requestEngineTeardownForEngine(int64_t engine_id);
+FFI_PLUGIN_EXPORT uint64_t currentEngineShutdownEpoch();
+FFI_PLUGIN_EXPORT bool prepareEngineInitForRequest(int64_t owner_engine_id,
+                                                   uint64_t shutdown_epoch);
+FFI_PLUGIN_EXPORT bool setMixerOutputCallbackForEngine(
+    dartMixerOutputDataCallback_t callback, int64_t owner_engine_id);
 
 //--------------------- copy here the new functions to generate
 
