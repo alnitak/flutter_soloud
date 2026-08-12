@@ -134,7 +134,7 @@ Flutter audio plugin using SoLoud library and FFI
   
   # With vendored_libraries declared above, CocoaPods handles xiph lib linking automatically.
   # We only need the library search path for the cmake_build output and ensure inherited flags.
-  xiph_flags = disable_xiph_libs ? '' : '-logg -lopus -lvorbis -lvorbisfile -lFLAC'
+  xiph_flags = disable_xiph_libs ? '' : '-logg -lopus -lvorbis -lvorbisenc -lvorbisfile -lFLAC'
 
   s.user_target_xcconfig = {
     'OTHER_LDFLAGS' => "$(inherited) #{force_load_lib} #{xiph_flags} -lc++",
