@@ -269,7 +269,9 @@ void MixerOutput::onAudioData(const float *data, unsigned int frames) {
 
 #ifdef __EMSCRIPTEN__
 void MixerOutput::processNotifications() {
-  if (!m_callback) {
+  const MixerOutputDataCallback callback =
+      m_callback.load(std::memory_order_acquire);
+  if (callback == nullptr) {
     return;
   }
 
@@ -293,7 +295,7 @@ void MixerOutput::processNotifications() {
 
       m_readOffset.store((readOffset + m_chunkBytes) % m_bufferSize,
                          std::memory_order_release);
-      m_callback(m_chunkBuffer.data(), m_chunkBytes);
+      callback(m_chunkBuffer.data(), m_chunkBytes);
     }
     m_notified.store(false, std::memory_order_release);
     return;
@@ -306,7 +308,7 @@ void MixerOutput::processNotifications() {
     m_notified.store(true, std::memory_order_release);
     const size_t readOffset = m_readOffset.load(std::memory_order_relaxed);
     const size_t length = std::min(available, m_bufferSize - readOffset);
-    m_callback(m_buffer.data() + readOffset, length);
+    callback(m_buffer.data() + readOffset, length);
   }
 
   if (available < m_notificationThreshold) {
@@ -416,7 +418,7 @@ void MixerOutput::advanceReadPosition(size_t bytes) {
 }
 
 void MixerOutput::setDataCallback(MixerOutputDataCallback callback) {
-  m_callback = callback;
+  m_callback.store(callback, std::memory_order_release);
 }
 
 void MixerOutput::notificationThreadFunc() {
@@ -446,8 +448,10 @@ void MixerOutput::notificationThreadFunc() {
             (readOffset + m_chunkBytes) % m_bufferSize;
         m_readOffset.store(newReadOffset, std::memory_order_release);
 
-        if (m_callback) {
-          m_callback(m_chunkBuffer.data(), m_chunkBytes);
+        const MixerOutputDataCallback callback =
+            m_callback.load(std::memory_order_acquire);
+        if (callback != nullptr) {
+          callback(m_chunkBuffer.data(), m_chunkBytes);
         }
       }
 
@@ -464,10 +468,12 @@ void MixerOutput::notificationThreadFunc() {
     if (available >= m_notificationThreshold && !m_notified.load()) {
       m_notified.store(true, std::memory_order_release);
 
-      if (m_callback) {
+      const MixerOutputDataCallback callback =
+          m_callback.load(std::memory_order_acquire);
+      if (callback != nullptr) {
         const size_t readOffset = m_readOffset.load(std::memory_order_relaxed);
         const size_t length = std::min(available, m_bufferSize - readOffset);
-        m_callback(m_buffer.data() + readOffset, length);
+        callback(m_buffer.data() + readOffset, length);
       }
     }
 
