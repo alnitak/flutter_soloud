@@ -8,10 +8,12 @@ import 'dart:async';
 import 'dart:ffi' as ffi;
 import 'dart:isolate';
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:ffi/ffi.dart';
 import 'package:flutter_soloud/src/bindings/audio_data.dart';
 import 'package:flutter_soloud/src/bindings/bindings_player.dart';
+import 'package:flutter_soloud/src/bindings/darwin_engine_lifecycle.dart';
 import 'package:flutter_soloud/src/bindings/native_metadata_ffi.dart';
 import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/exceptions/exceptions.dart';
@@ -151,6 +153,26 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   FlutterSoLoudFfi.fromLookup(
     ffi.Pointer<T> Function<T extends ffi.NativeType>(String symbolName) lookup,
   ) : _lookup = lookup;
+
+  /// Sentinel used where no FlutterEngine lifecycle is available. Must match
+  /// `kNoEngineId` in `src/bindings.cpp`.
+  static const int noEngineId = -1;
+
+  /// The FlutterEngine that owns this isolate, or [noEngineId] where the
+  /// embedder does not expose one.
+  ///
+  /// Native code uses it to decide whether a detaching or hot-restarting
+  /// FlutterEngine owns the registered callables and the native engine, and the
+  /// Android plugin passes the same value down from
+  /// `FlutterEngine.getEngineId()`.
+  ///
+  /// It must be read on the isolate the engine runs on:
+  /// `PlatformDispatcher.instance.engineId` is set through an engine hook that
+  /// only fires there, so a worker isolate would see `null`. Both call sites
+  /// ([prepareEngineInit] and [setDartEventCallbacks]) run on that isolate,
+  /// before any work is handed to `Isolate.run`.
+  static int get currentEngineId =>
+      ui.PlatformDispatcher.instance.engineId ?? noEngineId;
 
   // ////////////////////////////////////////////////
   // Callbacks impl
@@ -307,8 +329,12 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       nativeVoiceEndedCallable!.nativeFunction,
       nativeFileLoadedCallable!.nativeFunction,
       nativeStateChangedCallable!.nativeFunction,
+      currentEngineId,
     );
-    _setMixerOutputCallback(nativeMixerOutputDataCallable!.nativeFunction);
+    _setMixerOutputCallback(
+      nativeMixerOutputDataCallable!.nativeFunction,
+      currentEngineId,
+    );
   }
 
   @override
@@ -317,7 +343,28 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
         ffi.NativeCallable<DartMixerOutputDataCallbackTFunction>.listener(
           _mixerOutputDataCallback,
         );
-    _setMixerOutputCallback(nativeMixerOutputDataCallable!.nativeFunction);
+    // Called from whichever isolate owns the capture, including a worker one
+    // via `SoLoudIsolate.startMixerOutputStream()`. On a worker,
+    // [currentEngineId] is the no-engine sentinel and native code joins this
+    // callable to whatever registration is live.
+    //
+    // A refusal means there is no live registration to join: the engine was
+    // never initialized, has been deinitialized, or its FlutterEngine is being
+    // destroyed. Publishing anyway would arm a callable belonging to an isolate
+    // that is going away, so the capture simply produces nothing -- worth a
+    // line in the log, since the stream stays silent rather than throwing.
+    final published = _setMixerOutputCallback(
+      nativeMixerOutputDataCallable!.nativeFunction,
+      currentEngineId,
+    );
+    if (!published) {
+      _log.warning(
+        'The mixer output callback was refused: no live engine callback '
+        'registration to join. The capture stream will not receive chunks. '
+        'Initialize the engine before starting a mixer output capture, and '
+        'stop the capture before deinitializing it.',
+      );
+    }
   }
 
   late final _setDartEventCallbackPtr =
@@ -327,6 +374,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
             DartVoiceEndedCallbackT,
             DartFileLoadedCallbackT,
             DartStateChangedCallbackT,
+            ffi.Int64,
           )
         >
       >('setDartEventCallback');
@@ -336,6 +384,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
           DartVoiceEndedCallbackT,
           DartFileLoadedCallbackT,
           DartStateChangedCallbackT,
+          int,
         )
       >();
 
@@ -502,12 +551,18 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   late final _getMixerOutputWavHeader = _getMixerOutputWavHeaderPtr
       .asFunction<ffi.Pointer<ffi.Uint8> Function()>();
 
+  /// Publishes the mixer callable as part of this engine's registration, so
+  /// native code refuses it once that registration has been retired. The
+  /// unscoped `setMixerOutputCallback` export is left for the web build, which
+  /// binds it from the prebuilt wasm.
   late final _setMixerOutputCallbackPtr =
       _lookup<
-        ffi.NativeFunction<ffi.Void Function(DartMixerOutputDataCallbackT)>
-      >('setMixerOutputCallback');
+        ffi.NativeFunction<
+          ffi.Bool Function(DartMixerOutputDataCallbackT, ffi.Int64)
+        >
+      >('setMixerOutputCallbackForEngine');
   late final _setMixerOutputCallback = _setMixerOutputCallbackPtr
-      .asFunction<void Function(DartMixerOutputDataCallbackT)>();
+      .asFunction<bool Function(DartMixerOutputDataCallbackT, int)>();
 
   // ////////////////////////////////////////////////
   // Navtive bindings
@@ -705,12 +760,54 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   }
 
   @override
-  void prepareEngineInit() => _prepareEngineInit();
+  void prepareEngineInit() => _prepareEngineInit(currentEngineId);
+
+  @override
+  bool get usesAsyncEnginePrepare => DarwinEngineLifecycle.isSupported;
+
+  @override
+  Future<void> prepareEngineInitAsync() async {
+    final engineId = currentEngineId;
+
+    // Read before the request goes out: `deinit()` can run while this is
+    // suspended, and the claim must not land on the far side of the teardown
+    // that superseded it. Native refuses a request whose epoch has moved.
+    final shutdownEpoch = _currentEngineShutdownEpoch();
+
+    final result = await _iosEngineLifecycle.prepareEngineInit(
+      engineId,
+      shutdownEpoch,
+    );
+
+    switch (result) {
+      case DarwinEnginePrepareResult.claimed:
+        return;
+      case DarwinEnginePrepareResult.unavailable:
+        // Nothing was sent, so nothing was claimed: claim directly, exactly as
+        // every other platform does. Automatic teardown is simply not armed.
+        _prepareEngineInit(engineId);
+      case DarwinEnginePrepareResult.refused:
+        // Either the platform said no, or a sent request's outcome is unknown.
+        // Claiming again here could take the claim a second time on top of one
+        // the platform may already have committed.
+        throw const SoLoudInitializationStoppedByDeinitException();
+    }
+  }
+
+  static const DarwinEngineLifecycle _iosEngineLifecycle =
+      DarwinEngineLifecycle();
+
+  late final _currentEngineShutdownEpoch =
+      _lookup<ffi.NativeFunction<ffi.Uint64 Function()>>(
+        'currentEngineShutdownEpoch',
+      ).asFunction<int Function()>();
 
   late final _prepareEngineInit = _prepareEngineInitPtr
-      .asFunction<void Function()>();
+      .asFunction<void Function(int)>();
   late final _prepareEngineInitPtr =
-      _lookup<ffi.NativeFunction<ffi.Void Function()>>('prepareEngineInit');
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Int64)>>(
+        'prepareEngineInit',
+      );
 
   @override
   void requestEngineShutdown() => _requestEngineShutdown();

@@ -426,6 +426,10 @@ PlayerErrors PullBufferStream::setPullBufferStream(
   mOnMetadataCallback.store(onMetadataCallback);
   mOnMoreDataIsNeededCallback.store(onMoreDataIsNeededCallback);
   mOnAudioDurationCallback.store(onAudioDurationCallback);
+  // Recorded with the callables: the gate retires by generation, so a
+  // registration made after a retirement must carry the new one.
+  mDartCallbackGeneration.store(dart_callbacks::currentGeneration(),
+                                std::memory_order_release);
   mDurationProbeState = DurationProbeState::None;
   resetProbeState();
 
@@ -1151,6 +1155,12 @@ void PullBufferStream::checkBuffering() {
 void PullBufferStream::callOnBufferingCallback(bool isBuffering,
                                                unsigned int handle,
                                                double time) {
+  // Gated, not merely null-checked: a bare load-then-call can invoke a
+  // callable whose isolate has gone away between the two. The pass also
+  // blocks a concurrent retirement from returning mid-invocation.
+  const dart_callbacks::InvocationPass pass;
+  if (!pass.isLive(mDartCallbackGeneration.load(std::memory_order_acquire)))
+    return;
   auto callback = mOnBufferingCallback.load();
   if (callback == nullptr) return;
 #ifdef __EMSCRIPTEN__
@@ -1182,6 +1192,12 @@ void PullBufferStream::callOnBufferingCallback(bool isBuffering,
 }
 
 void PullBufferStream::callOnMetadataCallback(AudioMetadata &metadata) {
+  // Gated, not merely null-checked: a bare load-then-call can invoke a
+  // callable whose isolate has gone away between the two. The pass also
+  // blocks a concurrent retirement from returning mid-invocation.
+  const dart_callbacks::InvocationPass pass;
+  if (!pass.isLive(mDartCallbackGeneration.load(std::memory_order_acquire)))
+    return;
   auto callback = mOnMetadataCallback.load();
   if (callback == nullptr) return;
 
@@ -1220,6 +1236,12 @@ void PullBufferStream::callOnMetadataCallback(AudioMetadata &metadata) {
 }
 
 void PullBufferStream::callOnMoreDataIsNeededCallback(uint64_t offset) {
+  // Gated, not merely null-checked: a bare load-then-call can invoke a
+  // callable whose isolate has gone away between the two. The pass also
+  // blocks a concurrent retirement from returning mid-invocation.
+  const dart_callbacks::InvocationPass pass;
+  if (!pass.isLive(mDartCallbackGeneration.load(std::memory_order_acquire)))
+    return;
   auto callback = mOnMoreDataIsNeededCallback.load();
   if (callback == nullptr) return;
 
@@ -1252,6 +1274,12 @@ void PullBufferStream::callOnMoreDataIsNeededCallback(uint64_t offset) {
 }
 
 void PullBufferStream::callOnAudioDurationCallback(double duration) {
+  // Gated, not merely null-checked: a bare load-then-call can invoke a
+  // callable whose isolate has gone away between the two. The pass also
+  // blocks a concurrent retirement from returning mid-invocation.
+  const dart_callbacks::InvocationPass pass;
+  if (!pass.isLive(mDartCallbackGeneration.load(std::memory_order_acquire)))
+    return;
   auto callback = mOnAudioDurationCallback.load();
   if (callback == nullptr) return;
 
@@ -1280,6 +1308,8 @@ void PullBufferStream::callOnAudioDurationCallback(double duration) {
 }
 
 void PullBufferStream::clearDartCallbacks() {
+  mDartCallbackGeneration.store(dart_callbacks::kNoGeneration,
+                                std::memory_order_release);
   mOnBufferingCallback.store(nullptr);
   mOnMetadataCallback.store(nullptr);
   mOnMoreDataIsNeededCallback.store(nullptr);

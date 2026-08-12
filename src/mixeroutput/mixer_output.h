@@ -16,10 +16,24 @@
 /// [data] points to the start of the contiguous unread region in the
 /// circular buffer. [length] is the number of valid bytes, which may be
 /// smaller than the notification threshold when the buffer wraps.
-using MixerOutputDataCallback = std::function<void(uint8_t *data, size_t length)>;
+///
+/// A plain function pointer rather than a `std::function` so it can be stored
+/// in an atomic: [setDataCallback] is called from lifecycle paths -- engine
+/// teardown, and a capture starting on another isolate -- that can run while
+/// the notification thread is invoking it, and assigning a `std::function`
+/// under a concurrent read is undefined behaviour, not merely a torn pointer.
+using MixerOutputDataCallback = void (*)(uint8_t *data, size_t length);
 
 /// Singleton that captures the SoLoud master mix output into a circular
 /// buffer and notifies Dart when enough data is available.
+///
+/// [start] and [stop] are *not* internally synchronized: they guard themselves
+/// with an atomic `m_running` flag, which is a check-then-act two callers can
+/// both pass, and then mutate buffers, the encoder and queue, and two
+/// std::thread objects. Callers must serialize them against each other —
+/// `bindings.cpp` does so with `mixer_lifecycle_mutex`, which also carries the
+/// engine-teardown check that decides whether a capture may start at all.
+/// [setDataCallback] is the exception: it is safe from any thread at any time.
 class MixerOutput {
  public:
   static MixerOutput &instance();
@@ -120,7 +134,11 @@ class MixerOutput {
   size_t m_notificationThreshold = 4096;
   std::atomic<bool> m_notified{false};
 
-  MixerOutputDataCallback m_callback;
+  /// Published and read atomically: the notification thread invokes it while
+  /// engine teardown or another isolate's capture may be replacing it.
+  /// Retirement of the Dart callable behind it is handled by the callback gate
+  /// in `dart_callback_gate.h`; this only makes the pointer itself safe.
+  std::atomic<MixerOutputDataCallback> m_callback{nullptr};
 
   std::thread m_notificationThread;
 
