@@ -427,7 +427,8 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     }
     unawaited(
       _enqueueEngineOp(() async {
-        wasmPrepareEngineInit();
+        // kNoEngineId (-1): the web has no FlutterEngine lifecycle hooks.
+        wasmPrepareEngineInit(wasmBigInt('-1'));
       }),
     );
   }

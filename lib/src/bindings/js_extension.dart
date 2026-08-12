@@ -263,8 +263,14 @@ external void wasmFreeListPlaybackDevices(
 @JS('Module_soloud._dispose')
 external void wasmDeinit();
 
+/// Claims the native engine before `initEngine` (resets the shutdown latch).
+///
+/// Since the engine-lifecycle merge the C++ `prepareEngineInit` takes an
+/// `int64_t owner_engine_id`, which crosses the JS/WASM boundary as a
+/// `BigInt`. The web has no FlutterEngine lifecycle hooks, so it always
+/// passes the `kNoEngineId` sentinel (-1), same as `setMixerOutputCallback`.
 @JS('Module_soloud._prepareEngineInit')
-external void wasmPrepareEngineInit();
+external void wasmPrepareEngineInit(JSAny engineId);
 
 @JS('Module_soloud._requestEngineShutdown')
 external void wasmRequestEngineShutdown();
