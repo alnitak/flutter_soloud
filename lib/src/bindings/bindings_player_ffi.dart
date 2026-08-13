@@ -4,13 +4,16 @@
 // ignore_for_file: avoid_positional_boolean_parameters,require_trailing_commas
 // ignore_for_file: omit_local_variable_types,public_member_api_docs
 
+import 'dart:async';
 import 'dart:ffi' as ffi;
 import 'dart:isolate';
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:ffi/ffi.dart';
 import 'package:flutter_soloud/src/bindings/audio_data.dart';
 import 'package:flutter_soloud/src/bindings/bindings_player.dart';
+import 'package:flutter_soloud/src/bindings/darwin_engine_lifecycle.dart';
 import 'package:flutter_soloud/src/bindings/native_metadata_ffi.dart';
 import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/exceptions/exceptions.dart';
@@ -29,9 +32,10 @@ import 'package:meta/meta.dart';
 /// Only [address] (a sendable int) crosses the isolate boundary; the pointer is
 /// reconstructed here and the same process-global device is operated on.
 int _invokeDeviceLifecycle(int address) {
-  final fn = ffi.Pointer<ffi.NativeFunction<ffi.UnsignedInt Function()>>
-      .fromAddress(address)
-      .asFunction<int Function()>();
+  final fn =
+      ffi.Pointer<ffi.NativeFunction<ffi.UnsignedInt Function()>>.fromAddress(
+        address,
+      ).asFunction<int Function()>();
   return fn();
 }
 
@@ -94,9 +98,9 @@ int _invokeInitEngine(
 /// teardown (device uninit) then executes off the UI isolate instead of
 /// stalling it. Only [address] (a sendable int) crosses the isolate boundary.
 void _invokeVoidNative(int address) {
-  ffi.Pointer<ffi.NativeFunction<ffi.Void Function()>>
-      .fromAddress(address)
-      .asFunction<void Function()>()();
+  ffi.Pointer<ffi.NativeFunction<ffi.Void Function()>>.fromAddress(
+    address,
+  ).asFunction<void Function()>()();
 }
 
 typedef DartVoiceEndedCallbackT =
@@ -136,20 +140,46 @@ typedef DartStateChangedCallbackTFunction =
 typedef DartdartStateChangedCallbackTFunction =
     void Function(ffi.Pointer<ffi.Int32>);
 
+typedef DartMixerOutputDataCallbackT =
+    ffi.Pointer<ffi.NativeFunction<DartMixerOutputDataCallbackTFunction>>;
+
+typedef DartMixerOutputDataCallbackTFunction =
+    ffi.Void Function(ffi.Pointer<ffi.UnsignedChar>, ffi.Uint64);
+
+typedef DartdartMixerOutputDataCallbackTFunction =
+    void Function(ffi.Pointer<ffi.UnsignedChar>, int);
+
 typedef OnMetadataCallbackTFunction = void Function(NativeAudioMetadata);
 
+typedef OnAudioDurationCallbackTFunction = void Function(double duration);
+
+typedef OnMoreDataIsNeededCallbackTFunction = void Function(int offset);
+
 final class _BufferStreamNativeCallbacks {
-  _BufferStreamNativeCallbacks({this.onBuffering, this.onMetadata});
+  _BufferStreamNativeCallbacks({
+    this.onBuffering,
+    this.onMetadata,
+    this.onMoreDataIsNeeded,
+    this.onAudioDuration,
+  });
 
   final ffi.NativeCallable<ffi.Void Function(ffi.Bool, ffi.Int, ffi.Double)>?
   onBuffering;
   final ffi.NativeCallable<ffi.Void Function(NativeAudioMetadata)>? onMetadata;
+  final ffi.NativeCallable<ffi.Void Function(ffi.Uint64)>? onMoreDataIsNeeded;
+  final ffi.NativeCallable<ffi.Void Function(ffi.Double)>? onAudioDuration;
 
-  bool get hasCallbacks => onBuffering != null || onMetadata != null;
+  bool get hasCallbacks =>
+      onBuffering != null ||
+      onMetadata != null ||
+      onMoreDataIsNeeded != null ||
+      onAudioDuration != null;
 
   void close() {
     onBuffering?.close();
     onMetadata?.close();
+    onMoreDataIsNeeded?.close();
+    onAudioDuration?.close();
   }
 }
 
@@ -173,6 +203,26 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     ffi.Pointer<T> Function<T extends ffi.NativeType>(String symbolName) lookup,
   ) : _lookup = lookup;
 
+  /// Sentinel used where no FlutterEngine lifecycle is available. Must match
+  /// `kNoEngineId` in `src/bindings.cpp`.
+  static const int noEngineId = -1;
+
+  /// The FlutterEngine that owns this isolate, or [noEngineId] where the
+  /// embedder does not expose one.
+  ///
+  /// Native code uses it to decide whether a detaching or hot-restarting
+  /// FlutterEngine owns the registered callables and the native engine, and the
+  /// Android plugin passes the same value down from
+  /// `FlutterEngine.getEngineId()`.
+  ///
+  /// It must be read on the isolate the engine runs on:
+  /// `PlatformDispatcher.instance.engineId` is set through an engine hook that
+  /// only fires there, so a worker isolate would see `null`. Both call sites
+  /// ([prepareEngineInit] and [setDartEventCallbacks]) run on that isolate,
+  /// before any work is handed to `Isolate.run`.
+  static int get currentEngineId =>
+      ui.PlatformDispatcher.instance.engineId ?? noEngineId;
+
   // ////////////////////////////////////////////////
   // Callbacks impl
   // ////////////////////////////////////////////////
@@ -181,6 +231,22 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   ffi.NativeCallable<DartFileLoadedCallbackTFunction>? nativeFileLoadedCallable;
   ffi.NativeCallable<DartStateChangedCallbackTFunction>?
   nativeStateChangedCallable;
+  ffi.NativeCallable<DartMixerOutputDataCallbackTFunction>?
+  nativeMixerOutputDataCallable;
+
+  /// Controller that fires whenever new mixer output data is available.
+  ///
+  /// The event contains a pointer to the start of the contiguous unread
+  /// region and the number of valid bytes. The pointer remains valid until
+  /// the read position is advanced with [advanceMixerOutputReadPosition].
+  late final StreamController<({ffi.Pointer<ffi.Uint8> pointer, int length})>
+  mixerOutputDataAvailableController = StreamController.broadcast();
+
+  /// Stream of notifications that new mixer output data is available.
+  Stream<({ffi.Pointer<ffi.Uint8> pointer, int length})>
+  get mixerOutputDataAvailableEvents =>
+      mixerOutputDataAvailableController.stream;
+
   final Map<int, _BufferStreamNativeCallbacks> _bufferStreamNativeCallables =
       {};
 
@@ -242,6 +308,30 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     stateChangedController.add(s);
   }
 
+  void _mixerOutputDataCallback(
+    ffi.Pointer<ffi.UnsignedChar> data,
+    int length,
+  ) {
+    // The native buffer remains valid until the read position is advanced.
+    mixerOutputDataAvailableController.add((
+      pointer: data.cast<ffi.Uint8>(),
+      length: length,
+    ));
+
+    // Also emit a copied chunk for the cross-platform stream. Copying here
+    // keeps the FFI pointer-based API available for zero-copy consumers while
+    // ensuring the public Dart stream works the same way on all platforms.
+    if (length > 0) {
+      final bytes = data.cast<ffi.Uint8>().asTypedList(length);
+      mixerOutputChunkController.add(Uint8List.fromList(bytes));
+      // In fixed PCM chunk mode the native side advances the read position
+      // before invoking the callback, so Dart must not advance it again.
+      if (!_mixerOutputChunkMode) {
+        advanceMixerOutputReadPosition(length);
+      }
+    }
+  }
+
   @override
   void disposeNativeCallables() {
     _disposeAllBufferStreamCallbacks();
@@ -251,6 +341,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     nativeFileLoadedCallable = null;
     nativeStateChangedCallable?.close();
     nativeStateChangedCallable = null;
+    nativeMixerOutputDataCallable?.close();
+    nativeMixerOutputDataCallable = null;
   }
 
   @override
@@ -273,12 +365,51 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
         ffi.NativeCallable<DartStateChangedCallbackTFunction>.listener(
           _stateChangedCallback,
         );
+    nativeMixerOutputDataCallable ??=
+        ffi.NativeCallable<DartMixerOutputDataCallbackTFunction>.listener(
+          _mixerOutputDataCallback,
+        );
 
     _setDartEventCallback(
       nativeVoiceEndedCallable!.nativeFunction,
       nativeFileLoadedCallable!.nativeFunction,
       nativeStateChangedCallable!.nativeFunction,
+      currentEngineId,
     );
+    _setMixerOutputCallback(
+      nativeMixerOutputDataCallable!.nativeFunction,
+      currentEngineId,
+    );
+  }
+
+  @override
+  void registerMixerOutputCallback() {
+    nativeMixerOutputDataCallable ??=
+        ffi.NativeCallable<DartMixerOutputDataCallbackTFunction>.listener(
+          _mixerOutputDataCallback,
+        );
+    // Called from whichever isolate owns the capture, including a worker one
+    // via `SoLoudIsolate.startMixerOutputStream()`. On a worker,
+    // [currentEngineId] is the no-engine sentinel and native code joins this
+    // callable to whatever registration is live.
+    //
+    // A refusal means there is no live registration to join: the engine was
+    // never initialized, has been deinitialized, or its FlutterEngine is being
+    // destroyed. Publishing anyway would arm a callable belonging to an isolate
+    // that is going away, so the capture simply produces nothing -- worth a
+    // line in the log, since the stream stays silent rather than throwing.
+    final published = _setMixerOutputCallback(
+      nativeMixerOutputDataCallable!.nativeFunction,
+      currentEngineId,
+    );
+    if (!published) {
+      _log.warning(
+        'The mixer output callback was refused: no live engine callback '
+        'registration to join. The capture stream will not receive chunks. '
+        'Initialize the engine before starting a mixer output capture, and '
+        'stop the capture before deinitializing it.',
+      );
+    }
   }
 
   late final _setDartEventCallbackPtr =
@@ -288,6 +419,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
             DartVoiceEndedCallbackT,
             DartFileLoadedCallbackT,
             DartStateChangedCallbackT,
+            ffi.Int64,
           )
         >
       >('setDartEventCallback');
@@ -297,6 +429,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
           DartVoiceEndedCallbackT,
           DartFileLoadedCallbackT,
           DartStateChangedCallbackT,
+          int,
         )
       >();
 
@@ -306,6 +439,175 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       );
   late final _clearDartCallbackRegistrations =
       _clearDartCallbackRegistrationsPtr.asFunction<void Function()>();
+
+  // ////////////////////////////////////////////////
+  // Mixer output capture bindings
+  // ////////////////////////////////////////////////
+
+  /// Whether the current mixer output capture is using fixed-size PCM chunks.
+  /// When true, the native side advances the circular buffer read position
+  /// before invoking the callback, so Dart must not advance it again.
+  bool _mixerOutputChunkMode = false;
+
+  @override
+  PlayerErrors startMixerOutputCapture(
+    MixerOutputFormat format,
+    int sampleRate,
+    int channels,
+    int bufferSizeBytes,
+    int notificationThresholdBytes,
+    int chunkPCMFrames,
+  ) {
+    _mixerOutputChunkMode = format.isPcm && chunkPCMFrames > 0;
+    final ret = _startMixerCapture(
+      format.value,
+      sampleRate,
+      channels,
+      bufferSizeBytes,
+      notificationThresholdBytes,
+      chunkPCMFrames,
+    );
+    return PlayerErrors.values[ret];
+  }
+
+  late final _startMixerCapturePtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.Int32 Function(
+            ffi.Int32,
+            ffi.Int32,
+            ffi.Int32,
+            ffi.Int32,
+            ffi.Int32,
+            ffi.Int32,
+          )
+        >
+      >('startMixerCapture');
+  late final _startMixerCapture = _startMixerCapturePtr
+      .asFunction<int Function(int, int, int, int, int, int)>();
+
+  @override
+  void stopMixerOutputCapture() {
+    _mixerOutputChunkMode = false;
+    _stopMixerCapture();
+  }
+
+  late final _stopMixerCapturePtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function()>>('stopMixerCapture');
+  late final _stopMixerCapture = _stopMixerCapturePtr
+      .asFunction<void Function()>();
+
+  @override
+  bool isMixerOutputCaptureRunning() {
+    return _isMixerCaptureRunning() != 0;
+  }
+
+  late final _isMixerCaptureRunningPtr =
+      _lookup<ffi.NativeFunction<ffi.Int Function()>>('isMixerCaptureRunning');
+  late final _isMixerCaptureRunning = _isMixerCaptureRunningPtr
+      .asFunction<int Function()>();
+
+  @override
+  int getMixerOutputBufferSize() {
+    return _getMixerCaptureBufferSize();
+  }
+
+  late final _getMixerCaptureBufferSizePtr =
+      _lookup<ffi.NativeFunction<ffi.Int32 Function()>>(
+        'getMixerCaptureBufferSize',
+      );
+  late final _getMixerCaptureBufferSize = _getMixerCaptureBufferSizePtr
+      .asFunction<int Function()>();
+
+  @override
+  int getMixerOutputAvailableBytes() {
+    return _getMixerCaptureAvailableBytes();
+  }
+
+  late final _getMixerCaptureAvailableBytesPtr =
+      _lookup<ffi.NativeFunction<ffi.Int32 Function()>>(
+        'getMixerCaptureAvailableBytes',
+      );
+  late final _getMixerCaptureAvailableBytes = _getMixerCaptureAvailableBytesPtr
+      .asFunction<int Function()>();
+
+  @override
+  int getMixerOutputReadOffset() {
+    return _getMixerCaptureReadOffset();
+  }
+
+  late final _getMixerCaptureReadOffsetPtr =
+      _lookup<ffi.NativeFunction<ffi.Int32 Function()>>(
+        'getMixerCaptureReadOffset',
+      );
+  late final _getMixerCaptureReadOffset = _getMixerCaptureReadOffsetPtr
+      .asFunction<int Function()>();
+
+  @override
+  void advanceMixerOutputReadPosition(int bytes) {
+    _advanceMixerCaptureReadPosition(bytes);
+  }
+
+  late final _advanceMixerCaptureReadPositionPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Int32)>>(
+        'advanceMixerCaptureReadPosition',
+      );
+  late final _advanceMixerCaptureReadPosition =
+      _advanceMixerCaptureReadPositionPtr.asFunction<void Function(int)>();
+
+  int getMixerOutputBufferPointer() {
+    return _getMixerCaptureBufferPointer().address;
+  }
+
+  late final _getMixerCaptureBufferPointerPtr =
+      _lookup<ffi.NativeFunction<ffi.Pointer<ffi.Uint8> Function()>>(
+        'getMixerCaptureBufferPointer',
+      );
+  late final _getMixerCaptureBufferPointer = _getMixerCaptureBufferPointerPtr
+      .asFunction<ffi.Pointer<ffi.Uint8> Function()>();
+
+  @override
+  Uint8List copyMixerOutputBuffer(int offset, int length) {
+    if (length <= 0) {
+      return Uint8List(0);
+    }
+    final ptr = _getMixerCaptureBufferPointer();
+    if (ptr == ffi.nullptr) {
+      return Uint8List(0);
+    }
+    return Uint8List.fromList((ptr + offset).asTypedList(length));
+  }
+
+  @override
+  Uint8List getMixerOutputWavHeader() {
+    final ptr = _getMixerOutputWavHeader();
+    if (ptr == ffi.nullptr) {
+      return Uint8List(0);
+    }
+    final bytes = Uint8List.fromList(ptr.asTypedList(44));
+    nativeFree(ptr.cast<ffi.Void>());
+    return bytes;
+  }
+
+  late final _getMixerOutputWavHeaderPtr =
+      _lookup<ffi.NativeFunction<ffi.Pointer<ffi.Uint8> Function()>>(
+        'getMixerOutputWavHeader',
+      );
+  late final _getMixerOutputWavHeader = _getMixerOutputWavHeaderPtr
+      .asFunction<ffi.Pointer<ffi.Uint8> Function()>();
+
+  /// Publishes the mixer callable as part of this engine's registration, so
+  /// native code refuses it once that registration has been retired. The
+  /// unscoped `setMixerOutputCallback` export is left for the web build, which
+  /// binds it from the prebuilt wasm.
+  late final _setMixerOutputCallbackPtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.Bool Function(DartMixerOutputDataCallbackT, ffi.Int64)
+        >
+      >('setMixerOutputCallbackForEngine');
+  late final _setMixerOutputCallback = _setMixerOutputCallbackPtr
+      .asFunction<bool Function(DartMixerOutputDataCallbackT, int)>();
 
   // ////////////////////////////////////////////////
   // Navtive bindings
@@ -352,18 +654,18 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     // pointer is rebuilt and called inside the worker.
     final address = _initEnginePtr.address;
     final channelCount = channels.count;
-    final lowLatencyInt = lowLatency ? 1 : 0;
-    final ret = await Isolate.run(
+    final lowLatencyValue = lowLatency ? 1 : 0;
+    final result = await Isolate.run(
       () => _invokeInitEngine(
         address,
         deviceId,
         sampleRate,
         bufferSize,
         channelCount,
-        lowLatencyInt,
+        lowLatencyValue,
       ),
     );
-    return PlayerErrors.values[ret];
+    return PlayerErrors.values[result];
   }
 
   late final _initEnginePtr =
@@ -378,22 +680,6 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
           )
         >
       >('initEngine');
-
-  @override
-  void prepareEngineInit() => _prepareEngineInit();
-
-  late final _prepareEngineInitPtr =
-      _lookup<ffi.NativeFunction<ffi.Void Function()>>('prepareEngineInit');
-  late final _prepareEngineInit = _prepareEngineInitPtr
-      .asFunction<void Function()>();
-
-  @override
-  void requestEngineShutdown() => _requestEngineShutdown();
-
-  late final _requestEngineShutdownPtr =
-      _lookup<ffi.NativeFunction<ffi.Void Function()>>('requestEngineShutdown');
-  late final _requestEngineShutdown = _requestEngineShutdownPtr
-      .asFunction<void Function()>();
 
   @override
   void setAndroidAAudioAttributes(bool managed) {
@@ -415,8 +701,9 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     final int timeoutMs = timeout == null
         ? -1
         : (timeout.inMilliseconds < 0 ? 0 : timeout.inMilliseconds);
-    // Cheap native call (atomic store; any device start is posted to the
-    // background scheduler thread), so call it directly on the UI isolate.
+    // The native call stores the policy and posts any required lifecycle
+    // request. It does not start/stop the device or inspect SoLoud voice state
+    // inline.
     _setAudioDeviceIdleTimeout(timeoutMs);
   }
 
@@ -596,13 +883,67 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
 
   @override
   Future<void> deinitAsync() async {
-    // Run the blocking native teardown (device uninit) off the UI isolate so
-    // it does not freeze the app. Only the raw function pointer address (a
-    // sendable int) is captured; the pointer is rebuilt and called in the
-    // worker.
     final address = _disposePtr.address;
     await Isolate.run(() => _invokeVoidNative(address));
   }
+
+  @override
+  void prepareEngineInit() => _prepareEngineInit(currentEngineId);
+
+  @override
+  bool get usesAsyncEnginePrepare => DarwinEngineLifecycle.isSupported;
+
+  @override
+  Future<void> prepareEngineInitAsync() async {
+    final engineId = currentEngineId;
+
+    // Read before the request goes out: `deinit()` can run while this is
+    // suspended, and the claim must not land on the far side of the teardown
+    // that superseded it. Native refuses a request whose epoch has moved.
+    final shutdownEpoch = _currentEngineShutdownEpoch();
+
+    final result = await _iosEngineLifecycle.prepareEngineInit(
+      engineId,
+      shutdownEpoch,
+    );
+
+    switch (result) {
+      case DarwinEnginePrepareResult.claimed:
+        return;
+      case DarwinEnginePrepareResult.unavailable:
+        // Nothing was sent, so nothing was claimed: claim directly, exactly as
+        // every other platform does. Automatic teardown is simply not armed.
+        _prepareEngineInit(engineId);
+      case DarwinEnginePrepareResult.refused:
+        // Either the platform said no, or a sent request's outcome is unknown.
+        // Claiming again here could take the claim a second time on top of one
+        // the platform may already have committed.
+        throw const SoLoudInitializationStoppedByDeinitException();
+    }
+  }
+
+  static const DarwinEngineLifecycle _iosEngineLifecycle =
+      DarwinEngineLifecycle();
+
+  late final _currentEngineShutdownEpoch =
+      _lookup<ffi.NativeFunction<ffi.Uint64 Function()>>(
+        'currentEngineShutdownEpoch',
+      ).asFunction<int Function()>();
+
+  late final _prepareEngineInit = _prepareEngineInitPtr
+      .asFunction<void Function(int)>();
+  late final _prepareEngineInitPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Int64)>>(
+        'prepareEngineInit',
+      );
+
+  @override
+  void requestEngineShutdown() => _requestEngineShutdown();
+
+  late final _requestEngineShutdown = _requestEngineShutdownPtr
+      .asFunction<void Function()>();
+  late final _requestEngineShutdownPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function()>>('requestEngineShutdown');
 
   late final _disposePtr = _lookup<ffi.NativeFunction<ffi.Void Function()>>(
     'dispose',
@@ -834,6 +1175,72 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       .asFunction<int Function(int, int)>();
 
   @override
+  PlayerErrors addPullBufferDataStream(
+    int hash,
+    Uint8List audioChunk, {
+    int offset = 0,
+  }) {
+    final ffi.Pointer<ffi.Uint8> audioChunkPtr = calloc(audioChunk.length);
+    for (var i = 0; i < audioChunk.length; i++) {
+      audioChunkPtr[i] = audioChunk[i];
+    }
+    final e = _addPullBufferDataStream(
+      hash,
+      audioChunkPtr,
+      audioChunk.length,
+      offset,
+    );
+    calloc.free(audioChunkPtr);
+    return PlayerErrors.values[e];
+  }
+
+  late final _addPullBufferDataStreamPtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.UnsignedInt Function(
+            ffi.UnsignedInt,
+            ffi.Pointer<ffi.Uint8>,
+            ffi.UnsignedInt,
+            ffi.Uint64,
+          )
+        >
+      >('addPullBufferDataStream');
+  late final _addPullBufferDataStream = _addPullBufferDataStreamPtr
+      .asFunction<int Function(int, ffi.Pointer<ffi.Uint8>, int, int)>();
+
+  @override
+  ({PlayerErrors error, double startTime, double endTime})
+  getPullBufferTimeRange(int hash) {
+    final startTimePtr = calloc<ffi.Double>();
+    final endTimePtr = calloc<ffi.Double>();
+    final e = _getPullBufferTimeRange(hash, startTimePtr, endTimePtr);
+    final result = (
+      error: PlayerErrors.values[e],
+      startTime: startTimePtr.value,
+      endTime: endTimePtr.value,
+    );
+    calloc
+      ..free(startTimePtr)
+      ..free(endTimePtr);
+    return result;
+  }
+
+  late final _getPullBufferTimeRangePtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.UnsignedInt Function(
+            ffi.UnsignedInt,
+            ffi.Pointer<ffi.Double>,
+            ffi.Pointer<ffi.Double>,
+          )
+        >
+      >('getPullBufferTimeRange');
+  late final _getPullBufferTimeRange = _getPullBufferTimeRangePtr
+      .asFunction<
+        int Function(int, ffi.Pointer<ffi.Double>, ffi.Pointer<ffi.Double>)
+      >();
+
+  @override
   PlayerErrors addAudioDataStream(int hash, Uint8List audioChunk) {
     final ffi.Pointer<ffi.Uint8> audioChunkPtr = calloc(audioChunk.length);
     for (var i = 0; i < audioChunk.length; i++) {
@@ -856,6 +1263,128 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       >('addAudioDataStream');
   late final _addAudioDataStream = _addAudioDataStreamPtr
       .asFunction<int Function(int, ffi.Pointer<ffi.Uint8>, int)>();
+
+  @override
+  ({PlayerErrors error, SoundHash soundHash}) setPullBufferStream(
+    int bufferSizeBytes,
+    double bufferTriggerPosition,
+    int sampleRate,
+    int channels,
+    int format,
+    int audioSizeBytes,
+    OnBufferingCallbackTFunction? onBuffering,
+    OnMetadataCallbackTFunction? onMetadata,
+    OnMoreDataIsNeededCallbackTFunction? onMoreDataIsNeeded,
+    OnAudioDurationCallbackTFunction? onAudioDuration,
+  ) {
+    final nativeCallbacks = _BufferStreamNativeCallbacks(
+      onBuffering: onBuffering == null
+          ? null
+          : ffi.NativeCallable<
+              ffi.Void Function(ffi.Bool, ffi.Int, ffi.Double)
+            >.listener(onBuffering),
+      onMetadata: onMetadata == null
+          ? null
+          : ffi.NativeCallable<ffi.Void Function(NativeAudioMetadata)>.listener(
+              onMetadata,
+            ),
+      onMoreDataIsNeeded: onMoreDataIsNeeded == null
+          ? null
+          : ffi.NativeCallable<ffi.Void Function(ffi.Uint64)>.listener(
+              (int offset) => onMoreDataIsNeeded(offset),
+            ),
+      onAudioDuration: onAudioDuration == null
+          ? null
+          : ffi.NativeCallable<ffi.Void Function(ffi.Double)>.listener(
+              (double duration) => onAudioDuration(duration),
+            ),
+    );
+
+    final ffi.Pointer<ffi.UnsignedInt> hash = calloc(
+      ffi.sizeOf<ffi.UnsignedInt>(),
+    );
+    final e = _setPullBufferStream(
+      hash,
+      bufferSizeBytes,
+      bufferTriggerPosition,
+      sampleRate,
+      channels,
+      format,
+      audioSizeBytes,
+      nativeCallbacks.onBuffering?.nativeFunction ?? ffi.nullptr,
+      nativeCallbacks.onMetadata?.nativeFunction ?? ffi.nullptr,
+      nativeCallbacks.onMoreDataIsNeeded?.nativeFunction ?? ffi.nullptr,
+      nativeCallbacks.onAudioDuration?.nativeFunction ?? ffi.nullptr,
+    );
+    final soundHash = SoundHash(hash.value);
+    final ret = (error: PlayerErrors.values[e], soundHash: soundHash);
+    if (ret.error == PlayerErrors.noError && nativeCallbacks.hasCallbacks) {
+      _bufferStreamNativeCallables[soundHash.hash] = nativeCallbacks;
+    } else {
+      nativeCallbacks.close();
+    }
+    calloc.free(hash);
+    return ret;
+  }
+
+  late final _setPullBufferStreamPtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.UnsignedInt Function(
+            ffi.Pointer<ffi.UnsignedInt>,
+            ffi.UnsignedInt,
+            ffi.Double,
+            ffi.UnsignedInt,
+            ffi.UnsignedInt,
+            ffi.Int,
+            ffi.Uint64,
+            ffi.Pointer<
+              ffi.NativeFunction<
+                ffi.Void Function(ffi.Bool, ffi.Int, ffi.Double)
+              >
+            >,
+            ffi.Pointer<
+              ffi.NativeFunction<ffi.Void Function(NativeAudioMetadata)>
+            >,
+            ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Uint64)>>,
+            ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Double)>>,
+          )
+        >
+      >('setPullBufferStream');
+
+  late final _setPullBufferStream = _setPullBufferStreamPtr
+      .asFunction<
+        int Function(
+          ffi.Pointer<ffi.UnsignedInt>,
+          int,
+          double,
+          int,
+          int,
+          int,
+          int,
+          ffi.Pointer<
+            ffi.NativeFunction<ffi.Void Function(ffi.Bool, ffi.Int, ffi.Double)>
+          >,
+          ffi.Pointer<
+            ffi.NativeFunction<ffi.Void Function(NativeAudioMetadata)>
+          >,
+          ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Uint64)>>,
+          ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Double)>>,
+        )
+      >();
+
+  @override
+  PlayerErrors resetPullBufferStream(SoundHash soundHash) {
+    final e = _resetPullBufferStream(soundHash.hash);
+    return PlayerErrors.values[e];
+  }
+
+  late final _resetPullBufferStreamPtr =
+      _lookup<ffi.NativeFunction<ffi.UnsignedInt Function(ffi.UnsignedInt)>>(
+        'resetPullBufferStream',
+      );
+  late final _resetPullBufferStream = _resetPullBufferStreamPtr
+      .asFunction<int Function(int)>();
 
   @override
   PlayerErrors setDataIsEnded(SoundHash soundHash) {
@@ -1018,26 +1547,26 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       >();
 
   @override
-  void pauseSwitch(SoundHandle handle) {
-    return _pauseSwitch(handle.id);
+  PlayerErrors pauseSwitch(SoundHandle handle) {
+    return PlayerErrors.values[_pauseSwitch(handle.id)];
   }
 
   late final _pauseSwitchPtr =
-      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt)>>(
+      _lookup<ffi.NativeFunction<ffi.Int32 Function(ffi.UnsignedInt)>>(
         'pauseSwitch',
       );
-  late final _pauseSwitch = _pauseSwitchPtr.asFunction<void Function(int)>();
+  late final _pauseSwitch = _pauseSwitchPtr.asFunction<int Function(int)>();
 
   @override
-  void setPause(SoundHandle handle, int pause) {
-    return _setPause(handle.id, pause);
+  PlayerErrors setPause(SoundHandle handle, int pause) {
+    return PlayerErrors.values[_setPause(handle.id, pause)];
   }
 
   late final _setPausePtr =
-      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt, ffi.Int)>>(
+      _lookup<ffi.NativeFunction<ffi.Int32 Function(ffi.UnsignedInt, ffi.Int)>>(
         'setPause',
       );
-  late final _setPause = _setPausePtr.asFunction<void Function(int, int)>();
+  late final _setPause = _setPausePtr.asFunction<int Function(int, int)>();
 
   @override
   bool getPause(SoundHandle handle) {
@@ -1095,6 +1624,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     bool paused = false,
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
+    Duration? loopingEndAt,
   }) {
     final ffi.Pointer<ffi.UnsignedInt> handle = calloc();
     final hash = soundHash.hash;
@@ -1106,6 +1636,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       paused ? 1 : 0,
       looping ? 1 : 0,
       loopingStartAt.toDouble(),
+      loopingEndAt?.toDouble() ?? 0,
       handle,
     );
     final ret = (
@@ -1127,10 +1658,11 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
             ffi.Int,
             ffi.Int,
             ffi.Double,
+            ffi.Double,
             ffi.Pointer<ffi.UnsignedInt>,
           )
         >
-      >('play');
+      >('playWithLoopPoints');
   late final _play = _playPtr
       .asFunction<
         int Function(
@@ -1141,18 +1673,210 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
           int,
           int,
           double,
+          double,
           ffi.Pointer<ffi.UnsignedInt>,
         )
       >();
 
   @override
-  void stop(SoundHandle handle) {
-    return _stop(handle.id);
+  ({PlayerErrors error, SoundHandle newHandle}) playClocked(
+    SoundHash soundHash,
+    Duration soundTime, {
+    int busId = 0,
+    double volume = 1,
+    double pan = 0,
+  }) {
+    final ffi.Pointer<ffi.UnsignedInt> handle = calloc();
+    final e = _playClocked(
+      soundHash.hash,
+      soundTime.toDouble(),
+      busId,
+      volume,
+      pan,
+      handle,
+    );
+    final ret = (
+      error: PlayerErrors.values[e],
+      newHandle: SoundHandle(handle.value),
+    );
+    calloc.free(handle);
+    return ret;
+  }
+
+  late final _playClockedPtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.UnsignedInt Function(
+            ffi.UnsignedInt,
+            ffi.Double,
+            ffi.UnsignedInt,
+            ffi.Float,
+            ffi.Float,
+            ffi.Pointer<ffi.UnsignedInt>,
+          )
+        >
+      >('playClocked');
+  late final _playClocked = _playClockedPtr
+      .asFunction<
+        int Function(
+          int,
+          double,
+          int,
+          double,
+          double,
+          ffi.Pointer<ffi.UnsignedInt>,
+        )
+      >();
+
+  @override
+  void setDelaySamples(SoundHandle handle, int samples) {
+    _setDelaySamples(handle.id, samples);
+  }
+
+  late final _setDelaySamplesPtr =
+      _lookup<
+        ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt, ffi.UnsignedInt)>
+      >('setDelaySamples');
+  late final _setDelaySamples = _setDelaySamplesPtr
+      .asFunction<void Function(int, int)>();
+
+  @override
+  Duration getStreamTime(SoundHandle handle) {
+    return _getStreamTime(handle.id).toDuration();
+  }
+
+  late final _getStreamTimePtr =
+      _lookup<ffi.NativeFunction<ffi.Double Function(ffi.UnsignedInt)>>(
+        'getStreamTime',
+      );
+  late final _getStreamTime = _getStreamTimePtr
+      .asFunction<double Function(int)>();
+
+  @override
+  void resetStreamTime() {
+    _resetStreamTime();
+  }
+
+  late final _resetStreamTimePtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function()>>('resetStreamTime');
+  late final _resetStreamTime = _resetStreamTimePtr
+      .asFunction<void Function()>();
+
+  @override
+  Duration getEngineTime() {
+    return _getEngineTime().toDuration();
+  }
+
+  late final _getEngineTimePtr =
+      _lookup<ffi.NativeFunction<ffi.Double Function()>>('getEngineTime');
+  late final _getEngineTime = _getEngineTimePtr.asFunction<double Function()>();
+
+  @override
+  ({PlayerErrors error, SoundHandle newHandle}) playScheduled(
+    SoundHash soundHash,
+    Duration atTime, {
+    Duration duration = Duration.zero,
+    int busId = 0,
+    double volume = 1,
+    double pan = 0,
+  }) {
+    final ffi.Pointer<ffi.UnsignedInt> handle = calloc();
+    final e = _playScheduled(
+      soundHash.hash,
+      atTime.toDouble(),
+      duration.toDouble(),
+      busId,
+      volume,
+      pan,
+      handle,
+    );
+    final ret = (
+      error: PlayerErrors.values[e],
+      newHandle: SoundHandle(handle.value),
+    );
+    calloc.free(handle);
+    return ret;
+  }
+
+  late final _playScheduledPtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.UnsignedInt Function(
+            ffi.UnsignedInt,
+            ffi.Double,
+            ffi.Double,
+            ffi.UnsignedInt,
+            ffi.Float,
+            ffi.Float,
+            ffi.Pointer<ffi.UnsignedInt>,
+          )
+        >
+      >('playScheduled');
+  late final _playScheduled = _playScheduledPtr
+      .asFunction<
+        int Function(
+          int,
+          double,
+          double,
+          int,
+          double,
+          double,
+          ffi.Pointer<ffi.UnsignedInt>,
+        )
+      >();
+
+  @override
+  void stopScheduled(SoundHandle handle, Duration atTime) {
+    _stopScheduled(handle.id, atTime.toDouble());
+  }
+
+  late final _stopScheduledPtr =
+      _lookup<
+        ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt, ffi.Double)>
+      >('stopScheduled');
+  late final _stopScheduled = _stopScheduledPtr
+      .asFunction<void Function(int, double)>();
+
+  @override
+  void fadeScheduled(
+    SoundHandle handle,
+    Duration atTime,
+    double to,
+    Duration time, {
+    bool thenStop = false,
+  }) {
+    _fadeScheduled(
+      handle.id,
+      atTime.toDouble(),
+      to,
+      time.toDouble(),
+      thenStop ? 1 : 0,
+    );
+  }
+
+  late final _fadeScheduledPtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.Void Function(
+            ffi.UnsignedInt,
+            ffi.Double,
+            ffi.Float,
+            ffi.Double,
+            ffi.Int,
+          )
+        >
+      >('fadeScheduled');
+  late final _fadeScheduled = _fadeScheduledPtr
+      .asFunction<void Function(int, double, double, double, int)>();
+
+  @override
+  PlayerErrors stop(SoundHandle handle) {
+    return PlayerErrors.values[_stop(handle.id)];
   }
 
   late final _stopPtr =
-      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt)>>('stop');
-  late final _stop = _stopPtr.asFunction<void Function(int)>();
+      _lookup<ffi.NativeFunction<ffi.Int32 Function(ffi.UnsignedInt)>>('stop');
+  late final _stop = _stopPtr.asFunction<int Function(int)>();
 
   @override
   void disposeSound(SoundHash soundHash) {
@@ -1221,6 +1945,31 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
         ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt, ffi.Double)>
       >('setLoopPoint');
   late final _setLoopPoint = _setLoopPointPtr
+      .asFunction<void Function(int, double)>();
+
+  @override
+  Duration? getLoopEndPoint(SoundHandle handle) {
+    final seconds = _getLoopEndPoint(handle.id);
+    return seconds > 0 ? seconds.toDuration() : null;
+  }
+
+  late final _getLoopEndPointPtr =
+      _lookup<ffi.NativeFunction<ffi.Double Function(ffi.UnsignedInt)>>(
+        'getLoopEndPoint',
+      );
+  late final _getLoopEndPoint = _getLoopEndPointPtr
+      .asFunction<double Function(int)>();
+
+  @override
+  void setLoopEndPoint(SoundHandle handle, Duration? timestamp) {
+    _setLoopEndPoint(handle.id, timestamp?.toDouble() ?? 0);
+  }
+
+  late final _setLoopEndPointPtr =
+      _lookup<
+        ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt, ffi.Double)>
+      >('setLoopEndPoint');
+  late final _setLoopEndPoint = _setLoopEndPointPtr
       .asFunction<void Function(int, double)>();
 
   @override
@@ -2136,6 +2885,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     bool paused = false,
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
+    Duration? loopingEndAt,
   }) {
     final ffi.Pointer<ffi.UnsignedInt> handle = calloc();
     final e = _play3d(
@@ -2151,6 +2901,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       paused ? 1 : 0,
       looping ? 1 : 0,
       loopingStartAt.toDouble(),
+      loopingEndAt?.toDouble() ?? 0,
       handle,
     );
     final ret = (
@@ -2177,10 +2928,11 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
             ffi.Int,
             ffi.Int,
             ffi.Double,
+            ffi.Double,
             ffi.Pointer<ffi.UnsignedInt>,
           )
         >
-      >('play3d');
+      >('play3dWithLoopPoints');
   late final _play3d = _play3dPtr
       .asFunction<
         int Function(
@@ -2195,6 +2947,77 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
           double,
           int,
           int,
+          double,
+          double,
+          ffi.Pointer<ffi.UnsignedInt>,
+        )
+      >();
+
+  @override
+  ({PlayerErrors error, SoundHandle newHandle}) play3dClocked(
+    SoundHash soundHash,
+    Duration soundTime,
+    double posX,
+    double posY,
+    double posZ, {
+    int busId = 0,
+    double velX = 0,
+    double velY = 0,
+    double velZ = 0,
+    double volume = 1,
+  }) {
+    final ffi.Pointer<ffi.UnsignedInt> handle = calloc();
+    final e = _play3dClocked(
+      soundHash.hash,
+      soundTime.toDouble(),
+      busId,
+      posX,
+      posY,
+      posZ,
+      velX,
+      velY,
+      velZ,
+      volume,
+      handle,
+    );
+    final ret = (
+      error: PlayerErrors.values[e],
+      newHandle: SoundHandle(handle.value),
+    );
+    calloc.free(handle);
+    return ret;
+  }
+
+  late final _play3dClockedPtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.UnsignedInt Function(
+            ffi.UnsignedInt,
+            ffi.Double,
+            ffi.UnsignedInt,
+            ffi.Float,
+            ffi.Float,
+            ffi.Float,
+            ffi.Float,
+            ffi.Float,
+            ffi.Float,
+            ffi.Float,
+            ffi.Pointer<ffi.UnsignedInt>,
+          )
+        >
+      >('play3dClocked');
+  late final _play3dClocked = _play3dClockedPtr
+      .asFunction<
+        int Function(
+          int,
+          double,
+          int,
+          double,
+          double,
+          double,
+          double,
+          double,
+          double,
           double,
           ffi.Pointer<ffi.UnsignedInt>,
         )
@@ -2640,20 +3463,42 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   /// [busId] the bus ID returned by createBus.
   /// [volume] playback volume (1.0 = full).
   /// [paused] whether to start paused.
-  /// Returns the voice handle for the bus, or 0 on error.
+  /// When [paused] is false the output audio device is started off the UI
+  /// thread after the bus voice has been created.
+  ///
+  /// Returns [PlayerErrors.noError] and the voice handle of the bus on
+  /// success, or the error and a zeroed handle on failure.
   @override
-  int busPlayOnEngine(int busId, double volume, bool paused) {
-    return _busPlayOnEngine(busId, volume, paused);
+  ({PlayerErrors error, SoundHandle handle}) busPlayOnEngine(
+    int busId,
+    double volume,
+    bool paused,
+  ) {
+    final ffi.Pointer<ffi.UnsignedInt> handle = calloc();
+    final e = _busPlayOnEngine(busId, volume, paused, handle);
+    final ret = (
+      error: PlayerErrors.values[e],
+      handle: SoundHandle(handle.value),
+    );
+    calloc.free(handle);
+    return ret;
   }
 
   late final _busPlayOnEnginePtr =
       _lookup<
         ffi.NativeFunction<
-          ffi.UnsignedInt Function(ffi.UnsignedInt, ffi.Float, ffi.Bool)
+          ffi.Int32 Function(
+            ffi.UnsignedInt,
+            ffi.Float,
+            ffi.Bool,
+            ffi.Pointer<ffi.UnsignedInt>,
+          )
         >
       >('busPlayOnEngine');
   late final _busPlayOnEngine = _busPlayOnEnginePtr
-      .asFunction<int Function(int, double, bool)>();
+      .asFunction<
+        int Function(int, double, bool, ffi.Pointer<ffi.UnsignedInt>)
+      >();
 
   /// Set the number of output channels for the bus (default is 2 = stereo).
   ///

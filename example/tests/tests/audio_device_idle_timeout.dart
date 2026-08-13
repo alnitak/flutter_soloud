@@ -33,7 +33,8 @@ Future<StringBuffer> testAudioDeviceIdleTimeout() async {
 
     // Allow a short grace period for async stop transitions.
     final deadline = DateTime.now().add(const Duration(milliseconds: 1000));
-    while (stoppedState != AudioDeviceState.stopped && DateTime.now().isBefore(deadline)) {
+    while (stoppedState != AudioDeviceState.stopped &&
+        DateTime.now().isBefore(deadline)) {
       await Future<void>.delayed(const Duration(milliseconds: 25));
       stoppedState = SoLoud.instance.getAudioDeviceState();
     }
@@ -69,7 +70,8 @@ Future<StringBuffer> testAudioDeviceIdleTimeout() async {
       'After creating a paused handle, expected AudioDeviceState.stopped '
       'but got $stateAfterPausedHandle.',
     );
-    strBuf.writeln('State after paused handle creation: $stateAfterPausedHandle');
+    strBuf
+        .writeln('State after paused handle creation: $stateAfterPausedHandle');
 
     // 4) Play the sound handle for a few seconds.
     SoLoud.instance.setPause(handle, false);
@@ -131,8 +133,10 @@ Future<StringBuffer> testAudioDeviceIdleTimeout() async {
     await Future<void>.delayed(idleTimeout);
     var stateAfterPauseIdle = SoLoud.instance.getAudioDeviceState();
 
-    final pauseIdleDeadline = DateTime.now().add(const Duration(milliseconds: 1000));
-    while (stateAfterPauseIdle != AudioDeviceState.stopped && DateTime.now().isBefore(pauseIdleDeadline)) {
+    final pauseIdleDeadline =
+        DateTime.now().add(const Duration(milliseconds: 1000));
+    while (stateAfterPauseIdle != AudioDeviceState.stopped &&
+        DateTime.now().isBefore(pauseIdleDeadline)) {
       await Future<void>.delayed(const Duration(milliseconds: 25));
       stateAfterPauseIdle = SoLoud.instance.getAudioDeviceState();
     }
@@ -147,8 +151,10 @@ Future<StringBuffer> testAudioDeviceIdleTimeout() async {
     // 8) Resume and verify started before schedulePause.
     SoLoud.instance.setPause(handle, false);
     var stateBeforeSchedulePause = SoLoud.instance.getAudioDeviceState();
-    final startedBeforePauseDeadline = DateTime.now().add(const Duration(milliseconds: 1000));
-    while (stateBeforeSchedulePause != AudioDeviceState.started && DateTime.now().isBefore(startedBeforePauseDeadline)) {
+    final startedBeforePauseDeadline =
+        DateTime.now().add(const Duration(milliseconds: 1000));
+    while (stateBeforeSchedulePause != AudioDeviceState.started &&
+        DateTime.now().isBefore(startedBeforePauseDeadline)) {
       await Future<void>.delayed(const Duration(milliseconds: 25));
       stateBeforeSchedulePause = SoLoud.instance.getAudioDeviceState();
     }
@@ -167,13 +173,17 @@ Future<StringBuffer> testAudioDeviceIdleTimeout() async {
       pausedAfterSchedulePause,
       'After schedulePause(1000ms), expected handle to be paused.',
     );
-    strBuf.writeln('Handle paused after schedulePause: $pausedAfterSchedulePause');
+    strBuf.writeln(
+      'Handle paused after schedulePause: $pausedAfterSchedulePause',
+    );
 
     // 10) Wait idle timeout again and verify stopped.
     await Future<void>.delayed(idleTimeout);
     var stateAfterSchedulePauseIdle = SoLoud.instance.getAudioDeviceState();
-    final stoppedAfterSchedulePauseDeadline = DateTime.now().add(const Duration(milliseconds: 1000));
-    while (stateAfterSchedulePauseIdle != AudioDeviceState.stopped && DateTime.now().isBefore(stoppedAfterSchedulePauseDeadline)) {
+    final stoppedAfterSchedulePauseDeadline =
+        DateTime.now().add(const Duration(milliseconds: 1000));
+    while (stateAfterSchedulePauseIdle != AudioDeviceState.stopped &&
+        DateTime.now().isBefore(stoppedAfterSchedulePauseDeadline)) {
       await Future<void>.delayed(const Duration(milliseconds: 25));
       stateAfterSchedulePauseIdle = SoLoud.instance.getAudioDeviceState();
     }
@@ -189,8 +199,10 @@ Future<StringBuffer> testAudioDeviceIdleTimeout() async {
     // 11) Resume and verify started before scheduleStop.
     SoLoud.instance.setPause(handle, false);
     var stateBeforeScheduleStop = SoLoud.instance.getAudioDeviceState();
-    final startedBeforeStopDeadline = DateTime.now().add(const Duration(milliseconds: 1000));
-    while (stateBeforeScheduleStop != AudioDeviceState.started && DateTime.now().isBefore(startedBeforeStopDeadline)) {
+    final startedBeforeStopDeadline =
+        DateTime.now().add(const Duration(milliseconds: 1000));
+    while (stateBeforeScheduleStop != AudioDeviceState.started &&
+        DateTime.now().isBefore(startedBeforeStopDeadline)) {
       await Future<void>.delayed(const Duration(milliseconds: 25));
       stateBeforeScheduleStop = SoLoud.instance.getAudioDeviceState();
     }
@@ -204,11 +216,15 @@ Future<StringBuffer> testAudioDeviceIdleTimeout() async {
     // 12) Schedule stop in 1000 ms and verify handle invalidated.
     SoLoud.instance.scheduleStop(handle, const Duration(milliseconds: 1000));
     await Future<void>.delayed(const Duration(milliseconds: 1100));
-    var isHandleValidAfterScheduleStop = SoLoud.instance.getIsValidVoiceHandle(handle);
-    final invalidHandleDeadline = DateTime.now().add(const Duration(milliseconds: 1000));
-    while (isHandleValidAfterScheduleStop && DateTime.now().isBefore(invalidHandleDeadline)) {
+    var isHandleValidAfterScheduleStop =
+        SoLoud.instance.getIsValidVoiceHandle(handle);
+    final invalidHandleDeadline =
+        DateTime.now().add(const Duration(milliseconds: 1000));
+    while (isHandleValidAfterScheduleStop &&
+        DateTime.now().isBefore(invalidHandleDeadline)) {
       await Future<void>.delayed(const Duration(milliseconds: 25));
-      isHandleValidAfterScheduleStop = SoLoud.instance.getIsValidVoiceHandle(handle);
+      isHandleValidAfterScheduleStop =
+          SoLoud.instance.getIsValidVoiceHandle(handle);
     }
     assert(
       !isHandleValidAfterScheduleStop,
@@ -221,8 +237,10 @@ Future<StringBuffer> testAudioDeviceIdleTimeout() async {
     // 13) Wait idle timeout again and verify stopped (scheduleStop last).
     await Future<void>.delayed(idleTimeout);
     var stateAfterScheduleStopIdle = SoLoud.instance.getAudioDeviceState();
-    final stoppedAfterScheduleStopDeadline = DateTime.now().add(const Duration(milliseconds: 1000));
-    while (stateAfterScheduleStopIdle != AudioDeviceState.stopped && DateTime.now().isBefore(stoppedAfterScheduleStopDeadline)) {
+    final stoppedAfterScheduleStopDeadline =
+        DateTime.now().add(const Duration(milliseconds: 1000));
+    while (stateAfterScheduleStopIdle != AudioDeviceState.stopped &&
+        DateTime.now().isBefore(stoppedAfterScheduleStopDeadline)) {
       await Future<void>.delayed(const Duration(milliseconds: 25));
       stateAfterScheduleStopIdle = SoLoud.instance.getAudioDeviceState();
     }
@@ -246,11 +264,7 @@ Future<StringBuffer> testAudioDeviceIdleTimeout() async {
     );
 
     // 15) Play unpaused and non-looping, then wait for started (max 1000 ms).
-    final explosionHandle = SoLoud.instance.play(
-      explosion,
-      paused: false,
-      looping: false,
-    );
+    final explosionHandle = SoLoud.instance.play(explosion);
     var stateDuringExplosionStart = SoLoud.instance.getAudioDeviceState();
     final startedExplosionDeadline =
         DateTime.now().add(const Duration(milliseconds: 1000));
@@ -264,7 +278,8 @@ Future<StringBuffer> testAudioDeviceIdleTimeout() async {
       'After starting explosion playback, expected AudioDeviceState.started '
       'within 1000 ms but got $stateDuringExplosionStart.',
     );
-    strBuf.writeln('State during explosion playback: $stateDuringExplosionStart');
+    strBuf
+        .writeln('State during explosion playback: $stateDuringExplosionStart');
 
     // 16) Wait for full playback duration.
     await Future<void>.delayed(explosionDuration);

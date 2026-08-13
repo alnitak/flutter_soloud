@@ -35,7 +35,7 @@ namespace SoLoud
 
 	float Soloud::getPostClipScaler() const
 	{
-		return mPostClipScaler;
+		return mPostClipScaler.load(std::memory_order_acquire);
 	}
 
 	unsigned int Soloud::getMainResampler() const
@@ -134,6 +134,20 @@ namespace SoLoud
 			return 0;
 		}
 		time v = mVoice[ch]->mLoopPoint;
+		unlockAudioMutex_internal();
+		return v;
+	}
+
+	time Soloud::getLoopEndPoint(handle aVoiceHandle)
+	{
+		lockAudioMutex_internal();
+		int ch = getVoiceFromHandle_internal(aVoiceHandle);
+		if (ch == -1)
+		{
+			unlockAudioMutex_internal();
+			return 0;
+		}
+		time v = mVoice[ch]->mLoopEndPoint;
 		unlockAudioMutex_internal();
 		return v;
 	}
@@ -332,6 +346,14 @@ namespace SoLoud
 				lowest_play_index_value = mVoice[i]->mPlayIndex;
 				lowest_play_index = i;
 			}
+		}
+		if (lowest_play_index < 0)
+		{
+			// Every voice is taken and protected, so there is nothing that can
+			// be stopped to make room. Report the failure instead of falling
+			// through to stopVoice_internal(-1), which would convert -1 to
+			// UINT_MAX and index mVoice[] out of bounds.
+			return -1;
 		}
 		stopVoice_internal(lowest_play_index);
 		return lowest_play_index;

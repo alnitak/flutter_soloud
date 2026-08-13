@@ -39,6 +39,10 @@ namespace SoLoud
 
 	void RobotizeFilterInstance::filterChannel(float *aBuffer, unsigned int aSamples, float aSamplerate, time aTime, unsigned int aChannel, unsigned int aChannels)
 	{
+		if (aChannel == 0)
+		{
+			updateParams(aTime);
+		}
 		unsigned int i;
 		int period = (int)(aSamplerate / mParam[FREQ]);
 		int start = (int)(aTime * aSamplerate) % period;

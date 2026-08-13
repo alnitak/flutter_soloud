@@ -28,6 +28,7 @@ freely, subject to the following restrictions:
 #include <atomic>
 #include <stdlib.h> // rand
 #include <math.h> // sin
+#include <atomic> // std::atomic
 
 #ifdef SOLOUD_NO_ASSERTS
 #define SOLOUD_ASSERT(x)
@@ -171,10 +172,21 @@ namespace SoLoud
 		soloudResultFunction mBackendPauseFunc;
 		soloudResultFunction mBackendResumeFunc;
 
-		// Set the callback to call when a voice is ended/stopped
-		void (*_voiceEndedCallback)(unsigned int*) = nullptr;
+		// Set the callback to call when a voice is ended/stopped.
+		//
+		// stopVoice_internal() runs with the audio mutex held, so it must not
+		// call out to the embedder directly. The callback reaches back into the
+		// embedder's own bookkeeping (and its locks), which inverts the lock
+		// order against callers that hold those locks across a SoLoud call and
+		// deadlocks the engine; and a callback that crashes, stalls or blocks
+		// (for example a Dart NativeCallable whose isolate has gone away) would
+		// strand the audio mutex and wedge every later SoLoud call, including
+		// deinit(). Ended voices are queued instead and dispatched by
+		// unlockAudioMutex_internal() once the mutex is released.
+		std::atomic<void (*)(unsigned int*)> _voiceEndedCallback{nullptr};
 		void setVoiceEndedCallback(void (*voiceEndedCallback)(unsigned int*)) {
-			_voiceEndedCallback = voiceEndedCallback;
+			_voiceEndedCallback.store(voiceEndedCallback,
+				std::memory_order_release);
 		}
 
 		// Called after a mix cycle in which a voice stopped or became paused.
@@ -186,10 +198,38 @@ namespace SoLoud
 				std::memory_order_release);
 		}
 
-		// Set the callback to call when the device receive a state changed
-		void (*_stateChangedCallback)(unsigned int) = nullptr;
+		// Handles of voices that ended while the audio mutex was held, pending
+		// dispatch. All three members are only touched with the audio mutex held.
+		unsigned int mEndedVoiceQueue[VOICE_COUNT];
+		unsigned int mEndedVoiceCount = 0;
+		// True while a thread is draining mEndedVoiceQueue. A callback that
+		// stops another voice re-enters SoLoud and would otherwise start a
+		// nested dispatch from inside the current one, delivering the newer
+		// handle ahead of the rest of the batch and stacking another
+		// VOICE_COUNT-sized snapshot per level. With the guard set, the nested
+		// unlock just leaves its handle queued for the running drain loop.
+		bool mDispatchingEndedVoices = false;
+
+		// Set the callback to call when the device receive a state changed.
+		//
+		// Atomic like the other cross-thread callbacks: miniaudio dispatches
+		// notifications from backend/platform threads while teardown clears
+		// this from the calling thread, and the embedder's device scheduler
+		// publishes its own events through it.
+		std::atomic<void (*)(unsigned int)> _stateChangedCallback{nullptr};
 		void setStateChangedCallback(void (*stateChangedCallback)(unsigned int)) {
-			_stateChangedCallback = stateChangedCallback;
+			_stateChangedCallback.store(stateChangedCallback,
+				std::memory_order_release);
+		}
+
+		// Snapshot once and dispatch. Centralized so no call site can
+		// reintroduce a check-then-load: with two separate reads, a teardown
+		// landing between them turns a non-null check into a null call.
+		void notifyStateChanged(unsigned int aState) {
+			auto stateChangedCallback =
+				_stateChangedCallback.load(std::memory_order_acquire);
+			if (stateChangedCallback != nullptr)
+				stateChangedCallback(aState);
 		}
 
 		// Device-interruption callback used by the embedding lifecycle owner.
@@ -309,6 +349,16 @@ namespace SoLoud
 		handle play3d(AudioSource &aSound, float aPosX, float aPosY, float aPosZ, float aVelX = 0.0f, float aVelY = 0.0f, float aVelZ = 0.0f, float aVolume = 1.0f, bool aPaused = 0, unsigned int aBus = 0);
 		// Start playing a 3d audio source, delayed in relation to other sounds called via this function.
 		handle play3dClocked(time aSoundTime, AudioSource &aSound, float aPosX, float aPosY, float aPosZ, float aVelX = 0.0f, float aVelY = 0.0f, float aVelZ = 0.0f, float aVolume = 1.0f, unsigned int aBus = 0);
+		// Calculate the delay in samples for a clocked play call. Maps the caller's "physics time" to the output sample timeline using a persistent anchor, so sounds can be scheduled with sample accuracy across output buffers. Used internally by playClocked and play3dClocked.
+		unsigned int getClockedDelaySamples(time aSoundTime);
+		// Reset the clocked play anchor to the state as if no playClocked/play3dClocked call was ever made. The next clocked play will anchor the caller's clock to the audio clock again.
+		void resetClockedAnchor();
+		// Get the engine's global stream time, in seconds. This is the clock the mixer advances at the start of every output buffer and the time base used by playScheduled, scheduleStopAt and scheduleFadeAt. It only advances while the audio device is mixing.
+		time getEngineTime();
+		// Start playing a sound at an absolute engine time (see getEngineTime), with sample accuracy. Unlike playClocked there is no anchor and no re-anchor guard, so sounds can be scheduled arbitrarily far in the future. A time in the past plays as soon as possible. Negative volume means to use default.
+		handle playScheduled(time aEngineTime, AudioSource &aSound, float aVolume = -1.0f, float aPan = 0.0f, unsigned int aBus = 0);
+		// Calculate the delay in samples for a scheduled play call. Maps an absolute engine time to the output sample timeline. Used internally by playScheduled.
+		unsigned int getScheduledDelaySamples(time aEngineTime);
 		// Start playing a sound without any panning. It will be played at full volume.
 		handle playBackground(AudioSource &aSound, float aVolume = -1.0f, bool aPaused = 0, unsigned int aBus = 0);
 
@@ -331,6 +381,16 @@ namespace SoLoud
 		void fadeFilterParameter(handle aVoiceHandle, unsigned int aFilterId, unsigned int aAttributeId, float aTo, time aTime);
 		// Oscillate a live filter parameter. Use 0 for the global filters.
 		void oscillateFilterParameter(handle aVoiceHandle, unsigned int aFilterId, unsigned int aAttributeId, float aFrom, float aTo, time aTime);
+		// Delete the live filter instance at aFilterId from a voice and shift the
+		// remaining instances down by one slot, keeping the voice filter slots in
+		// sync with the sound source filter list. Must be called for every active
+		// voice of a sound before deleting a Filter object, since voice filter
+		// instances keep a reference to their parent filter.
+		void removeVoiceFilter(handle aVoiceHandle, unsigned int aFilterId);
+		// Create a live instance of aFilter at aFilterId for a voice. Voices
+		// snapshot the source filters only at play time, so this is needed to
+		// make a filter added to a sound affect its already playing voices.
+		void addVoiceFilter(handle aVoiceHandle, unsigned int aFilterId, Filter *aFilter);
 
 		// Get current play time, in seconds.
 		time getStreamTime(handle aVoiceHandle);
@@ -370,9 +430,16 @@ namespace SoLoud
 		bool getAutoStop(handle aVoiceHandle);
 		// Get voice loop point value
 		time getLoopPoint(handle aVoiceHandle);
+		// Get voice loop end point value. Zero uses the natural source end.
+		time getLoopEndPoint(handle aVoiceHandle);
 
-		// Set voice loop point value
+		// Set voice loop point value. Live playback applies the change at the
+		// next source refill; the getter reflects it immediately.
 		void setLoopPoint(handle aVoiceHandle, time aLoopPoint);
+		// Set voice loop end point value. Zero uses the natural source end.
+		// Live playback applies the change at the next source refill; the getter
+		// reflects it immediately.
+		void setLoopEndPoint(handle aVoiceHandle, time aLoopEndPoint);
 		// Set voice's loop state
 		void setLooping(handle aVoiceHandle, bool aLooping);
 		// Set whether sound should auto-stop when it ends
@@ -420,6 +487,10 @@ namespace SoLoud
 		void schedulePause(handle aVoiceHandle, time aTime);
 		// Schedule a stream to stop
 		void scheduleStop(handle aVoiceHandle, time aTime);
+		// Schedule a stream to stop at an absolute engine time (see getEngineTime). A time in the past stops immediately.
+		void scheduleStopAt(handle aVoiceHandle, time aEngineTime);
+		// Schedule a volume fade to start at an absolute engine time (see getEngineTime), fading from the current volume to aTo over aFadeTime seconds. If aThenStop is true, the voice is stopped when the fade ends.
+		void scheduleFadeAt(handle aVoiceHandle, time aEngineTime, float aTo, time aFadeTime, bool aThenStop);
 
 		// Set up volume oscillator
 		void oscillateVolume(handle aVoiceHandle, float aFrom, float aTo, time aTime);
@@ -432,6 +503,10 @@ namespace SoLoud
 
 		// Set global filters. Set to NULL to clear the filter.
 		void setGlobalFilter(unsigned int aFilterId, Filter *aFilter);
+		// Move the global filter and its live instance from aFromSlot to aToSlot,
+		// leaving aFromSlot empty. Unlike setGlobalFilter, the live instance is
+		// moved as-is, preserving its current parameter values.
+		void moveGlobalFilter(unsigned int aFromSlot, unsigned int aToSlot);
 
 		// Enable or disable visualization data gathering
 		void setVisualizationEnable(bool aEnable);
@@ -512,6 +587,8 @@ namespace SoLoud
 		void mapResampleBuffers_internal();
 		// Perform mixing for a specific bus
 		void mixBus_internal(float *aBuffer, unsigned int aSamplesToRead, unsigned int aBufferSize, float *aScratch, unsigned int aBus, float aSamplerate, unsigned int aChannels, unsigned int aResampler);
+		// Fill a source block while enforcing its optional loop end point.
+		unsigned int readSourceSamples_internal(AudioSourceInstance *aVoice, float *aBuffer, unsigned int aSamplesToRead, unsigned int aBufferSize);
 		// Find a free voice, stopping the oldest if no free voice is found.
 		int findFreeVoice_internal();
 		// Converts handle to voice, if the handle is valid. Returns -1 if not.
@@ -545,6 +622,10 @@ namespace SoLoud
 		void lockAudioMutex_internal();
 		// Unlock audio thread mutex.
 		void unlockAudioMutex_internal();
+		// Slow path of unlockAudioMutex_internal(): drains mEndedVoiceQueue.
+		// Kept out of line so the common (empty queue) path does not carry the
+		// snapshot buffer in its stack frame.
+		void unlockAudioMutexAndDispatchEndedVoices_internal();
 
 		// Max. number of active voices. Busses and tickable inaudibles also count against this.
 		unsigned int mMaxActiveVoices;
@@ -581,7 +662,15 @@ namespace SoLoud
 		// Global volume. Applied before clipping.
 		float mGlobalVolume;
 		// Post-clip scaler. Applied after clipping.
-		float mPostClipScaler;
+		// ###### flutter_soloud local patch ######
+		// Atomic: clip_internal() runs on the audio thread *after*
+		// unlockAudioMutex_internal(), so the audio mutex does not order it
+		// against setPostClipScaler() -- which flutter_soloud calls from
+		// init(), by which point the device is already mixing.
+		// ThreadSanitizer reports the bare float as a data race in
+		// clip_internal(). Every reader snapshots it once into a local, which
+		// is also what the SSE paths need since they take its address.
+		std::atomic<float> mPostClipScaler;
 		// Current play index. Used to create audio handles.
 		unsigned int mPlayIndex;
 		// Current sound source index. Used to create sound source IDs.
@@ -590,8 +679,14 @@ namespace SoLoud
 		Fader mGlobalVolumeFader;
 		// Global stream time, for the global volume fader.
 		time mStreamTime;
-		// Last time seen by the playClocked call
-		time mLastClockedTime;
+		// Anchor for the playClocked calls: maps the "physics time" given by
+		// the caller to the output sample timeline. A negative
+		// mClockedAnchorSample means the anchor has not been set yet.
+		time mClockedAnchorTime;
+		long long mClockedAnchorSample;
+		// Last "physics time" seen by a clocked play call. Used to detect
+		// when the caller's clock is restarted (time going backwards).
+		time mClockedLastTime;
 		// Global filter
 		Filter *mFilter[FILTERS_PER_STREAM];
 		// Global filter instance

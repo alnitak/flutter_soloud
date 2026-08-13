@@ -56,10 +56,16 @@ namespace SoLoud
 		virtual BusInstance *createInstance();
 		// Set filter. Set to NULL to clear the filter.
 		virtual void setFilter(unsigned int aFilterId, Filter *aFilter);
+		// Move the filter and its live instance from aFromSlot to aToSlot,
+		// leaving aFromSlot empty. Unlike setFilter, the live instance is
+		// moved as-is, preserving its current parameter values.
+		virtual void moveFilter(unsigned int aFromSlot, unsigned int aToSlot);
 		// Play sound through the bus
 		handle play(AudioSource &aSound, float aVolume = 1.0f, float aPan = 0.0f, bool aPaused = 0);
 		// Play sound through the bus, delayed in relation to other sounds called via this function.
 		handle playClocked(time aSoundTime, AudioSource &aSound, float aVolume = 1.0f, float aPan = 0.0f);
+		// Play sound through the bus at an absolute engine time (see Soloud::getEngineTime), with sample accuracy.
+		handle playScheduled(time aEngineTime, AudioSource &aSound, float aVolume = 1.0f, float aPan = 0.0f);
 		// Start playing a 3d audio source through the bus
 		handle play3d(AudioSource &aSound, float aPosX, float aPosY, float aPosZ, float aVelX = 0.0f, float aVelY = 0.0f, float aVelZ = 0.0f, float aVolume = 1.0f, bool aPaused = 0);
 		// Start playing a 3d audio source through the bus, delayed in relation to other sounds called via this function.

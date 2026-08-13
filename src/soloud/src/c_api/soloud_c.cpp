@@ -379,6 +379,18 @@ void Soloud_setLoopPoint(void * aClassPtr, unsigned int aVoiceHandle, double aLo
 	cl->setLoopPoint(aVoiceHandle, aLoopPoint);
 }
 
+double Soloud_getLoopEndPoint(void * aClassPtr, unsigned int aVoiceHandle)
+{
+	Soloud * cl = (Soloud *)aClassPtr;
+	return cl->getLoopEndPoint(aVoiceHandle);
+}
+
+void Soloud_setLoopEndPoint(void * aClassPtr, unsigned int aVoiceHandle, double aLoopEndPoint)
+{
+	Soloud * cl = (Soloud *)aClassPtr;
+	cl->setLoopEndPoint(aVoiceHandle, aLoopEndPoint);
+}
+
 void Soloud_setLooping(void * aClassPtr, unsigned int aVoiceHandle, int aLooping)
 {
 	Soloud * cl = (Soloud *)aClassPtr;
@@ -2992,4 +3004,3 @@ void WavStream_stop(void * aClassPtr)
 }
 
 } // extern "C"
-

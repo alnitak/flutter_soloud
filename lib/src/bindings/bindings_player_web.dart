@@ -1,5 +1,6 @@
 // ignore_for_file: avoid_positional_boolean_parameters
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
@@ -38,11 +39,10 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   WorkerController? workerController;
   bool _eventCallbacksSetUp = false;
 
-  @override
-  void prepareEngineInit() {}
-
-  @override
-  void requestEngineShutdown() {}
+  /// Whether the current mixer output capture is using fixed-size PCM chunks.
+  /// When true, the native side advances the circular buffer read position
+  /// before invoking the callback, so Dart must not advance it again.
+  bool _mixerOutputChunkMode = false;
 
   @override
   void disposeNativeCallables() {
@@ -80,6 +80,11 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     workerController = WorkerController();
     await workerController!.setWasmWorker(wasmWorker);
 
+    // Register the native mixer output callback. On the web the callback does
+    // not call Dart directly; it posts a message to the worker from the audio
+    // thread with the buffer offset and length.
+    wasmSetMixerOutputCallback(0);
+
     _eventCallbacksSetUp = true;
     workerController!.onReceive().listen((event) {
       /// The [event] coming from `web/worker.dart.js` is of String type.
@@ -87,25 +92,57 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
       switch (event) {
         case String():
           final decodedMap = jsonDecode(event) as Map;
-          if (decodedMap['message'] == 'voiceEndedCallback') {
-            _log.finest(
-              () =>
-                  'VOICE ENDED EVENT handle: '
-                  '${(decodedMap['value'] as num).toInt()}\n',
-            );
-            voiceEndedEventController.add((decodedMap['value'] as num).toInt());
-          }
+          _handleWorkerMessage(decodedMap);
         case Map():
-          if (event['message'] == 'voiceEndedCallback') {
-            _log.finest(
-              () =>
-                  'VOICE ENDED EVENT handle: '
-                  '${(event['value'] as num).toInt()}\n',
-            );
-            voiceEndedEventController.add((event['value'] as num).toInt());
-          }
+          _handleWorkerMessage(event);
       }
     });
+  }
+
+  @override
+  void registerMixerOutputCallback() {
+    // On the web there is no separate isolate boundary, so we just ensure the
+    // worker-based event plumbing (including the mixer output callback) is set
+    // up. This is idempotent and safe to call from any place that needs to
+    // listen to [mixerOutputChunkEvents].
+    setDartEventCallbacks();
+  }
+
+  void _handleWorkerMessage(Map<dynamic, dynamic> message) {
+    final msg = message['message'] as String?;
+    if (msg == null) return;
+
+    switch (msg) {
+      case 'voiceEndedCallback':
+        _log.finest(
+          () =>
+              'VOICE ENDED EVENT handle: '
+              '${(message['value'] as num).toInt()}\n',
+        );
+        voiceEndedEventController.add((message['value'] as num).toInt());
+      case 'mixerOutputData':
+        final offset = (message['offset'] as num).toInt();
+        final length = (message['length'] as num).toInt();
+        _log.finest(
+          () => 'MIXER OUTPUT DATA EVENT offset: $offset length: $length',
+        );
+        if (length <= 0) return;
+
+        // Copy the data out of the WASM memory buffer and advance the native
+        // read position so the circular buffer can reuse the memory. In fixed
+        // PCM chunk mode the native side already advances the read position,
+        // so Dart must not advance it again.
+        final heapU8 = wasmHeapU8;
+        final bytes = Uint8List.sublistView(
+          heapU8.toDart,
+          offset,
+          offset + length,
+        );
+        mixerOutputChunkController.add(Uint8List.fromList(bytes));
+        if (!_mixerOutputChunkMode) {
+          advanceMixerOutputReadPosition(length);
+        }
+    }
   }
 
   /// If we will need to send messages to the native. Not used now.
@@ -120,6 +157,80 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
 
   @override
   bool areXiphLibsAvailable() => wasmAreXiphLibsAvailable() == 1;
+
+  @override
+  PlayerErrors startMixerOutputCapture(
+    MixerOutputFormat format,
+    int sampleRate,
+    int channels,
+    int bufferSizeBytes,
+    int notificationThresholdBytes,
+    int chunkPCMFrames,
+  ) {
+    _mixerOutputChunkMode = format.isPcm && chunkPCMFrames > 0;
+    final ret = wasmStartMixerCapture(
+      format.value,
+      sampleRate,
+      channels,
+      bufferSizeBytes,
+      notificationThresholdBytes,
+      chunkPCMFrames,
+    );
+    return PlayerErrors.values[ret];
+  }
+
+  @override
+  void stopMixerOutputCapture() {
+    _mixerOutputChunkMode = false;
+    wasmStopMixerCapture();
+  }
+
+  @override
+  bool isMixerOutputCaptureRunning() => wasmIsMixerCaptureRunning() == 1;
+
+  @override
+  int getMixerOutputBufferSize() => wasmGetMixerCaptureBufferSize();
+
+  @override
+  int getMixerOutputAvailableBytes() => wasmGetMixerCaptureAvailableBytes();
+
+  @override
+  int getMixerOutputReadOffset() => wasmGetMixerCaptureReadOffset();
+
+  @override
+  void advanceMixerOutputReadPosition(int bytes) {
+    if (bytes > 0) {
+      wasmAdvanceMixerCaptureReadPosition(bytes);
+    }
+  }
+
+  @override
+  Uint8List getMixerOutputWavHeader() {
+    final ptr = wasmGetMixerOutputWavHeader();
+    if (ptr == 0) {
+      return Uint8List(0);
+    }
+    final heapU8 = wasmHeapU8;
+    final bytes = Uint8List.sublistView(heapU8.toDart, ptr, ptr + 44);
+    final copy = Uint8List.fromList(bytes);
+    wasmFree(ptr);
+    return copy;
+  }
+
+  @override
+  Uint8List copyMixerOutputBuffer(int offset, int length) {
+    if (length <= 0) {
+      return Uint8List(0);
+    }
+    final basePointer = wasmGetMixerCaptureBufferPointer();
+    final heapU8 = wasmHeapU8;
+    final bytes = Uint8List.sublistView(
+      heapU8.toDart,
+      basePointer + offset,
+      basePointer + offset + length,
+    );
+    return Uint8List.fromList(bytes);
+  }
 
   @override
   Future<PlayerErrors> initEngine(
@@ -141,6 +252,21 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     );
     return PlayerErrors.values[ret];
   }
+
+  @override
+  Future<void> deinitAsync() async => deinit();
+
+  @override
+  void prepareEngineInit() {}
+
+  @override
+  bool get usesAsyncEnginePrepare => false;
+
+  @override
+  Future<void> prepareEngineInitAsync() async {}
+
+  @override
+  void requestEngineShutdown() {}
 
   @override
   void setAndroidAAudioAttributes(bool managed) {
@@ -226,11 +352,9 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   void deinit() => wasmDeinit();
 
   @override
-  // Web is single-threaded (no isolates), so call the wasm function directly.
-  Future<void> deinitAsync() async => wasmDeinit();
-
-  @override
-  bool isInited() => wasmIsInited() == 1;
+  bool isInited() {
+    return wasmIsInited() == 1;
+  }
 
   @override
   ({PlayerErrors error, SoundHash soundHash}) loadFile(
@@ -255,8 +379,8 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     final pathPtr = wasmMalloc(uniqueName.length);
 
     /// Copy the buffer into WASM memory using the HEAPU8 view.
-    final heapBuffer = wasmHeapU8Buffer;
-    Uint8List.view(heapBuffer.toDart).setAll(bytesPtr, buffer);
+    final heapU8 = wasmHeapU8;
+    heapU8.toDart.setAll(bytesPtr, buffer);
 
     /// Copy the path string into WASM memory.
     for (var i = 0; i < uniqueName.length; i++) {
@@ -347,6 +471,155 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }
 
   @override
+  ({PlayerErrors error, SoundHash soundHash}) setPullBufferStream(
+    int bufferSizeBytes,
+    double bufferTriggerPosition,
+    int sampleRate,
+    int channels,
+    int format,
+    int audioSizeBytes,
+    OnBufferingCallbackTFunction? onBuffering,
+    OnMetadataCallbackTFunction? onMetadata,
+    OnMoreDataIsNeededCallbackTFunction? onMoreDataIsNeeded,
+    OnAudioDurationCallbackTFunction? onAudioDuration,
+  ) {
+    final hashPtr = wasmMalloc(4); // 4 bytes for an int32
+    final result = wasmSetPullBufferStream(
+      hashPtr,
+      bufferSizeBytes,
+      bufferTriggerPosition,
+      sampleRate,
+      channels,
+      format,
+      wasmBigInt(audioSizeBytes.toString()),
+      onBuffering == null ? 0 : 1,
+      onMetadata == null ? 0 : 1,
+      onMoreDataIsNeeded == null ? 0 : 1,
+      onAudioDuration == null ? 0 : 1,
+    );
+    final hash = wasmGetI32Value(hashPtr, 'i32');
+    final soundHash = SoundHash(hash);
+    final ret = (error: PlayerErrors.values[result], soundHash: soundHash);
+    wasmFree(hashPtr);
+
+    if (onBuffering != null) {
+      globalThis.setProperty(
+        'dartOnBufferingCallback_$hash'.toJS,
+        onBuffering.toJS,
+      );
+    }
+
+    if (onMetadata != null) {
+      @JSExport()
+      void webMetadataCallback(JSNumber metadataPtr) {
+        onMetadata(metadataPtr.toDartInt);
+      }
+
+      globalThis.setProperty(
+        'dartOnMetadataCallback_$hash'.toJS,
+        webMetadataCallback.toJS,
+      );
+    }
+
+    if (onMoreDataIsNeeded != null) {
+      @JSExport()
+      void webMoreDataIsNeededCallback(int offset) {
+        // The C++ side passes the offset as a 64-bit integer, which the
+        // web target represents as a JS BigInt. Accepting [int] here lets
+        // the runtime convert the BigInt to a Dart integer automatically.
+        onMoreDataIsNeeded(offset);
+      }
+
+      globalThis.setProperty(
+        'dartOnMoreDataIsNeededCallback_$hash'.toJS,
+        webMoreDataIsNeededCallback.toJS,
+      );
+      // The C++ side does not request the first chunk on the web because the
+      // callback is registered only after the WASM call returns. Fire the
+      // initial request after the current call stack so callers can finish
+      // assigning the returned [SoundHash] before the callback runs.
+      scheduleMicrotask(() => onMoreDataIsNeeded(0));
+    }
+
+    if (onAudioDuration != null) {
+      @JSExport()
+      void webAudioDurationCallback(JSNumber duration) {
+        onAudioDuration(duration.toDartDouble);
+      }
+
+      globalThis.setProperty(
+        'dartOnAudioDurationCallback_$hash'.toJS,
+        webAudioDurationCallback.toJS,
+      );
+    }
+
+    return ret;
+  }
+
+  @override
+  PlayerErrors resetPullBufferStream(SoundHash soundHash) {
+    final result = wasmResetPullBufferStream(soundHash.hash);
+    return PlayerErrors.values[result];
+  }
+
+  @override
+  PlayerErrors addPullBufferDataStream(
+    int hash,
+    Uint8List audioChunk, {
+    int offset = 0,
+  }) {
+    // On the web, `onMoreDataIsNeeded` can be invoked synchronously from the
+    // audio thread's `onaudioprocess` callback. Calling back into the WASM
+    // module from that same thread re-enters the pull-buffer mutex and
+    // deadlocks. Copy the chunk and defer the native call so it runs after the
+    // audio callback has returned and released the mutex.
+    final chunkCopy = Uint8List.fromList(audioChunk);
+
+    scheduleMicrotask(() {
+      final audioChunkPtr = wasmMalloc(chunkCopy.length);
+
+      final heapU8 = wasmHeapU8;
+      heapU8.toDart.setAll(audioChunkPtr, chunkCopy);
+
+      try {
+        wasmAddPullBufferDataStream(
+          hash,
+          audioChunkPtr,
+          chunkCopy.length,
+          wasmBigInt(offset.toString()),
+        );
+      } on Object catch (e, st) {
+        _log.warning('addPullBufferDataStream failed: $e\n$st');
+      } finally {
+        wasmFree(audioChunkPtr);
+      }
+    });
+
+    return PlayerErrors.noError;
+  }
+
+  @override
+  ({PlayerErrors error, double startTime, double endTime})
+  getPullBufferTimeRange(int hash) {
+    final startTimePtr = wasmMalloc(8); // 8 bytes for a double
+    final endTimePtr = wasmMalloc(8);
+
+    final result = wasmGetPullBufferTimeRange(hash, startTimePtr, endTimePtr);
+
+    final startTime = wasmGetF64Value(startTimePtr, 'double');
+    final endTime = wasmGetF64Value(endTimePtr, 'double');
+
+    wasmFree(startTimePtr);
+    wasmFree(endTimePtr);
+
+    return (
+      error: PlayerErrors.values[result],
+      startTime: startTime,
+      endTime: endTime,
+    );
+  }
+
+  @override
   PlayerErrors resetBufferStream(SoundHash soundHash) {
     final result = wasmResetBufferStream(soundHash.hash);
     return PlayerErrors.values[result];
@@ -375,8 +648,8 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     final audioChunkPtr = wasmMalloc(audioChunk.length);
 
     /// Copy the audio chunk into WASM memory using the HEAPU8 view.
-    final heapBuffer = wasmHeapU8Buffer;
-    Uint8List.view(heapBuffer.toDart).setAll(audioChunkPtr, audioChunk);
+    final heapU8 = wasmHeapU8;
+    heapU8.toDart.setAll(audioChunkPtr, audioChunk);
 
     final result = wasmAddAudioDataStream(
       hash,
@@ -473,13 +746,13 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }
 
   @override
-  void pauseSwitch(SoundHandle handle) {
-    return wasmPauseSwitch(handle.id);
+  PlayerErrors pauseSwitch(SoundHandle handle) {
+    return PlayerErrors.values[wasmPauseSwitch(handle.id)];
   }
 
   @override
-  void setPause(SoundHandle handle, int pause) {
-    return wasmSetPause(handle.id, pause);
+  PlayerErrors setPause(SoundHandle handle, int pause) {
+    return PlayerErrors.values[wasmSetPause(handle.id, pause)];
   }
 
   @override
@@ -511,6 +784,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     bool paused = false,
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
+    Duration? loopingEndAt,
   }) {
     final handlePtr = wasmMalloc(4); // 4 bytes for an int32
     final result = wasmPlay(
@@ -521,6 +795,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
       paused,
       looping,
       loopingStartAt.toDouble(),
+      loopingEndAt?.toDouble() ?? 0,
       handlePtr,
     );
 
@@ -536,8 +811,110 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }
 
   @override
-  void stop(SoundHandle handle) {
-    return wasmStop(handle.id);
+  ({PlayerErrors error, SoundHandle newHandle}) playClocked(
+    SoundHash soundHash,
+    Duration soundTime, {
+    int busId = 0,
+    double volume = 1,
+    double pan = 0,
+  }) {
+    final handlePtr = wasmMalloc(4); // 4 bytes for an int32
+    final result = wasmPlayClocked(
+      soundHash.hash,
+      soundTime.toDouble(),
+      busId,
+      volume,
+      pan,
+      handlePtr,
+    );
+
+    /// "*" means unsigned int 32
+    final newHandle = wasmGetI32Value(handlePtr, 'i32');
+    final ret = (
+      error: PlayerErrors.values[result],
+      newHandle: SoundHandle(newHandle),
+    );
+    wasmFree(handlePtr);
+
+    return ret;
+  }
+
+  @override
+  void setDelaySamples(SoundHandle handle, int samples) {
+    wasmSetDelaySamples(handle.id, samples);
+  }
+
+  @override
+  Duration getStreamTime(SoundHandle handle) {
+    return wasmGetStreamTime(handle.id).toDuration();
+  }
+
+  @override
+  void resetStreamTime() {
+    wasmResetStreamTime();
+  }
+
+  @override
+  Duration getEngineTime() {
+    return wasmGetEngineTime().toDuration();
+  }
+
+  @override
+  ({PlayerErrors error, SoundHandle newHandle}) playScheduled(
+    SoundHash soundHash,
+    Duration atTime, {
+    Duration duration = Duration.zero,
+    int busId = 0,
+    double volume = 1,
+    double pan = 0,
+  }) {
+    final handlePtr = wasmMalloc(4); // 4 bytes for an int32
+    final result = wasmPlayScheduled(
+      soundHash.hash,
+      atTime.toDouble(),
+      duration.toDouble(),
+      busId,
+      volume,
+      pan,
+      handlePtr,
+    );
+
+    /// "*" means unsigned int 32
+    final newHandle = wasmGetI32Value(handlePtr, 'i32');
+    final ret = (
+      error: PlayerErrors.values[result],
+      newHandle: SoundHandle(newHandle),
+    );
+    wasmFree(handlePtr);
+
+    return ret;
+  }
+
+  @override
+  void stopScheduled(SoundHandle handle, Duration atTime) {
+    wasmStopScheduled(handle.id, atTime.toDouble());
+  }
+
+  @override
+  void fadeScheduled(
+    SoundHandle handle,
+    Duration atTime,
+    double to,
+    Duration time, {
+    bool thenStop = false,
+  }) {
+    wasmFadeScheduled(
+      handle.id,
+      atTime.toDouble(),
+      to,
+      time.toDouble(),
+      thenStop ? 1 : 0,
+    );
+  }
+
+  @override
+  PlayerErrors stop(SoundHandle handle) {
+    return PlayerErrors.values[wasmStop(handle.id)];
   }
 
   @override
@@ -572,6 +949,17 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   @override
   void setLoopPoint(SoundHandle handle, Duration timestamp) {
     wasmSetLoopPoint(handle.id, timestamp.toDouble());
+  }
+
+  @override
+  Duration? getLoopEndPoint(SoundHandle handle) {
+    final seconds = wasmGetLoopEndPoint(handle.id);
+    return seconds > 0 ? seconds.toDuration() : null;
+  }
+
+  @override
+  void setLoopEndPoint(SoundHandle handle, Duration? timestamp) {
+    wasmSetLoopEndPoint(handle.id, timestamp?.toDouble() ?? 0);
   }
 
   @override
@@ -1034,6 +1422,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     bool paused = false,
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
+    Duration? loopingEndAt,
   }) {
     final handlePtr = wasmMalloc(4); // 4 bytes for an int32
     final result = wasmPlay3d(
@@ -1049,6 +1438,46 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
       paused ? 1 : 0,
       looping ? 1 : 0,
       loopingStartAt.toDouble(),
+      loopingEndAt?.toDouble() ?? 0,
+      handlePtr,
+    );
+
+    /// "*" means unsigned int 32
+    final newHandle = wasmGetI32Value(handlePtr, 'i32');
+    final ret = (
+      error: PlayerErrors.values[result],
+      newHandle: SoundHandle(newHandle),
+    );
+    wasmFree(handlePtr);
+
+    return ret;
+  }
+
+  @override
+  ({PlayerErrors error, SoundHandle newHandle}) play3dClocked(
+    SoundHash soundHash,
+    Duration soundTime,
+    double posX,
+    double posY,
+    double posZ, {
+    int busId = 0,
+    double velX = 0,
+    double velY = 0,
+    double velZ = 0,
+    double volume = 1,
+  }) {
+    final handlePtr = wasmMalloc(4); // 4 bytes for an int32
+    final result = wasmPlay3dClocked(
+      soundHash.hash,
+      soundTime.toDouble(),
+      busId,
+      posX,
+      posY,
+      posZ,
+      velX,
+      velY,
+      velZ,
+      volume,
       handlePtr,
     );
 
@@ -1224,8 +1653,8 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     final bufferPtr = wasmMalloc(buffer.length);
 
     /// Copy the buffer into WASM memory using the HEAPU8 view.
-    final heapBuffer = wasmHeapU8Buffer;
-    Uint8List.view(heapBuffer.toDart).setAll(bufferPtr, buffer);
+    final heapU8 = wasmHeapU8;
+    heapU8.toDart.setAll(bufferPtr, buffer);
 
     final samplesPtr = wasmMalloc(numSamplesNeeded * 4);
     final error = wasmReadSamplesFromMem(
@@ -1239,7 +1668,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     );
 
     // Create a view of the WASM memory using JSFloat32Array first
-    final jsHeapF32 = wasmHeapF32Buffer;
+    final jsHeapF32 = wasmHeapF32;
     // Convert the TypedArray view to a Dart Float32List
     final samples = Float32List.sublistView(
       jsHeapF32.toDart,
@@ -1282,8 +1711,25 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }
 
   @override
-  int busPlayOnEngine(int busId, double volume, bool paused) {
-    return wasmBusPlayOnEngine(busId, volume, paused ? 1 : 0);
+  ({PlayerErrors error, SoundHandle handle}) busPlayOnEngine(
+    int busId,
+    double volume,
+    bool paused,
+  ) {
+    final handlePtr = wasmMalloc(4); // 4 bytes for an int32
+    final result = wasmBusPlayOnEngine(
+      busId,
+      volume,
+      paused ? 1 : 0,
+      handlePtr,
+    );
+    final ret = (
+      error: PlayerErrors.values[result],
+      handle: SoundHandle(wasmGetI32Value(handlePtr, 'i32')),
+    );
+    wasmFree(handlePtr);
+
+    return ret;
   }
 
   @override

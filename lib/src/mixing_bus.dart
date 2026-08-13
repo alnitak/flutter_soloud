@@ -1,5 +1,6 @@
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:flutter_soloud/src/bindings/soloud_controller.dart';
+import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/filters/filters.dart';
 import 'package:logging/logging.dart';
 
@@ -142,21 +143,38 @@ class Bus {
   ///
   /// [volume] playback volume (1.0 = full).
   /// [paused] whether to start paused.
-  /// Returns the voice handle for the bus, or 0 on error.
+  /// Returns the voice handle for the bus.
   ///
   /// Throws [SoLoudBusDisposedDartException] if the bus has already
   /// been disposed.
+  ///
+  /// Throws [SoLoudBackendNotInitedException] if the engine is not
+  /// initialized.
+  ///
+  /// Throws [SoLoudBusIdNotFoundCppException] if this bus is not known to the
+  /// C++ side.
+  ///
+  /// Throws [SoLoudFailedToStartPlaybackCppException] if the audio engine
+  /// could not create a voice for this bus.
+  ///
+  /// When [paused] is false the output device is started off the UI thread
+  /// after the bus voice has been created, so this does not report
+  /// output-device failures.
   SoundHandle playOnEngine({double volume = 1.0, bool paused = false}) {
     if (!_isValid) {
       _log.warning('bus $busId is already disposed');
       throw const SoLoudBusDisposedDartException();
     }
-    final handle = SoLoudController().soLoudFFI.busPlayOnEngine(
+    final ret = SoLoudController().soLoudFFI.busPlayOnEngine(
       busId,
       volume,
       paused,
     );
-    soundHandle = SoundHandle(handle);
+    if (ret.error != PlayerErrors.noError) {
+      _log.severe(() => 'playOnEngine(): ${ret.error}');
+      throw SoLoudCppException.fromPlayerError(ret.error);
+    }
+    soundHandle = ret.handle;
     return soundHandle!;
   }
 
@@ -176,6 +194,7 @@ class Bus {
     bool paused = false,
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
+    Duration? loopingEndAt,
   }) {
     if (!_isValid) {
       _log.warning('bus $busId is already disposed');
@@ -189,6 +208,68 @@ class Bus {
       paused: paused,
       looping: looping,
       loopingStartAt: loopingStartAt,
+      loopingEndAt: loopingEndAt,
+    );
+  }
+
+  /// Variant of [play] that takes an additional parameter, the time offset
+  /// for the sound.
+  ///
+  /// This is a convenience method that calls [SoLoud.playClocked] with its
+  /// [busId] set to this bus.
+  ///
+  /// Please see [SoLoud.playClocked] for more information on the parameters.
+  ///
+  /// Throws [SoLoudBusDisposedDartException] if the bus has already
+  /// been disposed.
+  SoundHandle playClocked(
+    AudioSource sound,
+    Duration soundTime, {
+    double volume = 1,
+    double pan = 0,
+  }) {
+    if (!_isValid) {
+      _log.warning('bus $busId is already disposed');
+      throw const SoLoudBusDisposedDartException();
+    }
+    return SoLoud.instance.playClocked(
+      sound,
+      soundTime,
+      busId: busId,
+      volume: volume,
+      pan: pan,
+    );
+  }
+
+  /// Start playing [sound] through this bus at an absolute engine time
+  /// (see [SoLoud.getEngineTime]), with sample accuracy.
+  ///
+  /// This is a convenience method that calls [SoLoud.playScheduled] with
+  /// its [busId] set to this bus.
+  ///
+  /// Please see [SoLoud.playScheduled] for more information on the
+  /// parameters.
+  ///
+  /// Throws [SoLoudBusDisposedDartException] if the bus has already
+  /// been disposed.
+  SoundHandle playScheduled(
+    AudioSource sound,
+    Duration atTime, {
+    Duration? duration,
+    double volume = 1,
+    double pan = 0,
+  }) {
+    if (!_isValid) {
+      _log.warning('bus $busId is already disposed');
+      throw const SoLoudBusDisposedDartException();
+    }
+    return SoLoud.instance.playScheduled(
+      sound,
+      atTime,
+      duration: duration,
+      busId: busId,
+      volume: volume,
+      pan: pan,
     );
   }
 
@@ -213,6 +294,7 @@ class Bus {
     bool paused = false,
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
+    Duration? loopingEndAt,
   }) {
     if (!_isValid) {
       _log.warning('bus $busId is already disposed');
@@ -231,6 +313,46 @@ class Bus {
       paused: paused,
       looping: looping,
       loopingStartAt: loopingStartAt,
+      loopingEndAt: loopingEndAt,
+    );
+  }
+
+  /// This function is the 3D version of the [playClocked] call.
+  ///
+  /// This is a convenience method that calls [SoLoud.play3dClocked] with the
+  /// [busId] set to this bus.
+  ///
+  /// Please see [SoLoud.play3dClocked] for more information on the
+  /// parameters.
+  ///
+  /// Throws [SoLoudBusDisposedDartException] if the bus has already
+  /// been disposed.
+  SoundHandle play3dClocked(
+    AudioSource sound,
+    Duration soundTime,
+    double posX,
+    double posY,
+    double posZ, {
+    double velX = 0,
+    double velY = 0,
+    double velZ = 0,
+    double volume = 1,
+  }) {
+    if (!_isValid) {
+      _log.warning('bus $busId is already disposed');
+      throw const SoLoudBusDisposedDartException();
+    }
+    return SoLoud.instance.play3dClocked(
+      sound,
+      soundTime,
+      posX,
+      posY,
+      posZ,
+      velX: velX,
+      velY: velY,
+      velZ: velZ,
+      busId: busId,
+      volume: volume,
     );
   }
 

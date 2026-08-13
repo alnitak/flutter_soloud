@@ -3,7 +3,7 @@ import 'package:flutter_soloud/flutter_soloud.dart';
 import 'common.dart';
 
 /// Test voice groups.
-Future<StringBuffer> testVoiceGroups() async {
+Future<OutputBuffer> testVoiceGroups() async {
   await initialize();
 
   final currentSound =
@@ -47,5 +47,5 @@ Future<StringBuffer> testVoiceGroups() async {
   assert(!isValid, 'Voice group destroy failed!');
 
   deinit();
-  return StringBuffer();
+  return OutputBuffer();
 }

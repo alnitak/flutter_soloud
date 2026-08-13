@@ -14,7 +14,17 @@ Flutter audio plugin using SoLoud library and FFI
   s.author           = { 'Your Company' => 'email@example.com' }
 
   s.source           = { :path => '.' }
-  s.source_files     = 'flutter_soloud/Sources/flutter_soloud/*.{h,mm}'
+  # FlutterSoloudPlugin.h lives in the include directory rather than beside its
+  # .mm because SwiftPM has no explicit publicHeadersPath and therefore uses the
+  # target's default `include` (a symlink to the same directory). Listing it
+  # here matters more on macOS than on iOS: the generated registrant is Swift
+  # and does a plain `import flutter_soloud`, with no __has_include fallback, so
+  # the class has to reach the module's public headers or the build fails.
+  s.source_files     = [
+    'flutter_soloud/Sources/flutter_soloud/*.{h,mm}',
+    'flutter_soloud/include/FlutterSoloudPlugin.h',
+  ]
+  s.public_header_files = 'flutter_soloud/include/FlutterSoloudPlugin.h'
     # flutter_soloud.mm is the SwiftPM wrapper that includes the full C++
   # implementation. CocoaPods builds the same implementation through the
   # CMake script phase below, so compiling the wrapper here defines duplicate
@@ -42,9 +52,21 @@ Flutter audio plugin using SoLoud library and FFI
   preprocessor_definitions << 'SIGNALSMITH_USE_PFFFT'
 
   # Build the plugin's native code using CMake with release optimizations.
-  # CMake handles incremental builds internally — if no source files changed,
-  # this is a fast no-op.
+  # The built library IS declared as an output file: the app target
+  # force_loads it, and Xcode's new build system validates force_load'd
+  # inputs when planning the build — without a declared producer, the first
+  # (clean) build fails with "Build input file cannot be found" before this
+  # phase has ever run, while the second build succeeds because the library
+  # already exists on disk. :always_out_of_date makes the phase run on every
+  # build anyway (CMake's incremental tracking makes it a fast no-op when no
+  # source file changed), so plugin source edits never link stale native
+  # code — the problem declaring only :output_files would cause.
   build_script = <<-SCRIPT
+    # Backward-compatibility warning for renamed env variable
+    if [ -n "$NO_OPUS_OGG_LIBS" ]; then
+      echo "warning: NO_OPUS_OGG_LIBS is set. This has no effect because the setting has been renamed to NO_XIPH_LIBS. In your command line invocations and build scripts, simply replace all occurrences of NO_OPUS_OGG_LIBS (old) with NO_XIPH_LIBS (new)."
+    fi
+
     # Xcode's build environment has a restricted PATH that may not include cmake.
     # Add common locations where cmake might be installed before checking.
     export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
@@ -66,7 +88,8 @@ Flutter audio plugin using SoLoud library and FFI
     :name => 'Build flutter_soloud with CMake',
     :script => build_script,
     :execution_position => :before_compile,
-    :output_files => ['$(PODS_TARGET_SRCROOT)/cmake_build/macosx/libflutter_soloud_plugin.a'],
+    :output_files => ['${PODS_TARGET_SRCROOT}/cmake_build/macosx/libflutter_soloud_plugin.a'],
+    :always_out_of_date => '1',
   }
 
   # pod_target_xcconfig: settings for the pod's own compilation target.
@@ -88,6 +111,18 @@ Flutter audio plugin using SoLoud library and FFI
       local_lib_path,
     ],
     'VALID_ARCHS' => 'x86_64 arm64',
+    # FlutterSoloudPlugin.mm calls the engine-lifecycle exports, which live in
+    # libflutter_soloud_plugin.a -- force-loaded into the *app* target, not into
+    # this pod. With the default static pod there is no link step here and the
+    # references resolve when the app links. With `use_frameworks!` this pod
+    # becomes a dynamic framework with its own link step, and they would be
+    # undefined; dynamic lookup resolves them at load time against the app
+    # binary, which is the same approach Package.swift already takes.
+    #
+    # Deliberately NOT linking another copy of libflutter_soloud_plugin.a here:
+    # that would give the framework its own SoLoud engine and lifecycle state,
+    # separate from the app's.
+    'OTHER_LDFLAGS' => '$(inherited) -undefined dynamic_lookup',
    }
 
   # user_target_xcconfig: settings propagated to the APP target's linker.
@@ -99,7 +134,7 @@ Flutter audio plugin using SoLoud library and FFI
   
   # With vendored_libraries declared above, CocoaPods handles xiph lib linking automatically.
   # We only need the library search path for the cmake_build output and ensure inherited flags.
-  xiph_flags = disable_xiph_libs ? '' : '-logg -lopus -lvorbis -lvorbisfile -lFLAC'
+  xiph_flags = disable_xiph_libs ? '' : '-logg -lopus -lvorbis -lvorbisenc -lvorbisfile -lFLAC'
 
   s.user_target_xcconfig = {
     'OTHER_LDFLAGS' => "$(inherited) #{force_load_lib} #{xiph_flags} -lc++",

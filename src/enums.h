@@ -1,4 +1,5 @@
-#pragma once
+#include <stdint.h>
+#include <stdio.h>
 
 #ifndef ENUMS_H
 #define ENUMS_H
@@ -74,6 +75,14 @@ typedef enum PlayerErrors {
   xiphLibsNotFound = 30,
   /// Bus ID not found.
   busIdNotFound = 31,
+  /// Given hash doesn't belong to a pull buffer stream.
+  hashIsNotAPullBufferStream = 32,
+  /// The pull buffer stream is in an invalid state for this operation.
+  invalidPullBufferState = 33,
+  /// The output audio device could not be started or resumed.
+  audioDeviceFailedToStart = 34,
+  /// SoLoud didn't return a valid voice handle when starting the playback.
+  failedToStartPlayback = 35,
 } PlayerErrors_t;
 
 /// Possible read sample errors
@@ -97,6 +106,13 @@ typedef enum PlayerStateEvents {
   event_interruption_began,
   event_interruption_ended,
   event_unlocked,
+  /// An automatic output-device start failed, after the backend had already
+  /// rebuilt the device and retried. Emitted by the lifecycle scheduler, not by
+  /// the OS, so unlike the notifications above it is reliable on every backend.
+  ///
+  /// WARNING: Keep in sync with `PlayerStateNotification` in
+  /// `lib/src/enums.dart`; the Dart side indexes this by ordinal.
+  event_audio_device_start_failed,
 } PlayerEvents_t;
 
 /// The state of the audio output device.
@@ -104,6 +120,7 @@ typedef enum PlayerStateEvents {
 /// The values mirror miniaudio's `ma_device_state` so they can be returned
 /// directly from the backend without translation.
 ///
+/// WARNING: Keep these in sync with `lib/src/enums.dart`.
 /// WARNING: Keep these in sync with `lib/src/enums.dart`.
 typedef enum AudioDeviceState {
   /// The device is uninitialized. Also returned before the engine is
@@ -129,6 +146,10 @@ typedef enum SoundType {
   TYPE_SYNTH,
   // this sound is a streaming buffer
   TYPE_BUFFER_STREAM,
+  // this sound is a text to speech
+  TYPE_TEXT_TO_SPEECH,
+  // this sound is a pull-based streaming buffer
+  TYPE_PULL_BUFFER_STREAM
 } SoundType_t;
 
 typedef enum FilterType {
@@ -156,6 +177,18 @@ typedef enum BufferType {
   AUTO = 5,
 } BufferType_t;
 
+/// WARNING: Keep these in sync with `lib/src/enums.dart`.
+typedef enum MixerOutputFormat {
+  MIXER_OUTPUT_PCM_F32LE = 0,
+  MIXER_OUTPUT_PCM_S8 = 1,
+  MIXER_OUTPUT_PCM_S16LE = 2,
+  MIXER_OUTPUT_PCM_S32LE = 3,
+  MIXER_OUTPUT_OPUS = 4,
+  MIXER_OUTPUT_VORBIS = 5,
+  MIXER_OUTPUT_FLAC = 6,
+  MIXER_OUTPUT_WAV = 7,
+} MixerOutputFormat_t;
+
 typedef struct PCMformat {
   unsigned int sampleRate;
   unsigned int channels;
@@ -166,5 +199,17 @@ typedef struct PCMformat {
 // callback to tell dart that we are buffering/unbuffering
 typedef void (*dartOnBufferingCallback_t)(bool isBuffering, unsigned int handle,
                                           double time);
+
+// callback to tell dart that more encoded data is needed
+typedef void (*dartOnMoreDataIsNeededCallback_t)(uint64_t offset);
+
+// callback to tell dart the total audio duration of a pull-buffer stream
+typedef void (*dartOnAudioDurationCallback_t)(double duration);
+
+// callback handing dart a chunk of captured mixer output. Declared here rather
+// than in bindings.cpp so `ffi_gen_tmp.h` -- the ffigen entry point -- can name
+// it in the exports that take one.
+typedef void (*dartMixerOutputDataCallback_t)(unsigned char *data,
+                                              uint64_t length);
 
 #endif // ENUMS_H

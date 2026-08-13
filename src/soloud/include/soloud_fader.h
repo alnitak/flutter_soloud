@@ -47,7 +47,7 @@ namespace SoLoud
 		time mEndTime;
 		// Current value. Used in case time rolls over.
 		float mCurrent;
-		// Active flag; 0 means disabled, 1 is active, 2 is LFO, -1 means was active, but stopped
+		// Active flag; 0 means disabled, 1 is active, 2 is LFO, 3 is scheduled (waits for mStartTime), -1 means was active, but stopped
 		int mActive;
 		// Ctor
 		Fader();
@@ -55,6 +55,8 @@ namespace SoLoud
 		void setLFO(float aFrom, float aTo, time aTime, time aStartTime);
 		// Set up fader
 		void set(float aFrom, float aTo, time aTime, time aStartTime);
+		// Set up fader that stays at aFrom until aStartTime is reached, then fades like set()
+		void setScheduled(float aFrom, float aTo, time aTime, time aStartTime);
 		// Get the current fading value
 		float get(time aCurrentTime);
 	}; 

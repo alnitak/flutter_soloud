@@ -93,6 +93,13 @@ if [ "${SKIP_OPUS_OGG}" != "1" ]; then
         cd -
     fi
 
+    # Opus keeps its public headers directly in include/, but the source
+    # includes them as <opus/opus.h>. Create a compatibility symlink so the
+    # same include path works for Opus as for the other Xiph libraries.
+    if [ ! -L "$OPUS_DIR/include/opus" ]; then
+        ln -sf . "$OPUS_DIR/include/opus"
+    fi
+
     # Build Vorbis if not built or force rebuild is set
     echo -e "${BOLD_WHITE_ON_GREEN}Building Vorbis${RESET}"
     if [ ! -f "$VORBIS_DIR/lib/.libs/libvorbis.a" ] || [ $FORCE_REBUILD_LIBS -eq 1 ]; then
@@ -137,6 +144,7 @@ SOURCES=(
     ../src/soloud/src/audiosource/ay/*.c*
     ../src/soloud/src/audiosource/speech/*.c*
     ../src/soloud/src/audiosource/wav/*.c*
+    ../src/mixeroutput/*.cpp
     ../src/soloud_common.cpp
     ../src/bindings.cpp
     ../src/player.cpp
@@ -173,22 +181,33 @@ if [ "${SKIP_OPUS_OGG}" != "1" ]; then
         "$OPUS_DIR/.libs/libopus.a"
         "$OGG_DIR/src/.libs/libogg.a"
         "$VORBIS_DIR/lib/.libs/libvorbis.a"
+        "$VORBIS_DIR/lib/.libs/libvorbisenc.a"
         "$VORBIS_DIR/lib/.libs/libvorbisfile.a"
         "$FLAC_DIR/src/libFLAC/.libs/libFLAC-static.a"
     )
 fi
 
 # Define compiler flags based on NO_XIPH_LIBS
-COMPILER_DEFINES="-D WITH_MINIAUDIO -D SIGNALSMITH_USE_PFFFT"
+# SOLOUD_NO_ASSERTS: on web the engine runs entirely on the main browser
+# thread, so the audio mutex (recursive, see Thread::createMutex) can be
+# re-entered by the same thread. SoLoud's internal asserts assume the mutex
+# is never re-entered (mInsideAudioThreadMutex) and would fire spuriously.
+COMPILER_DEFINES="-D WITH_MINIAUDIO -D SIGNALSMITH_USE_PFFFT -D SOLOUD_NO_ASSERTS"
 if [ "${SKIP_OPUS_OGG}" = "1" ]; then
     COMPILER_DEFINES="$COMPILER_DEFINES -D NO_XIPH_LIBS"
 fi
 
 # Now compile everything together
-    # -s ASSERTIONS=1 \
+# NOTE: no `-pthread`/`SHARED_MEMORY` here. The engine runs entirely on the
+# main browser thread on the web (all thread creation is guarded out under
+# `__EMSCRIPTEN__`), so pthreads are never used at runtime. Compiling without
+# them keeps the WASM memory a plain ArrayBuffer, which means the hosting
+# page does NOT need to be cross-origin isolated (no COOP/COEP headers —
+# see issue #523).
     # -g -fdebug-compilation-dir=./debug \
     # -s NO_DISABLE_EXCEPTION_CATCHING=1 \
 em++ -O2 \
+    -s ASSERTIONS=1 \
     ${INCLUDE_DIRS[@]} \
     ${SOURCES[@]} \
     ${LIBS[@]} \

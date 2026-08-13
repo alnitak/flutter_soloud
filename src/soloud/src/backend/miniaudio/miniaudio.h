@@ -41234,7 +41234,7 @@ static ma_result ma_device_drain__opensl(ma_device* pDevice, ma_device_type devi
 
     MA_ASSERT(deviceType == ma_device_type_capture || deviceType == ma_device_type_playback);
 
-    if (pDevice->type == ma_device_type_capture) {
+    if (deviceType == ma_device_type_capture) {
         pBufferQueue = (SLAndroidSimpleBufferQueueItf)pDevice->opensl.pBufferQueueCapture;
         pDevice->opensl.isDrainingCapture  = MA_TRUE;
     } else {
@@ -41242,22 +41242,73 @@ static ma_result ma_device_drain__opensl(ma_device* pDevice, ma_device_type devi
         pDevice->opensl.isDrainingPlayback = MA_TRUE;
     }
 
-    for (;;) {
-        SLAndroidSimpleBufferQueueState state;
+    /*
+    ###### flutter_soloud local patch (miniaudio 0.11.25) ######
 
-        MA_OPENSL_BUFFERQUEUE(pBufferQueue)->GetState(pBufferQueue, &state);
-        if (state.count == 0) {
-            break;
+    Upstream loops here until the buffer queue reports empty, with no timeout
+    and no iteration cap. If the OpenSL callback thread stops servicing the
+    queue -- audioserver hiccup, route change, device disconnect -- it can
+    never reach zero and ma_device_stop() never returns. flutter_soloud invokes
+    ma_device_stop() routinely for idle stopping, so it must not be able to
+    hang.
+
+    Bound the wait instead. The queue can only legitimately hold `periods`
+    buffers of `periodSizeInFrames`, so allow twice that duration (clamped to a
+    sane 200--1000 ms floor/ceiling) and then give up. GetState() failure also
+    ends the drain attempt. The caller proceeds to stop and clear the queue.
+    The draining flag intentionally remains set until stop and clearing finish,
+    preventing late callbacks from enqueueing more data.
+
+    Keep this patch when updating miniaudio.h -- grep for "flutter_soloud local
+    patch".
+    */
+    {
+        ma_uint32 periodSizeInFrames;
+        ma_uint32 periods;
+        ma_uint32 sampleRate;
+        ma_uint32 maxWaitMs;
+        ma_uint32 waitedMs = 0;
+
+        if (deviceType == ma_device_type_capture) {
+            periodSizeInFrames = pDevice->capture.internalPeriodSizeInFrames;
+            periods            = pDevice->capture.internalPeriods;
+            sampleRate         = pDevice->capture.internalSampleRate;
+        } else {
+            periodSizeInFrames = pDevice->playback.internalPeriodSizeInFrames;
+            periods            = pDevice->playback.internalPeriods;
+            sampleRate         = pDevice->playback.internalSampleRate;
         }
 
-        ma_sleep(10);
-    }
+        maxWaitMs = 0;
+        if (sampleRate > 0) {
+            maxWaitMs = (ma_uint32)(((ma_uint64)periodSizeInFrames * periods * 2000) / sampleRate);
+        }
+        if (maxWaitMs < 200)  { maxWaitMs = 200;  }   /* Floor: tolerate a slow but healthy drain. */
+        if (maxWaitMs > 1000) { maxWaitMs = 1000; }   /* Ceiling: never hang the caller. */
 
-    if (pDevice->type == ma_device_type_capture) {
-        pDevice->opensl.isDrainingCapture  = MA_FALSE;
-    } else {
-        pDevice->opensl.isDrainingPlayback = MA_FALSE;
+        for (;;) {
+            SLresult resultSL;
+            SLAndroidSimpleBufferQueueState state;
+
+            resultSL = MA_OPENSL_BUFFERQUEUE(pBufferQueue)->GetState(pBufferQueue, &state);
+            if (resultSL != SL_RESULT_SUCCESS) {
+                ma_log_post(ma_device_get_log(pDevice), MA_LOG_LEVEL_WARNING, "[OpenSL] Failed to query buffer queue state while draining.");
+                break;
+            }
+
+            if (state.count == 0) {
+                break;
+            }
+
+            if (waitedMs >= maxWaitMs) {
+                break;  /* Stalled queue. SetPlayState()/Clear() below still run. */
+            }
+
+            ma_sleep(10);
+            waitedMs += 10;
+        }
     }
+    /* ###### end flutter_soloud local patch ###### */
 
     return MA_SUCCESS;
 }
@@ -41277,24 +41328,32 @@ static ma_result ma_device_stop__opensl(ma_device* pDevice)
         ma_device_drain__opensl(pDevice, ma_device_type_capture);
 
         resultSL = MA_OPENSL_RECORD(pDevice->opensl.pAudioRecorder)->SetRecordState((SLRecordItf)pDevice->opensl.pAudioRecorder, SL_RECORDSTATE_STOPPED);
+        if (resultSL == SL_RESULT_SUCCESS) {
+            MA_OPENSL_BUFFERQUEUE(pDevice->opensl.pBufferQueueCapture)->Clear((SLAndroidSimpleBufferQueueItf)pDevice->opensl.pBufferQueueCapture);
+        }
+
+        pDevice->opensl.isDrainingCapture = MA_FALSE;
+
         if (resultSL != SL_RESULT_SUCCESS) {
             ma_log_post(ma_device_get_log(pDevice), MA_LOG_LEVEL_ERROR, "[OpenSL] Failed to stop internal capture device.");
             return ma_result_from_OpenSL(resultSL);
         }
-
-        MA_OPENSL_BUFFERQUEUE(pDevice->opensl.pBufferQueueCapture)->Clear((SLAndroidSimpleBufferQueueItf)pDevice->opensl.pBufferQueueCapture);
     }
 
     if (pDevice->type == ma_device_type_playback || pDevice->type == ma_device_type_duplex) {
         ma_device_drain__opensl(pDevice, ma_device_type_playback);
 
         resultSL = MA_OPENSL_PLAY(pDevice->opensl.pAudioPlayer)->SetPlayState((SLPlayItf)pDevice->opensl.pAudioPlayer, SL_PLAYSTATE_STOPPED);
+        if (resultSL == SL_RESULT_SUCCESS) {
+            MA_OPENSL_BUFFERQUEUE(pDevice->opensl.pBufferQueuePlayback)->Clear((SLAndroidSimpleBufferQueueItf)pDevice->opensl.pBufferQueuePlayback);
+        }
+
+        pDevice->opensl.isDrainingPlayback = MA_FALSE;
+
         if (resultSL != SL_RESULT_SUCCESS) {
             ma_log_post(ma_device_get_log(pDevice), MA_LOG_LEVEL_ERROR, "[OpenSL] Failed to stop internal playback device.");
             return ma_result_from_OpenSL(resultSL);
         }
-
-        MA_OPENSL_BUFFERQUEUE(pDevice->opensl.pBufferQueuePlayback)->Clear((SLAndroidSimpleBufferQueueItf)pDevice->opensl.pBufferQueuePlayback);
     }
 
     /* Make sure the client is aware that the device has stopped. There may be an OpenSL|ES callback for this, but I haven't found it. */

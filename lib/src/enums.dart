@@ -105,7 +105,19 @@ enum PlayerErrors {
   xiphLibsNotFound(30),
 
   /// Bus id not found.
-  busIdNotFound(31);
+  busIdNotFound(31),
+
+  /// Given hash doesn't belong to a pull buffer stream.
+  hashIsNotAPullBufferStream(32),
+
+  /// The pull buffer stream is in an invalid state for this operation.
+  invalidPullBufferState(33),
+
+  /// The output audio device could not be started or resumed.
+  audioDeviceFailedToStart(34),
+
+  /// SoLoud didn't return a valid voice handle when starting the playback.
+  failedToStartPlayback(35);
 
   const PlayerErrors(this.value);
 
@@ -202,6 +214,16 @@ enum PlayerErrors {
             'https://docs.page/alnitak/flutter_soloud_docs/get_started/no_xiph_libs';
       case PlayerErrors.busIdNotFound:
         return 'Bus id not found!';
+      case PlayerErrors.hashIsNotAPullBufferStream:
+        return "Given hash doesn't belong to a pull buffer stream.";
+      case PlayerErrors.invalidPullBufferState:
+        return 'The pull buffer stream is in an invalid state for this '
+            'operation.';
+      case PlayerErrors.audioDeviceFailedToStart:
+        return 'The output audio device could not be started or resumed!';
+      case PlayerErrors.failedToStartPlayback:
+        return 'Failed to start the playback. The audio engine could not '
+            'create a valid voice for this sound.';
     }
   }
 
@@ -336,6 +358,27 @@ enum PlayerStateNotification {
 
   /// The audio session is unlocked and ready for use.
   unlocked,
+
+  /// An automatic output-device start failed, after the backend had already
+  /// rebuilt the device and retried.
+  ///
+  /// Unlike the OS-sourced notifications above, this one is emitted by the
+  /// plugin's own lifecycle scheduler and is reliable on every backend. It is
+  /// surfaced publicly as `SoLoud.audioDeviceStartFailures`.
+  audioDeviceStartFailed,
+}
+
+/// Why an automatic output-device start failed.
+///
+/// Delivered by `SoLoud.audioDeviceStartFailures`.
+enum AudioDeviceStartFailure {
+  /// The backend could not start the output device, even after rebuilding it
+  /// against the current default output.
+  ///
+  /// Playback state is untouched: voices remain valid and unpaused, so audio
+  /// resumes if the device can later be started (for example by awaiting
+  /// `SoLoud.startAudioDevice`).
+  deviceUnavailable,
 }
 
 /// The state of the audio output device, as reported by
@@ -465,6 +508,97 @@ enum BufferType {
         return 'Opus Encoded Audio';
       case BufferType.auto:
         return 'MP3, Opus or Vorbis Encoded Audio';
+    }
+  }
+}
+
+/// The output format for mixer capture.
+///
+/// WARNING: Keep these in sync with `src/enums.h`.
+enum MixerOutputFormat {
+  /// 32-bit floating point, little-endian.
+  pcmF32le(0),
+
+  /// 8-bit signed, little-endian.
+  pcmS8(1),
+
+  /// 16-bit signed, little-endian.
+  pcmS16le(2),
+
+  /// 32-bit signed, little-endian.
+  pcmS32le(3),
+
+  /// Opus encoded audio.
+  opus(4),
+
+  /// Vorbis encoded audio.
+  vorbis(5),
+
+  /// FLAC encoded audio.
+  flac(6),
+
+  /// WAV encoded audio (16-bit PCM in a RIFF/WAVE container).
+  wav(7);
+
+  /// The integer value of the format.
+  final int value;
+
+  /// Constructs a valid mixer output format with [value].
+  // ignore: sort_constructors_first
+  const MixerOutputFormat(this.value);
+
+  /// Whether this is a PCM (uncompressed) format.
+  bool get isPcm =>
+      this == MixerOutputFormat.pcmF32le ||
+      this == MixerOutputFormat.pcmS8 ||
+      this == MixerOutputFormat.pcmS16le ||
+      this == MixerOutputFormat.pcmS32le;
+
+  /// The number of bytes per sample for this format, or 0 for compressed
+  /// formats.
+  int get bytesPerSample {
+    switch (this) {
+      case MixerOutputFormat.pcmF32le:
+        return 4;
+      case MixerOutputFormat.pcmS8:
+        return 1;
+      case MixerOutputFormat.pcmS16le:
+        return 2;
+      case MixerOutputFormat.pcmS32le:
+        return 4;
+      case MixerOutputFormat.opus:
+      case MixerOutputFormat.vorbis:
+      case MixerOutputFormat.flac:
+      case MixerOutputFormat.wav:
+        return 0;
+    }
+  }
+
+  /// The number of bytes per frame for a given channel count.
+  ///
+  /// Returns 0 for compressed formats.
+  int bytesPerFrame(int channels) => bytesPerSample * channels;
+
+  /// Returns a human-friendly format name.
+  @override
+  String toString() {
+    switch (this) {
+      case MixerOutputFormat.pcmF32le:
+        return 'PCM F32LE';
+      case MixerOutputFormat.pcmS8:
+        return 'PCM S8';
+      case MixerOutputFormat.pcmS16le:
+        return 'PCM S16LE';
+      case MixerOutputFormat.pcmS32le:
+        return 'PCM S32LE';
+      case MixerOutputFormat.opus:
+        return 'Opus';
+      case MixerOutputFormat.vorbis:
+        return 'Vorbis';
+      case MixerOutputFormat.flac:
+        return 'FLAC';
+      case MixerOutputFormat.wav:
+        return 'WAV';
     }
   }
 }

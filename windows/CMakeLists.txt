@@ -47,9 +47,11 @@ if(NOT DEFINED ENV{NO_XIPH_LIBS})
     # Add vorbis library
     set(VORBIS_LIBRARY ${CMAKE_CURRENT_SOURCE_DIR}/libs/vorbis.lib)
     set(VORBISFILE_LIBRARY ${CMAKE_CURRENT_SOURCE_DIR}/libs/vorbisfile.lib)
+    set(VORBISENC_LIBRARY ${CMAKE_CURRENT_SOURCE_DIR}/libs/vorbisenc.lib)
     # Link the library to your target
     target_link_libraries(${PLUGIN_NAME} PRIVATE ${VORBIS_LIBRARY})
     target_link_libraries(${PLUGIN_NAME} PRIVATE ${VORBISFILE_LIBRARY})
+    target_link_libraries(${PLUGIN_NAME} PRIVATE ${VORBISENC_LIBRARY})
 
     # Add FLAC library
     set(FLAC_LIBRARY ${CMAKE_CURRENT_SOURCE_DIR}/libs/FLAC.lib)
@@ -82,6 +84,12 @@ if(NOT DEFINED ENV{NO_XIPH_LIBS})
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_SOURCE_DIR}/libs/vorbisfile.dll"
         "${CMAKE_BINARY_DIR}/runner/$<CONFIG>/vorbisfile.dll"
+    )
+
+    add_custom_command(TARGET ${PLUGIN_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/libs/vorbisenc.dll"
+        "${CMAKE_BINARY_DIR}/runner/$<CONFIG>/vorbisenc.dll"
     )
 
     add_custom_command(TARGET ${PLUGIN_NAME} POST_BUILD

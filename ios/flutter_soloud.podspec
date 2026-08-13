@@ -14,7 +14,17 @@ Flutter audio plugin using SoLoud library and FFI
   s.author           = { 'Your Company' => 'email@example.com' }
 
   s.source           = { :path => '.' }
-  s.source_files = 'flutter_soloud/Sources/flutter_soloud/*'
+  # FlutterSoloudPlugin.h lives in the include directory rather than beside its
+  # .mm because SwiftPM has no explicit publicHeadersPath and therefore uses the
+  # target's default `include` (a symlink to the same directory). Listing it
+  # here keeps GeneratedPluginRegistrant's
+  # `#import <flutter_soloud/FlutterSoloudPlugin.h>` working under CocoaPods too,
+  # since the Sources glob does not reach into include/.
+  s.source_files = [
+    'flutter_soloud/Sources/flutter_soloud/*',
+    'flutter_soloud/include/FlutterSoloudPlugin.h',
+  ]
+  s.public_header_files = 'flutter_soloud/include/FlutterSoloudPlugin.h'
   # flutter_soloud.mm is the SwiftPM wrapper that includes the full C++
   # implementation. CocoaPods builds the same implementation through the
   # CMake script phase below, so compiling the wrapper here defines duplicate
@@ -36,9 +46,21 @@ Flutter audio plugin using SoLoud library and FFI
   preprocessor_definitions << 'SIGNALSMITH_USE_PFFFT'
 
   # Build the plugin's native code using CMake with release optimizations.
-  # CMake handles incremental builds internally — if no source files changed,
-  # this is a fast no-op.
+  # The built library IS declared as an output file: the app target
+  # force_loads it, and Xcode's new build system validates force_load'd
+  # inputs when planning the build — without a declared producer, the first
+  # (clean) build fails with "Build input file cannot be found" before this
+  # phase has ever run, while the second build succeeds because the library
+  # already exists on disk. :always_out_of_date makes the phase run on every
+  # build anyway (CMake's incremental tracking makes it a fast no-op when no
+  # source file changed), so plugin source edits never link stale native
+  # code — the problem declaring only :output_files would cause.
   build_script = <<-SCRIPT
+    # Backward-compatibility warning for renamed env variable
+    if [ -n "$NO_OPUS_OGG_LIBS" ]; then
+      echo "warning: NO_OPUS_OGG_LIBS is set. This has no effect because the setting has been renamed to NO_XIPH_LIBS. In your command line invocations and build scripts, simply replace all occurrences of NO_OPUS_OGG_LIBS (old) with NO_XIPH_LIBS (new)."
+    fi
+
     # Xcode's build environment has a restricted PATH that may not include cmake.
     # Add common locations where cmake might be installed before checking.
     export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
@@ -60,7 +82,8 @@ Flutter audio plugin using SoLoud library and FFI
     :name => 'Build flutter_soloud with CMake',
     :script => build_script,
     :execution_position => :before_compile,
-    :output_files => ['$(PODS_TARGET_SRCROOT)/cmake_build/$(PLATFORM_NAME)/libflutter_soloud_plugin.a'],
+    :output_files => ['${PODS_TARGET_SRCROOT}/cmake_build/$(PLATFORM_NAME)/libflutter_soloud_plugin.a'],
+    :always_out_of_date => '1',
   }
 
   # Flutter.framework does not contain a i386 slice.
@@ -87,13 +110,30 @@ Flutter audio plugin using SoLoud library and FFI
       '$(PODS_TARGET_SRCROOT)/flutter_soloud/libs',
     ],
     "CLANG_CXX_LANGUAGE_STANDARD" => "c++17",
-    "CLANG_CXX_LIBRARY" => "libc++"
+    "CLANG_CXX_LIBRARY" => "libc++",
+    # FlutterSoloudPlugin.mm calls the engine-lifecycle exports, which live in
+    # libflutter_soloud_plugin.a — force-loaded into the *app* target, not into
+    # this pod. With the default static pod there is no link step here and the
+    # references resolve when the app links. With `use_frameworks!` this pod
+    # becomes a dynamic framework with its own link step, and they would be
+    # undefined; dynamic lookup resolves them at load time against the app
+    # binary, which is the same approach Package.swift already takes.
+    #
+    # Deliberately NOT linking another copy of libflutter_soloud_plugin.a here:
+    # that would give the framework its own SoLoud engine and lifecycle state,
+    # separate from the app's.
+    'OTHER_LDFLAGS' => '$(inherited) -undefined dynamic_lookup'
   }
 
   # Add SDK-conditioned linker flags for Xiph libs to the pod's own target
+  # Repeated in each SDK-conditioned variant on purpose: a conditioned
+  # OTHER_LDFLAGS replaces the unconditioned one for SDKs it matches, and
+  # $(inherited) resolves up the xcconfig hierarchy rather than to the
+  # unconditioned value beside it. Relying on inheritance here would silently
+  # drop dynamic lookup for every real device and simulator build.
   if !disable_xiph_libs
-    pod_xcconfig['OTHER_LDFLAGS[sdk=iphoneos*]'] = '$(inherited) -logg_iOS-device -lopus_iOS-device -lvorbis_iOS-device -lvorbisfile_iOS-device -lFLAC_iOS-device'
-    pod_xcconfig['OTHER_LDFLAGS[sdk=iphonesimulator*]'] = '$(inherited) -logg_iOS-simulator -lopus_iOS-simulator -lvorbis_iOS-simulator -lvorbisfile_iOS-simulator -lFLAC_iOS-simulator'
+    pod_xcconfig['OTHER_LDFLAGS[sdk=iphoneos*]'] = '$(inherited) -undefined dynamic_lookup -logg_iOS-device -lopus_iOS-device -lvorbis_iOS-device -lvorbisenc_iOS-device -lvorbisfile_iOS-device -lFLAC_iOS-device'
+    pod_xcconfig['OTHER_LDFLAGS[sdk=iphonesimulator*]'] = '$(inherited) -undefined dynamic_lookup -logg_iOS-simulator -lopus_iOS-simulator -lvorbis_iOS-simulator -lvorbisenc_iOS-simulator -lvorbisfile_iOS-simulator -lFLAC_iOS-simulator'
   end
 
   s.pod_target_xcconfig = pod_xcconfig
@@ -108,8 +148,8 @@ Flutter audio plugin using SoLoud library and FFI
     user_ldflags_device = force_load_lib
     user_ldflags_sim = force_load_lib
   else
-    user_ldflags_device = "#{force_load_lib} -L#{plugin_root}/flutter_soloud/libs -logg_iOS-device -lopus_iOS-device -lvorbis_iOS-device -lvorbisfile_iOS-device -lFLAC_iOS-device"
-    user_ldflags_sim = "#{force_load_lib} -L#{plugin_root}/flutter_soloud/libs -logg_iOS-simulator -lopus_iOS-simulator -lvorbis_iOS-simulator -lvorbisfile_iOS-simulator -lFLAC_iOS-simulator"
+    user_ldflags_device = "#{force_load_lib} -L#{plugin_root}/flutter_soloud/libs -logg_iOS-device -lopus_iOS-device -lvorbis_iOS-device -lvorbisenc_iOS-device -lvorbisfile_iOS-device -lFLAC_iOS-device"
+    user_ldflags_sim = "#{force_load_lib} -L#{plugin_root}/flutter_soloud/libs -logg_iOS-simulator -lopus_iOS-simulator -lvorbis_iOS-simulator -lvorbisenc_iOS-simulator -lvorbisfile_iOS-simulator -lFLAC_iOS-simulator"
   end
 
   s.user_target_xcconfig = {
@@ -133,6 +173,8 @@ Flutter audio plugin using SoLoud library and FFI
       'flutter_soloud/libs/libogg_iOS-simulator.a',
       'flutter_soloud/libs/libvorbis_iOS-device.a',
       'flutter_soloud/libs/libvorbis_iOS-simulator.a',
+      'flutter_soloud/libs/libvorbisenc_iOS-device.a',
+      'flutter_soloud/libs/libvorbisenc_iOS-simulator.a',
       'flutter_soloud/libs/libvorbisfile_iOS-device.a',
       'flutter_soloud/libs/libvorbisfile_iOS-simulator.a',
       'flutter_soloud/libs/libFLAC_iOS-device.a',

@@ -3,7 +3,7 @@ description: >-
   A low-level audio plugin for Flutter,
   mainly meant for games and immersive apps.
   Based on the SoLoud (C++) audio engine.
-version: 4.0.13
+version: 4.1.8
 homepage: https://github.com/alnitak/flutter_soloud
 maintainer: Marco Bavagnoli (@alnitak)
 platforms:
@@ -50,12 +50,28 @@ flutter:
   plugin:
     platforms:
       android:
+        # Still an FFI plugin: `package`/`pluginClass` only add a plugin object
+        # that observes FlutterEngine lifecycle (hot restart, engine destroy) so
+        # the process-global native engine can be retired with its owner. It
+        # registers no method channel and does no work at attach time.
+        package: flutter.soloud.flutter_soloud
+        pluginClass: FlutterSoloudPlugin
         ffiPlugin: true
       ios:
+        # Same arrangement as Android: still an FFI plugin, with a plugin class
+        # whose only job is to observe FlutterEngine lifetime so the
+        # process-global native engine can be retired with its owner. It
+        # registers a lifecycle channel and nothing else, and does no native
+        # work at registration.
+        pluginClass: FlutterSoloudPlugin
         ffiPlugin: true
       linux:
         ffiPlugin: true
       macos:
+        # As on iOS, with one difference: macOS has no
+        # `detachFromEngineForRegistrar:`, so the plugin takes its own
+        # deallocation as the signal that its FlutterEngine has gone.
+        pluginClass: FlutterSoloudPlugin
         ffiPlugin: true
       windows:
         ffiPlugin: true

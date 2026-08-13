@@ -4,8 +4,8 @@ import 'package:flutter_soloud/flutter_soloud.dart';
 import 'common.dart';
 
 /// Test loading audio from memory buffers.
-Future<StringBuffer> testLoadMem() async {
-  final strBuf = StringBuffer();
+Future<OutputBuffer> testLoadMem() async {
+  final strBuf = OutputBuffer();
   await initialize();
 
   // Load asset bytes

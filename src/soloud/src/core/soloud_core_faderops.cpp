@@ -52,6 +52,50 @@ namespace SoLoud
 		FOR_ALL_VOICES_POST
 	}
 
+	void Soloud::scheduleStopAt(handle aVoiceHandle, time aEngineTime)
+	{
+		lockAudioMutex_internal();
+		time rel = aEngineTime - mStreamTime;
+		unlockAudioMutex_internal();
+		if (rel <= 0)
+		{
+			// The scheduled time is already in the past: stop immediately.
+			stop(aVoiceHandle);
+			return;
+		}
+		// The countdown is in output samples and, like the delay countdown
+		// used by playScheduled, starts from the first sample of the next
+		// output buffer (whose position is exactly mStreamTime), so the
+		// voice is stopped with sample accuracy.
+		long long samples = (long long)floor(rel * mSamplerate + 0.5);
+		FOR_ALL_VOICES_PRE
+		mVoice[ch]->mStopSamplesLeft = samples;
+		FOR_ALL_VOICES_POST
+	}
+
+	void Soloud::scheduleFadeAt(handle aVoiceHandle, time aEngineTime, float aTo, time aFadeTime, bool aThenStop)
+	{
+		float from = getVolume(aVoiceHandle);
+		lockAudioMutex_internal();
+		time rel = aEngineTime - mStreamTime;
+		unlockAudioMutex_internal();
+		if (rel <= 0)
+		{
+			// The scheduled time is already in the past: fade from now.
+			fadeVolume(aVoiceHandle, aTo, aFadeTime);
+		}
+		else
+		{
+			FOR_ALL_VOICES_PRE
+			mVoice[ch]->mVolumeFader.setScheduled(from, aTo, aFadeTime, mVoice[ch]->mStreamTime + rel);
+			FOR_ALL_VOICES_POST
+		}
+		if (aThenStop)
+		{
+			scheduleStopAt(aVoiceHandle, aEngineTime + aFadeTime);
+		}
+	}
+
 	void Soloud::fadeVolume(handle aVoiceHandle, float aTo, time aTime)
 	{
 		float from = getVolume(aVoiceHandle);

@@ -56,19 +56,27 @@ class MyHomePage extends StatefulWidget {
 class _MyHomePageState extends State<MyHomePage> {
   final output = StringBuffer();
   final textEditingController = TextEditingController();
+  final outputScrollController = ScrollController();
   late final List<_Test> tests;
   TestEntry? selectedTest;
   bool isRunningAll = false;
+  bool shouldAutoScrollOutput = true;
+  int lastDebugOutputLength = 0;
 
   @override
   void initState() {
     super.initState();
     tests = allTests.map((e) => _Test(entry: e)).toList();
+    tests.sort((a, b) => a.entry.name.compareTo(b.entry.name));
     selectedTest = tests.first.entry;
+    outputScrollController.addListener(_handleOutputScroll);
   }
 
   @override
   void dispose() {
+    outputScrollController
+      ..removeListener(_handleOutputScroll)
+      ..dispose();
     textEditingController.dispose();
     super.dispose();
   }
@@ -86,6 +94,7 @@ class _MyHomePageState extends State<MyHomePage> {
                 children: [
                   TextField(
                     controller: textEditingController,
+                    scrollController: outputScrollController,
                     style: const TextStyle(color: Colors.black, fontSize: 12),
                     expands: true,
                     maxLines: null,
@@ -107,6 +116,7 @@ class _MyHomePageState extends State<MyHomePage> {
                           onPressed: () {
                             textEditingController.clear();
                             output.clear();
+                            lastDebugOutputLength = 0;
                           },
                         ),
                       ),
@@ -125,20 +135,33 @@ class _MyHomePageState extends State<MyHomePage> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // Run All button
-        SizedBox(
-          width: double.infinity,
-          child: FilledButton.icon(
-            onPressed: isRunningAll ? null : _runAllTests,
-            icon: isRunningAll
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.play_arrow),
-            label: const Text('Run All Tests'),
-          ),
+        // Run All / Run Selected buttons
+        Row(
+          children: [
+            Expanded(
+              child: FilledButton.icon(
+                onPressed: isRunningAll ? null : _runAllTests,
+                icon: isRunningAll
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.play_arrow),
+                label: const Text('Run All Tests'),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: FilledButton.icon(
+                onPressed: isRunningAll || selectedTest == null
+                    ? null
+                    : _runFromSelectedTest,
+                icon: const Icon(Icons.play_arrow),
+                label: const Text('Run from Selected'),
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 12),
         // Single test selector
@@ -231,12 +254,34 @@ class _MyHomePageState extends State<MyHomePage> {
     setState(() {
       isRunningAll = true;
       output.clear();
+      lastDebugOutputLength = 0;
       for (final test in tests) {
         test.status = TestStatus.none;
       }
     });
 
     for (var i = 0; i < tests.length; i++) {
+      await _runTestByIndex(i);
+    }
+
+    setState(() {
+      isRunningAll = false;
+    });
+  }
+
+  Future<void> _runFromSelectedTest() async {
+    final startIndex = tests.indexWhere((t) => t.entry == selectedTest);
+    if (startIndex < 0) return;
+
+    setState(() {
+      isRunningAll = true;
+      output.clear();
+      for (final test in tests) {
+        test.status = TestStatus.none;
+      }
+    });
+
+    for (var i = startIndex; i < tests.length; i++) {
       await _runTestByIndex(i);
     }
 
@@ -299,9 +344,36 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   void _updateOutput() {
-    textEditingController.text = output.toString();
-    debugPrint(output.toString());
-    if (mounted) setState(() {});
+    final shouldAutoScroll = shouldAutoScrollOutput;
+    final outputText = output.toString();
+    textEditingController.text = outputText;
+
+    if (outputText.length < lastDebugOutputLength) {
+      lastDebugOutputLength = 0;
+    }
+    if (outputText.length > lastDebugOutputLength) {
+      debugPrint(outputText.substring(lastDebugOutputLength));
+      lastDebugOutputLength = outputText.length;
+    }
+
+    if (mounted) {
+      setState(() {});
+      if (shouldAutoScroll) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || !outputScrollController.hasClients) return;
+          outputScrollController.jumpTo(
+            outputScrollController.position.maxScrollExtent,
+          );
+        });
+      }
+    }
+  }
+
+  void _handleOutputScroll() {
+    if (!outputScrollController.hasClients) return;
+    final position = outputScrollController.position;
+    final isAtBottom = (position.maxScrollExtent - position.pixels).abs() <= 24;
+    shouldAutoScrollOutput = isAtBottom;
   }
 }
 

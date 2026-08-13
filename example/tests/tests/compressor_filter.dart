@@ -4,8 +4,8 @@ import 'package:flutter_soloud/flutter_soloud.dart';
 import 'common.dart';
 
 /// Test compressor filter as a single (per-sound) filter.
-Future<StringBuffer> testCompressorFilterSingle() async {
-  final strBuf = StringBuffer();
+Future<OutputBuffer> testCompressorFilterSingle() async {
+  final strBuf = OutputBuffer();
 
   if (kIsWeb || kIsWasm) {
     return strBuf
@@ -75,8 +75,8 @@ Future<StringBuffer> testCompressorFilterSingle() async {
 }
 
 /// Test compressor filter as a global filter.
-Future<StringBuffer> testCompressorFilterGlobal() async {
-  final strBuf = StringBuffer();
+Future<OutputBuffer> testCompressorFilterGlobal() async {
+  final strBuf = OutputBuffer();
   await initialize();
 
   // Get the global compressor filter

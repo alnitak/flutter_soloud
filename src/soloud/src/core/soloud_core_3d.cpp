@@ -366,9 +366,12 @@ namespace SoLoud
 	handle Soloud::play3d(AudioSource &aSound, float aPosX, float aPosY, float aPosZ, float aVelX, float aVelY, float aVelZ, float aVolume, bool aPaused, unsigned int aBus)
 	{
 		handle h = play(aSound, aVolume, 0, 1, aBus);
+		// No voice was allocated: don't resolve the sentinel as a handle.
+		if (h == 0)
+			return 0;
 		lockAudioMutex_internal();
 		int v = getVoiceFromHandle_internal(h);
-		if (v < 0) 
+		if (v < 0)
 		{
 			unlockAudioMutex_internal();
 			return h;
@@ -436,9 +439,12 @@ namespace SoLoud
 	handle Soloud::play3dClocked(time aSoundTime, AudioSource &aSound, float aPosX, float aPosY, float aPosZ, float aVelX, float aVelY, float aVelZ, float aVolume, unsigned int aBus)
 	{
 		handle h = play(aSound, aVolume, 0, 1, aBus);
+		// No voice was allocated: don't resolve the sentinel as a handle.
+		if (h == 0)
+			return 0;
 		lockAudioMutex_internal();
 		int v = getVoiceFromHandle_internal(h);
-		if (v < 0) 
+		if (v < 0)
 		{
 			unlockAudioMutex_internal();
 			return h;
@@ -446,21 +452,13 @@ namespace SoLoud
 		m3dData[v].mHandle = h;
 		mVoice[v]->mFlags |= AudioSourceInstance::PROCESS_3D;
 		set3dSourceParameters(h, aPosX, aPosY, aPosZ, aVelX, aVelY, aVelZ);
-		time lasttime = mLastClockedTime;
-		if (lasttime == 0)
-		{
-			lasttime = aSoundTime;
-			mLastClockedTime = aSoundTime;
-		}
 		vec3 pos;
 		pos.mX = aPosX;
 		pos.mY = aPosY;
 		pos.mZ = aPosZ;
 		unlockAudioMutex_internal();
-		
-		int samples = (int)floor((aSoundTime - lasttime) * mSamplerate);		
-		// Make sure we don't delay too much (or overflow)
-		if (samples < 0 || samples > 2048) samples = 0;
+
+		int samples = (int)getClockedDelaySamples(aSoundTime);
 
 		if (aSound.mFlags & AudioSource::DISTANCE_DELAY)
 		{

@@ -137,6 +137,14 @@ abstract class SoLoudCppException extends SoLoudException {
         return const SoLoudXiphLibsNotFoundCppException();
       case PlayerErrors.busIdNotFound:
         return const SoLoudBusIdNotFoundCppException();
+      case PlayerErrors.hashIsNotAPullBufferStream:
+        return const SoLoudHashIsNotAPullBufferStreamCppException();
+      case PlayerErrors.invalidPullBufferState:
+        return const SoLoudInvalidPullBufferStateCppException();
+      case PlayerErrors.audioDeviceFailedToStart:
+        return const SoLoudAudioDeviceFailedToStartCppException();
+      case PlayerErrors.failedToStartPlayback:
+        return const SoLoudFailedToStartPlaybackCppException();
     }
   }
 

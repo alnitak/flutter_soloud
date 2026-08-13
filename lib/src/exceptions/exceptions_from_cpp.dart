@@ -34,8 +34,8 @@ class SoLoudFileLoadFailedException extends SoLoudCppException {
   @override
   String get description =>
       'File found, but could not be loaded! '
-      'Could be a permission error or the file is corrupted. '
-      '(on the C++ side).';
+      'Could be a permission error, or the file is corrupted, '
+      'or the format is not supported. (on the C++ side).';
 }
 
 // Note: PlayerErrors.fileAlreadyLoaded is not thrown as an exception.
@@ -404,4 +404,49 @@ class SoLoudBusIdNotFoundCppException extends SoLoudCppException {
 
   @override
   String get description => 'Bus id not found! (on the C++ side).';
+}
+
+/// Given hash doesn't belong to a pull buffer stream.
+class SoLoudHashIsNotAPullBufferStreamCppException extends SoLoudCppException {
+  /// Creates a new [SoLoudHashIsNotAPullBufferStreamCppException].
+  const SoLoudHashIsNotAPullBufferStreamCppException([super.message]);
+
+  @override
+  String get description =>
+      "The given hash doesn't belong to a pull buffer stream. "
+      '(on the C++ side).';
+}
+
+/// The pull buffer stream is in an invalid state for this operation.
+class SoLoudInvalidPullBufferStateCppException extends SoLoudCppException {
+  /// Creates a new [SoLoudInvalidPullBufferStateCppException].
+  const SoLoudInvalidPullBufferStateCppException([super.message]);
+
+  @override
+  String get description =>
+      'The pull buffer stream is in an invalid state for this operation. '
+      '(on the C++ side).';
+}
+
+/// The output audio device could not be started or resumed.
+class SoLoudAudioDeviceFailedToStartCppException extends SoLoudCppException {
+  /// Creates a new [SoLoudAudioDeviceFailedToStartCppException].
+  const SoLoudAudioDeviceFailedToStartCppException([super.message]);
+
+  @override
+  String get description =>
+      'The output audio device could not be started or resumed. The audio '
+      'session may have been taken over by another app, the device may have '
+      'been unplugged, or the OS denied the request. (on the C++ side).';
+}
+
+/// SoLoud didn't return a valid voice handle when starting the playback.
+class SoLoudFailedToStartPlaybackCppException extends SoLoudCppException {
+  /// Creates a new [SoLoudFailedToStartPlaybackCppException].
+  const SoLoudFailedToStartPlaybackCppException([super.message]);
+
+  @override
+  String get description =>
+      'Failed to start the playback. The audio engine could not create a '
+      'valid voice for this sound. (on the C++ side).';
 }

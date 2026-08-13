@@ -23,6 +23,7 @@ public:
 private:
     size_t maxBytes; // Maximum capacity in bytes
     size_t readOffset; // Byte offset to active data (used in RELEASED mode)
+    std::vector<float> mConversionScratch; // Reusable scratch for PCM conversion
 
 public:
     std::recursive_mutex bufferMutex; // Add mutex for thread safety
@@ -67,37 +68,31 @@ public:
             case BufferType::PCM_S8:
             {
                 const int8_t* data8 = reinterpret_cast<const int8_t*>(data);
-                float* d = new float[numSamples];
+                mConversionScratch.resize(numSamples);
                 for (size_t i = 0; i < numSamples; ++i) {
-                    d[i] = data8[i] / 128.0f;
+                    mConversionScratch[i] = data8[i] / 128.0f;
                 }
-                size_t ret = addData(d, numSamples, allDataAdded);
-                delete[] d;
-                return ret;
+                return addData(mConversionScratch.data(), numSamples, allDataAdded);
             }
             break;
             case BufferType::PCM_S16LE:
             {
                 const int16_t* data16 = reinterpret_cast<const int16_t*>(data);
-                float* d = new float[numSamples];
+                mConversionScratch.resize(numSamples);
                 for (size_t i = 0; i < numSamples; ++i) {
-                    d[i] = data16[i] / 32768.0f;
+                    mConversionScratch[i] = data16[i] / 32768.0f;
                 }
-                size_t ret = addData(d, numSamples, allDataAdded);
-                delete[] d;
-                return ret;
+                return addData(mConversionScratch.data(), numSamples, allDataAdded);
             }
             break;
             case BufferType::PCM_S32LE:
             {
                 const int32_t* data32 = reinterpret_cast<const int32_t*>(data);
-                float* d = new float[numSamples];
+                mConversionScratch.resize(numSamples);
                 for (size_t i = 0; i < numSamples; ++i) {
-                    d[i] = data32[i] / 2147483648.0f;
+                    mConversionScratch[i] = data32[i] / 2147483648.0f;
                 }
-                size_t ret = addData(d, numSamples, allDataAdded);
-                delete[] d;
-                return ret;
+                return addData(mConversionScratch.data(), numSamples, allDataAdded);
             }
             break;
         }
@@ -109,6 +104,11 @@ public:
     size_t addData(const float* data, size_t numSamples, bool *allDataAdded) {
         std::lock_guard<std::recursive_mutex> lock(bufferMutex); // Lock during modification
 
+        if (buffer.size() >= maxBytes) {
+            *allDataAdded = false;
+            return 0;
+        }
+
         // Compact buffer when more than half has been consumed
         if (readOffset > 0 && (buffer.size() - readOffset) < readOffset) {
             size_t remaining = buffer.size() - readOffset;
@@ -119,17 +119,18 @@ public:
             readOffset = 0;
         }
 
-        uint64_t bytesNeeded = numSamples * sizeof(float);
-        int64_t newNumSamples = numSamples;
-        if (buffer.size() + bytesNeeded > maxBytes)
-        {
-            uint64_t bytesLeft = maxBytes - buffer.size();
+        size_t bytesNeeded = numSamples * sizeof(float);
+        size_t newNumSamples = numSamples;
+        if (bytesNeeded > maxBytes - buffer.size()) {
+            size_t bytesLeft = maxBytes - buffer.size();
             newNumSamples = bytesLeft / sizeof(float);
-            if (bytesLeft <= 0)
+            if (newNumSamples == 0) {
+                *allDataAdded = false;
                 return 0;
+            }
         }
         const int8_t* data8 = reinterpret_cast<const int8_t*>(data);  // Convert float array to int8_t array
-        buffer.insert(buffer.end(), data8, data8 + newNumSamples*sizeof(float)); // Append directly
+        buffer.insert(buffer.end(), data8, data8 + newNumSamples * sizeof(float)); // Append directly
         *allDataAdded = newNumSamples == numSamples;
         return newNumSamples;
     }

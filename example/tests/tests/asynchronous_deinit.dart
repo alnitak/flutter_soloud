@@ -5,9 +5,11 @@ import 'package:flutter_soloud/src/bindings/soloud_controller.dart';
 import 'common.dart';
 
 /// Test asynchronous `init()`-`deinit()`.
-Future<StringBuffer> testAsynchronousDeinit() async {
-  // Repeat the shortest delays because they specifically exercise workers
-  // reaching the native init/deinit serialization mutex in reverse order.
+Future<OutputBuffer> testAsynchronousDeinit() async {
+  /// test asynchronous init-deinit looping with a short decreasing time.
+  /// The shortest delays are repeated because they specifically exercise
+  /// workers reaching the native init/deinit serialization mutex in reverse
+  /// order.
   final delays = <int>[
     for (var t = 10; t >= 0; t--) t,
     2,
@@ -18,29 +20,23 @@ Future<StringBuffer> testAsynchronousDeinit() async {
     0,
   ];
   for (final t in delays) {
-    Object? initializationError;
+    final initResult =
+        SoLoud.instance.init().then<({Object? error, StackTrace? stack})>(
+              (_) => (error: null, stack: null),
+              onError: (Object error, StackTrace stack) =>
+                  (error: error, stack: stack),
+            );
 
-    // Attach the error handler immediately, but retain the Future so every
-    // initialization completion is joined before the next iteration/test.
-    final initialization = SoLoud.instance.init().then<void>(
-      (_) {},
-      onError: (Object error, StackTrace stackTrace) {
-        initializationError = error;
-      },
-    );
-
-    /// wait for [t] ms and deinit()
     await delay(t);
     await SoLoud.instance.deinitAsync();
-    await initialization;
 
-    final error = initializationError;
-    assert(
-      error == null || error is SoLoudInitializationStoppedByDeinitException,
-      'TEST FAILED delay: $t. Player starting error: $error',
-    );
+    final result = await initResult;
+    final error = result.error;
+
     if (error is SoLoudInitializationStoppedByDeinitException) {
       debugPrint('$error\n');
+    } else if (error != null) {
+      Error.throwWithStackTrace(error, result.stack!);
     }
 
     final after = SoLoudController().soLoudFFI.isInited();
@@ -52,5 +48,5 @@ Future<StringBuffer> testAsynchronousDeinit() async {
 
     debugPrint('------------- awaited init delay $t passed\n');
   }
-  return StringBuffer();
+  return OutputBuffer();
 }

@@ -134,9 +134,15 @@ namespace SoLoud
 			{
 				if (mResampleDataOwner[i] == v)
 				{
-					if (_voiceEndedCallback != nullptr) {
-						unsigned int handle = (aVoice + 1) | (mResampleDataOwner[i]->mPlayIndex << 12);
-						_voiceEndedCallback(&handle);
+					// Queue rather than call: the audio mutex is held here (see
+					// the assert above) and the embedder callback must not run
+					// under it. unlockAudioMutex_internal() dispatches these.
+					// mEndedVoiceQueue holds VOICE_COUNT entries and a voice can
+					// only be queued once per stop, so it cannot overflow.
+					if (mEndedVoiceCount < VOICE_COUNT)
+					{
+						mEndedVoiceQueue[mEndedVoiceCount++] =
+							(aVoice + 1) | (mResampleDataOwner[i]->mPlayIndex << 12);
 					}
 					mResampleDataOwner[i] = NULL;
 				}
