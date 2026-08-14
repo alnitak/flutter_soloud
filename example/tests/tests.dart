@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:ui';
+import 'dart:developer' as dev;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
+import 'package:logging/logging.dart';
 
 import 'tests/all_tests.dart';
 
@@ -28,6 +30,19 @@ class _Test {
 ///
 /// Run this with `flutter run tests/tests.dart`.
 void main() {
+  Logger.root.level = Level.FINEST;
+  Logger.root.onRecord.listen((record) {
+    dev.log(
+      record.message,
+      time: record.time,
+      level: record.level.value,
+      name: record.loggerName,
+      zone: record.zone,
+      error: record.error,
+      stackTrace: record.stackTrace,
+    );
+  });
+
   WidgetsFlutterBinding.ensureInitialized();
 
   runApp(

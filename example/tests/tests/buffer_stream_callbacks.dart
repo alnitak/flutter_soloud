@@ -105,8 +105,78 @@ Future<OutputBuffer> testBufferStreamCallbacks() async {
   await delay(100);
   buf.writeln('4. disposeAllSources after callback streams: OK');
 
+  // ── 5. autoDispose of short (1–3 s) buffer streams ──────────────────────
+  //    Diagnostic for a reported bug: with autoDispose=true, short buffer
+  //    streams (2~3 s) sometimes never trigger the voiceEndedCallback, so
+  //    the source is never disposed. Play 5 streams
+  //    between 1 and 3 seconds and verify each one is disposed.
+  var allDisposed = true;
+  for (var i = 0; i < 5; i++) {
+    final durationSec = 1.0 + 2.0 / (i+1); // 1–3 s
+    final pcmData = _generatePcmData(durationSeconds: durationSec);
+    final disposed = Completer<void>();
+
+    final stream = SoLoud.instance.setBufferStream(
+      bufferingTimeNeeds: 0.3,
+      autoDispose: true,
+      bufferingType: BufferingType.released,
+    );
+
+    stream.soundEvents.listen((event) {
+      if (event.event == SoundEventType.soundDisposed &&
+          !disposed.isCompleted) {
+        disposed.complete();
+      }
+    });
+
+    SoLoud.instance.addAudioDataStream(stream, pcmData);
+    SoLoud.instance.setDataIsEnded(stream);
+    SoLoud.instance.play(stream);
+
+    final sw = Stopwatch()..start();
+    var timedOut = false;
+    await disposed.future.timeout(
+      Duration(milliseconds: (durationSec * 1000).round() + 3000),
+      onTimeout: () {
+        timedOut = true;
+      },
+    );
+    sw.stop();
+
+    // disposeSource() emits the soundDisposed event BEFORE removing the
+    // source from the internal active-sounds list (the removal sits behind
+    // `await soundEventsController.close()`), so give the bookkeeping a
+    // short grace period before checking validity — otherwise a properly
+    // disposed source is reported as still valid.
+    await delay(200);
+
+    final stillValid = SoLoud.instance.isValidAudioSource(stream);
+    if (timedOut || stillValid) {
+      allDisposed = false;
+      buf.writeln(
+        '5.${i + 1}. stream of ${durationSec.toStringAsFixed(2)} s NOT '
+        'disposed (voiceEndedCallback ${timedOut ? 'never fired' : 'fired'}'
+        ', stillValid=$stillValid): FAIL',
+      );
+    } else {
+      buf.writeln(
+        '5.${i + 1}. stream of ${durationSec.toStringAsFixed(2)} s '
+        'activeSounds: ${SoLoud.instance.activeSounds.length} '
+        'voiceCount: ${SoLoud.instance.getActiveVoiceCount()} '
+        'disposed after ${sw.elapsedMilliseconds} ms: OK ',
+      );
+    }
+  }
+  // Print the per-iteration diagnostics BEFORE asserting, so they are
+  // visible even when the test fails.
+  debugPrint(buf.toString());
+  assert(
+    allDisposed,
+    'Some autoDispose buffer streams were never disposed '
+    '(voiceEndedCallback not fired?)',
+  );
+
   deinit();
 
-  debugPrint(buf.toString());
   return buf;
 }
