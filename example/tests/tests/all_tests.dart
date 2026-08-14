@@ -15,6 +15,7 @@ import 'hot_restart_lifecycle.dart' as hot_restart_lifecycle;
 import 'limiter_filter.dart' as limiter_filter;
 import 'load_mem.dart' as load_mem;
 import 'looping.dart' as looping;
+import 'max_voices.dart' as max_voices;
 import 'mixer_output_capture.dart' as mixer_output_capture;
 import 'mixing_bus.dart' as mixing_bus;
 import 'pan.dart' as pan;
@@ -148,6 +149,10 @@ final List<TestEntry> allTests = [
   const TestEntry(
     name: 'LoopingTests',
     run: looping.loopingTests,
+  ),
+  const TestEntry(
+    name: 'MaxVoices',
+    run: max_voices.testMaxVoices,
   ),
   const TestEntry(
     name: 'MixerOutputCapture',

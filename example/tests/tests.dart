@@ -30,7 +30,7 @@ class _Test {
 ///
 /// Run this with `flutter run tests/tests.dart`.
 void main() {
-  Logger.root.level = Level.FINEST;
+  Logger.root.level = Level.OFF;
   Logger.root.onRecord.listen((record) {
     dev.log(
       record.message,
