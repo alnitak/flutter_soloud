@@ -414,13 +414,13 @@ enum BufferType {
   /// 32-bit signed, little-endian.
   s32le(3),
 
-  /// Auto detect the type from  MP3, OGG Opus or OGG Vorbis formats.
-  auto(4),
-
   /// Opus encoded audio.
   /// `opus` is deprecated, use `auto` instead which will automatically
   /// determine from MP3, OGG Opus or OGG Vorbis.
-  opus(5);
+  opus(4),
+
+  /// Auto detect the type from  MP3, OGG Opus or OGG Vorbis formats.
+  auto(5);
 
   /// The integer value of the PCM type.
   final int value;
