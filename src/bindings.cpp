@@ -2107,6 +2107,17 @@ extern "C"
     return noError;
   }
 
+  /// Stop all playing voices without disposing the loaded sounds.
+  ///
+  /// Each stopped voice triggers the voice-ended callback (dispatched by
+  /// SoLoud itself), so Dart is notified for every handle like with [stop].
+  FFI_PLUGIN_EXPORT void stopAll()
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return;
+    player.get()->stopAll();
+  }
+
   /// Stop all handles of the already loaded sound identified by [hash] and
   /// dispose it
   ///

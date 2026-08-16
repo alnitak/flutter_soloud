@@ -438,6 +438,11 @@ public:
   /// initialized, [soundHandleNotFound] if [handle] is not valid.
   PlayerErrors stop(unsigned int handle);
 
+  /// @brief Stop all playing voices without disposing the loaded sounds.
+  /// Each stopped voice triggers the voice-ended callback, which removes
+  /// the handle from the internal sounds list and notifies Dart.
+  void stopAll();
+
   /// @brief Remove the unique [handle] form the list of internal sounds.
   /// @param handle handle of the sound.
   void removeHandle(unsigned int handle);

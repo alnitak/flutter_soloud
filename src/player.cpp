@@ -1480,6 +1480,22 @@ PlayerErrors Player::stop(unsigned int handle)
     return noError;
 }
 
+void Player::stopAll()
+{
+    if (!mInited)
+        return;
+
+    // Stop every active voice. SoLoud dispatches the voice-ended callback
+    // for each stopped voice (see Soloud::stopVoice_internal), which removes
+    // the handle from the internal sounds list and notifies Dart. The loaded
+    // sounds are left untouched.
+    soloud.stopAll();
+
+    // No voices remain active: pause the audio device to allow the OS
+    // to properly manage the audio session.
+    pauseEngine();
+}
+
 void Player::removeHandle(unsigned int handle)
 {
     std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
