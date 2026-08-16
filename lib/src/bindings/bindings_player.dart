@@ -678,6 +678,14 @@ abstract class FlutterSoLoud {
   @mustBeOverridden
   void stopAll();
 
+  /// Stop all voices playing the already loaded sound identified by
+  /// [soundHash] without disposing the sound.
+  ///
+  /// Every stopped voice emits a voice-ended event, like calling [stop]
+  /// on each of the sound's handles.
+  @mustBeOverridden
+  void stopAudioSource(SoundHash soundHash);
+
   /// Stop all handles of the already loaded sound identified
   /// by [soundHash] and dispose it.
   ///

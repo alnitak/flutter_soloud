@@ -2630,6 +2630,22 @@ interface class SoLoud {
     _controller.soLoudFFI.stopAll();
   }
 
+  /// Stops all currently playing voices of [source].
+  ///
+  /// This does _not_ dispose [source]: it stays loaded and can be played
+  /// again afterwards. Use [disposeSource] for that.
+  ///
+  /// Every stopped voice emits a [SoundEventType.handleIsNoMoreValid] event
+  /// on [source], like calling [stop] on each of its playing handles.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  void stopAudioSource(AudioSource source) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    _controller.soLoudFFI.stopAudioSource(source.soundHash);
+  }
+
   /// Stops all handles of the already loaded [source], and reclaims memory.
   ///
   /// After an audio source has been disposed in this way,

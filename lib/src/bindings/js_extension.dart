@@ -405,6 +405,9 @@ external int wasmStop(int handle);
 @JS('Module_soloud._stopAll')
 external void wasmStopAll();
 
+@JS('Module_soloud._stopAudioSource')
+external void wasmStopAudioSource(int soundHash);
+
 @JS('Module_soloud._disposeSound')
 external void wasmDisposeSound(int soundHash);
 

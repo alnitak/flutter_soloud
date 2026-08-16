@@ -1496,6 +1496,34 @@ void Player::stopAll()
     pauseEngine();
 }
 
+void Player::stopAudioSource(unsigned int soundHash)
+{
+    if (!mInited)
+        return;
+
+    {
+        std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
+        auto it = std::find_if(sounds.begin(), sounds.end(),
+                               [soundHash](const std::unique_ptr<ActiveSound> &sound)
+                               {
+                                   return sound->soundHash == soundHash;
+                               });
+        if (it == sounds.end())
+            return;
+
+        // Stop every voice playing this source. SoLoud dispatches the
+        // voice-ended callback for each stopped voice (see
+        // Soloud::stopVoice_internal), which removes the handle from the
+        // internal sounds list and notifies Dart. The sound itself stays
+        // loaded.
+        soloud.stopAudioSource(*it->get()->sound);
+    }
+
+    // If no voices remain active, pause the audio device to allow the OS
+    // to properly manage the audio session.
+    pauseEngine();
+}
+
 void Player::removeHandle(unsigned int handle)
 {
     std::lock_guard<std::recursive_mutex> lock(sounds_mutex);

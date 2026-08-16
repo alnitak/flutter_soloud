@@ -443,6 +443,13 @@ public:
   /// the handle from the internal sounds list and notifies Dart.
   void stopAll();
 
+  /// @brief Stop all voices playing the sound identified by [soundHash]
+  /// without disposing the sound. Each stopped voice triggers the
+  /// voice-ended callback, which removes the handle from the internal
+  /// sounds list and notifies Dart.
+  /// @param soundHash hash of the sound.
+  void stopAudioSource(unsigned int soundHash);
+
   /// @brief Remove the unique [handle] form the list of internal sounds.
   /// @param handle handle of the sound.
   void removeHandle(unsigned int handle);

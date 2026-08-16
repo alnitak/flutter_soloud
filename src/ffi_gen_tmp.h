@@ -230,3 +230,16 @@ FFI_PLUGIN_EXPORT enum PlayerErrors setPause(unsigned int handle, bool pause);
 /// if the engine is not initialized, [PlayerErrors.soundHandleNotFound] if
 /// [handle] is not valid (for example the voice has already ended).
 FFI_PLUGIN_EXPORT enum PlayerErrors stop(unsigned int handle);
+
+/// Stop all playing voices without disposing the loaded sounds.
+///
+/// Each stopped voice triggers the voice-ended callback (dispatched by
+/// SoLoud itself), so Dart is notified for every handle like with [stop].
+FFI_PLUGIN_EXPORT void stopAll();
+
+/// Stop all voices playing the already loaded sound identified by
+/// [soundHash] without disposing it.
+///
+/// Each stopped voice triggers the voice-ended callback (dispatched by
+/// SoLoud itself), so Dart is notified for every handle like with [stop].
+FFI_PLUGIN_EXPORT void stopAudioSource(unsigned int soundHash);

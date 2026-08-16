@@ -1128,6 +1128,11 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }
 
   @override
+  void stopAudioSource(SoundHash soundHash) {
+    wasmStopAudioSource(soundHash.hash);
+  }
+
+  @override
   void disposeSound(SoundHash soundHash) {
     try {
       wasmDisposeSound(soundHash.hash);

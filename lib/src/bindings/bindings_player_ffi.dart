@@ -1760,6 +1760,18 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   late final _stopAll = _stopAllPtr.asFunction<void Function()>();
 
   @override
+  void stopAudioSource(SoundHash soundHash) {
+    _stopAudioSource(soundHash.hash);
+  }
+
+  late final _stopAudioSourcePtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt)>>(
+        'stopAudioSource',
+      );
+  late final _stopAudioSource = _stopAudioSourcePtr
+      .asFunction<void Function(int)>();
+
+  @override
   void disposeSound(SoundHash soundHash) {
     _disposeSound(soundHash.hash);
     _disposeBufferStreamCallbacks(soundHash);

@@ -6639,6 +6639,8 @@ var _stop = Module["_stop"] = makeInvalidEarlyAccess("_stop");
 
 var _stopAll = Module["_stopAll"] = makeInvalidEarlyAccess("_stopAll");
 
+var _stopAudioSource = Module["_stopAudioSource"] = makeInvalidEarlyAccess("_stopAudioSource");
+
 var _disposeSound = Module["_disposeSound"] = makeInvalidEarlyAccess("_disposeSound");
 
 var _disposeAllSound = Module["_disposeAllSound"] = makeInvalidEarlyAccess("_disposeAllSound");
@@ -7027,6 +7029,7 @@ function assignWasmExports(wasmExports) {
   assert(typeof wasmExports["fadeScheduled"] != "undefined", "missing Wasm export: fadeScheduled");
   assert(typeof wasmExports["stop"] != "undefined", "missing Wasm export: stop");
   assert(typeof wasmExports["stopAll"] != "undefined", "missing Wasm export: stopAll");
+  assert(typeof wasmExports["stopAudioSource"] != "undefined", "missing Wasm export: stopAudioSource");
   assert(typeof wasmExports["disposeSound"] != "undefined", "missing Wasm export: disposeSound");
   assert(typeof wasmExports["disposeAllSound"] != "undefined", "missing Wasm export: disposeAllSound");
   assert(typeof wasmExports["getLooping"] != "undefined", "missing Wasm export: getLooping");
@@ -7258,6 +7261,7 @@ function assignWasmExports(wasmExports) {
   _fadeScheduled = Module["_fadeScheduled"] = createExportWrapper("fadeScheduled", 5);
   _stop = Module["_stop"] = createExportWrapper("stop", 1);
   _stopAll = Module["_stopAll"] = createExportWrapper("stopAll", 0);
+  _stopAudioSource = Module["_stopAudioSource"] = createExportWrapper("stopAudioSource", 1);
   _disposeSound = Module["_disposeSound"] = createExportWrapper("disposeSound", 1);
   _disposeAllSound = Module["_disposeAllSound"] = createExportWrapper("disposeAllSound", 0);
   _getLooping = Module["_getLooping"] = createExportWrapper("getLooping", 1);
