@@ -54,3 +54,6 @@ web/worker.dart.js.map
 xiph/*
 !xiph/build_*
 AGENTS.md
+.playwright-mcp/
+.ruby-lsp/
+.venv/
