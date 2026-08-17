@@ -264,6 +264,12 @@ fi
 # reach that sleep, and on web they are invoked via async ccall from Dart).
 # NOTE: no SAFE_HEAP here — SAFE_HEAP aborts on legitimate TLS accesses
 # (errno/__pthread_self) made by libc on the AudioWorklet rendering thread.
+# NOTE: SoLoud mutexes in this flavor are NOT pthread mutexes (see
+# soloud_thread.cpp): musl's pthread mutexes are broken on AudioWorklet
+# threads (__pthread_self() is null there, so ownership bookkeeping and
+# recursive re-entry detection fail and a contended lock aborts the module).
+# Thread::createMutex returns a custom TLS-keyed recursive spin mutex that
+# never lowers to a futex wait.
 echo -e "${BOLD_WHITE_ON_GREEN}Building multi-threaded flavor (libflutter_soloud_plugin_mt)${RESET}"
 if [ "${SKIP_MT:-0}" != "1" ]; then
     build_flavor "libflutter_soloud_plugin_mt" \

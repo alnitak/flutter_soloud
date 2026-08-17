@@ -31,6 +31,11 @@ freely, subject to the following restrictions:
 #include <time.h>
 #endif
 
+#if defined(__EMSCRIPTEN__) && defined(MA_ENABLE_AUDIO_WORKLETS)
+#include <atomic>
+#include <emscripten/threading.h>
+#endif
+
 #include "soloud.h"
 #include "soloud_thread.h"
 
@@ -74,6 +79,16 @@ namespace SoLoud
 			{
 				LeaveCriticalSection(cs);
 			}
+		}
+
+		int tryLockMutex(void *aHandle)
+		{
+			CRITICAL_SECTION *cs = (CRITICAL_SECTION*)aHandle;
+			if (!cs)
+			{
+				return 0;
+			}
+			return TryEnterCriticalSection(cs) ? 0 : 1;
 		}
 
 		struct soloud_thread_data
@@ -132,6 +147,106 @@ namespace SoLoud
             pthread_t thread;
         };
 
+#if defined(__EMSCRIPTEN__) && defined(MA_ENABLE_AUDIO_WORKLETS)
+		// musl's pthread mutexes cannot be used on the AudioWorklet rendering
+		// thread: Emscripten starts wasm-worker threads (AudioWorklets
+		// included) with a null thread pointer, so __pthread_self()->tid
+		// reads garbage low memory there. A lock taken on the worklet thread
+		// then does not exclude other threads (the stored owner tid is 0,
+		// indistinguishable from "free"), and a recursive re-lock misdetects
+		// the owner and blocks on a futex wait, which aborts on the worklet
+		// thread (assertion in futex_wait_main_browser_thread). Use a tiny
+		// recursive spin mutex keyed on the per-thread TLS base instead --
+		// valid and unique on every thread, AudioWorklets included. It never
+		// calls into futex code, so it cannot abort on the worklet thread,
+		// and it is recursive like the pthread mutex it replaces.
+		struct EmscriptenMutexData
+		{
+			std::atomic<uint32_t> owner; // TLS base of the owning thread, 0 = free
+			uint32_t count; // recursion depth, touched by the owner only
+		};
+
+		static uint32_t emscriptenThreadId()
+		{
+			return (uint32_t)(uintptr_t)__builtin_wasm_tls_base();
+		}
+
+		void * createMutex()
+		{
+			EmscriptenMutexData *mutex = new EmscriptenMutexData;
+			mutex->owner.store(0, std::memory_order_relaxed);
+			mutex->count = 0;
+			return (void*)mutex;
+		}
+
+		void destroyMutex(void *aHandle)
+		{
+			delete (EmscriptenMutexData*)aHandle;
+		}
+
+		void lockMutex(void *aHandle)
+		{
+			EmscriptenMutexData *mutex = (EmscriptenMutexData*)aHandle;
+			if (!mutex)
+			{
+				return;
+			}
+			const uint32_t self = emscriptenThreadId();
+			if (mutex->owner.load(std::memory_order_relaxed) == self)
+			{
+				mutex->count++;
+				return;
+			}
+			uint32_t expected = 0;
+			while (!mutex->owner.compare_exchange_weak(expected, self,
+					std::memory_order_acquire, std::memory_order_relaxed))
+			{
+				expected = 0;
+				// Plain spin: never a futex wait, so this cannot abort on
+				// the AudioWorklet thread. Safe on the main browser thread
+				// too because holders of this mutex never synchronously wait
+				// on another thread (web callbacks are fire-and-forget
+				// posts), so the holder always makes progress and releases.
+			}
+			mutex->count = 1;
+		}
+
+		void unlockMutex(void *aHandle)
+		{
+			EmscriptenMutexData *mutex = (EmscriptenMutexData*)aHandle;
+			if (!mutex)
+			{
+				return;
+			}
+			if (--mutex->count == 0)
+			{
+				mutex->owner.store(0, std::memory_order_release);
+			}
+		}
+
+		int tryLockMutex(void *aHandle)
+		{
+			EmscriptenMutexData *mutex = (EmscriptenMutexData*)aHandle;
+			if (!mutex)
+			{
+				return 0;
+			}
+			const uint32_t self = emscriptenThreadId();
+			if (mutex->owner.load(std::memory_order_relaxed) == self)
+			{
+				mutex->count++;
+				return 0;
+			}
+			uint32_t expected = 0;
+			if (!mutex->owner.compare_exchange_strong(expected, self,
+					std::memory_order_acquire, std::memory_order_relaxed))
+			{
+				return 1;
+			}
+			mutex->count = 1;
+			return 0;
+		}
+#else // pthread mutexes
 		void * createMutex()
 		{
 			pthread_mutex_t *mutex;
@@ -188,6 +303,17 @@ namespace SoLoud
 				pthread_mutex_unlock(mutex);
 			}
 		}
+
+		int tryLockMutex(void *aHandle)
+		{
+			pthread_mutex_t *mutex = (pthread_mutex_t*)aHandle;
+			if (!mutex)
+			{
+				return 0;
+			}
+			return pthread_mutex_trylock(mutex) == 0 ? 0 : 1;
+		}
+#endif
 
 		struct soloud_thread_data
 		{

@@ -33,6 +33,7 @@ distribution.
 #ifdef __EMSCRIPTEN__
 #include <cstring>
 #include <pthread.h>
+#include "soloud_thread.h"
 #endif
 
 #if !defined(WITH_MINIAUDIO)
@@ -271,19 +272,22 @@ namespace SoLoud
         }
         // On the multi-threaded (AudioWorklet) build this callback runs on
         // the AudioWorklet rendering thread, where blocking is forbidden:
-        // pthread_mutex_lock() on a contended mutex lowers to Atomics.wait(),
-        // which throws on the rendering thread and kills audio for good. The
-        // main browser thread takes the audio mutex for every engine API
-        // call (play, pause, getters...), so contention is routine. Try to
-        // take the mutex instead; on contention emit silence for this block
-        // and retry on the next one. The mutex is recursive (see
-        // Thread::createMutex in soloud_thread.cpp), so when the try-lock
-        // succeeds the lock/unlock inside mix() simply re-enters it. On the
-        // main thread (single-threaded build) the try-lock always succeeds
-        // because the mutex can only be held by this same thread, so
-        // behavior there is unchanged.
-        if (pthread_mutex_trylock(
-                (pthread_mutex_t *)soloud->mAudioThreadMutex) != 0)
+        // a contended lock that lowers to a futex wait aborts the whole
+        // module (futex waits are illegal on AudioWorklet threads). The main
+        // browser thread takes the audio mutex for every engine API call
+        // (play, pause, getters...), so contention is routine. Try to take
+        // the mutex instead; on contention emit silence for this block and
+        // retry on the next one. On the MT build Thread::createMutex returns
+        // a custom recursive spin mutex (see soloud_thread.cpp): musl's
+        // pthread mutexes are unusable on the AudioWorklet thread because
+        // __pthread_self() is null there, so their owner bookkeeping both
+        // fails to exclude other threads and misdetects recursive re-entry.
+        // The custom mutex is recursive, so when the try-lock succeeds the
+        // lock/unlock inside mix() simply re-enters it. On the main thread
+        // (single-threaded build) the try-lock always succeeds because the
+        // mutex can only be held by this same thread, so behavior there is
+        // unchanged.
+        if (SoLoud::Thread::tryLockMutex(soloud->mAudioThreadMutex) != 0)
         {
             std::memset(pOutput, 0,
                         frameCount * (outChannels != 0 ? outChannels : 1) *
