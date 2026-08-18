@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build and run the standalone native FlutterEngine lifecycle regression tests.
+# Build and run the standalone native device-lifecycle coordinator tests.
 #
 # Unlike the other native tests here this one links the plugin's own
 # `bindings.cpp` -- the lifecycle ownership lives there -- so it needs the whole
@@ -19,7 +19,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
 
 SANITIZER=()
-OUT="${TMPDIR:-/tmp}/engine_lifecycle_test"
+OUT="${TMPDIR:-/tmp}/device_coordinator_test"
 if [ "$1" == "--tsan" ]; then
     SANITIZER=(-fsanitize=thread -g -O1)
     OUT="${OUT}_tsan"
@@ -44,7 +44,7 @@ c++ -std=c++17 -O2 -Wall -Wextra -pthread "${SANITIZER[@]}" \
     -I src/pffft \
     -I src \
     -o "$OUT" \
-    test/engine_lifecycle_test.cpp \
+    test/device_coordinator_test.cpp \
     "$WORK_DIR/pffft.o" \
     src/soloud_common.cpp \
     src/device_lifecycle_test_hooks.cpp \

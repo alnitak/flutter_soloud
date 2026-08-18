@@ -30,7 +30,7 @@ namespace SoLoud
 {
 	void Soloud::setPostClipScaler(float aScaler)
 	{
-		mPostClipScaler = aScaler;
+		mPostClipScaler.store(aScaler, std::memory_order_release);
 	}
 
 	void Soloud::setMainResampler(unsigned int aResampler)

@@ -118,7 +118,7 @@ namespace SoLoud
 		mPlayIndex = 0;
 		mBackendData = NULL;
 		mAudioThreadMutex = NULL;
-		mPostClipScaler = 0;
+		mPostClipScaler.store(0.0f, std::memory_order_relaxed);
 		mBackendCleanupFunc = NULL;
 		mBackendPauseFunc = NULL;
 		mBackendResumeFunc = NULL;
@@ -643,7 +643,7 @@ namespace SoLoud
 		for (i = 0; i < mMaxActiveVoices; i++)
 			mResampleDataOwner[i] = NULL;
 		mFlags = aFlags;
-		mPostClipScaler = 0.95f;
+		mPostClipScaler.store(0.95f, std::memory_order_release);
 		switch (mChannels)
 		{
 		case 1:
@@ -819,7 +819,8 @@ namespace SoLoud
 			float cs = -0.1f;		__m128 cubicscale = _mm_load_ps1(&cs);
 			float nw = -0.9862875f;	__m128 negwall = _mm_load_ps1(&nw);
 			float pw = 0.9862875f;	__m128 poswall = _mm_load_ps1(&pw);
-			__m128 postscale = _mm_load_ps1(&mPostClipScaler);
+			float postClipScaler = mPostClipScaler.load(std::memory_order_acquire);
+			__m128 postscale = _mm_load_ps1(&postClipScaler);
 			TinyAlignedFloatBuffer volumes;
 			volumes.mData[0] = v;
 			volumes.mData[1] = v + vd;
@@ -875,7 +876,8 @@ namespace SoLoud
 		{
 			float nb = -1.0f;	__m128 negbound = _mm_load_ps1(&nb);
 			float pb = 1.0f;	__m128 posbound = _mm_load_ps1(&pb);
-			__m128 postscale = _mm_load_ps1(&mPostClipScaler);
+			float postClipScaler = mPostClipScaler.load(std::memory_order_acquire);
+			__m128 postscale = _mm_load_ps1(&postClipScaler);
 			TinyAlignedFloatBuffer volumes;
 			volumes.mData[0] = v;
 			volumes.mData[1] = v + vd;
@@ -915,6 +917,9 @@ namespace SoLoud
 		float v = aVolume0;
 		unsigned int i, j, c, d;
 		unsigned int samplequads = (aSamples + 3) / 4; // rounded up
+		// Snapshot once: this runs with the audio mutex released, so the value
+		// can change under the loop. See the declaration in soloud.h.
+		float postClipScaler = mPostClipScaler.load(std::memory_order_acquire);
 		// Clip
 		if (mFlags & CLIP_ROUNDOFF)
 		{
@@ -935,10 +940,10 @@ namespace SoLoud
 					f3 = (f3 <= -1.65f) ? -0.9862875f : (f3 >= 1.65f) ? 0.9862875f : (0.87f * f3 - 0.1f * f3 * f3 * f3);
 					f4 = (f4 <= -1.65f) ? -0.9862875f : (f4 >= 1.65f) ? 0.9862875f : (0.87f * f4 - 0.1f * f4 * f4 * f4);
 
-					aDestBuffer.mData[d] = f1 * mPostClipScaler; d++;
-					aDestBuffer.mData[d] = f2 * mPostClipScaler; d++;
-					aDestBuffer.mData[d] = f3 * mPostClipScaler; d++;
-					aDestBuffer.mData[d] = f4 * mPostClipScaler; d++;
+					aDestBuffer.mData[d] = f1 * postClipScaler; d++;
+					aDestBuffer.mData[d] = f2 * postClipScaler; d++;
+					aDestBuffer.mData[d] = f3 * postClipScaler; d++;
+					aDestBuffer.mData[d] = f4 * postClipScaler; d++;
 				}
 			}
 		}
@@ -961,10 +966,10 @@ namespace SoLoud
 					f3 = (f3 <= -1) ? -1 : (f3 >= 1) ? 1 : f3;
 					f4 = (f4 <= -1) ? -1 : (f4 >= 1) ? 1 : f4;
 
-					aDestBuffer.mData[d] = f1 * mPostClipScaler; d++;
-					aDestBuffer.mData[d] = f2 * mPostClipScaler; d++;
-					aDestBuffer.mData[d] = f3 * mPostClipScaler; d++;
-					aDestBuffer.mData[d] = f4 * mPostClipScaler; d++;
+					aDestBuffer.mData[d] = f1 * postClipScaler; d++;
+					aDestBuffer.mData[d] = f2 * postClipScaler; d++;
+					aDestBuffer.mData[d] = f3 * postClipScaler; d++;
+					aDestBuffer.mData[d] = f4 * postClipScaler; d++;
 			}
 		}
 	}
@@ -2272,7 +2277,14 @@ namespace SoLoud
 			}
 		}
 
+		const bool notifyVoiceInactive = mVoiceInactiveCallbackPending;
+		mVoiceInactiveCallbackPending = false;
 		unlockAudioMutex_internal();
+
+		auto voiceInactiveCallback =
+			_voiceInactiveCallback.load(std::memory_order_acquire);
+		if (notifyVoiceInactive && voiceInactiveCallback != nullptr)
+			voiceInactiveCallback();
 		
 		// Note: clipping channels*aStride, not channels*aSamples, so we're possibly clipping some unused data.
 		// The buffers should be large enough for it, we just may do a few bytes of unneccessary work.
@@ -2490,5 +2502,6 @@ namespace SoLoud
 			Thread::unlockMutex(mAudioThreadMutex);
 		}
 	}
+
 
 };

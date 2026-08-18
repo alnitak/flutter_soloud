@@ -25,6 +25,7 @@ freely, subject to the following restrictions:
 #ifndef SOLOUD_H
 #define SOLOUD_H
 
+#include <atomic>
 #include <stdlib.h> // rand
 #include <math.h> // sin
 #include <atomic> // std::atomic
@@ -181,14 +182,26 @@ namespace SoLoud
 		// Set the callback to call when a voice is ended/stopped.
 		//
 		// stopVoice_internal() runs with the audio mutex held, so it must not
-		// call out to the embedder directly: the callback reaches back into the
+		// call out to the embedder directly. The callback reaches back into the
 		// embedder's own bookkeeping (and its locks), which inverts the lock
 		// order against callers that hold those locks across a SoLoud call and
-		// deadlocks the engine. Ended voices are queued instead and dispatched
-		// by unlockAudioMutex_internal() once the mutex is released.
+		// deadlocks the engine; and a callback that crashes, stalls or blocks
+		// (for example a Dart NativeCallable whose isolate has gone away) would
+		// strand the audio mutex and wedge every later SoLoud call, including
+		// deinit(). Ended voices are queued instead and dispatched by
+		// unlockAudioMutex_internal() once the mutex is released.
 		std::atomic<void (*)(unsigned int*)> _voiceEndedCallback{nullptr};
 		void setVoiceEndedCallback(void (*voiceEndedCallback)(unsigned int*)) {
 			_voiceEndedCallback.store(voiceEndedCallback,
+				std::memory_order_release);
+		}
+
+		// Called after a mix cycle in which a voice stopped or became paused.
+		// The callback runs after the audio mutex has been released.
+		std::atomic<void (*)()> _voiceInactiveCallback{nullptr};
+		bool mVoiceInactiveCallbackPending = false;
+		void setVoiceInactiveCallback(void (*voiceInactiveCallback)()) {
+			_voiceInactiveCallback.store(voiceInactiveCallback,
 				std::memory_order_release);
 		}
 
@@ -216,10 +229,44 @@ namespace SoLoud
 		unsigned int mPendingVoiceFreeCount = 0;
 #endif
 
-		// Set the callback to call when the device receive a state changed
-		void (*_stateChangedCallback)(unsigned int) = nullptr;
+		// Set the callback to call when the device receive a state changed.
+		//
+		// Atomic like the other cross-thread callbacks: miniaudio dispatches
+		// notifications from backend/platform threads while teardown clears
+		// this from the calling thread, and the embedder's device scheduler
+		// publishes its own events through it.
+		std::atomic<void (*)(unsigned int)> _stateChangedCallback{nullptr};
 		void setStateChangedCallback(void (*stateChangedCallback)(unsigned int)) {
-			_stateChangedCallback = stateChangedCallback;
+			_stateChangedCallback.store(stateChangedCallback,
+				std::memory_order_release);
+		}
+
+		// Snapshot once and dispatch. Centralized so no call site can
+		// reintroduce a check-then-load: with two separate reads, a teardown
+		// landing between them turns a non-null check into a null call.
+		void notifyStateChanged(unsigned int aState) {
+			auto stateChangedCallback =
+				_stateChangedCallback.load(std::memory_order_acquire);
+			if (stateChangedCallback != nullptr)
+				stateChangedCallback(aState);
+		}
+
+		// Device-interruption callback used by the embedding lifecycle owner.
+		// The context is published before the callback and cleared afterward so
+		// notification threads never call through a non-null callback with a
+		// partially registered context.
+		std::atomic<void (*)(void *, bool)> _audioInterruptionCallback{nullptr};
+		std::atomic<void *> _audioInterruptionContext{nullptr};
+		void setAudioInterruptionCallback(
+			void (*audioInterruptionCallback)(void *, bool), void *context) {
+			if (audioInterruptionCallback == nullptr) {
+				_audioInterruptionCallback.store(nullptr, std::memory_order_release);
+				_audioInterruptionContext.store(nullptr, std::memory_order_release);
+				return;
+			}
+			_audioInterruptionContext.store(context, std::memory_order_release);
+			_audioInterruptionCallback.store(
+				audioInterruptionCallback, std::memory_order_release);
 		}
 
 		// CTor
@@ -634,7 +681,15 @@ namespace SoLoud
 		// Global volume. Applied before clipping.
 		float mGlobalVolume;
 		// Post-clip scaler. Applied after clipping.
-		float mPostClipScaler;
+		// ###### flutter_soloud local patch ######
+		// Atomic: clip_internal() runs on the audio thread *after*
+		// unlockAudioMutex_internal(), so the audio mutex does not order it
+		// against setPostClipScaler() -- which flutter_soloud calls from
+		// init(), by which point the device is already mixing.
+		// ThreadSanitizer reports the bare float as a data race in
+		// clip_internal(). Every reader snapshots it once into a local, which
+		// is also what the SSE paths need since they take its address.
+		std::atomic<float> mPostClipScaler;
 		// Current play index. Used to create audio handles.
 		unsigned int mPlayIndex;
 		// Current sound source index. Used to create sound source IDs.

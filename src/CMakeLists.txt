@@ -46,6 +46,9 @@ list(APPEND PLUGIN_SOURCES
   "${SRC_DIR}/soloud_common.cpp"
   "${SRC_DIR}/bindings.cpp"
   "${SRC_DIR}/player.cpp"
+  # Empty translation unit unless SOLOUD_LIFECYCLE_TEST_HOOKS is defined, which
+  # no shipping build does. Listed so the test hooks link if it ever is.
+  "${SRC_DIR}/device_lifecycle_test_hooks.cpp"
   "${SRC_DIR}/analyzer.cpp"
   "${SRC_DIR}/pffft/pffft.c"
   "${SRC_DIR}/synth/basic_wave.cpp"

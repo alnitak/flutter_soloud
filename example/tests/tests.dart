@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:ui';
+import 'dart:developer' as dev;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
+import 'package:logging/logging.dart';
 
 import 'tests/all_tests.dart';
 
@@ -28,6 +30,19 @@ class _Test {
 ///
 /// Run this with `flutter run tests/tests.dart`.
 void main() {
+  Logger.root.level = Level.OFF;
+  Logger.root.onRecord.listen((record) {
+    dev.log(
+      record.message,
+      time: record.time,
+      level: record.level.value,
+      name: record.loggerName,
+      zone: record.zone,
+      error: record.error,
+      stackTrace: record.stackTrace,
+    );
+  });
+
   WidgetsFlutterBinding.ensureInitialized();
 
   runApp(
@@ -56,9 +71,12 @@ class MyHomePage extends StatefulWidget {
 class _MyHomePageState extends State<MyHomePage> {
   final output = StringBuffer();
   final textEditingController = TextEditingController();
+  final outputScrollController = ScrollController();
   late final List<_Test> tests;
   TestEntry? selectedTest;
   bool isRunningAll = false;
+  bool shouldAutoScrollOutput = true;
+  int lastDebugOutputLength = 0;
 
   @override
   void initState() {
@@ -66,10 +84,14 @@ class _MyHomePageState extends State<MyHomePage> {
     tests = allTests.map((e) => _Test(entry: e)).toList();
     tests.sort((a, b) => a.entry.name.compareTo(b.entry.name));
     selectedTest = tests.first.entry;
+    outputScrollController.addListener(_handleOutputScroll);
   }
 
   @override
   void dispose() {
+    outputScrollController
+      ..removeListener(_handleOutputScroll)
+      ..dispose();
     textEditingController.dispose();
     super.dispose();
   }
@@ -87,6 +109,7 @@ class _MyHomePageState extends State<MyHomePage> {
                 children: [
                   TextField(
                     controller: textEditingController,
+                    scrollController: outputScrollController,
                     style: const TextStyle(color: Colors.black, fontSize: 12),
                     expands: true,
                     maxLines: null,
@@ -108,6 +131,7 @@ class _MyHomePageState extends State<MyHomePage> {
                           onPressed: () {
                             textEditingController.clear();
                             output.clear();
+                            lastDebugOutputLength = 0;
                           },
                         ),
                       ),
@@ -245,6 +269,7 @@ class _MyHomePageState extends State<MyHomePage> {
     setState(() {
       isRunningAll = true;
       output.clear();
+      lastDebugOutputLength = 0;
       for (final test in tests) {
         test.status = TestStatus.none;
       }
@@ -291,14 +316,10 @@ class _MyHomePageState extends State<MyHomePage> {
     tests[index].status = TestStatus.running;
     if (mounted) setState(() {});
 
-    debugPrint('>>>>> STARTING "${tests[index].entry.name}"');
-
-    // Ensure clean state before running test
-    // (in case previous test didn't clean up properly)
+    // Ensure clean state before running the test, including when the previous
+    // test left initialization in progress (where isInitialized is false).
     try {
-      if (SoLoud.instance.isInitialized) {
-        SoLoud.instance.deinit();
-      }
+      await SoLoud.instance.deinitAsync();
     } catch (_) {
       // Ignore - may not be initialized
     }
@@ -339,10 +360,36 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   void _updateOutput() {
-    textEditingController.text += output.toString();
-    debugPrint(output.toString());
-    output.clear();
-    if (mounted) setState(() {});
+    final shouldAutoScroll = shouldAutoScrollOutput;
+    final outputText = output.toString();
+    textEditingController.text = outputText;
+
+    if (outputText.length < lastDebugOutputLength) {
+      lastDebugOutputLength = 0;
+    }
+    if (outputText.length > lastDebugOutputLength) {
+      debugPrint(outputText.substring(lastDebugOutputLength));
+      lastDebugOutputLength = outputText.length;
+    }
+
+    if (mounted) {
+      setState(() {});
+      if (shouldAutoScroll) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || !outputScrollController.hasClients) return;
+          outputScrollController.jumpTo(
+            outputScrollController.position.maxScrollExtent,
+          );
+        });
+      }
+    }
+  }
+
+  void _handleOutputScroll() {
+    if (!outputScrollController.hasClients) return;
+    final position = outputScrollController.position;
+    final isAtBottom = (position.maxScrollExtent - position.pixels).abs() <= 24;
+    shouldAutoScrollOutput = isAtBottom;
   }
 }
 

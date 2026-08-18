@@ -116,6 +116,68 @@ class MixerOutput {
   std::atomic<bool> m_shouldStop{false};
   std::atomic<uint32_t> m_captureId{0};
 
+  /// Admission gate between the real-time audio callback and capture
+  /// lifecycle changes.
+  ///
+  /// Everything below this line except the atomics is plain capture state that
+  /// [onAudioData] reads on the audio thread and that [stop] destroys and
+  /// [start] rewrites. Testing `m_running` once at the top of the callback is
+  /// not enough: the callback can be preempted immediately afterwards, and by
+  /// the time it resumes `stop()` may have reset `m_pcmQueue` and `m_encoder`
+  /// and `start()` may have rebuilt the buffers for a different session. That
+  /// is a use-after-free, not a stale read. The external
+  /// `mixer_lifecycle_mutex` does not help -- it serializes start/stop against
+  /// each other, and the audio thread never takes it.
+  ///
+  /// [m_activeSession] is monotonic and published *last* by [start], so a
+  /// session id is never reused and an "inactive -> active" transition cannot
+  /// be mistaken for the session a callback originally observed. The callback
+  /// registers itself in [m_audioCallbacksInFlight] and then re-reads the
+  /// session; [stop] retires the session first and then waits, off the audio
+  /// thread, for that count to reach zero before destroying anything.
+  ///
+  /// The callback side is lock-free and allocation-free, as a real-time
+  /// callback must be.
+  static constexpr uint64_t kNoCaptureSession = 0;
+  std::atomic<uint64_t> m_activeSession{kNoCaptureSession};
+  std::atomic<uint64_t> m_nextSession{1};
+  std::atomic<int> m_audioCallbacksInFlight{0};
+
+  /// Admit the audio callback to the currently published session, if any.
+  /// Returns [kNoCaptureSession] when there is nothing to capture into, in
+  /// which case the caller must not touch any capture state and must not call
+  /// [leaveAudioCallback].
+  uint64_t enterAudioCallback();
+  void leaveAudioCallback();
+
+  /// RAII admission to the active capture session. Scoped rather than paired
+  /// calls on purpose: a future early return in [onAudioData] that forgot to
+  /// release would leave the in-flight count non-zero and hang every later
+  /// [stop] forever.
+  class CapturePass {
+   public:
+    explicit CapturePass(MixerOutput &owner)
+        : m_owner(owner), m_session(owner.enterAudioCallback()) {}
+    ~CapturePass() {
+      if (m_session != kNoCaptureSession) {
+        m_owner.leaveAudioCallback();
+      }
+    }
+    CapturePass(const CapturePass &) = delete;
+    CapturePass &operator=(const CapturePass &) = delete;
+
+    /// True when this callback may touch capture state.
+    explicit operator bool() const { return m_session != kNoCaptureSession; }
+
+   private:
+    MixerOutput &m_owner;
+    uint64_t m_session;
+  };
+
+  /// Retire the published session and wait for admitted callbacks to leave.
+  /// Must not be called from the audio thread.
+  void retireSessionAndDrain();
+
   MixerOutputFormat m_format = MIXER_OUTPUT_PCM_F32LE;
   int m_sampleRate = 44100;
   int m_channels = 2;

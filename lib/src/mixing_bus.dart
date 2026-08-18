@@ -154,11 +154,12 @@ class Bus {
   /// Throws [SoLoudBusIdNotFoundCppException] if this bus is not known to the
   /// C++ side.
   ///
-  /// Throws [SoLoudAudioDeviceFailedToStartCppException] if the output audio
-  /// device could not be started. Only checked when [paused] is false.
-  ///
   /// Throws [SoLoudFailedToStartPlaybackCppException] if the audio engine
   /// could not create a voice for this bus.
+  ///
+  /// When [paused] is false the output device is started off the UI thread
+  /// after the bus voice has been created, so this does not report
+  /// output-device failures.
   SoundHandle playOnEngine({double volume = 1.0, bool paused = false}) {
     if (!_isValid) {
       _log.warning('bus $busId is already disposed');

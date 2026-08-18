@@ -1,9 +1,19 @@
 ##### 4.1.8 (X Xxx 2026)
 - fix: `changeDevice()` now selects the system default device when called without an argument and reports device-change failures instead of silently succeeding. Thanks to @Colton127 #532
 - fix: native engine and callback lifetime now follows the owning FlutterEngine on Android, iOS, and macOS, preventing stale callbacks and orphaned audio resources after hot restart or engine destruction. Fixes #126. Thanks to @Colton127 #355
+- added `stopAudioDevice()` / `startAudioDevice()` to control the audio output device without deinitializing the engine. Loaded sounds, active voices and filter state are all preserved, so playback resumes exactly where it left off. Thanks to @Colton127 #508
+- added `getAudioDeviceState()`, returning the actual current device state as an `AudioDeviceState` enum (`uninitialized`, `stopped`, `started`, `starting`, `stopping`). It is a cheap synchronous read and is safe to call before `init()`. Thanks to @Colton127 #508
+- added `setAudioDeviceIdleTimeout()` to configure how long the output device keeps running while the engine is idle before it is stopped: `null` keeps it running indefinitely, `Duration.zero` stops it as soon as possible, a positive duration sets the grace period (default 500 ms). Thanks to @Colton127 #508
+- added `SoLoud.audioDeviceStartFailures`, a stream that reports an *automatic* output-device start failing. Voice state is untouched, so the usual recovery is `await startAudioDevice()`. Thanks to @Colton127 #508
+- **breaking**: `changeDevice()` now returns `Future<void>` instead of `void` and runs off the UI thread. Await it to know when the swap finished. Thanks to @Colton127 #508
+- **behaviour change**: the automatic device start triggered by `play()`, `play3d()`, `setPause()`, `pauseSwitch()`, `speechText()`, `playClocked()`, `play3dClocked()` and `playScheduled()` no longer blocks the UI thread. These methods therefore no longer throw `SoLoudAudioDeviceFailedToStartCppException` — listen to `audioDeviceStartFailures` for those failures. Voice-allocation failures still throw `SoLoudFailedToStartPlaybackCppException`, and `startAudioDevice()` and `changeDevice()` still report device-start failures to their caller. Thanks to @Colton127 #508
+- Android now stops the audio device when idle (no active voices) like every other platform, releasing the audioserver `AudioMix` partial wakelock #250. Use `setAudioDeviceIdleTimeout(null)` to keep it running.
+- fix: a voice created with `paused: true` is no longer silently unpaused by the buffer-stream buffering logic.
+- many internal fixes: device operations are serialized and race-free, OS interruptions can no longer race device operations, a failed device start rebuilds and retries once, and engine teardown no longer crashes, hangs, or spuriously restarts the device while notifications are in flight. Thanks to @Colton127 #508
 - web: **AudioWorklet rendering**. A second, multi-threaded WASM build flavor (`libflutter_soloud_plugin_mt.js/.wasm`, compiled with `-pthread`/`SharedArrayBuffer` + `MA_ENABLE_AUDIO_WORKLETS` + `-sAUDIO_WORKLET=1 -sWASM_WORKERS=1 -sASYNCIFY=1`) renders audio on a real-time AudioWorklet thread instead of the deprecated main-thread `ScriptProcessorNode`, making mixing immune to Flutter UI/GC jank. `init_module.dart.js` picks it automatically only when the page is cross-origin isolated (COOP/COEP headers); everywhere else the single-threaded `ScriptProcessorNode` flavor is used, so hosts that cannot send those headers (e.g. game portals) keep working unchanged #523
 - **web NOTE**: due to the latter, in the `index.html` only the row below should be left:
 `<script src="assets/packages/flutter_soloud/web/init_module.dart.js" defer></script>`
+
 
 ##### 4.1.7 (8 Aug 2026)
 - fix: a device change that still fails now reports `SoLoudAudioDeviceFailedToStartCppException` instead of hanging. Thanks to @Colton127 #533

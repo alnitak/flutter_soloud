@@ -387,6 +387,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     Channels channels,
     bool lowLatency,
   ) async {
+    // Web is single-threaded (no isolates), so call the wasm function directly.
     // [lowLatency] only affects the native miniaudio backends (it selects the
     // AAudio/CoreAudio performance profile); the Web Audio backend ignores it.
     return _enqueueEngineOp(() async {
@@ -453,10 +454,41 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }
 
   @override
-  FutureOr<PlayerErrors> changeDevice(int deviceId) {
-    return _enqueueEngineOp(
-      () => _callEngineAsync('changeDevice', [deviceId]),
-    );
+  void setAudioDeviceIdleTimeout(Duration? timeout) {
+    // No-op on web: the device is always kept running there (the idle-pause
+    // is disabled on web to avoid stale-buffer glitches), so the idle timeout
+    // has no effect.
+  }
+
+  @override
+  Future<PlayerErrors> stopAudioDevice({bool force = false}) async {
+    // Web is single-threaded (no isolates) and the device change is instant,
+    // so call the wasm function directly.
+    final ret = wasmStopAudioDevice(force ? 1 : 0);
+    return PlayerErrors.values[ret];
+  }
+
+  @override
+  Future<PlayerErrors> startAudioDevice() async {
+    // Web is single-threaded (no isolates) and the device change is instant,
+    // so call the wasm function directly.
+    final ret = wasmStartAudioDevice();
+    return PlayerErrors.values[ret];
+  }
+
+  @override
+  AudioDeviceState getAudioDeviceState() {
+    return AudioDeviceState.fromValue(wasmGetAudioDeviceState());
+  }
+
+  /// Test-only no-op. Browser AudioContext interruptions are not driven by
+  /// miniaudio notifications.
+  void debugTriggerAudioInterruption({required bool began}) {}
+
+  @override
+  Future<PlayerErrors> changeDevice(int deviceId) async {
+    final ret = wasmChangeDevice(deviceId);
+    return PlayerErrors.values[ret];
   }
 
   @override
