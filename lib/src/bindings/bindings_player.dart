@@ -57,7 +57,8 @@ abstract class FlutterSoLoud {
   Stream<PlayerStateNotification> get stateChangedEvents =>
       stateChangedController.stream;
 
-  /// Used with FFI only to close NativeCallable callbacks.
+  /// Used with FFI only to close NativeCallable callbacks after native code
+  /// has unregistered them during teardown.
   @mustBeOverridden
   void disposeNativeCallables();
 
@@ -168,6 +169,10 @@ abstract class FlutterSoLoud {
   /// [channels] mono, stereo, quad, 5.1, 7.1.
   ///
   /// Returns [PlayerErrors.noError] if success.
+  ///
+  /// The blocking native engine/device initialization runs off the UI thread so
+  /// it does not freeze the app (#481); the future completes once the engine is
+  /// initialized.
   @mustBeOverridden
   Future<PlayerErrors> initEngine(
     int deviceId,
@@ -185,11 +190,49 @@ abstract class FlutterSoLoud {
   @mustBeOverridden
   void setAndroidAAudioAttributes(bool managed);
 
+  /// Set how long the audio output device keeps running while the engine is
+  /// idle (no active voices) before it is automatically stopped, on every
+  /// platform. A `null` [timeout] keeps the device running indefinitely while
+  /// idle (the deferred idle-pause is suppressed, so the device keeps rendering
+  /// silence and the app keeps its OS audio session alive) and starts it
+  /// immediately if it was stopped. [Duration.zero] stops the device as soon as
+  /// possible once idle. A positive [timeout] keeps it running for that long
+  /// after going idle. Any play/unpause before the deadline cancels the pending
+  /// stop. Defaults to 500 ms. Can be called any time. No effect on web (the
+  /// device is always kept running there).
+  @mustBeOverridden
+  void setAudioDeviceIdleTimeout(Duration? timeout);
+
+  /// Stop the audio output device without deinitializing the engine. By default
+  /// this is a successful no-op while voices are active. Set [force] to stop
+  /// the device during active playback without pausing or mutating voices.
+  ///
+  /// The blocking native device call runs off the UI thread so it does not
+  /// freeze the app; the returned future completes once the conditional check
+  /// and any resulting device stop have finished.
+  @mustBeOverridden
+  Future<PlayerErrors> stopAudioDevice({bool force = false});
+
+  /// Restart the audio output device previously stopped by [stopAudioDevice],
+  /// so existing voices and loaded sounds keep operating. Idempotent: a no-op
+  /// if the device is already started.
+  ///
+  /// The blocking native device call runs off the UI thread so it does not
+  /// freeze the app; the returned future completes once the device is running.
+  @mustBeOverridden
+  Future<PlayerErrors> startAudioDevice();
+
+  /// Get the current state of the audio output device. Returns
+  /// [AudioDeviceState.uninitialized] if the engine is not initialized.
+  @mustBeOverridden
+  AudioDeviceState getAudioDeviceState();
+
   /// Change the playback device.
   ///
   /// [deviceId] the device ID. -1 for default OS output device.
+  /// The returned future completes after the blocking native replacement.
   @mustBeOverridden
-  PlayerErrors changeDevice(int deviceId);
+  Future<PlayerErrors> changeDevice(int deviceId);
 
   /// List available playback devices.
   List<PlaybackDevice> listPlaybackDevices();
@@ -456,9 +499,9 @@ abstract class FlutterSoLoud {
   /// [handle] the sound handle.
   /// Returns [PlayerErrors.noError] if success,
   /// [PlayerErrors.backendNotInited] if the engine is not initialized,
-  /// [PlayerErrors.soundHandleNotFound] if [handle] is not valid,
-  /// [PlayerErrors.audioDeviceFailedToStart] if unpausing could not start
-  /// the output device.
+  /// [PlayerErrors.soundHandleNotFound] if [handle] is not valid.
+  /// Unpausing posts an asynchronous device start, so this never reports
+  /// [PlayerErrors.audioDeviceFailedToStart].
   @mustBeOverridden
   PlayerErrors pauseSwitch(SoundHandle handle);
 
@@ -468,9 +511,9 @@ abstract class FlutterSoLoud {
   /// [pause] the new state.
   /// Returns [PlayerErrors.noError] if success,
   /// [PlayerErrors.backendNotInited] if the engine is not initialized,
-  /// [PlayerErrors.soundHandleNotFound] if [handle] is not valid,
-  /// [PlayerErrors.audioDeviceFailedToStart] if unpausing could not start
-  /// the output device. In the latter case the voice is left paused.
+  /// [PlayerErrors.soundHandleNotFound] if [handle] is not valid.
+  /// Unpausing posts an asynchronous device start, so this never reports
+  /// [PlayerErrors.audioDeviceFailedToStart].
   @mustBeOverridden
   PlayerErrors setPause(SoundHandle handle, int pause);
 
@@ -1384,8 +1427,8 @@ abstract class FlutterSoLoud {
   /// [busId] the bus ID returned by createBus.
   /// [volume] playback volume (1.0 = full).
   /// [paused] whether to start paused.
-  /// When [paused] is false the output audio device is started first, so
-  /// this can also fail with [PlayerErrors.audioDeviceFailedToStart].
+  /// When [paused] is false the output audio device is started off the UI
+  /// thread after the bus voice has been created.
   ///
   /// Returns [PlayerErrors.noError] and the voice handle of the bus on
   /// success, or the error and a zeroed handle on failure.

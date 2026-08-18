@@ -15,6 +15,7 @@
 #include <stdint.h>
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #include "enums.h"
 #include "audiobuffer/metadata_ffi.h"
@@ -50,10 +51,10 @@ FFI_PLUGIN_EXPORT void destroyBus(unsigned int busId);
 /// [handle] set to the voice handle of the bus, or 0 on error.
 /// Returns [PlayerErrors.noError] if success, [PlayerErrors.backendNotInited]
 /// if the engine is not initialized, [PlayerErrors.busIdNotFound] if [busId]
-/// is unknown, [PlayerErrors.audioDeviceFailedToStart] if the output device
-/// could not be started (only checked when [paused] is false),
-/// [PlayerErrors.failedToStartPlayback] if no voice could be created for the
-/// bus.
+/// is unknown, [PlayerErrors.failedToStartPlayback] if no voice could be
+/// created for the bus. When [paused] is false the output device is started
+/// asynchronously after the bus voice exists, so this never reports
+/// [PlayerErrors.audioDeviceFailedToStart].
 FFI_PLUGIN_EXPORT enum PlayerErrors busPlayOnEngine(unsigned int busId,
                                                     float volume, bool paused,
                                                     unsigned int *handle);
@@ -208,8 +209,8 @@ FFI_PLUGIN_EXPORT void setMixerOutputCallback(
 /// [handle] the sound handle
 /// Returns [PlayerErrors.noError] if success, [PlayerErrors.backendNotInited]
 /// if the engine is not initialized, [PlayerErrors.soundHandleNotFound] if
-/// [handle] is not valid, [PlayerErrors.audioDeviceFailedToStart] if
-/// unpausing could not start the output device.
+/// [handle] is not valid. Unpausing posts an asynchronous device start, so
+/// this never reports [PlayerErrors.audioDeviceFailedToStart].
 FFI_PLUGIN_EXPORT enum PlayerErrors pauseSwitch(unsigned int handle);
 
 /// Pause or unpause already loaded sound identified by [handle]
@@ -218,9 +219,8 @@ FFI_PLUGIN_EXPORT enum PlayerErrors pauseSwitch(unsigned int handle);
 /// [pause] the sound handle
 /// Returns [PlayerErrors.noError] if success, [PlayerErrors.backendNotInited]
 /// if the engine is not initialized, [PlayerErrors.soundHandleNotFound] if
-/// [handle] is not valid, [PlayerErrors.audioDeviceFailedToStart] if
-/// unpausing could not start the output device. When the device cannot be
-/// started, the voice is left paused.
+/// [handle] is not valid. Unpausing posts an asynchronous device start, so
+/// this never reports [PlayerErrors.audioDeviceFailedToStart].
 FFI_PLUGIN_EXPORT enum PlayerErrors setPause(unsigned int handle, bool pause);
 
 /// Stop already loaded sound identified by [handle] and clear it
@@ -230,3 +230,26 @@ FFI_PLUGIN_EXPORT enum PlayerErrors setPause(unsigned int handle, bool pause);
 /// if the engine is not initialized, [PlayerErrors.soundHandleNotFound] if
 /// [handle] is not valid (for example the voice has already ended).
 FFI_PLUGIN_EXPORT enum PlayerErrors stop(unsigned int handle);
+
+/// Set how long the audio output device keeps running while the engine is idle
+/// (no active voices) before it is automatically stopped, on every platform.
+/// [timeoutMs] < 0 keeps the device running indefinitely while idle (the
+/// deferred idle-pause is suppressed, so the device keeps rendering silence and
+/// the app keeps its OS audio session alive) and starts it immediately if it
+/// was stopped. [timeoutMs] == 0 stops the device as soon as possible once
+/// idle. [timeoutMs] > 0 keeps it running for that many milliseconds after
+/// going idle. Any play/unpause before the deadline cancels the pending stop.
+/// The default is 500. Can be called any time.
+FFI_PLUGIN_EXPORT void setAudioDeviceIdleTimeout(int64_t timeoutMs);
+
+/// Stop the device while idle, or regardless of active voices when force != 0.
+FFI_PLUGIN_EXPORT enum PlayerErrors stopAudioDevice(unsigned int force);
+
+/// Restart the audio output device previously stopped by stopAudioDevice(), so
+/// existing voices and loaded sounds keep operating. Idempotent: a no-op if the
+/// device is already started.
+FFI_PLUGIN_EXPORT enum PlayerErrors startAudioDevice();
+
+/// Get the current state of the audio output device. Returns
+/// audioDeviceUninitialized if the engine is not initialized.
+FFI_PLUGIN_EXPORT enum AudioDeviceState getAudioDeviceState();

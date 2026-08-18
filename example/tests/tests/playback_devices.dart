@@ -52,7 +52,7 @@ Future<OutputBuffer> testPlaybackDevices() async {
   // device count.
   // Note: this is also the first time this path is reachable on Web, where it
   // tears down and re-initializes the WebAudio device.
-  final toDefault = _timeChangeDevice('Switching to the default device');
+  final toDefault = await _timeChangeDevice('Switching to the default device');
   assert(
     await _isPlaybackUsable(sound),
     'The engine should still play after switching to the default device',
@@ -64,7 +64,7 @@ Future<OutputBuffer> testPlaybackDevices() async {
 
   // Regression: an enumerated device still works. Only one device is required
   // because CI/desktop machines commonly expose a single one.
-  final toEnumerated = _timeChangeDevice(
+  final toEnumerated = await _timeChangeDevice(
     'Switching to device "${devices.first.name}"',
     newDevice: devices.first,
   );
@@ -80,13 +80,13 @@ Future<OutputBuffer> testPlaybackDevices() async {
   // Invalid native selectors are rejected before the current device is
   // touched, so they must not disrupt the playback started above.
   // `PlaybackDevice` cannot express these IDs, hence the direct binding call.
-  final belowSentinel = SoLoudController().soLoudFFI.changeDevice(-2);
+  final belowSentinel = await SoLoudController().soLoudFFI.changeDevice(-2);
   assert(
     belowSentinel == PlayerErrors.invalidParameter,
     'A device ID below -1 should be rejected as an invalid parameter, '
     'got $belowSentinel',
   );
-  final outOfRange = SoLoudController().soLoudFFI.changeDevice(9999);
+  final outOfRange = await SoLoudController().soLoudFFI.changeDevice(9999);
   assert(
     outOfRange == PlayerErrors.noPlaybackDevicesFound,
     'An out of range device ID should report no playback devices found, '
@@ -110,7 +110,7 @@ Future<OutputBuffer> testPlaybackDevices() async {
   );
   var slowestSwap = Duration.zero;
   for (var i = 0; i < 10; i++) {
-    final elapsed = _timeChangeDevice('Stress swap $i');
+    final elapsed = await _timeChangeDevice('Stress swap $i');
     if (elapsed > slowestSwap) slowestSwap = elapsed;
     assert(
       SoLoud.instance.getIsValidVoiceHandle(looped),
@@ -141,7 +141,7 @@ Future<OutputBuffer> testPlaybackDevices() async {
   await SoLoud.instance.stop(looped);
   for (var i = 0; i < 5; i++) {
     await delay(450);
-    _timeChangeDevice('Swap $i racing the deferred engine pause');
+    await _timeChangeDevice('Swap $i racing the deferred engine pause');
     assert(
       await _isPlaybackUsable(sound),
       'The engine should still play after swap $i raced the engine pause',
@@ -156,7 +156,10 @@ Future<OutputBuffer> testPlaybackDevices() async {
     for (final device in devices) {
       strBuf.writeln('Testing device: ${device.name}');
       debugPrint('Testing device: ${device.name}');
-      _timeChangeDevice('Switching to "${device.name}"', newDevice: device);
+      await _timeChangeDevice(
+        'Switching to "${device.name}"',
+        newDevice: device,
+      );
 
       await delay(3000);
     }
@@ -209,14 +212,17 @@ Future<OutputBuffer> testPlaybackDevices() async {
 /// Calls `changeDevice()` and reports how long the native call took, asserting
 /// it stayed inside [_changeDeviceBudget].
 ///
-/// This cannot catch a true deadlock: `changeDevice()` is a synchronous FFI
-/// call on the UI isolate, so once the native side wedges there is no Dart code
-/// left to time it out — the app just freezes (the Android ANR). What it does
-/// catch is the multi-second stall that precedes that deadlock, which has the
-/// same cause and is visible on every platform where the swap then recovers.
-Duration _timeChangeDevice(String what, {PlaybackDevice? newDevice}) {
+/// This cannot catch a true deadlock: the swap runs on a worker isolate, so a
+/// wedged native side leaves this future pending forever rather than failing —
+/// the UI survives, but the returned future never completes. What it does catch
+/// is the multi-second stall that precedes that deadlock, which has the same
+/// cause and is visible on every platform where the swap then recovers.
+Future<Duration> _timeChangeDevice(
+  String what, {
+  PlaybackDevice? newDevice,
+}) async {
   final stopwatch = Stopwatch()..start();
-  SoLoud.instance.changeDevice(newDevice: newDevice);
+  await SoLoud.instance.changeDevice(newDevice: newDevice);
   stopwatch.stop();
   assert(
     stopwatch.elapsed < _changeDeviceBudget,

@@ -2,6 +2,8 @@ import 'advanced_pan.dart' as advanced_pan;
 import 'all_instances_finished.dart' as all_instances_finished;
 import 'async_multi_load.dart' as async_multi_load;
 import 'asynchronous_deinit.dart' as asynchronous_deinit;
+import 'audio_device_idle_timeout.dart' as audio_device_idle_timeout;
+import 'audio_device_lifecycle_races.dart' as audio_device_lifecycle_races;
 import 'auto_dispose.dart' as auto_dispose;
 import 'buffer_stream_callbacks.dart' as buffer_stream_callbacks;
 import 'buffer_stream_extended.dart' as buffer_stream_extended;
@@ -77,6 +79,14 @@ final List<TestEntry> allTests = [
   const TestEntry(
     name: 'AsynchronousDeinit',
     run: asynchronous_deinit.testAsynchronousDeinit,
+  ),
+  const TestEntry(
+    name: 'AudioDeviceIdleTimeout',
+    run: audio_device_idle_timeout.testAudioDeviceIdleTimeout,
+  ),
+  const TestEntry(
+    name: 'AudioDeviceLifecycleRaces',
+    run: audio_device_lifecycle_races.testAudioDeviceLifecycleRaces,
   ),
   const TestEntry(
     name: 'AutoDispose',

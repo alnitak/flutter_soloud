@@ -485,6 +485,9 @@ interface class SoLoud {
       await _waitForInitializationTeardownAndThrow();
     }
 
+    // Do not expose a previous callback registration as ready while this
+    // initialization is replacing the native engine and callbacks.
+    _nativeCallbacksInitialized = false;
     final nativeIsInitialized = _controller.soLoudFFI.isInited();
 
     // Removing these asserts because they could not be true after a
@@ -547,6 +550,9 @@ interface class SoLoud {
       androidAAudioAttributes == AndroidAAudioAttributes.mediaMusic,
     );
 
+    // The blocking native engine/device initialization runs off the UI thread
+    // (via a worker isolate inside the binding) so it no longer freezes the app
+    // during startup — the ANR reported in #481.
     final error = await _controller.soLoudFFI.initEngine(
       device?.id ?? -1,
       sampleRate,
@@ -583,8 +589,13 @@ interface class SoLoud {
         if (initializationGeneration != _lifecycleGeneration) {
           await _waitForInitializationTeardownAndThrow();
         }
+        // Publish Dart readiness only after callbacks, loader state, and the
+        // native lifecycle coordinator are all ready.
         _nativeCallbacksInitialized = true;
       } catch (_) {
+        // Callback/loader setup is part of initialization. If it fails, tear
+        // the native engine back down so no scheduler or device remains alive
+        // behind an initialization Future that completed with an error.
         if (_controller.soLoudFFI.isInited()) {
           await deinitAsync();
         }
@@ -613,17 +624,99 @@ interface class SoLoud {
   /// Throws [SoLoudAudioDeviceFailedToStartCppException] if the replacement
   /// output device could not be initialized or started. The engine stays
   /// initialized, but its output device is unavailable.
-  void changeDevice({PlaybackDevice? newDevice}) {
+  ///
+  /// Device enumeration and replacement can block, so native platforms run
+  /// the operation off the UI isolate. The returned future completes after
+  /// replacement and any lifecycle-required restart have finished.
+  Future<void> changeDevice({PlaybackDevice? newDevice}) async {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
 
     final deviceId = newDevice?.id ?? -1;
-    final error = _controller.soLoudFFI.changeDevice(deviceId);
+    final error = await _controller.soLoudFFI.changeDevice(deviceId);
     _logPlayerError(error, from: 'changeDevice() result');
     if (error != PlayerErrors.noError) {
       throw SoLoudCppException.fromPlayerError(error);
     }
+  }
+
+  /// Stops the audio output device without deinitializing the engine.
+  ///
+  /// Only the underlying audio device is stopped. Loaded [AudioSource]s, active
+  /// voices, filters and the [isInitialized] state are all left untouched, so
+  /// playback resumes exactly where it left off once [startAudioDevice] is
+  /// called.
+  ///
+  /// By default this is a successful no-op while any active, unpaused voice
+  /// exists. Set [force] to `true` to stop the device during active playback. A
+  /// forced stop does not pause or otherwise mutate voices; a later play,
+  /// unpause, or [startAudioDevice] call can start the device normally.
+  ///
+  /// This is different from [setPause]: stopping the device changes output
+  /// availability, while pausing a handle changes that voice's authoritative
+  /// state inside SoLoud.
+  ///
+  /// This is idempotent: calling it while the device is already stopped does
+  /// nothing.
+  ///
+  /// The blocking native device operation runs off the UI thread, so this does
+  /// not freeze the app; await the returned future to know when it completed.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  Future<void> stopAudioDevice({bool force = false}) async {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+
+    final error = await _controller.soLoudFFI.stopAudioDevice(force: force);
+    _logPlayerError(error, from: 'stopAudioDevice() result');
+    if (error != PlayerErrors.noError) {
+      throw SoLoudCppException.fromPlayerError(error);
+    }
+  }
+
+  /// Starts or prewarms the audio output device without changing any voice or
+  /// loaded [AudioSource]. This uses the same serialized lifecycle path as
+  /// automatic startup.
+  ///
+  /// This is idempotent: calling it while the device is already started does
+  /// nothing. It cancels an obsolete pending idle stop, but does not enable a
+  /// sticky or permanent keep-alive mode. If the engine remains idle after
+  /// startup, the current timeout configured by [setAudioDeviceIdleTimeout]
+  /// starts again. Pass `null` to that method for indefinite keep-alive.
+  ///
+  /// The blocking native device operation runs off the UI thread, so this does
+  /// not freeze the app; await the returned future to know when the device is
+  /// running again.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  Future<void> startAudioDevice() async {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+
+    final error = await _controller.soLoudFFI.startAudioDevice();
+    _logPlayerError(error, from: 'startAudioDevice() result');
+    if (error != PlayerErrors.noError) {
+      throw SoLoudCppException.fromPlayerError(error);
+    }
+  }
+
+  /// Gets the current state of the audio output device.
+  ///
+  /// This reports miniaudio's actual current device state, not a pending
+  /// scheduler request or the last requested operation. Use it to check
+  /// whether the device is currently
+  /// [AudioDeviceState.started] (actively delivering audio),
+  /// [AudioDeviceState.stopped] (for example after [stopAudioDevice]), or in a
+  /// transitional state. Returns [AudioDeviceState.uninitialized] if the engine
+  /// has not been initialized.
+  ///
+  /// This is a cheap, synchronous read and is safe to call at any time,
+  /// including before the engine is initialized.
+  AudioDeviceState getAudioDeviceState() {
+    return _controller.soLoudFFI.getAudioDeviceState();
   }
 
   /// Lists all OS available playback devices.
@@ -637,6 +730,10 @@ interface class SoLoud {
   /// This method is meant to be called when exiting the app. For example
   /// within the `dispose()` of the uppermost widget in the tree
   /// or inside "AppLifecycleListener.onExitRequested".
+  ///
+  /// This is synchronous: the native teardown (which uninitializes the audio
+  /// device) runs on the calling thread. Use [deinitAsync] to run that teardown
+  /// off the UI thread when you can await it.
   void deinit() {
     _log.finest('deinit() called');
     _predeinit();
@@ -817,16 +914,65 @@ interface class SoLoud {
       });
     }
 
-    // Listen player state changes. Not doing much now.
-    // This doesn't work on Android. See "ma_device_notification_proc"
-    // in miniaudio.h. Only `started` and `stopped` are working.
-    // Leaving this commented out for futher investigation.
+    // Listen player state changes. Most of these are OS notifications and
+    // do not work on Android -- see "ma_device_notification_proc" in
+    // miniaudio.h, where only `started` and `stopped` are reliable.
+    // `audioDeviceStartFailed` is different: the plugin's own lifecycle
+    // scheduler emits it, so it is reliable everywhere and is republished on
+    // the public [audioDeviceStartFailures] stream.
     if (!_controller.soLoudFFI.stateChangedController.hasListener) {
       _controller.soLoudFFI.stateChangedEvents.listen((newState) {
         _log.fine(() => 'Audio engine state changed: $newState');
+        if (newState == PlayerStateNotification.audioDeviceStartFailed) {
+          _log.severe(
+            'The audio output device could not be started. Playback state is '
+            'unchanged, but no audio is being produced until the device can be '
+            'started again.',
+          );
+          if (!_audioDeviceStartFailuresController.isClosed) {
+            _audioDeviceStartFailuresController.add(
+              AudioDeviceStartFailure.deviceUnavailable,
+            );
+          }
+        }
       });
     }
   }
+
+  final StreamController<AudioDeviceStartFailure>
+  _audioDeviceStartFailuresController = StreamController.broadcast();
+
+  /// Reports failures of *automatic* output-device startup.
+  ///
+  /// Every synchronous playback and unpause API delegates its device start to
+  /// the background scheduler: [play], [play3d], [playClocked],
+  /// [play3dClocked], [playScheduled], [setPause], [pauseSwitch], [speechText]
+  /// and `Bus.playOnEngine`. They create the voice and return before the start
+  /// has been attempted, so none of them can throw when it fails. The backend
+  /// already rebuilds the device against the current default output and retries
+  /// once; this stream reports what is left when that has also failed.
+  ///
+  /// Without listening to this, a failed start leaves the engine looking
+  /// healthy — valid handles, voices unpaused, [getAudioDeviceState] reporting
+  /// [AudioDeviceState.stopped] — while producing silence.
+  ///
+  /// Voice state is untouched, so recovery is usually:
+  ///
+  /// ```dart
+  /// SoLoud.instance.audioDeviceStartFailures.listen((_) async {
+  ///   try {
+  ///     await SoLoud.instance.startAudioDevice();
+  ///   } on SoLoudAudioDeviceFailedToStartCppException {
+  ///     // Still unavailable: tell the user, or back off and retry later.
+  ///   }
+  /// });
+  /// ```
+  ///
+  /// [startAudioDevice] and [changeDevice] are the exceptions: they await their
+  /// device operation and report failures directly to their caller, so they do
+  /// not emit here.
+  Stream<AudioDeviceStartFailure> get audioDeviceStartFailures =>
+      _audioDeviceStartFailuresController.stream;
 
   /// Registers a freshly loaded sound, or throws if [error] says it did not
   /// load.
@@ -1919,12 +2065,13 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   ///
-  /// Throws [SoLoudAudioDeviceFailedToStartCppException] if the output audio
-  /// device could not be started.
-  ///
   /// Throws [SoLoudFailedToStartPlaybackCppException] if the audio engine
   /// could not create a voice for the speech. In that case no audio source
   /// is created.
+  ///
+  /// Device startup is requested after the voice has been created and runs off
+  /// the UI thread, so this does not report output-device failures. Use
+  /// [startAudioDevice] when you need to observe them.
   AudioSource speechText(String textToSpeech) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1959,7 +2106,8 @@ interface class SoLoud {
   /// start paused. This is helpful if you want to change some attributes
   /// of the sound instance before you play it. For example, you could
   /// call [setRelativePlaySpeed] or [setProtectVoice] on the sound before
-  /// un-pausing it.
+  /// un-pausing it. Creating a paused instance does not start the output
+  /// device; unpausing the valid handle later starts it.
   ///
   /// To play a looping sound, set [looping] to `true`. You can also
   /// define the half-open region to loop by setting [loopingStartAt] and
@@ -1979,7 +2127,10 @@ interface class SoLoud {
   /// playback); use [play] for one-shot, reactive sounds where "as soon as
   /// possible" is the right answer.
   ///
-  /// Returns the [SoundHandle] of the new sound instance.
+  /// This method is synchronous and returns the [SoundHandle] of the new sound
+  /// instance immediately. For an unpaused instance, output-device startup is
+  /// requested only after the voice has been created and registered
+  /// successfully.
   ///
   /// **NOTE**: by default, the maximum number of sounds you can play is 16 and
   /// it can be changed with [setMaxActiveVoiceCount]. If this limit is reached
@@ -1997,13 +2148,14 @@ interface class SoLoud {
   /// Throws [SoLoudSoundHashNotFoundDartException] if the given [sound]
   /// is not found.
   ///
-  /// Throws [SoLoudAudioDeviceFailedToStartCppException] if the output audio
-  /// device could not be started. Only checked when the sound will actually
-  /// play: with [paused] set to `true` no device is needed until you unpause
-  /// it, so a voice can be created and configured during an interruption.
-  ///
   /// Throws [SoLoudFailedToStartPlaybackCppException] if the audio engine
   /// could not create a voice for this sound.
+  ///
+  /// An unpaused voice requests output-device startup only after it has been
+  /// created successfully, and that startup runs off the UI thread. This method
+  /// therefore does not report output-device failures; with [paused] set to
+  /// `true` no device is requested at all. Use [startAudioDevice] when you need
+  /// to observe a device-start failure.
   SoundHandle play(
     AudioSource sound, {
     int busId = 0,
@@ -2107,11 +2259,15 @@ interface class SoLoud {
   /// Throws [SoLoudSoundHashNotFoundDartException] if the given [sound]
   /// is not found.
   ///
-  /// Throws [SoLoudAudioDeviceFailedToStartCppException] if the output audio
-  /// device could not be started.
-  ///
   /// Throws [SoLoudFailedToStartPlaybackCppException] if the audio engine
   /// could not create a voice for this sound.
+  ///
+  /// The schedule is expressed in samples against the engine clock, which only
+  /// advances while the output device is mixing, so a voice scheduled against a
+  /// stopped device keeps its exact offset and starts counting down once the
+  /// device runs. Device startup is therefore queued rather than performed
+  /// inline, and this method does not report output-device failures — listen to
+  /// [audioDeviceStartFailures] for those.
   SoundHandle playClocked(
     AudioSource sound,
     Duration soundTime, {
@@ -2278,11 +2434,15 @@ interface class SoLoud {
   /// Throws [SoLoudSoundHashNotFoundDartException] if the given [sound]
   /// is not found.
   ///
-  /// Throws [SoLoudAudioDeviceFailedToStartCppException] if the output audio
-  /// device could not be started.
-  ///
   /// Throws [SoLoudFailedToStartPlaybackCppException] if the audio engine
   /// could not create a voice for this sound.
+  ///
+  /// The schedule is expressed in samples against the engine clock, which only
+  /// advances while the output device is mixing, so a voice scheduled against a
+  /// stopped device keeps its exact offset and starts counting down once the
+  /// device runs. Device startup is therefore queued rather than performed
+  /// inline, and this method does not report output-device failures — listen to
+  /// [audioDeviceStartFailures] for those.
   SoundHandle playScheduled(
     AudioSource sound,
     Duration atTime, {
@@ -2449,8 +2609,9 @@ interface class SoLoud {
   /// Throws [SoLoudSoundHandleNotFoundCppException] if [handle] is not a
   /// valid voice handle (for example the sound has already ended).
   ///
-  /// Throws [SoLoudAudioDeviceFailedToStartCppException] if unpausing could
-  /// not start the output audio device.
+  /// Unpausing requests output-device startup off the UI thread, so this does
+  /// not report output-device failures. Use [startAudioDevice] when you need to
+  /// observe them.
   void pauseSwitch(SoundHandle handle) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -2472,8 +2633,9 @@ interface class SoLoud {
   /// Throws [SoLoudSoundHandleNotFoundCppException] if [handle] is not a
   /// valid voice handle (for example the sound has already ended).
   ///
-  /// Throws [SoLoudAudioDeviceFailedToStartCppException] if unpausing could
-  /// not start the output audio device.
+  /// Unpausing requests output-device startup off the UI thread, so this does
+  /// not report output-device failures. Use [startAudioDevice] when you need to
+  /// observe them.
   void setPause(SoundHandle handle, bool pause) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -3209,6 +3371,53 @@ interface class SoLoud {
     _controller.soLoudFFI.setMaxActiveVoiceCount(maxVoiceCount);
   }
 
+  /// Sets how long the audio output device keeps running while the engine is
+  /// idle (no active voices) before it is automatically stopped, on every
+  /// platform.
+  ///
+  /// Normally SoLoud stops the device shortly (~500 ms) after the last voice
+  /// stops or pauses (on iOS/macOS/desktop/Android). This method makes that
+  /// idle grace period configurable:
+  ///
+  ///  * A `null` [timeout] keeps the device running indefinitely while idle:
+  ///    the idle-stop is suppressed and the device keeps rendering — silence
+  ///    when nothing plays — so the OS keeps the app's audio session alive.
+  ///    This is a device-level replacement for playing a silent looping sound
+  ///    to keep an audio app running in the background (e.g. across gaps
+  ///    between periodically scheduled sounds, or while a delayed-start timer
+  ///    is pending). It also starts the device immediately (off the UI thread)
+  ///    if it was stopped.
+  ///  * [Duration.zero] stops the device as soon as possible once idle (still
+  ///    asynchronously, off the UI thread).
+  ///  * A positive [timeout] keeps the device running for that long after the
+  ///    engine goes idle, then stops it.
+  ///
+  /// Any play/unpause before the deadline cancels the pending stop. If voices
+  /// are still playing when this is called, the new timeout simply applies the
+  /// next time the engine goes idle.
+  ///
+  /// This also applies right after [init]: the freshly initialized engine is
+  /// treated as having just entered the idle state, so the device stops after
+  /// [timeout] unless something starts playing first (or stays running with a
+  /// `null` timeout).
+  ///
+  /// Note that while the device runs it holds the OS resources of an active
+  /// audio output (on Android the audioserver `AudioMix` partial wakelock, on
+  /// iOS an active audio session), so only keep it running while the user is
+  /// actually playing something or expects playback to start. OS-initiated
+  /// interruptions (e.g. a phone call) still stop the device regardless. When
+  /// the interruption ends, it restarts only if active playback requires it or
+  /// this timeout is `null`; otherwise it remains stopped until later playback
+  /// or an explicit [startAudioDevice].
+  ///
+  /// Defaults to 500 ms. Can be called any time, before or after [init] (the
+  /// setting persists across [deinit]/[init] cycles). A negative [timeout] is
+  /// treated the same as [Duration.zero]. No effect on Web, where the device
+  /// is always kept running.
+  void setAudioDeviceIdleTimeout(Duration? timeout) {
+    _controller.soLoudFFI.setAudioDeviceIdleTimeout(timeout);
+  }
+
   /// Smooth FFT data.
   /// When new data is read and the values are decreasing, the new value
   /// will be decreased with an amplitude between the old and the new value.
@@ -3741,13 +3950,14 @@ interface class SoLoud {
   /// Throws [SoLoudBufferStreamCanBePlayedOnlyOnceCppException] if we try to
   /// play a BufferStream using `release` buffer type more than once.
   ///
-  /// Throws [SoLoudAudioDeviceFailedToStartCppException] if the output audio
-  /// device could not be started. Only checked when the sound will actually
-  /// play: with [paused] set to `true` no device is needed until you unpause
-  /// it, so a voice can be created and configured during an interruption.
-  ///
   /// Throws [SoLoudFailedToStartPlaybackCppException] if the audio engine
   /// could not create a voice for this sound.
+  ///
+  /// An unpaused voice requests output-device startup only after it has been
+  /// created successfully, and that startup runs off the UI thread. This method
+  /// therefore does not report output-device failures; with [paused] set to
+  /// `true` no device is requested at all. Use [startAudioDevice] when you need
+  /// to observe a device-start failure.
   SoundHandle play3d(
     AudioSource sound,
     double posX,
@@ -3838,11 +4048,15 @@ interface class SoLoud {
   /// Throws [SoLoudSoundHashNotFoundDartException] if the given [sound]
   /// is not found.
   ///
-  /// Throws [SoLoudAudioDeviceFailedToStartCppException] if the output audio
-  /// device could not be started.
-  ///
   /// Throws [SoLoudFailedToStartPlaybackCppException] if the audio engine
   /// could not create a voice for this sound.
+  ///
+  /// The schedule is expressed in samples against the engine clock, which only
+  /// advances while the output device is mixing, so a voice scheduled against a
+  /// stopped device keeps its exact offset and starts counting down once the
+  /// device runs. Device startup is therefore queued rather than performed
+  /// inline, and this method does not report output-device failures — listen to
+  /// [audioDeviceStartFailures] for those.
   SoundHandle play3dClocked(
     AudioSource sound,
     Duration soundTime,

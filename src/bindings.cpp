@@ -1,6 +1,7 @@
 #include "analyzer.h"
 #include "audiobuffer/pull_buffer_stream.h"
 #include "dart_callback_gate.h"
+#include "device_lifecycle_test_hooks.h"
 // The FlutterEngine lifecycle entry points defined below. Included so the
 // declarations the embedder plugins compile against are checked against these
 // definitions rather than being repeated by hand in Java, Objective-C++ and
@@ -379,6 +380,14 @@ extern "C"
     unsigned int *n = (unsigned int *)malloc(sizeof(unsigned int));
     *n = *handle;
     voiceEndedCb(n);
+  }
+
+  /// Requests a device-idle evaluation after SoLoud stops or pauses a voice.
+  /// SoLoud invokes this only after releasing its audio mutex.
+  FFI_PLUGIN_EXPORT void voiceInactiveCallback()
+  {
+    if (player != nullptr)
+      player->evaluateAudioDeviceIdle();
   }
 
   /// The callback to monitor when a file is loaded.
@@ -796,6 +805,7 @@ extern "C"
 
     // Set the callback for when a voice is ended/stopped
     player.get()->setVoiceEndedCallback(voiceEndedCallback);
+    player.get()->setVoiceInactiveCallback(voiceInactiveCallback);
 
 #if defined(SOLOUD_LIFECYCLE_TEST_HOOKS)
     soloudTestInitBarrier();
@@ -820,6 +830,189 @@ extern "C"
   FFI_PLUGIN_EXPORT void setAndroidAAudioAttributes(unsigned int managed)
   {
     SoLoud::miniaudio_setAndroidAAudioAttributes(managed != 0);
+  }
+
+  /// Set how long the audio output device keeps running while the engine is
+  /// idle (no active voices) before it is automatically stopped, on every
+  /// platform. [timeoutMs] < 0 keeps the device running indefinitely while idle
+  /// (the deferred idle-pause is suppressed, so the device keeps rendering
+  /// silence and the app keeps its OS audio session alive) and starts it
+  /// immediately if it was stopped. [timeoutMs] == 0 stops the device as soon
+  /// as possible once idle. [timeoutMs] > 0 keeps it running for that many
+  /// milliseconds after going idle. Any play/unpause before the deadline
+  /// cancels the pending stop. The default is 500. Can be called any time.
+#if defined(SOLOUD_LIFECYCLE_TEST_HOOKS)
+  /// Incremented once per completed FlutterEngine-owned teardown worker. Only
+  /// the tests use it; the production API deliberately does not await that
+  /// worker.
+  std::atomic<int> engine_teardown_completed{0};
+#endif
+
+  /// Coalesces deferred applications of the idle-timeout policy. Every worker
+  /// re-reads the published value, so one pending worker is enough no matter
+  /// how many times the setter is called while the lifecycle mutex is busy.
+  /// Bookkeeping for the single deferred idle-timeout worker.
+  ///
+  /// Guarded by its own tiny mutex, never by init_deinit_mutex: the setter runs
+  /// on the UI isolate and must not wait behind a device operation. Nothing
+  /// blocking happens under it.
+  std::mutex idle_timeout_worker_mutex;
+  /// Bumped by every publication. The worker compares it before going idle, so
+  /// a value published while the worker was applying the previous one cannot be
+  /// missed.
+  uint64_t idle_timeout_publication = 0;
+  bool idle_timeout_worker_running = false;
+
+#if defined(SOLOUD_LIFECYCLE_TEST_HOOKS)
+  /// Peak number of deferred workers alive at once. The whole point of the
+  /// bookkeeping above is that this never exceeds 1.
+  std::atomic<int> idle_timeout_worker_live{0};
+  std::atomic<int> idle_timeout_worker_peak{0};
+#endif
+
+  /// Apply the published idle-timeout policy once init_deinit_mutex becomes
+  /// available, without making the caller wait for it.
+  ///
+  /// Exactly one worker exists at a time and it always applies the newest
+  /// published value. The naive alternatives both fail: clearing a "queued"
+  /// flag before blocking lets every setter call spawn its own waiter, so a
+  /// slow init collects a pile of threads; clearing it after applying instead
+  /// drops a value published in the gap between the apply and the flag store.
+  static void queueAudioDeviceIdleTimeoutApply()
+  {
+    {
+      std::lock_guard<std::mutex> guard(idle_timeout_worker_mutex);
+      ++idle_timeout_publication;
+      if (idle_timeout_worker_running)
+        return; // The running worker will observe the newer publication.
+      idle_timeout_worker_running = true;
+    }
+
+    try
+    {
+      std::thread([]()
+                  {
+#if defined(SOLOUD_LIFECYCLE_TEST_HOOKS)
+        const int live = idle_timeout_worker_live.fetch_add(
+                             1, std::memory_order_acq_rel) + 1;
+        int peak = idle_timeout_worker_peak.load(std::memory_order_acquire);
+        while (live > peak &&
+               !idle_timeout_worker_peak.compare_exchange_weak(
+                   peak, live, std::memory_order_acq_rel))
+        {
+        }
+#endif
+        for (;;)
+        {
+          uint64_t applied;
+          {
+            std::lock_guard<std::mutex> guard(idle_timeout_worker_mutex);
+            applied = idle_timeout_publication;
+          }
+
+          {
+            std::lock_guard<std::mutex> guard(init_deinit_mutex);
+            if (player.get() != nullptr)
+              player.get()->applyPublishedAudioDeviceIdleTimeout();
+          }
+
+          SOLOUD_TEST_BARRIER(idleTimeoutWorkerApplied);
+
+          std::lock_guard<std::mutex> guard(idle_timeout_worker_mutex);
+          if (idle_timeout_publication == applied)
+          {
+            // Going idle and observing "nothing newer" happen under the same
+            // lock the setter increments under, so a publication either sees
+            // this worker still running (and is picked up by the loop above)
+            // or starts a fresh one. It cannot fall between the two.
+            idle_timeout_worker_running = false;
+#if defined(SOLOUD_LIFECYCLE_TEST_HOOKS)
+            idle_timeout_worker_live.fetch_sub(1, std::memory_order_acq_rel);
+#endif
+            return;
+          }
+        } })
+          .detach();
+    }
+    catch (...)
+    {
+      std::lock_guard<std::mutex> guard(idle_timeout_worker_mutex);
+      idle_timeout_worker_running = false;
+      // Best effort. The policy is already published process-wide, so the next
+      // init() still observes it.
+    }
+  }
+
+  /// Set the idle-timeout policy. This is called synchronously from the UI
+  /// isolate and is documented as callable at any time, so it must not block.
+  FFI_PLUGIN_EXPORT void setAudioDeviceIdleTimeout(int64_t timeoutMs)
+  {
+    // Publish first, with no lock at all. The policy is process-global and
+    // outlives any individual Player, so this alone guarantees the next init()
+    // uses it even when no Player can consume the update right now.
+    Player::publishAudioDeviceIdleTimeout(timeoutMs);
+
+    // Applying it to the *current* Player needs that pointer pinned, which
+    // means init_deinit_mutex -- and initEngine() holds that across the entire
+    // native device open, which is seconds on Android and is exactly the stall
+    // #481 moved off the UI isolate. Waiting for it here would put that stall
+    // straight back on the UI thread, so take the lock only if it is free...
+    {
+      std::unique_lock<std::mutex> guard(init_deinit_mutex, std::try_to_lock);
+      if (guard.owns_lock())
+      {
+        if (player.get() != nullptr)
+          player.get()->applyPublishedAudioDeviceIdleTimeout();
+        return;
+      }
+    }
+
+    // ...and otherwise hand it to a thread that can afford to wait.
+    queueAudioDeviceIdleTimeoutApply();
+  }
+
+  /// Stop the audio output device without deinitializing the engine. By default
+  /// this is a successful no-op while voices are active. [force] stops the
+  /// device even during active playback without mutating any voice.
+  FFI_PLUGIN_EXPORT enum PlayerErrors stopAudioDevice(unsigned int force)
+  {
+    std::lock_guard<std::mutex> guard(init_deinit_mutex);
+    if (player.get() == nullptr)
+      return backendNotInited;
+
+    return player.get()->stopAudioDevice(force != 0);
+  }
+
+  /// Restart the audio output device previously stopped by stopAudioDevice(),
+  /// so existing voices and loaded sounds keep operating. Idempotent: a no-op
+  /// if the device is already started.
+  FFI_PLUGIN_EXPORT enum PlayerErrors startAudioDevice()
+  {
+    std::lock_guard<std::mutex> guard(init_deinit_mutex);
+    if (player.get() == nullptr)
+      return backendNotInited;
+
+    return player.get()->startAudioDevice();
+  }
+
+  /// Get the current state of the audio output device. Returns
+  /// [AudioDeviceState.audioDeviceUninitialized] if the engine is not
+  /// initialized.
+  FFI_PLUGIN_EXPORT enum AudioDeviceState getAudioDeviceState()
+  {
+    // Read the process-global backend state directly so this cheap synchronous
+    // query never waits behind an initialization or lifecycle API call.
+    return (AudioDeviceState)SoLoud::miniaudio_getAudioDeviceState();
+  }
+
+  /// Test-only hook that sends an interruption through miniaudio's normal
+  /// notification callback. This is intentionally absent from the public API.
+  FFI_PLUGIN_EXPORT void debugTriggerAudioInterruption(unsigned int began)
+  {
+    std::lock_guard<std::mutex> guard(init_deinit_mutex);
+    if (player.get() == nullptr || !player.get()->isInited())
+      return;
+    SoLoud::miniaudio_debugTriggerAudioInterruption(began != 0);
   }
 
   /// List playback devices.
@@ -873,8 +1066,40 @@ extern "C"
   /// [deviceID] the device ID. -1 for default OS output device.
   FFI_PLUGIN_EXPORT enum PlayerErrors changeDevice(int deviceID)
   {
+    // Pins the global `player` for the whole operation, exactly as the
+    // start/stop exports do. Without it a change worker can be inside
+    // Player::changeDevice() while a teardown worker disposes that Player and
+    // installs a replacement -- the change then runs on freed memory. The
+    // window is wide on this path because device enumeration deliberately
+    // happens before Player::mDeviceLifecycleOperationMutex is taken.
+    //
+    // Holding init_deinit_mutex across enumeration and device replacement is
+    // affordable only because Dart runs changeDevice() on a worker isolate, so
+    // the blocking is never on Flutter's UI isolate.
+    //
+    // Lock order. init_deinit_mutex is strictly outermost -- no Player member
+    // function acquires it -- and below that it is a partial order, not a
+    // chain:
+    //
+    //   init_deinit_mutex
+    //     -> Player::mDeviceLifecycleOperationMutex
+    //          -> Player::mInterruptionMutex -> Player::mPauseMutex
+    //          -> SoLoud::gDeviceOperationMutex        (backend device call)
+    //
+    //   SoLoud::gDeviceOperationMutex
+    //     -> Player::mInterruptionMutex -> Player::mPauseMutex
+    //          (an OS interruption notification, which miniaudio can deliver
+    //           inline from a backend device call)
+    //
+    // gDeviceOperationMutex and mInterruptionMutex are therefore both reachable
+    // from the operation mutex, but never in opposite orders: no Player mutex
+    // is ever held across a backend device call. mPauseMutex is a leaf --
+    // nothing blocking runs under it.
+    std::lock_guard<std::mutex> guard(init_deinit_mutex);
     if (player.get() == nullptr)
       return backendNotInited;
+
+    SOLOUD_TEST_BARRIER(changeDeviceEntered);
 
     return player.get()->changeDevice(deviceID);
   }
@@ -931,7 +1156,14 @@ extern "C"
       return;
 
     clearPlayerDartCallbackRegistrationsLocked();
-    player.get()->disposeAllSound();
+    // Deliberately NOT disposeAllSound(): that is a runtime operation which
+    // honours the configured idle policy, so with an indefinite keep-alive it
+    // ends by queueing a device *start*. Running it here would have teardown
+    // ask the scheduler to start the device microseconds before joining that
+    // same scheduler -- an entirely pointless ma_device_start() that deinit()
+    // then has to wait out, on exactly the backends where starting is slow.
+    // Player::dispose() destroys the sounds itself, as the sole owner of native
+    // sound destruction during teardown.
     player.get()->dispose();
     player.reset();
     player = std::make_unique<Player>();
@@ -1073,6 +1305,21 @@ extern "C"
     {
       std::thread([claim]()
                   {
+#if defined(SOLOUD_LIFECYCLE_TEST_HOOKS)
+        // Published when the worker is completely finished -- after
+        // disposeLocked() has reset the Player and the backend is down.
+        // `engine_initialized` goes false at the *start* of teardown, so it is
+        // not the same state and a test that waits on it is not synchronized
+        // with this worker at all.
+        struct CompletionSignal
+        {
+          ~CompletionSignal()
+          {
+            engine_teardown_completed.fetch_add(1, std::memory_order_acq_rel);
+          }
+        } completionSignal;
+#endif
+
         std::lock_guard<std::mutex> guard(init_deinit_mutex);
         std::lock_guard<std::mutex> guard_load(loadMutex);
 
@@ -1103,6 +1350,49 @@ extern "C"
   /// init_deinit_mutex. That mutex is internal and no exported call holds it
   /// for a controllable length of time, so without a hook a test can only hope
   /// the scheduler puts the teardown inside that window.
+
+  /// Peak number of deferred idle-timeout workers alive at once. The
+  /// coalescing is only meaningful if this stays at 1 no matter how many times
+  /// the setter is called while init_deinit_mutex is held.
+  FFI_PLUGIN_EXPORT int soloudTestIdleTimeoutWorkerPeak()
+  {
+    return idle_timeout_worker_peak.load(std::memory_order_acquire);
+  }
+
+  FFI_PLUGIN_EXPORT void soloudTestResetIdleTimeoutWorkerPeak()
+  {
+    idle_timeout_worker_peak.store(0, std::memory_order_release);
+  }
+
+  /// The policy the current Player is actually running with, as opposed to the
+  /// process-global publication.
+  FFI_PLUGIN_EXPORT int64_t soloudTestAppliedIdleTimeoutMs()
+  {
+    std::lock_guard<std::mutex> guard(init_deinit_mutex);
+    if (player.get() == nullptr)
+      return 0;
+    return player.get()->currentAudioDeviceIdleTimeoutMs();
+  }
+
+  /// Set or clear the *engine-level* state callback -- the pointer
+  /// SoLoud::notifyStateChanged() dispatches through, which the miniaudio
+  /// notification threads read. Deliberately without init_deinit_mutex,
+  /// because that is exactly how teardown clears it relative to a notification
+  /// already in flight.
+  FFI_PLUGIN_EXPORT void soloudTestSetEngineStateCallback(unsigned int enable)
+  {
+    if (player.get() == nullptr)
+      return;
+    player.get()->setStateChangedCallback(enable != 0 ? stateChangedCallback
+                                                      : nullptr);
+  }
+
+  /// How many FlutterEngine-owned teardown workers have run to completion.
+  /// Distinct from isInited(): that goes false when teardown *starts*.
+  FFI_PLUGIN_EXPORT int soloudTestEngineTeardownCompletedCount()
+  {
+    return engine_teardown_completed.load(std::memory_order_acquire);
+  }
 
   FFI_PLUGIN_EXPORT void soloudTestLockInitDeinit()
   {
@@ -1679,8 +1969,8 @@ extern "C"
   /// [handle] the sound handle
   /// Returns [PlayerErrors.noError] if success, [PlayerErrors.backendNotInited]
   /// if the engine is not initialized, [PlayerErrors.soundHandleNotFound] if
-  /// [handle] is not valid, [PlayerErrors.audioDeviceFailedToStart] if
-  /// unpausing could not start the output device.
+  /// [handle] is not valid. Unpausing posts an asynchronous device start, so
+  /// this never reports [PlayerErrors.audioDeviceFailedToStart].
   FFI_PLUGIN_EXPORT enum PlayerErrors pauseSwitch(unsigned int handle)
   {
     if (player.get() == nullptr || !player.get()->isInited())
@@ -1694,9 +1984,8 @@ extern "C"
   /// [pause] the sound handle
   /// Returns [PlayerErrors.noError] if success, [PlayerErrors.backendNotInited]
   /// if the engine is not initialized, [PlayerErrors.soundHandleNotFound] if
-  /// [handle] is not valid, [PlayerErrors.audioDeviceFailedToStart] if
-  /// unpausing could not start the output device. When the device cannot be
-  /// started, the voice is left paused.
+  /// [handle] is not valid. Unpausing posts an asynchronous device start, so
+  /// this never reports [PlayerErrors.audioDeviceFailedToStart].
   FFI_PLUGIN_EXPORT enum PlayerErrors setPause(unsigned int handle, bool pause)
   {
     if (player.get() == nullptr || !player.get()->isInited())
@@ -3303,10 +3592,10 @@ extern "C"
   /// [handle] set to the voice handle of the bus, or 0 on error.
   /// Returns [PlayerErrors.noError] if success, [PlayerErrors.backendNotInited]
   /// if the engine is not initialized, [PlayerErrors.busIdNotFound] if [busId]
-  /// is unknown, [PlayerErrors.audioDeviceFailedToStart] if the output device
-  /// could not be started (only checked when [paused] is false),
-  /// [PlayerErrors.failedToStartPlayback] if no voice could be created for the
-  /// bus.
+  /// is unknown, [PlayerErrors.failedToStartPlayback] if no voice could be
+  /// created for the bus. When [paused] is false the output device is started
+  /// asynchronously after the bus voice exists, so this never reports
+  /// [PlayerErrors.audioDeviceFailedToStart].
   ///
   /// Note: to play a sound through a bus, the play() function is used with the
   /// bus ID as an argument. See play() for more information.

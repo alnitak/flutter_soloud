@@ -35,7 +35,7 @@ namespace SoLoud
 
 	float Soloud::getPostClipScaler() const
 	{
-		return mPostClipScaler;
+		return mPostClipScaler.load(std::memory_order_acquire);
 	}
 
 	unsigned int Soloud::getMainResampler() const

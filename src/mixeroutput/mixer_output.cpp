@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstring>
 
+#include "../device_lifecycle_test_hooks.h"
 #include "pcm_converter.h"
 #include "wav_output_encoder.h"
 
@@ -16,6 +17,41 @@ MixerOutput &MixerOutput::instance() {
 MixerOutput::~MixerOutput() { stop(); }
 
 bool MixerOutput::isRunning() const { return m_running.load(); }
+
+uint64_t MixerOutput::enterAudioCallback() {
+  const uint64_t session = m_activeSession.load(std::memory_order_acquire);
+  if (session == kNoCaptureSession) {
+    return kNoCaptureSession;
+  }
+
+  m_audioCallbacksInFlight.fetch_add(1, std::memory_order_acq_rel);
+
+  // Re-read after registering. If a stop slipped in between the two loads it
+  // either sees this callback in the count and waits for it, or it retired
+  // before the increment -- in which case the session no longer matches and
+  // the callback backs out without touching anything.
+  if (m_activeSession.load(std::memory_order_acquire) != session) {
+    m_audioCallbacksInFlight.fetch_sub(1, std::memory_order_acq_rel);
+    return kNoCaptureSession;
+  }
+
+  return session;
+}
+
+void MixerOutput::leaveAudioCallback() {
+  m_audioCallbacksInFlight.fetch_sub(1, std::memory_order_acq_rel);
+}
+
+void MixerOutput::retireSessionAndDrain() {
+  m_activeSession.store(kNoCaptureSession, std::memory_order_release);
+
+  // Spin rather than block: this runs on a control thread, the audio callback
+  // holds the count for a few microseconds at most, and there is nothing here
+  // a real-time thread could be made to wait on.
+  while (m_audioCallbacksInFlight.load(std::memory_order_acquire) != 0) {
+    std::this_thread::yield();
+  }
+}
 
 bool MixerOutput::isCompressedFormat() const {
   return m_format == MIXER_OUTPUT_OPUS || m_format == MIXER_OUTPUT_VORBIS ||
@@ -124,6 +160,12 @@ PlayerErrors MixerOutput::start(MixerOutputFormat format, int sampleRate,
     m_notificationThread =
         std::thread(&MixerOutput::notificationThreadFunc, this);
 #endif
+
+    // Published last, and only now: every buffer, pointer and worker this
+    // session needs is in place, so an audio callback admitted from here on
+    // cannot observe half-built state.
+    m_activeSession.store(m_nextSession.fetch_add(1, std::memory_order_acq_rel),
+                          std::memory_order_release);
   } else {
     m_bytesPerSample = bps;
     m_bytesPerFrame = bytesPerFrame;
@@ -149,6 +191,10 @@ PlayerErrors MixerOutput::start(MixerOutputFormat format, int sampleRate,
     m_notificationThread =
         std::thread(&MixerOutput::notificationThreadFunc, this);
 #endif
+
+    // See the compressed branch above: publish last.
+    m_activeSession.store(m_nextSession.fetch_add(1, std::memory_order_acq_rel),
+                          std::memory_order_release);
   }
 
   return noError;
@@ -158,6 +204,12 @@ void MixerOutput::stop() {
   if (!m_running.load()) {
     return;
   }
+
+  // Retire the session and wait out any audio callback already inside it
+  // *before* touching the state it is using. Everything below this line --
+  // the encoder, the PCM queue, the buffers -- is owned by the session that
+  // was just retired.
+  retireSessionAndDrain();
 
   m_running.store(false);
   m_shouldStop.store(true);
@@ -202,9 +254,15 @@ void MixerOutput::stop() {
 }
 
 void MixerOutput::onAudioData(const float *data, unsigned int frames) {
-  if (!m_running.load()) {
+  // Admission, not a bare `m_running` check: everything read below belongs to
+  // the capture session and stop() must be able to wait this callback out
+  // before destroying it.
+  const CapturePass pass(*this);
+  if (!pass) {
     return;
   }
+
+  SOLOUD_TEST_BARRIER(mixerCaptureCallbackAdmitted);
 
   const size_t totalSamples = static_cast<size_t>(frames) * m_channels;
 
