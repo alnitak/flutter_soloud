@@ -179,7 +179,8 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
         final generation = (message['generation'] as num?)?.toInt();
         if (generation != null && generation != _engineGeneration) {
           _log.finest(
-            () => 'VOICE ENDED EVENT from stale engine session '
+            () =>
+                'VOICE ENDED EVENT from stale engine session '
                 '(generation $generation, current $_engineGeneration); '
                 'dropping handle ${(message['value'] as num).toInt()}',
           );
@@ -319,10 +320,9 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   Future<PlayerErrors> _callEngineAsync(String fn, List<int> args) async {
     await _ensureModuleReady();
     if (flutterSoloudHasAsyncify != true) {
-      final ret =
-          fn == 'initEngine'
-              ? wasmInitEngine(args[0], args[1], args[2], args[3], args[4])
-              : wasmChangeDevice(args[0]);
+      final ret = fn == 'initEngine'
+          ? wasmInitEngine(args[0], args[1], args[2], args[3], args[4])
+          : wasmChangeDevice(args[0]);
       return PlayerErrors.values[ret];
     }
     final promise = wasmCcallAsync(
@@ -392,16 +392,13 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     // AAudio/CoreAudio performance profile); the Web Audio backend ignores it.
     return _enqueueEngineOp(() async {
       _deinitQueued = false;
-      final error = await _callEngineAsync(
-        'initEngine',
-        [
-          deviceId,
-          sampleRate,
-          bufferSize,
-          channels.count,
-          if (lowLatency) 1 else 0,
-        ],
-      );
+      final error = await _callEngineAsync('initEngine', [
+        deviceId,
+        sampleRate,
+        bufferSize,
+        channels.count,
+        if (lowLatency) 1 else 0,
+      ]);
       if (error == PlayerErrors.noError) {
         // Adopt the current engine session counter so voiceEnded events
         // posted by the previous engine (still in flight in the worker
@@ -487,9 +484,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
 
   @override
   FutureOr<PlayerErrors> changeDevice(int deviceId) {
-    return _enqueueEngineOp(
-      () => _callEngineAsync('changeDevice', [deviceId]),
-    );
+    return _enqueueEngineOp(() => _callEngineAsync('changeDevice', [deviceId]));
   }
 
   @override

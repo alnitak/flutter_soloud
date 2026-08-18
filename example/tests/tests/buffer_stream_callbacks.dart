@@ -112,7 +112,7 @@ Future<OutputBuffer> testBufferStreamCallbacks() async {
   //    between 1 and 3 seconds and verify each one is disposed.
   var allDisposed = true;
   for (var i = 0; i < 5; i++) {
-    final durationSec = 1.0 + 2.0 / (i+1); // 1–3 s
+    final durationSec = 1.0 + 2.0 / (i + 1); // 1–3 s
     final pcmData = _generatePcmData(durationSeconds: durationSec);
     final disposed = Completer<void>();
 

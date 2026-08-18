@@ -1883,8 +1883,9 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     _stopAll();
   }
 
-  late final _stopAllPtr =
-      _lookup<ffi.NativeFunction<ffi.Void Function()>>('stopAll');
+  late final _stopAllPtr = _lookup<ffi.NativeFunction<ffi.Void Function()>>(
+    'stopAll',
+  );
   late final _stopAll = _stopAllPtr.asFunction<void Function()>();
 
   @override

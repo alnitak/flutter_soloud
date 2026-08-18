@@ -78,11 +78,12 @@ const _assetsBase = 'assets/packages/flutter_soloud/web/';
 /// Dynamically loads a JS file and waits for it to execute.
 Future<void> _loadScript(String src) {
   final completer = Completer<void>();
-  final script = web.HTMLScriptElement()..src = src
-  ..onload = ((web.Event _) => completer.complete()).toJS
-  ..onerror = ((web.Event _) {
-    completer.completeError(StateError('Failed to load script: $src'));
-  }).toJS;
+  final script = web.HTMLScriptElement()
+    ..src = src
+    ..onload = ((web.Event _) => completer.complete()).toJS
+    ..onerror = ((web.Event _) {
+      completer.completeError(StateError('Failed to load script: $src'));
+    }).toJS;
   web.document.head!.appendChild(script);
   return completer.future;
 }
@@ -103,14 +104,17 @@ Future<void> initializeModule() async {
     if (moduleFactory == null) {
       // No glue script loaded by the page: choose the best flavor supported
       // by this browsing context and load it dynamically.
-      final useMt = forceSingleThreaded != true &&
+      final useMt =
+          forceSingleThreaded != true &&
           (isCrossOriginIsolated ?? false) &&
           sharedArrayBuffer != null;
       final flavor = useMt ? 'mt' : 'st';
       buildFlavor = flavor.toJS;
       flutterSoloudHasAsyncify = useMt;
-      print('flutter_soloud: loading $flavor WASM build '
-          '(crossOriginIsolated: $isCrossOriginIsolated)');
+      print(
+        'flutter_soloud: loading $flavor WASM build '
+        '(crossOriginIsolated: $isCrossOriginIsolated)',
+      );
       await _loadScript(
         '$_assetsBase/libflutter_soloud_plugin${useMt ? '_mt' : ''}.js',
       );
