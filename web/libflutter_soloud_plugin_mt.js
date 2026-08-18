@@ -6257,7 +6257,7 @@ function checkIncomingModuleAPI() {
 }
 
 var ASM_CONSTS = {
-  725276: ($0, $1, $2, $3, $4) => {
+  725228: ($0, $1, $2, $3, $4) => {
     if (typeof window === "undefined" || (window.AudioContext || window.webkitAudioContext) === undefined) {
       return 0;
     }
@@ -6329,7 +6329,7 @@ var ASM_CONSTS = {
     window.miniaudio.referenceCount += 1;
     return 1;
   },
-  727454: () => {
+  727406: () => {
     if (typeof (window.miniaudio) !== "undefined") {
       window.miniaudio.unlock_event_types.map(function(event_type) {
         document.removeEventListener(event_type, window.miniaudio.unlock, true);
@@ -6340,8 +6340,8 @@ var ASM_CONSTS = {
       }
     }
   },
-  727758: () => (navigator.mediaDevices !== undefined && navigator.mediaDevices.getUserMedia !== undefined),
-  727862: () => {
+  727710: () => (navigator.mediaDevices !== undefined && navigator.mediaDevices.getUserMedia !== undefined),
+  727814: () => {
     try {
       var temp = new (window.AudioContext || window.webkitAudioContext);
       var sampleRate = temp.sampleRate;
@@ -6351,12 +6351,12 @@ var ASM_CONSTS = {
       return 0;
     }
   },
-  728033: ($0, $1) => window.miniaudio.track_device({
+  727985: ($0, $1) => window.miniaudio.track_device({
     webaudio: emscriptenGetAudioObject($0),
     state: 1,
     pDevice: $1
   }),
-  728142: ($0, $1) => {
+  728094: ($0, $1) => {
     var getUserMediaResult = 0;
     var audioWorklet = emscriptenGetAudioObject($0);
     var audioContext = emscriptenGetAudioObject($1);
@@ -6374,14 +6374,14 @@ var ASM_CONSTS = {
     });
     return getUserMediaResult;
   },
-  728704: ($0, $1) => {
+  728656: ($0, $1) => {
     var audioWorklet = emscriptenGetAudioObject($0);
     var audioContext = emscriptenGetAudioObject($1);
     audioWorklet.connect(audioContext.destination);
     return 0;
   },
-  728864: $0 => emscriptenGetAudioObject($0).sampleRate,
-  728916: $0 => {
+  728816: $0 => emscriptenGetAudioObject($0).sampleRate,
+  728868: $0 => {
     var device = window.miniaudio.get_device_by_index($0);
     if (device.streamNode !== undefined) {
       device.streamNode.disconnect();
@@ -6389,20 +6389,20 @@ var ASM_CONSTS = {
     }
     device.pDevice = undefined;
   },
-  729107: $0 => {
+  729059: $0 => {
     window.miniaudio.untrack_device_by_index($0);
   },
-  729157: $0 => {
+  729109: $0 => {
     var device = window.miniaudio.get_device_by_index($0);
     device.webaudio.resume();
     device.state = window.miniaudio.device_state.started;
   },
-  729296: $0 => {
+  729248: $0 => {
     var device = window.miniaudio.get_device_by_index($0);
     device.webaudio.suspend();
     device.state = window.miniaudio.device_state.stopped;
   },
-  729436: () => {
+  729388: () => {
     var workerUri = "assets/packages/flutter_soloud/web/worker.dart.js";
     console.log("EM_ASM creating Web Worker!");
     try {
@@ -6422,7 +6422,7 @@ var ASM_CONSTS = {
       return 0;
     }
   },
-  729925: ($0, $1, $2) => {
+  729877: ($0, $1, $2) => {
     if (Module_soloud.wasmWorker) {
       Module_soloud.wasmWorker.postMessage({
         message: UTF8ToString($0),
@@ -6433,7 +6433,7 @@ var ASM_CONSTS = {
       console.error('flutter_soloud: the event worker is not created; dropping message "' + UTF8ToString($0) + '"');
     }
   },
-  730183: ($0, $1, $2) => {
+  730135: ($0, $1, $2) => {
     if (Module_soloud.wasmWorker) {
       Module_soloud.wasmWorker.postMessage({
         message: "mixerOutputData",
@@ -6443,13 +6443,13 @@ var ASM_CONSTS = {
       });
     }
   },
-  730335: ($0, $1) => {
+  730287: ($0, $1) => {
     var functionName = "dartOnMetadataCallback_" + $1;
     if (typeof window[functionName] === "function") {
       window[functionName]($0);
     } else {}
   },
-  730477: ($0, $1, $2, $3) => {
+  730429: ($0, $1, $2, $3) => {
     var functionName = "dartOnBufferingCallback_" + $3;
     if (typeof window[functionName] === "function") {
       var buffering = $0 == 1 ? true : false;
@@ -6458,25 +6458,25 @@ var ASM_CONSTS = {
       console.log("EM_ASM 'dartOnBufferingCallback_$hash' not found.");
     }
   },
-  730741: ($0, $1, $2, $3) => {
+  730693: ($0, $1, $2, $3) => {
     var functionName = "dartOnBufferingCallback_" + $3;
     if (typeof window[functionName] === "function") {
       window[functionName]($0 == 1 ? true : false, $1, $2);
     }
   },
-  730903: ($0, $1) => {
+  730855: ($0, $1) => {
     var functionName = "dartOnMetadataCallback_" + $1;
     if (typeof window[functionName] === "function") {
       window[functionName]($0);
     }
   },
-  731036: ($0, $1) => {
+  730988: ($0, $1) => {
     var functionName = "dartOnMoreDataIsNeededCallback_" + $1;
     if (typeof window[functionName] === "function") {
       window[functionName]($0);
     }
   },
-  731177: ($0, $1) => {
+  731129: ($0, $1) => {
     var functionName = "dartOnAudioDurationCallback_" + $1;
     if (typeof window[functionName] === "function") {
       window[functionName]($0);
@@ -6508,6 +6508,8 @@ var _getEngineGeneration = Module["_getEngineGeneration"] = makeInvalidEarlyAcce
 var _nativeFree = Module["_nativeFree"] = makeInvalidEarlyAccess("_nativeFree");
 
 var _voiceEndedCallback = Module["_voiceEndedCallback"] = makeInvalidEarlyAccess("_voiceEndedCallback");
+
+var _voiceInactiveCallback = Module["_voiceInactiveCallback"] = makeInvalidEarlyAccess("_voiceInactiveCallback");
 
 var _setDartEventCallback = Module["_setDartEventCallback"] = makeInvalidEarlyAccess("_setDartEventCallback");
 
@@ -6542,6 +6544,16 @@ var _areXiphLibsAvailable = Module["_areXiphLibsAvailable"] = makeInvalidEarlyAc
 var _initEngine = Module["_initEngine"] = makeInvalidEarlyAccess("_initEngine");
 
 var _setAndroidAAudioAttributes = Module["_setAndroidAAudioAttributes"] = makeInvalidEarlyAccess("_setAndroidAAudioAttributes");
+
+var _setAudioDeviceIdleTimeout = Module["_setAudioDeviceIdleTimeout"] = makeInvalidEarlyAccess("_setAudioDeviceIdleTimeout");
+
+var _stopAudioDevice = Module["_stopAudioDevice"] = makeInvalidEarlyAccess("_stopAudioDevice");
+
+var _startAudioDevice = Module["_startAudioDevice"] = makeInvalidEarlyAccess("_startAudioDevice");
+
+var _getAudioDeviceState = Module["_getAudioDeviceState"] = makeInvalidEarlyAccess("_getAudioDeviceState");
+
+var _debugTriggerAudioInterruption = Module["_debugTriggerAudioInterruption"] = makeInvalidEarlyAccess("_debugTriggerAudioInterruption");
 
 var _listPlaybackDevices = Module["_listPlaybackDevices"] = makeInvalidEarlyAccess("_listPlaybackDevices");
 
@@ -6964,6 +6976,7 @@ function assignWasmExports(wasmExports) {
   assert(typeof wasmExports["getEngineGeneration"] != "undefined", "missing Wasm export: getEngineGeneration");
   assert(typeof wasmExports["nativeFree"] != "undefined", "missing Wasm export: nativeFree");
   assert(typeof wasmExports["voiceEndedCallback"] != "undefined", "missing Wasm export: voiceEndedCallback");
+  assert(typeof wasmExports["voiceInactiveCallback"] != "undefined", "missing Wasm export: voiceInactiveCallback");
   assert(typeof wasmExports["setDartEventCallback"] != "undefined", "missing Wasm export: setDartEventCallback");
   assert(typeof wasmExports["clearDartCallbackRegistrations"] != "undefined", "missing Wasm export: clearDartCallbackRegistrations");
   assert(typeof wasmExports["clearDartCallbackRegistrationsForEngine"] != "undefined", "missing Wasm export: clearDartCallbackRegistrationsForEngine");
@@ -6981,6 +6994,11 @@ function assignWasmExports(wasmExports) {
   assert(typeof wasmExports["areXiphLibsAvailable"] != "undefined", "missing Wasm export: areXiphLibsAvailable");
   assert(typeof wasmExports["initEngine"] != "undefined", "missing Wasm export: initEngine");
   assert(typeof wasmExports["setAndroidAAudioAttributes"] != "undefined", "missing Wasm export: setAndroidAAudioAttributes");
+  assert(typeof wasmExports["setAudioDeviceIdleTimeout"] != "undefined", "missing Wasm export: setAudioDeviceIdleTimeout");
+  assert(typeof wasmExports["stopAudioDevice"] != "undefined", "missing Wasm export: stopAudioDevice");
+  assert(typeof wasmExports["startAudioDevice"] != "undefined", "missing Wasm export: startAudioDevice");
+  assert(typeof wasmExports["getAudioDeviceState"] != "undefined", "missing Wasm export: getAudioDeviceState");
+  assert(typeof wasmExports["debugTriggerAudioInterruption"] != "undefined", "missing Wasm export: debugTriggerAudioInterruption");
   assert(typeof wasmExports["listPlaybackDevices"] != "undefined", "missing Wasm export: listPlaybackDevices");
   assert(typeof wasmExports["changeDevice"] != "undefined", "missing Wasm export: changeDevice");
   assert(typeof wasmExports["freeListPlaybackDevices"] != "undefined", "missing Wasm export: freeListPlaybackDevices");
@@ -7196,6 +7214,7 @@ function assignWasmExports(wasmExports) {
   _getEngineGeneration = Module["_getEngineGeneration"] = createExportWrapper("getEngineGeneration", 0);
   _nativeFree = Module["_nativeFree"] = createExportWrapper("nativeFree", 1);
   _voiceEndedCallback = Module["_voiceEndedCallback"] = createExportWrapper("voiceEndedCallback", 1);
+  _voiceInactiveCallback = Module["_voiceInactiveCallback"] = createExportWrapper("voiceInactiveCallback", 0);
   _setDartEventCallback = Module["_setDartEventCallback"] = createExportWrapper("setDartEventCallback", 4);
   _clearDartCallbackRegistrations = Module["_clearDartCallbackRegistrations"] = createExportWrapper("clearDartCallbackRegistrations", 0);
   _clearDartCallbackRegistrationsForEngine = Module["_clearDartCallbackRegistrationsForEngine"] = createExportWrapper("clearDartCallbackRegistrationsForEngine", 1);
@@ -7213,6 +7232,11 @@ function assignWasmExports(wasmExports) {
   _areXiphLibsAvailable = Module["_areXiphLibsAvailable"] = createExportWrapper("areXiphLibsAvailable", 0);
   _initEngine = Module["_initEngine"] = createExportWrapper("initEngine", 5);
   _setAndroidAAudioAttributes = Module["_setAndroidAAudioAttributes"] = createExportWrapper("setAndroidAAudioAttributes", 1);
+  _setAudioDeviceIdleTimeout = Module["_setAudioDeviceIdleTimeout"] = createExportWrapper("setAudioDeviceIdleTimeout", 1);
+  _stopAudioDevice = Module["_stopAudioDevice"] = createExportWrapper("stopAudioDevice", 1);
+  _startAudioDevice = Module["_startAudioDevice"] = createExportWrapper("startAudioDevice", 0);
+  _getAudioDeviceState = Module["_getAudioDeviceState"] = createExportWrapper("getAudioDeviceState", 0);
+  _debugTriggerAudioInterruption = Module["_debugTriggerAudioInterruption"] = createExportWrapper("debugTriggerAudioInterruption", 1);
   _listPlaybackDevices = Module["_listPlaybackDevices"] = createExportWrapper("listPlaybackDevices", 4);
   _changeDevice = Module["_changeDevice"] = createExportWrapper("changeDevice", 1);
   _freeListPlaybackDevices = Module["_freeListPlaybackDevices"] = createExportWrapper("freeListPlaybackDevices", 4);

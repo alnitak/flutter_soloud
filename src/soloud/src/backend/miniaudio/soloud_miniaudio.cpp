@@ -441,10 +441,11 @@ namespace SoLoud
         // ScriptProcessorNode callback) from a previous session can still
         // fire while the engine is being torn down or re-initialized.
         // pUserData then points at the new, not yet fully initialized engine
-        // (or, while the backend global is cleared, at nothing valid), and
-        // mixing would touch half-initialized or freed engine state. Emit
-        // silence instead.
-        if (soloud == nullptr || soloud != SoLoud::soloud ||
+        // (or, while the backend global gSoloud is cleared, at nothing
+        // valid), and mixing would touch half-initialized or freed engine
+        // state. Emit silence instead.
+        if (soloud == nullptr ||
+            soloud != gSoloud.load(std::memory_order_acquire) ||
             soloud->mEngineReady == 0)
         {
             std::memset(pOutput, 0,

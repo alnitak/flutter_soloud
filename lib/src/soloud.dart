@@ -634,19 +634,11 @@ interface class SoLoud {
     }
 
     final deviceId = newDevice?.id ?? -1;
-    final result = _controller.soLoudFFI.changeDevice(deviceId);
-    if (result is Future<PlayerErrors>) {
-      // On web with the multi-threaded (AudioWorklet) WASM build the device
-      // change completes asynchronously; the result is logged when it
-      // settles. Synchronous error reporting is not possible there.
-      unawaited(
-        result.then(
-          (error) => _logPlayerError(error, from: 'changeDevice() result'),
-        ),
-      );
-      return;
-    }
-    final error = result;
+    // Both bindings complete asynchronously now: the native binding runs the
+    // device swap in a worker isolate, and on web the multi-threaded
+    // (AudioWorklet) WASM build must go through an async ccall (miniaudio
+    // spin-waits on emscripten_sleep while the worklet thread starts up).
+    final error = await _controller.soLoudFFI.changeDevice(deviceId);
     _logPlayerError(error, from: 'changeDevice() result');
     if (error != PlayerErrors.noError) {
       throw SoLoudCppException.fromPlayerError(error);

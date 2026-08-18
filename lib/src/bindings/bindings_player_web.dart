@@ -486,9 +486,10 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   void debugTriggerAudioInterruption({required bool began}) {}
 
   @override
-  Future<PlayerErrors> changeDevice(int deviceId) async {
-    final ret = wasmChangeDevice(deviceId);
-    return PlayerErrors.values[ret];
+  FutureOr<PlayerErrors> changeDevice(int deviceId) {
+    return _enqueueEngineOp(
+      () => _callEngineAsync('changeDevice', [deviceId]),
+    );
   }
 
   @override
