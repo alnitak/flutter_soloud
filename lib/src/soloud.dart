@@ -2187,6 +2187,9 @@ interface class SoLoud {
   /// therefore does not report output-device failures; with [paused] set to
   /// `true` no device is requested at all. Use [startAudioDevice] when you need
   /// to observe a device-start failure.
+  /// [scale] relative playback speed multiplier (1.0 = normal speed).
+  ///
+  /// The rest of the parameters are described in the method documentation.
   SoundHandle play(
     AudioSource sound, {
     int busId = 0,
@@ -2196,6 +2199,7 @@ interface class SoLoud {
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
     Duration? loopingEndAt,
+    double scale = 1,
   }) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -2210,6 +2214,7 @@ interface class SoLoud {
       looping: looping,
       loopingStartAt: loopingStartAt,
       loopingEndAt: loopingEndAt,
+      scale: scale,
     );
     if (!_checkPlaybackResult(ret, from: 'play()')) {
       // Non-blocking failure: nothing is playing, so don't register
@@ -2301,22 +2306,40 @@ interface class SoLoud {
   /// device runs. Device startup is therefore queued rather than performed
   /// inline, and this method does not report output-device failures — listen to
   /// [audioDeviceStartFailures] for those.
+  /// [scale] relative playback speed multiplier (1.0 = normal speed).
+  ///
+  /// [looping] whether the sound should loop when reaching the end.
+  ///
+  /// [loopingStartAt] time position to restart playback when looping.
+  ///
+  /// [loopingEndAt] optional exclusive end point for looping.
+  ///
+  /// The rest of the parameters are equivalent to [play].
   SoundHandle playClocked(
     AudioSource sound,
     Duration soundTime, {
     int busId = 0,
     double volume = 1,
     double pan = 0,
+    double scale = 1,
+    bool looping = false,
+    Duration loopingStartAt = Duration.zero,
+    Duration? loopingEndAt,
   }) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    validateLoopRegion(start: loopingStartAt, end: loopingEndAt);
     final ret = _controller.soLoudFFI.playClocked(
       sound.soundHash,
       soundTime,
       busId: busId,
       volume: volume,
       pan: pan,
+      scale: scale,
+      looping: looping,
+      loopingStartAt: loopingStartAt,
+      loopingEndAt: loopingEndAt,
     );
     if (!_checkPlaybackResult(ret, from: 'playClocked()')) {
       // Non-blocking failure: nothing is playing, so don't register
@@ -2489,6 +2512,14 @@ interface class SoLoud {
   /// [busId] if not 0, the sound will be played on the mixing bus with this
   /// ID instead of the main engine. See [Bus.playScheduled].
   ///
+  /// [scale] relative playback speed multiplier (1.0 = normal speed). Applied
+  /// atomically at sound birth so render-ahead and retroactive buffers are
+  /// pitched accurately from sample 0 without pitch glitches.
+  ///
+  /// [looping] whether the voice should loop when reaching the end.
+  ///
+  /// [loopingStartAt] the time position to restart playback when looping.
+  ///
   /// The rest of the parameters are equivalent to [play].
   ///
   /// Returns the [SoundHandle] of the new sound instance. The handle can be
@@ -2511,6 +2542,7 @@ interface class SoLoud {
   /// device runs. Device startup is therefore queued rather than performed
   /// inline, and this method does not report output-device failures — listen to
   /// [audioDeviceStartFailures] for those.
+  /// [loopingEndAt] optional exclusive end point for looping.
   SoundHandle playScheduled(
     AudioSource sound,
     Duration atTime, {
@@ -2521,10 +2553,12 @@ interface class SoLoud {
     double scale = 1,
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
+    Duration? loopingEndAt,
   }) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    validateLoopRegion(start: loopingStartAt, end: loopingEndAt);
     final ret = _controller.soLoudFFI.playScheduled(
       sound.soundHash,
       atTime,
@@ -2535,6 +2569,7 @@ interface class SoLoud {
       scale: scale,
       looping: looping,
       loopingStartAt: loopingStartAt,
+      loopingEndAt: loopingEndAt,
     );
     if (!_checkPlaybackResult(ret, from: 'playScheduled()')) {
       // Non-blocking failure: nothing is playing, so don't register
@@ -4067,6 +4102,7 @@ interface class SoLoud {
   /// therefore does not report output-device failures; with [paused] set to
   /// `true` no device is requested at all. Use [startAudioDevice] when you need
   /// to observe a device-start failure.
+  /// [scale] relative playback speed multiplier (1.0 = normal speed).
   SoundHandle play3d(
     AudioSource sound,
     double posX,
@@ -4081,6 +4117,7 @@ interface class SoLoud {
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
     Duration? loopingEndAt,
+    double scale = 1,
   }) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -4101,6 +4138,7 @@ interface class SoLoud {
       looping: looping,
       loopingStartAt: loopingStartAt,
       loopingEndAt: loopingEndAt,
+      scale: scale,
     );
 
     if (!_checkPlaybackResult(ret, from: 'play3d()')) {
@@ -4168,6 +4206,13 @@ interface class SoLoud {
   /// device runs. Device startup is therefore queued rather than performed
   /// inline, and this method does not report output-device failures — listen to
   /// [audioDeviceStartFailures] for those.
+  /// [scale] relative playback speed multiplier (1.0 = normal speed).
+  ///
+  /// [looping] whether the sound should loop when reaching the end.
+  ///
+  /// [loopingStartAt] time position to restart playback when looping.
+  ///
+  /// [loopingEndAt] optional exclusive end point for looping.
   SoundHandle play3dClocked(
     AudioSource sound,
     Duration soundTime,
@@ -4179,10 +4224,15 @@ interface class SoLoud {
     double velZ = 0,
     int busId = 0,
     double volume = 1,
+    double scale = 1,
+    bool looping = false,
+    Duration loopingStartAt = Duration.zero,
+    Duration? loopingEndAt,
   }) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    validateLoopRegion(start: loopingStartAt, end: loopingEndAt);
 
     final ret = _controller.soLoudFFI.play3dClocked(
       sound.soundHash,
@@ -4195,6 +4245,10 @@ interface class SoLoud {
       velZ: velZ,
       busId: busId,
       volume: volume,
+      scale: scale,
+      looping: looping,
+      loopingStartAt: loopingStartAt,
+      loopingEndAt: loopingEndAt,
     );
 
     if (!_checkPlaybackResult(ret, from: 'play3dClocked()')) {

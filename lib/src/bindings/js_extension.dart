@@ -349,7 +349,7 @@ external double wasmGetRelativePlaySpeed(int handle);
 @JS('Module_soloud._getApproximateVolume')
 external double wasmGetApproximateVolume(int channel);
 
-@JS('Module_soloud._playWithLoopPoints')
+@JS('Module_soloud._play')
 external int wasmPlay(
   int soundHash,
   int busId,
@@ -357,9 +357,11 @@ external int wasmPlay(
   double pan,
   // ignore: avoid_positional_boolean_parameters
   bool paused,
+  // ignore: avoid_positional_boolean_parameters
   bool looping,
   double loopingStartAt,
   double loopingEndAt,
+  double scale,
   int handlePtr,
 );
 
@@ -370,6 +372,11 @@ external int wasmPlayClocked(
   int busId,
   double volume,
   double pan,
+  double scale,
+  // ignore: avoid_positional_boolean_parameters
+  bool looping,
+  double loopingStartAt,
+  double loopingEndAt,
   int handlePtr,
 );
 
@@ -393,6 +400,11 @@ external int wasmPlayScheduled(
   int busId,
   double volume,
   double pan,
+  double scale,
+  // ignore: avoid_positional_boolean_parameters
+  bool looping,
+  double loopingStartAt,
+  double loopingEndAt,
   int handlePtr,
 );
 
@@ -665,6 +677,7 @@ external int wasmPlay3d(
   int looping,
   double loopingStartAt,
   double loopingEndAt,
+  double scale,
   int handlePtr,
 );
 
@@ -680,6 +693,10 @@ external int wasmPlay3dClocked(
   double velY,
   double velZ,
   double volume,
+  double scale,
+  int looping,
+  double loopingStartAt,
+  double loopingEndAt,
   int handlePtr,
 );
 

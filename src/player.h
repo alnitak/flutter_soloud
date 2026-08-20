@@ -409,7 +409,7 @@ public:
                     unsigned int busId = 0,
                     float volume = 1.0f, float pan = 0.0f, bool paused = false,
                     bool looping = false, double loopingStartAt = 0.0,
-                    double loopingEndAt = 0.0);
+                    double loopingEndAt = 0.0, float scale = 1.0f);
 
   /// @brief Variant of [play] that takes an additional parameter, the time
   /// offset for the sound.
@@ -426,10 +426,16 @@ public:
   /// @param busId the bus ID to play the sound on. 0 means the main engine.
   /// @param volume 1.0f full volume.
   /// @param pan 0.0f centered.
+  /// @param scale relative playback speed multiplier (1.0f = normal speed).
+  /// @param looping whether the sound loops upon reaching the end.
+  /// @param loopingStartAt time position in seconds to restart playback when looping.
   /// @return the error if any and the [handle] of this new sound.
   PlayerErrors playClocked(unsigned int soundHash, unsigned int &handle,
                            double soundTime, unsigned int busId = 0,
-                           float volume = 1.0f, float pan = 0.0f);
+                           float volume = 1.0f, float pan = 0.0f,
+                           float scale = 1.0f, bool looping = false,
+                           double loopingStartAt = 0.0,
+                           double loopingEndAt = 0.0);
 
   /// @brief Set the number of samples to delay before starting to play
   /// a sound.
@@ -491,13 +497,17 @@ public:
   /// @param busId the bus ID to play the sound on. 0 means the main engine.
   /// @param volume 1.0f full volume.
   /// @param pan 0.0f centered.
+  /// @param scale relative playback speed multiplier (1.0f = normal speed).
+  /// @param looping whether the sound loops upon reaching the end.
+  /// @param loopingStartAt time position in seconds to restart playback when looping.
   /// @return the error if any and the [handle] of this new sound.
   PlayerErrors playScheduled(unsigned int soundHash, unsigned int &handle,
                              double atTime, double duration = 0.0,
                              unsigned int busId = 0,
                              float volume = 1.0f, float pan = 0.0f,
                              float scale = 1.0f, bool looping = false,
-                             double loopingStartAt = 0.0);
+                             double loopingStartAt = 0.0,
+                             double loopingEndAt = 0.0);
 
   /// @brief Stop a sound at an absolute engine time (see [getEngineTime]).
   ///
@@ -852,7 +862,7 @@ public:
                       float velY = 0.0f, float velZ = 0.0f, float volume = 1.0f,
                       bool paused = 0, unsigned int busId = 0,
                       bool looping = false, double loopingStartAt = 0.0,
-                      double loopingEndAt = 0.0);
+                      double loopingEndAt = 0.0, float scale = 1.0f);
 
   /// @brief play3dClocked() is the 3d version of the playClocked() call.
   ///
@@ -873,7 +883,9 @@ public:
                              double soundTime, float posX, float posY,
                              float posZ, float velX = 0.0f, float velY = 0.0f,
                              float velZ = 0.0f, float volume = 1.0f,
-                             unsigned int busId = 0);
+                             unsigned int busId = 0, float scale = 1.0f,
+                             bool looping = false, double loopingStartAt = 0.0,
+                             double loopingEndAt = 0.0);
 
   /// You can set and get the current value of the speed of
   /// sound width the get3dSoundSpeed() and set3dSoundSpeed() functions.

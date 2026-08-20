@@ -591,6 +591,7 @@ abstract class FlutterSoLoud {
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
     Duration? loopingEndAt,
+    double scale = 1,
   });
 
   /// Variant of [play] that takes an additional parameter, the time offset
@@ -608,6 +609,9 @@ abstract class FlutterSoLoud {
   /// [busId] the bus ID to play the sound on. 0 means the main engine.
   /// [volume] 1.0 full volume.
   /// [pan] 0.0 centered.
+  /// [scale] relative playback speed multiplier (1.0 = normal speed).
+  /// [looping] whether the sound should loop when reaching the end.
+  /// [loopingStartAt] time to seek to when looping.
   /// Return the error if any and a new `newHandle` of this sound.
   @mustBeOverridden
   ({PlayerErrors error, SoundHandle newHandle}) playClocked(
@@ -616,6 +620,10 @@ abstract class FlutterSoLoud {
     int busId = 0,
     double volume = 1,
     double pan = 0,
+    double scale = 1,
+    bool looping = false,
+    Duration loopingStartAt = Duration.zero,
+    Duration? loopingEndAt,
   });
 
   /// Set the number of samples to delay before starting to play a sound.
@@ -689,6 +697,9 @@ abstract class FlutterSoLoud {
   /// [busId] the bus ID to play the sound on. 0 means the main engine.
   /// [volume] 1.0 full volume.
   /// [pan] 0.0 centered.
+  /// [scale] relative playback speed multiplier (1.0 = normal speed).
+  /// [looping] whether the sound should loop when reaching the end.
+  /// [loopingStartAt] time to seek to when looping.
   /// Return the error if any and a new `newHandle` of this sound.
   @mustBeOverridden
   ({PlayerErrors error, SoundHandle newHandle}) playScheduled(
@@ -701,6 +712,7 @@ abstract class FlutterSoLoud {
     double scale = 1,
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
+    Duration? loopingEndAt,
   });
 
   /// Stop a sound at an absolute engine time (see [getEngineTime]).
@@ -1287,6 +1299,7 @@ abstract class FlutterSoLoud {
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
     Duration? loopingEndAt,
+    double scale = 1,
   });
 
   /// play3dClocked() is the 3d version of the [playClocked] call.
@@ -1316,6 +1329,10 @@ abstract class FlutterSoLoud {
     double velY = 0,
     double velZ = 0,
     double volume = 1,
+    double scale = 1,
+    bool looping = false,
+    Duration loopingStartAt = Duration.zero,
+    Duration? loopingEndAt,
   });
 
   /// Since SoLoud has no knowledge of the scale of your coordinates,

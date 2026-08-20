@@ -363,9 +363,21 @@ namespace SoLoud
 	}
 
 
-	handle Soloud::play3d(AudioSource &aSound, float aPosX, float aPosY, float aPosZ, float aVelX, float aVelY, float aVelZ, float aVolume, bool aPaused, unsigned int aBus)
+	handle Soloud::play3d(AudioSource &aSound, float aPosX, float aPosY, float aPosZ, float aVelX, float aVelY, float aVelZ, float aVolume, bool aPaused, unsigned int aBus, float aScale, bool aLooping, time aLoopPoint, time aLoopEndPoint)
 	{
 		handle h = play(aSound, aVolume, 0, 1, aBus);
+		if (h == 0)
+			return 0;
+		if (aScale != 1.0f && aScale > 0.0f)
+		{
+			setRelativePlaySpeed(h, aScale);
+		}
+		if (aLooping)
+		{
+			setLoopPoint(h, aLoopPoint);
+			setLoopEndPoint(h, aLoopEndPoint);
+			setLooping(h, 1);
+		}
 		// No voice was allocated: don't resolve the sentinel as a handle.
 		if (h == 0)
 			return 0;
@@ -436,9 +448,21 @@ namespace SoLoud
 		return h;
 	}
 
-	handle Soloud::play3dClocked(time aSoundTime, AudioSource &aSound, float aPosX, float aPosY, float aPosZ, float aVelX, float aVelY, float aVelZ, float aVolume, unsigned int aBus)
+	handle Soloud::play3dClocked(time aSoundTime, AudioSource &aSound, float aPosX, float aPosY, float aPosZ, float aVelX, float aVelY, float aVelZ, float aVolume, unsigned int aBus, float aScale, bool aLooping, time aLoopPoint, time aLoopEndPoint)
 	{
 		handle h = play(aSound, aVolume, 0, 1, aBus);
+		if (h == 0)
+			return 0;
+		if (aScale != 1.0f && aScale > 0.0f)
+		{
+			setRelativePlaySpeed(h, aScale);
+		}
+		if (aLooping)
+		{
+			setLoopPoint(h, aLoopPoint);
+			setLoopEndPoint(h, aLoopEndPoint);
+			setLooping(h, 1);
+		}
 		// No voice was allocated: don't resolve the sentinel as a handle.
 		if (h == 0)
 			return 0;

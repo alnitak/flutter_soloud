@@ -2177,43 +2177,32 @@ extern "C"
 
   /// Play already loaded sound identified by [hash]
   ///
-  /// [hash] the unique sound hash of a sound
+  /// Play an already loaded sound.
+  ///
+  /// [soundHash] the unique sound hash of a sound
+  /// [busId] the bus ID to play the sound on. 0 means the main engine.
   /// [volume] 1.0f full volume
   /// [pan] 0.0f centered
   /// [paused] 0 not paused
-  /// [handle] pointer to the handle for this new sound
   /// [looping] whether to start the sound in looping state.
   /// [loopingStartAt] If looping is enabled, the loop point is, by default,
   /// the start of the stream. The loop start point can be set with this
   /// parameter.
-  /// Return the error if any and a new [handle] of this sound
-  FFI_PLUGIN_EXPORT enum PlayerErrors play(unsigned int soundHash, unsigned int busId, float volume,
-                                           float pan, bool paused, bool looping,
-                                           double loopingStartAt,
-                                           unsigned int *handle)
-  {
-    if (player.get() == nullptr || !player.get()->isInited())
-      return backendNotInited;
-    PlayerErrors result = player.get()->play(soundHash, *handle, busId, volume, pan,
-                                             paused, looping, loopingStartAt, 0);
-    return result;
-  }
-
-  /// Play an already loaded sound with an optional bounded loop region.
-  ///
-  /// This additive entry point preserves the ABI of [play].
   /// [loopingEndAt] If greater than zero, loop before this time. Zero uses the
   /// natural end of the stream.
-  FFI_PLUGIN_EXPORT enum PlayerErrors playWithLoopPoints(
+  /// [scale] relative playback speed multiplier (1.0f = normal speed).
+  /// [handle] pointer to the handle for this new sound
+  /// Return the error if any and a new [handle] of this sound
+  FFI_PLUGIN_EXPORT enum PlayerErrors play(
       unsigned int soundHash, unsigned int busId, float volume, float pan,
       bool paused, bool looping, double loopingStartAt, double loopingEndAt,
-      unsigned int *handle)
+      float scale, unsigned int *handle)
   {
     if (player.get() == nullptr || !player.get()->isInited())
       return backendNotInited;
     PlayerErrors result = player.get()->play(soundHash, *handle, busId, volume, pan,
                                              paused, looping, loopingStartAt,
-                                             loopingEndAt);
+                                             loopingEndAt, scale);
     return result;
   }
 
@@ -2236,12 +2225,14 @@ extern "C"
   /// Return the error if any and a new [handle] of this sound
   FFI_PLUGIN_EXPORT enum PlayerErrors playClocked(
       unsigned int soundHash, double soundTime, unsigned int busId,
-      float volume, float pan, unsigned int *handle)
+      float volume, float pan, float scale, bool looping,
+      double loopingStartAt, double loopingEndAt, unsigned int *handle)
   {
     if (player.get() == nullptr || !player.get()->isInited())
       return backendNotInited;
     PlayerErrors result = player.get()->playClocked(
-        soundHash, *handle, soundTime, busId, volume, pan);
+        soundHash, *handle, soundTime, busId, volume, pan, scale,
+        looping, loopingStartAt, loopingEndAt);
     return result;
   }
 
@@ -2342,18 +2333,22 @@ extern "C"
   /// [busId] the bus ID to play the sound on. 0 means the main engine.
   /// [volume] 1.0f full volume
   /// [pan] 0.0f centered
+  /// [scale] relative playback speed multiplier (1.0f = normal speed)
+  /// [looping] whether the sound loops upon reaching the end
+  /// [loopingStartAt] time position in seconds to restart playback when looping
   /// [handle] pointer to the handle for this new sound
   /// Return the error if any and a new [handle] of this sound
   FFI_PLUGIN_EXPORT enum PlayerErrors playScheduled(
       unsigned int soundHash, double atTime, double duration,
       unsigned int busId, float volume, float pan, float scale,
-      bool looping, double loopingStartAt, unsigned int *handle)
+      bool looping, double loopingStartAt, double loopingEndAt,
+      unsigned int *handle)
   {
     if (player.get() == nullptr || !player.get()->isInited())
       return backendNotInited;
     PlayerErrors result = player.get()->playScheduled(
         soundHash, *handle, atTime, duration, busId, volume, pan, scale,
-        looping, loopingStartAt);
+        looping, loopingStartAt, loopingEndAt);
     return result;
   }
 
@@ -3495,7 +3490,7 @@ extern "C"
       float posX, float posY, float posZ,
       float velX, float velY, float velZ,
       float volume, bool paused, bool looping, double loopingStartAt,
-      double loopingEndAt, unsigned int *handle)
+      double loopingEndAt, float scale, unsigned int *handle)
   {
     if (player.get() == nullptr || !player.get()->isInited() ||
         player.get()->getSoundsCount() == 0)
@@ -3504,7 +3499,7 @@ extern "C"
     PlayerErrors result =
         player.get()->play3d(soundHash, *handle, posX, posY, posZ, velX, velY,
                              velZ, volume, paused, busId, looping, loopingStartAt,
-                             loopingEndAt);
+                             loopingEndAt, scale);
     return result;
   }
 
@@ -3528,7 +3523,9 @@ extern "C"
       unsigned int soundHash, double soundTime, unsigned int busId,
       float posX, float posY, float posZ,
       float velX, float velY, float velZ,
-      float volume, unsigned int *handle)
+      float volume, float scale, bool looping,
+      double loopingStartAt, double loopingEndAt,
+      unsigned int *handle)
   {
     if (player.get() == nullptr || !player.get()->isInited() ||
         player.get()->getSoundsCount() == 0)
@@ -3537,7 +3534,8 @@ extern "C"
     PlayerErrors result =
         player.get()->play3dClocked(soundHash, *handle, soundTime,
                                     posX, posY, posZ, velX, velY, velZ,
-                                    volume, busId);
+                                    volume, busId, scale, looping,
+                                    loopingStartAt, loopingEndAt);
     return result;
   }
 

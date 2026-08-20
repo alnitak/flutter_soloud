@@ -1924,7 +1924,8 @@ PlayerErrors Player::play(
     bool paused,
     bool looping,
     double loopingStartAt,
-    double loopingEndAt)
+    double loopingEndAt,
+    float scale)
 {
     handle = 0;
 
@@ -1995,6 +1996,11 @@ PlayerErrors Player::play(
         sound->handle.push_back({newHandle, MAX_DOUBLE, paused});
     }
 
+    if (scale != 1.0f && scale > 0.0f)
+    {
+        setRelativePlaySpeed(newHandle, scale);
+    }
+
     if (looping)
     {
         setLoopPoint(newHandle, loopingStartAt);
@@ -2028,7 +2034,11 @@ PlayerErrors Player::playClocked(
     double soundTime,
     unsigned int busId,
     float volume,
-    float pan)
+    float pan,
+    float scale,
+    bool looping,
+    double loopingStartAt,
+    double loopingEndAt)
 {
     handle = 0;
 
@@ -2065,14 +2075,14 @@ PlayerErrors Player::playClocked(
     if (busId == 0)
     {
         newHandle = soloud.playClocked(
-            soundTime, *sound->sound.get(), volume, pan, 0);
+            soundTime, *sound->sound.get(), volume, pan, 0, scale, looping, loopingStartAt, loopingEndAt);
     }
     else
     {
         auto it = busMap.find(busId);
         if (it != busMap.end())
             newHandle = it->second.bus.playClocked(
-                soundTime, *sound->sound.get(), volume, pan);
+                soundTime, *sound->sound.get(), volume, pan, scale, looping, loopingStartAt, loopingEndAt);
         else
             return PlayerErrors::busIdNotFound;
     }
@@ -2146,7 +2156,8 @@ PlayerErrors Player::playScheduled(
     float pan,
     float scale,
     bool looping,
-    double loopingStartAt)
+    double loopingStartAt,
+    double loopingEndAt)
 {
     handle = 0;
 
@@ -2183,14 +2194,14 @@ PlayerErrors Player::playScheduled(
     if (busId == 0)
     {
         newHandle = soloud.playScheduled(
-            atTime, *sound->sound.get(), volume, pan, 0, scale, looping, loopingStartAt);
+            atTime, *sound->sound.get(), volume, pan, 0, scale, looping, loopingStartAt, loopingEndAt);
     }
     else
     {
         auto it = busMap.find(busId);
         if (it != busMap.end())
             newHandle = it->second.bus.playScheduled(
-                atTime, *sound->sound.get(), volume, pan, scale, looping, loopingStartAt);
+                atTime, *sound->sound.get(), volume, pan, scale, looping, loopingStartAt, loopingEndAt);
         else
             return PlayerErrors::busIdNotFound;
     }
@@ -2899,7 +2910,8 @@ PlayerErrors Player::play3d(
     unsigned int busId,
     bool looping,
     double loopingStartAt,
-    double loopingEndAt)
+    double loopingEndAt,
+    float scale)
 {
     handle = 0;
 
@@ -2977,6 +2989,11 @@ PlayerErrors Player::play3d(
         sound->handle.push_back({newHandle, MAX_DOUBLE, paused});
     }
 
+    if (scale != 1.0f && scale > 0.0f)
+    {
+        setRelativePlaySpeed(newHandle, scale);
+    }
+
     if (looping)
     {
         setLoopPoint(newHandle, loopingStartAt);
@@ -3016,7 +3033,11 @@ PlayerErrors Player::play3dClocked(
     float velY,
     float velZ,
     float volume,
-    unsigned int busId)
+    unsigned int busId,
+    float scale,
+    bool looping,
+    double loopingStartAt,
+    double loopingEndAt)
 {
     handle = 0;
 
@@ -3057,7 +3078,11 @@ PlayerErrors Player::play3dClocked(
             posX, posY, posZ,
             velX, velY, velZ,
             volume,
-            0);
+            0,
+            scale,
+            looping,
+            loopingStartAt,
+            loopingEndAt);
     }
     else
     {
@@ -3068,7 +3093,11 @@ PlayerErrors Player::play3dClocked(
                 *sound->sound.get(),
                 posX, posY, posZ,
                 velX, velY, velZ,
-                volume);
+                volume,
+                scale,
+                looping,
+                loopingStartAt,
+                loopingEndAt);
         else
             return PlayerErrors::busIdNotFound;
     }

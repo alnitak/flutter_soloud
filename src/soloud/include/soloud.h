@@ -364,11 +364,11 @@ namespace SoLoud
 		// Start playing a sound. Returns voice handle, which can be ignored or used to alter the playing sound's parameters. Negative volume means to use default.
 		handle play(AudioSource &aSound, float aVolume = -1.0f, float aPan = 0.0f, bool aPaused = 0, unsigned int aBus = 0);
 		// Start playing a sound delayed in relation to other sounds called via this function. Negative volume means to use default.
-		handle playClocked(time aSoundTime, AudioSource &aSound, float aVolume = -1.0f, float aPan = 0.0f, unsigned int aBus = 0);
+		handle playClocked(time aSoundTime, AudioSource &aSound, float aVolume = -1.0f, float aPan = 0.0f, unsigned int aBus = 0, float aScale = 1.0f, bool aLooping = false, time aLoopPoint = 0.0, time aLoopEndPoint = 0.0);
 		// Start playing a 3d audio source
-		handle play3d(AudioSource &aSound, float aPosX, float aPosY, float aPosZ, float aVelX = 0.0f, float aVelY = 0.0f, float aVelZ = 0.0f, float aVolume = 1.0f, bool aPaused = 0, unsigned int aBus = 0);
+		handle play3d(AudioSource &aSound, float aPosX, float aPosY, float aPosZ, float aVelX = 0.0f, float aVelY = 0.0f, float aVelZ = 0.0f, float aVolume = 1.0f, bool aPaused = 0, unsigned int aBus = 0, float aScale = 1.0f, bool aLooping = false, time aLoopPoint = 0.0, time aLoopEndPoint = 0.0);
 		// Start playing a 3d audio source, delayed in relation to other sounds called via this function.
-		handle play3dClocked(time aSoundTime, AudioSource &aSound, float aPosX, float aPosY, float aPosZ, float aVelX = 0.0f, float aVelY = 0.0f, float aVelZ = 0.0f, float aVolume = 1.0f, unsigned int aBus = 0);
+		handle play3dClocked(time aSoundTime, AudioSource &aSound, float aPosX, float aPosY, float aPosZ, float aVelX = 0.0f, float aVelY = 0.0f, float aVelZ = 0.0f, float aVolume = 1.0f, unsigned int aBus = 0, float aScale = 1.0f, bool aLooping = false, time aLoopPoint = 0.0, time aLoopEndPoint = 0.0);
 		// Calculate the delay in samples for a clocked play call. Maps the caller's "physics time" to the output sample timeline using a persistent anchor, so sounds can be scheduled with sample accuracy across output buffers. Used internally by playClocked and play3dClocked.
 		unsigned int getClockedDelaySamples(time aSoundTime);
 		// Reset the clocked play anchor to the state as if no playClocked/play3dClocked call was ever made. The next clocked play will anchor the caller's clock to the audio clock again.
@@ -398,7 +398,7 @@ namespace SoLoud
 		// device plus one device period. 0 when the ring is disabled.
 		time getOutputLatency();
 		// Start playing a sound at an absolute engine time (see getEngineTime), with sample accuracy. Unlike playClocked there is no anchor and no re-anchor guard, so sounds can be scheduled arbitrarily far in the future. A time in the past plays as soon as possible. Negative volume means to use default.
-		handle playScheduled(time aEngineTime, AudioSource &aSound, float aVolume = -1.0f, float aPan = 0.0f, unsigned int aBus = 0, float aScale = 1.0f, bool aLooping = false, time aLoopPoint = 0.0);
+		handle playScheduled(time aEngineTime, AudioSource &aSound, float aVolume = -1.0f, float aPan = 0.0f, unsigned int aBus = 0, float aScale = 1.0f, bool aLooping = false, time aLoopPoint = 0.0, time aLoopEndPoint = 0.0);
 		// Calculate the delay in samples for a scheduled play call. Maps an absolute engine time to the output sample timeline. Used internally by playScheduled.
 		unsigned int getScheduledDelaySamples(time aEngineTime);
 		// Start playing a sound without any panning. It will be played at full volume.

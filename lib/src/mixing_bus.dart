@@ -195,6 +195,7 @@ class Bus {
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
     Duration? loopingEndAt,
+    double scale = 1,
   }) {
     if (!_isValid) {
       _log.warning('bus $busId is already disposed');
@@ -209,6 +210,7 @@ class Bus {
       looping: looping,
       loopingStartAt: loopingStartAt,
       loopingEndAt: loopingEndAt,
+      scale: scale,
     );
   }
 
@@ -227,6 +229,10 @@ class Bus {
     Duration soundTime, {
     double volume = 1,
     double pan = 0,
+    double scale = 1,
+    bool looping = false,
+    Duration loopingStartAt = Duration.zero,
+    Duration? loopingEndAt,
   }) {
     if (!_isValid) {
       _log.warning('bus $busId is already disposed');
@@ -238,6 +244,10 @@ class Bus {
       busId: busId,
       volume: volume,
       pan: pan,
+      scale: scale,
+      looping: looping,
+      loopingStartAt: loopingStartAt,
+      loopingEndAt: loopingEndAt,
     );
   }
 
@@ -261,6 +271,7 @@ class Bus {
     double scale = 1,
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
+    Duration? loopingEndAt,
   }) {
     if (!_isValid) {
       _log.warning('bus $busId is already disposed');
@@ -276,6 +287,7 @@ class Bus {
       scale: scale,
       looping: looping,
       loopingStartAt: loopingStartAt,
+      loopingEndAt: loopingEndAt,
     );
   }
 
@@ -301,6 +313,7 @@ class Bus {
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
     Duration? loopingEndAt,
+    double scale = 1,
   }) {
     if (!_isValid) {
       _log.warning('bus $busId is already disposed');
@@ -320,6 +333,7 @@ class Bus {
       looping: looping,
       loopingStartAt: loopingStartAt,
       loopingEndAt: loopingEndAt,
+      scale: scale,
     );
   }
 
@@ -343,6 +357,10 @@ class Bus {
     double velY = 0,
     double velZ = 0,
     double volume = 1,
+    double scale = 1,
+    bool looping = false,
+    Duration loopingStartAt = Duration.zero,
+    Duration? loopingEndAt,
   }) {
     if (!_isValid) {
       _log.warning('bus $busId is already disposed');
@@ -359,6 +377,10 @@ class Bus {
       velZ: velZ,
       busId: busId,
       volume: volume,
+      scale: scale,
+      looping: looping,
+      loopingStartAt: loopingStartAt,
+      loopingEndAt: loopingEndAt,
     );
   }
 
