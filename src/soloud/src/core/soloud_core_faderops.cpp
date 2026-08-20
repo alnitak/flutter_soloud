@@ -88,12 +88,14 @@ namespace SoLoud
 	{
 		float from = getVolume(aVoiceHandle);
 		lockAudioMutex_internal();
+		const time playhead = playheadTimeLocked_internal();
+		if (aEngineTime < playhead)
+			aEngineTime = playhead;
 		time rel = aEngineTime - mStreamTime;
 		// ###### flutter_soloud local patch (retroactive re-mix) ######
 		// A fade starting inside the rendered-but-unplayed window can start
 		// at exactly aEngineTime instead of at the write head.
-		bool tryRetro = mRenderRing.isInited() &&
-			aEngineTime >= playheadTimeLocked_internal() && rel < 0;
+		bool tryRetro = mRenderRing.isInited() && rel < 0;
 		unlockAudioMutex_internal();
 		if (rel <= 0 && !tryRetro)
 		{

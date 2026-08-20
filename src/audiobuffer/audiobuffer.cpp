@@ -77,6 +77,12 @@ BufferStreamInstance::BufferStreamInstance(BufferStream *aParent) {
   mParent = aParent;
   mOffset = 0;
   samplerateAlreadySet = false;
+  if (mParent != nullptr && mParent->autoTypeSamplerate != 0.f) {
+    mBaseSamplerate = mParent->autoTypeSamplerate;
+    mSamplerate = mParent->autoTypeSamplerate;
+    mChannels = mParent->autoTypeChannels;
+    samplerateAlreadySet = true;
+  }
 }
 
 BufferStreamInstance::~BufferStreamInstance() {}
@@ -534,7 +540,8 @@ void BufferStream::checkBuffering(unsigned int afterAddingBytesCount) {
     // was already buffered before this addData() call. The unpause below will
     // then wait until at least [bufferingTimeNeeds] seconds of audio are
     // available ahead of position.
-    if (!dataIsEnded && pos >= currBufferTime && !isPaused) {
+    if (mBuffer.bufferingType == BufferingType::RELEASED &&
+        !dataIsEnded && pos >= currBufferTime && !isPaused) {
       mParent->handle[i].bufferingTime = currBufferTime + addedDataTime;
       // This is an automatic buffering pause, so the user-paused flag should
       // not prevent a future buffering unpause.

@@ -763,7 +763,9 @@ namespace SoLoud
 			// render-ahead window plus margin. All storage is pre-sized here;
 			// capture runs on the audio thread and must not allocate.
 			allocateCheckpoints_internal(
-				(mRenderAheadFrames + aBufferSize - 1) / aBufferSize + 2);
+				((mRenderAheadFrames + aBufferSize - 1) / aBufferSize + 4) < 8
+					? 8
+					: ((mRenderAheadFrames + aBufferSize - 1) / aBufferSize + 4));
 			captureMixCheckpoint_internal();
 		}
 		else

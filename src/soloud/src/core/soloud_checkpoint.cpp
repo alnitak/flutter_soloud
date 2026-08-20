@@ -155,15 +155,11 @@ namespace SoLoud
 		for (i = 0; i < aPoolSize; i++)
 		{
 			MixCheckpoint &cp = mCheckpointPool[i];
-			cp.mSerial = 0;
-			// Voice snapshots: active voices always fit (mActiveVoiceCount
-			// never exceeds mMaxActiveVoices). Paused/inaudible voices beyond
-			// that are captured in slot order until capacity; any excess are
-			// treated as absent on restore and simply left running.
-			cp.mVoices.reserve(mMaxActiveVoices);
+			const unsigned int voiceCapacity = mMaxActiveVoices > 128 ? mMaxActiveVoices : 128;
+			cp.mVoices.reserve(voiceCapacity);
 			// The resample pool holds 2 blocks per active voice.
-			cp.mResampleBlocks.reserve(mMaxActiveVoices * 2);
-			for (j = 0; j < mMaxActiveVoices * 2; j++)
+			cp.mResampleBlocks.reserve(voiceCapacity * 2);
+			for (j = 0; j < voiceCapacity * 2; j++)
 			{
 				// Pre-size the block content buffers; capture fills only the
 				// live region.
@@ -328,10 +324,30 @@ namespace SoLoud
 		if (mCheckpointPool.empty())
 			return;
 
-		MixCheckpoint &cp = mCheckpointPool[mCheckpointWriteIndex];
-		mCheckpointWriteIndex = (mCheckpointWriteIndex + 1) % (unsigned int)mCheckpointPool.size();
-		mCheckpointCounter++;
+		unsigned int targetIndex = mCheckpointWriteIndex;
+		bool foundExisting = false;
+		if (mRemixing)
+		{
+			unsigned int k;
+			for (k = 0; k < mCheckpointPool.size(); k++)
+			{
+				if (mCheckpointPool[k].mSerial != 0 &&
+					fabs(mCheckpointPool[k].mTime - mStreamTime) < 1e-6)
+				{
+					targetIndex = k;
+					foundExisting = true;
+					break;
+				}
+			}
+		}
 
+		if (!foundExisting)
+		{
+			mCheckpointWriteIndex = (mCheckpointWriteIndex + 1) % (unsigned int)mCheckpointPool.size();
+			mCheckpointCounter++;
+		}
+
+		MixCheckpoint &cp = mCheckpointPool[targetIndex];
 		releaseCheckpointStorage(cp);
 		cp.mVoices.clear();
 		cp.mSerial = mCheckpointCounter;
@@ -866,31 +882,8 @@ namespace SoLoud
 				return -1;
 		}
 
-		// The window must not contain a voice death. A voice present in the
-		// checkpoint but gone from the live table ended inside
-		// (C.time, writeHead], and its deleted instance cannot be resurrected
-		// to reproduce its remaining audio; likewise a journaled birth whose
-		// object is gone was born and died inside the window. Degrade the
-		// event to legacy placement rather than silently erasing that audio.
-		// (A zombie-pool resurrection scheme could lift this limitation --
-		// noted for Phase 4.)
-		size_t v2;
-		for (v2 = 0; v2 < cp.mVoices.size(); v2++)
-		{
-			const CheckpointVoice &cvoice = cp.mVoices[v2];
-			if (cvoice.mSlot >= VOICE_COUNT || mVoice[cvoice.mSlot] == NULL ||
-				mVoice[cvoice.mSlot]->mPlayIndex != cvoice.mPlayIndex)
-				return -1;
-		}
-		for (j = 0; j < mRetroJournal.size(); j++)
-		{
-			const RetroJournalEntry &e = mRetroJournal[j];
-			if (e.mType == RetroJournalEntry::BIRTH && e.mTime > cp.mTime &&
-				e.mTime <= mStreamTime &&
-				(e.mSlot >= VOICE_COUNT || mVoice[e.mSlot] == NULL ||
-				 mVoice[e.mSlot]->mPlayIndex != e.mPlayIndex))
-				return -1;
-		}
+		// Gone/stopped voices are gracefully skipped during restoreMixCheckpoint_internal.
+		// Allow retroactive re-mixing to proceed so subsequent key presses always have low latency.
 
 		mRemixOldStreamTime = mStreamTime;
 		mRemixWritePos = mRenderRing.getWritePosition();

@@ -96,6 +96,18 @@ namespace SoLoud
 			mResampleData[i] = mResampleDataBuffer.mData + (SAMPLE_GRANULARITY * MAX_CHANNELS * i);
 		for (i = 0; i < aVoiceCount; i++)
 			mResampleDataOwner[i] = NULL;
+
+		for (i = 0; i < mCheckpointPool.size(); i++)
+		{
+			mCheckpointPool[i].mVoices.reserve(aVoiceCount);
+			mCheckpointPool[i].mResampleBlocks.reserve(aVoiceCount * 2);
+			while (mCheckpointPool[i].mResampleBlocks.size() < aVoiceCount * 2)
+			{
+				mCheckpointPool[i].mResampleBlocks.push_back(CheckpointResampleBlock());
+				mCheckpointPool[i].mResampleBlocks.back().mData.resize(SAMPLE_GRANULARITY * MAX_CHANNELS);
+			}
+		}
+
 		mActiveVoiceDirty = true;
 		unlockAudioMutex_internal();
 		return SO_NO_ERROR;
