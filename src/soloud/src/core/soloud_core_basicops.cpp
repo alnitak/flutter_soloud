@@ -222,7 +222,7 @@ namespace SoLoud
 		unlockAudioMutex_internal();
 	}
 
-	handle Soloud::playClocked(time aSoundTime, AudioSource &aSound, float aVolume, float aPan, unsigned int aBus, float aScale, bool aLooping, time aLoopPoint, time aLoopEndPoint)
+	handle Soloud::playClocked(time aSoundTime, AudioSource &aSound, float aVolume, float aPan, unsigned int aBus, float aScale, bool aLooping, time aLoopPoint, time aLoopEndPoint, long long aLoopStartOffset, long long aLoopEndOffset)
 	{
 		// ###### flutter_soloud local patch (retroactive re-mix) ######
 		// With the render-ahead ring enabled, do the whole operation in one
@@ -262,6 +262,14 @@ namespace SoLoud
 				{
 					mVoice[ch]->mLoopEndPoint = aLoopEndPoint;
 				}
+				if (aLoopStartOffset >= 0)
+				{
+					mVoice[ch]->mLoopStartFrame = aLoopStartOffset;
+				}
+				if (aLoopEndOffset >= 0)
+				{
+					mVoice[ch]->mLoopEndFrame = aLoopEndOffset;
+				}
 			}
 			unsigned int delay = getClockedDelaySamplesLocked_internal(aSoundTime);
 			mVoice[ch]->mDelaySamples = delay;
@@ -281,8 +289,22 @@ namespace SoLoud
 		}
 		if (aLooping)
 		{
-			setLoopPoint(h, aLoopPoint);
-			setLoopEndPoint(h, aLoopEndPoint);
+			if (aLoopStartOffset >= 0 || aLoopEndOffset >= 0)
+			{
+				lockAudioMutex_internal();
+				int ch = getVoiceFromHandle_internal(h);
+				if (ch >= 0)
+				{
+					if (aLoopStartOffset >= 0) mVoice[ch]->mLoopStartFrame = aLoopStartOffset;
+					if (aLoopEndOffset >= 0) mVoice[ch]->mLoopEndFrame = aLoopEndOffset;
+				}
+				unlockAudioMutex_internal();
+			}
+			else
+			{
+				setLoopPoint(h, aLoopPoint);
+				setLoopEndPoint(h, aLoopEndPoint);
+			}
 			setLooping(h, 1);
 		}
 		setDelaySamples(h, getClockedDelaySamples(aSoundTime));
@@ -329,7 +351,7 @@ namespace SoLoud
 		return (unsigned int)delay;
 	}
 
-	handle Soloud::playScheduled(time aEngineTime, AudioSource &aSound, float aVolume, float aPan, unsigned int aBus, float aScale, bool aLooping, time aLoopPoint, time aLoopEndPoint)
+	handle Soloud::playScheduled(time aEngineTime, AudioSource &aSound, float aVolume, float aPan, unsigned int aBus, float aScale, bool aLooping, time aLoopPoint, time aLoopEndPoint, long long aLoopStartOffset, long long aLoopEndOffset)
 	{
 		// ###### flutter_soloud local patch (retroactive re-mix) ######
 		// With the render-ahead ring enabled, do the whole operation in one
@@ -368,6 +390,14 @@ namespace SoLoud
 				{
 					mVoice[ch]->mLoopEndPoint = aLoopEndPoint;
 				}
+				if (aLoopStartOffset >= 0)
+				{
+					mVoice[ch]->mLoopStartFrame = aLoopStartOffset;
+				}
+				if (aLoopEndOffset >= 0)
+				{
+					mVoice[ch]->mLoopEndFrame = aLoopEndOffset;
+				}
 			}
 			if (!retroactiveVoiceStart_internal(ch, aEngineTime, aSound))
 			{
@@ -390,8 +420,22 @@ namespace SoLoud
 		}
 		if (aLooping)
 		{
-			setLoopPoint(h, aLoopPoint);
-			setLoopEndPoint(h, aLoopEndPoint);
+			if (aLoopStartOffset >= 0 || aLoopEndOffset >= 0)
+			{
+				lockAudioMutex_internal();
+				int ch = getVoiceFromHandle_internal(h);
+				if (ch >= 0)
+				{
+					if (aLoopStartOffset >= 0) mVoice[ch]->mLoopStartFrame = aLoopStartOffset;
+					if (aLoopEndOffset >= 0) mVoice[ch]->mLoopEndFrame = aLoopEndOffset;
+				}
+				unlockAudioMutex_internal();
+			}
+			else
+			{
+				setLoopPoint(h, aLoopPoint);
+				setLoopEndPoint(h, aLoopEndPoint);
+			}
 			setLooping(h, 1);
 		}
 		setDelaySamples(h, getScheduledDelaySamples(aEngineTime));

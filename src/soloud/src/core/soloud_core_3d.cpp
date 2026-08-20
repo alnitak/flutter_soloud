@@ -363,7 +363,7 @@ namespace SoLoud
 	}
 
 
-	handle Soloud::play3d(AudioSource &aSound, float aPosX, float aPosY, float aPosZ, float aVelX, float aVelY, float aVelZ, float aVolume, bool aPaused, unsigned int aBus, float aScale, bool aLooping, time aLoopPoint, time aLoopEndPoint)
+	handle Soloud::play3d(AudioSource &aSound, float aPosX, float aPosY, float aPosZ, float aVelX, float aVelY, float aVelZ, float aVolume, bool aPaused, unsigned int aBus, float aScale, bool aLooping, time aLoopPoint, time aLoopEndPoint, long long aLoopStartOffset, long long aLoopEndOffset)
 	{
 		handle h = play(aSound, aVolume, 0, 1, aBus);
 		if (h == 0)
@@ -374,8 +374,22 @@ namespace SoLoud
 		}
 		if (aLooping)
 		{
-			setLoopPoint(h, aLoopPoint);
-			setLoopEndPoint(h, aLoopEndPoint);
+			if (aLoopStartOffset >= 0 || aLoopEndOffset >= 0)
+			{
+				lockAudioMutex_internal();
+				int ch = getVoiceFromHandle_internal(h);
+				if (ch >= 0)
+				{
+					if (aLoopStartOffset >= 0) mVoice[ch]->mLoopStartFrame = aLoopStartOffset;
+					if (aLoopEndOffset >= 0) mVoice[ch]->mLoopEndFrame = aLoopEndOffset;
+				}
+				unlockAudioMutex_internal();
+			}
+			else
+			{
+				setLoopPoint(h, aLoopPoint);
+				setLoopEndPoint(h, aLoopEndPoint);
+			}
 			setLooping(h, 1);
 		}
 		// No voice was allocated: don't resolve the sentinel as a handle.
@@ -448,7 +462,7 @@ namespace SoLoud
 		return h;
 	}
 
-	handle Soloud::play3dClocked(time aSoundTime, AudioSource &aSound, float aPosX, float aPosY, float aPosZ, float aVelX, float aVelY, float aVelZ, float aVolume, unsigned int aBus, float aScale, bool aLooping, time aLoopPoint, time aLoopEndPoint)
+	handle Soloud::play3dClocked(time aSoundTime, AudioSource &aSound, float aPosX, float aPosY, float aPosZ, float aVelX, float aVelY, float aVelZ, float aVolume, unsigned int aBus, float aScale, bool aLooping, time aLoopPoint, time aLoopEndPoint, long long aLoopStartOffset, long long aLoopEndOffset)
 	{
 		handle h = play(aSound, aVolume, 0, 1, aBus);
 		if (h == 0)
@@ -459,8 +473,22 @@ namespace SoLoud
 		}
 		if (aLooping)
 		{
-			setLoopPoint(h, aLoopPoint);
-			setLoopEndPoint(h, aLoopEndPoint);
+			if (aLoopStartOffset >= 0 || aLoopEndOffset >= 0)
+			{
+				lockAudioMutex_internal();
+				int ch = getVoiceFromHandle_internal(h);
+				if (ch >= 0)
+				{
+					if (aLoopStartOffset >= 0) mVoice[ch]->mLoopStartFrame = aLoopStartOffset;
+					if (aLoopEndOffset >= 0) mVoice[ch]->mLoopEndFrame = aLoopEndOffset;
+				}
+				unlockAudioMutex_internal();
+			}
+			else
+			{
+				setLoopPoint(h, aLoopPoint);
+				setLoopEndPoint(h, aLoopEndPoint);
+			}
 			setLooping(h, 1);
 		}
 		// No voice was allocated: don't resolve the sentinel as a handle.

@@ -195,6 +195,8 @@ class Bus {
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
     Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
     double scale = 1,
   }) {
     if (!_isValid) {
@@ -210,6 +212,8 @@ class Bus {
       looping: looping,
       loopingStartAt: loopingStartAt,
       loopingEndAt: loopingEndAt,
+      loopingStartOffsetAt: loopingStartOffsetAt,
+      loopingEndOffsetAt: loopingEndOffsetAt,
       scale: scale,
     );
   }
@@ -233,6 +237,8 @@ class Bus {
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
     Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
   }) {
     if (!_isValid) {
       _log.warning('bus $busId is already disposed');
@@ -248,6 +254,8 @@ class Bus {
       looping: looping,
       loopingStartAt: loopingStartAt,
       loopingEndAt: loopingEndAt,
+      loopingStartOffsetAt: loopingStartOffsetAt,
+      loopingEndOffsetAt: loopingEndOffsetAt,
     );
   }
 
@@ -272,6 +280,8 @@ class Bus {
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
     Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
   }) {
     if (!_isValid) {
       _log.warning('bus $busId is already disposed');
@@ -288,6 +298,8 @@ class Bus {
       looping: looping,
       loopingStartAt: loopingStartAt,
       loopingEndAt: loopingEndAt,
+      loopingStartOffsetAt: loopingStartOffsetAt,
+      loopingEndOffsetAt: loopingEndOffsetAt,
     );
   }
 
@@ -313,6 +325,8 @@ class Bus {
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
     Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
     double scale = 1,
   }) {
     if (!_isValid) {
@@ -333,6 +347,8 @@ class Bus {
       looping: looping,
       loopingStartAt: loopingStartAt,
       loopingEndAt: loopingEndAt,
+      loopingStartOffsetAt: loopingStartOffsetAt,
+      loopingEndOffsetAt: loopingEndOffsetAt,
       scale: scale,
     );
   }
@@ -361,6 +377,8 @@ class Bus {
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
     Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
   }) {
     if (!_isValid) {
       _log.warning('bus $busId is already disposed');
@@ -381,6 +399,8 @@ class Bus {
       looping: looping,
       loopingStartAt: loopingStartAt,
       loopingEndAt: loopingEndAt,
+      loopingStartOffsetAt: loopingStartOffsetAt,
+      loopingEndOffsetAt: loopingEndOffsetAt,
     );
   }
 

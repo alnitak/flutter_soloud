@@ -2187,6 +2187,9 @@ interface class SoLoud {
   /// therefore does not report output-device failures; with [paused] set to
   /// `true` no device is requested at all. Use [startAudioDevice] when you need
   /// to observe a device-start failure.
+  /// [loopingStartOffsetAt] optional exact frame offset to restart looping from.
+  /// [loopingEndOffsetAt] optional exact frame offset to loop before.
+  /// Note: frame offset looping and Duration-based looping are mutually exclusive.
   /// [scale] relative playback speed multiplier (1.0 = normal speed).
   ///
   /// The rest of the parameters are described in the method documentation.
@@ -2199,12 +2202,19 @@ interface class SoLoud {
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
     Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
     double scale = 1,
   }) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
-    validateLoopRegion(start: loopingStartAt, end: loopingEndAt);
+    validateLoopRegion(
+      start: loopingStartAt,
+      end: loopingEndAt,
+      startOffset: loopingStartOffsetAt,
+      endOffset: loopingEndOffsetAt,
+    );
     final ret = _controller.soLoudFFI.play(
       sound.soundHash,
       busId: busId,
@@ -2214,6 +2224,8 @@ interface class SoLoud {
       looping: looping,
       loopingStartAt: loopingStartAt,
       loopingEndAt: loopingEndAt,
+      loopingStartOffsetAt: loopingStartOffsetAt,
+      loopingEndOffsetAt: loopingEndOffsetAt,
       scale: scale,
     );
     if (!_checkPlaybackResult(ret, from: 'play()')) {
@@ -2313,6 +2325,9 @@ interface class SoLoud {
   /// [loopingStartAt] time position to restart playback when looping.
   ///
   /// [loopingEndAt] optional exclusive end point for looping.
+  /// [loopingStartOffsetAt] optional exact frame offset to restart looping from.
+  /// [loopingEndOffsetAt] optional exact frame offset to loop before.
+  /// Note: frame offset looping and Duration-based looping are mutually exclusive.
   ///
   /// The rest of the parameters are equivalent to [play].
   SoundHandle playClocked(
@@ -2325,11 +2340,18 @@ interface class SoLoud {
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
     Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
   }) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
-    validateLoopRegion(start: loopingStartAt, end: loopingEndAt);
+    validateLoopRegion(
+      start: loopingStartAt,
+      end: loopingEndAt,
+      startOffset: loopingStartOffsetAt,
+      endOffset: loopingEndOffsetAt,
+    );
     final ret = _controller.soLoudFFI.playClocked(
       sound.soundHash,
       soundTime,
@@ -2340,6 +2362,8 @@ interface class SoLoud {
       looping: looping,
       loopingStartAt: loopingStartAt,
       loopingEndAt: loopingEndAt,
+      loopingStartOffsetAt: loopingStartOffsetAt,
+      loopingEndOffsetAt: loopingEndOffsetAt,
     );
     if (!_checkPlaybackResult(ret, from: 'playClocked()')) {
       // Non-blocking failure: nothing is playing, so don't register
@@ -2543,6 +2567,9 @@ interface class SoLoud {
   /// inline, and this method does not report output-device failures — listen to
   /// [audioDeviceStartFailures] for those.
   /// [loopingEndAt] optional exclusive end point for looping.
+  /// [loopingStartOffsetAt] optional exact frame offset to restart looping from.
+  /// [loopingEndOffsetAt] optional exact frame offset to loop before.
+  /// Note: frame offset looping and Duration-based looping are mutually exclusive.
   SoundHandle playScheduled(
     AudioSource sound,
     Duration atTime, {
@@ -2554,11 +2581,18 @@ interface class SoLoud {
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
     Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
   }) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
-    validateLoopRegion(start: loopingStartAt, end: loopingEndAt);
+    validateLoopRegion(
+      start: loopingStartAt,
+      end: loopingEndAt,
+      startOffset: loopingStartOffsetAt,
+      endOffset: loopingEndOffsetAt,
+    );
     final ret = _controller.soLoudFFI.playScheduled(
       sound.soundHash,
       atTime,
@@ -2570,6 +2604,8 @@ interface class SoLoud {
       looping: looping,
       loopingStartAt: loopingStartAt,
       loopingEndAt: loopingEndAt,
+      loopingStartOffsetAt: loopingStartOffsetAt,
+      loopingEndOffsetAt: loopingEndOffsetAt,
     );
     if (!_checkPlaybackResult(ret, from: 'playScheduled()')) {
       // Non-blocking failure: nothing is playing, so don't register
@@ -4103,6 +4139,9 @@ interface class SoLoud {
   /// `true` no device is requested at all. Use [startAudioDevice] when you need
   /// to observe a device-start failure.
   /// [scale] relative playback speed multiplier (1.0 = normal speed).
+  /// [loopingStartOffsetAt] optional exact frame offset to restart looping from.
+  /// [loopingEndOffsetAt] optional exact frame offset to loop before.
+  /// Note: frame offset looping and Duration-based looping are mutually exclusive.
   SoundHandle play3d(
     AudioSource sound,
     double posX,
@@ -4117,12 +4156,19 @@ interface class SoLoud {
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
     Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
     double scale = 1,
   }) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
-    validateLoopRegion(start: loopingStartAt, end: loopingEndAt);
+    validateLoopRegion(
+      start: loopingStartAt,
+      end: loopingEndAt,
+      startOffset: loopingStartOffsetAt,
+      endOffset: loopingEndOffsetAt,
+    );
 
     final ret = _controller.soLoudFFI.play3d(
       sound.soundHash,
@@ -4138,6 +4184,8 @@ interface class SoLoud {
       looping: looping,
       loopingStartAt: loopingStartAt,
       loopingEndAt: loopingEndAt,
+      loopingStartOffsetAt: loopingStartOffsetAt,
+      loopingEndOffsetAt: loopingEndOffsetAt,
       scale: scale,
     );
 
@@ -4213,6 +4261,11 @@ interface class SoLoud {
   /// [loopingStartAt] time position to restart playback when looping.
   ///
   /// [loopingEndAt] optional exclusive end point for looping.
+  ///
+  /// [loopingStartOffsetAt] optional exact frame offset to restart looping from.
+  ///
+  /// [loopingEndOffsetAt] optional exact frame offset to loop before.
+  /// Note: frame offset looping and Duration-based looping are mutually exclusive.
   SoundHandle play3dClocked(
     AudioSource sound,
     Duration soundTime,
@@ -4228,11 +4281,18 @@ interface class SoLoud {
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
     Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
   }) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
-    validateLoopRegion(start: loopingStartAt, end: loopingEndAt);
+    validateLoopRegion(
+      start: loopingStartAt,
+      end: loopingEndAt,
+      startOffset: loopingStartOffsetAt,
+      endOffset: loopingEndOffsetAt,
+    );
 
     final ret = _controller.soLoudFFI.play3dClocked(
       sound.soundHash,
@@ -4249,6 +4309,8 @@ interface class SoLoud {
       looping: looping,
       loopingStartAt: loopingStartAt,
       loopingEndAt: loopingEndAt,
+      loopingStartOffsetAt: loopingStartOffsetAt,
+      loopingEndOffsetAt: loopingEndOffsetAt,
     );
 
     if (!_checkPlaybackResult(ret, from: 'play3dClocked()')) {

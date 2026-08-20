@@ -409,7 +409,8 @@ public:
                     unsigned int busId = 0,
                     float volume = 1.0f, float pan = 0.0f, bool paused = false,
                     bool looping = false, double loopingStartAt = 0.0,
-                    double loopingEndAt = 0.0, float scale = 1.0f);
+                    double loopingEndAt = 0.0, long long loopingStartOffsetAt = -1,
+                    long long loopingEndOffsetAt = -1, float scale = 1.0f);
 
   /// @brief Variant of [play] that takes an additional parameter, the time
   /// offset for the sound.
@@ -435,7 +436,9 @@ public:
                            float volume = 1.0f, float pan = 0.0f,
                            float scale = 1.0f, bool looping = false,
                            double loopingStartAt = 0.0,
-                           double loopingEndAt = 0.0);
+                           double loopingEndAt = 0.0,
+                           long long loopingStartOffsetAt = -1,
+                           long long loopingEndOffsetAt = -1);
 
   /// @brief Set the number of samples to delay before starting to play
   /// a sound.
@@ -507,7 +510,9 @@ public:
                              float volume = 1.0f, float pan = 0.0f,
                              float scale = 1.0f, bool looping = false,
                              double loopingStartAt = 0.0,
-                             double loopingEndAt = 0.0);
+                             double loopingEndAt = 0.0,
+                             long long loopingStartOffsetAt = -1,
+                             long long loopingEndOffsetAt = -1);
 
   /// @brief Stop a sound at an absolute engine time (see [getEngineTime]).
   ///
@@ -862,7 +867,8 @@ public:
                       float velY = 0.0f, float velZ = 0.0f, float volume = 1.0f,
                       bool paused = 0, unsigned int busId = 0,
                       bool looping = false, double loopingStartAt = 0.0,
-                      double loopingEndAt = 0.0, float scale = 1.0f);
+                      double loopingEndAt = 0.0, long long loopingStartOffsetAt = -1,
+                      long long loopingEndOffsetAt = -1, float scale = 1.0f);
 
   /// @brief play3dClocked() is the 3d version of the playClocked() call.
   ///
@@ -885,7 +891,9 @@ public:
                              float velZ = 0.0f, float volume = 1.0f,
                              unsigned int busId = 0, float scale = 1.0f,
                              bool looping = false, double loopingStartAt = 0.0,
-                             double loopingEndAt = 0.0);
+                             double loopingEndAt = 0.0,
+                             long long loopingStartOffsetAt = -1,
+                             long long loopingEndOffsetAt = -1);
 
   /// You can set and get the current value of the speed of
   /// sound width the get3dSoundSpeed() and set3dSoundSpeed() functions.

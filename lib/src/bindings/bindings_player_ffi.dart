@@ -1641,6 +1641,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
     Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
     double scale = 1,
   }) {
     final ffi.Pointer<ffi.UnsignedInt> handle = calloc();
@@ -1654,6 +1656,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       looping ? 1 : 0,
       loopingStartAt.toDouble(),
       loopingEndAt?.toDouble() ?? 0,
+      loopingStartOffsetAt ?? -1,
+      loopingEndOffsetAt ?? -1,
       scale,
       handle,
     );
@@ -1677,6 +1681,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
             ffi.Int,
             ffi.Double,
             ffi.Double,
+            ffi.Int64,
+            ffi.Int64,
             ffi.Float,
             ffi.Pointer<ffi.UnsignedInt>,
           )
@@ -1693,6 +1699,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
           int,
           double,
           double,
+          int,
+          int,
           double,
           ffi.Pointer<ffi.UnsignedInt>,
         )
@@ -1709,6 +1717,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
     Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
   }) {
     final ffi.Pointer<ffi.UnsignedInt> handle = calloc();
     final e = _playClocked(
@@ -1721,6 +1731,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       looping ? 1 : 0,
       loopingStartAt.toDouble(),
       loopingEndAt?.toDouble() ?? 0,
+      loopingStartOffsetAt ?? -1,
+      loopingEndOffsetAt ?? -1,
       handle,
     );
     final ret = (
@@ -1744,6 +1756,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
             ffi.Int,
             ffi.Double,
             ffi.Double,
+            ffi.Int64,
+            ffi.Int64,
             ffi.Pointer<ffi.UnsignedInt>,
           )
         >
@@ -1760,6 +1774,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
           int,
           double,
           double,
+          int,
+          int,
           ffi.Pointer<ffi.UnsignedInt>,
         )
       >();
@@ -1851,6 +1867,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
     Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
   }) {
     final ffi.Pointer<ffi.UnsignedInt> handle = calloc();
     final e = _playScheduled(
@@ -1864,6 +1882,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       looping,
       loopingStartAt.toDouble(),
       loopingEndAt?.toDouble() ?? 0,
+      loopingStartOffsetAt ?? -1,
+      loopingEndOffsetAt ?? -1,
       handle,
     );
     final ret = (
@@ -1888,6 +1908,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
             ffi.Bool,
             ffi.Double,
             ffi.Double,
+            ffi.Int64,
+            ffi.Int64,
             ffi.Pointer<ffi.UnsignedInt>,
           )
         >
@@ -1905,6 +1927,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
           bool,
           double,
           double,
+          int,
+          int,
           ffi.Pointer<ffi.UnsignedInt>,
         )
       >();
@@ -2992,6 +3016,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
     Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
     double scale = 1,
   }) {
     final ffi.Pointer<ffi.UnsignedInt> handle = calloc();
@@ -3009,6 +3035,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       looping ? 1 : 0,
       loopingStartAt.toDouble(),
       loopingEndAt?.toDouble() ?? 0,
+      loopingStartOffsetAt ?? -1,
+      loopingEndOffsetAt ?? -1,
       scale,
       handle,
     );
@@ -3037,6 +3065,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
             ffi.Int,
             ffi.Double,
             ffi.Double,
+            ffi.Int64,
+            ffi.Int64,
             ffi.Float,
             ffi.Pointer<ffi.UnsignedInt>,
           )
@@ -3058,6 +3088,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
           int,
           double,
           double,
+          int,
+          int,
           double,
           ffi.Pointer<ffi.UnsignedInt>,
         )
@@ -3079,6 +3111,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
     Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
   }) {
     final ffi.Pointer<ffi.UnsignedInt> handle = calloc();
     final e = _play3dClocked(
@@ -3096,6 +3130,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       looping ? 1 : 0,
       loopingStartAt.toDouble(),
       loopingEndAt?.toDouble() ?? 0,
+      loopingStartOffsetAt ?? -1,
+      loopingEndOffsetAt ?? -1,
       handle,
     );
     final ret = (
@@ -3124,6 +3160,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
             ffi.Int,
             ffi.Double,
             ffi.Double,
+            ffi.Int64,
+            ffi.Int64,
             ffi.Pointer<ffi.UnsignedInt>,
           )
         >
@@ -3145,6 +3183,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
           int,
           double,
           double,
+          int,
+          int,
           ffi.Pointer<ffi.UnsignedInt>,
         )
       >();

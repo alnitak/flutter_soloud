@@ -2338,17 +2338,21 @@ extern "C"
   /// [loopingStartAt] time position in seconds to restart playback when looping
   /// [handle] pointer to the handle for this new sound
   /// Return the error if any and a new [handle] of this sound
+  /// [loopingStartOffsetAt] Optional exact frame offset to restart looping from (-1 = inactive).
+  /// [loopingEndOffsetAt] Optional exact frame offset to loop before (-1 = inactive).
   FFI_PLUGIN_EXPORT enum PlayerErrors playScheduled(
       unsigned int soundHash, double atTime, double duration,
       unsigned int busId, float volume, float pan, float scale,
       bool looping, double loopingStartAt, double loopingEndAt,
+      long long loopingStartOffsetAt, long long loopingEndOffsetAt,
       unsigned int *handle)
   {
     if (player.get() == nullptr || !player.get()->isInited())
       return backendNotInited;
     PlayerErrors result = player.get()->playScheduled(
         soundHash, *handle, atTime, duration, busId, volume, pan, scale,
-        looping, loopingStartAt, loopingEndAt);
+        looping, loopingStartAt, loopingEndAt,
+        loopingStartOffsetAt, loopingEndOffsetAt);
     return result;
   }
 
@@ -3490,7 +3494,8 @@ extern "C"
       float posX, float posY, float posZ,
       float velX, float velY, float velZ,
       float volume, bool paused, bool looping, double loopingStartAt,
-      double loopingEndAt, float scale, unsigned int *handle)
+      double loopingEndAt, long long loopingStartOffsetAt,
+      long long loopingEndOffsetAt, float scale, unsigned int *handle)
   {
     if (player.get() == nullptr || !player.get()->isInited() ||
         player.get()->getSoundsCount() == 0)
@@ -3499,7 +3504,8 @@ extern "C"
     PlayerErrors result =
         player.get()->play3d(soundHash, *handle, posX, posY, posZ, velX, velY,
                              velZ, volume, paused, busId, looping, loopingStartAt,
-                             loopingEndAt, scale);
+                             loopingEndAt, loopingStartOffsetAt,
+                             loopingEndOffsetAt, scale);
     return result;
   }
 
@@ -3525,6 +3531,7 @@ extern "C"
       float velX, float velY, float velZ,
       float volume, float scale, bool looping,
       double loopingStartAt, double loopingEndAt,
+      long long loopingStartOffsetAt, long long loopingEndOffsetAt,
       unsigned int *handle)
   {
     if (player.get() == nullptr || !player.get()->isInited() ||
@@ -3535,7 +3542,8 @@ extern "C"
         player.get()->play3dClocked(soundHash, *handle, soundTime,
                                     posX, posY, posZ, velX, velY, velZ,
                                     volume, busId, scale, looping,
-                                    loopingStartAt, loopingEndAt);
+                                    loopingStartAt, loopingEndAt,
+                                    loopingStartOffsetAt, loopingEndOffsetAt);
     return result;
   }
 

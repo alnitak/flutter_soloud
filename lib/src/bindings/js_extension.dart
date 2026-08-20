@@ -361,6 +361,8 @@ external int wasmPlay(
   bool looping,
   double loopingStartAt,
   double loopingEndAt,
+  int loopingStartOffsetAt,
+  int loopingEndOffsetAt,
   double scale,
   int handlePtr,
 );
@@ -377,6 +379,8 @@ external int wasmPlayClocked(
   bool looping,
   double loopingStartAt,
   double loopingEndAt,
+  int loopingStartOffsetAt,
+  int loopingEndOffsetAt,
   int handlePtr,
 );
 
@@ -405,6 +409,8 @@ external int wasmPlayScheduled(
   bool looping,
   double loopingStartAt,
   double loopingEndAt,
+  int loopingStartOffsetAt,
+  int loopingEndOffsetAt,
   int handlePtr,
 );
 
@@ -677,6 +683,8 @@ external int wasmPlay3d(
   int looping,
   double loopingStartAt,
   double loopingEndAt,
+  int loopingStartOffsetAt,
+  int loopingEndOffsetAt,
   double scale,
   int handlePtr,
 );
@@ -697,6 +705,8 @@ external int wasmPlay3dClocked(
   int looping,
   double loopingStartAt,
   double loopingEndAt,
+  int loopingStartOffsetAt,
+  int loopingEndOffsetAt,
   int handlePtr,
 );
 

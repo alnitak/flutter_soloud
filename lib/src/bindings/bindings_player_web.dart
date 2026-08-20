@@ -1022,6 +1022,8 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
     Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
     double scale = 1,
   }) {
     final handlePtr = wasmMalloc(4); // 4 bytes for an int32
@@ -1034,6 +1036,8 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
       looping,
       loopingStartAt.toDouble(),
       loopingEndAt?.toDouble() ?? 0,
+      loopingStartOffsetAt ?? -1,
+      loopingEndOffsetAt ?? -1,
       scale,
       handlePtr,
     );
@@ -1060,6 +1064,8 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
     Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
   }) {
     final handlePtr = wasmMalloc(4); // 4 bytes for an int32
     final result = wasmPlayClocked(
@@ -1072,6 +1078,8 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
       looping,
       loopingStartAt.toDouble(),
       loopingEndAt?.toDouble() ?? 0,
+      loopingStartOffsetAt ?? -1,
+      loopingEndOffsetAt ?? -1,
       handlePtr,
     );
 
@@ -1135,6 +1143,8 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
     Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
   }) {
     final handlePtr = wasmMalloc(4); // 4 bytes for an int32
     final result = wasmPlayScheduled(
@@ -1148,6 +1158,8 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
       looping,
       loopingStartAt.toDouble(),
       loopingEndAt?.toDouble() ?? 0,
+      loopingStartOffsetAt ?? -1,
+      loopingEndOffsetAt ?? -1,
       handlePtr,
     );
 
@@ -1723,6 +1735,8 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
     Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
     double scale = 1,
   }) {
     final handlePtr = wasmMalloc(4); // 4 bytes for an int32
@@ -1740,6 +1754,8 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
       looping ? 1 : 0,
       loopingStartAt.toDouble(),
       loopingEndAt?.toDouble() ?? 0,
+      loopingStartOffsetAt ?? -1,
+      loopingEndOffsetAt ?? -1,
       scale,
       handlePtr,
     );
@@ -1771,6 +1787,8 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
     Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
   }) {
     final handlePtr = wasmMalloc(4); // 4 bytes for an int32
     final result = wasmPlay3dClocked(
@@ -1788,6 +1806,8 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
       looping ? 1 : 0,
       loopingStartAt.toDouble(),
       loopingEndAt?.toDouble() ?? 0,
+      loopingStartOffsetAt ?? -1,
+      loopingEndOffsetAt ?? -1,
       handlePtr,
     );
 

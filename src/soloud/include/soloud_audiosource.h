@@ -208,6 +208,10 @@ namespace SoLoud
 		time mLoopPoint;
 		// When looping, wrap before this time. Zero uses the natural source end.
 		time mLoopEndPoint;
+		// When looping, start playing from this exact frame offset. -1 means use mLoopPoint.
+		long long mLoopStartFrame;
+		// When looping, wrap before this exact frame offset. -1 means use mLoopEndPoint.
+		long long mLoopEndFrame;
 		// Number of source frames decoded since the last seek.
 		uint64_t mSourceSamplePosition;
 

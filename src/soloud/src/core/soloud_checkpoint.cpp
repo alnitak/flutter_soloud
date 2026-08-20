@@ -227,6 +227,8 @@ namespace SoLoud
 		cv.mStopSamplesLeft = v->mStopSamplesLeft;
 		cv.mLoopPoint = v->mLoopPoint;
 		cv.mLoopEndPoint = v->mLoopEndPoint;
+		cv.mLoopStartFrame = v->mLoopStartFrame;
+		cv.mLoopEndFrame = v->mLoopEndFrame;
 		cv.mSourceSamplePosition = v->mSourceSamplePosition;
 
 		// Resample ping-pong pointers become pool block indices.
@@ -306,6 +308,8 @@ namespace SoLoud
 			v->mStopSamplesLeft = cv.mStopSamplesLeft;
 		v->mLoopPoint = cv.mLoopPoint;
 		v->mLoopEndPoint = cv.mLoopEndPoint;
+		v->mLoopStartFrame = cv.mLoopStartFrame;
+		v->mLoopEndFrame = cv.mLoopEndFrame;
 		v->mSourceSamplePosition = cv.mSourceSamplePosition;
 		// mBaseSamplerate is immutable; mFilter pointers are instance
 		// identity.

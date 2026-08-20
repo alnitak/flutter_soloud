@@ -1299,6 +1299,8 @@ abstract class FlutterSoLoud {
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
     Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
     double scale = 1,
   });
 
@@ -1333,6 +1335,8 @@ abstract class FlutterSoLoud {
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
     Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
   });
 
   /// Since SoLoud has no knowledge of the scale of your coordinates,

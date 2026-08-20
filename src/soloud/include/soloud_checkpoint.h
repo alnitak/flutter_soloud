@@ -74,6 +74,8 @@ namespace SoLoud
 		long long mStopSamplesLeft;
 		time mLoopPoint;
 		time mLoopEndPoint;
+		long long mLoopStartFrame;
+		long long mLoopEndFrame;
 		uint64_t mSourceSamplePosition;
 		// Resample pool block indices mResampleData[0..1] pointed to, -1 for
 		// NULL. The ping-pong order is significant: [0] holds the current
