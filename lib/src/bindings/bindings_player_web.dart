@@ -1121,6 +1121,9 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     int busId = 0,
     double volume = 1,
     double pan = 0,
+    double scale = 1,
+    bool looping = false,
+    Duration loopingStartAt = Duration.zero,
   }) {
     final handlePtr = wasmMalloc(4); // 4 bytes for an int32
     final result = wasmPlayScheduled(
@@ -1130,6 +1133,9 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
       busId,
       volume,
       pan,
+      scale,
+      looping,
+      loopingStartAt.toDouble(),
       handlePtr,
     );
 

@@ -274,8 +274,6 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   }
 
   void _voiceEndedCallback(ffi.Pointer<ffi.UnsignedInt> handle) {
-    _log.finest(() => 'VOICE ENDED EVENT handle: ${handle.value}');
-
     voiceEndedEventController.add(handle.value);
     // Must free a pointer made on cpp. On Windows this must be freed
     // there and cannot use `calloc.free(...)`
@@ -1796,9 +1794,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
 
   late final _getPlayheadTimePtr =
       _lookup<ffi.NativeFunction<ffi.Double Function()>>('getPlayheadTime');
-  late final _getPlayheadTime = _getPlayheadTimePtr.asFunction<
-    double Function()
-  >();
+  late final _getPlayheadTime = _getPlayheadTimePtr
+      .asFunction<double Function()>();
 
   @override
   Duration getOutputLatency() {
@@ -1807,9 +1804,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
 
   late final _getOutputLatencyPtr =
       _lookup<ffi.NativeFunction<ffi.Double Function()>>('getOutputLatency');
-  late final _getOutputLatency = _getOutputLatencyPtr.asFunction<
-    double Function()
-  >();
+  late final _getOutputLatency = _getOutputLatencyPtr
+      .asFunction<double Function()>();
 
   @override
   bool isRenderAheadEnabled() {
@@ -1820,9 +1816,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       _lookup<ffi.NativeFunction<ffi.UnsignedInt Function()>>(
         'isRenderAheadEnabled',
       );
-  late final _isRenderAheadEnabled = _isRenderAheadEnabledPtr.asFunction<
-    int Function()
-  >();
+  late final _isRenderAheadEnabled = _isRenderAheadEnabledPtr
+      .asFunction<int Function()>();
 
   @override
   ({PlayerErrors error, SoundHandle newHandle}) playScheduled(
@@ -1832,6 +1827,9 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     int busId = 0,
     double volume = 1,
     double pan = 0,
+    double scale = 1,
+    bool looping = false,
+    Duration loopingStartAt = Duration.zero,
   }) {
     final ffi.Pointer<ffi.UnsignedInt> handle = calloc();
     final e = _playScheduled(
@@ -1841,6 +1839,9 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       busId,
       volume,
       pan,
+      scale,
+      looping,
+      loopingStartAt.toDouble(),
       handle,
     );
     final ret = (
@@ -1861,6 +1862,9 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
             ffi.UnsignedInt,
             ffi.Float,
             ffi.Float,
+            ffi.Float,
+            ffi.Bool,
+            ffi.Double,
             ffi.Pointer<ffi.UnsignedInt>,
           )
         >
@@ -1873,6 +1877,9 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
           double,
           int,
           double,
+          double,
+          double,
+          bool,
           double,
           ffi.Pointer<ffi.UnsignedInt>,
         )

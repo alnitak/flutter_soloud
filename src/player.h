@@ -495,7 +495,9 @@ public:
   PlayerErrors playScheduled(unsigned int soundHash, unsigned int &handle,
                              double atTime, double duration = 0.0,
                              unsigned int busId = 0,
-                             float volume = 1.0f, float pan = 0.0f);
+                             float volume = 1.0f, float pan = 0.0f,
+                             float scale = 1.0f, bool looping = false,
+                             double loopingStartAt = 0.0);
 
   /// @brief Stop a sound at an absolute engine time (see [getEngineTime]).
   ///

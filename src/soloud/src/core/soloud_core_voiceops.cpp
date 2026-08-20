@@ -137,46 +137,28 @@ namespace SoLoud
 			journalDeath_internal(aVoice, mVoice[aVoice]->mPlayIndex);
 			// Delete via temporary variable to avoid recursion
 			AudioSourceInstance * v = mVoice[aVoice];
+			const unsigned int playIndex = v->mPlayIndex;
 			mVoice[aVoice] = 0;
 
+			// Clear any resample data channel assigned to this voice
 			unsigned int i;
 			for (i = 0; i < mMaxActiveVoices; i++)
 			{
 				if (mResampleDataOwner[i] == v)
 				{
-					// Queue rather than call: the audio mutex is held here (see
-					// the assert above) and the embedder callback must not run
-					// under it. unlockAudioMutex_internal() dispatches these.
-					// mEndedVoiceQueue holds VOICE_COUNT entries and a voice can
-					// only be queued once per stop, so it cannot overflow.
-					if (mEndedVoiceCount < VOICE_COUNT)
-					{
-						// ###### flutter_soloud local patch (retroactive re-mix) ######
-						// During a re-mix this stop reproduces a journaled death
-						// whose ended-event the original timeline already queued
-						// or dispatched; firing it again would double-report the
-						// voice's end. mRemixSuppressEnded lists those handles.
-						handle endedHandle = (aVoice + 1) | (mResampleDataOwner[i]->mPlayIndex << 12);
-						bool suppressed = false;
-						if (mRemixing)
-						{
-							unsigned int s;
-							for (s = 0; s < mRemixSuppressEndedCount; s++)
-							{
-								if (mRemixSuppressEnded[s] == endedHandle)
-								{
-									suppressed = true;
-									break;
-								}
-							}
-						}
-						if (!suppressed)
-						{
-							mEndedVoiceQueue[mEndedVoiceCount++] = endedHandle;
-						}
-					}
 					mResampleDataOwner[i] = NULL;
 				}
+			}
+
+			// Queue rather than call: the audio mutex is held here (see
+			// the assert above) and the embedder callback must not run
+			// under it. unlockAudioMutex_internal() dispatches these.
+			// mEndedVoiceQueue holds VOICE_COUNT entries and a voice can
+			// only be queued once per stop, so it cannot overflow.
+			if (mEndedVoiceCount < VOICE_COUNT)
+			{
+				handle endedHandle = (aVoice + 1) | (playIndex << 12);
+				mEndedVoiceQueue[mEndedVoiceCount++] = endedHandle;
 			}
 
 #ifdef __EMSCRIPTEN__

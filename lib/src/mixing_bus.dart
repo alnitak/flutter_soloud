@@ -258,6 +258,9 @@ class Bus {
     Duration? duration,
     double volume = 1,
     double pan = 0,
+    double scale = 1,
+    bool looping = false,
+    Duration loopingStartAt = Duration.zero,
   }) {
     if (!_isValid) {
       _log.warning('bus $busId is already disposed');
@@ -270,6 +273,9 @@ class Bus {
       busId: busId,
       volume: volume,
       pan: pan,
+      scale: scale,
+      looping: looping,
+      loopingStartAt: loopingStartAt,
     );
   }
 

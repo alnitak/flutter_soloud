@@ -302,7 +302,8 @@ namespace SoLoud
 		v->mSrcOffset = cv.mSrcOffset;
 		v->mLeftoverSamples = cv.mLeftoverSamples;
 		v->mDelaySamples = cv.mDelaySamples;
-		v->mStopSamplesLeft = cv.mStopSamplesLeft;
+		if (cv.mStopSamplesLeft >= 0 || v->mStopSamplesLeft < 0)
+			v->mStopSamplesLeft = cv.mStopSamplesLeft;
 		v->mLoopPoint = cv.mLoopPoint;
 		v->mLoopEndPoint = cv.mLoopEndPoint;
 		v->mSourceSamplePosition = cv.mSourceSamplePosition;

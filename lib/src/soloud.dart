@@ -398,7 +398,7 @@ interface class SoLoud {
   /// changes. (Note these are the *stream's* attributes; `audio_session`
   /// controls the *focus request* — for correct ducking they should match.)
   /// Ignored when `lowLatency` is true, on non-Android platforms, and on web.
-  /// 
+  ///
   /// [devicePeriodFrames] (native only) the output device period in frames
   /// used when [renderAheadFrames] enables the render-ahead ring. Smaller
   /// values reduce the output-path jitter and the granularity at which new
@@ -856,6 +856,7 @@ interface class SoLoud {
     // Listen when a handle becomes invalid because has been stopped/ended.
     if (!_controller.soLoudFFI.voiceEndedEventController.hasListener) {
       _controller.soLoudFFI.voiceEndedEvents.listen((handle) {
+        _log.finest('Voice ended event received. Handle: $handle');
         // Removing this UNIQUE [handle] from the `AudioSource` that owns it.
 
         final soundHandleFound = findAudioSourceByHandle(SoundHandle(handle));
@@ -2226,7 +2227,9 @@ interface class SoLoud {
 
     assert(filtered.length == 1, 'Duplicate sounds found');
     for (final activeSound in filtered) {
-      activeSound.handlesInternal.add(ret.newHandle);
+      if (_controller.soLoudFFI.getIsValidVoiceHandle(ret.newHandle)) {
+        activeSound.handlesInternal.add(ret.newHandle);
+      }
     }
 
     return ret.newHandle;
@@ -2333,7 +2336,9 @@ interface class SoLoud {
 
     assert(filtered.length == 1, 'Duplicate sounds found');
     for (final activeSound in filtered) {
-      activeSound.handlesInternal.add(ret.newHandle);
+      if (_controller.soLoudFFI.getIsValidVoiceHandle(ret.newHandle)) {
+        activeSound.handlesInternal.add(ret.newHandle);
+      }
     }
 
     return ret.newHandle;
@@ -2513,6 +2518,9 @@ interface class SoLoud {
     int busId = 0,
     double volume = 1,
     double pan = 0,
+    double scale = 1,
+    bool looping = false,
+    Duration loopingStartAt = Duration.zero,
   }) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -2524,6 +2532,9 @@ interface class SoLoud {
       busId: busId,
       volume: volume,
       pan: pan,
+      scale: scale,
+      looping: looping,
+      loopingStartAt: loopingStartAt,
     );
     if (!_checkPlaybackResult(ret, from: 'playScheduled()')) {
       // Non-blocking failure: nothing is playing, so don't register
@@ -2543,7 +2554,9 @@ interface class SoLoud {
 
     assert(filtered.length == 1, 'Duplicate sounds found');
     for (final activeSound in filtered) {
-      activeSound.handlesInternal.add(ret.newHandle);
+      if (_controller.soLoudFFI.getIsValidVoiceHandle(ret.newHandle)) {
+        activeSound.handlesInternal.add(ret.newHandle);
+      }
     }
 
     return ret.newHandle;
@@ -4106,7 +4119,9 @@ interface class SoLoud {
 
     assert(filtered.length == 1, 'Duplicate sounds found');
     for (final activeSound in filtered) {
-      activeSound.handlesInternal.add(ret.newHandle);
+      if (_controller.soLoudFFI.getIsValidVoiceHandle(ret.newHandle)) {
+        activeSound.handlesInternal.add(ret.newHandle);
+      }
     }
     sound.handlesInternal.add(ret.newHandle);
     return ret.newHandle;
@@ -4200,7 +4215,9 @@ interface class SoLoud {
 
     assert(filtered.length == 1, 'Duplicate sounds found');
     for (final activeSound in filtered) {
-      activeSound.handlesInternal.add(ret.newHandle);
+      if (_controller.soLoudFFI.getIsValidVoiceHandle(ret.newHandle)) {
+        activeSound.handlesInternal.add(ret.newHandle);
+      }
     }
     return ret.newHandle;
   }

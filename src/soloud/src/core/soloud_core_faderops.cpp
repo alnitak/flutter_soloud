@@ -79,6 +79,7 @@ namespace SoLoud
 			else
 			{
 				mVoice[ch]->mStopSamplesLeft = samples;
+				journalDeath_internal(ch, aEngineTime);
 			}
 		}
 		FOR_ALL_VOICES_POST

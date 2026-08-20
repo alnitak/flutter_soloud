@@ -698,6 +698,9 @@ abstract class FlutterSoLoud {
     int busId = 0,
     double volume = 1,
     double pan = 0,
+    double scale = 1,
+    bool looping = false,
+    Duration loopingStartAt = Duration.zero,
   });
 
   /// Stop a sound at an absolute engine time (see [getEngineTime]).

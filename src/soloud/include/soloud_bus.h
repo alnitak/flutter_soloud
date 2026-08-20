@@ -65,7 +65,7 @@ namespace SoLoud
 		// Play sound through the bus, delayed in relation to other sounds called via this function.
 		handle playClocked(time aSoundTime, AudioSource &aSound, float aVolume = 1.0f, float aPan = 0.0f);
 		// Play sound through the bus at an absolute engine time (see Soloud::getEngineTime), with sample accuracy.
-		handle playScheduled(time aEngineTime, AudioSource &aSound, float aVolume = 1.0f, float aPan = 0.0f);
+		handle playScheduled(time aEngineTime, AudioSource &aSound, float aVolume = 1.0f, float aPan = 0.0f, float aScale = 1.0f, bool aLooping = false, time aLoopPoint = 0.0);
 		// Start playing a 3d audio source through the bus
 		handle play3d(AudioSource &aSound, float aPosX, float aPosY, float aPosZ, float aVelX = 0.0f, float aVelY = 0.0f, float aVelZ = 0.0f, float aVolume = 1.0f, bool aPaused = 0);
 		// Start playing a 3d audio source through the bus, delayed in relation to other sounds called via this function.

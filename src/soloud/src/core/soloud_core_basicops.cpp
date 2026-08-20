@@ -303,7 +303,7 @@ namespace SoLoud
 		return (unsigned int)delay;
 	}
 
-	handle Soloud::playScheduled(time aEngineTime, AudioSource &aSound, float aVolume, float aPan, unsigned int aBus)
+	handle Soloud::playScheduled(time aEngineTime, AudioSource &aSound, float aVolume, float aPan, unsigned int aBus, float aScale, bool aLooping, time aLoopPoint)
 	{
 		// ###### flutter_soloud local patch (retroactive re-mix) ######
 		// With the render-ahead ring enabled, do the whole operation in one
@@ -327,6 +327,18 @@ namespace SoLoud
 				return 0;
 			}
 			handle h = getHandleFromVoice_internal(ch);
+			if (aScale != 1.0f && aScale > 0.0f)
+			{
+				setVoiceRelativePlaySpeed_internal(ch, aScale);
+			}
+			if (aLooping)
+			{
+				mVoice[ch]->mFlags |= AudioSourceInstance::LOOPING;
+				if (aLoopPoint > 0.0)
+				{
+					mVoice[ch]->mLoopPoint = aLoopPoint;
+				}
+			}
 			if (!retroactiveVoiceStart_internal(ch, aEngineTime, aSound))
 			{
 				unsigned int delay = getScheduledDelaySamplesLocked_internal(aEngineTime);
@@ -342,6 +354,18 @@ namespace SoLoud
 		// No voice was allocated: don't delay/unpause anything.
 		if (h == 0)
 			return 0;
+		if (aScale != 1.0f && aScale > 0.0f)
+		{
+			setRelativePlaySpeed(h, aScale);
+		}
+		if (aLooping)
+		{
+			setLooping(h, 1);
+			if (aLoopPoint > 0.0)
+			{
+				setLoopPoint(h, aLoopPoint);
+			}
+		}
 		setDelaySamples(h, getScheduledDelaySamples(aEngineTime));
 		setPause(h, 0);
 		return h;

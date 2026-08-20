@@ -2143,7 +2143,10 @@ PlayerErrors Player::playScheduled(
     double duration,
     unsigned int busId,
     float volume,
-    float pan)
+    float pan,
+    float scale,
+    bool looping,
+    double loopingStartAt)
 {
     handle = 0;
 
@@ -2180,14 +2183,14 @@ PlayerErrors Player::playScheduled(
     if (busId == 0)
     {
         newHandle = soloud.playScheduled(
-            atTime, *sound->sound.get(), volume, pan, 0);
+            atTime, *sound->sound.get(), volume, pan, 0, scale, looping, loopingStartAt);
     }
     else
     {
         auto it = busMap.find(busId);
         if (it != busMap.end())
             newHandle = it->second.bus.playScheduled(
-                atTime, *sound->sound.get(), volume, pan);
+                atTime, *sound->sound.get(), volume, pan, scale, looping, loopingStartAt);
         else
             return PlayerErrors::busIdNotFound;
     }
@@ -2196,10 +2199,13 @@ PlayerErrors Player::playScheduled(
     if (newHandle == 0)
         return failedToStartPlayback;
 
-    sound->handle.push_back({newHandle, MAX_DOUBLE, false});
-    if (duration > 0.0)
+    if (soloud.isValidVoiceHandle(newHandle))
     {
-        soloud.scheduleStopAt(newHandle, atTime + duration);
+        sound->handle.push_back({newHandle, MAX_DOUBLE, false});
+        if (duration > 0.0)
+        {
+            soloud.scheduleStopAt(newHandle, atTime + duration);
+        }
     }
     // Check if this buffer has enough data to be played
     if (sound->soundType == SoundType::TYPE_BUFFER_STREAM)
