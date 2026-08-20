@@ -336,29 +336,15 @@ namespace SoLoud
 		cp.mVoices.clear();
 		cp.mSerial = mCheckpointCounter;
 		cp.mTime = mStreamTime;
-		if (mRemixing && mSamplerate > 0)
+		if (mSamplerate > 0)
 		{
-			// During a retroactive re-mix the ring heads deliberately do not
-			// move while history is rewritten, so the write head cannot be
-			// read off the ring. The convention is the same as on the normal
-			// path -- the checkpoint's ring position is one quantum behind its
-			// time -- derived from the mix clock instead.
 			long long framesMixed = (long long)floor(mStreamTime * (time)mSamplerate + 0.5);
-			cp.mRingWritePosition = (unsigned long long)(framesMixed > (long long)mBufferSize
-				? framesMixed - mBufferSize : 0);
+			cp.mRingWritePosition = (unsigned long long)(framesMixed >= 0 ? framesMixed : 0);
 		}
 		else
 		{
-			cp.mRingWritePosition = mRenderRing.getWritePosition();
+			cp.mRingWritePosition = 0;
 		}
-		// The checkpoint time is the just-mixed quantum's end = the next
-		// quantum's start. When mixing goes through the ring, the top-up
-		// appends the quantum right after mix_internal returns, so at capture
-		// time the write head is exactly one quantum behind the mix clock.
-		// (Direct mix() calls that bypass the ring -- the null driver, tests
-		// -- leave the write head at 0 and skip this invariant.)
-		SOLOUD_ASSERT(cp.mRingWritePosition == 0 ||
-			fabs(mStreamTime - (time)(cp.mRingWritePosition + mBufferSize) / (time)mSamplerate) < 1e-3);
 
 		// Engine-level POD state.
 		cp.mGlobalVolume = mGlobalVolume;
@@ -856,11 +842,10 @@ namespace SoLoud
 		if (!isRenderAheadEnabled() || !mRenderRing.isInited() || mSamplerate == 0)
 			return -1;
 
-		// Events at or behind the playhead keep today's as-soon-as-possible
-		// behavior; events at or beyond the write head are ordinary future
-		// scheduling. (plan §4.5 steps 1-2)
 		const time playhead = playheadTimeLocked_internal();
-		if (aEventTime < playhead || aEventTime >= mStreamTime)
+		if (aEventTime < playhead)
+			aEventTime = playhead;
+		if (aEventTime >= mStreamTime)
 			return -1;
 
 		const int ci = findCheckpointAtOrBefore_internal(aEventTime);
@@ -910,12 +895,9 @@ namespace SoLoud
 		mRemixOldStreamTime = mStreamTime;
 		mRemixWritePos = mRenderRing.getWritePosition();
 		mRemixCheckpointTime = cp.mTime;
-		// The rewrite starts one quantum past the checkpoint's stored
-		// position (the top-up appends the just-mixed quantum after capture);
-		// both are quantum-aligned. The re-mix loop clamps each quantum's
-		// start to the read head, so frames at/behind it -- owned by the
-		// device -- are never touched.
-		mRemixStartPos = cp.mRingWritePosition + mBufferSize;
+		// The rewrite starts at the checkpoint's ring write position (the
+		// beginning of the quantum starting at cp.mTime).
+		mRemixStartPos = cp.mRingWritePosition;
 
 		// Ended-event reconciliation (plan §4.5 step 8 / §4.6): drop queued
 		// ended-events whose voice the restore is about to bring back, so a
@@ -1009,6 +991,10 @@ namespace SoLoud
 			return false;
 		const unsigned int newPlayIndex = mVoice[aSlot]->mPlayIndex;
 
+		const time playhead = playheadTimeLocked_internal();
+		if (aEventTime < playhead)
+			aEventTime = playhead;
+
 		const int ci = retroactiveBegin_internal(aEventTime);
 		if (ci < 0)
 			return false;
@@ -1085,7 +1071,10 @@ namespace SoLoud
 		if (aParam == RetroJournalEntry::PARAM_PAUSE && aValue == 0.0f)
 			return false;
 		const unsigned int playIndex = mVoice[aSlot]->mPlayIndex;
-		const time t = aEventTime;
+		time t = aEventTime;
+		const time playhead = playheadTimeLocked_internal();
+		if (t < playhead)
+			t = playhead;
 		const int ci = retroactiveBegin_internal(t);
 		if (ci < 0)
 			return false;

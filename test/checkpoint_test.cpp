@@ -258,8 +258,8 @@ void testFindAndRestoreEdgeCases()
     EXPECT(!engine.restoreMixCheckpoint_internal(-1), "restore(-1) must fail");
     EXPECT(!engine.restoreMixCheckpoint_internal(99999),
            "restore(huge) must fail");
-    EXPECT(engine.findCheckpointAtOrBefore_internal(0) == -1,
-           "find on an empty pool must return -1");
+    EXPECT(engine.findCheckpointAtOrBefore_internal(-1.0) == -1,
+           "find before oldest checkpoint must return -1");
 
     // Mix more quanta than the pool holds, so the oldest checkpoint is
     // overwritten.
