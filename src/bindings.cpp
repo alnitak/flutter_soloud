@@ -416,36 +416,14 @@ extern "C"
   /// on the thread that produced the event.
   static void voiceEndedBody(unsigned int *handle, unsigned int generation)
   {
-    bool isHandleFound = false;
     if (player != nullptr)
     {
-      isHandleFound = player->findByHandle(*handle) != nullptr;
-      if (isHandleFound)
-        player->removeHandle(*handle);
-      else
-        // If the handle is not found, for sure it is already
-        // removed by a previous call to `voiceEndedCallback`.
-        // For example triggering a `stop` in a `Future` after the sound is ended
-        // or vice versa.
-        return;
+      player->removeHandle(*handle);
     }
 
-    // Here the internal flutter_soloud handle, doesn't exist anymore, whether
-    // this callback is called directly from `stop`, or whether it is called from
-    // an event in `Soloud::stopVoice_internal (unsigned int aVoice)`.
-
 #ifdef __EMSCRIPTEN__
-    // Calling JavaScript from C/C++
-    // https://emscripten.org/docs/porting/connecting_cpp_and_javascript/Interacting-with-code.html#interacting-with-code-call-javascript-from-native
-    // emscripten_run_script("voiceEndedCallbackJS('1234')");
     sendToWorkerGen("voiceEndedCallback", *handle, generation);
 #endif
-
-    // So, if the handle was already found before (henche the handle is not
-    // found), the callback to Dart has been already called. If this is the fist
-    // time this handle is found, the callback to Dart must be called.
-    if (!isHandleFound)
-      return;
 
     // The `dartVoiceEndedCallback` is not set on Web.
     // Held across the call, not just the load: a retirement running
@@ -2368,12 +2346,14 @@ extern "C"
   /// Return the error if any and a new [handle] of this sound
   FFI_PLUGIN_EXPORT enum PlayerErrors playScheduled(
       unsigned int soundHash, double atTime, double duration,
-      unsigned int busId, float volume, float pan, unsigned int *handle)
+      unsigned int busId, float volume, float pan, float scale,
+      bool looping, double loopingStartAt, unsigned int *handle)
   {
     if (player.get() == nullptr || !player.get()->isInited())
       return backendNotInited;
     PlayerErrors result = player.get()->playScheduled(
-        soundHash, *handle, atTime, duration, busId, volume, pan);
+        soundHash, *handle, atTime, duration, busId, volume, pan, scale,
+        looping, loopingStartAt);
     return result;
   }
 
@@ -2426,7 +2406,6 @@ extern "C"
     const enum PlayerErrors error = player.get()->stop(handle);
     if (error != noError)
       return error;
-    voiceEndedCallback(&handle);
     return noError;
   }
 
