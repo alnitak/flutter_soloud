@@ -1809,6 +1809,11 @@ namespace SoLoud
 						voice->mResampleData[0] = voice->mResampleData[1];
 						voice->mResampleData[1] = t;
 
+						if (voice->mResampleData[0] == NULL)
+						{
+							break;
+						}
+
 						// Get a block of source data
 
 						unsigned int readcount = 0;
@@ -1995,6 +2000,11 @@ namespace SoLoud
 						float * t = voice->mResampleData[0];
 						voice->mResampleData[0] = voice->mResampleData[1];
 						voice->mResampleData[1] = t;
+
+						if (voice->mResampleData[0] == NULL)
+						{
+							break;
+						}
 
 						// Get a block of source data
 

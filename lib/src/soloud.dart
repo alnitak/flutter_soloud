@@ -398,6 +398,7 @@ interface class SoLoud {
   /// changes. (Note these are the *stream's* attributes; `audio_session`
   /// controls the *focus request* — for correct ducking they should match.)
   /// Ignored when `lowLatency` is true, on non-Android platforms, and on web.
+  /// 
   /// [devicePeriodFrames] (native only) the output device period in frames
   /// used when [renderAheadFrames] enables the render-ahead ring. Smaller
   /// values reduce the output-path jitter and the granularity at which new

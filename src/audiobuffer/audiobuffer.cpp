@@ -65,6 +65,9 @@ static void bsOnBufferingMainThread(int isBuffering, int handle, double time,
 
 static void clearPlanarBuffer(float *buffer, unsigned int frames,
                               unsigned int stride, unsigned int channels) {
+  if (buffer == nullptr || frames == 0 || channels == 0) {
+    return;
+  }
   for (unsigned int channel = 0; channel < channels; ++channel) {
     memset(buffer + channel * stride, 0, sizeof(float) * frames);
   }
@@ -111,6 +114,10 @@ void BufferStreamInstance::restoreSourceState(
 unsigned int BufferStreamInstance::getAudio(float *aBuffer,
                                             unsigned int aSamplesToRead,
                                             unsigned int aBufferSize) {
+  if (aBuffer == nullptr || mChannels == 0 || aSamplesToRead == 0) {
+    return 0;
+  }
+
   // Check if parent is still valid before accessing it
   if (mParent == nullptr || !mParent->isValid()) {
     clearPlanarBuffer(aBuffer, aSamplesToRead, aBufferSize, mChannels);
@@ -146,9 +153,11 @@ unsigned int BufferStreamInstance::getAudio(float *aBuffer,
   // stream position. The buffering state will be checked when addData() or
   // setDataIsEnded() is called.
   if (samplesToRead <= 0) {
-    memset(aBuffer, 0, sizeof(float) * aSamplesToRead * mChannels);
+    clearPlanarBuffer(aBuffer, aSamplesToRead, aBufferSize, mChannels);
     if (mParent->mBuffer.bufferingType == BufferingType::PRESERVED) {
-      mStreamPosition = mOffset / (mBaseSamplerate * mChannels);
+      mStreamPosition = (mBaseSamplerate > 0.0f)
+                            ? mOffset / (mBaseSamplerate * mChannels)
+                            : 0.0;
     } else {
       mStreamPosition = 0;
     }
@@ -157,11 +166,16 @@ unsigned int BufferStreamInstance::getAudio(float *aBuffer,
 
   // Zero any frames we won't fill, then copy the active frames.
   if (samplesToRead < static_cast<int>(aSamplesToRead)) {
-    memset(aBuffer, 0, sizeof(float) * aSamplesToRead * mChannels);
+    clearPlanarBuffer(aBuffer, aSamplesToRead, aBufferSize, mChannels);
   }
 
   float *buffer = reinterpret_cast<float *>(mParent->mBuffer.buffer.data() +
                                             mParent->mBuffer.getReadOffset());
+  if (buffer == nullptr) {
+    clearPlanarBuffer(aBuffer, aSamplesToRead, aBufferSize, mChannels);
+    return 0;
+  }
+
   if (mChannels == 1) {
     // Optimization: if we have a mono audio source, we can just copy all the
     // data in one go.
@@ -191,7 +205,9 @@ unsigned int BufferStreamInstance::getAudio(float *aBuffer,
   } else {
     mOffset += samplesToRead * mChannels;
     // For PRESERVED type, streamPosition advances with the offset.
-    mStreamPosition = mOffset / (mBaseSamplerate * mChannels);
+    mStreamPosition = (mBaseSamplerate > 0.0f)
+                          ? mOffset / (mBaseSamplerate * mChannels)
+                          : 0.0;
   }
 
   return samplesToRead;
