@@ -281,7 +281,7 @@ namespace SoLoud { SoLoud::result miniaudio_stopAudioDevice(); }
 namespace SoLoud { SoLoud::result miniaudio_startAudioDevice(); }
 namespace SoLoud { unsigned int miniaudio_getAudioDeviceState(); }
 
-PlayerErrors Player::init(unsigned int sampleRate, unsigned int bufferSize, unsigned int channels, int deviceID, bool lowLatency)
+PlayerErrors Player::init(unsigned int sampleRate, unsigned int bufferSize, unsigned int channels, int deviceID, bool lowLatency, unsigned int devicePeriodFrames, unsigned int renderAheadFrames)
 {
     if (mInited.load(std::memory_order_acquire))
         return playerAlreadyInited;
@@ -315,6 +315,11 @@ PlayerErrors Player::init(unsigned int sampleRate, unsigned int bufferSize, unsi
         // Use the stored device ID from the PlaybackDevice struct
         playbackInfos_id = (void *)&devices[index].deviceId;
     }
+
+    // Configure the render-ahead ring before the backend opens the device:
+    // miniaudio_init() reads this to pick the device period, and
+    // postinit_internal() allocates the ring.
+    soloud.setRenderAheadConfig(devicePeriodFrames, renderAheadFrames);
 
     // initialize SoLoud.
     SoLoud::result result;
@@ -2114,6 +2119,21 @@ void Player::resetStreamTime()
 double Player::getEngineTime()
 {
     return soloud.getEngineTime();
+}
+
+double Player::getPlayheadTime()
+{
+    return soloud.getPlayheadTime();
+}
+
+double Player::getOutputLatency()
+{
+    return soloud.getOutputLatency();
+}
+
+bool Player::isRenderAheadEnabled()
+{
+    return soloud.isRenderAheadEnabled();
 }
 
 PlayerErrors Player::playScheduled(

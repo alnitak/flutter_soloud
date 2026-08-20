@@ -48,10 +48,15 @@ public:
   /// 512 when low latency is needed for example in games.
   /// @param channels 1)mono, 2)stereo 4)quad 6)5.1 8)7.1
   /// @param deviceID the device ID. -1 for default OS output device.
+  /// @param devicePeriodFrames small output device period used when
+  /// [renderAheadFrames] enables the render-ahead ring; 0 = default (512).
+  /// @param renderAheadFrames depth of the engine-owned render-ahead ring in
+  /// frames; 0 (default) disables it and keeps direct-to-device mixing.
   /// @return Returns [PlayerErrors.SO_NO_ERROR] if success.
   PlayerErrors init(unsigned int sampleRate, unsigned int bufferSize,
                     unsigned int channels, int deviceID = -1,
-                    bool lowLatency = true);
+                    bool lowLatency = true, unsigned int devicePeriodFrames = 0,
+                    unsigned int renderAheadFrames = 0);
 
   /// @brief Change the playback device.
   /// @param deviceID the device ID. -1 for default OS output device.
@@ -456,6 +461,20 @@ public:
   /// [fadeScheduled]. It only advances while the audio device is mixing.
   /// @return the engine time in seconds.
   double getEngineTime();
+
+  /// @brief Engine time of the sample currently reaching the output device:
+  /// the mix clock minus the render-ahead ring depth. Equals [getEngineTime]
+  /// when the render-ahead ring is disabled (the default).
+  /// @return the playhead time in seconds.
+  double getPlayheadTime();
+
+  /// @brief Estimated output latency in seconds (ring depth plus one device
+  /// period). 0 when the render-ahead ring is disabled.
+  double getOutputLatency();
+
+  /// @brief Whether the render-ahead ring (retroactive re-mix prerequisite)
+  /// is active. Set at [init] time via `renderAheadFrames`.
+  bool isRenderAheadEnabled();
 
   /// @brief Start playing a sound at an absolute engine time (see
   /// [getEngineTime]), with sample accuracy.

@@ -100,6 +100,17 @@ namespace SoLoud
 		handle mHandle;
 	};
 
+	// ###### flutter_soloud local patch (mix checkpoints) ######
+	// Base class for heap snapshots of a source instance's consumption state
+	// (decoder position, stream offset, oscillator phase, ...), captured at
+	// mix-quantum boundaries for retroactive re-mixing (see
+	// OPTION_B_RETROACTIVE_REMIX_PLAN.md). Subclasses of AudioSourceInstance
+	// that support re-mixing derive their own snapshot struct from this.
+	struct SourceStateSnapshot
+	{
+		virtual ~SourceStateSnapshot() {}
+	};
+
 	// Base class for audio instances
 	class AudioSourceInstance
 	{
@@ -202,6 +213,17 @@ namespace SoLoud
 
 		// Get N samples from the stream to the buffer. Report samples written.
 		virtual unsigned int getAudio(float *aBuffer, unsigned int aSamplesToRead, unsigned int aBufferSize) = 0;
+		// ###### flutter_soloud local patch (mix checkpoints) ######
+		// Returns a heap snapshot of the subclass-specific source-consumption
+		// state (everything getAudio() mutates beyond the POD base-class
+		// fields, which the engine snapshots itself), or nullptr if this
+		// source is not restorable -- live streams, pull streams, synths.
+		// Retroactive events affecting a voice with a nullptr snapshot
+		// degrade to going-forward behavior. The caller takes ownership.
+		virtual SourceStateSnapshot *captureSourceState() { return nullptr; }
+		// Restores a snapshot produced by captureSourceState(). Never called
+		// with nullptr, and only on the same instance that produced it.
+		virtual void restoreSourceState(SourceStateSnapshot *) {}
 		// Has the stream ended?
 		virtual bool hasEnded() = 0;
 		// Seek to certain place in the stream. Base implementation is generic "tape" seek (and slow).

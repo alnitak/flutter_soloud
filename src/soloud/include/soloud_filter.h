@@ -31,6 +31,16 @@ namespace SoLoud
 {
 	class Fader;
 
+	// ###### flutter_soloud local patch (mix checkpoints) ######
+	// Base class for heap snapshots of a filter instance's mutable state,
+	// captured at mix-quantum boundaries for retroactive re-mixing (see
+	// OPTION_B_RETROACTIVE_REMIX_PLAN.md). Subclasses of FilterInstance that
+	// support re-mixing derive their own snapshot struct from this.
+	struct FilterStateSnapshot
+	{
+		virtual ~FilterStateSnapshot() {}
+	};
+
 	class FilterInstance
 	{
 	public:
@@ -38,9 +48,19 @@ namespace SoLoud
 		unsigned int mParamChanged;
 		float *mParam;
 		Fader *mParamFader;
-		
+
 
 		FilterInstance();
+		// ###### flutter_soloud local patch (mix checkpoints) ######
+		// Returns a heap snapshot of the instance's mutable state, or nullptr
+		// if this filter cannot be re-mixed; retroactive events affecting a
+		// voice using such a filter degrade to going-forward behavior (the
+		// already-mixed audio keeps the filter's original state). The caller
+		// takes ownership of the returned snapshot.
+		virtual FilterStateSnapshot *captureState() { return nullptr; }
+		// Restores a snapshot produced by captureState(). Never called with
+		// nullptr, and only with a snapshot of this instance's own type.
+		virtual void restoreState(FilterStateSnapshot *) {}
 		virtual result initParams(int aNumParams);
 		virtual void updateParams(time aTime);
 		virtual void filter(float *aBuffer, unsigned int aSamples, unsigned int aBufferSize, unsigned int aChannels, float aSamplerate, time aTime);

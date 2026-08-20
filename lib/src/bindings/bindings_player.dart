@@ -167,6 +167,12 @@ abstract class FlutterSoLoud {
   /// [bufferSize] the audio buffer size. Usually is 2048, but can be also be
   /// lowered if less latency is needed.
   /// [channels] mono, stereo, quad, 5.1, 7.1.
+  /// [devicePeriodFrames] small output device period used when
+  /// [renderAheadFrames] enables the render-ahead ring; 0 = default (512).
+  /// Ignored on web.
+  /// [renderAheadFrames] depth of the engine-owned render-ahead ring in
+  /// frames; 0 (the default) disables it and keeps direct-to-device mixing.
+  /// Ignored on web.
   ///
   /// Returns [PlayerErrors.noError] if success.
   ///
@@ -184,8 +190,10 @@ abstract class FlutterSoLoud {
     int sampleRate,
     int bufferSize,
     Channels channels,
-    bool lowLatency,
-  );
+    bool lowLatency, {
+    int devicePeriodFrames = 0,
+    int renderAheadFrames = 0,
+  });
 
   /// Android only: when [managed] is true (default) SoLoud tags the AAudio
   /// stream as media/music; when false it leaves usage/contentType unset so the
@@ -646,6 +654,26 @@ abstract class FlutterSoLoud {
   /// Returns the engine time.
   @mustBeOverridden
   Duration getEngineTime();
+
+  /// Get the engine time of the sample currently reaching the output device:
+  /// the mix clock (see [getEngineTime]) minus the render-ahead ring depth.
+  ///
+  /// Equals [getEngineTime] when the render-ahead ring is disabled (the
+  /// default) and on web.
+  @mustBeOverridden
+  Duration getPlayheadTime();
+
+  /// Estimated output latency: render-ahead ring depth plus one device
+  /// period. [Duration.zero] when the render-ahead ring is disabled (the
+  /// default) and on web.
+  @mustBeOverridden
+  Duration getOutputLatency();
+
+  /// Whether the render-ahead ring (the retroactive re-mix prerequisite) is
+  /// active. Enabled at init time via [initEngine]'s `renderAheadFrames`.
+  /// Always false on web.
+  @mustBeOverridden
+  bool isRenderAheadEnabled();
 
   /// Start playing a sound at an absolute engine time (see [getEngineTime]),
   /// with sample accuracy.

@@ -483,8 +483,38 @@ namespace SoLoud
         // ended-voice queue is drained with correct bookkeeping.
         soloud->unlockAudioMutex_internal();
 #else
-        soloud->mix((float *)pOutput, frameCount);
-        MixerOutput::instance().onAudioData((float *)pOutput, frameCount);
+        if (soloud->isRenderAheadEnabled())
+        {
+            // Render-ahead ring path: the engine has already mixed
+            // renderAheadFrames into its own ring; this callback only copies
+            // out and tops the ring back up. The ring read is lock-free SPSC,
+            // so the device never blocks behind the audio mutex.
+            soloud->renderRingTopUp_internal();
+            unsigned int got =
+                soloud->mRenderRing.read((float *)pOutput, frameCount);
+            if (got < frameCount)
+            {
+                // Underrun: emit silence for the gap. Recoverable on the next
+                // callback -- the top-up above keeps producing.
+                static bool underrunLogged = false;
+                if (!underrunLogged)
+                {
+                    underrunLogged = true;
+                    soloud_platform_log("soloud_miniaudio_audiomixer: render ring underrun (%u/%u frames)\n", got, frameCount);
+                }
+                unsigned int outCh = pDevice->playback.channels;
+                std::memset((float *)pOutput + (size_t)got * outCh, 0,
+                            (size_t)(frameCount - got) * outCh * sizeof(float));
+            }
+            // The capture tap sits after the ring read, so it always reflects
+            // what was actually played, including any retroactive rewrite.
+            MixerOutput::instance().onAudioData((float *)pOutput, frameCount);
+        }
+        else
+        {
+            soloud->mix((float *)pOutput, frameCount);
+            MixerOutput::instance().onAudioData((float *)pOutput, frameCount);
+        }
 #endif
     }
 
@@ -726,6 +756,19 @@ namespace SoLoud
         return (unsigned int)ma_device_get_state(&gDevice);
     }
 
+    // Engine mix quantum to hand to postinit_internal. With the render-ahead
+    // ring the device period is decoupled from the engine quantum, so the
+    // engine must get the *configured* quantum (aBuffer), not the device
+    // period miniaudio actually negotiated. Without the ring the historical
+    // behavior (actual device period) is kept.
+    static unsigned int postinit_buffer_size(SoLoud::Soloud *aSoloud,
+                                             unsigned int aConfiguredBuffer,
+                                             unsigned int aDeviceInternalPeriod)
+    {
+        return aSoloud->isRenderAheadEnabled() ? aConfiguredBuffer
+                                               : aDeviceInternalPeriod;
+    }
+
     result miniaudio_init(SoLoud::Soloud *aSoloud, unsigned int aFlags, unsigned int aSamplerate, unsigned int aBuffer, unsigned int aChannels, void *pPlaybackInfos_id)
     {
         std::unique_lock<std::recursive_mutex> operationLock(gDeviceOperationMutex);
@@ -737,7 +780,8 @@ namespace SoLoud
         {
             deviceConfig.playback.pDeviceID = (ma_device_id*)pPlaybackInfos_id;
         }
-        deviceConfig.periodSizeInFrames = aBuffer;
+        deviceConfig.periodSizeInFrames =
+            aSoloud->isRenderAheadEnabled() ? aSoloud->mDevicePeriodFrames : aBuffer;
         deviceConfig.playback.format    = ma_format_f32;
         deviceConfig.playback.channels  = aChannels;
         deviceConfig.sampleRate         = aSamplerate;
@@ -795,7 +839,7 @@ namespace SoLoud
             return UNKNOWN_ERROR;
         }
         gDeviceInitialized = true;
-        aSoloud->postinit_internal(gDevice.sampleRate, gDevice.playback.internalPeriodSizeInFrames, aFlags, gDevice.playback.channels);
+        aSoloud->postinit_internal(gDevice.sampleRate, postinit_buffer_size(aSoloud, aBuffer, gDevice.playback.internalPeriodSizeInFrames), aFlags, gDevice.playback.channels);
         ma_result startResult = ma_device_start(&gDevice);
         if (startResult != MA_SUCCESS) {
             soloud_platform_log("miniaudio_init: ma_device_start failed with error %d\n", startResult);
@@ -839,7 +883,7 @@ namespace SoLoud
             return UNKNOWN_ERROR;
         }
         gDeviceInitialized = true;
-        aSoloud->postinit_internal(gDevice.sampleRate, gDevice.playback.internalPeriodSizeInFrames, aFlags, gDevice.playback.channels);
+        aSoloud->postinit_internal(gDevice.sampleRate, postinit_buffer_size(aSoloud, aBuffer, gDevice.playback.internalPeriodSizeInFrames), aFlags, gDevice.playback.channels);
         ma_result startResult = ma_device_start(&gDevice);
         if (startResult != MA_SUCCESS) {
             soloud_platform_log("miniaudio_init: ma_device_start failed with error %d\n", startResult);
@@ -877,7 +921,7 @@ namespace SoLoud
             aBuffer != 0 ? aBuffer : gDevice.playback.internalPeriodSizeInFrames;
         aSoloud->postinit_internal(gDevice.sampleRate, postinitBufferSize, aFlags, gDevice.playback.channels);
 #else
-        aSoloud->postinit_internal(gDevice.sampleRate, gDevice.playback.internalPeriodSizeInFrames, aFlags, gDevice.playback.channels);
+        aSoloud->postinit_internal(gDevice.sampleRate, postinit_buffer_size(aSoloud, aBuffer, gDevice.playback.internalPeriodSizeInFrames), aFlags, gDevice.playback.channels);
 #endif
         ma_result startResult = ma_device_start(&gDevice);
         if (startResult != MA_SUCCESS) {
@@ -999,7 +1043,12 @@ namespace SoLoud
 
         ma_device_config deviceConfig = ma_device_config_init(ma_device_type_playback);
         deviceConfig.playback.pDeviceID = (ma_device_id *)pPlaybackInfos_id;
-        deviceConfig.periodSizeInFrames = currentSoloud->mBufferSize;
+        // With the render-ahead ring the device period is the small configured
+        // one, decoupled from the engine mix quantum (mBufferSize).
+        deviceConfig.periodSizeInFrames =
+            currentSoloud->isRenderAheadEnabled()
+                ? currentSoloud->mDevicePeriodFrames
+                : currentSoloud->mBufferSize;
         deviceConfig.playback.format    = ma_format_f32;
         deviceConfig.playback.channels  = currentSoloud->mChannels;
         deviceConfig.sampleRate         = currentSoloud->mSamplerate;

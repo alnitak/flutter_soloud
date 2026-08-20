@@ -78,6 +78,36 @@ BufferStreamInstance::BufferStreamInstance(BufferStream *aParent) {
 
 BufferStreamInstance::~BufferStreamInstance() {}
 
+// ###### flutter_soloud local patch (retroactive re-mix) ######
+class BufferStreamSourceStateSnapshot : public SoLoud::SourceStateSnapshot {
+public:
+  unsigned int mOffset;
+  bool samplerateAlreadySet;
+};
+
+SoLoud::SourceStateSnapshot *BufferStreamInstance::captureSourceState() {
+  // Only PRESERVED streams keep the consumed data around to re-read.
+  if (mParent == nullptr ||
+      mParent->mBuffer.bufferingType != BufferingType::PRESERVED) {
+    return nullptr;
+  }
+  auto *s = new BufferStreamSourceStateSnapshot();
+  s->mOffset = mOffset;
+  s->samplerateAlreadySet = samplerateAlreadySet;
+  return s;
+}
+
+void BufferStreamInstance::restoreSourceState(
+    SoLoud::SourceStateSnapshot *aState) {
+  auto *s = static_cast<BufferStreamSourceStateSnapshot *>(aState);
+  if (s == nullptr) {
+    return;
+  }
+  mOffset = s->mOffset;
+  samplerateAlreadySet = s->samplerateAlreadySet;
+}
+
+
 unsigned int BufferStreamInstance::getAudio(float *aBuffer,
                                             unsigned int aSamplesToRead,
                                             unsigned int aBufferSize) {

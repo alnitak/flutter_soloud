@@ -129,6 +129,12 @@ namespace SoLoud
 		if (mVoice[aVoice])
 		{
 			mVoiceInactiveCallbackPending = true;
+			// ###### flutter_soloud local patch (retroactive re-mix) ######
+			// Journal the death so a later rollback does not resurrect this
+			// voice in the rewritten window (no-op when the ring is disabled
+			// or a re-mix is in progress -- the re-mix reproduces journaled
+			// deaths, it does not create new ones).
+			journalDeath_internal(aVoice, mVoice[aVoice]->mPlayIndex);
 			// Delete via temporary variable to avoid recursion
 			AudioSourceInstance * v = mVoice[aVoice];
 			mVoice[aVoice] = 0;
@@ -145,8 +151,29 @@ namespace SoLoud
 					// only be queued once per stop, so it cannot overflow.
 					if (mEndedVoiceCount < VOICE_COUNT)
 					{
-						mEndedVoiceQueue[mEndedVoiceCount++] =
-							(aVoice + 1) | (mResampleDataOwner[i]->mPlayIndex << 12);
+						// ###### flutter_soloud local patch (retroactive re-mix) ######
+						// During a re-mix this stop reproduces a journaled death
+						// whose ended-event the original timeline already queued
+						// or dispatched; firing it again would double-report the
+						// voice's end. mRemixSuppressEnded lists those handles.
+						handle endedHandle = (aVoice + 1) | (mResampleDataOwner[i]->mPlayIndex << 12);
+						bool suppressed = false;
+						if (mRemixing)
+						{
+							unsigned int s;
+							for (s = 0; s < mRemixSuppressEndedCount; s++)
+							{
+								if (mRemixSuppressEnded[s] == endedHandle)
+								{
+									suppressed = true;
+									break;
+								}
+							}
+						}
+						if (!suppressed)
+						{
+							mEndedVoiceQueue[mEndedVoiceCount++] = endedHandle;
+						}
 					}
 					mResampleDataOwner[i] = NULL;
 				}

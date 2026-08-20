@@ -49,7 +49,9 @@ extern "C"
     void prepareEngineInit(int64_t owner_engine_id);
     enum PlayerErrors initEngine(int deviceID, unsigned int sampleRate,
                                  unsigned int bufferSize, unsigned int channels,
-                                 unsigned int lowLatency);
+                                 unsigned int lowLatency,
+                                 unsigned int devicePeriodFrames,
+                                 unsigned int renderAheadFrames);
     void dispose();
     int isInited();
 
@@ -170,7 +172,7 @@ void onStateChanged(enum PlayerStateEvents *state)
 bool bringUpEngine()
 {
     prepareEngineInit(kEngineId);
-    const PlayerErrors err = initEngine(-1, 44100, 2048, 2, 1);
+    const PlayerErrors err = initEngine(-1, 44100, 2048, 2, 1, 0, 0);
     if (err != PlayerErrors::noError)
         return false;
     setDartEventCallback(onVoiceEnded, onFileLoaded, onStateChanged, kEngineId);

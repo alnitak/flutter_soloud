@@ -70,6 +70,30 @@ namespace SoLoud
 		return 0;
 	}
 
+	// ###### flutter_soloud local patch (retroactive re-mix) ######
+	class WavSourceStateSnapshot : public SourceStateSnapshot
+	{
+	public:
+		unsigned int mOffset;
+	};
+
+	SourceStateSnapshot *WavInstance::captureSourceState()
+	{
+		// The wav data is fully decoded in memory (mParent->mData), so the
+		// consumption state is exactly the read offset.
+		WavSourceStateSnapshot *s = new WavSourceStateSnapshot();
+		s->mOffset = mOffset;
+		return s;
+	}
+
+	void WavInstance::restoreSourceState(SourceStateSnapshot *aState)
+	{
+		WavSourceStateSnapshot *s = static_cast<WavSourceStateSnapshot *>(aState);
+		if (s == NULL)
+			return;
+		mOffset = s->mOffset;
+	}
+
 	result WavInstance::seek(double aSeconds, float *mScratch, unsigned int mScratchSize)
 	{
 		double offset = aSeconds - mStreamPosition;

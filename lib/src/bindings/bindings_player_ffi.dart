@@ -74,6 +74,8 @@ int _invokeInitEngine(
   int bufferSize,
   int channels,
   int lowLatency,
+  int devicePeriodFrames,
+  int renderAheadFrames,
 ) {
   final fn =
       ffi.Pointer<
@@ -84,11 +86,21 @@ int _invokeInitEngine(
                 ffi.UnsignedInt,
                 ffi.UnsignedInt,
                 ffi.UnsignedInt,
+                ffi.UnsignedInt,
+                ffi.UnsignedInt,
               )
             >
           >.fromAddress(address)
-          .asFunction<int Function(int, int, int, int, int)>();
-  return fn(deviceId, sampleRate, bufferSize, channels, lowLatency);
+          .asFunction<int Function(int, int, int, int, int, int, int)>();
+  return fn(
+    deviceId,
+    sampleRate,
+    bufferSize,
+    channels,
+    lowLatency,
+    devicePeriodFrames,
+    renderAheadFrames,
+  );
 }
 
 /// Rebuilds a `void Function()` native function from its raw pointer [address]
@@ -645,8 +657,10 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     int sampleRate,
     int bufferSize,
     Channels channels,
-    bool lowLatency,
-  ) async {
+    bool lowLatency, {
+    int devicePeriodFrames = 0,
+    int renderAheadFrames = 0,
+  }) async {
     // Run the blocking native engine/device initialization off the UI isolate
     // so it does not freeze the app (it can take seconds on Android/AAudio,
     // tripping the ANR watchdog — see #481). Only the raw function pointer
@@ -663,6 +677,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
         bufferSize,
         channelCount,
         lowLatencyValue,
+        devicePeriodFrames,
+        renderAheadFrames,
       ),
     );
     return PlayerErrors.values[result];
@@ -673,6 +689,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
         ffi.NativeFunction<
           ffi.Int32 Function(
             ffi.Int,
+            ffi.UnsignedInt,
+            ffi.UnsignedInt,
             ffi.UnsignedInt,
             ffi.UnsignedInt,
             ffi.UnsignedInt,
@@ -1770,6 +1788,41 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   late final _getEngineTimePtr =
       _lookup<ffi.NativeFunction<ffi.Double Function()>>('getEngineTime');
   late final _getEngineTime = _getEngineTimePtr.asFunction<double Function()>();
+
+  @override
+  Duration getPlayheadTime() {
+    return _getPlayheadTime().toDuration();
+  }
+
+  late final _getPlayheadTimePtr =
+      _lookup<ffi.NativeFunction<ffi.Double Function()>>('getPlayheadTime');
+  late final _getPlayheadTime = _getPlayheadTimePtr.asFunction<
+    double Function()
+  >();
+
+  @override
+  Duration getOutputLatency() {
+    return _getOutputLatency().toDuration();
+  }
+
+  late final _getOutputLatencyPtr =
+      _lookup<ffi.NativeFunction<ffi.Double Function()>>('getOutputLatency');
+  late final _getOutputLatency = _getOutputLatencyPtr.asFunction<
+    double Function()
+  >();
+
+  @override
+  bool isRenderAheadEnabled() {
+    return _isRenderAheadEnabled() != 0;
+  }
+
+  late final _isRenderAheadEnabledPtr =
+      _lookup<ffi.NativeFunction<ffi.UnsignedInt Function()>>(
+        'isRenderAheadEnabled',
+      );
+  late final _isRenderAheadEnabled = _isRenderAheadEnabledPtr.asFunction<
+    int Function()
+  >();
 
   @override
   ({PlayerErrors error, SoundHandle newHandle}) playScheduled(

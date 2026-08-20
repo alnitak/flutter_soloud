@@ -385,11 +385,15 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     int sampleRate,
     int bufferSize,
     Channels channels,
-    bool lowLatency,
-  ) async {
+    bool lowLatency, {
+    int devicePeriodFrames = 0,
+    int renderAheadFrames = 0,
+  }) async {
     // Web is single-threaded (no isolates), so call the wasm function directly.
     // [lowLatency] only affects the native miniaudio backends (it selects the
     // AAudio/CoreAudio performance profile); the Web Audio backend ignores it.
+    // [devicePeriodFrames]/[renderAheadFrames] (the render-ahead ring) are
+    // native-only for now; the web backend keeps direct-to-device mixing.
     return _enqueueEngineOp(() async {
       _deinitQueued = false;
       final error = await _callEngineAsync('initEngine', [
@@ -1090,6 +1094,23 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   @override
   Duration getEngineTime() {
     return wasmGetEngineTime().toDuration();
+  }
+
+  @override
+  Duration getPlayheadTime() {
+    // The render-ahead ring is native-only for now; on web the playhead is
+    // the mix clock.
+    return getEngineTime();
+  }
+
+  @override
+  Duration getOutputLatency() {
+    return Duration.zero;
+  }
+
+  @override
+  bool isRenderAheadEnabled() {
+    return false;
   }
 
   @override

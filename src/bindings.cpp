@@ -904,13 +904,19 @@ extern "C"
   /// [bufferSize] the audio buffer size. Usually is 2048, but can be also 512
   /// when low latency is needed for example in games. [channels] 1=mono,
   /// 2=stereo, 4=quad, 6=5.1, 8=7.1.
+  /// [devicePeriodFrames] small output device period used when
+  /// [renderAheadFrames] enables the render-ahead ring; 0 = default (512).
+  /// [renderAheadFrames] depth of the engine-owned render-ahead ring in
+  /// frames; 0 disables it and keeps direct-to-device mixing.
   ///
   /// Returns [PlayerErrors.noError] if success.
   FFI_PLUGIN_EXPORT enum PlayerErrors initEngine(int deviceID,
                                                  unsigned int sampleRate,
                                                  unsigned int bufferSize,
                                                  unsigned int channels,
-                                                 unsigned int lowLatency)
+                                                 unsigned int lowLatency,
+                                                 unsigned int devicePeriodFrames,
+                                                 unsigned int renderAheadFrames)
   {
     std::lock_guard<std::mutex> guard(init_deinit_mutex);
     std::lock_guard<std::mutex> guard_load(loadMutex);
@@ -925,9 +931,9 @@ extern "C"
       player = std::make_unique<Player>();
 
     player.get()->setStateChangedCallback(stateChangedCallback);
-    PlayerErrors res = (PlayerErrors)player.get()->init(sampleRate, bufferSize,
-                                                        channels, deviceID,
-                                                        lowLatency != 0);
+    PlayerErrors res = (PlayerErrors)player.get()->init(
+        sampleRate, bufferSize, channels, deviceID, lowLatency != 0,
+        devicePeriodFrames, renderAheadFrames);
     if (res != noError)
     {
       engine_initialized.store(false, std::memory_order_release);
@@ -2313,6 +2319,34 @@ extern "C"
     if (player.get() == nullptr || !player.get()->isInited())
       return 0.0;
     return player.get()->getEngineTime();
+  }
+
+  /// Engine time of the sample currently reaching the output device: the mix
+  /// clock (see [getEngineTime]) minus the render-ahead ring depth. Equals
+  /// [getEngineTime] when the render-ahead ring is disabled (the default).
+  FFI_PLUGIN_EXPORT double getPlayheadTime()
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return 0.0;
+    return player.get()->getPlayheadTime();
+  }
+
+  /// Estimated output latency in seconds (render-ahead ring depth plus one
+  /// device period). 0 when the render-ahead ring is disabled.
+  FFI_PLUGIN_EXPORT double getOutputLatency()
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return 0.0;
+    return player.get()->getOutputLatency();
+  }
+
+  /// Whether the render-ahead ring (the retroactive re-mix prerequisite) is
+  /// active. Enabled at init time via `initEngine`'s `renderAheadFrames`.
+  FFI_PLUGIN_EXPORT unsigned int isRenderAheadEnabled()
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return 0;
+    return player.get()->isRenderAheadEnabled() ? 1 : 0;
   }
 
   /// Start playing a sound at an absolute engine time (see [getEngineTime]),

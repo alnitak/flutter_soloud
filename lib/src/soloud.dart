@@ -398,6 +398,19 @@ interface class SoLoud {
   /// changes. (Note these are the *stream's* attributes; `audio_session`
   /// controls the *focus request* — for correct ducking they should match.)
   /// Ignored when `lowLatency` is true, on non-Android platforms, and on web.
+  /// [devicePeriodFrames] (native only) the output device period in frames
+  /// used when [renderAheadFrames] enables the render-ahead ring. Smaller
+  /// values reduce the output-path jitter and the granularity at which new
+  /// audio reaches the device, at the cost of more frequent device callbacks.
+  /// Defaults to 512 when omitted. Ignored when [renderAheadFrames] is not
+  /// set and on web.
+  ///
+  /// [renderAheadFrames] (native only) enables the render-ahead ring: the
+  /// engine mixes this many frames ahead of the output device into an
+  /// engine-owned ring buffer, decoupling the device period from
+  /// [bufferSize]. This is the prerequisite for low-latency reactive playback
+  /// with large mix buffers. When null or 0 (the default) the engine mixes
+  /// directly into the device callback as before. Ignored on web.
   Future<void> init({
     PlaybackDevice? device,
     bool automaticCleanup = false,
@@ -407,6 +420,8 @@ interface class SoLoud {
     bool lowLatency = true,
     AndroidAAudioAttributes androidAAudioAttributes =
         AndroidAAudioAttributes.mediaMusic,
+    int? devicePeriodFrames,
+    int? renderAheadFrames,
   }) {
     final requestGeneration = _lifecycleGeneration;
     final previous = _pendingInitialization;
@@ -420,6 +435,8 @@ interface class SoLoud {
       channels: channels,
       lowLatency: lowLatency,
       androidAAudioAttributes: androidAAudioAttributes,
+      devicePeriodFrames: devicePeriodFrames,
+      renderAheadFrames: renderAheadFrames,
     );
     _pendingInitialization = initialization;
     return initialization.whenComplete(() {
@@ -439,6 +456,8 @@ interface class SoLoud {
     required Channels channels,
     required bool lowLatency,
     required AndroidAAudioAttributes androidAAudioAttributes,
+    required int? devicePeriodFrames,
+    required int? renderAheadFrames,
   }) async {
     if (previous != null) {
       try {
@@ -460,6 +479,8 @@ interface class SoLoud {
       channels: channels,
       lowLatency: lowLatency,
       androidAAudioAttributes: androidAAudioAttributes,
+      devicePeriodFrames: devicePeriodFrames,
+      renderAheadFrames: renderAheadFrames,
     );
   }
 
@@ -473,6 +494,8 @@ interface class SoLoud {
     bool lowLatency = true,
     AndroidAAudioAttributes androidAAudioAttributes =
         AndroidAAudioAttributes.mediaMusic,
+    int? devicePeriodFrames,
+    int? renderAheadFrames,
   }) async {
     _log.finest('init() called');
 
@@ -559,6 +582,8 @@ interface class SoLoud {
       bufferSize,
       channels,
       lowLatency,
+      devicePeriodFrames: devicePeriodFrames ?? 0,
+      renderAheadFrames: renderAheadFrames ?? 0,
     );
     if (initializationGeneration != _lifecycleGeneration) {
       await _waitForInitializationTeardownAndThrow();
@@ -2388,6 +2413,39 @@ interface class SoLoud {
     }
     return _controller.soLoudFFI.getEngineTime();
   }
+
+  /// Get the engine time of the sample currently reaching the output device:
+  /// the mix clock (see [getEngineTime]) minus the render-ahead ring depth.
+  ///
+  /// This is the "true output" clock — what the listener is hearing right
+  /// now. It equals [getEngineTime] when the render-ahead ring is disabled
+  /// (the default; see the `renderAheadFrames` parameter of [init]) and on
+  /// web.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  Duration getPlayheadTime() {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    return _controller.soLoudFFI.getPlayheadTime();
+  }
+
+  /// Estimated output latency: render-ahead ring depth plus one device
+  /// period. [Duration.zero] when the render-ahead ring is disabled (the
+  /// default) and on web.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  Duration getOutputLatency() {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    return _controller.soLoudFFI.getOutputLatency();
+  }
+
+  /// Whether the render-ahead ring is active. Enabled at init time via the
+  /// `renderAheadFrames` parameter of [init]. Always false on web.
+  bool get isRenderAheadEnabled =>
+      isInitialized && _controller.soLoudFFI.isRenderAheadEnabled();
 
   /// Start playing [sound] at an absolute engine time (see [getEngineTime]),
   /// with sample accuracy.
