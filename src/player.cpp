@@ -194,35 +194,7 @@ Player::Player() : mFilters(&soloud, nullptr, nullptr),
 
 Player::~Player()
 {
-    mLifecycleRequestsAccepted.store(false, std::memory_order_release);
-    soloud.setAudioInterruptionCallback(nullptr, nullptr);
-
-    // If the scheduler was started, stop it before touching Soloud.
-    stopPauseEngineScheduler();
-
-    if (!mInited.load(std::memory_order_acquire))
-    {
-        // dispose() was called properly — Soloud is already deinited and safe.
-        // Let ~Soloud() run normally to free its remaining allocations.
-        return;
-    }
-
-    // Neutralize the Soloud member so ~Soloud() and its deinit() call become
-    // harmless no-ops. The OS will reclaim all resources on process exit.
-    //
-    // We intentionally leak here — this only runs during abnormal exit
-    // (app closed without calling dispose()), and the process is terminating.
-    soloud.mBackendCleanupFunc = nullptr;
-    soloud.mAudioThreadMutex = nullptr;
-    soloud.mHighestVoice = 0;
-    soloud.mVoiceGroup = nullptr;
-    soloud.mVoiceGroupCount = 0;
-    soloud.mResampleData = nullptr;
-    soloud.mResampleDataOwner = nullptr;
-    for (int i = 0; i < FILTERS_PER_STREAM; i++)
-    {
-        soloud.mFilterInstance[i] = nullptr;
-    }
+    dispose();
 }
 
 void Player::dispose()
