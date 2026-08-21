@@ -337,6 +337,21 @@ abstract class FlutterSoLoud {
     LoadMode mode,
   );
 
+  /// Load two audio files stored into [bufferLeft] and [bufferRight] as
+  /// file bytes, convert them to mono if needed, resample to the engine's
+  /// sample rate, and join them into a single stereo sound (left and right
+  /// channels).
+  ///
+  /// [uniqueName] the unique name of the sound. Used only to have the [hash].
+  /// [bufferLeft] the audio data for the left channel.
+  /// [bufferRight] the audio data for the right channel.
+  @mustBeOverridden
+  ({PlayerErrors error, SoundHash soundHash}) joinTwoSources(
+    String uniqueName,
+    Uint8List bufferLeft,
+    Uint8List bufferRight,
+  );
+
   /// Set up an audio stream.
   ///
   /// [maxBufferSize] the max buffer size in bytes.

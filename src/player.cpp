@@ -10,9 +10,11 @@
 // #include "soloud_thread.h"
 #include "soloud_wavstream.h"
 #include "synth/basic_wave.h"
+#include "soloud/src/backend/miniaudio/miniaudio.h"
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdarg>
 #include <cstring>
 #include <fstream>
@@ -744,6 +746,217 @@ PlayerErrors Player::loadMem(
 
     // Return fileAlreadyLoaded if the unique name hash was already in use,
     // even though we've now loaded a new instance with a unique hash.
+    if (s != nullptr && loadError == noError)
+    {
+        return fileAlreadyLoaded;
+    }
+
+    return loadError;
+}
+
+PlayerErrors Player::joinTwoSources(
+    const std::string &uniqueName,
+    unsigned char *mem1,
+    unsigned char *mem2,
+    int length1,
+    int length2,
+    unsigned int &hash)
+{
+    if (!mInited.load(std::memory_order_acquire))
+        return backendNotInited;
+
+    if (mem1 == nullptr || length1 <= 0 || mem2 == nullptr || length2 <= 0)
+        return invalidParameter;
+
+    hash = 0;
+
+    unsigned int newHash = (int32_t)std::hash<std::string>{}(uniqueName) & 0x7fffffff;
+    /// check if the sound has already been loaded
+    auto const s = findByHash(newHash);
+
+    // If already loaded, generate a unique hash
+    if (s != nullptr)
+    {
+        std::random_device rd;
+        std::mt19937 g(rd());
+        std::uniform_int_distribution<unsigned int> dist(0, 0x7fffffff);
+        do
+        {
+            newHash = dist(g);
+        } while (findByHash(newHash) != nullptr);
+    }
+
+    SoLoud::Wav wav1;
+    SoLoud::result res1 = wav1.loadMem(mem1, length1, false, false);
+    if (res1 != SoLoud::SO_NO_ERROR)
+    {
+        return fromSoLoudError(res1);
+    }
+
+    SoLoud::Wav wav2;
+    SoLoud::result res2 = wav2.loadMem(mem2, length2, false, false);
+    if (res2 != SoLoud::SO_NO_ERROR)
+    {
+        return fromSoLoudError(res2);
+    }
+
+    unsigned int samples1 = wav1.mActualSampleCount > 0 ? wav1.mActualSampleCount : wav1.mSampleCount;
+    unsigned int samples2 = wav2.mActualSampleCount > 0 ? wav2.mActualSampleCount : wav2.mSampleCount;
+    unsigned int ch1 = wav1.mChannels;
+    unsigned int ch2 = wav2.mChannels;
+    float sr1 = wav1.mBaseSamplerate > 0.0f ? wav1.mBaseSamplerate : 44100.0f;
+    float sr2 = wav2.mBaseSamplerate > 0.0f ? wav2.mBaseSamplerate : 44100.0f;
+
+    if (samples1 == 0 || samples2 == 0 || wav1.mData == nullptr || wav2.mData == nullptr)
+    {
+        return fileLoadFailed;
+    }
+
+    // Convert wav1 to mono
+    std::vector<float> mono1(samples1);
+    if (ch1 == 1)
+    {
+        std::memcpy(mono1.data(), wav1.mData, samples1 * sizeof(float));
+    }
+    else
+    {
+        for (unsigned int i = 0; i < samples1; ++i)
+        {
+            float sum = 0.0f;
+            for (unsigned int c = 0; c < ch1; ++c)
+            {
+                sum += wav1.mData[c * wav1.mSampleCount + i];
+            }
+            mono1[i] = sum / static_cast<float>(ch1);
+        }
+    }
+
+    // Convert wav2 to mono
+    std::vector<float> mono2(samples2);
+    if (ch2 == 1)
+    {
+        std::memcpy(mono2.data(), wav2.mData, samples2 * sizeof(float));
+    }
+    else
+    {
+        for (unsigned int i = 0; i < samples2; ++i)
+        {
+            float sum = 0.0f;
+            for (unsigned int c = 0; c < ch2; ++c)
+            {
+                sum += wav2.mData[c * wav2.mSampleCount + i];
+            }
+            mono2[i] = sum / static_cast<float>(ch2);
+        }
+    }
+
+    // Resample both channels to the engine's sample rate (mSampleRate) if needed,
+    // avoiding real-time resampling during playback in the mixer.
+    float targetSampleRate = mSampleRate > 0 ? static_cast<float>(mSampleRate) : (sr1 > 0.0f ? sr1 : 44100.0f);
+
+    auto resampleMono = [](std::vector<float> &mono, unsigned int &sampleCount, float srcRate, float dstRate) {
+        if (std::abs(srcRate - dstRate) <= 0.01f || sampleCount == 0)
+        {
+            return;
+        }
+        ma_uint64 expectedOutFrames = ma_convert_frames(
+            NULL,
+            0,
+            ma_format_f32,
+            1,
+            static_cast<ma_uint32>(dstRate),
+            mono.data(),
+            sampleCount,
+            ma_format_f32,
+            1,
+            static_cast<ma_uint32>(srcRate));
+
+        if (expectedOutFrames == 0)
+        {
+            expectedOutFrames = static_cast<ma_uint64>(
+                std::round(static_cast<double>(sampleCount) * static_cast<double>(dstRate) / static_cast<double>(srcRate)));
+        }
+        if (expectedOutFrames == 0)
+        {
+            expectedOutFrames = 1;
+        }
+
+        std::vector<float> resampled(static_cast<size_t>(expectedOutFrames));
+        ma_uint64 convertedFrames = ma_convert_frames(
+            resampled.data(),
+            expectedOutFrames,
+            ma_format_f32,
+            1,
+            static_cast<ma_uint32>(dstRate),
+            mono.data(),
+            sampleCount,
+            ma_format_f32,
+            1,
+            static_cast<ma_uint32>(srcRate));
+
+        if (convertedFrames > 0)
+        {
+            resampled.resize(static_cast<size_t>(convertedFrames));
+            mono = std::move(resampled);
+            sampleCount = static_cast<unsigned int>(mono.size());
+        }
+    };
+
+    resampleMono(mono1, samples1, sr1, targetSampleRate);
+    resampleMono(mono2, samples2, sr2, targetSampleRate);
+
+    unsigned int maxFrames = std::max(samples1, samples2);
+    if (maxFrames == 0)
+    {
+        return fileLoadFailed;
+    }
+
+    // Allocate stereo buffer: channel 0 (left) followed by channel 1 (right)
+    float *stereoData = new float[maxFrames * 2];
+
+    // Left channel
+    std::memcpy(stereoData, mono1.data(), samples1 * sizeof(float));
+    if (maxFrames > samples1)
+    {
+        std::memset(stereoData + samples1, 0, (maxFrames - samples1) * sizeof(float));
+    }
+
+    // Right channel
+    std::memcpy(stereoData + maxFrames, mono2.data(), samples2 * sizeof(float));
+    if (maxFrames > samples2)
+    {
+        std::memset(stereoData + maxFrames + samples2, 0, (maxFrames - samples2) * sizeof(float));
+    }
+
+    auto newSound = std::make_unique<ActiveSound>();
+    newSound->completeFileName = std::string(uniqueName);
+    hash = newHash;
+    newSound->soundHash = newHash;
+    newSound->sound = std::make_unique<SoLoud::Wav>();
+    newSound->soundType = TYPE_WAV;
+
+    auto *joinedWav = static_cast<SoLoud::Wav *>(newSound->sound.get());
+    SoLoud::result loadRawRes = joinedWav->loadRawWave(
+        stereoData,
+        maxFrames * 2,
+        targetSampleRate,
+        2,     // 2 channels: stereo
+        false, // do not copy
+        true   // take ownership
+    );
+
+    PlayerErrors loadError = fromSoLoudError(loadRawRes);
+    if (loadError != noError)
+    {
+        return loadError;
+    }
+
+    newSound->filters = std::make_unique<Filters>(&soloud, newSound.get(), nullptr);
+    {
+        std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
+        sounds.push_back(std::move(newSound));
+    }
+
     if (s != nullptr && loadError == noError)
     {
         return fileAlreadyLoaded;

@@ -303,6 +303,16 @@ external int wasmLoadMem(
   int hashPtr,
 );
 
+@JS('Module_soloud._joinTwoSources')
+external int wasmJoinTwoSources(
+  int uniqueNamePtr,
+  int mem1Ptr,
+  int mem2Ptr,
+  int length1,
+  int length2,
+  int hashPtr,
+);
+
 @JS('Module_soloud._loadWaveform')
 external int wasmLoadWaveform(
   int waveform,

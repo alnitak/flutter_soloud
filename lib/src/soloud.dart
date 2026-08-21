@@ -44,6 +44,17 @@ void _loadFile(Map<String, dynamic> args) {
   );
 }
 
+@pragma('vm:entry-point')
+({PlayerErrors error, SoundHash soundHash}) _joinTwoSources(
+  Map<String, dynamic> args,
+) {
+  return SoLoudController().soLoudFFI.joinTwoSources(
+    args['path'] as String,
+    args['bufferLeft'] as Uint8List,
+    args['bufferRight'] as Uint8List,
+  );
+}
+
 /// Web-specific loader that uses `setBufferStream` with chunked
 /// `addAudioDataStream` calls to avoid blocking the UI thread.
 ///
@@ -1189,6 +1200,76 @@ interface class SoLoud {
             'path': path,
             'buffer': buffer,
             'mode': mode.index,
+          });
+
+    /// There is not a callback in cpp that is supposed to add the
+    /// "load file event". Manually send this event to have only one
+    /// place to do this "loaded" job.
+    _controller.soLoudFFI.fileLoadedEventsController.add({
+      'error': ret.error.index,
+      'completeFileName': path,
+      'hash': ret.soundHash.hash,
+      'counter': counter,
+    });
+
+    return completer.future
+        .whenComplete(() {
+          loadedFileCompleters.removeWhere(
+            (key, __) => key.compareTo('$path-$counter') == 0,
+          );
+        })
+        .then((source) {
+          source.autoDispose = autoDispose;
+          return source;
+        });
+  }
+
+  /// Loads 2 audio buffers and joins them into a single stereo [AudioSource]
+  /// (left and right channels).
+  ///
+  /// Always uses [LoadMode.memory].
+  ///
+  /// Provide a [path] to be used as a reference to distinguish these buffers.
+  ///
+  /// The [bufferLeft] and [bufferRight] represent the bytes of supported audio
+  /// files (e.g. WAV, MP3, FLAC, OGG).
+  /// If the buffers contain non-mono channels, the audio is converted to mono
+  /// on the native side before joining.
+  /// Both audios are automatically resampled to the player engine's sample
+  /// rate so that no real-time resampling is required in the mixer during
+  /// playback.
+  /// If the lengths are different, the resulting audio length is the max of the
+  /// two and the shorter sound is padded with silence.
+  ///
+  /// [autoDispose] if set to true, this source will be automatically disposed
+  /// when all its handles have finished playing. There will be no need to call
+  /// [disposeSource] manually.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  Future<AudioSource> joinTwoSources(
+    String path,
+    Uint8List bufferLeft,
+    Uint8List bufferRight, {
+    bool autoDispose = false,
+  }) async {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+
+    final completer = Completer<AudioSource>();
+    final counter = _currentLoadCounter++;
+    loadedFileCompleters.addAll({'$path-$counter': completer});
+
+    final ret = kIsWeb
+        ? _controller.soLoudFFI.joinTwoSources(
+            path,
+            bufferLeft,
+            bufferRight,
+          )
+        : await compute(_joinTwoSources, {
+            'path': path,
+            'bufferLeft': bufferLeft,
+            'bufferRight': bufferRight,
           });
 
     /// There is not a callback in cpp that is supposed to add the

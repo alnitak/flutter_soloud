@@ -1745,6 +1745,23 @@ extern "C"
                                                loadIntoMem, *hash);
   }
 
+  /// Load 2 audios, convert to mono if needed, and join them into a single stereo AudioSource.
+  /// [hash] return the hash of the sound.
+  FFI_PLUGIN_EXPORT enum PlayerErrors joinTwoSources(char *uniqueName,
+                                                     unsigned char *mem1,
+                                                     unsigned char *mem2,
+                                                     int length1,
+                                                     int length2,
+                                                     unsigned int *hash)
+  {
+    std::lock_guard<std::mutex> guard_init(init_deinit_mutex);
+    std::lock_guard<std::mutex> guard_load(loadMutex);
+    if (player.get() == nullptr || !player.get()->isInited())
+      return backendNotInited;
+    return (PlayerErrors)player.get()->joinTwoSources(uniqueName, mem1, mem2,
+                                                      length1, length2, *hash);
+  }
+
   /// Set up an audio stream.
   ///
   /// [maxBufferSize] the max buffer size in **bytes**. When adding audio data

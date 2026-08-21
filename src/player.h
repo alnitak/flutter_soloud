@@ -127,6 +127,22 @@ public:
   PlayerErrors loadMem(const std::string &uniqueName, unsigned char *mem,
                        int length, bool loadIntoMem, unsigned int &hash);
 
+  /// @brief Load two sounds stored into [mem1] and [mem2], convert them to mono
+  /// if needed, resample them to the engine's sample rate, and join them into a
+  /// single stereo AudioSource (left and right channels).
+  /// If the lengths are different, the resulting audio length is the max of the two
+  /// and the shorter sound is padded with silence.
+  /// @param uniqueName the unique name of the sound. Used only to have the [hash].
+  /// @param mem1 the left channel audio data buffer.
+  /// @param mem2 the right channel audio data buffer.
+  /// @param length1 the length of [mem1].
+  /// @param length2 the length of [mem2].
+  /// @param hash return the hash of the sound.
+  PlayerErrors joinTwoSources(const std::string &uniqueName,
+                              unsigned char *mem1, unsigned char *mem2,
+                              int length1, int length2,
+                              unsigned int &hash);
+
   /// @brief Set up an audio stream.
   /// @param hash return the hash of the sound.
   /// @param maxBufferSize the max buffer size in bytes.

@@ -645,6 +645,49 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }
 
   @override
+  ({PlayerErrors error, SoundHash soundHash}) joinTwoSources(
+    String uniqueName,
+    Uint8List bufferLeft,
+    Uint8List bufferRight,
+  ) {
+    final hashPtr = wasmMalloc(4); // 4 bytes for an int32
+    final bytes1Ptr = wasmMalloc(bufferLeft.length);
+    final bytes2Ptr = wasmMalloc(bufferRight.length);
+    final pathPtr = wasmMalloc(uniqueName.length);
+
+    /// Copy the buffers into WASM memory using the HEAPU8 view.
+    final heapU8 = wasmHeapU8;
+    heapU8.toDart.setAll(bytes1Ptr, bufferLeft);
+    heapU8.toDart.setAll(bytes2Ptr, bufferRight);
+
+    /// Copy the path string into WASM memory.
+    for (var i = 0; i < uniqueName.length; i++) {
+      wasmSetValue(pathPtr + i, uniqueName.codeUnits[i], 'i8');
+    }
+
+    final result = wasmJoinTwoSources(
+      pathPtr,
+      bytes1Ptr,
+      bytes2Ptr,
+      bufferLeft.length,
+      bufferRight.length,
+      hashPtr,
+    );
+
+    /// "*" means unsigned int 32
+    final hash = wasmGetI32Value(hashPtr, '*');
+    final soundHash = SoundHash(hash);
+    final ret = (error: PlayerErrors.values[result], soundHash: soundHash);
+
+    wasmFree(hashPtr);
+    wasmFree(bytes1Ptr);
+    wasmFree(bytes2Ptr);
+    wasmFree(pathPtr);
+
+    return ret;
+  }
+
+  @override
   ({PlayerErrors error, SoundHash soundHash}) setBufferStream(
     int maxBufferSize,
     BufferingType bufferingType,

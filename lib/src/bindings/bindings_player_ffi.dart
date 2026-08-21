@@ -1054,6 +1054,68 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       >();
 
   @override
+  ({PlayerErrors error, SoundHash soundHash}) joinTwoSources(
+    String uniqueName,
+    Uint8List bufferLeft,
+    Uint8List bufferRight,
+  ) {
+    final ffi.Pointer<ffi.UnsignedInt> hash = calloc(
+      ffi.sizeOf<ffi.UnsignedInt>(),
+    );
+    final ffi.Pointer<ffi.Uint8> bufferLeftPtr = calloc(bufferLeft.length);
+    for (var i = 0; i < bufferLeft.length; i++) {
+      bufferLeftPtr[i] = bufferLeft[i];
+    }
+    final ffi.Pointer<ffi.Uint8> bufferRightPtr = calloc(bufferRight.length);
+    for (var i = 0; i < bufferRight.length; i++) {
+      bufferRightPtr[i] = bufferRight[i];
+    }
+
+    final ffi.Pointer<Utf8> cString = uniqueName.toNativeUtf8();
+    final e = _joinTwoSources(
+      cString,
+      bufferLeftPtr,
+      bufferRightPtr,
+      bufferLeft.length,
+      bufferRight.length,
+      hash,
+    );
+    final soundHash = SoundHash(hash.value);
+    final ret = (error: PlayerErrors.values[e], soundHash: soundHash);
+    calloc
+      ..free(hash)
+      ..free(bufferLeftPtr)
+      ..free(bufferRightPtr)
+      ..free(cString);
+    return ret;
+  }
+
+  late final _joinTwoSourcesPtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.Int32 Function(
+            ffi.Pointer<Utf8>,
+            ffi.Pointer<ffi.Uint8>,
+            ffi.Pointer<ffi.Uint8>,
+            ffi.Int,
+            ffi.Int,
+            ffi.Pointer<ffi.UnsignedInt>,
+          )
+        >
+      >('joinTwoSources');
+  late final _joinTwoSources = _joinTwoSourcesPtr
+      .asFunction<
+        int Function(
+          ffi.Pointer<Utf8>,
+          ffi.Pointer<ffi.Uint8>,
+          ffi.Pointer<ffi.Uint8>,
+          int,
+          int,
+          ffi.Pointer<ffi.UnsignedInt>,
+        )
+      >();
+
+  @override
   ({PlayerErrors error, SoundHash soundHash}) setBufferStream(
     int maxBufferSize,
     BufferingType bufferingType,
