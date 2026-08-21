@@ -11,7 +11,7 @@ enum EchoEnum {
   filter;
 
   final List<double> _mins = const [0, 0.001, 0.001, 0];
-  final List<double> _maxs = const [1, double.maxFinite, 1, 1];
+  final List<double> _maxs = const [1, 3.0, 1, 1];
   final List<double> _defs = const [1, 0.3, 0.7, 0];
 
   double get min => _mins[index];

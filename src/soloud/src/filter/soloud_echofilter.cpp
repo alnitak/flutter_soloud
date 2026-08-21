@@ -22,6 +22,7 @@ freely, subject to the following restrictions:
    distribution.
 */
 
+#include <string.h>
 #include "soloud.h"
 #include "soloud_echofilter.h"
 
@@ -42,21 +43,39 @@ namespace SoLoud
 	void EchoFilterInstance::filter(float *aBuffer, unsigned int aSamples, unsigned int aBufferSize, unsigned int aChannels, float aSamplerate, double aTime)
 	{
 		updateParams(aTime);
-		if (mBuffer == 0)
+
+		float delay = mParam[EchoFilter::DELAY];
+		if (delay < 0.001f)
+			delay = 0.001f;
+		if (delay > 10.0f)
+			delay = 10.0f;
+
+		int reqSamples = (int)ceil(delay * aSamplerate);
+		if (reqSamples < 1)
+			reqSamples = 1;
+
+		if (mBuffer == 0 || reqSamples > mBufferMaxLength)
 		{
-			// We only know channels and sample rate at this point.. not really optimal
-			mBufferMaxLength = (int)ceil(mParam[EchoFilter::DELAY] * aSamplerate);
+			delete[] mBuffer;
+			mBufferMaxLength = reqSamples;
 			mBuffer = new float[mBufferMaxLength * aChannels];
-			unsigned int i;
-			for (i = 0; i < mBufferMaxLength * aChannels; i++)
+			if (mBuffer == 0)
 			{
-				mBuffer[i] = 0;
+				mBufferMaxLength = 0;
+				mBufferLength = 0;
+				return;
 			}
+			memset(mBuffer, 0, sizeof(float) * mBufferMaxLength * aChannels);
+			mOffset = 0;
 		}
 
-		mBufferLength = (int)ceil(mParam[EchoFilter::DELAY] * aSamplerate);
+		mBufferLength = reqSamples;
 		if (mBufferLength > mBufferMaxLength)
 			mBufferLength = mBufferMaxLength;
+		if (mBufferLength < 1)
+			mBufferLength = 1;
+
+		mOffset %= mBufferLength;
 
 		unsigned int i, j;
 		int prevofs = (mOffset + mBufferLength - 1) % mBufferLength;
@@ -130,13 +149,18 @@ namespace SoLoud
 	{
 		switch (aParamIndex)
 		{
-		case DELAY: return mDelay;
+		case DELAY: return 3.0f;
 		}
 		return 1;
 	}
 
 	float EchoFilter::getParamMin(unsigned int aParamIndex)
 	{
+		switch (aParamIndex)
+		{
+		case DELAY: return 0.001f;
+		case DECAY: return 0.001f;
+		}
 		return 0;
 	}
 
