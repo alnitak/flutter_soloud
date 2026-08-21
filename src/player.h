@@ -862,10 +862,11 @@ public:
   /// @param loopingEndAt If greater than zero, loop before this time. Zero
   /// uses the natural end of the stream.
   /// @return the handle of the sound, 0 if error.
-  PlayerErrors play3d(unsigned int soundHash, unsigned int &handle, float posX,
-                      float posY, float posZ, float velX = 0.0f,
-                      float velY = 0.0f, float velZ = 0.0f, float volume = 1.0f,
-                      bool paused = 0, unsigned int busId = 0,
+  PlayerErrors play3d(unsigned int soundHash, unsigned int &handle,
+                      unsigned int busId = 0,
+                      float posX = 0.0f, float posY = 0.0f, float posZ = 0.0f,
+                      float velX = 0.0f, float velY = 0.0f, float velZ = 0.0f,
+                      float volume = 1.0f, bool paused = 0,
                       bool looping = false, double loopingStartAt = 0.0,
                       double loopingEndAt = 0.0, long long loopingStartOffsetAt = -1,
                       long long loopingEndOffsetAt = -1, float scale = 1.0f);
@@ -880,16 +881,18 @@ public:
   /// @param soundHash the unique hash of the sound to play.
   /// @param handle the handle of this new sound.
   /// @param soundTime your app's "physics time", in seconds.
+  /// @param busId the bus ID to play the sound on. 0 means the main engine.
   /// @param posX, posY, posZ the audio source position coordinates.
   /// @param velX, velY, velZ the audio source velocity.
   /// @param volume 1.0f full volume.
-  /// @param busId the bus ID to play the sound on. 0 means the main engine.
+  /// @param scale relative playback speed multiplier (1.0f = normal speed).
   /// @return the error if any and the [handle] of this new sound.
   PlayerErrors play3dClocked(unsigned int soundHash, unsigned int &handle,
-                             double soundTime, float posX, float posY,
-                             float posZ, float velX = 0.0f, float velY = 0.0f,
-                             float velZ = 0.0f, float volume = 1.0f,
-                             unsigned int busId = 0, float scale = 1.0f,
+                             double soundTime, unsigned int busId = 0,
+                             float posX = 0.0f, float posY = 0.0f,
+                             float posZ = 0.0f, float velX = 0.0f,
+                             float velY = 0.0f, float velZ = 0.0f,
+                             float volume = 1.0f, float scale = 1.0f,
                              bool looping = false, double loopingStartAt = 0.0,
                              double loopingEndAt = 0.0,
                              long long loopingStartOffsetAt = -1,

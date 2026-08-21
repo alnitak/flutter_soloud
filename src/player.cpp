@@ -2005,8 +2005,24 @@ PlayerErrors Player::play(
 
     if (looping)
     {
-        setLoopPoint(newHandle, loopingStartAt);
-        setLoopEndPoint(newHandle, loopingEndAt);
+        if (loopingStartOffsetAt >= 0 || loopingEndOffsetAt >= 0)
+        {
+            soloud.lockAudioMutex_internal();
+            int ch = soloud.getVoiceFromHandle_internal(newHandle);
+            if (ch >= 0)
+            {
+                if (loopingStartOffsetAt >= 0)
+                    soloud.mVoice[ch]->mLoopStartFrame = loopingStartOffsetAt;
+                if (loopingEndOffsetAt >= 0)
+                    soloud.mVoice[ch]->mLoopEndFrame = loopingEndOffsetAt;
+            }
+            soloud.unlockAudioMutex_internal();
+        }
+        else
+        {
+            setLoopPoint(newHandle, loopingStartAt);
+            setLoopEndPoint(newHandle, loopingEndAt);
+        }
         setLooping(newHandle, true);
     }
 
@@ -2909,6 +2925,7 @@ void Player::update3dAudio()
 PlayerErrors Player::play3d(
     unsigned int soundHash,
     unsigned int &handle,
+    unsigned int busId,
     float posX,
     float posY,
     float posZ,
@@ -2917,7 +2934,6 @@ PlayerErrors Player::play3d(
     float velZ,
     float volume,
     bool paused,
-    unsigned int busId,
     bool looping,
     double loopingStartAt,
     double loopingEndAt,
@@ -3053,6 +3069,7 @@ PlayerErrors Player::play3dClocked(
     unsigned int soundHash,
     unsigned int &handle,
     double soundTime,
+    unsigned int busId,
     float posX,
     float posY,
     float posZ,
@@ -3060,7 +3077,6 @@ PlayerErrors Player::play3dClocked(
     float velY,
     float velZ,
     float volume,
-    unsigned int busId,
     float scale,
     bool looping,
     double loopingStartAt,

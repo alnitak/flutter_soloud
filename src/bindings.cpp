@@ -2187,22 +2187,23 @@ extern "C"
   /// [looping] whether to start the sound in looping state.
   /// [loopingStartAt] If looping is enabled, the loop point is, by default,
   /// the start of the stream. The loop start point can be set with this
-  /// parameter.
-  /// [loopingEndAt] If greater than zero, loop before this time. Zero uses the
-  /// natural end of the stream.
+  /// [loopingStartOffsetAt] Optional exact frame offset to restart looping from (-1 = inactive).
+  /// [loopingEndOffsetAt] Optional exact frame offset to loop before (-1 = inactive).
   /// [scale] relative playback speed multiplier (1.0f = normal speed).
   /// [handle] pointer to the handle for this new sound
   /// Return the error if any and a new [handle] of this sound
   FFI_PLUGIN_EXPORT enum PlayerErrors play(
       unsigned int soundHash, unsigned int busId, float volume, float pan,
       bool paused, bool looping, double loopingStartAt, double loopingEndAt,
+      long long loopingStartOffsetAt, long long loopingEndOffsetAt,
       float scale, unsigned int *handle)
   {
     if (player.get() == nullptr || !player.get()->isInited())
       return backendNotInited;
-    PlayerErrors result = player.get()->play(soundHash, *handle, busId, volume, pan,
-                                             paused, looping, loopingStartAt,
-                                             loopingEndAt, scale);
+    PlayerErrors result = player.get()->play(
+        soundHash, *handle, busId, volume, pan,
+        paused, looping, loopingStartAt, loopingEndAt,
+        loopingStartOffsetAt, loopingEndOffsetAt, scale);
     return result;
   }
 
@@ -2221,18 +2222,27 @@ extern "C"
   /// [volume] 1.0f full volume
   /// [pan] 0.0f centered
   /// [busId] the bus ID to play the sound on. 0 means the main engine.
+  /// [scale] relative playback speed multiplier (1.0f = normal speed).
+  /// [looping] whether the sound loops upon reaching the end.
+  /// [loopingStartAt] time position in seconds to restart playback when looping.
+  /// [loopingEndAt] If greater than zero, loop before this time.
+  /// [loopingStartOffsetAt] Optional exact frame offset to restart looping from (-1 = inactive).
+  /// [loopingEndOffsetAt] Optional exact frame offset to loop before (-1 = inactive).
   /// [handle] pointer to the handle for this new sound
   /// Return the error if any and a new [handle] of this sound
   FFI_PLUGIN_EXPORT enum PlayerErrors playClocked(
       unsigned int soundHash, double soundTime, unsigned int busId,
       float volume, float pan, float scale, bool looping,
-      double loopingStartAt, double loopingEndAt, unsigned int *handle)
+      double loopingStartAt, double loopingEndAt,
+      long long loopingStartOffsetAt, long long loopingEndOffsetAt,
+      unsigned int *handle)
   {
     if (player.get() == nullptr || !player.get()->isInited())
       return backendNotInited;
     PlayerErrors result = player.get()->playClocked(
         soundHash, *handle, soundTime, busId, volume, pan, scale,
-        looping, loopingStartAt, loopingEndAt);
+        looping, loopingStartAt, loopingEndAt,
+        loopingStartOffsetAt, loopingEndOffsetAt);
     return result;
   }
 
@@ -3478,9 +3488,9 @@ extern "C"
       return backendNotInited;
 
     PlayerErrors result =
-        player.get()->play3d(soundHash, *handle, posX, posY, posZ, velX, velY,
-                             velZ, volume, paused, busId, looping, loopingStartAt,
-                             0);
+        player.get()->play3d(soundHash, *handle, busId, posX, posY, posZ, velX, velY,
+                             velZ, volume, paused, looping, loopingStartAt,
+                             0, -1, -1, 1.0f);
     return result;
   }
 
@@ -3502,8 +3512,8 @@ extern "C"
       return backendNotInited;
 
     PlayerErrors result =
-        player.get()->play3d(soundHash, *handle, posX, posY, posZ, velX, velY,
-                             velZ, volume, paused, busId, looping, loopingStartAt,
+        player.get()->play3d(soundHash, *handle, busId, posX, posY, posZ, velX, velY,
+                             velZ, volume, paused, looping, loopingStartAt,
                              loopingEndAt, loopingStartOffsetAt,
                              loopingEndOffsetAt, scale);
     return result;
@@ -3539,9 +3549,9 @@ extern "C"
       return backendNotInited;
 
     PlayerErrors result =
-        player.get()->play3dClocked(soundHash, *handle, soundTime,
+        player.get()->play3dClocked(soundHash, *handle, soundTime, busId,
                                     posX, posY, posZ, velX, velY, velZ,
-                                    volume, busId, scale, looping,
+                                    volume, scale, looping,
                                     loopingStartAt, loopingEndAt,
                                     loopingStartOffsetAt, loopingEndOffsetAt);
     return result;
