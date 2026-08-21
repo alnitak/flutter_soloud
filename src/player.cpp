@@ -3363,6 +3363,125 @@ PlayerErrors Player::play3dClocked(
     return PlayerErrors::noError;
 }
 
+PlayerErrors Player::play3dScheduled(
+    unsigned int soundHash,
+    unsigned int &handle,
+    double atTime,
+    double duration,
+    unsigned int busId,
+    float posX,
+    float posY,
+    float posZ,
+    float velX,
+    float velY,
+    float velZ,
+    float volume,
+    float scale,
+    bool looping,
+    double loopingStartAt,
+    double loopingEndAt,
+    long long loopingStartOffsetAt,
+    long long loopingEndOffsetAt)
+{
+    handle = 0;
+
+    ActiveSound *sound = findByHash(soundHash);
+    if (sound == 0)
+        return soundHashNotFound;
+
+    // A BufferStream using `release` buffer type can only have one instance.
+    if (sound->soundType == SoundType::TYPE_BUFFER_STREAM &&
+        static_cast<SoLoud::BufferStream *>(sound->sound.get())->getBufferingType() == BufferingType::RELEASED &&
+        sound->handle.size() > 0)
+    {
+        return bufferStreamCanBePlayedOnlyOnce;
+    }
+
+    // Check if by playing this sound will exceed the maximum number of voice count. If true, then
+    // check if [soudHash] has other instances playing. If true remove the first and play the new one.
+    // If there are no other instances playing, this sound cannot be played and return an error.
+    // Issue https://github.com/alnitak/flutter_soloud/issues/204
+    if (getActiveVoiceCount_internal() >= getMaxActiveVoiceCount())
+    {
+        if (sound->handle.size() > 0)
+        {
+            stop(sound->handle[0].handle);
+        }
+        else
+        {
+            return PlayerErrors::maxActiveVoiceCountReached;
+        }
+    }
+
+    SoLoud::handle newHandle = 0;
+    if (busId == 0)
+    {
+        newHandle = soloud.play3dScheduled(
+            atTime,
+            *sound->sound.get(),
+            posX, posY, posZ,
+            velX, velY, velZ,
+            volume,
+            0,
+            scale,
+            looping,
+            loopingStartAt,
+            loopingEndAt,
+            loopingStartOffsetAt,
+            loopingEndOffsetAt);
+    }
+    else
+    {
+        auto it = busMap.find(busId);
+        if (it != busMap.end())
+            newHandle = it->second.bus.play3dScheduled(
+                atTime,
+                *sound->sound.get(),
+                posX, posY, posZ,
+                velX, velY, velZ,
+                volume,
+                scale,
+                looping,
+                loopingStartAt,
+                loopingEndAt,
+                loopingStartOffsetAt,
+                loopingEndOffsetAt);
+        else
+            return PlayerErrors::busIdNotFound;
+    }
+
+    // 0 is the invalid-handle sentinel: no voice could be allocated.
+    if (newHandle == 0)
+        return failedToStartPlayback;
+
+    if (soloud.isValidVoiceHandle(newHandle))
+    {
+        std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
+        sound->handle.push_back({newHandle, MAX_DOUBLE, false});
+        if (duration > 0.0)
+        {
+            soloud.scheduleStopAt(newHandle, atTime + duration);
+        }
+    }
+    // Check if this buffer has enough data to be played
+    if (sound->soundType == SoundType::TYPE_BUFFER_STREAM)
+    {
+        static_cast<SoLoud::BufferStream *>(sound->sound.get())->checkBuffering(0);
+    }
+    handle = newHandle;
+
+    // Queue the device start rather than performing it inline. The scheduled
+    // delay is expressed in *samples* against mStreamTime, which only advances
+    // while the device is mixing, so a voice created against a stopped clock
+    // keeps its exact sample offset and simply starts counting down once the
+    // device runs. Blocking here to start the device first would only shift
+    // every schedule by the device-start latency -- and put ma_device_start()
+    // back on the calling isolate, which is the #481 stall.
+    resumeEngine();
+
+    return PlayerErrors::noError;
+}
+
 void Player::set3dSoundSpeed(float speed)
 {
     soloud.set3dSoundSpeed(speed);

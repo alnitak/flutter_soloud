@@ -242,6 +242,22 @@ namespace SoLoud
 		return mSoloud->play3dClocked(aSoundTime, aSound, aPosX, aPosY, aPosZ, aVelX, aVelY, aVelZ, aVolume, mChannelHandle, aScale, aLooping, aLoopPoint, aLoopEndPoint, aLoopStartOffset, aLoopEndOffset);
 	}
 
+	handle Bus::play3dScheduled(time aEngineTime, AudioSource &aSound, float aPosX, float aPosY, float aPosZ, float aVelX, float aVelY, float aVelZ, float aVolume, float aScale, bool aLooping, time aLoopPoint, time aLoopEndPoint, long long aLoopStartOffset, long long aLoopEndOffset)
+	{
+		if (!mInstance || !mSoloud)
+		{
+			return 0;
+		}
+
+		findBusHandle();
+
+		if (mChannelHandle == 0)
+		{
+			return 0;
+		}
+		return mSoloud->play3dScheduled(aEngineTime, aSound, aPosX, aPosY, aPosZ, aVelX, aVelY, aVelZ, aVolume, mChannelHandle, aScale, aLooping, aLoopPoint, aLoopEndPoint, aLoopStartOffset, aLoopEndOffset);
+	}
+
 	void Bus::annexSound(handle aVoiceHandle)
 	{
 		findBusHandle();

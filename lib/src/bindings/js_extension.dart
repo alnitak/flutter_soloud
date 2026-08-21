@@ -720,6 +720,29 @@ external int wasmPlay3dClocked(
   int handlePtr,
 );
 
+@JS('Module_soloud._play3dScheduled')
+external int wasmPlay3dScheduled(
+  int soundHash,
+  double atTime,
+  double duration,
+  int busId,
+  double posX,
+  double posY,
+  double posZ,
+  double velX,
+  double velY,
+  double velZ,
+  double volume,
+  double scale,
+  // ignore: avoid_positional_boolean_parameters
+  bool looping,
+  double loopingStartAt,
+  double loopingEndAt,
+  int loopingStartOffsetAt,
+  int loopingEndOffsetAt,
+  int handlePtr,
+);
+
 @JS('Module_soloud._set3dSoundSpeed')
 external void wasmSet3dSoundSpeed(double speed);
 

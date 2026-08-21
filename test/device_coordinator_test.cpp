@@ -59,9 +59,14 @@ extern "C"
                                    float detune, unsigned int *hash);
     enum PlayerErrors play(unsigned int soundHash, unsigned int busId,
                            float volume, float pan, bool paused, bool looping,
-                           double loopingStartAt, unsigned int *handle);
+                           double loopingStartAt, double loopingEndAt,
+                           int loopingStartOffsetAt, int loopingEndOffsetAt,
+                           float scale, unsigned int *handle);
     enum PlayerErrors playClocked(unsigned int soundHash, double soundTime,
                                   unsigned int busId, float volume, float pan,
+                                  float scale, bool looping,
+                                  double loopingStartAt, double loopingEndAt,
+                                  int loopingStartOffsetAt, int loopingEndOffsetAt,
                                   unsigned int *handle);
     enum PlayerErrors setPause(unsigned int handle, bool pause);
     enum PlayerErrors stop(unsigned int handle);
@@ -78,15 +83,26 @@ extern "C"
                               void (*state_changed)(enum PlayerStateEvents *),
                               int64_t owner_engine_id);
 
-    enum PlayerErrors play3dClocked(unsigned int soundHash, double soundTime,
-                                    unsigned int busId, float posX, float posY,
-                                    float posZ, float velX, float velY,
-                                    float velZ, float volume,
-                                    unsigned int *handle);
-    enum PlayerErrors playScheduled(unsigned int soundHash, double atTime,
-                                    double duration, unsigned int busId,
-                                    float volume, float pan,
-                                    unsigned int *handle);
+    enum PlayerErrors play3dClocked(
+        unsigned int soundHash, double soundTime, unsigned int busId,
+        float posX, float posY, float posZ, float velX, float velY,
+        float velZ, float volume, float scale, bool looping,
+        double loopingStartAt, double loopingEndAt,
+        int loopingStartOffsetAt, int loopingEndOffsetAt,
+        unsigned int *handle);
+    enum PlayerErrors playScheduled(
+        unsigned int soundHash, double atTime, double duration,
+        unsigned int busId, float volume, float pan, float scale,
+        bool looping, double loopingStartAt, double loopingEndAt,
+        int loopingStartOffsetAt, int loopingEndOffsetAt,
+        unsigned int *handle);
+    enum PlayerErrors play3dScheduled(
+        unsigned int soundHash, double atTime, double duration,
+        unsigned int busId, float posX, float posY, float posZ,
+        float velX, float velY, float velZ, float volume, float scale,
+        bool looping, double loopingStartAt, double loopingEndAt,
+        int loopingStartOffsetAt, int loopingEndOffsetAt,
+        unsigned int *handle);
 
     enum PlayerErrors startMixerCapture(int format, int sampleRate,
                                         int channels, int bufferSizeBytes,
@@ -198,7 +214,7 @@ unsigned int loadTestWaveform()
 unsigned int playUnpaused(unsigned int hash)
 {
     unsigned int handle = 0;
-    play(hash, 0, 1.0f, 0.0f, /*paused*/ false, /*looping*/ true, 0.0, &handle);
+    play(hash, 0, 1.0f, 0.0f, /*paused*/ false, /*looping*/ true, 0.0, 0.0, -1, -1, 1.0f, &handle);
     return handle;
 }
 
@@ -357,7 +373,7 @@ void testConditionalStopDoesNotSwallowUnpause()
     EXPECT(hash != 0, "the test waveform should load");
 
     unsigned int handle = 0;
-    play(hash, 0, 1.0f, 0.0f, /*paused*/ true, /*looping*/ true, 0.0, &handle);
+    play(hash, 0, 1.0f, 0.0f, /*paused*/ true, /*looping*/ true, 0.0, 0.0, -1, -1, 1.0f, &handle);
     EXPECT(handle != 0, "a paused voice should be created");
 
     soloud_test::armBarrier(DeviceBarrier::stopAudioDeviceVoiceCountObserved);
@@ -621,16 +637,24 @@ void testClockedPlaybackDoesNotStartDeviceInline()
     static const ScheduledCall calls[] = {
         {"playClocked",
          [](unsigned int h, unsigned int *out) {
-             return playClocked(h, 0.0, 0, 1.0f, 0.0f, out);
+             return playClocked(h, 0.0, 0, 1.0f, 0.0f, 1.0f, false, 0.0, 0.0,
+                                -1, -1, out);
          }},
         {"play3dClocked",
          [](unsigned int h, unsigned int *out) {
              return play3dClocked(h, 0.0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                                  1.0f, out);
+                                  1.0f, 1.0f, false, 0.0, 0.0, -1, -1, out);
          }},
         {"playScheduled",
          [](unsigned int h, unsigned int *out) {
-             return playScheduled(h, 0.0, 0.0, 0, 1.0f, 0.0f, out);
+             return playScheduled(h, 0.0, 0.0, 0, 1.0f, 0.0f, 1.0f, false, 0.0,
+                                  0.0, -1, -1, out);
+         }},
+        {"play3dScheduled",
+         [](unsigned int h, unsigned int *out) {
+             return play3dScheduled(h, 0.0, 0.0, 0, 0.0f, 0.0f, 0.0f, 0.0f,
+                                    0.0f, 0.0f, 1.0f, 1.0f, false, 0.0, 0.0,
+                                    -1, -1, out);
          }},
     };
 

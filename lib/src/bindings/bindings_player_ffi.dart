@@ -3252,6 +3252,104 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       >();
 
   @override
+  ({PlayerErrors error, SoundHandle newHandle}) play3dScheduled(
+    SoundHash soundHash,
+    Duration atTime,
+    double posX,
+    double posY,
+    double posZ, {
+    Duration duration = Duration.zero,
+    int busId = 0,
+    double velX = 0,
+    double velY = 0,
+    double velZ = 0,
+    double volume = 1,
+    double scale = 1,
+    bool looping = false,
+    Duration loopingStartAt = Duration.zero,
+    Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
+  }) {
+    final ffi.Pointer<ffi.UnsignedInt> handle = calloc();
+    final e = _play3dScheduled(
+      soundHash.hash,
+      atTime.toDouble(),
+      duration.toDouble(),
+      busId,
+      posX,
+      posY,
+      posZ,
+      velX,
+      velY,
+      velZ,
+      volume,
+      scale,
+      looping,
+      loopingStartAt.toDouble(),
+      loopingEndAt?.toDouble() ?? 0,
+      loopingStartOffsetAt ?? -1,
+      loopingEndOffsetAt ?? -1,
+      handle,
+    );
+    final ret = (
+      error: PlayerErrors.values[e],
+      newHandle: SoundHandle(handle.value),
+    );
+    calloc.free(handle);
+    return ret;
+  }
+
+  late final _play3dScheduledPtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.UnsignedInt Function(
+            ffi.UnsignedInt,
+            ffi.Double,
+            ffi.Double,
+            ffi.UnsignedInt,
+            ffi.Float,
+            ffi.Float,
+            ffi.Float,
+            ffi.Float,
+            ffi.Float,
+            ffi.Float,
+            ffi.Float,
+            ffi.Float,
+            ffi.Bool,
+            ffi.Double,
+            ffi.Double,
+            ffi.Int,
+            ffi.Int,
+            ffi.Pointer<ffi.UnsignedInt>,
+          )
+        >
+      >('play3dScheduled');
+  late final _play3dScheduled = _play3dScheduledPtr
+      .asFunction<
+        int Function(
+          int,
+          double,
+          double,
+          int,
+          double,
+          double,
+          double,
+          double,
+          double,
+          double,
+          double,
+          double,
+          bool,
+          double,
+          double,
+          int,
+          int,
+          ffi.Pointer<ffi.UnsignedInt>,
+        )
+      >();
+
+  @override
   void set3dSoundSpeed(double speed) {
     return _set3dSoundSpeed(speed);
   }

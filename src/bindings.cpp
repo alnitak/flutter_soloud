@@ -3573,6 +3573,51 @@ extern "C"
     return result;
   }
 
+  /// play3dScheduled() is the 3d version of the playScheduled() call.
+  ///
+  /// Instead of panning like with the "2d" version of the call, the 3d
+  /// version requires 3d position and optionally velocity vector. Like its
+  /// 2d version, this one starts playing a sound at an absolute engine time
+  /// (see [getEngineTime]), with sample accuracy.
+  ///
+  /// [soundHash] the unique sound hash of a sound
+  /// [atTime] the absolute engine time, in seconds, at which the sound should start.
+  /// [duration] if greater than zero, the sound is automatically stopped at [atTime] + [duration].
+  /// [busId] the bus ID to play the sound on. 0 means the main engine.
+  /// [posX], [posY], [posZ] are the audio source position coordinates.
+  /// [velX], [velY], [velZ] are the audio source velocity.
+  /// [volume] 1.0f full volume
+  /// [scale] relative playback speed multiplier (1.0f = normal speed)
+  /// [looping] whether the sound loops upon reaching the end
+  /// [loopingStartAt] time position in seconds to restart playback when looping
+  /// [loopingEndAt] optional exclusive end point for looping
+  /// [loopingStartOffsetAt] Optional exact frame offset to restart looping from (-1 = inactive).
+  /// [loopingEndOffsetAt] Optional exact frame offset to loop before (-1 = inactive).
+  /// [handle] pointer to the handle for this new sound
+  /// Return the error if any and a new [handle] of this sound
+  FFI_PLUGIN_EXPORT PlayerErrors play3dScheduled(
+      unsigned int soundHash, double atTime, double duration,
+      unsigned int busId,
+      float posX, float posY, float posZ,
+      float velX, float velY, float velZ,
+      float volume, float scale, bool looping,
+      double loopingStartAt, double loopingEndAt,
+      int loopingStartOffsetAt, int loopingEndOffsetAt,
+      unsigned int *handle)
+  {
+    if (player.get() == nullptr || !player.get()->isInited() ||
+        player.get()->getSoundsCount() == 0)
+      return backendNotInited;
+
+    PlayerErrors result =
+        player.get()->play3dScheduled(soundHash, *handle, atTime, duration, busId,
+                                      posX, posY, posZ, velX, velY, velZ,
+                                      volume, scale, looping,
+                                      loopingStartAt, loopingEndAt,
+                                      loopingStartOffsetAt, loopingEndOffsetAt);
+    return result;
+  }
+
   /// You can set and get the current value of the speed of
   /// sound width the get3dSoundSpeed() and set3dSoundSpeed() functions.
   /// The speed of sound is used to calculate doppler effects in

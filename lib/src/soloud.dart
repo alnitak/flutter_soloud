@@ -988,11 +988,12 @@ interface class SoLoud {
   ///
   /// Every synchronous playback and unpause API delegates its device start to
   /// the background scheduler: [play], [play3d], [playClocked],
-  /// [play3dClocked], [playScheduled], [setPause], [pauseSwitch], [speechText]
-  /// and `Bus.playOnEngine`. They create the voice and return before the start
-  /// has been attempted, so none of them can throw when it fails. The backend
-  /// already rebuilds the device against the current default output and retries
-  /// once; this stream reports what is left when that has also failed.
+  /// [play3dClocked], [playScheduled], [play3dScheduled], [setPause],
+  /// [pauseSwitch], [speechText] and `Bus.playOnEngine`. They create the voice
+  /// and return before the start has been attempted, so none of them can throw
+  /// when it fails. The backend already rebuilds the device against the current
+  /// default output and retries once; this stream reports what is left when
+  /// that has also failed.
   ///
   /// Without listening to this, a failed start leaves the engine looking
   /// healthy — valid handles, voices unpaused, [getAudioDeviceState] reporting
@@ -4402,6 +4403,138 @@ interface class SoLoud {
     if (filtered.isEmpty) {
       _log.severe(
         () => 'play3dClocked(): soundHash ${sound.soundHash} not found',
+      );
+      throw SoLoudSoundHashNotFoundDartException(sound.soundHash);
+    }
+
+    assert(filtered.length == 1, 'Duplicate sounds found');
+    for (final activeSound in filtered) {
+      if (_controller.soLoudFFI.getIsValidVoiceHandle(ret.newHandle)) {
+        activeSound.handlesInternal.add(ret.newHandle);
+      }
+    }
+    return ret.newHandle;
+  }
+
+  /// play3dScheduled() is the 3d version of the [playScheduled] call.
+  ///
+  /// Instead of panning like with the "2d" version of the call, the 3d
+  /// version requires 3d position and optionally velocity vector. Like its
+  /// 2d version, this one starts playing a sound at an absolute engine time
+  /// (see [getEngineTime]), with sample accuracy.
+  ///
+  /// [sound] the audio source to play.
+  ///
+  /// [atTime] the absolute engine time at which the sound should start.
+  ///
+  /// [posX], [posY], [posZ] are the audio source position coordinates.
+  ///
+  /// [duration] if provided, the sound is automatically stopped at
+  /// [atTime] + [duration], scheduled atomically on the native side in the
+  /// same call (unlike [scheduleStop], which measures from call time).
+  ///
+  /// [velX], [velY], [velZ] are the audio source velocity.
+  ///
+  /// [busId] if not 0, the sound will be played on the mixing bus with this
+  /// ID instead of the main engine. See [Bus.play3dScheduled].
+  ///
+  /// [volume] 1.0 full volume.
+  ///
+  /// [scale] relative playback speed multiplier (1.0 = normal speed).
+  ///
+  /// [looping] whether the sound should loop when reaching the end.
+  ///
+  /// [loopingStartAt] time position to restart playback when looping.
+  ///
+  /// [loopingEndAt] optional exclusive end point for looping.
+  ///
+  /// [loopingStartOffsetAt] optional exact frame offset to restart looping
+  /// from.
+  ///
+  /// [loopingEndOffsetAt] optional exact frame offset to loop before.
+  /// Note: frame offset looping and Duration-based looping are mutually
+  /// exclusive.
+  ///
+  /// Returns the [SoundHandle] of this new sound.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Throws [SoLoudBufferStreamCanBePlayedOnlyOnceCppException] if we try to
+  /// play a BufferStream using `release` buffer type more than once.
+  ///
+  /// Throws [SoLoudSoundHashNotFoundDartException] if the given [sound]
+  /// is not found.
+  ///
+  /// Throws [SoLoudFailedToStartPlaybackCppException] if the audio engine
+  /// could not create a voice for this sound.
+  ///
+  /// The schedule is expressed in samples against the engine clock, which only
+  /// advances while the output device is mixing, so a voice scheduled against a
+  /// stopped device keeps its exact offset and starts counting down once the
+  /// device runs. Device startup is therefore queued rather than performed
+  /// inline, and this method does not report output-device failures — listen to
+  /// [audioDeviceStartFailures] for those.
+  SoundHandle play3dScheduled(
+    AudioSource sound,
+    Duration atTime,
+    double posX,
+    double posY,
+    double posZ, {
+    Duration? duration,
+    double velX = 0,
+    double velY = 0,
+    double velZ = 0,
+    int busId = 0,
+    double volume = 1,
+    double scale = 1,
+    bool looping = false,
+    Duration loopingStartAt = Duration.zero,
+    Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
+  }) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    validateLoopRegion(
+      start: loopingStartAt,
+      end: loopingEndAt,
+      startOffset: loopingStartOffsetAt,
+      endOffset: loopingEndOffsetAt,
+    );
+
+    final ret = _controller.soLoudFFI.play3dScheduled(
+      sound.soundHash,
+      atTime,
+      posX,
+      posY,
+      posZ,
+      duration: duration ?? Duration.zero,
+      velX: velX,
+      velY: velY,
+      velZ: velZ,
+      busId: busId,
+      volume: volume,
+      scale: scale,
+      looping: looping,
+      loopingStartAt: loopingStartAt,
+      loopingEndAt: loopingEndAt,
+      loopingStartOffsetAt: loopingStartOffsetAt,
+      loopingEndOffsetAt: loopingEndOffsetAt,
+    );
+
+    if (!_checkPlaybackResult(ret, from: 'play3dScheduled()')) {
+      // Non-blocking failure: nothing is playing, so don't register
+      // the zeroed handle against the audio source.
+      return ret.newHandle;
+    }
+
+    final filtered = _activeSounds
+        .where((s) => s.soundHash == sound.soundHash)
+        .toSet();
+    if (filtered.isEmpty) {
+      _log.severe(
+        () => 'play3dScheduled(): soundHash ${sound.soundHash} not found',
       );
       throw SoLoudSoundHashNotFoundDartException(sound.soundHash);
     }

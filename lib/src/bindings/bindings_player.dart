@@ -1354,6 +1354,46 @@ abstract class FlutterSoLoud {
     int? loopingEndOffsetAt,
   });
 
+  /// play3dScheduled() is the 3d version of the [playScheduled] call.
+  ///
+  /// Instead of panning like with the "2d" version of the call, the 3d
+  /// version requires 3d position and optionally velocity vector. Like its
+  /// 2d version, this one starts playing a sound at an absolute engine time
+  /// (see [getEngineTime]), with sample accuracy.
+  ///
+  /// [soundHash] the unique sound hash of a sound.
+  /// [atTime] the absolute engine time at which the sound should start.
+  /// [duration] if non-zero, the sound is automatically stopped at
+  /// `atTime + duration`.
+  /// [posX], [posY], [posZ] are the audio source position coordinates.
+  /// [busId] the bus ID to play the sound on. 0 means the main engine.
+  /// [velX], [velY], [velZ] are the audio source velocity.
+  /// [volume] 1.0 full volume.
+  /// [scale] relative playback speed multiplier (1.0 = normal speed).
+  /// [looping] whether the sound should loop when reaching the end.
+  /// [loopingStartAt] time to seek to when looping.
+  /// Return the error if any and a new `newHandle` of this sound.
+  @mustBeOverridden
+  ({PlayerErrors error, SoundHandle newHandle}) play3dScheduled(
+    SoundHash soundHash,
+    Duration atTime,
+    double posX,
+    double posY,
+    double posZ, {
+    Duration duration = Duration.zero,
+    int busId = 0,
+    double velX = 0,
+    double velY = 0,
+    double velZ = 0,
+    double volume = 1,
+    double scale = 1,
+    bool looping = false,
+    Duration loopingStartAt = Duration.zero,
+    Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
+  });
+
   /// Since SoLoud has no knowledge of the scale of your coordinates,
   /// you may need to adjust the speed of sound for these effects
   /// to work correctly. The default value is 343, which assumes

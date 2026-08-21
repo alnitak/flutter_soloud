@@ -6781,6 +6781,8 @@ var _play3dWithLoopPoints = Module["_play3dWithLoopPoints"] = makeInvalidEarlyAc
 
 var _play3dClocked = Module["_play3dClocked"] = makeInvalidEarlyAccess("_play3dClocked");
 
+var _play3dScheduled = Module["_play3dScheduled"] = makeInvalidEarlyAccess("_play3dScheduled");
+
 var _set3dSoundSpeed = Module["_set3dSoundSpeed"] = makeInvalidEarlyAccess("_set3dSoundSpeed");
 
 var _get3dSoundSpeed = Module["_get3dSoundSpeed"] = makeInvalidEarlyAccess("_get3dSoundSpeed");
@@ -7118,6 +7120,7 @@ function assignWasmExports(wasmExports) {
   assert(typeof wasmExports["play3d"] != "undefined", "missing Wasm export: play3d");
   assert(typeof wasmExports["play3dWithLoopPoints"] != "undefined", "missing Wasm export: play3dWithLoopPoints");
   assert(typeof wasmExports["play3dClocked"] != "undefined", "missing Wasm export: play3dClocked");
+  assert(typeof wasmExports["play3dScheduled"] != "undefined", "missing Wasm export: play3dScheduled");
   assert(typeof wasmExports["set3dSoundSpeed"] != "undefined", "missing Wasm export: set3dSoundSpeed");
   assert(typeof wasmExports["get3dSoundSpeed"] != "undefined", "missing Wasm export: get3dSoundSpeed");
   assert(typeof wasmExports["set3dListenerParameters"] != "undefined", "missing Wasm export: set3dListenerParameters");
@@ -7359,6 +7362,7 @@ function assignWasmExports(wasmExports) {
   _play3d = Module["_play3d"] = createExportWrapper("play3d", 13);
   _play3dWithLoopPoints = Module["_play3dWithLoopPoints"] = createExportWrapper("play3dWithLoopPoints", 17);
   _play3dClocked = Module["_play3dClocked"] = createExportWrapper("play3dClocked", 17);
+  _play3dScheduled = Module["_play3dScheduled"] = createExportWrapper("play3dScheduled", 18);
   _set3dSoundSpeed = Module["_set3dSoundSpeed"] = createExportWrapper("set3dSoundSpeed", 1);
   _get3dSoundSpeed = Module["_get3dSoundSpeed"] = createExportWrapper("get3dSoundSpeed", 0);
   _set3dListenerParameters = Module["_set3dListenerParameters"] = createExportWrapper("set3dListenerParameters", 12);

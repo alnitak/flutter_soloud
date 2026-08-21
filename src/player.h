@@ -914,6 +914,41 @@ public:
                              long long loopingStartOffsetAt = -1,
                              long long loopingEndOffsetAt = -1);
 
+  /// @brief play3dScheduled() is the 3d version of the playScheduled() call.
+  ///
+  /// Instead of panning like with the "2d" version of the call, the 3d
+  /// version requires 3d position and optionally velocity vector. Like its
+  /// 2d version, this one starts playing a sound at an absolute engine time
+  /// (see [getEngineTime]), with sample accuracy.
+  /// @param soundHash the unique hash of the sound to play.
+  /// @param handle the handle of this new sound.
+  /// @param atTime the absolute engine time, in seconds, at which the sound
+  /// should start.
+  /// @param duration if greater than zero, the sound is automatically
+  /// stopped at [atTime] + [duration].
+  /// @param busId the bus ID to play the sound on. 0 means the main engine.
+  /// @param posX, posY, posZ the audio source position coordinates.
+  /// @param velX, velY, velZ the audio source velocity.
+  /// @param volume 1.0f full volume.
+  /// @param scale relative playback speed multiplier (1.0f = normal speed).
+  /// @param looping whether the sound loops upon reaching the end.
+  /// @param loopingStartAt time position in seconds to restart playback when looping.
+  /// @param loopingEndAt optional exclusive end point for looping.
+  /// @param loopingStartOffsetAt optional exact frame offset to restart looping from.
+  /// @param loopingEndOffsetAt optional exact frame offset to loop before.
+  /// @return the error if any and the [handle] of this new sound.
+  PlayerErrors play3dScheduled(unsigned int soundHash, unsigned int &handle,
+                               double atTime, double duration = 0.0,
+                               unsigned int busId = 0,
+                               float posX = 0.0f, float posY = 0.0f,
+                               float posZ = 0.0f, float velX = 0.0f,
+                               float velY = 0.0f, float velZ = 0.0f,
+                               float volume = 1.0f, float scale = 1.0f,
+                               bool looping = false, double loopingStartAt = 0.0,
+                               double loopingEndAt = 0.0,
+                               long long loopingStartOffsetAt = -1,
+                               long long loopingEndOffsetAt = -1);
+
   /// You can set and get the current value of the speed of
   /// sound width the get3dSoundSpeed() and set3dSoundSpeed() functions.
   /// The speed of sound is used to calculate doppler effects in

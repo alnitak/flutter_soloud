@@ -1866,6 +1866,59 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }
 
   @override
+  ({PlayerErrors error, SoundHandle newHandle}) play3dScheduled(
+    SoundHash soundHash,
+    Duration atTime,
+    double posX,
+    double posY,
+    double posZ, {
+    Duration duration = Duration.zero,
+    int busId = 0,
+    double velX = 0,
+    double velY = 0,
+    double velZ = 0,
+    double volume = 1,
+    double scale = 1,
+    bool looping = false,
+    Duration loopingStartAt = Duration.zero,
+    Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
+  }) {
+    final handlePtr = wasmMalloc(4); // 4 bytes for an int32
+    final result = wasmPlay3dScheduled(
+      soundHash.hash,
+      atTime.toDouble(),
+      duration.toDouble(),
+      busId,
+      posX,
+      posY,
+      posZ,
+      velX,
+      velY,
+      velZ,
+      volume,
+      scale,
+      looping,
+      loopingStartAt.toDouble(),
+      loopingEndAt?.toDouble() ?? 0,
+      loopingStartOffsetAt ?? -1,
+      loopingEndOffsetAt ?? -1,
+      handlePtr,
+    );
+
+    /// "*" means unsigned int 32
+    final newHandle = wasmGetI32Value(handlePtr, 'i32');
+    final ret = (
+      error: PlayerErrors.values[result],
+      newHandle: SoundHandle(newHandle),
+    );
+    wasmFree(handlePtr);
+
+    return ret;
+  }
+
+  @override
   void set3dSoundSpeed(double speed) {
     return wasmSet3dSoundSpeed(speed);
   }

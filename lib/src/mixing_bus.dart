@@ -404,6 +404,60 @@ class Bus {
     );
   }
 
+  /// Start playing [sound] through this bus in 3D space at an absolute
+  /// engine time (see [SoLoud.getEngineTime]), with sample accuracy.
+  ///
+  /// This is a convenience method that calls [SoLoud.play3dScheduled] with
+  /// the [busId] set to this bus.
+  ///
+  /// Please see [SoLoud.play3dScheduled] for more information on the
+  /// parameters.
+  ///
+  /// Throws [SoLoudBusDisposedDartException] if the bus has already
+  /// been disposed.
+  SoundHandle play3dScheduled(
+    AudioSource sound,
+    Duration atTime,
+    double posX,
+    double posY,
+    double posZ, {
+    Duration? duration,
+    double velX = 0,
+    double velY = 0,
+    double velZ = 0,
+    double volume = 1,
+    double scale = 1,
+    bool looping = false,
+    Duration loopingStartAt = Duration.zero,
+    Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
+  }) {
+    if (!_isValid) {
+      _log.warning('bus $busId is already disposed');
+      throw const SoLoudBusDisposedDartException();
+    }
+    return SoLoud.instance.play3dScheduled(
+      sound,
+      atTime,
+      posX,
+      posY,
+      posZ,
+      duration: duration,
+      velX: velX,
+      velY: velY,
+      velZ: velZ,
+      busId: busId,
+      volume: volume,
+      scale: scale,
+      looping: looping,
+      loopingStartAt: loopingStartAt,
+      loopingEndAt: loopingEndAt,
+      loopingStartOffsetAt: loopingStartOffsetAt,
+      loopingEndOffsetAt: loopingEndOffsetAt,
+    );
+  }
+
   /// Set the number of output channels for the bus (default is 2 = stereo).
   ///
   /// [channels] number of channels.
