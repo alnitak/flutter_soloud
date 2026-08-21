@@ -28,9 +28,16 @@ Future<OutputBuffer> testPlayScheduled() async {
   SoLoud.instance.setAudioDeviceIdleTimeout(null);
 
   try {
-    const bufferSize = 4096;
+    const bufferSize = 1024;
+    const renderAheadFrames = 1024;
+    const devicePeriodFrames = 128;
 
-    await SoLoud.instance.init(bufferSize: bufferSize, channels: Channels.mono);
+    await SoLoud.instance.init(
+      bufferSize: bufferSize,
+      renderAheadFrames: renderAheadFrames,
+      devicePeriodFrames: devicePeriodFrames,
+      channels: Channels.mono,
+    );
 
     // ---------------------------------------------------------------- Part A
     final tick = await SoLoud.instance.loadAsset('assets/audio/tic-1.wav');
