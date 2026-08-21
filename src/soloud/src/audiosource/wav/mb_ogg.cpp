@@ -234,14 +234,12 @@ bool MBOggDecoder::initVorbis() {
 
   if (ov_open_callbacks(&mDataSource, &mVorbisFile, nullptr, 0, callbacks) !=
       0) {
-    printf("[MBOggDecoder] initVorbis: ov_open_callbacks failed\n");
     return false;
   }
 
   mVorbisOpen = true;
   vorbis_info *info = ov_info(&mVorbisFile, -1);
   if (!info) {
-    printf("[MBOggDecoder] initVorbis: ov_info returned null\n");
     ov_clear(&mVorbisFile);
     mVorbisOpen = false;
     return false;
@@ -251,8 +249,6 @@ bool MBOggDecoder::initVorbis() {
   mSampleRate = (int)info->rate;
   ogg_int64_t total = ov_pcm_total(&mVorbisFile, -1);
   mLengthInSamples = (total >= 0) ? (unsigned int)total : 0;
-  printf("[MBOggDecoder] initVorbis: channels=%d, sampleRate=%d, length=%u\n",
-         mChannels, mSampleRate, mLengthInSamples);
   return true;
 }
 

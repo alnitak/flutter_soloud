@@ -2212,7 +2212,7 @@ extern "C"
   FFI_PLUGIN_EXPORT enum PlayerErrors play(
       unsigned int soundHash, unsigned int busId, float volume, float pan,
       bool paused, bool looping, double loopingStartAt, double loopingEndAt,
-      long long loopingStartOffsetAt, long long loopingEndOffsetAt,
+      int loopingStartOffsetAt, int loopingEndOffsetAt,
       float scale, unsigned int *handle)
   {
     if (player.get() == nullptr || !player.get()->isInited())
@@ -2251,7 +2251,7 @@ extern "C"
       unsigned int soundHash, double soundTime, unsigned int busId,
       float volume, float pan, float scale, bool looping,
       double loopingStartAt, double loopingEndAt,
-      long long loopingStartOffsetAt, long long loopingEndOffsetAt,
+      int loopingStartOffsetAt, int loopingEndOffsetAt,
       unsigned int *handle)
   {
     if (player.get() == nullptr || !player.get()->isInited())
@@ -2371,7 +2371,7 @@ extern "C"
       unsigned int soundHash, double atTime, double duration,
       unsigned int busId, float volume, float pan, float scale,
       bool looping, double loopingStartAt, double loopingEndAt,
-      long long loopingStartOffsetAt, long long loopingEndOffsetAt,
+      int loopingStartOffsetAt, int loopingEndOffsetAt,
       unsigned int *handle)
   {
     if (player.get() == nullptr || !player.get()->isInited())
@@ -3521,8 +3521,7 @@ extern "C"
       float posX, float posY, float posZ,
       float velX, float velY, float velZ,
       float volume, bool paused, bool looping, double loopingStartAt,
-      double loopingEndAt, long long loopingStartOffsetAt,
-      long long loopingEndOffsetAt, float scale, unsigned int *handle)
+      double loopingEndAt, int loopingStartOffsetAt, int loopingEndOffsetAt, float scale, unsigned int *handle)
   {
     if (player.get() == nullptr || !player.get()->isInited() ||
         player.get()->getSoundsCount() == 0)
@@ -3558,7 +3557,7 @@ extern "C"
       float velX, float velY, float velZ,
       float volume, float scale, bool looping,
       double loopingStartAt, double loopingEndAt,
-      long long loopingStartOffsetAt, long long loopingEndOffsetAt,
+      int loopingStartOffsetAt, int loopingEndOffsetAt,
       unsigned int *handle)
   {
     if (player.get() == nullptr || !player.get()->isInited() ||

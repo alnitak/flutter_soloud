@@ -1743,8 +1743,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
             ffi.Int,
             ffi.Double,
             ffi.Double,
-            ffi.Int64,
-            ffi.Int64,
+            ffi.Int,
+            ffi.Int,
             ffi.Float,
             ffi.Pointer<ffi.UnsignedInt>,
           )
@@ -1818,8 +1818,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
             ffi.Int,
             ffi.Double,
             ffi.Double,
-            ffi.Int64,
-            ffi.Int64,
+            ffi.Int,
+            ffi.Int,
             ffi.Pointer<ffi.UnsignedInt>,
           )
         >
@@ -1970,8 +1970,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
             ffi.Bool,
             ffi.Double,
             ffi.Double,
-            ffi.Int64,
-            ffi.Int64,
+            ffi.Int,
+            ffi.Int,
             ffi.Pointer<ffi.UnsignedInt>,
           )
         >
@@ -3127,8 +3127,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
             ffi.Int,
             ffi.Double,
             ffi.Double,
-            ffi.Int64,
-            ffi.Int64,
+            ffi.Int,
+            ffi.Int,
             ffi.Float,
             ffi.Pointer<ffi.UnsignedInt>,
           )
@@ -3222,8 +3222,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
             ffi.Int,
             ffi.Double,
             ffi.Double,
-            ffi.Int64,
-            ffi.Int64,
+            ffi.Int,
+            ffi.Int,
             ffi.Pointer<ffi.UnsignedInt>,
           )
         >
