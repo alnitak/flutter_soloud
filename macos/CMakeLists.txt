@@ -34,7 +34,7 @@ endif()
 
 # Force release optimization flags regardless of build configuration
 # For native debug purpose, use -g -O0 but remember to restore -O2 -DNDEBUG for release
-target_compile_options("${PLUGIN_NAME}" PRIVATE -Wall -Wno-error -Wno-vla -g -O0)
+target_compile_options("${PLUGIN_NAME}" PRIVATE -Wall -Wno-error -Wno-vla -O2 -DNDEBUG)
 
 # On Apple platforms, miniaudio.h includes AVFoundation Objective-C headers,
 # so soloud_miniaudio.cpp must be compiled as Objective-C++.

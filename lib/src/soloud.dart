@@ -1261,11 +1261,7 @@ interface class SoLoud {
     loadedFileCompleters.addAll({'$path-$counter': completer});
 
     final ret = kIsWeb
-        ? _controller.soLoudFFI.joinTwoSources(
-            path,
-            bufferLeft,
-            bufferRight,
-          )
+        ? _controller.soLoudFFI.joinTwoSources(path, bufferLeft, bufferRight)
         : await compute(_joinTwoSources, {
             'path': path,
             'bufferLeft': bufferLeft,
