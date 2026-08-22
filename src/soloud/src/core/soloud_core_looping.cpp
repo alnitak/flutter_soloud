@@ -43,16 +43,22 @@ namespace SoLoud
 		{
 			const bool looping =
 				(aVoice->mFlags & AudioSourceInstance::LOOPING) != 0;
-			const uint64_t loopStartFrame = sourceFrameAt(
-				aVoice->mLoopPoint, aVoice->mBaseSamplerate, false);
-			const uint64_t loopEndFrame = sourceFrameAt(
-				aVoice->mLoopEndPoint, aVoice->mBaseSamplerate, true);
-			const bool boundedLoop = looping && aVoice->mLoopEndPoint > 0 &&
+			const uint64_t loopStartFrame = (aVoice->mLoopStartFrame >= 0)
+				? (uint64_t)aVoice->mLoopStartFrame
+				: sourceFrameAt(aVoice->mLoopPoint, aVoice->mBaseSamplerate, false);
+			const uint64_t loopEndFrame = (aVoice->mLoopEndFrame >= 0)
+				? (uint64_t)aVoice->mLoopEndFrame
+				: sourceFrameAt(aVoice->mLoopEndPoint, aVoice->mBaseSamplerate, true);
+			const bool boundedLoop = looping &&
+				(aVoice->mLoopEndFrame >= 0 ? aVoice->mLoopEndFrame > 0 : aVoice->mLoopEndPoint > 0) &&
 				loopEndFrame > loopStartFrame;
 
 			if (boundedLoop && aVoice->mSourceSamplePosition >= loopEndFrame)
 			{
-				if (aVoice->seek(aVoice->mLoopPoint, mScratch.mData,
+				const double seekTime = (aVoice->mLoopStartFrame >= 0 && aVoice->mBaseSamplerate > 0)
+					? ((double)aVoice->mLoopStartFrame / aVoice->mBaseSamplerate)
+					: aVoice->mLoopPoint;
+				if (aVoice->seek(seekTime, mScratch.mData,
 					mScratchSize) != SO_NO_ERROR)
 				{
 					break;
@@ -95,7 +101,10 @@ namespace SoLoud
 			if (!looping || (decoded == 0 && restartedWithoutProgress))
 				break;
 
-			if (aVoice->seek(aVoice->mLoopPoint, mScratch.mData,
+			const double seekTime = (aVoice->mLoopStartFrame >= 0 && aVoice->mBaseSamplerate > 0)
+				? ((double)aVoice->mLoopStartFrame / aVoice->mBaseSamplerate)
+				: aVoice->mLoopPoint;
+			if (aVoice->seek(seekTime, mScratch.mData,
 				mScratchSize) != SO_NO_ERROR)
 			{
 				break;

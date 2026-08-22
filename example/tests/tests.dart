@@ -1,6 +1,6 @@
 import 'dart:async';
-import 'dart:ui';
 import 'dart:developer' as dev;
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
@@ -324,38 +324,39 @@ class _MyHomePageState extends State<MyHomePage> {
       // Ignore - may not be initialized
     }
 
-    await runZonedGuarded<Future<void>>(
-      () async {
-        final result = await tests[index].entry.run();
-        output
-          ..write('===== RUNNING "${tests[index].entry.name}" =====\n')
-          ..write(result)
-          ..write('===== PASSED! =====\n\n')
-          ..writeln();
-        tests[index].status = TestStatus.passed;
-        _updateOutput();
-      },
-      (error, stack) {
-        // Ensure cleanup even if test failed
-        try {
-          if (SoLoud.instance.isInitialized) {
-            SoLoud.instance.deinit();
-          }
-        } catch (_) {
-          // Ignore cleanup errors
+    // NOTE: `await runZonedGuarded(...)` is not usable here: when the zoned
+    // body throws asynchronously, the returned future never completes (the
+    // zone consumes the error and the await hangs), which would wedge the
+    // whole "Run All Tests" loop on the first failure.
+    try {
+      final result = await tests[index].entry.run();
+      output
+        ..write('===== RUNNING "${tests[index].entry.name}" =====\n')
+        ..write(result)
+        ..write('===== PASSED! =====\n\n')
+        ..writeln();
+      tests[index].status = TestStatus.passed;
+      _updateOutput();
+    } catch (error, stack) {
+      // Ensure cleanup even if test failed
+      try {
+        if (SoLoud.instance.isInitialized) {
+          SoLoud.instance.deinit();
         }
+      } catch (_) {
+        // Ignore cleanup errors
+      }
 
-        output
-          ..write('== TEST "${tests[index].entry.name}" FAILED with '
-              'the following error(s) ==')
-          ..writeln()
-          ..writeAll([error, stack], '\n\n')
-          ..writeln()
-          ..writeln();
-        tests[index].status = TestStatus.failed;
-        _updateOutput();
-      },
-    );
+      output
+        ..write('== TEST "${tests[index].entry.name}" FAILED with '
+            'the following error(s) ==')
+        ..writeln()
+        ..writeAll([error, stack], '\n\n')
+        ..writeln()
+        ..writeln();
+      tests[index].status = TestStatus.failed;
+      _updateOutput();
+    }
   }
 
   void _updateOutput() {

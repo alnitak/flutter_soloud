@@ -40,6 +40,9 @@ namespace SoLoud
 		void destroyMutex(void *aHandle);
 		void lockMutex(void *aHandle);
 		void unlockMutex(void *aHandle);
+		// Returns 0 when the mutex was acquired, non-zero when it is held by
+		// another thread.
+		int tryLockMutex(void *aHandle);
 
 		ThreadHandle createThread(threadFunction aThreadFunction, void *aParameter);
 

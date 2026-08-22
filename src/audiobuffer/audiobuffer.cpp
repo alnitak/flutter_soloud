@@ -7,6 +7,10 @@
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten/emscripten.h>
+#ifdef MA_ENABLE_AUDIO_WORKLETS
+#include <emscripten/threading.h>
+#include <emscripten/webaudio.h>
+#endif
 #endif
 
 // TODO: readSamplesFromBuffer as for waveform
@@ -14,8 +18,56 @@
 namespace SoLoud {
 std::mutex check_buffer_mutex;
 
+#ifdef MA_ENABLE_AUDIO_WORKLETS
+// Main-thread entry points for the stream event callbacks. On the
+// multi-threaded (AudioWorklet) build the callbacks can fire from the
+// AudioWorklet rendering thread, which has no `window` and where
+// MAIN_THREAD_ASYNC_EM_ASM would execute in the worklet's own JS realm
+// (ReferenceError: window is not defined). The callers route through
+// emscripten_audio_worklet_post_function_* so these run on the main
+// browser thread.
+
+// Static slot for the metadata struct: heap-allocating it on the audio
+// thread could take the contended heap lock, and a futex wait there aborts
+// the program. Metadata callbacks are rare (once per stream open), so a
+// last-wins static slot is fine.
+static AudioMetadataFFI gBsMetadataSlot;
+
+static void bsOnMetadataMainThread(int metadataPtr, int soundHash)
+{
+  EM_ASM(
+      {
+        var functionName = "dartOnMetadataCallback_" + $1;
+        if (typeof window[functionName] === "function") {
+          window[functionName]($0); // Call it with the pointer
+        } else {
+        }
+      },
+      metadataPtr, soundHash);
+}
+
+static void bsOnBufferingMainThread(int isBuffering, int handle, double time,
+                                    int soundHash)
+{
+  EM_ASM(
+      {
+        var functionName = "dartOnBufferingCallback_" + $3;
+        if (typeof window[functionName] === "function") {
+          var buffering = $0 == 1 ? true : false;
+          window[functionName](buffering, $1, $2); // Call it
+        } else {
+          console.log("EM_ASM 'dartOnBufferingCallback_$hash' not found.");
+        }
+      },
+      isBuffering, handle, time, soundHash);
+}
+#endif // MA_ENABLE_AUDIO_WORKLETS
+
 static void clearPlanarBuffer(float *buffer, unsigned int frames,
                               unsigned int stride, unsigned int channels) {
+  if (buffer == nullptr || frames == 0 || channels == 0) {
+    return;
+  }
   for (unsigned int channel = 0; channel < channels; ++channel) {
     memset(buffer + channel * stride, 0, sizeof(float) * frames);
   }
@@ -25,13 +77,53 @@ BufferStreamInstance::BufferStreamInstance(BufferStream *aParent) {
   mParent = aParent;
   mOffset = 0;
   samplerateAlreadySet = false;
+  if (mParent != nullptr && mParent->autoTypeSamplerate != 0.f) {
+    mBaseSamplerate = mParent->autoTypeSamplerate;
+    mSamplerate = mParent->autoTypeSamplerate;
+    mChannels = mParent->autoTypeChannels;
+    samplerateAlreadySet = true;
+  }
 }
 
 BufferStreamInstance::~BufferStreamInstance() {}
 
+// ###### flutter_soloud local patch (retroactive re-mix) ######
+class BufferStreamSourceStateSnapshot : public SoLoud::SourceStateSnapshot {
+public:
+  unsigned int mOffset;
+  bool samplerateAlreadySet;
+};
+
+SoLoud::SourceStateSnapshot *BufferStreamInstance::captureSourceState() {
+  // Only PRESERVED streams keep the consumed data around to re-read.
+  if (mParent == nullptr ||
+      mParent->mBuffer.bufferingType != BufferingType::PRESERVED) {
+    return nullptr;
+  }
+  auto *s = new BufferStreamSourceStateSnapshot();
+  s->mOffset = mOffset;
+  s->samplerateAlreadySet = samplerateAlreadySet;
+  return s;
+}
+
+void BufferStreamInstance::restoreSourceState(
+    SoLoud::SourceStateSnapshot *aState) {
+  auto *s = static_cast<BufferStreamSourceStateSnapshot *>(aState);
+  if (s == nullptr) {
+    return;
+  }
+  mOffset = s->mOffset;
+  samplerateAlreadySet = s->samplerateAlreadySet;
+}
+
+
 unsigned int BufferStreamInstance::getAudio(float *aBuffer,
                                             unsigned int aSamplesToRead,
                                             unsigned int aBufferSize) {
+  if (aBuffer == nullptr || mChannels == 0 || aSamplesToRead == 0) {
+    return 0;
+  }
+
   // Check if parent is still valid before accessing it
   if (mParent == nullptr || !mParent->isValid()) {
     clearPlanarBuffer(aBuffer, aSamplesToRead, aBufferSize, mChannels);
@@ -67,9 +159,11 @@ unsigned int BufferStreamInstance::getAudio(float *aBuffer,
   // stream position. The buffering state will be checked when addData() or
   // setDataIsEnded() is called.
   if (samplesToRead <= 0) {
-    memset(aBuffer, 0, sizeof(float) * aSamplesToRead * mChannels);
+    clearPlanarBuffer(aBuffer, aSamplesToRead, aBufferSize, mChannels);
     if (mParent->mBuffer.bufferingType == BufferingType::PRESERVED) {
-      mStreamPosition = mOffset / (mBaseSamplerate * mChannels);
+      mStreamPosition = (mBaseSamplerate > 0.0f)
+                            ? mOffset / (mBaseSamplerate * mChannels)
+                            : 0.0;
     } else {
       mStreamPosition = 0;
     }
@@ -78,11 +172,16 @@ unsigned int BufferStreamInstance::getAudio(float *aBuffer,
 
   // Zero any frames we won't fill, then copy the active frames.
   if (samplesToRead < static_cast<int>(aSamplesToRead)) {
-    memset(aBuffer, 0, sizeof(float) * aSamplesToRead * mChannels);
+    clearPlanarBuffer(aBuffer, aSamplesToRead, aBufferSize, mChannels);
   }
 
   float *buffer = reinterpret_cast<float *>(mParent->mBuffer.buffer.data() +
                                             mParent->mBuffer.getReadOffset());
+  if (buffer == nullptr) {
+    clearPlanarBuffer(aBuffer, aSamplesToRead, aBufferSize, mChannels);
+    return 0;
+  }
+
   if (mChannels == 1) {
     // Optimization: if we have a mono audio source, we can just copy all the
     // data in one go.
@@ -112,7 +211,9 @@ unsigned int BufferStreamInstance::getAudio(float *aBuffer,
   } else {
     mOffset += samplesToRead * mChannels;
     // For PRESERVED type, streamPosition advances with the offset.
-    mStreamPosition = mOffset / (mBaseSamplerate * mChannels);
+    mStreamPosition = (mBaseSamplerate > 0.0f)
+                          ? mOffset / (mBaseSamplerate * mChannels)
+                          : 0.0;
   }
 
   return samplesToRead;
@@ -137,10 +238,13 @@ result BufferStreamInstance::seek(double aSeconds, float *mScratch,
   }
 
   // For PRESERVED mode the decoded buffer is kept from the start, so we can
-  // jump directly to the target sample.
+  // jump directly to the target sample. Align the offset down to a whole
+  // frame: getAudio() consumes data in units of `mChannels` floats, so an
+  // unaligned offset would leave an unplayable sub-frame remainder at the
+  // end of the buffer and the voice could never reach its end.
   const int pos = static_cast<int>(floor(mBaseSamplerate * mChannels * aSeconds));
-  mOffset = pos;
-  mStreamPosition = static_cast<float>(pos) / (mBaseSamplerate * mChannels);
+  mOffset = mChannels > 0 ? pos - (pos % static_cast<int>(mChannels)) : pos;
+  mStreamPosition = static_cast<float>(mOffset) / (mBaseSamplerate * mChannels);
   return SO_NO_ERROR;
 }
 
@@ -159,7 +263,19 @@ bool BufferStreamInstance::hasEnded() {
     return false;
   }
   if (mParent->mBuffer.bufferingType == BufferingType::PRESERVED) {
-    return mOffset >= mParent->mSampleCount;
+    // `mOffset` advances in whole frames (`mChannels` floats at a time) and
+    // getAudio() cannot play a sub-frame remainder, so being within one
+    // frame of the end counts as ended. This covers two cases:
+    // - `mSampleCount` overshooting the actual decoded data (for compressed
+    //   formats it comes from the decoder's frame-count estimate, e.g.
+    //   drmp3_get_pcm_frame_count, which may exceed the frames the decoder
+    //   really yields: encoder delay/padding, truncated final frame);
+    // - a buffer whose float count is not a multiple of `mChannels`.
+    // Without this, a voice reaching such a buffer's end underruns forever
+    // and is never stopped.
+    const unsigned int slack = mChannels > 0 ? mChannels - 1 : 0;
+    return mOffset + slack >= mParent->mSampleCount ||
+           mOffset + slack >= mParent->mBuffer.getFloatsBufferSize();
   }
   // RELEASED
   return mParent->mBuffer.getFloatsBufferSize() == 0;
@@ -424,7 +540,8 @@ void BufferStream::checkBuffering(unsigned int afterAddingBytesCount) {
     // was already buffered before this addData() call. The unpause below will
     // then wait until at least [bufferingTimeNeeds] seconds of audio are
     // available ahead of position.
-    if (!dataIsEnded && pos >= currBufferTime && !isPaused) {
+    if (mBuffer.bufferingType == BufferingType::RELEASED &&
+        !dataIsEnded && pos >= currBufferTime && !isPaused) {
       mParent->handle[i].bufferingTime = currBufferTime + addedDataTime;
       // This is an automatic buffering pause, so the user-paused flag should
       // not prevent a future buffering unpause.
@@ -482,7 +599,22 @@ void BufferStream::callOnMetadataCallback(AudioMetadata &metadata) {
     // `setBufferStream()` in `bindings_player_web.dart` and it's
     // meant to call the Dart callback passed to `setBufferStream()`.
     // It will pass the JS pointer to the AudioMetadata struct.
-    EM_ASM_(
+#ifdef MA_ENABLE_AUDIO_WORKLETS
+    if (!emscripten_is_main_browser_thread()) {
+      // No heap allocation on the audio thread (see gBsMetadataSlot).
+      gBsMetadataSlot = ffi;
+      emscripten_audio_worklet_post_function_sig(
+          EMSCRIPTEN_AUDIO_MAIN_THREAD, (void *)bsOnMetadataMainThread, "ii",
+          (int)(uintptr_t)&gBsMetadataSlot, (int)mParent->soundHash);
+      return;
+    }
+    bsOnMetadataMainThread((int)(uintptr_t)&ffi, (int)mParent->soundHash);
+#else
+    // Single-threaded build: everything runs on the main browser thread.
+    auto *ffiPtr = static_cast<AudioMetadataFFI *>(malloc(sizeof(ffi)));
+    if (ffiPtr == nullptr) return;
+    *ffiPtr = ffi;
+    MAIN_THREAD_ASYNC_EM_ASM(
         {
           // Compose the function name for this soundHash
           var functionName = "dartOnMetadataCallback_" + $1;
@@ -490,8 +622,10 @@ void BufferStream::callOnMetadataCallback(AudioMetadata &metadata) {
             window[functionName]($0); // Call it with the pointer
           } else {
           }
+          Module_soloud._free($0);
         },
-        &ffi, mParent->soundHash);
+        ffiPtr, mParent->soundHash);
+#endif
 #else
     metadataCb(ffi);
 #endif
@@ -514,23 +648,37 @@ void BufferStream::callOnBufferingCallback(bool isBuffering,
             : nullptr;
     if (bufferingCb != nullptr) {
 #ifdef __EMSCRIPTEN__
-      // Call the Dart callback stored on globalThis, if it exists.
-      // The `dartOnBufferingCallback_$hash` function is created in
-      // `setBufferStream()` in `bindings_player_web.dart` and it's
-      // meant to call the Dart callback passed to `setBufferStream()`.
-      // This event is used for this.
-      EM_ASM(
-          {
-            // Compose the function name for this soundHash
-            var functionName = "dartOnBufferingCallback_" + $3;
-            if (typeof window[functionName] === "function") {
-              var buffering = $0 == 1 ? true : false;
-              window[functionName](buffering, $1, $2); // Call it
-            } else {
-              console.log("EM_ASM 'dartOnBufferingCallback_$hash' not found.");
-            }
-          },
-          isBuffering, handle, time, mParent->soundHash);
+    // Call the Dart callback stored on globalThis, if it exists.
+    // The `dartOnBufferingCallback_$hash` function is created in
+    // `setBufferStream()` in `bindings_player_web.dart` and it's
+    // meant to call the Dart callback passed to `setBufferStream()`.
+    // This event is used for this.
+#ifdef MA_ENABLE_AUDIO_WORKLETS
+    if (!emscripten_is_main_browser_thread()) {
+      // See bsOnBufferingMainThread: on the AudioWorklet rendering thread
+      // `window` does not exist. All arguments are passed by value.
+      emscripten_audio_worklet_post_function_sig(
+          EMSCRIPTEN_AUDIO_MAIN_THREAD, (void *)bsOnBufferingMainThread,
+          "iidi", (int)isBuffering, (int)handle, time,
+          (int)mParent->soundHash);
+      return;
+    }
+    bsOnBufferingMainThread((int)isBuffering, (int)handle, time,
+                            (int)mParent->soundHash);
+#else
+    MAIN_THREAD_ASYNC_EM_ASM(
+        {
+          // Compose the function name for this soundHash
+          var functionName = "dartOnBufferingCallback_" + $3;
+          if (typeof window[functionName] === "function") {
+            var buffering = $0 == 1 ? true : false;
+            window[functionName](buffering, $1, $2); // Call it
+          } else {
+            console.log("EM_ASM 'dartOnBufferingCallback_$hash' not found.");
+          }
+        },
+        isBuffering, handle, time, mParent->soundHash);
+#endif
 #else
       bufferingCb(isBuffering, handle, time);
 #endif

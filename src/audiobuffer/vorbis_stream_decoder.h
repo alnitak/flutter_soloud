@@ -48,6 +48,7 @@ private:
     bool vorbisInitialized;
     bool streamInitialized;
     bool headerParsed;
+    bool firstPcmBlock;
     int packetCount;
 
     OggSeekIndex mSeekIndex;

@@ -21,10 +21,10 @@ void main() {
       reason: 'could not find `typedef enum PlayerStateEvents` in src/enums.h',
     );
 
-    final names = RegExp(r'^\s*(event_[a-z_]+)', multiLine: true)
-        .allMatches(block!.group(1)!)
-        .map((m) => m.group(1)!)
-        .toList();
+    final names = RegExp(
+      r'^\s*(event_[a-z_]+)',
+      multiLine: true,
+    ).allMatches(block!.group(1)!).map((m) => m.group(1)!).toList();
 
     expect(
       names.length,

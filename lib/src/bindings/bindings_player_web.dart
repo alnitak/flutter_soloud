@@ -39,10 +39,61 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   WorkerController? workerController;
   bool _eventCallbacksSetUp = false;
 
+  /// The engine session the currently initialized native engine belongs to.
+  /// Read from the native side after every successful `initEngine` (the
+  /// native counter is bumped at each engine teardown). `voiceEnded` events
+  /// posted by a previous engine travel asynchronously and can arrive after
+  /// re-initialization; since voice handle ids restart from scratch in the
+  /// new engine, stale events would otherwise kill voices of the current
+  /// session (see engineGeneration in bindings.cpp).
+  int _engineGeneration = 0;
+
   /// Whether the current mixer output capture is using fixed-size PCM chunks.
   /// When true, the native side advances the circular buffer read position
   /// before invoking the callback, so Dart must not advance it again.
   bool _mixerOutputChunkMode = false;
+
+  /// Serializes native engine lifecycle calls (initEngine / changeDevice /
+  /// deinit / disposeAllSound).
+  ///
+  /// In the multi-threaded (AudioWorklet) build, initEngine and changeDevice
+  /// run through ASYNCIFY: while the AudioWorklet thread starts up, the WASM
+  /// call is suspended with the native side still holding the non-recursive
+  /// `init_deinit_mutex`/`loadMutex`. A concurrent native call from the main
+  /// thread (e.g. `deinit()` racing `init()`, see the AsynchronousDeinit
+  /// test) would then lock a mutex the same thread already holds, and musl
+  /// aborts with "pthread mutex deadlock detected". Engine ops therefore run
+  /// through this queue, and deinit/disposeAllSound are deferred only while
+  /// an op is actually in flight (otherwise they run synchronously, like on
+  /// every other platform). On the single-threaded build ops complete
+  /// synchronously and the queue is a no-op pass-through.
+  Future<void> _engineOpQueue = Future<void>.value();
+
+  /// Set when [deinit] has been called but the native dispose is still
+  /// queued behind an in-flight engine op. Makes [isInited] report false
+  /// right away, as the app considers the engine gone.
+  bool _deinitQueued = false;
+
+  /// Number of engine ops currently executing (including while suspended in
+  /// an ASYNCIFY sleep). When zero, the native lifecycle locks are free and
+  /// deinit/disposeAllSound can run synchronously.
+  int _engineOpsInFlight = 0;
+
+  /// Runs [op] after every previously queued engine op has completed.
+  Future<T> _enqueueEngineOp<T>(Future<T> Function() op) {
+    final result = _engineOpQueue.then((_) async {
+      _engineOpsInFlight++;
+      try {
+        return await op();
+      } finally {
+        _engineOpsInFlight--;
+      }
+    });
+    // Keep the queue itself error-transparent: a failing op must not wedge
+    // the ops queued behind it.
+    _engineOpQueue = result.then((_) {}, onError: (Object _) {});
+    return result;
+  }
 
   @override
   void disposeNativeCallables() {
@@ -68,8 +119,16 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     // create the worker in the WASM `Module`.
     final result = wasmCreateWorkerInWasm();
     if (result == 0) {
-      // The worker has been already created.
-      _eventCallbacksSetUp = true;
+      // The worker could not be created (the EM_ASM catch path). Don't mark
+      // the callbacks as set up, so the next call retries: a transient
+      // failure here would otherwise leave `Module_soloud.wasmWorker` null
+      // forever and every voiceEnded event would log "Worker not found.".
+      _log.warning(
+        'The web event worker (worker.dart.js) could not be created. '
+        'voiceEnded and mixer output events will not be delivered until '
+        'it is created successfully. If you serve the app with COOP/COEP '
+        'headers, check for duplicated or conflicting values.',
+      );
       return;
     }
 
@@ -114,6 +173,19 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
 
     switch (msg) {
       case 'voiceEndedCallback':
+        // Drop events emitted by a previous engine session: they can arrive
+        // after re-initialization and would otherwise invalidate a voice of
+        // the current session that happens to reuse the same handle id.
+        final generation = (message['generation'] as num?)?.toInt();
+        if (generation != null && generation != _engineGeneration) {
+          _log.finest(
+            () =>
+                'VOICE ENDED EVENT from stale engine session '
+                '(generation $generation, current $_engineGeneration); '
+                'dropping handle ${(message['value'] as num).toInt()}',
+          );
+          return;
+        }
         _log.finest(
           () =>
               'VOICE ENDED EVENT handle: '
@@ -186,7 +258,15 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }
 
   @override
-  bool isMixerOutputCaptureRunning() => wasmIsMixerCaptureRunning() == 1;
+  bool isMixerOutputCaptureRunning() {
+    // A deinit can arrive while the WASM module is still instantiating
+    // (init and deinit raced at startup): there is no capture running yet,
+    // and the exports are not callable anyway.
+    if (!_isModuleInstantiated()) {
+      return false;
+    }
+    return wasmIsMixerCaptureRunning() == 1;
+  }
 
   @override
   int getMixerOutputBufferSize() => wasmGetMixerCaptureBufferSize();
@@ -232,32 +312,128 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     return Uint8List.fromList(bytes);
   }
 
+  /// Calls `initEngine`/`changeDevice`. In the multi-threaded (AudioWorklet)
+  /// build these can reach `emscripten_sleep` (miniaudio spin-waits while the
+  /// worklet thread starts up), and the ASYNCIFY build requires them to be
+  /// called with `{async: true}`. The single-threaded build has no ASYNCIFY,
+  /// so there they are plain synchronous calls.
+  Future<PlayerErrors> _callEngineAsync(String fn, List<int> args) async {
+    await _ensureModuleReady();
+    if (flutterSoloudHasAsyncify != true) {
+      final ret = fn == 'initEngine'
+          ? wasmInitEngine(args[0], args[1], args[2], args[3], args[4])
+          : wasmChangeDevice(args[0]);
+      return PlayerErrors.values[ret];
+    }
+    final promise = wasmCcallAsync(
+      fn.toJS,
+      'number'.toJS,
+      List.filled(args.length, 'number'.toJS).toJS,
+      args.map((a) => a.toJS).toList().toJS,
+      <String, Object>{'async': true}.jsify()! as JSObject,
+    );
+    final ret = (await promise.toDart).toDartInt;
+    return PlayerErrors.values[ret];
+  }
+
+  /// Waits for the WASM module to finish loading. `SoLoud.init()` can be
+  /// called by the app while `init_module.dart.js` is still instantiating
+  /// the module (especially with the larger multi-threaded build); without
+  /// this the first bindings call would hit a not-yet-defined `Module_soloud`.
+  Future<void> _ensureModuleReady() async {
+    if (_isModuleInstantiated()) return;
+    final ready = flutterSoloudReady;
+    if (ready != null) {
+      await ready.toDart.timeout(
+        const Duration(seconds: 15),
+        onTimeout: () => throw TimeoutException(
+          'flutter_soloud: the WASM module did not finish initializing in '
+          '15 seconds. If you serve the app with COOP/COEP headers, make '
+          'sure they are not duplicated or conflicting (e.g. '
+          'Cross-Origin-Embedder-Policy: credentialless, require-corp), '
+          'which blocks the worker threads the module needs.',
+        ),
+      );
+      return;
+    }
+    // init_module.dart.js has not started yet (or is not included in the
+    // page); poll briefly for it to appear and finish.
+    for (var i = 0; i < 100 && !_isModuleInstantiated(); i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      final r = flutterSoloudReady;
+      if (r != null) {
+        await r.toDart;
+        return;
+      }
+    }
+  }
+
+  /// Whether `self.Module_soloud` is the fully instantiated WASM module.
+  ///
+  /// After the glue script loads but before the MODULARIZE factory promise
+  /// resolves, `self.Module_soloud` is the factory function (not the module
+  /// instance): it has no `ccall`/`_malloc`/exports yet, so it must be
+  /// treated as "not ready". The instantiated module is a plain object.
+  bool _isModuleInstantiated() {
+    final instance = moduleSoloudInstance;
+    return instance != null && !instance.isA<JSFunction>();
+  }
+
   @override
-  Future<PlayerErrors> initEngine(
+  FutureOr<PlayerErrors> initEngine(
     int deviceId,
     int sampleRate,
     int bufferSize,
     Channels channels,
-    bool lowLatency,
-  ) async {
+    bool lowLatency, {
+    int devicePeriodFrames = 0,
+    int renderAheadFrames = 0,
+  }) async {
     // Web is single-threaded (no isolates), so call the wasm function directly.
     // [lowLatency] only affects the native miniaudio backends (it selects the
     // AAudio/CoreAudio performance profile); the Web Audio backend ignores it.
-    final ret = wasmInitEngine(
-      deviceId,
-      sampleRate,
-      bufferSize,
-      channels.count,
-      lowLatency ? 1 : 0,
-    );
-    return PlayerErrors.values[ret];
+    // [devicePeriodFrames]/[renderAheadFrames] (the render-ahead ring) are
+    // native-only for now; the web backend keeps direct-to-device mixing.
+    return _enqueueEngineOp(() async {
+      _deinitQueued = false;
+      final error = await _callEngineAsync('initEngine', [
+        deviceId,
+        sampleRate,
+        bufferSize,
+        channels.count,
+        if (lowLatency) 1 else 0,
+      ]);
+      if (error == PlayerErrors.noError) {
+        // Adopt the current engine session counter so voiceEnded events
+        // posted by the previous engine (still in flight in the worker
+        // pipeline) are recognized as stale and dropped.
+        _engineGeneration = wasmGetEngineGeneration();
+      }
+      return error;
+    });
   }
 
   @override
   Future<void> deinitAsync() async => deinit();
 
   @override
-  void prepareEngineInit() {}
+  void prepareEngineInit() {
+    // The C++ `dispose()` latches `engine_shutdown_requested`; the next
+    // `initEngine` short-circuits with `backendNotInited` unless this resets
+    // the flag first (same protocol as the native bindings). It must run
+    // through the engine-op queue: `dispose()` itself executes inside the
+    // queue, so resetting the flag synchronously here would be overwritten
+    // by the queued teardown before the queued `initEngine` runs.
+    if (!_isModuleInstantiated()) {
+      return;
+    }
+    unawaited(
+      _enqueueEngineOp(() async {
+        // kNoEngineId (-1): the web has no FlutterEngine lifecycle hooks.
+        wasmPrepareEngineInit(wasmBigInt('-1'));
+      }),
+    );
+  }
 
   @override
   bool get usesAsyncEnginePrepare => false;
@@ -266,7 +442,12 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   Future<void> prepareEngineInitAsync() async {}
 
   @override
-  void requestEngineShutdown() {}
+  void requestEngineShutdown() {
+    if (!_isModuleInstantiated()) {
+      return;
+    }
+    wasmRequestEngineShutdown();
+  }
 
   @override
   void setAndroidAAudioAttributes(bool managed) {
@@ -306,9 +487,8 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   void debugTriggerAudioInterruption({required bool began}) {}
 
   @override
-  Future<PlayerErrors> changeDevice(int deviceId) async {
-    final ret = wasmChangeDevice(deviceId);
-    return PlayerErrors.values[ret];
+  FutureOr<PlayerErrors> changeDevice(int deviceId) {
+    return _enqueueEngineOp(() => _callEngineAsync('changeDevice', [deviceId]));
   }
 
   @override
@@ -349,11 +529,68 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }
 
   @override
-  void deinit() => wasmDeinit();
+  void deinit() {
+    // Synchronous when no engine op is in flight (the native lifecycle locks
+    // are free then). Deferred only while an ASYNCIFY-suspended
+    // initEngine/changeDevice holds them.
+    if (_engineOpsInFlight == 0) {
+      _doDeinit();
+      return;
+    }
+    _deinitQueued = true;
+    unawaited(
+      _enqueueEngineOp(() async {
+        _doDeinit();
+      }),
+    );
+  }
+
+  void _doDeinit() {
+    try {
+      wasmDeinit();
+    } on Object catch (e) {
+      _log.warning('deinit() error: $e');
+    }
+  }
 
   @override
   bool isInited() {
-    return wasmIsInited() == 1;
+    // A deinit was requested but is still queued behind an in-flight engine
+    // op: the app already considers the engine gone.
+    if (_deinitQueued) {
+      return false;
+    }
+    // The module may still be loading (init_module.dart.js instantiates it
+    // asynchronously); treat that as "not initialized" instead of crashing.
+    // Note that between the glue load and the end of the instantiation
+    // `Module_soloud` is the factory function, so also guard against calling
+    // into a module whose exports are not there yet (e.g. when instantiation
+    // hangs or fails).
+    if (!_isModuleInstantiated()) {
+      return false;
+    }
+    // The multi-threaded WASM build uses SharedArrayBuffer for its memory and
+    // therefore needs cross-origin isolation. That combination cannot happen
+    // when the flavor is picked automatically (init_module.dart.js loads the
+    // MT build only when the page is isolated), but it can happen if the page
+    // loads the MT glue script manually (`manual` flavor) without COOP/COEP
+    // headers. Warn only in that case.
+    if (flutterSoloudBuild != 'st' && isCrossOriginIsolated != true) {
+      // ignore: avoid_print
+      print(
+        'flutter_soloud: WARNING! This web page is not cross-origin isolated. '
+        'If you are loading the multi-threaded WASM build '
+        '(libflutter_soloud_plugin_mt.js) manually, serve the app with '
+        '`Cross-Origin-Opener-Policy: same-origin` and '
+        '`Cross-Origin-Embedder-Policy: require-corp` headers, or let '
+        'init_module.dart.js pick the build automatically.',
+      );
+    }
+    try {
+      return wasmIsInited() == 1;
+    } on Object {
+      return false;
+    }
   }
 
   @override
@@ -402,6 +639,49 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
 
     wasmFree(hashPtr);
     wasmFree(bytesPtr);
+    wasmFree(pathPtr);
+
+    return ret;
+  }
+
+  @override
+  ({PlayerErrors error, SoundHash soundHash}) joinTwoSources(
+    String uniqueName,
+    Uint8List bufferLeft,
+    Uint8List bufferRight,
+  ) {
+    final hashPtr = wasmMalloc(4); // 4 bytes for an int32
+    final bytes1Ptr = wasmMalloc(bufferLeft.length);
+    final bytes2Ptr = wasmMalloc(bufferRight.length);
+    final pathPtr = wasmMalloc(uniqueName.length);
+
+    /// Copy the buffers into WASM memory using the HEAPU8 view.
+    final heapU8 = wasmHeapU8;
+    heapU8.toDart.setAll(bytes1Ptr, bufferLeft);
+    heapU8.toDart.setAll(bytes2Ptr, bufferRight);
+
+    /// Copy the path string into WASM memory.
+    for (var i = 0; i < uniqueName.length; i++) {
+      wasmSetValue(pathPtr + i, uniqueName.codeUnits[i], 'i8');
+    }
+
+    final result = wasmJoinTwoSources(
+      pathPtr,
+      bytes1Ptr,
+      bytes2Ptr,
+      bufferLeft.length,
+      bufferRight.length,
+      hashPtr,
+    );
+
+    /// "*" means unsigned int 32
+    final hash = wasmGetI32Value(hashPtr, '*');
+    final soundHash = SoundHash(hash);
+    final ret = (error: PlayerErrors.values[result], soundHash: soundHash);
+
+    wasmFree(hashPtr);
+    wasmFree(bytes1Ptr);
+    wasmFree(bytes2Ptr);
     wasmFree(pathPtr);
 
     return ret;
@@ -785,6 +1065,9 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
     Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
+    double scale = 1,
   }) {
     final handlePtr = wasmMalloc(4); // 4 bytes for an int32
     final result = wasmPlay(
@@ -796,6 +1079,9 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
       looping,
       loopingStartAt.toDouble(),
       loopingEndAt?.toDouble() ?? 0,
+      loopingStartOffsetAt ?? -1,
+      loopingEndOffsetAt ?? -1,
+      scale,
       handlePtr,
     );
 
@@ -817,6 +1103,12 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     int busId = 0,
     double volume = 1,
     double pan = 0,
+    double scale = 1,
+    bool looping = false,
+    Duration loopingStartAt = Duration.zero,
+    Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
   }) {
     final handlePtr = wasmMalloc(4); // 4 bytes for an int32
     final result = wasmPlayClocked(
@@ -825,6 +1117,12 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
       busId,
       volume,
       pan,
+      scale,
+      looping,
+      loopingStartAt.toDouble(),
+      loopingEndAt?.toDouble() ?? 0,
+      loopingStartOffsetAt ?? -1,
+      loopingEndOffsetAt ?? -1,
       handlePtr,
     );
 
@@ -860,6 +1158,23 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }
 
   @override
+  Duration getPlayheadTime() {
+    // The render-ahead ring is native-only for now; on web the playhead is
+    // the mix clock.
+    return getEngineTime();
+  }
+
+  @override
+  Duration getOutputLatency() {
+    return Duration.zero;
+  }
+
+  @override
+  bool isRenderAheadEnabled() {
+    return false;
+  }
+
+  @override
   ({PlayerErrors error, SoundHandle newHandle}) playScheduled(
     SoundHash soundHash,
     Duration atTime, {
@@ -867,6 +1182,12 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     int busId = 0,
     double volume = 1,
     double pan = 0,
+    double scale = 1,
+    bool looping = false,
+    Duration loopingStartAt = Duration.zero,
+    Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
   }) {
     final handlePtr = wasmMalloc(4); // 4 bytes for an int32
     final result = wasmPlayScheduled(
@@ -876,6 +1197,12 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
       busId,
       volume,
       pan,
+      scale,
+      looping,
+      loopingStartAt.toDouble(),
+      loopingEndAt?.toDouble() ?? 0,
+      loopingStartOffsetAt ?? -1,
+      loopingEndOffsetAt ?? -1,
       handlePtr,
     );
 
@@ -918,6 +1245,16 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }
 
   @override
+  void stopAll() {
+    wasmStopAll();
+  }
+
+  @override
+  void stopAudioSource(SoundHash soundHash) {
+    wasmStopAudioSource(soundHash.hash);
+  }
+
+  @override
   void disposeSound(SoundHash soundHash) {
     try {
       wasmDisposeSound(soundHash.hash);
@@ -928,7 +1265,25 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
 
   @override
   void disposeAllSound() {
-    return wasmDisposeAllSound();
+    // See deinit(): the native call takes the non-recursive init_deinit_mutex,
+    // so it is deferred only while an engine op is in flight.
+    if (_engineOpsInFlight == 0) {
+      _doDisposeAllSound();
+      return;
+    }
+    unawaited(
+      _enqueueEngineOp(() async {
+        _doDisposeAllSound();
+      }),
+    );
+  }
+
+  void _doDisposeAllSound() {
+    try {
+      wasmDisposeAllSound();
+    } on Object catch (e) {
+      _log.warning('disposeAllSound() error: $e');
+    }
   }
 
   @override
@@ -1423,6 +1778,9 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
     Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
+    double scale = 1,
   }) {
     final handlePtr = wasmMalloc(4); // 4 bytes for an int32
     final result = wasmPlay3d(
@@ -1439,6 +1797,9 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
       looping ? 1 : 0,
       loopingStartAt.toDouble(),
       loopingEndAt?.toDouble() ?? 0,
+      loopingStartOffsetAt ?? -1,
+      loopingEndOffsetAt ?? -1,
+      scale,
       handlePtr,
     );
 
@@ -1465,6 +1826,12 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     double velY = 0,
     double velZ = 0,
     double volume = 1,
+    double scale = 1,
+    bool looping = false,
+    Duration loopingStartAt = Duration.zero,
+    Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
   }) {
     final handlePtr = wasmMalloc(4); // 4 bytes for an int32
     final result = wasmPlay3dClocked(
@@ -1478,6 +1845,65 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
       velY,
       velZ,
       volume,
+      scale,
+      looping ? 1 : 0,
+      loopingStartAt.toDouble(),
+      loopingEndAt?.toDouble() ?? 0,
+      loopingStartOffsetAt ?? -1,
+      loopingEndOffsetAt ?? -1,
+      handlePtr,
+    );
+
+    /// "*" means unsigned int 32
+    final newHandle = wasmGetI32Value(handlePtr, 'i32');
+    final ret = (
+      error: PlayerErrors.values[result],
+      newHandle: SoundHandle(newHandle),
+    );
+    wasmFree(handlePtr);
+
+    return ret;
+  }
+
+  @override
+  ({PlayerErrors error, SoundHandle newHandle}) play3dScheduled(
+    SoundHash soundHash,
+    Duration atTime,
+    double posX,
+    double posY,
+    double posZ, {
+    Duration duration = Duration.zero,
+    int busId = 0,
+    double velX = 0,
+    double velY = 0,
+    double velZ = 0,
+    double volume = 1,
+    double scale = 1,
+    bool looping = false,
+    Duration loopingStartAt = Duration.zero,
+    Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
+  }) {
+    final handlePtr = wasmMalloc(4); // 4 bytes for an int32
+    final result = wasmPlay3dScheduled(
+      soundHash.hash,
+      atTime.toDouble(),
+      duration.toDouble(),
+      busId,
+      posX,
+      posY,
+      posZ,
+      velX,
+      velY,
+      velZ,
+      volume,
+      scale,
+      looping,
+      loopingStartAt.toDouble(),
+      loopingEndAt?.toDouble() ?? 0,
+      loopingStartOffsetAt ?? -1,
+      loopingEndOffsetAt ?? -1,
       handlePtr,
     );
 

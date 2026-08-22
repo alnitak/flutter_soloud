@@ -60,6 +60,7 @@ set (CORE_SOURCES
 	${CORE_PATH}/soloud.cpp
 	${CORE_PATH}/soloud_audiosource.cpp
 	${CORE_PATH}/soloud_bus.cpp
+	${CORE_PATH}/soloud_checkpoint.cpp
 	${CORE_PATH}/soloud_core_3d.cpp
 	${CORE_PATH}/soloud_core_basicops.cpp
 	${CORE_PATH}/soloud_core_faderops.cpp

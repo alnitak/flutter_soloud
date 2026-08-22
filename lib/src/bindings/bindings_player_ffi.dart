@@ -74,6 +74,8 @@ int _invokeInitEngine(
   int bufferSize,
   int channels,
   int lowLatency,
+  int devicePeriodFrames,
+  int renderAheadFrames,
 ) {
   final fn =
       ffi.Pointer<
@@ -84,11 +86,21 @@ int _invokeInitEngine(
                 ffi.UnsignedInt,
                 ffi.UnsignedInt,
                 ffi.UnsignedInt,
+                ffi.UnsignedInt,
+                ffi.UnsignedInt,
               )
             >
           >.fromAddress(address)
-          .asFunction<int Function(int, int, int, int, int)>();
-  return fn(deviceId, sampleRate, bufferSize, channels, lowLatency);
+          .asFunction<int Function(int, int, int, int, int, int, int)>();
+  return fn(
+    deviceId,
+    sampleRate,
+    bufferSize,
+    channels,
+    lowLatency,
+    devicePeriodFrames,
+    renderAheadFrames,
+  );
 }
 
 /// Rebuilds a `void Function()` native function from its raw pointer [address]
@@ -262,8 +274,6 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   }
 
   void _voiceEndedCallback(ffi.Pointer<ffi.UnsignedInt> handle) {
-    _log.finest(() => 'VOICE ENDED EVENT handle: ${handle.value}');
-
     voiceEndedEventController.add(handle.value);
     // Must free a pointer made on cpp. On Windows this must be freed
     // there and cannot use `calloc.free(...)`
@@ -640,13 +650,15 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       .asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 
   @override
-  Future<PlayerErrors> initEngine(
+  FutureOr<PlayerErrors> initEngine(
     int deviceId,
     int sampleRate,
     int bufferSize,
     Channels channels,
-    bool lowLatency,
-  ) async {
+    bool lowLatency, {
+    int devicePeriodFrames = 0,
+    int renderAheadFrames = 0,
+  }) async {
     // Run the blocking native engine/device initialization off the UI isolate
     // so it does not freeze the app (it can take seconds on Android/AAudio,
     // tripping the ANR watchdog — see #481). Only the raw function pointer
@@ -663,6 +675,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
         bufferSize,
         channelCount,
         lowLatencyValue,
+        devicePeriodFrames,
+        renderAheadFrames,
       ),
     );
     return PlayerErrors.values[result];
@@ -673,6 +687,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
         ffi.NativeFunction<
           ffi.Int32 Function(
             ffi.Int,
+            ffi.UnsignedInt,
+            ffi.UnsignedInt,
             ffi.UnsignedInt,
             ffi.UnsignedInt,
             ffi.UnsignedInt,
@@ -1030,6 +1046,68 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       .asFunction<
         int Function(
           ffi.Pointer<Utf8>,
+          ffi.Pointer<ffi.Uint8>,
+          int,
+          int,
+          ffi.Pointer<ffi.UnsignedInt>,
+        )
+      >();
+
+  @override
+  ({PlayerErrors error, SoundHash soundHash}) joinTwoSources(
+    String uniqueName,
+    Uint8List bufferLeft,
+    Uint8List bufferRight,
+  ) {
+    final ffi.Pointer<ffi.UnsignedInt> hash = calloc(
+      ffi.sizeOf<ffi.UnsignedInt>(),
+    );
+    final ffi.Pointer<ffi.Uint8> bufferLeftPtr = calloc(bufferLeft.length);
+    for (var i = 0; i < bufferLeft.length; i++) {
+      bufferLeftPtr[i] = bufferLeft[i];
+    }
+    final ffi.Pointer<ffi.Uint8> bufferRightPtr = calloc(bufferRight.length);
+    for (var i = 0; i < bufferRight.length; i++) {
+      bufferRightPtr[i] = bufferRight[i];
+    }
+
+    final ffi.Pointer<Utf8> cString = uniqueName.toNativeUtf8();
+    final e = _joinTwoSources(
+      cString,
+      bufferLeftPtr,
+      bufferRightPtr,
+      bufferLeft.length,
+      bufferRight.length,
+      hash,
+    );
+    final soundHash = SoundHash(hash.value);
+    final ret = (error: PlayerErrors.values[e], soundHash: soundHash);
+    calloc
+      ..free(hash)
+      ..free(bufferLeftPtr)
+      ..free(bufferRightPtr)
+      ..free(cString);
+    return ret;
+  }
+
+  late final _joinTwoSourcesPtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.Int32 Function(
+            ffi.Pointer<Utf8>,
+            ffi.Pointer<ffi.Uint8>,
+            ffi.Pointer<ffi.Uint8>,
+            ffi.Int,
+            ffi.Int,
+            ffi.Pointer<ffi.UnsignedInt>,
+          )
+        >
+      >('joinTwoSources');
+  late final _joinTwoSources = _joinTwoSourcesPtr
+      .asFunction<
+        int Function(
+          ffi.Pointer<Utf8>,
+          ffi.Pointer<ffi.Uint8>,
           ffi.Pointer<ffi.Uint8>,
           int,
           int,
@@ -1625,6 +1703,9 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
     Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
+    double scale = 1,
   }) {
     final ffi.Pointer<ffi.UnsignedInt> handle = calloc();
     final hash = soundHash.hash;
@@ -1637,6 +1718,9 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       looping ? 1 : 0,
       loopingStartAt.toDouble(),
       loopingEndAt?.toDouble() ?? 0,
+      loopingStartOffsetAt ?? -1,
+      loopingEndOffsetAt ?? -1,
+      scale,
       handle,
     );
     final ret = (
@@ -1659,10 +1743,13 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
             ffi.Int,
             ffi.Double,
             ffi.Double,
+            ffi.Int,
+            ffi.Int,
+            ffi.Float,
             ffi.Pointer<ffi.UnsignedInt>,
           )
         >
-      >('playWithLoopPoints');
+      >('play');
   late final _play = _playPtr
       .asFunction<
         int Function(
@@ -1673,6 +1760,9 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
           int,
           int,
           double,
+          double,
+          int,
+          int,
           double,
           ffi.Pointer<ffi.UnsignedInt>,
         )
@@ -1685,6 +1775,12 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     int busId = 0,
     double volume = 1,
     double pan = 0,
+    double scale = 1,
+    bool looping = false,
+    Duration loopingStartAt = Duration.zero,
+    Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
   }) {
     final ffi.Pointer<ffi.UnsignedInt> handle = calloc();
     final e = _playClocked(
@@ -1693,6 +1789,12 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       busId,
       volume,
       pan,
+      scale,
+      looping ? 1 : 0,
+      loopingStartAt.toDouble(),
+      loopingEndAt?.toDouble() ?? 0,
+      loopingStartOffsetAt ?? -1,
+      loopingEndOffsetAt ?? -1,
       handle,
     );
     final ret = (
@@ -1712,6 +1814,12 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
             ffi.UnsignedInt,
             ffi.Float,
             ffi.Float,
+            ffi.Float,
+            ffi.Int,
+            ffi.Double,
+            ffi.Double,
+            ffi.Int,
+            ffi.Int,
             ffi.Pointer<ffi.UnsignedInt>,
           )
         >
@@ -1724,6 +1832,12 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
           int,
           double,
           double,
+          double,
+          int,
+          double,
+          double,
+          int,
+          int,
           ffi.Pointer<ffi.UnsignedInt>,
         )
       >();
@@ -1772,6 +1886,38 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   late final _getEngineTime = _getEngineTimePtr.asFunction<double Function()>();
 
   @override
+  Duration getPlayheadTime() {
+    return _getPlayheadTime().toDuration();
+  }
+
+  late final _getPlayheadTimePtr =
+      _lookup<ffi.NativeFunction<ffi.Double Function()>>('getPlayheadTime');
+  late final _getPlayheadTime = _getPlayheadTimePtr
+      .asFunction<double Function()>();
+
+  @override
+  Duration getOutputLatency() {
+    return _getOutputLatency().toDuration();
+  }
+
+  late final _getOutputLatencyPtr =
+      _lookup<ffi.NativeFunction<ffi.Double Function()>>('getOutputLatency');
+  late final _getOutputLatency = _getOutputLatencyPtr
+      .asFunction<double Function()>();
+
+  @override
+  bool isRenderAheadEnabled() {
+    return _isRenderAheadEnabled() != 0;
+  }
+
+  late final _isRenderAheadEnabledPtr =
+      _lookup<ffi.NativeFunction<ffi.UnsignedInt Function()>>(
+        'isRenderAheadEnabled',
+      );
+  late final _isRenderAheadEnabled = _isRenderAheadEnabledPtr
+      .asFunction<int Function()>();
+
+  @override
   ({PlayerErrors error, SoundHandle newHandle}) playScheduled(
     SoundHash soundHash,
     Duration atTime, {
@@ -1779,6 +1925,12 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     int busId = 0,
     double volume = 1,
     double pan = 0,
+    double scale = 1,
+    bool looping = false,
+    Duration loopingStartAt = Duration.zero,
+    Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
   }) {
     final ffi.Pointer<ffi.UnsignedInt> handle = calloc();
     final e = _playScheduled(
@@ -1788,6 +1940,12 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       busId,
       volume,
       pan,
+      scale,
+      looping,
+      loopingStartAt.toDouble(),
+      loopingEndAt?.toDouble() ?? 0,
+      loopingStartOffsetAt ?? -1,
+      loopingEndOffsetAt ?? -1,
       handle,
     );
     final ret = (
@@ -1808,6 +1966,12 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
             ffi.UnsignedInt,
             ffi.Float,
             ffi.Float,
+            ffi.Float,
+            ffi.Bool,
+            ffi.Double,
+            ffi.Double,
+            ffi.Int,
+            ffi.Int,
             ffi.Pointer<ffi.UnsignedInt>,
           )
         >
@@ -1821,6 +1985,12 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
           int,
           double,
           double,
+          double,
+          bool,
+          double,
+          double,
+          int,
+          int,
           ffi.Pointer<ffi.UnsignedInt>,
         )
       >();
@@ -1877,6 +2047,28 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   late final _stopPtr =
       _lookup<ffi.NativeFunction<ffi.Int32 Function(ffi.UnsignedInt)>>('stop');
   late final _stop = _stopPtr.asFunction<int Function(int)>();
+
+  @override
+  void stopAll() {
+    _stopAll();
+  }
+
+  late final _stopAllPtr = _lookup<ffi.NativeFunction<ffi.Void Function()>>(
+    'stopAll',
+  );
+  late final _stopAll = _stopAllPtr.asFunction<void Function()>();
+
+  @override
+  void stopAudioSource(SoundHash soundHash) {
+    _stopAudioSource(soundHash.hash);
+  }
+
+  late final _stopAudioSourcePtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.UnsignedInt)>>(
+        'stopAudioSource',
+      );
+  late final _stopAudioSource = _stopAudioSourcePtr
+      .asFunction<void Function(int)>();
 
   @override
   void disposeSound(SoundHash soundHash) {
@@ -2886,6 +3078,9 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
     Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
+    double scale = 1,
   }) {
     final ffi.Pointer<ffi.UnsignedInt> handle = calloc();
     final e = _play3d(
@@ -2902,6 +3097,9 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       looping ? 1 : 0,
       loopingStartAt.toDouble(),
       loopingEndAt?.toDouble() ?? 0,
+      loopingStartOffsetAt ?? -1,
+      loopingEndOffsetAt ?? -1,
+      scale,
       handle,
     );
     final ret = (
@@ -2929,6 +3127,9 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
             ffi.Int,
             ffi.Double,
             ffi.Double,
+            ffi.Int,
+            ffi.Int,
+            ffi.Float,
             ffi.Pointer<ffi.UnsignedInt>,
           )
         >
@@ -2949,6 +3150,9 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
           int,
           double,
           double,
+          int,
+          int,
+          double,
           ffi.Pointer<ffi.UnsignedInt>,
         )
       >();
@@ -2965,6 +3169,12 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     double velY = 0,
     double velZ = 0,
     double volume = 1,
+    double scale = 1,
+    bool looping = false,
+    Duration loopingStartAt = Duration.zero,
+    Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
   }) {
     final ffi.Pointer<ffi.UnsignedInt> handle = calloc();
     final e = _play3dClocked(
@@ -2978,6 +3188,12 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       velY,
       velZ,
       volume,
+      scale,
+      looping ? 1 : 0,
+      loopingStartAt.toDouble(),
+      loopingEndAt?.toDouble() ?? 0,
+      loopingStartOffsetAt ?? -1,
+      loopingEndOffsetAt ?? -1,
       handle,
     );
     final ret = (
@@ -3002,6 +3218,12 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
             ffi.Float,
             ffi.Float,
             ffi.Float,
+            ffi.Float,
+            ffi.Int,
+            ffi.Double,
+            ffi.Double,
+            ffi.Int,
+            ffi.Int,
             ffi.Pointer<ffi.UnsignedInt>,
           )
         >
@@ -3019,6 +3241,110 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
           double,
           double,
           double,
+          double,
+          int,
+          double,
+          double,
+          int,
+          int,
+          ffi.Pointer<ffi.UnsignedInt>,
+        )
+      >();
+
+  @override
+  ({PlayerErrors error, SoundHandle newHandle}) play3dScheduled(
+    SoundHash soundHash,
+    Duration atTime,
+    double posX,
+    double posY,
+    double posZ, {
+    Duration duration = Duration.zero,
+    int busId = 0,
+    double velX = 0,
+    double velY = 0,
+    double velZ = 0,
+    double volume = 1,
+    double scale = 1,
+    bool looping = false,
+    Duration loopingStartAt = Duration.zero,
+    Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
+  }) {
+    final ffi.Pointer<ffi.UnsignedInt> handle = calloc();
+    final e = _play3dScheduled(
+      soundHash.hash,
+      atTime.toDouble(),
+      duration.toDouble(),
+      busId,
+      posX,
+      posY,
+      posZ,
+      velX,
+      velY,
+      velZ,
+      volume,
+      scale,
+      looping,
+      loopingStartAt.toDouble(),
+      loopingEndAt?.toDouble() ?? 0,
+      loopingStartOffsetAt ?? -1,
+      loopingEndOffsetAt ?? -1,
+      handle,
+    );
+    final ret = (
+      error: PlayerErrors.values[e],
+      newHandle: SoundHandle(handle.value),
+    );
+    calloc.free(handle);
+    return ret;
+  }
+
+  late final _play3dScheduledPtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.UnsignedInt Function(
+            ffi.UnsignedInt,
+            ffi.Double,
+            ffi.Double,
+            ffi.UnsignedInt,
+            ffi.Float,
+            ffi.Float,
+            ffi.Float,
+            ffi.Float,
+            ffi.Float,
+            ffi.Float,
+            ffi.Float,
+            ffi.Float,
+            ffi.Bool,
+            ffi.Double,
+            ffi.Double,
+            ffi.Int,
+            ffi.Int,
+            ffi.Pointer<ffi.UnsignedInt>,
+          )
+        >
+      >('play3dScheduled');
+  late final _play3dScheduled = _play3dScheduledPtr
+      .asFunction<
+        int Function(
+          int,
+          double,
+          double,
+          int,
+          double,
+          double,
+          double,
+          double,
+          double,
+          double,
+          double,
+          double,
+          bool,
+          double,
+          double,
+          int,
+          int,
           ffi.Pointer<ffi.UnsignedInt>,
         )
       >();

@@ -31,7 +31,12 @@ VORBIS_DIR="$XIPH_DIR/vorbis"
 FLAC_DIR="$XIPH_DIR/flac"
 
 # Clean and create build directory
-rm -f libflutter_soloud_plugin.*
+if [ "${SKIP_ST:-0}" != "1" ]; then
+    rm -f libflutter_soloud_plugin.js libflutter_soloud_plugin.wasm
+fi
+if [ "${SKIP_MT:-0}" != "1" ]; then
+    rm -f libflutter_soloud_plugin_mt.js libflutter_soloud_plugin_mt.wasm
+fi
 
 # Handle Opus and Ogg compilation only if not skipped
 if [ "${SKIP_OPUS_OGG}" != "1" ]; then
@@ -197,34 +202,88 @@ if [ "${SKIP_OPUS_OGG}" = "1" ]; then
     COMPILER_DEFINES="$COMPILER_DEFINES -D NO_XIPH_LIBS"
 fi
 
-# Now compile everything together
-# NOTE: no `-pthread`/`SHARED_MEMORY` here. The engine runs entirely on the
-# main browser thread on the web (all thread creation is guarded out under
-# `__EMSCRIPTEN__`), so pthreads are never used at runtime. Compiling without
-# them keeps the WASM memory a plain ArrayBuffer, which means the hosting
-# page does NOT need to be cross-origin isolated (no COOP/COEP headers —
-# see issue #523).
+# Now compile everything together.
+#
+# Two flavors are produced (see the AudioWorklet plan and issue #523):
+#
+# - ST (single-threaded, default): no `-pthread`/`SHARED_MEMORY`. The engine
+#   runs entirely on the main browser thread on the web (all thread creation
+#   is guarded out under `__EMSCRIPTEN__`), so pthreads are not strictly
+#   needed at runtime. The WASM memory stays a plain ArrayBuffer and the
+#   hosting page does NOT need to be cross-origin isolated (no COOP/COEP
+#   headers). This flavor is used on pages that are not cross-origin
+#   isolated (e.g. game portals like CrazyGames/Poki).
+#
+# - MT (multi-threaded): with `-pthread`/`SHARED_MEMORY`. The WASM memory is
+#   a SharedArrayBuffer, so the page MUST be served with COOP/COEP headers.
+#   This flavor is picked at runtime by init_module.dart.js only when the
+#   page is cross-origin isolated, and is the foundation for threading-based
+#   features (AudioWorklet rendering, off-thread encode/decode).
+#
+# Both flavors use MODULARIZE with the same EXPORT_NAME so the Dart bindings
+# (`Module_soloud._…` externs) work unchanged with either one.
+build_flavor() {
+    local output_name="$1"
+    shift
     # -g -fdebug-compilation-dir=./debug \
     # -s NO_DISABLE_EXCEPTION_CATCHING=1 \
-em++ -O2 \
-    -s ASSERTIONS=1 \
-    ${INCLUDE_DIRS[@]} \
-    ${SOURCES[@]} \
-    ${LIBS[@]} \
-    ${COMPILER_DEFINES} \
-    -msimd128 -msse3 \
-    -std=c++17 \
-    -s "EXPORTED_RUNTIME_METHODS=['ccall','cwrap','setValue','getValue','UTF8ToString','HEAPF32','HEAPU8']" \
-    -s "EXPORTED_FUNCTIONS=['_free', '_malloc', '_memcpy', '_memset']" \
-    -s NO_EXIT_RUNTIME=1 \
-    -s SAFE_HEAP=1 \
-    -s STACK_SIZE=4194304 \
-    -s ALLOW_MEMORY_GROWTH=1 \
-    -s INITIAL_MEMORY=67108864 \
-    -s MAXIMUM_MEMORY=2147483648 \
-    -s MODULARIZE=1 \
-    -s EXPORT_NAME="'Module_soloud'" \
-    -o ../web/libflutter_soloud_plugin.js
+    em++ -O2 \
+        "$@" \
+        -s ASSERTIONS=1 \
+        ${INCLUDE_DIRS[@]} \
+        ${SOURCES[@]} \
+        ${LIBS[@]} \
+        ${COMPILER_DEFINES} \
+        -msimd128 -msse3 \
+        -std=c++17 \
+        -s "EXPORTED_RUNTIME_METHODS=['ccall','cwrap','setValue','getValue','UTF8ToString','HEAPF32','HEAPU8']" \
+        -s "EXPORTED_FUNCTIONS=['_free', '_malloc', '_memcpy', '_memset']" \
+        -s NO_EXIT_RUNTIME=1 \
+        -s STACK_SIZE=4194304 \
+        -s ALLOW_MEMORY_GROWTH=1 \
+        -s INITIAL_MEMORY=67108864 \
+        -s MAXIMUM_MEMORY=2147483648 \
+        -s MODULARIZE=1 \
+        -s EXPORT_NAME="'Module_soloud'" \
+        -o "../web/${output_name}.js"
+}
+
+# ST flavor (default, keeps the historical file names).
+if [ "${SKIP_ST:-0}" != "1" ]; then
+    echo -e "${BOLD_WHITE_ON_GREEN}Building single-threaded flavor (libflutter_soloud_plugin)${RESET}"
+    build_flavor "libflutter_soloud_plugin" -s SAFE_HEAP=1
+fi
+
+# MT flavor (requires COOP/COEP; selected at runtime only when isolated).
+# MA_ENABLE_AUDIO_WORKLETS: render audio on a real-time AudioWorklet thread
+# instead of the deprecated main-thread ScriptProcessorNode. This needs
+# AUDIO_WORKLET/WASM_WORKERS (shared WASM memory with the worklet thread,
+# hence SHARED_MEMORY) and ASYNCIFY (miniaudio spin-waits on
+# emscripten_sleep() while the worklet thread starts up, see
+# ma_device_init__webaudio in miniaudio.h; only initEngine/changeDevice can
+# reach that sleep, and on web they are invoked via async ccall from Dart).
+# NOTE: no SAFE_HEAP here — SAFE_HEAP aborts on legitimate TLS accesses
+# (errno/__pthread_self) made by libc on the AudioWorklet rendering thread.
+# NOTE: SoLoud mutexes in this flavor are NOT pthread mutexes (see
+# soloud_thread.cpp): musl's pthread mutexes are broken on AudioWorklet
+# threads (__pthread_self() is null there, so ownership bookkeeping and
+# recursive re-entry detection fail and a contended lock aborts the module).
+# Thread::createMutex returns a custom TLS-keyed recursive spin mutex that
+# never lowers to a futex wait.
+echo -e "${BOLD_WHITE_ON_GREEN}Building multi-threaded flavor (libflutter_soloud_plugin_mt)${RESET}"
+if [ "${SKIP_MT:-0}" != "1" ]; then
+    build_flavor "libflutter_soloud_plugin_mt" \
+        -pthread \
+        -DMA_ENABLE_AUDIO_WORKLETS \
+        -g \
+        -s SHARED_MEMORY=1 \
+        -s PTHREAD_POOL_SIZE=8 \
+        -s ALLOW_BLOCKING_ON_MAIN_THREAD=1 \
+        -s AUDIO_WORKLET=1 \
+        -s WASM_WORKERS=1 \
+        -s ASYNCIFY=1 \
+        -s ASYNCIFY_STACK_SIZE=65536
+fi
 
 echo
 echo -e "${BOLD_WHITE_ON_GREEN}Build completed successfully...${RESET}"

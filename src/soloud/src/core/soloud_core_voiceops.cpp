@@ -24,6 +24,10 @@ freely, subject to the following restrictions:
 
 #include "soloud.h"
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten/threading.h>
+#endif
+
 // Direct voice operations (no mutexes - called from other functions)
 
 namespace SoLoud
@@ -125,29 +129,51 @@ namespace SoLoud
 		if (mVoice[aVoice])
 		{
 			mVoiceInactiveCallbackPending = true;
+			// ###### flutter_soloud local patch (retroactive re-mix) ######
+			// Journal the death so a later rollback does not resurrect this
+			// voice in the rewritten window (no-op when the ring is disabled
+			// or a re-mix is in progress -- the re-mix reproduces journaled
+			// deaths, it does not create new ones).
+			journalDeath_internal(aVoice, mVoice[aVoice]->mPlayIndex);
 			// Delete via temporary variable to avoid recursion
 			AudioSourceInstance * v = mVoice[aVoice];
+			const unsigned int playIndex = v->mPlayIndex;
 			mVoice[aVoice] = 0;
 
+			// Clear any resample data channel assigned to this voice
 			unsigned int i;
 			for (i = 0; i < mMaxActiveVoices; i++)
 			{
 				if (mResampleDataOwner[i] == v)
 				{
-					// Queue rather than call: the audio mutex is held here (see
-					// the assert above) and the embedder callback must not run
-					// under it. unlockAudioMutex_internal() dispatches these.
-					// mEndedVoiceQueue holds VOICE_COUNT entries and a voice can
-					// only be queued once per stop, so it cannot overflow.
-					if (mEndedVoiceCount < VOICE_COUNT)
-					{
-						mEndedVoiceQueue[mEndedVoiceCount++] =
-							(aVoice + 1) | (mResampleDataOwner[i]->mPlayIndex << 12);
-					}
 					mResampleDataOwner[i] = NULL;
 				}
 			}
 
+			// Queue rather than call: the audio mutex is held here (see
+			// the assert above) and the embedder callback must not run
+			// under it. unlockAudioMutex_internal() dispatches these.
+			// mEndedVoiceQueue holds VOICE_COUNT entries and a voice can
+			// only be queued once per stop, so it cannot overflow.
+			if (mEndedVoiceCount < VOICE_COUNT)
+			{
+				handle endedHandle = (aVoice + 1) | (playIndex << 12);
+				mEndedVoiceQueue[mEndedVoiceCount++] = endedHandle;
+			}
+
+#ifdef __EMSCRIPTEN__
+			// Freeing the instance takes the heap lock, and a contended lock
+			// on the AudioWorklet rendering thread lowers to a futex wait,
+			// which Emscripten aborts on (futex waits are illegal there).
+			// Defer the deletion to the main browser thread; it is drained by
+			// unlockAudioMutex_internal() (see mPendingVoiceFree).
+			if (!emscripten_is_main_browser_thread() &&
+				mPendingVoiceFreeCount < VOICE_COUNT)
+			{
+				mPendingVoiceFree[mPendingVoiceFreeCount++] = v;
+			}
+			else
+#endif
 			delete v;
 		}
 	}

@@ -44,6 +44,17 @@ void _loadFile(Map<String, dynamic> args) {
   );
 }
 
+@pragma('vm:entry-point')
+({PlayerErrors error, SoundHash soundHash}) _joinTwoSources(
+  Map<String, dynamic> args,
+) {
+  return SoLoudController().soLoudFFI.joinTwoSources(
+    args['path'] as String,
+    args['bufferLeft'] as Uint8List,
+    args['bufferRight'] as Uint8List,
+  );
+}
+
 /// Web-specific loader that uses `setBufferStream` with chunked
 /// `addAudioDataStream` calls to avoid blocking the UI thread.
 ///
@@ -398,6 +409,20 @@ interface class SoLoud {
   /// changes. (Note these are the *stream's* attributes; `audio_session`
   /// controls the *focus request* — for correct ducking they should match.)
   /// Ignored when `lowLatency` is true, on non-Android platforms, and on web.
+  ///
+  /// [devicePeriodFrames] (native only) the output device period in frames
+  /// used when [renderAheadFrames] enables the render-ahead ring. Smaller
+  /// values reduce the output-path jitter and the granularity at which new
+  /// audio reaches the device, at the cost of more frequent device callbacks.
+  /// Defaults to 512 when omitted. Ignored when [renderAheadFrames] is not
+  /// set and on web.
+  ///
+  /// [renderAheadFrames] (native only) enables the render-ahead ring: the
+  /// engine mixes this many frames ahead of the output device into an
+  /// engine-owned ring buffer, decoupling the device period from
+  /// [bufferSize]. This is the prerequisite for low-latency reactive playback
+  /// with large mix buffers. When null or 0 (the default) the engine mixes
+  /// directly into the device callback as before. Ignored on web.
   Future<void> init({
     PlaybackDevice? device,
     bool automaticCleanup = false,
@@ -407,6 +432,8 @@ interface class SoLoud {
     bool lowLatency = true,
     AndroidAAudioAttributes androidAAudioAttributes =
         AndroidAAudioAttributes.mediaMusic,
+    int? devicePeriodFrames,
+    int? renderAheadFrames,
   }) {
     final requestGeneration = _lifecycleGeneration;
     final previous = _pendingInitialization;
@@ -420,6 +447,8 @@ interface class SoLoud {
       channels: channels,
       lowLatency: lowLatency,
       androidAAudioAttributes: androidAAudioAttributes,
+      devicePeriodFrames: devicePeriodFrames,
+      renderAheadFrames: renderAheadFrames,
     );
     _pendingInitialization = initialization;
     return initialization.whenComplete(() {
@@ -439,6 +468,8 @@ interface class SoLoud {
     required Channels channels,
     required bool lowLatency,
     required AndroidAAudioAttributes androidAAudioAttributes,
+    required int? devicePeriodFrames,
+    required int? renderAheadFrames,
   }) async {
     if (previous != null) {
       try {
@@ -460,6 +491,8 @@ interface class SoLoud {
       channels: channels,
       lowLatency: lowLatency,
       androidAAudioAttributes: androidAAudioAttributes,
+      devicePeriodFrames: devicePeriodFrames,
+      renderAheadFrames: renderAheadFrames,
     );
   }
 
@@ -473,6 +506,8 @@ interface class SoLoud {
     bool lowLatency = true,
     AndroidAAudioAttributes androidAAudioAttributes =
         AndroidAAudioAttributes.mediaMusic,
+    int? devicePeriodFrames,
+    int? renderAheadFrames,
   }) async {
     _log.finest('init() called');
 
@@ -559,6 +594,8 @@ interface class SoLoud {
       bufferSize,
       channels,
       lowLatency,
+      devicePeriodFrames: devicePeriodFrames ?? 0,
+      renderAheadFrames: renderAheadFrames ?? 0,
     );
     if (initializationGeneration != _lifecycleGeneration) {
       await _waitForInitializationTeardownAndThrow();
@@ -634,6 +671,10 @@ interface class SoLoud {
     }
 
     final deviceId = newDevice?.id ?? -1;
+    // Both bindings complete asynchronously now: the native binding runs the
+    // device swap in a worker isolate, and on web the multi-threaded
+    // (AudioWorklet) WASM build must go through an async ccall (miniaudio
+    // spin-waits on emscripten_sleep while the worklet thread starts up).
     final error = await _controller.soLoudFFI.changeDevice(deviceId);
     _logPlayerError(error, from: 'changeDevice() result');
     if (error != PlayerErrors.noError) {
@@ -826,6 +867,7 @@ interface class SoLoud {
     // Listen when a handle becomes invalid because has been stopped/ended.
     if (!_controller.soLoudFFI.voiceEndedEventController.hasListener) {
       _controller.soLoudFFI.voiceEndedEvents.listen((handle) {
+        _log.finest('Voice ended event received. Handle: $handle');
         // Removing this UNIQUE [handle] from the `AudioSource` that owns it.
 
         final soundHandleFound = findAudioSourceByHandle(SoundHandle(handle));
@@ -946,11 +988,12 @@ interface class SoLoud {
   ///
   /// Every synchronous playback and unpause API delegates its device start to
   /// the background scheduler: [play], [play3d], [playClocked],
-  /// [play3dClocked], [playScheduled], [setPause], [pauseSwitch], [speechText]
-  /// and `Bus.playOnEngine`. They create the voice and return before the start
-  /// has been attempted, so none of them can throw when it fails. The backend
-  /// already rebuilds the device against the current default output and retries
-  /// once; this stream reports what is left when that has also failed.
+  /// [play3dClocked], [playScheduled], [play3dScheduled], [setPause],
+  /// [pauseSwitch], [speechText] and `Bus.playOnEngine`. They create the voice
+  /// and return before the start has been attempted, so none of them can throw
+  /// when it fails. The backend already rebuilds the device against the current
+  /// default output and retries once; this stream reports what is left when
+  /// that has also failed.
   ///
   /// Without listening to this, a failed start leaves the engine looking
   /// healthy — valid handles, voices unpaused, [getAudioDeviceState] reporting
@@ -1182,6 +1225,72 @@ interface class SoLoud {
         });
   }
 
+  /// Loads 2 audio buffers and joins them into a single stereo [AudioSource]
+  /// (left and right channels).
+  ///
+  /// Always uses [LoadMode.memory].
+  ///
+  /// Provide a [path] to be used as a reference to distinguish these buffers.
+  ///
+  /// The [bufferLeft] and [bufferRight] represent the bytes of supported audio
+  /// files (e.g. WAV, MP3, FLAC, OGG).
+  /// If the buffers contain non-mono channels, the audio is converted to mono
+  /// on the native side before joining.
+  /// Both audios are automatically resampled to the player engine's sample
+  /// rate so that no real-time resampling is required in the mixer during
+  /// playback.
+  /// If the lengths are different, the resulting audio length is the max of the
+  /// two and the shorter sound is padded with silence.
+  ///
+  /// [autoDispose] if set to true, this source will be automatically disposed
+  /// when all its handles have finished playing. There will be no need to call
+  /// [disposeSource] manually.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  Future<AudioSource> joinTwoSources(
+    String path,
+    Uint8List bufferLeft,
+    Uint8List bufferRight, {
+    bool autoDispose = false,
+  }) async {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+
+    final completer = Completer<AudioSource>();
+    final counter = _currentLoadCounter++;
+    loadedFileCompleters.addAll({'$path-$counter': completer});
+
+    final ret = kIsWeb
+        ? _controller.soLoudFFI.joinTwoSources(path, bufferLeft, bufferRight)
+        : await compute(_joinTwoSources, {
+            'path': path,
+            'bufferLeft': bufferLeft,
+            'bufferRight': bufferRight,
+          });
+
+    /// There is not a callback in cpp that is supposed to add the
+    /// "load file event". Manually send this event to have only one
+    /// place to do this "loaded" job.
+    _controller.soLoudFFI.fileLoadedEventsController.add({
+      'error': ret.error.index,
+      'completeFileName': path,
+      'hash': ret.soundHash.hash,
+      'counter': counter,
+    });
+
+    return completer.future
+        .whenComplete(() {
+          loadedFileCompleters.removeWhere(
+            (key, __) => key.compareTo('$path-$counter') == 0,
+          );
+        })
+        .then((source) {
+          source.autoDispose = autoDispose;
+          return source;
+        });
+  }
+
   /// Manager for the mixer output capture stream. It is intentionally separate
   /// from the public API so that the same logic can be reused by
   /// SoLoudIsolate from non-main isolates.
@@ -1227,7 +1336,6 @@ interface class SoLoud {
   ///
   /// Returns a [Stream] that yields captured audio data. The stream is closed
   /// when [stopMixerOutputStream] is called or when the engine is deinited.
-  @experimental
   Stream<Uint8List> startMixerOutputStream({
     MixerOutputFormat format = MixerOutputFormat.pcmF32le,
     int sampleRate = -1,
@@ -1245,11 +1353,9 @@ interface class SoLoud {
   );
 
   /// Stops the mixer output capture stream and releases associated resources.
-  @experimental
   void stopMixerOutputStream() => _mixerOutputStreamManager.stop();
 
   /// Whether mixer output capture is currently active.
-  @experimental
   bool get isMixerOutputStreamRunning => _mixerOutputStreamManager.isRunning;
 
   /// Returns the current 44-byte WAV header for the active mixer output
@@ -1266,7 +1372,6 @@ interface class SoLoud {
   ///
   /// Returns an empty [Uint8List] if WAV capture is not active or the header
   /// is unavailable.
-  @experimental
   Uint8List getMixerOutputWavHeader() {
     return _mixerOutputStreamManager.getWavHeader();
   }
@@ -2156,6 +2261,12 @@ interface class SoLoud {
   /// therefore does not report output-device failures; with [paused] set to
   /// `true` no device is requested at all. Use [startAudioDevice] when you need
   /// to observe a device-start failure.
+  /// [loopingStartOffsetAt] optional exact frame offset to restart looping from.
+  /// [loopingEndOffsetAt] optional exact frame offset to loop before.
+  /// Note: frame offset looping and Duration-based looping are mutually exclusive.
+  /// [scale] relative playback speed multiplier (1.0 = normal speed).
+  ///
+  /// The rest of the parameters are described in the method documentation.
   SoundHandle play(
     AudioSource sound, {
     int busId = 0,
@@ -2165,11 +2276,19 @@ interface class SoLoud {
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
     Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
+    double scale = 1,
   }) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
-    validateLoopRegion(start: loopingStartAt, end: loopingEndAt);
+    validateLoopRegion(
+      start: loopingStartAt,
+      end: loopingEndAt,
+      startOffset: loopingStartOffsetAt,
+      endOffset: loopingEndOffsetAt,
+    );
     final ret = _controller.soLoudFFI.play(
       sound.soundHash,
       busId: busId,
@@ -2179,6 +2298,9 @@ interface class SoLoud {
       looping: looping,
       loopingStartAt: loopingStartAt,
       loopingEndAt: loopingEndAt,
+      loopingStartOffsetAt: loopingStartOffsetAt,
+      loopingEndOffsetAt: loopingEndOffsetAt,
+      scale: scale,
     );
     if (!_checkPlaybackResult(ret, from: 'play()')) {
       // Non-blocking failure: nothing is playing, so don't register
@@ -2196,7 +2318,9 @@ interface class SoLoud {
 
     assert(filtered.length == 1, 'Duplicate sounds found');
     for (final activeSound in filtered) {
-      activeSound.handlesInternal.add(ret.newHandle);
+      if (_controller.soLoudFFI.getIsValidVoiceHandle(ret.newHandle)) {
+        activeSound.handlesInternal.add(ret.newHandle);
+      }
     }
 
     return ret.newHandle;
@@ -2268,22 +2392,52 @@ interface class SoLoud {
   /// device runs. Device startup is therefore queued rather than performed
   /// inline, and this method does not report output-device failures — listen to
   /// [audioDeviceStartFailures] for those.
+  /// [scale] relative playback speed multiplier (1.0 = normal speed).
+  ///
+  /// [looping] whether the sound should loop when reaching the end.
+  ///
+  /// [loopingStartAt] time position to restart playback when looping.
+  ///
+  /// [loopingEndAt] optional exclusive end point for looping.
+  /// [loopingStartOffsetAt] optional exact frame offset to restart looping from.
+  /// [loopingEndOffsetAt] optional exact frame offset to loop before.
+  /// Note: frame offset looping and Duration-based looping are mutually exclusive.
+  ///
+  /// The rest of the parameters are equivalent to [play].
   SoundHandle playClocked(
     AudioSource sound,
     Duration soundTime, {
     int busId = 0,
     double volume = 1,
     double pan = 0,
+    double scale = 1,
+    bool looping = false,
+    Duration loopingStartAt = Duration.zero,
+    Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
   }) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    validateLoopRegion(
+      start: loopingStartAt,
+      end: loopingEndAt,
+      startOffset: loopingStartOffsetAt,
+      endOffset: loopingEndOffsetAt,
+    );
     final ret = _controller.soLoudFFI.playClocked(
       sound.soundHash,
       soundTime,
       busId: busId,
       volume: volume,
       pan: pan,
+      scale: scale,
+      looping: looping,
+      loopingStartAt: loopingStartAt,
+      loopingEndAt: loopingEndAt,
+      loopingStartOffsetAt: loopingStartOffsetAt,
+      loopingEndOffsetAt: loopingEndOffsetAt,
     );
     if (!_checkPlaybackResult(ret, from: 'playClocked()')) {
       // Non-blocking failure: nothing is playing, so don't register
@@ -2303,7 +2457,9 @@ interface class SoLoud {
 
     assert(filtered.length == 1, 'Duplicate sounds found');
     for (final activeSound in filtered) {
-      activeSound.handlesInternal.add(ret.newHandle);
+      if (_controller.soLoudFFI.getIsValidVoiceHandle(ret.newHandle)) {
+        activeSound.handlesInternal.add(ret.newHandle);
+      }
     }
 
     return ret.newHandle;
@@ -2385,6 +2541,39 @@ interface class SoLoud {
     return _controller.soLoudFFI.getEngineTime();
   }
 
+  /// Get the engine time of the sample currently reaching the output device:
+  /// the mix clock (see [getEngineTime]) minus the render-ahead ring depth.
+  ///
+  /// This is the "true output" clock — what the listener is hearing right
+  /// now. It equals [getEngineTime] when the render-ahead ring is disabled
+  /// (the default; see the `renderAheadFrames` parameter of [init]) and on
+  /// web.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  Duration getPlayheadTime() {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    return _controller.soLoudFFI.getPlayheadTime();
+  }
+
+  /// Estimated output latency: render-ahead ring depth plus one device
+  /// period. [Duration.zero] when the render-ahead ring is disabled (the
+  /// default) and on web.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  Duration getOutputLatency() {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    return _controller.soLoudFFI.getOutputLatency();
+  }
+
+  /// Whether the render-ahead ring is active. Enabled at init time via the
+  /// `renderAheadFrames` parameter of [init]. Always false on web.
+  bool get isRenderAheadEnabled =>
+      isInitialized && _controller.soLoudFFI.isRenderAheadEnabled();
+
   /// Start playing [sound] at an absolute engine time (see [getEngineTime]),
   /// with sample accuracy.
   ///
@@ -2421,6 +2610,14 @@ interface class SoLoud {
   /// [busId] if not 0, the sound will be played on the mixing bus with this
   /// ID instead of the main engine. See [Bus.playScheduled].
   ///
+  /// [scale] relative playback speed multiplier (1.0 = normal speed). Applied
+  /// atomically at sound birth so render-ahead and retroactive buffers are
+  /// pitched accurately from sample 0 without pitch glitches.
+  ///
+  /// [looping] whether the voice should loop when reaching the end.
+  ///
+  /// [loopingStartAt] the time position to restart playback when looping.
+  ///
   /// The rest of the parameters are equivalent to [play].
   ///
   /// Returns the [SoundHandle] of the new sound instance. The handle can be
@@ -2443,6 +2640,10 @@ interface class SoLoud {
   /// device runs. Device startup is therefore queued rather than performed
   /// inline, and this method does not report output-device failures — listen to
   /// [audioDeviceStartFailures] for those.
+  /// [loopingEndAt] optional exclusive end point for looping.
+  /// [loopingStartOffsetAt] optional exact frame offset to restart looping from.
+  /// [loopingEndOffsetAt] optional exact frame offset to loop before.
+  /// Note: frame offset looping and Duration-based looping are mutually exclusive.
   SoundHandle playScheduled(
     AudioSource sound,
     Duration atTime, {
@@ -2450,10 +2651,22 @@ interface class SoLoud {
     int busId = 0,
     double volume = 1,
     double pan = 0,
+    double scale = 1,
+    bool looping = false,
+    Duration loopingStartAt = Duration.zero,
+    Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
   }) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    validateLoopRegion(
+      start: loopingStartAt,
+      end: loopingEndAt,
+      startOffset: loopingStartOffsetAt,
+      endOffset: loopingEndOffsetAt,
+    );
     final ret = _controller.soLoudFFI.playScheduled(
       sound.soundHash,
       atTime,
@@ -2461,6 +2674,12 @@ interface class SoLoud {
       busId: busId,
       volume: volume,
       pan: pan,
+      scale: scale,
+      looping: looping,
+      loopingStartAt: loopingStartAt,
+      loopingEndAt: loopingEndAt,
+      loopingStartOffsetAt: loopingStartOffsetAt,
+      loopingEndOffsetAt: loopingEndOffsetAt,
     );
     if (!_checkPlaybackResult(ret, from: 'playScheduled()')) {
       // Non-blocking failure: nothing is playing, so don't register
@@ -2480,7 +2699,9 @@ interface class SoLoud {
 
     assert(filtered.length == 1, 'Duplicate sounds found');
     for (final activeSound in filtered) {
-      activeSound.handlesInternal.add(ret.newHandle);
+      if (_controller.soLoudFFI.getIsValidVoiceHandle(ret.newHandle)) {
+        activeSound.handlesInternal.add(ret.newHandle);
+      }
     }
 
     return ret.newHandle;
@@ -2761,6 +2982,39 @@ interface class SoLoud {
         .whenComplete(() {
           voiceEndedCompleters.removeWhere((key, __) => key == handle);
         });
+  }
+
+  /// Stops all currently playing voices.
+  ///
+  /// This does _not_ dispose the audio sources: they stay loaded and can be
+  /// played again afterwards. Use [disposeSource] or [disposeAllSources]
+  /// for that.
+  ///
+  /// Every stopped voice emits a [SoundEventType.handleIsNoMoreValid] event
+  /// on its source, like calling [stop] on each playing handle.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  void stopAll() {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    _controller.soLoudFFI.stopAll();
+  }
+
+  /// Stops all currently playing voices of [source].
+  ///
+  /// This does _not_ dispose [source]: it stays loaded and can be played
+  /// again afterwards. Use [disposeSource] for that.
+  ///
+  /// Every stopped voice emits a [SoundEventType.handleIsNoMoreValid] event
+  /// on [source], like calling [stop] on each of its playing handles.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  void stopAudioSource(AudioSource source) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    _controller.soLoudFFI.stopAudioSource(source.soundHash);
   }
 
   /// Stops all handles of the already loaded [source], and reclaims memory.
@@ -3958,6 +4212,10 @@ interface class SoLoud {
   /// therefore does not report output-device failures; with [paused] set to
   /// `true` no device is requested at all. Use [startAudioDevice] when you need
   /// to observe a device-start failure.
+  /// [scale] relative playback speed multiplier (1.0 = normal speed).
+  /// [loopingStartOffsetAt] optional exact frame offset to restart looping from.
+  /// [loopingEndOffsetAt] optional exact frame offset to loop before.
+  /// Note: frame offset looping and Duration-based looping are mutually exclusive.
   SoundHandle play3d(
     AudioSource sound,
     double posX,
@@ -3972,11 +4230,19 @@ interface class SoLoud {
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
     Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
+    double scale = 1,
   }) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
-    validateLoopRegion(start: loopingStartAt, end: loopingEndAt);
+    validateLoopRegion(
+      start: loopingStartAt,
+      end: loopingEndAt,
+      startOffset: loopingStartOffsetAt,
+      endOffset: loopingEndOffsetAt,
+    );
 
     final ret = _controller.soLoudFFI.play3d(
       sound.soundHash,
@@ -3992,6 +4258,9 @@ interface class SoLoud {
       looping: looping,
       loopingStartAt: loopingStartAt,
       loopingEndAt: loopingEndAt,
+      loopingStartOffsetAt: loopingStartOffsetAt,
+      loopingEndOffsetAt: loopingEndOffsetAt,
+      scale: scale,
     );
 
     if (!_checkPlaybackResult(ret, from: 'play3d()')) {
@@ -4010,7 +4279,9 @@ interface class SoLoud {
 
     assert(filtered.length == 1, 'Duplicate sounds found');
     for (final activeSound in filtered) {
-      activeSound.handlesInternal.add(ret.newHandle);
+      if (_controller.soLoudFFI.getIsValidVoiceHandle(ret.newHandle)) {
+        activeSound.handlesInternal.add(ret.newHandle);
+      }
     }
     sound.handlesInternal.add(ret.newHandle);
     return ret.newHandle;
@@ -4057,6 +4328,18 @@ interface class SoLoud {
   /// device runs. Device startup is therefore queued rather than performed
   /// inline, and this method does not report output-device failures — listen to
   /// [audioDeviceStartFailures] for those.
+  /// [scale] relative playback speed multiplier (1.0 = normal speed).
+  ///
+  /// [looping] whether the sound should loop when reaching the end.
+  ///
+  /// [loopingStartAt] time position to restart playback when looping.
+  ///
+  /// [loopingEndAt] optional exclusive end point for looping.
+  ///
+  /// [loopingStartOffsetAt] optional exact frame offset to restart looping from.
+  ///
+  /// [loopingEndOffsetAt] optional exact frame offset to loop before.
+  /// Note: frame offset looping and Duration-based looping are mutually exclusive.
   SoundHandle play3dClocked(
     AudioSource sound,
     Duration soundTime,
@@ -4068,10 +4351,22 @@ interface class SoLoud {
     double velZ = 0,
     int busId = 0,
     double volume = 1,
+    double scale = 1,
+    bool looping = false,
+    Duration loopingStartAt = Duration.zero,
+    Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
   }) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    validateLoopRegion(
+      start: loopingStartAt,
+      end: loopingEndAt,
+      startOffset: loopingStartOffsetAt,
+      endOffset: loopingEndOffsetAt,
+    );
 
     final ret = _controller.soLoudFFI.play3dClocked(
       sound.soundHash,
@@ -4084,6 +4379,12 @@ interface class SoLoud {
       velZ: velZ,
       busId: busId,
       volume: volume,
+      scale: scale,
+      looping: looping,
+      loopingStartAt: loopingStartAt,
+      loopingEndAt: loopingEndAt,
+      loopingStartOffsetAt: loopingStartOffsetAt,
+      loopingEndOffsetAt: loopingEndOffsetAt,
     );
 
     if (!_checkPlaybackResult(ret, from: 'play3dClocked()')) {
@@ -4104,7 +4405,141 @@ interface class SoLoud {
 
     assert(filtered.length == 1, 'Duplicate sounds found');
     for (final activeSound in filtered) {
-      activeSound.handlesInternal.add(ret.newHandle);
+      if (_controller.soLoudFFI.getIsValidVoiceHandle(ret.newHandle)) {
+        activeSound.handlesInternal.add(ret.newHandle);
+      }
+    }
+    return ret.newHandle;
+  }
+
+  /// play3dScheduled() is the 3d version of the [playScheduled] call.
+  ///
+  /// Instead of panning like with the "2d" version of the call, the 3d
+  /// version requires 3d position and optionally velocity vector. Like its
+  /// 2d version, this one starts playing a sound at an absolute engine time
+  /// (see [getEngineTime]), with sample accuracy.
+  ///
+  /// [sound] the audio source to play.
+  ///
+  /// [atTime] the absolute engine time at which the sound should start.
+  ///
+  /// [posX], [posY], [posZ] are the audio source position coordinates.
+  ///
+  /// [duration] if provided, the sound is automatically stopped at
+  /// [atTime] + [duration], scheduled atomically on the native side in the
+  /// same call (unlike [scheduleStop], which measures from call time).
+  ///
+  /// [velX], [velY], [velZ] are the audio source velocity.
+  ///
+  /// [busId] if not 0, the sound will be played on the mixing bus with this
+  /// ID instead of the main engine. See [Bus.play3dScheduled].
+  ///
+  /// [volume] 1.0 full volume.
+  ///
+  /// [scale] relative playback speed multiplier (1.0 = normal speed).
+  ///
+  /// [looping] whether the sound should loop when reaching the end.
+  ///
+  /// [loopingStartAt] time position to restart playback when looping.
+  ///
+  /// [loopingEndAt] optional exclusive end point for looping.
+  ///
+  /// [loopingStartOffsetAt] optional exact frame offset to restart looping
+  /// from.
+  ///
+  /// [loopingEndOffsetAt] optional exact frame offset to loop before.
+  /// Note: frame offset looping and Duration-based looping are mutually
+  /// exclusive.
+  ///
+  /// Returns the [SoundHandle] of this new sound.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Throws [SoLoudBufferStreamCanBePlayedOnlyOnceCppException] if we try to
+  /// play a BufferStream using `release` buffer type more than once.
+  ///
+  /// Throws [SoLoudSoundHashNotFoundDartException] if the given [sound]
+  /// is not found.
+  ///
+  /// Throws [SoLoudFailedToStartPlaybackCppException] if the audio engine
+  /// could not create a voice for this sound.
+  ///
+  /// The schedule is expressed in samples against the engine clock, which only
+  /// advances while the output device is mixing, so a voice scheduled against a
+  /// stopped device keeps its exact offset and starts counting down once the
+  /// device runs. Device startup is therefore queued rather than performed
+  /// inline, and this method does not report output-device failures — listen to
+  /// [audioDeviceStartFailures] for those.
+  SoundHandle play3dScheduled(
+    AudioSource sound,
+    Duration atTime,
+    double posX,
+    double posY,
+    double posZ, {
+    Duration? duration,
+    double velX = 0,
+    double velY = 0,
+    double velZ = 0,
+    int busId = 0,
+    double volume = 1,
+    double scale = 1,
+    bool looping = false,
+    Duration loopingStartAt = Duration.zero,
+    Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
+  }) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    validateLoopRegion(
+      start: loopingStartAt,
+      end: loopingEndAt,
+      startOffset: loopingStartOffsetAt,
+      endOffset: loopingEndOffsetAt,
+    );
+
+    final ret = _controller.soLoudFFI.play3dScheduled(
+      sound.soundHash,
+      atTime,
+      posX,
+      posY,
+      posZ,
+      duration: duration ?? Duration.zero,
+      velX: velX,
+      velY: velY,
+      velZ: velZ,
+      busId: busId,
+      volume: volume,
+      scale: scale,
+      looping: looping,
+      loopingStartAt: loopingStartAt,
+      loopingEndAt: loopingEndAt,
+      loopingStartOffsetAt: loopingStartOffsetAt,
+      loopingEndOffsetAt: loopingEndOffsetAt,
+    );
+
+    if (!_checkPlaybackResult(ret, from: 'play3dScheduled()')) {
+      // Non-blocking failure: nothing is playing, so don't register
+      // the zeroed handle against the audio source.
+      return ret.newHandle;
+    }
+
+    final filtered = _activeSounds
+        .where((s) => s.soundHash == sound.soundHash)
+        .toSet();
+    if (filtered.isEmpty) {
+      _log.severe(
+        () => 'play3dScheduled(): soundHash ${sound.soundHash} not found',
+      );
+      throw SoLoudSoundHashNotFoundDartException(sound.soundHash);
+    }
+
+    assert(filtered.length == 1, 'Duplicate sounds found');
+    for (final activeSound in filtered) {
+      if (_controller.soLoudFFI.getIsValidVoiceHandle(ret.newHandle)) {
+        activeSound.handlesInternal.add(ret.newHandle);
+      }
     }
     return ret.newHandle;
   }

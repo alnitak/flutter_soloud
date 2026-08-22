@@ -10,9 +10,11 @@
 // #include "soloud_thread.h"
 #include "soloud_wavstream.h"
 #include "synth/basic_wave.h"
+#include "soloud/src/backend/miniaudio/miniaudio.h"
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdarg>
 #include <cstring>
 #include <fstream>
@@ -194,35 +196,7 @@ Player::Player() : mFilters(&soloud, nullptr, nullptr),
 
 Player::~Player()
 {
-    mLifecycleRequestsAccepted.store(false, std::memory_order_release);
-    soloud.setAudioInterruptionCallback(nullptr, nullptr);
-
-    // If the scheduler was started, stop it before touching Soloud.
-    stopPauseEngineScheduler();
-
-    if (!mInited.load(std::memory_order_acquire))
-    {
-        // dispose() was called properly — Soloud is already deinited and safe.
-        // Let ~Soloud() run normally to free its remaining allocations.
-        return;
-    }
-
-    // Neutralize the Soloud member so ~Soloud() and its deinit() call become
-    // harmless no-ops. The OS will reclaim all resources on process exit.
-    //
-    // We intentionally leak here — this only runs during abnormal exit
-    // (app closed without calling dispose()), and the process is terminating.
-    soloud.mBackendCleanupFunc = nullptr;
-    soloud.mAudioThreadMutex = nullptr;
-    soloud.mHighestVoice = 0;
-    soloud.mVoiceGroup = nullptr;
-    soloud.mVoiceGroupCount = 0;
-    soloud.mResampleData = nullptr;
-    soloud.mResampleDataOwner = nullptr;
-    for (int i = 0; i < FILTERS_PER_STREAM; i++)
-    {
-        soloud.mFilterInstance[i] = nullptr;
-    }
+    dispose();
 }
 
 void Player::dispose()
@@ -281,7 +255,7 @@ namespace SoLoud { SoLoud::result miniaudio_stopAudioDevice(); }
 namespace SoLoud { SoLoud::result miniaudio_startAudioDevice(); }
 namespace SoLoud { unsigned int miniaudio_getAudioDeviceState(); }
 
-PlayerErrors Player::init(unsigned int sampleRate, unsigned int bufferSize, unsigned int channels, int deviceID, bool lowLatency)
+PlayerErrors Player::init(unsigned int sampleRate, unsigned int bufferSize, unsigned int channels, int deviceID, bool lowLatency, unsigned int devicePeriodFrames, unsigned int renderAheadFrames)
 {
     if (mInited.load(std::memory_order_acquire))
         return playerAlreadyInited;
@@ -315,6 +289,11 @@ PlayerErrors Player::init(unsigned int sampleRate, unsigned int bufferSize, unsi
         // Use the stored device ID from the PlaybackDevice struct
         playbackInfos_id = (void *)&devices[index].deviceId;
     }
+
+    // Configure the render-ahead ring before the backend opens the device:
+    // miniaudio_init() reads this to pick the device period, and
+    // postinit_internal() allocates the ring.
+    soloud.setRenderAheadConfig(devicePeriodFrames, renderAheadFrames);
 
     // initialize SoLoud.
     SoLoud::result result;
@@ -767,6 +746,217 @@ PlayerErrors Player::loadMem(
 
     // Return fileAlreadyLoaded if the unique name hash was already in use,
     // even though we've now loaded a new instance with a unique hash.
+    if (s != nullptr && loadError == noError)
+    {
+        return fileAlreadyLoaded;
+    }
+
+    return loadError;
+}
+
+PlayerErrors Player::joinTwoSources(
+    const std::string &uniqueName,
+    unsigned char *mem1,
+    unsigned char *mem2,
+    int length1,
+    int length2,
+    unsigned int &hash)
+{
+    if (!mInited.load(std::memory_order_acquire))
+        return backendNotInited;
+
+    if (mem1 == nullptr || length1 <= 0 || mem2 == nullptr || length2 <= 0)
+        return invalidParameter;
+
+    hash = 0;
+
+    unsigned int newHash = (int32_t)std::hash<std::string>{}(uniqueName) & 0x7fffffff;
+    /// check if the sound has already been loaded
+    auto const s = findByHash(newHash);
+
+    // If already loaded, generate a unique hash
+    if (s != nullptr)
+    {
+        std::random_device rd;
+        std::mt19937 g(rd());
+        std::uniform_int_distribution<unsigned int> dist(0, 0x7fffffff);
+        do
+        {
+            newHash = dist(g);
+        } while (findByHash(newHash) != nullptr);
+    }
+
+    SoLoud::Wav wav1;
+    SoLoud::result res1 = wav1.loadMem(mem1, length1, false, false);
+    if (res1 != SoLoud::SO_NO_ERROR)
+    {
+        return fromSoLoudError(res1);
+    }
+
+    SoLoud::Wav wav2;
+    SoLoud::result res2 = wav2.loadMem(mem2, length2, false, false);
+    if (res2 != SoLoud::SO_NO_ERROR)
+    {
+        return fromSoLoudError(res2);
+    }
+
+    unsigned int samples1 = wav1.mActualSampleCount > 0 ? wav1.mActualSampleCount : wav1.mSampleCount;
+    unsigned int samples2 = wav2.mActualSampleCount > 0 ? wav2.mActualSampleCount : wav2.mSampleCount;
+    unsigned int ch1 = wav1.mChannels;
+    unsigned int ch2 = wav2.mChannels;
+    float sr1 = wav1.mBaseSamplerate > 0.0f ? wav1.mBaseSamplerate : 44100.0f;
+    float sr2 = wav2.mBaseSamplerate > 0.0f ? wav2.mBaseSamplerate : 44100.0f;
+
+    if (samples1 == 0 || samples2 == 0 || wav1.mData == nullptr || wav2.mData == nullptr)
+    {
+        return fileLoadFailed;
+    }
+
+    // Convert wav1 to mono
+    std::vector<float> mono1(samples1);
+    if (ch1 == 1)
+    {
+        std::memcpy(mono1.data(), wav1.mData, samples1 * sizeof(float));
+    }
+    else
+    {
+        for (unsigned int i = 0; i < samples1; ++i)
+        {
+            float sum = 0.0f;
+            for (unsigned int c = 0; c < ch1; ++c)
+            {
+                sum += wav1.mData[c * wav1.mSampleCount + i];
+            }
+            mono1[i] = sum / static_cast<float>(ch1);
+        }
+    }
+
+    // Convert wav2 to mono
+    std::vector<float> mono2(samples2);
+    if (ch2 == 1)
+    {
+        std::memcpy(mono2.data(), wav2.mData, samples2 * sizeof(float));
+    }
+    else
+    {
+        for (unsigned int i = 0; i < samples2; ++i)
+        {
+            float sum = 0.0f;
+            for (unsigned int c = 0; c < ch2; ++c)
+            {
+                sum += wav2.mData[c * wav2.mSampleCount + i];
+            }
+            mono2[i] = sum / static_cast<float>(ch2);
+        }
+    }
+
+    // Resample both channels to the engine's sample rate (mSampleRate) if needed,
+    // avoiding real-time resampling during playback in the mixer.
+    float targetSampleRate = mSampleRate > 0 ? static_cast<float>(mSampleRate) : (sr1 > 0.0f ? sr1 : 44100.0f);
+
+    auto resampleMono = [](std::vector<float> &mono, unsigned int &sampleCount, float srcRate, float dstRate) {
+        if (std::abs(srcRate - dstRate) <= 0.01f || sampleCount == 0)
+        {
+            return;
+        }
+        ma_uint64 expectedOutFrames = ma_convert_frames(
+            NULL,
+            0,
+            ma_format_f32,
+            1,
+            static_cast<ma_uint32>(dstRate),
+            mono.data(),
+            sampleCount,
+            ma_format_f32,
+            1,
+            static_cast<ma_uint32>(srcRate));
+
+        if (expectedOutFrames == 0)
+        {
+            expectedOutFrames = static_cast<ma_uint64>(
+                std::round(static_cast<double>(sampleCount) * static_cast<double>(dstRate) / static_cast<double>(srcRate)));
+        }
+        if (expectedOutFrames == 0)
+        {
+            expectedOutFrames = 1;
+        }
+
+        std::vector<float> resampled(static_cast<size_t>(expectedOutFrames));
+        ma_uint64 convertedFrames = ma_convert_frames(
+            resampled.data(),
+            expectedOutFrames,
+            ma_format_f32,
+            1,
+            static_cast<ma_uint32>(dstRate),
+            mono.data(),
+            sampleCount,
+            ma_format_f32,
+            1,
+            static_cast<ma_uint32>(srcRate));
+
+        if (convertedFrames > 0)
+        {
+            resampled.resize(static_cast<size_t>(convertedFrames));
+            mono = std::move(resampled);
+            sampleCount = static_cast<unsigned int>(mono.size());
+        }
+    };
+
+    resampleMono(mono1, samples1, sr1, targetSampleRate);
+    resampleMono(mono2, samples2, sr2, targetSampleRate);
+
+    unsigned int maxFrames = std::max(samples1, samples2);
+    if (maxFrames == 0)
+    {
+        return fileLoadFailed;
+    }
+
+    // Allocate stereo buffer: channel 0 (left) followed by channel 1 (right)
+    float *stereoData = new float[maxFrames * 2];
+
+    // Left channel
+    std::memcpy(stereoData, mono1.data(), samples1 * sizeof(float));
+    if (maxFrames > samples1)
+    {
+        std::memset(stereoData + samples1, 0, (maxFrames - samples1) * sizeof(float));
+    }
+
+    // Right channel
+    std::memcpy(stereoData + maxFrames, mono2.data(), samples2 * sizeof(float));
+    if (maxFrames > samples2)
+    {
+        std::memset(stereoData + maxFrames + samples2, 0, (maxFrames - samples2) * sizeof(float));
+    }
+
+    auto newSound = std::make_unique<ActiveSound>();
+    newSound->completeFileName = std::string(uniqueName);
+    hash = newHash;
+    newSound->soundHash = newHash;
+    newSound->sound = std::make_unique<SoLoud::Wav>();
+    newSound->soundType = TYPE_WAV;
+
+    auto *joinedWav = static_cast<SoLoud::Wav *>(newSound->sound.get());
+    SoLoud::result loadRawRes = joinedWav->loadRawWave(
+        stereoData,
+        maxFrames * 2,
+        targetSampleRate,
+        2,     // 2 channels: stereo
+        false, // do not copy
+        true   // take ownership
+    );
+
+    PlayerErrors loadError = fromSoLoudError(loadRawRes);
+    if (loadError != noError)
+    {
+        return loadError;
+    }
+
+    newSound->filters = std::make_unique<Filters>(&soloud, newSound.get(), nullptr);
+    {
+        std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
+        sounds.push_back(std::move(newSound));
+    }
+
     if (s != nullptr && loadError == noError)
     {
         return fileAlreadyLoaded;
@@ -1919,7 +2109,10 @@ PlayerErrors Player::play(
     bool paused,
     bool looping,
     double loopingStartAt,
-    double loopingEndAt)
+    double loopingEndAt,
+    long long loopingStartOffsetAt,
+    long long loopingEndOffsetAt,
+    float scale)
 {
     handle = 0;
 
@@ -1990,10 +2183,31 @@ PlayerErrors Player::play(
         sound->handle.push_back({newHandle, MAX_DOUBLE, paused});
     }
 
+    if (scale != 1.0f && scale > 0.0f)
+    {
+        setRelativePlaySpeed(newHandle, scale);
+    }
+
     if (looping)
     {
-        setLoopPoint(newHandle, loopingStartAt);
-        setLoopEndPoint(newHandle, loopingEndAt);
+        if (loopingStartOffsetAt >= 0 || loopingEndOffsetAt >= 0)
+        {
+            soloud.lockAudioMutex_internal();
+            int ch = soloud.getVoiceFromHandle_internal(newHandle);
+            if (ch >= 0)
+            {
+                if (loopingStartOffsetAt >= 0)
+                    soloud.mVoice[ch]->mLoopStartFrame = loopingStartOffsetAt;
+                if (loopingEndOffsetAt >= 0)
+                    soloud.mVoice[ch]->mLoopEndFrame = loopingEndOffsetAt;
+            }
+            soloud.unlockAudioMutex_internal();
+        }
+        else
+        {
+            setLoopPoint(newHandle, loopingStartAt);
+            setLoopEndPoint(newHandle, loopingEndAt);
+        }
         setLooping(newHandle, true);
     }
 
@@ -2023,7 +2237,13 @@ PlayerErrors Player::playClocked(
     double soundTime,
     unsigned int busId,
     float volume,
-    float pan)
+    float pan,
+    float scale,
+    bool looping,
+    double loopingStartAt,
+    double loopingEndAt,
+    long long loopingStartOffsetAt,
+    long long loopingEndOffsetAt)
 {
     handle = 0;
 
@@ -2060,14 +2280,16 @@ PlayerErrors Player::playClocked(
     if (busId == 0)
     {
         newHandle = soloud.playClocked(
-            soundTime, *sound->sound.get(), volume, pan, 0);
+            soundTime, *sound->sound.get(), volume, pan, 0, scale, looping,
+            loopingStartAt, loopingEndAt, loopingStartOffsetAt, loopingEndOffsetAt);
     }
     else
     {
         auto it = busMap.find(busId);
         if (it != busMap.end())
             newHandle = it->second.bus.playClocked(
-                soundTime, *sound->sound.get(), volume, pan);
+                soundTime, *sound->sound.get(), volume, pan, scale, looping,
+                loopingStartAt, loopingEndAt, loopingStartOffsetAt, loopingEndOffsetAt);
         else
             return PlayerErrors::busIdNotFound;
     }
@@ -2116,6 +2338,21 @@ double Player::getEngineTime()
     return soloud.getEngineTime();
 }
 
+double Player::getPlayheadTime()
+{
+    return soloud.getPlayheadTime();
+}
+
+double Player::getOutputLatency()
+{
+    return soloud.getOutputLatency();
+}
+
+bool Player::isRenderAheadEnabled()
+{
+    return soloud.isRenderAheadEnabled();
+}
+
 PlayerErrors Player::playScheduled(
     unsigned int soundHash,
     unsigned int &handle,
@@ -2123,7 +2360,13 @@ PlayerErrors Player::playScheduled(
     double duration,
     unsigned int busId,
     float volume,
-    float pan)
+    float pan,
+    float scale,
+    bool looping,
+    double loopingStartAt,
+    double loopingEndAt,
+    long long loopingStartOffsetAt,
+    long long loopingEndOffsetAt)
 {
     handle = 0;
 
@@ -2160,14 +2403,16 @@ PlayerErrors Player::playScheduled(
     if (busId == 0)
     {
         newHandle = soloud.playScheduled(
-            atTime, *sound->sound.get(), volume, pan, 0);
+            atTime, *sound->sound.get(), volume, pan, 0, scale, looping,
+            loopingStartAt, loopingEndAt, loopingStartOffsetAt, loopingEndOffsetAt);
     }
     else
     {
         auto it = busMap.find(busId);
         if (it != busMap.end())
             newHandle = it->second.bus.playScheduled(
-                atTime, *sound->sound.get(), volume, pan);
+                atTime, *sound->sound.get(), volume, pan, scale, looping,
+                loopingStartAt, loopingEndAt, loopingStartOffsetAt, loopingEndOffsetAt);
         else
             return PlayerErrors::busIdNotFound;
     }
@@ -2176,10 +2421,13 @@ PlayerErrors Player::playScheduled(
     if (newHandle == 0)
         return failedToStartPlayback;
 
-    sound->handle.push_back({newHandle, MAX_DOUBLE, false});
-    if (duration > 0.0)
+    if (soloud.isValidVoiceHandle(newHandle))
     {
-        soloud.scheduleStopAt(newHandle, atTime + duration);
+        sound->handle.push_back({newHandle, MAX_DOUBLE, false});
+        if (duration > 0.0)
+        {
+            soloud.scheduleStopAt(newHandle, atTime + duration);
+        }
     }
     // Check if this buffer has enough data to be played
     if (sound->soundType == SoundType::TYPE_BUFFER_STREAM)
@@ -2237,6 +2485,50 @@ PlayerErrors Player::stop(unsigned int handle)
     evaluateAudioDeviceIdle();
 
     return noError;
+}
+
+void Player::stopAll()
+{
+    if (!mInited)
+        return;
+
+    // Stop every active voice. SoLoud dispatches the voice-ended callback
+    // for each stopped voice (see Soloud::stopVoice_internal), which removes
+    // the handle from the internal sounds list and notifies Dart. The loaded
+    // sounds are left untouched.
+    soloud.stopAll();
+
+    // No voices remain active: pause the audio device to allow the OS
+    // to properly manage the audio session.
+    pauseEngine();
+}
+
+void Player::stopAudioSource(unsigned int soundHash)
+{
+    if (!mInited)
+        return;
+
+    {
+        std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
+        auto it = std::find_if(sounds.begin(), sounds.end(),
+                               [soundHash](const std::unique_ptr<ActiveSound> &sound)
+                               {
+                                   return sound->soundHash == soundHash;
+                               });
+        if (it == sounds.end())
+            return;
+
+        // Stop every voice playing this source. SoLoud dispatches the
+        // voice-ended callback for each stopped voice (see
+        // Soloud::stopVoice_internal), which removes the handle from the
+        // internal sounds list and notifies Dart. The sound itself stays
+        // loaded.
+        soloud.stopAudioSource(*it->get()->sound);
+    }
+
+    // If no voices remain active, pause the audio device to allow the OS
+    // to properly manage the audio session.
+    pauseEngine();
 }
 
 void Player::removeHandle(unsigned int handle)
@@ -2818,6 +3110,7 @@ void Player::update3dAudio()
 PlayerErrors Player::play3d(
     unsigned int soundHash,
     unsigned int &handle,
+    unsigned int busId,
     float posX,
     float posY,
     float posZ,
@@ -2826,10 +3119,12 @@ PlayerErrors Player::play3d(
     float velZ,
     float volume,
     bool paused,
-    unsigned int busId,
     bool looping,
     double loopingStartAt,
-    double loopingEndAt)
+    double loopingEndAt,
+    long long loopingStartOffsetAt,
+    long long loopingEndOffsetAt,
+    float scale)
 {
     handle = 0;
 
@@ -2907,12 +3202,32 @@ PlayerErrors Player::play3d(
         sound->handle.push_back({newHandle, MAX_DOUBLE, paused});
     }
 
+    if (scale != 1.0f && scale > 0.0f)
+    {
+        setRelativePlaySpeed(newHandle, scale);
+    }
+
     if (looping)
     {
-        setLoopPoint(newHandle, loopingStartAt);
-        setLoopEndPoint(newHandle, loopingEndAt);
+        if (loopingStartOffsetAt >= 0 || loopingEndOffsetAt >= 0)
+        {
+            soloud.lockAudioMutex_internal();
+            int ch = soloud.getVoiceFromHandle_internal(newHandle);
+            if (ch >= 0)
+            {
+                if (loopingStartOffsetAt >= 0)
+                    soloud.mVoice[ch]->mLoopStartFrame = loopingStartOffsetAt;
+                if (loopingEndOffsetAt >= 0)
+                    soloud.mVoice[ch]->mLoopEndFrame = loopingEndOffsetAt;
+            }
+            soloud.unlockAudioMutex_internal();
+        }
+        else
+        {
+            setLoopPoint(newHandle, loopingStartAt);
+            setLoopEndPoint(newHandle, loopingEndAt);
+        }
         setLooping(newHandle, true);
-        seek(newHandle, loopingStartAt);
     }
 
     if (!paused)
@@ -2939,6 +3254,7 @@ PlayerErrors Player::play3dClocked(
     unsigned int soundHash,
     unsigned int &handle,
     double soundTime,
+    unsigned int busId,
     float posX,
     float posY,
     float posZ,
@@ -2946,7 +3262,12 @@ PlayerErrors Player::play3dClocked(
     float velY,
     float velZ,
     float volume,
-    unsigned int busId)
+    float scale,
+    bool looping,
+    double loopingStartAt,
+    double loopingEndAt,
+    long long loopingStartOffsetAt,
+    long long loopingEndOffsetAt)
 {
     handle = 0;
 
@@ -2987,7 +3308,13 @@ PlayerErrors Player::play3dClocked(
             posX, posY, posZ,
             velX, velY, velZ,
             volume,
-            0);
+            0,
+            scale,
+            looping,
+            loopingStartAt,
+            loopingEndAt,
+            loopingStartOffsetAt,
+            loopingEndOffsetAt);
     }
     else
     {
@@ -2998,7 +3325,13 @@ PlayerErrors Player::play3dClocked(
                 *sound->sound.get(),
                 posX, posY, posZ,
                 velX, velY, velZ,
-                volume);
+                volume,
+                scale,
+                looping,
+                loopingStartAt,
+                loopingEndAt,
+                loopingStartOffsetAt,
+                loopingEndOffsetAt);
         else
             return PlayerErrors::busIdNotFound;
     }
@@ -3010,6 +3343,125 @@ PlayerErrors Player::play3dClocked(
     {
         std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
         sound->handle.push_back({newHandle, MAX_DOUBLE, false});
+    }
+    // Check if this buffer has enough data to be played
+    if (sound->soundType == SoundType::TYPE_BUFFER_STREAM)
+    {
+        static_cast<SoLoud::BufferStream *>(sound->sound.get())->checkBuffering(0);
+    }
+    handle = newHandle;
+
+    // Queue the device start rather than performing it inline. The scheduled
+    // delay is expressed in *samples* against mStreamTime, which only advances
+    // while the device is mixing, so a voice created against a stopped clock
+    // keeps its exact sample offset and simply starts counting down once the
+    // device runs. Blocking here to start the device first would only shift
+    // every schedule by the device-start latency -- and put ma_device_start()
+    // back on the calling isolate, which is the #481 stall.
+    resumeEngine();
+
+    return PlayerErrors::noError;
+}
+
+PlayerErrors Player::play3dScheduled(
+    unsigned int soundHash,
+    unsigned int &handle,
+    double atTime,
+    double duration,
+    unsigned int busId,
+    float posX,
+    float posY,
+    float posZ,
+    float velX,
+    float velY,
+    float velZ,
+    float volume,
+    float scale,
+    bool looping,
+    double loopingStartAt,
+    double loopingEndAt,
+    long long loopingStartOffsetAt,
+    long long loopingEndOffsetAt)
+{
+    handle = 0;
+
+    ActiveSound *sound = findByHash(soundHash);
+    if (sound == 0)
+        return soundHashNotFound;
+
+    // A BufferStream using `release` buffer type can only have one instance.
+    if (sound->soundType == SoundType::TYPE_BUFFER_STREAM &&
+        static_cast<SoLoud::BufferStream *>(sound->sound.get())->getBufferingType() == BufferingType::RELEASED &&
+        sound->handle.size() > 0)
+    {
+        return bufferStreamCanBePlayedOnlyOnce;
+    }
+
+    // Check if by playing this sound will exceed the maximum number of voice count. If true, then
+    // check if [soudHash] has other instances playing. If true remove the first and play the new one.
+    // If there are no other instances playing, this sound cannot be played and return an error.
+    // Issue https://github.com/alnitak/flutter_soloud/issues/204
+    if (getActiveVoiceCount_internal() >= getMaxActiveVoiceCount())
+    {
+        if (sound->handle.size() > 0)
+        {
+            stop(sound->handle[0].handle);
+        }
+        else
+        {
+            return PlayerErrors::maxActiveVoiceCountReached;
+        }
+    }
+
+    SoLoud::handle newHandle = 0;
+    if (busId == 0)
+    {
+        newHandle = soloud.play3dScheduled(
+            atTime,
+            *sound->sound.get(),
+            posX, posY, posZ,
+            velX, velY, velZ,
+            volume,
+            0,
+            scale,
+            looping,
+            loopingStartAt,
+            loopingEndAt,
+            loopingStartOffsetAt,
+            loopingEndOffsetAt);
+    }
+    else
+    {
+        auto it = busMap.find(busId);
+        if (it != busMap.end())
+            newHandle = it->second.bus.play3dScheduled(
+                atTime,
+                *sound->sound.get(),
+                posX, posY, posZ,
+                velX, velY, velZ,
+                volume,
+                scale,
+                looping,
+                loopingStartAt,
+                loopingEndAt,
+                loopingStartOffsetAt,
+                loopingEndOffsetAt);
+        else
+            return PlayerErrors::busIdNotFound;
+    }
+
+    // 0 is the invalid-handle sentinel: no voice could be allocated.
+    if (newHandle == 0)
+        return failedToStartPlayback;
+
+    if (soloud.isValidVoiceHandle(newHandle))
+    {
+        std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
+        sound->handle.push_back({newHandle, MAX_DOUBLE, false});
+        if (duration > 0.0)
+        {
+            soloud.scheduleStopAt(newHandle, atTime + duration);
+        }
     }
     // Check if this buffer has enough data to be played
     if (sound->soundType == SoundType::TYPE_BUFFER_STREAM)

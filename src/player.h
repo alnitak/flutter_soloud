@@ -48,10 +48,15 @@ public:
   /// 512 when low latency is needed for example in games.
   /// @param channels 1)mono, 2)stereo 4)quad 6)5.1 8)7.1
   /// @param deviceID the device ID. -1 for default OS output device.
+  /// @param devicePeriodFrames small output device period used when
+  /// [renderAheadFrames] enables the render-ahead ring; 0 = default (512).
+  /// @param renderAheadFrames depth of the engine-owned render-ahead ring in
+  /// frames; 0 (default) disables it and keeps direct-to-device mixing.
   /// @return Returns [PlayerErrors.SO_NO_ERROR] if success.
   PlayerErrors init(unsigned int sampleRate, unsigned int bufferSize,
                     unsigned int channels, int deviceID = -1,
-                    bool lowLatency = true);
+                    bool lowLatency = true, unsigned int devicePeriodFrames = 0,
+                    unsigned int renderAheadFrames = 0);
 
   /// @brief Change the playback device.
   /// @param deviceID the device ID. -1 for default OS output device.
@@ -121,6 +126,22 @@ public:
   /// @param hash return the hash of the sound.
   PlayerErrors loadMem(const std::string &uniqueName, unsigned char *mem,
                        int length, bool loadIntoMem, unsigned int &hash);
+
+  /// @brief Load two sounds stored into [mem1] and [mem2], convert them to mono
+  /// if needed, resample them to the engine's sample rate, and join them into a
+  /// single stereo AudioSource (left and right channels).
+  /// If the lengths are different, the resulting audio length is the max of the two
+  /// and the shorter sound is padded with silence.
+  /// @param uniqueName the unique name of the sound. Used only to have the [hash].
+  /// @param mem1 the left channel audio data buffer.
+  /// @param mem2 the right channel audio data buffer.
+  /// @param length1 the length of [mem1].
+  /// @param length2 the length of [mem2].
+  /// @param hash return the hash of the sound.
+  PlayerErrors joinTwoSources(const std::string &uniqueName,
+                              unsigned char *mem1, unsigned char *mem2,
+                              int length1, int length2,
+                              unsigned int &hash);
 
   /// @brief Set up an audio stream.
   /// @param hash return the hash of the sound.
@@ -404,7 +425,8 @@ public:
                     unsigned int busId = 0,
                     float volume = 1.0f, float pan = 0.0f, bool paused = false,
                     bool looping = false, double loopingStartAt = 0.0,
-                    double loopingEndAt = 0.0);
+                    double loopingEndAt = 0.0, long long loopingStartOffsetAt = -1,
+                    long long loopingEndOffsetAt = -1, float scale = 1.0f);
 
   /// @brief Variant of [play] that takes an additional parameter, the time
   /// offset for the sound.
@@ -421,10 +443,18 @@ public:
   /// @param busId the bus ID to play the sound on. 0 means the main engine.
   /// @param volume 1.0f full volume.
   /// @param pan 0.0f centered.
+  /// @param scale relative playback speed multiplier (1.0f = normal speed).
+  /// @param looping whether the sound loops upon reaching the end.
+  /// @param loopingStartAt time position in seconds to restart playback when looping.
   /// @return the error if any and the [handle] of this new sound.
   PlayerErrors playClocked(unsigned int soundHash, unsigned int &handle,
                            double soundTime, unsigned int busId = 0,
-                           float volume = 1.0f, float pan = 0.0f);
+                           float volume = 1.0f, float pan = 0.0f,
+                           float scale = 1.0f, bool looping = false,
+                           double loopingStartAt = 0.0,
+                           double loopingEndAt = 0.0,
+                           long long loopingStartOffsetAt = -1,
+                           long long loopingEndOffsetAt = -1);
 
   /// @brief Set the number of samples to delay before starting to play
   /// a sound.
@@ -457,6 +487,20 @@ public:
   /// @return the engine time in seconds.
   double getEngineTime();
 
+  /// @brief Engine time of the sample currently reaching the output device:
+  /// the mix clock minus the render-ahead ring depth. Equals [getEngineTime]
+  /// when the render-ahead ring is disabled (the default).
+  /// @return the playhead time in seconds.
+  double getPlayheadTime();
+
+  /// @brief Estimated output latency in seconds (ring depth plus one device
+  /// period). 0 when the render-ahead ring is disabled.
+  double getOutputLatency();
+
+  /// @brief Whether the render-ahead ring (retroactive re-mix prerequisite)
+  /// is active. Set at [init] time via `renderAheadFrames`.
+  bool isRenderAheadEnabled();
+
   /// @brief Start playing a sound at an absolute engine time (see
   /// [getEngineTime]), with sample accuracy.
   ///
@@ -472,11 +516,19 @@ public:
   /// @param busId the bus ID to play the sound on. 0 means the main engine.
   /// @param volume 1.0f full volume.
   /// @param pan 0.0f centered.
+  /// @param scale relative playback speed multiplier (1.0f = normal speed).
+  /// @param looping whether the sound loops upon reaching the end.
+  /// @param loopingStartAt time position in seconds to restart playback when looping.
   /// @return the error if any and the [handle] of this new sound.
   PlayerErrors playScheduled(unsigned int soundHash, unsigned int &handle,
                              double atTime, double duration = 0.0,
                              unsigned int busId = 0,
-                             float volume = 1.0f, float pan = 0.0f);
+                             float volume = 1.0f, float pan = 0.0f,
+                             float scale = 1.0f, bool looping = false,
+                             double loopingStartAt = 0.0,
+                             double loopingEndAt = 0.0,
+                             long long loopingStartOffsetAt = -1,
+                             long long loopingEndOffsetAt = -1);
 
   /// @brief Stop a sound at an absolute engine time (see [getEngineTime]).
   ///
@@ -506,6 +558,18 @@ public:
   /// @return [noError] if success, [backendNotInited] if the engine is not
   /// initialized, [soundHandleNotFound] if [handle] is not valid.
   PlayerErrors stop(unsigned int handle);
+
+  /// @brief Stop all playing voices without disposing the loaded sounds.
+  /// Each stopped voice triggers the voice-ended callback, which removes
+  /// the handle from the internal sounds list and notifies Dart.
+  void stopAll();
+
+  /// @brief Stop all voices playing the sound identified by [soundHash]
+  /// without disposing the sound. Each stopped voice triggers the
+  /// voice-ended callback, which removes the handle from the internal
+  /// sounds list and notifies Dart.
+  /// @param soundHash hash of the sound.
+  void stopAudioSource(unsigned int soundHash);
 
   /// @brief Remove the unique [handle] form the list of internal sounds.
   /// @param handle handle of the sound.
@@ -814,12 +878,14 @@ public:
   /// @param loopingEndAt If greater than zero, loop before this time. Zero
   /// uses the natural end of the stream.
   /// @return the handle of the sound, 0 if error.
-  PlayerErrors play3d(unsigned int soundHash, unsigned int &handle, float posX,
-                      float posY, float posZ, float velX = 0.0f,
-                      float velY = 0.0f, float velZ = 0.0f, float volume = 1.0f,
-                      bool paused = 0, unsigned int busId = 0,
+  PlayerErrors play3d(unsigned int soundHash, unsigned int &handle,
+                      unsigned int busId = 0,
+                      float posX = 0.0f, float posY = 0.0f, float posZ = 0.0f,
+                      float velX = 0.0f, float velY = 0.0f, float velZ = 0.0f,
+                      float volume = 1.0f, bool paused = 0,
                       bool looping = false, double loopingStartAt = 0.0,
-                      double loopingEndAt = 0.0);
+                      double loopingEndAt = 0.0, long long loopingStartOffsetAt = -1,
+                      long long loopingEndOffsetAt = -1, float scale = 1.0f);
 
   /// @brief play3dClocked() is the 3d version of the playClocked() call.
   ///
@@ -831,16 +897,57 @@ public:
   /// @param soundHash the unique hash of the sound to play.
   /// @param handle the handle of this new sound.
   /// @param soundTime your app's "physics time", in seconds.
+  /// @param busId the bus ID to play the sound on. 0 means the main engine.
   /// @param posX, posY, posZ the audio source position coordinates.
   /// @param velX, velY, velZ the audio source velocity.
   /// @param volume 1.0f full volume.
-  /// @param busId the bus ID to play the sound on. 0 means the main engine.
+  /// @param scale relative playback speed multiplier (1.0f = normal speed).
   /// @return the error if any and the [handle] of this new sound.
   PlayerErrors play3dClocked(unsigned int soundHash, unsigned int &handle,
-                             double soundTime, float posX, float posY,
-                             float posZ, float velX = 0.0f, float velY = 0.0f,
-                             float velZ = 0.0f, float volume = 1.0f,
-                             unsigned int busId = 0);
+                             double soundTime, unsigned int busId = 0,
+                             float posX = 0.0f, float posY = 0.0f,
+                             float posZ = 0.0f, float velX = 0.0f,
+                             float velY = 0.0f, float velZ = 0.0f,
+                             float volume = 1.0f, float scale = 1.0f,
+                             bool looping = false, double loopingStartAt = 0.0,
+                             double loopingEndAt = 0.0,
+                             long long loopingStartOffsetAt = -1,
+                             long long loopingEndOffsetAt = -1);
+
+  /// @brief play3dScheduled() is the 3d version of the playScheduled() call.
+  ///
+  /// Instead of panning like with the "2d" version of the call, the 3d
+  /// version requires 3d position and optionally velocity vector. Like its
+  /// 2d version, this one starts playing a sound at an absolute engine time
+  /// (see [getEngineTime]), with sample accuracy.
+  /// @param soundHash the unique hash of the sound to play.
+  /// @param handle the handle of this new sound.
+  /// @param atTime the absolute engine time, in seconds, at which the sound
+  /// should start.
+  /// @param duration if greater than zero, the sound is automatically
+  /// stopped at [atTime] + [duration].
+  /// @param busId the bus ID to play the sound on. 0 means the main engine.
+  /// @param posX, posY, posZ the audio source position coordinates.
+  /// @param velX, velY, velZ the audio source velocity.
+  /// @param volume 1.0f full volume.
+  /// @param scale relative playback speed multiplier (1.0f = normal speed).
+  /// @param looping whether the sound loops upon reaching the end.
+  /// @param loopingStartAt time position in seconds to restart playback when looping.
+  /// @param loopingEndAt optional exclusive end point for looping.
+  /// @param loopingStartOffsetAt optional exact frame offset to restart looping from.
+  /// @param loopingEndOffsetAt optional exact frame offset to loop before.
+  /// @return the error if any and the [handle] of this new sound.
+  PlayerErrors play3dScheduled(unsigned int soundHash, unsigned int &handle,
+                               double atTime, double duration = 0.0,
+                               unsigned int busId = 0,
+                               float posX = 0.0f, float posY = 0.0f,
+                               float posZ = 0.0f, float velX = 0.0f,
+                               float velY = 0.0f, float velZ = 0.0f,
+                               float volume = 1.0f, float scale = 1.0f,
+                               bool looping = false, double loopingStartAt = 0.0,
+                               double loopingEndAt = 0.0,
+                               long long loopingStartOffsetAt = -1,
+                               long long loopingEndOffsetAt = -1);
 
   /// You can set and get the current value of the speed of
   /// sound width the get3dSoundSpeed() and set3dSoundSpeed() functions.

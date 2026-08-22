@@ -30,6 +30,12 @@ distribution.
 #include <unistd.h>
 #endif
 
+#ifdef __EMSCRIPTEN__
+#include <cstring>
+#include <pthread.h>
+#include "soloud_thread.h"
+#endif
+
 #if !defined(WITH_MINIAUDIO)
 
 namespace SoLoud
@@ -71,6 +77,7 @@ namespace SoLoud
 #include <thread>
 #include <condition_variable>
 #include <mutex>
+#include <atomic>
 #include "soloud_common.h"
 #include "../../../../mixeroutput/mixer_output.h"
 #include "../../../../device_lifecycle_test_hooks.h"
@@ -427,9 +434,88 @@ namespace SoLoud
         }
         first_call = false;
         SoLoud::Soloud *soloud = (SoLoud::Soloud *)pDevice->pUserData;
+#ifdef __EMSCRIPTEN__
+        const unsigned int outChannels = pDevice->playback.channels;
+        // Stale-callback guard: on the web the miniaudio device is a global,
+        // re-used across engine sessions, and a stale AudioWorklet (or a
+        // ScriptProcessorNode callback) from a previous session can still
+        // fire while the engine is being torn down or re-initialized.
+        // pUserData then points at the new, not yet fully initialized engine
+        // (or, while the backend global gSoloud is cleared, at nothing
+        // valid), and mixing would touch half-initialized or freed engine
+        // state. Emit silence instead.
+        if (soloud == nullptr ||
+            soloud != gSoloud.load(std::memory_order_acquire) ||
+            soloud->mEngineReady == 0)
+        {
+            std::memset(pOutput, 0,
+                        frameCount * (outChannels != 0 ? outChannels : 1) *
+                            sizeof(float));
+            return;
+        }
+        // On the multi-threaded (AudioWorklet) build this callback runs on
+        // the AudioWorklet rendering thread, where blocking is forbidden:
+        // a contended lock that lowers to a futex wait aborts the whole
+        // module (futex waits are illegal on AudioWorklet threads). The main
+        // browser thread takes the audio mutex for every engine API call
+        // (play, pause, getters...), so contention is routine. Try to take
+        // the mutex instead; on contention emit silence for this block and
+        // retry on the next one. On the MT build Thread::createMutex returns
+        // a custom recursive spin mutex (see soloud_thread.cpp): musl's
+        // pthread mutexes are unusable on the AudioWorklet thread because
+        // __pthread_self() is null there, so their owner bookkeeping both
+        // fails to exclude other threads and misdetects recursive re-entry.
+        // The custom mutex is recursive, so when the try-lock succeeds the
+        // lock/unlock inside mix() simply re-enters it. On the main thread
+        // (single-threaded build) the try-lock always succeeds because the
+        // mutex can only be held by this same thread, so behavior there is
+        // unchanged.
+        if (SoLoud::Thread::tryLockMutex(soloud->mAudioThreadMutex) != 0)
+        {
+            std::memset(pOutput, 0,
+                        frameCount * (outChannels != 0 ? outChannels : 1) *
+                            sizeof(float));
+            return;
+        }
         soloud->mix((float *)pOutput, frameCount);
-
         MixerOutput::instance().onAudioData((float *)pOutput, frameCount);
+        // Use the SoLoud unlock (not raw pthread_mutex_unlock) so the
+        // ended-voice queue is drained with correct bookkeeping.
+        soloud->unlockAudioMutex_internal();
+#else
+        if (soloud->isRenderAheadEnabled())
+        {
+            // Render-ahead ring path: the engine has already mixed
+            // renderAheadFrames into its own ring; this callback only copies
+            // out and tops the ring back up. The ring read is lock-free SPSC,
+            // so the device never blocks behind the audio mutex.
+            soloud->renderRingTopUp_internal();
+            unsigned int got =
+                soloud->mRenderRing.read((float *)pOutput, frameCount);
+            if (got < frameCount)
+            {
+                // Underrun: emit silence for the gap. Recoverable on the next
+                // callback -- the top-up above keeps producing.
+                static bool underrunLogged = false;
+                if (!underrunLogged)
+                {
+                    underrunLogged = true;
+                    soloud_platform_log("soloud_miniaudio_audiomixer: render ring underrun (%u/%u frames)\n", got, frameCount);
+                }
+                unsigned int outCh = pDevice->playback.channels;
+                std::memset((float *)pOutput + (size_t)got * outCh, 0,
+                            (size_t)(frameCount - got) * outCh * sizeof(float));
+            }
+            // The capture tap sits after the ring read, so it always reflects
+            // what was actually played, including any retroactive rewrite.
+            MixerOutput::instance().onAudioData((float *)pOutput, frameCount);
+        }
+        else
+        {
+            soloud->mix((float *)pOutput, frameCount);
+            MixerOutput::instance().onAudioData((float *)pOutput, frameCount);
+        }
+#endif
     }
 
     static void soloud_miniaudio_deinit(SoLoud::Soloud *aSoloud)
@@ -540,6 +626,7 @@ namespace SoLoud
 
         if (aSoloud == nullptr)
             return UNKNOWN_ERROR;
+
         if (!gDeviceInitialized.load(std::memory_order_acquire))
             return UNKNOWN_ERROR;
 
@@ -669,6 +756,19 @@ namespace SoLoud
         return (unsigned int)ma_device_get_state(&gDevice);
     }
 
+    // Engine mix quantum to hand to postinit_internal. With the render-ahead
+    // ring the device period is decoupled from the engine quantum, so the
+    // engine must get the *configured* quantum (aBuffer), not the device
+    // period miniaudio actually negotiated. Without the ring the historical
+    // behavior (actual device period) is kept.
+    static unsigned int postinit_buffer_size(SoLoud::Soloud *aSoloud,
+                                             unsigned int aConfiguredBuffer,
+                                             unsigned int aDeviceInternalPeriod)
+    {
+        return aSoloud->isRenderAheadEnabled() ? aConfiguredBuffer
+                                               : aDeviceInternalPeriod;
+    }
+
     result miniaudio_init(SoLoud::Soloud *aSoloud, unsigned int aFlags, unsigned int aSamplerate, unsigned int aBuffer, unsigned int aChannels, void *pPlaybackInfos_id)
     {
         std::unique_lock<std::recursive_mutex> operationLock(gDeviceOperationMutex);
@@ -680,7 +780,8 @@ namespace SoLoud
         {
             deviceConfig.playback.pDeviceID = (ma_device_id*)pPlaybackInfos_id;
         }
-        deviceConfig.periodSizeInFrames = aBuffer;
+        deviceConfig.periodSizeInFrames =
+            aSoloud->isRenderAheadEnabled() ? aSoloud->mDevicePeriodFrames : aBuffer;
         deviceConfig.playback.format    = ma_format_f32;
         deviceConfig.playback.channels  = aChannels;
         deviceConfig.sampleRate         = aSamplerate;
@@ -738,7 +839,7 @@ namespace SoLoud
             return UNKNOWN_ERROR;
         }
         gDeviceInitialized = true;
-        aSoloud->postinit_internal(gDevice.sampleRate, gDevice.playback.internalPeriodSizeInFrames, aFlags, gDevice.playback.channels);
+        aSoloud->postinit_internal(gDevice.sampleRate, postinit_buffer_size(aSoloud, aBuffer, gDevice.playback.internalPeriodSizeInFrames), aFlags, gDevice.playback.channels);
         ma_result startResult = ma_device_start(&gDevice);
         if (startResult != MA_SUCCESS) {
             soloud_platform_log("miniaudio_init: ma_device_start failed with error %d\n", startResult);
@@ -782,7 +883,7 @@ namespace SoLoud
             return UNKNOWN_ERROR;
         }
         gDeviceInitialized = true;
-        aSoloud->postinit_internal(gDevice.sampleRate, gDevice.playback.internalPeriodSizeInFrames, aFlags, gDevice.playback.channels);
+        aSoloud->postinit_internal(gDevice.sampleRate, postinit_buffer_size(aSoloud, aBuffer, gDevice.playback.internalPeriodSizeInFrames), aFlags, gDevice.playback.channels);
         ma_result startResult = ma_device_start(&gDevice);
         if (startResult != MA_SUCCESS) {
             soloud_platform_log("miniaudio_init: ma_device_start failed with error %d\n", startResult);
@@ -796,12 +897,32 @@ namespace SoLoud
         
 #else
         // Linux and other platforms
-        if (ma_device_init(NULL, &deviceConfig, &gDevice) != MA_SUCCESS)
+        ma_result deviceInitResult = ma_device_init(NULL, &deviceConfig, &gDevice);
+        if (deviceInitResult != MA_SUCCESS)
         {
+            soloud_platform_log("miniaudio_init: ma_device_init failed with error %d\n", deviceInitResult);
             return UNKNOWN_ERROR;
         }
         gDeviceInitialized = true;
-        aSoloud->postinit_internal(gDevice.sampleRate, gDevice.playback.internalPeriodSizeInFrames, aFlags, gDevice.playback.channels);
+#ifdef __EMSCRIPTEN__
+        // On the web the engine buffer size must match what miniaudio's
+        // fixed-size callback aggregation actually delivers to the data
+        // callback, which is `periodSizeInFrames` from the device config
+        // (aBuffer). With the AudioWorklet backend the async worklet startup
+        // rewrites the descriptor and shrinks `internalPeriodSizeInFrames` to
+        // the 128-frame render quantum; using that value would misreport the
+        // engine buffer size (it drives scheduling, timing and buffer sizing
+        // throughout the engine) while the data callback is invoked with
+        // aBuffer frames. With the ScriptProcessorNode backend
+        // aBuffer == internalPeriodSizeInFrames, so this is a no-op there.
+        // When aBuffer is 0 (AUTO) both the aggregation and SoLoud fall back
+        // to the internal period, so use it.
+        const unsigned int postinitBufferSize =
+            aBuffer != 0 ? aBuffer : gDevice.playback.internalPeriodSizeInFrames;
+        aSoloud->postinit_internal(gDevice.sampleRate, postinitBufferSize, aFlags, gDevice.playback.channels);
+#else
+        aSoloud->postinit_internal(gDevice.sampleRate, postinit_buffer_size(aSoloud, aBuffer, gDevice.playback.internalPeriodSizeInFrames), aFlags, gDevice.playback.channels);
+#endif
         ma_result startResult = ma_device_start(&gDevice);
         if (startResult != MA_SUCCESS) {
             soloud_platform_log("miniaudio_init: ma_device_start failed with error %d\n", startResult);
@@ -922,7 +1043,12 @@ namespace SoLoud
 
         ma_device_config deviceConfig = ma_device_config_init(ma_device_type_playback);
         deviceConfig.playback.pDeviceID = (ma_device_id *)pPlaybackInfos_id;
-        deviceConfig.periodSizeInFrames = currentSoloud->mBufferSize;
+        // With the render-ahead ring the device period is the small configured
+        // one, decoupled from the engine mix quantum (mBufferSize).
+        deviceConfig.periodSizeInFrames =
+            currentSoloud->isRenderAheadEnabled()
+                ? currentSoloud->mDevicePeriodFrames
+                : currentSoloud->mBufferSize;
         deviceConfig.playback.format    = ma_format_f32;
         deviceConfig.playback.channels  = currentSoloud->mChannels;
         deviceConfig.sampleRate         = currentSoloud->mSamplerate;

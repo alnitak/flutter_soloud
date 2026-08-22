@@ -36,10 +36,10 @@ void main() {
       reason: 'could not find `typedef enum AudioDeviceState` in src/enums.h',
     );
 
-    final names = RegExp(r'^\s*(audioDevice[A-Za-z]+)\s*=\s*(\d+)',
-            multiLine: true)
-        .allMatches(block!.group(1)!)
-        .toList();
+    final names = RegExp(
+      r'^\s*(audioDevice[A-Za-z]+)\s*=\s*(\d+)',
+      multiLine: true,
+    ).allMatches(block!.group(1)!).toList();
 
     expect(
       names.length,
@@ -65,7 +65,8 @@ void main() {
     expect(
       names.map((m) => m.group(1)).toList(),
       expectedOrder.keys.toList(),
-      reason: 'the C++ AudioDeviceState members changed; update this test and '
+      reason:
+          'the C++ AudioDeviceState members changed; update this test and '
           'lib/src/enums.dart together',
     );
 

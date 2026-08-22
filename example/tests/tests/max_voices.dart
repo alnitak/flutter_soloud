@@ -9,7 +9,8 @@ Future<OutputBuffer> testMaxVoices() async {
   final strBuf = OutputBuffer();
   await initialize();
 
-  var explosion = await SoLoud.instance.loadAsset('assets/audio/8_bit_mentality.mp3');
+  var explosion =
+      await SoLoud.instance.loadAsset('assets/audio/8_bit_mentality.mp3');
 
   SoLoud.instance.setGlobalVolume(0.02);
 
@@ -38,7 +39,8 @@ Future<OutputBuffer> testMaxVoices() async {
 
   /// 2. Test withh 100 voices
   // Reload the sound after disposing all sources
-  explosion = await SoLoud.instance.loadAsset('assets/audio/8_bit_mentality.mp3');
+  explosion =
+      await SoLoud.instance.loadAsset('assets/audio/8_bit_mentality.mp3');
   SoLoud.instance.setMaxActiveVoiceCount(100);
 
   assert(
@@ -63,7 +65,8 @@ Future<OutputBuffer> testMaxVoices() async {
 
   /// 3. Test withh 1000 voices
   // Reload the sound after disposing all sources
-  explosion = await SoLoud.instance.loadAsset('assets/audio/8_bit_mentality.mp3');
+  explosion =
+      await SoLoud.instance.loadAsset('assets/audio/8_bit_mentality.mp3');
   SoLoud.instance.setMaxActiveVoiceCount(1000);
 
   assert(

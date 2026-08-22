@@ -16,6 +16,7 @@
 #include "soloud/src/core/soloud.cpp"
 #include "soloud/src/core/soloud_audiosource.cpp"
 #include "soloud/src/core/soloud_bus.cpp"
+#include "soloud/src/core/soloud_checkpoint.cpp"
 #include "soloud/src/core/soloud_core_3d.cpp"
 #include "soloud/src/core/soloud_core_basicops.cpp"
 #include "soloud/src/core/soloud_core_faderops.cpp"

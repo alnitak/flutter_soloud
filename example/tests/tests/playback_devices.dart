@@ -80,6 +80,8 @@ Future<OutputBuffer> testPlaybackDevices() async {
   // Invalid native selectors are rejected before the current device is
   // touched, so they must not disrupt the playback started above.
   // `PlaybackDevice` cannot express these IDs, hence the direct binding call.
+  // Note: on web the binding can complete asynchronously (the multi-threaded
+  // WASM build routes changeDevice through an async ccall), hence the await.
   final belowSentinel = await SoLoudController().soLoudFFI.changeDevice(-2);
   assert(
     belowSentinel == PlayerErrors.invalidParameter,
