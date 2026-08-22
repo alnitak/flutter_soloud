@@ -158,7 +158,8 @@ Future<OutputBuffer> testLatency() async {
     final deviationsMs = <double>[];
     const maxAllowedDeviationMs = 20.0;
 
-    output.writeln('\nEvaluating first $playCount peak intervals against trigger times:');
+    output.writeln(
+        '\nEvaluating first $playCount peak intervals against trigger times:');
     for (var idx = 1; idx < firstPeaks.length; idx++) {
       final interval = firstPeaks[idx].timeMs - firstPeaks[idx - 1].timeMs;
       final expectedInterval =
@@ -191,7 +192,8 @@ Future<OutputBuffer> testLatency() async {
       '(${maxAllowedDeviationMs.toStringAsFixed(2)} ms). Retroactive re-mixing latency test failed!',
     );
 
-    output.writeln('SUCCESS: All peak intervals within expected low-latency bounds!');
+    output.writeln(
+        'SUCCESS: All peak intervals within expected low-latency bounds!');
     // ignore: avoid_print
     print(output);
 
@@ -234,7 +236,8 @@ List<_DetectedPeak> _detectPeaks(
   while (i < n) {
     final sample = samples[i].abs();
     if (sample >= threshold) {
-      final windowEnd = (i + localWindowSamples < n) ? i + localWindowSamples : n;
+      final windowEnd =
+          (i + localWindowSamples < n) ? i + localWindowSamples : n;
       var maxIdx = i;
       var maxVal = sample;
       for (var j = i; j < windowEnd; j++) {

@@ -1336,7 +1336,6 @@ interface class SoLoud {
   ///
   /// Returns a [Stream] that yields captured audio data. The stream is closed
   /// when [stopMixerOutputStream] is called or when the engine is deinited.
-  @experimental
   Stream<Uint8List> startMixerOutputStream({
     MixerOutputFormat format = MixerOutputFormat.pcmF32le,
     int sampleRate = -1,
@@ -1354,11 +1353,9 @@ interface class SoLoud {
   );
 
   /// Stops the mixer output capture stream and releases associated resources.
-  @experimental
   void stopMixerOutputStream() => _mixerOutputStreamManager.stop();
 
   /// Whether mixer output capture is currently active.
-  @experimental
   bool get isMixerOutputStreamRunning => _mixerOutputStreamManager.isRunning;
 
   /// Returns the current 44-byte WAV header for the active mixer output
@@ -1375,7 +1372,6 @@ interface class SoLoud {
   ///
   /// Returns an empty [Uint8List] if WAV capture is not active or the header
   /// is unavailable.
-  @experimental
   Uint8List getMixerOutputWavHeader() {
     return _mixerOutputStreamManager.getWavHeader();
   }

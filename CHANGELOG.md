@@ -1,11 +1,11 @@
-##### 4.1.8 (X Xxx 2026)
+##### 4.2.0 (X Xxx 2026)
 > **TL;DR**:
 > - **Render-ahead ring (native)**: Ultra-low keypress-to-sound latency via retroactive mixing into a lookahead ring buffer (mostly real-time audio for `playScheduled` and `playClocked` calls which play in the current audio frame, e.g. 10 ms latency).
 > - **Device management & async control**: Non-blocking device start/stop, async `changeDevice()`, and configurable idle timeouts to save power/wakelocks.
 > - **Web AudioWorklet**: Dedicated audio thread rendering on Web (immune to UI/GC jank) when cross-origin isolated. Use `<script src="assets/packages/flutter_soloud/web/init_module.dart.js" defer></script>` in `index.html` to automatically detect which module can be used on the web server.
 > - **Lifecycle fixes**: Native engine lifecycle is now tied to `FlutterEngine` to fix hot-restart leaks.
 > - **Extended playback controls**: Added `scale`, `looping`, `loopinStart`, and `loopingEnd` to all `play*` methods.
-
+---
 - added experimental render-ahead ring (native only): `SoLoud.init()` accepts `devicePeriodFrames` and `renderAheadFrames`. When enabled, the engine mixes ahead into an internal ring and mixes new `play()` calls retroactively, reducing keypress-to-sound latency down to the device period even with a large `bufferSize`. New getters: `getPlayheadTime()`, `getOutputLatency()`, and `isRenderAheadEnabled`.
 - added `play3dScheduled()` and `Bus.play3dScheduled()` to schedule 3D spatial sounds with sample accuracy at an absolute engine time.
 - added the `scale`, `looping`, `loopinStart`, and `loopingEnd` parameters to all the `play*` methods

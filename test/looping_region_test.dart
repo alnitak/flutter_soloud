@@ -50,10 +50,7 @@ void main() {
 
     test('rejects negative start offset or end offset <= start offset', () {
       expect(
-        () => validateLoopRegion(
-          start: Duration.zero,
-          startOffset: -5,
-        ),
+        () => validateLoopRegion(start: Duration.zero, startOffset: -5),
         throwsArgumentError,
       );
       expect(
