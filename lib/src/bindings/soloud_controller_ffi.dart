@@ -17,8 +17,7 @@ class SoLoudController {
       nativeLib = ffi.DynamicLibrary.open('flutter_soloud_plugin.dll');
     } else if (Platform.isMacOS) {
       try {
-        final lib = ffi.DynamicLibrary.process();
-        lib.lookup('isInited');
+        final lib = ffi.DynamicLibrary.process()..lookup('isInited');
         nativeLib = lib;
       } catch (_) {
         final candidatePaths = [

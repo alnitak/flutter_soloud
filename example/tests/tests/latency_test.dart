@@ -1,3 +1,5 @@
+// ignore_for_file: avoid_redundant_argument_values
+
 import 'dart:async';
 import 'dart:typed_data';
 
@@ -15,7 +17,7 @@ import 'common.dart';
 /// - `bufferSize`: 8192 frames (~185.8 ms at 44.1 kHz)
 /// - `renderAheadFrames`: 8192 frames
 /// - `devicePeriodFrames`: 512 frames (~11.6 ms at 44.1 kHz)
-/// - Sound source: `assets/audio/tic-1.wav` loaded into a [BufferStream] with
+/// - Sound source: `assets/audio/tic-1.wav` loaded into a `BufferStream` with
 ///   [BufferingType.preserved].
 ///
 /// With retroactive re-mixing, calling `playScheduled(sound, Duration.zero)`
@@ -97,7 +99,9 @@ Future<OutputBuffer> testLatency() async {
       final engineTime = SoLoud.instance.getEngineTime();
       final handle = SoLoud.instance.playScheduled(sound, Duration.zero);
       output.writeln(
-          'Iteration $i: elapsed=${elapsed}ms, engineTime=${engineTime.inMilliseconds}ms, handle=$handle');
+        'Iteration $i: elapsed=${elapsed}ms, '
+        'engineTime=${engineTime.inMilliseconds}ms, handle=$handle',
+      );
       triggerTimes.add(elapsed);
       assert(!handle.isError, 'playScheduled failed on iteration $i');
 
@@ -134,7 +138,8 @@ Future<OutputBuffer> testLatency() async {
     );
     final durationSec = floatSamples.length / sampleRate;
     output.writeln(
-      'Read ${floatSamples.length} samples (${durationSec.toStringAsFixed(3)} s) from in-memory capture',
+      'Read ${floatSamples.length} samples '
+      '(${durationSec.toStringAsFixed(3)} s) from in-memory capture',
     );
 
     // 5. In-memory peak detection and interval analysis
@@ -143,7 +148,9 @@ Future<OutputBuffer> testLatency() async {
     for (var idx = 0; idx < peaks.length; idx++) {
       final p = peaks[idx];
       output.writeln(
-        '  Peak #${idx + 1}: sample ${p.sampleIndex} at ${p.timeMs.toStringAsFixed(2)} ms (amp=${p.amplitude.toStringAsFixed(3)})',
+        '  Peak #${idx + 1}: sample ${p.sampleIndex} at '
+        '${p.timeMs.toStringAsFixed(2)} ms '
+        '(amp=${p.amplitude.toStringAsFixed(3)})',
       );
     }
 
@@ -159,7 +166,8 @@ Future<OutputBuffer> testLatency() async {
     const maxAllowedDeviationMs = 20.0;
 
     output.writeln(
-        '\nEvaluating first $playCount peak intervals against trigger times:');
+      '\nEvaluating first $playCount peak intervals against trigger times:',
+    );
     for (var idx = 1; idx < firstPeaks.length; idx++) {
       final interval = firstPeaks[idx].timeMs - firstPeaks[idx - 1].timeMs;
       final expectedInterval =
@@ -169,7 +177,8 @@ Future<OutputBuffer> testLatency() async {
       deviationsMs.add(deviation);
       output.writeln(
         '  Gap $idx -> ${idx + 1}: ${interval.toStringAsFixed(2)} ms '
-        '(trigger delta: ${expectedInterval.toStringAsFixed(1)} ms, deviation: ${deviation.toStringAsFixed(2)} ms)',
+        '(trigger delta: ${expectedInterval.toStringAsFixed(1)} ms, '
+        'deviation: ${deviation.toStringAsFixed(2)} ms)',
       );
     }
 
@@ -180,20 +189,24 @@ Future<OutputBuffer> testLatency() async {
         ? intervalsMs.reduce((a, b) => a + b) / intervalsMs.length
         : 0.0;
 
-    output.writeln('\nSummary:');
-    output.writeln('  Average interval: ${avgInterval.toStringAsFixed(2)} ms');
-    output.writeln(
-      '  Maximum deviation: ${maxDev.toStringAsFixed(2)} ms (threshold: ${maxAllowedDeviationMs.toStringAsFixed(2)} ms)',
-    );
+    output
+      ..writeln('\nSummary:')
+      ..writeln('  Average interval: ${avgInterval.toStringAsFixed(2)} ms')
+      ..writeln(
+        '  Maximum deviation: ${maxDev.toStringAsFixed(2)} ms '
+        '(threshold: ${maxAllowedDeviationMs.toStringAsFixed(2)} ms)',
+      );
 
     assert(
       maxDev <= maxAllowedDeviationMs,
-      'Maximum interval deviation (${maxDev.toStringAsFixed(2)} ms) exceeds tolerance '
-      '(${maxAllowedDeviationMs.toStringAsFixed(2)} ms). Retroactive re-mixing latency test failed!',
+      'Maximum interval deviation (${maxDev.toStringAsFixed(2)} ms) '
+      'exceeds tolerance (${maxAllowedDeviationMs.toStringAsFixed(2)} ms). '
+      'Retroactive re-mixing latency test failed!',
     );
 
     output.writeln(
-        'SUCCESS: All peak intervals within expected low-latency bounds!');
+      'SUCCESS: All peak intervals within expected low-latency bounds!',
+    );
     // ignore: avoid_print
     print(output);
 
@@ -210,15 +223,15 @@ Future<OutputBuffer> testLatency() async {
 
 /// Represents a detected audio pulse peak in the PCM capture.
 class _DetectedPeak {
-  final int sampleIndex;
-  final double amplitude;
-  final double timeMs;
-
   const _DetectedPeak({
     required this.sampleIndex,
     required this.amplitude,
     required this.timeMs,
   });
+
+  final int sampleIndex;
+  final double amplitude;
+  final double timeMs;
 }
 
 /// Detects sound pulse peaks in a mono Float32List audio buffer in memory.

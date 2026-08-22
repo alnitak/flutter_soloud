@@ -1,4 +1,5 @@
-/// Validates a half-open looping region `[start, end)` or frame offsets `[startOffset, endOffset)`.
+/// Validates a half-open looping region `[start, end)` or frame
+/// offsets `[startOffset, endOffset)`.
 ///
 /// A `null` [end] means that the source's natural end is used.
 /// [startOffset] and [endOffset] are optional exact frame offsets.

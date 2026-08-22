@@ -2220,16 +2220,27 @@ interface class SoLoud {
   /// `null` end uses the natural end of the [sound]. An end beyond the source
   /// duration also loops at the natural end. Looping requires a source that
   /// can seek back to the start, so [BufferingType.released] is unsupported.
+  /// 
+  /// [loopingStartOffsetAt] optional exact frame offset to restart
+  /// looping from.
+  /// 
+  /// [loopingEndOffsetAt] optional exact frame offset to loop before.
+  /// 
+  /// Note: frame offset looping and Duration-based looping are
+  /// mutually exclusive.
+  /// 
+  /// [scale] relative playback speed multiplier (1.0 = normal speed).
   ///
-  /// **When to use [play] vs [playClocked]:** [play] starts the sound at the
-  /// next output buffer boundary, so it has the lowest possible latency
-  /// (0–1 buffer) and supports [paused] and [looping]. The downside is that
-  /// the start time is quantized to buffer boundaries: sounds launched
-  /// rapidly within the same buffer all start at the same sample and
-  /// "clump" together, and periodic sounds (eg a metronome) get audibly
-  /// irregular spacing, especially with large buffer sizes. Use [playClocked]
-  /// instead when the *timing* of the sounds matters (scheduled or rhythmic
-  /// playback); use [play] for one-shot, reactive sounds where "as soon as
+  /// **When to use [play] vs [playClocked | playScheduled]:** [play] starts
+  /// the sound at the next output buffer boundary, so it has the lowest
+  /// possible latency (0–1 buffer) and supports [paused] and [looping].
+  /// The downside is that the start time is quantized to buffer boundaries:
+  /// sounds launched rapidly within the same buffer all start at the same
+  /// sample and "clump" together, and periodic sounds (eg a metronome)
+  /// get audibly irregular spacing, especially with large buffer sizes.
+  /// Use [playClocked | playScheduled] instead when the *timing* of the
+  /// sounds matters (scheduled or rhythmic playback);
+  /// use [play] for one-shot, reactive sounds where "as soon as
   /// possible" is the right answer.
   ///
   /// This method is synchronous and returns the [SoundHandle] of the new sound
@@ -2245,6 +2256,12 @@ interface class SoLoud {
   /// sound will not play. This is not an error: no exception is thrown and the
   /// returned handle does not address any voice.
   ///
+  /// An unpaused voice requests output-device startup only after it has been
+  /// created successfully, and that startup runs off the UI thread. This method
+  /// therefore does not report output-device failures; with [paused] set to
+  /// `true` no device is requested at all. Use [startAudioDevice] when you need
+  /// to observe a device-start failure.
+  ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   ///
   /// Throws [SoLoudBufferStreamCanBePlayedOnlyOnceCppException] if we try to
@@ -2255,18 +2272,6 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudFailedToStartPlaybackCppException] if the audio engine
   /// could not create a voice for this sound.
-  ///
-  /// An unpaused voice requests output-device startup only after it has been
-  /// created successfully, and that startup runs off the UI thread. This method
-  /// therefore does not report output-device failures; with [paused] set to
-  /// `true` no device is requested at all. Use [startAudioDevice] when you need
-  /// to observe a device-start failure.
-  /// [loopingStartOffsetAt] optional exact frame offset to restart looping from.
-  /// [loopingEndOffsetAt] optional exact frame offset to loop before.
-  /// Note: frame offset looping and Duration-based looping are mutually exclusive.
-  /// [scale] relative playback speed multiplier (1.0 = normal speed).
-  ///
-  /// The rest of the parameters are described in the method documentation.
   SoundHandle play(
     AudioSource sound, {
     int busId = 0,
@@ -2373,19 +2378,6 @@ interface class SoLoud {
   ///
   /// The rest of the parameters are equivalent to [play].
   ///
-  /// Returns the [SoundHandle] of the new sound instance.
-  ///
-  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
-  ///
-  /// Throws [SoLoudBufferStreamCanBePlayedOnlyOnceCppException] if we try to
-  /// play a BufferStream using `release` buffer type more than once.
-  ///
-  /// Throws [SoLoudSoundHashNotFoundDartException] if the given [sound]
-  /// is not found.
-  ///
-  /// Throws [SoLoudFailedToStartPlaybackCppException] if the audio engine
-  /// could not create a voice for this sound.
-  ///
   /// The schedule is expressed in samples against the engine clock, which only
   /// advances while the output device is mixing, so a voice scheduled against a
   /// stopped device keeps its exact offset and starts counting down once the
@@ -2399,11 +2391,29 @@ interface class SoLoud {
   /// [loopingStartAt] time position to restart playback when looping.
   ///
   /// [loopingEndAt] optional exclusive end point for looping.
-  /// [loopingStartOffsetAt] optional exact frame offset to restart looping from.
+  /// 
+  /// [loopingStartOffsetAt] optional exact frame offset to restart
+  /// looping from.
+  /// 
   /// [loopingEndOffsetAt] optional exact frame offset to loop before.
-  /// Note: frame offset looping and Duration-based looping are mutually exclusive.
+  /// 
+  /// Note: frame offset looping and Duration-based looping are mutually
+  /// exclusive.
   ///
   /// The rest of the parameters are equivalent to [play].
+  ///
+  /// Returns the [SoundHandle] of the new sound instance.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Throws [SoLoudBufferStreamCanBePlayedOnlyOnceCppException] if we try to
+  /// play a BufferStream using `release` buffer type more than once.
+  ///
+  /// Throws [SoLoudSoundHashNotFoundDartException] if the given [sound]
+  /// is not found.
+  ///
+  /// Throws [SoLoudFailedToStartPlaybackCppException] if the audio engine
+  /// could not create a voice for this sound.
   SoundHandle playClocked(
     AudioSource sound,
     Duration soundTime, {
@@ -2620,6 +2630,22 @@ interface class SoLoud {
   ///
   /// The rest of the parameters are equivalent to [play].
   ///
+  /// The schedule is expressed in samples against the engine clock, which only
+  /// advances while the output device is mixing, so a voice scheduled against a
+  /// stopped device keeps its exact offset and starts counting down once the
+  /// device runs. Device startup is therefore queued rather than performed
+  /// inline, and this method does not report output-device failures — listen to
+  /// [audioDeviceStartFailures] for those.
+  /// 
+  /// [loopingEndAt] optional exclusive end point for looping.
+  /// 
+  /// [loopingStartOffsetAt] optional exact frame offset to restart
+  /// looping from.
+  /// 
+  /// [loopingEndOffsetAt] optional exact frame offset to loop before.
+  /// Note: frame offset looping and Duration-based looping are mutually
+  /// exclusive.
+  ///
   /// Returns the [SoundHandle] of the new sound instance. The handle can be
   /// used to cancel a still-pending sound with [stop].
   ///
@@ -2633,17 +2659,6 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudFailedToStartPlaybackCppException] if the audio engine
   /// could not create a voice for this sound.
-  ///
-  /// The schedule is expressed in samples against the engine clock, which only
-  /// advances while the output device is mixing, so a voice scheduled against a
-  /// stopped device keeps its exact offset and starts counting down once the
-  /// device runs. Device startup is therefore queued rather than performed
-  /// inline, and this method does not report output-device failures — listen to
-  /// [audioDeviceStartFailures] for those.
-  /// [loopingEndAt] optional exclusive end point for looping.
-  /// [loopingStartOffsetAt] optional exact frame offset to restart looping from.
-  /// [loopingEndOffsetAt] optional exact frame offset to loop before.
-  /// Note: frame offset looping and Duration-based looping are mutually exclusive.
   SoundHandle playScheduled(
     AudioSource sound,
     Duration atTime, {
@@ -4189,8 +4204,6 @@ interface class SoLoud {
   /// (scheduled or rhythmic playback); use [play3d] for one-shot, reactive
   /// 3D sounds where the lowest latency is preferred.
   ///
-  /// Returns the [SoundHandle] of this new sound.
-  ///
   /// **Note**: by default, the maximum number of sounds you can play is 16 and
   /// it can be changed with [setMaxActiveVoiceCount]. If this limit is reached
   /// and other instances of the same sound are played, the oldest one will be
@@ -4199,6 +4212,23 @@ interface class SoLoud {
   /// sound will not play. This is not an error: no exception is thrown and the
   /// returned handle does not address any voice.
   ///
+  /// An unpaused voice requests output-device startup only after it has been
+  /// created successfully, and that startup runs off the UI thread. This method
+  /// therefore does not report output-device failures; with [paused] set to
+  /// `true` no device is requested at all. Use [startAudioDevice] when you need
+  /// to observe a device-start failure.
+  /// 
+  /// [scale] relative playback speed multiplier (1.0 = normal speed).
+  /// 
+  /// [loopingStartOffsetAt] optional exact frame offset to restart
+  /// looping from.
+  /// 
+  /// [loopingEndOffsetAt] optional exact frame offset to loop before.
+  /// Note: frame offset looping and Duration-based looping are
+  /// mutually exclusive.
+  ///
+  /// Returns the [SoundHandle] of this new sound.
+  ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   ///
   /// Throws [SoLoudBufferStreamCanBePlayedOnlyOnceCppException] if we try to
@@ -4206,16 +4236,6 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudFailedToStartPlaybackCppException] if the audio engine
   /// could not create a voice for this sound.
-  ///
-  /// An unpaused voice requests output-device startup only after it has been
-  /// created successfully, and that startup runs off the UI thread. This method
-  /// therefore does not report output-device failures; with [paused] set to
-  /// `true` no device is requested at all. Use [startAudioDevice] when you need
-  /// to observe a device-start failure.
-  /// [scale] relative playback speed multiplier (1.0 = normal speed).
-  /// [loopingStartOffsetAt] optional exact frame offset to restart looping from.
-  /// [loopingEndOffsetAt] optional exact frame offset to loop before.
-  /// Note: frame offset looping and Duration-based looping are mutually exclusive.
   SoundHandle play3d(
     AudioSource sound,
     double posX,
@@ -4309,19 +4329,6 @@ interface class SoLoud {
   ///
   /// The rest of the parameters are equivalent to [play3d].
   ///
-  /// Returns the [SoundHandle] of this new sound.
-  ///
-  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
-  ///
-  /// Throws [SoLoudBufferStreamCanBePlayedOnlyOnceCppException] if we try to
-  /// play a BufferStream using `release` buffer type more than once.
-  ///
-  /// Throws [SoLoudSoundHashNotFoundDartException] if the given [sound]
-  /// is not found.
-  ///
-  /// Throws [SoLoudFailedToStartPlaybackCppException] if the audio engine
-  /// could not create a voice for this sound.
-  ///
   /// The schedule is expressed in samples against the engine clock, which only
   /// advances while the output device is mixing, so a voice scheduled against a
   /// stopped device keeps its exact offset and starts counting down once the
@@ -4336,10 +4343,25 @@ interface class SoLoud {
   ///
   /// [loopingEndAt] optional exclusive end point for looping.
   ///
-  /// [loopingStartOffsetAt] optional exact frame offset to restart looping from.
+  /// [loopingStartOffsetAt] optional exact frame offset to restart
+  /// looping from.
   ///
   /// [loopingEndOffsetAt] optional exact frame offset to loop before.
-  /// Note: frame offset looping and Duration-based looping are mutually exclusive.
+  /// Note: frame offset looping and Duration-based looping are mutually
+  /// exclusive.
+  ///
+  /// Returns the [SoundHandle] of this new sound.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Throws [SoLoudBufferStreamCanBePlayedOnlyOnceCppException] if we try to
+  /// play a BufferStream using `release` buffer type more than once.
+  ///
+  /// Throws [SoLoudSoundHashNotFoundDartException] if the given [sound]
+  /// is not found.
+  ///
+  /// Throws [SoLoudFailedToStartPlaybackCppException] if the audio engine
+  /// could not create a voice for this sound.
   SoundHandle play3dClocked(
     AudioSource sound,
     Duration soundTime,
