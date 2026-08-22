@@ -105,8 +105,14 @@ PullBufferStreamInstance::~PullBufferStreamInstance() {
 unsigned int PullBufferStreamInstance::getAudio(float *aBuffer,
                                                 unsigned int aSamplesToRead,
                                                 unsigned int aBufferSize) {
+  if (aBuffer == nullptr || mChannels == 0 || aSamplesToRead == 0) {
+    return 0;
+  }
+
   if (mParent == nullptr || !mParent->isValid()) {
-    std::memset(aBuffer, 0, sizeof(float) * aSamplesToRead * mChannels);
+    for (unsigned int ch = 0; ch < mChannels; ++ch) {
+      std::memset(aBuffer + ch * aBufferSize, 0, sizeof(float) * aSamplesToRead);
+    }
     return 0;
   }
 
@@ -136,7 +142,9 @@ unsigned int PullBufferStreamInstance::getAudio(float *aBuffer,
   // more data. Do not call checkBuffering here: it runs on the audio thread
   // and would deadlock when calling getPause/getPosition.
   if (samplesToRead == 0) {
-    std::memset(aBuffer, 0, sizeof(float) * aSamplesToRead * mChannels);
+    for (unsigned int ch = 0; ch < mChannels; ++ch) {
+      std::memset(aBuffer + ch * aBufferSize, 0, sizeof(float) * aSamplesToRead);
+    }
     mParent->requestMoreDataIfNeeded();
     return 0;
   }

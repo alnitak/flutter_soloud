@@ -416,36 +416,14 @@ extern "C"
   /// on the thread that produced the event.
   static void voiceEndedBody(unsigned int *handle, unsigned int generation)
   {
-    bool isHandleFound = false;
     if (player != nullptr)
     {
-      isHandleFound = player->findByHandle(*handle) != nullptr;
-      if (isHandleFound)
-        player->removeHandle(*handle);
-      else
-        // If the handle is not found, for sure it is already
-        // removed by a previous call to `voiceEndedCallback`.
-        // For example triggering a `stop` in a `Future` after the sound is ended
-        // or vice versa.
-        return;
+      player->removeHandle(*handle);
     }
 
-    // Here the internal flutter_soloud handle, doesn't exist anymore, whether
-    // this callback is called directly from `stop`, or whether it is called from
-    // an event in `Soloud::stopVoice_internal (unsigned int aVoice)`.
-
 #ifdef __EMSCRIPTEN__
-    // Calling JavaScript from C/C++
-    // https://emscripten.org/docs/porting/connecting_cpp_and_javascript/Interacting-with-code.html#interacting-with-code-call-javascript-from-native
-    // emscripten_run_script("voiceEndedCallbackJS('1234')");
     sendToWorkerGen("voiceEndedCallback", *handle, generation);
 #endif
-
-    // So, if the handle was already found before (henche the handle is not
-    // found), the callback to Dart has been already called. If this is the fist
-    // time this handle is found, the callback to Dart must be called.
-    if (!isHandleFound)
-      return;
 
     // The `dartVoiceEndedCallback` is not set on Web.
     // Held across the call, not just the load: a retirement running
@@ -904,13 +882,19 @@ extern "C"
   /// [bufferSize] the audio buffer size. Usually is 2048, but can be also 512
   /// when low latency is needed for example in games. [channels] 1=mono,
   /// 2=stereo, 4=quad, 6=5.1, 8=7.1.
+  /// [devicePeriodFrames] small output device period used when
+  /// [renderAheadFrames] enables the render-ahead ring; 0 = default (512).
+  /// [renderAheadFrames] depth of the engine-owned render-ahead ring in
+  /// frames; 0 disables it and keeps direct-to-device mixing.
   ///
   /// Returns [PlayerErrors.noError] if success.
   FFI_PLUGIN_EXPORT enum PlayerErrors initEngine(int deviceID,
                                                  unsigned int sampleRate,
                                                  unsigned int bufferSize,
                                                  unsigned int channels,
-                                                 unsigned int lowLatency)
+                                                 unsigned int lowLatency,
+                                                 unsigned int devicePeriodFrames,
+                                                 unsigned int renderAheadFrames)
   {
     std::lock_guard<std::mutex> guard(init_deinit_mutex);
     std::lock_guard<std::mutex> guard_load(loadMutex);
@@ -925,9 +909,9 @@ extern "C"
       player = std::make_unique<Player>();
 
     player.get()->setStateChangedCallback(stateChangedCallback);
-    PlayerErrors res = (PlayerErrors)player.get()->init(sampleRate, bufferSize,
-                                                        channels, deviceID,
-                                                        lowLatency != 0);
+    PlayerErrors res = (PlayerErrors)player.get()->init(
+        sampleRate, bufferSize, channels, deviceID, lowLatency != 0,
+        devicePeriodFrames, renderAheadFrames);
     if (res != noError)
     {
       engine_initialized.store(false, std::memory_order_release);
@@ -1761,6 +1745,23 @@ extern "C"
                                                loadIntoMem, *hash);
   }
 
+  /// Load 2 audios, convert to mono if needed, and join them into a single stereo AudioSource.
+  /// [hash] return the hash of the sound.
+  FFI_PLUGIN_EXPORT enum PlayerErrors joinTwoSources(char *uniqueName,
+                                                     unsigned char *mem1,
+                                                     unsigned char *mem2,
+                                                     int length1,
+                                                     int length2,
+                                                     unsigned int *hash)
+  {
+    std::lock_guard<std::mutex> guard_init(init_deinit_mutex);
+    std::lock_guard<std::mutex> guard_load(loadMutex);
+    if (player.get() == nullptr || !player.get()->isInited())
+      return backendNotInited;
+    return (PlayerErrors)player.get()->joinTwoSources(uniqueName, mem1, mem2,
+                                                      length1, length2, *hash);
+  }
+
   /// Set up an audio stream.
   ///
   /// [maxBufferSize] the max buffer size in **bytes**. When adding audio data
@@ -2193,43 +2194,33 @@ extern "C"
 
   /// Play already loaded sound identified by [hash]
   ///
-  /// [hash] the unique sound hash of a sound
+  /// Play an already loaded sound.
+  ///
+  /// [soundHash] the unique sound hash of a sound
+  /// [busId] the bus ID to play the sound on. 0 means the main engine.
   /// [volume] 1.0f full volume
   /// [pan] 0.0f centered
   /// [paused] 0 not paused
-  /// [handle] pointer to the handle for this new sound
   /// [looping] whether to start the sound in looping state.
   /// [loopingStartAt] If looping is enabled, the loop point is, by default,
   /// the start of the stream. The loop start point can be set with this
-  /// parameter.
+  /// [loopingStartOffsetAt] Optional exact frame offset to restart looping from (-1 = inactive).
+  /// [loopingEndOffsetAt] Optional exact frame offset to loop before (-1 = inactive).
+  /// [scale] relative playback speed multiplier (1.0f = normal speed).
+  /// [handle] pointer to the handle for this new sound
   /// Return the error if any and a new [handle] of this sound
-  FFI_PLUGIN_EXPORT enum PlayerErrors play(unsigned int soundHash, unsigned int busId, float volume,
-                                           float pan, bool paused, bool looping,
-                                           double loopingStartAt,
-                                           unsigned int *handle)
-  {
-    if (player.get() == nullptr || !player.get()->isInited())
-      return backendNotInited;
-    PlayerErrors result = player.get()->play(soundHash, *handle, busId, volume, pan,
-                                             paused, looping, loopingStartAt, 0);
-    return result;
-  }
-
-  /// Play an already loaded sound with an optional bounded loop region.
-  ///
-  /// This additive entry point preserves the ABI of [play].
-  /// [loopingEndAt] If greater than zero, loop before this time. Zero uses the
-  /// natural end of the stream.
-  FFI_PLUGIN_EXPORT enum PlayerErrors playWithLoopPoints(
+  FFI_PLUGIN_EXPORT enum PlayerErrors play(
       unsigned int soundHash, unsigned int busId, float volume, float pan,
       bool paused, bool looping, double loopingStartAt, double loopingEndAt,
-      unsigned int *handle)
+      int loopingStartOffsetAt, int loopingEndOffsetAt,
+      float scale, unsigned int *handle)
   {
     if (player.get() == nullptr || !player.get()->isInited())
       return backendNotInited;
-    PlayerErrors result = player.get()->play(soundHash, *handle, busId, volume, pan,
-                                             paused, looping, loopingStartAt,
-                                             loopingEndAt);
+    PlayerErrors result = player.get()->play(
+        soundHash, *handle, busId, volume, pan,
+        paused, looping, loopingStartAt, loopingEndAt,
+        loopingStartOffsetAt, loopingEndOffsetAt, scale);
     return result;
   }
 
@@ -2248,16 +2239,27 @@ extern "C"
   /// [volume] 1.0f full volume
   /// [pan] 0.0f centered
   /// [busId] the bus ID to play the sound on. 0 means the main engine.
+  /// [scale] relative playback speed multiplier (1.0f = normal speed).
+  /// [looping] whether the sound loops upon reaching the end.
+  /// [loopingStartAt] time position in seconds to restart playback when looping.
+  /// [loopingEndAt] If greater than zero, loop before this time.
+  /// [loopingStartOffsetAt] Optional exact frame offset to restart looping from (-1 = inactive).
+  /// [loopingEndOffsetAt] Optional exact frame offset to loop before (-1 = inactive).
   /// [handle] pointer to the handle for this new sound
   /// Return the error if any and a new [handle] of this sound
   FFI_PLUGIN_EXPORT enum PlayerErrors playClocked(
       unsigned int soundHash, double soundTime, unsigned int busId,
-      float volume, float pan, unsigned int *handle)
+      float volume, float pan, float scale, bool looping,
+      double loopingStartAt, double loopingEndAt,
+      int loopingStartOffsetAt, int loopingEndOffsetAt,
+      unsigned int *handle)
   {
     if (player.get() == nullptr || !player.get()->isInited())
       return backendNotInited;
     PlayerErrors result = player.get()->playClocked(
-        soundHash, *handle, soundTime, busId, volume, pan);
+        soundHash, *handle, soundTime, busId, volume, pan, scale,
+        looping, loopingStartAt, loopingEndAt,
+        loopingStartOffsetAt, loopingEndOffsetAt);
     return result;
   }
 
@@ -2315,6 +2317,34 @@ extern "C"
     return player.get()->getEngineTime();
   }
 
+  /// Engine time of the sample currently reaching the output device: the mix
+  /// clock (see [getEngineTime]) minus the render-ahead ring depth. Equals
+  /// [getEngineTime] when the render-ahead ring is disabled (the default).
+  FFI_PLUGIN_EXPORT double getPlayheadTime()
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return 0.0;
+    return player.get()->getPlayheadTime();
+  }
+
+  /// Estimated output latency in seconds (render-ahead ring depth plus one
+  /// device period). 0 when the render-ahead ring is disabled.
+  FFI_PLUGIN_EXPORT double getOutputLatency()
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return 0.0;
+    return player.get()->getOutputLatency();
+  }
+
+  /// Whether the render-ahead ring (the retroactive re-mix prerequisite) is
+  /// active. Enabled at init time via `initEngine`'s `renderAheadFrames`.
+  FFI_PLUGIN_EXPORT unsigned int isRenderAheadEnabled()
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return 0;
+    return player.get()->isRenderAheadEnabled() ? 1 : 0;
+  }
+
   /// Start playing a sound at an absolute engine time (see [getEngineTime]),
   /// with sample accuracy.
   ///
@@ -2330,16 +2360,26 @@ extern "C"
   /// [busId] the bus ID to play the sound on. 0 means the main engine.
   /// [volume] 1.0f full volume
   /// [pan] 0.0f centered
+  /// [scale] relative playback speed multiplier (1.0f = normal speed)
+  /// [looping] whether the sound loops upon reaching the end
+  /// [loopingStartAt] time position in seconds to restart playback when looping
   /// [handle] pointer to the handle for this new sound
   /// Return the error if any and a new [handle] of this sound
+  /// [loopingStartOffsetAt] Optional exact frame offset to restart looping from (-1 = inactive).
+  /// [loopingEndOffsetAt] Optional exact frame offset to loop before (-1 = inactive).
   FFI_PLUGIN_EXPORT enum PlayerErrors playScheduled(
       unsigned int soundHash, double atTime, double duration,
-      unsigned int busId, float volume, float pan, unsigned int *handle)
+      unsigned int busId, float volume, float pan, float scale,
+      bool looping, double loopingStartAt, double loopingEndAt,
+      int loopingStartOffsetAt, int loopingEndOffsetAt,
+      unsigned int *handle)
   {
     if (player.get() == nullptr || !player.get()->isInited())
       return backendNotInited;
     PlayerErrors result = player.get()->playScheduled(
-        soundHash, *handle, atTime, duration, busId, volume, pan);
+        soundHash, *handle, atTime, duration, busId, volume, pan, scale,
+        looping, loopingStartAt, loopingEndAt,
+        loopingStartOffsetAt, loopingEndOffsetAt);
     return result;
   }
 
@@ -2392,7 +2432,6 @@ extern "C"
     const enum PlayerErrors error = player.get()->stop(handle);
     if (error != noError)
       return error;
-    voiceEndedCallback(&handle);
     return noError;
   }
 
@@ -3466,9 +3505,9 @@ extern "C"
       return backendNotInited;
 
     PlayerErrors result =
-        player.get()->play3d(soundHash, *handle, posX, posY, posZ, velX, velY,
-                             velZ, volume, paused, busId, looping, loopingStartAt,
-                             0);
+        player.get()->play3d(soundHash, *handle, busId, posX, posY, posZ, velX, velY,
+                             velZ, volume, paused, looping, loopingStartAt,
+                             0, -1, -1, 1.0f);
     return result;
   }
 
@@ -3482,16 +3521,17 @@ extern "C"
       float posX, float posY, float posZ,
       float velX, float velY, float velZ,
       float volume, bool paused, bool looping, double loopingStartAt,
-      double loopingEndAt, unsigned int *handle)
+      double loopingEndAt, int loopingStartOffsetAt, int loopingEndOffsetAt, float scale, unsigned int *handle)
   {
     if (player.get() == nullptr || !player.get()->isInited() ||
         player.get()->getSoundsCount() == 0)
       return backendNotInited;
 
     PlayerErrors result =
-        player.get()->play3d(soundHash, *handle, posX, posY, posZ, velX, velY,
-                             velZ, volume, paused, busId, looping, loopingStartAt,
-                             loopingEndAt);
+        player.get()->play3d(soundHash, *handle, busId, posX, posY, posZ, velX, velY,
+                             velZ, volume, paused, looping, loopingStartAt,
+                             loopingEndAt, loopingStartOffsetAt,
+                             loopingEndOffsetAt, scale);
     return result;
   }
 
@@ -3515,16 +3555,66 @@ extern "C"
       unsigned int soundHash, double soundTime, unsigned int busId,
       float posX, float posY, float posZ,
       float velX, float velY, float velZ,
-      float volume, unsigned int *handle)
+      float volume, float scale, bool looping,
+      double loopingStartAt, double loopingEndAt,
+      int loopingStartOffsetAt, int loopingEndOffsetAt,
+      unsigned int *handle)
   {
     if (player.get() == nullptr || !player.get()->isInited() ||
         player.get()->getSoundsCount() == 0)
       return backendNotInited;
 
     PlayerErrors result =
-        player.get()->play3dClocked(soundHash, *handle, soundTime,
+        player.get()->play3dClocked(soundHash, *handle, soundTime, busId,
                                     posX, posY, posZ, velX, velY, velZ,
-                                    volume, busId);
+                                    volume, scale, looping,
+                                    loopingStartAt, loopingEndAt,
+                                    loopingStartOffsetAt, loopingEndOffsetAt);
+    return result;
+  }
+
+  /// play3dScheduled() is the 3d version of the playScheduled() call.
+  ///
+  /// Instead of panning like with the "2d" version of the call, the 3d
+  /// version requires 3d position and optionally velocity vector. Like its
+  /// 2d version, this one starts playing a sound at an absolute engine time
+  /// (see [getEngineTime]), with sample accuracy.
+  ///
+  /// [soundHash] the unique sound hash of a sound
+  /// [atTime] the absolute engine time, in seconds, at which the sound should start.
+  /// [duration] if greater than zero, the sound is automatically stopped at [atTime] + [duration].
+  /// [busId] the bus ID to play the sound on. 0 means the main engine.
+  /// [posX], [posY], [posZ] are the audio source position coordinates.
+  /// [velX], [velY], [velZ] are the audio source velocity.
+  /// [volume] 1.0f full volume
+  /// [scale] relative playback speed multiplier (1.0f = normal speed)
+  /// [looping] whether the sound loops upon reaching the end
+  /// [loopingStartAt] time position in seconds to restart playback when looping
+  /// [loopingEndAt] optional exclusive end point for looping
+  /// [loopingStartOffsetAt] Optional exact frame offset to restart looping from (-1 = inactive).
+  /// [loopingEndOffsetAt] Optional exact frame offset to loop before (-1 = inactive).
+  /// [handle] pointer to the handle for this new sound
+  /// Return the error if any and a new [handle] of this sound
+  FFI_PLUGIN_EXPORT PlayerErrors play3dScheduled(
+      unsigned int soundHash, double atTime, double duration,
+      unsigned int busId,
+      float posX, float posY, float posZ,
+      float velX, float velY, float velZ,
+      float volume, float scale, bool looping,
+      double loopingStartAt, double loopingEndAt,
+      int loopingStartOffsetAt, int loopingEndOffsetAt,
+      unsigned int *handle)
+  {
+    if (player.get() == nullptr || !player.get()->isInited() ||
+        player.get()->getSoundsCount() == 0)
+      return backendNotInited;
+
+    PlayerErrors result =
+        player.get()->play3dScheduled(soundHash, *handle, atTime, duration, busId,
+                                      posX, posY, posZ, velX, velY, velZ,
+                                      volume, scale, looping,
+                                      loopingStartAt, loopingEndAt,
+                                      loopingStartOffsetAt, loopingEndOffsetAt);
     return result;
   }
 

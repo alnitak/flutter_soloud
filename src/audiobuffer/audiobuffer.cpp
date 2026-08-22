@@ -65,6 +65,9 @@ static void bsOnBufferingMainThread(int isBuffering, int handle, double time,
 
 static void clearPlanarBuffer(float *buffer, unsigned int frames,
                               unsigned int stride, unsigned int channels) {
+  if (buffer == nullptr || frames == 0 || channels == 0) {
+    return;
+  }
   for (unsigned int channel = 0; channel < channels; ++channel) {
     memset(buffer + channel * stride, 0, sizeof(float) * frames);
   }
@@ -74,13 +77,53 @@ BufferStreamInstance::BufferStreamInstance(BufferStream *aParent) {
   mParent = aParent;
   mOffset = 0;
   samplerateAlreadySet = false;
+  if (mParent != nullptr && mParent->autoTypeSamplerate != 0.f) {
+    mBaseSamplerate = mParent->autoTypeSamplerate;
+    mSamplerate = mParent->autoTypeSamplerate;
+    mChannels = mParent->autoTypeChannels;
+    samplerateAlreadySet = true;
+  }
 }
 
 BufferStreamInstance::~BufferStreamInstance() {}
 
+// ###### flutter_soloud local patch (retroactive re-mix) ######
+class BufferStreamSourceStateSnapshot : public SoLoud::SourceStateSnapshot {
+public:
+  unsigned int mOffset;
+  bool samplerateAlreadySet;
+};
+
+SoLoud::SourceStateSnapshot *BufferStreamInstance::captureSourceState() {
+  // Only PRESERVED streams keep the consumed data around to re-read.
+  if (mParent == nullptr ||
+      mParent->mBuffer.bufferingType != BufferingType::PRESERVED) {
+    return nullptr;
+  }
+  auto *s = new BufferStreamSourceStateSnapshot();
+  s->mOffset = mOffset;
+  s->samplerateAlreadySet = samplerateAlreadySet;
+  return s;
+}
+
+void BufferStreamInstance::restoreSourceState(
+    SoLoud::SourceStateSnapshot *aState) {
+  auto *s = static_cast<BufferStreamSourceStateSnapshot *>(aState);
+  if (s == nullptr) {
+    return;
+  }
+  mOffset = s->mOffset;
+  samplerateAlreadySet = s->samplerateAlreadySet;
+}
+
+
 unsigned int BufferStreamInstance::getAudio(float *aBuffer,
                                             unsigned int aSamplesToRead,
                                             unsigned int aBufferSize) {
+  if (aBuffer == nullptr || mChannels == 0 || aSamplesToRead == 0) {
+    return 0;
+  }
+
   // Check if parent is still valid before accessing it
   if (mParent == nullptr || !mParent->isValid()) {
     clearPlanarBuffer(aBuffer, aSamplesToRead, aBufferSize, mChannels);
@@ -116,9 +159,11 @@ unsigned int BufferStreamInstance::getAudio(float *aBuffer,
   // stream position. The buffering state will be checked when addData() or
   // setDataIsEnded() is called.
   if (samplesToRead <= 0) {
-    memset(aBuffer, 0, sizeof(float) * aSamplesToRead * mChannels);
+    clearPlanarBuffer(aBuffer, aSamplesToRead, aBufferSize, mChannels);
     if (mParent->mBuffer.bufferingType == BufferingType::PRESERVED) {
-      mStreamPosition = mOffset / (mBaseSamplerate * mChannels);
+      mStreamPosition = (mBaseSamplerate > 0.0f)
+                            ? mOffset / (mBaseSamplerate * mChannels)
+                            : 0.0;
     } else {
       mStreamPosition = 0;
     }
@@ -127,11 +172,16 @@ unsigned int BufferStreamInstance::getAudio(float *aBuffer,
 
   // Zero any frames we won't fill, then copy the active frames.
   if (samplesToRead < static_cast<int>(aSamplesToRead)) {
-    memset(aBuffer, 0, sizeof(float) * aSamplesToRead * mChannels);
+    clearPlanarBuffer(aBuffer, aSamplesToRead, aBufferSize, mChannels);
   }
 
   float *buffer = reinterpret_cast<float *>(mParent->mBuffer.buffer.data() +
                                             mParent->mBuffer.getReadOffset());
+  if (buffer == nullptr) {
+    clearPlanarBuffer(aBuffer, aSamplesToRead, aBufferSize, mChannels);
+    return 0;
+  }
+
   if (mChannels == 1) {
     // Optimization: if we have a mono audio source, we can just copy all the
     // data in one go.
@@ -161,7 +211,9 @@ unsigned int BufferStreamInstance::getAudio(float *aBuffer,
   } else {
     mOffset += samplesToRead * mChannels;
     // For PRESERVED type, streamPosition advances with the offset.
-    mStreamPosition = mOffset / (mBaseSamplerate * mChannels);
+    mStreamPosition = (mBaseSamplerate > 0.0f)
+                          ? mOffset / (mBaseSamplerate * mChannels)
+                          : 0.0;
   }
 
   return samplesToRead;
@@ -488,7 +540,8 @@ void BufferStream::checkBuffering(unsigned int afterAddingBytesCount) {
     // was already buffered before this addData() call. The unpause below will
     // then wait until at least [bufferingTimeNeeds] seconds of audio are
     // available ahead of position.
-    if (!dataIsEnded && pos >= currBufferTime && !isPaused) {
+    if (mBuffer.bufferingType == BufferingType::RELEASED &&
+        !dataIsEnded && pos >= currBufferTime && !isPaused) {
       mParent->handle[i].bufferingTime = currBufferTime + addedDataTime;
       // This is an automatic buffering pause, so the user-paused flag should
       // not prevent a future buffering unpause.

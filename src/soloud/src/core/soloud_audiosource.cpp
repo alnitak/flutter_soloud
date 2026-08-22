@@ -87,6 +87,8 @@ namespace SoLoud
 		mLoopCount = 0;
 		mLoopPoint = 0;
 		mLoopEndPoint = 0;
+		mLoopStartFrame = -1;
+		mLoopEndFrame = -1;
 		mSourceSamplePosition = 0;
 		for (i = 0; i < FILTERS_PER_STREAM; i++)
 		{

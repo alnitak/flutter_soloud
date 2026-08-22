@@ -43,6 +43,11 @@ namespace SoLoud
 		virtual result rewind();
 		virtual result seek(double aSeconds, float* mScratch, unsigned int mScratchSize);
 		virtual bool hasEnded();
+		// ###### flutter_soloud local patch (retroactive re-mix) ######
+		// The wav data is fully decoded in memory, so the consumption state is
+		// exactly mOffset; snapshot/restore make the source re-mixable.
+		virtual SourceStateSnapshot *captureSourceState();
+		virtual void restoreSourceState(SourceStateSnapshot *aState);
 	};
 
 	class Wav : public AudioSource

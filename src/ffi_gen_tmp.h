@@ -253,3 +253,11 @@ FFI_PLUGIN_EXPORT enum PlayerErrors startAudioDevice();
 /// Get the current state of the audio output device. Returns
 /// audioDeviceUninitialized if the engine is not initialized.
 FFI_PLUGIN_EXPORT enum AudioDeviceState getAudioDeviceState();
+
+/// Load 2 audios, convert to mono if needed, and join them into a single stereo AudioSource.
+FFI_PLUGIN_EXPORT enum PlayerErrors joinTwoSources(char *uniqueName,
+                                                   unsigned char *mem1,
+                                                   unsigned char *mem2,
+                                                   int length1,
+                                                   int length2,
+                                                   unsigned int *hash);

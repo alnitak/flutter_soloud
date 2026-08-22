@@ -167,6 +167,12 @@ abstract class FlutterSoLoud {
   /// [bufferSize] the audio buffer size. Usually is 2048, but can be also be
   /// lowered if less latency is needed.
   /// [channels] mono, stereo, quad, 5.1, 7.1.
+  /// [devicePeriodFrames] small output device period used when
+  /// [renderAheadFrames] enables the render-ahead ring; 0 = default (512).
+  /// Ignored on web.
+  /// [renderAheadFrames] depth of the engine-owned render-ahead ring in
+  /// frames; 0 (the default) disables it and keeps direct-to-device mixing.
+  /// Ignored on web.
   ///
   /// Returns [PlayerErrors.noError] if success.
   ///
@@ -184,8 +190,10 @@ abstract class FlutterSoLoud {
     int sampleRate,
     int bufferSize,
     Channels channels,
-    bool lowLatency,
-  );
+    bool lowLatency, {
+    int devicePeriodFrames = 0,
+    int renderAheadFrames = 0,
+  });
 
   /// Android only: when [managed] is true (default) SoLoud tags the AAudio
   /// stream as media/music; when false it leaves usage/contentType unset so the
@@ -327,6 +335,21 @@ abstract class FlutterSoLoud {
     String uniqueName,
     Uint8List buffer,
     LoadMode mode,
+  );
+
+  /// Load two audio files stored into [bufferLeft] and [bufferRight] as
+  /// file bytes, convert them to mono if needed, resample to the engine's
+  /// sample rate, and join them into a single stereo sound (left and right
+  /// channels).
+  ///
+  /// [uniqueName] the unique name of the sound. Used only to have the [hash].
+  /// [bufferLeft] the audio data for the left channel.
+  /// [bufferRight] the audio data for the right channel.
+  @mustBeOverridden
+  ({PlayerErrors error, SoundHash soundHash}) joinTwoSources(
+    String uniqueName,
+    Uint8List bufferLeft,
+    Uint8List bufferRight,
   );
 
   /// Set up an audio stream.
@@ -583,6 +606,7 @@ abstract class FlutterSoLoud {
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
     Duration? loopingEndAt,
+    double scale = 1,
   });
 
   /// Variant of [play] that takes an additional parameter, the time offset
@@ -600,6 +624,9 @@ abstract class FlutterSoLoud {
   /// [busId] the bus ID to play the sound on. 0 means the main engine.
   /// [volume] 1.0 full volume.
   /// [pan] 0.0 centered.
+  /// [scale] relative playback speed multiplier (1.0 = normal speed).
+  /// [looping] whether the sound should loop when reaching the end.
+  /// [loopingStartAt] time to seek to when looping.
   /// Return the error if any and a new `newHandle` of this sound.
   @mustBeOverridden
   ({PlayerErrors error, SoundHandle newHandle}) playClocked(
@@ -608,6 +635,10 @@ abstract class FlutterSoLoud {
     int busId = 0,
     double volume = 1,
     double pan = 0,
+    double scale = 1,
+    bool looping = false,
+    Duration loopingStartAt = Duration.zero,
+    Duration? loopingEndAt,
   });
 
   /// Set the number of samples to delay before starting to play a sound.
@@ -647,6 +678,26 @@ abstract class FlutterSoLoud {
   @mustBeOverridden
   Duration getEngineTime();
 
+  /// Get the engine time of the sample currently reaching the output device:
+  /// the mix clock (see [getEngineTime]) minus the render-ahead ring depth.
+  ///
+  /// Equals [getEngineTime] when the render-ahead ring is disabled (the
+  /// default) and on web.
+  @mustBeOverridden
+  Duration getPlayheadTime();
+
+  /// Estimated output latency: render-ahead ring depth plus one device
+  /// period. [Duration.zero] when the render-ahead ring is disabled (the
+  /// default) and on web.
+  @mustBeOverridden
+  Duration getOutputLatency();
+
+  /// Whether the render-ahead ring (the retroactive re-mix prerequisite) is
+  /// active. Enabled at init time via [initEngine]'s `renderAheadFrames`.
+  /// Always false on web.
+  @mustBeOverridden
+  bool isRenderAheadEnabled();
+
   /// Start playing a sound at an absolute engine time (see [getEngineTime]),
   /// with sample accuracy.
   ///
@@ -661,6 +712,9 @@ abstract class FlutterSoLoud {
   /// [busId] the bus ID to play the sound on. 0 means the main engine.
   /// [volume] 1.0 full volume.
   /// [pan] 0.0 centered.
+  /// [scale] relative playback speed multiplier (1.0 = normal speed).
+  /// [looping] whether the sound should loop when reaching the end.
+  /// [loopingStartAt] time to seek to when looping.
   /// Return the error if any and a new `newHandle` of this sound.
   @mustBeOverridden
   ({PlayerErrors error, SoundHandle newHandle}) playScheduled(
@@ -670,6 +724,10 @@ abstract class FlutterSoLoud {
     int busId = 0,
     double volume = 1,
     double pan = 0,
+    double scale = 1,
+    bool looping = false,
+    Duration loopingStartAt = Duration.zero,
+    Duration? loopingEndAt,
   });
 
   /// Stop a sound at an absolute engine time (see [getEngineTime]).
@@ -1256,6 +1314,9 @@ abstract class FlutterSoLoud {
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
     Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
+    double scale = 1,
   });
 
   /// play3dClocked() is the 3d version of the [playClocked] call.
@@ -1285,6 +1346,52 @@ abstract class FlutterSoLoud {
     double velY = 0,
     double velZ = 0,
     double volume = 1,
+    double scale = 1,
+    bool looping = false,
+    Duration loopingStartAt = Duration.zero,
+    Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
+  });
+
+  /// play3dScheduled() is the 3d version of the [playScheduled] call.
+  ///
+  /// Instead of panning like with the "2d" version of the call, the 3d
+  /// version requires 3d position and optionally velocity vector. Like its
+  /// 2d version, this one starts playing a sound at an absolute engine time
+  /// (see [getEngineTime]), with sample accuracy.
+  ///
+  /// [soundHash] the unique sound hash of a sound.
+  /// [atTime] the absolute engine time at which the sound should start.
+  /// [duration] if non-zero, the sound is automatically stopped at
+  /// `atTime + duration`.
+  /// [posX], [posY], [posZ] are the audio source position coordinates.
+  /// [busId] the bus ID to play the sound on. 0 means the main engine.
+  /// [velX], [velY], [velZ] are the audio source velocity.
+  /// [volume] 1.0 full volume.
+  /// [scale] relative playback speed multiplier (1.0 = normal speed).
+  /// [looping] whether the sound should loop when reaching the end.
+  /// [loopingStartAt] time to seek to when looping.
+  /// Return the error if any and a new `newHandle` of this sound.
+  @mustBeOverridden
+  ({PlayerErrors error, SoundHandle newHandle}) play3dScheduled(
+    SoundHash soundHash,
+    Duration atTime,
+    double posX,
+    double posY,
+    double posZ, {
+    Duration duration = Duration.zero,
+    int busId = 0,
+    double velX = 0,
+    double velY = 0,
+    double velZ = 0,
+    double volume = 1,
+    double scale = 1,
+    bool looping = false,
+    Duration loopingStartAt = Duration.zero,
+    Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
   });
 
   /// Since SoLoud has no knowledge of the scale of your coordinates,

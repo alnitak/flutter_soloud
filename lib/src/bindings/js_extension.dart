@@ -303,6 +303,16 @@ external int wasmLoadMem(
   int hashPtr,
 );
 
+@JS('Module_soloud._joinTwoSources')
+external int wasmJoinTwoSources(
+  int uniqueNamePtr,
+  int mem1Ptr,
+  int mem2Ptr,
+  int length1,
+  int length2,
+  int hashPtr,
+);
+
 @JS('Module_soloud._loadWaveform')
 external int wasmLoadWaveform(
   int waveform,
@@ -349,7 +359,7 @@ external double wasmGetRelativePlaySpeed(int handle);
 @JS('Module_soloud._getApproximateVolume')
 external double wasmGetApproximateVolume(int channel);
 
-@JS('Module_soloud._playWithLoopPoints')
+@JS('Module_soloud._play')
 external int wasmPlay(
   int soundHash,
   int busId,
@@ -357,9 +367,13 @@ external int wasmPlay(
   double pan,
   // ignore: avoid_positional_boolean_parameters
   bool paused,
+  // ignore: avoid_positional_boolean_parameters
   bool looping,
   double loopingStartAt,
   double loopingEndAt,
+  int loopingStartOffsetAt,
+  int loopingEndOffsetAt,
+  double scale,
   int handlePtr,
 );
 
@@ -370,6 +384,13 @@ external int wasmPlayClocked(
   int busId,
   double volume,
   double pan,
+  double scale,
+  // ignore: avoid_positional_boolean_parameters
+  bool looping,
+  double loopingStartAt,
+  double loopingEndAt,
+  int loopingStartOffsetAt,
+  int loopingEndOffsetAt,
   int handlePtr,
 );
 
@@ -393,6 +414,13 @@ external int wasmPlayScheduled(
   int busId,
   double volume,
   double pan,
+  double scale,
+  // ignore: avoid_positional_boolean_parameters
+  bool looping,
+  double loopingStartAt,
+  double loopingEndAt,
+  int loopingStartOffsetAt,
+  int loopingEndOffsetAt,
   int handlePtr,
 );
 
@@ -665,6 +693,9 @@ external int wasmPlay3d(
   int looping,
   double loopingStartAt,
   double loopingEndAt,
+  int loopingStartOffsetAt,
+  int loopingEndOffsetAt,
+  double scale,
   int handlePtr,
 );
 
@@ -680,6 +711,35 @@ external int wasmPlay3dClocked(
   double velY,
   double velZ,
   double volume,
+  double scale,
+  int looping,
+  double loopingStartAt,
+  double loopingEndAt,
+  int loopingStartOffsetAt,
+  int loopingEndOffsetAt,
+  int handlePtr,
+);
+
+@JS('Module_soloud._play3dScheduled')
+external int wasmPlay3dScheduled(
+  int soundHash,
+  double atTime,
+  double duration,
+  int busId,
+  double posX,
+  double posY,
+  double posZ,
+  double velX,
+  double velY,
+  double velZ,
+  double volume,
+  double scale,
+  // ignore: avoid_positional_boolean_parameters
+  bool looping,
+  double loopingStartAt,
+  double loopingEndAt,
+  int loopingStartOffsetAt,
+  int loopingEndOffsetAt,
   int handlePtr,
 );
 

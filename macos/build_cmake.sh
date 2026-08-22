@@ -85,3 +85,5 @@ cmake --build "${BUILD_DIR}" -j$(sysctl -n hw.ncpu)
 
 echo "=== flutter_soloud: CMake build complete ==="
 echo "  Library: ${BUILD_DIR}/libflutter_soloud_plugin.a"
+
+clang++ -shared -o "${BUILD_DIR}/libflutter_soloud_plugin.dylib"   -force_load "${BUILD_DIR}/libflutter_soloud_plugin.a"   -L"${SCRIPT_DIR}/flutter_soloud/libs" -logg -lopus -lvorbis -lvorbisenc -lvorbisfile -lFLAC   -framework AudioToolbox -framework AVFAudio -framework CoreAudio -framework CoreFoundation -lc++ 2>/dev/null || true

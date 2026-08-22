@@ -385,11 +385,15 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     int sampleRate,
     int bufferSize,
     Channels channels,
-    bool lowLatency,
-  ) async {
+    bool lowLatency, {
+    int devicePeriodFrames = 0,
+    int renderAheadFrames = 0,
+  }) async {
     // Web is single-threaded (no isolates), so call the wasm function directly.
     // [lowLatency] only affects the native miniaudio backends (it selects the
     // AAudio/CoreAudio performance profile); the Web Audio backend ignores it.
+    // [devicePeriodFrames]/[renderAheadFrames] (the render-ahead ring) are
+    // native-only for now; the web backend keeps direct-to-device mixing.
     return _enqueueEngineOp(() async {
       _deinitQueued = false;
       final error = await _callEngineAsync('initEngine', [
@@ -635,6 +639,49 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
 
     wasmFree(hashPtr);
     wasmFree(bytesPtr);
+    wasmFree(pathPtr);
+
+    return ret;
+  }
+
+  @override
+  ({PlayerErrors error, SoundHash soundHash}) joinTwoSources(
+    String uniqueName,
+    Uint8List bufferLeft,
+    Uint8List bufferRight,
+  ) {
+    final hashPtr = wasmMalloc(4); // 4 bytes for an int32
+    final bytes1Ptr = wasmMalloc(bufferLeft.length);
+    final bytes2Ptr = wasmMalloc(bufferRight.length);
+    final pathPtr = wasmMalloc(uniqueName.length);
+
+    /// Copy the buffers into WASM memory using the HEAPU8 view.
+    final heapU8 = wasmHeapU8;
+    heapU8.toDart.setAll(bytes1Ptr, bufferLeft);
+    heapU8.toDart.setAll(bytes2Ptr, bufferRight);
+
+    /// Copy the path string into WASM memory.
+    for (var i = 0; i < uniqueName.length; i++) {
+      wasmSetValue(pathPtr + i, uniqueName.codeUnits[i], 'i8');
+    }
+
+    final result = wasmJoinTwoSources(
+      pathPtr,
+      bytes1Ptr,
+      bytes2Ptr,
+      bufferLeft.length,
+      bufferRight.length,
+      hashPtr,
+    );
+
+    /// "*" means unsigned int 32
+    final hash = wasmGetI32Value(hashPtr, '*');
+    final soundHash = SoundHash(hash);
+    final ret = (error: PlayerErrors.values[result], soundHash: soundHash);
+
+    wasmFree(hashPtr);
+    wasmFree(bytes1Ptr);
+    wasmFree(bytes2Ptr);
     wasmFree(pathPtr);
 
     return ret;
@@ -1018,6 +1065,9 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
     Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
+    double scale = 1,
   }) {
     final handlePtr = wasmMalloc(4); // 4 bytes for an int32
     final result = wasmPlay(
@@ -1029,6 +1079,9 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
       looping,
       loopingStartAt.toDouble(),
       loopingEndAt?.toDouble() ?? 0,
+      loopingStartOffsetAt ?? -1,
+      loopingEndOffsetAt ?? -1,
+      scale,
       handlePtr,
     );
 
@@ -1050,6 +1103,12 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     int busId = 0,
     double volume = 1,
     double pan = 0,
+    double scale = 1,
+    bool looping = false,
+    Duration loopingStartAt = Duration.zero,
+    Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
   }) {
     final handlePtr = wasmMalloc(4); // 4 bytes for an int32
     final result = wasmPlayClocked(
@@ -1058,6 +1117,12 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
       busId,
       volume,
       pan,
+      scale,
+      looping,
+      loopingStartAt.toDouble(),
+      loopingEndAt?.toDouble() ?? 0,
+      loopingStartOffsetAt ?? -1,
+      loopingEndOffsetAt ?? -1,
       handlePtr,
     );
 
@@ -1093,6 +1158,23 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }
 
   @override
+  Duration getPlayheadTime() {
+    // The render-ahead ring is native-only for now; on web the playhead is
+    // the mix clock.
+    return getEngineTime();
+  }
+
+  @override
+  Duration getOutputLatency() {
+    return Duration.zero;
+  }
+
+  @override
+  bool isRenderAheadEnabled() {
+    return false;
+  }
+
+  @override
   ({PlayerErrors error, SoundHandle newHandle}) playScheduled(
     SoundHash soundHash,
     Duration atTime, {
@@ -1100,6 +1182,12 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     int busId = 0,
     double volume = 1,
     double pan = 0,
+    double scale = 1,
+    bool looping = false,
+    Duration loopingStartAt = Duration.zero,
+    Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
   }) {
     final handlePtr = wasmMalloc(4); // 4 bytes for an int32
     final result = wasmPlayScheduled(
@@ -1109,6 +1197,12 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
       busId,
       volume,
       pan,
+      scale,
+      looping,
+      loopingStartAt.toDouble(),
+      loopingEndAt?.toDouble() ?? 0,
+      loopingStartOffsetAt ?? -1,
+      loopingEndOffsetAt ?? -1,
       handlePtr,
     );
 
@@ -1684,6 +1778,9 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
     Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
+    double scale = 1,
   }) {
     final handlePtr = wasmMalloc(4); // 4 bytes for an int32
     final result = wasmPlay3d(
@@ -1700,6 +1797,9 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
       looping ? 1 : 0,
       loopingStartAt.toDouble(),
       loopingEndAt?.toDouble() ?? 0,
+      loopingStartOffsetAt ?? -1,
+      loopingEndOffsetAt ?? -1,
+      scale,
       handlePtr,
     );
 
@@ -1726,6 +1826,12 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     double velY = 0,
     double velZ = 0,
     double volume = 1,
+    double scale = 1,
+    bool looping = false,
+    Duration loopingStartAt = Duration.zero,
+    Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
   }) {
     final handlePtr = wasmMalloc(4); // 4 bytes for an int32
     final result = wasmPlay3dClocked(
@@ -1739,6 +1845,65 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
       velY,
       velZ,
       volume,
+      scale,
+      looping ? 1 : 0,
+      loopingStartAt.toDouble(),
+      loopingEndAt?.toDouble() ?? 0,
+      loopingStartOffsetAt ?? -1,
+      loopingEndOffsetAt ?? -1,
+      handlePtr,
+    );
+
+    /// "*" means unsigned int 32
+    final newHandle = wasmGetI32Value(handlePtr, 'i32');
+    final ret = (
+      error: PlayerErrors.values[result],
+      newHandle: SoundHandle(newHandle),
+    );
+    wasmFree(handlePtr);
+
+    return ret;
+  }
+
+  @override
+  ({PlayerErrors error, SoundHandle newHandle}) play3dScheduled(
+    SoundHash soundHash,
+    Duration atTime,
+    double posX,
+    double posY,
+    double posZ, {
+    Duration duration = Duration.zero,
+    int busId = 0,
+    double velX = 0,
+    double velY = 0,
+    double velZ = 0,
+    double volume = 1,
+    double scale = 1,
+    bool looping = false,
+    Duration loopingStartAt = Duration.zero,
+    Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
+  }) {
+    final handlePtr = wasmMalloc(4); // 4 bytes for an int32
+    final result = wasmPlay3dScheduled(
+      soundHash.hash,
+      atTime.toDouble(),
+      duration.toDouble(),
+      busId,
+      posX,
+      posY,
+      posZ,
+      velX,
+      velY,
+      velZ,
+      volume,
+      scale,
+      looping,
+      loopingStartAt.toDouble(),
+      loopingEndAt?.toDouble() ?? 0,
+      loopingStartOffsetAt ?? -1,
+      loopingEndOffsetAt ?? -1,
       handlePtr,
     );
 

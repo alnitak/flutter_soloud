@@ -124,6 +124,12 @@ namespace SoLoud
 		mBackendResumeFunc = NULL;
 		mChannels = 2;		
 		mStreamTime = 0;
+		mDevicePeriodFrames = 0;
+		mRenderAheadFrames = 0;
+		mCheckpointWriteIndex = 0;
+		mCheckpointCounter = 0;
+		mRemixing = false;
+		mRemixSuppressEndedCount = 0;
 		mClockedAnchorTime = 0;
 		mClockedAnchorSample = -1;
 		mClockedLastTime = 0;
@@ -208,6 +214,11 @@ namespace SoLoud
 		if (mBackendCleanupFunc)
 			mBackendCleanupFunc(this);
 		mBackendCleanupFunc = 0;
+		// ###### flutter_soloud local patch (mix checkpoints) ######
+		// Free the checkpoint pool with the rest of the engine state. The
+		// ring itself is released on the next postinit (AlignedFloatBuffer
+		// has no release), but the pool holds heap snapshots worth freeing.
+		releaseCheckpoints_internal();
 		if (mAudioThreadMutex)
 			Thread::destroyMutex(mAudioThreadMutex);
 		mAudioThreadMutex = NULL;
@@ -734,6 +745,92 @@ namespace SoLoud
 			m3dSpeakerPosition[7 * 3 + 1] = 0;
 			m3dSpeakerPosition[7 * 3 + 2] = -1;
 			break;
+		}
+
+		// ###### flutter_soloud local patch (render-ahead ring) ######
+		// Allocate the render-ahead ring between the mixer and the device.
+		// Capacity holds the render-ahead depth plus one full engine quantum
+		// plus a few device periods of margin, so the top-up logic can always
+		// append a whole quantum without overwriting unread frames.
+		if (isRenderAheadEnabled())
+		{
+			unsigned int capacity =
+				mRenderAheadFrames + aBufferSize + 4 * mDevicePeriodFrames;
+			mRenderRing.init(capacity, aChannels);
+			mRenderRingStaging.init(aBufferSize * aChannels);
+			// ###### flutter_soloud local patch (mix checkpoints) ######
+			// Circular pool of quantum-boundary snapshots covering the whole
+			// render-ahead window plus margin. All storage is pre-sized here;
+			// capture runs on the audio thread and must not allocate.
+			allocateCheckpoints_internal(
+				((mRenderAheadFrames + aBufferSize - 1) / aBufferSize + 4) < 8
+					? 8
+					: ((mRenderAheadFrames + aBufferSize - 1) / aBufferSize + 4));
+			captureMixCheckpoint_internal();
+		}
+		else
+		{
+			// Feature off: release any ring left over from a previous init.
+			// (AlignedFloatBuffer has no release; leaving the staging buffer
+			// allocated is harmless since isRenderAheadEnabled() gates use.)
+			mRenderRing.clear();
+			// ###### flutter_soloud local patch (mix checkpoints) ######
+			releaseCheckpoints_internal();
+		}
+	}
+
+	// ###### flutter_soloud local patch (render-ahead ring) ######
+	void Soloud::setRenderAheadConfig(unsigned int aDevicePeriodFrames, unsigned int aRenderAheadFrames)
+	{
+#ifdef __EMSCRIPTEN__
+		// The web backend keeps the direct-to-device mixing path for now; the
+		// ring and retroactive re-mixing are native-only in this revision.
+		(void)aDevicePeriodFrames;
+		(void)aRenderAheadFrames;
+		mDevicePeriodFrames = 0;
+		mRenderAheadFrames = 0;
+#else
+		mDevicePeriodFrames = aDevicePeriodFrames != 0 ? aDevicePeriodFrames : 512;
+		mRenderAheadFrames = aRenderAheadFrames;
+#endif
+	}
+
+	bool Soloud::isRenderAheadEnabled() const
+	{
+		return mRenderAheadFrames > 0;
+	}
+
+	time Soloud::getPlayheadTime()
+	{
+		lockAudioMutex_internal();
+		time t = mStreamTime;
+		if (isRenderAheadEnabled() && mRenderRing.isInited() && mSamplerate > 0)
+		{
+			t -= (time)mRenderRing.availableToRead() / (time)mSamplerate;
+		}
+		unlockAudioMutex_internal();
+		return t > 0 ? t : 0;
+	}
+
+	time Soloud::getOutputLatency()
+	{
+		if (!isRenderAheadEnabled() || !mRenderRing.isInited() || mSamplerate == 0)
+			return 0;
+		// Frames mixed ahead of the device read head right now, plus one
+		// device period of cushion inside the backend.
+		unsigned long long buffered = mRenderRing.availableToRead();
+		return (time)(buffered + mDevicePeriodFrames) / (time)mSamplerate;
+	}
+
+	void Soloud::renderRingTopUp_internal()
+	{
+		if (!mRenderRing.isInited() || mBufferSize == 0)
+			return;
+		while (mRenderRing.availableToRead() < mRenderAheadFrames &&
+			mRenderRing.availableToWrite() >= mBufferSize)
+		{
+			mix(mRenderRingStaging.mData, mBufferSize);
+			mRenderRing.write(mRenderRingStaging.mData, mBufferSize);
 		}
 	}
 
@@ -1715,6 +1812,11 @@ namespace SoLoud
 						voice->mResampleData[0] = voice->mResampleData[1];
 						voice->mResampleData[1] = t;
 
+						if (voice->mResampleData[0] == NULL)
+						{
+							break;
+						}
+
 						// Get a block of source data
 
 						unsigned int readcount = 0;
@@ -1901,6 +2003,11 @@ namespace SoLoud
 						float * t = voice->mResampleData[0];
 						voice->mResampleData[0] = voice->mResampleData[1];
 						voice->mResampleData[1] = t;
+
+						if (voice->mResampleData[0] == NULL)
+						{
+							break;
+						}
 
 						// Get a block of source data
 
@@ -2122,65 +2229,16 @@ namespace SoLoud
 		mapResampleBuffers_internal();
 	}
 
-	void Soloud::mix_internal(unsigned int aSamples, unsigned int aStride)
+	// ###### flutter_soloud local patch (retroactive re-mix) ######
+	// The locked section of mix_internal(), split out so the retroactive
+	// re-mix loop can drive quanta while holding the audio mutex for the
+	// whole rollback (the native audio mutex is not recursive, so it cannot
+	// call mix()/mix_internal()). Behavior is identical to the original
+	// inlined body.
+	void Soloud::mixVoicesLocked_internal(unsigned int aSamples, unsigned int aStride)
 	{
-#ifdef FLOATING_POINT_DEBUG
-		// This needs to be done in the audio thread as well..
-		static int done = 0;
-		if (!done)
-		{
-			unsigned int u;
-			u = _controlfp(0, 0);
-			u = u & ~(_EM_INVALID | /*_EM_DENORMAL |*/ _EM_ZERODIVIDE | _EM_OVERFLOW /*| _EM_UNDERFLOW  | _EM_INEXACT*/);
-			_controlfp(u, _MCW_EM);
-			done = 1;
-		}
-#endif
-
-#ifdef _MCW_DN
-		{
-			static bool once = false;
-			if (!once)
-			{
-				once = true;
-				if (!(mFlags & NO_FPU_REGISTER_CHANGE))
-				{
-					_controlfp(_DN_FLUSH, _MCW_DN);
-				}
-			}
-		}
-#endif
-
-#ifdef SOLOUD_SSE_INTRINSICS
-		{
-			static bool once = false;
-			if (!once)
-			{
-				once = true;
-				// Set denorm clear to zero (CTZ) and denorms are zero (DAZ) flags on.
-				// This causes all math to consider really tiny values as zero, which
-				// helps performance. I'd rather use constants from the sse headers,
-				// but for some reason the DAZ value is not defined there(!)
-				if (!(mFlags & NO_FPU_REGISTER_CHANGE))
-				{
-					_mm_setcsr(_mm_getcsr() | 0x8040);
-				}
-			}
-		}
-#endif
-
+		SOLOUD_ASSERT(mInsideAudioThreadMutex);
 		float buffertime = aSamples / (float)mSamplerate;
-		float globalVolume[2];
-		mStreamTime += buffertime;
-
-		globalVolume[0] = mGlobalVolume;
-		if (mGlobalVolumeFader.mActive)
-		{
-			mGlobalVolume = mGlobalVolumeFader.get(mStreamTime);
-		}
-		globalVolume[1] = mGlobalVolume;
-
-		lockAudioMutex_internal();
 
 		// Process faders. May change scratch size.
 		int i;
@@ -2201,7 +2259,7 @@ namespace SoLoud
 				mVoice[i]->mStreamPosition += (double)buffertime * (double)mVoice[i]->mOverallRelativePlaySpeed;
 
 				// TODO: this is actually unstable, because mStreamTime depends on the relative
-				// play speed. 
+				// play speed.
 				if (mVoice[i]->mRelativePlaySpeedFader.mActive > 0)
 				{
 					float speed = mVoice[i]->mRelativePlaySpeedFader.get(mVoice[i]->mStreamTime);
@@ -2266,7 +2324,7 @@ namespace SoLoud
 
 		if (mActiveVoiceDirty)
 			calcActiveVoices_internal();
-	
+
 		mixBus_internal(mOutputScratch.mData, aSamples, aStride, mScratch.mData, 0, (float)mSamplerate, mChannels, mResampler);
 
 		for (i = 0; i < FILTERS_PER_STREAM; i++)
@@ -2276,6 +2334,80 @@ namespace SoLoud
 				mFilterInstance[i]->filter(mOutputScratch.mData, aSamples, aStride, mChannels, (float)mSamplerate, mStreamTime);
 			}
 		}
+
+		// ###### flutter_soloud local patch (mix checkpoints) ######
+		// Snapshot the mixer state at this quantum boundary so a later
+		// retroactive event can roll the engine back here and re-mix
+		// bit-identically. Runs under the audio mutex; the single `if` is the
+		// only cost when the render-ahead ring is disabled. Skipped during a
+		// re-mix: the re-mix reproduces history, and the checkpoints of the
+		// rewritten window stay valid (the journal re-applies the events they
+		// predate).
+		if (isRenderAheadEnabled() && mRenderRing.isInited() && !mRemixing)
+			captureMixCheckpoint_internal();
+	}
+
+	void Soloud::mix_internal(unsigned int aSamples, unsigned int aStride)
+	{
+#ifdef FLOATING_POINT_DEBUG
+		// This needs to be done in the audio thread as well..
+		static int done = 0;
+		if (!done)
+		{
+			unsigned int u;
+			u = _controlfp(0, 0);
+			u = u & ~(_EM_INVALID | /*_EM_DENORMAL |*/ _EM_ZERODIVIDE | _EM_OVERFLOW /*| _EM_UNDERFLOW  | _EM_INEXACT*/);
+			_controlfp(u, _MCW_EM);
+			done = 1;
+		}
+#endif
+
+#ifdef _MCW_DN
+		{
+			static bool once = false;
+			if (!once)
+			{
+				once = true;
+				if (!(mFlags & NO_FPU_REGISTER_CHANGE))
+				{
+					_controlfp(_DN_FLUSH, _MCW_DN);
+				}
+			}
+		}
+#endif
+
+#ifdef SOLOUD_SSE_INTRINSICS
+		{
+			static bool once = false;
+			if (!once)
+			{
+				once = true;
+				// Set denorm clear to zero (CTZ) and denorms are zero (DAZ) flags on.
+				// This causes all math to consider really tiny values as zero, which
+				// helps performance. I'd rather use constants from the sse headers,
+				// but for some reason the DAZ value is not defined there(!)
+				if (!(mFlags & NO_FPU_REGISTER_CHANGE))
+				{
+					_mm_setcsr(_mm_getcsr() | 0x8040);
+				}
+			}
+		}
+#endif
+
+		float buffertime = aSamples / (float)mSamplerate;
+		float globalVolume[2];
+		mStreamTime += buffertime;
+
+		globalVolume[0] = mGlobalVolume;
+		if (mGlobalVolumeFader.mActive)
+		{
+			mGlobalVolume = mGlobalVolumeFader.get(mStreamTime);
+		}
+		globalVolume[1] = mGlobalVolume;
+
+		lockAudioMutex_internal();
+
+		mixVoicesLocked_internal(aSamples, aStride);
 
 		const bool notifyVoiceInactive = mVoiceInactiveCallbackPending;
 		mVoiceInactiveCallbackPending = false;
@@ -2290,8 +2422,12 @@ namespace SoLoud
 		// The buffers should be large enough for it, we just may do a few bytes of unneccessary work.
 		clip_internal(mOutputScratch, mScratch, aStride, globalVolume[0], globalVolume[1]);
 
-		if (mFlags & ENABLE_VISUALIZATION)
+		// ###### flutter_soloud local patch (retroactive re-mix) ######
+		// Skip visualization during re-mix quanta: the rewritten window would
+		// momentarily show up twice (plan §4.6).
+		if ((mFlags & ENABLE_VISUALIZATION) && !mRemixing)
 		{
+			int i;
 			for (i = 0; i < MAX_CHANNELS; i++)
 			{
 				mVisualizationChannelVolume[i] = 0;
@@ -2344,6 +2480,46 @@ namespace SoLoud
 		unsigned int stride = (aSamples + 15) & ~0xf;
 		mix_internal(aSamples, stride);
 		interlace_samples_s16(mScratch.mData, aBuffer, aSamples, mChannels, stride);
+	}
+
+	// ###### flutter_soloud local patch (retroactive re-mix) ######
+	// One full mix quantum for the retroactive re-mix loop. Identical to
+	// mix() except the caller already holds the audio mutex for the whole
+	// rollback (the native audio mutex is not recursive, so mix() cannot be
+	// used here), and the mRemixing flag suppresses visualization: the re-mix
+	// reproduces history, it does not create new events. Checkpoints ARE
+	// re-captured (captureMixCheckpoint_internal derives the ring position
+	// from the mix clock under mRemixing): the re-captured slots incorporate
+	// the retroactive event and the replayed journal, keeping the checkpoint
+	// chain consistent with the rewritten timeline for the next rollback.
+	// Ended voices stopVoice_internal() queues during the re-mix stay
+	// queued until the caller's final unlock, so the dispatch never releases
+	// the mutex mid-rollback.
+	void Soloud::remixQuantum_internal(float *aBuffer, unsigned int aSamples)
+	{
+		SOLOUD_ASSERT(mInsideAudioThreadMutex);
+		SOLOUD_ASSERT(mRemixing);
+		unsigned int stride = (aSamples + 15) & ~0xf;
+		float buffertime = aSamples / (float)mSamplerate;
+		float globalVolume[2];
+		mStreamTime += buffertime;
+
+		globalVolume[0] = mGlobalVolume;
+		if (mGlobalVolumeFader.mActive)
+		{
+			mGlobalVolume = mGlobalVolumeFader.get(mStreamTime);
+		}
+		globalVolume[1] = mGlobalVolume;
+
+		mixVoicesLocked_internal(aSamples, stride);
+
+		// Note: clipping channels*aStride, not channels*aSamples, same as
+		// mix_internal().
+		clip_internal(mOutputScratch, mScratch, stride, globalVolume[0], globalVolume[1]);
+		interlace_samples_float(mScratch.mData, aBuffer, aSamples, mChannels, stride);
+
+		// Re-capture the checkpoint for this boundary (see the comment above).
+		captureMixCheckpoint_internal();
 	}
 
 	void interlace_samples_float(const float *aSourceBuffer, float *aDestBuffer, unsigned int aSamples, unsigned int aChannels, unsigned int aStride)
