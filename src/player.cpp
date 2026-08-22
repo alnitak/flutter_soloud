@@ -196,7 +196,32 @@ Player::Player() : mFilters(&soloud, nullptr, nullptr),
 
 Player::~Player()
 {
-    dispose();
+    try
+    {
+        dispose();
+    }
+    catch (...)
+    {
+    }
+#ifndef __EMSCRIPTEN__
+    try
+    {
+        stopPauseEngineScheduler();
+    }
+    catch (...)
+    {
+    }
+    if (mPauseThread.joinable())
+    {
+        try
+        {
+            mPauseThread.join();
+        }
+        catch (...)
+        {
+        }
+    }
+#endif
 }
 
 void Player::dispose()
@@ -1882,7 +1907,7 @@ void Player::stopPauseEngineScheduler()
 #ifndef __EMSCRIPTEN__
     {
         std::lock_guard<std::mutex> lock(mPauseMutex);
-        if (!mPauseThreadRunning)
+        if (!mPauseThreadRunning && !mPauseThread.joinable())
             return;
         mStopPauseThread = true;
         mPendingDeviceRequest = DeviceLifecycleRequest::none;

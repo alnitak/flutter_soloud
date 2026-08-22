@@ -223,7 +223,14 @@ extern "C"
   static void soloudTestInitBarrier();
 #endif
 
+#if defined(__clang__)
+  [[clang::no_destroy]]
+#endif
   std::unique_ptr<Player> player = std::make_unique<Player>();
+
+#if defined(__clang__)
+  [[clang::no_destroy]]
+#endif
   std::unique_ptr<Analyzer> analyzer = std::make_unique<Analyzer>(256);
 
   typedef void (*dartVoiceEndedCallback_t)(unsigned int *);
