@@ -2220,15 +2220,15 @@ interface class SoLoud {
   /// `null` end uses the natural end of the [sound]. An end beyond the source
   /// duration also loops at the natural end. Looping requires a source that
   /// can seek back to the start, so [BufferingType.released] is unsupported.
-  /// 
+  ///
   /// [loopingStartOffsetAt] optional exact frame offset to restart
   /// looping from.
-  /// 
+  ///
   /// [loopingEndOffsetAt] optional exact frame offset to loop before.
-  /// 
+  ///
   /// Note: frame offset looping and Duration-based looping are
   /// mutually exclusive.
-  /// 
+  ///
   /// [scale] relative playback speed multiplier (1.0 = normal speed).
   ///
   /// **When to use [play] vs [playClocked | playScheduled]:** [play] starts
@@ -2391,12 +2391,12 @@ interface class SoLoud {
   /// [loopingStartAt] time position to restart playback when looping.
   ///
   /// [loopingEndAt] optional exclusive end point for looping.
-  /// 
+  ///
   /// [loopingStartOffsetAt] optional exact frame offset to restart
   /// looping from.
-  /// 
+  ///
   /// [loopingEndOffsetAt] optional exact frame offset to loop before.
-  /// 
+  ///
   /// Note: frame offset looping and Duration-based looping are mutually
   /// exclusive.
   ///
@@ -2636,12 +2636,12 @@ interface class SoLoud {
   /// device runs. Device startup is therefore queued rather than performed
   /// inline, and this method does not report output-device failures — listen to
   /// [audioDeviceStartFailures] for those.
-  /// 
+  ///
   /// [loopingEndAt] optional exclusive end point for looping.
-  /// 
+  ///
   /// [loopingStartOffsetAt] optional exact frame offset to restart
   /// looping from.
-  /// 
+  ///
   /// [loopingEndOffsetAt] optional exact frame offset to loop before.
   /// Note: frame offset looping and Duration-based looping are mutually
   /// exclusive.
@@ -4217,12 +4217,12 @@ interface class SoLoud {
   /// therefore does not report output-device failures; with [paused] set to
   /// `true` no device is requested at all. Use [startAudioDevice] when you need
   /// to observe a device-start failure.
-  /// 
+  ///
   /// [scale] relative playback speed multiplier (1.0 = normal speed).
-  /// 
+  ///
   /// [loopingStartOffsetAt] optional exact frame offset to restart
   /// looping from.
-  /// 
+  ///
   /// [loopingEndOffsetAt] optional exact frame offset to loop before.
   /// Note: frame offset looping and Duration-based looping are
   /// mutually exclusive.
