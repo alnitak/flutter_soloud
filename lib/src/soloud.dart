@@ -1829,7 +1829,6 @@ interface class SoLoud {
   /// to feed the data back.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
-  @experimental
   AudioSource setPullBufferStream({
     int bufferSizeBytes = 1024 * 1024 * 10, // 10 MB
     double bufferTriggerPosition = 0.8,
@@ -1886,7 +1885,6 @@ interface class SoLoud {
   /// [sound] the pull buffer stream sound.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
-  @experimental
   void resetPullBufferStream(AudioSource sound) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1918,7 +1916,6 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudSoundHashNotFoundDartException] if the [source] is not
   /// found.
-  @experimental
   PlayerErrors addPullBufferDataStream(
     AudioSource source,
     Uint8List audioChunk, {
@@ -1957,7 +1954,6 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudSoundHashNotFoundDartException] if the [source] is not
   /// found.
-  @experimental
   ({PlayerErrors error, Duration startTime, Duration endTime})
   getPullBufferTimeRange(AudioSource source) {
     if (!isInitialized) {
@@ -4082,129 +4078,6 @@ interface class SoLoud {
       throw SoLoudCppException.fromPlayerError(error);
     }
   }
-
-  // ///////////////////////////////////////
-  // / Global filters
-  // ///////////////////////////////////////
-
-  /// Checks whether the given [filterType] is active.
-  ///
-  /// Returns `-1` if the filter is not active. Otherwise, returns
-  /// the index of the given filter.
-  @Deprecated('Please, to manage global filters use SoLoud.filters instead')
-  int isFilterActive(FilterType filterType) {
-    final ret = _controller.soLoudFFI.isFilterActive(filterType);
-    if (ret.error != PlayerErrors.noError) {
-      _log.severe(() => 'isFilterActive(): ${ret.error}');
-      throw SoLoudCppException.fromPlayerError(ret.error);
-    }
-    return ret.index;
-  }
-
-  /// Gets parameters of the given [filterType].
-  ///
-  /// Returns the list of param names.
-  @Deprecated('Please, to manage global filters use SoLoud.filters instead')
-  List<String> getFilterParamNames(FilterType filterType) {
-    final ret = _controller.soLoudFFI.getFilterParamNames(filterType);
-    if (ret.error != PlayerErrors.noError) {
-      _log.severe(() => 'getFilterParamNames(): ${ret.error}');
-      throw SoLoudCppException.fromPlayerError(ret.error);
-    }
-    return ret.names;
-  }
-
-  /// Adds a [filterType] to all sounds.
-  ///
-  /// Throws [SoLoudMaxFilterNumberReachedException] when the max number of
-  ///     concurrent filter is reached (default max filter is 8).
-  ///
-  /// Throws [SoLoudFilterAlreadyAddedException] when trying to add a filter
-  ///     that has already been added.
-  @Deprecated('Please, to manage global filters use SoLoud.filters instead')
-  void addGlobalFilter(FilterType filterType) {
-    final error = _controller.soLoudFFI.addFilter(filterType);
-    if (error != PlayerErrors.noError) {
-      _log.severe(() => 'addGlobalFilter(): $error');
-      throw SoLoudCppException.fromPlayerError(error);
-    }
-  }
-
-  /// Removes [filterType] from all sounds.
-  @Deprecated('Please, to manage global filters use SoLoud.filters instead')
-  void removeGlobalFilter(FilterType filterType) {
-    final error = _controller.soLoudFFI.removeFilter(filterType);
-    if (error != PlayerErrors.noError) {
-      _log.severe(() => 'removeGlobalFilter(): $error');
-      throw SoLoudCppException.fromPlayerError(error);
-    }
-  }
-
-  /// Set the effect parameter with id [attributeId] of [filterType]
-  /// with [value] value.
-  ///
-  /// Specify the [attributeId] of the parameter (which you can learn from
-  /// [getFilterParamNames]), and its new [value].
-  ///
-  /// Applyed to the global filter.
-  ///
-  /// [filterType] filter to modify a param.
-  ///
-  /// Returns [PlayerErrors.noError] if no errors.
-  @Deprecated('Please, to manage global filters use SoLoud.filters instead')
-  void setGlobalFilterParameter(
-    FilterType filterType,
-    int attributeId,
-    double value,
-  ) {
-    final error = _controller.soLoudFFI.setFilterParams(
-      filterType,
-      attributeId,
-      value,
-    );
-    if (error != PlayerErrors.noError) {
-      _log.severe(() => 'setFxParams(): $error');
-      throw SoLoudCppException.fromPlayerError(error);
-    }
-  }
-
-  /// Set the effect parameter with id [attributeId] of [filterType]
-  /// with [value] value.
-  @Deprecated('Please, to manage global filters use SoLoud.filters instead')
-  void setFilterParameter(
-    FilterType filterType,
-    int attributeId,
-    double value,
-  ) => setGlobalFilterParameter(filterType, attributeId, value);
-
-  /// Get the effect parameter value with id [attributeId] of [filterType].
-  ///
-  /// Specify the [attributeId] of the parameter (which you can learn from
-  /// [getFilterParamNames]).
-  ///
-  /// It gets the global filter value.
-  ///
-  /// [filterType] the filter to modify a parameter.
-  ///
-  /// Returns the value of the parameter.
-  @Deprecated('Please, to manage global filters use SoLoud.filters instead')
-  double getGlobalFilterParameter(FilterType filterType, int attributeId) {
-    final ret = _controller.soLoudFFI.getFilterParams(filterType, attributeId);
-
-    _logPlayerError(ret.error, from: 'getGlobalFilterParameter()');
-    if (ret.error != PlayerErrors.noError) {
-      throw SoLoudCppException.fromPlayerError(ret.error);
-    }
-    return ret.value;
-  }
-
-  /// Get the effect parameter value with id [attributeId] of [filterType].
-  @Deprecated('Please, to manage global filters use SoLoud.filters instead')
-  double getFilterParameter(
-    FilterType filterType,
-    int attributeId, {
-    SoundHandle handle = const SoundHandle.error(),
-  }) => getGlobalFilterParameter(filterType, attributeId);
 
   // ////////////////////////////////////////////////
   // Below all the methods implemented with FFI for the 3D audio
