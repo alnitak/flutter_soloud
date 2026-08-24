@@ -57,6 +57,18 @@ class Analyzer {
   /// Called from the audio thread for each rendered mixed block.
   void onAudioData(const float *data, unsigned int frames, int channels);
 
+  /// Web only: try to claim dispatch ownership if no message is in flight.
+  bool tryBeginDispatch() {
+    bool expected = false;
+    return m_dispatchInFlight.compare_exchange_strong(
+        expected, true, std::memory_order_acq_rel);
+  }
+
+  /// Web only: clear in-flight dispatch flag once delivered to main thread.
+  void clearDispatchInFlight() {
+    m_dispatchInFlight.store(false, std::memory_order_release);
+  }
+
   int windowSize() const { return m_windowSize; }
   VisualizationKind kind() const { return m_kind; }
   int channelSelection() const { return m_channelSelection; }
@@ -70,6 +82,7 @@ class Analyzer {
 
   std::atomic<bool> m_running{false};
   std::atomic<bool> m_shouldStop{false};
+  std::atomic<bool> m_dispatchInFlight{false};
   std::atomic<int> m_inFlightAudioCallbacks{0};
 
   int m_windowSize{256};

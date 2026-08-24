@@ -50,6 +50,7 @@ PlayerErrors Analyzer::setVisualizationEnabled(
     }
     m_running.store(false, std::memory_order_release);
     m_shouldStop.store(true, std::memory_order_release);
+    m_dispatchInFlight.store(false, std::memory_order_release);
 
     if (m_workerThread.joinable()) {
       m_workerThread.join();
@@ -291,15 +292,17 @@ void Analyzer::onAudioData(const float *data, unsigned int frames, int channels)
   m_writeIndex.store(writeIdx + frames, std::memory_order_release);
 
 #ifdef __EMSCRIPTEN__
-  const size_t readIdx = m_readIndex.load(std::memory_order_relaxed);
-  const size_t available = (writeIdx + frames) - readIdx;
-  if (available >= static_cast<size_t>(m_windowSize)) {
-    const int pingPong = m_pingPongIndex.load(std::memory_order_relaxed);
-    const int nextPingPong = 1 - pingPong;
-    processWindow(readIdx, nextPingPong);
-    m_pingPongIndex.store(nextPingPong, std::memory_order_release);
-    m_readIndex.store(readIdx + m_windowSize, std::memory_order_release);
-    dispatchToDart(nextPingPong);
+  const size_t totalWritten = writeIdx + frames;
+  if (totalWritten >= static_cast<size_t>(m_windowSize)) {
+    if (!m_dispatchInFlight.load(std::memory_order_relaxed)) {
+      const size_t targetReadIdx = totalWritten - m_windowSize;
+      const int pingPong = m_pingPongIndex.load(std::memory_order_relaxed);
+      const int nextPingPong = 1 - pingPong;
+      processWindow(targetReadIdx, nextPingPong);
+      m_pingPongIndex.store(nextPingPong, std::memory_order_release);
+      m_readIndex.store(totalWritten, std::memory_order_release);
+      dispatchToDart(nextPingPong);
+    }
   }
 #endif
 
@@ -309,28 +312,29 @@ void Analyzer::onAudioData(const float *data, unsigned int frames, int channels)
 void Analyzer::workerThreadFunc() {
   while (!m_shouldStop.load(std::memory_order_relaxed)) {
     const size_t writeIdx = m_writeIndex.load(std::memory_order_acquire);
-    size_t readIdx = m_readIndex.load(std::memory_order_relaxed);
-    size_t available = writeIdx - readIdx;
+    const size_t readIdx = m_readIndex.load(std::memory_order_relaxed);
+    const size_t available = writeIdx - readIdx;
 
     if (available < static_cast<size_t>(m_windowSize)) {
       std::this_thread::sleep_for(std::chrono::milliseconds(3));
       continue;
     }
 
-    // If backlog is excessive (e.g. after pause/resume or device swap), jump to the latest window
-    if (available > static_cast<size_t>(m_windowSize * 4)) {
-      readIdx = writeIdx - m_windowSize;
-    }
+    // Always inspect the latest window so visualization stays in sync with real-time audio
+    const size_t targetReadIdx = writeIdx - m_windowSize;
 
     const int pingPong = m_pingPongIndex.load(std::memory_order_relaxed);
     const int nextPingPong = 1 - pingPong;
 
-    processWindow(readIdx, nextPingPong);
+    processWindow(targetReadIdx, nextPingPong);
 
     m_pingPongIndex.store(nextPingPong, std::memory_order_release);
-    m_readIndex.store(readIdx + m_windowSize, std::memory_order_release);
+    m_readIndex.store(writeIdx, std::memory_order_release);
 
     dispatchToDart(nextPingPong);
+
+    // Throttle worker thread to ~60-100 fps (12 ms) to match display refresh and avoid Dart event queue pressure
+    std::this_thread::sleep_for(std::chrono::milliseconds(12));
   }
 }
 

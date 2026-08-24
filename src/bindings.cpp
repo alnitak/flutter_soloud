@@ -903,6 +903,7 @@ extern "C"
                                          int fftDataPerChannel,
                                          int fftSamples)
   {
+    Analyzer::instance().clearDispatchInFlight();
     EM_ASM(
         {
           if (globalThis._wasmVisualizationCallback)
@@ -924,6 +925,10 @@ extern "C"
 #ifdef MA_ENABLE_AUDIO_WORKLETS
     if (!emscripten_is_main_browser_thread())
     {
+      if (!Analyzer::instance().tryBeginDispatch())
+      {
+        return;
+      }
       emscripten_audio_worklet_post_function_sig(
           EMSCRIPTEN_AUDIO_MAIN_THREAD, (void *)visualizationForwardToMain, "iiiii",
           channelCount, (int)(uintptr_t)waveDataPerChannel, waveSamples,
