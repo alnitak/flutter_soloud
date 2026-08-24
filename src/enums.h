@@ -212,4 +212,25 @@ typedef void (*dartOnAudioDurationCallback_t)(double duration);
 typedef void (*dartMixerOutputDataCallback_t)(unsigned char *data,
                                               uint64_t length);
 
+/// The kind of visualization data to acquire.
+///
+/// WARNING: Keep these in sync with `lib/src/enums.dart`.
+typedef enum VisualizationKind {
+  VISUALIZATION_WAVE = 0,
+  VISUALIZATION_FFT = 1,
+  VISUALIZATION_WAVE_AND_FFT = 2,
+} VisualizationKind_t;
+
+// Channel selection constants for visualization:
+#define VISUALIZATION_CHANNEL_MERGED -1
+#define VISUALIZATION_CHANNEL_ALL -2
+
+// Callback handing dart visualization data (wave and/or FFT) per channel.
+typedef void (*dartVisualizationCallback_t)(
+    int32_t channelCount,
+    const float **waveDataPerChannel,
+    int32_t waveSamples,
+    const float **fftDataPerChannel,
+    int32_t fftSamples);
+
 #endif // ENUMS_H

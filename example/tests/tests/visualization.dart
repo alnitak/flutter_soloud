@@ -13,16 +13,10 @@ double sumList(Float32List data) {
 }
 
 /// Test audio visualization including FFT data, wave data,
-/// and FFT smoothing.
+/// multi-channel, and FFT smoothing via the audioVisualizationEvents stream.
 Future<OutputBuffer> testVisualization() async {
   final strBuf = OutputBuffer();
   await initialize();
-
-  // Enable visualization
-  SoLoud.instance.setVisualizationEnabled(true);
-  final isEnabled = SoLoud.instance.getVisualizationEnabled();
-  assert(isEnabled, 'setVisualizationEnabled/getVisualizationEnabled failed');
-  strBuf.writeln('Visualization enabled: $isEnabled');
 
   // Test FFT smoothing
   SoLoud.instance.setFftSmoothing(0.7);
@@ -34,66 +28,104 @@ Future<OutputBuffer> testVisualization() async {
   SoLoud.instance.play(sound, volume: 0.5);
 
   // Wait for playback to start
-  await delay(3000);
+  await delay(1000);
 
-  // Test wave data only
-  strBuf.writeln('------- Wave data -------');
-  final waveData = AudioData(GetSamplesKind.wave)..updateSamples();
-  final waveSamples = waveData.getAudioData();
-  assert(waveSamples.length == 256, 'Wave data should have 256 samples');
-  assert(
-    sumList(waveSamples) != 0,
-    'Wave samples have 0 value',
+  // 1. Test Wave data only (window size 256)
+  strBuf.writeln('------- Wave data (window size 256) -------');
+  SoLoud.instance.setVisualizationEnabled(
+    true,
+    kind: VisualizationKind.wave,
   );
-  strBuf
-    ..writeln('Wave samples count: ${waveSamples.length}')
-    ..writeln('Wave sample [0-10]: ${waveSamples.sublist(0, 10)}');
-  waveData.dispose();
+  assert(
+    SoLoud.instance.getVisualizationEnabled(),
+    'Visualization should be enabled',
+  );
 
-  // wait a bit for new FFT data to be generated
+  AudioVisualizationData? wavePacket;
+  final waveSub = SoLoud.instance.audioVisualizationEvents.listen((data) {
+    wavePacket = data;
+  });
+
   await delay(300);
+  await waveSub.cancel();
 
-  // Test linear data (FFT + Wave)
-  strBuf.writeln('------- Linear data -------');
-  final linearData = AudioData(GetSamplesKind.linear)..updateSamples();
-  final linearSamples = linearData.getAudioData();
-  assert(linearSamples.length == 512, 'Linear data should have 512 samples');
+  assert(wavePacket != null, 'Should have received wave visualization packet');
+  assert(wavePacket!.wave.isNotEmpty, 'Wave list should not be empty');
   assert(
-    sumList(linearSamples) != 0,
-    'Linear samples have 0 value',
+    wavePacket!.wave.first.length == 256,
+    'Wave data should have 256 samples',
   );
-  var fftData = linearSamples.sublist(0, 256);
-  var linearWaveData = linearSamples.sublist(256, 512);
+  assert(wavePacket!.fft.isEmpty, 'FFT data should be empty in wave-only mode');
   strBuf
-    ..writeln('Linear samples count: ${linearSamples.length}')
-    ..writeln('FFT data [0-10]: ${fftData.sublist(0, 10)}')
-    ..writeln('Linear wave data [0-10]: ${linearWaveData.sublist(0, 10)}');
-  linearData.dispose();
+    ..writeln('Wave samples count: ${wavePacket!.wave.first.length}')
+    ..writeln('Wave sample [0-10]: ${wavePacket!.wave.first.sublist(0, 10)}')
+    ..writeln('------- FFT data (window size 512) -------');
 
-  // wait a bit for new FFT data to be generated
+  // 2. Test FFT data only (window size 512)
+  SoLoud.instance.setVisualizationEnabled(
+    true,
+    windowSize: 512,
+    kind: VisualizationKind.fft,
+  );
+
+  AudioVisualizationData? fftPacket;
+  final fftSub = SoLoud.instance.audioVisualizationEvents.listen((data) {
+    fftPacket = data;
+  });
+
   await delay(300);
+  await fftSub.cancel();
 
-  // Test texture data (2D matrix)
-  strBuf.writeln('------- Texture 2D data -------');
-  final textureData = AudioData(GetSamplesKind.texture)..updateSamples();
-  final textureSamples = textureData.getAudioData();
+  assert(fftPacket != null, 'Should have received FFT visualization packet');
+  assert(fftPacket!.fft.isNotEmpty, 'FFT list should not be empty');
   assert(
-    textureSamples.length == 512 * 256,
-    'Linear data should have 512 * 256 samples',
+    fftPacket!.fft.first.length == 256,
+    'FFT data should have windowSize / 2 (256) bins',
   );
-  assert(
-    sumList(textureSamples) != 0,
-    'Texture samples have 0 value',
-  );
-  fftData = textureSamples.sublist(0, 256);
-  linearWaveData = textureSamples.sublist(256, 512);
+  assert(fftPacket!.wave.isEmpty, 'Wave data should be empty in FFT-only mode');
   strBuf
-    ..writeln(
-      'Linear samples count: ${textureSamples.length} (512 * 256 samples)',
-    )
-    ..writeln('FFT data [0-10]: ${fftData.sublist(0, 10)}')
-    ..writeln('Linear wave data [0-10]: ${linearWaveData.sublist(0, 10)}');
-  textureData.dispose();
+    ..writeln('FFT bins count: ${fftPacket!.fft.first.length}')
+    ..writeln('FFT bins [0-10]: ${fftPacket!.fft.first.sublist(0, 10)}')
+    ..writeln('------- Wave + FFT (all channels, window size 256) -------');
+
+  // 3. Test Wave + FFT data with all channels
+  SoLoud.instance.setVisualizationEnabled(
+    true,
+    channel: VisualizationChannel.all,
+  );
+
+  AudioVisualizationData? combinedPacket;
+  final combinedSub = SoLoud.instance.audioVisualizationEvents.listen((data) {
+    combinedPacket = data;
+  });
+
+  await delay(300);
+  await combinedSub.cancel();
+
+  assert(
+    combinedPacket != null,
+    'Should have received combined visualization packet',
+  );
+  assert(
+    combinedPacket!.wave.isNotEmpty,
+    'Combined wave list should not be empty',
+  );
+  assert(
+    combinedPacket!.fft.isNotEmpty,
+    'Combined FFT list should not be empty',
+  );
+  assert(
+    combinedPacket!.wave.first.length == 256,
+    'Combined wave data should have 256 samples',
+  );
+  assert(
+    combinedPacket!.fft.first.length == 128,
+    'Combined FFT data should have 128 bins',
+  );
+  strBuf
+    ..writeln('Active channels count: ${combinedPacket!.channelCount}')
+    ..writeln('Wave channel count: ${combinedPacket!.wave.length}')
+    ..writeln('FFT channel count: ${combinedPacket!.fft.length}');
 
   // Disable visualization
   SoLoud.instance.setVisualizationEnabled(false);

@@ -8,7 +8,7 @@
             "name": "Flutter debug",
             "type": "dart",
             "request": "launch",
-            "program": "lib/metronome/metronome.dart",
+            "program": "lib/audio_data/audio_data.dart",
             "flutterMode": "debug",
             // "env": {
             //     "NO_XIPH_LIBS": "1"

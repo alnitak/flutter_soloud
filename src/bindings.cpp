@@ -70,6 +70,7 @@ namespace
   /// now. Judging it by globalCallbackGeneration would let a callable installed
   /// under a dead registration come back to life under a later engine's.
   uint64_t mixerCallbackGeneration = dart_callbacks::kNoGeneration;
+  uint64_t visualizationCallbackGeneration = dart_callbacks::kNoGeneration;
 
   /// Which FlutterEngine currently claims the native engine, and a counter
   /// advanced by every prepareEngineInit(). Claimed at the *start* of an
@@ -228,16 +229,10 @@ extern "C"
 #endif
   std::unique_ptr<Player> player = std::make_unique<Player>();
 
-#if defined(__clang__)
-  [[clang::no_destroy]]
-#endif
-  std::unique_ptr<Analyzer> analyzer = std::make_unique<Analyzer>(256);
-
   typedef void (*dartVoiceEndedCallback_t)(unsigned int *);
   typedef void (*dartFileLoadedCallback_t)(enum PlayerErrors *, char *completeFileName, unsigned int *, uint64_t *counter);
   typedef void (*dartStateChangedCallback_t)(enum PlayerStateEvents *);
-  // dartMixerOutputDataCallback_t comes from enums.h: ffi_gen_tmp.h has to be
-  // able to name it too.
+  // dartMixerOutputDataCallback_t and dartVisualizationCallback_t come from enums.h
 
   // to be used by `NativeCallable`, these functions must return void.
   // Atomic so the audio thread can safely snapshot the pointer before calling.
@@ -245,6 +240,7 @@ extern "C"
   std::atomic<dartFileLoadedCallback_t> dartFileLoadedCallback{nullptr};
   std::atomic<dartStateChangedCallback_t> dartStateChangedCallback{nullptr};
   std::atomic<dartMixerOutputDataCallback_t> dartMixerOutputDataCallback{nullptr};
+  std::atomic<dartVisualizationCallback_t> dartVisualizationCallback{nullptr};
 
   /// Monotonic engine session counter, bumped every time the native player
   /// is torn down and recreated by `dispose()`. Voice handles restart from
@@ -564,8 +560,10 @@ extern "C"
     dartFileLoadedCallback.store(nullptr, std::memory_order_release);
     dartStateChangedCallback.store(nullptr, std::memory_order_release);
     dartMixerOutputDataCallback.store(nullptr, std::memory_order_release);
+    dartVisualizationCallback.store(nullptr, std::memory_order_release);
     globalCallbackGeneration = dart_callbacks::kNoGeneration;
     mixerCallbackGeneration = dart_callbacks::kNoGeneration;
+    visualizationCallbackGeneration = dart_callbacks::kNoGeneration;
   }
 
   /// Additionally null the Dart callbacks stored inside Player-owned state: the
@@ -606,6 +604,8 @@ extern "C"
       std::lock_guard<std::mutex> mixerGuard(mixer_lifecycle_mutex);
       MixerOutput::instance().setDataCallback(nullptr);
       MixerOutput::instance().stop();
+      Analyzer::instance().setDataCallback(nullptr);
+      Analyzer::instance().setVisualizationEnabled(false);
     }
     clearPlayerDartCallbackRegistrationsLocked();
   }
@@ -633,7 +633,38 @@ extern "C"
       return false;
 
     clearDartCallbackPointersLocked();
+    {
+      std::lock_guard<std::mutex> mixerGuard(mixer_lifecycle_mutex);
+      MixerOutput::instance().setDataCallback(nullptr);
+      MixerOutput::instance().stop();
+      Analyzer::instance().setDataCallback(nullptr);
+      Analyzer::instance().setVisualizationEnabled(false);
+    }
     return true;
+  }
+
+  FFI_PLUGIN_EXPORT void retireDartCallbacksFinalizer(void *token)
+  {
+    const int64_t engine_id = reinterpret_cast<intptr_t>(token);
+    dart_callbacks::Registration registration;
+    if (engine_id != kNoEngineId)
+    {
+      if (!registration.retire(engine_id))
+        return;
+    }
+    else
+    {
+      registration.retireAll();
+    }
+
+    clearDartCallbackPointersLocked();
+    {
+      std::lock_guard<std::mutex> mixerGuard(mixer_lifecycle_mutex);
+      MixerOutput::instance().setDataCallback(nullptr);
+      MixerOutput::instance().stop();
+      Analyzer::instance().setDataCallback(nullptr);
+      Analyzer::instance().setVisualizationEnabled(false);
+    }
   }
 
   // Mixer output capture exports.
@@ -865,6 +896,101 @@ extern "C"
     publishMixerOutputCallback(callback, kNoEngineId, /*require_live=*/false);
   }
 
+#if defined(__EMSCRIPTEN__) && defined(MA_ENABLE_AUDIO_WORKLETS)
+  static void visualizationForwardToMain(int channelCount,
+                                         int waveDataPerChannel,
+                                         int waveSamples,
+                                         int fftDataPerChannel,
+                                         int fftSamples)
+  {
+    EM_ASM(
+        {
+          if (globalThis._wasmVisualizationCallback)
+          {
+            globalThis._wasmVisualizationCallback($0, $1, $2, $3, $4);
+          }
+        },
+        channelCount, waveDataPerChannel, waveSamples, fftDataPerChannel, fftSamples);
+  }
+#endif
+
+  void dispatchVisualizationToDart(int32_t channelCount,
+                                   const float **waveDataPerChannel,
+                                   int32_t waveSamples,
+                                   const float **fftDataPerChannel,
+                                   int32_t fftSamples)
+  {
+#ifdef __EMSCRIPTEN__
+#ifdef MA_ENABLE_AUDIO_WORKLETS
+    if (!emscripten_is_main_browser_thread())
+    {
+      emscripten_audio_worklet_post_function_sig(
+          EMSCRIPTEN_AUDIO_MAIN_THREAD, (void *)visualizationForwardToMain, "iiiii",
+          channelCount, (int)(uintptr_t)waveDataPerChannel, waveSamples,
+          (int)(uintptr_t)fftDataPerChannel, fftSamples);
+      return;
+    }
+#endif
+    EM_ASM(
+        {
+          if (globalThis._wasmVisualizationCallback)
+          {
+            globalThis._wasmVisualizationCallback($0, $1, $2, $3, $4);
+          }
+        },
+        channelCount, (int)(uintptr_t)waveDataPerChannel, waveSamples,
+        (int)(uintptr_t)fftDataPerChannel, fftSamples);
+#else
+    const dart_callbacks::InvocationPass pass;
+    if (!pass.isLive(visualizationCallbackGeneration))
+      return;
+    auto cb = dartVisualizationCallback.load(std::memory_order_acquire);
+    if (cb != nullptr)
+    {
+      cb(channelCount, waveDataPerChannel, waveSamples, fftDataPerChannel, fftSamples);
+    }
+#endif
+  }
+
+  static bool publishVisualizationCallback(dartVisualizationCallback_t callback,
+                                           int64_t owner_engine_id,
+                                           bool require_live)
+  {
+    {
+      dart_callbacks::Registration registration;
+
+      if (owner_engine_id != kNoEngineId)
+      {
+        if (!registration.isOwnedBy(owner_engine_id))
+          return false;
+      }
+      else if (require_live &&
+               registration.generation() == dart_callbacks::kNoGeneration)
+      {
+        return false;
+      }
+
+      dartVisualizationCallback.store(callback, std::memory_order_release);
+      visualizationCallbackGeneration = registration.generation();
+    }
+
+    Analyzer::instance().setDataCallback(dispatchVisualizationToDart);
+    return true;
+  }
+
+  FFI_PLUGIN_EXPORT bool setVisualizationCallbackForEngine(
+      dartVisualizationCallback_t callback, int64_t owner_engine_id)
+  {
+    return publishVisualizationCallback(callback, owner_engine_id,
+                                        /*require_live=*/true);
+  }
+
+  FFI_PLUGIN_EXPORT void setVisualizationCallback(
+      dartVisualizationCallback_t callback)
+  {
+    publishVisualizationCallback(callback, kNoEngineId, /*require_live=*/false);
+  }
+
   //////////////////////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////////
@@ -925,15 +1051,10 @@ extern "C"
       return res;
     }
 
-    // Set window size for filters
-    const int windowSize = (player.get()->soloud.getBackendBufferSize() /
-                            player.get()->soloud.getBackendChannels()) -
-                           1;
-    analyzer.get()->setWindowsSize(windowSize);
-
     // Set the callback for when a voice is ended/stopped
     player.get()->setVoiceEndedCallback(voiceEndedCallback);
     player.get()->setVoiceInactiveCallback(voiceInactiveCallback);
+    Analyzer::instance().setDataCallback(dispatchVisualizationToDart);
 
 #if defined(SOLOUD_LIFECYCLE_TEST_HOOKS)
     soloudTestInitBarrier();
@@ -1270,6 +1391,8 @@ extern "C"
       std::lock_guard<std::mutex> mixerGuard(mixer_lifecycle_mutex);
       MixerOutput::instance().setDataCallback(nullptr);
       MixerOutput::instance().stop();
+      Analyzer::instance().setDataCallback(nullptr);
+      Analyzer::instance().setVisualizationEnabled(false);
     }
 
     // Nothing is left for a FlutterEngine to own. A detach arriving after this
@@ -1300,8 +1423,6 @@ extern "C"
     // keep the old generation, and the Dart side (which reads the counter
     // after the next successful initEngine) can drop them as stale.
     engineGeneration.fetch_add(1, std::memory_order_acq_rel);
-    analyzer.reset();
-    analyzer = std::make_unique<Analyzer>(256);
   }
 
   /// Must be called when there is no more need of the player or when closing
@@ -2576,11 +2697,25 @@ extern "C"
   /// Enable or disable visualization
   ///
   /// [enabled] enable or disable it
-  FFI_PLUGIN_EXPORT void setVisualizationEnabled(bool enabled)
+  /// [windowSize] power of two from 128 to 8192 (default 256)
+  /// [kind] 0: wave, 1: FFT, 2: wave and FFT
+  /// [channel] -1: merged mono, -2: all channels, >= 0: specific channel index
+  FFI_PLUGIN_EXPORT enum PlayerErrors setVisualizationEnabled(
+      bool enabled,
+      int windowSize,
+      int kind,
+      int channel)
   {
     if (player.get() == nullptr || !player.get()->isInited())
-      return;
-    player.get()->setVisualizationEnabled(enabled);
+      return backendNotInited;
+    Analyzer::instance().setDataCallback(dispatchVisualizationToDart);
+    const int engineChannels = player.get()->soloud.getBackendChannels();
+    return Analyzer::instance().setVisualizationEnabled(
+        enabled,
+        windowSize,
+        static_cast<VisualizationKind>(kind),
+        channel,
+        engineChannels);
   }
 
   /// Get visualization state
@@ -2588,31 +2723,7 @@ extern "C"
   /// Return true if enabled
   FFI_PLUGIN_EXPORT int getVisualizationEnabled()
   {
-    if (player.get() == nullptr || !player.get()->isInited())
-      return 0;
-    return player.get()->isVisualizationEnabled();
-  }
-
-  /// Returns valid data only if VisualizationEnabled is true
-  ///
-  /// Return a 256 float array containing FFT data.
-  FFI_PLUGIN_EXPORT void getFft(float **fft, bool *isTheSameAsBefore)
-  {
-    if (player.get() == nullptr || !player.get()->isInited() ||
-        !player.get()->isVisualizationEnabled())
-      return;
-    *fft = player.get()->calcFFT(isTheSameAsBefore);
-  }
-
-  /// Returns valid data only if VisualizationEnabled is true
-  ///
-  /// Return a 256 float array containing wave data.
-  FFI_PLUGIN_EXPORT void getWave(float **wave, bool *isTheSameAsBefore)
-  {
-    if (player.get() == nullptr || !player.get()->isInited() ||
-        !player.get()->isVisualizationEnabled())
-      return;
-    *wave = player.get()->getWave(isTheSameAsBefore);
+    return Analyzer::instance().isVisualizationEnabled() ? 1 : 0;
   }
 
   /// Smooth FFT data.
@@ -2623,88 +2734,9 @@ extern "C"
   /// [smooth] must be in the [0.0 ~ 1.0] range.
   /// 0 = no smooth
   /// 1 = full smooth
-  /// the new value is calculated with:
-  /// newFreq = smooth * oldFreq + (1 - smooth) * newFreq
   FFI_PLUGIN_EXPORT void setFftSmoothing(float smooth)
   {
-    if (player.get() == nullptr || !player.get()->isInited())
-      return;
-    analyzer.get()->setSmoothing(smooth);
-  }
-
-  /// Return in [samples] a 512 float array.
-  /// The first 256 floats represent the FFT frequencies data [>=0.0].
-  /// The other 256 floats represent the wave data (amplitude) [-1.0~1.0].
-  ///
-  /// [samples] should be allocated and freed in dart side
-  float texture[512];
-  FFI_PLUGIN_EXPORT void getAudioTexture(float **samples,
-                                         bool *isTheSameAsBefore)
-  {
-    if (player.get() == nullptr || !player.get()->isInited() ||
-        analyzer.get() == nullptr || !player.get()->isVisualizationEnabled())
-    {
-      *samples = texture;
-      memset(*samples, 0, sizeof(float) * 512);
-      *isTheSameAsBefore = true;
-      return;
-    }
-    float *wave = player.get()->getWave(isTheSameAsBefore);
-    float *fft = analyzer.get()->calcFFT(wave);
-
-    if (*isTheSameAsBefore)
-    {
-      *samples = texture;
-      return;
-    }
-
-    memcpy(texture, fft, sizeof(float) * 256);
-    memcpy(texture + 256, wave, sizeof(float) * 256);
-    *samples = texture;
-    *isTheSameAsBefore = false;
-  }
-
-  /// Return a floats matrix of 256x512
-  /// Every row are composed of 256 FFT values plus 256 of wave data
-  /// Every time is called, a new row is stored in the
-  /// first row and all the previous rows are shifted
-  /// up (the last one will be lost).
-  ///
-  /// [samples]
-  float texture2D[256][512];
-  FFI_PLUGIN_EXPORT void getAudioTexture2D(float **samples,
-                                           bool *isTheSameAsBefore)
-  {
-    if (player.get() == nullptr || !player.get()->isInited() ||
-        analyzer.get() == nullptr || !player.get()->isVisualizationEnabled())
-    {
-      *samples = *texture2D;
-      memset(*samples, 0, sizeof(float) * 512 * 256);
-      *isTheSameAsBefore = true;
-      return;
-    }
-
-    float *wave = player.get()->getWave(isTheSameAsBefore);
-    float *fft = analyzer.get()->calcFFT(wave);
-    if (*isTheSameAsBefore)
-    {
-      *samples = *texture2D;
-      return;
-    }
-
-    /// shift up 1 row
-    memmove(texture2D[1], texture2D[0], sizeof(float) * 512 * 255);
-    /// store the new 1st row
-    memcpy(texture2D[0], fft, sizeof(float) * 256);
-    memcpy(texture2D[0] + 256, wave, sizeof(float) * 256);
-
-    *samples = *texture2D;
-    *isTheSameAsBefore = false;
-  }
-
-  FFI_PLUGIN_EXPORT float getTextureValue(int row, int column)
-  {
-    return texture2D[row][column];
+    Analyzer::instance().setSmoothing(smooth);
   }
 
   /// Get the sound length in seconds

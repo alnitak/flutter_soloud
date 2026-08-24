@@ -35,7 +35,7 @@ cc -std=gnu99 -O2 -c "${SANITIZER[@]}" \
     -o "$WORK_DIR/pffft.o" \
     src/pffft/pffft.c
 
-c++ -std=c++17 -O2 -Wall -Wextra -pthread "${SANITIZER[@]}" \
+c++ -std=c++17 -O2 -w -pthread "${SANITIZER[@]}" \
     -DWITH_MINIAUDIO \
     -DNO_XIPH_LIBS \
     -DSOLOUD_LIFECYCLE_TEST_HOOKS \

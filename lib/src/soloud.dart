@@ -5,6 +5,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_soloud/src/audio_source.dart';
+import 'package:flutter_soloud/src/audio_visualization_data.dart';
 import 'package:flutter_soloud/src/bindings/bindings_player.dart';
 import 'package:flutter_soloud/src/bindings/native_metadata_ffi.dart'
     if (dart.library.js_interop) 'package:flutter_soloud/src/bindings/native_metadata_web.dart';
@@ -270,6 +271,16 @@ interface class SoLoud {
 
   /// Whether or not is it possible to ask for wave and FFT data.
   bool _isVisualizationEnabled = false;
+
+  /// Controller that emits audio visualization data packets.
+  final StreamController<AudioVisualizationData>
+  _audioVisualizationEventsController =
+      StreamController<AudioVisualizationData>.broadcast();
+
+  /// Stream of audio visualization data packets (wave and/or FFT) emitted
+  /// when visualization is enabled.
+  Stream<AudioVisualizationData> get audioVisualizationEvents =>
+      _audioVisualizationEventsController.stream;
 
   /// Whether this Dart isolate has registered native callbacks.
   ///
@@ -819,6 +830,10 @@ interface class SoLoud {
     if (_controller.soLoudFFI.isMixerOutputCaptureRunning()) {
       _controller.soLoudFFI.stopMixerOutputCapture();
     }
+    if (_isVisualizationEnabled) {
+      _controller.soLoudFFI.setVisualizationEnabled(false);
+      _isVisualizationEnabled = false;
+    }
   }
 
   Future<void> _deinitNativeAsync() async {
@@ -863,6 +878,12 @@ interface class SoLoud {
   Future<void> _initializeNativeCallbacks() async {
     // Initialize callbacks.
     await _controller.soLoudFFI.setDartEventCallbacks();
+
+    _controller.soLoudFFI.setVisualizationCallback((data) {
+      if (_audioVisualizationEventsController.hasListener) {
+        _audioVisualizationEventsController.add(data);
+      }
+    });
 
     // Listen when a handle becomes invalid because has been stopped/ended.
     if (!_controller.soLoudFFI.voiceEndedEventController.hasListener) {
@@ -3183,18 +3204,43 @@ interface class SoLoud {
     _controller.soLoudFFI.setLoopEndPoint(handle, time);
   }
 
-  /// Enable or disable visualization.
+  /// Enable or disable audio visualization.
   ///
-  /// When enabled it will be possible to get FFT and wave data.
+  /// When enabled, audio data packets (wave and/or FFT) will be emitted on the
+  /// [audioVisualizationEvents] stream.
   ///
-  /// [enabled] whether to set the visualization or not.
+  /// [enabled] whether to enable or disable audio visualization.
+  ///
+  /// [windowSize] power of two window size from 128 to 8192 (default 256).
+  ///
+  /// [kind] whether to compute wave, FFT, or both (default
+  /// [VisualizationKind.waveAndFft]).
+  ///
+  /// [channel] channel selection: [VisualizationChannel.merged] (-1, default),
+  /// [VisualizationChannel.all] (-2), or a specific 0-based channel index.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
-  void setVisualizationEnabled(bool enabled) {
+  ///
+  /// Throws [SoLoudCppException] if native setup fails.
+  void setVisualizationEnabled(
+    bool enabled, {
+    int windowSize = 256,
+    VisualizationKind kind = VisualizationKind.waveAndFft,
+    int channel = VisualizationChannel.merged,
+  }) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
-    _controller.soLoudFFI.setVisualizationEnabled(enabled);
+    final error = _controller.soLoudFFI.setVisualizationEnabled(
+      enabled,
+      windowSize: windowSize,
+      kind: kind,
+      channel: channel,
+    );
+    if (error != PlayerErrors.noError) {
+      _logPlayerError(error, from: 'setVisualizationEnabled');
+      throw SoLoudCppException.fromPlayerError(error);
+    }
     _isVisualizationEnabled = enabled;
   }
 

@@ -79,6 +79,7 @@ namespace SoLoud
 #include <mutex>
 #include <atomic>
 #include "soloud_common.h"
+#include "../../../../analyzer.h"
 #include "../../../../mixeroutput/mixer_output.h"
 #include "../../../../device_lifecycle_test_hooks.h"
 #if defined(_WIN32) || defined(_WIN64)
@@ -434,8 +435,8 @@ namespace SoLoud
         }
         first_call = false;
         SoLoud::Soloud *soloud = (SoLoud::Soloud *)pDevice->pUserData;
-#ifdef __EMSCRIPTEN__
         const unsigned int outChannels = pDevice->playback.channels;
+#ifdef __EMSCRIPTEN__
         // Stale-callback guard: on the web the miniaudio device is a global,
         // re-used across engine sessions, and a stale AudioWorklet (or a
         // ScriptProcessorNode callback) from a previous session can still
@@ -479,6 +480,7 @@ namespace SoLoud
         }
         soloud->mix((float *)pOutput, frameCount);
         MixerOutput::instance().onAudioData((float *)pOutput, frameCount);
+        Analyzer::instance().onAudioData((float *)pOutput, frameCount, outChannels);
         // Use the SoLoud unlock (not raw pthread_mutex_unlock) so the
         // ended-voice queue is drained with correct bookkeeping.
         soloud->unlockAudioMutex_internal();
@@ -509,11 +511,13 @@ namespace SoLoud
             // The capture tap sits after the ring read, so it always reflects
             // what was actually played, including any retroactive rewrite.
             MixerOutput::instance().onAudioData((float *)pOutput, frameCount);
+            Analyzer::instance().onAudioData((float *)pOutput, frameCount, outChannels);
         }
         else
         {
             soloud->mix((float *)pOutput, frameCount);
             MixerOutput::instance().onAudioData((float *)pOutput, frameCount);
+            Analyzer::instance().onAudioData((float *)pOutput, frameCount, outChannels);
         }
 #endif
     }

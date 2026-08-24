@@ -47,8 +47,22 @@ static const int64_t kNoEngineId = -1;
   if (self != nil) {
     _engineId = kNoEngineId;
     _hasEngineId = NO;
+    [[NSNotificationCenter defaultCenter]
+        addObserver:self
+           selector:@selector(applicationWillTerminate:)
+               name:NSApplicationWillTerminateNotification
+             object:nil];
   }
   return self;
+}
+
+- (void)applicationWillTerminate:(NSNotification *)notification {
+  if (_hasEngineId) {
+    const int64_t engineId = _engineId;
+    _hasEngineId = NO;
+    _engineId = kNoEngineId;
+    clearDartCallbackRegistrationsForEngine(engineId);
+  }
 }
 
 - (void)handleMethodCall:(FlutterMethodCall *)call
@@ -118,6 +132,7 @@ static const int64_t kNoEngineId = -1;
 }
 
 - (void)dealloc {
+  [[NSNotificationCenter defaultCenter] removeObserver:self];
   // macOS's stand-in for iOS's detachFromEngineForRegistrar:, which does not
   // exist here -- the macOS FlutterPlugin protocol is only
   // registerWithRegistrar: and handleMethodCall:result:.
