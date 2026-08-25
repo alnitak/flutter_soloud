@@ -546,11 +546,12 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       _clearDartCallbackRegistrationsPtr.asFunction<void Function()>();
 
   late final _retireDartCallbacksFinalizerPtr =
-      _lookup<
-        ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>
-      >('retireDartCallbacksFinalizer');
-  late final ffi.NativeFinalizer _isolateFinalizer =
-      ffi.NativeFinalizer(_retireDartCallbacksFinalizerPtr);
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>(
+        'retireDartCallbacksFinalizer',
+      );
+  late final ffi.NativeFinalizer _isolateFinalizer = ffi.NativeFinalizer(
+    _retireDartCallbacksFinalizerPtr,
+  );
   _IsolateLifecycleToken? _lifecycleToken;
 
   // ////////////////////////////////////////////////
@@ -726,9 +727,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       _lookup<
         ffi.NativeFunction<
           ffi.Bool Function(
-            ffi.Pointer<
-              ffi.NativeFunction<DartVisualizationCallbackTFunction>
-            >,
+            ffi.Pointer<ffi.NativeFunction<DartVisualizationCallbackTFunction>>,
             ffi.Int64,
           )
         >
@@ -736,9 +735,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   late final _setVisualizationCallback = _setVisualizationCallbackPtr
       .asFunction<
         bool Function(
-          ffi.Pointer<
-            ffi.NativeFunction<DartVisualizationCallbackTFunction>
-          >,
+          ffi.Pointer<ffi.NativeFunction<DartVisualizationCallbackTFunction>>,
           int,
         )
       >();

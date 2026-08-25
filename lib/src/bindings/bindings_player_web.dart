@@ -1339,10 +1339,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
       final waveList = <Float32List>[];
       if (wSamples > 0 && wavePtr != 0) {
         for (var c = 0; c < cCount; c++) {
-          final channelPtr = wasmGetI32Value(
-            wavePtr + (c * 4),
-            'i32',
-          );
+          final channelPtr = wasmGetI32Value(wavePtr + (c * 4), 'i32');
           if (channelPtr != 0) {
             final startIndex = channelPtr >> 2;
             final endIndex = startIndex + wSamples;
@@ -1358,10 +1355,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
       final fftList = <Float32List>[];
       if (fSamples > 0 && fftPtr != 0) {
         for (var c = 0; c < cCount; c++) {
-          final channelPtr = wasmGetI32Value(
-            fftPtr + (c * 4),
-            'i32',
-          );
+          final channelPtr = wasmGetI32Value(fftPtr + (c * 4), 'i32');
           if (channelPtr != 0) {
             final startIndex = channelPtr >> 2;
             final endIndex = startIndex + fSamples;
