@@ -6257,7 +6257,7 @@ function checkIncomingModuleAPI() {
 }
 
 var ASM_CONSTS = {
-  725260: ($0, $1, $2, $3, $4) => {
+  725276: ($0, $1, $2, $3, $4) => {
     if (typeof window === "undefined" || (window.AudioContext || window.webkitAudioContext) === undefined) {
       return 0;
     }
@@ -6329,7 +6329,7 @@ var ASM_CONSTS = {
     window.miniaudio.referenceCount += 1;
     return 1;
   },
-  727438: () => {
+  727454: () => {
     if (typeof (window.miniaudio) !== "undefined") {
       window.miniaudio.unlock_event_types.map(function(event_type) {
         document.removeEventListener(event_type, window.miniaudio.unlock, true);
@@ -6340,8 +6340,8 @@ var ASM_CONSTS = {
       }
     }
   },
-  727742: () => (navigator.mediaDevices !== undefined && navigator.mediaDevices.getUserMedia !== undefined),
-  727846: () => {
+  727758: () => (navigator.mediaDevices !== undefined && navigator.mediaDevices.getUserMedia !== undefined),
+  727862: () => {
     try {
       var temp = new (window.AudioContext || window.webkitAudioContext);
       var sampleRate = temp.sampleRate;
@@ -6351,12 +6351,12 @@ var ASM_CONSTS = {
       return 0;
     }
   },
-  728017: ($0, $1) => window.miniaudio.track_device({
+  728033: ($0, $1) => window.miniaudio.track_device({
     webaudio: emscriptenGetAudioObject($0),
     state: 1,
     pDevice: $1
   }),
-  728126: ($0, $1) => {
+  728142: ($0, $1) => {
     var getUserMediaResult = 0;
     var audioWorklet = emscriptenGetAudioObject($0);
     var audioContext = emscriptenGetAudioObject($1);
@@ -6374,14 +6374,14 @@ var ASM_CONSTS = {
     });
     return getUserMediaResult;
   },
-  728688: ($0, $1) => {
+  728704: ($0, $1) => {
     var audioWorklet = emscriptenGetAudioObject($0);
     var audioContext = emscriptenGetAudioObject($1);
     audioWorklet.connect(audioContext.destination);
     return 0;
   },
-  728848: $0 => emscriptenGetAudioObject($0).sampleRate,
-  728900: $0 => {
+  728864: $0 => emscriptenGetAudioObject($0).sampleRate,
+  728916: $0 => {
     var device = window.miniaudio.get_device_by_index($0);
     if (device.streamNode !== undefined) {
       device.streamNode.disconnect();
@@ -6389,20 +6389,20 @@ var ASM_CONSTS = {
     }
     device.pDevice = undefined;
   },
-  729091: $0 => {
+  729107: $0 => {
     window.miniaudio.untrack_device_by_index($0);
   },
-  729141: $0 => {
+  729157: $0 => {
     var device = window.miniaudio.get_device_by_index($0);
     device.webaudio.resume();
     device.state = window.miniaudio.device_state.started;
   },
-  729280: $0 => {
+  729296: $0 => {
     var device = window.miniaudio.get_device_by_index($0);
     device.webaudio.suspend();
     device.state = window.miniaudio.device_state.stopped;
   },
-  729420: () => {
+  729436: () => {
     var workerUri = "assets/packages/flutter_soloud/web/worker.dart.js";
     console.log("EM_ASM creating Web Worker!");
     try {
@@ -6422,7 +6422,12 @@ var ASM_CONSTS = {
       return 0;
     }
   },
-  729909: ($0, $1, $2) => {
+  729925: ($0, $1, $2, $3, $4) => {
+    if (globalThis._wasmVisualizationCallback) {
+      globalThis._wasmVisualizationCallback($0, $1, $2, $3, $4);
+    }
+  },
+  730035: ($0, $1, $2) => {
     if (Module_soloud.wasmWorker) {
       Module_soloud.wasmWorker.postMessage({
         message: UTF8ToString($0),
@@ -6433,7 +6438,7 @@ var ASM_CONSTS = {
       console.error('flutter_soloud: the event worker is not created; dropping message "' + UTF8ToString($0) + '"');
     }
   },
-  730167: ($0, $1, $2) => {
+  730293: ($0, $1, $2) => {
     if (Module_soloud.wasmWorker) {
       Module_soloud.wasmWorker.postMessage({
         message: "mixerOutputData",
@@ -6443,13 +6448,18 @@ var ASM_CONSTS = {
       });
     }
   },
-  730319: ($0, $1) => {
+  730445: ($0, $1, $2, $3, $4) => {
+    if (globalThis._wasmVisualizationCallback) {
+      globalThis._wasmVisualizationCallback($0, $1, $2, $3, $4);
+    }
+  },
+  730555: ($0, $1) => {
     var functionName = "dartOnMetadataCallback_" + $1;
     if (typeof window[functionName] === "function") {
       window[functionName]($0);
     } else {}
   },
-  730461: ($0, $1, $2, $3) => {
+  730697: ($0, $1, $2, $3) => {
     var functionName = "dartOnBufferingCallback_" + $3;
     if (typeof window[functionName] === "function") {
       var buffering = $0 == 1 ? true : false;
@@ -6458,25 +6468,25 @@ var ASM_CONSTS = {
       console.log("EM_ASM 'dartOnBufferingCallback_$hash' not found.");
     }
   },
-  730725: ($0, $1, $2, $3) => {
+  730961: ($0, $1, $2, $3) => {
     var functionName = "dartOnBufferingCallback_" + $3;
     if (typeof window[functionName] === "function") {
       window[functionName]($0 == 1 ? true : false, $1, $2);
     }
   },
-  730887: ($0, $1) => {
+  731123: ($0, $1) => {
     var functionName = "dartOnMetadataCallback_" + $1;
     if (typeof window[functionName] === "function") {
       window[functionName]($0);
     }
   },
-  731020: ($0, $1) => {
+  731256: ($0, $1) => {
     var functionName = "dartOnMoreDataIsNeededCallback_" + $1;
     if (typeof window[functionName] === "function") {
       window[functionName]($0);
     }
   },
-  731161: ($0, $1) => {
+  731397: ($0, $1) => {
     var functionName = "dartOnAudioDurationCallback_" + $1;
     if (typeof window[functionName] === "function") {
       window[functionName]($0);
@@ -6517,6 +6527,8 @@ var _clearDartCallbackRegistrations = Module["_clearDartCallbackRegistrations"] 
 
 var _clearDartCallbackRegistrationsForEngine = Module["_clearDartCallbackRegistrationsForEngine"] = makeInvalidEarlyAccess("_clearDartCallbackRegistrationsForEngine");
 
+var _retireDartCallbacksFinalizer = Module["_retireDartCallbacksFinalizer"] = makeInvalidEarlyAccess("_retireDartCallbacksFinalizer");
+
 var _startMixerCapture = Module["_startMixerCapture"] = makeInvalidEarlyAccess("_startMixerCapture");
 
 var _stopMixerCapture = Module["_stopMixerCapture"] = makeInvalidEarlyAccess("_stopMixerCapture");
@@ -6538,6 +6550,10 @@ var _getMixerOutputWavHeader = Module["_getMixerOutputWavHeader"] = makeInvalidE
 var _setMixerOutputCallbackForEngine = Module["_setMixerOutputCallbackForEngine"] = makeInvalidEarlyAccess("_setMixerOutputCallbackForEngine");
 
 var _setMixerOutputCallback = Module["_setMixerOutputCallback"] = makeInvalidEarlyAccess("_setMixerOutputCallback");
+
+var _setVisualizationCallbackForEngine = Module["_setVisualizationCallbackForEngine"] = makeInvalidEarlyAccess("_setVisualizationCallbackForEngine");
+
+var _setVisualizationCallback = Module["_setVisualizationCallback"] = makeInvalidEarlyAccess("_setVisualizationCallback");
 
 var _areXiphLibsAvailable = Module["_areXiphLibsAvailable"] = makeInvalidEarlyAccess("_areXiphLibsAvailable");
 
@@ -6679,17 +6695,7 @@ var _setVisualizationEnabled = Module["_setVisualizationEnabled"] = makeInvalidE
 
 var _getVisualizationEnabled = Module["_getVisualizationEnabled"] = makeInvalidEarlyAccess("_getVisualizationEnabled");
 
-var _getFft = Module["_getFft"] = makeInvalidEarlyAccess("_getFft");
-
-var _getWave = Module["_getWave"] = makeInvalidEarlyAccess("_getWave");
-
 var _setFftSmoothing = Module["_setFftSmoothing"] = makeInvalidEarlyAccess("_setFftSmoothing");
-
-var _getAudioTexture = Module["_getAudioTexture"] = makeInvalidEarlyAccess("_getAudioTexture");
-
-var _getAudioTexture2D = Module["_getAudioTexture2D"] = makeInvalidEarlyAccess("_getAudioTexture2D");
-
-var _getTextureValue = Module["_getTextureValue"] = makeInvalidEarlyAccess("_getTextureValue");
 
 var _getLength = Module["_getLength"] = makeInvalidEarlyAccess("_getLength");
 
@@ -6927,6 +6933,8 @@ var dynCall_iiiiiiiii = makeInvalidEarlyAccess("dynCall_iiiiiiiii");
 
 var dynCall_iiiiii = makeInvalidEarlyAccess("dynCall_iiiiii");
 
+var dynCall_viiiii = makeInvalidEarlyAccess("dynCall_viiiii");
+
 var dynCall_viidi = makeInvalidEarlyAccess("dynCall_viidi");
 
 var dynCall_viiiiii = makeInvalidEarlyAccess("dynCall_viiiiii");
@@ -6957,8 +6965,6 @@ var dynCall_iiiiijj = makeInvalidEarlyAccess("dynCall_iiiiijj");
 
 var dynCall_iiiiiijj = makeInvalidEarlyAccess("dynCall_iiiiiijj");
 
-var dynCall_viiiii = makeInvalidEarlyAccess("dynCall_viiiii");
-
 var _asyncify_start_unwind = makeInvalidEarlyAccess("_asyncify_start_unwind");
 
 var _asyncify_stop_unwind = makeInvalidEarlyAccess("_asyncify_stop_unwind");
@@ -6988,6 +6994,7 @@ function assignWasmExports(wasmExports) {
   assert(typeof wasmExports["setDartEventCallback"] != "undefined", "missing Wasm export: setDartEventCallback");
   assert(typeof wasmExports["clearDartCallbackRegistrations"] != "undefined", "missing Wasm export: clearDartCallbackRegistrations");
   assert(typeof wasmExports["clearDartCallbackRegistrationsForEngine"] != "undefined", "missing Wasm export: clearDartCallbackRegistrationsForEngine");
+  assert(typeof wasmExports["retireDartCallbacksFinalizer"] != "undefined", "missing Wasm export: retireDartCallbacksFinalizer");
   assert(typeof wasmExports["startMixerCapture"] != "undefined", "missing Wasm export: startMixerCapture");
   assert(typeof wasmExports["stopMixerCapture"] != "undefined", "missing Wasm export: stopMixerCapture");
   assert(typeof wasmExports["isMixerCaptureRunning"] != "undefined", "missing Wasm export: isMixerCaptureRunning");
@@ -6999,6 +7006,8 @@ function assignWasmExports(wasmExports) {
   assert(typeof wasmExports["getMixerOutputWavHeader"] != "undefined", "missing Wasm export: getMixerOutputWavHeader");
   assert(typeof wasmExports["setMixerOutputCallbackForEngine"] != "undefined", "missing Wasm export: setMixerOutputCallbackForEngine");
   assert(typeof wasmExports["setMixerOutputCallback"] != "undefined", "missing Wasm export: setMixerOutputCallback");
+  assert(typeof wasmExports["setVisualizationCallbackForEngine"] != "undefined", "missing Wasm export: setVisualizationCallbackForEngine");
+  assert(typeof wasmExports["setVisualizationCallback"] != "undefined", "missing Wasm export: setVisualizationCallback");
   assert(typeof wasmExports["areXiphLibsAvailable"] != "undefined", "missing Wasm export: areXiphLibsAvailable");
   assert(typeof wasmExports["initEngine"] != "undefined", "missing Wasm export: initEngine");
   assert(typeof wasmExports["setAndroidAAudioAttributes"] != "undefined", "missing Wasm export: setAndroidAAudioAttributes");
@@ -7069,12 +7078,7 @@ function assignWasmExports(wasmExports) {
   assert(typeof wasmExports["setLoopEndPoint"] != "undefined", "missing Wasm export: setLoopEndPoint");
   assert(typeof wasmExports["setVisualizationEnabled"] != "undefined", "missing Wasm export: setVisualizationEnabled");
   assert(typeof wasmExports["getVisualizationEnabled"] != "undefined", "missing Wasm export: getVisualizationEnabled");
-  assert(typeof wasmExports["getFft"] != "undefined", "missing Wasm export: getFft");
-  assert(typeof wasmExports["getWave"] != "undefined", "missing Wasm export: getWave");
   assert(typeof wasmExports["setFftSmoothing"] != "undefined", "missing Wasm export: setFftSmoothing");
-  assert(typeof wasmExports["getAudioTexture"] != "undefined", "missing Wasm export: getAudioTexture");
-  assert(typeof wasmExports["getAudioTexture2D"] != "undefined", "missing Wasm export: getAudioTexture2D");
-  assert(typeof wasmExports["getTextureValue"] != "undefined", "missing Wasm export: getTextureValue");
   assert(typeof wasmExports["getLength"] != "undefined", "missing Wasm export: getLength");
   assert(typeof wasmExports["seek"] != "undefined", "missing Wasm export: seek");
   assert(typeof wasmExports["getPosition"] != "undefined", "missing Wasm export: getPosition");
@@ -7193,6 +7197,7 @@ function assignWasmExports(wasmExports) {
   assert(typeof wasmExports["dynCall_iij"] != "undefined", "missing Wasm export: dynCall_iij");
   assert(typeof wasmExports["dynCall_iiiiiiiii"] != "undefined", "missing Wasm export: dynCall_iiiiiiiii");
   assert(typeof wasmExports["dynCall_iiiiii"] != "undefined", "missing Wasm export: dynCall_iiiiii");
+  assert(typeof wasmExports["dynCall_viiiii"] != "undefined", "missing Wasm export: dynCall_viiiii");
   assert(typeof wasmExports["dynCall_viidi"] != "undefined", "missing Wasm export: dynCall_viidi");
   assert(typeof wasmExports["dynCall_viiiiii"] != "undefined", "missing Wasm export: dynCall_viiiiii");
   assert(typeof wasmExports["dynCall_iid"] != "undefined", "missing Wasm export: dynCall_iid");
@@ -7208,7 +7213,6 @@ function assignWasmExports(wasmExports) {
   assert(typeof wasmExports["dynCall_iiiiid"] != "undefined", "missing Wasm export: dynCall_iiiiid");
   assert(typeof wasmExports["dynCall_iiiiijj"] != "undefined", "missing Wasm export: dynCall_iiiiijj");
   assert(typeof wasmExports["dynCall_iiiiiijj"] != "undefined", "missing Wasm export: dynCall_iiiiiijj");
-  assert(typeof wasmExports["dynCall_viiiii"] != "undefined", "missing Wasm export: dynCall_viiiii");
   assert(typeof wasmExports["asyncify_start_unwind"] != "undefined", "missing Wasm export: asyncify_start_unwind");
   assert(typeof wasmExports["asyncify_stop_unwind"] != "undefined", "missing Wasm export: asyncify_stop_unwind");
   assert(typeof wasmExports["asyncify_start_rewind"] != "undefined", "missing Wasm export: asyncify_start_rewind");
@@ -7230,6 +7234,7 @@ function assignWasmExports(wasmExports) {
   _setDartEventCallback = Module["_setDartEventCallback"] = createExportWrapper("setDartEventCallback", 4);
   _clearDartCallbackRegistrations = Module["_clearDartCallbackRegistrations"] = createExportWrapper("clearDartCallbackRegistrations", 0);
   _clearDartCallbackRegistrationsForEngine = Module["_clearDartCallbackRegistrationsForEngine"] = createExportWrapper("clearDartCallbackRegistrationsForEngine", 1);
+  _retireDartCallbacksFinalizer = Module["_retireDartCallbacksFinalizer"] = createExportWrapper("retireDartCallbacksFinalizer", 1);
   _startMixerCapture = Module["_startMixerCapture"] = createExportWrapper("startMixerCapture", 6);
   _stopMixerCapture = Module["_stopMixerCapture"] = createExportWrapper("stopMixerCapture", 0);
   _isMixerCaptureRunning = Module["_isMixerCaptureRunning"] = createExportWrapper("isMixerCaptureRunning", 0);
@@ -7241,6 +7246,8 @@ function assignWasmExports(wasmExports) {
   _getMixerOutputWavHeader = Module["_getMixerOutputWavHeader"] = createExportWrapper("getMixerOutputWavHeader", 0);
   _setMixerOutputCallbackForEngine = Module["_setMixerOutputCallbackForEngine"] = createExportWrapper("setMixerOutputCallbackForEngine", 2);
   _setMixerOutputCallback = Module["_setMixerOutputCallback"] = createExportWrapper("setMixerOutputCallback", 1);
+  _setVisualizationCallbackForEngine = Module["_setVisualizationCallbackForEngine"] = createExportWrapper("setVisualizationCallbackForEngine", 2);
+  _setVisualizationCallback = Module["_setVisualizationCallback"] = createExportWrapper("setVisualizationCallback", 1);
   _areXiphLibsAvailable = Module["_areXiphLibsAvailable"] = createExportWrapper("areXiphLibsAvailable", 0);
   _initEngine = Module["_initEngine"] = createExportWrapper("initEngine", 7);
   _setAndroidAAudioAttributes = Module["_setAndroidAAudioAttributes"] = createExportWrapper("setAndroidAAudioAttributes", 1);
@@ -7309,14 +7316,9 @@ function assignWasmExports(wasmExports) {
   _setLoopPoint = Module["_setLoopPoint"] = createExportWrapper("setLoopPoint", 2);
   _getLoopEndPoint = Module["_getLoopEndPoint"] = createExportWrapper("getLoopEndPoint", 1);
   _setLoopEndPoint = Module["_setLoopEndPoint"] = createExportWrapper("setLoopEndPoint", 2);
-  _setVisualizationEnabled = Module["_setVisualizationEnabled"] = createExportWrapper("setVisualizationEnabled", 1);
+  _setVisualizationEnabled = Module["_setVisualizationEnabled"] = createExportWrapper("setVisualizationEnabled", 4);
   _getVisualizationEnabled = Module["_getVisualizationEnabled"] = createExportWrapper("getVisualizationEnabled", 0);
-  _getFft = Module["_getFft"] = createExportWrapper("getFft", 2);
-  _getWave = Module["_getWave"] = createExportWrapper("getWave", 2);
   _setFftSmoothing = Module["_setFftSmoothing"] = createExportWrapper("setFftSmoothing", 1);
-  _getAudioTexture = Module["_getAudioTexture"] = createExportWrapper("getAudioTexture", 2);
-  _getAudioTexture2D = Module["_getAudioTexture2D"] = createExportWrapper("getAudioTexture2D", 2);
-  _getTextureValue = Module["_getTextureValue"] = createExportWrapper("getTextureValue", 2);
   _getLength = Module["_getLength"] = createExportWrapper("getLength", 1);
   _seek = Module["_seek"] = createExportWrapper("seek", 2);
   _getPosition = Module["_getPosition"] = createExportWrapper("getPosition", 1);
@@ -7435,6 +7437,7 @@ function assignWasmExports(wasmExports) {
   dynCall_iij = dynCalls["iij"] = createExportWrapper("dynCall_iij", 3);
   dynCall_iiiiiiiii = dynCalls["iiiiiiiii"] = createExportWrapper("dynCall_iiiiiiiii", 9);
   dynCall_iiiiii = dynCalls["iiiiii"] = createExportWrapper("dynCall_iiiiii", 6);
+  dynCall_viiiii = dynCalls["viiiii"] = createExportWrapper("dynCall_viiiii", 6);
   dynCall_viidi = dynCalls["viidi"] = createExportWrapper("dynCall_viidi", 5);
   dynCall_viiiiii = dynCalls["viiiiii"] = createExportWrapper("dynCall_viiiiii", 7);
   dynCall_iid = dynCalls["iid"] = createExportWrapper("dynCall_iid", 3);
@@ -7450,7 +7453,6 @@ function assignWasmExports(wasmExports) {
   dynCall_iiiiid = dynCalls["iiiiid"] = createExportWrapper("dynCall_iiiiid", 6);
   dynCall_iiiiijj = dynCalls["iiiiijj"] = createExportWrapper("dynCall_iiiiijj", 7);
   dynCall_iiiiiijj = dynCalls["iiiiiijj"] = createExportWrapper("dynCall_iiiiiijj", 8);
-  dynCall_viiiii = dynCalls["viiiii"] = createExportWrapper("dynCall_viiiii", 6);
   _asyncify_start_unwind = createExportWrapper("asyncify_start_unwind", 1);
   _asyncify_stop_unwind = createExportWrapper("asyncify_stop_unwind", 0);
   _asyncify_start_rewind = createExportWrapper("asyncify_start_rewind", 1);

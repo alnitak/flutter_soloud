@@ -605,9 +605,39 @@ enum MixerOutputFormat {
 
 /// How the buffering should work when using the BufferStream.
 enum BufferingType {
-  /// Preserve the data already in the buffer while adding new data.
+  /// Preserve the data already in the buffer while playing it.
   preserved,
 
   /// Release the data in the buffer while playing it.
   released,
+}
+
+/// The kind of visualization data to acquire.
+///
+/// WARNING: Keep these in sync with `src/enums.h`.
+enum VisualizationKind {
+  /// Time-domain wave data only.
+  wave(0),
+
+  /// Frequency-domain FFT data only.
+  fft(1),
+
+  /// Both wave and FFT data.
+  waveAndFft(2);
+
+  const VisualizationKind(this.value);
+
+  /// The integer value representing the enum in native code.
+  final int value;
+}
+
+/// Channel selection constants for audio visualization.
+abstract final class VisualizationChannel {
+  /// Mix down all active playback channels to a single mono stream using
+  /// miniaudio's spatial channel downmixer.
+  static const int merged = -1;
+
+  /// Process and emit separate visualization data for each active channel
+  /// (e.g. Left and Right for stereo).
+  static const int all = -2;
 }

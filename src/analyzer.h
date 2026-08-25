@@ -1,56 +1,129 @@
 #ifndef ANALYZER_H
 #define ANALYZER_H
 
-#include "soloud_common.h"
+#include <atomic>
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <thread>
+#include <vector>
 
+#include "enums.h"
+#include "pffft/pffft.h"
+#include "soloud/src/backend/miniaudio/miniaudio.h"
+
+/// Audio visualizer and frequency analyzer backed by PFFFT and miniaudio.
+///
+/// Captures mixed audio from the audio thread into a lock-free SPSC ring buffer,
+/// applies windowing (Blackman), runs real FFT transforms via PFFFT on a dedicated
+/// worker thread, applies frequency smoothing, and delivers zero-copy pointers
+/// to Dart.
 class Analyzer {
-public:
-    // Modified constructor to include sample rate
-    Analyzer(int windowSize, float sampleRate = 44100.0f);
-    ~Analyzer();
+ public:
+  static constexpr int kMaxChannels = 8;
+  static constexpr size_t kRingBufferSize = 65536;
 
-    // float *calcFFT(float *waveData);
-    float *calcFFT(float *waveData, float minFrequency = 20.0f, float maxFrequency = 16000.0f);
-    void setWindowsSize(int fftWindowSize);
-    void setSmoothing(float smooth);
+  static Analyzer &instance();
 
-private:
-    /// @brief elaborate FFT data with the Blackman windowing algorithm
-    void blackmanWindow(float *samples, const float *waveData) const;
+  Analyzer();
+  ~Analyzer();
 
-    /// @brief elaborate FFT data with the hanning windowing algorithm
-    void hanningWindow(float* samples, const float *waveData) const;
+  Analyzer(const Analyzer &) = delete;
+  Analyzer &operator=(const Analyzer &) = delete;
 
-    /// @brief elaborate FFT data with the hamm windowing algorithm
-    void hammingWindow(float* samples, const float *waveData) const;
+  /// Start or stop visualization.
+  ///
+  /// [enabled] whether visualization is enabled.
+  /// [windowSize] power of two from 128 to 8192 (default 256).
+  /// [kind] wave only, FFT only, or wave and FFT.
+  /// [channel] VISUALIZATION_CHANNEL_MERGED (-1), VISUALIZATION_CHANNEL_ALL (-2), or specific channel index.
+  /// [engineChannels] active playback channel count of the engine.
+  PlayerErrors setVisualizationEnabled(
+      bool enabled,
+      int windowSize = 256,
+      VisualizationKind kind = VISUALIZATION_WAVE_AND_FFT,
+      int channel = VISUALIZATION_CHANNEL_MERGED,
+      int engineChannels = 2);
 
-    void gaussWindow(float *samples, const float *waveData) const;
+  /// True if visualization is currently active.
+  bool isVisualizationEnabled() const;
 
-    /// array used by filling it with audio samples and calculate FFT
-    float temp[1024];  // Needs to be 1024 for fft1024
+  /// Set FFT smoothing factor [0.0, 1.0].
+  void setSmoothing(float smooth);
 
-    /// contains latest calulated FFT
-    float FFTData[256];
+  /// Set the Dart notification callback.
+  void setDataCallback(dartVisualizationCallback_t callback);
 
-    /// window size used by windowing algorithms.
-    int mWindowSize;
+  /// Called from the audio thread for each rendered mixed block.
+  void onAudioData(const float *data, unsigned int frames, int channels);
 
-    /// parameters for the Blackman windowing algorithm
-    float alpha;
-    float a0;
-    float a1;
-    float a2;
-    float fftSmoothing;
+  /// Web only: try to claim dispatch ownership if no message is in flight.
+  bool tryBeginDispatch() {
+    bool expected = false;
+    return m_dispatchInFlight.compare_exchange_strong(
+        expected, true, std::memory_order_acq_rel);
+  }
 
-    float sampleRate;
-    float getBinFrequency(int binIndex) const;
+  /// Web only: clear in-flight dispatch flag once delivered to main thread.
+  void clearDispatchInFlight() {
+    m_dispatchInFlight.store(false, std::memory_order_release);
+  }
 
-    float minFreq;    // Minimum frequency to analyze
-    float maxFreq;    // Maximum frequency to analyze
-    
-    int freqToBin(float frequency) const;
-    int mapFrequencyToFFTDataIndex(float freq) const;
-    float mapFFTDataIndexToFrequency(int index) const;
+  int windowSize() const { return m_windowSize; }
+  VisualizationKind kind() const { return m_kind; }
+  int channelSelection() const { return m_channelSelection; }
+
+ private:
+  void workerThreadFunc();
+  void processWindow(size_t readIdx, int nextPingPong);
+  void computeFftMagnitudes(int channelIdx, int pingPong);
+  void dispatchToDart(int pingPong);
+  void cleanupBuffers();
+
+  std::atomic<bool> m_running{false};
+  std::atomic<bool> m_shouldStop{false};
+  std::atomic<bool> m_dispatchInFlight{false};
+  std::atomic<int> m_inFlightAudioCallbacks{0};
+
+  int m_windowSize{256};
+  VisualizationKind m_kind{VISUALIZATION_WAVE_AND_FFT};
+  int m_channelSelection{VISUALIZATION_CHANNEL_MERGED};
+  int m_engineChannels{2};
+  int m_activeChannels{1};
+  std::atomic<float> m_fftSmoothing{0.8f};
+
+  // PFFFT setup and precomputed window table
+  PFFFT_Setup *m_pffftSetup{nullptr};
+  float *m_windowTable{nullptr};
+
+  // Miniaudio channel converter for downmixing multi-channel to mono
+  bool m_hasChannelConverter{false};
+  ma_channel_converter m_channelConverter;
+  std::vector<float> m_scratchConverted;
+  std::vector<float> m_scratchExtract;
+
+  // SPSC Lock-free Ring Buffer per channel
+  std::vector<float> m_ringBuffer[kMaxChannels];
+  std::atomic<size_t> m_writeIndex{0};
+  std::atomic<size_t> m_readIndex{0};
+
+  // SIMD Aligned processing buffers (per active channel)
+  float *m_windowedInput[kMaxChannels]{nullptr};
+  float *m_fftOutput[kMaxChannels]{nullptr};
+  float *m_fftWork[kMaxChannels]{nullptr};
+
+  // Double-buffered export buffers to prevent tearing during asynchronous Dart delivery
+  float *m_waveBuffers[kMaxChannels][2]{{nullptr, nullptr}};
+  float *m_fftBuffers[kMaxChannels][2]{{nullptr, nullptr}};
+  float *m_fftSmoothed[kMaxChannels]{nullptr};
+  std::atomic<int> m_pingPongIndex{0};
+
+  // Pointers arrays passed to Dart callback
+  const float *m_wavePtrsExport[kMaxChannels]{nullptr};
+  const float *m_fftPtrsExport[kMaxChannels]{nullptr};
+
+  std::atomic<dartVisualizationCallback_t> m_callback{nullptr};
+  std::thread m_workerThread;
 };
 
 #endif // ANALYZER_H

@@ -71,6 +71,7 @@ extern "C"
     int isMixerCaptureRunning();
     bool clearDartCallbackRegistrationsForEngine(int64_t engine_id);
     bool requestEngineTeardownForEngine(int64_t engine_id);
+    void retireDartCallbacksFinalizer(void *token);
     void requestEngineShutdown();
     uint64_t currentEngineShutdownEpoch();
     bool prepareEngineInitForRequest(int64_t owner_engine_id,
@@ -310,6 +311,36 @@ void testHotRestartRetiresEveryCallable()
     // FlutterEngine is still accepted.
     EXPECT(requestEngineTeardownForEngine(kEngineA),
            "hot restart must not release the lifecycle claim");
+
+    resetGlobalState();
+}
+
+/// The NativeFinalizer callback retires every callable immediately on isolate death.
+void testFinalizerRetiresEveryCallable()
+{
+    std::printf("native finalizer retires every callable on isolate teardown\n");
+    resetGlobalState();
+
+    if (!initEngineAs(kEngineA))
+    {
+        EXPECT(false, "the engine should initialize");
+        return;
+    }
+    registerCallbacksFor(kEngineA);
+
+    const unsigned int hash = createPullStream();
+    EXPECT(hash != 0, "a pull buffer stream should be created");
+    EXPECT(stateChangedDelta() == 1,
+           "a registered global callable should be invoked");
+
+    retireDartCallbacksFinalizer(reinterpret_cast<void *>(static_cast<intptr_t>(kEngineA)));
+
+    EXPECT(soloudTestCallbacksAreLive() == 0,
+           "nothing may be live once the finalizer has run");
+    EXPECT(stateChangedDelta() == 0,
+           "a retired global callable must never be invoked after finalizer");
+    EXPECT(streamCallDelta(hash) == 0,
+           "stream callables must never be invoked after finalizer");
 
     resetGlobalState();
 }
@@ -1093,6 +1124,7 @@ int main()
     }
 
     testHotRestartRetiresEveryCallable();
+    testFinalizerRetiresEveryCallable();
     testIosLifecycleHandshake();
     testSupersededPrepareCannotClaim();
     testEveryShutdownRouteInvalidatesPendingPrepare();
