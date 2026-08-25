@@ -301,15 +301,6 @@ interface class SoLoud {
   /// The current status of the engine. This is `true` when the engine
   /// has been initialized and is immediately ready.
   ///
-  /// It will be always true if checking from another isolate than the main
-  /// isolate. This is because it is supposed the user has already initialized
-  /// the engine in the main isolate, and the engine is a singleton in C++ land.
-  /// This behavior is meant to use the engine in a separate isolate for
-  /// various tools like output mixer capture, waveform reading, etc. having
-  /// the main isolate free for UI and other tasks.
-  /// NOTE: operations like `load*` and `play*` will fail if not in the
-  /// main isolate.
-  ///
   /// The result will be `false` in all the following cases:
   ///
   /// - the engine was never initialized
@@ -321,15 +312,9 @@ interface class SoLoud {
   /// Use [isInitialized] only if you want to check the current status of
   /// the engine synchronously and you don't care that it might be ready soon.
   bool get isInitialized =>
-      _isMainIsolate &&
       _nativeCallbacksInitialized &&
       _controller.soLoudFFI.isInited() &&
       _loader.isInitialized;
-
-  /// Whether this is the main isolate. Always true on web: there are no
-  /// isolates there and accessing the root isolate token throws an
-  /// [UnsupportedError].
-  bool get _isMainIsolate => kIsWeb || ServicesBinding.rootIsolateToken != null;
 
   /// Backing of [activeSounds].
   final List<AudioSource> _activeSounds = [];
