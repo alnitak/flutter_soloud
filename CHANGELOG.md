@@ -1,4 +1,4 @@
-##### 5.0.0-pre.0 (X Xxx 2026)
+##### 5.0.0-pre.0 (25 Aug 2026)
 > **TL;DR**:
 > - **breaking change: Audio visualization overhaul**: Replaced legacy polling `AudioData` class with a reactive stream (`SoLoud.instance.audioVisualizationEvents`), SIMD-accelerated FFT via `pffft`, Blackman windowing, multi-channel and mono downmixing, and configurable window sizes (128–8192).
 > - **Render-ahead ring (native)**: Ultra-low keypress-to-sound latency via retroactive mixing into a lookahead ring buffer (mostly real-time audio for `playScheduled` and `playClocked` calls which play in the current audio frame, e.g. 10 ms latency).
@@ -23,12 +23,7 @@
 - fix: a voice created with `paused: true` is no longer silently unpaused by the buffer-stream buffering logic.
 - many internal fixes: device operations are serialized and race-free, OS interruptions can no longer race device operations, a failed device start rebuilds and retries once, and engine teardown no longer crashes, hangs, or spuriously restarts the device while notifications are in flight. Thanks to @Colton127 #508
 - web: **AudioWorklet rendering**. A second, multi-threaded WASM build flavor (`libflutter_soloud_plugin_mt.js/.wasm`, compiled with `-pthread`/`SharedArrayBuffer` + `MA_ENABLE_AUDIO_WORKLETS` + `-sAUDIO_WORKLET=1 -sWASM_WORKERS=1 -sASYNCIFY=1`) renders audio on a real-time AudioWorklet thread instead of the deprecated main-thread `ScriptProcessorNode`, making mixing immune to Flutter UI/GC jank. `init_module.dart.js` picks it automatically only when the page is cross-origin isolated (COOP/COEP headers); everywhere else the single-threaded `ScriptProcessorNode` flavor is used, so hosts that cannot send those headers (e.g. game portals) keep working unchanged #523
-- **breaking change: web NOTE**: due to the latter, in the `index.html` only the row below should be left:
-`<script src="assets/packages/flutter_soloud/web/init_module.dart.js" defer></script>`
-- **breaking change: audio visualization overhaul**:
-  - Replaced the legacy `AudioData` polling class with a reactive stream: `SoLoud.instance.audioVisualizationEvents` emitting `AudioVisualizationData`.
-  - FFT data is now computed using SIMD-accelerated `pffft` with Blackman windowing and temporal smoothing.
-  - `setVisualizationEnabled()` now accepts `windowSize` (powers of two from 128 to 8192, default 256), `kind` (`wave`, `fft`, `waveAndFft`), and `channel` (`VisualizationChannel.merged`, `VisualizationChannel.all`, or a specific channel index).
+- **breaking change: web NOTE**: due to the latter, in the `index.html` only the row below should be left: `<script src="assets/packages/flutter_soloud/web/init_module.dart.js" defer></script>`
 
 ##### 4.1.7 (8 Aug 2026)
 - fix: a device change that still fails now reports `SoLoudAudioDeviceFailedToStartCppException` instead of hanging. Thanks to @Colton127 #533
