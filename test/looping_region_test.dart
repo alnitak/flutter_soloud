@@ -37,5 +37,56 @@ void main() {
         throwsArgumentError,
       );
     });
+    test('accepts valid frame offsets', () {
+      expect(
+        () => validateLoopRegion(
+          start: Duration.zero,
+          startOffset: 100,
+          endOffset: 500,
+        ),
+        returnsNormally,
+      );
+    });
+
+    test('rejects negative start offset or end offset <= start offset', () {
+      expect(
+        () => validateLoopRegion(start: Duration.zero, startOffset: -5),
+        throwsArgumentError,
+      );
+      expect(
+        () => validateLoopRegion(
+          start: Duration.zero,
+          startOffset: 100,
+          endOffset: 100,
+        ),
+        throwsArgumentError,
+      );
+      expect(
+        () => validateLoopRegion(
+          start: Duration.zero,
+          startOffset: 100,
+          endOffset: 99,
+        ),
+        throwsArgumentError,
+      );
+    });
+
+    test('asserts when both Duration and frame offsets are provided', () {
+      expect(
+        () => validateLoopRegion(
+          start: const Duration(milliseconds: 100),
+          startOffset: 100,
+        ),
+        throwsA(isA<AssertionError>()),
+      );
+      expect(
+        () => validateLoopRegion(
+          start: Duration.zero,
+          end: const Duration(milliseconds: 500),
+          endOffset: 500,
+        ),
+        throwsA(isA<AssertionError>()),
+      );
+    });
   });
 }

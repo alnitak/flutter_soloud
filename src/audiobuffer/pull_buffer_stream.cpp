@@ -9,9 +9,80 @@
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten/emscripten.h>
+#ifdef MA_ENABLE_AUDIO_WORKLETS
+#include <emscripten/threading.h>
+#include <emscripten/webaudio.h>
+#endif
 #endif
 
 namespace SoLoud {
+
+#ifdef MA_ENABLE_AUDIO_WORKLETS
+// Main-thread entry points for the stream event callbacks. On the
+// multi-threaded (AudioWorklet) build the callbacks can fire from the
+// AudioWorklet rendering thread, which has no `window` and where
+// MAIN_THREAD_ASYNC_EM_ASM would execute in the worklet's own JS realm
+// (ReferenceError: window is not defined). The callers route through
+// emscripten_audio_worklet_post_function_* so these run on the main
+// browser thread.
+static void onBufferingMainThread(int isBuffering, int handle, double time,
+                                  int soundHash)
+{
+  EM_ASM(
+      {
+        var functionName = "dartOnBufferingCallback_" + $3;
+        if (typeof window[functionName] === "function") {
+          window[functionName]($0 == 1 ? true : false, $1, $2);
+        }
+      },
+      isBuffering, handle, time, soundHash);
+}
+
+// Static slot for the metadata struct: heap-allocating it on the audio
+// thread could take the contended heap lock, and a futex wait there aborts
+// the program. Metadata callbacks are rare (once per stream open), so a
+// last-wins static slot is fine.
+static AudioMetadataFFI gMetadataSlot;
+
+static void onMetadataMainThread(int metadataPtr, int soundHash)
+{
+  EM_ASM(
+      {
+        var functionName = "dartOnMetadataCallback_" + $1;
+        if (typeof window[functionName] === "function") {
+          window[functionName]($0);
+        }
+      },
+      metadataPtr, soundHash);
+}
+
+static void onMoreDataIsNeededMainThread(double offset, int soundHash)
+{
+  EM_ASM(
+      {
+        var functionName = "dartOnMoreDataIsNeededCallback_" + $1;
+        if (typeof window[functionName] === "function") {
+          // Pass the offset as a JS Number. On the web Dart `int` is a
+          // double-precision float, so large offsets may lose precision, but
+          // this avoids BigInt conversion errors from EM_ASM with uint64_t.
+          window[functionName]($0);
+        }
+      },
+      offset, soundHash);
+}
+
+static void onAudioDurationMainThread(double duration, int soundHash)
+{
+  EM_ASM(
+      {
+        var functionName = "dartOnAudioDurationCallback_" + $1;
+        if (typeof window[functionName] === "function") {
+          window[functionName]($0);
+        }
+      },
+      duration, soundHash);
+}
+#endif // MA_ENABLE_AUDIO_WORKLETS
 
 PullBufferStreamInstance::PullBufferStreamInstance(PullBufferStream *aParent)
     : mParent(aParent) {
@@ -34,8 +105,14 @@ PullBufferStreamInstance::~PullBufferStreamInstance() {
 unsigned int PullBufferStreamInstance::getAudio(float *aBuffer,
                                                 unsigned int aSamplesToRead,
                                                 unsigned int aBufferSize) {
+  if (aBuffer == nullptr || mChannels == 0 || aSamplesToRead == 0) {
+    return 0;
+  }
+
   if (mParent == nullptr || !mParent->isValid()) {
-    std::memset(aBuffer, 0, sizeof(float) * aSamplesToRead * mChannels);
+    for (unsigned int ch = 0; ch < mChannels; ++ch) {
+      std::memset(aBuffer + ch * aBufferSize, 0, sizeof(float) * aSamplesToRead);
+    }
     return 0;
   }
 
@@ -65,7 +142,9 @@ unsigned int PullBufferStreamInstance::getAudio(float *aBuffer,
   // more data. Do not call checkBuffering here: it runs on the audio thread
   // and would deadlock when calling getPause/getPosition.
   if (samplesToRead == 0) {
-    std::memset(aBuffer, 0, sizeof(float) * aSamplesToRead * mChannels);
+    for (unsigned int ch = 0; ch < mChannels; ++ch) {
+      std::memset(aBuffer + ch * aBufferSize, 0, sizeof(float) * aSamplesToRead);
+    }
     mParent->requestMoreDataIfNeeded();
     return 0;
   }
@@ -1093,7 +1172,19 @@ void PullBufferStream::callOnBufferingCallback(bool isBuffering,
   auto callback = mOnBufferingCallback.load();
   if (callback == nullptr) return;
 #ifdef __EMSCRIPTEN__
-  EM_ASM(
+#ifdef MA_ENABLE_AUDIO_WORKLETS
+  // These callbacks can fire from the audio thread; see the comment at
+  // onBufferingMainThread. All arguments are passed by value.
+  if (!emscripten_is_main_browser_thread()) {
+    emscripten_audio_worklet_post_function_sig(
+        EMSCRIPTEN_AUDIO_MAIN_THREAD, (void *)onBufferingMainThread, "iidi",
+        (int)isBuffering, (int)handle, time, (int)mParent->soundHash);
+    return;
+  }
+  onBufferingMainThread((int)isBuffering, (int)handle, time,
+                        (int)mParent->soundHash);
+#else
+  MAIN_THREAD_ASYNC_EM_ASM(
       {
         var functionName = "dartOnBufferingCallback_" + $3;
         if (typeof window[functionName] === "function") {
@@ -1102,6 +1193,7 @@ void PullBufferStream::callOnBufferingCallback(bool isBuffering,
         }
       },
       isBuffering, handle, time, mParent->soundHash);
+#endif
 #else
   callback(isBuffering, handle, time);
 #endif
@@ -1119,14 +1211,33 @@ void PullBufferStream::callOnMetadataCallback(AudioMetadata &metadata) {
 
   AudioMetadataFFI ffi = convertMetadataToFFI(metadata);
 #ifdef __EMSCRIPTEN__
-  EM_ASM_(
+#ifdef MA_ENABLE_AUDIO_WORKLETS
+  if (!emscripten_is_main_browser_thread()) {
+    // No heap allocation on the audio thread (see gMetadataSlot).
+    gMetadataSlot = ffi;
+    emscripten_audio_worklet_post_function_sig(
+        EMSCRIPTEN_AUDIO_MAIN_THREAD, (void *)onMetadataMainThread, "ii",
+        (int)(uintptr_t)&gMetadataSlot, (int)mParent->soundHash);
+    return;
+  }
+  onMetadataMainThread((int)(uintptr_t)&ffi, (int)mParent->soundHash);
+#else
+  // Single-threaded build: the audio callback runs on the main browser
+  // thread, so MAIN_THREAD_ASYNC_EM_ASM executes synchronously. Keep the
+  // heap-allocated struct for symmetry with the async delivery.
+  auto *ffiPtr = static_cast<AudioMetadataFFI *>(malloc(sizeof(ffi)));
+  if (ffiPtr == nullptr) return;
+  *ffiPtr = ffi;
+  MAIN_THREAD_ASYNC_EM_ASM(
       {
         var functionName = "dartOnMetadataCallback_" + $1;
         if (typeof window[functionName] === "function") {
           window[functionName]($0);
         }
+        Module_soloud._free($0);
       },
-      &ffi, mParent->soundHash);
+      ffiPtr, mParent->soundHash);
+#endif
 #else
   callback(ffi);
 #endif
@@ -1143,7 +1254,17 @@ void PullBufferStream::callOnMoreDataIsNeededCallback(uint64_t offset) {
   if (callback == nullptr) return;
 
 #ifdef __EMSCRIPTEN__
-  EM_ASM_(
+#ifdef MA_ENABLE_AUDIO_WORKLETS
+  if (!emscripten_is_main_browser_thread()) {
+    emscripten_audio_worklet_post_function_sig(
+        EMSCRIPTEN_AUDIO_MAIN_THREAD, (void *)onMoreDataIsNeededMainThread,
+        "di", static_cast<double>(offset), (int)mParent->soundHash);
+    return;
+  }
+  onMoreDataIsNeededMainThread(static_cast<double>(offset),
+                               (int)mParent->soundHash);
+#else
+  MAIN_THREAD_ASYNC_EM_ASM(
       {
         var functionName = "dartOnMoreDataIsNeededCallback_" + $1;
         if (typeof window[functionName] === "function") {
@@ -1154,6 +1275,7 @@ void PullBufferStream::callOnMoreDataIsNeededCallback(uint64_t offset) {
         }
       },
       static_cast<double>(offset), mParent->soundHash);
+#endif
 #else
   callback(offset);
 #endif
@@ -1170,7 +1292,16 @@ void PullBufferStream::callOnAudioDurationCallback(double duration) {
   if (callback == nullptr) return;
 
 #ifdef __EMSCRIPTEN__
-  EM_ASM_(
+#ifdef MA_ENABLE_AUDIO_WORKLETS
+  if (!emscripten_is_main_browser_thread()) {
+    emscripten_audio_worklet_post_function_sig(
+        EMSCRIPTEN_AUDIO_MAIN_THREAD, (void *)onAudioDurationMainThread,
+        "di", duration, (int)mParent->soundHash);
+    return;
+  }
+  onAudioDurationMainThread(duration, (int)mParent->soundHash);
+#else
+  MAIN_THREAD_ASYNC_EM_ASM(
       {
         var functionName = "dartOnAudioDurationCallback_" + $1;
         if (typeof window[functionName] === "function") {
@@ -1178,6 +1309,7 @@ void PullBufferStream::callOnAudioDurationCallback(double duration) {
         }
       },
       duration, mParent->soundHash);
+#endif
 #else
   callback(duration);
 #endif

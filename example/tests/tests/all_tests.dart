@@ -2,6 +2,8 @@ import 'advanced_pan.dart' as advanced_pan;
 import 'all_instances_finished.dart' as all_instances_finished;
 import 'async_multi_load.dart' as async_multi_load;
 import 'asynchronous_deinit.dart' as asynchronous_deinit;
+import 'audio_device_idle_timeout.dart' as audio_device_idle_timeout;
+import 'audio_device_lifecycle_races.dart' as audio_device_lifecycle_races;
 import 'auto_dispose.dart' as auto_dispose;
 import 'buffer_stream_callbacks.dart' as buffer_stream_callbacks;
 import 'buffer_stream_extended.dart' as buffer_stream_extended;
@@ -12,9 +14,12 @@ import 'equalizer_filter.dart' as equalizer_filter;
 import 'global_filters.dart' as global_filters;
 import 'handles.dart' as handles;
 import 'hot_restart_lifecycle.dart' as hot_restart_lifecycle;
+import 'join_two_sources.dart' as join_two_sources;
+import 'latency_test.dart' as latency_test;
 import 'limiter_filter.dart' as limiter_filter;
 import 'load_mem.dart' as load_mem;
 import 'looping.dart' as looping;
+import 'max_voices.dart' as max_voices;
 import 'mixer_output_capture.dart' as mixer_output_capture;
 import 'mixing_bus.dart' as mixing_bus;
 import 'pan.dart' as pan;
@@ -78,6 +83,14 @@ final List<TestEntry> allTests = [
     run: asynchronous_deinit.testAsynchronousDeinit,
   ),
   const TestEntry(
+    name: 'AudioDeviceIdleTimeout',
+    run: audio_device_idle_timeout.testAudioDeviceIdleTimeout,
+  ),
+  const TestEntry(
+    name: 'AudioDeviceLifecycleRaces',
+    run: audio_device_lifecycle_races.testAudioDeviceLifecycleRaces,
+  ),
+  const TestEntry(
     name: 'AutoDispose',
     run: auto_dispose.testAutoDispose,
   ),
@@ -134,6 +147,10 @@ final List<TestEntry> allTests = [
     run: hot_restart_lifecycle.testHotRestartLifecycle,
   ),
   const TestEntry(
+    name: 'LatencyTest',
+    run: latency_test.testLatency,
+  ),
+  const TestEntry(
     name: 'LimiterFilterGlobal',
     run: limiter_filter.testLimiterFilterGlobal,
   ),
@@ -146,8 +163,16 @@ final List<TestEntry> allTests = [
     run: load_mem.testLoadMem,
   ),
   const TestEntry(
+    name: 'JoinTwoSources',
+    run: join_two_sources.testJoinTwoSources,
+  ),
+  const TestEntry(
     name: 'LoopingTests',
     run: looping.loopingTests,
+  ),
+  const TestEntry(
+    name: 'MaxVoices',
+    run: max_voices.testMaxVoices,
   ),
   const TestEntry(
     name: 'MixerOutputCapture',

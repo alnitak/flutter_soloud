@@ -57,7 +57,8 @@ abstract class FlutterSoLoud {
   Stream<PlayerStateNotification> get stateChangedEvents =>
       stateChangedController.stream;
 
-  /// Used with FFI only to close NativeCallable callbacks.
+  /// Used with FFI only to close NativeCallable callbacks after native code
+  /// has unregistered them during teardown.
   @mustBeOverridden
   void disposeNativeCallables();
 
@@ -166,16 +167,33 @@ abstract class FlutterSoLoud {
   /// [bufferSize] the audio buffer size. Usually is 2048, but can be also be
   /// lowered if less latency is needed.
   /// [channels] mono, stereo, quad, 5.1, 7.1.
+  /// [devicePeriodFrames] small output device period used when
+  /// [renderAheadFrames] enables the render-ahead ring; 0 = default (512).
+  /// Ignored on web.
+  /// [renderAheadFrames] depth of the engine-owned render-ahead ring in
+  /// frames; 0 (the default) disables it and keeps direct-to-device mixing.
+  /// Ignored on web.
   ///
   /// Returns [PlayerErrors.noError] if success.
+  ///
+  /// On web with the multi-threaded (AudioWorklet) WASM build this completes
+  /// asynchronously: starting the worklet thread suspends the WASM call with
+  /// ASYNCIFY, so the web implementation returns a [Future]. Native
+  /// implementations return the result synchronously.
+  ///
+  /// The blocking native engine/device initialization runs off the UI thread so
+  /// it does not freeze the app (#481); the future completes once the engine is
+  /// initialized.
   @mustBeOverridden
-  Future<PlayerErrors> initEngine(
+  FutureOr<PlayerErrors> initEngine(
     int deviceId,
     int sampleRate,
     int bufferSize,
     Channels channels,
-    bool lowLatency,
-  );
+    bool lowLatency, {
+    int devicePeriodFrames = 0,
+    int renderAheadFrames = 0,
+  });
 
   /// Android only: when [managed] is true (default) SoLoud tags the AAudio
   /// stream as media/music; when false it leaves usage/contentType unset so the
@@ -185,11 +203,52 @@ abstract class FlutterSoLoud {
   @mustBeOverridden
   void setAndroidAAudioAttributes(bool managed);
 
+  /// Set how long the audio output device keeps running while the engine is
+  /// idle (no active voices) before it is automatically stopped, on every
+  /// platform. A `null` [timeout] keeps the device running indefinitely while
+  /// idle (the deferred idle-pause is suppressed, so the device keeps rendering
+  /// silence and the app keeps its OS audio session alive) and starts it
+  /// immediately if it was stopped. [Duration.zero] stops the device as soon as
+  /// possible once idle. A positive [timeout] keeps it running for that long
+  /// after going idle. Any play/unpause before the deadline cancels the pending
+  /// stop. Defaults to 500 ms. Can be called any time. No effect on web (the
+  /// device is always kept running there).
+  @mustBeOverridden
+  void setAudioDeviceIdleTimeout(Duration? timeout);
+
+  /// Stop the audio output device without deinitializing the engine. By default
+  /// this is a successful no-op while voices are active. Set [force] to stop
+  /// the device during active playback without pausing or mutating voices.
+  ///
+  /// The blocking native device call runs off the UI thread so it does not
+  /// freeze the app; the returned future completes once the conditional check
+  /// and any resulting device stop have finished.
+  @mustBeOverridden
+  Future<PlayerErrors> stopAudioDevice({bool force = false});
+
+  /// Restart the audio output device previously stopped by [stopAudioDevice],
+  /// so existing voices and loaded sounds keep operating. Idempotent: a no-op
+  /// if the device is already started.
+  ///
+  /// The blocking native device call runs off the UI thread so it does not
+  /// freeze the app; the returned future completes once the device is running.
+  @mustBeOverridden
+  Future<PlayerErrors> startAudioDevice();
+
+  /// Get the current state of the audio output device. Returns
+  /// [AudioDeviceState.uninitialized] if the engine is not initialized.
+  @mustBeOverridden
+  AudioDeviceState getAudioDeviceState();
+
   /// Change the playback device.
   ///
   /// [deviceId] the device ID. -1 for default OS output device.
+  ///
+  /// On web with the multi-threaded (AudioWorklet) WASM build this completes
+  /// asynchronously (see [initEngine]); native implementations return the
+  /// result synchronously.
   @mustBeOverridden
-  PlayerErrors changeDevice(int deviceId);
+  FutureOr<PlayerErrors> changeDevice(int deviceId);
 
   /// List available playback devices.
   List<PlaybackDevice> listPlaybackDevices();
@@ -276,6 +335,21 @@ abstract class FlutterSoLoud {
     String uniqueName,
     Uint8List buffer,
     LoadMode mode,
+  );
+
+  /// Load two audio files stored into [bufferLeft] and [bufferRight] as
+  /// file bytes, convert them to mono if needed, resample to the engine's
+  /// sample rate, and join them into a single stereo sound (left and right
+  /// channels).
+  ///
+  /// [uniqueName] the unique name of the sound. Used only to have the [hash].
+  /// [bufferLeft] the audio data for the left channel.
+  /// [bufferRight] the audio data for the right channel.
+  @mustBeOverridden
+  ({PlayerErrors error, SoundHash soundHash}) joinTwoSources(
+    String uniqueName,
+    Uint8List bufferLeft,
+    Uint8List bufferRight,
   );
 
   /// Set up an audio stream.
@@ -456,9 +530,9 @@ abstract class FlutterSoLoud {
   /// [handle] the sound handle.
   /// Returns [PlayerErrors.noError] if success,
   /// [PlayerErrors.backendNotInited] if the engine is not initialized,
-  /// [PlayerErrors.soundHandleNotFound] if [handle] is not valid,
-  /// [PlayerErrors.audioDeviceFailedToStart] if unpausing could not start
-  /// the output device.
+  /// [PlayerErrors.soundHandleNotFound] if [handle] is not valid.
+  /// Unpausing posts an asynchronous device start, so this never reports
+  /// [PlayerErrors.audioDeviceFailedToStart].
   @mustBeOverridden
   PlayerErrors pauseSwitch(SoundHandle handle);
 
@@ -468,9 +542,9 @@ abstract class FlutterSoLoud {
   /// [pause] the new state.
   /// Returns [PlayerErrors.noError] if success,
   /// [PlayerErrors.backendNotInited] if the engine is not initialized,
-  /// [PlayerErrors.soundHandleNotFound] if [handle] is not valid,
-  /// [PlayerErrors.audioDeviceFailedToStart] if unpausing could not start
-  /// the output device. In the latter case the voice is left paused.
+  /// [PlayerErrors.soundHandleNotFound] if [handle] is not valid.
+  /// Unpausing posts an asynchronous device start, so this never reports
+  /// [PlayerErrors.audioDeviceFailedToStart].
   @mustBeOverridden
   PlayerErrors setPause(SoundHandle handle, int pause);
 
@@ -532,6 +606,7 @@ abstract class FlutterSoLoud {
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
     Duration? loopingEndAt,
+    double scale = 1,
   });
 
   /// Variant of [play] that takes an additional parameter, the time offset
@@ -549,6 +624,9 @@ abstract class FlutterSoLoud {
   /// [busId] the bus ID to play the sound on. 0 means the main engine.
   /// [volume] 1.0 full volume.
   /// [pan] 0.0 centered.
+  /// [scale] relative playback speed multiplier (1.0 = normal speed).
+  /// [looping] whether the sound should loop when reaching the end.
+  /// [loopingStartAt] time to seek to when looping.
   /// Return the error if any and a new `newHandle` of this sound.
   @mustBeOverridden
   ({PlayerErrors error, SoundHandle newHandle}) playClocked(
@@ -557,6 +635,10 @@ abstract class FlutterSoLoud {
     int busId = 0,
     double volume = 1,
     double pan = 0,
+    double scale = 1,
+    bool looping = false,
+    Duration loopingStartAt = Duration.zero,
+    Duration? loopingEndAt,
   });
 
   /// Set the number of samples to delay before starting to play a sound.
@@ -596,6 +678,26 @@ abstract class FlutterSoLoud {
   @mustBeOverridden
   Duration getEngineTime();
 
+  /// Get the engine time of the sample currently reaching the output device:
+  /// the mix clock (see [getEngineTime]) minus the render-ahead ring depth.
+  ///
+  /// Equals [getEngineTime] when the render-ahead ring is disabled (the
+  /// default) and on web.
+  @mustBeOverridden
+  Duration getPlayheadTime();
+
+  /// Estimated output latency: render-ahead ring depth plus one device
+  /// period. [Duration.zero] when the render-ahead ring is disabled (the
+  /// default) and on web.
+  @mustBeOverridden
+  Duration getOutputLatency();
+
+  /// Whether the render-ahead ring (the retroactive re-mix prerequisite) is
+  /// active. Enabled at init time via [initEngine]'s `renderAheadFrames`.
+  /// Always false on web.
+  @mustBeOverridden
+  bool isRenderAheadEnabled();
+
   /// Start playing a sound at an absolute engine time (see [getEngineTime]),
   /// with sample accuracy.
   ///
@@ -610,6 +712,9 @@ abstract class FlutterSoLoud {
   /// [busId] the bus ID to play the sound on. 0 means the main engine.
   /// [volume] 1.0 full volume.
   /// [pan] 0.0 centered.
+  /// [scale] relative playback speed multiplier (1.0 = normal speed).
+  /// [looping] whether the sound should loop when reaching the end.
+  /// [loopingStartAt] time to seek to when looping.
   /// Return the error if any and a new `newHandle` of this sound.
   @mustBeOverridden
   ({PlayerErrors error, SoundHandle newHandle}) playScheduled(
@@ -619,6 +724,10 @@ abstract class FlutterSoLoud {
     int busId = 0,
     double volume = 1,
     double pan = 0,
+    double scale = 1,
+    bool looping = false,
+    Duration loopingStartAt = Duration.zero,
+    Duration? loopingEndAt,
   });
 
   /// Stop a sound at an absolute engine time (see [getEngineTime]).
@@ -661,6 +770,21 @@ abstract class FlutterSoLoud {
   /// example the voice has already ended).
   @mustBeOverridden
   PlayerErrors stop(SoundHandle handle);
+
+  /// Stop all playing voices without disposing the loaded sounds.
+  ///
+  /// Every stopped voice emits a voice-ended event, like calling [stop]
+  /// on each playing handle.
+  @mustBeOverridden
+  void stopAll();
+
+  /// Stop all voices playing the already loaded sound identified by
+  /// [soundHash] without disposing the sound.
+  ///
+  /// Every stopped voice emits a voice-ended event, like calling [stop]
+  /// on each of the sound's handles.
+  @mustBeOverridden
+  void stopAudioSource(SoundHash soundHash);
 
   /// Stop all handles of the already loaded sound identified
   /// by [soundHash] and dispose it.
@@ -1190,6 +1314,9 @@ abstract class FlutterSoLoud {
     bool looping = false,
     Duration loopingStartAt = Duration.zero,
     Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
+    double scale = 1,
   });
 
   /// play3dClocked() is the 3d version of the [playClocked] call.
@@ -1219,6 +1346,52 @@ abstract class FlutterSoLoud {
     double velY = 0,
     double velZ = 0,
     double volume = 1,
+    double scale = 1,
+    bool looping = false,
+    Duration loopingStartAt = Duration.zero,
+    Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
+  });
+
+  /// play3dScheduled() is the 3d version of the [playScheduled] call.
+  ///
+  /// Instead of panning like with the "2d" version of the call, the 3d
+  /// version requires 3d position and optionally velocity vector. Like its
+  /// 2d version, this one starts playing a sound at an absolute engine time
+  /// (see [getEngineTime]), with sample accuracy.
+  ///
+  /// [soundHash] the unique sound hash of a sound.
+  /// [atTime] the absolute engine time at which the sound should start.
+  /// [duration] if non-zero, the sound is automatically stopped at
+  /// `atTime + duration`.
+  /// [posX], [posY], [posZ] are the audio source position coordinates.
+  /// [busId] the bus ID to play the sound on. 0 means the main engine.
+  /// [velX], [velY], [velZ] are the audio source velocity.
+  /// [volume] 1.0 full volume.
+  /// [scale] relative playback speed multiplier (1.0 = normal speed).
+  /// [looping] whether the sound should loop when reaching the end.
+  /// [loopingStartAt] time to seek to when looping.
+  /// Return the error if any and a new `newHandle` of this sound.
+  @mustBeOverridden
+  ({PlayerErrors error, SoundHandle newHandle}) play3dScheduled(
+    SoundHash soundHash,
+    Duration atTime,
+    double posX,
+    double posY,
+    double posZ, {
+    Duration duration = Duration.zero,
+    int busId = 0,
+    double velX = 0,
+    double velY = 0,
+    double velZ = 0,
+    double volume = 1,
+    double scale = 1,
+    bool looping = false,
+    Duration loopingStartAt = Duration.zero,
+    Duration? loopingEndAt,
+    int? loopingStartOffsetAt,
+    int? loopingEndOffsetAt,
   });
 
   /// Since SoLoud has no knowledge of the scale of your coordinates,
@@ -1384,8 +1557,8 @@ abstract class FlutterSoLoud {
   /// [busId] the bus ID returned by createBus.
   /// [volume] playback volume (1.0 = full).
   /// [paused] whether to start paused.
-  /// When [paused] is false the output audio device is started first, so
-  /// this can also fail with [PlayerErrors.audioDeviceFailedToStart].
+  /// When [paused] is false the output audio device is started off the UI
+  /// thread after the bus voice has been created.
   ///
   /// Returns [PlayerErrors.noError] and the voice handle of the bus on
   /// success, or the error and a zeroed handle on failure.

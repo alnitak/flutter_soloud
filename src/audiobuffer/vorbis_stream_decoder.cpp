@@ -7,7 +7,7 @@
 #include <cmath>
 
 VorbisDecoderWrapper::VorbisDecoderWrapper()
-    : vorbisInitialized(false), streamInitialized(false), headerParsed(false), packetCount(0)
+    : vorbisInitialized(false), streamInitialized(false), headerParsed(false), firstPcmBlock(true), packetCount(0)
 {
 }
 
@@ -155,6 +155,7 @@ std::pair<std::vector<float>, DecoderError> VorbisDecoderWrapper::decode(std::ve
             
             streamInitialized = true;
             headerParsed = false;
+            firstPcmBlock = true;
             packetCount = 0;
         }
         
@@ -167,6 +168,7 @@ std::pair<std::vector<float>, DecoderError> VorbisDecoderWrapper::decode(std::ve
         // If this is a BOS page, ensure we're ready for header processing
         if (isBOS) {
             headerParsed = false;
+            firstPcmBlock = true;
             packetCount = 0;
         }
 
@@ -189,15 +191,33 @@ std::pair<std::vector<float>, DecoderError> VorbisDecoderWrapper::decode(std::ve
         }
     }
 
+    if (firstPcmBlock && !decodedData.empty() && vi.channels > 0 && vi.rate > 0) {
+        firstPcmBlock = false;
+        const size_t fadeInSamples = (size_t)(vi.rate * 0.002); // 2ms soft fade-in
+        const size_t fadeInFloats = std::min(decodedData.size(), fadeInSamples * vi.channels);
+        for (size_t i = 0; i < fadeInFloats; ++i) {
+            float multiplier = (float)(i / vi.channels) / (float)fadeInSamples;
+            decodedData[i] *= multiplier;
+        }
+    }
+
     if (eos_seen) {
         const size_t fade_samples = (size_t)(vi.rate * 0.005); // 5ms fade
         if (fade_samples > 0 && vi.channels > 0) {
             const size_t fade_floats = fade_samples * vi.channels;
-            if (decodedData.size() > fade_floats) {
+            if (decodedData.size() >= fade_floats) {
                 size_t start_fade = decodedData.size() - fade_floats;
                 for (size_t i = 0; i < fade_floats; ++i) {
                     float multiplier = 1.0f - (float)(i / vi.channels) / (float)fade_samples;
                     decodedData[start_fade + i] *= multiplier;
+                }
+            } else if (!decodedData.empty()) {
+                const size_t totalFrames = decodedData.size() / vi.channels;
+                if (totalFrames > 0) {
+                    for (size_t i = 0; i < decodedData.size(); ++i) {
+                        float multiplier = 1.0f - (float)(i / vi.channels) / (float)totalFrames;
+                        decodedData[i] *= multiplier;
+                    }
                 }
             }
         }

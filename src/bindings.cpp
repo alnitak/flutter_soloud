@@ -1,6 +1,7 @@
 #include "analyzer.h"
 #include "audiobuffer/pull_buffer_stream.h"
 #include "dart_callback_gate.h"
+#include "device_lifecycle_test_hooks.h"
 // The FlutterEngine lifecycle entry points defined below. Included so the
 // declarations the embedder plugins compile against are checked against these
 // definitions rather than being repeated by hand in Java, Objective-C++ and
@@ -21,6 +22,11 @@
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten/emscripten.h>
+#include <pthread.h>
+#ifdef MA_ENABLE_AUDIO_WORKLETS
+#include <emscripten/threading.h>
+#include <emscripten/webaudio.h>
+#endif
 #endif
 
 #include <atomic>
@@ -217,7 +223,14 @@ extern "C"
   static void soloudTestInitBarrier();
 #endif
 
+#if defined(__clang__)
+  [[clang::no_destroy]]
+#endif
   std::unique_ptr<Player> player = std::make_unique<Player>();
+
+#if defined(__clang__)
+  [[clang::no_destroy]]
+#endif
   std::unique_ptr<Analyzer> analyzer = std::make_unique<Analyzer>(256);
 
   typedef void (*dartVoiceEndedCallback_t)(unsigned int *);
@@ -233,6 +246,16 @@ extern "C"
   std::atomic<dartStateChangedCallback_t> dartStateChangedCallback{nullptr};
   std::atomic<dartMixerOutputDataCallback_t> dartMixerOutputDataCallback{nullptr};
 
+  /// Monotonic engine session counter, bumped every time the native player
+  /// is torn down and recreated by `dispose()`. Voice handles restart from
+  /// scratch in the new Player, and on the web the voiceEnded events posted
+  /// by the old engine travel asynchronously (web worker round-trip, plus a
+  /// main-thread proxy hop on the AudioWorklet build), so they can arrive
+  /// after the new engine has started and kill a new voice that reused the
+  /// same handle id. Events are tagged with the generation of the engine
+  /// that emitted them, letting the Dart side drop stale ones.
+  std::atomic<unsigned int> engineGeneration{0};
+
   //////////////////////////////////////////////////////////////
   /// WEB WORKER
 
@@ -243,26 +266,27 @@ extern "C"
     printf("CPP bool createWorkerInWasm()\n");
 
     return EM_ASM_INT({
-      if (Module_soloud.wasmWorker)
-      {
-        // Terminate the existing worker before creating a new one
-        try
-        {
-          Module_soloud.wasmWorker.terminate();
-          console.log("EM_ASM terminated existing Web Worker.");
-        }
-        catch (e)
-        {
-          console.error('Failed to terminate existing worker:', e);
-        }
-        Module_soloud.wasmWorker = null;
-      }
       // Create a new Worker from the URI
       var workerUri = "assets/packages/flutter_soloud/web/worker.dart.js";
       console.log("EM_ASM creating Web Worker!");
       try
       {
-        Module_soloud.wasmWorker = new Worker(workerUri);
+        var newWorker = new Worker(workerUri);
+        // Replace the existing worker only after the new one was created,
+        // so a failed (re)creation doesn't lose a working worker.
+        if (Module_soloud.wasmWorker)
+        {
+          try
+          {
+            Module_soloud.wasmWorker.terminate();
+            console.log("EM_ASM terminated existing Web Worker.");
+          }
+          catch (e)
+          {
+            console.error('Failed to terminate existing worker:', e);
+          }
+        }
+        Module_soloud.wasmWorker = newWorker;
         return 1;
       }
       catch (e)
@@ -273,8 +297,9 @@ extern "C"
     });
   }
 
-  /// Post a message with the web worker.
-  FFI_PLUGIN_EXPORT void sendToWorker(const char *message, int value)
+  /// Posts an event message to the web event worker. MUST run on the main
+  /// browser thread, which is where Module_soloud.wasmWorker lives.
+  static void postMessageToEventWorker(int message, int value, int generation)
   {
     EM_ASM(
         {
@@ -284,31 +309,69 @@ extern "C"
             Module_soloud.wasmWorker.postMessage({
               message : UTF8ToString($0),
               value : $1,
+              generation : $2,
             });
             // console.log("EM_ASM posting message " + UTF8ToString($0) +
             //     " with value " + $1);
           }
           else
           {
-            console.error('Worker not found.');
+            console.error('flutter_soloud: the event worker is not created; dropping message "' + UTF8ToString($0) + '"');
           }
         },
-        message, value);
+        message, value, generation);
   }
 
-  /// Notify the web worker that new mixer output data is available.
-  /// [offset] byte offset into the mixer output circular buffer.
-  /// [length] number of contiguous valid bytes.
-  /// [captureId] identifies the active capture session so the Dart side
-  /// can discard stale notifications.
-  static void sendMixerOutputToWorker(size_t offset, size_t length,
-                                      uint32_t captureId)
+  /// Posts an event message to the web event worker with an explicit engine
+  /// session [generation] (see engineGeneration). Safe to call from any
+  /// thread: off the main browser thread the post is routed through the
+  /// AudioWorklet message port.
+  static void sendToWorkerGen(const char *message, int value,
+                              unsigned int generation)
   {
-    // The mixer-output notification thread is a pthread worker; it cannot
-    // access Module_soloud (which lives on the main browser thread). Use an
-    // async proxy so the postMessage runs on the main thread where the
-    // wasmWorker reference is valid.
-    MAIN_THREAD_ASYNC_EM_ASM(
+#ifdef MA_ENABLE_AUDIO_WORKLETS
+    if (!emscripten_is_main_browser_thread())
+    {
+      // On the multi-threaded (AudioWorklet) build `voiceEndedCallback` fires
+      // from the AudioWorklet rendering thread. MAIN_THREAD_ASYNC_EM_ASM does
+      // NOT proxy to the main browser thread from there: it executes in the
+      // worklet's own JS realm, where Module_soloud.wasmWorker does not exist
+      // and every event would be dropped. Route the post through the
+      // AudioWorklet message port instead; it runs postMessageToEventWorker
+      // on the main thread.
+      emscripten_audio_worklet_post_function_viii(
+          EMSCRIPTEN_AUDIO_MAIN_THREAD, postMessageToEventWorker,
+          (int)(uintptr_t)message, value, (int)generation);
+      return;
+    }
+#endif
+    // Main browser thread (or the single-threaded build): post directly.
+    postMessageToEventWorker((int)(uintptr_t)message, value, (int)generation);
+  }
+
+  /// Post a message with the web worker.
+  FFI_PLUGIN_EXPORT void sendToWorker(const char *message, int value)
+  {
+    // The generation is captured now, on the calling thread: delivery to the
+    // main thread is asynchronous and can complete after the engine has been
+    // torn down and re-initialized, and the event must stay tagged with the
+    // session that produced it.
+    sendToWorkerGen(message, value,
+                    engineGeneration.load(std::memory_order_acquire));
+  }
+
+  /// Returns the current engine session counter (see [engineGeneration]).
+  FFI_PLUGIN_EXPORT unsigned int getEngineGeneration()
+  {
+    return engineGeneration.load(std::memory_order_acquire);
+  }
+
+  /// Posts a mixer output notification to the web event worker. MUST run on
+  /// the main browser thread, which is where Module_soloud.wasmWorker lives.
+  static void postMixerOutputToEventWorker(int offset, int length,
+                                           int captureId)
+  {
+    EM_ASM(
         {
           if (Module_soloud.wasmWorker)
           {
@@ -320,50 +383,54 @@ extern "C"
             });
           }
         },
-        static_cast<int>(offset), static_cast<int>(length),
-        static_cast<int>(captureId));
+        offset, length, captureId);
+  }
+
+  /// Notify the web worker that new mixer output data is available.
+  /// [offset] byte offset into the mixer output circular buffer.
+  /// [length] number of contiguous valid bytes.
+  /// [captureId] identifies the active capture session so the Dart side
+  /// can discard stale notifications.
+  static void sendMixerOutputToWorker(size_t offset, size_t length,
+                                      uint32_t captureId)
+  {
+#ifdef MA_ENABLE_AUDIO_WORKLETS
+    if (!emscripten_is_main_browser_thread())
+    {
+      // Same AudioWorklet routing as sendToWorker(): on the multi-threaded
+      // build the notification runs inline in the audio callback, i.e. on the
+      // AudioWorklet rendering thread (see MixerOutput::onAudioData), where
+      // MAIN_THREAD_ASYNC_EM_ASM would execute in the worklet's own JS realm
+      // and never reach the event worker on the main thread.
+      emscripten_audio_worklet_post_function_viii(
+          EMSCRIPTEN_AUDIO_MAIN_THREAD, postMixerOutputToEventWorker,
+          static_cast<int>(offset), static_cast<int>(length),
+          static_cast<int>(captureId));
+      return;
+    }
+#endif
+    // Main browser thread (or the single-threaded build): post directly.
+    postMixerOutputToEventWorker(static_cast<int>(offset),
+                                 static_cast<int>(length),
+                                 static_cast<int>(captureId));
   }
 #endif
 
   FFI_PLUGIN_EXPORT void nativeFree(void *pointer) { free(pointer); }
 
-  /// The callback to monitor when a voice ends.
-  ///
-  /// It is called by void `Soloud::stopVoice_internal(unsigned int aVoice)` when
-  /// a voice ends and comes from the audio thread (so on the web, from a
-  /// different web worker).
-  FFI_PLUGIN_EXPORT void voiceEndedCallback(unsigned int *handle)
+  /// Body of [voiceEndedCallback], factored out so the whole body can run on
+  /// the main browser thread with the engine session [generation] captured
+  /// on the thread that produced the event.
+  static void voiceEndedBody(unsigned int *handle, unsigned int generation)
   {
-    bool isHandleFound = false;
     if (player != nullptr)
     {
-      isHandleFound = player->findByHandle(*handle) != nullptr;
-      if (isHandleFound)
-        player->removeHandle(*handle);
-      else
-        // If the handle is not found, for sure it is already
-        // removed by a previous call to `voiceEndedCallback`.
-        // For example triggering a `stop` in a `Future` after the sound is ended
-        // or vice versa.
-        return;
+      player->removeHandle(*handle);
     }
 
-    // Here the internal flutter_soloud handle, doesn't exist anymore, whether
-    // this callback is called directly from `stop`, or whether it is called from
-    // an event in `Soloud::stopVoice_internal (unsigned int aVoice)`.
-
 #ifdef __EMSCRIPTEN__
-    // Calling JavaScript from C/C++
-    // https://emscripten.org/docs/porting/connecting_cpp_and_javascript/Interacting-with-code.html#interacting-with-code-call-javascript-from-native
-    // emscripten_run_script("voiceEndedCallbackJS('1234')");
-    sendToWorker("voiceEndedCallback", *handle);
+    sendToWorkerGen("voiceEndedCallback", *handle, generation);
 #endif
-
-    // So, if the handle was already found before (henche the handle is not
-    // found), the callback to Dart has been already called. If this is the fist
-    // time this handle is found, the callback to Dart must be called.
-    if (!isHandleFound)
-      return;
 
     // The `dartVoiceEndedCallback` is not set on Web.
     // Held across the call, not just the load: a retirement running
@@ -379,6 +446,54 @@ extern "C"
     unsigned int *n = (unsigned int *)malloc(sizeof(unsigned int));
     *n = *handle;
     voiceEndedCb(n);
+  }
+
+#if defined(__EMSCRIPTEN__) && defined(MA_ENABLE_AUDIO_WORKLETS)
+  /// Entry point posted from the AudioWorklet rendering thread to the main
+  /// browser thread (see voiceEndedCallback).
+  static void voiceEndedForwardToMain(int handle, int generation)
+  {
+    unsigned int h = (unsigned int)handle;
+    voiceEndedBody(&h, (unsigned int)generation);
+  }
+#endif
+
+  /// The callback to monitor when a voice ends.
+  ///
+  /// It is called by void `Soloud::stopVoice_internal(unsigned int aVoice)` when
+  /// a voice ends and comes from the audio thread (so on the web, from a
+  /// different web worker).
+  FFI_PLUGIN_EXPORT void voiceEndedCallback(unsigned int *handle)
+  {
+#if defined(__EMSCRIPTEN__) && defined(MA_ENABLE_AUDIO_WORKLETS)
+    if (!emscripten_is_main_browser_thread())
+    {
+      // On the AudioWorklet rendering thread the body would take the player's
+      // sounds_mutex (findByHandle/removeHandle); a contended lock on this
+      // thread lowers to a futex wait, which Emscripten aborts on (futex
+      // waits are illegal on AudioWorklet threads). Do everything on the
+      // main browser thread instead. The generation must be captured now:
+      // the engine may be re-initialized before the main thread runs the
+      // body, and the event must stay tagged with the session that produced
+      // it.
+      const unsigned int h = *handle;
+      const unsigned int generation =
+          engineGeneration.load(std::memory_order_acquire);
+      emscripten_audio_worklet_post_function_vii(
+          EMSCRIPTEN_AUDIO_MAIN_THREAD, voiceEndedForwardToMain,
+          (int)h, (int)generation);
+      return;
+    }
+#endif
+    voiceEndedBody(handle, engineGeneration.load(std::memory_order_acquire));
+  }
+  
+  /// Requests a device-idle evaluation after SoLoud stops or pauses a voice.
+  /// SoLoud invokes this only after releasing its audio mutex.
+  FFI_PLUGIN_EXPORT void voiceInactiveCallback()
+  {
+    if (player != nullptr)
+      player->evaluateAudioDeviceIdle();
   }
 
   /// The callback to monitor when a file is loaded.
@@ -579,6 +694,22 @@ extern "C"
     // isolate's: MixerOutput::stop() joins both worker threads and resets the
     // encoder and queue, none of which survives being run twice at once.
     std::lock_guard<std::mutex> mixerGuard(mixer_lifecycle_mutex);
+#ifdef __EMSCRIPTEN__
+    // On the multi-threaded (AudioWorklet) build the audio callback runs on
+    // the worklet rendering thread and encodes inline in onAudioData().
+    // Synchronize with it before finalizing/freeing the encoder, otherwise
+    // stop() can race an in-flight encode (use-after-free / OOB). The main
+    // thread may block on the mutex (ALLOW_BLOCKING_ON_MAIN_THREAD); the
+    // worklet side never blocks — it try-locks and emits silence on
+    // contention (see soloud_miniaudio_audiomixer).
+    if (player.get() != nullptr && player.get()->isInited())
+    {
+      player.get()->soloud.lockAudioMutex_internal();
+      MixerOutput::instance().stop();
+      player.get()->soloud.unlockAudioMutex_internal();
+      return;
+    }
+#endif
     MixerOutput::instance().stop();
   }
 
@@ -758,13 +889,19 @@ extern "C"
   /// [bufferSize] the audio buffer size. Usually is 2048, but can be also 512
   /// when low latency is needed for example in games. [channels] 1=mono,
   /// 2=stereo, 4=quad, 6=5.1, 8=7.1.
+  /// [devicePeriodFrames] small output device period used when
+  /// [renderAheadFrames] enables the render-ahead ring; 0 = default (512).
+  /// [renderAheadFrames] depth of the engine-owned render-ahead ring in
+  /// frames; 0 disables it and keeps direct-to-device mixing.
   ///
   /// Returns [PlayerErrors.noError] if success.
   FFI_PLUGIN_EXPORT enum PlayerErrors initEngine(int deviceID,
                                                  unsigned int sampleRate,
                                                  unsigned int bufferSize,
                                                  unsigned int channels,
-                                                 unsigned int lowLatency)
+                                                 unsigned int lowLatency,
+                                                 unsigned int devicePeriodFrames,
+                                                 unsigned int renderAheadFrames)
   {
     std::lock_guard<std::mutex> guard(init_deinit_mutex);
     std::lock_guard<std::mutex> guard_load(loadMutex);
@@ -779,9 +916,9 @@ extern "C"
       player = std::make_unique<Player>();
 
     player.get()->setStateChangedCallback(stateChangedCallback);
-    PlayerErrors res = (PlayerErrors)player.get()->init(sampleRate, bufferSize,
-                                                        channels, deviceID,
-                                                        lowLatency != 0);
+    PlayerErrors res = (PlayerErrors)player.get()->init(
+        sampleRate, bufferSize, channels, deviceID, lowLatency != 0,
+        devicePeriodFrames, renderAheadFrames);
     if (res != noError)
     {
       engine_initialized.store(false, std::memory_order_release);
@@ -796,6 +933,7 @@ extern "C"
 
     // Set the callback for when a voice is ended/stopped
     player.get()->setVoiceEndedCallback(voiceEndedCallback);
+    player.get()->setVoiceInactiveCallback(voiceInactiveCallback);
 
 #if defined(SOLOUD_LIFECYCLE_TEST_HOOKS)
     soloudTestInitBarrier();
@@ -820,6 +958,189 @@ extern "C"
   FFI_PLUGIN_EXPORT void setAndroidAAudioAttributes(unsigned int managed)
   {
     SoLoud::miniaudio_setAndroidAAudioAttributes(managed != 0);
+  }
+
+  /// Set how long the audio output device keeps running while the engine is
+  /// idle (no active voices) before it is automatically stopped, on every
+  /// platform. [timeoutMs] < 0 keeps the device running indefinitely while idle
+  /// (the deferred idle-pause is suppressed, so the device keeps rendering
+  /// silence and the app keeps its OS audio session alive) and starts it
+  /// immediately if it was stopped. [timeoutMs] == 0 stops the device as soon
+  /// as possible once idle. [timeoutMs] > 0 keeps it running for that many
+  /// milliseconds after going idle. Any play/unpause before the deadline
+  /// cancels the pending stop. The default is 500. Can be called any time.
+#if defined(SOLOUD_LIFECYCLE_TEST_HOOKS)
+  /// Incremented once per completed FlutterEngine-owned teardown worker. Only
+  /// the tests use it; the production API deliberately does not await that
+  /// worker.
+  std::atomic<int> engine_teardown_completed{0};
+#endif
+
+  /// Coalesces deferred applications of the idle-timeout policy. Every worker
+  /// re-reads the published value, so one pending worker is enough no matter
+  /// how many times the setter is called while the lifecycle mutex is busy.
+  /// Bookkeeping for the single deferred idle-timeout worker.
+  ///
+  /// Guarded by its own tiny mutex, never by init_deinit_mutex: the setter runs
+  /// on the UI isolate and must not wait behind a device operation. Nothing
+  /// blocking happens under it.
+  std::mutex idle_timeout_worker_mutex;
+  /// Bumped by every publication. The worker compares it before going idle, so
+  /// a value published while the worker was applying the previous one cannot be
+  /// missed.
+  uint64_t idle_timeout_publication = 0;
+  bool idle_timeout_worker_running = false;
+
+#if defined(SOLOUD_LIFECYCLE_TEST_HOOKS)
+  /// Peak number of deferred workers alive at once. The whole point of the
+  /// bookkeeping above is that this never exceeds 1.
+  std::atomic<int> idle_timeout_worker_live{0};
+  std::atomic<int> idle_timeout_worker_peak{0};
+#endif
+
+  /// Apply the published idle-timeout policy once init_deinit_mutex becomes
+  /// available, without making the caller wait for it.
+  ///
+  /// Exactly one worker exists at a time and it always applies the newest
+  /// published value. The naive alternatives both fail: clearing a "queued"
+  /// flag before blocking lets every setter call spawn its own waiter, so a
+  /// slow init collects a pile of threads; clearing it after applying instead
+  /// drops a value published in the gap between the apply and the flag store.
+  static void queueAudioDeviceIdleTimeoutApply()
+  {
+    {
+      std::lock_guard<std::mutex> guard(idle_timeout_worker_mutex);
+      ++idle_timeout_publication;
+      if (idle_timeout_worker_running)
+        return; // The running worker will observe the newer publication.
+      idle_timeout_worker_running = true;
+    }
+
+    try
+    {
+      std::thread([]()
+                  {
+#if defined(SOLOUD_LIFECYCLE_TEST_HOOKS)
+        const int live = idle_timeout_worker_live.fetch_add(
+                             1, std::memory_order_acq_rel) + 1;
+        int peak = idle_timeout_worker_peak.load(std::memory_order_acquire);
+        while (live > peak &&
+               !idle_timeout_worker_peak.compare_exchange_weak(
+                   peak, live, std::memory_order_acq_rel))
+        {
+        }
+#endif
+        for (;;)
+        {
+          uint64_t applied;
+          {
+            std::lock_guard<std::mutex> guard(idle_timeout_worker_mutex);
+            applied = idle_timeout_publication;
+          }
+
+          {
+            std::lock_guard<std::mutex> guard(init_deinit_mutex);
+            if (player.get() != nullptr)
+              player.get()->applyPublishedAudioDeviceIdleTimeout();
+          }
+
+          SOLOUD_TEST_BARRIER(idleTimeoutWorkerApplied);
+
+          std::lock_guard<std::mutex> guard(idle_timeout_worker_mutex);
+          if (idle_timeout_publication == applied)
+          {
+            // Going idle and observing "nothing newer" happen under the same
+            // lock the setter increments under, so a publication either sees
+            // this worker still running (and is picked up by the loop above)
+            // or starts a fresh one. It cannot fall between the two.
+            idle_timeout_worker_running = false;
+#if defined(SOLOUD_LIFECYCLE_TEST_HOOKS)
+            idle_timeout_worker_live.fetch_sub(1, std::memory_order_acq_rel);
+#endif
+            return;
+          }
+        } })
+          .detach();
+    }
+    catch (...)
+    {
+      std::lock_guard<std::mutex> guard(idle_timeout_worker_mutex);
+      idle_timeout_worker_running = false;
+      // Best effort. The policy is already published process-wide, so the next
+      // init() still observes it.
+    }
+  }
+
+  /// Set the idle-timeout policy. This is called synchronously from the UI
+  /// isolate and is documented as callable at any time, so it must not block.
+  FFI_PLUGIN_EXPORT void setAudioDeviceIdleTimeout(int64_t timeoutMs)
+  {
+    // Publish first, with no lock at all. The policy is process-global and
+    // outlives any individual Player, so this alone guarantees the next init()
+    // uses it even when no Player can consume the update right now.
+    Player::publishAudioDeviceIdleTimeout(timeoutMs);
+
+    // Applying it to the *current* Player needs that pointer pinned, which
+    // means init_deinit_mutex -- and initEngine() holds that across the entire
+    // native device open, which is seconds on Android and is exactly the stall
+    // #481 moved off the UI isolate. Waiting for it here would put that stall
+    // straight back on the UI thread, so take the lock only if it is free...
+    {
+      std::unique_lock<std::mutex> guard(init_deinit_mutex, std::try_to_lock);
+      if (guard.owns_lock())
+      {
+        if (player.get() != nullptr)
+          player.get()->applyPublishedAudioDeviceIdleTimeout();
+        return;
+      }
+    }
+
+    // ...and otherwise hand it to a thread that can afford to wait.
+    queueAudioDeviceIdleTimeoutApply();
+  }
+
+  /// Stop the audio output device without deinitializing the engine. By default
+  /// this is a successful no-op while voices are active. [force] stops the
+  /// device even during active playback without mutating any voice.
+  FFI_PLUGIN_EXPORT enum PlayerErrors stopAudioDevice(unsigned int force)
+  {
+    std::lock_guard<std::mutex> guard(init_deinit_mutex);
+    if (player.get() == nullptr)
+      return backendNotInited;
+
+    return player.get()->stopAudioDevice(force != 0);
+  }
+
+  /// Restart the audio output device previously stopped by stopAudioDevice(),
+  /// so existing voices and loaded sounds keep operating. Idempotent: a no-op
+  /// if the device is already started.
+  FFI_PLUGIN_EXPORT enum PlayerErrors startAudioDevice()
+  {
+    std::lock_guard<std::mutex> guard(init_deinit_mutex);
+    if (player.get() == nullptr)
+      return backendNotInited;
+
+    return player.get()->startAudioDevice();
+  }
+
+  /// Get the current state of the audio output device. Returns
+  /// [AudioDeviceState.audioDeviceUninitialized] if the engine is not
+  /// initialized.
+  FFI_PLUGIN_EXPORT enum AudioDeviceState getAudioDeviceState()
+  {
+    // Read the process-global backend state directly so this cheap synchronous
+    // query never waits behind an initialization or lifecycle API call.
+    return (AudioDeviceState)SoLoud::miniaudio_getAudioDeviceState();
+  }
+
+  /// Test-only hook that sends an interruption through miniaudio's normal
+  /// notification callback. This is intentionally absent from the public API.
+  FFI_PLUGIN_EXPORT void debugTriggerAudioInterruption(unsigned int began)
+  {
+    std::lock_guard<std::mutex> guard(init_deinit_mutex);
+    if (player.get() == nullptr || !player.get()->isInited())
+      return;
+    SoLoud::miniaudio_debugTriggerAudioInterruption(began != 0);
   }
 
   /// List playback devices.
@@ -873,8 +1194,40 @@ extern "C"
   /// [deviceID] the device ID. -1 for default OS output device.
   FFI_PLUGIN_EXPORT enum PlayerErrors changeDevice(int deviceID)
   {
+    // Pins the global `player` for the whole operation, exactly as the
+    // start/stop exports do. Without it a change worker can be inside
+    // Player::changeDevice() while a teardown worker disposes that Player and
+    // installs a replacement -- the change then runs on freed memory. The
+    // window is wide on this path because device enumeration deliberately
+    // happens before Player::mDeviceLifecycleOperationMutex is taken.
+    //
+    // Holding init_deinit_mutex across enumeration and device replacement is
+    // affordable only because Dart runs changeDevice() on a worker isolate, so
+    // the blocking is never on Flutter's UI isolate.
+    //
+    // Lock order. init_deinit_mutex is strictly outermost -- no Player member
+    // function acquires it -- and below that it is a partial order, not a
+    // chain:
+    //
+    //   init_deinit_mutex
+    //     -> Player::mDeviceLifecycleOperationMutex
+    //          -> Player::mInterruptionMutex -> Player::mPauseMutex
+    //          -> SoLoud::gDeviceOperationMutex        (backend device call)
+    //
+    //   SoLoud::gDeviceOperationMutex
+    //     -> Player::mInterruptionMutex -> Player::mPauseMutex
+    //          (an OS interruption notification, which miniaudio can deliver
+    //           inline from a backend device call)
+    //
+    // gDeviceOperationMutex and mInterruptionMutex are therefore both reachable
+    // from the operation mutex, but never in opposite orders: no Player mutex
+    // is ever held across a backend device call. mPauseMutex is a leaf --
+    // nothing blocking runs under it.
+    std::lock_guard<std::mutex> guard(init_deinit_mutex);
     if (player.get() == nullptr)
       return backendNotInited;
+
+    SOLOUD_TEST_BARRIER(changeDeviceEntered);
 
     return player.get()->changeDevice(deviceID);
   }
@@ -931,10 +1284,22 @@ extern "C"
       return;
 
     clearPlayerDartCallbackRegistrationsLocked();
-    player.get()->disposeAllSound();
+    // Deliberately NOT disposeAllSound(): that is a runtime operation which
+    // honours the configured idle policy, so with an indefinite keep-alive it
+    // ends by queueing a device *start*. Running it here would have teardown
+    // ask the scheduler to start the device microseconds before joining that
+    // same scheduler -- an entirely pointless ma_device_start() that deinit()
+    // then has to wait out, on exactly the backends where starting is slow.
+    // Player::dispose() destroys the sounds itself, as the sole owner of native
+    // sound destruction during teardown.
     player.get()->dispose();
     player.reset();
     player = std::make_unique<Player>();
+    // Bump the engine session counter only now that the old engine is fully
+    // torn down: voiceEnded events posted while it was stopping its voices
+    // keep the old generation, and the Dart side (which reads the counter
+    // after the next successful initEngine) can drop them as stale.
+    engineGeneration.fetch_add(1, std::memory_order_acq_rel);
     analyzer.reset();
     analyzer = std::make_unique<Analyzer>(256);
   }
@@ -1073,6 +1438,21 @@ extern "C"
     {
       std::thread([claim]()
                   {
+#if defined(SOLOUD_LIFECYCLE_TEST_HOOKS)
+        // Published when the worker is completely finished -- after
+        // disposeLocked() has reset the Player and the backend is down.
+        // `engine_initialized` goes false at the *start* of teardown, so it is
+        // not the same state and a test that waits on it is not synchronized
+        // with this worker at all.
+        struct CompletionSignal
+        {
+          ~CompletionSignal()
+          {
+            engine_teardown_completed.fetch_add(1, std::memory_order_acq_rel);
+          }
+        } completionSignal;
+#endif
+
         std::lock_guard<std::mutex> guard(init_deinit_mutex);
         std::lock_guard<std::mutex> guard_load(loadMutex);
 
@@ -1103,6 +1483,49 @@ extern "C"
   /// init_deinit_mutex. That mutex is internal and no exported call holds it
   /// for a controllable length of time, so without a hook a test can only hope
   /// the scheduler puts the teardown inside that window.
+
+  /// Peak number of deferred idle-timeout workers alive at once. The
+  /// coalescing is only meaningful if this stays at 1 no matter how many times
+  /// the setter is called while init_deinit_mutex is held.
+  FFI_PLUGIN_EXPORT int soloudTestIdleTimeoutWorkerPeak()
+  {
+    return idle_timeout_worker_peak.load(std::memory_order_acquire);
+  }
+
+  FFI_PLUGIN_EXPORT void soloudTestResetIdleTimeoutWorkerPeak()
+  {
+    idle_timeout_worker_peak.store(0, std::memory_order_release);
+  }
+
+  /// The policy the current Player is actually running with, as opposed to the
+  /// process-global publication.
+  FFI_PLUGIN_EXPORT int64_t soloudTestAppliedIdleTimeoutMs()
+  {
+    std::lock_guard<std::mutex> guard(init_deinit_mutex);
+    if (player.get() == nullptr)
+      return 0;
+    return player.get()->currentAudioDeviceIdleTimeoutMs();
+  }
+
+  /// Set or clear the *engine-level* state callback -- the pointer
+  /// SoLoud::notifyStateChanged() dispatches through, which the miniaudio
+  /// notification threads read. Deliberately without init_deinit_mutex,
+  /// because that is exactly how teardown clears it relative to a notification
+  /// already in flight.
+  FFI_PLUGIN_EXPORT void soloudTestSetEngineStateCallback(unsigned int enable)
+  {
+    if (player.get() == nullptr)
+      return;
+    player.get()->setStateChangedCallback(enable != 0 ? stateChangedCallback
+                                                      : nullptr);
+  }
+
+  /// How many FlutterEngine-owned teardown workers have run to completion.
+  /// Distinct from isInited(): that goes false when teardown *starts*.
+  FFI_PLUGIN_EXPORT int soloudTestEngineTeardownCompletedCount()
+  {
+    return engine_teardown_completed.load(std::memory_order_acquire);
+  }
 
   FFI_PLUGIN_EXPORT void soloudTestLockInitDeinit()
   {
@@ -1327,6 +1750,23 @@ extern "C"
       return backendNotInited;
     return (PlayerErrors)player.get()->loadMem(uniqueName, buffer, length,
                                                loadIntoMem, *hash);
+  }
+
+  /// Load 2 audios, convert to mono if needed, and join them into a single stereo AudioSource.
+  /// [hash] return the hash of the sound.
+  FFI_PLUGIN_EXPORT enum PlayerErrors joinTwoSources(char *uniqueName,
+                                                     unsigned char *mem1,
+                                                     unsigned char *mem2,
+                                                     int length1,
+                                                     int length2,
+                                                     unsigned int *hash)
+  {
+    std::lock_guard<std::mutex> guard_init(init_deinit_mutex);
+    std::lock_guard<std::mutex> guard_load(loadMutex);
+    if (player.get() == nullptr || !player.get()->isInited())
+      return backendNotInited;
+    return (PlayerErrors)player.get()->joinTwoSources(uniqueName, mem1, mem2,
+                                                      length1, length2, *hash);
   }
 
   /// Set up an audio stream.
@@ -1679,8 +2119,8 @@ extern "C"
   /// [handle] the sound handle
   /// Returns [PlayerErrors.noError] if success, [PlayerErrors.backendNotInited]
   /// if the engine is not initialized, [PlayerErrors.soundHandleNotFound] if
-  /// [handle] is not valid, [PlayerErrors.audioDeviceFailedToStart] if
-  /// unpausing could not start the output device.
+  /// [handle] is not valid. Unpausing posts an asynchronous device start, so
+  /// this never reports [PlayerErrors.audioDeviceFailedToStart].
   FFI_PLUGIN_EXPORT enum PlayerErrors pauseSwitch(unsigned int handle)
   {
     if (player.get() == nullptr || !player.get()->isInited())
@@ -1694,9 +2134,8 @@ extern "C"
   /// [pause] the sound handle
   /// Returns [PlayerErrors.noError] if success, [PlayerErrors.backendNotInited]
   /// if the engine is not initialized, [PlayerErrors.soundHandleNotFound] if
-  /// [handle] is not valid, [PlayerErrors.audioDeviceFailedToStart] if
-  /// unpausing could not start the output device. When the device cannot be
-  /// started, the voice is left paused.
+  /// [handle] is not valid. Unpausing posts an asynchronous device start, so
+  /// this never reports [PlayerErrors.audioDeviceFailedToStart].
   FFI_PLUGIN_EXPORT enum PlayerErrors setPause(unsigned int handle, bool pause)
   {
     if (player.get() == nullptr || !player.get()->isInited())
@@ -1762,43 +2201,33 @@ extern "C"
 
   /// Play already loaded sound identified by [hash]
   ///
-  /// [hash] the unique sound hash of a sound
+  /// Play an already loaded sound.
+  ///
+  /// [soundHash] the unique sound hash of a sound
+  /// [busId] the bus ID to play the sound on. 0 means the main engine.
   /// [volume] 1.0f full volume
   /// [pan] 0.0f centered
   /// [paused] 0 not paused
-  /// [handle] pointer to the handle for this new sound
   /// [looping] whether to start the sound in looping state.
   /// [loopingStartAt] If looping is enabled, the loop point is, by default,
   /// the start of the stream. The loop start point can be set with this
-  /// parameter.
+  /// [loopingStartOffsetAt] Optional exact frame offset to restart looping from (-1 = inactive).
+  /// [loopingEndOffsetAt] Optional exact frame offset to loop before (-1 = inactive).
+  /// [scale] relative playback speed multiplier (1.0f = normal speed).
+  /// [handle] pointer to the handle for this new sound
   /// Return the error if any and a new [handle] of this sound
-  FFI_PLUGIN_EXPORT enum PlayerErrors play(unsigned int soundHash, unsigned int busId, float volume,
-                                           float pan, bool paused, bool looping,
-                                           double loopingStartAt,
-                                           unsigned int *handle)
-  {
-    if (player.get() == nullptr || !player.get()->isInited())
-      return backendNotInited;
-    PlayerErrors result = player.get()->play(soundHash, *handle, busId, volume, pan,
-                                             paused, looping, loopingStartAt, 0);
-    return result;
-  }
-
-  /// Play an already loaded sound with an optional bounded loop region.
-  ///
-  /// This additive entry point preserves the ABI of [play].
-  /// [loopingEndAt] If greater than zero, loop before this time. Zero uses the
-  /// natural end of the stream.
-  FFI_PLUGIN_EXPORT enum PlayerErrors playWithLoopPoints(
+  FFI_PLUGIN_EXPORT enum PlayerErrors play(
       unsigned int soundHash, unsigned int busId, float volume, float pan,
       bool paused, bool looping, double loopingStartAt, double loopingEndAt,
-      unsigned int *handle)
+      int loopingStartOffsetAt, int loopingEndOffsetAt,
+      float scale, unsigned int *handle)
   {
     if (player.get() == nullptr || !player.get()->isInited())
       return backendNotInited;
-    PlayerErrors result = player.get()->play(soundHash, *handle, busId, volume, pan,
-                                             paused, looping, loopingStartAt,
-                                             loopingEndAt);
+    PlayerErrors result = player.get()->play(
+        soundHash, *handle, busId, volume, pan,
+        paused, looping, loopingStartAt, loopingEndAt,
+        loopingStartOffsetAt, loopingEndOffsetAt, scale);
     return result;
   }
 
@@ -1817,16 +2246,27 @@ extern "C"
   /// [volume] 1.0f full volume
   /// [pan] 0.0f centered
   /// [busId] the bus ID to play the sound on. 0 means the main engine.
+  /// [scale] relative playback speed multiplier (1.0f = normal speed).
+  /// [looping] whether the sound loops upon reaching the end.
+  /// [loopingStartAt] time position in seconds to restart playback when looping.
+  /// [loopingEndAt] If greater than zero, loop before this time.
+  /// [loopingStartOffsetAt] Optional exact frame offset to restart looping from (-1 = inactive).
+  /// [loopingEndOffsetAt] Optional exact frame offset to loop before (-1 = inactive).
   /// [handle] pointer to the handle for this new sound
   /// Return the error if any and a new [handle] of this sound
   FFI_PLUGIN_EXPORT enum PlayerErrors playClocked(
       unsigned int soundHash, double soundTime, unsigned int busId,
-      float volume, float pan, unsigned int *handle)
+      float volume, float pan, float scale, bool looping,
+      double loopingStartAt, double loopingEndAt,
+      int loopingStartOffsetAt, int loopingEndOffsetAt,
+      unsigned int *handle)
   {
     if (player.get() == nullptr || !player.get()->isInited())
       return backendNotInited;
     PlayerErrors result = player.get()->playClocked(
-        soundHash, *handle, soundTime, busId, volume, pan);
+        soundHash, *handle, soundTime, busId, volume, pan, scale,
+        looping, loopingStartAt, loopingEndAt,
+        loopingStartOffsetAt, loopingEndOffsetAt);
     return result;
   }
 
@@ -1884,6 +2324,34 @@ extern "C"
     return player.get()->getEngineTime();
   }
 
+  /// Engine time of the sample currently reaching the output device: the mix
+  /// clock (see [getEngineTime]) minus the render-ahead ring depth. Equals
+  /// [getEngineTime] when the render-ahead ring is disabled (the default).
+  FFI_PLUGIN_EXPORT double getPlayheadTime()
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return 0.0;
+    return player.get()->getPlayheadTime();
+  }
+
+  /// Estimated output latency in seconds (render-ahead ring depth plus one
+  /// device period). 0 when the render-ahead ring is disabled.
+  FFI_PLUGIN_EXPORT double getOutputLatency()
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return 0.0;
+    return player.get()->getOutputLatency();
+  }
+
+  /// Whether the render-ahead ring (the retroactive re-mix prerequisite) is
+  /// active. Enabled at init time via `initEngine`'s `renderAheadFrames`.
+  FFI_PLUGIN_EXPORT unsigned int isRenderAheadEnabled()
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return 0;
+    return player.get()->isRenderAheadEnabled() ? 1 : 0;
+  }
+
   /// Start playing a sound at an absolute engine time (see [getEngineTime]),
   /// with sample accuracy.
   ///
@@ -1899,16 +2367,26 @@ extern "C"
   /// [busId] the bus ID to play the sound on. 0 means the main engine.
   /// [volume] 1.0f full volume
   /// [pan] 0.0f centered
+  /// [scale] relative playback speed multiplier (1.0f = normal speed)
+  /// [looping] whether the sound loops upon reaching the end
+  /// [loopingStartAt] time position in seconds to restart playback when looping
   /// [handle] pointer to the handle for this new sound
   /// Return the error if any and a new [handle] of this sound
+  /// [loopingStartOffsetAt] Optional exact frame offset to restart looping from (-1 = inactive).
+  /// [loopingEndOffsetAt] Optional exact frame offset to loop before (-1 = inactive).
   FFI_PLUGIN_EXPORT enum PlayerErrors playScheduled(
       unsigned int soundHash, double atTime, double duration,
-      unsigned int busId, float volume, float pan, unsigned int *handle)
+      unsigned int busId, float volume, float pan, float scale,
+      bool looping, double loopingStartAt, double loopingEndAt,
+      int loopingStartOffsetAt, int loopingEndOffsetAt,
+      unsigned int *handle)
   {
     if (player.get() == nullptr || !player.get()->isInited())
       return backendNotInited;
     PlayerErrors result = player.get()->playScheduled(
-        soundHash, *handle, atTime, duration, busId, volume, pan);
+        soundHash, *handle, atTime, duration, busId, volume, pan, scale,
+        looping, loopingStartAt, loopingEndAt,
+        loopingStartOffsetAt, loopingEndOffsetAt);
     return result;
   }
 
@@ -1961,8 +2439,30 @@ extern "C"
     const enum PlayerErrors error = player.get()->stop(handle);
     if (error != noError)
       return error;
-    voiceEndedCallback(&handle);
     return noError;
+  }
+
+  /// Stop all playing voices without disposing the loaded sounds.
+  ///
+  /// Each stopped voice triggers the voice-ended callback (dispatched by
+  /// SoLoud itself), so Dart is notified for every handle like with [stop].
+  FFI_PLUGIN_EXPORT void stopAll()
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return;
+    player.get()->stopAll();
+  }
+
+  /// Stop all voices playing the already loaded sound identified by
+  /// [soundHash] without disposing it.
+  ///
+  /// Each stopped voice triggers the voice-ended callback (dispatched by
+  /// SoLoud itself), so Dart is notified for every handle like with [stop].
+  FFI_PLUGIN_EXPORT void stopAudioSource(unsigned int soundHash)
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return;
+    player.get()->stopAudioSource(soundHash);
   }
 
   /// Stop all handles of the already loaded sound identified by [hash] and
@@ -3012,9 +3512,9 @@ extern "C"
       return backendNotInited;
 
     PlayerErrors result =
-        player.get()->play3d(soundHash, *handle, posX, posY, posZ, velX, velY,
-                             velZ, volume, paused, busId, looping, loopingStartAt,
-                             0);
+        player.get()->play3d(soundHash, *handle, busId, posX, posY, posZ, velX, velY,
+                             velZ, volume, paused, looping, loopingStartAt,
+                             0, -1, -1, 1.0f);
     return result;
   }
 
@@ -3028,16 +3528,17 @@ extern "C"
       float posX, float posY, float posZ,
       float velX, float velY, float velZ,
       float volume, bool paused, bool looping, double loopingStartAt,
-      double loopingEndAt, unsigned int *handle)
+      double loopingEndAt, int loopingStartOffsetAt, int loopingEndOffsetAt, float scale, unsigned int *handle)
   {
     if (player.get() == nullptr || !player.get()->isInited() ||
         player.get()->getSoundsCount() == 0)
       return backendNotInited;
 
     PlayerErrors result =
-        player.get()->play3d(soundHash, *handle, posX, posY, posZ, velX, velY,
-                             velZ, volume, paused, busId, looping, loopingStartAt,
-                             loopingEndAt);
+        player.get()->play3d(soundHash, *handle, busId, posX, posY, posZ, velX, velY,
+                             velZ, volume, paused, looping, loopingStartAt,
+                             loopingEndAt, loopingStartOffsetAt,
+                             loopingEndOffsetAt, scale);
     return result;
   }
 
@@ -3061,16 +3562,66 @@ extern "C"
       unsigned int soundHash, double soundTime, unsigned int busId,
       float posX, float posY, float posZ,
       float velX, float velY, float velZ,
-      float volume, unsigned int *handle)
+      float volume, float scale, bool looping,
+      double loopingStartAt, double loopingEndAt,
+      int loopingStartOffsetAt, int loopingEndOffsetAt,
+      unsigned int *handle)
   {
     if (player.get() == nullptr || !player.get()->isInited() ||
         player.get()->getSoundsCount() == 0)
       return backendNotInited;
 
     PlayerErrors result =
-        player.get()->play3dClocked(soundHash, *handle, soundTime,
+        player.get()->play3dClocked(soundHash, *handle, soundTime, busId,
                                     posX, posY, posZ, velX, velY, velZ,
-                                    volume, busId);
+                                    volume, scale, looping,
+                                    loopingStartAt, loopingEndAt,
+                                    loopingStartOffsetAt, loopingEndOffsetAt);
+    return result;
+  }
+
+  /// play3dScheduled() is the 3d version of the playScheduled() call.
+  ///
+  /// Instead of panning like with the "2d" version of the call, the 3d
+  /// version requires 3d position and optionally velocity vector. Like its
+  /// 2d version, this one starts playing a sound at an absolute engine time
+  /// (see [getEngineTime]), with sample accuracy.
+  ///
+  /// [soundHash] the unique sound hash of a sound
+  /// [atTime] the absolute engine time, in seconds, at which the sound should start.
+  /// [duration] if greater than zero, the sound is automatically stopped at [atTime] + [duration].
+  /// [busId] the bus ID to play the sound on. 0 means the main engine.
+  /// [posX], [posY], [posZ] are the audio source position coordinates.
+  /// [velX], [velY], [velZ] are the audio source velocity.
+  /// [volume] 1.0f full volume
+  /// [scale] relative playback speed multiplier (1.0f = normal speed)
+  /// [looping] whether the sound loops upon reaching the end
+  /// [loopingStartAt] time position in seconds to restart playback when looping
+  /// [loopingEndAt] optional exclusive end point for looping
+  /// [loopingStartOffsetAt] Optional exact frame offset to restart looping from (-1 = inactive).
+  /// [loopingEndOffsetAt] Optional exact frame offset to loop before (-1 = inactive).
+  /// [handle] pointer to the handle for this new sound
+  /// Return the error if any and a new [handle] of this sound
+  FFI_PLUGIN_EXPORT PlayerErrors play3dScheduled(
+      unsigned int soundHash, double atTime, double duration,
+      unsigned int busId,
+      float posX, float posY, float posZ,
+      float velX, float velY, float velZ,
+      float volume, float scale, bool looping,
+      double loopingStartAt, double loopingEndAt,
+      int loopingStartOffsetAt, int loopingEndOffsetAt,
+      unsigned int *handle)
+  {
+    if (player.get() == nullptr || !player.get()->isInited() ||
+        player.get()->getSoundsCount() == 0)
+      return backendNotInited;
+
+    PlayerErrors result =
+        player.get()->play3dScheduled(soundHash, *handle, atTime, duration, busId,
+                                      posX, posY, posZ, velX, velY, velZ,
+                                      volume, scale, looping,
+                                      loopingStartAt, loopingEndAt,
+                                      loopingStartOffsetAt, loopingEndOffsetAt);
     return result;
   }
 
@@ -3303,10 +3854,10 @@ extern "C"
   /// [handle] set to the voice handle of the bus, or 0 on error.
   /// Returns [PlayerErrors.noError] if success, [PlayerErrors.backendNotInited]
   /// if the engine is not initialized, [PlayerErrors.busIdNotFound] if [busId]
-  /// is unknown, [PlayerErrors.audioDeviceFailedToStart] if the output device
-  /// could not be started (only checked when [paused] is false),
-  /// [PlayerErrors.failedToStartPlayback] if no voice could be created for the
-  /// bus.
+  /// is unknown, [PlayerErrors.failedToStartPlayback] if no voice could be
+  /// created for the bus. When [paused] is false the output device is started
+  /// asynchronously after the bus voice exists, so this never reports
+  /// [PlayerErrors.audioDeviceFailedToStart].
   ///
   /// Note: to play a sound through a bus, the play() function is used with the
   /// bus ID as an argument. See play() for more information.

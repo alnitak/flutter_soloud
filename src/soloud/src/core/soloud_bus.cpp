@@ -176,7 +176,7 @@ namespace SoLoud
 	}	
 
 
-	handle Bus::playClocked(time aSoundTime, AudioSource &aSound, float aVolume, float aPan)
+	handle Bus::playClocked(time aSoundTime, AudioSource &aSound, float aVolume, float aPan, float aScale, bool aLooping, time aLoopPoint, time aLoopEndPoint, long long aLoopStartOffset, long long aLoopEndOffset)
 	{
 		if (!mInstance || !mSoloud)
 		{
@@ -190,10 +190,10 @@ namespace SoLoud
 			return 0;
 		}
 
-		return mSoloud->playClocked(aSoundTime, aSound, aVolume, aPan, mChannelHandle);
+		return mSoloud->playClocked(aSoundTime, aSound, aVolume, aPan, mChannelHandle, aScale, aLooping, aLoopPoint, aLoopEndPoint, aLoopStartOffset, aLoopEndOffset);
 	}	
 
-	handle Bus::playScheduled(time aEngineTime, AudioSource &aSound, float aVolume, float aPan)
+	handle Bus::playScheduled(time aEngineTime, AudioSource &aSound, float aVolume, float aPan, float aScale, bool aLooping, time aLoopPoint, time aLoopEndPoint, long long aLoopStartOffset, long long aLoopEndOffset)
 	{
 		if (!mInstance || !mSoloud)
 		{
@@ -207,10 +207,10 @@ namespace SoLoud
 			return 0;
 		}
 
-		return mSoloud->playScheduled(aEngineTime, aSound, aVolume, aPan, mChannelHandle);
+		return mSoloud->playScheduled(aEngineTime, aSound, aVolume, aPan, mChannelHandle, aScale, aLooping, aLoopPoint, aLoopEndPoint, aLoopStartOffset, aLoopEndOffset);
 	}	
 
-	handle Bus::play3d(AudioSource &aSound, float aPosX, float aPosY, float aPosZ, float aVelX, float aVelY, float aVelZ, float aVolume, bool aPaused)
+	handle Bus::play3d(AudioSource &aSound, float aPosX, float aPosY, float aPosZ, float aVelX, float aVelY, float aVelZ, float aVolume, bool aPaused, float aScale, bool aLooping, time aLoopPoint, time aLoopEndPoint, long long aLoopStartOffset, long long aLoopEndOffset)
 	{
 		if (!mInstance || !mSoloud)
 		{
@@ -223,10 +223,10 @@ namespace SoLoud
 		{
 			return 0;
 		}
-		return mSoloud->play3d(aSound, aPosX, aPosY, aPosZ, aVelX, aVelY, aVelZ, aVolume, aPaused, mChannelHandle);
+		return mSoloud->play3d(aSound, aPosX, aPosY, aPosZ, aVelX, aVelY, aVelZ, aVolume, aPaused, mChannelHandle, aScale, aLooping, aLoopPoint, aLoopEndPoint, aLoopStartOffset, aLoopEndOffset);
 	}
 
-	handle Bus::play3dClocked(time aSoundTime, AudioSource &aSound, float aPosX, float aPosY, float aPosZ, float aVelX, float aVelY, float aVelZ, float aVolume)
+	handle Bus::play3dClocked(time aSoundTime, AudioSource &aSound, float aPosX, float aPosY, float aPosZ, float aVelX, float aVelY, float aVelZ, float aVolume, float aScale, bool aLooping, time aLoopPoint, time aLoopEndPoint, long long aLoopStartOffset, long long aLoopEndOffset)
 	{
 		if (!mInstance || !mSoloud)
 		{
@@ -239,7 +239,23 @@ namespace SoLoud
 		{
 			return 0;
 		}
-		return mSoloud->play3dClocked(aSoundTime, aSound, aPosX, aPosY, aPosZ, aVelX, aVelY, aVelZ, aVolume, mChannelHandle);
+		return mSoloud->play3dClocked(aSoundTime, aSound, aPosX, aPosY, aPosZ, aVelX, aVelY, aVelZ, aVolume, mChannelHandle, aScale, aLooping, aLoopPoint, aLoopEndPoint, aLoopStartOffset, aLoopEndOffset);
+	}
+
+	handle Bus::play3dScheduled(time aEngineTime, AudioSource &aSound, float aPosX, float aPosY, float aPosZ, float aVelX, float aVelY, float aVelZ, float aVolume, float aScale, bool aLooping, time aLoopPoint, time aLoopEndPoint, long long aLoopStartOffset, long long aLoopEndOffset)
+	{
+		if (!mInstance || !mSoloud)
+		{
+			return 0;
+		}
+
+		findBusHandle();
+
+		if (mChannelHandle == 0)
+		{
+			return 0;
+		}
+		return mSoloud->play3dScheduled(aEngineTime, aSound, aPosX, aPosY, aPosZ, aVelX, aVelY, aVelZ, aVolume, mChannelHandle, aScale, aLooping, aLoopPoint, aLoopEndPoint, aLoopStartOffset, aLoopEndOffset);
 	}
 
 	void Bus::annexSound(handle aVoiceHandle)

@@ -25,6 +25,7 @@ freely, subject to the following restrictions:
 #ifndef SOLOUD_H
 #define SOLOUD_H
 
+#include <atomic>
 #include <stdlib.h> // rand
 #include <math.h> // sin
 #include <atomic> // std::atomic
@@ -150,7 +151,8 @@ namespace SoLoud
 #include "soloud_bus.h"
 #include "soloud_queue.h"
 #include "soloud_error.h"
-
+#include "soloud_render_ring.h"
+#include "soloud_checkpoint.h"
 namespace SoLoud
 {
 
@@ -162,6 +164,13 @@ namespace SoLoud
 		void * mBackendData;
 		// Pointer for the audio thread mutex.
 		void * mAudioThreadMutex;
+		// Set only when the engine is fully initialized (end of init()) and
+		// cleared at the start of deinit(). The audio callback checks it
+		// before mixing: on the web, a stale AudioWorklet from a previous
+		// engine session can still fire while the global miniaudio device is
+		// being re-initialized, and mixing would touch half-initialized or
+		// torn-down engine state (see soloud_miniaudio_audiomixer).
+		volatile unsigned int mEngineReady = 0;
 		// Flag for when we're inside the mutex, used for debugging.
 		bool mInsideAudioThreadMutex;
 		// Called by SoLoud to shut down the back-end. If NULL, not called. Should be set by back-end.
@@ -174,14 +183,26 @@ namespace SoLoud
 		// Set the callback to call when a voice is ended/stopped.
 		//
 		// stopVoice_internal() runs with the audio mutex held, so it must not
-		// call out to the embedder directly: the callback reaches back into the
+		// call out to the embedder directly. The callback reaches back into the
 		// embedder's own bookkeeping (and its locks), which inverts the lock
 		// order against callers that hold those locks across a SoLoud call and
-		// deadlocks the engine. Ended voices are queued instead and dispatched
-		// by unlockAudioMutex_internal() once the mutex is released.
+		// deadlocks the engine; and a callback that crashes, stalls or blocks
+		// (for example a Dart NativeCallable whose isolate has gone away) would
+		// strand the audio mutex and wedge every later SoLoud call, including
+		// deinit(). Ended voices are queued instead and dispatched by
+		// unlockAudioMutex_internal() once the mutex is released.
 		std::atomic<void (*)(unsigned int*)> _voiceEndedCallback{nullptr};
 		void setVoiceEndedCallback(void (*voiceEndedCallback)(unsigned int*)) {
 			_voiceEndedCallback.store(voiceEndedCallback,
+				std::memory_order_release);
+		}
+
+		// Called after a mix cycle in which a voice stopped or became paused.
+		// The callback runs after the audio mutex has been released.
+		std::atomic<void (*)()> _voiceInactiveCallback{nullptr};
+		bool mVoiceInactiveCallbackPending = false;
+		void setVoiceInactiveCallback(void (*voiceInactiveCallback)()) {
+			_voiceInactiveCallback.store(voiceInactiveCallback,
 				std::memory_order_release);
 		}
 
@@ -197,10 +218,56 @@ namespace SoLoud
 		// unlock just leaves its handle queued for the running drain loop.
 		bool mDispatchingEndedVoices = false;
 
-		// Set the callback to call when the device receive a state changed
-		void (*_stateChangedCallback)(unsigned int) = nullptr;
+#ifdef __EMSCRIPTEN__
+		// Voice instances whose deletion was deferred because
+		// stopVoice_internal() ran on the AudioWorklet rendering thread (of
+		// the multi-threaded build). Freeing there would take the heap lock,
+		// and a contended lock on that thread lowers to a futex wait, which
+		// Emscripten aborts on (futex waits are illegal on AudioWorklet
+		// threads). Drained by unlockAudioMutex_internal() on the main
+		// browser thread. Only touched with the audio mutex held.
+		AudioSourceInstance* mPendingVoiceFree[VOICE_COUNT];
+		unsigned int mPendingVoiceFreeCount = 0;
+#endif
+
+		// Set the callback to call when the device receive a state changed.
+		//
+		// Atomic like the other cross-thread callbacks: miniaudio dispatches
+		// notifications from backend/platform threads while teardown clears
+		// this from the calling thread, and the embedder's device scheduler
+		// publishes its own events through it.
+		std::atomic<void (*)(unsigned int)> _stateChangedCallback{nullptr};
 		void setStateChangedCallback(void (*stateChangedCallback)(unsigned int)) {
-			_stateChangedCallback = stateChangedCallback;
+			_stateChangedCallback.store(stateChangedCallback,
+				std::memory_order_release);
+		}
+
+		// Snapshot once and dispatch. Centralized so no call site can
+		// reintroduce a check-then-load: with two separate reads, a teardown
+		// landing between them turns a non-null check into a null call.
+		void notifyStateChanged(unsigned int aState) {
+			auto stateChangedCallback =
+				_stateChangedCallback.load(std::memory_order_acquire);
+			if (stateChangedCallback != nullptr)
+				stateChangedCallback(aState);
+		}
+
+		// Device-interruption callback used by the embedding lifecycle owner.
+		// The context is published before the callback and cleared afterward so
+		// notification threads never call through a non-null callback with a
+		// partially registered context.
+		std::atomic<void (*)(void *, bool)> _audioInterruptionCallback{nullptr};
+		std::atomic<void *> _audioInterruptionContext{nullptr};
+		void setAudioInterruptionCallback(
+			void (*audioInterruptionCallback)(void *, bool), void *context) {
+			if (audioInterruptionCallback == nullptr) {
+				_audioInterruptionCallback.store(nullptr, std::memory_order_release);
+				_audioInterruptionContext.store(nullptr, std::memory_order_release);
+				return;
+			}
+			_audioInterruptionContext.store(context, std::memory_order_release);
+			_audioInterruptionCallback.store(
+				audioInterruptionCallback, std::memory_order_release);
 		}
 
 		// CTor
@@ -295,22 +362,48 @@ namespace SoLoud
 		result getSpeakerPosition(unsigned int aChannel, float &aX, float &aY, float &aZ);
 
 		// Start playing a sound. Returns voice handle, which can be ignored or used to alter the playing sound's parameters. Negative volume means to use default.
+		// aLoopStartOffset / aLoopEndOffset: optional exact frame offsets (-1 = inactive / use aLoopPoint/aLoopEndPoint).
 		handle play(AudioSource &aSound, float aVolume = -1.0f, float aPan = 0.0f, bool aPaused = 0, unsigned int aBus = 0);
 		// Start playing a sound delayed in relation to other sounds called via this function. Negative volume means to use default.
-		handle playClocked(time aSoundTime, AudioSource &aSound, float aVolume = -1.0f, float aPan = 0.0f, unsigned int aBus = 0);
+		handle playClocked(time aSoundTime, AudioSource &aSound, float aVolume = -1.0f, float aPan = 0.0f, unsigned int aBus = 0, float aScale = 1.0f, bool aLooping = false, time aLoopPoint = 0.0, time aLoopEndPoint = 0.0, long long aLoopStartOffset = -1, long long aLoopEndOffset = -1);
 		// Start playing a 3d audio source
-		handle play3d(AudioSource &aSound, float aPosX, float aPosY, float aPosZ, float aVelX = 0.0f, float aVelY = 0.0f, float aVelZ = 0.0f, float aVolume = 1.0f, bool aPaused = 0, unsigned int aBus = 0);
+		handle play3d(AudioSource &aSound, float aPosX, float aPosY, float aPosZ, float aVelX = 0.0f, float aVelY = 0.0f, float aVelZ = 0.0f, float aVolume = 1.0f, bool aPaused = 0, unsigned int aBus = 0, float aScale = 1.0f, bool aLooping = false, time aLoopPoint = 0.0, time aLoopEndPoint = 0.0, long long aLoopStartOffset = -1, long long aLoopEndOffset = -1);
 		// Start playing a 3d audio source, delayed in relation to other sounds called via this function.
-		handle play3dClocked(time aSoundTime, AudioSource &aSound, float aPosX, float aPosY, float aPosZ, float aVelX = 0.0f, float aVelY = 0.0f, float aVelZ = 0.0f, float aVolume = 1.0f, unsigned int aBus = 0);
+		handle play3dClocked(time aSoundTime, AudioSource &aSound, float aPosX, float aPosY, float aPosZ, float aVelX = 0.0f, float aVelY = 0.0f, float aVelZ = 0.0f, float aVolume = 1.0f, unsigned int aBus = 0, float aScale = 1.0f, bool aLooping = false, time aLoopPoint = 0.0, time aLoopEndPoint = 0.0, long long aLoopStartOffset = -1, long long aLoopEndOffset = -1);
 		// Calculate the delay in samples for a clocked play call. Maps the caller's "physics time" to the output sample timeline using a persistent anchor, so sounds can be scheduled with sample accuracy across output buffers. Used internally by playClocked and play3dClocked.
 		unsigned int getClockedDelaySamples(time aSoundTime);
 		// Reset the clocked play anchor to the state as if no playClocked/play3dClocked call was ever made. The next clocked play will anchor the caller's clock to the audio clock again.
 		void resetClockedAnchor();
 		// Get the engine's global stream time, in seconds. This is the clock the mixer advances at the start of every output buffer and the time base used by playScheduled, scheduleStopAt and scheduleFadeAt. It only advances while the audio device is mixing.
 		time getEngineTime();
+		// ###### flutter_soloud local patch (render-ahead ring) ######
+		// Configure the render-ahead ring: an engine-owned buffer interposed
+		// between the mixer and the output device. When enabled, the device
+		// callback runs with a small period (aDevicePeriodFrames) and consumes
+		// from the ring while the engine keeps mixing in aBufferSize quanta
+		// aRenderAheadFrames ahead of the device. This is the prerequisite for
+		// retroactive re-mixing; on its own it decouples the device period from
+		// the engine mix quantum. Must be called before init().
+		// aRenderAheadFrames == 0 (the default) disables the feature and keeps
+		// the historical direct-to-device mixing path. aDevicePeriodFrames == 0
+		// selects the default small period (512 frames). Ignored on the web
+		// backend. Init-time only; cannot be changed while running.
+		void setRenderAheadConfig(unsigned int aDevicePeriodFrames, unsigned int aRenderAheadFrames);
+		// Whether the render-ahead ring is active.
+		bool isRenderAheadEnabled() const;
+		// Engine time of the sample currently reaching the device: the mix
+		// clock (getEngineTime) minus the ring depth. Equals getEngineTime()
+		// when the ring is disabled.
+		time getPlayheadTime();
+		// Estimated output latency in seconds: frames buffered ahead of the
+		// device plus one device period. 0 when the ring is disabled.
+		time getOutputLatency();
 		// Start playing a sound at an absolute engine time (see getEngineTime), with sample accuracy. Unlike playClocked there is no anchor and no re-anchor guard, so sounds can be scheduled arbitrarily far in the future. A time in the past plays as soon as possible. Negative volume means to use default.
-		handle playScheduled(time aEngineTime, AudioSource &aSound, float aVolume = -1.0f, float aPan = 0.0f, unsigned int aBus = 0);
-		// Calculate the delay in samples for a scheduled play call. Maps an absolute engine time to the output sample timeline. Used internally by playScheduled.
+		// aLoopStartOffset / aLoopEndOffset: optional exact frame offsets (-1 = inactive / use aLoopPoint/aLoopEndPoint).
+		handle playScheduled(time aEngineTime, AudioSource &aSound, float aVolume = -1.0f, float aPan = 0.0f, unsigned int aBus = 0, float aScale = 1.0f, bool aLooping = false, time aLoopPoint = 0.0, time aLoopEndPoint = 0.0, long long aLoopStartOffset = -1, long long aLoopEndOffset = -1);
+		// Start playing a 3d audio source at an absolute engine time (see getEngineTime), with sample accuracy.
+		handle play3dScheduled(time aEngineTime, AudioSource &aSound, float aPosX, float aPosY, float aPosZ, float aVelX = 0.0f, float aVelY = 0.0f, float aVelZ = 0.0f, float aVolume = 1.0f, unsigned int aBus = 0, float aScale = 1.0f, bool aLooping = false, time aLoopPoint = 0.0, time aLoopEndPoint = 0.0, long long aLoopStartOffset = -1, long long aLoopEndOffset = -1);
+		// Calculate the delay in samples for a scheduled play call. Maps an absolute engine time to the output sample timeline. Used internally by playScheduled and play3dScheduled.
 		unsigned int getScheduledDelaySamples(time aEngineTime);
 		// Start playing a sound without any panning. It will be played at full volume.
 		handle playBackground(AudioSource &aSound, float aVolume = -1.0f, bool aPaused = 0, unsigned int aBus = 0);
@@ -534,6 +627,105 @@ namespace SoLoud
 		// Handle rest of initialization (called from backend)
 		void postinit_internal(unsigned int aSamplerate, unsigned int aBufferSize, unsigned int aFlags, unsigned int aChannels);
 
+		// ###### flutter_soloud local patch (render-ahead ring) ######
+		// Mix engine quanta into the render-ahead ring until the configured
+		// render-ahead depth is reached (or the ring is full). Called from the
+		// backend device callback when the ring is enabled.
+		void renderRingTopUp_internal();
+
+		// ###### flutter_soloud local patch (mix checkpoints) ######
+		// Snapshot all mix-relevant state at the current quantum boundary
+		// into the next circular pool slot. Called at the end of
+		// mix_internal, under the audio mutex, when the ring is enabled.
+		void captureMixCheckpoint_internal();
+		// Pool index of the newest checkpoint at or before aTime, or -1 when
+		// no checkpoint covers it (pool empty, disabled, or aTime older than
+		// the oldest retained checkpoint).
+		int findCheckpointAtOrBefore_internal(time aTime);
+		// Restore engine, voice, resampler and filter state from a pool slot.
+		// Returns false when the slot is out of range, never written, or
+		// stale (already overwritten by newer captures). Voices present now
+		// but absent in the checkpoint are left running (Phase 3 reconciles
+		// them via event replay); checkpoint voices whose slot now holds a
+		// different object (play index mismatch) are skipped.
+		bool restoreMixCheckpoint_internal(int aPoolIndex);
+		// Release all heap snapshots held by the checkpoint pool and empty
+		// it. Idempotent; called from deinit and when the ring is disabled.
+		void releaseCheckpoints_internal();
+		// Allocate the circular checkpoint pool with all storage pre-sized
+		// (aPoolSize == 0 just releases). Called from postinit_internal when
+		// the ring is enabled.
+		void allocateCheckpoints_internal(unsigned int aPoolSize);
+
+		// ###### flutter_soloud local patch (retroactive re-mix) ######
+		// Insert a pre-created voice instance into a free voice slot,
+		// performing the usual initialization (this is the under-mutex body
+		// of play()). Caller must hold the audio mutex; the caller deletes
+		// the instance when this returns -1 (no free voice).
+		int insertVoice_internal(AudioSource &aSound, AudioSourceInstance *aInstance, float aVolume, float aPan, bool aPaused, unsigned int aBus);
+		// Engine time of the sample currently reaching the device. Caller
+		// must hold the audio mutex.
+		time playheadTimeLocked_internal();
+		// Bodies of getScheduledDelaySamples/getClockedDelaySamples with the
+		// audio mutex already held by the caller.
+		unsigned int getScheduledDelaySamplesLocked_internal(time aEngineTime);
+		unsigned int getClockedDelaySamplesLocked_internal(time aSoundTime);
+		// Try to move the already-inserted voice at aSlot into the
+		// rendered-but-unplayed window: roll back to the checkpoint at or
+		// before aEventTime, replay the in-window journal, retarget the
+		// voice's start and re-mix forward, overwriting the ring. Returns
+		// false when the gate declines (event outside the window, no covering
+		// checkpoint, unrestorable state) and the caller keeps the legacy
+		// placement. Caller must hold the audio mutex.
+		bool retroactiveVoiceStart_internal(unsigned int aSlot, time aEventTime, AudioSource &aSound);
+		// Try to stop the voice at aSlot retroactively at the given engine
+		// time (retroactive stop: the voice goes silent from that time on,
+		// sample-accurate within the window; aEngineTime behind the playhead
+		// clamps to the playhead). Returns false when the gate declines and
+		// the caller must fall back to the legacy path. Caller must hold the
+		// audio mutex.
+		bool retroactiveStopVoiceAt_internal(unsigned int aSlot, time aEngineTime);
+		// Try to apply a parameter change (RetroJournalEntry::PARAM_*) to the
+		// voice at aSlot retroactively at aEventTime, as a scheduled fader of
+		// aDuration seconds (0 = step change) taking effect at that time
+		// (quantum accuracy inside the window). Returns false when the gate
+		// declines and the caller must fall back to the legacy immediate
+		// setter. For PARAM_PAUSE only pausing (aValue 1) is supported;
+		// unpausing always takes the legacy path. Caller must hold the audio
+		// mutex.
+		bool retroactiveParam_internal(unsigned int aSlot, int aParam, float aValue, time aDuration, time aEventTime);
+		// Rollback primitive shared by all retroactive events: gate-checks
+		// aEventTime, drops queued ended-events the restore would resurrect,
+		// restores the checkpoint at or before aEventTime and replays the
+		// journal. Returns the checkpoint pool index, or -1 when the event
+		// must take the legacy path. On success the engine state sits at the
+		// checkpoint time and mRemixing is true; the caller applies its event
+		// and then calls retroactiveEnd_internal exactly once.
+		int retroactiveBegin_internal(time aEventTime);
+		// Re-mix from the restored checkpoint to the saved write head,
+		// overwriting the ring, and clear mRemixing.
+		void retroactiveEnd_internal(int aPoolIndex);
+		// Journal a voice birth (upserted by slot+play index; aBirthTime is
+		// the engine time of the first sounding sample), a voice death, and a
+		// retroactive parameter change.
+		void journalBirth_internal(unsigned int aSlot, time aBirthTime);
+		void journalDeath_internal(unsigned int aSlot, unsigned int aPlayIndex);
+		void journalParam_internal(unsigned int aSlot, unsigned int aPlayIndex, int aParam, float aValue, time aTime, time aDuration);
+		// Re-apply journal entries with time > aFromTime onto freshly
+		// restored checkpoint state.
+		void replayJournal_internal(time aFromTime);
+		// One full mix quantum for the re-mix loop: like mix(), but the
+		// caller holds the audio mutex for the whole re-mix (the native audio
+		// mutex is not recursive, so mix()/mix_internal() cannot be called
+		// here), and visualization and death journaling are suppressed via
+		// mRemixing. Checkpoints ARE re-captured, with the ring position
+		// derived from the mix clock.
+		void remixQuantum_internal(float *aBuffer, unsigned int aSamples);
+		// The locked section of mix_internal: voice faders, active voice
+		// recalculation, bus mixing, global filters, checkpoint capture.
+		// Caller must hold the audio mutex.
+		void mixVoicesLocked_internal(unsigned int aSamples, unsigned int aStride);
+
 		// Update list of active voices
 		void calcActiveVoices_internal();
 		// Map resample buffers to active voices
@@ -610,12 +802,73 @@ namespace SoLoud
 		const char * mBackendString;
 		// Maximum size of output buffer; used to calculate needed scratch.
 		unsigned int mBufferSize;
+		// ###### flutter_soloud local patch (render-ahead ring) ######
+		// Requested device callback period in frames when the render-ahead
+		// ring is enabled (0 = default small period). Set before init() via
+		// setRenderAheadConfig().
+		unsigned int mDevicePeriodFrames;
+		// Render-ahead depth in frames; 0 disables the ring (default).
+		unsigned int mRenderAheadFrames;
+		// Engine-owned ring between the mixer and the output device. Only
+		// allocated when mRenderAheadFrames > 0 (never on the web backend).
+		RenderRing mRenderRing;
+		// Staging buffer for one engine quantum of interleaved float samples,
+		// mixed into and then appended to mRenderRing by
+		// renderRingTopUp_internal(). Allocated in postinit_internal when the
+		// ring is enabled.
+		AlignedFloatBuffer mRenderRingStaging;
+		// ###### flutter_soloud local patch (mix checkpoints) ######
+		// Circular pool of mix-quantum-boundary snapshots for retroactive
+		// re-mixing. Allocated in postinit_internal when the render-ahead
+		// ring is enabled, empty otherwise. All storage is pre-sized at
+		// allocation time and reused in place by capture, so the audio path
+		// performs no allocation (filter/source heap snapshots are the
+		// documented exception; the Phase 2 built-ins return nullptr).
+		std::vector<MixCheckpoint> mCheckpointPool;
+		// Next pool slot to write (circular).
+		unsigned int mCheckpointWriteIndex;
+		// Monotonic capture counter; together with MixCheckpoint::mSerial it
+		// decides which pool slots still hold valid data.
+		unsigned long long mCheckpointCounter;
+		// ###### flutter_soloud local patch (retroactive re-mix) ######
+		// In-window event journal (see soloud_checkpoint.h): births and deaths
+		// that landed after the oldest retained checkpoint, kept sorted by
+		// event time. Preallocated with the checkpoint pool; written on
+		// API-call threads under the audio mutex, replayed during rollback.
+		std::vector<RetroJournalEntry> mRetroJournal;
+		// True while a retroactive re-mix is running: visualization updates and
+		// death journaling are suppressed (the re-mix reproduces history, it
+		// does not create new events). Checkpoint capture still runs, with the
+		// ring position derived from the mix clock, so the checkpoint chain
+		// incorporates the rewritten timeline.
+		bool mRemixing;
+		// Handles whose ended-event must not be re-queued when the re-mix
+		// reproduces a journaled death (the original dispatch already
+		// happened or is in flight and cannot be un-sent).
+		handle mRemixSuppressEnded[RETRO_JOURNAL_CAPACITY];
+		unsigned int mRemixSuppressEndedCount;
+		// Re-mix context saved by retroactiveBegin_internal for
+		// retroactiveEnd_internal: ring write head and mix clock before the
+		// rollback, the frame the rewrite starts at, and the restored
+		// checkpoint's time.
+		unsigned long long mRemixWritePos;
+		unsigned long long mRemixStartPos;
+		time mRemixOldStreamTime;
+		time mRemixCheckpointTime;
 		// Flags; see Soloud::FLAGS
 		unsigned int mFlags;
 		// Global volume. Applied before clipping.
 		float mGlobalVolume;
 		// Post-clip scaler. Applied after clipping.
-		float mPostClipScaler;
+		// ###### flutter_soloud local patch ######
+		// Atomic: clip_internal() runs on the audio thread *after*
+		// unlockAudioMutex_internal(), so the audio mutex does not order it
+		// against setPostClipScaler() -- which flutter_soloud calls from
+		// init(), by which point the device is already mixing.
+		// ThreadSanitizer reports the bare float as a data race in
+		// clip_internal(). Every reader snapshots it once into a local, which
+		// is also what the SSE paths need since they take its address.
+		std::atomic<float> mPostClipScaler;
 		// Current play index. Used to create audio handles.
 		unsigned int mPlayIndex;
 		// Current sound source index. Used to create sound source IDs.

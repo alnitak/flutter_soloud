@@ -50,7 +50,9 @@ extern "C"
     void prepareEngineInit(int64_t owner_engine_id);
     enum PlayerErrors initEngine(int deviceID, unsigned int sampleRate,
                                  unsigned int bufferSize, unsigned int channels,
-                                 unsigned int lowLatency);
+                                 unsigned int lowLatency,
+                                 unsigned int devicePeriodFrames,
+                                 unsigned int renderAheadFrames);
     void dispose();
     int isInited();
     void setDartEventCallback(void (*voice_ended)(unsigned int *),
@@ -251,7 +253,7 @@ void resetGlobalState()
 bool initEngineAs(int64_t engineId)
 {
     prepareEngineInit(engineId);
-    return initEngine(-1, 44100, 2048, 2, 0) == noError;
+    return initEngine(-1, 44100, 2048, 2, 0, 0, 0) == noError;
 }
 
 /// Create a PullBufferStream holding all four Dart callables. Returns 0 on

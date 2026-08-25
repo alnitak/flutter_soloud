@@ -15,6 +15,7 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <cstdint>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -47,10 +48,15 @@ public:
   /// 512 when low latency is needed for example in games.
   /// @param channels 1)mono, 2)stereo 4)quad 6)5.1 8)7.1
   /// @param deviceID the device ID. -1 for default OS output device.
+  /// @param devicePeriodFrames small output device period used when
+  /// [renderAheadFrames] enables the render-ahead ring; 0 = default (512).
+  /// @param renderAheadFrames depth of the engine-owned render-ahead ring in
+  /// frames; 0 (default) disables it and keeps direct-to-device mixing.
   /// @return Returns [PlayerErrors.SO_NO_ERROR] if success.
   PlayerErrors init(unsigned int sampleRate, unsigned int bufferSize,
                     unsigned int channels, int deviceID = -1,
-                    bool lowLatency = true);
+                    bool lowLatency = true, unsigned int devicePeriodFrames = 0,
+                    unsigned int renderAheadFrames = 0);
 
   /// @brief Change the playback device.
   /// @param deviceID the device ID. -1 for default OS output device.
@@ -68,6 +74,10 @@ public:
 
   /// @brief Set a function callback triggered when a voice is stopped/ended.
   void setVoiceEndedCallback(void (*voiceEndedCallback)(unsigned int *));
+
+  /// @brief Set a function callback triggered after a voice stops or becomes
+  /// paused and the SoLoud audio mutex has been released.
+  void setVoiceInactiveCallback(void (*voiceInactiveCallback)());
 
   /// @brief Set a function callback triggered when the state of the player
   /// changes.
@@ -116,6 +126,22 @@ public:
   /// @param hash return the hash of the sound.
   PlayerErrors loadMem(const std::string &uniqueName, unsigned char *mem,
                        int length, bool loadIntoMem, unsigned int &hash);
+
+  /// @brief Load two sounds stored into [mem1] and [mem2], convert them to mono
+  /// if needed, resample them to the engine's sample rate, and join them into a
+  /// single stereo AudioSource (left and right channels).
+  /// If the lengths are different, the resulting audio length is the max of the two
+  /// and the shorter sound is padded with silence.
+  /// @param uniqueName the unique name of the sound. Used only to have the [hash].
+  /// @param mem1 the left channel audio data buffer.
+  /// @param mem2 the right channel audio data buffer.
+  /// @param length1 the length of [mem1].
+  /// @param length2 the length of [mem2].
+  /// @param hash return the hash of the sound.
+  PlayerErrors joinTwoSources(const std::string &uniqueName,
+                              unsigned char *mem1, unsigned char *mem2,
+                              int length1, int length2,
+                              unsigned int &hash);
 
   /// @brief Set up an audio stream.
   /// @param hash return the hash of the sound.
@@ -251,23 +277,13 @@ public:
   /// @param newWaveform the new waveform type.
   void setWaveform(unsigned int soundHash, int newWaveform);
 
-  /// @brief Make sure the output audio device is running.
-  ///
-  /// The OS can stop the device without notifying us (an interruption, the
-  /// Control Center on iOS, a device change, ...) and every operation that
-  /// needs to produce sound must therefore resume it first. This is the
-  /// single place where the result of `soloud.resume()` is inspected.
-  /// @return [noError] if the device is running, [backendNotInited] if the
-  /// engine is not initialized, [audioDeviceFailedToStart] if the device
-  /// could not be started.
-  PlayerErrors ensureAudioDeviceStarted();
-
   /// @brief Switch pause state for an already loaded sound identified by
   /// [handle].
   /// @param handle the sound handle
   /// @return [noError] if success, [backendNotInited] if the engine is not
-  /// initialized, [soundHandleNotFound] if [handle] is not valid,
-  /// [audioDeviceFailedToStart] if unpausing could not start the device.
+  /// initialized, [soundHandleNotFound] if [handle] is not valid. Unpausing
+  /// posts an asynchronous device start, so this never reports
+  /// [audioDeviceFailedToStart].
   PlayerErrors pauseSwitch(unsigned int handle);
 
   /// @brief Pause or unpause already loaded sound identified by [handle].
@@ -277,9 +293,9 @@ public:
   /// (Dart setPause/pauseSwitch). Automatic buffering pauses pass false so
   /// they do not flip the user-paused flag.
   /// @return [noError] if success, [backendNotInited] if the engine is not
-  /// initialized, [soundHandleNotFound] if [handle] is not valid,
-  /// [audioDeviceFailedToStart] if unpausing could not start the device. When
-  /// the device cannot be started the voice is left paused.
+  /// initialized, [soundHandleNotFound] if [handle] is not valid. Unpausing
+  /// posts an asynchronous device start, so this never reports
+  /// [audioDeviceFailedToStart].
   PlayerErrors setPause(unsigned int handle, bool pause,
                         bool isUserAction = true);
 
@@ -289,6 +305,80 @@ public:
   /// background pause, giving the audio backend and OS time to stabilize the
   /// audio session (e.g. Control Center on iOS).
   void pauseEngine();
+
+  /// @brief Apply the configured idle policy after a voice may have become
+  /// inactive. The lifecycle scheduler performs the authoritative active voice
+  /// count check before stopping the device.
+  void evaluateAudioDeviceIdle();
+
+  /// @brief Ensure the audio device is started, off the UI thread. Posts an
+  /// immediate resume request to the background scheduler so the blocking
+  /// native ma_device_start() does not freeze the caller (the UI thread on
+  /// the FFI path). Cancels any pending deferred pause. Idempotent: a no-op
+  /// at the backend if the device is already started.
+  void resumeEngine();
+
+  /// @brief Set how long the audio output device keeps running while the
+  /// engine is idle (no active voices) before it is automatically stopped.
+  /// This generalizes the deferred idle-pause: instead of a fixed ~500 ms
+  /// delay, the caller chooses the delay, disables it entirely, or makes the
+  /// device stop as soon as possible.
+  ///
+  /// [timeoutMs] < 0 keeps the device running indefinitely while idle (a
+  /// device-level replacement for playing a silent looping sound; the device
+  /// keeps rendering silence and the app keeps its OS audio session alive).
+  /// [timeoutMs] == 0 stops the device as soon as possible once idle (still
+  /// asynchronously, off the UI thread). [timeoutMs] > 0 keeps the device
+  /// running for that many milliseconds after going idle. Any play/unpause
+  /// before the deadline cancels the pending stop. The default is 500 ms.
+  ///
+  /// Switching to an indefinite timeout starts the device immediately (off the
+  /// UI thread) if it was stopped; switching to a finite timeout while nothing
+  /// is playing schedules the deferred idle-stop. OS-initiated interruptions
+  /// (e.g. a phone call) still stop the device regardless.
+  /// @param timeoutMs the idle timeout in milliseconds, or a negative value to
+  /// keep the device running indefinitely.
+  void setAudioDeviceIdleTimeout(int64_t timeoutMs);
+
+  /// Publish the idle-timeout policy process-wide.
+  ///
+  /// Static and lock-free on purpose: the policy outlives any individual
+  /// Player, so publishing it must never wait for the global engine lifecycle
+  /// mutex. A Player that cannot consume the update now still picks it up at
+  /// its next init().
+  static void publishAudioDeviceIdleTimeout(int64_t timeoutMs);
+
+  /// Apply the currently published policy to this Player and post whatever
+  /// lifecycle request it implies. The caller must keep this Player alive for
+  /// the duration (in practice: hold init_deinit_mutex).
+  void applyPublishedAudioDeviceIdleTimeout();
+
+  /// The idle-timeout policy this Player is currently running with, in
+  /// milliseconds; negative means the indefinite keep-alive.
+  int64_t currentAudioDeviceIdleTimeoutMs() const
+  {
+    return mIdleTimeoutMs.load(std::memory_order_acquire);
+  }
+
+  /// @brief Stop the audio output device without deinitializing the engine.
+  /// By default the device is stopped only when there are no active voices.
+  /// When [force] is true it is stopped even during active playback. Neither
+  /// mode pauses or otherwise mutates voices, and both are idempotent.
+  /// @param force whether to stop even when active voices exist.
+  /// @return Returns [PlayerErrors.SO_NO_ERROR] if success.
+  PlayerErrors stopAudioDevice(bool force = false);
+
+  /// @brief Restart the audio output device previously stopped by
+  /// stopAudioDevice(), so existing voices and loaded sounds keep operating.
+  /// Idempotent: a no-op if the device is already started.
+  /// @return Returns [PlayerErrors.SO_NO_ERROR] if success.
+  PlayerErrors startAudioDevice();
+
+  /// @brief Get the current state of the audio output device.
+  /// @return The current [AudioDeviceState]. Returns
+  /// [AudioDeviceState.audioDeviceUninitialized] if the engine is not
+  /// initialized.
+  AudioDeviceState getAudioDeviceState();
 
   /// @brief Gets the pause state.
   /// @param handle the sound handle.
@@ -335,7 +425,8 @@ public:
                     unsigned int busId = 0,
                     float volume = 1.0f, float pan = 0.0f, bool paused = false,
                     bool looping = false, double loopingStartAt = 0.0,
-                    double loopingEndAt = 0.0);
+                    double loopingEndAt = 0.0, long long loopingStartOffsetAt = -1,
+                    long long loopingEndOffsetAt = -1, float scale = 1.0f);
 
   /// @brief Variant of [play] that takes an additional parameter, the time
   /// offset for the sound.
@@ -352,10 +443,18 @@ public:
   /// @param busId the bus ID to play the sound on. 0 means the main engine.
   /// @param volume 1.0f full volume.
   /// @param pan 0.0f centered.
+  /// @param scale relative playback speed multiplier (1.0f = normal speed).
+  /// @param looping whether the sound loops upon reaching the end.
+  /// @param loopingStartAt time position in seconds to restart playback when looping.
   /// @return the error if any and the [handle] of this new sound.
   PlayerErrors playClocked(unsigned int soundHash, unsigned int &handle,
                            double soundTime, unsigned int busId = 0,
-                           float volume = 1.0f, float pan = 0.0f);
+                           float volume = 1.0f, float pan = 0.0f,
+                           float scale = 1.0f, bool looping = false,
+                           double loopingStartAt = 0.0,
+                           double loopingEndAt = 0.0,
+                           long long loopingStartOffsetAt = -1,
+                           long long loopingEndOffsetAt = -1);
 
   /// @brief Set the number of samples to delay before starting to play
   /// a sound.
@@ -388,6 +487,20 @@ public:
   /// @return the engine time in seconds.
   double getEngineTime();
 
+  /// @brief Engine time of the sample currently reaching the output device:
+  /// the mix clock minus the render-ahead ring depth. Equals [getEngineTime]
+  /// when the render-ahead ring is disabled (the default).
+  /// @return the playhead time in seconds.
+  double getPlayheadTime();
+
+  /// @brief Estimated output latency in seconds (ring depth plus one device
+  /// period). 0 when the render-ahead ring is disabled.
+  double getOutputLatency();
+
+  /// @brief Whether the render-ahead ring (retroactive re-mix prerequisite)
+  /// is active. Set at [init] time via `renderAheadFrames`.
+  bool isRenderAheadEnabled();
+
   /// @brief Start playing a sound at an absolute engine time (see
   /// [getEngineTime]), with sample accuracy.
   ///
@@ -403,11 +516,19 @@ public:
   /// @param busId the bus ID to play the sound on. 0 means the main engine.
   /// @param volume 1.0f full volume.
   /// @param pan 0.0f centered.
+  /// @param scale relative playback speed multiplier (1.0f = normal speed).
+  /// @param looping whether the sound loops upon reaching the end.
+  /// @param loopingStartAt time position in seconds to restart playback when looping.
   /// @return the error if any and the [handle] of this new sound.
   PlayerErrors playScheduled(unsigned int soundHash, unsigned int &handle,
                              double atTime, double duration = 0.0,
                              unsigned int busId = 0,
-                             float volume = 1.0f, float pan = 0.0f);
+                             float volume = 1.0f, float pan = 0.0f,
+                             float scale = 1.0f, bool looping = false,
+                             double loopingStartAt = 0.0,
+                             double loopingEndAt = 0.0,
+                             long long loopingStartOffsetAt = -1,
+                             long long loopingEndOffsetAt = -1);
 
   /// @brief Stop a sound at an absolute engine time (see [getEngineTime]).
   ///
@@ -437,6 +558,18 @@ public:
   /// @return [noError] if success, [backendNotInited] if the engine is not
   /// initialized, [soundHandleNotFound] if [handle] is not valid.
   PlayerErrors stop(unsigned int handle);
+
+  /// @brief Stop all playing voices without disposing the loaded sounds.
+  /// Each stopped voice triggers the voice-ended callback, which removes
+  /// the handle from the internal sounds list and notifies Dart.
+  void stopAll();
+
+  /// @brief Stop all voices playing the sound identified by [soundHash]
+  /// without disposing the sound. Each stopped voice triggers the
+  /// voice-ended callback, which removes the handle from the internal
+  /// sounds list and notifies Dart.
+  /// @param soundHash hash of the sound.
+  void stopAudioSource(unsigned int soundHash);
 
   /// @brief Remove the unique [handle] form the list of internal sounds.
   /// @param handle handle of the sound.
@@ -745,12 +878,14 @@ public:
   /// @param loopingEndAt If greater than zero, loop before this time. Zero
   /// uses the natural end of the stream.
   /// @return the handle of the sound, 0 if error.
-  PlayerErrors play3d(unsigned int soundHash, unsigned int &handle, float posX,
-                      float posY, float posZ, float velX = 0.0f,
-                      float velY = 0.0f, float velZ = 0.0f, float volume = 1.0f,
-                      bool paused = 0, unsigned int busId = 0,
+  PlayerErrors play3d(unsigned int soundHash, unsigned int &handle,
+                      unsigned int busId = 0,
+                      float posX = 0.0f, float posY = 0.0f, float posZ = 0.0f,
+                      float velX = 0.0f, float velY = 0.0f, float velZ = 0.0f,
+                      float volume = 1.0f, bool paused = 0,
                       bool looping = false, double loopingStartAt = 0.0,
-                      double loopingEndAt = 0.0);
+                      double loopingEndAt = 0.0, long long loopingStartOffsetAt = -1,
+                      long long loopingEndOffsetAt = -1, float scale = 1.0f);
 
   /// @brief play3dClocked() is the 3d version of the playClocked() call.
   ///
@@ -762,16 +897,57 @@ public:
   /// @param soundHash the unique hash of the sound to play.
   /// @param handle the handle of this new sound.
   /// @param soundTime your app's "physics time", in seconds.
+  /// @param busId the bus ID to play the sound on. 0 means the main engine.
   /// @param posX, posY, posZ the audio source position coordinates.
   /// @param velX, velY, velZ the audio source velocity.
   /// @param volume 1.0f full volume.
-  /// @param busId the bus ID to play the sound on. 0 means the main engine.
+  /// @param scale relative playback speed multiplier (1.0f = normal speed).
   /// @return the error if any and the [handle] of this new sound.
   PlayerErrors play3dClocked(unsigned int soundHash, unsigned int &handle,
-                             double soundTime, float posX, float posY,
-                             float posZ, float velX = 0.0f, float velY = 0.0f,
-                             float velZ = 0.0f, float volume = 1.0f,
-                             unsigned int busId = 0);
+                             double soundTime, unsigned int busId = 0,
+                             float posX = 0.0f, float posY = 0.0f,
+                             float posZ = 0.0f, float velX = 0.0f,
+                             float velY = 0.0f, float velZ = 0.0f,
+                             float volume = 1.0f, float scale = 1.0f,
+                             bool looping = false, double loopingStartAt = 0.0,
+                             double loopingEndAt = 0.0,
+                             long long loopingStartOffsetAt = -1,
+                             long long loopingEndOffsetAt = -1);
+
+  /// @brief play3dScheduled() is the 3d version of the playScheduled() call.
+  ///
+  /// Instead of panning like with the "2d" version of the call, the 3d
+  /// version requires 3d position and optionally velocity vector. Like its
+  /// 2d version, this one starts playing a sound at an absolute engine time
+  /// (see [getEngineTime]), with sample accuracy.
+  /// @param soundHash the unique hash of the sound to play.
+  /// @param handle the handle of this new sound.
+  /// @param atTime the absolute engine time, in seconds, at which the sound
+  /// should start.
+  /// @param duration if greater than zero, the sound is automatically
+  /// stopped at [atTime] + [duration].
+  /// @param busId the bus ID to play the sound on. 0 means the main engine.
+  /// @param posX, posY, posZ the audio source position coordinates.
+  /// @param velX, velY, velZ the audio source velocity.
+  /// @param volume 1.0f full volume.
+  /// @param scale relative playback speed multiplier (1.0f = normal speed).
+  /// @param looping whether the sound loops upon reaching the end.
+  /// @param loopingStartAt time position in seconds to restart playback when looping.
+  /// @param loopingEndAt optional exclusive end point for looping.
+  /// @param loopingStartOffsetAt optional exact frame offset to restart looping from.
+  /// @param loopingEndOffsetAt optional exact frame offset to loop before.
+  /// @return the error if any and the [handle] of this new sound.
+  PlayerErrors play3dScheduled(unsigned int soundHash, unsigned int &handle,
+                               double atTime, double duration = 0.0,
+                               unsigned int busId = 0,
+                               float posX = 0.0f, float posY = 0.0f,
+                               float posZ = 0.0f, float velX = 0.0f,
+                               float velY = 0.0f, float velZ = 0.0f,
+                               float volume = 1.0f, float scale = 1.0f,
+                               bool looping = false, double loopingStartAt = 0.0,
+                               double loopingEndAt = 0.0,
+                               long long loopingStartOffsetAt = -1,
+                               long long loopingEndOffsetAt = -1);
 
   /// You can set and get the current value of the speed of
   /// sound width the get3dSoundSpeed() and set3dSoundSpeed() functions.
@@ -825,9 +1001,9 @@ public:
   /// @param handle set to the voice handle of the bus, or zero on error.
   /// @return [noError] if success, [backendNotInited] if the engine is not
   /// initialized, [busIdNotFound] if [busId] is unknown,
-  /// [audioDeviceFailedToStart] if the output device could not be started
-  /// (only checked when [paused] is false), [failedToStartPlayback] if no
-  /// voice could be created.
+  /// [failedToStartPlayback] if no voice could be created. When [paused] is
+  /// false the output device is started asynchronously after the bus voice
+  /// exists, so this never reports [audioDeviceFailedToStart].
   PlayerErrors busPlayOnEngine(unsigned int busId, float volume, bool paused,
                                unsigned int &handle);
   int busSetChannels(unsigned int busId, unsigned int channels);
@@ -843,8 +1019,9 @@ public:
   /// all the sounds loaded
   std::vector<std::unique_ptr<ActiveSound>> sounds;
 
-  /// true when the backend is initialized
-  std::atomic<bool> mInited;
+  /// True when the backend is initialized. This is read by the FFI thread,
+  /// lifecycle scheduler, and teardown path.
+  std::atomic<bool> mInited{false};
 
   /// main SoLoud engine
   SoLoud::Soloud soloud;
@@ -867,20 +1044,115 @@ private:
   std::map<unsigned int, BusData> busMap;
   unsigned int busIdCounter = 0;
 
-  // Background scheduler for deferred engine pause. Started lazily on
-  // init() and stopped on dispose() so that the global Player object can
-  // be recreated by bindings.cpp without leaving a stray background thread.
-  static constexpr unsigned int kPauseEngineDelayMs = 500;
+  // Background scheduler for deferred engine pause and asynchronous engine
+  // resume. Started lazily on init() and stopped on dispose() so that the
+  // global Player object can be recreated by bindings.cpp without leaving a
+  // stray background thread. The same thread handles both the deferred device
+  // stop (pause) and the immediate device start (resume) so neither native
+  // ma_device_stop()/ma_device_start() call ever blocks the UI thread.
   std::thread mPauseThread;
   std::mutex mPauseMutex;
+  // Serializes the actual blocking device operations performed by both the
+  // scheduler and the explicit lifecycle APIs.
+  std::mutex mDeviceLifecycleOperationMutex;
   std::condition_variable mPauseCv;
-  std::atomic<bool> mPauseRequested{false};
-  std::atomic<bool> mStopPauseThread{false};
+  enum class DeviceLifecycleRequest : uint8_t {
+    none,
+    start,
+    interruptionStop,
+    idleStop,
+  };
+  // The pending request and generation are protected by mPauseMutex. Requests
+  // normally replace older intent and advance the generation, allowing a
+  // delayed idle stop to detect that it has become stale without maintaining a
+  // command queue. Immediate requests have priority over idle work.
+  DeviceLifecycleRequest mPendingDeviceRequest =
+      DeviceLifecycleRequest::none;
+  uint64_t mDeviceRequestGeneration = 0;
+  // Protected by mPauseMutex.
+  //
+  // mImmediateDeviceRequestInFlight identifies a start/interruption operation
+  // that has been dequeued but has not completed.
+  //
+  // mIdleStopRequestedAfterImmediateOperation records idle policy work that
+  // arrived after an immediate operation was already pending or in flight.
+  // Such idle work must not invalidate the immediate operation.
+  DeviceLifecycleRequest mImmediateDeviceRequestInFlight =
+      DeviceLifecycleRequest::none;
+  bool mIdleStopRequestedAfterImmediateOperation = false;
+  // Protected by mPauseMutex.
+  //
+  // Records that playback recovery requested a start while an interruption
+  // stop was pending or in flight. The start must run after the interruption
+  // stop completes, provided the interruption has ended.
+  bool mStartRequestedAfterInterruptionStop = false;
+  bool mStopPauseThread = false;
+  // False before initialization is complete and from the first step of
+  // shutdown onward. Lifecycle entry points use this to reject work that
+  // could otherwise race with scheduler teardown or backend destruction.
+  std::atomic<bool> mLifecycleRequestsAccepted{false};
+  // True between OS interruption-began and interruption-ended notifications.
+  // Start requests are deferred during this interval; interruption recovery
+  // reevaluates active playback and idle-timeout policy.
+  std::atomic<bool> mInterruptionActive{false};
+  std::mutex mInterruptionMutex;
   bool mPauseThreadRunning = false;
+  /// How long the device keeps running while idle before the deferred
+  /// idle-pause stops it (see setAudioDeviceIdleTimeout). A negative value
+  /// keeps the device running indefinitely (the idle-pause never stops it);
+  /// 0 stops it as soon as possible; a positive value is the delay in
+  /// milliseconds. Read by the scheduler thread, written from the FFI thread.
+  std::atomic<int64_t> mIdleTimeoutMs;
 
   void pauseEngineScheduler();
+  /// Apply a pause/unpause to [handle] and post the matching device
+  /// lifecycle request. [isUserAction] is false for automatic buffering
+  /// pauses, which must not flip the user-paused flag.
+  void applyPauseState(unsigned int handle, bool pause, bool isUserAction);
+  PlayerErrors performAudioDeviceStart();
+  PlayerErrors performAudioDeviceStop(bool explicitRequest);
+
+  /// Report that an *automatic* device start failed after rebuild/retry.
+  ///
+  /// The synchronous playback APIs hand device startup to the scheduler and
+  /// return before it runs, so they cannot report this. Without an event the
+  /// app is left with valid unpaused voices and no output and no way to find
+  /// out. Explicit starts return the error to their caller instead and do not
+  /// go through here.
+  void reportAutomaticDeviceStartFailure();
+
+  /// The generation a later cancellation can be compared against.
+  ///
+  /// A direct device operation takes this *before* it observes the state it
+  /// decides on (active voices, current device state, the interruption latch).
+  /// Anything posted from that point on carries a newer generation, which is
+  /// what makes "newer than my decision" decidable rather than a guess about
+  /// timing.
+  uint64_t currentDeviceRequestGeneration();
+
+  /// Cancel pending lifecycle work that predates [token].
+  ///
+  /// Returns false, cancelling nothing, when a start or interruption stop has
+  /// been posted since [token] was taken. Such a request expresses intent that
+  /// is newer than the operation asking to cancel, and erasing it is how an
+  /// unpaused voice ends up with a stopped device, or a genuine OS interruption
+  /// ends up ignored.
+  ///
+  /// Newer *idle* work is still cancelled: it only ever asks for the device to
+  /// stop, so no direct operation loses meaning by discarding it, and the idle
+  /// timeout is re-armed from the current voice state afterwards anyway.
+  bool cancelSupersededDeviceRequests(uint64_t token);
+
+  /// Unconditional cancellation, for the paths that own the whole lifecycle
+  /// state and have nothing concurrent to preserve (scheduler start/stop).
+  void invalidatePendingDeviceRequest();
+  bool isDeviceRequestCurrent(uint64_t generation);
+  bool requestDeviceLifecycle(DeviceLifecycleRequest request);
   void startPauseEngineScheduler();
   void stopPauseEngineScheduler();
+  void stopDeviceAndDestroyAllSounds();
+  void handleAudioInterruption(bool began);
+  static void audioInterruptionCallback(void *context, bool began);
 };
 
 #endif // PLAYER_H

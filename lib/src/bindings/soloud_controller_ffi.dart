@@ -11,13 +11,34 @@ class SoLoudController {
 
   SoLoudController._() {
     /// Initialize lib
-    nativeLib = Platform.isLinux
-        ? ffi.DynamicLibrary.open('libflutter_soloud_plugin.so')
-        : (Platform.isAndroid
-              ? ffi.DynamicLibrary.open('libflutter_soloud_plugin.so')
-              : (Platform.isWindows
-                    ? ffi.DynamicLibrary.open('flutter_soloud_plugin.dll')
-                    : ffi.DynamicLibrary.process()));
+    if (Platform.isLinux || Platform.isAndroid) {
+      nativeLib = ffi.DynamicLibrary.open('libflutter_soloud_plugin.so');
+    } else if (Platform.isWindows) {
+      nativeLib = ffi.DynamicLibrary.open('flutter_soloud_plugin.dll');
+    } else if (Platform.isMacOS) {
+      try {
+        final lib = ffi.DynamicLibrary.process()..lookup('isInited');
+        nativeLib = lib;
+      } catch (_) {
+        final candidatePaths = [
+          '../flutter_soloud/macos/cmake_build/macosx/libflutter_soloud_plugin.dylib',
+          '../../flutter_soloud/macos/cmake_build/macosx/libflutter_soloud_plugin.dylib',
+          '/Volumes/NVME/workspace/libs/flutter_soloud/macos/cmake_build/macosx/libflutter_soloud_plugin.dylib',
+        ];
+        ffi.DynamicLibrary? foundLib;
+        for (final p in candidatePaths) {
+          if (File(p).existsSync()) {
+            try {
+              foundLib = ffi.DynamicLibrary.open(p);
+              break;
+            } catch (_) {}
+          }
+        }
+        nativeLib = foundLib ?? ffi.DynamicLibrary.process();
+      }
+    } else {
+      nativeLib = ffi.DynamicLibrary.process();
+    }
     soLoudFFI = FlutterSoLoudFfi.fromLookup(nativeLib.lookup);
   }
 

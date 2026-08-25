@@ -38,6 +38,12 @@ public:
   virtual result rewind();
   virtual bool hasEnded();
   virtual ~BufferStreamInstance();
+  // ###### flutter_soloud local patch (retroactive re-mix) ######
+  // PRESERVED streams keep the whole decoded buffer, so the consumption state
+  // is exactly mOffset and the voice can be re-mixed. RELEASED streams discard
+  // consumed data and return nullptr (going-forward only, plan §7).
+  virtual SoLoud::SourceStateSnapshot *captureSourceState();
+  virtual void restoreSourceState(SoLoud::SourceStateSnapshot *aState);
   bool samplerateAlreadySet;
 };
 

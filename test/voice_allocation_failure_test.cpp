@@ -244,6 +244,12 @@ void testCompoundHelpersLeaveOtherVoicesAlone() {
     EXPECT(soloud.getPause(kAliasedHandle),
            "play3dClocked() unpaused an unrelated voice");
 
+    h = soloud.play3dScheduled(0.5, source, 1, 2, 3);
+    EXPECT(h == 0, "play3dScheduled() on a full engine returned %u, expected 0",
+           h);
+    EXPECT(soloud.getPause(kAliasedHandle),
+           "play3dScheduled() unpaused an unrelated voice");
+
     soloud.deinit();
 }
 
@@ -278,6 +284,11 @@ void testSuccessfulPlaybackStillWorks() {
     EXPECT(threeDClocked != 0, "play3dClocked() returned the failure sentinel");
     EXPECT(soloud.isValidVoiceHandle(threeDClocked),
            "play3dClocked() returned an unusable handle");
+
+    SoLoud::handle threeDScheduled = soloud.play3dScheduled(0.1, source, 1, 2, 3);
+    EXPECT(threeDScheduled != 0, "play3dScheduled() returned the failure sentinel");
+    EXPECT(soloud.isValidVoiceHandle(threeDScheduled),
+           "play3dScheduled() returned an unusable handle");
 
     soloud.deinit();
 }

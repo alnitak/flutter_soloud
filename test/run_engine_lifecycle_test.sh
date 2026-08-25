@@ -47,6 +47,7 @@ c++ -std=c++17 -O2 -Wall -Wextra -pthread "${SANITIZER[@]}" \
     test/engine_lifecycle_test.cpp \
     "$WORK_DIR/pffft.o" \
     src/soloud_common.cpp \
+    src/device_lifecycle_test_hooks.cpp \
     src/bindings.cpp \
     src/player.cpp \
     src/analyzer.cpp \

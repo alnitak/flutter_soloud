@@ -68,12 +68,13 @@ A showcase of apps and games built with this plugin:
 
 | App/Game | Developer | Description |
 |----------|-----------|-------------|
-| GPhil</br>[web](https://app.g-phil.app/) [macOS](https://apps.apple.com/it/app/gphil/id6740543718) [Windows](https://apps.microsoft.com/detail/9pkkz2p2dldg?ocid=webpdpshare)| Vyacheslav Gryaznov | Innovative app designed for musicians to play instrumental concertos with flexible virtual orchestral accompaniment.|
+| GPhil</br>[web](https://app.g-phil.app/) [MacOS](https://apps.apple.com/it/app/gphil/id6740543718) [Windows](https://apps.microsoft.com/detail/9pkkz2p2dldg?ocid=webpdpshare)| Vyacheslav Gryaznov | Innovative app designed for musicians to play instrumental concertos with flexible virtual orchestral accompaniment.|
 | [Forcebar](https://forcebar.xyz) | Doug Todd | Forcebar is a pure reflex game. |
 | [RadioVisualizer](https://radiovisualizer.com) | Marco Bavagnoli | Stream over 35,000 live radio stations from every corner of the globe. |
 | Stellar Bastion</br>[web](https://www.crazygames.com/game/stellar-bastion) [Android](https://play.google.com/store/apps/details?id=com.coconutisland.stellar_bastion) [iOS](https://apps.apple.com/us/app/stellar-bastion/id6761073618) | Coconut Island Apps | 2D Tower Defense game. |
 | Mortigen</br>[web](https://koldo92.github.io/mortigen/) [Android](https://play.google.com/store/apps/details?id=com.ler.mortigen) [iOS](https://apps.apple.com/us/app/mortigen/id6761758806) | Luis Enrique Ruiz | Roguelite survival shooter. |
 | SUMOJI</br>[web](https://straspool.eu/sumoji/) [Android](https://play.google.com/store/apps/details?id=eu.straspool.sumoji) [iOS](https://apps.apple.com/us/app/sumoji/id6751641875) | Valentin Martinet | Fun Emoji-based Sudoku. |
+| GuanDan</br>[web](https://guandan.app/) [MacOS](https://apps.apple.com/us/app/%E6%8E%BC%E8%9B%8B-guandan/id6757966323) [Windows](https://apps.microsoft.com/detail/9pbv1xp2lc50) [Android](https://play.google.com/store/apps/details?id=org.rockstudio.guandan) [iOS](https://apps.apple.com/us/app/%E6%8E%BC%E8%9B%8B-guandan/id6757966323) | [yangyuan](https://github.com/yangyuan) | GuanDan (掼蛋) is a popular four-player Chinese card game. |
 
 *Want to add your app? Feel free to open a PR!*
 

@@ -4,14 +4,18 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 
 Future<void> initialize() async {
+  debugPrint('>>> initialize()');
   await SoLoud.instance.init();
+  debugPrint('>>> initialize() done');
   if (!kIsWeb) {
     SoLoud.instance.setGlobalVolume(0.2);
   }
 }
 
 void deinit() {
+  debugPrint('>>> deinit()');
   SoLoud.instance.deinit();
+  debugPrint('>>> deinit() done');
 }
 
 Future<void> delay(int ms) async {
