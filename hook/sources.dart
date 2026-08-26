@@ -11,7 +11,7 @@ import 'package:code_assets/code_assets.dart';
 /// Collects the plugin sources (paths relative to [packageRoot]) for
 /// [targetOS].
 List<String> collectSources(Uri packageRoot, OS targetOS) {
-  final rootPath = packageRoot.toFilePath();
+  final rootPath = packageRoot.toFilePath().replaceAll(r'\', '/');
   final isApple = targetOS == OS.macOS || targetOS == OS.iOS;
   final sources = <String>[];
 
@@ -22,12 +22,16 @@ List<String> collectSources(Uri packageRoot, OS targetOS) {
     bool Function(String path)? exclude,
   }) {
     final dir = Directory.fromUri(packageRoot.resolve('src/$rel'));
+    if (!dir.existsSync()) return;
     for (final entity in dir.listSync(recursive: recursive)) {
       if (entity is! File) continue;
-      final path = entity.path;
+      final path = entity.path.replaceAll(r'\', '/');
       if (!extensions.any(path.endsWith)) continue;
       if (exclude?.call(path) ?? false) continue;
-      sources.add(path.substring(rootPath.length));
+      final relPath = path.startsWith(rootPath)
+          ? path.substring(rootPath.length)
+          : path;
+      sources.add(relPath.startsWith('/') ? relPath.substring(1) : relPath);
     }
   }
 

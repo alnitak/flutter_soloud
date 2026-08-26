@@ -61,11 +61,11 @@ void main(List<String> args) async {
     };
 
     final flags = <String>[
-      '-fvisibility=hidden',
+      if (os != OS.windows) '-fvisibility=hidden',
       // Force maximum optimization regardless of Flutter build mode.
       // For native debugging: comment out 'NDEBUG' above and replace the line
-      // below with: if (os == OS.windows) ...['/Od', '/Zi'] else ...['-O0', '-g'],
-      if (os == OS.windows) '/Ox' else '-O3',
+      // below with: if (os == OS.windows) ...['/Od', '/Zi', '/EHsc'] else ...['-O0', '-g'],
+      if (os == OS.windows) ...['/Ox', '/EHsc'] else '-O3',
       if (os == OS.android) ...[
         '-ffast-math',
         '-funroll-loops',
