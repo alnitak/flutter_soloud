@@ -1,5 +1,8 @@
 #include "analyzer.h"
 #include "audiobuffer/pull_buffer_stream.h"
+// Declarations of every FFI_PLUGIN_EXPORT entry point defined below, so they
+// are checked against one source of truth (also the ffigen entry point).
+#include "bindings.h"
 #include "dart_callback_gate.h"
 #include "device_lifecycle_test_hooks.h"
 // The FlutterEngine lifecycle entry points defined below. Included so the
