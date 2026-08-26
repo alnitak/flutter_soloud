@@ -470,28 +470,18 @@ external double wasmGetLoopEndPoint(int handle);
 external void wasmSetLoopEndPoint(int handle, double time);
 
 @JS('Module_soloud._setVisualizationEnabled')
-external void wasmSetVisualizationEnabled(int enabled);
+external int wasmSetVisualizationEnabled(
+  int enabled,
+  int windowSize,
+  int kind,
+  int channel,
+);
 
 @JS('Module_soloud._getVisualizationEnabled')
 external int wasmGetVisualizationEnabled();
 
-@JS('Module_soloud._getWave')
-external void wasmGetWave(int samplesPtr, int isTheSameAsBeforePtr);
-
-@JS('Module_soloud._getFft')
-external void wasmGetFft(int samplesPtr, int isTheSameAsBeforePtr);
-
 @JS('Module_soloud._setFftSmoothing')
 external void wasmSetFftSmoothing(double smooth);
-
-@JS('Module_soloud._getAudioTexture')
-external void wasmGetAudioTexture(int samplesPtr, int isTheSameAsBeforePtr);
-
-@JS('Module_soloud._getAudioTexture2D')
-external void wasmGetAudioTexture2D(int samplesPtr, int isTheSameAsBeforePtr);
-
-@JS('Module_soloud._getTextureValue')
-external double wasmGetTextureValue(int row, int column);
 
 @JS('Module_soloud._getLength')
 external double wasmGetLength(int soundHash);

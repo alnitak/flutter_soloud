@@ -6,7 +6,7 @@ import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
 import 'dart:typed_data';
 
-import 'package:flutter_soloud/src/bindings/audio_data.dart';
+import 'package:flutter_soloud/src/audio_visualization_data.dart';
 import 'package:flutter_soloud/src/bindings/bindings_player.dart';
 import 'package:flutter_soloud/src/bindings/js_extension.dart';
 import 'package:flutter_soloud/src/enums.dart';
@@ -1317,9 +1317,99 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     wasmSetLoopEndPoint(handle.id, timestamp?.toDouble() ?? 0);
   }
 
+  void Function(AudioVisualizationData data)? _visualizationCallback;
+
+  void _setupWasmVisualizationCallback() {
+    @JSExport()
+    void webVisualizationCallback(
+      JSNumber channelCount,
+      JSNumber waveDataPerChannelPtr,
+      JSNumber waveSamples,
+      JSNumber fftDataPerChannelPtr,
+      JSNumber fftSamples,
+    ) {
+      if (_visualizationCallback == null) return;
+
+      final cCount = channelCount.toDartInt;
+      final wavePtr = waveDataPerChannelPtr.toDartInt;
+      final wSamples = waveSamples.toDartInt;
+      final fftPtr = fftDataPerChannelPtr.toDartInt;
+      final fSamples = fftSamples.toDartInt;
+
+      final waveList = <Float32List>[];
+      if (wSamples > 0 && wavePtr != 0) {
+        for (var c = 0; c < cCount; c++) {
+          final channelPtr = wasmGetI32Value(wavePtr + (c * 4), 'i32');
+          if (channelPtr != 0) {
+            final startIndex = channelPtr >> 2;
+            final endIndex = startIndex + wSamples;
+            waveList.add(
+              Float32List.fromList(
+                wasmHeapF32.toDart.sublist(startIndex, endIndex),
+              ),
+            );
+          }
+        }
+      }
+
+      final fftList = <Float32List>[];
+      if (fSamples > 0 && fftPtr != 0) {
+        for (var c = 0; c < cCount; c++) {
+          final channelPtr = wasmGetI32Value(fftPtr + (c * 4), 'i32');
+          if (channelPtr != 0) {
+            final startIndex = channelPtr >> 2;
+            final endIndex = startIndex + fSamples;
+            fftList.add(
+              Float32List.fromList(
+                wasmHeapF32.toDart.sublist(startIndex, endIndex),
+              ),
+            );
+          }
+        }
+      }
+
+      final packet = AudioVisualizationData(
+        channelCount: cCount,
+        wave: waveList,
+        fft: fftList,
+      );
+
+      _visualizationCallback?.call(packet);
+    }
+
+    globalThis.setProperty(
+      '_wasmVisualizationCallback'.toJS,
+      webVisualizationCallback.toJS,
+    );
+  }
+
   @override
-  void setVisualizationEnabled(bool enabled) {
-    wasmSetVisualizationEnabled(enabled ? 1 : 0);
+  void setVisualizationCallback(
+    void Function(AudioVisualizationData data)? callback,
+  ) {
+    _visualizationCallback = callback;
+    if (callback != null) {
+      _setupWasmVisualizationCallback();
+    }
+  }
+
+  @override
+  PlayerErrors setVisualizationEnabled(
+    bool enabled, {
+    int windowSize = 256,
+    VisualizationKind kind = VisualizationKind.waveAndFft,
+    int channel = VisualizationChannel.merged,
+  }) {
+    if (enabled && _visualizationCallback != null) {
+      _setupWasmVisualizationCallback();
+    }
+    final ret = wasmSetVisualizationEnabled(
+      enabled ? 1 : 0,
+      windowSize,
+      kind.value,
+      channel,
+    );
+    return PlayerErrors.values[ret];
   }
 
   @override
@@ -1328,50 +1418,8 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }
 
   @override
-  bool getFft(AudioData fft) {
-    final isTheSameAsBeforePtr = wasmMalloc(4);
-    wasmGetWave(fft.ctrl.samplesPtr, isTheSameAsBeforePtr);
-    final ret = wasmGetI32Value(isTheSameAsBeforePtr, 'i32');
-    wasmFree(isTheSameAsBeforePtr);
-    return ret == 1;
-  }
-
-  @override
-  bool getWave(AudioData wave) {
-    final isTheSameAsBeforePtr = wasmMalloc(4);
-    wasmGetWave(wave.ctrl.samplesPtr, isTheSameAsBeforePtr);
-    final ret = wasmGetI32Value(isTheSameAsBeforePtr, 'i32');
-    wasmFree(isTheSameAsBeforePtr);
-    return ret == 1;
-  }
-
-  @override
   void setFftSmoothing(double smooth) {
     wasmSetFftSmoothing(smooth);
-  }
-
-  @override
-  bool getAudioTexture(AudioData samples) {
-    final isTheSameAsBeforePtr = wasmMalloc(4);
-    wasmGetAudioTexture(samples.ctrl.samplesPtr, isTheSameAsBeforePtr);
-    final ret = wasmGetI32Value(isTheSameAsBeforePtr, 'i32');
-    wasmFree(isTheSameAsBeforePtr);
-    return ret == 1;
-  }
-
-  @override
-  bool getAudioTexture2D(AudioData samples) {
-    final isTheSameAsBeforePtr = wasmMalloc(4);
-    wasmGetAudioTexture2D(samples.ctrl.samplesPtr, isTheSameAsBeforePtr);
-    final ret = wasmGetI32Value(isTheSameAsBeforePtr, 'i32');
-    wasmFree(isTheSameAsBeforePtr);
-    return ret == 1;
-  }
-
-  @override
-  double getTextureValue(int row, int column) {
-    final e = wasmGetTextureValue(row, column);
-    return e;
   }
 
   @override

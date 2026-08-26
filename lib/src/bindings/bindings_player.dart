@@ -3,7 +3,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 
-import 'package:flutter_soloud/src/bindings/audio_data.dart';
+import 'package:flutter_soloud/src/audio_visualization_data.dart';
 import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/filters/filters.dart';
 import 'package:flutter_soloud/src/helpers/playback_device.dart';
@@ -842,74 +842,38 @@ abstract class FlutterSoLoud {
   @mustBeOverridden
   void setLoopEndPoint(SoundHandle handle, Duration? timestamp);
 
-  /// Enable or disable visualization.
-  /// Not yet supported on the web.
+  /// Enable or disable audio visualization.
   ///
-  /// [enabled] whether to enable or disable.
+  /// [enabled] whether visualization is enabled.
+  /// [windowSize] power of two window size from 128 to 8192 (default 256).
+  /// [kind] whether to compute wave, FFT, or both.
+  /// [channel] channel selection: [VisualizationChannel.merged] (-1, default),
+  /// [VisualizationChannel.all] (-2), or a specific 0-based channel index.
   @mustBeOverridden
-  void setVisualizationEnabled(bool enabled);
+  PlayerErrors setVisualizationEnabled(
+    bool enabled, {
+    int windowSize = 256,
+    VisualizationKind kind = VisualizationKind.waveAndFft,
+    int channel = VisualizationChannel.merged,
+  });
 
   /// Get visualization state.
-  /// Not yet supported on the web.
   ///
   /// Return true if enabled.
   @mustBeOverridden
   bool getVisualizationEnabled();
 
-  /// Returns valid data only if VisualizationEnabled is true.
-  /// Not yet supported on the web.
-  ///
-  /// [fft] on all platforms web excluded, the [fft] type is `Pointer<Float>`.
-  /// Return a 256 float array int the [fft] pointer containing FFT data.
-  @mustBeOverridden
-  bool getFft(AudioData fft);
-
-  /// Returns valid data only if VisualizationEnabled is true
-  ///
-  /// [wave] on all platforms web excluded, the [wave] type is `Pointer<Float>`.
-  /// Return a 256 float array int the [wave] pointer containing audio data.
-  @mustBeOverridden
-  bool getWave(AudioData wave);
-
   /// Smooth FFT data.
-  /// Not yet supported on the web.
-  ///
-  /// When new data is read and the values are decreasing, the new value will be
-  /// decreased with an amplitude between the old and the new value.
-  /// This will result on a less shaky visualization.
   ///
   /// [smooth] must be in the [0.0 ~ 1.0] range.
-  /// 0 = no smooth
-  /// 1 = full smooth
-  /// the new value is calculated with:
-  /// newFreq = smooth * oldFreq + (1 - smooth) * newFreq
   @mustBeOverridden
   void setFftSmoothing(double smooth);
 
-  /// Return in [samples] a 512 float array.
-  /// The first 256 floats represent the FFT frequencies data [>=0.0].
-  /// The other 256 floats represent the wave data (amplitude) [-1.0~1.0].
-  /// Not yet supported on the web.
-  ///
-  /// [samples] on all platforms web excluded, the [samples] type is
-  /// `Pointer<Float>`.
+  /// Sets the callback receiving audio visualization data packets from native.
   @mustBeOverridden
-  bool getAudioTexture(AudioData samples);
-
-  /// Return a floats matrix of 256x512
-  /// Every row are composed of 256 FFT values plus 256 of wave data
-  /// Every time is called, a new row is stored in the
-  /// first row and all the previous rows are shifted
-  /// up and the last one will be lost.
-  ///
-  /// [samples] on all platforms web excluded, the [samples] type is
-  /// `Pointer<Pointer<Float>>`.
-  @mustBeOverridden
-  bool getAudioTexture2D(AudioData samples);
-
-  /// Get the value in the texture2D matrix at the given coordinates.
-  @mustBeOverridden
-  double getTextureValue(int row, int column);
+  void setVisualizationCallback(
+    void Function(AudioVisualizationData data)? callback,
+  );
 
   /// Get the sound length.
   ///

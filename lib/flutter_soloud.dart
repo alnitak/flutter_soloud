@@ -2,7 +2,7 @@
 library;
 
 export 'src/audio_source.dart';
-export 'src/bindings/audio_data.dart';
+export 'src/audio_visualization_data.dart';
 export 'src/enums.dart' hide PlayerErrors, PlayerStateNotification;
 export 'src/exceptions/exceptions.dart';
 export 'src/filters/filters.dart' show FilterType;

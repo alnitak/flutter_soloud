@@ -1,3 +1,9 @@
+##### 5.0.0-pre.1 (XX Xxx 2026)
+- **breaking change: audio visualization overhaul**:
+  - Replaced the legacy `AudioData` polling class with a reactive stream: `SoLoud.instance.audioVisualizationEvents` emitting `AudioVisualizationData`.
+  - FFT data is now computed using SIMD-accelerated `pffft` with Blackman windowing and temporal smoothing.
+  - `setVisualizationEnabled()` now accepts `windowSize` (powers of two from 128 to 8192, default 256), `kind` (`wave`, `fft`, `waveAndFft`), and `channel` (`VisualizationChannel.merged`, `VisualizationChannel.all`, or a specific channel index).
+
 ##### 5.0.0-pre.0 (25 Aug 2026)
 > **TL;DR**:
 > - **Render-ahead ring (native)**: Ultra-low keypress-to-sound latency via retroactive mixing into a lookahead ring buffer (mostly real-time audio for `playScheduled` and `playClocked` calls which play in the current audio frame, e.g. 10 ms latency).

@@ -5,6 +5,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_soloud/src/audio_source.dart';
+import 'package:flutter_soloud/src/audio_visualization_data.dart';
 import 'package:flutter_soloud/src/bindings/bindings_player.dart';
 import 'package:flutter_soloud/src/bindings/native_metadata_ffi.dart'
     if (dart.library.js_interop) 'package:flutter_soloud/src/bindings/native_metadata_web.dart';
@@ -271,6 +272,16 @@ interface class SoLoud {
   /// Whether or not is it possible to ask for wave and FFT data.
   bool _isVisualizationEnabled = false;
 
+  /// Controller that emits audio visualization data packets.
+  final StreamController<AudioVisualizationData>
+  _audioVisualizationEventsController =
+      StreamController<AudioVisualizationData>.broadcast();
+
+  /// Stream of audio visualization data packets (wave and/or FFT) emitted
+  /// when visualization is enabled.
+  Stream<AudioVisualizationData> get audioVisualizationEvents =>
+      _audioVisualizationEventsController.stream;
+
   /// Whether this Dart isolate has registered native callbacks.
   ///
   /// After a Flutter hot restart, the native engine can survive while the old
@@ -290,15 +301,6 @@ interface class SoLoud {
   /// The current status of the engine. This is `true` when the engine
   /// has been initialized and is immediately ready.
   ///
-  /// It will be always true if checking from another isolate than the main
-  /// isolate. This is because it is supposed the user has already initialized
-  /// the engine in the main isolate, and the engine is a singleton in C++ land.
-  /// This behavior is meant to use the engine in a separate isolate for
-  /// various tools like output mixer capture, waveform reading, etc. having
-  /// the main isolate free for UI and other tasks.
-  /// NOTE: operations like `load*` and `play*` will fail if not in the
-  /// main isolate.
-  ///
   /// The result will be `false` in all the following cases:
   ///
   /// - the engine was never initialized
@@ -310,15 +312,9 @@ interface class SoLoud {
   /// Use [isInitialized] only if you want to check the current status of
   /// the engine synchronously and you don't care that it might be ready soon.
   bool get isInitialized =>
-      _isMainIsolate &&
       _nativeCallbacksInitialized &&
       _controller.soLoudFFI.isInited() &&
       _loader.isInitialized;
-
-  /// Whether this is the main isolate. Always true on web: there are no
-  /// isolates there and accessing the root isolate token throws an
-  /// [UnsupportedError].
-  bool get _isMainIsolate => kIsWeb || ServicesBinding.rootIsolateToken != null;
 
   /// Backing of [activeSounds].
   final List<AudioSource> _activeSounds = [];
@@ -819,6 +815,10 @@ interface class SoLoud {
     if (_controller.soLoudFFI.isMixerOutputCaptureRunning()) {
       _controller.soLoudFFI.stopMixerOutputCapture();
     }
+    if (_isVisualizationEnabled) {
+      _controller.soLoudFFI.setVisualizationEnabled(false);
+      _isVisualizationEnabled = false;
+    }
   }
 
   Future<void> _deinitNativeAsync() async {
@@ -863,6 +863,12 @@ interface class SoLoud {
   Future<void> _initializeNativeCallbacks() async {
     // Initialize callbacks.
     await _controller.soLoudFFI.setDartEventCallbacks();
+
+    _controller.soLoudFFI.setVisualizationCallback((data) {
+      if (_audioVisualizationEventsController.hasListener) {
+        _audioVisualizationEventsController.add(data);
+      }
+    });
 
     // Listen when a handle becomes invalid because has been stopped/ended.
     if (!_controller.soLoudFFI.voiceEndedEventController.hasListener) {
@@ -1808,7 +1814,6 @@ interface class SoLoud {
   /// to feed the data back.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
-  @experimental
   AudioSource setPullBufferStream({
     int bufferSizeBytes = 1024 * 1024 * 10, // 10 MB
     double bufferTriggerPosition = 0.8,
@@ -1865,7 +1870,6 @@ interface class SoLoud {
   /// [sound] the pull buffer stream sound.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
-  @experimental
   void resetPullBufferStream(AudioSource sound) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -1897,7 +1901,6 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudSoundHashNotFoundDartException] if the [source] is not
   /// found.
-  @experimental
   PlayerErrors addPullBufferDataStream(
     AudioSource source,
     Uint8List audioChunk, {
@@ -1936,7 +1939,6 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudSoundHashNotFoundDartException] if the [source] is not
   /// found.
-  @experimental
   ({PlayerErrors error, Duration startTime, Duration endTime})
   getPullBufferTimeRange(AudioSource source) {
     if (!isInitialized) {
@@ -3183,18 +3185,43 @@ interface class SoLoud {
     _controller.soLoudFFI.setLoopEndPoint(handle, time);
   }
 
-  /// Enable or disable visualization.
+  /// Enable or disable audio visualization.
   ///
-  /// When enabled it will be possible to get FFT and wave data.
+  /// When enabled, audio data packets (wave and/or FFT) will be emitted on the
+  /// [audioVisualizationEvents] stream.
   ///
-  /// [enabled] whether to set the visualization or not.
+  /// [enabled] whether to enable or disable audio visualization.
+  ///
+  /// [windowSize] power of two window size from 128 to 8192 (default 256).
+  ///
+  /// [kind] whether to compute wave, FFT, or both (default
+  /// [VisualizationKind.waveAndFft]).
+  ///
+  /// [channel] channel selection: [VisualizationChannel.merged] (-1, default),
+  /// [VisualizationChannel.all] (-2), or a specific 0-based channel index.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
-  void setVisualizationEnabled(bool enabled) {
+  ///
+  /// Throws [SoLoudCppException] if native setup fails.
+  void setVisualizationEnabled(
+    bool enabled, {
+    int windowSize = 256,
+    VisualizationKind kind = VisualizationKind.waveAndFft,
+    int channel = VisualizationChannel.merged,
+  }) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
-    _controller.soLoudFFI.setVisualizationEnabled(enabled);
+    final error = _controller.soLoudFFI.setVisualizationEnabled(
+      enabled,
+      windowSize: windowSize,
+      kind: kind,
+      channel: channel,
+    );
+    if (error != PlayerErrors.noError) {
+      _logPlayerError(error, from: 'setVisualizationEnabled');
+      throw SoLoudCppException.fromPlayerError(error);
+    }
     _isVisualizationEnabled = enabled;
   }
 
@@ -4036,129 +4063,6 @@ interface class SoLoud {
       throw SoLoudCppException.fromPlayerError(error);
     }
   }
-
-  // ///////////////////////////////////////
-  // / Global filters
-  // ///////////////////////////////////////
-
-  /// Checks whether the given [filterType] is active.
-  ///
-  /// Returns `-1` if the filter is not active. Otherwise, returns
-  /// the index of the given filter.
-  @Deprecated('Please, to manage global filters use SoLoud.filters instead')
-  int isFilterActive(FilterType filterType) {
-    final ret = _controller.soLoudFFI.isFilterActive(filterType);
-    if (ret.error != PlayerErrors.noError) {
-      _log.severe(() => 'isFilterActive(): ${ret.error}');
-      throw SoLoudCppException.fromPlayerError(ret.error);
-    }
-    return ret.index;
-  }
-
-  /// Gets parameters of the given [filterType].
-  ///
-  /// Returns the list of param names.
-  @Deprecated('Please, to manage global filters use SoLoud.filters instead')
-  List<String> getFilterParamNames(FilterType filterType) {
-    final ret = _controller.soLoudFFI.getFilterParamNames(filterType);
-    if (ret.error != PlayerErrors.noError) {
-      _log.severe(() => 'getFilterParamNames(): ${ret.error}');
-      throw SoLoudCppException.fromPlayerError(ret.error);
-    }
-    return ret.names;
-  }
-
-  /// Adds a [filterType] to all sounds.
-  ///
-  /// Throws [SoLoudMaxFilterNumberReachedException] when the max number of
-  ///     concurrent filter is reached (default max filter is 8).
-  ///
-  /// Throws [SoLoudFilterAlreadyAddedException] when trying to add a filter
-  ///     that has already been added.
-  @Deprecated('Please, to manage global filters use SoLoud.filters instead')
-  void addGlobalFilter(FilterType filterType) {
-    final error = _controller.soLoudFFI.addFilter(filterType);
-    if (error != PlayerErrors.noError) {
-      _log.severe(() => 'addGlobalFilter(): $error');
-      throw SoLoudCppException.fromPlayerError(error);
-    }
-  }
-
-  /// Removes [filterType] from all sounds.
-  @Deprecated('Please, to manage global filters use SoLoud.filters instead')
-  void removeGlobalFilter(FilterType filterType) {
-    final error = _controller.soLoudFFI.removeFilter(filterType);
-    if (error != PlayerErrors.noError) {
-      _log.severe(() => 'removeGlobalFilter(): $error');
-      throw SoLoudCppException.fromPlayerError(error);
-    }
-  }
-
-  /// Set the effect parameter with id [attributeId] of [filterType]
-  /// with [value] value.
-  ///
-  /// Specify the [attributeId] of the parameter (which you can learn from
-  /// [getFilterParamNames]), and its new [value].
-  ///
-  /// Applyed to the global filter.
-  ///
-  /// [filterType] filter to modify a param.
-  ///
-  /// Returns [PlayerErrors.noError] if no errors.
-  @Deprecated('Please, to manage global filters use SoLoud.filters instead')
-  void setGlobalFilterParameter(
-    FilterType filterType,
-    int attributeId,
-    double value,
-  ) {
-    final error = _controller.soLoudFFI.setFilterParams(
-      filterType,
-      attributeId,
-      value,
-    );
-    if (error != PlayerErrors.noError) {
-      _log.severe(() => 'setFxParams(): $error');
-      throw SoLoudCppException.fromPlayerError(error);
-    }
-  }
-
-  /// Set the effect parameter with id [attributeId] of [filterType]
-  /// with [value] value.
-  @Deprecated('Please, to manage global filters use SoLoud.filters instead')
-  void setFilterParameter(
-    FilterType filterType,
-    int attributeId,
-    double value,
-  ) => setGlobalFilterParameter(filterType, attributeId, value);
-
-  /// Get the effect parameter value with id [attributeId] of [filterType].
-  ///
-  /// Specify the [attributeId] of the parameter (which you can learn from
-  /// [getFilterParamNames]).
-  ///
-  /// It gets the global filter value.
-  ///
-  /// [filterType] the filter to modify a parameter.
-  ///
-  /// Returns the value of the parameter.
-  @Deprecated('Please, to manage global filters use SoLoud.filters instead')
-  double getGlobalFilterParameter(FilterType filterType, int attributeId) {
-    final ret = _controller.soLoudFFI.getFilterParams(filterType, attributeId);
-
-    _logPlayerError(ret.error, from: 'getGlobalFilterParameter()');
-    if (ret.error != PlayerErrors.noError) {
-      throw SoLoudCppException.fromPlayerError(ret.error);
-    }
-    return ret.value;
-  }
-
-  /// Get the effect parameter value with id [attributeId] of [filterType].
-  @Deprecated('Please, to manage global filters use SoLoud.filters instead')
-  double getFilterParameter(
-    FilterType filterType,
-    int attributeId, {
-    SoundHandle handle = const SoundHandle.error(),
-  }) => getGlobalFilterParameter(filterType, attributeId);
 
   // ////////////////////////////////////////////////
   // Below all the methods implemented with FFI for the 3D audio

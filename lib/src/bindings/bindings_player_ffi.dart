@@ -11,7 +11,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:ffi/ffi.dart';
-import 'package:flutter_soloud/src/bindings/audio_data.dart';
+import 'package:flutter_soloud/src/audio_visualization_data.dart';
 import 'package:flutter_soloud/src/bindings/bindings_player.dart';
 import 'package:flutter_soloud/src/bindings/darwin_engine_lifecycle.dart';
 import 'package:flutter_soloud/src/bindings/native_metadata_ffi.dart';
@@ -23,6 +23,15 @@ import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
 import 'package:logging/logging.dart';
 import 'package:meta/meta.dart';
+
+typedef DartVisualizationCallbackTFunction =
+    ffi.Void Function(
+      ffi.Int32 channelCount,
+      ffi.Pointer<ffi.Pointer<ffi.Float>> waveDataPerChannel,
+      ffi.Int32 waveSamples,
+      ffi.Pointer<ffi.Pointer<ffi.Float>> fftDataPerChannel,
+      ffi.Int32 fftSamples,
+    );
 
 /// Rebuilds the no-argument native device-start function from its raw pointer
 /// [address] and invokes it, returning the raw error code.
@@ -195,6 +204,8 @@ final class _BufferStreamNativeCallbacks {
   }
 }
 
+final class _IsolateLifecycleToken implements ffi.Finalizable {}
+
 /// FFI bindings to SoLoud
 @internal
 class FlutterSoLoudFfi extends FlutterSoLoud {
@@ -245,6 +256,10 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   nativeStateChangedCallable;
   ffi.NativeCallable<DartMixerOutputDataCallbackTFunction>?
   nativeMixerOutputDataCallable;
+  ffi.NativeCallable<DartVisualizationCallbackTFunction>?
+  nativeVisualizationCallable;
+
+  void Function(AudioVisualizationData data)? _visualizationCallback;
 
   /// Controller that fires whenever new mixer output data is available.
   ///
@@ -322,16 +337,13 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     ffi.Pointer<ffi.UnsignedChar> data,
     int length,
   ) {
-    // The native buffer remains valid until the read position is advanced.
-    mixerOutputDataAvailableController.add((
-      pointer: data.cast<ffi.Uint8>(),
-      length: length,
-    ));
-
-    // Also emit a copied chunk for the cross-platform stream. Copying here
-    // keeps the FFI pointer-based API available for zero-copy consumers while
-    // ensuring the public Dart stream works the same way on all platforms.
-    if (length > 0) {
+    if (mixerOutputDataAvailableController.hasListener) {
+      mixerOutputDataAvailableController.add((
+        pointer: data.cast<ffi.Uint8>(),
+        length: length,
+      ));
+    }
+    if (mixerOutputChunkController.hasListener) {
       final bytes = data.cast<ffi.Uint8>().asTypedList(length);
       mixerOutputChunkController.add(Uint8List.fromList(bytes));
       // In fixed PCM chunk mode the native side advances the read position
@@ -342,8 +354,71 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     }
   }
 
+  void _visualizationDataCallback(
+    int channelCount,
+    ffi.Pointer<ffi.Pointer<ffi.Float>> waveDataPerChannel,
+    int waveSamples,
+    ffi.Pointer<ffi.Pointer<ffi.Float>> fftDataPerChannel,
+    int fftSamples,
+  ) {
+    if (_visualizationCallback == null) return;
+
+    final waveList = <Float32List>[];
+    if (waveSamples > 0 && waveDataPerChannel != ffi.nullptr) {
+      for (var c = 0; c < channelCount; c++) {
+        final ptr = waveDataPerChannel[c];
+        if (ptr != ffi.nullptr) {
+          waveList.add(Float32List.fromList(ptr.asTypedList(waveSamples)));
+        }
+      }
+    }
+
+    final fftList = <Float32List>[];
+    if (fftSamples > 0 && fftDataPerChannel != ffi.nullptr) {
+      for (var c = 0; c < channelCount; c++) {
+        final ptr = fftDataPerChannel[c];
+        if (ptr != ffi.nullptr) {
+          fftList.add(Float32List.fromList(ptr.asTypedList(fftSamples)));
+        }
+      }
+    }
+
+    final packet = AudioVisualizationData(
+      channelCount: channelCount,
+      wave: waveList,
+      fft: fftList,
+    );
+
+    _visualizationCallback?.call(packet);
+  }
+
+  @override
+  void setVisualizationCallback(
+    void Function(AudioVisualizationData data)? callback,
+  ) {
+    _visualizationCallback = callback;
+    if (callback != null) {
+      _registerVisualizationCallback();
+    }
+  }
+
+  void _registerVisualizationCallback() {
+    nativeVisualizationCallable ??=
+        ffi.NativeCallable<DartVisualizationCallbackTFunction>.listener(
+          _visualizationDataCallback,
+        );
+    _setVisualizationCallback(
+      nativeVisualizationCallable!.nativeFunction,
+      currentEngineId,
+    );
+  }
+
   @override
   void disposeNativeCallables() {
+    if (_lifecycleToken != null) {
+      _isolateFinalizer.detach(_lifecycleToken!);
+      _lifecycleToken = null;
+    }
     _disposeAllBufferStreamCallbacks();
     nativeVoiceEndedCallable?.close();
     nativeVoiceEndedCallable = null;
@@ -353,6 +428,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     nativeStateChangedCallable = null;
     nativeMixerOutputDataCallable?.close();
     nativeMixerOutputDataCallable = null;
+    nativeVisualizationCallable?.close();
+    nativeVisualizationCallable = null;
   }
 
   @override
@@ -379,6 +456,10 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
         ffi.NativeCallable<DartMixerOutputDataCallbackTFunction>.listener(
           _mixerOutputDataCallback,
         );
+    nativeVisualizationCallable ??=
+        ffi.NativeCallable<DartVisualizationCallbackTFunction>.listener(
+          _visualizationDataCallback,
+        );
 
     _setDartEventCallback(
       nativeVoiceEndedCallable!.nativeFunction,
@@ -389,6 +470,20 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     _setMixerOutputCallback(
       nativeMixerOutputDataCallable!.nativeFunction,
       currentEngineId,
+    );
+    _setVisualizationCallback(
+      nativeVisualizationCallable!.nativeFunction,
+      currentEngineId,
+    );
+
+    if (_lifecycleToken != null) {
+      _isolateFinalizer.detach(_lifecycleToken!);
+    }
+    _lifecycleToken = _IsolateLifecycleToken();
+    _isolateFinalizer.attach(
+      _lifecycleToken!,
+      ffi.Pointer.fromAddress(currentEngineId),
+      detach: _lifecycleToken,
     );
   }
 
@@ -449,6 +544,15 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       );
   late final _clearDartCallbackRegistrations =
       _clearDartCallbackRegistrationsPtr.asFunction<void Function()>();
+
+  late final _retireDartCallbacksFinalizerPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>(
+        'retireDartCallbacksFinalizer',
+      );
+  late final ffi.NativeFinalizer _isolateFinalizer = ffi.NativeFinalizer(
+    _retireDartCallbacksFinalizerPtr,
+  );
+  _IsolateLifecycleToken? _lifecycleToken;
 
   // ////////////////////////////////////////////////
   // Mixer output capture bindings
@@ -618,6 +722,23 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       >('setMixerOutputCallbackForEngine');
   late final _setMixerOutputCallback = _setMixerOutputCallbackPtr
       .asFunction<bool Function(DartMixerOutputDataCallbackT, int)>();
+
+  late final _setVisualizationCallbackPtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.Bool Function(
+            ffi.Pointer<ffi.NativeFunction<DartVisualizationCallbackTFunction>>,
+            ffi.Int64,
+          )
+        >
+      >('setVisualizationCallbackForEngine');
+  late final _setVisualizationCallback = _setVisualizationCallbackPtr
+      .asFunction<
+        bool Function(
+          ffi.Pointer<ffi.NativeFunction<DartVisualizationCallbackTFunction>>,
+          int,
+        )
+      >();
 
   // ////////////////////////////////////////////////
   // Navtive bindings
@@ -2165,16 +2286,32 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       .asFunction<void Function(int, double)>();
 
   @override
-  void setVisualizationEnabled(bool enabled) {
-    return _setVisualizationEnabled(enabled ? 1 : 0);
+  PlayerErrors setVisualizationEnabled(
+    bool enabled, {
+    int windowSize = 256,
+    VisualizationKind kind = VisualizationKind.waveAndFft,
+    int channel = VisualizationChannel.merged,
+  }) {
+    if (enabled && _visualizationCallback != null) {
+      _registerVisualizationCallback();
+    }
+    final ret = _setVisualizationEnabled(
+      enabled ? 1 : 0,
+      windowSize,
+      kind.value,
+      channel,
+    );
+    return PlayerErrors.values[ret];
   }
 
   late final _setVisualizationEnabledPtr =
-      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Int)>>(
-        'setVisualizationEnabled',
-      );
+      _lookup<
+        ffi.NativeFunction<
+          ffi.Int32 Function(ffi.Int, ffi.Int, ffi.Int, ffi.Int)
+        >
+      >('setVisualizationEnabled');
   late final _setVisualizationEnabled = _setVisualizationEnabledPtr
-      .asFunction<void Function(int)>();
+      .asFunction<int Function(int, int, int, int)>();
 
   @override
   bool getVisualizationEnabled() {
@@ -2189,58 +2326,6 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       .asFunction<int Function()>();
 
   @override
-  bool getFft(AudioData fft) {
-    final isTheSameAsBefore = calloc<ffi.Bool>();
-    _getFft(fft.ctrl.samplesWave, isTheSameAsBefore);
-    final ret = isTheSameAsBefore.value;
-    calloc.free(isTheSameAsBefore);
-    return ret;
-  }
-
-  late final _getFftPtr =
-      _lookup<
-        ffi.NativeFunction<
-          ffi.Void Function(
-            ffi.Pointer<ffi.Pointer<ffi.Float>>,
-            ffi.Pointer<ffi.Bool>,
-          )
-        >
-      >('getFft');
-  late final _getFft = _getFftPtr
-      .asFunction<
-        void Function(
-          ffi.Pointer<ffi.Pointer<ffi.Float>>,
-          ffi.Pointer<ffi.Bool>,
-        )
-      >();
-
-  @override
-  bool getWave(AudioData wave) {
-    final isTheSameAsBefore = calloc<ffi.Bool>();
-    _getWave(wave.ctrl.samplesWave, isTheSameAsBefore);
-    final ret = isTheSameAsBefore.value;
-    calloc.free(isTheSameAsBefore);
-    return ret;
-  }
-
-  late final _getWavePtr =
-      _lookup<
-        ffi.NativeFunction<
-          ffi.Void Function(
-            ffi.Pointer<ffi.Pointer<ffi.Float>>,
-            ffi.Pointer<ffi.Bool>,
-          )
-        >
-      >('getWave');
-  late final _getWave = _getWavePtr
-      .asFunction<
-        void Function(
-          ffi.Pointer<ffi.Pointer<ffi.Float>>,
-          ffi.Pointer<ffi.Bool>,
-        )
-      >();
-
-  @override
   void setFftSmoothing(double smooth) {
     return _setFftSmoothing(smooth);
   }
@@ -2251,67 +2336,6 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       );
   late final _setFftSmoothing = _setFftSmoothingPtr
       .asFunction<void Function(double)>();
-
-  @override
-  bool getAudioTexture(AudioData samples) {
-    final isTheSameAsBefore = calloc<ffi.Bool>();
-    _getAudioTexture(samples.ctrl.samples1D, isTheSameAsBefore);
-    final ret = isTheSameAsBefore.value;
-    calloc.free(isTheSameAsBefore);
-    return ret;
-  }
-
-  late final _getAudioTexturePtr =
-      _lookup<
-        ffi.NativeFunction<
-          ffi.Void Function(
-            ffi.Pointer<ffi.Pointer<ffi.Float>>,
-            ffi.Pointer<ffi.Bool>,
-          )
-        >
-      >('getAudioTexture');
-  late final _getAudioTexture = _getAudioTexturePtr
-      .asFunction<
-        void Function(
-          ffi.Pointer<ffi.Pointer<ffi.Float>>,
-          ffi.Pointer<ffi.Bool>,
-        )
-      >();
-
-  @override
-  bool getAudioTexture2D(AudioData samples) {
-    final isTheSameAsBefore = calloc<ffi.Bool>();
-    _getAudioTexture2D(samples.ctrl.samples2D, isTheSameAsBefore);
-    final ret = isTheSameAsBefore.value;
-    calloc.free(isTheSameAsBefore);
-    return ret;
-  }
-
-  late final _getAudioTexture2DPtr =
-      _lookup<
-        ffi.NativeFunction<
-          ffi.Int32 Function(
-            ffi.Pointer<ffi.Pointer<ffi.Float>>,
-            ffi.Pointer<ffi.Bool>,
-          )
-        >
-      >('getAudioTexture2D');
-  late final _getAudioTexture2D = _getAudioTexture2DPtr
-      .asFunction<
-        int Function(ffi.Pointer<ffi.Pointer<ffi.Float>>, ffi.Pointer<ffi.Bool>)
-      >();
-
-  @override
-  double getTextureValue(int row, int column) {
-    return _getTextureValue(row, column);
-  }
-
-  late final _getTextureValuePtr =
-      _lookup<ffi.NativeFunction<ffi.Float Function(ffi.Int, ffi.Int)>>(
-        'getTextureValue',
-      );
-  late final _getTextureValue = _getTextureValuePtr
-      .asFunction<double Function(int, int)>();
 
   @override
   Duration getLength(SoundHash soundHash) {

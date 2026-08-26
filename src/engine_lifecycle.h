@@ -67,6 +67,9 @@ extern "C"
   /// accepted. Never blocks: safe to call from a platform/UI thread.
   FFI_PLUGIN_EXPORT bool requestEngineTeardownForEngine(int64_t engine_id);
 
+  /// Invoked as a Dart NativeFinalizer when an isolate is destroyed/restarted.
+  FFI_PLUGIN_EXPORT void retireDartCallbacksFinalizer(void *token);
+
 #ifdef __cplusplus
 }
 #endif
