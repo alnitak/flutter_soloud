@@ -34,62 +34,65 @@ void main() {
       expect(plan.skillNames, contains('flutter_soloud-setup'));
     });
 
-    test('installs all skills into default .agents/skills and is idempotent', () async {
-      final result = await installSkills(
-        projectRoot: tempDir,
-        skillsRoot: skillsRoot,
-      );
-
-      expect(
-        result,
-        contains(
-          'Installed 14 flutter_soloud agent skills into .agents/skills.',
-        ),
-      );
-
-      for (final skillName in [
-        'flutter_soloud-3d-audio',
-        'flutter_soloud-filters',
-        'flutter_soloud-idioms',
-        'flutter_soloud-loading',
-        'flutter_soloud-mixing-bus',
-        'flutter_soloud-output-capture',
-        'flutter_soloud-playback',
-        'flutter_soloud-pull-streaming',
-        'flutter_soloud-scheduling',
-        'flutter_soloud-setup',
-        'flutter_soloud-streaming',
-        'flutter_soloud-synthesis',
-        'flutter_soloud-visualization',
-        'flutter_soloud-volume-pan',
-      ]) {
-        final skillFile = File.fromUri(
-          tempDir.uri.resolve('.agents/skills/$skillName/SKILL.md'),
+    test(
+      'installs all skills into default .agents/skills and is idempotent',
+      () async {
+        final result = await installSkills(
+          projectRoot: tempDir,
+          skillsRoot: skillsRoot,
         );
+
         expect(
-          skillFile.existsSync(),
-          isTrue,
-          reason: '$skillName/SKILL.md should exist',
+          result,
+          contains(
+            'Installed 14 flutter_soloud agent skills into .agents/skills.',
+          ),
         );
-      }
 
-      // References should also be copied
-      final webRef = File.fromUri(
-        tempDir.uri.resolve(
-          '.agents/skills/flutter_soloud-setup/references/web.md',
-        ),
-      );
-      expect(webRef.existsSync(), isTrue);
+        for (final skillName in [
+          'flutter_soloud-3d-audio',
+          'flutter_soloud-filters',
+          'flutter_soloud-idioms',
+          'flutter_soloud-loading',
+          'flutter_soloud-mixing-bus',
+          'flutter_soloud-output-capture',
+          'flutter_soloud-playback',
+          'flutter_soloud-pull-streaming',
+          'flutter_soloud-scheduling',
+          'flutter_soloud-setup',
+          'flutter_soloud-streaming',
+          'flutter_soloud-synthesis',
+          'flutter_soloud-visualization',
+          'flutter_soloud-volume-pan',
+        ]) {
+          final skillFile = File.fromUri(
+            tempDir.uri.resolve('.agents/skills/$skillName/SKILL.md'),
+          );
+          expect(
+            skillFile.existsSync(),
+            isTrue,
+            reason: '$skillName/SKILL.md should exist',
+          );
+        }
 
-      // Subsequent plan should be upToDate
-      final planAfter = await planSkillInstall(
-        projectRoot: tempDir,
-        skillsRoot: skillsRoot,
-      );
-      expect(planAfter.action, SkillInstallAction.upToDate);
-      expect(planAfter.installCount, 0);
-      expect(planAfter.updateCount, 0);
-    });
+        // References should also be copied
+        final webRef = File.fromUri(
+          tempDir.uri.resolve(
+            '.agents/skills/flutter_soloud-setup/references/web.md',
+          ),
+        );
+        expect(webRef.existsSync(), isTrue);
+
+        // Subsequent plan should be upToDate
+        final planAfter = await planSkillInstall(
+          projectRoot: tempDir,
+          skillsRoot: skillsRoot,
+        );
+        expect(planAfter.action, SkillInstallAction.upToDate);
+        expect(planAfter.installCount, 0);
+        expect(planAfter.updateCount, 0);
+      },
+    );
 
     test('installs into all present agent homes', () async {
       // Create .claude and .cursor directories in the project root
@@ -103,10 +106,7 @@ void main() {
 
       expect(plan.homes, ['.claude/skills', '.cursor/skills']);
 
-      await installSkills(
-        projectRoot: tempDir,
-        skillsRoot: skillsRoot,
-      );
+      await installSkills(projectRoot: tempDir, skillsRoot: skillsRoot);
 
       final claudeSkill = File.fromUri(
         tempDir.uri.resolve('.claude/skills/flutter_soloud-idioms/SKILL.md'),
@@ -123,20 +123,16 @@ void main() {
     });
 
     test('detects stale versions and updates them', () async {
-      await installSkills(
-        projectRoot: tempDir,
-        skillsRoot: skillsRoot,
-      );
+      await installSkills(projectRoot: tempDir, skillsRoot: skillsRoot);
 
       // Modify one installed skill to have version: 0
       final file = File.fromUri(
-        tempDir.uri.resolve(
-          '.agents/skills/flutter_soloud-idioms/SKILL.md',
-        ),
+        tempDir.uri.resolve('.agents/skills/flutter_soloud-idioms/SKILL.md'),
       );
-      final content = file
-          .readAsStringSync()
-          .replaceFirst('version: 1', 'version: 0');
+      final content = file.readAsStringSync().replaceFirst(
+        'version: 1',
+        'version: 0',
+      );
       file.writeAsStringSync(content);
 
       final plan = await planSkillInstall(
@@ -154,10 +150,7 @@ void main() {
       );
 
       // Re-installing updates it
-      await installSkills(
-        projectRoot: tempDir,
-        skillsRoot: skillsRoot,
-      );
+      await installSkills(projectRoot: tempDir, skillsRoot: skillsRoot);
 
       final planAfter = await planSkillInstall(
         projectRoot: tempDir,
@@ -172,18 +165,21 @@ void main() {
           .toFilePath();
 
       // Check on uninstalled tempDir -> exit code 1
-      final resultBefore = Process.runSync(
-        Platform.executable,
-        [binScript, '--check', '--project-root', tempDir.path],
-      );
+      final resultBefore = Process.runSync(Platform.executable, [
+        binScript,
+        '--check',
+        '--project-root',
+        tempDir.path,
+      ]);
       expect(resultBefore.exitCode, 1);
       expect(resultBefore.stdout.toString(), contains('are not installed'));
 
       // Run installation CLI
-      final installResult = Process.runSync(
-        Platform.executable,
-        [binScript, '--project-root', tempDir.path],
-      );
+      final installResult = Process.runSync(Platform.executable, [
+        binScript,
+        '--project-root',
+        tempDir.path,
+      ]);
       expect(installResult.exitCode, 0);
       expect(
         installResult.stdout.toString(),
@@ -191,10 +187,12 @@ void main() {
       );
 
       // Check on installed tempDir -> exit code 0
-      final resultAfter = Process.runSync(
-        Platform.executable,
-        [binScript, '--check', '--project-root', tempDir.path],
-      );
+      final resultAfter = Process.runSync(Platform.executable, [
+        binScript,
+        '--check',
+        '--project-root',
+        tempDir.path,
+      ]);
       expect(resultAfter.exitCode, 0);
       expect(
         resultAfter.stdout.toString(),

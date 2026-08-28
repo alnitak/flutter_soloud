@@ -161,8 +161,8 @@ Future<SkillInstallPlan> planSkillInstall({
   final action = installCount > 0
       ? SkillInstallAction.install
       : (updateCount > 0
-          ? SkillInstallAction.update
-          : SkillInstallAction.upToDate);
+            ? SkillInstallAction.update
+            : SkillInstallAction.upToDate);
   return SkillInstallPlan(
     action,
     skillNames: [for (final s in bundled) s.name],
@@ -196,10 +196,7 @@ String describeSkillPlan(SkillInstallPlan plan) {
 /// `<home>/skills/<skill>/` into every known agent home already present, or
 /// `.agents/skills` by default, and overwrites so an upgrade refreshes each
 /// skill.
-Future<String> installSkills({
-  Directory? projectRoot,
-  Uri? skillsRoot,
-}) async {
+Future<String> installSkills({Directory? projectRoot, Uri? skillsRoot}) async {
   final root = projectRoot ?? Directory.current;
   final rootUri = skillsRoot ?? await _resolveBundledSkillsRoot();
   final bundled = rootUri == null
