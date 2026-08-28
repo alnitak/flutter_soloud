@@ -13,7 +13,7 @@
   - Dart bindings now use `@Native` with asset id `package:flutter_soloud/src/bindings.cpp`; the native library is resolved by the VM, so no `DynamicLibrary.open`/force-load/`STRIP_STYLE` workarounds are needed.
   - Web is unchanged: hooks do not cover web, the emscripten build in `web/` is still used.
 
-##### 5.0.0-pre.1 (XX Xxx 2026)
+##### 5.0.0-pre.1 (26 Aug 2026)
 - **breaking change: audio visualization overhaul**:
   - Replaced the legacy `AudioData` polling class with a reactive stream: `SoLoud.instance.audioVisualizationEvents` emitting `AudioVisualizationData`.
   - FFT data is now computed using SIMD-accelerated `pffft` with Blackman windowing and temporal smoothing.
