@@ -1,3 +1,12 @@
+##### 5.0.0 (XX Xxx 2026)
+- added **Agent Skills**: Install or update the skills in your project by running:
+
+```bash
+dart run flutter_soloud:skills
+# or this to check whether installed skills are up to date
+dart run flutter_soloud:skills --check
+```
+
 ##### 5.0.0-pre.2 (XX Xxx 2026)
 - **build system migration to Dart build hooks** (https://dart.dev/tools/hooks):
   - Android, iOS, macOS, Linux and Windows native code is now compiled by `hook/build.dart` (`package:hooks` + `package:native_toolchain_c`) instead of per-platform plumbing (Android CMake, iOS/macOS CocoaPods script phases, SwiftPM unity build). No CMake or podspec script phases are needed anymore.

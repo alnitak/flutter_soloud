@@ -97,7 +97,9 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
                   /// as soon as it will take to load it.
                   /// The sound will be disposed automatically when
                   /// it's finished.
-                  await soloud.playSource(asset: 'assets/audio/explosion.mp3');
+                  await soloud.playSource(
+                    asset: 'assets/audio/sample-OPUS.opus',
+                  );
                 },
                 child: const Text('play source'),
               ),
