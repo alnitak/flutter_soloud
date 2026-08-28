@@ -1,5 +1,5 @@
 ##### 5.0.0-pre.2 (XX Xxx 2026)
-- **build system migration to Dart build hooks** (https://dart.dev/tools/hooks):
+- **breaking change: build system migration to Dart build hooks** (https://dart.dev/tools/hooks):
   - Android, iOS, macOS, Linux and Windows native code is now compiled by `hook/build.dart` (`package:hooks` + `package:native_toolchain_c`) instead of per-platform plumbing (Android CMake, iOS/macOS CocoaPods script phases, SwiftPM unity build). No CMake or podspec script phases are needed anymore.
   - The Xiph libraries (Opus/Ogg/Vorbis/FLAC) are no longer compiled from source during the app build: the prebuilt artifacts shipped in this repo are linked (statically on Apple, bundled as shared libraries on Android/Windows).
   - `NO_XIPH_LIBS` is now configured via hook user-defines in the *app* pubspec instead of an environment variable:
@@ -12,7 +12,6 @@
   - The FFI surface in `src/bindings.cpp` now has a real header, `src/bindings.h`, which is the single ffigen entry point (the hand-maintained `src/ffi_gen_tmp.h` is gone).
   - Dart bindings now use `@Native` with asset id `package:flutter_soloud/src/bindings.cpp`; the native library is resolved by the VM, so no `DynamicLibrary.open`/force-load/`STRIP_STYLE` workarounds are needed.
   - Web is unchanged: hooks do not cover web, the emscripten build in `web/` is still used.
-  - Linux/Windows hook builds are ported from the previous CMake configuration but are currently untested.
 
 ##### 5.0.0-pre.1 (XX Xxx 2026)
 - **breaking change: audio visualization overhaul**:
