@@ -136,8 +136,7 @@ final class XiphLink {
           includeDirs: const ['linux/include'],
           bundledAssets: const [],
           dependencies: [
-            for (final lib in _xiphLibs)
-              packageRoot.resolve('$dir/lib$lib.so'),
+            for (final lib in _xiphLibs) packageRoot.resolve('$dir/lib$lib.so'),
           ],
         );
 
