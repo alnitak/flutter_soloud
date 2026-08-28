@@ -250,9 +250,9 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
 
   void _registerVisualizationCallback() {
     nativeVisualizationCallable ??=
-        ffi.NativeCallable<
-          native.dartVisualizationCallback_tFunction
-        >.listener(_visualizationDataCallback);
+        ffi.NativeCallable<native.dartVisualizationCallback_tFunction>.listener(
+          _visualizationDataCallback,
+        );
     native.setVisualizationCallbackForEngine(
       nativeVisualizationCallable!.nativeFunction,
       currentEngineId,
@@ -287,25 +287,25 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   Future<void> setDartEventCallbacks() async {
     // Create a NativeCallable for the Dart functions
     nativeVoiceEndedCallable =
-        ffi.NativeCallable<
-          native.dartVoiceEndedCallback_tFunction
-        >.listener(_voiceEndedCallback);
+        ffi.NativeCallable<native.dartVoiceEndedCallback_tFunction>.listener(
+          _voiceEndedCallback,
+        );
     nativeFileLoadedCallable =
-        ffi.NativeCallable<
-          native.dartFileLoadedCallback_tFunction
-        >.listener(_fileLoadedCallback);
+        ffi.NativeCallable<native.dartFileLoadedCallback_tFunction>.listener(
+          _fileLoadedCallback,
+        );
     nativeStateChangedCallable =
-        ffi.NativeCallable<
-          native.dartStateChangedCallback_tFunction
-        >.listener(_stateChangedCallback);
+        ffi.NativeCallable<native.dartStateChangedCallback_tFunction>.listener(
+          _stateChangedCallback,
+        );
     nativeMixerOutputDataCallable ??=
         ffi.NativeCallable<
           native.dartMixerOutputDataCallback_tFunction
         >.listener(_mixerOutputDataCallback);
     nativeVisualizationCallable ??=
-        ffi.NativeCallable<
-          native.dartVisualizationCallback_tFunction
-        >.listener(_visualizationDataCallback);
+        ffi.NativeCallable<native.dartVisualizationCallback_tFunction>.listener(
+          _visualizationDataCallback,
+        );
 
     native.setDartEventCallback(
       nativeVoiceEndedCallable!.nativeFunction,
@@ -688,11 +688,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   @override
   void loadFile(String completeFileName, LoadMode mode, int counter) {
     final ffi.Pointer<Utf8> cString = completeFileName.toNativeUtf8();
-    native.loadFile(
-      cString.cast<ffi.Char>(),
-      mode == LoadMode.memory,
-      counter,
-    );
+    native.loadFile(cString.cast<ffi.Char>(), mode == LoadMode.memory, counter);
     calloc.free(cString);
   }
 
@@ -991,13 +987,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     final ffi.Pointer<ffi.UnsignedInt> h = calloc(
       ffi.sizeOf<ffi.UnsignedInt>(),
     );
-    final e = native.loadWaveform(
-      waveform.index,
-      superWave,
-      scale,
-      detune,
-      h,
-    );
+    final e = native.loadWaveform(waveform.index, superWave, scale, detune, h);
     final soundHash = SoundHash(h.value);
     final ret = (error: PlayerErrors.values[e.value], soundHash: soundHash);
     calloc.free(h);
