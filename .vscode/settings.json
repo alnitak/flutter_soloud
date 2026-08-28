@@ -1,4 +1,11 @@
 {
+    "search.exclude": {
+        "**/ios/flutter_soloud/Sources/flutter_soloud/src": true,
+        "**/macos/flutter_soloud/Sources/flutter_soloud/src": true,
+        "**/ios/flutter_soloud/Sources/flutter_soloud/include": true,
+        "**/macos/flutter_soloud/Sources/flutter_soloud/include": true
+    },
+    "search.followSymlinks": false,
     "cmake.sourceDirectory": "/home/deimos/FLUTTER/libs/flutter_soloud/android",
     "files.associations": {
         "*.mdx": "markdown",

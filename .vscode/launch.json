@@ -8,11 +8,8 @@
             "name": "Flutter debug",
             "type": "dart",
             "request": "launch",
-            "program": "lib/audio_data/audio_data.dart",
+            "program": "lib/main.dart",
             "flutterMode": "debug",
-            // "env": {
-            //     "NO_XIPH_LIBS": "1"
-            // },
             "cwd": "${workspaceFolder}/example"
         },
         {
@@ -21,9 +18,6 @@
             "request": "launch",
             "program": "lib/mixing_bus/mixing_bus.dart",
             "flutterMode": "profile",
-            // "env": {
-            //     "NO_XIPH_LIBS": "1"
-            // },
             "cwd": "${workspaceFolder}/example"
         },
         {
@@ -32,9 +26,6 @@
             "request": "launch",
             "program": "tests/tests.dart",
             "flutterMode": "release",
-            // "env": {
-            //     "NO_XIPH_LIBS": "1"
-            // },
             "cwd": "${workspaceFolder}/example"
         },
         {

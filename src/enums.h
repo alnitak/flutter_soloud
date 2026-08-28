@@ -207,7 +207,7 @@ typedef void (*dartOnMoreDataIsNeededCallback_t)(uint64_t offset);
 typedef void (*dartOnAudioDurationCallback_t)(double duration);
 
 // callback handing dart a chunk of captured mixer output. Declared here rather
-// than in bindings.cpp so `ffi_gen_tmp.h` -- the ffigen entry point -- can name
+// than in bindings.cpp so `bindings.h` -- the ffigen entry point -- can name
 // it in the exports that take one.
 typedef void (*dartMixerOutputDataCallback_t)(unsigned char *data,
                                               uint64_t length);

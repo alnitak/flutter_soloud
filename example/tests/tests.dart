@@ -333,7 +333,7 @@ class _MyHomePageState extends State<MyHomePage> {
       output
         ..write('===== RUNNING "${tests[index].entry.name}" =====\n')
         ..write(result)
-        ..write('===== PASSED! =====\n\n')
+        ..write('===== PASSED! "${tests[index].entry.name}" =====\n\n')
         ..writeln();
       tests[index].status = TestStatus.passed;
       _updateOutput();
