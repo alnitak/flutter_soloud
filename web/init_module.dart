@@ -34,7 +34,7 @@ import 'package:web/web.dart' as web;
 external JSFunction? get moduleFactory; // null when the glue is not loaded
 
 @JS('Module_soloud')
-external JSObject moduleConstructor(); // Represents the IIFE
+external JSObject moduleConstructor([JSObject? moduleConfig]); // Represents the IIFE
 
 @JS('self.Module_soloud') // Attach Module_soloud to the global scope
 external set globalModule(JSObject module);
@@ -111,10 +111,10 @@ Future<void> initializeModule() async {
       final flavor = useMt ? 'mt' : 'st';
       buildFlavor = flavor.toJS;
       flutterSoloudHasAsyncify = useMt;
-      print(
-        'flutter_soloud: loading $flavor WASM build '
-        '(crossOriginIsolated: $isCrossOriginIsolated)',
-      );
+      final msg = 'flutter_soloud: loading $flavor WASM build '
+          '(crossOriginIsolated: $isCrossOriginIsolated)';
+      print(msg);
+      web.console.log(msg.toJS);
       await _loadScript(
         '$_assetsBase/libflutter_soloud_plugin${useMt ? '_mt' : ''}.js',
       );
@@ -125,18 +125,35 @@ Future<void> initializeModule() async {
       // The page loaded a glue script explicitly (old-style index.html).
       buildFlavor = 'manual'.toJS;
       flutterSoloudHasAsyncify = _sniffAsyncify();
+      const msg = 'flutter_soloud: loading manual WASM build';
+      print(msg);
+      web.console.log(msg.toJS);
     }
 
+    // Configure module options (e.g. locateFile to ensure .wasm and .js
+    // are resolved correctly from plugin package assets).
+    final config = <String, Object?>{
+      'locateFile': ((JSString path, JSString? scriptDir) {
+        final p = path.toDart;
+        return '$_assetsBase$p'.toJS;
+      }).toJS,
+    }.jsify()! as JSObject;
+
     // Convert JavaScript Promise to Dart Future
-    final modulePromise = moduleConstructor() as JSPromise;
+    final modulePromise = moduleConstructor(config) as JSPromise;
     final module = await JSPromiseToFuture<JSAny?>(modulePromise).toDart;
     if (module == null) {
       throw Exception('Module initialization failed: Module is null');
     }
     globalModule = module as JSObject; // Make it globally accessible
-    print('Module_soloud initialized and set globally.');
-  } catch (e) {
-    print('Failed to initialize Module_soloud: $e');
+    const readyMsg =
+        'flutter_soloud: Module_soloud initialized and set globally.';
+    print(readyMsg);
+    web.console.log(readyMsg.toJS);
+  } catch (e, st) {
+    final errMsg = 'flutter_soloud: Failed to initialize Module_soloud: $e\n$st';
+    print(errMsg);
+    web.console.error(errMsg.toJS);
     rethrow;
   }
 }
