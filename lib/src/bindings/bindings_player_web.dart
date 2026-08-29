@@ -414,7 +414,12 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }
 
   @override
-  Future<void> deinitAsync() async => deinit();
+  Future<void> deinitAsync() async {
+    _deinitQueued = true;
+    await _enqueueEngineOp(() async {
+      _doDeinit();
+    });
+  }
 
   @override
   void prepareEngineInit() {
