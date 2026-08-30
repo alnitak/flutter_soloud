@@ -7,7 +7,7 @@
 #define _IS_ANDROID_
 #elif __linux__
 #define _IS_LINUX_
-#elif _WIN32 | WIN32 | __WIN32 | _WIN64
+#elif defined(_WIN32) || defined(WIN32) || defined(__WIN32) || defined(_WIN64)
 #define _IS_WIN_
 #elif __APPLE__
 #include <TargetConditionals.h>
