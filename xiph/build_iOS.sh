@@ -205,6 +205,9 @@ for lib in "${LIBS[@]}"; do
     fi
 done
 
+# Remove FLAC++ C++ wrapper headers (not used and causes issues in C/Obj-C module headers)
+rm -rf "$INCLUDE_DIR/FLAC++"
+
 # Copy FLAC share headers
 if [ -d "$BASE_DIR/flac/include/share" ]; then
     cp -R "$BASE_DIR/flac/include/share" "$INCLUDE_DIR/"
