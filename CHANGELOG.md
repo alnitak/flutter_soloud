@@ -7,6 +7,9 @@ dart run flutter_soloud:skills
 dart run flutter_soloud:skills --check
 ```
 
+##### 5.0.0-pre.3 (30 Aug 2026)
+- fix: removed unused `FLAC++` headers from macOS and iOS include directories that caused compile-time errors in Xcode. Fixes #545.
+
 ##### 5.0.0-pre.2 (30 Aug 2026)
 - **breaking change: build system migration to Dart build hooks** (https://dart.dev/tools/hooks):
   - Android, iOS, macOS, Linux and Windows native code is now compiled by `hook/build.dart` (`package:hooks` + `package:native_toolchain_c`) instead of per-platform plumbing (Android CMake, iOS/macOS CocoaPods script phases, SwiftPM unity build). No CMake or podspec script phases are needed anymore.
