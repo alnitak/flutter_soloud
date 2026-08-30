@@ -334,6 +334,7 @@ org-dartlang-sdk:///lib/core/symbol.dart
 org-dartlang-sdk:///lib/core/type.dart
 org-dartlang-sdk:///lib/core/uri.dart
 org-dartlang-sdk:///lib/core/weak.dart
+org-dartlang-sdk:///lib/developer/creation_tracking.dart
 org-dartlang-sdk:///lib/developer/developer.dart
 org-dartlang-sdk:///lib/developer/extension.dart
 org-dartlang-sdk:///lib/developer/http_profiling.dart
