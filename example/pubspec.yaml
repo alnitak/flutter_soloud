@@ -42,9 +42,3 @@ flutter:
 
   assets:
     - assets/audio/
-
-## To disable the Xiph libraries, uncomment the following lines:
-# hooks:
-#   user_defines:
-#     flutter_soloud:
-#       no_xiph_libs: true

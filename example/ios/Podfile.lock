@@ -85,7 +85,7 @@ SPEC CHECKSUMS:
   DKPhotoGallery: b3834fecb755ee09a593d7c9e389d8b5d6deed60
   file_picker: a0560bc09d61de87f12d246fc47d2119e6ef37be
   Flutter: 71a624a5bc0c04062bf19101d501e466baf2fb47
-  flutter_soloud: 9f1184400eba4c826ee5ffaa0f2ad39903018ab2
+  flutter_soloud: 6d24bb642fe0b578f949aa01630ee85ecb9c64a3
   SDWebImage: e9fc87c1aab89a8ab1bbd74eba378c6f53be8abf
   sqflite_darwin: 20b2a3a3b70e43edae938624ce550a3cbf66a3d0
   SwiftyGif: 706c60cf65fa2bc5ee0313beece843c8eb8194d4

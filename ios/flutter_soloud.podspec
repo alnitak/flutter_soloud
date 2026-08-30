@@ -2,10 +2,6 @@
 # To learn more about a Podspec see http://guides.cocoapods.org/syntax/podspec.html.
 # Run `pod lib lint flutter_soloud.podspec` to validate before publishing.
 #
-# The native engine is built by the Dart build hook (hook/build.dart) and
-# bundled as a native code asset. This pod only provides the
-# FlutterSoloudPlugin class, which observes the FlutterEngine lifecycle.
-#
 Pod::Spec.new do |s|
   s.name             = 'flutter_soloud'
   s.version          = '0.0.1'
@@ -25,24 +21,167 @@ Flutter audio plugin using SoLoud library and FFI
   # `#import <flutter_soloud/FlutterSoloudPlugin.h>` working under CocoaPods too,
   # since the Sources glob does not reach into include/.
   s.source_files = [
-    'flutter_soloud/Sources/flutter_soloud/FlutterSoloudPlugin.mm',
+    'flutter_soloud/Sources/flutter_soloud/*',
     'flutter_soloud/include/FlutterSoloudPlugin.h',
   ]
   s.public_header_files = 'flutter_soloud/include/FlutterSoloudPlugin.h'
+  # flutter_soloud.mm is the SwiftPM wrapper that includes the full C++
+  # implementation. CocoaPods builds the same implementation through the
+  # CMake script phase below, so compiling the wrapper here defines duplicate
+  # symbols when the app also force-loads libflutter_soloud_plugin.a.
+  s.exclude_files = 'flutter_soloud/Sources/flutter_soloud/flutter_soloud.mm'
   s.dependency 'Flutter'
   s.platform = :ios, '13.0'
 
-  s.pod_target_xcconfig = {
-    'DEFINES_MODULE' => 'YES',
-    # FlutterSoloudPlugin.mm includes "engine_lifecycle.h" from src/.
-    'HEADER_SEARCH_PATHS' => ['$(PODS_TARGET_SRCROOT)/../src'],
-    # FlutterSoloudPlugin.mm calls the engine-lifecycle exports, which live in
-    # the native code asset built by the Dart build hook and loaded into the
-    # app. With `use_frameworks!` this pod becomes a dynamic framework with its
-    # own link step, where they would be undefined; dynamic lookup resolves
-    # them at load time against the app binary's loaded images.
-    'OTHER_LDFLAGS' => '$(inherited) -undefined dynamic_lookup',
+  # Check if we should disable Xiph libs support (must exist and be '1')
+  disable_xiph_libs = !ENV['NO_XIPH_LIBS'].nil? && ENV['NO_XIPH_LIBS'] == '1'
+
+  # Path to the plugin's source root from PODS_ROOT (available in app target context)
+  plugin_root = '${PODS_ROOT}/../.symlinks/plugins/flutter_soloud/ios'
+
+  preprocessor_definitions = ['$(inherited)']
+  if disable_xiph_libs
+    preprocessor_definitions << 'NO_XIPH_LIBS'
+  end
+  preprocessor_definitions << 'SIGNALSMITH_USE_PFFFT'
+
+  # Build the plugin's native code using CMake with release optimizations.
+  # The built library IS declared as an output file: the app target
+  # force_loads it, and Xcode's new build system validates force_load'd
+  # inputs when planning the build — without a declared producer, the first
+  # (clean) build fails with "Build input file cannot be found" before this
+  # phase has ever run, while the second build succeeds because the library
+  # already exists on disk. :always_out_of_date makes the phase run on every
+  # build anyway (CMake's incremental tracking makes it a fast no-op when no
+  # source file changed), so plugin source edits never link stale native
+  # code — the problem declaring only :output_files would cause.
+  build_script = <<-SCRIPT
+    # Backward-compatibility warning for renamed env variable
+    if [ -n "$NO_OPUS_OGG_LIBS" ]; then
+      echo "warning: NO_OPUS_OGG_LIBS is set. This has no effect because the setting has been renamed to NO_XIPH_LIBS. In your command line invocations and build scripts, simply replace all occurrences of NO_OPUS_OGG_LIBS (old) with NO_XIPH_LIBS (new)."
+    fi
+
+    # Xcode's build environment has a restricted PATH that may not include cmake.
+    # Add common locations where cmake might be installed before checking.
+    export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+
+    # Check for CMake availability
+    if ! command -v cmake &> /dev/null; then
+      echo "Error: CMake is not installed. Please install CMake to build flutter_soloud."
+      echo "  - On macOS: brew install cmake"
+      echo "  - Or visit: https://cmake.org/download/"
+      exit 1
+    fi
+
+    # Build flutter_soloud with CMake
+    #{disable_xiph_libs ? 'export NO_XIPH_LIBS=1' : 'unset NO_XIPH_LIBS'}
+    bash "${PODS_TARGET_SRCROOT}/build_cmake.sh"
+  SCRIPT
+
+  s.script_phase = {
+    :name => 'Build flutter_soloud with CMake',
+    :script => build_script,
+    :execution_position => :before_compile,
+    :output_files => ['${PODS_TARGET_SRCROOT}/cmake_build/$(PLATFORM_NAME)/libflutter_soloud_plugin.a'],
+    :always_out_of_date => '1',
   }
 
+  # Flutter.framework does not contain a i386 slice.
+  # pod_target_xcconfig: settings for the pod's own compilation target.
+  # NOTE: We use SDK-conditioned OTHER_LDFLAGS here (not vendored_libraries) because
+  # the Xiph libraries have separate -device and -simulator variants. vendored_libraries
+  # always injects the same -l flags regardless of SDK, which causes linker failures
+  # when building for simulator (it tries to link -device libs that lack simulator slices).
+  pod_xcconfig = { 
+    'HEADER_SEARCH_PATHS' => [
+      '$(PODS_TARGET_SRCROOT)/flutter_soloud/include',
+      '$(PODS_TARGET_SRCROOT)/flutter_soloud/include/opus',
+      '$(PODS_TARGET_SRCROOT)/flutter_soloud/include/ogg',
+      '$(PODS_TARGET_SRCROOT)/flutter_soloud/include/vorbis',
+      '$(PODS_TARGET_SRCROOT)/../src',
+      '$(PODS_TARGET_SRCROOT)/../src/soloud/include',
+      '${PODS_ROOT}/abseil',
+    ],
+    'GCC_PREPROCESSOR_DEFINITIONS' => preprocessor_definitions.join(' '),
+    'DEFINES_MODULE' => 'YES', 
+    'VALID_ARCHS' => 'arm64 x86_64',
+    'LIBRARY_SEARCH_PATHS' => [
+      '$(PODS_TARGET_SRCROOT)/cmake_build/$(PLATFORM_NAME)',
+      '$(PODS_TARGET_SRCROOT)/flutter_soloud/libs',
+    ],
+    "CLANG_CXX_LANGUAGE_STANDARD" => "c++17",
+    "CLANG_CXX_LIBRARY" => "libc++",
+    # FlutterSoloudPlugin.mm calls the engine-lifecycle exports, which live in
+    # libflutter_soloud_plugin.a — force-loaded into the *app* target, not into
+    # this pod. With the default static pod there is no link step here and the
+    # references resolve when the app links. With `use_frameworks!` this pod
+    # becomes a dynamic framework with its own link step, and they would be
+    # undefined; dynamic lookup resolves them at load time against the app
+    # binary, which is the same approach Package.swift already takes.
+    #
+    # Deliberately NOT linking another copy of libflutter_soloud_plugin.a here:
+    # that would give the framework its own SoLoud engine and lifecycle state,
+    # separate from the app's.
+    'OTHER_LDFLAGS' => '$(inherited) -undefined dynamic_lookup'
+  }
+
+  # Add SDK-conditioned linker flags for Xiph libs to the pod's own target
+  # Repeated in each SDK-conditioned variant on purpose: a conditioned
+  # OTHER_LDFLAGS replaces the unconditioned one for SDKs it matches, and
+  # $(inherited) resolves up the xcconfig hierarchy rather than to the
+  # unconditioned value beside it. Relying on inheritance here would silently
+  # drop dynamic lookup for every real device and simulator build.
+  if !disable_xiph_libs
+    pod_xcconfig['OTHER_LDFLAGS[sdk=iphoneos*]'] = '$(inherited) -undefined dynamic_lookup -logg_iOS-device -lopus_iOS-device -lvorbis_iOS-device -lvorbisenc_iOS-device -lvorbisfile_iOS-device -lFLAC_iOS-device'
+    pod_xcconfig['OTHER_LDFLAGS[sdk=iphonesimulator*]'] = '$(inherited) -undefined dynamic_lookup -logg_iOS-simulator -lopus_iOS-simulator -lvorbis_iOS-simulator -lvorbisenc_iOS-simulator -lvorbisfile_iOS-simulator -lFLAC_iOS-simulator'
+  end
+
+  s.pod_target_xcconfig = pod_xcconfig
+
+  # user_target_xcconfig: settings propagated to the APP target's linker.
+  # -force_load must be here because it's the app binary that needs the FFI symbols.
+  # We use PODS_ROOT-based paths because PODS_TARGET_SRCROOT is not available
+  # in the app target's context.
+  force_load_lib = "-force_load #{plugin_root}/cmake_build/$(PLATFORM_NAME)/libflutter_soloud_plugin.a"
+
+  if disable_xiph_libs
+    user_ldflags_device = force_load_lib
+    user_ldflags_sim = force_load_lib
+  else
+    user_ldflags_device = "#{force_load_lib} -L#{plugin_root}/flutter_soloud/libs -logg_iOS-device -lopus_iOS-device -lvorbis_iOS-device -lvorbisenc_iOS-device -lvorbisfile_iOS-device -lFLAC_iOS-device"
+    user_ldflags_sim = "#{force_load_lib} -L#{plugin_root}/flutter_soloud/libs -logg_iOS-simulator -lopus_iOS-simulator -lvorbis_iOS-simulator -lvorbisenc_iOS-simulator -lvorbisfile_iOS-simulator -lFLAC_iOS-simulator"
+  end
+
+  s.user_target_xcconfig = {
+    'OTHER_LDFLAGS[sdk=iphoneos*]' => "$(inherited) #{user_ldflags_device} -lc++",
+    'OTHER_LDFLAGS[sdk=iphonesimulator*]' => "$(inherited) #{user_ldflags_sim} -lc++",
+    'LIBRARY_SEARCH_PATHS' => "$(inherited) \"#{plugin_root}/cmake_build/$(PLATFORM_NAME)\" \"#{plugin_root}/flutter_soloud/libs\"",
+    # Fix for FFI symbol stripping on iOS Release builds
+    'STRIP_STYLE' => 'debugging',
+    'DEBUG_INFORMATION_FORMAT' => 'dwarf-with-dsym',
+  }
+  
+  # Do NOT use vendored_libraries for Xiph libs — it generates non-SDK-conditioned
+  # -l flags that always point to -device variants, breaking simulator builds.
+  # Instead, preserve_paths keeps the .a files from being stripped by CocoaPods,
+  # and the SDK-conditioned OTHER_LDFLAGS above handle linking.
+  if !disable_xiph_libs
+    s.preserve_paths = [
+      'flutter_soloud/libs/libopus_iOS-device.a',
+      'flutter_soloud/libs/libogg_iOS-device.a',
+      'flutter_soloud/libs/libopus_iOS-simulator.a',
+      'flutter_soloud/libs/libogg_iOS-simulator.a',
+      'flutter_soloud/libs/libvorbis_iOS-device.a',
+      'flutter_soloud/libs/libvorbis_iOS-simulator.a',
+      'flutter_soloud/libs/libvorbisenc_iOS-device.a',
+      'flutter_soloud/libs/libvorbisenc_iOS-simulator.a',
+      'flutter_soloud/libs/libvorbisfile_iOS-device.a',
+      'flutter_soloud/libs/libvorbisfile_iOS-simulator.a',
+      'flutter_soloud/libs/libFLAC_iOS-device.a',
+      'flutter_soloud/libs/libFLAC_iOS-simulator.a'
+    ]
+  end
+
   s.swift_version = '5.0'
+  s.ios.framework  = ['AudioToolbox', 'AVFAudio']
 end

@@ -1,6 +1,4 @@
-// The native code is built by the Dart build hook (hook/build.dart); this
-// Gradle module only provides the FlutterSoloudPlugin class, which observes
-// the FlutterEngine lifecycle.
+// The Android Gradle Plugin builds the native code with the Android NDK.
 
 group = "flutter.soloud.flutter_soloud"
 version = "1.0"
@@ -12,6 +10,7 @@ buildscript {
     }
 
     dependencies {
+        // The Android Gradle Plugin knows how to build native code with the NDK.
         classpath("com.android.tools.build:gradle:8.7.0")
     }
 }
@@ -32,8 +31,69 @@ android {
     // to bump the version in their app.
     compileSdk = 35
 
+    // Use the NDK version
+    // declared in /android/app/build.gradle file of the Flutter project.
+    // Replace it with a version number if this plugin requires a specific NDK version.
+    // (e.g. ndkVersion "23.1.7779620")
+    ndkVersion = android.ndkVersion
+
+    // Invoke the shared CMake build with the Android Gradle Plugin.
+    externalNativeBuild {
+        cmake {
+            path = "./CMakeLists.txt"
+
+            // The default CMake version for the Android Gradle Plugin is 3.10.2.
+            // https://developer.android.com/studio/projects/install-ndk#vanilla_cmake
+            //
+            // The Flutter tooling requires that developers have CMake 3.10 or later
+            // installed. You should not increase this version, as doing so will cause
+            // the plugin to fail to compile for some customers of the plugin.
+            // version "3.10.2"
+        }
+    }
+
     defaultConfig {
         minSdk = 21
+
+        // Define the variable once and use it everywhere.
+        // This checks for the project property first, then falls back to the environment variable.
+        def noXiphLibsValue = project.hasProperty('NO_XIPH_LIBS') ?
+                project.property('NO_XIPH_LIBS').toString() :
+                (System.getenv('NO_XIPH_LIBS') ?: 'false')
+
+        // Add this inside defaultConfig to affect all variants
+        externalNativeBuild {
+            cmake {
+                // println "=== Flutter SoLoud Plugin CMAKE ==="
+                // println "Passing to CMake: -DNO_XIPH_LIBS=${noXiphLibsValue}"
+
+                // Pass the determined value to CMake
+                if (noXiphLibsValue == 'true') {
+                    arguments "-DNO_XIPH_LIBS=${noXiphLibsValue}",
+                            "-DCMAKE_VERBOSE_MAKEFILE:BOOL=ON"
+                }
+
+                // Specify the correct target name
+                targets "flutter_soloud_plugin"
+            }
+        }
+    }
+
+    // Task to properly re-run CMake only when the variable changes.
+    tasks.whenTaskAdded { task ->
+        if (task.name.contains("externalNativeBuild")) {
+            // Read the variable the exact same way as in defaultConfig
+            def noXiphLibsValue = project.hasProperty('NO_XIPH_LIBS') ?
+                    project.property('NO_XIPH_LIBS').toString() :
+                    (System.getenv('NO_XIPH_LIBS') ?: 'false')
+
+            // println "=== Flutter SoLoud Plugin Task Configuration ==="
+            // println "Task sees NO_XIPH_LIBS as: ${noXiphLibsValue}"
+
+            // Make the task's execution depend on the value of the variable.
+            // This will cause CMake to re-run only if the value has changed since the last build.
+            task.inputs.property("NO_XIPH_LIBS", noXiphLibsValue)
+        }
     }
 
     compileOptions {

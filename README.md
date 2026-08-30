@@ -38,7 +38,7 @@ A high-performance audio plugin designed primarily for games and immersive appli
 
 If you are looking for a package to visualize audio using shaders or CustomPainter, please check out [audio_flux](https://pub.dev/packages/audio_flux). It uses this plugin for output and [flutter_recorder](https://pub.dev/packages/flutter_recorder) for input.
 
-The native code is built with [Dart build hooks](https://dart.dev/tools/hooks): no CMake, CocoaPods script phases, or SPM configuration is needed — it works the same whether your app uses CocoaPods or Swift Package Manager. To build without the bundled Opus/Ogg/Vorbis/FLAC libraries, set `hooks.user_defines.flutter_soloud.no_xiph_libs: true` in your app's `pubspec.yaml`.
+Also, if you are building using Swift Package Manager (SPM), please check out [iOS and MacOS Configuration](https://docs.page/alnitak/flutter_soloud_docs/get_started/setup#ios-and-macos-configuration).
 
 ## Documentation
 

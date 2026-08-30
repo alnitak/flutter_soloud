@@ -188,7 +188,7 @@ packages:
       path: ".."
       relative: true
     source: path
-    version: "5.0.0-pre.2"
+    version: "5.0.0-pre.0"
   flutter_test:
     dependency: "direct dev"
     description: flutter
@@ -199,14 +199,6 @@ packages:
     description: flutter
     source: sdk
     version: "0.0.0"
-  glob:
-    dependency: transitive
-    description:
-      name: glob
-      sha256: c3f1ee72c96f8f78935e18aa8cecced9ab132419e8625dc187e1c2408efc20de
-      url: "https://pub.dev"
-    source: hosted
-    version: "2.1.3"
   hooks:
     dependency: transitive
     description:
@@ -319,14 +311,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.19.0"
-  native_toolchain_c:
-    dependency: transitive
-    description:
-      name: native_toolchain_c
-      sha256: "9d233b6f2d9c52e1a2b5fbe70451d2c10ac674d3bb419d0ec8de14989d437c26"
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.19.4"
   objective_c:
     dependency: transitive
     description:
@@ -423,14 +407,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.1.8"
-  process:
-    dependency: transitive
-    description:
-      name: process
-      sha256: c6248e4526673988586e8c00bb22a49210c258dc91df5227d5da9748ecf79744
-      url: "https://pub.dev"
-    source: hosted
-    version: "5.0.5"
   pub_semver:
     dependency: transitive
     description:

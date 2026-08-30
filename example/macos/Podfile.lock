@@ -39,7 +39,7 @@ SPEC CHECKSUMS:
   audio_service: aa99a6ba2ae7565996015322b0bb024e1d25c6fd
   audio_session: eaca2512cf2b39212d724f35d11f46180ad3a33e
   file_picker: 7584aae6fa07a041af2b36a2655122d42f578c1a
-  flutter_soloud: fd7e85d03f0511c834c4cfd32c8888cf92712152
+  flutter_soloud: 9bd26595444cd552196bb82fc1635bae23235366
   FlutterMacOS: c232990155153907050900a2e175c7773903ba4e
   sqflite_darwin: 20b2a3a3b70e43edae938624ce550a3cbf66a3d0
 

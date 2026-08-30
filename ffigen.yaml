@@ -1,15 +1,12 @@
 # Run with `dart run ffigen --config ffigen.yaml`.
 name: FlutterSoLoudFfi
 description: 'FFI bindings to SoLoud'
-output: 'lib/src/bindings/flutter_soloud_ffigen.dart'
+output: 'lib/flutter_soloud_FFIGEN.dart'
 headers:
   entry-points:
-    - 'src/bindings.h'
+    - 'src/ffi_gen_tmp.h'
   include-directives:
-    - '**bindings.h'
-ffi-native:
-  asset-id: 'package:flutter_soloud/src/bindings.cpp'
-silence-enum-warning: true
+    - '**ffi_gen_tmp.h'
 preamble: |
   // ignore_for_file: always_specify_types
   // ignore_for_file: camel_case_types
@@ -17,3 +14,5 @@ preamble: |
 comments:
   style: any
   length: full
+compiler-opts:
+  - "-I/usr/lib/clang/20/include"
