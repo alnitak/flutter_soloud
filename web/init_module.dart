@@ -111,7 +111,8 @@ Future<void> initializeModule() async {
       final flavor = useMt ? 'mt' : 'st';
       buildFlavor = flavor.toJS;
       flutterSoloudHasAsyncify = useMt;
-      final msg = 'flutter_soloud: loading $flavor WASM build '
+      final msg =
+          'flutter_soloud: loading $flavor WASM build '
           '(crossOriginIsolated: $isCrossOriginIsolated)';
       print(msg);
       web.console.log(msg.toJS);
@@ -132,12 +133,14 @@ Future<void> initializeModule() async {
 
     // Configure module options (e.g. locateFile to ensure .wasm and .js
     // are resolved correctly from plugin package assets).
-    final config = <String, Object?>{
-      'locateFile': ((JSString path, JSString? scriptDir) {
-        final p = path.toDart;
-        return '$_assetsBase$p'.toJS;
-      }).toJS,
-    }.jsify()! as JSObject;
+    final config =
+        <String, Object?>{
+              'locateFile': ((JSString path, JSString? scriptDir) {
+                final p = path.toDart;
+                return '$_assetsBase$p'.toJS;
+              }).toJS,
+            }.jsify()!
+            as JSObject;
 
     // Convert JavaScript Promise to Dart Future
     final modulePromise = moduleConstructor(config) as JSPromise;
@@ -151,7 +154,8 @@ Future<void> initializeModule() async {
     print(readyMsg);
     web.console.log(readyMsg.toJS);
   } catch (e, st) {
-    final errMsg = 'flutter_soloud: Failed to initialize Module_soloud: $e\n$st';
+    final errMsg =
+        'flutter_soloud: Failed to initialize Module_soloud: $e\n$st';
     print(errMsg);
     web.console.error(errMsg.toJS);
     rethrow;
