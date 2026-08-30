@@ -1,4 +1,4 @@
-##### 5.0.0-pre.2 (XX Xxx 2026)
+##### 5.0.0-pre.2 (30 Aug 2026)
 - **breaking change: build system migration to Dart build hooks** (https://dart.dev/tools/hooks):
   - Android, iOS, macOS, Linux and Windows native code is now compiled by `hook/build.dart` (`package:hooks` + `package:native_toolchain_c`) instead of per-platform plumbing (Android CMake, iOS/macOS CocoaPods script phases, SwiftPM unity build). No CMake or podspec script phases are needed anymore.
   - The Xiph libraries (Opus/Ogg/Vorbis/FLAC) are no longer compiled from source during the app build: the prebuilt artifacts shipped in this repo are linked (statically on Apple, bundled as shared libraries on Android/Windows).
