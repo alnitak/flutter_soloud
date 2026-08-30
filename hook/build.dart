@@ -15,12 +15,11 @@
 //     flutter_soloud:
 //       no_xiph_libs: true   # build without Opus/Ogg/Vorbis/FLAC support
 
+import 'dart:io';
+
 import 'package:code_assets/code_assets.dart';
 import 'package:hooks/hooks.dart';
 import 'package:native_toolchain_c/native_toolchain_c.dart';
-
-import 'sources.dart';
-import 'xiph.dart';
 
 /// The asset id is `package:flutter_soloud/src/bindings.cpp`, matching the
 /// `asset-id` in `ffigen.yaml` used by the generated `@Native` bindings.
@@ -162,4 +161,226 @@ void main(List<String> args) async {
       output.dependencies.add(dependency);
     }
   });
+}
+
+// ---------------------------------------------------------------------------
+// Source collection
+// ---------------------------------------------------------------------------
+
+/// Collects the plugin sources (paths relative to [packageRoot]) for
+/// [targetOS].
+List<String> collectSources(Uri packageRoot, OS targetOS) {
+  final rootPath = packageRoot.toFilePath().replaceAll(r'\', '/');
+  final isApple = targetOS == OS.macOS || targetOS == OS.iOS;
+  final sources = <String>[];
+
+  void addDir(
+    String rel, {
+    bool recursive = false,
+    List<String> extensions = const ['.cpp'],
+    bool Function(String path)? exclude,
+  }) {
+    final dir = Directory.fromUri(packageRoot.resolve('src/$rel'));
+    if (!dir.existsSync()) return;
+    for (final entity in dir.listSync(recursive: recursive)) {
+      if (entity is! File) continue;
+      final path = entity.path.replaceAll(r'\', '/');
+      if (!extensions.any(path.endsWith)) continue;
+      if (exclude?.call(path) ?? false) continue;
+      final relPath = path.startsWith(rootPath)
+          ? path.substring(rootPath.length)
+          : path;
+      sources.add(relPath.startsWith('/') ? relPath.substring(1) : relPath);
+    }
+  }
+
+  // Plugin sources (src/CMakeLists.txt PLUGIN_SOURCES). `flutter_soloud.cpp`
+  // was the SwiftPM unity translation unit and is excluded on purpose.
+  addDir('', exclude: (p) => p.endsWith('/flutter_soloud.cpp'));
+  addDir('audiobuffer/');
+  addDir('filters/');
+  addDir('mixeroutput/');
+  addDir('synth/');
+  addDir('waveform/');
+  // pffft.c is C99; the toolchain compiles it as C based on its extension.
+  addDir('pffft/', extensions: const ['.c']);
+
+  // SoLoud engine (src/src.cmake TARGET_SOURCES).
+  addDir('soloud/src/core/');
+  addDir('soloud/src/filter/');
+  addDir(
+    'soloud/src/audiosource/',
+    recursive: true,
+    // openmpt is Windows-only with explicit opt-in; never built here.
+    exclude: (p) => p.contains('/openmpt/'),
+  );
+
+  // Backends: null and miniaudio everywhere, ALSA on Linux, CoreAudio on
+  // Apple. On Apple, soloud_miniaudio.cpp must be compiled as Objective-C++
+  // (miniaudio.h uses AVFoundation), so it is built separately from
+  // src/soloud_miniaudio_objc.mm by hook/build.dart instead.
+  addDir('soloud/src/backend/null/');
+  if (!isApple) {
+    addDir('soloud/src/backend/miniaudio/');
+  }
+  if (targetOS == OS.linux) {
+    addDir('soloud/src/backend/alsa/');
+  }
+  if (isApple) {
+    addDir('soloud/src/backend/coreaudio/');
+  }
+
+  return sources..sort();
+}
+
+// ---------------------------------------------------------------------------
+// Prebuilt Xiph library wiring
+// ---------------------------------------------------------------------------
+
+/// Xiph library basenames, in link order (vorbisfile/vorbisenc before vorbis,
+/// everything before ogg).
+const _xiphLibs = ['FLAC', 'opus', 'vorbisfile', 'vorbisenc', 'vorbis', 'ogg'];
+
+final _androidAbi = {
+  Architecture.arm: 'armeabi-v7a',
+  Architecture.arm64: 'arm64-v8a',
+  Architecture.ia32: 'x86',
+  Architecture.x64: 'x86_64',
+};
+
+/// How the prebuilt Xiph libraries are linked for one target.
+final class XiphLink {
+  XiphLink._({
+    required this.libraries,
+    required this.libraryDirectories,
+    required this.includeDirs,
+    required this.bundledAssets,
+    required this.dependencies,
+  });
+
+  factory XiphLink.empty() => XiphLink._(
+    libraries: const [],
+    libraryDirectories: const [],
+    includeDirs: const [],
+    bundledAssets: const [],
+    dependencies: const [],
+  );
+
+  factory XiphLink.forTarget(BuildInput input) {
+    final code = input.config.code;
+    final os = code.targetOS;
+    final packageRoot = input.packageRoot;
+    final packageName = input.packageName;
+
+    switch (os) {
+      case OS.macOS:
+        const dir = 'macos/flutter_soloud/libs';
+        return XiphLink._(
+          libraries: _xiphLibs,
+          libraryDirectories: [packageRoot.resolve(dir).toFilePath()],
+          includeDirs: const ['macos/flutter_soloud/include'],
+          bundledAssets: const [],
+          dependencies: [
+            for (final lib in _xiphLibs) packageRoot.resolve('$dir/lib$lib.a'),
+          ],
+        );
+
+      case OS.iOS:
+        // Device and simulator builds use separate static archives.
+        final suffix = switch (code.iOS.targetSdk) {
+          IOSSdk.iPhoneSimulator => 'simulator',
+          _ => 'device',
+        };
+        const dir = 'ios/flutter_soloud/libs';
+        final names = [for (final lib in _xiphLibs) '${lib}_iOS-$suffix'];
+        return XiphLink._(
+          libraries: names,
+          libraryDirectories: [packageRoot.resolve(dir).toFilePath()],
+          includeDirs: const ['ios/flutter_soloud/include'],
+          bundledAssets: const [],
+          dependencies: [
+            for (final name in names) packageRoot.resolve('$dir/lib$name.a'),
+          ],
+        );
+
+      case OS.android:
+        final abi = _androidAbi[code.targetArchitecture];
+        if (abi == null) {
+          throw UnsupportedError(
+            'Unsupported Android architecture: ${code.targetArchitecture}',
+          );
+        }
+        final dir = 'android/libs/$abi';
+        return XiphLink._(
+          libraries: _xiphLibs,
+          libraryDirectories: [packageRoot.resolve(dir).toFilePath()],
+          includeDirs: const ['android/include'],
+          bundledAssets: [
+            for (final lib in _xiphLibs)
+              CodeAsset(
+                package: packageName,
+                name: 'xiph/$abi/lib$lib.so',
+                linkMode: DynamicLoadingBundled(),
+                file: packageRoot.resolve('$dir/lib$lib.so'),
+              ),
+          ],
+          dependencies: [
+            for (final lib in _xiphLibs) packageRoot.resolve('$dir/lib$lib.so'),
+          ],
+        );
+
+      case OS.windows:
+        const dir = 'windows/libs';
+        return XiphLink._(
+          libraries: _xiphLibs,
+          libraryDirectories: [packageRoot.resolve(dir).toFilePath()],
+          includeDirs: const ['windows/include'],
+          bundledAssets: [
+            for (final lib in _xiphLibs)
+              CodeAsset(
+                package: packageName,
+                name: 'xiph/$lib.dll',
+                linkMode: DynamicLoadingBundled(),
+                file: packageRoot.resolve('$dir/$lib.dll'),
+              ),
+          ],
+          dependencies: [
+            for (final lib in _xiphLibs) ...[
+              packageRoot.resolve('$dir/$lib.lib'),
+              packageRoot.resolve('$dir/$lib.dll'),
+            ],
+          ],
+        );
+
+      case OS.linux:
+        const dir = 'linux/libs';
+        return XiphLink._(
+          libraries: _xiphLibs,
+          libraryDirectories: [packageRoot.resolve(dir).toFilePath()],
+          includeDirs: const ['linux/include'],
+          bundledAssets: const [],
+          dependencies: [
+            for (final lib in _xiphLibs) packageRoot.resolve('$dir/lib$lib.so'),
+          ],
+        );
+
+      default:
+        throw UnsupportedError('Unsupported target OS: $os');
+    }
+  }
+
+  /// Library names passed to the linker (`-l<name>`).
+  final List<String> libraries;
+
+  /// Directories searched for [libraries]. Absolute paths.
+  final List<String> libraryDirectories;
+
+  /// Xiph header directories, relative to the package root.
+  final List<String> includeDirs;
+
+  /// Extra code assets to bundle (prebuilt shared libraries).
+  final List<CodeAsset> bundledAssets;
+
+  /// Prebuilt files consumed by the build, for cache invalidation.
+  final List<Uri> dependencies;
 }
