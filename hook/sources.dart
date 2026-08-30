@@ -37,10 +37,7 @@ List<String> collectSources(Uri packageRoot, OS targetOS) {
 
   // Plugin sources (src/CMakeLists.txt PLUGIN_SOURCES). `flutter_soloud.cpp`
   // was the SwiftPM unity translation unit and is excluded on purpose.
-  addDir(
-    '',
-    exclude: (p) => p.endsWith('/flutter_soloud.cpp'),
-  );
+  addDir('', exclude: (p) => p.endsWith('/flutter_soloud.cpp'));
   addDir('audiobuffer/');
   addDir('filters/');
   addDir('mixeroutput/');
