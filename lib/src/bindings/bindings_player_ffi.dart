@@ -714,7 +714,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       mode == LoadMode.memory ? 1 : 0,
       hash,
     );
-    final soundHash = SoundHash(hash.value);
+    final soundHash = SoundHash.fromValue(hash.value);
     final ret = (error: PlayerErrors.values[e.value], soundHash: soundHash);
     calloc
       ..free(hash)
@@ -749,7 +749,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       bufferRight.length,
       hash,
     );
-    final soundHash = SoundHash(hash.value);
+    final soundHash = SoundHash.fromValue(hash.value);
     final ret = (error: PlayerErrors.values[e.value], soundHash: soundHash);
     calloc
       ..free(hash)
@@ -801,7 +801,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
               >() ??
           ffi.nullptr,
     );
-    final soundHash = SoundHash(hash.value);
+    final soundHash = SoundHash.fromValue(hash.value);
     final ret = (error: PlayerErrors.values[e.value], soundHash: soundHash);
     if (ret.error == PlayerErrors.noError && nativeCallbacks.hasCallbacks) {
       _bufferStreamNativeCallables[soundHash.hash] = nativeCallbacks;
@@ -943,7 +943,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       nativeCallbacks.onMoreDataIsNeeded?.nativeFunction ?? ffi.nullptr,
       nativeCallbacks.onAudioDuration?.nativeFunction ?? ffi.nullptr,
     );
-    final soundHash = SoundHash(hash.value);
+    final soundHash = SoundHash.fromValue(hash.value);
     final ret = (error: PlayerErrors.values[e.value], soundHash: soundHash);
     if (ret.error == PlayerErrors.noError && nativeCallbacks.hasCallbacks) {
       _bufferStreamNativeCallables[soundHash.hash] = nativeCallbacks;
@@ -988,7 +988,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       ffi.sizeOf<ffi.UnsignedInt>(),
     );
     final e = native.loadWaveform(waveform.index, superWave, scale, detune, h);
-    final soundHash = SoundHash(h.value);
+    final soundHash = SoundHash.fromValue(h.value);
     final ret = (error: PlayerErrors.values[e.value], soundHash: soundHash);
     calloc.free(h);
     return ret;

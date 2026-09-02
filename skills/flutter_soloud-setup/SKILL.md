@@ -46,7 +46,7 @@ Native C/C++ sources are compiled by [Dart build hooks](https://dart.dev/tools/h
 
 - **Web** — add to the `<body>` of `web/index.html`:
   ```html
-  <script src="assets/packages/flutter_soloud/web/init_module.dart.js" defer></script>
+  <script src="assets/packages/flutter_soloud/web/init_soloud.js" defer></script>
   ```
   The script auto-picks between the multi-threaded (AudioWorklet) and single-threaded (ScriptProcessorNode) WASM builds based on whether the page is cross-origin isolated. Details in [references/web.md](references/web.md).
 - **Linux** — requires ALSA headers: `sudo apt-get install libasound2-dev` (Debian/Ubuntu), `pacman -S alsa-lib` (Arch), `zypper install alsa-devel` (openSUSE).

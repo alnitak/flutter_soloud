@@ -5,7 +5,7 @@
 Add to the `<body>` of `web/index.html`:
 
 ```html
-<script src="assets/packages/flutter_soloud/web/init_module.dart.js" defer></script>
+<script src="assets/packages/flutter_soloud/web/init_soloud.js" defer></script>
 ```
 
 This loader picks the right WASM build at runtime. The older two-tag form that also loads `libflutter_soloud_plugin.js` explicitly still works but is unnecessary.

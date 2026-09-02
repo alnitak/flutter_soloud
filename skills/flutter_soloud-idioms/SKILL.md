@@ -53,6 +53,17 @@ Future<void> main() async {
 
 Divergences from audioplayers/just_audio you must unlearn:
 
+| Instead of (other plugins) | Do this in flutter_soloud |
+|---|---|
+| `final player = AudioPlayer()` | `SoLoud.instance` (singleton, no player instances) |
+| `player.setSourceUrl(url)` then `player.resume()` | `final sound = await SoLoud.instance.loadUrl(url);` then `SoLoud.instance.play(sound);` |
+| `player.onPlayerComplete.listen(...)` | `sound.soundEvents.listen((e) { if (e.event == SoundEventType.handleIsNoMoreValid) ... })` or `sound.allInstancesFinished.first` |
+| `player.setVolume(0.5)` | `SoLoud.instance.setVolume(handle, 0.5)` (per-handle) or `SoLoud.instance.setGlobalVolume(0.5)` |
+| `player.seek(pos)` | `SoLoud.instance.seek(handle, pos)` (handles only; can't seek unloaded sources) |
+| `player.stop()` | `SoLoud.instance.stop(handle)` or `SoLoud.instance.stopAudioSource(sound)` |
+
+## What flutter_soloud is NOT
+
 - No per-player objects. There is one engine; `play()` returns a handle, not a player.
 - No built-in "onComplete" on the handle. Listen to `source.soundEvents` (`SoundEventType.handleIsNoMoreValid`) or `source.allInstancesFinished` instead.
 - No playlists, no `AudioPlayer.setUrl`, no media-session integration. Sources are loaded explicitly and reused.
@@ -65,7 +76,7 @@ Divergences from audioplayers/just_audio you must unlearn:
 - **Hot restart safety is handled, but only via re-init.** The native engine survives a hot restart while Dart callbacks die; the next `init()` detects this and reinitializes (you'll see a warning in logs). Pattern: call `init()` from a startup path that re-runs after restart. See `example/tests/tests/hot_restart_lifecycle.dart`.
 - **`play()` cannot report audio-device failures.** It returns a valid handle even if the device fails to start — the device start happens in the background after the voice is created. Silence with no exception means: listen to `SoLoud.instance.audioDeviceStartFailures` and recover with `await SoLoud.instance.startAudioDevice()`.
 - **Voice limit silently steals.** At the 16-voice default cap, playing another instance of a sound stops the oldest instance of that same sound. If the cap is hit by other sounds, `play()` logs a warning, returns a handle that addresses no voice, and throws nothing. Raise the cap with `setMaxActiveVoiceCount(...)` — values of 0 or >1023 are silently ignored by the engine.
-- **Web:** add `<script src="assets/packages/flutter_soloud/web/init_module.dart.js" defer></script>` to `web/index.html`. `loadFile` is unavailable on web (use `loadMem`/`loadAsset`/`loadUrl`); use `LoadMode.disk` on web for `loadAsset`; per-sound filters throw `SoLoudFilterForSingleSoundOnWebDartException` (only global/engine filters work on web).
+- **Web:** add `<script src="assets/packages/flutter_soloud/web/init_soloud.js" defer></script>` to `web/index.html`. `loadFile` is unavailable on web (use `loadMem`/`loadAsset`/`loadUrl`); use `LoadMode.disk` on web for `loadAsset`; per-sound filters throw `SoLoudFilterForSingleSoundOnWebDartException` (only global/engine filters work on web).
 - **Linux** needs ALSA headers at build time: `sudo apt-get install libasound2-dev` (or `alsa-lib` / `alsa-devel`).
 - **Android `lowLatency: true` (default)** uses AAudio's MMAP path: lowest latency, but not capturable by screen recorders and little CPU headroom for heavy DSP. Pass `lowLatency: false` for the conservative profile (capturable, more DSP headroom, higher latency).
 - **Platform minimums:** Android API 21, iOS 13.0, macOS 10.15.
