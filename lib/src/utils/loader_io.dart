@@ -178,11 +178,12 @@ class SoLoudLoader {
       final existingFile = _temporaryFiles[id]!;
       if (existingFile.existsSync()) {
         _log.finest(() => 'Asset $key already exists as a temporary file.');
-        final audioSource = SoLoud.instance.loadFile(
+        final audioSource = await SoLoud.instance.loadFile(
           existingFile.path,
           mode: mode,
           autoDispose: autoDispose,
         );
+        audioSource.tempFilePath = existingFile.path;
         return audioSource;
       }
     }
@@ -227,11 +228,12 @@ class SoLoudLoader {
 
     _temporaryFiles[id] = newFile;
 
-    final audioSource = SoLoud.instance.loadFile(
+    final audioSource = await SoLoud.instance.loadFile(
       newFile.path,
       mode: mode,
       autoDispose: autoDispose,
     );
+    audioSource.tempFilePath = newFile.path;
     return audioSource;
   }
 
@@ -271,6 +273,7 @@ class SoLoudLoader {
           mode: mode,
           autoDispose: autoDispose,
         );
+        newAudioSource.tempFilePath = existingFile.path;
         return newAudioSource;
       }
     }
@@ -326,7 +329,9 @@ class SoLoudLoader {
     final newAudioSource = await SoLoud.instance.loadFile(
       newFile.path,
       mode: mode,
+      autoDispose: autoDispose,
     );
+    newAudioSource.tempFilePath = newFile.path;
 
     return newAudioSource;
   }

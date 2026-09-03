@@ -59,6 +59,8 @@ Supported formats: MP3, WAV, OGG (Vorbis/Opus/FLAC), FLAC.
 - `await SoLoud.instance.disposeAllSources()` — disposes everything loaded (not needed at engine shutdown).
 - `SoLoud.instance.isValidAudioSource(source)` — true while the source is loaded.
 - `source.autoDispose` (settable property or loader parameter) — when true, the source is disposed automatically once all its handles finish. Ideal for one-shot SFX; don't use for sources you replay.
+- `source.soundPath` — the parameter (file path, asset key, URL, or buffer identifier) used to load this audio source (`''` for waveforms/speech).
+- `source.tempFilePath` — the path to the temporary file created on disk when loading an asset or URL on native platforms (`''` if none was created).
 - `source.handles` — unmodifiable set of `SoundHandle`s of currently playing instances.
 - `source.soundEvents` — broadcast stream of `({SoundEventType event, AudioSource sound, SoundHandle handle})` records. `SoundEventType` has only `handleIsNoMoreValid` (a handle finished or was stopped) and `soundDisposed`.
 - `source.allInstancesFinished` — stream that fires each time the count of playing instances drops to zero; the safe-dispose signal:

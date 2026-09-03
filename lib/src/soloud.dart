@@ -929,7 +929,10 @@ interface class SoLoud {
             return;
           }
 
-          final newSound = AudioSource(SoundHash(hash));
+          final newSound = AudioSource(
+            SoundHash(hash),
+            soundPath: completeFileName,
+          );
           _logPlayerError(error, from: 'loadFile() result');
           if (error == PlayerErrors.noError) {
             _activeSounds.add(newSound);
@@ -1041,7 +1044,10 @@ interface class SoLoud {
             error != PlayerErrors.fileAlreadyLoaded)) {
       throw SoLoudCppException.fromPlayerError(error);
     }
-    final newSound = AudioSource(SoundHash(hash));
+    final newSound = AudioSource(
+      SoundHash(hash),
+      soundPath: completeFileName,
+    );
     _logPlayerError(error, from: 'loadFile() result');
     if (error == PlayerErrors.noError) {
       _activeSounds.add(newSound);
@@ -2008,6 +2014,7 @@ interface class SoLoud {
       assetBundle: assetBundle,
       autoDispose: autoDispose,
     );
+    newAudioSource.soundPath = key;
 
     return newAudioSource;
   }
@@ -2061,6 +2068,7 @@ interface class SoLoud {
       httpClient: httpClient,
       autoDispose: autoDispose,
     );
+    newAudioSource.soundPath = url;
 
     return newAudioSource;
   }

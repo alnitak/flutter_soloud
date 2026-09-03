@@ -3,6 +3,7 @@
   ```html
   <script src="assets/packages/flutter_soloud/web/init_soloud.js" defer></script>
   ```
+- **AudioSource source tracking**: Added `soundPath` and `tempFilePath` to `AudioSource` to query the source identifier (`path`, asset `key`, or `url`) and any temporary file created on disk on native platforms.
 - added **Agent Skills**: Install or update the skills in your project by running:
 
 ```bash
