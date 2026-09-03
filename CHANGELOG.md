@@ -1,16 +1,28 @@
-##### 5.0.0 (XX Xxx 2026)
-- **breaking change: web loader rename**: Renamed `web/init_module.dart` and the compiled JavaScript loader `web/init_module.dart.js` to `web/init_soloud.dart` and `web/init_soloud.js`. Update `web/index.html` to:
-  ```html
-  <script src="assets/packages/flutter_soloud/web/init_soloud.js" defer></script>
+##### 5.0.0 (3 Sep 2026)
+> - **⚠️ IMPORTANT CHANGES in v5 ⚠️**:
+>   - **breaking change: web loader rename**: Renamed `web/init_module.dart`. Update `web/index.html` to:
+>     ```html
+>     <script src="assets/packages/flutter_soloud/web/init_soloud.js" defer></script>
+>     ```
+>     This script will automatically load single thread or multi thread WASM module, which uses AudioWorklet, depending on the server configuration. [***See docs***](https://docs.page/alnitak/flutter_soloud_docs/get_started/web_notes).
+>   - **breaking change:** `NO_XIPH_LIBS` is now configured via hook user-defines in the *app* pubspec instead of an environment variable:
+>     ```yaml
+>     hooks:
+>       user_defines:
+>         flutter_soloud:
+>           no_xiph_libs: true
+>     ```
+>   - **breaking change: audio visualization overhaul:** Replaced the legacy `AudioData` polling class with a reactive stream: `SoLoud.instance.audioVisualizationEvents` emitting `AudioVisualizationData`. [***See docs***](https://docs.page/alnitak/flutter_soloud_docs/visualization/audio_data).
+
+---
+
+- added **Agent Skills**: Install or update the skills in your project by running:
+  ```bash
+  dart run flutter_soloud:skills
+  # or this to check whether installed skills are up to date
+  dart run flutter_soloud:skills --check
   ```
 - **AudioSource source tracking**: Added `soundPath` and `tempFilePath` to `AudioSource` to query the source identifier (`path`, asset `key`, or `url`) and any temporary file created on disk on native platforms.
-- added **Agent Skills**: Install or update the skills in your project by running:
-
-```bash
-dart run flutter_soloud:skills
-# or this to check whether installed skills are up to date
-dart run flutter_soloud:skills --check
-```
 
 ##### 5.0.0-pre.3 (30 Aug 2026)
 - fix: removed unused `FLAC++` headers from macOS and iOS include directories that caused compile-time errors in Xcode. Fixes #545.
@@ -19,7 +31,7 @@ dart run flutter_soloud:skills --check
 - **breaking change: build system migration to Dart build hooks** (https://dart.dev/tools/hooks):
   - Android, iOS, macOS, Linux and Windows native code is now compiled by `hook/build.dart` (`package:hooks` + `package:native_toolchain_c`) instead of per-platform plumbing (Android CMake, iOS/macOS CocoaPods script phases, SwiftPM unity build). No CMake or podspec script phases are needed anymore.
   - The Xiph libraries (Opus/Ogg/Vorbis/FLAC) are no longer compiled from source during the app build: the prebuilt artifacts shipped in this repo are linked (statically on Apple, bundled as shared libraries on Android/Windows).
-  - `NO_XIPH_LIBS` is now configured via hook user-defines in the *app* pubspec instead of an environment variable:
+  - **breaking change:** `NO_XIPH_LIBS` is now configured via hook user-defines in the *app* pubspec instead of an environment variable:
     ```yaml
     hooks:
       user_defines:
