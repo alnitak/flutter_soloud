@@ -1044,10 +1044,7 @@ interface class SoLoud {
             error != PlayerErrors.fileAlreadyLoaded)) {
       throw SoLoudCppException.fromPlayerError(error);
     }
-    final newSound = AudioSource(
-      SoundHash(hash),
-      soundPath: completeFileName,
-    );
+    final newSound = AudioSource(SoundHash(hash), soundPath: completeFileName);
     _logPlayerError(error, from: 'loadFile() result');
     if (error == PlayerErrors.noError) {
       _activeSounds.add(newSound);

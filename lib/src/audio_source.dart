@@ -53,11 +53,7 @@ enum SoundEventType {
 class AudioSource {
   /// Constructs an instance of [AudioSource].
   @internal
-  AudioSource(
-    this.soundHash, {
-    this.soundPath = '',
-    this.tempFilePath = '',
-  });
+  AudioSource(this.soundHash, {this.soundPath = '', this.tempFilePath = ''});
 
   /// The hash uniquely identifying this loaded sound.
   final SoundHash soundHash;
