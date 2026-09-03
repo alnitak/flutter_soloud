@@ -7,11 +7,11 @@ import 'package:web/web.dart' as web;
 
 /// Initialize the WASM module before the app starts.
 /// It must be compiled with
-/// `dart compile js -O3 -o init_module.dart.js ./init_module.dart`
-/// and the resulting `init_module.dart.js` must be added as a script
+/// `dart compile js -O3 -o init_soloud.js ./init_soloud.dart`
+/// and the resulting `init_soloud.js` must be added as a script
 /// in the `index.html`:
 /// ```html
-/// <script src="assets/packages/flutter_soloud/web/init_module.dart.js" defer></script>
+/// <script src="assets/packages/flutter_soloud/web/init_soloud.js" defer></script>
 /// ```
 ///
 /// This script picks the right WASM build flavor at runtime and loads its

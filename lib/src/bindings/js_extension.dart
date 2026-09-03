@@ -15,25 +15,25 @@ external String? get miniaudioAudioContextState;
 @JS('globalThis.crossOriginIsolated')
 external bool? get isCrossOriginIsolated;
 
-/// The WASM module instance. Null until `init_module.dart.js` has finished
+/// The WASM module instance. Null until `init_soloud.js` has finished
 /// instantiating it (or if the glue failed to load).
 @JS('self.Module_soloud')
 external JSObject? get moduleSoloudInstance;
 
-/// Promise exposed by `init_module.dart.js` that resolves when the WASM
+/// Promise exposed by `init_soloud.js` that resolves when the WASM
 /// module is ready. Used to wait out the startup race instead of crashing
 /// when the engine is initialized while the module is still loading.
 @JS('self.flutter_soloud_ready')
 external JSPromise? get flutterSoloudReady;
 
 /// Whether the loaded WASM build was compiled with ASYNCIFY (only the
-/// multi-threaded AudioWorklet build is). Set by `init_module.dart.js`.
+/// multi-threaded AudioWorklet build is). Set by `init_soloud.js`.
 /// Used to decide whether `initEngine`/`changeDevice` must go through
 /// `ccall({async: true})`.
 @JS('self.flutter_soloud_has_asyncify')
 external bool? get flutterSoloudHasAsyncify;
 
-/// The WASM build flavor in use, set by `init_module.dart.js`:
+/// The WASM build flavor in use, set by `init_soloud.js`:
 /// `mt` (multi-threaded, requires cross-origin isolation),
 /// `st` (single-threaded) or `manual` (glue script loaded by the page).
 @JS('self.flutter_soloud_build')

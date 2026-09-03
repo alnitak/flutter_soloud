@@ -1,3 +1,16 @@
+##### 5.0.0 (XX Xxx 2026)
+- **breaking change: web loader rename**: Renamed `web/init_module.dart` and the compiled JavaScript loader `web/init_module.dart.js` to `web/init_soloud.dart` and `web/init_soloud.js`. Update `web/index.html` to:
+  ```html
+  <script src="assets/packages/flutter_soloud/web/init_soloud.js" defer></script>
+  ```
+- added **Agent Skills**: Install or update the skills in your project by running:
+
+```bash
+dart run flutter_soloud:skills
+# or this to check whether installed skills are up to date
+dart run flutter_soloud:skills --check
+```
+
 ##### 5.0.0-pre.3 (30 Aug 2026)
 - fix: removed unused `FLAC++` headers from macOS and iOS include directories that caused compile-time errors in Xcode. Fixes #545.
 
@@ -27,7 +40,7 @@
 > - **Render-ahead ring (native)**: Ultra-low keypress-to-sound latency via retroactive mixing into a lookahead ring buffer (mostly real-time audio for `playScheduled` and `playClocked` calls which play in the current audio frame, e.g. 10 ms latency).
 > - **Device management & async control**: Non-blocking device start/stop, async `changeDevice()`, and configurable idle timeouts to save power/wakelocks.
 > - **breaking change**: `changeDevice()` now returns `Future<void>` instead of `void`.
-> - **breaking change: Web AudioWorklet**: Dedicated audio thread rendering on Web (immune to UI/GC jank) when cross-origin isolated. Use `<script src="assets/packages/flutter_soloud/web/init_module.dart.js" defer></script>` in `index.html` to automatically detect which module can be used on the web server.
+> - **breaking change: Web AudioWorklet**: Dedicated audio thread rendering on Web (immune to UI/GC jank) when cross-origin isolated. Use `<script src="assets/packages/flutter_soloud/web/init_soloud.js" defer></script>` in `index.html` to automatically detect which module can be used on the web server.
 > - **Lifecycle fixes**: Native engine lifecycle is now tied to `FlutterEngine` to fix hot-restart leaks.
 > - **Extended playback controls**: Added `scale`, `looping`, `loopinStart`, and `loopingEnd` to all `play*` methods.
 ---
@@ -45,8 +58,8 @@
 - Android now stops the audio device when idle (no active voices) like every other platform, releasing the audioserver `AudioMix` partial wakelock #250. Use `setAudioDeviceIdleTimeout(null)` to keep it running.
 - fix: a voice created with `paused: true` is no longer silently unpaused by the buffer-stream buffering logic.
 - many internal fixes: device operations are serialized and race-free, OS interruptions can no longer race device operations, a failed device start rebuilds and retries once, and engine teardown no longer crashes, hangs, or spuriously restarts the device while notifications are in flight. Thanks to @Colton127 #508
-- web: **AudioWorklet rendering**. A second, multi-threaded WASM build flavor (`libflutter_soloud_plugin_mt.js/.wasm`, compiled with `-pthread`/`SharedArrayBuffer` + `MA_ENABLE_AUDIO_WORKLETS` + `-sAUDIO_WORKLET=1 -sWASM_WORKERS=1 -sASYNCIFY=1`) renders audio on a real-time AudioWorklet thread instead of the deprecated main-thread `ScriptProcessorNode`, making mixing immune to Flutter UI/GC jank. `init_module.dart.js` picks it automatically only when the page is cross-origin isolated (COOP/COEP headers); everywhere else the single-threaded `ScriptProcessorNode` flavor is used, so hosts that cannot send those headers (e.g. game portals) keep working unchanged #523
-- **breaking change: web NOTE**: due to the latter, in the `index.html` only the row below should be left: `<script src="assets/packages/flutter_soloud/web/init_module.dart.js" defer></script>`
+- web: **AudioWorklet rendering**. A second, multi-threaded WASM build flavor (`libflutter_soloud_plugin_mt.js/.wasm`, compiled with `-pthread`/`SharedArrayBuffer` + `MA_ENABLE_AUDIO_WORKLETS` + `-sAUDIO_WORKLET=1 -sWASM_WORKERS=1 -sASYNCIFY=1`) renders audio on a real-time AudioWorklet thread instead of the deprecated main-thread `ScriptProcessorNode`, making mixing immune to Flutter UI/GC jank. `init_soloud.js` picks it automatically only when the page is cross-origin isolated (COOP/COEP headers); everywhere else the single-threaded `ScriptProcessorNode` flavor is used, so hosts that cannot send those headers (e.g. game portals) keep working unchanged #523
+- **breaking change: web NOTE**: due to the latter, in the `index.html` only the row below should be left: `<script src="assets/packages/flutter_soloud/web/init_soloud.js" defer></script>`
 
 ##### 4.1.7 (8 Aug 2026)
 - fix: a device change that still fails now reports `SoLoudAudioDeviceFailedToStartCppException` instead of hanging. Thanks to @Colton127 #533

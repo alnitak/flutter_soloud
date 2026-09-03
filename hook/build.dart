@@ -15,6 +15,8 @@
 //     flutter_soloud:
 //       no_xiph_libs: true   # build without Opus/Ogg/Vorbis/FLAC support
 
+// ignore_for_file: avoid_print
+
 import 'dart:io';
 
 import 'package:code_assets/code_assets.dart';
@@ -39,6 +41,13 @@ void main(List<String> args) async {
     // `hooks.user_defines.flutter_soloud.no_xiph_libs: true` in the root
     // app's pubspec.
     final noXiph = input.userDefines['no_xiph_libs'] == true;
+    // The output of `print` is redirected to stdout, and it is saved in
+    // .dart_tool/hooks_runner/flutter_soloud/05f475f993/stdout.txt
+    if (noXiph) {
+      print('Building without Xiph libs');
+    } else {
+      print('Building with Xiph libs');
+    }
     final xiph = noXiph ? XiphLink.empty() : XiphLink.forTarget(input);
 
     final defines = <String, String?>{

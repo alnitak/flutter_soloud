@@ -337,7 +337,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }
 
   /// Waits for the WASM module to finish loading. `SoLoud.init()` can be
-  /// called by the app while `init_module.dart.js` is still instantiating
+  /// called by the app while `init_soloud.js` is still instantiating
   /// the module (especially with the larger multi-threaded build); without
   /// this the first bindings call would hit a not-yet-defined `Module_soloud`.
   Future<void> _ensureModuleReady() async {
@@ -356,7 +356,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
       );
       return;
     }
-    // init_module.dart.js has not started yet (or is not included in the
+    // init_soloud.js has not started yet (or is not included in the
     // page); poll briefly for it to appear and finish.
     for (var i = 0; i < 100 && !_isModuleInstantiated(); i++) {
       await Future<void>.delayed(const Duration(milliseconds: 50));
@@ -565,7 +565,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     if (_deinitQueued) {
       return false;
     }
-    // The module may still be loading (init_module.dart.js instantiates it
+    // The module may still be loading (init_soloud.js instantiates it
     // asynchronously); treat that as "not initialized" instead of crashing.
     // Note that between the glue load and the end of the instantiation
     // `Module_soloud` is the factory function, so also guard against calling
@@ -576,7 +576,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     }
     // The multi-threaded WASM build uses SharedArrayBuffer for its memory and
     // therefore needs cross-origin isolation. That combination cannot happen
-    // when the flavor is picked automatically (init_module.dart.js loads the
+    // when the flavor is picked automatically (init_soloud.js loads the
     // MT build only when the page is isolated), but it can happen if the page
     // loads the MT glue script manually (`manual` flavor) without COOP/COEP
     // headers. Warn only in that case.
@@ -588,7 +588,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
         '(libflutter_soloud_plugin_mt.js) manually, serve the app with '
         '`Cross-Origin-Opener-Policy: same-origin` and '
         '`Cross-Origin-Embedder-Policy: require-corp` headers, or let '
-        'init_module.dart.js pick the build automatically.',
+        'init_soloud.js pick the build automatically.',
       );
     }
     try {
@@ -639,7 +639,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
 
     /// "*" means unsigned int 32
     final hash = wasmGetI32Value(hashPtr, '*');
-    final soundHash = SoundHash(hash);
+    final soundHash = SoundHash.fromValue(hash);
     final ret = (error: PlayerErrors.values[result], soundHash: soundHash);
 
     wasmFree(hashPtr);
@@ -681,7 +681,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
 
     /// "*" means unsigned int 32
     final hash = wasmGetI32Value(hashPtr, '*');
-    final soundHash = SoundHash(hash);
+    final soundHash = SoundHash.fromValue(hash);
     final ret = (error: PlayerErrors.values[result], soundHash: soundHash);
 
     wasmFree(hashPtr);
@@ -718,7 +718,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
       onMetadata == null ? 0 : 1,
     );
     final hash = wasmGetI32Value(hashPtr, 'i32');
-    final soundHash = SoundHash(hash);
+    final soundHash = SoundHash.fromValue(hash);
     final ret = (error: PlayerErrors.values[result], soundHash: soundHash);
     wasmFree(hashPtr);
 
@@ -783,7 +783,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
       onAudioDuration == null ? 0 : 1,
     );
     final hash = wasmGetI32Value(hashPtr, 'i32');
-    final soundHash = SoundHash(hash);
+    final soundHash = SoundHash.fromValue(hash);
     final ret = (error: PlayerErrors.values[result], soundHash: soundHash);
     wasmFree(hashPtr);
 
@@ -981,7 +981,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
 
     /// "*" means unsigned int 32
     final hash = wasmGetI32Value(hashPtr, 'i32');
-    final soundHash = SoundHash(hash);
+    final soundHash = SoundHash.fromValue(hash);
     final ret = (error: PlayerErrors.values[result], soundHash: soundHash);
     wasmFree(hashPtr);
 

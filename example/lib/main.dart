@@ -66,10 +66,6 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
             children: [
               ElevatedButton(
                 onPressed: () async {
-                  /// This will eventually dispose (and stop) any previously
-                  /// loaded sources.
-                  await soloud.disposeAllSources();
-
                   /// Load the audio source. Note that the audio is loaded
                   /// into memory and should manually disposed to free it.
                   if (kIsWeb) {
@@ -97,9 +93,19 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
                   /// as soon as it will take to load it.
                   /// The sound will be disposed automatically when
                   /// it's finished.
-                  await soloud.playSource(asset: 'assets/audio/explosion.mp3');
+                  await soloud.playSource(
+                    asset: 'assets/audio/sample-OPUS.opus',
+                  );
                 },
                 child: const Text('play source'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  /// This will eventually dispose (and stop) any previously
+                  /// loaded sources.
+                  await soloud.disposeAllSources();
+                },
+                child: const Text('dispose all sources'),
               ),
             ],
           ),
