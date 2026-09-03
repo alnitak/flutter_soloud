@@ -1,5 +1,5 @@
 ---
-name: flutter_soloud-mixing-bus
+name: flutter-soloud-mixing-bus
 version: 1
 description: Teaches how to use flutter_soloud mixing buses (Bus/Buses) to route groups of sounds through a shared sub-mix for collective volume control and shared filters. Use when the user asks for separate music/SFX/UI volume sliders, grouped effects, ducking music under voice, routing sounds between categories at runtime, or a per-category audio mixer in a game or app using flutter_soloud.
 ---
@@ -71,7 +71,7 @@ Future<void> main() async {
   routed through the bus on top of each voice's own volume.
 - `bus.filters` — a `FiltersSingle` scoped to this bus; filters activated
   here apply to all routed sounds only (engine-wide filters live on
-  `SoLoud.instance.filters`). See skill `flutter_soloud-filters`.
+  `SoLoud.instance.filters`). See skill `flutter-soloud-filters`.
 - `bus.setChannels({Channels channels = Channels.stereo})` — bus output
   channel count (`Channels.mono/stereo/quad/surround51/dolby71`).
 - `bus.getChannelVolume(channel)` — approximate per-channel output level for

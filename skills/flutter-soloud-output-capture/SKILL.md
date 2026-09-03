@@ -1,5 +1,5 @@
 ---
-name: flutter_soloud-output-capture
+name: flutter-soloud-output-capture
 version: 1
 description: Teaches how to record the flutter_soloud engine's mixed master output as a Stream<Uint8List> (raw PCM or Opus/Vorbis/FLAC/WAV) using startMixerOutputStream/stopMixerOutputStream, including the WAV header fix-up and capturing from a worker isolate via SoLoudIsolate. Use when the user wants to record, save, or stream what the app is playing (the final mix, NOT microphone input — flutter_soloud does not capture mic), e.g. "save the mix to a .wav file", "record the game audio", "stream the engine output over the network".
 ---

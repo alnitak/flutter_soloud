@@ -30,8 +30,8 @@ void main() {
       expect(plan.skillNames.length, 14);
       expect(plan.installCount, 14);
       expect(plan.updateCount, 0);
-      expect(plan.skillNames, contains('flutter_soloud-idioms'));
-      expect(plan.skillNames, contains('flutter_soloud-setup'));
+      expect(plan.skillNames, contains('flutter-soloud-idioms'));
+      expect(plan.skillNames, contains('flutter-soloud-setup'));
     });
 
     test(
@@ -50,20 +50,20 @@ void main() {
         );
 
         for (final skillName in [
-          'flutter_soloud-3d-audio',
-          'flutter_soloud-filters',
-          'flutter_soloud-idioms',
-          'flutter_soloud-loading',
-          'flutter_soloud-mixing-bus',
-          'flutter_soloud-output-capture',
-          'flutter_soloud-playback',
-          'flutter_soloud-pull-streaming',
-          'flutter_soloud-scheduling',
-          'flutter_soloud-setup',
-          'flutter_soloud-streaming',
-          'flutter_soloud-synthesis',
-          'flutter_soloud-visualization',
-          'flutter_soloud-volume-pan',
+          'flutter-soloud-3d-audio',
+          'flutter-soloud-filters',
+          'flutter-soloud-idioms',
+          'flutter-soloud-loading',
+          'flutter-soloud-mixing-bus',
+          'flutter-soloud-output-capture',
+          'flutter-soloud-playback',
+          'flutter-soloud-pull-streaming',
+          'flutter-soloud-scheduling',
+          'flutter-soloud-setup',
+          'flutter-soloud-streaming',
+          'flutter-soloud-synthesis',
+          'flutter-soloud-visualization',
+          'flutter-soloud-volume-pan',
         ]) {
           final skillFile = File.fromUri(
             tempDir.uri.resolve('.agents/skills/$skillName/SKILL.md'),
@@ -78,7 +78,7 @@ void main() {
         // References should also be copied
         final webRef = File.fromUri(
           tempDir.uri.resolve(
-            '.agents/skills/flutter_soloud-setup/references/web.md',
+            '.agents/skills/flutter-soloud-setup/references/web.md',
           ),
         );
         expect(webRef.existsSync(), isTrue);
@@ -109,10 +109,10 @@ void main() {
       await installSkills(projectRoot: tempDir, skillsRoot: skillsRoot);
 
       final claudeSkill = File.fromUri(
-        tempDir.uri.resolve('.claude/skills/flutter_soloud-idioms/SKILL.md'),
+        tempDir.uri.resolve('.claude/skills/flutter-soloud-idioms/SKILL.md'),
       );
       final cursorSkill = File.fromUri(
-        tempDir.uri.resolve('.cursor/skills/flutter_soloud-idioms/SKILL.md'),
+        tempDir.uri.resolve('.cursor/skills/flutter-soloud-idioms/SKILL.md'),
       );
       expect(claudeSkill.existsSync(), isTrue);
       expect(cursorSkill.existsSync(), isTrue);
@@ -127,7 +127,7 @@ void main() {
 
       // Modify one installed skill to have version: 0
       final file = File.fromUri(
-        tempDir.uri.resolve('.agents/skills/flutter_soloud-idioms/SKILL.md'),
+        tempDir.uri.resolve('.agents/skills/flutter-soloud-idioms/SKILL.md'),
       );
       final content = file.readAsStringSync().replaceFirst(
         'version: 1',

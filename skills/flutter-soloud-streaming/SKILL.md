@@ -1,5 +1,5 @@
 ---
-name: flutter_soloud-streaming
+name: flutter-soloud-streaming
 version: 1
 description: Teaches the push buffer-stream API of the flutter_soloud package (setBufferStream, addAudioDataStream, setDataIsEnded, BufferingType, BufferType, icy metadata). Use when the user wants to play audio that arrives in chunks — internet/icecast radio, WebSocket PCM feeds, TTS/LLM streaming APIs, or procedurally generated PCM — instead of loading a complete file or asset.
 ---
@@ -95,7 +95,7 @@ Divergences from audioplayers/just_audio habits:
 ## More depth
 
 - Full recipes (icecast radio with icy metadata, WebSocket PCM, procedural PCM in an isolate): [references/recipes.md](references/recipes.md)
-- Pull-model streaming (engine requests data via callback; for huge files and byte-range fetching) is covered by the sibling skill **flutter_soloud-pull-streaming** (`skills/flutter_soloud-pull-streaming/SKILL.md`).
+- Pull-model streaming (engine requests data via callback; for huge files and byte-range fetching) is covered by the sibling skill **flutter-soloud-pull-streaming** (`skills/flutter-soloud-pull-streaming/SKILL.md`).
 - Runnable demos in this repo: `example/lib/buffer_stream/web_radio.dart`, `websocket.dart`, `generate.dart`, `simple_noise_stream.dart` (the last one is the smallest complete example).
 
 ## Keeping this skill current
