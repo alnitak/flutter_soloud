@@ -12,6 +12,7 @@
 >         flutter_soloud:
 >           no_xiph_libs: true
 >     ```
+>     [***See docs***](https://docs.page/alnitak/flutter_soloud_docs/get_started/no_xiph_libs).
 >   - **breaking change: audio visualization overhaul:** Replaced the legacy `AudioData` polling class with a reactive stream: `SoLoud.instance.audioVisualizationEvents` emitting `AudioVisualizationData`. [***See docs***](https://docs.page/alnitak/flutter_soloud_docs/visualization/audio_data).
 
 ---
