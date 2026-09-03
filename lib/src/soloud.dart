@@ -106,7 +106,7 @@ Future<({PlayerErrors error, SoundHash soundHash})> _loadMemWeb({
     if (error != PlayerErrors.noError) {
       // Clean up the partially created stream on error.
       SoLoudController().soLoudFFI.disposeSound(ret.soundHash);
-      return (error: error, soundHash: SoundHash(0));
+      return (error: error, soundHash: const SoundHash.invalid());
     }
 
     // Yield to the event loop every chunk to keep UI responsive.
@@ -119,7 +119,7 @@ Future<({PlayerErrors error, SoundHash soundHash})> _loadMemWeb({
   final endError = SoLoudController().soLoudFFI.setDataIsEnded(ret.soundHash);
   if (endError != PlayerErrors.noError) {
     SoLoudController().soLoudFFI.disposeSound(ret.soundHash);
-    return (error: endError, soundHash: SoundHash(0));
+    return (error: endError, soundHash: const SoundHash.invalid());
   }
 
   return ret;
@@ -929,7 +929,10 @@ interface class SoLoud {
             return;
           }
 
-          final newSound = AudioSource(SoundHash(hash));
+          final newSound = AudioSource(
+            SoundHash(hash),
+            soundPath: completeFileName,
+          );
           _logPlayerError(error, from: 'loadFile() result');
           if (error == PlayerErrors.noError) {
             _activeSounds.add(newSound);
@@ -1036,7 +1039,12 @@ interface class SoLoud {
     String completeFileName,
     int hash,
   ) {
-    final newSound = AudioSource(SoundHash(hash));
+    if (hash <= 0 ||
+        (error != PlayerErrors.noError &&
+            error != PlayerErrors.fileAlreadyLoaded)) {
+      throw SoLoudCppException.fromPlayerError(error);
+    }
+    final newSound = AudioSource(SoundHash(hash), soundPath: completeFileName);
     _logPlayerError(error, from: 'loadFile() result');
     if (error == PlayerErrors.noError) {
       _activeSounds.add(newSound);
@@ -1050,8 +1058,6 @@ interface class SoLoud {
             'sound when playing.',
       );
       _activeSounds.add(newSound);
-    } else {
-      throw SoLoudCppException.fromPlayerError(error);
     }
     return newSound;
   }
@@ -2005,6 +2011,7 @@ interface class SoLoud {
       assetBundle: assetBundle,
       autoDispose: autoDispose,
     );
+    newAudioSource.soundPath = key;
 
     return newAudioSource;
   }
@@ -2058,6 +2065,7 @@ interface class SoLoud {
       httpClient: httpClient,
       autoDispose: autoDispose,
     );
+    newAudioSource.soundPath = url;
 
     return newAudioSource;
   }

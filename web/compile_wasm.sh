@@ -216,7 +216,7 @@ fi
 #
 # - MT (multi-threaded): with `-pthread`/`SHARED_MEMORY`. The WASM memory is
 #   a SharedArrayBuffer, so the page MUST be served with COOP/COEP headers.
-#   This flavor is picked at runtime by init_module.dart.js only when the
+#   This flavor is picked at runtime by init_soloud.js only when the
 #   page is cross-origin isolated, and is the foundation for threading-based
 #   features (AudioWorklet rendering, off-thread encode/decode).
 #

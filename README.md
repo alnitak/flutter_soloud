@@ -45,6 +45,22 @@ The native code is built with [Dart build hooks](https://dart.dev/tools/hooks): 
 - [Full Documentation](https://docs.page/alnitak/flutter_soloud_docs)
 - [API Reference](https://pub.dev/documentation/flutter_soloud/latest/)
 
+## AI Agent Skills
+
+`flutter_soloud` includes bundled **Agent Skills** (`SKILL.md` instruction files) to help AI coding agents (Claude, Cursor, Gemini, GitHub Copilot, Cline, Codex, OpenCode, etc.) generate correct, high-performance code for all features of this audio engine.
+
+Install or update the skills in your project by running:
+
+```bash
+dart run flutter_soloud:skills
+```
+
+To check whether installed skills are up to date without modifying any files:
+
+```bash
+dart run flutter_soloud:skills --check
+```
+
 ## Simple Example
 
 ```dart

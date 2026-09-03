@@ -28,6 +28,14 @@ extension type const SoundHash._(int hash) {
   @internal
   const SoundHash.invalid() : this._(0);
 
+  /// Constructs a [SoundHash] from [hash], returning [SoundHash.invalid]
+  /// if [hash] is 0 or negative.
+  @internal
+  factory SoundHash.fromValue(int hash) {
+    if (hash <= 0) return const SoundHash.invalid();
+    return SoundHash(hash);
+  }
+
   /// Generate a "fake" [SoundHash] for generated (i.e. non-loaded) sounds.
   ///
   /// Sound hashes are normally computed from a file name in the C code.

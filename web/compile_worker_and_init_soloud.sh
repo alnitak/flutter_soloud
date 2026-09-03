@@ -3,5 +3,5 @@
 dart compile js -O3 -o worker.dart.js ./worker.dart
 echo "worker compiled and copied into 'web' dir!"
 
-dart compile js -O3 -o init_module.dart.js ./init_module.dart
-echo "init_module compiled and copied into 'web' dir!"
+dart compile js -O3 -o init_soloud.js ./init_soloud.dart
+echo "init_soloud compiled and copied into 'web' dir!"
