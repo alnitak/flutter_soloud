@@ -1,3 +1,6 @@
+##### 5.0.1 (4 Sep 2026)
+- Rename agent skills to hyphenated names for Zed compatibility. Thanks to @Kunstderfug #550
+
 ##### 5.0.0 (3 Sep 2026)
 > - **⚠️ IMPORTANT CHANGES in v5 ⚠️**:
 >   - **breaking change: web loader rename**: Renamed `web/init_module.dart`. Update `web/index.html` to:
