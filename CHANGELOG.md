@@ -1,3 +1,6 @@
+##### 5.0.2 (4 Sep 2026)
+- removed ".github" for the possible location to install skills
+
 ##### 5.0.1 (4 Sep 2026)
 - Rename agent skills to hyphenated names for Zed compatibility. Thanks to @Kunstderfug #550
 
