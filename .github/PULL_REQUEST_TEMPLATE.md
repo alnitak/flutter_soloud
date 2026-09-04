@@ -1,7 +1,3 @@
-# ⚠️ PLEASE WAIT BEFORE OPENING NEW PRs
-
-**Please do not open new PRs until about September 15th.**
-
 <!--
   Thanks for contributing!
 
