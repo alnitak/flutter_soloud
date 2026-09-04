@@ -22,7 +22,6 @@ const List<String> _agentSkillParents = <String>[
   '.opencode',
   '.cline',
   '.gemini',
-  '.github',
   '.agents',
 ];
 
