@@ -1,5 +1,5 @@
 ---
-name: flutter_soloud-filters
+name: flutter-soloud-filters
 version: 1
 description: Teaches correct use of flutter_soloud's 12 DSP filters (echo, freeverb, biquad, bassboost, flanger, waveShaper, lofi, robotize, pitchShift, limiter, compressor, parametricEq) at global, per-sound, and per-bus scope, including activation ordering, FilterParam value/fade/oscillate, and per-platform limits. Use when the user asks to add audio effects, reverb, an equalizer/EQ, pitch shifting or time stretching, dynamic-range compression, or anti-clipping/limiting to playback.
 ---

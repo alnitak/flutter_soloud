@@ -1,5 +1,5 @@
 ---
-name: flutter_soloud-idioms
+name: flutter-soloud-idioms
 version: 1
 description: Core mental model for the flutter_soloud audio plugin — the SoLoud.instance singleton lifecycle (init/deinit), the AudioSource vs SoundHandle distinction, synchronous play semantics, and cross-platform constraints. Use when the user asks to play a sound, set up audio in a Flutter app, debug SoLoudNotInitializedException or silent playback, or migrate from audioplayers/just_audio.
 ---

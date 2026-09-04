@@ -1,5 +1,5 @@
 ---
-name: flutter_soloud-playback
+name: flutter-soloud-playback
 version: 1
 description: Teaches everyday playback control in the flutter_soloud package — play()/playSource, pause/stop/seek, looping regions, play speed, and voice introspection and management. Use when the user asks to play a sound, pause/resume/stop playback, seek or show position, loop a region of a track, change playback speed, or manage concurrent voices with flutter_soloud.
 ---
@@ -190,7 +190,7 @@ SoLoud.instance.destroyVoiceGroup(group);         // does NOT stop the voices in
 
 ## More depth
 
-- Sample-accurate timing (`playClocked`, `playScheduled`, `setDelaySamples`, `getEngineTime`): see the sibling skill **flutter_soloud-scheduling**.
+- Sample-accurate timing (`playClocked`, `playScheduled`, `setDelaySamples`, `getEngineTime`): see the sibling skill **flutter-soloud-scheduling**.
 - Working playback demo with play/pause/seek/loop UI: `example/lib/audio_context/audio_context.dart` in the plugin repo.
 - Full doc page: `docs/audio/playback.mdx` (published at docs.page/alnitak/flutter_soloud).
 

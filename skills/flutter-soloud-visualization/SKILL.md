@@ -1,5 +1,5 @@
 ---
-name: flutter_soloud-visualization
+name: flutter-soloud-visualization
 version: 1
 description: Teaches flutter_soloud's two visualization paths — live FFT/wave data via setVisualizationEnabled + the audioVisualizationEvents stream, and offline waveform extraction via readSamplesFromFile/readSamplesFromMem (plus getApproximateVolume for VU meters). Use when the user asks for a spectrum/waveform visualizer, audio-reactive UI, VU/level meter, or a static waveform preview of an audio file.
 ---

@@ -1,5 +1,5 @@
 ---
-name: flutter_soloud-setup
+name: flutter-soloud-setup
 version: 1
 description: Teaches how to add flutter_soloud to a Flutter app, configure each platform (web script tag and COOP/COEP headers, Linux ALSA, Android/iOS/macOS minimum versions), initialize and deinitialize the engine, shrink binaries by excluding the Xiph libs, set up logging, and enumerate/switch output devices. Use when a user asks to install flutter_soloud, initialize SoLoud, set up web/background-audio prerequisites, reduce binary size, or switch the audio output device.
 ---

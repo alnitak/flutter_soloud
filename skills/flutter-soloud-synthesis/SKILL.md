@@ -1,5 +1,5 @@
 ---
-name: flutter_soloud-synthesis
+name: flutter-soloud-synthesis
 version: 1
 description: Teaches how to generate audio without assets in flutter_soloud using loadWaveform() with the 9 WaveForm oscillators, runtime setWaveform*() tweaks, speechText() (built-in robotic TTS that creates and plays a source), and SoLoudTools.createNotes(). Use when the user asks for a tone generator, beeps/alerts, a keyboard/instrument, synthesized sound effects, or text-to-speech without audio files.
 ---

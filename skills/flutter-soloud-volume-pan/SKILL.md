@@ -1,5 +1,5 @@
 ---
-name: flutter_soloud-volume-pan
+name: flutter-soloud-volume-pan
 version: 1
 description: Teaches volume, pan, fade, oscillator, and scheduled-stop control in the flutter_soloud package, including the handle-based model, setPanAbsolute, getApproximateVolume for VU meters, and the limiter filter as the anti-clipping tool. Use when the user asks to change a sound's volume, pan a sound left/right, fade or oscillate audio parameters, build a VU meter, or stop clipping when many sounds play at once.
 ---
@@ -103,7 +103,7 @@ Metering:
   SoLoud.instance.filters.limiterFilter.outputCeiling.value = -3;
   ```
 
-  See the sibling skill **flutter_soloud-filters** for filter details.
+  See the sibling skill **flutter-soloud-filters** for filter details.
 - **Fades/oscillations keep running on stopped handles.** If a handle is
   stopped (or `scheduleStop` fires) mid-fade, the fader is not cancelled; when
   the same sound is played again and the handle id is recycled, the old ramp
@@ -130,7 +130,7 @@ Metering:
 
 ## More depth
 
-- Limiting and other filters: sibling skill `flutter_soloud-filters`; demo
+- Limiting and other filters: sibling skill `flutter-soloud-filters`; demo
   `example/lib/filters/limiter.dart`.
 - Bus-level volume (group many sounds under one fader):
   `example/lib/mixing_bus/mixing_bus.dart`.

@@ -1,5 +1,5 @@
 ---
-name: flutter_soloud-scheduling
+name: flutter-soloud-scheduling
 version: 1
 description: Teaches sample-accurate audio scheduling in flutter_soloud with playClocked (sounds anchored to a running "physics time" clock) and playScheduled (absolute engine-time scheduling with sample-accurate auto-stop), plus the clock helpers getEngineTime/getPlayheadTime/getOutputLatency/resetStreamTime and stopScheduled/fadeScheduled. Use when the user asks for a metronome, step sequencer, rhythm game, pre-computed music timeline/score, evenly spaced repeated SFX, or complains that periodic play() calls clump or drift.
 ---

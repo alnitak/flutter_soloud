@@ -1,5 +1,5 @@
 ---
-name: flutter_soloud-3d-audio
+name: flutter-soloud-3d-audio
 version: 1
 description: Teaches positional (3D) audio in flutter_soloud — play3d/play3dClocked/play3dScheduled, listener position/orientation/velocity, per-source attenuation and Doppler, and the per-frame update pattern. Use when the user asks for spatial audio, positional sound effects, distance-based volume falloff, sounds attached to game entities, Doppler effects, or left/right panning based on world position.
 ---

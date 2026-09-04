@@ -1,5 +1,5 @@
 ---
-name: flutter_soloud-loading
+name: flutter-soloud-loading
 version: 1
 description: Teaches how to load audio into flutter_soloud via loadAsset/loadMem/loadFile/loadUrl and joinTwoSources, choose between LoadMode.memory and LoadMode.disk, and manage the AudioSource lifecycle (disposeSource, autoDispose, allInstancesFinished). Use when a user asks to load or play an audio file, asset, URL, or byte buffer, to fix load errors or "no sound" bugs, to handle web platform constraints, or to clean up/dispose loaded sounds.
 ---
