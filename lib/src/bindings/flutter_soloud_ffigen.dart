@@ -1384,6 +1384,9 @@ external int getVisualizationEnabled();
 @ffi.Native<ffi.Void Function(ffi.Float)>()
 external void setFftSmoothing(double smooth);
 
+@ffi.Native<ffi.Void Function(ffi.Float, ffi.Float)>()
+external void setFftDecibelRange(double minDecibels, double maxDecibels);
+
 /// Get the sound length in seconds
 ///
 /// [soundHash] the sound hash

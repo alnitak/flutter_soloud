@@ -1321,6 +1321,11 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   }
 
   @override
+  void setFftDecibelRange(double minDecibels, double maxDecibels) {
+    return native.setFftDecibelRange(minDecibels, maxDecibels);
+  }
+
+  @override
   Duration getLength(SoundHash soundHash) {
     return native.getLength(soundHash.hash).toDuration();
   }

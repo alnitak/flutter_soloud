@@ -2747,6 +2747,11 @@ extern "C"
     Analyzer::instance().setSmoothing(smooth);
   }
 
+  FFI_PLUGIN_EXPORT void setFftDecibelRange(float minDecibels, float maxDecibels)
+  {
+    Analyzer::instance().setMinMaxDecibels(minDecibels, maxDecibels);
+  }
+
   /// Get the sound length in seconds
   ///
   /// [soundHash] the sound hash

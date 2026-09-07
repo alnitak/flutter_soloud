@@ -869,6 +869,10 @@ abstract class FlutterSoLoud {
   @mustBeOverridden
   void setFftSmoothing(double smooth);
 
+  /// Sets the decibel range for FFT magnitude normalization.
+  @mustBeOverridden
+  void setFftDecibelRange(double minDecibels, double maxDecibels);
+
   /// Sets the callback receiving audio visualization data packets from native.
   @mustBeOverridden
   void setVisualizationCallback(

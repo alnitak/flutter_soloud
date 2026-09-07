@@ -34,6 +34,13 @@ void Analyzer::setSmoothing(float smooth) {
   m_fftSmoothing.store(smooth, std::memory_order_relaxed);
 }
 
+void Analyzer::setMinMaxDecibels(float minDecibels, float maxDecibels) {
+  if (minDecibels < maxDecibels) {
+    m_minDecibels.store(minDecibels, std::memory_order_relaxed);
+    m_maxDecibels.store(maxDecibels, std::memory_order_relaxed);
+  }
+}
+
 void Analyzer::setDataCallback(dartVisualizationCallback_t callback) {
   m_callback.store(callback, std::memory_order_release);
 }
@@ -365,6 +372,8 @@ void Analyzer::processWindow(size_t readIdx, int nextPingPong) {
   }
 }
 
+/*
+// Previous implementation using ad-hoc logarithmic scaling:
 void Analyzer::computeFftMagnitudes(int channelIdx, int pingPong) {
   const int numBins = m_windowSize / 2;
   const float norm = 2.0f / static_cast<float>(m_windowSize);
@@ -405,6 +414,75 @@ void Analyzer::computeFftMagnitudes(int channelIdx, int pingPong) {
           smooth * m_fftSmoothed[channelIdx][k] + (1.0f - smooth) * val;
     }
     m_fftBuffers[channelIdx][pingPong][k] = m_fftSmoothed[channelIdx][k];
+  }
+}
+*/
+
+/// Computes FFT magnitudes normalized to [0.0, 1.0] conforming to the
+/// W3C Web Audio API specification for AnalyserNode:
+/// - FFT Windowing and Smoothing over Time:
+///   https://www.w3.org/TR/webaudio/#fft-windowing-and-smoothing-over-time
+/// - AnalyserNode.getByteFrequencyData:
+///   https://www.w3.org/TR/webaudio/#dom-analysernode-getbytefrequencydata
+///
+/// Algorithm:
+/// 1. Normalized linear DFT magnitude: |X[k]| = sqrt(real^2 + imag^2) / N
+///    (for DC bin 0: |X[0]| = |real[0]| / N).
+/// 2. Temporal smoothing on linear magnitude:
+///    X_smoothed[k] = tau * X_smoothed_prev[k] + (1 - tau) * |X[k]|
+/// 3. Conversion to decibels:
+///    dB[k] = 20 * log10(X_smoothed[k])
+/// 4. Linear scaling from [minDecibels, maxDecibels] to [0.0, 1.0]:
+///    val = (dB[k] - minDecibels) / (maxDecibels - minDecibels), clamped to [0.0, 1.0].
+void Analyzer::computeFftMagnitudes(int channelIdx, int pingPong) {
+  const int numBins = m_windowSize / 2;
+  const float norm = 1.0f / static_cast<float>(m_windowSize);
+  const float smooth = m_fftSmoothing.load(std::memory_order_relaxed);
+  const float minDb = m_minDecibels.load(std::memory_order_relaxed);
+  const float maxDb = m_maxDecibels.load(std::memory_order_relaxed);
+  const float range = maxDb - minDb;
+  const float invRange = (range > 0.0f) ? (1.0f / range) : 1.0f;
+
+  // Magnitude threshold corresponding to minDecibels (e.g. 10^(-100/20) = 1e-5)
+  // Any magnitude below or equal to minMag yields val = 0.0f.
+  const float minMag = powf(10.0f, minDb / 20.0f);
+
+  // DC component (bin 0)
+  const float dcMag = fabsf(m_fftOutput[channelIdx][0]) * norm;
+  m_fftSmoothed[channelIdx][0] =
+      smooth * m_fftSmoothed[channelIdx][0] + (1.0f - smooth) * dcMag;
+
+  const float dcSmoothed = m_fftSmoothed[channelIdx][0];
+  if (dcSmoothed <= minMag) {
+    m_fftBuffers[channelIdx][pingPong][0] = 0.0f;
+  } else {
+    const float dcDb = 20.0f * log10f(dcSmoothed);
+    float val = (dcDb - minDb) * invRange;
+    if (val < 0.0f) val = 0.0f;
+    else if (val > 1.0f) val = 1.0f;
+    m_fftBuffers[channelIdx][pingPong][0] = val;
+  }
+
+  // Frequency bins 1 to numBins - 1
+  for (int k = 1; k < numBins; k++) {
+    const float real = m_fftOutput[channelIdx][2 * k];
+    const float imag = m_fftOutput[channelIdx][2 * k + 1];
+    const float mag = sqrtf(real * real + imag * imag) * norm;
+
+    // Temporal smoothing on linear magnitude (per W3C spec):
+    m_fftSmoothed[channelIdx][k] =
+        smooth * m_fftSmoothed[channelIdx][k] + (1.0f - smooth) * mag;
+
+    const float smoothedMag = m_fftSmoothed[channelIdx][k];
+    if (smoothedMag <= minMag) {
+      m_fftBuffers[channelIdx][pingPong][k] = 0.0f;
+    } else {
+      const float db = 20.0f * log10f(smoothedMag);
+      float val = (db - minDb) * invRange;
+      if (val < 0.0f) val = 0.0f;
+      else if (val > 1.0f) val = 1.0f;
+      m_fftBuffers[channelIdx][pingPong][k] = val;
+    }
   }
 }
 

@@ -3741,6 +3741,42 @@ interface class SoLoud {
     _controller.soLoudFFI.setFftSmoothing(smooth);
   }
 
+  double _minDecibels = -100;
+  double _maxDecibels = -30;
+
+  /// Minimum power value in decibels for FFT analysis data.
+  /// Conforms to W3C Web Audio API (default is -100.0 dB).
+  double get minDecibels => _minDecibels;
+
+  /// Maximum power value in decibels for FFT analysis data.
+  /// Conforms to W3C Web Audio API (default is -30.0 dB).
+  double get maxDecibels => _maxDecibels;
+
+  /// Sets the decibel range for FFT magnitude normalization.
+  ///
+  /// Conforms to the W3C Web Audio API AnalyserNode specification:
+  /// - https://www.w3.org/TR/webaudio/#dom-analysernode-mindecibels
+  /// - https://www.w3.org/TR/webaudio/#dom-analysernode-maxdecibels
+  ///
+  /// [minDecibels] default is -100.0 dB.
+  /// [maxDecibels] default is -30.0 dB.
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  /// Throws [ArgumentError] if [minDecibels] >= [maxDecibels].
+  void setFftDecibelRange(double minDecibels, double maxDecibels) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    if (minDecibels >= maxDecibels) {
+      throw ArgumentError(
+        'minDecibels ($minDecibels) must be less than '
+            'maxDecibels ($maxDecibels)',
+      );
+    }
+    _minDecibels = minDecibels;
+    _maxDecibels = maxDecibels;
+    _controller.soLoudFFI.setFftDecibelRange(minDecibels, maxDecibels);
+  }
+
   // ///////////////////////////////////////
   //  voice groups
   // ///////////////////////////////////////
