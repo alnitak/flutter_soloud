@@ -1,6 +1,6 @@
 ---
 name: flutter-soloud-setup
-version: 1
+version: 2
 description: Teaches how to add flutter_soloud to a Flutter app, configure each platform (web script tag and COOP/COEP headers, Linux ALSA, Android/iOS/macOS minimum versions), initialize and deinitialize the engine, shrink binaries by excluding the Xiph libs, set up logging, and enumerate/switch output devices. Use when a user asks to install flutter_soloud, initialize SoLoud, set up web/background-audio prerequisites, reduce binary size, or switch the audio output device.
 ---
 
@@ -105,18 +105,28 @@ await SoLoud.instance.init(
 - On web, `loadUrl()` hits CORS (`Access-Control-Allow-Origin` missing) unless the server allows it, and local files can't be read — use `loadMem()` instead.
 - Per-sound filters are not supported on web (global filters are).
 
-## Shrinking binaries: excluding Xiph libs
+## Xiph audio libraries (Ogg, Vorbis, Opus, FLAC)
 
-The Opus/Ogg/Vorbis/FLAC decoders are bundled by default (600–3000 KB per binary). If you only need MP3/WAV/synthesis, exclude them in the **app's** `pubspec.yaml`:
+The Xiph audio decoders provide compressed audio playback, streaming, and master output capture (600–3000 KB per binary). By default, Native Assets build hooks automatically detect system-installed libraries (`pkg-config`, `apt`, `brew`, `vcpkg`); if missing (or on mobile platforms), they automatically clone and compile the pinned Xiph repositories from source via CMake into `.dart_tool/flutter_soloud/xiph/`.
 
-```yaml
-hooks:
-  user_defines:
-    flutter_soloud:
-      no_xiph_libs: true
-```
+You can customize this in the **app's** `pubspec.yaml`:
 
-`setBufferStream()`/`readSamplesFrom*()` with Opus/Vorbis/FLAC then throw; everything else works. On web, edit `web/compile_wasm.sh` in the package (`NO_XIPH_LIBS="1"`) and rebuild the WASM yourself (requires Emscripten, Linux/macOS). Old shell-env/Podfile/Gradle config no longer applies under build hooks.
+- **Bypass system detection and force building from source:**
+  ```yaml
+  hooks:
+    user_defines:
+      flutter_soloud:
+        use_system_xiph_libs: false
+  ```
+
+- **Exclude Xiph libraries entirely (shrinking binary size):**
+  ```yaml
+  hooks:
+    user_defines:
+      flutter_soloud:
+        no_xiph_libs: true
+  ```
+  When excluded, `setBufferStream()`/`readSamplesFrom*()` with Opus/Vorbis/FLAC throw `SoLoudXiphLibsNotAvailableException`; WAV, MP3, and synthesis work normally. On web, edit `web/compile_wasm.sh` in the package (`NO_XIPH_LIBS="1"`) and rebuild the WASM yourself (requires Emscripten, Linux/macOS).
 
 ## Logging
 

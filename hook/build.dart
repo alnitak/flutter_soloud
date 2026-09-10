@@ -13,7 +13,8 @@
 // hooks:
 //   user_defines:
 //     flutter_soloud:
-//       no_xiph_libs: true   # build without Opus/Ogg/Vorbis/FLAC support
+//       no_xiph_libs: true         # build without Opus/Ogg/Vorbis/FLAC
+//       use_system_xiph_libs: true # link system Xiph libs (apt, brew, pacman)
 
 // ignore_for_file: avoid_print
 
@@ -37,18 +38,39 @@ void main(List<String> args) async {
     final arch = code.targetArchitecture;
     final isApple = os == OS.macOS || os == OS.iOS;
 
-    // Xiph libs are disabled via
-    // `hooks.user_defines.flutter_soloud.no_xiph_libs: true` in the root
-    // app's pubspec.
-    final noXiph = input.userDefines['no_xiph_libs'] == true;
-    // The output of `print` is redirected to stdout, and it is saved in
-    // .dart_tool/hooks_runner/flutter_soloud/05f475f993/stdout.txt
-    if (noXiph) {
-      print('Building without Xiph libs');
-    } else {
-      print('Building with Xiph libs');
+    // Xiph configuration:
+    // - `no_xiph_libs: true` -> build without Xiph support
+    // - `use_system_xiph_libs: false` -> bypass system libs, build from source
+    // - default / `use_system_xiph_libs: true` -> check system libs; if
+    //   found, link them; otherwise automatically build from source.
+    bool? parseBool(Object? val) {
+      if (val == null) return null;
+      if (val is bool) return val;
+      if (val is String) {
+        if (val.toLowerCase() == 'true' || val == '1') return true;
+        if (val.toLowerCase() == 'false' || val == '0') return false;
+      }
+      return null;
     }
-    final xiph = noXiph ? XiphLink.empty() : XiphLink.forTarget(input);
+
+    final noXiph = parseBool(input.userDefines['no_xiph_libs']) ?? false;
+    final useSystemXiph =
+        parseBool(input.userDefines['use_system_xiph_libs']) ?? true;
+
+    final XiphLink xiph;
+    if (noXiph) {
+      print('[flutter_soloud] Building without Xiph libs');
+      xiph = XiphLink.empty();
+    } else if (!useSystemXiph) {
+      print('[flutter_soloud] Building with Xiph libs (forced from source)');
+      xiph = await XiphLink.fromSource(input);
+    } else if (await XiphLink.hasSystemLibs(os)) {
+      print('[flutter_soloud] Using detected system Xiph libraries');
+      xiph = await XiphLink.forSystem(input);
+    } else {
+      print('[flutter_soloud] Building with Xiph libs (from source)');
+      xiph = await XiphLink.fromSource(input);
+    }
 
     final defines = <String, String?>{
       'FLUTTER_PLUGIN_IMPL': null,
@@ -71,10 +93,14 @@ void main(List<String> args) async {
     final flags = <String>[
       if (os != OS.windows) '-fvisibility=hidden',
       if (isApple) ...[
-        '-framework', 'Foundation',
-        '-framework', 'AudioToolbox',
-        '-framework', 'AVFAudio',
-        '-framework', 'CoreAudio',
+        '-framework',
+        'Foundation',
+        '-framework',
+        'AudioToolbox',
+        '-framework',
+        'AVFAudio',
+        '-framework',
+        'CoreAudio',
       ],
       // Force maximum optimization regardless of Flutter build mode.
       // For native debugging: comment out 'NDEBUG' above and replace the line
@@ -256,14 +282,7 @@ List<String> collectSources(Uri packageRoot, OS targetOS) {
 /// everything before ogg).
 const _xiphLibs = ['FLAC', 'opus', 'vorbisfile', 'vorbisenc', 'vorbis', 'ogg'];
 
-final _androidAbi = {
-  Architecture.arm: 'armeabi-v7a',
-  Architecture.arm64: 'arm64-v8a',
-  Architecture.ia32: 'x86',
-  Architecture.x64: 'x86_64',
-};
-
-/// How the prebuilt Xiph libraries are linked for one target.
+/// How the Xiph libraries are linked for one target.
 final class XiphLink {
   XiphLink._({
     required this.libraries,
@@ -281,107 +300,452 @@ final class XiphLink {
     dependencies: const [],
   );
 
-  factory XiphLink.forTarget(BuildInput input) {
+  /// Links against system-installed Xiph libraries (apt, brew, pacman, etc.).
+  static Future<XiphLink> forSystem(BuildInput input) async {
+    final os = input.config.code.targetOS;
+    final includeDirs = <String>[];
+    final libDirs = <String>[];
+
+    // Query pkg-config if available
+    try {
+      final res = await Process.run('pkg-config', [
+        '--cflags-only-I',
+        '--libs-only-L',
+        'ogg',
+        'vorbis',
+        'vorbisfile',
+        'vorbisenc',
+        'opus',
+        'flac',
+      ]);
+      if (res.exitCode == 0) {
+        final out = (res.stdout as String).trim();
+        for (final token in out.split(RegExp(r'\s+'))) {
+          if (token.startsWith('-I')) {
+            final dir = token.substring(2);
+            if (Directory(dir).existsSync() && !includeDirs.contains(dir)) {
+              includeDirs.add(dir);
+            }
+          } else if (token.startsWith('-L')) {
+            final dir = token.substring(2);
+            if (Directory(dir).existsSync() && !libDirs.contains(dir)) {
+              libDirs.add(dir);
+            }
+          }
+        }
+      }
+    } catch (_) {}
+
+    // Add standard OS fallback paths
+    if (os == OS.linux) {
+      const fallbackIncludes = [
+        '/usr/include',
+        '/usr/include/opus',
+        '/usr/local/include',
+        '/usr/local/include/opus',
+      ];
+      for (final inc in fallbackIncludes) {
+        if (Directory(inc).existsSync() && !includeDirs.contains(inc)) {
+          includeDirs.add(inc);
+        }
+      }
+      const fallbackLibs = [
+        '/usr/lib',
+        '/usr/local/lib',
+        '/usr/lib64',
+        '/usr/lib/aarch64-linux-gnu',
+        '/usr/lib/x86_64-linux-gnu',
+        '/usr/lib/arm-linux-gnueabihf',
+        '/usr/lib/riscv64-linux-gnu',
+      ];
+      for (final lib in fallbackLibs) {
+        if (Directory(lib).existsSync() && !libDirs.contains(lib)) {
+          libDirs.add(lib);
+        }
+      }
+    } else if (os == OS.macOS) {
+      const fallbackIncludes = [
+        '/opt/homebrew/include',
+        '/opt/homebrew/include/opus',
+        '/usr/local/include',
+        '/usr/local/include/opus',
+      ];
+      for (final inc in fallbackIncludes) {
+        if (Directory(inc).existsSync() && !includeDirs.contains(inc)) {
+          includeDirs.add(inc);
+        }
+      }
+      const fallbackLibs = ['/opt/homebrew/lib', '/usr/local/lib'];
+      for (final lib in fallbackLibs) {
+        if (Directory(lib).existsSync() && !libDirs.contains(lib)) {
+          libDirs.add(lib);
+        }
+      }
+    } else if (os == OS.windows) {
+      final vcpkgRoot = Platform.environment['VCPKG_ROOT'] ?? r'C:\vcpkg';
+      for (final root in [
+        vcpkgRoot,
+        r'C:\tools\vcpkg',
+        r'C:\Program Files\Xiph',
+        r'C:\Xiph',
+      ]) {
+        final inc = '$root\\installed\\x64-windows\\include';
+        final lib = '$root\\installed\\x64-windows\\lib';
+        if (Directory(inc).existsSync()) includeDirs.add(inc);
+        if (Directory(lib).existsSync()) libDirs.add(lib);
+        final directInc = '$root\\include';
+        final directLib = '$root\\lib';
+        if (Directory(directInc).existsSync()) includeDirs.add(directInc);
+        if (Directory(directLib).existsSync()) libDirs.add(directLib);
+      }
+    }
+
+    return XiphLink._(
+      libraries: _xiphLibs,
+      libraryDirectories: libDirs,
+      includeDirs: includeDirs,
+      bundledAssets: const [],
+      dependencies: const [],
+    );
+  }
+
+  /// Checks whether system-installed Xiph libraries and headers are available.
+  static Future<bool> hasSystemLibs(OS os) async {
+    if (os != OS.linux && os != OS.macOS && os != OS.windows) return false;
+
+    // 1. Check via pkg-config if available
+    try {
+      final res = await Process.run('pkg-config', [
+        '--exists',
+        'ogg',
+        'vorbis',
+        'vorbisfile',
+        'vorbisenc',
+        'opus',
+        'flac',
+      ]);
+      if (res.exitCode == 0) return true;
+    } catch (_) {}
+
+    // 2. Check filesystem search paths
+    final includeDirs = <String>[];
+    final libDirs = <String>[];
+    if (os == OS.linux) {
+      const fallbackIncludes = [
+        '/usr/include',
+        '/usr/include/opus',
+        '/usr/local/include',
+        '/usr/local/include/opus',
+      ];
+      for (final inc in fallbackIncludes) {
+        if (Directory(inc).existsSync()) includeDirs.add(inc);
+      }
+      const fallbackLibs = [
+        '/usr/lib',
+        '/usr/local/lib',
+        '/usr/lib64',
+        '/usr/lib/aarch64-linux-gnu',
+        '/usr/lib/x86_64-linux-gnu',
+        '/usr/lib/arm-linux-gnueabihf',
+        '/usr/lib/riscv64-linux-gnu',
+      ];
+      for (final lib in fallbackLibs) {
+        if (Directory(lib).existsSync()) libDirs.add(lib);
+      }
+    } else if (os == OS.macOS) {
+      const fallbackIncludes = [
+        '/opt/homebrew/include',
+        '/opt/homebrew/include/opus',
+        '/usr/local/include',
+        '/usr/local/include/opus',
+      ];
+      for (final inc in fallbackIncludes) {
+        if (Directory(inc).existsSync()) includeDirs.add(inc);
+      }
+      const fallbackLibs = ['/opt/homebrew/lib', '/usr/local/lib'];
+      for (final lib in fallbackLibs) {
+        if (Directory(lib).existsSync()) libDirs.add(lib);
+      }
+    } else if (os == OS.windows) {
+      final vcpkgRoot = Platform.environment['VCPKG_ROOT'] ?? r'C:\vcpkg';
+      for (final root in [
+        vcpkgRoot,
+        r'C:\tools\vcpkg',
+        r'C:\Program Files\Xiph',
+        r'C:\Xiph',
+      ]) {
+        final inc = '$root\\installed\\x64-windows\\include';
+        final lib = '$root\\installed\\x64-windows\\lib';
+        if (Directory(inc).existsSync()) includeDirs.add(inc);
+        if (Directory(lib).existsSync()) libDirs.add(lib);
+        final directInc = '$root\\include';
+        final directLib = '$root\\lib';
+        if (Directory(directInc).existsSync()) includeDirs.add(directInc);
+        if (Directory(directLib).existsSync()) libDirs.add(directLib);
+      }
+    }
+
+    bool hasHeader(String relative) =>
+        includeDirs.any((d) => File('$d/$relative').existsSync());
+    bool hasAnyHeader(List<String> relatives) => relatives.any(hasHeader);
+
+    final hasHeaders =
+        hasHeader('ogg/ogg.h') &&
+        hasHeader('vorbis/codec.h') &&
+        hasAnyHeader(['opus.h', 'opus/opus.h']) &&
+        hasHeader('FLAC/all.h');
+
+    if (!hasHeaders) return false;
+
+    bool hasLibrary(String name) => libDirs.any((d) {
+      if (os == OS.windows) {
+        return File('$d/$name.lib').existsSync();
+      }
+      return File('$d/lib$name.so').existsSync() ||
+          File('$d/lib$name.a').existsSync() ||
+          File('$d/lib$name.dylib').existsSync();
+    });
+
+    return [
+      'ogg',
+      'vorbis',
+      'vorbisfile',
+      'vorbisenc',
+      'opus',
+      'FLAC',
+    ].every((lib) => hasLibrary(lib) || hasLibrary(lib.toLowerCase()));
+  }
+
+  /// Builds Xiph libraries from source by cloning git repositories into
+  /// `.dart_tool/flutter_soloud/xiph/sources/` and building with CMake into
+  /// `.dart_tool/flutter_soloud/xiph/install/<os>/<arch>/`.
+  static Future<XiphLink> fromSource(BuildInput input) async {
     final code = input.config.code;
     final os = code.targetOS;
+    final arch = code.targetArchitecture;
     final packageRoot = input.packageRoot;
-    final packageName = input.packageName;
+    final isApple = os == OS.macOS || os == OS.iOS;
 
-    switch (os) {
-      case OS.macOS:
-        const dir = 'macos/flutter_soloud/libs';
-        return XiphLink._(
-          libraries: _xiphLibs,
-          libraryDirectories: [packageRoot.resolve(dir).toFilePath()],
-          includeDirs: const ['macos/flutter_soloud/include'],
-          bundledAssets: const [],
-          dependencies: [
-            for (final lib in _xiphLibs) packageRoot.resolve('$dir/lib$lib.a'),
-          ],
-        );
+    final cacheDir = Directory.fromUri(
+      packageRoot.resolve('.dart_tool/flutter_soloud/xiph'),
+    );
+    final sourcesDir = Directory('${cacheDir.path}/sources');
+    final buildDir = Directory(
+      '${cacheDir.path}/build/${os.name}/${arch.name}',
+    );
+    final installDir = Directory(
+      '${cacheDir.path}/install/${os.name}/${arch.name}',
+    );
+    final installIncDir = Directory('${installDir.path}/include');
+    final installLibDir = Directory('${installDir.path}/lib');
+    final installLib64Dir = Directory('${installDir.path}/lib64');
 
-      case OS.iOS:
-        // Device and simulator builds use separate static archives.
-        final suffix = switch (code.iOS.targetSdk) {
-          IOSSdk.iPhoneSimulator => 'simulator',
-          _ => 'device',
-        };
-        const dir = 'ios/flutter_soloud/libs';
-        final names = [for (final lib in _xiphLibs) '${lib}_iOS-$suffix'];
-        return XiphLink._(
-          libraries: names,
-          libraryDirectories: [packageRoot.resolve(dir).toFilePath()],
-          includeDirs: const ['ios/flutter_soloud/include'],
-          bundledAssets: const [],
-          dependencies: [
-            for (final name in names) packageRoot.resolve('$dir/lib$name.a'),
-          ],
-        );
-
-      case OS.android:
-        final abi = _androidAbi[code.targetArchitecture];
-        if (abi == null) {
-          throw UnsupportedError(
-            'Unsupported Android architecture: ${code.targetArchitecture}',
-          );
-        }
-        final dir = 'android/libs/$abi';
-        return XiphLink._(
-          libraries: _xiphLibs,
-          libraryDirectories: [packageRoot.resolve(dir).toFilePath()],
-          includeDirs: const ['android/include'],
-          bundledAssets: [
-            for (final lib in _xiphLibs)
-              CodeAsset(
-                package: packageName,
-                name: 'xiph/$abi/lib$lib.so',
-                linkMode: DynamicLoadingBundled(),
-                file: packageRoot.resolve('$dir/lib$lib.so'),
-              ),
-          ],
-          dependencies: [
-            for (final lib in _xiphLibs) packageRoot.resolve('$dir/lib$lib.so'),
-          ],
-        );
-
-      case OS.windows:
-        const dir = 'windows/libs';
-        return XiphLink._(
-          libraries: _xiphLibs,
-          libraryDirectories: [packageRoot.resolve(dir).toFilePath()],
-          includeDirs: const ['windows/include'],
-          bundledAssets: [
-            for (final lib in _xiphLibs)
-              CodeAsset(
-                package: packageName,
-                name: 'xiph/$lib.dll',
-                linkMode: DynamicLoadingBundled(),
-                file: packageRoot.resolve('$dir/$lib.dll'),
-              ),
-          ],
-          dependencies: [
-            for (final lib in _xiphLibs) ...[
-              packageRoot.resolve('$dir/$lib.lib'),
-              packageRoot.resolve('$dir/$lib.dll'),
-            ],
-          ],
-        );
-
-      case OS.linux:
-        const dir = 'linux/libs';
-        return XiphLink._(
-          libraries: _xiphLibs,
-          libraryDirectories: [packageRoot.resolve(dir).toFilePath()],
-          includeDirs: const ['linux/include'],
-          bundledAssets: const [],
-          dependencies: [
-            for (final lib in _xiphLibs) packageRoot.resolve('$dir/lib$lib.so'),
-          ],
-        );
-
-      default:
-        throw UnsupportedError('Unsupported target OS: $os');
+    // 1. Check if complete build already exists in cache
+    if (_isCompleteInstall(installDir, os)) {
+      return _linkFromInstall(input, installDir, os, arch);
     }
+
+    // 2. Check build tool availability
+    final hasGit = _checkTool('git');
+    final hasCmake = _checkTool('cmake');
+    if (!hasGit || !hasCmake) {
+      throw UnsupportedError(
+        'CMake and Git are required to build Xiph libraries from source for '
+        '$os/$arch. Please ensure cmake and git are installed and available '
+        'on your PATH. Alternatively, install system libraries and set '
+        '`hooks.user_defines.flutter_soloud.use_system_xiph_libs: true` '
+        'in pubspec.yaml, or disable Xiph with `no_xiph_libs: true`.',
+      );
+    }
+
+    // 3. Clone / checkout repositories
+    await _ensureRepo(
+      'ogg',
+      'https://github.com/xiph/ogg',
+      'db5c7a4',
+      sourcesDir,
+    );
+    await _ensureRepo(
+      'vorbis',
+      'https://github.com/xiph/vorbis',
+      '84c0236',
+      sourcesDir,
+    );
+    await _ensureRepo(
+      'opus',
+      'https://github.com/xiph/opus',
+      'c79a9bd',
+      sourcesDir,
+    );
+    await _ensureRepo(
+      'flac',
+      'https://github.com/xiph/flac',
+      '9547dbc',
+      sourcesDir,
+    );
+
+    // 4. Build with CMake
+    installDir.createSync(recursive: true);
+    final archStr = _cmakeArch(arch);
+    final osxDeploymentTarget = os == OS.iOS ? '12.0' : '10.13';
+
+    // Build ogg
+    await _runCmake([
+      '-S',
+      '${sourcesDir.path}/ogg',
+      '-B',
+      '${buildDir.path}/ogg',
+      '-DCMAKE_INSTALL_PREFIX=${installDir.path}',
+      '-DCMAKE_BUILD_TYPE=Release',
+      '-DCMAKE_POLICY_VERSION_MINIMUM=3.5',
+      '-DINSTALL_DOCS=OFF',
+      '-DBUILD_TESTING=OFF',
+      if (isApple) ...[
+        '-DBUILD_SHARED_LIBS=OFF',
+        '-DCMAKE_OSX_ARCHITECTURES=$archStr',
+        '-DCMAKE_OSX_DEPLOYMENT_TARGET=$osxDeploymentTarget',
+      ] else if (os == OS.windows) ...[
+        '-DBUILD_SHARED_LIBS=ON',
+      ] else ...[
+        '-DBUILD_SHARED_LIBS=ON',
+        '-DCMAKE_C_FLAGS=-O2 -flto -ffunction-sections -fdata-sections',
+      ],
+    ]);
+    await _runCmake([
+      '--build',
+      '${buildDir.path}/ogg',
+      '--config',
+      'Release',
+      '--target',
+      'install',
+    ]);
+
+    // Build opus
+    const opusAppleFlags =
+        '-Os -fno-exceptions -fno-unwind-tables '
+        '-fno-asynchronous-unwind-tables';
+    await _runCmake([
+      '-S',
+      '${sourcesDir.path}/opus',
+      '-B',
+      '${buildDir.path}/opus',
+      '-DCMAKE_INSTALL_PREFIX=${installDir.path}',
+      '-DCMAKE_BUILD_TYPE=Release',
+      '-DCMAKE_POLICY_VERSION_MINIMUM=3.5',
+      '-DOPUS_BUILD_PROGRAMS=OFF',
+      '-DOPUS_BUILD_TESTING=OFF',
+      if (isApple) ...[
+        '-DBUILD_SHARED_LIBS=OFF',
+        '-DOPUS_BUILD_SHARED_LIBRARY=OFF',
+        '-DCMAKE_OSX_ARCHITECTURES=$archStr',
+        '-DCMAKE_OSX_DEPLOYMENT_TARGET=$osxDeploymentTarget',
+        '-DCMAKE_C_FLAGS=$opusAppleFlags',
+      ] else if (os == OS.windows) ...[
+        '-DBUILD_SHARED_LIBS=ON',
+      ] else ...[
+        '-DBUILD_SHARED_LIBS=ON',
+        '-DCMAKE_C_FLAGS=-O2 -flto -ffunction-sections -fdata-sections',
+      ],
+    ]);
+    await _runCmake([
+      '--build',
+      '${buildDir.path}/opus',
+      '--config',
+      'Release',
+      '--target',
+      'install',
+    ]);
+
+    // Locate built ogg library for vorbis and flac
+    final oggLib = isApple
+        ? '${installLibDir.path}/libogg.a'
+        : (os == OS.windows
+              ? '${installLibDir.path}/ogg.lib'
+              : (File('${installLib64Dir.path}/libogg.so').existsSync()
+                    ? '${installLib64Dir.path}/libogg.so'
+                    : '${installLibDir.path}/libogg.so'));
+
+    // Build vorbis
+    await _runCmake([
+      '-S',
+      '${sourcesDir.path}/vorbis',
+      '-B',
+      '${buildDir.path}/vorbis',
+      '-DCMAKE_INSTALL_PREFIX=${installDir.path}',
+      '-DCMAKE_BUILD_TYPE=Release',
+      '-DCMAKE_POLICY_VERSION_MINIMUM=3.5',
+      '-DOGG_INCLUDE_DIR=${installIncDir.path}',
+      '-DOGG_LIBRARY=$oggLib',
+      if (isApple) ...[
+        '-DBUILD_SHARED_LIBS=OFF',
+        '-DCMAKE_OSX_ARCHITECTURES=$archStr',
+        '-DCMAKE_OSX_DEPLOYMENT_TARGET=$osxDeploymentTarget',
+      ] else if (os == OS.windows) ...[
+        '-DBUILD_SHARED_LIBS=ON',
+      ] else ...[
+        '-DBUILD_SHARED_LIBS=ON',
+        '-DCMAKE_C_FLAGS=-O2 -flto -ffunction-sections -fdata-sections',
+      ],
+    ]);
+    await _runCmake([
+      '--build',
+      '${buildDir.path}/vorbis',
+      '--config',
+      'Release',
+      '--target',
+      'install',
+    ]);
+
+    // Build flac
+    await _runCmake([
+      '-S',
+      '${sourcesDir.path}/flac',
+      '-B',
+      '${buildDir.path}/flac',
+      '-DCMAKE_INSTALL_PREFIX=${installDir.path}',
+      '-DCMAKE_BUILD_TYPE=Release',
+      '-DCMAKE_POLICY_VERSION_MINIMUM=3.5',
+      '-DOGG_INCLUDE_DIR=${installIncDir.path}',
+      '-DOGG_LIBRARY=$oggLib',
+      '-DBUILD_CXXLIBS=OFF',
+      '-DBUILD_PROGRAMS=OFF',
+      '-DBUILD_EXAMPLES=OFF',
+      '-DBUILD_TESTING=OFF',
+      '-DBUILD_DOCS=OFF',
+      '-DINSTALL_MANPAGES=OFF',
+      if (isApple) ...[
+        '-DBUILD_SHARED_LIBS=OFF',
+        '-DCMAKE_OSX_ARCHITECTURES=$archStr',
+        '-DCMAKE_OSX_DEPLOYMENT_TARGET=$osxDeploymentTarget',
+        '-DWITH_OGG=ON',
+      ] else if (os == OS.windows) ...[
+        '-DBUILD_SHARED_LIBS=ON',
+      ] else ...[
+        '-DBUILD_SHARED_LIBS=ON',
+        '-DCMAKE_C_FLAGS=-O2 -flto -ffunction-sections -fdata-sections',
+      ],
+    ]);
+    await _runCmake([
+      '--build',
+      '${buildDir.path}/flac',
+      '--config',
+      'Release',
+      '--target',
+      'install',
+    ]);
+
+    // Copy FLAC share headers if present
+    final shareSrc = Directory('${sourcesDir.path}/flac/include/share');
+    if (shareSrc.existsSync()) {
+      _copyDirSync(shareSrc, Directory('${installIncDir.path}/share'));
+    }
+    // Remove FLAC++ C++ wrapper headers
+    final flacppDir = Directory('${installIncDir.path}/FLAC++');
+    if (flacppDir.existsSync()) {
+      flacppDir.deleteSync(recursive: true);
+    }
+
+    return _linkFromInstall(input, installDir, os, arch);
   }
 
   /// Library names passed to the linker (`-l<name>`).
@@ -390,7 +754,7 @@ final class XiphLink {
   /// Directories searched for [libraries]. Absolute paths.
   final List<String> libraryDirectories;
 
-  /// Xiph header directories, relative to the package root.
+  /// Xiph header directories, relative to the package root or absolute paths.
   final List<String> includeDirs;
 
   /// Extra code assets to bundle (prebuilt shared libraries).
@@ -398,4 +762,201 @@ final class XiphLink {
 
   /// Prebuilt files consumed by the build, for cache invalidation.
   final List<Uri> dependencies;
+}
+
+// ---------------------------------------------------------------------------
+// Build from source helpers
+// ---------------------------------------------------------------------------
+
+String _cmakeArch(Architecture arch) => switch (arch) {
+  Architecture.arm64 => 'arm64',
+  Architecture.x64 => 'x86_64',
+  Architecture.arm => 'armv7-a',
+  Architecture.ia32 => 'i686',
+  Architecture.riscv64 => 'riscv64',
+  _ => arch.name,
+};
+
+bool _checkTool(String tool) {
+  try {
+    final res = Process.runSync(tool, ['--version']);
+    return res.exitCode == 0;
+  } catch (_) {
+    return false;
+  }
+}
+
+bool _isCompleteInstall(Directory installDir, OS os) {
+  if (!installDir.existsSync()) return false;
+  final inc = Directory('${installDir.path}/include');
+  if (!File('${inc.path}/ogg/ogg.h').existsSync() ||
+      !File('${inc.path}/vorbis/codec.h').existsSync() ||
+      !File('${inc.path}/opus/opus.h').existsSync() ||
+      !File('${inc.path}/FLAC/all.h').existsSync()) {
+    return false;
+  }
+  final libDir = Directory('${installDir.path}/lib');
+  final lib64Dir = Directory('${installDir.path}/lib64');
+  bool hasLib(String name) =>
+      File('${libDir.path}/$name').existsSync() ||
+      File('${lib64Dir.path}/$name').existsSync();
+
+  if (os == OS.macOS || os == OS.iOS) {
+    return [
+      'libogg.a',
+      'libvorbis.a',
+      'libvorbisfile.a',
+      'libvorbisenc.a',
+      'libopus.a',
+      'libFLAC.a',
+    ].every(hasLib);
+  } else if (os == OS.windows) {
+    return [
+      'ogg.lib',
+      'vorbis.lib',
+      'vorbisfile.lib',
+      'vorbisenc.lib',
+      'opus.lib',
+      'FLAC.lib',
+    ].every(hasLib);
+  } else {
+    return [
+      'libogg.so',
+      'libvorbis.so',
+      'libvorbisfile.so',
+      'libvorbisenc.so',
+      'libopus.so',
+      'libFLAC.so',
+    ].every(hasLib);
+  }
+}
+
+Future<void> _ensureRepo(
+  String name,
+  String url,
+  String commit,
+  Directory parent,
+) async {
+  final repoDir = Directory('${parent.path}/$name');
+  if (!repoDir.existsSync()) {
+    parent.createSync(recursive: true);
+    print('[flutter_soloud] Cloning $name ($commit)...');
+    final cloneRes = await Process.run('git', ['clone', url, repoDir.path]);
+    if (cloneRes.exitCode != 0) {
+      throw ProcessException(
+        'git',
+        ['clone', url, repoDir.path],
+        cloneRes.stderr.toString(),
+        cloneRes.exitCode,
+      );
+    }
+    await Process.run('git', [
+      'checkout',
+      commit,
+    ], workingDirectory: repoDir.path);
+  }
+}
+
+Future<void> _runCmake(List<String> args, {String? workingDir}) async {
+  final res = await Process.run('cmake', args, workingDirectory: workingDir);
+  if (res.exitCode != 0) {
+    throw ProcessException(
+      'cmake',
+      args,
+      '${res.stdout}\n${res.stderr}',
+      res.exitCode,
+    );
+  }
+}
+
+void _copyDirSync(Directory src, Directory dst) {
+  if (!src.existsSync()) return;
+  dst.createSync(recursive: true);
+  for (final entity in src.listSync(recursive: true)) {
+    final relPath = entity.path.substring(src.path.length + 1);
+    final targetPath = '${dst.path}/$relPath';
+    if (entity is Directory) {
+      Directory(targetPath).createSync(recursive: true);
+    } else if (entity is File) {
+      File(targetPath).parent.createSync(recursive: true);
+      entity.copySync(targetPath);
+    }
+  }
+}
+
+XiphLink _linkFromInstall(
+  BuildInput input,
+  Directory installDir,
+  OS os,
+  Architecture arch,
+) {
+  final packageName = input.packageName;
+  final libDir = Directory('${installDir.path}/lib');
+  final lib64Dir = Directory('${installDir.path}/lib64');
+  final binDir = Directory('${installDir.path}/bin');
+  final libraryDirs = [
+    if (libDir.existsSync()) libDir.path,
+    if (lib64Dir.existsSync()) lib64Dir.path,
+    if (binDir.existsSync()) binDir.path,
+  ];
+  final includeDirs = ['${installDir.path}/include'];
+  final bundledAssets = <CodeAsset>[];
+  final dependencies = <Uri>[];
+
+  if (os == OS.linux) {
+    for (final dir in [libDir, lib64Dir]) {
+      if (!dir.existsSync()) continue;
+      for (final file in dir.listSync()) {
+        if (file is File && file.path.endsWith('.so')) {
+          dependencies.add(file.uri);
+          bundledAssets.add(
+            CodeAsset(
+              package: packageName,
+              name: 'xiph/${file.path.split(Platform.pathSeparator).last}',
+              linkMode: DynamicLoadingBundled(),
+              file: file.uri,
+            ),
+          );
+        }
+      }
+    }
+  } else if (os == OS.windows) {
+    for (final dir in [binDir, libDir]) {
+      if (!dir.existsSync()) continue;
+      for (final file in dir.listSync()) {
+        if (file is File) {
+          if (file.path.endsWith('.lib')) {
+            dependencies.add(file.uri);
+          } else if (file.path.endsWith('.dll')) {
+            dependencies.add(file.uri);
+            bundledAssets.add(
+              CodeAsset(
+                package: packageName,
+                name: 'xiph/${file.path.split(Platform.pathSeparator).last}',
+                linkMode: DynamicLoadingBundled(),
+                file: file.uri,
+              ),
+            );
+          }
+        }
+      }
+    }
+  } else {
+    // macOS / iOS: static libraries
+    if (libDir.existsSync()) {
+      for (final file in libDir.listSync()) {
+        if (file is File && file.path.endsWith('.a')) {
+          dependencies.add(file.uri);
+        }
+      }
+    }
+  }
+
+  return XiphLink._(
+    libraries: _xiphLibs,
+    libraryDirectories: libraryDirs,
+    includeDirs: includeDirs,
+    bundledAssets: bundledAssets,
+    dependencies: dependencies,
+  );
 }

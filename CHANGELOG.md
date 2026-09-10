@@ -1,3 +1,7 @@
+##### 5.1.0
+- **Auto-detection of system Xiph libraries by default**: Dart Native Assets build hooks now automatically detect system-installed Xiph libraries (via `pkg-config`, `apt`, `brew`, `vcpkg`); if present, it links against them for fast builds, otherwise it automatically clones and compiles the pinned Xiph repositories (Ogg, Vorbis, Opus, FLAC) from source into `.dart_tool/flutter_soloud/xiph/` using CMake. Fixes #552.
+- **Flexible configuration**: Added `use_system_xiph_libs: false` under `hooks.user_defines.flutter_soloud` in `pubspec.yaml` to bypass system libraries and force building from source. Setting `use_system_xiph_libs: true` (or leaving unset) checks for system libraries and automatically falls back to building from source if missing.
+
 ##### 5.0.2 (4 Sep 2026)
 - removed ".github" for the possible location to install skills
 

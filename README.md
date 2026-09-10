@@ -40,7 +40,13 @@ If you are looking for a package to visualize audio using shaders or CustomPaint
 
 If you are working with MIDI or SoundFont files (SF2/SF3/SFZ), check out [soundfont_kit](https://pub.dev/packages/soundfont_kit)—a companion package that is very helpful for musicians and game developers looking to synthesize instrument audio using SoundFonts with `flutter_soloud`.
 
-The native code is built with [Dart build hooks](https://dart.dev/tools/hooks): no CMake, CocoaPods script phases, or SPM configuration is needed — it works the same whether your app uses CocoaPods or Swift Package Manager. To build without the bundled Opus/Ogg/Vorbis/FLAC libraries, set `hooks.user_defines.flutter_soloud.no_xiph_libs: true` in your app's `pubspec.yaml`.
+The native code is built with [Dart build hooks](https://dart.dev/tools/hooks): no CMake, CocoaPods script phases, or SPM configuration is needed — it works the same whether your app uses CocoaPods or Swift Package Manager.
+
+By default, Xiph audio codecs (Ogg, Vorbis, Opus, FLAC) check for system-installed libraries (`pkg-config`, `apt`, `brew`, `vcpkg`); if available, the plugin links against them, otherwise it automatically clones and compiles them from source via CMake. You can also configure:
+- **Build from source**: Set `use_system_xiph_libs: false` under `hooks.user_defines.flutter_soloud` in your `pubspec.yaml` to bypass system libraries and always compile from the pinned Git repositories.
+- **Without Xiph mode**: Set `no_xiph_libs: true` to exclude Xiph codecs and shrink binary size.
+
+For complete setup instructions and Windows download links, see the [Xiph Libraries & Codecs Guide](https://docs.page/alnitak/flutter_soloud_docs/get_started/xiph_libs).
 
 ## Documentation
 

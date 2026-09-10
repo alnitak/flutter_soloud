@@ -1,6 +1,6 @@
 ---
 name: flutter-soloud-streaming
-version: 1
+version: 2
 description: Teaches the push buffer-stream API of the flutter_soloud package (setBufferStream, addAudioDataStream, setDataIsEnded, BufferingType, BufferType, icy metadata). Use when the user wants to play audio that arrives in chunks — internet/icecast radio, WebSocket PCM feeds, TTS/LLM streaming APIs, or procedurally generated PCM — instead of loading a complete file or asset.
 ---
 
@@ -88,7 +88,7 @@ Divergences from audioplayers/just_audio habits:
 - **`BufferType.opus` is deprecated.** Passing it still works (rewritten to `auto` with a debugPrint) but new code should use `auto`.
 - **With `format: BufferType.auto`, `sampleRate` and `channels` are ignored** — the decoder takes them from the container. They only matter for raw PCM formats.
 - **Raw PCM must match the declared format exactly**: interleaved, little-endian, correct sample rate and channel count; the engine resamples to `sampleRate` but does not channel-convert or fix wrong formats — mismatch means noise or wrong speed, not an error.
-- **Compressed streaming needs the bundled Xiph libs.** If the app was built with them excluded, `addAudioDataStream` of compressed data throws `SoLoudXiphLibsNotAvailableException`.
+- **Compressed streaming needs Xiph libs (Ogg, Vorbis, Opus, FLAC).** If the app was built with them excluded (`no_xiph_libs: true`), `addAudioDataStream` of compressed data throws `SoLoudXiphLibsNotAvailableException`.
 - **Forgetting `setDataIsEnded`** leaves the stream "live" forever: `soundEvents` never emits `handleIsNoMoreValid` and (with `preserved`) the buffer keeps growing.
 - **`maxBufferSizeDuration` is computed from `sampleRate`/`channels`** as `ms * sampleRate * channels * 4 bytes` (internal float storage) — for `auto` sources this conversion is approximate.
 
