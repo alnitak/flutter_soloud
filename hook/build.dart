@@ -71,10 +71,14 @@ void main(List<String> args) async {
     final flags = <String>[
       if (os != OS.windows) '-fvisibility=hidden',
       if (isApple) ...[
-        '-framework', 'Foundation',
-        '-framework', 'AudioToolbox',
-        '-framework', 'AVFAudio',
-        '-framework', 'CoreAudio',
+        '-framework',
+        'Foundation',
+        '-framework',
+        'AudioToolbox',
+        '-framework',
+        'AVFAudio',
+        '-framework',
+        'CoreAudio',
       ],
       // Force maximum optimization regardless of Flutter build mode.
       // For native debugging: comment out 'NDEBUG' above and replace the line

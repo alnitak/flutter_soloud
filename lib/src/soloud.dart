@@ -3769,7 +3769,7 @@ interface class SoLoud {
     if (minDecibels >= maxDecibels) {
       throw ArgumentError(
         'minDecibels ($minDecibels) must be less than '
-            'maxDecibels ($maxDecibels)',
+        'maxDecibels ($maxDecibels)',
       );
     }
     _minDecibels = minDecibels;
