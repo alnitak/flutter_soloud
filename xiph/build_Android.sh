@@ -20,8 +20,8 @@ fi
 # Directories setup
 BASE_DIR="$PWD"
 BUILD_DIR="$BASE_DIR/android/build"
-OUTPUT_DIR="$BASE_DIR/../android/libs"
-OUTPUT_INCLUDE_DIR="$BASE_DIR/../android/include"
+OUTPUT_DIR="$BASE_DIR/prebuild/android"
+OUTPUT_INCLUDE_DIR="$BASE_DIR/prebuild/include"
 ARCHS=("arm64-v8a" "armeabi-v7a" "x86" "x86_64")
 
 # Create directories

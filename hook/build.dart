@@ -40,9 +40,10 @@ void main(List<String> args) async {
 
     // Xiph configuration:
     // - `no_xiph_libs: true` -> build without Xiph support
-    // - `use_system_xiph_libs: false` -> bypass system libs, build from source
-    // - default / `use_system_xiph_libs: true` -> check system libs; if
-    //   found, link them; otherwise automatically build from source.
+    // Platform-specific user defines:
+    // - `<platform>_use_system_libs: true` -> link against system packages
+    // - `<platform>_force_build_libs: true` -> compile from source via CMake
+    // Default (both false): uses bundled prebuilt libraries from xiph/prebuild/
     bool? parseBool(Object? val) {
       if (val == null) return null;
       if (val is bool) return val;
@@ -54,23 +55,79 @@ void main(List<String> args) async {
     }
 
     final noXiph = parseBool(input.userDefines['no_xiph_libs']) ?? false;
-    final useSystemXiph =
-        parseBool(input.userDefines['use_system_xiph_libs']) ?? true;
+
+    final bool useSystemLibs;
+    final bool forceBuildLibs;
+
+    switch (os) {
+      case OS.linux:
+        useSystemLibs =
+            parseBool(input.userDefines['linux_use_system_libs']) ??
+            parseBool(input.userDefines['use_system_xiph_libs']) ??
+            false;
+        forceBuildLibs =
+            parseBool(input.userDefines['linux_force_build_libs']) ?? false;
+      case OS.macOS:
+        useSystemLibs =
+            parseBool(input.userDefines['macos_use_system_libs']) ?? false;
+        forceBuildLibs =
+            parseBool(input.userDefines['macos_force_build_libs']) ?? false;
+      case OS.windows:
+        useSystemLibs =
+            parseBool(input.userDefines['windows_use_system_libs']) ?? false;
+        forceBuildLibs =
+            parseBool(input.userDefines['windows_force_build_libs']) ?? false;
+      case OS.android:
+        useSystemLibs = false;
+        forceBuildLibs =
+            parseBool(input.userDefines['android_force_build_libs']) ?? false;
+      case OS.iOS:
+        useSystemLibs = false;
+        forceBuildLibs =
+            parseBool(input.userDefines['ios_force_build_libs']) ?? false;
+      default:
+        useSystemLibs = false;
+        forceBuildLibs = false;
+    }
+
+    if (useSystemLibs && forceBuildLibs) {
+      throw ArgumentError(
+        '[flutter_soloud] Conflicting options in pubspec.yaml: cannot set both '
+        '`${os.name}_use_system_libs: true` and '
+        '`${os.name}_force_build_libs: true`.',
+      );
+    }
 
     final XiphLink xiph;
+    final String xiphMode;
     if (noXiph) {
-      print('[flutter_soloud] Building without Xiph libs');
+      xiphMode = 'disabled';
       xiph = XiphLink.empty();
-    } else if (!useSystemXiph) {
-      print('[flutter_soloud] Building with Xiph libs (forced from source)');
-      xiph = await XiphLink.fromSource(input);
-    } else if (await XiphLink.hasSystemLibs(os)) {
-      print('[flutter_soloud] Using detected system Xiph libraries');
+    } else if (useSystemLibs) {
+      xiphMode = 'from system';
       xiph = await XiphLink.forSystem(input);
-    } else {
-      print('[flutter_soloud] Building with Xiph libs (from source)');
+    } else if (forceBuildLibs) {
+      xiphMode = 'built from git';
       xiph = await XiphLink.fromSource(input);
+    } else {
+      xiphMode = 'prebuilt';
+      xiph = XiphLink.forBundled(input);
     }
+
+    final platformDisplayName = switch (os) {
+      OS.macOS => 'macOS',
+      OS.iOS => 'iOS',
+      OS.linux => 'Linux',
+      OS.windows => 'Windows',
+      OS.android => 'Android',
+      OS.fuchsia => 'Fuchsia',
+      _ => os.name,
+    };
+
+    print(
+      '[flutter_soloud] Building on $platformDisplayName ($arch) with Xiph '
+      'libs [$xiphMode]',
+    );
 
     final defines = <String, String?>{
       'FLUTTER_PLUGIN_IMPL': null,
@@ -91,16 +148,9 @@ void main(List<String> args) async {
     };
 
     final flags = <String>[
-      if (os != OS.windows) '-fvisibility=hidden',
-      if (isApple) ...[
-        '-framework',
-        'Foundation',
-        '-framework',
-        'AudioToolbox',
-        '-framework',
-        'AVFAudio',
-        '-framework',
-        'CoreAudio',
+      if (os != OS.windows) ...[
+        '-fvisibility=hidden',
+        '-Wno-unused-command-line-argument',
       ],
       // Force maximum optimization regardless of Flutter build mode.
       // For native debugging: comment out 'NDEBUG' above and replace the line
@@ -179,7 +229,7 @@ void main(List<String> args) async {
       // into the APK now that the CMake/AGP wiring is gone.
       cppLinkStdLib: os == OS.android ? 'c++_static' : null,
       frameworks: isApple
-          ? const ['Foundation', 'AudioToolbox', 'AVFAudio']
+          ? const ['Foundation', 'AudioToolbox', 'AVFAudio', 'CoreAudio']
           : const [],
       libraries: [
         ...xiph.libraries,
@@ -282,6 +332,15 @@ List<String> collectSources(Uri packageRoot, OS targetOS) {
 /// everything before ogg).
 const _xiphLibs = ['FLAC', 'opus', 'vorbisfile', 'vorbisenc', 'vorbis', 'ogg'];
 
+/// Android ABI names matching the directories in xiph/prebuild/android/.
+String? _androidAbi(Architecture arch) => switch (arch) {
+  Architecture.arm64 => 'arm64-v8a',
+  Architecture.arm => 'armeabi-v7a',
+  Architecture.x64 => 'x86_64',
+  Architecture.ia32 => 'x86',
+  _ => null,
+};
+
 /// How the Xiph libraries are linked for one target.
 final class XiphLink {
   XiphLink._({
@@ -299,6 +358,118 @@ final class XiphLink {
     bundledAssets: const [],
     dependencies: const [],
   );
+
+  /// Links against bundled prebuilt Xiph libraries in `xiph/prebuild/`.
+  factory XiphLink.forBundled(BuildInput input) {
+    final code = input.config.code;
+    final os = code.targetOS;
+    final packageRoot = input.packageRoot;
+    final packageName = input.packageName;
+
+    switch (os) {
+      case OS.macOS:
+        const dir = 'xiph/prebuild/macos';
+        return XiphLink._(
+          libraries: _xiphLibs,
+          libraryDirectories: [packageRoot.resolve(dir).toFilePath()],
+          includeDirs: const ['xiph/prebuild/include'],
+          bundledAssets: const [],
+          dependencies: [
+            for (final lib in _xiphLibs) packageRoot.resolve('$dir/lib$lib.a'),
+          ],
+        );
+
+      case OS.iOS:
+        // Device and simulator builds use separate static archives.
+        final suffix = switch (code.iOS.targetSdk) {
+          IOSSdk.iPhoneSimulator => 'simulator',
+          _ => 'device',
+        };
+        const dir = 'xiph/prebuild/ios';
+        final names = [for (final lib in _xiphLibs) '${lib}_iOS-$suffix'];
+        return XiphLink._(
+          libraries: names,
+          libraryDirectories: [packageRoot.resolve(dir).toFilePath()],
+          includeDirs: const ['xiph/prebuild/include'],
+          bundledAssets: const [],
+          dependencies: [
+            for (final name in names) packageRoot.resolve('$dir/lib$name.a'),
+          ],
+        );
+
+      case OS.android:
+        final abi = _androidAbi(code.targetArchitecture);
+        if (abi == null) {
+          throw UnsupportedError(
+            'Unsupported Android architecture: ${code.targetArchitecture}',
+          );
+        }
+        final dir = 'xiph/prebuild/android/$abi';
+        return XiphLink._(
+          libraries: _xiphLibs,
+          libraryDirectories: [packageRoot.resolve(dir).toFilePath()],
+          includeDirs: const ['xiph/prebuild/include'],
+          bundledAssets: [
+            for (final lib in _xiphLibs)
+              CodeAsset(
+                package: packageName,
+                name: 'xiph/$abi/lib$lib.so',
+                linkMode: DynamicLoadingBundled(),
+                file: packageRoot.resolve('$dir/lib$lib.so'),
+              ),
+          ],
+          dependencies: [
+            for (final lib in _xiphLibs) packageRoot.resolve('$dir/lib$lib.so'),
+          ],
+        );
+
+      case OS.windows:
+        const dir = 'xiph/prebuild/windows';
+        return XiphLink._(
+          libraries: _xiphLibs,
+          libraryDirectories: [packageRoot.resolve(dir).toFilePath()],
+          includeDirs: const ['xiph/prebuild/include'],
+          bundledAssets: [
+            for (final lib in _xiphLibs)
+              CodeAsset(
+                package: packageName,
+                name: 'xiph/$lib.dll',
+                linkMode: DynamicLoadingBundled(),
+                file: packageRoot.resolve('$dir/$lib.dll'),
+              ),
+          ],
+          dependencies: [
+            for (final lib in _xiphLibs) ...[
+              packageRoot.resolve('$dir/$lib.lib'),
+              packageRoot.resolve('$dir/$lib.dll'),
+            ],
+          ],
+        );
+
+      case OS.linux:
+        const dir = 'xiph/prebuild/linux';
+        return XiphLink._(
+          libraries: _xiphLibs,
+          libraryDirectories: [packageRoot.resolve(dir).toFilePath()],
+          includeDirs: const ['xiph/prebuild/include'],
+          bundledAssets: [
+            for (final lib in _xiphLibs)
+              CodeAsset(
+                package: packageName,
+                name: 'xiph/lib$lib.so',
+                linkMode: DynamicLoadingBundled(),
+                file: packageRoot.resolve('$dir/lib$lib.so'),
+              ),
+          ],
+          dependencies: [
+            for (final lib in _xiphLibs) packageRoot.resolve('$dir/lib$lib.so'),
+          ],
+        );
+
+      default:
+        throw UnsupportedError('Unsupported OS for bundled Xiph: $os');
+    }
+  }
 
   /// Links against system-installed Xiph libraries (apt, brew, pacman, etc.).
   static Future<XiphLink> forSystem(BuildInput input) async {

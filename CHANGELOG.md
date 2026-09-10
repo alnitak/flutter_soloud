@@ -1,8 +1,9 @@
 ##### 5.1.0 (X Xxx 2026)
-- Implemented the algorithm according to the W3C Web Audio API Specification to compute FFT
+- implemented the algorithm according to the W3C Web Audio API Specification to compute FFT
 - added `setFftDecibelRange` to set the decibel range for FFT magnitude normalization
-- **Auto-detection of system Xiph libraries by default**: Dart Native Assets build hooks now automatically detect system-installed Xiph libraries (via `pkg-config`, `apt`, `brew`, `vcpkg`); if present, it links against them for fast builds, otherwise it automatically clones and compiles the pinned Xiph repositories (Ogg, Vorbis, Opus, FLAC) from source into `.dart_tool/flutter_soloud/xiph/` using CMake. Fixes #552.
-- **Flexible configuration**: Added `use_system_xiph_libs: false` under `hooks.user_defines.flutter_soloud` in `pubspec.yaml` to bypass system libraries and force building from source. Setting `use_system_xiph_libs: true` (or leaving unset) checks for system libraries and automatically falls back to building from source if missing.
+- **Prebuilt Xiph libraries consolidation**: Precompiled Xiph binaries across all platforms are now cleanly organized in `xiph/prebuild/<platform>/`, keeping platform folders clean and ensuring packaged apps (Android AAB/APK, iOS IPA, macOS APP, Windows EXE) bundle all codecs out of the box with zero external build dependencies.
+- **Platform-specific Xiph hook options**: Added `<platform>_use_system_libs` (to link against system packages on desktop) and `<platform>_force_build_libs` (to compile from source via CMake into `.dart_tool/`) under `hooks.user_defines.flutter_soloud` in `pubspec.yaml`.
+- **Runtime error diagnostics**: Added descriptive troubleshooting logs when system libraries fail to load at runtime, with package manager commands for Ubuntu/Debian, Arch, Fedora, macOS Homebrew, and Windows. Fixes #552.
 
 ##### 5.0.2 (4 Sep 2026)
 - removed ".github" for the possible location to install skills

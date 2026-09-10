@@ -107,16 +107,30 @@ await SoLoud.instance.init(
 
 ## Xiph audio libraries (Ogg, Vorbis, Opus, FLAC)
 
-The Xiph audio decoders provide compressed audio playback, streaming, and master output capture (600–3000 KB per binary). By default, Native Assets build hooks automatically detect system-installed libraries (`pkg-config`, `apt`, `brew`, `vcpkg`); if missing (or on mobile platforms), they automatically clone and compile the pinned Xiph repositories from source via CMake into `.dart_tool/flutter_soloud/xiph/`.
+The Xiph audio decoders provide compressed audio playback, streaming, and master output capture (600–3000 KB per binary). By default, Native Assets build hooks automatically link and bundle precompiled libraries from `xiph/prebuild/<platform>/`, ensuring that packaged apps (Android AAB/APK, iOS IPA, macOS APP, Windows EXE) work out of the box with zero external build dependencies.
 
 You can customize this in the **app's** `pubspec.yaml`:
 
-- **Bypass system detection and force building from source:**
+- **Link against system-installed packages (desktop only):**
   ```yaml
   hooks:
     user_defines:
       flutter_soloud:
-        use_system_xiph_libs: false
+        linux_use_system_libs: true
+        macos_use_system_libs: true
+        windows_use_system_libs: true
+  ```
+
+- **Force building from source via CMake into `.dart_tool/`:**
+  ```yaml
+  hooks:
+    user_defines:
+      flutter_soloud:
+        linux_force_build_libs: true
+        macos_force_build_libs: true
+        windows_force_build_libs: true
+        android_force_build_libs: true
+        ios_force_build_libs: true
   ```
 
 - **Exclude Xiph libraries entirely (shrinking binary size):**

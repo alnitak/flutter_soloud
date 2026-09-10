@@ -42,8 +42,9 @@ If you are working with MIDI or SoundFont files (SF2/SF3/SFZ), check out [soundf
 
 The native code is built with [Dart build hooks](https://dart.dev/tools/hooks): no CMake, CocoaPods script phases, or SPM configuration is needed — it works the same whether your app uses CocoaPods or Swift Package Manager.
 
-By default, Xiph audio codecs (Ogg, Vorbis, Opus, FLAC) check for system-installed libraries (`pkg-config`, `apt`, `brew`, `vcpkg`); if available, the plugin links against them, otherwise it automatically clones and compiles them from source via CMake. You can also configure:
-- **Build from source**: Set `use_system_xiph_libs: false` under `hooks.user_defines.flutter_soloud` in your `pubspec.yaml` to bypass system libraries and always compile from the pinned Git repositories.
+By default, Xiph audio codecs (Ogg, Vorbis, Opus, FLAC) are linked and bundled from tested prebuilt libraries (`xiph/prebuild/<platform>/`), ensuring that packaged apps (Android AAB/APK, iOS IPA, macOS APP, Windows EXE) work out of the box with zero external build dependencies. You can also configure:
+- **System libraries**: Set `<platform>_use_system_libs: true` (e.g. `linux_use_system_libs: true`) to link system packages.
+- **Force source build**: Set `<platform>_force_build_libs: true` to clone and compile from source via CMake.
 - **Without Xiph mode**: Set `no_xiph_libs: true` to exclude Xiph codecs and shrink binary size.
 
 For complete setup instructions and Windows download links, see the [Xiph Libraries & Codecs Guide](https://docs.page/alnitak/flutter_soloud_docs/get_started/xiph_libs).
