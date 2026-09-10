@@ -872,6 +872,10 @@ extern "C"
   /// 1 = full smooth
   FFI_PLUGIN_EXPORT void setFftSmoothing(float smooth);
 
+  /// Set the decibel range [minDecibels, maxDecibels] for FFT normalization.
+  /// Conforms to W3C Web Audio API (default: minDecibels = -100.0f, maxDecibels = -30.0f).
+  FFI_PLUGIN_EXPORT void setFftDecibelRange(float minDecibels, float maxDecibels);
+
   /// Get the sound length in seconds
   ///
   /// [soundHash] the sound hash

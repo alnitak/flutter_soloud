@@ -1428,6 +1428,11 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }
 
   @override
+  void setFftDecibelRange(double minDecibels, double maxDecibels) {
+    wasmSetFftDecibelRange(minDecibels, maxDecibels);
+  }
+
+  @override
   Duration getLength(SoundHash soundHash) {
     return wasmGetLength(soundHash.hash).toDuration();
   }

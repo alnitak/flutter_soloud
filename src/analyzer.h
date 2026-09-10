@@ -51,6 +51,10 @@ class Analyzer {
   /// Set FFT smoothing factor [0.0, 1.0].
   void setSmoothing(float smooth);
 
+  /// Set FFT decibel range [minDecibels, maxDecibels] for magnitude normalization.
+  /// Conforms to W3C Web Audio API (default: minDecibels = -100.0f, maxDecibels = -30.0f).
+  void setMinMaxDecibels(float minDecibels, float maxDecibels);
+
   /// Set the Dart notification callback.
   void setDataCallback(dartVisualizationCallback_t callback);
 
@@ -91,6 +95,8 @@ class Analyzer {
   int m_engineChannels{2};
   int m_activeChannels{1};
   std::atomic<float> m_fftSmoothing{0.8f};
+  std::atomic<float> m_minDecibels{-100.0f};
+  std::atomic<float> m_maxDecibels{-30.0f};
 
   // PFFFT setup and precomputed window table
   PFFFT_Setup *m_pffftSetup{nullptr};

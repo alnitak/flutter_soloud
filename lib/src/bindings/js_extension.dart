@@ -483,6 +483,9 @@ external int wasmGetVisualizationEnabled();
 @JS('Module_soloud._setFftSmoothing')
 external void wasmSetFftSmoothing(double smooth);
 
+@JS('Module_soloud._setFftDecibelRange')
+external void wasmSetFftDecibelRange(double minDecibels, double maxDecibels);
+
 @JS('Module_soloud._getLength')
 external double wasmGetLength(int soundHash);
 
