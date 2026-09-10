@@ -1,4 +1,6 @@
-##### 5.1.0
+##### 5.1.0 (X Xxx 2026)
+- Implemented the algorithm according to the W3C Web Audio API Specification to compute FFT
+- added `setFftDecibelRange` to set the decibel range for FFT magnitude normalization
 - **Auto-detection of system Xiph libraries by default**: Dart Native Assets build hooks now automatically detect system-installed Xiph libraries (via `pkg-config`, `apt`, `brew`, `vcpkg`); if present, it links against them for fast builds, otherwise it automatically clones and compiles the pinned Xiph repositories (Ogg, Vorbis, Opus, FLAC) from source into `.dart_tool/flutter_soloud/xiph/` using CMake. Fixes #552.
 - **Flexible configuration**: Added `use_system_xiph_libs: false` under `hooks.user_defines.flutter_soloud` in `pubspec.yaml` to bypass system libraries and force building from source. Setting `use_system_xiph_libs: true` (or leaving unset) checks for system libraries and automatically falls back to building from source if missing.
 
