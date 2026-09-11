@@ -1077,7 +1077,8 @@ String _cmakeArch(Architecture arch) => switch (arch) {
 };
 
 String? _findAndroidNdk(BuildInput input) {
-  final envNdk = Platform.environment['ANDROID_NDK_HOME'] ??
+  final envNdk =
+      Platform.environment['ANDROID_NDK_HOME'] ??
       Platform.environment['ANDROID_NDK_ROOT'];
   if (envNdk != null &&
       Directory(envNdk).existsSync() &&
@@ -1097,7 +1098,8 @@ String? _findAndroidNdk(BuildInput input) {
     }
   } catch (_) {}
 
-  final sdkRoot = Platform.environment['ANDROID_HOME'] ??
+  final sdkRoot =
+      Platform.environment['ANDROID_HOME'] ??
       Platform.environment['ANDROID_SDK_ROOT'];
   if (sdkRoot != null) {
     final ndkDir = Directory('$sdkRoot/ndk');
@@ -1106,8 +1108,9 @@ String? _findAndroidNdk(BuildInput input) {
       if (versions.isNotEmpty) {
         versions.sort((a, b) => a.path.compareTo(b.path));
         final candidate = versions.last.path;
-        if (File('$candidate/build/cmake/android.toolchain.cmake')
-            .existsSync()) {
+        if (File(
+          '$candidate/build/cmake/android.toolchain.cmake',
+        ).existsSync()) {
           return candidate;
         }
       }
