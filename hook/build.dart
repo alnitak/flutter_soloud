@@ -734,6 +734,9 @@ final class XiphLink {
 
     // 1. Check if complete build already exists in cache
     if (_isCompleteInstall(installDir, os)) {
+      print(
+        '[flutter_soloud] Using cached from-source Xiph libs for $os ($arch)',
+      );
       return _linkFromInstall(input, installDir, os, arch);
     }
 
@@ -782,6 +785,7 @@ final class XiphLink {
     final osxDeploymentTarget = os == OS.iOS ? '12.0' : '10.13';
 
     // Build ogg
+    print('[flutter_soloud] Configuring ogg with CMake ($archStr)...');
     await _runCmake([
       '-S',
       '${sourcesDir.path}/ogg',
@@ -803,6 +807,7 @@ final class XiphLink {
         '-DCMAKE_C_FLAGS=-O2 -flto -ffunction-sections -fdata-sections',
       ],
     ]);
+    print('[flutter_soloud] Compiling and installing ogg...');
     await _runCmake([
       '--build',
       '${buildDir.path}/ogg',
@@ -816,6 +821,7 @@ final class XiphLink {
     const opusAppleFlags =
         '-Os -fno-exceptions -fno-unwind-tables '
         '-fno-asynchronous-unwind-tables';
+    print('[flutter_soloud] Configuring opus with CMake ($archStr)...');
     await _runCmake([
       '-S',
       '${sourcesDir.path}/opus',
@@ -839,6 +845,7 @@ final class XiphLink {
         '-DCMAKE_C_FLAGS=-O2 -flto -ffunction-sections -fdata-sections',
       ],
     ]);
+    print('[flutter_soloud] Compiling and installing opus...');
     await _runCmake([
       '--build',
       '${buildDir.path}/opus',
@@ -858,6 +865,7 @@ final class XiphLink {
                     : '${installLibDir.path}/libogg.so'));
 
     // Build vorbis
+    print('[flutter_soloud] Configuring vorbis with CMake ($archStr)...');
     await _runCmake([
       '-S',
       '${sourcesDir.path}/vorbis',
@@ -879,6 +887,7 @@ final class XiphLink {
         '-DCMAKE_C_FLAGS=-O2 -flto -ffunction-sections -fdata-sections',
       ],
     ]);
+    print('[flutter_soloud] Compiling and installing vorbis...');
     await _runCmake([
       '--build',
       '${buildDir.path}/vorbis',
@@ -889,6 +898,7 @@ final class XiphLink {
     ]);
 
     // Build flac
+    print('[flutter_soloud] Configuring flac with CMake ($archStr)...');
     await _runCmake([
       '-S',
       '${sourcesDir.path}/flac',
@@ -917,6 +927,7 @@ final class XiphLink {
         '-DCMAKE_C_FLAGS=-O2 -flto -ffunction-sections -fdata-sections',
       ],
     ]);
+    print('[flutter_soloud] Compiling and installing flac...');
     await _runCmake([
       '--build',
       '${buildDir.path}/flac',
