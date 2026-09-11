@@ -804,7 +804,7 @@ interface class SoLoud {
       case TargetPlatform.windows:
         buffer.writeln(
           'To install the required libraries on Windows:\n'
-          '  - via vcpkg:\n'
+          '  - via vcpkg (use :x64-windows or :arm64-windows):\n'
           '      vcpkg install libogg:x64-windows libvorbis:x64-windows '
           'opus:x64-windows flac:x64-windows\n'
           '  - or download prebuilt binaries and place them in PATH:\n'

@@ -424,6 +424,15 @@ final class XiphLink {
         );
 
       case OS.windows:
+        if (code.targetArchitecture != Architecture.x64) {
+          throw UnsupportedError(
+            '[flutter_soloud] Bundled prebuilt Windows libraries only support '
+            'x64. For ${code.targetArchitecture.name}, either install system '
+            'libraries and set `windows_use_system_libs: true` in '
+            'pubspec.yaml, or build from source with '
+            '`windows_force_build_libs: true`.',
+          );
+        }
         const dir = 'xiph/prebuild/windows';
         return XiphLink._(
           libraries: _xiphLibs,
@@ -447,6 +456,14 @@ final class XiphLink {
         );
 
       case OS.linux:
+        if (code.targetArchitecture != Architecture.x64) {
+          throw UnsupportedError(
+            '[flutter_soloud] Bundled prebuilt Linux libraries only support '
+            'x64. For ${code.targetArchitecture.name}, either install system '
+            'libraries and set `linux_use_system_libs: true` in pubspec.yaml, '
+            'or build from source with `linux_force_build_libs: true`.',
+          );
+        }
         const dir = 'xiph/prebuild/linux';
         return XiphLink._(
           libraries: _xiphLibs,
@@ -473,7 +490,8 @@ final class XiphLink {
 
   /// Links against system-installed Xiph libraries (apt, brew, pacman, etc.).
   static Future<XiphLink> forSystem(BuildInput input) async {
-    final os = input.config.code.targetOS;
+    final code = input.config.code;
+    final os = code.targetOS;
     final includeDirs = <String>[];
     final libDirs = <String>[];
 
@@ -554,14 +572,17 @@ final class XiphLink {
       }
     } else if (os == OS.windows) {
       final vcpkgRoot = Platform.environment['VCPKG_ROOT'] ?? r'C:\vcpkg';
+      final vcpkgTriplet = code.targetArchitecture == Architecture.arm64
+          ? 'arm64-windows'
+          : 'x64-windows';
       for (final root in [
         vcpkgRoot,
         r'C:\tools\vcpkg',
         r'C:\Program Files\Xiph',
         r'C:\Xiph',
       ]) {
-        final inc = '$root\\installed\\x64-windows\\include';
-        final lib = '$root\\installed\\x64-windows\\lib';
+        final inc = '$root\\installed\\$vcpkgTriplet\\include';
+        final lib = '$root\\installed\\$vcpkgTriplet\\lib';
         if (Directory(inc).existsSync()) includeDirs.add(inc);
         if (Directory(lib).existsSync()) libDirs.add(lib);
         final directInc = '$root\\include';

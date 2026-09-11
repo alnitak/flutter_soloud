@@ -104,10 +104,20 @@ await SoLoud.instance.init(
 - **Linux build fails with `alsa/asoundlib.h: No such file`** — install `libasound2-dev`; the error is from the native build hook, not Dart.
 - On web, `loadUrl()` hits CORS (`Access-Control-Allow-Origin` missing) unless the server allows it, and local files can't be read — use `loadMem()` instead.
 - Per-sound filters are not supported on web (global filters are).
+- **Windows on ARM (`arm64`) and Linux on ARM (Raspberry Pi) require system libs or source build**: Bundled prebuilt binaries for Windows and Linux are `x86_64` only. For ARM desktop targets, set `<platform>_use_system_libs: true` (e.g. `vcpkg install ...:arm64-windows` or `sudo apt install ...`) or `<platform>_force_build_libs: true` in `pubspec.yaml`.
+- **Don't distribute desktop apps with `<platform>_use_system_libs: true`**: System libraries are not bundled into the app package; if missing on the end user's machine, the app will crash at startup. Use the default bundled prebuilts for app distribution.
+- **`<platform>_force_build_libs: true` significantly increases build time**: It clones 4 Git repos and compiles them via CMake across all target architectures (4 for Android, 2 for Apple), re-running on every `flutter clean` or clean CI job. Leave at default `false` unless you need custom compilation.
 
 ## Xiph audio libraries (Ogg, Vorbis, Opus, FLAC)
 
-The Xiph audio decoders provide compressed audio playback, streaming, and master output capture (600–3000 KB per binary). By default, Native Assets build hooks automatically link and bundle precompiled libraries from `xiph/prebuild/<platform>/`, ensuring that packaged apps (Android AAB/APK, iOS IPA, macOS APP, Windows EXE) work out of the box with zero external build dependencies.
+The Xiph audio decoders provide compressed audio playback, streaming, and master output capture (600–3000 KB per binary). By default, Native Assets build hooks automatically link and bundle precompiled libraries from `xiph/prebuild/<platform>/`:
+- **Android**: 4 ABIs (`arm64-v8a`, `armeabi-v7a`, `x86`, `x86_64`)
+- **iOS**: Universal `arm64` device + `arm64`/`x86_64` simulator
+- **macOS**: Universal `arm64` + `x86_64`
+- **Windows**: `x86_64` (for ARM64, use system libs or source build)
+- **Linux**: `x86_64` (for ARM/Raspberry Pi, use system libs or source build)
+
+This ensures that packaged apps (Android AAB/APK, iOS IPA, macOS APP, Windows EXE) work out of the box with zero external build dependencies.
 
 You can customize this in the **app's** `pubspec.yaml`:
 
