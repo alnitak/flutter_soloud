@@ -43,9 +43,9 @@ flutter:
 
 ## Xiph libraries options (optional):
 ## See https://docs.page/alnitak/flutter_soloud_docs/get_started/xiph_libs for more info.
-# hooks:
-#   user_defines:
-#     flutter_soloud:
+hooks:
+  user_defines:
+    flutter_soloud:
 #       no_xiph_libs: false
 #       linux_use_system_libs: true
 #       linux_force_build_libs: false
@@ -53,5 +53,5 @@ flutter:
 #       macos_force_build_libs: false
 #       windows_use_system_libs: true
 #       windows_force_build_libs: false
-#       android_force_build_libs: false
-#       ios_force_build_libs: false
+      android_force_build_libs: true
+      ios_force_build_libs: true

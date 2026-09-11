@@ -710,24 +710,39 @@ final class XiphLink {
 
   /// Builds Xiph libraries from source by cloning git repositories into
   /// `.dart_tool/flutter_soloud/xiph/sources/` and building with CMake into
-  /// `.dart_tool/flutter_soloud/xiph/install/<os>/<arch>/`.
+  /// `.dart_tool/flutter_soloud/xiph/install/<os>/<arch>/` (or `install/ios/<simulator|device>/<arch>/` on iOS).
   static Future<XiphLink> fromSource(BuildInput input) async {
     final code = input.config.code;
     final os = code.targetOS;
     final arch = code.targetArchitecture;
     final packageRoot = input.packageRoot;
     final isApple = os == OS.macOS || os == OS.iOS;
+    final String? appleSysroot;
+    if (os == OS.iOS) {
+      appleSysroot = code.iOS.targetSdk == IOSSdk.iPhoneSimulator
+          ? 'iphonesimulator'
+          : 'iphoneos';
+    } else {
+      appleSysroot = null;
+    }
 
     final cacheDir = Directory.fromUri(
       packageRoot.resolve('.dart_tool/flutter_soloud/xiph'),
     );
     final sourcesDir = Directory('${cacheDir.path}/sources');
-    final buildDir = Directory(
-      '${cacheDir.path}/build/${os.name}/${arch.name}',
-    );
-    final installDir = Directory(
-      '${cacheDir.path}/install/${os.name}/${arch.name}',
-    );
+    final String targetSubdir;
+    final String targetDesc;
+    if (os == OS.iOS) {
+      final isSim = code.iOS.targetSdk == IOSSdk.iPhoneSimulator;
+      final sdkName = isSim ? 'simulator' : 'device';
+      targetSubdir = 'ios/$sdkName/${arch.name}';
+      targetDesc = 'iOS ($arch $sdkName)';
+    } else {
+      targetSubdir = '${os.name}/${arch.name}';
+      targetDesc = '$os ($arch)';
+    }
+    final buildDir = Directory('${cacheDir.path}/build/$targetSubdir');
+    final installDir = Directory('${cacheDir.path}/install/$targetSubdir');
     final installIncDir = Directory('${installDir.path}/include');
     final installLibDir = Directory('${installDir.path}/lib');
     final installLib64Dir = Directory('${installDir.path}/lib64');
@@ -735,7 +750,7 @@ final class XiphLink {
     // 1. Check if complete build already exists in cache
     if (_isCompleteInstall(installDir, os)) {
       print(
-        '[flutter_soloud] Using cached from-source Xiph libs for $os ($arch)',
+        '[flutter_soloud] Using cached from-source Xiph libs for $targetDesc',
       );
       return _linkFromInstall(input, installDir, os, arch);
     }
@@ -746,7 +761,7 @@ final class XiphLink {
     if (!hasGit || !hasCmake) {
       throw UnsupportedError(
         'CMake and Git are required to build Xiph libraries from source for '
-        '$os/$arch. Please ensure cmake and git are installed and available '
+        '$targetDesc. Please ensure cmake and git are installed and available '
         'on your PATH. Alternatively, install system libraries and set '
         '`hooks.user_defines.flutter_soloud.use_system_xiph_libs: true` '
         'in pubspec.yaml, or disable Xiph with `no_xiph_libs: true`.',
@@ -784,8 +799,47 @@ final class XiphLink {
     final archStr = _cmakeArch(arch);
     final osxDeploymentTarget = os == OS.iOS ? '12.0' : '10.13';
 
+    final String? androidNdk;
+    final String? androidAbi;
+    final int? androidNdkApi;
+    if (os == OS.android) {
+      androidAbi = _androidAbi(arch);
+      if (androidAbi == null) {
+        throw UnsupportedError('Unsupported Android architecture: $arch');
+      }
+      androidNdkApi = code.android.targetNdkApi;
+      androidNdk = _findAndroidNdk(input);
+      if (androidNdk == null) {
+        throw UnsupportedError(
+          'Could not find Android NDK for building Xiph libraries from source. '
+          'Please ensure ANDROID_NDK_HOME or ANDROID_HOME is set.',
+        );
+      }
+    } else {
+      androidNdk = null;
+      androidAbi = null;
+      androidNdkApi = null;
+    }
+
+    final androidFlags = [
+      if (os == OS.android) ...[
+        '-DCMAKE_TOOLCHAIN_FILE=$androidNdk/build/cmake/android.toolchain.cmake',
+        '-DANDROID_ABI=$androidAbi',
+        '-DANDROID_PLATFORM=android-$androidNdkApi',
+        '-DCMAKE_SHARED_LINKER_FLAGS=-Wl,-z,max-page-size=16384,--gc-sections',
+      ],
+    ];
+
+    void prepareBuildDir(String lib) {
+      final cacheFile = File('${buildDir.path}/$lib/CMakeCache.txt');
+      if (cacheFile.existsSync()) {
+        cacheFile.deleteSync();
+      }
+    }
+
     // Build ogg
     print('[flutter_soloud] Configuring ogg with CMake ($archStr)...');
+    prepareBuildDir('ogg');
     await _runCmake([
       '-S',
       '${sourcesDir.path}/ogg',
@@ -800,11 +854,20 @@ final class XiphLink {
         '-DBUILD_SHARED_LIBS=OFF',
         '-DCMAKE_OSX_ARCHITECTURES=$archStr',
         '-DCMAKE_OSX_DEPLOYMENT_TARGET=$osxDeploymentTarget',
+        if (os == OS.iOS) ...[
+          '-DCMAKE_SYSTEM_NAME=iOS',
+          '-DCMAKE_OSX_SYSROOT=$appleSysroot',
+        ],
       ] else if (os == OS.windows) ...[
         '-DBUILD_SHARED_LIBS=ON',
+        '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded',
+      ] else if (os == OS.android) ...[
+        '-DBUILD_SHARED_LIBS=ON',
+        ...androidFlags,
       ] else ...[
         '-DBUILD_SHARED_LIBS=ON',
         '-DCMAKE_C_FLAGS=-O2 -flto -ffunction-sections -fdata-sections',
+        '-DCMAKE_SHARED_LINKER_FLAGS=-Wl,--gc-sections -flto',
       ],
     ]);
     print('[flutter_soloud] Compiling and installing ogg...');
@@ -822,6 +885,7 @@ final class XiphLink {
         '-Os -fno-exceptions -fno-unwind-tables '
         '-fno-asynchronous-unwind-tables';
     print('[flutter_soloud] Configuring opus with CMake ($archStr)...');
+    prepareBuildDir('opus');
     await _runCmake([
       '-S',
       '${sourcesDir.path}/opus',
@@ -838,11 +902,20 @@ final class XiphLink {
         '-DCMAKE_OSX_ARCHITECTURES=$archStr',
         '-DCMAKE_OSX_DEPLOYMENT_TARGET=$osxDeploymentTarget',
         '-DCMAKE_C_FLAGS=$opusAppleFlags',
+        if (os == OS.iOS) ...[
+          '-DCMAKE_SYSTEM_NAME=iOS',
+          '-DCMAKE_OSX_SYSROOT=$appleSysroot',
+        ],
       ] else if (os == OS.windows) ...[
         '-DBUILD_SHARED_LIBS=ON',
+        '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded',
+      ] else if (os == OS.android) ...[
+        '-DBUILD_SHARED_LIBS=ON',
+        ...androidFlags,
       ] else ...[
         '-DBUILD_SHARED_LIBS=ON',
         '-DCMAKE_C_FLAGS=-O2 -flto -ffunction-sections -fdata-sections',
+        '-DCMAKE_SHARED_LINKER_FLAGS=-Wl,--gc-sections -flto',
       ],
     ]);
     print('[flutter_soloud] Compiling and installing opus...');
@@ -866,6 +939,7 @@ final class XiphLink {
 
     // Build vorbis
     print('[flutter_soloud] Configuring vorbis with CMake ($archStr)...');
+    prepareBuildDir('vorbis');
     await _runCmake([
       '-S',
       '${sourcesDir.path}/vorbis',
@@ -876,15 +950,25 @@ final class XiphLink {
       '-DCMAKE_POLICY_VERSION_MINIMUM=3.5',
       '-DOGG_INCLUDE_DIR=${installIncDir.path}',
       '-DOGG_LIBRARY=$oggLib',
+      '-DBUILD_TESTING=OFF',
       if (isApple) ...[
         '-DBUILD_SHARED_LIBS=OFF',
         '-DCMAKE_OSX_ARCHITECTURES=$archStr',
         '-DCMAKE_OSX_DEPLOYMENT_TARGET=$osxDeploymentTarget',
+        if (os == OS.iOS) ...[
+          '-DCMAKE_SYSTEM_NAME=iOS',
+          '-DCMAKE_OSX_SYSROOT=$appleSysroot',
+        ],
       ] else if (os == OS.windows) ...[
         '-DBUILD_SHARED_LIBS=ON',
+        '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded',
+      ] else if (os == OS.android) ...[
+        '-DBUILD_SHARED_LIBS=ON',
+        ...androidFlags,
       ] else ...[
         '-DBUILD_SHARED_LIBS=ON',
         '-DCMAKE_C_FLAGS=-O2 -flto -ffunction-sections -fdata-sections',
+        '-DCMAKE_SHARED_LINKER_FLAGS=-Wl,--gc-sections -flto',
       ],
     ]);
     print('[flutter_soloud] Compiling and installing vorbis...');
@@ -899,6 +983,7 @@ final class XiphLink {
 
     // Build flac
     print('[flutter_soloud] Configuring flac with CMake ($archStr)...');
+    prepareBuildDir('flac');
     await _runCmake([
       '-S',
       '${sourcesDir.path}/flac',
@@ -920,11 +1005,22 @@ final class XiphLink {
         '-DCMAKE_OSX_ARCHITECTURES=$archStr',
         '-DCMAKE_OSX_DEPLOYMENT_TARGET=$osxDeploymentTarget',
         '-DWITH_OGG=ON',
+        if (os == OS.iOS) ...[
+          '-DCMAKE_SYSTEM_NAME=iOS',
+          '-DCMAKE_OSX_SYSROOT=$appleSysroot',
+          '-DIconv_FOUND=OFF',
+          '-DIntl_FOUND=OFF',
+        ],
       ] else if (os == OS.windows) ...[
         '-DBUILD_SHARED_LIBS=ON',
+        '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded',
+      ] else if (os == OS.android) ...[
+        '-DBUILD_SHARED_LIBS=ON',
+        ...androidFlags,
       ] else ...[
         '-DBUILD_SHARED_LIBS=ON',
         '-DCMAKE_C_FLAGS=-O2 -flto -ffunction-sections -fdata-sections',
+        '-DCMAKE_SHARED_LINKER_FLAGS=-Wl,--gc-sections -flto',
       ],
     ]);
     print('[flutter_soloud] Compiling and installing flac...');
@@ -979,6 +1075,46 @@ String _cmakeArch(Architecture arch) => switch (arch) {
   Architecture.riscv64 => 'riscv64',
   _ => arch.name,
 };
+
+String? _findAndroidNdk(BuildInput input) {
+  final envNdk = Platform.environment['ANDROID_NDK_HOME'] ??
+      Platform.environment['ANDROID_NDK_ROOT'];
+  if (envNdk != null &&
+      Directory(envNdk).existsSync() &&
+      File('$envNdk/build/cmake/android.toolchain.cmake').existsSync()) {
+    return envNdk;
+  }
+  try {
+    final cc = input.config.code.cCompiler?.compiler.toFilePath();
+    if (cc != null && cc.contains('toolchains')) {
+      final ndkPath = cc
+          .substring(0, cc.indexOf('toolchains'))
+          .replaceAll(RegExp(r'[/\\]$'), '');
+      if (Directory(ndkPath).existsSync() &&
+          File('$ndkPath/build/cmake/android.toolchain.cmake').existsSync()) {
+        return ndkPath;
+      }
+    }
+  } catch (_) {}
+
+  final sdkRoot = Platform.environment['ANDROID_HOME'] ??
+      Platform.environment['ANDROID_SDK_ROOT'];
+  if (sdkRoot != null) {
+    final ndkDir = Directory('$sdkRoot/ndk');
+    if (ndkDir.existsSync()) {
+      final versions = ndkDir.listSync().whereType<Directory>().toList();
+      if (versions.isNotEmpty) {
+        versions.sort((a, b) => a.path.compareTo(b.path));
+        final candidate = versions.last.path;
+        if (File('$candidate/build/cmake/android.toolchain.cmake')
+            .existsSync()) {
+          return candidate;
+        }
+      }
+    }
+  }
+  return null;
+}
 
 bool _checkTool(String tool) {
   try {
@@ -1111,15 +1247,42 @@ XiphLink _linkFromInstall(
       if (!dir.existsSync()) continue;
       for (final file in dir.listSync()) {
         if (file is File && file.path.endsWith('.so')) {
-          dependencies.add(file.uri);
-          bundledAssets.add(
-            CodeAsset(
-              package: packageName,
-              name: 'xiph/${file.path.split(Platform.pathSeparator).last}',
-              linkMode: DynamicLoadingBundled(),
-              file: file.uri,
-            ),
-          );
+          final fileName = file.path.split(Platform.pathSeparator).last;
+          if (_xiphLibs.any((lib) => fileName == 'lib$lib.so')) {
+            dependencies.add(file.uri);
+            bundledAssets.add(
+              CodeAsset(
+                package: packageName,
+                name: 'xiph/$fileName',
+                linkMode: DynamicLoadingBundled(),
+                file: file.uri,
+              ),
+            );
+          }
+        }
+      }
+    }
+  } else if (os == OS.android) {
+    final abi = _androidAbi(arch);
+    if (abi == null) {
+      throw UnsupportedError('Unsupported Android architecture: $arch');
+    }
+    for (final dir in [libDir, lib64Dir]) {
+      if (!dir.existsSync()) continue;
+      for (final file in dir.listSync()) {
+        if (file is File && file.path.endsWith('.so')) {
+          final fileName = file.path.split(Platform.pathSeparator).last;
+          if (_xiphLibs.any((lib) => fileName == 'lib$lib.so')) {
+            dependencies.add(file.uri);
+            bundledAssets.add(
+              CodeAsset(
+                package: packageName,
+                name: 'xiph/$abi/$fileName',
+                linkMode: DynamicLoadingBundled(),
+                file: file.uri,
+              ),
+            );
+          }
         }
       }
     }
