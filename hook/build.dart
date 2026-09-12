@@ -563,15 +563,23 @@ final class XiphLink {
 
   static const String _prebuildRepo = 'alnitak/flutter_soloud_prebuilds';
   static const String _defaultPrebuildTag = 'latest';
+  static const String _prebuildVersionFileName =
+      'flutter_soloud_prebuild_version.txt';
 
   static String _baseUrlForTag(String tag) => tag == 'latest'
       ? 'https://github.com/$_prebuildRepo/releases/latest/download'
       : 'https://github.com/$_prebuildRepo/releases/download/$tag';
 
+  static File _getVersionFile(Directory dir) {
+    final file = File('${dir.path}/$_prebuildVersionFileName');
+    if (file.existsSync()) return file;
+    return File('${dir.path}/version.txt');
+  }
+
   static bool _hasHeaders(Directory dir, [String targetTag = 'latest']) {
     if (!dir.existsSync()) return false;
     if (targetTag != 'latest') {
-      final versionFile = File('${dir.path}/version.txt');
+      final versionFile = _getVersionFile(dir);
       if (versionFile.existsSync()) {
         final v = versionFile.readAsStringSync().trim();
         if (v != targetTag && 'v$v' != targetTag) return false;
@@ -606,11 +614,12 @@ final class XiphLink {
       isZip: false,
     );
     final tagToWrite = resolvedTag ?? tag;
-    File('${cacheDir.path}/version.txt').writeAsStringSync('$tagToWrite\n');
+    File('${cacheDir.path}/$_prebuildVersionFileName')
+        .writeAsStringSync('$tagToWrite\n');
 
     File.fromUri(
         packageRoot.resolve(
-          '.dart_tool/flutter_soloud/xiph/prebuild/version.txt',
+          '.dart_tool/flutter_soloud/xiph/prebuild/$_prebuildVersionFileName',
         ),
       )
       ..parent.createSync(recursive: true)
@@ -631,7 +640,7 @@ final class XiphLink {
     final cacheDir = Directory.fromUri(
       packageRoot.resolve('.dart_tool/flutter_soloud/xiph/prebuild/$subDir'),
     );
-    final versionFile = File('${cacheDir.path}/version.txt');
+    final versionFile = _getVersionFile(cacheDir);
     if (tag != 'latest' && versionFile.existsSync()) {
       final v = versionFile.readAsStringSync().trim();
       if (v != tag && 'v$v' != tag) {
@@ -659,7 +668,8 @@ final class XiphLink {
       isZip: isZip,
     );
     final tagToWrite = resolvedTag ?? tag;
-    versionFile.writeAsStringSync('$tagToWrite\n');
+    File('${cacheDir.path}/$_prebuildVersionFileName')
+        .writeAsStringSync('$tagToWrite\n');
 
     if (!validator(cacheDir)) {
       throw StateError(
