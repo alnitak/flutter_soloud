@@ -372,7 +372,11 @@ final class XiphLink {
     final packageRoot = input.packageRoot;
     final packageName = input.packageName;
 
-    final includeDir = await _ensurePrebuildInclude(packageRoot);
+    final tag =
+        (input.userDefines['prebuild_tag'] as String?)?.trim() ??
+        _defaultPrebuildTag;
+
+    final includeDir = await _ensurePrebuildInclude(packageRoot, tag);
 
     switch (os) {
       case OS.macOS:
@@ -383,6 +387,7 @@ final class XiphLink {
           subDir: 'macos',
           archiveName: 'xiph-macos.tar.gz',
           isZip: false,
+          tag: tag,
           validator: (Directory d) => _xiphLibs.every(
             (String lib) => File('${d.path}/lib$lib.a').existsSync(),
           ),
@@ -410,6 +415,7 @@ final class XiphLink {
           subDir: 'ios',
           archiveName: 'xiph-ios.tar.gz',
           isZip: false,
+          tag: tag,
           validator: (Directory d) => names.every(
             (String name) => File('${d.path}/lib$name.a').existsSync(),
           ),
@@ -438,6 +444,7 @@ final class XiphLink {
           subDir: 'android/$abi',
           archiveName: 'xiph-android.tar.gz',
           isZip: false,
+          tag: tag,
           validator: (Directory d) => _xiphLibs.every(
             (String lib) => File('${d.path}/lib$lib.so').existsSync(),
           ),
@@ -479,6 +486,7 @@ final class XiphLink {
           subDir: 'windows/$archStr',
           archiveName: 'xiph-windows-$archStr.zip',
           isZip: true,
+          tag: tag,
           validator: (Directory d) => _xiphLibs.every(
             (String lib) =>
                 File('${d.path}/$lib.dll').existsSync() &&
@@ -525,6 +533,7 @@ final class XiphLink {
           subDir: 'linux/$archStr',
           archiveName: 'xiph-linux-$archStr.tar.gz',
           isZip: false,
+          tag: tag,
           validator: (Directory d) => _xiphLibs.every(
             (String lib) => File('${d.path}/lib$lib.so').existsSync(),
           ),
@@ -553,30 +562,59 @@ final class XiphLink {
   }
 
   static const String _prebuildRepo = 'alnitak/flutter_soloud_prebuilds';
-  static const String _prebuildTag = 'v1.0.0';
-  static const String _prebuildBaseUrl =
-      'https://github.com/$_prebuildRepo/releases/download/$_prebuildTag';
+  static const String _defaultPrebuildTag = 'latest';
 
-  static bool _hasHeaders(Directory dir) {
+  static String _baseUrlForTag(String tag) => tag == 'latest'
+      ? 'https://github.com/$_prebuildRepo/releases/latest/download'
+      : 'https://github.com/$_prebuildRepo/releases/download/$tag';
+
+  static bool _hasHeaders(Directory dir, [String targetTag = 'latest']) {
     if (!dir.existsSync()) return false;
+    if (targetTag != 'latest') {
+      final versionFile = File('${dir.path}/version.txt');
+      if (versionFile.existsSync()) {
+        final v = versionFile.readAsStringSync().trim();
+        if (v != targetTag && 'v$v' != targetTag) return false;
+      }
+    }
     return File('${dir.path}/ogg/ogg.h').existsSync() &&
+        File('${dir.path}/ogg/config_types.h').existsSync() &&
         File('${dir.path}/vorbis/codec.h').existsSync() &&
         File('${dir.path}/opus/opus.h').existsSync() &&
         File('${dir.path}/FLAC/all.h').existsSync();
   }
 
-  static Future<Directory> _ensurePrebuildInclude(Uri packageRoot) async {
+  static Future<Directory> _ensurePrebuildInclude(
+    Uri packageRoot, [
+    String tag = _defaultPrebuildTag,
+  ]) async {
     final cacheDir = Directory.fromUri(
       packageRoot.resolve('.dart_tool/flutter_soloud/xiph/prebuild/include'),
     );
-    if (_hasHeaders(cacheDir)) return cacheDir;
+    if (_hasHeaders(cacheDir, tag)) return cacheDir;
 
-    print('[flutter_soloud] Downloading Xiph headers from $_prebuildRepo...');
-    await _downloadAndExtract(
-      '$_prebuildBaseUrl/xiph-include.tar.gz',
+    print(
+      '[flutter_soloud] Downloading Xiph headers ($tag) from '
+      '$_prebuildRepo...',
+    );
+    if (cacheDir.existsSync()) {
+      cacheDir.deleteSync(recursive: true);
+    }
+    final resolvedTag = await _downloadAndExtract(
+      '${_baseUrlForTag(tag)}/xiph-include.tar.gz',
       cacheDir,
       isZip: false,
     );
+    final tagToWrite = resolvedTag ?? tag;
+    File('${cacheDir.path}/version.txt').writeAsStringSync('$tagToWrite\n');
+
+    File.fromUri(
+        packageRoot.resolve(
+          '.dart_tool/flutter_soloud/xiph/prebuild/version.txt',
+        ),
+      )
+      ..parent.createSync(recursive: true)
+      ..writeAsStringSync('$tagToWrite\n');
     return cacheDir;
   }
 
@@ -588,14 +626,25 @@ final class XiphLink {
     required String archiveName,
     required bool isZip,
     required bool Function(Directory dir) validator,
+    String tag = _defaultPrebuildTag,
   }) async {
     final cacheDir = Directory.fromUri(
       packageRoot.resolve('.dart_tool/flutter_soloud/xiph/prebuild/$subDir'),
     );
+    final versionFile = File('${cacheDir.path}/version.txt');
+    if (tag != 'latest' && versionFile.existsSync()) {
+      final v = versionFile.readAsStringSync().trim();
+      if (v != tag && 'v$v' != tag) {
+        if (cacheDir.existsSync()) {
+          cacheDir.deleteSync(recursive: true);
+        }
+      }
+    }
     if (validator(cacheDir)) return cacheDir;
 
     print(
-      '[flutter_soloud] Downloading prebuilt Xiph libraries for $os ($arch)...',
+      '[flutter_soloud] Downloading prebuilt Xiph libraries ($tag) '
+      'for $os ($arch)...',
     );
     final extractTarget = (os == OS.android)
         ? Directory.fromUri(
@@ -604,23 +653,25 @@ final class XiphLink {
             ),
           )
         : cacheDir;
-    await _downloadAndExtract(
-      '$_prebuildBaseUrl/$archiveName',
+    final resolvedTag = await _downloadAndExtract(
+      '${_baseUrlForTag(tag)}/$archiveName',
       extractTarget,
       isZip: isZip,
     );
+    final tagToWrite = resolvedTag ?? tag;
+    versionFile.writeAsStringSync('$tagToWrite\n');
 
     if (!validator(cacheDir)) {
       throw StateError(
         'Downloaded prebuilt Xiph libraries for $os ($arch) from '
-        '$_prebuildBaseUrl/$archiveName, but validation failed in '
+        '${_baseUrlForTag(tag)}/$archiveName, but validation failed in '
         '${cacheDir.path}.',
       );
     }
     return cacheDir;
   }
 
-  static Future<void> _downloadAndExtract(
+  static Future<String?> _downloadAndExtract(
     String url,
     Directory destination, {
     required bool isZip,
@@ -630,6 +681,7 @@ final class XiphLink {
       '${destination.path}/dl_${DateTime.now().millisecondsSinceEpoch}.${isZip ? 'zip' : 'tar.gz'}',
     );
 
+    String? resolvedTag;
     final client = HttpClient();
     try {
       final uri = Uri.parse(url);
@@ -643,6 +695,15 @@ final class XiphLink {
           '`<platform>_force_build_libs: true`.',
           uri: uri,
         );
+      }
+      for (final r in response.redirects) {
+        final match = RegExp(
+          '/releases/download/([^/]+)/',
+        ).firstMatch(r.location.toString());
+        if (match != null) {
+          resolvedTag = match.group(1);
+          break;
+        }
       }
       await response.pipe(tempFile.openWrite());
     } finally {
@@ -696,6 +757,7 @@ final class XiphLink {
         tempFile.deleteSync();
       }
     }
+    return resolvedTag;
   }
 
   /// Links against system-installed Xiph libraries (apt, brew, pacman, etc.).
