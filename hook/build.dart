@@ -43,7 +43,8 @@ void main(List<String> args) async {
     // Platform-specific user defines:
     // - `<platform>_use_system_libs: true` -> link against system packages
     // - `<platform>_force_build_libs: true` -> compile from source via CMake
-    // Default (both false): uses bundled prebuilt libraries from xiph/prebuild/
+    // Default (both false): uses prebuilt libraries from GitHub release
+    // or local cache (.dart_tool/flutter_soloud/xiph/prebuild/).
     bool? parseBool(Object? val) {
       if (val == null) return null;
       if (val is bool) return val;
@@ -111,7 +112,7 @@ void main(List<String> args) async {
       xiph = await XiphLink.fromSource(input);
     } else {
       xiphMode = 'prebuilt';
-      xiph = XiphLink.forBundled(input);
+      xiph = await XiphLink.forPrebuild(input);
     }
 
     final platformDisplayName = switch (os) {
@@ -359,41 +360,67 @@ final class XiphLink {
     dependencies: const [],
   );
 
-  /// Links against bundled prebuilt Xiph libraries in `xiph/prebuild/`.
-  factory XiphLink.forBundled(BuildInput input) {
+  /// Links against prebuilt Xiph libraries.
+  ///
+  /// Searches for prebuilt files in the local cache directory
+  /// `.dart_tool/flutter_soloud/xiph/prebuild/`. If missing, automatically
+  /// downloads the corresponding archive from GitHub releases and extracts it.
+  static Future<XiphLink> forPrebuild(BuildInput input) async {
     final code = input.config.code;
     final os = code.targetOS;
+    final arch = code.targetArchitecture;
     final packageRoot = input.packageRoot;
     final packageName = input.packageName;
 
+    final includeDir = await _ensurePrebuildInclude(packageRoot);
+
     switch (os) {
       case OS.macOS:
-        const dir = 'xiph/prebuild/macos';
+        final dir = await _ensurePrebuildPlatform(
+          packageRoot: packageRoot,
+          os: os,
+          arch: arch,
+          subDir: 'macos',
+          archiveName: 'xiph-macos.tar.gz',
+          isZip: false,
+          validator: (Directory d) => _xiphLibs.every(
+            (String lib) => File('${d.path}/lib$lib.a').existsSync(),
+          ),
+        );
         return XiphLink._(
           libraries: _xiphLibs,
-          libraryDirectories: [packageRoot.resolve(dir).toFilePath()],
-          includeDirs: const ['xiph/prebuild/include'],
+          libraryDirectories: [dir.path],
+          includeDirs: [includeDir.path],
           bundledAssets: const [],
           dependencies: [
-            for (final lib in _xiphLibs) packageRoot.resolve('$dir/lib$lib.a'),
+            for (final lib in _xiphLibs) File('${dir.path}/lib$lib.a').uri,
           ],
         );
 
       case OS.iOS:
-        // Device and simulator builds use separate static archives.
         final suffix = switch (code.iOS.targetSdk) {
           IOSSdk.iPhoneSimulator => 'simulator',
           _ => 'device',
         };
-        const dir = 'xiph/prebuild/ios';
         final names = [for (final lib in _xiphLibs) '${lib}_iOS-$suffix'];
+        final dir = await _ensurePrebuildPlatform(
+          packageRoot: packageRoot,
+          os: os,
+          arch: arch,
+          subDir: 'ios',
+          archiveName: 'xiph-ios.tar.gz',
+          isZip: false,
+          validator: (Directory d) => names.every(
+            (String name) => File('${d.path}/lib$name.a').existsSync(),
+          ),
+        );
         return XiphLink._(
           libraries: names,
-          libraryDirectories: [packageRoot.resolve(dir).toFilePath()],
-          includeDirs: const ['xiph/prebuild/include'],
+          libraryDirectories: [dir.path],
+          includeDirs: [includeDir.path],
           bundledAssets: const [],
           dependencies: [
-            for (final name in names) packageRoot.resolve('$dir/lib$name.a'),
+            for (final name in names) File('${dir.path}/lib$name.a').uri,
           ],
         );
 
@@ -404,87 +431,270 @@ final class XiphLink {
             'Unsupported Android architecture: ${code.targetArchitecture}',
           );
         }
-        final dir = 'xiph/prebuild/android/$abi';
+        final dir = await _ensurePrebuildPlatform(
+          packageRoot: packageRoot,
+          os: os,
+          arch: arch,
+          subDir: 'android/$abi',
+          archiveName: 'xiph-android.tar.gz',
+          isZip: false,
+          validator: (Directory d) => _xiphLibs.every(
+            (String lib) => File('${d.path}/lib$lib.so').existsSync(),
+          ),
+        );
         return XiphLink._(
           libraries: _xiphLibs,
-          libraryDirectories: [packageRoot.resolve(dir).toFilePath()],
-          includeDirs: const ['xiph/prebuild/include'],
+          libraryDirectories: [dir.path],
+          includeDirs: [includeDir.path],
           bundledAssets: [
             for (final lib in _xiphLibs)
               CodeAsset(
                 package: packageName,
                 name: 'xiph/$abi/lib$lib.so',
                 linkMode: DynamicLoadingBundled(),
-                file: packageRoot.resolve('$dir/lib$lib.so'),
+                file: File('${dir.path}/lib$lib.so').uri,
               ),
           ],
           dependencies: [
-            for (final lib in _xiphLibs) packageRoot.resolve('$dir/lib$lib.so'),
+            for (final lib in _xiphLibs) File('${dir.path}/lib$lib.so').uri,
           ],
         );
 
       case OS.windows:
-        if (code.targetArchitecture != Architecture.x64) {
+        if (code.targetArchitecture != Architecture.x64 &&
+            code.targetArchitecture != Architecture.arm64) {
           throw UnsupportedError(
             '[flutter_soloud] Bundled prebuilt Windows libraries only support '
-            'x64. For ${code.targetArchitecture.name}, either install system '
-            'libraries and set `windows_use_system_libs: true` in '
-            'pubspec.yaml, or build from source with '
+            'x64 and arm64. For ${code.targetArchitecture.name}, either '
+            'install system libraries and set `windows_use_system_libs: true` '
+            'in pubspec.yaml, or build from source with '
             '`windows_force_build_libs: true`.',
           );
         }
-        const dir = 'xiph/prebuild/windows';
+        final archStr = arch == Architecture.arm64 ? 'arm64' : 'x64';
+        final dir = await _ensurePrebuildPlatform(
+          packageRoot: packageRoot,
+          os: os,
+          arch: arch,
+          subDir: 'windows/$archStr',
+          archiveName: 'xiph-windows-$archStr.zip',
+          isZip: true,
+          validator: (Directory d) => _xiphLibs.every(
+            (String lib) =>
+                File('${d.path}/$lib.dll').existsSync() &&
+                File('${d.path}/$lib.lib').existsSync(),
+          ),
+        );
         return XiphLink._(
           libraries: _xiphLibs,
-          libraryDirectories: [packageRoot.resolve(dir).toFilePath()],
-          includeDirs: const ['xiph/prebuild/include'],
+          libraryDirectories: [dir.path],
+          includeDirs: [includeDir.path],
           bundledAssets: [
             for (final lib in _xiphLibs)
               CodeAsset(
                 package: packageName,
                 name: 'xiph/$lib.dll',
                 linkMode: DynamicLoadingBundled(),
-                file: packageRoot.resolve('$dir/$lib.dll'),
+                file: File('${dir.path}/$lib.dll').uri,
               ),
           ],
           dependencies: [
             for (final lib in _xiphLibs) ...[
-              packageRoot.resolve('$dir/$lib.lib'),
-              packageRoot.resolve('$dir/$lib.dll'),
+              File('${dir.path}/$lib.lib').uri,
+              File('${dir.path}/$lib.dll').uri,
             ],
           ],
         );
 
       case OS.linux:
-        if (code.targetArchitecture != Architecture.x64) {
+        if (code.targetArchitecture != Architecture.x64 &&
+            code.targetArchitecture != Architecture.arm64) {
           throw UnsupportedError(
             '[flutter_soloud] Bundled prebuilt Linux libraries only support '
-            'x64. For ${code.targetArchitecture.name}, either install system '
-            'libraries and set `linux_use_system_libs: true` in pubspec.yaml, '
-            'or build from source with `linux_force_build_libs: true`.',
+            'x64 and arm64. For ${code.targetArchitecture.name}, either '
+            'install system libraries and set `linux_use_system_libs: true` '
+            'in pubspec.yaml, or build from source with '
+            '`linux_force_build_libs: true`.',
           );
         }
-        const dir = 'xiph/prebuild/linux';
+        final archStr = arch == Architecture.arm64 ? 'arm64' : 'x64';
+        final dir = await _ensurePrebuildPlatform(
+          packageRoot: packageRoot,
+          os: os,
+          arch: arch,
+          subDir: 'linux/$archStr',
+          archiveName: 'xiph-linux-$archStr.tar.gz',
+          isZip: false,
+          validator: (Directory d) => _xiphLibs.every(
+            (String lib) => File('${d.path}/lib$lib.so').existsSync(),
+          ),
+        );
         return XiphLink._(
           libraries: _xiphLibs,
-          libraryDirectories: [packageRoot.resolve(dir).toFilePath()],
-          includeDirs: const ['xiph/prebuild/include'],
+          libraryDirectories: [dir.path],
+          includeDirs: [includeDir.path],
           bundledAssets: [
             for (final lib in _xiphLibs)
               CodeAsset(
                 package: packageName,
                 name: 'xiph/lib$lib.so',
                 linkMode: DynamicLoadingBundled(),
-                file: packageRoot.resolve('$dir/lib$lib.so'),
+                file: File('${dir.path}/lib$lib.so').uri,
               ),
           ],
           dependencies: [
-            for (final lib in _xiphLibs) packageRoot.resolve('$dir/lib$lib.so'),
+            for (final lib in _xiphLibs) File('${dir.path}/lib$lib.so').uri,
           ],
         );
 
       default:
         throw UnsupportedError('Unsupported OS for bundled Xiph: $os');
+    }
+  }
+
+  static const String _prebuildRepo = 'alnitak/flutter_soloud_prebuilds';
+  static const String _prebuildTag = 'v1.0.0';
+  static const String _prebuildBaseUrl =
+      'https://github.com/$_prebuildRepo/releases/download/$_prebuildTag';
+
+  static bool _hasHeaders(Directory dir) {
+    if (!dir.existsSync()) return false;
+    return File('${dir.path}/ogg/ogg.h').existsSync() &&
+        File('${dir.path}/vorbis/codec.h').existsSync() &&
+        File('${dir.path}/opus/opus.h').existsSync() &&
+        File('${dir.path}/FLAC/all.h').existsSync();
+  }
+
+  static Future<Directory> _ensurePrebuildInclude(Uri packageRoot) async {
+    final cacheDir = Directory.fromUri(
+      packageRoot.resolve('.dart_tool/flutter_soloud/xiph/prebuild/include'),
+    );
+    if (_hasHeaders(cacheDir)) return cacheDir;
+
+    print('[flutter_soloud] Downloading Xiph headers from $_prebuildRepo...');
+    await _downloadAndExtract(
+      '$_prebuildBaseUrl/xiph-include.tar.gz',
+      cacheDir,
+      isZip: false,
+    );
+    return cacheDir;
+  }
+
+  static Future<Directory> _ensurePrebuildPlatform({
+    required Uri packageRoot,
+    required OS os,
+    required Architecture arch,
+    required String subDir,
+    required String archiveName,
+    required bool isZip,
+    required bool Function(Directory dir) validator,
+  }) async {
+    final cacheDir = Directory.fromUri(
+      packageRoot.resolve('.dart_tool/flutter_soloud/xiph/prebuild/$subDir'),
+    );
+    if (validator(cacheDir)) return cacheDir;
+
+    print(
+      '[flutter_soloud] Downloading prebuilt Xiph libraries for $os ($arch)...',
+    );
+    final extractTarget = (os == OS.android)
+        ? Directory.fromUri(
+            packageRoot.resolve(
+              '.dart_tool/flutter_soloud/xiph/prebuild/android',
+            ),
+          )
+        : cacheDir;
+    await _downloadAndExtract(
+      '$_prebuildBaseUrl/$archiveName',
+      extractTarget,
+      isZip: isZip,
+    );
+
+    if (!validator(cacheDir)) {
+      throw StateError(
+        'Downloaded prebuilt Xiph libraries for $os ($arch) from '
+        '$_prebuildBaseUrl/$archiveName, but validation failed in '
+        '${cacheDir.path}.',
+      );
+    }
+    return cacheDir;
+  }
+
+  static Future<void> _downloadAndExtract(
+    String url,
+    Directory destination, {
+    required bool isZip,
+  }) async {
+    destination.createSync(recursive: true);
+    final tempFile = File(
+      '${destination.path}/dl_${DateTime.now().millisecondsSinceEpoch}.${isZip ? 'zip' : 'tar.gz'}',
+    );
+
+    final client = HttpClient();
+    try {
+      final uri = Uri.parse(url);
+      final request = await client.getUrl(uri);
+      final response = await request.close();
+      if (response.statusCode != HttpStatus.ok) {
+        throw HttpException(
+          'Failed to download prebuilt libraries from $url '
+          '(HTTP ${response.statusCode}). Ensure you have an internet '
+          'connection or build from source using '
+          '`<platform>_force_build_libs: true`.',
+          uri: uri,
+        );
+      }
+      await response.pipe(tempFile.openWrite());
+    } finally {
+      client.close();
+    }
+
+    try {
+      if (isZip && Platform.isWindows) {
+        final tarRes = await Process.run('tar', [
+          '-xf',
+          tempFile.path,
+          '-C',
+          destination.path,
+        ]);
+        if (tarRes.exitCode != 0) {
+          final cmd =
+              'Expand-Archive -Path "${tempFile.path}" '
+              '-DestinationPath "${destination.path}" -Force';
+          final psRes = await Process.run('powershell', [
+            '-NoProfile',
+            '-Command',
+            cmd,
+          ]);
+          if (psRes.exitCode != 0) {
+            throw ProcessException(
+              'powershell',
+              ['Expand-Archive'],
+              psRes.stderr.toString(),
+              psRes.exitCode,
+            );
+          }
+        }
+      } else {
+        final res = await Process.run('tar', [
+          '-xzf',
+          tempFile.path,
+          '-C',
+          destination.path,
+        ]);
+        if (res.exitCode != 0) {
+          throw ProcessException(
+            'tar',
+            ['-xzf', tempFile.path],
+            res.stderr.toString(),
+            res.exitCode,
+          );
+        }
+      }
+    } finally {
+      if (tempFile.existsSync()) {
+        tempFile.deleteSync();
+      }
     }
   }
 
@@ -821,12 +1031,47 @@ final class XiphLink {
       androidNdkApi = null;
     }
 
+    const androidLinkerFlags =
+        '-DCMAKE_SHARED_LINKER_FLAGS='
+        '-Wl,-z,max-page-size=16384,--gc-sections -flto';
     final androidFlags = [
       if (os == OS.android) ...[
         '-DCMAKE_TOOLCHAIN_FILE=$androidNdk/build/cmake/android.toolchain.cmake',
         '-DANDROID_ABI=$androidAbi',
         '-DANDROID_PLATFORM=android-$androidNdkApi',
-        '-DCMAKE_SHARED_LINKER_FLAGS=-Wl,-z,max-page-size=16384,--gc-sections',
+        '-DCMAKE_C_FLAGS=-Os -flto -ffunction-sections -fdata-sections',
+        androidLinkerFlags,
+      ],
+    ];
+
+    final commonCmakePlatformFlags = [
+      if (isApple) ...[
+        '-DBUILD_SHARED_LIBS=OFF',
+        '-DCMAKE_OSX_ARCHITECTURES=$archStr',
+        '-DCMAKE_OSX_DEPLOYMENT_TARGET=$osxDeploymentTarget',
+        if (os == OS.iOS) ...[
+          '-DCMAKE_SYSTEM_NAME=iOS',
+          '-DCMAKE_OSX_SYSROOT=$appleSysroot',
+        ],
+      ] else if (os == OS.windows) ...[
+        '-DBUILD_SHARED_LIBS=ON',
+        '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded',
+        if (arch == Architecture.arm64) ...['-A', 'ARM64'],
+      ] else if (os == OS.android) ...[
+        '-DBUILD_SHARED_LIBS=ON',
+        ...androidFlags,
+      ] else ...[
+        '-DBUILD_SHARED_LIBS=ON',
+        '-DCMAKE_C_FLAGS=-O2 -flto -ffunction-sections -fdata-sections',
+        '-DCMAKE_SHARED_LINKER_FLAGS=-Wl,--gc-sections -flto',
+        if (os == OS.linux &&
+            arch == Architecture.arm64 &&
+            Platform.version.contains('x64')) ...[
+          '-DCMAKE_SYSTEM_NAME=Linux',
+          '-DCMAKE_SYSTEM_PROCESSOR=aarch64',
+          '-DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc',
+          '-DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++',
+        ],
       ],
     ];
 
@@ -850,25 +1095,7 @@ final class XiphLink {
       '-DCMAKE_POLICY_VERSION_MINIMUM=3.5',
       '-DINSTALL_DOCS=OFF',
       '-DBUILD_TESTING=OFF',
-      if (isApple) ...[
-        '-DBUILD_SHARED_LIBS=OFF',
-        '-DCMAKE_OSX_ARCHITECTURES=$archStr',
-        '-DCMAKE_OSX_DEPLOYMENT_TARGET=$osxDeploymentTarget',
-        if (os == OS.iOS) ...[
-          '-DCMAKE_SYSTEM_NAME=iOS',
-          '-DCMAKE_OSX_SYSROOT=$appleSysroot',
-        ],
-      ] else if (os == OS.windows) ...[
-        '-DBUILD_SHARED_LIBS=ON',
-        '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded',
-      ] else if (os == OS.android) ...[
-        '-DBUILD_SHARED_LIBS=ON',
-        ...androidFlags,
-      ] else ...[
-        '-DBUILD_SHARED_LIBS=ON',
-        '-DCMAKE_C_FLAGS=-O2 -flto -ffunction-sections -fdata-sections',
-        '-DCMAKE_SHARED_LINKER_FLAGS=-Wl,--gc-sections -flto',
-      ],
+      ...commonCmakePlatformFlags,
     ]);
     print('[flutter_soloud] Compiling and installing ogg...');
     await _runCmake([
@@ -896,27 +1123,13 @@ final class XiphLink {
       '-DCMAKE_POLICY_VERSION_MINIMUM=3.5',
       '-DOPUS_BUILD_PROGRAMS=OFF',
       '-DOPUS_BUILD_TESTING=OFF',
+      '-DOPUS_STACK_PROTECTOR=OFF',
+      '-DOPUS_CUSTOM_MODES=ON',
       if (isApple) ...[
-        '-DBUILD_SHARED_LIBS=OFF',
         '-DOPUS_BUILD_SHARED_LIBRARY=OFF',
-        '-DCMAKE_OSX_ARCHITECTURES=$archStr',
-        '-DCMAKE_OSX_DEPLOYMENT_TARGET=$osxDeploymentTarget',
         '-DCMAKE_C_FLAGS=$opusAppleFlags',
-        if (os == OS.iOS) ...[
-          '-DCMAKE_SYSTEM_NAME=iOS',
-          '-DCMAKE_OSX_SYSROOT=$appleSysroot',
-        ],
-      ] else if (os == OS.windows) ...[
-        '-DBUILD_SHARED_LIBS=ON',
-        '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded',
-      ] else if (os == OS.android) ...[
-        '-DBUILD_SHARED_LIBS=ON',
-        ...androidFlags,
-      ] else ...[
-        '-DBUILD_SHARED_LIBS=ON',
-        '-DCMAKE_C_FLAGS=-O2 -flto -ffunction-sections -fdata-sections',
-        '-DCMAKE_SHARED_LINKER_FLAGS=-Wl,--gc-sections -flto',
       ],
+      ...commonCmakePlatformFlags,
     ]);
     print('[flutter_soloud] Compiling and installing opus...');
     await _runCmake([
@@ -951,25 +1164,7 @@ final class XiphLink {
       '-DOGG_INCLUDE_DIR=${installIncDir.path}',
       '-DOGG_LIBRARY=$oggLib',
       '-DBUILD_TESTING=OFF',
-      if (isApple) ...[
-        '-DBUILD_SHARED_LIBS=OFF',
-        '-DCMAKE_OSX_ARCHITECTURES=$archStr',
-        '-DCMAKE_OSX_DEPLOYMENT_TARGET=$osxDeploymentTarget',
-        if (os == OS.iOS) ...[
-          '-DCMAKE_SYSTEM_NAME=iOS',
-          '-DCMAKE_OSX_SYSROOT=$appleSysroot',
-        ],
-      ] else if (os == OS.windows) ...[
-        '-DBUILD_SHARED_LIBS=ON',
-        '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded',
-      ] else if (os == OS.android) ...[
-        '-DBUILD_SHARED_LIBS=ON',
-        ...androidFlags,
-      ] else ...[
-        '-DBUILD_SHARED_LIBS=ON',
-        '-DCMAKE_C_FLAGS=-O2 -flto -ffunction-sections -fdata-sections',
-        '-DCMAKE_SHARED_LINKER_FLAGS=-Wl,--gc-sections -flto',
-      ],
+      ...commonCmakePlatformFlags,
     ]);
     print('[flutter_soloud] Compiling and installing vorbis...');
     await _runCmake([
@@ -1000,28 +1195,9 @@ final class XiphLink {
       '-DBUILD_TESTING=OFF',
       '-DBUILD_DOCS=OFF',
       '-DINSTALL_MANPAGES=OFF',
-      if (isApple) ...[
-        '-DBUILD_SHARED_LIBS=OFF',
-        '-DCMAKE_OSX_ARCHITECTURES=$archStr',
-        '-DCMAKE_OSX_DEPLOYMENT_TARGET=$osxDeploymentTarget',
-        '-DWITH_OGG=ON',
-        if (os == OS.iOS) ...[
-          '-DCMAKE_SYSTEM_NAME=iOS',
-          '-DCMAKE_OSX_SYSROOT=$appleSysroot',
-          '-DIconv_FOUND=OFF',
-          '-DIntl_FOUND=OFF',
-        ],
-      ] else if (os == OS.windows) ...[
-        '-DBUILD_SHARED_LIBS=ON',
-        '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded',
-      ] else if (os == OS.android) ...[
-        '-DBUILD_SHARED_LIBS=ON',
-        ...androidFlags,
-      ] else ...[
-        '-DBUILD_SHARED_LIBS=ON',
-        '-DCMAKE_C_FLAGS=-O2 -flto -ffunction-sections -fdata-sections',
-        '-DCMAKE_SHARED_LINKER_FLAGS=-Wl,--gc-sections -flto',
-      ],
+      if (isApple) '-DWITH_OGG=ON',
+      if (os == OS.iOS) ...['-DIconv_FOUND=OFF', '-DIntl_FOUND=OFF'],
+      ...commonCmakePlatformFlags,
     ]);
     print('[flutter_soloud] Compiling and installing flac...');
     await _runCmake([
@@ -1038,10 +1214,56 @@ final class XiphLink {
     if (shareSrc.existsSync()) {
       _copyDirSync(shareSrc, Directory('${installIncDir.path}/share'));
     }
-    // Remove FLAC++ C++ wrapper headers
+    // Remove FLAC++ C++ wrapper headers and binaries
     final flacppDir = Directory('${installIncDir.path}/FLAC++');
     if (flacppDir.existsSync()) {
       flacppDir.deleteSync(recursive: true);
+    }
+    for (final dir in [installLibDir, installLib64Dir]) {
+      if (!dir.existsSync()) continue;
+      for (final entity in dir.listSync()) {
+        if (entity.path.contains('libFLAC++')) {
+          try {
+            entity.deleteSync();
+          } catch (_) {}
+        }
+      }
+    }
+
+    // Strip symbols from built libraries to match prebuilt releases
+    if (os == OS.android && androidNdk != null) {
+      final llvmStrip = _findNdkStrip(androidNdk);
+      if (llvmStrip != null) {
+        for (final dir in [installLibDir, installLib64Dir]) {
+          if (!dir.existsSync()) continue;
+          for (final file in dir.listSync()) {
+            if (file is File && file.path.endsWith('.so')) {
+              await Process.run(llvmStrip, [file.path]);
+            }
+          }
+        }
+      }
+    } else if (os == OS.linux) {
+      final isCrossArm64 =
+          arch == Architecture.arm64 && Platform.version.contains('x64');
+      final stripTool = isCrossArm64 ? 'aarch64-linux-gnu-strip' : 'strip';
+      for (final dir in [installLibDir, installLib64Dir]) {
+        if (!dir.existsSync()) continue;
+        for (final file in dir.listSync()) {
+          if (file is File && file.path.contains('.so')) {
+            await Process.run(stripTool, ['--strip-unneeded', file.path]);
+          }
+        }
+      }
+    } else if (isApple) {
+      for (final dir in [installLibDir, installLib64Dir]) {
+        if (!dir.existsSync()) continue;
+        for (final file in dir.listSync()) {
+          if (file is File && file.path.endsWith('.a')) {
+            await Process.run('strip', ['-x', file.path]);
+          }
+        }
+      }
     }
 
     return _linkFromInstall(input, installDir, os, arch);
@@ -1113,6 +1335,21 @@ String? _findAndroidNdk(BuildInput input) {
         ).existsSync()) {
           return candidate;
         }
+      }
+    }
+  }
+  return null;
+}
+
+String? _findNdkStrip(String ndkPath) {
+  final prebuiltDir = Directory('$ndkPath/toolchains/llvm/prebuilt');
+  if (!prebuiltDir.existsSync()) return null;
+  final exe = Platform.isWindows ? 'llvm-strip.exe' : 'llvm-strip';
+  for (final host in prebuiltDir.listSync()) {
+    if (host is Directory) {
+      final stripBin = File('${host.path}/bin/$exe');
+      if (stripBin.existsSync()) {
+        return stripBin.path;
       }
     }
   }
