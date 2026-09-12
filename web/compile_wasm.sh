@@ -227,9 +227,9 @@ build_flavor() {
     shift
     # -g -fdebug-compilation-dir=./debug \
     # -s NO_DISABLE_EXCEPTION_CATCHING=1 \
-    em++ -O2 \
+    em++ -O3 \
         "$@" \
-        -s ASSERTIONS=1 \
+        -s ASSERTIONS=${ASSERTIONS:-0} \
         ${INCLUDE_DIRS[@]} \
         ${SOURCES[@]} \
         ${LIBS[@]} \
@@ -251,7 +251,7 @@ build_flavor() {
 # ST flavor (default, keeps the historical file names).
 if [ "${SKIP_ST:-0}" != "1" ]; then
     echo -e "${BOLD_WHITE_ON_GREEN}Building single-threaded flavor (libflutter_soloud_plugin)${RESET}"
-    build_flavor "libflutter_soloud_plugin" -s SAFE_HEAP=1
+    build_flavor "libflutter_soloud_plugin"
 fi
 
 # MT flavor (requires COOP/COEP; selected at runtime only when isolated).
@@ -275,7 +275,6 @@ if [ "${SKIP_MT:-0}" != "1" ]; then
     build_flavor "libflutter_soloud_plugin_mt" \
         -pthread \
         -DMA_ENABLE_AUDIO_WORKLETS \
-        -g \
         -s SHARED_MEMORY=1 \
         -s PTHREAD_POOL_SIZE=8 \
         -s ALLOW_BLOCKING_ON_MAIN_THREAD=1 \
