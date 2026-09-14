@@ -110,16 +110,26 @@ await SoLoud.instance.init(
 
 ## Xiph audio libraries (Ogg, Vorbis, Opus, FLAC)
 
-The Xiph audio decoders provide compressed audio playback, streaming, and master output capture (600–3000 KB per binary). By default, Native Assets build hooks automatically link and bundle precompiled libraries from `xiph/prebuild/<platform>/`:
+The Xiph audio decoders provide compressed audio playback, streaming, and master output capture (600–3000 KB per binary). To keep the pub package lightweight, tested precompiled static and shared libraries are hosted in the companion repository [flutter_soloud_prebuilds](https://github.com/alnitak/flutter_soloud_prebuilds).
+
+By default, Dart Native Assets build hooks automatically download the matching prebuilt archive on first build and cache it under `.dart_tool/flutter_soloud/xiph/prebuild/`:
 - **Android**: 4 ABIs (`arm64-v8a`, `armeabi-v7a`, `x86`, `x86_64`)
-- **iOS**: Universal `arm64` device + `arm64`/`x86_64` simulator
-- **macOS**: Universal `arm64` + `x86_64`
-- **Windows**: `x86_64` (for ARM64, use system libs or source build)
-- **Linux**: `x86_64` (for ARM/Raspberry Pi, use system libs or source build)
+- **iOS**: Universal `arm64` device + `arm64`/`x86_64` simulator static libraries
+- **macOS**: Universal Apple Silicon (`arm64`) + Intel (`x86_64`) static libraries
+- **Windows**: `x64` and `arm64` DLLs and import libraries
+- **Linux**: `x86_64` and `aarch64` shared `.so` libraries
 
 This ensures that packaged apps (Android AAB/APK, iOS IPA, macOS APP, Windows EXE) work out of the box with zero external build dependencies.
 
-You can customize this in the **app's** `pubspec.yaml`:
+You can customize this in the **app's** `pubspec.yaml` under `hooks.user_defines.flutter_soloud`:
+
+- **Pin a specific prebuild release version (default is `latest`):**
+  ```yaml
+  hooks:
+    user_defines:
+      flutter_soloud:
+        prebuild_tag: 'v1.0.1' # Optional: pin to a specific release tag
+  ```
 
 - **Link against system-installed packages (desktop only):**
   ```yaml
