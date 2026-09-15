@@ -178,13 +178,20 @@ class SoLoudLoader {
       final existingFile = _temporaryFiles[id]!;
       if (existingFile.existsSync()) {
         _log.finest(() => 'Asset $key already exists as a temporary file.');
-        final audioSource = await SoLoud.instance.loadFile(
-          existingFile.path,
-          mode: mode,
-          autoDispose: autoDispose,
-        );
-        audioSource.tempFilePath = existingFile.path;
-        return audioSource;
+        try {
+          final audioSource = await SoLoud.instance.loadFile(
+            existingFile.path,
+            mode: mode,
+            autoDispose: autoDispose,
+          );
+          audioSource.tempFilePath = existingFile.path;
+          return audioSource;
+        } on SoLoudNotInitializedException {
+          throw SoLoudNotInitializedException(
+            'SoLoud was deinitialized or is not initialized while attempting '
+            "to load existing temporary file for asset '$key'.",
+          );
+        }
       }
     }
 
@@ -226,13 +233,37 @@ class SoLoudLoader {
       );
     }
 
-    _temporaryFiles[id] = newFile;
+    final AudioSource audioSource;
+    try {
+      audioSource = await SoLoud.instance.loadFile(
+        newFile.path,
+        mode: mode,
+        autoDispose: autoDispose,
+      );
+    } on SoLoudNotInitializedException {
+      try {
+        if (newFile.existsSync()) {
+          await newFile.delete();
+        }
+      } catch (_) {
+        // Ignore file cleanup failure.
+      }
+      throw SoLoudNotInitializedException(
+        "SoLoud was deinitialized or disposed while staging asset '$key' into "
+        'a temporary file.',
+      );
+    } catch (e) {
+      try {
+        if (newFile.existsSync()) {
+          await newFile.delete();
+        }
+      } catch (_) {
+        // Ignore file cleanup failure.
+      }
+      rethrow;
+    }
 
-    final audioSource = await SoLoud.instance.loadFile(
-      newFile.path,
-      mode: mode,
-      autoDispose: autoDispose,
-    );
+    _temporaryFiles[id] = newFile;
     audioSource.tempFilePath = newFile.path;
     return audioSource;
   }
@@ -268,13 +299,20 @@ class SoLoudLoader {
         _log.finest(
           () => 'Sound from $url already exists as a temporary file.',
         );
-        final newAudioSource = await SoLoud.instance.loadFile(
-          existingFile.path,
-          mode: mode,
-          autoDispose: autoDispose,
-        );
-        newAudioSource.tempFilePath = existingFile.path;
-        return newAudioSource;
+        try {
+          final newAudioSource = await SoLoud.instance.loadFile(
+            existingFile.path,
+            mode: mode,
+            autoDispose: autoDispose,
+          );
+          newAudioSource.tempFilePath = existingFile.path;
+          return newAudioSource;
+        } on SoLoudNotInitializedException {
+          throw SoLoudNotInitializedException(
+            'SoLoud was deinitialized or is not initialized while attempting '
+            "to load existing temporary file for url '$url'.",
+          );
+        }
       }
     }
 
@@ -320,17 +358,41 @@ class SoLoudLoader {
       );
     } catch (e) {
       throw SoLoudTemporaryFolderFailedException(
-        "loadAsset() couldn't write $newFile to disk",
+        "loadUrl() couldn't write $newFile to disk",
       );
     }
 
-    _temporaryFiles[id] = newFile;
+    final AudioSource newAudioSource;
+    try {
+      newAudioSource = await SoLoud.instance.loadFile(
+        newFile.path,
+        mode: mode,
+        autoDispose: autoDispose,
+      );
+    } on SoLoudNotInitializedException {
+      try {
+        if (newFile.existsSync()) {
+          await newFile.delete();
+        }
+      } catch (_) {
+        // Ignore file cleanup failure.
+      }
+      throw SoLoudNotInitializedException(
+        'SoLoud was deinitialized or disposed while downloading and staging '
+        "url '$url' into a temporary file.",
+      );
+    } catch (e) {
+      try {
+        if (newFile.existsSync()) {
+          await newFile.delete();
+        }
+      } catch (_) {
+        // Ignore file cleanup failure.
+      }
+      rethrow;
+    }
 
-    final newAudioSource = await SoLoud.instance.loadFile(
-      newFile.path,
-      mode: mode,
-      autoDispose: autoDispose,
-    );
+    _temporaryFiles[id] = newFile;
     newAudioSource.tempFilePath = newFile.path;
 
     return newAudioSource;

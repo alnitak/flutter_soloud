@@ -66,13 +66,20 @@ class SoLoudLoader {
       byteData.offsetInBytes,
       byteData.lengthInBytes,
     );
-    final newAudioSource = SoLoud.instance.loadMem(
-      key,
-      buffer,
-      mode: mode,
-      autoDispose: autoDispose,
-    );
-    return newAudioSource;
+    try {
+      final newAudioSource = await SoLoud.instance.loadMem(
+        key,
+        buffer,
+        mode: mode,
+        autoDispose: autoDispose,
+      );
+      return newAudioSource;
+    } on SoLoudNotInitializedException {
+      throw SoLoudNotInitializedException(
+        "SoLoud was deinitialized or disposed while staging asset '$key' into "
+        'memory.',
+      );
+    }
   }
 
   /// Optionally, you can provide your own [httpClient]. This is a good idea
@@ -116,12 +123,19 @@ class SoLoudLoader {
       byteData.offsetInBytes,
       byteData.lengthInBytes,
     );
-    final newAudioSource = SoLoud.instance.loadMem(
-      url,
-      buffer,
-      mode: mode,
-      autoDispose: autoDispose,
-    );
-    return newAudioSource;
+    try {
+      final newAudioSource = await SoLoud.instance.loadMem(
+        url,
+        buffer,
+        mode: mode,
+        autoDispose: autoDispose,
+      );
+      return newAudioSource;
+    } on SoLoudNotInitializedException {
+      throw SoLoudNotInitializedException(
+        'SoLoud was deinitialized or disposed while downloading and staging '
+        "url '$url' into memory.",
+      );
+    }
   }
 }
