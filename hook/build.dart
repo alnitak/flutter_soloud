@@ -614,8 +614,9 @@ final class XiphLink {
       isZip: false,
     );
     final tagToWrite = resolvedTag ?? tag;
-    File('${cacheDir.path}/$_prebuildVersionFileName')
-        .writeAsStringSync('$tagToWrite\n');
+    File(
+      '${cacheDir.path}/$_prebuildVersionFileName',
+    ).writeAsStringSync('$tagToWrite\n');
 
     File.fromUri(
         packageRoot.resolve(
@@ -668,8 +669,9 @@ final class XiphLink {
       isZip: isZip,
     );
     final tagToWrite = resolvedTag ?? tag;
-    File('${cacheDir.path}/$_prebuildVersionFileName')
-        .writeAsStringSync('$tagToWrite\n');
+    File(
+      '${cacheDir.path}/$_prebuildVersionFileName',
+    ).writeAsStringSync('$tagToWrite\n');
 
     if (!validator(cacheDir)) {
       throw StateError(
