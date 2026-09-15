@@ -233,4 +233,18 @@ typedef void (*dartVisualizationCallback_t)(
     const float **fftDataPerChannel,
     int32_t fftSamples);
 
+/// Linux audio backends.
+///
+/// WARNING: Keep these in sync with `lib/src/enums.dart`.
+typedef enum LinuxAudioBackend {
+  /// Let miniaudio choose the default backend (ALSA first, then PulseAudio, then JACK).
+  linuxBackendAuto = 0,
+  /// Advanced Linux Sound Architecture
+  linuxBackendAlsa = 1,
+  /// PulseAudio sound server
+  linuxBackendPulseAudio = 2,
+  /// JACK Audio Connection Kit
+  linuxBackendJack = 3,
+} LinuxAudioBackend_t;
+
 #endif // ENUMS_H

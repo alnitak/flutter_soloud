@@ -137,10 +137,6 @@ void main(List<String> args) async {
       'WITH_NULL': null,
       // Force NDEBUG across all compilers (comment out for native debugging).
       'NDEBUG': null,
-      // Remove PulseAudio since it can cause stutters and glitches.
-      'MA_NO_PULSEAUDIO': null,
-      if (isApple) 'WITH_COREAUDIO': null,
-      if (os == OS.linux) 'WITH_ALSA': null,
       if (os == OS.windows) ...{
         'NOMINMAX': null,
         '_CRT_SECURE_NO_WARNINGS': null,
@@ -236,7 +232,6 @@ void main(List<String> args) async {
         ...xiph.libraries,
         if (isApple) 'flutter_soloud_miniaudio_objc',
         if (os == OS.android) ...['log', 'android'],
-        if (os == OS.linux) 'asound',
       ],
       // '.' is the hook output directory, where the miniaudio ObjC++ static
       // library was just built.
@@ -307,19 +302,13 @@ List<String> collectSources(Uri packageRoot, OS targetOS) {
     exclude: (p) => p.contains('/openmpt/'),
   );
 
-  // Backends: null and miniaudio everywhere, ALSA on Linux, CoreAudio on
-  // Apple. On Apple, soloud_miniaudio.cpp must be compiled as Objective-C++
-  // (miniaudio.h uses AVFoundation), so it is built separately from
-  // src/soloud_miniaudio_objc.mm by hook/build.dart instead.
+  // Backends: null and miniaudio everywhere. On Apple, soloud_miniaudio.cpp
+  // must be compiled as Objective-C++ (miniaudio.h uses AVFoundation), so it
+  // is built separately from src/soloud_miniaudio_objc.mm by hook/build.dart
+  // instead.
   addDir('soloud/src/backend/null/');
   if (!isApple) {
     addDir('soloud/src/backend/miniaudio/');
-  }
-  if (targetOS == OS.linux) {
-    addDir('soloud/src/backend/alsa/');
-  }
-  if (isApple) {
-    addDir('soloud/src/backend/coreaudio/');
   }
 
   return sources..sort();

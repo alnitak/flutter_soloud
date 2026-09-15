@@ -641,3 +641,35 @@ abstract final class VisualizationChannel {
   /// (e.g. Left and Right for stereo).
   static const int all = -2;
 }
+
+/// Linux audio backends.
+///
+/// WARNING: Keep these in sync with `src/enums.h`.
+enum LinuxAudioBackend {
+  /// Let miniaudio choose the default backend (ALSA first, then PulseAudio,
+  /// then JACK).
+  auto_(0),
+
+  /// Advanced Linux Sound Architecture (ALSA).
+  alsa(1),
+
+  /// PulseAudio sound server.
+  pulseAudio(2),
+
+  /// JACK Audio Connection Kit.
+  jack(3);
+
+  const LinuxAudioBackend(this.value);
+
+  /// The integer value representing the enum in native code.
+  final int value;
+
+  /// Returns the [LinuxAudioBackend] corresponding to [value].
+  static LinuxAudioBackend fromValue(int value) => switch (value) {
+        0 => auto_,
+        1 => alsa,
+        2 => pulseAudio,
+        3 => jack,
+        _ => auto_,
+      };
+}

@@ -513,6 +513,14 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   }
 
   @override
+  Future<PlayerErrors> setLinuxAudioBackend(LinuxAudioBackend backend) async {
+    final ret = await Isolate.run(
+      () => native.setLinuxAudioBackend(backend.value),
+    );
+    return PlayerErrors.values[ret.value];
+  }
+
+  @override
   void setAudioDeviceIdleTimeout(Duration? timeout) {
     // Map the Dart Duration to the native signed-millisecond convention: null
     // (keep alive indefinitely) -> -1, and any finite duration to its

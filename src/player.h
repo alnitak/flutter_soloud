@@ -62,6 +62,10 @@ public:
   /// @param deviceID the device ID. -1 for default OS output device.
   PlayerErrors changeDevice(int deviceID);
 
+  /// @brief Set the Linux audio backend (Auto, ALSA, PulseAudio, JACK).
+  /// If the engine is already running, dynamically switches the output device.
+  PlayerErrors setLinuxAudioBackend(LinuxAudioBackend backend);
+
   /// @brief Enumerate the OS playback devices.
   ///
   /// Static because it reads no player state: it spins up its own local

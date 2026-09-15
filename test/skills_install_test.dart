@@ -130,7 +130,7 @@ void main() {
         tempDir.uri.resolve('.agents/skills/flutter-soloud-idioms/SKILL.md'),
       );
       final content = file.readAsStringSync().replaceFirst(
-        'version: 1',
+        RegExp(r'version:\s*\d+'),
         'version: 0',
       );
       file.writeAsStringSync(content);

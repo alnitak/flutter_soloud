@@ -1,6 +1,7 @@
 ##### 5.1.0 (X Xxx 2026)
 - implemented the algorithm according to the W3C Web Audio API Specification to compute FFT
 - added `setFftDecibelRange` to set the decibel range for FFT magnitude normalization
+- **Linux audio backend selection**: Added `LinuxAudioBackend` enum and `SoLoud.instance.setLinuxAudioBackend(backend)` to select or dynamically switch audio backends (ALSA, PulseAudio, JACK) at runtime or choose it in the new `init()` parameter. Closes #555.
 - **Prebuilt Xiph libraries consolidation**: Precompiled Xiph binaries across all platforms are now cleanly organized in `xiph/prebuild/<platform>/`, keeping platform folders clean and ensuring packaged apps (Android AAB/APK, iOS IPA, macOS APP, Windows EXE) bundle all codecs out of the box with zero external build dependencies. Closes #552.
 - **Platform-specific Xiph hook options**: Added `<platform>_use_system_libs` (to link against system packages on desktop) and `<platform>_force_build_libs` (to compile from source via CMake into `.dart_tool/`) under `hooks.user_defines.flutter_soloud` in `pubspec.yaml`. See [docs](https://docs.page/alnitak/flutter_soloud_docs/get_started/xiph_libs) for more info. Closes #552.
 - **Runtime error diagnostics**: Added descriptive troubleshooting logs when system libraries fail to load at runtime, with package manager commands for Ubuntu/Debian, Arch, Fedora, macOS Homebrew, and Windows. Closes #552.

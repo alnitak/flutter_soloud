@@ -242,6 +242,19 @@ namespace SoLoud
 #endif
 	}
 
+	result Soloud::miniaudio_changeLinuxBackend(int aBackend)
+	{
+#if defined(WITH_MINIAUDIO)
+		if (mAudioThreadMutex == NULL)
+			return UNKNOWN_ERROR;
+
+		return miniaudio_changeLinuxBackend_impl(aBackend);
+#else
+		(void)aBackend;
+		return NOT_IMPLEMENTED;
+#endif
+	}
+
 	result Soloud::init(unsigned int aFlags, unsigned int aBackend, unsigned int aSamplerate, unsigned int aBufferSize, unsigned int aChannels, void *pPlaybackInfos_id)
 	{		
 		if (aBackend >= BACKEND_MAX || aChannels == 3 || aChannels == 5 || aChannels == 7 || aChannels > MAX_CHANNELS)
