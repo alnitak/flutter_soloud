@@ -648,7 +648,7 @@ abstract final class VisualizationChannel {
 enum LinuxAudioBackend {
   /// Let miniaudio choose the default backend (ALSA first, then PulseAudio,
   /// then JACK).
-  auto_(0),
+  auto(0),
 
   /// Advanced Linux Sound Architecture (ALSA).
   alsa(1),
@@ -666,10 +666,10 @@ enum LinuxAudioBackend {
 
   /// Returns the [LinuxAudioBackend] corresponding to [value].
   static LinuxAudioBackend fromValue(int value) => switch (value) {
-    0 => auto_,
+    0 => auto,
     1 => alsa,
     2 => pulseAudio,
     3 => jack,
-    _ => auto_,
+    _ => auto,
   };
 }

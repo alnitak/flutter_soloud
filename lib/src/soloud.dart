@@ -428,7 +428,7 @@ interface class SoLoud {
     bool lowLatency = true,
     AndroidAAudioAttributes androidAAudioAttributes =
         AndroidAAudioAttributes.mediaMusic,
-    LinuxAudioBackend linuxAudioBackend = LinuxAudioBackend.auto_,
+    LinuxAudioBackend linuxAudioBackend = LinuxAudioBackend.auto,
     int? devicePeriodFrames,
     int? renderAheadFrames,
   }) {
@@ -506,7 +506,7 @@ interface class SoLoud {
     bool lowLatency = true,
     AndroidAAudioAttributes androidAAudioAttributes =
         AndroidAAudioAttributes.mediaMusic,
-    LinuxAudioBackend linuxAudioBackend = LinuxAudioBackend.auto_,
+    LinuxAudioBackend linuxAudioBackend = LinuxAudioBackend.auto,
     int? devicePeriodFrames,
     int? renderAheadFrames,
   }) async {
@@ -691,7 +691,7 @@ interface class SoLoud {
     }
   }
 
-  /// Sets the Linux audio backend ([LinuxAudioBackend.auto_],
+  /// Sets the Linux audio backend ([LinuxAudioBackend.auto],
   /// [LinuxAudioBackend.alsa], [LinuxAudioBackend.pulseAudio], or
   /// [LinuxAudioBackend.jack]).
   ///

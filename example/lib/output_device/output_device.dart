@@ -49,7 +49,7 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
   late List<PlaybackDevice> devices;
   late PlaybackDevice currentDevice;
   AudioSource? currentSound;
-  LinuxAudioBackend selectedBackend = LinuxAudioBackend.auto_;
+  LinuxAudioBackend selectedBackend = LinuxAudioBackend.auto;
 
   @override
   void initState() {
@@ -107,7 +107,7 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
                 },
                 dropdownMenuEntries: const [
                   DropdownMenuEntry(
-                    value: LinuxAudioBackend.auto_,
+                    value: LinuxAudioBackend.auto,
                     label: 'Auto (ALSA -> PulseAudio -> JACK)',
                   ),
                   DropdownMenuEntry(

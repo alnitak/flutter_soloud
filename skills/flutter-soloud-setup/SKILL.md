@@ -19,7 +19,7 @@ Future<void> main() async {
 
   await SoLoud.instance.init(
     // device: devices.firstWhere((d) => d.isDefault),
-    // linuxAudioBackend: LinuxAudioBackend.auto_, // auto_, alsa, pulseAudio, jack
+    // linuxAudioBackend: LinuxAudioBackend.auto, // auto, alsa, pulseAudio, jack
     sampleRate: 44100,
     bufferSize: 2048,
     channels: Channels.stereo,
@@ -58,12 +58,12 @@ Native C/C++ sources are compiled by [Dart build hooks](https://dart.dev/tools/h
 
 All of these live on the singleton `SoLoud.instance` (`import 'package:flutter_soloud/flutter_soloud.dart'`).
 
-- `Future<void> init({PlaybackDevice? device, bool automaticCleanup = false, int sampleRate = 44100, int bufferSize = 2048, Channels channels = Channels.stereo, bool lowLatency = true, AndroidAAudioAttributes androidAAudioAttributes = AndroidAAudioAttributes.mediaMusic, int? devicePeriodFrames, int? renderAheadFrames, LinuxAudioBackend linuxAudioBackend = LinuxAudioBackend.auto_})` — initializes the engine. **Throws on failure** (e.g. `SoLoudCppException`, `SoLoudNoPlaybackDevicesFoundCppException`); it does not return a `PlayerErrors` status, so `await` it in try/catch.
+- `Future<void> init({PlaybackDevice? device, bool automaticCleanup = false, int sampleRate = 44100, int bufferSize = 2048, Channels channels = Channels.stereo, bool lowLatency = true, AndroidAAudioAttributes androidAAudioAttributes = AndroidAAudioAttributes.mediaMusic, int? devicePeriodFrames, int? renderAheadFrames, LinuxAudioBackend linuxAudioBackend = LinuxAudioBackend.auto})` — initializes the engine. **Throws on failure** (e.g. `SoLoudCppException`, `SoLoudNoPlaybackDevicesFoundCppException`); it does not return a `PlayerErrors` status, so `await` it in try/catch.
 - `void deinit()` / `Future<void> deinitAsync()` — stops the engine and disposes all resources including sounds. `deinit` blocks the calling thread; prefer `deinitAsync` where you can await it.
 - `bool get isInitialized` — synchronous readiness check.
 - `List<PlaybackDevice> listPlaybackDevices()` — **safe to call before `init()`**. Returns `PlaybackDevice(id, isDefault, name)`.
 - `Future<void> changeDevice({PlaybackDevice? newDevice})` — switches output while running; omit `newDevice` to select the system default. Await it — the swap runs off the UI isolate.
-- `Future<void> setLinuxAudioBackend(LinuxAudioBackend backend)` — Linux only: selects or dynamically switches the audio backend (`LinuxAudioBackend.auto_` [ALSA -> PulseAudio -> JACK], `.alsa`, `.pulseAudio`, `.jack`). Safe to call before `init()` or while the engine is running.
+- `Future<void> setLinuxAudioBackend(LinuxAudioBackend backend)` — Linux only: selects or dynamically switches the audio backend (`LinuxAudioBackend.auto` [ALSA -> PulseAudio -> JACK], `.alsa`, `.pulseAudio`, `.jack`). Safe to call before `init()` or while the engine is running.
 - `Future<void> stopAudioDevice({bool force = false})` / `Future<void> startAudioDevice()` — stop/start only the output device; loaded sounds, voices, and filter state are preserved and playback resumes where it left off.
 - `AudioDeviceState getAudioDeviceState()` — cheap sync read: `uninitialized | stopped | started | starting | stopping`. Safe before `init()`.
 - `void setAudioDeviceIdleTimeout(Duration? timeout)` — when no unpaused voices remain: `Duration.zero` stops the device ASAP, a positive duration keeps it alive that long (default 500 ms), `null` keeps it running indefinitely (Android wakelock). No effect on web.

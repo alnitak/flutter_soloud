@@ -19,11 +19,11 @@ void main() {
   });
 
   test('LinuxAudioBackend fromValue maps correctly', () {
-    expect(LinuxAudioBackend.fromValue(0), LinuxAudioBackend.auto_);
+    expect(LinuxAudioBackend.fromValue(0), LinuxAudioBackend.auto);
     expect(LinuxAudioBackend.fromValue(1), LinuxAudioBackend.alsa);
     expect(LinuxAudioBackend.fromValue(2), LinuxAudioBackend.pulseAudio);
     expect(LinuxAudioBackend.fromValue(3), LinuxAudioBackend.jack);
-    expect(LinuxAudioBackend.fromValue(99), LinuxAudioBackend.auto_);
+    expect(LinuxAudioBackend.fromValue(99), LinuxAudioBackend.auto);
   });
 
   test(
@@ -55,7 +55,7 @@ void main() {
       );
 
       const expectedOrder = <String, LinuxAudioBackend>{
-        'linuxBackendAuto': LinuxAudioBackend.auto_,
+        'linuxBackendAuto': LinuxAudioBackend.auto,
         'linuxBackendAlsa': LinuxAudioBackend.alsa,
         'linuxBackendPulseAudio': LinuxAudioBackend.pulseAudio,
         'linuxBackendJack': LinuxAudioBackend.jack,
@@ -92,7 +92,7 @@ void main() {
       completes,
     );
     await expectLater(
-      SoLoud.instance.setLinuxAudioBackend(LinuxAudioBackend.auto_),
+      SoLoud.instance.setLinuxAudioBackend(LinuxAudioBackend.auto),
       completes,
     );
   });

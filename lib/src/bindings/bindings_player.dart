@@ -203,7 +203,7 @@ abstract class FlutterSoLoud {
   @mustBeOverridden
   void setAndroidAAudioAttributes(bool managed);
 
-  /// Linux only: choose the audio backend ([LinuxAudioBackend.auto_],
+  /// Linux only: choose the audio backend ([LinuxAudioBackend.auto],
   /// [LinuxAudioBackend.alsa], [LinuxAudioBackend.pulseAudio], or
   /// [LinuxAudioBackend.jack]).
   /// When called before [initEngine], sets the backend for initialization.
