@@ -1,3 +1,7 @@
+##### 5.1.1 (15 Sep 2026)
+- harden asset and URL loader against engine deinit races #558
+- trashed old `.xcframework`s from the plugin, which are no longer used since build Hooks was introduced #558
+
 ##### 5.1.0 (15 Sep 2026)
 - implemented the algorithm according to the W3C Web Audio API Specification to compute FFT.
 - added `setFftDecibelRange` to set the decibel range for FFT magnitude normalization.
