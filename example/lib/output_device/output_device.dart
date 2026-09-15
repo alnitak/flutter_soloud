@@ -1,5 +1,6 @@
 // ignore_for_file: avoid_print
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 
@@ -48,6 +49,7 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
   late List<PlaybackDevice> devices;
   late PlaybackDevice currentDevice;
   AudioSource? currentSound;
+  LinuxAudioBackend selectedBackend = LinuxAudioBackend.auto;
 
   @override
   void initState() {
@@ -65,6 +67,7 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
 
   @override
   void dispose() {
+    textEditingController.dispose();
     SoLoud.instance.deinit();
     super.dispose();
   }
@@ -79,6 +82,49 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
           mainAxisSize: MainAxisSize.min,
           spacing: 16,
           children: [
+            if (defaultTargetPlatform == TargetPlatform.linux) ...[
+              const Text(
+                'Linux Audio Backend:',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              DropdownMenu<LinuxAudioBackend>(
+                initialSelection: selectedBackend,
+                onSelected: (backend) async {
+                  if (backend == null) return;
+                  selectedBackend = backend;
+                  await SoLoud.instance.setLinuxAudioBackend(backend);
+                  devices = SoLoud.instance.listPlaybackDevices();
+                  if (devices.isNotEmpty) {
+                    currentDevice = devices.firstWhere(
+                      (d) => d.isDefault,
+                      orElse: () => devices.first,
+                    );
+                    textEditingController.text = currentDevice.name;
+                  } else {
+                    textEditingController.text = 'No devices found';
+                  }
+                  setState(() {});
+                },
+                dropdownMenuEntries: const [
+                  DropdownMenuEntry(
+                    value: LinuxAudioBackend.auto,
+                    label: 'Auto (ALSA -> PulseAudio -> JACK)',
+                  ),
+                  DropdownMenuEntry(
+                    value: LinuxAudioBackend.alsa,
+                    label: 'ALSA',
+                  ),
+                  DropdownMenuEntry(
+                    value: LinuxAudioBackend.pulseAudio,
+                    label: 'PulseAudio',
+                  ),
+                  DropdownMenuEntry(
+                    value: LinuxAudioBackend.jack,
+                    label: 'JACK',
+                  ),
+                ],
+              ),
+            ],
             ElevatedButton(
               onPressed: () async {
                 devices = SoLoud.instance.listPlaybackDevices();
@@ -112,7 +158,9 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
             DropdownMenu(
               controller: textEditingController,
               onSelected: (value) async {
-                await SoLoud.instance.changeDevice(newDevice: devices[value!]);
+                if (value != null && value < devices.length) {
+                  await SoLoud.instance.changeDevice(newDevice: devices[value]);
+                }
               },
               dropdownMenuEntries: [
                 for (var i = 0; i < devices.length; i++)

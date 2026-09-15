@@ -332,6 +332,7 @@ namespace SoLoud
 		// Change output device.
 		// Added by Marco Bavagnoli
 		result miniaudio_changeDevice(void *pPlaybackInfos_id);
+		result miniaudio_changeLinuxBackend(int aBackend);
 
 		result pause();
 		result resume();

@@ -77,6 +77,7 @@ namespace SoLoud
 	// MiniAudio back-end initialization call
 	result miniaudio_init(SoLoud::Soloud* aSoloud, unsigned int aFlags = Soloud::CLIP_ROUNDOFF, unsigned int aSamplerate = 44100, unsigned int aBuffer = 2048, unsigned int aChannels = 2, void *pPlaybackInfos_id = nullptr);
 	result miniaudio_changeDevice_impl(void *pPlaybackInfos_id);
+	result miniaudio_changeLinuxBackend_impl(int aBackend);
 	// Test hook: deliver an interruption notification through the same backend
 	// callback used by the OS. Not exposed by the public Dart API.
 	void miniaudio_debugTriggerAudioInterruption(bool aBegan);
@@ -88,6 +89,10 @@ namespace SoLoud
 	// AudioAttributes externally (e.g. via audio_session). Must be called before
 	// init. No-op effect on non-Android backends.
 	void miniaudio_setAndroidAAudioAttributes(bool aManaged);
+	// Linux only: choose the audio backend (0 = Auto [ALSA->PulseAudio->JACK],
+	// 1 = ALSA, 2 = PulseAudio, 3 = JACK). No-op on other platforms.
+	void miniaudio_setLinuxAudioBackend(int aBackend);
+	int miniaudio_getLinuxAudioBackend();
 	// Unconditionally stop the miniaudio output device (regardless of platform
 	// idle-pause policy or active voices) without deinitialising SoLoud or
 	// touching its voices/sources. Idempotent: no-op if already stopped.

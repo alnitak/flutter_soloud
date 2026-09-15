@@ -276,6 +276,8 @@ void Player::setStateChangedCallback(void (*stateChangedCallback)(unsigned int))
 // Defined in the miniaudio backend (soloud_miniaudio.cpp). Forward-declared
 // here so we don't need to pull in the backend-internal header.
 namespace SoLoud { void miniaudio_setLowLatency(bool aLowLatency); }
+namespace SoLoud { void miniaudio_setLinuxAudioBackend(int aBackend); }
+namespace SoLoud { int miniaudio_getLinuxAudioBackend(); }
 namespace SoLoud { SoLoud::result miniaudio_stopAudioDevice(); }
 namespace SoLoud { SoLoud::result miniaudio_startAudioDevice(); }
 namespace SoLoud { unsigned int miniaudio_getAudioDeviceState(); }
@@ -477,6 +479,59 @@ PlayerErrors Player::changeDevice(int deviceID)
     return changeResult;
 }
 
+PlayerErrors Player::setLinuxAudioBackend(LinuxAudioBackend backend)
+{
+#if defined(__linux__) || defined(__LINUX__)
+    SoLoud::miniaudio_setLinuxAudioBackend(static_cast<int>(backend));
+
+    // If the engine is not initialized, the backend is stored and will be used when initialized.
+    if (!mInited.load(std::memory_order_acquire))
+    {
+        return noError;
+    }
+
+    bool shouldStartReplacement = false;
+    PlayerErrors changeResult = noError;
+    {
+        std::lock_guard<std::mutex> operationLock(
+            mDeviceLifecycleOperationMutex);
+        if (!mInited.load(std::memory_order_acquire) ||
+            !mLifecycleRequestsAccepted.load(std::memory_order_acquire))
+            return backendNotInited;
+
+        const uint64_t token = currentDeviceRequestGeneration();
+        const AudioDeviceState previousState = getAudioDeviceState();
+        shouldStartReplacement =
+            soloud.getActiveVoiceCount() != 0 ||
+            mIdleTimeoutMs.load(std::memory_order_acquire) < 0 ||
+            previousState == audioDeviceStarted ||
+            previousState == audioDeviceStarting;
+
+        if (!cancelSupersededDeviceRequests(token))
+        {
+            shouldStartReplacement = true;
+        }
+
+        const SoLoud::result result =
+            soloud.miniaudio_changeLinuxBackend(static_cast<int>(backend));
+
+        if (result != SoLoud::SO_NO_ERROR)
+            changeResult = audioDeviceFailedToStart;
+        else if (shouldStartReplacement)
+        {
+            changeResult = performAudioDeviceStart();
+        }
+    }
+
+    if (changeResult == noError && shouldStartReplacement)
+        evaluateAudioDeviceIdle();
+    return changeResult;
+#else
+    (void)backend;
+    return noError;
+#endif
+}
+
 // List available playback devices.
 std::vector<PlaybackDevice> Player::listPlaybackDevices()
 {
@@ -491,7 +546,30 @@ std::vector<PlaybackDevice> Player::listPlaybackDevices()
     ma_uint32 captureCount;
     std::vector<PlaybackDevice> ret;
     ma_result result;
-    if ((result = ma_context_init(NULL, 0, NULL, &context)) != MA_SUCCESS)
+#if defined(__linux__) || defined(__LINUX__)
+    ma_backend backends[3];
+    ma_uint32 backendCount = 0;
+    const int chosenBackend = SoLoud::miniaudio_getLinuxAudioBackend();
+    if (chosenBackend == 1) { // ALSA
+        backends[0] = ma_backend_alsa;
+        backendCount = 1;
+    } else if (chosenBackend == 2) { // PulseAudio
+        backends[0] = ma_backend_pulseaudio;
+        backendCount = 1;
+    } else if (chosenBackend == 3) { // JACK
+        backends[0] = ma_backend_jack;
+        backendCount = 1;
+    } else { // Auto: ALSA first, then PulseAudio, then JACK
+        backends[0] = ma_backend_alsa;
+        backends[1] = ma_backend_pulseaudio;
+        backends[2] = ma_backend_jack;
+        backendCount = 3;
+    }
+    result = ma_context_init(backends, backendCount, NULL, &context);
+#else
+    result = ma_context_init(NULL, 0, NULL, &context);
+#endif
+    if (result != MA_SUCCESS)
     {
         // Failed to initialize audio context.
         return ret;

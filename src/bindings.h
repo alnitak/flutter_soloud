@@ -203,6 +203,13 @@ extern "C"
   /// 0 → leave unset.
   FFI_PLUGIN_EXPORT void setAndroidAAudioAttributes(unsigned int managed);
 
+  /// Linux only: choose the audio backend (0 = Auto [ALSA->PulseAudio->JACK],
+  /// 1 = ALSA, 2 = PulseAudio, 3 = JACK).
+  /// When called before initEngine(), sets the backend for initialization.
+  /// When called while the engine is running, dynamically switches the output device.
+  /// No effect on other platforms.
+  FFI_PLUGIN_EXPORT enum PlayerErrors setLinuxAudioBackend(unsigned int backend);
+
   /// Set how long the audio output device keeps running while the engine is
   /// idle (no active voices) before it is automatically stopped, on every
   /// platform. [timeoutMs] < 0 keeps the device running indefinitely while

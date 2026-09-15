@@ -428,6 +428,7 @@ interface class SoLoud {
     bool lowLatency = true,
     AndroidAAudioAttributes androidAAudioAttributes =
         AndroidAAudioAttributes.mediaMusic,
+    LinuxAudioBackend linuxAudioBackend = LinuxAudioBackend.auto,
     int? devicePeriodFrames,
     int? renderAheadFrames,
   }) {
@@ -443,6 +444,7 @@ interface class SoLoud {
       channels: channels,
       lowLatency: lowLatency,
       androidAAudioAttributes: androidAAudioAttributes,
+      linuxAudioBackend: linuxAudioBackend,
       devicePeriodFrames: devicePeriodFrames,
       renderAheadFrames: renderAheadFrames,
     );
@@ -464,6 +466,7 @@ interface class SoLoud {
     required Channels channels,
     required bool lowLatency,
     required AndroidAAudioAttributes androidAAudioAttributes,
+    required LinuxAudioBackend linuxAudioBackend,
     required int? devicePeriodFrames,
     required int? renderAheadFrames,
   }) async {
@@ -487,6 +490,7 @@ interface class SoLoud {
       channels: channels,
       lowLatency: lowLatency,
       androidAAudioAttributes: androidAAudioAttributes,
+      linuxAudioBackend: linuxAudioBackend,
       devicePeriodFrames: devicePeriodFrames,
       renderAheadFrames: renderAheadFrames,
     );
@@ -502,6 +506,7 @@ interface class SoLoud {
     bool lowLatency = true,
     AndroidAAudioAttributes androidAAudioAttributes =
         AndroidAAudioAttributes.mediaMusic,
+    LinuxAudioBackend linuxAudioBackend = LinuxAudioBackend.auto,
     int? devicePeriodFrames,
     int? renderAheadFrames,
   }) async {
@@ -586,6 +591,8 @@ interface class SoLoud {
     _controller.soLoudFFI.setAndroidAAudioAttributes(
       androidAAudioAttributes == AndroidAAudioAttributes.mediaMusic,
     );
+    _log.info('Setting Linux audio backend to $linuxAudioBackend');
+    await _controller.soLoudFFI.setLinuxAudioBackend(linuxAudioBackend);
 
     // The blocking native engine/device initialization runs off the UI thread
     // (via a worker isolate inside the binding) so it no longer freezes the app
@@ -679,6 +686,22 @@ interface class SoLoud {
     // spin-waits on emscripten_sleep while the worklet thread starts up).
     final error = await _controller.soLoudFFI.changeDevice(deviceId);
     _logPlayerError(error, from: 'changeDevice() result');
+    if (error != PlayerErrors.noError) {
+      throw SoLoudCppException.fromPlayerError(error);
+    }
+  }
+
+  /// Sets the Linux audio backend ([LinuxAudioBackend.auto],
+  /// [LinuxAudioBackend.alsa], [LinuxAudioBackend.pulseAudio], or
+  /// [LinuxAudioBackend.jack]).
+  ///
+  /// When called before [init], sets the backend that will be used when
+  /// initialized. When called while the engine is running, dynamically
+  /// switches the output device. Has no effect on non-Linux platforms.
+  Future<void> setLinuxAudioBackend(LinuxAudioBackend backend) async {
+    _log.info('Setting Linux audio backend to $backend');
+    final error = await _controller.soLoudFFI.setLinuxAudioBackend(backend);
+    _logPlayerError(error, from: 'setLinuxAudioBackend() result');
     if (error != PlayerErrors.noError) {
       throw SoLoudCppException.fromPlayerError(error);
     }

@@ -203,6 +203,15 @@ abstract class FlutterSoLoud {
   @mustBeOverridden
   void setAndroidAAudioAttributes(bool managed);
 
+  /// Linux only: choose the audio backend ([LinuxAudioBackend.auto],
+  /// [LinuxAudioBackend.alsa], [LinuxAudioBackend.pulseAudio], or
+  /// [LinuxAudioBackend.jack]).
+  /// When called before [initEngine], sets the backend for initialization.
+  /// When called while the engine is running, dynamically switches the output
+  /// device. No effect on other platforms.
+  @mustBeOverridden
+  FutureOr<PlayerErrors> setLinuxAudioBackend(LinuxAudioBackend backend);
+
   /// Set how long the audio output device keeps running while the engine is
   /// idle (no active voices) before it is automatically stopped, on every
   /// platform. A `null` [timeout] keeps the device running indefinitely while

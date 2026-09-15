@@ -16,19 +16,9 @@ else ()
 endif ()
 
 # Default audio backends based on platform.
-if (UNIX AND NOT APPLE AND NOT ANDROID)
-  # Linux
-  set (_DEFAULT_ALSA ON)
-else ()
-  set (_DEFAULT_ALSA OFF)
-endif ()
-
-if (APPLE)
-  # macOS/iOS
-  set (_DEFAULT_COREAUDIO ON)
-else ()
-  set (_DEFAULT_COREAUDIO OFF)
-endif ()
+# flutter_soloud uses miniaudio exclusively; legacy backends are disabled by default.
+set (_DEFAULT_ALSA OFF)
+set (_DEFAULT_COREAUDIO OFF)
 
 option (SOLOUD_DYNAMIC "Set to ON to build dynamic SoLoud" ${_DEFAULT_DYNAMIC})
 print_option_status (SOLOUD_DYNAMIC "Build dynamic library")

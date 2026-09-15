@@ -227,6 +227,19 @@ PlayerErrors initEngine(
 @ffi.Native<ffi.Void Function(ffi.UnsignedInt)>()
 external void setAndroidAAudioAttributes(int managed);
 
+/// Linux only: choose the audio backend (0 = Auto [ALSA->PulseAudio->JACK],
+/// 1 = ALSA, 2 = PulseAudio, 3 = JACK).
+/// When called before initEngine(), sets the backend for initialization.
+/// When called while the engine is running, dynamically switches the output device.
+/// No effect on other platforms.
+@ffi.Native<ffi.UnsignedInt Function(ffi.UnsignedInt)>(
+  symbol: 'setLinuxAudioBackend',
+)
+external int _setLinuxAudioBackend(int backend);
+
+PlayerErrors setLinuxAudioBackend(int backend) =>
+    PlayerErrors.fromValue(_setLinuxAudioBackend(backend));
+
 /// Set how long the audio output device keeps running while the engine is
 /// idle (no active voices) before it is automatically stopped, on every
 /// platform. [timeoutMs] < 0 keeps the device running indefinitely while
@@ -1384,6 +1397,8 @@ external int getVisualizationEnabled();
 @ffi.Native<ffi.Void Function(ffi.Float)>()
 external void setFftSmoothing(double smooth);
 
+/// Set the decibel range [minDecibels, maxDecibels] for FFT normalization.
+/// Conforms to W3C Web Audio API (default: minDecibels = -100.0f, maxDecibels = -30.0f).
 @ffi.Native<ffi.Void Function(ffi.Float, ffi.Float)>()
 external void setFftDecibelRange(double minDecibels, double maxDecibels);
 
