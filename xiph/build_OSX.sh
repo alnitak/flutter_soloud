@@ -49,8 +49,8 @@ fi
 LIBS=("ogg" "opus" "vorbis" "flac")
 BASE_DIR="$PWD"
 BUILD_DIR="$BASE_DIR/macos/build"
-OUTPUT_DIR="$BASE_DIR/../macos/flutter_soloud/libs"
-INCLUDE_DIR="$BASE_DIR/../macos/flutter_soloud/include"
+OUTPUT_DIR="$BASE_DIR/prebuild/macos"
+INCLUDE_DIR="$BASE_DIR/prebuild/include"
 ARCHS=("arm64" "x86_64")
 
 MACOS_SDK="$(xcrun --sdk macosx --show-sdk-path)"

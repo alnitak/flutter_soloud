@@ -163,9 +163,12 @@ void main() {
       final binScript = Directory.current.uri
           .resolve('bin/skills.dart')
           .toFilePath();
+      final dartExe = Platform.executable.contains('flutter_tester')
+          ? 'dart'
+          : Platform.executable;
 
       // Check on uninstalled tempDir -> exit code 1
-      final resultBefore = Process.runSync(Platform.executable, [
+      final resultBefore = Process.runSync(dartExe, [
         binScript,
         '--check',
         '--project-root',
@@ -175,7 +178,7 @@ void main() {
       expect(resultBefore.stdout.toString(), contains('are not installed'));
 
       // Run installation CLI
-      final installResult = Process.runSync(Platform.executable, [
+      final installResult = Process.runSync(dartExe, [
         binScript,
         '--project-root',
         tempDir.path,
@@ -187,7 +190,7 @@ void main() {
       );
 
       // Check on installed tempDir -> exit code 0
-      final resultAfter = Process.runSync(Platform.executable, [
+      final resultAfter = Process.runSync(dartExe, [
         binScript,
         '--check',
         '--project-root',

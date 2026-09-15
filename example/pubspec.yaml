@@ -41,8 +41,17 @@ flutter:
   assets:
     - assets/audio/
 
-## To disable the Xiph libraries, uncomment the following lines:
+## Xiph libraries options (optional):
+## See https://docs.page/alnitak/flutter_soloud_docs/get_started/xiph_libs for more info.
 # hooks:
 #   user_defines:
 #     flutter_soloud:
-#       no_xiph_libs: true
+#       no_xiph_libs: false
+#       linux_use_system_libs: true
+#       linux_force_build_libs: false
+#       macos_use_system_libs: true
+#       macos_force_build_libs: false
+#       windows_use_system_libs: true
+#       windows_force_build_libs: false
+#       android_force_build_libs: true
+#       ios_force_build_libs: true

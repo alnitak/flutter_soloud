@@ -1,6 +1,6 @@
 ---
 name: flutter-soloud-setup
-version: 1
+version: 2
 description: Teaches how to add flutter_soloud to a Flutter app, configure each platform (web script tag and COOP/COEP headers, Linux ALSA, Android/iOS/macOS minimum versions), initialize and deinitialize the engine, shrink binaries by excluding the Xiph libs, set up logging, and enumerate/switch output devices. Use when a user asks to install flutter_soloud, initialize SoLoud, set up web/background-audio prerequisites, reduce binary size, or switch the audio output device.
 ---
 
@@ -104,19 +104,63 @@ await SoLoud.instance.init(
 - **Linux build fails with `alsa/asoundlib.h: No such file`** — install `libasound2-dev`; the error is from the native build hook, not Dart.
 - On web, `loadUrl()` hits CORS (`Access-Control-Allow-Origin` missing) unless the server allows it, and local files can't be read — use `loadMem()` instead.
 - Per-sound filters are not supported on web (global filters are).
+- **Windows on ARM (`arm64`) and Linux on ARM (Raspberry Pi) require system libs or source build**: Bundled prebuilt binaries for Windows and Linux are `x86_64` only. For ARM desktop targets, set `<platform>_use_system_libs: true` (e.g. `vcpkg install ...:arm64-windows` or `sudo apt install ...`) or `<platform>_force_build_libs: true` in `pubspec.yaml`.
+- **Don't distribute desktop apps with `<platform>_use_system_libs: true`**: System libraries are not bundled into the app package; if missing on the end user's machine, the app will crash at startup. Use the default bundled prebuilts for app distribution.
+- **`<platform>_force_build_libs: true` significantly increases build time**: It clones 4 Git repos and compiles them via CMake across all target architectures (4 for Android, 2 for Apple). Artifacts are cached in `flutter_soloud`'s `.dart_tool/` (persisting across `flutter clean` in your app), but clean CI jobs will compile from scratch. Leave at default `false` unless you need custom compilation.
 
-## Shrinking binaries: excluding Xiph libs
+## Xiph audio libraries (Ogg, Vorbis, Opus, FLAC)
 
-The Opus/Ogg/Vorbis/FLAC decoders are bundled by default (600–3000 KB per binary). If you only need MP3/WAV/synthesis, exclude them in the **app's** `pubspec.yaml`:
+The Xiph audio decoders provide compressed audio playback, streaming, and master output capture (600–3000 KB per binary). To keep the pub package lightweight, tested precompiled static and shared libraries are hosted in the companion repository [flutter_soloud_prebuilds](https://github.com/alnitak/flutter_soloud_prebuilds).
 
-```yaml
-hooks:
-  user_defines:
-    flutter_soloud:
-      no_xiph_libs: true
-```
+By default, Dart Native Assets build hooks automatically download the matching prebuilt archive on first build and cache it under `.dart_tool/flutter_soloud/xiph/prebuild/`:
+- **Android**: 4 ABIs (`arm64-v8a`, `armeabi-v7a`, `x86`, `x86_64`)
+- **iOS**: Universal `arm64` device + `arm64`/`x86_64` simulator static libraries
+- **macOS**: Universal Apple Silicon (`arm64`) + Intel (`x86_64`) static libraries
+- **Windows**: `x64` and `arm64` DLLs and import libraries
+- **Linux**: `x86_64` and `aarch64` shared `.so` libraries
 
-`setBufferStream()`/`readSamplesFrom*()` with Opus/Vorbis/FLAC then throw; everything else works. On web, edit `web/compile_wasm.sh` in the package (`NO_XIPH_LIBS="1"`) and rebuild the WASM yourself (requires Emscripten, Linux/macOS). Old shell-env/Podfile/Gradle config no longer applies under build hooks.
+This ensures that packaged apps (Android AAB/APK, iOS IPA, macOS APP, Windows EXE) work out of the box with zero external build dependencies.
+
+You can customize this in the **app's** `pubspec.yaml` under `hooks.user_defines.flutter_soloud`:
+
+- **Pin a specific prebuild release version (default is `latest`):**
+  ```yaml
+  hooks:
+    user_defines:
+      flutter_soloud:
+        prebuild_tag: 'v1.0.1' # Optional: pin to a specific release tag
+  ```
+
+- **Link against system-installed packages (desktop only):**
+  ```yaml
+  hooks:
+    user_defines:
+      flutter_soloud:
+        linux_use_system_libs: true
+        macos_use_system_libs: true
+        windows_use_system_libs: true
+  ```
+
+- **Force building from source via CMake into `.dart_tool/`:**
+  ```yaml
+  hooks:
+    user_defines:
+      flutter_soloud:
+        linux_force_build_libs: true
+        macos_force_build_libs: true
+        windows_force_build_libs: true
+        android_force_build_libs: true
+        ios_force_build_libs: true
+  ```
+
+- **Exclude Xiph libraries entirely (shrinking binary size):**
+  ```yaml
+  hooks:
+    user_defines:
+      flutter_soloud:
+        no_xiph_libs: true
+  ```
+  When excluded, `setBufferStream()`/`readSamplesFrom*()` with Opus/Vorbis/FLAC throw `SoLoudXiphLibsNotAvailableException`; WAV, MP3, and synthesis work normally. On web, edit `web/compile_wasm.sh` in the package (`NO_XIPH_LIBS="1"`) and rebuild the WASM yourself (requires Emscripten, Linux/macOS).
 
 ## Logging
 

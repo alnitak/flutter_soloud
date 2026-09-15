@@ -15,7 +15,11 @@
 #else
 #include <fstream>
 #include <deque>
+#if __has_include(<opus/opus.h>)
 #include <opus/opus.h>
+#else
+#include <opus.h>
+#endif
 #include <ogg/ogg.h>
 #endif
 

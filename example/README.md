@@ -10,29 +10,47 @@ The flutter_soloud package includes several example projects demonstrating vario
 ## Basic Examples
 
 ### Getting Started
-- `lib/main.dart` - Basic setup and usage example
-- `lib/output_device/output_device.dart` - How to list and select output devices
+- `lib/main.dart` - Basic setup and audio playback example
+- `lib/output_device/output_device.dart` - How to list, select, and switch audio output devices
 
 ### Audio Visualization
-- `lib/audio_data/audio_data.dart` - Visualize audio using `AudioData`
-- `lib/wave_data/wave_data.dart` - Read and display audio samples from files
+- `lib/audio_data/audio_data.dart` - Real-time audio waveform and FFT visualization using `AudioVisualizationData` stream
+- `lib/wave_data/wave_data.dart` - Read and display audio waveform samples from files
 
 ## Advanced Features
 
-### Audio Generation
-- `lib/waveform/waveform.dart` - Generate and control waveforms in real-time
-- `lib/metronome/metronome.dart` - Create a precise metronome
+### Audio Context & Background Playback
+- `lib/audio_context/audio_context.dart` - How to use `audio_session` and `audio_service` for background audio, notifications, and ducking
+
+### Audio Generation & Scheduling
+- `lib/waveform/waveform.dart` - Generate and control real-time synthesizer waveforms
+- `lib/metronome/metronome.dart` - Create a sample-accurate metronome using `playClocked()`
 
 ### Streaming Examples
-- `lib/buffer_stream/generate.dart` - Generate PCM audio in an `Isolate`
-- `lib/buffer_stream/websocket.dart` - Stream PCM and Opus audio via WebSocket
+#### Push Buffer Streaming (Released & Preserved Modes)
+- `lib/buffer_stream/generate.dart` - Procedural PCM audio generation in a worker `Isolate`
+- `lib/buffer_stream/websocket.dart` - Stream PCM and Opus audio in real-time via WebSocket
+- `lib/buffer_stream/web_radio.dart` - Receive and play live streaming audio from online web radio
+- `lib/buffer_stream/simple_noise_stream.dart` - Interactive testing tool for push buffer streaming and underrun handling
+
+#### Pull Buffer Streaming
+- `lib/pull_buffer/file_stream.dart` - Callback-driven on-demand pull model with custom seek/progress bar
+- `lib/pull_buffer/http_range_stream.dart` - Stream remote audio using HTTP Range requests with seek support
+
+### Mixing Buses
+- `lib/mixing_bus/mixing_bus.dart` - Route multiple sounds through sub-mix buses with collective volume and bus filters
+
+### Mixer Output Capture
+- `lib/mixer_capture/mixer_capture.dart` - Capture master mixer output as a stream of raw PCM or encoded WAV/FLAC/Opus audio
+- `lib/mixer_capture/isolate_capture_test.dart` - Run master mixer output capture inside a separate worker isolate via `SoLoudIsolate`
 
 ### Audio Effects
 | Example | Description |
 |---------|-------------|
 | `lib/filters/compressor.dart` | Dynamic range compression |
 | `lib/filters/limiter.dart` | Peak limiting and volume control |
-| `lib/filters/pitchshift.dart` | Real-time pitch shifting |
+| `lib/filters/parametric_eq.dart` | Multi-band parametric equalizer |
+| `lib/filters/pitchshift.dart` | Real-time pitch shifting and time stretching |
 
 ## Running the Examples
 

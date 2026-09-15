@@ -6,7 +6,11 @@
 
 #ifndef NO_XIPH_LIBS
 #include <ogg/ogg.h>
+#if __has_include(<opus/opus.h>)
 #include <opus/opus.h>
+#else
+#include <opus.h>
+#endif
 #endif
 
 namespace {

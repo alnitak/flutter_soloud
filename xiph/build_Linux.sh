@@ -12,8 +12,8 @@ RESET="\e[0m"
 # Directories setup
 BASE_DIR="$PWD"
 BUILD_DIR="$BASE_DIR/linux/build"
-OUTPUT_DIR="$BASE_DIR/../linux/libs"               # plugin linux dir
-OUTPUT_INCLUDE_DIR="$BASE_DIR/../linux/include"    # plugin linux dir
+OUTPUT_DIR="$BASE_DIR/prebuild/linux"               # prebuilt linux dir
+OUTPUT_INCLUDE_DIR="$BASE_DIR/prebuild/include"    # prebuilt include dir
 
 # Create directories
 mkdir -p "$BUILD_DIR"

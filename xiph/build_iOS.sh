@@ -50,8 +50,8 @@ fi
 LIBS=("ogg" "opus" "vorbis" "flac")
 BASE_DIR="$PWD"
 BUILD_DIR="$BASE_DIR/iOS/build"
-OUTPUT_DIR="$BASE_DIR/../ios/flutter_soloud/libs"
-INCLUDE_DIR="$BASE_DIR/../ios/flutter_soloud/include"
+OUTPUT_DIR="$BASE_DIR/prebuild/ios"
+INCLUDE_DIR="$BASE_DIR/prebuild/include"
 
 # iOS-specific paths
 IOS_SDK="$(xcrun --sdk iphoneos --show-sdk-path)"

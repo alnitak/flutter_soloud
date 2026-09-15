@@ -519,7 +519,13 @@ interface class SoLoud {
     // Do not expose a previous callback registration as ready while this
     // initialization is replacing the native engine and callbacks.
     _nativeCallbacksInitialized = false;
-    final nativeIsInitialized = _controller.soLoudFFI.isInited();
+    final bool nativeIsInitialized;
+    try {
+      nativeIsInitialized = _controller.soLoudFFI.isInited();
+    } catch (e) {
+      _checkAndLogMissingSystemLibsError(e);
+      rethrow;
+    }
 
     // Removing these asserts because they could not be true after a
     // hot restart or after calling deinit(). Discussed in #452.
@@ -740,6 +746,87 @@ interface class SoLoud {
     }
   }
 
+  void _checkAndLogMissingSystemLibsError(Object e) {
+    if (kIsWeb) return;
+    final msg = e.toString().toLowerCase();
+    final isLibMissing =
+        msg.contains('failed to load dynamic library') ||
+        msg.contains('cannot open shared object') ||
+        msg.contains('image not found') ||
+        msg.contains('specified module could not be found') ||
+        msg.contains('libogg') ||
+        msg.contains('libvorbis') ||
+        msg.contains('libopus') ||
+        msg.contains('libflac') ||
+        msg.contains('ogg.dll') ||
+        msg.contains('vorbis.dll') ||
+        msg.contains('opus.dll') ||
+        msg.contains('flac.dll');
+
+    if (!isLibMissing) return;
+
+    final platformName = switch (defaultTargetPlatform) {
+      TargetPlatform.android => 'Android',
+      TargetPlatform.iOS => 'iOS',
+      TargetPlatform.linux => 'Linux',
+      TargetPlatform.macOS => 'macOS',
+      TargetPlatform.windows => 'Windows',
+      TargetPlatform.fuchsia => 'Fuchsia',
+    };
+
+    final buffer = StringBuffer()
+      ..writeln(
+        '\n[flutter_soloud] ERROR: Failed to load flutter_soloud native '
+        'library while running on $platformName.\n'
+        'This typically occurs when `<platform>_use_system_libs: true` is '
+        'configured in `pubspec.yaml`\n'
+        'but the required system Xiph audio libraries (Ogg, Vorbis, Opus, '
+        'FLAC) are not installed on this system.\n',
+      );
+
+    switch (defaultTargetPlatform) {
+      case TargetPlatform.linux:
+        buffer.writeln(
+          'To install the required libraries on Linux:\n'
+          '  - Debian / Ubuntu / Raspberry Pi OS:\n'
+          '      sudo apt update && sudo apt install libogg0 libvorbis0a '
+          'libvorbisfile3 libvorbisenc2 libopus0 libflac12\n'
+          '  - Arch Linux / Manjaro:\n'
+          '      sudo pacman -S libogg libvorbis opus flac\n'
+          '  - Fedora / RHEL:\n'
+          '      sudo dnf install libogg libvorbis opus flac\n',
+        );
+      case TargetPlatform.macOS:
+        buffer.writeln(
+          'To install the required libraries on macOS (Homebrew):\n'
+          '  brew install libogg libvorbis opus flac\n',
+        );
+      case TargetPlatform.windows:
+        buffer.writeln(
+          'To install the required libraries on Windows:\n'
+          '  - via vcpkg (use :x64-windows or :arm64-windows):\n'
+          '      vcpkg install libogg:x64-windows libvorbis:x64-windows '
+          'opus:x64-windows flac:x64-windows\n'
+          '  - or download prebuilt binaries and place them in PATH:\n'
+          '      https://docs.page/alnitak/flutter_soloud_docs/get_started/xiph_libs\n',
+        );
+      case TargetPlatform.android:
+      case TargetPlatform.fuchsia:
+      case TargetPlatform.iOS:
+        break;
+    }
+
+    buffer.writeln(
+      'Alternatively, remove `<platform>_use_system_libs: true` from your '
+      '`pubspec.yaml`\n'
+      'to automatically bundle the prebuilt Xiph libraries without any system '
+      'dependencies.\n',
+    );
+
+    debugPrint(buffer.toString());
+    _log.severe(buffer.toString());
+  }
+
   /// Gets the current state of the audio output device.
   ///
   /// This reports miniaudio's actual current device state, not a pending
@@ -759,7 +846,12 @@ interface class SoLoud {
   /// Lists all OS available playback devices.
   /// Could be called safely even if the engin has not been initialized yet.
   List<PlaybackDevice> listPlaybackDevices() {
-    return _controller.soLoudFFI.listPlaybackDevices();
+    try {
+      return _controller.soLoudFFI.listPlaybackDevices();
+    } catch (e) {
+      _checkAndLogMissingSystemLibsError(e);
+      rethrow;
+    }
   }
 
   /// Stops the engine and disposes of all resources, including sounds.
