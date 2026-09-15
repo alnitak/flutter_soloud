@@ -666,10 +666,10 @@ enum LinuxAudioBackend {
 
   /// Returns the [LinuxAudioBackend] corresponding to [value].
   static LinuxAudioBackend fromValue(int value) => switch (value) {
-        0 => auto_,
-        1 => alsa,
-        2 => pulseAudio,
-        3 => jack,
-        _ => auto_,
-      };
+    0 => auto_,
+    1 => alsa,
+    2 => pulseAudio,
+    3 => jack,
+    _ => auto_,
+  };
 }
