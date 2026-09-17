@@ -100,7 +100,7 @@ A showcase of apps and games built with this plugin:
 | Mortigen</br>[web](https://koldo92.github.io/mortigen/) [Android](https://play.google.com/store/apps/details?id=com.ler.mortigen) [iOS](https://apps.apple.com/us/app/mortigen/id6761758806) | Luis Enrique Ruiz | Roguelite survival shooter. |
 | SUMOJI</br>[web](https://straspool.eu/sumoji/) [Android](https://play.google.com/store/apps/details?id=eu.straspool.sumoji) [iOS](https://apps.apple.com/us/app/sumoji/id6751641875) | Valentin Martinet | Fun Emoji-based Sudoku. |
 | GuanDan</br>[web](https://guandan.app/) [MacOS](https://apps.apple.com/us/app/%E6%8E%BC%E8%9B%8B-guandan/id6757966323) [Windows](https://apps.microsoft.com/detail/9pbv1xp2lc50) [Android](https://play.google.com/store/apps/details?id=org.rockstudio.guandan) [iOS](https://apps.apple.com/us/app/%E6%8E%BC%E8%9B%8B-guandan/id6757966323) | [yangyuan](https://github.com/yangyuan) | GuanDan (掼蛋) is a popular four-player Chinese card game. |
-|DeReMi Piano: Play & Learn</br>[Android](https://play.google.com/store/apps/details?id=com.gen.kidspiano) | Gent Mecaj | A piano learning app. |
+| DeReMi Piano: Play & Learn</br>[Android](https://play.google.com/store/apps/details?id=com.gen.kidspiano) | Gent Mecaj | A piano learning app. |
 
 *Want to add your app? Feel free to open a PR!*
 
