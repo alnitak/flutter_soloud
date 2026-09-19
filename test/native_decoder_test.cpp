@@ -1,4 +1,5 @@
 #include "../src/native_decoder/native_audio_decoder.h"
+#include "../src/audiobuffer/aac_stream_decoder.h"
 #include <cassert>
 #include <cmath>
 #include <iostream>
@@ -76,10 +77,108 @@ void testInterleavedToPlanar() {
     std::cout << "  Passed!" << std::endl;
 }
 
+void testAacStreamDecoder() {
+    std::cout << "[Test] AAC Stream Decoder..." << std::endl;
+
+    // Valid 7-byte ADTS frame header with frame length = 16 bytes:
+    // Syncword: 0xFFF, ID: 0 (MPEG-4), Layer: 00, Protection: 1 (no CRC) -> 0xFF 0xF1
+    // Profile: 01 (AAC-LC), freq_idx: 0100 (44.1kHz), priv: 0, ch: 010 (stereo) -> 0x50 0x80
+    // frame length: 16 bytes (byte 4 = 0x02)
+    std::vector<unsigned char> validAdts = {
+        0xFF, 0xF1, 0x50, 0x80, 0x02, 0x1F, 0xFC,
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09
+    };
+    assert(AACDecoderWrapper::checkForValidFrames(validAdts));
+
+    // Truncated buffer (< 7 bytes)
+    std::vector<unsigned char> shortBuf = {0xFF, 0xF1, 0x50};
+    assert(!AACDecoderWrapper::checkForValidFrames(shortBuf));
+
+    // Garbage buffer
+    std::vector<unsigned char> garbageBuf = {0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77};
+    assert(!AACDecoderWrapper::checkForValidFrames(garbageBuf));
+
+    // Test decoder instance lifecycle
+    AACDecoderWrapper decoder;
+    bool initOk = decoder.initializeDecoder(44100, 2);
+#if defined(__APPLE__)
+    assert(initOk);
+#endif
+
+    // Empty buffer decode should not crash and return NoError
+    std::vector<unsigned char> emptyBuf;
+    int sampleRate = 0;
+    int channels = 0;
+    auto [decoded, err] = decoder.decode(emptyBuf, &sampleRate, &channels);
+    assert(err == DecoderError::NoError);
+    assert(decoded.empty());
+
+    decoder.setDataEnded();
+
+    std::cout << "  Passed!" << std::endl;
+}
+
+void testAc3StreamDecoder() {
+    std::cout << "[Test] AC-3 / E-AC-3 Stream Decoder..." << std::endl;
+
+    // AC-3 header: 0x0B, 0x77, crc1 (2 bytes), fscod/frmsizecod, bsid <= 10
+    // Byte 4: fscod = 0 (48kHz) -> 0x00
+    // Byte 5: bsid = 8 (0x08 << 3 = 0x40)
+    std::vector<unsigned char> ac3Frame = {
+        0x0B, 0x77, 0x12, 0x34, 0x00, 0x40, 0x00, 0x00
+    };
+    assert(NativeAudioDecoder::isAc3(ac3Frame.data(), ac3Frame.size()));
+    assert(!NativeAudioDecoder::isEac3(ac3Frame.data(), ac3Frame.size()));
+    assert(AACDecoderWrapper::checkForValidAc3Frames(ac3Frame));
+    assert(NativeAudioDecoder::findAc3Syncword(ac3Frame.data(), ac3Frame.size()) == 0);
+
+    // E-AC-3 header: 0x0B, 0x77, strmtyp/substreamid/frmsiz (2 bytes), fscod, bsid = 16 (0x10 << 3 = 0x80)
+    std::vector<unsigned char> eac3Frame = {
+        0x0B, 0x77, 0x00, 0xCF, 0x00, 0x80, 0x00, 0x00
+    };
+    assert(NativeAudioDecoder::isEac3(eac3Frame.data(), eac3Frame.size()));
+    assert(!NativeAudioDecoder::isAc3(eac3Frame.data(), eac3Frame.size()));
+    assert(AACDecoderWrapper::checkForValidAc3Frames(eac3Frame));
+
+    // Frame with 10 bytes prefix offset
+    std::vector<unsigned char> offsetAc3(10, 0xAA);
+    offsetAc3.insert(offsetAc3.end(), ac3Frame.begin(), ac3Frame.end());
+    assert(AACDecoderWrapper::checkForValidAc3Frames(offsetAc3));
+    assert(NativeAudioDecoder::findAc3Syncword(offsetAc3.data(), offsetAc3.size()) == 10);
+
+    // Decoder initialization for AC3 and EAC3
+    AACDecoderWrapper ac3Decoder(DetectedType::BUFFER_AC3);
+    bool initAc3Ok = ac3Decoder.initializeDecoder(48000, 2);
+#if defined(__APPLE__)
+    assert(initAc3Ok);
+#endif
+
+    AACDecoderWrapper eac3Decoder(DetectedType::BUFFER_EAC3);
+    bool initEac3Ok = eac3Decoder.initializeDecoder(48000, 2);
+#if defined(__APPLE__)
+    assert(initEac3Ok);
+#endif
+
+    // Empty buffer decode returns NoError
+    std::vector<unsigned char> emptyBuf;
+    int sampleRate = 0;
+    int channels = 0;
+    auto [decoded, err] = ac3Decoder.decode(emptyBuf, &sampleRate, &channels);
+    assert(err == DecoderError::NoError);
+    assert(decoded.empty());
+
+    ac3Decoder.setDataEnded();
+    eac3Decoder.setDataEnded();
+
+    std::cout << "  Passed!" << std::endl;
+}
+
 int main() {
     std::cout << "Running Native Decoder C++ Tests..." << std::endl;
     testHeaderSniffing();
     testInterleavedToPlanar();
+    testAacStreamDecoder();
+    testAc3StreamDecoder();
     std::cout << "All Native Decoder C++ Tests passed successfully!" << std::endl;
     return 0;
 }

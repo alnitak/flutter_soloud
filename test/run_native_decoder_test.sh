@@ -12,7 +12,12 @@ OUT="${TMPDIR:-/tmp}/native_decoder_test"
 c++ -std=c++17 -O2 -Wall \
     -I src \
     -I src/native_decoder \
+    -I src/audiobuffer \
+    -framework AudioToolbox \
+    -framework CoreFoundation \
     -o "$OUT" \
-    test/native_decoder_test.cpp
+    test/native_decoder_test.cpp \
+    src/audiobuffer/aac_stream_decoder.cpp \
+    src/audiobuffer/aac_stream_decoder_apple.mm
 
 "$OUT"

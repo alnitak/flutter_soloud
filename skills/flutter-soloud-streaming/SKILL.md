@@ -85,7 +85,6 @@ Divergences from audioplayers/just_audio habits:
 - **`getPosition` lies for released streams** — always `Duration.zero`. Use `getStreamTimeConsumed(sound)`; calling it on a non-released sound throws.
 - **Reaching the max buffer size ends the stream.** Once the cap is hit, the stream is treated as ended and further `addAudioDataStream` calls throw `SoLoudStreamEndedAlreadyCppException` (the web_radio example catches it and reconnects). Size the cap for the feed, or use `released`.
 - **Icy metadata ordering.** Request the header with `Icy-MetaData: 1` on the HTTP request, then call `setBufferIcyMetaInt(source, int.parse(headers['icy-metaint'] ?? '0'))` on the first audio chunk, before any `addAudioDataStream`. Later calls are ignored.
-- **`BufferType.opus` is deprecated.** Passing it still works (rewritten to `auto` with a debugPrint) but new code should use `auto`.
 - **With `format: BufferType.auto`, `sampleRate` and `channels` are ignored** — the decoder takes them from the container. They only matter for raw PCM formats.
 - **Raw PCM must match the declared format exactly**: interleaved, little-endian, correct sample rate and channel count; the engine resamples to `sampleRate` but does not channel-convert or fix wrong formats — mismatch means noise or wrong speed, not an error.
 - **Compressed streaming needs Xiph libs (Ogg, Vorbis, Opus, FLAC).** If the app was built with them excluded (`no_xiph_libs: true`), `addAudioDataStream` of compressed data throws `SoLoudXiphLibsNotAvailableException`.

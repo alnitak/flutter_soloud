@@ -393,9 +393,6 @@ PlayerErrors PullBufferStream::setPullBufferStream(
   if (audioSizeBytes == 0) {
     return PlayerErrors::invalidParameter;
   }
-  if (format == BufferType::OPUS) {
-    format = BufferType::AUTO;
-  }
 
   mThePlayer = aPlayer;
   mParent = aParent;
@@ -1329,8 +1326,7 @@ AudioSourceInstance *PullBufferStream::createInstance() {
 }
 
 SoLoud::time PullBufferStream::getLength() const {
-  if (mPCMformat.dataType == BufferType::AUTO ||
-      mPCMformat.dataType == BufferType::OPUS) {
+  if (mPCMformat.dataType == BufferType::AUTO) {
     // Use the probed duration once known; otherwise the length is unknown.
     return mProbedDuration;
   }
@@ -1351,8 +1347,7 @@ SoLoud::time PullBufferStream::getBufferedLength() const {
 
 uint64_t PullBufferStream::timeToEncodedByteOffset(double seconds) {
   if (seconds <= 0.0) return 0;
-  if (mPCMformat.dataType == BufferType::AUTO ||
-      mPCMformat.dataType == BufferType::OPUS) {
+  if (mPCMformat.dataType == BufferType::AUTO) {
     if (mStreamDecoder) {
       const uint64_t decoderOffset = mStreamDecoder->timeToByteOffset(seconds);
       if (decoderOffset != 0 && mStreamDecoder->canSeekToTime(seconds)) {

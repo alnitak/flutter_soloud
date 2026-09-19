@@ -206,6 +206,7 @@ void main(List<String> args) async {
         sources: const [
           'src/soloud_miniaudio_objc.mm',
           'src/native_decoder/os_decoder_apple.mm',
+          'src/audiobuffer/aac_stream_decoder_apple.mm',
         ],
         includes: includes,
         forcedIncludes: forcedIncludes,

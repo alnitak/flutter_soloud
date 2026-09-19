@@ -303,11 +303,6 @@ PlayerErrors BufferStream::setBufferStream(
   if (maxBufferSize % (pcmFormat.channels * sizeof(float)) != 0)
     maxBufferSize -= maxBufferSize % (pcmFormat.channels * sizeof(float));
 
-  // Force OPUS to AUTO since Mp3, Ogg Opus and Ogg Vorbis are auto detected
-  // There is no more need to use BufferType::OPUS
-  if (pcmFormat.dataType == BufferType::OPUS)
-    pcmFormat.dataType = BufferType::AUTO;
-
   autoTypeChannels = 0;
   autoTypeSamplerate = 0.f;
   mBytesReceived = 0;
@@ -343,12 +338,6 @@ PlayerErrors BufferStream::setBufferStream(
   if (pcmFormat.dataType == BufferType::AUTO) {
     streamDecoder = std::make_unique<StreamDecoder>();
   }
-
-#if defined(NO_XIPH_LIBS)
-  if (pcmFormat.dataType == BufferType::OPUS) {
-    return PlayerErrors::failedToCreateOpusDecoder;
-  }
-#endif
 
   return PlayerErrors::noError;
 }

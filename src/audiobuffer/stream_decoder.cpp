@@ -1,6 +1,7 @@
 #include "stream_decoder.h"
 #include "mp3_stream_decoder.h"
 #include "wav_stream_decoder.h"
+#include "aac_stream_decoder.h"
 #if !defined(NO_XIPH_LIBS)
 #   include "opus_stream_decoder.h"
 #   include "vorbis_stream_decoder.h"
@@ -123,12 +124,24 @@ DetectedType StreamDecoder::detectAudioFormat(const std::vector<unsigned char>& 
     }
 
     // --- Detect AAC ADTS ---
-    else if (NativeAudioDecoder::isAacAdts(buffer.data(), size)) {
+    else if (NativeAudioDecoder::isAacAdts(buffer.data(), size) ||
+             AACDecoderWrapper::checkForValidFrames(buffer)) {
         return DetectedType::BUFFER_AAC;
     }
 
     // --- Detect AC-3 / E-AC-3 ---
-    else if (NativeAudioDecoder::isAc3OrEac3(buffer.data(), size)) {
+    else if (NativeAudioDecoder::isAc3OrEac3(buffer.data(), size) ||
+             AACDecoderWrapper::checkForValidAc3Frames(buffer)) {
+        int syncIdx = NativeAudioDecoder::findAc3Syncword(buffer.data(), size);
+        if (syncIdx >= 0) {
+            if (NativeAudioDecoder::isEac3(buffer.data() + syncIdx, size - syncIdx)) {
+                return DetectedType::BUFFER_EAC3;
+            }
+            return DetectedType::BUFFER_AC3;
+        }
+        if (NativeAudioDecoder::isEac3(buffer.data(), size)) {
+            return DetectedType::BUFFER_EAC3;
+        }
         return DetectedType::BUFFER_AC3;
     }
 
@@ -200,7 +213,25 @@ std::pair<std::vector<float>, DecoderError> StreamDecoder::decode(
             if (!isFormatDetected) {
                 return {{}, DecoderError::FailedToCreateDecoder};
             }
+        } else if (detectedType == DetectedType::BUFFER_AAC) {
+            mWrapper = std::make_unique<AACDecoderWrapper>(DetectedType::BUFFER_AAC);
+            isFormatDetected = static_cast<AACDecoderWrapper*>(mWrapper.get())->initializeDecoder(*samplerate, *channels);
+            if (!isFormatDetected) {
+                return {{}, DecoderError::FailedToCreateDecoder};
+            }
+        } else if (detectedType == DetectedType::BUFFER_AC3 || detectedType == DetectedType::BUFFER_EAC3) {
+            mWrapper = std::make_unique<AACDecoderWrapper>(detectedType);
+            isFormatDetected = static_cast<AACDecoderWrapper*>(mWrapper.get())->initializeDecoder(*samplerate, *channels);
+            if (!isFormatDetected) {
+                return {{}, DecoderError::FailedToCreateDecoder};
+            }
         }
+
+        // Safety guard: ensure wrapper exists and format was initialized
+        if (!mWrapper || !isFormatDetected) {
+            return {{}, DecoderError::FormatNotSupported};
+        }
+
         if (metadataChangeCallback) {
             mWrapper->setTrackChangeCallback(metadataChangeCallback);
         }

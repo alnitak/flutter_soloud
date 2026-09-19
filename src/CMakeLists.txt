@@ -65,6 +65,7 @@ list(APPEND PLUGIN_SOURCES
   "${SRC_DIR}/audiobuffer/flac_stream_decoder.cpp"
   "${SRC_DIR}/audiobuffer/wav_stream_decoder.cpp"
   "${SRC_DIR}/audiobuffer/ogg_flac_stream_decoder.cpp"
+  "${SRC_DIR}/audiobuffer/aac_stream_decoder.cpp"
   "${SRC_DIR}/filters/filters.cpp"
   "${SRC_DIR}/filters/pitch_shift_filter.cpp"
   "${SRC_DIR}/filters/limiter.cpp"
@@ -82,7 +83,10 @@ list(APPEND PLUGIN_SOURCES
 )
 
 if (APPLE)
-  list(APPEND PLUGIN_SOURCES "${SRC_DIR}/native_decoder/os_decoder_apple.mm")
+  list(APPEND PLUGIN_SOURCES
+    "${SRC_DIR}/native_decoder/os_decoder_apple.mm"
+    "${SRC_DIR}/audiobuffer/aac_stream_decoder_apple.mm"
+  )
 elseif (ANDROID)
   list(APPEND PLUGIN_SOURCES "${SRC_DIR}/native_decoder/os_decoder_android.cpp")
   list(APPEND LINK_LIBRARIES mediandk)

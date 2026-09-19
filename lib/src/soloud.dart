@@ -1576,16 +1576,6 @@ interface class SoLoud {
       throw const SoLoudNotInitializedException();
     }
 
-    var forcedFormat = format;
-    if (format == BufferType.opus) {
-      forcedFormat = BufferType.auto;
-      debugPrint(
-        'BufferType.opus has been deprecated. Use "BufferType.auto" '
-        'instead which will automatically determine from MP3, OGG Opus '
-        'or OGG Vorbis.',
-      );
-    }
-
     // Only [maxBufferSizeDuration] or [maxBufferSizeBytes] must be set.
     assert(
       maxBufferSizeDuration == null || maxBufferSizeBytes == null,
@@ -1608,7 +1598,7 @@ interface class SoLoud {
       bufferingTimeNeeds,
       sampleRate,
       channels.count,
-      forcedFormat.value,
+      format.value,
       onBuffering,
       onMetadata == null
           ? null
