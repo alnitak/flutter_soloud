@@ -1,3 +1,6 @@
+##### 5.1.2 (19 Sep 2026)
+- fix: resolve Linux `.so` library bundling using runtime SONAME #560
+
 ##### 5.1.1 (15 Sep 2026)
 - harden asset and URL loader against engine deinit races #558
 - trashed old `.xcframework`s from the plugin, which are no longer used since build Hooks was introduced #558

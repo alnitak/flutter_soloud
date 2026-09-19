@@ -527,22 +527,28 @@ final class XiphLink {
             (String lib) => File('${d.path}/lib$lib.so').existsSync(),
           ),
         );
+
+        // Bundle each library by its runtime SONAME (e.g., libFLAC.so.14)
+        // so references resolve properly without duplicating symlinks (fixes
+        // issue #559).
+        final soFiles = <File>[
+          for (final lib in _xiphLibs) await _resolveLinuxSoFile(dir, lib),
+        ];
+
         return XiphLink._(
           libraries: _xiphLibs,
           libraryDirectories: [dir.path],
           includeDirs: [includeDir.path],
           bundledAssets: [
-            for (final lib in _xiphLibs)
+            for (final file in soFiles)
               CodeAsset(
                 package: packageName,
-                name: 'xiph/lib$lib.so',
+                name: 'xiph/${file.uri.pathSegments.last}',
                 linkMode: DynamicLoadingBundled(),
-                file: File('${dir.path}/lib$lib.so').uri,
+                file: file.uri,
               ),
           ],
-          dependencies: [
-            for (final lib in _xiphLibs) File('${dir.path}/lib$lib.so').uri,
-          ],
+          dependencies: [for (final file in soFiles) file.uri],
         );
 
       default:
@@ -1110,6 +1116,7 @@ final class XiphLink {
     final commonCmakePlatformFlags = [
       if (isApple) ...[
         '-DBUILD_SHARED_LIBS=OFF',
+        '-DCMAKE_POSITION_INDEPENDENT_CODE=ON',
         '-DCMAKE_OSX_ARCHITECTURES=$archStr',
         '-DCMAKE_OSX_DEPLOYMENT_TARGET=$osxDeploymentTarget',
         if (os == OS.iOS) ...[
@@ -1125,6 +1132,7 @@ final class XiphLink {
         ...androidFlags,
       ] else ...[
         '-DBUILD_SHARED_LIBS=ON',
+        '-DCMAKE_POSITION_INDEPENDENT_CODE=ON',
         '-DCMAKE_C_FLAGS=-O2 -flto -ffunction-sections -fdata-sections',
         '-DCMAKE_SHARED_LINKER_FLAGS=-Wl,--gc-sections -flto',
         if (os == OS.linux &&
@@ -1526,12 +1534,37 @@ void _copyDirSync(Directory src, Directory dst) {
   }
 }
 
-XiphLink _linkFromInstall(
+/// Resolves the actual runtime SONAME file for [lib] in [dir] to avoid
+/// bundling duplicate unversioned or full-versioned files (e.g., bundles only
+/// `libFLAC.so.14` rather than `libFLAC.so`, `libFLAC.so.14`, and
+/// `libFLAC.so.14.0.0`).
+Future<File> _resolveLinuxSoFile(Directory dir, String lib) async {
+  final unversioned = File('${dir.path}/lib$lib.so');
+  if (!unversioned.existsSync()) return unversioned;
+  try {
+    final res = await Process.run('readelf', ['-d', unversioned.path]);
+    if (res.exitCode == 0) {
+      final out = res.stdout as String;
+      final match = RegExp(
+        r'\(SONAME\)\s+Library soname:\s+\[([^\]]+)\]',
+      ).firstMatch(out);
+      if (match != null) {
+        final sonameFile = File('${dir.path}/${match.group(1)}');
+        if (sonameFile.existsSync()) {
+          return sonameFile;
+        }
+      }
+    }
+  } catch (_) {}
+  return unversioned;
+}
+
+Future<XiphLink> _linkFromInstall(
   BuildInput input,
   Directory installDir,
   OS os,
   Architecture arch,
-) {
+) async {
   final packageName = input.packageName;
   final libDir = Directory('${installDir.path}/lib');
   final lib64Dir = Directory('${installDir.path}/lib64');
@@ -1546,23 +1579,21 @@ XiphLink _linkFromInstall(
   final dependencies = <Uri>[];
 
   if (os == OS.linux) {
-    for (final dir in [libDir, lib64Dir]) {
-      if (!dir.existsSync()) continue;
-      for (final file in dir.listSync()) {
-        if (file is File && file.path.endsWith('.so')) {
-          final fileName = file.path.split(Platform.pathSeparator).last;
-          if (_xiphLibs.any((lib) => fileName == 'lib$lib.so')) {
-            dependencies.add(file.uri);
-            bundledAssets.add(
-              CodeAsset(
-                package: packageName,
-                name: 'xiph/$fileName',
-                linkMode: DynamicLoadingBundled(),
-                file: file.uri,
-              ),
-            );
-          }
-        }
+    for (final lib in _xiphLibs) {
+      final dir = File('${libDir.path}/lib$lib.so').existsSync()
+          ? libDir
+          : lib64Dir;
+      final file = await _resolveLinuxSoFile(dir, lib);
+      if (file.existsSync()) {
+        dependencies.add(file.uri);
+        bundledAssets.add(
+          CodeAsset(
+            package: packageName,
+            name: 'xiph/${file.uri.pathSegments.last}',
+            linkMode: DynamicLoadingBundled(),
+            file: file.uri,
+          ),
+        );
       }
     }
   } else if (os == OS.android) {
