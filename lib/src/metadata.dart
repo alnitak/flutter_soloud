@@ -19,7 +19,19 @@ enum DetectedType {
   mp3Stream,
 
   /// WAV audio format
-  wav;
+  wav,
+
+  /// M4A audio format
+  m4a,
+
+  /// AAC audio format
+  aac,
+
+  /// AC3 audio format
+  ac3,
+
+  /// EAC3 audio format
+  eac3;
 
   /// Converts an integer value to a [DetectedType] enum value
   static DetectedType fromInt(int value) {
@@ -38,6 +50,14 @@ enum DetectedType {
         return DetectedType.mp3Stream;
       case 6:
         return DetectedType.wav;
+      case 7:
+        return DetectedType.m4a;
+      case 8:
+        return DetectedType.aac;
+      case 9:
+        return DetectedType.ac3;
+      case 10:
+        return DetectedType.eac3;
       default:
         return DetectedType.unknown;
     }
@@ -61,6 +81,14 @@ enum DetectedType {
         return 'MP3 Stream';
       case DetectedType.wav:
         return 'WAV';
+      case DetectedType.m4a:
+        return 'M4A';
+      case DetectedType.aac:
+        return 'AAC';
+      case DetectedType.ac3:
+        return 'AC3';
+      case DetectedType.eac3:
+        return 'EAC3';
     }
   }
 }
@@ -334,6 +362,10 @@ final class OggMetadata {
       case DetectedType.mp3WithId3:
       case DetectedType.mp3Stream:
       case DetectedType.wav:
+      case DetectedType.m4a:
+      case DetectedType.aac:
+      case DetectedType.ac3:
+      case DetectedType.eac3:
         break;
     }
 
@@ -379,6 +411,14 @@ final class AudioMetadata {
         }
       case DetectedType.wav:
         buffer.writeln('WAV audio format');
+      case DetectedType.m4a:
+        buffer.writeln('M4A audio format');
+      case DetectedType.aac:
+        buffer.writeln('AAC audio format');
+      case DetectedType.ac3:
+        buffer.writeln('AC3 audio format');
+      case DetectedType.eac3:
+        buffer.writeln('EAC3 audio format');
       case DetectedType.unknown:
         buffer.writeln('Unknown audio format');
     }

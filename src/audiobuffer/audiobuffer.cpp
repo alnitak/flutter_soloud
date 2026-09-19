@@ -735,6 +735,18 @@ BufferStream::convertMetadataToFFI(const AudioMetadata &metadata) {
   case BUFFER_WAV:
     ffi.detectedType = DetectedTypeFFI::WAV;
     break;
+  case BUFFER_M4A:
+    ffi.detectedType = DetectedTypeFFI::M4A;
+    break;
+  case BUFFER_AAC:
+    ffi.detectedType = DetectedTypeFFI::AAC;
+    break;
+  case BUFFER_AC3:
+    ffi.detectedType = DetectedTypeFFI::AC3;
+    break;
+  case BUFFER_EAC3:
+    ffi.detectedType = DetectedTypeFFI::EAC3;
+    break;
   default:
     ffi.detectedType = DetectedTypeFFI::UNKNOWN;
   }

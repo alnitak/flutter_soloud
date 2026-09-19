@@ -7,6 +7,7 @@
 #   include "flac_stream_decoder.h"
 #   include "ogg_flac_stream_decoder.h"
 #endif
+#include "../native_decoder/native_audio_decoder.h"
 #include <cstring>
 
 void StreamDecoder::setBufferIcyMetaInt(int icyMetaInt) {
@@ -114,6 +115,21 @@ DetectedType StreamDecoder::detectAudioFormat(const std::vector<unsigned char>& 
     } 
     else if (MP3DecoderWrapper::checkForValidFrames(buffer)) {
         return DetectedType::BUFFER_MP3_STREAM;
+    }
+
+    // --- Detect M4A / MP4 ---
+    else if (NativeAudioDecoder::isM4aOrMp4(buffer.data(), size)) {
+        return DetectedType::BUFFER_M4A;
+    }
+
+    // --- Detect AAC ADTS ---
+    else if (NativeAudioDecoder::isAacAdts(buffer.data(), size)) {
+        return DetectedType::BUFFER_AAC;
+    }
+
+    // --- Detect AC-3 / E-AC-3 ---
+    else if (NativeAudioDecoder::isAc3OrEac3(buffer.data(), size)) {
+        return DetectedType::BUFFER_AC3;
     }
 
     return DetectedType::BUFFER_UNKNOWN;

@@ -19,7 +19,11 @@ typedef enum {
   BUFFER_FLAC,
   BUFFER_MP3_WITH_ID3,
   BUFFER_MP3_STREAM,
-  BUFFER_WAV
+  BUFFER_WAV,
+  BUFFER_M4A,
+  BUFFER_AAC,
+  BUFFER_AC3,
+  BUFFER_EAC3
 } DetectedType;
 
 enum class DecoderError {
@@ -123,6 +127,18 @@ public:
       break;
     case DetectedType::BUFFER_WAV:
       format = "WAV";
+      break;
+    case DetectedType::BUFFER_M4A:
+      format = "M4A";
+      break;
+    case DetectedType::BUFFER_AAC:
+      format = "AAC";
+      break;
+    case DetectedType::BUFFER_AC3:
+      format = "AC3";
+      break;
+    case DetectedType::BUFFER_EAC3:
+      format = "EAC3";
       break;
     default:
       break;

@@ -18,7 +18,11 @@ typedef enum
     OGG_FLAC,
     MP3_WITH_ID3,
     MP3_STREAM,
-    WAV
+    WAV,
+    M4A,
+    AAC,
+    AC3,
+    EAC3
 } DetectedTypeFFI;
 
 // Structure to hold track metadata

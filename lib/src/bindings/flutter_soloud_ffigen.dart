@@ -2972,7 +2972,11 @@ enum DetectedTypeFFI {
   OGG_FLAC(3),
   MP3_WITH_ID3(4),
   MP3_STREAM(5),
-  WAV(6);
+  WAV(6),
+  M4A(7),
+  AAC(8),
+  AC3(9),
+  EAC3(10);
 
   final int value;
   const DetectedTypeFFI(this.value);
@@ -2985,6 +2989,10 @@ enum DetectedTypeFFI {
     4 => MP3_WITH_ID3,
     5 => MP3_STREAM,
     6 => WAV,
+    7 => M4A,
+    8 => AAC,
+    9 => AC3,
+    10 => EAC3,
     _ => throw ArgumentError('Unknown value for DetectedTypeFFI: $value'),
   };
 }
