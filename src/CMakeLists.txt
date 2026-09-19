@@ -88,7 +88,10 @@ if (APPLE)
     "${SRC_DIR}/audiobuffer/aac_stream_decoder_apple.mm"
   )
 elseif (ANDROID)
-  list(APPEND PLUGIN_SOURCES "${SRC_DIR}/native_decoder/os_decoder_android.cpp")
+  list(APPEND PLUGIN_SOURCES
+    "${SRC_DIR}/native_decoder/os_decoder_android.cpp"
+    "${SRC_DIR}/audiobuffer/aac_stream_decoder_android.cpp"
+  )
   list(APPEND LINK_LIBRARIES mediandk)
 elseif (WIN32)
   list(APPEND PLUGIN_SOURCES "${SRC_DIR}/native_decoder/os_decoder_windows.cpp")

@@ -19,6 +19,10 @@ public:
 
   void setDataEnded() override;
 
+  bool hasPendingData() const override {
+    return mImpl ? mImpl->hasPendingData() : false;
+  }
+
   static bool checkForValidFrames(const std::vector<unsigned char> &buffer);
   static bool checkForValidAc3Frames(const std::vector<unsigned char> &buffer);
 
@@ -30,6 +34,7 @@ public:
     decode(std::vector<unsigned char> &buffer, int *samplerate,
            int *channels, size_t maxOutputSamples) = 0;
     virtual void setDataEnded() = 0;
+    virtual bool hasPendingData() const { return false; }
   };
 
 private:

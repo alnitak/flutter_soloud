@@ -217,13 +217,16 @@ std::pair<std::vector<float>, DecoderError> StreamDecoder::decode(
             mWrapper = std::make_unique<AACDecoderWrapper>(DetectedType::BUFFER_AAC);
             isFormatDetected = static_cast<AACDecoderWrapper*>(mWrapper.get())->initializeDecoder(*samplerate, *channels);
             if (!isFormatDetected) {
-                return {{}, DecoderError::FailedToCreateDecoder};
+                fprintf(stderr, "[flutter_soloud] Failed to initialize AAC stream decoder (not supported or invalid format).\n");
+                return {{}, DecoderError::FormatNotSupported};
             }
         } else if (detectedType == DetectedType::BUFFER_AC3 || detectedType == DetectedType::BUFFER_EAC3) {
             mWrapper = std::make_unique<AACDecoderWrapper>(detectedType);
             isFormatDetected = static_cast<AACDecoderWrapper*>(mWrapper.get())->initializeDecoder(*samplerate, *channels);
             if (!isFormatDetected) {
-                return {{}, DecoderError::FailedToCreateDecoder};
+                fprintf(stderr, "[flutter_soloud] Failed to initialize %s stream decoder (format not supported on this device).\n",
+                        detectedType == DetectedType::BUFFER_AC3 ? "AC-3" : "E-AC-3");
+                return {{}, DecoderError::FormatNotSupported};
             }
         }
 

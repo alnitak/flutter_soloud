@@ -187,9 +187,9 @@ enum PlayerErrors {
             'capacity, in this case the stream is automatically marked to be '
             'ended.';
       case PlayerErrors.failedToCreateOpusDecoder:
-        return 'Failed to create Opus decoder.';
+        return 'Failed to create audio decoder.';
       case PlayerErrors.failedToDecodeOpusPacket:
-        return 'Failed to decode Opus packet.';
+        return 'Failed to decode audio packet.';
       case PlayerErrors.bufferStreamCanBePlayedOnlyOnce:
         return 'BufferStream can be played only once when using '
             '`BufferingType.release` buffer type!';

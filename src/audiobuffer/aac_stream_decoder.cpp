@@ -4,12 +4,18 @@
 
 #if defined(__APPLE__)
 std::unique_ptr<AACDecoderWrapper::Impl> createAppleAACDecoderImpl(DetectedType format);
+#elif defined(__ANDROID__)
+std::unique_ptr<AACDecoderWrapper::Impl> createAndroidAACDecoderImpl(DetectedType format);
 #endif
 
 namespace {
 class UnsupportedAACImpl : public AACDecoderWrapper::Impl {
 public:
+  explicit UnsupportedAACImpl(DetectedType format) : mFormat(format) {}
   bool initialize(int /*engineSamplerate*/, int /*engineChannels*/) override {
+    fprintf(stderr,
+            "[flutter_soloud] Native stream decoding for format %d (AAC/AC-3/E-AC-3) is not supported on this platform.\n",
+            static_cast<int>(mFormat));
     return false;
   }
   std::pair<std::vector<float>, DecoderError>
@@ -18,14 +24,18 @@ public:
     return {{}, DecoderError::FormatNotSupported};
   }
   void setDataEnded() override {}
+private:
+  DetectedType mFormat;
 };
 } // namespace
 
 std::unique_ptr<AACDecoderWrapper::Impl> AACDecoderWrapper::createImpl(DetectedType format) {
 #if defined(__APPLE__)
   return createAppleAACDecoderImpl(format);
+#elif defined(__ANDROID__)
+  return createAndroidAACDecoderImpl(format);
 #else
-  return std::make_unique<UnsupportedAACImpl>();
+  return std::make_unique<UnsupportedAACImpl>(format);
 #endif
 }
 

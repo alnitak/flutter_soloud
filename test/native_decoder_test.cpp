@@ -111,9 +111,9 @@ void testAacStreamDecoder() {
     int channels = 0;
     auto [decoded, err] = decoder.decode(emptyBuf, &sampleRate, &channels);
     assert(err == DecoderError::NoError);
-    assert(decoded.empty());
-
+    assert(!decoder.hasPendingData());
     decoder.setDataEnded();
+    assert(!decoder.hasPendingData());
 
     std::cout << "  Passed!" << std::endl;
 }

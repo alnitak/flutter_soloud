@@ -54,29 +54,7 @@ public:
   std::pair<std::vector<float>, DecoderError>
   decode(std::vector<unsigned char> &buffer, int *samplerate,
          int *channels, size_t maxOutputSamples) override {
-    // 1. Return buffered remainder if any
-    std::vector<float> decodedData;
-    if (maxOutputSamples > 0) {
-      decodedData.reserve(maxOutputSamples);
-    }
-
-    while (!mDecodedRemainder.empty() &&
-           (maxOutputSamples == 0 || decodedData.size() < maxOutputSamples)) {
-      decodedData.push_back(mDecodedRemainder.front());
-      mDecodedRemainder.pop_front();
-    }
-
-    if (maxOutputSamples > 0 && decodedData.size() >= maxOutputSamples) {
-      if (samplerate && mOutputFormat.mSampleRate > 0) {
-        *samplerate = static_cast<int>(mOutputFormat.mSampleRate);
-      }
-      if (channels && mOutputFormat.mChannelsPerFrame > 0) {
-        *channels = static_cast<int>(mOutputFormat.mChannelsPerFrame);
-      }
-      return {std::move(decodedData), DecoderError::NoError};
-    }
-
-    // 2. Parse incoming raw stream bytes
+    // 1. Parse incoming raw stream bytes first so buffer is never stranded
     if (!buffer.empty() && mAudioFileStream) {
       // If the parser has not yet initialized the format, ensure the buffer
       // is aligned to the first frame syncword to prevent parse errors.
@@ -98,17 +76,38 @@ public:
         }
       }
 
-      UInt32 flags = mDataEnded ? kAudioFileStreamParseFlag_Discontinuity : 0;
       OSStatus parseStatus = AudioFileStreamParseBytes(
           mAudioFileStream,
           static_cast<UInt32>(buffer.size()),
           buffer.data(),
-          flags
+          0
       );
       if (parseStatus != noErr) {
         // Continue trying to parse or process buffered packets
       }
       buffer.clear();
+    }
+
+    // 2. Return buffered remainder if any
+    std::vector<float> decodedData;
+    if (maxOutputSamples > 0) {
+      decodedData.reserve(maxOutputSamples);
+    }
+
+    while (!mDecodedRemainder.empty() &&
+           (maxOutputSamples == 0 || decodedData.size() < maxOutputSamples)) {
+      decodedData.push_back(mDecodedRemainder.front());
+      mDecodedRemainder.pop_front();
+    }
+
+    if (maxOutputSamples > 0 && decodedData.size() >= maxOutputSamples) {
+      if (samplerate && mOutputFormat.mSampleRate > 0) {
+        *samplerate = static_cast<int>(mOutputFormat.mSampleRate);
+      }
+      if (channels && mOutputFormat.mChannelsPerFrame > 0) {
+        *channels = static_cast<int>(mOutputFormat.mChannelsPerFrame);
+      }
+      return {std::move(decodedData), DecoderError::NoError};
     }
 
     // If format/converter is not yet ready, wait for more data
@@ -124,7 +123,7 @@ public:
     }
 
     // 3. Decode queued packets through AudioConverter
-    while (!mPacketQueue.empty() &&
+    while ((!mPacketQueue.empty() || (mDataEnded && !mDrained)) &&
            (maxOutputSamples == 0 || decodedData.size() < maxOutputSamples)) {
       constexpr UInt32 kFramesPerChunk = 1024;
       UInt32 ioOutputFrames = kFramesPerChunk;
@@ -161,7 +160,14 @@ public:
         }
       }
 
-      if (convStatus != noErr && ioOutputFrames == 0) {
+      if (ioOutputFrames == 0) {
+        if (mDataEnded) {
+          mDrained = true;
+        }
+        break;
+      }
+
+      if (convStatus != noErr) {
         break;
       }
     }
@@ -171,6 +177,13 @@ public:
 
   void setDataEnded() override {
     mDataEnded = true;
+  }
+
+  bool hasPendingData() const override {
+    if (!mConverterInitialized || !mConverter) {
+      return false;
+    }
+    return !mPacketQueue.empty() || !mDecodedRemainder.empty() || (mDataEnded && !mDrained);
   }
 
 private:
@@ -189,6 +202,7 @@ private:
     mDecodedRemainder.clear();
     mMagicCookie.clear();
     mDataEnded = false;
+    mDrained = false;
   }
 
   void setupConverter() {
@@ -313,7 +327,7 @@ private:
     AppleAACImpl *impl = static_cast<AppleAACImpl *>(inUserData);
     if (impl->mPacketQueue.empty()) {
       *ioNumberDataPackets = 0;
-      return 1; // Non-zero indicates no more input packets available
+      return impl->mDataEnded ? noErr : 1;
     }
 
     impl->mCurrentPacket = std::move(impl->mPacketQueue.front());
@@ -347,6 +361,7 @@ private:
   QueuedPacket mCurrentPacket;
   DetectedType mFormat = DetectedType::BUFFER_AAC;
   bool mDataEnded = false;
+  bool mDrained = false;
 };
 
 } // namespace

@@ -258,6 +258,9 @@ public:
   // Called when no more data will be added to signal end-of-stream
   virtual void setDataEnded() {}
 
+  /// Return true if the decoder still has internal unparsed or queued data to decode.
+  virtual bool hasPendingData() const { return false; }
+
   /// Return true if this decoder can currently map a target time to a byte
   /// offset in the encoded stream. For compressed formats this may become
   /// true only after enough data/metadata has been seen.
@@ -338,6 +341,10 @@ public:
          size_t maxOutputSamples = 0);
 
   DetectedType getWrapperType();
+
+  bool hasPendingData() const {
+    return mWrapper ? mWrapper->hasPendingData() : false;
+  }
 
   bool canSeekToTime(double seconds) const;
   uint64_t timeToByteOffset(double seconds);

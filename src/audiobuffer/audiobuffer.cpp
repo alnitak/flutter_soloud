@@ -1,5 +1,7 @@
 #include <mutex>
 #include <string.h>
+#include <thread>
+#include <chrono>
 
 #include "../soloud_common.h"
 #include "audiobuffer.h"
@@ -156,8 +158,8 @@ unsigned int BufferStreamInstance::getAudio(float *aBuffer,
   }
 
   // No decoded samples available to play: zero the output and update the
-  // stream position. The buffering state will be checked when addData() or
-  // setDataIsEnded() is called.
+  // stream position. When the stream has not ended, auto-pause if buffering
+  // is needed.
   if (samplesToRead <= 0) {
     clearPlanarBuffer(aBuffer, aSamplesToRead, aBufferSize, mChannels);
     if (mParent->mBuffer.bufferingType == BufferingType::PRESERVED) {
@@ -167,6 +169,39 @@ unsigned int BufferStreamInstance::getAudio(float *aBuffer,
     } else {
       mStreamPosition = 0;
     }
+
+    if (!mParent->dataIsEnded && mParent->mBufferingTimeNeeds > 0) {
+      const bool wasPaused = (mFlags & AudioSourceInstance::PAUSED) != 0;
+      mFlags |= AudioSourceInstance::PAUSED;
+      mPauseScheduler.mActive = 0;
+
+      if (!wasPaused) {
+        if (mParent->mThePlayer != nullptr) {
+          mParent->mThePlayer->soloud.mActiveVoiceDirty = true;
+          mParent->mThePlayer->soloud.mVoiceInactiveCallbackPending = true;
+        }
+
+        mParent->mIsBuffering = true;
+
+        SoLoud::handle handle = 0;
+        if (mParent->mParent != nullptr && !mParent->mParent->handle.empty()) {
+          for (size_t i = 0; i < mParent->mParent->handle.size(); ++i) {
+            if ((mParent->mParent->handle[i].handle >> 12) == this->mPlayIndex) {
+              handle = mParent->mParent->handle[i].handle;
+              mParent->mParent->handle[i].isUserPaused = false;
+              break;
+            }
+          }
+          if (handle == 0) {
+            handle = mParent->mParent->handle[0].handle;
+            mParent->mParent->handle[0].isUserPaused = false;
+          }
+        }
+
+        mParent->callOnBufferingCallback(true, handle, mStreamPosition);
+      }
+    }
+
     return 0;
   }
 
@@ -289,9 +324,19 @@ bool BufferStreamInstance::hasEnded() {
 
 BufferStream::BufferStream() : mIsDestroyed(false) {}
 
+void BufferStream::stopBackgroundDecode() {
+#ifndef __EMSCRIPTEN__
+  mStopBackgroundDecode.store(true);
+  if (mBackgroundDecodeThread.joinable()) {
+    mBackgroundDecodeThread.join();
+  }
+  mStopBackgroundDecode.store(false);
+#endif
+}
+
 BufferStream::~BufferStream() {
-  // stop();
-  // resetBuffer();
+  mIsDestroyed.store(true);
+  stopBackgroundDecode();
 }
 
 PlayerErrors BufferStream::setBufferStream(
@@ -343,6 +388,7 @@ PlayerErrors BufferStream::setBufferStream(
 }
 
 void BufferStream::resetBuffer() {
+  stopBackgroundDecode();
   buffer.clear();
   mBuffer.clear();
   mSampleCount = 0;
@@ -372,15 +418,54 @@ void BufferStream::setDataIsEnded() {
     streamDecoder->setDataEnded();
   }
 
-  // Trigger a final decode pass to flush any remaining data.
-  // This is needed even if buffer.size() is 0, because the underlying
-  // decoder (e.g., dr_mp3) may have data in its internal buffer that
-  // hasn't been decoded yet.
+  // Trigger an initial bounded decode pass (up to 4096 * 4 samples) on the calling thread.
   addData(nullptr, 0, true);
 
   buffer.clear();
   dataIsEnded = true;
   checkBuffering(0);
+
+#ifndef __EMSCRIPTEN__
+  // If the decoder has remaining buffered data (e.g. Android MediaCodec with
+  // unthrottled incoming chunks), decode them in a background worker thread
+  // so Flutter's main UI thread is NEVER blocked!
+  if (streamDecoder && streamDecoder->hasPendingData()) {
+    stopBackgroundDecode();
+    mBackgroundDecodeThread = std::thread([this]() {
+      while (!mIsDestroyed.load() && !mStopBackgroundDecode.load() &&
+             streamDecoder && streamDecoder->hasPendingData()) {
+        int sampleRate = (mThePlayer != nullptr) ? mThePlayer->mSampleRate : 44100;
+        int channels = (mThePlayer != nullptr) ? mThePlayer->mChannels : 2;
+        std::vector<unsigned char> emptyBuf;
+        auto [decoded, error] = streamDecoder->decode(
+            emptyBuf, &sampleRate, &channels, nullptr, 4096 * 4);
+
+        if (!decoded.empty()) {
+          bool allDataAdded = false;
+          size_t bytesWritten = 0;
+          {
+            std::lock_guard<std::recursive_mutex> lock(mBuffer.bufferMutex);
+            bytesWritten = mBuffer.addData(BufferType::PCM_F32LE, decoded.data(),
+                                           decoded.size(), &allDataAdded) *
+                           sizeof(float);
+          }
+          checkBuffering(static_cast<unsigned int>(bytesWritten));
+          mUncompressedBytesReceived += bytesWritten;
+          mSampleCount += static_cast<unsigned int>(bytesWritten / sizeof(float));
+
+          if (!allDataAdded) {
+            // Buffer capacity reached; wait for playback to read and free space
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+          }
+        } else {
+          // If decoder didn't produce samples in this pass (waiting on codec output),
+          // yield briefly to avoid busy-spinning
+          std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        }
+      }
+    });
+  }
+#endif
 }
 
 void BufferStream::setBufferIcyMetaInt(int icyMetaInt) {
@@ -438,17 +523,21 @@ PlayerErrors BufferStream::addData(const void *aData, unsigned int aDataLen,
           //   meta.debug();
           if (this->mOnMetadataCallback != nullptr)
             this->callOnMetadataCallback(meta);
-        });
+        }, 4096 * 4);
 
     // Handle decoder errors
     switch (error) {
     case DecoderError::FormatNotSupported:
+      fprintf(stderr, "[flutter_soloud] addData: Audio format not supported on this platform.\n");
       return PlayerErrors::audioFormatNotSupported;
     case DecoderError::NoXiphLibs:
+      fprintf(stderr, "[flutter_soloud] addData: Xiph libraries (Ogg/Vorbis/Opus) not found.\n");
       return PlayerErrors::xiphLibsNotFound;
     case DecoderError::FailedToCreateDecoder:
+      fprintf(stderr, "[flutter_soloud] addData: Failed to create audio decoder.\n");
       return PlayerErrors::failedToCreateOpusDecoder;
     case DecoderError::ErrorReadingOggOpusPage:
+      fprintf(stderr, "[flutter_soloud] addData: Failed to decode audio packet (corrupted or truncated page).\n");
       return PlayerErrors::failedToDecodeOpusPacket;
     default:
       break;
@@ -510,55 +599,67 @@ PlayerErrors BufferStream::addData(const void *aData, unsigned int aDataLen,
 void BufferStream::checkBuffering(unsigned int afterAddingBytesCount) {
   std::lock_guard<std::mutex> lock(check_buffer_mutex);
 
+  if (mThePlayer == nullptr || mParent == nullptr) return;
+  if (mBaseSamplerate == 0.0f || mChannels == 0) return;
+
   // If a handle reaches the end and data is not ended, we have to wait for it
-  // has enough data to reach [TIME_FOR_BUFFERING] and restart playing it.
+  // to have enough data to reach [mBufferingTimeNeeds] and restart playing it.
   SoLoud::time currBufferTime = getLength();
   SoLoud::time addedDataTime =
       (afterAddingBytesCount / sizeof(float)) /
       (mBaseSamplerate * mChannels);
+  SoLoud::time totalDataTime = currBufferTime + addedDataTime;
 
-  for (int i = 0; i < mParent->handle.size(); i++) {
+  for (size_t i = 0; i < mParent->handle.size(); i++) {
     SoLoud::handle handle = mParent->handle[i].handle;
+    if (!mThePlayer->isValidHandle(handle)) continue;
+
     SoLoud::time pos = mBuffer.bufferingType == BufferingType::RELEASED
                            ? getStreamTimeConsumed()
                            : mThePlayer->getPosition(handle);
     bool isPaused = mThePlayer->getPause(handle);
+    SoLoud::time availableAhead =
+        totalDataTime >= pos ? (totalDataTime - pos) : 0.0;
 
-    // This handle needs to wait for [TIME_FOR_BUFFERING]. Pause it.
-    // Pause only when the play position has reached the end of the data that
-    // was already buffered before this addData() call. The unpause below will
-    // then wait until at least [bufferingTimeNeeds] seconds of audio are
-    // available ahead of position.
-    if (mBuffer.bufferingType == BufferingType::RELEASED &&
-        !dataIsEnded && pos >= currBufferTime && !isPaused) {
-      mParent->handle[i].bufferingTime = currBufferTime + addedDataTime;
+    // This handle needs to wait for [mBufferingTimeNeeds]. Pause it.
+    // Pause when:
+    // 1) The play position has reached the end of the data that was already
+    //    buffered before this addData() call, OR
+    // 2) The stream is currently buffering and does not yet have enough audio
+    //    ahead of the playhead.
+    const bool needsBuffering =
+        !dataIsEnded && (mBufferingTimeNeeds > 0) &&
+        (pos >= currBufferTime ||
+         (mIsBuffering && availableAhead < mBufferingTimeNeeds));
+
+    if (needsBuffering && !isPaused) {
+      mParent->handle[i].bufferingTime = totalDataTime;
       // This is an automatic buffering pause, so the user-paused flag should
       // not prevent a future buffering unpause.
       mParent->handle[i].isUserPaused = false;
       mThePlayer->setPause(handle, true, false);
       isPaused = true;
-      callOnBufferingCallback(true, handle, currBufferTime + addedDataTime);
-    } else
-    // This handle has reached [TIME_FOR_BUFFERING]. Unpause it.
-    // Only unpause when buffer covers playback position + margin,
-    // not just when new data >= margin (which caused play/pause toggling
-    // when seeking beyond buffered data).
-    // Also respect a user-initiated pause: if the user pressed pause, do not
-    // automatically resume even when enough data is buffered.
-    if (currBufferTime + addedDataTime >= pos + mBufferingTimeNeeds && isPaused &&
-        !mParent->handle[i].isUserPaused){
-        mParent->handle[i].bufferingTime = currBufferTime + addedDataTime;
+      callOnBufferingCallback(true, handle, totalDataTime);
+    } else if (availableAhead >= mBufferingTimeNeeds) {
+      // This handle has reached [mBufferingTimeNeeds]. Unpause it if it was
+      // paused by the buffering mechanism.
+      // Also respect a user-initiated pause: if the user pressed pause, do not
+      // automatically resume even when enough data is buffered.
+      if (isPaused && !mParent->handle[i].isUserPaused) {
+        mParent->handle[i].bufferingTime = totalDataTime;
         mThePlayer->setPause(handle, false, false);
         isPaused = false;
-        callOnBufferingCallback(false, handle, currBufferTime + addedDataTime);
+        callOnBufferingCallback(false, handle, totalDataTime);
       } else if (isPaused && mParent->handle[i].isUserPaused) {
-        if (currBufferTime + addedDataTime >= pos + mBufferingTimeNeeds && mIsBuffering) {
-          mParent->handle[i].bufferingTime = currBufferTime + addedDataTime;
-          callOnBufferingCallback(false, handle, currBufferTime + addedDataTime);
-        } else {
-          // fprintf(stderr, "[checkBuffering] -> STAY PAUSED handle=%u (user paused)\n", handle);
+        if (mIsBuffering) {
+          mParent->handle[i].bufferingTime = totalDataTime;
+          callOnBufferingCallback(false, handle, totalDataTime);
         }
+      } else if (!isPaused && mIsBuffering) {
+        mIsBuffering = false;
       }
+    }
+
     // If data is ended and the handle is paused, unpause it to listen to the
     // rest of the data. This also clears the user-paused flag so that a
     // user-paused stream drains its remaining buffer when the stream ends.
@@ -566,7 +667,7 @@ void BufferStream::checkBuffering(unsigned int afterAddingBytesCount) {
       mThePlayer->setPause(handle, false, false);
       isPaused = false;
       mParent->handle[i].bufferingTime = MAX_DOUBLE;
-      callOnBufferingCallback(false, handle, currBufferTime);
+      callOnBufferingCallback(false, handle, totalDataTime);
     }
   }
 }
