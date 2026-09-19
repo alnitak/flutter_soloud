@@ -1,6 +1,6 @@
 ---
 name: flutter-soloud-loading
-version: 1
+version: 2
 description: Teaches how to load audio into flutter_soloud via loadAsset/loadMem/loadFile/loadUrl and joinTwoSources, choose between LoadMode.memory and LoadMode.disk, and manage the AudioSource lifecycle (disposeSource, autoDispose, allInstancesFinished). Use when a user asks to load or play an audio file, asset, URL, or byte buffer, to fix load errors or "no sound" bugs, to handle web platform constraints, or to clean up/dispose loaded sounds.
 ---
 
@@ -49,7 +49,12 @@ enum LoadMode {
 
 Use `memory` (the default) for sound effects and anything you seek. Use `disk` for large background music — but note that with `disk` mode, seeking lags with MP3s.
 
-Supported formats: MP3, WAV, OGG (Vorbis/Opus/FLAC), FLAC.
+Supported formats:
+- **Core formats**: MP3, WAV, OGG (Vorbis/Opus/FLAC), FLAC.
+- **OS-native formats** (via platform decoders on macOS, iOS, Android, Windows, Web, Linux): M4A, MP4 (audio tracks), AAC, AC-3 (Dolby Digital), and E-AC-3 (Dolby Digital Plus). *Linux note:* On Linux, decoding these formats requires FFmpeg shared libraries (`libavcodec` and `libavformat`) installed on the host system (e.g. `sudo apt install ffmpeg libavcodec-extra`, `sudo pacman -S ffmpeg`, or `sudo dnf install ffmpeg-free`). Core formats work out of the box without FFmpeg.
+
+> [!NOTE]
+> MP4 and M4A containers are supported for file, asset, URL, and memory loading, but are **NOT supported for chunk streaming** (`setBufferStream`/`setPullBufferStream`). For real-time streaming, use elementary streams such as AAC ADTS, AC-3, E-AC-3, OGG, MP3, WAV, or raw PCM.
 
 ### AudioSource lifecycle
 

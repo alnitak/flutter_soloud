@@ -1,6 +1,6 @@
 ---
 name: flutter-soloud-setup
-version: 3
+version: 4
 description: Teaches how to add flutter_soloud to a Flutter app, configure each platform (web script tag and COOP/COEP headers, Linux audio backends ALSA/PulseAudio/JACK, Android/iOS/macOS minimum versions), initialize and deinitialize the engine, shrink binaries by excluding the Xiph libs, set up logging, and enumerate/switch output devices or Linux audio backends. Use when a user asks to install flutter_soloud, initialize SoLoud, set up web/background-audio prerequisites, configure Linux audio backends, reduce binary size, or switch the audio output device.
 ---
 
@@ -50,7 +50,7 @@ Native C/C++ sources are compiled by [Dart build hooks](https://dart.dev/tools/h
   <script src="assets/packages/flutter_soloud/web/init_soloud.js" defer></script>
   ```
   The script auto-picks between the multi-threaded (AudioWorklet) and single-threaded (ScriptProcessorNode) WASM builds based on whether the page is cross-origin isolated. Details in [references/web.md](references/web.md).
-- **Linux** — audio playback uses `miniaudio` with dynamic runtime loading for ALSA (`libasound.so.2`), PulseAudio (`libpulse.so`), and JACK (`libjack.so`). No extra C/C++ development packages or compile-time headers are required to build. Ensure runtime libraries are present on the host system (e.g. `libasound2`, `libpulse0`).
+- **Linux** — audio playback uses `miniaudio` with dynamic runtime loading for ALSA (`libasound.so.2`), PulseAudio (`libpulse.so`), and JACK (`libjack.so`). No extra C/C++ development packages or compile-time headers are required to build. Ensure runtime libraries are present on the host system (e.g. `libasound2`, `libpulse0`). To decode extended OS-native formats (**M4A**, **MP4 audio tracks**, **AAC**, **AC-3**, and **E-AC-3**), the engine dynamically loads FFmpeg shared libraries (`libavcodec` and `libavformat`) at runtime; ensure FFmpeg is installed on the user system (e.g. `sudo apt install ffmpeg libavcodec-extra` on Debian/Ubuntu, `sudo pacman -S ffmpeg` on Arch, `sudo dnf install ffmpeg-free` on Fedora). Core formats (MP3, WAV, OGG, FLAC) work without FFmpeg.
 - **Android** — `minSdk = 21` (the plugin sets this in its own `build.gradle`; your app-level `minSdkVersion` must be >= 21).
 - **iOS** — deployment target iOS 13.0+; **macOS** — 10.15+. Native assets are compiled and bundled for both CocoaPods and SPM projects.
 

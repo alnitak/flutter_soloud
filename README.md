@@ -18,8 +18,8 @@ A high-performance audio plugin designed primarily for games and immersive appli
 - ⏱️ Sample-accurate scheduled playback: `playClocked` for sub-millisecond spaced playback regardless of buffer size, and `playScheduled` for score/manifest-style scheduling of whole batches of sounds on the engine's own clock (with optional scheduled stop/fade). Perfect for metronomes, music sequencers, rhythm games and precisely timed audio cues
 - 🎮 3D positional audio with Doppler effect
 - 🔄 Gapless looping with half-open `[start, end)` loop regions
-- 🔄 Stream audio with auto-pause for buffering, support for PCM, MP3, WAV, Ogg with Opus, Vorbis and FLAC containers
-- 📥 Pull-buffer streaming: the engine requests encoded data on demand (MP3, WAV, FLAC, Ogg Opus/Vorbis/FLAC), with seek support and callbacks for buffering, metadata, duration and data requests — ideal for network streams and custom data sources
+- 🔄 Stream audio with auto-pause for buffering, support for PCM, MP3, WAV, FLAC, Ogg (Opus, Vorbis, FLAC), AAC (ADTS), AC-3, and E-AC-3 (Note: MP4 and M4A are not supported for streaming)
+- 📥 Pull-buffer streaming: the engine requests encoded data on demand (MP3, WAV, FLAC, Ogg Opus/Vorbis/FLAC, AAC ADTS, AC-3, E-AC-3), with seek support and callbacks for buffering, metadata, duration and data requests — ideal for network streams and custom data sources
 - 🚌 Mixing buses: group voices (music, SFX, UI...) into sub-mixes with their own volume, filters and visualization
 - 📊 Get audio wave and/or FFT audio data in real-time (useful for visualization)
 - 🎛️ Rich effects system (reverb, echo, limiter, parametric equalizer, pitch shift, etc.)
@@ -27,7 +27,7 @@ A high-performance audio plugin designed primarily for games and immersive appli
 - 🎚️ Oscillators for attributes
 - 🌊 Waveform generation and visualization
 - 🔊 Multiple voices, playing different or even the same sound multiple times
-- 🎵 Support for MP3, WAV, OGG, and FLAC
+- 🎵 Audio playback support for MP3, WAV, OGG, FLAC, plus native platform decoding for M4A, MP4 (audio tracks), AAC, AC-3, and E-AC-3
 - 🔴 Capture the master mixer output as a stream for recording, processing, or streaming (with different PCM formats and Opus, Vorbis, FLAC, WAV encoded stream formats)
 - ⏱️ Read audio data samples from a file with a given time range
 - 🌊 Generate waveforms in real-time with various types (sine, square, saw, triangle, etc.)
