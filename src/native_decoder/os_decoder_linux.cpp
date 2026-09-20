@@ -31,6 +31,8 @@ typedef int (*pfn_avformat_open_input)(struct AVFormatContext **ps, const char *
 typedef int (*pfn_avformat_find_stream_info)(struct AVFormatContext *ic, void **options);
 typedef void (*pfn_avformat_close_input)(struct AVFormatContext **s);
 typedef int (*pfn_av_read_frame)(struct AVFormatContext *s, struct AVPacket *pkt);
+typedef unsigned (*pfn_avformat_version)(void);
+typedef int (*pfn_av_find_best_stream)(struct AVFormatContext *ic, int type, int wanted_stream_nb, int related_stream, const struct AVCodec **decoder_ret, int flags);
 
 typedef const struct AVCodec* (*pfn_avcodec_find_decoder)(int id);
 typedef struct AVCodecContext* (*pfn_avcodec_alloc_context3)(const struct AVCodec *codec);
@@ -56,6 +58,8 @@ struct FFmpegLoader {
     pfn_avformat_find_stream_info avformat_find_stream_info = nullptr;
     pfn_avformat_close_input avformat_close_input = nullptr;
     pfn_av_read_frame av_read_frame = nullptr;
+    pfn_avformat_version avformat_version = nullptr;
+    pfn_av_find_best_stream av_find_best_stream = nullptr;
 
     pfn_avcodec_find_decoder avcodec_find_decoder = nullptr;
     pfn_avcodec_alloc_context3 avcodec_alloc_context3 = nullptr;
@@ -87,10 +91,10 @@ struct FFmpegLoader {
         if (loaded) return true;
 
         const char* const formatNames[] = {
-            "libavformat.so.61", "libavformat.so.60", "libavformat.so.59", "libavformat.so.58", "libavformat.so", nullptr
+            "libavformat.so.63", "libavformat.so.62", "libavformat.so.61", "libavformat.so.60", "libavformat.so.59", "libavformat.so.58", "libavformat.so", nullptr
         };
         const char* const codecNames[] = {
-            "libavcodec.so.61", "libavcodec.so.60", "libavcodec.so.59", "libavcodec.so.58", "libavcodec.so", nullptr
+            "libavcodec.so.63", "libavcodec.so.62", "libavcodec.so.61", "libavcodec.so.60", "libavcodec.so.59", "libavcodec.so.58", "libavcodec.so", nullptr
         };
 
         hFormat = tryDlopen(formatNames);
@@ -108,6 +112,8 @@ struct FFmpegLoader {
         LOAD_SYM(hFormat, avformat_find_stream_info);
         LOAD_SYM(hFormat, avformat_close_input);
         LOAD_SYM(hFormat, av_read_frame);
+        avformat_version = reinterpret_cast<pfn_avformat_version>(dlsym(hFormat, "avformat_version"));
+        av_find_best_stream = reinterpret_cast<pfn_av_find_best_stream>(dlsym(hFormat, "av_find_best_stream"));
 
         LOAD_SYM(hCodec, avcodec_find_decoder);
         LOAD_SYM(hCodec, avcodec_alloc_context3);
@@ -163,19 +169,6 @@ struct DummyAVCodecParameters {
     // Audio fields follow at offset >= 104
 };
 
-struct DummyAVStream {
-    int index;
-    int id;
-    void *priv_data;
-    struct { int64_t num; int64_t den; } time_base;
-    int64_t start_time;
-    int64_t duration;
-    int64_t nb_frames;
-    int disposition;
-    int discard;
-    DummyAVCodecParameters *codecpar;
-};
-
 struct DummyAVFormatContext {
     void *av_class;
     void *iformat;
@@ -184,8 +177,25 @@ struct DummyAVFormatContext {
     void *pb;
     int ctx_flags;
     unsigned int nb_streams;
-    DummyAVStream **streams;
+    void **streams;
 };
+
+static DummyAVCodecParameters* getStreamCodecPar(void *streamPtr, unsigned int lavfMajor) {
+    if (!streamPtr) return nullptr;
+    const uint8_t *bytes = reinterpret_cast<const uint8_t*>(streamPtr);
+    if (lavfMajor >= 59 || lavfMajor == 0) {
+        // FFmpeg 5.0+ (lavf 59..63+):
+        // offset 0: av_class (8)
+        // offset 8: index (4)
+        // offset 12: id (4)
+        // offset 16: codecpar (8)
+        return *reinterpret_cast<DummyAVCodecParameters* const *>(bytes + 16);
+    } else {
+        // FFmpeg 4.x (lavf 58):
+        // offset 208: codecpar (8)
+        return *reinterpret_cast<DummyAVCodecParameters* const *>(bytes + 208);
+    }
+}
 
 // AVFrame audio sample formats
 constexpr int AV_SAMPLE_FMT_U8 = 0;
@@ -265,16 +275,31 @@ DecodedAudioData decodeFilePathWithFFmpeg(const char *filePath) {
         return result;
     }
 
+    unsigned int lavfVer = gFFmpeg.avformat_version ? gFFmpeg.avformat_version() : 0;
+    unsigned int lavfMajor = lavfVer >> 16;
+
     DummyAVFormatContext *dummyCtx = reinterpret_cast<DummyAVFormatContext *>(fmtCtx);
     int audioStreamIndex = -1;
     DummyAVCodecParameters *codecPar = nullptr;
+    const AVCodec *codec = nullptr;
 
-    for (unsigned int i = 0; i < dummyCtx->nb_streams; i++) {
-        if (dummyCtx->streams[i] && dummyCtx->streams[i]->codecpar) {
-            if (dummyCtx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
-                audioStreamIndex = i;
-                codecPar = dummyCtx->streams[i]->codecpar;
-                break;
+    if (gFFmpeg.av_find_best_stream) {
+        audioStreamIndex = gFFmpeg.av_find_best_stream(fmtCtx, AVMEDIA_TYPE_AUDIO, -1, -1, &codec, 0);
+        if (audioStreamIndex >= 0 && static_cast<unsigned int>(audioStreamIndex) < dummyCtx->nb_streams) {
+            codecPar = getStreamCodecPar(dummyCtx->streams[audioStreamIndex], lavfMajor);
+        }
+    }
+
+    if (audioStreamIndex < 0 || !codecPar) {
+        for (unsigned int i = 0; i < dummyCtx->nb_streams; i++) {
+            DummyAVCodecParameters *par = getStreamCodecPar(dummyCtx->streams[i], lavfMajor);
+            if (par) {
+                int codecType = *reinterpret_cast<const int *>(reinterpret_cast<const uint8_t *>(par) + 0);
+                if (codecType == AVMEDIA_TYPE_AUDIO) {
+                    audioStreamIndex = static_cast<int>(i);
+                    codecPar = par;
+                    break;
+                }
             }
         }
     }
@@ -285,7 +310,10 @@ DecodedAudioData decodeFilePathWithFFmpeg(const char *filePath) {
         return result;
     }
 
-    const AVCodec *codec = gFFmpeg.avcodec_find_decoder(codecPar->codec_id);
+    if (!codec) {
+        int codecId = *reinterpret_cast<const int *>(reinterpret_cast<const uint8_t *>(codecPar) + 4);
+        codec = gFFmpeg.avcodec_find_decoder(codecId);
+    }
     if (!codec) {
         gFFmpeg.avformat_close_input(&fmtCtx);
         result.errorMessage = "Codec decoder not found for audio stream";
@@ -319,19 +347,18 @@ DecodedAudioData decodeFilePathWithFFmpeg(const char *filePath) {
 
     if (sampleRate <= 0 || channels <= 0) {
         const uint8_t *parBytes = reinterpret_cast<const uint8_t *>(codecPar);
-        // Try FFmpeg 5.1+ layout: nb_channels at 108, sample_rate at 128
-        int v5_ch = *reinterpret_cast<const int *>(parBytes + 108);
-        int v5_sr = *reinterpret_cast<const int *>(parBytes + 128);
-        if (v5_ch >= 1 && v5_ch <= 32 && v5_sr >= 4000 && v5_sr <= 384000) {
-            if (channels <= 0) channels = v5_ch;
-            if (sampleRate <= 0) sampleRate = v5_sr;
-        } else {
-            // Try FFmpeg 4.x layout: channels at 112, sample_rate at 116
-            int v4_ch = *reinterpret_cast<const int *>(parBytes + 112);
-            int v4_sr = *reinterpret_cast<const int *>(parBytes + 116);
-            if (v4_ch >= 1 && v4_ch <= 32 && v4_sr >= 4000 && v4_sr <= 384000) {
-                if (channels <= 0) channels = v4_ch;
-                if (sampleRate <= 0) sampleRate = v4_sr;
+        const std::pair<int, int> candidateOffsets[] = {
+            {132, 152}, // FFmpeg 7+ (ch_layout.nb_channels, sample_rate)
+            {108, 128}, // FFmpeg 5.1 - 6.x
+            {112, 116}  // FFmpeg 4.x - 5.0
+        };
+        for (const auto &pair : candidateOffsets) {
+            int ch = *reinterpret_cast<const int *>(parBytes + pair.first);
+            int sr = *reinterpret_cast<const int *>(parBytes + pair.second);
+            if (ch >= 1 && ch <= 32 && sr >= 4000 && sr <= 384000) {
+                if (channels <= 0) channels = ch;
+                if (sampleRate <= 0) sampleRate = sr;
+                break;
             }
         }
     }
@@ -469,10 +496,25 @@ DecodedAudioData decodeFilePathWithFFmpeg(const char *filePath) {
     gFFmpeg.avcodec_free_context(&codecCtx);
     gFFmpeg.avformat_close_input(&fmtCtx);
 
-    size_t totalFrames = planarChannelData[0].size();
-    if (totalFrames == 0) {
+    // Determine actual populated channels
+    int actualChannels = 0;
+    for (int c = 0; c < channels && c < 8; c++) {
+        if (!planarChannelData[c].empty()) {
+            actualChannels++;
+        }
+    }
+
+    if (actualChannels == 0 || planarChannelData[0].empty()) {
         result.errorMessage = "Decoded 0 audio frames with FFmpeg";
         return result;
+    }
+
+    channels = actualChannels;
+    size_t totalFrames = planarChannelData[0].size();
+    for (int c = 1; c < channels; c++) {
+        if (planarChannelData[c].size() < totalFrames) {
+            planarChannelData[c].resize(totalFrames, 0.0f);
+        }
     }
 
     float *planarBuffer = new (std::nothrow) float[totalFrames * channels];

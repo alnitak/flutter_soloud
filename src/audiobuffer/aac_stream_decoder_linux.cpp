@@ -82,7 +82,7 @@ struct LinuxFFmpegCodecLoader {
         if (loaded) return true;
 
         const char* const codecNames[] = {
-            "libavcodec.so.61", "libavcodec.so.60", "libavcodec.so.59", "libavcodec.so.58", "libavcodec.so", nullptr
+            "libavcodec.so.63", "libavcodec.so.62", "libavcodec.so.61", "libavcodec.so.60", "libavcodec.so.59", "libavcodec.so.58", "libavcodec.so", nullptr
         };
 
         hCodec = tryDlopen(codecNames);
@@ -151,6 +151,16 @@ struct DummyAVFrame {
     int nb_samples;
     int format;
     int key_frame;
+};
+
+struct DummyAVPacket {
+    void *buf;
+    int64_t pts;
+    int64_t dts;
+    uint8_t *data;
+    int size;
+    int stream_index;
+    int flags;
 };
 
 class LinuxAACImpl : public AACDecoderWrapper::Impl {
@@ -276,13 +286,35 @@ public:
                 0, 0, 0
             );
 
-            if (consumed > 0) {
-                buffer.erase(buffer.begin(), buffer.begin() + consumed);
-            }
-
             if (poutbuf_size > 0 && poutbuf) {
-                mPkt->data = poutbuf;
-                mPkt->size = poutbuf_size;
+                if (!mFormatInitialized) {
+                    if (mFormat == DetectedType::BUFFER_AAC) {
+                        AacMetadata aac;
+                        if (AACDecoderWrapper::parseAacAdtsMetadata(poutbuf, poutbuf_size, aac)) {
+                            mStreamSampleRate = aac.sampleRate;
+                            mStreamChannels = aac.channels;
+                            mFormatInitialized = true;
+                        }
+                    } else if (mFormat == DetectedType::BUFFER_AC3) {
+                        Ac3Metadata ac3;
+                        if (AACDecoderWrapper::parseAc3Metadata(poutbuf, poutbuf_size, ac3)) {
+                            mStreamSampleRate = ac3.sampleRate;
+                            mStreamChannels = ac3.channels;
+                            mFormatInitialized = true;
+                        }
+                    } else if (mFormat == DetectedType::BUFFER_EAC3) {
+                        Eac3Metadata eac3;
+                        if (AACDecoderWrapper::parseEac3Metadata(poutbuf, poutbuf_size, eac3)) {
+                            mStreamSampleRate = eac3.sampleRate;
+                            mStreamChannels = eac3.channels;
+                            mFormatInitialized = true;
+                        }
+                    }
+                }
+
+                auto dummyPkt = reinterpret_cast<DummyAVPacket*>(mPkt);
+                dummyPkt->data = poutbuf;
+                dummyPkt->size = poutbuf_size;
 
                 int sendRes = gLinuxFFmpeg.avcodec_send_packet(mCodecCtx, mPkt);
                 gLinuxFFmpeg.av_packet_unref(mPkt);
@@ -295,7 +327,15 @@ public:
                 }
             }
 
+            if (consumed > 0) {
+                buffer.erase(buffer.begin(), buffer.begin() + consumed);
+            }
+
             if (consumed <= 0 && poutbuf_size <= 0) {
+                break;
+            }
+
+            if (maxOutputSamples > 0 && decodedData.size() >= maxOutputSamples) {
                 break;
             }
         }
@@ -315,8 +355,9 @@ public:
         if (mParser) {
             gLinuxFFmpeg.av_parser_parse2(mParser, mCodecCtx, &poutbuf, &poutbuf_size, nullptr, 0, 0, 0, 0);
             if (poutbuf_size > 0 && poutbuf && mPkt) {
-                mPkt->data = poutbuf;
-                mPkt->size = poutbuf_size;
+                auto dummyPkt = reinterpret_cast<DummyAVPacket*>(mPkt);
+                dummyPkt->data = poutbuf;
+                dummyPkt->size = poutbuf_size;
                 gLinuxFFmpeg.avcodec_send_packet(mCodecCtx, mPkt);
                 gLinuxFFmpeg.av_packet_unref(mPkt);
             }
@@ -369,25 +410,26 @@ private:
         if (nbSamples <= 0) return;
 
         if (!mFormatInitialized) {
+            auto dummyPkt = reinterpret_cast<DummyAVPacket*>(mPkt);
             // Determine sample rate and channels from metadata or context
             if (mFormat == DetectedType::BUFFER_AAC) {
                 AacMetadata aac;
-                if (mPkt && mPkt->data && mPkt->size > 0 &&
-                    AACDecoderWrapper::parseAacAdtsMetadata(mPkt->data, mPkt->size, aac)) {
+                if (dummyPkt && dummyPkt->data && dummyPkt->size > 0 &&
+                    AACDecoderWrapper::parseAacAdtsMetadata(dummyPkt->data, dummyPkt->size, aac)) {
                     mStreamSampleRate = aac.sampleRate;
                     mStreamChannels = aac.channels;
                 }
             } else if (mFormat == DetectedType::BUFFER_AC3) {
                 Ac3Metadata ac3;
-                if (mPkt && mPkt->data && mPkt->size > 0 &&
-                    AACDecoderWrapper::parseAc3Metadata(mPkt->data, mPkt->size, ac3)) {
+                if (dummyPkt && dummyPkt->data && dummyPkt->size > 0 &&
+                    AACDecoderWrapper::parseAc3Metadata(dummyPkt->data, dummyPkt->size, ac3)) {
                     mStreamSampleRate = ac3.sampleRate;
                     mStreamChannels = ac3.channels;
                 }
             } else if (mFormat == DetectedType::BUFFER_EAC3) {
                 Eac3Metadata eac3;
-                if (mPkt && mPkt->data && mPkt->size > 0 &&
-                    AACDecoderWrapper::parseEac3Metadata(mPkt->data, mPkt->size, eac3)) {
+                if (dummyPkt && dummyPkt->data && dummyPkt->size > 0 &&
+                    AACDecoderWrapper::parseEac3Metadata(dummyPkt->data, dummyPkt->size, eac3)) {
                     mStreamSampleRate = eac3.sampleRate;
                     mStreamChannels = eac3.channels;
                 }
@@ -398,7 +440,35 @@ private:
             mFormatInitialized = true;
         }
 
+        // Extract actual sample rate from the decoded AVFrame
+        const uint8_t *fb = reinterpret_cast<const uint8_t*>(f);
+        int frameSampleRate = 0;
+        const int candidateOffsets[] = {180, 184, 188, 192, 204, 208};
+        for (int off : candidateOffsets) {
+            int val = *reinterpret_cast<const int*>(fb + off);
+            if (val == 44100 || val == 48000 || val == 32000 || val == 22050 ||
+                val == 24000 || val == 16000 || val == 11025 || val == 12000 ||
+                val == 8000 || val == 88200 || val == 96000) {
+                frameSampleRate = val;
+                break;
+            }
+        }
+
+        if (frameSampleRate > 0) {
+            mStreamSampleRate = frameSampleRate;
+        } else if (mFormat == DetectedType::BUFFER_AAC && nbSamples >= 2048 && mStreamSampleRate <= 24000 && mStreamSampleRate > 0) {
+            // HE-AAC (SBR) doubles the core ADTS sample rate (e.g. 22050 -> 44100, 24000 -> 48000)
+            mStreamSampleRate *= 2;
+        }
+
         int ch = mStreamChannels > 0 ? mStreamChannels : 2;
+        if (ch == 1 && (fmt == AV_SAMPLE_FMT_FLTP || fmt == AV_SAMPLE_FMT_S16P || fmt == AV_SAMPLE_FMT_S32P)) {
+            const void *plane1 = dFrame->extended_data ? dFrame->extended_data[1] : dFrame->data[1];
+            if (plane1 != nullptr) {
+                ch = 2;
+                mStreamChannels = 2;
+            }
+        }
         size_t totalNewSamples = static_cast<size_t>(nbSamples * ch);
 
         std::vector<float> frameSamples;

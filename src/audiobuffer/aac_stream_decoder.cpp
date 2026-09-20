@@ -91,34 +91,38 @@ AACDecoderWrapper::decode(std::vector<unsigned char> &buffer, int *samplerate,
         onTrackChange(meta);
       }
     });
-    buffer = std::move(cleanAudio);
+    mAudioData.insert(mAudioData.end(), cleanAudio.begin(), cleanAudio.end());
+    buffer.clear();
+  } else if (!buffer.empty()) {
+    mAudioData.insert(mAudioData.end(), buffer.begin(), buffer.end());
+    buffer.clear();
   }
 
   // Handle ID3 tags prepended to AAC streams
-  if (mFormat == DetectedType::BUFFER_AAC && !buffer.empty()) {
-    if (!mId3Parsed && buffer.size() >= 10 && std::memcmp(buffer.data(), "ID3", 3) == 0) {
+  if (mFormat == DetectedType::BUFFER_AAC && !mAudioData.empty()) {
+    if (!mId3Parsed && mAudioData.size() >= 10 && std::memcmp(mAudioData.data(), "ID3", 3) == 0) {
       size_t id3Size = 0;
-      if (parseId3Tags(buffer.data(), buffer.size(), mCachedAacMetadata, id3Size)) {
+      if (parseId3Tags(mAudioData.data(), mAudioData.size(), mCachedAacMetadata, id3Size)) {
         mId3Parsed = true;
       }
-      if (id3Size > 0 && buffer.size() >= id3Size) {
-        buffer.erase(buffer.begin(), buffer.begin() + id3Size);
+      if (id3Size > 0 && mAudioData.size() >= id3Size) {
+        mAudioData.erase(mAudioData.begin(), mAudioData.begin() + id3Size);
       }
     }
   }
 
-  if (!mMetadataParsed && onTrackChange && !buffer.empty()) {
+  if (!mMetadataParsed && onTrackChange && !mAudioData.empty()) {
     AudioMetadata metadata;
     metadata.type = mFormat;
     bool parsed = false;
 
     if (mFormat == DetectedType::BUFFER_AAC) {
-      parsed = parseAacAdtsMetadata(buffer.data(), buffer.size(), mCachedAacMetadata);
+      parsed = parseAacAdtsMetadata(mAudioData.data(), mAudioData.size(), mCachedAacMetadata);
       metadata.aacMetadata = mCachedAacMetadata;
     } else if (mFormat == DetectedType::BUFFER_AC3) {
-      parsed = parseAc3Metadata(buffer.data(), buffer.size(), metadata.ac3Metadata);
+      parsed = parseAc3Metadata(mAudioData.data(), mAudioData.size(), metadata.ac3Metadata);
     } else if (mFormat == DetectedType::BUFFER_EAC3) {
-      parsed = parseEac3Metadata(buffer.data(), buffer.size(), metadata.eac3Metadata);
+      parsed = parseEac3Metadata(mAudioData.data(), mAudioData.size(), metadata.eac3Metadata);
     }
 
     if (parsed) {
@@ -127,7 +131,27 @@ AACDecoderWrapper::decode(std::vector<unsigned char> &buffer, int *samplerate,
     }
   }
 
-  return mImpl->decode(buffer, samplerate, channels, maxOutputSamples);
+  auto result = mImpl->decode(mAudioData, samplerate, channels, maxOutputSamples);
+
+  if (mFormat == DetectedType::BUFFER_AAC && samplerate && *samplerate > 0) {
+    if (mCachedAacMetadata.sampleRate != *samplerate) {
+      mCachedAacMetadata.sampleRate = *samplerate;
+      if (channels && *channels > 0) {
+        mCachedAacMetadata.channels = *channels;
+      }
+      if (mCachedAacMetadata.sampleRate > 24000) {
+        mCachedAacMetadata.profile = "HE-AAC";
+      }
+      if (onTrackChange) {
+        AudioMetadata metadata;
+        metadata.type = mFormat;
+        metadata.aacMetadata = mCachedAacMetadata;
+        onTrackChange(metadata);
+      }
+    }
+  }
+
+  return result;
 }
 
 void AACDecoderWrapper::setDataEnded() {
