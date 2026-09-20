@@ -1,6 +1,6 @@
 ---
 name: flutter-soloud-streaming
-version: 3
+version: 4
 description: Teaches the push buffer-stream API of the flutter_soloud package (setBufferStream, addAudioDataStream, setDataIsEnded, BufferingType, BufferType, icy metadata). Use when the user wants to play audio that arrives in chunks — internet/icecast radio, WebSocket PCM feeds, TTS/LLM streaming APIs, or procedurally generated PCM — instead of loading a complete file or asset.
 ---
 
@@ -69,7 +69,7 @@ All of these live on `SoLoud.instance` and operate on the `AudioSource` returned
 
 Key enums (`lib/src/enums.dart`):
 
-- `BufferType` — `f32le`, `s8`, `s16le`, `s32le` are raw interleaved PCM (you must set `sampleRate`/`channels` correctly). `auto` detects MP3, WAV, FLAC, Ogg (Opus, Vorbis, FLAC), AAC (ADTS), AC-3, and E-AC-3 streams and **ignores** `sampleRate`/`channels` (on Linux, decoding AAC/AC-3/E-AC-3 requires FFmpeg `libavcodec`/`libavformat` runtime libraries; core formats work out of the box).
+- `BufferType` — `f32le`, `s8`, `s16le`, `s32le` are raw interleaved PCM (you must set `sampleRate`/`channels` correctly). `auto` detects MP3, WAV, FLAC, Ogg (Opus, Vorbis, FLAC), AAC (ADTS), AC-3, and E-AC-3 streams and **ignores** `sampleRate`/`channels` (on Linux, decoding AAC/AC-3/E-AC-3 requires FFmpeg `libavcodec`/`libavformat` runtime libraries; on Web, AC-3 and E-AC-3 streaming is not supported by any browser; core formats work out of the box).
 - `BufferingType` — `preserved`: keeps all data in memory, allows multiple simultaneous handles, seeking and looping. `released`: frees played data (bounded memory for endless feeds), but plays once, cannot seek, and `getPosition` always returns 0 — use `getStreamTimeConsumed` instead.
 
 Divergences from audioplayers/just_audio habits:
@@ -82,6 +82,7 @@ Divergences from audioplayers/just_audio habits:
 ## Traps
 
 - **MP4 and M4A containers are NOT supported for streaming.** Container files with ISO BMFF / MP4 atom structures (`moov`, `mdat`) require random access to read header atom offsets and cannot be streamed chunk-by-chunk with `setBufferStream` or `setPullBufferStream`. For real-time streaming, use elementary streams (AAC ADTS, AC-3, E-AC-3, OGG, MP3, WAV, or raw PCM). MP4 and M4A are only supported for full-file/asset/memory loading (`loadFile`, `loadAsset`, `loadMem`, `loadUrl`).
+- **AC-3 and E-AC-3 streaming is NOT supported on the Web platform in any browser.** Google Chrome, Chromium browsers, and Mozilla Firefox do not support AC-3 or E-AC-3 due to proprietary Dolby Digital licensing restrictions. Safari's WebCodecs engine rejects raw AC-3 elementary stream frames. AC-3 and E-AC-3 streaming is native-only (iOS, macOS native, Android, Windows, and Linux with FFmpeg). On Web, feeding AC-3/E-AC-3 stream data returns `PlayerErrors.audioFormatNotSupported`. For cross-browser web streaming, use AAC (ADTS), Opus, MP3, FLAC, or raw PCM.
 - **`BufferingType.released` plays exactly once.** A second `play` on the same source throws `SoLoudBufferStreamCanBePlayedOnlyOnceCppException`. When it finishes, the buffer is empty and you must dispose the source yourself (or pass `autoDispose: true`).
 - **`getPosition` lies for released streams** — always `Duration.zero`. Use `getStreamTimeConsumed(sound)`; calling it on a non-released sound throws.
 - **Reaching the max buffer size ends the stream.** Once the cap is hit, the stream is treated as ended and further `addAudioDataStream` calls throw `SoLoudStreamEndedAlreadyCppException` (the web_radio example catches it and reconnects). Size the cap for the feed, or use `released`.

@@ -1,6 +1,6 @@
 ---
 name: flutter-soloud-pull-streaming
-version: 2
+version: 3
 description: Teaches the pull-buffer streaming API of the flutter_soloud audio plugin — setPullBufferStream with its onMoreDataIsNeeded callback, addPullBufferDataStream with byte offsets, seek via engine re-requests, and bounded-memory playback of huge seekable sources (HTTP range requests, large files). Use when the user asks to stream a large remote/local audio file with seeking, play multi-GB audio without loading it into memory, or is deciding between push (setBufferStream) and pull streaming.
 ---
 
@@ -103,6 +103,7 @@ flutter_soloud has two streaming APIs; pick by source shape:
 
 - **MP4 and M4A containers are NOT supported for streaming.** While MP4/M4A audio files are supported for whole-file loading (`loadFile`/`loadAsset`/`loadMem`), streaming chunks from MP4/M4A containers is not supported. Use streamable elementary formats (AAC ADTS, AC-3, E-AC-3, OGG, MP3, WAV, or raw PCM).
 - **Linux requirement for AAC / AC-3 / E-AC-3.** On Linux, streaming these formats requires FFmpeg shared libraries (`libavcodec` and `libavformat`) installed on the host system (`sudo apt install ffmpeg libavcodec-extra`, `sudo pacman -S ffmpeg`, etc.). Core formats (MP3, WAV, FLAC, OGG) work without FFmpeg.
+- **Web browser limitation for AC-3 / E-AC-3.** AC-3 and E-AC-3 streaming is **not supported on the Web platform in any browser**. Chrome and Firefox lack Dolby licensing, and Safari's WebCodecs engine rejects raw AC-3 elementary stream frames. AC-3 and E-AC-3 streaming is supported only on native platforms (iOS, macOS native, Android, Windows, and Linux with FFmpeg). On Web, feeding AC-3/E-AC-3 stream data returns `PlayerErrors.audioFormatNotSupported`. For cross-browser web streaming, use AAC (ADTS), Opus, MP3, FLAC, or raw PCM.
 - **`audioSizeBytes` of 0 throws.** `setPullBufferStream` calls `SoLoudCppException.fromPlayerError(PlayerErrors.invalidParameter)` when it is 0. Do a HEAD request / stat the file first. A server that omits `Content-Length` and `Accept-Ranges: bytes` is a poor fit for pull.
 - **Do not invent an end-of-stream call.** There is no `setDataIsEnded` for pull streams (that belongs to the push API). The stream ends automatically once sequential data reaches `audioSizeBytes`.
 - **The callback can re-fire for the same offset and fire out of order.** Deduplicate in-flight requests (`_pendingOffsets.add(offset)` pattern) and guard `offset < 0 || offset >= audioSizeBytes` — the engine may probe the tail for Ogg duration. `addPullBufferDataStream` accepts out-of-order chunks precisely for this.

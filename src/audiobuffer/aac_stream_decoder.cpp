@@ -6,6 +6,8 @@
 std::unique_ptr<AACDecoderWrapper::Impl> createAppleAACDecoderImpl(DetectedType format);
 #elif defined(__ANDROID__)
 std::unique_ptr<AACDecoderWrapper::Impl> createAndroidAACDecoderImpl(DetectedType format);
+#elif defined(__EMSCRIPTEN__)
+std::unique_ptr<AACDecoderWrapper::Impl> createWebAACDecoderImpl(DetectedType format);
 #endif
 
 namespace {
@@ -34,6 +36,8 @@ std::unique_ptr<AACDecoderWrapper::Impl> AACDecoderWrapper::createImpl(DetectedT
   return createAppleAACDecoderImpl(format);
 #elif defined(__ANDROID__)
   return createAndroidAACDecoderImpl(format);
+#elif defined(__EMSCRIPTEN__)
+  return createWebAACDecoderImpl(format);
 #else
   return std::make_unique<UnsupportedAACImpl>(format);
 #endif

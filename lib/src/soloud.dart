@@ -74,6 +74,94 @@ Future<({PlayerErrors error, SoundHash soundHash})> _loadMemWeb({
   // to be a good balance.
   const chunkSize = 128 * 1024; // 128 KB chunks
 
+  // Check if the memory buffer is an ISO BMFF container (M4A / MP4) or
+  // AAC / AC-3 / E-AC-3.
+  // Using decodeAudioDataWeb decodes standard formats via the browser's native
+  // audio decoder without requiring chunk-by-chunk streaming latency.
+  final isM4aOrMp4 =
+      buffer.length >= 8 &&
+      buffer[4] == 0x66 && // 'f'
+      buffer[5] == 0x74 && // 't'
+      buffer[6] == 0x79 && // 'y'
+      buffer[7] == 0x70; // 'p'
+  final isAac =
+      buffer.length >= 4 &&
+      ((buffer[0] == 0xFF && (buffer[1] & 0xF0) == 0xF0) || // ADTS
+          (buffer[0] == 0x41 &&
+              buffer[1] == 0x44 &&
+              buffer[2] == 0x49 &&
+              buffer[3] == 0x46)); // ADIF
+  final isAc3OrEac3 =
+      buffer.length >= 2 &&
+      ((buffer[0] == 0x0B && buffer[1] == 0x77) ||
+          (buffer[0] == 0x77 && buffer[1] == 0x0B));
+
+  if (isAc3OrEac3) {
+    SoLoud._log.severe(
+      'AC-3 and E-AC-3 audio formats are not supported on Web '
+      '(Chrome/Firefox lack Dolby licensing; Safari WebCodecs fails on '
+      'raw AC-3 frames). Use AAC, Opus, MP3, FLAC, or WAV.',
+    );
+    return (
+      error: PlayerErrors.audioFormatNotSupported,
+      soundHash: const SoundHash.invalid(),
+    );
+  }
+
+  if (isM4aOrMp4 || isAac) {
+    final decoded = await SoLoudController().soLoudFFI.decodeAudioDataWeb(
+      buffer,
+    );
+    if (decoded != null) {
+      final ret = SoLoudController().soLoudFFI.setBufferStream(
+        1024 * 1024 * 200,
+        BufferingType.preserved,
+        0.5,
+        decoded.sampleRate,
+        decoded.channels,
+        BufferType.f32le.value,
+        null,
+        null,
+      );
+
+      if (ret.error != PlayerErrors.noError) {
+        return ret;
+      }
+
+      final pcmBytes = decoded.samples.buffer.asUint8List();
+      for (var offset = 0; offset < pcmBytes.length; offset += chunkSize) {
+        final end = (offset + chunkSize < pcmBytes.length)
+            ? offset + chunkSize
+            : pcmBytes.length;
+        final chunk = Uint8List.sublistView(pcmBytes, offset, end);
+
+        final error = SoLoudController().soLoudFFI.addAudioDataStream(
+          ret.soundHash.hash,
+          chunk,
+        );
+
+        if (error != PlayerErrors.noError) {
+          SoLoudController().soLoudFFI.disposeSound(ret.soundHash);
+          return (error: error, soundHash: const SoundHash.invalid());
+        }
+
+        if (end < pcmBytes.length) {
+          await Future<void>.delayed(Duration.zero);
+        }
+      }
+
+      final endError = SoLoudController().soLoudFFI.setDataIsEnded(
+        ret.soundHash,
+      );
+      if (endError != PlayerErrors.noError) {
+        SoLoudController().soLoudFFI.disposeSound(ret.soundHash);
+        return (error: endError, soundHash: const SoundHash.invalid());
+      }
+
+      return ret;
+    }
+  }
+
   // Create a buffer stream with auto-detection and preserved buffering.
   final ret = SoLoudController().soLoudFFI.setBufferStream(
     // 200 MB max buffer size, not allocated, just a limit for the stream

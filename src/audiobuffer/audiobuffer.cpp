@@ -122,7 +122,7 @@ void BufferStreamInstance::restoreSourceState(
 unsigned int BufferStreamInstance::getAudio(float *aBuffer,
                                             unsigned int aSamplesToRead,
                                             unsigned int aBufferSize) {
-  if (aBuffer == nullptr || mChannels == 0 || aSamplesToRead == 0) {
+  if (aBuffer == nullptr || aSamplesToRead == 0) {
     return 0;
   }
 
@@ -143,6 +143,13 @@ unsigned int BufferStreamInstance::getAudio(float *aBuffer,
     mSamplerate = mParent->autoTypeSamplerate;
     mChannels = mParent->autoTypeChannels;
     samplerateAlreadySet = true;
+  } else if (mChannels == 0 && mParent->mChannels > 0) {
+    mChannels = mParent->mChannels;
+  }
+
+  if (mChannels == 0) {
+    clearPlanarBuffer(aBuffer, aSamplesToRead, aBufferSize, mChannels);
+    return 0;
   }
 
   const unsigned int bufferSize =
@@ -425,7 +432,32 @@ void BufferStream::setDataIsEnded() {
   dataIsEnded = true;
   checkBuffering(0);
 
-#ifndef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__)
+  // On Web, drain any remaining pending data from the decoder.
+  while (streamDecoder && streamDecoder->hasPendingData()) {
+    int sampleRate = (mThePlayer != nullptr) ? mThePlayer->mSampleRate : 44100;
+    int channels = (mThePlayer != nullptr) ? mThePlayer->mChannels : 2;
+    std::vector<unsigned char> emptyBuf;
+    auto [decoded, error] = streamDecoder->decode(
+        emptyBuf, &sampleRate, &channels, nullptr, 0);
+
+    if (!decoded.empty()) {
+      bool allDataAdded = false;
+      size_t bytesWritten = 0;
+      {
+        std::lock_guard<std::recursive_mutex> lock(mBuffer.bufferMutex);
+        bytesWritten = mBuffer.addData(BufferType::PCM_F32LE, decoded.data(),
+                                       decoded.size(), &allDataAdded) *
+                       sizeof(float);
+      }
+      checkBuffering(static_cast<unsigned int>(bytesWritten));
+      mUncompressedBytesReceived += bytesWritten;
+      mSampleCount += static_cast<unsigned int>(bytesWritten / sizeof(float));
+    } else {
+      break;
+    }
+  }
+#else
   // If the decoder has remaining buffered data (e.g. Android MediaCodec with
   // unthrottled incoming chunks), decode them in a background worker thread
   // so Flutter's main UI thread is NEVER blocked!
@@ -496,7 +528,7 @@ PlayerErrors BufferStream::addData(const void *aData, unsigned int aDataLen,
     } else {
       // Performing some buffering. We need some data to be added expecially
       // when using opus or mp3.
-      if (buffer.size() > 1024 * 4) // 4 KB of data.
+      if (buffer.size() > 1024 * 4 || (streamDecoder && streamDecoder->hasPendingData()))
       {
         // When using opus,ogg or mp3 we don't need to align.
         bufferDataToAdd = static_cast<int32_t>(buffer.size());
