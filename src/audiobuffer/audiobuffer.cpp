@@ -174,10 +174,7 @@ unsigned int BufferStreamInstance::getAudio(float *aBuffer,
                             ? mOffset / (mBaseSamplerate * mChannels)
                             : 0.0;
     } else {
-      mStreamPosition = (mBaseSamplerate > 0.0f && mChannels > 0)
-                            ? (float)((double)mParent->mBytesConsumed / sizeof(float)) /
-                                  (mBaseSamplerate * mChannels)
-                            : 0.0f;
+      mStreamPosition = 0;
     }
 
     if (!mParent->dataIsEnded && mParent->mBufferingTimeNeeds > 0) {
@@ -252,10 +249,7 @@ unsigned int BufferStreamInstance::getAudio(float *aBuffer,
   if (mParent->mBuffer.bufferingType == BufferingType::RELEASED) {
     mParent->mSampleCount -= samplesRemoved;
     mParent->mBytesConsumed += totalBytesRead;
-    mStreamPosition = (mBaseSamplerate > 0.0f && mChannels > 0)
-                          ? (float)((double)mParent->mBytesConsumed / sizeof(float)) /
-                                (mBaseSamplerate * mChannels)
-                          : 0.0f;
+    mStreamPosition = 0;
   } else {
     mOffset += samplesToRead * mChannels;
     // For PRESERVED type, streamPosition advances with the offset.
