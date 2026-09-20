@@ -373,6 +373,182 @@ final class OggMetadata {
   }
 }
 
+/// Contains detailed information about an AAC audio stream
+final class AacMetadata {
+  /// Creates a new [AacMetadata] instance with the metadata fields
+  AacMetadata({
+    required this.sampleRate,
+    required this.channels,
+    required this.profile,
+    required this.bitrate,
+    required this.frameLength,
+    this.title = '',
+    this.artist = '',
+    this.album = '',
+  });
+
+  /// The sampling rate of the audio in Hz
+  int sampleRate;
+
+  /// The number of audio channels
+  int channels;
+
+  /// The AAC profile (e.g., "LC", "Main", "SSR", "LTP")
+  String profile;
+
+  /// The nominal or calculated bitrate in bits per second
+  int bitrate;
+
+  /// The ADTS frame length in bytes
+  int frameLength;
+
+  /// The title of the track if present from ID3 or ICY stream
+  String title;
+
+  /// The artist of the track if present from ID3 or ICY stream
+  String artist;
+
+  /// The album of the track if present from ID3
+  String album;
+
+  @override
+  String toString() {
+    final buffer = StringBuffer()
+      ..writeln('\tSampleRate: $sampleRate')
+      ..writeln('\tChannels: $channels')
+      ..writeln('\tProfile: $profile')
+      ..writeln('\tBitrate: $bitrate')
+      ..writeln('\tFrameLength: $frameLength');
+    if (title.isNotEmpty) {
+      buffer.writeln('\tTitle: $title');
+    }
+    if (artist.isNotEmpty) {
+      buffer.writeln('\tArtist: $artist');
+    }
+    if (album.isNotEmpty) {
+      buffer.writeln('\tAlbum: $album');
+    }
+    return buffer.toString().trimRight();
+  }
+}
+
+/// Contains detailed information about an AC-3 (Dolby Digital) audio stream
+final class Ac3Metadata {
+  /// Creates a new [Ac3Metadata] instance with the metadata fields
+  Ac3Metadata({
+    required this.sampleRate,
+    required this.channels,
+    required this.bitrate,
+    required this.bsid,
+    required this.bsmod,
+    required this.acmod,
+    required this.lfeOn,
+    required this.frameSize,
+  });
+
+  /// The sampling rate of the audio in Hz
+  int sampleRate;
+
+  /// The total number of channels including LFE
+  int channels;
+
+  /// The nominal bitrate in bits per second
+  int bitrate;
+
+  /// Bit stream identification (bsid <= 10 for standard AC-3)
+  int bsid;
+
+  /// Bit stream mode
+  int bsmod;
+
+  /// Audio coding mode
+  int acmod;
+
+  /// Whether the Low Frequency Effects (subwoofer) channel is enabled
+  bool lfeOn;
+
+  /// The syncframe size in bytes
+  int frameSize;
+
+  @override
+  String toString() {
+    final buffer = StringBuffer()
+      ..writeln('\tSampleRate: $sampleRate')
+      ..writeln('\tChannels: $channels')
+      ..writeln('\tBitrate: $bitrate')
+      ..writeln('\tBsid: $bsid')
+      ..writeln('\tBsmod: $bsmod')
+      ..writeln('\tAcmod: $acmod')
+      ..writeln('\tLfeOn: $lfeOn')
+      ..write('\tFrameSize: $frameSize');
+    return buffer.toString();
+  }
+}
+
+/// Contains detailed information about an E-AC-3 (Dolby Digital Plus)
+/// audio stream
+final class Eac3Metadata {
+  /// Creates a new [Eac3Metadata] instance with the metadata fields
+  Eac3Metadata({
+    required this.sampleRate,
+    required this.channels,
+    required this.bitrate,
+    required this.bsid,
+    required this.streamType,
+    required this.substreamId,
+    required this.acmod,
+    required this.lfeOn,
+    required this.frameSize,
+    required this.numBlocks,
+  });
+
+  /// The sampling rate of the audio in Hz
+  int sampleRate;
+
+  /// The total number of channels including LFE
+  int channels;
+
+  /// The calculated bitrate in bits per second
+  int bitrate;
+
+  /// Bit stream identification (typically 16 for E-AC-3)
+  int bsid;
+
+  /// Stream type (0 = primary, 1 = secondary, 2 = independent)
+  int streamType;
+
+  /// Substream identification
+  int substreamId;
+
+  /// Audio coding mode
+  int acmod;
+
+  /// Whether the Low Frequency Effects (subwoofer) channel is enabled
+  bool lfeOn;
+
+  /// The syncframe size in bytes
+  int frameSize;
+
+  /// Number of audio blocks per syncframe
+  int numBlocks;
+
+  @override
+  String toString() {
+    final buffer = StringBuffer()
+      ..writeln('\tSampleRate: $sampleRate')
+      ..writeln('\tChannels: $channels')
+      ..writeln('\tBitrate: $bitrate')
+      ..writeln('\tBsid: $bsid')
+      ..writeln('\tStreamType: $streamType')
+      ..writeln('\tSubstreamId: $substreamId')
+      ..writeln('\tAcmod: $acmod')
+      ..writeln('\tLfeOn: $lfeOn')
+      ..writeln('\tFrameSize: $frameSize')
+      ..write('\tNumBlocks: $numBlocks');
+    return buffer.toString();
+  }
+}
+
 /// The main container for all audio metadata, supporting various audio formats
 final class AudioMetadata {
   /// Creates a new [AudioMetadata] instance with metadata for different
@@ -381,6 +557,9 @@ final class AudioMetadata {
     required this.detectedType,
     this.mp3Metadata,
     this.oggMetadata,
+    this.aacMetadata,
+    this.ac3Metadata,
+    this.eac3Metadata,
   });
 
   /// The detected audio format type (e.g., "MP3", "OGG", etc.)
@@ -392,6 +571,15 @@ final class AudioMetadata {
   /// Metadata specific to OGG container format, including Opus and Vorbis
   /// information
   OggMetadata? oggMetadata;
+
+  /// Metadata specific to AAC audio format
+  AacMetadata? aacMetadata;
+
+  /// Metadata specific to AC-3 audio format
+  Ac3Metadata? ac3Metadata;
+
+  /// Metadata specific to E-AC-3 audio format
+  Eac3Metadata? eac3Metadata;
 
   /// Returns a string representation of the [AudioMetadata] object
   @override
@@ -414,11 +602,23 @@ final class AudioMetadata {
       case DetectedType.m4a:
         buffer.writeln('M4A audio format');
       case DetectedType.aac:
-        buffer.writeln('AAC audio format');
+        if (aacMetadata != null) {
+          buffer.writeln(aacMetadata);
+        } else {
+          buffer.writeln('AAC audio format');
+        }
       case DetectedType.ac3:
-        buffer.writeln('AC3 audio format');
+        if (ac3Metadata != null) {
+          buffer.writeln(ac3Metadata);
+        } else {
+          buffer.writeln('AC3 audio format');
+        }
       case DetectedType.eac3:
-        buffer.writeln('EAC3 audio format');
+        if (eac3Metadata != null) {
+          buffer.writeln(eac3Metadata);
+        } else {
+          buffer.writeln('EAC3 audio format');
+        }
       case DetectedType.unknown:
         buffer.writeln('Unknown audio format');
     }

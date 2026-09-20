@@ -101,10 +101,48 @@ struct Mp3Metadata {
   std::string genre;
 };
 
+struct AacMetadata {
+  int sampleRate = 0;
+  int channels = 0;
+  std::string profile;
+  int bitrate = 0;
+  int frameLength = 0;
+  std::string title;
+  std::string artist;
+  std::string album;
+};
+
+struct Ac3Metadata {
+  int sampleRate = 0;
+  int channels = 0;
+  int bitrate = 0;
+  int bsid = 0;
+  int bsmod = 0;
+  int acmod = 0;
+  bool lfeOn = false;
+  int frameSize = 0;
+};
+
+struct Eac3Metadata {
+  int sampleRate = 0;
+  int channels = 0;
+  int bitrate = 0;
+  int bsid = 0;
+  int streamType = 0;
+  int substreamId = 0;
+  int acmod = 0;
+  bool lfeOn = false;
+  int frameSize = 0;
+  int numBlocks = 0;
+};
+
 struct AudioMetadata {
   DetectedType type;
   Mp3Metadata mp3Metadata;
   OggMetadata oggMetadata;
+  AacMetadata aacMetadata;
+  Ac3Metadata ac3Metadata;
+  Eac3Metadata eac3Metadata;
 
 public:
   void debug() {
@@ -239,6 +277,44 @@ public:
                   << "Total Samples: " << oggMetadata.flacInfo.total_samples
                   << std::endl;
       }
+    } else if (type == DetectedType::BUFFER_AAC) {
+      std::cout << "AAC info" << std::endl;
+      std::cout << "\tSample Rate: " << aacMetadata.sampleRate << std::endl;
+      std::cout << "\tChannels: " << aacMetadata.channels << std::endl;
+      std::cout << "\tProfile: " << aacMetadata.profile << std::endl;
+      std::cout << "\tBitrate: " << aacMetadata.bitrate << std::endl;
+      std::cout << "\tFrame Length: " << aacMetadata.frameLength << std::endl;
+      if (!aacMetadata.title.empty()) {
+        std::cout << "\tTitle: " << aacMetadata.title << std::endl;
+      }
+      if (!aacMetadata.artist.empty()) {
+        std::cout << "\tArtist: " << aacMetadata.artist << std::endl;
+      }
+      if (!aacMetadata.album.empty()) {
+        std::cout << "\tAlbum: " << aacMetadata.album << std::endl;
+      }
+    } else if (type == DetectedType::BUFFER_AC3) {
+      std::cout << "AC3 info" << std::endl;
+      std::cout << "\tSample Rate: " << ac3Metadata.sampleRate << std::endl;
+      std::cout << "\tChannels: " << ac3Metadata.channels << std::endl;
+      std::cout << "\tBitrate: " << ac3Metadata.bitrate << std::endl;
+      std::cout << "\tBsid: " << ac3Metadata.bsid << std::endl;
+      std::cout << "\tBsmod: " << ac3Metadata.bsmod << std::endl;
+      std::cout << "\tAcmod: " << ac3Metadata.acmod << std::endl;
+      std::cout << "\tLfeOn: " << (ac3Metadata.lfeOn ? "true" : "false") << std::endl;
+      std::cout << "\tFrame Size: " << ac3Metadata.frameSize << std::endl;
+    } else if (type == DetectedType::BUFFER_EAC3) {
+      std::cout << "EAC3 info" << std::endl;
+      std::cout << "\tSample Rate: " << eac3Metadata.sampleRate << std::endl;
+      std::cout << "\tChannels: " << eac3Metadata.channels << std::endl;
+      std::cout << "\tBitrate: " << eac3Metadata.bitrate << std::endl;
+      std::cout << "\tBsid: " << eac3Metadata.bsid << std::endl;
+      std::cout << "\tStream Type: " << eac3Metadata.streamType << std::endl;
+      std::cout << "\tSubstream ID: " << eac3Metadata.substreamId << std::endl;
+      std::cout << "\tAcmod: " << eac3Metadata.acmod << std::endl;
+      std::cout << "\tLfeOn: " << (eac3Metadata.lfeOn ? "true" : "false") << std::endl;
+      std::cout << "\tFrame Size: " << eac3Metadata.frameSize << std::endl;
+      std::cout << "\tNum Blocks: " << eac3Metadata.numBlocks << std::endl;
     }
     std::cout << "|---------------------------------|" << std::endl;
   }

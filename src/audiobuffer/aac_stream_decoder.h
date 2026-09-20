@@ -2,6 +2,7 @@
 #define AAC_STREAM_DECODER_H
 
 #include "stream_decoder.h"
+#include "icy_metadata.h"
 #include <memory>
 #include <vector>
 
@@ -23,8 +24,14 @@ public:
     return mImpl ? mImpl->hasPendingData() : false;
   }
 
+  void setIcyMetaInt(int icyMetaInt);
+
   static bool checkForValidFrames(const std::vector<unsigned char> &buffer);
   static bool checkForValidAc3Frames(const std::vector<unsigned char> &buffer);
+  static bool parseAacAdtsMetadata(const unsigned char *data, size_t size, AacMetadata &out);
+  static bool parseAc3Metadata(const unsigned char *data, size_t size, Ac3Metadata &out);
+  static bool parseEac3Metadata(const unsigned char *data, size_t size, Eac3Metadata &out);
+  static bool parseId3Tags(const unsigned char *data, size_t size, AacMetadata &out, size_t &outId3Size);
 
   class Impl {
   public:
@@ -40,6 +47,12 @@ public:
 private:
   static std::unique_ptr<Impl> createImpl(DetectedType format);
   std::unique_ptr<Impl> mImpl;
+  DetectedType mFormat;
+  bool mMetadataParsed = false;
+  int mIcyMetaInt = 0;
+  IcyStripState mIcy;
+  bool mId3Parsed = false;
+  AacMetadata mCachedAacMetadata;
 };
 
 using NativeStreamDecoderWrapper = AACDecoderWrapper;

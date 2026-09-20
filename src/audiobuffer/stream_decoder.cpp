@@ -13,6 +13,20 @@
 
 void StreamDecoder::setBufferIcyMetaInt(int icyMetaInt) {
     mIcyMetaInt = icyMetaInt;
+    if (mWrapper) {
+        if (mWrapper->detectedType == DetectedType::BUFFER_MP3_STREAM || mWrapper->detectedType == DetectedType::BUFFER_MP3_WITH_ID3) {
+            static_cast<MP3DecoderWrapper*>(mWrapper.get())->setIcyMetaInt(mIcyMetaInt);
+        } else if (mWrapper->detectedType == DetectedType::BUFFER_AAC) {
+            static_cast<AACDecoderWrapper*>(mWrapper.get())->setIcyMetaInt(mIcyMetaInt);
+        }
+#if !defined(NO_XIPH_LIBS)
+        else if (mWrapper->detectedType == DetectedType::BUFFER_FLAC) {
+            static_cast<FlacDecoderWrapper*>(mWrapper.get())->setIcyMetaInt(mIcyMetaInt);
+        } else if (mWrapper->detectedType == DetectedType::BUFFER_OGG_FLAC) {
+            static_cast<OggFlacDecoderWrapper*>(mWrapper.get())->setIcyMetaInt(mIcyMetaInt);
+        }
+#endif
+    }
 }
 
 // Helper to get the size of an ID3v2 tag. Returns 0 if not an ID3v2 tag.
@@ -110,8 +124,18 @@ DetectedType StreamDecoder::detectAudioFormat(const std::vector<unsigned char>& 
         return DetectedType::BUFFER_WAV;
     }
 
-    // --- Detect MP3 ---
+    // --- Detect ID3 (MP3 or AAC) ---
     else if (size >= 3 && getID3TagSize(buffer) != 0) {
+        size_t id3Size = getID3TagSize(buffer);
+        if (size < id3Size + 4) {
+            return DetectedType::BUFFER_NO_ENOUGH_DATA;
+        }
+        const unsigned char *payload = buffer.data() + id3Size;
+        size_t payloadSize = size - id3Size;
+        if (NativeAudioDecoder::isAacAdts(payload, payloadSize) ||
+            AACDecoderWrapper::checkForValidFrames(std::vector<unsigned char>(payload, payload + payloadSize))) {
+            return DetectedType::BUFFER_AAC;
+        }
         return DetectedType::BUFFER_MP3_WITH_ID3; // ID3 tag found
     } 
     else if (MP3DecoderWrapper::checkForValidFrames(buffer)) {
@@ -220,6 +244,7 @@ std::pair<std::vector<float>, DecoderError> StreamDecoder::decode(
                 fprintf(stderr, "[flutter_soloud] Failed to initialize AAC stream decoder (not supported or invalid format).\n");
                 return {{}, DecoderError::FormatNotSupported};
             }
+            static_cast<AACDecoderWrapper*>(mWrapper.get())->setIcyMetaInt(mIcyMetaInt);
         } else if (detectedType == DetectedType::BUFFER_AC3 || detectedType == DetectedType::BUFFER_EAC3) {
             mWrapper = std::make_unique<AACDecoderWrapper>(detectedType);
             isFormatDetected = static_cast<AACDecoderWrapper*>(mWrapper.get())->initializeDecoder(*samplerate, *channels);

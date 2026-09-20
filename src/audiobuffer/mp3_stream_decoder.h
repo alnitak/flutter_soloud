@@ -33,6 +33,8 @@ public:
   decode(std::vector<unsigned char> &buffer, int *samplerate,
          int *channels, size_t maxOutputSamples = 0) override;
 
+  bool hasPendingData() const override;
+
   bool canSeekToTime(double seconds) const override;
   uint64_t timeToByteOffset(double seconds) override;
   double getDuration() const override;
@@ -71,6 +73,7 @@ private:
   int mIcyMetaInt;
   bool ID3TagsFound;
   bool mDataEnded; // Signals that no more data will be added
+  bool mDrained;   // True when decoder has finished draining after mDataEnded
   uint64_t mTotalAudioSizeBytes;
 
   void buildSeekTable();

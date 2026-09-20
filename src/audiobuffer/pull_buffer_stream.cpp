@@ -1474,6 +1474,42 @@ PullBufferStream::convertMetadataToFFI(const AudioMetadata &metadata) const {
       metadata.oggMetadata.flacInfo.bits_per_sample,
       metadata.oggMetadata.flacInfo.total_samples};
 
+  // Convert AAC metadata
+  std::strncpy(ffi.aacMetadata.title, metadata.aacMetadata.title.c_str(),
+               MAX_STRING_LENGTH - 1);
+  std::strncpy(ffi.aacMetadata.artist, metadata.aacMetadata.artist.c_str(),
+               MAX_STRING_LENGTH - 1);
+  std::strncpy(ffi.aacMetadata.album, metadata.aacMetadata.album.c_str(),
+               MAX_STRING_LENGTH - 1);
+  ffi.aacMetadata.sample_rate = metadata.aacMetadata.sampleRate;
+  ffi.aacMetadata.channels = metadata.aacMetadata.channels;
+  std::strncpy(ffi.aacMetadata.profile, metadata.aacMetadata.profile.c_str(),
+               sizeof(ffi.aacMetadata.profile) - 1);
+  ffi.aacMetadata.bitrate = metadata.aacMetadata.bitrate;
+  ffi.aacMetadata.frame_length = metadata.aacMetadata.frameLength;
+
+  // Convert AC3 metadata
+  ffi.ac3Metadata.sample_rate = metadata.ac3Metadata.sampleRate;
+  ffi.ac3Metadata.channels = metadata.ac3Metadata.channels;
+  ffi.ac3Metadata.bitrate = metadata.ac3Metadata.bitrate;
+  ffi.ac3Metadata.bsid = metadata.ac3Metadata.bsid;
+  ffi.ac3Metadata.bsmod = metadata.ac3Metadata.bsmod;
+  ffi.ac3Metadata.acmod = metadata.ac3Metadata.acmod;
+  ffi.ac3Metadata.lfeon = metadata.ac3Metadata.lfeOn ? 1 : 0;
+  ffi.ac3Metadata.frame_size = metadata.ac3Metadata.frameSize;
+
+  // Convert EAC3 metadata
+  ffi.eac3Metadata.sample_rate = metadata.eac3Metadata.sampleRate;
+  ffi.eac3Metadata.channels = metadata.eac3Metadata.channels;
+  ffi.eac3Metadata.bitrate = metadata.eac3Metadata.bitrate;
+  ffi.eac3Metadata.bsid = metadata.eac3Metadata.bsid;
+  ffi.eac3Metadata.stream_type = metadata.eac3Metadata.streamType;
+  ffi.eac3Metadata.substream_id = metadata.eac3Metadata.substreamId;
+  ffi.eac3Metadata.acmod = metadata.eac3Metadata.acmod;
+  ffi.eac3Metadata.lfeon = metadata.eac3Metadata.lfeOn ? 1 : 0;
+  ffi.eac3Metadata.frame_size = metadata.eac3Metadata.frameSize;
+  ffi.eac3Metadata.num_blocks = metadata.eac3Metadata.numBlocks;
+
   return ffi;
 }
 

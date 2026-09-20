@@ -206,6 +206,90 @@ final class NativeOggMetadata extends ffi.Struct {
   external FlacInfoFFI flacInfo;
 }
 
+final class NativeAacMetadata extends ffi.Struct {
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> title;
+
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> artist;
+
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> album;
+
+  @ffi.Uint32()
+  external int sample_rate;
+
+  @ffi.Uint32()
+  external int channels;
+
+  @ffi.Array(32)
+  external ffi.Array<ffi.Char> profile;
+
+  @ffi.Uint32()
+  external int bitrate;
+
+  @ffi.Uint32()
+  external int frame_length;
+}
+
+final class NativeAc3Metadata extends ffi.Struct {
+  @ffi.Uint32()
+  external int sample_rate;
+
+  @ffi.Uint32()
+  external int channels;
+
+  @ffi.Uint32()
+  external int bitrate;
+
+  @ffi.Uint32()
+  external int bsid;
+
+  @ffi.Uint32()
+  external int bsmod;
+
+  @ffi.Uint32()
+  external int acmod;
+
+  @ffi.Uint32()
+  external int lfeon;
+
+  @ffi.Uint32()
+  external int frame_size;
+}
+
+final class NativeEac3Metadata extends ffi.Struct {
+  @ffi.Uint32()
+  external int sample_rate;
+
+  @ffi.Uint32()
+  external int channels;
+
+  @ffi.Uint32()
+  external int bitrate;
+
+  @ffi.Uint32()
+  external int bsid;
+
+  @ffi.Uint32()
+  external int stream_type;
+
+  @ffi.Uint32()
+  external int substream_id;
+
+  @ffi.Uint32()
+  external int acmod;
+
+  @ffi.Uint32()
+  external int lfeon;
+
+  @ffi.Uint32()
+  external int frame_size;
+
+  @ffi.Uint32()
+  external int num_blocks;
+}
+
 final class NativeAudioMetadata extends ffi.Struct {
   @ffi.UnsignedInt()
   external int detectedTypeAsInt;
@@ -217,11 +301,16 @@ final class NativeAudioMetadata extends ffi.Struct {
 
   external NativeOggMetadata oggMetadata;
 
+  external NativeAacMetadata aacMetadata;
+
+  external NativeAc3Metadata ac3Metadata;
+
+  external NativeEac3Metadata eac3Metadata;
+
   /// Helper function to convert FFI char array to String
-  String _arrayToString(ffi.Array<ffi.Char> array) {
+  String _arrayToString(ffi.Array<ffi.Char> array, [int maxLength = 1024]) {
     final buffer = StringBuffer();
-    for (var i = 0; i < 1024; i++) {
-      // Using 1024 as it's the size we defined for our arrays
+    for (var i = 0; i < maxLength; i++) {
       if (array[i] <= 0) break; // Stop at null terminator
       buffer.writeCharCode(array[i]);
     }
@@ -295,10 +384,48 @@ final class NativeAudioMetadata extends ffi.Struct {
       ),
     );
 
+    final aacMeta = AacMetadata(
+      title: _arrayToString(aacMetadata.title),
+      artist: _arrayToString(aacMetadata.artist),
+      album: _arrayToString(aacMetadata.album),
+      sampleRate: aacMetadata.sample_rate,
+      channels: aacMetadata.channels,
+      profile: _arrayToString(aacMetadata.profile, 32),
+      bitrate: aacMetadata.bitrate,
+      frameLength: aacMetadata.frame_length,
+    );
+
+    final ac3Meta = Ac3Metadata(
+      sampleRate: ac3Metadata.sample_rate,
+      channels: ac3Metadata.channels,
+      bitrate: ac3Metadata.bitrate,
+      bsid: ac3Metadata.bsid,
+      bsmod: ac3Metadata.bsmod,
+      acmod: ac3Metadata.acmod,
+      lfeOn: ac3Metadata.lfeon != 0,
+      frameSize: ac3Metadata.frame_size,
+    );
+
+    final eac3Meta = Eac3Metadata(
+      sampleRate: eac3Metadata.sample_rate,
+      channels: eac3Metadata.channels,
+      bitrate: eac3Metadata.bitrate,
+      bsid: eac3Metadata.bsid,
+      streamType: eac3Metadata.stream_type,
+      substreamId: eac3Metadata.substream_id,
+      acmod: eac3Metadata.acmod,
+      lfeOn: eac3Metadata.lfeon != 0,
+      frameSize: eac3Metadata.frame_size,
+      numBlocks: eac3Metadata.num_blocks,
+    );
+
     return AudioMetadata(
       detectedType: detectedTypeFFI.toDart(),
       mp3Metadata: mp3Meta,
       oggMetadata: oggMeta,
+      aacMetadata: aacMeta,
+      ac3Metadata: ac3Meta,
+      eac3Metadata: eac3Meta,
     );
   }
 }

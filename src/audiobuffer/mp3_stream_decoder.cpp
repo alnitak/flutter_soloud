@@ -127,7 +127,7 @@ MP3DecoderWrapper::MP3DecoderWrapper()
       m_audioDataBaseOffset(0), m_seekTableBaseOffset(0), m_id3Size(0),
       bytes_until_meta(0), // no metadata expected by default
       lastMetadata(""), mIcyMetaInt(0), ID3TagsFound(false),
-      mDataEnded(false), mTotalAudioSizeBytes(0) {}
+      mDataEnded(false), mDrained(false), mTotalAudioSizeBytes(0) {}
 
 MP3DecoderWrapper::~MP3DecoderWrapper() { cleanup(); }
 
@@ -146,6 +146,7 @@ void MP3DecoderWrapper::cleanup() {
   lastMetadata = "";
   ID3TagsFound = false;
   mDataEnded = false;
+  mDrained = false;
 }
 
 void MP3DecoderWrapper::setDataEnded() { mDataEnded = true; }
@@ -311,6 +312,9 @@ MP3DecoderWrapper::decode(std::vector<unsigned char> &buffer, int *samplerate,
                          pcm_frames + frames_read * decoder.channels);
     } else {
       // Decoder returned 0 frames; no more data available.
+      if (mDataEnded) {
+        mDrained = true;
+      }
       break;
     }
 
@@ -343,6 +347,19 @@ MP3DecoderWrapper::decode(std::vector<unsigned char> &buffer, int *samplerate,
   }
 
   return {decodedData, DecoderError::NoError};
+}
+
+bool MP3DecoderWrapper::hasPendingData() const {
+  if (mDataEnded && mDrained) {
+    return false;
+  }
+  if (m_read_pos < audioData.size()) {
+    return true;
+  }
+  if (mDataEnded && !mDrained) {
+    return true;
+  }
+  return false;
 }
 
 void MP3DecoderWrapper::buildSeekTable() {

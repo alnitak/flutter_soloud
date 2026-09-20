@@ -60,6 +60,8 @@ class _WebRadioExampleState extends State<WebRadioExample> {
     {'FLAC': 'http://s2.audiostream.hu:8091/bdpstrock_FLAC'},
     {'FLAC': 'https://mscp4.live-streams.nl:8142/lounge.ogg'},
     {'FLAC': 'https://frequence3.net-radio.fr/frequence3gold.flac'},
+    // AAC
+    {'AAC': 'https://radiorecord.hostingradio.ru/russiangold96.aacp'},
     // https://fmstream.org/index.php
     // 90s
     {'MP3': 'https://streaming.exclusive.radio/er/abba/icecast.audio'},

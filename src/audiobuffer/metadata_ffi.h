@@ -99,11 +99,49 @@ struct Mp3MetadataFFI {
     char genre[MAX_STRING_LENGTH];
 };
 
+struct AacMetadataFFI {
+    char title[MAX_STRING_LENGTH];
+    char artist[MAX_STRING_LENGTH];
+    char album[MAX_STRING_LENGTH];
+    uint32_t sample_rate;
+    uint32_t channels;
+    char profile[32];
+    uint32_t bitrate;
+    uint32_t frame_length;
+};
+
+struct Ac3MetadataFFI {
+    uint32_t sample_rate;
+    uint32_t channels;
+    uint32_t bitrate;
+    uint32_t bsid;
+    uint32_t bsmod;
+    uint32_t acmod;
+    uint32_t lfeon;
+    uint32_t frame_size;
+};
+
+struct Eac3MetadataFFI {
+    uint32_t sample_rate;
+    uint32_t channels;
+    uint32_t bitrate;
+    uint32_t bsid;
+    uint32_t stream_type;
+    uint32_t substream_id;
+    uint32_t acmod;
+    uint32_t lfeon;
+    uint32_t frame_size;
+    uint32_t num_blocks;
+};
+
 struct AudioMetadataFFI
 {
     DetectedTypeFFI detectedType;
     struct Mp3MetadataFFI mp3Metadata;
     struct OggMetadataFFI oggMetadata;
+    struct AacMetadataFFI aacMetadata;
+    struct Ac3MetadataFFI ac3Metadata;
+    struct Eac3MetadataFFI eac3Metadata;
 };
 
 // callback to tell dart the metadata
