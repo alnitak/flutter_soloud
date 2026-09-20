@@ -131,26 +131,20 @@ class _WebRadioExampleState extends State<WebRadioExample> {
 
       // Create a new client and request
       client = http.Client();
-      final request = http.Request('GET', Uri.parse(url));
-
-      /// MP3 streams require the Icy-MetaData header to get back the position
-      /// of the metadata in the packets received.
-      /// In the `currentStream.headers` map, you will get this value
-      /// in the `icy-metaint` key. This value should be told to flutter_soloud
-      /// using `SoLoud.setMp3BufferIcyMetaInt(value)` before any call
-      /// to `SoLoud.addAudioDataStream`.
-      /// Aside the `icy-metaint` value, you will also have othe `icy-*' values
-      /// to consider for the metadata available for all stream formats.
-      request.headers.addAll({'Icy-MetaData': '1'});
+      final request = http.Request('GET', Uri.parse(url))
+        ..followRedirects = false
+        ..headers.addAll({'Icy-MetaData': '1'});
       currentStream = await client!.send(request);
       parseConnectionInfo(currentStream!.headers);
       mp3IcyMetaIntSent = false;
 
       // Handle redirections
-      if (currentStream!.statusCode == 301 ||
-          currentStream!.statusCode == 302) {
-        final redirectUrl = currentStream!.headers['location'];
-        if (redirectUrl != null) {
+      if (currentStream!.statusCode >= 300 &&
+          currentStream!.statusCode < 400) {
+        final redirectLocation = currentStream!.headers['location'];
+        if (redirectLocation != null) {
+          final uri = Uri.parse(url);
+          final redirectUrl = uri.resolve(redirectLocation).toString();
           // Close current connection and try with new URL
           await resetConnections();
           await connectToUrl(redirectUrl);
@@ -167,6 +161,13 @@ class _WebRadioExampleState extends State<WebRadioExample> {
         return;
       }
 
+      final icyMetaInt =
+          int.tryParse(currentStream!.headers['icy-metaint'] ?? '') ?? 0;
+      if (source != null && icyMetaInt > 0) {
+        SoLoud.instance.setBufferIcyMetaInt(source!, icyMetaInt);
+        mp3IcyMetaIntSent = true;
+      }
+
       // Listen to the stream and feed data to the audio source
       subscription = currentStream!.stream.listen(
         (data) {
@@ -174,10 +175,11 @@ class _WebRadioExampleState extends State<WebRadioExample> {
           if (!mp3IcyMetaIntSent) {
             mp3IcyMetaIntSent = true;
             // set it when receiving the first audio chunk
-            SoLoud.instance.setBufferIcyMetaInt(
-              source!,
-              int.parse(currentStream!.headers['icy-metaint'] ?? '0'),
-            );
+            final metaInt =
+                int.tryParse(currentStream!.headers['icy-metaint'] ?? '') ?? 0;
+            if (metaInt > 0) {
+              SoLoud.instance.setBufferIcyMetaInt(source!, metaInt);
+            }
           }
           if (source != null) {
             try {

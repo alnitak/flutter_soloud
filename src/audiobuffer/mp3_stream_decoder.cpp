@@ -188,8 +188,7 @@ void MP3DecoderWrapper::on_meta(void *pUserData,
 MP3DecoderWrapper::MP3DecoderWrapper()
     : isInitialized(false), audioData({}), m_read_pos(0),
       m_audioDataBaseOffset(0), m_seekTableBaseOffset(0), m_id3Size(0),
-      bytes_until_meta(0), // no metadata expected by default
-      lastMetadata(""), mIcyMetaInt(0), ID3TagsFound(false),
+      mIcyMetaInt(0), mIcy{}, ID3TagsFound(false),
       mDataEnded(false), mDrained(false), mTotalAudioSizeBytes(0),
       mCachedMp3Metadata{}, mMetadataEmitted(false) {}
 
@@ -205,9 +204,8 @@ void MP3DecoderWrapper::cleanup() {
   m_audioDataBaseOffset = 0;
   m_seekTableBaseOffset = 0;
   m_id3Size = 0;
-  bytes_until_meta = 0;
-  metadata_buffer.clear();
-  lastMetadata = "";
+  mIcyMetaInt = 0;
+  mIcy = IcyStripState{};
   ID3TagsFound = false;
   mDataEnded = false;
   mDrained = false;
@@ -228,97 +226,42 @@ void MP3DecoderWrapper::setDataEnded() {
 }
 
 void MP3DecoderWrapper::setIcyMetaInt(int icyMetaInt) {
+  if (mIcyMetaInt == icyMetaInt) return;
   mIcyMetaInt = icyMetaInt;
-  bytes_until_meta = icyMetaInt;
 }
 
 void MP3DecoderWrapper::setTotalAudioSizeBytes(uint64_t size) {
   mTotalAudioSizeBytes = size;
 }
 
-// Processes a buffer for an ICY stream (internet radio).
-// It strips out metadata, appends the audio data to our internal buffer,
-// and leaves any unprocessed data in the input buffer for the next call.
-void MP3DecoderWrapper::processIcyStream(std::vector<unsigned char> &buffer) {
-  size_t readingPos = 0;
-  size_t bufferSize = buffer.size();
-
-  while (readingPos < bufferSize) {
-    size_t bytes_to_read =
-        std::min((size_t)bytes_until_meta, bufferSize - readingPos);
-    readingPos += bytes_to_read;
-    bytes_until_meta -= bytes_to_read;
-
-    if (bytes_until_meta == 0 && readingPos < bufferSize) {
-      // Time for metadata
-      int len_byte = buffer[readingPos];
-      int metadata_len = len_byte * 16;
-      readingPos++; // Skip metadata length byte
-
-      if (readingPos + metadata_len <= bufferSize) {
-        if (len_byte > 0) {
-          // Extract and process metadata
-          std::string metaStr(
-              reinterpret_cast<const char *>(buffer.data() + readingPos),
-              metadata_len);
-          if (lastMetadata != metaStr) {
-            lastMetadata = metaStr;
-            mCachedMp3Metadata.sampleRate = decoder.sampleRate;
-            mCachedMp3Metadata.channels = decoder.channels;
-            mCachedMp3Metadata.bitrate = static_cast<uint32_t>(estimateBitrateFromFirstFrame());
-            size_t titlePos = metaStr.find("StreamTitle='");
-            if (titlePos != std::string::npos) {
-              size_t endPos = metaStr.find("';", titlePos + 13);
-              if (endPos != std::string::npos) {
-                std::string streamTitle =
-                    metaStr.substr(titlePos + 13, endPos - (titlePos + 13));
-                size_t dashPos = streamTitle.find(" - ");
-                if (dashPos != std::string::npos) {
-                  mCachedMp3Metadata.artist = streamTitle.substr(0, dashPos);
-                  mCachedMp3Metadata.title = streamTitle.substr(dashPos + 3);
-                } else {
-                  mCachedMp3Metadata.title = streamTitle;
-                }
-              }
-            }
-            size_t urlPos = metaStr.find("StreamUrl='");
-            if (urlPos != std::string::npos) {
-              size_t endUrl = metaStr.find("';", urlPos + 11);
-              if (endUrl != std::string::npos) {
-                mCachedMp3Metadata.streamUrl =
-                    metaStr.substr(urlPos + 11, endUrl - (urlPos + 11));
-              }
-            }
-            if (onTrackChange) {
-              AudioMetadata metadata;
-              metadata.type = DetectedType::BUFFER_MP3_STREAM;
-              metadata.mp3Metadata = mCachedMp3Metadata;
-              onTrackChange(metadata);
-            }
-          }
-        }
-        readingPos += metadata_len;
-        bytes_until_meta = mIcyMetaInt;
-      } else {
-        // Not enough data for the full metadata block.
-        readingPos--; // Rewind to include the metadata length byte for the next
-                      // round.
-        break;
-      }
-    }
-  }
-
-  // Remove the processed part from the input buffer. The rest will be appended
-  // to audioData.
-  buffer.erase(buffer.begin(), buffer.begin() + readingPos);
-}
-
 std::pair<std::vector<float>, DecoderError>
 MP3DecoderWrapper::decode(std::vector<unsigned char> &buffer, int *samplerate,
                           int *channels, size_t maxOutputSamples) {
-  // For ICY streams, process the buffer to strip metadata first.
-  if (detectedType == DetectedType::BUFFER_MP3_STREAM && mIcyMetaInt > 0) {
-    processIcyStream(buffer);
+  // For ICY streams, strip metadata first.
+  if (mIcyMetaInt > 0 && !buffer.empty()) {
+    std::vector<unsigned char> cleanAudio;
+    stripIcyMetadataEx(buffer, mIcyMetaInt, mIcy, cleanAudio, [this](const std::string &title, const std::string &url) {
+      if (isInitialized) {
+        mCachedMp3Metadata.sampleRate = decoder.sampleRate;
+        mCachedMp3Metadata.channels = decoder.channels;
+        mCachedMp3Metadata.bitrate = static_cast<uint32_t>(estimateBitrateFromFirstFrame());
+      }
+      size_t dashPos = title.find(" - ");
+      if (dashPos != std::string::npos) {
+        mCachedMp3Metadata.artist = title.substr(0, dashPos);
+        mCachedMp3Metadata.title = title.substr(dashPos + 3);
+      } else {
+        mCachedMp3Metadata.title = title;
+      }
+      mCachedMp3Metadata.streamUrl = url;
+      if (onTrackChange) {
+        AudioMetadata metadata;
+        metadata.type = detectedType;
+        metadata.mp3Metadata = mCachedMp3Metadata;
+        onTrackChange(metadata);
+      }
+    });
+    buffer = std::move(cleanAudio);
   }
 
   // Append all new (or remaining) data from the input buffer to the internal
