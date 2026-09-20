@@ -170,11 +170,14 @@ unsigned int BufferStreamInstance::getAudio(float *aBuffer,
   if (samplesToRead <= 0) {
     clearPlanarBuffer(aBuffer, aSamplesToRead, aBufferSize, mChannels);
     if (mParent->mBuffer.bufferingType == BufferingType::PRESERVED) {
-      mStreamPosition = (mBaseSamplerate > 0.0f)
+      mStreamPosition = (mBaseSamplerate > 0.0f && mChannels > 0)
                             ? mOffset / (mBaseSamplerate * mChannels)
                             : 0.0;
     } else {
-      mStreamPosition = 0;
+      mStreamPosition = (mBaseSamplerate > 0.0f && mChannels > 0)
+                            ? (float)((double)mParent->mBytesConsumed / sizeof(float)) /
+                                  (mBaseSamplerate * mChannels)
+                            : 0.0f;
     }
 
     if (!mParent->dataIsEnded && mParent->mBufferingTimeNeeds > 0) {
@@ -248,12 +251,15 @@ unsigned int BufferStreamInstance::getAudio(float *aBuffer,
   // mOffset.
   if (mParent->mBuffer.bufferingType == BufferingType::RELEASED) {
     mParent->mSampleCount -= samplesRemoved;
-    mStreamPosition = 0;
     mParent->mBytesConsumed += totalBytesRead;
+    mStreamPosition = (mBaseSamplerate > 0.0f && mChannels > 0)
+                          ? (float)((double)mParent->mBytesConsumed / sizeof(float)) /
+                                (mBaseSamplerate * mChannels)
+                          : 0.0f;
   } else {
     mOffset += samplesToRead * mChannels;
     // For PRESERVED type, streamPosition advances with the offset.
-    mStreamPosition = (mBaseSamplerate > 0.0f)
+    mStreamPosition = (mBaseSamplerate > 0.0f && mChannels > 0)
                           ? mOffset / (mBaseSamplerate * mChannels)
                           : 0.0;
   }
@@ -662,8 +668,8 @@ void BufferStream::checkBuffering(unsigned int afterAddingBytesCount) {
     //    ahead of the playhead.
     const bool needsBuffering =
         !dataIsEnded && (mBufferingTimeNeeds > 0) &&
-        (pos >= currBufferTime ||
-         (mIsBuffering && availableAhead < mBufferingTimeNeeds));
+        (availableAhead < mBufferingTimeNeeds) &&
+        (pos >= currBufferTime || mIsBuffering);
 
     if (needsBuffering && !isPaused) {
       mParent->handle[i].bufferingTime = totalDataTime;
@@ -672,6 +678,7 @@ void BufferStream::checkBuffering(unsigned int afterAddingBytesCount) {
       mParent->handle[i].isUserPaused = false;
       mThePlayer->setPause(handle, true, false);
       isPaused = true;
+      mIsBuffering = true;
       callOnBufferingCallback(true, handle, totalDataTime);
     } else if (availableAhead >= mBufferingTimeNeeds) {
       // This handle has reached [mBufferingTimeNeeds]. Unpause it if it was
@@ -682,10 +689,12 @@ void BufferStream::checkBuffering(unsigned int afterAddingBytesCount) {
         mParent->handle[i].bufferingTime = totalDataTime;
         mThePlayer->setPause(handle, false, false);
         isPaused = false;
+        mIsBuffering = false;
         callOnBufferingCallback(false, handle, totalDataTime);
       } else if (isPaused && mParent->handle[i].isUserPaused) {
         if (mIsBuffering) {
           mParent->handle[i].bufferingTime = totalDataTime;
+          mIsBuffering = false;
           callOnBufferingCallback(false, handle, totalDataTime);
         }
       } else if (!isPaused && mIsBuffering) {
