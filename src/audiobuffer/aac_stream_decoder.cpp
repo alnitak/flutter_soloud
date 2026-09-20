@@ -258,7 +258,7 @@ bool AACDecoderWrapper::parseAc3Metadata(const unsigned char *data, size_t size,
   uint8_t bsmod = h[5] & 0x07;
   uint8_t acmod = (h[6] >> 5) & 0x07;
 
-  if (fscod == 3 || bsid > 10) return false;
+  if (fscod == 3 || frmsizecod >= 38 || bsid > 10) return false;
 
   static const int kSampleRates[] = {48000, 44100, 32000};
   int sampleRate = kSampleRates[fscod];
@@ -273,10 +273,29 @@ bool AACDecoderWrapper::parseAc3Metadata(const unsigned char *data, size_t size,
     bitrateBps = kBitratesKbps[bitrateIdx] * 1000;
   }
 
-  int frameSize = (1536 * (bitrateBps / 1000) * 1000) / (8 * sampleRate);
-  if (sampleRate == 44100 && (frmsizecod & 1)) {
-    frameSize += 2;
-  }
+  // ATSC A/52 Table 5.18 Frame Size Code Table (values in 16-bit words)
+  static const uint16_t kAc3FrameSizeTable[38][3] = {
+    { 64,   69,   96   }, { 64,   70,   96   },
+    { 80,   87,   120  }, { 80,   88,   120  },
+    { 96,   104,  144  }, { 96,   105,  144  },
+    { 112,  121,  168  }, { 112,  122,  168  },
+    { 128,  139,  192  }, { 128,  140,  192  },
+    { 160,  174,  240  }, { 160,  175,  240  },
+    { 192,  208,  288  }, { 192,  209,  288  },
+    { 224,  243,  336  }, { 224,  244,  336  },
+    { 256,  278,  384  }, { 256,  279,  384  },
+    { 320,  348,  480  }, { 320,  349,  480  },
+    { 384,  417,  576  }, { 384,  418,  576  },
+    { 448,  487,  672  }, { 448,  488,  672  },
+    { 512,  557,  768  }, { 512,  558,  768  },
+    { 640,  696,  960  }, { 640,  697,  960  },
+    { 768,  835,  1152 }, { 768,  836,  1152 },
+    { 896,  975,  1344 }, { 896,  976,  1344 },
+    { 1024, 1114, 1536 }, { 1024, 1115, 1536 },
+    { 1152, 1253, 1728 }, { 1152, 1254, 1728 },
+    { 1280, 1393, 1920 }, { 1280, 1394, 1920 },
+  };
+  int frameSize = kAc3FrameSizeTable[frmsizecod][fscod] * 2;
 
   uint32_t b = (static_cast<uint32_t>(h[6]) << 8) | h[7];
   int curBit = 12;

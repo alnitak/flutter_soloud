@@ -1,5 +1,9 @@
 #if defined(_WIN32) || defined(_WIN64)
 
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+
 #include "native_audio_decoder.h"
 #include "../audiobuffer/aac_stream_decoder.h"
 #include <windows.h>
@@ -158,9 +162,13 @@ DecodedAudioData decodeElementaryStream(const unsigned char *bytes, size_t lengt
 
     std::vector<float> allSamples;
     while (!buffer.empty()) {
+        size_t prevSize = buffer.size();
         auto [samples, err] = wrapper.decode(buffer, &sampleRate, &channels, 0);
         if (!samples.empty()) {
             allSamples.insert(allSamples.end(), samples.begin(), samples.end());
+        }
+        if (buffer.size() == prevSize) {
+            break;
         }
         if (err != DecoderError::NoError && samples.empty()) {
             break;
@@ -212,18 +220,28 @@ DecodedAudioData NativeAudioDecoder::decodeFile(const char *filePath) {
         return result;
     }
 
+    int wideLen = MultiByteToWideChar(CP_UTF8, 0, filePath, -1, nullptr, 0);
+    if (wideLen <= 0) {
+        result.errorMessage = "Invalid UTF-8 file path";
+        return result;
+    }
+
+    std::vector<wchar_t> wPath(wideLen);
+    MultiByteToWideChar(CP_UTF8, 0, filePath, -1, wPath.data(), wideLen);
+
     // Check if the file is a raw AC-3 or E-AC-3 elementary stream (which IMFSourceReader has no ByteStreamHandler for)
-    std::ifstream file(filePath, std::ios::binary);
+    std::ifstream file(wPath.data(), std::ios::binary);
     if (file.is_open()) {
         unsigned char header[16] = {0};
         file.read(reinterpret_cast<char*>(header), sizeof(header));
         std::streamsize bytesRead = file.gcount();
         file.seekg(0, std::ios::beg);
 
-        if (bytesRead >= 6 && NativeAudioDecoder::isAc3OrEac3(header, static_cast<size_t>(bytesRead))) {
+        int syncIdx = NativeAudioDecoder::findAc3Syncword(header, static_cast<size_t>(bytesRead));
+        if (syncIdx >= 0) {
             std::vector<unsigned char> fileData((std::istreambuf_iterator<char>(file)),
                                                  std::istreambuf_iterator<char>());
-            DetectedType type = NativeAudioDecoder::isEac3(header, static_cast<size_t>(bytesRead))
+            DetectedType type = NativeAudioDecoder::isEac3(header + syncIdx, static_cast<size_t>(bytesRead) - syncIdx)
                                     ? DetectedType::BUFFER_EAC3
                                     : DetectedType::BUFFER_AC3;
             return decodeElementaryStream(fileData.data(), fileData.size(), type);
@@ -235,15 +253,6 @@ DecodedAudioData NativeAudioDecoder::decodeFile(const char *filePath) {
         result.errorMessage = "Failed to initialize Media Foundation";
         return result;
     }
-
-    int wideLen = MultiByteToWideChar(CP_UTF8, 0, filePath, -1, nullptr, 0);
-    if (wideLen <= 0) {
-        result.errorMessage = "Invalid UTF-8 file path";
-        return result;
-    }
-
-    std::vector<wchar_t> wPath(wideLen);
-    MultiByteToWideChar(CP_UTF8, 0, filePath, -1, wPath.data(), wideLen);
 
     IMFSourceReader *pReader = nullptr;
     HRESULT hr = MFCreateSourceReaderFromURL(wPath.data(), nullptr, &pReader);
@@ -266,11 +275,15 @@ DecodedAudioData NativeAudioDecoder::decodeMemory(const unsigned char *bytes, si
 
     // Raw AC-3 and E-AC-3 elementary streams lack a Media Foundation container ByteStreamHandler.
     // Decode them via the Windows MFT stream decoder.
-    if (NativeAudioDecoder::isAc3(bytes, length)) {
-        return decodeElementaryStream(bytes, length, DetectedType::BUFFER_AC3);
-    }
-    if (NativeAudioDecoder::isEac3(bytes, length)) {
-        return decodeElementaryStream(bytes, length, DetectedType::BUFFER_EAC3);
+    int syncIdx = NativeAudioDecoder::findAc3Syncword(bytes, length);
+    if (syncIdx >= 0 && static_cast<size_t>(syncIdx) + 6 <= length) {
+        const unsigned char *h = bytes + syncIdx;
+        size_t rem = length - syncIdx;
+        if (NativeAudioDecoder::isEac3(h, rem)) {
+            return decodeElementaryStream(bytes, length, DetectedType::BUFFER_EAC3);
+        } else if (NativeAudioDecoder::isAc3(h, rem)) {
+            return decodeElementaryStream(bytes, length, DetectedType::BUFFER_AC3);
+        }
     }
 
     MFInitScope mfScope;

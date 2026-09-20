@@ -94,6 +94,30 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
                   /// The sound will be disposed automatically when
                   /// it's finished.
                   await soloud.playSource(
+                    asset: 'assets/audio/sample-AAC.m4a',
+                  );
+                },
+                child: const Text('play M4A source'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  /// Just play a sound from a source. It will start playing
+                  /// as soon as it will take to load it.
+                  /// The sound will be disposed automatically when
+                  /// it's finished.
+                  await soloud.playSource(
+                    asset: 'assets/audio/sample-AAC.mp4',
+                  );
+                },
+                child: const Text('play MP4 source'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  /// Just play a sound from a source. It will start playing
+                  /// as soon as it will take to load it.
+                  /// The sound will be disposed automatically when
+                  /// it's finished.
+                  await soloud.playSource(
                     asset: 'assets/audio/sample-AAC.aac',
                   );
                 },
@@ -127,6 +151,35 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
                   }
                 },
                 child: const Text('play AC3 source'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  if (kIsWeb) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'AC-3 is not supported on the Web platform. '
+                          'Web browsers do not support AC-3 in '
+                          'WebCodecs or Web Audio.',
+                        ),
+                      ),
+                    );
+                    return;
+                  }
+
+                  /// Just play a sound from a source. It will start playing
+                  /// as soon as it will take to load it.
+                  /// The sound will be disposed automatically when
+                  /// it's finished.
+                  try {
+                    await soloud.playSource(
+                      asset: 'assets/audio/sample-EAC3.eac3',
+                    );
+                  } catch (e) {
+                    dev.log('Failed to play EAC-3: $e');
+                  }
+                },
+                child: const Text('play EAC3 source'),
               ),
               ElevatedButton(
                 onPressed: () async {
