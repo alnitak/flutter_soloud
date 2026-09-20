@@ -49,6 +49,16 @@ By default, Xiph audio codecs (Ogg, Vorbis, Opus, FLAC) are linked and bundled f
 
 For complete setup instructions and Windows download links, see the [Xiph Libraries & Codecs Guide](https://docs.page/alnitak/flutter_soloud_docs/get_started/xiph_libs).
 
+### Extended Audio Formats (M4A, MP4, AAC, AC-3, E-AC-3)
+
+In addition to core cross-platform formats (MP3, WAV, FLAC, OGG), `flutter_soloud` supports native decoding for **M4A**, **MP4** (audio tracks), **AAC**, **AC-3** (Dolby Digital), and **E-AC-3** (Dolby Digital Plus):
+- **Windows**: Decoded natively via Windows Media Foundation (supporting file/memory playback as well as real-time chunk streaming via Media Foundation Transform).
+- **Linux**: Decoded via system FFmpeg shared libraries (`libavcodec` and `libavformat`) loaded dynamically at runtime (`sudo apt install ffmpeg libavcodec-extra` on Debian/Ubuntu, `sudo pacman -S ffmpeg` on Arch, `sudo dnf install ffmpeg-free` on Fedora).
+- **macOS / iOS**: Decoded natively via Apple AudioToolbox.
+- **Android**: Decoded natively via Android NDK MediaCodec.
+- **Web**: Supports M4A, MP4, AAC, and core formats via WebCodecs / Web Audio *(Note: AC-3 and E-AC-3 are not supported on Web in any browser)*.
+- **Streaming & Buffering**: Both push buffer (`setBufferStream`) and pull buffer (`setPullBufferStream`) in `BufferingType.released` and `BufferingType.preserved` modes support AAC (ADTS), AC-3, and E-AC-3 with automatic stream and metadata parsing (sample rates, channels, bitrates, ID3 tags, and ICY metadata). *(Note: MP4 and M4A containers are not supported for streaming; use file, asset, or memory loading instead).*
+
 ## Documentation
 
 - [Full Documentation](https://docs.page/alnitak/flutter_soloud_docs)

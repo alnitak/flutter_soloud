@@ -95,12 +95,19 @@ elseif (ANDROID)
   )
   list(APPEND LINK_LIBRARIES mediandk)
 elseif (WIN32)
-  list(APPEND PLUGIN_SOURCES "${SRC_DIR}/native_decoder/os_decoder_windows.cpp")
-  list(APPEND LINK_LIBRARIES mfplat mfreadwrite mfuuid shlwapi)
+  list(APPEND PLUGIN_SOURCES
+    "${SRC_DIR}/native_decoder/os_decoder_windows.cpp"
+    "${SRC_DIR}/audiobuffer/aac_stream_decoder_windows.cpp"
+  )
+  list(APPEND LINK_LIBRARIES mfplat mfreadwrite mfuuid shlwapi ole32)
 elseif (EMSCRIPTEN)
   list(APPEND PLUGIN_SOURCES "${SRC_DIR}/native_decoder/os_decoder_web.cpp")
 elseif (UNIX)
-  list(APPEND PLUGIN_SOURCES "${SRC_DIR}/native_decoder/os_decoder_linux.cpp")
+  list(APPEND PLUGIN_SOURCES
+    "${SRC_DIR}/native_decoder/os_decoder_linux.cpp"
+    "${SRC_DIR}/audiobuffer/aac_stream_decoder_linux.cpp"
+  )
+  list(APPEND LINK_LIBRARIES dl)
 endif()
 
 # pffft.c is C99 — force C language so Clang doesn't apply C++ VLA restrictions

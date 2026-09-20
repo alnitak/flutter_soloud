@@ -8,6 +8,10 @@ std::unique_ptr<AACDecoderWrapper::Impl> createAppleAACDecoderImpl(DetectedType 
 std::unique_ptr<AACDecoderWrapper::Impl> createAndroidAACDecoderImpl(DetectedType format);
 #elif defined(__EMSCRIPTEN__)
 std::unique_ptr<AACDecoderWrapper::Impl> createWebAACDecoderImpl(DetectedType format);
+#elif defined(__linux__) && !defined(__ANDROID__)
+std::unique_ptr<AACDecoderWrapper::Impl> createLinuxAACDecoderImpl(DetectedType format);
+#elif defined(_WIN32) || defined(_WIN64)
+std::unique_ptr<AACDecoderWrapper::Impl> createWindowsAACDecoderImpl(DetectedType format);
 #endif
 
 namespace {
@@ -38,6 +42,10 @@ std::unique_ptr<AACDecoderWrapper::Impl> AACDecoderWrapper::createImpl(DetectedT
   return createAndroidAACDecoderImpl(format);
 #elif defined(__EMSCRIPTEN__)
   return createWebAACDecoderImpl(format);
+#elif defined(__linux__) && !defined(__ANDROID__)
+  return createLinuxAACDecoderImpl(format);
+#elif defined(_WIN32) || defined(_WIN64)
+  return createWindowsAACDecoderImpl(format);
 #else
   return std::make_unique<UnsupportedAACImpl>(format);
 #endif

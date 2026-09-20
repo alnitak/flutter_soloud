@@ -1,11 +1,16 @@
 #if defined(__linux__) && !defined(__ANDROID__)
 
 #include "native_audio_decoder.h"
+#include "../audiobuffer/m4a_metadata.h"
+#include "../audiobuffer/aac_stream_decoder.h"
 #include <dlfcn.h>
+#include <unistd.h>
 #include <vector>
 #include <string>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
+#include <algorithm>
 
 // Forward declarations of basic FFmpeg structs to avoid needing <libavcodec/avcodec.h> headers
 // at compile time on Linux machines that do not have ffmpeg development packages installed.
@@ -20,7 +25,7 @@ struct AVChannelLayout;
 
 namespace {
 
-// Function pointers for dynamic loading from libavformat, libavcodec, libswresample
+// Function pointers for dynamic loading from libavformat, libavcodec
 typedef struct AVFormatContext* (*pfn_avformat_alloc_context)(void);
 typedef int (*pfn_avformat_open_input)(struct AVFormatContext **ps, const char *url, void *fmt, void **options);
 typedef int (*pfn_avformat_find_stream_info)(struct AVFormatContext *ic, void **options);
@@ -46,7 +51,6 @@ typedef void (*pfn_av_frame_unref)(struct AVFrame *frame);
 struct FFmpegLoader {
     void *hFormat = nullptr;
     void *hCodec = nullptr;
-    void *hSwr = nullptr;
 
     pfn_avformat_open_input avformat_open_input = nullptr;
     pfn_avformat_find_stream_info avformat_find_stream_info = nullptr;
@@ -131,7 +135,6 @@ struct FFmpegLoader {
 static FFmpegLoader gFFmpeg;
 
 // Minimal struct offsets from AVStream/AVCodecParameters
-// AVMediaType enum: AVMEDIA_TYPE_AUDIO is 1 in FFmpeg across all modern versions.
 constexpr int AVMEDIA_TYPE_AUDIO = 1;
 
 // Struct layout helpers for AVStream and AVCodecParameters
@@ -147,8 +150,17 @@ struct DummyAVCodecParameters {
     int bits_per_raw_sample;
     int profile;
     int level;
-    int ch_layout_or_channels; // Depending on FFmpeg version
-    int sample_rate;
+    int width;
+    int height;
+    int64_t sample_aspect_ratio;
+    int field_order;
+    int color_range;
+    int color_primaries;
+    int color_trc;
+    int color_space;
+    int chroma_location;
+    int video_delay;
+    // Audio fields follow at offset >= 104
 };
 
 struct DummyAVStream {
@@ -176,10 +188,16 @@ struct DummyAVFormatContext {
 };
 
 // AVFrame audio sample formats
-constexpr int AV_SAMPLE_FMT_FLT = 3;
-constexpr int AV_SAMPLE_FMT_FLTP = 8;
+constexpr int AV_SAMPLE_FMT_U8 = 0;
 constexpr int AV_SAMPLE_FMT_S16 = 1;
+constexpr int AV_SAMPLE_FMT_S32 = 2;
+constexpr int AV_SAMPLE_FMT_FLT = 3;
+constexpr int AV_SAMPLE_FMT_DBL = 4;
+constexpr int AV_SAMPLE_FMT_U8P = 5;
 constexpr int AV_SAMPLE_FMT_S16P = 6;
+constexpr int AV_SAMPLE_FMT_S32P = 7;
+constexpr int AV_SAMPLE_FMT_FLTP = 8;
+constexpr int AV_SAMPLE_FMT_DBLP = 9;
 
 struct DummyAVFrame {
     uint8_t *data[8];
@@ -189,7 +207,6 @@ struct DummyAVFrame {
     int nb_samples;
     int format;
     int key_frame;
-    // ... remaining fields
 };
 
 DecodedAudioData decodeFilePathWithFFmpeg(const char *filePath) {
@@ -197,6 +214,43 @@ DecodedAudioData decodeFilePathWithFFmpeg(const char *filePath) {
     if (!gFFmpeg.init()) {
         result.errorMessage = "FFmpeg libraries (libavformat/libavcodec) not available on system";
         return result;
+    }
+
+    // Step 1: Probe file header for accurate audio metadata
+    int probedSampleRate = 0;
+    int probedChannels = 0;
+    FILE *probeFp = fopen(filePath, "rb");
+    if (probeFp) {
+        unsigned char probeBuf[16384];
+        size_t n = fread(probeBuf, 1, sizeof(probeBuf), probeFp);
+        fclose(probeFp);
+        if (n >= 8) {
+            if (NativeAudioDecoder::isM4aOrMp4(probeBuf, n)) {
+                M4aMetadata m4a;
+                if (parseM4aMetadata(probeBuf, n, m4a)) {
+                    if (m4a.sampleRate > 0) probedSampleRate = m4a.sampleRate;
+                    if (m4a.channels > 0) probedChannels = m4a.channels;
+                }
+            } else if (NativeAudioDecoder::isAacAdts(probeBuf, n)) {
+                AacMetadata aac;
+                if (AACDecoderWrapper::parseAacAdtsMetadata(probeBuf, n, aac)) {
+                    if (aac.sampleRate > 0) probedSampleRate = aac.sampleRate;
+                    if (aac.channels > 0) probedChannels = aac.channels;
+                }
+            } else if (NativeAudioDecoder::isAc3(probeBuf, n)) {
+                Ac3Metadata ac3;
+                if (AACDecoderWrapper::parseAc3Metadata(probeBuf, n, ac3)) {
+                    if (ac3.sampleRate > 0) probedSampleRate = ac3.sampleRate;
+                    if (ac3.channels > 0) probedChannels = ac3.channels;
+                }
+            } else if (NativeAudioDecoder::isEac3(probeBuf, n)) {
+                Eac3Metadata eac3;
+                if (AACDecoderWrapper::parseEac3Metadata(probeBuf, n, eac3)) {
+                    if (eac3.sampleRate > 0) probedSampleRate = eac3.sampleRate;
+                    if (eac3.channels > 0) probedChannels = eac3.channels;
+                }
+            }
+        }
     }
 
     AVFormatContext *fmtCtx = nullptr;
@@ -259,66 +313,154 @@ DecodedAudioData decodeFilePathWithFFmpeg(const char *filePath) {
         return result;
     }
 
+    // Step 2: Determine audio channels and sample rate
+    int sampleRate = probedSampleRate;
+    int channels = probedChannels;
+
+    if (sampleRate <= 0 || channels <= 0) {
+        const uint8_t *parBytes = reinterpret_cast<const uint8_t *>(codecPar);
+        // Try FFmpeg 5.1+ layout: nb_channels at 108, sample_rate at 128
+        int v5_ch = *reinterpret_cast<const int *>(parBytes + 108);
+        int v5_sr = *reinterpret_cast<const int *>(parBytes + 128);
+        if (v5_ch >= 1 && v5_ch <= 32 && v5_sr >= 4000 && v5_sr <= 384000) {
+            if (channels <= 0) channels = v5_ch;
+            if (sampleRate <= 0) sampleRate = v5_sr;
+        } else {
+            // Try FFmpeg 4.x layout: channels at 112, sample_rate at 116
+            int v4_ch = *reinterpret_cast<const int *>(parBytes + 112);
+            int v4_sr = *reinterpret_cast<const int *>(parBytes + 116);
+            if (v4_ch >= 1 && v4_ch <= 32 && v4_sr >= 4000 && v4_sr <= 384000) {
+                if (channels <= 0) channels = v4_ch;
+                if (sampleRate <= 0) sampleRate = v4_sr;
+            }
+        }
+    }
+
+    if (sampleRate <= 0) sampleRate = 44100;
+    if (channels <= 0) channels = 2;
+
     AVPacket *pkt = gFFmpeg.av_packet_alloc();
     AVFrame *frame = gFFmpeg.av_frame_alloc();
-
-    int sampleRate = codecPar->sample_rate > 0 ? codecPar->sample_rate : 44100;
-    int channels = codecPar->ch_layout_or_channels > 0 ? codecPar->ch_layout_or_channels : 2;
 
     std::vector<float> planarChannelData[8];
     for (int c = 0; c < channels && c < 8; c++) {
         planarChannelData[c].reserve(44100 * 5); // 5 sec initial reserve
     }
 
+    auto processFrame = [&](AVFrame *f) {
+        DummyAVFrame *dFrame = reinterpret_cast<DummyAVFrame*>(f);
+        int nbSamples = dFrame->nb_samples;
+        int fmt = dFrame->format;
+        if (nbSamples <= 0) return;
+
+        if (fmt == AV_SAMPLE_FMT_FLTP) {
+            for (int c = 0; c < channels && c < 8; c++) {
+                const float *src = reinterpret_cast<const float *>(dFrame->extended_data ? dFrame->extended_data[c] : dFrame->data[c]);
+                if (src) {
+                    planarChannelData[c].insert(planarChannelData[c].end(), src, src + nbSamples);
+                }
+            }
+        } else if (fmt == AV_SAMPLE_FMT_FLT) {
+            const float *src = reinterpret_cast<const float *>(dFrame->data[0]);
+            if (src) {
+                for (int s = 0; s < nbSamples; s++) {
+                    for (int c = 0; c < channels && c < 8; c++) {
+                        planarChannelData[c].push_back(src[s * channels + c]);
+                    }
+                }
+            }
+        } else if (fmt == AV_SAMPLE_FMT_S16P) {
+            for (int c = 0; c < channels && c < 8; c++) {
+                const int16_t *src = reinterpret_cast<const int16_t *>(dFrame->extended_data ? dFrame->extended_data[c] : dFrame->data[c]);
+                if (src) {
+                    for (int s = 0; s < nbSamples; s++) {
+                        planarChannelData[c].push_back(src[s] / 32768.0f);
+                    }
+                }
+            }
+        } else if (fmt == AV_SAMPLE_FMT_S16) {
+            const int16_t *src = reinterpret_cast<const int16_t *>(dFrame->data[0]);
+            if (src) {
+                for (int s = 0; s < nbSamples; s++) {
+                    for (int c = 0; c < channels && c < 8; c++) {
+                        planarChannelData[c].push_back(src[s * channels + c] / 32768.0f);
+                    }
+                }
+            }
+        } else if (fmt == AV_SAMPLE_FMT_S32P) {
+            for (int c = 0; c < channels && c < 8; c++) {
+                const int32_t *src = reinterpret_cast<const int32_t *>(dFrame->extended_data ? dFrame->extended_data[c] : dFrame->data[c]);
+                if (src) {
+                    for (int s = 0; s < nbSamples; s++) {
+                        planarChannelData[c].push_back(src[s] / 2147483648.0f);
+                    }
+                }
+            }
+        } else if (fmt == AV_SAMPLE_FMT_S32) {
+            const int32_t *src = reinterpret_cast<const int32_t *>(dFrame->data[0]);
+            if (src) {
+                for (int s = 0; s < nbSamples; s++) {
+                    for (int c = 0; c < channels && c < 8; c++) {
+                        planarChannelData[c].push_back(src[s * channels + c] / 2147483648.0f);
+                    }
+                }
+            }
+        } else if (fmt == AV_SAMPLE_FMT_DBLP) {
+            for (int c = 0; c < channels && c < 8; c++) {
+                const double *src = reinterpret_cast<const double *>(dFrame->extended_data ? dFrame->extended_data[c] : dFrame->data[c]);
+                if (src) {
+                    for (int s = 0; s < nbSamples; s++) {
+                        planarChannelData[c].push_back(static_cast<float>(src[s]));
+                    }
+                }
+            }
+        } else if (fmt == AV_SAMPLE_FMT_DBL) {
+            const double *src = reinterpret_cast<const double *>(dFrame->data[0]);
+            if (src) {
+                for (int s = 0; s < nbSamples; s++) {
+                    for (int c = 0; c < channels && c < 8; c++) {
+                        planarChannelData[c].push_back(static_cast<float>(src[s * channels + c]));
+                    }
+                }
+            }
+        } else if (fmt == AV_SAMPLE_FMT_U8P) {
+            for (int c = 0; c < channels && c < 8; c++) {
+                const uint8_t *src = reinterpret_cast<const uint8_t *>(dFrame->extended_data ? dFrame->extended_data[c] : dFrame->data[c]);
+                if (src) {
+                    for (int s = 0; s < nbSamples; s++) {
+                        planarChannelData[c].push_back((src[s] - 128) / 128.0f);
+                    }
+                }
+            }
+        } else if (fmt == AV_SAMPLE_FMT_U8) {
+            const uint8_t *src = reinterpret_cast<const uint8_t *>(dFrame->data[0]);
+            if (src) {
+                for (int s = 0; s < nbSamples; s++) {
+                    for (int c = 0; c < channels && c < 8; c++) {
+                        planarChannelData[c].push_back((src[s * channels + c] - 128) / 128.0f);
+                    }
+                }
+            }
+        }
+    };
+
     while (gFFmpeg.av_read_frame(fmtCtx, pkt) >= 0) {
-        // AVPacket offset for stream_index is at offset sizeof(AVBufferRef*) + 4 + ...
-        // In FFmpeg AVPacket, stream_index is standard at offset after buf, pts, dts, data, size.
-        // We can pass packet to decoder; avcodec_send_packet will decode.
         int sendRes = gFFmpeg.avcodec_send_packet(codecCtx, pkt);
         gFFmpeg.av_packet_unref(pkt);
 
         if (sendRes == 0) {
             while (gFFmpeg.avcodec_receive_frame(codecCtx, frame) == 0) {
-                DummyAVFrame *dFrame = reinterpret_cast<DummyAVFrame*>(frame);
-                int nbSamples = dFrame->nb_samples;
-                int fmt = dFrame->format;
-
-                // AAC typically decodes into AV_SAMPLE_FMT_FLTP (planar float)
-                if (fmt == AV_SAMPLE_FMT_FLTP) {
-                    for (int c = 0; c < channels && c < 8; c++) {
-                        const float *src = reinterpret_cast<const float *>(dFrame->extended_data ? dFrame->extended_data[c] : dFrame->data[c]);
-                        if (src) {
-                            planarChannelData[c].insert(planarChannelData[c].end(), src, src + nbSamples);
-                        }
-                    }
-                } else if (fmt == AV_SAMPLE_FMT_FLT) {
-                    // Interleaved float
-                    const float *src = reinterpret_cast<const float *>(dFrame->data[0]);
-                    for (int s = 0; s < nbSamples; s++) {
-                        for (int c = 0; c < channels && c < 8; c++) {
-                            planarChannelData[c].push_back(src[s * channels + c]);
-                        }
-                    }
-                } else if (fmt == AV_SAMPLE_FMT_S16P) {
-                    for (int c = 0; c < channels && c < 8; c++) {
-                        const int16_t *src = reinterpret_cast<const int16_t *>(dFrame->extended_data ? dFrame->extended_data[c] : dFrame->data[c]);
-                        if (src) {
-                            for (int s = 0; s < nbSamples; s++) {
-                                planarChannelData[c].push_back(src[s] / 32768.0f);
-                            }
-                        }
-                    }
-                } else if (fmt == AV_SAMPLE_FMT_S16) {
-                    const int16_t *src = reinterpret_cast<const int16_t *>(dFrame->data[0]);
-                    for (int s = 0; s < nbSamples; s++) {
-                        for (int c = 0; c < channels && c < 8; c++) {
-                            planarChannelData[c].push_back(src[s * channels + c] / 32768.0f);
-                        }
-                    }
-                }
-
+                processFrame(frame);
                 gFFmpeg.av_frame_unref(frame);
             }
+        }
+    }
+
+    // Flush remaining frames from decoder
+    if (gFFmpeg.avcodec_send_packet(codecCtx, nullptr) == 0) {
+        while (gFFmpeg.avcodec_receive_frame(codecCtx, frame) == 0) {
+            processFrame(frame);
+            gFFmpeg.av_frame_unref(frame);
         }
     }
 
@@ -369,12 +511,31 @@ DecodedAudioData NativeAudioDecoder::decodeMemory(const unsigned char *bytes, si
         return result;
     }
 
-    // Write to a temporary file descriptor on Linux
-    char tempPath[] = "/tmp/soloud_media_XXXXXX";
-    int fd = mkstemp(tempPath);
+    // Determine extension hint so FFmpeg demuxes without guessing
+    const char *ext = ".bin";
+    if (NativeAudioDecoder::isM4aOrMp4(bytes, length)) {
+        ext = ".m4a";
+    } else if (NativeAudioDecoder::isAacAdts(bytes, length)) {
+        ext = ".aac";
+    } else if (NativeAudioDecoder::isAc3(bytes, length)) {
+        ext = ".ac3";
+    } else if (NativeAudioDecoder::isEac3(bytes, length)) {
+        ext = ".eac3";
+    }
+
+    char tempPath[128];
+    snprintf(tempPath, sizeof(tempPath), "/tmp/soloud_media_XXXXXX%s", ext);
+    int fd = mkstemps(tempPath, static_cast<int>(std::strlen(ext)));
     if (fd < 0) {
-        result.errorMessage = "Failed to create temporary file for Linux decoding";
-        return result;
+        // Fallback to mkstemp if mkstemps fails
+        char fallbackPath[] = "/tmp/soloud_media_XXXXXX";
+        fd = mkstemp(fallbackPath);
+        if (fd < 0) {
+            result.errorMessage = "Failed to create temporary file for Linux decoding";
+            return result;
+        }
+        std::strncpy(tempPath, fallbackPath, sizeof(tempPath) - 1);
+        tempPath[sizeof(tempPath) - 1] = '\0';
     }
 
     size_t written = write(fd, bytes, length);

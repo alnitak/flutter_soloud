@@ -237,7 +237,14 @@ void main(List<String> args) async {
         ...xiph.libraries,
         if (isApple) 'flutter_soloud_miniaudio_objc',
         if (os == OS.android) ...['log', 'android', 'mediandk'],
-        if (os == OS.windows) ...['mfplat', 'mfreadwrite', 'mfuuid', 'shlwapi'],
+        if (os == OS.windows) ...[
+          'mfplat',
+          'mfreadwrite',
+          'mfuuid',
+          'shlwapi',
+          'ole32',
+        ],
+        if (os == OS.linux) ...['dl'],
       ],
       // '.' is the hook output directory, where the miniaudio ObjC++ static
       // library was just built.
@@ -290,7 +297,25 @@ List<String> collectSources(Uri packageRoot, OS targetOS) {
   // Plugin sources (src/CMakeLists.txt PLUGIN_SOURCES). `flutter_soloud.cpp`
   // was the SwiftPM unity translation unit and is excluded on purpose.
   addDir('', exclude: (p) => p.endsWith('/flutter_soloud.cpp'));
-  addDir('audiobuffer/');
+  addDir(
+    'audiobuffer/',
+    exclude: (p) {
+      if (p.endsWith('.mm')) return true; // Built by objcBuilder on Apple
+      if (p.endsWith('aac_stream_decoder_android.cpp') &&
+          targetOS != OS.android) {
+        return true;
+      }
+      if (p.endsWith('aac_stream_decoder_windows.cpp') &&
+          targetOS != OS.windows) {
+        return true;
+      }
+      if (p.endsWith('aac_stream_decoder_linux.cpp') && targetOS != OS.linux) {
+        return true;
+      }
+      if (p.endsWith('aac_stream_decoder_web.cpp')) return true;
+      return false;
+    },
+  );
   addDir('filters/');
   addDir('mixeroutput/');
   addDir('synth/');
