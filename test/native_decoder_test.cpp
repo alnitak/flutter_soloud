@@ -1,6 +1,13 @@
 #include "../src/native_decoder/native_audio_decoder.h"
 #include "../src/audiobuffer/aac_stream_decoder.h"
+#include "../src/audiobuffer/mp3_stream_decoder.h"
+#include "../src/audiobuffer/m4a_metadata.h"
+#include "../src/audiobuffer/metadata_ffi.h"
 #include <cassert>
+#include <cmath>
+#include <fstream>
+#include <iostream>
+#include <vector>
 #include <cmath>
 #include <iostream>
 #include <vector>
@@ -107,6 +114,21 @@ void testAacStreamDecoder() {
     std::vector<unsigned char> garbageBuf = {0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77};
     assert(!AACDecoderWrapper::checkForValidFrames(garbageBuf));
     assert(!AACDecoderWrapper::parseAacAdtsMetadata(garbageBuf.data(), garbageBuf.size(), aacMeta));
+
+    // Two valid chained ADTS frames
+    std::vector<unsigned char> twoFramesBuf = validAdts;
+    twoFramesBuf.insert(twoFramesBuf.end(), validAdts.begin(), validAdts.end());
+    assert(AACDecoderWrapper::checkForValidFrames(twoFramesBuf));
+
+    // Pseudo-ADTS syncword inside payload where next frame does NOT chain
+    // (Simulates accidental 0xFF 0xF9 in MP3 stream)
+    std::vector<unsigned char> pseudoAdtsBuf(100, 0x12);
+    // Insert candidate ADTS at offset 10 with frameLength = 20
+    pseudoAdtsBuf[10] = 0xFF; pseudoAdtsBuf[11] = 0xF1;
+    pseudoAdtsBuf[12] = 0x50; pseudoAdtsBuf[13] = 0x80;
+    pseudoAdtsBuf[14] = 0x02; pseudoAdtsBuf[15] = 0x9F; pseudoAdtsBuf[16] = 0xFC; // frameLength = 20
+    // At offset 10 + 20 = 30, bytes are 0x12, not 0xFF!
+    assert(!AACDecoderWrapper::checkForValidFrames(pseudoAdtsBuf));
 
     // Test decoder instance lifecycle and onTrackChange callback
     AACDecoderWrapper decoder;
@@ -307,12 +329,272 @@ void testAc3StreamDecoder() {
     std::cout << "  Passed!" << std::endl;
 }
 
+static std::vector<unsigned char> makeBox(const char *type, const std::vector<unsigned char> &payload) {
+    uint32_t size = 8 + payload.size();
+    std::vector<unsigned char> box;
+    box.push_back((size >> 24) & 0xFF);
+    box.push_back((size >> 16) & 0xFF);
+    box.push_back((size >> 8) & 0xFF);
+    box.push_back(size & 0xFF);
+    box.push_back(type[0]);
+    box.push_back(type[1]);
+    box.push_back(type[2]);
+    box.push_back(type[3]);
+    box.insert(box.end(), payload.begin(), payload.end());
+    return box;
+}
+
+static std::vector<unsigned char> makeDataBox(uint32_t type, const std::vector<unsigned char> &payload) {
+    std::vector<unsigned char> inner;
+    inner.push_back((type >> 24) & 0xFF);
+    inner.push_back((type >> 16) & 0xFF);
+    inner.push_back((type >> 8) & 0xFF);
+    inner.push_back(type & 0xFF);
+    inner.push_back(0); inner.push_back(0); inner.push_back(0); inner.push_back(0); // locale
+    inner.insert(inner.end(), payload.begin(), payload.end());
+    return makeBox("data", inner);
+}
+
+static std::vector<unsigned char> makeTextTagBox(const char *fourcc, const std::string &text) {
+    std::vector<unsigned char> textBytes(text.begin(), text.end());
+    auto dataBox = makeDataBox(1, textBytes);
+    return makeBox(fourcc, dataBox);
+}
+
+void testM4aMetadataAndOffsets() {
+    std::cout << "[Test] M4A Metadata & Struct Offsets..." << std::endl;
+
+    // Check offsets of AudioMetadataFFI
+    std::cout << "  Offset mp3Metadata: " << offsetof(AudioMetadataFFI, mp3Metadata) << std::endl;
+    std::cout << "  Offset oggMetadata: " << offsetof(AudioMetadataFFI, oggMetadata) << std::endl;
+    std::cout << "  Offset aacMetadata: " << offsetof(AudioMetadataFFI, aacMetadata) << std::endl;
+    std::cout << "  Offset ac3Metadata: " << offsetof(AudioMetadataFFI, ac3Metadata) << std::endl;
+    std::cout << "  Offset eac3Metadata: " << offsetof(AudioMetadataFFI, eac3Metadata) << std::endl;
+    std::cout << "  Offset m4aMetadata: " << offsetof(AudioMetadataFFI, m4aMetadata) << std::endl;
+    std::cout << "  Sizeof AudioMetadataFFI: " << sizeof(AudioMetadataFFI) << std::endl;
+
+    std::cout << "  Mp3: title=" << offsetof(Mp3MetadataFFI, title)
+              << " artist=" << offsetof(Mp3MetadataFFI, artist)
+              << " album_artist=" << offsetof(Mp3MetadataFFI, album_artist)
+              << " album=" << offsetof(Mp3MetadataFFI, album)
+              << " genre=" << offsetof(Mp3MetadataFFI, genre)
+              << " date=" << offsetof(Mp3MetadataFFI, date)
+              << " comment=" << offsetof(Mp3MetadataFFI, comment)
+              << " track=" << offsetof(Mp3MetadataFFI, track)
+              << " disc=" << offsetof(Mp3MetadataFFI, disc)
+              << " composer=" << offsetof(Mp3MetadataFFI, composer)
+              << " stream_url=" << offsetof(Mp3MetadataFFI, stream_url)
+              << " sample_rate=" << offsetof(Mp3MetadataFFI, sample_rate)
+              << " channels=" << offsetof(Mp3MetadataFFI, channels)
+              << " bitrate=" << offsetof(Mp3MetadataFFI, bitrate) << std::endl;
+
+    std::cout << "  Aac: title=" << offsetof(AacMetadataFFI, title)
+              << " artist=" << offsetof(AacMetadataFFI, artist)
+              << " album_artist=" << offsetof(AacMetadataFFI, album_artist)
+              << " album=" << offsetof(AacMetadataFFI, album)
+              << " date=" << offsetof(AacMetadataFFI, date)
+              << " genre=" << offsetof(AacMetadataFFI, genre)
+              << " composer=" << offsetof(AacMetadataFFI, composer)
+              << " comment=" << offsetof(AacMetadataFFI, comment)
+              << " track=" << offsetof(AacMetadataFFI, track)
+              << " disc=" << offsetof(AacMetadataFFI, disc)
+              << " stream_url=" << offsetof(AacMetadataFFI, stream_url)
+              << " sample_rate=" << offsetof(AacMetadataFFI, sample_rate)
+              << " channels=" << offsetof(AacMetadataFFI, channels)
+              << " profile=" << offsetof(AacMetadataFFI, profile)
+              << " bitrate=" << offsetof(AacMetadataFFI, bitrate)
+              << " frame_length=" << offsetof(AacMetadataFFI, frame_length) << std::endl;
+
+    std::cout << "  M4a: title=" << offsetof(M4aMetadataFFI, title)
+              << " artist=" << offsetof(M4aMetadataFFI, artist)
+              << " album_artist=" << offsetof(M4aMetadataFFI, album_artist)
+              << " album=" << offsetof(M4aMetadataFFI, album)
+              << " date=" << offsetof(M4aMetadataFFI, date)
+              << " genre=" << offsetof(M4aMetadataFFI, genre)
+              << " composer=" << offsetof(M4aMetadataFFI, composer)
+              << " comment=" << offsetof(M4aMetadataFFI, comment)
+              << " track=" << offsetof(M4aMetadataFFI, track)
+              << " disc=" << offsetof(M4aMetadataFFI, disc)
+              << " codec=" << offsetof(M4aMetadataFFI, codec)
+              << " sample_rate=" << offsetof(M4aMetadataFFI, sample_rate)
+              << " channels=" << offsetof(M4aMetadataFFI, channels)
+              << " bitrate=" << offsetof(M4aMetadataFFI, bitrate) << std::endl;
+
+    // Build synthetic ilst box
+    std::vector<unsigned char> ilstPayload;
+    auto titleBox = makeTextTagBox("\xa9nam", "Test Title");
+    auto artistBox = makeTextTagBox("\xa9" "ART", "Test Artist");
+    auto albumArtistBox = makeTextTagBox("aART", "Test Album Artist");
+    auto albumBox = makeTextTagBox("\xa9" "alb", "Test Album");
+    auto dateBox = makeTextTagBox("\xa9" "day", "2024");
+    auto genreBox = makeTextTagBox("\xa9gen", "Electronic");
+    auto composerBox = makeTextTagBox("\xa9wrt", "Test Composer");
+    auto commentBox = makeTextTagBox("\xa9" "cmt", "Test Comment");
+
+    // trkn data box
+    std::vector<unsigned char> trknPayload = {0, 0, 0, 5, 0, 12, 0, 0}; // track 5 of 12
+    auto trknBox = makeBox("trkn", makeDataBox(0, trknPayload));
+
+    // disk data box
+    std::vector<unsigned char> diskPayload = {0, 0, 0, 1, 0, 2}; // disc 1 of 2
+    auto diskBox = makeBox("disk", makeDataBox(0, diskPayload));
+
+    ilstPayload.insert(ilstPayload.end(), titleBox.begin(), titleBox.end());
+    ilstPayload.insert(ilstPayload.end(), artistBox.begin(), artistBox.end());
+    ilstPayload.insert(ilstPayload.end(), albumArtistBox.begin(), albumArtistBox.end());
+    ilstPayload.insert(ilstPayload.end(), albumBox.begin(), albumBox.end());
+    ilstPayload.insert(ilstPayload.end(), dateBox.begin(), dateBox.end());
+    ilstPayload.insert(ilstPayload.end(), genreBox.begin(), genreBox.end());
+    ilstPayload.insert(ilstPayload.end(), composerBox.begin(), composerBox.end());
+    ilstPayload.insert(ilstPayload.end(), commentBox.begin(), commentBox.end());
+    ilstPayload.insert(ilstPayload.end(), trknBox.begin(), trknBox.end());
+    ilstPayload.insert(ilstPayload.end(), diskBox.begin(), diskBox.end());
+
+    auto ilstBox = makeBox("ilst", ilstPayload);
+
+    // meta box has 4 bytes flags/version (0)
+    std::vector<unsigned char> metaPayload = {0, 0, 0, 0};
+    metaPayload.insert(metaPayload.end(), ilstBox.begin(), ilstBox.end());
+    auto metaBox = makeBox("meta", metaPayload);
+    auto udtaBox = makeBox("udta", metaBox);
+
+    // stsd box with mp4a audio entry: 2 channels, 44100 Hz
+    // Box payload: 16 bytes (reserved + refIdx + sound info) + 2 bytes channels + 6 bytes + 4 bytes sampleRate
+    std::vector<unsigned char> mp4aEntry(28, 0);
+    mp4aEntry[17] = 2; // 2 channels at payload offset 17 (data offset 25)
+    mp4aEntry[24] = 0xAC; mp4aEntry[25] = 0x44; // 44100 = 0xAC44 at payload offset 24..25 (data offset 32..33)
+    auto mp4aBox = makeBox("mp4a", mp4aEntry);
+
+    std::vector<unsigned char> stsdPayload = {0, 0, 0, 0, 0, 0, 0, 1}; // version/flags + 1 entry
+    stsdPayload.insert(stsdPayload.end(), mp4aBox.begin(), mp4aBox.end());
+    auto stsdBox = makeBox("stsd", stsdPayload);
+    auto stblBox = makeBox("stbl", stsdBox);
+    auto minfBox = makeBox("minf", stblBox);
+    auto mdiaBox = makeBox("mdia", minfBox);
+    auto trakBox = makeBox("trak", mdiaBox);
+
+    std::vector<unsigned char> moovPayload;
+    moovPayload.insert(moovPayload.end(), trakBox.begin(), trakBox.end());
+    moovPayload.insert(moovPayload.end(), udtaBox.begin(), udtaBox.end());
+    auto moovBox = makeBox("moov", moovPayload);
+
+    // Root container with ftyp + moov
+    std::vector<unsigned char> ftypPayload = {'M', '4', 'A', ' ', 0, 0, 0, 0};
+    auto ftypBox = makeBox("ftyp", ftypPayload);
+
+    std::vector<unsigned char> m4aFile;
+    m4aFile.insert(m4aFile.end(), ftypBox.begin(), ftypBox.end());
+    m4aFile.insert(m4aFile.end(), moovBox.begin(), moovBox.end());
+
+    M4aMetadata parsedM4a;
+    assert(parseM4aMetadata(m4aFile.data(), m4aFile.size(), parsedM4a));
+    assert(parsedM4a.title == "Test Title");
+    assert(parsedM4a.artist == "Test Artist");
+    assert(parsedM4a.albumArtist == "Test Album Artist");
+    assert(parsedM4a.album == "Test Album");
+    assert(parsedM4a.date == "2024");
+    assert(parsedM4a.genre == "Electronic");
+    assert(parsedM4a.composer == "Test Composer");
+    assert(parsedM4a.comment == "Test Comment");
+    assert(parsedM4a.track == "5/12");
+    assert(parsedM4a.disc == "1/2");
+    assert(parsedM4a.codec == "mp4a");
+    assert(parsedM4a.channels == 2);
+    assert(parsedM4a.sampleRate == 44100);
+
+    // Test AAC extended ID3 tags
+    std::vector<unsigned char> extId3Tag = {
+        'I', 'D', '3', 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 100,
+        'T', 'P', 'E', '2', 0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 'A', 'A', 'r', 't', 'i', 's', 't',
+        'T', 'C', 'O', 'N', 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 'P', 'o', 'p',
+        'T', 'C', 'O', 'M', 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 'C', 'o', 'm', 'p',
+        'T', 'R', 'C', 'K', 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, '2', '/', '1', '0',
+        'T', 'P', 'O', 'S', 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, '1', '/', '2'
+    };
+    AacMetadata extAacMeta;
+    size_t id3Size = 0;
+    assert(AACDecoderWrapper::parseId3Tags(extId3Tag.data(), extId3Tag.size(), extAacMeta, id3Size));
+    assert(extAacMeta.albumArtist == "AArtist");
+    assert(extAacMeta.genre == "Pop");
+    assert(extAacMeta.composer == "Comp");
+    assert(extAacMeta.track == "2/10");
+    assert(extAacMeta.disc == "1/2");
+
+    std::cout << "  Passed!" << std::endl;
+}
+
+void testMp3VsAacDetection() {
+    std::cout << "[Test] MP3 vs AAC Stream Detection..." << std::endl;
+
+    // 1. Read MP3 test stream
+    std::ifstream mp3File("/tmp/test_stream.mp3", std::ios::binary);
+    if (mp3File.is_open()) {
+        std::vector<unsigned char> mp3Data((std::istreambuf_iterator<char>(mp3File)),
+                                            std::istreambuf_iterator<char>());
+        if (!mp3Data.empty()) {
+            assert(MP3DecoderWrapper::checkForValidFrames(mp3Data));
+            assert(!AACDecoderWrapper::checkForValidFrames(mp3Data));
+        }
+    }
+
+    // 2. Read AAC test stream
+    std::ifstream aacFile("/tmp/test_stream.aac", std::ios::binary);
+    if (aacFile.is_open()) {
+        std::vector<unsigned char> aacData((std::istreambuf_iterator<char>(aacFile)),
+                                            std::istreambuf_iterator<char>());
+        if (!aacData.empty()) {
+            assert(AACDecoderWrapper::checkForValidFrames(aacData));
+            assert(!MP3DecoderWrapper::checkForValidFrames(aacData));
+        }
+    }
+
+    std::cout << "  Passed!" << std::endl;
+}
+
+void testMp3MetadataEmission() {
+    std::cout << "[Test] MP3 Metadata Emission..." << std::endl;
+
+    std::ifstream mp3File("/Volumes/NVME/Users/deimos/Music/tests/mp3.mp3", std::ios::binary);
+    if (mp3File.is_open()) {
+        std::vector<unsigned char> mp3Data((std::istreambuf_iterator<char>(mp3File)),
+                                            std::istreambuf_iterator<char>());
+        if (!mp3Data.empty()) {
+            MP3DecoderWrapper decoder;
+            int sr = 44100, ch = 2;
+            assert(decoder.initializeDecoder(sr, ch));
+
+            bool metadataReceived = false;
+            decoder.setTrackChangeCallback([&](const AudioMetadata &meta) {
+                metadataReceived = true;
+                assert(meta.mp3Metadata.sampleRate == 44100);
+                assert(meta.mp3Metadata.channels == 2);
+                assert(meta.mp3Metadata.bitrate > 0);
+                assert(meta.mp3Metadata.title == "Don't Leave Me This Way");
+                assert(meta.mp3Metadata.artist == "Various Artist");
+                assert(meta.mp3Metadata.album == "Top 100 - 80's");
+            });
+
+            // Feed a 32 KB chunk
+            size_t chunk = std::min(mp3Data.size(), static_cast<size_t>(32768));
+            std::vector<unsigned char> firstChunk(mp3Data.begin(), mp3Data.begin() + chunk);
+            decoder.decode(firstChunk, &sr, &ch);
+
+            assert(metadataReceived);
+        }
+    }
+
+    std::cout << "  Passed!" << std::endl;
+}
+
 int main() {
     std::cout << "Running Native Decoder C++ Tests..." << std::endl;
     testHeaderSniffing();
     testInterleavedToPlanar();
     testAacStreamDecoder();
     testAc3StreamDecoder();
+    testM4aMetadataAndOffsets();
+    testMp3VsAacDetection();
+    testMp3MetadataEmission();
     std::cout << "All Native Decoder C++ Tests passed successfully!" << std::endl;
     return 0;
 }

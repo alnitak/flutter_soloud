@@ -94,20 +94,54 @@ struct OggMetadataFFI {
 struct Mp3MetadataFFI {
     char title[MAX_STRING_LENGTH];
     char artist[MAX_STRING_LENGTH];
+    char album_artist[MAX_STRING_LENGTH];
     char album[MAX_STRING_LENGTH];
     char date[MAX_STRING_LENGTH];
     char genre[MAX_STRING_LENGTH];
+    char composer[MAX_STRING_LENGTH];
+    char comment[MAX_STRING_LENGTH];
+    char track[MAX_STRING_LENGTH];
+    char disc[MAX_STRING_LENGTH];
+    char stream_url[MAX_STRING_LENGTH];
+    uint32_t sample_rate;
+    uint32_t channels;
+    uint32_t bitrate;
 };
 
 struct AacMetadataFFI {
     char title[MAX_STRING_LENGTH];
     char artist[MAX_STRING_LENGTH];
+    char album_artist[MAX_STRING_LENGTH];
     char album[MAX_STRING_LENGTH];
+    char date[MAX_STRING_LENGTH];
+    char genre[MAX_STRING_LENGTH];
+    char composer[MAX_STRING_LENGTH];
+    char comment[MAX_STRING_LENGTH];
+    char track[MAX_STRING_LENGTH];
+    char disc[MAX_STRING_LENGTH];
+    char stream_url[MAX_STRING_LENGTH];
     uint32_t sample_rate;
     uint32_t channels;
     char profile[32];
     uint32_t bitrate;
     uint32_t frame_length;
+};
+
+struct M4aMetadataFFI {
+    char title[MAX_STRING_LENGTH];
+    char artist[MAX_STRING_LENGTH];
+    char album_artist[MAX_STRING_LENGTH];
+    char album[MAX_STRING_LENGTH];
+    char date[MAX_STRING_LENGTH];
+    char genre[MAX_STRING_LENGTH];
+    char composer[MAX_STRING_LENGTH];
+    char comment[MAX_STRING_LENGTH];
+    char track[MAX_STRING_LENGTH];
+    char disc[MAX_STRING_LENGTH];
+    char codec[32];
+    uint32_t sample_rate;
+    uint32_t channels;
+    uint32_t bitrate;
 };
 
 struct Ac3MetadataFFI {
@@ -142,6 +176,7 @@ struct AudioMetadataFFI
     struct AacMetadataFFI aacMetadata;
     struct Ac3MetadataFFI ac3Metadata;
     struct Eac3MetadataFFI eac3Metadata;
+    struct M4aMetadataFFI m4aMetadata;
 };
 
 // callback to tell dart the metadata

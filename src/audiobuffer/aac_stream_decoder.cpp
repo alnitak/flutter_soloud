@@ -68,8 +68,9 @@ AACDecoderWrapper::decode(std::vector<unsigned char> &buffer, int *samplerate,
   // Handle ICY metadata stripping for AAC streams
   if (mIcyMetaInt > 0 && mFormat == DetectedType::BUFFER_AAC && !buffer.empty()) {
     std::vector<unsigned char> cleanAudio;
-    stripIcyMetadata(buffer, mIcyMetaInt, mIcy, cleanAudio, [this](const std::string &title) {
+    stripIcyMetadataEx(buffer, mIcyMetaInt, mIcy, cleanAudio, [this](const std::string &title, const std::string &url) {
       mCachedAacMetadata.title = title;
+      mCachedAacMetadata.streamUrl = url;
       size_t dash = title.find(" - ");
       if (dash != std::string::npos) {
         mCachedAacMetadata.artist = title.substr(0, dash);
@@ -91,12 +92,6 @@ AACDecoderWrapper::decode(std::vector<unsigned char> &buffer, int *samplerate,
       size_t id3Size = 0;
       if (parseId3Tags(buffer.data(), buffer.size(), mCachedAacMetadata, id3Size)) {
         mId3Parsed = true;
-        if (onTrackChange) {
-          AudioMetadata meta;
-          meta.type = mFormat;
-          meta.aacMetadata = mCachedAacMetadata;
-          onTrackChange(meta);
-        }
       }
       if (id3Size > 0 && buffer.size() >= id3Size) {
         buffer.erase(buffer.begin(), buffer.begin() + id3Size);
@@ -128,6 +123,13 @@ AACDecoderWrapper::decode(std::vector<unsigned char> &buffer, int *samplerate,
 }
 
 void AACDecoderWrapper::setDataEnded() {
+  if (!mMetadataParsed && mId3Parsed && onTrackChange) {
+    AudioMetadata metadata;
+    metadata.type = mFormat;
+    metadata.aacMetadata = mCachedAacMetadata;
+    mMetadataParsed = true;
+    onTrackChange(metadata);
+  }
   if (mImpl) {
     mImpl->setDataEnded();
   }
@@ -135,12 +137,42 @@ void AACDecoderWrapper::setDataEnded() {
 
 bool AACDecoderWrapper::checkForValidFrames(const std::vector<unsigned char> &buffer) {
   if (buffer.size() < 7) return false;
-  for (size_t i = 0; i + 7 <= buffer.size(); ++i) {
-    if (NativeAudioDecoder::isAacAdts(buffer.data() + i, buffer.size() - i)) {
-      int frameLength = ((buffer[i + 3] & 0x03) << 11) |
-                        (buffer[i + 4] << 3) |
-                        ((buffer[i + 5] & 0xE0) >> 5);
-      if (frameLength >= 7 && frameLength <= 8192) {
+
+  // Real ADTS streams start at or near the beginning of the buffer.
+  // We scan the first portion of the buffer (up to 512 bytes) for a valid ADTS header.
+  size_t maxScan = buffer.size() < 512 ? buffer.size() - 7 : 512;
+  for (size_t i = 0; i <= maxScan; ++i) {
+    if (!NativeAudioDecoder::isAacAdts(buffer.data() + i, buffer.size() - i)) {
+      continue;
+    }
+
+    int frameLength = static_cast<int>(((buffer[i + 3] & 0x03) << 11) |
+                                       (buffer[i + 4] << 3) |
+                                       ((buffer[i + 5] & 0xE0) >> 5));
+    if (frameLength < 7 || frameLength > 8192) {
+      continue;
+    }
+
+    // Check chaining to the next frame if the buffer is large enough
+    size_t nextOffset = i + static_cast<size_t>(frameLength);
+    if (nextOffset + 7 <= buffer.size()) {
+      if (NativeAudioDecoder::isAacAdts(buffer.data() + nextOffset, buffer.size() - nextOffset)) {
+        // Compare sample rate and channel config between frame 1 and frame 2
+        uint8_t sf1 = (buffer[i + 2] >> 2) & 0x0F;
+        uint8_t sf2 = (buffer[nextOffset + 2] >> 2) & 0x0F;
+        uint8_t ch1 = ((buffer[i + 2] & 0x01) << 2) | ((buffer[i + 3] >> 6) & 0x03);
+        uint8_t ch2 = ((buffer[nextOffset + 2] & 0x01) << 2) | ((buffer[nextOffset + 3] >> 6) & 0x03);
+        if (sf1 == sf2 && ch1 == ch2) {
+          return true; // Confirmed 2 consecutive matching ADTS frames!
+        }
+      }
+      // If a full second frame could have fit but was NOT an ADTS frame,
+      // then offset i was a false positive! Continue scanning.
+      continue;
+    } else {
+      // Buffer is too short to contain a second frame.
+      // Accept only if candidate frame starts near the very beginning.
+      if (i < 4) {
         return true;
       }
     }
@@ -327,6 +359,53 @@ bool AACDecoderWrapper::parseEac3Metadata(const unsigned char *data, size_t size
   return true;
 }
 
+static std::string parseId3TextFrame(const unsigned char *data, size_t frameSize) {
+  if (frameSize <= 1) return "";
+  uint8_t encoding = data[0];
+  const unsigned char *textData = data + 1;
+  size_t textLen = frameSize - 1;
+
+  if (encoding == 1 || encoding == 2) { // UTF-16
+    bool isLE = true;
+    if (encoding == 1 && textLen >= 2) {
+      if (textData[0] == 0xFF && textData[1] == 0xFE) {
+        isLE = true;
+        textData += 2;
+        textLen -= 2;
+      } else if (textData[0] == 0xFE && textData[1] == 0xFF) {
+        isLE = false;
+        textData += 2;
+        textLen -= 2;
+      }
+    } else if (encoding == 2) {
+      isLE = false; // UTF-16BE
+    }
+    std::string utf8;
+    for (size_t i = 0; i + 1 < textLen; i += 2) {
+      uint16_t ch = isLE ? (textData[i] | (textData[i + 1] << 8))
+                         : ((textData[i] << 8) | textData[i + 1]);
+      if (ch == 0) break;
+      if (ch < 0x80) {
+        utf8.push_back(static_cast<char>(ch));
+      } else if (ch < 0x800) {
+        utf8.push_back(static_cast<char>(0xC0 | (ch >> 6)));
+        utf8.push_back(static_cast<char>(0x80 | (ch & 0x3F)));
+      } else {
+        utf8.push_back(static_cast<char>(0xE0 | (ch >> 12)));
+        utf8.push_back(static_cast<char>(0x80 | ((ch >> 6) & 0x3F)));
+        utf8.push_back(static_cast<char>(0x80 | (ch & 0x3F)));
+      }
+    }
+    return utf8;
+  }
+
+  std::string result(reinterpret_cast<const char *>(textData), textLen);
+  while (!result.empty() && result.back() == '\0') {
+    result.pop_back();
+  }
+  return result;
+}
+
 bool AACDecoderWrapper::parseId3Tags(const unsigned char *data, size_t size, AacMetadata &out, size_t &outId3Size) {
   outId3Size = 0;
   if (!data || size < 10 || std::memcmp(data, "ID3", 3) != 0) {
@@ -378,15 +457,40 @@ bool AACDecoderWrapper::parseId3Tags(const unsigned char *data, size_t size, Aac
     }
 
     if (frame_id[0] == 'T') {
-      size_t text_start = pos + 1;
-      if (text_start < pos + frame_size) {
-        std::string value(reinterpret_cast<const char *>(data + text_start), frame_size - 1);
+      if (pos + frame_size <= totalTagSize) {
+        std::string value = parseId3TextFrame(data + pos, frame_size);
         if (std::strcmp(frame_id, "TIT2") == 0) {
           out.title = value;
         } else if (std::strcmp(frame_id, "TPE1") == 0) {
           out.artist = value;
+        } else if (std::strcmp(frame_id, "TPE2") == 0) {
+          out.albumArtist = value;
         } else if (std::strcmp(frame_id, "TALB") == 0) {
           out.album = value;
+        } else if (std::strcmp(frame_id, "TYER") == 0 || std::strcmp(frame_id, "TDRC") == 0) {
+          if (out.date.empty()) out.date = value;
+        } else if (std::strcmp(frame_id, "TCON") == 0) {
+          out.genre = value;
+        } else if (std::strcmp(frame_id, "TCOM") == 0) {
+          out.composer = value;
+        } else if (std::strcmp(frame_id, "TRCK") == 0) {
+          out.track = value;
+        } else if (std::strcmp(frame_id, "TPOS") == 0) {
+          out.disc = value;
+        }
+      }
+    } else if (std::strcmp(frame_id, "COMM") == 0) {
+      // COMM frame: 1 byte encoding, 3 bytes language, short description, comment text
+      if (frame_size > 4) {
+        size_t text_start = pos + 4;
+        while (text_start < pos + frame_size && data[text_start] != 0) {
+          text_start++;
+        }
+        if (text_start < pos + frame_size) text_start++; // Skip null terminator
+        if (text_start < pos + frame_size) {
+          out.comment = std::string(
+              reinterpret_cast<const char *>(data + text_start),
+              (pos + frame_size) - text_start);
         }
       }
     }

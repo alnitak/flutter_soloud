@@ -879,12 +879,27 @@ BufferStream::convertMetadataToFFI(const AudioMetadata &metadata) {
           MAX_STRING_LENGTH - 1);
   strncpy(ffi.mp3Metadata.artist, metadata.mp3Metadata.artist.c_str(),
           MAX_STRING_LENGTH - 1);
+  strncpy(ffi.mp3Metadata.album_artist, metadata.mp3Metadata.albumArtist.c_str(),
+          MAX_STRING_LENGTH - 1);
   strncpy(ffi.mp3Metadata.album, metadata.mp3Metadata.album.c_str(),
           MAX_STRING_LENGTH - 1);
   strncpy(ffi.mp3Metadata.date, metadata.mp3Metadata.date.c_str(),
           MAX_STRING_LENGTH - 1);
   strncpy(ffi.mp3Metadata.genre, metadata.mp3Metadata.genre.c_str(),
           MAX_STRING_LENGTH - 1);
+  strncpy(ffi.mp3Metadata.composer, metadata.mp3Metadata.composer.c_str(),
+          MAX_STRING_LENGTH - 1);
+  strncpy(ffi.mp3Metadata.comment, metadata.mp3Metadata.comment.c_str(),
+          MAX_STRING_LENGTH - 1);
+  strncpy(ffi.mp3Metadata.track, metadata.mp3Metadata.track.c_str(),
+          MAX_STRING_LENGTH - 1);
+  strncpy(ffi.mp3Metadata.disc, metadata.mp3Metadata.disc.c_str(),
+          MAX_STRING_LENGTH - 1);
+  strncpy(ffi.mp3Metadata.stream_url, metadata.mp3Metadata.streamUrl.c_str(),
+          MAX_STRING_LENGTH - 1);
+  ffi.mp3Metadata.sample_rate = metadata.mp3Metadata.sampleRate;
+  ffi.mp3Metadata.channels = metadata.mp3Metadata.channels;
+  ffi.mp3Metadata.bitrate = metadata.mp3Metadata.bitrate;
 
   // Convert OGG metadata
   strncpy(ffi.oggMetadata.vendor, metadata.oggMetadata.vendor.c_str(),
@@ -922,7 +937,7 @@ BufferStream::convertMetadataToFFI(const AudioMetadata &metadata) {
       metadata.oggMetadata.opusInfo.mapping_family,
       metadata.oggMetadata.opusInfo.stream_count,
       metadata.oggMetadata.opusInfo.coupled_count,
-      {0}, // Initialize channel_mapping array to zeros
+      {},
       (int)metadata.oggMetadata.opusInfo.channel_mapping.size()};
 
   // Convert Flac info
@@ -936,7 +951,7 @@ BufferStream::convertMetadataToFFI(const AudioMetadata &metadata) {
                               metadata.oggMetadata.flacInfo.total_samples};
 
   // Also populate FLAC info for raw FLAC streams
-  if (metadata.type == DetectedType::BUFFER_FLAC) {
+  if (metadata.type == BUFFER_FLAC) {
     ffi.detectedType = DetectedTypeFFI::OGG_FLAC;
   }
 
@@ -953,7 +968,23 @@ BufferStream::convertMetadataToFFI(const AudioMetadata &metadata) {
           MAX_STRING_LENGTH - 1);
   strncpy(ffi.aacMetadata.artist, metadata.aacMetadata.artist.c_str(),
           MAX_STRING_LENGTH - 1);
+  strncpy(ffi.aacMetadata.album_artist, metadata.aacMetadata.albumArtist.c_str(),
+          MAX_STRING_LENGTH - 1);
   strncpy(ffi.aacMetadata.album, metadata.aacMetadata.album.c_str(),
+          MAX_STRING_LENGTH - 1);
+  strncpy(ffi.aacMetadata.date, metadata.aacMetadata.date.c_str(),
+          MAX_STRING_LENGTH - 1);
+  strncpy(ffi.aacMetadata.genre, metadata.aacMetadata.genre.c_str(),
+          MAX_STRING_LENGTH - 1);
+  strncpy(ffi.aacMetadata.composer, metadata.aacMetadata.composer.c_str(),
+          MAX_STRING_LENGTH - 1);
+  strncpy(ffi.aacMetadata.comment, metadata.aacMetadata.comment.c_str(),
+          MAX_STRING_LENGTH - 1);
+  strncpy(ffi.aacMetadata.track, metadata.aacMetadata.track.c_str(),
+          MAX_STRING_LENGTH - 1);
+  strncpy(ffi.aacMetadata.disc, metadata.aacMetadata.disc.c_str(),
+          MAX_STRING_LENGTH - 1);
+  strncpy(ffi.aacMetadata.stream_url, metadata.aacMetadata.streamUrl.c_str(),
           MAX_STRING_LENGTH - 1);
   ffi.aacMetadata.sample_rate = metadata.aacMetadata.sampleRate;
   ffi.aacMetadata.channels = metadata.aacMetadata.channels;
@@ -961,6 +992,33 @@ BufferStream::convertMetadataToFFI(const AudioMetadata &metadata) {
           sizeof(ffi.aacMetadata.profile) - 1);
   ffi.aacMetadata.bitrate = metadata.aacMetadata.bitrate;
   ffi.aacMetadata.frame_length = metadata.aacMetadata.frameLength;
+
+  // Convert M4A metadata
+  strncpy(ffi.m4aMetadata.title, metadata.m4aMetadata.title.c_str(),
+          MAX_STRING_LENGTH - 1);
+  strncpy(ffi.m4aMetadata.artist, metadata.m4aMetadata.artist.c_str(),
+          MAX_STRING_LENGTH - 1);
+  strncpy(ffi.m4aMetadata.album_artist, metadata.m4aMetadata.albumArtist.c_str(),
+          MAX_STRING_LENGTH - 1);
+  strncpy(ffi.m4aMetadata.album, metadata.m4aMetadata.album.c_str(),
+          MAX_STRING_LENGTH - 1);
+  strncpy(ffi.m4aMetadata.date, metadata.m4aMetadata.date.c_str(),
+          MAX_STRING_LENGTH - 1);
+  strncpy(ffi.m4aMetadata.genre, metadata.m4aMetadata.genre.c_str(),
+          MAX_STRING_LENGTH - 1);
+  strncpy(ffi.m4aMetadata.composer, metadata.m4aMetadata.composer.c_str(),
+          MAX_STRING_LENGTH - 1);
+  strncpy(ffi.m4aMetadata.comment, metadata.m4aMetadata.comment.c_str(),
+          MAX_STRING_LENGTH - 1);
+  strncpy(ffi.m4aMetadata.track, metadata.m4aMetadata.track.c_str(),
+          MAX_STRING_LENGTH - 1);
+  strncpy(ffi.m4aMetadata.disc, metadata.m4aMetadata.disc.c_str(),
+          MAX_STRING_LENGTH - 1);
+  strncpy(ffi.m4aMetadata.codec, metadata.m4aMetadata.codec.c_str(),
+          sizeof(ffi.m4aMetadata.codec) - 1);
+  ffi.m4aMetadata.sample_rate = metadata.m4aMetadata.sampleRate;
+  ffi.m4aMetadata.channels = metadata.m4aMetadata.channels;
+  ffi.m4aMetadata.bitrate = metadata.m4aMetadata.bitrate;
 
   // Convert AC3 metadata
   ffi.ac3Metadata.sample_rate = metadata.ac3Metadata.sampleRate;

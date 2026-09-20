@@ -79,6 +79,8 @@ private:
   void buildSeekTable();
   double estimateBitrateFromFirstFrame() const;
   double parseDurationFromXingVbri() const;
+  Mp3Metadata mCachedMp3Metadata;
+  bool mMetadataEmitted;
   mutable std::vector<drmp3_seek_point> mSeekPoints;
 };
 

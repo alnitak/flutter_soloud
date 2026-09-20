@@ -66,6 +66,7 @@ list(APPEND PLUGIN_SOURCES
   "${SRC_DIR}/audiobuffer/wav_stream_decoder.cpp"
   "${SRC_DIR}/audiobuffer/ogg_flac_stream_decoder.cpp"
   "${SRC_DIR}/audiobuffer/aac_stream_decoder.cpp"
+  "${SRC_DIR}/audiobuffer/m4a_metadata.cpp"
   "${SRC_DIR}/filters/filters.cpp"
   "${SRC_DIR}/filters/pitch_shift_filter.cpp"
   "${SRC_DIR}/filters/limiter.cpp"

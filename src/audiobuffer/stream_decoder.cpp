@@ -132,11 +132,26 @@ DetectedType StreamDecoder::detectAudioFormat(const std::vector<unsigned char>& 
         }
         const unsigned char *payload = buffer.data() + id3Size;
         size_t payloadSize = size - id3Size;
-        if (NativeAudioDecoder::isAacAdts(payload, payloadSize) ||
-            AACDecoderWrapper::checkForValidFrames(std::vector<unsigned char>(payload, payload + payloadSize))) {
+        std::vector<unsigned char> payloadVec(payload, payload + payloadSize);
+
+        // An ID3 tag can precede an AAC stream (e.g. HLS or radio) or an MP3 stream.
+        // Check if AAC ADTS frames start right after the ID3 tag.
+        if (AACDecoderWrapper::checkForValidFrames(payloadVec)) {
             return DetectedType::BUFFER_AAC;
         }
-        return DetectedType::BUFFER_MP3_WITH_ID3; // ID3 tag found
+
+        // Check for valid MP3 frames
+        if (MP3DecoderWrapper::checkForValidFrames(buffer) ||
+            MP3DecoderWrapper::checkForValidFrames(payloadVec)) {
+            return DetectedType::BUFFER_MP3_WITH_ID3;
+        }
+
+        // If we don't have enough payload data to confirm yet, wait for more data
+        if (payloadSize < 512) {
+            return DetectedType::BUFFER_NO_ENOUGH_DATA;
+        }
+
+        return DetectedType::BUFFER_MP3_WITH_ID3; // Default for ID3
     } 
     else if (MP3DecoderWrapper::checkForValidFrames(buffer)) {
         return DetectedType::BUFFER_MP3_STREAM;
@@ -148,8 +163,7 @@ DetectedType StreamDecoder::detectAudioFormat(const std::vector<unsigned char>& 
     }
 
     // --- Detect AAC ADTS ---
-    else if (NativeAudioDecoder::isAacAdts(buffer.data(), size) ||
-             AACDecoderWrapper::checkForValidFrames(buffer)) {
+    else if (AACDecoderWrapper::checkForValidFrames(buffer)) {
         return DetectedType::BUFFER_AAC;
     }
 
@@ -253,6 +267,16 @@ std::pair<std::vector<float>, DecoderError> StreamDecoder::decode(
                         detectedType == DetectedType::BUFFER_AC3 ? "AC-3" : "E-AC-3");
                 return {{}, DecoderError::FormatNotSupported};
             }
+        } else if (detectedType == DetectedType::BUFFER_M4A) {
+            AudioMetadata meta;
+            meta.type = DetectedType::BUFFER_M4A;
+            if (parseM4aMetadata(buffer.data(), buffer.size(), meta.m4aMetadata)) {
+                if (metadataChangeCallback) {
+                    metadataChangeCallback(meta);
+                }
+            }
+            fprintf(stderr, "[flutter_soloud] MP4/M4A containers require random-access atom parsing and are not supported for chunk streaming. Use loadFile, loadAsset, or loadMem instead.\n");
+            return {{}, DecoderError::FormatNotSupported};
         }
 
         // Safety guard: ensure wrapper exists and format was initialized

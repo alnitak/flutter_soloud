@@ -149,14 +149,149 @@ void main() {
       expect(str, contains('FrameSize: 2048'));
     });
 
-    test('metadata_ffi.h defines aacMetadata, ac3Metadata, eac3Metadata', () {
+    test('Mp3Metadata stores all extended properties correctly', () {
+      final mp3 = Mp3Metadata(
+        title: 'Song Title',
+        artist: 'Lead Artist',
+        albumArtist: 'Band Artist',
+        album: 'Album Name',
+        date: '2024-01-01',
+        genre: 'Rock',
+        composer: 'Song Composer',
+        comment: 'Studio Mix',
+        track: '3/12',
+        disc: '1/2',
+        streamUrl: 'https://example.com/stream',
+        sampleRate: 44100,
+        channels: 2,
+        bitrate: 320000,
+      );
+
+      expect(mp3.title, 'Song Title');
+      expect(mp3.artist, 'Lead Artist');
+      expect(mp3.albumArtist, 'Band Artist');
+      expect(mp3.album, 'Album Name');
+      expect(mp3.date, '2024-01-01');
+      expect(mp3.genre, 'Rock');
+      expect(mp3.composer, 'Song Composer');
+      expect(mp3.comment, 'Studio Mix');
+      expect(mp3.track, '3/12');
+      expect(mp3.disc, '1/2');
+      expect(mp3.streamUrl, 'https://example.com/stream');
+      expect(mp3.sampleRate, 44100);
+      expect(mp3.channels, 2);
+      expect(mp3.bitrate, 320000);
+    });
+
+    test('M4aMetadata stores properties and formats correctly', () {
+      final m4a = M4aMetadata(
+        title: 'M4A Song',
+        artist: 'M4A Artist',
+        albumArtist: 'M4A Album Artist',
+        album: 'M4A Album',
+        date: '2024',
+        genre: 'Pop',
+        composer: 'M4A Composer',
+        comment: 'Nice track',
+        track: '1/10',
+        disc: '1/1',
+        codec: 'mp4a',
+        sampleRate: 48000,
+        channels: 2,
+        bitrate: 256000,
+      );
+
+      expect(m4a.title, 'M4A Song');
+      expect(m4a.artist, 'M4A Artist');
+      expect(m4a.albumArtist, 'M4A Album Artist');
+      expect(m4a.album, 'M4A Album');
+      expect(m4a.date, '2024');
+      expect(m4a.genre, 'Pop');
+      expect(m4a.composer, 'M4A Composer');
+      expect(m4a.comment, 'Nice track');
+      expect(m4a.track, '1/10');
+      expect(m4a.disc, '1/1');
+      expect(m4a.codec, 'mp4a');
+      expect(m4a.sampleRate, 48000);
+      expect(m4a.channels, 2);
+      expect(m4a.bitrate, 256000);
+
+      final metadata = AudioMetadata(
+        detectedType: DetectedType.m4a,
+        m4aMetadata: m4a,
+      );
+
+      final str = metadata.toString();
+      expect(str, contains('|---------- M4A ----------|'));
+      expect(str, contains('Title: M4A Song'));
+      expect(str, contains('Artist: M4A Artist'));
+      expect(str, contains('AlbumArtist: M4A Album Artist'));
+      expect(str, contains('Album: M4A Album'));
+      expect(str, contains('Date: 2024'));
+      expect(str, contains('Genre: Pop'));
+      expect(str, contains('Composer: M4A Composer'));
+      expect(str, contains('Comment: Nice track'));
+      expect(str, contains('Track: 1/10'));
+      expect(str, contains('Disc: 1/1'));
+      expect(str, contains('Codec: mp4a'));
+      expect(str, contains('SampleRate: 48000'));
+      expect(str, contains('Channels: 2'));
+      expect(str, contains('Bitrate: 256000'));
+    });
+
+    test('AudioMetadata.toString() formats extended MP3 properly', () {
+      final metadata = AudioMetadata(
+        detectedType: DetectedType.mp3WithId3,
+        mp3Metadata: Mp3Metadata(
+          title: 'MP3 Title',
+          artist: 'MP3 Artist',
+          albumArtist: 'MP3 Album Artist',
+          album: 'MP3 Album',
+          date: '2023',
+          genre: 'Jazz',
+          composer: 'MP3 Composer',
+          comment: 'Live session',
+          track: '4/8',
+          disc: '1/1',
+          streamUrl: 'https://stream.example.com',
+          sampleRate: 44100,
+          channels: 2,
+          bitrate: 192000,
+        ),
+      );
+
+      final str = metadata.toString();
+      expect(str, contains('|---------- MP3 with ID3 ----------|'));
+      expect(str, contains('Title: MP3 Title'));
+      expect(str, contains('Artist: MP3 Artist'));
+      expect(str, contains('AlbumArtist: MP3 Album Artist'));
+      expect(str, contains('Album: MP3 Album'));
+      expect(str, contains('Date: 2023'));
+      expect(str, contains('Genre: Jazz'));
+      expect(str, contains('Composer: MP3 Composer'));
+      expect(str, contains('Comment: Live session'));
+      expect(str, contains('Track: 4/8'));
+      expect(str, contains('Disc: 1/1'));
+      expect(str, contains('StreamUrl: https://stream.example.com'));
+      expect(str, contains('SampleRate: 44100'));
+      expect(str, contains('Channels: 2'));
+      expect(str, contains('Bitrate: 192000'));
+    });
+
+    test('metadata_ffi.h defines metadata structs', () {
       final header = File('src/audiobuffer/metadata_ffi.h').readAsStringSync();
       expect(header, contains('struct AacMetadataFFI'));
       expect(header, contains('struct Ac3MetadataFFI'));
       expect(header, contains('struct Eac3MetadataFFI'));
+      expect(header, contains('struct M4aMetadataFFI'));
       expect(header, contains('AacMetadataFFI aacMetadata;'));
       expect(header, contains('Ac3MetadataFFI ac3Metadata;'));
       expect(header, contains('Eac3MetadataFFI eac3Metadata;'));
+      expect(header, contains('M4aMetadataFFI m4aMetadata;'));
+      expect(header, contains('char album_artist[MAX_STRING_LENGTH];'));
+      expect(header, contains('char composer[MAX_STRING_LENGTH];'));
+      expect(header, contains('char track[MAX_STRING_LENGTH];'));
+      expect(header, contains('char disc[MAX_STRING_LENGTH];'));
     });
   });
 }

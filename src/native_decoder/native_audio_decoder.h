@@ -41,7 +41,20 @@ public:
     /// Check if the header matches an ADTS AAC stream (syncword 0xFFF).
     static inline bool isAacAdts(const unsigned char *header, size_t headerSize) {
         if (header == nullptr || headerSize < 2) return false;
-        return (header[0] == 0xFF && (header[1] & 0xF6) == 0xF0);
+        if (header[0] != 0xFF || (header[1] & 0xF6) != 0xF0) return false;
+        if (headerSize >= 7) {
+            uint8_t profile = (header[2] >> 6) & 0x03;
+            if (profile == 3) return false;
+            uint8_t sf_index = (header[2] >> 2) & 0x0F;
+            if (sf_index > 11) return false;
+            uint8_t channel_config = ((header[2] & 0x01) << 2) | ((header[3] >> 6) & 0x03);
+            if (channel_config == 0) return false;
+            uint32_t frame_length = ((static_cast<uint32_t>(header[3] & 0x03) << 11) |
+                                     (static_cast<uint32_t>(header[4]) << 3) |
+                                     ((static_cast<uint32_t>(header[5]) >> 5) & 0x07));
+            if (frame_length < 7 || frame_length > 8192) return false;
+        }
+        return true;
     }
 
     /// Check if the header matches an AC-3 or E-AC-3 stream (syncword 0x0B77).

@@ -46,17 +46,63 @@ drmp3_bool32 MP3DecoderWrapper::on_seek(void *pUserData, int offset,
   return DRMP3_TRUE;
 }
 
+static std::string parseId3TextFrame(const unsigned char *data, size_t frameSize) {
+  if (frameSize <= 1) return "";
+  uint8_t encoding = data[0];
+  const unsigned char *textData = data + 1;
+  size_t textLen = frameSize - 1;
+
+  if (encoding == 1 || encoding == 2) { // UTF-16
+    bool isLE = true;
+    if (encoding == 1 && textLen >= 2) {
+      if (textData[0] == 0xFF && textData[1] == 0xFE) {
+        isLE = true;
+        textData += 2;
+        textLen -= 2;
+      } else if (textData[0] == 0xFE && textData[1] == 0xFF) {
+        isLE = false;
+        textData += 2;
+        textLen -= 2;
+      }
+    } else if (encoding == 2) {
+      isLE = false; // UTF-16BE
+    }
+    std::string utf8;
+    for (size_t i = 0; i + 1 < textLen; i += 2) {
+      uint16_t ch = isLE ? (textData[i] | (textData[i + 1] << 8))
+                         : ((textData[i] << 8) | textData[i + 1]);
+      if (ch == 0) break;
+      if (ch < 0x80) {
+        utf8.push_back(static_cast<char>(ch));
+      } else if (ch < 0x800) {
+        utf8.push_back(static_cast<char>(0xC0 | (ch >> 6)));
+        utf8.push_back(static_cast<char>(0x80 | (ch & 0x3F)));
+      } else {
+        utf8.push_back(static_cast<char>(0xE0 | (ch >> 12)));
+        utf8.push_back(static_cast<char>(0x80 | ((ch >> 6) & 0x3F)));
+        utf8.push_back(static_cast<char>(0x80 | (ch & 0x3F)));
+      }
+    }
+    return utf8;
+  }
+
+  std::string result(reinterpret_cast<const char *>(textData), textLen);
+  while (!result.empty() && result.back() == '\0') {
+    result.pop_back();
+  }
+  return result;
+}
+
 void MP3DecoderWrapper::on_meta(void *pUserData,
                                 const drmp3_metadata *pMetadata) {
   MP3DecoderWrapper *decoder = (MP3DecoderWrapper *)pUserData;
 
-  if (decoder == nullptr || decoder->onTrackChange == nullptr) {
+  if (decoder == nullptr) {
     return;
   }
 
   if (pMetadata->type == DRMP3_METADATA_TYPE_ID3V2 && !decoder->ID3TagsFound) {
-    AudioMetadata metadata;
-    metadata.type = DetectedType::BUFFER_MP3_WITH_ID3;
+    decoder->ID3TagsFound = true;
 
     const unsigned char *rawData = (const unsigned char *)pMetadata->pRawData;
     size_t totalTagSize = pMetadata->rawDataSize;
@@ -94,31 +140,48 @@ void MP3DecoderWrapper::on_meta(void *pUserData,
         break; // Malformed tag
 
       if (frame_id[0] == 'T') {      // Common text frames
-        size_t text_start = pos + 1; // Skip encoding byte
-        if (text_start < pos + frame_size) {
-          std::string value(
-              reinterpret_cast<const char *>(rawData + text_start),
-              frame_size - 1);
+        if (pos + frame_size <= totalTagSize) {
+          std::string value = parseId3TextFrame(rawData + pos, frame_size);
 
-          // TODO: add artwork?
           if (strcmp(frame_id, "TIT2") == 0)
-            metadata.mp3Metadata.title = value;
+            decoder->mCachedMp3Metadata.title = value;
           else if (strcmp(frame_id, "TPE1") == 0)
-            metadata.mp3Metadata.artist = value;
+            decoder->mCachedMp3Metadata.artist = value;
+          else if (strcmp(frame_id, "TPE2") == 0)
+            decoder->mCachedMp3Metadata.albumArtist = value;
           else if (strcmp(frame_id, "TALB") == 0)
-            metadata.mp3Metadata.album = value;
-          else if (strcmp(frame_id, "TYER") == 0)
-            metadata.mp3Metadata.date = value;
+            decoder->mCachedMp3Metadata.album = value;
+          else if (strcmp(frame_id, "TYER") == 0 || strcmp(frame_id, "TDRC") == 0) {
+            if (decoder->mCachedMp3Metadata.date.empty())
+              decoder->mCachedMp3Metadata.date = value;
+          }
           else if (strcmp(frame_id, "TCON") == 0)
-            metadata.mp3Metadata.genre = value;
+            decoder->mCachedMp3Metadata.genre = value;
+          else if (strcmp(frame_id, "TCOM") == 0)
+            decoder->mCachedMp3Metadata.composer = value;
+          else if (strcmp(frame_id, "TRCK") == 0)
+            decoder->mCachedMp3Metadata.track = value;
+          else if (strcmp(frame_id, "TPOS") == 0)
+            decoder->mCachedMp3Metadata.disc = value;
+        }
+      } else if (strcmp(frame_id, "COMM") == 0) {
+        // COMM frame: 1 byte encoding, 3 bytes language, short description, comment text
+        if (frame_size > 4) {
+          size_t text_start = pos + 4;
+          while (text_start < pos + frame_size && rawData[text_start] != 0) {
+            text_start++;
+          }
+          if (text_start < pos + frame_size) text_start++; // Skip null terminator
+          if (text_start < pos + frame_size) {
+            decoder->mCachedMp3Metadata.comment = std::string(
+                reinterpret_cast<const char *>(rawData + text_start),
+                (pos + frame_size) - text_start);
+          }
         }
       }
 
       pos += frame_size;
     }
-
-    decoder->onTrackChange(metadata);
-    decoder->ID3TagsFound = true; // Prevent firing multiple times
   }
 }
 
@@ -127,7 +190,8 @@ MP3DecoderWrapper::MP3DecoderWrapper()
       m_audioDataBaseOffset(0), m_seekTableBaseOffset(0), m_id3Size(0),
       bytes_until_meta(0), // no metadata expected by default
       lastMetadata(""), mIcyMetaInt(0), ID3TagsFound(false),
-      mDataEnded(false), mDrained(false), mTotalAudioSizeBytes(0) {}
+      mDataEnded(false), mDrained(false), mTotalAudioSizeBytes(0),
+      mCachedMp3Metadata{}, mMetadataEmitted(false) {}
 
 MP3DecoderWrapper::~MP3DecoderWrapper() { cleanup(); }
 
@@ -141,22 +205,31 @@ void MP3DecoderWrapper::cleanup() {
   m_audioDataBaseOffset = 0;
   m_seekTableBaseOffset = 0;
   m_id3Size = 0;
-  bytes_until_meta = mIcyMetaInt;
+  bytes_until_meta = 0;
   metadata_buffer.clear();
   lastMetadata = "";
   ID3TagsFound = false;
   mDataEnded = false;
   mDrained = false;
+  mTotalAudioSizeBytes = 0;
+  mCachedMp3Metadata = Mp3Metadata{};
+  mMetadataEmitted = false;
 }
 
-void MP3DecoderWrapper::setDataEnded() { mDataEnded = true; }
+void MP3DecoderWrapper::setDataEnded() {
+  mDataEnded = true;
+  if (!mMetadataEmitted && onTrackChange && isInitialized) {
+    mMetadataEmitted = true;
+    AudioMetadata meta;
+    meta.type = detectedType;
+    meta.mp3Metadata = mCachedMp3Metadata;
+    onTrackChange(meta);
+  }
+}
 
 void MP3DecoderWrapper::setIcyMetaInt(int icyMetaInt) {
-  if (mIcyMetaInt == icyMetaInt)
-    return;
-
   mIcyMetaInt = icyMetaInt;
-  bytes_until_meta = mIcyMetaInt;
+  bytes_until_meta = icyMetaInt;
 }
 
 void MP3DecoderWrapper::setTotalAudioSizeBytes(uint64_t size) {
@@ -167,16 +240,12 @@ void MP3DecoderWrapper::setTotalAudioSizeBytes(uint64_t size) {
 // It strips out metadata, appends the audio data to our internal buffer,
 // and leaves any unprocessed data in the input buffer for the next call.
 void MP3DecoderWrapper::processIcyStream(std::vector<unsigned char> &buffer) {
-  size_t bufferSize = buffer.size();
   size_t readingPos = 0;
+  size_t bufferSize = buffer.size();
 
   while (readingPos < bufferSize) {
     size_t bytes_to_read =
-        MIN((size_t)bytes_until_meta, bufferSize - readingPos);
-
-    // Append audio data to our internal buffer
-    audioData.insert(audioData.end(), buffer.begin() + readingPos,
-                     buffer.begin() + readingPos + bytes_to_read);
+        std::min((size_t)bytes_until_meta, bufferSize - readingPos);
     readingPos += bytes_to_read;
     bytes_until_meta -= bytes_to_read;
 
@@ -189,16 +258,43 @@ void MP3DecoderWrapper::processIcyStream(std::vector<unsigned char> &buffer) {
       if (readingPos + metadata_len <= bufferSize) {
         if (len_byte > 0) {
           // Extract and process metadata
-          std::string title(
+          std::string metaStr(
               reinterpret_cast<const char *>(buffer.data() + readingPos),
               metadata_len);
-          if (lastMetadata != title) {
-            AudioMetadata metadata;
-            metadata.type = DetectedType::BUFFER_MP3_STREAM;
-            metadata.mp3Metadata.title = title;
-            lastMetadata = title;
-            if (onTrackChange)
+          if (lastMetadata != metaStr) {
+            lastMetadata = metaStr;
+            mCachedMp3Metadata.sampleRate = decoder.sampleRate;
+            mCachedMp3Metadata.channels = decoder.channels;
+            mCachedMp3Metadata.bitrate = static_cast<uint32_t>(estimateBitrateFromFirstFrame());
+            size_t titlePos = metaStr.find("StreamTitle='");
+            if (titlePos != std::string::npos) {
+              size_t endPos = metaStr.find("';", titlePos + 13);
+              if (endPos != std::string::npos) {
+                std::string streamTitle =
+                    metaStr.substr(titlePos + 13, endPos - (titlePos + 13));
+                size_t dashPos = streamTitle.find(" - ");
+                if (dashPos != std::string::npos) {
+                  mCachedMp3Metadata.artist = streamTitle.substr(0, dashPos);
+                  mCachedMp3Metadata.title = streamTitle.substr(dashPos + 3);
+                } else {
+                  mCachedMp3Metadata.title = streamTitle;
+                }
+              }
+            }
+            size_t urlPos = metaStr.find("StreamUrl='");
+            if (urlPos != std::string::npos) {
+              size_t endUrl = metaStr.find("';", urlPos + 11);
+              if (endUrl != std::string::npos) {
+                mCachedMp3Metadata.streamUrl =
+                    metaStr.substr(urlPos + 11, endUrl - (urlPos + 11));
+              }
+            }
+            if (onTrackChange) {
+              AudioMetadata metadata;
+              metadata.type = DetectedType::BUFFER_MP3_STREAM;
+              metadata.mp3Metadata = mCachedMp3Metadata;
               onTrackChange(metadata);
+            }
           }
         }
         readingPos += metadata_len;
@@ -271,6 +367,18 @@ MP3DecoderWrapper::decode(std::vector<unsigned char> &buffer, int *samplerate,
     }
     isInitialized = true;
     buildSeekTable();
+
+    mCachedMp3Metadata.sampleRate = decoder.sampleRate;
+    mCachedMp3Metadata.channels = decoder.channels;
+    mCachedMp3Metadata.bitrate = static_cast<uint32_t>(estimateBitrateFromFirstFrame());
+
+    if (!mMetadataEmitted && onTrackChange) {
+      mMetadataEmitted = true;
+      AudioMetadata meta;
+      meta.type = detectedType;
+      meta.mp3Metadata = mCachedMp3Metadata;
+      onTrackChange(meta);
+    }
   }
 
   // --- Decoding Loop ---
@@ -430,37 +538,13 @@ bool MP3DecoderWrapper::checkForValidFrames(
   }
 
   drmp3 temp_decoder;
-  struct TempData {
-    const unsigned char *buffer;
-    size_t size;
-    size_t pos;
-  };
-  TempData temp_data = {buffer.data(), buffer.size(), 0};
-
-  auto temp_on_read = [](void *pUserData, void *pBufferOut,
-                         size_t bytesToRead) -> size_t {
-    TempData *data = (TempData *)pUserData;
-    size_t bytes_remaining = data->size - data->pos;
-    size_t bytes_to_copy = MIN(bytesToRead, bytes_remaining);
-    if (bytes_to_copy > 0) {
-      memcpy(pBufferOut, data->buffer + data->pos, bytes_to_copy);
-      data->pos += bytes_to_copy;
-    }
-    return bytes_to_copy;
-  };
-
-  if (!drmp3_init(&temp_decoder, temp_on_read, nullptr, nullptr, nullptr,
-                  &temp_data, nullptr)) {
+  if (!drmp3_init_memory(&temp_decoder, buffer.data(), buffer.size(), nullptr)) {
     return false;
   }
 
-  // Try to read just one frame to confirm validity.
-  drmp3_uint64 frames_read =
-      drmp3_read_pcm_frames_f32(&temp_decoder, 1, nullptr);
-
+  bool valid = (temp_decoder.channels > 0 && temp_decoder.sampleRate > 0);
   drmp3_uninit(&temp_decoder);
-
-  return frames_read > 0;
+  return valid;
 }
 
 double MP3DecoderWrapper::getDuration() const {

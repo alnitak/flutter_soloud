@@ -61,7 +61,10 @@ class _WebRadioExampleState extends State<WebRadioExample> {
     {'FLAC': 'https://mscp4.live-streams.nl:8142/lounge.ogg'},
     {'FLAC': 'https://frequence3.net-radio.fr/frequence3gold.flac'},
     // AAC
-    {'AAC': 'https://radiorecord.hostingradio.ru/russiangold96.aacp'},
+    {'AAC': 'https://stream.zeno.fm/zc6eqtg84c9uv'},
+    {'AAC': 'https://stream.2ghr.org.au:8000/2ghr'},
+    {'AAC': 'http://151.80.56.90:8090/bbc_radio_one_dance.aac'},
+    {'AAC': 'https://media-ssl.musicradio.com/CapitalUK'},
     // https://fmstream.org/index.php
     // 90s
     {'MP3': 'https://streaming.exclusive.radio/er/abba/icecast.audio'},
