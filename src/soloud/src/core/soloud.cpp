@@ -2409,6 +2409,13 @@ namespace SoLoud
 
 		float buffertime = aSamples / (float)mSamplerate;
 		float globalVolume[2];
+
+		// Advance the mix clock under the same lock as the mix itself.
+		// playScheduled() computes a voice's delay from mStreamTime under this
+		// lock; if the clock advanced before the lock was taken, a voice
+		// scheduled in between got its delay from the next buffer while this
+		// buffer still counted it down, and started one buffer early.
+		lockAudioMutex_internal();
 		mStreamTime += buffertime;
 
 		globalVolume[0] = mGlobalVolume;
@@ -2417,8 +2424,6 @@ namespace SoLoud
 			mGlobalVolume = mGlobalVolumeFader.get(mStreamTime);
 		}
 		globalVolume[1] = mGlobalVolume;
-
-		lockAudioMutex_internal();
 
 		mixVoicesLocked_internal(aSamples, aStride);
 
