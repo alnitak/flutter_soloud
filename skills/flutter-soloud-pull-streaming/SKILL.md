@@ -1,6 +1,6 @@
 ---
 name: flutter-soloud-pull-streaming
-version: 3
+version: 2
 description: Teaches the pull-buffer streaming API of the flutter_soloud audio plugin — setPullBufferStream with its onMoreDataIsNeeded callback, addPullBufferDataStream with byte offsets, seek via engine re-requests, and bounded-memory playback of huge seekable sources (HTTP range requests, large files). Use when the user asks to stream a large remote/local audio file with seeking, play multi-GB audio without loading it into memory, or is deciding between push (setBufferStream) and pull streaming.
 ---
 

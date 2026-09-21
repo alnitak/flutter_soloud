@@ -1,6 +1,6 @@
 ---
 name: flutter-soloud-streaming
-version: 4
+version: 3
 description: Teaches the push buffer-stream API of the flutter_soloud package (setBufferStream, addAudioDataStream, setDataIsEnded, BufferingType, BufferType, icy metadata). Use when the user wants to play audio that arrives in chunks — internet/icecast radio, WebSocket PCM feeds, TTS/LLM streaming APIs, or procedurally generated PCM — instead of loading a complete file or asset.
 ---
 
