@@ -218,7 +218,12 @@ class _WebsocketExampleState extends State<WebsocketExample> {
             OutlinedButton(
               onPressed: () async {
                 await channel?.sink.close();
+                await _subscription?.cancel();
+                _subscription = null;
                 await SoLoud.instance.disposeAllSources();
+                handle = null;
+                numberOfChunks = 0;
+                byteSize = 0;
                 streamBuffering.value = false;
 
                 currentSound = SoLoud.instance.setBufferStream(
@@ -261,6 +266,9 @@ class _WebsocketExampleState extends State<WebsocketExample> {
 
                 await _subscription?.cancel();
                 _subscription = null;
+                handle = null;
+                numberOfChunks = 0;
+                byteSize = 0;
 
                 /// Connect to the websocket
                 final wsUrl = Uri.parse(websocketUri);
@@ -305,7 +313,9 @@ class _WebsocketExampleState extends State<WebsocketExample> {
                       }
 
                       // start playing at first audio chunk received
-                      if (numberOfChunks == 1 || handle == null) {
+                      if (numberOfChunks == 1 ||
+                          handle == null ||
+                          !SoLoud.instance.getIsValidVoiceHandle(handle!)) {
                         handle = SoLoud.instance.play(currentSound!);
                       }
 
@@ -373,6 +383,9 @@ class _WebsocketExampleState extends State<WebsocketExample> {
                 OutlinedButton(
                   onPressed: () async {
                     currentSound = null;
+                    handle = null;
+                    numberOfChunks = 0;
+                    byteSize = 0;
                     await _subscription?.cancel();
                     _subscription = null;
                     await SoLoud.instance.disposeAllSources();

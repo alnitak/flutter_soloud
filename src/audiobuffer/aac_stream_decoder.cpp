@@ -91,34 +91,38 @@ AACDecoderWrapper::decode(std::vector<unsigned char> &buffer, int *samplerate,
         onTrackChange(meta);
       }
     });
-    buffer = std::move(cleanAudio);
+    mAudioData.insert(mAudioData.end(), cleanAudio.begin(), cleanAudio.end());
+    buffer.clear();
+  } else if (!buffer.empty()) {
+    mAudioData.insert(mAudioData.end(), buffer.begin(), buffer.end());
+    buffer.clear();
   }
 
   // Handle ID3 tags prepended to AAC streams
-  if (mFormat == DetectedType::BUFFER_AAC && !buffer.empty()) {
-    if (!mId3Parsed && buffer.size() >= 10 && std::memcmp(buffer.data(), "ID3", 3) == 0) {
+  if (mFormat == DetectedType::BUFFER_AAC && !mAudioData.empty()) {
+    if (!mId3Parsed && mAudioData.size() >= 10 && std::memcmp(mAudioData.data(), "ID3", 3) == 0) {
       size_t id3Size = 0;
-      if (parseId3Tags(buffer.data(), buffer.size(), mCachedAacMetadata, id3Size)) {
+      if (parseId3Tags(mAudioData.data(), mAudioData.size(), mCachedAacMetadata, id3Size)) {
         mId3Parsed = true;
       }
-      if (id3Size > 0 && buffer.size() >= id3Size) {
-        buffer.erase(buffer.begin(), buffer.begin() + id3Size);
+      if (id3Size > 0 && mAudioData.size() >= id3Size) {
+        mAudioData.erase(mAudioData.begin(), mAudioData.begin() + id3Size);
       }
     }
   }
 
-  if (!mMetadataParsed && onTrackChange && !buffer.empty()) {
+  if (!mMetadataParsed && onTrackChange && !mAudioData.empty()) {
     AudioMetadata metadata;
     metadata.type = mFormat;
     bool parsed = false;
 
     if (mFormat == DetectedType::BUFFER_AAC) {
-      parsed = parseAacAdtsMetadata(buffer.data(), buffer.size(), mCachedAacMetadata);
+      parsed = parseAacAdtsMetadata(mAudioData.data(), mAudioData.size(), mCachedAacMetadata);
       metadata.aacMetadata = mCachedAacMetadata;
     } else if (mFormat == DetectedType::BUFFER_AC3) {
-      parsed = parseAc3Metadata(buffer.data(), buffer.size(), metadata.ac3Metadata);
+      parsed = parseAc3Metadata(mAudioData.data(), mAudioData.size(), metadata.ac3Metadata);
     } else if (mFormat == DetectedType::BUFFER_EAC3) {
-      parsed = parseEac3Metadata(buffer.data(), buffer.size(), metadata.eac3Metadata);
+      parsed = parseEac3Metadata(mAudioData.data(), mAudioData.size(), metadata.eac3Metadata);
     }
 
     if (parsed) {
@@ -127,7 +131,27 @@ AACDecoderWrapper::decode(std::vector<unsigned char> &buffer, int *samplerate,
     }
   }
 
-  return mImpl->decode(buffer, samplerate, channels, maxOutputSamples);
+  auto result = mImpl->decode(mAudioData, samplerate, channels, maxOutputSamples);
+
+  if (mFormat == DetectedType::BUFFER_AAC && samplerate && *samplerate > 0) {
+    if (mCachedAacMetadata.sampleRate != *samplerate) {
+      mCachedAacMetadata.sampleRate = *samplerate;
+      if (channels && *channels > 0) {
+        mCachedAacMetadata.channels = *channels;
+      }
+      if (mCachedAacMetadata.sampleRate > 24000) {
+        mCachedAacMetadata.profile = "HE-AAC";
+      }
+      if (onTrackChange) {
+        AudioMetadata metadata;
+        metadata.type = mFormat;
+        metadata.aacMetadata = mCachedAacMetadata;
+        onTrackChange(metadata);
+      }
+    }
+  }
+
+  return result;
 }
 
 void AACDecoderWrapper::setDataEnded() {
@@ -258,7 +282,7 @@ bool AACDecoderWrapper::parseAc3Metadata(const unsigned char *data, size_t size,
   uint8_t bsmod = h[5] & 0x07;
   uint8_t acmod = (h[6] >> 5) & 0x07;
 
-  if (fscod == 3 || bsid > 10) return false;
+  if (fscod == 3 || frmsizecod >= 38 || bsid > 10) return false;
 
   static const int kSampleRates[] = {48000, 44100, 32000};
   int sampleRate = kSampleRates[fscod];
@@ -273,10 +297,29 @@ bool AACDecoderWrapper::parseAc3Metadata(const unsigned char *data, size_t size,
     bitrateBps = kBitratesKbps[bitrateIdx] * 1000;
   }
 
-  int frameSize = (1536 * (bitrateBps / 1000) * 1000) / (8 * sampleRate);
-  if (sampleRate == 44100 && (frmsizecod & 1)) {
-    frameSize += 2;
-  }
+  // ATSC A/52 Table 5.18 Frame Size Code Table (values in 16-bit words)
+  static const uint16_t kAc3FrameSizeTable[38][3] = {
+    { 64,   69,   96   }, { 64,   70,   96   },
+    { 80,   87,   120  }, { 80,   88,   120  },
+    { 96,   104,  144  }, { 96,   105,  144  },
+    { 112,  121,  168  }, { 112,  122,  168  },
+    { 128,  139,  192  }, { 128,  140,  192  },
+    { 160,  174,  240  }, { 160,  175,  240  },
+    { 192,  208,  288  }, { 192,  209,  288  },
+    { 224,  243,  336  }, { 224,  244,  336  },
+    { 256,  278,  384  }, { 256,  279,  384  },
+    { 320,  348,  480  }, { 320,  349,  480  },
+    { 384,  417,  576  }, { 384,  418,  576  },
+    { 448,  487,  672  }, { 448,  488,  672  },
+    { 512,  557,  768  }, { 512,  558,  768  },
+    { 640,  696,  960  }, { 640,  697,  960  },
+    { 768,  835,  1152 }, { 768,  836,  1152 },
+    { 896,  975,  1344 }, { 896,  976,  1344 },
+    { 1024, 1114, 1536 }, { 1024, 1115, 1536 },
+    { 1152, 1253, 1728 }, { 1152, 1254, 1728 },
+    { 1280, 1393, 1920 }, { 1280, 1394, 1920 },
+  };
+  int frameSize = kAc3FrameSizeTable[frmsizecod][fscod] * 2;
 
   uint32_t b = (static_cast<uint32_t>(h[6]) << 8) | h[7];
   int curBit = 12;

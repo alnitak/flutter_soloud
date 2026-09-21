@@ -21,7 +21,7 @@ public:
   void setDataEnded() override;
 
   bool hasPendingData() const override {
-    return mImpl ? mImpl->hasPendingData() : false;
+    return (!mAudioData.empty()) || (mImpl ? mImpl->hasPendingData() : false);
   }
 
   void setIcyMetaInt(int icyMetaInt);
@@ -53,6 +53,7 @@ private:
   IcyStripState mIcy;
   bool mId3Parsed = false;
   AacMetadata mCachedAacMetadata;
+  std::vector<unsigned char> mAudioData;
 };
 
 using NativeStreamDecoderWrapper = AACDecoderWrapper;

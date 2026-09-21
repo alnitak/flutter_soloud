@@ -89,11 +89,11 @@ public:
             if (data[i] == 0x0B && data[i + 1] == 0x77) {
                 uint8_t fscod = (data[i + 4] >> 6) & 0x03;
                 uint8_t bsid = (data[i + 5] >> 3) & 0x1F;
-                if (fscod != 3 && bsid <= 16) return static_cast<int>(i);
+                if ((fscod != 3 || (bsid > 10 && bsid <= 16)) && bsid <= 16) return static_cast<int>(i);
             } else if (data[i] == 0x77 && data[i + 1] == 0x0B) {
                 uint8_t fscod = (data[i + 5] >> 6) & 0x03;
                 uint8_t bsid = (data[i + 4] >> 3) & 0x1F;
-                if (fscod != 3 && bsid <= 16) return static_cast<int>(i);
+                if ((fscod != 3 || (bsid > 10 && bsid <= 16)) && bsid <= 16) return static_cast<int>(i);
             }
         }
         return -1;

@@ -75,8 +75,6 @@ class _WebRadioExampleState extends State<WebRadioExample> {
     {'MP3': 'https://frontend.streamonkey.net/nostalgie-80er/stream/mp3'},
 
     // https://dir.xiph.org/codecs
-    {'Vorbis': 'http://play.global.audio/nova.ogg'},
-    {'Vorbis': 'http://superaudio.radio.br:8074/stream'},
     {'Vorbis': 'http://stream.lazaradio.com:8100/live.ogg'},
     {'Vorbis': 'http://stream.trendyradio.pl:8000/m'},
     {'Vorbis': 'http://play.global.audio/nrj.ogg'},
@@ -139,8 +137,7 @@ class _WebRadioExampleState extends State<WebRadioExample> {
       mp3IcyMetaIntSent = false;
 
       // Handle redirections
-      if (currentStream!.statusCode >= 300 &&
-          currentStream!.statusCode < 400) {
+      if (currentStream!.statusCode >= 300 && currentStream!.statusCode < 400) {
         final redirectLocation = currentStream!.headers['location'];
         if (redirectLocation != null) {
           final uri = Uri.parse(url);

@@ -1,5 +1,9 @@
 #if defined(_WIN32) || defined(_WIN64)
 
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+
 #include "aac_stream_decoder.h"
 #include "../native_decoder/native_audio_decoder.h"
 #include <windows.h>
@@ -44,7 +48,7 @@ public:
         mTargetChannels = engineChannels;
 
         HRESULT hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
-        if (SUCCEEDED(hr) || hr == RPC_E_CHANGED_MODE) {
+        if (SUCCEEDED(hr)) {
             mCoInitialized = true;
         }
 
@@ -153,7 +157,29 @@ public:
         // Feed frames to MFT
         while (!buffer.empty()) {
             size_t frameLen = getNextFrameLength(buffer.data(), buffer.size());
-            if (frameLen == 0 || buffer.size() < frameLen) {
+            if (frameLen == 0) {
+                if (mFormat == DetectedType::BUFFER_AC3 || mFormat == DetectedType::BUFFER_EAC3) {
+                    int syncIdx = NativeAudioDecoder::findAc3Syncword(buffer.data(), buffer.size());
+                    if (syncIdx > 0) {
+                        buffer.erase(buffer.begin(), buffer.begin() + syncIdx);
+                        continue;
+                    }
+                } else if (mFormat == DetectedType::BUFFER_AAC) {
+                    size_t nextSync = 0;
+                    for (size_t i = 1; i + 2 <= buffer.size(); ++i) {
+                        if (NativeAudioDecoder::isAacAdts(buffer.data() + i, buffer.size() - i)) {
+                            nextSync = i;
+                            break;
+                        }
+                    }
+                    if (nextSync > 0) {
+                        buffer.erase(buffer.begin(), buffer.begin() + nextSync);
+                        continue;
+                    }
+                }
+                break; // Incomplete frame, wait for more data
+            }
+            if (buffer.size() < frameLen) {
                 break; // Incomplete frame, wait for more data
             }
 
@@ -252,6 +278,70 @@ private:
         return 0;
     }
 
+    bool configureOutputTypes() {
+        IMFMediaType *pSelected = nullptr;
+        mIsFloatOutput = false;
+
+        for (DWORD i = 0; ; i++) {
+            IMFMediaType *pAvail = nullptr;
+            HRESULT hr = mTransform->GetOutputAvailableType(0, i, &pAvail);
+            if (FAILED(hr)) break;
+
+            GUID subType = GUID_NULL;
+            pAvail->GetGUID(MF_MT_SUBTYPE, &subType);
+            if (subType == MFAudioFormat_Float) {
+                if (pSelected) pSelected->Release();
+                pSelected = pAvail;
+                mIsFloatOutput = true;
+                break;
+            } else if (subType == MFAudioFormat_PCM && !pSelected) {
+                pSelected = pAvail;
+                mIsFloatOutput = false;
+            } else {
+                pAvail->Release();
+            }
+        }
+
+        if (!pSelected) {
+            IMFMediaType *pOutType = nullptr;
+            HRESULT hr = MFCreateMediaType(&pOutType);
+            if (SUCCEEDED(hr) && pOutType) {
+                pOutType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio);
+                pOutType->SetGUID(MF_MT_SUBTYPE, MFAudioFormat_Float);
+                pOutType->SetUINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, 32);
+                pOutType->SetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, mStreamSampleRate > 0 ? mStreamSampleRate : 44100);
+                pOutType->SetUINT32(MF_MT_AUDIO_NUM_CHANNELS, mStreamChannels > 0 ? mStreamChannels : 2);
+                hr = mTransform->SetOutputType(0, pOutType, 0);
+                if (SUCCEEDED(hr)) {
+                    mIsFloatOutput = true;
+                    pOutType->Release();
+                    return true;
+                }
+                pOutType->SetGUID(MF_MT_SUBTYPE, MFAudioFormat_PCM);
+                pOutType->SetUINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, 16);
+                hr = mTransform->SetOutputType(0, pOutType, 0);
+                if (SUCCEEDED(hr)) {
+                    mIsFloatOutput = false;
+                    pOutType->Release();
+                    return true;
+                }
+                pOutType->Release();
+            }
+            return false;
+        }
+
+        HRESULT hr = mTransform->SetOutputType(0, pSelected, 0);
+        UINT32 actualChannels = 0;
+        UINT32 actualSampleRate = 0;
+        pSelected->GetUINT32(MF_MT_AUDIO_NUM_CHANNELS, &actualChannels);
+        pSelected->GetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, &actualSampleRate);
+        if (actualChannels > 0) mStreamChannels = actualChannels;
+        if (actualSampleRate > 0) mStreamSampleRate = actualSampleRate;
+
+        pSelected->Release();
+        return SUCCEEDED(hr);
+    }
+
     bool configureMediaTypes(const std::vector<unsigned char> &buffer) {
         int sampleRate = 0;
         int channels = 0;
@@ -287,47 +377,41 @@ private:
         else if (mFormat == DetectedType::BUFFER_EAC3) subType = MFAudioFormat_Dolby_DDPlus;
 
         IMFMediaType *pInType = nullptr;
-        HRESULT hr = MFCreateMediaType(&pInType);
-        if (FAILED(hr) || !pInType) return false;
-
-        pInType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio);
-        pInType->SetGUID(MF_MT_SUBTYPE, subType);
-        pInType->SetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, sampleRate);
-        pInType->SetUINT32(MF_MT_AUDIO_NUM_CHANNELS, channels);
         if (mFormat == DetectedType::BUFFER_AAC) {
-            pInType->SetUINT32(MF_MT_AAC_PAYLOAD_TYPE, 1); // 1 = ADTS
+            for (DWORD i = 0; ; i++) {
+                IMFMediaType *pAvail = nullptr;
+                HRESULT hrAvail = mTransform->GetInputAvailableType(0, i, &pAvail);
+                if (FAILED(hrAvail)) break;
+
+                UINT32 payloadType = 0;
+                pAvail->GetUINT32(MF_MT_AAC_PAYLOAD_TYPE, &payloadType);
+                if (payloadType == 1) { // 1 = ADTS
+                    pInType = pAvail;
+                    break;
+                }
+                pAvail->Release();
+            }
         }
 
-        hr = mTransform->SetInputType(0, pInType, 0);
+        if (!pInType) {
+            HRESULT hrCreate = MFCreateMediaType(&pInType);
+            if (FAILED(hrCreate) || !pInType) return false;
+
+            pInType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio);
+            pInType->SetGUID(MF_MT_SUBTYPE, subType);
+            if (mFormat == DetectedType::BUFFER_AAC) {
+                pInType->SetUINT32(MF_MT_AAC_PAYLOAD_TYPE, 1); // 1 = ADTS
+            }
+        }
+
+        pInType->SetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, sampleRate);
+        pInType->SetUINT32(MF_MT_AUDIO_NUM_CHANNELS, channels);
+
+        HRESULT hr = mTransform->SetInputType(0, pInType, 0);
         pInType->Release();
         if (FAILED(hr)) return false;
 
-        // Set output type to Float32 or 16-bit PCM
-        IMFMediaType *pOutType = nullptr;
-        hr = MFCreateMediaType(&pOutType);
-        if (FAILED(hr) || !pOutType) return false;
-
-        pOutType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio);
-        pOutType->SetGUID(MF_MT_SUBTYPE, MFAudioFormat_Float);
-        pOutType->SetUINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, 32);
-        pOutType->SetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, sampleRate);
-        pOutType->SetUINT32(MF_MT_AUDIO_NUM_CHANNELS, channels);
-
-        hr = mTransform->SetOutputType(0, pOutType, 0);
-        if (SUCCEEDED(hr)) {
-            mIsFloatOutput = true;
-        } else {
-            // Fallback to 16-bit integer PCM
-            pOutType->SetGUID(MF_MT_SUBTYPE, MFAudioFormat_PCM);
-            pOutType->SetUINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, 16);
-            hr = mTransform->SetOutputType(0, pOutType, 0);
-            if (FAILED(hr)) {
-                pOutType->Release();
-                return false;
-            }
-            mIsFloatOutput = false;
-        }
-        pOutType->Release();
+        if (!configureOutputTypes()) return false;
 
         mTransform->ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, 0);
         mFormatConfigured = true;
@@ -336,9 +420,10 @@ private:
 
     void drainTransform(std::vector<float> &out, size_t maxOutputSamples) {
         MFT_OUTPUT_STREAM_INFO streamInfo = {};
-        if (FAILED(mTransform->GetOutputStreamInfo(0, &streamInfo))) return;
-
-        DWORD bufferSize = streamInfo.cbSize > 0 ? streamInfo.cbSize : 65536;
+        DWORD bufferSize = 65536;
+        if (SUCCEEDED(mTransform->GetOutputStreamInfo(0, &streamInfo)) && streamInfo.cbSize > 0) {
+            bufferSize = streamInfo.cbSize;
+        }
 
         while (true) {
             IMFMediaBuffer *pBuffer = nullptr;
@@ -361,10 +446,24 @@ private:
             DWORD status = 0;
             hr = mTransform->ProcessOutput(0, 1, &outBuffer, &status);
 
+            if (hr == MF_E_TRANSFORM_STREAM_CHANGE) {
+                pSample->Release();
+                pBuffer->Release();
+                configureOutputTypes();
+                if (SUCCEEDED(mTransform->GetOutputStreamInfo(0, &streamInfo)) && streamInfo.cbSize > 0) {
+                    bufferSize = streamInfo.cbSize;
+                }
+                continue;
+            }
+
             if (hr == MF_E_TRANSFORM_NEED_MORE_INPUT) {
                 pSample->Release();
                 pBuffer->Release();
                 break;
+            }
+
+            if (outBuffer.pEvents) {
+                outBuffer.pEvents->Release();
             }
 
             if (SUCCEEDED(hr) && outBuffer.pSample) {
