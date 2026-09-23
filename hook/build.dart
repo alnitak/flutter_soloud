@@ -171,14 +171,13 @@ void main(List<String> args) async {
           '-msse3',
         ],
       ],
-      if (isApple || os == OS.linux) '-Wno-vla',
-      // clang (Android NDK) flags pffft's stack VLA as a C++ extension and
-      // soloud_vizsn's `char == -1` compares as always false where char is
-      // unsigned (arm). Both are intentional in the vendored sources.
-      if (os == OS.android) ...[
-        '-Wno-vla-cxx-extension',
-        '-Wno-tautological-constant-out-of-range-compare',
-      ],
+if (os != OS.windows) ...[
+  '-fvisibility=hidden',
+  '-Wno-unused-command-line-argument',
+  '-fsigned-char',
+  '-Wno-vla',
+  '-Wno-vla-cxx-extension',
+],
       if (os == OS.linux && arch == Architecture.x64) ...['-msse2', '-msse3'],
     ];
 
