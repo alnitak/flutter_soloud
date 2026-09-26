@@ -187,9 +187,9 @@ enum PlayerErrors {
             'capacity, in this case the stream is automatically marked to be '
             'ended.';
       case PlayerErrors.failedToCreateOpusDecoder:
-        return 'Failed to create Opus decoder.';
+        return 'Failed to create audio decoder.';
       case PlayerErrors.failedToDecodeOpusPacket:
-        return 'Failed to decode Opus packet.';
+        return 'Failed to decode audio packet.';
       case PlayerErrors.bufferStreamCanBePlayedOnlyOnce:
         return 'BufferStream can be played only once when using '
             '`BufferingType.release` buffer type!';
@@ -477,13 +477,9 @@ enum BufferType {
   /// 32-bit signed, little-endian.
   s32le(3),
 
-  /// Opus encoded audio.
-  /// `opus` is deprecated, use `auto` instead which will automatically
-  /// determine from MP3, OGG Opus or OGG Vorbis.
-  opus(4),
-
-  /// Auto detect the type from  MP3, OGG Opus or OGG Vorbis formats.
-  auto(5);
+  /// Auto detect the audio format (e.g. MP3, OGG Opus, OGG Vorbis, WAV, FLAC,
+  /// AAC, AC-3, E-AC-3).
+  auto(4);
 
   /// The integer value of the PCM type.
   final int value;
@@ -504,10 +500,8 @@ enum BufferType {
         return 'Little Endian Signed 32-bit';
       case BufferType.f32le:
         return 'Little Endian Float 32-bit';
-      case BufferType.opus:
-        return 'Opus Encoded Audio';
       case BufferType.auto:
-        return 'MP3, Opus or Vorbis Encoded Audio';
+        return 'Auto Detect Audio Format';
     }
   }
 }

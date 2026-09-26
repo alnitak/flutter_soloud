@@ -32,6 +32,7 @@ endif ()
 include_directories(${SRC_DIR}/soloud/include)
 include_directories(${SRC_DIR}/soloud/src)
 include_directories(${SRC_DIR}/pffft)
+include_directories(${SRC_DIR}/native_decoder)
 include_directories(${SRC_DIR})
 include (${SRC_DIR}/src.cmake)
 message("**************** SOLOUD SRC.CMAKE END  ${TARGET_NAME}")
@@ -64,6 +65,8 @@ list(APPEND PLUGIN_SOURCES
   "${SRC_DIR}/audiobuffer/flac_stream_decoder.cpp"
   "${SRC_DIR}/audiobuffer/wav_stream_decoder.cpp"
   "${SRC_DIR}/audiobuffer/ogg_flac_stream_decoder.cpp"
+  "${SRC_DIR}/audiobuffer/aac_stream_decoder.cpp"
+  "${SRC_DIR}/audiobuffer/m4a_metadata.cpp"
   "${SRC_DIR}/filters/filters.cpp"
   "${SRC_DIR}/filters/pitch_shift_filter.cpp"
   "${SRC_DIR}/filters/limiter.cpp"
@@ -79,6 +82,33 @@ list(APPEND PLUGIN_SOURCES
   "${SRC_DIR}/mixeroutput/wav_output_encoder.cpp"
   ${TARGET_SOURCES}
 )
+
+if (APPLE)
+  list(APPEND PLUGIN_SOURCES
+    "${SRC_DIR}/native_decoder/os_decoder_apple.mm"
+    "${SRC_DIR}/audiobuffer/aac_stream_decoder_apple.mm"
+  )
+elseif (ANDROID)
+  list(APPEND PLUGIN_SOURCES
+    "${SRC_DIR}/native_decoder/os_decoder_android.cpp"
+    "${SRC_DIR}/audiobuffer/aac_stream_decoder_android.cpp"
+  )
+  list(APPEND LINK_LIBRARIES mediandk)
+elseif (WIN32)
+  list(APPEND PLUGIN_SOURCES
+    "${SRC_DIR}/native_decoder/os_decoder_windows.cpp"
+    "${SRC_DIR}/audiobuffer/aac_stream_decoder_windows.cpp"
+  )
+  list(APPEND LINK_LIBRARIES mfplat mfreadwrite mfuuid shlwapi ole32)
+elseif (EMSCRIPTEN)
+  list(APPEND PLUGIN_SOURCES "${SRC_DIR}/native_decoder/os_decoder_web.cpp")
+elseif (UNIX)
+  list(APPEND PLUGIN_SOURCES
+    "${SRC_DIR}/native_decoder/os_decoder_linux.cpp"
+    "${SRC_DIR}/audiobuffer/aac_stream_decoder_linux.cpp"
+  )
+  list(APPEND LINK_LIBRARIES dl)
+endif()
 
 # pffft.c is C99 — force C language so Clang doesn't apply C++ VLA restrictions
 set_source_files_properties("${SRC_DIR}/pffft/pffft.c" PROPERTIES LANGUAGE C)

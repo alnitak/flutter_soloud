@@ -173,8 +173,7 @@ typedef enum BufferType {
   PCM_S8 = 1,
   PCM_S16LE = 2,
   PCM_S32LE = 3,
-  OPUS = 4,
-  AUTO = 5,
+  AUTO = 4,
 } BufferType_t;
 
 /// WARNING: Keep these in sync with `lib/src/enums.dart`.

@@ -389,6 +389,12 @@ abstract class FlutterSoLoud {
   @mustBeOverridden
   PlayerErrors resetBufferStream(SoundHash soundHash);
 
+  /// Decodes in-memory audio data using browser Web Audio API on the web.
+  /// Returns null on non-web platforms or when decoding fails.
+  @mustBeOverridden
+  Future<({int sampleRate, int channels, Float32List samples})?>
+  decodeAudioDataWeb(Uint8List bytes);
+
   /// Get the current stream time consumed in seconds of this sound of
   /// type `BufferingType.RELEASED` with hash [hash].
   @mustBeOverridden

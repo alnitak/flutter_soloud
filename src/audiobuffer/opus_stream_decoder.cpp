@@ -16,7 +16,9 @@ OpusDecoderWrapper::OpusDecoderWrapper()
       packetCount(0),
       skipSamplesPending(0),
       totalOutputSamples(0),
-      totalSamplesExpected(-1)
+      totalSamplesExpected(-1),
+      mDataEnded(false),
+      mDrained(false)
 {
 }
 
@@ -153,6 +155,8 @@ bool OpusDecoderWrapper::initializeDecoder(int engineSamplerateIn, int engineCha
     skipSamplesPending = 0;
     totalOutputSamples = 0;
     totalSamplesExpected = -1;
+    mDataEnded = false;
+    mDrained = false;
 
     ogg_sync_init(&oy);
     return true;
@@ -179,12 +183,33 @@ std::pair<std::vector<float>, DecoderError> OpusDecoderWrapper::decode(std::vect
         buffer.clear();
     }
 
+    // First, drain any packets left in [os] from a previous bounded decode pass
+    if (streamInitialized)
+    {
+        while (ogg_stream_packetout(&os, &op) == 1)
+        {
+            decodePacket(&op, decodedData);
+            if (maxOutputSamples > 0 && decodedData.size() >= maxOutputSamples)
+            {
+                *samplerate = decodingSamplerate;
+                *channels = decodingChannels;
+                return {decodedData, DecoderError::NoError};
+            }
+        }
+    }
+
     // Read and process pages, tracking byte offsets for seeking.
     while (true)
     {
         long ret = ogg_sync_pageseek(&oy, &og);
         if (ret == 0)
+        {
+            if (mDataEnded)
+            {
+                mDrained = true;
+            }
             break; // No complete page buffered yet; wait for more data.
+        }
         if (ret < 0)
         {
             // Bytes were skipped while searching for the next page capture
@@ -483,6 +508,33 @@ void OpusDecoderWrapper::prepareForSeek(uint64_t targetSample)
     skipSamplesPending = 0;
     totalOutputSamples = static_cast<int64_t>(targetSample);
     packetCount = 2; // OpusHead and OpusTags have already been parsed.
+    mDataEnded = false;
+    mDrained = false;
+}
+
+bool OpusDecoderWrapper::hasPendingData() const
+{
+    if (mDataEnded && mDrained)
+    {
+        return false;
+    }
+    if (streamInitialized)
+    {
+        ogg_packet dummyOp;
+        if (ogg_stream_packetpeek(const_cast<ogg_stream_state*>(&os), &dummyOp) == 1)
+        {
+            return true;
+        }
+    }
+    if (oy.fill > oy.returned)
+    {
+        return true;
+    }
+    if (mDataEnded && !mDrained)
+    {
+        return true;
+    }
+    return false;
 }
 
 bool OpusDecoderWrapper::canSeekToTime(double seconds) const

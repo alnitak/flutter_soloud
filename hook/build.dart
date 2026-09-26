@@ -186,6 +186,7 @@ void main(List<String> args) async {
       'src/soloud/include',
       'src/soloud/src',
       'src/pffft',
+      'src/native_decoder',
       ...xiph.includeDirs,
     ];
 
@@ -208,7 +209,11 @@ void main(List<String> args) async {
         language: Language.objectiveC,
         std: 'c++17',
         linkModePreference: LinkModePreference.static,
-        sources: const ['src/soloud_miniaudio_objc.mm'],
+        sources: const [
+          'src/soloud_miniaudio_objc.mm',
+          'src/native_decoder/os_decoder_apple.mm',
+          'src/audiobuffer/aac_stream_decoder_apple.mm',
+        ],
         includes: includes,
         forcedIncludes: forcedIncludes,
         defines: defines,
@@ -237,7 +242,15 @@ void main(List<String> args) async {
       libraries: [
         ...xiph.libraries,
         if (isApple) 'flutter_soloud_miniaudio_objc',
-        if (os == OS.android) ...['log', 'android'],
+        if (os == OS.android) ...['log', 'android', 'mediandk'],
+        if (os == OS.windows) ...[
+          'mfplat',
+          'mfreadwrite',
+          'mfuuid',
+          'shlwapi',
+          'ole32',
+        ],
+        if (os == OS.linux) ...['dl'],
       ],
       // '.' is the hook output directory, where the miniaudio ObjC++ static
       // library was just built.
@@ -290,11 +303,41 @@ List<String> collectSources(Uri packageRoot, OS targetOS) {
   // Plugin sources (src/CMakeLists.txt PLUGIN_SOURCES). `flutter_soloud.cpp`
   // was the SwiftPM unity translation unit and is excluded on purpose.
   addDir('', exclude: (p) => p.endsWith('/flutter_soloud.cpp'));
-  addDir('audiobuffer/');
+  addDir(
+    'audiobuffer/',
+    exclude: (p) {
+      if (p.endsWith('.mm')) return true; // Built by objcBuilder on Apple
+      if (p.endsWith('aac_stream_decoder_android.cpp') &&
+          targetOS != OS.android) {
+        return true;
+      }
+      if (p.endsWith('aac_stream_decoder_windows.cpp') &&
+          targetOS != OS.windows) {
+        return true;
+      }
+      if (p.endsWith('aac_stream_decoder_linux.cpp') && targetOS != OS.linux) {
+        return true;
+      }
+      if (p.endsWith('aac_stream_decoder_web.cpp')) return true;
+      return false;
+    },
+  );
   addDir('filters/');
   addDir('mixeroutput/');
   addDir('synth/');
   addDir('waveform/');
+  addDir(
+    'native_decoder/',
+    exclude: (p) {
+      if (p.endsWith('.mm')) return true; // Built by objcBuilder on Apple
+      // All Apple decoder logic is in os_decoder_apple.mm.
+      if (isApple) return true;
+      if (targetOS == OS.android) return !p.endsWith('os_decoder_android.cpp');
+      if (targetOS == OS.windows) return !p.endsWith('os_decoder_windows.cpp');
+      if (targetOS == OS.linux) return !p.endsWith('os_decoder_linux.cpp');
+      return false;
+    },
+  );
   // pffft.c is C99; the toolchain compiles it as C based on its extension.
   addDir('pffft/', extensions: const ['.c']);
 

@@ -11,6 +11,7 @@
 #include "soloud_wavstream.h"
 #include "synth/basic_wave.h"
 #include "soloud/src/backend/miniaudio/miniaudio.h"
+#include "native_audio_decoder.h"
 
 #include <algorithm>
 #include <chrono>
@@ -752,9 +753,19 @@ PlayerErrors Player::loadFile(
     if (result != SoLoud::SO_NO_ERROR)
     {
         std::vector<unsigned char> bytes;
-        if (readFileBytes(completeFileName, bytes) && isOggXiphBytes(bytes))
+        if (readFileBytes(completeFileName, bytes))
         {
-            loadError = loadOggXiphBufferStream(this, newSound.get(), bytes);
+            if (isOggXiphBytes(bytes))
+            {
+                loadError = loadOggXiphBufferStream(this, newSound.get(), bytes);
+            }
+            else if (!loadIntoMem && NativeAudioDecoder::isSupportedNativeFormat(bytes.data(), bytes.size()))
+            {
+                newSound.get()->sound = std::make_unique<SoLoud::Wav>();
+                newSound.get()->soundType = TYPE_WAV;
+                result = static_cast<SoLoud::Wav *>(newSound.get()->sound.get())->load(completeFileName.c_str());
+                loadError = fromSoLoudError(result);
+            }
         }
     }
 
@@ -835,6 +846,13 @@ PlayerErrors Player::loadMem(
         if (isOggXiphBytes(bytes))
         {
             loadError = loadOggXiphBufferStream(this, newSound.get(), bytes);
+        }
+        else if (!loadIntoMem && NativeAudioDecoder::isSupportedNativeFormat(mem, length))
+        {
+            newSound.get()->sound = std::make_unique<SoLoud::Wav>();
+            newSound.get()->soundType = TYPE_WAV;
+            result = static_cast<SoLoud::Wav *>(newSound.get()->sound.get())->loadMem(mem, length, true, true);
+            loadError = fromSoLoudError(result);
         }
     }
 

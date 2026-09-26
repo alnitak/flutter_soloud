@@ -2,7 +2,8 @@ name: flutter_soloud
 description: >-
   A low-level audio plugin for Flutter,
   mainly meant for games and immersive apps.
-  Based on the SoLoud (C++) audio engine.
+  Based on the SoLoud (C++) and miniaudio
+  audio engine.
 version: 5.1.3
 homepage: https://github.com/alnitak/flutter_soloud
 maintainer: Marco Bavagnoli (@alnitak)

@@ -34,6 +34,7 @@ freely, subject to the following restrictions:
 #include "dr_flac.h"
 #include "dr_mp3.h"
 #include "dr_wav.h"
+#include "native_audio_decoder.h"
 
 namespace SoLoud {
 WavInstance::WavInstance(Wav *aParent) {
@@ -327,6 +328,25 @@ result Wav::loadflac(MemoryFile *aReader) {
   return SO_NO_ERROR;
 }
 
+result Wav::loadnative(MemoryFile *aReader) {
+  if (aReader == nullptr || aReader->length() == 0) {
+    return INVALID_PARAMETER;
+  }
+
+  DecodedAudioData decoded = NativeAudioDecoder::decodeMemory(aReader->getMemPtr(), aReader->length());
+  if (!decoded.success || decoded.samples == nullptr || decoded.sampleCount == 0) {
+    return FILE_LOAD_FAILED;
+  }
+
+  delete[] mData;
+  mData = decoded.samples;
+  mSampleCount = (unsigned int)decoded.sampleCount;
+  mActualSampleCount = (unsigned int)decoded.sampleCount;
+  mChannels = decoded.channels;
+  mBaseSamplerate = decoded.sampleRate;
+  return SO_NO_ERROR;
+}
+
 result Wav::testAndLoadFile(MemoryFile *aReader) {
   delete[] mData;
   mData = 0;
@@ -341,6 +361,12 @@ result Wav::testAndLoadFile(MemoryFile *aReader) {
   } else if (tag == MAKEDWORD('f', 'L', 'a', 'C')) {
     return loadflac(aReader);
   } else if (loadmp3(aReader) == SO_NO_ERROR) {
+    return SO_NO_ERROR;
+  }
+
+  // Fallback to native OS decoder for M4A, MP4, AAC, AC3/EAC3, ALAC, etc.
+  aReader->seek(0);
+  if (loadnative(aReader) == SO_NO_ERROR) {
     return SO_NO_ERROR;
   }
 

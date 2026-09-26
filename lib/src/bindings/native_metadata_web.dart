@@ -11,7 +11,11 @@ enum NativeDetectedType {
   oggFlac(3),
   mp3WithId3(4),
   mp3Stream(5),
-  wav(6);
+  wav(6),
+  m4a(7),
+  aac(8),
+  ac3(9),
+  eac3(10);
 
   const NativeDetectedType(this.value);
   final int value;
@@ -24,6 +28,10 @@ enum NativeDetectedType {
     4 => mp3WithId3,
     5 => mp3Stream,
     6 => wav,
+    7 => m4a,
+    8 => aac,
+    9 => ac3,
+    10 => eac3,
     _ => throw ArgumentError(r'Unknown value for DetectedTypeJS: $value'),
   };
 
@@ -43,6 +51,14 @@ enum NativeDetectedType {
         return DetectedType.mp3Stream;
       case wav:
         return DetectedType.wav;
+      case m4a:
+        return DetectedType.m4a;
+      case aac:
+        return DetectedType.aac;
+      case ac3:
+        return DetectedType.ac3;
+      case eac3:
+        return DetectedType.eac3;
     }
   }
 }
@@ -69,9 +85,18 @@ class NativeMp3Metadata extends _MetadataJS {
 
   String get title => _readString(0, 1024);
   String get artist => _readString(1024, 1024);
-  String get album => _readString(1024 * 2, 1024);
-  String get date => _readString(1024 * 3, 1024);
-  String get genre => _readString(1024 * 4, 1024);
+  String get albumArtist => _readString(2048, 1024);
+  String get album => _readString(3072, 1024);
+  String get date => _readString(4096, 1024);
+  String get genre => _readString(5120, 1024);
+  String get composer => _readString(6144, 1024);
+  String get comment => _readString(7168, 1024);
+  String get track => _readString(8192, 1024);
+  String get disc => _readString(9216, 1024);
+  String get streamUrl => _readString(10240, 1024);
+  int get sampleRate => wasmGetI32Value(ptr + 11264, 'i32');
+  int get channels => wasmGetI32Value(ptr + 11268, 'i32');
+  int get bitrate => wasmGetI32Value(ptr + 11272, 'i32');
 }
 
 /// Comment key-value pair structure
@@ -151,7 +176,79 @@ class NativeOggMetadata extends _MetadataJS {
 
   NativeVorbisInfo get vorbisInfo => NativeVorbisInfo(ptr + 1028 + 32 * 2048);
   NativeOpusInfo get opusInfo => NativeOpusInfo(ptr + 1028 + 32 * 2048 + 28);
-  NativeFlacInfo get flacInfo => NativeFlacInfo(ptr + 1028 + 32 * 2048 + 64);
+  NativeFlacInfo get flacInfo => NativeFlacInfo(ptr + 1028 + 32 * 2048 + 56);
+}
+
+/// AAC metadata from stream
+class NativeAacMetadata extends _MetadataJS {
+  NativeAacMetadata(super.ptr);
+
+  String get title => _readString(0, 1024);
+  String get artist => _readString(1024, 1024);
+  String get albumArtist => _readString(2048, 1024);
+  String get album => _readString(3072, 1024);
+  String get date => _readString(4096, 1024);
+  String get genre => _readString(5120, 1024);
+  String get composer => _readString(6144, 1024);
+  String get comment => _readString(7168, 1024);
+  String get track => _readString(8192, 1024);
+  String get disc => _readString(9216, 1024);
+  String get streamUrl => _readString(10240, 1024);
+  int get sampleRate => wasmGetI32Value(ptr + 11264, 'i32');
+  int get channels => wasmGetI32Value(ptr + 11268, 'i32');
+  String get profile => _readString(11272, 32);
+  int get bitrate => wasmGetI32Value(ptr + 11304, 'i32');
+  int get frameLength => wasmGetI32Value(ptr + 11308, 'i32');
+}
+
+/// M4A metadata from stream or container
+class NativeM4aMetadata extends _MetadataJS {
+  NativeM4aMetadata(super.ptr);
+
+  String get title => _readString(0, 1024);
+  String get artist => _readString(1024, 1024);
+  String get albumArtist => _readString(2048, 1024);
+  String get album => _readString(3072, 1024);
+  String get date => _readString(4096, 1024);
+  String get genre => _readString(5120, 1024);
+  String get composer => _readString(6144, 1024);
+  String get comment => _readString(7168, 1024);
+  String get track => _readString(8192, 1024);
+  String get disc => _readString(9216, 1024);
+  String get codec => _readString(10240, 32);
+  int get sampleRate => wasmGetI32Value(ptr + 10272, 'i32');
+  int get channels => wasmGetI32Value(ptr + 10276, 'i32');
+  int get bitrate => wasmGetI32Value(ptr + 10280, 'i32');
+}
+
+/// AC-3 metadata from stream
+class NativeAc3Metadata extends _MetadataJS {
+  NativeAc3Metadata(super.ptr);
+
+  int get sampleRate => wasmGetI32Value(ptr, 'i32');
+  int get channels => wasmGetI32Value(ptr + 4, 'i32');
+  int get bitrate => wasmGetI32Value(ptr + 8, 'i32');
+  int get bsid => wasmGetI32Value(ptr + 12, 'i32');
+  int get bsmod => wasmGetI32Value(ptr + 16, 'i32');
+  int get acmod => wasmGetI32Value(ptr + 20, 'i32');
+  int get lfeon => wasmGetI32Value(ptr + 24, 'i32');
+  int get frameSize => wasmGetI32Value(ptr + 28, 'i32');
+}
+
+/// E-AC-3 metadata from stream
+class NativeEac3Metadata extends _MetadataJS {
+  NativeEac3Metadata(super.ptr);
+
+  int get sampleRate => wasmGetI32Value(ptr, 'i32');
+  int get channels => wasmGetI32Value(ptr + 4, 'i32');
+  int get bitrate => wasmGetI32Value(ptr + 8, 'i32');
+  int get bsid => wasmGetI32Value(ptr + 12, 'i32');
+  int get streamType => wasmGetI32Value(ptr + 16, 'i32');
+  int get substreamId => wasmGetI32Value(ptr + 20, 'i32');
+  int get acmod => wasmGetI32Value(ptr + 24, 'i32');
+  int get lfeon => wasmGetI32Value(ptr + 28, 'i32');
+  int get frameSize => wasmGetI32Value(ptr + 32, 'i32');
+  int get numBlocks => wasmGetI32Value(ptr + 36, 'i32');
 }
 
 /// Both MP3 and OGG metadata
@@ -163,7 +260,15 @@ class NativeAudioMetadata extends _MetadataJS {
 
   NativeMp3Metadata get mp3Metadata => NativeMp3Metadata(ptr + 4);
 
-  NativeOggMetadata get oggMetadata => NativeOggMetadata(ptr + 4 + 5 * 1024);
+  NativeOggMetadata get oggMetadata => NativeOggMetadata(ptr + 11280);
+
+  NativeAacMetadata get aacMetadata => NativeAacMetadata(ptr + 77932);
+
+  NativeAc3Metadata get ac3Metadata => NativeAc3Metadata(ptr + 89244);
+
+  NativeEac3Metadata get eac3Metadata => NativeEac3Metadata(ptr + 89276);
+
+  NativeM4aMetadata get m4aMetadata => NativeM4aMetadata(ptr + 89316);
 
   // Dummy method to reflect the FFI implementation. Not used with Web.
   AudioMetadata toAudioMetadata() {
@@ -177,9 +282,18 @@ class NativeAudioMetadata extends _MetadataJS {
     final mp3Meta = Mp3Metadata(
       title: instance.mp3Metadata.title,
       artist: instance.mp3Metadata.artist,
+      albumArtist: instance.mp3Metadata.albumArtist,
       album: instance.mp3Metadata.album,
       date: instance.mp3Metadata.date,
       genre: instance.mp3Metadata.genre,
+      composer: instance.mp3Metadata.composer,
+      comment: instance.mp3Metadata.comment,
+      track: instance.mp3Metadata.track,
+      disc: instance.mp3Metadata.disc,
+      streamUrl: instance.mp3Metadata.streamUrl,
+      sampleRate: instance.mp3Metadata.sampleRate,
+      channels: instance.mp3Metadata.channels,
+      bitrate: instance.mp3Metadata.bitrate,
     );
 
     // Process comments from OGG metadata
@@ -225,10 +339,74 @@ class NativeAudioMetadata extends _MetadataJS {
       ),
     );
 
+    final aacMeta = AacMetadata(
+      title: instance.aacMetadata.title,
+      artist: instance.aacMetadata.artist,
+      albumArtist: instance.aacMetadata.albumArtist,
+      album: instance.aacMetadata.album,
+      date: instance.aacMetadata.date,
+      genre: instance.aacMetadata.genre,
+      composer: instance.aacMetadata.composer,
+      comment: instance.aacMetadata.comment,
+      track: instance.aacMetadata.track,
+      disc: instance.aacMetadata.disc,
+      streamUrl: instance.aacMetadata.streamUrl,
+      sampleRate: instance.aacMetadata.sampleRate,
+      channels: instance.aacMetadata.channels,
+      profile: instance.aacMetadata.profile,
+      bitrate: instance.aacMetadata.bitrate,
+      frameLength: instance.aacMetadata.frameLength,
+    );
+
+    final ac3Meta = Ac3Metadata(
+      sampleRate: instance.ac3Metadata.sampleRate,
+      channels: instance.ac3Metadata.channels,
+      bitrate: instance.ac3Metadata.bitrate,
+      bsid: instance.ac3Metadata.bsid,
+      bsmod: instance.ac3Metadata.bsmod,
+      acmod: instance.ac3Metadata.acmod,
+      lfeOn: instance.ac3Metadata.lfeon != 0,
+      frameSize: instance.ac3Metadata.frameSize,
+    );
+
+    final eac3Meta = Eac3Metadata(
+      sampleRate: instance.eac3Metadata.sampleRate,
+      channels: instance.eac3Metadata.channels,
+      bitrate: instance.eac3Metadata.bitrate,
+      bsid: instance.eac3Metadata.bsid,
+      streamType: instance.eac3Metadata.streamType,
+      substreamId: instance.eac3Metadata.substreamId,
+      acmod: instance.eac3Metadata.acmod,
+      lfeOn: instance.eac3Metadata.lfeon != 0,
+      frameSize: instance.eac3Metadata.frameSize,
+      numBlocks: instance.eac3Metadata.numBlocks,
+    );
+
+    final m4aMeta = M4aMetadata(
+      title: instance.m4aMetadata.title,
+      artist: instance.m4aMetadata.artist,
+      albumArtist: instance.m4aMetadata.albumArtist,
+      album: instance.m4aMetadata.album,
+      date: instance.m4aMetadata.date,
+      genre: instance.m4aMetadata.genre,
+      composer: instance.m4aMetadata.composer,
+      comment: instance.m4aMetadata.comment,
+      track: instance.m4aMetadata.track,
+      disc: instance.m4aMetadata.disc,
+      codec: instance.m4aMetadata.codec,
+      sampleRate: instance.m4aMetadata.sampleRate,
+      channels: instance.m4aMetadata.channels,
+      bitrate: instance.m4aMetadata.bitrate,
+    );
+
     return AudioMetadata(
       detectedType: instance.detectedType.toDart(),
       mp3Metadata: mp3Meta,
       oggMetadata: oggMeta,
+      aacMetadata: aacMeta,
+      ac3Metadata: ac3Meta,
+      eac3Metadata: eac3Meta,
+      m4aMetadata: m4aMeta,
     );
   }
 }

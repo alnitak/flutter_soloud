@@ -13,7 +13,11 @@ enum NativeDetectedType {
   OGG_FLAC(3),
   MP3_WITH_ID3(4),
   MP3_STREAM(5),
-  WAV(6);
+  WAV(6),
+  M4A(7),
+  AAC(8),
+  AC3(9),
+  EAC3(10);
 
   const NativeDetectedType(this.value);
   final int value;
@@ -26,6 +30,10 @@ enum NativeDetectedType {
     4 => MP3_WITH_ID3,
     5 => MP3_STREAM,
     6 => WAV,
+    7 => M4A,
+    8 => AAC,
+    9 => AC3,
+    10 => EAC3,
     _ => throw ArgumentError('Unknown value for DetectedTypeFFI: $value'),
   };
 
@@ -45,6 +53,14 @@ enum NativeDetectedType {
         return DetectedType.mp3Stream;
       case WAV:
         return DetectedType.wav;
+      case M4A:
+        return DetectedType.m4a;
+      case AAC:
+        return DetectedType.aac;
+      case AC3:
+        return DetectedType.ac3;
+      case EAC3:
+        return DetectedType.eac3;
     }
   }
 }
@@ -57,6 +73,9 @@ final class NativeMp3Metadata extends ffi.Struct {
   external ffi.Array<ffi.Char> artist;
 
   @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> album_artist;
+
+  @ffi.Array.multi([1024])
   external ffi.Array<ffi.Char> album;
 
   @ffi.Array.multi([1024])
@@ -64,6 +83,30 @@ final class NativeMp3Metadata extends ffi.Struct {
 
   @ffi.Array.multi([1024])
   external ffi.Array<ffi.Char> genre;
+
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> composer;
+
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> comment;
+
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> track;
+
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> disc;
+
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> stream_url;
+
+  @ffi.Uint32()
+  external int sample_rate;
+
+  @ffi.Uint32()
+  external int channels;
+
+  @ffi.Uint32()
+  external int bitrate;
 }
 
 /// Comment key-value pair structure
@@ -190,6 +233,158 @@ final class NativeOggMetadata extends ffi.Struct {
   external FlacInfoFFI flacInfo;
 }
 
+final class NativeAacMetadata extends ffi.Struct {
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> title;
+
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> artist;
+
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> album_artist;
+
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> album;
+
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> date;
+
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> genre;
+
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> composer;
+
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> comment;
+
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> track;
+
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> disc;
+
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> stream_url;
+
+  @ffi.Uint32()
+  external int sample_rate;
+
+  @ffi.Uint32()
+  external int channels;
+
+  @ffi.Array(32)
+  external ffi.Array<ffi.Char> profile;
+
+  @ffi.Uint32()
+  external int bitrate;
+
+  @ffi.Uint32()
+  external int frame_length;
+}
+
+final class NativeM4aMetadata extends ffi.Struct {
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> title;
+
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> artist;
+
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> album_artist;
+
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> album;
+
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> date;
+
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> genre;
+
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> composer;
+
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> comment;
+
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> track;
+
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> disc;
+
+  @ffi.Array(32)
+  external ffi.Array<ffi.Char> codec;
+
+  @ffi.Uint32()
+  external int sample_rate;
+
+  @ffi.Uint32()
+  external int channels;
+
+  @ffi.Uint32()
+  external int bitrate;
+}
+
+final class NativeAc3Metadata extends ffi.Struct {
+  @ffi.Uint32()
+  external int sample_rate;
+
+  @ffi.Uint32()
+  external int channels;
+
+  @ffi.Uint32()
+  external int bitrate;
+
+  @ffi.Uint32()
+  external int bsid;
+
+  @ffi.Uint32()
+  external int bsmod;
+
+  @ffi.Uint32()
+  external int acmod;
+
+  @ffi.Uint32()
+  external int lfeon;
+
+  @ffi.Uint32()
+  external int frame_size;
+}
+
+final class NativeEac3Metadata extends ffi.Struct {
+  @ffi.Uint32()
+  external int sample_rate;
+
+  @ffi.Uint32()
+  external int channels;
+
+  @ffi.Uint32()
+  external int bitrate;
+
+  @ffi.Uint32()
+  external int bsid;
+
+  @ffi.Uint32()
+  external int stream_type;
+
+  @ffi.Uint32()
+  external int substream_id;
+
+  @ffi.Uint32()
+  external int acmod;
+
+  @ffi.Uint32()
+  external int lfeon;
+
+  @ffi.Uint32()
+  external int frame_size;
+
+  @ffi.Uint32()
+  external int num_blocks;
+}
+
 final class NativeAudioMetadata extends ffi.Struct {
   @ffi.UnsignedInt()
   external int detectedTypeAsInt;
@@ -201,11 +396,18 @@ final class NativeAudioMetadata extends ffi.Struct {
 
   external NativeOggMetadata oggMetadata;
 
+  external NativeAacMetadata aacMetadata;
+
+  external NativeAc3Metadata ac3Metadata;
+
+  external NativeEac3Metadata eac3Metadata;
+
+  external NativeM4aMetadata m4aMetadata;
+
   /// Helper function to convert FFI char array to String
-  String _arrayToString(ffi.Array<ffi.Char> array) {
+  String _arrayToString(ffi.Array<ffi.Char> array, [int maxLength = 1024]) {
     final buffer = StringBuffer();
-    for (var i = 0; i < 1024; i++) {
-      // Using 1024 as it's the size we defined for our arrays
+    for (var i = 0; i < maxLength; i++) {
       if (array[i] <= 0) break; // Stop at null terminator
       buffer.writeCharCode(array[i]);
     }
@@ -223,9 +425,18 @@ final class NativeAudioMetadata extends ffi.Struct {
     final mp3Meta = Mp3Metadata(
       title: _arrayToString(mp3Metadata.title),
       artist: _arrayToString(mp3Metadata.artist),
+      albumArtist: _arrayToString(mp3Metadata.album_artist),
       album: _arrayToString(mp3Metadata.album),
       date: _arrayToString(mp3Metadata.date),
       genre: _arrayToString(mp3Metadata.genre),
+      composer: _arrayToString(mp3Metadata.composer),
+      comment: _arrayToString(mp3Metadata.comment),
+      track: _arrayToString(mp3Metadata.track),
+      disc: _arrayToString(mp3Metadata.disc),
+      streamUrl: _arrayToString(mp3Metadata.stream_url),
+      sampleRate: mp3Metadata.sample_rate,
+      channels: mp3Metadata.channels,
+      bitrate: mp3Metadata.bitrate,
     );
 
     // Process comments from OGG metadata
@@ -279,10 +490,74 @@ final class NativeAudioMetadata extends ffi.Struct {
       ),
     );
 
+    final aacMeta = AacMetadata(
+      title: _arrayToString(aacMetadata.title),
+      artist: _arrayToString(aacMetadata.artist),
+      albumArtist: _arrayToString(aacMetadata.album_artist),
+      album: _arrayToString(aacMetadata.album),
+      date: _arrayToString(aacMetadata.date),
+      genre: _arrayToString(aacMetadata.genre),
+      composer: _arrayToString(aacMetadata.composer),
+      comment: _arrayToString(aacMetadata.comment),
+      track: _arrayToString(aacMetadata.track),
+      disc: _arrayToString(aacMetadata.disc),
+      streamUrl: _arrayToString(aacMetadata.stream_url),
+      sampleRate: aacMetadata.sample_rate,
+      channels: aacMetadata.channels,
+      profile: _arrayToString(aacMetadata.profile, 32),
+      bitrate: aacMetadata.bitrate,
+      frameLength: aacMetadata.frame_length,
+    );
+
+    final m4aMeta = M4aMetadata(
+      title: _arrayToString(m4aMetadata.title),
+      artist: _arrayToString(m4aMetadata.artist),
+      albumArtist: _arrayToString(m4aMetadata.album_artist),
+      album: _arrayToString(m4aMetadata.album),
+      date: _arrayToString(m4aMetadata.date),
+      genre: _arrayToString(m4aMetadata.genre),
+      composer: _arrayToString(m4aMetadata.composer),
+      comment: _arrayToString(m4aMetadata.comment),
+      track: _arrayToString(m4aMetadata.track),
+      disc: _arrayToString(m4aMetadata.disc),
+      codec: _arrayToString(m4aMetadata.codec, 32),
+      sampleRate: m4aMetadata.sample_rate,
+      channels: m4aMetadata.channels,
+      bitrate: m4aMetadata.bitrate,
+    );
+
+    final ac3Meta = Ac3Metadata(
+      sampleRate: ac3Metadata.sample_rate,
+      channels: ac3Metadata.channels,
+      bitrate: ac3Metadata.bitrate,
+      bsid: ac3Metadata.bsid,
+      bsmod: ac3Metadata.bsmod,
+      acmod: ac3Metadata.acmod,
+      lfeOn: ac3Metadata.lfeon != 0,
+      frameSize: ac3Metadata.frame_size,
+    );
+
+    final eac3Meta = Eac3Metadata(
+      sampleRate: eac3Metadata.sample_rate,
+      channels: eac3Metadata.channels,
+      bitrate: eac3Metadata.bitrate,
+      bsid: eac3Metadata.bsid,
+      streamType: eac3Metadata.stream_type,
+      substreamId: eac3Metadata.substream_id,
+      acmod: eac3Metadata.acmod,
+      lfeOn: eac3Metadata.lfeon != 0,
+      frameSize: eac3Metadata.frame_size,
+      numBlocks: eac3Metadata.num_blocks,
+    );
+
     return AudioMetadata(
       detectedType: detectedTypeFFI.toDart(),
       mp3Metadata: mp3Meta,
       oggMetadata: oggMeta,
+      aacMetadata: aacMeta,
+      ac3Metadata: ac3Meta,
+      eac3Metadata: eac3Meta,
+      m4aMetadata: m4aMeta,
     );
   }
 }

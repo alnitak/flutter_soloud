@@ -10,6 +10,7 @@ OggFlacDecoderWrapper::OggFlacDecoderWrapper()
       m_read_pos(0),
       m_streamInitialized(false),
       m_dataEnded(false),
+      m_drained(false),
       m_streamStartOffset(0),
       m_channels(0),
       m_samplerate(0),
@@ -42,6 +43,7 @@ void OggFlacDecoderWrapper::setIcyMetaInt(int icyMetaInt)
 
 bool OggFlacDecoderWrapper::initializeDecoder(int engineSamplerate, int engineChannels)
 {
+    m_drained = false;
     m_pFlacDecoder = FLAC__stream_decoder_new();
     if (m_pFlacDecoder == nullptr)
     {
@@ -189,6 +191,7 @@ std::pair<std::vector<float>, DecoderError> OggFlacDecoderWrapper::decode(std::v
             }
             if (state == FLAC__STREAM_DECODER_END_OF_STREAM)
             {
+                m_drained = true;
                 break;
             }
             // For other decoder errors, attempt recovery by flushing and rolling back
@@ -201,6 +204,7 @@ std::pair<std::vector<float>, DecoderError> OggFlacDecoderWrapper::decode(std::v
         FLAC__StreamDecoderState state = FLAC__stream_decoder_get_state(m_pFlacDecoder);
         if (state == FLAC__STREAM_DECODER_END_OF_STREAM)
         {
+            m_drained = true;
             break;
         }
 
@@ -232,6 +236,11 @@ std::pair<std::vector<float>, DecoderError> OggFlacDecoderWrapper::decode(std::v
         m_audioData.erase(m_audioData.begin(), m_audioData.begin() + m_read_pos);
     }
     m_read_pos = 0;
+
+    if (m_dataEnded && m_audioData.empty() && m_oy.fill == m_oy.returned)
+    {
+        m_drained = true;
+    }
 
     *sampleRate = m_samplerate;
     *channels = m_channels;
@@ -393,6 +402,27 @@ double OggFlacDecoderWrapper::getDuration() const
     if (m_samplerate == 0 || mTotalSamples == 0)
         return -1.0;
     return static_cast<double>(mTotalSamples) / static_cast<double>(m_samplerate);
+}
+
+bool OggFlacDecoderWrapper::hasPendingData() const
+{
+    if (m_dataEnded && m_drained)
+    {
+        return false;
+    }
+    if (!m_audioData.empty())
+    {
+        return true;
+    }
+    if (m_oy.fill > m_oy.returned)
+    {
+        return true;
+    }
+    if (m_dataEnded && !m_drained)
+    {
+        return true;
+    }
+    return false;
 }
 
 #endif // #if !defined(NO_XIPH_LIBS)
