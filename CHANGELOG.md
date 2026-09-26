@@ -1,3 +1,7 @@
+##### 5.1.3 (XX Xxx 2026)
+- fix: advance the mix clock under the audio mutex (playScheduled could start a voice one buffer early). Thanks to @AndrzejKaczynski #562
+- fix: prevent unconditional buffer appending for ICY streams in mp3 decoder #564. Thanks to @john-Mcan #563
+
 ##### 5.1.2 (19 Sep 2026)
 - fix: resolve Linux `.so` library bundling using runtime SONAME #560
 
