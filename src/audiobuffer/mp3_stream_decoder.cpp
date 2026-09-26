@@ -211,22 +211,22 @@ void MP3DecoderWrapper::processIcyStream(std::vector<unsigned char> &buffer) {
     }
   }
 
-  // Remove the processed part from the input buffer. The rest will be appended
-  // to audioData.
+  // Remove the processed part from the input buffer. Any unprocessed data
+  // (such as an incomplete metadata block) remains in buffer for the next call.
   buffer.erase(buffer.begin(), buffer.begin() + readingPos);
 }
 
 std::pair<std::vector<float>, DecoderError>
 MP3DecoderWrapper::decode(std::vector<unsigned char> &buffer, int *samplerate,
                           int *channels, size_t maxOutputSamples) {
-  // For ICY streams, process the buffer to strip metadata first.
+  // For ICY streams, process the buffer to strip metadata and append audio to
+  // audioData. Any incomplete metadata block is left in buffer for the next
+  // decode() call.
   if (detectedType == DetectedType::BUFFER_MP3_STREAM && mIcyMetaInt > 0) {
     processIcyStream(buffer);
-  }
-
-  // Append all new (or remaining) data from the input buffer to the internal
-  // audioData buffer.
-  if (!buffer.empty()) {
+  } else if (!buffer.empty()) {
+    // For non-ICY streams, append all new data from the input buffer to the
+    // internal audioData buffer and clear the input buffer.
     audioData.insert(audioData.end(), buffer.begin(), buffer.end());
     buffer.clear(); // Signal to the caller that we've consumed the buffer.
   }
