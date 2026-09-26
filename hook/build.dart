@@ -171,7 +171,13 @@ void main(List<String> args) async {
           '-msse3',
         ],
       ],
-      if (isApple || os == OS.linux) '-Wno-vla',
+      if (os != OS.windows) ...[
+        '-fvisibility=hidden',
+        '-Wno-unused-command-line-argument',
+        '-fsigned-char',
+        '-Wno-vla',
+        '-Wno-vla-cxx-extension',
+      ],
       if (os == OS.linux && arch == Architecture.x64) ...['-msse2', '-msse3'],
     ];
 

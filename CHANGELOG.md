@@ -1,4 +1,5 @@
 ##### 5.1.3 (XX Xxx 2026)
+- silence clang warnings on Android. Thanks to @eugrro #561
 - fix: advance the mix clock under the audio mutex (playScheduled could start a voice one buffer early). Thanks to @AndrzejKaczynski #562
 - fix: prevent unconditional buffer appending for ICY streams in mp3 decoder #564. Thanks to @john-Mcan #563
 
