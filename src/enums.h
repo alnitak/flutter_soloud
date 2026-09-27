@@ -152,6 +152,9 @@ typedef enum SoundType {
   TYPE_PULL_BUFFER_STREAM
 } SoundType_t;
 
+/// WARNING: Keep these in sync with `FilterType` in
+/// `lib/src/filters/filters.dart`. Append new filters at the end only: the
+/// values are passed over the ABI as plain integers.
 typedef enum FilterType {
   BiquadResonantFilter,
   EchoFilter,
@@ -164,7 +167,8 @@ typedef enum FilterType {
   PitchShiftFilter,
   LimiterFilter,
   CompressorFilter,
-  ParametricEQFilter
+  ParametricEQFilter,
+  AmplitudeModulatorFilter
 } FilterType_t;
 
 /// WARNING: Keep these in sync with `lib/src/enums.dart`.

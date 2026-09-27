@@ -4,6 +4,7 @@ import 'package:flutter_soloud/src/bindings/bindings_player.dart';
 import 'package:flutter_soloud/src/bindings/soloud_controller.dart';
 import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/exceptions/exceptions.dart';
+import 'package:flutter_soloud/src/filters/amplitude_modulator_filter.dart';
 import 'package:flutter_soloud/src/filters/bassboost_filter.dart';
 import 'package:flutter_soloud/src/filters/biquad_resonant_filter.dart';
 import 'package:flutter_soloud/src/filters/compressor.dart';
@@ -207,6 +208,26 @@ final class FiltersSingle {
   /// [here](https://github.com/alnitak/flutter_soloud/blob/main/src/soloud/src/filter/parametric_eq.cpp)
   ParametricEqSingle get parametricEqFilter =>
       ParametricEqSingle(soundHash, busId);
+
+  /// The `Amplitude Modulator` filter for this sound.
+  ///
+  /// Bipolar amplitude modulation (ring modulation) with a sine carrier. At
+  /// full wet the output is `input * sin(2π * frequency * t)`: there is no DC
+  /// bias on the carrier, so a sine input at `f1` produces components at
+  /// `frequency - f1` and `frequency + f1` instead of a tremolo.
+  ///
+  /// **Parameters**:
+  /// - `wet`: Wet/dry mix ratio, 1.0 means fully modulated, 0.0 means fully
+  /// dry (transparent).
+  ///
+  /// - `frequency`: The carrier frequency in Hz (0.1 to 20000, default 440).
+  /// Requests at or above the Nyquist limit of the active sample rate are
+  /// clamped just below it while processing.
+  ///
+  /// This filter is not part of SoLoud C++ lib and the source code can be found
+  /// [here](https://github.com/alnitak/flutter_soloud/blob/main/src/filters/amplitude_modulator_filter.cpp)
+  AmplitudeModulatorSingle get amplitudeModulatorFilter =>
+      AmplitudeModulatorSingle(soundHash, busId);
 }
 
 /// Filters instance used in [SoLoud.filters]. This differentiate from the
@@ -340,6 +361,26 @@ final class FiltersGlobal {
   /// This filter is not documented in the SoLoud C++ lib, the source code is
   /// [here](https://github.com/alnitak/flutter_soloud/blob/main/src/soloud/src/filter/parametric_eq.cpp)
   ParametricEqGlobal get parametricEqFilter => const ParametricEqGlobal();
+
+  /// The `Amplitude Modulator` filter used globally.
+  ///
+  /// Bipolar amplitude modulation (ring modulation) with a sine carrier. At
+  /// full wet the output is `input * sin(2π * frequency * t)`: there is no DC
+  /// bias on the carrier, so a sine input at `f1` produces components at
+  /// `frequency - f1` and `frequency + f1` instead of a tremolo.
+  ///
+  /// **Parameters**:
+  /// - `wet`: Wet/dry mix ratio, 1.0 means fully modulated, 0.0 means fully
+  /// dry (transparent).
+  ///
+  /// - `frequency`: The carrier frequency in Hz (0.1 to 20000, default 440).
+  /// Requests at or above the Nyquist limit of the active sample rate are
+  /// clamped just below it while processing.
+  ///
+  /// This filter is not part of SoLoud C++ lib and the source code can be found
+  /// [here](https://github.com/alnitak/flutter_soloud/blob/main/src/filters/amplitude_modulator_filter.cpp)
+  AmplitudeModulatorGlobal get amplitudeModulatorFilter =>
+      const AmplitudeModulatorGlobal();
 }
 
 /// Common class for single and global filters.
@@ -493,7 +534,10 @@ enum FilterType {
   compressorFilter,
 
   /// A parametric N bands equalizer filter.
-  parametricEq;
+  parametricEq,
+
+  /// A sine ring (bipolar amplitude) modulator filter.
+  amplitudeModulatorFilter;
 
   @override
   String toString() => switch (this) {
@@ -509,6 +553,7 @@ enum FilterType {
     FilterType.limiterFilter => 'Limiter',
     FilterType.compressorFilter => 'Compressor',
     FilterType.parametricEq => 'Parametric EQ',
+    FilterType.amplitudeModulatorFilter => 'Amplitude Modulator',
   };
 
   /// The number of parameters this filter owns.
@@ -525,6 +570,7 @@ enum FilterType {
     FilterType.limiterFilter => 6,
     FilterType.compressorFilter => 7,
     FilterType.parametricEq => 67,
+    FilterType.amplitudeModulatorFilter => 2,
   };
 
   /// Activate this filter. If [soundHash] is null this filter is applied

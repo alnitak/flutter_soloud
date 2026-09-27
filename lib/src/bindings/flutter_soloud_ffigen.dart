@@ -3167,6 +3167,9 @@ typedef DartdartOnAudioDurationCallback_tFunction =
 typedef dartOnAudioDurationCallback_t =
     ffi.Pointer<ffi.NativeFunction<dartOnAudioDurationCallback_tFunction>>;
 
+/// WARNING: Keep these in sync with `FilterType` in
+/// `lib/src/filters/filters.dart`. Append new filters at the end only: the
+/// values are passed over the ABI as plain integers.
 enum FilterType {
   BiquadResonantFilter(0),
   EchoFilter(1),
@@ -3179,7 +3182,8 @@ enum FilterType {
   PitchShiftFilter(8),
   LimiterFilter(9),
   CompressorFilter(10),
-  ParametricEQFilter(11);
+  ParametricEQFilter(11),
+  AmplitudeModulatorFilter(12);
 
   final int value;
   const FilterType(this.value);
@@ -3197,6 +3201,7 @@ enum FilterType {
     9 => LimiterFilter,
     10 => CompressorFilter,
     11 => ParametricEQFilter,
+    12 => AmplitudeModulatorFilter,
     _ => throw ArgumentError('Unknown value for FilterType: $value'),
   };
 }

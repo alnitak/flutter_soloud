@@ -22,7 +22,7 @@ A high-performance audio plugin designed primarily for games and immersive appli
 - 📥 Pull-buffer streaming: the engine requests encoded data on demand (MP3, WAV, FLAC, Ogg Opus/Vorbis/FLAC), with seek support and callbacks for buffering, metadata, duration and data requests — ideal for network streams and custom data sources
 - 🚌 Mixing buses: group voices (music, SFX, UI...) into sub-mixes with their own volume, filters and visualization
 - 📊 Get audio wave and/or FFT audio data in real-time (useful for visualization)
-- 🎛️ Rich effects system (reverb, echo, limiter, parametric equalizer, pitch shift, etc.)
+- 🎛️ Rich effects system (reverb, echo, limiter, parametric equalizer, pitch shift, ring modulation, etc.)
 - ⚙️ Faders for attributes (e.g. fade out for 2 seconds, then stop)
 - 🎚️ Oscillators for attributes
 - 🌊 Waveform generation and visualization
