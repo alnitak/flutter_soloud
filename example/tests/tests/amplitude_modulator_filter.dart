@@ -159,9 +159,7 @@ Future<OutputBuffer> testAmplitudeModulatorFilterSingle() async {
     closeTo(filter.frequency(soundHandle: handle).value, 200, 1e-2),
     'sound frequency fade did not complete',
   );
-  filter
-      .wet(soundHandle: handle)
-      .oscillateFilterParameter(
+  filter.wet(soundHandle: handle).oscillateFilterParameter(
         from: 0,
         to: 1,
         time: const Duration(milliseconds: 300),
@@ -232,9 +230,9 @@ Future<Float32List> _captureChannel0({required int frames}) async {
 
 /// Hann-windowed amplitudes of the tones of interest.
 Map<int, double> _tones(Float32List x, double sampleRate) => {
-  for (final f in const [1000, 15000, 16000, 17000])
-    f: _toneAmplitude(x, f.toDouble(), sampleRate),
-};
+      for (final f in const [1000, 15000, 16000, 17000])
+        f: _toneAmplitude(x, f.toDouble(), sampleRate),
+    };
 
 double _toneAmplitude(Float32List x, double freq, double sampleRate) {
   final n = x.length;

@@ -19,10 +19,10 @@ List<String> _nativeFilterTypes() {
     isNotNull,
     reason: 'Could not find the FilterType enum in src/enums.h',
   );
-  return RegExp(r'^\s*(\w+)\s*,?\s*$', multiLine: true)
-      .allMatches(body!.group(1)!)
-      .map((m) => m.group(1)!)
-      .toList();
+  return RegExp(
+    r'^\s*(\w+)\s*,?\s*$',
+    multiLine: true,
+  ).allMatches(body!.group(1)!).map((m) => m.group(1)!).toList();
 }
 
 void main() {
@@ -39,7 +39,8 @@ void main() {
     expect(
       native.FilterType.values.map((e) => e.name).toList(),
       nativeNames,
-      reason: 'lib/src/bindings/flutter_soloud_ffigen.dart is stale: '
+      reason:
+          'lib/src/bindings/flutter_soloud_ffigen.dart is stale: '
           'run `dart run ffigen --config ffigen.yaml`.',
     );
     for (final e in native.FilterType.values) {
@@ -108,9 +109,7 @@ void main() {
         'float AmplitudeModulator::$fn\\(.*?\\n\\}',
         dotAll: true,
       ).firstMatch(source)!.group(0)!;
-      final m = RegExp(
-        'case $attr:\\s*return ([0-9.]+)f;',
-      ).firstMatch(body)!;
+      final m = RegExp('case $attr:\\s*return ([0-9.]+)f;').firstMatch(body)!;
       return double.parse(m.group(1)!);
     }
 
