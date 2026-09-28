@@ -72,6 +72,7 @@ namespace SoLoud
 #include <android/api-level.h>
 #endif
 #include <math.h>
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <thread>
@@ -326,7 +327,8 @@ namespace SoLoud
     // returns, and each operation on gDevice below holds the job thread that
     // way for its whole duration: a reroute queued before it finishes first,
     // and one queued while it runs (by the stream of a device being
-    // initialized, say) runs after it, against a whole device.
+    // initialized, say) runs after it, against a whole device. Which reroutes
+    // get queued at all is the other half of this; see gateAAudioStreamError().
     //
     // True while the context has an AAudio job thread to hold. The context
     // outlives ma_context_uninit() with its backend still set, so this is what
@@ -429,25 +431,154 @@ namespace SoLoud
 #endif
     };
 
+#if defined(MA_HAS_AAUDIO)
+    // Admission for reroutes.
+    //
+    // Holding the job thread orders reroutes against our operations, but it
+    // cannot stop one being queued for a device that is gone by the time it
+    // runs. miniaudio's error callback checks gDevice.aaudio.isTearingDown and
+    // then queues a reroute of gDevice, and nothing ties either step to the
+    // stream that reported the error:
+    //
+    // - The check can pass just before an operation marks the device tearing
+    //   down and holds the job thread, so the reroute lands behind the hold and
+    //   runs after the device has been replaced or removed.
+    // - AAudio can report an error after the stream is closed: an idle legacy
+    //   stream reports a route change from a binder thread that closing the
+    //   stream does not wait for. By then gDevice has either been zeroed,
+    //   and miniaudio's callback dereferences its null pContext, or become
+    //   the replacement, whose fresh isTearingDown lets the reroute through.
+    //
+    // Either way a reroute meant for a stream that no longer exists reopens
+    // the replacement device, with miniaudio's defaults, or runs against the
+    // zeroed one, whose reroute lock was destroyed with it. So these streams'
+    // error callbacks go through gateAAudioStreamError(), which only lets an
+    // error through for a stream this context has opened and not closed, and
+    // does so under the same lock that closes streams and marks the device
+    // tearing down.
+    //
+    // The AAudio entry points involved are interposed in `context`'s function
+    // table, which miniaudio calls through, so miniaudio itself is unchanged.
+    static MA_PFN_AAudioStreamBuilder_openStream gOpenAAudioStream;
+    static MA_PFN_AAudioStream_close gCloseAAudioStream;
+    static MA_PFN_AAudioStreamBuilder_setErrorCallback gSetAAudioErrorCallback;
+
+    static std::mutex gAAudioStreamGate;
+    // Guarded by gAAudioStreamGate, as is setting gDevice's isTearingDown.
+    static std::vector<ma_AAudioStream *> gOpenAAudioStreams;
+    static ma_AAudioStream_errorCallback gMiniaudioErrorCallback = nullptr;
+
+    /// The error callback AAudio calls for this context's streams, in place of
+    /// miniaudio's. Not static: the AAudio reroute race test calls it the way
+    /// AAudio does.
+    void gateAAudioStreamError(ma_AAudioStream *pStream, void *pUserData,
+                               ma_aaudio_result_t error)
+    {
+        // Held across miniaudio's callback, which checks isTearingDown and
+        // queues the reroute without blocking: either it has queued it by the
+        // time an operation marks the device tearing down -- ahead of that
+        // operation's hold, to run first and find the flag set -- or it finds
+        // the flag set itself.
+        std::lock_guard<std::mutex> lock(gAAudioStreamGate);
+        if (std::find(gOpenAAudioStreams.begin(), gOpenAAudioStreams.end(),
+                      pStream) == gOpenAAudioStreams.end())
+        {
+            soloud_platform_log("miniaudio: ignoring AAudio error %d from a "
+                                "closed stream\n",
+                                error);
+            return;
+        }
+        gMiniaudioErrorCallback(pStream, pUserData, error);
+    }
+
+    static ma_aaudio_result_t openAAudioStream(ma_AAudioStreamBuilder *pBuilder,
+                                               ma_AAudioStream **ppStream)
+    {
+        const ma_aaudio_result_t result = gOpenAAudioStream(pBuilder, ppStream);
+        // An error the stream reports before it is registered here is
+        // ignored. The stream is then disconnected from the start, and AAudio
+        // refuses to start it, as it would one that disconnected before it
+        // was opened.
+        if (result == MA_AAUDIO_OK)
+        {
+            std::lock_guard<std::mutex> lock(gAAudioStreamGate);
+            gOpenAAudioStreams.push_back(*ppStream);
+        }
+        return result;
+    }
+
+    static ma_aaudio_result_t closeAAudioStream(ma_AAudioStream *pStream)
+    {
+        {
+            std::lock_guard<std::mutex> lock(gAAudioStreamGate);
+            gOpenAAudioStreams.erase(std::remove(gOpenAAudioStreams.begin(),
+                                                 gOpenAAudioStreams.end(),
+                                                 pStream),
+                                     gOpenAAudioStreams.end());
+        }
+        // Not under the lock: closing joins the stream's callback thread,
+        // which may be waiting for it in gateAAudioStreamError().
+        return gCloseAAudioStream(pStream);
+    }
+
+    static void setAAudioErrorCallback(ma_AAudioStreamBuilder *pBuilder,
+                                       ma_AAudioStream_errorCallback callback,
+                                       void *pUserData)
+    {
+        {
+            std::lock_guard<std::mutex> lock(gAAudioStreamGate);
+            gMiniaudioErrorCallback = callback;
+        }
+        gSetAAudioErrorCallback(pBuilder, gateAAudioStreamError, pUserData);
+    }
+
+    /// Route a freshly initialized AAudio context's streams through the
+    /// functions above, before it opens any.
+    static void interposeAAudioStreams()
+    {
+        gOpenAAudioStream = (MA_PFN_AAudioStreamBuilder_openStream)
+                                context.aaudio.AAudioStreamBuilder_openStream;
+        gCloseAAudioStream =
+            (MA_PFN_AAudioStream_close)context.aaudio.AAudioStream_close;
+        gSetAAudioErrorCallback = (MA_PFN_AAudioStreamBuilder_setErrorCallback)
+                                      context.aaudio.AAudioStreamBuilder_setErrorCallback;
+        context.aaudio.AAudioStreamBuilder_openStream = (ma_proc)openAAudioStream;
+        context.aaudio.AAudioStream_close = (ma_proc)closeAAudioStream;
+        context.aaudio.AAudioStreamBuilder_setErrorCallback =
+            (ma_proc)setAAudioErrorCallback;
+
+        std::lock_guard<std::mutex> lock(gAAudioStreamGate);
+        gOpenAAudioStreams.clear();
+    }
+#endif
+
     /// Tell reroute jobs to leave gDevice alone: its error callback stops
     /// posting them, and one already queued does nothing when it runs. For
     /// operations that are about to replace or remove the device, where a
     /// reroute is pointless; a queued one would otherwise run against the
     /// replacement, and reopen its stream with miniaudio's defaults rather
-    /// than our configuration.
+    /// than our configuration. Call before taking the ScopedRerouteHold, so
+    /// that a reroute already on its way into the queue gets in ahead of the
+    /// hold, and runs before the device goes.
     static void markDeviceTearingDown()
     {
 #if defined(MA_HAS_AAUDIO)
         // gDevice.aaudio shares a union with the other backends.
-        if (gAAudioJobThreadLive)
-            ma_atomic_bool32_set(&gDevice.aaudio.isTearingDown, MA_TRUE);
+        if (!gAAudioJobThreadLive)
+            return;
+        std::lock_guard<std::mutex> lock(gAAudioStreamGate);
+        ma_atomic_bool32_set(&gDevice.aaudio.isTearingDown, MA_TRUE);
 #endif
     }
 
     /// ma_device_uninit(), leaving reroutes marked off the zeroed device.
     /// ma_device_uninit() ends by zeroing gDevice, isTearingDown included, so
-    /// a reroute queued while it ran would otherwise open a stream on an empty
-    /// device, one nothing would ever close. Call with a ScopedRerouteHold.
+    /// a reroute queued while it ran -- one the stream reported before
+    /// ma_device_uninit() set isTearingDown itself -- would otherwise open a
+    /// stream on an empty device, one nothing would ever close. When that
+    /// reroute runs it takes the device's reroute lock, zeroed along with it,
+    /// which bionic defines as a statically initialized mutex, before it sees
+    /// isTearingDown and does nothing. Call with a ScopedRerouteHold.
     static void uninitDevice()
     {
         ma_device_uninit(&gDevice);
@@ -657,6 +788,10 @@ namespace SoLoud
         gEngineContextInitialized = result == MA_SUCCESS;
         gAAudioJobThreadLive =
             gEngineContextInitialized && context.backend == ma_backend_aaudio;
+#if defined(MA_HAS_AAUDIO)
+        if (gAAudioJobThreadLive)
+            interposeAAudioStreams();
+#endif
         return result;
     }
 

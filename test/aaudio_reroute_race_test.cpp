@@ -15,11 +15,13 @@
 // reroute already closed, which hangs in AAudioStream_requestStop().
 //
 // The test drives the device operations flutter_soloud's Player does (start
-// with a rebuild on failure, idle stop, explicit stop, rebuild) while posting
-// reroute jobs the way miniaudio's own error callback does. It then checks
-// that only one stream ever feeds the engine: every mix records the thread it
-// runs on, and AAudio calls each stream's data callback from that stream's
-// own thread. A crash or a hang is a failure too.
+// with a rebuild on failure, idle stop, explicit stop, rebuild) while
+// reporting stream errors the way AAudio does, through the error callback
+// flutter_soloud registers: mostly for the open stream, and sometimes late,
+// for one that has since been closed. It then checks that only one stream
+// ever feeds the engine: every mix records the thread it runs on, and AAudio
+// calls each stream's data callback from that stream's own thread. A crash or
+// a hang is a failure too.
 //
 // Run from the flutter_soloud repository root with a device or emulator
 // attached:
@@ -42,8 +44,13 @@
 #include <random>
 #include <string>
 #include <thread>
+#include <vector>
 #include <sys/syscall.h>
 #include <unistd.h>
+
+// miniaudio's AAudio stream type, which only its implementation declares.
+struct ma_AAudioStream_t;
+typedef ma_AAudioStream_t *ma_AAudioStream;
 
 namespace SoLoud
 {
@@ -51,6 +58,8 @@ namespace SoLoud
 	extern ma_context context;
 	void miniaudio_setLowLatency(bool aLowLatency);
 	result miniaudio_stopAudioDevice();
+	void gateAAudioStreamError(ma_AAudioStream *pStream, void *pUserData,
+							   int32_t error);
 }
 
 namespace
@@ -126,24 +135,41 @@ bool usingAAudio()
 	return SoLoud::context.backend == ma_backend_aaudio;
 }
 
-// What ma_stream_error_callback__aaudio() does when AAudio reports an error
-// on the device's stream: unless the device is tearing down, queue a reroute
-// on the context's job thread. Only posts while the device has a stream, since
-// only a live stream can report one.
-bool postRerouteLikeTheErrorCallback()
-{
-	ma_device *device = &SoLoud::gDevice;
-	if (__atomic_load_n(&device->aaudio.pStreamPlayback, __ATOMIC_ACQUIRE) ==
-		nullptr)
-		return false;
-	if (__atomic_load_n(&device->aaudio.isTearingDown.value, __ATOMIC_ACQUIRE))
-		return false;
+const int32_t kAAudioErrorDisconnected = -899; // AAUDIO_ERROR_DISCONNECTED
 
-	ma_job job = ma_job_init(MA_JOB_TYPE_DEVICE_AAUDIO_REROUTE);
-	job.data.device.aaudio.reroute.pDevice = device;
-	job.data.device.aaudio.reroute.deviceType = ma_device_type_playback;
-	return ma_device_job_thread_post(&SoLoud::context.aaudio.jobThread, &job) ==
-		   MA_SUCCESS;
+ma_AAudioStream *currentStream()
+{
+	return static_cast<ma_AAudioStream *>(__atomic_load_n(
+		&SoLoud::gDevice.aaudio.pStreamPlayback, __ATOMIC_ACQUIRE));
+}
+
+// AAudio reporting a disconnect on [stream]: it calls the error callback
+// registered for the stream, with the ma_device miniaudio registered as its
+// user data. The callback compares the stream pointer but, for a closed
+// stream, never dereferences it.
+void reportDisconnect(ma_AAudioStream *stream)
+{
+	SoLoud::gateAAudioStreamError(stream, &SoLoud::gDevice,
+								  kAAudioErrorDisconnected);
+}
+
+std::atomic<int> gReroutes{0};
+
+void countReroutes(unsigned int state)
+{
+	if (state == 2) // rerouted
+		gReroutes++;
+}
+
+bool waitForReroutes(int atLeast, int ms)
+{
+	for (int waited = 0; waited < ms; waited += 10)
+	{
+		if (gReroutes.load() >= atLeast)
+			return true;
+		std::this_thread::sleep_for(std::chrono::milliseconds(10));
+	}
+	return gReroutes.load() >= atLeast;
 }
 
 // Player::performAudioDeviceStart(): resume, and if that fails rebuild the
@@ -182,15 +208,33 @@ void stress(SoLoud::Soloud &soloud, int seconds)
 	std::fflush(stdout);
 
 	std::atomic<bool> running{true};
-	std::atomic<long long> reroutesPosted{0};
+	std::atomic<long long> errorsReported{0};
+	std::atomic<long long> lateErrorsReported{0};
 
 	std::thread errors([&]
 					   {
 		std::mt19937 rng(1);
+		ma_AAudioStream *open = nullptr;
+		ma_AAudioStream *closed = nullptr;
 		while (running.load())
 		{
-			if (postRerouteLikeTheErrorCallback())
-				reroutesPosted++;
+			ma_AAudioStream *stream = currentStream();
+			if (stream != open)
+			{
+				closed = open;
+				open = stream;
+			}
+			// One error in four arrives late, from the stream replaced last.
+			if (closed != nullptr && rng() % 4 == 0)
+			{
+				reportDisconnect(closed);
+				lateErrorsReported++;
+			}
+			else if (open != nullptr)
+			{
+				reportDisconnect(open);
+				errorsReported++;
+			}
 			std::this_thread::sleep_for(
 				std::chrono::microseconds(rng() % 20000));
 		} });
@@ -243,11 +287,74 @@ void stress(SoLoud::Soloud &soloud, int seconds)
 	errors.join();
 	operations.join();
 
-	std::printf("  %lld reroutes posted, %lld seconds with concurrent "
-				"streams\n",
-				reroutesPosted.load(), concurrentSeconds);
+	std::printf("  %lld errors reported (%lld of them late), %lld reroutes, "
+				"%lld seconds with concurrent streams\n",
+				errorsReported.load() + lateErrorsReported.load(),
+				lateErrorsReported.load(), (long long)gReroutes.load(),
+				concurrentSeconds);
 	check(concurrentSeconds == 0,
 		  "no two streams fed the device at the same time under stress");
+}
+
+// Occupies memory of every small size, once, right after a stream is closed,
+// so that the stream replacing it cannot be allocated where it was.
+std::vector<void *> gPlugs;
+ma_proc gCloseBeneath = nullptr;
+
+int32_t closeAndPlug(ma_AAudioStream *stream)
+{
+	const int32_t result =
+		reinterpret_cast<int32_t (*)(ma_AAudioStream *)>(gCloseBeneath)(stream);
+	if (gPlugs.empty())
+		for (size_t size = 16; size <= 8192; size += 16)
+			gPlugs.push_back(std::malloc(size));
+	return result;
+}
+
+// AAudio can report an error for a stream after it has been closed: an idle
+// legacy stream reports a route change from a binder thread that closing the
+// stream does not wait for. That error must not reroute the device that
+// replaced the stream. The open stream's errors still have to get through.
+void checkClosedStreamErrorsIgnored(SoLoud::Soloud &soloud)
+{
+	std::printf("errors from a closed stream\n");
+
+	startLikePlayer(soloud);
+	std::this_thread::sleep_for(std::chrono::milliseconds(300));
+
+	// A new stream tends to be allocated where the one just closed was, which
+	// would make the two indistinguishable here. Never in AAudio, which keeps
+	// a stream alive while it reports an error; so keep the replacement off
+	// the closed stream's memory for the one rebuild.
+	ma_AAudioStream *closed = currentStream();
+	gCloseBeneath = SoLoud::context.aaudio.AAudioStream_close;
+	SoLoud::context.aaudio.AAudioStream_close = (ma_proc)closeAndPlug;
+	soloud.miniaudio_changeDevice(nullptr);
+	SoLoud::context.aaudio.AAudioStream_close = gCloseBeneath;
+	for (void *plug : gPlugs)
+		std::free(plug);
+	gPlugs.clear();
+	soloud.resume();
+	std::this_thread::sleep_for(std::chrono::milliseconds(300));
+	if (closed == nullptr || closed == currentStream())
+	{
+		std::printf("  SKIPPED: the replacement stream took the closed one's "
+					"address\n");
+		return;
+	}
+
+	const int before = gReroutes.load();
+	reportDisconnect(closed);
+	std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+	std::printf("  %d reroutes after a closed stream's error\n",
+				gReroutes.load() - before);
+	check(gReroutes.load() == before,
+		  "an error from a closed stream does not reroute the device that "
+		  "replaced it");
+
+	reportDisconnect(currentStream());
+	check(waitForReroutes(before + 1, 3000),
+		  "an error from the open stream reroutes the device");
 }
 
 // A job that parks the job thread until released.
@@ -383,14 +490,26 @@ int main(int argc, char **argv)
 		return 0;
 	}
 
+	soloud.setStateChangedCallback(countReroutes);
+
 	Probe probe;
 	soloud.play(probe);
 
+	checkClosedStreamErrorsIgnored(soloud);
 	checkOperationWaitsForQueueRoom(soloud);
 	stress(soloud, seconds);
 	checkSettledDevice(soloud);
 
+	// A late error for the device's last stream, once deinit() has closed it
+	// and zeroed the device. miniaudio's own callback would dereference the
+	// zeroed device's context before checking anything.
+	std::printf("error after deinit\n");
+	ma_AAudioStream *last = currentStream();
 	soloud.deinit();
+	if (last != nullptr)
+		reportDisconnect(last);
+	check(last != nullptr, "an error from a stream closed by deinit() is "
+						   "ignored");
 
 	if (gFailures == 0)
 	{
