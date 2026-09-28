@@ -533,14 +533,18 @@ namespace SoLoud
     ma_result miniaudio_listPlaybackDevices(std::vector<ma_device_info> &aDevices)
     {
         aDevices.clear();
-        {
-            // With the engine running, enumerate on its own context: that is
-            // the backend the returned IDs will be opened on, and it avoids a
-            // second OpenSL|ES context next to the engine's.
-            std::lock_guard<std::recursive_mutex> operationLock(gDeviceOperationMutex);
-            if (gEngineContextInitialized)
-                return copy_playback_devices(&context, aDevices);
-        }
+        // Held throughout, including around the temporary context below.
+        // Enumeration runs on the UI isolate while initEngine() runs on a
+        // worker, and the engine context is only ever opened under this
+        // mutex; so the two contexts never exist at once (miniaudio allows a
+        // single OpenSL|ES context), and an enumeration that arrives during
+        // init waits for it and then uses the engine's context.
+        std::lock_guard<std::recursive_mutex> operationLock(gDeviceOperationMutex);
+
+        // With the engine running, enumerate on its own context: that is the
+        // backend the returned IDs will be opened on.
+        if (gEngineContextInitialized)
+            return copy_playback_devices(&context, aDevices);
 
         // No engine context yet, so build a temporary one the way the engine
         // will build its own.
