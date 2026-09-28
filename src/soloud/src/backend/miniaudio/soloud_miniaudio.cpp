@@ -78,6 +78,7 @@ namespace SoLoud
 #include <condition_variable>
 #include <mutex>
 #include <atomic>
+#include <vector>
 #include "soloud_common.h"
 #include "../../../../analyzer.h"
 #include "../../../../mixeroutput/mixer_output.h"
@@ -436,6 +437,122 @@ namespace SoLoud
 #endif
     }
 
+    // The single place that decides which backends, and which context
+    // settings, a context gets on this platform. Both the engine's `context`
+    // and the temporary one device enumeration falls back to are created here,
+    // so they cannot drift apart: device IDs belong to the backend that
+    // enumerated them, so a list built on another backend hands out IDs the
+    // engine's context cannot open.
+    static ma_result init_platform_context(ma_context *aContext)
+    {
+        ma_context_config contextConfig = ma_context_config_init();
+#if defined(MA_HAS_COREAUDIO)
+        // Leave the AVAudioSession to the app: a default context would set its
+        // category and activate it, and then deactivate it on uninit.
+        contextConfig.coreaudio.sessionCategory = ma_ios_session_category_none;
+        contextConfig.coreaudio.noAudioSessionActivate = true;
+        contextConfig.coreaudio.noAudioSessionDeactivate = true;
+        return ma_context_init(NULL, 0, &contextConfig, aContext);
+#elif defined(__ANDROID__)
+        // OpenSL only on Android <= 10, where uninitializing an AAudio device
+        // can crash (see the MA_NO_AAUDIO note at the top of this file).
+        // miniaudio's default order would pick AAudio from API 27.
+        ma_backend backends[] = { ma_backend_aaudio, ma_backend_opensl };
+        ma_uint32 backendCount = 2;
+        if (android_get_device_api_level() <= 29) {
+            backends[0] = ma_backend_opensl;
+            backendCount = 1;
+        }
+        return ma_context_init(backends, backendCount, &contextConfig, aContext);
+#elif defined(__linux__) || defined(__LINUX__)
+        ma_backend backends[3];
+        ma_uint32 backendCount = 0;
+        const int chosenBackend = gLinuxAudioBackend.load(std::memory_order_acquire);
+        if (chosenBackend == 1) { // ALSA
+            backends[0] = ma_backend_alsa;
+            backendCount = 1;
+        } else if (chosenBackend == 2) { // PulseAudio
+            backends[0] = ma_backend_pulseaudio;
+            backendCount = 1;
+        } else if (chosenBackend == 3) { // JACK
+            backends[0] = ma_backend_jack;
+            backendCount = 1;
+        } else { // Auto: ALSA first, then PulseAudio, then JACK
+            backends[0] = ma_backend_alsa;
+            backends[1] = ma_backend_pulseaudio;
+            backends[2] = ma_backend_jack;
+            backendCount = 3;
+        }
+        return ma_context_init(backends, backendCount, &contextConfig, aContext);
+#else
+        // Other platforms open the device without a context of their own, which
+        // makes miniaudio create one with this same default configuration.
+        return ma_context_init(NULL, 0, &contextConfig, aContext);
+#endif
+    }
+
+    // Whether `context` is currently initialized. Only the platforms handled
+    // by init_platform_context() above ever open it. Guarded by
+    // gDeviceOperationMutex.
+    static bool gEngineContextInitialized = false;
+
+    // Unused where the device is opened without a context (Windows, web).
+    [[maybe_unused]] static ma_result open_engine_context()
+    {
+        const ma_result result = init_platform_context(&context);
+        gEngineContextInitialized = result == MA_SUCCESS;
+        return result;
+    }
+
+    static void close_engine_context()
+    {
+        if (!gEngineContextInitialized)
+            return;
+        ma_context_uninit(&context);
+        gEngineContextInitialized = false;
+    }
+
+    // The playback devices of `aContext`, copied out: the array miniaudio
+    // returns belongs to the context and is overwritten by the next
+    // enumeration on it.
+    static ma_result copy_playback_devices(ma_context *aContext,
+                                           std::vector<ma_device_info> &aDevices)
+    {
+        ma_device_info *pPlaybackInfos;
+        ma_uint32 playbackCount;
+        ma_device_info *pCaptureInfos;
+        ma_uint32 captureCount;
+        const ma_result result = ma_context_get_devices(
+            aContext, &pPlaybackInfos, &playbackCount, &pCaptureInfos, &captureCount);
+        if (result != MA_SUCCESS)
+            return result;
+        aDevices.assign(pPlaybackInfos, pPlaybackInfos + playbackCount);
+        return MA_SUCCESS;
+    }
+
+    ma_result miniaudio_listPlaybackDevices(std::vector<ma_device_info> &aDevices)
+    {
+        aDevices.clear();
+        {
+            // With the engine running, enumerate on its own context: that is
+            // the backend the returned IDs will be opened on, and it avoids a
+            // second OpenSL|ES context next to the engine's.
+            std::lock_guard<std::recursive_mutex> operationLock(gDeviceOperationMutex);
+            if (gEngineContextInitialized)
+                return copy_playback_devices(&context, aDevices);
+        }
+
+        // No engine context yet, so build a temporary one the way the engine
+        // will build its own.
+        ma_context enumerationContext;
+        ma_result result = init_platform_context(&enumerationContext);
+        if (result != MA_SUCCESS)
+            return result;
+        result = copy_playback_devices(&enumerationContext, aDevices);
+        ma_context_uninit(&enumerationContext);
+        return result;
+    }
+
     void soloud_miniaudio_audiomixer(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount)
     {
         static bool first_call = true;
@@ -610,9 +727,9 @@ namespace SoLoud
             ma_device_uninit(&gDevice);
             gDeviceInitialized.store(false, std::memory_order_release);
         }
-#if defined(MA_HAS_COREAUDIO) || defined(__ANDROID__) || defined(__linux__) || defined(__LINUX__)
-        ma_context_uninit(&context);
-#endif
+        // A no-op if it is already closed, e.g. after a failed Linux backend
+        // switch, or on platforms that never open it.
+        close_engine_context();
     }
 
     // Pause the audio device: stops the CoreAudio AudioUnit (or platform equivalent)
@@ -855,19 +972,12 @@ namespace SoLoud
         operationLock.lock();
 
 #elif defined(MA_HAS_COREAUDIO)
-        // Disable CoreAudio context
-        ma_context_config contextConfig = ma_context_config_init();
-        contextConfig.coreaudio.sessionCategory = ma_ios_session_category_none;
-        contextConfig.coreaudio.noAudioSessionActivate = true;
-        contextConfig.coreaudio.noAudioSessionDeactivate = true;
-
-        ma_result result = ma_context_init(NULL, 0, &contextConfig, &context);
-        if (result != MA_SUCCESS) {
+        if (open_engine_context() != MA_SUCCESS) {
             return UNKNOWN_ERROR;
         }
         if (ma_device_init(&context, &deviceConfig, &gDevice) != MA_SUCCESS)
         {
-            ma_context_uninit(&context);
+            close_engine_context();
             return UNKNOWN_ERROR;
         }
         gDeviceInitialized = true;
@@ -876,7 +986,7 @@ namespace SoLoud
         if (startResult != MA_SUCCESS) {
             soloud_platform_log("miniaudio_init: ma_device_start failed with error %d\n", startResult);
             ma_device_uninit(&gDevice);
-            ma_context_uninit(&context);
+            close_engine_context();
             gDeviceInitialized = false;
             return UNKNOWN_ERROR;
         }
@@ -899,19 +1009,11 @@ namespace SoLoud
             deviceConfig.aaudio.allowedCapturePolicy = ma_aaudio_allow_capture_by_all;
         }
 
-        ma_backend backends[] = { ma_backend_aaudio, ma_backend_opensl };
-        ma_uint32 backendCount = 2;
-        if (android_get_device_api_level() <= 29) {
-            backends[0] = ma_backend_opensl;
-            backendCount = 1;
-        }
-
-        ma_context_config contextConfig = ma_context_config_init();
-        if (ma_context_init(backends, backendCount, &contextConfig, &context) != MA_SUCCESS) {
+        if (open_engine_context() != MA_SUCCESS) {
             return UNKNOWN_ERROR;
         }
         if (ma_device_init(&context, &deviceConfig, &gDevice) != MA_SUCCESS) {
-            ma_context_uninit(&context);
+            close_engine_context();
             return UNKNOWN_ERROR;
         }
         gDeviceInitialized = true;
@@ -920,42 +1022,22 @@ namespace SoLoud
         if (startResult != MA_SUCCESS) {
             soloud_platform_log("miniaudio_init: ma_device_start failed with error %d\n", startResult);
             ma_device_uninit(&gDevice);
-            ma_context_uninit(&context);
+            close_engine_context();
             gDeviceInitialized = false;
             return UNKNOWN_ERROR;
         }
         gDeviceInitDeferred = false;
         gDeviceStartDeferred = false;
-        
-#elif defined(__linux__) || defined(__LINUX__)
-        ma_backend backends[3];
-        ma_uint32 backendCount = 0;
-        const int chosenBackend = gLinuxAudioBackend.load(std::memory_order_acquire);
-        if (chosenBackend == 1) { // ALSA
-            backends[0] = ma_backend_alsa;
-            backendCount = 1;
-        } else if (chosenBackend == 2) { // PulseAudio
-            backends[0] = ma_backend_pulseaudio;
-            backendCount = 1;
-        } else if (chosenBackend == 3) { // JACK
-            backends[0] = ma_backend_jack;
-            backendCount = 1;
-        } else { // Auto: ALSA first, then PulseAudio, then JACK
-            backends[0] = ma_backend_alsa;
-            backends[1] = ma_backend_pulseaudio;
-            backends[2] = ma_backend_jack;
-            backendCount = 3;
-        }
 
-        ma_context_config contextConfig = ma_context_config_init();
-        ma_result result = ma_context_init(backends, backendCount, &contextConfig, &context);
+#elif defined(__linux__) || defined(__LINUX__)
+        ma_result result = open_engine_context();
         if (result != MA_SUCCESS) {
             soloud_platform_log("miniaudio_init: ma_context_init failed with error %d\n", result);
             return UNKNOWN_ERROR;
         }
         if (ma_device_init(&context, &deviceConfig, &gDevice) != MA_SUCCESS) {
             soloud_platform_log("miniaudio_init: ma_device_init failed\n");
-            ma_context_uninit(&context);
+            close_engine_context();
             return UNKNOWN_ERROR;
         }
         gDeviceInitialized = true;
@@ -964,7 +1046,7 @@ namespace SoLoud
         if (startResult != MA_SUCCESS) {
             soloud_platform_log("miniaudio_init: ma_device_start failed with error %d\n", startResult);
             ma_device_uninit(&gDevice);
-            ma_context_uninit(&context);
+            close_engine_context();
             gDeviceInitialized = false;
             return UNKNOWN_ERROR;
         }
@@ -1203,28 +1285,10 @@ namespace SoLoud
         gDeviceInitialized.store(false, std::memory_order_release);
         gDeviceStopped.store(true, std::memory_order_release);
 
-        ma_context_uninit(&context);
+        close_engine_context();
 
-        ma_backend backends[3];
-        ma_uint32 backendCount = 0;
-        if (aBackend == 1) { // ALSA
-            backends[0] = ma_backend_alsa;
-            backendCount = 1;
-        } else if (aBackend == 2) { // PulseAudio
-            backends[0] = ma_backend_pulseaudio;
-            backendCount = 1;
-        } else if (aBackend == 3) { // JACK
-            backends[0] = ma_backend_jack;
-            backendCount = 1;
-        } else { // Auto: ALSA first, then PulseAudio, then JACK
-            backends[0] = ma_backend_alsa;
-            backends[1] = ma_backend_pulseaudio;
-            backends[2] = ma_backend_jack;
-            backendCount = 3;
-        }
-
-        ma_context_config contextConfig = ma_context_config_init();
-        ma_result ctxRes = ma_context_init(backends, backendCount, &contextConfig, &context);
+        // Picks up aBackend, stored in gLinuxAudioBackend above.
+        ma_result ctxRes = open_engine_context();
         if (ctxRes != MA_SUCCESS) {
             soloud_platform_log("miniaudio_changeLinuxBackend_impl: ma_context_init failed with error %d\n", ctxRes);
             return UNKNOWN_ERROR;
@@ -1253,7 +1317,7 @@ namespace SoLoud
             soloud_platform_log(
                 "miniaudio_changeLinuxBackend_impl: ma_device_init failed with error %d\n",
                 devRes);
-            ma_context_uninit(&context);
+            close_engine_context();
             gDeviceInitialized.store(false, std::memory_order_release);
             return UNKNOWN_ERROR;
         }
