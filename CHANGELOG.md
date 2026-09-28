@@ -1,5 +1,5 @@
 ##### 5.1.4 (28 Sep 2026)
-- fix: Android libflutter_soloud_plugin.so has no GNU build ID since the build-hook migration.
+- fix: Android libflutter_soloud_plugin.so has no GNU build ID since the build-hook migration #570
 
 ##### 5.1.3 (28 Sep 2026)
 - added `AmplitudeModulatorFilter`: a sine ring modulator (bipolar amplitude modulation, `output = input * sin(2π·frequency·t)` at full wet) with `wet` and `frequency` (0.1–20000 Hz) parameters, available globally, per sound and per bus via `filters.amplitudeModulatorFilter`. Thanks to @Colton127 #566
