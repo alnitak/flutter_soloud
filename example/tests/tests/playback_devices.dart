@@ -100,6 +100,27 @@ Future<OutputBuffer> testPlaybackDevices() async {
   );
   strBuf.writeln('Invalid device IDs rejected without disrupting playback');
 
+  // Regression: `setLinuxAudioBackend()` has no effect off Linux. Android's
+  // toolchain defines `__linux__` too, so it used to tear down the running
+  // AAudio device there and try to reopen it on ALSA/PulseAudio/JACK, leaving
+  // the engine with no device at all.
+  if (defaultTargetPlatform != TargetPlatform.linux) {
+    final playing = SoLoud.instance.play(sound, looping: true);
+    await SoLoud.instance.setLinuxAudioBackend(LinuxAudioBackend.alsa);
+    final state = SoLoud.instance.getAudioDeviceState();
+    assert(
+      state == AudioDeviceState.started,
+      'setLinuxAudioBackend() should leave the running device alone off '
+      'Linux, but the device is $state',
+    );
+    assert(
+      SoLoud.instance.getIsValidVoiceHandle(playing),
+      'setLinuxAudioBackend() should not touch voices off Linux',
+    );
+    await SoLoud.instance.stop(playing);
+    strBuf.writeln('setLinuxAudioBackend() left the device alone');
+  }
+
   // Swap repeatedly while the mixer is actually running. Nothing serializes the
   // audio callback against the swap any more: `ma_device_uninit()` alone is
   // responsible for quiescing the callback before its stream is closed, and

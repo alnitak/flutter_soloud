@@ -408,13 +408,13 @@ namespace SoLoud
             aManaged ? ma_aaudio_content_type_music : ma_aaudio_content_type_default;
     }
 
-#if defined(__linux__) || defined(__LINUX__)
+#if (defined(__linux__) || defined(__LINUX__)) && !defined(__ANDROID__)
     static std::atomic<int> gLinuxAudioBackend{0};
 #endif
 
     void miniaudio_setLinuxAudioBackend(int aBackend)
     {
-#if defined(__linux__) || defined(__LINUX__)
+#if (defined(__linux__) || defined(__LINUX__)) && !defined(__ANDROID__)
         std::lock_guard<std::recursive_mutex> lock(gDeviceOperationMutex);
         gLinuxAudioBackend.store(aBackend, std::memory_order_release);
         const char *backendName = "Auto (ALSA -> PulseAudio -> JACK)";
@@ -429,7 +429,7 @@ namespace SoLoud
 
     int miniaudio_getLinuxAudioBackend()
     {
-#if defined(__linux__) || defined(__LINUX__)
+#if (defined(__linux__) || defined(__LINUX__)) && !defined(__ANDROID__)
         return gLinuxAudioBackend.load(std::memory_order_acquire);
 #else
         return 0;
@@ -1183,7 +1183,7 @@ namespace SoLoud
 
     result miniaudio_changeLinuxBackend_impl(int aBackend)
     {
-#if defined(__linux__) || defined(__LINUX__)
+#if (defined(__linux__) || defined(__LINUX__)) && !defined(__ANDROID__)
         std::lock_guard<std::recursive_mutex> operationLock(gDeviceOperationMutex);
         SoLoud::Soloud *currentSoloud =
             gSoloud.load(std::memory_order_acquire);

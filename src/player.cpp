@@ -481,7 +481,7 @@ PlayerErrors Player::changeDevice(int deviceID)
 
 PlayerErrors Player::setLinuxAudioBackend(LinuxAudioBackend backend)
 {
-#if defined(__linux__) || defined(__LINUX__)
+#if (defined(__linux__) || defined(__LINUX__)) && !defined(__ANDROID__)
     SoLoud::miniaudio_setLinuxAudioBackend(static_cast<int>(backend));
 
     // If the engine is not initialized, the backend is stored and will be used when initialized.
@@ -546,7 +546,7 @@ std::vector<PlaybackDevice> Player::listPlaybackDevices()
     ma_uint32 captureCount;
     std::vector<PlaybackDevice> ret;
     ma_result result;
-#if defined(__linux__) || defined(__LINUX__)
+#if (defined(__linux__) || defined(__LINUX__)) && !defined(__ANDROID__)
     ma_backend backends[3];
     ma_uint32 backendCount = 0;
     const int chosenBackend = SoLoud::miniaudio_getLinuxAudioBackend();
