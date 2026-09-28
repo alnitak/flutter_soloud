@@ -101,6 +101,7 @@ A showcase of apps and games built with this plugin:
 | SUMOJI</br>[web](https://straspool.eu/sumoji/) [Android](https://play.google.com/store/apps/details?id=eu.straspool.sumoji) [iOS](https://apps.apple.com/us/app/sumoji/id6751641875) | Valentin Martinet | Fun Emoji-based Sudoku. |
 | GuanDan</br>[web](https://guandan.app/) [MacOS](https://apps.apple.com/us/app/%E6%8E%BC%E8%9B%8B-guandan/id6757966323) [Windows](https://apps.microsoft.com/detail/9pbv1xp2lc50) [Android](https://play.google.com/store/apps/details?id=org.rockstudio.guandan) [iOS](https://apps.apple.com/us/app/%E6%8E%BC%E8%9B%8B-guandan/id6757966323) | [yangyuan](https://github.com/yangyuan) | GuanDan (掼蛋) is a popular four-player Chinese card game. |
 | DeReMi Piano: Play & Learn</br>[Android](https://play.google.com/store/apps/details?id=com.gen.kidspiano) | Gent Mecaj | A piano learning app. |
+| Brickmatic</br>[Android](https://play.google.com/store/apps/details?id=dev.oxcraftgame.brickmatic) [iOS](https://apps.apple.com/us/app/brickmatic-brick-game/id6805551637) | [KonstantinKai](https://github.com/KonstantinKai) | A close recreation of the 9999-in-1 handheld brick game console: twelve games on one dot matrix. |
 
 *Want to add your app? Feel free to open a PR!*
 
