@@ -155,6 +155,12 @@ void main(List<String> args) async {
       if (os == OS.windows) ...['/Ox', '/EHsc'] else '-O3',
       if (os == OS.android) ...[
         '-Wl,--build-id=sha1',
+        '-Wl,--no-undefined',
+        '-Wl,--exclude-libs,ALL',
+        '-funwind-tables',
+        '-fstack-protector-strong',
+        '-no-canonical-prefixes',
+        '-D_FORTIFY_SOURCE=2',
         '-ffast-math',
         '-funroll-loops',
         '-fomit-frame-pointer',
@@ -167,6 +173,7 @@ void main(List<String> args) async {
         // enable NEON explicitly (hard-float is the default on modern NDKs;
         // -mfloat=softfp was removed from NDK r25+ clang).
         if (arch == Architecture.arm) '-mfpu=neon',
+        if (arch == Architecture.ia32) '-mstackrealign',
         if (arch == Architecture.ia32 || arch == Architecture.x64) ...[
           '-msse2',
           '-msse3',
