@@ -383,19 +383,20 @@ namespace SoLoud
             auto *posted = new std::shared_ptr<RerouteHoldState>(state);
             job.data.custom.data0 = (ma_uintptr)posted;
 
-            // Posting fails only while the queue is full, which takes a burst
-            // of errors outrunning the job thread. It drains; wait for room.
-            int attempts = 0;
-            while (ma_device_job_thread_post(&context.aaudio.jobThread, &job) !=
-                   MA_SUCCESS)
+            // Posting fails only while the queue is full, and the queue drains
+            // as the job thread works through it: wait for room, as below for
+            // the thread itself. Never go ahead without the hold. Operating on
+            // gDevice while a reroute can run is what this exists to prevent,
+            // and a queue that full is when one is likeliest to.
+            for (int attempts = 1;
+                 ma_device_job_thread_post(&context.aaudio.jobThread, &job) !=
+                 MA_SUCCESS;
+                 attempts++)
             {
-                if (++attempts == 1000)
-                {
-                    delete posted;
-                    soloud_platform_log("miniaudio: could not hold AAudio "
-                                        "reroutes; the job queue is full\n");
-                    return;
-                }
+                if (attempts == 1000)
+                    soloud_platform_log("miniaudio: still waiting for room in "
+                                        "the AAudio job queue to hold "
+                                        "reroutes\n");
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
             }
 

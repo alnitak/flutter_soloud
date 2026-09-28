@@ -35,8 +35,10 @@
 
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
+#include <mutex>
 #include <random>
 #include <string>
 #include <thread>
@@ -248,6 +250,91 @@ void stress(SoLoud::Soloud &soloud, int seconds)
 		  "no two streams fed the device at the same time under stress");
 }
 
+// A job that parks the job thread until released.
+struct ParkedJobThread
+{
+	std::mutex mutex;
+	std::condition_variable cv;
+	bool parked = false;
+	bool released = false;
+};
+
+ma_result parkJobThread(ma_job *pJob)
+{
+	auto *parking =
+		reinterpret_cast<ParkedJobThread *>(pJob->data.custom.data0);
+	std::unique_lock<std::mutex> lock(parking->mutex);
+	parking->parked = true;
+	parking->cv.notify_all();
+	parking->cv.wait(lock, [parking] { return parking->released; });
+	return MA_SUCCESS;
+}
+
+ma_result doNothing(ma_job *)
+{
+	return MA_SUCCESS;
+}
+
+// A device operation holds the job thread before it touches the device, and
+// with the job thread busy and its queue full it cannot even queue that hold.
+// It has to wait for room, not give up and operate on the device while a
+// reroute could run.
+void checkOperationWaitsForQueueRoom(SoLoud::Soloud &soloud)
+{
+	std::printf("device operation with the job queue full\n");
+
+	startLikePlayer(soloud);
+	std::this_thread::sleep_for(std::chrono::milliseconds(300));
+	check(ma_device_get_state(&SoLoud::gDevice) == ma_device_state_started,
+		  "the device is started before the queue fills");
+
+	ParkedJobThread parking;
+	ma_job park = ma_job_init(MA_JOB_TYPE_CUSTOM);
+	park.data.custom.proc = parkJobThread;
+	park.data.custom.data0 = (ma_uintptr)&parking;
+	ma_device_job_thread_post(&SoLoud::context.aaudio.jobThread, &park);
+	{
+		std::unique_lock<std::mutex> lock(parking.mutex);
+		parking.cv.wait(lock, [&parking] { return parking.parked; });
+	}
+
+	ma_job filler = ma_job_init(MA_JOB_TYPE_CUSTOM);
+	filler.data.custom.proc = doNothing;
+	int queued = 0;
+	while (ma_device_job_thread_post(&SoLoud::context.aaudio.jobThread,
+									 &filler) == MA_SUCCESS)
+		queued++;
+
+	std::atomic<bool> pauseReturned{false};
+	std::thread pausing([&]
+						{
+		soloud.pause();
+		pauseReturned = true; });
+
+	// Well past the point where giving up on the hold used to let the
+	// operation through: 1000 one-millisecond retries, which take over 2s on
+	// an emulator.
+	std::this_thread::sleep_for(std::chrono::milliseconds(5000));
+	const bool wentAhead =
+		pauseReturned.load() ||
+		ma_device_get_state(&SoLoud::gDevice) != ma_device_state_started;
+	std::printf("  %d jobs filled the queue; after 5s the pause %s\n", queued,
+				wentAhead ? "had gone ahead" : "was still waiting");
+	check(!wentAhead, "an operation waits for room in the queue rather than "
+					  "going ahead without holding reroutes");
+
+	{
+		std::lock_guard<std::mutex> lock(parking.mutex);
+		parking.released = true;
+		parking.cv.notify_all();
+	}
+	// The pause only gets its hold in once the job thread is past the parking
+	// job, so `parking` is no longer in use when this returns.
+	pausing.join();
+	check(ma_device_get_state(&SoLoud::gDevice) == ma_device_state_stopped,
+		  "the operation completes once the queue drains");
+}
+
 void checkSettledDevice(SoLoud::Soloud &soloud)
 {
 	std::printf("settled device\n");
@@ -299,6 +386,7 @@ int main(int argc, char **argv)
 	Probe probe;
 	soloud.play(probe);
 
+	checkOperationWaitsForQueueRoom(soloud);
 	stress(soloud, seconds);
 	checkSettledDevice(soloud);
 
