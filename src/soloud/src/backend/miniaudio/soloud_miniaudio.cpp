@@ -374,8 +374,10 @@ namespace SoLoud
             if (!gAAudioJobThreadLive)
                 return;
             // Reroute jobs dispatch their notifications on the job thread.
-            // Nothing reached from there operates the device today, but if it
-            // ever did, holding the thread from itself would wait forever.
+            // Nothing reached from there may operate the device (see
+            // Soloud::_stateChangedCallback). Should something do so anyway,
+            // don't make it hold the thread from itself, which would wait
+            // forever.
             if (pthread_equal(pthread_self(), context.aaudio.jobThread.thread))
                 return;
 
