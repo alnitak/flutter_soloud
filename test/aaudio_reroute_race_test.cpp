@@ -48,9 +48,13 @@
 #include <sys/syscall.h>
 #include <unistd.h>
 
-// miniaudio's AAudio stream type, which only its implementation declares.
+// miniaudio's AAudio types, which only its implementation declares.
 struct ma_AAudioStream_t;
+struct ma_AAudioStreamBuilder_t;
 typedef ma_AAudioStream_t *ma_AAudioStream;
+typedef ma_AAudioStreamBuilder_t *ma_AAudioStreamBuilder;
+typedef void (*SetPerformanceMode)(ma_AAudioStreamBuilder *pBuilder,
+								   int32_t mode);
 
 namespace SoLoud
 {
@@ -60,6 +64,7 @@ namespace SoLoud
 	result miniaudio_stopAudioDevice();
 	void gateAAudioStreamError(ma_AAudioStream *pStream, void *pUserData,
 							   int32_t error);
+	extern SetPerformanceMode gSetAAudioPerformanceMode;
 }
 
 namespace
@@ -357,6 +362,35 @@ void checkClosedStreamErrorsIgnored(SoLoud::Soloud &soloud)
 		  "an error from the open stream reroutes the device");
 }
 
+// The performance mode every stream the device opens asks AAudio for,
+// recorded where it reaches AAudio.
+const int32_t kAAudioPerformanceModeNone = 10; // AAUDIO_PERFORMANCE_MODE_NONE
+SetPerformanceMode gSetPerformanceModeBeneath = nullptr;
+std::atomic<int> gStreamsBuilt{0};
+std::atomic<int> gLowLatencyStreamsBuilt{0};
+
+void recordPerformanceMode(ma_AAudioStreamBuilder *pBuilder, int32_t mode)
+{
+	gStreamsBuilt++;
+	if (mode != kAAudioPerformanceModeNone)
+		gLowLatencyStreamsBuilt++;
+	gSetPerformanceModeBeneath(pBuilder, mode);
+}
+
+// With low latency off, the device opens its streams in AAudio's default
+// performance mode, the legacy path, and every stream a reroute reopens has
+// to as well: miniaudio builds those from a fresh config whose performance
+// profile defaults to low latency.
+void checkReopenedStreamsKeepPerformanceMode()
+{
+	std::printf("performance mode of reopened streams\n");
+	std::printf("  %d streams built, %d of them asking for low latency\n",
+				gStreamsBuilt.load(), gLowLatencyStreamsBuilt.load());
+	check(gStreamsBuilt.load() > 0 && gLowLatencyStreamsBuilt.load() == 0,
+		  "every stream the device opens, rerouted ones included, keeps the "
+		  "configured performance mode");
+}
+
 // A job that parks the job thread until released.
 struct ParkedJobThread
 {
@@ -491,6 +525,8 @@ int main(int argc, char **argv)
 	}
 
 	soloud.setStateChangedCallback(countReroutes);
+	gSetPerformanceModeBeneath = SoLoud::gSetAAudioPerformanceMode;
+	SoLoud::gSetAAudioPerformanceMode = recordPerformanceMode;
 
 	Probe probe;
 	soloud.play(probe);
@@ -499,6 +535,7 @@ int main(int argc, char **argv)
 	checkOperationWaitsForQueueRoom(soloud);
 	stress(soloud, seconds);
 	checkSettledDevice(soloud);
+	checkReopenedStreamsKeepPerformanceMode();
 
 	// A late error for the device's last stream, once deinit() has closed it
 	// and zeroed the device. miniaudio's own callback would dereference the

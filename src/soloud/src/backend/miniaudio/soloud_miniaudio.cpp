@@ -532,6 +532,24 @@ namespace SoLoud
         gSetAAudioErrorCallback(pBuilder, gateAAudioStreamError, pUserData);
     }
 
+    /// Not static: the AAudio reroute race test records the modes that reach
+    /// AAudio.
+    MA_PFN_AAudioStreamBuilder_setPerformanceMode gSetAAudioPerformanceMode;
+
+    /// miniaudio reopens a rerouted stream from a fresh ma_device_config,
+    /// whose zeroed performanceProfile is ma_performance_profile_low_latency.
+    /// So every reroute would ask AAudio for its low-latency (MMAP) path,
+    /// whatever the device was opened with, and the first route change would
+    /// quietly undo lowLatency: false. Ask for the profile that init and
+    /// changeDevice configure instead.
+    static void setAAudioPerformanceMode(ma_AAudioStreamBuilder *pBuilder,
+                                         ma_aaudio_performance_mode_t mode)
+    {
+        if (!gMiniaudioLowLatency.load(std::memory_order_acquire))
+            mode = MA_AAUDIO_PERFORMANCE_MODE_NONE;
+        gSetAAudioPerformanceMode(pBuilder, mode);
+    }
+
     /// Route a freshly initialized AAudio context's streams through the
     /// functions above, before it opens any.
     static void interposeAAudioStreams()
@@ -542,10 +560,15 @@ namespace SoLoud
             (MA_PFN_AAudioStream_close)context.aaudio.AAudioStream_close;
         gSetAAudioErrorCallback = (MA_PFN_AAudioStreamBuilder_setErrorCallback)
                                       context.aaudio.AAudioStreamBuilder_setErrorCallback;
+        gSetAAudioPerformanceMode =
+            (MA_PFN_AAudioStreamBuilder_setPerformanceMode)
+                context.aaudio.AAudioStreamBuilder_setPerformanceMode;
         context.aaudio.AAudioStreamBuilder_openStream = (ma_proc)openAAudioStream;
         context.aaudio.AAudioStream_close = (ma_proc)closeAAudioStream;
         context.aaudio.AAudioStreamBuilder_setErrorCallback =
             (ma_proc)setAAudioErrorCallback;
+        context.aaudio.AAudioStreamBuilder_setPerformanceMode =
+            (ma_proc)setAAudioPerformanceMode;
 
         std::lock_guard<std::mutex> lock(gAAudioStreamGate);
         gOpenAAudioStreams.clear();
