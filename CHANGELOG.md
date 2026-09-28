@@ -1,4 +1,8 @@
-##### 5.1.3 (XX Xxx 2026)
+##### 5.1.4 (28 Sep 2026)
+- fix: Android libflutter_soloud_plugin.so has no GNU build ID since the build-hook migration #570
+
+##### 5.1.3 (28 Sep 2026)
+- added `AmplitudeModulatorFilter`: a sine ring modulator (bipolar amplitude modulation, `output = input * sin(2π·frequency·t)` at full wet) with `wet` and `frequency` (0.1–20000 Hz) parameters, available globally, per sound and per bus via `filters.amplitudeModulatorFilter`. Thanks to @Colton127 #566
 - silence clang warnings on Android. Thanks to @eugrro #561
 - fix: advance the mix clock under the audio mutex (playScheduled could start a voice one buffer early). Thanks to @AndrzejKaczynski #562
 - fix: prevent unconditional buffer appending for ICY streams in mp3 decoder #564. Thanks to @john-Mcan #563

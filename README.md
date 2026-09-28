@@ -22,7 +22,7 @@ A high-performance audio plugin designed primarily for games and immersive appli
 - 📥 Pull-buffer streaming: the engine requests encoded data on demand (MP3, WAV, FLAC, Ogg Opus/Vorbis/FLAC, AAC ADTS, AC-3, E-AC-3), with seek support and callbacks for buffering, metadata, duration and data requests — ideal for network streams and custom data sources
 - 🚌 Mixing buses: group voices (music, SFX, UI...) into sub-mixes with their own volume, filters and visualization
 - 📊 Get audio wave and/or FFT audio data in real-time (useful for visualization)
-- 🎛️ Rich effects system (reverb, echo, limiter, parametric equalizer, pitch shift, etc.)
+- 🎛️ Rich effects system (reverb, echo, limiter, parametric equalizer, pitch shift, ring modulation, etc.)
 - ⚙️ Faders for attributes (e.g. fade out for 2 seconds, then stop)
 - 🎚️ Oscillators for attributes
 - 🌊 Waveform generation and visualization
@@ -111,6 +111,7 @@ A showcase of apps and games built with this plugin:
 | SUMOJI</br>[web](https://straspool.eu/sumoji/) [Android](https://play.google.com/store/apps/details?id=eu.straspool.sumoji) [iOS](https://apps.apple.com/us/app/sumoji/id6751641875) | Valentin Martinet | Fun Emoji-based Sudoku. |
 | GuanDan</br>[web](https://guandan.app/) [MacOS](https://apps.apple.com/us/app/%E6%8E%BC%E8%9B%8B-guandan/id6757966323) [Windows](https://apps.microsoft.com/detail/9pbv1xp2lc50) [Android](https://play.google.com/store/apps/details?id=org.rockstudio.guandan) [iOS](https://apps.apple.com/us/app/%E6%8E%BC%E8%9B%8B-guandan/id6757966323) | [yangyuan](https://github.com/yangyuan) | GuanDan (掼蛋) is a popular four-player Chinese card game. |
 | DeReMi Piano: Play & Learn</br>[Android](https://play.google.com/store/apps/details?id=com.gen.kidspiano) | Gent Mecaj | A piano learning app. |
+| Brickmatic</br>[Android](https://play.google.com/store/apps/details?id=dev.oxcraftgame.brickmatic) [iOS](https://apps.apple.com/us/app/brickmatic-brick-game/id6805551637) | [KonstantinKai](https://github.com/KonstantinKai) | A close recreation of the 9999-in-1 handheld brick game console: twelve games on one dot matrix. |
 
 *Want to add your app? Feel free to open a PR!*
 
