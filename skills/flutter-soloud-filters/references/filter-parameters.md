@@ -170,3 +170,22 @@ logarithmically between 30 Hz and 16 kHz; with a single band the center is
 1 kHz. Example with 3 bands: 30 Hz, ~693 Hz, 16 kHz.
 
 See `example/lib/filters/parametric_eq.dart`.
+
+## amplitudeModulator
+
+Sine ring modulator (bipolar amplitude modulation). Not part of stock SoLoud
+(`src/filters/amplitude_modulator_filter.cpp`). At full wet the output is
+`input * sin(2π * frequency * t)`. The carrier has no DC bias, so this is not
+a tremolo: a sine input at `f1` comes out as two components at
+`frequency - f1` and `frequency + f1` (e.g. 1 kHz with a 16 kHz carrier gives
+15 kHz + 17 kHz).
+
+| Param | min | max | def | Notes |
+|---|---|---|---|---|
+| wet | 0 | 1 | 1 | 0 = transparent, 1 = only the modulated signal |
+| frequency | 0.1 | 20000 | 440 | Hz; clamped just below Nyquist (0.49 × sample rate) while processing, the queried value stays as set |
+
+The carrier phase is continuous across buffers and frequency changes, so
+`fadeFilterParameter`/`oscillateFilterParameter` on `frequency` sweep without
+clicks. All channels share the same carrier phase. As a per-sound filter it
+runs at the sound's sample rate, so Nyquist is that of the sound.

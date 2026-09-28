@@ -1,5 +1,6 @@
 import 'advanced_pan.dart' as advanced_pan;
 import 'all_instances_finished.dart' as all_instances_finished;
+import 'amplitude_modulator_filter.dart' as amplitude_modulator_filter;
 import 'async_multi_load.dart' as async_multi_load;
 import 'asynchronous_deinit.dart' as asynchronous_deinit;
 import 'audio_device_idle_timeout.dart' as audio_device_idle_timeout;
@@ -277,5 +278,13 @@ final List<TestEntry> allTests = [
   const TestEntry(
     name: 'WaveformControls',
     run: waveform_controls.testWaveformControls,
+  ),
+  const TestEntry(
+    name: 'AmplitudeModulatorFilterGlobal',
+    run: amplitude_modulator_filter.testAmplitudeModulatorFilterGlobal,
+  ),
+  const TestEntry(
+    name: 'AmplitudeModulatorFilterSingle',
+    run: amplitude_modulator_filter.testAmplitudeModulatorFilterSingle,
   ),
 ];

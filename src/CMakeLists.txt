@@ -69,6 +69,7 @@ list(APPEND PLUGIN_SOURCES
   "${SRC_DIR}/filters/limiter.cpp"
   "${SRC_DIR}/filters/compressor.cpp"
   "${SRC_DIR}/filters/parametric_eq_filter.cpp"
+  "${SRC_DIR}/filters/amplitude_modulator_filter.cpp"
   "${SRC_DIR}/mixeroutput/mixer_output.cpp"
   "${SRC_DIR}/mixeroutput/mixer_output_encoder.cpp"
   "${SRC_DIR}/mixeroutput/pcm_converter.cpp"
