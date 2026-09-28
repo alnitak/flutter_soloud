@@ -154,6 +154,7 @@ void main(List<String> args) async {
       // below with: if (os == OS.windows) ...['/Od', '/Zi', '/EHsc'] else ...['-O0', '-g'],
       if (os == OS.windows) ...['/Ox', '/EHsc'] else '-O3',
       if (os == OS.android) ...[
+        '-Wl,--build-id=sha1',
         '-ffast-math',
         '-funroll-loops',
         '-fomit-frame-pointer',
