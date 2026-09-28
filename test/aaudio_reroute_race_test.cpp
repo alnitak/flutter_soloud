@@ -45,6 +45,7 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <dlfcn.h>
 #include <sys/syscall.h>
 #include <unistd.h>
 
@@ -583,6 +584,13 @@ int main(int argc, char **argv)
 	// flutter_soloud apps that pass lowLatency: false get AAudio's legacy
 	// (AudioTrack) path, where this race was first seen crashing an app.
 	SoLoud::miniaudio_setLowLatency(false);
+
+	// An app process inherits libaaudio.so, and the libraries it loads, from
+	// zygote. Here miniaudio's dlopen() is the only reference, so the
+	// dlclose() in deinit() would unmap libaudioclient and libbinder while
+	// the binder thread pool still runs in them, and the next binder wakeup
+	// would crash the test. Keep it loaded, as zygote does.
+	dlopen("libaaudio.so", RTLD_NOW);
 
 	SoLoud::Soloud soloud;
 	const SoLoud::result init = soloud.init(
