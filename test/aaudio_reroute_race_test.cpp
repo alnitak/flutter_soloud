@@ -29,7 +29,8 @@
 //   ./test/run_aaudio_reroute_race_test.sh [seconds] [operations]
 //
 // [operations] narrows the device operations the stress drives to a subset of
-// S (start), P (idle stop), X (explicit stop) and R (rebuild). All by default.
+// S (start), P (idle stop), X (explicit stop), R (rebuild) and E (enumerate
+// playback devices, from a thread of its own). All by default.
 
 #include "soloud.h"
 #include "soloud_audiosource.h"
@@ -40,6 +41,7 @@
 #include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <mutex>
 #include <random>
 #include <string>
@@ -63,6 +65,7 @@ namespace SoLoud
 	extern ma_context context;
 	void miniaudio_setLowLatency(bool aLowLatency);
 	result miniaudio_stopAudioDevice();
+	ma_result miniaudio_listPlaybackDevices(std::vector<ma_device_info> &aDevices);
 	void gateAAudioStreamError(ma_AAudioStream *pStream, void *pUserData,
 							   int32_t error);
 	extern SetPerformanceMode gSetAAudioPerformanceMode;
@@ -205,8 +208,16 @@ long long mixesOver(int ms)
 }
 
 // Which device operations the stress loop drives: S(tart like Player),
-// P(ause), X (explicit stop), R(ebuild). All of them unless narrowed.
-const char *gOperations = "SPXR";
+// P(ause), X (explicit stop), R(ebuild), E(numerate). All of them unless
+// narrowed.
+const char *gOperations = "SPXRE";
+
+// Set on the thread that enumerates devices. With the engine running,
+// enumeration probes the default device on the engine's own context, and the
+// streams it builds for that are miniaudio's probes, not the device's.
+thread_local bool tEnumerating = false;
+std::atomic<int> gProbeStreamsBuilt{0};
+std::atomic<int> gLowLatencyProbesBuilt{0};
 
 void stress(SoLoud::Soloud &soloud, int seconds)
 {
@@ -245,10 +256,36 @@ void stress(SoLoud::Soloud &soloud, int seconds)
 				std::chrono::microseconds(rng() % 20000));
 		} });
 
+	// Enumeration runs on the UI isolate in an app, alongside the worker
+	// isolate's device operations, so it gets a thread of its own.
+	std::atomic<long long> enumerations{0};
+	std::atomic<long long> failedEnumerations{0};
+	std::thread enumerator;
+	if (std::strchr(gOperations, 'E') != nullptr)
+		enumerator = std::thread([&]
+								 {
+			std::mt19937 rng(3);
+			std::vector<ma_device_info> devices;
+			tEnumerating = true;
+			while (running.load())
+			{
+				if (SoLoud::miniaudio_listPlaybackDevices(devices) != MA_SUCCESS ||
+					devices.empty())
+					failedEnumerations++;
+				enumerations++;
+				std::this_thread::sleep_for(
+					std::chrono::microseconds(rng() % 20000));
+			} });
+
 	std::thread operations([&]
 						   {
 		std::mt19937 rng(2);
-		const std::string operations = gOperations;
+		std::string operations;
+		for (const char *op = gOperations; *op != '\0'; op++)
+			if (*op != 'E')
+				operations += *op;
+		while (running.load() && operations.empty())
+			std::this_thread::sleep_for(std::chrono::milliseconds(10));
 		while (running.load())
 		{
 			switch (operations[rng() % operations.size()])
@@ -292,6 +329,8 @@ void stress(SoLoud::Soloud &soloud, int seconds)
 	running.store(false);
 	errors.join();
 	operations.join();
+	if (enumerator.joinable())
+		enumerator.join();
 
 	std::printf("  %lld errors reported (%lld of them late), %lld reroutes, "
 				"%lld seconds with concurrent streams\n",
@@ -300,6 +339,20 @@ void stress(SoLoud::Soloud &soloud, int seconds)
 				concurrentSeconds);
 	check(concurrentSeconds == 0,
 		  "no two streams fed the device at the same time under stress");
+
+	if (enumerations.load() > 0)
+	{
+		std::printf("  %lld enumerations (%lld failed), %d probe streams, %d "
+					"of them asking for low latency\n",
+					enumerations.load(), failedEnumerations.load(),
+					gProbeStreamsBuilt.load(), gLowLatencyProbesBuilt.load());
+		check(failedEnumerations.load() == 0,
+			  "enumeration racing reroutes always lists a playback device");
+		check(gProbeStreamsBuilt.load() > 0 &&
+				  gLowLatencyProbesBuilt.load() == gProbeStreamsBuilt.load(),
+			  "enumeration racing reroutes keeps miniaudio's low-latency hint "
+			  "for its probes");
+	}
 }
 
 // Occupies memory of every small size, once, right after a stream is closed,
@@ -372,9 +425,18 @@ std::atomic<int> gLowLatencyStreamsBuilt{0};
 
 void recordPerformanceMode(ma_AAudioStreamBuilder *pBuilder, int32_t mode)
 {
-	gStreamsBuilt++;
-	if (mode != kAAudioPerformanceModeNone)
-		gLowLatencyStreamsBuilt++;
+	if (tEnumerating)
+	{
+		gProbeStreamsBuilt++;
+		if (mode != kAAudioPerformanceModeNone)
+			gLowLatencyProbesBuilt++;
+	}
+	else
+	{
+		gStreamsBuilt++;
+		if (mode != kAAudioPerformanceModeNone)
+			gLowLatencyStreamsBuilt++;
+	}
 	gSetPerformanceModeBeneath(pBuilder, mode);
 }
 

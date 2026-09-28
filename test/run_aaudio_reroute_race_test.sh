@@ -57,4 +57,4 @@ trap 'rm -rf "$WORK_DIR"' EXIT
     -ldl -lm -llog
 
 adb push "$OUT" "$DEVICE_PATH" >/dev/null
-adb shell "$DEVICE_PATH" "$SECONDS_TO_RUN" "${2:-SPXR}"
+adb shell "$DEVICE_PATH" "$SECONDS_TO_RUN" "${2:-SPXRE}"
