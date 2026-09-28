@@ -1,6 +1,7 @@
 #if defined(__ANDROID__)
 
 #include "native_audio_decoder.h"
+#include "../audiobuffer/aac_stream_decoder.h"
 #include <media/NdkMediaCodec.h>
 #include <media/NdkMediaExtractor.h>
 #include <media/NdkMediaFormat.h>
@@ -8,6 +9,7 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <vector>
+#include <string>
 #include <cstdio>
 
 namespace {
@@ -156,6 +158,75 @@ DecodedAudioData decodeFromExtractor(AMediaExtractor *extractor) {
     return result;
 }
 
+static size_t skipId3Header(const unsigned char *data, size_t size) {
+    if (data && size >= 10 && std::memcmp(data, "ID3", 3) == 0) {
+        uint32_t tagSize = ((data[6] & 0x7F) << 21) |
+                           ((data[7] & 0x7F) << 14) |
+                           ((data[8] & 0x7F) << 7) |
+                           (data[9] & 0x7F);
+        size_t total = 10 + tagSize;
+        if ((data[5] & 0x10) != 0) total += 10; // footer
+        return total <= size ? total : size;
+    }
+    return 0;
+}
+
+DecodedAudioData decodeElementaryStream(const unsigned char *bytes, size_t length, DetectedType type) {
+    DecodedAudioData result;
+    AACDecoderWrapper wrapper(type);
+    if (!wrapper.initializeDecoder(0, 0)) {
+        result.errorMessage = "Failed to initialize elementary stream decoder on Android for format " +
+                              std::to_string(static_cast<int>(type));
+        return result;
+    }
+
+    std::vector<unsigned char> buffer(bytes, bytes + length);
+    int sampleRate = 0;
+    int channels = 0;
+
+    std::vector<float> allSamples;
+    auto [samples, err] = wrapper.decode(buffer, &sampleRate, &channels, 0);
+    if (!samples.empty()) {
+        allSamples.insert(allSamples.end(), samples.begin(), samples.end());
+    }
+
+    wrapper.setDataEnded();
+    int maxPasses = 1000;
+    while (wrapper.hasPendingData() && --maxPasses > 0) {
+        std::vector<unsigned char> emptyBuf;
+        auto [samplesMore, errMore] = wrapper.decode(emptyBuf, &sampleRate, &channels, 0);
+        if (!samplesMore.empty()) {
+            allSamples.insert(allSamples.end(), samplesMore.begin(), samplesMore.end());
+        } else {
+            usleep(2000); // 2 ms
+        }
+    }
+
+    if (channels <= 0) channels = 2;
+    if (sampleRate <= 0) sampleRate = 44100;
+
+    size_t totalFrames = allSamples.size() / channels;
+    if (totalFrames == 0) {
+        result.errorMessage = "No audio frames decoded from elementary stream on Android";
+        return result;
+    }
+
+    float *planarBuffer = new (std::nothrow) float[totalFrames * channels];
+    if (!planarBuffer) {
+        result.errorMessage = "Out of memory allocating planar buffer";
+        return result;
+    }
+
+    NativeAudioDecoder::interleavedToPlanar(allSamples.data(), planarBuffer, totalFrames, channels);
+
+    result.samples = planarBuffer;
+    result.sampleCount = totalFrames;
+    result.channels = static_cast<unsigned int>(channels);
+    result.sampleRate = static_cast<float>(sampleRate);
+    result.success = true;
+    return result;
+}
+
 } // anonymous namespace
 
 DecodedAudioData NativeAudioDecoder::decodeFile(const char *filePath) {
@@ -163,6 +234,44 @@ DecodedAudioData NativeAudioDecoder::decodeFile(const char *filePath) {
     if (!filePath || std::strlen(filePath) == 0) {
         result.errorMessage = "Empty file path";
         return result;
+    }
+
+    // Check if the file is a raw elementary stream (AC-3, E-AC-3, or AAC ADTS)
+    FILE *fp = std::fopen(filePath, "rb");
+    if (fp) {
+        unsigned char header[128];
+        size_t bytesRead = std::fread(header, 1, sizeof(header), fp);
+        if (bytesRead >= 6) {
+            int syncIdx = NativeAudioDecoder::findAc3Syncword(header, bytesRead);
+            if (syncIdx >= 0 && static_cast<size_t>(syncIdx) + 6 <= bytesRead) {
+                DetectedType type = NativeAudioDecoder::isEac3(header + syncIdx, bytesRead - syncIdx)
+                                        ? DetectedType::BUFFER_EAC3
+                                        : DetectedType::BUFFER_AC3;
+                std::fseek(fp, 0, SEEK_END);
+                long fileSize = std::ftell(fp);
+                std::fseek(fp, 0, SEEK_SET);
+                if (fileSize > 0) {
+                    std::vector<unsigned char> fileData(static_cast<size_t>(fileSize));
+                    size_t readCount = std::fread(fileData.data(), 1, fileData.size(), fp);
+                    std::fclose(fp);
+                    return decodeElementaryStream(fileData.data(), readCount, type);
+                }
+            } else {
+                size_t id3Skip = skipId3Header(header, bytesRead);
+                if (NativeAudioDecoder::isAacAdts(header + id3Skip, bytesRead - id3Skip)) {
+                    std::fseek(fp, 0, SEEK_END);
+                    long fileSize = std::ftell(fp);
+                    std::fseek(fp, 0, SEEK_SET);
+                    if (fileSize > 0) {
+                        std::vector<unsigned char> fileData(static_cast<size_t>(fileSize));
+                        size_t readCount = std::fread(fileData.data(), 1, fileData.size(), fp);
+                        std::fclose(fp);
+                        return decodeElementaryStream(fileData.data(), readCount, DetectedType::BUFFER_AAC);
+                    }
+                }
+            }
+        }
+        std::fclose(fp);
     }
 
     int fd = open(filePath, O_RDONLY);
@@ -207,7 +316,25 @@ DecodedAudioData NativeAudioDecoder::decodeMemory(const unsigned char *bytes, si
         return result;
     }
 
-    // Write to a temporary anonymous file for AMediaExtractor_setDataSourceFd
+    // Check if the buffer is a raw AC-3 or E-AC-3 elementary stream
+    int syncIdx = NativeAudioDecoder::findAc3Syncword(bytes, length);
+    if (syncIdx >= 0 && static_cast<size_t>(syncIdx) + 6 <= length) {
+        const unsigned char *h = bytes + syncIdx;
+        size_t rem = length - syncIdx;
+        if (NativeAudioDecoder::isEac3(h, rem)) {
+            return decodeElementaryStream(bytes, length, DetectedType::BUFFER_EAC3);
+        } else if (NativeAudioDecoder::isAc3(h, rem)) {
+            return decodeElementaryStream(bytes, length, DetectedType::BUFFER_AC3);
+        }
+    }
+
+    // Check if the buffer is a raw AAC ADTS elementary stream (possibly with ID3)
+    size_t id3Skip = skipId3Header(bytes, length);
+    if (NativeAudioDecoder::isAacAdts(bytes + id3Skip, length - id3Skip)) {
+        return decodeElementaryStream(bytes, length, DetectedType::BUFFER_AAC);
+    }
+
+    // Write to a temporary anonymous file for AMediaExtractor_setDataSourceFd (for M4A, MP4, etc.)
     FILE *tmpFile = std::tmpfile();
     if (!tmpFile) {
         result.errorMessage = "Failed to create temporary file for in-memory extraction";

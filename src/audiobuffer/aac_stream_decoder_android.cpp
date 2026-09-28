@@ -139,23 +139,23 @@ public:
         mStreamReadOffset = 0;
 
         if (!mEosQueued) {
-          for (int retry = 0; retry < 10 && !mEosQueued; ++retry) {
-            ssize_t inIdx = AMediaCodec_dequeueInputBuffer(mCodec, 200);
+          for (int retry = 0; retry < 15 && !mEosQueued; ++retry) {
+            ssize_t inIdx = AMediaCodec_dequeueInputBuffer(mCodec, 2000);
             if (inIdx >= 0) {
               AMediaCodec_queueInputBuffer(mCodec, inIdx, 0, 0, mPresentationTimeUs,
                                            AMEDIACODEC_BUFFER_FLAG_END_OF_STREAM);
               mEosQueued = true;
               break;
             }
-            drainOutputBuffers(decodedData, maxOutputSamples, 200);
+            drainOutputBuffers(decodedData, maxOutputSamples, 2000);
           }
         }
       }
 
       if (mEosQueued && !mEosReached) {
         int idleCount = 0;
-        while (!mEosReached && idleCount < 15) {
-          bool gotOutput = drainOutputBuffers(decodedData, maxOutputSamples, 200);
+        while (!mEosReached && idleCount < 20) {
+          bool gotOutput = drainOutputBuffers(decodedData, maxOutputSamples, 2000);
           if (gotOutput) {
             idleCount = 0;
           } else {
@@ -403,9 +403,9 @@ private:
       if (inIdx < 0) {
         // Input buffers full; drain output to free an input slot.
         // A brief 100-200us timeout allows the codec to complete a frame and return PCM.
-        int64_t drainTimeout = mDataEnded ? 200 : 100;
+        int64_t drainTimeout = mDataEnded ? 2000 : 100;
         drainOutputBuffers(decodedData, maxOutputSamples, drainTimeout);
-        inIdx = AMediaCodec_dequeueInputBuffer(mCodec, mDataEnded ? 200 : 0);
+        inIdx = AMediaCodec_dequeueInputBuffer(mCodec, mDataEnded ? 2000 : 0);
       }
 
       if (inIdx >= 0) {
@@ -512,8 +512,7 @@ private:
 
       // Verify next syncword if available
       if (frameLen + 2 <= currentAvailable) {
-        int nextSync = NativeAudioDecoder::findAc3Syncword(frameData + frameLen, 2);
-        if (nextSync != 0) {
+        if (!NativeAudioDecoder::isAc3OrEac3(frameData + frameLen, currentAvailable - frameLen)) {
           // False syncword; skip 2 bytes and continue
           mStreamReadOffset += 2;
           continue;
@@ -563,9 +562,9 @@ private:
       // Queue sync frame into codec
       ssize_t inIdx = AMediaCodec_dequeueInputBuffer(mCodec, 0);
       if (inIdx < 0) {
-        int64_t drainTimeout = mDataEnded ? 200 : 100;
+        int64_t drainTimeout = mDataEnded ? 2000 : 100;
         drainOutputBuffers(decodedData, maxOutputSamples, drainTimeout);
-        inIdx = AMediaCodec_dequeueInputBuffer(mCodec, mDataEnded ? 200 : 0);
+        inIdx = AMediaCodec_dequeueInputBuffer(mCodec, mDataEnded ? 2000 : 0);
       }
 
       if (inIdx >= 0) {
