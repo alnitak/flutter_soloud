@@ -391,6 +391,24 @@ void checkReopenedStreamsKeepPerformanceMode()
 		  "configured performance mode");
 }
 
+// miniaudio gives the bare streams it opens to probe the default device its
+// own low-latency hint, and that is none of a reroute's business.
+void checkProbesKeepTheirPerformanceMode()
+{
+	std::printf("performance mode of a probe stream\n");
+	const int built = gStreamsBuilt.load();
+	const int lowLatency = gLowLatencyStreamsBuilt.load();
+	ma_device_info info;
+	const ma_result result = ma_context_get_device_info(
+		&SoLoud::context, ma_device_type_playback, nullptr, &info);
+	const int probes = gStreamsBuilt.load() - built;
+	const int lowLatencyProbes = gLowLatencyStreamsBuilt.load() - lowLatency;
+	std::printf("  %d probe streams, %d of them asking for low latency\n",
+				probes, lowLatencyProbes);
+	check(result == MA_SUCCESS && probes > 0 && lowLatencyProbes == probes,
+		  "probing the default device keeps miniaudio's low-latency hint");
+}
+
 // A job that parks the job thread until released.
 struct ParkedJobThread
 {
@@ -536,6 +554,7 @@ int main(int argc, char **argv)
 	stress(soloud, seconds);
 	checkSettledDevice(soloud);
 	checkReopenedStreamsKeepPerformanceMode();
+	checkProbesKeepTheirPerformanceMode();
 
 	// A late error for the device's last stream, once deinit() has closed it
 	// and zeroed the device. miniaudio's own callback would dereference the

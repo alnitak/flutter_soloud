@@ -433,6 +433,11 @@ namespace SoLoud
 #endif
     };
 
+    // The performance profile gDevice was last initialized with. Set before
+    // each ma_device_init() of it; a reroute reopens its stream with it.
+    static std::atomic<int> gDevicePerformanceProfile{
+        ma_performance_profile_low_latency};
+
 #if defined(MA_HAS_AAUDIO)
     // Admission for reroutes.
     //
@@ -542,13 +547,18 @@ namespace SoLoud
     /// whose zeroed performanceProfile is ma_performance_profile_low_latency.
     /// So every reroute would ask AAudio for its low-latency (MMAP) path,
     /// whatever the device was opened with, and the first route change would
-    /// quietly undo lowLatency: false. Ask for the profile that init and
-    /// changeDevice configure instead.
+    /// quietly undo lowLatency: false. Reroutes are the only thing that builds
+    /// streams on the job thread: ask for the profile gDevice was initialized
+    /// with there, and leave every other request as miniaudio makes it -- the
+    /// device's own, and the low-latency hint it gives the streams it opens to
+    /// probe the default device.
     static void setAAudioPerformanceMode(ma_AAudioStreamBuilder *pBuilder,
                                          ma_aaudio_performance_mode_t mode)
     {
-        if (!gMiniaudioLowLatency.load(std::memory_order_acquire))
-            mode = MA_AAUDIO_PERFORMANCE_MODE_NONE;
+        if (pthread_equal(pthread_self(), context.aaudio.jobThread.thread) &&
+            gDevicePerformanceProfile.load(std::memory_order_acquire) ==
+                ma_performance_profile_conservative)
+            mode = MA_AAUDIO_PERFORMANCE_MODE_NONE; // What miniaudio maps it to.
         gSetAAudioPerformanceMode(pBuilder, mode);
     }
 
@@ -1323,6 +1333,8 @@ namespace SoLoud
             // The new stream can report an error, and so queue a reroute,
             // before ma_device_init() has finished building the device.
             const ScopedRerouteHold rerouteHold;
+            gDevicePerformanceProfile.store(deviceConfig.performanceProfile,
+                                            std::memory_order_release);
             if (ma_device_init(&context, &deviceConfig, &gDevice) != MA_SUCCESS) {
                 markDeviceTearingDown();
             } else {
@@ -1559,6 +1571,8 @@ namespace SoLoud
 #endif
 
         ma_result result;
+        gDevicePerformanceProfile.store(deviceConfig.performanceProfile,
+                                        std::memory_order_release);
 #if defined(MA_HAS_COREAUDIO) || defined(__ANDROID__) || defined(__linux__) || defined(__LINUX__)
         // Use the existing context on CoreAudio (macOS/iOS), Android, and Linux
         // to preserve session/category/backend settings
