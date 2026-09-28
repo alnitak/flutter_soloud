@@ -409,6 +409,64 @@ void checkProbesKeepTheirPerformanceMode()
 		  "probing the default device keeps miniaudio's low-latency hint");
 }
 
+void *failToAllocate(size_t, void *)
+{
+	return nullptr;
+}
+
+void *failToReallocate(void *, size_t, void *)
+{
+	return nullptr;
+}
+
+// ma_device_init() leaves the stream the backend opened open when a later
+// step fails, and nothing in miniaudio ever closes it. Make one fail that way
+// -- every allocation miniaudio makes through the context fails, and the
+// first comes after the stream is open -- then rebuild the device properly.
+// An error from the stream the failed attempt left behind must not reroute
+// the new device.
+void checkFailedInitLeavesNoStream(SoLoud::Soloud &soloud)
+{
+	std::printf("device initialization failing after its stream opened\n");
+
+	startLikePlayer(soloud);
+	std::this_thread::sleep_for(std::chrono::milliseconds(300));
+
+	const ma_allocation_callbacks allocator =
+		SoLoud::context.allocationCallbacks;
+	SoLoud::context.allocationCallbacks.onMalloc = failToAllocate;
+	SoLoud::context.allocationCallbacks.onRealloc = failToReallocate;
+	const SoLoud::result failed = soloud.miniaudio_changeDevice(nullptr);
+	SoLoud::context.allocationCallbacks = allocator;
+	ma_AAudioStream *orphan = currentStream();
+	check(failed != SoLoud::SO_NO_ERROR && orphan != nullptr,
+		  "the device fails to initialize after opening its stream");
+
+	// Keep the next stream off the orphan's memory, should it have been freed.
+	std::vector<void *> plugs;
+	for (size_t size = 16; size <= 8192; size += 16)
+		plugs.push_back(std::malloc(size));
+	soloud.miniaudio_changeDevice(nullptr);
+	for (void *plug : plugs)
+		std::free(plug);
+	soloud.resume();
+	std::this_thread::sleep_for(std::chrono::milliseconds(300));
+	if (orphan == nullptr || orphan == currentStream())
+	{
+		std::printf("  SKIPPED: the new stream took the orphan's address\n");
+		return;
+	}
+
+	const int before = gReroutes.load();
+	reportDisconnect(orphan);
+	std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+	std::printf("  %d reroutes after the orphaned stream's error\n",
+				gReroutes.load() - before);
+	check(gReroutes.load() == before,
+		  "the stream a failed initialization opened is closed, and its "
+		  "errors do not reroute the next device");
+}
+
 // A job that parks the job thread until released.
 struct ParkedJobThread
 {
@@ -550,6 +608,7 @@ int main(int argc, char **argv)
 	soloud.play(probe);
 
 	checkClosedStreamErrorsIgnored(soloud);
+	checkFailedInitLeavesNoStream(soloud);
 	checkOperationWaitsForQueueRoom(soloud);
 	stress(soloud, seconds);
 	checkSettledDevice(soloud);

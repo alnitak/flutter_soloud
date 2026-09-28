@@ -332,8 +332,10 @@ namespace SoLoud
     //
     // True while the context has an AAudio job thread to hold. The context
     // outlives ma_context_uninit() with its backend still set, so this is what
-    // stops a hold from being posted to a thread that no longer exists.
-    // Guarded by gDeviceOperationMutex.
+    // stops a hold from being posted to a thread that no longer exists. By the
+    // time it goes false, no stream is left for the gate to let an error
+    // through for (see closeOrphanedDeviceStreams()). Guarded by
+    // gDeviceOperationMutex.
     static bool gAAudioJobThreadLive = false;
 
 #if defined(MA_HAS_AAUDIO)
@@ -460,9 +462,9 @@ namespace SoLoud
     // the replacement device, with miniaudio's defaults, or runs against the
     // zeroed one, whose reroute lock was destroyed with it. So these streams'
     // error callbacks go through gateAAudioStreamError(), which only lets an
-    // error through for a stream this context has opened and not closed, and
-    // does so under the same lock that closes streams and marks the device
-    // tearing down.
+    // error through for a device stream this context has opened and not
+    // closed, and does so under the same lock that closes streams and marks
+    // the device tearing down.
     //
     // The AAudio entry points involved are interposed in `context`'s function
     // table, which miniaudio calls through, so miniaudio itself is unchanged.
@@ -471,8 +473,13 @@ namespace SoLoud
     static MA_PFN_AAudioStreamBuilder_setErrorCallback gSetAAudioErrorCallback;
 
     static std::mutex gAAudioStreamGate;
-    // Guarded by gAAudioStreamGate, as is setting gDevice's isTearingDown.
-    static std::vector<ma_AAudioStream *> gOpenAAudioStreams;
+    // Guarded by gAAudioStreamGate, as is setting gDevice's isTearingDown:
+    // the builders miniaudio has given an error callback, which are the ones
+    // building gDevice's streams (the bare streams it opens to probe the
+    // default device get none), and the streams those have opened that are
+    // not yet closed.
+    static std::vector<ma_AAudioStreamBuilder *> gDeviceStreamBuilders;
+    static std::vector<ma_AAudioStream *> gOpenDeviceStreams;
     static ma_AAudioStream_errorCallback gMiniaudioErrorCallback = nullptr;
 
     /// The error callback AAudio calls for this context's streams, in place of
@@ -487,8 +494,8 @@ namespace SoLoud
         // operation's hold, to run first and find the flag set -- or it finds
         // the flag set itself.
         std::lock_guard<std::mutex> lock(gAAudioStreamGate);
-        if (std::find(gOpenAAudioStreams.begin(), gOpenAAudioStreams.end(),
-                      pStream) == gOpenAAudioStreams.end())
+        if (std::find(gOpenDeviceStreams.begin(), gOpenDeviceStreams.end(),
+                      pStream) == gOpenDeviceStreams.end())
         {
             soloud_platform_log("miniaudio: ignoring AAudio error %d from a "
                                 "closed stream\n",
@@ -502,15 +509,18 @@ namespace SoLoud
                                                ma_AAudioStream **ppStream)
     {
         const ma_aaudio_result_t result = gOpenAAudioStream(pBuilder, ppStream);
+        std::lock_guard<std::mutex> lock(gAAudioStreamGate);
+        const auto builder = std::find(gDeviceStreamBuilders.begin(),
+                                       gDeviceStreamBuilders.end(), pBuilder);
+        if (builder == gDeviceStreamBuilders.end())
+            return result; // A probe: it has no error callback to gate.
+        gDeviceStreamBuilders.erase(builder);
         // An error the stream reports before it is registered here is
         // ignored. The stream is then disconnected from the start, and AAudio
         // refuses to start it, as it would one that disconnected before it
         // was opened.
         if (result == MA_AAUDIO_OK)
-        {
-            std::lock_guard<std::mutex> lock(gAAudioStreamGate);
-            gOpenAAudioStreams.push_back(*ppStream);
-        }
+            gOpenDeviceStreams.push_back(*ppStream);
         return result;
     }
 
@@ -518,10 +528,10 @@ namespace SoLoud
     {
         {
             std::lock_guard<std::mutex> lock(gAAudioStreamGate);
-            gOpenAAudioStreams.erase(std::remove(gOpenAAudioStreams.begin(),
-                                                 gOpenAAudioStreams.end(),
+            gOpenDeviceStreams.erase(std::remove(gOpenDeviceStreams.begin(),
+                                                 gOpenDeviceStreams.end(),
                                                  pStream),
-                                     gOpenAAudioStreams.end());
+                                     gOpenDeviceStreams.end());
         }
         // Not under the lock: closing joins the stream's callback thread,
         // which may be waiting for it in gateAAudioStreamError().
@@ -535,6 +545,7 @@ namespace SoLoud
         {
             std::lock_guard<std::mutex> lock(gAAudioStreamGate);
             gMiniaudioErrorCallback = callback;
+            gDeviceStreamBuilders.push_back(pBuilder);
         }
         gSetAAudioErrorCallback(pBuilder, gateAAudioStreamError, pUserData);
     }
@@ -583,7 +594,8 @@ namespace SoLoud
             (ma_proc)setAAudioPerformanceMode;
 
         std::lock_guard<std::mutex> lock(gAAudioStreamGate);
-        gOpenAAudioStreams.clear();
+        gDeviceStreamBuilders.clear();
+        gOpenDeviceStreams.clear();
     }
 #endif
 
@@ -603,6 +615,33 @@ namespace SoLoud
             return;
         std::lock_guard<std::mutex> lock(gAAudioStreamGate);
         ma_atomic_bool32_set(&gDevice.aaudio.isTearingDown, MA_TRUE);
+#endif
+    }
+
+    /// Close whatever device streams are still open once gDevice owns none:
+    /// after it fails to initialize, and before the context goes away.
+    ///
+    /// ma_device_init() leaves the stream the backend opened open if a later
+    /// step fails -- ma_device_post_init(), say, or allocating its buffers.
+    /// The device is still "uninitialized" at that point, so the
+    /// ma_device_uninit() it cleans up with returns without closing it, as
+    /// would any later one. Nothing else would ever close that stream, and
+    /// its errors would keep getting through the gate to miniaudio, after the
+    /// context itself is gone.
+    static void closeOrphanedDeviceStreams()
+    {
+#if defined(MA_HAS_AAUDIO)
+        std::vector<ma_AAudioStream *> orphans;
+        {
+            std::lock_guard<std::mutex> lock(gAAudioStreamGate);
+            orphans.swap(gOpenDeviceStreams);
+        }
+        for (ma_AAudioStream *pStream : orphans)
+        {
+            soloud_platform_log("miniaudio: closing an AAudio stream a failed "
+                                "device initialization left open\n");
+            gCloseAAudioStream(pStream);
+        }
 #endif
     }
 
@@ -834,6 +873,7 @@ namespace SoLoud
     {
         if (!gEngineContextInitialized)
             return;
+        closeOrphanedDeviceStreams();
         gAAudioJobThreadLive = false;
         ma_context_uninit(&context);
         gEngineContextInitialized = false;
@@ -1337,6 +1377,7 @@ namespace SoLoud
                                             std::memory_order_release);
             if (ma_device_init(&context, &deviceConfig, &gDevice) != MA_SUCCESS) {
                 markDeviceTearingDown();
+                closeOrphanedDeviceStreams();
             } else {
                 gDeviceInitialized = true;
                 aSoloud->postinit_internal(gDevice.sampleRate, postinit_buffer_size(aSoloud, aBuffer, gDevice.playback.internalPeriodSizeInFrames), aFlags, gDevice.playback.channels);
@@ -1588,6 +1629,7 @@ namespace SoLoud
                 result);
             gDeviceInitialized.store(false, std::memory_order_release);
             markDeviceTearingDown();
+            closeOrphanedDeviceStreams();
             return UNKNOWN_ERROR;
         }
 
