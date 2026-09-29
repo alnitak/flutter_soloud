@@ -72,12 +72,15 @@ namespace SoLoud
 #include <android/api-level.h>
 #endif
 #include <math.h>
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <thread>
 #include <condition_variable>
+#include <memory>
 #include <mutex>
 #include <atomic>
+#include <vector>
 #include "soloud_common.h"
 #include "../../../../analyzer.h"
 #include "../../../../mixeroutput/mixer_output.h"
@@ -300,6 +303,363 @@ namespace SoLoud
     };
     static DeferredDeviceConfig gDeferredConfig;
 
+    // Serialization against miniaudio's AAudio reroute jobs.
+    //
+    // miniaudio does not reroute an AAudio stream inline. When the stream
+    // reports an error (a disconnect, a route change), its error callback posts
+    // a job to the context's job thread, and that job later closes gDevice's
+    // stream and opens a replacement -- on the job thread, while this file
+    // starts, stops, uninitializes and reinitializes the same gDevice from its
+    // own. The job's only lock is gDevice.aaudio.rerouteLock, and its only
+    // guard against a device going away is gDevice.aaudio.isTearingDown. Both
+    // live inside gDevice: ma_device_uninit() destroys the lock and zeroes the
+    // flag, and ma_device_init() zeroes both again before recreating the lock.
+    // So a reroute that runs across a device replacement is serialized against
+    // nothing. It opens a stream on a device that is half torn down or half
+    // built, and the stream it replaces, or the one it opens, is left running
+    // with nothing tracking it. Two streams then deliver data callbacks into
+    // the one ma_device, whose fixed-size callback buffer is not thread safe,
+    // or one outlives the buffers it reads, and the process dies in memcpy on
+    // an AudioTrack thread.
+    //
+    // The job thread runs jobs one at a time, in the order they were posted.
+    // So a job of our own that blocks keeps every reroute off gDevice until it
+    // returns, and each operation on gDevice below holds the job thread that
+    // way for its whole duration: a reroute queued before it finishes first,
+    // and one queued while it runs (by the stream of a device being
+    // initialized, say) runs after it, against a whole device. Which reroutes
+    // get queued at all is the other half of this; see gateAAudioStreamError().
+    //
+    // True while the context has an AAudio job thread to hold. The context
+    // outlives ma_context_uninit() with its backend still set, so this is what
+    // stops a hold from being posted to a thread that no longer exists. By the
+    // time it goes false, no stream is left for the gate to let an error
+    // through for (see closeOrphanedDeviceStreams()). Guarded by
+    // gDeviceOperationMutex.
+    static bool gAAudioJobThreadLive = false;
+
+#if defined(MA_HAS_AAUDIO)
+    struct RerouteHoldState
+    {
+        std::mutex mutex;
+        std::condition_variable cv;
+        bool holding = false;
+        bool released = false;
+    };
+
+    static ma_result holdRerouteJobs(ma_job *pJob)
+    {
+        // Shared with the ScopedRerouteHold that posted this, so whichever of
+        // the two is last to touch it frees it.
+        auto *posted = reinterpret_cast<std::shared_ptr<RerouteHoldState> *>(
+            pJob->data.custom.data0);
+        const std::shared_ptr<RerouteHoldState> state = std::move(*posted);
+        delete posted;
+
+        std::unique_lock<std::mutex> lock(state->mutex);
+        state->holding = true;
+        state->cv.notify_all();
+        state->cv.wait(lock, [&state] { return state->released; });
+        return MA_SUCCESS;
+    }
+#endif
+
+    /// While alive, no AAudio reroute job runs. Construct it with
+    /// gDeviceOperationMutex held, before touching gDevice. A no-op on every
+    /// other backend.
+    class ScopedRerouteHold
+    {
+    public:
+        ScopedRerouteHold()
+        {
+#if defined(MA_HAS_AAUDIO)
+            if (!gAAudioJobThreadLive)
+                return;
+            // Reroute jobs dispatch their notifications on the job thread.
+            // Nothing reached from there may operate the device (see
+            // Soloud::_stateChangedCallback). Should something do so anyway,
+            // don't make it hold the thread from itself, which would wait
+            // forever.
+            if (pthread_equal(pthread_self(), context.aaudio.jobThread.thread))
+                return;
+
+            auto state = std::make_shared<RerouteHoldState>();
+            ma_job job = ma_job_init(MA_JOB_TYPE_CUSTOM);
+            job.data.custom.proc = holdRerouteJobs;
+            auto *posted = new std::shared_ptr<RerouteHoldState>(state);
+            job.data.custom.data0 = (ma_uintptr)posted;
+
+            // Posting fails only while the queue is full, and the queue drains
+            // as the job thread works through it: wait for room, as below for
+            // the thread itself. Never go ahead without the hold. Operating on
+            // gDevice while a reroute can run is what this exists to prevent,
+            // and a queue that full is when one is likeliest to.
+            for (int attempts = 1;
+                 ma_device_job_thread_post(&context.aaudio.jobThread, &job) !=
+                 MA_SUCCESS;
+                 attempts++)
+            {
+                if (attempts == 1000)
+                    soloud_platform_log("miniaudio: still waiting for room in "
+                                        "the AAudio job queue to hold "
+                                        "reroutes\n");
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+
+            std::unique_lock<std::mutex> lock(state->mutex);
+            state->cv.wait(lock, [&state] { return state->holding; });
+            mState = std::move(state);
+#endif
+        }
+
+        ~ScopedRerouteHold()
+        {
+#if defined(MA_HAS_AAUDIO)
+            if (!mState)
+                return;
+            // Notified under the lock: the job thread must not see `released`
+            // and return, dropping its reference, while this is still using
+            // the condition variable.
+            std::lock_guard<std::mutex> lock(mState->mutex);
+            mState->released = true;
+            mState->cv.notify_all();
+#endif
+        }
+
+        ScopedRerouteHold(const ScopedRerouteHold &) = delete;
+        ScopedRerouteHold &operator=(const ScopedRerouteHold &) = delete;
+
+    private:
+#if defined(MA_HAS_AAUDIO)
+        std::shared_ptr<RerouteHoldState> mState;
+#endif
+    };
+
+    // The performance profile gDevice was last initialized with. Set before
+    // each ma_device_init() of it; a reroute reopens its stream with it.
+    static std::atomic<int> gDevicePerformanceProfile{
+        ma_performance_profile_low_latency};
+
+#if defined(MA_HAS_AAUDIO)
+    // Admission for reroutes.
+    //
+    // Holding the job thread orders reroutes against our operations, but it
+    // cannot stop one being queued for a device that is gone by the time it
+    // runs. miniaudio's error callback checks gDevice.aaudio.isTearingDown and
+    // then queues a reroute of gDevice, and nothing ties either step to the
+    // stream that reported the error:
+    //
+    // - The check can pass just before an operation marks the device tearing
+    //   down and holds the job thread, so the reroute lands behind the hold and
+    //   runs after the device has been replaced or removed.
+    // - AAudio can report an error after the stream is closed: an idle legacy
+    //   stream reports a route change from a binder thread that closing the
+    //   stream does not wait for. By then gDevice has either been zeroed,
+    //   and miniaudio's callback dereferences its null pContext, or become
+    //   the replacement, whose fresh isTearingDown lets the reroute through.
+    //
+    // Either way a reroute meant for a stream that no longer exists reopens
+    // the replacement device, with miniaudio's defaults, or runs against the
+    // zeroed one, whose reroute lock was destroyed with it. So these streams'
+    // error callbacks go through gateAAudioStreamError(), which only lets an
+    // error through for a device stream this context has opened and not
+    // closed, and does so under the same lock that closes streams and marks
+    // the device tearing down.
+    //
+    // The AAudio entry points involved are interposed in `context`'s function
+    // table, which miniaudio calls through, so miniaudio itself is unchanged.
+    static MA_PFN_AAudioStreamBuilder_openStream gOpenAAudioStream;
+    static MA_PFN_AAudioStream_close gCloseAAudioStream;
+    static MA_PFN_AAudioStreamBuilder_setErrorCallback gSetAAudioErrorCallback;
+
+    static std::mutex gAAudioStreamGate;
+    // Guarded by gAAudioStreamGate, as is setting gDevice's isTearingDown:
+    // the builders miniaudio has given an error callback, which are the ones
+    // building gDevice's streams (the bare streams it opens to probe the
+    // default device get none), and the streams those have opened that are
+    // not yet closed.
+    static std::vector<ma_AAudioStreamBuilder *> gDeviceStreamBuilders;
+    static std::vector<ma_AAudioStream *> gOpenDeviceStreams;
+    static ma_AAudioStream_errorCallback gMiniaudioErrorCallback = nullptr;
+
+    /// The error callback AAudio calls for this context's streams, in place of
+    /// miniaudio's. Not static: the AAudio reroute race test calls it the way
+    /// AAudio does.
+    void gateAAudioStreamError(ma_AAudioStream *pStream, void *pUserData,
+                               ma_aaudio_result_t error)
+    {
+        // Held across miniaudio's callback, which checks isTearingDown and
+        // queues the reroute without blocking: either it has queued it by the
+        // time an operation marks the device tearing down -- ahead of that
+        // operation's hold, to run first and find the flag set -- or it finds
+        // the flag set itself.
+        std::lock_guard<std::mutex> lock(gAAudioStreamGate);
+        if (std::find(gOpenDeviceStreams.begin(), gOpenDeviceStreams.end(),
+                      pStream) == gOpenDeviceStreams.end())
+        {
+            soloud_platform_log("miniaudio: ignoring AAudio error %d from a "
+                                "closed stream\n",
+                                error);
+            return;
+        }
+        gMiniaudioErrorCallback(pStream, pUserData, error);
+    }
+
+    static ma_aaudio_result_t openAAudioStream(ma_AAudioStreamBuilder *pBuilder,
+                                               ma_AAudioStream **ppStream)
+    {
+        const ma_aaudio_result_t result = gOpenAAudioStream(pBuilder, ppStream);
+        std::lock_guard<std::mutex> lock(gAAudioStreamGate);
+        const auto builder = std::find(gDeviceStreamBuilders.begin(),
+                                       gDeviceStreamBuilders.end(), pBuilder);
+        if (builder == gDeviceStreamBuilders.end())
+            return result; // A probe: it has no error callback to gate.
+        gDeviceStreamBuilders.erase(builder);
+        // An error the stream reports before it is registered here is
+        // ignored. The stream is then disconnected from the start, and AAudio
+        // refuses to start it, as it would one that disconnected before it
+        // was opened.
+        if (result == MA_AAUDIO_OK)
+            gOpenDeviceStreams.push_back(*ppStream);
+        return result;
+    }
+
+    static ma_aaudio_result_t closeAAudioStream(ma_AAudioStream *pStream)
+    {
+        {
+            std::lock_guard<std::mutex> lock(gAAudioStreamGate);
+            gOpenDeviceStreams.erase(std::remove(gOpenDeviceStreams.begin(),
+                                                 gOpenDeviceStreams.end(),
+                                                 pStream),
+                                     gOpenDeviceStreams.end());
+        }
+        // Not under the lock: closing joins the stream's callback thread,
+        // which may be waiting for it in gateAAudioStreamError().
+        return gCloseAAudioStream(pStream);
+    }
+
+    static void setAAudioErrorCallback(ma_AAudioStreamBuilder *pBuilder,
+                                       ma_AAudioStream_errorCallback callback,
+                                       void *pUserData)
+    {
+        {
+            std::lock_guard<std::mutex> lock(gAAudioStreamGate);
+            gMiniaudioErrorCallback = callback;
+            gDeviceStreamBuilders.push_back(pBuilder);
+        }
+        gSetAAudioErrorCallback(pBuilder, gateAAudioStreamError, pUserData);
+    }
+
+    /// Not static: the AAudio reroute race test records the modes that reach
+    /// AAudio.
+    MA_PFN_AAudioStreamBuilder_setPerformanceMode gSetAAudioPerformanceMode;
+
+    /// miniaudio reopens a rerouted stream from a fresh ma_device_config,
+    /// whose zeroed performanceProfile is ma_performance_profile_low_latency.
+    /// So every reroute would ask AAudio for its low-latency (MMAP) path,
+    /// whatever the device was opened with, and the first route change would
+    /// quietly undo lowLatency: false. Reroutes are the only thing that builds
+    /// streams on the job thread: ask for the profile gDevice was initialized
+    /// with there, and leave every other request as miniaudio makes it -- the
+    /// device's own, and the low-latency hint it gives the streams it opens to
+    /// probe the default device.
+    static void setAAudioPerformanceMode(ma_AAudioStreamBuilder *pBuilder,
+                                         ma_aaudio_performance_mode_t mode)
+    {
+        if (pthread_equal(pthread_self(), context.aaudio.jobThread.thread) &&
+            gDevicePerformanceProfile.load(std::memory_order_acquire) ==
+                ma_performance_profile_conservative)
+            mode = MA_AAUDIO_PERFORMANCE_MODE_NONE; // What miniaudio maps it to.
+        gSetAAudioPerformanceMode(pBuilder, mode);
+    }
+
+    /// Route a freshly initialized AAudio context's streams through the
+    /// functions above, before it opens any.
+    static void interposeAAudioStreams()
+    {
+        gOpenAAudioStream = (MA_PFN_AAudioStreamBuilder_openStream)
+                                context.aaudio.AAudioStreamBuilder_openStream;
+        gCloseAAudioStream =
+            (MA_PFN_AAudioStream_close)context.aaudio.AAudioStream_close;
+        gSetAAudioErrorCallback = (MA_PFN_AAudioStreamBuilder_setErrorCallback)
+                                      context.aaudio.AAudioStreamBuilder_setErrorCallback;
+        gSetAAudioPerformanceMode =
+            (MA_PFN_AAudioStreamBuilder_setPerformanceMode)
+                context.aaudio.AAudioStreamBuilder_setPerformanceMode;
+        context.aaudio.AAudioStreamBuilder_openStream = (ma_proc)openAAudioStream;
+        context.aaudio.AAudioStream_close = (ma_proc)closeAAudioStream;
+        context.aaudio.AAudioStreamBuilder_setErrorCallback =
+            (ma_proc)setAAudioErrorCallback;
+        context.aaudio.AAudioStreamBuilder_setPerformanceMode =
+            (ma_proc)setAAudioPerformanceMode;
+
+        std::lock_guard<std::mutex> lock(gAAudioStreamGate);
+        gDeviceStreamBuilders.clear();
+        gOpenDeviceStreams.clear();
+    }
+#endif
+
+    /// Tell reroute jobs to leave gDevice alone: its error callback stops
+    /// posting them, and one already queued does nothing when it runs. For
+    /// operations that are about to replace or remove the device, where a
+    /// reroute is pointless; a queued one would otherwise run against the
+    /// replacement, and reopen its stream with miniaudio's defaults rather
+    /// than our configuration. Call before taking the ScopedRerouteHold, so
+    /// that a reroute already on its way into the queue gets in ahead of the
+    /// hold, and runs before the device goes.
+    static void markDeviceTearingDown()
+    {
+#if defined(MA_HAS_AAUDIO)
+        // gDevice.aaudio shares a union with the other backends.
+        if (!gAAudioJobThreadLive)
+            return;
+        std::lock_guard<std::mutex> lock(gAAudioStreamGate);
+        ma_atomic_bool32_set(&gDevice.aaudio.isTearingDown, MA_TRUE);
+#endif
+    }
+
+    /// Close whatever device streams are still open once gDevice owns none:
+    /// after it fails to initialize, and before the context goes away.
+    ///
+    /// ma_device_init() leaves the stream the backend opened open if a later
+    /// step fails -- ma_device_post_init(), say, or allocating its buffers.
+    /// The device is still "uninitialized" at that point, so the
+    /// ma_device_uninit() it cleans up with returns without closing it, as
+    /// would any later one. Nothing else would ever close that stream, and
+    /// its errors would keep getting through the gate to miniaudio, after the
+    /// context itself is gone.
+    static void closeOrphanedDeviceStreams()
+    {
+#if defined(MA_HAS_AAUDIO)
+        std::vector<ma_AAudioStream *> orphans;
+        {
+            std::lock_guard<std::mutex> lock(gAAudioStreamGate);
+            orphans.swap(gOpenDeviceStreams);
+        }
+        for (ma_AAudioStream *pStream : orphans)
+        {
+            soloud_platform_log("miniaudio: closing an AAudio stream a failed "
+                                "device initialization left open\n");
+            gCloseAAudioStream(pStream);
+        }
+#endif
+    }
+
+    /// ma_device_uninit(), leaving reroutes marked off the zeroed device.
+    /// ma_device_uninit() ends by zeroing gDevice, isTearingDown included, so
+    /// a reroute queued while it ran -- one the stream reported before
+    /// ma_device_uninit() set isTearingDown itself -- would otherwise open a
+    /// stream on an empty device, one nothing would ever close. When that
+    /// reroute runs it takes the device's reroute lock, zeroed along with it,
+    /// which bionic defines as a statically initialized mutex, before it sees
+    /// isTearingDown and does nothing. Call with a ScopedRerouteHold.
+    static void uninitDevice()
+    {
+        ma_device_uninit(&gDevice);
+        gDeviceInitialized.store(false, std::memory_order_release);
+        markDeviceTearingDown();
+    }
+
     // Added by Marco Bavagnoli
     void on_notification(const ma_device_notification* pNotification)
     {
@@ -408,13 +768,13 @@ namespace SoLoud
             aManaged ? ma_aaudio_content_type_music : ma_aaudio_content_type_default;
     }
 
-#if defined(__linux__) || defined(__LINUX__)
+#if (defined(__linux__) || defined(__LINUX__)) && !defined(__ANDROID__)
     static std::atomic<int> gLinuxAudioBackend{0};
 #endif
 
     void miniaudio_setLinuxAudioBackend(int aBackend)
     {
-#if defined(__linux__) || defined(__LINUX__)
+#if (defined(__linux__) || defined(__LINUX__)) && !defined(__ANDROID__)
         std::lock_guard<std::recursive_mutex> lock(gDeviceOperationMutex);
         gLinuxAudioBackend.store(aBackend, std::memory_order_release);
         const char *backendName = "Auto (ALSA -> PulseAudio -> JACK)";
@@ -429,11 +789,139 @@ namespace SoLoud
 
     int miniaudio_getLinuxAudioBackend()
     {
-#if defined(__linux__) || defined(__LINUX__)
+#if (defined(__linux__) || defined(__LINUX__)) && !defined(__ANDROID__)
         return gLinuxAudioBackend.load(std::memory_order_acquire);
 #else
         return 0;
 #endif
+    }
+
+    // The single place that decides which backends, and which context
+    // settings, a context gets on this platform. Both the engine's `context`
+    // and the temporary one device enumeration falls back to are created here,
+    // so they cannot drift apart: device IDs belong to the backend that
+    // enumerated them, so a list built on another backend hands out IDs the
+    // engine's context cannot open.
+    static ma_result init_platform_context(ma_context *aContext)
+    {
+        ma_context_config contextConfig = ma_context_config_init();
+#if defined(MA_HAS_COREAUDIO)
+        // Leave the AVAudioSession to the app: a default context would set its
+        // category and activate it, and then deactivate it on uninit.
+        contextConfig.coreaudio.sessionCategory = ma_ios_session_category_none;
+        contextConfig.coreaudio.noAudioSessionActivate = true;
+        contextConfig.coreaudio.noAudioSessionDeactivate = true;
+        return ma_context_init(NULL, 0, &contextConfig, aContext);
+#elif defined(__ANDROID__)
+        // OpenSL only on Android <= 10, where uninitializing an AAudio device
+        // can crash (see the MA_NO_AAUDIO note at the top of this file).
+        // miniaudio's default order would pick AAudio from API 27.
+        ma_backend backends[] = { ma_backend_aaudio, ma_backend_opensl };
+        ma_uint32 backendCount = 2;
+        if (android_get_device_api_level() <= 29) {
+            backends[0] = ma_backend_opensl;
+            backendCount = 1;
+        }
+        return ma_context_init(backends, backendCount, &contextConfig, aContext);
+#elif defined(__linux__) || defined(__LINUX__)
+        ma_backend backends[3];
+        ma_uint32 backendCount = 0;
+        const int chosenBackend = gLinuxAudioBackend.load(std::memory_order_acquire);
+        if (chosenBackend == 1) { // ALSA
+            backends[0] = ma_backend_alsa;
+            backendCount = 1;
+        } else if (chosenBackend == 2) { // PulseAudio
+            backends[0] = ma_backend_pulseaudio;
+            backendCount = 1;
+        } else if (chosenBackend == 3) { // JACK
+            backends[0] = ma_backend_jack;
+            backendCount = 1;
+        } else { // Auto: ALSA first, then PulseAudio, then JACK
+            backends[0] = ma_backend_alsa;
+            backends[1] = ma_backend_pulseaudio;
+            backends[2] = ma_backend_jack;
+            backendCount = 3;
+        }
+        return ma_context_init(backends, backendCount, &contextConfig, aContext);
+#else
+        // Other platforms open the device without a context of their own, which
+        // makes miniaudio create one with this same default configuration.
+        return ma_context_init(NULL, 0, &contextConfig, aContext);
+#endif
+    }
+
+    // Whether `context` is currently initialized. Only the platforms handled
+    // by init_platform_context() above ever open it. Guarded by
+    // gDeviceOperationMutex.
+    static bool gEngineContextInitialized = false;
+
+    // Unused where the device is opened without a context (Windows, web).
+    [[maybe_unused]] static ma_result open_engine_context()
+    {
+        const ma_result result = init_platform_context(&context);
+        gEngineContextInitialized = result == MA_SUCCESS;
+        gAAudioJobThreadLive =
+            gEngineContextInitialized && context.backend == ma_backend_aaudio;
+#if defined(MA_HAS_AAUDIO)
+        if (gAAudioJobThreadLive)
+            interposeAAudioStreams();
+#endif
+        return result;
+    }
+
+    static void close_engine_context()
+    {
+        if (!gEngineContextInitialized)
+            return;
+        closeOrphanedDeviceStreams();
+        gAAudioJobThreadLive = false;
+        ma_context_uninit(&context);
+        gEngineContextInitialized = false;
+    }
+
+    // The playback devices of `aContext`, copied out: the array miniaudio
+    // returns belongs to the context and is overwritten by the next
+    // enumeration on it.
+    static ma_result copy_playback_devices(ma_context *aContext,
+                                           std::vector<ma_device_info> &aDevices)
+    {
+        ma_device_info *pPlaybackInfos;
+        ma_uint32 playbackCount;
+        ma_device_info *pCaptureInfos;
+        ma_uint32 captureCount;
+        const ma_result result = ma_context_get_devices(
+            aContext, &pPlaybackInfos, &playbackCount, &pCaptureInfos, &captureCount);
+        if (result != MA_SUCCESS)
+            return result;
+        aDevices.assign(pPlaybackInfos, pPlaybackInfos + playbackCount);
+        return MA_SUCCESS;
+    }
+
+    ma_result miniaudio_listPlaybackDevices(std::vector<ma_device_info> &aDevices)
+    {
+        aDevices.clear();
+        // Held throughout, including around the temporary context below.
+        // Enumeration runs on the UI isolate while initEngine() runs on a
+        // worker, and the engine context is only ever opened under this
+        // mutex; so the two contexts never exist at once (miniaudio allows a
+        // single OpenSL|ES context), and an enumeration that arrives during
+        // init waits for it and then uses the engine's context.
+        std::lock_guard<std::recursive_mutex> operationLock(gDeviceOperationMutex);
+
+        // With the engine running, enumerate on its own context: that is the
+        // backend the returned IDs will be opened on.
+        if (gEngineContextInitialized)
+            return copy_playback_devices(&context, aDevices);
+
+        // No engine context yet, so build a temporary one the way the engine
+        // will build its own.
+        ma_context enumerationContext;
+        ma_result result = init_platform_context(&enumerationContext);
+        if (result != MA_SUCCESS)
+            return result;
+        result = copy_playback_devices(&enumerationContext, aDevices);
+        ma_context_uninit(&enumerationContext);
+        return result;
     }
 
     void soloud_miniaudio_audiomixer(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount)
@@ -577,6 +1065,11 @@ namespace SoLoud
 
         if (gDeviceInitialized.load(std::memory_order_acquire))
         {
+            // Nothing will be left to reroute, and the job thread goes away
+            // with the context below.
+            markDeviceTearingDown();
+            const ScopedRerouteHold rerouteHold;
+
             // Check if device is already stopped before calling ma_device_stop()
             // (which can cause an ANR on Android using OpenSSL #333).
             // This should prevent ANR on Android where ma_device_stop() can block indefinitely
@@ -607,12 +1100,11 @@ namespace SoLoud
             
             // From miniaudio.h doc:
             // "This will explicitly stop the device. You do not need to call `ma_device_stop()` beforehand, but it's harmless if you do."
-            ma_device_uninit(&gDevice);
-            gDeviceInitialized.store(false, std::memory_order_release);
+            uninitDevice();
         }
-#if defined(MA_HAS_COREAUDIO) || defined(__ANDROID__) || defined(__linux__) || defined(__LINUX__)
-        ma_context_uninit(&context);
-#endif
+        // A no-op if it is already closed, e.g. after a failed Linux backend
+        // switch, or on platforms that never open it.
+        close_engine_context();
     }
 
     // Pause the audio device: stops the CoreAudio AudioUnit (or platform equivalent)
@@ -624,6 +1116,7 @@ namespace SoLoud
         std::lock_guard<std::recursive_mutex> operationLock(gDeviceOperationMutex);
         if (!gDeviceInitialized.load(std::memory_order_acquire))
             return 0; // No device to pause.
+        const ScopedRerouteHold rerouteHold;
 
         if (ma_device_get_state(&gDevice) == ma_device_state_started)
         {
@@ -662,36 +1155,18 @@ namespace SoLoud
         if (!gDeviceInitialized.load(std::memory_order_acquire))
             return UNKNOWN_ERROR;
 
+        // On Android, starting the device while an AAudio reroute is closing
+        // the old stream crashes with SIGABRT (CFI) inside
+        // AAudioStream_waitForStateChange.
+        const ScopedRerouteHold rerouteHold;
+
         // Check if device is stopped and start it if needed
         ma_result result = MA_SUCCESS;
-#if defined(MA_HAS_AAUDIO)
-        // On Android, serialize against miniaudio's internal AAudio reroute
-        // job, which closes and reopens the AAudioStream on its own job
-        // thread. Starting the device while the old stream is being freed
-        // crashes with SIGABRT (CFI) inside AAudioStream_waitForStateChange.
-        //
-        // Only take the lock when the device actually uses the AAudio backend.
-        // gDevice.aaudio shares a union with the other backends (e.g. OpenSL
-        // ES, selected at runtime on Android API <= 29), so locking
-        // rerouteLock on a non-AAudio device operates on uninitialized union
-        // memory and deadlocks. ma_device_reinit__aaudio (reroute job) and
-        // ma_device_uninit__aaudio hold this lock while closing streams;
-        // ma_device_start does not.
-        const bool isAAudio = gDevice.pContext->backend == ma_backend_aaudio;
-        if (isAAudio)
-            ma_mutex_lock(&gDevice.aaudio.rerouteLock);
-#endif
 #if defined(SOLOUD_LIFECYCLE_TEST_HOOKS)
         // Lets a test drive the rebuild/retry path and the failure reporting
         // behind it without needing hardware that can actually fail.
         if (soloud_test::consumeForcedDeviceStartFailure())
-        {
-#if defined(MA_HAS_AAUDIO)
-            if (isAAudio)
-                ma_mutex_unlock(&gDevice.aaudio.rerouteLock);
-#endif
             return UNKNOWN_ERROR;
-        }
 #endif
 
         if (ma_device_get_state(&gDevice) == ma_device_state_stopped)
@@ -737,10 +1212,6 @@ namespace SoLoud
                 result = ma_device_start(&gDevice);
             }
         }
-#if defined(MA_HAS_AAUDIO)
-        if (isAAudio)
-            ma_mutex_unlock(&gDevice.aaudio.rerouteLock);
-#endif
         return result == MA_SUCCESS ? 0 : UNKNOWN_ERROR;
     }
 
@@ -752,6 +1223,7 @@ namespace SoLoud
     result miniaudio_stopAudioDevice()
     {
         std::lock_guard<std::recursive_mutex> operationLock(gDeviceOperationMutex);
+        const ScopedRerouteHold rerouteHold;
 
         if (ma_device_get_state(&gDevice) == ma_device_state_started)
         {
@@ -768,6 +1240,7 @@ namespace SoLoud
     result miniaudio_startAudioDevice()
     {
         std::lock_guard<std::recursive_mutex> operationLock(gDeviceOperationMutex);
+        const ScopedRerouteHold rerouteHold;
 
         if (ma_device_get_state(&gDevice) == ma_device_state_stopped)
         {
@@ -855,19 +1328,12 @@ namespace SoLoud
         operationLock.lock();
 
 #elif defined(MA_HAS_COREAUDIO)
-        // Disable CoreAudio context
-        ma_context_config contextConfig = ma_context_config_init();
-        contextConfig.coreaudio.sessionCategory = ma_ios_session_category_none;
-        contextConfig.coreaudio.noAudioSessionActivate = true;
-        contextConfig.coreaudio.noAudioSessionDeactivate = true;
-
-        ma_result result = ma_context_init(NULL, 0, &contextConfig, &context);
-        if (result != MA_SUCCESS) {
+        if (open_engine_context() != MA_SUCCESS) {
             return UNKNOWN_ERROR;
         }
         if (ma_device_init(&context, &deviceConfig, &gDevice) != MA_SUCCESS)
         {
-            ma_context_uninit(&context);
+            close_engine_context();
             return UNKNOWN_ERROR;
         }
         gDeviceInitialized = true;
@@ -876,7 +1342,7 @@ namespace SoLoud
         if (startResult != MA_SUCCESS) {
             soloud_platform_log("miniaudio_init: ma_device_start failed with error %d\n", startResult);
             ma_device_uninit(&gDevice);
-            ma_context_uninit(&context);
+            close_engine_context();
             gDeviceInitialized = false;
             return UNKNOWN_ERROR;
         }
@@ -899,63 +1365,45 @@ namespace SoLoud
             deviceConfig.aaudio.allowedCapturePolicy = ma_aaudio_allow_capture_by_all;
         }
 
-        ma_backend backends[] = { ma_backend_aaudio, ma_backend_opensl };
-        ma_uint32 backendCount = 2;
-        if (android_get_device_api_level() <= 29) {
-            backends[0] = ma_backend_opensl;
-            backendCount = 1;
-        }
-
-        ma_context_config contextConfig = ma_context_config_init();
-        if (ma_context_init(backends, backendCount, &contextConfig, &context) != MA_SUCCESS) {
+        if (open_engine_context() != MA_SUCCESS) {
             return UNKNOWN_ERROR;
         }
-        if (ma_device_init(&context, &deviceConfig, &gDevice) != MA_SUCCESS) {
-            ma_context_uninit(&context);
-            return UNKNOWN_ERROR;
+        ma_result startResult = MA_ERROR;
+        {
+            // The new stream can report an error, and so queue a reroute,
+            // before ma_device_init() has finished building the device.
+            const ScopedRerouteHold rerouteHold;
+            gDevicePerformanceProfile.store(deviceConfig.performanceProfile,
+                                            std::memory_order_release);
+            if (ma_device_init(&context, &deviceConfig, &gDevice) != MA_SUCCESS) {
+                markDeviceTearingDown();
+                closeOrphanedDeviceStreams();
+            } else {
+                gDeviceInitialized = true;
+                aSoloud->postinit_internal(gDevice.sampleRate, postinit_buffer_size(aSoloud, aBuffer, gDevice.playback.internalPeriodSizeInFrames), aFlags, gDevice.playback.channels);
+                startResult = ma_device_start(&gDevice);
+                if (startResult != MA_SUCCESS) {
+                    soloud_platform_log("miniaudio_init: ma_device_start failed with error %d\n", startResult);
+                    uninitDevice();
+                }
+            }
         }
-        gDeviceInitialized = true;
-        aSoloud->postinit_internal(gDevice.sampleRate, postinit_buffer_size(aSoloud, aBuffer, gDevice.playback.internalPeriodSizeInFrames), aFlags, gDevice.playback.channels);
-        ma_result startResult = ma_device_start(&gDevice);
         if (startResult != MA_SUCCESS) {
-            soloud_platform_log("miniaudio_init: ma_device_start failed with error %d\n", startResult);
-            ma_device_uninit(&gDevice);
-            ma_context_uninit(&context);
-            gDeviceInitialized = false;
+            close_engine_context();
             return UNKNOWN_ERROR;
         }
         gDeviceInitDeferred = false;
         gDeviceStartDeferred = false;
-        
-#elif defined(__linux__) || defined(__LINUX__)
-        ma_backend backends[3];
-        ma_uint32 backendCount = 0;
-        const int chosenBackend = gLinuxAudioBackend.load(std::memory_order_acquire);
-        if (chosenBackend == 1) { // ALSA
-            backends[0] = ma_backend_alsa;
-            backendCount = 1;
-        } else if (chosenBackend == 2) { // PulseAudio
-            backends[0] = ma_backend_pulseaudio;
-            backendCount = 1;
-        } else if (chosenBackend == 3) { // JACK
-            backends[0] = ma_backend_jack;
-            backendCount = 1;
-        } else { // Auto: ALSA first, then PulseAudio, then JACK
-            backends[0] = ma_backend_alsa;
-            backends[1] = ma_backend_pulseaudio;
-            backends[2] = ma_backend_jack;
-            backendCount = 3;
-        }
 
-        ma_context_config contextConfig = ma_context_config_init();
-        ma_result result = ma_context_init(backends, backendCount, &contextConfig, &context);
+#elif defined(__linux__) || defined(__LINUX__)
+        ma_result result = open_engine_context();
         if (result != MA_SUCCESS) {
             soloud_platform_log("miniaudio_init: ma_context_init failed with error %d\n", result);
             return UNKNOWN_ERROR;
         }
         if (ma_device_init(&context, &deviceConfig, &gDevice) != MA_SUCCESS) {
             soloud_platform_log("miniaudio_init: ma_device_init failed\n");
-            ma_context_uninit(&context);
+            close_engine_context();
             return UNKNOWN_ERROR;
         }
         gDeviceInitialized = true;
@@ -964,7 +1412,7 @@ namespace SoLoud
         if (startResult != MA_SUCCESS) {
             soloud_platform_log("miniaudio_init: ma_device_start failed with error %d\n", startResult);
             ma_device_uninit(&gDevice);
-            ma_context_uninit(&context);
+            close_engine_context();
             gDeviceInitialized = false;
             return UNKNOWN_ERROR;
         }
@@ -1088,6 +1536,15 @@ namespace SoLoud
         if (currentSoloud == nullptr)
             return UNKNOWN_ERROR;
 
+        // The device is about to be replaced, so there is nothing for a
+        // reroute to do; one queued now would only run against the
+        // replacement. The hold outlives the session boundary below, so a
+        // reroute the replacement's stream queues during its initialization
+        // runs once notifications are open again, and its "rerouted" is not
+        // dropped.
+        markDeviceTearingDown();
+        const ScopedRerouteHold rerouteHold;
+
         // Every caller that replaces gDevice comes through here -- the public
         // changeDevice() and the stale-device rebuild inside
         // performAudioDeviceStart() alike -- so this one boundary covers them
@@ -1112,8 +1569,7 @@ namespace SoLoud
         // `ma_device_start()` time out after 5s, and the cleanup
         // `ma_device_uninit()` then wait forever on the very callback the
         // caller is blocking. That deadlock is the Android ANR.
-        ma_device_uninit(&gDevice);
-        gDeviceInitialized.store(false, std::memory_order_release);
+        uninitDevice();
         // No device exists between the uninit and the init below, so don't
         // leave `deinit()` polling for a "stopped" notification that can no
         // longer arrive.
@@ -1156,6 +1612,8 @@ namespace SoLoud
 #endif
 
         ma_result result;
+        gDevicePerformanceProfile.store(deviceConfig.performanceProfile,
+                                        std::memory_order_release);
 #if defined(MA_HAS_COREAUDIO) || defined(__ANDROID__) || defined(__linux__) || defined(__LINUX__)
         // Use the existing context on CoreAudio (macOS/iOS), Android, and Linux
         // to preserve session/category/backend settings
@@ -1170,6 +1628,8 @@ namespace SoLoud
                 "miniaudio_changeDevice_impl: ma_device_init failed with error %d\n",
                 result);
             gDeviceInitialized.store(false, std::memory_order_release);
+            markDeviceTearingDown();
+            closeOrphanedDeviceStreams();
             return UNKNOWN_ERROR;
         }
 
@@ -1183,7 +1643,7 @@ namespace SoLoud
 
     result miniaudio_changeLinuxBackend_impl(int aBackend)
     {
-#if defined(__linux__) || defined(__LINUX__)
+#if (defined(__linux__) || defined(__LINUX__)) && !defined(__ANDROID__)
         std::lock_guard<std::recursive_mutex> operationLock(gDeviceOperationMutex);
         SoLoud::Soloud *currentSoloud =
             gSoloud.load(std::memory_order_acquire);
@@ -1203,28 +1663,10 @@ namespace SoLoud
         gDeviceInitialized.store(false, std::memory_order_release);
         gDeviceStopped.store(true, std::memory_order_release);
 
-        ma_context_uninit(&context);
+        close_engine_context();
 
-        ma_backend backends[3];
-        ma_uint32 backendCount = 0;
-        if (aBackend == 1) { // ALSA
-            backends[0] = ma_backend_alsa;
-            backendCount = 1;
-        } else if (aBackend == 2) { // PulseAudio
-            backends[0] = ma_backend_pulseaudio;
-            backendCount = 1;
-        } else if (aBackend == 3) { // JACK
-            backends[0] = ma_backend_jack;
-            backendCount = 1;
-        } else { // Auto: ALSA first, then PulseAudio, then JACK
-            backends[0] = ma_backend_alsa;
-            backends[1] = ma_backend_pulseaudio;
-            backends[2] = ma_backend_jack;
-            backendCount = 3;
-        }
-
-        ma_context_config contextConfig = ma_context_config_init();
-        ma_result ctxRes = ma_context_init(backends, backendCount, &contextConfig, &context);
+        // Picks up aBackend, stored in gLinuxAudioBackend above.
+        ma_result ctxRes = open_engine_context();
         if (ctxRes != MA_SUCCESS) {
             soloud_platform_log("miniaudio_changeLinuxBackend_impl: ma_context_init failed with error %d\n", ctxRes);
             return UNKNOWN_ERROR;
@@ -1253,7 +1695,7 @@ namespace SoLoud
             soloud_platform_log(
                 "miniaudio_changeLinuxBackend_impl: ma_device_init failed with error %d\n",
                 devRes);
-            ma_context_uninit(&context);
+            close_engine_context();
             gDeviceInitialized.store(false, std::memory_order_release);
             return UNKNOWN_ERROR;
         }

@@ -100,6 +100,27 @@ Future<OutputBuffer> testPlaybackDevices() async {
   );
   strBuf.writeln('Invalid device IDs rejected without disrupting playback');
 
+  // Regression: `setLinuxAudioBackend()` has no effect off Linux. Android's
+  // toolchain defines `__linux__` too, so it used to tear down the running
+  // AAudio device there and try to reopen it on ALSA/PulseAudio/JACK, leaving
+  // the engine with no device at all.
+  if (defaultTargetPlatform != TargetPlatform.linux) {
+    final playing = SoLoud.instance.play(sound, looping: true);
+    await SoLoud.instance.setLinuxAudioBackend(LinuxAudioBackend.alsa);
+    final state = SoLoud.instance.getAudioDeviceState();
+    assert(
+      state == AudioDeviceState.started,
+      'setLinuxAudioBackend() should leave the running device alone off '
+      'Linux, but the device is $state',
+    );
+    assert(
+      SoLoud.instance.getIsValidVoiceHandle(playing),
+      'setLinuxAudioBackend() should not touch voices off Linux',
+    );
+    await SoLoud.instance.stop(playing);
+    strBuf.writeln('setLinuxAudioBackend() left the device alone');
+  }
+
   // Swap repeatedly while the mixer is actually running. Nothing serializes the
   // audio callback against the swap any more: `ma_device_uninit()` alone is
   // responsible for quiescing the callback before its stream is closed, and
@@ -207,6 +228,34 @@ Future<OutputBuffer> testPlaybackDevices() async {
 
   deinit();
 
+  // Enumerate while `init()` is in flight. `init()` opens the engine's audio
+  // context on a worker isolate while apps enumerate from the UI isolate, and
+  // both meet at the same native lock: an enumeration that lands mid-init
+  // waits for the engine's context instead of building a second one beside
+  // it. The enumerations run back to back on their own isolate so that they
+  // span the whole init; a lock-ordering mistake between the two hangs here.
+  // A slowest call far above the rest is one that waited out the native init.
+  // Web is skipped: its init does not run on a worker, so nothing can race.
+  if (!kIsWeb) {
+    final enumerating = compute(_enumerateBackToBack, 1000);
+    await SoLoud.instance.init();
+    final raced = await enumerating;
+    assert(
+      SoLoud.instance.isInitialized,
+      'init() should succeed while devices are enumerated concurrently',
+    );
+    assert(
+      raced.allFound,
+      'Every enumeration racing init() should find a playback device',
+    );
+    strBuf.writeln(
+      '${raced.calls} enumerations raced init(), slowest '
+      '${raced.slowestUs ~/ 1000}ms',
+    );
+
+    deinit();
+  }
+
   strBuf.writeln('Playback devices tests completed successfully');
   return strBuf;
 }
@@ -233,6 +282,30 @@ Future<Duration> _timeChangeDevice(
     'being starved during the swap — see _changeDeviceBudget.',
   );
   return stopwatch.elapsed;
+}
+
+/// Lists the playback devices back to back for [durationMs] milliseconds.
+///
+/// Runs on its own isolate via `compute()`, so it goes straight to the FFI
+/// bindings: `SoLoud.instance` would set up engine state on this isolate.
+({int calls, int slowestUs, bool allFound}) _enumerateBackToBack(
+  int durationMs,
+) {
+  final total = Stopwatch()..start();
+  var calls = 0;
+  var slowestUs = 0;
+  var allFound = true;
+  while (total.elapsedMilliseconds < durationMs) {
+    final call = Stopwatch()..start();
+    final devices = SoLoudController().soLoudFFI.listPlaybackDevices();
+    call.stop();
+    if (call.elapsedMicroseconds > slowestUs) {
+      slowestUs = call.elapsedMicroseconds;
+    }
+    allFound = allFound && devices.isNotEmpty;
+    calls++;
+  }
+  return (calls: calls, slowestUs: slowestUs, allFound: allFound);
 }
 
 /// Starts a voice and checks the engine handed back a usable handle, then

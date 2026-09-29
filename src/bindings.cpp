@@ -1091,7 +1091,7 @@ extern "C"
 
   FFI_PLUGIN_EXPORT enum PlayerErrors setLinuxAudioBackend(unsigned int backend)
   {
-#if defined(__linux__) || defined(__LINUX__)
+#if (defined(__linux__) || defined(__LINUX__)) && !defined(__ANDROID__)
     std::lock_guard<std::mutex> guard(init_deinit_mutex);
     if (player.get() == nullptr)
     {

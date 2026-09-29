@@ -236,6 +236,13 @@ namespace SoLoud
 		// notifications from backend/platform threads while teardown clears
 		// this from the calling thread, and the embedder's device scheduler
 		// publishes its own events through it.
+		//
+		// The callback must not operate the device itself (start, stop,
+		// pause, resume, change or deinit it); hand that to another thread.
+		// On Android it can run on miniaudio's AAudio job thread, inside a
+		// reroute, while a device operation on another thread holds the lock
+		// those operations share and waits for that reroute to finish.
+		// flutter_soloud's own callback only posts the event to Dart.
 		std::atomic<void (*)(unsigned int)> _stateChangedCallback{nullptr};
 		void setStateChangedCallback(void (*stateChangedCallback)(unsigned int)) {
 			_stateChangedCallback.store(stateChangedCallback,
