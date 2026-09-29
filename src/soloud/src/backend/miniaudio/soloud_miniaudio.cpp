@@ -71,6 +71,12 @@ namespace SoLoud
 #ifdef __ANDROID__
 #include <android/api-level.h>
 #endif
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#if defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE == 1
+#import <AVFoundation/AVFoundation.h>
+#endif
+#endif
 #include <math.h>
 #include <algorithm>
 #include <atomic>
@@ -753,6 +759,105 @@ namespace SoLoud
         on_notification(&notification);
     }
 
+#if defined(MA_APPLE_MOBILE)
+    // On iOS, when an app is suspended by the system, iOS sends an
+    // AVAudioSessionInterruptionNotification with type Began and reason
+    // AVAudioSessionInterruptionReasonAppWasSuspended. Apple explicitly documents
+    // that the system does NOT send an interruption ended notification when the
+    // app returns to the foreground. Without intervention, mInterruptionActive
+    // in Player remains true forever, leaving all subsequent playback silent (#573).
+    //
+    // We observe AVAudioSessionInterruptionNotification to track when an
+    // interruption was caused specifically by app suspension, and observe
+    // UIApplicationDidBecomeActiveNotification to synthesize the missing
+    // interruption_ended event when the app returns to the foreground.
+    static std::atomic<bool> gInterruptionWasSuspended{false};
+    static id gAppDidBecomeActiveObserver = nil;
+    static id gAudioSessionInterruptionObserver = nil;
+
+    static void registerIosLifecycleObservers()
+    {
+        if (gAppDidBecomeActiveObserver != nil)
+            return;
+
+        NSNotificationCenter *center = [NSNotificationCenter defaultCenter];
+
+        gAudioSessionInterruptionObserver = [center
+            addObserverForName:AVAudioSessionInterruptionNotification
+            object:[AVAudioSession sharedInstance]
+            queue:[NSOperationQueue mainQueue]
+            usingBlock:^(NSNotification * _Nonnull note) {
+                NSDictionary *userInfo = [note userInfo];
+                NSNumber *typeNum = userInfo[AVAudioSessionInterruptionTypeKey];
+                if (typeNum == nil)
+                    return;
+
+                if ([typeNum unsignedIntegerValue] == AVAudioSessionInterruptionTypeBegan)
+                {
+                    NSNumber *reasonNum = nil;
+                    if (@available(iOS 14.5, *)) {
+                        reasonNum = userInfo[AVAudioSessionInterruptionReasonKey];
+                    }
+                    if (reasonNum == nil) {
+                        reasonNum = userInfo[@"AVAudioSessionInterruptionWasSuspendedKey"];
+                    }
+                    bool wasSuspended = false;
+                    if (reasonNum != nil) {
+                        if (@available(iOS 14.5, *)) {
+                            wasSuspended = ([reasonNum unsignedIntegerValue] ==
+                                            AVAudioSessionInterruptionReasonAppWasSuspended);
+                        } else {
+                            wasSuspended = [reasonNum boolValue];
+                        }
+                    }
+                    gInterruptionWasSuspended.store(wasSuspended, std::memory_order_release);
+                }
+                else if ([typeNum unsignedIntegerValue] == AVAudioSessionInterruptionTypeEnded)
+                {
+                    gInterruptionWasSuspended.store(false, std::memory_order_release);
+                }
+            }];
+
+        gAppDidBecomeActiveObserver = [center
+            addObserverForName:@"UIApplicationDidBecomeActiveNotification"
+            object:nil
+            queue:[NSOperationQueue mainQueue]
+            usingBlock:^(NSNotification * _Nonnull note) {
+                // If an interruption was triggered by app suspension, synthesize
+                // the missing interruption_ended notification now that the app
+                // is active in the foreground again.
+                if (gInterruptionWasSuspended.exchange(false, std::memory_order_acq_rel))
+                {
+                    if (!gDeviceInitialized.load(std::memory_order_acquire) ||
+                        gSoloud.load(std::memory_order_acquire) == nullptr)
+                        return;
+
+                    soloud_platform_log("miniaudio: synthesizing interruption_ended after app suspension\n");
+                    ma_device_notification notification = {};
+                    notification.pDevice = &gDevice;
+                    notification.type = ma_device_notification_type_interruption_ended;
+                    on_notification(&notification);
+                }
+            }];
+    }
+
+    static void unregisterIosLifecycleObservers()
+    {
+        NSNotificationCenter *center = [NSNotificationCenter defaultCenter];
+        if (gAudioSessionInterruptionObserver != nil)
+        {
+            [center removeObserver:gAudioSessionInterruptionObserver];
+            gAudioSessionInterruptionObserver = nil;
+        }
+        if (gAppDidBecomeActiveObserver != nil)
+        {
+            [center removeObserver:gAppDidBecomeActiveObserver];
+            gAppDidBecomeActiveObserver = nil;
+        }
+        gInterruptionWasSuspended.store(false, std::memory_order_release);
+    }
+#endif
+
     void miniaudio_setLowLatency(bool aLowLatency)
     {
         std::lock_guard<std::recursive_mutex> lock(gDeviceOperationMutex);
@@ -873,6 +978,9 @@ namespace SoLoud
     {
         if (!gEngineContextInitialized)
             return;
+#if defined(MA_APPLE_MOBILE)
+        unregisterIosLifecycleObservers();
+#endif
         closeOrphanedDeviceStreams();
         gAAudioJobThreadLive = false;
         ma_context_uninit(&context);
@@ -1337,6 +1445,9 @@ namespace SoLoud
             return UNKNOWN_ERROR;
         }
         gDeviceInitialized = true;
+#if defined(MA_APPLE_MOBILE)
+        registerIosLifecycleObservers();
+#endif
         aSoloud->postinit_internal(gDevice.sampleRate, postinit_buffer_size(aSoloud, aBuffer, gDevice.playback.internalPeriodSizeInFrames), aFlags, gDevice.playback.channels);
         ma_result startResult = ma_device_start(&gDevice);
         if (startResult != MA_SUCCESS) {
