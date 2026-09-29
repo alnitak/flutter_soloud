@@ -66,14 +66,6 @@ public:
       return false;
     }
 
-    // Verify the decoder codec is available on this Android device.
-    AMediaCodec *testCodec = AMediaCodec_createDecoderByType(mime);
-    if (!testCodec) {
-      LOGE("AMediaCodec decoder not available on this device for MIME: %s", mime);
-      return false;
-    }
-    AMediaCodec_delete(testCodec);
-
     return true;
   }
 

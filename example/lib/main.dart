@@ -93,6 +93,16 @@ class _HelloFlutterSoLoudState extends State<HelloFlutterSoLoud> {
                   /// as soon as it will take to load it.
                   /// The sound will be disposed automatically when
                   /// it's finished.
+                  await soloud.playSource(asset: 'assets/audio/sample-MP3.mp3');
+                },
+                child: const Text('play MP3 source'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  /// Just play a sound from a source. It will start playing
+                  /// as soon as it will take to load it.
+                  /// The sound will be disposed automatically when
+                  /// it's finished.
                   await soloud.playSource(
                     asset: 'assets/audio/sample-AAC.m4a',
                   );

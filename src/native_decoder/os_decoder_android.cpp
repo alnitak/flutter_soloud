@@ -80,8 +80,10 @@ DecodedAudioData decodeFromExtractor(AMediaExtractor *extractor) {
 
     while (!sawOutputEOS) {
         if (!sawInputEOS) {
-            ssize_t inIndex = AMediaCodec_dequeueInputBuffer(codec, kTimeoutUs);
-            if (inIndex >= 0) {
+            // Queue all available input buffers without blocking to pipeline the codec
+            while (!sawInputEOS) {
+                ssize_t inIndex = AMediaCodec_dequeueInputBuffer(codec, 0);
+                if (inIndex < 0) break;
                 size_t inBufSize = 0;
                 uint8_t *inBuf = AMediaCodec_getInputBuffer(codec, inIndex, &inBufSize);
                 if (inBuf) {
@@ -96,39 +98,46 @@ DecodedAudioData decodeFromExtractor(AMediaExtractor *extractor) {
                     if (!sawInputEOS) {
                         AMediaExtractor_advance(extractor);
                     }
+                } else {
+                    break;
                 }
             }
         }
 
+        // Drain available output buffers
         AMediaCodecBufferInfo info;
         ssize_t outIndex = AMediaCodec_dequeueOutputBuffer(codec, &info, kTimeoutUs);
-        if (outIndex >= 0) {
-            if ((info.flags & AMEDIACODEC_BUFFER_FLAG_END_OF_STREAM) != 0) {
-                sawOutputEOS = true;
-            }
+        while (outIndex >= 0 || outIndex == AMEDIACODEC_INFO_OUTPUT_FORMAT_CHANGED) {
+            if (outIndex == AMEDIACODEC_INFO_OUTPUT_FORMAT_CHANGED) {
+                AMediaFormat *newFormat = AMediaCodec_getOutputFormat(codec);
+                if (newFormat) {
+                    AMediaFormat_getInt32(newFormat, AMEDIAFORMAT_KEY_SAMPLE_RATE, &sampleRate);
+                    AMediaFormat_getInt32(newFormat, AMEDIAFORMAT_KEY_CHANNEL_COUNT, &channels);
+                    AMediaFormat_delete(newFormat);
+                }
+            } else {
+                if ((info.flags & AMEDIACODEC_BUFFER_FLAG_END_OF_STREAM) != 0) {
+                    sawOutputEOS = true;
+                }
 
-            if (info.size > 0) {
-                size_t outBufSize = 0;
-                uint8_t *outBuf = AMediaCodec_getOutputBuffer(codec, outIndex, &outBufSize);
-                if (outBuf) {
-                    // AMediaCodec typically outputs 16-bit signed PCM for audio
-                    const int16_t *pcm16 = reinterpret_cast<const int16_t *>(outBuf + info.offset);
-                    size_t sampleCount = info.size / sizeof(int16_t);
-                    size_t startOffset = interleavedBuffer.size();
-                    interleavedBuffer.resize(startOffset + sampleCount);
-                    for (size_t s = 0; s < sampleCount; ++s) {
-                        interleavedBuffer[startOffset + s] = pcm16[s] / 32768.0f;
+                if (info.size > 0) {
+                    size_t outBufSize = 0;
+                    uint8_t *outBuf = AMediaCodec_getOutputBuffer(codec, outIndex, &outBufSize);
+                    if (outBuf) {
+                        // AMediaCodec typically outputs 16-bit signed PCM for audio
+                        const int16_t *pcm16 = reinterpret_cast<const int16_t *>(outBuf + info.offset);
+                        size_t sampleCount = info.size / sizeof(int16_t);
+                        size_t startOffset = interleavedBuffer.size();
+                        interleavedBuffer.resize(startOffset + sampleCount);
+                        for (size_t s = 0; s < sampleCount; ++s) {
+                            interleavedBuffer[startOffset + s] = pcm16[s] / 32768.0f;
+                        }
                     }
                 }
+                AMediaCodec_releaseOutputBuffer(codec, outIndex, false);
+                if (sawOutputEOS) break;
             }
-            AMediaCodec_releaseOutputBuffer(codec, outIndex, false);
-        } else if (outIndex == AMEDIACODEC_INFO_OUTPUT_FORMAT_CHANGED) {
-            AMediaFormat *newFormat = AMediaCodec_getOutputFormat(codec);
-            if (newFormat) {
-                AMediaFormat_getInt32(newFormat, AMEDIAFORMAT_KEY_SAMPLE_RATE, &sampleRate);
-                AMediaFormat_getInt32(newFormat, AMEDIAFORMAT_KEY_CHANNEL_COUNT, &channels);
-                AMediaFormat_delete(newFormat);
-            }
+            outIndex = AMediaCodec_dequeueOutputBuffer(codec, &info, 0);
         }
     }
 
@@ -185,20 +194,18 @@ DecodedAudioData decodeElementaryStream(const unsigned char *bytes, size_t lengt
     int channels = 0;
 
     std::vector<float> allSamples;
+    wrapper.setDataEnded();
     auto [samples, err] = wrapper.decode(buffer, &sampleRate, &channels, 0);
     if (!samples.empty()) {
         allSamples.insert(allSamples.end(), samples.begin(), samples.end());
     }
 
-    wrapper.setDataEnded();
-    int maxPasses = 1000;
+    int maxPasses = 50;
     while (wrapper.hasPendingData() && --maxPasses > 0) {
         std::vector<unsigned char> emptyBuf;
         auto [samplesMore, errMore] = wrapper.decode(emptyBuf, &sampleRate, &channels, 0);
         if (!samplesMore.empty()) {
             allSamples.insert(allSamples.end(), samplesMore.begin(), samplesMore.end());
-        } else {
-            usleep(2000); // 2 ms
         }
     }
 
