@@ -278,7 +278,7 @@ void Player::setStateChangedCallback(void (*stateChangedCallback)(unsigned int))
 // here so we don't need to pull in the backend-internal header.
 namespace SoLoud { void miniaudio_setLowLatency(bool aLowLatency); }
 namespace SoLoud { void miniaudio_setLinuxAudioBackend(int aBackend); }
-namespace SoLoud { int miniaudio_getLinuxAudioBackend(); }
+namespace SoLoud { ma_result miniaudio_listPlaybackDevices(std::vector<ma_device_info> &aDevices); }
 namespace SoLoud { SoLoud::result miniaudio_stopAudioDevice(); }
 namespace SoLoud { SoLoud::result miniaudio_startAudioDevice(); }
 namespace SoLoud { unsigned int miniaudio_getAudioDeviceState(); }
@@ -482,7 +482,7 @@ PlayerErrors Player::changeDevice(int deviceID)
 
 PlayerErrors Player::setLinuxAudioBackend(LinuxAudioBackend backend)
 {
-#if defined(__linux__) || defined(__LINUX__)
+#if (defined(__linux__) || defined(__LINUX__)) && !defined(__ANDROID__)
     SoLoud::miniaudio_setLinuxAudioBackend(static_cast<int>(backend));
 
     // If the engine is not initialized, the backend is stored and will be used when initialized.
@@ -536,78 +536,27 @@ PlayerErrors Player::setLinuxAudioBackend(LinuxAudioBackend backend)
 // List available playback devices.
 std::vector<PlaybackDevice> Player::listPlaybackDevices()
 {
-    // printf("***************** LIST DEVICES START\n");
-    ma_context context;
-    ma_uint32 playbackCount;
-    // Both info arrays belong to `context` and are freed by `ma_context_uninit`
-    // below, so they must stay local: keeping them alive past this function
-    // (as a member) would only leave a dangling pointer behind.
-    ma_device_info *pPlaybackInfos;
-    ma_device_info *pCaptureInfos;
-    ma_uint32 captureCount;
     std::vector<PlaybackDevice> ret;
-    ma_result result;
-#if defined(__linux__) || defined(__LINUX__)
-    ma_backend backends[3];
-    ma_uint32 backendCount = 0;
-    const int chosenBackend = SoLoud::miniaudio_getLinuxAudioBackend();
-    if (chosenBackend == 1) { // ALSA
-        backends[0] = ma_backend_alsa;
-        backendCount = 1;
-    } else if (chosenBackend == 2) { // PulseAudio
-        backends[0] = ma_backend_pulseaudio;
-        backendCount = 1;
-    } else if (chosenBackend == 3) { // JACK
-        backends[0] = ma_backend_jack;
-        backendCount = 1;
-    } else { // Auto: ALSA first, then PulseAudio, then JACK
-        backends[0] = ma_backend_alsa;
-        backends[1] = ma_backend_pulseaudio;
-        backends[2] = ma_backend_jack;
-        backendCount = 3;
-    }
-    result = ma_context_init(backends, backendCount, NULL, &context);
-#else
-    result = ma_context_init(NULL, 0, NULL, &context);
-#endif
+    // Enumerated by the backend so the list comes from the same audio backend
+    // the engine opens devices on: the IDs below are only meaningful to that
+    // backend, and `init()` / `changeDevice()` hand them straight to it.
+    std::vector<ma_device_info> infos;
+    const ma_result result = SoLoud::miniaudio_listPlaybackDevices(infos);
     if (result != MA_SUCCESS)
     {
-        // Failed to initialize audio context.
-        return ret;
-    }
-
-    if ((result = ma_context_get_devices(
-             &context,
-             &pPlaybackInfos,
-             &playbackCount,
-             &pCaptureInfos,
-             &captureCount)) != MA_SUCCESS)
-    {
         printf("Failed to get devices %d\n", result);
-        ma_context_uninit(&context);
         return ret;
     }
 
-    // Loop over each device info and do something with it. Here we just print
-    // the name with their index. You may want
-    // to give the user the opportunity to choose which device they'd prefer.
-    for (ma_uint32 i = 0; i < playbackCount; i++)
+    for (size_t i = 0; i < infos.size(); i++)
     {
-        // printf("######%s %d - %s\n",
-        //        pPlaybackInfos[i].isDefault ? " X" : "-",
-        //        i,
-        //        pPlaybackInfos[i].name);
         PlaybackDevice cd;
-        // `std::string` takes a copy: the source dies with the context, and a
-        // `strdup()` here would leak since nothing ever freed these names.
-        cd.name = pPlaybackInfos[i].name;
-        cd.isDefault = pPlaybackInfos[i].isDefault;
-        cd.id = i;
-        cd.deviceId = pPlaybackInfos[i].id; // Copy the device ID
+        cd.name = infos[i].name;
+        cd.isDefault = infos[i].isDefault;
+        cd.id = (unsigned int)i;
+        cd.deviceId = infos[i].id; // Copy the device ID
         ret.push_back(cd);
     }
-    // printf("***************** LIST DEVICES END\n");
-    ma_context_uninit(&context);
     return ret;
 }
 

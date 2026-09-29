@@ -1,3 +1,8 @@
+##### 5.1.5 (30 Sep 2026)
+- fix: Android device enumeration crash and AAudio route-change race conditions. Thanks to @Colton127 #572
+- fix: prevent `setLinuxAudioBackend()` from running on non Linux platforms. Thanks to @Colton127 #572
+- fix iOS: resume playback after returning from background suspension #573
+
 ##### 5.1.4 (28 Sep 2026)
 - fix: Android libflutter_soloud_plugin.so has no GNU build ID since the build-hook migration #570
 
