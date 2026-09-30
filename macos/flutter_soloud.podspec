@@ -29,6 +29,9 @@ Flutter audio plugin using SoLoud library and FFI
     'flutter_soloud/include/FlutterSoloudPlugin.h',
   ]
   s.public_header_files = 'flutter_soloud/include/FlutterSoloudPlugin.h'
+  s.resource_bundles = {
+    'flutter_soloud_privacy' => ['flutter_soloud/Sources/flutter_soloud/PrivacyInfo.xcprivacy']
+  }
   s.dependency 'FlutterMacOS'
   s.platform = :osx, '10.15'
 
