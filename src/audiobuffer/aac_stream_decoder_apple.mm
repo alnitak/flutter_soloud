@@ -88,6 +88,17 @@ public:
       buffer.clear();
     }
 
+    // Optimization: Prebuffering strategy - accumulate packets before starting decode
+    if (mConverterInitialized && !mPrebufferComplete) {
+      constexpr size_t kMinPrebufferPackets = 3;
+      if (mPacketQueue.size() >= kMinPrebufferPackets) {
+        mPrebufferComplete = true;
+      } else {
+        // Wait for more packets before starting decode
+        return {std::vector<float>(), DecoderError::NoError};
+      }
+    }
+
     // 2. Return buffered remainder if any
     std::vector<float> decodedData;
     if (maxOutputSamples > 0) {
@@ -198,6 +209,8 @@ private:
     }
     mFormatInitialized = false;
     mConverterInitialized = false;
+    mConverterPreCreated = false;
+    mPrebufferComplete = false;
     mPacketQueue.clear();
     mDecodedRemainder.clear();
     mMagicCookie.clear();
@@ -228,6 +241,7 @@ private:
     OSStatus status = AudioConverterNew(&mInputFormat, &mOutputFormat, &mConverter);
     if (status == noErr) {
       mConverterInitialized = true;
+      mConverterPreCreated = true;
       if (!mMagicCookie.empty()) {
         AudioConverterSetProperty(
             mConverter,
@@ -353,6 +367,8 @@ private:
   AudioStreamBasicDescription mOutputFormat = {};
   bool mFormatInitialized = false;
   bool mConverterInitialized = false;
+  bool mConverterPreCreated = false;
+  bool mPrebufferComplete = false;
   int mTargetSampleRate = 0;
   int mTargetChannels = 0;
   std::vector<uint8_t> mMagicCookie;

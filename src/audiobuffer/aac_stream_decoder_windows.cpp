@@ -154,6 +154,28 @@ public:
             }
         }
 
+        // Optimization: Prebuffering strategy - accumulate frames before starting decode
+        if (mFormatConfigured && !mPrebufferComplete) {
+            // Count available complete frames in buffer
+            size_t frameCount = 0;
+            size_t offset = 0;
+            std::vector<unsigned char> tempBuffer = buffer;
+            while (offset < tempBuffer.size()) {
+                size_t frameLen = getNextFrameLength(tempBuffer.data() + offset, tempBuffer.size() - offset);
+                if (frameLen == 0 || offset + frameLen > tempBuffer.size()) break;
+                frameCount++;
+                offset += frameLen;
+            }
+
+            constexpr size_t kMinPrebufferFrames = 3;
+            if (frameCount >= kMinPrebufferFrames) {
+                mPrebufferComplete = true;
+            } else {
+                // Wait for more frames before starting decode
+                return {std::move(decodedData), DecoderError::NoError};
+            }
+        }
+
         // Feed frames to MFT
         while (!buffer.empty()) {
             size_t frameLen = getNextFrameLength(buffer.data(), buffer.size());
@@ -251,6 +273,8 @@ private:
         }
         mInitialized = false;
         mFormatConfigured = false;
+        mTransformPreConfigured = false;
+        mPrebufferComplete = false;
         mDecodedRemainder.clear();
     }
 
@@ -415,6 +439,7 @@ private:
 
         mTransform->ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, 0);
         mFormatConfigured = true;
+        mTransformPreConfigured = true;
         return true;
     }
 
@@ -519,6 +544,8 @@ private:
     bool mMfStarted = false;
     bool mInitialized = false;
     bool mFormatConfigured = false;
+    bool mTransformPreConfigured = false;
+    bool mPrebufferComplete = false;
     bool mIsFloatOutput = true;
 
     std::deque<float> mDecodedRemainder;

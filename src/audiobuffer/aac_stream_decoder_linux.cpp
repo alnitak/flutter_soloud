@@ -229,6 +229,7 @@ public:
         mFrame = gLinuxFFmpeg.av_frame_alloc();
 
         mInitialized = true;
+        mCodecPreConfigured = true;
         return true;
     }
 
@@ -272,6 +273,40 @@ public:
                         }
                     }
                 }
+            }
+        }
+
+        // Optimization: Prebuffering strategy - accumulate parsed packets before starting decode
+        if (mFormatInitialized && !mPrebufferComplete) {
+            // Count available complete frames that can be parsed from buffer
+            size_t frameCount = 0;
+            std::vector<unsigned char> tempBuffer = buffer;
+            size_t offset = 0;
+
+            while (offset < tempBuffer.size()) {
+                uint8_t *poutbuf = nullptr;
+                int poutbuf_size = 0;
+                int consumed = gLinuxFFmpeg.av_parser_parse2(
+                    mParser, mCodecCtx,
+                    &poutbuf, &poutbuf_size,
+                    tempBuffer.data() + offset, static_cast<int>(tempBuffer.size() - offset),
+                    0, 0, 0
+                );
+
+                if (poutbuf_size > 0) {
+                    frameCount++;
+                }
+
+                if (consumed <= 0) break;
+                offset += consumed;
+            }
+
+            constexpr size_t kMinPrebufferFrames = 3;
+            if (frameCount >= kMinPrebufferFrames) {
+                mPrebufferComplete = true;
+            } else {
+                // Wait for more frames before starting decode
+                return {std::move(decodedData), DecoderError::NoError};
             }
         }
 
@@ -400,6 +435,8 @@ private:
         }
         mInitialized = false;
         mFormatInitialized = false;
+        mCodecPreConfigured = false;
+        mPrebufferComplete = false;
         mDecodedRemainder.clear();
     }
 
@@ -568,6 +605,8 @@ private:
 
     bool mInitialized = false;
     bool mFormatInitialized = false;
+    bool mCodecPreConfigured = false;
+    bool mPrebufferComplete = false;
     std::deque<float> mDecodedRemainder;
 };
 

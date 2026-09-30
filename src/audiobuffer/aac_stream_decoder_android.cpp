@@ -66,6 +66,15 @@ public:
       return false;
     }
 
+    // Pre-create the codec with default parameters to reduce first-decode latency
+    // It will be reconfigured with actual stream parameters when the first frame arrives
+    mCodec = AMediaCodec_createDecoderByType(mime);
+    if (!mCodec) {
+      LOGE("Failed to pre-create AMediaCodec for %s", mime);
+      return false;
+    }
+    mCodecPreCreated = true;
+
     return true;
   }
 
@@ -101,6 +110,21 @@ public:
       }
       mStreamBytes.insert(mStreamBytes.end(), buffer.begin(), buffer.end());
       buffer.clear();
+    }
+
+    // 2a. Prebuffering strategy: accumulate initial frames before starting codec
+    // This reduces first-frame latency by ensuring codec has work queued immediately
+    if (!mCodecInitialized && !mPrebufferComplete) {
+      const size_t available = mStreamBytes.size() - mStreamReadOffset;
+      const size_t targetPrebuffer = mFormat == DetectedType::BUFFER_AAC ? 4096 : 8192;
+
+      if (available < targetPrebuffer && !mDataEnded) {
+        // Wait for more data before initializing codec
+        if (samplerate && mSampleRate > 0) *samplerate = mSampleRate;
+        if (channels && mChannels > 0) *channels = mChannels;
+        return {std::move(decodedData), DecoderError::NoError};
+      }
+      mPrebufferComplete = true;
     }
 
     // 3. Process and queue stream frames into AMediaCodec while actively draining output
@@ -278,7 +302,7 @@ private:
       }
       const uint8_t *streamData = mStreamBytes.data() + mStreamReadOffset;
 
-      // Find valid ADTS syncword 0xFFF with verified header fields and frame chaining
+      // Simplified ADTS syncword validation: verify 0xFFF syncword and basic header validity
       size_t syncIdx = 0;
       bool found = false;
       while (syncIdx + 7 <= available) {
@@ -290,19 +314,19 @@ private:
                             ((streamData[syncIdx + 5] >> 5) & 0x07);
 
           if (srIdx < 13 && chCfg >= 1 && chCfg <= 7 && frameLen >= 7 && frameLen <= 8192) {
-            // If the buffer contains enough bytes to see the next frame start, verify its syncword
-            if (syncIdx + frameLen + 2 <= available) {
+            // Only verify next syncword if we have enough data AND we're not yet initialized
+            // Once initialized, trust the frame length to reduce overhead
+            if (!mCodecInitialized && syncIdx + frameLen + 2 <= available) {
               if (streamData[syncIdx + frameLen] == 0xFF &&
                   (streamData[syncIdx + frameLen + 1] & 0xF6) == 0xF0) {
                 found = true;
                 break;
               } else {
-                // False syncword inside payload; continue searching
                 syncIdx++;
                 continue;
               }
             } else {
-              // Frame extends to or beyond the current buffer; accept as valid
+              // Accept frame without next-frame verification
               found = true;
               break;
             }
@@ -345,10 +369,13 @@ private:
         mSampleRate = (srIdx < 13) ? kAacSampleRates[srIdx] : 44100;
         mChannels = (chCfg >= 1 && chCfg <= 7) ? (chCfg == 7 ? 8 : chCfg) : 2;
 
-        mCodec = AMediaCodec_createDecoderByType("audio/mp4a-latm");
+        // If codec wasn't pre-created, create it now
         if (!mCodec) {
-          LOGE("Failed to create AMediaCodec for audio/mp4a-latm");
-          return DecoderError::FailedToCreateDecoder;
+          mCodec = AMediaCodec_createDecoderByType("audio/mp4a-latm");
+          if (!mCodec) {
+            LOGE("Failed to create AMediaCodec for audio/mp4a-latm");
+            return DecoderError::FailedToCreateDecoder;
+          }
         }
 
         AMediaFormat *fmt = AMediaFormat_new();
@@ -380,6 +407,7 @@ private:
           return DecoderError::FailedToCreateDecoder;
         }
         mCodecInitialized = true;
+        mCodecPreCreated = false; // Now configured
       }
 
       // Queue raw AAC frame into codec (strip ADTS header)
@@ -502,8 +530,9 @@ private:
         }
       }
 
-      // Verify next syncword if available
-      if (frameLen + 2 <= currentAvailable) {
+      // Only verify next syncword if we're not yet initialized
+      // Once initialized, trust the frame length to reduce overhead
+      if (!mCodecInitialized && frameLen + 2 <= currentAvailable) {
         if (!NativeAudioDecoder::isAc3OrEac3(frameData + frameLen, currentAvailable - frameLen)) {
           // False syncword; skip 2 bytes and continue
           mStreamReadOffset += 2;
@@ -518,10 +547,14 @@ private:
       // Initialize AMediaCodec on the first valid frame
       if (!mCodecInitialized) {
         const char *mime = (mFormat == DetectedType::BUFFER_AC3) ? "audio/ac3" : "audio/eac3";
-        mCodec = AMediaCodec_createDecoderByType(mime);
+
+        // If codec wasn't pre-created, create it now
         if (!mCodec) {
-          LOGE("AMediaCodec decoder not available on this device for %s", mime);
-          return DecoderError::FormatNotSupported;
+          mCodec = AMediaCodec_createDecoderByType(mime);
+          if (!mCodec) {
+            LOGE("AMediaCodec decoder not available on this device for %s", mime);
+            return DecoderError::FormatNotSupported;
+          }
         }
 
         mSampleRate = sampleRate;
@@ -549,6 +582,7 @@ private:
           return DecoderError::FailedToCreateDecoder;
         }
         mCodecInitialized = true;
+        mCodecPreCreated = false; // Now configured
       }
 
       // Queue sync frame into codec
@@ -600,11 +634,15 @@ private:
 
   void cleanup() {
     if (mCodec) {
-      AMediaCodec_stop(mCodec);
+      if (mCodecInitialized) {
+        AMediaCodec_stop(mCodec);
+      }
       AMediaCodec_delete(mCodec);
       mCodec = nullptr;
     }
     mCodecInitialized = false;
+    mCodecPreCreated = false;
+    mPrebufferComplete = false;
     mDataEnded = false;
     mEosQueued = false;
     mEosReached = false;
@@ -624,6 +662,8 @@ private:
   int mChannels = 0;
   bool mIsFloatOutput = false;
   bool mCodecInitialized = false;
+  bool mCodecPreCreated = false;
+  bool mPrebufferComplete = false;
   bool mDataEnded = false;
   bool mEosQueued = false;
   bool mEosReached = false;
