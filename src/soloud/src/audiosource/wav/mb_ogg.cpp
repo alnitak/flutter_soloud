@@ -410,47 +410,52 @@ bool MBOggDecoder::initOpus() {
 }
 
 bool MBOggDecoder::feedOpusData() {
-  ogg_page og;
-  int ret = ogg_sync_pageout(&mOpusOy, &og);
+  while (true) {
+    ogg_page og;
+    int ret = ogg_sync_pageout(&mOpusOy, &og);
 
-  if (ret == 1) {
-    // Chained stream handling
-    if (mOpusStreamInit && ogg_page_serialno(&og) != mOpusOs.serialno) {
-      ogg_stream_clear(&mOpusOs);
-      mOpusStreamInit = false;
-      mOpusHeaderParsed = false;
-      mOpusPacketCount = 0;
-      mOpusSkipSamples = 0;
-      mOpusTotalOutputSamples = 0;
-      mOpusTotalSamplesExpected = -1;
-      if (mOpusDecoder)
-        opus_decoder_ctl(mOpusDecoder, OPUS_RESET_STATE);
+    if (ret == 1) {
+      // Chained stream handling
+      if (mOpusStreamInit && ogg_page_serialno(&og) != mOpusOs.serialno) {
+        ogg_stream_clear(&mOpusOs);
+        mOpusStreamInit = false;
+        mOpusHeaderParsed = false;
+        mOpusPacketCount = 0;
+        mOpusSkipSamples = 0;
+        mOpusTotalOutputSamples = 0;
+        mOpusTotalSamplesExpected = -1;
+        if (mOpusDecoder)
+          opus_decoder_ctl(mOpusDecoder, OPUS_RESET_STATE);
+      }
+
+      if (!mOpusStreamInit) {
+        if (ogg_stream_init(&mOpusOs, ogg_page_serialno(&og)) != 0)
+          return false;
+        mOpusStreamInit = true;
+      }
+
+      if (ogg_stream_pagein(&mOpusOs, &og) < 0)
+        continue; // skip corrupted page
+
+      ogg_packet op;
+      while (ogg_stream_packetout(&mOpusOs, &op) == 1) {
+        if (!decodeOpusPacket(&op))
+          return false;
+      }
+      return true;
     }
 
-    if (!mOpusStreamInit) {
-      if (ogg_stream_init(&mOpusOs, ogg_page_serialno(&og)) != 0)
-        return false;
-      mOpusStreamInit = true;
+    if (ret < 0) {
+      continue;
     }
 
-    if (ogg_stream_pagein(&mOpusOs, &og) < 0)
-      return true; // skip corrupted page
-
-    ogg_packet op;
-    while (ogg_stream_packetout(&mOpusOs, &op) == 1) {
-      if (!decodeOpusPacket(&op))
-        return false;
-    }
-    return true;
+    // Need more data from data source
+    char *buf = ogg_sync_buffer(&mOpusOy, 4096);
+    unsigned int bytes = mDataSource.read((unsigned char *)buf, 4096);
+    if (bytes == 0)
+      return false; // EOF and no more pages in sync buffer
+    ogg_sync_wrote(&mOpusOy, bytes);
   }
-
-  // Need more data or out of sync
-  char *buf = ogg_sync_buffer(&mOpusOy, 4096);
-  unsigned int bytes = mDataSource.read((unsigned char *)buf, 4096);
-  if (bytes == 0)
-    return mOpusHeaderParsed; // EOF: ok if headers were parsed
-  ogg_sync_wrote(&mOpusOy, bytes);
-  return true;
 }
 
 bool MBOggDecoder::decodeOpusPacket(ogg_packet *packet) {
@@ -542,10 +547,7 @@ unsigned int MBOggDecoder::readOpus(float *aBuffer, unsigned int aSamples,
       continue;
     }
 
-    size_t prevSize = mOpusPcmBuffer.size();
     if (!feedOpusData())
-      break;
-    if (mOpusPcmBuffer.size() == prevSize && mDataSource.eof())
       break;
   }
   return samplesRead;
