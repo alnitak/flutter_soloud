@@ -1,6 +1,7 @@
 // ignore_for_file: public_member_api_docs
 
 import 'dart:js_interop';
+import 'dart:typed_data';
 import 'package:web/web.dart' as web;
 
 @JS('globalThis')
@@ -855,3 +856,38 @@ external void wasmBusAnnexSound(int busId, int voiceHandle);
 
 @JS('Module_soloud._busGetActiveVoiceCount')
 external int wasmBusGetActiveVoiceCount(int busId);
+
+/// Decodes audio data on the web using the browser's OfflineAudioContext.
+/// Returns interleaved Float32List with metadata, or null on failure.
+Future<({int sampleRate, int channels, Float32List samples})?>
+jsDecodeAudioDataWeb(Uint8List bytes) async {
+  try {
+    final ctx = web.OfflineAudioContext(
+      web.OfflineAudioContextOptions(
+        numberOfChannels: 1,
+        length: 1,
+        sampleRate: 44100,
+      ),
+    );
+    final copy = bytes.sublist(0);
+    final audioBufferPromise = ctx.decodeAudioData(copy.buffer.toJS);
+    final audioBuffer = await audioBufferPromise.toDart;
+    final numChannels = audioBuffer.numberOfChannels;
+    final numFrames = audioBuffer.length;
+    final sampleRate = audioBuffer.sampleRate.toInt();
+    final interleaved = Float32List(numFrames * numChannels);
+    for (var c = 0; c < numChannels; c++) {
+      final channelData = audioBuffer.getChannelData(c).toDart;
+      for (var i = 0; i < numFrames; i++) {
+        interleaved[i * numChannels + c] = channelData[i];
+      }
+    }
+    return (
+      sampleRate: sampleRate,
+      channels: numChannels,
+      samples: interleaved,
+    );
+  } catch (e) {
+    return null;
+  }
+}

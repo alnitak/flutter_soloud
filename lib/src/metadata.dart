@@ -19,7 +19,19 @@ enum DetectedType {
   mp3Stream,
 
   /// WAV audio format
-  wav;
+  wav,
+
+  /// M4A audio format
+  m4a,
+
+  /// AAC audio format
+  aac,
+
+  /// AC3 audio format
+  ac3,
+
+  /// EAC3 audio format
+  eac3;
 
   /// Converts an integer value to a [DetectedType] enum value
   static DetectedType fromInt(int value) {
@@ -38,6 +50,14 @@ enum DetectedType {
         return DetectedType.mp3Stream;
       case 6:
         return DetectedType.wav;
+      case 7:
+        return DetectedType.m4a;
+      case 8:
+        return DetectedType.aac;
+      case 9:
+        return DetectedType.ac3;
+      case 10:
+        return DetectedType.eac3;
       default:
         return DetectedType.unknown;
     }
@@ -61,11 +81,19 @@ enum DetectedType {
         return 'MP3 Stream';
       case DetectedType.wav:
         return 'WAV';
+      case DetectedType.m4a:
+        return 'M4A';
+      case DetectedType.aac:
+        return 'AAC';
+      case DetectedType.ac3:
+        return 'AC3';
+      case DetectedType.eac3:
+        return 'EAC3';
     }
   }
 }
 
-/// Represents metadata information extracted from an MP3 audio file
+/// Represents metadata information extracted from an MP3 audio file or stream
 final class Mp3Metadata {
   /// Creates a new [Mp3Metadata] instance with the metadata fields
   Mp3Metadata({
@@ -74,6 +102,15 @@ final class Mp3Metadata {
     required this.album,
     required this.date,
     required this.genre,
+    this.albumArtist = '',
+    this.composer = '',
+    this.comment = '',
+    this.track = '',
+    this.disc = '',
+    this.streamUrl = '',
+    this.sampleRate = 0,
+    this.channels = 0,
+    this.bitrate = 0,
   });
 
   /// The title of the audio track
@@ -91,15 +128,79 @@ final class Mp3Metadata {
   /// The musical genre or style of the audio track
   String genre;
 
+  /// The album artist or band name
+  String albumArtist;
+
+  /// The composer of the audio track
+  String composer;
+
+  /// Track comment or description
+  String comment;
+
+  /// Track number (e.g., "1" or "1/12")
+  String track;
+
+  /// Disc number (e.g., "1" or "1/2")
+  String disc;
+
+  /// Stream URL if provided by ICY (Shoutcast/Icecast) stream
+  String streamUrl;
+
+  /// The sampling rate of the audio in Hz
+  int sampleRate;
+
+  /// The number of audio channels
+  int channels;
+
+  /// The bitrate in bits per second
+  int bitrate;
+
   @override
   String toString() {
-    final buffer = StringBuffer()
-      ..writeln('Title: $title')
-      ..writeln('Artist: $artist')
-      ..writeln('Album: $album')
-      ..writeln('Date: $date')
-      ..write('Genre: $genre');
-    return buffer.toString();
+    final buffer = StringBuffer();
+    if (sampleRate > 0) {
+      buffer.writeln('\tSampleRate: $sampleRate');
+    }
+    if (channels > 0) {
+      buffer.writeln('\tChannels: $channels');
+    }
+    if (bitrate > 0) {
+      buffer.writeln('\tBitrate: $bitrate');
+    }
+    if (title.isNotEmpty) {
+      buffer.writeln('\tTitle: $title');
+    }
+    if (artist.isNotEmpty) {
+      buffer.writeln('\tArtist: $artist');
+    }
+    if (albumArtist.isNotEmpty) {
+      buffer.writeln('\tAlbumArtist: $albumArtist');
+    }
+    if (album.isNotEmpty) {
+      buffer.writeln('\tAlbum: $album');
+    }
+    if (date.isNotEmpty) {
+      buffer.writeln('\tDate: $date');
+    }
+    if (genre.isNotEmpty) {
+      buffer.writeln('\tGenre: $genre');
+    }
+    if (composer.isNotEmpty) {
+      buffer.writeln('\tComposer: $composer');
+    }
+    if (comment.isNotEmpty) {
+      buffer.writeln('\tComment: $comment');
+    }
+    if (track.isNotEmpty) {
+      buffer.writeln('\tTrack: $track');
+    }
+    if (disc.isNotEmpty) {
+      buffer.writeln('\tDisc: $disc');
+    }
+    if (streamUrl.isNotEmpty) {
+      buffer.writeln('\tStreamUrl: $streamUrl');
+    }
+    return buffer.toString().trimRight();
   }
 }
 
@@ -334,9 +435,328 @@ final class OggMetadata {
       case DetectedType.mp3WithId3:
       case DetectedType.mp3Stream:
       case DetectedType.wav:
+      case DetectedType.m4a:
+      case DetectedType.aac:
+      case DetectedType.ac3:
+      case DetectedType.eac3:
         break;
     }
 
+    return buffer.toString();
+  }
+}
+
+/// Contains detailed information about an AAC audio stream
+final class AacMetadata {
+  /// Creates a new [AacMetadata] instance with the metadata fields
+  AacMetadata({
+    required this.sampleRate,
+    required this.channels,
+    required this.profile,
+    required this.bitrate,
+    required this.frameLength,
+    this.title = '',
+    this.artist = '',
+    this.albumArtist = '',
+    this.album = '',
+    this.date = '',
+    this.genre = '',
+    this.composer = '',
+    this.comment = '',
+    this.track = '',
+    this.disc = '',
+    this.streamUrl = '',
+  });
+
+  /// The sampling rate of the audio in Hz
+  int sampleRate;
+
+  /// The number of audio channels
+  int channels;
+
+  /// The AAC profile (e.g., "LC", "Main", "SSR", "LTP")
+  String profile;
+
+  /// The nominal or calculated bitrate in bits per second
+  int bitrate;
+
+  /// The ADTS frame length in bytes
+  int frameLength;
+
+  /// The title of the track if present from ID3 or ICY stream
+  String title;
+
+  /// The artist of the track if present from ID3 or ICY stream
+  String artist;
+
+  /// The album artist or band name
+  String albumArtist;
+
+  /// The album of the track if present from ID3
+  String album;
+
+  /// The release date or year if present from ID3
+  String date;
+
+  /// The musical genre if present from ID3
+  String genre;
+
+  /// The composer of the track if present from ID3
+  String composer;
+
+  /// Comment text if present from ID3
+  String comment;
+
+  /// Track number if present from ID3
+  String track;
+
+  /// Disc number if present from ID3
+  String disc;
+
+  /// Stream URL if provided by ICY stream
+  String streamUrl;
+
+  @override
+  String toString() {
+    final buffer = StringBuffer()
+      ..writeln('\tSampleRate: $sampleRate')
+      ..writeln('\tChannels: $channels')
+      ..writeln('\tProfile: $profile')
+      ..writeln('\tBitrate: $bitrate')
+      ..writeln('\tFrameLength: $frameLength');
+    if (title.isNotEmpty) {
+      buffer.writeln('\tTitle: $title');
+    }
+    if (artist.isNotEmpty) {
+      buffer.writeln('\tArtist: $artist');
+    }
+    if (albumArtist.isNotEmpty) {
+      buffer.writeln('\tAlbumArtist: $albumArtist');
+    }
+    if (album.isNotEmpty) {
+      buffer.writeln('\tAlbum: $album');
+    }
+    if (date.isNotEmpty) {
+      buffer.writeln('\tDate: $date');
+    }
+    if (genre.isNotEmpty) {
+      buffer.writeln('\tGenre: $genre');
+    }
+    if (composer.isNotEmpty) {
+      buffer.writeln('\tComposer: $composer');
+    }
+    if (comment.isNotEmpty) {
+      buffer.writeln('\tComment: $comment');
+    }
+    if (track.isNotEmpty) {
+      buffer.writeln('\tTrack: $track');
+    }
+    if (disc.isNotEmpty) {
+      buffer.writeln('\tDisc: $disc');
+    }
+    if (streamUrl.isNotEmpty) {
+      buffer.writeln('\tStreamUrl: $streamUrl');
+    }
+    return buffer.toString().trimRight();
+  }
+}
+
+/// Contains detailed information about an M4A / MP4 audio container
+final class M4aMetadata {
+  /// Creates a new [M4aMetadata] instance with the metadata fields
+  M4aMetadata({
+    this.title = '',
+    this.artist = '',
+    this.albumArtist = '',
+    this.album = '',
+    this.date = '',
+    this.genre = '',
+    this.composer = '',
+    this.comment = '',
+    this.track = '',
+    this.disc = '',
+    this.codec = '',
+    this.sampleRate = 0,
+    this.channels = 0,
+    this.bitrate = 0,
+  });
+
+  /// The title of the track
+  String title;
+
+  /// The artist of the track
+  String artist;
+
+  /// The album artist
+  String albumArtist;
+
+  /// The album name
+  String album;
+
+  /// The release date or year
+  String date;
+
+  /// The musical genre
+  String genre;
+
+  /// The composer of the audio track
+  String composer;
+
+  /// Comment or description
+  String comment;
+
+  /// Track number (e.g., "1" or "1/12")
+  String track;
+
+  /// Disc number (e.g., "1" or "1/2")
+  String disc;
+
+  /// The audio codec (e.g., "mp4a", "alac", "ac-3")
+  String codec;
+
+  /// The sampling rate in Hz
+  int sampleRate;
+
+  /// Number of audio channels
+  int channels;
+
+  /// Bitrate in bits per second
+  int bitrate;
+
+  @override
+  String toString() {
+    final buffer = StringBuffer();
+    if (codec.isNotEmpty) buffer.writeln('\tCodec: $codec');
+    if (sampleRate > 0) buffer.writeln('\tSampleRate: $sampleRate');
+    if (channels > 0) buffer.writeln('\tChannels: $channels');
+    if (bitrate > 0) buffer.writeln('\tBitrate: $bitrate');
+    if (title.isNotEmpty) buffer.writeln('\tTitle: $title');
+    if (artist.isNotEmpty) buffer.writeln('\tArtist: $artist');
+    if (albumArtist.isNotEmpty) buffer.writeln('\tAlbumArtist: $albumArtist');
+    if (album.isNotEmpty) buffer.writeln('\tAlbum: $album');
+    if (date.isNotEmpty) buffer.writeln('\tDate: $date');
+    if (genre.isNotEmpty) buffer.writeln('\tGenre: $genre');
+    if (composer.isNotEmpty) buffer.writeln('\tComposer: $composer');
+    if (comment.isNotEmpty) buffer.writeln('\tComment: $comment');
+    if (track.isNotEmpty) buffer.writeln('\tTrack: $track');
+    if (disc.isNotEmpty) buffer.writeln('\tDisc: $disc');
+    return buffer.toString().trimRight();
+  }
+}
+
+/// Contains detailed information about an AC-3 (Dolby Digital) audio stream
+final class Ac3Metadata {
+  /// Creates a new [Ac3Metadata] instance with the metadata fields
+  Ac3Metadata({
+    required this.sampleRate,
+    required this.channels,
+    required this.bitrate,
+    required this.bsid,
+    required this.bsmod,
+    required this.acmod,
+    required this.lfeOn,
+    required this.frameSize,
+  });
+
+  /// The sampling rate of the audio in Hz
+  int sampleRate;
+
+  /// The total number of channels including LFE
+  int channels;
+
+  /// The nominal bitrate in bits per second
+  int bitrate;
+
+  /// Bit stream identification (bsid <= 10 for standard AC-3)
+  int bsid;
+
+  /// Bit stream mode
+  int bsmod;
+
+  /// Audio coding mode
+  int acmod;
+
+  /// Whether the Low Frequency Effects (subwoofer) channel is enabled
+  bool lfeOn;
+
+  /// The syncframe size in bytes
+  int frameSize;
+
+  @override
+  String toString() {
+    final buffer = StringBuffer()
+      ..writeln('\tSampleRate: $sampleRate')
+      ..writeln('\tChannels: $channels')
+      ..writeln('\tBitrate: $bitrate')
+      ..writeln('\tBsid: $bsid')
+      ..writeln('\tBsmod: $bsmod')
+      ..writeln('\tAcmod: $acmod')
+      ..writeln('\tLfeOn: $lfeOn')
+      ..write('\tFrameSize: $frameSize');
+    return buffer.toString();
+  }
+}
+
+/// Contains detailed information about an E-AC-3 (Dolby Digital Plus)
+/// audio stream
+final class Eac3Metadata {
+  /// Creates a new [Eac3Metadata] instance with the metadata fields
+  Eac3Metadata({
+    required this.sampleRate,
+    required this.channels,
+    required this.bitrate,
+    required this.bsid,
+    required this.streamType,
+    required this.substreamId,
+    required this.acmod,
+    required this.lfeOn,
+    required this.frameSize,
+    required this.numBlocks,
+  });
+
+  /// The sampling rate of the audio in Hz
+  int sampleRate;
+
+  /// The total number of channels including LFE
+  int channels;
+
+  /// The calculated bitrate in bits per second
+  int bitrate;
+
+  /// Bit stream identification (typically 16 for E-AC-3)
+  int bsid;
+
+  /// Stream type (0 = primary, 1 = secondary, 2 = independent)
+  int streamType;
+
+  /// Substream identification
+  int substreamId;
+
+  /// Audio coding mode
+  int acmod;
+
+  /// Whether the Low Frequency Effects (subwoofer) channel is enabled
+  bool lfeOn;
+
+  /// The syncframe size in bytes
+  int frameSize;
+
+  /// Number of audio blocks per syncframe
+  int numBlocks;
+
+  @override
+  String toString() {
+    final buffer = StringBuffer()
+      ..writeln('\tSampleRate: $sampleRate')
+      ..writeln('\tChannels: $channels')
+      ..writeln('\tBitrate: $bitrate')
+      ..writeln('\tBsid: $bsid')
+      ..writeln('\tStreamType: $streamType')
+      ..writeln('\tSubstreamId: $substreamId')
+      ..writeln('\tAcmod: $acmod')
+      ..writeln('\tLfeOn: $lfeOn')
+      ..writeln('\tFrameSize: $frameSize')
+      ..write('\tNumBlocks: $numBlocks');
     return buffer.toString();
   }
 }
@@ -349,6 +769,10 @@ final class AudioMetadata {
     required this.detectedType,
     this.mp3Metadata,
     this.oggMetadata,
+    this.aacMetadata,
+    this.ac3Metadata,
+    this.eac3Metadata,
+    this.m4aMetadata,
   });
 
   /// The detected audio format type (e.g., "MP3", "OGG", etc.)
@@ -360,6 +784,18 @@ final class AudioMetadata {
   /// Metadata specific to OGG container format, including Opus and Vorbis
   /// information
   OggMetadata? oggMetadata;
+
+  /// Metadata specific to AAC audio format
+  AacMetadata? aacMetadata;
+
+  /// Metadata specific to AC-3 audio format
+  Ac3Metadata? ac3Metadata;
+
+  /// Metadata specific to E-AC-3 audio format
+  Eac3Metadata? eac3Metadata;
+
+  /// Metadata specific to M4A / MP4 container format
+  M4aMetadata? m4aMetadata;
 
   /// Returns a string representation of the [AudioMetadata] object
   @override
@@ -379,6 +815,30 @@ final class AudioMetadata {
         }
       case DetectedType.wav:
         buffer.writeln('WAV audio format');
+      case DetectedType.m4a:
+        if (m4aMetadata != null) {
+          buffer.writeln(m4aMetadata);
+        } else {
+          buffer.writeln('M4A audio format');
+        }
+      case DetectedType.aac:
+        if (aacMetadata != null) {
+          buffer.writeln(aacMetadata);
+        } else {
+          buffer.writeln('AAC audio format');
+        }
+      case DetectedType.ac3:
+        if (ac3Metadata != null) {
+          buffer.writeln(ac3Metadata);
+        } else {
+          buffer.writeln('AC3 audio format');
+        }
+      case DetectedType.eac3:
+        if (eac3Metadata != null) {
+          buffer.writeln(eac3Metadata);
+        } else {
+          buffer.writeln('EAC3 audio format');
+        }
       case DetectedType.unknown:
         buffer.writeln('Unknown audio format');
     }

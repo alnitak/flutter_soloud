@@ -39,7 +39,8 @@ drwav_bool32 WavDecoderWrapper::on_seek(void *pUserData, int offset,
 }
 
 WavDecoderWrapper::WavDecoderWrapper()
-    : isInitialized(false), audioData({}), m_read_pos(0), mDataEnded(false) {}
+    : isInitialized(false), audioData({}), m_read_pos(0), mDataEnded(false),
+      mDrained(false) {}
 
 WavDecoderWrapper::~WavDecoderWrapper() { cleanup(); }
 
@@ -51,6 +52,7 @@ void WavDecoderWrapper::cleanup() {
   audioData.clear();
   m_read_pos = 0;
   mDataEnded = false;
+  mDrained = false;
 }
 
 void WavDecoderWrapper::setDataEnded() { mDataEnded = true; }
@@ -188,6 +190,9 @@ WavDecoderWrapper::decode(std::vector<unsigned char> &buffer, int *sampleRate,
                          pcm_frames + frames_read * decoder.channels);
     } else {
       // Decoder returned 0 frames; no more data available.
+      if (mDataEnded) {
+        mDrained = true;
+      }
       break;
     }
 
@@ -217,7 +222,24 @@ WavDecoderWrapper::decode(std::vector<unsigned char> &buffer, int *sampleRate,
     }
   }
 
+  if (mDataEnded && audioData.empty()) {
+    mDrained = true;
+  }
+
   return {decodedData, DecoderError::NoError};
+}
+
+bool WavDecoderWrapper::hasPendingData() const {
+  if (mDataEnded && mDrained) {
+    return false;
+  }
+  if (!audioData.empty()) {
+    return true;
+  }
+  if (mDataEnded && !mDrained) {
+    return true;
+  }
+  return false;
 }
 
 bool WavDecoderWrapper::canSeekToTime(double seconds) const {

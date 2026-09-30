@@ -1,6 +1,6 @@
 ---
 name: flutter-soloud-loading
-version: 1
+version: 2
 description: Teaches how to load audio into flutter_soloud via loadAsset/loadMem/loadFile/loadUrl and joinTwoSources, choose between LoadMode.memory and LoadMode.disk, and manage the AudioSource lifecycle (disposeSource, autoDispose, allInstancesFinished). Use when a user asks to load or play an audio file, asset, URL, or byte buffer, to fix load errors or "no sound" bugs, to handle web platform constraints, or to clean up/dispose loaded sounds.
 ---
 
@@ -49,7 +49,12 @@ enum LoadMode {
 
 Use `memory` (the default) for sound effects and anything you seek. Use `disk` for large background music — but note that with `disk` mode, seeking lags with MP3s.
 
-Supported formats: MP3, WAV, OGG (Vorbis/Opus/FLAC), FLAC.
+Supported formats:
+- **Core formats**: MP3, WAV, OGG (Vorbis/Opus/FLAC), FLAC.
+- **OS-native formats** (via platform decoders on macOS, iOS, Android, Windows, Web, Linux): M4A, MP4 (audio tracks), AAC, AC-3 (Dolby Digital), and E-AC-3 (Dolby Digital Plus). *Linux note:* On Linux, decoding these formats requires FFmpeg shared libraries (`libavcodec` and `libavformat`) installed on the host system (e.g. `sudo apt install ffmpeg libavcodec-extra`, `sudo pacman -S ffmpeg`, or `sudo dnf install ffmpeg-free`). Core formats work out of the box without FFmpeg.
+
+> [!NOTE]
+> MP4 and M4A containers are supported for file, asset, URL, and memory loading, but are **NOT supported for chunk streaming** (`setBufferStream`/`setPullBufferStream`). For real-time streaming, use elementary streams such as AAC ADTS, AC-3, E-AC-3, OGG, MP3, WAV, or raw PCM.
 
 ### AudioSource lifecycle
 
@@ -111,6 +116,7 @@ try {
 - **`loadMem` takes encoded file bytes, not PCM.** Passing raw PCM samples yields a load failure. (For PCM there are separate buffer-stream APIs — outside this skill's scope.)
 - **`loadFile` throws/is unsupported on Web.** On Web always go through `loadMem` (get bytes from `rootBundle`, `http`, or a file picker).
 - **Web CORS applies to `loadUrl`.** A URL that plays fine on mobile can fail in the browser if the server doesn't send CORS headers; this surfaces as a fetch error, not a SoLoud error code.
+- **AC-3 / E-AC-3 on Web:** AC-3 and E-AC-3 audio formats are **not supported on the Web platform in any browser**. Chrome and Firefox lack Dolby licensing, and Safari's WebCodecs engine rejects raw AC-3 frames with Cocoa decoding errors, while Web Audio API does not decode raw `.ac3` files. Attempting to load AC-3 or E-AC-3 on Web returns `PlayerErrors.audioFormatNotSupported`. For web audio, use MP3, WAV, OGG/Opus, FLAC, or AAC.
 - **Temp-file eviction on mobile.** `loadAsset`/`loadUrl` copy to the OS temp directory (`SoLoudLoader-Temp-Files`). The OS may purge it between load and play, causing a rare crash. If the gap between load and play can be long, prefer `loadMem` with `LoadMode.memory`.
 - **Playing a disposed source fails.** After `disposeSource`, do not `play()` that `AudioSource` again — check with `isValidAudioSource` if unsure. Same after `autoDispose` has fired.
 - **`autoDispose` + looping never fires.** A looping handle never finishes, so the source is never auto-disposed until every handle is stopped.

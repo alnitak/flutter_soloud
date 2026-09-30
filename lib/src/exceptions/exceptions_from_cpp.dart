@@ -304,19 +304,19 @@ class SoLoudStreamEndedAlreadyCppException extends SoLoudCppException {
       '(on the C++ side).';
 }
 
-/// An error occurred while creating an Opus decoder.
+/// An error occurred while creating an audio decoder.
 class SoLoudFailedToCreateDecoderCppException extends SoLoudCppException {
   /// Creates a new [SoLoudFailedToCreateDecoderCppException].
   const SoLoudFailedToCreateDecoderCppException([super.message]);
 
   @override
   String get description =>
-      'Failed to create decoder. This could happen when some internal '
-      'error occurred while creating the decoder. Maybe not enough memory or '
-      'maybe the data is corrupted. (on the C++ side).';
+      'Failed to create audio decoder. The format may not be supported on '
+      'this platform, or an internal error occurred while initializing '
+      'the decoder. (on the C++ side).';
 }
 
-/// An error occurred while decoding Opus data.
+/// An error occurred while decoding audio data packet.
 /// This could happen when the data is corrupted.
 class SoLoudFailedToDecodeOpusPacketCppException extends SoLoudCppException {
   /// Creates a new [SoLoudFailedToDecodeOpusPacketCppException].
@@ -324,8 +324,8 @@ class SoLoudFailedToDecodeOpusPacketCppException extends SoLoudCppException {
 
   @override
   String get description =>
-      'Failed to decode Opus data. This could happen when the data is '
-      'corrupted. (on the C++ side).';
+      'Failed to decode audio data packet. This could happen when the data is '
+      'corrupted or truncated. (on the C++ side).';
 }
 
 /// The buffer stream can be played only once when using `release` buffer type.

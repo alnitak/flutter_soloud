@@ -57,6 +57,7 @@ FlacDecoderWrapper::FlacDecoderWrapper()
       m_streamInfoProcessed(false),
       m_read_pos(0),
       m_dataEnded(false),
+      m_drained(false),
       m_streamStartOffset(0),
       m_channels(0),
       m_samplerate(0),
@@ -84,6 +85,7 @@ void FlacDecoderWrapper::setIcyMetaInt(int icyMetaInt)
 
 bool FlacDecoderWrapper::initializeDecoder(int engineSamplerate, int engineChannels)
 {
+    m_drained = false;
     if (m_pFlacDecoder)
     {
         FLAC__stream_decoder_finish(m_pFlacDecoder);
@@ -235,6 +237,7 @@ std::pair<std::vector<float>, DecoderError> FlacDecoderWrapper::decode(std::vect
             }
             if (state == FLAC__STREAM_DECODER_END_OF_STREAM)
             {
+                m_drained = true;
                 break;
             }
             // For other decoder errors, attempt recovery by flushing and rolling back
@@ -246,6 +249,7 @@ std::pair<std::vector<float>, DecoderError> FlacDecoderWrapper::decode(std::vect
         FLAC__StreamDecoderState state = FLAC__stream_decoder_get_state(m_pFlacDecoder);
         if (state == FLAC__STREAM_DECODER_END_OF_STREAM)
         {
+            m_drained = true;
             break;
         }
 
@@ -277,6 +281,11 @@ std::pair<std::vector<float>, DecoderError> FlacDecoderWrapper::decode(std::vect
         m_audioData.erase(m_audioData.begin(), m_audioData.begin() + m_read_pos);
     }
     m_read_pos = 0;
+
+    if (m_dataEnded && m_audioData.empty())
+    {
+        m_drained = true;
+    }
 
     *sampleRate = m_samplerate;
     *channels = m_channels;
@@ -482,9 +491,27 @@ void FlacDecoderWrapper::prepareForSeek(uint64_t targetSample)
     mTotalEncodedBytes = 0;
     m_decodedPcm.clear();
     m_dataEnded = false;
+    m_drained = false;
     mPendingSkipTargetSample = targetSample;
     SOLOUD_DEBUG_LOG("[FlacDecoderWrapper] prepareForSeek targetSample=%llu\n",
            static_cast<unsigned long long>(targetSample));
+}
+
+bool FlacDecoderWrapper::hasPendingData() const
+{
+    if (m_dataEnded && m_drained)
+    {
+        return false;
+    }
+    if (!m_audioData.empty())
+    {
+        return true;
+    }
+    if (m_dataEnded && !m_drained)
+    {
+        return true;
+    }
+    return false;
 }
 
 #endif // #if !defined(NO_XIPH_LIBS)

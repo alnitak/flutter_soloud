@@ -7,7 +7,8 @@
 #include <cmath>
 
 VorbisDecoderWrapper::VorbisDecoderWrapper()
-    : vorbisInitialized(false), streamInitialized(false), headerParsed(false), firstPcmBlock(true), packetCount(0)
+    : vorbisInitialized(false), streamInitialized(false), headerParsed(false), firstPcmBlock(true), packetCount(0),
+      mDataEnded(false), mDrained(false)
 {
 }
 
@@ -35,6 +36,9 @@ bool VorbisDecoderWrapper::initializeDecoder(int engineSamplerate, int engineCha
     else if (engineSamplerate <= 24000) decodingSamplerate = 24000;
     else if (engineSamplerate <= 48000) decodingSamplerate = 48000;
     else decodingSamplerate = 96000;
+
+    mDataEnded = false;
+    mDrained = false;
 
     vorbis_info_init(&vi);
     vorbis_comment_init(&vc);
@@ -98,11 +102,29 @@ std::pair<std::vector<float>, DecoderError> VorbisDecoderWrapper::decode(std::ve
         buffer.clear();
     }
 
+    // First, drain any packets left in [os] from a previous bounded decode pass
+    if (streamInitialized) {
+        while (ogg_stream_packetout(&os, &op) == 1) {
+            decodePacket(&op, decodedData);
+            if (maxOutputSamples > 0 && decodedData.size() >= maxOutputSamples) {
+                if (headerParsed && samplerate && channels) {
+                    *samplerate = static_cast<int>(vi.rate);
+                    *channels   = static_cast<int>(vi.channels);
+                }
+                return {decodedData, DecoderError::NoError};
+            }
+        }
+    }
+
     // Process available pages, tracking byte offsets for seeking.
     while (true) {
         long ret = ogg_sync_pageseek(&oy, &og);
-        if (ret == 0)
+        if (ret == 0) {
+            if (mDataEnded) {
+                mDrained = true;
+            }
             break; // No complete page buffered yet; wait for more data.
+        }
         if (ret < 0)
         {
             // Bytes were skipped while searching for the next page capture
@@ -331,6 +353,27 @@ void VorbisDecoderWrapper::prepareForSeek(uint64_t targetSample)
         ogg_stream_init(&os, serial);
     }
     mSeekIndex.clear();
+    mDataEnded = false;
+    mDrained = false;
+}
+
+bool VorbisDecoderWrapper::hasPendingData() const {
+    if (mDataEnded && mDrained) {
+        return false;
+    }
+    if (streamInitialized) {
+        ogg_packet dummyOp;
+        if (ogg_stream_packetpeek(const_cast<ogg_stream_state*>(&os), &dummyOp) == 1) {
+            return true;
+        }
+    }
+    if (oy.fill > oy.returned) {
+        return true;
+    }
+    if (mDataEnded && !mDrained) {
+        return true;
+    }
+    return false;
 }
 
 bool VorbisDecoderWrapper::canSeekToTime(double seconds) const

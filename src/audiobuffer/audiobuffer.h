@@ -11,6 +11,7 @@
 #include "buffer.h"
 #include <atomic>
 #include <chrono>
+#include <thread>
 #include <stdio.h>
 #if !defined(NO_XIPH_LIBS)
 #include "opus_stream_decoder.h"
@@ -70,11 +71,17 @@ public:
   uint64_t mBytesReceived;
   uint64_t mUncompressedBytesReceived;
   bool dataIsEnded;
-  bool mIsBuffering;
+  std::atomic<bool> mIsBuffering{true};
   int mIcyMetaInt;
   
   // Flag to indicate the BufferStream is being destroyed
   std::atomic<bool> mIsDestroyed{false};
+
+#ifndef __EMSCRIPTEN__
+  std::thread mBackgroundDecodeThread;
+  std::atomic<bool> mStopBackgroundDecode{false};
+#endif
+  void stopBackgroundDecode();
 
   std::unique_ptr<StreamDecoder> streamDecoder;
 

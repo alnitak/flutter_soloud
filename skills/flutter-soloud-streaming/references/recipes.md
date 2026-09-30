@@ -19,7 +19,7 @@ Future<void> playUrl(String url) async {
     maxBufferSizeBytes: 1024 * 1024 * 200,
     bufferingType: BufferingType.released,
     bufferingTimeNeeds: 3,
-    format: BufferType.auto,          // detects MP3 / Ogg-Opus / Ogg-Vorbis
+    format: BufferType.auto,          // detects MP3, WAV, FLAC, Ogg, AAC, AC-3, E-AC-3 (on Web, AC-3/E-AC-3 are unsupported)
     channels: Channels.stereo,
     onBuffering: (isBuffering, handle, time) {
       // update a "buffering..." indicator

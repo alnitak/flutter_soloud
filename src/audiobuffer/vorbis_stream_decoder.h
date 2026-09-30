@@ -22,6 +22,9 @@ public:
     
     std::pair<std::vector<float>, DecoderError> decode(std::vector<unsigned char>& buffer, int* samplerate, int* channels, size_t maxOutputSamples = 0) override;
 
+    void setDataEnded() override { mDataEnded = true; }
+    bool hasPendingData() const override;
+
     bool canSeekToTime(double seconds) const override;
     uint64_t timeToByteOffset(double seconds) override;
     double getDuration() const override;
@@ -50,6 +53,8 @@ private:
     bool headerParsed;
     bool firstPcmBlock;
     int packetCount;
+    bool mDataEnded;
+    bool mDrained;
 
     OggSeekIndex mSeekIndex;
     ogg_int64_t mTotalSamples = -1;

@@ -22,6 +22,8 @@ public:
   decode(std::vector<unsigned char> &buffer, int *sampleRate,
          int *channels, size_t maxOutputSamples = 0) override;
 
+  bool hasPendingData() const override;
+
   bool canSeekToTime(double seconds) const override;
   uint64_t timeToByteOffset(double seconds) override;
   void prepareForSeek(uint64_t targetSample) override;
@@ -41,6 +43,7 @@ private:
   std::vector<unsigned char> audioData;
   size_t m_read_pos;
   bool mDataEnded; // Signals that no more data will be added
+  bool mDrained;
 
   /// Header bytes of the WAV file (everything before the data chunk). Kept
   /// across out-of-buffer seeks so the decoder can reinitialize from a

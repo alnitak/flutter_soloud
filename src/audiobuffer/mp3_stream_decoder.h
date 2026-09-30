@@ -9,6 +9,7 @@
 // #define DR_MP3_IMPLEMENTATION
 #include "../soloud/src/audiosource/wav/dr_mp3.h"
 
+#include "icy_metadata.h"
 #include "stream_decoder.h"
 
 /// Wrapper class for MP3 stream decoder using dr_mp3
@@ -33,6 +34,8 @@ public:
   decode(std::vector<unsigned char> &buffer, int *samplerate,
          int *channels, size_t maxOutputSamples = 0) override;
 
+  bool hasPendingData() const override;
+
   bool canSeekToTime(double seconds) const override;
   uint64_t timeToByteOffset(double seconds) override;
   double getDuration() const override;
@@ -48,11 +51,6 @@ private:
                               drmp3_seek_origin origin);
   static void on_meta(void *pUserData, const drmp3_metadata *pMetadata);
 
-  // bool extractID3Tags(const std::vector<unsigned char>& buffer,
-  // AudioMetadata& metadata);
-  void processIcyStream(std::vector<unsigned char> &buffer);
-  // size_t getLastFrameStartingPos(std::vector<unsigned char> &buffer, size_t
-  // *bytes_discarded_at_end);
   bool isInitialized;
   std::vector<unsigned char> audioData;
   size_t m_read_pos;
@@ -65,17 +63,18 @@ private:
   uint64_t m_seekTableBaseOffset;
   /// Size of the ID3v2 tag detected at initialization (0 when absent).
   size_t m_id3Size;
-  size_t bytes_until_meta;
-  std::string metadata_buffer;
-  std::string lastMetadata;
   int mIcyMetaInt;
+  IcyStripState mIcy;
   bool ID3TagsFound;
   bool mDataEnded; // Signals that no more data will be added
+  bool mDrained;   // True when decoder has finished draining after mDataEnded
   uint64_t mTotalAudioSizeBytes;
 
   void buildSeekTable();
   double estimateBitrateFromFirstFrame() const;
   double parseDurationFromXingVbri() const;
+  Mp3Metadata mCachedMp3Metadata;
+  bool mMetadataEmitted;
   mutable std::vector<drmp3_seek_point> mSeekPoints;
 };
 
