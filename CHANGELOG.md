@@ -1,3 +1,6 @@
+##### 5.1.6 (XX Xxx 2026)
+- feat Apple: add privacy manifest for iOS and macOS #577
+
 ##### 5.1.5 (30 Sep 2026)
 - fix: Android device enumeration crash and AAudio route-change race conditions. Thanks to @Colton127 #572
 - fix: prevent `setLinuxAudioBackend()` from running on non Linux platforms. Thanks to @Colton127 #572
