@@ -28,6 +28,9 @@ let package = Package(
                 // "engine_lifecycle.h" header search path below.
                 "src"
             ],
+            resources: [
+                .process("PrivacyInfo.xcprivacy")
+            ],
             cSettings: [
                 .headerSearchPath("src")
             ],

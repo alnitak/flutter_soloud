@@ -30,6 +30,9 @@ let package = Package(
                 // Force-included by the build hook on iOS, not compiled here.
                 "miniaudio_objc_prefix.h"
             ],
+            resources: [
+                .process("PrivacyInfo.xcprivacy")
+            ],
             cSettings: [
                 .headerSearchPath("src")
             ],
