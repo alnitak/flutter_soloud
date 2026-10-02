@@ -1,4 +1,4 @@
-##### 5.1.6 (XX Xxx 2026)
+##### 5.1.6 (2 Oct 2026)
 - feat Apple: add privacy manifest for iOS and macOS #577
 - fix: correct Ogg Opus decoder streaming loop for very short sounds #576
 
