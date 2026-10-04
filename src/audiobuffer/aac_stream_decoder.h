@@ -50,6 +50,7 @@ private:
   DetectedType mFormat;
   bool mMetadataParsed = false;
   int mIcyMetaInt = 0;
+  size_t mTotalBytesSeen = 0;
   IcyStripState mIcy;
   bool mId3Parsed = false;
   AacMetadata mCachedAacMetadata;

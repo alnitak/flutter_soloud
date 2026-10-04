@@ -64,6 +64,9 @@ bool AACDecoderWrapper::initializeDecoder(int engineSamplerate, int engineChanne
 void AACDecoderWrapper::setIcyMetaInt(int icyMetaInt) {
   if (mIcyMetaInt == icyMetaInt) return;
   mIcyMetaInt = icyMetaInt;
+  if (mIcyMetaInt > 0 && mIcy.audioBytesCount == 0 && mTotalBytesSeen > 0) {
+    mIcy.audioBytesCount = static_cast<int>(mTotalBytesSeen % mIcyMetaInt);
+  }
 }
 
 std::pair<std::vector<float>, DecoderError>
@@ -94,6 +97,7 @@ AACDecoderWrapper::decode(std::vector<unsigned char> &buffer, int *samplerate,
     mAudioData.insert(mAudioData.end(), cleanAudio.begin(), cleanAudio.end());
     buffer.clear();
   } else if (!buffer.empty()) {
+    mTotalBytesSeen += buffer.size();
     mAudioData.insert(mAudioData.end(), buffer.begin(), buffer.end());
     buffer.clear();
   }
