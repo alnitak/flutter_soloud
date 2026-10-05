@@ -7,6 +7,7 @@
   - **Android decoding optimizations**: Implemented pipelined MediaCodec buffer bursts and single-pass elementary stream decoding to reduce audio loading latency.
 - feat Apple: add privacy manifest for iOS and macOS #577
 - fix: correct Ogg Opus decoder streaming loop for very short sounds #576
+- **Parametric equalizer upgrade**: Converted equalizer filter from triangular response to true Gaussian bell curves on a logarithmic frequency scale with independent per-band center frequency (`bandFreq(i)`) and Q factor (`bandQ(i)`) controls across up to 64 bands, with default distribution from 30 Hz to 12 kHz. Added interactive `EqGraph` visualization widget to the example app.
 
 ##### 5.1.5 (30 Sep 2026)
 - fix: Android device enumeration crash and AAudio route-change race conditions. Thanks to @Colton127 #572
