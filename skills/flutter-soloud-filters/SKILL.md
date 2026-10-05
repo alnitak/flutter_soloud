@@ -78,7 +78,7 @@ sound.filters.pitchShiftFilter.timeStretch(handle, 1.25); // 25% faster, same pi
 // Global scope: do it manually — setRelativePlaySpeed(handle, speed) then
 // pitchShiftFilter.shift.value = 1 / speed.
 
-// Parametric EQ (bands are logarithmic, 30 Hz .. 16 kHz):
+// Parametric EQ (bands are logarithmic, 30 Hz .. 12 kHz):
 final eq = SoLoud.instance.filters.parametricEqFilter;
 eq.activate();
 eq.numBands.value = 10;
