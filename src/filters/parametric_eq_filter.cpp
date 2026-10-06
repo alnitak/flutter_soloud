@@ -1,7 +1,7 @@
 #include "parametric_eq_filter.h"
 #include "soloud.h"
 #include <algorithm>
-#include <math.h>
+#include <cmath>
 #include <string.h>
 #include <string>
 
