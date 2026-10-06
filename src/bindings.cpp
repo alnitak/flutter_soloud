@@ -1957,12 +1957,6 @@ extern "C"
     std::lock_guard<std::mutex> guard_load(loadMutex);
     if (player.get() == nullptr || !player.get()->isInited())
       return backendNotInited;
-
-    // BufferType::OPUS is deprecated in favor of BufferType::AUTO wich
-    // autodetects MP3, OGG Opus and OGG Vorbis formats
-    if (format == BufferType::OPUS)
-      format = BufferType::AUTO;
-
     unsigned int bytesPerSample = 4; // Default to 4 bytes for PCM_F32LE
     switch (format)
     {
@@ -2086,10 +2080,6 @@ extern "C"
     std::lock_guard<std::mutex> guard_load(loadMutex);
     if (player.get() == nullptr || !player.get()->isInited())
       return backendNotInited;
-
-    if (format == BufferType::OPUS)
-      format = BufferType::AUTO;
-
     PlayerErrors e = (PlayerErrors)player.get()->setPullBufferStream(
         *hash, bufferSizeBytes, bufferTriggerPosition, sampleRate, channels,
         (BufferType)format, audioSizeBytes, onBufferingCallback,

@@ -470,9 +470,9 @@ void ParametricEq::setFreqs(unsigned int nBands) {
   mGain.assign(mBands, 1.0f);
   mFreq.resize(mBands);
 
-  // default frequency distribution: geometric spacing between 30Hz and 16000Hz
+  // default frequency distribution: geometric spacing between 30Hz and 12000Hz
   float f0 = 30.0f;
-  float f1 = 16000.0f;
+  float f1 = 12000.0f;
   if (mBands == 1) {
     mFreq[0] = 1000.0f;
   } else {

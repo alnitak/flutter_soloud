@@ -166,8 +166,8 @@ N-band equalizer (1–64 bands), STFT-based. Source:
 
 Extra API: `bandFrequency(i)` returns the center frequency (Hz) of band `i`,
 read against the active filter's `numBands`. Bands are distributed
-logarithmically between 30 Hz and 16 kHz; with a single band the center is
-1 kHz. Example with 3 bands: 30 Hz, ~693 Hz, 16 kHz.
+logarithmically between 30 Hz and 12 kHz; with a single band the center is
+1 kHz. Example with 3 bands: 30 Hz, 600 Hz, 12 kHz.
 
 See `example/lib/filters/parametric_eq.dart`.
 

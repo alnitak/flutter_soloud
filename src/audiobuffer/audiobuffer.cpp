@@ -1,5 +1,7 @@
 #include <mutex>
 #include <string.h>
+#include <thread>
+#include <chrono>
 
 #include "../soloud_common.h"
 #include "audiobuffer.h"
@@ -120,7 +122,7 @@ void BufferStreamInstance::restoreSourceState(
 unsigned int BufferStreamInstance::getAudio(float *aBuffer,
                                             unsigned int aSamplesToRead,
                                             unsigned int aBufferSize) {
-  if (aBuffer == nullptr || mChannels == 0 || aSamplesToRead == 0) {
+  if (aBuffer == nullptr || aSamplesToRead == 0) {
     return 0;
   }
 
@@ -141,6 +143,13 @@ unsigned int BufferStreamInstance::getAudio(float *aBuffer,
     mSamplerate = mParent->autoTypeSamplerate;
     mChannels = mParent->autoTypeChannels;
     samplerateAlreadySet = true;
+  } else if (mChannels == 0 && mParent->mChannels > 0) {
+    mChannels = mParent->mChannels;
+  }
+
+  if (mChannels == 0) {
+    clearPlanarBuffer(aBuffer, aSamplesToRead, aBufferSize, mChannels);
+    return 0;
   }
 
   const unsigned int bufferSize =
@@ -156,17 +165,50 @@ unsigned int BufferStreamInstance::getAudio(float *aBuffer,
   }
 
   // No decoded samples available to play: zero the output and update the
-  // stream position. The buffering state will be checked when addData() or
-  // setDataIsEnded() is called.
+  // stream position. When the stream has not ended, auto-pause if buffering
+  // is needed.
   if (samplesToRead <= 0) {
     clearPlanarBuffer(aBuffer, aSamplesToRead, aBufferSize, mChannels);
     if (mParent->mBuffer.bufferingType == BufferingType::PRESERVED) {
-      mStreamPosition = (mBaseSamplerate > 0.0f)
+      mStreamPosition = (mBaseSamplerate > 0.0f && mChannels > 0)
                             ? mOffset / (mBaseSamplerate * mChannels)
                             : 0.0;
     } else {
       mStreamPosition = 0;
     }
+
+    if (!mParent->dataIsEnded && mParent->mBufferingTimeNeeds > 0) {
+      const bool wasPaused = (mFlags & AudioSourceInstance::PAUSED) != 0;
+      mFlags |= AudioSourceInstance::PAUSED;
+      mPauseScheduler.mActive = 0;
+
+      if (!wasPaused) {
+        if (mParent->mThePlayer != nullptr) {
+          mParent->mThePlayer->soloud.mActiveVoiceDirty = true;
+          mParent->mThePlayer->soloud.mVoiceInactiveCallbackPending = true;
+        }
+
+        mParent->mIsBuffering = true;
+
+        SoLoud::handle handle = 0;
+        if (mParent->mParent != nullptr && !mParent->mParent->handle.empty()) {
+          for (size_t i = 0; i < mParent->mParent->handle.size(); ++i) {
+            if ((mParent->mParent->handle[i].handle >> 12) == this->mPlayIndex) {
+              handle = mParent->mParent->handle[i].handle;
+              mParent->mParent->handle[i].isUserPaused = false;
+              break;
+            }
+          }
+          if (handle == 0) {
+            handle = mParent->mParent->handle[0].handle;
+            mParent->mParent->handle[0].isUserPaused = false;
+          }
+        }
+
+        mParent->callOnBufferingCallback(true, handle, mStreamPosition);
+      }
+    }
+
     return 0;
   }
 
@@ -206,12 +248,12 @@ unsigned int BufferStreamInstance::getAudio(float *aBuffer,
   // mOffset.
   if (mParent->mBuffer.bufferingType == BufferingType::RELEASED) {
     mParent->mSampleCount -= samplesRemoved;
-    mStreamPosition = 0;
     mParent->mBytesConsumed += totalBytesRead;
+    mStreamPosition = 0;
   } else {
     mOffset += samplesToRead * mChannels;
     // For PRESERVED type, streamPosition advances with the offset.
-    mStreamPosition = (mBaseSamplerate > 0.0f)
+    mStreamPosition = (mBaseSamplerate > 0.0f && mChannels > 0)
                           ? mOffset / (mBaseSamplerate * mChannels)
                           : 0.0;
   }
@@ -289,9 +331,19 @@ bool BufferStreamInstance::hasEnded() {
 
 BufferStream::BufferStream() : mIsDestroyed(false) {}
 
+void BufferStream::stopBackgroundDecode() {
+#ifndef __EMSCRIPTEN__
+  mStopBackgroundDecode.store(true);
+  if (mBackgroundDecodeThread.joinable()) {
+    mBackgroundDecodeThread.join();
+  }
+  mStopBackgroundDecode.store(false);
+#endif
+}
+
 BufferStream::~BufferStream() {
-  // stop();
-  // resetBuffer();
+  mIsDestroyed.store(true);
+  stopBackgroundDecode();
 }
 
 PlayerErrors BufferStream::setBufferStream(
@@ -302,11 +354,6 @@ PlayerErrors BufferStream::setBufferStream(
   /// maxBufferSize must be a number divisible by channels * sizeof(float)
   if (maxBufferSize % (pcmFormat.channels * sizeof(float)) != 0)
     maxBufferSize -= maxBufferSize % (pcmFormat.channels * sizeof(float));
-
-  // Force OPUS to AUTO since Mp3, Ogg Opus and Ogg Vorbis are auto detected
-  // There is no more need to use BufferType::OPUS
-  if (pcmFormat.dataType == BufferType::OPUS)
-    pcmFormat.dataType = BufferType::AUTO;
 
   autoTypeChannels = 0;
   autoTypeSamplerate = 0.f;
@@ -344,16 +391,11 @@ PlayerErrors BufferStream::setBufferStream(
     streamDecoder = std::make_unique<StreamDecoder>();
   }
 
-#if defined(NO_XIPH_LIBS)
-  if (pcmFormat.dataType == BufferType::OPUS) {
-    return PlayerErrors::failedToCreateOpusDecoder;
-  }
-#endif
-
   return PlayerErrors::noError;
 }
 
 void BufferStream::resetBuffer() {
+  stopBackgroundDecode();
   buffer.clear();
   mBuffer.clear();
   mSampleCount = 0;
@@ -383,15 +425,79 @@ void BufferStream::setDataIsEnded() {
     streamDecoder->setDataEnded();
   }
 
-  // Trigger a final decode pass to flush any remaining data.
-  // This is needed even if buffer.size() is 0, because the underlying
-  // decoder (e.g., dr_mp3) may have data in its internal buffer that
-  // hasn't been decoded yet.
+  // Trigger an initial bounded decode pass (up to 4096 * 4 samples) on the calling thread.
   addData(nullptr, 0, true);
 
   buffer.clear();
   dataIsEnded = true;
   checkBuffering(0);
+
+#if defined(__EMSCRIPTEN__)
+  // On Web, drain any remaining pending data from the decoder.
+  while (streamDecoder && streamDecoder->hasPendingData()) {
+    int sampleRate = (mThePlayer != nullptr) ? mThePlayer->mSampleRate : 44100;
+    int channels = (mThePlayer != nullptr) ? mThePlayer->mChannels : 2;
+    std::vector<unsigned char> emptyBuf;
+    auto [decoded, error] = streamDecoder->decode(
+        emptyBuf, &sampleRate, &channels, nullptr, 0);
+
+    if (!decoded.empty()) {
+      bool allDataAdded = false;
+      size_t bytesWritten = 0;
+      {
+        std::lock_guard<std::recursive_mutex> lock(mBuffer.bufferMutex);
+        bytesWritten = mBuffer.addData(BufferType::PCM_F32LE, decoded.data(),
+                                       decoded.size(), &allDataAdded) *
+                       sizeof(float);
+      }
+      checkBuffering(static_cast<unsigned int>(bytesWritten));
+      mUncompressedBytesReceived += bytesWritten;
+      mSampleCount += static_cast<unsigned int>(bytesWritten / sizeof(float));
+    } else {
+      break;
+    }
+  }
+#else
+  // If the decoder has remaining buffered data (e.g. Android MediaCodec with
+  // unthrottled incoming chunks), decode them in a background worker thread
+  // so Flutter's main UI thread is NEVER blocked!
+  if (streamDecoder && streamDecoder->hasPendingData()) {
+    stopBackgroundDecode();
+    mBackgroundDecodeThread = std::thread([this]() {
+      while (!mIsDestroyed.load() && !mStopBackgroundDecode.load() &&
+             streamDecoder && streamDecoder->hasPendingData()) {
+        int sampleRate = (mThePlayer != nullptr) ? mThePlayer->mSampleRate : 44100;
+        int channels = (mThePlayer != nullptr) ? mThePlayer->mChannels : 2;
+        std::vector<unsigned char> emptyBuf;
+        auto [decoded, error] = streamDecoder->decode(
+            emptyBuf, &sampleRate, &channels, nullptr, 4096 * 4);
+
+        if (!decoded.empty()) {
+          bool allDataAdded = false;
+          size_t bytesWritten = 0;
+          {
+            std::lock_guard<std::recursive_mutex> lock(mBuffer.bufferMutex);
+            bytesWritten = mBuffer.addData(BufferType::PCM_F32LE, decoded.data(),
+                                           decoded.size(), &allDataAdded) *
+                           sizeof(float);
+          }
+          checkBuffering(static_cast<unsigned int>(bytesWritten));
+          mUncompressedBytesReceived += bytesWritten;
+          mSampleCount += static_cast<unsigned int>(bytesWritten / sizeof(float));
+
+          if (!allDataAdded) {
+            // Buffer capacity reached; wait for playback to read and free space
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+          }
+        } else {
+          // If decoder didn't produce samples in this pass (waiting on codec output),
+          // yield briefly to avoid busy-spinning
+          std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        }
+      }
+    });
+  }
+#endif
 }
 
 void BufferStream::setBufferIcyMetaInt(int icyMetaInt) {
@@ -422,7 +528,7 @@ PlayerErrors BufferStream::addData(const void *aData, unsigned int aDataLen,
     } else {
       // Performing some buffering. We need some data to be added expecially
       // when using opus or mp3.
-      if (buffer.size() > 1024 * 4) // 4 KB of data.
+      if (buffer.size() > 1024 * 4 || (streamDecoder && streamDecoder->hasPendingData()))
       {
         // When using opus,ogg or mp3 we don't need to align.
         bufferDataToAdd = static_cast<int32_t>(buffer.size());
@@ -444,22 +550,27 @@ PlayerErrors BufferStream::addData(const void *aData, unsigned int aDataLen,
     // settings and the AudioSource will be set to use them. For the mp3 this
     // AudioSource will impose the mp3 settings (the engine will convert to its
     // settings).
+    const size_t maxSamples = dontAdd ? (4096 * 4) : 0;
     auto [decoded, error] = streamDecoder->decode(
         buffer, &sampleRate, &channels, [&](AudioMetadata meta) {
           //   meta.debug();
           if (this->mOnMetadataCallback != nullptr)
             this->callOnMetadataCallback(meta);
-        });
+        }, maxSamples);
 
     // Handle decoder errors
     switch (error) {
     case DecoderError::FormatNotSupported:
+      fprintf(stderr, "[flutter_soloud] addData: Audio format not supported on this platform.\n");
       return PlayerErrors::audioFormatNotSupported;
     case DecoderError::NoXiphLibs:
+      fprintf(stderr, "[flutter_soloud] addData: Xiph libraries (Ogg/Vorbis/Opus) not found.\n");
       return PlayerErrors::xiphLibsNotFound;
     case DecoderError::FailedToCreateDecoder:
+      fprintf(stderr, "[flutter_soloud] addData: Failed to create audio decoder.\n");
       return PlayerErrors::failedToCreateOpusDecoder;
     case DecoderError::ErrorReadingOggOpusPage:
+      fprintf(stderr, "[flutter_soloud] addData: Failed to decode audio packet (corrupted or truncated page).\n");
       return PlayerErrors::failedToDecodeOpusPacket;
     default:
       break;
@@ -521,55 +632,70 @@ PlayerErrors BufferStream::addData(const void *aData, unsigned int aDataLen,
 void BufferStream::checkBuffering(unsigned int afterAddingBytesCount) {
   std::lock_guard<std::mutex> lock(check_buffer_mutex);
 
+  if (mThePlayer == nullptr || mParent == nullptr) return;
+  if (mBaseSamplerate == 0.0f || mChannels == 0) return;
+
   // If a handle reaches the end and data is not ended, we have to wait for it
-  // has enough data to reach [TIME_FOR_BUFFERING] and restart playing it.
+  // to have enough data to reach [mBufferingTimeNeeds] and restart playing it.
   SoLoud::time currBufferTime = getLength();
   SoLoud::time addedDataTime =
       (afterAddingBytesCount / sizeof(float)) /
       (mBaseSamplerate * mChannels);
+  SoLoud::time totalDataTime = currBufferTime + addedDataTime;
 
-  for (int i = 0; i < mParent->handle.size(); i++) {
+  for (size_t i = 0; i < mParent->handle.size(); i++) {
     SoLoud::handle handle = mParent->handle[i].handle;
+    if (!mThePlayer->isValidHandle(handle)) continue;
+
     SoLoud::time pos = mBuffer.bufferingType == BufferingType::RELEASED
                            ? getStreamTimeConsumed()
                            : mThePlayer->getPosition(handle);
     bool isPaused = mThePlayer->getPause(handle);
+    SoLoud::time availableAhead =
+        totalDataTime >= pos ? (totalDataTime - pos) : 0.0;
 
-    // This handle needs to wait for [TIME_FOR_BUFFERING]. Pause it.
-    // Pause only when the play position has reached the end of the data that
-    // was already buffered before this addData() call. The unpause below will
-    // then wait until at least [bufferingTimeNeeds] seconds of audio are
-    // available ahead of position.
-    if (mBuffer.bufferingType == BufferingType::RELEASED &&
-        !dataIsEnded && pos >= currBufferTime && !isPaused) {
-      mParent->handle[i].bufferingTime = currBufferTime + addedDataTime;
+    // This handle needs to wait for [mBufferingTimeNeeds]. Pause it.
+    // Pause when:
+    // 1) The play position has reached the end of the data that was already
+    //    buffered before this addData() call, OR
+    // 2) The stream is currently buffering and does not yet have enough audio
+    //    ahead of the playhead.
+    const bool needsBuffering =
+        !dataIsEnded && (mBufferingTimeNeeds > 0) &&
+        (availableAhead < mBufferingTimeNeeds) &&
+        (pos >= currBufferTime || mIsBuffering);
+
+    if (needsBuffering && !isPaused) {
+      mParent->handle[i].bufferingTime = totalDataTime;
       // This is an automatic buffering pause, so the user-paused flag should
       // not prevent a future buffering unpause.
       mParent->handle[i].isUserPaused = false;
       mThePlayer->setPause(handle, true, false);
       isPaused = true;
-      callOnBufferingCallback(true, handle, currBufferTime + addedDataTime);
-    } else
-    // This handle has reached [TIME_FOR_BUFFERING]. Unpause it.
-    // Only unpause when buffer covers playback position + margin,
-    // not just when new data >= margin (which caused play/pause toggling
-    // when seeking beyond buffered data).
-    // Also respect a user-initiated pause: if the user pressed pause, do not
-    // automatically resume even when enough data is buffered.
-    if (currBufferTime + addedDataTime >= pos + mBufferingTimeNeeds && isPaused &&
-        !mParent->handle[i].isUserPaused){
-        mParent->handle[i].bufferingTime = currBufferTime + addedDataTime;
+      mIsBuffering = true;
+      callOnBufferingCallback(true, handle, totalDataTime);
+    } else if (availableAhead >= mBufferingTimeNeeds) {
+      // This handle has reached [mBufferingTimeNeeds]. Unpause it if it was
+      // paused by the buffering mechanism.
+      // Also respect a user-initiated pause: if the user pressed pause, do not
+      // automatically resume even when enough data is buffered.
+      if (isPaused && !mParent->handle[i].isUserPaused) {
+        mParent->handle[i].bufferingTime = totalDataTime;
         mThePlayer->setPause(handle, false, false);
         isPaused = false;
-        callOnBufferingCallback(false, handle, currBufferTime + addedDataTime);
+        mIsBuffering = false;
+        callOnBufferingCallback(false, handle, totalDataTime);
       } else if (isPaused && mParent->handle[i].isUserPaused) {
-        if (currBufferTime + addedDataTime >= pos + mBufferingTimeNeeds && mIsBuffering) {
-          mParent->handle[i].bufferingTime = currBufferTime + addedDataTime;
-          callOnBufferingCallback(false, handle, currBufferTime + addedDataTime);
-        } else {
-          // fprintf(stderr, "[checkBuffering] -> STAY PAUSED handle=%u (user paused)\n", handle);
+        if (mIsBuffering) {
+          mParent->handle[i].bufferingTime = totalDataTime;
+          mIsBuffering = false;
+          callOnBufferingCallback(false, handle, totalDataTime);
         }
+      } else if (!isPaused && mIsBuffering) {
+        mIsBuffering = false;
       }
+    }
+
     // If data is ended and the handle is paused, unpause it to listen to the
     // rest of the data. This also clears the user-paused flag so that a
     // user-paused stream drains its remaining buffer when the stream ends.
@@ -577,7 +703,7 @@ void BufferStream::checkBuffering(unsigned int afterAddingBytesCount) {
       mThePlayer->setPause(handle, false, false);
       isPaused = false;
       mParent->handle[i].bufferingTime = MAX_DOUBLE;
-      callOnBufferingCallback(false, handle, currBufferTime);
+      callOnBufferingCallback(false, handle, totalDataTime);
     }
   }
 }
@@ -735,6 +861,18 @@ BufferStream::convertMetadataToFFI(const AudioMetadata &metadata) {
   case BUFFER_WAV:
     ffi.detectedType = DetectedTypeFFI::WAV;
     break;
+  case BUFFER_M4A:
+    ffi.detectedType = DetectedTypeFFI::M4A;
+    break;
+  case BUFFER_AAC:
+    ffi.detectedType = DetectedTypeFFI::AAC;
+    break;
+  case BUFFER_AC3:
+    ffi.detectedType = DetectedTypeFFI::AC3;
+    break;
+  case BUFFER_EAC3:
+    ffi.detectedType = DetectedTypeFFI::EAC3;
+    break;
   default:
     ffi.detectedType = DetectedTypeFFI::UNKNOWN;
   }
@@ -744,12 +882,27 @@ BufferStream::convertMetadataToFFI(const AudioMetadata &metadata) {
           MAX_STRING_LENGTH - 1);
   strncpy(ffi.mp3Metadata.artist, metadata.mp3Metadata.artist.c_str(),
           MAX_STRING_LENGTH - 1);
+  strncpy(ffi.mp3Metadata.album_artist, metadata.mp3Metadata.albumArtist.c_str(),
+          MAX_STRING_LENGTH - 1);
   strncpy(ffi.mp3Metadata.album, metadata.mp3Metadata.album.c_str(),
           MAX_STRING_LENGTH - 1);
   strncpy(ffi.mp3Metadata.date, metadata.mp3Metadata.date.c_str(),
           MAX_STRING_LENGTH - 1);
   strncpy(ffi.mp3Metadata.genre, metadata.mp3Metadata.genre.c_str(),
           MAX_STRING_LENGTH - 1);
+  strncpy(ffi.mp3Metadata.composer, metadata.mp3Metadata.composer.c_str(),
+          MAX_STRING_LENGTH - 1);
+  strncpy(ffi.mp3Metadata.comment, metadata.mp3Metadata.comment.c_str(),
+          MAX_STRING_LENGTH - 1);
+  strncpy(ffi.mp3Metadata.track, metadata.mp3Metadata.track.c_str(),
+          MAX_STRING_LENGTH - 1);
+  strncpy(ffi.mp3Metadata.disc, metadata.mp3Metadata.disc.c_str(),
+          MAX_STRING_LENGTH - 1);
+  strncpy(ffi.mp3Metadata.stream_url, metadata.mp3Metadata.streamUrl.c_str(),
+          MAX_STRING_LENGTH - 1);
+  ffi.mp3Metadata.sample_rate = metadata.mp3Metadata.sampleRate;
+  ffi.mp3Metadata.channels = metadata.mp3Metadata.channels;
+  ffi.mp3Metadata.bitrate = metadata.mp3Metadata.bitrate;
 
   // Convert OGG metadata
   strncpy(ffi.oggMetadata.vendor, metadata.oggMetadata.vendor.c_str(),
@@ -787,7 +940,7 @@ BufferStream::convertMetadataToFFI(const AudioMetadata &metadata) {
       metadata.oggMetadata.opusInfo.mapping_family,
       metadata.oggMetadata.opusInfo.stream_count,
       metadata.oggMetadata.opusInfo.coupled_count,
-      {0}, // Initialize channel_mapping array to zeros
+      {},
       (int)metadata.oggMetadata.opusInfo.channel_mapping.size()};
 
   // Convert Flac info
@@ -801,7 +954,7 @@ BufferStream::convertMetadataToFFI(const AudioMetadata &metadata) {
                               metadata.oggMetadata.flacInfo.total_samples};
 
   // Also populate FLAC info for raw FLAC streams
-  if (metadata.type == DetectedType::BUFFER_FLAC) {
+  if (metadata.type == BUFFER_FLAC) {
     ffi.detectedType = DetectedTypeFFI::OGG_FLAC;
   }
 
@@ -812,6 +965,85 @@ BufferStream::convertMetadataToFFI(const AudioMetadata &metadata) {
     ffi.oggMetadata.opusInfo.channel_mapping[i] =
         metadata.oggMetadata.opusInfo.channel_mapping[i];
   }
+
+  // Convert AAC metadata
+  strncpy(ffi.aacMetadata.title, metadata.aacMetadata.title.c_str(),
+          MAX_STRING_LENGTH - 1);
+  strncpy(ffi.aacMetadata.artist, metadata.aacMetadata.artist.c_str(),
+          MAX_STRING_LENGTH - 1);
+  strncpy(ffi.aacMetadata.album_artist, metadata.aacMetadata.albumArtist.c_str(),
+          MAX_STRING_LENGTH - 1);
+  strncpy(ffi.aacMetadata.album, metadata.aacMetadata.album.c_str(),
+          MAX_STRING_LENGTH - 1);
+  strncpy(ffi.aacMetadata.date, metadata.aacMetadata.date.c_str(),
+          MAX_STRING_LENGTH - 1);
+  strncpy(ffi.aacMetadata.genre, metadata.aacMetadata.genre.c_str(),
+          MAX_STRING_LENGTH - 1);
+  strncpy(ffi.aacMetadata.composer, metadata.aacMetadata.composer.c_str(),
+          MAX_STRING_LENGTH - 1);
+  strncpy(ffi.aacMetadata.comment, metadata.aacMetadata.comment.c_str(),
+          MAX_STRING_LENGTH - 1);
+  strncpy(ffi.aacMetadata.track, metadata.aacMetadata.track.c_str(),
+          MAX_STRING_LENGTH - 1);
+  strncpy(ffi.aacMetadata.disc, metadata.aacMetadata.disc.c_str(),
+          MAX_STRING_LENGTH - 1);
+  strncpy(ffi.aacMetadata.stream_url, metadata.aacMetadata.streamUrl.c_str(),
+          MAX_STRING_LENGTH - 1);
+  ffi.aacMetadata.sample_rate = metadata.aacMetadata.sampleRate;
+  ffi.aacMetadata.channels = metadata.aacMetadata.channels;
+  strncpy(ffi.aacMetadata.profile, metadata.aacMetadata.profile.c_str(),
+          sizeof(ffi.aacMetadata.profile) - 1);
+  ffi.aacMetadata.bitrate = metadata.aacMetadata.bitrate;
+  ffi.aacMetadata.frame_length = metadata.aacMetadata.frameLength;
+
+  // Convert M4A metadata
+  strncpy(ffi.m4aMetadata.title, metadata.m4aMetadata.title.c_str(),
+          MAX_STRING_LENGTH - 1);
+  strncpy(ffi.m4aMetadata.artist, metadata.m4aMetadata.artist.c_str(),
+          MAX_STRING_LENGTH - 1);
+  strncpy(ffi.m4aMetadata.album_artist, metadata.m4aMetadata.albumArtist.c_str(),
+          MAX_STRING_LENGTH - 1);
+  strncpy(ffi.m4aMetadata.album, metadata.m4aMetadata.album.c_str(),
+          MAX_STRING_LENGTH - 1);
+  strncpy(ffi.m4aMetadata.date, metadata.m4aMetadata.date.c_str(),
+          MAX_STRING_LENGTH - 1);
+  strncpy(ffi.m4aMetadata.genre, metadata.m4aMetadata.genre.c_str(),
+          MAX_STRING_LENGTH - 1);
+  strncpy(ffi.m4aMetadata.composer, metadata.m4aMetadata.composer.c_str(),
+          MAX_STRING_LENGTH - 1);
+  strncpy(ffi.m4aMetadata.comment, metadata.m4aMetadata.comment.c_str(),
+          MAX_STRING_LENGTH - 1);
+  strncpy(ffi.m4aMetadata.track, metadata.m4aMetadata.track.c_str(),
+          MAX_STRING_LENGTH - 1);
+  strncpy(ffi.m4aMetadata.disc, metadata.m4aMetadata.disc.c_str(),
+          MAX_STRING_LENGTH - 1);
+  strncpy(ffi.m4aMetadata.codec, metadata.m4aMetadata.codec.c_str(),
+          sizeof(ffi.m4aMetadata.codec) - 1);
+  ffi.m4aMetadata.sample_rate = metadata.m4aMetadata.sampleRate;
+  ffi.m4aMetadata.channels = metadata.m4aMetadata.channels;
+  ffi.m4aMetadata.bitrate = metadata.m4aMetadata.bitrate;
+
+  // Convert AC3 metadata
+  ffi.ac3Metadata.sample_rate = metadata.ac3Metadata.sampleRate;
+  ffi.ac3Metadata.channels = metadata.ac3Metadata.channels;
+  ffi.ac3Metadata.bitrate = metadata.ac3Metadata.bitrate;
+  ffi.ac3Metadata.bsid = metadata.ac3Metadata.bsid;
+  ffi.ac3Metadata.bsmod = metadata.ac3Metadata.bsmod;
+  ffi.ac3Metadata.acmod = metadata.ac3Metadata.acmod;
+  ffi.ac3Metadata.lfeon = metadata.ac3Metadata.lfeOn ? 1 : 0;
+  ffi.ac3Metadata.frame_size = metadata.ac3Metadata.frameSize;
+
+  // Convert EAC3 metadata
+  ffi.eac3Metadata.sample_rate = metadata.eac3Metadata.sampleRate;
+  ffi.eac3Metadata.channels = metadata.eac3Metadata.channels;
+  ffi.eac3Metadata.bitrate = metadata.eac3Metadata.bitrate;
+  ffi.eac3Metadata.bsid = metadata.eac3Metadata.bsid;
+  ffi.eac3Metadata.stream_type = metadata.eac3Metadata.streamType;
+  ffi.eac3Metadata.substream_id = metadata.eac3Metadata.substreamId;
+  ffi.eac3Metadata.acmod = metadata.eac3Metadata.acmod;
+  ffi.eac3Metadata.lfeon = metadata.eac3Metadata.lfeOn ? 1 : 0;
+  ffi.eac3Metadata.frame_size = metadata.eac3Metadata.frameSize;
+  ffi.eac3Metadata.num_blocks = metadata.eac3Metadata.numBlocks;
 
   return ffi;
 }

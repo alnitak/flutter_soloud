@@ -78,7 +78,7 @@ sound.filters.pitchShiftFilter.timeStretch(handle, 1.25); // 25% faster, same pi
 // Global scope: do it manually — setRelativePlaySpeed(handle, speed) then
 // pitchShiftFilter.shift.value = 1 / speed.
 
-// Parametric EQ (bands are logarithmic, 30 Hz .. 16 kHz):
+// Parametric EQ (bands are logarithmic, 30 Hz .. 12 kHz):
 final eq = SoLoud.instance.filters.parametricEqFilter;
 eq.activate();
 eq.numBands.value = 10;
@@ -90,7 +90,6 @@ final hz = eq.bandFrequency(0); // center frequency of band 0 (30 Hz)
 ## Traps
 
 - **Per-sound filters must be activated before `play()`.** Only voices started after `activate()` carry the filter; already-playing handles are unaffected. To change the filter set, `stop` the handle and play again.
-- **Per-sound filters do not work on web.** Any `activate()`/param access with a `soundHash` on web throws `SoLoudFilterForSingleSoundOnWebDartException`. Global filters work on web; gate per-sound usage with `kIsWeb` if your app targets it.
 - **Max 8 filters per stream/sound** (`FILTERS_PER_STREAM` in SoLoud). The 13 types each occupy one slot per scope.
 - **Out-of-range `param.value` sets are silently ignored** — the setter logs a warning and returns without throwing. Check bounds with the `queryXxx.min/max` getters.
 - **Naming inconsistencies vs. intuition:** the single/bus-scope biquad getter is `biquadFilter` (global: `biquadResonantFilter`); freeverb's damping param is `damp` (not `damping`); lofi's params are `samplerate`/`bitdepth` (all lowercase). The online docs get some of these wrong — trust the code in `lib/src/filters/`.

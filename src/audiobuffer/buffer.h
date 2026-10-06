@@ -59,7 +59,6 @@ public:
         switch (format)
         {
             case BufferType::AUTO:
-            case BufferType::OPUS:
             case BufferType::PCM_F32LE:
             {
                 return addData(reinterpret_cast<const float*>(data), numSamples, allDataAdded);

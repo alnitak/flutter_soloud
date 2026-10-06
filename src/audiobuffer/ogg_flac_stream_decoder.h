@@ -19,6 +19,7 @@ public:
     bool initializeDecoder(int engineSamplerate, int engineChannels) override;
     std::pair<std::vector<float>, DecoderError> decode(std::vector<unsigned char>& buffer, int* sampleRate, int* channels, size_t maxOutputSamples = 0) override;
     void setDataEnded() override { m_dataEnded = true; }
+    bool hasPendingData() const override;
 
     bool canSeekToTime(double seconds) const override;
     uint64_t timeToByteOffset(double seconds) override;
@@ -44,6 +45,7 @@ private:
     ogg_stream_state m_os;
     bool m_streamInitialized;
     bool m_dataEnded;
+    bool m_drained;
     uint64_t m_streamStartOffset;
 
     std::vector<float> m_decodedPcm;

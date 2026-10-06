@@ -207,6 +207,10 @@ class _HttpRangeStreamExampleState extends State<HttpRangeStreamExample> {
       case DetectedType.mp3WithId3:
       case DetectedType.mp3Stream:
       case DetectedType.wav:
+      case DetectedType.m4a:
+      case DetectedType.aac:
+      case DetectedType.ac3:
+      case DetectedType.eac3:
       case DetectedType.unknown:
         break;
     }

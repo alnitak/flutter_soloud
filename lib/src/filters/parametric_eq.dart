@@ -117,11 +117,12 @@ abstract class _ParametricEqInternal extends FilterBase {
   /// [nBands] is the total number of bands.
   ///
   /// Frequencies are distributed logarithmically (geometrically) between
-  /// 30 Hz and 16,000 Hz to match human auditory perception.
+  /// 30 Hz and 12,000 Hz to match human auditory perception.
   @protected
+  @visibleForTesting
   double calculateBandFrequency(int bandIndex, int nBands) {
     // This reflects the internal logic of the SoLoud parametric EQ filter,
-    // which uses a logarithmic scale between 30 Hz and 16,000 Hz.
+    // which uses a logarithmic scale between 30 Hz and 12,000 Hz.
     // If "ParametricEq::setFreqs" of "parametric_eq_filter.cpp" is updated,
     // this function should be updated as well.
     if (bandIndex < 0 || bandIndex >= nBands) {
@@ -134,7 +135,7 @@ abstract class _ParametricEqInternal extends FilterBase {
     }
 
     const f0 = 30.0; // Lower bound: 30 Hz
-    const f1 = 16000.0; // Upper bound: 16,000 Hz
+    const f1 = 12000.0; // Upper bound: 12,000 Hz
 
     if (nBands == 1) {
       return 1000; // Special case: single band at 1 kHz
@@ -203,12 +204,12 @@ class ParametricEqSingle extends _ParametricEqInternal {
   /// throw [ArgumentError]
   ///
   /// Frequencies are distributed logarithmically (geometrically) between
-  /// 30 Hz and 16,000 Hz to match human auditory perception.
+  /// 30 Hz and 12,000 Hz to match human auditory perception.
   ///
   /// Example with 3 bands:
   /// - Band 0: 30 Hz
-  /// - Band 1: ~693 Hz
-  /// - Band 2: 16,000 Hz
+  /// - Band 1: 600 Hz
+  /// - Band 2: 12,000 Hz
   double bandFrequency(int bandIndex, {SoundHandle? soundHandle}) {
     final nBands = getNumBands(soundHandle);
     return calculateBandFrequency(bandIndex, nBands);
@@ -271,12 +272,12 @@ class ParametricEqGlobal extends _ParametricEqInternal {
   /// throw [ArgumentError]
   ///
   /// Frequencies are distributed logarithmically (geometrically) between
-  /// 30 Hz and 16,000 Hz to match human auditory perception.
+  /// 30 Hz and 12,000 Hz to match human auditory perception.
   ///
   /// Example with 3 bands:
   /// - Band 0: 30 Hz
-  /// - Band 1: ~693 Hz
-  /// - Band 2: 16,000 Hz
+  /// - Band 1: 600 Hz
+  /// - Band 2: 12,000 Hz
   double bandFrequency(int bandIndex) {
     final nBands = getNumBands(null);
     return calculateBandFrequency(bandIndex, nBands);

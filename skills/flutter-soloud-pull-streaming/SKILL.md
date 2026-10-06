@@ -1,6 +1,6 @@
 ---
 name: flutter-soloud-pull-streaming
-version: 1
+version: 2
 description: Teaches the pull-buffer streaming API of the flutter_soloud audio plugin — setPullBufferStream with its onMoreDataIsNeeded callback, addPullBufferDataStream with byte offsets, seek via engine re-requests, and bounded-memory playback of huge seekable sources (HTTP range requests, large files). Use when the user asks to stream a large remote/local audio file with seeking, play multi-GB audio without loading it into memory, or is deciding between push (setBufferStream) and pull streaming.
 ---
 
@@ -27,7 +27,7 @@ Future<void> playHugeFile(
     audioSizeBytes: totalBytes, // REQUIRED, non-zero, known upfront
     bufferSizeBytes: 5 * 1024 * 1024, // decoded circular buffer, ~14 s stereo f32
     bufferTriggerPosition: 0.8, // default; ask for more when 20% ahead remains
-    format: BufferType.auto, // default; detects MP3/OGG Opus/OGG Vorbis/FLAC/WAV
+    format: BufferType.auto, // default; detects MP3, WAV, FLAC, OGG, AAC, AC-3, E-AC-3
     onAudioDuration: (seconds) {/* total duration is now known */},
     onMetadata: (metadata) {/* detected format, sample rate, channels */},
     onMoreDataIsNeeded: (offset) {
@@ -87,7 +87,7 @@ PlayerErrors addPullBufferDataStream(
 - `setPullBufferStream` returns an `AudioSource` synchronously (unlike `loadAsset`/`loadFile`, which are async) and throws `SoLoudCppException` on error. Play it with the usual synchronous `SoLoud.instance.play(source)`.
 - `audioSizeBytes` is the total size of the **encoded** source and is mandatory upfront (server `Content-Length`, file length). It drives duration calculation and end-of-stream detection; for Ogg formats the engine also uses it to request the tail chunk for duration probing.
 - `bufferTriggerPosition` is about how much decoded audio remains **ahead of the playhead**, not absolute fill level: `0.8` fires the request when the playhead is within the last 20% of the decoded window. Values outside `[0.0, 1.0]` are clamped.
-- `sampleRate`/`channels` are **ignored** when `format` is `BufferType.auto` (the common case); they only matter for raw PCM formats (`f32le`, `s8`, `s16le`, `s32le`). `BufferType.opus` is deprecated — use `auto`.
+- `sampleRate`/`channels` are **ignored** when `format` is `BufferType.auto` (the common case); they only matter for raw PCM formats (`f32le`, `s8`, `s16le`, `s32le`).
 - `addPullBufferDataStream` takes a named `offset`. `offset: 0` means "append the next sequential chunk" — always pass the real requested offset from the callback instead. Empty chunks are a no-op returning `PlayerErrors.noError`.
 - `getPullBufferTimeRange` returns the decoded window currently in the circular buffer as `Duration`s; the playhead normally sits near `startTime`. Use it to render a buffered-range indicator and to detect "smart" seeks (target inside the window = no refetch needed).
 - Divergence from audioplayers/just_audio: there is no `setUrl`, no `player.durationStream`, no `AudioSource.uri`. Duration arrives asynchronously through the `onAudioDuration` callback (seconds as `double`), and position is polled with `SoLoud.instance.getPosition(handle)`. There is no `Source` object per URL — you are the transport.
@@ -101,6 +101,9 @@ flutter_soloud has two streaming APIs; pick by source shape:
 
 ## Traps
 
+- **MP4 and M4A containers are NOT supported for streaming.** While MP4/M4A audio files are supported for whole-file loading (`loadFile`/`loadAsset`/`loadMem`), streaming chunks from MP4/M4A containers is not supported. Use streamable elementary formats (AAC ADTS, AC-3, E-AC-3, OGG, MP3, WAV, or raw PCM).
+- **Linux requirement for AAC / AC-3 / E-AC-3.** On Linux, streaming these formats requires FFmpeg shared libraries (`libavcodec` and `libavformat`) installed on the host system (`sudo apt install ffmpeg libavcodec-extra`, `sudo pacman -S ffmpeg`, etc.). Core formats (MP3, WAV, FLAC, OGG) work without FFmpeg.
+- **Web browser limitation for AC-3 / E-AC-3.** AC-3 and E-AC-3 streaming is **not supported on the Web platform in any browser**. Chrome and Firefox lack Dolby licensing, and Safari's WebCodecs engine rejects raw AC-3 elementary stream frames. AC-3 and E-AC-3 streaming is supported only on native platforms (iOS, macOS native, Android, Windows, and Linux with FFmpeg). On Web, feeding AC-3/E-AC-3 stream data returns `PlayerErrors.audioFormatNotSupported`. For cross-browser web streaming, use AAC (ADTS), Opus, MP3, FLAC, or raw PCM.
 - **`audioSizeBytes` of 0 throws.** `setPullBufferStream` calls `SoLoudCppException.fromPlayerError(PlayerErrors.invalidParameter)` when it is 0. Do a HEAD request / stat the file first. A server that omits `Content-Length` and `Accept-Ranges: bytes` is a poor fit for pull.
 - **Do not invent an end-of-stream call.** There is no `setDataIsEnded` for pull streams (that belongs to the push API). The stream ends automatically once sequential data reaches `audioSizeBytes`.
 - **The callback can re-fire for the same offset and fire out of order.** Deduplicate in-flight requests (`_pendingOffsets.add(offset)` pattern) and guard `offset < 0 || offset >= audioSizeBytes` — the engine may probe the tail for Ogg duration. `addPullBufferDataStream` accepts out-of-order chunks precisely for this.
