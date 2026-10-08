@@ -100,6 +100,24 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   nativeFileLoadedCallable;
   ffi.NativeCallable<native.dartStateChangedCallback_tFunction>?
   nativeStateChangedCallable;
+
+  /// Voice-ended and state-changed events arrive on these ports rather than
+  /// through a `NativeCallable`. Both can fire after the app has been in the
+  /// background for a long time -- state changes come from AVAudioSession
+  /// notifications on the iOS main thread, voices end on the audio thread
+  /// during background playback -- and executing a trampoline then has been
+  /// seen to crash (alnitak/flutter_soloud#547). Posting to a port runs no
+  /// Dart code on the native thread.
+  ///
+  /// When the Dart native API cannot be initialized, the trampolines above are
+  /// used instead.
+  ReceivePort? _voiceEndedPort;
+  ReceivePort? _stateChangedPort;
+
+  /// Whether `initDartApiDL` succeeded; resolved once per isolate.
+  static final bool _dartApiDLAvailable =
+      native.initDartApiDL(ffi.NativeApi.initializeApiDLData) == 0;
+
   ffi.NativeCallable<native.dartMixerOutputDataCallback_tFunction>?
   nativeMixerOutputDataCallable;
   ffi.NativeCallable<native.dartVisualizationCallback_tFunction>?
@@ -132,6 +150,11 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       callbacks.close();
     }
     _bufferStreamNativeCallables.clear();
+  }
+
+  void _voiceEndedMessage(dynamic message) {
+    if (message is! int) return;
+    voiceEndedEventController.add(message);
   }
 
   void _voiceEndedCallback(ffi.Pointer<ffi.UnsignedInt> handle) {
@@ -170,13 +193,19 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     nativeFree(counter.cast<ffi.Void>());
   }
 
+  void _stateChangedMessage(dynamic message) {
+    if (message is! int) return;
+    final s = PlayerStateNotification.values[message];
+    _log.finest(() => 'STATE CHANGED EVENT state: $s');
+    stateChangedController.add(s);
+  }
+
   void _stateChangedCallback(ffi.Pointer<ffi.UnsignedInt> state) {
-    final s = PlayerStateNotification.values[state.value];
+    final value = state.value;
     // Must free a pointer made on cpp. On Windows this must be freed
     // there and cannot use `calloc.free(state)`
     nativeFree(state.cast<ffi.Void>());
-    _log.finest(() => 'STATE CHANGED EVENT state: $s');
-    stateChangedController.add(s);
+    _stateChangedMessage(value);
   }
 
   void _mixerOutputDataCallback(
@@ -272,10 +301,18 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     nativeFileLoadedCallable = null;
     nativeStateChangedCallable?.close();
     nativeStateChangedCallable = null;
+    _closeEventPorts();
     nativeMixerOutputDataCallable?.close();
     nativeMixerOutputDataCallable = null;
     nativeVisualizationCallable?.close();
     nativeVisualizationCallable = null;
+  }
+
+  void _closeEventPorts() {
+    _voiceEndedPort?.close();
+    _voiceEndedPort = null;
+    _stateChangedPort?.close();
+    _stateChangedPort = null;
   }
 
   @override
@@ -285,18 +322,34 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
 
   @override
   Future<void> setDartEventCallbacks() async {
-    // Create a NativeCallable for the Dart functions
-    nativeVoiceEndedCallable =
-        ffi.NativeCallable<native.dartVoiceEndedCallback_tFunction>.listener(
-          _voiceEndedCallback,
-        );
+    _closeEventPorts();
+    if (_dartApiDLAvailable) {
+      _voiceEndedPort = ReceivePort('flutter_soloud voice ended')
+        ..listen(_voiceEndedMessage);
+      _stateChangedPort = ReceivePort('flutter_soloud state changed')
+        ..listen(_stateChangedMessage);
+      native.setDartEventPorts(
+        _voiceEndedPort!.sendPort.nativePort,
+        _stateChangedPort!.sendPort.nativePort,
+      );
+    } else {
+      _log.warning(
+        'Dart native API unavailable: voice-ended and state-changed events '
+        'fall back to NativeCallable trampolines.',
+      );
+      native.setDartEventPorts(0, 0);
+      nativeVoiceEndedCallable =
+          ffi.NativeCallable<native.dartVoiceEndedCallback_tFunction>.listener(
+            _voiceEndedCallback,
+          );
+      nativeStateChangedCallable =
+          ffi.NativeCallable<
+            native.dartStateChangedCallback_tFunction
+          >.listener(_stateChangedCallback);
+    }
     nativeFileLoadedCallable =
         ffi.NativeCallable<native.dartFileLoadedCallback_tFunction>.listener(
           _fileLoadedCallback,
-        );
-    nativeStateChangedCallable =
-        ffi.NativeCallable<native.dartStateChangedCallback_tFunction>.listener(
-          _stateChangedCallback,
         );
     nativeMixerOutputDataCallable ??=
         ffi.NativeCallable<
@@ -308,9 +361,9 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
         );
 
     native.setDartEventCallback(
-      nativeVoiceEndedCallable!.nativeFunction,
+      nativeVoiceEndedCallable?.nativeFunction ?? ffi.nullptr,
       nativeFileLoadedCallable!.nativeFunction,
-      nativeStateChangedCallable!.nativeFunction,
+      nativeStateChangedCallable?.nativeFunction ?? ffi.nullptr,
       currentEngineId,
     );
     native.setMixerOutputCallbackForEngine(

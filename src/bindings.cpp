@@ -46,6 +46,13 @@
 #include <jni.h>
 #endif
 
+#ifndef __EMSCRIPTEN__
+#include <cstring>
+// Vendored unmodified from the Dart SDK's include/ directory.
+#include "dart_api/dart_version.h"
+#include "dart_api/internal/dart_api_dl_impl.h"
+#endif
+
 // Defined below with the other C-linkage globals. Declared here so the engine
 // lifecycle helpers can raise it while holding engine_lifecycle_mutex.
 extern "C" std::atomic<bool> engine_shutdown_requested;
@@ -245,6 +252,28 @@ extern "C"
   std::atomic<dartMixerOutputDataCallback_t> dartMixerOutputDataCallback{nullptr};
   std::atomic<dartVisualizationCallback_t> dartVisualizationCallback{nullptr};
 
+#ifndef __EMSCRIPTEN__
+  /// State-changed and voice-ended events are posted to Dart SendPorts rather
+  /// than called through NativeCallable trampolines. Both can fire while the
+  /// app has been in the background for a long time: state changes on iOS
+  /// come synchronously from AVAudioSession route-change and interruption
+  /// notifications on the main thread, and voices end on the audio thread
+  /// during background playback. Executing a trampoline after a long stay in
+  /// the background has been observed to crash (alnitak/flutter_soloud#547).
+  /// Dart_PostInteger only enqueues a message: no Dart code runs on the
+  /// posting thread, and posting to a closed port returns false instead of
+  /// faulting.
+  ///
+  /// Dart_PostInteger is resolved from the table NativeApi.initializeApiDLData
+  /// hands to initDartApiDL(); dart_api_dl.c is not compiled in because it is
+  /// C and the plugin is built as C++, and this is the only symbol needed.
+  typedef bool (*DartPostInteger_t)(int64_t port, int64_t message);
+  std::atomic<DartPostInteger_t> dartPostInteger{nullptr};
+  /// The Dart_Ports of the event ReceivePorts, 0 (ILLEGAL_PORT) if none.
+  std::atomic<int64_t> dartVoiceEndedPort{0};
+  std::atomic<int64_t> dartStateChangedPort{0};
+#endif
+
   /// Monotonic engine session counter, bumped every time the native player
   /// is torn down and recreated by `dispose()`. Voice handles restart from
   /// scratch in the new Player, and on the web the voiceEnded events posted
@@ -438,6 +467,15 @@ extern "C"
     const dart_callbacks::InvocationPass pass;
     if (!pass.isLive(globalCallbackGeneration))
       return;
+#ifndef __EMSCRIPTEN__
+    const int64_t port = dartVoiceEndedPort.load(std::memory_order_acquire);
+    const auto postInteger = dartPostInteger.load(std::memory_order_acquire);
+    if (port != 0 && postInteger != nullptr)
+    {
+      postInteger(port, (int64_t)*handle);
+      return;
+    }
+#endif
     auto voiceEndedCb = dartVoiceEndedCallback.load(std::memory_order_acquire);
     if (voiceEndedCb == nullptr)
       return;
@@ -520,6 +558,15 @@ extern "C"
     const dart_callbacks::InvocationPass pass;
     if (!pass.isLive(globalCallbackGeneration))
       return;
+#ifndef __EMSCRIPTEN__
+    const int64_t port = dartStateChangedPort.load(std::memory_order_acquire);
+    const auto postInteger = dartPostInteger.load(std::memory_order_acquire);
+    if (port != 0 && postInteger != nullptr)
+    {
+      postInteger(port, (int64_t)state);
+      return;
+    }
+#endif
     auto stateChangedCb = dartStateChangedCallback.load(std::memory_order_acquire);
     if (stateChangedCb == nullptr)
       return;
@@ -552,6 +599,50 @@ extern "C"
     globalCallbackGeneration = registration.claim(owner_engine_id);
   }
 
+  /// Resolve the Dart native API from [data], which must be
+  /// `NativeApi.initializeApiDLData`. Idempotent: the table is process-wide,
+  /// so every isolate (and every hot restart) hands over the same functions.
+  ///
+  /// Returns 0 on success, -1 if the VM's DL API major version differs from
+  /// the one these headers were taken from, -2 if Dart_PostInteger is missing.
+  FFI_PLUGIN_EXPORT intptr_t initDartApiDL(void *data)
+  {
+#ifdef __EMSCRIPTEN__
+    (void)data;
+    return -1;
+#else
+    const DartApi *api = (const DartApi *)data;
+    if (api == nullptr || api->major != DART_API_DL_MAJOR_VERSION)
+      return -1;
+    for (const DartApiEntry *e = api->functions; e->name != nullptr; e++)
+    {
+      if (strcmp(e->name, "Dart_PostInteger") == 0)
+      {
+        dartPostInteger.store((DartPostInteger_t)e->function,
+                              std::memory_order_release);
+        return 0;
+      }
+    }
+    return -2;
+#endif
+  }
+
+  /// Set the Dart_Ports that voice-ended and state-changed events are posted
+  /// to. Call before setDartEventCallback(), which makes the registration
+  /// live; retiring the registration clears the ports again. A port of 0
+  /// falls back to the matching trampoline given to setDartEventCallback().
+  FFI_PLUGIN_EXPORT void setDartEventPorts(int64_t voice_ended_port,
+                                           int64_t state_changed_port)
+  {
+#ifndef __EMSCRIPTEN__
+    dartVoiceEndedPort.store(voice_ended_port, std::memory_order_release);
+    dartStateChangedPort.store(state_changed_port, std::memory_order_release);
+#else
+    (void)voice_ended_port;
+    (void)state_changed_port;
+#endif
+  }
+
   /// Null the process-global callable pointers. Ownership and liveness live in
   /// the gate; this is hygiene, so a stale pointer cannot be read back after
   /// the callables it names have been closed on the Dart side.
@@ -562,6 +653,10 @@ extern "C"
     dartVoiceEndedCallback.store(nullptr, std::memory_order_release);
     dartFileLoadedCallback.store(nullptr, std::memory_order_release);
     dartStateChangedCallback.store(nullptr, std::memory_order_release);
+#ifndef __EMSCRIPTEN__
+    dartVoiceEndedPort.store(0, std::memory_order_release);
+    dartStateChangedPort.store(0, std::memory_order_release);
+#endif
     dartMixerOutputDataCallback.store(nullptr, std::memory_order_release);
     dartVisualizationCallback.store(nullptr, std::memory_order_release);
     globalCallbackGeneration = dart_callbacks::kNoGeneration;

@@ -36,6 +36,8 @@
 //   ./test/run_engine_lifecycle_test.sh
 
 #include "audiobuffer/metadata_ffi.h"
+#include "dart_api/dart_version.h"
+#include "dart_api/internal/dart_api_dl_impl.h"
 #include "enums.h"
 
 #include <atomic>
@@ -72,6 +74,10 @@ extern "C"
     bool clearDartCallbackRegistrationsForEngine(int64_t engine_id);
     bool requestEngineTeardownForEngine(int64_t engine_id);
     void retireDartCallbacksFinalizer(void *token);
+    intptr_t initDartApiDL(void *data);
+    void setDartEventPorts(int64_t voice_ended_port,
+                           int64_t state_changed_port);
+    void voiceEndedCallback(unsigned int *handle);
     void requestEngineShutdown();
     uint64_t currentEngineShutdownEpoch();
     bool prepareEngineInitForRequest(int64_t owner_engine_id,
@@ -1100,6 +1106,92 @@ void testRetirementNeverWaitsForNativeWork()
     resetGlobalState();
 }
 
+std::atomic<int> gPostIntegerCalls{0};
+std::atomic<int64_t> gLastPostedPort{0};
+std::atomic<int64_t> gLastPostedMessage{-1};
+
+bool fakePostInteger(int64_t port, int64_t message)
+{
+    gLastPostedPort = port;
+    gLastPostedMessage = message;
+    ++gPostIntegerCalls;
+    return true;
+}
+
+/// Voice-ended and state-changed events are posted to Dart ports when set, so
+/// no trampoline runs on the notifying thread (alnitak/flutter_soloud#547). The
+/// ports are retired with the rest of the registration, and without ports the
+/// callable path still works.
+void testEventsPostToPorts()
+{
+    std::printf("voice-ended and state-changed events are posted to ports\n");
+    resetGlobalState();
+
+    const DartApiEntry entries[] = {
+        {"Dart_PostInteger", reinterpret_cast<void (*)(void)>(fakePostInteger)},
+        {nullptr, nullptr},
+    };
+    const DartApi wrongMajor = {DART_API_DL_MAJOR_VERSION + 1, 0, entries};
+    EXPECT(initDartApiDL(const_cast<DartApi *>(&wrongMajor)) == -1,
+           "a DL API with a different major version must be refused");
+    const DartApi api = {DART_API_DL_MAJOR_VERSION, DART_API_DL_MINOR_VERSION,
+                         entries};
+    EXPECT(initDartApiDL(const_cast<DartApi *>(&api)) == 0,
+           "Dart_PostInteger should be resolved from the API table");
+
+    if (!initEngineAs(kEngineA))
+    {
+        EXPECT(false, "the engine should initialize");
+        return;
+    }
+    constexpr int64_t kVoicePort = 0x501d;
+    constexpr int64_t kStatePort = 0x5017;
+    setDartEventPorts(kVoicePort, kStatePort);
+    registerCallbacksFor(kEngineA);
+
+    int postsBefore = gPostIntegerCalls.load();
+    EXPECT(stateChangedDelta() == 0,
+           "the state trampoline must not run while a port is set");
+    EXPECT(gPostIntegerCalls.load() - postsBefore == 1,
+           "the state event should be posted exactly once");
+    EXPECT(gLastPostedPort.load() == kStatePort, "state posted to wrong port");
+    EXPECT(gLastPostedMessage.load() == 0, "posted the wrong state");
+
+    // A handle above INT32_MAX must survive the trip as an unsigned value.
+    unsigned int handle = 0x80000123u;
+    postsBefore = gPostIntegerCalls.load();
+    const int voiceCallsBefore = gVoiceEndedCalls.load();
+    voiceEndedCallback(&handle);
+    EXPECT(gVoiceEndedCalls.load() == voiceCallsBefore,
+           "the voice trampoline must not run while a port is set");
+    EXPECT(gPostIntegerCalls.load() - postsBefore == 1,
+           "the voice event should be posted exactly once");
+    EXPECT(gLastPostedPort.load() == kVoicePort, "voice posted to wrong port");
+    EXPECT(gLastPostedMessage.load() == 0x80000123LL,
+           "posted the wrong handle");
+
+    EXPECT(clearDartCallbackRegistrationsForEngine(kEngineA),
+           "the owner should be allowed to retire its registration");
+    const int postsAfterRetire = gPostIntegerCalls.load();
+    soloudTestInvokeStateChanged(1);
+    voiceEndedCallback(&handle);
+    EXPECT(gPostIntegerCalls.load() == postsAfterRetire,
+           "a retired registration must not post");
+
+    // A registration without ports falls back to the callables.
+    registerCallbacksFor(kEngineA);
+    EXPECT(stateChangedDelta() == 1,
+           "without a port the state-changed callable should be invoked");
+    const int voiceCallsFallback = gVoiceEndedCalls.load();
+    voiceEndedCallback(&handle);
+    EXPECT(gVoiceEndedCalls.load() - voiceCallsFallback == 1,
+           "without a port the voice-ended callable should be invoked");
+    EXPECT(gPostIntegerCalls.load() == postsAfterRetire,
+           "retirement must have cleared the ports");
+
+    resetGlobalState();
+}
+
 } // namespace
 
 int main()
@@ -1143,6 +1235,7 @@ int main()
     testEngineDestroyedDuringInitialization();
     testStaleTeardownCannotDisposeReplacement();
     testRetirementNeverWaitsForNativeWork();
+    testEventsPostToPorts();
 
     std::printf("\n%d assertions, %d failures\n", gAssertions, gFailures);
     return gFailures == 0 ? 0 : 1;

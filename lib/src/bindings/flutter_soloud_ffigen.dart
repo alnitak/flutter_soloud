@@ -50,6 +50,17 @@ external void setDartEventCallback(
   int owner_engine_id,
 );
 
+/// Resolve the Dart native API from [data], which must be
+/// `NativeApi.initializeApiDLData`. Returns 0 on success.
+@ffi.Native<ffi.IntPtr Function(ffi.Pointer<ffi.Void>)>()
+external int initDartApiDL(ffi.Pointer<ffi.Void> data);
+
+/// Set the Dart_Ports that voice-ended and state-changed events are posted
+/// to, instead of calling the matching trampolines. Call before
+/// setDartEventCallback(). A port of 0 falls back to the trampoline.
+@ffi.Native<ffi.Void Function(ffi.Int64, ffi.Int64)>()
+external void setDartEventPorts(int voice_ended_port, int state_changed_port);
+
 @ffi.Native<ffi.Void Function()>()
 external void clearDartCallbackRegistrations();
 

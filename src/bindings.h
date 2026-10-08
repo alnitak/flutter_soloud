@@ -100,6 +100,16 @@ extern "C"
                        dartStateChangedCallback_t state_changed_callback,
                        int64_t owner_engine_id);
 
+  /// Resolve the Dart native API from [data], which must be
+  /// `NativeApi.initializeApiDLData`. Returns 0 on success.
+  FFI_PLUGIN_EXPORT intptr_t initDartApiDL(void *data);
+
+  /// Set the Dart_Ports that voice-ended and state-changed events are posted
+  /// to, instead of calling the matching trampolines. Call before
+  /// setDartEventCallback(). A port of 0 falls back to the trampoline.
+  FFI_PLUGIN_EXPORT void setDartEventPorts(int64_t voice_ended_port,
+                                           int64_t state_changed_port);
+
   FFI_PLUGIN_EXPORT void clearDartCallbackRegistrations();
 
   /// Retire every Dart callable owned by [engine_id] because its isolate is
