@@ -7,6 +7,7 @@
   - **Android decoding optimizations**: Implemented pipelined MediaCodec buffer bursts and single-pass elementary stream decoding to reduce audio loading latency.
 - feat Apple: add privacy manifest for iOS and macOS #577
 - fix: correct Ogg Opus decoder streaming loop for very short sounds #576
+- fix: crash (use-after-free on the audio thread) when disposing a playing `MixingBus` that has filters attached
 
 ##### 5.1.5 (30 Sep 2026)
 - fix: Android device enumeration crash and AAudio route-change race conditions. Thanks to @Colton127 #572
