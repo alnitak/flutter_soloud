@@ -1,6 +1,7 @@
 // ignore_for_file: avoid_redundant_argument_values
 
 import 'dart:developer' as dev;
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -139,6 +140,23 @@ class _ParametricEqState extends State<ParametricEq> {
     y |= y >> 8;
     y |= y >> 16;
     return y + 1;
+  }
+
+  static final double _logMinFreq = math.log(minFreq);
+  static final double _logMaxFreq = math.log(maxFreq);
+
+  /// Convert frequency (Hz) to a normalized logarithmic slider value
+  /// in the range [0.0, 1.0].
+  double _freqToLogSlider(double f) {
+    final clamped = f.clamp(minFreq, maxFreq);
+    return (math.log(clamped) - _logMinFreq) / (_logMaxFreq - _logMinFreq);
+  }
+
+  /// Convert a normalized logarithmic slider value in [0.0, 1.0] to
+  /// frequency (Hz).
+  double _logSliderToFreq(double t) {
+    final clampedT = t.clamp(0.0, 1.0);
+    return math.exp(_logMinFreq + clampedT * (_logMaxFreq - _logMinFreq));
   }
 
   @override
@@ -371,18 +389,19 @@ class _ParametricEqState extends State<ParametricEq> {
                                             ),
                                             Expanded(
                                               child: Slider(
-                                                value: curFreq.clamp(
-                                                  minFreq,
-                                                  maxFreq,
+                                                value: _freqToLogSlider(
+                                                  curFreq,
                                                 ),
-                                                min: minFreq,
-                                                max: maxFreq,
+                                                min: 0,
+                                                max: 1,
                                                 onChanged: (val) {
-                                                  freqs[index].value = val;
+                                                  final freq =
+                                                      _logSliderToFreq(val);
+                                                  freqs[index].value = freq;
                                                   soloud.filters
                                                       .parametricEqFilter
                                                       .bandFreq(index)
-                                                      .value = val;
+                                                      .value = freq;
                                                 },
                                               ),
                                             ),
