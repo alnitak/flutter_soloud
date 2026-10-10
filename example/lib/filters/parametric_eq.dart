@@ -1,17 +1,19 @@
 // ignore_for_file: avoid_redundant_argument_values
 
 import 'dart:developer' as dev;
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
+import 'package:flutter_soloud_example/filters/ui/eq_graph.dart';
 import 'package:logging/logging.dart';
 
 /// This example shows the use of the parametric equalizer filter.
 ///
 /// The parametric equalizer filter is a frequency-domain filter that uses the
 /// Fast Fourier Transform (FFT) to analyze the frequency spectrum of the
-/// audio signal and apply a gain to each frequency band.
+/// audio signal and apply a smooth bell curve gain to each frequency band.
 ///
 /// ** Equalizer parameters**:
 /// - `numBands`: the number of frequency bands (default: 3. 1 is the minimum
@@ -23,7 +25,11 @@ import 'package:logging/logging.dart';
 ///   will also increase the latency of the filter.
 ///
 /// - `bandGain`: the gain of each frequency band (default: 1. 0 means no gain,
-///   values > 1. 0 increase the gain, values < 1. 0 decrease the gain)
+///   values > 1.0 increase the gain, values < 1.0 decrease the gain)
+///
+/// - `bandFreq`: the center frequency of each band in Hz (10 - 24000 Hz)
+///
+/// - `bandQ`: the quality factor (Q) controlling the bell width (0.1 - 20)
 ///
 /// The filter is activated by calling the `activate` method and deactivated by
 /// calling the `deactivate` method.
@@ -72,10 +78,24 @@ class _ParametricEqState extends State<ParametricEq> {
   static const maxBandsNumber = 64;
   static const minGain = 0.0;
   static const maxGain = 4.0;
+  static const minFreq = 20.0;
+  static const maxFreq = 20000.0;
+  static const minQ = 0.1;
+  static const maxQ = 10.0;
+
   final gains = List<ValueNotifier<double>>.generate(
     maxBandsNumber,
     (index) => ValueNotifier<double>(1),
   );
+  final freqs = List<ValueNotifier<double>>.generate(
+    maxBandsNumber,
+    (index) => ValueNotifier<double>(1000),
+  );
+  final qFactors = List<ValueNotifier<double>>.generate(
+    maxBandsNumber,
+    (index) => ValueNotifier<double>(1),
+  );
+
   final soloud = SoLoud.instance;
   AudioSource? source;
 
@@ -84,10 +104,30 @@ class _ParametricEqState extends State<ParametricEq> {
     super.initState();
     soloud.loadAsset('assets/audio/8_bit_mentality.mp3').then((s) {
       soloud.filters.parametricEqFilter.activate();
+      _syncBandParameters();
       source = s;
       soloud.play(source!, looping: true);
       setState(() {});
     });
+  }
+
+  void _syncBandParameters() {
+    for (var i = 0; i < maxBandsNumber; i++) {
+      freqs[i].value = soloud.filters.parametricEqFilter.bandFrequency(i);
+      qFactors[i].value = soloud.filters.parametricEqFilter.bandQ(i).value;
+    }
+  }
+
+  void _resetBands() {
+    bandsNumber.value = 3;
+    soloud.filters.parametricEqFilter.numBands.value = 3;
+    for (var i = 0; i < maxBandsNumber; i++) {
+      gains[i].value = 1.0;
+      soloud.filters.parametricEqFilter.bandGain(i).value = 1.0;
+      freqs[i].value = soloud.filters.parametricEqFilter.bandFrequency(i);
+      soloud.filters.parametricEqFilter.bandFreq(i).value = freqs[i].value;
+      qFactors[i].value = soloud.filters.parametricEqFilter.bandQ(i).value;
+    }
   }
 
   /// Find nearest power of 2 greater than or equal to x
@@ -100,6 +140,23 @@ class _ParametricEqState extends State<ParametricEq> {
     y |= y >> 8;
     y |= y >> 16;
     return y + 1;
+  }
+
+  static final double _logMinFreq = math.log(minFreq);
+  static final double _logMaxFreq = math.log(maxFreq);
+
+  /// Convert frequency (Hz) to a normalized logarithmic slider value
+  /// in the range [0.0, 1.0].
+  double _freqToLogSlider(double f) {
+    final clamped = f.clamp(minFreq, maxFreq);
+    return (math.log(clamped) - _logMinFreq) / (_logMaxFreq - _logMinFreq);
+  }
+
+  /// Convert a normalized logarithmic slider value in [0.0, 1.0] to
+  /// frequency (Hz).
+  double _logSliderToFreq(double t) {
+    final clampedT = t.clamp(0.0, 1.0);
+    return math.exp(_logMinFreq + clampedT * (_logMaxFreq - _logMinFreq));
   }
 
   @override
@@ -116,169 +173,281 @@ class _ParametricEqState extends State<ParametricEq> {
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(16),
-          child: SingleChildScrollView(
-            child: Column(
-              children: [
-                /// Activate / deactivate filter
-                Row(
-                  spacing: 32,
-                  children: [
-                    OutlinedButton(
-                      onPressed: () {
-                        if (soloud.filters.parametricEqFilter.isActive) return;
-                        soloud.filters.parametricEqFilter.activate();
-                        soloud.filters.parametricEqFilter.numBands.value =
-                            bandsNumber.value.toDouble();
-                        for (var i = 0; i < bandsNumber.value; i++) {
-                          soloud.filters.parametricEqFilter.bandGain(i).value =
-                              gains[i].value;
-                        }
-                        soloud.filters.parametricEqFilter.stftWindowSize.value =
-                            windowSize.value.toDouble();
-                      },
-                      child: const Text('Activate'),
-                    ),
-                    OutlinedButton(
-                      onPressed: () {
-                        if (!soloud.filters.parametricEqFilter.isActive) return;
-                        soloud.filters.parametricEqFilter.deactivate();
-                      },
-                      child: const Text('Deactivate'),
-                    ),
-                  ],
-                ),
+          child: Column(
+            children: [
+              /// Activate / deactivate filter
+              Row(
+                spacing: 32,
+                children: [
+                  OutlinedButton(
+                    onPressed: () {
+                      if (soloud.filters.parametricEqFilter.isActive) return;
+                      soloud.filters.parametricEqFilter.activate();
+                      soloud.filters.parametricEqFilter.numBands.value =
+                          bandsNumber.value.toDouble();
+                      for (var i = 0; i < bandsNumber.value; i++) {
+                        soloud.filters.parametricEqFilter.bandGain(i).value =
+                            gains[i].value;
+                        soloud.filters.parametricEqFilter.bandFreq(i).value =
+                            freqs[i].value;
+                        soloud.filters.parametricEqFilter.bandQ(i).value =
+                            qFactors[i].value;
+                      }
+                      soloud.filters.parametricEqFilter.stftWindowSize.value =
+                          windowSize.value.toDouble();
+                    },
+                    child: const Text('Activate'),
+                  ),
+                  OutlinedButton(
+                    onPressed: () {
+                      if (!soloud.filters.parametricEqFilter.isActive) return;
+                      soloud.filters.parametricEqFilter.deactivate();
+                    },
+                    child: const Text('Deactivate'),
+                  ),
+                  IconButton(
+                    onPressed: _resetBands,
+                    icon: const Icon(Icons.refresh),
+                    tooltip: 'Reset bands',
+                  ),
+                ],
+              ),
 
-                /// Wet / dry mix
-                ValueListenableBuilder(
-                  valueListenable: wet,
-                  builder: (context, value, child) {
-                    return Row(
-                      children: [
-                        const Text('Wet / Dry Mix'),
-                        Expanded(
-                          child: Slider(
-                            value: value,
-                            min: 0,
-                            max: 1,
-                            label: value.toStringAsFixed(2),
-                            onChanged: (value) {
-                              wet.value = value;
-                              soloud.filters.parametricEqFilter.wet.value =
-                                  value;
-                            },
-                          ),
+              /// Wet / dry mix
+              ValueListenableBuilder(
+                valueListenable: wet,
+                builder: (context, value, child) {
+                  return Row(
+                    children: [
+                      const Text('Wet / Dry Mix'),
+                      Expanded(
+                        child: Slider(
+                          value: value,
+                          min: 0,
+                          max: 1,
+                          label: value.toStringAsFixed(2),
+                          onChanged: (value) {
+                            wet.value = value;
+                            soloud.filters.parametricEqFilter.wet.value = value;
+                          },
                         ),
-                        Text(value.toStringAsFixed(2)),
-                      ],
-                    );
-                  },
-                ),
-
-                /// Window size (must be power of 2)
-                ValueListenableBuilder(
-                  valueListenable: windowSize,
-                  builder: (context, value, child) {
-                    return Row(
-                      children: [
-                        const Text('Window Size'),
-                        Expanded(
-                          child: Slider(
-                            value: value.toDouble(),
-                            min: 32,
-                            max: 4096,
-                            label: value.toString(),
-                            onChanged: (value) {
-                              /// Find nearest power of 2
-                              final p2 = nextPowerOf2(value.toInt());
-                              windowSize.value = p2;
-                              soloud.filters.parametricEqFilter.stftWindowSize
-                                  .value = p2.toDouble();
-                            },
-                          ),
-                        ),
-                        Text(value.toString()),
-                      ],
-                    );
-                  },
-                ),
-
-                /// Number of bands
-                ValueListenableBuilder(
-                  valueListenable: bandsNumber,
-                  builder: (context, value, child) {
-                    return Row(
-                      children: [
-                        const Text('Bands Number'),
-                        Expanded(
-                          child: Slider(
-                            value: value.toDouble(),
-                            min: 1,
-                            max: maxBandsNumber.toDouble(),
-                            divisions: maxBandsNumber,
-                            label: value.toString(),
-                            onChanged: (value) {
-                              bandsNumber.value = value.toInt();
-                              soloud.filters.parametricEqFilter.numBands.value =
-                                  value;
-                              for (var i = 0; i < bandsNumber.value; i++) {
-                                soloud.filters.parametricEqFilter
-                                    .bandGain(i)
-                                    .value = gains[i].value;
-                              }
-                            },
-                          ),
-                        ),
-                        Text(value.toString()),
-                      ],
-                    );
-                  },
-                ),
-
-                /// Band sliders
-                ValueListenableBuilder(
-                  valueListenable: bandsNumber,
-                  builder: (context, value, child) {
-                    return Column(
-                      children: List.generate(
-                        value,
-                        (index) {
-                          return ValueListenableBuilder(
-                            valueListenable: gains[index],
-                            builder: (context, value, child) {
-                              final bandFreq = soloud.filters.parametricEqFilter
-                                  .bandFrequency(index)
-                                  .toStringAsFixed(1);
-                              return Row(
-                                children: [
-                                  Text(
-                                    '#$index $bandFreq Hz',
-                                  ),
-                                  Expanded(
-                                    child: Slider(
-                                      value: value,
-                                      min: minGain,
-                                      max: maxGain,
-                                      label: index.toString(),
-                                      onChanged: (value) {
-                                        gains[index].value = value;
-                                        soloud.filters.parametricEqFilter
-                                            .bandGain(index)
-                                            .value = value;
-                                      },
-                                    ),
-                                  ),
-                                  Text(value.toStringAsFixed(2)),
-                                ],
-                              );
-                            },
-                          );
-                        },
                       ),
-                    );
-                  },
+                      Text(value.toStringAsFixed(2)),
+                    ],
+                  );
+                },
+              ),
+
+              /// Window size (must be power of 2)
+              ValueListenableBuilder(
+                valueListenable: windowSize,
+                builder: (context, value, child) {
+                  return Row(
+                    children: [
+                      const Text('Window Size'),
+                      Expanded(
+                        child: Slider(
+                          value: value.toDouble(),
+                          min: 32,
+                          max: 4096,
+                          label: value.toString(),
+                          onChanged: (value) {
+                            /// Find nearest power of 2
+                            final p2 = nextPowerOf2(value.toInt());
+                            windowSize.value = p2;
+                            soloud.filters.parametricEqFilter.stftWindowSize
+                                .value = p2.toDouble();
+                          },
+                        ),
+                      ),
+                      Text(value.toString()),
+                    ],
+                  );
+                },
+              ),
+
+              /// Number of bands
+              ValueListenableBuilder(
+                valueListenable: bandsNumber,
+                builder: (context, value, child) {
+                  return Row(
+                    children: [
+                      const Text('Bands Number'),
+                      Expanded(
+                        child: Slider(
+                          value: value.toDouble(),
+                          min: 1,
+                          max: maxBandsNumber.toDouble(),
+                          divisions: maxBandsNumber,
+                          label: value.toString(),
+                          onChanged: (value) {
+                            bandsNumber.value = value.toInt();
+                            soloud.filters.parametricEqFilter.numBands.value =
+                                value;
+                            for (var i = 0; i < bandsNumber.value; i++) {
+                              soloud.filters.parametricEqFilter
+                                  .bandGain(i)
+                                  .value = gains[i].value;
+                              freqs[i].value = soloud.filters.parametricEqFilter
+                                  .bandFrequency(i);
+                              qFactors[i].value = soloud
+                                  .filters.parametricEqFilter
+                                  .bandQ(i)
+                                  .value;
+                            }
+                          },
+                        ),
+                      ),
+                      Text(value.toString()),
+                    ],
+                  );
+                },
+              ),
+
+              const SizedBox(height: 8),
+
+              /// EQ visualization graph
+              EqGraph(
+                bandsNumber: bandsNumber,
+                gains: gains,
+                freqs: freqs,
+                qFactors: qFactors,
+                minFreq: minFreq,
+                maxFreq: maxFreq,
+                minGain: minGain,
+                maxGain: maxGain,
+                height: 200,
+              ),
+
+              const SizedBox(height: 8),
+
+              /// Scrollable list of band cards (Gain, Frequency, Q sliders)
+              Expanded(
+                child: SingleChildScrollView(
+                  child: ValueListenableBuilder(
+                    valueListenable: bandsNumber,
+                    builder: (context, value, child) {
+                      return Column(
+                        children: List.generate(
+                          value,
+                          (index) {
+                            return Card(
+                              margin: const EdgeInsets.symmetric(vertical: 4),
+                              child: Padding(
+                                padding: const EdgeInsets.all(8),
+                                child: ListenableBuilder(
+                                  listenable: Listenable.merge([
+                                    gains[index],
+                                    freqs[index],
+                                    qFactors[index],
+                                  ]),
+                                  builder: (context, child) {
+                                    final curGain = gains[index].value;
+                                    final curFreq = freqs[index].value;
+                                    final curQ = qFactors[index].value;
+                                    return Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'Band #$index: '
+                                          '${curFreq.toStringAsFixed(1)} Hz | '
+                                          'Gain: ${curGain.toStringAsFixed(2)} '
+                                          '| Q: ${curQ.toStringAsFixed(2)}',
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                        Row(
+                                          children: [
+                                            const SizedBox(
+                                              width: 45,
+                                              child: Text('Gain'),
+                                            ),
+                                            Expanded(
+                                              child: Slider(
+                                                value: curGain,
+                                                min: minGain,
+                                                max: maxGain,
+                                                onChanged: (val) {
+                                                  gains[index].value = val;
+                                                  soloud.filters
+                                                      .parametricEqFilter
+                                                      .bandGain(index)
+                                                      .value = val;
+                                                },
+                                              ),
+                                            ),
+                                            Text(curGain.toStringAsFixed(2)),
+                                          ],
+                                        ),
+                                        Row(
+                                          children: [
+                                            const SizedBox(
+                                              width: 45,
+                                              child: Text('Freq'),
+                                            ),
+                                            Expanded(
+                                              child: Slider(
+                                                value: _freqToLogSlider(
+                                                  curFreq,
+                                                ),
+                                                min: 0,
+                                                max: 1,
+                                                onChanged: (val) {
+                                                  final freq =
+                                                      _logSliderToFreq(val);
+                                                  freqs[index].value = freq;
+                                                  soloud.filters
+                                                      .parametricEqFilter
+                                                      .bandFreq(index)
+                                                      .value = freq;
+                                                },
+                                              ),
+                                            ),
+                                            Text(
+                                              '${curFreq.toStringAsFixed(0)} '
+                                              'Hz',
+                                            ),
+                                          ],
+                                        ),
+                                        Row(
+                                          children: [
+                                            const SizedBox(
+                                              width: 45,
+                                              child: Text('Q'),
+                                            ),
+                                            Expanded(
+                                              child: Slider(
+                                                value: curQ.clamp(minQ, maxQ),
+                                                min: minQ,
+                                                max: maxQ,
+                                                onChanged: (val) {
+                                                  qFactors[index].value = val;
+                                                  soloud.filters
+                                                      .parametricEqFilter
+                                                      .bandQ(index)
+                                                      .value = val;
+                                                },
+                                              ),
+                                            ),
+                                            Text(curQ.toStringAsFixed(2)),
+                                          ],
+                                        ),
+                                      ],
+                                    );
+                                  },
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      );
+                    },
+                  ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),

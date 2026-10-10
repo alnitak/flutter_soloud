@@ -1,7 +1,7 @@
 #include "parametric_eq_filter.h"
 #include "soloud.h"
 #include <algorithm>
-#include <math.h>
+#include <cmath>
 #include <string.h>
 #include <string>
 
@@ -26,17 +26,17 @@ ParametricEqInstance::ParametricEqInstance(ParametricEq *aParent) {
     mMixBuffer[i] = nullptr;
   }
 
-  initParams(3 + mParent->mBands);
+  initParams(ParametricEq::NUM_PARAMS);
 
   // Initialize FFT setup and allocate buffers
   initFFTBuffers();
 
-  // Initialize band parameters (count, gains, centers, boundaries)
+  // Initialize band parameters (gains, frequencies, Q factors)
   initBandParameters();
 
-  mParam[0] = mParent->mWet; // Reset wet param (index 0)
-  mParam[1] = mParent->mSTFT_WINDOW_SIZE; // Update window size param (index 1)
-  mParam[2] = mParent->mBands; // Update band count param (index 2)
+  mParam[0] = mParent->mWet;              // wet param (index 0)
+  mParam[1] = mParent->mSTFT_WINDOW_SIZE; // window size param (index 1)
+  mParam[2] = mParent->mBands;            // band count param (index 2)
 }
 
 void ParametricEqInstance::comp2MagPhase(float *aFFTBuffer,
@@ -60,40 +60,23 @@ void ParametricEqInstance::magPhase2Comp(float *aFFTBuffer,
 }
 
 void ParametricEqInstance::initBandParameters() {
-  // Copy band count from parent
   mBands = mParent->mBands;
 
-  // Re-initialize parameter arrays to match band count
-  mNumParams = 3 + mBands;
-  mParam[2] = mBands; // Update band count param (index 2)
-
-  // Copy band gains into parameter slots (params[3..3+bands-1])
-  for (int i = 0; i < mBands; i++) {
-    mParam[3 + i] = mParent->mGain[i];
+  // Copy band gains, frequencies, and Q factors into parameter slots
+  for (unsigned int i = 0; i < ParametricEq::MAX_BANDS; i++) {
+    mParam[ParametricEq::BAND_GAIN_OFFSET + i] = mParent->mGain[i];
+    mParam[ParametricEq::BAND_FREQ_OFFSET + i] = mParent->mFreq[i];
+    mParam[ParametricEq::BAND_Q_OFFSET + i] = mParent->mQ[i];
   }
-
-  // Precompute band centers and boundaries (boundaries are midpoints)
-  mBandCenter.resize(mBands);
-  mBandBoundary.resize(mBands + 1);
-  for (int i = 0; i < mBands; i++) {
-    mBandCenter[i] = mParent->mFreq[i];
-  }
-
-  // boundaries: first = 0, last = +inf (will be clamped to Nyquist when used)
-  mBandBoundary[0] = 0.0f;
-  for (int i = 0; i < mBands - 1; i++) {
-    mBandBoundary[i + 1] = 0.5f * (mBandCenter[i] + mBandCenter[i + 1]);
-  }
-  mBandBoundary[mBands] = 1e9f; // effectively infinity for the upper bound
 }
 
 void ParametricEqInstance::initFFTBuffers() {
   // Safety check: ensure window size is valid
   // PFFFT requires power-of-2 sizes, minimum 16
   if (mParent->mSTFT_WINDOW_SIZE < 16 || mParent->mSTFT_WINDOW_SIZE > 65536) {
-    return;  // Invalid window size, don't reallocate
+    return; // Invalid window size, don't reallocate
   }
-  
+
   // Free existing FFT resources if any
   if (mFFTSetup != nullptr) {
     pffft_destroy_setup(mFFTSetup);
@@ -112,9 +95,8 @@ void ParametricEqInstance::initFFTBuffers() {
     mTemp = nullptr;
   }
 
-  // Free and reallocate channel buffers for all possible channels (up to MAX_CHANNELS)
-  // We must iterate up to MAX_CHANNELS, not mParent->mChannels, because filterChannel
-  // can be called with any channel index < MAX_CHANNELS
+  // Free and reallocate channel buffers for all possible channels (up to
+  // MAX_CHANNELS)
   for (int i = 0; i < MAX_CHANNELS; i++) {
     if (mInputBuffer[i] != nullptr) {
       delete[] mInputBuffer[i];
@@ -165,9 +147,7 @@ ParametricEqInstance::~ParametricEqInstance() {
     mTemp = nullptr;
   }
 
-  // Free channel buffers for all possible channels (up to MAX_CHANNELS)
-  // We must iterate up to MAX_CHANNELS, not mParent->mChannels, because buffers
-  // may have been allocated for any channel index < MAX_CHANNELS
+  // Free channel buffers
   for (int i = 0; i < MAX_CHANNELS; i++) {
     if (mInputBuffer[i] != nullptr) {
       delete[] mInputBuffer[i];
@@ -185,51 +165,61 @@ void ParametricEqInstance::setFilterParameter(unsigned int aAttributeId,
   if (aAttributeId >= mNumParams)
     return;
 
-  // 0 wet
-  // 1 SFTF_WINDOW_SIZE
-  // 2 nBands
-  // 3..nBands per-band gains
-
   mParamFader[aAttributeId].mActive = 0;
 
   switch (aAttributeId) {
   case 0: // wet
-    // Guard on mParam[0] (the authoritative value read by fftFilterChannel,
-    // getFilterParameter and updateParams): mParent->mWet may be stale
-    // after a fade/oscillation, which never updates the parent.
     if (mParam[0] == aValue)
       return;
-    mParam[0] = aValue; // Update wet param (index 0)
+    mParam[0] = aValue;
     mParent->mWet = aValue;
     break;
-  case 1: // SFTF_WINDOW_SIZE
+
+  case 1: // STFT_WINDOW_SIZE
     if (mParent->mSTFT_WINDOW_SIZE == (int)aValue)
       return;
-    mParam[1] = (int)aValue; // Update window size param (index 1)
+    mParam[1] = (int)aValue;
     mParent->mSTFT_WINDOW_SIZE = (int)aValue;
     mParent->mSTFT_WINDOW_HALF = mParent->mSTFT_WINDOW_SIZE >> 1;
     mParent->mSTFT_WINDOW_TWICE = mParent->mSTFT_WINDOW_SIZE << 1;
     mParent->mFFT_SCALE = 1.0f / (float)mParent->mSTFT_WINDOW_SIZE;
-    // Reinitialize FFT with new window size
     initFFTBuffers();
     break;
+
   case 2: // nBands
     if (mParent->mBands == (unsigned int)aValue)
       return;
-    initParams(3 + (int)aValue);
-    // The initParams resets values. Restoring.
     mBands = mParent->mBands = (int)aValue;
-    mParam[0] = mParent->mWet; // Reset wet param (index 0)
-    mParam[1] = mParent->mSTFT_WINDOW_SIZE; // Update window size param (index 1)
-    mParam[2] = mBands; // Update band count param (index 2)
-    // Update parent's band configuration first
+    mParam[2] = mBands;
+    // Update parent's frequencies and Q defaults for the new band count
     mParent->setFreqs((unsigned int)aValue);
-    // Re-initialize band parameters from parent
+    // Refresh band parameters in mParam
     initBandParameters();
     break;
 
-  default: // 3..nBands per-band gains
-    mParam[aAttributeId] = aValue;
+  default:
+    if (aAttributeId >= ParametricEq::BAND_GAIN_OFFSET &&
+        aAttributeId < ParametricEq::BAND_FREQ_OFFSET) {
+      // Band Gain
+      unsigned int idx = aAttributeId - ParametricEq::BAND_GAIN_OFFSET;
+      mParam[aAttributeId] = aValue;
+      if (idx < ParametricEq::MAX_BANDS)
+        mParent->mGain[idx] = aValue;
+    } else if (aAttributeId >= ParametricEq::BAND_FREQ_OFFSET &&
+               aAttributeId < ParametricEq::BAND_Q_OFFSET) {
+      // Band Frequency
+      unsigned int idx = aAttributeId - ParametricEq::BAND_FREQ_OFFSET;
+      mParam[aAttributeId] = aValue;
+      if (idx < ParametricEq::MAX_BANDS)
+        mParent->mFreq[idx] = aValue;
+    } else if (aAttributeId >= ParametricEq::BAND_Q_OFFSET &&
+               aAttributeId < ParametricEq::NUM_PARAMS) {
+      // Band Q
+      unsigned int idx = aAttributeId - ParametricEq::BAND_Q_OFFSET;
+      mParam[aAttributeId] = aValue;
+      if (idx < ParametricEq::MAX_BANDS)
+        mParent->mQ[idx] = aValue;
+    }
     break;
   }
 }
@@ -238,28 +228,24 @@ void ParametricEqInstance::filterChannel(float *aBuffer, unsigned int aSamples,
                                          float aSamplerate, SoLoud::time aTime,
                                          unsigned int aChannel,
                                          unsigned int aChannels) {
-  // Safety check: ensure parent filter still exists
   if (mParent == nullptr) {
-    return;  // Parent destroyed, pass through audio unchanged
-  }
-  
-  // Safety check: ensure channel index is within bounds to prevent buffer overflow
-  // MAX_CHANNELS is defined in soloud.h (typically 8)
-  if (aChannel >= MAX_CHANNELS) {
-    // Channel out of range - pass through audio unchanged
     return;
   }
-  
-  // Safety check: ensure window size is valid before processing
-  if (mParent->mSTFT_WINDOW_TWICE <= 0 || mParent->mSTFT_WINDOW_TWICE > 131072) {
-    return;  // Invalid window size, pass through audio unchanged
+
+  if (aChannel >= MAX_CHANNELS) {
+    return;
+  }
+
+  if (mParent->mSTFT_WINDOW_TWICE <= 0 ||
+      mParent->mSTFT_WINDOW_TWICE > 131072) {
+    return;
   }
 
   // Advance parameter fades/oscillations once per audio callback
   if (aChannel == 0) {
     updateParams(aTime);
   }
-  
+
   // Lazy initialization of buffers for this channel
   if (mInputBuffer[aChannel] == nullptr) {
     mInputBuffer[aChannel] =
@@ -346,79 +332,98 @@ void ParametricEqInstance::fftFilterChannel(float *aFFTBuffer,
                                             SoLoud::time /*aTime*/,
                                             unsigned int /*aChannel*/,
                                             unsigned int /*aChannels*/) {
-  comp2MagPhase(aFFTBuffer, aSamples);
-  // Triangular interpolation across user-configured bands.
-  // mBandCenter holds band centers, mBandBoundary has midpoints between centers
-  // (size mBands+1)
-  float nyquist = aSamplerate * 0.5f;
-  unsigned int halfSamples = aSamples / 2;
   float wet = mParam[0];
-
-  for (unsigned int i = 0; i < aSamples; i++) {
-    // For a real signal FFT: bins 0..N/2 are positive frequencies,
-    // bins N/2+1..N-1 are negative frequencies (conjugates).
-    // Map negative frequency bins to their positive counterpart.
-    unsigned int freqBin = (i <= halfSamples) ? i : (aSamples - i);
-    float current_freq = (float)freqBin * aSamplerate / (float)aSamples;
-
-    float gain = 0.0f;
-    float weight_sum = 0.0f;
-
-    for (int b = 0; b < mBands; b++) {
-      float center = mBandCenter[b];
-      float low = mBandBoundary[b];
-      float high = mBandBoundary[b + 1];
-      // clamp upper boundary to nyquist
-      if (high > nyquist)
-        high = nyquist;
-
-      // Asymmetric triangular window: use separate half-widths for left/right
-      float leftHalfwidth = center - low;
-      float rightHalfwidth = high - center;
-      float weight = 0.0f;
-
-      if (current_freq <= center && leftHalfwidth > 0.0f) {
-        // Frequency is on the left side of the triangle
-        float d = center - current_freq;
-        float w = 1.0f - (d / leftHalfwidth);
-        if (w >= 0.0f)                  // Include boundary (w=0)
-          weight = std::max(w, 0.001f); // Ensure minimum weight at boundary
-      } else if (current_freq > center && rightHalfwidth > 0.0f) {
-        // Frequency is on the right side of the triangle
-        float d = current_freq - center;
-        float w = 1.0f - (d / rightHalfwidth);
-        if (w >= 0.0f)                  // Include boundary (w=0)
-          weight = std::max(w, 0.001f); // Ensure minimum weight at boundary
-      } else if (leftHalfwidth <= 0.0f && rightHalfwidth <= 0.0f) {
-        // degenerate: treat only exact center
-        weight = (fabsf(current_freq - center) < 1e-6f) ? 1.0f : 0.0f;
-      }
-
-      float bandGain = mParam[3 + b]; // param index 3..3+mBands-1 -> band gains
-      gain += bandGain * weight;
-      weight_sum += weight;
-    }
-
-    if (weight_sum > 0.0f) {
-      gain /= weight_sum; // normalize so overlapping triangles sum to 1
-    } else {
-      gain = 1.0f; // pass-through: unity gain if no band matches
-    }
-
-    aFFTBuffer[i * 2] *= (gain * wet + (1.0f - wet));
+  if (wet <= 0.0f) {
+    return;
   }
 
-  magPhase2Comp(aFFTBuffer, aSamples);
+  // Pre-filter and collect active bands (skipping flat bands where gain == 1.0)
+  struct ActiveBand {
+    float gain;
+    float log_fc;
+    float inv_two_sigma_sq;
+  };
+  ActiveBand activeBands[ParametricEq::MAX_BANDS];
+  int numActiveBands = 0;
+
+  float nyquist = aSamplerate * 0.5f;
+
+  for (int b = 0; b < mBands; b++) {
+    float gain = mParam[ParametricEq::BAND_GAIN_OFFSET + b];
+    if (std::fabs(gain - 1.0f) < 0.001f) {
+      continue;
+    }
+
+    float freq = mParam[ParametricEq::BAND_FREQ_OFFSET + b];
+    if (freq < 10.0f)
+      freq = 10.0f;
+    if (freq > nyquist)
+      freq = nyquist;
+
+    float q = mParam[ParametricEq::BAND_Q_OFFSET + b];
+    if (q < 0.1f)
+      q = 0.1f;
+    if (q > 20.0f)
+      q = 20.0f;
+
+    // Bell curve (Gaussian) on logarithmic frequency scale:
+    // weight(f) = exp( - 0.5 * (ln(f / f_c) / sigma)^2 )
+    // where sigma = ln(2) / (2 * Q)
+    // 2 * sigma^2 = (ln(2))^2 / (2 * Q^2)
+    // inv_two_sigma_sq = 2 * Q^2 / (ln(2))^2 ~= 4.16277f * Q^2
+    float inv_two_sigma_sq = 4.16277f * q * q;
+
+    activeBands[numActiveBands].gain = gain;
+    activeBands[numActiveBands].log_fc = logf(freq);
+    activeBands[numActiveBands].inv_two_sigma_sq = inv_two_sigma_sq;
+    numActiveBands++;
+  }
+
+  // If no bands are modified, pass through untouched
+  if (numActiveBands == 0) {
+    return;
+  }
+
+  float bin_hz = aSamplerate / (float)aSamples;
+  unsigned int halfSamples = aSamples / 2;
+
+  // Process positive and negative FFT bins (bin 0 is DC, untouched)
+  for (unsigned int i = 1; i < aSamples; i++) {
+    unsigned int freqBin = (i <= halfSamples) ? i : (aSamples - i);
+    float current_freq = (float)freqBin * bin_hz;
+    float log_f = logf(current_freq);
+
+    float total_gain = 1.0f;
+
+    for (int b = 0; b < numActiveBands; b++) {
+      float d = log_f - activeBands[b].log_fc;
+      float d2 = d * d;
+      float exponent = d2 * activeBands[b].inv_two_sigma_sq;
+
+      // Truncate bell curve when weight is negligible (< ~0.0001, beyond 3 standard deviations)
+      if (exponent > 9.0f) {
+        continue;
+      }
+
+      float weight = expf(-exponent);
+      float band_factor = 1.0f + (activeBands[b].gain - 1.0f) * weight;
+      if (band_factor < 0.0f)
+        band_factor = 0.0f;
+      total_gain *= band_factor;
+    }
+
+    float final_scale = total_gain * wet + (1.0f - wet);
+    aFFTBuffer[i * 2] *= final_scale;
+    aFFTBuffer[i * 2 + 1] *= final_scale;
+  }
 }
 
 SoLoud::result ParametricEq::setParam(unsigned int aParamIndex, float aValue) {
-  // Not used. Parameters are read in the ParametricEqInstance and set in the
-  // FilterInstance
   return SoLoud::SO_NO_ERROR;
 }
 
 int ParametricEq::getParamCount() {
-  return 3 + mBands; // wet + SFTF_WINDOW_SIZE + nBands + per-band gains
+  return NUM_PARAMS; // 195
 }
 
 const char *ParametricEq::getParamName(unsigned int aParamIndex) {
@@ -428,58 +433,97 @@ const char *ParametricEq::getParamName(unsigned int aParamIndex) {
     return "Window Size";
   if (aParamIndex == 2)
     return "Bands Count";
+
   static thread_local std::string s;
-  unsigned int band = aParamIndex + 3; // 1-based
-  s = std::string("Band ") + std::to_string(band);
-  return s.c_str();
+  if (aParamIndex >= BAND_GAIN_OFFSET && aParamIndex < BAND_FREQ_OFFSET) {
+    s = "Band " + std::to_string(aParamIndex - BAND_GAIN_OFFSET) + " Gain";
+    return s.c_str();
+  }
+  if (aParamIndex >= BAND_FREQ_OFFSET && aParamIndex < BAND_Q_OFFSET) {
+    s = "Band " + std::to_string(aParamIndex - BAND_FREQ_OFFSET) + " Frequency";
+    return s.c_str();
+  }
+  if (aParamIndex >= BAND_Q_OFFSET && aParamIndex < NUM_PARAMS) {
+    s = "Band " + std::to_string(aParamIndex - BAND_Q_OFFSET) + " Q";
+    return s.c_str();
+  }
+  return "Unknown";
 }
 
 unsigned int ParametricEq::getParamType(unsigned int aParamIndex) {
-  if (aParamIndex == 1)
+  if (aParamIndex == 1 || aParamIndex == 2)
     return INT_PARAM;
   return FLOAT_PARAM;
 }
 
 float ParametricEq::getParamMax(unsigned int aParamIndex) {
   if (aParamIndex == 0)
-    return 1; // wet
+    return 1.0f; // wet
   if (aParamIndex == 1)
-    return 4096; // window size
+    return 4096.0f; // window size
   if (aParamIndex == 2)
-    return 64; // band count
-  return 4.0f;
+    return 64.0f; // band count
+
+  if (aParamIndex >= BAND_GAIN_OFFSET && aParamIndex < BAND_FREQ_OFFSET)
+    return 4.0f; // gain
+  if (aParamIndex >= BAND_FREQ_OFFSET && aParamIndex < BAND_Q_OFFSET)
+    return 24000.0f; // frequency
+  if (aParamIndex >= BAND_Q_OFFSET && aParamIndex < NUM_PARAMS)
+    return 20.0f; // Q
+
+  return 1.0f;
 }
 
 float ParametricEq::getParamMin(unsigned int aParamIndex) {
   if (aParamIndex == 0)
-    return 0; // wet
+    return 0.0f; // wet
   if (aParamIndex == 1)
-    return 32; // window size
+    return 32.0f; // window size
   if (aParamIndex == 2)
-    return 1; // band count
+    return 1.0f; // band count
+
+  if (aParamIndex >= BAND_GAIN_OFFSET && aParamIndex < BAND_FREQ_OFFSET)
+    return 0.0f; // gain
+  if (aParamIndex >= BAND_FREQ_OFFSET && aParamIndex < BAND_Q_OFFSET)
+    return 10.0f; // frequency
+  if (aParamIndex >= BAND_Q_OFFSET && aParamIndex < NUM_PARAMS)
+    return 0.1f; // Q
+
   return 0.0f;
 }
 
 void ParametricEq::setFreqs(unsigned int nBands) {
-  // Clamp band count to reasonable limits to prevent excessive memory allocation
-  // Max 64 bands to prevent memory issues
-  const unsigned int MAX_BANDS = 64;
   mBands = std::max(1U, std::min(nBands, MAX_BANDS));
 
-  // resize vectors
-  mGain.assign(mBands, 1.0f);
-  mFreq.resize(mBands);
+  mGain.assign(MAX_BANDS, 1.0f);
+  mFreq.resize(MAX_BANDS);
+  mQ.resize(MAX_BANDS);
 
-  // default frequency distribution: geometric spacing between 30Hz and 12000Hz
+  // Default frequency distribution: geometric spacing between 30Hz and 12000Hz
   float f0 = 30.0f;
   float f1 = 12000.0f;
+
+  float defaultQ = 1.0f;
+  if (mBands > 1) {
+    float octaves = log2f(f1 / f0) / (float)(mBands - 1);
+    defaultQ = std::max(0.1f, std::min(20.0f, 1.0f / (octaves * 0.693147f)));
+  }
+
   if (mBands == 1) {
     mFreq[0] = 1000.0f;
+    mQ[0] = 1.0f;
   } else {
-    for (int i = 0; i < mBands; i++) {
+    for (unsigned int i = 0; i < mBands; i++) {
       float t = (float)i / (float)(mBands - 1);
       mFreq[i] = f0 * powf(f1 / f0, t);
+      mQ[i] = defaultQ;
     }
+  }
+
+  // Safe defaults for remaining slots
+  for (unsigned int i = mBands; i < MAX_BANDS; i++) {
+    mFreq[i] = 1000.0f;
+    mQ[i] = 1.0f;
   }
 }
 

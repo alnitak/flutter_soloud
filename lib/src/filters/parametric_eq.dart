@@ -15,7 +15,11 @@ import 'package:flutter_soloud/src/sound_hash.dart';
 /// - Index 0: wet (0-1, default 1)
 /// - Index 1: STFT window size (32-4096, power of 2, default 1024)
 /// - Index 2: number of bands (1-64, default 3)
-/// - Index 3+: gain for each band (0-4, default 1)
+/// - Index 3-66: gain for each band (0-4, default 1)
+/// - Index 67-130: center frequency for each band (10-24000 Hz, default
+///   geometric 30-12000 Hz)
+/// - Index 131-194: Q factor for each band (0.1-20, default based on band
+///   count / 1.0)
 class ParametricEqParam {
   /// Wet parameter index - controls wet/dry mix (0-1, default 1)
   static const int wet = 0;
@@ -33,6 +37,17 @@ class ParametricEqParam {
   /// Maximum number of bands supported
   static const int maxBands = 64;
 
+  /// Starting index for band center frequencies (10-24000 Hz)
+  /// Band N frequency is at index: bandFreqOffset + N
+  static const int bandFreqOffset = 3 + maxBands; // 67
+
+  /// Starting index for band Q factors (0.1-20)
+  /// Band N Q factor is at index: bandQOffset + N
+  static const int bandQOffset = 3 + maxBands * 2; // 131
+
+  /// Total number of parameters
+  static const int maxParams = 3 + maxBands * 3; // 195
+
   /// Get the parameter index for a specific band's gain
   /// [bandIndex] should be 0-63
   static int bandGain(int bandIndex) {
@@ -42,12 +57,32 @@ class ParametricEqParam {
     return bandGainOffset + bandIndex;
   }
 
+  /// Get the parameter index for a specific band's center frequency
+  /// [bandIndex] should be 0-63
+  static int bandFreq(int bandIndex) {
+    if (bandIndex < 0 || bandIndex >= maxBands) {
+      throw ArgumentError('Band index must be between 0 and ${maxBands - 1}');
+    }
+    return bandFreqOffset + bandIndex;
+  }
+
+  /// Get the parameter index for a specific band's Q factor
+  /// [bandIndex] should be 0-63
+  static int bandQ(int bandIndex) {
+    if (bandIndex < 0 || bandIndex >= maxBands) {
+      throw ArgumentError('Band index must be between 0 and ${maxBands - 1}');
+    }
+    return bandQOffset + bandIndex;
+  }
+
   /// Get min value for a parameter at the given index
   static double getMin(int paramIndex) {
     if (paramIndex == wet) return 0;
     if (paramIndex == stftWindowSize) return 32;
     if (paramIndex == numBands) return 1;
-    // Band gains
+    if (paramIndex >= bandGainOffset && paramIndex < bandFreqOffset) return 0;
+    if (paramIndex >= bandFreqOffset && paramIndex < bandQOffset) return 10;
+    if (paramIndex >= bandQOffset && paramIndex < maxParams) return 0.1;
     return 0;
   }
 
@@ -56,8 +91,10 @@ class ParametricEqParam {
     if (paramIndex == wet) return 1;
     if (paramIndex == stftWindowSize) return 4096;
     if (paramIndex == numBands) return 64;
-    // Band gains
-    return 4;
+    if (paramIndex >= bandGainOffset && paramIndex < bandFreqOffset) return 4;
+    if (paramIndex >= bandFreqOffset && paramIndex < bandQOffset) return 24000;
+    if (paramIndex >= bandQOffset && paramIndex < maxParams) return 20;
+    return 1;
   }
 
   /// Get default value for a parameter at the given index
@@ -65,8 +102,16 @@ class ParametricEqParam {
     if (paramIndex == wet) return 1;
     if (paramIndex == stftWindowSize) return 1024;
     if (paramIndex == numBands) return 3;
-    // Band gains
-    return 1;
+    if (paramIndex >= bandGainOffset && paramIndex < bandFreqOffset) return 1;
+    if (paramIndex >= bandFreqOffset && paramIndex < bandQOffset) {
+      final bandIndex = paramIndex - bandFreqOffset;
+      if (bandIndex == 0) return 30;
+      if (bandIndex == 1) return 600;
+      if (bandIndex == 2) return 12000;
+      return 1000;
+    }
+    if (paramIndex >= bandQOffset && paramIndex < maxParams) return 1;
+    return 0;
   }
 
   /// Get the name of a parameter at the given index
@@ -74,9 +119,14 @@ class ParametricEqParam {
     if (paramIndex == wet) return 'Wet';
     if (paramIndex == stftWindowSize) return 'STFT Window Size';
     if (paramIndex == numBands) return 'Number of Bands';
-    if (paramIndex >= bandGainOffset &&
-        paramIndex < bandGainOffset + maxBands) {
+    if (paramIndex >= bandGainOffset && paramIndex < bandFreqOffset) {
       return 'Band ${paramIndex - bandGainOffset} Gain';
+    }
+    if (paramIndex >= bandFreqOffset && paramIndex < bandQOffset) {
+      return 'Band ${paramIndex - bandFreqOffset} Frequency';
+    }
+    if (paramIndex >= bandQOffset && paramIndex < maxParams) {
+      return 'Band ${paramIndex - bandQOffset} Q';
     }
     return 'Unknown';
   }
@@ -111,7 +161,7 @@ abstract class _ParametricEqInternal extends FilterBase {
     return ret.value.toInt();
   }
 
-  /// Calculate the center frequency (in Hz) for a specific band.
+  /// Calculate the default center frequency (in Hz) for a specific band.
   ///
   /// [bandIndex] should be 0 to [nBands]-1.
   /// [nBands] is the total number of bands.
@@ -121,10 +171,6 @@ abstract class _ParametricEqInternal extends FilterBase {
   @protected
   @visibleForTesting
   double calculateBandFrequency(int bandIndex, int nBands) {
-    // This reflects the internal logic of the SoLoud parametric EQ filter,
-    // which uses a logarithmic scale between 30 Hz and 12,000 Hz.
-    // If "ParametricEq::setFreqs" of "parametric_eq_filter.cpp" is updated,
-    // this function should be updated as well.
     if (bandIndex < 0 || bandIndex >= nBands) {
       throw ArgumentError('Band index must be between 0 and ${nBands - 1}');
     }
@@ -193,24 +239,58 @@ class ParametricEqSingle extends _ParametricEqInternal {
     );
   }
 
+  /// Get the center frequency parameter for a specific band (10-24000 Hz)
+  /// [bandIndex] should be 0-63
+  FilterParam bandFreq(int bandIndex, {SoundHandle? soundHandle}) {
+    final paramIndex = ParametricEqParam.bandFreq(bandIndex);
+    return FilterParam(
+      soundHandle,
+      super.busId,
+      filterType,
+      paramIndex,
+      ParametricEqParam.getMin(paramIndex),
+      ParametricEqParam.getMax(paramIndex),
+    );
+  }
+
+  /// Alias for [bandFreq] to get the center frequency parameter.
+  FilterParam bandFrequencyParam(int bandIndex, {SoundHandle? soundHandle}) =>
+      bandFreq(bandIndex, soundHandle: soundHandle);
+
+  /// Get the Q factor parameter for a specific band (0.1-20, default ~1.0)
+  /// [bandIndex] should be 0-63
+  FilterParam bandQ(int bandIndex, {SoundHandle? soundHandle}) {
+    final paramIndex = ParametricEqParam.bandQ(bandIndex);
+    return FilterParam(
+      soundHandle,
+      super.busId,
+      filterType,
+      paramIndex,
+      ParametricEqParam.getMin(paramIndex),
+      ParametricEqParam.getMax(paramIndex),
+    );
+  }
+
   /// Get the center frequency (in Hz) for a specific band.
   ///
   /// [bandIndex] should be 0 to nBands-1.
   /// [soundHandle] is the handle of the playing sound, or `null` for
   /// bus filters.
   ///
-  /// The number of bands is automatically read from the active filter. If the
-  /// filter is not active or the index is out of range, it will
-  /// throw [ArgumentError]
-  ///
-  /// Frequencies are distributed logarithmically (geometrically) between
-  /// 30 Hz and 12,000 Hz to match human auditory perception.
-  ///
-  /// Example with 3 bands:
-  /// - Band 0: 30 Hz
-  /// - Band 1: 600 Hz
-  /// - Band 2: 12,000 Hz
+  /// Reads the active filter's configured frequency for this band, falling back
+  /// to the default geometric spacing if not readable.
   double bandFrequency(int bandIndex, {SoundHandle? soundHandle}) {
+    if (!kIsWeb || soundHash == null) {
+      final ret = SoLoudController().soLoudFFI.getFilterParams(
+        handle: soundHandle,
+        busId: busId,
+        FilterType.parametricEq,
+        ParametricEqParam.bandFreq(bandIndex),
+      );
+      if (ret.error == PlayerErrors.noError && ret.value > 0) {
+        return ret.value;
+      }
+    }
     final nBands = getNumBands(soundHandle);
     return calculateBandFrequency(bandIndex, nBands);
   }
@@ -263,22 +343,51 @@ class ParametricEqGlobal extends _ParametricEqInternal {
     );
   }
 
+  /// Get the center frequency parameter for a specific band (10-24000 Hz)
+  /// [bandIndex] should be 0-63
+  FilterParam bandFreq(int bandIndex) {
+    final paramIndex = ParametricEqParam.bandFreq(bandIndex);
+    return FilterParam(
+      null,
+      null,
+      filterType,
+      paramIndex,
+      ParametricEqParam.getMin(paramIndex),
+      ParametricEqParam.getMax(paramIndex),
+    );
+  }
+
+  /// Alias for [bandFreq] to get the center frequency parameter.
+  FilterParam bandFrequencyParam(int bandIndex) => bandFreq(bandIndex);
+
+  /// Get the Q factor parameter for a specific band (0.1-20, default ~1.0)
+  /// [bandIndex] should be 0-63
+  FilterParam bandQ(int bandIndex) {
+    final paramIndex = ParametricEqParam.bandQ(bandIndex);
+    return FilterParam(
+      null,
+      null,
+      filterType,
+      paramIndex,
+      ParametricEqParam.getMin(paramIndex),
+      ParametricEqParam.getMax(paramIndex),
+    );
+  }
+
   /// Get the center frequency (in Hz) for a specific band.
   ///
   /// [bandIndex] should be 0 to nBands-1.
   ///
-  /// The number of bands is automatically read from the active filter. If the
-  /// filter is not active or the index is out of range, it will
-  /// throw [ArgumentError]
-  ///
-  /// Frequencies are distributed logarithmically (geometrically) between
-  /// 30 Hz and 12,000 Hz to match human auditory perception.
-  ///
-  /// Example with 3 bands:
-  /// - Band 0: 30 Hz
-  /// - Band 1: 600 Hz
-  /// - Band 2: 12,000 Hz
+  /// Reads the active filter's configured frequency for this band, falling back
+  /// to the default geometric spacing if not readable.
   double bandFrequency(int bandIndex) {
+    final ret = SoLoudController().soLoudFFI.getFilterParams(
+      FilterType.parametricEq,
+      ParametricEqParam.bandFreq(bandIndex),
+    );
+    if (ret.error == PlayerErrors.noError && ret.value > 0) {
+      return ret.value;
+    }
     final nBands = getNumBands(null);
     return calculateBandFrequency(bandIndex, nBands);
   }

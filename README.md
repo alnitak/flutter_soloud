@@ -23,8 +23,8 @@ A high-performance audio plugin designed primarily for games and immersive appli
 - 🚌 Mixing buses: group voices (music, SFX, UI...) into sub-mixes with their own volume, filters and visualization
 - 📊 Get audio wave and/or FFT audio data in real-time (useful for visualization)
 - 🎛️ Rich effects system (reverb, echo, limiter, parametric equalizer, pitch shift, ring modulation, etc.)
-- ⚙️ Faders for attributes (e.g. fade out for 2 seconds, then stop)
-- 🎚️ Oscillators for attributes
+- ⚙️ Faders for filter attributes (e.g. fade out for 2 seconds, then stop)
+- 🎚️ Oscillators for filter attributes
 - 🌊 Waveform generation and visualization
 - 🔊 Multiple voices, playing different or even the same sound multiple times
 - 🎵 Audio playback support for MP3, WAV, OGG, FLAC, plus native platform decoding for M4A, MP4 (audio tracks), AAC, AC-3, and E-AC-3

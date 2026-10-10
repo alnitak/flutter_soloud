@@ -402,6 +402,18 @@ class FilterParam {
   final double _min;
   final double _max;
 
+  /// The filter type this parameter belongs to.
+  FilterType get type => _type;
+
+  /// The attribute/parameter index.
+  int get attributeId => _attributeId;
+
+  /// Minimum value allowed for this parameter.
+  double get min => _min;
+
+  /// Maximum value allowed for this parameter.
+  double get max => _max;
+
   /// Get the parameter value.
   ///
   /// Throws [SoLoudFilterForSingleSoundOnWebDartException] if trying to use
@@ -569,7 +581,7 @@ enum FilterType {
     FilterType.pitchShiftFilter => 3,
     FilterType.limiterFilter => 6,
     FilterType.compressorFilter => 7,
-    FilterType.parametricEq => 67,
+    FilterType.parametricEq => 195,
     FilterType.amplitudeModulatorFilter => 2,
   };
 

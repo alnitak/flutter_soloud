@@ -161,13 +161,14 @@ N-band equalizer (1–64 bands), STFT-based. Source:
 |---|---|---|---|---|
 | wet | 0 | 1 | 1 | |
 | stftWindowSize | 32 | 4096 | 1024 | **must be a power of two**; invalid values are ignored with a log warning. Larger = better frequency resolution, more latency/CPU |
-| numBands | 1 | 64 | 3 | set before `bandGain(i)` so enough band slots exist |
+| numBands | 1 | 64 | 3 | number of active bands |
 | bandGain(i) | 0 | 4 | 1 | per band `i` in 0..63; 1 = flat, >1 boost, <1 cut |
+| bandFreq(i) | 10 | 24000 | geometric | per band `i` center frequency (Hz); defaults to 30 Hz .. 12 kHz geometric distribution |
+| bandQ(i) | 0.1 | 20 | defaultQ | per band `i` Q factor (bell curve sharpness); defaults to spacing-based Q (~1.0) |
 
-Extra API: `bandFrequency(i)` returns the center frequency (Hz) of band `i`,
-read against the active filter's `numBands`. Bands are distributed
-logarithmically between 30 Hz and 12 kHz; with a single band the center is
-1 kHz. Example with 3 bands: 30 Hz, 600 Hz, 12 kHz.
+Extra API: `bandFrequency(i)` returns the current center frequency (Hz) of band `i`
+(alias `bandFrequencyParam(i)` for `bandFreq(i)`). Bands use smooth Gaussian bell curves on
+a logarithmic frequency scale. Defaults distribute 30 Hz to 12 kHz (e.g. 3 bands: 30 Hz, 600 Hz, 12 kHz).
 
 See `example/lib/filters/parametric_eq.dart`.
 

@@ -52,7 +52,7 @@ Which params matter for the common use (full table in `references/filter-paramet
 | pitchShift | `shift` 0–3 (1), `semitones` −36–36 (0); linked: `semitones = 12 * log2(shift)` |
 | limiter | `threshold` −60–0 dB (−3), `outputCeiling` −60–0 dB (−1), `attackTime` 0.1–200 ms (1), `releaseTime` 1–1000 ms (100), `kneeWidth` 0–30 dB (2) |
 | compressor | `threshold` −80–0 dB (−6), `ratio` 1–10 (3), `makeupGain` −40–40 dB (0), `attackTime` 0–100 ms (10), `releaseTime` 0–1000 ms (100), `kneeWidth` 0–40 dB (2) |
-| parametricEq | `numBands` 1–64 (3), `stftWindowSize` 32–4096 power of two (1024), `bandGain(i)` 0–4 (1) |
+| parametricEq | `numBands` 1–64 (3), `stftWindowSize` 32–4096 power of two (1024), `bandGain(i)` 0–4 (1), `bandFreq(i)` 10–24000 Hz, `bandQ(i)` 0.1–20 (~1.0) |
 | amplitudeModulator | `frequency` 0.1–20000 Hz (440); sine ring modulation, clamped below Nyquist at runtime |
 
 Every filter also has `wet` (0–1, default 1): 1 = fully processed, 0 = dry passthrough.
@@ -78,13 +78,15 @@ sound.filters.pitchShiftFilter.timeStretch(handle, 1.25); // 25% faster, same pi
 // Global scope: do it manually — setRelativePlaySpeed(handle, speed) then
 // pitchShiftFilter.shift.value = 1 / speed.
 
-// Parametric EQ (bands are logarithmic, 30 Hz .. 12 kHz):
+// Parametric EQ (smooth bell curves, default 30 Hz .. 12 kHz):
 final eq = SoLoud.instance.filters.parametricEqFilter;
 eq.activate();
 eq.numBands.value = 10;
 eq.stftWindowSize.value = 2048; // must be a power of two, 32..4096
-eq.bandGain(0).value = 2;       // boost the lowest band
-final hz = eq.bandFrequency(0); // center frequency of band 0 (30 Hz)
+eq.bandGain(0).value = 2;       // boost lowest band
+eq.bandFreq(0).value = 45;      // tune center frequency to 45 Hz
+eq.bandQ(0).value = 1.5;        // tune Q factor
+final hz = eq.bandFrequency(0); // reads current center frequency (45 Hz)
 ```
 
 ## Traps

@@ -10,10 +10,6 @@ class ParametricEq;
 
 class ParametricEqInstance : public SoLoud::FilterInstance {
   ParametricEq *mParent;
-  // float* mBuffer;          // Temporary buffer for FFT processing
-  // float* mWindow;          // Window function coefficients
-  // unsigned int mBufferSize;
-  // unsigned int mBufferPos;
   float *mInputBuffer[MAX_CHANNELS];
   float *mMixBuffer[MAX_CHANNELS];
   float *mTemp;
@@ -24,16 +20,13 @@ class ParametricEqInstance : public SoLoud::FilterInstance {
   unsigned int mMixOffset[MAX_CHANNELS];
   unsigned int mReadOffset[MAX_CHANNELS];
 
-  // Band information precomputed for fast lookup
   int mBands;
-  std::vector<float> mBandCenter;
-  std::vector<float> mBandBoundary; // size = mBands+1, boundaries between bands
 
   // Helper functions for FFT processing
   void comp2MagPhase(float *aFFTBuffer, unsigned int aSamples);
   void magPhase2Comp(float *aFFTBuffer, unsigned int aSamples);
 
-  // Initialize band parameters (centers, boundaries, gains)
+  // Initialize band parameters (gains, frequencies, Q factors)
   void initBandParameters();
 
   // Initialize FFT setup and allocate buffers
@@ -53,13 +46,18 @@ public:
 
 class ParametricEq : public SoLoud::Filter {
 public:
-  // Wet param is index 0 in the filter param list; band gains start at index 1
-  unsigned int mBands;      // number of EQ bands (user configurable)
+  static const unsigned int MAX_BANDS = 64;
+  static const unsigned int BAND_GAIN_OFFSET = 3;
+  static const unsigned int BAND_FREQ_OFFSET = 3 + MAX_BANDS;   // 67
+  static const unsigned int BAND_Q_OFFSET = 3 + MAX_BANDS * 2;  // 131
+  static const unsigned int NUM_PARAMS = 3 + MAX_BANDS * 3;     // 195
+
+  unsigned int mBands;      // number of active EQ bands (user configurable)
   float mWet;
-  std::vector<float> mGain; // per-band gain
-  std::vector<float> mFreq; // per-band center frequency
-  int mSTFT_WINDOW_SIZE; // Increased for better frequency resolution. Must be a
-                         // power of 2.
+  std::vector<float> mGain; // per-band gain (size MAX_BANDS)
+  std::vector<float> mFreq; // per-band center frequency (size MAX_BANDS)
+  std::vector<float> mQ;    // per-band Q factor (size MAX_BANDS)
+  int mSTFT_WINDOW_SIZE;    // FFT window size (power of 2, 32-4096)
   int mSTFT_WINDOW_HALF;
   int mSTFT_WINDOW_TWICE;
   float mFFT_SCALE;

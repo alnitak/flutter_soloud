@@ -1,13 +1,15 @@
-##### 5.1.6 (XX Xxx 2026)
+##### 5.2.0 (10 Oct 2026)
 - **Extended audio formats**: Added cross-platform support for decoding **M4A**, **MP4 (audio tracks)**, **AAC** (ADTS), **AC-3** (Dolby Digital), and **E-AC-3** (Dolby Digital Plus):
   - **Whole-file & memory loading**: `loadFile`, `loadAsset`, `loadMem`, and `loadUrl` support M4A, MP4, AAC, AC-3, and E-AC-3 via platform-native decoders (AudioToolbox on iOS/macOS, MediaCodec on Android, MediaFoundation on Windows, Web Audio API on Web, and FFmpeg on Linux).
   - **Push & pull buffer streaming**: `setBufferStream` and `setPullBufferStream` support real-time streaming of AAC (ADTS), AC-3, and E-AC-3 elementary streams with automatic format detection (`BufferType.auto`). *(Note: MP4/M4A containers require random access and are not streamable via chunk buffers; AC-3/E-AC-3 streaming is not supported on Web in any browser due to browser engine limitations).*
   - **Audio metadata parsing**: Added metadata extraction (title, artist, album, date, genre, etc.) for M4A, AAC, and AC-3/E-AC-3 streams.
   - **Linux runtime support**: Extended OS formats on Linux dynamically load system FFmpeg shared libraries (`libavcodec` and `libavformat`) at runtime when available. Core formats (MP3, WAV, Ogg Vorbis/Opus, FLAC) continue to work out of the box with bundled decoders.
   - **Android decoding optimizations**: Implemented pipelined MediaCodec buffer bursts and single-pass elementary stream decoding to reduce audio loading latency.
+- **Parametric equalizer upgrade**: Converted equalizer filter from triangular response to true Gaussian bell curves on a logarithmic frequency scale with independent per-band center frequency (`bandFreq(i)`) and Q factor (`bandQ(i)`) controls across up to 64 bands, with default distribution from 30 Hz to 12 kHz. Added interactive `EqGraph` visualization widget to the example app #579.
+- fix: crash (use-after-free on the audio thread) when disposing a playing `MixingBus` that has filters attached. Thanks to @Colton127 #581
+- feat: filtes used on a single audio source now works also on the Web
 - feat Apple: add privacy manifest for iOS and macOS #577
 - fix: correct Ogg Opus decoder streaming loop for very short sounds #576
-- fix: crash (use-after-free on the audio thread) when disposing a playing `MixingBus` that has filters attached. Thanks to @Colton127 #581
 
 ##### 5.1.5 (30 Sep 2026)
 - fix: Android device enumeration crash and AAudio route-change race conditions. Thanks to @Colton127 #572
