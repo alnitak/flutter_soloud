@@ -75,7 +75,6 @@ class _WebRadioExampleState extends State<WebRadioExample> {
     {'MP3': 'https://frontend.streamonkey.net/nostalgie-80er/stream/mp3'},
 
     // https://dir.xiph.org/codecs
-    {'Vorbis': 'http://stream.lazaradio.com:8100/live.ogg'},
     {'Vorbis': 'http://stream.trendyradio.pl:8000/m'},
     {'Vorbis': 'http://play.global.audio/nrj.ogg'},
     {'Vorbis': 'http://play.global.audio/radio1rock.ogg'},
