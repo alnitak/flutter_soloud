@@ -1,3 +1,7 @@
+##### 5.2.1 (XX Xxx 2026)
+- fix: support parsing multiple consecutive ID3 tags in audio stream decoders
+- update dr_libs (dr_wav, dr_flac, dr_mp3)
+
 ##### 5.2.0 (10 Oct 2026)
 - **Extended audio formats**: Added cross-platform support for decoding **M4A**, **MP4 (audio tracks)**, **AAC** (ADTS), **AC-3** (Dolby Digital), and **E-AC-3** (Dolby Digital Plus):
   - **Whole-file & memory loading**: `loadFile`, `loadAsset`, `loadMem`, and `loadUrl` support M4A, MP4, AAC, AC-3, and E-AC-3 via platform-native decoders (AudioToolbox on iOS/macOS, MediaCodec on Android, MediaFoundation on Windows, Web Audio API on Web, and FFmpeg on Linux).

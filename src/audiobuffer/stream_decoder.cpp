@@ -9,6 +9,7 @@
 #   include "ogg_flac_stream_decoder.h"
 #endif
 #include "../native_decoder/native_audio_decoder.h"
+#include "icy_metadata.h"
 #include <cstring>
 
 void StreamDecoder::setBufferIcyMetaInt(int icyMetaInt) {
@@ -29,20 +30,36 @@ void StreamDecoder::setBufferIcyMetaInt(int icyMetaInt) {
     }
 }
 
-// Helper to get the size of an ID3v2 tag. Returns 0 if not an ID3v2 tag.
+// Helper to get the total size of all consecutive ID3v2 tags. Returns 0 if none.
 static size_t getID3TagSize(const std::vector<unsigned char>& buffer) {
-    if (buffer.size() >= 10 && memcmp(buffer.data(), "ID3", 3) == 0) {
-        // It's an ID3v2 tag. The size is a 28-bit integer, stored as 4x7-bit bytes (synchsafe).
-        uint32_t size = ((buffer[6] & 0x7f) << 21) |
-                       ((buffer[7] & 0x7f) << 14) |
-                       ((buffer[8] & 0x7f) << 7) |
-                       (buffer[9] & 0x7f);
-        return size + 10; // +10 for the header.
+    size_t offset = 0;
+    while (offset + 10 <= buffer.size() && memcmp(buffer.data() + offset, "ID3", 3) == 0) {
+        uint32_t size = ((buffer[offset + 6] & 0x7f) << 21) |
+                       ((buffer[offset + 7] & 0x7f) << 14) |
+                       ((buffer[offset + 8] & 0x7f) << 7) |
+                       (buffer[offset + 9] & 0x7f);
+        size_t total = 10 + size;
+        if ((buffer[offset + 5] & 0x10) != 0) {
+            total += 10;
+        }
+        if (offset + total > buffer.size()) break;
+        offset += total;
     }
-    return 0;
+    return offset;
 }
 
-DetectedType StreamDecoder::detectAudioFormat(const std::vector<unsigned char>& buffer) {
+DetectedType StreamDecoder::detectAudioFormat(const std::vector<unsigned char>& inBuffer) {
+    std::vector<unsigned char> cleanBuffer;
+    const std::vector<unsigned char>* pBuffer = &inBuffer;
+    if (mIcyMetaInt > 0 && inBuffer.size() > static_cast<size_t>(mIcyMetaInt)) {
+        IcyStripState tempIcy{};
+        stripIcyMetadataEx(inBuffer, mIcyMetaInt, tempIcy, cleanBuffer,
+                           [](const std::string&, const std::string&) {});
+        if (!cleanBuffer.empty()) {
+            pBuffer = &cleanBuffer;
+        }
+    }
+    const std::vector<unsigned char>& buffer = *pBuffer;
     size_t size = buffer.size();
     if (size < 4) return DetectedType::BUFFER_NO_ENOUGH_DATA;
     
