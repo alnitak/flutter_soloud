@@ -9,6 +9,7 @@
 #   include "ogg_flac_stream_decoder.h"
 #endif
 #include "../native_decoder/native_audio_decoder.h"
+#include "icy_metadata.h"
 #include <cstring>
 
 void StreamDecoder::setBufferIcyMetaInt(int icyMetaInt) {
@@ -42,7 +43,18 @@ static size_t getID3TagSize(const std::vector<unsigned char>& buffer) {
     return 0;
 }
 
-DetectedType StreamDecoder::detectAudioFormat(const std::vector<unsigned char>& buffer) {
+DetectedType StreamDecoder::detectAudioFormat(const std::vector<unsigned char>& inBuffer) {
+    std::vector<unsigned char> cleanBuffer;
+    const std::vector<unsigned char>* pBuffer = &inBuffer;
+    if (mIcyMetaInt > 0 && inBuffer.size() > static_cast<size_t>(mIcyMetaInt)) {
+        IcyStripState tempIcy{};
+        stripIcyMetadataEx(inBuffer, mIcyMetaInt, tempIcy, cleanBuffer,
+                           [](const std::string&, const std::string&) {});
+        if (!cleanBuffer.empty()) {
+            pBuffer = &cleanBuffer;
+        }
+    }
+    const std::vector<unsigned char>& buffer = *pBuffer;
     size_t size = buffer.size();
     if (size < 4) return DetectedType::BUFFER_NO_ENOUGH_DATA;
     
