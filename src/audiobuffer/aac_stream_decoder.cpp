@@ -102,15 +102,17 @@ AACDecoderWrapper::decode(std::vector<unsigned char> &buffer, int *samplerate,
     buffer.clear();
   }
 
-  // Handle ID3 tags prepended to AAC streams
+  // Handle ID3 tags prepended to AAC streams (supports multiple consecutive tags)
   if (mFormat == DetectedType::BUFFER_AAC && !mAudioData.empty()) {
-    if (!mId3Parsed && mAudioData.size() >= 10 && std::memcmp(mAudioData.data(), "ID3", 3) == 0) {
+    while (mAudioData.size() >= 10 && std::memcmp(mAudioData.data(), "ID3", 3) == 0) {
       size_t id3Size = 0;
       if (parseId3Tags(mAudioData.data(), mAudioData.size(), mCachedAacMetadata, id3Size)) {
         mId3Parsed = true;
       }
       if (id3Size > 0 && mAudioData.size() >= id3Size) {
         mAudioData.erase(mAudioData.begin(), mAudioData.begin() + id3Size);
+      } else {
+        break;
       }
     }
   }
