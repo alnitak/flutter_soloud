@@ -149,8 +149,10 @@ public:
       const size_t available = (mStreamBytes.size() > mStreamReadOffset)
                                    ? (mStreamBytes.size() - mStreamReadOffset)
                                    : 0;
-      // Only queue EOS once all complete frames in the stream buffer have been submitted!
-      if (available < 7) {
+      // Only queue EOS once all complete frames in the stream buffer have been
+      // submitted. A trailing frame cut short by the end of data can never be
+      // completed, so it is dropped rather than holding EOS back forever.
+      if (available < 7 || mTrailingFrameIncomplete) {
         mStreamBytes.clear();
         mStreamReadOffset = 0;
 
@@ -357,6 +359,7 @@ private:
                         (frameData[4] << 3) |
                         ((frameData[5] >> 5) & 0x07);
       if (currentAvailable < frameLen) {
+        mTrailingFrameIncomplete = mDataEnded;
         break; // Frame incomplete, wait for remaining bytes
       }
 
@@ -541,6 +544,7 @@ private:
       }
 
       if (currentAvailable < frameLen) {
+        mTrailingFrameIncomplete = mDataEnded;
         break; // Incomplete frame
       }
 
@@ -646,6 +650,7 @@ private:
     mDataEnded = false;
     mEosQueued = false;
     mEosReached = false;
+    mTrailingFrameIncomplete = false;
     mIsFloatOutput = false;
     mSampleRate = 0;
     mChannels = 0;
@@ -667,6 +672,8 @@ private:
   bool mDataEnded = false;
   bool mEosQueued = false;
   bool mEosReached = false;
+  // Data has ended and the remaining bytes are a frame that cannot complete.
+  bool mTrailingFrameIncomplete = false;
   int64_t mPresentationTimeUs = 0;
   AMediaCodec *mCodec = nullptr;
   std::vector<uint8_t> mStreamBytes;

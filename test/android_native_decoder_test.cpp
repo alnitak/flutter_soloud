@@ -233,6 +233,77 @@ static void testMalformed() {
     unlink(tmp.c_str());
 }
 
+static void testElementaryStreams() {
+    std::cout << "[Test] Elementary streams (ADTS AAC, AC-3, E-AC-3)" << std::endl;
+    // Reference frame counts from ffmpeg; MediaCodec may differ by its own
+    // priming/flush behavior, but never by more than a couple of frames.
+    struct Stream { const char *file; size_t refFrames; };
+    const Stream streams[] = {
+        {"sample-AAC.aac", 662528},
+        {"sample-AC3.ac3", 662016},
+        {"sample-EAC3.eac3", 662016},
+    };
+    for (const auto &st : streams) {
+        const std::string path = gDir + "/" + st.file;
+        auto bytes = readFile(path);
+        std::unique_ptr<Decoded> fromFile(timed([&] { return NativeAudioDecoder::decodeFile(path.c_str()); }));
+        std::unique_ptr<Decoded> fromMem(timed([&] { return NativeAudioDecoder::decodeMemory(bytes.data(), bytes.size()); }));
+        for (Decoded *r : {fromFile.get(), fromMem.get()}) {
+            const char *how = r == fromFile.get() ? "file" : "mem";
+            CHECK(r->seconds < 30.0, st.file << " (" << how << "): took " << r->seconds << " s");
+            if (!r->d.success) {
+                // Some devices ship no AC-3/E-AC-3 decoder; that must be an
+                // error, never partial audio.
+                CHECK(!r->d.errorMessage.empty() && r->d.samples == nullptr,
+                      st.file << " (" << how << "): failure without message");
+                std::cout << "  " << st.file << " (" << how << "): \"" << r->d.errorMessage << "\"" << std::endl;
+                continue;
+            }
+            const long diff = static_cast<long>(r->d.sampleCount) - static_cast<long>(st.refFrames);
+            std::cout << "  " << st.file << " (" << how << "): " << r->d.sampleCount << " frames, "
+                      << r->d.channels << "ch " << r->d.sampleRate << " Hz, ref diff " << diff << " ("
+                      << r->seconds * 1000.0 << " ms)" << std::endl;
+            CHECK(std::labs(diff) <= 4096, st.file << " (" << how << "): decoded " << r->d.sampleCount
+                                                  << " frames, expected ~" << st.refFrames);
+            CHECK(r->d.channels == 2 && r->d.sampleRate == 44100.0f, st.file << ": unexpected format");
+        }
+    }
+}
+
+/// Number of complete ADTS frames in `size` bytes (walks frame headers).
+static size_t countAdtsFrames(const unsigned char *data, size_t size) {
+    size_t offset = 0, frames = 0;
+    while (offset + 7 <= size && data[offset] == 0xFF && (data[offset + 1] & 0xF6) == 0xF0) {
+        const size_t len = ((data[offset + 3] & 0x03) << 11) | (data[offset + 4] << 3) | (data[offset + 5] >> 5);
+        if (len < 7 || offset + len > size) break;
+        offset += len;
+        ++frames;
+    }
+    return frames;
+}
+
+static void testTruncatedAdts() {
+    std::cout << "[Test] ADTS cut mid-frame decodes every complete frame" << std::endl;
+    auto bytes = readFile(gDir + "/sample-AAC.aac");
+    DecodedAudioData full = NativeAudioDecoder::decodeMemory(bytes.data(), bytes.size());
+    CHECK(full.success, "full ADTS decode failed: " << full.errorMessage);
+    const size_t totalFrames = countAdtsFrames(bytes.data(), bytes.size());
+    for (double frac : {0.25, 0.5, 0.9}) {
+        const size_t cut = static_cast<size_t>(bytes.size() * frac) + 3;
+        const size_t kept = countAdtsFrames(bytes.data(), cut);
+        std::unique_ptr<Decoded> r(timed([&] { return NativeAudioDecoder::decodeMemory(bytes.data(), cut); }));
+        CHECK(r->d.success, "cut at " << frac << ": " << r->d.errorMessage);
+        CHECK(r->seconds < 10.0, "cut at " << frac << ": took " << r->seconds << " s");
+        // Each AAC frame is 1024 PCM frames; only the dropped ones may be missing.
+        const size_t expected = full.sampleCount - (totalFrames - kept) * 1024;
+        std::cout << "  cut at " << frac << ": " << kept << "/" << totalFrames << " ADTS frames -> "
+                  << r->d.sampleCount << " PCM frames (expected " << expected << ")" << std::endl;
+        CHECK(r->d.sampleCount == expected, "cut at " << frac << ": decoded " << r->d.sampleCount
+                                                       << " frames, expected " << expected);
+    }
+    full.freeSamples();
+}
+
 static void testResourceCleanup() {
     std::cout << "[Test] Resource cleanup across repeated success/failure cycles" << std::endl;
     const std::string good = gDir + "/aac_lc_mono_44100.m4a";
@@ -305,6 +376,8 @@ int main(int argc, char **argv) {
     gDir = argc > 1 ? argv[1] : "/data/local/tmp/soloud_decoder_test";
     testFixtures();
     testMalformed();
+    testElementaryStreams();
+    testTruncatedAdts();
     testResourceCleanup();
     testConcurrentDecoding();
     if (gFailures == 0) {

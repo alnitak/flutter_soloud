@@ -46,5 +46,6 @@ DEVICE_DIR=/data/local/tmp/soloud_decoder_test
 "${ADB[@]}" shell "rm -rf $DEVICE_DIR && mkdir -p $DEVICE_DIR/tmp"
 "${ADB[@]}" push "$OUT" "$DEVICE_DIR/" > /dev/null
 "${ADB[@]}" push example/assets/audio/aac_lc_mono_44100.m4a example/assets/audio/aac_lc_stereo_48000.m4a \
-    "$DEVICE_DIR/" > /dev/null
+    example/assets/audio/sample-AAC.aac example/assets/audio/sample-AC3.ac3 \
+    example/assets/audio/sample-EAC3.eac3 "$DEVICE_DIR/" > /dev/null
 "${ADB[@]}" shell "cd $DEVICE_DIR && TMPDIR=$DEVICE_DIR/tmp ./android_native_decoder_test $DEVICE_DIR"

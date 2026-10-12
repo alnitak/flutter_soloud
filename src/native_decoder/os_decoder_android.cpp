@@ -521,23 +521,43 @@ DecodedAudioData decodeElementaryStream(std::vector<unsigned char> buffer, Detec
             error = "Elementary stream channel count changed mid-stream";
             return false;
         }
+        if (samples.size() % static_cast<size_t>(channels) != 0) {
+            error = "Elementary stream decoder returned a partial PCM frame";
+            return false;
+        }
         const size_t frameCount = samples.size() / static_cast<size_t>(channels);
         return pcm.appendFloat(reinterpret_cast<const uint8_t *>(samples.data()), frameCount, error);
     };
 
+    // All input is supplied up front; keep draining until the decoder has
+    // consumed it and reached end of stream. Any decoder error or a stall
+    // fails the load rather than returning the audio decoded so far.
     wrapper.setDataEnded();
-    auto [samples, err] = wrapper.decode(buffer, &sampleRate, &channels, 0);
-    if (!appendSamples(samples)) return failure(error);
+    std::vector<unsigned char> emptyBuf;
+    bool firstPass = true;
+    auto lastProgress = std::chrono::steady_clock::now();
+    while (firstPass || wrapper.hasPendingData()) {
+        auto [samples, err] = wrapper.decode(firstPass ? buffer : emptyBuf, &sampleRate, &channels, 0);
+        firstPass = false;
+        if (err != DecoderError::NoError) {
+            return failure("Elementary stream decoder error " + std::to_string(static_cast<int>(err)) +
+                           " after " + std::to_string(pcm.frames()) + " frames");
+        }
+        if (!appendSamples(samples)) return failure(error);
 
-    int maxPasses = 50;
-    while (wrapper.hasPendingData() && --maxPasses > 0) {
-        std::vector<unsigned char> emptyBuf;
-        auto [samplesMore, errMore] = wrapper.decode(emptyBuf, &sampleRate, &channels, 0);
-        if (!appendSamples(samplesMore)) return failure(error);
+        const auto now = std::chrono::steady_clock::now();
+        if (!samples.empty()) {
+            lastProgress = now;
+        } else if (now - lastProgress > kStallTimeout) {
+            return failure("Elementary stream decoder stalled with data pending after " +
+                           std::to_string(pcm.frames()) + " frames");
+        }
     }
 
-    if (sampleRate <= 0 || sampleRate > kMaxSampleRate) sampleRate = 44100;
     if (pcm.frames() == 0) return failure("No audio frames decoded from elementary stream on Android");
+    if (sampleRate <= 0 || sampleRate > kMaxSampleRate) {
+        return failure("Unsupported elementary stream sample rate: " + std::to_string(sampleRate));
+    }
 
     DecodedAudioData result;
     result.sampleCount = pcm.frames();
