@@ -1034,6 +1034,20 @@ interface class SoLoud {
     // invoke a callback while its owning NativeCallable is being closed.
     _controller.soLoudFFI.disposeNativeCallables();
     _activeSounds.clear();
+
+    // Loads still in flight can no longer receive their file-loaded callback;
+    // fail them instead of leaving their futures pending forever.
+    final pendingLoads = loadedFileCompleters.values.toList();
+    loadedFileCompleters.clear();
+    for (final completer in pendingLoads) {
+      if (!completer.isCompleted) {
+        completer.completeError(
+          const SoLoudNotInitializedException(
+            'The engine was deinitialized while the sound was loading.',
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _waitForInitializationTeardownAndThrow() async {

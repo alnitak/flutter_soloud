@@ -324,6 +324,10 @@ enum LoadMode {
 
   /// Keep the file on disk and only load chunks as needed.
   /// More CPU, less memory allocated, seeking lags with MP3s.
+  ///
+  /// Formats decoded by the platform's native decoder (M4A, MP4, AAC, AC-3,
+  /// E-AC-3) cannot be streamed from disk: they are fully decoded to PCM in
+  /// memory when loaded, exactly like [memory].
   disk,
 }
 

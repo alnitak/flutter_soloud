@@ -44,8 +44,10 @@ namespace
     // deinit/reinit cycle preserves the user's timeout policy.
     std::atomic<int64_t> gAudioDeviceIdleTimeoutMs{kDefaultIdleTimeoutMs};
 
+    /// Reads the file, or only its first [maxBytes] bytes when non-zero.
     bool readFileBytes(const std::string &filePath,
-                       std::vector<unsigned char> &bytes)
+                       std::vector<unsigned char> &bytes,
+                       size_t maxBytes = 0)
     {
         std::ifstream file(filePath, std::ios::binary | std::ios::ate);
         if (!file.good())
@@ -53,10 +55,14 @@ namespace
             return false;
         }
 
-        const std::streamoff fileSize = file.tellg();
+        std::streamoff fileSize = file.tellg();
         if (fileSize <= 0)
         {
             return false;
+        }
+        if (maxBytes > 0 && fileSize > static_cast<std::streamoff>(maxBytes))
+        {
+            fileSize = static_cast<std::streamoff>(maxBytes);
         }
 
         bytes.resize(static_cast<size_t>(fileSize));
@@ -701,15 +707,20 @@ PlayerErrors Player::loadFile(
     PlayerErrors loadError = fromSoLoudError(result);
     if (result != SoLoud::SO_NO_ERROR)
     {
-        std::vector<unsigned char> bytes;
-        if (readFileBytes(completeFileName, bytes))
+        // Sniff the header first so non-Ogg fallbacks don't read the whole file.
+        std::vector<unsigned char> header;
+        if (readFileBytes(completeFileName, header, 64))
         {
-            if (isOggXiphBytes(bytes))
+            std::vector<unsigned char> bytes;
+            if (header.size() >= 4 && std::memcmp(header.data(), "OggS", 4) == 0 &&
+                readFileBytes(completeFileName, bytes) && isOggXiphBytes(bytes))
             {
                 loadError = loadOggXiphBufferStream(this, newSound.get(), bytes);
             }
-            else if (!loadIntoMem && NativeAudioDecoder::isSupportedNativeFormat(bytes.data(), bytes.size()))
+            else if (!loadIntoMem && NativeAudioDecoder::isSupportedNativeFormat(header.data(), header.size()))
             {
+                // Native formats (M4A/MP4, AAC, AC-3, E-AC-3) have no streaming
+                // decoder for LoadMode.disk: decode the whole file to PCM instead.
                 newSound.get()->sound = std::make_unique<SoLoud::Wav>();
                 newSound.get()->soundType = TYPE_WAV;
                 result = static_cast<SoLoud::Wav *>(newSound.get()->sound.get())->load(completeFileName.c_str());

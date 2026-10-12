@@ -328,23 +328,42 @@ result Wav::loadflac(MemoryFile *aReader) {
   return SO_NO_ERROR;
 }
 
+// Takes ownership of a native decoder result. Rejects results SoLoud cannot
+// represent (sample counts are unsigned int, at most MAX_CHANNELS channels).
+static result adoptNativeDecoded(Wav *aWav, DecodedAudioData aDecoded) {
+  if (!aDecoded.success || aDecoded.samples == nullptr || aDecoded.sampleCount == 0 ||
+      aDecoded.sampleCount > 0xFFFFFFFFu || aDecoded.channels == 0 ||
+      aDecoded.channels > MAX_CHANNELS || !(aDecoded.sampleRate > 0.0f)) {
+    if (!aDecoded.errorMessage.empty())
+      printf("[Wav::loadnative] %s\n", aDecoded.errorMessage.c_str());
+    aDecoded.freeSamples();
+    return FILE_LOAD_FAILED;
+  }
+
+  delete[] aWav->mData;
+  aWav->mData = aDecoded.samples;
+  aWav->mSampleCount = (unsigned int)aDecoded.sampleCount;
+  aWav->mActualSampleCount = (unsigned int)aDecoded.sampleCount;
+  aWav->mChannels = aDecoded.channels;
+  aWav->mBaseSamplerate = aDecoded.sampleRate;
+  return SO_NO_ERROR;
+}
+
 result Wav::loadnative(MemoryFile *aReader) {
   if (aReader == nullptr || aReader->length() == 0) {
     return INVALID_PARAMETER;
   }
 
-  DecodedAudioData decoded = NativeAudioDecoder::decodeMemory(aReader->getMemPtr(), aReader->length());
-  if (!decoded.success || decoded.samples == nullptr || decoded.sampleCount == 0) {
-    return FILE_LOAD_FAILED;
-  }
+  return adoptNativeDecoded(this, NativeAudioDecoder::decodeMemory(aReader->getMemPtr(), aReader->length()));
+}
 
+result Wav::loadnativefile(const char *aFilename) {
   delete[] mData;
-  mData = decoded.samples;
-  mSampleCount = (unsigned int)decoded.sampleCount;
-  mActualSampleCount = (unsigned int)decoded.sampleCount;
-  mChannels = decoded.channels;
-  mBaseSamplerate = decoded.sampleRate;
-  return SO_NO_ERROR;
+  mData = 0;
+  mSampleCount = 0;
+  mActualSampleCount = 0;
+  mChannels = 1;
+  return adoptNativeDecoded(this, NativeAudioDecoder::decodeFile(aFilename));
 }
 
 result Wav::testAndLoadFile(MemoryFile *aReader) {
@@ -380,9 +399,19 @@ result Wav::load(const char *aFilename) {
   stop();
   DiskFile dr;
   int res = dr.open(aFilename);
-  if (res == SO_NO_ERROR)
-    return loadFile(&dr);
-  return res;
+  if (res != SO_NO_ERROR)
+    return res;
+#if defined(__ANDROID__)
+  // MP4/M4A containers go straight to the platform decoder by path, avoiding
+  // a file -> memory -> temporary file round trip for AMediaExtractor.
+  unsigned char header[8];
+  if (dr.read(header, sizeof(header)) == sizeof(header) &&
+      NativeAudioDecoder::isM4aOrMp4(header, sizeof(header))) {
+    return loadnativefile(aFilename);
+  }
+  dr.seek(0);
+#endif
+  return loadFile(&dr);
 }
 
 result Wav::loadMem(const unsigned char *aMem, unsigned int aLength, bool aCopy,
