@@ -31,7 +31,10 @@ enum class DecoderError {
   FormatNotSupported,
   NoXiphLibs,
   FailedToCreateDecoder,
-  ErrorReadingOggOpusPage
+  ErrorReadingOggOpusPage,
+  // The platform codec failed while decoding (e.g. a MediaCodec error or
+  // malformed output buffer). The decoder cannot continue.
+  CodecError
 };
 
 // Structure to hold track metadata

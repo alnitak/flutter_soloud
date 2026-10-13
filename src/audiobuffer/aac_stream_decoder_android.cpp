@@ -82,6 +82,10 @@ public:
   decode(std::vector<unsigned char> &buffer, int *samplerate,
          int *channels, size_t maxOutputSamples) override {
     std::vector<float> decodedData;
+    // MediaCodec errors leave the codec unusable; keep reporting them.
+    if (mCodecFailed) {
+      return {std::move(decodedData), DecoderError::CodecError};
+    }
     if (maxOutputSamples > 0) {
       decodedData.reserve(maxOutputSamples);
     }
@@ -149,18 +153,28 @@ public:
       const size_t available = (mStreamBytes.size() > mStreamReadOffset)
                                    ? (mStreamBytes.size() - mStreamReadOffset)
                                    : 0;
-      // Only queue EOS once all complete frames in the stream buffer have been submitted!
-      if (available < 7) {
+      // Only queue EOS once all complete frames in the stream buffer have been
+      // submitted. A trailing frame cut short by the end of data can never be
+      // completed, so it is dropped rather than holding EOS back forever.
+      if (available < 7 || mTrailingFrameIncomplete) {
         mStreamBytes.clear();
         mStreamReadOffset = 0;
 
         if (!mEosQueued) {
-          for (int retry = 0; retry < 15 && !mEosQueued; ++retry) {
+          for (int retry = 0; retry < 15 && !mEosQueued && !mCodecFailed; ++retry) {
             ssize_t inIdx = AMediaCodec_dequeueInputBuffer(mCodec, 2000);
             if (inIdx >= 0) {
-              AMediaCodec_queueInputBuffer(mCodec, inIdx, 0, 0, mPresentationTimeUs,
-                                           AMEDIACODEC_BUFFER_FLAG_END_OF_STREAM);
+              media_status_t status = AMediaCodec_queueInputBuffer(
+                  mCodec, inIdx, 0, 0, mPresentationTimeUs, AMEDIACODEC_BUFFER_FLAG_END_OF_STREAM);
+              if (status != AMEDIA_OK) {
+                fail("AMediaCodec_queueInputBuffer (EOS) failed", status);
+                break;
+              }
               mEosQueued = true;
+              break;
+            }
+            if (inIdx != AMEDIACODEC_INFO_TRY_AGAIN_LATER) {
+              fail("AMediaCodec_dequeueInputBuffer failed", inIdx);
               break;
             }
             drainOutputBuffers(decodedData, maxOutputSamples, 2000);
@@ -170,7 +184,7 @@ public:
 
       if (mEosQueued && !mEosReached) {
         int idleCount = 0;
-        while (!mEosReached && idleCount < 20) {
+        while (!mEosReached && !mCodecFailed && idleCount < 20) {
           bool gotOutput = drainOutputBuffers(decodedData, maxOutputSamples, 2000);
           if (gotOutput) {
             idleCount = 0;
@@ -187,6 +201,9 @@ public:
     if (samplerate && mSampleRate > 0) *samplerate = mSampleRate;
     if (channels && mChannels > 0) *channels = mChannels;
 
+    if (mCodecFailed) {
+      return {std::move(decodedData), DecoderError::CodecError};
+    }
     return {std::move(decodedData), DecoderError::NoError};
   }
 
@@ -195,6 +212,7 @@ public:
   }
 
   bool hasPendingData() const override {
+    if (mCodecFailed) return false;
     const size_t available = (mStreamBytes.size() > mStreamReadOffset)
                                  ? (mStreamBytes.size() - mStreamReadOffset)
                                  : 0;
@@ -217,76 +235,184 @@ private:
     }
   }
 
+  // PCM encodings reported by MediaCodec ("pcm-encoding", AudioFormat constants).
+  static constexpr int32_t kPcmEncoding16Bit = 2;
+  static constexpr int32_t kPcmEncodingFloat = 4;
+  static constexpr int kMaxOutputChannels = 8;
+  static constexpr int kMaxOutputSampleRate = 768000;
+  // Bound on dequeues per drain call so a codec repeatedly reporting format or
+  // buffer changes cannot spin the caller forever.
+  static constexpr int kMaxDequeuesPerDrain = 64;
+
+  void fail(const char *what, long code) {
+    LOGE("%s (%ld)", what, code);
+    mCodecFailed = true;
+  }
+
+  /// Appends one output buffer's PCM, validated against the negotiated format.
+  bool appendOutputPcm(const uint8_t *src, size_t bytes, std::vector<float> &decodedData,
+                       size_t maxOutputSamples) {
+    if (mChannels < 1 || mChannels > kMaxOutputChannels) {
+      fail("Unsupported decoder output channel count", mChannels);
+      return false;
+    }
+    const size_t bytesPerSample = mIsFloatOutput ? sizeof(float) : sizeof(int16_t);
+    if (bytes % (bytesPerSample * static_cast<size_t>(mChannels)) != 0) {
+      fail("Decoder output contains a partial PCM frame", static_cast<long>(bytes));
+      return false;
+    }
+    const size_t count = bytes / bytesPerSample;
+    const size_t availableSpace = maxOutputSamples == 0
+                                      ? count
+                                      : (decodedData.size() < maxOutputSamples
+                                             ? maxOutputSamples - decodedData.size()
+                                             : 0);
+    const size_t toAppend = std::min(count, availableSpace);
+    decodedData.reserve(decodedData.size() + toAppend);
+    for (size_t s = 0; s < count; ++s) {
+      float value;
+      if (mIsFloatOutput) {
+        std::memcpy(&value, src + s * sizeof(float), sizeof(float));
+      } else {
+        int16_t sample;
+        std::memcpy(&sample, src + s * sizeof(int16_t), sizeof(int16_t));
+        value = sample / 32768.0f;
+      }
+      if (s < toAppend) {
+        decodedData.push_back(value);
+      } else {
+        mDecodedRemainder.push_back(value);
+      }
+    }
+    return true;
+  }
+
+  bool applyOutputFormat() {
+    AMediaFormat *outFmt = AMediaCodec_getOutputFormat(mCodec);
+    if (!outFmt) {
+      fail("AMediaCodec_getOutputFormat returned null", 0);
+      return false;
+    }
+    int32_t sr = 0, ch = 0;
+    int32_t encoding = kPcmEncoding16Bit; // MediaCodec default when the key is absent
+    AMediaFormat_getInt32(outFmt, AMEDIAFORMAT_KEY_SAMPLE_RATE, &sr);
+    AMediaFormat_getInt32(outFmt, AMEDIAFORMAT_KEY_CHANNEL_COUNT, &ch);
+    AMediaFormat_getInt32(outFmt, "pcm-encoding", &encoding);
+    AMediaFormat_delete(outFmt);
+
+    if (sr < 1 || sr > kMaxOutputSampleRate) {
+      fail("Unsupported decoder output sample rate", sr);
+      return false;
+    }
+    if (ch < 1 || ch > kMaxOutputChannels) {
+      fail("Unsupported decoder output channel count", ch);
+      return false;
+    }
+    if (encoding != kPcmEncoding16Bit && encoding != kPcmEncodingFloat) {
+      fail("Unsupported decoder output PCM encoding", encoding);
+      return false;
+    }
+    mSampleRate = sr;
+    mChannels = ch;
+    mIsFloatOutput = (encoding == kPcmEncodingFloat);
+    return true;
+  }
+
   bool drainOutputBuffers(std::vector<float> &decodedData, size_t maxOutputSamples, int64_t timeoutUs) {
-    if (!mCodecInitialized || !mCodec) return false;
+    if (!mCodecInitialized || !mCodec || mCodecFailed) return false;
 
     bool gotAnyOutput = false;
-    AMediaCodecBufferInfo info;
-    while (true) {
+    for (int pass = 0; pass < kMaxDequeuesPerDrain; ++pass) {
+      AMediaCodecBufferInfo info{};
       ssize_t outIdx = AMediaCodec_dequeueOutputBuffer(mCodec, &info, timeoutUs);
-      if (outIdx >= 0) {
+      // After the first dequeue, make subsequent ones in this pass non-blocking
+      timeoutUs = 0;
+      if (outIdx == AMEDIACODEC_INFO_TRY_AGAIN_LATER) break;
+      if (outIdx == AMEDIACODEC_INFO_OUTPUT_BUFFERS_CHANGED) continue;
+      if (outIdx == AMEDIACODEC_INFO_OUTPUT_FORMAT_CHANGED) {
+        if (!applyOutputFormat()) break;
         gotAnyOutput = true;
+        continue;
+      }
+      if (outIdx < 0) {
+        fail("AMediaCodec_dequeueOutputBuffer failed", outIdx);
+        break;
+      }
+
+      gotAnyOutput = true;
+      if (info.size > 0) {
         size_t outBufSize = 0;
         uint8_t *outBuf = AMediaCodec_getOutputBuffer(mCodec, outIdx, &outBufSize);
-        if (outBuf && info.size > 0) {
-          size_t availableSpace = (maxOutputSamples > 0 && decodedData.size() < maxOutputSamples)
-                                      ? (maxOutputSamples - decodedData.size())
-                                      : static_cast<size_t>(-1);
-          if (mIsFloatOutput) {
-            const float *samplesFloat = reinterpret_cast<const float *>(outBuf + info.offset);
-            size_t count = info.size / sizeof(float);
-            size_t toAppend = std::min(count, availableSpace);
-            decodedData.insert(decodedData.end(), samplesFloat, samplesFloat + toAppend);
-            for (size_t s = toAppend; s < count; ++s) {
-              mDecodedRemainder.push_back(samplesFloat[s]);
-            }
-          } else {
-            const int16_t *samples16 = reinterpret_cast<const int16_t *>(outBuf + info.offset);
-            size_t count = info.size / sizeof(int16_t);
-            size_t toAppend = std::min(count, availableSpace);
-            decodedData.reserve(decodedData.size() + toAppend);
-            for (size_t s = 0; s < toAppend; ++s) {
-              decodedData.push_back(samples16[s] / 32768.0f);
-            }
-            for (size_t s = toAppend; s < count; ++s) {
-              mDecodedRemainder.push_back(samples16[s] / 32768.0f);
-            }
-          }
+        if (!outBuf) {
+          fail("AMediaCodec_getOutputBuffer returned null", outIdx);
+        } else if (info.offset < 0 || static_cast<size_t>(info.offset) > outBufSize ||
+                   static_cast<size_t>(info.size) > outBufSize - static_cast<size_t>(info.offset)) {
+          fail("Decoder output buffer bounds are invalid", info.offset);
+        } else {
+          appendOutputPcm(outBuf + info.offset, static_cast<size_t>(info.size), decodedData,
+                          maxOutputSamples);
         }
+      } else if (info.size < 0) {
+        fail("Decoder output buffer size is negative", info.size);
+      }
 
-        if (info.flags & AMEDIACODEC_BUFFER_FLAG_END_OF_STREAM) {
-          mEosReached = true;
-        }
+      if (info.flags & AMEDIACODEC_BUFFER_FLAG_END_OF_STREAM) {
+        mEosReached = true;
+      }
 
-        AMediaCodec_releaseOutputBuffer(mCodec, outIdx, false);
-        // After the first buffer, make subsequent dequeues in this pass non-blocking
-        timeoutUs = 0;
-
-        if (mEosReached) {
-          break;
-        }
-        if (maxOutputSamples > 0 && decodedData.size() >= maxOutputSamples) {
-          break;
-        }
-      } else if (outIdx == AMEDIACODEC_INFO_OUTPUT_FORMAT_CHANGED) {
-        AMediaFormat *outFmt = AMediaCodec_getOutputFormat(mCodec);
-        int32_t sr = 0, ch = 0, encoding = 0;
-        if (AMediaFormat_getInt32(outFmt, AMEDIAFORMAT_KEY_SAMPLE_RATE, &sr) && sr > 0) {
-          mSampleRate = sr;
-        }
-        if (AMediaFormat_getInt32(outFmt, AMEDIAFORMAT_KEY_CHANNEL_COUNT, &ch) && ch > 0) {
-          mChannels = ch;
-        }
-        if (AMediaFormat_getInt32(outFmt, "pcm-encoding", &encoding)) {
-          mIsFloatOutput = (encoding == 4);
-        }
-        AMediaFormat_delete(outFmt);
-        gotAnyOutput = true;
-      } else {
-        break; // AMEDIACODEC_INFO_TRY_AGAIN_LATER
+      media_status_t status = AMediaCodec_releaseOutputBuffer(mCodec, outIdx, false);
+      if (status != AMEDIA_OK && !mCodecFailed) {
+        fail("AMediaCodec_releaseOutputBuffer failed", status);
+      }
+      if (mCodecFailed || mEosReached) {
+        break;
+      }
+      if (maxOutputSamples > 0 && decodedData.size() >= maxOutputSamples) {
+        break;
       }
     }
     return gotAnyOutput;
+  }
+
+  enum class QueueResult { Queued, Busy, Failed };
+
+  /// Copies one compressed frame into a codec input buffer. Busy means no input
+  /// buffer is free yet; on Busy or Failed the frame is not consumed.
+  QueueResult queueInputFrame(const uint8_t *data, size_t size, std::vector<float> &decodedData,
+                              size_t maxOutputSamples) {
+    ssize_t inIdx = AMediaCodec_dequeueInputBuffer(mCodec, 0);
+    if (inIdx == AMEDIACODEC_INFO_TRY_AGAIN_LATER) {
+      // Input buffers full; drain output to free an input slot.
+      // A brief 100-2000us timeout allows the codec to complete a frame and return PCM.
+      int64_t drainTimeout = mDataEnded ? 2000 : 100;
+      drainOutputBuffers(decodedData, maxOutputSamples, drainTimeout);
+      if (mCodecFailed) return QueueResult::Failed;
+      inIdx = AMediaCodec_dequeueInputBuffer(mCodec, mDataEnded ? 2000 : 0);
+      if (inIdx == AMEDIACODEC_INFO_TRY_AGAIN_LATER) return QueueResult::Busy;
+    }
+    if (inIdx < 0) {
+      fail("AMediaCodec_dequeueInputBuffer failed", inIdx);
+      return QueueResult::Failed;
+    }
+
+    size_t inBufSize = 0;
+    uint8_t *inBuf = AMediaCodec_getInputBuffer(mCodec, static_cast<size_t>(inIdx), &inBufSize);
+    if (!inBuf) {
+      fail("AMediaCodec_getInputBuffer returned null", inIdx);
+      return QueueResult::Failed;
+    }
+    if (inBufSize < size) {
+      fail("Compressed frame is larger than the codec input buffer", static_cast<long>(size));
+      return QueueResult::Failed;
+    }
+    std::memcpy(inBuf, data, size);
+    media_status_t status = AMediaCodec_queueInputBuffer(mCodec, static_cast<size_t>(inIdx), 0, size,
+                                                         mPresentationTimeUs, 0);
+    if (status != AMEDIA_OK) {
+      fail("AMediaCodec_queueInputBuffer failed", status);
+      return QueueResult::Failed;
+    }
+    return QueueResult::Queued;
   }
 
   DecoderError queueAacFrames(std::vector<float> &decodedData, size_t maxOutputSamples) {
@@ -357,6 +483,7 @@ private:
                         (frameData[4] << 3) |
                         ((frameData[5] >> 5) & 0x07);
       if (currentAvailable < frameLen) {
+        mTrailingFrameIncomplete = mDataEnded;
         break; // Frame incomplete, wait for remaining bytes
       }
 
@@ -418,29 +545,19 @@ private:
       }
       size_t payloadSize = frameLen - headerSize;
 
-      // Try to acquire an input buffer without blocking
-      ssize_t inIdx = AMediaCodec_dequeueInputBuffer(mCodec, 0);
-      if (inIdx < 0) {
-        // Input buffers full; drain output to free an input slot.
-        // A brief 100-200us timeout allows the codec to complete a frame and return PCM.
-        int64_t drainTimeout = mDataEnded ? 2000 : 100;
-        drainOutputBuffers(decodedData, maxOutputSamples, drainTimeout);
-        inIdx = AMediaCodec_dequeueInputBuffer(mCodec, mDataEnded ? 2000 : 0);
+      const QueueResult queued =
+          queueInputFrame(frameData + headerSize, payloadSize, decodedData, maxOutputSamples);
+      if (queued == QueueResult::Failed) {
+        return DecoderError::CodecError;
       }
-
-      if (inIdx >= 0) {
-        size_t inBufSize = 0;
-        uint8_t *inBuf = AMediaCodec_getInputBuffer(mCodec, inIdx, &inBufSize);
-        if (inBuf && inBufSize >= payloadSize) {
-          std::memcpy(inBuf, frameData + headerSize, payloadSize);
-          AMediaCodec_queueInputBuffer(mCodec, inIdx, 0, payloadSize, mPresentationTimeUs, 0);
-          mPresentationTimeUs += (1024ULL * 1000000ULL) / (mSampleRate > 0 ? mSampleRate : 44100);
-          mStreamReadOffset += frameLen;
-          retryCount = 0;
-          // Drain any output buffers that become available (non-blocking)
-          drainOutputBuffers(decodedData, maxOutputSamples, 0);
-        } else {
-          break;
+      if (queued == QueueResult::Queued) {
+        mPresentationTimeUs += (1024ULL * 1000000ULL) / (mSampleRate > 0 ? mSampleRate : 44100);
+        mStreamReadOffset += frameLen;
+        retryCount = 0;
+        // Drain any output buffers that become available (non-blocking)
+        drainOutputBuffers(decodedData, maxOutputSamples, 0);
+        if (mCodecFailed) {
+          return DecoderError::CodecError;
         }
       } else {
         if (!mDataEnded) {
@@ -541,6 +658,7 @@ private:
       }
 
       if (currentAvailable < frameLen) {
+        mTrailingFrameIncomplete = mDataEnded;
         break; // Incomplete frame
       }
 
@@ -586,26 +704,18 @@ private:
       }
 
       // Queue sync frame into codec
-      ssize_t inIdx = AMediaCodec_dequeueInputBuffer(mCodec, 0);
-      if (inIdx < 0) {
-        int64_t drainTimeout = mDataEnded ? 2000 : 100;
-        drainOutputBuffers(decodedData, maxOutputSamples, drainTimeout);
-        inIdx = AMediaCodec_dequeueInputBuffer(mCodec, mDataEnded ? 2000 : 0);
+      const QueueResult queued = queueInputFrame(frameData, frameLen, decodedData, maxOutputSamples);
+      if (queued == QueueResult::Failed) {
+        return DecoderError::CodecError;
       }
-
-      if (inIdx >= 0) {
-        size_t inBufSize = 0;
-        uint8_t *inBuf = AMediaCodec_getInputBuffer(mCodec, inIdx, &inBufSize);
-        if (inBuf && inBufSize >= frameLen) {
-          std::memcpy(inBuf, frameData, frameLen);
-          AMediaCodec_queueInputBuffer(mCodec, inIdx, 0, frameLen, mPresentationTimeUs, 0);
-          mPresentationTimeUs += (1536ULL * 1000000ULL) / (mSampleRate > 0 ? mSampleRate : 48000);
-          mStreamReadOffset += frameLen;
-          retryCount = 0;
-          // Drain any output buffers that become available (non-blocking)
-          drainOutputBuffers(decodedData, maxOutputSamples, 0);
-        } else {
-          break;
+      if (queued == QueueResult::Queued) {
+        mPresentationTimeUs += (1536ULL * 1000000ULL) / (mSampleRate > 0 ? mSampleRate : 48000);
+        mStreamReadOffset += frameLen;
+        retryCount = 0;
+        // Drain any output buffers that become available (non-blocking)
+        drainOutputBuffers(decodedData, maxOutputSamples, 0);
+        if (mCodecFailed) {
+          return DecoderError::CodecError;
         }
       } else {
         if (!mDataEnded) {
@@ -646,6 +756,8 @@ private:
     mDataEnded = false;
     mEosQueued = false;
     mEosReached = false;
+    mTrailingFrameIncomplete = false;
+    mCodecFailed = false;
     mIsFloatOutput = false;
     mSampleRate = 0;
     mChannels = 0;
@@ -667,6 +779,10 @@ private:
   bool mDataEnded = false;
   bool mEosQueued = false;
   bool mEosReached = false;
+  // Data has ended and the remaining bytes are a frame that cannot complete.
+  bool mTrailingFrameIncomplete = false;
+  // A MediaCodec call failed or returned malformed output; decoding stops.
+  bool mCodecFailed = false;
   int64_t mPresentationTimeUs = 0;
   AMediaCodec *mCodec = nullptr;
   std::vector<uint8_t> mStreamBytes;

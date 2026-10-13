@@ -57,6 +57,7 @@ namespace SoLoud
 		result loadmp3(MemoryFile *aReader);
 		result loadflac(MemoryFile *aReader);
 		result loadnative(MemoryFile *aReader);
+		result loadnativefile(const char *aFilename);
 		result testAndLoadFile(MemoryFile *aReader);
 	public:
 		float *mData;

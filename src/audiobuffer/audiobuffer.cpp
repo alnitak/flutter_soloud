@@ -572,6 +572,9 @@ PlayerErrors BufferStream::addData(const void *aData, unsigned int aDataLen,
     case DecoderError::ErrorReadingOggOpusPage:
       fprintf(stderr, "[flutter_soloud] addData: Failed to decode audio packet (corrupted or truncated page).\n");
       return PlayerErrors::failedToDecodeOpusPacket;
+    case DecoderError::CodecError:
+      fprintf(stderr, "[flutter_soloud] addData: Platform audio codec failed while decoding.\n");
+      return PlayerErrors::failedToDecodeOpusPacket;
     default:
       break;
     }

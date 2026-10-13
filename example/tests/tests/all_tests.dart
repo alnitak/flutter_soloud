@@ -23,6 +23,7 @@ import 'looping.dart' as looping;
 import 'max_voices.dart' as max_voices;
 import 'mixer_output_capture.dart' as mixer_output_capture;
 import 'mixing_bus.dart' as mixing_bus;
+import 'native_m4a_decoding.dart' as native_m4a_decoding;
 import 'pan.dart' as pan;
 import 'pitch_shifter_filter.dart' as pitch_shifter_filter;
 import 'play_clocked.dart' as play_clocked;
@@ -182,6 +183,10 @@ final List<TestEntry> allTests = [
   const TestEntry(
     name: 'MixingBus',
     run: mixing_bus.testMixingBus,
+  ),
+  const TestEntry(
+    name: 'NativeM4aDecoding',
+    run: native_m4a_decoding.testNativeM4aDecoding,
   ),
   const TestEntry(
     name: 'Pan',
