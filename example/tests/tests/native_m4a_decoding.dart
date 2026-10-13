@@ -192,19 +192,20 @@ Future<OutputBuffer> testNativeM4aDecoding() async {
     }
 
     // Codec2 keeps a per-process buffer-pool cache (ashmem) that fills over
-    // the first few dozen codec instances and is then evicted/reused; warm it
-    // up so only unbounded growth is measured.
-    for (var i = 0; i < 60; i++) {
+    // the first codec instances and then stays flat (~40 cycles on the
+    // emulator, ~80 on a Galaxy S26 Ultra); warm it up so only unbounded
+    // growth is measured. A leak of one descriptor per cycle adds 100.
+    for (var i = 0; i < 100; i++) {
       await cycle(i);
     }
     final fdsBefore = _openFdCount();
     final targetsBefore = _openFdTargets();
-    for (var i = 0; i < 40; i++) {
+    for (var i = 0; i < 100; i++) {
       await cycle(i);
     }
     await delay(500);
     final fdsAfter = _openFdCount();
-    strBuf.writeln('Open fds across 40 cycles: $fdsBefore -> $fdsAfter');
+    strBuf.writeln('Open fds across 100 cycles: $fdsBefore -> $fdsAfter');
     if (fdsBefore >= 0) {
       final targetsAfter = _openFdTargets();
       final grown = {
@@ -213,8 +214,8 @@ Future<OutputBuffer> testNativeM4aDecoding() async {
             t: (targetsAfter[t] ?? 0) - (targetsBefore[t] ?? 0),
       };
       _expect(
-        fdsAfter - fdsBefore <= 16,
-        'file descriptors grew from $fdsBefore to $fdsAfter over 40 cycles: '
+        fdsAfter - fdsBefore <= 24,
+        'file descriptors grew from $fdsBefore to $fdsAfter over 100 cycles: '
         '$grown',
       );
     }
