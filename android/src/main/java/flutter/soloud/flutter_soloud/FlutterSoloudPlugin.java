@@ -95,6 +95,16 @@ public final class FlutterSoloudPlugin implements FlutterPlugin {
         engineId = engine.getEngineId();
         teardownRequested = false;
 
+        // Ensure TMPDIR points to the app cache dir so native decoders
+        // and encoders (AMediaExtractor, libflac) have a writable scratch directory.
+        try {
+            final java.io.File cacheDir = binding.getApplicationContext().getCacheDir();
+            if (cacheDir != null) {
+                android.system.Os.setenv("TMPDIR", cacheDir.getAbsolutePath(), false);
+            }
+        } catch (Throwable ignored) {
+        }
+
         final FlutterEngine.EngineLifecycleListener listener =
             new FlutterEngine.EngineLifecycleListener() {
                 @Override

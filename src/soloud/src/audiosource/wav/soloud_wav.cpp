@@ -401,9 +401,9 @@ result Wav::load(const char *aFilename) {
   int res = dr.open(aFilename);
   if (res != SO_NO_ERROR)
     return res;
-#if defined(__ANDROID__)
+#if !defined(__EMSCRIPTEN__)
   // MP4/M4A containers go straight to the platform decoder by path, avoiding
-  // a file -> memory -> temporary file round trip for AMediaExtractor.
+  // an unnecessary file -> memory round trip (and on Linux/Android, a temp file).
   unsigned char header[8];
   if (dr.read(header, sizeof(header)) == sizeof(header) &&
       NativeAudioDecoder::isM4aOrMp4(header, sizeof(header))) {

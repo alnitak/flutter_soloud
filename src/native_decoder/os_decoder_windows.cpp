@@ -103,6 +103,12 @@ DecodedAudioData decodeFromReader(IMFSourceReader *pReader) {
             return result;
         }
 
+        if (flags & MF_SOURCE_READERF_ERROR) {
+            if (pSample) pSample->Release();
+            result.errorMessage = "Media Foundation reader encountered a decode error";
+            return result;
+        }
+
         if (flags & MF_SOURCE_READERF_ENDOFSTREAM) {
             break;
         }
