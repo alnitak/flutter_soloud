@@ -368,6 +368,14 @@ DecodedAudioData decodeFilePathWithFFmpeg(const char *filePath) {
 
     AVPacket *pkt = gFFmpeg.av_packet_alloc();
     AVFrame *frame = gFFmpeg.av_frame_alloc();
+    if (!pkt || !frame) {
+        if (pkt) gFFmpeg.av_packet_free(&pkt);
+        if (frame) gFFmpeg.av_frame_free(&frame);
+        gFFmpeg.avcodec_free_context(&codecCtx);
+        gFFmpeg.avformat_close_input(&fmtCtx);
+        result.errorMessage = "Failed to allocate FFmpeg packet or frame";
+        return result;
+    }
 
     std::vector<float> planarChannelData[8];
     for (int c = 0; c < channels && c < 8; c++) {
