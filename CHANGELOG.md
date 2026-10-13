@@ -1,4 +1,4 @@
-##### 5.2.1 (XX Xxx 2026)
+##### 5.2.1 (13 Oct 2026)
 - fix android: harden native AAC/M4A MediaCodec decoding against buffer overruns, descriptor leaks, and stalls, and fail pending loads on deinit. Thanks to @Colton127 #584
 - perf & fix: direct file decoding for M4A/MP4 across desktop/mobile platforms, guarantee Android sandbox TMPDIR, and improve Windows/Linux error checks #585
 - fix: support parsing multiple consecutive ID3 tags in audio stream decoders
