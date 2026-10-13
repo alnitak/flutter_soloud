@@ -6,6 +6,7 @@
 // 0.5 s silence.
 
 #include "../src/native_decoder/native_audio_decoder.h"
+#include "../src/audiobuffer/aac_stream_decoder.h"
 
 #include <atomic>
 #include <chrono>
@@ -304,6 +305,51 @@ static void testTruncatedAdts() {
     full.freeSamples();
 }
 
+static void testChunkedStreaming() {
+    std::cout << "[Test] Streaming-style chunked ADTS decode matches whole-file decode" << std::endl;
+    auto bytes = readFile(gDir + "/sample-AAC.aac");
+    DecodedAudioData whole = NativeAudioDecoder::decodeMemory(bytes.data(), bytes.size());
+    CHECK(whole.success, "whole decode failed: " << whole.errorMessage);
+
+    // Push/pull buffer streams feed small chunks and cap output per call; the
+    // decoder must carry the excess over without loss or reordering.
+    AACDecoderWrapper wrapper(DetectedType::BUFFER_AAC);
+    CHECK(wrapper.initializeDecoder(0, 0), "initializeDecoder failed");
+    std::vector<float> interleaved;
+    int sampleRate = 0, channels = 0;
+    bool ok = true;
+    const size_t kChunk = 4096, kMaxOut = 4096;
+    auto pull = [&](std::vector<unsigned char> &in) {
+        auto [samples, err] = wrapper.decode(in, &sampleRate, &channels, kMaxOut);
+        if (err != DecoderError::NoError || samples.size() > kMaxOut) ok = false;
+        interleaved.insert(interleaved.end(), samples.begin(), samples.end());
+    };
+    for (size_t off = 0; off < bytes.size() && ok; off += kChunk) {
+        std::vector<unsigned char> chunk(bytes.begin() + off, bytes.begin() + std::min(bytes.size(), off + kChunk));
+        pull(chunk);
+    }
+    wrapper.setDataEnded();
+    std::vector<unsigned char> empty;
+    for (int i = 0; i < 100000 && ok && wrapper.hasPendingData(); ++i) pull(empty);
+    CHECK(ok, "chunked decode returned an error or exceeded maxOutputSamples");
+    CHECK(!wrapper.hasPendingData(), "chunked decode did not finish");
+    CHECK(channels == 2 && sampleRate == 44100, "chunked format " << channels << "ch " << sampleRate);
+
+    const size_t frames = channels > 0 ? interleaved.size() / channels : 0;
+    std::cout << "  chunked: " << frames << " frames, whole: " << whole.sampleCount << " frames" << std::endl;
+    CHECK(frames == whole.sampleCount, "chunked decode produced " << frames << " frames, expected " << whole.sampleCount);
+    if (whole.success && frames == whole.sampleCount && channels == 2) {
+        size_t mismatches = 0;
+        for (size_t i = 0; i < frames; ++i) {
+            for (int c = 0; c < channels; ++c) {
+                if (interleaved[i * channels + c] != whole.samples[c * whole.sampleCount + i]) ++mismatches;
+            }
+        }
+        CHECK(mismatches == 0, mismatches << " samples differ between chunked and whole decode");
+    }
+    whole.freeSamples();
+}
+
 static void testResourceCleanup() {
     std::cout << "[Test] Resource cleanup across repeated success/failure cycles" << std::endl;
     const std::string good = gDir + "/aac_lc_mono_44100.m4a";
@@ -378,6 +424,7 @@ int main(int argc, char **argv) {
     testMalformed();
     testElementaryStreams();
     testTruncatedAdts();
+    testChunkedStreaming();
     testResourceCleanup();
     testConcurrentDecoding();
     if (gFailures == 0) {

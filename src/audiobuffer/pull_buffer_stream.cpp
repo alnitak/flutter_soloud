@@ -851,6 +851,8 @@ void PullBufferStream::decodePendingDataLocked() {
       return;
     case DecoderError::ErrorReadingOggOpusPage:
       return;
+    case DecoderError::CodecError:
+      return;
     default:
       break;
     }
