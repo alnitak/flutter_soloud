@@ -275,16 +275,22 @@ result Wav::loadmp3(MemoryFile *aReader) {
   drmp3_seek_to_pcm_frame(&decoder, 0);
 
   unsigned int i, j, k;
+  unsigned int decodedSamples = 0;
   for (i = 0; i < mSampleCount; i += 512) {
     float tmp[512 * MAX_CHANNELS];
     unsigned int blockSize = (mSampleCount - i) > 512 ? 512 : mSampleCount - i;
-    drmp3_read_pcm_frames_f32(&decoder, blockSize, tmp);
-    for (j = 0; j < blockSize; j++) {
+    unsigned int got = (unsigned int)drmp3_read_pcm_frames_f32(&decoder, blockSize, tmp);
+    for (j = 0; j < got; j++) {
       for (k = 0; k < decoder.channels; k++) {
-        mData[k * mSampleCount + i + j] = tmp[j * decoder.channels + k];
+        mData[k * mSampleCount + decodedSamples + j] = tmp[j * decoder.channels + k];
       }
     }
+    decodedSamples += got;
+    if (got < blockSize) {
+      break;
+    }
   }
+  mActualSampleCount = decodedSamples;
   drmp3_uninit(&decoder);
 
   return SO_NO_ERROR;
