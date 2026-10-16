@@ -105,7 +105,7 @@ namespace SoLoud
 		{
 			if (mParamFader[i].mActive > 0)
 			{
-				mParamChanged |= 1 << i;
+				mParamChanged |= 1ULL << (i < 63 ? i : 63);
 				mParam[i] = mParamFader[i].get(aTime);
 			}
 		}
@@ -124,7 +124,7 @@ namespace SoLoud
 
 		mParamFader[aAttributeId].mActive = 0;
 		mParam[aAttributeId] = aValue;
-		mParamChanged |= 1 << aAttributeId;
+		mParamChanged |= 1ULL << (aAttributeId < 63 ? aAttributeId : 63);
 	}
 
 	void FilterInstance::fadeFilterParameter(unsigned int aAttributeId, float aTo, double aTime, double aStartTime)

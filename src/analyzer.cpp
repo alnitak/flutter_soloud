@@ -270,9 +270,19 @@ void Analyzer::onAudioData(const float *data, unsigned int frames, int channels)
       }
       ma_channel_converter_process_pcm_frames(
           &m_channelConverter, m_scratchConverted.data(), data, frames);
-      for (unsigned int i = 0; i < frames; i++) {
-        m_ringBuffer[0][(writeIdx + i) & (kRingBufferSize - 1)] =
-            m_scratchConverted[i];
+      const size_t offset = writeIdx & (kRingBufferSize - 1);
+      const size_t first = std::min(static_cast<size_t>(frames), kRingBufferSize - offset);
+      std::memcpy(&m_ringBuffer[0][offset], m_scratchConverted.data(), first * sizeof(float));
+      if (first < frames) {
+        std::memcpy(&m_ringBuffer[0][0], m_scratchConverted.data() + first,
+                    (frames - first) * sizeof(float));
+      }
+    } else if (channels == 1) {
+      const size_t offset = writeIdx & (kRingBufferSize - 1);
+      const size_t first = std::min(static_cast<size_t>(frames), kRingBufferSize - offset);
+      std::memcpy(&m_ringBuffer[0][offset], data, first * sizeof(float));
+      if (first < frames) {
+        std::memcpy(&m_ringBuffer[0][0], data + first, (frames - first) * sizeof(float));
       }
     } else {
       for (unsigned int i = 0; i < frames; i++) {
@@ -346,11 +356,18 @@ void Analyzer::workerThreadFunc() {
 }
 
 void Analyzer::processWindow(size_t readIdx, int nextPingPong) {
+  const size_t winSize = static_cast<size_t>(m_windowSize);
+  const size_t offset = readIdx & (kRingBufferSize - 1);
+  const size_t first = std::min(winSize, kRingBufferSize - offset);
+  const size_t second = winSize - first;
+
   for (int c = 0; c < m_activeChannels; c++) {
-    // Copy time-domain wave samples from ring buffer
-    for (int i = 0; i < m_windowSize; i++) {
-      m_waveBuffers[c][nextPingPong][i] =
-          m_ringBuffer[c][(readIdx + i) & (kRingBufferSize - 1)];
+    // Copy time-domain wave samples from ring buffer using contiguous slices
+    std::memcpy(&m_waveBuffers[c][nextPingPong][0], &m_ringBuffer[c][offset],
+                first * sizeof(float));
+    if (second > 0) {
+      std::memcpy(&m_waveBuffers[c][nextPingPong][first], &m_ringBuffer[c][0],
+                  second * sizeof(float));
     }
 
     // If FFT is enabled, compute real forward transform and magnitudes

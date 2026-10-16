@@ -17,6 +17,7 @@ AmplitudeModulatorInstance::AmplitudeModulatorInstance(
   // The sample rate is only known in filter(), which computes the increment
   // before processing the first frame.
   mPhaseIncrement = 0.0;
+  mGainScratch.resize(SAMPLE_GRANULARITY, 1.0f);
 }
 
 void AmplitudeModulatorInstance::filter(float *aBuffer, unsigned int aSamples,
@@ -81,15 +82,33 @@ void AmplitudeModulatorInstance::filter(float *aBuffer, unsigned int aSamples,
 
   // dry * (1 - wet) + dry * carrier * wet == dry * ((1 - wet) + wet * carrier)
   const float dryGain = 1.0f - wet;
-  for (unsigned int i = 0; i < aSamples; ++i) {
-    // One carrier value per frame, shared by every channel.
-    const float gain = dryGain + wet * (float)std::sin(phase);
-    for (unsigned int ch = 0; ch < aChannels; ++ch) {
-      aBuffer[i + (size_t)ch * stride] *= gain;
+  if (aChannels <= 1) {
+    for (unsigned int i = 0; i < aSamples; ++i) {
+      const float gain = dryGain + wet * (float)std::sin(phase);
+      if (aChannels == 1) {
+        aBuffer[i] *= gain;
+      }
+      phase += increment;
+      if (phase >= TWO_PI)
+        phase -= TWO_PI;
     }
-    phase += increment;
-    if (phase >= TWO_PI)
-      phase -= TWO_PI;
+  } else {
+    if (mGainScratch.size() < aSamples) {
+      mGainScratch.resize(aSamples);
+    }
+    float *gains = mGainScratch.data();
+    for (unsigned int i = 0; i < aSamples; ++i) {
+      gains[i] = dryGain + wet * (float)std::sin(phase);
+      phase += increment;
+      if (phase >= TWO_PI)
+        phase -= TWO_PI;
+    }
+    for (unsigned int ch = 0; ch < aChannels; ++ch) {
+      float *chBuf = aBuffer + (size_t)ch * stride;
+      for (unsigned int i = 0; i < aSamples; ++i) {
+        chBuf[i] *= gains[i];
+      }
+    }
   }
   mPhase = phase;
 }
@@ -106,7 +125,7 @@ void AmplitudeModulatorInstance::setFilterParameter(unsigned int aAttributeId,
 
   mParamFader[aAttributeId].mActive = 0;
   mParam[aAttributeId] = aValue;
-  mParamChanged |= 1 << aAttributeId;
+  mParamChanged |= 1ULL << (aAttributeId < 63 ? aAttributeId : 63);
 }
 
 SoLoud::result AmplitudeModulator::setParam(unsigned int aParamIndex,

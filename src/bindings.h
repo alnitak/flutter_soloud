@@ -1205,6 +1205,86 @@ extern "C"
                            float from, float to, float time);
 
   /////////////////////////////////////////
+  /// Real-time PCM streaming & Custom DSP
+  /////////////////////////////////////////
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors
+  setRealtimeStream(unsigned int *hash, unsigned int sampleRate,
+                    unsigned int channels, int format,
+                    unsigned int bufferCapacityFrames);
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors resetRealtimeStream(unsigned int hash);
+
+  FFI_PLUGIN_EXPORT unsigned int
+  pushRealtimeFloat32(unsigned int hash, const float *data,
+                      unsigned int numFrames);
+
+  FFI_PLUGIN_EXPORT unsigned int
+  pushRealtimeInt16(unsigned int hash, const int16_t *data,
+                    unsigned int numFrames);
+
+  FFI_PLUGIN_EXPORT unsigned int
+  pushRealtimeClockedFloat32(unsigned int hash, double soundTime,
+                             const float *data, unsigned int numFrames);
+
+  FFI_PLUGIN_EXPORT unsigned int
+  pushRealtimeScheduledFloat32(unsigned int hash, double engineTime,
+                               const float *data, unsigned int numFrames);
+
+  FFI_PLUGIN_EXPORT unsigned int getRealtimeAvailableToRead(unsigned int hash);
+
+  FFI_PLUGIN_EXPORT unsigned int getRealtimeAvailableToWrite(unsigned int hash);
+
+  FFI_PLUGIN_EXPORT unsigned int getRealtimeUnderrunCount(unsigned int hash);
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors createCustomAudioSource(
+      unsigned int *hash, unsigned int sampleRate, unsigned int channels,
+      SoLoudSourceDspCallback_t callback, void *userData,
+      SoLoudSourceInstanceLifecycleCallback_t lifecycleCallback,
+      bool singleInstance, const char *webJsCallbackName);
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors
+  addCustomFilter(unsigned int soundHash, unsigned int busId,
+                  int customFilterId);
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors
+  removeCustomFilter(unsigned int soundHash, unsigned int busId,
+                     int customFilterId);
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors
+  isCustomFilterActive(unsigned int soundHash, unsigned int busId,
+                       int customFilterId, int *index);
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors setCustomFilterCallback(
+      unsigned int soundHash, unsigned int busId, int customFilterId,
+      SoLoudFilterDspCallback_t callback, void *userData,
+      unsigned int numParams, const char *webJsCallbackName);
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors setCustomFilterParamDefinition(
+      unsigned int soundHash, unsigned int busId, int customFilterId,
+      unsigned int paramIndex, const char *name, float minVal, float maxVal,
+      float defaultVal);
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors
+  setCustomFilterParams(unsigned int handle, unsigned int busId,
+                        int customFilterId, int attributeId, float value);
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors
+  getCustomFilterParams(unsigned int handle, unsigned int busId,
+                        int customFilterId, int attributeId,
+                        float *filterValue);
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors
+  fadeCustomFilterParameter(unsigned int handle, unsigned int busId,
+                            int customFilterId, int attributeId, float to,
+                            float time);
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors
+  oscillateCustomFilterParameter(unsigned int handle, unsigned int busId,
+                                 int customFilterId, int attributeId,
+                                 float from, float to, float time);
+
+  /////////////////////////////////////////
   /// 3D audio methods
   /////////////////////////////////////////
 

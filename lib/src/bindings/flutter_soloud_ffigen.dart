@@ -1955,6 +1955,429 @@ PlayerErrors oscillateFilterParameter(
   ),
 );
 
+/// //////////////////////////////////////
+/// Real-time PCM streaming & Custom DSP
+/// //////////////////////////////////////
+@ffi.Native<
+  ffi.UnsignedInt Function(
+    ffi.Pointer<ffi.UnsignedInt>,
+    ffi.UnsignedInt,
+    ffi.UnsignedInt,
+    ffi.Int,
+    ffi.UnsignedInt,
+  )
+>(symbol: 'setRealtimeStream')
+external int _setRealtimeStream(
+  ffi.Pointer<ffi.UnsignedInt> hash,
+  int sampleRate,
+  int channels,
+  int format,
+  int bufferCapacityFrames,
+);
+
+PlayerErrors setRealtimeStream(
+  ffi.Pointer<ffi.UnsignedInt> hash,
+  int sampleRate,
+  int channels,
+  int format,
+  int bufferCapacityFrames,
+) => PlayerErrors.fromValue(
+  _setRealtimeStream(
+    hash,
+    sampleRate,
+    channels,
+    format,
+    bufferCapacityFrames,
+  ),
+);
+
+@ffi.Native<ffi.UnsignedInt Function(ffi.UnsignedInt)>(
+  symbol: 'resetRealtimeStream',
+)
+external int _resetRealtimeStream(int hash);
+
+PlayerErrors resetRealtimeStream(int hash) =>
+    PlayerErrors.fromValue(_resetRealtimeStream(hash));
+
+@ffi.Native<
+  ffi.UnsignedInt Function(
+    ffi.UnsignedInt,
+    ffi.Pointer<ffi.Float>,
+    ffi.UnsignedInt,
+  )
+>()
+external int pushRealtimeFloat32(
+  int hash,
+  ffi.Pointer<ffi.Float> data,
+  int numFrames,
+);
+
+@ffi.Native<
+  ffi.UnsignedInt Function(
+    ffi.UnsignedInt,
+    ffi.Pointer<ffi.Int16>,
+    ffi.UnsignedInt,
+  )
+>()
+external int pushRealtimeInt16(
+  int hash,
+  ffi.Pointer<ffi.Int16> data,
+  int numFrames,
+);
+
+@ffi.Native<
+  ffi.UnsignedInt Function(
+    ffi.UnsignedInt,
+    ffi.Double,
+    ffi.Pointer<ffi.Float>,
+    ffi.UnsignedInt,
+  )
+>()
+external int pushRealtimeClockedFloat32(
+  int hash,
+  double soundTime,
+  ffi.Pointer<ffi.Float> data,
+  int numFrames,
+);
+
+@ffi.Native<
+  ffi.UnsignedInt Function(
+    ffi.UnsignedInt,
+    ffi.Double,
+    ffi.Pointer<ffi.Float>,
+    ffi.UnsignedInt,
+  )
+>()
+external int pushRealtimeScheduledFloat32(
+  int hash,
+  double engineTime,
+  ffi.Pointer<ffi.Float> data,
+  int numFrames,
+);
+
+@ffi.Native<ffi.UnsignedInt Function(ffi.UnsignedInt)>()
+external int getRealtimeAvailableToRead(int hash);
+
+@ffi.Native<ffi.UnsignedInt Function(ffi.UnsignedInt)>()
+external int getRealtimeAvailableToWrite(int hash);
+
+@ffi.Native<ffi.UnsignedInt Function(ffi.UnsignedInt)>()
+external int getRealtimeUnderrunCount(int hash);
+
+@ffi.Native<
+  ffi.UnsignedInt Function(
+    ffi.Pointer<ffi.UnsignedInt>,
+    ffi.UnsignedInt,
+    ffi.UnsignedInt,
+    SoLoudSourceDspCallback_t,
+    ffi.Pointer<ffi.Void>,
+    SoLoudSourceInstanceLifecycleCallback_t,
+    ffi.Bool,
+    ffi.Pointer<ffi.Char>,
+  )
+>(symbol: 'createCustomAudioSource')
+external int _createCustomAudioSource(
+  ffi.Pointer<ffi.UnsignedInt> hash,
+  int sampleRate,
+  int channels,
+  SoLoudSourceDspCallback_t callback,
+  ffi.Pointer<ffi.Void> userData,
+  SoLoudSourceInstanceLifecycleCallback_t lifecycleCallback,
+  bool singleInstance,
+  ffi.Pointer<ffi.Char> webJsCallbackName,
+);
+
+PlayerErrors createCustomAudioSource(
+  ffi.Pointer<ffi.UnsignedInt> hash,
+  int sampleRate,
+  int channels,
+  SoLoudSourceDspCallback_t callback,
+  ffi.Pointer<ffi.Void> userData,
+  SoLoudSourceInstanceLifecycleCallback_t lifecycleCallback,
+  bool singleInstance,
+  ffi.Pointer<ffi.Char> webJsCallbackName,
+) => PlayerErrors.fromValue(
+  _createCustomAudioSource(
+    hash,
+    sampleRate,
+    channels,
+    callback,
+    userData,
+    lifecycleCallback,
+    singleInstance,
+    webJsCallbackName,
+  ),
+);
+
+@ffi.Native<
+  ffi.UnsignedInt Function(ffi.UnsignedInt, ffi.UnsignedInt, ffi.Int)
+>(symbol: 'addCustomFilter')
+external int _addCustomFilter(int soundHash, int busId, int customFilterId);
+
+PlayerErrors addCustomFilter(int soundHash, int busId, int customFilterId) =>
+    PlayerErrors.fromValue(_addCustomFilter(soundHash, busId, customFilterId));
+
+@ffi.Native<
+  ffi.UnsignedInt Function(ffi.UnsignedInt, ffi.UnsignedInt, ffi.Int)
+>(symbol: 'removeCustomFilter')
+external int _removeCustomFilter(int soundHash, int busId, int customFilterId);
+
+PlayerErrors removeCustomFilter(
+  int soundHash,
+  int busId,
+  int customFilterId,
+) => PlayerErrors.fromValue(
+  _removeCustomFilter(soundHash, busId, customFilterId),
+);
+
+@ffi.Native<
+  ffi.UnsignedInt Function(
+    ffi.UnsignedInt,
+    ffi.UnsignedInt,
+    ffi.Int,
+    ffi.Pointer<ffi.Int>,
+  )
+>(symbol: 'isCustomFilterActive')
+external int _isCustomFilterActive(
+  int soundHash,
+  int busId,
+  int customFilterId,
+  ffi.Pointer<ffi.Int> index,
+);
+
+PlayerErrors isCustomFilterActive(
+  int soundHash,
+  int busId,
+  int customFilterId,
+  ffi.Pointer<ffi.Int> index,
+) => PlayerErrors.fromValue(
+  _isCustomFilterActive(soundHash, busId, customFilterId, index),
+);
+
+@ffi.Native<
+  ffi.UnsignedInt Function(
+    ffi.UnsignedInt,
+    ffi.UnsignedInt,
+    ffi.Int,
+    SoLoudFilterDspCallback_t,
+    ffi.Pointer<ffi.Void>,
+    ffi.UnsignedInt,
+    ffi.Pointer<ffi.Char>,
+  )
+>(symbol: 'setCustomFilterCallback')
+external int _setCustomFilterCallback(
+  int soundHash,
+  int busId,
+  int customFilterId,
+  SoLoudFilterDspCallback_t callback,
+  ffi.Pointer<ffi.Void> userData,
+  int numParams,
+  ffi.Pointer<ffi.Char> webJsCallbackName,
+);
+
+PlayerErrors setCustomFilterCallback(
+  int soundHash,
+  int busId,
+  int customFilterId,
+  SoLoudFilterDspCallback_t callback,
+  ffi.Pointer<ffi.Void> userData,
+  int numParams,
+  ffi.Pointer<ffi.Char> webJsCallbackName,
+) => PlayerErrors.fromValue(
+  _setCustomFilterCallback(
+    soundHash,
+    busId,
+    customFilterId,
+    callback,
+    userData,
+    numParams,
+    webJsCallbackName,
+  ),
+);
+
+@ffi.Native<
+  ffi.UnsignedInt Function(
+    ffi.UnsignedInt,
+    ffi.UnsignedInt,
+    ffi.Int,
+    ffi.UnsignedInt,
+    ffi.Pointer<ffi.Char>,
+    ffi.Float,
+    ffi.Float,
+    ffi.Float,
+  )
+>(symbol: 'setCustomFilterParamDefinition')
+external int _setCustomFilterParamDefinition(
+  int soundHash,
+  int busId,
+  int customFilterId,
+  int paramIndex,
+  ffi.Pointer<ffi.Char> name,
+  double minVal,
+  double maxVal,
+  double defaultVal,
+);
+
+PlayerErrors setCustomFilterParamDefinition(
+  int soundHash,
+  int busId,
+  int customFilterId,
+  int paramIndex,
+  ffi.Pointer<ffi.Char> name,
+  double minVal,
+  double maxVal,
+  double defaultVal,
+) => PlayerErrors.fromValue(
+  _setCustomFilterParamDefinition(
+    soundHash,
+    busId,
+    customFilterId,
+    paramIndex,
+    name,
+    minVal,
+    maxVal,
+    defaultVal,
+  ),
+);
+
+@ffi.Native<
+  ffi.UnsignedInt Function(
+    ffi.UnsignedInt,
+    ffi.UnsignedInt,
+    ffi.Int,
+    ffi.Int,
+    ffi.Float,
+  )
+>(symbol: 'setCustomFilterParams')
+external int _setCustomFilterParams(
+  int handle,
+  int busId,
+  int customFilterId,
+  int attributeId,
+  double value,
+);
+
+PlayerErrors setCustomFilterParams(
+  int handle,
+  int busId,
+  int customFilterId,
+  int attributeId,
+  double value,
+) => PlayerErrors.fromValue(
+  _setCustomFilterParams(handle, busId, customFilterId, attributeId, value),
+);
+
+@ffi.Native<
+  ffi.UnsignedInt Function(
+    ffi.UnsignedInt,
+    ffi.UnsignedInt,
+    ffi.Int,
+    ffi.Int,
+    ffi.Pointer<ffi.Float>,
+  )
+>(symbol: 'getCustomFilterParams')
+external int _getCustomFilterParams(
+  int handle,
+  int busId,
+  int customFilterId,
+  int attributeId,
+  ffi.Pointer<ffi.Float> filterValue,
+);
+
+PlayerErrors getCustomFilterParams(
+  int handle,
+  int busId,
+  int customFilterId,
+  int attributeId,
+  ffi.Pointer<ffi.Float> filterValue,
+) => PlayerErrors.fromValue(
+  _getCustomFilterParams(
+    handle,
+    busId,
+    customFilterId,
+    attributeId,
+    filterValue,
+  ),
+);
+
+@ffi.Native<
+  ffi.UnsignedInt Function(
+    ffi.UnsignedInt,
+    ffi.UnsignedInt,
+    ffi.Int,
+    ffi.Int,
+    ffi.Float,
+    ffi.Float,
+  )
+>(symbol: 'fadeCustomFilterParameter')
+external int _fadeCustomFilterParameter(
+  int handle,
+  int busId,
+  int customFilterId,
+  int attributeId,
+  double to,
+  double time,
+);
+
+PlayerErrors fadeCustomFilterParameter(
+  int handle,
+  int busId,
+  int customFilterId,
+  int attributeId,
+  double to,
+  double time,
+) => PlayerErrors.fromValue(
+  _fadeCustomFilterParameter(
+    handle,
+    busId,
+    customFilterId,
+    attributeId,
+    to,
+    time,
+  ),
+);
+
+@ffi.Native<
+  ffi.UnsignedInt Function(
+    ffi.UnsignedInt,
+    ffi.UnsignedInt,
+    ffi.Int,
+    ffi.Int,
+    ffi.Float,
+    ffi.Float,
+    ffi.Float,
+  )
+>(symbol: 'oscillateCustomFilterParameter')
+external int _oscillateCustomFilterParameter(
+  int handle,
+  int busId,
+  int customFilterId,
+  int attributeId,
+  double from,
+  double to,
+  double time,
+);
+
+PlayerErrors oscillateCustomFilterParameter(
+  int handle,
+  int busId,
+  int customFilterId,
+  int attributeId,
+  double from,
+  double to,
+  double time,
+) => PlayerErrors.fromValue(
+  _oscillateCustomFilterParameter(
+    handle,
+    busId,
+    customFilterId,
+    attributeId,
+    from,
+    to,
+    time,
+  ),
+);
+
 /// play3d() is the 3d version of the play() call
 ///
 /// [posX], [posY], [posZ] are the audio source position coordinates.
@@ -2780,7 +3203,10 @@ enum PlayerErrors {
   audioDeviceFailedToStart(34),
 
   /// SoLoud didn't return a valid voice handle when starting the playback.
-  failedToStartPlayback(35);
+  failedToStartPlayback(35),
+
+  /// Given hash doesn't belong to a realtime stream.
+  hashIsNotARealtimeStream(36);
 
   final int value;
   const PlayerErrors(this.value);
@@ -2822,6 +3248,7 @@ enum PlayerErrors {
     33 => invalidPullBufferState,
     34 => audioDeviceFailedToStart,
     35 => failedToStartPlayback,
+    36 => hashIsNotARealtimeStream,
     _ => throw ArgumentError('Unknown value for PlayerErrors: $value'),
   };
 }
@@ -3191,7 +3618,8 @@ enum FilterType {
   LimiterFilter(9),
   CompressorFilter(10),
   ParametricEQFilter(11),
-  AmplitudeModulatorFilter(12);
+  AmplitudeModulatorFilter(12),
+  CustomFilter(13);
 
   final int value;
   const FilterType(this.value);
@@ -3210,9 +3638,69 @@ enum FilterType {
     10 => CompressorFilter,
     11 => ParametricEQFilter,
     12 => AmplitudeModulatorFilter,
+    13 => CustomFilter,
     _ => throw ArgumentError('Unknown value for FilterType: $value'),
   };
 }
+
+typedef SoLoudSourceDspCallback_tFunction =
+    ffi.UnsignedInt Function(
+      ffi.Pointer<ffi.Float> buffer,
+      ffi.UnsignedInt samplesToRead,
+      ffi.UnsignedInt bufferSize,
+      ffi.UnsignedInt channels,
+      ffi.Float sampleRate,
+      ffi.Double streamPosition,
+      ffi.Pointer<ffi.UnsignedInt> hasEnded,
+      ffi.Pointer<ffi.Void> userData,
+    );
+typedef DartSoLoudSourceDspCallback_tFunction =
+    int Function(
+      ffi.Pointer<ffi.Float> buffer,
+      int samplesToRead,
+      int bufferSize,
+      int channels,
+      double sampleRate,
+      double streamPosition,
+      ffi.Pointer<ffi.UnsignedInt> hasEnded,
+      ffi.Pointer<ffi.Void> userData,
+    );
+typedef SoLoudSourceDspCallback_t =
+    ffi.Pointer<ffi.NativeFunction<SoLoudSourceDspCallback_tFunction>>;
+
+typedef SoLoudSourceInstanceLifecycleCallback_tFunction =
+    ffi.Void Function(ffi.Pointer<ffi.Void> userData, ffi.Int event);
+typedef DartSoLoudSourceInstanceLifecycleCallback_tFunction =
+    void Function(ffi.Pointer<ffi.Void> userData, int event);
+typedef SoLoudSourceInstanceLifecycleCallback_t =
+    ffi.Pointer<
+      ffi.NativeFunction<SoLoudSourceInstanceLifecycleCallback_tFunction>
+    >;
+
+typedef SoLoudFilterDspCallback_tFunction =
+    ffi.Void Function(
+      ffi.Pointer<ffi.Float> buffer,
+      ffi.UnsignedInt samples,
+      ffi.UnsignedInt channels,
+      ffi.Float sampleRate,
+      ffi.Double time,
+      ffi.Pointer<ffi.Float> params,
+      ffi.UnsignedInt numParams,
+      ffi.Pointer<ffi.Void> userData,
+    );
+typedef DartSoLoudFilterDspCallback_tFunction =
+    void Function(
+      ffi.Pointer<ffi.Float> buffer,
+      int samples,
+      int channels,
+      double sampleRate,
+      double time,
+      ffi.Pointer<ffi.Float> params,
+      int numParams,
+      ffi.Pointer<ffi.Void> userData,
+    );
+typedef SoLoudFilterDspCallback_t =
+    ffi.Pointer<ffi.NativeFunction<SoLoudFilterDspCallback_tFunction>>;
 
 /// Possible read sample errors
 enum ReadSamplesErrors {

@@ -18,6 +18,7 @@ import 'package:flutter_soloud/src/helpers/playback_device.dart';
 import 'package:flutter_soloud/src/metadata.dart';
 import 'package:flutter_soloud/src/mixer_output_stream_manager.dart';
 import 'package:flutter_soloud/src/mixing_bus.dart';
+import 'package:flutter_soloud/src/realtime_stream.dart';
 import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
 import 'package:flutter_soloud/src/utils/loader.dart';
@@ -5047,6 +5048,153 @@ interface class SoLoud {
   /// [name] optional name of the bus to later identify it.
   Bus createMixingBus({String name = ''}) {
     return Bus(name: name);
+  }
+
+  // ////////////////////////////////////////////////
+  // Realtime Stream & Custom DSP
+  // ////////////////////////////////////////////////
+
+  /// Creates a low-latency, lock-free real-time PCM stream (`RealtimeStream`)
+  /// backed by a single-producer single-consumer (SPSC) planar ring buffer and
+  /// a historical rewind window for instantaneous playing-window mixer
+  /// injection.
+  ///
+  /// Unlike [setBufferStream] (which is designed for media/network streaming
+  /// with decoders and buffering pauses), [setRealtimeStream] is designed for
+  /// real-time interactive synthesis, drum machines, WebRTC/VoIP audio frames,
+  /// and emulator audio:
+  /// - Zero mutex contention on the audio thread (`std::memory_order_acquire` /
+  ///   `release` atomic indices).
+  /// - SIMD-accelerated de-interleaving (`SSE2`, `NEON`, `wasm_simd128`) on
+  ///   the producer side.
+  /// - Smooth 64-sample cosine fade-out on underrun and fade-in on recovery
+  ///   (never auto-pauses the voice).
+  /// - Instantaneous playing-window splice (`pushFloat32`,
+  ///   `pushClockedFloat32`, `pushScheduledFloat32`) when `renderAheadFrames`
+  ///   is enabled in [init].
+  ///
+  /// Parameters:
+  /// - [sampleRate]: Stream sample rate in Hz (default `48000`). Match the
+  ///   engine sample rate to bypass resampling overhead.
+  /// - [channels]: Channel configuration (default [Channels.stereo]).
+  /// - [format]: Input PCM format: [BufferType.f32le] (interleaved 32-bit
+  ///   float, default), [BufferType.s16le] (interleaved 16-bit signed int), or
+  ///   [BufferType.f32lePlanar] (contiguous channel-planar 32-bit float).
+  /// - [bufferFrames]: Forward ring buffer capacity in frames (rounded up to a
+  ///   power of two in native code, default `2048`).
+  /// - [historyFrames]: Historical rewind window in frames retained so the
+  ///   mixer can retroactively re-mix the currently playing window when new
+  ///   samples arrive (default `4096`).
+  /// - [autoDispose]: Whether to automatically dispose the source when all
+  ///   playing handles finish (default `false`).
+  RealtimeStreamHandle setRealtimeStream({
+    int sampleRate = 48000,
+    Channels channels = Channels.stereo,
+    BufferType format = BufferType.f32le,
+    int bufferFrames = 2048,
+    int historyFrames = 4096,
+    bool autoDispose = false,
+  }) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    if (format != BufferType.f32le &&
+        format != BufferType.s16le &&
+        format != BufferType.f32lePlanar) {
+      throw ArgumentError.value(
+        format,
+        'format',
+        'setRealtimeStream supports only BufferType.f32le, BufferType.s16le, '
+            'or BufferType.f32lePlanar.',
+      );
+    }
+    final ret = _controller.soLoudFFI.setRealtimeStream(
+      sampleRate,
+      channels.count,
+      format.value,
+      bufferFrames,
+      historyFrames,
+    );
+    _logPlayerError(ret.error, from: 'setRealtimeStream() result');
+    if (ret.error != PlayerErrors.noError) {
+      throw SoLoudCppException.fromPlayerError(ret.error);
+    }
+    final newSound = _addNewSound(ret.error, '', ret.soundHash.hash)
+      ..autoDispose = autoDispose;
+    return RealtimeStreamHandle(
+      source: newSound,
+      sampleRate: sampleRate,
+      channels: channels,
+      format: format,
+      bufferFrames: bufferFrames,
+      historyFrames: historyFrames,
+    );
+  }
+
+  /// Creates a procedural [AudioSource] (`CustomAudioSource`) whose audio
+  /// frames are generated synchronously on the audio thread by a native
+  /// C/C++/Rust callback or a Web JS/Wasm function.
+  ///
+  /// Every call to [play], [play3d], [playClocked], or [playScheduled] on the
+  /// returned [AudioSource] spawns an independent voice instance (allowing full
+  /// polyphony, per-voice 3D spatialization, pitch scaling, faders, and filter
+  /// chains).
+  ///
+  /// Parameters:
+  /// - [sampleRate]: Base sample rate of the procedural source in Hz (default
+  ///   `48000`).
+  /// - [channels]: Output channel configuration (default [Channels.stereo]).
+  /// - [dspCallbackAddress]: Address of a native function with signature
+  ///   `SoLoudSourceDspCallback_t` (`unsigned int (*)(float* buffer, unsigned
+  ///   int samplesToRead, unsigned int bufferSize, unsigned int channels, float
+  ///   sampleRate, double streamTime, double streamPosition, uint32_t*
+  ///   outHasEnded, void* userData)`).
+  /// - [onInstanceCreatedAddress]: Optional native lifecycle callback invoked
+  ///   when a voice instance is created or destroyed.
+  /// - [onInstanceDestroyedAddress]: Optional native lifecycle callback.
+  /// - [userdataAddress]: Optional opaque pointer passed to the callbacks.
+  /// - [webJsFunctionName]: On Web, the name of a JavaScript function on
+  ///   `globalThis` (e.g. `'myCustomSynthDsp'`) invoked synchronously from
+  ///   WASM via `EM_ASM_INT`.
+  /// - [mustTickWhenInaudible]: Whether the voice continues advancing when
+  ///   volume is zero (default `true`).
+  /// - [killWhenInaudible]: Whether the voice is killed if it becomes
+  ///   inaudible (default `false`).
+  /// - [autoDispose]: Whether to dispose the source automatically when all
+  ///   voices finish (default `false`).
+  AudioSource createCustomAudioSource({
+    int sampleRate = 48000,
+    Channels channels = Channels.stereo,
+    int dspCallbackAddress = 0,
+    int onInstanceCreatedAddress = 0,
+    int onInstanceDestroyedAddress = 0,
+    int userdataAddress = 0,
+    String? webJsFunctionName,
+    bool mustTickWhenInaudible = true,
+    bool killWhenInaudible = false,
+    bool autoDispose = false,
+  }) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    final ret = _controller.soLoudFFI.createCustomAudioSource(
+      sampleRate: sampleRate,
+      channels: channels.count,
+      mustTickWhenInaudible: mustTickWhenInaudible,
+      killWhenInaudible: killWhenInaudible,
+      dspCallbackAddress: dspCallbackAddress,
+      onInstanceCreatedAddress: onInstanceCreatedAddress,
+      onInstanceDestroyedAddress: onInstanceDestroyedAddress,
+      userdataAddress: userdataAddress,
+      webJsFunctionName: webJsFunctionName,
+    );
+    _logPlayerError(ret.error, from: 'createCustomAudioSource() result');
+    if (ret.error != PlayerErrors.noError) {
+      throw SoLoudCppException.fromPlayerError(ret.error);
+    }
+    final newSound = _addNewSound(ret.error, '', ret.soundHash.hash)
+      ..autoDispose = autoDispose;
+    return newSound;
   }
 
   /// Utility method used by every playback method to check a native result.

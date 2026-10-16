@@ -8,6 +8,7 @@ import 'package:flutter_soloud/src/filters/amplitude_modulator_filter.dart';
 import 'package:flutter_soloud/src/filters/bassboost_filter.dart';
 import 'package:flutter_soloud/src/filters/biquad_resonant_filter.dart';
 import 'package:flutter_soloud/src/filters/compressor.dart';
+import 'package:flutter_soloud/src/filters/custom_filter.dart';
 import 'package:flutter_soloud/src/filters/echo_filter.dart';
 import 'package:flutter_soloud/src/filters/flanger_filter.dart';
 import 'package:flutter_soloud/src/filters/freeverb_filter.dart';
@@ -228,6 +229,22 @@ final class FiltersSingle {
   /// [here](https://github.com/alnitak/flutter_soloud/blob/main/src/filters/amplitude_modulator_filter.cpp)
   AmplitudeModulatorSingle get amplitudeModulatorFilter =>
       AmplitudeModulatorSingle(soundHash, busId);
+
+  /// Accesses a user-programmable real-time DSP filter slot (`0..7`) on this
+  /// sound or mixing bus.
+  ///
+  /// Up to [CustomFilterSlot.maxSlots] (8) independent custom filters can be
+  /// chained on the same scope.
+  CustomFilterSingle customFilter(int slotIndex) =>
+      CustomFilterSingle(slotIndex, soundHash, busId);
+
+  /// All 8 [CustomFilterSingle] slots (`0..7`) available on this sound or bus.
+  List<CustomFilterSingle> get customFilters =>
+      List<CustomFilterSingle>.generate(
+        CustomFilterSlot.maxSlots,
+        (i) => CustomFilterSingle(i, soundHash, busId),
+        growable: false,
+      );
 }
 
 /// Filters instance used in [SoLoud.filters]. This differentiate from the
@@ -381,6 +398,22 @@ final class FiltersGlobal {
   /// [here](https://github.com/alnitak/flutter_soloud/blob/main/src/filters/amplitude_modulator_filter.cpp)
   AmplitudeModulatorGlobal get amplitudeModulatorFilter =>
       const AmplitudeModulatorGlobal();
+
+  /// Accesses a user-programmable real-time DSP filter slot (`0..7`) on the
+  /// global mixer.
+  ///
+  /// Up to [CustomFilterSlot.maxSlots] (8) independent custom filters can be
+  /// chained globally.
+  CustomFilterGlobal customFilter(int slotIndex) =>
+      CustomFilterGlobal(slotIndex);
+
+  /// All 8 [CustomFilterGlobal] slots (`0..7`) available on the global mixer.
+  List<CustomFilterGlobal> get customFilters =>
+      List<CustomFilterGlobal>.generate(
+        CustomFilterSlot.maxSlots,
+        CustomFilterGlobal.new,
+        growable: false,
+      );
 }
 
 /// Common class for single and global filters.
@@ -549,7 +582,10 @@ enum FilterType {
   parametricEq,
 
   /// A sine ring (bipolar amplitude) modulator filter.
-  amplitudeModulatorFilter;
+  amplitudeModulatorFilter,
+
+  /// A user-programmable custom DSP filter.
+  customFilter;
 
   @override
   String toString() => switch (this) {
@@ -566,6 +602,7 @@ enum FilterType {
     FilterType.compressorFilter => 'Compressor',
     FilterType.parametricEq => 'Parametric EQ',
     FilterType.amplitudeModulatorFilter => 'Amplitude Modulator',
+    FilterType.customFilter => 'Custom Filter',
   };
 
   /// The number of parameters this filter owns.
@@ -583,6 +620,7 @@ enum FilterType {
     FilterType.compressorFilter => 7,
     FilterType.parametricEq => 195,
     FilterType.amplitudeModulatorFilter => 2,
+    FilterType.customFilter => 8,
   };
 
   /// Activate this filter. If [soundHash] is null this filter is applied

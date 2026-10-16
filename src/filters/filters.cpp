@@ -21,16 +21,47 @@
 #include "limiter.h"
 #include "parametric_eq_filter.h"
 #include "amplitude_modulator_filter.h"
+#include "custom_filter.h"
 
 Filters::Filters(SoLoud::Soloud *soloud, ActiveSound *sound, BusData *busData)
     : mSoloud(soloud), mSound(sound), mBusData(busData) {}
 
-int Filters::isFilterActive(FilterType filter) {
-  for (int i = 0; i < filters.size(); i++) {
-    if (filters[i].get()->type == filter)
-      return i;
+int Filters::isFilterActive(FilterType filter, int customFilterId) {
+  for (int i = 0; i < (int)filters.size(); i++) {
+    if (filters[i]->type == filter) {
+      if (filter != CustomFilter ||
+          filters[i]->customFilterId == customFilterId) {
+        return i;
+      }
+    }
   }
   return -1;
+}
+
+SoLoud::CustomFilter *Filters::getCustomFilter(int customFilterId) {
+  int idx = isFilterActive(CustomFilter, customFilterId);
+  if (idx < 0) {
+    if (customFilterId >= 0 && customFilterId < FILTERS_PER_STREAM) {
+      return mPendingCustomFilters[customFilterId].get();
+    }
+    return nullptr;
+  }
+  return static_cast<SoLoud::CustomFilter *>(filters[idx]->filter.get());
+}
+
+SoLoud::CustomFilter *Filters::getOrCreateCustomFilter(int customFilterId) {
+  if (customFilterId < 0 || customFilterId >= FILTERS_PER_STREAM) {
+    return nullptr;
+  }
+  int idx = isFilterActive(CustomFilter, customFilterId);
+  if (idx >= 0) {
+    return static_cast<SoLoud::CustomFilter *>(filters[idx]->filter.get());
+  }
+  if (!mPendingCustomFilters[customFilterId]) {
+    mPendingCustomFilters[customFilterId] =
+        std::make_unique<SoLoud::CustomFilter>();
+  }
+  return mPendingCustomFilters[customFilterId].get();
 }
 
 std::vector<std::string> Filters::getFilterParamNames(FilterType filterType) {
@@ -127,27 +158,53 @@ std::vector<std::string> Filters::getFilterParamNames(FilterType filterType) {
       ret.push_back(f.getParamName(i));
     }
   } break;
+  case CustomFilter: {
+    SoLoud::CustomFilter f;
+    int nParams = f.getParamCount();
+    for (int i = 0; i < nParams; i++) {
+      ret.push_back(f.getParamName(i));
+    }
+  } break;
   }
 
   return ret;
 }
 
-PlayerErrors Filters::addFilter(FilterType filterType) {
+PlayerErrors Filters::addFilter(FilterType filterType, int customFilterId) {
   int filtersSize = (int)(filters.size());
 
   if (filtersSize >= FILTERS_PER_STREAM)
     return maxNumberOfFiltersReached;
 
-  // Check if the new filter is already here.
-  // Only one kind of filter allowed.
-  if (isFilterActive(filterType) >= 0)
-    return filterAlreadyAdded;
+  int assignedCustomId = -1;
+  if (filterType == CustomFilter) {
+    if (customFilterId >= 0) {
+      if (customFilterId >= FILTERS_PER_STREAM)
+        return invalidParameter;
+      if (isFilterActive(CustomFilter, customFilterId) >= 0)
+        return filterAlreadyAdded;
+      assignedCustomId = customFilterId;
+    } else {
+      for (int id = 0; id < FILTERS_PER_STREAM; ++id) {
+        if (isFilterActive(CustomFilter, id) < 0) {
+          assignedCustomId = id;
+          break;
+        }
+      }
+      if (assignedCustomId < 0)
+        return maxNumberOfFiltersReached;
+    }
+  } else {
+    // Check if the new filter is already here.
+    // Only one kind of built-in filter allowed.
+    if (isFilterActive(filterType) >= 0)
+      return filterAlreadyAdded;
+  }
 
   SoLoud::Filter *newFilter = nullptr;
   switch (filterType) {
   case BiquadResonantFilter:
     newFilter = new SoLoud::BiquadResonantFilter();
-    break;
     break;
   case EchoFilter:
     newFilter = new SoLoud::EchoFilter();
@@ -185,6 +242,14 @@ PlayerErrors Filters::addFilter(FilterType filterType) {
   case AmplitudeModulatorFilter:
     newFilter = new AmplitudeModulator();
     break;
+  case CustomFilter:
+    if (assignedCustomId >= 0 && assignedCustomId < FILTERS_PER_STREAM &&
+        mPendingCustomFilters[assignedCustomId]) {
+      newFilter = mPendingCustomFilters[assignedCustomId].release();
+    } else {
+      newFilter = new SoLoud::CustomFilter();
+    }
+    break;
   default:
     return filterNotFound;
   }
@@ -203,18 +268,18 @@ PlayerErrors Filters::addFilter(FilterType filterType) {
   } else {
     mBusData->bus.setFilter(filtersSize, newFilter);
   }
-  
+
   // Create FilterObject taking ownership of raw pointer
   std::unique_ptr<FilterObject> nfo =
-    std::make_unique<FilterObject>(filterType, newFilter);
+      std::make_unique<FilterObject>(filterType, newFilter, assignedCustomId);
   filters.push_back(std::move(nfo));
 
   return noError;
 }
 
 /// TODO remove all filters FilterType.none
-bool Filters::removeFilter(FilterType filterType) {
-  int index = isFilterActive(filterType);
+bool Filters::removeFilter(FilterType filterType, int customFilterId) {
+  int index = isFilterActive(filterType, customFilterId);
   if (index < 0)
     return false;
 
@@ -238,10 +303,17 @@ bool Filters::removeFilter(FilterType filterType) {
     mBusData->bus.setFilter(index, 0);
   }
 
-  filters[index].get()->filter.reset();
+  if (filterType == CustomFilter && customFilterId >= 0 &&
+      customFilterId < FILTERS_PER_STREAM) {
+    mPendingCustomFilters[customFilterId].reset(
+        static_cast<SoLoud::CustomFilter *>(
+            filters[index].get()->filter.release()));
+  } else {
+    filters[index].get()->filter.reset();
+  }
 
   /// shift filters down by 1 from [index]
-  for (int i = index; i < filters.size() - 1; i++) {
+  for (int i = index; i < (int)filters.size() - 1; i++) {
     if (mSound == nullptr && mBusData == nullptr) {
       // Move the live instance along with the filter instead of clearing
       // and recreating it, so its current parameter values are preserved.
@@ -263,8 +335,9 @@ bool Filters::removeFilter(FilterType filterType) {
 }
 
 void Filters::setFilterParams(SoLoud::handle handle, FilterType filterType,
-                              int attributeId, float value) {
-  int index = isFilterActive(filterType);
+                              int attributeId, float value,
+                              int customFilterId) {
+  int index = isFilterActive(filterType, customFilterId);
   if (index < 0)
     return;
   if (mBusData != nullptr) {
@@ -277,8 +350,8 @@ void Filters::setFilterParams(SoLoud::handle handle, FilterType filterType,
 }
 
 float Filters::getFilterParams(SoLoud::handle handle, FilterType filterType,
-                               int attributeId) {
-  int index = isFilterActive(filterType);
+                               int attributeId, int customFilterId) {
+  int index = isFilterActive(filterType, customFilterId);
   if (index < 0)
     return 9999.0f;
 
@@ -287,8 +360,9 @@ float Filters::getFilterParams(SoLoud::handle handle, FilterType filterType,
 }
 
 void Filters::fadeFilterParameter(SoLoud::handle handle, FilterType filterType,
-                                  int attributeId, float to, float time) {
-  int index = isFilterActive(filterType);
+                                  int attributeId, float to, float time,
+                                  int customFilterId) {
+  int index = isFilterActive(filterType, customFilterId);
   if (index < 0)
     return;
 
@@ -297,8 +371,9 @@ void Filters::fadeFilterParameter(SoLoud::handle handle, FilterType filterType,
 
 void Filters::oscillateFilterParameter(SoLoud::handle handle,
                                        FilterType filterType, int attributeId,
-                                       float from, float to, float time) {
-  int index = isFilterActive(filterType);
+                                       float from, float to, float time,
+                                       int customFilterId) {
+  int index = isFilterActive(filterType, customFilterId);
   if (index < 0)
     return;
 

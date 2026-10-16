@@ -1,12 +1,12 @@
 ---
 name: flutter-soloud-streaming
-version: 3
+version: 4
 description: Teaches the push buffer-stream API of the flutter_soloud package (setBufferStream, addAudioDataStream, setDataIsEnded, BufferingType, BufferType, icy metadata). Use when the user wants to play audio that arrives in chunks — internet/icecast radio, WebSocket PCM feeds, TTS/LLM streaming APIs, or procedurally generated PCM — instead of loading a complete file or asset.
 ---
 
 # Push buffer streaming in flutter_soloud
 
-Push streaming plays audio while it is still arriving: you create an `AudioSource` with `SoLoud.instance.setBufferStream(...)`, push chunks with `addAudioDataStream(source, bytes)`, and mark the end with `setDataIsEnded(source)`. The engine decodes and buffers internally, auto-pausing when the buffer runs dry and resuming once `bufferingTimeNeeds` seconds are buffered again. This is the API for icecast/web radio, WebSocket audio, streaming TTS, and generated PCM — not for complete files on disk (use `loadFile`/`loadMem`/`loadUrl` for those).
+Push streaming plays audio while it is still arriving: you create an `AudioSource` with `SoLoud.instance.setBufferStream(...)`, push chunks with `addAudioDataStream(source, bytes)`, and mark the end with `setDataIsEnded(source)`. The engine decodes and buffers internally, auto-pausing when the buffer runs dry and resuming once `bufferingTimeNeeds` seconds are buffered again. This is the API for icecast/web radio, WebSocket audio, streaming TTS, and generated PCM — not for complete files on disk (use `loadFile`/`loadMem`/`loadUrl` for those). For ultra-low-latency live synthesis, MIDI instruments, or instantaneous injection into the currently playing hardware mixer window (`mRenderRing`), use `SoLoud.instance.setRealtimeStream(...)` instead (see **flutter-soloud-realtime-dsp**).
 
 ## Minimal example
 
@@ -69,7 +69,7 @@ All of these live on `SoLoud.instance` and operate on the `AudioSource` returned
 
 Key enums (`lib/src/enums.dart`):
 
-- `BufferType` — `f32le`, `s8`, `s16le`, `s32le` are raw interleaved PCM (you must set `sampleRate`/`channels` correctly). `auto` detects MP3, WAV, FLAC, Ogg (Opus, Vorbis, FLAC), AAC (ADTS), AC-3, and E-AC-3 streams and **ignores** `sampleRate`/`channels` (on Linux, decoding AAC/AC-3/E-AC-3 requires FFmpeg `libavcodec`/`libavformat` runtime libraries; on Web, AC-3 and E-AC-3 streaming is not supported by any browser; core formats work out of the box).
+- `BufferType` — `f32le`, `s8`, `s16le`, `s32le` are raw interleaved PCM, and `f32lePlanar` is raw planar 32-bit float PCM (`[ch0..., ch1...]`); you must set `sampleRate`/`channels` correctly. `auto` detects MP3, WAV, FLAC, Ogg (Opus, Vorbis, FLAC), AAC (ADTS), AC-3, and E-AC-3 streams and **ignores** `sampleRate`/`channels` (on Linux, decoding AAC/AC-3/E-AC-3 requires FFmpeg `libavcodec`/`libavformat` runtime libraries; on Web, AC-3 and E-AC-3 streaming is not supported by any browser; core formats work out of the box).
 - `BufferingType` — `preserved`: keeps all data in memory, allows multiple simultaneous handles, seeking and looping. `released`: frees played data (bounded memory for endless feeds), but plays once, cannot seek, and `getPosition` always returns 0 — use `getStreamTimeConsumed` instead.
 
 Divergences from audioplayers/just_audio habits:
@@ -88,7 +88,7 @@ Divergences from audioplayers/just_audio habits:
 - **Reaching the max buffer size ends the stream.** Once the cap is hit, the stream is treated as ended and further `addAudioDataStream` calls throw `SoLoudStreamEndedAlreadyCppException` (the web_radio example catches it and reconnects). Size the cap for the feed, or use `released`.
 - **Icy metadata ordering.** Request the header with `Icy-MetaData: 1` on the HTTP request, then call `setBufferIcyMetaInt(source, int.parse(headers['icy-metaint'] ?? '0'))` on the first audio chunk, before any `addAudioDataStream`. Later calls are ignored.
 - **With `format: BufferType.auto`, `sampleRate` and `channels` are ignored** — the decoder takes them from the container. They only matter for raw PCM formats.
-- **Raw PCM must match the declared format exactly**: interleaved, little-endian, correct sample rate and channel count; the engine resamples to `sampleRate` but does not channel-convert or fix wrong formats — mismatch means noise or wrong speed, not an error.
+- **Raw PCM must match the declared format exactly**: interleaved (or planar for `f32lePlanar`), little-endian, correct sample rate and channel count; the engine resamples to `sampleRate` but does not channel-convert or fix wrong formats — mismatch means noise or wrong speed, not an error.
 - **Compressed streaming needs Xiph libs (Ogg, Vorbis, Opus, FLAC).** If the app was built with them excluded (`no_xiph_libs: true`), `addAudioDataStream` of compressed data throws `SoLoudXiphLibsNotAvailableException`.
 - **Forgetting `setDataIsEnded`** leaves the stream "live" forever: `soundEvents` never emits `handleIsNoMoreValid` and (with `preserved`) the buffer keeps growing.
 - **`maxBufferSizeDuration` is computed from `sampleRate`/`channels`** as `ms * sampleRate * channels * 4 bytes` (internal float storage) — for `auto` sources this conversion is approximate.
@@ -97,6 +97,7 @@ Divergences from audioplayers/just_audio habits:
 
 - Full recipes (icecast radio with icy metadata, WebSocket PCM, procedural PCM in an isolate): [references/recipes.md](references/recipes.md)
 - Pull-model streaming (engine requests data via callback; for huge files and byte-range fetching) is covered by the sibling skill **flutter-soloud-pull-streaming** (`skills/flutter-soloud-pull-streaming/SKILL.md`).
+- Ultra-low-latency lock-free SPSC ring buffer streaming with instantaneous mixer injection (`setRealtimeStream`) and `SoLoudIsolate` is covered by **flutter-soloud-realtime-dsp** (`skills/flutter-soloud-realtime-dsp/SKILL.md`).
 - Runnable demos in this repo: `example/lib/buffer_stream/web_radio.dart`, `websocket.dart`, `generate.dart`, `simple_noise_stream.dart` (the last one is the smallest complete example).
 
 ## Keeping this skill current

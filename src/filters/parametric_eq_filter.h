@@ -21,6 +21,11 @@ class ParametricEqInstance : public SoLoud::FilterInstance {
   unsigned int mReadOffset[MAX_CHANNELS];
 
   int mBands;
+  std::vector<float> mHannWindow;
+  std::vector<float> mBinGainTable;
+  float mCachedSampleRate = 0.0f;
+  bool mGainTableDirty = true;
+  bool mHasActiveBands = false;
 
   // Helper functions for FFT processing
   void comp2MagPhase(float *aFFTBuffer, unsigned int aSamples);
@@ -31,6 +36,9 @@ class ParametricEqInstance : public SoLoud::FilterInstance {
 
   // Initialize FFT setup and allocate buffers
   void initFFTBuffers();
+
+  // Recompute cached per-bin gain table when parameters or sample rate change
+  void updateBinGainTable(unsigned int aSamples, float aSamplerate);
 
 public:
   ParametricEqInstance(ParametricEq *aParent);

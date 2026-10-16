@@ -558,6 +558,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
 
   void _doDeinit() {
     try {
+      _freeRealtimeScratch();
       wasmDeinit();
     } on Object catch (e) {
       _log.warning('deinit() error: $e');
@@ -2244,5 +2245,480 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   @override
   int busGetActiveVoiceCount(int busId) {
     return wasmBusGetActiveVoiceCount(busId);
+  }
+
+  // ///////////////////////////////////////
+  // Realtime Stream & Custom DSP
+  // ///////////////////////////////////////
+
+  int _realtimeScratchPtr = 0;
+  int _realtimeScratchCapacityBytes = 0;
+  final List<int> _allocatedWebJsNamePtrs = <int>[];
+
+  int _ensureRealtimeScratch(int bytes) {
+    if (bytes <= _realtimeScratchCapacityBytes && _realtimeScratchPtr != 0) {
+      return _realtimeScratchPtr;
+    }
+    if (_realtimeScratchPtr != 0) {
+      wasmFree(_realtimeScratchPtr);
+    }
+    final newCap = bytes < 16384 ? 16384 : bytes;
+    _realtimeScratchPtr = wasmMalloc(newCap);
+    _realtimeScratchCapacityBytes = newCap;
+    return _realtimeScratchPtr;
+  }
+
+  void _freeRealtimeScratch() {
+    if (_realtimeScratchPtr != 0) {
+      wasmFree(_realtimeScratchPtr);
+      _realtimeScratchPtr = 0;
+      _realtimeScratchCapacityBytes = 0;
+    }
+    for (final ptr in _allocatedWebJsNamePtrs) {
+      wasmFree(ptr);
+    }
+    _allocatedWebJsNamePtrs.clear();
+  }
+
+  int _allocUtf8CString(String str) {
+    final encoded = utf8.encode(str);
+    final ptr = wasmMalloc(encoded.length + 1);
+    wasmHeapU8.toDart
+      ..setAll(ptr, encoded)
+      ..[ptr + encoded.length] = 0;
+    return ptr;
+  }
+
+  @override
+  ({PlayerErrors error, SoundHash soundHash}) setRealtimeStream(
+    int sampleRate,
+    int channels,
+    int format,
+    int bufferFrames,
+    int historyFrames,
+  ) {
+    final hashPtr = wasmMalloc(4);
+    final result = wasmSetRealtimeStream(
+      hashPtr,
+      sampleRate,
+      channels,
+      format,
+      bufferFrames,
+    );
+    final hash = wasmGetI32Value(hashPtr, 'i32');
+    wasmFree(hashPtr);
+    return (
+      error: PlayerErrors.values[result],
+      soundHash: SoundHash.fromValue(hash),
+    );
+  }
+
+  @override
+  PlayerErrors resetRealtimeStream(SoundHash soundHash) {
+    final result = wasmResetRealtimeStream(soundHash.hash);
+    return PlayerErrors.values[result];
+  }
+
+  @override
+  int pushRealtimeFloat32(
+    int hash,
+    int handle,
+    Float32List samples,
+    int frameCount,
+  ) {
+    if (frameCount <= 0 || samples.isEmpty) {
+      return 0;
+    }
+    final ptr = _ensureRealtimeScratch(samples.lengthInBytes);
+    wasmHeapF32.toDart.setAll(ptr >> 2, samples);
+    return wasmPushRealtimeFloat32(hash, ptr, frameCount);
+  }
+
+  @override
+  int pushRealtimeFloat32Address(
+    int hash,
+    int handle,
+    int samplesAddress,
+    int frameCount,
+  ) {
+    if (frameCount <= 0 || samplesAddress == 0) {
+      return 0;
+    }
+    return wasmPushRealtimeFloat32(hash, samplesAddress, frameCount);
+  }
+
+  @override
+  int pushRealtimeInt16(
+    int hash,
+    int handle,
+    Int16List samples,
+    int frameCount,
+  ) {
+    if (frameCount <= 0 || samples.isEmpty) {
+      return 0;
+    }
+    final ptr = _ensureRealtimeScratch(samples.lengthInBytes);
+    final bytesView = Uint8List.view(
+      samples.buffer,
+      samples.offsetInBytes,
+      samples.lengthInBytes,
+    );
+    wasmHeapU8.toDart.setAll(ptr, bytesView);
+    return wasmPushRealtimeInt16(hash, ptr, frameCount);
+  }
+
+  @override
+  int pushRealtimeInt16Address(
+    int hash,
+    int handle,
+    int samplesAddress,
+    int frameCount,
+  ) {
+    if (frameCount <= 0 || samplesAddress == 0) {
+      return 0;
+    }
+    return wasmPushRealtimeInt16(hash, samplesAddress, frameCount);
+  }
+
+  @override
+  int pushRealtimeClockedFloat32(
+    int hash,
+    int handle,
+    double soundTime,
+    Float32List samples,
+    int frameCount,
+  ) {
+    if (frameCount <= 0 || samples.isEmpty) {
+      return 0;
+    }
+    final ptr = _ensureRealtimeScratch(samples.lengthInBytes);
+    wasmHeapF32.toDart.setAll(ptr >> 2, samples);
+    return wasmPushRealtimeClockedFloat32(
+      hash,
+      soundTime,
+      ptr,
+      frameCount,
+    );
+  }
+
+  @override
+  int pushRealtimeClockedFloat32Address(
+    int hash,
+    int handle,
+    double soundTime,
+    int samplesAddress,
+    int frameCount,
+  ) {
+    if (frameCount <= 0 || samplesAddress == 0) {
+      return 0;
+    }
+    return wasmPushRealtimeClockedFloat32(
+      hash,
+      soundTime,
+      samplesAddress,
+      frameCount,
+    );
+  }
+
+  @override
+  int pushRealtimeScheduledFloat32(
+    int hash,
+    int handle,
+    double atTime,
+    Float32List samples,
+    int frameCount,
+  ) {
+    if (frameCount <= 0 || samples.isEmpty) {
+      return 0;
+    }
+    final ptr = _ensureRealtimeScratch(samples.lengthInBytes);
+    wasmHeapF32.toDart.setAll(ptr >> 2, samples);
+    return wasmPushRealtimeScheduledFloat32(
+      hash,
+      atTime,
+      ptr,
+      frameCount,
+    );
+  }
+
+  @override
+  int pushRealtimeScheduledFloat32Address(
+    int hash,
+    int handle,
+    double atTime,
+    int samplesAddress,
+    int frameCount,
+  ) {
+    if (frameCount <= 0 || samplesAddress == 0) {
+      return 0;
+    }
+    return wasmPushRealtimeScheduledFloat32(
+      hash,
+      atTime,
+      samplesAddress,
+      frameCount,
+    );
+  }
+
+  @override
+  int getRealtimeAvailableToRead(int hash) {
+    return wasmGetRealtimeAvailableToRead(hash);
+  }
+
+  @override
+  int getRealtimeAvailableToWrite(int hash) {
+    return wasmGetRealtimeAvailableToWrite(hash);
+  }
+
+  @override
+  int getRealtimeUnderrunCount(int hash) {
+    return wasmGetRealtimeUnderrunCount(hash);
+  }
+
+  @override
+  int allocateRealtimeNativeBuffer(int byteLength) {
+    if (byteLength <= 0) return 0;
+    return wasmMalloc(byteLength);
+  }
+
+  @override
+  void freeRealtimeNativeBuffer(int address) {
+    if (address == 0) return;
+    wasmFree(address);
+  }
+
+  @override
+  Float32List viewRealtimeFloat32Buffer(int address, int floatLength) {
+    if (address == 0 || floatLength <= 0) return Float32List(0);
+    final startFloatIndex = address >> 2;
+    return Float32List.sublistView(
+      wasmHeapF32.toDart,
+      startFloatIndex,
+      startFloatIndex + floatLength,
+    );
+  }
+
+  @override
+  Int16List viewRealtimeInt16Buffer(int address, int int16Length) {
+    if (address == 0 || int16Length <= 0) return Int16List(0);
+    final heapU8 = wasmHeapU8.toDart;
+    return Int16List.view(heapU8.buffer, address, int16Length);
+  }
+
+  @override
+  ({PlayerErrors error, SoundHash soundHash}) createCustomAudioSource({
+    required int sampleRate,
+    required int channels,
+    required bool mustTickWhenInaudible,
+    required bool killWhenInaudible,
+    int dspCallbackAddress = 0,
+    int onInstanceCreatedAddress = 0,
+    int onInstanceDestroyedAddress = 0,
+    int userdataAddress = 0,
+    String? webJsFunctionName,
+  }) {
+    final hashPtr = wasmMalloc(4);
+    var webNamePtr = 0;
+    if (webJsFunctionName != null && webJsFunctionName.isNotEmpty) {
+      webNamePtr = _allocUtf8CString(webJsFunctionName);
+      _allocatedWebJsNamePtrs.add(webNamePtr);
+    }
+    final lifecyclePtr = onInstanceCreatedAddress != 0
+        ? onInstanceCreatedAddress
+        : onInstanceDestroyedAddress;
+    final result = wasmCreateCustomAudioSource(
+      hashPtr,
+      sampleRate,
+      channels,
+      dspCallbackAddress,
+      userdataAddress,
+      lifecyclePtr,
+      0,
+      webNamePtr,
+    );
+    final hash = wasmGetI32Value(hashPtr, 'i32');
+    wasmFree(hashPtr);
+    return (
+      error: PlayerErrors.values[result],
+      soundHash: SoundHash.fromValue(hash),
+    );
+  }
+
+  @override
+  PlayerErrors addCustomFilter(
+    int customFilterId, {
+    SoundHash? soundHash,
+    int? busId,
+  }) {
+    final e = wasmAddCustomFilter(
+      soundHash?.hash ?? 0,
+      busId ?? 0,
+      customFilterId,
+    );
+    return PlayerErrors.values[e];
+  }
+
+  @override
+  PlayerErrors removeCustomFilter(
+    int customFilterId, {
+    SoundHash? soundHash,
+    int? busId,
+  }) {
+    final e = wasmRemoveCustomFilter(
+      soundHash?.hash ?? 0,
+      busId ?? 0,
+      customFilterId,
+    );
+    return PlayerErrors.values[e];
+  }
+
+  @override
+  ({PlayerErrors error, int index}) isCustomFilterActive(
+    int customFilterId, {
+    SoundHash? soundHash,
+    int? busId,
+  }) {
+    final idPtr = wasmMalloc(4);
+    final e = wasmIsCustomFilterActive(
+      soundHash?.hash ?? 0,
+      busId ?? 0,
+      customFilterId,
+      idPtr,
+    );
+    final index = wasmGetI32Value(idPtr, 'i32');
+    wasmFree(idPtr);
+    return (error: PlayerErrors.values[e], index: index);
+  }
+
+  @override
+  PlayerErrors setCustomFilterCallback(
+    int customFilterId, {
+    SoundHash? soundHash,
+    int? busId,
+    int callbackAddress = 0,
+    int userdataAddress = 0,
+    String? webJsFunctionName,
+  }) {
+    var webNamePtr = 0;
+    if (webJsFunctionName != null && webJsFunctionName.isNotEmpty) {
+      webNamePtr = _allocUtf8CString(webJsFunctionName);
+      _allocatedWebJsNamePtrs.add(webNamePtr);
+    }
+    final e = wasmSetCustomFilterCallback(
+      soundHash?.hash ?? 0,
+      busId ?? 0,
+      customFilterId,
+      callbackAddress,
+      userdataAddress,
+      16,
+      webNamePtr,
+    );
+    return PlayerErrors.values[e];
+  }
+
+  @override
+  PlayerErrors setCustomFilterParamDefinition(
+    int customFilterId,
+    int paramIndex,
+    String name,
+    double minVal,
+    double maxVal,
+    double defaultVal, {
+    SoundHash? soundHash,
+    int? busId,
+  }) {
+    final namePtr = _allocUtf8CString(name);
+    final e = wasmSetCustomFilterParamDefinition(
+      soundHash?.hash ?? 0,
+      busId ?? 0,
+      customFilterId,
+      paramIndex,
+      namePtr,
+      minVal,
+      maxVal,
+      defaultVal,
+    );
+    wasmFree(namePtr);
+    return PlayerErrors.values[e];
+  }
+
+  @override
+  PlayerErrors setCustomFilterParams(
+    int customFilterId,
+    int attributeId,
+    double value, {
+    SoundHandle? handle,
+    int? busId,
+  }) {
+    final e = wasmSetCustomFilterParams(
+      handle?.id ?? 0,
+      busId ?? 0,
+      customFilterId,
+      attributeId,
+      value,
+    );
+    return PlayerErrors.values[e];
+  }
+
+  @override
+  ({PlayerErrors error, double value}) getCustomFilterParams(
+    int customFilterId,
+    int attributeId, {
+    SoundHandle? handle,
+    int? busId,
+  }) {
+    final paramValuePtr = wasmMalloc(4);
+    final e = wasmGetCustomFilterParams(
+      handle?.id ?? 0,
+      busId ?? 0,
+      customFilterId,
+      attributeId,
+      paramValuePtr,
+    );
+    final ret = wasmGetF32Value(paramValuePtr, 'float');
+    wasmFree(paramValuePtr);
+    return (error: PlayerErrors.values[e], value: ret);
+  }
+
+  @override
+  PlayerErrors fadeCustomFilterParameter(
+    int customFilterId,
+    int attributeId,
+    double to,
+    double time, {
+    SoundHandle? handle,
+    int? busId,
+  }) {
+    final e = wasmFadeCustomFilterParameter(
+      handle?.id ?? 0,
+      busId ?? 0,
+      customFilterId,
+      attributeId,
+      to,
+      time,
+    );
+    return PlayerErrors.values[e];
+  }
+
+  @override
+  PlayerErrors oscillateCustomFilterParameter(
+    int customFilterId,
+    int attributeId,
+    double from,
+    double to,
+    double time, {
+    SoundHandle? handle,
+    int? busId,
+  }) {
+    final e = wasmOscillateCustomFilterParameter(
+      handle?.id ?? 0,
+      busId ?? 0,
+      customFilterId,
+      attributeId,
+      from,
+      to,
+      time,
+    );
+    return PlayerErrors.values[e];
   }
 }

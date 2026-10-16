@@ -190,3 +190,14 @@ The carrier phase is continuous across buffers and frequency changes, so
 `fadeFilterParameter`/`oscillateFilterParameter` on `frequency` sweep without
 clicks. All channels share the same carrier phase. As a per-sound filter it
 runs at the sound's sample rate, so Nyquist is that of the sound.
+
+## customFilter(id)
+
+Multi-instance user-programmable synchronous DSP filter (`src/filters/custom_filter.cpp`).
+Up to 8 independent instances (`id` in `0..7`) can be activated on the same scope (`filters.customFilter(0)` .. `filters.customFilter(7)`).
+
+| Param | min | max | def | Notes |
+|---|---|---|---|---|
+| wet | 0 | 1 | 1 | `0.0` = hard bypass (callback not invoked); `1.0` = zero-copy in-place; `0 < wet < 1` = automatic dry/wet blend |
+| p1 .. p15 (`param(1)` .. `param(15)`) | 0 (customizable) | 1 (customizable) | 0 (customizable) | Use `defineParam(index, name: ..., min: ..., max: ..., def: ...)` before `activate()` |
+

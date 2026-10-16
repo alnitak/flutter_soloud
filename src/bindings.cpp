@@ -10,6 +10,7 @@
 // definitions rather than being repeated by hand in Java, Objective-C++ and
 // Dart.
 #include "engine_lifecycle.h"
+#include "filters/custom_filter.h"
 #include "mixeroutput/mixer_output.h"
 #include "mixeroutput/wav_output_encoder.h"
 #include "player.h"
@@ -3533,6 +3534,459 @@ extern "C"
                                                      attributeId, from, to, time);
         }
       }
+    }
+    return noError;
+  }
+
+  /////////////////////////////////////////
+  /// Real-time PCM streaming & Custom DSP
+  /////////////////////////////////////////
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors
+  setRealtimeStream(unsigned int *hash, unsigned int sampleRate,
+                    unsigned int channels, int format,
+                    unsigned int bufferCapacityFrames)
+  {
+    if (hash != nullptr)
+      *hash = 0;
+    if (player.get() == nullptr || !player.get()->isInited())
+      return backendNotInited;
+    if (hash == nullptr)
+      return nullPointer;
+    return player.get()->setRealtimeStream(
+        *hash, sampleRate, channels, static_cast<BufferType>(format),
+        bufferCapacityFrames);
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors resetRealtimeStream(unsigned int hash)
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return backendNotInited;
+    return player.get()->resetRealtimeStream(hash);
+  }
+
+  FFI_PLUGIN_EXPORT unsigned int
+  pushRealtimeFloat32(unsigned int hash, const float *data,
+                      unsigned int numFrames)
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return 0;
+    return player.get()->pushRealtimeFloat32(hash, data, numFrames);
+  }
+
+  FFI_PLUGIN_EXPORT unsigned int
+  pushRealtimeInt16(unsigned int hash, const int16_t *data,
+                    unsigned int numFrames)
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return 0;
+    return player.get()->pushRealtimeInt16(hash, data, numFrames);
+  }
+
+  FFI_PLUGIN_EXPORT unsigned int
+  pushRealtimeClockedFloat32(unsigned int hash, double soundTime,
+                             const float *data, unsigned int numFrames)
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return 0;
+    return player.get()->pushRealtimeClockedFloat32(hash, soundTime, data,
+                                                    numFrames);
+  }
+
+  FFI_PLUGIN_EXPORT unsigned int
+  pushRealtimeScheduledFloat32(unsigned int hash, double engineTime,
+                               const float *data, unsigned int numFrames)
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return 0;
+    return player.get()->pushRealtimeScheduledFloat32(hash, engineTime, data,
+                                                      numFrames);
+  }
+
+  FFI_PLUGIN_EXPORT unsigned int getRealtimeAvailableToRead(unsigned int hash)
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return 0;
+    return player.get()->getRealtimeAvailableToRead(hash);
+  }
+
+  FFI_PLUGIN_EXPORT unsigned int getRealtimeAvailableToWrite(unsigned int hash)
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return 0;
+    return player.get()->getRealtimeAvailableToWrite(hash);
+  }
+
+  FFI_PLUGIN_EXPORT unsigned int getRealtimeUnderrunCount(unsigned int hash)
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return 0;
+    return player.get()->getRealtimeUnderrunCount(hash);
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors createCustomAudioSource(
+      unsigned int *hash, unsigned int sampleRate, unsigned int channels,
+      SoLoudSourceDspCallback_t callback, void *userData,
+      SoLoudSourceInstanceLifecycleCallback_t lifecycleCallback,
+      bool singleInstance, const char *webJsCallbackName)
+  {
+    if (hash != nullptr)
+      *hash = 0;
+    if (player.get() == nullptr || !player.get()->isInited())
+      return backendNotInited;
+    if (hash == nullptr)
+      return nullPointer;
+    return player.get()->createCustomAudioSource(
+        *hash, sampleRate, channels, callback, userData, lifecycleCallback,
+        singleInstance, webJsCallbackName);
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors
+  addCustomFilter(unsigned int soundHash, unsigned int busId,
+                  int customFilterId)
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return backendNotInited;
+    if (customFilterId < 0 || customFilterId >= FILTERS_PER_STREAM)
+      return invalidParameter;
+    if (soundHash == 0 && busId == 0)
+      return player.get()->mFilters.addFilter(FilterType::CustomFilter,
+                                              customFilterId);
+
+    if (soundHash != 0)
+    {
+      auto const s = player.get()->findByHash(soundHash);
+      if (s == nullptr)
+        return soundHashNotFound;
+      return s->filters->addFilter(FilterType::CustomFilter, customFilterId);
+    }
+    else
+    {
+      auto *busFilters = player.get()->findBusData(busId);
+      if (busFilters == nullptr)
+        return busIdNotFound;
+      return busFilters->filters.addFilter(FilterType::CustomFilter,
+                                           customFilterId);
+    }
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors
+  removeCustomFilter(unsigned int soundHash, unsigned int busId,
+                     int customFilterId)
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return backendNotInited;
+    if (customFilterId < 0 || customFilterId >= FILTERS_PER_STREAM)
+      return invalidParameter;
+    if (soundHash == 0 && busId == 0)
+    {
+      if (!player.get()->mFilters.removeFilter(FilterType::CustomFilter,
+                                               customFilterId))
+        return filterNotFound;
+    }
+    else if (soundHash != 0)
+    {
+      auto const s = player.get()->findByHash(soundHash);
+      if (s == nullptr)
+        return soundHashNotFound;
+      if (!s->filters->removeFilter(FilterType::CustomFilter, customFilterId))
+        return filterNotFound;
+    }
+    else
+    {
+      auto *busFilters = player.get()->findBusData(busId);
+      if (busFilters == nullptr)
+        return busIdNotFound;
+      if (!busFilters->filters.removeFilter(FilterType::CustomFilter,
+                                            customFilterId))
+        return filterNotFound;
+    }
+    return PlayerErrors::noError;
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors
+  isCustomFilterActive(unsigned int soundHash, unsigned int busId,
+                       int customFilterId, int *index)
+  {
+    if (index != nullptr)
+      *index = -1;
+    if (player.get() == nullptr || !player.get()->isInited())
+      return backendNotInited;
+    if (index == nullptr)
+      return nullPointer;
+    if (customFilterId < 0 || customFilterId >= FILTERS_PER_STREAM)
+      return invalidParameter;
+
+    if (soundHash == 0 && busId == 0)
+    {
+      *index = player.get()->mFilters.isFilterActive(FilterType::CustomFilter,
+                                                     customFilterId);
+    }
+    else if (soundHash != 0)
+    {
+      auto const s = player.get()->findByHash(soundHash);
+      if (s == nullptr)
+        return soundHashNotFound;
+      *index =
+          s->filters->isFilterActive(FilterType::CustomFilter, customFilterId);
+    }
+    else
+    {
+      auto *busData = player.get()->findBusData(busId);
+      if (busData == nullptr)
+        return busIdNotFound;
+      *index = busData->filters.isFilterActive(FilterType::CustomFilter,
+                                               customFilterId);
+    }
+    return noError;
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors setCustomFilterCallback(
+      unsigned int soundHash, unsigned int busId, int customFilterId,
+      SoLoudFilterDspCallback_t callback, void *userData,
+      unsigned int numParams, const char *webJsCallbackName)
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return backendNotInited;
+    if (customFilterId < 0 || customFilterId >= FILTERS_PER_STREAM)
+      return invalidParameter;
+
+    Filters *targetFilters = nullptr;
+    if (soundHash == 0 && busId == 0)
+    {
+      targetFilters = &player.get()->mFilters;
+    }
+    else if (soundHash != 0)
+    {
+      auto const s = player.get()->findByHash(soundHash);
+      if (s == nullptr)
+        return soundHashNotFound;
+      targetFilters = s->filters.get();
+    }
+    else
+    {
+      auto *busData = player.get()->findBusData(busId);
+      if (busData == nullptr)
+        return busIdNotFound;
+      targetFilters = &busData->filters;
+    }
+
+    SoLoud::CustomFilter *cf =
+        targetFilters->getOrCreateCustomFilter(customFilterId);
+    if (cf == nullptr)
+      return filterNotFound;
+
+    cf->setCallback(callback, userData, numParams);
+    cf->setWebJsCallbackName(webJsCallbackName);
+    return noError;
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors setCustomFilterParamDefinition(
+      unsigned int soundHash, unsigned int busId, int customFilterId,
+      unsigned int paramIndex, const char *name, float minVal, float maxVal,
+      float defaultVal)
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return backendNotInited;
+    if (customFilterId < 0 || customFilterId >= FILTERS_PER_STREAM)
+      return invalidParameter;
+    if (paramIndex >= SoLoud::CustomFilter::kMaxParams)
+      return invalidParameter;
+
+    Filters *targetFilters = nullptr;
+    if (soundHash == 0 && busId == 0)
+    {
+      targetFilters = &player.get()->mFilters;
+    }
+    else if (soundHash != 0)
+    {
+      auto const s = player.get()->findByHash(soundHash);
+      if (s == nullptr)
+        return soundHashNotFound;
+      targetFilters = s->filters.get();
+    }
+    else
+    {
+      auto *busData = player.get()->findBusData(busId);
+      if (busData == nullptr)
+        return busIdNotFound;
+      targetFilters = &busData->filters;
+    }
+
+    SoLoud::CustomFilter *cf =
+        targetFilters->getOrCreateCustomFilter(customFilterId);
+    if (cf == nullptr)
+      return filterNotFound;
+
+    cf->setParamDefinition(paramIndex, defaultVal, minVal, maxVal, name);
+    if (soundHash == 0 &&
+        targetFilters->isFilterActive(FilterType::CustomFilter,
+                                      customFilterId) >= 0)
+    {
+      targetFilters->setFilterParams(0, FilterType::CustomFilter,
+                                     static_cast<int>(paramIndex), defaultVal,
+                                     customFilterId);
+    }
+    return noError;
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors
+  setCustomFilterParams(unsigned int handle, unsigned int busId,
+                        int customFilterId, int attributeId, float value)
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return backendNotInited;
+    if (customFilterId < 0 || customFilterId >= FILTERS_PER_STREAM)
+      return invalidParameter;
+
+    if (handle == 0 && busId == 0)
+    {
+      player.get()->mFilters.setFilterParams(
+          handle, FilterType::CustomFilter, attributeId, value, customFilterId);
+    }
+    else if (busId > 0)
+    {
+      auto *busFilters = player.get()->findBusData(busId);
+      if (busFilters == nullptr)
+        return busIdNotFound;
+      busFilters->filters.setFilterParams(
+          handle > 0 ? handle : busFilters->handle, FilterType::CustomFilter,
+          attributeId, value, customFilterId);
+    }
+    else if (handle > 0)
+    {
+      auto const &s = player.get()->findByHandle(handle);
+      if (s == nullptr)
+        return soundHandleNotFound;
+      s->filters.get()->setFilterParams(handle, FilterType::CustomFilter,
+                                        attributeId, value, customFilterId);
+    }
+    return PlayerErrors::noError;
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors
+  getCustomFilterParams(unsigned int handle, unsigned int busId,
+                        int customFilterId, int attributeId,
+                        float *filterValue)
+  {
+    if (filterValue != nullptr)
+      *filterValue = 9999.0f;
+    if (player.get() == nullptr || !player.get()->isInited())
+      return backendNotInited;
+    if (filterValue == nullptr)
+      return nullPointer;
+    if (customFilterId < 0 || customFilterId >= FILTERS_PER_STREAM)
+      return invalidParameter;
+
+    if (handle == 0 && busId == 0)
+    {
+      *filterValue = player.get()->mFilters.getFilterParams(
+          handle, FilterType::CustomFilter, attributeId, customFilterId);
+      if (*filterValue == 9999.0f)
+        return filterNotFound;
+      return noError;
+    }
+    else if (busId > 0)
+    {
+      auto *busFilters = player.get()->findBusData(busId);
+      if (busFilters == nullptr)
+        return busIdNotFound;
+      *filterValue = busFilters->filters.getFilterParams(
+          handle > 0 ? handle : busFilters->handle, FilterType::CustomFilter,
+          attributeId, customFilterId);
+      if (!(isnormal(*filterValue) || isnan(*filterValue) ||
+            *filterValue == 0.0f))
+        return filterParameterGetError;
+      if (*filterValue == 9999.0f)
+        return filterNotFound;
+      return noError;
+    }
+    else
+    {
+      auto const &s = player.get()->findByHandle(handle);
+      if (s == nullptr)
+        return soundHandleNotFound;
+      *filterValue = s->filters.get()->getFilterParams(
+          handle, FilterType::CustomFilter, attributeId, customFilterId);
+      if (!(isnormal(*filterValue) || isnan(*filterValue) ||
+            *filterValue == 0.0f))
+        return filterParameterGetError;
+      if (*filterValue == 9999.0f)
+        return filterNotFound;
+      return noError;
+    }
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors
+  fadeCustomFilterParameter(unsigned int handle, unsigned int busId,
+                            int customFilterId, int attributeId, float to,
+                            float time)
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return backendNotInited;
+    if (customFilterId < 0 || customFilterId >= FILTERS_PER_STREAM)
+      return invalidParameter;
+
+    if (handle == 0 && busId == 0)
+    {
+      player.get()->mFilters.fadeFilterParameter(
+          handle, FilterType::CustomFilter, attributeId, to, time,
+          customFilterId);
+    }
+    else if (busId > 0)
+    {
+      auto *busFilters = player.get()->findBusData(busId);
+      if (busFilters == nullptr)
+        return busIdNotFound;
+      busFilters->filters.fadeFilterParameter(
+          handle > 0 ? handle : busFilters->handle, FilterType::CustomFilter,
+          attributeId, to, time, customFilterId);
+    }
+    else
+    {
+      auto const &s = player.get()->findByHandle(handle);
+      if (s == nullptr)
+        return soundHandleNotFound;
+      s->filters.get()->fadeFilterParameter(handle, FilterType::CustomFilter,
+                                            attributeId, to, time,
+                                            customFilterId);
+    }
+    return noError;
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors
+  oscillateCustomFilterParameter(unsigned int handle, unsigned int busId,
+                                 int customFilterId, int attributeId,
+                                 float from, float to, float time)
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return backendNotInited;
+    if (customFilterId < 0 || customFilterId >= FILTERS_PER_STREAM)
+      return invalidParameter;
+
+    if (handle == 0 && busId == 0)
+    {
+      player.get()->mFilters.oscillateFilterParameter(
+          handle, FilterType::CustomFilter, attributeId, from, to, time,
+          customFilterId);
+    }
+    else if (busId > 0)
+    {
+      auto *busFilters = player.get()->findBusData(busId);
+      if (busFilters == nullptr)
+        return busIdNotFound;
+      busFilters->filters.oscillateFilterParameter(
+          handle > 0 ? handle : busFilters->handle, FilterType::CustomFilter,
+          attributeId, from, to, time, customFilterId);
+    }
+    else
+    {
+      auto const &s = player.get()->findByHandle(handle);
+      if (s == nullptr)
+        return soundHandleNotFound;
+      s->filters.get()->oscillateFilterParameter(
+          handle, FilterType::CustomFilter, attributeId, from, to, time,
+          customFilterId);
     }
     return noError;
   }

@@ -25,6 +25,7 @@ freely, subject to the following restrictions:
 #ifndef SOLOUD_FILTER_H
 #define SOLOUD_FILTER_H
 
+#include <stdint.h>
 #include "soloud.h"
 
 namespace SoLoud
@@ -45,7 +46,7 @@ namespace SoLoud
 	{
 	public:
 		unsigned int mNumParams;
-		unsigned int mParamChanged;
+		uint64_t mParamChanged;
 		float *mParam;
 		Fader *mParamFader;
 

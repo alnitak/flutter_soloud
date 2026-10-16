@@ -145,6 +145,8 @@ abstract class SoLoudCppException extends SoLoudException {
         return const SoLoudAudioDeviceFailedToStartCppException();
       case PlayerErrors.failedToStartPlayback:
         return const SoLoudFailedToStartPlaybackCppException();
+      case PlayerErrors.hashIsNotARealtimeStream:
+        return const SoLoudHashIsNotARealtimeStreamCppException();
     }
   }
 

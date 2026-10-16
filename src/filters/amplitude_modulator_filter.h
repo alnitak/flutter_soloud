@@ -2,6 +2,7 @@
 #define AMPLITUDE_MODULATOR_FILTER_H
 
 #include "../soloud/include/soloud.h"
+#include <vector>
 
 class AmplitudeModulator;
 
@@ -30,6 +31,7 @@ class AmplitudeModulatorInstance : public SoLoud::FilterInstance {
   // Last valid per-sample phase increment, reused if the frequency parameter
   // ever becomes non-finite (e.g. through an unvalidated fade target).
   double mPhaseIncrement;
+  std::vector<float> mGainScratch;
 
 public:
   virtual void filter(float *aBuffer, unsigned int aSamples,

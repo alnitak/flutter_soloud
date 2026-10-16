@@ -1,12 +1,12 @@
 ---
 name: flutter-soloud-synthesis
-version: 1
+version: 2
 description: Teaches how to generate audio without assets in flutter_soloud using loadWaveform() with the 9 WaveForm oscillators, runtime setWaveform*() tweaks, speechText() (built-in robotic TTS that creates and plays a source), and SoLoudTools.createNotes(). Use when the user asks for a tone generator, beeps/alerts, a keyboard/instrument, synthesized sound effects, or text-to-speech without audio files.
 ---
 
 # Synthesis: waveforms and speech without assets
 
-flutter_soloud can synthesize audio with zero files. `SoLoud.instance.loadWaveform()` creates an `AudioSource` from an oscillator (not a stream to "set" — there is no `setSource`/`setUrl` like audioplayers; you create a source, then `play()` it). The returned `AudioSource` is reused and disposed exactly like one loaded from an asset. Runtime tweaks (`setWaveform*`) act on the **source**, so they affect every playing instance of it.
+flutter_soloud can synthesize audio with zero files. `SoLoud.instance.loadWaveform()` creates an `AudioSource` from an oscillator (not a stream to "set" — there is no `setSource`/`setUrl` like audioplayers; you create a source, then `play()` it). The returned `AudioSource` is reused and disposed exactly like one loaded from an asset. Runtime tweaks (`setWaveform*`) act on the **source**, so they affect every playing instance of it. For custom sample-by-sample synthesis, polyphonic ADSR synths, drum machines, or C/Wasm DSP generators, see `setRealtimeStream` and `createCustomSource` in **flutter-soloud-realtime-dsp** (`skills/flutter-soloud-realtime-dsp/SKILL.md`).
 
 ## Minimal example
 
@@ -117,8 +117,9 @@ Model on `example/lib/waveform/waveform.dart`:
 ## More depth
 
 - Demo: `example/lib/waveform/waveform.dart` — full tone generator UI (superWave/scale/detune sliders, all 9 `WaveForm` buttons).
+- Custom DSP & Real-Time PCM synthesis demos: `example/lib/realtime_audio/realtime_pcm_synth.dart`, `example/lib/realtime_audio/isolate_drum_sequencer.dart`, `example/lib/realtime_audio/custom_dsp_workbench.dart` (covered in **flutter-soloud-realtime-dsp**).
 - Tests with idiomatic usage: `example/tests/tests/create_notes.dart`, `example/tests/tests/speech_text.dart`, `example/tests/tests/waveform_controls.dart`.
-- Real signatures: `loadWaveform`/`setWaveform*`/`speechText` at `lib/src/soloud.dart:2076-2195`; `WaveForm` at `lib/src/enums.dart:290-317`; `SoLoudTools.createNotes` in `lib/src/tools/soloud_tools.dart`.
+- Real signatures: `loadWaveform`/`setWaveform*`/`speechText` at `lib/src/soloud.dart`; `WaveForm` at `lib/src/enums.dart`; `SoLoudTools.createNotes` in `lib/src/tools/soloud_tools.dart`.
 
 ## Keeping this skill current
 
