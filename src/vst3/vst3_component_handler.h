@@ -19,9 +19,14 @@ class Vst3ComponentHandler final
 public:
   using PerformEditCallback =
       std::function<void(Steinberg::Vst::ParamID, Steinberg::Vst::ParamValue)>;
+  using RestartComponentCallback =
+      std::function<void(Steinberg::int32)>;
 
-  explicit Vst3ComponentHandler(PerformEditCallback onPerformEdit)
-      : mOnPerformEdit(std::move(onPerformEdit)) {}
+  explicit Vst3ComponentHandler(
+      PerformEditCallback onPerformEdit,
+      RestartComponentCallback onRestartComponent = nullptr)
+      : mOnPerformEdit(std::move(onPerformEdit)),
+        mOnRestartComponent(std::move(onRestartComponent)) {}
 
   ~Vst3ComponentHandler() = default;
 
@@ -46,7 +51,10 @@ public:
   }
 
   Steinberg::tresult PLUGIN_API
-  restartComponent(Steinberg::int32 /*flags*/) override {
+  restartComponent(Steinberg::int32 flags) override {
+    if (mOnRestartComponent) {
+      mOnRestartComponent(flags);
+    }
     return Steinberg::kResultOk;
   }
 
@@ -104,6 +112,7 @@ public:
 private:
   std::atomic<uint32_t> mRefCount{1};
   PerformEditCallback mOnPerformEdit;
+  RestartComponentCallback mOnRestartComponent;
 };
 
 } // namespace SoLoud

@@ -1710,6 +1710,12 @@ extern "C"
   FFI_PLUGIN_EXPORT void soloud_vst3SetParameterEditCallback(
       dartVst3ParameterEditCallback_t callback);
 
+  /// Registers a Dart NativeCallable.listener callback invoked whenever a VST3
+  /// plugin calls IComponentHandler::restartComponent to signal parameter,
+  /// latency, or bus changes.
+  FFI_PLUGIN_EXPORT void soloud_vst3SetRestartComponentCallback(
+      dartVst3RestartComponentCallback_t callback);
+
 #ifdef __cplusplus
 }
 #endif

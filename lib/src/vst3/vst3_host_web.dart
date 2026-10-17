@@ -93,6 +93,36 @@ class Vst3ParamEditEvent {
   final double normalizedValue;
 }
 
+/// Event emitted when a VST3 plugin calls
+/// `IComponentHandler::restartComponent`.
+@experimental
+@immutable
+class Vst3RestartComponentEvent {
+  /// Creates a [Vst3RestartComponentEvent].
+  const Vst3RestartComponentEvent({
+    required this.pluginHandle,
+    required this.flags,
+  });
+
+  /// Internal native plugin handle.
+  final int pluginHandle;
+
+  /// Bitmask of Steinberg `RestartFlags`.
+  final int flags;
+
+  /// Whether parameter titles or parameter count changed.
+  bool get hasParamTitlesChanged => false;
+
+  /// Whether parameter values changed.
+  bool get hasParamValuesChanged => false;
+
+  /// Whether latency changed.
+  bool get hasLatencyChanged => false;
+
+  /// Whether I/O bus configuration changed.
+  bool get hasIoChanged => false;
+}
+
 /// Web stub for [Vst3Host] (VST3 plugin hosting is only supported on native
 /// desktop platforms: macOS, Windows, and Linux).
 @experimental
@@ -153,6 +183,13 @@ abstract class Vst3PluginBase {
 
   /// All parameters discovered via `IEditController::getParameterInfo`.
   List<Vst3ParamInfo> get parameters => const [];
+
+  /// Re-queries parameter count and parameter metadata.
+  List<Vst3ParamInfo> refreshParameters() => const [];
+
+  /// Stream of restart events emitted by this plugin instance.
+  Stream<Vst3RestartComponentEvent> get onRestartComponent =>
+      const Stream.empty();
 
   /// Reads the current normalized `[0.0, 1.0]` value of [paramId].
   double getParameterNormalized(int paramId) => 0;

@@ -54,7 +54,8 @@ public:
 
   bool initialize(unsigned int sampleRate, unsigned int maxBlockSize,
                   unsigned int channels,
-                  Vst3ComponentHandler::PerformEditCallback onGuiEdit);
+                  Vst3ComponentHandler::PerformEditCallback onGuiEdit,
+                  Vst3ComponentHandler::RestartComponentCallback onRestart);
 
   void shutdown();
   void stopProcessing() noexcept {
@@ -184,6 +185,9 @@ public:
       void (*callback)(int pluginHandle, unsigned int paramId,
                        double normalizedValue));
 
+  void setRestartComponentCallback(
+      dartVst3RestartComponentCallback_t callback);
+
 private:
   Vst3HostManager();
   ~Vst3HostManager();
@@ -193,6 +197,7 @@ private:
   int mNextHandle = 1;
   std::unordered_map<int, std::unique_ptr<Vst3PluginInstance>> mPlugins;
   std::atomic<void (*)(int, unsigned int, double)> mParamEditCallback{nullptr};
+  std::atomic<dartVst3RestartComponentCallback_t> mRestartCallback{nullptr};
 };
 
 } // namespace SoLoud

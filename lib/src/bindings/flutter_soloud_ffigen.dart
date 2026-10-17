@@ -3439,6 +3439,13 @@ external void soloud_vst3SetParameterEditCallback(
   dartVst3ParameterEditCallback_t callback,
 );
 
+/// Registers a Dart NativeCallable.listener callback invoked whenever a VST3
+/// plugin calls IComponentHandler::restartComponent.
+@ffi.Native<ffi.Void Function(dartVst3RestartComponentCallback_t)>()
+external void soloud_vst3SetRestartComponentCallback(
+  dartVst3RestartComponentCallback_t callback,
+);
+
 typedef dartVoiceEndedCallback_tFunction =
     ffi.Void Function(ffi.Pointer<ffi.UnsignedInt>);
 typedef DartdartVoiceEndedCallback_tFunction =
@@ -4311,3 +4318,15 @@ typedef DartdartVst3ParameterEditCallback_tFunction =
 /// editor window (`IComponentHandler::performEdit`).
 typedef dartVst3ParameterEditCallback_t =
     ffi.Pointer<ffi.NativeFunction<dartVst3ParameterEditCallback_tFunction>>;
+
+typedef dartVst3RestartComponentCallback_tFunction =
+    ffi.Void Function(
+      ffi.Int pluginHandle,
+      ffi.Int flags,
+    );
+typedef DartdartVst3RestartComponentCallback_tFunction =
+    void Function(int pluginHandle, int flags);
+
+/// Callback invoked when a VST3 plugin calls `IComponentHandler::restartComponent`.
+typedef dartVst3RestartComponentCallback_t =
+    ffi.Pointer<ffi.NativeFunction<dartVst3RestartComponentCallback_tFunction>>;

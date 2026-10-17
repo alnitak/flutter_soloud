@@ -139,6 +139,68 @@ void _ensureGuiEditCallbackRegistered() {
   );
 }
 
+/// Event emitted when a VST3 plugin calls `IComponentHandler::restartComponent`
+/// to notify the host that parameters, titles, latency, or buses have changed.
+@experimental
+@immutable
+class Vst3RestartComponentEvent {
+  /// Creates a [Vst3RestartComponentEvent].
+  const Vst3RestartComponentEvent({
+    required this.pluginHandle,
+    required this.flags,
+  });
+
+  /// Internal native plugin handle.
+  final int pluginHandle;
+
+  /// Bitmask of Steinberg `RestartFlags`.
+  final int flags;
+
+  /// Whether parameter titles or parameter count changed (`kParamTitlesChanged`
+  /// or `kReloadComponent`).
+  bool get hasParamTitlesChanged =>
+      (flags & (1 << 4)) != 0 || (flags & (1 << 0)) != 0;
+
+  /// Whether parameter values changed (`kParamValuesChanged`).
+  bool get hasParamValuesChanged => (flags & (1 << 2)) != 0;
+
+  /// Whether latency changed (`kLatencyChanged`).
+  bool get hasLatencyChanged => (flags & (1 << 3)) != 0;
+
+  /// Whether I/O bus configuration changed (`kIoChanged`).
+  bool get hasIoChanged => (flags & (1 << 1)) != 0;
+
+  @override
+  String toString() =>
+      'Vst3RestartComponentEvent(pluginHandle: $pluginHandle, flags: $flags)';
+}
+
+final StreamController<Vst3RestartComponentEvent> _restartComponentController =
+    StreamController<Vst3RestartComponentEvent>.broadcast();
+
+ffi.NativeCallable<ffigen.dartVst3RestartComponentCallback_tFunction>?
+_restartComponentNativeCallable;
+
+void _ensureRestartComponentCallbackRegistered() {
+  if (_restartComponentNativeCallable != null) return;
+  _restartComponentNativeCallable =
+      ffi.NativeCallable<
+        ffigen.dartVst3RestartComponentCallback_tFunction
+      >.listener((int pluginHandle, int flags) {
+        if (!_restartComponentController.isClosed) {
+          _restartComponentController.add(
+            Vst3RestartComponentEvent(
+              pluginHandle: pluginHandle,
+              flags: flags,
+            ),
+          );
+        }
+      });
+  ffigen.soloud_vst3SetRestartComponentCallback(
+    _restartComponentNativeCallable!.nativeFunction,
+  );
+}
+
 /// Manages scanning and instantiating native VST3 effects and instruments on
 /// desktop platforms (`macOS`, `Windows`, `Linux`).
 ///
@@ -358,12 +420,18 @@ class Vst3Host {
 @experimental
 abstract class Vst3PluginBase {
   Vst3PluginBase._(this.pluginHandle)
-    : _parameters = _queryParameters(pluginHandle);
+    : _parameters = _queryParameters(pluginHandle) {
+    _ensureRestartComponentCallbackRegistered();
+    _restartSub = onRestartComponent.listen((_) {
+      refreshParameters();
+    });
+  }
 
   /// Internal native handle.
   final int pluginHandle;
 
-  final List<Vst3ParamInfo> _parameters;
+  List<Vst3ParamInfo> _parameters;
+  StreamSubscription<Vst3RestartComponentEvent>? _restartSub;
   bool _disposed = false;
 
   /// Whether this plugin instance has been disposed.
@@ -376,6 +444,20 @@ abstract class Vst3PluginBase {
 
   /// All parameters discovered via `IEditController::getParameterInfo`.
   List<Vst3ParamInfo> get parameters => _parameters;
+
+  /// Re-queries parameter count and parameter metadata from the VST3
+  /// edit controller and updates [parameters].
+  List<Vst3ParamInfo> refreshParameters() {
+    if (_disposed) return const [];
+    return _parameters = _queryParameters(pluginHandle);
+  }
+
+  /// Stream of restart events emitted by this plugin instance when
+  /// `IComponentHandler::restartComponent` is called.
+  Stream<Vst3RestartComponentEvent> get onRestartComponent =>
+      _restartComponentController.stream.where(
+        (e) => e.pluginHandle == pluginHandle,
+      );
 
   static List<Vst3ParamInfo> _queryParameters(int handle) {
     final count = ffigen.soloud_vst3GetParameterCount(handle);
@@ -591,6 +673,8 @@ abstract class Vst3PluginBase {
   void dispose() {
     if (_disposed) return;
     _disposed = true;
+    _restartSub?.cancel();
+    _restartSub = null;
     ffigen.soloud_vst3CloseEditor(pluginHandle);
     ffigen.soloud_vst3UnloadPlugin(pluginHandle);
   }

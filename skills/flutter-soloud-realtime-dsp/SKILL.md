@@ -1,6 +1,6 @@
 ---
 name: flutter-soloud-realtime-dsp
-version: 2
+version: 3
 description: Teaches how to use flutter_soloud's real-time audio mixer injection, synchronous custom DSP callbacks, and desktop VST3 plugin hosting: setRealtimeStream (lock-free SPSC ring buffer with instantaneous retroactive mixer injection, pushFloat32, pushInt16, pushClockedFloat32, pushScheduledFloat32, startFloat32Feeder, RealtimeStreamFeeder, RealtimeNativeBuffer), createCustomSource (zero-latency C/Wasm/JS audio generator), customFilter(id) (up to 8 multi-instance custom DSP filter slots per scope with 16 modulatable params and automatic wet/dry bypass), and Vst3Host / Vst3EffectPlugin / Vst3InstrumentPlugin (desktop .vst3 effect & synth hosting with native GUI editor windows). Use when the user asks to feed low-latency live PCM directly into the mixer, build a custom synthesizer or drum machine, write custom audio DSP effects or generators, host native C++/Rust/FAUST/Cmajor/VST3 plugins, or process audio in a background Dart Isolate.
 ---
 
@@ -230,6 +230,11 @@ Future<void> setupVst3Rack() async {
     print('GUI changed param ${edit.paramId} -> $text');
   });
 
+  // Listen to dynamic parameter updates (e.g. multi-effects switching sub-effects):
+  effect.onRestartComponent.listen((evt) {
+    print('Plugin updated parameters (${effect.parameters.length} total)');
+  });
+
   // 4. Map a VST3 ParamID to CustomFilterSlot param[1] for C++ Fader / LFO modulation
   if (effect.parameters.isNotEmpty) {
     final p = effect.mapToSlotParameter(
@@ -257,6 +262,7 @@ Future<void> setupVst3Rack() async {
 - **VST3 effects (`Vst3Host.loadEffect`) only support Global or Mixing Bus filter slots.** Passing a single-sound `CustomFilterSlot` throws an `ArgumentError` because stateful VST3 effect instances cannot be cloned per voice. Route specific voices through a `Bus` (`soloud.createBus()`) to apply a VST3 effect to a subset of sounds.
 - **VST3 is desktop-only (`macOS`, `Windows`, `Linux`) and opt-in (`enable_vst3: true`).** On iOS, Android, and Web (or when `enable_vst3` is not `true`), `Vst3Host().isSupported` is `false`. Also note that enabling `enable_vst3: true` links the prebuilt Steinberg VST3 Hosting SDK (dual-licensed under the Steinberg VST3 License or GPLv3).
 - **Check `.vst3` bundle existence with `Directory(path).existsSync() || File(path).existsSync()`.** Standard `.vst3` plugins on macOS, Windows, and Linux are directory bundles, so `File(path).existsSync()` alone returns `false` for directory bundles.
+- **Multi-effects & dynamic VST3 plugins change parameters at runtime.** When a user selects a different sub-effect inside a multi-effect plugin (such as Surge XT Effects switching from EQ to Delay), the plugin calls Steinberg's `restartComponent`. `Vst3PluginBase` automatically updates its `parameters` list and emits `onRestartComponent` so UI widgets can re-render sliders. You can also re-query parameter metadata manually with `effect.refreshParameters()` or `synth.refreshParameters()` at any time.
 - **Per-sound `customFilter(id)` must be activated before `play(sound)`.** Just like built-in per-sound filters, voices started before `activate()` do not carry the filter.
 - **SoLoud's internal buffer layout is planar (`[ch0_frames..., ch1_frames...]`).** Inside `NativeCustomFilterDspCallback` and `NativeCustomSourceAudioCallback`, channel `c` starts at `buffer + c * samples`.
 - **Always call `stream.dispose()`, `effect.dispose()`, or `synth.dispose()` when finished** to free native ring buffers, `RealtimeNativeBuffer` allocations, and VST3 plugin instances.

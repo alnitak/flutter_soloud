@@ -297,4 +297,10 @@ typedef void (*dartVst3ParameterEditCallback_t)(
     unsigned int paramId,
     double normalizedValue);
 
+/// Callback invoked when a VST3 plugin calls `IComponentHandler::restartComponent`
+/// to notify the host that parameters, titles, latency, or buses have changed.
+typedef void (*dartVst3RestartComponentCallback_t)(
+    int pluginHandle,
+    int flags);
+
 #endif // ENUMS_H

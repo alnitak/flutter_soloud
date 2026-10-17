@@ -85,6 +85,10 @@ void main() {
                   to: 0.5,
                   time: const Duration(milliseconds: 50),
                 );
+
+            expect(effect.onRestartComponent, isNotNull);
+            final refreshed = effect.refreshParameters();
+            expect(refreshed.length, equals(effect.parameters.length));
           }
 
           // Exercise real-time audio processing through the VST3 effect

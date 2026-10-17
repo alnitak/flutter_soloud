@@ -60,7 +60,8 @@ Vst3PluginInstance::~Vst3PluginInstance() { shutdown(); }
 
 bool Vst3PluginInstance::initialize(
     unsigned int sampleRate, unsigned int maxBlockSize, unsigned int channels,
-    Vst3ComponentHandler::PerformEditCallback onGuiEdit) {
+    Vst3ComponentHandler::PerformEditCallback onGuiEdit,
+    Vst3ComponentHandler::RestartComponentCallback onRestart) {
   mSampleRate = sampleRate > 0 ? sampleRate : 48000;
   mMaxBlockSize = maxBlockSize > 0 ? maxBlockSize : 2048;
   mMaxChannels = std::clamp<unsigned int>(channels, 1, 8);
@@ -98,14 +99,30 @@ bool Vst3PluginInstance::initialize(
     }
 
     mComponentHandler = Steinberg::owned(
-        new Vst3ComponentHandler([this, onGuiEdit = std::move(onGuiEdit)](
-                                     Steinberg::Vst::ParamID id,
-                                     Steinberg::Vst::ParamValue val) {
-          enqueueGuiParamChange(id, val);
-          if (onGuiEdit) {
-            onGuiEdit(id, val);
-          }
-        }));
+        new Vst3ComponentHandler(
+            [this, onGuiEdit = std::move(onGuiEdit)](
+                Steinberg::Vst::ParamID id,
+                Steinberg::Vst::ParamValue val) {
+              enqueueGuiParamChange(id, val);
+              if (onGuiEdit) {
+                onGuiEdit(id, val);
+              }
+            },
+            [this, onRestart = std::move(onRestart)](Steinberg::int32 flags) {
+              if ((flags & Steinberg::Vst::RestartFlags::kReloadComponent) != 0) {
+                if (mComponent && mController) {
+                  Steinberg::MemoryStream stream;
+                  if (mComponent->getState(&stream) == Steinberg::kResultTrue &&
+                      stream.getSize() > 0) {
+                    stream.seek(0, Steinberg::IBStream::kIBSeekSet, nullptr);
+                    mController->setComponentState(&stream);
+                  }
+                }
+              }
+              if (onRestart) {
+                onRestart(flags);
+              }
+            }));
     mController->setComponentHandler(mComponentHandler);
   }
 
@@ -877,8 +894,15 @@ PlayerErrors Vst3HostManager::loadPlugin(
     }
   };
 
+  auto onRestart = [this, handle](Steinberg::int32 flags) {
+    auto cb = mRestartCallback.load(std::memory_order_acquire);
+    if (cb != nullptr) {
+      cb(handle, static_cast<int>(flags));
+    }
+  };
+
   if (!instance->initialize(sampleRate, maxBlockSize, channels,
-                            std::move(onGuiEdit))) {
+                            std::move(onGuiEdit), std::move(onRestart))) {
     return fileLoadFailed;
   }
 
@@ -927,6 +951,11 @@ void Vst3HostManager::setParameterEditCallback(
     void (*callback)(int pluginHandle, unsigned int paramId,
                      double normalizedValue)) {
   mParamEditCallback.store(callback, std::memory_order_release);
+}
+
+void Vst3HostManager::setRestartComponentCallback(
+    dartVst3RestartComponentCallback_t callback) {
+  mRestartCallback.store(callback, std::memory_order_release);
 }
 
 } // namespace SoLoud

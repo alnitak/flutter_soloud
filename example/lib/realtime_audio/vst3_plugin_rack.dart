@@ -52,6 +52,7 @@ class _Vst3PluginRackExampleState extends State<Vst3PluginRackExample> {
   SoundHandle? _testToneHandle;
   Uint8List? _savedPreset;
   StreamSubscription<Vst3ParamEditEvent>? _guiSub;
+  StreamSubscription<Vst3RestartComponentEvent>? _restartSub;
   String _statusMessage = 'Ready.';
   double _effectWet = 0.8;
   bool _latchNotes = false;
@@ -60,6 +61,7 @@ class _Vst3PluginRackExampleState extends State<Vst3PluginRackExample> {
   @override
   void dispose() {
     unawaited(_guiSub?.cancel());
+    unawaited(_restartSub?.cancel());
     _loadedEffect?.dispose();
     for (final p in _latchedPitches) {
       _loadedSynth?.noteOff(pitch: p);
@@ -93,6 +95,7 @@ class _Vst3PluginRackExampleState extends State<Vst3PluginRackExample> {
       }
 
       unawaited(_guiSub?.cancel());
+      unawaited(_restartSub?.cancel());
       _loadedEffect?.dispose();
       _loadedEffect = null;
       for (final p in _latchedPitches) {
@@ -121,6 +124,12 @@ class _Vst3PluginRackExampleState extends State<Vst3PluginRackExample> {
             _statusMessage = 'GUI edited param ${evt.paramId} -> $disp';
           });
         });
+        _restartSub = synth.onRestartComponent.listen((evt) {
+          setState(() {
+            _statusMessage =
+                'Parameters updated (${synth.parameters.length} parameters)';
+          });
+        });
         setState(() {
           _loadedSynth = synth;
           _loadedPluginName = targetClass.name;
@@ -139,6 +148,12 @@ class _Vst3PluginRackExampleState extends State<Vst3PluginRackExample> {
           final disp = effect.getParameterDisplay(evt.paramId);
           setState(() {
             _statusMessage = 'GUI edited param ${evt.paramId} -> $disp';
+          });
+        });
+        _restartSub = effect.onRestartComponent.listen((evt) {
+          setState(() {
+            _statusMessage =
+                'Parameters updated (${effect.parameters.length} parameters)';
           });
         });
         setState(() {
@@ -576,14 +591,33 @@ class _Vst3PluginRackExampleState extends State<Vst3PluginRackExample> {
                       ),
                     ],
                     const Divider(),
-                    Text(
-                      'Parameters (showing first '
-                      '${plugin.parameters.take(12).length} of '
-                      '${plugin.parameters.length}):',
-                      style: Theme.of(context).textTheme.titleSmall,
+                    Row(
+                      children: [
+                        Text(
+                          'Parameters (showing first '
+                          '${plugin.parameters.take(12).length} of '
+                          '${plugin.parameters.length}):',
+                          style: Theme.of(context).textTheme.titleSmall,
+                        ),
+                        const SizedBox(width: 8),
+                        IconButton(
+                          icon: const Icon(Icons.refresh, size: 18),
+                          tooltip: 'Refresh Parameters',
+                          visualDensity: VisualDensity.compact,
+                          onPressed: () {
+                            setState(() {
+                              plugin.refreshParameters();
+                              _statusMessage =
+                                  'Refreshed parameters '
+                                  '(${plugin.parameters.length} total)';
+                            });
+                          },
+                        ),
+                      ],
                     ),
                     for (final param in plugin.parameters.take(12))
                       Row(
+                        key: ValueKey('${param.paramId}_${param.title}'),
                         children: [
                           SizedBox(
                             width: 180,
