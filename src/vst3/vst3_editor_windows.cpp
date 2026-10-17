@@ -178,6 +178,8 @@ std::unique_ptr<Vst3EditorWindow> Vst3EditorWindow::create() {
   return std::make_unique<Vst3EditorWindowWindows>();
 }
 
+void installVst3TerminationObserver() {}
+
 } // namespace SoLoud
 
 #endif // SOLOUD_ENABLE_VST3 && _WIN32

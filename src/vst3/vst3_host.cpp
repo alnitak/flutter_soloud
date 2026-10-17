@@ -109,15 +109,9 @@ bool Vst3PluginInstance::initialize(
               }
             },
             [this, onRestart = std::move(onRestart)](Steinberg::int32 flags) {
-              if ((flags & Steinberg::Vst::RestartFlags::kReloadComponent) != 0) {
-                if (mComponent && mController) {
-                  Steinberg::MemoryStream stream;
-                  if (mComponent->getState(&stream) == Steinberg::kResultTrue &&
-                      stream.getSize() > 0) {
-                    stream.seek(0, Steinberg::IBStream::kIBSeekSet, nullptr);
-                    mController->setComponentState(&stream);
-                  }
-                }
+              if ((flags & (Steinberg::Vst::RestartFlags::kReloadComponent |
+                            Steinberg::Vst::RestartFlags::kParamTitlesChanged)) != 0) {
+                syncComponentStateToController();
               }
               if (onRestart) {
                 onRestart(flags);
@@ -509,7 +503,23 @@ unsigned int Vst3PluginInstance::processInstrumentBlock(
   return aSamplesToRead;
 }
 
-int Vst3PluginInstance::getParameterCount() const {
+void Vst3PluginInstance::syncComponentStateToController() {
+  if (mIsSyncingState.exchange(true, std::memory_order_acq_rel)) {
+    return;
+  }
+  if (mComponent && mController) {
+    Steinberg::MemoryStream stream;
+    if (mComponent->getState(&stream) == Steinberg::kResultTrue &&
+        stream.getSize() > 0) {
+      stream.seek(0, Steinberg::IBStream::kIBSeekSet, nullptr);
+      mController->setComponentState(&stream);
+    }
+  }
+  mIsSyncingState.store(false, std::memory_order_release);
+}
+
+int Vst3PluginInstance::getParameterCount() {
+  syncComponentStateToController();
   if (!mController) {
     return 0;
   }
@@ -619,7 +629,7 @@ bool Vst3PluginInstance::getState(std::vector<uint8_t> &outState) const {
   // Also snapshot parameter values from IEditController so plugins that don't
   // implement custom IBStream state still round-trip all parameter values
   const uint32_t paramCount =
-      mController ? static_cast<uint32_t>(std::max(0, getParameterCount())) : 0;
+      mController ? static_cast<uint32_t>(std::max(0, mController->getParameterCount())) : 0;
 
   const size_t headerSize = 4 * sizeof(uint32_t);
   const size_t paramBlockSize =
@@ -791,25 +801,25 @@ Vst3HostManager &Vst3HostManager::instance() {
 
 Vst3HostManager::Vst3HostManager() {
   Steinberg::Vst::PluginContextFactory::instance().setPluginContext(&mHostApp);
+  installVst3TerminationObserver();
 }
 
 Vst3HostManager::~Vst3HostManager() {
-  // ~Vst3HostManager() runs during C++ static destruction (exit() /
-  // __cxa_finalize_ranges). At this stage, dynamically loaded .vst3 bundles
-  // (loaded after flutter_soloud) have ALREADY executed their own C++ static
-  // destructors in reverse load order (e.g., JUCE plugins have already
-  // unregistered their Objective-C NSView classes and destroyed static globals).
-  // Calling IPlugView::removed(), IComponent::terminate(), or Release() during
-  // __cxa_finalize_ranges segfaults inside the already-finalized plugin binary.
-  // Normal runtime teardown happens via unloadPlugin() / unloadAll() (and
-  // NSApplicationWillTerminateNotification on macOS) before exit().
-  for (auto &kv : mPlugins) {
-    if (kv.second) {
-      kv.second->stopProcessing();
-      (void)kv.second.release();
-    }
+  unloadAll();
+}
+
+VST3::Hosting::Module::Ptr Vst3HostManager::getOrLoadModule(
+    const std::string &bundlePath, std::string &outError) {
+  std::lock_guard<std::mutex> lock(mMutex);
+  auto it = mLoadedModules.find(bundlePath);
+  if (it != mLoadedModules.end() && it->second) {
+    return it->second;
   }
-  mPlugins.clear();
+  auto module = VST3::Hosting::Module::create(bundlePath, outError);
+  if (module) {
+    mLoadedModules[bundlePath] = module;
+  }
+  return module;
 }
 
 PlayerErrors Vst3HostManager::scanBundle(
@@ -820,7 +830,7 @@ PlayerErrors Vst3HostManager::scanBundle(
   }
 
   std::string err;
-  auto module = VST3::Hosting::Module::create(bundlePath, err);
+  auto module = getOrLoadModule(bundlePath, err);
   if (!module) {
     return fileLoadFailed;
   }
@@ -851,7 +861,7 @@ PlayerErrors Vst3HostManager::loadPlugin(
   }
 
   std::string err;
-  auto module = VST3::Hosting::Module::create(bundlePath, err);
+  auto module = getOrLoadModule(bundlePath, err);
   if (!module) {
     return fileLoadFailed;
   }
@@ -930,15 +940,24 @@ PlayerErrors Vst3HostManager::unloadPlugin(int pluginHandle) {
 
 void Vst3HostManager::unloadAll() {
   std::unordered_map<int, std::unique_ptr<Vst3PluginInstance>> toUnload;
+  std::unordered_map<std::string, VST3::Hosting::Module::Ptr> modulesToUnload;
   {
     std::lock_guard<std::mutex> lock(mMutex);
     toUnload.swap(mPlugins);
+    modulesToUnload.swap(mLoadedModules);
   }
+  // 1. Shutdown all active plugin instances: close editors, stop processing,
+  //    deactivate, and terminate components/controllers before modules are released.
   for (auto &kv : toUnload) {
     if (kv.second) {
       kv.second->shutdown();
     }
   }
+  toUnload.clear();
+
+  // 2. Clear cached hosting modules so bundleExit() is called only after
+  //    all instances have been cleanly terminated and released.
+  modulesToUnload.clear();
 }
 
 Vst3PluginInstance *Vst3HostManager::getPlugin(int pluginHandle) {

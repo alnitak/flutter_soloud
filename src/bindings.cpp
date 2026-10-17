@@ -4799,6 +4799,13 @@ extern "C"
     SoLoud::Vst3HostManager::instance().setRestartComponentCallback(callback);
   }
 
+  FFI_PLUGIN_EXPORT void soloud_vst3HostUnloadAll(void)
+  {
+    SoLoud::Vst3HostManager::instance().setParameterEditCallback(nullptr);
+    SoLoud::Vst3HostManager::instance().setRestartComponentCallback(nullptr);
+    SoLoud::Vst3HostManager::instance().unloadAll();
+  }
+
 #else // !SOLOUD_ENABLE_VST3
 
   FFI_PLUGIN_EXPORT int soloud_vst3IsSupported(void) { return 0; }
@@ -4955,6 +4962,8 @@ extern "C"
       dartVst3RestartComponentCallback_t /*callback*/)
   {
   }
+
+  FFI_PLUGIN_EXPORT void soloud_vst3HostUnloadAll(void) {}
 
 #endif // SOLOUD_ENABLE_VST3
 

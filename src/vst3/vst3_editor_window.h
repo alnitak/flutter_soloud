@@ -44,6 +44,11 @@ public:
   }
 };
 
+/// Registers a platform-level termination observer (e.g.,
+/// NSApplicationWillTerminateNotification on macOS) to cleanly tear down
+/// all VST3 instances and host modules before process exit().
+void installVst3TerminationObserver();
+
 } // namespace SoLoud
 
 #endif // SOLOUD_ENABLE_VST3

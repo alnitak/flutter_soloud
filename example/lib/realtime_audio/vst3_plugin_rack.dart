@@ -41,8 +41,8 @@ class _Vst3PluginRackExampleState extends State<Vst3PluginRackExample> {
   final SoLoud _soloud = SoLoud.instance;
   final Vst3Host _vstHost = Vst3Host();
   final TextEditingController _pathController = TextEditingController(
-    text:
-        '/Volumes/NVME/Users/deimos/Library/Audio/Plug-Ins/VST3/flutter_reverb.vst3',
+    text: '/Volumes/NVME/Users/deimos/Library/Audio/Plug-Ins/VST3/'
+        'flutter_reverb.vst3',
   );
 
   Vst3EffectPlugin? _loadedEffect;
@@ -57,6 +57,7 @@ class _Vst3PluginRackExampleState extends State<Vst3PluginRackExample> {
   double _effectWet = 0.8;
   bool _latchNotes = false;
   final Set<int> _latchedPitches = <int>{};
+  bool _showAllParameters = false;
 
   @override
   void dispose() {
@@ -72,6 +73,7 @@ class _Vst3PluginRackExampleState extends State<Vst3PluginRackExample> {
       unawaited(_soloud.disposeSource(_testSound!));
     }
     _pathController.dispose();
+    _vstHost.unloadAll();
     super.dispose();
   }
 
@@ -120,11 +122,13 @@ class _Vst3PluginRackExampleState extends State<Vst3PluginRackExample> {
         _soloud.play(synth.audioSource, volume: 0.7);
         _guiSub = synth.onGuiParameterChanged.listen((evt) {
           final disp = synth.getParameterDisplay(evt.paramId);
+          synth.refreshParameters();
           setState(() {
             _statusMessage = 'GUI edited param ${evt.paramId} -> $disp';
           });
         });
         _restartSub = synth.onRestartComponent.listen((evt) {
+          synth.refreshParameters();
           setState(() {
             _statusMessage =
                 'Parameters updated (${synth.parameters.length} parameters)';
@@ -146,11 +150,13 @@ class _Vst3PluginRackExampleState extends State<Vst3PluginRackExample> {
         slot.wet.value = _effectWet;
         _guiSub = effect.onGuiParameterChanged.listen((evt) {
           final disp = effect.getParameterDisplay(evt.paramId);
+          effect.refreshParameters();
           setState(() {
             _statusMessage = 'GUI edited param ${evt.paramId} -> $disp';
           });
         });
         _restartSub = effect.onRestartComponent.listen((evt) {
+          effect.refreshParameters();
           setState(() {
             _statusMessage =
                 'Parameters updated (${effect.parameters.length} parameters)';
@@ -184,10 +190,11 @@ class _Vst3PluginRackExampleState extends State<Vst3PluginRackExample> {
     }
 
     final discoveredBundles = <String, String>{}; // bundlePath -> searchDir
+    final seenBundleNames = <String>{};
     for (final dirPath in searchDirs) {
       final dir = Directory(dirPath);
       if (!dir.existsSync()) continue;
-      _findBundles(dir, 3, dirPath, discoveredBundles);
+      _findBundles(dir, 3, dirPath, discoveredBundles, seenBundleNames);
     }
 
     final entries = <_DiscoveredPluginEntry>[];
@@ -247,6 +254,7 @@ class _Vst3PluginRackExampleState extends State<Vst3PluginRackExample> {
     int maxDepth,
     String rootSearchDir,
     Map<String, String> out,
+    Set<String> seenBundleNames,
   ) {
     if (maxDepth <= 0 || !dir.existsSync()) return;
     try {
@@ -257,9 +265,18 @@ class _Vst3PluginRackExampleState extends State<Vst3PluginRackExample> {
         if (base.startsWith('.')) continue;
 
         if (path.toLowerCase().endsWith('.vst3')) {
-          out.putIfAbsent(path, () => rootSearchDir);
+          final normalizedName = base.toLowerCase();
+          if (seenBundleNames.add(normalizedName)) {
+            out.putIfAbsent(path, () => rootSearchDir);
+          }
         } else if (entity is Directory) {
-          _findBundles(entity, maxDepth - 1, rootSearchDir, out);
+          _findBundles(
+            entity,
+            maxDepth - 1,
+            rootSearchDir,
+            out,
+            seenBundleNames,
+          );
         }
       }
     } catch (_) {}
@@ -591,62 +608,112 @@ class _Vst3PluginRackExampleState extends State<Vst3PluginRackExample> {
                       ),
                     ],
                     const Divider(),
-                    Row(
-                      children: [
-                        Text(
-                          'Parameters (showing first '
-                          '${plugin.parameters.take(12).length} of '
-                          '${plugin.parameters.length}):',
-                          style: Theme.of(context).textTheme.titleSmall,
-                        ),
-                        const SizedBox(width: 8),
-                        IconButton(
-                          icon: const Icon(Icons.refresh, size: 18),
-                          tooltip: 'Refresh Parameters',
-                          visualDensity: VisualDensity.compact,
-                          onPressed: () {
-                            setState(() {
-                              plugin.refreshParameters();
-                              _statusMessage =
-                                  'Refreshed parameters '
-                                  '(${plugin.parameters.length} total)';
-                            });
-                          },
-                        ),
-                      ],
+                    Builder(
+                      builder: (context) {
+                        final displayParams = _showAllParameters ||
+                                plugin.parameters.length <= 24
+                            ? plugin.parameters
+                            : plugin.parameters.take(24).toList();
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Text(
+                                  'Parameters (${displayParams.length} of '
+                                  '${plugin.parameters.length}):',
+                                  style:
+                                      Theme.of(context).textTheme.titleSmall,
+                                ),
+                                Tooltip(
+                                  message:
+                                      'Synchronize and refresh plugin '
+                                      'parameters',
+                                  child: OutlinedButton.icon(
+                                    icon: const Icon(Icons.refresh, size: 16),
+                                    label: const Text('Refresh Parameters'),
+                                    style: OutlinedButton.styleFrom(
+                                      visualDensity: VisualDensity.compact,
+                                    ),
+                                    onPressed: () {
+                                      setState(() {
+                                        plugin.refreshParameters();
+                                        _statusMessage =
+                                            'Refreshed parameters '
+                                            '(${plugin.parameters.length} '
+                                            'total)';
+                                      });
+                                    },
+                                  ),
+                                ),
+                                if (plugin.parameters.length > 24) ...[
+                                  const SizedBox(width: 8),
+                                  TextButton(
+                                    onPressed: () {
+                                      setState(() {
+                                        _showAllParameters =
+                                            !_showAllParameters;
+                                      });
+                                    },
+                                    child: Text(
+                                      _showAllParameters
+                                          ? 'Show First 24'
+                                          : 'Show All '
+                                              '(${plugin.parameters.length})',
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                            for (final param in displayParams)
+                              Row(
+                                key:
+                                    ValueKey('${param.paramId}_${param.title}'),
+                                children: [
+                                  SizedBox(
+                                    width: 180,
+                                    child: Text(
+                                      param.title,
+                                      style: TextStyle(
+                                        fontWeight: param.title == 'FX Type'
+                                            ? FontWeight.bold
+                                            : FontWeight.normal,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  Expanded(
+                                    child: Slider(
+                                      value: plugin
+                                          .getParameterNormalized(param.paramId)
+                                          .clamp(0.0, 1.0),
+                                      onChanged: (v) {
+                                        plugin.setParameterNormalized(
+                                          param.paramId,
+                                          v,
+                                        );
+                                        if (param.title == 'FX Type') {
+                                          plugin.refreshParameters();
+                                        }
+                                        setState(() {});
+                                      },
+                                    ),
+                                  ),
+                                  SizedBox(
+                                    width: 130,
+                                    child: Text(
+                                      '${plugin.getParameterDisplay(
+                                        param.paramId,
+                                      )} ${param.units}'.trim(),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                          ],
+                        );
+                      },
                     ),
-                    for (final param in plugin.parameters.take(12))
-                      Row(
-                        key: ValueKey('${param.paramId}_${param.title}'),
-                        children: [
-                          SizedBox(
-                            width: 180,
-                            child: Text(
-                              param.title,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          Expanded(
-                            child: Slider(
-                              value: plugin
-                                  .getParameterNormalized(param.paramId)
-                                  .clamp(0.0, 1.0),
-                              onChanged: (v) {
-                                plugin.setParameterNormalized(param.paramId, v);
-                                setState(() {});
-                              },
-                            ),
-                          ),
-                          SizedBox(
-                            width: 120,
-                            child: Text(
-                              '${plugin.getParameterDisplay(param.paramId)} '
-                              '${param.units}',
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
                   ],
                 ),
               ),

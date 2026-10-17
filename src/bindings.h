@@ -1716,6 +1716,9 @@ extern "C"
   FFI_PLUGIN_EXPORT void soloud_vst3SetRestartComponentCallback(
       dartVst3RestartComponentCallback_t callback);
 
+  /// Synchronously unloads all hosted VST3 plugins and releases cached modules.
+  FFI_PLUGIN_EXPORT void soloud_vst3HostUnloadAll(void);
+
 #ifdef __cplusplus
 }
 #endif

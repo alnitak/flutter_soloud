@@ -167,6 +167,10 @@ class Vst3Host {
   }) {
     throw SoLoudCppException.fromPlayerError(PlayerErrors.invalidParameter);
   }
+
+  /// No-op on the Web platform.
+  @experimental
+  void unloadAll() {}
 }
 
 /// Base class for a loaded VST3 plugin instance.

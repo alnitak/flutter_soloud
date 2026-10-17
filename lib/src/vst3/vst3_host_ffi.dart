@@ -217,7 +217,8 @@ class Vst3Host {
   bool get isSupported => ffigen.soloud_vst3IsSupported() != 0;
 
   /// Standard OS directories where `.vst3` bundles are installed:
-  /// - **macOS**: `/Library/Audio/Plug-Ins/VST3`, `~/Library/Audio/Plug-Ins/VST3`
+  /// - **macOS**: `/Library/Audio/Plug-Ins/VST3`,
+  ///   `~/Library/Audio/Plug-Ins/VST3`
   /// - **Windows**: `C:\Program Files\Common Files\VST3`
   /// - **Linux**: `/usr/lib/vst3`, `/usr/local/lib/vst3`, `~/.vst3`
   @experimental
@@ -295,6 +296,16 @@ class Vst3Host {
         ..free(outNames)
         ..free(outSubCats);
     }
+  }
+
+  /// Unloads all active VST3 plugin instances and cached modules.
+  ///
+  /// Useful during teardown or before application exit to ensure clean release
+  /// of all native plugin libraries and resources.
+  @experimental
+  void unloadAll() {
+    if (!isSupported) return;
+    ffigen.soloud_vst3HostUnloadAll();
   }
 
   /// Loads a VST3 **Audio Effect (`Fx`)** and attaches it to [slot]
@@ -422,8 +433,10 @@ abstract class Vst3PluginBase {
   Vst3PluginBase._(this.pluginHandle)
     : _parameters = _queryParameters(pluginHandle) {
     _ensureRestartComponentCallbackRegistered();
-    _restartSub = onRestartComponent.listen((_) {
-      refreshParameters();
+    _restartSub = onRestartComponent.listen((evt) {
+      if (evt.hasParamTitlesChanged) {
+        refreshParameters();
+      }
     });
   }
 

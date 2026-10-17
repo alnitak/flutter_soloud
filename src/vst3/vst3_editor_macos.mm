@@ -8,6 +8,7 @@
 #include "pluginterfaces/base/smartpointer.h"
 #include "pluginterfaces/gui/iplugview.h"
 #include "vst3_editor_window.h"
+#include "vst3_host.h"
 #include <atomic>
 #include <string>
 
@@ -277,6 +278,41 @@ std::unique_ptr<Vst3EditorWindow> Vst3EditorWindow::create() {
   }
 }
 @end
+
+@interface SoLoudVst3AppTerminateObserver : NSObject
+@end
+
+@implementation SoLoudVst3AppTerminateObserver
+- (void)applicationWillTerminate:(NSNotification *)notification {
+  (void)notification;
+  SoLoud::Vst3HostManager::instance().unloadAll();
+}
+@end
+
+static SoLoudVst3AppTerminateObserver *gVst3AppTerminateObserver = nil;
+
+namespace SoLoud {
+
+void installVst3TerminationObserver() {
+  static dispatch_once_t onceToken;
+  dispatch_once(&onceToken, ^{
+    void (^installBlock)(void) = ^{
+      gVst3AppTerminateObserver = [[SoLoudVst3AppTerminateObserver alloc] init];
+      [[NSNotificationCenter defaultCenter]
+          addObserver:gVst3AppTerminateObserver
+             selector:@selector(applicationWillTerminate:)
+                 name:NSApplicationWillTerminateNotification
+               object:nil];
+    };
+    if ([NSThread isMainThread]) {
+      installBlock();
+    } else {
+      dispatch_async(dispatch_get_main_queue(), installBlock);
+    }
+  });
+}
+
+} // namespace SoLoud
 
 #endif // !TARGET_OS_IPHONE
 #endif // SOLOUD_ENABLE_VST3 && __APPLE__

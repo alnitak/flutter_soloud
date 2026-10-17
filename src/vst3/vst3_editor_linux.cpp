@@ -357,6 +357,8 @@ std::unique_ptr<Vst3EditorWindow> Vst3EditorWindow::create() {
   return std::make_unique<Vst3EditorWindowLinux>();
 }
 
+void installVst3TerminationObserver() {}
+
 } // namespace SoLoud
 
 #endif // SOLOUD_ENABLE_VST3 && __linux__ && !__ANDROID__

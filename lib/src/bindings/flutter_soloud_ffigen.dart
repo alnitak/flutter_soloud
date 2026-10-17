@@ -3446,6 +3446,10 @@ external void soloud_vst3SetRestartComponentCallback(
   dartVst3RestartComponentCallback_t callback,
 );
 
+/// Synchronously unloads all hosted VST3 plugins and releases cached modules.
+@ffi.Native<ffi.Void Function()>()
+external void soloud_vst3HostUnloadAll();
+
 typedef dartVoiceEndedCallback_tFunction =
     ffi.Void Function(ffi.Pointer<ffi.UnsignedInt>);
 typedef DartdartVoiceEndedCallback_tFunction =

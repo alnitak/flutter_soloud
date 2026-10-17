@@ -81,8 +81,9 @@ public:
                                       double aStreamTime) noexcept;
 
   // --- Parameter Reflection & Control (Main / UI Thread) ---
-  int getParameterCount() const;
+  int getParameterCount();
   bool getParameterInfo(int index, Vst3ParameterMetadata &outInfo) const;
+  void syncComponentStateToController();
   double getParameterNormalized(uint32_t paramId,
                                 std::string *outDisplayText) const;
   bool setParameterNormalized(uint32_t paramId, double normalizedValue);
@@ -132,6 +133,7 @@ private:
   bool mHasAudioInput = false;
 
   std::atomic<bool> mIsProcessing{false};
+  std::atomic<bool> mIsSyncingState{false};
   std::mutex mProcessMutex;
 
   // Pre-allocated real-time audio buffers (zero heap allocation in process)
@@ -181,6 +183,9 @@ public:
 
   Vst3PluginInstance *getPlugin(int pluginHandle);
 
+  VST3::Hosting::Module::Ptr getOrLoadModule(const std::string &bundlePath,
+                                            std::string &outError);
+
   void setParameterEditCallback(
       void (*callback)(int pluginHandle, unsigned int paramId,
                        double normalizedValue));
@@ -196,6 +201,7 @@ private:
   Steinberg::Vst::HostApplication mHostApp;
   int mNextHandle = 1;
   std::unordered_map<int, std::unique_ptr<Vst3PluginInstance>> mPlugins;
+  std::unordered_map<std::string, VST3::Hosting::Module::Ptr> mLoadedModules;
   std::atomic<void (*)(int, unsigned int, double)> mParamEditCallback{nullptr};
   std::atomic<dartVst3RestartComponentCallback_t> mRestartCallback{nullptr};
 };

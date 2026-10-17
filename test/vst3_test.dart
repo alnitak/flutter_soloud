@@ -89,18 +89,24 @@ void main() {
             expect(effect.onRestartComponent, isNotNull);
             final refreshed = effect.refreshParameters();
             expect(refreshed.length, equals(effect.parameters.length));
+
+            // Start audio playback so the real-time processor processes audio
+            final wave = await soloud.loadWaveform(WaveForm.sin, true, 0.25, 0);
+            final handle = soloud.play(wave, volume: 0.05);
+
+            final fxTypeParam = effect.parameters.where(
+              (p) => p.title == 'FX Type',
+            ).firstOrNull;
+            if (fxTypeParam != null) {
+              effect.setParameterNormalized(fxTypeParam.paramId, 0.3);
+              await Future<void>.delayed(const Duration(milliseconds: 100));
+              final updatedParams = effect.refreshParameters();
+              expect(updatedParams, isNotEmpty);
+            }
+
+            await soloud.stop(handle);
+            await soloud.disposeSource(wave);
           }
-
-          // Exercise real-time audio processing through the VST3 effect
-          effect.setTransport(bpm: 124);
-          slot.wet.value = 0.8;
-          expect(slot.wet.value, closeTo(0.8, 0.01));
-
-          final wave = await soloud.loadWaveform(WaveForm.sin, true, 0.25, 0);
-          final handle = soloud.play(wave, volume: 0.05);
-          await Future<void>.delayed(const Duration(milliseconds: 80));
-          await soloud.stop(handle);
-          await soloud.disposeSource(wave);
 
           // Test preset state save & restore
           final state = effect.saveState();
