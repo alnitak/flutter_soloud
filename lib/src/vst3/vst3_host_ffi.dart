@@ -1,0 +1,707 @@
+import 'dart:async';
+import 'dart:ffi' as ffi;
+import 'dart:io';
+
+import 'package:ffi/ffi.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter_soloud/src/audio_source.dart';
+import 'package:flutter_soloud/src/bindings/flutter_soloud_ffigen.dart'
+    as ffigen;
+import 'package:flutter_soloud/src/enums.dart';
+import 'package:flutter_soloud/src/exceptions/exceptions.dart';
+import 'package:flutter_soloud/src/filters/custom_filter.dart';
+import 'package:flutter_soloud/src/soloud.dart';
+import 'package:flutter_soloud/src/sound_handle.dart';
+
+/// Metadata for a sub-plugin class discovered inside a `.vst3` bundle.
+@immutable
+class Vst3ClassInfo {
+  /// Creates a [Vst3ClassInfo] descriptor.
+  const Vst3ClassInfo({
+    required this.classUid,
+    required this.name,
+    required this.subCategories,
+  });
+
+  /// 32-character hex Steinberg `FUID` string.
+  final String classUid;
+
+  /// Human-readable plugin name (e.g. `"flutter_reverb"` or `"Surge XT"`).
+  final String name;
+
+  /// VST3 category string (e.g. `"Fx|EQ"`, `"Instrument|Synth"`).
+  final String subCategories;
+
+  /// Whether this class is a virtual instrument / synthesizer.
+  bool get isInstrument => subCategories.contains('Instrument');
+
+  /// Whether this class is an audio effect processor.
+  bool get isEffect => subCategories.contains('Fx') || !isInstrument;
+
+  @override
+  String toString() =>
+      'Vst3ClassInfo(name: $name, subCategories: $subCategories, '
+      'classUid: $classUid)';
+}
+
+/// Metadata for an individual VST3 parameter discovered at runtime.
+@immutable
+class Vst3ParamInfo {
+  /// Creates a [Vst3ParamInfo] descriptor.
+  const Vst3ParamInfo({
+    required this.paramId,
+    required this.title,
+    required this.units,
+    required this.defaultNormalized,
+    required this.stepCount,
+    required this.canAutomate,
+    required this.isBypass,
+  });
+
+  /// The 32-bit Steinberg `ParamID` (may be arbitrary, not necessarily
+  /// `0..N-1`).
+  final int paramId;
+
+  /// Parameter name (e.g. `"Cutoff"`, `"Mix"`, `"Threshold"`).
+  final String title;
+
+  /// Unit label (e.g. `"Hz"`, `"dB"`, `"%"`, `"ms"`).
+  final String units;
+
+  /// Default normalized value in `[0.0, 1.0]`.
+  final double defaultNormalized;
+
+  /// `0` for continuous parameters, `1` for boolean toggles, `> 1` for
+  /// discrete steps.
+  final int stepCount;
+
+  /// Whether the parameter supports real-time host automation (`kCanAutomate`).
+  final bool canAutomate;
+
+  /// Whether this parameter is the plugin's primary bypass switch
+  /// (`kIsBypass`).
+  final bool isBypass;
+
+  @override
+  String toString() =>
+      'Vst3ParamInfo(id: $paramId, title: $title, units: $units, '
+      'default: $defaultNormalized, steps: $stepCount)';
+}
+
+/// Event emitted when the user adjusts a knob in the native VST3 editor GUI.
+@immutable
+class Vst3ParamEditEvent {
+  /// Creates a [Vst3ParamEditEvent].
+  const Vst3ParamEditEvent({
+    required this.pluginHandle,
+    required this.paramId,
+    required this.normalizedValue,
+  });
+
+  /// Internal native plugin handle.
+  final int pluginHandle;
+
+  /// The 32-bit Steinberg `ParamID`.
+  final int paramId;
+
+  /// New normalized parameter value in `[0.0, 1.0]`.
+  final double normalizedValue;
+}
+
+final StreamController<Vst3ParamEditEvent> _guiEditController =
+    StreamController<Vst3ParamEditEvent>.broadcast();
+
+ffi.NativeCallable<ffigen.dartVst3ParameterEditCallback_tFunction>?
+_guiEditNativeCallable;
+
+void _ensureGuiEditCallbackRegistered() {
+  if (_guiEditNativeCallable != null) return;
+  _guiEditNativeCallable =
+      ffi.NativeCallable<
+        ffigen.dartVst3ParameterEditCallback_tFunction
+      >.listener((int pluginHandle, int paramId, double normalizedValue) {
+        if (!_guiEditController.isClosed) {
+          _guiEditController.add(
+            Vst3ParamEditEvent(
+              pluginHandle: pluginHandle,
+              paramId: paramId,
+              normalizedValue: normalizedValue,
+            ),
+          );
+        }
+      });
+  ffigen.soloud_vst3SetParameterEditCallback(
+    _guiEditNativeCallable!.nativeFunction,
+  );
+}
+
+/// Manages scanning and instantiating native VST3 effects and instruments on
+/// desktop platforms (`macOS`, `Windows`, `Linux`).
+///
+/// Requires `enable_vst3: true` under `hooks.user_defines.flutter_soloud` in
+/// the application's `pubspec.yaml`.
+class Vst3Host {
+  /// Creates a [Vst3Host] instance.
+  Vst3Host();
+
+  /// Whether VST3 hosting is compiled and supported on the current platform.
+  bool get isSupported => ffigen.soloud_vst3IsSupported() != 0;
+
+  /// Standard OS directories where `.vst3` bundles are installed:
+  /// - **macOS**: `/Library/Audio/Plug-Ins/VST3`, `~/Library/Audio/Plug-Ins/VST3`
+  /// - **Windows**: `C:\Program Files\Common Files\VST3`
+  /// - **Linux**: `/usr/lib/vst3`, `/usr/local/lib/vst3`, `~/.vst3`
+  List<String> get standardSearchPaths {
+    if (Platform.isMacOS) {
+      final home = Platform.environment['HOME'];
+      return [
+        '/Library/Audio/Plug-Ins/VST3',
+        if (home != null && home.isNotEmpty)
+          '$home/Library/Audio/Plug-Ins/VST3',
+      ];
+    } else if (Platform.isWindows) {
+      final commonFiles =
+          Platform.environment['CommonProgramFiles'] ??
+          r'C:\Program Files\Common Files';
+      return [r'$commonFiles\VST3'.replaceFirst(r'$commonFiles', commonFiles)];
+    } else if (Platform.isLinux) {
+      final home = Platform.environment['HOME'];
+      return [
+        '/usr/lib/vst3',
+        '/usr/local/lib/vst3',
+        if (home != null && home.isNotEmpty) '$home/.vst3',
+      ];
+    }
+    return const [];
+  }
+
+  /// Scans a `.vst3` bundle and returns all audio plugin classes inside it.
+  List<Vst3ClassInfo> scanBundle(String bundlePath) {
+    if (!isSupported) return const [];
+    final pathPtr = bundlePath.toNativeUtf8().cast<ffi.Char>();
+    final outCount = calloc<ffi.Int>();
+    final outUids = calloc<ffi.Pointer<ffi.Pointer<ffi.Char>>>();
+    final outNames = calloc<ffi.Pointer<ffi.Pointer<ffi.Char>>>();
+    final outSubCats = calloc<ffi.Pointer<ffi.Pointer<ffi.Char>>>();
+
+    try {
+      final errCode = ffigen.soloud_vst3ScanBundle(
+        pathPtr,
+        outCount,
+        outUids,
+        outNames,
+        outSubCats,
+      );
+      final err = PlayerErrors.values[errCode.value];
+      if (err != PlayerErrors.noError) {
+        throw SoLoudCppException.fromPlayerError(err);
+      }
+
+      final count = outCount.value;
+      final uidsPtr = outUids.value;
+      final namesPtr = outNames.value;
+      final subCatsPtr = outSubCats.value;
+
+      final results = <Vst3ClassInfo>[];
+      try {
+        for (var i = 0; i < count; i++) {
+          final uid = (uidsPtr + i).value.cast<Utf8>().toDartString();
+          final name = (namesPtr + i).value.cast<Utf8>().toDartString();
+          final subCat = (subCatsPtr + i).value.cast<Utf8>().toDartString();
+          results.add(
+            Vst3ClassInfo(classUid: uid, name: name, subCategories: subCat),
+          );
+        }
+      } finally {
+        ffigen.soloud_vst3FreeScanResults(count, uidsPtr, namesPtr, subCatsPtr);
+      }
+      return results;
+    } finally {
+      calloc
+        ..free(pathPtr)
+        ..free(outCount)
+        ..free(outUids)
+        ..free(outNames)
+        ..free(outSubCats);
+    }
+  }
+
+  /// Loads a VST3 **Audio Effect (`Fx`)** and attaches it to [slot]
+  /// (`CustomFilterSlot` `0..7` on Global or Bus filters).
+  Vst3EffectPlugin loadEffect({
+    required String bundlePath,
+    required CustomFilterSlot slot,
+    String? classUid,
+    int sampleRate = 48000,
+    int maxBlockSize = 2048,
+    Channels channels = Channels.stereo,
+  }) {
+    if (!isSupported) {
+      throw SoLoudCppException.fromPlayerError(PlayerErrors.invalidParameter);
+    }
+    _ensureGuiEditCallbackRegistered();
+
+    final handle = _loadNativePlugin(
+      bundlePath: bundlePath,
+      classUid: classUid,
+      sampleRate: sampleRate,
+      maxBlockSize: maxBlockSize,
+      channels: channels.count,
+    );
+
+    try {
+      if (slot.index < 0) {
+        slot.activate();
+      }
+      final cbPtr = ffigen.soloud_vst3GetFilterCallbackPtr();
+      final userDataPtr = ffigen.soloud_vst3GetPluginUserData(handle);
+      slot.setNativeCallback(
+        callbackAddress: cbPtr.address,
+        userdataAddress: userDataPtr.address,
+      );
+      return Vst3EffectPlugin._(pluginHandle: handle, slot: slot);
+    } catch (_) {
+      ffigen.soloud_vst3UnloadPlugin(handle);
+      rethrow;
+    }
+  }
+
+  /// Loads a VST3 **Virtual Instrument (`Instrument|Synth`)** and wraps it in
+  /// a playable SoLoud [AudioSource] via [SoLoud.createCustomAudioSource].
+  Vst3InstrumentPlugin loadInstrument({
+    required String bundlePath,
+    String? classUid,
+    int sampleRate = 48000,
+    int maxBlockSize = 2048,
+    Channels channels = Channels.stereo,
+  }) {
+    if (!isSupported) {
+      throw SoLoudCppException.fromPlayerError(PlayerErrors.invalidParameter);
+    }
+    _ensureGuiEditCallbackRegistered();
+
+    final handle = _loadNativePlugin(
+      bundlePath: bundlePath,
+      classUid: classUid,
+      sampleRate: sampleRate,
+      maxBlockSize: maxBlockSize,
+      channels: channels.count,
+    );
+
+    try {
+      final cbPtr = ffigen.soloud_vst3GetSourceCallbackPtr();
+      final userDataPtr = ffigen.soloud_vst3GetPluginUserData(handle);
+      final source = SoLoud.instance.createCustomAudioSource(
+        sampleRate: sampleRate,
+        channels: channels,
+        dspCallbackAddress: cbPtr.address,
+        userdataAddress: userDataPtr.address,
+      );
+      return Vst3InstrumentPlugin._(pluginHandle: handle, audioSource: source);
+    } catch (_) {
+      ffigen.soloud_vst3UnloadPlugin(handle);
+      rethrow;
+    }
+  }
+
+  int _loadNativePlugin({
+    required String bundlePath,
+    required String? classUid,
+    required int sampleRate,
+    required int maxBlockSize,
+    required int channels,
+  }) {
+    final pathPtr = bundlePath.toNativeUtf8().cast<ffi.Char>();
+    final uidPtr = (classUid != null && classUid.isNotEmpty)
+        ? classUid.toNativeUtf8().cast<ffi.Char>()
+        : ffi.nullptr.cast<ffi.Char>();
+    final outHandle = calloc<ffi.Int>();
+
+    try {
+      final errCode = ffigen.soloud_vst3LoadPlugin(
+        pathPtr,
+        uidPtr,
+        sampleRate,
+        maxBlockSize,
+        channels,
+        outHandle,
+      );
+      final err = PlayerErrors.values[errCode.value];
+      if (err != PlayerErrors.noError || outHandle.value <= 0) {
+        throw SoLoudCppException.fromPlayerError(
+          err == PlayerErrors.noError ? PlayerErrors.fileLoadFailed : err,
+        );
+      }
+      return outHandle.value;
+    } finally {
+      calloc.free(pathPtr);
+      if (uidPtr != ffi.nullptr) {
+        calloc.free(uidPtr);
+      }
+      calloc.free(outHandle);
+    }
+  }
+}
+
+/// Base class for a loaded VST3 plugin instance (shared by effects & synths).
+abstract class Vst3PluginBase {
+  Vst3PluginBase._(this.pluginHandle)
+    : _parameters = _queryParameters(pluginHandle);
+
+  /// Internal native handle.
+  final int pluginHandle;
+
+  final List<Vst3ParamInfo> _parameters;
+  bool _disposed = false;
+
+  /// Whether this plugin instance has been disposed.
+  bool get isDisposed => _disposed;
+
+  /// Lookahead latency in samples reported by
+  /// `IAudioProcessor::getLatencySamples()`.
+  int get latencySamples =>
+      _disposed ? 0 : ffigen.soloud_vst3GetLatencySamples(pluginHandle);
+
+  /// All parameters discovered via `IEditController::getParameterInfo`.
+  List<Vst3ParamInfo> get parameters => _parameters;
+
+  static List<Vst3ParamInfo> _queryParameters(int handle) {
+    final count = ffigen.soloud_vst3GetParameterCount(handle);
+    if (count <= 0) return const [];
+
+    const bufSize = 256;
+    final outId = calloc<ffi.UnsignedInt>();
+    final outTitle = calloc<ffi.Char>(bufSize);
+    final outUnits = calloc<ffi.Char>(bufSize);
+    final outDefault = calloc<ffi.Double>();
+    final outSteps = calloc<ffi.Int>();
+    final outFlags = calloc<ffi.UnsignedInt>();
+
+    final list = <Vst3ParamInfo>[];
+    try {
+      for (var i = 0; i < count; i++) {
+        final res = ffigen.soloud_vst3GetParameterInfo(
+          handle,
+          i,
+          outId,
+          outTitle,
+          bufSize,
+          outUnits,
+          bufSize,
+          outDefault,
+          outSteps,
+          outFlags,
+        );
+        if (PlayerErrors.values[res.value] == PlayerErrors.noError) {
+          final flags = outFlags.value;
+          list.add(
+            Vst3ParamInfo(
+              paramId: outId.value,
+              title: outTitle.cast<Utf8>().toDartString(),
+              units: outUnits.cast<Utf8>().toDartString(),
+              defaultNormalized: outDefault.value,
+              stepCount: outSteps.value,
+              canAutomate: (flags & 1) != 0, // kCanAutomate = 1 << 0
+              isBypass: (flags & (1 << 16)) != 0, // kIsBypass = 1 << 16
+            ),
+          );
+        }
+      }
+      return List.unmodifiable(list);
+    } finally {
+      calloc
+        ..free(outId)
+        ..free(outTitle)
+        ..free(outUnits)
+        ..free(outDefault)
+        ..free(outSteps)
+        ..free(outFlags);
+    }
+  }
+
+  /// Reads the current normalized `[0.0, 1.0]` value of [paramId].
+  double getParameterNormalized(int paramId) {
+    if (_disposed) return 0;
+    return ffigen.soloud_vst3GetParameterNormalized(
+      pluginHandle,
+      paramId,
+      ffi.nullptr,
+      0,
+    );
+  }
+
+  /// Returns the human-readable formatted value string (e.g. `"-4.2 dB"`).
+  String getParameterDisplay(int paramId) {
+    if (_disposed) return '';
+    const bufSize = 256;
+    final buf = calloc<ffi.Char>(bufSize);
+    try {
+      ffigen.soloud_vst3GetParameterNormalized(
+        pluginHandle,
+        paramId,
+        buf,
+        bufSize,
+      );
+      return buf.cast<Utf8>().toDartString();
+    } finally {
+      calloc.free(buf);
+    }
+  }
+
+  /// Sets the normalized `[0.0, 1.0]` value of [paramId] in a real-time
+  /// thread-safe manner (and updates the native GUI window if open).
+  void setParameterNormalized(int paramId, double value) {
+    if (_disposed) return;
+    final errCode = ffigen.soloud_vst3SetParameterNormalized(
+      pluginHandle,
+      paramId,
+      value.clamp(0.0, 1.0),
+    );
+    final err = PlayerErrors.values[errCode.value];
+    if (err != PlayerErrors.noError) {
+      throw SoLoudCppException.fromPlayerError(err);
+    }
+  }
+
+  /// Configures the musical transport (`ProcessContext`) sent to the plugin.
+  void setTransport({
+    required double bpm,
+    int timeSigNumerator = 4,
+    int timeSigDenominator = 4,
+    bool isPlaying = true,
+  }) {
+    if (_disposed) return;
+    ffigen.soloud_vst3SetTransport(
+      pluginHandle,
+      bpm,
+      timeSigNumerator,
+      timeSigDenominator,
+      isPlaying ? 1 : 0,
+    );
+  }
+
+  /// Exports the binary state of the processor and controller.
+  Uint8List saveState() {
+    if (_disposed) return Uint8List(0);
+    final outData = calloc<ffi.Pointer<ffi.UnsignedChar>>();
+    final outSize = calloc<ffi.UnsignedInt>();
+    try {
+      final errCode = ffigen.soloud_vst3GetState(
+        pluginHandle,
+        outData,
+        outSize,
+      );
+      final err = PlayerErrors.values[errCode.value];
+      if (err != PlayerErrors.noError) {
+        throw SoLoudCppException.fromPlayerError(err);
+      }
+      final size = outSize.value;
+      final ptr = outData.value;
+      if (size == 0 || ptr == ffi.nullptr) {
+        return Uint8List(0);
+      }
+      try {
+        return Uint8List.fromList(ptr.cast<ffi.Uint8>().asTypedList(size));
+      } finally {
+        ffigen.nativeFree(ptr.cast());
+      }
+    } finally {
+      calloc
+        ..free(outData)
+        ..free(outSize);
+    }
+  }
+
+  /// Restores a previously saved binary state.
+  void restoreState(Uint8List stateBytes) {
+    if (_disposed || stateBytes.isEmpty) return;
+    final buf = calloc<ffi.UnsignedChar>(stateBytes.length);
+    try {
+      buf
+          .cast<ffi.Uint8>()
+          .asTypedList(stateBytes.length)
+          .setAll(0, stateBytes);
+      final errCode = ffigen.soloud_vst3SetState(
+        pluginHandle,
+        buf,
+        stateBytes.length,
+      );
+      final err = PlayerErrors.values[errCode.value];
+      if (err != PlayerErrors.noError) {
+        throw SoLoudCppException.fromPlayerError(err);
+      }
+    } finally {
+      calloc.free(buf);
+    }
+  }
+
+  // --- Native Desktop GUI Editor Window ---
+
+  /// Whether this plugin provides a custom native GUI editor (`IPlugView`).
+  bool get hasEditor =>
+      !_disposed && ffigen.soloud_vst3HasEditor(pluginHandle) != 0;
+
+  /// Whether the native GUI editor window is currently open.
+  bool get isEditorOpen =>
+      !_disposed && ffigen.soloud_vst3IsEditorOpen(pluginHandle) != 0;
+
+  /// Opens the plugin's native GUI in a standalone floating OS window
+  /// (`NSWindow` on macOS, `HWND` on Windows, `X11 Window` on Linux).
+  bool openEditorWindow({String? title}) {
+    if (_disposed) return false;
+    final titlePtr = title != null
+        ? title.toNativeUtf8().cast<ffi.Char>()
+        : ffi.nullptr.cast<ffi.Char>();
+    try {
+      final errCode = ffigen.soloud_vst3OpenEditor(pluginHandle, titlePtr);
+      return PlayerErrors.values[errCode.value] == PlayerErrors.noError;
+    } finally {
+      if (titlePtr != ffi.nullptr) {
+        calloc.free(titlePtr);
+      }
+    }
+  }
+
+  /// Closes the native GUI editor window if open.
+  void closeEditorWindow() {
+    if (_disposed) return;
+    ffigen.soloud_vst3CloseEditor(pluginHandle);
+  }
+
+  /// Stream of parameter changes made by the user inside the native GUI window.
+  Stream<Vst3ParamEditEvent> get onGuiParameterChanged => _guiEditController
+      .stream
+      .where((evt) => evt.pluginHandle == pluginHandle);
+
+  /// Closes any open editor window, detaches from SoLoud, and unloads the
+  /// `.vst3` module.
+  @mustCallSuper
+  void dispose() {
+    if (_disposed) return;
+    _disposed = true;
+    ffigen.soloud_vst3CloseEditor(pluginHandle);
+    ffigen.soloud_vst3UnloadPlugin(pluginHandle);
+  }
+}
+
+/// A loaded VST3 Audio Effect bound to a [CustomFilterSlot] (`0..7`).
+class Vst3EffectPlugin extends Vst3PluginBase {
+  Vst3EffectPlugin._({required int pluginHandle, required this.slot})
+    : super._(pluginHandle);
+
+  /// The [CustomFilterSlot] (`0..7`) hosting this VST3 effect.
+  final CustomFilterSlot slot;
+
+  /// Maps a [CustomFilterSlot] parameter index (`1..7`) to a VST3 [vst3ParamId]
+  /// so you can call `.fadeFilterParameter()` and `.oscillateFilterParameter()`
+  /// on the returned [CustomFilterParam].
+  CustomFilterParam mapToSlotParameter({
+    required int slotParamIndex,
+    required int vst3ParamId,
+    SoundHandle? soundHandle,
+  }) {
+    if (slotParamIndex < 1 || slotParamIndex > CustomFilterSlot.maxUserParams) {
+      throw ArgumentError.value(
+        slotParamIndex,
+        'slotParamIndex',
+        'slotParamIndex must be between 1 and '
+            '${CustomFilterSlot.maxUserParams} (index 0 is reserved for Wet).',
+      );
+    }
+    final errCode = ffigen.soloud_vst3MapSlotParameter(
+      pluginHandle,
+      slotParamIndex,
+      vst3ParamId,
+    );
+    final err = PlayerErrors.values[errCode.value];
+    if (err != PlayerErrors.noError) {
+      throw SoLoudCppException.fromPlayerError(err);
+    }
+    return CustomFilterParam(
+      soundHandle,
+      slot.busId,
+      slot.slotIndex,
+      slotParamIndex,
+      0,
+      1,
+    );
+  }
+
+  @override
+  void dispose() {
+    if (isDisposed) return;
+    try {
+      if (SoLoud.instance.isInitialized && slot.index >= 0) {
+        slot
+          ..setNativeCallback()
+          ..deactivate();
+      }
+    } catch (_) {}
+    super.dispose();
+  }
+}
+
+/// A loaded VST3 Virtual Instrument wrapped in a playable SoLoud [AudioSource].
+class Vst3InstrumentPlugin extends Vst3PluginBase {
+  Vst3InstrumentPlugin._({required int pluginHandle, required this.audioSource})
+    : super._(pluginHandle);
+
+  /// The playable SoLoud [AudioSource] created via `createCustomAudioSource()`.
+  /// Pass this to `SoLoud.instance.play(instrument.audioSource)` or `play3d()`.
+  final AudioSource audioSource;
+
+  /// Sends a real-time MIDI Note-On event to the VST3 instrument.
+  void noteOn({
+    required int pitch,
+    double velocity = 0.8,
+    int channel = 0,
+    int sampleOffset = 0,
+  }) {
+    if (isDisposed) return;
+    final errCode = ffigen.soloud_vst3SendMidiNote(
+      pluginHandle,
+      1,
+      channel,
+      pitch,
+      velocity,
+      sampleOffset,
+    );
+    final err = PlayerErrors.values[errCode.value];
+    if (err != PlayerErrors.noError) {
+      throw SoLoudCppException.fromPlayerError(err);
+    }
+  }
+
+  /// Sends a real-time MIDI Note-Off event to the VST3 instrument.
+  void noteOff({
+    required int pitch,
+    double velocity = 0.0,
+    int channel = 0,
+    int sampleOffset = 0,
+  }) {
+    if (isDisposed) return;
+    final errCode = ffigen.soloud_vst3SendMidiNote(
+      pluginHandle,
+      0,
+      channel,
+      pitch,
+      velocity,
+      sampleOffset,
+    );
+    final err = PlayerErrors.values[errCode.value];
+    if (err != PlayerErrors.noError) {
+      throw SoLoudCppException.fromPlayerError(err);
+    }
+  }
+
+  @override
+  void dispose() {
+    if (isDisposed) return;
+    try {
+      if (SoLoud.instance.isInitialized) {
+        unawaited(SoLoud.instance.disposeSource(audioSource));
+      }
+    } catch (_) {}
+    super.dispose();
+  }
+}

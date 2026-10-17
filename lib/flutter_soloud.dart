@@ -16,3 +16,4 @@ export 'src/soloud_isolate.dart';
 export 'src/sound_handle.dart';
 export 'src/sound_hash.dart';
 export 'src/tools/soloud_tools.dart';
+export 'src/vst3/vst3_host.dart';

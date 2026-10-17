@@ -19,6 +19,9 @@
 #include "soloud/include/soloud_internal.h"
 #include "soloud_thread.h"
 #include "waveform/waveform.h"
+#ifdef SOLOUD_ENABLE_VST3
+#include "vst3/vst3_host.h"
+#endif
 
 #ifndef SOLOUD_COMMON_H
 #include "soloud_common.h"
@@ -1441,6 +1444,10 @@ extern "C"
     // Player::dispose() destroys the sounds itself, as the sole owner of native
     // sound destruction during teardown.
     player.get()->dispose();
+#ifdef SOLOUD_ENABLE_VST3
+    SoLoud::Vst3HostManager::instance().setParameterEditCallback(nullptr);
+    SoLoud::Vst3HostManager::instance().unloadAll();
+#endif
     player.reset();
     player = std::make_unique<Player>();
     // Bump the engine session counter only now that the old engine is fully
@@ -4470,6 +4477,475 @@ extern "C"
       return 0;
     return player.get()->busGetActiveVoiceCount(busId);
   }
+
+  /////////////////////////////////////////
+  /// VST3 Plugin Hosting API
+  /////////////////////////////////////////
+
+#ifdef SOLOUD_ENABLE_VST3
+
+  static char *duplicateCString(const std::string &str)
+  {
+    char *buf = static_cast<char *>(malloc(str.size() + 1));
+    if (buf != nullptr)
+    {
+      memcpy(buf, str.c_str(), str.size() + 1);
+    }
+    return buf;
+  }
+
+  static void copyToFixedBuffer(const std::string &src, char *dst, int dstLen)
+  {
+    if (dst == nullptr || dstLen <= 0)
+      return;
+    const size_t copyLen =
+        std::min<size_t>(src.size(), static_cast<size_t>(dstLen - 1));
+    memcpy(dst, src.data(), copyLen);
+    dst[copyLen] = '\0';
+  }
+
+  FFI_PLUGIN_EXPORT int soloud_vst3IsSupported(void) { return 1; }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3ScanBundle(
+      const char *bundlePath, int *outClassCount, char ***outClassUids,
+      char ***outClassNames, char ***outSubCategories)
+  {
+    if (outClassCount != nullptr)
+      *outClassCount = 0;
+    if (outClassUids != nullptr)
+      *outClassUids = nullptr;
+    if (outClassNames != nullptr)
+      *outClassNames = nullptr;
+    if (outSubCategories != nullptr)
+      *outSubCategories = nullptr;
+
+    if (bundlePath == nullptr || outClassCount == nullptr ||
+        outClassUids == nullptr || outClassNames == nullptr ||
+        outSubCategories == nullptr)
+    {
+      return invalidParameter;
+    }
+
+    std::vector<SoLoud::Vst3DiscoveredClass> classes;
+    PlayerErrors err =
+        SoLoud::Vst3HostManager::instance().scanBundle(bundlePath, classes);
+    if (err != noError)
+      return err;
+
+    const int count = static_cast<int>(classes.size());
+    *outClassCount = count;
+    if (count == 0)
+      return noError;
+
+    char **uids =
+        static_cast<char **>(calloc(static_cast<size_t>(count), sizeof(char *)));
+    char **names =
+        static_cast<char **>(calloc(static_cast<size_t>(count), sizeof(char *)));
+    char **subCats =
+        static_cast<char **>(calloc(static_cast<size_t>(count), sizeof(char *)));
+    if (uids == nullptr || names == nullptr || subCats == nullptr)
+    {
+      free(uids);
+      free(names);
+      free(subCats);
+      *outClassCount = 0;
+      return outOfMemory;
+    }
+
+    for (int i = 0; i < count; ++i)
+    {
+      uids[i] = duplicateCString(classes[static_cast<size_t>(i)].classUid);
+      names[i] = duplicateCString(classes[static_cast<size_t>(i)].name);
+      subCats[i] =
+          duplicateCString(classes[static_cast<size_t>(i)].subCategories);
+    }
+
+    *outClassUids = uids;
+    *outClassNames = names;
+    *outSubCategories = subCats;
+    return noError;
+  }
+
+  FFI_PLUGIN_EXPORT void soloud_vst3FreeScanResults(int classCount,
+                                                    char **classUids,
+                                                    char **classNames,
+                                                    char **subCategories)
+  {
+    for (int i = 0; i < classCount; ++i)
+    {
+      if (classUids != nullptr)
+        free(classUids[i]);
+      if (classNames != nullptr)
+        free(classNames[i]);
+      if (subCategories != nullptr)
+        free(subCategories[i]);
+    }
+    free(classUids);
+    free(classNames);
+    free(subCategories);
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3LoadPlugin(
+      const char *bundlePath, const char *classUidHex, unsigned int sampleRate,
+      unsigned int maxBlockSize, unsigned int channels, int *outPluginHandle)
+  {
+    return SoLoud::Vst3HostManager::instance().loadPlugin(
+        bundlePath, classUidHex, sampleRate, maxBlockSize, channels,
+        outPluginHandle);
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3UnloadPlugin(int pluginHandle)
+  {
+    return SoLoud::Vst3HostManager::instance().unloadPlugin(pluginHandle);
+  }
+
+  FFI_PLUGIN_EXPORT void *soloud_vst3GetFilterCallbackPtr(void)
+  {
+    return reinterpret_cast<void *>(&vst3FilterDspCallback);
+  }
+
+  FFI_PLUGIN_EXPORT void *soloud_vst3GetSourceCallbackPtr(void)
+  {
+    return reinterpret_cast<void *>(&vst3SourceDspCallback);
+  }
+
+  FFI_PLUGIN_EXPORT void *soloud_vst3GetPluginUserData(int pluginHandle)
+  {
+    return static_cast<void *>(
+        SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle));
+  }
+
+  FFI_PLUGIN_EXPORT unsigned int soloud_vst3GetLatencySamples(int pluginHandle)
+  {
+    auto *plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
+    return plugin != nullptr ? plugin->getLatencySamples() : 0;
+  }
+
+  FFI_PLUGIN_EXPORT int soloud_vst3GetParameterCount(int pluginHandle)
+  {
+    auto *plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
+    return plugin != nullptr ? plugin->getParameterCount() : 0;
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3GetParameterInfo(
+      int pluginHandle, int paramIndex, unsigned int *outParamId,
+      char *outTitle, int titleBufferLen, char *outUnits, int unitsBufferLen,
+      double *outDefaultNormalized, int *outStepCount, unsigned int *outFlags)
+  {
+    auto *plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
+    if (plugin == nullptr)
+      return invalidParameter;
+
+    SoLoud::Vst3ParameterMetadata info{};
+    if (!plugin->getParameterInfo(paramIndex, info))
+      return invalidParameter;
+
+    if (outParamId != nullptr)
+      *outParamId = info.paramId;
+    copyToFixedBuffer(info.title, outTitle, titleBufferLen);
+    copyToFixedBuffer(info.units, outUnits, unitsBufferLen);
+    if (outDefaultNormalized != nullptr)
+      *outDefaultNormalized = info.defaultNormalized;
+    if (outStepCount != nullptr)
+      *outStepCount = info.stepCount;
+    if (outFlags != nullptr)
+      *outFlags = info.flags;
+    return noError;
+  }
+
+  FFI_PLUGIN_EXPORT double soloud_vst3GetParameterNormalized(
+      int pluginHandle, unsigned int paramId, char *outDisplayText,
+      int displayBufferLen)
+  {
+    auto *plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
+    if (plugin == nullptr)
+    {
+      copyToFixedBuffer("", outDisplayText, displayBufferLen);
+      return 0.0;
+    }
+    std::string display;
+    const double val = plugin->getParameterNormalized(
+        paramId,
+        (outDisplayText != nullptr && displayBufferLen > 0) ? &display
+                                                            : nullptr);
+    copyToFixedBuffer(display, outDisplayText, displayBufferLen);
+    return val;
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3SetParameterNormalized(
+      int pluginHandle, unsigned int paramId, double normalizedValue)
+  {
+    auto *plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
+    if (plugin == nullptr)
+      return invalidParameter;
+    return plugin->setParameterNormalized(paramId, normalizedValue)
+               ? noError
+               : invalidParameter;
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3MapSlotParameter(
+      int pluginHandle, int customFilterParamIndex, unsigned int vst3ParamId)
+  {
+    auto *plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
+    if (plugin == nullptr)
+      return invalidParameter;
+    return plugin->mapSlotParameter(customFilterParamIndex, vst3ParamId)
+               ? noError
+               : invalidParameter;
+  }
+
+  FFI_PLUGIN_EXPORT void soloud_vst3SetTransport(int pluginHandle, double bpm,
+                                                 int timeSigNumerator,
+                                                 int timeSigDenominator,
+                                                 int isPlaying)
+  {
+    auto *plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
+    if (plugin != nullptr)
+    {
+      plugin->setTransport(bpm, timeSigNumerator, timeSigDenominator,
+                           isPlaying != 0);
+    }
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3SendMidiNote(
+      int pluginHandle, int isNoteOn, int channel, int pitch, float velocity,
+      int sampleOffset)
+  {
+    auto *plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
+    if (plugin == nullptr)
+      return invalidParameter;
+    return plugin->sendMidiNote(isNoteOn != 0, channel, pitch, velocity,
+                                sampleOffset)
+               ? noError
+               : outOfMemory;
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3GetState(
+      int pluginHandle, unsigned char **outData, unsigned int *outSize)
+  {
+    if (outData != nullptr)
+      *outData = nullptr;
+    if (outSize != nullptr)
+      *outSize = 0;
+    if (outData == nullptr || outSize == nullptr)
+      return invalidParameter;
+
+    auto *plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
+    if (plugin == nullptr)
+      return invalidParameter;
+
+    std::vector<uint8_t> bytes;
+    if (!plugin->getState(bytes))
+      return unknownError;
+
+    if (bytes.empty())
+      return noError;
+
+    unsigned char *buf = static_cast<unsigned char *>(malloc(bytes.size()));
+    if (buf == nullptr)
+      return outOfMemory;
+    memcpy(buf, bytes.data(), bytes.size());
+    *outData = buf;
+    *outSize = static_cast<unsigned int>(bytes.size());
+    return noError;
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3SetState(
+      int pluginHandle, const unsigned char *data, unsigned int size)
+  {
+    auto *plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
+    if (plugin == nullptr || data == nullptr || size == 0)
+      return invalidParameter;
+    return plugin->setState(data, size) ? noError : unknownError;
+  }
+
+  FFI_PLUGIN_EXPORT int soloud_vst3HasEditor(int pluginHandle)
+  {
+    auto *plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
+    return (plugin != nullptr && plugin->hasEditor()) ? 1 : 0;
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3OpenEditor(
+      int pluginHandle, const char *windowTitle)
+  {
+    auto *plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
+    if (plugin == nullptr)
+      return invalidParameter;
+    return plugin->openEditor(windowTitle) ? noError : unknownError;
+  }
+
+  FFI_PLUGIN_EXPORT void soloud_vst3CloseEditor(int pluginHandle)
+  {
+    auto *plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
+    if (plugin != nullptr)
+      plugin->closeEditor();
+  }
+
+  FFI_PLUGIN_EXPORT int soloud_vst3IsEditorOpen(int pluginHandle)
+  {
+    auto *plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
+    return (plugin != nullptr && plugin->isEditorOpen()) ? 1 : 0;
+  }
+
+  FFI_PLUGIN_EXPORT void soloud_vst3SetParameterEditCallback(
+      dartVst3ParameterEditCallback_t callback)
+  {
+    SoLoud::Vst3HostManager::instance().setParameterEditCallback(callback);
+  }
+
+#else // !SOLOUD_ENABLE_VST3
+
+  FFI_PLUGIN_EXPORT int soloud_vst3IsSupported(void) { return 0; }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3ScanBundle(
+      const char * /*bundlePath*/, int *outClassCount, char ***outClassUids,
+      char ***outClassNames, char ***outSubCategories)
+  {
+    if (outClassCount != nullptr)
+      *outClassCount = 0;
+    if (outClassUids != nullptr)
+      *outClassUids = nullptr;
+    if (outClassNames != nullptr)
+      *outClassNames = nullptr;
+    if (outSubCategories != nullptr)
+      *outSubCategories = nullptr;
+    return invalidParameter;
+  }
+
+  FFI_PLUGIN_EXPORT void soloud_vst3FreeScanResults(int /*classCount*/,
+                                                    char ** /*classUids*/,
+                                                    char ** /*classNames*/,
+                                                    char ** /*subCategories*/)
+  {
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3LoadPlugin(
+      const char * /*bundlePath*/, const char * /*classUidHex*/,
+      unsigned int /*sampleRate*/, unsigned int /*maxBlockSize*/,
+      unsigned int /*channels*/, int *outPluginHandle)
+  {
+    if (outPluginHandle != nullptr)
+      *outPluginHandle = 0;
+    return invalidParameter;
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3UnloadPlugin(
+      int /*pluginHandle*/)
+  {
+    return invalidParameter;
+  }
+
+  FFI_PLUGIN_EXPORT void *soloud_vst3GetFilterCallbackPtr(void)
+  {
+    return nullptr;
+  }
+
+  FFI_PLUGIN_EXPORT void *soloud_vst3GetSourceCallbackPtr(void)
+  {
+    return nullptr;
+  }
+
+  FFI_PLUGIN_EXPORT void *soloud_vst3GetPluginUserData(int /*pluginHandle*/)
+  {
+    return nullptr;
+  }
+
+  FFI_PLUGIN_EXPORT unsigned int soloud_vst3GetLatencySamples(
+      int /*pluginHandle*/)
+  {
+    return 0;
+  }
+
+  FFI_PLUGIN_EXPORT int soloud_vst3GetParameterCount(int /*pluginHandle*/)
+  {
+    return 0;
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3GetParameterInfo(
+      int /*pluginHandle*/, int /*paramIndex*/, unsigned int * /*outParamId*/,
+      char * /*outTitle*/, int /*titleBufferLen*/, char * /*outUnits*/,
+      int /*unitsBufferLen*/, double * /*outDefaultNormalized*/,
+      int * /*outStepCount*/, unsigned int * /*outFlags*/)
+  {
+    return invalidParameter;
+  }
+
+  FFI_PLUGIN_EXPORT double soloud_vst3GetParameterNormalized(
+      int /*pluginHandle*/, unsigned int /*paramId*/, char *outDisplayText,
+      int displayBufferLen)
+  {
+    if (outDisplayText != nullptr && displayBufferLen > 0)
+      outDisplayText[0] = '\0';
+    return 0.0;
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3SetParameterNormalized(
+      int /*pluginHandle*/, unsigned int /*paramId*/,
+      double /*normalizedValue*/)
+  {
+    return invalidParameter;
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3MapSlotParameter(
+      int /*pluginHandle*/, int /*customFilterParamIndex*/,
+      unsigned int /*vst3ParamId*/)
+  {
+    return invalidParameter;
+  }
+
+  FFI_PLUGIN_EXPORT void soloud_vst3SetTransport(int /*pluginHandle*/,
+                                                 double /*bpm*/,
+                                                 int /*timeSigNumerator*/,
+                                                 int /*timeSigDenominator*/,
+                                                 int /*isPlaying*/)
+  {
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3SendMidiNote(
+      int /*pluginHandle*/, int /*isNoteOn*/, int /*channel*/, int /*pitch*/,
+      float /*velocity*/, int /*sampleOffset*/)
+  {
+    return invalidParameter;
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3GetState(
+      int /*pluginHandle*/, unsigned char **outData, unsigned int *outSize)
+  {
+    if (outData != nullptr)
+      *outData = nullptr;
+    if (outSize != nullptr)
+      *outSize = 0;
+    return invalidParameter;
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3SetState(
+      int /*pluginHandle*/, const unsigned char * /*data*/,
+      unsigned int /*size*/)
+  {
+    return invalidParameter;
+  }
+
+  FFI_PLUGIN_EXPORT int soloud_vst3HasEditor(int /*pluginHandle*/) { return 0; }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3OpenEditor(
+      int /*pluginHandle*/, const char * /*windowTitle*/)
+  {
+    return invalidParameter;
+  }
+
+  FFI_PLUGIN_EXPORT void soloud_vst3CloseEditor(int /*pluginHandle*/) {}
+
+  FFI_PLUGIN_EXPORT int soloud_vst3IsEditorOpen(int /*pluginHandle*/)
+  {
+    return 0;
+  }
+
+  FFI_PLUGIN_EXPORT void soloud_vst3SetParameterEditCallback(
+      dartVst3ParameterEditCallback_t /*callback*/)
+  {
+  }
+
+#endif // SOLOUD_ENABLE_VST3
 
 #ifdef __cplusplus
 }

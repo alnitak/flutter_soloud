@@ -1,0 +1,155 @@
+import 'dart:io';
+
+import 'package:flutter/services.dart';
+import 'package:flutter_soloud/flutter_soloud.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+bool _bundleExists(String path) =>
+    Directory(path).existsSync() || File(path).existsSync();
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  group('VST3 Plugin Hosting Tests (Real Plugins)', () {
+    late SoLoud soloud;
+    late Vst3Host host;
+
+    setUpAll(() async {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+            const MethodChannel('plugins.flutter.io/path_provider'),
+            (MethodCall methodCall) async => Directory.systemTemp.path,
+          );
+      soloud = SoLoud.instance;
+      await soloud.init(sampleRate: 48000, bufferSize: 512);
+      host = Vst3Host();
+    });
+
+    tearDownAll(() async {
+      if (soloud.isInitialized) {
+        soloud.deinit();
+      }
+    });
+
+    test('Reports standard search paths on desktop', () {
+      if (Platform.isMacOS || Platform.isWindows || Platform.isLinux) {
+        expect(host.standardSearchPaths, isNotEmpty);
+      }
+    });
+
+    test(
+      'Loads and processes audio effect (flutter_reverb / Surge XT Effects)',
+      () async {
+        const userReverb =
+            '/Volumes/NVME/Users/deimos/Library/Audio/Plug-Ins/VST3/flutter_reverb.vst3';
+        const systemFx = '/Library/Audio/Plug-Ins/VST3/Surge XT Effects.vst3';
+
+        final candidatePaths = [
+          if (_bundleExists(userReverb)) userReverb,
+          if (_bundleExists(systemFx)) systemFx,
+        ];
+
+        if (candidatePaths.isEmpty || !host.isSupported) {
+          return;
+        }
+
+        for (final effectPath in candidatePaths) {
+          final classes = host.scanBundle(effectPath);
+          expect(classes, isNotEmpty, reason: 'Failed scanning $effectPath');
+          expect(classes.first.isEffect, isTrue);
+
+          final slot = soloud.filters.customFilters[0];
+          final effect = host.loadEffect(
+            bundlePath: effectPath,
+            classUid: classes.first.classUid,
+            slot: slot,
+          );
+
+          expect(effect.pluginHandle, greaterThan(0));
+          expect(effect.hasEditor, isA<bool>());
+
+          if (effect.parameters.isNotEmpty) {
+            final firstParam = effect.parameters.first;
+            effect.setParameterNormalized(firstParam.paramId, 0.75);
+            final readBack = effect.getParameterNormalized(firstParam.paramId);
+            expect(readBack, closeTo(0.75, 0.1));
+            final display = effect.getParameterDisplay(firstParam.paramId);
+            expect(display, isA<String>());
+
+            effect
+                .mapToSlotParameter(
+                  slotParamIndex: 1,
+                  vst3ParamId: firstParam.paramId,
+                )
+                .fadeFilterParameter(
+                  to: 0.5,
+                  time: const Duration(milliseconds: 50),
+                );
+          }
+
+          // Exercise real-time audio processing through the VST3 effect
+          effect.setTransport(bpm: 124);
+          slot.wet.value = 0.8;
+          expect(slot.wet.value, closeTo(0.8, 0.01));
+
+          final wave = await soloud.loadWaveform(WaveForm.sin, true, 0.25, 0);
+          final handle = soloud.play(wave, volume: 0.05);
+          await Future<void>.delayed(const Duration(milliseconds: 80));
+          await soloud.stop(handle);
+          await soloud.disposeSource(wave);
+
+          // Test preset state save & restore
+          final state = effect.saveState();
+          expect(state, isNotEmpty);
+          effect
+            ..restoreState(state)
+            ..dispose();
+          expect(effect.isDisposed, isTrue);
+        }
+      },
+    );
+
+    test(
+      'Loads and generates sound from instrument synth (Surge XT)',
+      () async {
+        const synthPath = '/Library/Audio/Plug-Ins/VST3/Surge XT.vst3';
+
+        if (!_bundleExists(synthPath) || !host.isSupported) {
+          return;
+        }
+
+        final classes = host.scanBundle(synthPath);
+        expect(classes, isNotEmpty);
+        final synthClass = classes.firstWhere(
+          (c) => c.isInstrument,
+          orElse: () => classes.first,
+        );
+
+        final synth = host.loadInstrument(
+          bundlePath: synthPath,
+          classUid: synthClass.classUid,
+        );
+
+        expect(synth.pluginHandle, greaterThan(0));
+        expect(synth.hasEditor, isTrue);
+
+        // Play as voice and trigger MIDI note
+        final voice = soloud.play(synth.audioSource, volume: 0.05);
+        expect(voice.id, isNonZero);
+
+        synth.noteOn(pitch: 60, velocity: 0.9);
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        synth.noteOff(pitch: 60);
+        await Future<void>.delayed(const Duration(milliseconds: 40));
+
+        final state = synth.saveState();
+        expect(state, isNotEmpty);
+        synth.restoreState(state);
+
+        await soloud.stop(voice);
+        synth.dispose();
+        expect(synth.isDisposed, isTrue);
+      },
+    );
+  });
+}

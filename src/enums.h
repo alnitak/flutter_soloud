@@ -290,4 +290,11 @@ typedef enum LinuxAudioBackend {
   linuxBackendJack = 3,
 } LinuxAudioBackend_t;
 
+/// Callback invoked when the user turns a knob inside the native VST3 GUI
+/// editor window (`IComponentHandler::performEdit`).
+typedef void (*dartVst3ParameterEditCallback_t)(
+    int pluginHandle,
+    unsigned int paramId,
+    double normalizedValue);
+
 #endif // ENUMS_H

@@ -39,5 +39,7 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>Audio plugins (such as VST3 instruments and effects) read and save user presets in your Documents folder.</string>
 </dict>
 </plist>

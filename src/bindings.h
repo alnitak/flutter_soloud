@@ -1561,6 +1561,155 @@ extern "C"
   /// Returns the active voice count, or 0 if the bus is not found.
   FFI_PLUGIN_EXPORT unsigned int busGetActiveVoiceCount(unsigned int busId);
 
+  /////////////////////////////////////////
+  /// VST3 Plugin Hosting API (Desktop: macOS, Windows, Linux)
+  /////////////////////////////////////////
+
+  /// Returns 1 if flutter_soloud was compiled with SOLOUD_ENABLE_VST3 on a
+  /// supported desktop OS (macOS, Windows, Linux), or 0 otherwise.
+  FFI_PLUGIN_EXPORT int soloud_vst3IsSupported(void);
+
+  /// Scans a .vst3 bundle path and returns the number of audio plugin classes
+  /// inside it. Populates parallel arrays of class UIDs (32-char hex), names,
+  /// and subcategories ("Fx", "Instrument|Synth", etc.).
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3ScanBundle(
+      const char *bundlePath,
+      int *outClassCount,
+      char ***outClassUids,
+      char ***outClassNames,
+      char ***outSubCategories);
+
+  /// Frees the string arrays allocated by soloud_vst3ScanBundle().
+  FFI_PLUGIN_EXPORT void soloud_vst3FreeScanResults(
+      int classCount,
+      char **classUids,
+      char **classNames,
+      char **subCategories);
+
+  /// Loads and initializes a VST3 plugin from [bundlePath] with [classUidHex].
+  /// If [classUidHex] is empty or NULL, loads the first audio processor class.
+  /// Returns a positive [outPluginHandle] on success.
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3LoadPlugin(
+      const char *bundlePath,
+      const char *classUidHex,
+      unsigned int sampleRate,
+      unsigned int maxBlockSize,
+      unsigned int channels,
+      int *outPluginHandle);
+
+  /// Unloads and destroys a VST3 plugin instance (closing its editor window if
+  /// open). Ensure the CustomFilterSlot or CustomAudioSource using it has been
+  /// deactivated/disposed first.
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3UnloadPlugin(int pluginHandle);
+
+  /// Returns the native function pointer address of `vst3FilterDspCallback`
+  /// (matching `SoLoudFilterDspCallback_t`) to pass to
+  /// `CustomFilterSlot.setNativeCallback(callbackAddress: ...)`.
+  FFI_PLUGIN_EXPORT void *soloud_vst3GetFilterCallbackPtr(void);
+
+  /// Returns the native function pointer address of `vst3SourceDspCallback`
+  /// (matching `SoLoudSourceDspCallback_t`) to pass to
+  /// `SoLoud.instance.createCustomAudioSource(dspCallbackAddress: ...)`.
+  FFI_PLUGIN_EXPORT void *soloud_vst3GetSourceCallbackPtr(void);
+
+  /// Returns the opaque `Vst3PluginInstance*` pointer to pass as
+  /// `userdataAddress` in `CustomFilterSlot.setNativeCallback` or
+  /// `SoLoud.instance.createCustomAudioSource`.
+  FFI_PLUGIN_EXPORT void *soloud_vst3GetPluginUserData(int pluginHandle);
+
+  /// Returns the lookahead latency reported by `IAudioProcessor::getLatencySamples()`.
+  FFI_PLUGIN_EXPORT unsigned int soloud_vst3GetLatencySamples(int pluginHandle);
+
+  /// Returns the number of parameters exposed by the VST3 plugin.
+  FFI_PLUGIN_EXPORT int soloud_vst3GetParameterCount(int pluginHandle);
+
+  /// Queries metadata for parameter at [paramIndex] (0 .. count - 1).
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3GetParameterInfo(
+      int pluginHandle,
+      int paramIndex,
+      unsigned int *outParamId,
+      char *outTitle,
+      int titleBufferLen,
+      char *outUnits,
+      int unitsBufferLen,
+      double *outDefaultNormalized,
+      int *outStepCount,
+      unsigned int *outFlags);
+
+  /// Reads the current normalized [0.0, 1.0] value of [paramId] and formats its
+  /// display string (e.g. "-3.5 dB") via IEditController::getParamStringByValue.
+  FFI_PLUGIN_EXPORT double soloud_vst3GetParameterNormalized(
+      int pluginHandle,
+      unsigned int paramId,
+      char *outDisplayText,
+      int displayBufferLen);
+
+  /// Enqueues a thread-safe normalized [0.0, 1.0] parameter change for [paramId]
+  /// and updates the IEditController on the main thread if an editor GUI is open.
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3SetParameterNormalized(
+      int pluginHandle,
+      unsigned int paramId,
+      double normalizedValue);
+
+  /// Maps a SoLoud CustomFilterSlot parameter index (1..7) to a VST3 [paramId]
+  /// so SoLoud's native C++ Fader (`fadeFilterParameter`) and LFO
+  /// (`oscillateFilterParameter`) drive that VST3 parameter on the audio thread.
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3MapSlotParameter(
+      int pluginHandle,
+      int customFilterParamIndex,
+      unsigned int vst3ParamId);
+
+  /// Configures the synthetic musical transport (BPM & time signature) passed to
+  /// the VST3 plugin's `ProcessContext` on each audio block.
+  FFI_PLUGIN_EXPORT void soloud_vst3SetTransport(
+      int pluginHandle,
+      double bpm,
+      int timeSigNumerator,
+      int timeSigDenominator,
+      int isPlaying);
+
+  /// Enqueues a real-time MIDI Note-On or Note-Off event for VST3 Instruments.
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3SendMidiNote(
+      int pluginHandle,
+      int isNoteOn,
+      int channel,
+      int pitch,
+      float velocity,
+      int sampleOffset);
+
+  /// Exports the plugin's binary processor + controller state chunk.
+  /// Caller frees `*outData` via `nativeFree()`.
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3GetState(
+      int pluginHandle,
+      unsigned char **outData,
+      unsigned int *outSize);
+
+  /// Restores the plugin's binary processor + controller state chunk.
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3SetState(
+      int pluginHandle,
+      const unsigned char *data,
+      unsigned int size);
+
+  /// Returns 1 if the plugin provides a custom native GUI (`createView("editor")`).
+  FFI_PLUGIN_EXPORT int soloud_vst3HasEditor(int pluginHandle);
+
+  /// Opens the native VST3 editor GUI in a standalone OS window (NSWindow on
+  /// macOS, HWND on Windows, X11 Window + IRunLoop on Linux).
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3OpenEditor(
+      int pluginHandle,
+      const char *windowTitle);
+
+  /// Closes the native VST3 editor GUI window if open.
+  FFI_PLUGIN_EXPORT void soloud_vst3CloseEditor(int pluginHandle);
+
+  /// Returns 1 if the native VST3 editor GUI window is currently open.
+  FFI_PLUGIN_EXPORT int soloud_vst3IsEditorOpen(int pluginHandle);
+
+  /// Registers a Dart NativeCallable.listener callback invoked whenever the user
+  /// adjusts a parameter inside the native VST3 editor GUI window.
+  FFI_PLUGIN_EXPORT void soloud_vst3SetParameterEditCallback(
+      dartVst3ParameterEditCallback_t callback);
+
 #ifdef __cplusplus
 }
 #endif

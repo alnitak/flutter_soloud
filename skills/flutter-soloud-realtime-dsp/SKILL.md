@@ -1,23 +1,25 @@
 ---
 name: flutter-soloud-realtime-dsp
-version: 1
-description: Teaches how to use flutter_soloud's real-time audio mixer injection and synchronous custom DSP callbacks: setRealtimeStream (lock-free SPSC ring buffer with instantaneous retroactive mixer injection, pushFloat32, pushInt16, pushClockedFloat32, pushScheduledFloat32, startFloat32Feeder, RealtimeStreamFeeder, RealtimeNativeBuffer), createCustomAudioSource (zero-latency C/Wasm/JS audio generator), and customFilter(id) (up to 8 multi-instance custom DSP filter slots per scope with 16 modulatable params and automatic wet/dry bypass). Use when the user asks to feed low-latency live PCM directly into the mixer, build a custom synthesizer or drum machine, write custom audio DSP effects or generators, host native C++/Rust/FAUST/Cmajor/VST DSP blocks, or process audio in a background Dart Isolate.
+version: 2
+description: Teaches how to use flutter_soloud's real-time audio mixer injection, synchronous custom DSP callbacks, and desktop VST3 plugin hosting: setRealtimeStream (lock-free SPSC ring buffer with instantaneous retroactive mixer injection, pushFloat32, pushInt16, pushClockedFloat32, pushScheduledFloat32, startFloat32Feeder, RealtimeStreamFeeder, RealtimeNativeBuffer), createCustomSource (zero-latency C/Wasm/JS audio generator), customFilter(id) (up to 8 multi-instance custom DSP filter slots per scope with 16 modulatable params and automatic wet/dry bypass), and Vst3Host / Vst3EffectPlugin / Vst3InstrumentPlugin (desktop .vst3 effect & synth hosting with native GUI editor windows). Use when the user asks to feed low-latency live PCM directly into the mixer, build a custom synthesizer or drum machine, write custom audio DSP effects or generators, host native C++/Rust/FAUST/Cmajor/VST3 plugins, or process audio in a background Dart Isolate.
 ---
 
-# Real-Time Audio Mixer Injection & Custom Synchronous DSP in flutter_soloud
+# Real-Time Audio Mixer Injection, Custom Synchronous DSP & Desktop VST3 Hosting in flutter_soloud
 
-`flutter_soloud` provides two mechanisms for real-time audio synthesis and custom DSP effects across all 6 platforms (Linux, macOS, Windows, Android, iOS, and Web):
+`flutter_soloud` provides three mechanisms for real-time audio synthesis, custom DSP effects, and external plugin hosting:
 
 1. **`RealtimeStreamHandle` (`SoLoud.instance.setRealtimeStream`)** — Lock-free Single-Producer Single-Consumer (SPSC) planar float ring buffer with **instantaneous retroactive mixer injection** into the currently playing hardware buffer window (`mRenderRing`), sub-buffer sample-offset scheduling (`pushClockedFloat32`, `pushScheduledFloat32`), and managed cross-platform Isolate/Web feeding (`stream.startFloat32Feeder<TState>` / `RealtimeStreamFeeder`).
-2. **`CustomAudioSource` & `CustomFilterSlot` (`createCustomAudioSource` & `filters.customFilter(id)`)** — Zero-latency synchronous callbacks invoked directly inside SoLoud's audio thread (or Web AudioWorklet via Emscripten `EM_ASM` / Wasm function table) for custom generators and effects, supporting up to 8 independent `CustomFilterSlot` instances per scope (Global, Bus, or Single Sound).
+2. **`CustomAudioSource` & `CustomFilterSlot` (`createCustomSource` & `filters.customFilter(id)`)** — Zero-latency synchronous callbacks invoked directly inside SoLoud's audio thread (or Web AudioWorklet via Emscripten `EM_ASM` / Wasm function table) for custom generators and effects, supporting up to 8 independent `CustomFilterSlot` instances per scope (Global, Bus, or Single Sound).
+3. **`Vst3Host` (`Vst3EffectPlugin` & `Vst3InstrumentPlugin`)** — Opt-in desktop (`macOS`, `Windows`, `Linux`) 64-bit native `.vst3` plugin host built on top of `CustomFilterSlot` and `CustomAudioSource`, supporting effect slots, playable 3D instrument voices, real-time MIDI (`noteOn`/`noteOff`), native desktop editor GUI windows (`openEditorWindow`), parameter automation, and preset state save/restore.
 
-## Choosing Between `setBufferStream`, `setRealtimeStream`, and `createCustomAudioSource`
+## Choosing Between `setBufferStream`, `setRealtimeStream`, `createCustomSource`, and `Vst3Host`
 
 | Use Case | Recommended API | Why |
 |---|---|---|
 | Internet radio, HTTP/WebSocket chunks, MP3/OGG/FLAC/AAC/Opus decoding | `setBufferStream` | Dynamic buffer growth, format auto-detection, ICY metadata, automatic pause/resume on underrun |
 | Interactive Dart synthesizers, live microphone FX, VoIP, MIDI instruments, drum machines | `setRealtimeStream` | Fixed pre-allocated lock-free ring buffer, instantaneous retroactive injection into the active hardware window, `stream.startFloat32Feeder` zero-GC Isolate/Web support |
-| Sample-accurate oscillators, physical modeling, custom DSP filters, C++/Rust/Wasm/JS DSP | `createCustomAudioSource` / `filters.customFilter(id)` | Zero ring-buffer latency; runs synchronously inside the audio thread callback |
+| Sample-accurate oscillators, physical modeling, custom DSP filters, C++/Rust/Wasm/JS DSP | `createCustomSource` / `filters.customFilter(id)` | Zero ring-buffer latency; runs synchronously inside the audio thread callback |
+| Hosting commercial or open-source `.vst3` effects (`Fx`) & synths (`Instrument\|Synth`) on Desktop | `Vst3Host` (`loadEffect` / `loadInstrument`) | Full Steinberg VST3 host with native GUI editor windows (`NSWindow`/`HWND`/`X11`), MIDI event queue, and C++ fader automation |
 
 ---
 
@@ -175,13 +177,89 @@ final handle = SoLoud.instance.play(source);
 
 ---
 
+## 3. Desktop VST3 Plugin Hosting (`Vst3Host`, `Vst3EffectPlugin`, `Vst3InstrumentPlugin`)
+
+On **macOS**, **Windows**, and **Linux**, `flutter_soloud` can host 64-bit native `.vst3` audio effects (`Fx`) and virtual instruments (`Instrument|Synth`), including opening their native desktop editor GUI windows (`NSWindow`, `HWND`, `X11 Window`).
+
+### Enabling VST3 in `pubspec.yaml` & macOS Entitlements
+
+VST3 support is **opt-in** (`enable_vst3: false` by default so the package remains 100% MIT/Zlib unless opted in). Enable it in the app's `pubspec.yaml`:
+
+```yaml
+hooks:
+  user_defines:
+    flutter_soloud:
+      enable_vst3: true # Downloads prebuilt Steinberg VST3 SDK bridge from flutter_soloud_prebuilds
+```
+
+On **macOS**:
+1. Add `<key>com.apple.security.cs.disable-library-validation</key><true/>` and `<key>com.apple.security.app-sandbox</key><false/>` to `macos/Runner/DebugProfile.entitlements` and `macos/Runner/Release.entitlements` so macOS allows `dlopen`ing third-party signed `.vst3` bundles and reading preset directories.
+2. Add `<key>NSDocumentsFolderUsageDescription</key>` to `macos/Runner/Info.plist` (many plugins like Surge XT create user preset folders in `~/Documents/`). If macOS TCC blocks `~/Documents/` with `Operation not permitted`, enable **Documents Folder** access for the app (or the parent Terminal/IDE when running `flutter test` / `flutter run`) in **System Settings → Privacy & Security → Files and Folders**.
+
+### Scanning, Hosting an Effect, Opening Native GUI, & Automating Parameters
+
+```dart
+import 'package:flutter_soloud/flutter_soloud.dart';
+
+Future<void> setupVst3Rack() async {
+  final soloud = SoLoud.instance;
+  await soloud.init(sampleRate: 48000, bufferSize: 512);
+
+  final vstHost = Vst3Host();
+  if (!vstHost.isSupported) return;
+
+  // 1. Scan a .vst3 bundle
+  const fxBundle = '/Library/Audio/Plug-Ins/VST3/Surge XT Effects.vst3';
+  final classes = vstHost.scanBundle(fxBundle);
+
+  // 2. Load a VST3 Effect into Global CustomFilterSlot 0 (or a Mixing Bus slot)
+  final slot0 = soloud.filters.customFilters[0];
+  final effect = vstHost.loadEffect(
+    bundlePath: fxBundle,
+    classUid: classes.first.classUid,
+    slot: slot0,
+  );
+  effect.setTransport(bpm: 124.0, isPlaying: true);
+
+  // 3. Open the plugin's native desktop GUI window (if available)
+  if (effect.hasEditor) {
+    effect.openEditorWindow(title: classes.first.name);
+  }
+  effect.onGuiParameterChanged.listen((edit) {
+    final text = effect.getParameterDisplay(edit.paramId);
+    print('GUI changed param ${edit.paramId} -> $text');
+  });
+
+  // 4. Map a VST3 ParamID to CustomFilterSlot param[1] for C++ Fader / LFO modulation
+  if (effect.parameters.isNotEmpty) {
+    final p = effect.mapToSlotParameter(
+      slotParamIndex: 1,
+      vst3ParamId: effect.parameters.first.paramId,
+    );
+    p.fadeFilterParameter(to: 0.85, time: const Duration(seconds: 3));
+  }
+
+  // 5. Load a VST3 Virtual Instrument (Instrument|Synth) & play MIDI notes
+  final synth = vstHost.loadInstrument(
+    bundlePath: '/Library/Audio/Plug-Ins/VST3/Surge XT.vst3',
+  );
+  final voice = soloud.play3d(synth.audioSource, 1.5, 0.0, -1.0);
+  synth.noteOn(pitch: 60, velocity: 0.85);
+}
+```
+
+---
+
 ## Traps & Real-Time Audio Safety Rules
 
 - **Never allocate, lock mutexes, or perform I/O inside `nativeCallback` / `nativeAudioCallback`.** These callbacks run synchronously on the OS real-time audio thread. Avoid `print()`, `List` allocations, `Future`, or `Stream` inside the callback.
 - **`customFilter(id)` asserts `0 <= id < 8`.** Calling `customFilter(8)` throws an `AssertionError` / `ArgumentError`. Also remember SoLoud's total limit of 8 active filters per scope (`FILTERS_PER_STREAM = 8`) across all built-in + custom filters combined.
+- **VST3 effects (`Vst3Host.loadEffect`) only support Global or Mixing Bus filter slots.** Passing a single-sound `CustomFilterSlot` throws an `ArgumentError` because stateful VST3 effect instances cannot be cloned per voice. Route specific voices through a `Bus` (`soloud.createBus()`) to apply a VST3 effect to a subset of sounds.
+- **VST3 is desktop-only (`macOS`, `Windows`, `Linux`) and opt-in (`enable_vst3: true`).** On iOS, Android, and Web (or when `enable_vst3` is not `true`), `Vst3Host().isSupported` is `false`. Also note that enabling `enable_vst3: true` links the prebuilt Steinberg VST3 Hosting SDK (dual-licensed under the Steinberg VST3 License or GPLv3).
+- **Check `.vst3` bundle existence with `Directory(path).existsSync() || File(path).existsSync()`.** Standard `.vst3` plugins on macOS, Windows, and Linux are directory bundles, so `File(path).existsSync()` alone returns `false` for directory bundles.
 - **Per-sound `customFilter(id)` must be activated before `play(sound)`.** Just like built-in per-sound filters, voices started before `activate()` do not carry the filter.
 - **SoLoud's internal buffer layout is planar (`[ch0_frames..., ch1_frames...]`).** Inside `NativeCustomFilterDspCallback` and `NativeCustomSourceAudioCallback`, channel `c` starts at `buffer + c * samples`.
-- **Always call `stream.dispose()` (or `SoLoudIsolate.instance.stop()`) when finished** to free native ring buffers and `RealtimeNativeBuffer` allocations.
+- **Always call `stream.dispose()`, `effect.dispose()`, or `synth.dispose()` when finished** to free native ring buffers, `RealtimeNativeBuffer` allocations, and VST3 plugin instances.
 
 ## More Depth
 
@@ -189,3 +267,5 @@ final handle = SoLoud.instance.play(source);
   - `example/lib/realtime_audio/realtime_pcm_synth.dart` — XY pad polyphonic synth with instantaneous retroactive mixer injection.
   - `example/lib/realtime_audio/isolate_drum_sequencer.dart` — Zero-GC background `SoLoudIsolate` 4-track drum machine.
   - `example/lib/realtime_audio/custom_dsp_workbench.dart` — Custom audio source + chained multi-instance `customFilter(0)` and `customFilter(1)` with live modulation.
+  - `example/lib/realtime_audio/vst3_plugin_rack.dart` — Desktop VST3 effect & virtual instrument rack with bundle scanning, native GUI editor windows, C++ fader automation, preset save/restore, and MIDI keyboard.
+

@@ -1982,13 +1982,7 @@ PlayerErrors setRealtimeStream(
   int format,
   int bufferCapacityFrames,
 ) => PlayerErrors.fromValue(
-  _setRealtimeStream(
-    hash,
-    sampleRate,
-    channels,
-    format,
-    bufferCapacityFrames,
-  ),
+  _setRealtimeStream(hash, sampleRate, channels, format, bufferCapacityFrames),
 );
 
 @ffi.Native<ffi.UnsignedInt Function(ffi.UnsignedInt)>(
@@ -2122,13 +2116,10 @@ PlayerErrors addCustomFilter(int soundHash, int busId, int customFilterId) =>
 >(symbol: 'removeCustomFilter')
 external int _removeCustomFilter(int soundHash, int busId, int customFilterId);
 
-PlayerErrors removeCustomFilter(
-  int soundHash,
-  int busId,
-  int customFilterId,
-) => PlayerErrors.fromValue(
-  _removeCustomFilter(soundHash, busId, customFilterId),
-);
+PlayerErrors removeCustomFilter(int soundHash, int busId, int customFilterId) =>
+    PlayerErrors.fromValue(
+      _removeCustomFilter(soundHash, busId, customFilterId),
+    );
 
 @ffi.Native<
   ffi.UnsignedInt Function(
@@ -3079,6 +3070,375 @@ external void busAnnexSound(int busId, int voiceHandle);
 @ffi.Native<ffi.UnsignedInt Function(ffi.UnsignedInt)>()
 external int busGetActiveVoiceCount(int busId);
 
+/// Returns 1 if flutter_soloud was compiled with SOLOUD_ENABLE_VST3 on a
+/// supported desktop OS (macOS, Windows, Linux), or 0 otherwise.
+@ffi.Native<ffi.Int Function()>()
+external int soloud_vst3IsSupported();
+
+/// Scans a .vst3 bundle path and returns the number of audio plugin classes
+/// inside it. Populates parallel arrays of class UIDs (32-char hex), names,
+/// and subcategories ("Fx", "Instrument|Synth", etc.).
+@ffi.Native<
+  ffi.UnsignedInt Function(
+    ffi.Pointer<ffi.Char>,
+    ffi.Pointer<ffi.Int>,
+    ffi.Pointer<ffi.Pointer<ffi.Pointer<ffi.Char>>>,
+    ffi.Pointer<ffi.Pointer<ffi.Pointer<ffi.Char>>>,
+    ffi.Pointer<ffi.Pointer<ffi.Pointer<ffi.Char>>>,
+  )
+>(symbol: 'soloud_vst3ScanBundle')
+external int _soloud_vst3ScanBundle(
+  ffi.Pointer<ffi.Char> bundlePath,
+  ffi.Pointer<ffi.Int> outClassCount,
+  ffi.Pointer<ffi.Pointer<ffi.Pointer<ffi.Char>>> outClassUids,
+  ffi.Pointer<ffi.Pointer<ffi.Pointer<ffi.Char>>> outClassNames,
+  ffi.Pointer<ffi.Pointer<ffi.Pointer<ffi.Char>>> outSubCategories,
+);
+
+PlayerErrors soloud_vst3ScanBundle(
+  ffi.Pointer<ffi.Char> bundlePath,
+  ffi.Pointer<ffi.Int> outClassCount,
+  ffi.Pointer<ffi.Pointer<ffi.Pointer<ffi.Char>>> outClassUids,
+  ffi.Pointer<ffi.Pointer<ffi.Pointer<ffi.Char>>> outClassNames,
+  ffi.Pointer<ffi.Pointer<ffi.Pointer<ffi.Char>>> outSubCategories,
+) => PlayerErrors.fromValue(
+  _soloud_vst3ScanBundle(
+    bundlePath,
+    outClassCount,
+    outClassUids,
+    outClassNames,
+    outSubCategories,
+  ),
+);
+
+/// Frees the string arrays allocated by soloud_vst3ScanBundle().
+@ffi.Native<
+  ffi.Void Function(
+    ffi.Int,
+    ffi.Pointer<ffi.Pointer<ffi.Char>>,
+    ffi.Pointer<ffi.Pointer<ffi.Char>>,
+    ffi.Pointer<ffi.Pointer<ffi.Char>>,
+  )
+>()
+external void soloud_vst3FreeScanResults(
+  int classCount,
+  ffi.Pointer<ffi.Pointer<ffi.Char>> classUids,
+  ffi.Pointer<ffi.Pointer<ffi.Char>> classNames,
+  ffi.Pointer<ffi.Pointer<ffi.Char>> subCategories,
+);
+
+/// Loads and initializes a VST3 plugin from [bundlePath] with [classUidHex].
+/// If [classUidHex] is empty or NULL, loads the first audio processor class.
+/// Returns a positive [outPluginHandle] on success.
+@ffi.Native<
+  ffi.UnsignedInt Function(
+    ffi.Pointer<ffi.Char>,
+    ffi.Pointer<ffi.Char>,
+    ffi.UnsignedInt,
+    ffi.UnsignedInt,
+    ffi.UnsignedInt,
+    ffi.Pointer<ffi.Int>,
+  )
+>(symbol: 'soloud_vst3LoadPlugin')
+external int _soloud_vst3LoadPlugin(
+  ffi.Pointer<ffi.Char> bundlePath,
+  ffi.Pointer<ffi.Char> classUidHex,
+  int sampleRate,
+  int maxBlockSize,
+  int channels,
+  ffi.Pointer<ffi.Int> outPluginHandle,
+);
+
+PlayerErrors soloud_vst3LoadPlugin(
+  ffi.Pointer<ffi.Char> bundlePath,
+  ffi.Pointer<ffi.Char> classUidHex,
+  int sampleRate,
+  int maxBlockSize,
+  int channels,
+  ffi.Pointer<ffi.Int> outPluginHandle,
+) => PlayerErrors.fromValue(
+  _soloud_vst3LoadPlugin(
+    bundlePath,
+    classUidHex,
+    sampleRate,
+    maxBlockSize,
+    channels,
+    outPluginHandle,
+  ),
+);
+
+/// Unloads and destroys a VST3 plugin instance (closing its editor window if
+/// open). Ensure the CustomFilterSlot or CustomAudioSource using it has been
+/// deactivated/disposed first.
+@ffi.Native<ffi.UnsignedInt Function(ffi.Int)>(
+  symbol: 'soloud_vst3UnloadPlugin',
+)
+external int _soloud_vst3UnloadPlugin(int pluginHandle);
+
+PlayerErrors soloud_vst3UnloadPlugin(int pluginHandle) =>
+    PlayerErrors.fromValue(_soloud_vst3UnloadPlugin(pluginHandle));
+
+/// Returns the native function pointer address of `vst3FilterDspCallback`
+/// (matching `SoLoudFilterDspCallback_t`) to pass to
+/// `CustomFilterSlot.setNativeCallback(callbackAddress: ...)`.
+@ffi.Native<ffi.Pointer<ffi.Void> Function()>()
+external ffi.Pointer<ffi.Void> soloud_vst3GetFilterCallbackPtr();
+
+/// Returns the native function pointer address of `vst3SourceDspCallback`
+/// (matching `SoLoudSourceDspCallback_t`) to pass to
+/// `SoLoud.instance.createCustomAudioSource(dspCallbackAddress: ...)`.
+@ffi.Native<ffi.Pointer<ffi.Void> Function()>()
+external ffi.Pointer<ffi.Void> soloud_vst3GetSourceCallbackPtr();
+
+/// Returns the opaque `Vst3PluginInstance*` pointer to pass as
+/// `userdataAddress` in `CustomFilterSlot.setNativeCallback` or
+/// `SoLoud.instance.createCustomAudioSource`.
+@ffi.Native<ffi.Pointer<ffi.Void> Function(ffi.Int)>()
+external ffi.Pointer<ffi.Void> soloud_vst3GetPluginUserData(int pluginHandle);
+
+/// Returns the lookahead latency reported by `IAudioProcessor::getLatencySamples()`.
+@ffi.Native<ffi.UnsignedInt Function(ffi.Int)>()
+external int soloud_vst3GetLatencySamples(int pluginHandle);
+
+/// Returns the number of parameters exposed by the VST3 plugin.
+@ffi.Native<ffi.Int Function(ffi.Int)>()
+external int soloud_vst3GetParameterCount(int pluginHandle);
+
+/// Queries metadata for parameter at [paramIndex] (0 .. count - 1).
+@ffi.Native<
+  ffi.UnsignedInt Function(
+    ffi.Int,
+    ffi.Int,
+    ffi.Pointer<ffi.UnsignedInt>,
+    ffi.Pointer<ffi.Char>,
+    ffi.Int,
+    ffi.Pointer<ffi.Char>,
+    ffi.Int,
+    ffi.Pointer<ffi.Double>,
+    ffi.Pointer<ffi.Int>,
+    ffi.Pointer<ffi.UnsignedInt>,
+  )
+>(symbol: 'soloud_vst3GetParameterInfo')
+external int _soloud_vst3GetParameterInfo(
+  int pluginHandle,
+  int paramIndex,
+  ffi.Pointer<ffi.UnsignedInt> outParamId,
+  ffi.Pointer<ffi.Char> outTitle,
+  int titleBufferLen,
+  ffi.Pointer<ffi.Char> outUnits,
+  int unitsBufferLen,
+  ffi.Pointer<ffi.Double> outDefaultNormalized,
+  ffi.Pointer<ffi.Int> outStepCount,
+  ffi.Pointer<ffi.UnsignedInt> outFlags,
+);
+
+PlayerErrors soloud_vst3GetParameterInfo(
+  int pluginHandle,
+  int paramIndex,
+  ffi.Pointer<ffi.UnsignedInt> outParamId,
+  ffi.Pointer<ffi.Char> outTitle,
+  int titleBufferLen,
+  ffi.Pointer<ffi.Char> outUnits,
+  int unitsBufferLen,
+  ffi.Pointer<ffi.Double> outDefaultNormalized,
+  ffi.Pointer<ffi.Int> outStepCount,
+  ffi.Pointer<ffi.UnsignedInt> outFlags,
+) => PlayerErrors.fromValue(
+  _soloud_vst3GetParameterInfo(
+    pluginHandle,
+    paramIndex,
+    outParamId,
+    outTitle,
+    titleBufferLen,
+    outUnits,
+    unitsBufferLen,
+    outDefaultNormalized,
+    outStepCount,
+    outFlags,
+  ),
+);
+
+/// Reads the current normalized [0.0, 1.0] value of [paramId] and formats its
+/// display string (e.g. "-3.5 dB") via IEditController::getParamStringByValue.
+@ffi.Native<
+  ffi.Double Function(ffi.Int, ffi.UnsignedInt, ffi.Pointer<ffi.Char>, ffi.Int)
+>()
+external double soloud_vst3GetParameterNormalized(
+  int pluginHandle,
+  int paramId,
+  ffi.Pointer<ffi.Char> outDisplayText,
+  int displayBufferLen,
+);
+
+/// Enqueues a thread-safe normalized [0.0, 1.0] parameter change for [paramId]
+/// and updates the IEditController on the main thread if an editor GUI is open.
+@ffi.Native<ffi.UnsignedInt Function(ffi.Int, ffi.UnsignedInt, ffi.Double)>(
+  symbol: 'soloud_vst3SetParameterNormalized',
+)
+external int _soloud_vst3SetParameterNormalized(
+  int pluginHandle,
+  int paramId,
+  double normalizedValue,
+);
+
+PlayerErrors soloud_vst3SetParameterNormalized(
+  int pluginHandle,
+  int paramId,
+  double normalizedValue,
+) => PlayerErrors.fromValue(
+  _soloud_vst3SetParameterNormalized(pluginHandle, paramId, normalizedValue),
+);
+
+/// Maps a SoLoud CustomFilterSlot parameter index (1..7) to a VST3 [paramId]
+/// so SoLoud's native C++ Fader (`fadeFilterParameter`) and LFO
+/// (`oscillateFilterParameter`) drive that VST3 parameter on the audio thread.
+@ffi.Native<ffi.UnsignedInt Function(ffi.Int, ffi.Int, ffi.UnsignedInt)>(
+  symbol: 'soloud_vst3MapSlotParameter',
+)
+external int _soloud_vst3MapSlotParameter(
+  int pluginHandle,
+  int customFilterParamIndex,
+  int vst3ParamId,
+);
+
+PlayerErrors soloud_vst3MapSlotParameter(
+  int pluginHandle,
+  int customFilterParamIndex,
+  int vst3ParamId,
+) => PlayerErrors.fromValue(
+  _soloud_vst3MapSlotParameter(
+    pluginHandle,
+    customFilterParamIndex,
+    vst3ParamId,
+  ),
+);
+
+/// Configures the synthetic musical transport (BPM & time signature) passed to
+/// the VST3 plugin's `ProcessContext` on each audio block.
+@ffi.Native<ffi.Void Function(ffi.Int, ffi.Double, ffi.Int, ffi.Int, ffi.Int)>()
+external void soloud_vst3SetTransport(
+  int pluginHandle,
+  double bpm,
+  int timeSigNumerator,
+  int timeSigDenominator,
+  int isPlaying,
+);
+
+/// Enqueues a real-time MIDI Note-On or Note-Off event for VST3 Instruments.
+@ffi.Native<
+  ffi.UnsignedInt Function(
+    ffi.Int,
+    ffi.Int,
+    ffi.Int,
+    ffi.Int,
+    ffi.Float,
+    ffi.Int,
+  )
+>(symbol: 'soloud_vst3SendMidiNote')
+external int _soloud_vst3SendMidiNote(
+  int pluginHandle,
+  int isNoteOn,
+  int channel,
+  int pitch,
+  double velocity,
+  int sampleOffset,
+);
+
+PlayerErrors soloud_vst3SendMidiNote(
+  int pluginHandle,
+  int isNoteOn,
+  int channel,
+  int pitch,
+  double velocity,
+  int sampleOffset,
+) => PlayerErrors.fromValue(
+  _soloud_vst3SendMidiNote(
+    pluginHandle,
+    isNoteOn,
+    channel,
+    pitch,
+    velocity,
+    sampleOffset,
+  ),
+);
+
+/// Exports the plugin's binary processor + controller state chunk.
+/// Caller frees `*outData` via `nativeFree()`.
+@ffi.Native<
+  ffi.UnsignedInt Function(
+    ffi.Int,
+    ffi.Pointer<ffi.Pointer<ffi.UnsignedChar>>,
+    ffi.Pointer<ffi.UnsignedInt>,
+  )
+>(symbol: 'soloud_vst3GetState')
+external int _soloud_vst3GetState(
+  int pluginHandle,
+  ffi.Pointer<ffi.Pointer<ffi.UnsignedChar>> outData,
+  ffi.Pointer<ffi.UnsignedInt> outSize,
+);
+
+PlayerErrors soloud_vst3GetState(
+  int pluginHandle,
+  ffi.Pointer<ffi.Pointer<ffi.UnsignedChar>> outData,
+  ffi.Pointer<ffi.UnsignedInt> outSize,
+) => PlayerErrors.fromValue(
+  _soloud_vst3GetState(pluginHandle, outData, outSize),
+);
+
+/// Restores the plugin's binary processor + controller state chunk.
+@ffi.Native<
+  ffi.UnsignedInt Function(
+    ffi.Int,
+    ffi.Pointer<ffi.UnsignedChar>,
+    ffi.UnsignedInt,
+  )
+>(symbol: 'soloud_vst3SetState')
+external int _soloud_vst3SetState(
+  int pluginHandle,
+  ffi.Pointer<ffi.UnsignedChar> data,
+  int size,
+);
+
+PlayerErrors soloud_vst3SetState(
+  int pluginHandle,
+  ffi.Pointer<ffi.UnsignedChar> data,
+  int size,
+) => PlayerErrors.fromValue(_soloud_vst3SetState(pluginHandle, data, size));
+
+/// Returns 1 if the plugin provides a custom native GUI (`createView("editor")`).
+@ffi.Native<ffi.Int Function(ffi.Int)>()
+external int soloud_vst3HasEditor(int pluginHandle);
+
+/// Opens the native VST3 editor GUI in a standalone OS window (NSWindow on
+/// macOS, HWND on Windows, X11 Window + IRunLoop on Linux).
+@ffi.Native<ffi.UnsignedInt Function(ffi.Int, ffi.Pointer<ffi.Char>)>(
+  symbol: 'soloud_vst3OpenEditor',
+)
+external int _soloud_vst3OpenEditor(
+  int pluginHandle,
+  ffi.Pointer<ffi.Char> windowTitle,
+);
+
+PlayerErrors soloud_vst3OpenEditor(
+  int pluginHandle,
+  ffi.Pointer<ffi.Char> windowTitle,
+) => PlayerErrors.fromValue(_soloud_vst3OpenEditor(pluginHandle, windowTitle));
+
+/// Closes the native VST3 editor GUI window if open.
+@ffi.Native<ffi.Void Function(ffi.Int)>()
+external void soloud_vst3CloseEditor(int pluginHandle);
+
+/// Returns 1 if the native VST3 editor GUI window is currently open.
+@ffi.Native<ffi.Int Function(ffi.Int)>()
+external int soloud_vst3IsEditorOpen(int pluginHandle);
+
+/// Registers a Dart NativeCallable.listener callback invoked whenever the user
+/// adjusts a parameter inside the native VST3 editor GUI window.
+@ffi.Native<ffi.Void Function(dartVst3ParameterEditCallback_t)>()
+external void soloud_vst3SetParameterEditCallback(
+  dartVst3ParameterEditCallback_t callback,
+);
+
 typedef dartVoiceEndedCallback_tFunction =
     ffi.Void Function(ffi.Pointer<ffi.UnsignedInt>);
 typedef DartdartVoiceEndedCallback_tFunction =
@@ -3205,7 +3565,7 @@ enum PlayerErrors {
   /// SoLoud didn't return a valid voice handle when starting the playback.
   failedToStartPlayback(35),
 
-  /// Given hash doesn't belong to a realtime stream.
+  /// Given hash doesn't belong to a real-time PCM stream.
   hashIsNotARealtimeStream(36);
 
   final int value;
@@ -3432,6 +3792,9 @@ final class Mp3MetadataFFI extends ffi.Struct {
   external ffi.Array<ffi.Char> artist;
 
   @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> album_artist;
+
+  @ffi.Array.multi([1024])
   external ffi.Array<ffi.Char> album;
 
   @ffi.Array.multi([1024])
@@ -3439,6 +3802,30 @@ final class Mp3MetadataFFI extends ffi.Struct {
 
   @ffi.Array.multi([1024])
   external ffi.Array<ffi.Char> genre;
+
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> composer;
+
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> comment;
+
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> track;
+
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> disc;
+
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> stream_url;
+
+  @ffi.Uint32()
+  external int sample_rate;
+
+  @ffi.Uint32()
+  external int channels;
+
+  @ffi.Uint32()
+  external int bitrate;
 }
 
 /// Comment key-value pair structure
@@ -3565,6 +3952,158 @@ final class OggMetadataFFI extends ffi.Struct {
   external FlacInfoFFI flacInfo;
 }
 
+final class AacMetadataFFI extends ffi.Struct {
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> title;
+
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> artist;
+
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> album_artist;
+
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> album;
+
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> date;
+
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> genre;
+
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> composer;
+
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> comment;
+
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> track;
+
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> disc;
+
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> stream_url;
+
+  @ffi.Uint32()
+  external int sample_rate;
+
+  @ffi.Uint32()
+  external int channels;
+
+  @ffi.Array.multi([32])
+  external ffi.Array<ffi.Char> profile;
+
+  @ffi.Uint32()
+  external int bitrate;
+
+  @ffi.Uint32()
+  external int frame_length;
+}
+
+final class Ac3MetadataFFI extends ffi.Struct {
+  @ffi.Uint32()
+  external int sample_rate;
+
+  @ffi.Uint32()
+  external int channels;
+
+  @ffi.Uint32()
+  external int bitrate;
+
+  @ffi.Uint32()
+  external int bsid;
+
+  @ffi.Uint32()
+  external int bsmod;
+
+  @ffi.Uint32()
+  external int acmod;
+
+  @ffi.Uint32()
+  external int lfeon;
+
+  @ffi.Uint32()
+  external int frame_size;
+}
+
+final class Eac3MetadataFFI extends ffi.Struct {
+  @ffi.Uint32()
+  external int sample_rate;
+
+  @ffi.Uint32()
+  external int channels;
+
+  @ffi.Uint32()
+  external int bitrate;
+
+  @ffi.Uint32()
+  external int bsid;
+
+  @ffi.Uint32()
+  external int stream_type;
+
+  @ffi.Uint32()
+  external int substream_id;
+
+  @ffi.Uint32()
+  external int acmod;
+
+  @ffi.Uint32()
+  external int lfeon;
+
+  @ffi.Uint32()
+  external int frame_size;
+
+  @ffi.Uint32()
+  external int num_blocks;
+}
+
+final class M4aMetadataFFI extends ffi.Struct {
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> title;
+
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> artist;
+
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> album_artist;
+
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> album;
+
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> date;
+
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> genre;
+
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> composer;
+
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> comment;
+
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> track;
+
+  @ffi.Array.multi([1024])
+  external ffi.Array<ffi.Char> disc;
+
+  @ffi.Array.multi([32])
+  external ffi.Array<ffi.Char> codec;
+
+  @ffi.Uint32()
+  external int sample_rate;
+
+  @ffi.Uint32()
+  external int channels;
+
+  @ffi.Uint32()
+  external int bitrate;
+}
+
 final class AudioMetadataFFI extends ffi.Struct {
   @ffi.UnsignedInt()
   external int detectedTypeAsInt;
@@ -3575,6 +4114,14 @@ final class AudioMetadataFFI extends ffi.Struct {
   external Mp3MetadataFFI mp3Metadata;
 
   external OggMetadataFFI oggMetadata;
+
+  external AacMetadataFFI aacMetadata;
+
+  external Ac3MetadataFFI ac3Metadata;
+
+  external Eac3MetadataFFI eac3Metadata;
+
+  external M4aMetadataFFI m4aMetadata;
 }
 
 typedef dartOnMetadataCallback_tFunction =
@@ -3645,60 +4192,79 @@ enum FilterType {
 
 typedef SoLoudSourceDspCallback_tFunction =
     ffi.UnsignedInt Function(
-      ffi.Pointer<ffi.Float> buffer,
-      ffi.UnsignedInt samplesToRead,
-      ffi.UnsignedInt bufferSize,
-      ffi.UnsignedInt channels,
-      ffi.Float sampleRate,
-      ffi.Double streamPosition,
-      ffi.Pointer<ffi.UnsignedInt> hasEnded,
-      ffi.Pointer<ffi.Void> userData,
+      ffi.Pointer<ffi.Float> aBuffer,
+      ffi.UnsignedInt aSamplesToRead,
+      ffi.UnsignedInt aBufferSize,
+      ffi.UnsignedInt aChannels,
+      ffi.Float aSamplerate,
+      ffi.Double aStreamTime,
+      ffi.Double aStreamPosition,
+      ffi.Pointer<ffi.Uint32> aOutHasEnded,
+      ffi.Pointer<ffi.Void> aUserData,
     );
 typedef DartSoLoudSourceDspCallback_tFunction =
     int Function(
-      ffi.Pointer<ffi.Float> buffer,
-      int samplesToRead,
-      int bufferSize,
-      int channels,
-      double sampleRate,
-      double streamPosition,
-      ffi.Pointer<ffi.UnsignedInt> hasEnded,
-      ffi.Pointer<ffi.Void> userData,
+      ffi.Pointer<ffi.Float> aBuffer,
+      int aSamplesToRead,
+      int aBufferSize,
+      int aChannels,
+      double aSamplerate,
+      double aStreamTime,
+      double aStreamPosition,
+      ffi.Pointer<ffi.Uint32> aOutHasEnded,
+      ffi.Pointer<ffi.Void> aUserData,
     );
+
+/// Synchronous audio-thread callback for a custom DSP AudioSource.
 typedef SoLoudSourceDspCallback_t =
     ffi.Pointer<ffi.NativeFunction<SoLoudSourceDspCallback_tFunction>>;
-
 typedef SoLoudSourceInstanceLifecycleCallback_tFunction =
-    ffi.Void Function(ffi.Pointer<ffi.Void> userData, ffi.Int event);
+    ffi.Void Function(
+      ffi.Uint32 aIsCreated,
+      ffi.UnsignedInt aPlayIndex,
+      ffi.Pointer<ffi.Void> aUserData,
+    );
 typedef DartSoLoudSourceInstanceLifecycleCallback_tFunction =
-    void Function(ffi.Pointer<ffi.Void> userData, int event);
+    void Function(
+      int aIsCreated,
+      int aPlayIndex,
+      ffi.Pointer<ffi.Void> aUserData,
+    );
+
+/// Optional lifecycle callback invoked when a CustomAudioSource voice instance
+/// is created (`aIsCreated == 1`) or destroyed (`aIsCreated == 0`).
 typedef SoLoudSourceInstanceLifecycleCallback_t =
     ffi.Pointer<
       ffi.NativeFunction<SoLoudSourceInstanceLifecycleCallback_tFunction>
     >;
-
 typedef SoLoudFilterDspCallback_tFunction =
     ffi.Void Function(
-      ffi.Pointer<ffi.Float> buffer,
-      ffi.UnsignedInt samples,
-      ffi.UnsignedInt channels,
-      ffi.Float sampleRate,
-      ffi.Double time,
-      ffi.Pointer<ffi.Float> params,
-      ffi.UnsignedInt numParams,
-      ffi.Pointer<ffi.Void> userData,
+      ffi.Pointer<ffi.Float> aBuffer,
+      ffi.UnsignedInt aSamples,
+      ffi.UnsignedInt aBufferSize,
+      ffi.UnsignedInt aChannels,
+      ffi.Float aSamplerate,
+      ffi.Double aTime,
+      ffi.Pointer<ffi.Float> aParams,
+      ffi.Uint64 aParamChangedMask,
+      ffi.UnsignedInt aParamCount,
+      ffi.Pointer<ffi.Void> aUserData,
     );
 typedef DartSoLoudFilterDspCallback_tFunction =
     void Function(
-      ffi.Pointer<ffi.Float> buffer,
-      int samples,
-      int channels,
-      double sampleRate,
-      double time,
-      ffi.Pointer<ffi.Float> params,
-      int numParams,
-      ffi.Pointer<ffi.Void> userData,
+      ffi.Pointer<ffi.Float> aBuffer,
+      int aSamples,
+      int aBufferSize,
+      int aChannels,
+      double aSamplerate,
+      double aTime,
+      ffi.Pointer<ffi.Float> aParams,
+      int aParamChangedMask,
+      int aParamCount,
+      ffi.Pointer<ffi.Void> aUserData,
     );
+
+/// Synchronous audio-thread callback for a custom DSP Filter.
 typedef SoLoudFilterDspCallback_t =
     ffi.Pointer<ffi.NativeFunction<SoLoudFilterDspCallback_tFunction>>;
 
@@ -3731,3 +4297,17 @@ enum ReadSamplesErrors {
     _ => throw ArgumentError('Unknown value for ReadSamplesErrors: $value'),
   };
 }
+
+typedef dartVst3ParameterEditCallback_tFunction =
+    ffi.Void Function(
+      ffi.Int pluginHandle,
+      ffi.UnsignedInt paramId,
+      ffi.Double normalizedValue,
+    );
+typedef DartdartVst3ParameterEditCallback_tFunction =
+    void Function(int pluginHandle, int paramId, double normalizedValue);
+
+/// Callback invoked when the user turns a knob inside the native VST3 GUI
+/// editor window (`IComponentHandler::performEdit`).
+typedef dartVst3ParameterEditCallback_t =
+    ffi.Pointer<ffi.NativeFunction<dartVst3ParameterEditCallback_tFunction>>;
