@@ -9,6 +9,7 @@ import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/exceptions/exceptions.dart';
 import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
+import 'package:meta/meta.dart';
 
 const bool _kIsWeb = bool.fromEnvironment('dart.library.js_interop');
 
@@ -31,6 +32,7 @@ const bool _kIsWeb = bool.fromEnvironment('dart.library.js_interop');
 ///   are pushed immediately and the feeder yields until the next tick.
 /// - Use [emitToUi] to send lightweight telemetry or step notifications back to
 ///   the UI thread ([RealtimeStreamFeeder.events] / `onUiEvent`).
+@experimental
 typedef RealtimeFloat32FeedCallback<TState> =
     int Function(
       Float32List outBuffer,
@@ -40,6 +42,7 @@ typedef RealtimeFloat32FeedCallback<TState> =
     );
 
 /// Alias for [RealtimeFloat32FeedCallback].
+@experimental
 typedef RealtimeFeedCallback<TState> = RealtimeFloat32FeedCallback<TState>;
 
 /// Signature for a real-time 16-bit signed integer PCM generator callback used
@@ -64,6 +67,7 @@ typedef RealtimeFeedCallback<TState> = RealtimeFloat32FeedCallback<TState>;
 ///   until the next tick.
 /// - Use [emitToUi] to send lightweight telemetry or step notifications back to
 ///   the UI thread ([RealtimeStreamFeeder.events] / `onUiEvent`).
+@experimental
 typedef RealtimeInt16FeedCallback<TState> =
     int Function(
       Int16List outBuffer,
@@ -81,11 +85,13 @@ typedef RealtimeInt16FeedCallback<TState> =
 ///
 /// If omitted, [RealtimeStreamFeeder.updateState] simply replaces the active
 /// `TState` reference with `newState`.
+@experimental
 typedef RealtimeStateUpdateCallback<TState> =
     void Function(TState currentState, TState newState);
 
 /// Optional callback invoked inside the feeder whenever
 /// [RealtimeStreamFeeder.sendMessage] is called from the UI thread.
+@experimental
 typedef RealtimeMessageCallback<TState> =
     void Function(TState currentState, Object? message);
 
@@ -101,9 +107,11 @@ typedef RealtimeMessageCallback<TState> =
 ///
 /// Always call [dispose] when the buffer is no longer needed to release the
 /// underlying native/WASM allocation.
+@experimental
 final class RealtimeNativeBuffer {
   /// Allocates a native/WASM buffer capable of holding [maxFrames] multi-channel
   /// frames of 32-bit float (or 16-bit integer) PCM audio.
+  @experimental
   factory RealtimeNativeBuffer({
     required int maxFrames,
     required Channels channels,
@@ -195,8 +203,10 @@ final class RealtimeNativeBuffer {
 /// mutex contention on the audio thread, and can splice newly pushed samples
 /// directly into the currently playing mixer window when `renderAheadFrames`
 /// is enabled in `SoLoud.instance.init(...)`.
+@experimental
 final class RealtimeStreamHandle {
   /// Creates a [RealtimeStreamHandle] wrapping an [AudioSource].
+  @experimental
   RealtimeStreamHandle({
     required this.source,
     required this.sampleRate,
@@ -209,6 +219,7 @@ final class RealtimeStreamHandle {
 
   /// Reconstructs a lightweight [RealtimeStreamHandle] from a [soundHash]
   /// (useful when feeding the stream from a background Dart Isolate).
+  @experimental
   RealtimeStreamHandle.fromHash({
     required this.soundHash,
     required this.sampleRate,
@@ -678,6 +689,7 @@ final class RealtimeStreamHandle {
 /// `SoLoudIsolate.attachRealtimeStream`, [RealtimeNativeBuffer] lifecycle, and
 /// watermark polling boilerplate while keeping the exact same code working on
 /// both Native and Web.
+@experimental
 final class RealtimeStreamFeeder<TState> {
   RealtimeStreamFeeder._({
     required this.stream,

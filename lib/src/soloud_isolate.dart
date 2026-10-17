@@ -184,6 +184,7 @@ class SoLoudIsolate {
   /// Pass the [soundHash] (and optionally [activeHandle]) sent across an
   /// `Isolate` port so the worker isolate can push PCM frames directly into
   /// the lock-free C++ ring buffer without bouncing through the main isolate.
+  @experimental
   RealtimeStreamHandle attachRealtimeStream({
     required SoundHash soundHash,
     int sampleRate = 48000,
@@ -204,6 +205,7 @@ class SoLoudIsolate {
 
   /// Allocates a persistent [RealtimeNativeBuffer] in native/WASM memory for
   /// zero-GC real-time stream pushes inside a worker isolate.
+  @experimental
   RealtimeNativeBuffer allocateRealtimeNativeBuffer({
     required int maxFrames,
     Channels channels = Channels.stereo,
@@ -211,6 +213,7 @@ class SoLoudIsolate {
 
   /// Pushes Float32 PCM samples directly into the real-time stream identified
   /// by [soundHash] from a worker isolate.
+  @experimental
   int pushRealtimeFloat32(
     SoundHash soundHash,
     Float32List samples,
@@ -225,6 +228,7 @@ class SoLoudIsolate {
 
   /// Pushes Int16 PCM samples directly into the real-time stream identified
   /// by [soundHash] from a worker isolate.
+  @experimental
   int pushRealtimeInt16(
     SoundHash soundHash,
     Int16List samples,
@@ -239,16 +243,19 @@ class SoLoudIsolate {
 
   /// Returns the number of unread frames currently queued in the real-time
   /// stream identified by [soundHash].
+  @experimental
   int getRealtimeAvailableToRead(SoundHash soundHash) =>
       bindings.getRealtimeAvailableToRead(soundHash.hash);
 
   /// Returns the number of free frames currently available to write in the
   /// real-time stream identified by [soundHash].
+  @experimental
   int getRealtimeAvailableToWrite(SoundHash soundHash) =>
       bindings.getRealtimeAvailableToWrite(soundHash.hash);
 
   /// Returns the underrun count of the real-time stream identified by
   /// [soundHash].
+  @experimental
   int getRealtimeUnderrunCount(SoundHash soundHash) =>
       bindings.getRealtimeUnderrunCount(soundHash.hash);
 }

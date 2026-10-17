@@ -12,8 +12,10 @@ import 'package:flutter_soloud/src/exceptions/exceptions.dart';
 import 'package:flutter_soloud/src/filters/custom_filter.dart';
 import 'package:flutter_soloud/src/soloud.dart';
 import 'package:flutter_soloud/src/sound_handle.dart';
+import 'package:meta/meta.dart';
 
 /// Metadata for a sub-plugin class discovered inside a `.vst3` bundle.
+@experimental
 @immutable
 class Vst3ClassInfo {
   /// Creates a [Vst3ClassInfo] descriptor.
@@ -45,6 +47,7 @@ class Vst3ClassInfo {
 }
 
 /// Metadata for an individual VST3 parameter discovered at runtime.
+@experimental
 @immutable
 class Vst3ParamInfo {
   /// Creates a [Vst3ParamInfo] descriptor.
@@ -89,6 +92,7 @@ class Vst3ParamInfo {
 }
 
 /// Event emitted when the user adjusts a knob in the native VST3 editor GUI.
+@experimental
 @immutable
 class Vst3ParamEditEvent {
   /// Creates a [Vst3ParamEditEvent].
@@ -140,17 +144,21 @@ void _ensureGuiEditCallbackRegistered() {
 ///
 /// Requires `enable_vst3: true` under `hooks.user_defines.flutter_soloud` in
 /// the application's `pubspec.yaml`.
+@experimental
 class Vst3Host {
   /// Creates a [Vst3Host] instance.
+  @experimental
   Vst3Host();
 
   /// Whether VST3 hosting is compiled and supported on the current platform.
+  @experimental
   bool get isSupported => ffigen.soloud_vst3IsSupported() != 0;
 
   /// Standard OS directories where `.vst3` bundles are installed:
   /// - **macOS**: `/Library/Audio/Plug-Ins/VST3`, `~/Library/Audio/Plug-Ins/VST3`
   /// - **Windows**: `C:\Program Files\Common Files\VST3`
   /// - **Linux**: `/usr/lib/vst3`, `/usr/local/lib/vst3`, `~/.vst3`
+  @experimental
   List<String> get standardSearchPaths {
     if (Platform.isMacOS) {
       final home = Platform.environment['HOME'];
@@ -176,6 +184,7 @@ class Vst3Host {
   }
 
   /// Scans a `.vst3` bundle and returns all audio plugin classes inside it.
+  @experimental
   List<Vst3ClassInfo> scanBundle(String bundlePath) {
     if (!isSupported) return const [];
     final pathPtr = bundlePath.toNativeUtf8().cast<ffi.Char>();
@@ -228,6 +237,7 @@ class Vst3Host {
 
   /// Loads a VST3 **Audio Effect (`Fx`)** and attaches it to [slot]
   /// (`CustomFilterSlot` `0..7` on Global or Bus filters).
+  @experimental
   Vst3EffectPlugin loadEffect({
     required String bundlePath,
     required CustomFilterSlot slot,
@@ -268,6 +278,7 @@ class Vst3Host {
 
   /// Loads a VST3 **Virtual Instrument (`Instrument|Synth`)** and wraps it in
   /// a playable SoLoud [AudioSource] via [SoLoud.createCustomAudioSource].
+  @experimental
   Vst3InstrumentPlugin loadInstrument({
     required String bundlePath,
     String? classUid,
@@ -344,6 +355,7 @@ class Vst3Host {
 }
 
 /// Base class for a loaded VST3 plugin instance (shared by effects & synths).
+@experimental
 abstract class Vst3PluginBase {
   Vst3PluginBase._(this.pluginHandle)
     : _parameters = _queryParameters(pluginHandle);
@@ -585,6 +597,7 @@ abstract class Vst3PluginBase {
 }
 
 /// A loaded VST3 Audio Effect bound to a [CustomFilterSlot] (`0..7`).
+@experimental
 class Vst3EffectPlugin extends Vst3PluginBase {
   Vst3EffectPlugin._({required int pluginHandle, required this.slot})
     : super._(pluginHandle);
@@ -595,6 +608,7 @@ class Vst3EffectPlugin extends Vst3PluginBase {
   /// Maps a [CustomFilterSlot] parameter index (`1..7`) to a VST3 [vst3ParamId]
   /// so you can call `.fadeFilterParameter()` and `.oscillateFilterParameter()`
   /// on the returned [CustomFilterParam].
+  @experimental
   CustomFilterParam mapToSlotParameter({
     required int slotParamIndex,
     required int vst3ParamId,
@@ -642,6 +656,7 @@ class Vst3EffectPlugin extends Vst3PluginBase {
 }
 
 /// A loaded VST3 Virtual Instrument wrapped in a playable SoLoud [AudioSource].
+@experimental
 class Vst3InstrumentPlugin extends Vst3PluginBase {
   Vst3InstrumentPlugin._({required int pluginHandle, required this.audioSource})
     : super._(pluginHandle);
@@ -651,6 +666,7 @@ class Vst3InstrumentPlugin extends Vst3PluginBase {
   final AudioSource audioSource;
 
   /// Sends a real-time MIDI Note-On event to the VST3 instrument.
+  @experimental
   void noteOn({
     required int pitch,
     double velocity = 0.8,
@@ -673,6 +689,7 @@ class Vst3InstrumentPlugin extends Vst3PluginBase {
   }
 
   /// Sends a real-time MIDI Note-Off event to the VST3 instrument.
+  @experimental
   void noteOff({
     required int pitch,
     double velocity = 0.0,

@@ -1,3 +1,5 @@
+// ignore_for_file: experimental_member_use
+
 import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
@@ -24,7 +26,7 @@ import 'package:flutter_soloud/flutter_soloud.dart';
 /// `hooks.user_defines.flutter_soloud` in the app's `pubspec.yaml`.
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await SoLoud.instance.init();
+  await SoLoud.instance.init(sampleRate: 48000, bufferSize: 256);
   runApp(const MaterialApp(home: Vst3PluginRackExample()));
 }
 
@@ -460,8 +462,9 @@ class _Vst3PluginRackExampleState extends State<Vst3PluginRackExample> {
                             (67, 'G4'),
                             (72, 'C5'),
                           ])
-                            GestureDetector(
-                              onTapDown: (_) {
+                            Listener(
+                              behavior: HitTestBehavior.opaque,
+                              onPointerDown: (_) {
                                 if (!_latchedPitches.contains(note.$1)) {
                                   _loadedSynth!.noteOn(
                                     pitch: note.$1,
@@ -479,12 +482,12 @@ class _Vst3PluginRackExampleState extends State<Vst3PluginRackExample> {
                                   });
                                 }
                               },
-                              onTapUp: (_) {
+                              onPointerUp: (_) {
                                 if (!_latchNotes) {
                                   _loadedSynth!.noteOff(pitch: note.$1);
                                 }
                               },
-                              onTapCancel: () {
+                              onPointerCancel: (_) {
                                 if (!_latchNotes) {
                                   _loadedSynth!.noteOff(pitch: note.$1);
                                 }

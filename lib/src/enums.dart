@@ -492,6 +492,7 @@ enum BufferType {
 
   /// 32-bit floating point, little-endian, planar (contiguous channel0, then
   /// channel1, ...).
+  @experimental
   f32lePlanar(5);
 
   /// The integer value of the PCM type.

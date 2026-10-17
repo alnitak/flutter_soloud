@@ -22,6 +22,7 @@ import 'package:flutter_soloud/src/soloud.dart';
 import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
 import 'package:logging/logging.dart';
+import 'package:meta/meta.dart';
 
 /// This class serves as a base for all audio filter methods.
 abstract class FilterBase {
@@ -235,10 +236,12 @@ final class FiltersSingle {
   ///
   /// Up to [CustomFilterSlot.maxSlots] (8) independent custom filters can be
   /// chained on the same scope.
+  @experimental
   CustomFilterSingle customFilter(int slotIndex) =>
       CustomFilterSingle(slotIndex, soundHash, busId);
 
   /// All 8 [CustomFilterSingle] slots (`0..7`) available on this sound or bus.
+  @experimental
   List<CustomFilterSingle> get customFilters =>
       List<CustomFilterSingle>.generate(
         CustomFilterSlot.maxSlots,
@@ -404,10 +407,12 @@ final class FiltersGlobal {
   ///
   /// Up to [CustomFilterSlot.maxSlots] (8) independent custom filters can be
   /// chained globally.
+  @experimental
   CustomFilterGlobal customFilter(int slotIndex) =>
       CustomFilterGlobal(slotIndex);
 
   /// All 8 [CustomFilterGlobal] slots (`0..7`) available on the global mixer.
+  @experimental
   List<CustomFilterGlobal> get customFilters =>
       List<CustomFilterGlobal>.generate(
         CustomFilterSlot.maxSlots,
@@ -585,6 +590,7 @@ enum FilterType {
   amplitudeModulatorFilter,
 
   /// A user-programmable custom DSP filter.
+  @experimental
   customFilter;
 
   @override

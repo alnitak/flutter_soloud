@@ -1816,6 +1816,44 @@ namespace SoLoud
 					}
 				}
 
+				if ((voice->mFlags & AudioSourceInstance::REALTIME_DIRECT) &&
+					step_fixed == FIXPOINT_FRAC_MUL &&
+					voice->mLeftoverSamples == 0 &&
+					voice->mSrcOffset == 0 &&
+					outofs < samplesToProduce)
+				{
+					unsigned int directSamples = samplesToProduce - outofs;
+					unsigned int readcount = 0;
+					if (!voice->hasEnded() || (voice->mFlags & AudioSourceInstance::LOOPING))
+					{
+						readcount = readSourceSamples_internal(
+							voice, aScratch + outofs, directSamples, aBufferSize);
+					}
+					if (readcount < directSamples)
+					{
+						unsigned int k;
+						for (k = 0; k < voice->mChannels; k++)
+						{
+							memset(aScratch + outofs + readcount + aBufferSize * k,
+								0, sizeof(float) * (directSamples - readcount));
+						}
+					}
+					for (j = 0; j < FILTERS_PER_STREAM; j++)
+					{
+						if (voice->mFilter[j])
+						{
+							voice->mFilter[j]->filter(
+								aScratch + outofs,
+								directSamples,
+								aBufferSize,
+								voice->mChannels,
+								voice->mSamplerate,
+								mStreamTime);
+						}
+					}
+					outofs = samplesToProduce;
+				}
+
 				while (step_fixed != 0 && outofs < samplesToProduce)
 				{
 					if (voice->mLeftoverSamples == 0)

@@ -452,8 +452,10 @@ class SoLoudFailedToStartPlaybackCppException extends SoLoudCppException {
 }
 
 /// Given hash doesn't belong to a realtime stream.
+@experimental
 class SoLoudHashIsNotARealtimeStreamCppException extends SoLoudCppException {
   /// Creates a new [SoLoudHashIsNotARealtimeStreamCppException].
+  @experimental
   const SoLoudHashIsNotARealtimeStreamCppException([super.message]);
 
   @override

@@ -330,44 +330,57 @@ void Vst3PluginInstance::processAudioEffectBlock(
     }
   }
 
-  // 3. Map SoLoud's non-interleaved planar buffer (aBuffer + ch * aBufferSize)
   const unsigned int numCh = std::min<unsigned int>(aChannels, mMaxChannels);
-  const unsigned int safeSamples =
-      std::min<unsigned int>(aSamples, mMaxBlockSize);
-  for (unsigned int ch = 0; ch < numCh; ++ch) {
-    mInChannelPtrs[ch] = aBuffer + (static_cast<size_t>(ch) * aBufferSize);
-    mOutChannelPtrs[ch] =
-        mScratchOutput.data() + (static_cast<size_t>(ch) * mMaxBlockSize);
-    std::memset(mOutChannelPtrs[ch], 0, safeSamples * sizeof(float));
-  }
+  unsigned int offset = 0;
+  while (offset < aSamples) {
+    const unsigned int chunkSamples =
+        std::min<unsigned int>(aSamples - offset, mMaxBlockSize);
 
-  mInputBusBuffers.numChannels = static_cast<Steinberg::int32>(numCh);
-  mInputBusBuffers.silenceFlags = 0;
-  mInputBusBuffers.channelBuffers32 = mInChannelPtrs.data();
-
-  mOutputBusBuffers.numChannels = static_cast<Steinberg::int32>(numCh);
-  mOutputBusBuffers.silenceFlags = 0;
-  mOutputBusBuffers.channelBuffers32 = mOutChannelPtrs.data();
-
-  // 4. Populate synthetic musical transport context
-  updateProcessContext(safeSamples, aSamplerate, aTime);
-
-  mProcessData.numSamples = static_cast<Steinberg::int32>(safeSamples);
-  mProcessData.inputs = mHasAudioInput ? &mInputBusBuffers : nullptr;
-  mProcessData.numInputs = mHasAudioInput ? 1 : 0;
-  mProcessData.outputs = &mOutputBusBuffers;
-  mProcessData.numOutputs = 1;
-  mProcessData.inputParameterChanges = &mInputParamChanges;
-  mProcessData.outputParameterChanges = &mOutputParamChanges;
-  mProcessData.inputEvents = &mInputEvents;
-  mProcessData.processContext = &mProcessContext;
-
-  // 5. Invoke VST3 real-time audio processor
-  if (mProcessor->process(mProcessData) == Steinberg::kResultOk) {
-    for (unsigned int ch = 0; ch < numCh; ++ch) {
-      std::memcpy(aBuffer + (static_cast<size_t>(ch) * aBufferSize),
-                  mOutChannelPtrs[ch], safeSamples * sizeof(float));
+    if (offset > 0) {
+      mInputParamChanges.clear();
+      mOutputParamChanges.clear();
+      mInputEvents.clear();
     }
+
+    // 3. Map SoLoud's non-interleaved planar buffer (aBuffer + ch * aBufferSize)
+    for (unsigned int ch = 0; ch < numCh; ++ch) {
+      mInChannelPtrs[ch] =
+          aBuffer + (static_cast<size_t>(ch) * aBufferSize) + offset;
+      mOutChannelPtrs[ch] =
+          mScratchOutput.data() + (static_cast<size_t>(ch) * mMaxBlockSize);
+      std::memset(mOutChannelPtrs[ch], 0, chunkSamples * sizeof(float));
+    }
+
+    mInputBusBuffers.numChannels = static_cast<Steinberg::int32>(numCh);
+    mInputBusBuffers.silenceFlags = 0;
+    mInputBusBuffers.channelBuffers32 = mInChannelPtrs.data();
+
+    mOutputBusBuffers.numChannels = static_cast<Steinberg::int32>(numCh);
+    mOutputBusBuffers.silenceFlags = 0;
+    mOutputBusBuffers.channelBuffers32 = mOutChannelPtrs.data();
+
+    // 4. Populate synthetic musical transport context
+    updateProcessContext(chunkSamples, aSamplerate, aTime);
+
+    mProcessData.numSamples = static_cast<Steinberg::int32>(chunkSamples);
+    mProcessData.inputs = mHasAudioInput ? &mInputBusBuffers : nullptr;
+    mProcessData.numInputs = mHasAudioInput ? 1 : 0;
+    mProcessData.outputs = &mOutputBusBuffers;
+    mProcessData.numOutputs = 1;
+    mProcessData.inputParameterChanges = &mInputParamChanges;
+    mProcessData.outputParameterChanges = &mOutputParamChanges;
+    mProcessData.inputEvents = &mInputEvents;
+    mProcessData.processContext = &mProcessContext;
+
+    // 5. Invoke VST3 real-time audio processor
+    if (mProcessor->process(mProcessData) == Steinberg::kResultOk) {
+      for (unsigned int ch = 0; ch < numCh; ++ch) {
+        std::memcpy(
+            aBuffer + (static_cast<size_t>(ch) * aBufferSize) + offset,
+            mOutChannelPtrs[ch], chunkSamples * sizeof(float));
+      }
+    }
+    offset += chunkSamples;
   }
 }
 
@@ -382,7 +395,7 @@ unsigned int Vst3PluginInstance::processInstrumentBlock(
   }
 
   const unsigned int numCh = std::min<unsigned int>(aChannels, mMaxChannels);
-  const unsigned int safeSamples =
+  const unsigned int firstChunkSamples =
       std::min<unsigned int>(aSamplesToRead, mMaxBlockSize);
 
   mInputParamChanges.clear();
@@ -406,7 +419,7 @@ unsigned int Vst3PluginInstance::processInstrumentBlock(
     Steinberg::Vst::Event vstEvent{};
     vstEvent.busIndex = 0;
     vstEvent.sampleOffset = std::clamp<int32_t>(
-        midiEvt.sampleOffset, 0, static_cast<int32_t>(safeSamples) - 1);
+        midiEvt.sampleOffset, 0, static_cast<int32_t>(firstChunkSamples) - 1);
     vstEvent.ppqPosition = mProcessContext.projectTimeMusic;
     vstEvent.flags = Steinberg::Vst::Event::kIsLive;
 
@@ -429,40 +442,54 @@ unsigned int Vst3PluginInstance::processInstrumentBlock(
     mInputEvents.addEvent(vstEvent);
   }
 
-  // 3. Prepare input (silent if instrument still declares an audio input bus)
-  //    and output channel buffers pointing directly into SoLoud's voice buffer
-  for (unsigned int ch = 0; ch < numCh; ++ch) {
-    mInChannelPtrs[ch] =
-        mScratchInput.data() + (static_cast<size_t>(ch) * mMaxBlockSize);
-    std::memset(mInChannelPtrs[ch], 0, safeSamples * sizeof(float));
+  unsigned int offset = 0;
+  while (offset < aSamplesToRead) {
+    const unsigned int chunkSamples =
+        std::min<unsigned int>(aSamplesToRead - offset, mMaxBlockSize);
 
-    mOutChannelPtrs[ch] = aBuffer + (static_cast<size_t>(ch) * aBufferSize);
-    std::memset(mOutChannelPtrs[ch], 0, safeSamples * sizeof(float));
+    if (offset > 0) {
+      mInputParamChanges.clear();
+      mOutputParamChanges.clear();
+      mInputEvents.clear();
+    }
+
+    // 3. Prepare input (silent if instrument still declares an audio input bus)
+    //    and output channel buffers pointing directly into SoLoud's voice buffer
+    for (unsigned int ch = 0; ch < numCh; ++ch) {
+      mInChannelPtrs[ch] =
+          mScratchInput.data() + (static_cast<size_t>(ch) * mMaxBlockSize);
+      std::memset(mInChannelPtrs[ch], 0, chunkSamples * sizeof(float));
+
+      mOutChannelPtrs[ch] =
+          aBuffer + (static_cast<size_t>(ch) * aBufferSize) + offset;
+      std::memset(mOutChannelPtrs[ch], 0, chunkSamples * sizeof(float));
+    }
+
+    mInputBusBuffers.numChannels = static_cast<Steinberg::int32>(numCh);
+    mInputBusBuffers.silenceFlags = (1ULL << numCh) - 1ULL;
+    mInputBusBuffers.channelBuffers32 = mInChannelPtrs.data();
+
+    mOutputBusBuffers.numChannels = static_cast<Steinberg::int32>(numCh);
+    mOutputBusBuffers.silenceFlags = 0;
+    mOutputBusBuffers.channelBuffers32 = mOutChannelPtrs.data();
+
+    // 4. Populate synthetic musical transport context
+    updateProcessContext(chunkSamples, aSamplerate, aStreamTime);
+
+    mProcessData.numSamples = static_cast<Steinberg::int32>(chunkSamples);
+    mProcessData.inputs = mHasAudioInput ? &mInputBusBuffers : nullptr;
+    mProcessData.numInputs = mHasAudioInput ? 1 : 0;
+    mProcessData.outputs = &mOutputBusBuffers;
+    mProcessData.numOutputs = 1;
+    mProcessData.inputParameterChanges = &mInputParamChanges;
+    mProcessData.outputParameterChanges = &mOutputParamChanges;
+    mProcessData.inputEvents = &mInputEvents;
+    mProcessData.processContext = &mProcessContext;
+
+    mProcessor->process(mProcessData);
+    offset += chunkSamples;
   }
-
-  mInputBusBuffers.numChannels = static_cast<Steinberg::int32>(numCh);
-  mInputBusBuffers.silenceFlags = (1ULL << numCh) - 1ULL;
-  mInputBusBuffers.channelBuffers32 = mInChannelPtrs.data();
-
-  mOutputBusBuffers.numChannels = static_cast<Steinberg::int32>(numCh);
-  mOutputBusBuffers.silenceFlags = 0;
-  mOutputBusBuffers.channelBuffers32 = mOutChannelPtrs.data();
-
-  // 4. Populate synthetic musical transport context
-  updateProcessContext(safeSamples, aSamplerate, aStreamTime);
-
-  mProcessData.numSamples = static_cast<Steinberg::int32>(safeSamples);
-  mProcessData.inputs = mHasAudioInput ? &mInputBusBuffers : nullptr;
-  mProcessData.numInputs = mHasAudioInput ? 1 : 0;
-  mProcessData.outputs = &mOutputBusBuffers;
-  mProcessData.numOutputs = 1;
-  mProcessData.inputParameterChanges = &mInputParamChanges;
-  mProcessData.outputParameterChanges = &mOutputParamChanges;
-  mProcessData.inputEvents = &mInputEvents;
-  mProcessData.processContext = &mProcessContext;
-
-  mProcessor->process(mProcessData);
-  return safeSamples;
+  return aSamplesToRead;
 }
 
 int Vst3PluginInstance::getParameterCount() const {

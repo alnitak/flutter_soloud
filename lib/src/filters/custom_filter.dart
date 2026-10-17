@@ -8,6 +8,7 @@ import 'package:flutter_soloud/src/soloud.dart';
 import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
 import 'package:logging/logging.dart';
+import 'package:meta/meta.dart';
 
 /// Parameter definition for a [CustomFilterSlot].
 ///
@@ -15,9 +16,11 @@ import 'package:logging/logging.dart';
 /// which controls the hardcoded 3-branch dry/wet blending and hard bypass
 /// (`wet == 0.0`) inside the C++ audio thread. User-defined parameters occupy
 /// indices `1..7` ([CustomFilterSlot.maxUserParams]).
+@experimental
 @immutable
 class CustomFilterParamSpec {
   /// Creates a custom filter parameter specification.
+  @experimental
   const CustomFilterParamSpec({
     required this.name,
     required this.min,
@@ -46,9 +49,11 @@ class CustomFilterParamSpec {
 ///
 /// Supports reading/writing [value], [fadeFilterParameter], and
 /// [oscillateFilterParameter] on the specific [slotIndex] (`0..7`).
+@experimental
 class CustomFilterParam extends FilterParam {
   /// Creates a parameter handle for custom filter slot [slotIndex] and
   /// parameter [attributeId] (`0..7`).
+  @experimental
   CustomFilterParam(
     this.soundHandle,
     this.busId,
@@ -187,8 +192,10 @@ class CustomFilterParam extends FilterParam {
 /// automatically performs a hard bypass (skipping the DSP callback completely)
 /// when `wet <= 0.0`, passes the buffer in-place with zero copies when
 /// `wet >= 1.0`, and blends the dry/wet signals when `0.0 < wet < 1.0`.
+@experimental
 abstract class CustomFilterSlot extends FilterBase {
   /// Creates a custom filter slot wrapper for [slotIndex] (`0..7`).
+  @experimental
   const CustomFilterSlot(this.slotIndex, SoundHash? soundHash, int? busId)
     : assert(
         slotIndex >= 0 && slotIndex < maxSlots,
@@ -262,6 +269,7 @@ abstract class CustomFilterSlot extends FilterBase {
   ///   `globalThis` that receives `(bufferPtr, samples, bufferStride, channels,
   ///   sampleRate, time, paramsPtr, numParams)`) or a Wasm table function index
   ///   in [callbackAddress].
+  @experimental
   void setNativeCallback({
     int callbackAddress = 0,
     int userdataAddress = 0,
@@ -292,6 +300,7 @@ abstract class CustomFilterSlot extends FilterBase {
   /// Parameter `0` is always `Wet` (`0.0..1.0`, default `1.0`). The first item
   /// in [specs] configures parameter `1`, the second configures parameter `2`,
   /// and so on.
+  @experimental
   void configureParameters(List<CustomFilterParamSpec> specs) {
     if (specs.length > maxUserParams) {
       throw ArgumentError.value(
@@ -325,11 +334,14 @@ abstract class CustomFilterSlot extends FilterBase {
 }
 
 /// Custom filter slot bound to a single `AudioSource` or a mixing `Bus`.
+@experimental
 class CustomFilterSingle extends CustomFilterSlot {
   /// Creates a single-sound or bus custom filter slot (`0..7`).
+  @experimental
   const CustomFilterSingle(super.slotIndex, super.soundHash, super.busId);
 
   /// Parameter `0`: Dry/wet mix (`0.0` = hard bypass, `1.0` = 100% wet).
+  @experimental
   CustomFilterParam wet({SoundHandle? soundHandle}) =>
       CustomFilterParam(soundHandle, busId, slotIndex, 0, 0, 1);
 
@@ -337,6 +349,7 @@ class CustomFilterSingle extends CustomFilterSlot {
   ///
   /// Optional [min] and [max] bounds are used for client-side range validation
   /// when setting `.value`.
+  @experimental
   CustomFilterParam param(
     int paramIndex, {
     SoundHandle? soundHandle,
@@ -353,11 +366,14 @@ class CustomFilterSingle extends CustomFilterSlot {
 }
 
 /// Custom filter slot bound to the global mixer.
+@experimental
 class CustomFilterGlobal extends CustomFilterSlot {
   /// Creates a global custom filter slot (`0..7`).
+  @experimental
   const CustomFilterGlobal(int slotIndex) : super(slotIndex, null, null);
 
   /// Parameter `0`: Dry/wet mix (`0.0` = hard bypass, `1.0` = 100% wet).
+  @experimental
   CustomFilterParam get wet =>
       CustomFilterParam(null, null, slotIndex, 0, 0, 1);
 
@@ -366,6 +382,7 @@ class CustomFilterGlobal extends CustomFilterSlot {
   ///
   /// Optional [min] and [max] bounds are used for client-side range validation
   /// when setting `.value`.
+  @experimental
   CustomFilterParam param(
     int paramIndex, {
     double min = -1e9,

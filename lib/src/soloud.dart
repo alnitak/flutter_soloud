@@ -5087,6 +5087,7 @@ interface class SoLoud {
   ///   samples arrive (default `4096`).
   /// - [autoDispose]: Whether to automatically dispose the source when all
   ///   playing handles finish (default `false`).
+  @experimental
   RealtimeStreamHandle setRealtimeStream({
     int sampleRate = 48000,
     Channels channels = Channels.stereo,
@@ -5162,6 +5163,7 @@ interface class SoLoud {
   ///   inaudible (default `false`).
   /// - [autoDispose]: Whether to dispose the source automatically when all
   ///   voices finish (default `false`).
+  @experimental
   AudioSource createCustomAudioSource({
     int sampleRate = 48000,
     Channels channels = Channels.stereo,

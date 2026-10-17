@@ -14,6 +14,7 @@ namespace SoLoud {
 
 RealtimeStreamInstance::RealtimeStreamInstance(RealtimeStream *aParent)
     : mParent(aParent) {
+  mFlags |= AudioSourceInstance::REALTIME_DIRECT;
   mLastSample.fill(0.0f);
   if (mParent != nullptr) {
     mBaseSamplerate = mParent->mBaseSamplerate;

@@ -20,6 +20,7 @@ struct CustomAudioSourceSnapshot : public SourceStateSnapshot {
 
 CustomAudioSourceInstance::CustomAudioSourceInstance(CustomAudioSource *aParent)
     : mParent(aParent) {
+  mFlags |= AudioSourceInstance::REALTIME_DIRECT;
   if (mParent != nullptr) {
     mBaseSamplerate = mParent->mBaseSamplerate;
     mSamplerate = mBaseSamplerate;
