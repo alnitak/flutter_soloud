@@ -13,6 +13,11 @@
 #include <cmath>
 #include <cstring>
 
+#if defined(__APPLE__)
+#include <dispatch/dispatch.h>
+#include <pthread.h>
+#endif
+
 namespace SoLoud {
 
 namespace {
@@ -109,8 +114,10 @@ bool Vst3PluginInstance::initialize(
               }
             },
             [this, onRestart = std::move(onRestart)](Steinberg::int32 flags) {
-              if ((flags & (Steinberg::Vst::RestartFlags::kReloadComponent |
-                            Steinberg::Vst::RestartFlags::kParamTitlesChanged)) != 0) {
+              constexpr auto kMask =
+                  Steinberg::Vst::RestartFlags::kReloadComponent |
+                  Steinberg::Vst::RestartFlags::kParamTitlesChanged;
+              if ((flags & kMask) != 0) {
                 syncComponentStateToController();
               }
               if (onRestart) {
@@ -147,7 +154,8 @@ bool Vst3PluginInstance::initialize(
   }
 
   // Activate primary audio input/output buses (index 0) and deactivate
-  // auxiliary sidechain/multi-out buses so the plugin knows only bus 0 is active
+  // auxiliary sidechain/multi-out buses so the plugin knows only bus 0 is
+  // active.
   for (int32_t i = 0; i < numAudioInputs; ++i) {
     mComponent->activateBus(Steinberg::Vst::kAudio, Steinberg::Vst::kInput, i,
                             i == 0 ? 1 : 0);
@@ -353,7 +361,8 @@ void Vst3PluginInstance::processAudioEffectBlock(
       mInputEvents.clear();
     }
 
-    // 3. Map SoLoud's non-interleaved planar buffer (aBuffer + ch * aBufferSize)
+    // 3. Map SoLoud's non-interleaved planar buffer
+    //    (aBuffer + ch * aBufferSize)
     for (unsigned int ch = 0; ch < numCh; ++ch) {
       mInChannelPtrs[ch] =
           aBuffer + (static_cast<size_t>(ch) * aBufferSize) + offset;
@@ -464,8 +473,8 @@ unsigned int Vst3PluginInstance::processInstrumentBlock(
       mInputEvents.clear();
     }
 
-    // 3. Prepare input (silent if instrument still declares an audio input bus)
-    //    and output channel buffers pointing directly into SoLoud's voice buffer
+    // 3. Prepare input (silent if instrument declares audio input)
+    //    and output channel buffers pointing into SoLoud's buffer
     for (unsigned int ch = 0; ch < numCh; ++ch) {
       mInChannelPtrs[ch] =
           mScratchInput.data() + (static_cast<size_t>(ch) * mMaxBlockSize);
@@ -628,8 +637,9 @@ bool Vst3PluginInstance::getState(std::vector<uint8_t> &outState) const {
 
   // Also snapshot parameter values from IEditController so plugins that don't
   // implement custom IBStream state still round-trip all parameter values
-  const uint32_t paramCount =
-      mController ? static_cast<uint32_t>(std::max(0, mController->getParameterCount())) : 0;
+  const uint32_t paramCount = mController
+      ? static_cast<uint32_t>(std::max(0, mController->getParameterCount()))
+      : 0;
 
   const size_t headerSize = 4 * sizeof(uint32_t);
   const size_t paramBlockSize =
@@ -746,9 +756,23 @@ bool Vst3PluginInstance::hasEditor() const {
   if (!mController) {
     return false;
   }
+#if defined(__APPLE__)
+  __block Steinberg::IPtr<Steinberg::IPlugView> view;
+  void (^checkBlock)(void) = ^{
+    view = Steinberg::owned(
+        mController->createView(Steinberg::Vst::ViewType::kEditor));
+  };
+  if (pthread_main_np() != 0) {
+    checkBlock();
+  } else {
+    dispatch_sync(dispatch_get_main_queue(), checkBlock);
+  }
+  return view != nullptr;
+#else
   Steinberg::IPtr<Steinberg::IPlugView> view = Steinberg::owned(
       mController->createView(Steinberg::Vst::ViewType::kEditor));
   return view != nullptr;
+#endif
 }
 
 bool Vst3PluginInstance::openEditor(const char *windowTitle) {
@@ -759,8 +783,21 @@ bool Vst3PluginInstance::openEditor(const char *windowTitle) {
     return true;
   }
 
+#if defined(__APPLE__)
+  __block Steinberg::IPtr<Steinberg::IPlugView> view;
+  void (^createBlock)(void) = ^{
+    view = Steinberg::owned(
+        mController->createView(Steinberg::Vst::ViewType::kEditor));
+  };
+  if (pthread_main_np() != 0) {
+    createBlock();
+  } else {
+    dispatch_sync(dispatch_get_main_queue(), createBlock);
+  }
+#else
   Steinberg::IPtr<Steinberg::IPlugView> view = Steinberg::owned(
       mController->createView(Steinberg::Vst::ViewType::kEditor));
+#endif
   if (!view) {
     return false;
   }
@@ -947,7 +984,7 @@ void Vst3HostManager::unloadAll() {
     modulesToUnload.swap(mLoadedModules);
   }
   // 1. Shutdown all active plugin instances: close editors, stop processing,
-  //    deactivate, and terminate components/controllers before modules are released.
+  //    deactivate, and terminate components/controllers before modules unload.
   for (auto &kv : toUnload) {
     if (kv.second) {
       kv.second->shutdown();
@@ -1015,7 +1052,8 @@ unsigned int vst3SourceDspCallback(float *aBuffer, unsigned int aSamplesToRead,
     *aOutHasEnded = 0;
   }
   return plugin->processInstrumentBlock(
-      aBuffer, aSamplesToRead, aBufferSize, aChannels, aSamplerate, aStreamTime);
+      aBuffer, aSamplesToRead, aBufferSize, aChannels, aSamplerate,
+      aStreamTime);
 }
 
 } // extern "C"

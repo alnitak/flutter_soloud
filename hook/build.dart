@@ -256,7 +256,10 @@ void main(List<String> args) async {
               'AudioToolbox',
               'AVFAudio',
               'CoreAudio',
-              if (enableVst3 && os == OS.macOS) 'AppKit',
+              if (enableVst3 && os == OS.macOS) ...[
+                'AppKit',
+                'QuartzCore',
+              ],
             ]
           : const [],
       libraries: [
