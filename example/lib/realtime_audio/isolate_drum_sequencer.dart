@@ -9,7 +9,7 @@ import 'package:flutter_soloud/flutter_soloud.dart';
 ///
 /// Demonstrates:
 /// - Synthesizing a 4-track 16-step drum machine using
-///   `RealtimeStreamHandle.startFeeder`
+///   `RealtimeStreamHandle.startFloat32Feeder`
 ///   (`RealtimeStreamFeeder<DrumSynthState>`), which automatically runs in a
 ///   background Dart `Isolate` on native platforms and seamlessly falls back to
 ///   a zero-GC timer loop on Web.

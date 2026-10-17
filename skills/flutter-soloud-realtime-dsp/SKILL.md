@@ -1,14 +1,14 @@
 ---
 name: flutter-soloud-realtime-dsp
 version: 1
-description: Teaches how to use flutter_soloud's real-time audio mixer injection and synchronous custom DSP callbacks: setRealtimeStream (lock-free SPSC ring buffer with instantaneous retroactive mixer injection, pushFloat32, pushInt16, pushClockedFloat32, pushScheduledFloat32, startFeeder, RealtimeStreamFeeder, RealtimeNativeBuffer), createCustomAudioSource (zero-latency C/Wasm/JS audio generator), and customFilter(id) (up to 8 multi-instance custom DSP filter slots per scope with 16 modulatable params and automatic wet/dry bypass). Use when the user asks to feed low-latency live PCM directly into the mixer, build a custom synthesizer or drum machine, write custom audio DSP effects or generators, host native C++/Rust/FAUST/Cmajor/VST DSP blocks, or process audio in a background Dart Isolate.
+description: Teaches how to use flutter_soloud's real-time audio mixer injection and synchronous custom DSP callbacks: setRealtimeStream (lock-free SPSC ring buffer with instantaneous retroactive mixer injection, pushFloat32, pushInt16, pushClockedFloat32, pushScheduledFloat32, startFloat32Feeder, RealtimeStreamFeeder, RealtimeNativeBuffer), createCustomAudioSource (zero-latency C/Wasm/JS audio generator), and customFilter(id) (up to 8 multi-instance custom DSP filter slots per scope with 16 modulatable params and automatic wet/dry bypass). Use when the user asks to feed low-latency live PCM directly into the mixer, build a custom synthesizer or drum machine, write custom audio DSP effects or generators, host native C++/Rust/FAUST/Cmajor/VST DSP blocks, or process audio in a background Dart Isolate.
 ---
 
 # Real-Time Audio Mixer Injection & Custom Synchronous DSP in flutter_soloud
 
 `flutter_soloud` provides two mechanisms for real-time audio synthesis and custom DSP effects across all 6 platforms (Linux, macOS, Windows, Android, iOS, and Web):
 
-1. **`RealtimeStreamHandle` (`SoLoud.instance.setRealtimeStream`)** — Lock-free Single-Producer Single-Consumer (SPSC) planar float ring buffer with **instantaneous retroactive mixer injection** into the currently playing hardware buffer window (`mRenderRing`), sub-buffer sample-offset scheduling (`pushClockedFloat32`, `pushScheduledFloat32`), and managed cross-platform Isolate/Web feeding (`stream.startFeeder<TState>` / `RealtimeStreamFeeder`).
+1. **`RealtimeStreamHandle` (`SoLoud.instance.setRealtimeStream`)** — Lock-free Single-Producer Single-Consumer (SPSC) planar float ring buffer with **instantaneous retroactive mixer injection** into the currently playing hardware buffer window (`mRenderRing`), sub-buffer sample-offset scheduling (`pushClockedFloat32`, `pushScheduledFloat32`), and managed cross-platform Isolate/Web feeding (`stream.startFloat32Feeder<TState>` / `RealtimeStreamFeeder`).
 2. **`CustomAudioSource` & `CustomFilterSlot` (`createCustomAudioSource` & `filters.customFilter(id)`)** — Zero-latency synchronous callbacks invoked directly inside SoLoud's audio thread (or Web AudioWorklet via Emscripten `EM_ASM` / Wasm function table) for custom generators and effects, supporting up to 8 independent `CustomFilterSlot` instances per scope (Global, Bus, or Single Sound).
 
 ## Choosing Between `setBufferStream`, `setRealtimeStream`, and `createCustomAudioSource`
@@ -16,7 +16,7 @@ description: Teaches how to use flutter_soloud's real-time audio mixer injection
 | Use Case | Recommended API | Why |
 |---|---|---|
 | Internet radio, HTTP/WebSocket chunks, MP3/OGG/FLAC/AAC/Opus decoding | `setBufferStream` | Dynamic buffer growth, format auto-detection, ICY metadata, automatic pause/resume on underrun |
-| Interactive Dart synthesizers, live microphone FX, VoIP, MIDI instruments, drum machines | `setRealtimeStream` | Fixed pre-allocated lock-free ring buffer, instantaneous retroactive injection into the active hardware window, `stream.startFeeder` zero-GC Isolate/Web support |
+| Interactive Dart synthesizers, live microphone FX, VoIP, MIDI instruments, drum machines | `setRealtimeStream` | Fixed pre-allocated lock-free ring buffer, instantaneous retroactive injection into the active hardware window, `stream.startFloat32Feeder` zero-GC Isolate/Web support |
 | Sample-accurate oscillators, physical modeling, custom DSP filters, C++/Rust/Wasm/JS DSP | `createCustomAudioSource` / `filters.customFilter(id)` | Zero ring-buffer latency; runs synchronously inside the audio thread callback |
 
 ---
@@ -65,12 +65,12 @@ Like `playClocked` and `playScheduled`, `RealtimeStreamHandle` can offset or sch
 - `stream.pushScheduledFloat32(Duration atTime, Float32List samples)` — Schedules consumption of the pushed frames at an exact engine time (`SoLoud.instance.getPlayheadTime()`).
 - `stream.pushNativeFloat32(RealtimeNativeBuffer buffer, int frameCount)` — Zero-copy push from a pre-allocated native/WASM buffer.
 
-### Managed Background Isolate & Web Feeding (`stream.startFeeder`)
+### Managed Background Isolate & Web Feeding (`stream.startFloat32Feeder`)
 
-Use `stream.startFeeder<TState>(...)` (or `stream.startInt16Feeder<TState>(...)`) to automatically run your top-level synthesis function inside a dedicated background Dart `Isolate` on native platforms and automatically fall back to a zero-GC timer loop on Web (`kIsWeb`), without writing any `Isolate.spawn`, `ReceivePort`/`SendPort`, or `RealtimeNativeBuffer` boilerplate:
+Use `stream.startFloat32Feeder<TState>(...)` (or `stream.startInt16Feeder<TState>(...)`) to automatically run your top-level synthesis function inside a dedicated background Dart `Isolate` on native platforms and automatically fall back to a zero-GC timer loop on Web (`kIsWeb`), without writing any `Isolate.spawn`, `ReceivePort`/`SendPort`, or `RealtimeNativeBuffer` boilerplate:
 
 ```dart
-final feeder = await stream.startFeeder<SynthState>(
+final feeder = await stream.startFloat32Feeder<SynthState>(
   initialState: SynthState(running: true, frequency: 440),
   onFeed: _generateChunk, // Top-level or static function
   onStateUpdate: _updateState,

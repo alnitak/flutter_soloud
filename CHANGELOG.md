@@ -1,3 +1,9 @@
+##### 5.3.0 (XX Xxx 2026)
+- feat: real-time PCM audio streaming (`setRealtimeStream`) with lock-free SPSC ring buffer, retroactive mixer injection, and managed background Isolate/Web feeding
+- feat: procedural custom audio sources (`createCustomAudioSource`) with synchronous native (C/C++/Rust) and Web (JS/Wasm) generation callbacks
+- feat: custom DSP filters (`customFilter`) supporting up to 8 slots per scope with modulatable parameters and native/Web callbacks
+- example: added real-time PCM synth, isolate drum sequencer, and custom DSP workbench examples
+
 ##### 5.2.1 (13 Oct 2026)
 - fix android: harden native AAC/M4A MediaCodec decoding against buffer overruns, descriptor leaks, and stalls, and fail pending loads on deinit. Thanks to @Colton127 #584
 - perf & fix: direct file decoding for M4A/MP4 across desktop/mobile platforms, guarantee Android sandbox TMPDIR, and improve Windows/Linux error checks #585

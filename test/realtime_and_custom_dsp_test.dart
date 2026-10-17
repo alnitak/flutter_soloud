@@ -18,7 +18,7 @@ void main() {
     });
 
     test('FilterType.customFilter has expected paramcount and index', () {
-      expect(FilterType.customFilter.index, 12);
+      expect(FilterType.customFilter.index, 13);
       expect(FilterType.customFilter.numParameters, 8);
       expect(FilterType.customFilter.toString(), 'Custom Filter');
     });
@@ -34,7 +34,7 @@ void main() {
         PlayerErrors.hashIsNotARealtimeStream,
       );
       expect(ex, isA<SoLoudHashIsNotARealtimeStreamCppException>());
-      expect(ex.description, contains('setRealtimeStream'));
+      expect(ex.description, contains('realtime stream'));
     });
   });
 }

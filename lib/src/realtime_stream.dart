@@ -13,8 +13,7 @@ import 'package:flutter_soloud/src/sound_hash.dart';
 const bool _kIsWeb = bool.fromEnvironment('dart.library.js_interop');
 
 /// Signature for a real-time 32-bit float PCM generator callback used by
-/// [RealtimeStreamFeeder], [RealtimeStreamHandle.startFloat32Feeder], and
-/// [RealtimeStreamHandle.startFeeder].
+/// [RealtimeStreamFeeder], [RealtimeStreamHandle.startFloat32Feeder].
 ///
 /// When `useIsolate: true` (the default on native platforms), this must be a
 /// **top-level or static function** so it can be sent to the worker isolate.
@@ -335,33 +334,6 @@ final class RealtimeStreamHandle {
     return feeder;
   }
 
-  /// Alias for [startFloat32Feeder].
-  ///
-  /// Starts a managed real-time 32-bit float PCM feeder for this stream.
-  /// See [startFloat32Feeder] and [startInt16Feeder] for full parameter
-  /// details.
-  Future<RealtimeStreamFeeder<TState>> startFeeder<TState>({
-    required TState initialState,
-    required RealtimeFloat32FeedCallback<TState> onFeed,
-    RealtimeStateUpdateCallback<TState>? onStateUpdate,
-    RealtimeMessageCallback<TState>? onMessage,
-    void Function(Object? event)? onUiEvent,
-    int chunkFrames = 480,
-    int? targetBufferedFrames,
-    Duration tickInterval = const Duration(milliseconds: 5),
-    bool useIsolate = true,
-  }) => startFloat32Feeder<TState>(
-    initialState: initialState,
-    onFeed: onFeed,
-    onStateUpdate: onStateUpdate,
-    onMessage: onMessage,
-    onUiEvent: onUiEvent,
-    chunkFrames: chunkFrames,
-    targetBufferedFrames: targetBufferedFrames,
-    tickInterval: tickInterval,
-    useIsolate: useIsolate,
-  );
-
   /// Starts a managed real-time 16-bit signed integer PCM feeder for this
   /// stream.
   ///
@@ -608,8 +580,9 @@ final class RealtimeStreamHandle {
     if (buffer.isDisposed) {
       throw StateError('RealtimeNativeBuffer has already been disposed.');
     }
-    final clampedFrames =
-        frameCount > buffer.maxFrames ? buffer.maxFrames : frameCount;
+    final clampedFrames = frameCount > buffer.maxFrames
+        ? buffer.maxFrames
+        : frameCount;
     if (clampedFrames <= 0) return 0;
     final handleId = (voiceHandle ?? activeHandle)?.id ?? 0;
     return SoLoudController().soLoudFFI.pushRealtimeFloat32Address(
@@ -630,8 +603,9 @@ final class RealtimeStreamHandle {
     if (buffer.isDisposed) {
       throw StateError('RealtimeNativeBuffer has already been disposed.');
     }
-    final clampedFrames =
-        frameCount > buffer.maxFrames ? buffer.maxFrames : frameCount;
+    final clampedFrames = frameCount > buffer.maxFrames
+        ? buffer.maxFrames
+        : frameCount;
     if (clampedFrames <= 0) return 0;
     final handleId = (voiceHandle ?? activeHandle)?.id ?? 0;
     return SoLoudController().soLoudFFI.pushRealtimeInt16Address(
@@ -653,8 +627,9 @@ final class RealtimeStreamHandle {
     if (buffer.isDisposed) {
       throw StateError('RealtimeNativeBuffer has already been disposed.');
     }
-    final clampedFrames =
-        frameCount > buffer.maxFrames ? buffer.maxFrames : frameCount;
+    final clampedFrames = frameCount > buffer.maxFrames
+        ? buffer.maxFrames
+        : frameCount;
     if (clampedFrames <= 0) return 0;
     final handleId = (voiceHandle ?? activeHandle)?.id ?? 0;
     return SoLoudController().soLoudFFI.pushRealtimeClockedFloat32Address(
@@ -677,8 +652,9 @@ final class RealtimeStreamHandle {
     if (buffer.isDisposed) {
       throw StateError('RealtimeNativeBuffer has already been disposed.');
     }
-    final clampedFrames =
-        frameCount > buffer.maxFrames ? buffer.maxFrames : frameCount;
+    final clampedFrames = frameCount > buffer.maxFrames
+        ? buffer.maxFrames
+        : frameCount;
     if (clampedFrames <= 0) return 0;
     final handleId = (voiceHandle ?? activeHandle)?.id ?? 0;
     return SoLoudController().soLoudFFI.pushRealtimeScheduledFloat32Address(
@@ -695,7 +671,7 @@ final class RealtimeStreamHandle {
 /// dedicated background Dart [Isolate] (default on native platforms) or on the
 /// current isolate's event loop (automatic fallback on Web).
 ///
-/// Created via [RealtimeStreamHandle.startFeeder] or
+/// Created via [RealtimeStreamHandle.startFloat32Feeder] or
 /// [RealtimeStreamHandle.startInt16Feeder].
 ///
 /// This helper eliminates all manual `Isolate.spawn`, `ReceivePort`/`SendPort`,
@@ -742,10 +718,11 @@ final class RealtimeStreamFeeder<TState> {
 
   /// Sends an updated [newState] to the feeder.
   ///
-  /// If `onStateUpdate` was provided to [RealtimeStreamHandle.startFeeder],
-  /// `onStateUpdate(currentState, newState)` is invoked inside the feeder so
-  /// internal DSP fields on `currentState` are preserved. Otherwise, the
-  /// feeder's state reference is replaced with [newState].
+  /// If `onStateUpdate` was provided to
+  /// [RealtimeStreamHandle.startFloat32Feeder], `onStateUpdate(currentState,
+  /// newState)` is invoked inside the feeder so internal DSP fields on
+  /// `currentState` are preserved. Otherwise, the feeder's state reference is
+  /// replaced with [newState].
   void updateState(TState newState) {
     if (_isDisposed) return;
     _onUpdateState(newState);
