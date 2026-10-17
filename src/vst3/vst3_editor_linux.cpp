@@ -234,15 +234,36 @@ public:
   Steinberg::tresult PLUGIN_API
   resizeView(Steinberg::IPlugView *view,
              Steinberg::ViewRect *newSize) override {
-    if (view == nullptr || newSize == nullptr || mDisplay == nullptr ||
-        mWindow == 0) {
+    if (view == nullptr || newSize == nullptr || view != mPlugView ||
+        mDisplay == nullptr || mWindow == 0) {
       return Steinberg::kInvalidArgument;
     }
+    if (mInResize.load(std::memory_order_acquire)) {
+      return Steinberg::kResultFalse;
+    }
+    Steinberg::ViewRect r{0, 0, 0, 0};
+    if (view->getSize(&r) != Steinberg::kResultTrue) {
+      return Steinberg::kInternalError;
+    }
+    if (r.left == newSize->left && r.top == newSize->top &&
+        r.right == newSize->right && r.bottom == newSize->bottom) {
+      return Steinberg::kResultTrue;
+    }
+    mInResize.store(true, std::memory_order_release);
     guiSymbols().XResizeWindow(
         mDisplay, mWindow, static_cast<unsigned int>(newSize->getWidth()),
         static_cast<unsigned int>(newSize->getHeight()));
     guiSymbols().XFlush(mDisplay);
-    view->onSize(newSize);
+    mInResize.store(false, std::memory_order_release);
+
+    if (view->getSize(&r) != Steinberg::kResultTrue) {
+      return Steinberg::kInternalError;
+    }
+    if (r.left != newSize->left || r.top != newSize->top ||
+        r.right != newSize->right || r.bottom != newSize->bottom) {
+      view->onSize(newSize);
+    }
+    guiSymbols().XFlush(mDisplay);
     return Steinberg::kResultTrue;
   }
 
@@ -351,6 +372,7 @@ private:
   std::map<Steinberg::Linux::IEventHandler *, FdEntry> mFdSources;
   std::map<Steinberg::Linux::ITimerHandler *, unsigned int> mTimerSources;
   std::atomic<bool> mIsOpen{false};
+  std::atomic<bool> mInResize{false};
 };
 
 std::unique_ptr<Vst3EditorWindow> Vst3EditorWindow::create() {

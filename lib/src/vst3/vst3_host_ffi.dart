@@ -445,6 +445,7 @@ abstract class Vst3PluginBase {
 
   List<Vst3ParamInfo> _parameters;
   StreamSubscription<Vst3RestartComponentEvent>? _restartSub;
+  bool? _hasEditorCached;
   bool _disposed = false;
 
   /// Whether this plugin instance has been disposed.
@@ -646,7 +647,8 @@ abstract class Vst3PluginBase {
 
   /// Whether this plugin provides a custom native GUI editor (`IPlugView`).
   bool get hasEditor =>
-      !_disposed && ffigen.soloud_vst3HasEditor(pluginHandle) != 0;
+      !_disposed &&
+      (_hasEditorCached ??= ffigen.soloud_vst3HasEditor(pluginHandle) != 0);
 
   /// Whether the native GUI editor window is currently open.
   bool get isEditorOpen =>

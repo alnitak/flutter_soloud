@@ -756,6 +756,14 @@ bool Vst3PluginInstance::hasEditor() const {
   if (!mController) {
     return false;
   }
+  if (mEditorWindow && mEditorWindow->isOpen()) {
+    mHasEditorCached.store(1, std::memory_order_release);
+    return true;
+  }
+  const int cached = mHasEditorCached.load(std::memory_order_acquire);
+  if (cached >= 0) {
+    return cached != 0;
+  }
 #if defined(__APPLE__)
   __block Steinberg::IPtr<Steinberg::IPlugView> view;
   void (^checkBlock)(void) = ^{
@@ -767,11 +775,15 @@ bool Vst3PluginInstance::hasEditor() const {
   } else {
     dispatch_sync(dispatch_get_main_queue(), checkBlock);
   }
-  return view != nullptr;
+  const bool result = (view != nullptr);
+  mHasEditorCached.store(result ? 1 : 0, std::memory_order_release);
+  return result;
 #else
   Steinberg::IPtr<Steinberg::IPlugView> view = Steinberg::owned(
       mController->createView(Steinberg::Vst::ViewType::kEditor));
-  return view != nullptr;
+  const bool result = (view != nullptr);
+  mHasEditorCached.store(result ? 1 : 0, std::memory_order_release);
+  return result;
 #endif
 }
 
@@ -799,8 +811,10 @@ bool Vst3PluginInstance::openEditor(const char *windowTitle) {
       mController->createView(Steinberg::Vst::ViewType::kEditor));
 #endif
   if (!view) {
+    mHasEditorCached.store(0, std::memory_order_release);
     return false;
   }
+  mHasEditorCached.store(1, std::memory_order_release);
 
   if (!mEditorWindow) {
     mEditorWindow = Vst3EditorWindow::create();

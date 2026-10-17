@@ -13,6 +13,12 @@
 
 namespace SoLoud {
 
+static inline bool rectEqual(const Steinberg::ViewRect &a,
+                             const Steinberg::ViewRect &b) noexcept {
+  return a.left == b.left && a.top == b.top &&
+         a.right == b.right && a.bottom == b.bottom;
+}
+
 class Vst3EditorWindowWindows final : public Vst3EditorWindow {
 public:
   Vst3EditorWindowWindows() = default;
@@ -63,6 +69,9 @@ public:
       return false;
     }
 
+    ShowWindow(mHwnd, SW_SHOW);
+    UpdateWindow(mHwnd);
+
     mPlugView = plugView;
     mPlugView->setFrame(this);
 
@@ -76,7 +85,7 @@ public:
       return false;
     }
 
-    ShowWindow(mHwnd, SW_SHOW);
+    InvalidateRect(mHwnd, nullptr, FALSE);
     UpdateWindow(mHwnd);
     mIsOpen.store(true, std::memory_order_release);
     return true;
@@ -103,9 +112,22 @@ public:
   Steinberg::tresult PLUGIN_API
   resizeView(Steinberg::IPlugView *view,
              Steinberg::ViewRect *newSize) override {
-    if (view == nullptr || newSize == nullptr || mHwnd == nullptr) {
+    if (view == nullptr || newSize == nullptr || view != mPlugView ||
+        mHwnd == nullptr) {
       return Steinberg::kInvalidArgument;
     }
+    if (mInResize.load(std::memory_order_acquire)) {
+      return Steinberg::kResultFalse;
+    }
+    Steinberg::ViewRect r{0, 0, 0, 0};
+    if (view->getSize(&r) != Steinberg::kResultTrue) {
+      return Steinberg::kInternalError;
+    }
+    if (rectEqual(r, *newSize)) {
+      return Steinberg::kResultTrue;
+    }
+
+    mInResize.store(true, std::memory_order_release);
     DWORD style = static_cast<DWORD>(GetWindowLongW(mHwnd, GWL_STYLE));
     DWORD exStyle = static_cast<DWORD>(GetWindowLongW(mHwnd, GWL_EXSTYLE));
     RECT winRect{0, 0, newSize->getWidth(), newSize->getHeight()};
@@ -113,7 +135,16 @@ public:
     SetWindowPos(mHwnd, nullptr, 0, 0, winRect.right - winRect.left,
                  winRect.bottom - winRect.top,
                  SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
-    view->onSize(newSize);
+    mInResize.store(false, std::memory_order_release);
+
+    if (view->getSize(&r) != Steinberg::kResultTrue) {
+      return Steinberg::kInternalError;
+    }
+    if (!rectEqual(r, *newSize)) {
+      view->onSize(newSize);
+    }
+    InvalidateRect(mHwnd, nullptr, FALSE);
+    UpdateWindow(mHwnd);
     return Steinberg::kResultTrue;
   }
 
@@ -158,10 +189,15 @@ private:
       self->close();
       return 0;
     case WM_SIZE:
-      if (self->mPlugView != nullptr && wParam != SIZE_MINIMIZED) {
+      if (!self->mInResize.load(std::memory_order_acquire) &&
+          self->mPlugView != nullptr && wParam != SIZE_MINIMIZED) {
         Steinberg::ViewRect r{0, 0, static_cast<Steinberg::int32>(LOWORD(lParam)),
                               static_cast<Steinberg::int32>(HIWORD(lParam))};
-        self->mPlugView->onSize(&r);
+        Steinberg::ViewRect r2{0, 0, 0, 0};
+        if (self->mPlugView->getSize(&r2) == Steinberg::kResultTrue &&
+            !rectEqual(r, r2)) {
+          self->mPlugView->onSize(&r);
+        }
       }
       return 0;
     default:
@@ -172,6 +208,7 @@ private:
   Steinberg::IPtr<Steinberg::IPlugView> mPlugView;
   HWND mHwnd = nullptr;
   std::atomic<bool> mIsOpen{false};
+  std::atomic<bool> mInResize{false};
 };
 
 std::unique_ptr<Vst3EditorWindow> Vst3EditorWindow::create() {

@@ -134,6 +134,7 @@ private:
 
   std::atomic<bool> mIsProcessing{false};
   std::atomic<bool> mIsSyncingState{false};
+  mutable std::atomic<int> mHasEditorCached{-1};
   std::mutex mProcessMutex;
 
   // Pre-allocated real-time audio buffers (zero heap allocation in process)

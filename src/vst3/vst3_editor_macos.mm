@@ -23,12 +23,46 @@ class Vst3EditorWindowMacOS;
 - (void)clearOwner;
 @end
 
+@interface NSObject (SoLoudSteinbergCocoaViewSupport)
+- (BOOL)useMetalLayer;
+- (void)setUseMetalLayer:(BOOL)val;
+- (BOOL)isChildWindow;
+- (void)setIsChildWindow:(BOOL)val;
+- (BOOL)isPathBrowserViewRenderView;
+- (void)setIsPathBrowserViewRenderView:(BOOL)val;
+- (void)windowOcclusionStateChanged:(BOOL)occluded;
+@end
+
+#import <QuartzCore/QuartzCore.h>
+
 namespace SoLoud {
 
 static inline bool rectEqual(const Steinberg::ViewRect &a,
                              const Steinberg::ViewRect &b) noexcept {
   return a.left == b.left && a.top == b.top &&
          a.right == b.right && a.bottom == b.bottom;
+}
+
+static void ensurePluginSubviewsVisible(NSView *view) {
+  if (view == nil) {
+    return;
+  }
+  SEL setPathBrowserSel = @selector(setIsPathBrowserViewRenderView:);
+  if ([view respondsToSelector:setPathBrowserSel]) {
+    [view setIsPathBrowserViewRenderView:YES];
+  }
+  SEL occlusionSel = @selector(windowOcclusionStateChanged:);
+  if ([view respondsToSelector:occlusionSel]) {
+    [view windowOcclusionStateChanged:NO];
+  }
+  [view setNeedsDisplay:YES];
+  CALayer *layer = [view layer];
+  if (layer != nil) {
+    [layer setNeedsDisplay];
+  }
+  for (NSView *subview in [view subviews]) {
+    ensurePluginSubviewsVisible(subview);
+  }
 }
 
 class Vst3EditorWindowMacOS final : public Vst3EditorWindow {
@@ -55,20 +89,8 @@ public:
     void (^openBlock)(void) = ^{
       Steinberg::ViewRect rect{0, 0, 800, 600};
       plugView->getSize(&rect);
-      int32_t w = rect.getWidth() > 64 ? rect.getWidth() : 800;
-      int32_t h = rect.getHeight() > 64 ? rect.getHeight() : 600;
-
-      // Special handling for HALion Sonic:
-      // HALion Sonic reports its compact rack size (900x702) from getSize,
-      // but its standard expanded GUI size is 1282x702. Pre-sizing to
-      // 1282x702 before attach lets HALion Sonic initialize directly at
-      // its preferred size stably without mid-init swapchain destruction.
-      if (titleStr.find("HALion") != std::string::npos && w == 900 &&
-          h == 702) {
-        w = 1282;
-        Steinberg::ViewRect targetRect{0, 0, w, h};
-        plugView->onSize(&targetRect);
-      }
+      const int32_t w = rect.getWidth() > 64 ? rect.getWidth() : 800;
+      const int32_t h = rect.getHeight() > 64 ? rect.getHeight() : 600;
 
       NSRect contentRect = NSMakeRect(0, 0, w, h);
 
@@ -82,7 +104,7 @@ public:
       mWindow = [[NSWindow alloc] initWithContentRect:contentRect
                                             styleMask:style
                                               backing:NSBackingStoreBuffered
-                                                defer:YES];
+                                                defer:NO];
       [mWindow setReleasedWhenClosed:NO];
       NSString *nsTitle = [NSString stringWithUTF8String:titleStr.c_str()];
       [mWindow setTitle:(nsTitle != nil ? nsTitle : @"VST3 Plugin")];
@@ -96,6 +118,9 @@ public:
                  name:NSApplicationWillTerminateNotification
                object:nil];
 
+      [mWindow makeKeyAndOrderFront:nil];
+      [NSApp activateIgnoringOtherApps:YES];
+
       mPlugView = plugView;
       mPlugView->setFrame(this);
 
@@ -107,8 +132,8 @@ public:
 #endif
       if (mPlugView->attached(nativeParent, Steinberg::kPlatformTypeNSView) ==
           Steinberg::kResultTrue) {
-        [mWindow makeKeyAndOrderFront:nil];
-        [NSApp activateIgnoringOtherApps:YES];
+        ensurePluginSubviewsVisible(contentView);
+        [mWindow displayIfNeeded];
         mIsOpen.store(true, std::memory_order_release);
         success = true;
       } else {
@@ -233,6 +258,18 @@ public:
     if (!rectEqual(r, *newSize)) {
       view->onSize(newSize);
     }
+
+    void (^refreshBlock)(void) = ^{
+      if (mWindow != nil) {
+        ensurePluginSubviewsVisible([mWindow contentView]);
+        [mWindow displayIfNeeded];
+      }
+    };
+    if ([NSThread isMainThread]) {
+      refreshBlock();
+    } else {
+      dispatch_sync(dispatch_get_main_queue(), refreshBlock);
+    }
     return Steinberg::kResultTrue;
   }
 
@@ -299,6 +336,16 @@ public:
         !rectEqual(r, r2)) {
       mPlugView->onSize(&r);
     }
+    ensurePluginSubviewsVisible(contentView);
+  }
+
+  void onNativeWindowOcclusionChanged() {
+    if (mWindow == nil) {
+      return;
+    }
+    if (([mWindow occlusionState] & NSWindowOcclusionStateVisible) != 0) {
+      ensurePluginSubviewsVisible([mWindow contentView]);
+    }
   }
 
 private:
@@ -354,6 +401,13 @@ std::unique_ptr<Vst3EditorWindow> Vst3EditorWindow::create() {
   (void)notification;
   if (_owner != nullptr) {
     _owner->onNativeWindowDidResize();
+  }
+}
+
+- (void)windowDidChangeOcclusionState:(NSNotification *)notification {
+  (void)notification;
+  if (_owner != nullptr) {
+    _owner->onNativeWindowOcclusionChanged();
   }
 }
 @end
