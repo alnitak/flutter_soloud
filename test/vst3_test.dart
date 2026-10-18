@@ -42,10 +42,13 @@ void main() {
       () async {
         const userReverb =
             '/Volumes/NVME/Users/deimos/Library/Audio/Plug-Ins/VST3/flutter_reverb.vst3';
+        const userEcho =
+            '/Volumes/NVME/Users/deimos/Library/Audio/Plug-Ins/VST3/echo.vst3';
         const systemFx = '/Library/Audio/Plug-Ins/VST3/Surge XT Effects.vst3';
 
         final candidatePaths = [
           if (_bundleExists(userReverb)) userReverb,
+          if (_bundleExists(userEcho)) userEcho,
           if (_bundleExists(systemFx)) systemFx,
         ];
 
@@ -67,6 +70,13 @@ void main() {
 
           expect(effect.pluginHandle, greaterThan(0));
           expect(effect.hasEditor, isA<bool>());
+
+          if (effect.hasEditor) {
+            final opened = effect.openEditorWindow(title: 'Test GUI');
+            expect(opened, isTrue);
+            await Future<void>.delayed(const Duration(milliseconds: 50));
+            effect.closeEditorWindow();
+          }
 
           if (effect.parameters.isNotEmpty) {
             final firstParam = effect.parameters.first;
