@@ -122,7 +122,6 @@ class _Vst3PluginRackExampleState extends State<Vst3PluginRackExample> {
         _soloud.play(synth.audioSource, volume: 0.7);
         _guiSub = synth.onGuiParameterChanged.listen((evt) {
           final disp = synth.getParameterDisplay(evt.paramId);
-          synth.refreshParameters();
           setState(() {
             _statusMessage = 'GUI edited param ${evt.paramId} -> $disp';
           });
@@ -150,7 +149,6 @@ class _Vst3PluginRackExampleState extends State<Vst3PluginRackExample> {
         slot.wet.value = _effectWet;
         _guiSub = effect.onGuiParameterChanged.listen((evt) {
           final disp = effect.getParameterDisplay(evt.paramId);
-          effect.refreshParameters();
           setState(() {
             _statusMessage = 'GUI edited param ${evt.paramId} -> $disp';
           });
@@ -340,7 +338,7 @@ class _Vst3PluginRackExampleState extends State<Vst3PluginRackExample> {
       setState(() => _testToneHandle = null);
       return;
     }
-    _testSound ??= await _soloud.loadAsset('assets/audio/sample-MP3.mp3');
+    _testSound ??= await _soloud.loadAsset('assets/audio/8_bit_mentality.mp3');
     final handle = _soloud.play(_testSound!, volume: 0.4, looping: true);
     setState(() => _testToneHandle = handle);
   }
@@ -532,11 +530,10 @@ class _Vst3PluginRackExampleState extends State<Vst3PluginRackExample> {
                                         color: Colors.deepPurple,
                                       )
                                     : null,
-                                backgroundColor:
-                                    _latchedPitches.contains(note.$1)
-                                        ? Colors.deepPurple
-                                            .withValues(alpha: 0.25)
-                                        : null,
+                                backgroundColor: _latchedPitches
+                                        .contains(note.$1)
+                                    ? Colors.deepPurple.withValues(alpha: 0.25)
+                                    : null,
                                 label: Text(
                                   _latchedPitches.contains(note.$1)
                                       ? 'Playing ${note.$2}'
@@ -610,10 +607,10 @@ class _Vst3PluginRackExampleState extends State<Vst3PluginRackExample> {
                     const Divider(),
                     Builder(
                       builder: (context) {
-                        final displayParams = _showAllParameters ||
-                                plugin.parameters.length <= 24
-                            ? plugin.parameters
-                            : plugin.parameters.take(24).toList();
+                        final displayParams =
+                            _showAllParameters || plugin.parameters.length <= 24
+                                ? plugin.parameters
+                                : plugin.parameters.take(24).toList();
                         return Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -622,12 +619,10 @@ class _Vst3PluginRackExampleState extends State<Vst3PluginRackExample> {
                                 Text(
                                   'Parameters (${displayParams.length} of '
                                   '${plugin.parameters.length}):',
-                                  style:
-                                      Theme.of(context).textTheme.titleSmall,
+                                  style: Theme.of(context).textTheme.titleSmall,
                                 ),
                                 Tooltip(
-                                  message:
-                                      'Synchronize and refresh plugin '
+                                  message: 'Synchronize and refresh plugin '
                                       'parameters',
                                   child: OutlinedButton.icon(
                                     icon: const Icon(Icons.refresh, size: 16),
@@ -638,8 +633,7 @@ class _Vst3PluginRackExampleState extends State<Vst3PluginRackExample> {
                                     onPressed: () {
                                       setState(() {
                                         plugin.refreshParameters();
-                                        _statusMessage =
-                                            'Refreshed parameters '
+                                        _statusMessage = 'Refreshed parameters '
                                             '(${plugin.parameters.length} '
                                             'total)';
                                       });
@@ -704,7 +698,8 @@ class _Vst3PluginRackExampleState extends State<Vst3PluginRackExample> {
                                     child: Text(
                                       '${plugin.getParameterDisplay(
                                         param.paramId,
-                                      )} ${param.units}'.trim(),
+                                      )} ${param.units}'
+                                          .trim(),
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
