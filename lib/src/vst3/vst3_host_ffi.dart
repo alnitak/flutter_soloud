@@ -219,7 +219,7 @@ class Vst3Host {
   /// Standard OS directories where `.vst3` bundles are installed:
   /// - **macOS**: `/Library/Audio/Plug-Ins/VST3`,
   ///   `~/Library/Audio/Plug-Ins/VST3`
-  /// - **Windows**: `C:\Program Files\Common Files\VST3`
+  /// - **Windows**: `%LOCALAPPDATA%\Programs\Common\VST3`
   /// - **Linux**: `/usr/lib/vst3`, `/usr/local/lib/vst3`, `~/.vst3`
   @experimental
   List<String> get standardSearchPaths {
@@ -231,10 +231,14 @@ class Vst3Host {
           '$home/Library/Audio/Plug-Ins/VST3',
       ];
     } else if (Platform.isWindows) {
-      final commonFiles =
-          Platform.environment['CommonProgramFiles'] ??
-          r'C:\Program Files\Common Files';
-      return [r'$commonFiles\VST3'.replaceFirst(r'$commonFiles', commonFiles)];
+      final localAppData = Platform.environment['LOCALAPPDATA'];
+      final userProfile = Platform.environment['USERPROFILE'];
+      final base = (localAppData != null && localAppData.isNotEmpty)
+          ? localAppData
+          : (userProfile != null && userProfile.isNotEmpty)
+              ? '$userProfile\\AppData\\Local'
+              : r'C:\Users\Default\AppData\Local';
+      return ['$base\\Programs\\Common\\VST3'];
     } else if (Platform.isLinux) {
       final home = Platform.environment['HOME'];
       return [

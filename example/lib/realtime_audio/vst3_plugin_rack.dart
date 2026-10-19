@@ -41,9 +41,29 @@ class _Vst3PluginRackExampleState extends State<Vst3PluginRackExample> {
   final SoLoud _soloud = SoLoud.instance;
   final Vst3Host _vstHost = Vst3Host();
   final TextEditingController _pathController = TextEditingController(
-    text: '/Volumes/NVME/Users/deimos/Library/Audio/Plug-Ins/VST3/'
-        'flutter_reverb.vst3',
+    text: _defaultPluginPath,
   );
+
+  static String get _defaultPluginPath {
+    if (Platform.isWindows) {
+      final localApp = Platform.environment['LOCALAPPDATA'];
+      final userProfile = Platform.environment['USERPROFILE'];
+      final base = (localApp != null && localApp.isNotEmpty)
+          ? localApp
+          : (userProfile != null && userProfile.isNotEmpty)
+              ? '$userProfile\\AppData\\Local'
+              : r'C:\Users\Default\AppData\Local';
+      final echoPath = '$base\\Programs\\Common\\VST3\\echo.vst3';
+      if (File(echoPath).existsSync() || Directory(echoPath).existsSync()) {
+        return echoPath;
+      }
+      return '$base\\Programs\\Common\\VST3\\flutter_reverb.vst3';
+    }
+    const echoMac = '/Volumes/NVME/Users/deimos/Library/Audio/Plug-Ins/VST3/echo.vst3';
+    if (Directory(echoMac).existsSync()) return echoMac;
+    return '/Volumes/NVME/Users/deimos/Library/Audio/Plug-Ins/VST3/'
+        'flutter_reverb.vst3';
+  }
 
   Vst3EffectPlugin? _loadedEffect;
   Vst3InstrumentPlugin? _loadedSynth;

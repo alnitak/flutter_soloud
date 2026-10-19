@@ -45,11 +45,22 @@ void main() {
         const userEcho =
             '/Volumes/NVME/Users/deimos/Library/Audio/Plug-Ins/VST3/echo.vst3';
         const systemFx = '/Library/Audio/Plug-Ins/VST3/Surge XT Effects.vst3';
+        const winBuiltReverb =
+            r'c:\workspace\flutter_vst3\vsts\flutter_reverb\build\VST3\Release\flutter_reverb.vst3';
+        const winBuiltEcho =
+            r'c:\workspace\flutter_vst3\vsts\echo\build\VST3\Release\echo.vst3';
+        final localApp = Platform.environment['LOCALAPPDATA'];
+        final winUserReverb = localApp != null
+            ? '$localApp\\Programs\\Common\\VST3\\flutter_reverb.vst3'
+            : '';
 
         final candidatePaths = [
           if (_bundleExists(userReverb)) userReverb,
           if (_bundleExists(userEcho)) userEcho,
           if (_bundleExists(systemFx)) systemFx,
+          if (_bundleExists(winBuiltReverb)) winBuiltReverb,
+          if (_bundleExists(winBuiltEcho)) winBuiltEcho,
+          if (winUserReverb.isNotEmpty && _bundleExists(winUserReverb)) winUserReverb,
         ];
 
         if (candidatePaths.isEmpty || !host.isSupported) {

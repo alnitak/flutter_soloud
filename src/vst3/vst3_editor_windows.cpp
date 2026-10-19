@@ -54,8 +54,8 @@ public:
     std::wstring wideTitle = L"VST3 Plugin";
     if (title != nullptr && title[0] != '\0') {
       int needed = MultiByteToWideChar(CP_UTF8, 0, title, -1, nullptr, 0);
-      if (needed > 0) {
-        wideTitle.resize(static_cast<size_t>(needed));
+      if (needed > 1) {
+        wideTitle.resize(static_cast<size_t>(needed - 1));
         MultiByteToWideChar(CP_UTF8, 0, title, -1, wideTitle.data(), needed);
       }
     }
@@ -218,5 +218,30 @@ std::unique_ptr<Vst3EditorWindow> Vst3EditorWindow::create() {
 void installVst3TerminationObserver() {}
 
 } // namespace SoLoud
+
+#if defined(_MSC_VER)
+// vst3_hosting.lib may reference __std_replace_copy_2 if built with a newer MSVC
+// STL that vectorizes std::replace_copy on wchar_t. On toolsets where the CRT
+// does not yet provide this symbol, provide a fallback via /alternatename.
+extern "C" void __stdcall __std_replace_copy_2_fallback(
+    const void* _First,
+    const void* _Last,
+    void* _Dest,
+    uint16_t _Old_val,
+    uint16_t _New_val) noexcept {
+  const auto* src = static_cast<const uint16_t*>(_First);
+  const auto* end = static_cast<const uint16_t*>(_Last);
+  auto* dst = static_cast<uint16_t*>(_Dest);
+  while (src != end) {
+    const uint16_t val = *src++;
+    *dst++ = (val == _Old_val) ? _New_val : val;
+  }
+}
+#if defined(_M_X64) || defined(_M_ARM64)
+#pragma comment(linker, "/alternatename:__std_replace_copy_2=__std_replace_copy_2_fallback")
+#elif defined(_M_IX86)
+#pragma comment(linker, "/alternatename:__std_replace_copy_2=_std_replace_copy_2_fallback@16")
+#endif
+#endif
 
 #endif // SOLOUD_ENABLE_VST3 && _WIN32
