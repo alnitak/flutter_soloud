@@ -19,6 +19,7 @@ using XDisplay = void;
 using XWindow = unsigned long;
 using XAtom = unsigned long;
 
+using FnXInitThreads = int (*)();
 using FnXOpenDisplay = XDisplay *(*)(const char *);
 using FnXCloseDisplay = int (*)(XDisplay *);
 using FnXDefaultScreen = int (*)(XDisplay *);
@@ -29,6 +30,8 @@ using FnXCreateSimpleWindow = XWindow (*)(XDisplay *, XWindow, int, int,
                                           unsigned long);
 using FnXStoreName = int (*)(XDisplay *, XWindow, const char *);
 using FnXMapWindow = int (*)(XDisplay *, XWindow);
+using FnXMapRaised = int (*)(XDisplay *, XWindow);
+using FnXMapSubwindows = int (*)(XDisplay *, XWindow);
 using FnXUnmapWindow = int (*)(XDisplay *, XWindow);
 using FnXDestroyWindow = int (*)(XDisplay *, XWindow);
 using FnXResizeWindow = int (*)(XDisplay *, XWindow, unsigned int,
@@ -40,21 +43,29 @@ using FnXNextEvent = int (*)(XDisplay *, void *);
 using FnXInternAtom = XAtom (*)(XDisplay *, const char *, int);
 using FnXSetWMProtocols = int (*)(XDisplay *, XWindow, XAtom *, int);
 using FnXSetErrorHandler = int (*)(int (*)(XDisplay *, void *));
+using FnXSync = int (*)(XDisplay *, int);
+using FnXCheckTypedWindowEvent = int (*)(XDisplay *, XWindow, int, void *);
 
 using GSourceFunc = int (*)(void *);
 using GUnixFDSourceFunc = int (*)(int, int, void *);
 using FnGTimeoutAdd = unsigned int (*)(unsigned int, GSourceFunc, void *);
 using FnGUnixFdAdd = unsigned int (*)(int, int, GUnixFDSourceFunc, void *);
 using FnGSourceRemove = int (*)(unsigned int);
+using FnGMainContextIteration = int (*)(void *, int);
 
 using FnGdkErrorTrapPush = void (*)();
 using FnGdkErrorTrapPopIgnored = void (*)();
+using FnGdkDisplayGetDefault = void *(*)();
+using FnGdkX11DisplayGetType = unsigned long (*)();
+using FnGTypeCheckInstanceIsA = int (*)(void *, unsigned long);
+using FnGdkX11DisplayGetXdisplay = XDisplay *(*)(void *);
 
 struct LinuxGuiSymbols {
   void *x11Lib = nullptr;
   void *glibLib = nullptr;
   void *gdkLib = nullptr;
 
+  FnXInitThreads XInitThreads = nullptr;
   FnXOpenDisplay XOpenDisplay = nullptr;
   FnXCloseDisplay XCloseDisplay = nullptr;
   FnXDefaultScreen XDefaultScreen = nullptr;
@@ -62,23 +73,32 @@ struct LinuxGuiSymbols {
   FnXCreateSimpleWindow XCreateSimpleWindow = nullptr;
   FnXStoreName XStoreName = nullptr;
   FnXMapWindow XMapWindow = nullptr;
+  FnXMapRaised XMapRaised = nullptr;
+  FnXMapSubwindows XMapSubwindows = nullptr;
   FnXUnmapWindow XUnmapWindow = nullptr;
   FnXDestroyWindow XDestroyWindow = nullptr;
   FnXResizeWindow XResizeWindow = nullptr;
   FnXFlush XFlush = nullptr;
+  FnXSync XSync = nullptr;
   FnXConnectionNumber XConnectionNumber = nullptr;
   FnXPending XPending = nullptr;
   FnXNextEvent XNextEvent = nullptr;
   FnXInternAtom XInternAtom = nullptr;
   FnXSetWMProtocols XSetWMProtocols = nullptr;
   FnXSetErrorHandler XSetErrorHandler = nullptr;
+  FnXCheckTypedWindowEvent XCheckTypedWindowEvent = nullptr;
 
   FnGTimeoutAdd g_timeout_add = nullptr;
   FnGUnixFdAdd g_unix_fd_add = nullptr;
   FnGSourceRemove g_source_remove = nullptr;
+  FnGMainContextIteration g_main_context_iteration = nullptr;
 
   FnGdkErrorTrapPush gdk_error_trap_push = nullptr;
   FnGdkErrorTrapPopIgnored gdk_error_trap_pop_ignored = nullptr;
+  FnGdkDisplayGetDefault gdk_display_get_default = nullptr;
+  FnGdkX11DisplayGetType gdk_x11_display_get_type = nullptr;
+  FnGTypeCheckInstanceIsA g_type_check_instance_is_a = nullptr;
+  FnGdkX11DisplayGetXdisplay gdk_x11_display_get_xdisplay = nullptr;
 
   bool load() {
     if (x11Lib != nullptr && glibLib != nullptr) {
@@ -100,6 +120,7 @@ struct LinuxGuiSymbols {
       return false;
     }
 
+    XInitThreads = reinterpret_cast<FnXInitThreads>(dlsym(x11Lib, "XInitThreads"));
     XOpenDisplay = reinterpret_cast<FnXOpenDisplay>(dlsym(x11Lib, "XOpenDisplay"));
     XCloseDisplay = reinterpret_cast<FnXCloseDisplay>(dlsym(x11Lib, "XCloseDisplay"));
     XDefaultScreen = reinterpret_cast<FnXDefaultScreen>(dlsym(x11Lib, "XDefaultScreen"));
@@ -108,10 +129,13 @@ struct LinuxGuiSymbols {
         dlsym(x11Lib, "XCreateSimpleWindow"));
     XStoreName = reinterpret_cast<FnXStoreName>(dlsym(x11Lib, "XStoreName"));
     XMapWindow = reinterpret_cast<FnXMapWindow>(dlsym(x11Lib, "XMapWindow"));
+    XMapRaised = reinterpret_cast<FnXMapRaised>(dlsym(x11Lib, "XMapRaised"));
+    XMapSubwindows = reinterpret_cast<FnXMapSubwindows>(dlsym(x11Lib, "XMapSubwindows"));
     XUnmapWindow = reinterpret_cast<FnXUnmapWindow>(dlsym(x11Lib, "XUnmapWindow"));
     XDestroyWindow = reinterpret_cast<FnXDestroyWindow>(dlsym(x11Lib, "XDestroyWindow"));
     XResizeWindow = reinterpret_cast<FnXResizeWindow>(dlsym(x11Lib, "XResizeWindow"));
     XFlush = reinterpret_cast<FnXFlush>(dlsym(x11Lib, "XFlush"));
+    XSync = reinterpret_cast<FnXSync>(dlsym(x11Lib, "XSync"));
     XConnectionNumber =
         reinterpret_cast<FnXConnectionNumber>(dlsym(x11Lib, "XConnectionNumber"));
     XPending = reinterpret_cast<FnXPending>(dlsym(x11Lib, "XPending"));
@@ -121,15 +145,23 @@ struct LinuxGuiSymbols {
         reinterpret_cast<FnXSetWMProtocols>(dlsym(x11Lib, "XSetWMProtocols"));
     XSetErrorHandler =
         reinterpret_cast<FnXSetErrorHandler>(dlsym(x11Lib, "XSetErrorHandler"));
+    XCheckTypedWindowEvent =
+        reinterpret_cast<FnXCheckTypedWindowEvent>(dlsym(x11Lib, "XCheckTypedWindowEvent"));
 
     g_timeout_add = reinterpret_cast<FnGTimeoutAdd>(dlsym(glibLib, "g_timeout_add"));
     g_unix_fd_add = reinterpret_cast<FnGUnixFdAdd>(dlsym(glibLib, "g_unix_fd_add"));
     g_source_remove =
         reinterpret_cast<FnGSourceRemove>(dlsym(glibLib, "g_source_remove"));
+    g_main_context_iteration = reinterpret_cast<FnGMainContextIteration>(
+        dlsym(glibLib, "g_main_context_iteration"));
 
     if (gdkLib != nullptr) {
       gdk_error_trap_push = reinterpret_cast<FnGdkErrorTrapPush>(dlsym(gdkLib, "gdk_error_trap_push"));
       gdk_error_trap_pop_ignored = reinterpret_cast<FnGdkErrorTrapPopIgnored>(dlsym(gdkLib, "gdk_error_trap_pop_ignored"));
+      gdk_display_get_default = reinterpret_cast<FnGdkDisplayGetDefault>(dlsym(gdkLib, "gdk_display_get_default"));
+      gdk_x11_display_get_type = reinterpret_cast<FnGdkX11DisplayGetType>(dlsym(gdkLib, "gdk_x11_display_get_type"));
+      g_type_check_instance_is_a = reinterpret_cast<FnGTypeCheckInstanceIsA>(dlsym(gdkLib, "g_type_check_instance_is_a"));
+      gdk_x11_display_get_xdisplay = reinterpret_cast<FnGdkX11DisplayGetXdisplay>(dlsym(gdkLib, "gdk_x11_display_get_xdisplay"));
     }
 
     return XOpenDisplay && XCloseDisplay && XDefaultScreen && XRootWindow &&
@@ -172,28 +204,15 @@ static int customXErrorHandler(XDisplay * /*d*/, void *ev) {
 class Vst3EditorWindowLinux final : public Vst3EditorWindow,
                                     public Steinberg::Linux::IRunLoop {
 public:
+  static inline XDisplay *sSharedDisplay = nullptr;
+  static inline XWindow sSharedWindow = 0;
+  static inline XAtom sSharedWmDelete = 0;
+  static inline Vst3EditorWindowLinux *sActiveInstance = nullptr;
+
   Vst3EditorWindowLinux() = default;
   ~Vst3EditorWindowLinux() override { destroy(); }
 
   bool open(Steinberg::IPlugView *plugView, const char *title) override {
-    // If the window and view are already created, simply map (un-hide) the existing window.
-    if (mDisplay != nullptr && mWindow != 0 && mPlugView != nullptr) {
-      if (title != nullptr && title[0] != '\0' && guiSymbols().XStoreName) {
-        guiSymbols().XStoreName(mDisplay, mWindow, title);
-      }
-      if (guiSymbols().XMapWindow) {
-        guiSymbols().XMapWindow(mDisplay, mWindow);
-      }
-      if (guiSymbols().XFlush) {
-        guiSymbols().XFlush(mDisplay);
-      }
-      if (guiSymbols().g_timeout_add && mEventTimerId == 0) {
-        mEventTimerId = guiSymbols().g_timeout_add(16, &onEventPollStatic, this);
-      }
-      mIsOpen.store(true, std::memory_order_release);
-      return true;
-    }
-
     if (plugView == nullptr) {
       return false;
     }
@@ -206,39 +225,39 @@ public:
       return false;
     }
 
-    // Ensure GDK_BACKEND defaults to x11 if unset, so that GTK initializes with
-    // X11 / Xwayland support for Steinberg VST3 XEmbed (GtkPlug).
+    if (guiSymbols().XInitThreads) {
+      guiSymbols().XInitThreads();
+    }
+
     if (getenv("GDK_BACKEND") == nullptr) {
       setenv("GDK_BACKEND", "x11", 0);
     }
 
-    // Safety check: Steinberg VST3 on Linux exclusively uses X11 embedding (GtkPlug/XEmbed).
-    // If GTK was already initialized with Wayland backend in this process, GtkPlug will abort.
-    // Detect this at runtime and fail gracefully with a descriptive warning instead of crashing.
-    void* gdk = dlopen("libgdk-3.so.0", RTLD_LAZY | RTLD_LOCAL);
-    if (!gdk) {
-      gdk = dlopen("libgdk-3.so", RTLD_LAZY | RTLD_LOCAL);
-    }
-    if (gdk) {
-      auto fnGetDefault = reinterpret_cast<void* (*)()>(dlsym(gdk, "gdk_display_get_default"));
-      auto fnGetX11Type = reinterpret_cast<unsigned long (*)()>(dlsym(gdk, "gdk_x11_display_get_type"));
-      auto fnCheckInstance = reinterpret_cast<int (*)(void*, unsigned long)>(dlsym(gdk, "g_type_check_instance_is_a"));
-      if (fnGetDefault && fnGetX11Type && fnCheckInstance) {
-        void* disp = fnGetDefault();
-        if (disp && !fnCheckInstance(disp, fnGetX11Type())) {
-          fprintf(stderr,
-                  "flutter_soloud: VST3 plugin GUI embedding requires an X11 backend (GDK_BACKEND=x11).\n"
-                  "The current process is running with Wayland GDK backend. Plugin GUI cannot be embedded.\n");
-          return false;
+    if (sSharedDisplay == nullptr) {
+      if (guiSymbols().gdk_display_get_default &&
+          guiSymbols().gdk_x11_display_get_type &&
+          guiSymbols().g_type_check_instance_is_a) {
+        void* disp = guiSymbols().gdk_display_get_default();
+        if (disp != nullptr) {
+          if (!guiSymbols().g_type_check_instance_is_a(
+                  disp, guiSymbols().gdk_x11_display_get_type())) {
+            fprintf(stderr,
+                    "flutter_soloud: VST3 plugin GUI embedding requires an X11 backend (GDK_BACKEND=x11).\n"
+                    "The current process is running with Wayland GDK backend. Plugin GUI cannot be embedded.\n");
+            return false;
+          }
         }
       }
+      if (guiSymbols().XOpenDisplay) {
+        sSharedDisplay = guiSymbols().XOpenDisplay(nullptr);
+      }
+    }
+    if (sSharedDisplay == nullptr) {
+      return false;
     }
 
-    destroy();
-
-    mDisplay = guiSymbols().XOpenDisplay(nullptr);
-    if (mDisplay == nullptr) {
-      return false;
+    if (guiSymbols().XSetErrorHandler) {
+      guiSymbols().XSetErrorHandler(&customXErrorHandler);
     }
 
     Steinberg::ViewRect rect{0, 0, 800, 600};
@@ -248,50 +267,80 @@ public:
     const unsigned int h =
         rect.getHeight() > 64 ? static_cast<unsigned int>(rect.getHeight()) : 600u;
 
-    const int screen = guiSymbols().XDefaultScreen(mDisplay);
-    const XWindow root = guiSymbols().XRootWindow(mDisplay, screen);
-    mWindow = guiSymbols().XCreateSimpleWindow(mDisplay, root, 100, 100, w, h,
-                                               0, 0, 0);
-    if (mWindow == 0) {
-      guiSymbols().XCloseDisplay(mDisplay);
-      mDisplay = nullptr;
-      return false;
+    if (sSharedWindow == 0) {
+      const int screen = guiSymbols().XDefaultScreen(sSharedDisplay);
+      const XWindow root = guiSymbols().XRootWindow(sSharedDisplay, screen);
+      sSharedWindow = guiSymbols().XCreateSimpleWindow(sSharedDisplay, root, 100, 100, w, h,
+                                                       0, 0, 0);
+      if (sSharedWindow == 0) {
+        return false;
+      }
+      if (guiSymbols().XInternAtom && guiSymbols().XSetWMProtocols) {
+        sSharedWmDelete =
+            guiSymbols().XInternAtom(sSharedDisplay, "WM_DELETE_WINDOW", 0);
+        if (sSharedWmDelete != 0) {
+          guiSymbols().XSetWMProtocols(sSharedDisplay, sSharedWindow, &sSharedWmDelete, 1);
+        }
+      }
+    } else {
+      if (guiSymbols().XResizeWindow) {
+        guiSymbols().XResizeWindow(sSharedDisplay, sSharedWindow, w, h);
+      }
     }
 
-    guiSymbols().XStoreName(mDisplay, mWindow,
-                            (title && title[0] != '\0') ? title : "VST3 Plugin");
-    if (guiSymbols().XInternAtom && guiSymbols().XSetWMProtocols) {
-      mWmDeleteMessage =
-          guiSymbols().XInternAtom(mDisplay, "WM_DELETE_WINDOW", 0);
-      guiSymbols().XSetWMProtocols(mDisplay, mWindow, &mWmDeleteMessage, 1);
-    }
-    guiSymbols().XMapWindow(mDisplay, mWindow);
-    guiSymbols().XFlush(mDisplay);
-
-    mPlugView = plugView;
-    mPlugView->setFrame(this);
-
-    if (guiSymbols().XSetErrorHandler) {
-      guiSymbols().XSetErrorHandler(&customXErrorHandler);
+    if (title != nullptr && title[0] != '\0' && guiSymbols().XStoreName) {
+      guiSymbols().XStoreName(sSharedDisplay, sSharedWindow, title);
     }
 
-    if (mPlugView->attached(reinterpret_cast<void *>(mWindow),
-                            Steinberg::kPlatformTypeX11EmbedWindowID) !=
-        Steinberg::kResultTrue) {
-      mPlugView->setFrame(nullptr);
-      mPlugView = nullptr;
-      guiSymbols().XDestroyWindow(mDisplay, mWindow);
-      mWindow = 0;
-      guiSymbols().XCloseDisplay(mDisplay);
-      mDisplay = nullptr;
-      return false;
+    if (guiSymbols().XMapRaised) {
+      guiSymbols().XMapRaised(sSharedDisplay, sSharedWindow);
+    } else if (guiSymbols().XMapWindow) {
+      guiSymbols().XMapWindow(sSharedDisplay, sSharedWindow);
+    }
+    if (guiSymbols().XMapSubwindows) {
+      guiSymbols().XMapSubwindows(sSharedDisplay, sSharedWindow);
+    }
+    if (guiSymbols().XFlush) {
+      guiSymbols().XFlush(sSharedDisplay);
     }
 
-    if (guiSymbols().g_timeout_add) {
+    if (mPlugView != plugView) {
+      if (mPlugView != nullptr) {
+        mPlugView->removed();
+        mPlugView->setFrame(nullptr);
+      }
+      mPlugView = plugView;
+      mPlugView->setFrame(this);
+      if (mPlugView->attached(reinterpret_cast<void *>(sSharedWindow),
+                              Steinberg::kPlatformTypeX11EmbedWindowID) !=
+          Steinberg::kResultTrue) {
+        mPlugView->setFrame(nullptr);
+        mPlugView = nullptr;
+        return false;
+      }
+    }
+
+    if (guiSymbols().XMapRaised) {
+      guiSymbols().XMapRaised(sSharedDisplay, sSharedWindow);
+    } else if (guiSymbols().XMapWindow) {
+      guiSymbols().XMapWindow(sSharedDisplay, sSharedWindow);
+    }
+    if (guiSymbols().XMapSubwindows) {
+      guiSymbols().XMapSubwindows(sSharedDisplay, sSharedWindow);
+    }
+    if (guiSymbols().XFlush) {
+      guiSymbols().XFlush(sSharedDisplay);
+    }
+    if (guiSymbols().g_main_context_iteration) {
+      while (guiSymbols().g_main_context_iteration(nullptr, 0)) {}
+    }
+    mPlugView->onFocus(1);
+
+    sActiveInstance = this;
+    if (guiSymbols().g_timeout_add && mEventTimerId == 0) {
       mEventTimerId = guiSymbols().g_timeout_add(16, &onEventPollStatic, this);
     }
 
-    guiSymbols().XFlush(mDisplay);
     mIsOpen.store(true, std::memory_order_release);
     return true;
   }
@@ -302,15 +351,21 @@ public:
       guiSymbols().g_source_remove(mEventTimerId);
       mEventTimerId = 0;
     }
-    if (mDisplay != nullptr && mWindow != 0) {
+    if (sActiveInstance == this) {
+      sActiveInstance = nullptr;
+    }
+    if (sSharedDisplay != nullptr && sSharedWindow != 0) {
       if (guiSymbols().gdk_error_trap_push) {
         guiSymbols().gdk_error_trap_push();
       }
       if (guiSymbols().XUnmapWindow) {
-        guiSymbols().XUnmapWindow(mDisplay, mWindow);
+        guiSymbols().XUnmapWindow(sSharedDisplay, sSharedWindow);
       }
       if (guiSymbols().XFlush) {
-        guiSymbols().XFlush(mDisplay);
+        guiSymbols().XFlush(sSharedDisplay);
+      }
+      if (guiSymbols().g_main_context_iteration) {
+        while (guiSymbols().g_main_context_iteration(nullptr, 0)) {}
       }
       if (guiSymbols().gdk_error_trap_pop_ignored) {
         guiSymbols().gdk_error_trap_pop_ignored();
@@ -331,6 +386,9 @@ public:
       mPlugView->setFrame(nullptr);
       mPlugView = nullptr;
     }
+    if (guiSymbols().g_main_context_iteration) {
+      while (guiSymbols().g_main_context_iteration(nullptr, 0)) {}
+    }
     for (const auto &kv : mFdSources) {
       if (guiSymbols().g_source_remove) {
         guiSymbols().g_source_remove(kv.second.sourceId);
@@ -344,21 +402,6 @@ public:
     }
     mTimerSources.clear();
 
-    if (mDisplay != nullptr && mWindow != 0) {
-      if (guiSymbols().XDestroyWindow) {
-        guiSymbols().XDestroyWindow(mDisplay, mWindow);
-      }
-      if (guiSymbols().XFlush) {
-        guiSymbols().XFlush(mDisplay);
-      }
-      mWindow = 0;
-    }
-    if (mDisplay != nullptr) {
-      if (guiSymbols().XCloseDisplay) {
-        guiSymbols().XCloseDisplay(mDisplay);
-      }
-      mDisplay = nullptr;
-    }
     if (guiSymbols().gdk_error_trap_pop_ignored) {
       guiSymbols().gdk_error_trap_pop_ignored();
     }
@@ -372,7 +415,7 @@ public:
   resizeView(Steinberg::IPlugView *view,
              Steinberg::ViewRect *newSize) override {
     if (view == nullptr || newSize == nullptr || view != mPlugView ||
-        mDisplay == nullptr || mWindow == 0) {
+        sSharedDisplay == nullptr || sSharedWindow == 0) {
       return Steinberg::kInvalidArgument;
     }
     if (mInResize.load(std::memory_order_acquire)) {
@@ -387,20 +430,17 @@ public:
       return Steinberg::kResultTrue;
     }
     mInResize.store(true, std::memory_order_release);
-    guiSymbols().XResizeWindow(
-        mDisplay, mWindow, static_cast<unsigned int>(newSize->getWidth()),
-        static_cast<unsigned int>(newSize->getHeight()));
-    guiSymbols().XFlush(mDisplay);
-    mInResize.store(false, std::memory_order_release);
-
-    if (view->getSize(&r) != Steinberg::kResultTrue) {
-      return Steinberg::kInternalError;
+    const unsigned int w = static_cast<unsigned int>(newSize->getWidth());
+    const unsigned int h = static_cast<unsigned int>(newSize->getHeight());
+    if (guiSymbols().XResizeWindow) {
+      guiSymbols().XResizeWindow(sSharedDisplay, sSharedWindow, w, h);
     }
     if (r.left != newSize->left || r.top != newSize->top ||
         r.right != newSize->right || r.bottom != newSize->bottom) {
       view->onSize(newSize);
     }
-    guiSymbols().XFlush(mDisplay);
+    guiSymbols().XFlush(sSharedDisplay);
+    mInResize.store(false, std::memory_order_release);
     return Steinberg::kResultTrue;
   }
 
@@ -504,21 +544,19 @@ private:
 
   static int onEventPollStatic(void *userData) {
     auto *self = static_cast<Vst3EditorWindowLinux *>(userData);
-    if (!self || !self->mDisplay || self->mWindow == 0) {
+    if (!self || !sSharedDisplay || sSharedWindow == 0) {
       return 0; // G_SOURCE_REMOVE
     }
-    while (self->mDisplay && guiSymbols().XPending && guiSymbols().XPending(self->mDisplay) > 0) {
+    if (guiSymbols().XCheckTypedWindowEvent) {
       unsigned long eventBuf[32] = {0};
-      if (guiSymbols().XNextEvent) {
-        guiSymbols().XNextEvent(self->mDisplay, eventBuf);
-        int type = static_cast<int>(eventBuf[0]);
-        if (type == 33 /* ClientMessage */) {
-          unsigned long data0 = eventBuf[8];
-          if (data0 == self->mWmDeleteMessage) {
-            self->mEventTimerId = 0;
-            self->close();
-            return 0; // G_SOURCE_REMOVE
-          }
+      while (guiSymbols().XCheckTypedWindowEvent(sSharedDisplay, sSharedWindow,
+                                                 33 /* ClientMessage */,
+                                                 eventBuf)) {
+        unsigned long data0 = eventBuf[8];
+        if (data0 == sSharedWmDelete) {
+          self->mEventTimerId = 0;
+          self->close();
+          return 0; // G_SOURCE_REMOVE
         }
       }
     }
@@ -526,9 +564,6 @@ private:
   }
 
   Steinberg::IPtr<Steinberg::IPlugView> mPlugView;
-  XDisplay *mDisplay = nullptr;
-  XWindow mWindow = 0;
-  XAtom mWmDeleteMessage = 0;
   unsigned int mEventTimerId = 0;
   std::map<Steinberg::Linux::IEventHandler *, FdEntry> mFdSources;
   std::map<Steinberg::Linux::ITimerHandler *, unsigned int> mTimerSources;
