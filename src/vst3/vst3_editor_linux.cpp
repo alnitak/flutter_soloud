@@ -29,6 +29,7 @@ using FnXCreateSimpleWindow = XWindow (*)(XDisplay *, XWindow, int, int,
                                           unsigned long);
 using FnXStoreName = int (*)(XDisplay *, XWindow, const char *);
 using FnXMapWindow = int (*)(XDisplay *, XWindow);
+using FnXUnmapWindow = int (*)(XDisplay *, XWindow);
 using FnXDestroyWindow = int (*)(XDisplay *, XWindow);
 using FnXResizeWindow = int (*)(XDisplay *, XWindow, unsigned int,
                                 unsigned int);
@@ -46,9 +47,13 @@ using FnGTimeoutAdd = unsigned int (*)(unsigned int, GSourceFunc, void *);
 using FnGUnixFdAdd = unsigned int (*)(int, int, GUnixFDSourceFunc, void *);
 using FnGSourceRemove = int (*)(unsigned int);
 
+using FnGdkErrorTrapPush = void (*)();
+using FnGdkErrorTrapPopIgnored = void (*)();
+
 struct LinuxGuiSymbols {
   void *x11Lib = nullptr;
   void *glibLib = nullptr;
+  void *gdkLib = nullptr;
 
   FnXOpenDisplay XOpenDisplay = nullptr;
   FnXCloseDisplay XCloseDisplay = nullptr;
@@ -57,6 +62,7 @@ struct LinuxGuiSymbols {
   FnXCreateSimpleWindow XCreateSimpleWindow = nullptr;
   FnXStoreName XStoreName = nullptr;
   FnXMapWindow XMapWindow = nullptr;
+  FnXUnmapWindow XUnmapWindow = nullptr;
   FnXDestroyWindow XDestroyWindow = nullptr;
   FnXResizeWindow XResizeWindow = nullptr;
   FnXFlush XFlush = nullptr;
@@ -71,6 +77,9 @@ struct LinuxGuiSymbols {
   FnGUnixFdAdd g_unix_fd_add = nullptr;
   FnGSourceRemove g_source_remove = nullptr;
 
+  FnGdkErrorTrapPush gdk_error_trap_push = nullptr;
+  FnGdkErrorTrapPopIgnored gdk_error_trap_pop_ignored = nullptr;
+
   bool load() {
     if (x11Lib != nullptr && glibLib != nullptr) {
       return true;
@@ -82,6 +91,10 @@ struct LinuxGuiSymbols {
     glibLib = dlopen("libglib-2.0.so.0", RTLD_LAZY | RTLD_LOCAL);
     if (glibLib == nullptr) {
       glibLib = dlopen("libglib-2.0.so", RTLD_LAZY | RTLD_LOCAL);
+    }
+    gdkLib = dlopen("libgdk-3.so.0", RTLD_LAZY | RTLD_LOCAL);
+    if (gdkLib == nullptr) {
+      gdkLib = dlopen("libgdk-3.so", RTLD_LAZY | RTLD_LOCAL);
     }
     if (x11Lib == nullptr || glibLib == nullptr) {
       return false;
@@ -95,6 +108,7 @@ struct LinuxGuiSymbols {
         dlsym(x11Lib, "XCreateSimpleWindow"));
     XStoreName = reinterpret_cast<FnXStoreName>(dlsym(x11Lib, "XStoreName"));
     XMapWindow = reinterpret_cast<FnXMapWindow>(dlsym(x11Lib, "XMapWindow"));
+    XUnmapWindow = reinterpret_cast<FnXUnmapWindow>(dlsym(x11Lib, "XUnmapWindow"));
     XDestroyWindow = reinterpret_cast<FnXDestroyWindow>(dlsym(x11Lib, "XDestroyWindow"));
     XResizeWindow = reinterpret_cast<FnXResizeWindow>(dlsym(x11Lib, "XResizeWindow"));
     XFlush = reinterpret_cast<FnXFlush>(dlsym(x11Lib, "XFlush"));
@@ -113,6 +127,11 @@ struct LinuxGuiSymbols {
     g_source_remove =
         reinterpret_cast<FnGSourceRemove>(dlsym(glibLib, "g_source_remove"));
 
+    if (gdkLib != nullptr) {
+      gdk_error_trap_push = reinterpret_cast<FnGdkErrorTrapPush>(dlsym(gdkLib, "gdk_error_trap_push"));
+      gdk_error_trap_pop_ignored = reinterpret_cast<FnGdkErrorTrapPopIgnored>(dlsym(gdkLib, "gdk_error_trap_pop_ignored"));
+    }
+
     return XOpenDisplay && XCloseDisplay && XDefaultScreen && XRootWindow &&
            XCreateSimpleWindow && XStoreName && XMapWindow && XDestroyWindow &&
            XResizeWindow && XFlush && g_timeout_add && g_unix_fd_add &&
@@ -125,15 +144,56 @@ LinuxGuiSymbols &guiSymbols() {
   return syms;
 }
 
+struct XErrorEventPartial {
+  int type;
+  void *display;
+  unsigned long resourceid;
+  unsigned long serial;
+  unsigned char error_code;
+  unsigned char request_code;
+  unsigned char minor_code;
+};
+
+static int customXErrorHandler(XDisplay * /*d*/, void *ev) {
+  if (ev != nullptr) {
+    auto *err = reinterpret_cast<XErrorEventPartial *>(ev);
+    // Ignore harmless asynchronous X11 race condition errors during unmap/destroy
+    if (err->error_code == 3 /* BadWindow */ ||
+        err->error_code == 9 /* BadDrawable */ ||
+        err->error_code == 8 /* BadMatch */) {
+      return 0;
+    }
+  }
+  return 0;
+}
+
 } // namespace
 
 class Vst3EditorWindowLinux final : public Vst3EditorWindow,
                                     public Steinberg::Linux::IRunLoop {
 public:
   Vst3EditorWindowLinux() = default;
-  ~Vst3EditorWindowLinux() override { close(); }
+  ~Vst3EditorWindowLinux() override { destroy(); }
 
   bool open(Steinberg::IPlugView *plugView, const char *title) override {
+    // If the window and view are already created, simply map (un-hide) the existing window.
+    if (mDisplay != nullptr && mWindow != 0 && mPlugView != nullptr) {
+      if (title != nullptr && title[0] != '\0' && guiSymbols().XStoreName) {
+        guiSymbols().XStoreName(mDisplay, mWindow, title);
+      }
+      if (guiSymbols().XMapWindow) {
+        guiSymbols().XMapWindow(mDisplay, mWindow);
+      }
+      if (guiSymbols().XFlush) {
+        guiSymbols().XFlush(mDisplay);
+      }
+      if (guiSymbols().g_timeout_add && mEventTimerId == 0) {
+        mEventTimerId = guiSymbols().g_timeout_add(16, &onEventPollStatic, this);
+      }
+      mIsOpen.store(true, std::memory_order_release);
+      return true;
+    }
+
     if (plugView == nullptr) {
       return false;
     }
@@ -174,7 +234,7 @@ public:
       }
     }
 
-    close();
+    destroy();
 
     mDisplay = guiSymbols().XOpenDisplay(nullptr);
     if (mDisplay == nullptr) {
@@ -212,7 +272,7 @@ public:
     mPlugView->setFrame(this);
 
     if (guiSymbols().XSetErrorHandler) {
-      guiSymbols().XSetErrorHandler(+[](XDisplay *, void *) -> int { return 0; });
+      guiSymbols().XSetErrorHandler(&customXErrorHandler);
     }
 
     if (mPlugView->attached(reinterpret_cast<void *>(mWindow),
@@ -242,6 +302,30 @@ public:
       guiSymbols().g_source_remove(mEventTimerId);
       mEventTimerId = 0;
     }
+    if (mDisplay != nullptr && mWindow != 0) {
+      if (guiSymbols().gdk_error_trap_push) {
+        guiSymbols().gdk_error_trap_push();
+      }
+      if (guiSymbols().XUnmapWindow) {
+        guiSymbols().XUnmapWindow(mDisplay, mWindow);
+      }
+      if (guiSymbols().XFlush) {
+        guiSymbols().XFlush(mDisplay);
+      }
+      if (guiSymbols().gdk_error_trap_pop_ignored) {
+        guiSymbols().gdk_error_trap_pop_ignored();
+      }
+    }
+  }
+
+  void destroy() {
+    close();
+    if (guiSymbols().gdk_error_trap_push) {
+      guiSymbols().gdk_error_trap_push();
+    }
+    if (guiSymbols().XSetErrorHandler) {
+      guiSymbols().XSetErrorHandler(&customXErrorHandler);
+    }
     if (mPlugView != nullptr) {
       mPlugView->removed();
       mPlugView->setFrame(nullptr);
@@ -261,13 +345,22 @@ public:
     mTimerSources.clear();
 
     if (mDisplay != nullptr && mWindow != 0) {
-      guiSymbols().XDestroyWindow(mDisplay, mWindow);
-      guiSymbols().XFlush(mDisplay);
+      if (guiSymbols().XDestroyWindow) {
+        guiSymbols().XDestroyWindow(mDisplay, mWindow);
+      }
+      if (guiSymbols().XFlush) {
+        guiSymbols().XFlush(mDisplay);
+      }
       mWindow = 0;
     }
     if (mDisplay != nullptr) {
-      guiSymbols().XCloseDisplay(mDisplay);
+      if (guiSymbols().XCloseDisplay) {
+        guiSymbols().XCloseDisplay(mDisplay);
+      }
       mDisplay = nullptr;
+    }
+    if (guiSymbols().gdk_error_trap_pop_ignored) {
+      guiSymbols().gdk_error_trap_pop_ignored();
     }
   }
 

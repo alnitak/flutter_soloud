@@ -226,6 +226,9 @@ void Vst3PluginInstance::shutdown() {
   mIsProcessing.store(false, std::memory_order_release);
 
   closeEditor();
+  if (mEditorWindow) {
+    mEditorWindow.reset();
+  }
 
   std::lock_guard<std::mutex> procLock(mProcessMutex);
   if (mProcessor) {
@@ -794,6 +797,18 @@ bool Vst3PluginInstance::openEditor(const char *windowTitle) {
   if (mEditorWindow && mEditorWindow->isOpen()) {
     return true;
   }
+  const char *title =
+      (windowTitle != nullptr && windowTitle[0] != '\0')
+          ? windowTitle
+          : mClassInfo.name().c_str();
+
+#if defined(__linux__) && !defined(__ANDROID__)
+  if (mEditorWindow) {
+    if (mEditorWindow->open(nullptr, title)) {
+      return true;
+    }
+  }
+#endif
 
 #if defined(__APPLE__)
   __block Steinberg::IPtr<Steinberg::IPlugView> view;
@@ -823,17 +838,15 @@ bool Vst3PluginInstance::openEditor(const char *windowTitle) {
     return false;
   }
 
-  const char *title =
-      (windowTitle != nullptr && windowTitle[0] != '\0')
-          ? windowTitle
-          : mClassInfo.name().c_str();
   return mEditorWindow->open(view.get(), title);
 }
 
 void Vst3PluginInstance::closeEditor() {
   if (mEditorWindow) {
     mEditorWindow->close();
+#if !defined(__linux__) || defined(__ANDROID__)
     mEditorWindow.reset();
+#endif
   }
 }
 

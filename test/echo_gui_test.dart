@@ -62,6 +62,11 @@ void main() {
         targetPath = echoMac;
       }
 
+      if (!host.isSupported) {
+        print('VST3 hosting is not supported in this test build (requires enable_vst3).');
+        return;
+      }
+
       final classes = host.scanBundle(targetPath);
       expect(classes, isNotEmpty, reason: 'Failed scanning $targetPath');
       final classUid = classes.first.classUid;
@@ -111,6 +116,16 @@ void main() {
       print('Closing GUI...');
       effect.closeEditorWindow();
       print('GUI closed cleanly.');
+
+      print('Reopening GUI for ${classes.first.name}...');
+      final reopened = effect.openEditorWindow(title: 'Echo GUI Test Window (Reopened)');
+      expect(reopened, isTrue);
+      print('GUI reopened successfully, waiting 1 second...');
+      await Future<void>.delayed(const Duration(seconds: 1));
+
+      print('Closing reopened GUI...');
+      effect.closeEditorWindow();
+      print('Reopened GUI closed cleanly.');
     });
   });
 }
