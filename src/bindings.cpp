@@ -3783,8 +3783,16 @@ extern "C"
     if (cf == nullptr)
       return filterNotFound;
 
+    if (player.get() != nullptr && player.get()->isInited())
+    {
+      player.get()->soloud.lockAudioMutex_internal();
+    }
     cf->setCallback(callback, userData, numParams);
     cf->setWebJsCallbackName(webJsCallbackName);
+    if (player.get() != nullptr && player.get()->isInited())
+    {
+      player.get()->soloud.unlockAudioMutex_internal();
+    }
     return noError;
   }
 
@@ -4596,7 +4604,16 @@ extern "C"
 
   FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3UnloadPlugin(int pluginHandle)
   {
-    return SoLoud::Vst3HostManager::instance().unloadPlugin(pluginHandle);
+    if (player.get() != nullptr && player.get()->isInited())
+    {
+      player.get()->soloud.lockAudioMutex_internal();
+    }
+    auto result = SoLoud::Vst3HostManager::instance().unloadPlugin(pluginHandle);
+    if (player.get() != nullptr && player.get()->isInited())
+    {
+      player.get()->soloud.unlockAudioMutex_internal();
+    }
+    return result;
   }
 
   FFI_PLUGIN_EXPORT void *soloud_vst3GetFilterCallbackPtr(void)
@@ -4611,8 +4628,7 @@ extern "C"
 
   FFI_PLUGIN_EXPORT void *soloud_vst3GetPluginUserData(int pluginHandle)
   {
-    return static_cast<void *>(
-        SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle));
+    return reinterpret_cast<void *>(static_cast<uintptr_t>(pluginHandle));
   }
 
   FFI_PLUGIN_EXPORT unsigned int soloud_vst3GetLatencySamples(int pluginHandle)

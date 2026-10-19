@@ -1054,7 +1054,8 @@ void vst3FilterDspCallback(float *aBuffer, unsigned int aSamples,
                            float aSamplerate, double aTime,
                            const float *aParams, uint64_t aParamChangedMask,
                            unsigned int aParamCount, void *aUserData) {
-  auto *plugin = static_cast<SoLoud::Vst3PluginInstance *>(aUserData);
+  const int handle = static_cast<int>(reinterpret_cast<uintptr_t>(aUserData));
+  auto *plugin = SoLoud::Vst3HostManager::instance().getPlugin(handle);
   if (plugin != nullptr) {
     plugin->processAudioEffectBlock(aBuffer, aSamples, aBufferSize, aChannels,
                                     aSamplerate, aTime, aParams,
@@ -1068,7 +1069,8 @@ unsigned int vst3SourceDspCallback(float *aBuffer, unsigned int aSamplesToRead,
                                    double aStreamTime, double aStreamPosition,
                                    uint32_t *aOutHasEnded, void *aUserData) {
   (void)aStreamPosition;
-  auto *plugin = static_cast<SoLoud::Vst3PluginInstance *>(aUserData);
+  const int handle = static_cast<int>(reinterpret_cast<uintptr_t>(aUserData));
+  auto *plugin = SoLoud::Vst3HostManager::instance().getPlugin(handle);
   if (plugin == nullptr) {
     if (aOutHasEnded != nullptr) {
       *aOutHasEnded = 1;
