@@ -58,6 +58,13 @@ class _Vst3PluginRackExampleState extends State<Vst3PluginRackExample> {
         return echoPath;
       }
       return '$base\\Programs\\Common\\VST3\\flutter_reverb.vst3';
+    } else if (Platform.isLinux) {
+      final home = Platform.environment['HOME'] ?? '';
+      final echoLinux = '$home/.vst3/echo.vst3';
+      if (Directory(echoLinux).existsSync() || File(echoLinux).existsSync()) {
+        return echoLinux;
+      }
+      return '$home/.vst3/flutter_reverb.vst3';
     }
     const echoMac = '/Volumes/NVME/Users/deimos/Library/Audio/Plug-Ins/VST3/echo.vst3';
     if (Directory(echoMac).existsSync()) return echoMac;
@@ -445,9 +452,18 @@ class _Vst3PluginRackExampleState extends State<Vst3PluginRackExample> {
                               if (plugin.isEditorOpen) {
                                 plugin.closeEditorWindow();
                               } else {
-                                plugin.openEditorWindow(
+                                final opened = plugin.openEditorWindow(
                                   title: _loadedPluginName,
                                 );
+                                if (!opened && mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Could not open VST3 GUI. On Linux, VST3 embedding requires an X11 backend (GDK_BACKEND=x11).',
+                                      ),
+                                    ),
+                                  );
+                                }
                               }
                               setState(() {});
                             },

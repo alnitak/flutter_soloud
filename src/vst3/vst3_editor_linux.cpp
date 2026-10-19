@@ -38,6 +38,7 @@ using FnXPending = int (*)(XDisplay *);
 using FnXNextEvent = int (*)(XDisplay *, void *);
 using FnXInternAtom = XAtom (*)(XDisplay *, const char *, int);
 using FnXSetWMProtocols = int (*)(XDisplay *, XWindow, XAtom *, int);
+using FnXSetErrorHandler = int (*)(int (*)(XDisplay *, void *));
 
 using GSourceFunc = int (*)(void *);
 using GUnixFDSourceFunc = int (*)(int, int, void *);
@@ -64,6 +65,7 @@ struct LinuxGuiSymbols {
   FnXNextEvent XNextEvent = nullptr;
   FnXInternAtom XInternAtom = nullptr;
   FnXSetWMProtocols XSetWMProtocols = nullptr;
+  FnXSetErrorHandler XSetErrorHandler = nullptr;
 
   FnGTimeoutAdd g_timeout_add = nullptr;
   FnGUnixFdAdd g_unix_fd_add = nullptr;
@@ -103,6 +105,8 @@ struct LinuxGuiSymbols {
     XInternAtom = reinterpret_cast<FnXInternAtom>(dlsym(x11Lib, "XInternAtom"));
     XSetWMProtocols =
         reinterpret_cast<FnXSetWMProtocols>(dlsym(x11Lib, "XSetWMProtocols"));
+    XSetErrorHandler =
+        reinterpret_cast<FnXSetErrorHandler>(dlsym(x11Lib, "XSetErrorHandler"));
 
     g_timeout_add = reinterpret_cast<FnGTimeoutAdd>(dlsym(glibLib, "g_timeout_add"));
     g_unix_fd_add = reinterpret_cast<FnGUnixFdAdd>(dlsym(glibLib, "g_unix_fd_add"));
@@ -142,6 +146,34 @@ public:
       return false;
     }
 
+    // Ensure GDK_BACKEND defaults to x11 if unset, so that GTK initializes with
+    // X11 / Xwayland support for Steinberg VST3 XEmbed (GtkPlug).
+    if (getenv("GDK_BACKEND") == nullptr) {
+      setenv("GDK_BACKEND", "x11", 0);
+    }
+
+    // Safety check: Steinberg VST3 on Linux exclusively uses X11 embedding (GtkPlug/XEmbed).
+    // If GTK was already initialized with Wayland backend in this process, GtkPlug will abort.
+    // Detect this at runtime and fail gracefully with a descriptive warning instead of crashing.
+    void* gdk = dlopen("libgdk-3.so.0", RTLD_LAZY | RTLD_LOCAL);
+    if (!gdk) {
+      gdk = dlopen("libgdk-3.so", RTLD_LAZY | RTLD_LOCAL);
+    }
+    if (gdk) {
+      auto fnGetDefault = reinterpret_cast<void* (*)()>(dlsym(gdk, "gdk_display_get_default"));
+      auto fnGetX11Type = reinterpret_cast<unsigned long (*)()>(dlsym(gdk, "gdk_x11_display_get_type"));
+      auto fnCheckInstance = reinterpret_cast<int (*)(void*, unsigned long)>(dlsym(gdk, "g_type_check_instance_is_a"));
+      if (fnGetDefault && fnGetX11Type && fnCheckInstance) {
+        void* disp = fnGetDefault();
+        if (disp && !fnCheckInstance(disp, fnGetX11Type())) {
+          fprintf(stderr,
+                  "flutter_soloud: VST3 plugin GUI embedding requires an X11 backend (GDK_BACKEND=x11).\n"
+                  "The current process is running with Wayland GDK backend. Plugin GUI cannot be embedded.\n");
+          return false;
+        }
+      }
+    }
+
     close();
 
     mDisplay = guiSymbols().XOpenDisplay(nullptr);
@@ -179,6 +211,10 @@ public:
     mPlugView = plugView;
     mPlugView->setFrame(this);
 
+    if (guiSymbols().XSetErrorHandler) {
+      guiSymbols().XSetErrorHandler(+[](XDisplay *, void *) -> int { return 0; });
+    }
+
     if (mPlugView->attached(reinterpret_cast<void *>(mWindow),
                             Steinberg::kPlatformTypeX11EmbedWindowID) !=
         Steinberg::kResultTrue) {
@@ -191,6 +227,10 @@ public:
       return false;
     }
 
+    if (guiSymbols().g_timeout_add) {
+      mEventTimerId = guiSymbols().g_timeout_add(16, &onEventPollStatic, this);
+    }
+
     guiSymbols().XFlush(mDisplay);
     mIsOpen.store(true, std::memory_order_release);
     return true;
@@ -198,6 +238,10 @@ public:
 
   void close() override {
     mIsOpen.store(false, std::memory_order_release);
+    if (mEventTimerId != 0 && guiSymbols().g_source_remove) {
+      guiSymbols().g_source_remove(mEventTimerId);
+      mEventTimerId = 0;
+    }
     if (mPlugView != nullptr) {
       mPlugView->removed();
       mPlugView->setFrame(nullptr);
@@ -365,10 +409,34 @@ private:
     return 1; // G_SOURCE_CONTINUE
   }
 
+  static int onEventPollStatic(void *userData) {
+    auto *self = static_cast<Vst3EditorWindowLinux *>(userData);
+    if (!self || !self->mDisplay || self->mWindow == 0) {
+      return 0; // G_SOURCE_REMOVE
+    }
+    while (self->mDisplay && guiSymbols().XPending && guiSymbols().XPending(self->mDisplay) > 0) {
+      unsigned long eventBuf[32] = {0};
+      if (guiSymbols().XNextEvent) {
+        guiSymbols().XNextEvent(self->mDisplay, eventBuf);
+        int type = static_cast<int>(eventBuf[0]);
+        if (type == 33 /* ClientMessage */) {
+          unsigned long data0 = eventBuf[8];
+          if (data0 == self->mWmDeleteMessage) {
+            self->mEventTimerId = 0;
+            self->close();
+            return 0; // G_SOURCE_REMOVE
+          }
+        }
+      }
+    }
+    return 1; // G_SOURCE_CONTINUE
+  }
+
   Steinberg::IPtr<Steinberg::IPlugView> mPlugView;
   XDisplay *mDisplay = nullptr;
   XWindow mWindow = 0;
   XAtom mWmDeleteMessage = 0;
+  unsigned int mEventTimerId = 0;
   std::map<Steinberg::Linux::IEventHandler *, FdEntry> mFdSources;
   std::map<Steinberg::Linux::ITimerHandler *, unsigned int> mTimerSources;
   std::atomic<bool> mIsOpen{false};

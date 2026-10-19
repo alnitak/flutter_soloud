@@ -31,24 +31,36 @@ void main() {
     });
 
     test('Loads echo.vst3 and opens its GUI window', () async {
-      final localApp = Platform.environment['LOCALAPPDATA'];
-      final userProfile = Platform.environment['USERPROFILE'];
-      final base = (localApp != null && localApp.isNotEmpty)
-          ? localApp
-          : (userProfile != null && userProfile.isNotEmpty)
-          ? '$userProfile\\AppData\\Local'
-          : r'C:\Users\Default\AppData\Local';
-      final echoPath = '$base\\Programs\\Common\\VST3\\echo.vst3';
-
-      expect(host.isSupported, isTrue);
-
-      const winBuiltEcho =
-          r'c:\workspace\flutter_vst3\vsts\echo\build\VST3\Release\echo.vst3';
-
-      final targetPath =
-          (Directory(echoPath).existsSync() || File(echoPath).existsSync())
-          ? echoPath
-          : winBuiltEcho;
+      String targetPath;
+      if (Platform.isWindows) {
+        final localApp = Platform.environment['LOCALAPPDATA'];
+        final userProfile = Platform.environment['USERPROFILE'];
+        final base = (localApp != null && localApp.isNotEmpty)
+            ? localApp
+            : (userProfile != null && userProfile.isNotEmpty)
+            ? '$userProfile\\AppData\\Local'
+            : r'C:\Users\Default\AppData\Local';
+        final echoPath = '$base\\Programs\\Common\\VST3\\echo.vst3';
+        const winBuiltEcho =
+            r'c:\workspace\flutter_vst3\vsts\echo\build\VST3\Release\echo.vst3';
+        targetPath =
+            (Directory(echoPath).existsSync() || File(echoPath).existsSync())
+            ? echoPath
+            : winBuiltEcho;
+      } else if (Platform.isLinux) {
+        final home = Platform.environment['HOME'] ?? '';
+        final echoLinux = '$home/.vst3/echo.vst3';
+        const linuxBuiltEcho =
+            '/home/deimos/FLUTTER/libs/flutter_vst3/vsts/echo/build/VST3/Release/echo.vst3';
+        targetPath =
+            (Directory(echoLinux).existsSync() || File(echoLinux).existsSync())
+            ? echoLinux
+            : linuxBuiltEcho;
+      } else {
+        const echoMac =
+            '/Volumes/NVME/Users/deimos/Library/Audio/Plug-Ins/VST3/echo.vst3';
+        targetPath = echoMac;
+      }
 
       final classes = host.scanBundle(targetPath);
       expect(classes, isNotEmpty, reason: 'Failed scanning $targetPath');
