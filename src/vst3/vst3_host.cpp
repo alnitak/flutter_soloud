@@ -223,10 +223,15 @@ bool Vst3PluginInstance::initialize(
 }
 
 void Vst3PluginInstance::shutdown() {
+  if (mIsShutdown.exchange(true)) {
+    return;
+  }
+  fprintf(stderr, "[vst3_host] Vst3PluginInstance::shutdown called for handle=%d\n", mHandle);
   mIsProcessing.store(false, std::memory_order_release);
 
   closeEditor();
   if (mEditorWindow) {
+    fprintf(stderr, "[vst3_host] resetting mEditorWindow for handle=%d...\n", mHandle);
     mEditorWindow.reset();
   }
 
@@ -247,6 +252,7 @@ void Vst3PluginInstance::shutdown() {
   mComponent = nullptr;
   mPlugProvider = nullptr;
   mModule = nullptr;
+  fprintf(stderr, "[vst3_host] Vst3PluginInstance::shutdown completed for handle=%d\n", mHandle);
 }
 
 uint32_t Vst3PluginInstance::getLatencySamples() const noexcept {
@@ -791,6 +797,7 @@ bool Vst3PluginInstance::hasEditor() const {
 }
 
 bool Vst3PluginInstance::openEditor(const char *windowTitle) {
+  fprintf(stderr, "[vst3_host] openEditor called: title='%s'\n", windowTitle ? windowTitle : "");
   if (!mController) {
     return false;
   }
@@ -801,14 +808,6 @@ bool Vst3PluginInstance::openEditor(const char *windowTitle) {
       (windowTitle != nullptr && windowTitle[0] != '\0')
           ? windowTitle
           : mClassInfo.name().c_str();
-
-#if defined(__linux__) && !defined(__ANDROID__)
-  if (mEditorWindow) {
-    if (mEditorWindow->open(nullptr, title)) {
-      return true;
-    }
-  }
-#endif
 
 #if defined(__APPLE__)
   __block Steinberg::IPtr<Steinberg::IPlugView> view;
@@ -842,6 +841,7 @@ bool Vst3PluginInstance::openEditor(const char *windowTitle) {
 }
 
 void Vst3PluginInstance::closeEditor() {
+  fprintf(stderr, "[vst3_host] closeEditor called (mEditorWindow=%p)\n", mEditorWindow.get());
   if (mEditorWindow) {
     mEditorWindow->close();
 #if !defined(__linux__) || defined(__ANDROID__)
@@ -958,7 +958,7 @@ PlayerErrors Vst3HostManager::loadPlugin(
   std::lock_guard<std::mutex> lock(mMutex);
   const int handle = mNextHandle++;
   auto instance =
-      std::make_unique<Vst3PluginInstance>(handle, module, selectedClass);
+      std::make_shared<Vst3PluginInstance>(handle, module, selectedClass);
 
   auto onGuiEdit = [this, handle](Steinberg::Vst::ParamID id,
                                   Steinberg::Vst::ParamValue val) {
@@ -981,29 +981,35 @@ PlayerErrors Vst3HostManager::loadPlugin(
   }
 
   *outPluginHandle = handle;
-  mPlugins.emplace(handle, std::move(instance));
+  fprintf(stderr, "[vst3_host] loadPlugin: handle=%d registered for '%s'\n",
+          handle, selectedClass.name().c_str());
+  mPlugins.emplace(handle, instance);
   return noError;
 }
 
 PlayerErrors Vst3HostManager::unloadPlugin(int pluginHandle) {
-  std::unique_ptr<Vst3PluginInstance> removed;
+  fprintf(stderr, "[vst3_host] unloadPlugin called for handle=%d\n", pluginHandle);
+  std::shared_ptr<Vst3PluginInstance> removed;
   {
     std::lock_guard<std::mutex> lock(mMutex);
     auto it = mPlugins.find(pluginHandle);
     if (it == mPlugins.end()) {
+      fprintf(stderr, "[vst3_host] unloadPlugin: handle %d not found\n", pluginHandle);
       return invalidParameter;
     }
-    removed = std::move(it->second);
+    removed = it->second;
     mPlugins.erase(it);
   }
   if (removed) {
+    fprintf(stderr, "[vst3_host] calling removed->shutdown() for handle %d...\n", pluginHandle);
     removed->shutdown();
+    fprintf(stderr, "[vst3_host] removed->shutdown() completed for handle %d.\n", pluginHandle);
   }
   return noError;
 }
 
 void Vst3HostManager::unloadAll() {
-  std::unordered_map<int, std::unique_ptr<Vst3PluginInstance>> toUnload;
+  std::unordered_map<int, std::shared_ptr<Vst3PluginInstance>> toUnload;
   std::unordered_map<std::string, VST3::Hosting::Module::Ptr> modulesToUnload;
   {
     std::lock_guard<std::mutex> lock(mMutex);
@@ -1024,10 +1030,10 @@ void Vst3HostManager::unloadAll() {
   modulesToUnload.clear();
 }
 
-Vst3PluginInstance *Vst3HostManager::getPlugin(int pluginHandle) {
+std::shared_ptr<Vst3PluginInstance> Vst3HostManager::getPlugin(int pluginHandle) {
   std::lock_guard<std::mutex> lock(mMutex);
   auto it = mPlugins.find(pluginHandle);
-  return it != mPlugins.end() ? it->second.get() : nullptr;
+  return it != mPlugins.end() ? it->second : nullptr;
 }
 
 void Vst3HostManager::setParameterEditCallback(
@@ -1055,7 +1061,7 @@ void vst3FilterDspCallback(float *aBuffer, unsigned int aSamples,
                            const float *aParams, uint64_t aParamChangedMask,
                            unsigned int aParamCount, void *aUserData) {
   const int handle = static_cast<int>(reinterpret_cast<uintptr_t>(aUserData));
-  auto *plugin = SoLoud::Vst3HostManager::instance().getPlugin(handle);
+  auto plugin = SoLoud::Vst3HostManager::instance().getPlugin(handle);
   if (plugin != nullptr) {
     plugin->processAudioEffectBlock(aBuffer, aSamples, aBufferSize, aChannels,
                                     aSamplerate, aTime, aParams,
@@ -1070,7 +1076,7 @@ unsigned int vst3SourceDspCallback(float *aBuffer, unsigned int aSamplesToRead,
                                    uint32_t *aOutHasEnded, void *aUserData) {
   (void)aStreamPosition;
   const int handle = static_cast<int>(reinterpret_cast<uintptr_t>(aUserData));
-  auto *plugin = SoLoud::Vst3HostManager::instance().getPlugin(handle);
+  auto plugin = SoLoud::Vst3HostManager::instance().getPlugin(handle);
   if (plugin == nullptr) {
     if (aOutHasEnded != nullptr) {
       *aOutHasEnded = 1;

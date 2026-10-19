@@ -134,6 +134,7 @@ private:
 
   std::atomic<bool> mIsProcessing{false};
   std::atomic<bool> mIsSyncingState{false};
+  std::atomic<bool> mIsShutdown{false};
   mutable std::atomic<int> mHasEditorCached{-1};
   std::mutex mProcessMutex;
 
@@ -182,7 +183,7 @@ public:
 
   void unloadAll();
 
-  Vst3PluginInstance *getPlugin(int pluginHandle);
+  std::shared_ptr<Vst3PluginInstance> getPlugin(int pluginHandle);
 
   VST3::Hosting::Module::Ptr getOrLoadModule(const std::string &bundlePath,
                                             std::string &outError);
@@ -201,7 +202,7 @@ private:
   mutable std::mutex mMutex;
   Steinberg::Vst::HostApplication mHostApp;
   int mNextHandle = 1;
-  std::unordered_map<int, std::unique_ptr<Vst3PluginInstance>> mPlugins;
+  std::unordered_map<int, std::shared_ptr<Vst3PluginInstance>> mPlugins;
   std::unordered_map<std::string, VST3::Hosting::Module::Ptr> mLoadedModules;
   std::atomic<void (*)(int, unsigned int, double)> mParamEditCallback{nullptr};
   std::atomic<dartVst3RestartComponentCallback_t> mRestartCallback{nullptr};

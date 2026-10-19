@@ -4633,13 +4633,13 @@ extern "C"
 
   FFI_PLUGIN_EXPORT unsigned int soloud_vst3GetLatencySamples(int pluginHandle)
   {
-    auto *plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
+    auto plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
     return plugin != nullptr ? plugin->getLatencySamples() : 0;
   }
 
   FFI_PLUGIN_EXPORT int soloud_vst3GetParameterCount(int pluginHandle)
   {
-    auto *plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
+    auto plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
     return plugin != nullptr ? plugin->getParameterCount() : 0;
   }
 
@@ -4648,7 +4648,7 @@ extern "C"
       char *outTitle, int titleBufferLen, char *outUnits, int unitsBufferLen,
       double *outDefaultNormalized, int *outStepCount, unsigned int *outFlags)
   {
-    auto *plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
+    auto plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
     if (plugin == nullptr)
       return invalidParameter;
 
@@ -4673,7 +4673,7 @@ extern "C"
       int pluginHandle, unsigned int paramId, char *outDisplayText,
       int displayBufferLen)
   {
-    auto *plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
+    auto plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
     if (plugin == nullptr)
     {
       copyToFixedBuffer("", outDisplayText, displayBufferLen);
@@ -4691,7 +4691,7 @@ extern "C"
   FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3SetParameterNormalized(
       int pluginHandle, unsigned int paramId, double normalizedValue)
   {
-    auto *plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
+    auto plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
     if (plugin == nullptr)
       return invalidParameter;
     return plugin->setParameterNormalized(paramId, normalizedValue)
@@ -4702,7 +4702,7 @@ extern "C"
   FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3MapSlotParameter(
       int pluginHandle, int customFilterParamIndex, unsigned int vst3ParamId)
   {
-    auto *plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
+    auto plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
     if (plugin == nullptr)
       return invalidParameter;
     return plugin->mapSlotParameter(customFilterParamIndex, vst3ParamId)
@@ -4715,7 +4715,7 @@ extern "C"
                                                  int timeSigDenominator,
                                                  int isPlaying)
   {
-    auto *plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
+    auto plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
     if (plugin != nullptr)
     {
       plugin->setTransport(bpm, timeSigNumerator, timeSigDenominator,
@@ -4727,7 +4727,7 @@ extern "C"
       int pluginHandle, int isNoteOn, int channel, int pitch, float velocity,
       int sampleOffset)
   {
-    auto *plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
+    auto plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
     if (plugin == nullptr)
       return invalidParameter;
     return plugin->sendMidiNote(isNoteOn != 0, channel, pitch, velocity,
@@ -4746,7 +4746,7 @@ extern "C"
     if (outData == nullptr || outSize == nullptr)
       return invalidParameter;
 
-    auto *plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
+    auto plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
     if (plugin == nullptr)
       return invalidParameter;
 
@@ -4769,7 +4769,7 @@ extern "C"
   FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3SetState(
       int pluginHandle, const unsigned char *data, unsigned int size)
   {
-    auto *plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
+    auto plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
     if (plugin == nullptr || data == nullptr || size == 0)
       return invalidParameter;
     return plugin->setState(data, size) ? noError : unknownError;
@@ -4777,14 +4777,14 @@ extern "C"
 
   FFI_PLUGIN_EXPORT int soloud_vst3HasEditor(int pluginHandle)
   {
-    auto *plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
+    auto plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
     return (plugin != nullptr && plugin->hasEditor()) ? 1 : 0;
   }
 
   FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3OpenEditor(
       int pluginHandle, const char *windowTitle)
   {
-    auto *plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
+    auto plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
     if (plugin == nullptr)
       return invalidParameter;
     return plugin->openEditor(windowTitle) ? noError : unknownError;
@@ -4792,14 +4792,14 @@ extern "C"
 
   FFI_PLUGIN_EXPORT void soloud_vst3CloseEditor(int pluginHandle)
   {
-    auto *plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
+    auto plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
     if (plugin != nullptr)
       plugin->closeEditor();
   }
 
   FFI_PLUGIN_EXPORT int soloud_vst3IsEditorOpen(int pluginHandle)
   {
-    auto *plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
+    auto plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
     return (plugin != nullptr && plugin->isEditorOpen()) ? 1 : 0;
   }
 

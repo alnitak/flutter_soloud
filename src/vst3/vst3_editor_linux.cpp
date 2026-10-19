@@ -59,6 +59,7 @@ using FnGdkDisplayGetDefault = void *(*)();
 using FnGdkX11DisplayGetType = unsigned long (*)();
 using FnGTypeCheckInstanceIsA = int (*)(void *, unsigned long);
 using FnGdkX11DisplayGetXdisplay = XDisplay *(*)(void *);
+using FnGdkSetAllowedBackends = void (*)(const char *);
 
 struct LinuxGuiSymbols {
   void *x11Lib = nullptr;
@@ -99,6 +100,7 @@ struct LinuxGuiSymbols {
   FnGdkX11DisplayGetType gdk_x11_display_get_type = nullptr;
   FnGTypeCheckInstanceIsA g_type_check_instance_is_a = nullptr;
   FnGdkX11DisplayGetXdisplay gdk_x11_display_get_xdisplay = nullptr;
+  FnGdkSetAllowedBackends gdk_set_allowed_backends = nullptr;
 
   bool load() {
     if (x11Lib != nullptr && glibLib != nullptr) {
@@ -162,6 +164,7 @@ struct LinuxGuiSymbols {
       gdk_x11_display_get_type = reinterpret_cast<FnGdkX11DisplayGetType>(dlsym(gdkLib, "gdk_x11_display_get_type"));
       g_type_check_instance_is_a = reinterpret_cast<FnGTypeCheckInstanceIsA>(dlsym(gdkLib, "g_type_check_instance_is_a"));
       gdk_x11_display_get_xdisplay = reinterpret_cast<FnGdkX11DisplayGetXdisplay>(dlsym(gdkLib, "gdk_x11_display_get_xdisplay"));
+      gdk_set_allowed_backends = reinterpret_cast<FnGdkSetAllowedBackends>(dlsym(gdkLib, "gdk_set_allowed_backends"));
     }
 
     return XOpenDisplay && XCloseDisplay && XDefaultScreen && XRootWindow &&
@@ -189,6 +192,12 @@ struct XErrorEventPartial {
 static int customXErrorHandler(XDisplay * /*d*/, void *ev) {
   if (ev != nullptr) {
     auto *err = reinterpret_cast<XErrorEventPartial *>(ev);
+    fprintf(stderr,
+            "[vst3_editor_linux] X11 error: code=%u, req=%u, minor=%u, res=0x%lx\n",
+            static_cast<unsigned int>(err->error_code),
+            static_cast<unsigned int>(err->request_code),
+            static_cast<unsigned int>(err->minor_code),
+            err->resourceid);
     // Ignore harmless asynchronous X11 race condition errors during unmap/destroy
     if (err->error_code == 3 /* BadWindow */ ||
         err->error_code == 9 /* BadDrawable */ ||
@@ -213,6 +222,8 @@ public:
   ~Vst3EditorWindowLinux() override { destroy(); }
 
   bool open(Steinberg::IPlugView *plugView, const char *title) override {
+    fprintf(stderr, "[vst3_editor_linux] open() called for title='%s', plugView=%p\n",
+            title ? title : "", plugView);
     if (plugView == nullptr) {
       return false;
     }
@@ -229,8 +240,9 @@ public:
       guiSymbols().XInitThreads();
     }
 
-    if (getenv("GDK_BACKEND") == nullptr) {
-      setenv("GDK_BACKEND", "x11", 0);
+    setenv("GDK_BACKEND", "x11", 1);
+    if (guiSymbols().gdk_set_allowed_backends) {
+      guiSymbols().gdk_set_allowed_backends("x11");
     }
 
     if (sSharedDisplay == nullptr) {
@@ -306,18 +318,23 @@ public:
 
     if (mPlugView != plugView) {
       if (mPlugView != nullptr) {
+        fprintf(stderr, "[vst3_editor_linux] removing old plugView %p\n", mPlugView.get());
         mPlugView->removed();
         mPlugView->setFrame(nullptr);
       }
       mPlugView = plugView;
       mPlugView->setFrame(this);
+      fprintf(stderr, "[vst3_editor_linux] attaching plugView %p to window 0x%lx...\n",
+              mPlugView.get(), sSharedWindow);
       if (mPlugView->attached(reinterpret_cast<void *>(sSharedWindow),
                               Steinberg::kPlatformTypeX11EmbedWindowID) !=
           Steinberg::kResultTrue) {
+        fprintf(stderr, "[vst3_editor_linux] plugView->attached FAILED!\n");
         mPlugView->setFrame(nullptr);
         mPlugView = nullptr;
         return false;
       }
+      fprintf(stderr, "[vst3_editor_linux] plugView->attached SUCCESS\n");
     }
 
     if (guiSymbols().XMapRaised) {
@@ -346,6 +363,7 @@ public:
   }
 
   void close() override {
+    fprintf(stderr, "[vst3_editor_linux] close() called, window=0x%lx\n", sSharedWindow);
     mIsOpen.store(false, std::memory_order_release);
     if (mEventTimerId != 0 && guiSymbols().g_source_remove) {
       guiSymbols().g_source_remove(mEventTimerId);
@@ -374,6 +392,8 @@ public:
   }
 
   void destroy() {
+    fprintf(stderr, "[vst3_editor_linux] destroy() called, window=0x%lx, plugView=%p\n",
+            sSharedWindow, mPlugView.get());
     close();
     if (guiSymbols().gdk_error_trap_push) {
       guiSymbols().gdk_error_trap_push();
@@ -382,6 +402,7 @@ public:
       guiSymbols().XSetErrorHandler(&customXErrorHandler);
     }
     if (mPlugView != nullptr) {
+      fprintf(stderr, "[vst3_editor_linux] calling mPlugView->removed()...\n");
       mPlugView->removed();
       mPlugView->setFrame(nullptr);
       mPlugView = nullptr;
