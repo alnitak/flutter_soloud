@@ -291,7 +291,15 @@ unsigned int RealtimeStream::pushDataScheduledFloat32(double engineTime,
   return written;
 }
 
-void RealtimeStream::resetBuffer() { mRingBuffer.reset(); }
+void RealtimeStream::resetBuffer() {
+  mRingBuffer.reset();
+  RealtimeStreamInstance *inst = mInstance.load(std::memory_order_acquire);
+  if (inst != nullptr) {
+    inst->mWasUnderrun = true;
+    inst->mSilentFramesSinceUnderrun = 0;
+    inst->mSubQuantumDelayFrames = 0;
+  }
+}
 
 void RealtimeStream::injectIntoPlayingWindow(uint64_t writeFrameBeforePush,
                                              bool useExplicitTime,

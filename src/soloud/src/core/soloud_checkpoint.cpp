@@ -250,22 +250,19 @@ namespace SoLoud
 		cv.mSourceState = v->captureSourceState();
 	}
 
-	// Whether a voice described by a snapshot can be re-mixed bit-exactly:
-	// its source and all its live filter instances produced snapshots.
+	// Whether a voice described by a snapshot can be re-mixed:
+	// its source produced a snapshot.
 	// Paused voices are exempt from the source requirement: their source
 	// state does not advance while paused (the mix never calls getAudio()
 	// for them).
+	// Filters with snapshots (e.g. CustomFilter) are restored bit-exactly;
+	// filters without snapshots (built-ins) continue filtering in best-effort
+	// mode during re-mix without aborting low-latency playback.
 	static bool voiceSnapshotRestorable(const CheckpointVoice &aVoiceState)
 	{
 		if (!(aVoiceState.mFlags & AudioSourceInstance::PAUSED) &&
 			aVoiceState.mSourceState == NULL)
 			return false;
-		unsigned int i;
-		for (i = 0; i < FILTERS_PER_STREAM; i++)
-		{
-			if (aVoiceState.mFilterLive[i] && aVoiceState.mFilterState[i] == NULL)
-				return false;
-		}
 		return true;
 	}
 
@@ -390,10 +387,8 @@ namespace SoLoud
 		for (i = 0; i < FILTERS_PER_STREAM; i++)
 		{
 			cp.mFilterState[i] = mFilterInstance[i] ? mFilterInstance[i]->captureState() : NULL;
-			// A live global filter that cannot snapshot itself makes every
-			// rollback targeting this checkpoint degrade to legacy behavior.
-			if (mFilterInstance[i] != NULL && cp.mFilterState[i] == NULL)
-				restorable = false;
+			// A live global filter that cannot snapshot itself continues in
+			// best-effort mode during re-mix without aborting low latency.
 		}
 
 		// Voices. Pass 1: the active (sounding) voices, so they are always

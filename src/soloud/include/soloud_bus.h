@@ -31,6 +31,14 @@ namespace SoLoud
 {
 	class Bus;
 
+	// ###### flutter_soloud local patch (mix checkpoints) ######
+	class BusSnapshot : public SourceStateSnapshot
+	{
+	public:
+		float mVisualizationChannelVolume[MAX_CHANNELS];
+		float mVisualizationWaveData[256];
+	};
+
 	class BusInstance : public AudioSourceInstance
 	{
 	public:
@@ -47,6 +55,10 @@ namespace SoLoud
 		virtual unsigned int getAudio(float *aBuffer, unsigned int aSamplesToRead, unsigned int aBufferSize);
 		virtual bool hasEnded();
 		virtual ~BusInstance();
+
+		// ###### flutter_soloud local patch (mix checkpoints) ######
+		virtual SourceStateSnapshot *captureSourceState();
+		virtual void restoreSourceState(SourceStateSnapshot *aSnapshot);
 	};
 
 	class Bus : public AudioSource

@@ -16,9 +16,22 @@ import 'package:flutter_soloud/flutter_soloud.dart';
 /// - Monitoring `availableToRead`, `availableToWrite`, and `underrunCount`.
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialized with Option B low-latency lookahead configuration:
+  // - `bufferSize: 4096` ensures plenty of mixer headroom and CPU stability.
+  // - `renderAheadFrames: 4096` enables the native render-ahead ring
+  //   (`mRenderRing`) and mix checkpoints for retroactive re-mixing.
+  // - `devicePeriodFrames: 256` requests small ~5.33 ms hardware callbacks from
+  //   the OS audio driver.
+  //
+  // Calling `_triggerInstantPluck` resets the stream and pushes new samples,
+  // which retroactively splices the pluck directly into the playing window at
+  // the playhead for immediate ~5-10 ms touch response.
   await SoLoud.instance.init(
     sampleRate: 48000,
-    bufferSize: 512,
+    bufferSize: 4096,
+    renderAheadFrames: 4096,
+    devicePeriodFrames: 256,
   );
   runApp(const MaterialApp(home: RealtimePcmSynthExample()));
 }
@@ -140,8 +153,7 @@ class _RealtimePcmSynthExampleState extends State<RealtimePcmSynthExample> {
 
     for (var i = 0; i < pluckFrames; i++) {
       final env = math.exp(-i / (pluckFrames * 0.28));
-      final harmonic =
-          math.sin(2.0 * math.pi * phase) +
+      final harmonic = math.sin(2.0 * math.pi * phase) +
           0.5 * math.sin(4.0 * math.pi * phase) +
           0.25 * math.sin(6.0 * math.pi * phase);
       final sample = (harmonic * 0.25 * env).clamp(-1.0, 1.0);

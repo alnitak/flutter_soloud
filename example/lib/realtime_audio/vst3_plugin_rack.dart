@@ -26,7 +26,12 @@ import 'package:flutter_soloud/flutter_soloud.dart';
 /// `hooks.user_defines.flutter_soloud` in the app's `pubspec.yaml`.
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await SoLoud.instance.init(sampleRate: 48000, bufferSize: 256);
+  await SoLoud.instance.init(
+    sampleRate: 48000,
+    bufferSize: 4096,
+    renderAheadFrames: 4096,
+    devicePeriodFrames: 256,
+  );
   runApp(const MaterialApp(home: Vst3PluginRackExample()));
 }
 
@@ -66,7 +71,8 @@ class _Vst3PluginRackExampleState extends State<Vst3PluginRackExample> {
       }
       return '$home/.vst3/flutter_reverb.vst3';
     }
-    const echoMac = '/Volumes/NVME/Users/deimos/Library/Audio/Plug-Ins/VST3/echo.vst3';
+    const echoMac =
+        '/Volumes/NVME/Users/deimos/Library/Audio/Plug-Ins/VST3/echo.vst3';
     if (Directory(echoMac).existsSync()) return echoMac;
     return '/Volumes/NVME/Users/deimos/Library/Audio/Plug-Ins/VST3/'
         'flutter_reverb.vst3';

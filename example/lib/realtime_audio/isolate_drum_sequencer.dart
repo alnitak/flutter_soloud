@@ -19,9 +19,23 @@ import 'package:flutter_soloud/flutter_soloud.dart';
 ///   and `compressorFilter`.
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialized with Option B low-latency lookahead configuration:
+  // - `bufferSize: 4096` ensures plenty of mixer headroom and CPU stability.
+  // - `renderAheadFrames: 4096` enables the native render-ahead ring
+  //   (`mRenderRing`) and mix checkpoints for retroactive re-mixing.
+  // - `devicePeriodFrames: 256` requests small ~5.33 ms hardware callbacks from
+  //   the OS audio driver (CoreAudio/WASAPI/AAudio).
+  //
+  // Whenever the sequencer starts, stops, or splices audio into the stream,
+  // `injectIntoPlayingWindow` rewinds `mRenderRing` back to the active playhead
+  // and splices the new audio immediately, achieving ~5-10 ms latency even
+  // while mixing buses and bus filters are active!
   await SoLoud.instance.init(
     sampleRate: 48000,
-    bufferSize: 512,
+    bufferSize: 4096,
+    renderAheadFrames: 4096,
+    devicePeriodFrames: 256,
   );
   runApp(const MaterialApp(home: IsolateDrumSequencerExample()));
 }
@@ -185,10 +199,10 @@ class _IsolateDrumSequencerExampleState
   }
 
   DrumSynthState _buildStateSnapshot() => DrumSynthState(
-    running: _isRunning,
-    bpm: _bpm,
-    grid: _grid.map(List<bool>.from).toList(),
-  );
+        running: _isRunning,
+        bpm: _bpm,
+        grid: _grid.map(List<bool>.from).toList(),
+      );
 
   Future<void> _setupEngine() async {
     final bus = _soloud.createMixingBus(name: 'Drum Bus')..playOnEngine();
@@ -206,6 +220,9 @@ class _IsolateDrumSequencerExampleState
       initialState: _buildStateSnapshot(),
       onFeed: _drumSynthGenerateChunk,
       onStateUpdate: _updateDrumSynthState,
+      chunkFrames: 128, // 2.67 ms chunk
+      targetBufferedFrames: 256, // 5.33 ms buffer cushion
+      tickInterval: const Duration(milliseconds: 2),
       onUiEvent: (Object? step) {
         if (step is int && mounted) {
           setState(() => _currentStep = step);
@@ -272,8 +289,7 @@ class _IsolateDrumSequencerExampleState
                 // 1 at initial startup while stopped, and +1 each time Stop is
                 // pressed). During continuous playback it stays constant.
                 Tooltip(
-                  message:
-                      'Underruns count transitions to an empty buffer '
+                  message: 'Underruns count transitions to an empty buffer '
                       '(1 at startup and +1 on Stop; stays constant while '
                       'running).',
                   child: Text(
@@ -345,11 +361,11 @@ class _IsolateDrumSequencerExampleState
                             decoration: BoxDecoration(
                               color: _grid[track][step]
                                   ? (step == _currentStep && _isRunning
-                                        ? Colors.amber
-                                        : Colors.indigo)
+                                      ? Colors.amber
+                                      : Colors.indigo)
                                   : (step == _currentStep && _isRunning
-                                        ? Colors.amber.withValues(alpha: 0.35)
-                                        : Colors.grey.shade300),
+                                      ? Colors.amber.withValues(alpha: 0.35)
+                                      : Colors.grey.shade300),
                               borderRadius: BorderRadius.circular(4),
                             ),
                           ),
