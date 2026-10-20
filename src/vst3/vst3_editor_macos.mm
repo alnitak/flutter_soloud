@@ -35,6 +35,118 @@ class Vst3EditorWindowMacOS;
 
 #import <QuartzCore/QuartzCore.h>
 
+@interface SoLoudVst3Window : NSWindow
+@property(nonatomic, assign) NSSize baseContentSize;
+- (void)zoomByFactor:(CGFloat)factor;
+- (void)resetZoom;
+@end
+
+@implementation SoLoudVst3Window
+- (BOOL)performKeyEquivalent:(NSEvent *)event {
+  if (([event modifierFlags] & NSEventModifierFlagDeviceIndependentFlagsMask) ==
+      NSEventModifierFlagCommand) {
+    NSString *chars = [event charactersIgnoringModifiers];
+    if ([chars isEqualToString:@"+"] || [chars isEqualToString:@"="]) {
+      [self zoomByFactor:1.25];
+      return YES;
+    } else if ([chars isEqualToString:@"-"] || [chars isEqualToString:@"_"]) {
+      [self zoomByFactor:0.8];
+      return YES;
+    } else if ([chars isEqualToString:@"0"]) {
+      [self resetZoom];
+      return YES;
+    }
+  }
+  return [super performKeyEquivalent:event];
+}
+
+- (void)zoomByFactor:(CGFloat)factor {
+  NSRect curContentRect = [self contentRectForFrameRect:[self frame]];
+  CGFloat newW = std::round(curContentRect.size.width * factor);
+  CGFloat newH = std::round(curContentRect.size.height * factor);
+  if (self.baseContentSize.width > 0 && self.baseContentSize.height > 0) {
+    newH = std::round(newW * (self.baseContentSize.height / self.baseContentSize.width));
+  }
+
+  NSSize minSize = [self contentMinSize];
+  NSSize maxSize = [self contentMaxSize];
+  if (minSize.width > 0 && newW < minSize.width) {
+    newW = minSize.width;
+    if (self.baseContentSize.width > 0) {
+      newH = std::round(newW * (self.baseContentSize.height / self.baseContentSize.width));
+    }
+  }
+  if (minSize.height > 0 && newH < minSize.height) {
+    newH = minSize.height;
+    if (self.baseContentSize.height > 0) {
+      newW = std::round(newH * (self.baseContentSize.width / self.baseContentSize.height));
+    }
+  }
+  if (maxSize.width > 0 && newW > maxSize.width) {
+    newW = maxSize.width;
+    if (self.baseContentSize.width > 0) {
+      newH = std::round(newW * (self.baseContentSize.height / self.baseContentSize.width));
+    }
+  }
+  if (maxSize.height > 0 && newH > maxSize.height) {
+    newH = maxSize.height;
+    if (self.baseContentSize.height > 0) {
+      newW = std::round(newH * (self.baseContentSize.width / self.baseContentSize.height));
+    }
+  }
+
+  if (std::abs(newW - curContentRect.size.width) < 1.0) return;
+
+  NSRect newContentRect = NSMakeRect(curContentRect.origin.x,
+                                     curContentRect.origin.y - (newH - curContentRect.size.height),
+                                     newW, newH);
+  NSRect newFrame = [self frameRectForContentRect:newContentRect];
+  NSScreen *screen = [self screen];
+  if (screen != nil) {
+    NSRect screenRect = [screen visibleFrame];
+    CGFloat top = [self frame].origin.y + [self frame].size.height;
+    newFrame.origin.y = top - newFrame.size.height;
+    if (newFrame.origin.y < screenRect.origin.y) {
+      newFrame.origin.y = screenRect.origin.y;
+    }
+    if (NSMaxX(newFrame) > NSMaxX(screenRect)) {
+      newFrame.origin.x = NSMaxX(screenRect) - newFrame.size.width;
+    }
+    if (newFrame.origin.x < screenRect.origin.x) {
+      newFrame.origin.x = screenRect.origin.x;
+    }
+  }
+  [self setFrame:newFrame display:YES animate:YES];
+}
+
+- (void)resetZoom {
+  if (self.baseContentSize.width <= 0 || self.baseContentSize.height <= 0) return;
+  NSRect curContentRect = [self contentRectForFrameRect:[self frame]];
+  CGFloat newW = self.baseContentSize.width;
+  CGFloat newH = self.baseContentSize.height;
+  NSRect newContentRect = NSMakeRect(curContentRect.origin.x,
+                                     curContentRect.origin.y - (newH - curContentRect.size.height),
+                                     newW, newH);
+  NSRect newFrame = [self frameRectForContentRect:newContentRect];
+  NSScreen *screen = [self screen];
+  if (screen != nil) {
+    NSRect screenRect = [screen visibleFrame];
+    CGFloat top = [self frame].origin.y + [self frame].size.height;
+    newFrame.origin.y = top - newFrame.size.height;
+    if (newFrame.origin.y < screenRect.origin.y) {
+      newFrame.origin.y = screenRect.origin.y;
+    }
+    if (NSMaxX(newFrame) > NSMaxX(screenRect)) {
+      newFrame.origin.x = NSMaxX(screenRect) - newFrame.size.width;
+    }
+    if (newFrame.origin.x < screenRect.origin.x) {
+      newFrame.origin.x = screenRect.origin.x;
+    }
+  }
+  [self setFrame:newFrame display:YES animate:YES];
+}
+@end
+
 namespace SoLoud {
 
 static inline bool rectEqual(const Steinberg::ViewRect &a,
@@ -91,22 +203,40 @@ public:
       plugView->getSize(&rect);
       const int32_t w = rect.getWidth() > 64 ? rect.getWidth() : 800;
       const int32_t h = rect.getHeight() > 64 ? rect.getHeight() : 600;
+      mBaseWidth = w;
+      mBaseHeight = h;
+
+      bool nativeResize = (plugView->canResize() == Steinberg::kResultTrue);
+      if (!nativeResize) {
+        Steinberg::ViewRect testRect{0, 0, static_cast<Steinberg::int32>(w * 1.5),
+                                     static_cast<Steinberg::int32>(h * 1.5)};
+        if (plugView->checkSizeConstraint(&testRect) == Steinberg::kResultTrue &&
+            (testRect.getWidth() != w || testRect.getHeight() != h)) {
+          nativeResize = true;
+        }
+      }
+      mUseHostScaling = !nativeResize;
 
       NSRect contentRect = NSMakeRect(0, 0, w, h);
 
       NSWindowStyleMask style = NSWindowStyleMaskTitled |
                                 NSWindowStyleMaskClosable |
-                                NSWindowStyleMaskMiniaturizable;
-      if (plugView->canResize() == Steinberg::kResultTrue) {
-        style |= NSWindowStyleMaskResizable;
-      }
+                                NSWindowStyleMaskMiniaturizable |
+                                NSWindowStyleMaskResizable;
 
-      mWindow = [[NSWindow alloc] initWithContentRect:contentRect
-                                            styleMask:style
-                                              backing:NSBackingStoreBuffered
-                                                defer:NO];
+      mWindow = [[SoLoudVst3Window alloc] initWithContentRect:contentRect
+                                                    styleMask:style
+                                                      backing:NSBackingStoreBuffered
+                                                        defer:NO];
+      mWindow.baseContentSize = NSMakeSize(w, h);
       [mWindow setReleasedWhenClosed:NO];
       [mWindow setHidesOnDeactivate:NO];
+      if (mUseHostScaling) {
+        [mWindow setContentAspectRatio:NSMakeSize(w, h)];
+        [mWindow setContentMinSize:NSMakeSize(std::max<int>(100, w / 2),
+                                              std::max<int>(100, h / 2))];
+        [mWindow setContentMaxSize:NSMakeSize(w * 4, h * 4)];
+      }
       NSString *nsTitle = [NSString stringWithUTF8String:titleStr.c_str()];
       [mWindow setTitle:(nsTitle != nil ? nsTitle : @"VST3 Plugin")];
       [mWindow center];
@@ -130,6 +260,14 @@ public:
 #endif
       if (mPlugView->attached(nativeParent, Steinberg::kPlatformTypeNSView) ==
           Steinberg::kResultTrue) {
+        if (mUseHostScaling) {
+          [contentView setFrameSize:NSMakeSize(w, h)];
+          [contentView setBoundsSize:NSMakeSize(mBaseWidth, mBaseHeight)];
+          if ([[contentView subviews] count] > 0) {
+            NSView *pluginView = [[contentView subviews] firstObject];
+            [pluginView setFrame:NSMakeRect(0, 0, mBaseWidth, mBaseHeight)];
+          }
+        }
         ensurePluginSubviewsVisible(contentView);
         [mWindow makeKeyAndOrderFront:nil];
         [NSApp activateIgnoringOtherApps:YES];
@@ -243,6 +381,15 @@ public:
       if (mWindow == nil) {
         return;
       }
+      mBaseWidth = newSize->getWidth();
+      mBaseHeight = newSize->getHeight();
+      mWindow.baseContentSize = NSMakeSize(mBaseWidth, mBaseHeight);
+      if (mUseHostScaling) {
+        [mWindow setContentAspectRatio:NSMakeSize(mBaseWidth, mBaseHeight)];
+        [mWindow setContentMinSize:NSMakeSize(std::max<int>(100, mBaseWidth / 2),
+                                              std::max<int>(100, mBaseHeight / 2))];
+        [mWindow setContentMaxSize:NSMakeSize(mBaseWidth * 4, mBaseHeight * 4)];
+      }
       NSRect contentRect = [mWindow contentRectForFrameRect:mWindow.frame];
       const CGFloat diffY = newSize->getHeight() - contentRect.size.height;
       contentRect.size.width = newSize->getWidth();
@@ -252,6 +399,16 @@ public:
       [mWindow setFrame:frameRect
                 display:[mWindow isVisible]
                 animate:NO];
+      if (mUseHostScaling) {
+        NSView *contentView = [mWindow contentView];
+        if (contentView != nil) {
+          [contentView setBoundsSize:NSMakeSize(mBaseWidth, mBaseHeight)];
+          if ([[contentView subviews] count] > 0) {
+            NSView *pluginView = [[contentView subviews] firstObject];
+            [pluginView setFrame:NSMakeRect(0, 0, mBaseWidth, mBaseHeight)];
+          }
+        }
+      }
     };
 
     if ([NSThread isMainThread]) {
@@ -311,6 +468,9 @@ public:
     if (mPlugView == nullptr || mWindow == nil) {
       return frameSize;
     }
+    if (mUseHostScaling) {
+      return frameSize;
+    }
     NSRect frameRect = NSMakeRect(0, 0, frameSize.width, frameSize.height);
     NSRect contentRect = [mWindow contentRectForFrameRect:frameRect];
     Steinberg::ViewRect r{
@@ -337,16 +497,25 @@ public:
     if (contentView == nil) {
       return;
     }
-    NSRect bounds = [contentView bounds];
-    Steinberg::ViewRect r{
-        0, 0, static_cast<Steinberg::int32>(bounds.size.width),
-        static_cast<Steinberg::int32>(bounds.size.height)};
-    Steinberg::ViewRect r2{0, 0, 0, 0};
-    if (mPlugView->getSize(&r2) == Steinberg::kResultTrue &&
-        !rectEqual(r, r2)) {
-      mPlugView->onSize(&r);
+    if (mUseHostScaling) {
+      [contentView setBoundsSize:NSMakeSize(mBaseWidth, mBaseHeight)];
+      if ([[contentView subviews] count] > 0) {
+        NSView *pluginView = [[contentView subviews] firstObject];
+        [pluginView setFrame:NSMakeRect(0, 0, mBaseWidth, mBaseHeight)];
+      }
+    } else {
+      NSRect bounds = [contentView bounds];
+      Steinberg::ViewRect r{
+          0, 0, static_cast<Steinberg::int32>(bounds.size.width),
+          static_cast<Steinberg::int32>(bounds.size.height)};
+      Steinberg::ViewRect r2{0, 0, 0, 0};
+      if (mPlugView->getSize(&r2) == Steinberg::kResultTrue &&
+          !rectEqual(r, r2)) {
+        mPlugView->onSize(&r);
+      }
     }
     ensurePluginSubviewsVisible(contentView);
+    [mWindow displayIfNeeded];
   }
 
   void onNativeWindowOcclusionChanged() {
@@ -377,8 +546,11 @@ public:
 
 private:
   Steinberg::IPtr<Steinberg::IPlugView> mPlugView;
-  NSWindow *mWindow = nil;
+  SoLoudVst3Window *mWindow = nil;
   SoLoudVst3WindowDelegate *mDelegate = nil;
+  int32_t mBaseWidth = 800;
+  int32_t mBaseHeight = 600;
+  bool mUseHostScaling = false;
   std::atomic<bool> mIsOpen{false};
   std::atomic<bool> mInResize{false};
 };

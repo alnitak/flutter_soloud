@@ -45,6 +45,27 @@ using FnXSetWMProtocols = int (*)(XDisplay *, XWindow, XAtom *, int);
 using FnXSetErrorHandler = int (*)(int (*)(XDisplay *, void *));
 using FnXSync = int (*)(XDisplay *, int);
 using FnXCheckTypedWindowEvent = int (*)(XDisplay *, XWindow, int, void *);
+using FnXSelectInput = int (*)(XDisplay *, XWindow, long);
+using FnXSetWMNormalHints = void (*)(XDisplay *, XWindow, void *);
+
+struct XSizeHintsDef {
+  long flags;
+  int x, y;
+  int width, height;
+  int min_width, min_height;
+  int max_width, max_height;
+  int width_inc, height_inc;
+  struct {
+    int x;
+    int y;
+  } min_aspect, max_aspect;
+  int base_width, base_height;
+  int win_gravity;
+};
+
+constexpr long kPMinSize = (1L << 4);
+constexpr long kPMaxSize = (1L << 5);
+constexpr long kPAspect = (1L << 7);
 
 using GSourceFunc = int (*)(void *);
 using GUnixFDSourceFunc = int (*)(int, int, void *);
@@ -88,6 +109,8 @@ struct LinuxGuiSymbols {
   FnXSetWMProtocols XSetWMProtocols = nullptr;
   FnXSetErrorHandler XSetErrorHandler = nullptr;
   FnXCheckTypedWindowEvent XCheckTypedWindowEvent = nullptr;
+  FnXSelectInput XSelectInput = nullptr;
+  FnXSetWMNormalHints XSetWMNormalHints = nullptr;
 
   FnGTimeoutAdd g_timeout_add = nullptr;
   FnGUnixFdAdd g_unix_fd_add = nullptr;
@@ -149,6 +172,10 @@ struct LinuxGuiSymbols {
         reinterpret_cast<FnXSetErrorHandler>(dlsym(x11Lib, "XSetErrorHandler"));
     XCheckTypedWindowEvent =
         reinterpret_cast<FnXCheckTypedWindowEvent>(dlsym(x11Lib, "XCheckTypedWindowEvent"));
+    XSelectInput =
+        reinterpret_cast<FnXSelectInput>(dlsym(x11Lib, "XSelectInput"));
+    XSetWMNormalHints =
+        reinterpret_cast<FnXSetWMNormalHints>(dlsym(x11Lib, "XSetWMNormalHints"));
 
     g_timeout_add = reinterpret_cast<FnGTimeoutAdd>(dlsym(glibLib, "g_timeout_add"));
     g_unix_fd_add = reinterpret_cast<FnGUnixFdAdd>(dlsym(glibLib, "g_unix_fd_add"));
@@ -298,6 +325,38 @@ public:
       if (guiSymbols().XResizeWindow) {
         guiSymbols().XResizeWindow(sSharedDisplay, sSharedWindow, w, h);
       }
+    }
+
+    bool nativeResize = (plugView->canResize() == Steinberg::kResultTrue);
+    if (!nativeResize) {
+      Steinberg::ViewRect testRect{0, 0, static_cast<Steinberg::int32>(w * 1.5),
+                                   static_cast<Steinberg::int32>(h * 1.5)};
+      if (plugView->checkSizeConstraint(&testRect) == Steinberg::kResultTrue &&
+          (testRect.getWidth() != w || testRect.getHeight() != h)) {
+        nativeResize = true;
+      }
+    }
+    mNativeResize = nativeResize;
+
+    if (guiSymbols().XSelectInput) {
+      // StructureNotifyMask = (1L << 17)
+      guiSymbols().XSelectInput(sSharedDisplay, sSharedWindow, (1L << 17));
+    }
+
+    if (guiSymbols().XSetWMNormalHints) {
+      XSizeHintsDef hints{};
+      if (!mNativeResize) {
+        hints.flags = kPMinSize | kPMaxSize;
+        hints.min_width = static_cast<int>(w);
+        hints.min_height = static_cast<int>(h);
+        hints.max_width = static_cast<int>(w);
+        hints.max_height = static_cast<int>(h);
+      } else {
+        hints.flags = kPMinSize;
+        hints.min_width = static_cast<int>(w / 2 > 64 ? w / 2 : 64);
+        hints.min_height = static_cast<int>(h / 2 > 64 ? h / 2 : 64);
+      }
+      guiSymbols().XSetWMNormalHints(sSharedDisplay, sSharedWindow, &hints);
     }
 
     if (title != nullptr && title[0] != '\0' && guiSymbols().XStoreName) {
@@ -456,6 +515,15 @@ public:
     if (guiSymbols().XResizeWindow) {
       guiSymbols().XResizeWindow(sSharedDisplay, sSharedWindow, w, h);
     }
+    if (!mNativeResize && guiSymbols().XSetWMNormalHints) {
+      XSizeHintsDef hints{};
+      hints.flags = kPMinSize | kPMaxSize;
+      hints.min_width = static_cast<int>(w);
+      hints.min_height = static_cast<int>(h);
+      hints.max_width = static_cast<int>(w);
+      hints.max_height = static_cast<int>(h);
+      guiSymbols().XSetWMNormalHints(sSharedDisplay, sSharedWindow, &hints);
+    }
     if (r.left != newSize->left || r.top != newSize->top ||
         r.right != newSize->right || r.bottom != newSize->bottom) {
       view->onSize(newSize);
@@ -580,6 +648,41 @@ private:
           return 0; // G_SOURCE_REMOVE
         }
       }
+
+      while (guiSymbols().XCheckTypedWindowEvent(sSharedDisplay, sSharedWindow,
+                                                 22 /* ConfigureNotify */,
+                                                 eventBuf)) {
+        if (self->mInResize.load(std::memory_order_acquire) ||
+            self->mPlugView == nullptr) {
+          continue;
+        }
+        // In 64-bit LP64 XConfigureEvent:
+        // offset 56: int width, offset 60: int height
+        const char *raw = reinterpret_cast<const char *>(eventBuf);
+        int newW = *reinterpret_cast<const int *>(raw + 56);
+        int newH = *reinterpret_cast<const int *>(raw + 60);
+        if (newW > 64 && newH > 64) {
+          Steinberg::ViewRect curR{0, 0, 0, 0};
+          if (self->mPlugView->getSize(&curR) == Steinberg::kResultTrue) {
+            if (curR.getWidth() != newW || curR.getHeight() != newH) {
+              Steinberg::ViewRect newR{0, 0, static_cast<Steinberg::int32>(newW),
+                                       static_cast<Steinberg::int32>(newH)};
+              if (self->mPlugView->checkSizeConstraint(&newR) ==
+                  Steinberg::kResultTrue) {
+                if (newR.getWidth() != newW || newR.getHeight() != newH) {
+                  if (guiSymbols().XResizeWindow) {
+                    guiSymbols().XResizeWindow(
+                        sSharedDisplay, sSharedWindow,
+                        static_cast<unsigned int>(newR.getWidth()),
+                        static_cast<unsigned int>(newR.getHeight()));
+                  }
+                }
+              }
+              self->mPlugView->onSize(&newR);
+            }
+          }
+        }
+      }
     }
     return 1; // G_SOURCE_CONTINUE
   }
@@ -590,6 +693,7 @@ private:
   std::map<Steinberg::Linux::ITimerHandler *, unsigned int> mTimerSources;
   std::atomic<bool> mIsOpen{false};
   std::atomic<bool> mInResize{false};
+  bool mNativeResize = false;
 };
 
 std::unique_ptr<Vst3EditorWindow> Vst3EditorWindow::create() {

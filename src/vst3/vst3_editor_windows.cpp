@@ -43,7 +43,16 @@ public:
 
     DWORD style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX |
                   WS_CLIPCHILDREN;
-    if (plugView->canResize() == Steinberg::kResultTrue) {
+    bool nativeResize = (plugView->canResize() == Steinberg::kResultTrue);
+    if (!nativeResize) {
+      Steinberg::ViewRect testRect{0, 0, static_cast<Steinberg::int32>(w * 1.5),
+                                   static_cast<Steinberg::int32>(h * 1.5)};
+      if (plugView->checkSizeConstraint(&testRect) == Steinberg::kResultTrue &&
+          (testRect.getWidth() != w || testRect.getHeight() != h)) {
+        nativeResize = true;
+      }
+    }
+    if (nativeResize) {
       style |= WS_THICKFRAME | WS_MAXIMIZEBOX;
     }
     const DWORD exStyle = WS_EX_APPWINDOW;
