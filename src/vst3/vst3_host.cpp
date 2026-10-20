@@ -114,10 +114,7 @@ bool Vst3PluginInstance::initialize(
               }
             },
             [this, onRestart = std::move(onRestart)](Steinberg::int32 flags) {
-              constexpr auto kMask =
-                  Steinberg::Vst::RestartFlags::kReloadComponent |
-                  Steinberg::Vst::RestartFlags::kParamTitlesChanged;
-              if ((flags & kMask) != 0) {
+              if ((flags & Steinberg::Vst::RestartFlags::kReloadComponent) != 0) {
                 syncComponentStateToController();
               }
               if (onRestart) {
@@ -536,8 +533,7 @@ void Vst3PluginInstance::syncComponentStateToController() {
   mIsSyncingState.store(false, std::memory_order_release);
 }
 
-int Vst3PluginInstance::getParameterCount() {
-  syncComponentStateToController();
+int Vst3PluginInstance::getParameterCount() const {
   if (!mController) {
     return 0;
   }
@@ -588,7 +584,18 @@ bool Vst3PluginInstance::setParameterNormalized(uint32_t paramId,
   const double clamped = std::clamp<double>(normalizedValue, 0.0, 1.0);
   mPendingParamQueue.push(Vst3ParamChangeEvent{paramId, clamped, 0});
   if (mController) {
+#if defined(__APPLE__)
+    void (^setBlock)(void) = ^{
+      mController->setParamNormalized(paramId, clamped);
+    };
+    if (pthread_main_np() != 0) {
+      setBlock();
+    } else {
+      dispatch_sync(dispatch_get_main_queue(), setBlock);
+    }
+#else
     mController->setParamNormalized(paramId, clamped);
+#endif
   }
   return true;
 }

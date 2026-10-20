@@ -155,6 +155,13 @@ class _Vst3PluginRackExampleState extends State<Vst3PluginRackExample> {
         _soloud.play(synth.audioSource, volume: 0.7);
         _guiSub = synth.onGuiParameterChanged.listen((evt) {
           final disp = synth.getParameterDisplay(evt.paramId);
+          final param = synth.parameters.cast<Vst3ParamInfo?>().firstWhere(
+                (p) => p?.paramId == evt.paramId,
+                orElse: () => null,
+              );
+          if (param?.title == 'FX Type') {
+            synth.refreshParameters();
+          }
           setState(() {
             _statusMessage = 'GUI edited param ${evt.paramId} -> $disp';
           });
@@ -182,6 +189,13 @@ class _Vst3PluginRackExampleState extends State<Vst3PluginRackExample> {
         slot.wet.value = _effectWet;
         _guiSub = effect.onGuiParameterChanged.listen((evt) {
           final disp = effect.getParameterDisplay(evt.paramId);
+          final param = effect.parameters.cast<Vst3ParamInfo?>().firstWhere(
+                (p) => p?.paramId == evt.paramId,
+                orElse: () => null,
+              );
+          if (param?.title == 'FX Type') {
+            effect.refreshParameters();
+          }
           setState(() {
             _statusMessage = 'GUI edited param ${evt.paramId} -> $disp';
           });
@@ -465,7 +479,9 @@ class _Vst3PluginRackExampleState extends State<Vst3PluginRackExample> {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(
                                       content: Text(
-                                        'Could not open VST3 GUI. On Linux, VST3 embedding requires an X11 backend (GDK_BACKEND=x11).',
+                                        'Could not open VST3 GUI. '
+                                        'On Linux, VST3 embedding requires '
+                                        'an X11 backend (GDK_BACKEND=x11).',
                                       ),
                                     ),
                                   );

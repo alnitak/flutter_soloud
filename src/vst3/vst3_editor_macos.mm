@@ -106,6 +106,7 @@ public:
                                               backing:NSBackingStoreBuffered
                                                 defer:NO];
       [mWindow setReleasedWhenClosed:NO];
+      [mWindow setHidesOnDeactivate:NO];
       NSString *nsTitle = [NSString stringWithUTF8String:titleStr.c_str()];
       [mWindow setTitle:(nsTitle != nil ? nsTitle : @"VST3 Plugin")];
       [mWindow center];
@@ -117,9 +118,6 @@ public:
              selector:@selector(applicationWillTerminate:)
                  name:NSApplicationWillTerminateNotification
                object:nil];
-
-      [mWindow makeKeyAndOrderFront:nil];
-      [NSApp activateIgnoringOtherApps:YES];
 
       mPlugView = plugView;
       mPlugView->setFrame(this);
@@ -133,6 +131,18 @@ public:
       if (mPlugView->attached(nativeParent, Steinberg::kPlatformTypeNSView) ==
           Steinberg::kResultTrue) {
         ensurePluginSubviewsVisible(contentView);
+        [mWindow makeKeyAndOrderFront:nil];
+        [NSApp activateIgnoringOtherApps:YES];
+        if ([[contentView subviews] count] > 0) {
+          NSView *pluginView = [[contentView subviews] firstObject];
+          [mWindow makeFirstResponder:pluginView];
+        }
+        [[NSNotificationCenter defaultCenter]
+            postNotificationName:NSWindowDidBecomeKeyNotification
+                          object:mWindow];
+        [[NSNotificationCenter defaultCenter]
+            postNotificationName:NSWindowDidBecomeMainNotification
+                          object:mWindow];
         [mWindow displayIfNeeded];
         mIsOpen.store(true, std::memory_order_release);
         success = true;
@@ -348,6 +358,23 @@ public:
     }
   }
 
+  void onNativeWindowDidBecomeKey() {
+    if (mWindow == nil) {
+      return;
+    }
+    NSView *contentView = [mWindow contentView];
+    if (contentView != nil) {
+      if ([[contentView subviews] count] > 0) {
+        NSView *pluginView = [[contentView subviews] firstObject];
+        if ([mWindow firstResponder] != pluginView) {
+          [mWindow makeFirstResponder:pluginView];
+        }
+      }
+      ensurePluginSubviewsVisible(contentView);
+      [mWindow displayIfNeeded];
+    }
+  }
+
 private:
   Steinberg::IPtr<Steinberg::IPlugView> mPlugView;
   NSWindow *mWindow = nil;
@@ -372,6 +399,20 @@ std::unique_ptr<Vst3EditorWindow> Vst3EditorWindow::create() {
 
 - (void)clearOwner {
   _owner = nullptr;
+}
+
+- (void)windowDidBecomeKey:(NSNotification *)notification {
+  (void)notification;
+  if (_owner != nullptr) {
+    _owner->onNativeWindowDidBecomeKey();
+  }
+}
+
+- (void)windowDidBecomeMain:(NSNotification *)notification {
+  (void)notification;
+  if (_owner != nullptr) {
+    _owner->onNativeWindowDidBecomeKey();
+  }
 }
 
 - (void)applicationWillTerminate:(NSNotification *)notification {

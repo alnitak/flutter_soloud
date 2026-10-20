@@ -81,7 +81,7 @@ public:
                                       double aStreamTime) noexcept;
 
   // --- Parameter Reflection & Control (Main / UI Thread) ---
-  int getParameterCount();
+  int getParameterCount() const;
   bool getParameterInfo(int index, Vst3ParameterMetadata &outInfo) const;
   void syncComponentStateToController();
   double getParameterNormalized(uint32_t paramId,

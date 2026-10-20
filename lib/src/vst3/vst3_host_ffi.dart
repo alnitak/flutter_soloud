@@ -438,7 +438,7 @@ abstract class Vst3PluginBase {
     : _parameters = _queryParameters(pluginHandle) {
     _ensureRestartComponentCallbackRegistered();
     _restartSub = onRestartComponent.listen((evt) {
-      if (evt.hasParamTitlesChanged) {
+      if (evt.hasParamTitlesChanged || evt.hasParamValuesChanged) {
         refreshParameters();
       }
     });
