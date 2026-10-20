@@ -1,6 +1,6 @@
 ---
 name: flutter-soloud-setup
-version: 5
+version: 6
 description: Teaches how to add flutter_soloud to a Flutter app, configure each platform (web script tag and COOP/COEP headers, Linux audio backends ALSA/PulseAudio/JACK, Android/iOS/macOS minimum versions), initialize and deinitialize the engine, shrink binaries by excluding the Xiph libs, enable opt-in desktop VST3 plugin hosting (enable_vst3), set up logging, and enumerate/switch output devices or Linux audio backends. Use when a user asks to install flutter_soloud, initialize SoLoud, set up web/background-audio prerequisites, configure Linux audio backends, reduce binary size, enable VST3 hosting, or switch the audio output device.
 ---
 
@@ -50,7 +50,7 @@ Native C/C++ sources are compiled by [Dart build hooks](https://dart.dev/tools/h
   <script src="assets/packages/flutter_soloud/web/init_soloud.js" defer></script>
   ```
   The script auto-picks between the multi-threaded (AudioWorklet) and single-threaded (ScriptProcessorNode) WASM builds based on whether the page is cross-origin isolated. Details in [references/web.md](references/web.md).
-- **Linux** — audio playback uses `miniaudio` with dynamic runtime loading for ALSA (`libasound.so.2`), PulseAudio (`libpulse.so`), and JACK (`libjack.so`). No extra C/C++ development packages or compile-time headers are required to build. Ensure runtime libraries are present on the host system (e.g. `libasound2`, `libpulse0`). To decode extended OS-native formats (**M4A**, **MP4 audio tracks**, **AAC**, **AC-3**, and **E-AC-3**), the engine dynamically loads FFmpeg shared libraries (`libavcodec` and `libavformat`) at runtime; ensure FFmpeg is installed on the user system (e.g. `sudo apt install ffmpeg libavcodec-extra` on Debian/Ubuntu, `sudo pacman -S ffmpeg` on Arch, `sudo dnf install ffmpeg-free` on Fedora). Core formats (MP3, WAV, OGG, FLAC) work without FFmpeg.
+- **Linux** — audio playback uses `miniaudio` with dynamic runtime loading for ALSA (`libasound.so.2`), PulseAudio (`libpulse.so`), and JACK (`libjack.so`). No extra C/C++ development packages or compile-time headers are required to build. Ensure runtime libraries are present on the host system (e.g. `libasound2`, `libpulse0`). To decode extended OS-native formats (**M4A**, **MP4 audio tracks**, **AAC**, **AC-3**, and **E-AC-3**), the engine dynamically loads FFmpeg shared libraries (`libavcodec` and `libavformat`) at runtime; ensure FFmpeg is installed on the user system (e.g. `sudo apt install ffmpeg libavcodec-extra` on Debian/Ubuntu, `sudo pacman -S ffmpeg` on Arch, `sudo dnf install ffmpeg-free` on Fedora). Core formats (MP3, WAV, OGG, FLAC) work without FFmpeg. If using opt-in VST3 plugin hosting with GUI, launch with `GDK_BACKEND=x11 flutter run -d linux` as VST3 editor GUIs standardly require X11.
 - **Android** — `minSdk = 21` (the plugin sets this in its own `build.gradle`; your app-level `minSdkVersion` must be >= 21).
 - **iOS** — deployment target iOS 13.0+; **macOS** — 10.15+. Native assets are compiled and bundled for both CocoaPods and SPM projects.
 
@@ -142,6 +142,7 @@ You can customize this in the **app's** `pubspec.yaml` under `hooks.user_defines
   - When `enable_vst3: true` is set on desktop, `hook/build.dart` downloads `vst3-include.tar.gz` and the platform archive (`vst3-macos.tar.gz`, `vst3-windows-x64.zip`, `vst3-windows-arm64.zip`, `vst3-linux-x64.tar.gz`, or `vst3-linux-arm64.tar.gz`) into `.dart_tool/flutter_soloud/vst3/prebuild/` and compiles the native C++/Objective-C++ VST3 host bridge (`Vst3Host`, `Vst3EffectPlugin`, `Vst3InstrumentPlugin`).
   - **Licensing**: By default (`enable_vst3: false`), `flutter_soloud` is 100% MIT/Zlib licensed and links zero Steinberg code. Enabling `enable_vst3: true` links the prebuilt Steinberg VST3 Hosting SDK (dual-licensed under the proprietary Steinberg VST3 License or GPLv3).
   - **macOS Entitlement**: To load external third-party `.vst3` bundles on macOS, add `<key>com.apple.security.cs.disable-library-validation</key><true/>` to `macos/Runner/DebugProfile.entitlements` and `macos/Runner/Release.entitlements`.
+  - **Linux GUI Backend**: On Linux, VST3 plugin editor GUIs standardly use the X11 desktop backend. Applications hosting VST3 plugins with a GUI must be launched with the `GDK_BACKEND=x11` environment variable (e.g. `GDK_BACKEND=x11 flutter run -d linux`), otherwise the Flutter engine defaults to Wayland (if available) and the native VST3 plugin GUI will not be displayed.
 
 - **Link against system-installed packages (desktop only):**
   ```yaml

@@ -62,7 +62,9 @@ hooks:
       enable_vst3: true # Default is false
 ```
 
-**Licensing Note**: By default (`enable_vst3: false`), `flutter_soloud` is 100% **MIT / Zlib** licensed and does not download or link any Steinberg code. When `enable_vst3: true` is set, the build hook links the prebuilt **Steinberg VST3 Hosting SDK**, which is dual-licensed by Steinberg under the **Steinberg VST3 License** (proprietary) or **GPLv3**. Ensure your application complies with Steinberg's VST3 licensing terms when distributing builds with `enable_vst3: true`.
+**Licensing Note**: By default (`enable_vst3: false`), `flutter_soloud` is 100% **MIT / Zlib** licensed and does not download or link any Steinberg code. When `enable_vst3: true` is set, the build hook links the prebuilt **Steinberg VST3 Hosting SDK**, which is dual-licensed by Steinberg under the **Steinberg VST3 License** (proprietary) or **GPLv3**. Ensure your application complies with Steinberg's VST3 licensing terms when distributing builds with `enable_vst3: true`. For more information about VST® 3 licensing: https://steinbergmedia.github.io/vst3_dev_portal/pages/VST+3+Licensing/Index.html
+
+**Linux GUI Note**: The standard VST3 windowing backend on Linux uses **X11**. When hosting VST3 plugins with a graphical user interface (GUI) on Linux, the Flutter app must be launched with the `GDK_BACKEND=x11` environment variable (e.g. `GDK_BACKEND=x11 flutter run -d linux`), otherwise the Flutter engine defaults to Wayland (if available) and the native VST3 plugin GUI will not be displayed.
 
 ### Extended Audio Formats (M4A, MP4, AAC, AC-3, E-AC-3)
 

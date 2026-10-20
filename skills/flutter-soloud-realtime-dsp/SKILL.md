@@ -1,6 +1,6 @@
 ---
 name: flutter-soloud-realtime-dsp
-version: 3
+version: 4
 description: Teaches how to use flutter_soloud's real-time audio mixer injection, synchronous custom DSP callbacks, and desktop VST3 plugin hosting: setRealtimeStream (lock-free SPSC ring buffer with instantaneous retroactive mixer injection, pushFloat32, pushInt16, pushClockedFloat32, pushScheduledFloat32, startFloat32Feeder, RealtimeStreamFeeder, RealtimeNativeBuffer), createCustomSource (zero-latency C/Wasm/JS audio generator), customFilter(id) (up to 8 multi-instance custom DSP filter slots per scope with 16 modulatable params and automatic wet/dry bypass), and Vst3Host / Vst3EffectPlugin / Vst3InstrumentPlugin (desktop .vst3 effect & synth hosting with native GUI editor windows). Use when the user asks to feed low-latency live PCM directly into the mixer, build a custom synthesizer or drum machine, write custom audio DSP effects or generators, host native C++/Rust/FAUST/Cmajor/VST3 plugins, or process audio in a background Dart Isolate.
 ---
 
@@ -196,6 +196,9 @@ On **macOS**:
 1. Add `<key>com.apple.security.cs.disable-library-validation</key><true/>` and `<key>com.apple.security.app-sandbox</key><false/>` to `macos/Runner/DebugProfile.entitlements` and `macos/Runner/Release.entitlements` so macOS allows `dlopen`ing third-party signed `.vst3` bundles and reading preset directories.
 2. Add `<key>NSDocumentsFolderUsageDescription</key>` to `macos/Runner/Info.plist` (many plugins like Surge XT create user preset folders in `~/Documents/`). If macOS TCC blocks `~/Documents/` with `Operation not permitted`, enable **Documents Folder** access for the app (or the parent Terminal/IDE when running `flutter test` / `flutter run`) in **System Settings → Privacy & Security → Files and Folders**.
 
+On **Linux**:
+VST3 plugin editor GUIs standardly use the X11 desktop backend. Flutter applications hosting VST3 plugins with a GUI must be launched with the `GDK_BACKEND=x11` environment variable (e.g. `GDK_BACKEND=x11 flutter run -d linux`), otherwise the Flutter engine defaults to Wayland (if available) and the native VST3 plugin GUI will not be displayed.
+
 ### Scanning, Hosting an Effect, Opening Native GUI, & Automating Parameters
 
 ```dart
@@ -261,6 +264,7 @@ Future<void> setupVst3Rack() async {
 - **`customFilter(id)` asserts `0 <= id < 8`.** Calling `customFilter(8)` throws an `AssertionError` / `ArgumentError`. Also remember SoLoud's total limit of 8 active filters per scope (`FILTERS_PER_STREAM = 8`) across all built-in + custom filters combined.
 - **VST3 effects (`Vst3Host.loadEffect`) only support Global or Mixing Bus filter slots.** Passing a single-sound `CustomFilterSlot` throws an `ArgumentError` because stateful VST3 effect instances cannot be cloned per voice. Route specific voices through a `Bus` (`soloud.createBus()`) to apply a VST3 effect to a subset of sounds.
 - **VST3 is desktop-only (`macOS`, `Windows`, `Linux`) and opt-in (`enable_vst3: true`).** On iOS, Android, and Web (or when `enable_vst3` is not `true`), `Vst3Host().isSupported` is `false`. Also note that enabling `enable_vst3: true` links the prebuilt Steinberg VST3 Hosting SDK (dual-licensed under the Steinberg VST3 License or GPLv3).
+- **Linux VST3 GUI hosting requires `GDK_BACKEND=x11`.** The standard VST3 windowing backend on Linux uses X11 (`Steinberg::kPlatformTypeX11EmbedWindowID`). On Linux Wayland sessions, the app must be run with `GDK_BACKEND=x11 flutter run -d linux`, otherwise the native editor window will not be displayed.
 - **Check `.vst3` bundle existence with `Directory(path).existsSync() || File(path).existsSync()`.** Standard `.vst3` plugins on macOS, Windows, and Linux are directory bundles, so `File(path).existsSync()` alone returns `false` for directory bundles.
 - **Multi-effects & dynamic VST3 plugins change parameters at runtime.** When a user selects a different sub-effect inside a multi-effect plugin (such as Surge XT Effects switching from EQ to Delay), the plugin calls Steinberg's `restartComponent`. `Vst3PluginBase` automatically updates its `parameters` list and emits `onRestartComponent` so UI widgets can re-render sliders. You can also re-query parameter metadata manually with `effect.refreshParameters()` or `synth.refreshParameters()` at any time.
 - **Per-sound `customFilter(id)` must be activated before `play(sound)`.** Just like built-in per-sound filters, voices started before `activate()` do not carry the filter.
