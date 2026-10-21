@@ -1,3 +1,10 @@
+##### Unreleased
+- feat: per-bus visualization. `Bus.setVisualizationEnabled`, `Bus.isVisualizationEnabled`, `Bus.getLevel` (RMS, peak and frame count of every frame mixed since the previous call; `frames == 0` while the bus isn't mixed), `Bus.getWave` and `Bus.getFft`. The data is taken before the bus's own filters, volume and pan.
+- fix: `Bus.getChannelVolume` always returned 0 because nothing could enable the bus's visualization data; it now works after `Bus.setVisualizationEnabled(true)`.
+- fix: bus wave data covered only the first 256 frames of each mixed block with channels summed; it is now the latest 256 frames with channels averaged.
+- fix: out-of-bounds read in the native `Bus::getApproximateVolume` when the channel equals the channel count.
+- fix: use-after-free in `Bus.getChannelVolume` and bus filter changes after the bus voice was stopped by `stopAll`, `stop`, or its outer bus stopping.
+
 ##### 5.2.1 (13 Oct 2026)
 - fix android: harden native AAC/M4A MediaCodec decoding against buffer overruns, descriptor leaks, and stalls, and fail pending loads on deinit. Thanks to @Colton127 #584
 - perf & fix: direct file decoding for M4A/MP4 across desktop/mobile platforms, guarantee Android sandbox TMPDIR, and improve Windows/Linux error checks #585

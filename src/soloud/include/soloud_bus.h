@@ -38,10 +38,20 @@ namespace SoLoud
 		unsigned int mScratchSize;
 		AlignedFloatBuffer mScratch;
 
-		// Approximate volume for channels.
+		// Approximate volume for channels: per-channel peak of the last mixed block.
 		float mVisualizationChannelVolume[MAX_CHANNELS];
-		// Mono-mixed wave data for visualization and for visualization FFT input
+		// Ring of the latest 256 frames, channels averaged. Visualization and FFT input.
 		float mVisualizationWaveData[256];
+		// Next write position in mVisualizationWaveData (oldest frame).
+		unsigned int mVisualizationWavePos;
+		// Level accumulated since the last Bus::getLevel: sum of per-frame
+		// mean squares, peak of every sample, and frames mixed.
+		double mLevelSumSquares;
+		float mLevelPeak;
+		unsigned long long mLevelFrames;
+
+		// Clear all visualization data. Call with the audio mutex held.
+		void clearVisualization();
 
 		BusInstance(Bus *aParent);
 		virtual unsigned int getAudio(float *aBuffer, unsigned int aSamplesToRead, unsigned int aBufferSize);
@@ -88,6 +98,10 @@ namespace SoLoud
 
 		// Get approximate volume for output channel for visualization. Visualization has to be enabled before use.
 		float getApproximateVolume(unsigned int aChannel);
+
+		// Get the RMS and peak of every frame mixed since the previous call, then reset.
+		// aFrames is 0 if nothing was mixed. Visualization has to be enabled before use.
+		void getLevel(float *aRms, float *aPeak, unsigned long long *aFrames);
 
 		// Get number of immediate child voices to this bus
 		unsigned int getActiveVoiceCount();

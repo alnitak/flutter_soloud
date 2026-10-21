@@ -80,8 +80,20 @@ sfxBus.annexSound(handle); // now plays through sfxBus
 
 ```dart
 bus.setChannels(channels: Channels.mono); // default Channels.stereo
-final left = bus.getChannelVolume(0);  // needs setVisualizationEnabled(true)
+
+bus.setVisualizationEnabled(true); // per bus; off by default
+final level = bus.getLevel();      // BusLevel: since the previous call
+if (level.frames > 0) {
+  meter.value = level.peak;        // or level.rms
+} else {
+  meter.value = 0;                 // bus not mixed: paused, stopped, ...
+}
+final Float32List wave = bus.getWave(); // latest 256 frames, channels averaged
+final Float32List fft = bus.getFft();   // 256 FFT magnitudes of wave
+final left = bus.getChannelVolume(0);   // peak of channel 0, last block
 ```
+
+The data is taken before the bus's own filters, volume and pan.
 
 `Channels`: `mono(1)`, `stereo(2)`, `quad(4)`, `surround51(6)`, `dolby71(8)`.
 

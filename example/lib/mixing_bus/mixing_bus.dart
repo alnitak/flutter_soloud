@@ -2,6 +2,7 @@ import 'dart:developer' as dev;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:logging/logging.dart';
 
@@ -18,6 +19,8 @@ import 'package:logging/logging.dart';
 ///    to all sounds routed through the bus
 /// 4. **Dynamic routing**: Move live sounds between buses
 ///    at runtime using [Bus.annexSound]
+/// 5. **Metering**: Read the level of each bus with [Bus.getLevel] after
+///    [Bus.setVisualizationEnabled]
 ///
 /// ## Key Concepts
 ///
@@ -271,6 +274,7 @@ class _BusControlsState extends State<BusControls> {
               );
             },
           ),
+          BusLevelMeter(bus: widget.bus),
           Row(
             mainAxisSize: MainAxisSize.min,
             spacing: 8,
@@ -361,6 +365,83 @@ class _BusControlsState extends State<BusControls> {
               }
             },
             child: const Text('pitch shift filter'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A level meter for [bus], polled once per frame with [Bus.getLevel].
+///
+/// The level is taken before the bus's own filters, volume and pan, so the
+/// volume slider doesn't move it.
+class BusLevelMeter extends StatefulWidget {
+  const BusLevelMeter({required this.bus, super.key});
+
+  final Bus bus;
+
+  @override
+  State<BusLevelMeter> createState() => _BusLevelMeterState();
+}
+
+class _BusLevelMeterState extends State<BusLevelMeter>
+    with SingleTickerProviderStateMixin {
+  late final Ticker ticker;
+  double rms = 0;
+  double peak = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.bus.setVisualizationEnabled(true);
+    ticker = createTicker((_) => poll())..start();
+  }
+
+  void poll() {
+    final BusLevel level;
+    try {
+      level = widget.bus.getLevel();
+    } on SoLoudBusDisposedDartException {
+      ticker.stop();
+      return;
+    }
+    setState(() {
+      if (level.frames == 0) {
+        // Nothing was mixed since the last frame: the bus is paused or not
+        // playing. Let the meter fall instead of freezing it.
+        rms *= 0.8;
+        peak *= 0.8;
+      } else {
+        rms = level.rms;
+        // Hold the peak and let it fall slowly.
+        peak = level.peak > peak ? level.peak : peak * 0.95;
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    ticker.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 200,
+      height: 12,
+      child: Stack(
+        children: [
+          Container(color: Colors.blue.withValues(alpha: 0.15)),
+          FractionallySizedBox(
+            alignment: Alignment.centerLeft,
+            widthFactor: rms.clamp(0, 1),
+            child: Container(color: Colors.blue),
+          ),
+          Align(
+            alignment: Alignment(peak.clamp(0, 1) * 2 - 1, 0),
+            child: Container(width: 2, color: Colors.red),
           ),
         ],
       ),

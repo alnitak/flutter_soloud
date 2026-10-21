@@ -1015,6 +1015,8 @@ public:
   float *busCalcFFT(unsigned int busId);
   float *busGetWave(unsigned int busId);
   float busGetApproximateVolume(unsigned int busId, unsigned int channel);
+  void busGetLevel(unsigned int busId, float &rms, float &peak,
+                   unsigned long long &frames);
   void busAnnexSound(unsigned int busId, unsigned int voiceHandle);
   unsigned int busGetActiveVoiceCount(unsigned int busId);
   BusData *findBusData(unsigned int busId);

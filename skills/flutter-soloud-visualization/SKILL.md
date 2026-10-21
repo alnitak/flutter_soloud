@@ -1,6 +1,6 @@
 ---
 name: flutter-soloud-visualization
-version: 1
+version: 2
 description: Teaches flutter_soloud's two visualization paths — live FFT/wave data via setVisualizationEnabled + the audioVisualizationEvents stream, and offline waveform extraction via readSamplesFromFile/readSamplesFromMem (plus getApproximateVolume for VU meters). Use when the user asks for a spectrum/waveform visualizer, audio-reactive UI, VU/level meter, or a static waveform preview of an audio file.
 ---
 
@@ -132,9 +132,9 @@ All on `SoLoud.instance` (singleton), imported from `package:flutter_soloud/flut
 
 ### Divergences from audioplayers / just_audio / web Audio API assumptions
 
-- No `AudioPlayer`-style per-sound analyser. Live visualization taps the **whole mixed engine output** (all voices, post-filter), not an individual track.
+- No `AudioPlayer`-style per-sound analyser. Live visualization taps the **whole mixed engine output** (all voices, post-filter), not an individual track. Mixing buses have their own, polled data (see below).
 - There is no `onPositionChanged`-style callback to hook FFT onto; you enable the analyzer once and consume a stream.
-- `getApproximateVolume` is per **output channel**, not per voice — there is no built-in per-sound level meter.
+- `getApproximateVolume` is per **output channel**, not per voice — there is no built-in per-sound level meter. For a meter per group of sounds, route them through a mixing bus and use `bus.setVisualizationEnabled(true)` + `bus.getLevel()` / `bus.getWave()` / `bus.getFft()` (see skill `flutter-soloud-mixing-bus`). Bus data is taken before the bus's own filters, volume and pan, and is independent of `SoLoud.instance.setVisualizationEnabled`.
 - The offline readers don't require `init()` and don't need the sound loaded via `loadMem`/`loadAsset` first — they decode independently (asset bytes via `rootBundle.load` are fine).
 
 ## Traps

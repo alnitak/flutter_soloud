@@ -1,8 +1,11 @@
+import 'dart:typed_data';
+
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:flutter_soloud/src/bindings/soloud_controller.dart';
 import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/filters/filters.dart';
 import 'package:logging/logging.dart';
+import 'package:meta/meta.dart';
 
 /// A singleton helper class to manage all active mixing buses.
 ///
@@ -33,6 +36,27 @@ class Buses {
   Bus? byId(int id, {Bus Function()? orElse}) {
     return buses.firstWhere((bus) => bus.busId == id, orElse: orElse);
   }
+}
+
+/// The level of a [Bus], as returned by [Bus.getLevel].
+@immutable
+class BusLevel {
+  /// Creates a bus level.
+  const BusLevel({required this.rms, required this.peak, required this.frames});
+
+  /// RMS level of every sample of every channel in the measured frames.
+  final double rms;
+
+  /// Highest absolute sample value of any channel in the measured frames.
+  final double peak;
+
+  /// Number of frames measured. 0 means nothing was mixed through the bus
+  /// (it is paused, not playing, its outer bus is paused, or the output
+  /// device is stopped), in which case [rms] and [peak] are 0 too.
+  final int frames;
+
+  @override
+  String toString() => 'BusLevel(rms: $rms, peak: $peak, frames: $frames)';
 }
 
 /// A mixing bus to have control over a group of audio sources.
@@ -102,6 +126,8 @@ class Bus {
 
   /// The number of channels of this bus.
   var _channels = Channels.stereo;
+
+  bool _visualizationEnabled = false;
 
   // The equality comparison is based solely on busId which IS final,
   // so the equality override is safe and correct (!?).
@@ -473,9 +499,101 @@ class Bus {
     SoLoudController().soLoudFFI.busSetChannels(busId, channels.count);
   }
 
-  /// Get the approximate output volume for a specific channel of this bus.
+  /// Enable or disable gathering the data read by [getLevel], [getWave],
+  /// [getFft] and [getChannelVolume]. Disabled by default.
+  ///
+  /// Enabling clears data gathered earlier.
+  ///
+  /// The data is taken from the sounds mixed into the bus, before the bus's
+  /// own filters, volume and pan are applied. It is independent of
+  /// [SoLoud.setVisualizationEnabled], which reads the engine's output.
+  ///
+  /// Throws [SoLoudBusDisposedDartException] if the bus has already
+  /// been disposed.
+  // ignore: avoid_positional_boolean_parameters
+  void setVisualizationEnabled(bool enabled) {
+    if (!_isValid) {
+      _log.warning('bus $busId is already disposed');
+      throw const SoLoudBusDisposedDartException();
+    }
+    SoLoudController().soLoudFFI.busSetVisualizationEnable(busId, enabled);
+    _visualizationEnabled = enabled;
+  }
+
+  /// Whether [setVisualizationEnabled] has enabled visualization data.
+  ///
+  /// Throws [SoLoudBusDisposedDartException] if the bus has already
+  /// been disposed.
+  bool get isVisualizationEnabled {
+    if (!_isValid) {
+      _log.warning('bus $busId is already disposed');
+      throw const SoLoudBusDisposedDartException();
+    }
+    return _visualizationEnabled;
+  }
+
+  /// Get the level of every frame mixed through this bus since the previous
+  /// call, then reset it. Poll it, for example once per UI frame, to drive a
+  /// level meter.
+  ///
+  /// [BusLevel.frames] is 0 when nothing was mixed since the previous call:
+  /// the bus is paused or not playing, its outer bus is paused, or the output
+  /// device is stopped.
+  ///
+  /// Requires [setVisualizationEnabled]. The level is taken before the bus's
+  /// own filters, volume and pan.
+  ///
+  /// Throws [SoLoudBusDisposedDartException] if the bus has already
+  /// been disposed.
+  BusLevel getLevel() {
+    if (!_isValid) {
+      _log.warning('bus $busId is already disposed');
+      throw const SoLoudBusDisposedDartException();
+    }
+    final l = SoLoudController().soLoudFFI.busGetLevel(busId);
+    return BusLevel(rms: l.rms, peak: l.peak, frames: l.frames);
+  }
+
+  /// Get the latest 256 frames mixed through this bus, oldest first, with
+  /// channels averaged. Returns a copy.
+  ///
+  /// When the bus stops being mixed, this keeps returning the last frames
+  /// mixed. Use [getLevel] to tell whether the bus is still being mixed.
+  ///
+  /// Requires [setVisualizationEnabled]. The data is taken before the bus's
+  /// own filters, volume and pan.
+  ///
+  /// Throws [SoLoudBusDisposedDartException] if the bus has already
+  /// been disposed.
+  Float32List getWave() {
+    if (!_isValid) {
+      _log.warning('bus $busId is already disposed');
+      throw const SoLoudBusDisposedDartException();
+    }
+    return SoLoudController().soLoudFFI.busGetWave(busId);
+  }
+
+  /// Get 256 FFT magnitudes of [getWave], from low to high frequencies.
+  /// Returns a copy.
+  ///
+  /// Requires [setVisualizationEnabled]. The data is taken before the bus's
+  /// own filters, volume and pan.
+  ///
+  /// Throws [SoLoudBusDisposedDartException] if the bus has already
+  /// been disposed.
+  Float32List getFft() {
+    if (!_isValid) {
+      _log.warning('bus $busId is already disposed');
+      throw const SoLoudBusDisposedDartException();
+    }
+    return SoLoudController().soLoudFFI.busCalcFFT(busId);
+  }
+
+  /// Get the approximate output volume for a specific channel of this bus:
+  /// the peak of that channel in the last block mixed.
   /// Useful for VU meters or level indicators.
-  /// Visualization must be enabled first.
+  /// Requires [setVisualizationEnabled]. Prefer [getLevel], which covers
+  /// every frame mixed and reports when the bus is not being mixed.
   ///
   /// [channel] the output channel index (0 = left, 1 = right, etc.).
   /// Returns the approximate volume, or 0 if the bus is not found.

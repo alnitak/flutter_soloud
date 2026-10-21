@@ -1561,29 +1561,39 @@ abstract class FlutterSoLoud {
 
   /// Enable or disable visualization data gathering for this bus.
   /// Must be enabled before calling busCalcFFT, busGetWave,
-  /// or busGetApproximateVolume.
+  /// busGetApproximateVolume or busGetLevel. Enabling clears earlier data.
   ///
   /// [busId] the bus ID.
-  /// enable true to enable, false to disable.
-  // @mustBeOverridden
-  // void busSetVisualizationEnable(int busId, bool enable);
+  /// [enable] true to enable, false to disable.
+  @mustBeOverridden
+  void busSetVisualizationEnable(int busId, bool enable);
 
-  /// Calculate and return 256 floats of FFT data for this bus.
+  /// Calculate and return 256 FFT magnitudes of [busGetWave].
   /// The data ranges from low to high frequencies.
   /// Visualization must be enabled first with busSetVisualizationEnable.
   ///
   /// [busId] the bus ID.
-  /// Returns a pointer to 256 floats, or nullptr if the bus is not found.
-  // @mustBeOverridden
-  // ffi.Pointer<ffi.Float> busCalcFFT(int busId);
+  /// Returns a copy of the 256 floats, all 0 if the bus is not found.
+  @mustBeOverridden
+  Float32List busCalcFFT(int busId);
 
-  /// Get 256 samples of wave data currently playing through this bus.
+  /// Get the latest 256 frames mixed through this bus, oldest first, with
+  /// channels averaged.
   /// Visualization must be enabled first with busSetVisualizationEnable.
   ///
   /// [busId] the bus ID.
-  /// Returns a pointer to 256 floats, or nullptr if the bus is not found.
-  // @mustBeOverridden
-  // ffi.Pointer<ffi.Float> busGetWave(int busId);
+  /// Returns a copy of the 256 floats, all 0 if the bus is not found.
+  @mustBeOverridden
+  Float32List busGetWave(int busId);
+
+  /// Get the RMS and peak level of every frame mixed through this bus since
+  /// the previous call, then reset them.
+  /// Visualization must be enabled first with busSetVisualizationEnable.
+  ///
+  /// [busId] the bus ID.
+  /// Returns `frames == 0` if nothing was mixed or the bus is not found.
+  @mustBeOverridden
+  ({double rms, double peak, int frames}) busGetLevel(int busId);
 
   /// Get the approximate output volume for a specific channel of this bus.
   /// Useful for VU meters or level indicators.

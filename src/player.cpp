@@ -3758,6 +3758,18 @@ float Player::busGetApproximateVolume(unsigned int busId,
     return it->second.bus.getApproximateVolume(channel);
 }
 
+void Player::busGetLevel(unsigned int busId, float &rms, float &peak,
+                         unsigned long long &frames)
+{
+    rms = 0.0f;
+    peak = 0.0f;
+    frames = 0;
+    auto it = busMap.find(busId);
+    if (it == busMap.end())
+        return;
+    it->second.bus.getLevel(&rms, &peak, &frames);
+}
+
 void Player::busAnnexSound(unsigned int busId, unsigned int voiceHandle)
 {
     auto it = busMap.find(busId);

@@ -2606,7 +2606,7 @@ external int busSetChannels(int busId, int channels);
 
 /// Enable or disable visualization data gathering for this bus.
 /// Must be enabled before calling busCalcFFT, busGetWave,
-/// or busGetApproximateVolume.
+/// busGetApproximateVolume or busGetLevel. Enabling clears earlier data.
 ///
 /// [busId] the bus ID.
 /// [enable] true to enable, false to disable.
@@ -2622,7 +2622,8 @@ external void busSetVisualizationEnable(int busId, bool enable);
 @ffi.Native<ffi.Pointer<ffi.Float> Function(ffi.UnsignedInt)>()
 external ffi.Pointer<ffi.Float> busCalcFFT(int busId);
 
-/// Get 256 samples of wave data currently playing through this bus.
+/// Get the latest 256 frames mixed through this bus, oldest first, with
+/// channels averaged. Taken before the bus's own filters, volume and pan.
 /// Visualization must be enabled first with busSetVisualizationEnable.
 ///
 /// [busId] the bus ID.
@@ -2639,6 +2640,31 @@ external ffi.Pointer<ffi.Float> busGetWave(int busId);
 /// Returns the approximate volume, or 0 if the bus is not found.
 @ffi.Native<ffi.Float Function(ffi.UnsignedInt, ffi.UnsignedInt)>()
 external double busGetApproximateVolume(int busId, int channel);
+
+/// Get the RMS and peak level of every frame mixed through this bus since
+/// the previous call, then reset them. The level is taken before the
+/// bus's own filters, volume and pan.
+/// Visualization must be enabled first with busSetVisualizationEnable.
+///
+/// [busId] the bus ID.
+/// [rms] set to the RMS level across all channels.
+/// [peak] set to the highest absolute sample value.
+/// [frames] set to the number of frames mixed. 0 means nothing was mixed
+/// (bus paused, not playing, or the device stopped) or the bus is not found.
+@ffi.Native<
+  ffi.Void Function(
+    ffi.UnsignedInt,
+    ffi.Pointer<ffi.Float>,
+    ffi.Pointer<ffi.Float>,
+    ffi.Pointer<ffi.UnsignedLongLong>,
+  )
+>()
+external void busGetLevel(
+  int busId,
+  ffi.Pointer<ffi.Float> rms,
+  ffi.Pointer<ffi.Float> peak,
+  ffi.Pointer<ffi.UnsignedLongLong> frames,
+);
 
 /// Move a live voice (identified by its handle) into this bus.
 /// The voice will be reparented so it plays through the bus.

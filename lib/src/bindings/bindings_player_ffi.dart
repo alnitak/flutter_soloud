@@ -2170,6 +2170,25 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     native.busSetChannels(busId, channels);
   }
 
+  @override
+  void busSetVisualizationEnable(int busId, bool enable) {
+    native.busSetVisualizationEnable(busId, enable);
+  }
+
+  @override
+  Float32List busCalcFFT(int busId) {
+    final ptr = native.busCalcFFT(busId);
+    if (ptr == ffi.nullptr) return Float32List(256);
+    return Float32List.fromList(ptr.asTypedList(256));
+  }
+
+  @override
+  Float32List busGetWave(int busId) {
+    final ptr = native.busGetWave(busId);
+    if (ptr == ffi.nullptr) return Float32List(256);
+    return Float32List.fromList(ptr.asTypedList(256));
+  }
+
   /// Get the approximate output volume for a specific channel of this bus.
   /// Useful for VU meters or level indicators.
   /// Visualization must be enabled first.
@@ -2180,6 +2199,20 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   @override
   double busGetApproximateVolume(int busId, int channel) {
     return native.busGetApproximateVolume(busId, channel);
+  }
+
+  @override
+  ({double rms, double peak, int frames}) busGetLevel(int busId) {
+    final rms = calloc<ffi.Float>();
+    final peak = calloc<ffi.Float>();
+    final frames = calloc<ffi.UnsignedLongLong>();
+    native.busGetLevel(busId, rms, peak, frames);
+    final ret = (rms: rms.value, peak: peak.value, frames: frames.value);
+    calloc
+      ..free(rms)
+      ..free(peak)
+      ..free(frames);
+    return ret;
   }
 
   /// Move a live voice (identified by its handle) into this bus.

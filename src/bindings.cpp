@@ -3940,7 +3940,7 @@ extern "C"
 
   /// Enable or disable visualization data gathering for this bus.
   /// Must be enabled before calling busCalcFFT, busGetWave,
-  /// or busGetApproximateVolume.
+  /// busGetApproximateVolume or busGetLevel. Enabling clears earlier data.
   ///
   /// [busId] the bus ID.
   /// [enable] true to enable, false to disable.
@@ -3965,7 +3965,8 @@ extern "C"
     return player.get()->busCalcFFT(busId);
   }
 
-  /// Get 256 samples of wave data currently playing through this bus.
+  /// Get the latest 256 frames mixed through this bus, oldest first, with
+  /// channels averaged. Taken before the bus's own filters, volume and pan.
   /// Visualization must be enabled first with busSetVisualizationEnable.
   ///
   /// [busId] the bus ID.
@@ -3990,6 +3991,29 @@ extern "C"
     if (player.get() == nullptr)
       return 0.0f;
     return player.get()->busGetApproximateVolume(busId, channel);
+  }
+
+  /// Get the RMS and peak level of every frame mixed through this bus since
+  /// the previous call, then reset them. The level is taken before the
+  /// bus's own filters, volume and pan.
+  /// Visualization must be enabled first with busSetVisualizationEnable.
+  ///
+  /// [busId] the bus ID.
+  /// [rms] set to the RMS level across all channels.
+  /// [peak] set to the highest absolute sample value.
+  /// [frames] set to the number of frames mixed. 0 means nothing was mixed
+  /// (bus paused, not playing, or the device stopped) or the bus is not found.
+  FFI_PLUGIN_EXPORT void busGetLevel(unsigned int busId, float *rms,
+                                     float *peak, unsigned long long *frames)
+  {
+    // Zero them before the guard below, like busPlayOnEngine: on the web the
+    // buffers come from `_malloc()`, which does not zero.
+    *rms = 0.0f;
+    *peak = 0.0f;
+    *frames = 0;
+    if (player.get() == nullptr)
+      return;
+    player.get()->busGetLevel(busId, *rms, *peak, *frames);
   }
 
   /// Move a live voice (identified by its handle) into this bus.

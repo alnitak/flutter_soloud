@@ -1434,7 +1434,7 @@ extern "C"
 
   /// Enable or disable visualization data gathering for this bus.
   /// Must be enabled before calling busCalcFFT, busGetWave,
-  /// or busGetApproximateVolume.
+  /// busGetApproximateVolume or busGetLevel. Enabling clears earlier data.
   ///
   /// [busId] the bus ID.
   /// [enable] true to enable, false to disable.
@@ -1449,7 +1449,8 @@ extern "C"
   /// Returns a pointer to 256 floats, or nullptr if the bus is not found.
   FFI_PLUGIN_EXPORT float *busCalcFFT(unsigned int busId);
 
-  /// Get 256 samples of wave data currently playing through this bus.
+  /// Get the latest 256 frames mixed through this bus, oldest first, with
+  /// channels averaged. Taken before the bus's own filters, volume and pan.
   /// Visualization must be enabled first with busSetVisualizationEnable.
   ///
   /// [busId] the bus ID.
@@ -1465,6 +1466,19 @@ extern "C"
   /// Returns the approximate volume, or 0 if the bus is not found.
   FFI_PLUGIN_EXPORT float busGetApproximateVolume(unsigned int busId,
                                                   unsigned int channel);
+
+  /// Get the RMS and peak level of every frame mixed through this bus since
+  /// the previous call, then reset them. The level is taken before the
+  /// bus's own filters, volume and pan.
+  /// Visualization must be enabled first with busSetVisualizationEnable.
+  ///
+  /// [busId] the bus ID.
+  /// [rms] set to the RMS level across all channels.
+  /// [peak] set to the highest absolute sample value.
+  /// [frames] set to the number of frames mixed. 0 means nothing was mixed
+  /// (bus paused, not playing, or the device stopped) or the bus is not found.
+  FFI_PLUGIN_EXPORT void busGetLevel(unsigned int busId, float *rms,
+                                     float *peak, unsigned long long *frames);
 
   /// Move a live voice (identified by its handle) into this bus.
   /// The voice will be reparented so it plays through the bus.

@@ -848,8 +848,25 @@ external int wasmBusPlayOnEngine(
 @JS('Module_soloud._busSetChannels')
 external void wasmBusSetChannels(int busId, int channels);
 
+@JS('Module_soloud._busSetVisualizationEnable')
+external void wasmBusSetVisualizationEnable(int busId, int enable);
+
+@JS('Module_soloud._busCalcFFT')
+external int wasmBusCalcFFT(int busId);
+
+@JS('Module_soloud._busGetWave')
+external int wasmBusGetWave(int busId);
+
 @JS('Module_soloud._busGetApproximateVolume')
 external double wasmBusGetApproximateVolume(int busId, int channel);
+
+@JS('Module_soloud._busGetLevel')
+external void wasmBusGetLevel(
+  int busId,
+  int rmsPtr,
+  int peakPtr,
+  int framesPtr,
+);
 
 @JS('Module_soloud._busAnnexSound')
 external void wasmBusAnnexSound(int busId, int voiceHandle);

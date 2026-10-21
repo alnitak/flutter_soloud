@@ -2232,8 +2232,52 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }
 
   @override
+  void busSetVisualizationEnable(int busId, bool enable) {
+    wasmBusSetVisualizationEnable(busId, enable ? 1 : 0);
+  }
+
+  /// Copy the 256 floats at [ptr] out of the WASM heap.
+  Float32List _copyBusData(int ptr) {
+    if (ptr == 0) return Float32List(256);
+    return Float32List.fromList(
+      Float32List.sublistView(wasmHeapF32.toDart, ptr ~/ 4, ptr ~/ 4 + 256),
+    );
+  }
+
+  @override
+  Float32List busCalcFFT(int busId) {
+    return _copyBusData(wasmBusCalcFFT(busId));
+  }
+
+  @override
+  Float32List busGetWave(int busId) {
+    return _copyBusData(wasmBusGetWave(busId));
+  }
+
+  @override
   double busGetApproximateVolume(int busId, int channel) {
     return wasmBusGetApproximateVolume(busId, channel);
+  }
+
+  @override
+  ({double rms, double peak, int frames}) busGetLevel(int busId) {
+    final rmsPtr = wasmMalloc(4);
+    final peakPtr = wasmMalloc(4);
+    final framesPtr = wasmMalloc(8); // unsigned long long
+    wasmBusGetLevel(busId, rmsPtr, peakPtr, framesPtr);
+    // Read the 64-bit frame count as two unsigned 32-bit halves (wasm is
+    // little-endian): `getValue(..., 'i64')` may return a BigInt.
+    final framesLo = wasmGetI32Value(framesPtr, 'i32') & 0xFFFFFFFF;
+    final framesHi = wasmGetI32Value(framesPtr + 4, 'i32') & 0xFFFFFFFF;
+    final ret = (
+      rms: wasmGetF32Value(rmsPtr, 'float'),
+      peak: wasmGetF32Value(peakPtr, 'float'),
+      frames: framesHi * 0x100000000 + framesLo,
+    );
+    wasmFree(rmsPtr);
+    wasmFree(peakPtr);
+    wasmFree(framesPtr);
+    return ret;
   }
 
   @override

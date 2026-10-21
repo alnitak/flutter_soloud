@@ -1,6 +1,6 @@
 ---
 name: flutter-soloud-mixing-bus
-version: 1
+version: 2
 description: Teaches how to use flutter_soloud mixing buses (Bus/Buses) to route groups of sounds through a shared sub-mix for collective volume control and shared filters. Use when the user asks for separate music/SFX/UI volume sliders, grouped effects, ducking music under voice, routing sounds between categories at runtime, or a per-category audio mixer in a game or app using flutter_soloud.
 ---
 
@@ -74,9 +74,21 @@ Future<void> main() async {
   `SoLoud.instance.filters`). See skill `flutter-soloud-filters`.
 - `bus.setChannels({Channels channels = Channels.stereo})` — bus output
   channel count (`Channels.mono/stereo/quad/surround51/dolby71`).
-- `bus.getChannelVolume(channel)` — approximate per-channel output level for
-  VU meters. Requires `SoLoud.instance.setVisualizationEnabled(true)` first;
-  returns 0 for out-of-range channels.
+- Per-bus metering, off by default. Turn it on with
+  `bus.setVisualizationEnabled(true)` (`bus.isVisualizationEnabled` reads it
+  back). `SoLoud.instance.setVisualizationEnabled` does **not** enable it;
+  that one reads the engine's output.
+  - `bus.getLevel()` → `BusLevel(rms, peak, frames)` for every frame mixed
+    since the previous call, then resets. Poll it once per UI frame for a
+    level meter. `frames == 0` means nothing was mixed: the bus is paused or
+    not playing, its outer bus is paused, or the device is stopped.
+  - `bus.getWave()` → `Float32List` of the latest 256 frames, oldest first,
+    channels averaged. `bus.getFft()` → 256 FFT magnitudes of that wave.
+    Both are copies.
+  - `bus.getChannelVolume(channel)` — peak of one channel in the last block
+    mixed; returns 0 for out-of-range channels. Prefer `getLevel()`.
+  - All of it is measured **before** the bus's own filters, volume and pan,
+    so `setVolume(bus.soundHandle!, 0)` doesn't change the reading.
 - `bus.getActiveVoiceCount()` — voices currently playing through the bus;
   returns 0 if the bus isn't playing on the engine.
 - `bus.isActive` — true once `playOnEngine()` succeeded.
@@ -112,6 +124,9 @@ synchronous and returns `SoundHandle` directly — do not `await` them.
   it is not an error — the new sound just doesn't play.
 - **`annexSound` needs a live handle**: annexing a finished/invalid handle is
   a no-op on the native side; check `sound.handles` / `isActive` first.
+- **Stale wave after pause**: `getWave()`/`getFft()` keep returning the last
+  frames mixed once the bus stops being mixed. Check `getLevel().frames` to
+  decay a meter to zero instead of freezing it.
 - **Filters need the bus handle for per-instance parameters**: e.g.
   `bus.filters.pitchShiftFilter.shift(soundHandle: bus.soundHandle).value = 2.5;`
   after `activate()`. Plain `.shift.value` targets the global filter, not the
