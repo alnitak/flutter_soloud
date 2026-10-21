@@ -111,6 +111,12 @@ namespace SoLoud
 		// it still points at this instance.
 		if (mParent->mInstance == this)
 			mParent->mInstance = 0;
+		// mChannelHandle is only found lazily (findBusHandle) and is reset
+		// by createInstance, so it can be 0 here. 0 is the main bus's handle:
+		// without this check stopping a bus that never had anything played
+		// on it, or a failed play() of a bus, stopped every main bus voice.
+		if (mParent->mChannelHandle == 0)
+			return;
 		Soloud *s = mParent->mSoloud;
 		int i;
 		for (i = 0; i < (signed)s->mHighestVoice; i++)
@@ -137,14 +143,21 @@ namespace SoLoud
 	
 	BusInstance * Bus::createInstance()
 	{
-		if (mChannelHandle)
-		{
-			stop();
-			mChannelHandle = 0;
-			mInstance = 0;
-		}
-		mInstance = new BusInstance(this);
-		return mInstance;
+		// Stop the previous voice even if nothing was played through it yet
+		// (mChannelHandle still 0). stop() finds it by audio source id, and
+		// an orphaned instance would later stop the new bus's voices.
+		stop();
+		BusInstance *instance = new BusInstance(this);
+		// The getters, filter changes and ~BusInstance (on the audio thread
+		// too) access mInstance under the audio mutex, so publish it there.
+		// play() sets mSoloud before calling this.
+		if (mSoloud)
+			mSoloud->lockAudioMutex_internal();
+		mChannelHandle = 0;
+		mInstance = instance;
+		if (mSoloud)
+			mSoloud->unlockAudioMutex_internal();
+		return instance;
 	}
 
 	void Bus::findBusHandle()

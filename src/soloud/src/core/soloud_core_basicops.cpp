@@ -113,8 +113,11 @@ namespace SoLoud
 		int ch = insertVoice_internal(aSound, instance, aVolume, aPan, aPaused, aBus);
 		if (ch < 0)
 		{
-			unlockAudioMutex_internal();
+			// Delete under the mutex like every other voice deletion: some
+			// instance destructors touch engine or parent state (a
+			// BusInstance clears Bus::mInstance and stops its voices).
 			delete instance;
+			unlockAudioMutex_internal();
 			// Return the invalid-handle sentinel, not an error enum. Handles
 			// are encoded as (voice + 1) | (playIndex << 12), so the old
 			// UNKNOWN_ERROR (7) is a legal encoding: voice slot 6 with play
@@ -242,8 +245,9 @@ namespace SoLoud
 			int ch = insertVoice_internal(aSound, instance, aVolume, aPan, 1, aBus);
 			if (ch < 0)
 			{
-				unlockAudioMutex_internal();
+				// Under the mutex, as in play().
 				delete instance;
+				unlockAudioMutex_internal();
 				return 0;
 			}
 			handle h = getHandleFromVoice_internal(ch);
@@ -370,8 +374,9 @@ namespace SoLoud
 			int ch = insertVoice_internal(aSound, instance, aVolume, aPan, 1, aBus);
 			if (ch < 0)
 			{
-				unlockAudioMutex_internal();
+				// Under the mutex, as in play().
 				delete instance;
+				unlockAudioMutex_internal();
 				return 0;
 			}
 			handle h = getHandleFromVoice_internal(ch);

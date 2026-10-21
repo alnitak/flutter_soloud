@@ -4,6 +4,8 @@
 - fix: bus wave data covered only the first 256 frames of each mixed block with channels summed; it is now the latest 256 frames with channels averaged.
 - fix: out-of-bounds read in the native `Bus::getApproximateVolume` when the channel equals the channel count.
 - fix: use-after-free in `Bus.getChannelVolume` and bus filter changes after the bus voice was stopped by `stopAll`, `stop`, or its outer bus stopping.
+- fix: stopping a bus that never had a sound played through it, or a bus `play` that failed because every voice was protected, stopped every voice on the main bus.
+- fix: replaying a bus that had no sound played through it left the previous bus voice playing.
 
 ##### 5.2.1 (13 Oct 2026)
 - fix android: harden native AAC/M4A MediaCodec decoding against buffer overruns, descriptor leaks, and stalls, and fail pending loads on deinit. Thanks to @Colton127 #584

@@ -425,6 +425,71 @@ void testReplayKeepsNewInstance() {
     soloud.deinit();
 }
 
+// ~BusInstance stops the voices playing on the bus by matching
+// mChannelHandle, which is 0 (the main bus) until something is played
+// through the bus. Stopping such a bus must leave main bus voices alone.
+void testStopUnusedBusKeepsMainVoices() {
+    std::printf("stopping an unused bus keeps main bus voices\n");
+    SoLoud::Soloud soloud;
+    if (!initEngine(soloud)) return;
+
+    TestSource sine(false);
+    SoLoud::handle mainVoice = soloud.play(sine);
+    SoLoud::Bus bus;
+    SoLoud::handle busHandle = soloud.play(bus);
+    EXPECT(busHandle != 0, "bus failed to play");
+    soloud.stop(busHandle);
+    EXPECT(soloud.isValidVoiceHandle(mainVoice),
+           "stopping the bus stopped a main bus voice");
+    EXPECT(bus.mInstance == nullptr, "mInstance left dangling");
+
+    soloud.deinit();
+}
+
+// Replaying a bus that never had anything played through it must still stop
+// the previous bus voice instead of leaving it orphaned.
+void testReplayUnusedBus() {
+    std::printf("replaying an unused bus stops the old voice\n");
+    SoLoud::Soloud soloud;
+    if (!initEngine(soloud)) return;
+
+    SoLoud::Bus bus;
+    SoLoud::handle first = soloud.play(bus);
+    SoLoud::handle second = soloud.play(bus);
+    EXPECT(second != 0, "bus failed to replay");
+    EXPECT(!soloud.isValidVoiceHandle(first), "old bus voice left playing");
+    EXPECT(soloud.getActiveVoiceCount() == 1, "%u active voices, expected 1",
+           soloud.getActiveVoiceCount());
+
+    soloud.deinit();
+}
+
+// With every voice taken and protected, play(bus) fails and deletes the new
+// BusInstance. That must not stop main bus voices or leave mInstance set.
+void testFailedBusPlay() {
+    std::printf("failed bus play\n");
+    SoLoud::Soloud soloud;
+    if (!initEngine(soloud)) return;
+
+    TestSource sine(false);
+    std::vector<SoLoud::handle> voices;
+    for (int i = 0; i < VOICE_COUNT; i++) {
+        SoLoud::handle h = soloud.play(sine, 1.0f, 0.0f, true);
+        soloud.setProtectVoice(h, true);
+        voices.push_back(h);
+    }
+    SoLoud::Bus bus;
+    EXPECT(soloud.play(bus) == 0, "bus played with no free voice");
+    EXPECT(bus.mInstance == nullptr, "mInstance left set after failed play");
+    int alive = 0;
+    for (SoLoud::handle h : voices)
+        alive += soloud.isValidVoiceHandle(h) ? 1 : 0;
+    EXPECT(alive == VOICE_COUNT, "failed bus play stopped %d voices",
+           VOICE_COUNT - alive);
+
+    soloud.deinit();
+}
+
 } // namespace
 
 int main() {
@@ -438,6 +503,9 @@ int main() {
     testStoppedBusVoice(1);
     testStoppedBusVoice(2);
     testReplayKeepsNewInstance();
+    testStopUnusedBusKeepsMainVoices();
+    testReplayUnusedBus();
+    testFailedBusPlay();
 
     std::printf("\n%d assertions, %d failures\n", gAssertions, gFailures);
     return gFailures == 0 ? 0 : 1;
