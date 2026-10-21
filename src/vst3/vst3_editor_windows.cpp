@@ -55,6 +55,7 @@ public:
     if (nativeResize) {
       style |= WS_THICKFRAME | WS_MAXIMIZEBOX;
     }
+    mNativeResize = nativeResize;
     const DWORD exStyle = WS_EX_APPWINDOW;
 
     RECT winRect{0, 0, w, h};
@@ -198,7 +199,8 @@ private:
       self->close();
       return 0;
     case WM_SIZE:
-      if (!self->mInResize.load(std::memory_order_acquire) &&
+      if (self->mNativeResize &&
+          !self->mInResize.load(std::memory_order_acquire) &&
           self->mPlugView != nullptr && wParam != SIZE_MINIMIZED) {
         Steinberg::ViewRect r{0, 0, static_cast<Steinberg::int32>(LOWORD(lParam)),
                               static_cast<Steinberg::int32>(HIWORD(lParam))};
@@ -218,6 +220,7 @@ private:
   HWND mHwnd = nullptr;
   std::atomic<bool> mIsOpen{false};
   std::atomic<bool> mInResize{false};
+  bool mNativeResize = false;
 };
 
 std::unique_ptr<Vst3EditorWindow> Vst3EditorWindow::create() {

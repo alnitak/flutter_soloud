@@ -653,7 +653,7 @@ private:
                                                  22 /* ConfigureNotify */,
                                                  eventBuf)) {
         if (self->mInResize.load(std::memory_order_acquire) ||
-            self->mPlugView == nullptr) {
+            self->mPlugView == nullptr || !self->mNativeResize) {
           continue;
         }
         // In 64-bit LP64 XConfigureEvent:

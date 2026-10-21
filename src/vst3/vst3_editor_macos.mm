@@ -37,13 +37,15 @@ class Vst3EditorWindowMacOS;
 
 @interface SoLoudVst3Window : NSWindow
 @property(nonatomic, assign) NSSize baseContentSize;
+@property(nonatomic, assign) BOOL supportsHostScaling;
 - (void)zoomByFactor:(CGFloat)factor;
 - (void)resetZoom;
 @end
 
 @implementation SoLoudVst3Window
 - (BOOL)performKeyEquivalent:(NSEvent *)event {
-  if (([event modifierFlags] & NSEventModifierFlagDeviceIndependentFlagsMask) ==
+  if (self.supportsHostScaling &&
+      ([event modifierFlags] & NSEventModifierFlagDeviceIndependentFlagsMask) ==
       NSEventModifierFlagCommand) {
     NSString *chars = [event charactersIgnoringModifiers];
     if ([chars isEqualToString:@"+"] || [chars isEqualToString:@"="]) {
@@ -215,27 +217,33 @@ public:
           nativeResize = true;
         }
       }
-      mUseHostScaling = !nativeResize;
+      mNativeResize = nativeResize;
+      mUseHostScaling = false;
 
       NSRect contentRect = NSMakeRect(0, 0, w, h);
 
       NSWindowStyleMask style = NSWindowStyleMaskTitled |
                                 NSWindowStyleMaskClosable |
-                                NSWindowStyleMaskMiniaturizable |
-                                NSWindowStyleMaskResizable;
+                                NSWindowStyleMaskMiniaturizable;
+      if (mNativeResize) {
+        style |= NSWindowStyleMaskResizable;
+      }
 
       mWindow = [[SoLoudVst3Window alloc] initWithContentRect:contentRect
                                                     styleMask:style
                                                       backing:NSBackingStoreBuffered
                                                         defer:NO];
       mWindow.baseContentSize = NSMakeSize(w, h);
+      mWindow.supportsHostScaling = NO;
       [mWindow setReleasedWhenClosed:NO];
       [mWindow setHidesOnDeactivate:NO];
-      if (mUseHostScaling) {
-        [mWindow setContentAspectRatio:NSMakeSize(w, h)];
+      if (mNativeResize) {
         [mWindow setContentMinSize:NSMakeSize(std::max<int>(100, w / 2),
                                               std::max<int>(100, h / 2))];
         [mWindow setContentMaxSize:NSMakeSize(w * 4, h * 4)];
+      } else {
+        [mWindow setContentMinSize:NSMakeSize(w, h)];
+        [mWindow setContentMaxSize:NSMakeSize(w, h)];
       }
       NSString *nsTitle = [NSString stringWithUTF8String:titleStr.c_str()];
       [mWindow setTitle:(nsTitle != nil ? nsTitle : @"VST3 Plugin")];
@@ -260,12 +268,58 @@ public:
 #endif
       if (mPlugView->attached(nativeParent, Steinberg::kPlatformTypeNSView) ==
           Steinberg::kResultTrue) {
-        if (mUseHostScaling) {
-          [contentView setFrameSize:NSMakeSize(w, h)];
-          [contentView setBoundsSize:NSMakeSize(mBaseWidth, mBaseHeight)];
-          if ([[contentView subviews] count] > 0) {
-            NSView *pluginView = [[contentView subviews] firstObject];
-            [pluginView setFrame:NSMakeRect(0, 0, mBaseWidth, mBaseHeight)];
+        NSView *pluginView = [[contentView subviews] count] > 0
+                                 ? [[contentView subviews] firstObject]
+                                 : nil;
+
+        if (!mNativeResize) {
+          // Check if the attached plugin subview is JUCE-based (or supports Cocoa view
+          // coordinate transforms). JUCE plugins return canResize() == kResultFalse
+          // but safely scale via host contentView bounds scaling. Non-JUCE plugins
+          // (such as Voxengo's CWindowCocoaContent) bypass Cocoa coordinate transformations
+          // and directly query hardware display mouse positions via CGEventGetLocation,
+          // breaking mouse hit-testing when host scaling is applied.
+          bool canHostScale = false;
+          if (pluginView != nil) {
+            NSString *className = NSStringFromClass([pluginView class]);
+            if ([className hasPrefix:@"JUCEView"]) {
+              canHostScale = true;
+            }
+          }
+
+          if (canHostScale) {
+            mUseHostScaling = true;
+            mWindow.supportsHostScaling = YES;
+            [mWindow setStyleMask:([mWindow styleMask] | NSWindowStyleMaskResizable)];
+            [mWindow setContentAspectRatio:NSMakeSize(w, h)];
+            [mWindow setContentMinSize:NSMakeSize(std::max<int>(100, w / 2),
+                                                  std::max<int>(100, h / 2))];
+            [mWindow setContentMaxSize:NSMakeSize(w * 4, h * 4)];
+            [contentView setFrameSize:NSMakeSize(w, h)];
+            [contentView setBoundsSize:NSMakeSize(mBaseWidth, mBaseHeight)];
+            if (pluginView != nil) {
+              [pluginView setFrame:NSMakeRect(0, 0, mBaseWidth, mBaseHeight)];
+            }
+          } else {
+            mUseHostScaling = false;
+            mWindow.supportsHostScaling = NO;
+            [mWindow setStyleMask:([mWindow styleMask] & ~NSWindowStyleMaskResizable)];
+            [mWindow setContentAspectRatio:NSMakeSize(0, 0)];
+            [mWindow setContentMinSize:NSMakeSize(w, h)];
+            [mWindow setContentMaxSize:NSMakeSize(w, h)];
+            [contentView setFrame:NSMakeRect(0, 0, w, h)];
+            [contentView setBounds:NSMakeRect(0, 0, w, h)];
+            if (pluginView != nil) {
+              [pluginView setFrame:NSMakeRect(0, 0, w, h)];
+            }
+          }
+        } else {
+          mUseHostScaling = false;
+          mWindow.supportsHostScaling = NO;
+          [contentView setFrame:NSMakeRect(0, 0, w, h)];
+          [contentView setBounds:NSMakeRect(0, 0, w, h)];
+          if (pluginView != nil) {
+            [pluginView setFrame:NSMakeRect(0, 0, w, h)];
           }
         }
         ensurePluginSubviewsVisible(contentView);
@@ -389,6 +443,9 @@ public:
         [mWindow setContentMinSize:NSMakeSize(std::max<int>(100, mBaseWidth / 2),
                                               std::max<int>(100, mBaseHeight / 2))];
         [mWindow setContentMaxSize:NSMakeSize(mBaseWidth * 4, mBaseHeight * 4)];
+      } else if (!mNativeResize) {
+        [mWindow setContentMinSize:NSMakeSize(mBaseWidth, mBaseHeight)];
+        [mWindow setContentMaxSize:NSMakeSize(mBaseWidth, mBaseHeight)];
       }
       NSRect contentRect = [mWindow contentRectForFrameRect:mWindow.frame];
       const CGFloat diffY = newSize->getHeight() - contentRect.size.height;
@@ -399,14 +456,17 @@ public:
       [mWindow setFrame:frameRect
                 display:[mWindow isVisible]
                 animate:NO];
-      if (mUseHostScaling) {
-        NSView *contentView = [mWindow contentView];
-        if (contentView != nil) {
+      NSView *contentView = [mWindow contentView];
+      if (contentView != nil) {
+        if (mUseHostScaling) {
           [contentView setBoundsSize:NSMakeSize(mBaseWidth, mBaseHeight)];
-          if ([[contentView subviews] count] > 0) {
-            NSView *pluginView = [[contentView subviews] firstObject];
-            [pluginView setFrame:NSMakeRect(0, 0, mBaseWidth, mBaseHeight)];
-          }
+        } else {
+          [contentView setFrame:NSMakeRect(0, 0, mBaseWidth, mBaseHeight)];
+          [contentView setBounds:NSMakeRect(0, 0, mBaseWidth, mBaseHeight)];
+        }
+        if ([[contentView subviews] count] > 0) {
+          NSView *pluginView = [[contentView subviews] firstObject];
+          [pluginView setFrame:NSMakeRect(0, 0, mBaseWidth, mBaseHeight)];
         }
       }
     };
@@ -468,6 +528,11 @@ public:
     if (mPlugView == nullptr || mWindow == nil) {
       return frameSize;
     }
+    if (!mNativeResize && !mUseHostScaling) {
+      NSRect contentRect = NSMakeRect(0, 0, mBaseWidth, mBaseHeight);
+      NSRect lockedFrame = [mWindow frameRectForContentRect:contentRect];
+      return lockedFrame.size;
+    }
     if (mUseHostScaling) {
       return frameSize;
     }
@@ -503,7 +568,7 @@ public:
         NSView *pluginView = [[contentView subviews] firstObject];
         [pluginView setFrame:NSMakeRect(0, 0, mBaseWidth, mBaseHeight)];
       }
-    } else {
+    } else if (mNativeResize) {
       NSRect bounds = [contentView bounds];
       Steinberg::ViewRect r{
           0, 0, static_cast<Steinberg::int32>(bounds.size.width),
@@ -550,6 +615,7 @@ private:
   SoLoudVst3WindowDelegate *mDelegate = nil;
   int32_t mBaseWidth = 800;
   int32_t mBaseHeight = 600;
+  bool mNativeResize = false;
   bool mUseHostScaling = false;
   std::atomic<bool> mIsOpen{false};
   std::atomic<bool> mInResize{false};
