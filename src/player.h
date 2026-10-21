@@ -131,6 +131,45 @@ public:
   PlayerErrors loadMem(const std::string &uniqueName, unsigned char *mem,
                        int length, bool loadIntoMem, unsigned int &hash);
 
+  /// @brief A sound decoded by [decodeFile], [decodeMem] or
+  /// [decodeJoinedSources] that is not yet owned by any Player.
+  struct PendingSound
+  {
+    std::unique_ptr<ActiveSound> sound;
+    PlayerErrors error = noError;
+  };
+
+  /// @brief Decode [completeFileName] without touching any Player state, so
+  /// callers can run it without holding the engine lifecycle locks. This is
+  /// the slow part of [loadFile]: formats with no streaming decoder (M4A/MP4,
+  /// AAC, AC-3, E-AC-3) and Ogg Opus/FLAC are decoded in full to PCM even
+  /// when [loadIntoMem] is false. Ogg Opus decodes to [engineSampleRate] and
+  /// [engineChannels].
+  static PendingSound decodeFile(const std::string &completeFileName,
+                                 bool loadIntoMem,
+                                 unsigned int engineSampleRate,
+                                 unsigned int engineChannels);
+
+  /// @brief Same as [decodeFile] for audio bytes in [mem].
+  static PendingSound decodeMem(const std::string &uniqueName,
+                                unsigned char *mem, int length,
+                                bool loadIntoMem,
+                                unsigned int engineSampleRate,
+                                unsigned int engineChannels);
+
+  /// @brief The decoding half of [joinTwoSources], which, like [decodeFile],
+  /// touches no Player state. The result is resampled to [engineSampleRate].
+  static PendingSound decodeJoinedSources(const std::string &uniqueName,
+                                          unsigned char *mem1,
+                                          unsigned char *mem2,
+                                          int length1, int length2,
+                                          unsigned int engineSampleRate);
+
+  /// @brief Give [pending] a unique hash and add it to the loaded sounds.
+  /// @return [fileAlreadyLoaded] when the name's hash was already in use (a
+  /// new unique hash is assigned anyway), or [pending]'s decode error.
+  PlayerErrors registerSound(PendingSound pending, unsigned int &hash);
+
   /// @brief Load two sounds stored into [mem1] and [mem2], convert them to mono
   /// if needed, resample them to the engine's sample rate, and join them into a
   /// single stereo AudioSource (left and right channels).
