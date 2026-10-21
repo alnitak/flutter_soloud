@@ -810,6 +810,10 @@ public:
   /// @return If not found, return nullptr.
   ActiveSound *findByHash(unsigned int hash);
 
+  /// @brief Find a sound by its hash without acquiring sounds_mutex.
+  /// Caller MUST hold sounds_mutex.
+  ActiveSound *findByHashUnlocked(unsigned int hash);
+
   /////////////////////////////////////////
   /// voice groups
   /////////////////////////////////////////

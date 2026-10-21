@@ -185,6 +185,9 @@ public:
 
   std::shared_ptr<Vst3PluginInstance> getPlugin(int pluginHandle);
 
+  /// Lock-free lookup for the real-time audio thread (no mutex, no refcounting).
+  Vst3PluginInstance *getPluginAudioThread(int pluginHandle) noexcept;
+
   VST3::Hosting::Module::Ptr getOrLoadModule(const std::string &bundlePath,
                                             std::string &outError);
 
@@ -195,6 +198,8 @@ public:
   void setRestartComponentCallback(
       dartVst3RestartComponentCallback_t callback);
 
+  static constexpr size_t kMaxFastPlugins = 1024;
+
 private:
   Vst3HostManager();
   ~Vst3HostManager();
@@ -203,6 +208,7 @@ private:
   Steinberg::Vst::HostApplication mHostApp;
   int mNextHandle = 1;
   std::unordered_map<int, std::shared_ptr<Vst3PluginInstance>> mPlugins;
+  std::array<std::atomic<Vst3PluginInstance *>, kMaxFastPlugins> mPluginTable{};
   std::unordered_map<std::string, VST3::Hosting::Module::Ptr> mLoadedModules;
   std::atomic<void (*)(int, unsigned int, double)> mParamEditCallback{nullptr};
   std::atomic<dartVst3RestartComponentCallback_t> mRestartCallback{nullptr};

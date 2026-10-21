@@ -98,10 +98,5 @@ flutter:
     - path: web/init_soloud.js
       platforms: [web]
 
-hooks:
-  user_defines:
-    flutter_soloud:
-      enable_vst3: true
-
 funding:
   - https://github.com/sponsors/alnitak

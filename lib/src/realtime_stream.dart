@@ -142,6 +142,8 @@ final class RealtimeNativeBuffer {
 
   int _address;
   final int _totalSamples;
+  Float32List? _cachedFloat32View;
+  Int16List? _cachedInt16View;
 
   /// Maximum number of multi-channel frames this buffer can hold.
   final int maxFrames;
@@ -164,10 +166,17 @@ final class RealtimeNativeBuffer {
     if (isDisposed) {
       throw StateError('RealtimeNativeBuffer has already been disposed.');
     }
-    return SoLoudController().soLoudFFI.viewRealtimeFloat32Buffer(
-      _address,
-      _totalSamples,
-    );
+    final cached = _cachedFloat32View;
+    if (cached != null) {
+      if (!_kIsWeb || cached.buffer.lengthInBytes > 0) {
+        return cached;
+      }
+    }
+    return _cachedFloat32View =
+        SoLoudController().soLoudFFI.viewRealtimeFloat32Buffer(
+          _address,
+          _totalSamples,
+        );
   }
 
   /// Returns a mutable [Int16List] view backed directly by the native/WASM
@@ -176,10 +185,17 @@ final class RealtimeNativeBuffer {
     if (isDisposed) {
       throw StateError('RealtimeNativeBuffer has already been disposed.');
     }
-    return SoLoudController().soLoudFFI.viewRealtimeInt16Buffer(
-      _address,
-      _totalSamples,
-    );
+    final cached = _cachedInt16View;
+    if (cached != null) {
+      if (!_kIsWeb || cached.buffer.lengthInBytes > 0) {
+        return cached;
+      }
+    }
+    return _cachedInt16View =
+        SoLoudController().soLoudFFI.viewRealtimeInt16Buffer(
+          _address,
+          _totalSamples,
+        );
   }
 
   /// Frees the underlying native/WASM memory allocation. Idempotent.
@@ -187,6 +203,8 @@ final class RealtimeNativeBuffer {
     if (_address != 0) {
       SoLoudController().soLoudFFI.freeRealtimeNativeBuffer(_address);
       _address = 0;
+      _cachedFloat32View = null;
+      _cachedInt16View = null;
     }
   }
 }
@@ -875,42 +893,20 @@ final class RealtimeStreamFeeder<TState> {
     var state = initialState;
     final nativeBuf = stream.allocateNativeBuffer(maxFrames: chunkFrames);
 
-    void runRefillTick() {
-      if (nativeBuf.isDisposed) return;
-      while (stream.availableToRead < targetBufferedFrames &&
-          stream.availableToWrite >= chunkFrames) {
-        final int written;
-        if (isInt16) {
-          written = onFeedInt16!(
-            nativeBuf.int16View,
-            chunkFrames,
-            state,
-            dispatchUiEvent,
-          );
-        } else {
-          written = onFeedFloat32!(
-            nativeBuf.float32View,
-            chunkFrames,
-            state,
-            dispatchUiEvent,
-          );
-        }
-        if (written <= 0) {
-          break;
-        }
-        final clamped = written > chunkFrames ? chunkFrames : written;
-        if (isInt16) {
-          stream.pushNativeInt16(nativeBuf, clamped);
-        } else {
-          stream.pushNativeFloat32(nativeBuf, clamped);
-        }
-        if (clamped < chunkFrames) {
-          break;
-        }
-      }
-    }
-
-    final timer = Timer.periodic(tickInterval, (_) => runRefillTick());
+    final timer = Timer.periodic(
+      tickInterval,
+      (_) => _refillBuffer<TState>(
+        stream: stream,
+        nativeBuf: nativeBuf,
+        targetBufferedFrames: targetBufferedFrames,
+        chunkFrames: chunkFrames,
+        isInt16: isInt16,
+        onFeedFloat32: onFeedFloat32,
+        onFeedInt16: onFeedInt16,
+        state: state,
+        emitEvent: dispatchUiEvent,
+      ),
+    );
 
     return RealtimeStreamFeeder<TState>._(
       stream: stream,
@@ -935,6 +931,51 @@ final class RealtimeStreamFeeder<TState> {
         await eventController.close();
       },
     );
+  }
+
+  static void _refillBuffer<TState>({
+    required RealtimeStreamHandle stream,
+    required RealtimeNativeBuffer nativeBuf,
+    required int targetBufferedFrames,
+    required int chunkFrames,
+    required bool isInt16,
+    required RealtimeFloat32FeedCallback<TState>? onFeedFloat32,
+    required RealtimeInt16FeedCallback<TState>? onFeedInt16,
+    required TState state,
+    required void Function(Object? event) emitEvent,
+  }) {
+    if (nativeBuf.isDisposed) return;
+    while (stream.availableToRead < targetBufferedFrames &&
+        stream.availableToWrite >= chunkFrames) {
+      final int written;
+      if (isInt16) {
+        written = onFeedInt16!(
+          nativeBuf.int16View,
+          chunkFrames,
+          state,
+          emitEvent,
+        );
+      } else {
+        written = onFeedFloat32!(
+          nativeBuf.float32View,
+          chunkFrames,
+          state,
+          emitEvent,
+        );
+      }
+      if (written <= 0) {
+        break;
+      }
+      final clamped = written > chunkFrames ? chunkFrames : written;
+      if (isInt16) {
+        stream.pushNativeInt16(nativeBuf, clamped);
+      } else {
+        stream.pushNativeFloat32(nativeBuf, clamped);
+      }
+      if (clamped < chunkFrames) {
+        break;
+      }
+    }
   }
 }
 
@@ -1050,40 +1091,20 @@ final class _FeederIsolateInit<TState> {
       }
     });
 
-    timer = Timer.periodic(tickInterval, (_) {
-      if (nativeBuf.isDisposed) return;
-      while (stream.availableToRead < targetBufferedFrames &&
-          stream.availableToWrite >= chunkFrames) {
-        final int written;
-        if (isInt16) {
-          written = onFeedInt16!(
-            nativeBuf.int16View,
-            chunkFrames,
-            state,
-            uiSendPort.send,
-          );
-        } else {
-          written = onFeedFloat32!(
-            nativeBuf.float32View,
-            chunkFrames,
-            state,
-            uiSendPort.send,
-          );
-        }
-        if (written <= 0) {
-          break;
-        }
-        final clamped = written > chunkFrames ? chunkFrames : written;
-        if (isInt16) {
-          stream.pushNativeInt16(nativeBuf, clamped);
-        } else {
-          stream.pushNativeFloat32(nativeBuf, clamped);
-        }
-        if (clamped < chunkFrames) {
-          break;
-        }
-      }
-    });
+    timer = Timer.periodic(
+      tickInterval,
+      (_) => RealtimeStreamFeeder._refillBuffer<TState>(
+        stream: stream,
+        nativeBuf: nativeBuf,
+        targetBufferedFrames: targetBufferedFrames,
+        chunkFrames: chunkFrames,
+        isInt16: isInt16,
+        onFeedFloat32: onFeedFloat32,
+        onFeedInt16: onFeedInt16,
+        state: state,
+        emitEvent: uiSendPort.send,
+      ),
+    );
   }
 }
 

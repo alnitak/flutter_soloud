@@ -1229,7 +1229,7 @@ PlayerErrors Player::setRealtimeStream(
 PlayerErrors Player::resetRealtimeStream(unsigned int hash)
 {
     std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
-    auto const s = findByHash(hash);
+    auto const s = findByHashUnlocked(hash);
 
     if (s == nullptr)
         return PlayerErrors::soundHashNotFound;
@@ -1247,7 +1247,7 @@ unsigned int Player::pushRealtimeFloat32(
     unsigned int numFrames)
 {
     std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
-    auto const s = findByHash(hash);
+    auto const s = findByHashUnlocked(hash);
     if (s == nullptr || s->soundType != SoundType::TYPE_REALTIME_STREAM)
         return 0;
 
@@ -1261,7 +1261,7 @@ unsigned int Player::pushRealtimeInt16(
     unsigned int numFrames)
 {
     std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
-    auto const s = findByHash(hash);
+    auto const s = findByHashUnlocked(hash);
     if (s == nullptr || s->soundType != SoundType::TYPE_REALTIME_STREAM)
         return 0;
 
@@ -1276,7 +1276,7 @@ unsigned int Player::pushRealtimeClockedFloat32(
     unsigned int numFrames)
 {
     std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
-    auto const s = findByHash(hash);
+    auto const s = findByHashUnlocked(hash);
     if (s == nullptr || s->soundType != SoundType::TYPE_REALTIME_STREAM)
         return 0;
 
@@ -1291,7 +1291,7 @@ unsigned int Player::pushRealtimeScheduledFloat32(
     unsigned int numFrames)
 {
     std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
-    auto const s = findByHash(hash);
+    auto const s = findByHashUnlocked(hash);
     if (s == nullptr || s->soundType != SoundType::TYPE_REALTIME_STREAM)
         return 0;
 
@@ -1302,7 +1302,7 @@ unsigned int Player::pushRealtimeScheduledFloat32(
 unsigned int Player::getRealtimeAvailableToRead(unsigned int hash)
 {
     std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
-    auto const s = findByHash(hash);
+    auto const s = findByHashUnlocked(hash);
     if (s == nullptr || s->soundType != SoundType::TYPE_REALTIME_STREAM)
         return 0;
 
@@ -1313,7 +1313,7 @@ unsigned int Player::getRealtimeAvailableToRead(unsigned int hash)
 unsigned int Player::getRealtimeAvailableToWrite(unsigned int hash)
 {
     std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
-    auto const s = findByHash(hash);
+    auto const s = findByHashUnlocked(hash);
     if (s == nullptr || s->soundType != SoundType::TYPE_REALTIME_STREAM)
         return 0;
 
@@ -1324,7 +1324,7 @@ unsigned int Player::getRealtimeAvailableToWrite(unsigned int hash)
 unsigned int Player::getRealtimeUnderrunCount(unsigned int hash)
 {
     std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
-    auto const s = findByHash(hash);
+    auto const s = findByHashUnlocked(hash);
     if (s == nullptr || s->soundType != SoundType::TYPE_REALTIME_STREAM)
         return 0;
 
@@ -3288,9 +3288,8 @@ ActiveSound *Player::findByHandle(SoLoud::handle handle)
     return nullptr;
 }
 
-ActiveSound *Player::findByHash(unsigned int soundHash)
+ActiveSound *Player::findByHashUnlocked(unsigned int soundHash)
 {
-    std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
     auto const &s = std::find_if(sounds.begin(), sounds.end(),
                                  [&](std::unique_ptr<ActiveSound> const &f)
                                  { return f->soundHash == soundHash; });
@@ -3298,6 +3297,12 @@ ActiveSound *Player::findByHash(unsigned int soundHash)
         return nullptr;
 
     return s->get();
+}
+
+ActiveSound *Player::findByHash(unsigned int soundHash)
+{
+    std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
+    return findByHashUnlocked(soundHash);
 }
 
 /////////////////////////////////////////

@@ -249,8 +249,6 @@ public:
   ~Vst3EditorWindowLinux() override { destroy(); }
 
   bool open(Steinberg::IPlugView *plugView, const char *title) override {
-    fprintf(stderr, "[vst3_editor_linux] open() called for title='%s', plugView=%p\n",
-            title ? title : "", plugView);
     if (plugView == nullptr) {
       return false;
     }
@@ -377,23 +375,18 @@ public:
 
     if (mPlugView != plugView) {
       if (mPlugView != nullptr) {
-        fprintf(stderr, "[vst3_editor_linux] removing old plugView %p\n", mPlugView.get());
         mPlugView->removed();
         mPlugView->setFrame(nullptr);
       }
       mPlugView = plugView;
       mPlugView->setFrame(this);
-      fprintf(stderr, "[vst3_editor_linux] attaching plugView %p to window 0x%lx...\n",
-              mPlugView.get(), sSharedWindow);
       if (mPlugView->attached(reinterpret_cast<void *>(sSharedWindow),
                               Steinberg::kPlatformTypeX11EmbedWindowID) !=
           Steinberg::kResultTrue) {
-        fprintf(stderr, "[vst3_editor_linux] plugView->attached FAILED!\n");
         mPlugView->setFrame(nullptr);
         mPlugView = nullptr;
         return false;
       }
-      fprintf(stderr, "[vst3_editor_linux] plugView->attached SUCCESS\n");
     }
 
     if (guiSymbols().XMapRaised) {
@@ -422,7 +415,6 @@ public:
   }
 
   void close() override {
-    fprintf(stderr, "[vst3_editor_linux] close() called, window=0x%lx\n", sSharedWindow);
     mIsOpen.store(false, std::memory_order_release);
     if (mEventTimerId != 0 && guiSymbols().g_source_remove) {
       guiSymbols().g_source_remove(mEventTimerId);
@@ -451,8 +443,6 @@ public:
   }
 
   void destroy() {
-    fprintf(stderr, "[vst3_editor_linux] destroy() called, window=0x%lx, plugView=%p\n",
-            sSharedWindow, mPlugView.get());
     close();
     if (guiSymbols().gdk_error_trap_push) {
       guiSymbols().gdk_error_trap_push();
@@ -461,7 +451,6 @@ public:
       guiSymbols().XSetErrorHandler(&customXErrorHandler);
     }
     if (mPlugView != nullptr) {
-      fprintf(stderr, "[vst3_editor_linux] calling mPlugView->removed()...\n");
       mPlugView->removed();
       mPlugView->setFrame(nullptr);
       mPlugView = nullptr;

@@ -99,9 +99,14 @@ class Vst3EditorWindowMacOS;
 
   if (std::abs(newW - curContentRect.size.width) < 1.0) return;
 
+  [self applyContentSize:NSMakeSize(newW, newH) animate:YES];
+}
+
+- (void)applyContentSize:(NSSize)newSize animate:(BOOL)animate {
+  NSRect curContentRect = [self contentRectForFrameRect:[self frame]];
   NSRect newContentRect = NSMakeRect(curContentRect.origin.x,
-                                     curContentRect.origin.y - (newH - curContentRect.size.height),
-                                     newW, newH);
+                                     curContentRect.origin.y - (newSize.height - curContentRect.size.height),
+                                     newSize.width, newSize.height);
   NSRect newFrame = [self frameRectForContentRect:newContentRect];
   NSScreen *screen = [self screen];
   if (screen != nil) {
@@ -118,34 +123,12 @@ class Vst3EditorWindowMacOS;
       newFrame.origin.x = screenRect.origin.x;
     }
   }
-  [self setFrame:newFrame display:YES animate:YES];
+  [self setFrame:newFrame display:YES animate:animate];
 }
 
 - (void)resetZoom {
   if (self.baseContentSize.width <= 0 || self.baseContentSize.height <= 0) return;
-  NSRect curContentRect = [self contentRectForFrameRect:[self frame]];
-  CGFloat newW = self.baseContentSize.width;
-  CGFloat newH = self.baseContentSize.height;
-  NSRect newContentRect = NSMakeRect(curContentRect.origin.x,
-                                     curContentRect.origin.y - (newH - curContentRect.size.height),
-                                     newW, newH);
-  NSRect newFrame = [self frameRectForContentRect:newContentRect];
-  NSScreen *screen = [self screen];
-  if (screen != nil) {
-    NSRect screenRect = [screen visibleFrame];
-    CGFloat top = [self frame].origin.y + [self frame].size.height;
-    newFrame.origin.y = top - newFrame.size.height;
-    if (newFrame.origin.y < screenRect.origin.y) {
-      newFrame.origin.y = screenRect.origin.y;
-    }
-    if (NSMaxX(newFrame) > NSMaxX(screenRect)) {
-      newFrame.origin.x = NSMaxX(screenRect) - newFrame.size.width;
-    }
-    if (newFrame.origin.x < screenRect.origin.x) {
-      newFrame.origin.x = screenRect.origin.x;
-    }
-  }
-  [self setFrame:newFrame display:YES animate:YES];
+  [self applyContentSize:self.baseContentSize animate:YES];
 }
 @end
 
@@ -325,8 +308,7 @@ public:
         ensurePluginSubviewsVisible(contentView);
         [mWindow makeKeyAndOrderFront:nil];
         [NSApp activateIgnoringOtherApps:YES];
-        if ([[contentView subviews] count] > 0) {
-          NSView *pluginView = [[contentView subviews] firstObject];
+        if (pluginView != nil) {
           [mWindow makeFirstResponder:pluginView];
         }
         [[NSNotificationCenter defaultCenter]

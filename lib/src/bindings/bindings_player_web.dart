@@ -2253,7 +2253,6 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
 
   int _realtimeScratchPtr = 0;
   int _realtimeScratchCapacityBytes = 0;
-  final List<int> _allocatedWebJsNamePtrs = <int>[];
 
   int _ensureRealtimeScratch(int bytes) {
     if (bytes <= _realtimeScratchCapacityBytes && _realtimeScratchPtr != 0) {
@@ -2274,10 +2273,6 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
       _realtimeScratchPtr = 0;
       _realtimeScratchCapacityBytes = 0;
     }
-    for (final ptr in _allocatedWebJsNamePtrs) {
-      wasmFree(ptr);
-    }
-    _allocatedWebJsNamePtrs.clear();
   }
 
   int _allocUtf8CString(String str) {
@@ -2521,27 +2516,32 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     var webNamePtr = 0;
     if (webJsFunctionName != null && webJsFunctionName.isNotEmpty) {
       webNamePtr = _allocUtf8CString(webJsFunctionName);
-      _allocatedWebJsNamePtrs.add(webNamePtr);
     }
-    final lifecyclePtr = onInstanceCreatedAddress != 0
-        ? onInstanceCreatedAddress
-        : onInstanceDestroyedAddress;
-    final result = wasmCreateCustomAudioSource(
-      hashPtr,
-      sampleRate,
-      channels,
-      dspCallbackAddress,
-      userdataAddress,
-      lifecyclePtr,
-      0,
-      webNamePtr,
-    );
-    final hash = wasmGetI32Value(hashPtr, 'i32');
-    wasmFree(hashPtr);
-    return (
-      error: PlayerErrors.values[result],
-      soundHash: SoundHash.fromValue(hash),
-    );
+    try {
+      final lifecyclePtr = onInstanceCreatedAddress != 0
+          ? onInstanceCreatedAddress
+          : onInstanceDestroyedAddress;
+      final result = wasmCreateCustomAudioSource(
+        hashPtr,
+        sampleRate,
+        channels,
+        dspCallbackAddress,
+        userdataAddress,
+        lifecyclePtr,
+        0,
+        webNamePtr,
+      );
+      final hash = wasmGetI32Value(hashPtr, 'i32');
+      return (
+        error: PlayerErrors.values[result],
+        soundHash: SoundHash.fromValue(hash),
+      );
+    } finally {
+      wasmFree(hashPtr);
+      if (webNamePtr != 0) {
+        wasmFree(webNamePtr);
+      }
+    }
   }
 
   @override
@@ -2602,18 +2602,23 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     var webNamePtr = 0;
     if (webJsFunctionName != null && webJsFunctionName.isNotEmpty) {
       webNamePtr = _allocUtf8CString(webJsFunctionName);
-      _allocatedWebJsNamePtrs.add(webNamePtr);
     }
-    final e = wasmSetCustomFilterCallback(
-      soundHash?.hash ?? 0,
-      busId ?? 0,
-      customFilterId,
-      callbackAddress,
-      userdataAddress,
-      16,
-      webNamePtr,
-    );
-    return PlayerErrors.values[e];
+    try {
+      final e = wasmSetCustomFilterCallback(
+        soundHash?.hash ?? 0,
+        busId ?? 0,
+        customFilterId,
+        callbackAddress,
+        userdataAddress,
+        16,
+        webNamePtr,
+      );
+      return PlayerErrors.values[e];
+    } finally {
+      if (webNamePtr != 0) {
+        wasmFree(webNamePtr);
+      }
+    }
   }
 
   @override
