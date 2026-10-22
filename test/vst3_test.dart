@@ -60,7 +60,8 @@ void main() {
           if (_bundleExists(systemFx)) systemFx,
           if (_bundleExists(winBuiltReverb)) winBuiltReverb,
           if (_bundleExists(winBuiltEcho)) winBuiltEcho,
-          if (winUserReverb.isNotEmpty && _bundleExists(winUserReverb)) winUserReverb,
+          if (winUserReverb.isNotEmpty && _bundleExists(winUserReverb))
+            winUserReverb,
         ];
 
         if (candidatePaths.isEmpty || !host.isSupported) {
@@ -115,9 +116,9 @@ void main() {
             final wave = await soloud.loadWaveform(WaveForm.sin, true, 0.25, 0);
             final handle = soloud.play(wave, volume: 0.05);
 
-            final fxTypeParam = effect.parameters.where(
-              (p) => p.title == 'FX Type',
-            ).firstOrNull;
+            final fxTypeParam = effect.parameters
+                .where((p) => p.title == 'FX Type')
+                .firstOrNull;
             if (fxTypeParam != null) {
               effect.setParameterNormalized(fxTypeParam.paramId, 0.3);
               await Future<void>.delayed(const Duration(milliseconds: 100));

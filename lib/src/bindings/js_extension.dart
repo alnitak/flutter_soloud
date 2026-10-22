@@ -874,18 +874,10 @@ external int wasmSetRealtimeStream(
 external int wasmResetRealtimeStream(int hash);
 
 @JS('Module_soloud._pushRealtimeFloat32')
-external int wasmPushRealtimeFloat32(
-  int hash,
-  int samplesPtr,
-  int frameCount,
-);
+external int wasmPushRealtimeFloat32(int hash, int samplesPtr, int frameCount);
 
 @JS('Module_soloud._pushRealtimeInt16')
-external int wasmPushRealtimeInt16(
-  int hash,
-  int samplesPtr,
-  int frameCount,
-);
+external int wasmPushRealtimeInt16(int hash, int samplesPtr, int frameCount);
 
 @JS('Module_soloud._pushRealtimeClockedFloat32')
 external int wasmPushRealtimeClockedFloat32(
@@ -925,11 +917,7 @@ external int wasmCreateCustomAudioSource(
 );
 
 @JS('Module_soloud._addCustomFilter')
-external int wasmAddCustomFilter(
-  int soundHash,
-  int busId,
-  int customFilterId,
-);
+external int wasmAddCustomFilter(int soundHash, int busId, int customFilterId);
 
 @JS('Module_soloud._removeCustomFilter')
 external int wasmRemoveCustomFilter(

@@ -4824,6 +4824,10 @@ extern "C"
 
 #else // !SOLOUD_ENABLE_VST3
 
+  // These functions could be safely removed because the Dart layer already
+  // checks isSupported before calling any VST3 function.
+  // Leaving them here for now.
+  // TODO: remove them in the future.
   FFI_PLUGIN_EXPORT int soloud_vst3IsSupported(void) { return 0; }
 
   FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3ScanBundle(

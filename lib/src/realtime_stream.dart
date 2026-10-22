@@ -41,10 +41,6 @@ typedef RealtimeFloat32FeedCallback<TState> =
       void Function(Object? event) emitToUi,
     );
 
-/// Alias for [RealtimeFloat32FeedCallback].
-@experimental
-typedef RealtimeFeedCallback<TState> = RealtimeFloat32FeedCallback<TState>;
-
 /// Signature for a real-time 16-bit signed integer PCM generator callback used
 /// by [RealtimeStreamFeeder] and [RealtimeStreamHandle.startInt16Feeder].
 ///
@@ -172,11 +168,8 @@ final class RealtimeNativeBuffer {
         return cached;
       }
     }
-    return _cachedFloat32View =
-        SoLoudController().soLoudFFI.viewRealtimeFloat32Buffer(
-          _address,
-          _totalSamples,
-        );
+    return _cachedFloat32View = SoLoudController().soLoudFFI
+        .viewRealtimeFloat32Buffer(_address, _totalSamples);
   }
 
   /// Returns a mutable [Int16List] view backed directly by the native/WASM
@@ -191,11 +184,8 @@ final class RealtimeNativeBuffer {
         return cached;
       }
     }
-    return _cachedInt16View =
-        SoLoudController().soLoudFFI.viewRealtimeInt16Buffer(
-          _address,
-          _totalSamples,
-        );
+    return _cachedInt16View = SoLoudController().soLoudFFI
+        .viewRealtimeInt16Buffer(_address, _totalSamples);
   }
 
   /// Frees the underlying native/WASM memory allocation. Idempotent.
@@ -790,7 +780,7 @@ final class RealtimeStreamFeeder<TState> {
     required Duration tickInterval,
     required bool useIsolate,
     required bool isInt16,
-    RealtimeFeedCallback<TState>? onFeedFloat32,
+    RealtimeFloat32FeedCallback<TState>? onFeedFloat32,
     RealtimeInt16FeedCallback<TState>? onFeedInt16,
     RealtimeStateUpdateCallback<TState>? onStateUpdate,
     RealtimeMessageCallback<TState>? onMessage,
@@ -1041,7 +1031,7 @@ final class _FeederIsolateInit<TState> {
   final int targetBufferedFrames;
   final Duration tickInterval;
   final bool isInt16;
-  final RealtimeFeedCallback<TState>? onFeedFloat32;
+  final RealtimeFloat32FeedCallback<TState>? onFeedFloat32;
   final RealtimeInt16FeedCallback<TState>? onFeedInt16;
   final RealtimeStateUpdateCallback<TState>? onStateUpdate;
   final RealtimeMessageCallback<TState>? onMessage;

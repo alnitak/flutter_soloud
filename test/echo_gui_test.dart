@@ -44,24 +44,38 @@ void main() {
             ? '$userProfile\\AppData\\Local'
             : r'C:\Users\Default\AppData\Local';
         final p = '$base\\Programs\\Common\\VST3\\echo.vst3';
-        const winBuilt = r'c:\workspace\flutter_vst3\vsts\echo\build\VST3\Release\echo.vst3';
-        echoPath = (Directory(p).existsSync() || File(p).existsSync()) ? p : winBuilt;
+        const winBuilt =
+            r'c:\workspace\flutter_vst3\vsts\echo\build\VST3\Release\echo.vst3';
+        echoPath = (Directory(p).existsSync() || File(p).existsSync())
+            ? p
+            : winBuilt;
 
         final rp = '$base\\Programs\\Common\\VST3\\flutter_reverb.vst3';
-        const winReverb = r'c:\workspace\flutter_vst3\vsts\flutter_reverb\build\VST3\Release\flutter_reverb.vst3';
-        reverbPath = (Directory(rp).existsSync() || File(rp).existsSync()) ? rp : winReverb;
+        const winReverb =
+            r'c:\workspace\flutter_vst3\vsts\flutter_reverb\build\VST3\Release\flutter_reverb.vst3';
+        reverbPath = (Directory(rp).existsSync() || File(rp).existsSync())
+            ? rp
+            : winReverb;
       } else if (Platform.isLinux) {
         final home = Platform.environment['HOME'] ?? '';
         final p = '$home/.vst3/echo.vst3';
-        const linuxBuilt = '/home/deimos/FLUTTER/libs/flutter_vst3/vsts/echo/build/VST3/Release/echo.vst3';
-        echoPath = (Directory(p).existsSync() || File(p).existsSync()) ? p : linuxBuilt;
+        const linuxBuilt =
+            '/home/deimos/FLUTTER/libs/flutter_vst3/vsts/echo/build/VST3/Release/echo.vst3';
+        echoPath = (Directory(p).existsSync() || File(p).existsSync())
+            ? p
+            : linuxBuilt;
 
         final rp = '$home/.vst3/flutter_reverb.vst3';
-        const linuxReverb = '/home/deimos/FLUTTER/libs/flutter_vst3/vsts/flutter_reverb/build/VST3/Release/flutter_reverb.vst3';
-        reverbPath = (Directory(rp).existsSync() || File(rp).existsSync()) ? rp : linuxReverb;
+        const linuxReverb =
+            '/home/deimos/FLUTTER/libs/flutter_vst3/vsts/flutter_reverb/build/VST3/Release/flutter_reverb.vst3';
+        reverbPath = (Directory(rp).existsSync() || File(rp).existsSync())
+            ? rp
+            : linuxReverb;
       } else {
-        echoPath = '/Volumes/NVME/Users/deimos/Library/Audio/Plug-Ins/VST3/echo.vst3';
-        reverbPath = '/Volumes/NVME/Users/deimos/Library/Audio/Plug-Ins/VST3/flutter_reverb.vst3';
+        echoPath =
+            '/Volumes/NVME/Users/deimos/Library/Audio/Plug-Ins/VST3/echo.vst3';
+        reverbPath =
+            '/Volumes/NVME/Users/deimos/Library/Audio/Plug-Ins/VST3/flutter_reverb.vst3';
       }
 
       if (!host.isSupported) {
@@ -70,15 +84,27 @@ void main() {
       }
 
       print('=== VST3 Randomized Test Starting ===');
-      print('Echo path: $echoPath (exists: ${Directory(echoPath).existsSync()})');
-      print('Reverb path: $reverbPath (exists: ${Directory(reverbPath).existsSync()})');
+      print(
+        'Echo path: $echoPath (exists: ${Directory(echoPath).existsSync()})',
+      );
+      print(
+        'Reverb path: $reverbPath (exists: ${Directory(reverbPath).existsSync()})',
+      );
 
       final echoClasses = host.scanBundle(echoPath);
-      expect(echoClasses, isNotEmpty, reason: 'Failed scanning Echo: $echoPath');
+      expect(
+        echoClasses,
+        isNotEmpty,
+        reason: 'Failed scanning Echo: $echoPath',
+      );
       final echoUid = echoClasses.first.classUid;
 
       final reverbClasses = host.scanBundle(reverbPath);
-      expect(reverbClasses, isNotEmpty, reason: 'Failed scanning Reverb: $reverbPath');
+      expect(
+        reverbClasses,
+        isNotEmpty,
+        reason: 'Failed scanning Reverb: $reverbPath',
+      );
       final reverbUid = reverbClasses.first.classUid;
 
       final wave = await soloud.loadWaveform(WaveForm.sin, true, 0.25, 1.0);
@@ -91,15 +117,21 @@ void main() {
       Future<void> pumpEvents(int ms) async {
         if (Platform.isWindows) {
           final user32 = DynamicLibrary.open('user32.dll');
-          final peekMessage = user32.lookupFunction<
-              Int32 Function(Pointer<Uint8>, IntPtr, Uint32, Uint32, Uint32),
-              int Function(Pointer<Uint8>, int, int, int, int)>('PeekMessageW');
-          final translateMessage = user32.lookupFunction<
-              Int32 Function(Pointer<Uint8>),
-              int Function(Pointer<Uint8>)>('TranslateMessage');
-          final dispatchMessage = user32.lookupFunction<
-              IntPtr Function(Pointer<Uint8>),
-              int Function(Pointer<Uint8>)>('DispatchMessageW');
+          final peekMessage = user32
+              .lookupFunction<
+                Int32 Function(Pointer<Uint8>, IntPtr, Uint32, Uint32, Uint32),
+                int Function(Pointer<Uint8>, int, int, int, int)
+              >('PeekMessageW');
+          final translateMessage = user32
+              .lookupFunction<
+                Int32 Function(Pointer<Uint8>),
+                int Function(Pointer<Uint8>)
+              >('TranslateMessage');
+          final dispatchMessage = user32
+              .lookupFunction<
+                IntPtr Function(Pointer<Uint8>),
+                int Function(Pointer<Uint8>)
+              >('DispatchMessageW');
 
           final msg = calloc<Uint8>(64);
           final sw = Stopwatch()..start();
@@ -114,9 +146,11 @@ void main() {
         } else if (Platform.isLinux) {
           try {
             final glib = DynamicLibrary.open('libglib-2.0.so.0');
-            final gMainContextIteration = glib.lookupFunction<
-                Int32 Function(Pointer<Void>, Int32),
-                int Function(Pointer<Void>, int)>('g_main_context_iteration');
+            final gMainContextIteration = glib
+                .lookupFunction<
+                  Int32 Function(Pointer<Void>, Int32),
+                  int Function(Pointer<Void>, int)
+                >('g_main_context_iteration');
             final sw = Stopwatch()..start();
             while (sw.elapsedMilliseconds < ms) {
               while (gMainContextIteration(nullptr, 0) != 0) {}
@@ -156,15 +190,20 @@ void main() {
             availableActions.add('UNLOAD_PLUGIN');
           } else {
             availableActions.add('CLOSE_GUI');
-            availableActions.add('UNLOAD_PLUGIN'); // tests unloading while GUI is open!
+            availableActions.add(
+              'UNLOAD_PLUGIN',
+            ); // tests unloading while GUI is open!
           }
         }
 
-        final action = availableActions[random.nextInt(availableActions.length)];
-        print('Step $step/$totalSteps: [$action] '
-            '(Sound: ${playHandle != null ? "PLAYING" : "STOPPED"}, '
-            'Plugin: ${currentName ?? "NONE"}, '
-            'GUI: ${guiOpen ? "OPEN" : "CLOSED"})');
+        final action =
+            availableActions[random.nextInt(availableActions.length)];
+        print(
+          'Step $step/$totalSteps: [$action] '
+          '(Sound: ${playHandle != null ? "PLAYING" : "STOPPED"}, '
+          'Plugin: ${currentName ?? "NONE"}, '
+          'GUI: ${guiOpen ? "OPEN" : "CLOSED"})',
+        );
 
         switch (action) {
           case 'START_SOUND':
@@ -206,7 +245,9 @@ void main() {
 
           case 'OPEN_GUI':
             if (currentEffect != null && !guiOpen) {
-              final ok = currentEffect.openEditorWindow(title: '$currentName VST3 GUI');
+              final ok = currentEffect.openEditorWindow(
+                title: '$currentName VST3 GUI',
+              );
               expect(ok, isTrue, reason: 'Failed opening $currentName GUI');
               guiOpen = true;
               print('  -> $currentName GUI opened');
@@ -229,7 +270,9 @@ void main() {
               if (guiOpen) {
                 currentEffect.closeEditorWindow();
                 guiOpen = false;
-                print('  -> Automatically closed GUI before disposing $currentName');
+                print(
+                  '  -> Automatically closed GUI before disposing $currentName',
+                );
               }
               currentEffect.dispose();
               print('  -> $currentName disposed');
@@ -241,7 +284,9 @@ void main() {
         }
       }
 
-      print('\n--- Completed all randomized steps! Cleaning up remaining state ---');
+      print(
+        '\n--- Completed all randomized steps! Cleaning up remaining state ---',
+      );
 
       // Final cleanup
       if (guiOpen && currentEffect != null) {

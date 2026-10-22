@@ -4324,10 +4324,7 @@ typedef dartVst3ParameterEditCallback_t =
     ffi.Pointer<ffi.NativeFunction<dartVst3ParameterEditCallback_tFunction>>;
 
 typedef dartVst3RestartComponentCallback_tFunction =
-    ffi.Void Function(
-      ffi.Int pluginHandle,
-      ffi.Int flags,
-    );
+    ffi.Void Function(ffi.Int pluginHandle, ffi.Int flags);
 typedef DartdartVst3RestartComponentCallback_tFunction =
     void Function(int pluginHandle, int flags);
 

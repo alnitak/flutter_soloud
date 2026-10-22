@@ -115,24 +115,26 @@ unsigned int CustomAudioSourceInstance::getAudio(float *aBuffer,
   }
 #endif
 
+  // Leave this JS callback here for testing
   if (jsFn == "soloudCustomSynthCallback") {
-    const double sr = mSamplerate > 0.0f ? static_cast<double>(mSamplerate) : 48000.0;
+    const double sr =
+        mSamplerate > 0.0f ? static_cast<double>(mSamplerate) : 48000.0;
     const double invSr = 1.0 / sr;
     constexpr double kTwoPi = 2.0 * M_PI;
     // Procedural stereo warm A-minor9 pad with slow LFO modulation
     for (unsigned int i = 0; i < aSamplesToRead; ++i) {
       const double t = mStreamPosition + static_cast<double>(i) * invSr;
       const double lfo = 1.0 + 0.003 * std::sin(kTwoPi * 0.4 * t);
-      const float sL = static_cast<float>(
-          0.18 * std::sin(kTwoPi * 110.0 * t) +
-          0.14 * std::sin(kTwoPi * 164.81 * lfo * t) +
-          0.12 * std::sin(kTwoPi * 220.0 * t) +
-          0.10 * std::sin(kTwoPi * 329.63 * t));
-      const float sR = static_cast<float>(
-          0.18 * std::sin(kTwoPi * 110.2 * t) +
-          0.14 * std::sin(kTwoPi * 196.0 * t) +
-          0.12 * std::sin(kTwoPi * 246.94 * lfo * t) +
-          0.10 * std::sin(kTwoPi * 329.9 * t));
+      const float sL =
+          static_cast<float>(0.18 * std::sin(kTwoPi * 110.0 * t) +
+                             0.14 * std::sin(kTwoPi * 164.81 * lfo * t) +
+                             0.12 * std::sin(kTwoPi * 220.0 * t) +
+                             0.10 * std::sin(kTwoPi * 329.63 * t));
+      const float sR =
+          static_cast<float>(0.18 * std::sin(kTwoPi * 110.2 * t) +
+                             0.14 * std::sin(kTwoPi * 196.0 * t) +
+                             0.12 * std::sin(kTwoPi * 246.94 * lfo * t) +
+                             0.10 * std::sin(kTwoPi * 329.9 * t));
       aBuffer[i] = sL;
       for (unsigned int ch = 1; ch < mChannels; ++ch) {
         aBuffer[ch * aBufferSize + i] = (ch & 1u) ? sR : sL;

@@ -304,23 +304,7 @@ void Vst3PluginInstance::updateProcessContext(unsigned int aSamples,
   mContinuousSamples += static_cast<int64_t>(aSamples);
 }
 
-void Vst3PluginInstance::processAudioEffectBlock(
-    float *aBuffer, unsigned int aSamples, unsigned int aBufferSize,
-    unsigned int aChannels, float aSamplerate, double aTime,
-    const float *aParams, uint64_t aParamChangedMask,
-    unsigned int aParamCount) noexcept {
-  std::unique_lock<std::mutex> procLock(mProcessMutex, std::try_to_lock);
-  if (!procLock.owns_lock() ||
-      !mIsProcessing.load(std::memory_order_acquire) || !mProcessor ||
-      aBuffer == nullptr || aSamples == 0) {
-    return;
-  }
-
-  mInputParamChanges.clear();
-  mOutputParamChanges.clear();
-  mInputEvents.clear();
-
-  // 1. Drain lock-free parameter changes queued from Dart or native VST3 GUI
+void Vst3PluginInstance::drainPendingParamChanges() noexcept {
   Vst3ParamChangeEvent evt;
   while (mPendingParamQueue.pop(evt)) {
     Steinberg::int32 queueIdx = 0;
@@ -329,120 +313,17 @@ void Vst3PluginInstance::processAudioEffectBlock(
       q->addPoint(evt.sampleOffset, evt.normalizedValue, ptIdx);
     }
   }
-
-  // 2. Forward mapped SoLoud CustomFilterSlot parameters (1..7 / 1..15) when
-  //    automated by SoLoud's Fader or LFO (indicated by aParamChangedMask)
-  if (aParams != nullptr) {
-    const unsigned int maxSlot = std::min<unsigned int>(aParamCount, 16);
-    for (unsigned int slotParam = 1; slotParam < maxSlot; ++slotParam) {
-      if ((aParamChangedMask & (1ULL << slotParam)) != 0ULL) {
-        const int64_t mappedId =
-            mMappedSlotParams[slotParam].load(std::memory_order_relaxed);
-        if (mappedId >= 0) {
-          Steinberg::int32 queueIdx = 0;
-          if (auto *q = mInputParamChanges.addParameterData(
-                  static_cast<Steinberg::Vst::ParamID>(mappedId), queueIdx)) {
-            Steinberg::int32 ptIdx = 0;
-            const double clamped =
-                std::clamp<double>(aParams[slotParam], 0.0, 1.0);
-            q->addPoint(0, clamped, ptIdx);
-          }
-        }
-      }
-    }
-  }
-
-  const unsigned int numCh = std::min<unsigned int>(aChannels, mMaxChannels);
-  unsigned int offset = 0;
-  while (offset < aSamples) {
-    const unsigned int chunkSamples =
-        std::min<unsigned int>(aSamples - offset, mMaxBlockSize);
-
-    if (offset > 0) {
-      mInputParamChanges.clear();
-      mOutputParamChanges.clear();
-      mInputEvents.clear();
-    }
-
-    // 3. Map SoLoud's non-interleaved planar buffer
-    //    (aBuffer + ch * aBufferSize)
-    for (unsigned int ch = 0; ch < numCh; ++ch) {
-      mInChannelPtrs[ch] =
-          aBuffer + (static_cast<size_t>(ch) * aBufferSize) + offset;
-      mOutChannelPtrs[ch] =
-          mScratchOutput.data() + (static_cast<size_t>(ch) * mMaxBlockSize);
-      std::memset(mOutChannelPtrs[ch], 0, chunkSamples * sizeof(float));
-    }
-
-    mInputBusBuffers.numChannels = static_cast<Steinberg::int32>(numCh);
-    mInputBusBuffers.silenceFlags = 0;
-    mInputBusBuffers.channelBuffers32 = mInChannelPtrs.data();
-
-    mOutputBusBuffers.numChannels = static_cast<Steinberg::int32>(numCh);
-    mOutputBusBuffers.silenceFlags = 0;
-    mOutputBusBuffers.channelBuffers32 = mOutChannelPtrs.data();
-
-    // 4. Populate synthetic musical transport context
-    updateProcessContext(chunkSamples, aSamplerate, aTime);
-
-    mProcessData.numSamples = static_cast<Steinberg::int32>(chunkSamples);
-    mProcessData.inputs = mHasAudioInput ? &mInputBusBuffers : nullptr;
-    mProcessData.numInputs = mHasAudioInput ? 1 : 0;
-    mProcessData.outputs = &mOutputBusBuffers;
-    mProcessData.numOutputs = 1;
-    mProcessData.inputParameterChanges = &mInputParamChanges;
-    mProcessData.outputParameterChanges = &mOutputParamChanges;
-    mProcessData.inputEvents = &mInputEvents;
-    mProcessData.processContext = &mProcessContext;
-
-    // 5. Invoke VST3 real-time audio processor
-    if (mProcessor->process(mProcessData) == Steinberg::kResultOk) {
-      for (unsigned int ch = 0; ch < numCh; ++ch) {
-        std::memcpy(
-            aBuffer + (static_cast<size_t>(ch) * aBufferSize) + offset,
-            mOutChannelPtrs[ch], chunkSamples * sizeof(float));
-      }
-    }
-    offset += chunkSamples;
-  }
 }
 
-unsigned int Vst3PluginInstance::processInstrumentBlock(
-    float *aBuffer, unsigned int aSamplesToRead, unsigned int aBufferSize,
-    unsigned int aChannels, float aSamplerate, double aStreamTime) noexcept {
-  std::unique_lock<std::mutex> procLock(mProcessMutex, std::try_to_lock);
-  if (!procLock.owns_lock() ||
-      !mIsProcessing.load(std::memory_order_acquire) || !mProcessor ||
-      aBuffer == nullptr || aSamplesToRead == 0) {
-    return 0;
-  }
-
-  const unsigned int numCh = std::min<unsigned int>(aChannels, mMaxChannels);
-  const unsigned int firstChunkSamples =
-      std::min<unsigned int>(aSamplesToRead, mMaxBlockSize);
-
-  mInputParamChanges.clear();
-  mOutputParamChanges.clear();
-  mInputEvents.clear();
-
-  // 1. Drain lock-free parameter changes
-  Vst3ParamChangeEvent paramEvt;
-  while (mPendingParamQueue.pop(paramEvt)) {
-    Steinberg::int32 queueIdx = 0;
-    if (auto *q =
-            mInputParamChanges.addParameterData(paramEvt.paramId, queueIdx)) {
-      Steinberg::int32 ptIdx = 0;
-      q->addPoint(paramEvt.sampleOffset, paramEvt.normalizedValue, ptIdx);
-    }
-  }
-
-  // 2. Drain lock-free MIDI NoteOn / NoteOff events
+void Vst3PluginInstance::drainPendingMidiEvents(
+    unsigned int maxSampleOffset) noexcept {
   Vst3MidiNoteEvent midiEvt;
   while (mPendingMidiQueue.pop(midiEvt)) {
     Steinberg::Vst::Event vstEvent{};
     vstEvent.busIndex = 0;
     vstEvent.sampleOffset = std::clamp<int32_t>(
-        midiEvt.sampleOffset, 0, static_cast<int32_t>(firstChunkSamples) - 1);
+        midiEvt.sampleOffset, 0,
+        static_cast<int32_t>(maxSampleOffset) - 1);
     vstEvent.ppqPosition = mProcessContext.projectTimeMusic;
     vstEvent.flags = Steinberg::Vst::Event::kIsLive;
 
@@ -464,11 +345,16 @@ unsigned int Vst3PluginInstance::processInstrumentBlock(
     }
     mInputEvents.addEvent(vstEvent);
   }
+}
 
+void Vst3PluginInstance::prepareAndProcessBlock(
+    float *aBuffer, unsigned int aSamples, unsigned int aBufferSize,
+    unsigned int numCh, float aSamplerate, double aTime,
+    bool isInstrument) noexcept {
   unsigned int offset = 0;
-  while (offset < aSamplesToRead) {
+  while (offset < aSamples) {
     const unsigned int chunkSamples =
-        std::min<unsigned int>(aSamplesToRead - offset, mMaxBlockSize);
+        std::min<unsigned int>(aSamples - offset, mMaxBlockSize);
 
     if (offset > 0) {
       mInputParamChanges.clear();
@@ -476,28 +362,35 @@ unsigned int Vst3PluginInstance::processInstrumentBlock(
       mInputEvents.clear();
     }
 
-    // 3. Prepare input (silent if instrument declares audio input)
-    //    and output channel buffers pointing into SoLoud's buffer
     for (unsigned int ch = 0; ch < numCh; ++ch) {
-      mInChannelPtrs[ch] =
-          mScratchInput.data() + (static_cast<size_t>(ch) * mMaxBlockSize);
-      std::memset(mInChannelPtrs[ch], 0, chunkSamples * sizeof(float));
-
-      mOutChannelPtrs[ch] =
-          aBuffer + (static_cast<size_t>(ch) * aBufferSize) + offset;
-      std::memset(mOutChannelPtrs[ch], 0, chunkSamples * sizeof(float));
+      if (isInstrument) {
+        // Instrument: silent scratch input, output directly to aBuffer
+        mInChannelPtrs[ch] =
+            mScratchInput.data() + (static_cast<size_t>(ch) * mMaxBlockSize);
+        std::memset(mInChannelPtrs[ch], 0, chunkSamples * sizeof(float));
+        mOutChannelPtrs[ch] =
+            aBuffer + (static_cast<size_t>(ch) * aBufferSize) + offset;
+        std::memset(mOutChannelPtrs[ch], 0, chunkSamples * sizeof(float));
+      } else {
+        // Effect: read input from aBuffer, write to scratch output
+        mInChannelPtrs[ch] =
+            aBuffer + (static_cast<size_t>(ch) * aBufferSize) + offset;
+        mOutChannelPtrs[ch] =
+            mScratchOutput.data() + (static_cast<size_t>(ch) * mMaxBlockSize);
+        std::memset(mOutChannelPtrs[ch], 0, chunkSamples * sizeof(float));
+      }
     }
 
     mInputBusBuffers.numChannels = static_cast<Steinberg::int32>(numCh);
-    mInputBusBuffers.silenceFlags = (1ULL << numCh) - 1ULL;
+    mInputBusBuffers.silenceFlags =
+        isInstrument ? ((1ULL << numCh) - 1ULL) : 0;
     mInputBusBuffers.channelBuffers32 = mInChannelPtrs.data();
 
     mOutputBusBuffers.numChannels = static_cast<Steinberg::int32>(numCh);
     mOutputBusBuffers.silenceFlags = 0;
     mOutputBusBuffers.channelBuffers32 = mOutChannelPtrs.data();
 
-    // 4. Populate synthetic musical transport context
-    updateProcessContext(chunkSamples, aSamplerate, aStreamTime);
+    updateProcessContext(chunkSamples, aSamplerate, aTime);
 
     mProcessData.numSamples = static_cast<Steinberg::int32>(chunkSamples);
     mProcessData.inputs = mHasAudioInput ? &mInputBusBuffers : nullptr;
@@ -509,9 +402,86 @@ unsigned int Vst3PluginInstance::processInstrumentBlock(
     mProcessData.inputEvents = &mInputEvents;
     mProcessData.processContext = &mProcessContext;
 
-    mProcessor->process(mProcessData);
+    if (isInstrument) {
+      mProcessor->process(mProcessData);
+    } else {
+      if (mProcessor->process(mProcessData) == Steinberg::kResultOk) {
+        for (unsigned int ch = 0; ch < numCh; ++ch) {
+          std::memcpy(
+              aBuffer + (static_cast<size_t>(ch) * aBufferSize) + offset,
+              mOutChannelPtrs[ch], chunkSamples * sizeof(float));
+        }
+      }
+    }
     offset += chunkSamples;
   }
+}
+
+void Vst3PluginInstance::processAudioEffectBlock(
+    float *aBuffer, unsigned int aSamples, unsigned int aBufferSize,
+    unsigned int aChannels, float aSamplerate, double aTime,
+    const float *aParams, uint64_t aParamChangedMask,
+    unsigned int aParamCount) noexcept {
+  std::unique_lock<std::mutex> procLock(mProcessMutex, std::try_to_lock);
+  if (!procLock.owns_lock() ||
+      !mIsProcessing.load(std::memory_order_acquire) || !mProcessor ||
+      aBuffer == nullptr || aSamples == 0) {
+    return;
+  }
+
+  mInputParamChanges.clear();
+  mOutputParamChanges.clear();
+  mInputEvents.clear();
+
+  drainPendingParamChanges();
+
+  // Forward mapped SoLoud CustomFilterSlot parameters (1..7 / 1..15) when
+  // automated by SoLoud's Fader or LFO (indicated by aParamChangedMask)
+  if (aParams != nullptr) {
+    const unsigned int maxSlot = std::min<unsigned int>(aParamCount, 16);
+    for (unsigned int slotParam = 1; slotParam < maxSlot; ++slotParam) {
+      if ((aParamChangedMask & (1ULL << slotParam)) != 0ULL) {
+        const int64_t mappedId =
+            mMappedSlotParams[slotParam].load(std::memory_order_relaxed);
+        if (mappedId >= 0) {
+          Steinberg::int32 queueIdx = 0;
+          if (auto *q = mInputParamChanges.addParameterData(
+                  static_cast<Steinberg::Vst::ParamID>(mappedId), queueIdx)) {
+            Steinberg::int32 ptIdx = 0;
+            const double clamped =
+                std::clamp<double>(aParams[slotParam], 0.0, 1.0);
+            q->addPoint(0, clamped, ptIdx);
+          }
+        }
+      }
+    }
+  }
+
+  const unsigned int numCh = std::min<unsigned int>(aChannels, mMaxChannels);
+  prepareAndProcessBlock(aBuffer, aSamples, aBufferSize, numCh, aSamplerate,
+                         aTime, /*isInstrument=*/false);
+}
+
+unsigned int Vst3PluginInstance::processInstrumentBlock(
+    float *aBuffer, unsigned int aSamplesToRead, unsigned int aBufferSize,
+    unsigned int aChannels, float aSamplerate, double aStreamTime) noexcept {
+  std::unique_lock<std::mutex> procLock(mProcessMutex, std::try_to_lock);
+  if (!procLock.owns_lock() ||
+      !mIsProcessing.load(std::memory_order_acquire) || !mProcessor ||
+      aBuffer == nullptr || aSamplesToRead == 0) {
+    return 0;
+  }
+
+  mInputParamChanges.clear();
+  mOutputParamChanges.clear();
+  mInputEvents.clear();
+
+  drainPendingParamChanges();
+  drainPendingMidiEvents(aSamplesToRead);
+
+  const unsigned int numCh = std::min<unsigned int>(aChannels, mMaxChannels);
+  prepareAndProcessBlock(aBuffer, aSamplesToRead, aBufferSize, numCh,
+                         aSamplerate, aStreamTime, /*isInstrument=*/true);
   return aSamplesToRead;
 }
 

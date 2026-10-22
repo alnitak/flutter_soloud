@@ -58,10 +58,7 @@ void _ensureRestartComponentCallbackRegistered() {
       >.listener((int pluginHandle, int flags) {
         if (!_restartComponentController.isClosed) {
           _restartComponentController.add(
-            Vst3RestartComponentEvent(
-              pluginHandle: pluginHandle,
-              flags: flags,
-            ),
+            Vst3RestartComponentEvent(pluginHandle: pluginHandle, flags: flags),
           );
         }
       });
@@ -105,8 +102,8 @@ class Vst3Host {
       final base = (localAppData != null && localAppData.isNotEmpty)
           ? localAppData
           : (userProfile != null && userProfile.isNotEmpty)
-              ? '$userProfile\\AppData\\Local'
-              : r'C:\Users\Default\AppData\Local';
+          ? '$userProfile\\AppData\\Local'
+          : r'C:\Users\Default\AppData\Local';
       return ['$base\\Programs\\Common\\VST3'];
     } else if (Platform.isLinux) {
       final home = Platform.environment['HOME'];

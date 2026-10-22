@@ -2388,12 +2388,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     }
     final ptr = _ensureRealtimeScratch(samples.lengthInBytes);
     wasmHeapF32.toDart.setAll(ptr >> 2, samples);
-    return wasmPushRealtimeClockedFloat32(
-      hash,
-      soundTime,
-      ptr,
-      frameCount,
-    );
+    return wasmPushRealtimeClockedFloat32(hash, soundTime, ptr, frameCount);
   }
 
   @override
@@ -2428,12 +2423,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     }
     final ptr = _ensureRealtimeScratch(samples.lengthInBytes);
     wasmHeapF32.toDart.setAll(ptr >> 2, samples);
-    return wasmPushRealtimeScheduledFloat32(
-      hash,
-      atTime,
-      ptr,
-      frameCount,
-    );
+    return wasmPushRealtimeScheduledFloat32(hash, atTime, ptr, frameCount);
   }
 
   @override

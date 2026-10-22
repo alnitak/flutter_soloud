@@ -34,9 +34,6 @@ CustomFilterInstance::CustomFilterInstance(CustomFilter *aParent)
     mParam[i] = mParent != nullptr ? mParent->getParamDefault(i)
                                    : (i == 0 ? 1.0f : 0.0f);
   }
-  // Pre-allocate dry scratch for up to 4096 frames across MAX_CHANNELS so
-  // wet/dry blending on the audio thread never allocates.
-  mDryScratch.resize(4096 * MAX_CHANNELS, 0.0f);
 }
 
 FilterStateSnapshot *CustomFilterInstance::captureState() {

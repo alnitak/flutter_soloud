@@ -69,14 +69,7 @@ class CustomFilterParam extends FilterParam {
         attributeId >= 0 && attributeId < CustomFilterSlot.maxParams,
         'attributeId must be in 0..7',
       ),
-      super(
-        soundHandle,
-        busId,
-        FilterType.customFilter,
-        attributeId,
-        min,
-        max,
-      );
+      super(soundHandle, busId, FilterType.customFilter, attributeId, min, max);
 
   /// Optional voice handle when targeting a single-sound filter instance.
   final SoundHandle? soundHandle;

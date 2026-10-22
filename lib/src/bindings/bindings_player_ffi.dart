@@ -2338,12 +2338,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     }
     final ptr = _ensureRealtimeScratch(samples.lengthInBytes).cast<ffi.Float>();
     ptr.asTypedList(samples.length).setAll(0, samples);
-    return native.pushRealtimeClockedFloat32(
-      hash,
-      soundTime,
-      ptr,
-      frameCount,
-    );
+    return native.pushRealtimeClockedFloat32(hash, soundTime, ptr, frameCount);
   }
 
   @override
@@ -2378,12 +2373,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     }
     final ptr = _ensureRealtimeScratch(samples.lengthInBytes).cast<ffi.Float>();
     ptr.asTypedList(samples.length).setAll(0, samples);
-    return native.pushRealtimeScheduledFloat32(
-      hash,
-      atTime,
-      ptr,
-      frameCount,
-    );
+    return native.pushRealtimeScheduledFloat32(hash, atTime, ptr, frameCount);
   }
 
   @override
@@ -2435,17 +2425,13 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   @override
   Float32List viewRealtimeFloat32Buffer(int address, int floatLength) {
     if (address == 0 || floatLength <= 0) return Float32List(0);
-    return ffi.Pointer<ffi.Float>.fromAddress(
-      address,
-    ).asTypedList(floatLength);
+    return ffi.Pointer<ffi.Float>.fromAddress(address).asTypedList(floatLength);
   }
 
   @override
   Int16List viewRealtimeInt16Buffer(int address, int int16Length) {
     if (address == 0 || int16Length <= 0) return Int16List(0);
-    return ffi.Pointer<ffi.Int16>.fromAddress(
-      address,
-    ).asTypedList(int16Length);
+    return ffi.Pointer<ffi.Int16>.fromAddress(address).asTypedList(int16Length);
   }
 
   @override

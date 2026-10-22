@@ -113,6 +113,12 @@ public:
 private:
   void updateProcessContext(unsigned int aSamples, float aSamplerate,
                             double aTime) noexcept;
+  void drainPendingParamChanges() noexcept;
+  void drainPendingMidiEvents(unsigned int maxSampleOffset) noexcept;
+  void prepareAndProcessBlock(float *aBuffer, unsigned int aSamples,
+                              unsigned int aBufferSize, unsigned int numCh,
+                              float aSamplerate, double aTime,
+                              bool isInstrument) noexcept;
 
   int mHandle = 0;
   // Note: mModule MUST be declared before mPlugProvider, mComponent,

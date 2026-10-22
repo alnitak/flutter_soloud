@@ -24,6 +24,10 @@
 #include <thread>
 #include <vector>
 
+namespace SoLoud {
+class RealtimeStream;
+}
+
 struct PlaybackDevice
 {
   // Owns its name: the `ma_device_info` array it is built from belongs to the
@@ -813,6 +817,10 @@ public:
   /// @brief Find a sound by its hash without acquiring sounds_mutex.
   /// Caller MUST hold sounds_mutex.
   ActiveSound *findByHashUnlocked(unsigned int hash);
+
+  /// @brief Look up a RealtimeStream by hash, acquiring sounds_mutex.
+  /// Returns nullptr if not found or not a realtime stream.
+  SoLoud::RealtimeStream *getRealtimeStreamLocked(unsigned int hash);
 
   /////////////////////////////////////////
   /// voice groups
