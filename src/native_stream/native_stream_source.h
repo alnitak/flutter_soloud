@@ -25,10 +25,26 @@ namespace SoLoud
 	///
 	/// The first frames of the file come from the source's head cache, which
 	/// covers the worker's start-up and loops back to the start.
+	///
+	/// When the worker falls behind, what happens depends on why:
+	///  * Waiting for the first frames of a new request (start-up past the
+	///    head cache, or a seek outside what is buffered): the voice holds its
+	///    position and plays silence, so nothing after the seek target is
+	///    skipped. Its stream position holds too. After a second it gives up
+	///    waiting and keeps time instead, so a stuck decoder can't hold a
+	///    voice forever.
+	///  * An underrun in the middle of playback: the voice plays silence but
+	///    keeps time, so it stays in step with other voices and the engine
+	///    clock, and the frames it missed are skipped.
+	///
+	/// With the engine's render-ahead ring enabled, the ring also keeps a
+	/// history of consumed frames covering the retroactive re-mix window, so
+	/// checkpoints can rewind a voice exactly (see captureSourceState()).
 	class NativeStreamInstance : public AudioSourceInstance
 	{
 	public:
-		explicit NativeStreamInstance(NativeStream *aParent);
+		/// [aHistoryFrames] consumed frames are kept for checkpoint rollbacks.
+		NativeStreamInstance(NativeStream *aParent, uint64_t aHistoryFrames);
 		/// Never waits for the worker: it is told to stop and finishes (and
 		/// closes its decoder) on its own once its current chunk is done.
 		~NativeStreamInstance() override;
@@ -37,6 +53,9 @@ namespace SoLoud
 		result seek(time aSeconds, float *aScratch, unsigned int aScratchSize) override;
 		result rewind() override;
 		bool hasEnded() override;
+		SourceStateSnapshot *captureSourceState() override;
+		void restoreSourceState(SourceStateSnapshot *aState) override;
+		bool canRestoreSourceState(SourceStateSnapshot *aState) override;
 
 		/// Frames playable from the current position without an underrun
 		/// (test/diagnostics only).
@@ -45,6 +64,7 @@ namespace SoLoud
 	private:
 		void publishLoopHints();
 		void requestFrame(uint64_t aFrame);
+		void release();
 		bool findBuffered(uint64_t aFrame, uint64_t &aAvailable, bool &aComing) const;
 		bool isBuffered(uint64_t aFrame) const;
 		uint64_t locate(uint64_t aFrame, bool &aEndOfStream, bool &aStale);
@@ -60,6 +80,15 @@ namespace SoLoud
 		uint32_t mGeneration = 0;  // current request generation
 		uint64_t mMarkerIndex = 0; // run marker containing mReadPos
 		uint64_t mReadPos = 0;     // absolute ring read position
+		bool mWaiting = true;      // no frame of the current request played yet
+		uint64_t mWaitFrames = 0;  // frames held back while waiting
+
+		// Ring positions and markers before these may be overwritten by the
+		// worker. They trail the read position by up to mHistoryFrames so
+		// checkpoint snapshots can rewind into consumed frames.
+		const uint64_t mHistoryFrames;
+		uint64_t mRetainPos = 0;
+		uint64_t mRetainMarker = 0;
 	};
 
 	/// Streams an M4A/MP4 file from disk for `LoadMode.disk`: loading only

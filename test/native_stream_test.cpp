@@ -482,41 +482,278 @@ void testSyntheticVoices() {
     soloud.deinit();
 }
 
-void testSyntheticUnderrun() {
-    std::printf("synthetic: a slow decoder underruns into silence without blocking or drifting\n");
+void testSyntheticColdSeekWaits() {
+    std::printf("synthetic: a seek outside the buffer waits for its frames instead of skipping them\n");
     SyntheticControl control;
-    const uint64_t total = 4 * kSampleRate;
+    const uint64_t total = 10 * kSampleRate;
     SoLoud::Soloud soloud;
     if (!initEngine(soloud)) return;
     {
         SoLoud::NativeStream stream;
         stream.load("synthetic", syntheticFactory(control, total));
-        // ~2048 frames per 200 ms: far slower than real time.
-        control.readDelayUs = 200000;
-        const uint64_t underrunsBefore = SoLoud::NativeStream::underrunFrameCount();
         SoLoud::handle h = playUnity(soloud, stream);
-        soloud.seek(h, 2.0);
+        mixPaced(soloud, {h}, 4096);
 
+        // A realistic decoder, mixed right after the seek in real-time-ish
+        // steps with no prebuffering: every frame from the target on plays,
+        // after a short wait.
+        control.readDelayUs = 2000;
+        for (double t : {6.0, 3.5, 8.25}) {
+            soloud.seek(h, t);
+            const uint64_t first = static_cast<uint64_t>(std::floor(t * kSampleRate));
+            std::vector<float> out;
+            size_t leading = 0;
+            bool started = false;
+            const size_t blocks = 40;
+            for (size_t b = 0; b < blocks; b++) {
+                std::vector<float> block(kBufferSize * kChannels);
+                soloud.mix(block.data(), kBufferSize);
+                for (unsigned int i = 0; i < kBufferSize; i++) {
+                    if (!started && frameOf(&block[i * kChannels]) == -1) {
+                        leading++;
+                        continue;
+                    }
+                    started = true;
+                    out.insert(out.end(), &block[i * kChannels], &block[(i + 1) * kChannels]);
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            }
+            char what[64];
+            std::snprintf(what, sizeof(what), "cold seek to %.2f s", t);
+            EXPECT(started, "%s: nothing played", what);
+            EXPECT(leading < kSampleRate / 4, "%s: waited %zu frames", what, leading);
+            expectFrames(out, 0, first, out.size() / kChannels, what);
+            // The position held while waiting: it matches what was played.
+            const double expected = t + double(out.size() / kChannels) / kSampleRate;
+            EXPECT(std::fabs(soloud.getStreamPosition(h) - expected) < 1e-6, "%s: position %f, expected %f", what,
+                   soloud.getStreamPosition(h), expected);
+        }
+
+        // A decoder far slower than real time: mixing never blocks, and the
+        // voice holds the seek target until its frames arrive.
+        control.readDelayUs = 200000;
+        soloud.seek(h, 2.0);
         const auto start = Clock::now();
         std::vector<float> out = mixPaced(soloud, {h}, 8 * kBufferSize, 0);
         EXPECT(msSince(start) < 100, "mixing must not wait for the decoder (took %.1f ms)", msSince(start));
+        bool silent = true;
+        for (size_t i = 0; i < 8 * kBufferSize; i++) {
+            if (frameOf(&out[i * kChannels]) != -1) silent = false;
+        }
+        EXPECT(silent, "nothing should play before the decoder delivers the target");
+        EXPECT(std::fabs(soloud.getStreamPosition(h) - 2.0) < 1e-6, "position should hold at the target: %f",
+               soloud.getStreamPosition(h));
+        control.readDelayUs = 0;
+        out = mixPaced(soloud, {h}, 3 * kBufferSize);
+        expectFrames(out, 0, 2 * kSampleRate, 3 * kBufferSize, "after the wait");
+    }
+    soloud.deinit();
+    EXPECT(waitForWorkersToExit(), "workers still running");
+}
+
+void testSyntheticUnderrun() {
+    std::printf("synthetic: an underrun mid-playback plays silence and keeps time\n");
+    SyntheticControl control;
+    const uint64_t total = 10 * kSampleRate;
+    SoLoud::Soloud soloud;
+    if (!initEngine(soloud)) return;
+    {
+        SoLoud::NativeStream stream;
+        stream.load("synthetic", syntheticFactory(control, total));
+        SoLoud::handle h = playUnity(soloud, stream);
+        soloud.seek(h, 2.0);
+        std::vector<float> out = mixPaced(soloud, {h}, 4 * kBufferSize);
+        expectFrames(out, 0, 2 * kSampleRate, 4 * kBufferSize, "before the underrun");
+        uint64_t played = 4 * kBufferSize;
+
+        // ~2048 frames per 200 ms: far slower than real time. Drain the ring.
+        control.readDelayUs = 200000;
+        const auto start = Clock::now();
+        while (buffered(soloud, h) > 0 && played < 4 * kSampleRate) {
+            out = mixPaced(soloud, {h}, kBufferSize, 0);
+            played += kBufferSize;
+        }
+        EXPECT(buffered(soloud, h) == 0, "the ring should have drained");
+        const uint64_t underrunsBefore = SoLoud::NativeStream::underrunFrameCount();
+        out = mixPaced(soloud, {h}, 8 * kBufferSize, 0);
+        EXPECT(msSince(start) < 1000, "mixing must not wait for the decoder (took %.1f ms)", msSince(start));
         EXPECT(SoLoud::NativeStream::underrunFrameCount() > underrunsBefore, "expected underrun frames");
-        // Whatever arrived is the right frame for its position: silence or
-        // exactly frame 2 s + i.
+        // Whatever arrived is the right frame for its position.
         bool inSync = true;
         for (size_t i = 0; i < 8 * kBufferSize; i++) {
             const long long f = frameOf(&out[i * kChannels]);
-            if (f != -1 && f != static_cast<long long>(2 * kSampleRate + i)) inSync = false;
+            if (f != -1 && f != static_cast<long long>(2 * kSampleRate + played + i)) inSync = false;
         }
         EXPECT(inSync, "underrun output must be silence or the frame for that position");
-        EXPECT(std::fabs(soloud.getStreamPosition(h) - (2.0 + 8.0 * kBufferSize / kSampleRate)) < 1e-6,
+        played += 8 * kBufferSize;
+        EXPECT(std::fabs(soloud.getStreamPosition(h) - (2.0 + double(played) / kSampleRate)) < 1e-6,
                "position kept moving: %f", soloud.getStreamPosition(h));
 
         // Once the decoder is fast again, playback recovers in sync.
         control.readDelayUs = 0;
         EXPECT(waitFor([&] { return buffered(soloud, h) >= kSampleRate / 4; }, 3000), "decoder should catch up");
         out = mixPaced(soloud, {h}, 3 * kBufferSize);
-        expectFrames(out, 0, 2 * kSampleRate + 8 * kBufferSize, 3 * kBufferSize, "after recovery");
+        expectFrames(out, 0, 2 * kSampleRate + played, 3 * kBufferSize, "after recovery");
+    }
+    soloud.deinit();
+    EXPECT(waitForWorkersToExit(), "workers still running");
+}
+
+// Render-ahead engine like the retroactive re-mix tests: the test plays the
+// device, reading the ring by hand.
+constexpr unsigned int kRenderAhead = 4096;
+constexpr unsigned int kDevicePeriod = 512;
+
+bool initRenderAheadEngine(SoLoud::Soloud &soloud) {
+    soloud.setRenderAheadConfig(kDevicePeriod, kRenderAhead);
+    if (!initEngine(soloud)) return false;
+    EXPECT(soloud.isRenderAheadEnabled(), "render-ahead ring must be enabled");
+    return soloud.isRenderAheadEnabled();
+}
+
+/// Tops the ring up (after letting the workers buffer, as real time would)
+/// and reads [frames] frames from it, like the device callback.
+std::vector<float> playDevice(SoLoud::Soloud &soloud, SoLoud::handle h, size_t frames) {
+    std::vector<float> out(frames * kChannels);
+    size_t done = 0;
+    while (done < frames) {
+        waitFor([&] { return !soloud.isValidVoiceHandle(h) || buffered(soloud, h) >= kSampleRate / 4; }, 2000);
+        soloud.renderRingTopUp_internal(); // locks the engine itself
+        const unsigned int n = static_cast<unsigned int>(std::min<size_t>(kBufferSize, frames - done));
+        soloud.mRenderRing.read(out.data() + done * kChannels, n);
+        done += n;
+    }
+    return out;
+}
+
+/// Rolls the engine back to the checkpoint at the playhead and re-mixes the
+/// ring, as a retroactive event does. Returns false when it degraded.
+bool rollBackToPlayhead(SoLoud::Soloud &soloud) {
+    soloud.lockAudioMutex_internal();
+    const int ci = soloud.retroactiveBegin_internal(soloud.playheadTimeLocked_internal());
+    if (ci >= 0) soloud.retroactiveEnd_internal(ci);
+    soloud.unlockAudioMutex_internal();
+    return ci >= 0;
+}
+
+void testSyntheticRetroactiveRemix() {
+    std::printf("synthetic: checkpoints rewind a streaming voice exactly (retroactive re-mix)\n");
+    SyntheticControl control;
+    const uint64_t total = 10 * kSampleRate;
+    SoLoud::Soloud soloud;
+    if (!initRenderAheadEngine(soloud)) return;
+    {
+        SoLoud::NativeStream stream;
+        stream.load("synthetic", syntheticFactory(control, total));
+        SoLoud::handle h = playUnity(soloud, stream);
+        // The ring holds frames mixed before the voice started; skip them.
+        std::vector<float> out = playDevice(soloud, h, kRenderAhead + 2 * kBufferSize);
+        size_t skip = 0;
+        while (skip < out.size() / kChannels && frameOf(&out[skip * kChannels]) == -1) skip++;
+        std::vector<float> played(out.begin() + skip * kChannels, out.end());
+
+        // Roll back repeatedly: in the head cache, at its end, and well into
+        // the ring. Every rollback is exact, so the device hears every frame
+        // once, in order.
+        int rollbacks = 0;
+        while (played.size() / kChannels < 2 * kSampleRate) {
+            EXPECT(rollBackToPlayhead(soloud), "rollback at %zu should be restorable", played.size() / kChannels);
+            rollbacks++;
+            out = playDevice(soloud, h, 8 * kBufferSize);
+            played.insert(played.end(), out.begin(), out.end());
+        }
+        EXPECT(rollbacks > 0, "no rollbacks");
+        expectFrames(played, 0, 0, played.size() / kChannels, "across rollbacks");
+
+        // A seek starts a new request: checkpoints from before it can no
+        // longer be restored, and the rollback degrades instead.
+        soloud.seek(h, 6.0);
+        EXPECT(!rollBackToPlayhead(soloud), "rollback across a seek must degrade");
+        // The voice carries on unharmed, from the seek target.
+        out = playDevice(soloud, h, kRenderAhead + 4 * kBufferSize);
+        std::vector<float> after;
+        bool reached = false;
+        for (size_t i = 0; i < out.size() / kChannels; i++) {
+            if (frameOf(&out[i * kChannels]) == static_cast<long long>(6 * kSampleRate)) reached = true;
+            if (reached) after.insert(after.end(), &out[i * kChannels], &out[(i + 1) * kChannels]);
+        }
+        EXPECT(reached, "the voice should play from the seek target");
+        expectFrames(after, 0, 6 * kSampleRate, after.size() / kChannels, "after the seek");
+
+        // And once the window is past the seek, rollbacks work again.
+        EXPECT(rollBackToPlayhead(soloud), "rollback after the seek should be restorable");
+        out = playDevice(soloud, h, 4 * kBufferSize);
+        expectFrames(out, 0, 6 * kSampleRate + after.size() / kChannels, 4 * kBufferSize, "rollback after the seek");
+    }
+    soloud.deinit();
+    EXPECT(waitForWorkersToExit(), "workers still running");
+}
+
+void testSyntheticHistoryBounds() {
+    std::printf("synthetic: rollbacks past a voice's history degrade, and history never starves the worker\n");
+    SyntheticControl control;
+    const uint64_t total = 10 * kSampleRate;
+    SoLoud::Soloud soloud;
+    if (!initRenderAheadEngine(soloud)) return;
+    {
+        SoLoud::NativeStream stream;
+        stream.load("synthetic", syntheticFactory(control, total));
+        SoLoud::handle h = playUnity(soloud, stream);
+        soloud.seek(h, 3.0);
+        playDevice(soloud, h, kSampleRate / 2);
+
+        soloud.lockAudioMutex_internal();
+        auto *voice = dynamic_cast<SoLoud::NativeStreamInstance *>(voiceOf(soloud, h));
+        SoLoud::SourceStateSnapshot *snapshot = voice ? voice->captureSourceState() : nullptr;
+        soloud.unlockAudioMutex_internal();
+        EXPECT(snapshot != nullptr, "no snapshot");
+        if (snapshot) {
+            soloud.lockAudioMutex_internal();
+            EXPECT(voice->canRestoreSourceState(snapshot), "a fresh snapshot is restorable");
+            soloud.unlockAudioMutex_internal();
+            // Play on well past the history (a few render-ahead windows).
+            playDevice(soloud, h, kSampleRate / 2);
+            soloud.lockAudioMutex_internal();
+            EXPECT(!voice->canRestoreSourceState(snapshot), "a snapshot older than the history is not");
+            soloud.unlockAudioMutex_internal();
+            delete snapshot;
+        }
+        // The read-ahead stayed full (a second) with the history kept.
+        EXPECT(waitFor([&] { return buffered(soloud, h) >= kSampleRate * 9 / 10; }, 3000),
+               "read-ahead should fill: %llu", static_cast<unsigned long long>(buffered(soloud, h)));
+
+        // Many short loop wraps (one marker each) can't fill the markers
+        // through the history: the worker keeps buffering and nothing
+        // underruns.
+        // Far from where the voice is now (~4 s), so only the loop's own
+        // frames match.
+        const double loopStart = 8.0;
+        const double loopEnd = 8.0 + 300.0 / kSampleRate;
+        soloud.setLoopPoint(h, loopStart);
+        soloud.setLoopEndPoint(h, loopEnd);
+        soloud.setLooping(h, true);
+        soloud.seek(h, loopStart);
+        const uint64_t underrunsBefore = SoLoud::NativeStream::underrunFrameCount();
+        std::vector<float> out = playDevice(soloud, h, kRenderAhead + kSampleRate / 2);
+        size_t first = 0;
+        while (first < out.size() / kChannels &&
+               frameOf(&out[first * kChannels]) != static_cast<long long>(8 * kSampleRate))
+            first++;
+        // A loop end in seconds rounds up to a whole frame: find the period.
+        size_t period = 0;
+        for (size_t i = first + 1; period == 0 && i < out.size() / kChannels; i++) {
+            if (frameOf(&out[i * kChannels]) == static_cast<long long>(8 * kSampleRate)) period = i - first;
+        }
+        EXPECT(period == 300 || period == 301, "loop period %zu", period);
+        bool looped = first < out.size() / kChannels && period > 0;
+        for (size_t i = first; looped && i < out.size() / kChannels; i++) {
+            if (frameOf(&out[i * kChannels]) != static_cast<long long>(8 * kSampleRate + (i - first) % period))
+                looped = false;
+        }
+        EXPECT(looped, "short loop should play gaplessly from frame %zu", first);
+        EXPECT(SoLoud::NativeStream::underrunFrameCount() - underrunsBefore < 2 * kBufferSize,
+               "short loop underran %llu frames",
+               static_cast<unsigned long long>(SoLoud::NativeStream::underrunFrameCount() - underrunsBefore));
     }
     soloud.deinit();
     EXPECT(waitForWorkersToExit(), "workers still running");
@@ -926,7 +1163,10 @@ int main(int argc, char **argv) {
     testSyntheticLooping();
     testSyntheticLoopsBeyondHead();
     testSyntheticVoices();
+    testSyntheticColdSeekWaits();
     testSyntheticUnderrun();
+    testSyntheticRetroactiveRemix();
+    testSyntheticHistoryBounds();
     testSyntheticTeardownWhileDecoding();
     testSyntheticWorkerFailure();
     testShortSoundHasNoWorker();

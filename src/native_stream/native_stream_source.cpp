@@ -32,6 +32,13 @@ namespace SoLoud
 		constexpr unsigned int kChunkFrames = 2048;
 		// Pending run markers per voice (seeks and loop wraps in flight).
 		constexpr unsigned int kMarkers = 64;
+		// Longest a voice holds its position waiting for the first frames of
+		// a request before it keeps time again (see NativeStreamInstance).
+		constexpr double kMaxWaitSeconds = 1.0;
+		// Margin on the checkpoint history for voices playing faster than
+		// their natural rate. Rollbacks past the history degrade to
+		// going-forward behavior.
+		constexpr double kHistorySpeedMargin = 2.0;
 		// How long an idle worker (ring full, paused voice, end of stream)
 		// sleeps before checking again. A voice's new request wakes it early.
 		constexpr auto kIdleWait = std::chrono::milliseconds(20);
@@ -81,6 +88,9 @@ namespace SoLoud
 			const uint64_t capacity; // frames
 			std::unique_ptr<float[]> ring;
 			std::atomic<uint64_t> writePos{0};
+			// The worker may overwrite ring frames before readPos and marker
+			// slots before markerRead: the voice's history start, not its
+			// read position.
 			std::atomic<uint64_t> readPos{0};
 
 			Marker markers[kMarkers];
@@ -98,6 +108,20 @@ namespace SoLoud
 			std::condition_variable wake;
 
 			void notify() { wake.notify_one(); }
+		};
+
+		/// A voice's consumer state at a mix checkpoint. The frames after it
+		/// are still in the ring while it lies within the voice's history.
+		struct NativeStreamSnapshot : SourceStateSnapshot
+		{
+			uint64_t frame = 0;
+			bool headActive = true;
+			bool ended = false;
+			uint32_t generation = 0;
+			uint64_t markerIndex = 0;
+			uint64_t readPos = 0;
+			bool waiting = true;
+			uint64_t waitFrames = 0;
 		};
 
 		uint64_t packRequest(uint32_t aGeneration, uint64_t aFrame)
@@ -266,8 +290,8 @@ namespace SoLoud
 
 	using namespace native_stream_detail;
 
-	NativeStreamInstance::NativeStreamInstance(NativeStream *aParent)
-		: mShared(aParent->mShared)
+	NativeStreamInstance::NativeStreamInstance(NativeStream *aParent, uint64_t aHistoryFrames)
+		: mShared(aParent->mShared), mHistoryFrames(aHistoryFrames)
 	{
 		if (!mShared)
 		{
@@ -279,7 +303,7 @@ namespace SoLoud
 			return;
 
 		const uint64_t capacity = std::max<uint64_t>(
-			uint64_t(std::ceil(mShared->sampleRate * kRingSeconds)), uint64_t(kChunkFrames) * 2);
+			uint64_t(std::ceil(mShared->sampleRate * kRingSeconds)), uint64_t(kChunkFrames) * 2) + mHistoryFrames;
 		mChannel = std::make_shared<Channel>(mShared->channels, capacity);
 		// Start decoding where the head cache ends.
 		mChannel->request.store(packRequest(mGeneration, mShared->headFrames), std::memory_order_relaxed);
@@ -333,15 +357,44 @@ namespace SoLoud
 		// worker can start on the new request without waiting for the next
 		// getAudio(). Markers and frames still in flight from the old request
 		// land past this point and are skipped as stale.
+		// The history goes too: no snapshot can be restored across a new
+		// request (canRestoreSourceState() checks the generation).
 		Channel &ch = *mChannel;
 		mMarkerIndex = ch.markerWrite.load(std::memory_order_acquire);
 		mReadPos = ch.writePos.load(std::memory_order_acquire);
+		mRetainMarker = mMarkerIndex;
+		mRetainPos = mReadPos;
 		ch.markerRead.store(mMarkerIndex, std::memory_order_release);
 		ch.readPos.store(mReadPos, std::memory_order_release);
 
+		mWaiting = true;
+		mWaitFrames = 0;
 		mGeneration = (mGeneration + 1) & kGenerationMask;
 		ch.request.store(packRequest(mGeneration, aFrame), std::memory_order_release);
 		ch.notify();
+	}
+
+	// Lets the worker overwrite what lies more than mHistoryFrames behind the
+	// read position. The history holds at most half the run markers, so many
+	// short loop wraps can't keep the worker from queueing new runs.
+	void NativeStreamInstance::release()
+	{
+		Channel &ch = *mChannel;
+		uint64_t target = mReadPos > mHistoryFrames ? mReadPos - mHistoryFrames : 0;
+		if (target < mRetainPos)
+			target = mRetainPos;
+		while (mRetainMarker < mMarkerIndex)
+		{
+			const uint64_t next = ch.markers[(mRetainMarker + 1) % kMarkers].ringPos;
+			if (next > target && mMarkerIndex - mRetainMarker <= kMarkers / 2)
+				break;
+			mRetainMarker++;
+			if (next > target)
+				target = next;
+		}
+		mRetainPos = target;
+		ch.markerRead.store(mRetainMarker, std::memory_order_release);
+		ch.readPos.store(mRetainPos, std::memory_order_release);
 	}
 
 	// Finds [aFrame] in a run of the current generation ahead of the read
@@ -372,7 +425,7 @@ namespace SoLoud
 			}
 			// The last run is still being written: a frame shortly ahead of
 			// it arrives sooner than a new seek would.
-			if (last && pos - runEnd < ch.capacity / 2)
+			if (last && pos - runEnd < (ch.capacity - mHistoryFrames) / 2)
 			{
 				aComing = true;
 				return false;
@@ -438,7 +491,7 @@ namespace SoLoud
 						// Not decoded yet: drop what precedes it and wait,
 						// unless a seek gets there sooner.
 						mReadPos = runEnd;
-						aStale = pos - runEnd >= ch.capacity / 2;
+						aStale = pos - runEnd >= (ch.capacity - mHistoryFrames) / 2;
 						break;
 					}
 				}
@@ -459,8 +512,7 @@ namespace SoLoud
 			mReadPos = runEnd;
 			mMarkerIndex++;
 		}
-		ch.markerRead.store(mMarkerIndex, std::memory_order_release);
-		ch.readPos.store(mReadPos, std::memory_order_release);
+		release();
 		return result;
 	}
 
@@ -518,12 +570,23 @@ namespace SoLoud
 
 			if (available == 0)
 			{
-				// Underrun: play silence but keep time moving, so the voice
-				// stays in sync and the frames are skipped when they arrive.
 				for (unsigned int c = 0; c < channels; c++)
 					std::memset(aBuffer + c * aBufferSize + out, 0, remaining * sizeof(float));
 				gUnderrunFrames.fetch_add(remaining, std::memory_order_relaxed);
 				out += remaining;
+				if (mWaiting && mWaitFrames < uint64_t(shared.sampleRate * kMaxWaitSeconds))
+				{
+					// The request's first frames aren't decoded yet: hold the
+					// position, so a seek or start-up doesn't skip any audio.
+					// The engine already advanced the stream position for
+					// these frames; take that back too.
+					mWaitFrames += remaining;
+					mStreamPosition = std::max(0.0, mStreamPosition - double(remaining) / shared.sampleRate);
+					continue;
+				}
+				// Underrun mid-playback: play silence but keep time moving, so
+				// the voice stays in step and the frames are skipped when
+				// they arrive.
 				mFrame += remaining;
 				continue;
 			}
@@ -537,7 +600,9 @@ namespace SoLoud
 					aBuffer[c * aBufferSize + out + i] = src[c];
 			}
 			mReadPos += n;
-			mChannel->readPos.store(mReadPos, std::memory_order_release);
+			release();
+			mWaiting = false;
+			mWaitFrames = 0;
 			out += n;
 			mFrame += n;
 		}
@@ -562,11 +627,62 @@ namespace SoLoud
 		mStreamPosition = aSeconds;
 		mHeadActive = frame < shared.headFrames;
 
+		// The worker needs the loop settings before the new request, or a
+		// loop enabled together with this seek is only noticed after the
+		// worker decoded past its end.
+		publishLoopHints();
 		// The first frame the ring has to provide.
 		const uint64_t needed = mHeadActive ? shared.headFrames : frame;
 		if (mChannel && needed < shared.totalFrames && !isBuffered(needed))
 			requestFrame(needed);
 		return SO_NO_ERROR;
+	}
+
+	SourceStateSnapshot *NativeStreamInstance::captureSourceState()
+	{
+		auto *s = new NativeStreamSnapshot();
+		s->frame = mFrame;
+		s->headActive = mHeadActive;
+		s->ended = mEnded;
+		s->generation = mGeneration;
+		s->markerIndex = mMarkerIndex;
+		s->readPos = mReadPos;
+		s->waiting = mWaiting;
+		s->waitFrames = mWaitFrames;
+		return s;
+	}
+
+	bool NativeStreamInstance::canRestoreSourceState(SourceStateSnapshot *aState)
+	{
+		const auto *s = static_cast<const NativeStreamSnapshot *>(aState);
+		// Without a worker everything comes from the head cache.
+		if (!mChannel)
+			return true;
+		// Same request, and the ring still holds every frame and marker from
+		// the snapshot's read position on.
+		return s->generation == mGeneration && s->readPos >= mRetainPos && s->readPos <= mReadPos &&
+			s->markerIndex >= mRetainMarker && s->markerIndex <= mMarkerIndex;
+	}
+
+	void NativeStreamInstance::restoreSourceState(SourceStateSnapshot *aState)
+	{
+		const auto *s = static_cast<const NativeStreamSnapshot *>(aState);
+		if (!canRestoreSourceState(aState))
+		{
+			// The rollback gate asks first, so this is a fallback: resume
+			// from the snapshot's frame, decoding it again if needed.
+			const double position = mStreamPosition;
+			seek(double(s->frame) / mShared->sampleRate, nullptr, 0);
+			mStreamPosition = position;
+			return;
+		}
+		mFrame = s->frame;
+		mHeadActive = s->headActive;
+		mEnded = s->ended;
+		mMarkerIndex = s->markerIndex;
+		mReadPos = s->readPos;
+		mWaiting = s->waiting;
+		mWaitFrames = s->waitFrames;
 	}
 
 	result NativeStreamInstance::rewind()
@@ -666,7 +782,19 @@ namespace SoLoud
 
 	AudioSourceInstance *NativeStream::createInstance()
 	{
-		return new NativeStreamInstance(this);
+		// With the render-ahead ring, checkpoints can roll a voice back by up
+		// to the ring's depth plus one mix quantum (in output frames); keep
+		// that much consumed audio, in source frames, with some speed-up
+		// margin and the resampler's read-ahead.
+		uint64_t history = 0;
+		if (mShared && mSoloud && mSoloud->isRenderAheadEnabled() && mSoloud->mSamplerate > 0)
+		{
+			const double window = double(mSoloud->mRenderAheadFrames) + 2.0 * mSoloud->mBufferSize +
+				4.0 * mSoloud->mDevicePeriodFrames;
+			history = uint64_t(std::ceil(window * mShared->sampleRate / mSoloud->mSamplerate * kHistorySpeedMargin)) +
+				2 * SAMPLE_GRANULARITY;
+		}
+		return new NativeStreamInstance(this, history);
 	}
 
 	time NativeStream::getLength()

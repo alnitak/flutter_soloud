@@ -329,7 +329,10 @@ enum LoadMode {
   /// stream from disk on Android, iOS and macOS: loading decodes only the
   /// first fraction of a second, and each playing voice decodes the rest on
   /// its own background thread. Seeking is sample-accurate and loops are
-  /// gapless.
+  /// gapless. A seek outside what is already decoded starts playing once its
+  /// first frames are decoded (usually a few milliseconds), so no audio after
+  /// the seek target is skipped. If decoding falls behind during playback,
+  /// the voice plays silence and stays in time.
   ///
   /// Other formats decoded by the platform's native decoder (raw AAC, AC-3
   /// and E-AC-3 streams, and M4A/MP4 on Windows and Linux) cannot be streamed
