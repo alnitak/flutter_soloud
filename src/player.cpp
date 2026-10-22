@@ -126,38 +126,106 @@ namespace
         return false;
     }
 
-    PlayerErrors loadOggXiphBufferStream(Player *player,
-                                         ActiveSound *activeSound,
-                                         const std::vector<unsigned char> &bytes)
+    PlayerErrors fromDecoderError(DecoderError error)
     {
-        if (player == nullptr || activeSound == nullptr || bytes.empty())
+        switch (error)
+        {
+        case DecoderError::NoError:
+            return noError;
+        case DecoderError::FormatNotSupported:
+            return audioFormatNotSupported;
+        case DecoderError::NoXiphLibs:
+            return xiphLibsNotFound;
+        case DecoderError::FailedToCreateDecoder:
+            return failedToCreateOpusDecoder;
+        case DecoderError::ErrorReadingOggOpusPage:
+        case DecoderError::CodecError:
+            return failedToDecodeOpusPacket;
+        }
+        return unknownError;
+    }
+
+    /// Decode a whole Ogg Opus/FLAC file into a PRESERVED BufferStream.
+    ///
+    /// The stream is bound to no Player (BufferStream skips its buffering
+    /// bookkeeping until one is set), so this runs without the engine's locks;
+    /// Player::registerSound() attaches it.
+    PlayerErrors decodeOggXiphBufferStream(ActiveSound *activeSound,
+                                           std::vector<unsigned char> &bytes,
+                                           unsigned int engineSampleRate,
+                                           unsigned int engineChannels)
+    {
+        if (activeSound == nullptr || bytes.empty())
         {
             return invalidParameter;
         }
 
+        // Ogg Opus decodes to the engine's format; FLAC reports its own.
+        int sampleRate = static_cast<int>(engineSampleRate);
+        int channels = static_cast<int>(engineChannels);
+        auto ignoreMetadata = [](AudioMetadata) {};
+        StreamDecoder decoder;
+        auto [pcm, error] = decoder.decode(bytes, &sampleRate, &channels, ignoreMetadata);
+        decoder.setDataEnded();
+        // Flush what the decoder held back until it knew the data had ended.
+        // A pass can come back empty while data is still pending (a packet
+        // that yields no samples), so only a run of them ends the flush early.
+        std::vector<unsigned char> noMoreData;
+        int emptyPasses = 0;
+        while (error == DecoderError::NoError)
+        {
+            auto [more, moreError] = decoder.decode(noMoreData, &sampleRate, &channels, ignoreMetadata);
+            error = moreError;
+            if (!more.empty())
+            {
+                pcm.insert(pcm.end(), more.begin(), more.end());
+                emptyPasses = 0;
+            }
+            if (!decoder.hasPendingData() || (more.empty() && ++emptyPasses >= 64))
+                break;
+        }
+        if (error != DecoderError::NoError)
+        {
+            return fromDecoderError(error);
+        }
+        if (sampleRate <= 0)
+            sampleRate = static_cast<int>(engineSampleRate);
+        if (channels <= 0)
+            channels = static_cast<int>(engineChannels);
+
         activeSound->sound = std::make_unique<SoLoud::BufferStream>();
         activeSound->soundType = TYPE_BUFFER_STREAM;
-        PCMformat pcmFormat = {player->mSampleRate, player->mChannels, 4, AUTO};
+        PCMformat pcmFormat = {static_cast<unsigned int>(sampleRate),
+                               static_cast<unsigned int>(channels), 4,
+                               PCM_F32LE};
         auto *bufferStream =
             static_cast<SoLoud::BufferStream *>(activeSound->sound.get());
-        PlayerErrors error = bufferStream->setBufferStream(
-            player,
+        PlayerErrors loadError = bufferStream->setBufferStream(
+            nullptr,
             activeSound,
             kOggXiphBufferStreamMaxBytes,
             BufferingType::PRESERVED,
             0.0f,
             pcmFormat);
-        if (error != noError)
+        if (loadError != noError)
         {
-            return error;
+            return loadError;
         }
 
-        error = bufferStream->addData(bytes.data(),
-                                      static_cast<unsigned int>(bytes.size()));
-        if (error != noError)
+        // In whole-frame chunks: addData() stages its input in a copy, and
+        // staging the whole file would hold a third copy of the PCM at once.
+        const size_t chunkSamples = static_cast<size_t>(channels) * 16384;
+        for (size_t offset = 0; offset < pcm.size(); offset += chunkSamples)
         {
-            return error;
+            const size_t count = std::min(chunkSamples, pcm.size() - offset);
+            loadError = bufferStream->addData(
+                pcm.data() + offset, static_cast<unsigned int>(count * sizeof(float)));
+            if (loadError != noError)
+            {
+                return loadError;
+            }
         }
+        std::vector<float>().swap(pcm);
 
         bufferStream->setDataIsEnded();
         return noError;
@@ -662,12 +730,141 @@ PlayerErrors Player::loadFile(
     bool loadIntoMem,
     unsigned int *hash)
 {
+    *hash = 0;
     if (!mInited.load(std::memory_order_acquire))
         return backendNotInited;
 
-    *hash = 0;
+    return registerSound(
+        decodeFile(completeFileName, loadIntoMem, mSampleRate, mChannels), *hash);
+}
 
-    unsigned int newHash = (int32_t)std::hash<std::string>{}(completeFileName) & 0x7fffffff;
+PlayerErrors Player::loadMem(
+    const std::string &uniqueName,
+    unsigned char *mem,
+    int length,
+    bool loadIntoMem,
+    unsigned int &hash)
+{
+    hash = 0;
+    if (!mInited.load(std::memory_order_acquire))
+        return backendNotInited;
+
+    return registerSound(
+        decodeMem(uniqueName, mem, length, loadIntoMem, mSampleRate, mChannels), hash);
+}
+
+Player::PendingSound Player::decodeFile(
+    const std::string &completeFileName,
+    bool loadIntoMem,
+    unsigned int engineSampleRate,
+    unsigned int engineChannels)
+{
+    SOLOUD_TEST_BARRIER(soundDecodeEntered);
+
+    PendingSound pending;
+    pending.sound = std::make_unique<ActiveSound>();
+    ActiveSound *newSound = pending.sound.get();
+    newSound->completeFileName = completeFileName;
+
+    SoLoud::result result;
+    // This function is never called when running on the Web, but [__WEB__] is checked for consistency with [loadMem].
+    if (loadIntoMem || __WEB__)
+    {
+        newSound->sound = std::make_unique<SoLoud::Wav>();
+        newSound->soundType = TYPE_WAV;
+        result = static_cast<SoLoud::Wav *>(newSound->sound.get())->load(completeFileName.c_str());
+    }
+    else
+    {
+        newSound->sound = std::make_unique<SoLoud::WavStream>();
+        newSound->soundType = TYPE_WAVSTREAM;
+        result = static_cast<SoLoud::WavStream *>(newSound->sound.get())->load(completeFileName.c_str());
+    }
+
+    pending.error = fromSoLoudError(result);
+    if (result != SoLoud::SO_NO_ERROR)
+    {
+        // Sniff the header first so non-Ogg fallbacks don't read the whole file.
+        std::vector<unsigned char> header;
+        if (readFileBytes(completeFileName, header, 64))
+        {
+            std::vector<unsigned char> bytes;
+            if (header.size() >= 4 && std::memcmp(header.data(), "OggS", 4) == 0 &&
+                readFileBytes(completeFileName, bytes) && isOggXiphBytes(bytes))
+            {
+                pending.error = decodeOggXiphBufferStream(newSound, bytes, engineSampleRate, engineChannels);
+            }
+            else if (!loadIntoMem && NativeAudioDecoder::isSupportedNativeFormat(header.data(), header.size()))
+            {
+                // Native formats (M4A/MP4, AAC, AC-3, E-AC-3) have no streaming
+                // decoder for LoadMode.disk: decode the whole file to PCM instead.
+                newSound->sound = std::make_unique<SoLoud::Wav>();
+                newSound->soundType = TYPE_WAV;
+                result = static_cast<SoLoud::Wav *>(newSound->sound.get())->load(completeFileName.c_str());
+                pending.error = fromSoLoudError(result);
+            }
+        }
+    }
+
+    return pending;
+}
+
+Player::PendingSound Player::decodeMem(
+    const std::string &uniqueName,
+    unsigned char *mem,
+    int length,
+    bool loadIntoMem,
+    unsigned int engineSampleRate,
+    unsigned int engineChannels)
+{
+    PendingSound pending;
+    pending.sound = std::make_unique<ActiveSound>();
+    ActiveSound *newSound = pending.sound.get();
+    newSound->completeFileName = uniqueName;
+
+    SoLoud::result result;
+    if (loadIntoMem || __WEB__)
+    {
+        newSound->sound = std::make_unique<SoLoud::Wav>();
+        newSound->soundType = TYPE_WAV;
+        result = static_cast<SoLoud::Wav *>(newSound->sound.get())->loadMem(mem, length, true, true);
+    }
+    else
+    {
+        newSound->sound = std::make_unique<SoLoud::WavStream>();
+        newSound->soundType = TYPE_WAVSTREAM;
+        result = static_cast<SoLoud::WavStream *>(newSound->sound.get())->loadMem(mem, length, false, true);
+    }
+
+    pending.error = fromSoLoudError(result);
+    if (result != SoLoud::SO_NO_ERROR && mem != nullptr && length > 0)
+    {
+        std::vector<unsigned char> bytes(mem, mem + length);
+        if (isOggXiphBytes(bytes))
+        {
+            pending.error = decodeOggXiphBufferStream(newSound, bytes, engineSampleRate, engineChannels);
+        }
+        else if (!loadIntoMem && NativeAudioDecoder::isSupportedNativeFormat(mem, length))
+        {
+            newSound->sound = std::make_unique<SoLoud::Wav>();
+            newSound->soundType = TYPE_WAV;
+            result = static_cast<SoLoud::Wav *>(newSound->sound.get())->loadMem(mem, length, true, true);
+            pending.error = fromSoLoudError(result);
+        }
+    }
+
+    return pending;
+}
+
+PlayerErrors Player::registerSound(PendingSound pending, unsigned int &hash)
+{
+    hash = 0;
+    if (!mInited.load(std::memory_order_acquire))
+        return backendNotInited;
+    if (pending.error != noError || pending.sound == nullptr)
+        return pending.error != noError ? pending.error : nullPointer;
+
+    unsigned int newHash = (int32_t)std::hash<std::string>{}(pending.sound->completeFileName) & 0x7fffffff;
     /// check if the sound has already been loaded
     auto const s = findByHash(newHash);
 
@@ -683,156 +880,26 @@ PlayerErrors Player::loadFile(
             newHash = dist(g);
         } while (findByHash(newHash) != nullptr);
     }
+    pending.sound->soundHash = newHash;
 
-    std::unique_ptr<ActiveSound> newSound = std::make_unique<ActiveSound>();
-    newSound.get()->completeFileName = std::string(completeFileName);
-    *hash = newHash;
-    newSound.get()->soundHash = newHash;
+    if (pending.sound->soundType == TYPE_BUFFER_STREAM)
+        static_cast<SoLoud::BufferStream *>(pending.sound->sound.get())->mThePlayer = this;
 
-    SoLoud::result result;
-    // This function is never called when running on the Web, but [__WEB__] is checked for consistency with [loadMem].
-    if (loadIntoMem || __WEB__)
+    pending.sound->filters = std::make_unique<Filters>(&soloud, pending.sound.get(), nullptr);
     {
-        newSound.get()->sound = std::make_unique<SoLoud::Wav>();
-        newSound.get()->soundType = TYPE_WAV;
-        result = static_cast<SoLoud::Wav *>(newSound.get()->sound.get())->load(completeFileName.c_str());
+        std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
+        sounds.push_back(std::move(pending.sound));
     }
-    else
-    {
-        newSound.get()->sound = std::make_unique<SoLoud::WavStream>();
-        newSound.get()->soundType = TYPE_WAVSTREAM;
-        result = static_cast<SoLoud::WavStream *>(newSound.get()->sound.get())->load(completeFileName.c_str());
-    }
+    hash = newHash;
 
-    PlayerErrors loadError = fromSoLoudError(result);
-    if (result != SoLoud::SO_NO_ERROR)
-    {
-        // Sniff the header first so non-Ogg fallbacks don't read the whole file.
-        std::vector<unsigned char> header;
-        if (readFileBytes(completeFileName, header, 64))
-        {
-            std::vector<unsigned char> bytes;
-            if (header.size() >= 4 && std::memcmp(header.data(), "OggS", 4) == 0 &&
-                readFileBytes(completeFileName, bytes) && isOggXiphBytes(bytes))
-            {
-                loadError = loadOggXiphBufferStream(this, newSound.get(), bytes);
-            }
-            else if (!loadIntoMem && NativeAudioDecoder::isSupportedNativeFormat(header.data(), header.size()))
-            {
-                // Native formats (M4A/MP4, AAC, AC-3, E-AC-3) have no streaming
-                // decoder for LoadMode.disk: decode the whole file to PCM instead.
-                newSound.get()->sound = std::make_unique<SoLoud::Wav>();
-                newSound.get()->soundType = TYPE_WAV;
-                result = static_cast<SoLoud::Wav *>(newSound.get()->sound.get())->load(completeFileName.c_str());
-                loadError = fromSoLoudError(result);
-            }
-        }
-    }
-
-    if (loadError != noError)
-    {
-        *hash = 0;
-    }
-    else
-    {
-        *hash = newHash;
-        newSound.get()->filters = std::make_unique<Filters>(&soloud, newSound.get(), nullptr);
-        {
-            std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
-            sounds.push_back(std::move(newSound));
-        }
-    }
-
-    // Return fileAlreadyLoaded if the filename hash was already in use,
+    // Return fileAlreadyLoaded if the name hash was already in use,
     // even though we've now loaded a new instance with a unique hash.
-    if (s != nullptr && loadError == noError)
-    {
-        return fileAlreadyLoaded;
-    }
-
-    return loadError;
-}
-
-PlayerErrors Player::loadMem(
-    const std::string &uniqueName,
-    unsigned char *mem,
-    int length,
-    bool loadIntoMem,
-    unsigned int &hash)
-{
-    if (!mInited.load(std::memory_order_acquire))
-        return backendNotInited;
-
-    hash = 0;
-
-    unsigned int newHash = (int32_t)std::hash<std::string>{}(uniqueName) & 0x7fffffff;
-    /// check if the sound has already been loaded
-    auto const s = findByHash(newHash);
-
-    // If already loaded, generate a unique hash
     if (s != nullptr)
     {
-        std::random_device rd;
-        std::mt19937 g(rd());
-        std::uniform_int_distribution<unsigned int> dist(0, 0x7fffffff);
-        do
-        {
-            newHash = dist(g);
-        } while (findByHash(newHash) != nullptr);
-    }
-
-    auto newSound = std::make_unique<ActiveSound>();
-    newSound.get()->completeFileName = std::string(uniqueName);
-    hash = newHash;
-    newSound.get()->soundHash = newHash;
-    SoLoud::result result;
-    if (loadIntoMem || __WEB__)
-    {
-        newSound.get()->sound = std::make_unique<SoLoud::Wav>();
-        newSound.get()->soundType = TYPE_WAV;
-        result = static_cast<SoLoud::Wav *>(newSound.get()->sound.get())->loadMem(mem, length, true, true);
-    }
-    else
-    {
-        newSound.get()->sound = std::make_unique<SoLoud::WavStream>();
-        newSound.get()->soundType = TYPE_WAVSTREAM;
-        result = static_cast<SoLoud::WavStream *>(newSound.get()->sound.get())->loadMem(mem, length, false, true);
-    }
-
-    PlayerErrors loadError = fromSoLoudError(result);
-    if (result != SoLoud::SO_NO_ERROR && mem != nullptr && length > 0)
-    {
-        std::vector<unsigned char> bytes(mem, mem + length);
-        if (isOggXiphBytes(bytes))
-        {
-            loadError = loadOggXiphBufferStream(this, newSound.get(), bytes);
-        }
-        else if (!loadIntoMem && NativeAudioDecoder::isSupportedNativeFormat(mem, length))
-        {
-            newSound.get()->sound = std::make_unique<SoLoud::Wav>();
-            newSound.get()->soundType = TYPE_WAV;
-            result = static_cast<SoLoud::Wav *>(newSound.get()->sound.get())->loadMem(mem, length, true, true);
-            loadError = fromSoLoudError(result);
-        }
-    }
-
-    if (loadError == noError)
-    {
-        newSound.get()->filters = std::make_unique<Filters>(&soloud, newSound.get(), nullptr);
-        {
-            std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
-            sounds.push_back(std::move(newSound));
-        }
-    }
-
-    // Return fileAlreadyLoaded if the unique name hash was already in use,
-    // even though we've now loaded a new instance with a unique hash.
-    if (s != nullptr && loadError == noError)
-    {
         return fileAlreadyLoaded;
     }
 
-    return loadError;
+    return noError;
 }
 
 PlayerErrors Player::joinTwoSources(
@@ -843,42 +910,43 @@ PlayerErrors Player::joinTwoSources(
     int length2,
     unsigned int &hash)
 {
+    hash = 0;
     if (!mInited.load(std::memory_order_acquire))
         return backendNotInited;
 
+    return registerSound(
+        decodeJoinedSources(uniqueName, mem1, mem2, length1, length2, mSampleRate), hash);
+}
+
+Player::PendingSound Player::decodeJoinedSources(
+    const std::string &uniqueName,
+    unsigned char *mem1,
+    unsigned char *mem2,
+    int length1,
+    int length2,
+    unsigned int engineSampleRate)
+{
+    PendingSound pending;
     if (mem1 == nullptr || length1 <= 0 || mem2 == nullptr || length2 <= 0)
-        return invalidParameter;
-
-    hash = 0;
-
-    unsigned int newHash = (int32_t)std::hash<std::string>{}(uniqueName) & 0x7fffffff;
-    /// check if the sound has already been loaded
-    auto const s = findByHash(newHash);
-
-    // If already loaded, generate a unique hash
-    if (s != nullptr)
     {
-        std::random_device rd;
-        std::mt19937 g(rd());
-        std::uniform_int_distribution<unsigned int> dist(0, 0x7fffffff);
-        do
-        {
-            newHash = dist(g);
-        } while (findByHash(newHash) != nullptr);
+        pending.error = invalidParameter;
+        return pending;
     }
 
     SoLoud::Wav wav1;
     SoLoud::result res1 = wav1.loadMem(mem1, length1, false, false);
     if (res1 != SoLoud::SO_NO_ERROR)
     {
-        return fromSoLoudError(res1);
+        pending.error = fromSoLoudError(res1);
+        return pending;
     }
 
     SoLoud::Wav wav2;
     SoLoud::result res2 = wav2.loadMem(mem2, length2, false, false);
     if (res2 != SoLoud::SO_NO_ERROR)
     {
-        return fromSoLoudError(res2);
+        pending.error = fromSoLoudError(res2);
+        return pending;
     }
 
     unsigned int samples1 = wav1.mActualSampleCount > 0 ? wav1.mActualSampleCount : wav1.mSampleCount;
@@ -890,7 +958,8 @@ PlayerErrors Player::joinTwoSources(
 
     if (samples1 == 0 || samples2 == 0 || wav1.mData == nullptr || wav2.mData == nullptr)
     {
-        return fileLoadFailed;
+        pending.error = fileLoadFailed;
+        return pending;
     }
 
     // Convert wav1 to mono
@@ -931,9 +1000,9 @@ PlayerErrors Player::joinTwoSources(
         }
     }
 
-    // Resample both channels to the engine's sample rate (mSampleRate) if needed,
+    // Resample both channels to the engine's sample rate if needed,
     // avoiding real-time resampling during playback in the mixer.
-    float targetSampleRate = mSampleRate > 0 ? static_cast<float>(mSampleRate) : (sr1 > 0.0f ? sr1 : 44100.0f);
+    float targetSampleRate = engineSampleRate > 0 ? static_cast<float>(engineSampleRate) : (sr1 > 0.0f ? sr1 : 44100.0f);
 
     auto resampleMono = [](std::vector<float> &mono, unsigned int &sampleCount, float srcRate, float dstRate) {
         if (std::abs(srcRate - dstRate) <= 0.01f || sampleCount == 0)
@@ -989,7 +1058,8 @@ PlayerErrors Player::joinTwoSources(
     unsigned int maxFrames = std::max(samples1, samples2);
     if (maxFrames == 0)
     {
-        return fileLoadFailed;
+        pending.error = fileLoadFailed;
+        return pending;
     }
 
     // Allocate stereo buffer: channel 0 (left) followed by channel 1 (right)
@@ -1009,10 +1079,9 @@ PlayerErrors Player::joinTwoSources(
         std::memset(stereoData + maxFrames + samples2, 0, (maxFrames - samples2) * sizeof(float));
     }
 
-    auto newSound = std::make_unique<ActiveSound>();
-    newSound->completeFileName = std::string(uniqueName);
-    hash = newHash;
-    newSound->soundHash = newHash;
+    pending.sound = std::make_unique<ActiveSound>();
+    ActiveSound *newSound = pending.sound.get();
+    newSound->completeFileName = uniqueName;
     newSound->sound = std::make_unique<SoLoud::Wav>();
     newSound->soundType = TYPE_WAV;
 
@@ -1026,24 +1095,8 @@ PlayerErrors Player::joinTwoSources(
         true   // take ownership
     );
 
-    PlayerErrors loadError = fromSoLoudError(loadRawRes);
-    if (loadError != noError)
-    {
-        return loadError;
-    }
-
-    newSound->filters = std::make_unique<Filters>(&soloud, newSound.get(), nullptr);
-    {
-        std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
-        sounds.push_back(std::move(newSound));
-    }
-
-    if (s != nullptr && loadError == noError)
-    {
-        return fileAlreadyLoaded;
-    }
-
-    return loadError;
+    pending.error = fromSoLoudError(loadRawRes);
+    return pending;
 }
 
 PlayerErrors Player::setBufferStream(

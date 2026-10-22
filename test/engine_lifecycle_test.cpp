@@ -29,13 +29,17 @@
 //   * both hooks return promptly while init_deinit_mutex is held by an
 //     unrelated operation -- they run on Android's platform thread, where
 //     waiting for a device operation is an ANR;
-//   * duplicate destroy/detach notifications tear down exactly once.
+//   * duplicate destroy/detach notifications tear down exactly once;
+//   * loadFile() decodes without the lifecycle locks, so disposing sounds or
+//     the engine never waits for a decode, and a sound decoded for an engine
+//     that was torn down meanwhile is dropped.
 //
 // Build and run from the flutter_soloud repository root with:
 //
 //   ./test/run_engine_lifecycle_test.sh
 
 #include "audiobuffer/metadata_ffi.h"
+#include "device_lifecycle_test_hooks.h"
 #include "enums.h"
 
 #include <atomic>
@@ -43,7 +47,10 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
+#include <string>
 #include <thread>
+#include <vector>
 
 extern "C"
 {
@@ -85,6 +92,12 @@ extern "C"
         dartOnMoreDataIsNeededCallback_t onMoreDataIsNeededCallback,
         dartOnAudioDurationCallback_t onAudioDurationCallback);
 
+    void loadFile(char *completeFileName, bool loadIntoMem, uint64_t counter);
+    enum PlayerErrors loadMem(char *uniqueName, unsigned char *buffer,
+                              int length, int loadIntoMem, unsigned int *hash);
+    void disposeSound(unsigned int soundHash);
+    void disposeAllSound();
+
     // Test-only hooks (SOLOUD_LIFECYCLE_TEST_HOOKS).
     void soloudTestLockInitDeinit();
     void soloudTestUnlockInitDeinit();
@@ -96,6 +109,7 @@ extern "C"
     void soloudTestArmInitBarrier();
     void soloudTestWaitInitBarrierReached();
     void soloudTestReleaseInitBarrier();
+    int soloudTestSoundCount();
 }
 
 namespace
@@ -130,6 +144,8 @@ std::atomic<int> gFileLoadedCalls{0};
 std::atomic<int> gStateChangedCalls{0};
 std::atomic<int> gStreamCallbackCalls{0};
 std::atomic<int> gMixerOutputCalls{0};
+std::atomic<int> gLastFileLoadedError{-1};
+std::atomic<unsigned int> gLastFileLoadedHash{0};
 
 // Stand-ins for the Dart trampolines. Native code owns the pointers it hands
 // over, exactly as the real callables do.
@@ -142,6 +158,8 @@ void onVoiceEnded(unsigned int *handle)
 void onFileLoaded(enum PlayerErrors *error, char *name, unsigned int *hash,
                   uint64_t *counter)
 {
+    gLastFileLoadedError = *error;
+    gLastFileLoadedHash = *hash;
     std::free(error);
     std::free(name);
     std::free(hash);
@@ -246,6 +264,8 @@ void resetGlobalState()
     dispose();
     gVoiceEndedCalls = 0;
     gFileLoadedCalls = 0;
+    gLastFileLoadedError = -1;
+    gLastFileLoadedHash = 0;
     gStateChangedCalls = 0;
     gStreamCallbackCalls = 0;
     gMixerOutputCalls = 0;
@@ -267,6 +287,60 @@ unsigned int createPullStream()
         1024 * 1024, onBuffering, onMetadata, onMoreDataIsNeeded,
         onAudioDuration);
     return error == noError ? hash : 0;
+}
+
+/// A short silent 16-bit PCM WAV file.
+std::vector<unsigned char> makeWavBytes()
+{
+    const uint32_t dataBytes = 44100 * 2 * 2 / 10; // 100 ms, stereo
+    std::vector<unsigned char> wav(44 + dataBytes, 0);
+    auto put32 = [&wav](size_t at, uint32_t v)
+    { std::memcpy(wav.data() + at, &v, 4); };
+    auto put16 = [&wav](size_t at, uint16_t v)
+    { std::memcpy(wav.data() + at, &v, 2); };
+    std::memcpy(wav.data(), "RIFF", 4);
+    put32(4, 36 + dataBytes);
+    std::memcpy(wav.data() + 8, "WAVEfmt ", 8);
+    put32(16, 16);
+    put16(20, 1);
+    put16(22, 2);
+    put32(24, 44100);
+    put32(28, 44100 * 2 * 2);
+    put16(32, 4);
+    put16(34, 16);
+    std::memcpy(wav.data() + 36, "data", 4);
+    put32(40, dataBytes);
+    return wav;
+}
+
+std::string writeWavFile()
+{
+    const char *tmp = std::getenv("TMPDIR");
+    std::string path = std::string(tmp != nullptr ? tmp : "/tmp") +
+                       "/soloud_lifecycle_test_load.wav";
+    const std::vector<unsigned char> wav = makeWavBytes();
+    FILE *f = std::fopen(path.c_str(), "wb");
+    if (f == nullptr)
+        return std::string();
+    std::fwrite(wav.data(), 1, wav.size(), f);
+    std::fclose(f);
+    return path;
+}
+
+/// Start a loadFile() on a worker, as Dart does, and park it inside its decode.
+std::thread startParkedLoad(std::string &path)
+{
+    soloud_test::armBarrier(soloud_test::DeviceBarrier::soundDecodeEntered);
+    std::thread loader([&path] { loadFile(&path[0], false, 1); });
+    soloud_test::waitBarrierReached(
+        soloud_test::DeviceBarrier::soundDecodeEntered);
+    return loader;
+}
+
+void releaseParkedLoad(std::thread &loader)
+{
+    soloud_test::releaseBarrier(soloud_test::DeviceBarrier::soundDecodeEntered);
+    loader.join();
 }
 
 // ---------------------------------------------------------------------------
@@ -1100,6 +1174,98 @@ void testRetirementNeverWaitsForNativeWork()
     resetGlobalState();
 }
 
+/// A decode can take seconds (an M4A/AAC file is decoded in full even with
+/// LoadMode.disk), and the calls Dart makes synchronously on the UI thread
+/// must not wait for it. Taken to its end, the load still registers.
+void testLoadDecodeDoesNotBlockLifecycleCalls()
+{
+    std::printf("a decode in flight does not block lifecycle calls\n");
+    resetGlobalState();
+
+    std::string path = writeWavFile();
+    if (path.empty() || !initEngineAs(kEngineA))
+    {
+        EXPECT(false, "the engine and test file should be set up");
+        return;
+    }
+    registerCallbacksFor(kEngineA);
+
+    std::vector<unsigned char> wav = makeWavBytes();
+    unsigned int memHash = 0;
+    EXPECT(loadMem(const_cast<char *>("mem"), wav.data(),
+                   static_cast<int>(wav.size()), 1, &memHash) == noError,
+           "loadMem should succeed");
+
+    std::thread loader = startParkedLoad(path);
+
+    const auto start = std::chrono::steady_clock::now();
+    disposeSound(memHash);
+    unsigned int otherHash = 0;
+    const PlayerErrors memError =
+        loadMem(const_cast<char *>("other"), wav.data(),
+                static_cast<int>(wav.size()), 1, &otherHash);
+    disposeAllSound();
+    const long long elapsed = millisSince(start);
+
+    EXPECT(elapsed < kPlatformThreadBudgetMs,
+           "lifecycle calls took %lldms while a decode was in flight; they "
+           "must not wait for it",
+           elapsed);
+    EXPECT(memError == noError, "loadMem should not be blocked by the decode");
+
+    releaseParkedLoad(loader);
+
+    EXPECT(gFileLoadedCalls.load() == 1, "the parked load should complete");
+    EXPECT(gLastFileLoadedError.load() == noError,
+           "the parked load should register, got error %d",
+           gLastFileLoadedError.load());
+    EXPECT(gLastFileLoadedHash.load() != 0,
+           "the parked load should report a hash");
+    EXPECT(soloudTestSoundCount() == 1,
+           "only the parked load's sound should remain, found %d",
+           soloudTestSoundCount());
+
+    resetGlobalState();
+}
+
+/// A sound decoded for an engine that was torn down while the decode ran
+/// must not land in the engine that replaced it, and its result must not
+/// reach the replacement's callable: a new isolate restarts its load counter,
+/// so a stale result could complete one of its own loads.
+void testTeardownDuringDecodeDropsTheSound()
+{
+    std::printf("a teardown during a decode drops the decoded sound\n");
+    resetGlobalState();
+
+    std::string path = writeWavFile();
+    if (path.empty() || !initEngineAs(kEngineA))
+    {
+        EXPECT(false, "the engine and test file should be set up");
+        return;
+    }
+    registerCallbacksFor(kEngineA);
+
+    std::thread loader = startParkedLoad(path);
+
+    const auto start = std::chrono::steady_clock::now();
+    dispose();
+    const long long elapsed = millisSince(start);
+    EXPECT(elapsed < 2000,
+           "dispose took %lldms while a decode was in flight", elapsed);
+
+    EXPECT(initEngineAs(kEngineB), "the replacement engine should initialize");
+    registerCallbacksFor(kEngineB);
+
+    releaseParkedLoad(loader);
+
+    EXPECT(gFileLoadedCalls.load() == 0,
+           "the stale result must not reach the replacement's callable");
+    EXPECT(soloudTestSoundCount() == 0,
+           "the stale sound must not land in the replacement engine");
+
+    resetGlobalState();
+}
+
 } // namespace
 
 int main()
@@ -1143,6 +1309,8 @@ int main()
     testEngineDestroyedDuringInitialization();
     testStaleTeardownCannotDisposeReplacement();
     testRetirementNeverWaitsForNativeWork();
+    testLoadDecodeDoesNotBlockLifecycleCalls();
+    testTeardownDuringDecodeDropsTheSound();
 
     std::printf("\n%d assertions, %d failures\n", gAssertions, gFailures);
     return gFailures == 0 ? 0 : 1;

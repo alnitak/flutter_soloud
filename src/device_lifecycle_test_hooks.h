@@ -53,6 +53,9 @@ namespace soloud_test
     /// policy but before it decides whether to go idle. This is the window a
     /// naive "clear the queued flag after applying" scheme loses a write in.
     idleTimeoutWorkerApplied,
+    /// At the top of Player::decodeFile(). A load parked here is mid-decode,
+    /// so anything it still held would block the calls a test makes meanwhile.
+    soundDecodeEntered,
     barrierCount
   };
 
