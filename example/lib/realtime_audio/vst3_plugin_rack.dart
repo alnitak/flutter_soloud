@@ -6,6 +6,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
+import 'package:flutter_soloud_example/realtime_audio/piano/piano_panel.dart';
 
 /// Example 4: Desktop VST3 Plugin Rack (Audio Effects, Synths & Native GUI)
 ///
@@ -88,8 +89,6 @@ class _Vst3PluginRackExampleState extends State<Vst3PluginRackExample> {
   StreamSubscription<Vst3RestartComponentEvent>? _restartSub;
   String _statusMessage = 'Ready.';
   double _effectWet = 0.8;
-  bool _latchNotes = false;
-  final Set<int> _latchedPitches = <int>{};
   bool _showAllParameters = false;
 
   @override
@@ -97,10 +96,6 @@ class _Vst3PluginRackExampleState extends State<Vst3PluginRackExample> {
     unawaited(_guiSub?.cancel());
     unawaited(_restartSub?.cancel());
     _loadedEffect?.dispose();
-    for (final p in _latchedPitches) {
-      _loadedSynth?.noteOff(pitch: p);
-    }
-    _latchedPitches.clear();
     _loadedSynth?.dispose();
     if (_testSound != null) {
       unawaited(_soloud.disposeSource(_testSound!));
@@ -133,10 +128,6 @@ class _Vst3PluginRackExampleState extends State<Vst3PluginRackExample> {
       unawaited(_restartSub?.cancel());
       _loadedEffect?.dispose();
       _loadedEffect = null;
-      for (final p in _latchedPitches) {
-        _loadedSynth?.noteOff(pitch: p);
-      }
-      _latchedPitches.clear();
       _loadedSynth?.dispose();
       _loadedSynth = null;
 
@@ -397,9 +388,12 @@ class _Vst3PluginRackExampleState extends State<Vst3PluginRackExample> {
     final plugin = _activePlugin;
     return Scaffold(
       appBar: AppBar(title: const Text('Desktop VST3 Plugin Rack')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
+      body: Column(
         children: [
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
           Card(
             child: Padding(
               padding: const EdgeInsets.all(12),
@@ -537,131 +531,7 @@ class _Vst3PluginRackExampleState extends State<Vst3PluginRackExample> {
                         ],
                       ),
                     ],
-                    if (_loadedSynth != null) ...[
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        children: [
-                          for (final note in const [
-                            (60, 'C4'),
-                            (63, 'Eb4'),
-                            (67, 'G4'),
-                            (72, 'C5'),
-                          ])
-                            Listener(
-                              behavior: HitTestBehavior.opaque,
-                              onPointerDown: (_) {
-                                if (!_latchedPitches.contains(note.$1)) {
-                                  _loadedSynth!.noteOn(
-                                    pitch: note.$1,
-                                    velocity: 0.85,
-                                  );
-                                  if (_latchNotes) {
-                                    setState(() {
-                                      _latchedPitches.add(note.$1);
-                                    });
-                                  }
-                                } else {
-                                  _loadedSynth!.noteOff(pitch: note.$1);
-                                  setState(() {
-                                    _latchedPitches.remove(note.$1);
-                                  });
-                                }
-                              },
-                              onPointerUp: (_) {
-                                if (!_latchNotes) {
-                                  _loadedSynth!.noteOff(pitch: note.$1);
-                                }
-                              },
-                              onPointerCancel: (_) {
-                                if (!_latchNotes) {
-                                  _loadedSynth!.noteOff(pitch: note.$1);
-                                }
-                              },
-                              child: Chip(
-                                avatar: _latchedPitches.contains(note.$1)
-                                    ? const Icon(
-                                        Icons.volume_up,
-                                        size: 16,
-                                        color: Colors.deepPurple,
-                                      )
-                                    : null,
-                                backgroundColor: _latchedPitches
-                                        .contains(note.$1)
-                                    ? Colors.deepPurple.withValues(alpha: 0.25)
-                                    : null,
-                                label: Text(
-                                  _latchedPitches.contains(note.$1)
-                                      ? 'Playing ${note.$2}'
-                                      : 'Hold ${note.$2}',
-                                  style: TextStyle(
-                                    fontWeight:
-                                        _latchedPitches.contains(note.$1)
-                                            ? FontWeight.bold
-                                            : FontWeight.normal,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          InkWell(
-                            borderRadius: BorderRadius.circular(8),
-                            onTap: () {
-                              setState(() {
-                                _latchNotes = !_latchNotes;
-                                if (!_latchNotes) {
-                                  for (final p in _latchedPitches) {
-                                    _loadedSynth?.noteOff(pitch: p);
-                                  }
-                                  _latchedPitches.clear();
-                                }
-                              });
-                            },
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 6,
-                                vertical: 2,
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Checkbox(
-                                    value: _latchNotes,
-                                    onChanged: (val) {
-                                      setState(() {
-                                        _latchNotes = val ?? false;
-                                        if (!_latchNotes) {
-                                          for (final p in _latchedPitches) {
-                                            _loadedSynth?.noteOff(pitch: p);
-                                          }
-                                          _latchedPitches.clear();
-                                        }
-                                      });
-                                    },
-                                  ),
-                                  const Text('Hold continuously'),
-                                ],
-                              ),
-                            ),
-                          ),
-                          if (_latchedPitches.isNotEmpty)
-                            OutlinedButton.icon(
-                              onPressed: () {
-                                for (final p in _latchedPitches) {
-                                  _loadedSynth?.noteOff(pitch: p);
-                                }
-                                setState(_latchedPitches.clear);
-                              },
-                              icon: const Icon(Icons.stop, size: 16),
-                              label: const Text('Stop All Notes'),
-                              style: OutlinedButton.styleFrom(
-                                visualDensity: VisualDensity.compact,
-                              ),
-                            ),
-                        ],
-                      ),
-                    ],
+
                     const Divider(),
                     Builder(
                       builder: (context) {
@@ -772,9 +642,17 @@ class _Vst3PluginRackExampleState extends State<Vst3PluginRackExample> {
               ),
             ),
           ],
-        ],
+          ],
+        ),
       ),
-    );
+      if (_loadedSynth != null)
+        PianoPanel(
+          instrument: _loadedSynth,
+          title: _loadedPluginName,
+        ),
+    ],
+  ),
+);
   }
 }
 
