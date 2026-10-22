@@ -1,3 +1,7 @@
+##### Unreleased
+- feat android: `AndroidAAudioAttributes.voiceCommunication` tags the AAudio stream as `usage = voiceCommunication` / `contentType = speech` (with `lowLatency: false`), so Android's voice processing takes what SoLoud plays as a call's far end: the echo canceller of a voice-communication microphone (e.g. flutter_recorder's `AndroidInputPreset.voiceCommunication`) removes it. For voice chat and voice assistants on a loudspeaker. The native `setAndroidAAudioAttributes` now takes the enum's value (0 unset, 1 media/music, 2 voice communication/speech) instead of a managed flag; 0 and 1 mean what they did.
+- feat android: `SoLoud.instance.setAndroidAAudioAttributes(attributes)` changes the attributes while the engine runs, reopening the output device with them as `changeDevice()` does (voices and sounds kept): play as media normally and as a call's far end during voice chat.
+
 ##### 5.2.1 (13 Oct 2026)
 - fix android: harden native AAC/M4A MediaCodec decoding against buffer overruns, descriptor leaks, and stalls, and fail pending loads on deinit. Thanks to @Colton127 #584
 - perf & fix: direct file decoding for M4A/MP4 across desktop/mobile platforms, guarantee Android sandbox TMPDIR, and improve Windows/Linux error checks #585

@@ -281,12 +281,13 @@ namespace SoLoud
 
     // Android (AAudio) stream attributes applied when low-latency is disabled.
     // Default to media/music (sensible for a media app, and capturable). When
-    // [aManaged] is false the app wants to own AudioAttributes externally (e.g.
-    // via the audio_session plugin), so we leave usage/contentType unset
-    // (`_default`) and let AAudio pick its defaults. Stored in globals so the
-    // SAME choice is re-applied on device changes (see both call sites) rather
-    // than reverting. Defined outside the WITH_MINIAUDIO guard so the setter
-    // symbol always exists for the C bindings to call.
+    // the app wants to own AudioAttributes externally (e.g. via the
+    // audio_session plugin) we leave usage/contentType unset (`_default`) and
+    // let AAudio pick its defaults; for voice chat they are voice
+    // communication/speech. Stored in globals so the SAME choice is re-applied
+    // on device changes (see both call sites) rather than reverting. Defined
+    // outside the WITH_MINIAUDIO guard so the setter symbol always exists for
+    // the C bindings to call.
     static ma_aaudio_usage gMiniaudioAAudioUsage = ma_aaudio_usage_media;
     static ma_aaudio_content_type gMiniaudioAAudioContentType = ma_aaudio_content_type_music;
 
@@ -864,13 +865,24 @@ namespace SoLoud
         gMiniaudioLowLatency.store(aLowLatency, std::memory_order_release);
     }
 
-    void miniaudio_setAndroidAAudioAttributes(bool aManaged)
+    void miniaudio_setAndroidAAudioAttributes(unsigned int aAttributes)
     {
         std::lock_guard<std::recursive_mutex> lock(gDeviceOperationMutex);
-        gMiniaudioAAudioUsage =
-            aManaged ? ma_aaudio_usage_media : ma_aaudio_usage_default;
-        gMiniaudioAAudioContentType =
-            aManaged ? ma_aaudio_content_type_music : ma_aaudio_content_type_default;
+        switch (aAttributes)
+        {
+        case 0: // unmanaged
+            gMiniaudioAAudioUsage = ma_aaudio_usage_default;
+            gMiniaudioAAudioContentType = ma_aaudio_content_type_default;
+            break;
+        case 2: // voice communication
+            gMiniaudioAAudioUsage = ma_aaudio_usage_voice_communication;
+            gMiniaudioAAudioContentType = ma_aaudio_content_type_speech;
+            break;
+        default: // media/music
+            gMiniaudioAAudioUsage = ma_aaudio_usage_media;
+            gMiniaudioAAudioContentType = ma_aaudio_content_type_music;
+            break;
+        }
     }
 
 #if (defined(__linux__) || defined(__LINUX__)) && !defined(__ANDROID__)
@@ -1712,7 +1724,7 @@ namespace SoLoud
         {
             // Re-apply the SAME attributes chosen at init so a device change
             // doesn't silently revert them. If the app opted out
-            // (miniaudio_setAndroidAAudioAttributes(false)), these are `_default`
+            // (miniaudio_setAndroidAAudioAttributes(0)), these are `_default`
             // and miniaudio leaves them unset — so an externally-managed
             // configuration (e.g. via audio_session) is preserved across device
             // changes rather than being forced back to media/music.

@@ -508,8 +508,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   }
 
   @override
-  void setAndroidAAudioAttributes(bool managed) {
-    native.setAndroidAAudioAttributes(managed ? 1 : 0);
+  void setAndroidAAudioAttributes(int attributes) {
+    native.setAndroidAAudioAttributes(attributes);
   }
 
   @override
