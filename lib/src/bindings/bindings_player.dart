@@ -195,13 +195,13 @@ abstract class FlutterSoLoud {
     int renderAheadFrames = 0,
   });
 
-  /// Android only: when [managed] is true (default) SoLoud tags the AAudio
-  /// stream as media/music; when false it leaves usage/contentType unset so the
-  /// app can manage AudioAttributes externally (e.g. via audio_session). Only
-  /// affects the native backends with low-latency disabled; call before
-  /// [initEngine]. No effect on web.
+  /// Android only: how SoLoud tags the AAudio stream, an
+  /// `AndroidAAudioAttributes.value`: 1 media/music (default), 0 left unset so
+  /// the app can manage AudioAttributes externally (e.g. via audio_session),
+  /// 2 voice communication/speech. Only affects the native backends with
+  /// low-latency disabled; call before [initEngine]. No effect on web.
   @mustBeOverridden
-  void setAndroidAAudioAttributes(bool managed);
+  void setAndroidAAudioAttributes(int attributes);
 
   /// Linux only: choose the audio backend ([LinuxAudioBackend.auto],
   /// [LinuxAudioBackend.alsa], [LinuxAudioBackend.pulseAudio], or
