@@ -67,6 +67,11 @@ list(APPEND PLUGIN_SOURCES
   "${SRC_DIR}/audiobuffer/ogg_flac_stream_decoder.cpp"
   "${SRC_DIR}/audiobuffer/aac_stream_decoder.cpp"
   "${SRC_DIR}/audiobuffer/m4a_metadata.cpp"
+  # Each native_stream file compiles to nothing on platforms it doesn't serve.
+  "${SRC_DIR}/native_stream/m4a_gapless.cpp"
+  "${SRC_DIR}/native_stream/native_stream_source.cpp"
+  "${SRC_DIR}/native_stream/native_stream_decoder_apple.cpp"
+  "${SRC_DIR}/native_stream/native_stream_decoder_android.cpp"
   "${SRC_DIR}/filters/filters.cpp"
   "${SRC_DIR}/filters/pitch_shift_filter.cpp"
   "${SRC_DIR}/filters/limiter.cpp"

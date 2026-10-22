@@ -55,6 +55,7 @@ c++ -std=c++17 -O2 -Wall -Wextra -pthread "${SANITIZER[@]}" \
     src/waveform/waveform.cpp \
     src/waveform/miniaudio_libvorbis.cpp \
     src/audiobuffer/*.cpp \
+    src/native_stream/*.cpp \
     src/filters/*.cpp \
     src/mixeroutput/*.cpp \
     src/soloud/src/core/*.cpp \

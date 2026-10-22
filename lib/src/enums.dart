@@ -325,9 +325,16 @@ enum LoadMode {
   /// Keep the file on disk and only load chunks as needed.
   /// More CPU, less memory allocated, seeking lags with MP3s.
   ///
-  /// Formats decoded by the platform's native decoder (M4A, MP4, AAC, AC-3,
-  /// E-AC-3) cannot be streamed from disk: they are fully decoded to PCM in
-  /// memory when loaded, exactly like [memory].
+  /// M4A/MP4 files (AAC, and AC-3/E-AC-3 where the device has a decoder)
+  /// stream from disk on Android, iOS and macOS: loading decodes only the
+  /// first fraction of a second, and each playing voice decodes the rest on
+  /// its own background thread. Seeking is sample-accurate and loops are
+  /// gapless.
+  ///
+  /// Other formats decoded by the platform's native decoder (raw AAC, AC-3
+  /// and E-AC-3 streams, and M4A/MP4 on Windows and Linux) cannot be streamed
+  /// from disk: they are fully decoded to PCM in memory when loaded, exactly
+  /// like [memory].
   disk,
 }
 

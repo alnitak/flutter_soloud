@@ -149,7 +149,9 @@ typedef enum SoundType {
   // this sound is a text to speech
   TYPE_TEXT_TO_SPEECH,
   // this sound is a pull-based streaming buffer
-  TYPE_PULL_BUFFER_STREAM
+  TYPE_PULL_BUFFER_STREAM,
+  // an M4A/MP4 file streamed from disk (NativeStream)
+  TYPE_NATIVE_STREAM
 } SoundType_t;
 
 /// WARNING: Keep these in sync with `FilterType` in
