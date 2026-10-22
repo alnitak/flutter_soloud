@@ -332,7 +332,9 @@ enum LoadMode {
   /// gapless. A seek outside what is already decoded starts playing once its
   /// first frames are decoded (usually a few milliseconds), so no audio after
   /// the seek target is skipped. If decoding falls behind during playback,
-  /// the voice plays silence and stays in time.
+  /// the voice plays silence and stays in time. The file stays open while
+  /// the sound is loaded, so deleting or replacing it meanwhile doesn't
+  /// affect playback. Each playing voice uses its own platform decoder.
   ///
   /// Other formats decoded by the platform's native decoder (raw AAC, AC-3
   /// and E-AC-3 streams, and M4A/MP4 on Windows and Linux) cannot be streamed

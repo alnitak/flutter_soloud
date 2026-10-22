@@ -59,6 +59,7 @@ std::string gAssetDir = "example/assets/audio";
 std::string gAppleEncoded;
 std::string gFfmpegEncoded;
 std::string gAc3InMp4; // optional ffmpeg AC-3 in MP4 (edit list delay 256)
+std::string gNoEditList; // optional ffmpeg AAC in MP4 without an edit list
 
 #define EXPECT(condition, format, ...) do { \
     ++gAssertions; \
@@ -103,12 +104,19 @@ struct SyntheticControl {
     std::atomic<int> opened{0};
     std::atomic<int> destroyed{0};
     std::atomic<int> inRead{0};
+    std::atomic<int> reads{0};
     // When closed, read() blocks until it is opened again.
     std::mutex gateMutex;
     std::condition_variable gateCv;
     bool gateOpen = true;
     // Fail every open after the first (the load) to test a missing file.
     bool failWorkerOpen = false;
+    // read() fails once it reaches this frame (-1: never).
+    std::atomic<long long> failReadAt{-1};
+    // When set, decoders after the first (the load) report this length or
+    // rate, as a file replaced between load and play would.
+    uint64_t workerTotalFrames = 0;
+    float workerSampleRate = 0.0f;
 
     void closeGate() {
         std::lock_guard<std::mutex> lock(gateMutex);
@@ -126,10 +134,11 @@ struct SyntheticControl {
 class SyntheticDecoder : public NativeStreamDecoder {
 public:
     SyntheticDecoder(SyntheticControl &control, uint64_t totalFrames) : mControl(control) {
+        const bool worker = mControl.opened++ > 0;
         mFormat.channels = 2;
-        mFormat.sampleRate = static_cast<float>(kSampleRate);
-        mFormat.totalFrames = totalFrames;
-        mControl.opened++;
+        mFormat.sampleRate = worker && control.workerSampleRate > 0 ? control.workerSampleRate
+                                                                     : static_cast<float>(kSampleRate);
+        mFormat.totalFrames = worker && control.workerTotalFrames > 0 ? control.workerTotalFrames : totalFrames;
     }
     ~SyntheticDecoder() override { mControl.destroyed++; }
 
@@ -141,6 +150,7 @@ public:
     }
 
     long read(float *out, unsigned int maxFrames) override {
+        mControl.reads++;
         mControl.inRead++;
         {
             std::unique_lock<std::mutex> lock(mControl.gateMutex);
@@ -149,6 +159,10 @@ public:
         const int delay = mControl.readDelayUs.load();
         if (delay > 0) std::this_thread::sleep_for(std::chrono::microseconds(delay));
         mControl.inRead--;
+        const long long failAt = mControl.failReadAt.load();
+        if (failAt >= 0 && mPosition >= static_cast<uint64_t>(failAt)) return -1;
+        if (failAt >= 0 && mPosition + maxFrames > static_cast<uint64_t>(failAt))
+            maxFrames = static_cast<unsigned int>(failAt - static_cast<long long>(mPosition));
         unsigned int n = 0;
         for (; n < maxFrames && mPosition < mFormat.totalFrames; n++, mPosition++) {
             out[n * 2] = syntheticValue(mPosition, 0);
@@ -164,7 +178,7 @@ private:
 };
 
 NativeStreamDecoderFactory syntheticFactory(SyntheticControl &control, uint64_t totalFrames) {
-    return [&control, totalFrames](const std::string &, std::string &error) -> std::unique_ptr<NativeStreamDecoder> {
+    return [&control, totalFrames](const NativeStreamFile &, std::string &error) -> std::unique_ptr<NativeStreamDecoder> {
         if (control.failWorkerOpen && control.opened.load() > 0) {
             error = "synthetic open failure";
             return nullptr;
@@ -191,9 +205,9 @@ SoLoud::AudioSourceInstance *voiceOf(SoLoud::Soloud &soloud, SoLoud::handle h) {
     return v >= 0 ? soloud.mVoice[v] : nullptr;
 }
 
-/// Plays [source] at unity gain on both output channels (no pan law, no
-/// start-up volume ramp), so mixer output equals the source PCM.
-SoLoud::handle playUnity(SoLoud::Soloud &soloud, SoLoud::AudioSource &source, float volume = 1.0f) {
+/// Starts [source] paused at unity gain on both output channels (no pan law,
+/// no start-up volume ramp), so mixer output equals the source PCM.
+SoLoud::handle playUnityPaused(SoLoud::Soloud &soloud, SoLoud::AudioSource &source, float volume = 1.0f) {
     SoLoud::handle h = soloud.play(source, volume, 0.0f, true);
     EXPECT(h != 0, "play failed");
     soloud.setPanAbsolute(h, 1.0f, 1.0f);
@@ -205,6 +219,12 @@ SoLoud::handle playUnity(SoLoud::Soloud &soloud, SoLoud::AudioSource &source, fl
         }
     }
     soloud.unlockAudioMutex_internal();
+    return h;
+}
+
+/// Plays [source] at unity gain (see [playUnityPaused]).
+SoLoud::handle playUnity(SoLoud::Soloud &soloud, SoLoud::AudioSource &source, float volume = 1.0f) {
+    SoLoud::handle h = playUnityPaused(soloud, source, volume);
     soloud.setPause(h, false);
     return h;
 }
@@ -773,9 +793,9 @@ void testSyntheticTeardownWhileDecoding() {
         control.closeGate();
         std::vector<SoLoud::handle> voices;
         for (int i = 0; i < 3; i++) voices.push_back(playUnity(soloud, *stream));
+        mixPaced(soloud, voices, kSampleRate / 2, 0); // head cache still plays
         EXPECT(waitFor([&] { return control.inRead.load() == 3; }, 2000), "workers should be decoding (%d)",
                control.inRead.load());
-        mixPaced(soloud, voices, kSampleRate / 2, 0); // head cache still plays
 
         auto start = Clock::now();
         soloud.stop(voices[0]);
@@ -791,6 +811,7 @@ void testSyntheticTeardownWhileDecoding() {
         stream->load("synthetic", syntheticFactory(control2, total));
         control2.closeGate();
         playUnity(soloud, *stream);
+        mixPaced(soloud, {}, kBufferSize, 0);
         EXPECT(waitFor([&] { return control2.inRead.load() == 1; }, 2000), "4th worker should be decoding");
         start = Clock::now();
         soloud.deinit();
@@ -846,6 +867,180 @@ void testSyntheticWorkerFailure() {
         std::vector<float> out = mixPaced(soloud, {h}, kSampleRate);
         expectFrames(out, 0, 0, static_cast<size_t>(kSampleRate * 0.75), "head before failure");
         EXPECT(!soloud.isValidVoiceHandle(h), "voice should end when its worker fails");
+    }
+    soloud.deinit();
+    EXPECT(waitForWorkersToExit(), "workers still running");
+}
+
+/// Mixes until [h] ends (or [maxFrames] are mixed) without pacing; returns
+/// what was mixed.
+std::vector<float> mixUntilEnded(SoLoud::Soloud &soloud, SoLoud::handle h, size_t maxFrames) {
+    std::vector<float> out;
+    std::vector<float> block(kBufferSize * kChannels);
+    while (out.size() / kChannels < maxFrames && soloud.isValidVoiceHandle(h)) {
+        soloud.mix(block.data(), kBufferSize);
+        out.insert(out.end(), block.begin(), block.end());
+    }
+    return out;
+}
+
+/// Counts output frames that hold source frame [frame].
+size_t countFrame(const std::vector<float> &out, long long frame) {
+    size_t n = 0;
+    for (size_t i = 0; i < out.size() / kChannels; i++) {
+        if (frameOf(&out[i * kChannels]) == frame) n++;
+    }
+    return n;
+}
+
+void testSyntheticFailureEndsLoopingVoice() {
+    std::printf("synthetic: a failed worker ends looping voices too, after what it decoded\n");
+    const uint64_t total = 3 * kSampleRate;
+    const uint64_t head = static_cast<uint64_t>(std::ceil(kSampleRate * 0.75));
+    const uint64_t errorAt = 3 * kSampleRate / 2;
+    SoLoud::Soloud soloud;
+    if (!initEngine(soloud)) return;
+    struct Case {
+        const char *what;
+        bool failOpen;
+        bool looping;
+        double loopPoint;
+    };
+    for (const Case &c : {Case{"open failure, looping from the start", true, true, 0.0},
+                          Case{"open failure, loop point past the head", true, true, 2.0},
+                          Case{"read error, looping from the start", false, true, 0.0},
+                          Case{"read error, not looping", false, false, 0.0}}) {
+        SyntheticControl control;
+        control.failWorkerOpen = c.failOpen;
+        if (!c.failOpen) control.failReadAt = static_cast<long long>(errorAt);
+        SoLoud::NativeStream stream;
+        EXPECT(stream.load("synthetic", syntheticFactory(control, total)) == SoLoud::SO_NO_ERROR, "load failed");
+        SoLoud::handle h = playUnity(soloud, stream);
+        if (c.looping) {
+            soloud.setLoopPoint(h, c.loopPoint);
+            soloud.setLooping(h, true);
+        }
+        // Start the worker, and let it fail (after decoding what it can).
+        std::vector<float> block(kBufferSize * kChannels);
+        soloud.mix(block.data(), kBufferSize);
+        EXPECT(waitFor([] { return SoLoud::NativeStream::liveWorkerCount() == 0; }, 3000),
+               "%s: worker should exit", c.what);
+        std::vector<float> out = mixUntilEnded(soloud, h, 4 * total);
+        out.insert(out.begin(), block.begin(), block.end());
+        EXPECT(!soloud.isValidVoiceHandle(h), "%s: the voice should end", c.what);
+        const uint64_t played = c.failOpen ? head : errorAt;
+        expectFrames(out, 0, 0, played, c.what);
+        EXPECT(countFrame(out, 0) == 1, "%s: frame 0 played %zu times", c.what, countFrame(out, 0));
+        bool silentAfter = true;
+        for (size_t i = played; i < out.size() / kChannels; i++) {
+            if (frameOf(&out[i * kChannels]) != -1) silentAfter = false;
+        }
+        EXPECT(silentAfter, "%s: nothing should play after the failure", c.what);
+        soloud.stopAll();
+        EXPECT(waitForWorkersToExit(), "%s: workers still running", c.what);
+    }
+    soloud.deinit();
+}
+
+void testSyntheticWorkerFormatMismatch() {
+    std::printf("synthetic: a worker whose file no longer matches the loaded one fails\n");
+    const uint64_t total = 3 * kSampleRate;
+    const uint64_t head = static_cast<uint64_t>(std::ceil(kSampleRate * 0.75));
+    SoLoud::Soloud soloud;
+    if (!initEngine(soloud)) return;
+    for (int field = 0; field < 2; field++) {
+        SyntheticControl control;
+        if (field == 0) control.workerTotalFrames = total + 1000;
+        else control.workerSampleRate = 48000.0f;
+        const char *what = field == 0 ? "different length" : "different sample rate";
+        SoLoud::NativeStream stream;
+        stream.load("synthetic", syntheticFactory(control, total));
+        SoLoud::handle h = playUnity(soloud, stream);
+        std::vector<float> out(kBufferSize * kChannels);
+        soloud.mix(out.data(), kBufferSize);
+        EXPECT(waitFor([] { return SoLoud::NativeStream::liveWorkerCount() == 0; }, 3000), "%s: worker should exit",
+               what);
+        std::vector<float> rest = mixUntilEnded(soloud, h, 2 * total);
+        out.insert(out.end(), rest.begin(), rest.end());
+        EXPECT(!soloud.isValidVoiceHandle(h), "%s: the voice should end", what);
+        expectFrames(out, 0, 0, head, what);
+    }
+    soloud.deinit();
+    EXPECT(waitForWorkersToExit(), "workers still running");
+}
+
+void testSyntheticIdleWorkerSleeps() {
+    std::printf("synthetic: idle workers sleep instead of polling, and still refill in time\n");
+    SyntheticControl control;
+    const uint64_t total = 20 * kSampleRate;
+    SoLoud::Soloud soloud;
+    if (!initEngine(soloud)) return;
+    {
+        SoLoud::NativeStream stream;
+        stream.load("synthetic", syntheticFactory(control, total));
+        SoLoud::handle h = playUnity(soloud, stream);
+        std::vector<float> out;
+        std::vector<float> block(kBufferSize * kChannels);
+        soloud.mix(block.data(), kBufferSize);
+        out.insert(out.end(), block.begin(), block.end());
+        EXPECT(waitFor([&] { return buffered(soloud, h) >= kSampleRate; }, 3000), "ring should fill");
+        // A full ring: the worker waits, and wakes only on its long timeout
+        // (it used to poll every 20 ms: ~50 wakeups here).
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        const int readsBefore = control.reads.load();
+        const uint64_t wakeupsBefore = SoLoud::NativeStream::workerWakeupCount();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+        EXPECT(control.reads.load() == readsBefore, "an idle worker should not decode (%d reads)",
+               control.reads.load() - readsBefore);
+        EXPECT(SoLoud::NativeStream::workerWakeupCount() - wakeupsBefore <= 6, "idle worker woke %llu times in 1 s",
+               static_cast<unsigned long long>(SoLoud::NativeStream::workerWakeupCount() - wakeupsBefore));
+
+        // Real-time-ish playback: the voice wakes the worker as it drains,
+        // so 4 s play with no underrun.
+        const uint64_t underrunsBefore = SoLoud::NativeStream::underrunFrameCount();
+        const auto start = Clock::now();
+        for (size_t done = 0; done < 4 * kSampleRate; done += kBufferSize) {
+            soloud.mix(block.data(), kBufferSize);
+            out.insert(out.end(), block.begin(), block.end());
+            // ~4x real time.
+            const double due = 1000.0 * (done + kBufferSize) / kSampleRate / 4;
+            const double now = msSince(start);
+            if (due > now) std::this_thread::sleep_for(std::chrono::microseconds(static_cast<long>((due - now) * 1000)));
+        }
+        EXPECT(SoLoud::NativeStream::underrunFrameCount() == underrunsBefore, "underran %llu frames",
+               static_cast<unsigned long long>(SoLoud::NativeStream::underrunFrameCount() - underrunsBefore));
+        expectFrames(out, 0, 0, out.size() / kChannels, "paced playback");
+    }
+    soloud.deinit();
+    EXPECT(waitForWorkersToExit(), "workers still running");
+}
+
+void testSyntheticPausedVoiceHoldsNoDecoder() {
+    std::printf("synthetic: a voice opens its decoder only once it plays or seeks\n");
+    SyntheticControl control;
+    const uint64_t total = 5 * kSampleRate;
+    SoLoud::Soloud soloud;
+    if (!initEngine(soloud)) return;
+    {
+        SoLoud::NativeStream stream;
+        stream.load("synthetic", syntheticFactory(control, total));
+        SoLoud::handle paused = playUnityPaused(soloud, stream);
+        SoLoud::handle seeked = playUnityPaused(soloud, stream);
+        std::vector<float> block(kBufferSize * kChannels);
+        soloud.mix(block.data(), kBufferSize);
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        EXPECT(control.opened == 1, "paused voices opened %d decoders", control.opened.load() - 1);
+
+        // A seek starts decoding (to have the target ready on unpause).
+        soloud.seek(seeked, 2.0);
+        EXPECT(waitFor([&] { return control.opened == 2; }, 2000), "a seek should open the decoder");
+        EXPECT(waitFor([&] { return buffered(soloud, seeked) >= kSampleRate / 2; }, 3000), "seek target buffered");
+
+        // So does playing; the head cache covers the codec start-up.
+        soloud.setPause(paused, false);
+        std::vector<float> out = mixPaced(soloud, {paused}, kSampleRate);
+        EXPECT(control.opened == 3, "the playing voice should open its decoder (%d)", control.opened.load() - 1);
+        expectFrames(out, 0, 0, kSampleRate, "a voice that started paused");
     }
     soloud.deinit();
     EXPECT(waitForWorkersToExit(), "workers still running");
@@ -1102,6 +1297,118 @@ void testStreamingMatchesFullDecode(const std::string &path, double tolerance) {
     EXPECT(waitForWorkersToExit(), "workers still running");
 }
 
+bool copyFile(const std::string &from, const std::string &to) {
+    FILE *in = std::fopen(from.c_str(), "rb");
+    if (!in) return false;
+    FILE *out = std::fopen(to.c_str(), "wb");
+    if (!out) {
+        std::fclose(in);
+        return false;
+    }
+    char buffer[65536];
+    size_t n;
+    bool ok = true;
+    while ((n = std::fread(buffer, 1, sizeof(buffer), in)) > 0) ok = ok && std::fwrite(buffer, 1, n, out) == n;
+    std::fclose(in);
+    return std::fclose(out) == 0 && ok;
+}
+
+/// Plays [voices] voices of [stream] at once, each at 1/[voices] gain, and
+/// checks their sum against the full decode.
+double mixVoicesAgainst(SoLoud::Soloud &soloud, SoLoud::NativeStream &stream, const FullDecode &full, int voices,
+                        uint64_t frames) {
+    std::vector<SoLoud::handle> handles;
+    for (int i = 0; i < voices; i++) handles.push_back(playUnity(soloud, stream, 1.0f / voices));
+    std::vector<float> out = mixPaced(soloud, handles, frames);
+    double worst = 0;
+    for (uint64_t i = 0; i < frames; i++)
+        for (unsigned int c = 0; c < kChannels; c++)
+            worst = std::max(worst, double(std::fabs(out[i * kChannels + c] -
+                                                     full.interleaved[i * full.channels + (full.channels == 1 ? 0 : c)])));
+    for (SoLoud::handle h : handles) soloud.stop(h);
+    return worst;
+}
+
+void testPinnedFile(const std::string &path, const std::string &replacement, double tolerance) {
+    std::printf("NativeStream: voices keep decoding the loaded file after its path is deleted and replaced\n");
+    FullDecode full;
+    if (!fullDecode(path, full) || full.rate != kSampleRate) {
+        EXPECT(false, "needs a %u Hz full decode of %s", kSampleRate, path.c_str());
+        return;
+    }
+    const char *tmpDir = std::getenv("TMPDIR");
+    std::string pinned = std::string(tmpDir && *tmpDir ? tmpDir : "/tmp") + "/native_stream_pinned.m4a";
+    EXPECT(copyFile(path, pinned), "copy to %s failed", pinned.c_str());
+
+    SoLoud::Soloud soloud;
+    if (!initEngine(soloud)) return;
+    {
+        SoLoud::NativeStream stream;
+        EXPECT(stream.load(pinned.c_str()) == SoLoud::SO_NO_ERROR, "load failed");
+        // Cache eviction, then a different file under the same name.
+        EXPECT(std::remove(pinned.c_str()) == 0, "delete failed");
+        EXPECT(copyFile(replacement, pinned), "replace failed");
+
+        // Two voices decode the pinned file at once.
+        const double d = mixVoicesAgainst(soloud, stream, full, 2, std::min<uint64_t>(full.frames, 3 * kSampleRate));
+        EXPECT(d < tolerance, "playback differs from the loaded file by %g", d);
+    }
+    soloud.deinit();
+    EXPECT(waitForWorkersToExit(), "workers still running");
+    std::remove(pinned.c_str());
+}
+
+void testManyVoices(const std::string &path, int voices, double tolerance) {
+    std::printf("NativeStream: %d voices of %s decode at once\n", voices, path.c_str());
+    FullDecode full;
+    if (!fullDecode(path, full) || full.rate != kSampleRate) {
+        EXPECT(false, "needs a %u Hz full decode of %s", kSampleRate, path.c_str());
+        return;
+    }
+    SoLoud::Soloud soloud;
+    if (!initEngine(soloud)) return;
+    {
+        SoLoud::NativeStream stream;
+        EXPECT(stream.load(path.c_str()) == SoLoud::SO_NO_ERROR, "load failed");
+        const uint64_t underruns = SoLoud::NativeStream::underrunFrameCount();
+        const auto start = Clock::now();
+        const double d = mixVoicesAgainst(soloud, stream, full, voices, std::min<uint64_t>(full.frames, 3 * kSampleRate));
+        std::printf("  %.0f ms\n", msSince(start));
+        EXPECT(d < tolerance, "%d voices differ from the full decode by %g", voices, d);
+        EXPECT(SoLoud::NativeStream::underrunFrameCount() == underruns, "%d voices underran %llu frames", voices,
+               static_cast<unsigned long long>(SoLoud::NativeStream::underrunFrameCount() - underruns));
+    }
+    soloud.deinit();
+    EXPECT(waitForWorkersToExit(), "workers still running");
+}
+
+/// A file without an edit list or iTunSMPB: the stream is the container's
+/// media duration, not the extractor's rounded duration.
+void testNoGaplessMetadata(const std::string &path) {
+    std::printf("backend: a file without gapless metadata streams its media duration\n");
+    M4aGaplessInfo gapless;
+    uint64_t delay = 0, valid = 0;
+    EXPECT(parseM4aGapless(path, gapless) && !gapless.hasEdit && !gapless.hasSmpb, "%s has gapless metadata",
+           path.c_str());
+    std::string error;
+    auto decoder = openPlatformNativeStreamDecoder(path, error);
+    EXPECT(decoder != nullptr, "open failed: %s", error.c_str());
+    if (!decoder) return;
+    EXPECT(!gapless.resolve(decoder->format().sampleRate, delay, valid) && delay == 0 && valid > 0,
+           "resolve should give the media duration");
+#if defined(__ANDROID__)
+    // Apple's decoder trims the AAC priming it assumes for such files itself.
+    EXPECT(decoder->format().totalFrames == valid, "length %llu, media duration %llu",
+           (unsigned long long)decoder->format().totalFrames, (unsigned long long)valid);
+#endif
+    std::vector<float> buf(4096 * decoder->format().channels);
+    uint64_t total = 0;
+    long got;
+    while ((got = decoder->read(buf.data(), 4096)) > 0) total += static_cast<uint64_t>(got);
+    EXPECT(got == 0 && total == decoder->format().totalFrames, "decoded %llu of %llu frames (last read %ld)",
+           (unsigned long long)total, (unsigned long long)decoder->format().totalFrames, got);
+}
+
 void testAc3InMp4(const std::string &path) {
     std::printf("backend: AC-3 in MP4 trims the edit list delay\n");
     std::string error;
@@ -1156,6 +1463,7 @@ int main(int argc, char **argv) {
     if (argc > 2) gAppleEncoded = argv[2];
     if (argc > 3) gFfmpegEncoded = argv[3];
     if (argc > 4) gAc3InMp4 = argv[4];
+    if (argc > 5) gNoEditList = argv[5];
 
     testGaplessParser();
     testSyntheticPlayback();
@@ -1169,6 +1477,10 @@ int main(int argc, char **argv) {
     testSyntheticHistoryBounds();
     testSyntheticTeardownWhileDecoding();
     testSyntheticWorkerFailure();
+    testSyntheticFailureEndsLoopingVoice();
+    testSyntheticWorkerFormatMismatch();
+    testSyntheticIdleWorkerSleeps();
+    testSyntheticPausedVoiceHoldsNoDecoder();
     testShortSoundHasNoWorker();
 #if NATIVE_STREAM_SUPPORTED
     constexpr double kExact = 1e-6;
@@ -1183,6 +1495,9 @@ int main(int argc, char **argv) {
         testStreamingMatchesFullDecode(file, kExact);
     }
     if (!gAc3InMp4.empty()) testAc3InMp4(gAc3InMp4);
+    if (!gNoEditList.empty()) testNoGaplessMetadata(gNoEditList);
+    testPinnedFile(gAssetDir + "/sample-AAC.m4a", gAssetDir + "/aac_lc_mono_44100.m4a", kNoiseSubstitution);
+    testManyVoices(gAssetDir + "/sample-AAC.m4a", 16, kNoiseSubstitution);
 #else
     std::printf("(no streaming backend on this platform: backend tests skipped)\n");
 #endif

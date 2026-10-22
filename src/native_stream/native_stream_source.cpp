@@ -4,15 +4,29 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
-#include <condition_variable>
 #include <cstring>
 #include <mutex>
 #include <system_error>
 #include <thread>
 #include <vector>
 
+#if !defined(_WIN32)
+#include <fcntl.h>
+#include <unistd.h>
+#endif
+
+#if defined(__APPLE__)
+#include <dispatch/dispatch.h>
+#elif !defined(_WIN32)
+#include <cerrno>
+#include <ctime>
+#include <semaphore.h>
+#else
+#include <condition_variable>
+#endif
+
 #if !NATIVE_STREAM_SUPPORTED
-std::unique_ptr<NativeStreamDecoder> openPlatformNativeStreamDecoder(const std::string &, std::string &error)
+std::unique_ptr<NativeStreamDecoder> openPlatformNativeStreamDecoder(const NativeStreamFile &, std::string &error)
 {
 	error = "Streaming M4A/MP4 decoding is not available on this platform";
 	return nullptr;
@@ -40,8 +54,10 @@ namespace SoLoud
 		// going-forward behavior.
 		constexpr double kHistorySpeedMargin = 2.0;
 		// How long an idle worker (ring full, paused voice, end of stream)
-		// sleeps before checking again. A voice's new request wakes it early.
-		constexpr auto kIdleWait = std::chrono::milliseconds(20);
+		// sleeps before checking again. Its voice wakes it for a new request,
+		// a loop change, or the ring draining below half, so this is only a
+		// safety net.
+		constexpr auto kIdleWait = std::chrono::milliseconds(250);
 
 		// A request is a frame and a generation packed in one atomic word,
 		// so the worker always reads a consistent pair.
@@ -51,19 +67,101 @@ namespace SoLoud
 
 		std::atomic<int> gLiveWorkers{0};
 		std::atomic<uint64_t> gUnderrunFrames{0};
+		std::atomic<uint64_t> gWorkerWakeups{0};
 
 		/// Immutable after [NativeStream::load]; shared with instances and
 		/// their workers, so it outlives the source if a worker is still
 		/// finishing.
 		struct Shared
 		{
-			std::string path;
+			~Shared()
+			{
+#if !defined(_WIN32)
+				if (file.fd >= 0)
+					::close(file.fd);
+#endif
+			}
+
+			// The descriptor is opened at load and closed with the last
+			// voice, so every voice reads the same file even if its path is
+			// deleted or replaced meanwhile (cache eviction).
+			NativeStreamFile file;
 			NativeStreamDecoderFactory factory;
 			unsigned int channels = 0;
 			float sampleRate = 0;
 			uint64_t totalFrames = 0;
 			uint64_t headFrames = 0;
 			std::vector<float> head; // interleaved
+		};
+
+		/// Wakes a worker from its voice. post() never blocks or takes a lock,
+		/// so the audio thread can call it, and a post made before the worker
+		/// waits is not lost (a counting semaphore, unlike a condition
+		/// variable notified without its mutex).
+		class WakeSignal
+		{
+		public:
+#if defined(__APPLE__)
+			WakeSignal() : mSemaphore(dispatch_semaphore_create(0)) {}
+			~WakeSignal() { dispatch_release(mSemaphore); }
+			void post() { dispatch_semaphore_signal(mSemaphore); }
+			void wait(std::chrono::milliseconds aTimeout)
+			{
+				const int64_t ns = std::chrono::duration_cast<std::chrono::nanoseconds>(aTimeout).count();
+				if (dispatch_semaphore_wait(mSemaphore, dispatch_time(DISPATCH_TIME_NOW, ns)) == 0)
+				{
+					// Several posts wake the worker once: it rechecks everything.
+					while (dispatch_semaphore_wait(mSemaphore, DISPATCH_TIME_NOW) == 0) {}
+				}
+			}
+
+		private:
+			dispatch_semaphore_t mSemaphore;
+#elif !defined(_WIN32)
+			WakeSignal() { sem_init(&mSemaphore, 0, 0); }
+			~WakeSignal() { sem_destroy(&mSemaphore); }
+			void post() { sem_post(&mSemaphore); }
+			void wait(std::chrono::milliseconds aTimeout)
+			{
+				timespec deadline;
+				clock_gettime(CLOCK_REALTIME, &deadline);
+				const long long ns = deadline.tv_nsec +
+					std::chrono::duration_cast<std::chrono::nanoseconds>(aTimeout).count();
+				deadline.tv_sec += time_t(ns / 1000000000);
+				deadline.tv_nsec = long(ns % 1000000000);
+				int r;
+				while ((r = sem_timedwait(&mSemaphore, &deadline)) != 0 && errno == EINTR) {}
+				if (r == 0)
+				{
+					// Several posts wake the worker once: it rechecks everything.
+					while (sem_trywait(&mSemaphore) == 0) {}
+				}
+			}
+
+		private:
+			sem_t mSemaphore;
+#else
+			// No streaming backend here; only the synthetic tests use workers.
+			void post()
+			{
+				{
+					std::lock_guard<std::mutex> lock(mMutex);
+					mPosted = true;
+				}
+				mCondition.notify_one();
+			}
+			void wait(std::chrono::milliseconds aTimeout)
+			{
+				std::unique_lock<std::mutex> lock(mMutex);
+				mCondition.wait_for(lock, aTimeout, [&] { return mPosted; });
+				mPosted = false;
+			}
+
+		private:
+			std::mutex mMutex;
+			std::condition_variable mCondition;
+			bool mPosted = false;
+#endif
 		};
 
 		/// Where a run of contiguous frames starts in the ring. A run begins
@@ -103,11 +201,14 @@ namespace SoLoud
 			std::atomic<uint64_t> loopEnd{0}; // 0: the natural end
 			std::atomic<bool> stop{false};
 			std::atomic<bool> failed{false};
+			// Set when the voice first plays or seeks: only then does the
+			// worker open its decoder, so voices that stay paused hold no
+			// codec.
+			std::atomic<bool> active{false};
 
-			std::mutex wakeMutex;
-			std::condition_variable wake;
+			WakeSignal wake;
 
-			void notify() { wake.notify_one(); }
+			void notify() { wake.post(); }
 		};
 
 		/// A voice's consumer state at a mix checkpoint. The frames after it
@@ -137,9 +238,21 @@ namespace SoLoud
 			Channel &ch = *aChannel;
 			const unsigned int channels = shared.channels;
 
+			while (!ch.stop.load(std::memory_order_acquire) && !ch.active.load(std::memory_order_acquire))
+				ch.wake.wait(kIdleWait);
+			if (ch.stop.load(std::memory_order_acquire))
+			{
+				gLiveWorkers.fetch_sub(1);
+				return;
+			}
+
+			// The decoder must produce exactly what the source loaded: the head
+			// cache and the ring are played as one stream.
 			std::string error;
-			std::unique_ptr<NativeStreamDecoder> decoder = shared.factory(shared.path, error);
-			if (!decoder || decoder->format().channels != channels)
+			std::unique_ptr<NativeStreamDecoder> decoder = shared.factory(shared.file, error);
+			if (!decoder || decoder->format().channels != channels ||
+				decoder->format().sampleRate != shared.sampleRate ||
+				decoder->format().totalFrames != shared.totalFrames)
 			{
 				ch.failed.store(true, std::memory_order_release);
 				decoder.reset();
@@ -157,12 +270,11 @@ namespace SoLoud
 			Marker pendingEnd;
 			bool needEnd = false;
 
+			// A post made since the loop last looked at the voice's state makes
+			// this return at once.
 			auto waitForWork = [&] {
-				std::unique_lock<std::mutex> lock(ch.wakeMutex);
-				ch.wake.wait_for(lock, kIdleWait, [&] {
-					return ch.stop.load(std::memory_order_acquire) ||
-						ch.request.load(std::memory_order_acquire) != request;
-				});
+				ch.wake.wait(kIdleWait);
+				gWorkerWakeups.fetch_add(1, std::memory_order_relaxed);
 			};
 			auto pushMarker = [&](const Marker &aMarker) -> bool {
 				const uint64_t w = ch.markerWrite.load(std::memory_order_relaxed);
@@ -260,10 +372,17 @@ namespace SoLoud
 				}
 
 				const long got = decoder->read(chunk.data(), unsigned(want));
-				if (got <= 0)
+				if (got < 0)
 				{
-					// End of the decodable stream (or a decoder error) before the
-					// container's length: the stream ends here.
+					// A decoder error ends the voice (once it played what was
+					// decoded), rather than passing for the end of the file:
+					// a looping voice would otherwise loop up to the error.
+					ch.failed.store(true, std::memory_order_release);
+					break;
+				}
+				if (got == 0)
+				{
+					// The decodable stream ends before the container's length.
 					streamEnd = position;
 					continue;
 				}
@@ -329,6 +448,15 @@ namespace SoLoud
 		}
 	}
 
+	void NativeStreamInstance::activate()
+	{
+		if (mActive || !mChannel)
+			return;
+		mActive = true;
+		mChannel->active.store(true, std::memory_order_release);
+		mChannel->notify();
+	}
+
 	void NativeStreamInstance::publishLoopHints()
 	{
 		if (!mChannel)
@@ -346,9 +474,36 @@ namespace SoLoud
 			else if (mLoopEndPoint > 0)
 				loopEnd = uint64_t(std::ceil(mLoopEndPoint * mBaseSamplerate));
 		}
-		mChannel->loopStart.store(loopStart, std::memory_order_relaxed);
-		mChannel->loopEnd.store(loopEnd, std::memory_order_relaxed);
-		mChannel->looping.store(looping, std::memory_order_relaxed);
+		Channel &ch = *mChannel;
+		if (ch.looping.load(std::memory_order_relaxed) == looping &&
+			ch.loopStart.load(std::memory_order_relaxed) == loopStart &&
+			ch.loopEnd.load(std::memory_order_relaxed) == loopEnd)
+			return;
+		ch.loopStart.store(loopStart, std::memory_order_relaxed);
+		ch.loopEnd.store(loopEnd, std::memory_order_relaxed);
+		ch.looping.store(looping, std::memory_order_relaxed);
+		// A worker idling at the end of the stream has to wrap now.
+		ch.notify();
+	}
+
+	// Wakes the worker while the read-ahead is below half the ring, once per
+	// chunk's worth of frames played, so it refills without polling.
+	void NativeStreamInstance::kickIfLow(unsigned int aFrames)
+	{
+		Channel &ch = *mChannel;
+		const uint64_t ahead = ch.writePos.load(std::memory_order_acquire) - mReadPos;
+		if (ahead >= (ch.capacity - mHistoryFrames) / 2)
+		{
+			mKickDue = 0;
+			return;
+		}
+		if (mKickDue > aFrames)
+		{
+			mKickDue -= aFrames;
+			return;
+		}
+		mKickDue = kChunkFrames;
+		ch.notify();
 	}
 
 	void NativeStreamInstance::requestFrame(uint64_t aFrame)
@@ -518,10 +673,14 @@ namespace SoLoud
 
 	unsigned int NativeStreamInstance::getAudio(float *aBuffer, unsigned int aSamplesToRead, unsigned int aBufferSize)
 	{
-		if (!mShared)
+		if (!mShared || mFailed)
+		{
+			mEnded = true;
 			return 0;
+		}
 		const Shared &shared = *mShared;
 		const unsigned int channels = shared.channels;
+		activate();
 		publishLoopHints();
 
 		unsigned int out = 0;
@@ -551,18 +710,30 @@ namespace SoLoud
 				continue;
 			}
 
-			if (!mChannel || mChannel->failed.load(std::memory_order_acquire))
+			if (!mChannel)
 			{
 				mEnded = true;
 				break;
 			}
 
+			const bool failed = mChannel->failed.load(std::memory_order_acquire);
 			bool endOfStream = false;
 			bool stale = false;
 			const uint64_t available = locate(mFrame, endOfStream, stale);
 			if (endOfStream)
 			{
 				mEnded = true;
+				break;
+			}
+			if (failed && available == 0)
+			{
+				// The worker failed and everything it decoded has played. End
+				// the voice for good: a looping voice would otherwise be sought
+				// back to its loop start and replay the head cache, or stay
+				// silent, forever.
+				mFailed = true;
+				mEnded = true;
+				mFlags &= ~LOOPING;
 				break;
 			}
 			if (stale)
@@ -606,6 +777,8 @@ namespace SoLoud
 			out += n;
 			mFrame += n;
 		}
+		if (mChannel && !mFailed)
+			kickIfLow(out);
 		return out;
 	}
 
@@ -613,6 +786,13 @@ namespace SoLoud
 	{
 		if (!mShared)
 			return INVALID_PARAMETER;
+		if (mFailed)
+		{
+			// Nothing more can be decoded; this also stops a failed looping
+			// voice from being sought back to its loop start.
+			mEnded = true;
+			return SO_NO_ERROR;
+		}
 		const Shared &shared = *mShared;
 		// The epsilon undoes the rounding of frame -> seconds conversions
 		// (loop start offsets arrive as frame / rate), which would otherwise
@@ -627,6 +807,8 @@ namespace SoLoud
 		mStreamPosition = aSeconds;
 		mHeadActive = frame < shared.headFrames;
 
+		// A seek is a sign the voice will play soon: start decoding.
+		activate();
 		// The worker needs the loop settings before the new request, or a
 		// loop enabled together with this seek is only noticed after the
 		// worker decoded past its end.
@@ -722,7 +904,9 @@ namespace SoLoud
 
 	result NativeStream::load(const char *aFilename)
 	{
-		return load(aFilename, openPlatformNativeStreamDecoder);
+		return load(aFilename, [](const NativeStreamFile &aFile, std::string &aError) {
+			return openPlatformNativeStreamDecoder(aFile, aError);
+		});
 	}
 
 	result NativeStream::load(const char *aFilename, NativeStreamDecoderFactory aFactory)
@@ -733,11 +917,14 @@ namespace SoLoud
 			return INVALID_PARAMETER;
 
 		auto shared = std::make_shared<Shared>();
-		shared->path = aFilename;
+		shared->file.path = aFilename;
+#if !defined(_WIN32)
+		shared->file.fd = ::open(aFilename, O_RDONLY | O_CLOEXEC);
+#endif
 		shared->factory = std::move(aFactory);
 
 		std::string error;
-		std::unique_ptr<NativeStreamDecoder> decoder = shared->factory(shared->path, error);
+		std::unique_ptr<NativeStreamDecoder> decoder = shared->factory(shared->file, error);
 		if (!decoder)
 			return FILE_LOAD_FAILED;
 		const NativeStreamFormat format = decoder->format();
@@ -817,5 +1004,10 @@ namespace SoLoud
 	uint64_t NativeStream::underrunFrameCount()
 	{
 		return gUnderrunFrames.load(std::memory_order_relaxed);
+	}
+
+	uint64_t NativeStream::workerWakeupCount()
+	{
+		return gWorkerWakeups.load(std::memory_order_relaxed);
 	}
 }

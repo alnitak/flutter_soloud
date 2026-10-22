@@ -62,8 +62,14 @@ public:
         if (mFd >= 0) close(mFd);
     }
 
-    bool open(const std::string &path, std::string &error) {
-        mFd = ::open(path.c_str(), O_RDONLY | O_CLOEXEC);
+    bool open(const NativeStreamFile &file, std::string &error) {
+        // Reopening the pinned descriptor through /proc gives this decoder
+        // its own file offset on the same file, even if the path was deleted
+        // or replaced. The extractor reads with the offset, so sharing the
+        // pinned descriptor itself between voices would race.
+        const std::string &path = file.path;
+        const std::string source = file.fd >= 0 ? "/proc/self/fd/" + std::to_string(file.fd) : path;
+        mFd = ::open(source.c_str(), O_RDONLY | O_CLOEXEC);
         if (mFd < 0) {
             error = "Cannot open file: " + path;
             return false;
@@ -75,7 +81,7 @@ public:
         }
 
         M4aGaplessInfo gapless;
-        if (!parseM4aGapless(path, gapless)) {
+        if (!parseM4aGaplessFd(mFd, gapless)) {
             error = "Not an MP4 container with an audio track: " + path;
             return false;
         }
@@ -147,9 +153,12 @@ public:
             return false;
         }
 
+        // Without gapless metadata resolve() still gives the media duration
+        // (and no delay); the extractor's rounded duration is the fallback.
         uint64_t delay = 0;
         uint64_t valid = 0;
-        if (!gapless.resolve(mFormat.sampleRate, delay, valid) || valid == 0) {
+        gapless.resolve(mFormat.sampleRate, delay, valid);
+        if (valid == 0) {
             valid = static_cast<uint64_t>(std::llround(durationUs * static_cast<double>(mFormat.sampleRate) / 1e6));
         }
         mDelayFrames = static_cast<int64_t>(delay);
@@ -385,10 +394,10 @@ private:
 
 } // namespace
 
-std::unique_ptr<NativeStreamDecoder> openPlatformNativeStreamDecoder(const std::string &path,
+std::unique_ptr<NativeStreamDecoder> openPlatformNativeStreamDecoder(const NativeStreamFile &file,
                                                                      std::string &error) {
     auto decoder = std::make_unique<AndroidStreamDecoder>();
-    if (!decoder->open(path, error)) {
+    if (!decoder->open(file, error)) {
         LOGE("%s", error.c_str());
         return nullptr;
     }

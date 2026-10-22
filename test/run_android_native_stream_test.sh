@@ -58,6 +58,7 @@ FILES=(example/assets/audio/sample-AAC.m4a example/assets/audio/aac_lc_mono_4410
 APPLE_ENCODED=""
 FFMPEG_ENCODED=""
 AC3_IN_MP4=""
+NO_EDIT_LIST=""
 if command -v afconvert > /dev/null; then
     afconvert -f m4af -d aac -b 128000 example/assets/audio/sample-WAV.wav "$WORK_DIR/apple_encoded.m4a"
     FILES+=("$WORK_DIR/apple_encoded.m4a")
@@ -71,6 +72,10 @@ if command -v ffmpeg > /dev/null; then
     ffmpeg -loglevel error -y -i example/assets/audio/sample-WAV.wav -c:a ac3 "$WORK_DIR/ac3.mp4"
     FILES+=("$WORK_DIR/ac3.mp4")
     AC3_IN_MP4=ac3.mp4
+    ffmpeg -loglevel error -y -i example/assets/audio/sample-WAV.wav -c:a aac -b:a 128k -use_editlist 0 \
+        "$WORK_DIR/no_edit_list.m4a"
+    FILES+=("$WORK_DIR/no_edit_list.m4a")
+    NO_EDIT_LIST=no_edit_list.m4a
 fi
 
 DEVICE_DIR=/data/local/tmp/soloud_native_stream_test
@@ -79,4 +84,4 @@ DEVICE_DIR=/data/local/tmp/soloud_native_stream_test
 "${ADB[@]}" push "${FILES[@]}" "$DEVICE_DIR/" > /dev/null
 "${ADB[@]}" shell "cd $DEVICE_DIR && TMPDIR=$DEVICE_DIR/tmp ./native_stream_test $DEVICE_DIR \
     '${APPLE_ENCODED:+$DEVICE_DIR/$APPLE_ENCODED}' '${FFMPEG_ENCODED:+$DEVICE_DIR/$FFMPEG_ENCODED}' \
-    '${AC3_IN_MP4:+$DEVICE_DIR/$AC3_IN_MP4}'"
+    '${AC3_IN_MP4:+$DEVICE_DIR/$AC3_IN_MP4}' '${NO_EDIT_LIST:+$DEVICE_DIR/$NO_EDIT_LIST}'"

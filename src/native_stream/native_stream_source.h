@@ -19,9 +19,10 @@ namespace SoLoud
 	}
 
 	/// One voice of a [NativeStream]. A worker thread owned by this instance
-	/// opens its own decoder on the file and keeps a ~1 s PCM ring filled;
-	/// [getAudio] and [seek] only read the ring and post requests, so the
-	/// audio thread never touches the codec or the file.
+	/// opens its own decoder on the file once the voice first plays or seeks
+	/// (a voice that stays paused holds no codec), and keeps a ~1 s PCM ring
+	/// filled; [getAudio] and [seek] only read the ring and post requests, so
+	/// the audio thread never touches the codec or the file.
 	///
 	/// The first frames of the file come from the source's head cache, which
 	/// covers the worker's start-up and loops back to the start.
@@ -63,8 +64,10 @@ namespace SoLoud
 
 	private:
 		void publishLoopHints();
+		void activate();
 		void requestFrame(uint64_t aFrame);
 		void release();
+		void kickIfLow(unsigned int aFrames);
 		bool findBuffered(uint64_t aFrame, uint64_t &aAvailable, bool &aComing) const;
 		bool isBuffered(uint64_t aFrame) const;
 		uint64_t locate(uint64_t aFrame, bool &aEndOfStream, bool &aStale);
@@ -82,6 +85,9 @@ namespace SoLoud
 		uint64_t mReadPos = 0;     // absolute ring read position
 		bool mWaiting = true;      // no frame of the current request played yet
 		uint64_t mWaitFrames = 0;  // frames held back while waiting
+		bool mFailed = false;      // the worker failed and its frames are played
+		bool mActive = false;      // the worker was told to open its decoder
+		uint64_t mKickDue = 0;     // frames until the next worker wakeup
 
 		// Ring positions and markers before these may be overwritten by the
 		// worker. They trail the read position by up to mHistoryFrames so
@@ -102,6 +108,9 @@ namespace SoLoud
 
 		/// Opens [aFilename] with the platform decoder backend. Blocks on file
 		/// I/O and codec start-up, so call it outside the engine's locks.
+		/// The file stays open until the source and its voices are gone, and
+		/// every voice decodes that same file, even if [aFilename] is deleted
+		/// or replaced in the meantime.
 		result load(const char *aFilename);
 		/// Same as [load] with a custom decoder backend (used by tests).
 		result load(const char *aFilename, NativeStreamDecoderFactory aFactory);
@@ -115,6 +124,8 @@ namespace SoLoud
 		static int liveWorkerCount();
 		/// Frames output as silence because the worker fell behind.
 		static uint64_t underrunFrameCount();
+		/// Times a worker woke from waiting for work (test/diagnostics only).
+		static uint64_t workerWakeupCount();
 
 		std::shared_ptr<const native_stream_detail::Shared> mShared;
 	};

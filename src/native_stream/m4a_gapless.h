@@ -48,6 +48,12 @@ bool parseM4aGapless(const std::string &path, M4aGaplessInfo &out);
 /// Same as [parseM4aGapless] for an already-open stdio file.
 bool parseM4aGapless(FILE *file, M4aGaplessInfo &out);
 
+#if !defined(_WIN32)
+/// Same as [parseM4aGapless] for a file descriptor. Reads with pread(), so
+/// the descriptor's file offset is neither used nor moved.
+bool parseM4aGaplessFd(int fd, M4aGaplessInfo &out);
+#endif
+
 /// Parses an in-memory `moov` box payload (without its 8-byte header).
 bool parseM4aGaplessMoov(const unsigned char *data, size_t size, M4aGaplessInfo &out);
 

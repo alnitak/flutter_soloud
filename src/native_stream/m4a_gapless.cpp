@@ -10,6 +10,9 @@
 #define ftello _ftelli64
 using FileOffset = long long;
 #else
+#include <cerrno>
+#include <sys/stat.h>
+#include <unistd.h>
 using FileOffset = off_t;
 #endif
 
@@ -237,26 +240,26 @@ bool parseM4aGaplessMoov(const unsigned char *data, size_t size, M4aGaplessInfo 
     return out.hasAudioTrack;
 }
 
-bool parseM4aGapless(FILE *file, M4aGaplessInfo &out) {
+namespace {
+
+/// Walks the top-level boxes of a [fileSize]-byte file through [readAt]
+/// (offset, buffer, length -> whether all of it was read) and parses `moov`.
+template <typename ReadAt>
+bool parseTopLevel(uint64_t fileSize, ReadAt readAt, M4aGaplessInfo &out) {
     out = M4aGaplessInfo();
-    if (!file) return false;
-    if (fseeko(file, 0, SEEK_END) != 0) return false;
-    const FileOffset end = ftello(file);
-    if (end <= 0) return false;
-    const uint64_t fileSize = static_cast<uint64_t>(end);
+    if (fileSize == 0) return false;
     uint64_t pos = 0;
     bool first = true;
     while (pos + 8 <= fileSize) {
-        if (fseeko(file, static_cast<FileOffset>(pos), SEEK_SET) != 0) return false;
         unsigned char header[16];
-        if (fread(header, 1, 8, file) != 8) return false;
+        if (!readAt(pos, header, 8)) return false;
         uint64_t size = be32(header);
         uint64_t headerSize = 8;
         const uint32_t type = be32(header + 4);
         if (first && type != fourcc("ftyp")) return false;
         first = false;
         if (size == 1) {
-            if (fread(header + 8, 1, 8, file) != 8) return false;
+            if (!readAt(pos + 8, header + 8, 8)) return false;
             size = be64(header + 8);
             headerSize = 16;
         } else if (size == 0) {
@@ -269,13 +272,45 @@ bool parseM4aGapless(FILE *file, M4aGaplessInfo &out) {
             const uint64_t payload = size - headerSize;
             if (payload > kMaxMoovSize) return false;
             std::vector<unsigned char> moov(static_cast<size_t>(payload));
-            if (!moov.empty() && fread(moov.data(), 1, moov.size(), file) != moov.size()) return false;
+            if (!moov.empty() && !readAt(pos + headerSize, moov.data(), moov.size())) return false;
             return parseM4aGaplessMoov(moov.data(), moov.size(), out);
         }
         pos += size;
     }
     return false;
 }
+
+} // namespace
+
+bool parseM4aGapless(FILE *file, M4aGaplessInfo &out) {
+    out = M4aGaplessInfo();
+    if (!file) return false;
+    if (fseeko(file, 0, SEEK_END) != 0) return false;
+    const FileOffset end = ftello(file);
+    if (end <= 0) return false;
+    return parseTopLevel(static_cast<uint64_t>(end), [file](uint64_t pos, unsigned char *buffer, size_t length) {
+        return fseeko(file, static_cast<FileOffset>(pos), SEEK_SET) == 0 &&
+               fread(buffer, 1, length, file) == length;
+    }, out);
+}
+
+#if !defined(_WIN32)
+bool parseM4aGaplessFd(int fd, M4aGaplessInfo &out) {
+    out = M4aGaplessInfo();
+    struct stat st;
+    if (fd < 0 || fstat(fd, &st) != 0 || st.st_size <= 0) return false;
+    return parseTopLevel(static_cast<uint64_t>(st.st_size), [fd](uint64_t pos, unsigned char *buffer, size_t length) {
+        size_t done = 0;
+        while (done < length) {
+            const ssize_t n = pread(fd, buffer + done, length - done, static_cast<off_t>(pos + done));
+            if (n < 0 && errno == EINTR) continue;
+            if (n <= 0) return false;
+            done += static_cast<size_t>(n);
+        }
+        return true;
+    }, out);
+}
+#endif
 
 bool parseM4aGapless(const std::string &path, M4aGaplessInfo &out) {
     FILE *file = std::fopen(path.c_str(), "rb");

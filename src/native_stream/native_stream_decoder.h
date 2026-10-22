@@ -44,14 +44,31 @@ public:
     virtual long read(float *out, unsigned int maxFrames) = 0;
 };
 
-using NativeStreamDecoderFactory =
-    std::function<std::unique_ptr<NativeStreamDecoder>(const std::string &path, std::string &error)>;
+/// The file a decoder reads.
+struct NativeStreamFile {
+    std::string path;
+    /// When >= 0, a descriptor of the file opened when the source loaded,
+    /// which decoders read instead of [path]: it keeps that exact file
+    /// readable even if [path] is deleted or replaced. Several decoders read
+    /// it at once, so they must not use (or move) its file offset. Owned by
+    /// the caller and valid for the decoder's lifetime.
+    int fd = -1;
+};
 
-/// Opens [path] with this platform's streaming backend (ExtAudioFile on
+using NativeStreamDecoderFactory =
+    std::function<std::unique_ptr<NativeStreamDecoder>(const NativeStreamFile &file, std::string &error)>;
+
+/// Opens [file] with this platform's streaming backend (ExtAudioFile on
 /// Apple, MediaExtractor + MediaCodec on Android). Returns nullptr with
 /// [error] set when the file can't be streamed, or on platforms without a
 /// backend.
-std::unique_ptr<NativeStreamDecoder> openPlatformNativeStreamDecoder(const std::string &path,
+std::unique_ptr<NativeStreamDecoder> openPlatformNativeStreamDecoder(const NativeStreamFile &file,
                                                                      std::string &error);
+
+/// Same as above for a file by path alone.
+inline std::unique_ptr<NativeStreamDecoder> openPlatformNativeStreamDecoder(const std::string &path,
+                                                                            std::string &error) {
+    return openPlatformNativeStreamDecoder(NativeStreamFile{path, -1}, error);
+}
 
 #endif // NATIVE_STREAM_DECODER_H

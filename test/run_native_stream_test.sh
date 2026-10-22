@@ -47,6 +47,7 @@ trap 'rm -rf "$WORK_DIR"' EXIT
 APPLE_ENCODED=""
 FFMPEG_ENCODED=""
 AC3_IN_MP4=""
+NO_EDIT_LIST=""
 if command -v afconvert > /dev/null; then
     APPLE_ENCODED="$WORK_DIR/apple_encoded.m4a"
     afconvert -f m4af -d aac -b 128000 example/assets/audio/sample-WAV.wav "$APPLE_ENCODED"
@@ -56,6 +57,9 @@ if command -v ffmpeg > /dev/null; then
     ffmpeg -loglevel error -y -i example/assets/audio/sample-WAV.wav -c:a aac -aac_pns 0 -b:a 128k "$FFMPEG_ENCODED"
     AC3_IN_MP4="$WORK_DIR/ac3.mp4"
     ffmpeg -loglevel error -y -i example/assets/audio/sample-WAV.wav -c:a ac3 "$AC3_IN_MP4"
+    NO_EDIT_LIST="$WORK_DIR/no_edit_list.m4a"
+    ffmpeg -loglevel error -y -i example/assets/audio/sample-WAV.wav -c:a aac -b:a 128k -use_editlist 0 \
+        "$NO_EDIT_LIST"
 fi
 
-"$OUT" example/assets/audio "$APPLE_ENCODED" "$FFMPEG_ENCODED" $AC3_IN_MP4
+"$OUT" example/assets/audio "$APPLE_ENCODED" "$FFMPEG_ENCODED" "$AC3_IN_MP4" "${NO_EDIT_LIST:-}"
