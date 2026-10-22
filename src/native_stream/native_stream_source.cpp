@@ -589,13 +589,6 @@ namespace SoLoud
 		return false;
 	}
 
-	bool NativeStreamInstance::isBuffered(uint64_t aFrame) const
-	{
-		uint64_t available;
-		bool coming;
-		return findBuffered(aFrame, available, coming) || coming;
-	}
-
 	// Moves the read position to [aFrame] within the current generation's
 	// runs, dropping frames before it. Returns how many contiguous frames
 	// starting at [aFrame] are readable now.
@@ -815,8 +808,26 @@ namespace SoLoud
 		publishLoopHints();
 		// The first frame the ring has to provide.
 		const uint64_t needed = mHeadActive ? shared.headFrames : frame;
-		if (mChannel && needed < shared.totalFrames && !isBuffered(needed))
-			requestFrame(needed);
+		if (mChannel && needed < shared.totalFrames)
+		{
+			uint64_t available;
+			bool coming;
+			if (!findBuffered(needed, available, coming))
+			{
+				// Not readable yet. A frame the current run reaches soon needs
+				// no new request, but either way the voice must wait for it:
+				// an underrun now would keep time and skip past the target.
+				if (coming)
+				{
+					mWaiting = true;
+					mWaitFrames = 0;
+				}
+				else
+				{
+					requestFrame(needed);
+				}
+			}
+		}
 		return SO_NO_ERROR;
 	}
 

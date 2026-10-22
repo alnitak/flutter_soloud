@@ -571,6 +571,40 @@ void testSyntheticColdSeekWaits() {
     EXPECT(waitForWorkersToExit(), "workers still running");
 }
 
+void testSyntheticSeekJustPastBuffer() {
+    std::printf("synthetic: a seek just past the decoded frames waits for them instead of skipping\n");
+    SyntheticControl control;
+    const uint64_t total = 10 * kSampleRate;
+    SoLoud::Soloud soloud;
+    if (!initEngine(soloud)) return;
+    {
+        SoLoud::NativeStream stream;
+        stream.load("synthetic", syntheticFactory(control, total));
+        SoLoud::handle h = playUnity(soloud, stream);
+        // Play past the head cache so the voice is no longer waiting.
+        soloud.seek(h, 2.0);
+        std::vector<float> out = mixPaced(soloud, {h}, 4 * kBufferSize);
+        expectFrames(out, 0, 2 * kSampleRate, 4 * kBufferSize, "before the seek");
+        const uint64_t played = 2 * kSampleRate + 4 * kBufferSize;
+        // Let the ring fill, then slow the decoder down: the frames right
+        // after it are coming, but not soon.
+        EXPECT(waitFor([&] { return buffered(soloud, h) >= kSampleRate * 9 / 10; }, 3000), "ring should fill");
+        control.readDelayUs = 200000;
+        const uint64_t target = played + buffered(soloud, h) + 100;
+        soloud.seek(h, double(target) / kSampleRate);
+        out = mixPaced(soloud, {h}, 8 * kBufferSize, 0);
+        control.readDelayUs = 0;
+        std::vector<float> rest = mixPaced(soloud, {h}, 8 * kBufferSize);
+        out.insert(out.end(), rest.begin(), rest.end());
+        size_t first = 0;
+        while (first < out.size() / kChannels && frameOf(&out[first * kChannels]) == -1) first++;
+        EXPECT(first < out.size() / kChannels, "nothing played after the seek");
+        expectFrames(out, first, target, out.size() / kChannels - first, "after a seek just past the buffer");
+    }
+    soloud.deinit();
+    EXPECT(waitForWorkersToExit(), "workers still running");
+}
+
 void testSyntheticUnderrun() {
     std::printf("synthetic: an underrun mid-playback plays silence and keeps time\n");
     SyntheticControl control;
@@ -1472,6 +1506,7 @@ int main(int argc, char **argv) {
     testSyntheticLoopsBeyondHead();
     testSyntheticVoices();
     testSyntheticColdSeekWaits();
+    testSyntheticSeekJustPastBuffer();
     testSyntheticUnderrun();
     testSyntheticRetroactiveRemix();
     testSyntheticHistoryBounds();

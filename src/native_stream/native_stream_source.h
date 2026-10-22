@@ -69,7 +69,6 @@ namespace SoLoud
 		void release();
 		void kickIfLow(unsigned int aFrames);
 		bool findBuffered(uint64_t aFrame, uint64_t &aAvailable, bool &aComing) const;
-		bool isBuffered(uint64_t aFrame) const;
 		uint64_t locate(uint64_t aFrame, bool &aEndOfStream, bool &aStale);
 
 		std::shared_ptr<const native_stream_detail::Shared> mShared;
