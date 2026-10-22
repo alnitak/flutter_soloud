@@ -3005,8 +3005,10 @@ double Player::getLength(unsigned int soundHash)
         return static_cast<SoLoud::BufferStream *>(s->sound.get())->getLength();
     if (s->soundType == TYPE_WAVSTREAM)
         return static_cast<SoLoud::WavStream *>(s->sound.get())->getLength();
+#if NATIVE_STREAM_SUPPORTED
     if (s->soundType == TYPE_NATIVE_STREAM)
         return static_cast<SoLoud::NativeStream *>(s->sound.get())->getLength();
+#endif
     return 0.0;
 }
 

@@ -240,9 +240,13 @@ bool parseM4aGaplessMoov(const unsigned char *data, size_t size, M4aGaplessInfo 
 bool parseM4aGapless(FILE *file, M4aGaplessInfo &out) {
     out = M4aGaplessInfo();
     if (!file) return false;
+    if (fseeko(file, 0, SEEK_END) != 0) return false;
+    const FileOffset end = ftello(file);
+    if (end <= 0) return false;
+    const uint64_t fileSize = static_cast<uint64_t>(end);
     uint64_t pos = 0;
     bool first = true;
-    while (true) {
+    while (pos + 8 <= fileSize) {
         if (fseeko(file, static_cast<FileOffset>(pos), SEEK_SET) != 0) return false;
         unsigned char header[16];
         if (fread(header, 1, 8, file) != 8) return false;
@@ -257,11 +261,10 @@ bool parseM4aGapless(FILE *file, M4aGaplessInfo &out) {
             headerSize = 16;
         } else if (size == 0) {
             // Box extends to the end of the file.
-            if (fseeko(file, 0, SEEK_END) != 0) return false;
-            size = static_cast<uint64_t>(ftello(file)) - pos;
-            if (fseeko(file, static_cast<FileOffset>(pos + headerSize), SEEK_SET) != 0) return false;
+            size = fileSize - pos;
         }
-        if (size < headerSize) return false;
+        // Also guarantees pos + size can't overflow and always advances.
+        if (size < headerSize || size > fileSize - pos) return false;
         if (type == fourcc("moov")) {
             const uint64_t payload = size - headerSize;
             if (payload > kMaxMoovSize) return false;
@@ -271,6 +274,7 @@ bool parseM4aGapless(FILE *file, M4aGaplessInfo &out) {
         }
         pos += size;
     }
+    return false;
 }
 
 bool parseM4aGapless(const std::string &path, M4aGaplessInfo &out) {

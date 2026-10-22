@@ -185,7 +185,9 @@ namespace SoLoud
 				const uint64_t loopStart = ch.loopStart.load(std::memory_order_relaxed);
 				const uint64_t loopEnd = ch.loopEnd.load(std::memory_order_relaxed);
 				const bool boundedLoop = looping && loopEnd > loopStart && loopEnd < streamEnd;
-				const uint64_t limit = (boundedLoop && position < loopEnd) ? loopEnd : streamEnd;
+				// A run that reached loopEnd stops there (and wraps below); one
+				// already past it (loop set late) continues to the stream end.
+				const uint64_t limit = (boundedLoop && position <= loopEnd) ? loopEnd : streamEnd;
 
 				if (position >= limit)
 				{
@@ -547,9 +549,13 @@ namespace SoLoud
 		if (!mShared)
 			return INVALID_PARAMETER;
 		const Shared &shared = *mShared;
-		uint64_t frame = aSeconds > 0 ? uint64_t(std::floor(aSeconds * shared.sampleRate)) : 0;
-		if (frame > shared.totalFrames)
-			frame = shared.totalFrames;
+		// The epsilon undoes the rounding of frame -> seconds conversions
+		// (loop start offsets arrive as frame / rate), which would otherwise
+		// land one frame early.
+		const double exact = aSeconds * shared.sampleRate + 1e-6;
+		const uint64_t frame = !(exact > 0) ? 0
+			: exact >= double(shared.totalFrames) ? shared.totalFrames
+			: uint64_t(std::floor(exact));
 
 		mFrame = frame;
 		mEnded = frame >= shared.totalFrames;

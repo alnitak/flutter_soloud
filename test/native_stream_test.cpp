@@ -29,6 +29,7 @@
 #include <cmath>
 #include <condition_variable>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <functional>
 #include <mutex>
@@ -398,6 +399,56 @@ void testSyntheticLooping() {
     EXPECT(waitForWorkersToExit(), "workers still running");
 }
 
+void testSyntheticLoopsBeyondHead() {
+    std::printf("synthetic: loops starting past the head cache wrap gaplessly (time and frame offsets)\n");
+    SyntheticControl control;
+    const uint64_t total = 4 * kSampleRate;
+    // A start frame whose seconds round-trip (frame / rate * rate) lands
+    // just below it, as frame-offset loop starts reach seek().
+    uint64_t frameStart = kSampleRate + 1000;
+    while ((double(frameStart) / kSampleRate) * kSampleRate >= double(frameStart)) frameStart++;
+    SoLoud::Soloud soloud;
+    if (!initEngine(soloud)) return;
+    {
+        SoLoud::NativeStream stream;
+        stream.load("synthetic", syntheticFactory(control, total));
+
+        // Bounded loop entirely past the head: every lap must come from the
+        // worker's ahead-of-time wrap, with no underrun.
+        const uint64_t start = kSampleRate + 1000;
+        const uint64_t end = 2 * kSampleRate + 500;
+        const uint64_t underruns = SoLoud::NativeStream::underrunFrameCount();
+        SoLoud::handle h = playUnity(soloud, stream);
+        soloud.setLooping(h, true);
+        soloud.setLoopPoint(h, double(start) / kSampleRate);
+        soloud.setLoopEndPoint(h, double(end) / kSampleRate);
+        std::vector<float> out = mixPaced(soloud, {h}, end + 3 * (end - start));
+        expectFrames(out, 0, 0, end, "bounded loop past head lap 0");
+        for (int lap = 0; lap < 3; lap++) {
+            char what[48];
+            std::snprintf(what, sizeof(what), "bounded loop past head lap %d", lap + 1);
+            expectFrames(out, end + lap * (end - start), start, end - start, what);
+        }
+        EXPECT(SoLoud::NativeStream::underrunFrameCount() == underruns, "bounded loop underran by %llu frames",
+               (unsigned long long)(SoLoud::NativeStream::underrunFrameCount() - underruns));
+        soloud.stop(h);
+
+        // Loop start given as an exact frame offset.
+        h = playUnity(soloud, stream);
+        soloud.setLooping(h, true);
+        soloud.lockAudioMutex_internal();
+        if (SoLoud::AudioSourceInstance *voice = voiceOf(soloud, h)) voice->mLoopStartFrame = (long long)frameStart;
+        soloud.unlockAudioMutex_internal();
+        out = mixPaced(soloud, {h}, total + 2 * (total - frameStart));
+        expectFrames(out, 0, 0, total, "frame-offset loop lap 0");
+        expectFrames(out, total, frameStart, total - frameStart, "frame-offset loop lap 1");
+        expectFrames(out, total + (total - frameStart), frameStart, total - frameStart, "frame-offset loop lap 2");
+        soloud.stop(h);
+    }
+    soloud.deinit();
+    EXPECT(waitForWorkersToExit(), "workers still running");
+}
+
 void testSyntheticVoices() {
     std::printf("synthetic: simultaneous voices of one source are independent\n");
     SyntheticControl control;
@@ -611,6 +662,22 @@ void testGaplessParser() {
     }
     M4aGaplessInfo info;
     EXPECT(!parseM4aGapless(gAssetDir + "/sample-MP3.mp3", info), "an MP3 is not an MP4 container");
+
+    // A box whose 64-bit size would wrap the file offset must be rejected,
+    // not parsed in a loop forever.
+    const char *tmp = std::getenv("TMPDIR");
+    const std::string crafted = std::string(tmp ? tmp : "/tmp") + "/native_stream_wrap.m4a";
+    if (FILE *f = std::fopen(crafted.c_str(), "wb")) {
+        const unsigned char bytes[] = {0, 0, 0, 8, 'f', 't', 'y', 'p',            // ftyp, 8 bytes
+                                       0, 0, 0, 1, 'f', 'r', 'e', 'e',            // free, 64-bit size:
+                                       0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xF8}; // 2^64 - 8
+        std::fwrite(bytes, 1, sizeof(bytes), f);
+        std::fclose(f);
+        const auto start = Clock::now();
+        EXPECT(!parseM4aGapless(crafted, info), "a wrapping box size must be rejected");
+        EXPECT(msSince(start) < 1000, "parsing the crafted file took %.0f ms", msSince(start));
+        std::remove(crafted.c_str());
+    }
     EXPECT(!parseM4aGapless(gAssetDir + "/does-not-exist.m4a", info), "missing file");
 }
 
@@ -857,6 +924,7 @@ int main(int argc, char **argv) {
     testSyntheticPlayback();
     testSyntheticSeek();
     testSyntheticLooping();
+    testSyntheticLoopsBeyondHead();
     testSyntheticVoices();
     testSyntheticUnderrun();
     testSyntheticTeardownWhileDecoding();
