@@ -455,7 +455,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }
 
   @override
-  void setAndroidAAudioAttributes(bool managed) {
+  void setAndroidAAudioAttributes(int attributes) {
     // No-op on web: AAudio stream attributes are Android-only.
   }
 

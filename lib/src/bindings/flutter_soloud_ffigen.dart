@@ -218,14 +218,13 @@ PlayerErrors initEngine(
   ),
 );
 
-/// Android only: choose whether SoLoud tags the AAudio stream's
-/// usage/contentType (media/music) or leaves them unset so the app can
-/// manage AudioAttributes externally (e.g. via the audio_session plugin).
+/// Android only: how SoLoud tags the AAudio stream's usage/contentType.
 /// Only takes effect with low-latency disabled. Call before initEngine().
-/// No effect on other backends. [managed] != 0 → media/music (default);
-/// 0 → leave unset.
+/// No effect on other backends. [attributes]: 1 → media/music (default);
+/// 0 → leave unset, so the app can manage AudioAttributes externally (e.g.
+/// via the audio_session plugin); 2 → voice communication/speech.
 @ffi.Native<ffi.Void Function(ffi.UnsignedInt)>()
-external void setAndroidAAudioAttributes(int managed);
+external void setAndroidAAudioAttributes(int attributes);
 
 /// Linux only: choose the audio backend (0 = Auto [ALSA->PulseAudio->JACK],
 /// 1 = ALSA, 2 = PulseAudio, 3 = JACK).

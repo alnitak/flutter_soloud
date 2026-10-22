@@ -500,10 +500,17 @@ extern "C"
   }
 
   /// The callback to monitor when a file is loaded.
-  void fileLoadedCallback(enum PlayerErrors error, char *completeFileName, unsigned int *hash, uint64_t counter)
+  ///
+  /// [registrationGeneration] is the global registration that was live when
+  /// the load began. A load decodes without the lifecycle locks, so a teardown
+  /// and a fresh registration can both happen while it runs; the result
+  /// belongs to the isolate that asked for it, never to its replacement, whose
+  /// load counter may well have restarted and collide.
+  void fileLoadedCallback(enum PlayerErrors error, char *completeFileName, unsigned int *hash, uint64_t counter,
+                          uint64_t registrationGeneration)
   {
     const dart_callbacks::InvocationPass pass;
-    if (!pass.isLive(globalCallbackGeneration))
+    if (!pass.isLive(registrationGeneration))
       return;
     auto fileLoadedCb = dartFileLoadedCallback.load(std::memory_order_acquire);
     if (fileLoadedCb == nullptr)
@@ -1083,14 +1090,14 @@ extern "C"
     return PlayerErrors::noError;
   }
 
-  /// Android only: choose whether SoLoud tags the AAudio stream's
-  /// usage/contentType (media/music) or leaves them unset so the app can manage
-  /// AudioAttributes externally (e.g. via the audio_session plugin). Only takes
-  /// effect with low-latency disabled. Call before initEngine(). No effect on
-  /// other backends. [managed] != 0 → media/music (default); 0 → leave unset.
-  FFI_PLUGIN_EXPORT void setAndroidAAudioAttributes(unsigned int managed)
+  /// Android only: how SoLoud tags the AAudio stream's usage/contentType. Only
+  /// takes effect with low-latency disabled. Call before initEngine(). No
+  /// effect on other backends. [attributes]: 1 → media/music (default); 0 →
+  /// leave unset, so the app can manage AudioAttributes externally (e.g. via
+  /// the audio_session plugin); 2 → voice communication/speech.
+  FFI_PLUGIN_EXPORT void setAndroidAAudioAttributes(unsigned int attributes)
   {
-    SoLoud::miniaudio_setAndroidAAudioAttributes(managed != 0);
+    SoLoud::miniaudio_setAndroidAAudioAttributes(attributes);
   }
 
   FFI_PLUGIN_EXPORT enum PlayerErrors setLinuxAudioBackend(unsigned int backend)
@@ -1776,6 +1783,14 @@ extern "C"
     test_init_barrier_cv.notify_all();
   }
 
+  /// How many sounds the current Player holds.
+  FFI_PLUGIN_EXPORT int soloudTestSoundCount()
+  {
+    std::lock_guard<std::mutex> guard_init(init_deinit_mutex);
+    std::lock_guard<std::mutex> guard_load(loadMutex);
+    return player.get() == nullptr ? 0 : player.get()->getSoundsCount();
+  }
+
   /// Drive the exact function MixerOutput holds on its notification thread.
   FFI_PLUGIN_EXPORT void soloudTestInvokeMixerOutput()
   {
@@ -1832,6 +1847,58 @@ extern "C"
     return engine_initialized.load(std::memory_order_acquire) ? 1 : 0;
   }
 
+  /// What a sound load needs from the engine, captured by [beginSoundLoad].
+  struct SoundLoadTicket
+  {
+    unsigned int generation = 0;
+    uint64_t callbackGeneration = dart_callbacks::kNoGeneration;
+    unsigned int sampleRate = 0;
+    unsigned int channels = 0;
+  };
+
+  /// First half of a sound load: confirm the engine is up and capture what
+  /// the decode needs from it.
+  ///
+  /// Loads take the lifecycle locks only around this and [finishSoundLoad],
+  /// never across the decode between them. A decode can take seconds — M4A/MP4,
+  /// AAC, AC-3, E-AC-3 and Ogg Opus/FLAC are decoded in full even for
+  /// LoadMode.disk — and every lifecycle call, including the disposeSound()
+  /// Dart makes synchronously on the UI thread, would otherwise wait for it
+  /// (an ANR on Android).
+  static bool beginSoundLoad(SoundLoadTicket &ticket)
+  {
+    std::lock_guard<std::mutex> guard_init(init_deinit_mutex);
+    std::lock_guard<std::mutex> guard_load(loadMutex);
+    Player *p = player.get();
+    if (p == nullptr || !p->isInited())
+      return false;
+    ticket.generation = engineGeneration.load(std::memory_order_acquire);
+    ticket.sampleRate = p->mSampleRate;
+    ticket.channels = p->mChannels;
+    {
+      // globalCallbackGeneration is published under the gate.
+      const dart_callbacks::InvocationPass pass;
+      ticket.callbackGeneration = globalCallbackGeneration;
+    }
+    return true;
+  }
+
+  /// Second half of a sound load: hand [pending] to the player, unless the
+  /// engine it was decoded for was torn down meanwhile. [pending] binds to no
+  /// Player, so it can be dropped safely in that case.
+  static PlayerErrors finishSoundLoad(const SoundLoadTicket &ticket,
+                                      Player::PendingSound pending,
+                                      unsigned int &hash)
+  {
+    hash = 0;
+    std::lock_guard<std::mutex> guard_init(init_deinit_mutex);
+    std::lock_guard<std::mutex> guard_load(loadMutex);
+    if (player.get() == nullptr || !player.get()->isInited() ||
+        engineGeneration.load(std::memory_order_acquire) != ticket.generation)
+      return backendNotInited;
+    return player.get()->registerSound(std::move(pending), hash);
+  }
+
   /// Load a new sound to be played once or multiple times later.
   ///
   /// After loading the file, the [fileLoadedCallback] will call the
@@ -1853,11 +1920,8 @@ extern "C"
       bool loadIntoMem,
       uint64_t counter)
   {
-    std::lock_guard<std::mutex> guard_init(init_deinit_mutex);
-    std::lock_guard<std::mutex> guard_load(loadMutex);
-
-    Player *p = player.get();
-    if (p == nullptr || !p->isInited())
+    SoundLoadTicket ticket;
+    if (!beginSoundLoad(ticket))
     {
       printf("WARNING (from SoLoud C++ binding code): the player has "
              "not yet been initialized. This is likely a bug in flutter_soloud. "
@@ -1865,15 +1929,12 @@ extern "C"
       return;
     }
 
+    Player::PendingSound pending = Player::decodeFile(
+        completeFileName, loadIntoMem, ticket.sampleRate, ticket.channels);
     unsigned int hash = 0;
-    // std::thread loadThread([p, completeFileName, loadIntoMem, hash]()
-    //                        {
-    PlayerErrors error = p->loadFile(completeFileName, loadIntoMem, (unsigned int *)&hash);
-    // soloud_platform_log("LOAD FILE FROM THREAD error: %d  hash: %u\n", error, hash);
-    fileLoadedCallback(error, completeFileName, (unsigned int *)&hash, counter);
-    // });
-    // // TODO(marco): use .detach()? Use std::atomic somewhere
-    // loadThread.join();
+    PlayerErrors error = finishSoundLoad(ticket, std::move(pending), hash);
+    fileLoadedCallback(error, completeFileName, (unsigned int *)&hash, counter,
+                       ticket.callbackGeneration);
   }
 
   /// Load a new sound stored into [buffer] to be played once or multiple times
@@ -1896,13 +1957,16 @@ extern "C"
                                               int loadIntoMem,
                                               unsigned int *hash)
   {
-    std::lock_guard<std::mutex> guard_init(init_deinit_mutex);
-    std::lock_guard<std::mutex> guard_load(loadMutex);
+    *hash = 0;
+    SoundLoadTicket ticket;
     // this check is already been done in Dart
-    if (player.get() == nullptr || !player.get()->isInited())
+    if (!beginSoundLoad(ticket))
       return backendNotInited;
-    return (PlayerErrors)player.get()->loadMem(uniqueName, buffer, length,
-                                               loadIntoMem, *hash);
+    return finishSoundLoad(
+        ticket,
+        Player::decodeMem(uniqueName, buffer, length, loadIntoMem != 0,
+                          ticket.sampleRate, ticket.channels),
+        *hash);
   }
 
   /// Load 2 audios, convert to mono if needed, and join them into a single stereo AudioSource.
@@ -1914,12 +1978,15 @@ extern "C"
                                                      int length2,
                                                      unsigned int *hash)
   {
-    std::lock_guard<std::mutex> guard_init(init_deinit_mutex);
-    std::lock_guard<std::mutex> guard_load(loadMutex);
-    if (player.get() == nullptr || !player.get()->isInited())
+    *hash = 0;
+    SoundLoadTicket ticket;
+    if (!beginSoundLoad(ticket))
       return backendNotInited;
-    return (PlayerErrors)player.get()->joinTwoSources(uniqueName, mem1, mem2,
-                                                      length1, length2, *hash);
+    return finishSoundLoad(
+        ticket,
+        Player::decodeJoinedSources(uniqueName, mem1, mem2, length1, length2,
+                                    ticket.sampleRate),
+        *hash);
   }
 
   /// Set up an audio stream.

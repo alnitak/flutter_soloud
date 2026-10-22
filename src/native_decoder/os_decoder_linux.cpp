@@ -11,6 +11,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <algorithm>
+#include <atomic>
+#include <mutex>
 
 // Forward declarations of basic FFmpeg structs to avoid needing <libavcodec/avcodec.h> headers
 // at compile time on Linux machines that do not have ffmpeg development packages installed.
@@ -77,7 +79,10 @@ struct FFmpegLoader {
     pfn_av_frame_free av_frame_free = nullptr;
     pfn_av_frame_unref av_frame_unref = nullptr;
 
-    bool loaded = false;
+    // Loads decode concurrently, each on its own thread, so the first ones can
+    // race here: publish the symbols only once they are all resolved.
+    std::atomic<bool> loaded{false};
+    std::mutex initMutex;
 
     static void* tryDlopen(const char* const names[]) {
         for (int i = 0; names[i] != nullptr; i++) {
@@ -88,7 +93,9 @@ struct FFmpegLoader {
     }
 
     bool init() {
-        if (loaded) return true;
+        if (loaded.load(std::memory_order_acquire)) return true;
+        std::lock_guard<std::mutex> lock(initMutex);
+        if (loaded.load(std::memory_order_relaxed)) return true;
 
         const char* const formatNames[] = {
             "libavformat.so.63", "libavformat.so.62", "libavformat.so.61", "libavformat.so.60", "libavformat.so.59", "libavformat.so.58", "libavformat.so", nullptr
@@ -133,7 +140,7 @@ struct FFmpegLoader {
 
         #undef LOAD_SYM
 
-        loaded = true;
+        loaded.store(true, std::memory_order_release);
         return true;
     }
 };

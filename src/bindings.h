@@ -195,13 +195,12 @@ extern "C"
                                                  unsigned int devicePeriodFrames,
                                                  unsigned int renderAheadFrames);
 
-  /// Android only: choose whether SoLoud tags the AAudio stream's
-  /// usage/contentType (media/music) or leaves them unset so the app can
-  /// manage AudioAttributes externally (e.g. via the audio_session plugin).
+  /// Android only: how SoLoud tags the AAudio stream's usage/contentType.
   /// Only takes effect with low-latency disabled. Call before initEngine().
-  /// No effect on other backends. [managed] != 0 → media/music (default);
-  /// 0 → leave unset.
-  FFI_PLUGIN_EXPORT void setAndroidAAudioAttributes(unsigned int managed);
+  /// No effect on other backends. [attributes]: 1 → media/music (default);
+  /// 0 → leave unset, so the app can manage AudioAttributes externally (e.g.
+  /// via the audio_session plugin); 2 → voice communication/speech.
+  FFI_PLUGIN_EXPORT void setAndroidAAudioAttributes(unsigned int attributes);
 
   /// Linux only: choose the audio backend (0 = Auto [ALSA->PulseAudio->JACK],
   /// 1 = ALSA, 2 = PulseAudio, 3 = JACK).
