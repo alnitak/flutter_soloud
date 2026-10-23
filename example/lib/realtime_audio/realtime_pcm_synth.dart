@@ -3,6 +3,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 
@@ -29,9 +30,9 @@ void main() async {
   // the playhead for immediate ~5-10 ms touch response.
   await SoLoud.instance.init(
     sampleRate: 48000,
-    bufferSize: 4096,
-    renderAheadFrames: 4096,
-    devicePeriodFrames: 256,
+    bufferSize: kIsWeb ? 512 : 4096,
+    renderAheadFrames: kIsWeb ? 0 : 4096,
+    devicePeriodFrames: kIsWeb ? 0 : 256,
   );
   runApp(const MaterialApp(home: RealtimePcmSynthExample()));
 }

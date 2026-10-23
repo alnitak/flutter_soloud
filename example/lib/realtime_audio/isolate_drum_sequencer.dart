@@ -4,6 +4,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 
@@ -17,25 +18,39 @@ import 'package:flutter_soloud/flutter_soloud.dart';
 ///   a zero-GC timer loop on Web.
 /// - Routing the real-time stream through a SoLoud `Bus` with `freeverbFilter`
 ///   and `compressorFilter`.
+///
+/// ### Web Platform Considerations & Drawbacks
+/// - **Threading & Timers**: On native platforms, the feeder runs in a
+///   dedicated background Dart `Isolate` alongside low-latency OS hardware
+///   periods (256 frames). On Web, Dart is single-threaded (no background
+///   `Isolate`), so the feeder runs on the main browser thread via
+///   `Timer.periodic`. The HTML5 spec clamps nested timers to >= 4 ms, and
+///   Flutter UI rendering (60-120 Hz) introduces 10-16 ms event-loop jitter.
+/// - **Buffer Cushion**: If the ring buffer cushion (`targetBufferedFrames`)
+///   is too small (e.g. 256 frames = 5.33 ms), the Web Audio device callback
+///   drains the buffer faster than the main-thread timer can refill it,
+///   causing massive underruns and slow-motion playback (< 1 BPM). On Web, a
+///   larger cushion (e.g. 2048 frames) and 15 ms ticks avoid starvation.
+/// - **Render-Ahead**: The native retroactive render-ahead ring
+///   (`renderAheadFrames`) is native-only (direct-to-device mixing on Web).
+/// - **Alternative for Web**: For zero-latency, glitch-free procedural
+///   synthesis on Web without ring-buffer queuing jitter, consider using a
+///   pull-based `SoLoud.instance.createCustomAudioSource`
+///   (see `custom_dsp_workbench.dart`).
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Initialized with Option B low-latency lookahead configuration:
-  // - `bufferSize: 4096` ensures plenty of mixer headroom and CPU stability.
-  // - `renderAheadFrames: 4096` enables the native render-ahead ring
-  //   (`mRenderRing`) and mix checkpoints for retroactive re-mixing.
-  // - `devicePeriodFrames: 256` requests small ~5.33 ms hardware callbacks from
-  //   the OS audio driver (CoreAudio/WASAPI/AAudio).
-  //
-  // Whenever the sequencer starts, stops, or splices audio into the stream,
-  // `injectIntoPlayingWindow` rewinds `mRenderRing` back to the active playhead
-  // and splices the new audio immediately, achieving ~5-10 ms latency even
-  // while mixing buses and bus filters are active!
+  // - Native: `bufferSize: 4096` ensures mixer headroom, `renderAheadFrames:
+  //   4096` enables the native render-ahead ring (`mRenderRing`) and mix
+  //   checkpoints, and `devicePeriodFrames: 256` requests ~5.33 ms callbacks.
+  // - Web: Retroactive render-ahead is native-only (direct-to-device on Web).
+  //   `bufferSize: 512` is used for balanced Web Audio callback granularity.
   await SoLoud.instance.init(
     sampleRate: 48000,
-    bufferSize: 4096,
-    renderAheadFrames: 4096,
-    devicePeriodFrames: 256,
+    bufferSize: kIsWeb ? 512 : 1024,
+    renderAheadFrames: kIsWeb ? 0 : 1024,
+    devicePeriodFrames: kIsWeb ? 0 : 256,
   );
   runApp(const MaterialApp(home: IsolateDrumSequencerExample()));
 }
@@ -220,9 +235,16 @@ class _IsolateDrumSequencerExampleState
       initialState: _buildStateSnapshot(),
       onFeed: _drumSynthGenerateChunk,
       onStateUpdate: _updateDrumSynthState,
-      chunkFrames: 128, // 2.67 ms chunk
-      targetBufferedFrames: 256, // 5.33 ms buffer cushion
-      tickInterval: const Duration(milliseconds: 2),
+      // Buffer sizing & refill interval:
+      // - Native: 128 frames (2.67 ms) chunk, 256 frames (5.33 ms) cushion,
+      //   2 ms tick in a background Isolate for ~5-10 ms latency.
+      // - Web: HTML5 timers on the main JS thread are clamped to >= 4 ms and
+      //   jitter up to 10-16 ms with UI rendering. A 2048-frame (~42.6 ms)
+      //   cushion, 512-frame chunk, and 15 ms ticks prevent buffer starvation
+      //   and underruns.
+      chunkFrames: kIsWeb ? 512 : 128,
+      targetBufferedFrames: kIsWeb ? 2048 : 256,
+      tickInterval: const Duration(milliseconds: kIsWeb ? 15 : 2),
       onUiEvent: (Object? step) {
         if (step is int && mounted) {
           setState(() => _currentStep = step);
