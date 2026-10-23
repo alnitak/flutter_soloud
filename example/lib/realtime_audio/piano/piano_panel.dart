@@ -15,9 +15,7 @@ import 'package:flutter_soloud_example/realtime_audio/piano/piano_keyboard.dart'
 ///   keep key width <= 35 px.
 /// - Full window width and a default height of 200 px.
 /// - Physical computer keyboard bindings (QWERTY chromatic octave).
-/// - Hold / Latch mode toggle.
 /// - Octave shifting controls with keyboard shortcuts.
-/// - Stop all voices action.
 /// - Help modal detailing all keyboard shortcuts.
 class PianoPanel extends StatefulWidget {
   const PianoPanel({
@@ -30,7 +28,6 @@ class PianoPanel extends StatefulWidget {
     this.maxKeyWidth = 35,
     this.onNoteDown,
     this.onNoteUp,
-    this.onStopAll,
   });
 
   /// The active VST3 instrument to send NoteOn and NoteOff events to.
@@ -58,9 +55,6 @@ class PianoPanel extends StatefulWidget {
   /// Optional custom callback when note is released.
   final void Function(int midiKey)? onNoteUp;
 
-  /// Optional custom callback when all notes are stopped.
-  final VoidCallback? onStopAll;
-
   @override
   State<PianoPanel> createState() => _PianoPanelState();
 }
@@ -68,7 +62,6 @@ class PianoPanel extends StatefulWidget {
 class _PianoPanelState extends State<PianoPanel> {
   int _startOctave = 3; // C3 (MIDI 48)
   final Set<int> _activeKeys = <int>{};
-  bool _latchNotes = false;
 
   bool _isDisposed = false;
 
@@ -86,52 +79,29 @@ class _PianoPanelState extends State<PianoPanel> {
   @override
   void dispose() {
     _isDisposed = true;
-    _stopAll(updateUi: false);
+    for (final key in _activeKeys) {
+      widget.instrument?.noteOff(pitch: key);
+      widget.onNoteUp?.call(key);
+    }
+    _activeKeys.clear();
     super.dispose();
   }
 
   void _handleNoteDown(int key, int velocity) {
-    if (_latchNotes) {
-      if (_activeKeys.contains(key)) {
-        _activeKeys.remove(key);
-        widget.instrument?.noteOff(pitch: key);
-        widget.onNoteUp?.call(key);
-      } else {
-        _activeKeys.add(key);
-        final normVel = (velocity / 127.0).clamp(0.05, 1.0);
-        widget.instrument?.noteOn(pitch: key, velocity: normVel);
-        widget.onNoteDown?.call(key, velocity);
-      }
-    } else {
-      _activeKeys.add(key);
-      final normVel = (velocity / 127.0).clamp(0.05, 1.0);
-      widget.instrument?.noteOn(pitch: key, velocity: normVel);
-      widget.onNoteDown?.call(key, velocity);
-    }
+    _activeKeys.add(key);
+    final normVel = (velocity / 127).clamp(0.05, 1.0);
+    widget.instrument?.noteOn(pitch: key, velocity: normVel);
+    widget.onNoteDown?.call(key, velocity);
     if (mounted && !_isDisposed) {
       setState(() {});
     }
   }
 
   void _handleNoteUp(int key) {
-    if (!_latchNotes) {
-      _activeKeys.remove(key);
-      widget.instrument?.noteOff(pitch: key);
-      widget.onNoteUp?.call(key);
-      if (mounted && !_isDisposed) {
-        setState(() {});
-      }
-    }
-  }
-
-  void _stopAll({bool updateUi = true}) {
-    for (final key in _activeKeys) {
-      widget.instrument?.noteOff(pitch: key);
-      widget.onNoteUp?.call(key);
-    }
-    _activeKeys.clear();
-    widget.onStopAll?.call();
-    if (updateUi && mounted && !_isDisposed) {
+    _activeKeys.remove(key);
+    widget.instrument?.noteOff(pitch: key);
+    widget.onNoteUp?.call(key);
+    if (mounted && !_isDisposed) {
       setState(() {});
     }
   }
@@ -262,51 +232,6 @@ class _PianoPanelState extends State<PianoPanel> {
                           : null,
                     ),
 
-                    const SizedBox(width: 8),
-
-                    // Hold / Latch Toggle
-                    FilterChip(
-                      avatar: Icon(
-                        _latchNotes ? Icons.lock : Icons.lock_open,
-                        size: 14,
-                        color: _latchNotes
-                            ? theme.colorScheme.onPrimaryContainer
-                            : null,
-                      ),
-                      label: const Text(
-                        'Hold / Latch',
-                        style: TextStyle(fontSize: 11),
-                      ),
-                      selected: _latchNotes,
-                      padding: EdgeInsets.zero,
-                      onSelected: (val) {
-                        setState(() {
-                          _latchNotes = val;
-                          if (!_latchNotes) {
-                            _stopAll();
-                          }
-                        });
-                      },
-                    ),
-
-                    const SizedBox(width: 8),
-
-                    // Stop All Notes Button
-                    OutlinedButton.icon(
-                      icon: const Icon(Icons.stop, size: 16),
-                      label: const Text(
-                        'Stop All',
-                        style: TextStyle(fontSize: 11),
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        visualDensity: VisualDensity.compact,
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                      ),
-                      onPressed: _activeKeys.isNotEmpty || _latchNotes
-                          ? _stopAll
-                          : null,
-                    ),
-
                     const SizedBox(width: 4),
 
                     // Help Dialog Button
@@ -328,12 +253,10 @@ class _PianoPanelState extends State<PianoPanel> {
                     startNote: startNote,
                     keyCount: keyCount,
                     activeKeys: _activeKeys,
-                    latchMode: _latchNotes,
                     onNoteDown: _handleNoteDown,
                     onNoteUp: _handleNoteUp,
                     onOctaveShift: (delta) =>
                         _shiftOctave(delta, maxStartOctave),
-                    onStopAll: _stopAll,
                   ),
                 ),
               ),
@@ -423,10 +346,6 @@ void showKeyBindingsHelpDialog(BuildContext context) {
               buildRow(
                 buildKbdBadge('► Right / RShift'),
                 'Shift octave up',
-              ),
-              buildRow(
-                buildKbdBadge('Canc / Delete'),
-                'Stop all playing voices',
               ),
               const Divider(height: 24),
               Text(

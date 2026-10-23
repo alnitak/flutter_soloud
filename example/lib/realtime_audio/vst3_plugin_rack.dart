@@ -29,8 +29,8 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await SoLoud.instance.init(
     sampleRate: 48000,
-    bufferSize: 4096,
-    renderAheadFrames: 4096,
+    bufferSize: 1024,
+    renderAheadFrames: 1024,
     devicePeriodFrames: 256,
   );
   runApp(const MaterialApp(home: Vst3PluginRackExample()));
@@ -394,265 +394,291 @@ class _Vst3PluginRackExampleState extends State<Vst3PluginRackExample> {
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'VST3 Supported: ${_vstHost.isSupported} | '
-                    'Search Paths: ${_vstHost.standardSearchPaths.join(', ')}',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _pathController,
-                    decoration: const InputDecoration(
-                      labelText: '.vst3 Bundle Path',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      ElevatedButton.icon(
-                        onPressed: _showPluginPickerDialog,
-                        icon: const Icon(Icons.manage_search),
-                        label: const Text('Scan Installed Plugins...'),
-                      ),
-                      OutlinedButton.icon(
-                        onPressed: () =>
-                            _scanAndLoad(_pathController.text.trim()),
-                        icon: const Icon(Icons.input),
-                        label: const Text('Load Path'),
-                      ),
-                      ElevatedButton.icon(
-                        onPressed: _toggleTestTone,
-                        icon: Icon(
-                          _testToneHandle != null
-                              ? Icons.stop
-                              : Icons.play_arrow,
-                        ),
-                        label: Text(
-                          _testToneHandle != null ? 'Stop Sound' : 'Play Sound',
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(_statusMessage),
-                ],
-              ),
-            ),
-          ),
-          if (plugin != null) ...[
-            const SizedBox(height: 12),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        if (plugin.hasEditor)
-                          ElevatedButton.icon(
-                            onPressed: () {
-                              if (plugin.isEditorOpen) {
-                                plugin.closeEditorWindow();
-                              } else {
-                                final opened = plugin.openEditorWindow(
-                                  title: _loadedPluginName,
-                                );
-                                if (!opened && mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text(
-                                        'Could not open VST3 GUI. '
-                                        'On Linux, VST3 embedding requires '
-                                        'an X11 backend (GDK_BACKEND=x11).',
-                                      ),
-                                    ),
-                                  );
-                                }
-                              }
-                              setState(() {});
-                            },
-                            icon: const Icon(Icons.open_in_new),
-                            label: Text(
-                              plugin.isEditorOpen
-                                  ? 'Close Native VST3 GUI'
-                                  : 'Open Native VST3 GUI',
-                            ),
+                        Text(
+                          'VST3 Supported: ${_vstHost.isSupported} | '
+                          'Search Paths: '
+                          '${_vstHost.standardSearchPaths.join(', ')}',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: _pathController,
+                          decoration: const InputDecoration(
+                            labelText: '.vst3 Bundle Path',
+                            border: OutlineInputBorder(),
                           ),
-                        OutlinedButton(
-                          onPressed: () {
-                            _savedPreset = plugin.saveState();
-                            setState(() {
-                              final len = _savedPreset!.length;
-                              _statusMessage = 'Saved preset ($len bytes)';
-                            });
-                          },
-                          child: const Text('Save State'),
                         ),
-                        OutlinedButton(
-                          onPressed: _savedPreset == null
-                              ? null
-                              : () {
-                                  plugin.restoreState(_savedPreset!);
-                                  setState(() {
-                                    _statusMessage = 'Restored preset state.';
-                                  });
-                                },
-                          child: const Text('Restore State'),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            ElevatedButton.icon(
+                              onPressed: _showPluginPickerDialog,
+                              icon: const Icon(Icons.manage_search),
+                              label: const Text('Scan Installed Plugins...'),
+                            ),
+                            OutlinedButton.icon(
+                              onPressed: () =>
+                                  _scanAndLoad(_pathController.text.trim()),
+                              icon: const Icon(Icons.input),
+                              label: const Text('Load Path'),
+                            ),
+                            ElevatedButton.icon(
+                              onPressed: _toggleTestTone,
+                              icon: Icon(
+                                _testToneHandle != null
+                                    ? Icons.stop
+                                    : Icons.play_arrow,
+                              ),
+                              label: Text(
+                                _testToneHandle != null
+                                    ? 'Stop Sound'
+                                    : 'Play Sound',
+                              ),
+                            ),
+                          ],
                         ),
+                        const SizedBox(height: 8),
+                        Text(_statusMessage),
                       ],
                     ),
-                    if (_loadedEffect != null) ...[
-                      const SizedBox(height: 8),
-                      Row(
+                  ),
+                ),
+                if (plugin != null) ...[
+                  const SizedBox(height: 12),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('Slot 0 Dry/Wet:'),
-                          Expanded(
-                            child: Slider(
-                              value: _effectWet,
-                              onChanged: (v) {
-                                setState(() => _effectWet = v);
-                                _soloud.filters.customFilters[0].wet.value = v;
-                              },
-                            ),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              if (plugin.hasEditor)
+                                ElevatedButton.icon(
+                                  onPressed: () {
+                                    if (plugin.isEditorOpen) {
+                                      plugin.closeEditorWindow();
+                                    } else {
+                                      final opened = plugin.openEditorWindow(
+                                        title: _loadedPluginName,
+                                      );
+                                      if (!opened && mounted) {
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          const SnackBar(
+                                            content: Text(
+                                              'Could not open VST3 GUI. '
+                                              'On Linux, VST3 embedding '
+                                              'requires an X11 backend '
+                                              '(GDK_BACKEND=x11).',
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                    }
+                                    setState(() {});
+                                  },
+                                  icon: const Icon(Icons.open_in_new),
+                                  label: Text(
+                                    plugin.isEditorOpen
+                                        ? 'Close Native VST3 GUI'
+                                        : 'Open Native VST3 GUI',
+                                  ),
+                                ),
+                              OutlinedButton(
+                                onPressed: () {
+                                  _savedPreset = plugin.saveState();
+                                  setState(() {
+                                    final len = _savedPreset!.length;
+                                    _statusMessage =
+                                        'Saved preset ($len bytes)';
+                                  });
+                                },
+                                child: const Text('Save State'),
+                              ),
+                              OutlinedButton(
+                                onPressed: _savedPreset == null
+                                    ? null
+                                    : () {
+                                        plugin.restoreState(_savedPreset!);
+                                        setState(() {
+                                          _statusMessage =
+                                              'Restored preset state.';
+                                        });
+                                      },
+                                child: const Text('Restore State'),
+                              ),
+                            ],
                           ),
-                          Text(_effectWet.toStringAsFixed(2)),
-                        ],
-                      ),
-                    ],
-
-                    const Divider(),
-                    Builder(
-                      builder: (context) {
-                        final displayParams =
-                            _showAllParameters || plugin.parameters.length <= 24
-                                ? plugin.parameters
-                                : plugin.parameters.take(24).toList();
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
+                          if (_loadedEffect != null) ...[
+                            const SizedBox(height: 8),
                             Row(
                               children: [
-                                Text(
-                                  'Parameters (${displayParams.length} of '
-                                  '${plugin.parameters.length}):',
-                                  style: Theme.of(context).textTheme.titleSmall,
-                                ),
-                                Tooltip(
-                                  message: 'Synchronize and refresh plugin '
-                                      'parameters',
-                                  child: OutlinedButton.icon(
-                                    icon: const Icon(Icons.refresh, size: 16),
-                                    label: const Text('Refresh Parameters'),
-                                    style: OutlinedButton.styleFrom(
-                                      visualDensity: VisualDensity.compact,
-                                    ),
-                                    onPressed: () {
-                                      setState(() {
-                                        plugin.refreshParameters();
-                                        _statusMessage = 'Refreshed parameters '
-                                            '(${plugin.parameters.length} '
-                                            'total)';
-                                      });
+                                const Text('Slot 0 Dry/Wet:'),
+                                Expanded(
+                                  child: Slider(
+                                    value: _effectWet,
+                                    onChanged: (v) {
+                                      setState(() => _effectWet = v);
+                                      _soloud.filters.customFilters[0].wet
+                                          .value = v;
                                     },
                                   ),
                                 ),
-                                if (plugin.parameters.length > 24) ...[
-                                  const SizedBox(width: 8),
-                                  TextButton(
-                                    onPressed: () {
-                                      setState(() {
-                                        _showAllParameters =
-                                            !_showAllParameters;
-                                      });
-                                    },
-                                    child: Text(
-                                      _showAllParameters
-                                          ? 'Show First 24'
-                                          : 'Show All '
-                                              '(${plugin.parameters.length})',
-                                    ),
-                                  ),
-                                ],
+                                Text(_effectWet.toStringAsFixed(2)),
                               ],
                             ),
-                            for (final param in displayParams)
-                              Row(
-                                key:
-                                    ValueKey('${param.paramId}_${param.title}'),
-                                children: [
-                                  SizedBox(
-                                    width: 180,
-                                    child: Text(
-                                      param.title,
-                                      style: TextStyle(
-                                        fontWeight: param.title == 'FX Type'
-                                            ? FontWeight.bold
-                                            : FontWeight.normal,
-                                      ),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                  Expanded(
-                                    child: Slider(
-                                      value: plugin
-                                          .getParameterNormalized(param.paramId)
-                                          .clamp(0.0, 1.0),
-                                      onChanged: (v) {
-                                        plugin.setParameterNormalized(
-                                          param.paramId,
-                                          v,
-                                        );
-                                        if (param.title == 'FX Type') {
-                                          plugin.refreshParameters();
-                                        }
-                                        setState(() {});
-                                      },
-                                    ),
-                                  ),
-                                  SizedBox(
-                                    width: 130,
-                                    child: Text(
-                                      '${plugin.getParameterDisplay(
-                                        param.paramId,
-                                      )} ${param.units}'
-                                          .trim(),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ],
-                              ),
                           ],
-                        );
-                      },
+                          const Divider(),
+                          Builder(
+                            builder: (context) {
+                              final displayParams = _showAllParameters ||
+                                      plugin.parameters.length <= 24
+                                  ? plugin.parameters
+                                  : plugin.parameters.take(24).toList();
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Text(
+                                        'Parameters (${displayParams.length} '
+                                        'of ${plugin.parameters.length}):',
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .titleSmall,
+                                      ),
+                                      Tooltip(
+                                        message:
+                                            'Synchronize and refresh plugin '
+                                            'parameters',
+                                        child: OutlinedButton.icon(
+                                          icon: const Icon(
+                                            Icons.refresh,
+                                            size: 16,
+                                          ),
+                                          label:
+                                              const Text('Refresh Parameters'),
+                                          style: OutlinedButton.styleFrom(
+                                            visualDensity:
+                                                VisualDensity.compact,
+                                          ),
+                                          onPressed: () {
+                                            setState(() {
+                                              plugin.refreshParameters();
+                                              final count =
+                                                  plugin.parameters.length;
+                                              _statusMessage =
+                                                  'Refreshed parameters '
+                                                  '($count total)';
+                                            });
+                                          },
+                                        ),
+                                      ),
+                                      if (plugin.parameters.length > 24) ...[
+                                        const SizedBox(width: 8),
+                                        TextButton(
+                                          onPressed: () {
+                                            setState(() {
+                                              _showAllParameters =
+                                                  !_showAllParameters;
+                                            });
+                                          },
+                                          child: Builder(
+                                            builder: (context) {
+                                              final total =
+                                                  plugin.parameters.length;
+                                              return Text(
+                                                _showAllParameters
+                                                    ? 'Show First 24'
+                                                    : 'Show All ($total)',
+                                              );
+                                            },
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                  for (final param in displayParams)
+                                    Row(
+                                      key: ValueKey(
+                                        '${param.paramId}_${param.title}',
+                                      ),
+                                      children: [
+                                        SizedBox(
+                                          width: 180,
+                                          child: Text(
+                                            param.title,
+                                            style: TextStyle(
+                                              fontWeight:
+                                                  param.title == 'FX Type'
+                                                      ? FontWeight.bold
+                                                      : FontWeight.normal,
+                                            ),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                        Expanded(
+                                          child: Slider(
+                                            value: plugin
+                                                .getParameterNormalized(
+                                                  param.paramId,
+                                                )
+                                                .clamp(0.0, 1.0),
+                                            onChanged: (v) {
+                                              plugin.setParameterNormalized(
+                                                param.paramId,
+                                                v,
+                                              );
+                                              if (param.title == 'FX Type') {
+                                                plugin.refreshParameters();
+                                              }
+                                              setState(() {});
+                                            },
+                                          ),
+                                        ),
+                                        SizedBox(
+                                          width: 130,
+                                          child: Text(
+                                            '${plugin.getParameterDisplay(
+                                              param.paramId,
+                                            )} ${param.units}'
+                                                .trim(),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                ],
+                              );
+                            },
+                          ),
+                        ],
+                      ),
                     ),
-                  ],
-                ),
-              ),
+                  ),
+                ],
+              ],
             ),
-          ],
-          ],
-        ),
+          ),
+          if (_loadedSynth != null)
+            PianoPanel(
+              instrument: _loadedSynth,
+              title: _loadedPluginName,
+            ),
+        ],
       ),
-      if (_loadedSynth != null)
-        PianoPanel(
-          instrument: _loadedSynth,
-          title: _loadedPluginName,
-        ),
-    ],
-  ),
-);
+    );
   }
 }
 

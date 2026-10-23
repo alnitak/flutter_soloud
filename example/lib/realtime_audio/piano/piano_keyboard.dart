@@ -17,9 +17,7 @@ class PianoKeyboard extends StatefulWidget {
     this.availableKeys,
     this.markedKey,
     this.markedKeys,
-    this.latchMode = false,
     this.onOctaveShift,
-    this.onStopAll,
   });
 
   /// Starting MIDI note number (e.g., 48 for C3, 60 for C4).
@@ -46,15 +44,9 @@ class PianoKeyboard extends StatefulWidget {
   /// Optional set of MIDI keys to mark with red dots.
   final Set<int>? markedKeys;
 
-  /// When true, tapping a key latches it on until tapped again.
-  final bool latchMode;
-
   /// Optional callback when an octave shift key is pressed.
   /// (Left Shift = -1, Right Shift = +1).
   final void Function(int deltaOctave)? onOctaveShift;
-
-  /// Optional callback when stop all key (Canc / Delete / Backspace) is pressed.
-  final VoidCallback? onStopAll;
 
   @override
   State<PianoKeyboard> createState() => _PianoKeyboardState();
@@ -241,15 +233,6 @@ class _PianoKeyboardState extends State<PianoKeyboard> {
       return true;
     }
 
-    // Handle Stop shortcut: Canc / Delete / Backspace (stop all voices)
-    if (event.logicalKey == LogicalKeyboardKey.delete ||
-        event.logicalKey == LogicalKeyboardKey.backspace) {
-      if (event is KeyDownEvent) {
-        widget.onStopAll?.call();
-      }
-      return true;
-    }
-
     final binding = _keyBindings[event.logicalKey];
     if (binding == null) {
       return false;
@@ -264,15 +247,7 @@ class _PianoKeyboardState extends State<PianoKeyboard> {
     if (event is KeyDownEvent) {
       if (!_pressedPhysicalKeys.contains(event.logicalKey)) {
         _pressedPhysicalKeys.add(event.logicalKey);
-        if (widget.latchMode) {
-          if (widget.activeKeys.contains(midiNote)) {
-            widget.onNoteUp(midiNote);
-          } else {
-            widget.onNoteDown(midiNote, 100);
-          }
-        } else {
-          widget.onNoteDown(midiNote, 100);
-        }
+        widget.onNoteDown(midiNote, 100);
         if (mounted && !_isDisposed) setState(() {});
       }
       return true;
@@ -280,9 +255,7 @@ class _PianoKeyboardState extends State<PianoKeyboard> {
       return true;
     } else if (event is KeyUpEvent) {
       if (_pressedPhysicalKeys.remove(event.logicalKey)) {
-        if (!widget.latchMode) {
-          widget.onNoteUp(midiNote);
-        }
+        widget.onNoteUp(midiNote);
         if (mounted && !_isDisposed) setState(() {});
       }
       return true;
@@ -673,15 +646,7 @@ class _PianoKeyboardState extends State<PianoKeyboard> {
       final note = noteInfo.note;
       final velocity = noteInfo.velocity;
       _pointerNotes[event.pointer] = note;
-      if (widget.latchMode) {
-        if (widget.activeKeys.contains(note)) {
-          widget.onNoteUp(note);
-        } else {
-          widget.onNoteDown(note, velocity);
-        }
-      } else {
-        widget.onNoteDown(note, velocity);
-      }
+      widget.onNoteDown(note, velocity);
       if (mounted && !_isDisposed) setState(() {});
     }
   }
@@ -693,7 +658,6 @@ class _PianoKeyboardState extends State<PianoKeyboard> {
     double totalHeight,
     double blackHeight,
   ) {
-    if (widget.latchMode) return;
 
     final pos = event.localPosition;
     final noteInfo = _hitTest(
@@ -724,9 +688,7 @@ class _PianoKeyboardState extends State<PianoKeyboard> {
   void _handlePointerUp(PointerEvent event) {
     final note = _pointerNotes.remove(event.pointer);
     if (note != null) {
-      if (!widget.latchMode) {
-        widget.onNoteUp(note);
-      }
+      widget.onNoteUp(note);
       if (mounted && !_isDisposed) setState(() {});
     }
   }
