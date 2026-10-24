@@ -3780,7 +3780,8 @@ int Player::busSetChannels(unsigned int busId, unsigned int channels)
     BusData &busData = it->second;
     const SoLoud::result res = busData.bus.setChannels(channels);
     // The visualization stores every channel of the bus: restart it for the
-    // new count, with the same settings.
+    // new count, with the same settings. That fails if the selected channel
+    // is gone, which disables it.
     if (res == SoLoud::SO_NO_ERROR && busData.analyzer &&
         busData.analyzer->isVisualizationEnabled())
     {

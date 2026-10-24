@@ -574,6 +574,9 @@ void testChannelSelection() {
                                             -3) == invalidParameter,
            "a channel below -2 is invalid");
     EXPECT(analyzer.setVisualizationEnabled(true, kWindow, VISUALIZATION_WAVE,
+                                            2, kChannels) == invalidParameter,
+           "a channel the audio does not have is invalid");
+    EXPECT(analyzer.setVisualizationEnabled(true, kWindow, VISUALIZATION_WAVE,
                                             VISUALIZATION_CHANNEL_MERGED,
                                             9) == invalidParameter,
            "more than 8 channels is invalid");

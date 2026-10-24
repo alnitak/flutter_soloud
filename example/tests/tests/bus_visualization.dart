@@ -171,6 +171,36 @@ Future<OutputBuffer> testBusVisualization() async {
     bus.getVisualizationEnabled(),
     'Invalid settings should leave the visualization running',
   );
+  threw = false;
+  try {
+    bus.setVisualizationEnabled(true, channel: 2);
+  } on SoLoudCppException {
+    threw = true;
+  }
+  assert(threw, 'A channel the stereo bus does not have should throw');
+  assert(
+    bus.getVisualizationEnabled(),
+    'An invalid channel should leave the visualization running',
+  );
+
+  // ========================================================================
+  strBuf.writeln('=== Changing the channel count ===');
+  bus.setChannels(channels: Channels.mono);
+  assert(
+    bus.getVisualizationEnabled(),
+    'A merged visualization should restart for a mono bus',
+  );
+  bus
+    ..setChannels()
+    ..setVisualizationEnabled(true, channel: 1)
+    ..setChannels(channels: Channels.mono);
+  assert(
+    !bus.getVisualizationEnabled(),
+    'A visualization of channel 1 should be disabled once the bus is mono',
+  );
+  bus
+    ..setChannels()
+    ..setVisualizationEnabled(true);
 
   // ========================================================================
   strBuf.writeln('=== Disabling ===');

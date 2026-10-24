@@ -63,7 +63,7 @@ class Analyzer : public SoLoud::BusAudioTap {
   /// [windowSize] power of two from 128 to 8192 (default 256).
   /// [kind] wave only, FFT only, or wave and FFT.
   /// [channel] VISUALIZATION_CHANNEL_MERGED (-1), VISUALIZATION_CHANNEL_ALL
-  /// (-2), or a specific channel index.
+  /// (-2), or a specific channel index below [channels].
   /// [channels] channel count of the analyzed audio.
   ///
   /// Invalid parameters are reported before anything changes.

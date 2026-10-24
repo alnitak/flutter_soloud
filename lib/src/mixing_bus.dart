@@ -502,6 +502,10 @@ class Bus {
 
   /// Set the number of output channels for the bus (default is 2 = stereo).
   ///
+  /// A running visualization (see [setVisualizationEnabled]) restarts for the
+  /// new count with the same settings, or is disabled if the channel it was
+  /// set to no longer exists.
+  ///
   /// [channels] number of channels.
   ///
   /// Throws [SoLoudBusDisposedDartException] if the bus has already
@@ -555,7 +559,7 @@ class Bus {
   ///
   /// [channel] channel selection: [VisualizationChannel.merged] (-1, default),
   /// [VisualizationChannel.all] (-2), or a specific 0-based channel index of
-  /// this bus.
+  /// this bus, below its channel count (see [setChannels]).
   ///
   /// Throws [SoLoudBusDisposedDartException] if the bus has already
   /// been disposed.

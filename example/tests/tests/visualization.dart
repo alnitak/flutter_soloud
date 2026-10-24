@@ -127,6 +127,20 @@ Future<OutputBuffer> testVisualization() async {
     ..writeln('Wave channel count: ${combinedPacket!.wave.length}')
     ..writeln('FFT channel count: ${combinedPacket!.fft.length}');
 
+  // 4. A channel the engine doesn't have is rejected, and leaves the running
+  // visualization as it was.
+  var threw = false;
+  try {
+    SoLoud.instance.setVisualizationEnabled(true, channel: 2);
+  } on SoLoudCppException {
+    threw = true;
+  }
+  assert(threw, 'A channel the stereo engine does not have should throw');
+  assert(
+    SoLoud.instance.getVisualizationEnabled(),
+    'An invalid channel should leave the visualization running',
+  );
+
   // Disable visualization
   SoLoud.instance.setVisualizationEnabled(false);
   assert(

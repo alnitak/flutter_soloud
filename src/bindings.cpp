@@ -2800,7 +2800,8 @@ extern "C"
   /// [enabled] enable or disable it
   /// [windowSize] power of two from 128 to 8192 (default 256)
   /// [kind] 0: wave, 1: FFT, 2: wave and FFT
-  /// [channel] -1: merged mono, -2: all channels, >= 0: specific channel index
+  /// [channel] -1: merged mono, -2: all channels, >= 0: specific channel
+  /// index, below the engine's channel count
   FFI_PLUGIN_EXPORT enum PlayerErrors setVisualizationEnabled(
       bool enabled,
       int windowSize,
@@ -4015,6 +4016,8 @@ extern "C"
   }
 
   /// Set the number of output channels for the bus (default is 2 = stereo).
+  /// A running visualization of the bus restarts for the new count, or is
+  /// disabled if the channel it was set to no longer exists.
   ///
   /// [busId] the bus ID.
   /// [channels] number of channels (1 = mono, 2 = stereo, etc.).
@@ -4036,7 +4039,8 @@ extern "C"
   /// [enabled] enable or disable it
   /// [windowSize] power of two from 128 to 8192 (default 256)
   /// [kind] 0: wave, 1: FFT, 2: wave and FFT
-  /// [channel] -1: merged mono, -2: all channels, >= 0: specific channel index
+  /// [channel] -1: merged mono, -2: all channels, >= 0: specific channel
+  /// index, below the bus's channel count
   FFI_PLUGIN_EXPORT enum PlayerErrors busSetVisualizationEnabled(
       unsigned int busId, bool enabled, int windowSize, int kind, int channel)
   {

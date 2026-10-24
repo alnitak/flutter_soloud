@@ -3464,11 +3464,13 @@ interface class SoLoud {
   /// [VisualizationKind.waveAndFft]).
   ///
   /// [channel] channel selection: [VisualizationChannel.merged] (-1, default),
-  /// [VisualizationChannel.all] (-2), or a specific 0-based channel index.
+  /// [VisualizationChannel.all] (-2), or a specific 0-based channel index,
+  /// below the `channels` the engine was initialized with.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   ///
-  /// Throws [SoLoudCppException] if native setup fails.
+  /// Throws [SoLoudCppException] if the parameters are invalid or native
+  /// setup fails.
   void setVisualizationEnabled(
     bool enabled, {
     int windowSize = 256,

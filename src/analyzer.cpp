@@ -239,10 +239,11 @@ PlayerErrors Analyzer::setVisualizationEnabled(
     if (kind < VISUALIZATION_WAVE || kind > VISUALIZATION_WAVE_AND_FFT) {
       return invalidParameter;
     }
-    if (channel < VISUALIZATION_CHANNEL_ALL) {
+    if (channels <= 0 || channels > kMaxChannels) {
       return invalidParameter;
     }
-    if (channels <= 0 || channels > kMaxChannels) {
+    // Merged, all, or one of the analyzed audio's channels.
+    if (channel < VISUALIZATION_CHANNEL_ALL || channel >= channels) {
       return invalidParameter;
     }
   }
@@ -511,10 +512,9 @@ bool Analyzer::analyzeLatestWindow(float *packet) {
     }
   } else {
     for (int c = 0; c < m_activeChannels; c++) {
-      int lane = c;
-      if (m_channelSelection >= 0) {
-        lane = m_channelSelection < m_lanes ? m_channelSelection : 0;
-      }
+      // The selected channel, which enabling checked is below m_lanes, or
+      // each channel in turn.
+      const int lane = m_channelSelection >= 0 ? m_channelSelection : c;
       const std::atomic<float> *src = ringLane(lane);
       float *out = m_window[c];
       for (size_t i = 0; i < windowSize; i++) {
