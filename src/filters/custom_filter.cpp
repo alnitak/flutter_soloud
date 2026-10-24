@@ -19,8 +19,6 @@ struct CustomFilterSnapshot : public FilterStateSnapshot {
   uint64_t mParamChanged = 0;
   std::array<float, CustomFilter::kMaxParams> mParams{};
   std::array<Fader, CustomFilter::kMaxParams> mFaders{};
-  std::array<float, MAX_CHANNELS> mSvfLow{};
-  std::array<float, MAX_CHANNELS> mSvfBand{};
 };
 
 CustomFilterInstance::CustomFilterInstance(CustomFilter *aParent)
@@ -45,8 +43,6 @@ FilterStateSnapshot *CustomFilterInstance::captureState() {
     snap->mParams[i] = mParam[i];
     snap->mFaders[i] = mParamFader[i];
   }
-  snap->mSvfLow = mSvfLow;
-  snap->mSvfBand = mSvfBand;
   return snap;
 }
 
@@ -61,8 +57,6 @@ void CustomFilterInstance::restoreState(FilterStateSnapshot *aState) {
     mParam[i] = snap->mParams[i];
     mParamFader[i] = snap->mFaders[i];
   }
-  mSvfLow = snap->mSvfLow;
-  mSvfBand = snap->mSvfBand;
 }
 
 void CustomFilterInstance::invokeCallback(float *aBuffer, unsigned int aSamples,
@@ -98,55 +92,6 @@ void CustomFilterInstance::invokeCallback(float *aBuffer, unsigned int aSamples,
     return;
   }
 #endif
-
-  // Built-in native DSP reference implementations for cross-platform workbench
-  // and named DSP presets when no native function pointer was supplied.
-  if (jsFn == "soloudOverdriveFilterCallback") {
-    const float drive =
-        (mNumParams > 1 && mParam[1] >= 1.0f) ? mParam[1] : 2.5f;
-    const float asym = (mNumParams > 2) ? mParam[2] : 0.0f;
-    const float dcOffset = std::tanh(asym);
-    const float norm = 1.0f / std::max(0.35f, std::tanh(drive));
-    for (unsigned int ch = 0; ch < aChannels; ++ch) {
-      float *dst = aBuffer + static_cast<size_t>(ch) * aBufferSize;
-      for (unsigned int i = 0; i < aSamples; ++i) {
-        const float x = dst[i];
-        dst[i] = std::clamp((std::tanh(x * drive + asym) - dcOffset) * norm,
-                            -1.0f, 1.0f);
-      }
-    }
-  } else if (jsFn == "soloudSvfFilterCallback") {
-    const float sr = aSamplerate > 0.0f ? aSamplerate : 48000.0f;
-    const float cutoff = std::clamp(
-        (mNumParams > 1 && mParam[1] > 20.0f) ? mParam[1] : 1200.0f, 40.0f,
-        sr * 0.45f);
-    const float res = std::clamp(
-        (mNumParams > 2 && mParam[2] > 0.05f) ? mParam[2] : 0.4f, 0.05f, 0.95f);
-    const float f = std::min(
-        0.95f,
-        2.0f * std::sin(static_cast<float>(M_PI) * cutoff / (sr * 2.0f)));
-    const float q = 1.0f - res * 0.85f;
-    const unsigned int maxCh = std::min<unsigned int>(aChannels, MAX_CHANNELS);
-    for (unsigned int ch = 0; ch < maxCh; ++ch) {
-      float *dst = aBuffer + static_cast<size_t>(ch) * aBufferSize;
-      float low = mSvfLow[ch];
-      float band = mSvfBand[ch];
-      for (unsigned int i = 0; i < aSamples; ++i) {
-        const float in = dst[i];
-        // 2x oversampled Chamberlin SVF for stability up to Nyquist/2
-        for (int step = 0; step < 2; ++step) {
-          low += f * band;
-          const float high = in - low - q * band;
-          band += f * high;
-        }
-        low = std::clamp(low, -2.0f, 2.0f);
-        band = std::clamp(band, -2.0f, 2.0f);
-        dst[i] = low;
-      }
-      mSvfLow[ch] = low;
-      mSvfBand[ch] = band;
-    }
-  }
 }
 
 void CustomFilterInstance::filter(float *aBuffer, unsigned int aSamples,

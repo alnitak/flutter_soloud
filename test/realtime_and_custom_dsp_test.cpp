@@ -297,33 +297,6 @@ static void testCustomFilter() {
 
     delete inst;
 
-    // Test built-in named DSP callbacks ("soloudOverdriveFilterCallback", "soloudSvfFilterCallback")
-    SoLoud::CustomFilter overdriveFilter;
-    overdriveFilter.setParamDefinition(0, 1.0f, 0.0f, 1.0f, "Wet");
-    overdriveFilter.setParamDefinition(1, 3.0f, 1.0f, 10.0f, "Drive");
-    overdriveFilter.setParamDefinition(2, 0.2f, -0.5f, 0.5f, "Bias");
-    overdriveFilter.setParamDefinition(3, 0.8f, 0.0f, 1.0f, "Output Gain");
-    overdriveFilter.setWebJsCallbackName("soloudOverdriveFilterCallback");
-    SoLoud::FilterInstance *odInst = overdriveFilter.createInstance();
-    std::fill(buf.begin(), buf.end(), 0.5f);
-    odInst->filter(buf.data(), 64, 64, 2, 48000.0f, 0.0);
-    EXPECT(std::fabs(buf[0] - 0.5f) > 1e-3f && std::fabs(buf[0]) < 1.0f,
-           "soloudOverdriveFilterCallback did not process buffer (%.4f)", buf[0]);
-    delete odInst;
-
-    SoLoud::CustomFilter svfFilter;
-    svfFilter.setParamDefinition(0, 1.0f, 0.0f, 1.0f, "Wet");
-    svfFilter.setParamDefinition(1, 1200.0f, 80.0f, 12000.0f, "Cutoff Hz");
-    svfFilter.setParamDefinition(2, 0.45f, 0.0f, 0.95f, "Resonance");
-    svfFilter.setWebJsCallbackName("soloudSvfFilterCallback");
-    SoLoud::FilterInstance *svfInst = svfFilter.createInstance();
-    std::fill(buf.begin(), buf.end(), 1.0f);
-    svfInst->filter(buf.data(), 64, 64, 2, 48000.0f, 0.0);
-    EXPECT(buf[0] > 0.0f && buf[63] > buf[0],
-           "soloudSvfFilterCallback step response invalid (buf[0]=%.4f, buf[63]=%.4f)",
-           buf[0], buf[63]);
-    delete svfInst;
-
     SoLoud::CustomAudioSource namedSynth(48000, 2, nullptr, nullptr, nullptr,
                                          false, "soloudCustomSynthCallback");
     SoLoud::AudioSourceInstance *namedSynthInst = namedSynth.createInstance();

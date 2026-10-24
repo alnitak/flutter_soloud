@@ -33,8 +33,6 @@ private:
 
   CustomFilter *mParent;
   std::vector<float> mDryScratch;
-  std::array<float, MAX_CHANNELS> mSvfLow{};
-  std::array<float, MAX_CHANNELS> mSvfBand{};
 };
 
 class CustomFilter : public Filter {

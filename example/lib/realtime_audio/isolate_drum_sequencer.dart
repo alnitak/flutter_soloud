@@ -36,7 +36,7 @@ import 'package:flutter_soloud/flutter_soloud.dart';
 /// - **Alternative for Web**: For zero-latency, glitch-free procedural
 ///   synthesis on Web without ring-buffer queuing jitter, consider using a
 ///   pull-based `SoLoud.instance.createCustomAudioSource`
-///   (see `custom_dsp_workbench.dart`).
+///   (see `custom_dsp/lib/main.dart`).
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
