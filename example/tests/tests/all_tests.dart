@@ -9,6 +9,7 @@ import 'auto_dispose.dart' as auto_dispose;
 import 'buffer_stream_callbacks.dart' as buffer_stream_callbacks;
 import 'buffer_stream_extended.dart' as buffer_stream_extended;
 import 'buffer_stream_small_mp3.dart' as buffer_stream_small_mp3;
+import 'bus_visualization.dart' as bus_visualization;
 import 'compressor_filter.dart' as compressor_filter;
 import 'create_notes.dart' as create_notes;
 import 'equalizer_filter.dart' as equalizer_filter;
@@ -107,6 +108,10 @@ final List<TestEntry> allTests = [
   const TestEntry(
     name: 'BufferStreamSmallMp3',
     run: buffer_stream_small_mp3.testBufferStreamSmallMp3,
+  ),
+  const TestEntry(
+    name: 'BusVisualization',
+    run: bus_visualization.testBusVisualization,
   ),
   const TestEntry(
     name: 'CompressorFilterGlobal',

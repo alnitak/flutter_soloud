@@ -29,6 +29,8 @@
 //   * both hooks return promptly while init_deinit_mutex is held by an
 //     unrelated operation -- they run on Android's platform thread, where
 //     waiting for a device operation is an ANR;
+//   * retirement stops the visualizations without holding the gate their
+//     worker dispatches through, so it cannot deadlock against a dispatch;
 //   * duplicate destroy/detach notifications tear down exactly once;
 //   * loadFile() decodes without the lifecycle locks, so disposing sounds or
 //     the engine never waits for a decode, and a sound decoded for an engine
@@ -76,6 +78,18 @@ extern "C"
                                         int chunkPCMFrames);
     void stopMixerCapture();
     int isMixerCaptureRunning();
+    bool setVisualizationCallbackForEngine(dartVisualizationCallback_t callback,
+                                           int64_t owner_engine_id);
+    enum PlayerErrors setVisualizationEnabled(bool enabled, int windowSize,
+                                              int kind, int channel);
+    int getVisualizationEnabled();
+    unsigned int createBus();
+    enum PlayerErrors busPlayOnEngine(unsigned int busId, float volume,
+                                      bool paused, unsigned int *handle);
+    enum PlayerErrors busSetVisualizationEnabled(unsigned int busId,
+                                                 bool enabled, int windowSize,
+                                                 int kind, int channel);
+    int busGetVisualizationEnabled(unsigned int busId);
     bool clearDartCallbackRegistrationsForEngine(int64_t engine_id);
     bool requestEngineTeardownForEngine(int64_t engine_id);
     void retireDartCallbacksFinalizer(void *token);
@@ -144,6 +158,10 @@ std::atomic<int> gFileLoadedCalls{0};
 std::atomic<int> gStateChangedCalls{0};
 std::atomic<int> gStreamCallbackCalls{0};
 std::atomic<int> gMixerOutputCalls{0};
+std::atomic<int> gEngineVisualizationPackets{0};
+std::atomic<int> gBusVisualizationPackets{0};
+std::atomic<bool> gHoldNextEngineVisualization{false};
+std::atomic<bool> gHoldingEngineVisualization{false};
 std::atomic<int> gLastFileLoadedError{-1};
 std::atomic<unsigned int> gLastFileLoadedHash{0};
 
@@ -174,6 +192,25 @@ void onStateChanged(enum PlayerStateEvents *state)
 }
 
 void onMixerOutput(unsigned char *, uint64_t) { ++gMixerOutputCalls; }
+
+/// When armed, holds the next engine-output packet -- and with it the gate,
+/// shared -- long enough for a retirement to queue up behind it.
+void onVisualization(int32_t sourceId, int32_t, float *data, int32_t, int32_t)
+{
+    std::free(data);
+    if (sourceId != 0)
+    {
+        ++gBusVisualizationPackets;
+        return;
+    }
+    ++gEngineVisualizationPackets;
+    bool armed = true;
+    if (gHoldNextEngineVisualization.compare_exchange_strong(armed, false))
+    {
+        gHoldingEngineVisualization = true;
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+}
 
 void onBuffering(bool, unsigned int, double) { ++gStreamCallbackCalls; }
 void onMetadata(struct AudioMetadataFFI) { ++gStreamCallbackCalls; }
@@ -269,6 +306,10 @@ void resetGlobalState()
     gStateChangedCalls = 0;
     gStreamCallbackCalls = 0;
     gMixerOutputCalls = 0;
+    gEngineVisualizationPackets = 0;
+    gBusVisualizationPackets = 0;
+    gHoldNextEngineVisualization = false;
+    gHoldingEngineVisualization = false;
 }
 
 bool initEngineAs(int64_t engineId)
@@ -672,6 +713,75 @@ void testTeardownDuringActiveMixerCapture()
     EXPECT(dispatched && dispatchesDuringRace > 0,
            "the notification thread must dispatch while the callback is being "
            "republished, or this scenario tests nothing");
+
+    resetGlobalState();
+}
+
+/// Retirement stops the visualizations, whose single worker thread invokes the
+/// Dart callable through the gate and holds its own lock across each pass over
+/// the enabled visualizations. Stopping them while still holding the gate
+/// exclusively deadlocks as soon as the worker is between two dispatches of
+/// one pass: the worker waits for the gate with its lock held, and stopping
+/// waits for that lock (and then for the worker to exit).
+///
+/// Forced here rather than hoped for: the engine output's visualization is
+/// enabled first, so it is dispatched first in every pass, and its callable is
+/// held until the retirement is queued behind it. When it returns, the bus's
+/// visualization is due in the same pass.
+void testRetirementWhileVisualizationsDispatch()
+{
+    std::printf("retirement while visualizations dispatch cannot deadlock\n");
+    resetGlobalState();
+
+    if (!initEngineAs(kEngineA))
+    {
+        EXPECT(false, "the engine should initialize");
+        return;
+    }
+    registerCallbacksFor(kEngineA);
+    EXPECT(setVisualizationCallbackForEngine(onVisualization, kEngineA),
+           "the owner should publish its visualization callable");
+    EXPECT(setVisualizationEnabled(true, 256, VISUALIZATION_WAVE_AND_FFT,
+                                   VISUALIZATION_CHANNEL_MERGED) == noError,
+           "the engine output's visualization should start");
+    const unsigned int busId = createBus();
+    unsigned int busHandle = 0;
+    EXPECT(busPlayOnEngine(busId, 1.0f, false, &busHandle) == noError,
+           "the bus should play");
+    EXPECT(busSetVisualizationEnabled(busId, true, 256,
+                                      VISUALIZATION_WAVE_AND_FFT,
+                                      VISUALIZATION_CHANNEL_MERGED) == noError,
+           "the bus's visualization should start");
+    EXPECT(waitFor([]
+                   {
+                       return gEngineVisualizationPackets.load() >= 3 &&
+                              gBusVisualizationPackets.load() >= 3;
+                   }),
+           "both visualizations should dispatch (engine %d, bus %d packets)",
+           gEngineVisualizationPackets.load(), gBusVisualizationPackets.load());
+
+    gHoldNextEngineVisualization = true;
+    EXPECT(waitFor([] { return gHoldingEngineVisualization.load(); }),
+           "the engine output's packet should be held");
+
+    // A deadlock here is caught by the watchdog.
+    const auto start = std::chrono::steady_clock::now();
+    EXPECT(clearDartCallbackRegistrationsForEngine(kEngineA),
+           "the owner's retirement should be accepted");
+    const long long elapsedMs = millisSince(start);
+    EXPECT(elapsedMs < 2000, "retirement took %lld ms", elapsedMs);
+
+    EXPECT(getVisualizationEnabled() == 0,
+           "retirement should stop the engine output's visualization");
+    EXPECT(busGetVisualizationEnabled(busId) == 0,
+           "retirement should stop the bus's visualization");
+    const int packets = gEngineVisualizationPackets.load() +
+                        gBusVisualizationPackets.load();
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    EXPECT(gEngineVisualizationPackets.load() +
+                   gBusVisualizationPackets.load() ==
+               packets,
+           "no packet may be dispatched after retirement");
 
     resetGlobalState();
 }
@@ -1303,6 +1413,7 @@ int main()
     testMixerCallbackPublicationIsOwnerScoped();
     testStaleWorkerMixerCallbackCannotBeRevived();
     testTeardownDuringActiveMixerCapture();
+    testRetirementWhileVisualizationsDispatch();
     testCaptureCannotStartAfterTeardownIsDecided();
     testConcurrentCaptureStopsAreSerialized();
     testEngineDestroyDisposesTheNativeEngine();

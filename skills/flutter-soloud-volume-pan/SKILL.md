@@ -1,6 +1,6 @@
 ---
 name: flutter-soloud-volume-pan
-version: 1
+version: 2
 description: Teaches volume, pan, fade, oscillator, and scheduled-stop control in the flutter_soloud package, including the handle-based model, setPanAbsolute, getApproximateVolume for VU meters, and the limiter filter as the anti-clipping tool. Use when the user asks to change a sound's volume, pan a sound left/right, fade or oscillate audio parameters, build a VU meter, or stop clipping when many sounds play at once.
 ---
 
@@ -85,10 +85,13 @@ Scheduled actions (engine-clock, no Dart `Future.delayed` needed):
 Metering:
 
 - `double getApproximateVolume(int channel)` — per-output-channel post-mix
-  level for VU meters (channel `0` = left, `1` = right in stereo).
+  level for VU meters (channel `0` = left, `1` = right in stereo): the peak
+  of the latest analyzed window.
   **Only returns non-zero when visualization is enabled**:
   `SoLoud.instance.setVisualizationEnabled(true)` first.
   Returns `0` for an invalid channel index.
+- `double bus.getChannelVolume(int channel)` — the same for what plays
+  through one mixing bus, after `bus.setVisualizationEnabled(true)`.
 
 ## Traps
 

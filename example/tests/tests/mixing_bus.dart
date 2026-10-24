@@ -229,18 +229,22 @@ Future<OutputBuffer> testMixingBus() async {
   await delay(800);
 
   // ========================================================================
-  // Test 6: Bus with channel volume metering (if visualization enabled)
+  // Test 6: Bus channel volume metering (needs the bus's visualization)
   // ========================================================================
   strBuf.writeln('\n=== Test 6: Bus Channel Volume ===');
 
-  // Enable visualization for channel volume to work
-  SoLoud.instance.setVisualizationEnabled(true);
   assert(
-    SoLoud.instance.getVisualizationEnabled(),
-    'Visualization should be enabled',
+    bus1.getChannelVolume(0) == 0,
+    'Channel volume should read 0 while the bus visualization is disabled',
   );
 
-  await delay(100);
+  bus1.setVisualizationEnabled(true);
+  assert(
+    bus1.getVisualizationEnabled(),
+    'Bus visualization should be enabled',
+  );
+
+  await delay(200);
 
   // Get approximate volume for channel 0 (left)
   final leftVolume = bus1.getChannelVolume(0);
@@ -248,17 +252,17 @@ Future<OutputBuffer> testMixingBus() async {
   strBuf
       .writeln('Bus1 channel volumes - Left: $leftVolume, Right: $rightVolume');
 
-  // Channel volumes should be reasonable (not negative, not extremely high)
-  assert(leftVolume >= 0, 'Left channel volume should be non-negative');
-  assert(rightVolume >= 0, 'Right channel volume should be non-negative');
+  // The background sound loops through bus1.
+  assert(leftVolume > 0, 'Left channel volume should be > 0');
+  assert(rightVolume > 0, 'Right channel volume should be > 0');
   assert(leftVolume <= 10, 'Left channel volume should be reasonable');
   assert(rightVolume <= 10, 'Right channel volume should be reasonable');
 
   // Disable visualization
-  SoLoud.instance.setVisualizationEnabled(false);
+  bus1.setVisualizationEnabled(false);
   assert(
-    !SoLoud.instance.getVisualizationEnabled(),
-    'Visualization should be disabled',
+    !bus1.getVisualizationEnabled(),
+    'Bus visualization should be disabled',
   );
 
   // ========================================================================

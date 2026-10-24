@@ -919,7 +919,8 @@ external void setRelativePlaySpeed(int handle, double speed);
 external double getRelativePlaySpeed(int handle);
 
 /// Gets the approximate volume for output per output channel (i.e, per
-/// speaker).
+/// speaker): the peak of the channel over the latest window analyzed by the
+/// visualization, which must be enabled.
 ///
 /// [channel] the channel.
 /// Return zero for invalid parameters.
@@ -1393,11 +1394,13 @@ external int getVisualizationEnabled();
 /// [smooth] must be in the [0.0 ~ 1.0] range.
 /// 0 = no smooth
 /// 1 = full smooth
+/// Applies to the engine output's visualization and every bus's.
 @ffi.Native<ffi.Void Function(ffi.Float)>()
 external void setFftSmoothing(double smooth);
 
 /// Set the decibel range [minDecibels, maxDecibels] for FFT normalization.
 /// Conforms to W3C Web Audio API (default: minDecibels = -100.0f, maxDecibels = -30.0f).
+/// Applies to the engine output's visualization and every bus's.
 @ffi.Native<ffi.Void Function(ffi.Float, ffi.Float)>()
 external void setFftDecibelRange(double minDecibels, double maxDecibels);
 
@@ -2603,35 +2606,49 @@ PlayerErrors busPlayOnEngine(
 @ffi.Native<ffi.Int Function(ffi.UnsignedInt, ffi.UnsignedInt)>()
 external int busSetChannels(int busId, int channels);
 
-/// Enable or disable visualization data gathering for this bus.
-/// Must be enabled before calling busCalcFFT, busGetWave,
-/// or busGetApproximateVolume.
+/// Enable or disable visualization for this bus. Its packets go to the
+/// visualization callback with the bus ID as source.
+///
+/// The data is what is mixed into the bus, before the bus's own filters,
+/// volume and pan. Nothing is sent while nothing is mixed through the bus.
 ///
 /// [busId] the bus ID.
-/// [enable] true to enable, false to disable.
-@ffi.Native<ffi.Void Function(ffi.UnsignedInt, ffi.Bool)>()
-external void busSetVisualizationEnable(int busId, bool enable);
+/// [enabled] enable or disable it
+/// [windowSize] power of two from 128 to 8192 (default 256)
+/// [kind] 0: wave, 1: FFT, 2: wave and FFT
+/// [channel] -1: merged mono, -2: all channels, >= 0: specific channel index
+@ffi.Native<
+  ffi.UnsignedInt Function(ffi.UnsignedInt, ffi.Bool, ffi.Int, ffi.Int, ffi.Int)
+>(symbol: 'busSetVisualizationEnabled')
+external int _busSetVisualizationEnabled(
+  int busId,
+  bool enabled,
+  int windowSize,
+  int kind,
+  int channel,
+);
 
-/// Calculate and return 256 floats of FFT data for this bus.
-/// The data ranges from low to high frequencies.
-/// Visualization must be enabled first with busSetVisualizationEnable.
-///
-/// [busId] the bus ID.
-/// Returns a pointer to 256 floats, or nullptr if the bus is not found.
-@ffi.Native<ffi.Pointer<ffi.Float> Function(ffi.UnsignedInt)>()
-external ffi.Pointer<ffi.Float> busCalcFFT(int busId);
+PlayerErrors busSetVisualizationEnabled(
+  int busId,
+  bool enabled,
+  int windowSize,
+  int kind,
+  int channel,
+) => PlayerErrors.fromValue(
+  _busSetVisualizationEnabled(busId, enabled, windowSize, kind, channel),
+);
 
-/// Get 256 samples of wave data currently playing through this bus.
-/// Visualization must be enabled first with busSetVisualizationEnable.
+/// Get the visualization state of this bus.
 ///
 /// [busId] the bus ID.
-/// Returns a pointer to 256 floats, or nullptr if the bus is not found.
-@ffi.Native<ffi.Pointer<ffi.Float> Function(ffi.UnsignedInt)>()
-external ffi.Pointer<ffi.Float> busGetWave(int busId);
+/// Return 1 if enabled.
+@ffi.Native<ffi.Int Function(ffi.UnsignedInt)>()
+external int busGetVisualizationEnabled(int busId);
 
 /// Get the approximate output volume for a specific channel of this bus.
 /// Useful for VU meters or level indicators.
-/// Visualization must be enabled first.
+/// Bus visualization must be enabled first: this is the peak of the channel
+/// over the latest analyzed window.
 ///
 /// [busId] the bus ID.
 /// [channel] the output channel index (0 = left, 1 = right, etc.).
@@ -2891,22 +2908,29 @@ typedef dartMixerOutputDataCallback_t =
     ffi.Pointer<ffi.NativeFunction<dartMixerOutputDataCallback_tFunction>>;
 typedef dartVisualizationCallback_tFunction =
     ffi.Void Function(
+      ffi.Int32 sourceId,
       ffi.Int32 channelCount,
-      ffi.Pointer<ffi.Pointer<ffi.Float>> waveDataPerChannel,
+      ffi.Pointer<ffi.Float> data,
       ffi.Int32 waveSamples,
-      ffi.Pointer<ffi.Pointer<ffi.Float>> fftDataPerChannel,
       ffi.Int32 fftSamples,
     );
 typedef DartdartVisualizationCallback_tFunction =
     void Function(
+      int sourceId,
       int channelCount,
-      ffi.Pointer<ffi.Pointer<ffi.Float>> waveDataPerChannel,
+      ffi.Pointer<ffi.Float> data,
       int waveSamples,
-      ffi.Pointer<ffi.Pointer<ffi.Float>> fftDataPerChannel,
       int fftSamples,
     );
 
-/// Callback handing dart visualization data (wave and/or FFT) per channel.
+/// Callback handing dart one visualization packet (wave and/or FFT) of
+/// [sourceId]: 0 for the engine output, otherwise the id of the mixing bus.
+///
+/// [data] holds [channelCount] wave windows of [waveSamples] floats, followed by
+/// [channelCount] FFT windows of [fftSamples] floats; a count is 0 when its kind
+/// is not computed. On native the packet is a malloc'd copy the Dart side frees
+/// with nativeFree() once it has read it: the listener runs later on the Dart
+/// event loop, after the analyzer has moved on.
 typedef dartVisualizationCallback_t =
     ffi.Pointer<ffi.NativeFunction<dartVisualizationCallback_tFunction>>;
 
