@@ -1,12 +1,12 @@
 ---
 name: flutter-soloud-synthesis
-version: 2
+version: 3
 description: Teaches how to generate audio without assets in flutter_soloud using loadWaveform() with the 9 WaveForm oscillators, runtime setWaveform*() tweaks, speechText() (built-in robotic TTS that creates and plays a source), and SoLoudTools.createNotes(). Use when the user asks for a tone generator, beeps/alerts, a keyboard/instrument, synthesized sound effects, or text-to-speech without audio files.
 ---
 
 # Synthesis: waveforms and speech without assets
 
-flutter_soloud can synthesize audio with zero files. `SoLoud.instance.loadWaveform()` creates an `AudioSource` from an oscillator (not a stream to "set" — there is no `setSource`/`setUrl` like audioplayers; you create a source, then `play()` it). The returned `AudioSource` is reused and disposed exactly like one loaded from an asset. Runtime tweaks (`setWaveform*`) act on the **source**, so they affect every playing instance of it. For custom sample-by-sample synthesis, polyphonic ADSR synths, drum machines, or C/Wasm DSP generators, see `setRealtimeStream` and `createCustomSource` in **flutter-soloud-realtime-dsp** (`skills/flutter-soloud-realtime-dsp/SKILL.md`).
+flutter_soloud can synthesize audio with zero files. `SoLoud.instance.loadWaveform()` creates an `AudioSource` from an oscillator (not a stream to "set" — there is no `setSource`/`setUrl` like audioplayers; you create a source, then `play()` it). The returned `AudioSource` is reused and disposed exactly like one loaded from an asset. Runtime tweaks (`setWaveform*`) act on the **source**, so they affect every playing instance of it. For custom sample-by-sample synthesis, polyphonic ADSR synths, drum machines, or C/Wasm DSP generators, see `setRealtimeStream` in **flutter-soloud-realtime-dsp** (`skills/flutter-soloud-realtime-dsp/SKILL.md`) and `createCustomAudioSource` in **flutter-soloud-custom-dsp** (`skills/flutter-soloud-custom-dsp/SKILL.md`).
 
 ## Minimal example
 

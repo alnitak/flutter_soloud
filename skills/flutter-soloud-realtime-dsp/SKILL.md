@@ -1,6 +1,6 @@
 ---
 name: flutter-soloud-realtime-dsp
-version: 4
+version: 5
 description: Teaches how to use flutter_soloud's real-time audio mixer injection, synchronous custom DSP callbacks, and desktop VST3 plugin hosting: setRealtimeStream (lock-free SPSC ring buffer with instantaneous retroactive mixer injection, pushFloat32, pushInt16, pushClockedFloat32, pushScheduledFloat32, startFloat32Feeder, RealtimeStreamFeeder, RealtimeNativeBuffer), createCustomSource (zero-latency C/Wasm/JS audio generator), customFilter(id) (up to 8 multi-instance custom DSP filter slots per scope with 16 modulatable params and automatic wet/dry bypass), and Vst3Host / Vst3EffectPlugin / Vst3InstrumentPlugin (desktop .vst3 effect & synth hosting with native GUI editor windows). Use when the user asks to feed low-latency live PCM directly into the mixer, build a custom synthesizer or drum machine, write custom audio DSP effects or generators, host native C++/Rust/FAUST/Cmajor/VST3 plugins, or process audio in a background Dart Isolate.
 ---
 
@@ -90,89 +90,53 @@ If `onFeed` returns `0` (e.g. when paused) or `< framesRequested`, the feeder yi
 
 ---
 
-## 2. Synchronous Custom DSP (`CustomAudioSource` & `CustomFilter`)
+## 2. Synchronous Custom DSP (`CustomAudioSource` & `CustomFilterSlot`)
 
-### Multi-Instance `CustomFilter` (Up to 8 Slots per Scope)
+### Multi-Instance `CustomFilterSlot` (Up to 8 Slots per Scope)
 
-Unlike built-in filters (which allow one instance per `FilterType`), you can activate up to **8 independent `CustomFilter` slots** (`id: 0..7`) on the same scope (`SoLoud.instance.filters.customFilter(id)`, `sound.filters.customFilter(id)`, or `bus.filters.customFilter(id)`).
+Unlike built-in filters (which allow one instance per `FilterType`), you can activate up to **8 independent `CustomFilterSlot` instances** (`id: 0..7`) on the same scope (`SoLoud.instance.filters.customFilter(id)`, `sound.filters.customFilter(id)`, or `bus.filters.customFilter(id)`).
 
-Each `CustomFilter` provides:
-- `wet` (`param[0]`, range `0.0..1.0`, default `1.0`)
-- `p1`..`p15` or `param(int index)` (`index` in `1..15`) — 15 user-definable parameters supporting live `.value`, `.fadeFilterParameter(...)`, and `.oscillateFilterParameter(...)`.
+Each `CustomFilterSlot` provides:
+- `wet` (`param[0]`, range `0.0..1.0`, default `1.0`): hardcoded bypass when `0.0`, zero-copy in-place processing when `1.0`, and smooth blending when `0.0 < wet < 1.0`.
+- Up to 7 user-definable parameters (`param(1)`..`param(7)`) configured with `configureParameters(const [CustomFilterParamSpec(name: '...', min: ..., max: ..., defaultValue: ...)])` supporting live `.value`, `.fadeFilterParameter(...)`, and `.oscillateFilterParameter(...)`.
 
-#### Automatic 3-Branch `wet` Bypass & Blending
-The C++ engine (`SoLoud::CustomFilterInstance::filter()`) automatically handles `param[0]` (`wet`):
-1. **`wet <= 0.0`**: Immediately returns without invoking the callback (**hard bypass, 0% CPU overhead**).
-2. **`wet >= 1.0`**: Invokes the callback directly in-place on `aBuffer` (**zero memory copy overhead**).
-3. **`0.0 < wet < 1.0`**: Copies the dry signal into a pre-allocated scratch buffer, runs your callback in-place, and blends `dry * (1 - wet) + processed * wet`.
+### Thread-Safety & Compilation (C/Rust vs. Web)
+Because SoLoud executes DSP callbacks on a dedicated high-priority **OS real-time audio thread**, Dart functions cannot be safely invoked synchronously via `Pointer.fromFunction` or `NativeCallable`. Callbacks must be implemented:
+- In **Native C/C++ or Rust** for Android, iOS, macOS, Windows, Linux (passed as raw memory addresses via `callbackAddress` / `dspCallbackAddress`).
+- In **JavaScript or WebAssembly** for Web (attached to `globalThis` and passed via `webJsFunctionName`).
 
-Your callback should always write the **100% wet processed signal** into the buffer.
-
-### Native (FFI) vs. Web (`jsCallbackName`) Setup
-
-On **Native platforms** (iOS, Android, macOS, Windows, Linux):
-- Use `Pointer.fromFunction<NativeCustomFilterDspCallback>(myStaticCallback)` (or pass a C/C++/Rust function pointer directly).
-- The Dart function must be a **top-level or `static` function** because it is invoked on the real-time audio thread (`NativeCallable.listener` cannot be used for synchronous audio manipulation).
-
-On **Web (Wasm / JS)**:
-- Register a global JavaScript function `globalThis.myCustomFilter = function(bufferPtr, samples, channels, sampleRate, time, paramsPtr, numParams, userDataPtr) { ... }` using `HEAPF32` views.
-- Pass `jsCallbackName: 'myCustomFilter'` to `setCallback(...)`.
+> For complete instructions on compiling C/Rust callbacks with Dart Native Assets (`hook/build.dart`), manual CMake/Cargo compilation, generating bindings with `package:ffigen`, and Web interop, see the companion skill **flutter-soloud-custom-dsp** (`skills/flutter-soloud-custom-dsp/SKILL.md`).
 
 ```dart
-import 'dart:ffi' as ffi;
-import 'dart:math' as math;
-import 'package:flutter/foundation.dart';
-import 'package:flutter_soloud/flutter_soloud.dart';
+// 1. Configure and activate a Custom Filter Slot (0..7):
+final slot0 = SoLoud.instance.filters.customFilter(0)
+  ..configureParameters(const [
+    CustomFilterParamSpec(
+      name: 'Drive',
+      min: 1.0,
+      max: 20.0,
+      defaultValue: 2.5,
+    ),
+  ])
+  ..activate()
+  ..setNativeCallback(
+    callbackAddress: kIsWeb ? 0 : nativeFilterCallbackAddress,
+    webJsFunctionName: kIsWeb ? 'customDspFilter' : null,
+  );
 
-void _softClipCallback(
-  ffi.Pointer<ffi.Float> buffer,
-  int samples,
-  int channels,
-  double sampleRate,
-  double time,
-  ffi.Pointer<ffi.Float> params,
-  int numParams,
-  ffi.Pointer<ffi.Void> userData,
-) {
-  final drive = params[1]; // p1
-  final total = samples * channels;
-  for (var i = 0; i < total; i++) {
-    final x = buffer[i] * drive;
-    // Fast rational tanh approximation
-    final x2 = x * x;
-    buffer[i] = (x * (27.0 + x2) / (27.0 + 9.0 * x2)).clamp(-1.0, 1.0);
-  }
-}
+// Modulate parameters:
+slot0.wet.value = 1.0;
+slot0.param(1, min: 1.0, max: 20.0).value = 4.0;
+slot0.param(1).fadeFilterParameter(to: 10.0, time: const Duration(seconds: 2));
 
-void setupCustomEffects() {
-  final slot0 = SoLoud.instance.filters.customFilter(0);
-  slot0.defineParam(1, name: 'Drive', min: 1.0, max: 10.0, def: 2.5);
-  if (kIsWeb) {
-    slot0.setCallback(jsCallbackName: 'mySoftClipFilter');
-  } else {
-    slot0.setCallback(
-      nativeCallback: ffi.Pointer.fromFunction<NativeCustomFilterDspCallback>(
-        _softClipCallback,
-      ),
-    );
-  }
-  slot0.activate();
-  slot0.p1.value = 4.0;
-}
-```
-
-### Custom Audio Source (`createCustomSource`)
-
-```dart
-final source = SoLoud.instance.createCustomSource(
+// 2. Create and play a Custom Audio Source:
+final source = SoLoud.instance.createCustomAudioSource(
   channels: Channels.stereo,
   sampleRate: 48000,
-  nativeAudioCallback: ffi.Pointer.fromFunction<NativeCustomSourceAudioCallback>(
-    _myOscillatorCallback,
-    0,
-  ),
+  dspCallbackAddress: kIsWeb ? 0 : nativeSourceCallbackAddress,
+  webJsFunctionName: kIsWeb ? 'customDspSynth' : null,
 );
-final handle = SoLoud.instance.play(source);
+final handle = SoLoud.instance.play(source, volume: 0.8);
 ```
 
 ---

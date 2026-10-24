@@ -1,6 +1,6 @@
 ---
 name: flutter-soloud-filters
-version: 2
+version: 3
 description: Teaches correct use of flutter_soloud's 14 DSP filters (echo, freeverb, biquad, bassboost, flanger, waveShaper, lofi, robotize, pitchShift, limiter, compressor, parametricEq, amplitudeModulator, and multi-instance customFilter) at global, per-sound, and per-bus scope, including activation ordering, FilterParam value/fade/oscillate, and per-platform limits. Use when the user asks to add audio effects, reverb, an equalizer/EQ, pitch shifting or time stretching, dynamic-range compression, ring modulation, anti-clipping/limiting, or custom DSP filter slots to playback.
 ---
 
@@ -54,7 +54,7 @@ Which params matter for the common use (full table in `references/filter-paramet
 | compressor | `threshold` −80–0 dB (−6), `ratio` 1–10 (3), `makeupGain` −40–40 dB (0), `attackTime` 0–100 ms (10), `releaseTime` 0–1000 ms (100), `kneeWidth` 0–40 dB (2) |
 | parametricEq | `numBands` 1–64 (3), `stftWindowSize` 32–4096 power of two (1024), `bandGain(i)` 0–4 (1), `bandFreq(i)` 10–24000 Hz, `bandQ(i)` 0.1–20 (~1.0) |
 | amplitudeModulator | `frequency` 0.1–20000 Hz (440); sine ring modulation, clamped below Nyquist at runtime |
-| customFilter(id) | `wet` 0–1 (1), `p1`..`p15` (`param(1)`..`param(15)`) user-defined via `defineParam(...)`, up to 8 independent slots (`id` in `0..7`) per scope (see **flutter-soloud-realtime-dsp**) |
+| customFilter(id) | `wet` 0–1 (1), `param(1)`..`param(7)` user-defined via `configureParameters(specs)`, up to 8 independent slots (`id` in `0..7`) per scope (see **flutter-soloud-custom-dsp** and **flutter-soloud-realtime-dsp**) |
 
 Every filter also has `wet` (0–1, default 1): 1 = fully processed, 0 = dry passthrough.
 
@@ -105,8 +105,8 @@ final hz = eq.bandFrequency(0); // reads current center frequency (45 Hz)
 ## More depth
 
 - `references/filter-parameters.md` — every parameter of all 14 filters with min/max/default and the matching `queryXxx` getter.
-- Custom synchronous DSP filters (`customFilter(id)`) are covered in depth by **flutter-soloud-realtime-dsp** (`skills/flutter-soloud-realtime-dsp/SKILL.md`).
-- Interactive demos in the plugin repo: `example/lib/filters/` (`compressor.dart`, `limiter.dart`, `parametric_eq.dart`, `pitchshift.dart`), `example/lib/realtime_audio/custom_dsp_workbench.dart`, and the automated examples under `example/tests/tests/` (`global_filters.dart`, `sound_filters.dart`, `equalizer_filter.dart`, `compressor_filter.dart`, `limiter_filter.dart`, `pitch_shifter_filter.dart`).
+- Custom synchronous DSP filters (`customFilter(id)`) are covered in depth by **flutter-soloud-custom-dsp** (`skills/flutter-soloud-custom-dsp/SKILL.md`) and **flutter-soloud-realtime-dsp** (`skills/flutter-soloud-realtime-dsp/SKILL.md`).
+- Interactive demos in the plugin repo: `example/lib/filters/` (`compressor.dart`, `limiter.dart`, `parametric_eq.dart`, `pitchshift.dart`), `example/lib/realtime_audio/custom_dsp/`, and the automated examples under `example/tests/tests/` (`global_filters.dart`, `sound_filters.dart`, `equalizer_filter.dart`, `compressor_filter.dart`, `limiter_filter.dart`, `pitch_shifter_filter.dart`).
 
 ## Keeping this skill current
 

@@ -93,7 +93,7 @@ CUSTOM_DSP_EXPORT unsigned int myCustomSourceDspCallback(
 
     // Left channel mix: A minor 9th voicing with gentle soft harmonics
     const float sL =
-        (float)(0.18 * sin(kTwoPi * 1400.0 * t) +        // Root A2
+        (float)(0.18 * sin(kTwoPi * 110.0 * t) +         // Root A2
                 0.12 * sin(kTwoPi * 164.81 * lfoL * t) + // Fifth E3
                 0.10 * sin(kTwoPi * 196.00 * t) +        // 7th G3
                 0.08 * sin(kTwoPi * 246.94 * lfoL * t) + // 9th B3
@@ -102,14 +102,13 @@ CUSTOM_DSP_EXPORT unsigned int myCustomSourceDspCallback(
         );
 
     // Right channel mix: Slightly detuned frequencies for rich stereo spread
-    const float sR =
-        (float)(0.18 * sin(kTwoPi * 1400.2 * t) +        // Root A2 detuned
-                0.12 * sin(kTwoPi * 165.10 * t) +        // Fifth E3
-                0.10 * sin(kTwoPi * 196.30 * lfoR * t) + // 7th G3
-                0.08 * sin(kTwoPi * 247.30 * t) +        // 9th B3
-                0.05 * sin(kTwoPi * 330.10 * lfoR * t) + // High E4
-                0.08 * sin(kTwoPi * 55.0 * t)            // Sub A1 warmth
-        );
+    const float sR = (float)(0.18 * sin(kTwoPi * 110.2 * t) + // Root A2 detuned
+                             0.12 * sin(kTwoPi * 165.10 * t) + // Fifth E3
+                             0.10 * sin(kTwoPi * 196.30 * lfoR * t) + // 7th G3
+                             0.08 * sin(kTwoPi * 247.30 * t) +        // 9th B3
+                             0.05 * sin(kTwoPi * 330.10 * lfoR * t) + // High E4
+                             0.08 * sin(kTwoPi * 55.0 * t) // Sub A1 warmth
+    );
 
     // Write to channel 0 (Left)
     aBuffer[i] = sL;

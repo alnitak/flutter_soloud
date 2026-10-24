@@ -27,12 +27,13 @@ void main() {
 
       expect(plan.action, SkillInstallAction.install);
       expect(plan.homes, ['.agents/skills']);
-      expect(plan.skillNames.length, 15);
-      expect(plan.installCount, 15);
+      expect(plan.skillNames.length, 16);
+      expect(plan.installCount, 16);
       expect(plan.updateCount, 0);
       expect(plan.skillNames, contains('flutter-soloud-idioms'));
       expect(plan.skillNames, contains('flutter-soloud-setup'));
       expect(plan.skillNames, contains('flutter-soloud-realtime-dsp'));
+      expect(plan.skillNames, contains('flutter-soloud-custom-dsp'));
     });
 
     test(
@@ -46,12 +47,13 @@ void main() {
         expect(
           result,
           contains(
-            'Installed 15 flutter_soloud agent skills into .agents/skills.',
+            'Installed 16 flutter_soloud agent skills into .agents/skills.',
           ),
         );
 
         for (final skillName in [
           'flutter-soloud-3d-audio',
+          'flutter-soloud-custom-dsp',
           'flutter-soloud-filters',
           'flutter-soloud-idioms',
           'flutter-soloud-loading',
@@ -188,7 +190,7 @@ void main() {
       expect(installResult.exitCode, 0);
       expect(
         installResult.stdout.toString(),
-        contains('Installed 15 flutter_soloud agent skills'),
+        contains('Installed 16 flutter_soloud agent skills'),
       );
 
       // Check on installed tempDir -> exit code 0
@@ -202,7 +204,7 @@ void main() {
       expect(
         resultAfter.stdout.toString(),
         contains(
-          'The flutter_soloud agent skills are up to date (15 installed).',
+          'The flutter_soloud agent skills are up to date (16 installed).',
         ),
       );
     });
