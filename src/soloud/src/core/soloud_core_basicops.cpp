@@ -32,10 +32,21 @@ namespace SoLoud
 	// ###### flutter_soloud local patch (retroactive re-mix) ######
 	// The under-mutex body of play(): insert a pre-created instance into a
 	// free voice slot and apply the usual initialization. Returns the voice
-	// slot, or -1 when no voice is free (the caller deletes the instance).
+	// slot, or -1 when no voice is free or aBus is no longer playing (the
+	// caller deletes the instance).
 	int Soloud::insertVoice_internal(AudioSource &aSound, AudioSourceInstance *aInstance, float aVolume, float aPan, bool aPaused, unsigned int aBus)
 	{
 		SOLOUD_ASSERT(mInsideAudioThreadMutex);
+		// ###### flutter_soloud local patch (per-bus visualization) ######
+		// The bus handle was read before the mutex was taken here, and the
+		// audio thread may have deleted the bus voice since (a scheduled
+		// stop, kill-when-inaudible). Nothing would ever mix a voice routed
+		// to it, so it would never end. Checked before finding a free voice,
+		// which can stop the oldest one to make room.
+		if (aBus != 0 && getVoiceFromHandle_internal(aBus) < 0)
+		{
+			return -1;
+		}
 		int ch = findFreeVoice_internal();
 		if (ch < 0)
 		{

@@ -125,10 +125,9 @@ namespace SoLoud
 	public:
 		// The live instance, or NULL while the bus is not playing. The engine
 		// can delete the bus voice without going through Bus (stopAll, stop()
-		// on the bus handle, an outer bus stopping), so ~BusInstance clears it.
-		// Only read or written with the audio mutex held, apart from the
-		// unlocked reads that the play functions and findBusHandle have
-		// always made.
+		// on the bus handle, an outer bus stopping, a scheduled stop on the
+		// audio thread), so ~BusInstance clears it. Only read or written with
+		// the audio mutex held.
 		BusInstance *mInstance;
 		unsigned int mChannelHandle;
 		unsigned int mResampler;
@@ -140,6 +139,11 @@ namespace SoLoud
 		BusAudioTap *mAudioTap;
 		// Internal: find the bus' channel
 		void findBusHandle();
+		// ###### flutter_soloud local patch (per-bus visualization) ######
+		// Internal: findBusHandle() with the audio mutex already held.
+		void findBusHandle_internal();
+		// Internal: the handle to play a sound through, 0 if not playing.
+		handle getPlayHandle_internal();
 	};
 };
 

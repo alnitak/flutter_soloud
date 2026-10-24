@@ -188,116 +188,108 @@ namespace SoLoud
 			// and clears mInstance when it deletes this bus's voice. Once it
 			// is cleared there is nothing to find.
 			mSoloud->lockAudioMutex_internal();
-			// Find the channel the bus is playing on to calculate handle..
-			int i;
-			for (i = 0; mInstance && mChannelHandle == 0 && i < (signed)mSoloud->mHighestVoice; i++)
-			{
-				if (mSoloud->mVoice[i] == mInstance)
-				{
-					mChannelHandle = mSoloud->getHandleFromVoice_internal(i);
-				}
-			}
+			findBusHandle_internal();
 			mSoloud->unlockAudioMutex_internal();
 		}
 	}
 
+	// ###### flutter_soloud local patch (per-bus visualization) ######
+	// The search itself, with the audio mutex held.
+	void Bus::findBusHandle_internal()
+	{
+		// Find the channel the bus is playing on to calculate handle..
+		int i;
+		for (i = 0; mInstance && mChannelHandle == 0 && i < (signed)mSoloud->mHighestVoice; i++)
+		{
+			if (mSoloud->mVoice[i] == mInstance)
+			{
+				mChannelHandle = mSoloud->getHandleFromVoice_internal(i);
+			}
+		}
+	}
+
+	// ###### flutter_soloud local patch (per-bus visualization) ######
+	// The handle to play a sound through, or 0 while the bus is not playing.
+	// The audio thread can delete the bus voice at any time (a scheduled stop,
+	// a fade ending in one, kill-when-inaudible), clearing mInstance, so read
+	// it under the audio mutex. The handle can still die before the sound is
+	// inserted, which insertVoice_internal checks for.
+	handle Bus::getPlayHandle_internal()
+	{
+		if (!mSoloud)
+			return 0;
+		mSoloud->lockAudioMutex_internal();
+		findBusHandle_internal();
+		handle h = mInstance ? mChannelHandle : 0;
+		mSoloud->unlockAudioMutex_internal();
+		return h;
+	}
+
 	handle Bus::play(AudioSource &aSound, float aVolume, float aPan, bool aPaused)
 	{
-		if (!mInstance || !mSoloud)
+		// ###### flutter_soloud local patch (per-bus visualization) ######
+		handle bus = getPlayHandle_internal();
+		if (bus == 0)
 		{
 			return 0;
 		}
-
-		findBusHandle();
-
-		if (mChannelHandle == 0)
-		{
-			return 0;
-		}
-		return mSoloud->play(aSound, aVolume, aPan, aPaused, mChannelHandle);
+		return mSoloud->play(aSound, aVolume, aPan, aPaused, bus);
 	}	
 
 
 	handle Bus::playClocked(time aSoundTime, AudioSource &aSound, float aVolume, float aPan, float aScale, bool aLooping, time aLoopPoint, time aLoopEndPoint, long long aLoopStartOffset, long long aLoopEndOffset)
 	{
-		if (!mInstance || !mSoloud)
+		// ###### flutter_soloud local patch (per-bus visualization) ######
+		handle bus = getPlayHandle_internal();
+		if (bus == 0)
 		{
 			return 0;
 		}
-
-		findBusHandle();
-
-		if (mChannelHandle == 0)
-		{
-			return 0;
-		}
-
-		return mSoloud->playClocked(aSoundTime, aSound, aVolume, aPan, mChannelHandle, aScale, aLooping, aLoopPoint, aLoopEndPoint, aLoopStartOffset, aLoopEndOffset);
+		return mSoloud->playClocked(aSoundTime, aSound, aVolume, aPan, bus, aScale, aLooping, aLoopPoint, aLoopEndPoint, aLoopStartOffset, aLoopEndOffset);
 	}	
 
 	handle Bus::playScheduled(time aEngineTime, AudioSource &aSound, float aVolume, float aPan, float aScale, bool aLooping, time aLoopPoint, time aLoopEndPoint, long long aLoopStartOffset, long long aLoopEndOffset)
 	{
-		if (!mInstance || !mSoloud)
+		// ###### flutter_soloud local patch (per-bus visualization) ######
+		handle bus = getPlayHandle_internal();
+		if (bus == 0)
 		{
 			return 0;
 		}
-
-		findBusHandle();
-
-		if (mChannelHandle == 0)
-		{
-			return 0;
-		}
-
-		return mSoloud->playScheduled(aEngineTime, aSound, aVolume, aPan, mChannelHandle, aScale, aLooping, aLoopPoint, aLoopEndPoint, aLoopStartOffset, aLoopEndOffset);
+		return mSoloud->playScheduled(aEngineTime, aSound, aVolume, aPan, bus, aScale, aLooping, aLoopPoint, aLoopEndPoint, aLoopStartOffset, aLoopEndOffset);
 	}	
 
 	handle Bus::play3d(AudioSource &aSound, float aPosX, float aPosY, float aPosZ, float aVelX, float aVelY, float aVelZ, float aVolume, bool aPaused, float aScale, bool aLooping, time aLoopPoint, time aLoopEndPoint, long long aLoopStartOffset, long long aLoopEndOffset)
 	{
-		if (!mInstance || !mSoloud)
+		// ###### flutter_soloud local patch (per-bus visualization) ######
+		handle bus = getPlayHandle_internal();
+		if (bus == 0)
 		{
 			return 0;
 		}
-
-		findBusHandle();
-
-		if (mChannelHandle == 0)
-		{
-			return 0;
-		}
-		return mSoloud->play3d(aSound, aPosX, aPosY, aPosZ, aVelX, aVelY, aVelZ, aVolume, aPaused, mChannelHandle, aScale, aLooping, aLoopPoint, aLoopEndPoint, aLoopStartOffset, aLoopEndOffset);
+		return mSoloud->play3d(aSound, aPosX, aPosY, aPosZ, aVelX, aVelY, aVelZ, aVolume, aPaused, bus, aScale, aLooping, aLoopPoint, aLoopEndPoint, aLoopStartOffset, aLoopEndOffset);
 	}
 
 	handle Bus::play3dClocked(time aSoundTime, AudioSource &aSound, float aPosX, float aPosY, float aPosZ, float aVelX, float aVelY, float aVelZ, float aVolume, float aScale, bool aLooping, time aLoopPoint, time aLoopEndPoint, long long aLoopStartOffset, long long aLoopEndOffset)
 	{
-		if (!mInstance || !mSoloud)
+		// ###### flutter_soloud local patch (per-bus visualization) ######
+		handle bus = getPlayHandle_internal();
+		if (bus == 0)
 		{
 			return 0;
 		}
-
-		findBusHandle();
-
-		if (mChannelHandle == 0)
-		{
-			return 0;
-		}
-		return mSoloud->play3dClocked(aSoundTime, aSound, aPosX, aPosY, aPosZ, aVelX, aVelY, aVelZ, aVolume, mChannelHandle, aScale, aLooping, aLoopPoint, aLoopEndPoint, aLoopStartOffset, aLoopEndOffset);
+		return mSoloud->play3dClocked(aSoundTime, aSound, aPosX, aPosY, aPosZ, aVelX, aVelY, aVelZ, aVolume, bus, aScale, aLooping, aLoopPoint, aLoopEndPoint, aLoopStartOffset, aLoopEndOffset);
 	}
 
 	handle Bus::play3dScheduled(time aEngineTime, AudioSource &aSound, float aPosX, float aPosY, float aPosZ, float aVelX, float aVelY, float aVelZ, float aVolume, float aScale, bool aLooping, time aLoopPoint, time aLoopEndPoint, long long aLoopStartOffset, long long aLoopEndOffset)
 	{
-		if (!mInstance || !mSoloud)
+		// ###### flutter_soloud local patch (per-bus visualization) ######
+		handle bus = getPlayHandle_internal();
+		if (bus == 0)
 		{
 			return 0;
 		}
-
-		findBusHandle();
-
-		if (mChannelHandle == 0)
-		{
-			return 0;
-		}
-		return mSoloud->play3dScheduled(aEngineTime, aSound, aPosX, aPosY, aPosZ, aVelX, aVelY, aVelZ, aVolume, mChannelHandle, aScale, aLooping, aLoopPoint, aLoopEndPoint, aLoopStartOffset, aLoopEndOffset);
+		return mSoloud->play3dScheduled(aEngineTime, aSound, aPosX, aPosY, aPosZ, aVelX, aVelY, aVelZ, aVolume, bus, aScale, aLooping, aLoopPoint, aLoopEndPoint, aLoopStartOffset, aLoopEndOffset);
 	}
 
 	void Bus::annexSound(handle aVoiceHandle)
@@ -480,15 +472,15 @@ namespace SoLoud
 	{
 		int i;
 		unsigned int count = 0;
-		findBusHandle();
 		// ###### flutter_soloud local patch (per-bus visualization) ######
 		// No handle means the bus is not playing. 0 is the main bus's handle:
 		// counting its voices would count everything playing on the engine.
-		if (mChannelHandle == 0)
+		handle bus = getPlayHandle_internal();
+		if (bus == 0)
 			return 0;
 		mSoloud->lockAudioMutex_internal();
 		for (i = 0; i < VOICE_COUNT; i++)
-			if (mSoloud->mVoice[i] && mSoloud->mVoice[i]->mBusHandle == mChannelHandle)
+			if (mSoloud->mVoice[i] && mSoloud->mVoice[i]->mBusHandle == bus)
 				count++;
 		mSoloud->unlockAudioMutex_internal();
 		return count;

@@ -423,6 +423,66 @@ void testEngineDeletingTheBusVoice() {
     }
 }
 
+void testPlayingWhileTheAudioThreadStopsTheBus() {
+    std::printf("playing through a bus while the audio thread stops it\n");
+    Engine engine;
+    if (!engine.ok) { EXPECT(false, "soloud.init failed"); return; }
+    SoLoud::Bus bus;
+    ConstantSource source(0.5f, 0.5f);
+
+    // The audio thread.
+    std::atomic<bool> mixing{true};
+    std::thread audio([&] {
+        std::vector<float> out(kBlockFrames * kChannels);
+        while (mixing.load()) {
+            engine.soloud.mix(out.data(), kBlockFrames);
+            std::this_thread::yield();
+        }
+    });
+
+    // Voices routed to a bus voice that no longer exists. Nothing mixes them,
+    // so they would never end.
+    auto orphans = [&] {
+        int count = 0;
+        engine.soloud.lockAudioMutex_internal();
+        for (unsigned int i = 0; i < engine.soloud.mHighestVoice; i++) {
+            const SoLoud::AudioSourceInstance *voice = engine.soloud.mVoice[i];
+            if (voice && voice->mBusHandle != 0 &&
+                engine.soloud.getVoiceFromHandle_internal(voice->mBusHandle) < 0) {
+                ++count;
+            }
+        }
+        engine.soloud.unlockAudioMutex_internal();
+        return count;
+    };
+
+    int played = 0;
+    bool stopped = true;
+    for (int round = 0; round < 200 && stopped; round++) {
+        const SoLoud::handle busVoice = engine.soloud.play(bus);
+        // Stopped by the audio thread, as a fade-out ending would be.
+        engine.soloud.scheduleStop(busVoice, 0.001);
+        for (int i = 0; i < 64 && bus.play(source) != 0; i++) ++played;
+        const auto deadline =
+            std::chrono::steady_clock::now() + std::chrono::seconds(2);
+        while (engine.soloud.isValidVoiceHandle(busVoice) &&
+               std::chrono::steady_clock::now() < deadline) {
+            std::this_thread::yield();
+        }
+        stopped = !engine.soloud.isValidVoiceHandle(busVoice);
+    }
+    EXPECT(stopped, "the audio thread should have stopped the bus voice");
+    EXPECT(played > 0, "sounds should have played through the bus");
+    EXPECT(bus.play(source) == 0,
+           "playing through the stopped bus should fail");
+
+    mixing = false;
+    audio.join();
+    EXPECT(orphans() == 0,
+           "no voice should be left routed to a bus voice that is gone (%d)",
+           orphans());
+}
+
 void testUnusedBusSparesMainVoices() {
     std::printf("a bus with nothing played through it spares the main voices\n");
     clearPackets();
@@ -695,6 +755,7 @@ int main() {
     testNothingIsSentWhileNothingIsMixed();
     testEmptyBusIsSilence();
     testEngineDeletingTheBusVoice();
+    testPlayingWhileTheAudioThreadStopsTheBus();
     testUnusedBusSparesMainVoices();
     testChannelSelection();
     testMonoBus();
