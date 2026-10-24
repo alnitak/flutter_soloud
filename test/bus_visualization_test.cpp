@@ -19,7 +19,9 @@
 //   * channel selection (merged average, all channels, one channel), peaks,
 //     invalid settings, and source ids across several buses;
 //   * detaching and destroying an analyzer, or a whole BusData, while the
-//     audio thread is mixing and the worker is dispatching.
+//     audio thread is mixing and the worker is dispatching;
+//   * the worker backing off while nothing is captured, and picking up again
+//     when audio flows.
 //
 // The engine runs on SoLoud's null driver and is mixed by hand, so each test
 // decides exactly when audio flows.
@@ -749,6 +751,55 @@ void testTeardownWhileMixing() {
     audio.join();
 }
 
+void testWorkerIdlesWhileNothingIsCaptured() {
+    std::printf("the worker backs off while nothing is captured\n");
+    clearPackets();
+    Engine engine;
+    if (!engine.ok) { EXPECT(false, "soloud.init failed"); return; }
+    SoLoud::Bus bus;
+    ConstantSource source(0.5f, 0.5f);
+    Analyzer analyzer(12);
+
+    engine.soloud.play(bus);
+    playUnpanned(engine, bus, source);
+    analyzer.setVisualizationEnabled(true, kWindow, VISUALIZATION_WAVE,
+                                     VISUALIZATION_CHANNEL_MERGED, kChannels);
+    bus.setAudioTap(&analyzer);
+
+    uint64_t passes = Analyzer::workerPassesForTest();
+    const auto busyStart = std::chrono::steady_clock::now();
+    engine.pumpUntil([&] {
+        return std::chrono::steady_clock::now() - busyStart >
+               std::chrono::milliseconds(300);
+    });
+    const uint64_t busyPasses = Analyzer::workerPassesForTest() - passes;
+    EXPECT(packetCount(12) > 0, "packets should flow while mixing");
+    EXPECT(busyPasses >= 30,
+           "the worker should check often while audio flows (%llu passes in "
+           "300 ms)",
+           static_cast<unsigned long long>(busyPasses));
+
+    // No mix at all, as with a stopped device.
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    passes = Analyzer::workerPassesForTest();
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    const uint64_t idlePasses = Analyzer::workerPassesForTest() - passes;
+    EXPECT(idlePasses <= 20,
+           "the worker should back off while nothing is captured (%llu "
+           "passes in 500 ms)",
+           static_cast<unsigned long long>(idlePasses));
+
+    const auto resumed = std::chrono::steady_clock::now();
+    EXPECT(engine.pumpPacket(12), "packets should resume with the audio");
+    const long long resumeMs =
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - resumed)
+            .count();
+    EXPECT(resumeMs < 500, "and soon (%lld ms)", resumeMs);
+
+    bus.setAudioTap(nullptr);
+}
+
 }  // namespace
 
 int main() {
@@ -764,6 +815,7 @@ int main() {
     testMonoBus();
     testSourceIdsAcrossBuses();
     testTeardownWhileMixing();
+    testWorkerIdlesWhileNothingIsCaptured();
 
     Analyzer::setDataCallback(nullptr);
     std::printf("\n%d assertions, %d failures\n", gAssertions, gFailures);

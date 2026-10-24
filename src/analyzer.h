@@ -143,6 +143,11 @@ class Analyzer : public SoLoud::BusAudioTap {
   /// leak, at most one per analyzer). Takes no lock.
   static void abandonDartDispatches();
 
+#ifdef SOLOUD_ANALYZER_TEST_HOOKS
+  /// How many passes over the enabled analyzers the worker has made.
+  static uint64_t workerPassesForTest();
+#endif
+
   /// Web (AudioWorklet) only: identifies this run of the analyzer across the
   /// hop to the main thread. Changes every time visualization is enabled.
   uint32_t serial() const { return m_serial; }

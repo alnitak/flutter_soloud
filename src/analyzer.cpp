@@ -24,6 +24,10 @@ std::atomic<uint32_t> gNextSerial{0};
 // Advanced by Analyzer::abandonDartDispatches().
 std::atomic<uint32_t> gDartDispatchEpoch{0};
 
+#ifdef SOLOUD_ANALYZER_TEST_HOOKS
+std::atomic<uint64_t> gWorkerPasses{0};
+#endif
+
 // The ring keeps four windows, and at least this many frames: a device
 // callback can deliver thousands of frames at once.
 constexpr size_t kMinRingFrames = 2048;
@@ -128,11 +132,18 @@ class AnalyzerWorker {
   void run() {
     // Each analyzer sends at most one packet every kDispatchInterval (about
     // 80 per second, to match display refresh without flooding the Dart event
-    // queue), and is checked for a new window every kPollInterval.
+    // queue), and is checked for a new window every kPollInterval. Once none
+    // has had a new window for kIdleAfter -- nothing is captured while the
+    // device is stopped or every visualized source is paused -- they are only
+    // checked every kIdlePollInterval, instead of waking the CPU hundreds of
+    // times a second for nothing.
     constexpr auto kPollInterval = std::chrono::milliseconds(3);
     constexpr auto kDispatchInterval = std::chrono::milliseconds(12);
+    constexpr auto kIdleAfter = std::chrono::milliseconds(200);
+    constexpr auto kIdlePollInterval = std::chrono::milliseconds(50);
 
     std::unique_lock<std::mutex> lock(mutex);
+    auto lastWindow = Analyzer::Clock::now();
     while (!m_stop) {
       const auto now = Analyzer::Clock::now();
       for (Analyzer *analyzer : analyzers) {
@@ -144,9 +155,15 @@ class AnalyzerWorker {
         if (analyzer->analyzeLatestWindow(packet)) {
           analyzer->dispatch(packet);
           analyzer->m_nextDispatch = now + kDispatchInterval;
+          lastWindow = now;
         }
       }
-      m_wake.wait_for(lock, kPollInterval, [this] { return m_stop; });
+#ifdef SOLOUD_ANALYZER_TEST_HOOKS
+      gWorkerPasses.fetch_add(1, std::memory_order_relaxed);
+#endif
+      const auto interval =
+          now - lastWindow < kIdleAfter ? kPollInterval : kIdlePollInterval;
+      m_wake.wait_for(lock, interval, [this] { return m_stop; });
     }
   }
 
@@ -255,6 +272,12 @@ void Analyzer::finishDartDispatch(const float *copy) {
 void Analyzer::abandonDartDispatches() {
   gDartDispatchEpoch.fetch_add(1, std::memory_order_acq_rel);
 }
+
+#ifdef SOLOUD_ANALYZER_TEST_HOOKS
+uint64_t Analyzer::workerPassesForTest() {
+  return gWorkerPasses.load(std::memory_order_relaxed);
+}
+#endif
 
 bool Analyzer::finishWebDispatch(int32_t sourceId, uint32_t serial) {
   AnalyzerWorker &worker = AnalyzerWorker::get();

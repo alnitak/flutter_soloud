@@ -22,6 +22,7 @@ cc -O1 -c "${SANITIZER[@]}" -o "$OUT-pffft.o" src/pffft/pffft.c
 
 c++ -std=c++17 -O1 -g -Wall -pthread "${SANITIZER[@]}" \
     -DWITH_NULL \
+    -DSOLOUD_ANALYZER_TEST_HOOKS \
     -I src/soloud/include \
     -o "$OUT" \
     test/bus_visualization_test.cpp \
