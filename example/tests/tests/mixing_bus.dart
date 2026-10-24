@@ -196,6 +196,18 @@ Future<OutputBuffer> testMixingBus() async {
     'Bus1 voice count should increase after annexing',
   );
 
+  // Annexing into a bus that isn't playing leaves the voice where it is. It
+  // used to crash natively: a bus that was never played has no engine.
+  final idleBus = SoLoud.instance.createMixingBus(name: 'Idle Bus');
+  final idleHandle = SoLoud.instance.play(sample, volume: 0.5);
+  idleBus.annexSound(idleHandle);
+  assert(
+    SoLoud.instance.getIsValidVoiceHandle(idleHandle),
+    'A voice annexed into a bus that is not playing should keep playing',
+  );
+  await SoLoud.instance.stop(idleHandle);
+  idleBus.dispose();
+
   // ========================================================================
   // Test 5: A bus playing something added to another bus
   // ========================================================================

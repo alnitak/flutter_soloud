@@ -102,7 +102,8 @@ namespace SoLoud
 		// flutter_soloud visualizes buses through this rather than through
 		// setVisualizationEnable and the getters below.
 		void setAudioTap(BusAudioTap *aTap);
-		// Move a live sound to this bus
+		// Move a live sound to this bus. Does nothing while the bus is not
+		// playing (flutter_soloud local patch).
 		void annexSound(handle aVoiceHandle);
 		
 		// Calculate and get 256 floats of FFT data for visualization. Visualization has to be enabled before use.

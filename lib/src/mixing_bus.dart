@@ -630,6 +630,10 @@ class Bus {
   /// The voice will be reparented so it plays through the bus.
   /// Useful for dynamically routing sounds in/out of filtered busses.
   ///
+  /// Does nothing while the bus isn't playing: before [playOnEngine], or once
+  /// its voice has been stopped (for example by [SoLoud.stopAll]). The voice
+  /// then keeps playing where it was.
+  ///
   /// [handle] handle of the voice to annex.
   ///
   /// Throws [SoLoudBusDisposedDartException] if the bus has already

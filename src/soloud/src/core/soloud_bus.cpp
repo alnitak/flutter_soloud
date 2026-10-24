@@ -302,9 +302,18 @@ namespace SoLoud
 
 	void Bus::annexSound(handle aVoiceHandle)
 	{
+		// ###### flutter_soloud local patch ######
+		// A bus that is not playing has no voice to route through, so leave
+		// the voice where it is, as play() starts nothing then. mSoloud is
+		// only set once the bus has been played.
+		if (!mSoloud)
+			return;
 		findBusHandle();
 		FOR_ALL_VOICES_PRE_EXT
-			mSoloud->mVoice[ch]->mBusHandle = mChannelHandle;
+			// mInstance is cleared under the audio mutex when the engine
+			// deletes the bus voice, and a handle of 0 is the main bus.
+			if (mInstance && mChannelHandle != 0)
+				mSoloud->mVoice[ch]->mBusHandle = mChannelHandle;
 		FOR_ALL_VOICES_POST_EXT
 	}
 

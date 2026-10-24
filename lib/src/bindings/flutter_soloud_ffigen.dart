@@ -2659,6 +2659,7 @@ external double busGetApproximateVolume(int busId, int channel);
 /// Move a live voice (identified by its handle) into this bus.
 /// The voice will be reparented so it plays through the bus.
 /// Useful for dynamically routing sounds in/out of filtered busses.
+/// Does nothing while the bus is not playing.
 ///
 /// [busId] the bus ID.
 /// [voiceHandle] handle of the voice to annex.
