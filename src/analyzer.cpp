@@ -198,9 +198,12 @@ void Analyzer::setDataCallback(AnalyzerDataCallback callback) {
   gDataCallback.store(callback, std::memory_order_release);
 }
 
-void Analyzer::disableAll() {
+void Analyzer::disableAll(const std::function<bool()> &shouldDisable) {
   AnalyzerWorker &worker = AnalyzerWorker::get();
   std::lock_guard<std::mutex> lifecycle(worker.lifecycleMutex);
+  if (shouldDisable && !shouldDisable()) {
+    return;
+  }
   std::vector<Analyzer *> enabled;
   {
     std::lock_guard<std::mutex> lock(worker.mutex);

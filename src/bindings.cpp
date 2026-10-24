@@ -600,13 +600,40 @@ extern "C"
   /// Stop the mixer-output capture and every visualization (the engine
   /// output's and the buses'), whose threads invoke Dart callables. The caller
   /// must not hold the gate: these threads take it, and stopping joins them.
-  static void stopCaptureThreads()
+  ///
+  /// [stillRetired], when given, is checked under the lock that starting each
+  /// of them takes, and they are only stopped while it holds.
+  ///
+  /// Their data callbacks are left installed. Retirement has already made the
+  /// dispatchers inert (they check the live generation), and nulling the
+  /// callbacks here, with the gate released, could null the ones a newer
+  /// registration had just installed.
+  static void stopCaptureThreads(
+      const std::function<bool()> &stillRetired = nullptr)
   {
-    std::lock_guard<std::mutex> mixerGuard(mixer_lifecycle_mutex);
-    MixerOutput::instance().setDataCallback(nullptr);
-    MixerOutput::instance().stop();
-    Analyzer::setDataCallback(nullptr);
-    Analyzer::disableAll();
+    {
+      std::lock_guard<std::mutex> mixerGuard(mixer_lifecycle_mutex);
+      if (!stillRetired || stillRetired())
+        MixerOutput::instance().stop();
+    }
+    Analyzer::disableAll(stillRetired);
+  }
+
+  /// stopCaptureThreads() for a retirement, which has to release the gate
+  /// first. [retiredAt] is the lastClaimedGeneration() it read while retiring.
+  ///
+  /// A newer registration can be claimed as soon as the gate is free, and
+  /// start capturing or visualizing for itself, which the stop must not undo:
+  /// so nothing is stopped once one has been. A registration is claimed before
+  /// anything is started for it, and the check runs under the lock each start
+  /// takes, so either the claim is seen or the start waits for the stop. What
+  /// is left running then is the newer registration's to keep or stop.
+  static void stopCaptureThreadsRetiredAt(uint64_t retiredAt)
+  {
+    SOLOUD_TEST_BARRIER(retiredCaptureStopEntered);
+    stopCaptureThreads([retiredAt]
+                       { return dart_callbacks::lastClaimedGeneration() ==
+                                retiredAt; });
   }
 
   FFI_PLUGIN_EXPORT void clearDartCallbackRegistrations()
@@ -614,16 +641,18 @@ extern "C"
     std::lock_guard<std::mutex> guard_init(init_deinit_mutex);
     std::lock_guard<std::mutex> guard_load(loadMutex);
 
+    uint64_t retiredAt;
     {
       dart_callbacks::Registration registration;
       registration.retireAll();
       clearDartCallbackPointersLocked();
+      retiredAt = dart_callbacks::lastClaimedGeneration();
     }
 
     // Outside the gate: stop() joins the encoder and notification threads, and
     // disableAll() the analyzer worker, and those threads take the gate to
     // invoke their callables.
-    stopCaptureThreads();
+    stopCaptureThreadsRetiredAt(retiredAt);
     clearPlayerDartCallbackRegistrationsLocked();
   }
 
@@ -647,24 +676,27 @@ extern "C"
     if (engine_id == kNoEngineId)
       return false;
 
+    uint64_t retiredAt;
     {
       dart_callbacks::Registration registration;
       if (!registration.retire(engine_id))
         return false;
 
       clearDartCallbackPointersLocked();
+      retiredAt = dart_callbacks::lastClaimedGeneration();
     }
     // Outside the gate, as in clearDartCallbackRegistrations(): the threads
     // these join take the gate, so joining them while holding it would hang
     // whenever one was about to invoke its callable. Nothing can run once the
     // gate is released: the registration is retired.
-    stopCaptureThreads();
+    stopCaptureThreadsRetiredAt(retiredAt);
     return true;
   }
 
   FFI_PLUGIN_EXPORT void retireDartCallbacksFinalizer(void *token)
   {
     const int64_t engine_id = reinterpret_cast<intptr_t>(token);
+    uint64_t retiredAt;
     {
       dart_callbacks::Registration registration;
       if (engine_id != kNoEngineId)
@@ -678,9 +710,10 @@ extern "C"
       }
 
       clearDartCallbackPointersLocked();
+      retiredAt = dart_callbacks::lastClaimedGeneration();
     }
     // Outside the gate, as in clearDartCallbackRegistrationsForEngine().
-    stopCaptureThreads();
+    stopCaptureThreadsRetiredAt(retiredAt);
   }
 
   // Mixer output capture exports.

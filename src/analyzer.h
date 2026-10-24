@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 
 #include "enums.h"
 #include "pffft/pffft.h"
@@ -112,7 +113,10 @@ class Analyzer : public SoLoud::BusAudioTap {
   /// Disable every analyzer, the engine output's and the buses', and stop the
   /// worker thread. The bus analyzers stay attached to their buses, disabled,
   /// until the buses release them.
-  static void disableAll();
+  ///
+  /// [shouldDisable], when given, is checked under the lock that enabling an
+  /// analyzer takes, and nothing is disabled unless it returns true.
+  static void disableAll(const std::function<bool()> &shouldDisable = nullptr);
 
   /// Web (AudioWorklet) only: identifies this run of the analyzer across the
   /// hop to the main thread. Changes every time visualization is enabled.

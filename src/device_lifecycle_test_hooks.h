@@ -56,6 +56,10 @@ namespace soloud_test
     /// At the top of Player::decodeFile(). A load parked here is mid-decode,
     /// so anything it still held would block the calls a test makes meanwhile.
     soundDecodeEntered,
+    /// After a retirement has retired the Dart callback registration and
+    /// released the gate, before it stops the mixer capture and the
+    /// visualizations. A newer registration can be claimed in this window.
+    retiredCaptureStopEntered,
     barrierCount
   };
 

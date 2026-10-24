@@ -30,7 +30,8 @@
 //     unrelated operation -- they run on Android's platform thread, where
 //     waiting for a device operation is an ANR;
 //   * retirement stops the visualizations without holding the gate their
-//     worker dispatches through, so it cannot deadlock against a dispatch;
+//     worker dispatches through, so it cannot deadlock against a dispatch,
+//     and does not stop what a registration claimed meanwhile started;
 //   * duplicate destroy/detach notifications tear down exactly once;
 //   * loadFile() decodes without the lifecycle locks, so disposing sounds or
 //     the engine never waits for a decode, and a sound decoded for an engine
@@ -786,6 +787,84 @@ void testRetirementWhileVisualizationsDispatch()
     resetGlobalState();
 }
 
+/// A retirement has to release the gate before it stops the mixer capture and
+/// the visualizations (see testRetirementWhileVisualizationsDispatch), and a
+/// newer registration can be claimed in between and start capturing and
+/// visualizing for itself. The stop must not undo that. Forced by parking the
+/// retirement between releasing the gate and stopping.
+void testRetirementSparesWhatANewerRegistrationStarted()
+{
+    std::printf("a retirement leaves what a newer registration started\n");
+    resetGlobalState();
+
+    if (!initEngineAs(kEngineA))
+    {
+        EXPECT(false, "the engine should initialize");
+        return;
+    }
+    registerCallbacksFor(kEngineA);
+
+    soloud_test::armBarrier(
+        soloud_test::DeviceBarrier::retiredCaptureStopEntered);
+    std::atomic<bool> retired{false};
+    std::thread retirement(
+        [&retired]
+        { retired = clearDartCallbackRegistrationsForEngine(kEngineA); });
+    soloud_test::waitBarrierReached(
+        soloud_test::DeviceBarrier::retiredCaptureStopEntered);
+
+    registerCallbacksFor(kEngineB);
+    EXPECT(setVisualizationCallbackForEngine(onVisualization, kEngineB),
+           "the new owner should publish its visualization callable");
+    EXPECT(setMixerOutputCallbackForEngine(onMixerOutput, kEngineB),
+           "the new owner should publish its mixer callable");
+    EXPECT(setVisualizationEnabled(true, 256, VISUALIZATION_WAVE_AND_FFT,
+                                   VISUALIZATION_CHANNEL_MERGED) == noError,
+           "the engine output's visualization should start");
+    const unsigned int busId = createBus();
+    unsigned int busHandle = 0;
+    EXPECT(busPlayOnEngine(busId, 1.0f, false, &busHandle) == noError,
+           "the bus should play");
+    EXPECT(busSetVisualizationEnabled(busId, true, 256,
+                                      VISUALIZATION_WAVE_AND_FFT,
+                                      VISUALIZATION_CHANNEL_MERGED) == noError,
+           "the bus's visualization should start");
+    EXPECT(startMixerCapture(MIXER_OUTPUT_PCM_S16LE, 44100, 2,
+                             /*bufferSizeBytes=*/64 * 1024,
+                             /*notificationThresholdBytes=*/256,
+                             /*chunkPCMFrames=*/2048) == noError,
+           "the capture should start");
+
+    soloud_test::releaseBarrier(
+        soloud_test::DeviceBarrier::retiredCaptureStopEntered);
+    retirement.join();
+
+    EXPECT(retired.load(), "engine A's retirement should be accepted");
+    EXPECT(getVisualizationEnabled() == 1,
+           "the engine output's visualization should still be enabled");
+    EXPECT(busGetVisualizationEnabled(busId) == 1,
+           "the bus's visualization should still be enabled");
+    EXPECT(isMixerCaptureRunning() == 1, "the capture should still be running");
+    const int engine = gEngineVisualizationPackets.load();
+    const int bus = gBusVisualizationPackets.load();
+    const int mixer = gMixerOutputCalls.load();
+    EXPECT(waitFor(
+               [&]
+               {
+                   return gEngineVisualizationPackets.load() > engine &&
+                          gBusVisualizationPackets.load() > bus &&
+                          gMixerOutputCalls.load() > mixer;
+               }),
+           "the new owner should keep receiving packets (engine %d, bus %d, "
+           "mixer %d new)",
+           gEngineVisualizationPackets.load() - engine,
+           gBusVisualizationPackets.load() - bus,
+           gMixerOutputCalls.load() - mixer);
+
+    stopMixerCapture();
+    resetGlobalState();
+}
+
 /// A capture must not be able to start once teardown has been decided. The
 /// window is wide and reachable: requestEngineTeardownForEngine() returns
 /// immediately, its worker may not run for a while, and a worker isolate's
@@ -1414,6 +1493,7 @@ int main()
     testStaleWorkerMixerCallbackCannotBeRevived();
     testTeardownDuringActiveMixerCapture();
     testRetirementWhileVisualizationsDispatch();
+    testRetirementSparesWhatANewerRegistrationStarted();
     testCaptureCannotStartAfterTeardownIsDecided();
     testConcurrentCaptureStopsAreSerialized();
     testEngineDestroyDisposesTheNativeEngine();
