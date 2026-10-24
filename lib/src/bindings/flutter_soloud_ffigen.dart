@@ -160,6 +160,13 @@ external bool setVisualizationCallbackForEngine(
 @ffi.Native<ffi.Void Function(dartVisualizationCallback_t)>()
 external void setVisualizationCallback(dartVisualizationCallback_t callback);
 
+/// Native: Dart is done with a visualization packet it was handed. Frees it
+/// and lets the source that sent it send the next one: each source has at
+/// most one packet in flight, so a Dart isolate that falls behind is sent
+/// fewer, newer packets instead of a growing backlog.
+@ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Float>)>()
+external void visualizationPacketDone(ffi.Pointer<ffi.Float> packet);
+
 /// Check if the libopus and libogg are available at build time.
 @ffi.Native<ffi.Bool Function()>()
 external bool areXiphLibsAvailable();
@@ -2933,9 +2940,10 @@ typedef DartdartVisualizationCallback_tFunction =
 ///
 /// [data] holds [channelCount] wave windows of [waveSamples] floats, followed by
 /// [channelCount] FFT windows of [fftSamples] floats; a count is 0 when its kind
-/// is not computed. On native the packet is a malloc'd copy the Dart side frees
-/// with nativeFree() once it has read it: the listener runs later on the Dart
-/// event loop, after the analyzer has moved on.
+/// is not computed. On native the packet is a malloc'd copy, because the listener
+/// runs later on the Dart event loop, after the analyzer has moved on. The Dart
+/// side hands it back to visualizationPacketDone() once it has read it, which
+/// frees it and lets [sourceId] send its next packet.
 typedef dartVisualizationCallback_t =
     ffi.Pointer<ffi.NativeFunction<dartVisualizationCallback_tFunction>>;
 

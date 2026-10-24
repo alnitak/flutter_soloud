@@ -21,6 +21,8 @@ std::atomic<float> gFftSmoothing{0.8f};
 std::atomic<float> gMinDecibels{-100.0f};
 std::atomic<float> gMaxDecibels{-30.0f};
 std::atomic<uint32_t> gNextSerial{0};
+// Advanced by Analyzer::abandonDartDispatches().
+std::atomic<uint32_t> gDartDispatchEpoch{0};
 
 // The ring keeps four windows, and at least this many frames: a device
 // callback can deliver thousands of frames at once.
@@ -79,6 +81,8 @@ class AnalyzerWorker {
 
   /// Guards [analyzers]. The worker holds it while it analyzes them, so once
   /// remove() returns the worker no longer touches the analyzer removed.
+  /// add() and remove() hold lifecycleMutex too, so either lock is enough to
+  /// read the list.
   std::mutex mutex;
   std::vector<Analyzer *> analyzers;
 
@@ -132,7 +136,8 @@ class AnalyzerWorker {
     while (!m_stop) {
       const auto now = Analyzer::Clock::now();
       for (Analyzer *analyzer : analyzers) {
-        if (now < analyzer->m_nextDispatch) {
+        if (now < analyzer->m_nextDispatch ||
+            analyzer->isDartDispatchInFlight()) {
           continue;
         }
         float *packet = analyzer->m_packet[0];
@@ -213,6 +218,42 @@ void Analyzer::disableAll(const std::function<bool()> &shouldDisable) {
     analyzer->disableLocked(/*stopIdleWorker=*/false);
   }
   worker.stopIfIdle();
+}
+
+void Analyzer::beginDartDispatch(const float *copy) {
+  // The epoch first: until the packet is published the analyzer is not in
+  // flight, whatever the epoch says.
+  m_dartDispatchEpoch.store(gDartDispatchEpoch.load(std::memory_order_acquire),
+                            std::memory_order_relaxed);
+  m_dartPacket.store(copy, std::memory_order_release);
+}
+
+bool Analyzer::isDartDispatchInFlight() const {
+  return m_dartPacket.load(std::memory_order_acquire) != nullptr &&
+         m_dartDispatchEpoch.load(std::memory_order_relaxed) ==
+             gDartDispatchEpoch.load(std::memory_order_acquire);
+}
+
+void Analyzer::finishDartDispatch(const float *copy) {
+  if (copy == nullptr) {
+    return;
+  }
+  // lifecycleMutex rather than mutex, which the worker holds across a whole
+  // pass: Dart reports from its event loop and should not wait for one. It
+  // keeps every listed analyzer alive and the list unchanged.
+  AnalyzerWorker &worker = AnalyzerWorker::get();
+  std::lock_guard<std::mutex> lifecycle(worker.lifecycleMutex);
+  for (Analyzer *analyzer : worker.analyzers) {
+    const float *expected = copy;
+    if (analyzer->m_dartPacket.compare_exchange_strong(
+            expected, nullptr, std::memory_order_acq_rel)) {
+      return;
+    }
+  }
+}
+
+void Analyzer::abandonDartDispatches() {
+  gDartDispatchEpoch.fetch_add(1, std::memory_order_acq_rel);
 }
 
 bool Analyzer::finishWebDispatch(int32_t sourceId, uint32_t serial) {
@@ -346,6 +387,7 @@ PlayerErrors Analyzer::enableLocked(int windowSize,
   m_readIndex = 0;
   m_packetIndex = 0;
   m_dispatchInFlight.store(false, std::memory_order_relaxed);
+  m_dartPacket.store(nullptr, std::memory_order_relaxed);
   m_serial = gNextSerial.fetch_add(1, std::memory_order_relaxed) + 1;
   m_running.store(true, std::memory_order_release);
   AnalyzerWorker::get().add(this);

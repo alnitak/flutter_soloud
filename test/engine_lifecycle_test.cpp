@@ -32,6 +32,7 @@
 //   * retirement stops the visualizations without holding the gate their
 //     worker dispatches through, so it cannot deadlock against a dispatch,
 //     and does not stop what a registration claimed meanwhile started;
+//   * a visualization has one packet in flight to Dart at a time;
 //   * duplicate destroy/detach notifications tear down exactly once;
 //   * loadFile() decodes without the lifecycle locks, so disposing sounds or
 //     the engine never waits for a decode, and a sound decoded for an engine
@@ -47,12 +48,15 @@
 
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <mutex>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 extern "C"
@@ -81,6 +85,7 @@ extern "C"
     int isMixerCaptureRunning();
     bool setVisualizationCallbackForEngine(dartVisualizationCallback_t callback,
                                            int64_t owner_engine_id);
+    void visualizationPacketDone(float *packet);
     enum PlayerErrors setVisualizationEnabled(bool enabled, int windowSize,
                                               int kind, int channel);
     int getVisualizationEnabled();
@@ -194,11 +199,76 @@ void onStateChanged(enum PlayerStateEvents *state)
 
 void onMixerOutput(unsigned char *, uint64_t) { ++gMixerOutputCalls; }
 
+// Stand-in for the Dart event loop a NativeCallable.listener posts to. The
+// visualization callable only queues its packet; this thread reports it done,
+// later and never on the thread that dispatched it, as Dart does. While held,
+// packets are kept instead, as by an isolate that has fallen behind.
+std::mutex gDartLoopMutex;
+std::condition_variable gDartLoopWake;
+std::vector<std::pair<int32_t, float *>> gDartLoopQueue;
+std::vector<std::pair<int32_t, float *>> gHeldPackets;
+bool gHoldPackets = false;
+bool gDartLoopStop = false;
+
+void runDartLoop()
+{
+    std::unique_lock<std::mutex> lock(gDartLoopMutex);
+    while (true)
+    {
+        gDartLoopWake.wait(lock, []
+                           { return gDartLoopStop || !gDartLoopQueue.empty(); });
+        if (gDartLoopQueue.empty())
+            return;
+        std::vector<std::pair<int32_t, float *>> batch;
+        batch.swap(gDartLoopQueue);
+        if (gHoldPackets)
+        {
+            gHeldPackets.insert(gHeldPackets.end(), batch.begin(), batch.end());
+            continue;
+        }
+        lock.unlock();
+        for (const auto &packet : batch)
+            visualizationPacketDone(packet.second);
+        lock.lock();
+    }
+}
+
+/// Stop or resume reporting packets done. Resuming reports the held ones.
+void holdVisualizationPackets(bool hold)
+{
+    std::vector<std::pair<int32_t, float *>> held;
+    {
+        std::lock_guard<std::mutex> lock(gDartLoopMutex);
+        gHoldPackets = hold;
+        if (!hold)
+            held.swap(gHeldPackets);
+    }
+    for (const auto &packet : held)
+        visualizationPacketDone(packet.second);
+}
+
+/// Packets of the engine output ([bus] false) or of a bus kept unreported.
+int heldPackets(bool bus)
+{
+    std::lock_guard<std::mutex> lock(gDartLoopMutex);
+    int count = 0;
+    for (const auto &packet : gHeldPackets)
+    {
+        if ((packet.first != 0) == bus)
+            ++count;
+    }
+    return count;
+}
+
 /// When armed, holds the next engine-output packet -- and with it the gate,
 /// shared -- long enough for a retirement to queue up behind it.
 void onVisualization(int32_t sourceId, int32_t, float *data, int32_t, int32_t)
 {
-    std::free(data);
+    {
+        std::lock_guard<std::mutex> lock(gDartLoopMutex);
+        gDartLoopQueue.emplace_back(sourceId, data);
+    }
+    gDartLoopWake.notify_one();
     if (sourceId != 0)
     {
         ++gBusVisualizationPackets;
@@ -300,6 +370,7 @@ long long millisSince(std::chrono::steady_clock::time_point start)
 void resetGlobalState()
 {
     dispose();
+    holdVisualizationPackets(false);
     gVoiceEndedCalls = 0;
     gFileLoadedCalls = 0;
     gLastFileLoadedError = -1;
@@ -862,6 +933,91 @@ void testRetirementSparesWhatANewerRegistrationStarted()
            gMixerOutputCalls.load() - mixer);
 
     stopMixerCapture();
+    resetGlobalState();
+}
+
+/// A visualization has at most one packet in flight to Dart: nothing more is
+/// sent for it until Dart reports that one done, so an isolate that falls
+/// behind -- a long frame, a paused debugger -- is not buried under a backlog
+/// it then has to chew through. Publishing the callable again abandons the
+/// packets in flight, which a closed callable would never report.
+void testVisualizationSendsOnePacketAtATime()
+{
+    std::printf("a visualization has one packet in flight to Dart at a time\n");
+    resetGlobalState();
+
+    if (!initEngineAs(kEngineA))
+    {
+        EXPECT(false, "the engine should initialize");
+        return;
+    }
+    registerCallbacksFor(kEngineA);
+    EXPECT(setVisualizationCallbackForEngine(onVisualization, kEngineA),
+           "the owner should publish its visualization callable");
+    holdVisualizationPackets(true);
+    EXPECT(setVisualizationEnabled(true, 256, VISUALIZATION_WAVE_AND_FFT,
+                                   VISUALIZATION_CHANNEL_MERGED) == noError,
+           "the engine output's visualization should start");
+    const unsigned int busId = createBus();
+    unsigned int busHandle = 0;
+    EXPECT(busPlayOnEngine(busId, 1.0f, false, &busHandle) == noError,
+           "the bus should play");
+    EXPECT(busSetVisualizationEnabled(busId, true, 256,
+                                      VISUALIZATION_WAVE_AND_FFT,
+                                      VISUALIZATION_CHANNEL_MERGED) == noError,
+           "the bus's visualization should start");
+
+    EXPECT(waitFor([] { return heldPackets(false) == 1 && heldPackets(true) == 1; }),
+           "each visualization should send a packet (engine %d, bus %d)",
+           heldPackets(false), heldPackets(true));
+    // Over a dozen dispatch intervals.
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    EXPECT(heldPackets(false) == 1 && heldPackets(true) == 1,
+           "nothing more should be sent before it is reported done (engine %d, "
+           "bus %d)",
+           heldPackets(false), heldPackets(true));
+
+    int engine = gEngineVisualizationPackets.load();
+    int bus = gBusVisualizationPackets.load();
+    holdVisualizationPackets(false);
+    EXPECT(waitFor(
+               [&]
+               {
+                   return gEngineVisualizationPackets.load() >= engine + 3 &&
+                          gBusVisualizationPackets.load() >= bus + 3;
+               }),
+           "packets should flow again once reported done (engine %d, bus %d "
+           "new)",
+           gEngineVisualizationPackets.load() - engine,
+           gBusVisualizationPackets.load() - bus);
+
+    holdVisualizationPackets(true);
+    EXPECT(waitFor([] { return heldPackets(false) == 1 && heldPackets(true) == 1; }),
+           "each visualization should have a packet in flight again");
+    EXPECT(setVisualizationCallbackForEngine(onVisualization, kEngineA),
+           "the owner should publish its callable again");
+    EXPECT(waitFor([] { return heldPackets(false) == 2 && heldPackets(true) == 2; }),
+           "publishing again should abandon the packets in flight (engine %d, "
+           "bus %d)",
+           heldPackets(false), heldPackets(true));
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    EXPECT(heldPackets(false) == 2 && heldPackets(true) == 2,
+           "and the new packets should be held back as before (engine %d, bus "
+           "%d)",
+           heldPackets(false), heldPackets(true));
+
+    // Reporting the abandoned packets late is harmless.
+    engine = gEngineVisualizationPackets.load();
+    bus = gBusVisualizationPackets.load();
+    holdVisualizationPackets(false);
+    EXPECT(waitFor(
+               [&]
+               {
+                   return gEngineVisualizationPackets.load() >= engine + 3 &&
+                          gBusVisualizationPackets.load() >= bus + 3;
+               }),
+           "packets should flow once everything is reported done");
+
     resetGlobalState();
 }
 
@@ -1478,6 +1634,8 @@ int main()
         return std::getenv("SOLOUD_LIFECYCLE_TEST_ALLOW_NO_DEVICE") ? 0 : 1;
     }
 
+    std::thread dartLoop(runDartLoop);
+
     testHotRestartRetiresEveryCallable();
     testFinalizerRetiresEveryCallable();
     testIosLifecycleHandshake();
@@ -1494,6 +1652,7 @@ int main()
     testTeardownDuringActiveMixerCapture();
     testRetirementWhileVisualizationsDispatch();
     testRetirementSparesWhatANewerRegistrationStarted();
+    testVisualizationSendsOnePacketAtATime();
     testCaptureCannotStartAfterTeardownIsDecided();
     testConcurrentCaptureStopsAreSerialized();
     testEngineDestroyDisposesTheNativeEngine();
@@ -1502,6 +1661,13 @@ int main()
     testRetirementNeverWaitsForNativeWork();
     testLoadDecodeDoesNotBlockLifecycleCalls();
     testTeardownDuringDecodeDropsTheSound();
+
+    {
+        std::lock_guard<std::mutex> lock(gDartLoopMutex);
+        gDartLoopStop = true;
+    }
+    gDartLoopWake.notify_one();
+    dartLoop.join();
 
     std::printf("\n%d assertions, %d failures\n", gAssertions, gFailures);
     return gFailures == 0 ? 0 : 1;

@@ -201,9 +201,10 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     }
   }
 
-  /// [data] is a native copy of the packet, ours to free: [channelCount]
-  /// wave windows of [waveSamples] floats followed by [channelCount] FFT
-  /// windows of [fftSamples] floats.
+  /// [data] is a native copy of the packet: [channelCount] wave windows of
+  /// [waveSamples] floats followed by [channelCount] FFT windows of
+  /// [fftSamples] floats. Handing it back frees it and lets [sourceId] send
+  /// its next packet, which it holds back until then.
   void _visualizationDataCallback(
     int sourceId,
     int channelCount,
@@ -238,7 +239,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
         ),
       );
     } finally {
-      nativeFree(data.cast<ffi.Void>());
+      native.visualizationPacketDone(data);
     }
   }
 

@@ -18,9 +18,10 @@ class AnalyzerWorker;
 ///
 /// [data] holds [channelCount] wave windows of [waveSamples] floats, followed
 /// by [channelCount] FFT windows of [fftSamples] floats. A count is 0 when its
-/// kind is not computed. On native [data] is only valid during the call. On
-/// the web it stays valid until the main thread has delivered it, see
-/// [Analyzer::tryBeginDispatch].
+/// kind is not computed. On native [data] is only valid during the call, and a
+/// callback that hands Dart a copy reports it with
+/// [Analyzer::beginDartDispatch]. On the web it stays valid until the main
+/// thread has delivered it, see [Analyzer::tryBeginDispatch].
 typedef void (*AnalyzerDataCallback)(Analyzer &source,
                                      const float *data,
                                      int32_t channelCount,
@@ -118,6 +119,30 @@ class Analyzer : public SoLoud::BusAudioTap {
   /// analyzer takes, and nothing is disabled unless it returns true.
   static void disableAll(const std::function<bool()> &shouldDisable = nullptr);
 
+  /// Native: called by the data callback, on the worker thread, with the copy
+  /// of the packet it is handing Dart. Until Dart reports that copy done
+  /// ([finishDartDispatch]) the worker leaves this analyzer alone, so an
+  /// isolate that falls behind (a long frame, a paused debugger) is sent
+  /// fewer, newer packets rather than a queue that grows without bound.
+  void beginDartDispatch(const float *copy);
+
+  /// Native: Dart is done with [copy], which the caller then frees. Lets the
+  /// analyzer that sent it send its next packet, unless it has since been
+  /// disabled or restarted, or the dispatch abandoned.
+  ///
+  /// A copy is only freed after this returns, and only one analyzer can hold
+  /// a given address while it is allocated, so the match is unambiguous.
+  ///
+  /// Takes the lock that enabling takes, so it must not be called from the
+  /// data callback: the worker holds its own lock there, which comes after.
+  static void finishDartDispatch(const float *copy);
+
+  /// Native: forget every packet in flight to Dart. For when the Dart callable
+  /// they were sent to is replaced or retired: a closed NativeCallable drops
+  /// its pending calls, so those copies would never be reported done (and
+  /// leak, at most one per analyzer). Takes no lock.
+  static void abandonDartDispatches();
+
   /// Web (AudioWorklet) only: identifies this run of the analyzer across the
   /// hop to the main thread. Changes every time visualization is enabled.
   uint32_t serial() const { return m_serial; }
@@ -154,6 +179,7 @@ class Analyzer : public SoLoud::BusAudioTap {
                size_t frameStep,
                size_t channelStep,
                int channels);
+  bool isDartDispatchInFlight() const;
   bool analyzeLatestWindow(float *packet);
   void computeFftMagnitudes(int channelIdx, float *magnitudes);
   void dispatch(const float *packet);
@@ -165,8 +191,13 @@ class Analyzer : public SoLoud::BusAudioTap {
 
   std::atomic<bool> m_running{false};
   std::atomic<int> m_inFlightAudioCallbacks{0};
+  // Web (AudioWorklet): see tryBeginDispatch().
   std::atomic<bool> m_dispatchInFlight{false};
   uint32_t m_serial{0};
+  // Native: the copy Dart has not reported done yet, and the abandonment
+  // epoch it was sent in. See beginDartDispatch().
+  std::atomic<const float *> m_dartPacket{nullptr};
+  std::atomic<uint32_t> m_dartDispatchEpoch{0};
 
   int m_windowSize{256};
   VisualizationKind m_kind{VISUALIZATION_WAVE_AND_FFT};

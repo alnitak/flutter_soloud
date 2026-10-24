@@ -571,6 +571,8 @@ extern "C"
     dartStateChangedCallback.store(nullptr, std::memory_order_release);
     dartMixerOutputDataCallback.store(nullptr, std::memory_order_release);
     dartVisualizationCallback.store(nullptr, std::memory_order_release);
+    // The packets in flight went to the callable just retired.
+    Analyzer::abandonDartDispatches();
     globalCallbackGeneration = dart_callbacks::kNoGeneration;
     mixerCallbackGeneration = dart_callbacks::kNoGeneration;
     visualizationCallbackGeneration = dart_callbacks::kNoGeneration;
@@ -1014,7 +1016,8 @@ extern "C"
       return;
     // The listener reads the packet later, on the Dart event loop, while the
     // analyzer reuses [data] for the next window (or frees it when disabled).
-    // Hand Dart a copy; it frees it with nativeFree().
+    // Hand Dart a copy, which it hands back to visualizationPacketDone(). The
+    // analyzer sends nothing more until then.
     const size_t bytes = static_cast<size_t>(channelCount) *
                          static_cast<size_t>(waveSamples + fftSamples) *
                          sizeof(float);
@@ -1022,6 +1025,8 @@ extern "C"
     if (packet == nullptr)
       return;
     memcpy(packet, data, bytes);
+    // Before the call: Dart can report the copy done as soon as it has it.
+    source.beginDartDispatch(packet);
     cb(source.sourceId(), channelCount, packet, waveSamples, fftSamples);
 #endif
   }
@@ -1046,6 +1051,9 @@ extern "C"
 
       dartVisualizationCallback.store(callback, std::memory_order_release);
       visualizationCallbackGeneration = registration.generation();
+      // The packets in flight went to the previous callable, which may be
+      // closed. Even the same address may be a new callable by now.
+      Analyzer::abandonDartDispatches();
     }
 
     Analyzer::setDataCallback(dispatchVisualizationToDart);
@@ -1057,6 +1065,18 @@ extern "C"
   {
     return publishVisualizationCallback(callback, owner_engine_id,
                                         /*require_live=*/true);
+  }
+
+  /// Native: Dart is done with a visualization packet it was handed. Frees it
+  /// and lets the source that sent it send the next one: each source has at
+  /// most one packet in flight, so a Dart isolate that falls behind is sent
+  /// fewer, newer packets instead of a growing backlog.
+  FFI_PLUGIN_EXPORT void visualizationPacketDone(float *packet)
+  {
+    if (packet == nullptr)
+      return;
+    Analyzer::finishDartDispatch(packet);
+    free(packet);
   }
 
   FFI_PLUGIN_EXPORT void setVisualizationCallback(

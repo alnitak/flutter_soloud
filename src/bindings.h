@@ -168,6 +168,12 @@ extern "C"
   FFI_PLUGIN_EXPORT void setVisualizationCallback(
       dartVisualizationCallback_t callback);
 
+  /// Native: Dart is done with a visualization packet it was handed. Frees it
+  /// and lets the source that sent it send the next one: each source has at
+  /// most one packet in flight, so a Dart isolate that falls behind is sent
+  /// fewer, newer packets instead of a growing backlog.
+  FFI_PLUGIN_EXPORT void visualizationPacketDone(float *packet);
+
   //////////////////////////////////////////////////////////////
   /// Engine
 
