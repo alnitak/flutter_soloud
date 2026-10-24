@@ -64,6 +64,9 @@ class _CustomDspWorkbenchExampleState extends State<CustomDspWorkbenchExample> {
 
     // 2. Create a CustomAudioSource (registered with a Web JS callback name or
     //    native C callback pointer when provided by a native plugin).
+    // The "soloudCustomSynthCallback" is the name of the JS function that will
+    // be called to generate the audio data. In this case it is hardcoded in the
+    // "custom_source.cpp" for testing purpose.
     final customSynth = _soloud.createCustomAudioSource(
       webJsFunctionName: 'soloudCustomSynthCallback',
     );

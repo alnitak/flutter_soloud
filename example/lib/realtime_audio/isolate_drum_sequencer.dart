@@ -129,7 +129,7 @@ int _drumSynthGenerateChunk(
     var mix = 0.0;
     if (state.kickEnv > 1e-4) {
       final freq = 48.0 + 110.0 * state.kickEnv * state.kickEnv;
-      mix += math.sin(2.0 * math.pi * state.kickPhase) * state.kickEnv * 0.7;
+      mix += math.sin(2.0 * math.pi * state.kickPhase) * state.kickEnv * 0.5;
       state
         ..kickPhase += freq / 48000.0
         ..kickEnv *= 0.9992;
@@ -223,7 +223,6 @@ class _IsolateDrumSequencerExampleState
     final bus = _soloud.createMixingBus(name: 'Drum Bus')..playOnEngine();
     bus.filters.freeverbFilter.activate();
     bus.filters.freeverbFilter.wet().value = _reverbWet;
-    bus.filters.compressorFilter.activate();
 
     final stream = _soloud.setRealtimeStream(
       bufferFrames: 8192,
@@ -242,9 +241,9 @@ class _IsolateDrumSequencerExampleState
       //   jitter up to 10-16 ms with UI rendering. A 2048-frame (~42.6 ms)
       //   cushion, 512-frame chunk, and 15 ms ticks prevent buffer starvation
       //   and underruns.
-      chunkFrames: kIsWeb ? 512 : 128,
-      targetBufferedFrames: kIsWeb ? 2048 : 256,
-      tickInterval: const Duration(milliseconds: kIsWeb ? 15 : 2),
+      chunkFrames: kIsWeb ? 512 : 256,
+      targetBufferedFrames: kIsWeb ? 2048 : 512,
+      tickInterval: const Duration(milliseconds: kIsWeb ? 15 : 4),
       onUiEvent: (Object? step) {
         if (step is int && mounted) {
           setState(() => _currentStep = step);
