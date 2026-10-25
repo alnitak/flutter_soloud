@@ -18,19 +18,18 @@ external ffi.Pointer<ffi.Void> getCustomSourceCallbackAddress();
 /// 2. Custom Filter Callback matching `SoLoudFilterDspCallback_t`.
 /// Applies soft saturation/overdrive driven by user parameter 1 (Drive).
 @ffi.Native<
-  ffi.Void Function(
-    ffi.Pointer<ffi.Float>,
-    ffi.UnsignedInt,
-    ffi.UnsignedInt,
-    ffi.UnsignedInt,
-    ffi.Float,
-    ffi.Double,
-    ffi.Pointer<ffi.Float>,
-    ffi.Uint64,
-    ffi.UnsignedInt,
-    ffi.Pointer<ffi.Void>,
-  )
->()
+    ffi.Void Function(
+      ffi.Pointer<ffi.Float>,
+      ffi.UnsignedInt,
+      ffi.UnsignedInt,
+      ffi.UnsignedInt,
+      ffi.Float,
+      ffi.Double,
+      ffi.Pointer<ffi.Float>,
+      ffi.Uint64,
+      ffi.UnsignedInt,
+      ffi.Pointer<ffi.Void>,
+    )>()
 external void myCustomFilterDspCallback(
   ffi.Pointer<ffi.Float> aBuffer,
   int aSamples,
@@ -47,18 +46,17 @@ external void myCustomFilterDspCallback(
 /// 1. Custom Audio Source Callback matching `SoLoudSourceDspCallback_t`.
 /// Generates procedural stereo dual-tone audio (Left: 220Hz, Right: 330Hz).
 @ffi.Native<
-  ffi.UnsignedInt Function(
-    ffi.Pointer<ffi.Float>,
-    ffi.UnsignedInt,
-    ffi.UnsignedInt,
-    ffi.UnsignedInt,
-    ffi.Float,
-    ffi.Double,
-    ffi.Double,
-    ffi.Pointer<ffi.Uint32>,
-    ffi.Pointer<ffi.Void>,
-  )
->()
+    ffi.UnsignedInt Function(
+      ffi.Pointer<ffi.Float>,
+      ffi.UnsignedInt,
+      ffi.UnsignedInt,
+      ffi.UnsignedInt,
+      ffi.Float,
+      ffi.Double,
+      ffi.Double,
+      ffi.Pointer<ffi.Uint32>,
+      ffi.Pointer<ffi.Void>,
+    )>()
 external int myCustomSourceDspCallback(
   ffi.Pointer<ffi.Float> aBuffer,
   int aSamplesToRead,

@@ -133,7 +133,8 @@ class _CustomDspExampleAppState extends State<CustomDspExampleApp> {
               children: [
                 // Platform Info Badge
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   decoration: BoxDecoration(
                     color: Colors.blueGrey.shade50,
                     borderRadius: BorderRadius.circular(8),
@@ -141,7 +142,8 @@ class _CustomDspExampleAppState extends State<CustomDspExampleApp> {
                   ),
                   child: Row(
                     children: [
-                      Icon(Icons.memory, size: 20, color: Colors.blueGrey.shade700),
+                      Icon(Icons.memory,
+                          size: 20, color: Colors.blueGrey.shade700),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
@@ -171,7 +173,8 @@ class _CustomDspExampleAppState extends State<CustomDspExampleApp> {
                       children: [
                         Row(
                           children: [
-                            Icon(Icons.graphic_eq, color: Colors.indigo.shade700),
+                            Icon(Icons.graphic_eq,
+                                color: Colors.indigo.shade700),
                             const SizedBox(width: 8),
                             const Text(
                               'Custom Audio Source',
@@ -185,7 +188,8 @@ class _CustomDspExampleAppState extends State<CustomDspExampleApp> {
                         const SizedBox(height: 8),
                         Text(
                           'Generates a lush A-minor 9th ambient pad with stereo chorus modulation directly on the audio thread.',
-                          style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                          style: TextStyle(
+                              color: Colors.grey.shade600, fontSize: 13),
                         ),
                         const SizedBox(height: 20),
                         SizedBox(
@@ -193,18 +197,25 @@ class _CustomDspExampleAppState extends State<CustomDspExampleApp> {
                           height: 48,
                           child: ElevatedButton.icon(
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: isPlaying ? Colors.red.shade700 : Colors.indigo.shade700,
+                              backgroundColor: isPlaying
+                                  ? Colors.red.shade700
+                                  : Colors.indigo.shade700,
                               foregroundColor: Colors.white,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(8),
                               ),
                             ),
-                            icon: Icon(isPlaying ? Icons.stop : Icons.play_arrow),
+                            icon:
+                                Icon(isPlaying ? Icons.stop : Icons.play_arrow),
                             label: Text(
-                              isPlaying ? 'Stop Custom Synth' : 'Play Custom Synth',
-                              style: const TextStyle(fontWeight: FontWeight.bold),
+                              isPlaying
+                                  ? 'Stop Custom Synth'
+                                  : 'Play Custom Synth',
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.bold),
                             ),
-                            onPressed: _customSource == null ? null : _togglePlayback,
+                            onPressed:
+                                _customSource == null ? null : _togglePlayback,
                           ),
                         ),
                       ],
@@ -249,7 +260,8 @@ class _CustomDspExampleAppState extends State<CustomDspExampleApp> {
                         const SizedBox(height: 8),
                         Text(
                           'Applies real-time tanh soft-clipping saturation in-place.',
-                          style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                          style: TextStyle(
+                              color: Colors.grey.shade600, fontSize: 13),
                         ),
                         const SizedBox(height: 16),
 

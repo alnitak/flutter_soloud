@@ -658,7 +658,6 @@ class _PianoKeyboardState extends State<PianoKeyboard> {
     double totalHeight,
     double blackHeight,
   ) {
-
     final pos = event.localPosition;
     final noteInfo = _hitTest(
       pos,
