@@ -631,8 +631,8 @@ enum VisualizationKind {
 
 /// Channel selection constants for audio visualization.
 abstract final class VisualizationChannel {
-  /// Mix down all active playback channels to a single mono stream using
-  /// miniaudio's spatial channel downmixer.
+  /// Average all channels into a single mono stream, as miniaudio downmixes
+  /// to mono.
   static const int merged = -1;
 
   /// Process and emit separate visualization data for each active channel

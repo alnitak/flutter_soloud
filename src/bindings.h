@@ -168,6 +168,12 @@ extern "C"
   FFI_PLUGIN_EXPORT void setVisualizationCallback(
       dartVisualizationCallback_t callback);
 
+  /// Native: Dart is done with a visualization packet it was handed. Frees it
+  /// and lets the source that sent it send the next one: each source has at
+  /// most one packet in flight, so a Dart isolate that falls behind is sent
+  /// fewer, newer packets instead of a growing backlog.
+  FFI_PLUGIN_EXPORT void visualizationPacketDone(float *packet);
+
   //////////////////////////////////////////////////////////////
   /// Engine
 
@@ -620,7 +626,8 @@ extern "C"
   FFI_PLUGIN_EXPORT float getRelativePlaySpeed(unsigned int handle);
 
   /// Gets the approximate volume for output per output channel (i.e, per
-  /// speaker).
+  /// speaker): the peak of the channel over the latest window analyzed by the
+  /// visualization, which must be enabled.
   ///
   /// [channel] the channel.
   /// Return zero for invalid parameters.
@@ -857,7 +864,8 @@ extern "C"
   /// [enabled] enable or disable it
   /// [windowSize] power of two from 128 to 8192 (default 256)
   /// [kind] 0: wave, 1: FFT, 2: wave and FFT
-  /// [channel] -1: merged mono, -2: all channels, >= 0: specific channel index
+  /// [channel] -1: merged mono, -2: all channels, >= 0: specific channel
+  /// index, below the engine's channel count
   FFI_PLUGIN_EXPORT enum PlayerErrors setVisualizationEnabled(bool enabled,
                                                               int windowSize,
                                                               int kind,
@@ -876,10 +884,12 @@ extern "C"
   /// [smooth] must be in the [0.0 ~ 1.0] range.
   /// 0 = no smooth
   /// 1 = full smooth
+  /// Applies to the engine output's visualization and every bus's.
   FFI_PLUGIN_EXPORT void setFftSmoothing(float smooth);
 
   /// Set the decibel range [minDecibels, maxDecibels] for FFT normalization.
   /// Conforms to W3C Web Audio API (default: minDecibels = -100.0f, maxDecibels = -30.0f).
+  /// Applies to the engine output's visualization and every bus's.
   FFI_PLUGIN_EXPORT void setFftDecibelRange(float minDecibels, float maxDecibels);
 
   /// Get the sound length in seconds
@@ -1425,39 +1435,39 @@ extern "C"
                                                       unsigned int *handle);
 
   /// Set the number of output channels for the bus (default is 2 = stereo).
+  /// A running visualization of the bus restarts for the new count, or is
+  /// disabled if the channel it was set to no longer exists.
   ///
   /// [busId] the bus ID.
   /// [channels] number of channels (1 = mono, 2 = stereo, etc.).
   FFI_PLUGIN_EXPORT int busSetChannels(unsigned int busId,
                                        unsigned int channels);
 
-  /// Enable or disable visualization data gathering for this bus.
-  /// Must be enabled before calling busCalcFFT, busGetWave,
-  /// or busGetApproximateVolume.
+  /// Enable or disable visualization for this bus. Its packets go to the
+  /// visualization callback with the bus ID as source.
+  ///
+  /// The data is what is mixed into the bus, before the bus's own filters,
+  /// volume and pan. Nothing is sent while nothing is mixed through the bus.
   ///
   /// [busId] the bus ID.
-  /// [enable] true to enable, false to disable.
-  FFI_PLUGIN_EXPORT void busSetVisualizationEnable(unsigned int busId,
-                                                   bool enable);
+  /// [enabled] enable or disable it
+  /// [windowSize] power of two from 128 to 8192 (default 256)
+  /// [kind] 0: wave, 1: FFT, 2: wave and FFT
+  /// [channel] -1: merged mono, -2: all channels, >= 0: specific channel
+  /// index, below the bus's channel count
+  FFI_PLUGIN_EXPORT enum PlayerErrors busSetVisualizationEnabled(
+      unsigned int busId, bool enabled, int windowSize, int kind, int channel);
 
-  /// Calculate and return 256 floats of FFT data for this bus.
-  /// The data ranges from low to high frequencies.
-  /// Visualization must be enabled first with busSetVisualizationEnable.
+  /// Get the visualization state of this bus.
   ///
   /// [busId] the bus ID.
-  /// Returns a pointer to 256 floats, or nullptr if the bus is not found.
-  FFI_PLUGIN_EXPORT float *busCalcFFT(unsigned int busId);
-
-  /// Get 256 samples of wave data currently playing through this bus.
-  /// Visualization must be enabled first with busSetVisualizationEnable.
-  ///
-  /// [busId] the bus ID.
-  /// Returns a pointer to 256 floats, or nullptr if the bus is not found.
-  FFI_PLUGIN_EXPORT float *busGetWave(unsigned int busId);
+  /// Return 1 if enabled.
+  FFI_PLUGIN_EXPORT int busGetVisualizationEnabled(unsigned int busId);
 
   /// Get the approximate output volume for a specific channel of this bus.
   /// Useful for VU meters or level indicators.
-  /// Visualization must be enabled first.
+  /// Bus visualization must be enabled first: this is the peak of the channel
+  /// over the latest analyzed window.
   ///
   /// [busId] the bus ID.
   /// [channel] the output channel index (0 = left, 1 = right, etc.).
@@ -1468,6 +1478,7 @@ extern "C"
   /// Move a live voice (identified by its handle) into this bus.
   /// The voice will be reparented so it plays through the bus.
   /// Useful for dynamically routing sounds in/out of filtered busses.
+  /// Does nothing while the bus is not playing.
   ///
   /// [busId] the bus ID.
   /// [voiceHandle] handle of the voice to annex.

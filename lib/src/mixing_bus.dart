@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:flutter_soloud/src/bindings/soloud_controller.dart';
 import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/filters/filters.dart';
 import 'package:logging/logging.dart';
+import 'package:meta/meta.dart';
 
 /// A singleton helper class to manage all active mixing buses.
 ///
@@ -33,6 +36,18 @@ class Buses {
   Bus? byId(int id, {Bus Function()? orElse}) {
     return buses.firstWhere((bus) => bus.busId == id, orElse: orElse);
   }
+
+  /// Hand a visualization packet from native to the bus it belongs to. It is
+  /// dropped when that bus has been disposed meanwhile.
+  @internal
+  void dispatchVisualizationData(int busId, AudioVisualizationData data) {
+    for (final bus in buses) {
+      if (bus.busId == busId) {
+        bus._addVisualizationData(data);
+        return;
+      }
+    }
+  }
 }
 
 /// A mixing bus to have control over a group of audio sources.
@@ -62,6 +77,12 @@ class Buses {
 /// // 4. Apply filters or change volume to affect all sounds on the bus
 /// SoLoud.instance.setVolume(myBus.soundHandle!, 0.5);
 /// myBus.filters.echoFilter.activate();
+///
+/// // 5. Visualize what plays through the bus
+/// myBus.setVisualizationEnabled(true);
+/// myBus.audioVisualizationEvents.listen((data) {
+///   // data.waveData, data.fftData
+/// });
 /// ```
 ///
 /// See also:
@@ -103,6 +124,25 @@ class Bus {
   /// The number of channels of this bus.
   var _channels = Channels.stereo;
 
+  /// Backing controller for [audioVisualizationEvents].
+  final StreamController<AudioVisualizationData>
+  _audioVisualizationEventsController =
+      StreamController<AudioVisualizationData>.broadcast();
+
+  /// Stream of this bus's visualization packets (wave and/or FFT), emitted
+  /// while visualization is enabled with [setVisualizationEnabled].
+  ///
+  /// See [setVisualizationEnabled] for what the packets contain and when
+  /// they are emitted. The stream is closed when the bus is disposed.
+  Stream<AudioVisualizationData> get audioVisualizationEvents =>
+      _audioVisualizationEventsController.stream;
+
+  void _addVisualizationData(AudioVisualizationData data) {
+    if (_audioVisualizationEventsController.hasListener) {
+      _audioVisualizationEventsController.add(data);
+    }
+  }
+
   // The equality comparison is based solely on busId which IS final,
   // so the equality override is safe and correct (!?).
   @override
@@ -120,7 +160,8 @@ class Bus {
 
   /// Destroys this bus.
   ///
-  /// All the sounds playing through this bus will be stopped.
+  /// All the sounds playing through this bus will be stopped, its
+  /// visualization is disabled and [audioVisualizationEvents] is closed.
   ///
   /// Throws [SoLoudBusDisposedDartException] if the bus has already
   /// been disposed.
@@ -133,6 +174,7 @@ class Bus {
     SoLoudController().soLoudFFI.destroyBus(busId);
     _isValid = false;
     soundHandle = const SoundHandle.error();
+    unawaited(_audioVisualizationEventsController.close());
   }
 
   /// Play the bus itself on the main SoLoud engine so it becomes audible.
@@ -460,6 +502,10 @@ class Bus {
 
   /// Set the number of output channels for the bus (default is 2 = stereo).
   ///
+  /// A running visualization (see [setVisualizationEnabled]) restarts for the
+  /// new count with the same settings, or is disabled if the channel it was
+  /// set to no longer exists.
+  ///
   /// [channels] number of channels.
   ///
   /// Throws [SoLoudBusDisposedDartException] if the bus has already
@@ -473,9 +519,100 @@ class Bus {
     SoLoudController().soLoudFFI.busSetChannels(busId, channels.count);
   }
 
+  /// Enable or disable the visualization of this bus.
+  ///
+  /// While enabled, [audioVisualizationEvents] emits packets (wave and/or
+  /// FFT) of the audio mixed into this bus, like
+  /// [SoLoud.audioVisualizationEvents] does for the engine output:
+  ///
+  /// - The data is taken *before* the bus's own filters, volume and pan
+  ///   (those are applied when the bus is mixed into the engine or into an
+  ///   outer bus). To visualize a bus after its filters, play it through an
+  ///   outer bus and visualize that one instead.
+  /// - Packets come only from newly mixed audio. Nothing is emitted while
+  ///   nothing is mixed through the bus: before [playOnEngine], while the bus
+  ///   or an outer bus it plays through is paused or stopped, or while the
+  ///   output device is stopped. A playing bus with no sound in it emits
+  ///   silent packets, so silence and "not playing" can be told apart.
+  /// - A bus mixes at 44100 Hz (SoLoud's default for a bus) whatever the
+  ///   engine's sample rate, so FFT bin `k` is centered at
+  ///   `k * 44100 / windowSize` Hz.
+  /// - The audio is captured when SoLoud mixes it, so when the engine
+  ///   renders ahead (`renderAheadFrames` in [SoLoud.init]) the packets lead
+  ///   what is heard by up to that much.
+  ///
+  /// The visualization belongs to the bus: it survives the bus voice being
+  /// stopped and played again, and stays enabled until it is disabled here,
+  /// the bus is disposed, or the engine is deinitialized. Smoothing and the
+  /// decibel range are shared with the engine output's visualization, see
+  /// [SoLoud.setFftSmoothing] and [SoLoud.setFftDecibelRange].
+  ///
+  /// Calling this while enabled restarts the visualization with the new
+  /// settings.
+  ///
+  /// [enabled] whether to enable or disable the visualization.
+  ///
+  /// [windowSize] power of two window size from 128 to 8192 (default 256).
+  ///
+  /// [kind] whether to compute wave, FFT, or both (default
+  /// [VisualizationKind.waveAndFft]).
+  ///
+  /// [channel] channel selection: [VisualizationChannel.merged] (-1, default),
+  /// [VisualizationChannel.all] (-2), or a specific 0-based channel index of
+  /// this bus, below its channel count (see [setChannels]).
+  ///
+  /// Throws [SoLoudBusDisposedDartException] if the bus has already
+  /// been disposed.
+  ///
+  /// Throws [SoLoudCppException] if the engine is not initialized, the
+  /// parameters are invalid, or the native setup fails. Invalid parameters
+  /// leave a running visualization as it was.
+  void setVisualizationEnabled(
+    // Positional, like SoLoud.setVisualizationEnabled.
+    // ignore: avoid_positional_boolean_parameters
+    bool enabled, {
+    int windowSize = 256,
+    VisualizationKind kind = VisualizationKind.waveAndFft,
+    int channel = VisualizationChannel.merged,
+  }) {
+    if (!_isValid) {
+      _log.warning('bus $busId is already disposed');
+      throw const SoLoudBusDisposedDartException();
+    }
+    final error = SoLoudController().soLoudFFI.busSetVisualizationEnabled(
+      busId,
+      enabled,
+      windowSize: windowSize,
+      kind: kind,
+      channel: channel,
+    );
+    if (error != PlayerErrors.noError) {
+      _log.severe(() => 'setVisualizationEnabled(): $error');
+      throw SoLoudCppException.fromPlayerError(error);
+    }
+  }
+
+  /// Whether the visualization of this bus is enabled.
+  ///
+  /// Throws [SoLoudBusDisposedDartException] if the bus has already
+  /// been disposed.
+  bool getVisualizationEnabled() {
+    if (!_isValid) {
+      _log.warning('bus $busId is already disposed');
+      throw const SoLoudBusDisposedDartException();
+    }
+    return SoLoudController().soLoudFFI.busGetVisualizationEnabled(busId);
+  }
+
   /// Get the approximate output volume for a specific channel of this bus.
   /// Useful for VU meters or level indicators.
-  /// Visualization must be enabled first.
+  ///
+  /// This is the peak (largest absolute sample) of [channel] over the latest
+  /// window analyzed by the bus visualization, so it needs
+  /// [setVisualizationEnabled] first and reads 0 while that is disabled.
+  /// Like the visualization it is taken before the bus's own filters, volume
+  /// and pan, and it holds its last value while nothing is mixed through the
+  /// bus.
   ///
   /// [channel] the output channel index (0 = left, 1 = right, etc.).
   /// Returns the approximate volume, or 0 if the bus is not found.
@@ -496,6 +633,10 @@ class Bus {
   /// Move a live voice (identified by its handle) into this bus.
   /// The voice will be reparented so it plays through the bus.
   /// Useful for dynamically routing sounds in/out of filtered busses.
+  ///
+  /// Does nothing while the bus isn't playing: before [playOnEngine], or once
+  /// its voice has been stopped (for example by [SoLoud.stopAll]). The voice
+  /// then keeps playing where it was.
   ///
   /// [handle] handle of the voice to annex.
   ///

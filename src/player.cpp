@@ -2220,7 +2220,9 @@ float Player::getRelativePlaySpeed(unsigned int handle)
 
 float Player::getApproximateVolume(unsigned int channel)
 {
-    return soloud.getApproximateVolume(channel);
+    // SoLoud's own visualization, which this used to read, is never enabled:
+    // the Analyzer replaced it.
+    return Analyzer::instance().getChannelPeak(static_cast<int>(channel));
 }
 
 unsigned int Player::getActiveVoiceCount_internal()
@@ -3775,40 +3777,72 @@ int Player::busSetChannels(unsigned int busId, unsigned int channels)
     auto it = busMap.find(busId);
     if (it == busMap.end())
         return -1; // bus not found
-    return static_cast<int>(it->second.bus.setChannels(channels));
+    BusData &busData = it->second;
+    const SoLoud::result res = busData.bus.setChannels(channels);
+    // The visualization stores every channel of the bus: restart it for the
+    // new count, with the same settings. That fails if the selected channel
+    // is gone, which disables it.
+    if (res == SoLoud::SO_NO_ERROR && busData.analyzer &&
+        busData.analyzer->isVisualizationEnabled())
+    {
+        Analyzer &analyzer = *busData.analyzer;
+        if (analyzer.setVisualizationEnabled(
+                true, analyzer.windowSize(), analyzer.kind(),
+                analyzer.channelSelection(),
+                static_cast<int>(channels)) != noError)
+            busData.releaseAnalyzer();
+    }
+    return static_cast<int>(res);
 }
 
-void Player::busSetVisualizationEnable(unsigned int busId, bool enable)
+PlayerErrors Player::busSetVisualizationEnabled(unsigned int busId,
+                                                bool enabled, int windowSize,
+                                                VisualizationKind kind,
+                                                int channel)
 {
     auto it = busMap.find(busId);
     if (it == busMap.end())
-        return;
-    it->second.bus.setVisualizationEnable(enable);
+        return busIdNotFound;
+    BusData &busData = it->second;
+
+    if (!enabled)
+    {
+        busData.releaseAnalyzer();
+        return noError;
+    }
+
+    if (!busData.analyzer)
+        busData.analyzer = std::make_unique<Analyzer>(static_cast<int32_t>(busId));
+    const PlayerErrors error = busData.analyzer->setVisualizationEnabled(
+        true, windowSize, kind, channel,
+        static_cast<int>(busData.bus.mChannels));
+    if (error != noError)
+    {
+        // Invalid settings leave a running visualization as it was.
+        if (!busData.analyzer->isVisualizationEnabled())
+            busData.releaseAnalyzer();
+        return error;
+    }
+    busData.bus.setAudioTap(busData.analyzer.get());
+    return noError;
 }
 
-float *Player::busCalcFFT(unsigned int busId)
+bool Player::busIsVisualizationEnabled(unsigned int busId)
 {
     auto it = busMap.find(busId);
     if (it == busMap.end())
-        return nullptr;
-    return it->second.bus.calcFFT();
-}
-
-float *Player::busGetWave(unsigned int busId)
-{
-    auto it = busMap.find(busId);
-    if (it == busMap.end())
-        return nullptr;
-    return it->second.bus.getWave();
+        return false;
+    return it->second.analyzer &&
+           it->second.analyzer->isVisualizationEnabled();
 }
 
 float Player::busGetApproximateVolume(unsigned int busId,
                                       unsigned int channel)
 {
     auto it = busMap.find(busId);
-    if (it == busMap.end())
+    if (it == busMap.end() || !it->second.analyzer)
         return 0.0f;
-    return it->second.bus.getApproximateVolume(channel);
+    return it->second.analyzer->getChannelPeak(static_cast<int>(channel));
 }
 
 void Player::busAnnexSound(unsigned int busId, unsigned int voiceHandle)
