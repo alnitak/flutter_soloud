@@ -105,7 +105,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   ffi.NativeCallable<native.dartVisualizationCallback_tFunction>?
   nativeVisualizationCallable;
 
-  void Function(AudioVisualizationData data)? _visualizationCallback;
+  void Function(int sourceId, AudioVisualizationData data)?
+  _visualizationCallback;
 
   /// Controller that fires whenever new mixer output data is available.
   ///
@@ -200,47 +201,51 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     }
   }
 
+  /// [data] is a native copy of the packet: [channelCount] wave windows of
+  /// [waveSamples] floats followed by [channelCount] FFT windows of
+  /// [fftSamples] floats. Handing it back frees it and lets [sourceId] send
+  /// its next packet, which it holds back until then.
   void _visualizationDataCallback(
+    int sourceId,
     int channelCount,
-    ffi.Pointer<ffi.Pointer<ffi.Float>> waveDataPerChannel,
+    ffi.Pointer<ffi.Float> data,
     int waveSamples,
-    ffi.Pointer<ffi.Pointer<ffi.Float>> fftDataPerChannel,
     int fftSamples,
   ) {
-    if (_visualizationCallback == null) return;
+    if (data == ffi.nullptr) return;
+    try {
+      final callback = _visualizationCallback;
+      if (callback == null) return;
 
-    final waveList = <Float32List>[];
-    if (waveSamples > 0 && waveDataPerChannel != ffi.nullptr) {
-      for (var c = 0; c < channelCount; c++) {
-        final ptr = waveDataPerChannel[c];
-        if (ptr != ffi.nullptr) {
-          waveList.add(Float32List.fromList(ptr.asTypedList(waveSamples)));
-        }
-      }
+      final packet = data.asTypedList(
+        channelCount * (waveSamples + fftSamples),
+      );
+      final fftStart = channelCount * waveSamples;
+      callback(
+        sourceId,
+        AudioVisualizationData(
+          channelCount: channelCount,
+          wave: [
+            for (var c = 0; c < channelCount && waveSamples > 0; c++)
+              packet.sublist(c * waveSamples, (c + 1) * waveSamples),
+          ],
+          fft: [
+            for (var c = 0; c < channelCount && fftSamples > 0; c++)
+              packet.sublist(
+                fftStart + c * fftSamples,
+                fftStart + (c + 1) * fftSamples,
+              ),
+          ],
+        ),
+      );
+    } finally {
+      native.visualizationPacketDone(data);
     }
-
-    final fftList = <Float32List>[];
-    if (fftSamples > 0 && fftDataPerChannel != ffi.nullptr) {
-      for (var c = 0; c < channelCount; c++) {
-        final ptr = fftDataPerChannel[c];
-        if (ptr != ffi.nullptr) {
-          fftList.add(Float32List.fromList(ptr.asTypedList(fftSamples)));
-        }
-      }
-    }
-
-    final packet = AudioVisualizationData(
-      channelCount: channelCount,
-      wave: waveList,
-      fft: fftList,
-    );
-
-    _visualizationCallback?.call(packet);
   }
 
   @override
   void setVisualizationCallback(
-    void Function(AudioVisualizationData data)? callback,
+    void Function(int sourceId, AudioVisualizationData data)? callback,
   ) {
     _visualizationCallback = callback;
     if (callback != null) {
@@ -2172,9 +2177,36 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     native.busSetChannels(busId, channels);
   }
 
-  /// Get the approximate output volume for a specific channel of this bus.
+  @override
+  PlayerErrors busSetVisualizationEnabled(
+    int busId,
+    bool enabled, {
+    int windowSize = 256,
+    VisualizationKind kind = VisualizationKind.waveAndFft,
+    int channel = VisualizationChannel.merged,
+  }) {
+    if (enabled && _visualizationCallback != null) {
+      _registerVisualizationCallback();
+    }
+    final ret = native.busSetVisualizationEnabled(
+      busId,
+      enabled,
+      windowSize,
+      kind.value,
+      channel,
+    );
+    return PlayerErrors.values[ret.value];
+  }
+
+  @override
+  bool busGetVisualizationEnabled(int busId) {
+    return native.busGetVisualizationEnabled(busId) == 1;
+  }
+
+  /// Get the approximate output volume for a specific channel of this bus:
+  /// the peak of the channel over the latest window analyzed by the bus
+  /// visualization, which must be enabled.
   /// Useful for VU meters or level indicators.
-  /// Visualization must be enabled first.
   ///
   /// [busId] the bus ID.
   /// [channel] the output channel index (0 = left, 1 = right, etc.).

@@ -575,6 +575,8 @@ extern "C"
     dartStateChangedCallback.store(nullptr, std::memory_order_release);
     dartMixerOutputDataCallback.store(nullptr, std::memory_order_release);
     dartVisualizationCallback.store(nullptr, std::memory_order_release);
+    // The packets in flight went to the callable just retired.
+    Analyzer::abandonDartDispatches();
     globalCallbackGeneration = dart_callbacks::kNoGeneration;
     mixerCallbackGeneration = dart_callbacks::kNoGeneration;
     visualizationCallbackGeneration = dart_callbacks::kNoGeneration;
@@ -601,26 +603,62 @@ extern "C"
     }
   }
 
+  /// Stop the mixer-output capture and every visualization (the engine
+  /// output's and the buses'), whose threads invoke Dart callables. The caller
+  /// must not hold the gate: these threads take it, and stopping joins them.
+  ///
+  /// [stillRetired], when given, is checked under the lock that starting each
+  /// of them takes, and they are only stopped while it holds.
+  ///
+  /// Their data callbacks are left installed. Retirement has already made the
+  /// dispatchers inert (they check the live generation), and nulling the
+  /// callbacks here, with the gate released, could null the ones a newer
+  /// registration had just installed.
+  static void stopCaptureThreads(
+      const std::function<bool()> &stillRetired = nullptr)
+  {
+    {
+      std::lock_guard<std::mutex> mixerGuard(mixer_lifecycle_mutex);
+      if (!stillRetired || stillRetired())
+        MixerOutput::instance().stop();
+    }
+    Analyzer::disableAll(stillRetired);
+  }
+
+  /// stopCaptureThreads() for a retirement, which has to release the gate
+  /// first. [retiredAt] is the lastClaimedGeneration() it read while retiring.
+  ///
+  /// A newer registration can be claimed as soon as the gate is free, and
+  /// start capturing or visualizing for itself, which the stop must not undo:
+  /// so nothing is stopped once one has been. A registration is claimed before
+  /// anything is started for it, and the check runs under the lock each start
+  /// takes, so either the claim is seen or the start waits for the stop. What
+  /// is left running then is the newer registration's to keep or stop.
+  static void stopCaptureThreadsRetiredAt(uint64_t retiredAt)
+  {
+    SOLOUD_TEST_BARRIER(retiredCaptureStopEntered);
+    stopCaptureThreads([retiredAt]
+                       { return dart_callbacks::lastClaimedGeneration() ==
+                                retiredAt; });
+  }
+
   FFI_PLUGIN_EXPORT void clearDartCallbackRegistrations()
   {
     std::lock_guard<std::mutex> guard_init(init_deinit_mutex);
     std::lock_guard<std::mutex> guard_load(loadMutex);
 
+    uint64_t retiredAt;
     {
       dart_callbacks::Registration registration;
       registration.retireAll();
       clearDartCallbackPointersLocked();
+      retiredAt = dart_callbacks::lastClaimedGeneration();
     }
 
     // Outside the gate: stop() joins the encoder and notification threads, and
-    // those threads take the gate to invoke the mixer-output callable.
-    {
-      std::lock_guard<std::mutex> mixerGuard(mixer_lifecycle_mutex);
-      MixerOutput::instance().setDataCallback(nullptr);
-      MixerOutput::instance().stop();
-      Analyzer::instance().setDataCallback(nullptr);
-      Analyzer::instance().setVisualizationEnabled(false);
-    }
+    // disableAll() the analyzer worker, and those threads take the gate to
+    // invoke their callables.
+    stopCaptureThreadsRetiredAt(retiredAt);
     clearPlayerDartCallbackRegistrationsLocked();
   }
 
@@ -629,56 +667,59 @@ extern "C"
   /// false when a different engine owns the live registration, so a detaching
   /// engine never retires another one's callables.
   ///
-  /// This runs on the Android platform (UI) thread, so it takes exactly one
-  /// lock — the gate — and holds it across a handful of stores. It waits for no
-  /// device operation, no decode, no `sounds_mutex`, no `init_deinit_mutex`
-  /// (held for the whole of dispose(), which joins the lifecycle scheduler and
-  /// can inherit a stalled ma_device_stop()), and it spawns nothing. When it
-  /// returns, every callable in the process — the four global ones and every
-  /// per-source one — is inert and no invocation is in flight.
+  /// This runs on the Android platform (UI) thread, so it holds the gate only
+  /// across a handful of stores, then stops the mixer capture and the
+  /// visualizations, whose threads never wait on device or decode work. It
+  /// waits for no device operation, no decode, no `sounds_mutex`, no
+  /// `init_deinit_mutex` (held for the whole of dispose(), which joins the
+  /// lifecycle scheduler and can inherit a stalled ma_device_stop()), and it
+  /// spawns nothing. When it returns, every callable in the process — the
+  /// global ones and every per-source one — is inert and no invocation is in
+  /// flight.
   FFI_PLUGIN_EXPORT bool clearDartCallbackRegistrationsForEngine(
       int64_t engine_id)
   {
     if (engine_id == kNoEngineId)
       return false;
 
-    dart_callbacks::Registration registration;
-    if (!registration.retire(engine_id))
-      return false;
-
-    clearDartCallbackPointersLocked();
+    uint64_t retiredAt;
     {
-      std::lock_guard<std::mutex> mixerGuard(mixer_lifecycle_mutex);
-      MixerOutput::instance().setDataCallback(nullptr);
-      MixerOutput::instance().stop();
-      Analyzer::instance().setDataCallback(nullptr);
-      Analyzer::instance().setVisualizationEnabled(false);
+      dart_callbacks::Registration registration;
+      if (!registration.retire(engine_id))
+        return false;
+
+      clearDartCallbackPointersLocked();
+      retiredAt = dart_callbacks::lastClaimedGeneration();
     }
+    // Outside the gate, as in clearDartCallbackRegistrations(): the threads
+    // these join take the gate, so joining them while holding it would hang
+    // whenever one was about to invoke its callable. Nothing can run once the
+    // gate is released: the registration is retired.
+    stopCaptureThreadsRetiredAt(retiredAt);
     return true;
   }
 
   FFI_PLUGIN_EXPORT void retireDartCallbacksFinalizer(void *token)
   {
     const int64_t engine_id = reinterpret_cast<intptr_t>(token);
-    dart_callbacks::Registration registration;
-    if (engine_id != kNoEngineId)
+    uint64_t retiredAt;
     {
-      if (!registration.retire(engine_id))
-        return;
-    }
-    else
-    {
-      registration.retireAll();
-    }
+      dart_callbacks::Registration registration;
+      if (engine_id != kNoEngineId)
+      {
+        if (!registration.retire(engine_id))
+          return;
+      }
+      else
+      {
+        registration.retireAll();
+      }
 
-    clearDartCallbackPointersLocked();
-    {
-      std::lock_guard<std::mutex> mixerGuard(mixer_lifecycle_mutex);
-      MixerOutput::instance().setDataCallback(nullptr);
-      MixerOutput::instance().stop();
-      Analyzer::instance().setDataCallback(nullptr);
-      Analyzer::instance().setVisualizationEnabled(false);
+      clearDartCallbackPointersLocked();
+      retiredAt = dart_callbacks::lastClaimedGeneration();
     }
+    // Outside the gate, as in clearDartCallbackRegistrationsForEngine().
+    stopCaptureThreadsRetiredAt(retiredAt);
   }
 
   // Mixer output capture exports.
@@ -910,14 +951,13 @@ extern "C"
     publishMixerOutputCallback(callback, kNoEngineId, /*require_live=*/false);
   }
 
-#if defined(__EMSCRIPTEN__) && defined(MA_ENABLE_AUDIO_WORKLETS)
-  static void visualizationForwardToMain(int channelCount,
-                                         int waveDataPerChannel,
-                                         int waveSamples,
-                                         int fftDataPerChannel,
-                                         int fftSamples)
+#ifdef __EMSCRIPTEN__
+  // Hand a packet to `_wasmVisualizationCallback`, which copies it out of the
+  // wasm heap before returning.
+  static void callWasmVisualizationCallback(int sourceId, int channelCount,
+                                            int data, int waveSamples,
+                                            int fftSamples)
   {
-    Analyzer::instance().clearDispatchInFlight();
     EM_ASM(
         {
           if (globalThis._wasmVisualizationCallback)
@@ -925,49 +965,73 @@ extern "C"
             globalThis._wasmVisualizationCallback($0, $1, $2, $3, $4);
           }
         },
-        channelCount, waveDataPerChannel, waveSamples, fftDataPerChannel, fftSamples);
+        sourceId, channelCount, data, waveSamples, fftSamples);
   }
 #endif
 
-  void dispatchVisualizationToDart(int32_t channelCount,
-                                   const float **waveDataPerChannel,
+#if defined(__EMSCRIPTEN__) && defined(MA_ENABLE_AUDIO_WORKLETS)
+  static void visualizationForwardToMain(int sourceId,
+                                         int serial,
+                                         int channelCount,
+                                         int data,
+                                         int waveSamples,
+                                         int fftSamples)
+  {
+    // The analyzer may have been disabled, destroyed or restarted while this
+    // was queued, and [data] freed with it: deliver only if it is still the
+    // run that posted it. Disabling happens on this thread too, so it cannot
+    // interleave with the read below.
+    if (!Analyzer::finishWebDispatch(sourceId, static_cast<uint32_t>(serial)))
+      return;
+    callWasmVisualizationCallback(sourceId, channelCount, data, waveSamples,
+                                  fftSamples);
+  }
+#endif
+
+  void dispatchVisualizationToDart(Analyzer &source,
+                                   const float *data,
+                                   int32_t channelCount,
                                    int32_t waveSamples,
-                                   const float **fftDataPerChannel,
                                    int32_t fftSamples)
   {
 #ifdef __EMSCRIPTEN__
 #ifdef MA_ENABLE_AUDIO_WORKLETS
     if (!emscripten_is_main_browser_thread())
     {
-      if (!Analyzer::instance().tryBeginDispatch())
+      if (!source.tryBeginDispatch())
       {
         return;
       }
       emscripten_audio_worklet_post_function_sig(
-          EMSCRIPTEN_AUDIO_MAIN_THREAD, (void *)visualizationForwardToMain, "iiiii",
-          channelCount, (int)(uintptr_t)waveDataPerChannel, waveSamples,
-          (int)(uintptr_t)fftDataPerChannel, fftSamples);
+          EMSCRIPTEN_AUDIO_MAIN_THREAD, (void *)visualizationForwardToMain, "iiiiii",
+          source.sourceId(), static_cast<int>(source.serial()), channelCount,
+          (int)(uintptr_t)data, waveSamples, fftSamples);
       return;
     }
 #endif
-    EM_ASM(
-        {
-          if (globalThis._wasmVisualizationCallback)
-          {
-            globalThis._wasmVisualizationCallback($0, $1, $2, $3, $4);
-          }
-        },
-        channelCount, (int)(uintptr_t)waveDataPerChannel, waveSamples,
-        (int)(uintptr_t)fftDataPerChannel, fftSamples);
+    callWasmVisualizationCallback(source.sourceId(), channelCount,
+                                  (int)(uintptr_t)data, waveSamples, fftSamples);
 #else
     const dart_callbacks::InvocationPass pass;
     if (!pass.isLive(visualizationCallbackGeneration))
       return;
     auto cb = dartVisualizationCallback.load(std::memory_order_acquire);
-    if (cb != nullptr)
-    {
-      cb(channelCount, waveDataPerChannel, waveSamples, fftDataPerChannel, fftSamples);
-    }
+    if (cb == nullptr)
+      return;
+    // The listener reads the packet later, on the Dart event loop, while the
+    // analyzer reuses [data] for the next window (or frees it when disabled).
+    // Hand Dart a copy, which it hands back to visualizationPacketDone(). The
+    // analyzer sends nothing more until then.
+    const size_t bytes = static_cast<size_t>(channelCount) *
+                         static_cast<size_t>(waveSamples + fftSamples) *
+                         sizeof(float);
+    auto *packet = static_cast<float *>(malloc(bytes));
+    if (packet == nullptr)
+      return;
+    memcpy(packet, data, bytes);
+    // Before the call: Dart can report the copy done as soon as it has it.
+    source.beginDartDispatch(packet);
+    cb(source.sourceId(), channelCount, packet, waveSamples, fftSamples);
 #endif
   }
 
@@ -991,9 +1055,12 @@ extern "C"
 
       dartVisualizationCallback.store(callback, std::memory_order_release);
       visualizationCallbackGeneration = registration.generation();
+      // The packets in flight went to the previous callable, which may be
+      // closed. Even the same address may be a new callable by now.
+      Analyzer::abandonDartDispatches();
     }
 
-    Analyzer::instance().setDataCallback(dispatchVisualizationToDart);
+    Analyzer::setDataCallback(dispatchVisualizationToDart);
     return true;
   }
 
@@ -1002,6 +1069,18 @@ extern "C"
   {
     return publishVisualizationCallback(callback, owner_engine_id,
                                         /*require_live=*/true);
+  }
+
+  /// Native: Dart is done with a visualization packet it was handed. Frees it
+  /// and lets the source that sent it send the next one: each source has at
+  /// most one packet in flight, so a Dart isolate that falls behind is sent
+  /// fewer, newer packets instead of a growing backlog.
+  FFI_PLUGIN_EXPORT void visualizationPacketDone(float *packet)
+  {
+    if (packet == nullptr)
+      return;
+    Analyzer::finishDartDispatch(packet);
+    free(packet);
   }
 
   FFI_PLUGIN_EXPORT void setVisualizationCallback(
@@ -1073,7 +1152,7 @@ extern "C"
     // Set the callback for when a voice is ended/stopped
     player.get()->setVoiceEndedCallback(voiceEndedCallback);
     player.get()->setVoiceInactiveCallback(voiceInactiveCallback);
-    Analyzer::instance().setDataCallback(dispatchVisualizationToDart);
+    Analyzer::setDataCallback(dispatchVisualizationToDart);
 
 #if defined(SOLOUD_LIFECYCLE_TEST_HOOKS)
     soloudTestInitBarrier();
@@ -1422,13 +1501,7 @@ extern "C"
       registration.retireAll();
       clearDartCallbackPointersLocked();
     }
-    {
-      std::lock_guard<std::mutex> mixerGuard(mixer_lifecycle_mutex);
-      MixerOutput::instance().setDataCallback(nullptr);
-      MixerOutput::instance().stop();
-      Analyzer::instance().setDataCallback(nullptr);
-      Analyzer::instance().setVisualizationEnabled(false);
-    }
+    stopCaptureThreads();
 
     // Nothing is left for a FlutterEngine to own. A detach arriving after this
     // finds no claim and correctly declines to tear anything down; the next
@@ -2783,12 +2856,13 @@ extern "C"
     player.get()->setLoopEndPoint(handle, time);
   }
 
-  /// Enable or disable visualization
+  /// Enable or disable the visualization of the engine output
   ///
   /// [enabled] enable or disable it
   /// [windowSize] power of two from 128 to 8192 (default 256)
   /// [kind] 0: wave, 1: FFT, 2: wave and FFT
-  /// [channel] -1: merged mono, -2: all channels, >= 0: specific channel index
+  /// [channel] -1: merged mono, -2: all channels, >= 0: specific channel
+  /// index, below the engine's channel count
   FFI_PLUGIN_EXPORT enum PlayerErrors setVisualizationEnabled(
       bool enabled,
       int windowSize,
@@ -2797,7 +2871,7 @@ extern "C"
   {
     if (player.get() == nullptr || !player.get()->isInited())
       return backendNotInited;
-    Analyzer::instance().setDataCallback(dispatchVisualizationToDart);
+    Analyzer::setDataCallback(dispatchVisualizationToDart);
     const int engineChannels = player.get()->soloud.getBackendChannels();
     return Analyzer::instance().setVisualizationEnabled(
         enabled,
@@ -2807,7 +2881,7 @@ extern "C"
         engineChannels);
   }
 
-  /// Get visualization state
+  /// Get the visualization state of the engine output
   ///
   /// Return true if enabled
   FFI_PLUGIN_EXPORT int getVisualizationEnabled()
@@ -2815,7 +2889,7 @@ extern "C"
     return Analyzer::instance().isVisualizationEnabled() ? 1 : 0;
   }
 
-  /// Smooth FFT data.
+  /// Smooth FFT data, of the engine output and of every bus.
   /// When new data is read and the values are decreasing, the new value will be
   /// decreased with an amplitude between the old and the new value.
   /// This will result on a less shaky visualization.
@@ -2825,12 +2899,13 @@ extern "C"
   /// 1 = full smooth
   FFI_PLUGIN_EXPORT void setFftSmoothing(float smooth)
   {
-    Analyzer::instance().setSmoothing(smooth);
+    Analyzer::setSmoothing(smooth);
   }
 
+  /// Set the FFT decibel range, of the engine output and of every bus.
   FFI_PLUGIN_EXPORT void setFftDecibelRange(float minDecibels, float maxDecibels)
   {
-    Analyzer::instance().setMinMaxDecibels(minDecibels, maxDecibels);
+    Analyzer::setMinMaxDecibels(minDecibels, maxDecibels);
   }
 
   /// Get the sound length in seconds
@@ -4463,6 +4538,8 @@ extern "C"
   }
 
   /// Set the number of output channels for the bus (default is 2 = stereo).
+  /// A running visualization of the bus restarts for the new count, or is
+  /// disabled if the channel it was set to no longer exists.
   ///
   /// [busId] the bus ID.
   /// [channels] number of channels (1 = mono, 2 = stereo, etc.).
@@ -4474,48 +4551,44 @@ extern "C"
     return player.get()->busSetChannels(busId, channels);
   }
 
-  /// Enable or disable visualization data gathering for this bus.
-  /// Must be enabled before calling busCalcFFT, busGetWave,
-  /// or busGetApproximateVolume.
+  /// Enable or disable visualization for this bus. Its packets go to the
+  /// visualization callback with the bus ID as source.
+  ///
+  /// The data is what is mixed into the bus, before the bus's own filters,
+  /// volume and pan. Nothing is sent while nothing is mixed through the bus.
   ///
   /// [busId] the bus ID.
-  /// [enable] true to enable, false to disable.
-  FFI_PLUGIN_EXPORT void busSetVisualizationEnable(unsigned int busId,
-                                                   bool enable)
+  /// [enabled] enable or disable it
+  /// [windowSize] power of two from 128 to 8192 (default 256)
+  /// [kind] 0: wave, 1: FFT, 2: wave and FFT
+  /// [channel] -1: merged mono, -2: all channels, >= 0: specific channel
+  /// index, below the bus's channel count
+  FFI_PLUGIN_EXPORT enum PlayerErrors busSetVisualizationEnabled(
+      unsigned int busId, bool enabled, int windowSize, int kind, int channel)
   {
-    if (player.get() == nullptr)
-      return;
-    player.get()->busSetVisualizationEnable(busId, enable);
+    if (player.get() == nullptr || !player.get()->isInited())
+      return backendNotInited;
+    Analyzer::setDataCallback(dispatchVisualizationToDart);
+    return player.get()->busSetVisualizationEnabled(
+        busId, enabled, windowSize, static_cast<VisualizationKind>(kind),
+        channel);
   }
 
-  /// Calculate and return 256 floats of FFT data for this bus.
-  /// The data ranges from low to high frequencies.
-  /// Visualization must be enabled first with busSetVisualizationEnable.
+  /// Get the visualization state of this bus.
   ///
   /// [busId] the bus ID.
-  /// Returns a pointer to 256 floats, or nullptr if the bus is not found.
-  FFI_PLUGIN_EXPORT float *busCalcFFT(unsigned int busId)
+  /// Return 1 if enabled.
+  FFI_PLUGIN_EXPORT int busGetVisualizationEnabled(unsigned int busId)
   {
     if (player.get() == nullptr)
-      return nullptr;
-    return player.get()->busCalcFFT(busId);
-  }
-
-  /// Get 256 samples of wave data currently playing through this bus.
-  /// Visualization must be enabled first with busSetVisualizationEnable.
-  ///
-  /// [busId] the bus ID.
-  /// Returns a pointer to 256 floats, or nullptr if the bus is not found.
-  FFI_PLUGIN_EXPORT float *busGetWave(unsigned int busId)
-  {
-    if (player.get() == nullptr)
-      return nullptr;
-    return player.get()->busGetWave(busId);
+      return 0;
+    return player.get()->busIsVisualizationEnabled(busId) ? 1 : 0;
   }
 
   /// Get the approximate output volume for a specific channel of this bus.
   /// Useful for VU meters or level indicators.
-  /// Visualization must be enabled first.
+  /// Bus visualization must be enabled first: this is the peak of the channel
+  /// over the latest analyzed window.
   ///
   /// [busId] the bus ID.
   /// [channel] the output channel index (0 = left, 1 = right, etc.).
@@ -4531,6 +4604,7 @@ extern "C"
   /// Move a live voice (identified by its handle) into this bus.
   /// The voice will be reparented so it plays through the bus.
   /// Useful for dynamically routing sounds in/out of filtered busses.
+  /// Does nothing while the bus is not playing.
   ///
   /// [busId] the bus ID.
   /// [voiceHandle] handle of the voice to annex.

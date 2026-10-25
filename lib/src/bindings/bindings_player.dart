@@ -592,7 +592,8 @@ abstract class FlutterSoLoud {
   double getRelativePlaySpeed(SoundHandle handle);
 
   /// Gets the approximate volume for output per output
-  /// channel (i.e, per speaker).
+  /// channel (i.e, per speaker): the peak of the channel over the latest
+  /// window analyzed by the visualization, which must be enabled.
   ///
   /// [channel] the channel.
   /// Return zero for invalid parameters.
@@ -878,20 +879,24 @@ abstract class FlutterSoLoud {
   @mustBeOverridden
   bool getVisualizationEnabled();
 
-  /// Smooth FFT data.
+  /// Smooth FFT data, of the engine output and of every bus.
   ///
   /// [smooth] must be in the [0.0 ~ 1.0] range.
   @mustBeOverridden
   void setFftSmoothing(double smooth);
 
-  /// Sets the decibel range for FFT magnitude normalization.
+  /// Sets the decibel range for FFT magnitude normalization, of the engine
+  /// output and of every bus.
   @mustBeOverridden
   void setFftDecibelRange(double minDecibels, double maxDecibels);
 
   /// Sets the callback receiving audio visualization data packets from native.
+  ///
+  /// `sourceId` is 0 for the engine output, otherwise the id of the mixing
+  /// bus the packet belongs to.
   @mustBeOverridden
   void setVisualizationCallback(
-    void Function(AudioVisualizationData data)? callback,
+    void Function(int sourceId, AudioVisualizationData data)? callback,
   );
 
   /// Get the sound length.
@@ -1559,35 +1564,35 @@ abstract class FlutterSoLoud {
   @mustBeOverridden
   void busSetChannels(int busId, int channels);
 
-  /// Enable or disable visualization data gathering for this bus.
-  /// Must be enabled before calling busCalcFFT, busGetWave,
-  /// or busGetApproximateVolume.
+  /// Enable or disable visualization for this bus. Its packets go to the
+  /// visualization callback with [busId] as source.
   ///
   /// [busId] the bus ID.
-  /// enable true to enable, false to disable.
-  // @mustBeOverridden
-  // void busSetVisualizationEnable(int busId, bool enable);
+  /// [enabled] whether visualization is enabled.
+  /// [windowSize] power of two window size from 128 to 8192 (default 256).
+  /// [kind] whether to compute wave, FFT, or both.
+  /// [channel] channel selection: [VisualizationChannel.merged] (-1, default),
+  /// [VisualizationChannel.all] (-2), or a specific 0-based channel index.
+  @mustBeOverridden
+  PlayerErrors busSetVisualizationEnabled(
+    int busId,
+    bool enabled, {
+    int windowSize = 256,
+    VisualizationKind kind = VisualizationKind.waveAndFft,
+    int channel = VisualizationChannel.merged,
+  });
 
-  /// Calculate and return 256 floats of FFT data for this bus.
-  /// The data ranges from low to high frequencies.
-  /// Visualization must be enabled first with busSetVisualizationEnable.
+  /// Get the visualization state of this bus.
   ///
   /// [busId] the bus ID.
-  /// Returns a pointer to 256 floats, or nullptr if the bus is not found.
-  // @mustBeOverridden
-  // ffi.Pointer<ffi.Float> busCalcFFT(int busId);
+  /// Return true if enabled.
+  @mustBeOverridden
+  bool busGetVisualizationEnabled(int busId);
 
-  /// Get 256 samples of wave data currently playing through this bus.
-  /// Visualization must be enabled first with busSetVisualizationEnable.
-  ///
-  /// [busId] the bus ID.
-  /// Returns a pointer to 256 floats, or nullptr if the bus is not found.
-  // @mustBeOverridden
-  // ffi.Pointer<ffi.Float> busGetWave(int busId);
-
-  /// Get the approximate output volume for a specific channel of this bus.
+  /// Get the approximate output volume for a specific channel of this bus:
+  /// the peak of the channel over the latest window analyzed by the bus
+  /// visualization, which must be enabled.
   /// Useful for VU meters or level indicators.
-  /// Visualization must be enabled first.
   ///
   /// [busId] the bus ID.
   /// [channel] the output channel index (0 = left, 1 = right, etc.).
@@ -1598,6 +1603,7 @@ abstract class FlutterSoLoud {
   /// Move a live voice (identified by its handle) into this bus.
   /// The voice will be reparented so it plays through the bus.
   /// Useful for dynamically routing sounds in/out of filtered busses.
+  /// Does nothing while the bus is not playing.
   ///
   /// [busId] the bus ID.
   /// [voiceHandle] handle of the voice to annex.

@@ -1333,64 +1333,53 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     wasmSetLoopEndPoint(handle.id, timestamp?.toDouble() ?? 0);
   }
 
-  void Function(AudioVisualizationData data)? _visualizationCallback;
+  void Function(int sourceId, AudioVisualizationData data)?
+  _visualizationCallback;
 
   void _setupWasmVisualizationCallback() {
+    /// [dataPtr] points to the packet in the wasm heap: [channelCount] wave
+    /// windows of [waveSamples] floats followed by [channelCount] FFT windows
+    /// of [fftSamples] floats. It is only valid during this call.
     @JSExport()
     void webVisualizationCallback(
+      JSNumber sourceId,
       JSNumber channelCount,
-      JSNumber waveDataPerChannelPtr,
+      JSNumber dataPtr,
       JSNumber waveSamples,
-      JSNumber fftDataPerChannelPtr,
       JSNumber fftSamples,
     ) {
-      if (_visualizationCallback == null) return;
+      final callback = _visualizationCallback;
+      if (callback == null) return;
 
       final cCount = channelCount.toDartInt;
-      final wavePtr = waveDataPerChannelPtr.toDartInt;
+      final data = dataPtr.toDartInt;
       final wSamples = waveSamples.toDartInt;
-      final fftPtr = fftDataPerChannelPtr.toDartInt;
       final fSamples = fftSamples.toDartInt;
+      if (data == 0) return;
 
-      final waveList = <Float32List>[];
-      if (wSamples > 0 && wavePtr != 0) {
-        for (var c = 0; c < cCount; c++) {
-          final channelPtr = wasmGetI32Value(wavePtr + (c * 4), 'i32');
-          if (channelPtr != 0) {
-            final startIndex = channelPtr >> 2;
-            final endIndex = startIndex + wSamples;
-            waveList.add(
-              Float32List.fromList(
-                wasmHeapF32.toDart.sublist(startIndex, endIndex),
+      final heap = wasmHeapF32.toDart;
+      final waveStart = data >> 2;
+      final fftStart = waveStart + cCount * wSamples;
+      callback(
+        sourceId.toDartInt,
+        AudioVisualizationData(
+          channelCount: cCount,
+          wave: [
+            for (var c = 0; c < cCount && wSamples > 0; c++)
+              heap.sublist(
+                waveStart + c * wSamples,
+                waveStart + (c + 1) * wSamples,
               ),
-            );
-          }
-        }
-      }
-
-      final fftList = <Float32List>[];
-      if (fSamples > 0 && fftPtr != 0) {
-        for (var c = 0; c < cCount; c++) {
-          final channelPtr = wasmGetI32Value(fftPtr + (c * 4), 'i32');
-          if (channelPtr != 0) {
-            final startIndex = channelPtr >> 2;
-            final endIndex = startIndex + fSamples;
-            fftList.add(
-              Float32List.fromList(
-                wasmHeapF32.toDart.sublist(startIndex, endIndex),
+          ],
+          fft: [
+            for (var c = 0; c < cCount && fSamples > 0; c++)
+              heap.sublist(
+                fftStart + c * fSamples,
+                fftStart + (c + 1) * fSamples,
               ),
-            );
-          }
-        }
-      }
-
-      final packet = AudioVisualizationData(
-        channelCount: cCount,
-        wave: waveList,
-        fft: fftList,
+          ],
+        ),
       );
-
-      _visualizationCallback?.call(packet);
     }
 
     globalThis.setProperty(
@@ -1401,7 +1390,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
 
   @override
   void setVisualizationCallback(
-    void Function(AudioVisualizationData data)? callback,
+    void Function(int sourceId, AudioVisualizationData data)? callback,
   ) {
     _visualizationCallback = callback;
     if (callback != null) {
@@ -2230,6 +2219,32 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   @override
   void busSetChannels(int busId, int channels) {
     return wasmBusSetChannels(busId, channels);
+  }
+
+  @override
+  PlayerErrors busSetVisualizationEnabled(
+    int busId,
+    bool enabled, {
+    int windowSize = 256,
+    VisualizationKind kind = VisualizationKind.waveAndFft,
+    int channel = VisualizationChannel.merged,
+  }) {
+    if (enabled && _visualizationCallback != null) {
+      _setupWasmVisualizationCallback();
+    }
+    final ret = wasmBusSetVisualizationEnabled(
+      busId,
+      enabled ? 1 : 0,
+      windowSize,
+      kind.value,
+      channel,
+    );
+    return PlayerErrors.values[ret];
+  }
+
+  @override
+  bool busGetVisualizationEnabled(int busId) {
+    return wasmBusGetVisualizationEnabled(busId) == 1;
   }
 
   @override

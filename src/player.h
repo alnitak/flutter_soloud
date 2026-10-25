@@ -494,8 +494,10 @@ public:
   float getRelativePlaySpeed(unsigned int handle);
 
   /// @brief Gets the approximate volume for output per output channel (i.e, per speaker).
+  /// It is the peak of the latest window analyzed by the engine output's
+  /// visualization, so it needs visualization enabled.
   /// @param channel the channel.
-  /// @return zero for invalid parameters.
+  /// @return zero for invalid parameters or while visualization is disabled.
   float getApproximateVolume(unsigned int channel);
 
   /// @brief Play already loaded sound identified by [soundHash].
@@ -1104,9 +1106,24 @@ public:
   PlayerErrors busPlayOnEngine(unsigned int busId, float volume, bool paused,
                                unsigned int &handle);
   int busSetChannels(unsigned int busId, unsigned int channels);
-  void busSetVisualizationEnable(unsigned int busId, bool enable);
-  float *busCalcFFT(unsigned int busId);
-  float *busGetWave(unsigned int busId);
+  /// @brief Enable or disable the visualization of a bus: what is mixed into
+  /// the bus, before its own filters, volume and pan. It belongs to the bus,
+  /// so it survives the bus voice being stopped and played again.
+  /// @param busId the bus ID.
+  /// @param enabled whether visualization is enabled.
+  /// @param windowSize power of two from 128 to 8192.
+  /// @param kind wave only, FFT only, or wave and FFT.
+  /// @param channel VISUALIZATION_CHANNEL_MERGED, VISUALIZATION_CHANNEL_ALL,
+  /// or a channel index.
+  /// @return [noError] if success, [busIdNotFound] if [busId] is unknown,
+  /// [invalidParameter] for invalid settings (nothing changes then),
+  /// [outOfMemory] if the buffers could not be allocated.
+  PlayerErrors busSetVisualizationEnabled(unsigned int busId, bool enabled,
+                                          int windowSize,
+                                          VisualizationKind kind, int channel);
+  bool busIsVisualizationEnabled(unsigned int busId);
+  /// @brief The peak of [channel] over the latest window analyzed by the bus
+  /// visualization, or zero if it is disabled or [busId] is unknown.
   float busGetApproximateVolume(unsigned int busId, unsigned int channel);
   void busAnnexSound(unsigned int busId, unsigned int voiceHandle);
   unsigned int busGetActiveVoiceCount(unsigned int busId);

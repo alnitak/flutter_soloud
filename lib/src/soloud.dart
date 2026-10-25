@@ -380,8 +380,11 @@ interface class SoLoud {
   _audioVisualizationEventsController =
       StreamController<AudioVisualizationData>.broadcast();
 
-  /// Stream of audio visualization data packets (wave and/or FFT) emitted
-  /// when visualization is enabled.
+  /// Stream of audio visualization data packets (wave and/or FFT) of the
+  /// engine output, emitted when visualization is enabled with
+  /// [setVisualizationEnabled].
+  ///
+  /// Each mixing bus has its own, see [Bus.audioVisualizationEvents].
   Stream<AudioVisualizationData> get audioVisualizationEvents =>
       _audioVisualizationEventsController.stream;
 
@@ -1119,8 +1122,11 @@ interface class SoLoud {
     // Initialize callbacks.
     await _controller.soLoudFFI.setDartEventCallbacks();
 
-    _controller.soLoudFFI.setVisualizationCallback((data) {
-      if (_audioVisualizationEventsController.hasListener) {
+    _controller.soLoudFFI.setVisualizationCallback((sourceId, data) {
+      // 0 is the engine output, anything else the id of a mixing bus.
+      if (sourceId != 0) {
+        Buses().dispatchVisualizationData(sourceId, data);
+      } else if (_audioVisualizationEventsController.hasListener) {
         _audioVisualizationEventsController.add(data);
       }
     });
@@ -3185,6 +3191,11 @@ interface class SoLoud {
   /// Gets the approximate volume for output per output
   /// channel (i.e, per speaker).
   ///
+  /// This is the peak (largest absolute sample) of [channel] over the latest
+  /// window analyzed by the visualization, so it needs
+  /// [setVisualizationEnabled] first and reads 0 while that is disabled. It
+  /// holds its last value while the output device is stopped.
+  ///
   /// [channel] the channel.
   /// Return zero for invalid parameters.
   double getApproximateVolume(int channel) {
@@ -3438,10 +3449,13 @@ interface class SoLoud {
     _controller.soLoudFFI.setLoopEndPoint(handle, time);
   }
 
-  /// Enable or disable audio visualization.
+  /// Enable or disable audio visualization of the engine output.
   ///
   /// When enabled, audio data packets (wave and/or FFT) will be emitted on the
   /// [audioVisualizationEvents] stream.
+  ///
+  /// To visualize what plays through a mixing bus instead, see
+  /// [Bus.setVisualizationEnabled].
   ///
   /// [enabled] whether to enable or disable audio visualization.
   ///
@@ -3451,11 +3465,13 @@ interface class SoLoud {
   /// [VisualizationKind.waveAndFft]).
   ///
   /// [channel] channel selection: [VisualizationChannel.merged] (-1, default),
-  /// [VisualizationChannel.all] (-2), or a specific 0-based channel index.
+  /// [VisualizationChannel.all] (-2), or a specific 0-based channel index,
+  /// below the `channels` the engine was initialized with.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   ///
-  /// Throws [SoLoudCppException] if native setup fails.
+  /// Throws [SoLoudCppException] if the parameters are invalid or native
+  /// setup fails.
   void setVisualizationEnabled(
     bool enabled, {
     int windowSize = 256,
@@ -3978,6 +3994,8 @@ interface class SoLoud {
   /// the new value is calculated with:
   /// newFreq = smooth * oldFreq + (1 - smooth) * newFreq
   ///
+  /// Applies to the engine output's visualization and to every bus's.
+  ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void setFftSmoothing(double smooth) {
     if (!isInitialized) {
@@ -4005,6 +4023,9 @@ interface class SoLoud {
   ///
   /// [minDecibels] default is -100.0 dB.
   /// [maxDecibels] default is -30.0 dB.
+  ///
+  /// Applies to the engine output's visualization and to every bus's.
+  ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   /// Throws [ArgumentError] if [minDecibels] >= [maxDecibels].
   void setFftDecibelRange(double minDecibels, double maxDecibels) {

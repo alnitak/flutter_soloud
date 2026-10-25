@@ -2,6 +2,7 @@
 #define FILTERS_H
 
 #include "../active_sound_fwd.h"
+#include "../analyzer.h"
 #include "../enums.h"
 #include "filters_fwd.h"
 
@@ -97,17 +98,32 @@ struct BusData {
   // here.
   SoLoud::handle handle; // set when bus is played on engine
   Filters filters;
+  // The bus's visualization, or null while it is disabled. Owned here rather
+  // than by the BusInstance, which the engine deletes whenever it stops the
+  // bus voice, and attached to [bus] as its audio tap.
+  std::unique_ptr<Analyzer> analyzer;
 
   explicit BusData(unsigned int busId, SoLoud::Soloud *soloud)
       : id(busId), filters(soloud, nullptr, this) {}
+
+  // Detach and destroy [analyzer]. Once the tap is detached the audio thread
+  // no longer calls it.
+  void releaseAnalyzer() {
+    bus.setAudioTap(nullptr);
+    analyzer.reset();
+  }
 
   // Members are destroyed in reverse declaration order, so [filters] (which
   // owns the Filter objects) would be freed before ~Bus stops the bus voice.
   // Meanwhile the audio thread keeps running the bus voice's filter
   // instances, which dereference their freed parent filter (mParent).
   // Stop the bus first so its voice and filter instances are gone before
-  // the filters are deleted.
-  ~BusData() { bus.stop(); }
+  // the filters are deleted. Likewise detach the analyzer before it is
+  // destroyed, so the audio thread never calls it once it is gone.
+  ~BusData() {
+    releaseAnalyzer();
+    bus.stop();
+  }
 };
 
 #endif // PLAYER_H

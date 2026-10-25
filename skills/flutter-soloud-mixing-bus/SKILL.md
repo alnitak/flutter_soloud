@@ -1,6 +1,6 @@
 ---
 name: flutter-soloud-mixing-bus
-version: 1
+version: 2
 description: Teaches how to use flutter_soloud mixing buses (Bus/Buses) to route groups of sounds through a shared sub-mix for collective volume control and shared filters. Use when the user asks for separate music/SFX/UI volume sliders, grouped effects, ducking music under voice, routing sounds between categories at runtime, or a per-category audio mixer in a game or app using flutter_soloud.
 ---
 
@@ -74,14 +74,23 @@ Future<void> main() async {
   `SoLoud.instance.filters`). See skill `flutter-soloud-filters`.
 - `bus.setChannels({Channels channels = Channels.stereo})` — bus output
   channel count (`Channels.mono/stereo/quad/surround51/dolby71`).
-- `bus.getChannelVolume(channel)` — approximate per-channel output level for
-  VU meters. Requires `SoLoud.instance.setVisualizationEnabled(true)` first;
-  returns 0 for out-of-range channels.
+- `bus.setVisualizationEnabled(true)` / `bus.getVisualizationEnabled()` /
+  `bus.audioVisualizationEvents` — wave/FFT of what plays through this bus,
+  with the same options and packets as `SoLoud.instance.setVisualizationEnabled`.
+  The data is taken *before* the bus's own filters, volume and pan; nothing is
+  emitted while nothing is mixed through the bus (not playing, paused, outer
+  bus paused), and a playing empty bus emits silence. See skill
+  `flutter-soloud-visualization`.
+- `bus.getChannelVolume(channel)` — approximate per-channel level (the peak of
+  the latest analyzed window) for VU meters. Requires
+  `bus.setVisualizationEnabled(true)` first (the engine-wide
+  `SoLoud.instance.setVisualizationEnabled` does not feed it); returns 0 for
+  out-of-range channels.
 - `bus.getActiveVoiceCount()` — voices currently playing through the bus;
   returns 0 if the bus isn't playing on the engine.
 - `bus.isActive` — true once `playOnEngine()` succeeded.
 - `bus.dispose()` — destroys the bus and **stops all sounds routed through
-  it**; removes it from `Buses()`.
+  it**; removes it from `Buses()` and closes `audioVisualizationEvents`.
 
 Everything above (except `createMixingBus` lookups and `dispose`) is
 synchronous and returns `SoundHandle` directly — do not `await` them.

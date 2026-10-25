@@ -268,12 +268,20 @@ typedef enum VisualizationKind {
 #define VISUALIZATION_CHANNEL_MERGED -1
 #define VISUALIZATION_CHANNEL_ALL -2
 
-// Callback handing dart visualization data (wave and/or FFT) per channel.
+// Callback handing dart one visualization packet (wave and/or FFT) of
+// [sourceId]: 0 for the engine output, otherwise the id of the mixing bus.
+//
+// [data] holds [channelCount] wave windows of [waveSamples] floats, followed by
+// [channelCount] FFT windows of [fftSamples] floats; a count is 0 when its kind
+// is not computed. On native the packet is a malloc'd copy, because the listener
+// runs later on the Dart event loop, after the analyzer has moved on. The Dart
+// side hands it back to visualizationPacketDone() once it has read it, which
+// frees it and lets [sourceId] send its next packet.
 typedef void (*dartVisualizationCallback_t)(
+    int32_t sourceId,
     int32_t channelCount,
-    const float **waveDataPerChannel,
+    float *data,
     int32_t waveSamples,
-    const float **fftDataPerChannel,
     int32_t fftSamples);
 
 /// Linux audio backends.

@@ -18,6 +18,7 @@ c++ -std=c++17 -O1 -g -Wall -pthread \
     -I src/soloud/include \
     -o "$OUT" \
     test/bus_destroy_filter_test.cpp \
+    src/analyzer.cpp \
     src/filters/*.cpp \
     src/soloud/src/core/*.cpp \
     src/soloud/src/filter/*.cpp \
