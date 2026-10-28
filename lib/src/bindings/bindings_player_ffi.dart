@@ -859,9 +859,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     int offset = 0,
   }) {
     final ffi.Pointer<ffi.Uint8> audioChunkPtr = calloc(audioChunk.length);
-    for (var i = 0; i < audioChunk.length; i++) {
-      audioChunkPtr[i] = audioChunk[i];
-    }
+    audioChunkPtr.asTypedList(audioChunk.length).setAll(0, audioChunk);
     final e = native.addPullBufferDataStream(
       hash,
       audioChunkPtr.cast<ffi.UnsignedChar>(),
@@ -892,9 +890,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   @override
   PlayerErrors addAudioDataStream(int hash, Uint8List audioChunk) {
     final ffi.Pointer<ffi.Uint8> audioChunkPtr = calloc(audioChunk.length);
-    for (var i = 0; i < audioChunk.length; i++) {
-      audioChunkPtr[i] = audioChunk[i];
-    }
+    audioChunkPtr.asTypedList(audioChunk.length).setAll(0, audioChunk);
     final e = native.addAudioDataStream(
       hash,
       audioChunkPtr.cast<ffi.UnsignedChar>(),
