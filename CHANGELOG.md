@@ -4,7 +4,8 @@
 - feat: custom DSP filters (`customFilter`) supporting up to 8 slots per scope with modulatable parameters and native/Web callbacks
 - example: added real-time PCM synth, isolate drum sequencer, and custom DSP workbench examples
 
-##### 5.2.2 (XX Xxx 2026)
+##### 5.2.2 (28 Oct 2026)
+- perf: block-copy pull buffer stream chunks into native memory. Thanks to @riderous #594
 - feat: per-bus audio visualization via `Bus.setVisualizationEnabled`, `Bus.getVisualizationEnabled`, and the `Bus.audioVisualizationEvents` stream (#590). Also fixes `Bus.getChannelVolume` and `SoLoud.getApproximateVolume` to accurately return peak volume levels. Thanks to @Colton127 #592
 - perf: native visualization worker backs off to 50 ms polling when audio is idle (reducing idle CPU wakeups), and adds single-in-flight packet backpressure to eliminate event backlogs if Dart falls behind. Thanks to @Colton127 #592
 - fix: visualization memory safety and lifecycle hardening: Dart receives dedicated packet copies instead of referencing reused native buffers, and resolves potential deadlocks during hot restart or FlutterEngine detach. Thanks to @Colton127 #592
