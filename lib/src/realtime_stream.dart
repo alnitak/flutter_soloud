@@ -908,9 +908,31 @@ final class RealtimeStreamFeeder<TState> {
         } else {
           state = newState;
         }
+        _refillBuffer<TState>(
+          stream: stream,
+          nativeBuf: nativeBuf,
+          targetBufferedFrames: targetBufferedFrames,
+          chunkFrames: chunkFrames,
+          isInt16: isInt16,
+          onFeedFloat32: onFeedFloat32,
+          onFeedInt16: onFeedInt16,
+          state: state,
+          emitEvent: dispatchUiEvent,
+        );
       },
       onSendMessage: (Object? message) {
         onMessage?.call(state, message);
+        _refillBuffer<TState>(
+          stream: stream,
+          nativeBuf: nativeBuf,
+          targetBufferedFrames: targetBufferedFrames,
+          chunkFrames: chunkFrames,
+          isInt16: isInt16,
+          onFeedFloat32: onFeedFloat32,
+          onFeedInt16: onFeedInt16,
+          state: state,
+          emitEvent: dispatchUiEvent,
+        );
       },
       onBindVoice: (SoundHandle? handle) {
         stream.activeHandle = handle;
@@ -1074,10 +1096,32 @@ final class _FeederIsolateInit<TState> {
         } else {
           state = msg.newState;
         }
+        RealtimeStreamFeeder._refillBuffer<TState>(
+          stream: stream,
+          nativeBuf: nativeBuf,
+          targetBufferedFrames: targetBufferedFrames,
+          chunkFrames: chunkFrames,
+          isInt16: isInt16,
+          onFeedFloat32: onFeedFloat32,
+          onFeedInt16: onFeedInt16,
+          state: state,
+          emitEvent: uiSendPort.send,
+        );
         return;
       }
       if (msg is _FeederCustomMsg) {
         onMessage?.call(state, msg.message);
+        RealtimeStreamFeeder._refillBuffer<TState>(
+          stream: stream,
+          nativeBuf: nativeBuf,
+          targetBufferedFrames: targetBufferedFrames,
+          chunkFrames: chunkFrames,
+          isInt16: isInt16,
+          onFeedFloat32: onFeedFloat32,
+          onFeedInt16: onFeedInt16,
+          state: state,
+          emitEvent: uiSendPort.send,
+        );
       }
     });
 

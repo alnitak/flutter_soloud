@@ -194,7 +194,8 @@ namespace SoLoud
 			PARAM_VOLUME = 0,
 			PARAM_PAN = 1,
 			PARAM_SPEED = 2,
-			PARAM_PAUSE = 3
+			PARAM_PAUSE = 3,
+			PARAM_STOP = 4
 		};
 		int mType;
 		// Engine time of the event: for births the first sounding sample,

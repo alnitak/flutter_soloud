@@ -790,7 +790,15 @@ namespace SoLoud
 					(e.mTime - aFromTime) * (time)mSamplerate + 0.5);
 				// Pristine resampler state: the birth snapshot predates any
 				// pool block assignment; the next calcActiveVoices_internal
-				// re-assigns and zeroes the blocks.
+				// re-assigns and zeroes the blocks. Clear any owner entry that
+				// restoreMixCheckpoint_internal may have registered for this
+				// un-restored slot so mapResampleBuffers_internal actually
+				// assigns fresh blocks instead of leaving mResampleData NULL.
+				for (k = 0; k < mMaxActiveVoices; k++)
+				{
+					if (mResampleDataOwner[k] == v)
+						mResampleDataOwner[k] = NULL;
+				}
 				v->mResampleData[0] = NULL;
 				v->mResampleData[1] = NULL;
 				v->mSrcOffset = 0;
@@ -830,6 +838,9 @@ namespace SoLoud
 				case RetroJournalEntry::PARAM_PAUSE:
 					if (!(v->mFlags & AudioSourceInstance::PAUSED))
 						v->mPauseScheduler.set(1, 0, dur, voiceTime);
+					break;
+				case RetroJournalEntry::PARAM_STOP:
+					v->mStopScheduler.set(1, 0, dur, voiceTime);
 					break;
 				}
 			}
@@ -1098,6 +1109,9 @@ namespace SoLoud
 			break;
 		case RetroJournalEntry::PARAM_PAUSE:
 			v->mPauseScheduler.set(1, 0, dur, voiceTime);
+			break;
+		case RetroJournalEntry::PARAM_STOP:
+			v->mStopScheduler.set(1, 0, dur, voiceTime);
 			break;
 		}
 		journalParam_internal(aSlot, playIndex, aParam, aValue, t, aDuration);

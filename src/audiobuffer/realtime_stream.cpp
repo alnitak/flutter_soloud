@@ -402,6 +402,7 @@ void RealtimeStream::injectIntoPlayingWindow(uint64_t writeFrameBeforePush,
   }
 
   const uint64_t cpReadFrame = mRingBuffer.getReadFrame();
+  const uint32_t cpDelayFrames = inst->mSubQuantumDelayFrames;
   const uint64_t availBeforePush =
       (writeFrameBeforePush > cpReadFrame) ? (writeFrameBeforePush - cpReadFrame)
                                            : 0;
@@ -411,17 +412,49 @@ void RealtimeStream::injectIntoPlayingWindow(uint64_t writeFrameBeforePush,
                 (targetEngineTime - soloud.mRemixCheckpointTime) * voiceSr))
           : 0;
 
-  if (availBeforePush < offsetFrames) {
+  if (availBeforePush == 0 || (cpDelayFrames + availBeforePush) < offsetFrames) {
     // The buffer was already dry before targetEngineTime: fast-forward read
     // cursor to the newly pushed block and delay by offsetFrames from the
     // checkpoint so the first new sample lands at targetEngineTime.
     mRingBuffer.setReadFrame(writeFrameBeforePush);
     inst->mSubQuantumDelayFrames = static_cast<uint32_t>(offsetFrames);
+    inst->mDelaySamples = 0;
+
+    // Update the restored checkpoint and any in-window BIRTH journal entry so
+    // subsequent chunk pushes in the same quantum preserve this anchor and
+    // sub-quantum delay instead of overwriting or shifting the first chunk.
+    if (ci >= 0 && static_cast<size_t>(ci) < soloud.mCheckpointPool.size()) {
+      MixCheckpoint &cp = soloud.mCheckpointPool[ci];
+      for (size_t v = 0; v < cp.mVoices.size(); ++v) {
+        CheckpointVoice &cv = cp.mVoices[v];
+        if (cv.mSlot == static_cast<unsigned int>(slot) &&
+            cv.mPlayIndex == inst->mPlayIndex && cv.mSourceState != nullptr) {
+          auto *snap = static_cast<RealtimeStreamSnapshot *>(cv.mSourceState);
+          snap->mReadFrame = writeFrameBeforePush;
+          snap->mSubQuantumDelayFrames = inst->mSubQuantumDelayFrames;
+          cv.mDelaySamples = 0;
+        }
+      }
+    }
+    for (size_t j = 0; j < soloud.mRetroJournal.size(); ++j) {
+      RetroJournalEntry &e = soloud.mRetroJournal[j];
+      if (e.mType == RetroJournalEntry::BIRTH &&
+          e.mSlot == static_cast<unsigned int>(slot) &&
+          e.mPlayIndex == inst->mPlayIndex && e.mBirth.mSourceState != nullptr) {
+        auto *snap = static_cast<RealtimeStreamSnapshot *>(e.mBirth.mSourceState);
+        snap->mReadFrame = writeFrameBeforePush;
+        snap->mSubQuantumDelayFrames = inst->mSubQuantumDelayFrames;
+        e.mTime = soloud.mRemixCheckpointTime;
+        e.mBirth.mDelaySamples = 0;
+      }
+    }
   } else {
-    // The buffer still had valid frames at the checkpoint and ran dry later in
-    // the window: keep cpReadFrame so the remix replays [cpReadFrame,
-    // writeFrameBeforePush) and seamlessly splices into the newly pushed block.
-    inst->mSubQuantumDelayFrames = 0;
+    // The buffer still had valid frames at the checkpoint (after cpDelayFrames)
+    // and ran dry later in the window: keep cpReadFrame and cpDelayFrames so
+    // the remix replays [cpReadFrame, writeFrameBeforePush) and seamlessly
+    // splices into the newly pushed block.
+    inst->mSubQuantumDelayFrames = cpDelayFrames;
+    inst->mDelaySamples = 0;
   }
 
   // If the restored checkpoint sits mid-SAMPLE_GRANULARITY block

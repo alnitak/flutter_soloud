@@ -1990,6 +1990,19 @@ namespace SoLoud
 					voice->mSrcOffset += writesamples * step_fixed;
 				}
 				
+				// If the resampler loop exited early (e.g. no resample buffer),
+				// zero the unwritten region of aScratch so panAndExpand never
+				// mixes stale scratch memory.
+				if (outofs < samplesToProduce)
+				{
+					unsigned int k;
+					for (k = 0; k < voice->mChannels; k++)
+					{
+						memset(aScratch + k * aBufferSize + outofs, 0,
+							sizeof(float) * (samplesToProduce - outofs));
+					}
+				}
+
 				// Handle panning and channel expansion (and/or shrinking)
 				panAndExpand(voice, aBuffer, samplesToProduce, aBufferSize, aScratch, aChannels);
 
@@ -2137,7 +2150,10 @@ namespace SoLoud
 		{
 			for (j = 0; j < mMaxActiveVoices; j++)
 			{
-				if (mResampleDataOwner[i] && mResampleDataOwner[i] == mVoice[mActiveVoice[j]])
+				if (mResampleDataOwner[i] &&
+					mResampleDataOwner[i] == mVoice[mActiveVoice[j]] &&
+					mResampleDataOwner[i]->mResampleData[0] != NULL &&
+					mResampleDataOwner[i]->mResampleData[1] != NULL)
 				{
 					live[i] |= 1; // Live channel
 					live[j] |= 2; // Live voice
