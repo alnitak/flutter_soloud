@@ -442,6 +442,9 @@ interface class SoLoud {
   /// The sample rate the engine was initialized with.
   int _sampleRate = 44100;
 
+  /// The sample rate the engine was initialized with.
+  int get sampleRate => _sampleRate;
+
   /// The channels the engine was initialized with.
   Channels _channels = Channels.stereo;
 
