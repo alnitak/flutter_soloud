@@ -1144,6 +1144,7 @@ namespace SoLoud
                 std::memset((float *)pOutput + (size_t)got * outCh, 0,
                             (size_t)(frameCount - got) * outCh * sizeof(float));
             }
+            soloud->postProcessRenderRing_internal((float *)pOutput, frameCount);
             // The capture tap sits after the ring read, so it always reflects
             // what was actually played, including any retroactive rewrite.
             MixerOutput::instance().onAudioData((float *)pOutput, frameCount);

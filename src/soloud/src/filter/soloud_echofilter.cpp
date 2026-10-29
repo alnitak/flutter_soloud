@@ -98,6 +98,62 @@ namespace SoLoud
 		}
 	}
 
+	struct EchoFilterSnapshot : public FilterStateSnapshot
+	{
+		float *mBuffer;
+		int mBufferLength;
+		int mBufferMaxLength;
+		int mOffset;
+		uint64_t mParamChanged;
+		float mParam[4];
+		Fader mParamFader[4];
+		EchoFilterSnapshot() : mBuffer(0), mBufferLength(0), mBufferMaxLength(0), mOffset(0), mParamChanged(0) {}
+		virtual ~EchoFilterSnapshot() { delete[] mBuffer; }
+	};
+
+	FilterStateSnapshot *EchoFilterInstance::captureState()
+	{
+		EchoFilterSnapshot *s = new EchoFilterSnapshot();
+		s->mBufferLength = mBufferLength;
+		s->mBufferMaxLength = mBufferMaxLength;
+		s->mOffset = mOffset;
+		s->mParamChanged = mParamChanged;
+		for (int i = 0; i < 4; i++)
+		{
+			s->mParam[i] = mParam[i];
+			s->mParamFader[i] = mParamFader[i];
+		}
+		if (mBuffer && mBufferMaxLength > 0)
+		{
+			s->mBuffer = new float[mBufferMaxLength];
+			memcpy(s->mBuffer, mBuffer, sizeof(float) * mBufferMaxLength);
+		}
+		return s;
+	}
+
+	void EchoFilterInstance::restoreState(FilterStateSnapshot *aSnapshot)
+	{
+		EchoFilterSnapshot *s = static_cast<EchoFilterSnapshot *>(aSnapshot);
+		mBufferLength = s->mBufferLength;
+		mOffset = s->mOffset;
+		mParamChanged = s->mParamChanged;
+		for (int i = 0; i < 4; i++)
+		{
+			mParam[i] = s->mParam[i];
+			mParamFader[i] = s->mParamFader[i];
+		}
+		if (s->mBuffer && s->mBufferMaxLength > 0)
+		{
+			if (mBufferMaxLength != s->mBufferMaxLength || mBuffer == 0)
+			{
+				delete[] mBuffer;
+				mBufferMaxLength = s->mBufferMaxLength;
+				mBuffer = new float[mBufferMaxLength];
+			}
+			memcpy(mBuffer, s->mBuffer, sizeof(float) * mBufferMaxLength);
+		}
+	}
+
 	EchoFilterInstance::~EchoFilterInstance()
 	{
 		delete[] mBuffer;

@@ -81,7 +81,6 @@ namespace SoLoud
 			else
 			{
 				mVoice[ch]->mStopSamplesLeft = samples;
-				journalDeath_internal(ch, aEngineTime);
 			}
 		}
 		FOR_ALL_VOICES_POST
@@ -100,7 +99,7 @@ namespace SoLoud
 		// at exactly aEngineTime instead of at the write head.
 		bool tryRetro = mRenderRing.isInited() && rel < 0;
 		unlockAudioMutex_internal();
-		if (rel <= 0 && !tryRetro)
+		if (rel < 0 && !tryRetro)
 		{
 			// The scheduled time is already in the past: fade from now.
 			fadeVolume(aVoiceHandle, aTo, aFadeTime);

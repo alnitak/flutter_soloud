@@ -386,9 +386,11 @@ namespace SoLoud
 		bool restorable = true;
 		for (i = 0; i < FILTERS_PER_STREAM; i++)
 		{
-			cp.mFilterState[i] = mFilterInstance[i] ? mFilterInstance[i]->captureState() : NULL;
-			// A live global filter that cannot snapshot itself continues in
-			// best-effort mode during re-mix without aborting low latency.
+			// When mixing into mRenderRing, global filters run post-ring at
+			// the playhead and must not be rolled back by in-window re-mixes.
+			cp.mFilterState[i] = (!mMixingToRenderRing && !mRemixing && mFilterInstance[i])
+				? mFilterInstance[i]->captureState()
+				: NULL;
 		}
 
 		// Voices. Pass 1: the active (sounding) voices, so they are always
@@ -522,6 +524,11 @@ namespace SoLoud
 		// monotonic id counters: voices and sources created after the
 		// checkpoint must keep their ids, so restore takes the max instead of
 		// rolling the counter back (which would reissue existing handles).
+		const time oldStreamTime = mStreamTime;
+		const long long rollbackSamples =
+			(oldStreamTime > cp.mTime && mSamplerate > 0)
+				? (long long)floor((oldStreamTime - cp.mTime) * (time)mSamplerate + 0.5)
+				: 0;
 		mStreamTime = cp.mTime;
 		mGlobalVolume = cp.mGlobalVolume;
 		mGlobalVolumeFader = cp.mGlobalVolumeFader;
@@ -575,6 +582,10 @@ namespace SoLoud
 
 			voice->mPlayIndex = cv.mPlayIndex;
 			applyCheckpointVoice(cv, voice);
+			if (cv.mStopSamplesLeft < 0 && voice->mStopSamplesLeft >= 0)
+			{
+				voice->mStopSamplesLeft += rollbackSamples;
+			}
 			// Resample pointers are rebuilt from block indices below, after
 			// the pool contents are restored.
 
@@ -837,10 +848,10 @@ namespace SoLoud
 					break;
 				case RetroJournalEntry::PARAM_PAUSE:
 					if (!(v->mFlags & AudioSourceInstance::PAUSED))
-						v->mPauseScheduler.set(1, 0, dur, voiceTime);
+						v->mPauseScheduler.setScheduled(1, 0, dur, voiceTime);
 					break;
 				case RetroJournalEntry::PARAM_STOP:
-					v->mStopScheduler.set(1, 0, dur, voiceTime);
+					v->mStopScheduler.setScheduled(1, 0, dur, voiceTime);
 					break;
 				}
 			}
@@ -1108,10 +1119,10 @@ namespace SoLoud
 			v->mRelativePlaySpeedFader.setScheduled(v->mSetRelativePlaySpeed, aValue, dur, voiceTime);
 			break;
 		case RetroJournalEntry::PARAM_PAUSE:
-			v->mPauseScheduler.set(1, 0, dur, voiceTime);
+			v->mPauseScheduler.setScheduled(1, 0, dur, voiceTime);
 			break;
 		case RetroJournalEntry::PARAM_STOP:
-			v->mStopScheduler.set(1, 0, dur, voiceTime);
+			v->mStopScheduler.setScheduled(1, 0, dur, voiceTime);
 			break;
 		}
 		journalParam_internal(aSlot, playIndex, aParam, aValue, t, aDuration);

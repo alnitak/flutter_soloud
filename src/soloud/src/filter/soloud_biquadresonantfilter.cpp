@@ -144,6 +144,60 @@ namespace SoLoud
 	}
 
 
+	struct BQRFilterSnapshot : public FilterStateSnapshot
+	{
+		BQRStateData mState[8];
+		float mA0, mA1, mA2, mB1, mB2;
+		int mDirty;
+		float mSamplerate;
+		uint64_t mParamChanged;
+		float mParam[4];
+		Fader mParamFader[4];
+	};
+
+	FilterStateSnapshot *BiquadResonantFilterInstance::captureState()
+	{
+		BQRFilterSnapshot *s = new BQRFilterSnapshot();
+		int i;
+		for (i = 0; i < 8; i++)
+			s->mState[i] = mState[i];
+		s->mA0 = mA0;
+		s->mA1 = mA1;
+		s->mA2 = mA2;
+		s->mB1 = mB1;
+		s->mB2 = mB2;
+		s->mDirty = mDirty;
+		s->mSamplerate = mSamplerate;
+		s->mParamChanged = mParamChanged;
+		for (i = 0; i < 4; i++)
+		{
+			s->mParam[i] = mParam[i];
+			s->mParamFader[i] = mParamFader[i];
+		}
+		return s;
+	}
+
+	void BiquadResonantFilterInstance::restoreState(FilterStateSnapshot *aSnapshot)
+	{
+		BQRFilterSnapshot *s = static_cast<BQRFilterSnapshot *>(aSnapshot);
+		int i;
+		for (i = 0; i < 8; i++)
+			mState[i] = s->mState[i];
+		mA0 = s->mA0;
+		mA1 = s->mA1;
+		mA2 = s->mA2;
+		mB1 = s->mB1;
+		mB2 = s->mB2;
+		mDirty = s->mDirty;
+		mSamplerate = s->mSamplerate;
+		mParamChanged = s->mParamChanged;
+		for (i = 0; i < 4; i++)
+		{
+			mParam[i] = s->mParam[i];
+			mParamFader[i] = s->mParamFader[i];
+		}
+	}
+
 	BiquadResonantFilterInstance::~BiquadResonantFilterInstance()
 	{
 	}

@@ -310,6 +310,27 @@ public:
         [NSApp activateIgnoringOtherApps:YES];
         if (pluginView != nil) {
           [mWindow makeFirstResponder:pluginView];
+        } else {
+          // Some VST3 plugins (such as flutter_vst3 EmbeddedFlutterView) mount
+          // their NSView asynchronously on the next main-queue turn.
+          SoLoudVst3Window *winRef = mWindow;
+          dispatch_async(dispatch_get_main_queue(), ^{
+            if (!mIsOpen.load(std::memory_order_acquire) || mWindow != winRef ||
+                winRef == nil) {
+              return;
+            }
+            NSView *cv = [winRef contentView];
+            if (cv != nil && [[cv subviews] count] > 0) {
+              ensurePluginSubviewsVisible(cv);
+              NSView *asyncSub = [[cv subviews] firstObject];
+              if (asyncSub != nil &&
+                  ([winRef firstResponder] == nil ||
+                   [winRef firstResponder] == winRef)) {
+                [winRef makeFirstResponder:asyncSub];
+              }
+              [winRef displayIfNeeded];
+            }
+          });
         }
         [[NSNotificationCenter defaultCenter]
             postNotificationName:NSWindowDidBecomeKeyNotification
