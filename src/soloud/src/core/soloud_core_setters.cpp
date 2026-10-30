@@ -54,6 +54,8 @@ namespace SoLoud
 			{
 				mVoice[ch]->mRelativePlaySpeedFader.mActive = 0;
 				retVal = setVoiceRelativePlaySpeed_internal(ch, aSpeed);
+				if (retVal == SO_NO_ERROR)
+					journalParam_internal(ch, mVoice[ch]->mPlayIndex, RetroJournalEntry::PARAM_SPEED, aSpeed, mStreamTime, 0);
 			}
 			FOR_ALL_VOICES_POST
 		return retVal;
@@ -76,6 +78,8 @@ namespace SoLoud
 				!retroactiveParam_internal(ch, RetroJournalEntry::PARAM_PAUSE, 1.0f, 0, playheadTimeLocked_internal()))
 			{
 				setVoicePause_internal(ch, aPause);
+				if (aPause)
+					journalParam_internal(ch, mVoice[ch]->mPlayIndex, RetroJournalEntry::PARAM_PAUSE, 1.0f, mStreamTime, 0);
 			}
 		FOR_ALL_VOICES_POST
 	}
@@ -146,6 +150,7 @@ namespace SoLoud
 			{
 				mVoice[ch]->mPanFader.mActive = 0;
 				setVoicePan_internal(ch, aPan);
+				journalParam_internal(ch, mVoice[ch]->mPlayIndex, RetroJournalEntry::PARAM_PAN, aPan, mStreamTime, 0);
 			}
 		FOR_ALL_VOICES_POST
 	}
@@ -269,6 +274,7 @@ namespace SoLoud
 			{
 				mVoice[ch]->mVolumeFader.mActive = 0;
 				setVoiceVolume_internal(ch, aVolume);
+				journalParam_internal(ch, mVoice[ch]->mPlayIndex, RetroJournalEntry::PARAM_VOLUME, aVolume, mStreamTime, 0);
 			}
 		FOR_ALL_VOICES_POST
 	}

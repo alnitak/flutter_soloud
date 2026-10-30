@@ -140,6 +140,32 @@ namespace SoLoud
 			}
 		}
 
+		// Overwrite frames at an absolute position with a short linear crossfade
+		// from the existing ring samples at the leading edge (used when a
+		// retroactive re-mix starts mid-quantum at readPos so per-quantum
+		// panAndExpand volume ramps never create a step jump at readPos).
+		void rewriteCrossfade(unsigned long long aPos, const float *aSrc, unsigned int aFrames, unsigned int aCrossfadeFrames)
+		{
+			if (aFrames == 0 || mCapacityFrames == 0 || mChannels == 0)
+				return;
+			unsigned int xfade = aCrossfadeFrames < aFrames ? aCrossfadeFrames : aFrames;
+			for (unsigned int f = 0; f < xfade; f++)
+			{
+				const float alpha = (float)(f + 1) / (float)(xfade + 1);
+				const float invAlpha = 1.0f - alpha;
+				const size_t ringIdx = (size_t)((aPos + f) % mCapacityFrames) * mChannels;
+				const size_t srcIdx = (size_t)f * mChannels;
+				for (unsigned int c = 0; c < mChannels; c++)
+				{
+					mBuffer[ringIdx + c] = mBuffer[ringIdx + c] * invAlpha + aSrc[srcIdx + c] * alpha;
+				}
+			}
+			if (aFrames > xfade)
+			{
+				rewrite(aPos + xfade, aSrc + (size_t)xfade * mChannels, aFrames - xfade);
+			}
+		}
+
 		// Move the write head back (Phase 3). Caller guarantees
 		// aNewWritePos >= read head and <= current write head.
 		void rewindWrite(unsigned long long aNewWritePos)

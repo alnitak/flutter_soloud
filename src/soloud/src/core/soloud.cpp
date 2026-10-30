@@ -841,14 +841,40 @@ namespace SoLoud
 	{
 		if (!mRenderRing.isInited() || mBufferSize == 0)
 			return;
-		mMixingToRenderRing = true;
 		while (mRenderRing.availableToRead() < mRenderAheadFrames &&
 			mRenderRing.availableToWrite() >= mBufferSize)
 		{
-			mix(mRenderRingStaging.mData, mBufferSize);
+			unsigned int stride = (mBufferSize + 15) & ~0xf;
+			float buffertime = mBufferSize / (float)mSamplerate;
+			float globalVolume[2];
+
+			lockAudioMutex_internal();
+			mMixingToRenderRing = true;
+			mStreamTime += buffertime;
+
+			globalVolume[0] = mGlobalVolume;
+			if (mGlobalVolumeFader.mActive)
+			{
+				mGlobalVolume = mGlobalVolumeFader.get(mStreamTime);
+			}
+			globalVolume[1] = mGlobalVolume;
+
+			mixVoicesLocked_internal(mBufferSize, stride);
+
+			const bool notifyVoiceInactive = mVoiceInactiveCallbackPending;
+			mVoiceInactiveCallbackPending = false;
+
+			clip_internal(mOutputScratch, mScratch, stride, globalVolume[0], globalVolume[1]);
+			interlace_samples_float(mScratch.mData, mRenderRingStaging.mData, mBufferSize, mChannels, stride);
 			mRenderRing.write(mRenderRingStaging.mData, mBufferSize);
+			mMixingToRenderRing = false;
+			unlockAudioMutex_internal();
+
+			auto voiceInactiveCallback =
+				_voiceInactiveCallback.load(std::memory_order_acquire);
+			if (notifyVoiceInactive && voiceInactiveCallback != nullptr)
+				voiceInactiveCallback();
 		}
-		mMixingToRenderRing = false;
 	}
 
 	void Soloud::postProcessRenderRing_internal(float *aBuffer, unsigned int aSamples)
@@ -1876,6 +1902,11 @@ namespace SoLoud
 					{
 						samplesToProduce = (unsigned int)voice->mStopSamplesLeft;
 						stopAfterProduce = true;
+						if (voice->mVolumeFader.mActive > 0 &&
+							voice->mVolumeFader.mTo <= 1e-5f)
+						{
+							voice->mOverallVolume = 0.0f;
+						}
 					}
 					else
 					{
@@ -1996,7 +2027,8 @@ namespace SoLoud
 						writesamples = ((SAMPLE_GRANULARITY * FIXPOINT_FRAC_MUL) - voice->mSrcOffset) / step_fixed + 1;
 
 						// avoid reading past the current buffer..
-						if (((writesamples * step_fixed + voice->mSrcOffset) >> FIXPOINT_FRAC_BITS) >= SAMPLE_GRANULARITY)
+						if (writesamples > 0 &&
+							(((writesamples - 1) * step_fixed + voice->mSrcOffset) >> FIXPOINT_FRAC_BITS) >= SAMPLE_GRANULARITY)
 							writesamples--;
 					}
 
@@ -2177,7 +2209,8 @@ namespace SoLoud
 						writesamples = ((SAMPLE_GRANULARITY * FIXPOINT_FRAC_MUL) - voice->mSrcOffset) / step_fixed + 1;
 
 						// avoid reading past the current buffer..
-						if (((writesamples * step_fixed + voice->mSrcOffset) >> FIXPOINT_FRAC_BITS) >= SAMPLE_GRANULARITY)
+						if (writesamples > 0 &&
+							(((writesamples - 1) * step_fixed + voice->mSrcOffset) >> FIXPOINT_FRAC_BITS) >= SAMPLE_GRANULARITY)
 							writesamples--;
 					}
 
@@ -2215,10 +2248,11 @@ namespace SoLoud
 		unsigned int i, j;
 		for (i = 0; i < mMaxActiveVoices; i++)
 		{
-			for (j = 0; j < mMaxActiveVoices; j++)
+			if (!mResampleDataOwner[i])
+				continue;
+			for (j = 0; j < mActiveVoiceCount; j++)
 			{
-				if (mResampleDataOwner[i] &&
-					mResampleDataOwner[i] == mVoice[mActiveVoice[j]] &&
+				if (mResampleDataOwner[i] == mVoice[mActiveVoice[j]] &&
 					mResampleDataOwner[i]->mResampleData[0] != NULL &&
 					mResampleDataOwner[i]->mResampleData[1] != NULL)
 				{

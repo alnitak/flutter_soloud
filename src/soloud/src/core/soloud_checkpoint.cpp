@@ -123,7 +123,11 @@ namespace SoLoud
 	{
 		pruneJournal(aSoloud);
 		size_t pos = aSoloud.mRetroJournal.size();
-		while (pos > 0 && aSoloud.mRetroJournal[pos - 1].mTime > aEntry.mTime)
+		while (pos > 0 &&
+			(aSoloud.mRetroJournal[pos - 1].mTime > aEntry.mTime ||
+			 (aSoloud.mRetroJournal[pos - 1].mTime == aEntry.mTime &&
+			  aEntry.mType == RetroJournalEntry::BIRTH &&
+			  aSoloud.mRetroJournal[pos - 1].mType != RetroJournalEntry::BIRTH)))
 			pos--;
 		if (aSoloud.mRetroJournal.size() >= RETRO_JOURNAL_CAPACITY)
 		{
@@ -581,10 +585,11 @@ namespace SoLoud
 			slotRestored[cv.mSlot] = 1;
 
 			voice->mPlayIndex = cv.mPlayIndex;
+			const long long liveStopSamplesLeft = voice->mStopSamplesLeft;
 			applyCheckpointVoice(cv, voice);
-			if (cv.mStopSamplesLeft < 0 && voice->mStopSamplesLeft >= 0)
+			if (liveStopSamplesLeft >= 0)
 			{
-				voice->mStopSamplesLeft += rollbackSamples;
+				voice->mStopSamplesLeft = liveStopSamplesLeft + rollbackSamples;
 			}
 			// Resample pointers are rebuilt from block indices below, after
 			// the pool contents are restored.
@@ -607,7 +612,7 @@ namespace SoLoud
 		{
 			const CheckpointResampleBlock &b = cp.mResampleBlocks[v];
 			if (b.mBlock < 0)
-				continue;
+				break;
 			if (b.mOwnerSlot < 0 || b.mOwnerSlot >= (int)mHighestVoice ||
 				!slotRestored[b.mOwnerSlot])
 				continue; // owner voice did not survive the restore
@@ -744,6 +749,54 @@ namespace SoLoud
 		SOLOUD_ASSERT(mInsideAudioThreadMutex);
 		if (!mRenderRing.isInited())
 			return;
+
+		// Upsert by slot + playIndex + param: a voice only has one fader per
+		// parameter, so a newer fade or setter on the same parameter replaces
+		// any earlier scheduled fade on that parameter.
+		size_t i = 0;
+		while (i < mRetroJournal.size())
+		{
+			RetroJournalEntry &existing = mRetroJournal[i];
+			if (existing.mType == RetroJournalEntry::PARAM &&
+				existing.mSlot == aSlot &&
+				existing.mPlayIndex == aPlayIndex &&
+				existing.mParam == aParam)
+			{
+				releaseJournalEntry(existing);
+				mRetroJournal.erase(mRetroJournal.begin() + i);
+			}
+			else
+			{
+				i++;
+			}
+		}
+
+		float fromVal = aValue;
+		if (aSlot < VOICE_COUNT && mVoice[aSlot] != NULL && mVoice[aSlot]->mPlayIndex == aPlayIndex)
+		{
+			switch (aParam)
+			{
+			case RetroJournalEntry::PARAM_VOLUME:
+				fromVal = mVoice[aSlot]->mVolumeFader.mActive == 3
+					? mVoice[aSlot]->mVolumeFader.mFrom
+					: mVoice[aSlot]->mSetVolume;
+				break;
+			case RetroJournalEntry::PARAM_PAN:
+				fromVal = mVoice[aSlot]->mPanFader.mActive == 3
+					? mVoice[aSlot]->mPanFader.mFrom
+					: mVoice[aSlot]->mPan;
+				break;
+			case RetroJournalEntry::PARAM_SPEED:
+				fromVal = mVoice[aSlot]->mRelativePlaySpeedFader.mActive == 3
+					? mVoice[aSlot]->mRelativePlaySpeedFader.mFrom
+					: mVoice[aSlot]->mSetRelativePlaySpeed;
+				break;
+			default:
+				fromVal = 1.0f;
+				break;
+			}
+		}
+
 		RetroJournalEntry e;
 		e.mType = RetroJournalEntry::PARAM;
 		e.mTime = aTime;
@@ -752,6 +805,7 @@ namespace SoLoud
 		e.mPlayIndex = aPlayIndex;
 		e.mRestorable = true;
 		e.mParam = aParam;
+		e.mFrom = fromVal;
 		e.mValue = aValue;
 		e.mDuration = aDuration;
 		e.mBirth = CheckpointVoice();
@@ -763,6 +817,10 @@ namespace SoLoud
 	{
 		SOLOUD_ASSERT(mInsideAudioThreadMutex);
 		mRemixSuppressEndedCount = 0;
+		const long long rollbackSamples =
+			(mRemixOldStreamTime > aFromTime && mSamplerate > 0)
+				? (long long)floor((mRemixOldStreamTime - aFromTime) * (time)mSamplerate + 0.5)
+				: 0;
 		size_t i;
 		unsigned int k;
 		for (i = 0; i < mRetroJournal.size(); i++)
@@ -786,9 +844,14 @@ namespace SoLoud
 
 			if (e.mType == RetroJournalEntry::BIRTH)
 			{
+				const long long liveStopSamplesLeft = v->mStopSamplesLeft;
 				// Reset the live instance to its birth state, with the start
 				// delay recomputed relative to the restore point.
 				applyCheckpointVoice(e.mBirth, v);
+				if (liveStopSamplesLeft >= 0)
+				{
+					v->mStopSamplesLeft = liveStopSamplesLeft + rollbackSamples;
+				}
 				// The re-mix ticks the voice from the checkpoint time on,
 				// earlier than its real insertion; shift the voice's stream
 				// clocks back by the difference so they land exactly where
@@ -826,24 +889,24 @@ namespace SoLoud
 			}
 			else if (e.mType == RetroJournalEntry::PARAM)
 			{
-				// Re-apply a retroactive parameter change as a scheduled
-				// fader at its original time, anchored on the voice's
-				// (restored) stream clock.
+				// Re-apply a parameter change as a scheduled fader at its
+				// original time, anchored on the voice's (restored) stream
+				// clock.
 				const time voiceTime = v->mStreamTime + (e.mTime - aFromTime);
 				const time dur = e.mDuration > 0 ? e.mDuration : RETRO_FADE_TIME;
 				switch (e.mParam)
 				{
 				case RetroJournalEntry::PARAM_VOLUME:
-					v->mVolumeFader.setScheduled(v->mSetVolume, e.mValue,
+					v->mVolumeFader.setScheduled(e.mFrom, e.mValue,
 						dur, voiceTime);
 					break;
 				case RetroJournalEntry::PARAM_PAN:
-					v->mPanFader.setScheduled(v->mPan, e.mValue,
+					v->mPanFader.setScheduled(e.mFrom, e.mValue,
 						dur, voiceTime);
 					break;
 				case RetroJournalEntry::PARAM_SPEED:
 					v->mRelativePlaySpeedFader.setScheduled(
-						v->mSetRelativePlaySpeed, e.mValue, dur,
+						e.mFrom, e.mValue, dur,
 						voiceTime);
 					break;
 				case RetroJournalEntry::PARAM_PAUSE:
@@ -883,7 +946,8 @@ namespace SoLoud
 		const time playhead = playheadTimeLocked_internal();
 		if (aEventTime < playhead)
 			aEventTime = playhead;
-		if (aEventTime >= mStreamTime)
+		const time halfSample = 0.5 / (time)mSamplerate;
+		if (aEventTime >= mStreamTime - halfSample)
 			return -1;
 
 		const int ci = findCheckpointAtOrBefore_internal(aEventTime);
@@ -985,9 +1049,16 @@ namespace SoLoud
 			unsigned long long from = pos < readPos ? readPos : pos;
 			if (from < pos + mBufferSize)
 			{
-				mRenderRing.rewrite(from,
-					mRenderRingStaging.mData + (size_t)(from - pos) * mChannels,
-					(unsigned int)(pos + mBufferSize - from));
+				const float *src = mRenderRingStaging.mData + (size_t)(from - pos) * mChannels;
+				const unsigned int frames = (unsigned int)(pos + mBufferSize - from);
+				if (from > pos)
+				{
+					mRenderRing.rewriteCrossfade(from, src, frames, 32);
+				}
+				else
+				{
+					mRenderRing.rewrite(from, src, frames);
+				}
 			}
 			pos += mBufferSize;
 		}
