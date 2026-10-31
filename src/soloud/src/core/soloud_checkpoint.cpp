@@ -968,8 +968,29 @@ namespace SoLoud
 				return -1;
 		}
 
-		// Gone/stopped voices are gracefully skipped during restoreMixCheckpoint_internal.
-		// Allow retroactive re-mixing to proceed so subsequent key presses always have low latency.
+		// The window must not contain a voice death. A voice present in the
+		// checkpoint but gone from the live table ended inside
+		// (C.time, writeHead], and its deleted instance cannot be resurrected
+		// to reproduce its remaining audio; likewise a journaled birth whose
+		// object is gone was born and died inside the window. Degrade the
+		// event to legacy placement rather than silently erasing that audio.
+		size_t v2;
+		for (v2 = 0; v2 < cp.mVoices.size(); v2++)
+		{
+			const CheckpointVoice &cvoice = cp.mVoices[v2];
+			if (cvoice.mSlot >= VOICE_COUNT || mVoice[cvoice.mSlot] == NULL ||
+				mVoice[cvoice.mSlot]->mPlayIndex != cvoice.mPlayIndex)
+				return -1;
+		}
+		for (j = 0; j < mRetroJournal.size(); j++)
+		{
+			const RetroJournalEntry &e = mRetroJournal[j];
+			if (e.mType == RetroJournalEntry::BIRTH && e.mTime > cp.mTime &&
+				e.mTime <= mStreamTime &&
+				(e.mSlot >= VOICE_COUNT || mVoice[e.mSlot] == NULL ||
+				 mVoice[e.mSlot]->mPlayIndex != e.mPlayIndex))
+				return -1;
+		}
 
 		mRemixOldStreamTime = mStreamTime;
 		mRemixWritePos = mRenderRing.getWritePosition();

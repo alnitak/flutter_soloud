@@ -115,12 +115,32 @@ namespace SoLoud
 		// ###### flutter_soloud local patch (retroactive re-mix) ######
 		// A fade starting inside the rendered-but-unplayed window can start
 		// at exactly aEngineTime instead of at the write head.
-		bool tryRetro = mRenderRing.isInited() && rel < 0;
+		// Note-off release fades (aThenStop with aFadeTime >= 8ms) do not need
+		// retroactive re-mixing; fading from mStreamTime avoids costly ring rewrites
+		// and prevents audio thread starvation during polyphonic releases.
+		bool tryRetro = mRenderRing.isInited() && rel < 0 && (!aThenStop || aFadeTime < 0.008);
 		unlockAudioMutex_internal();
 		if (rel < 0 && !tryRetro)
 		{
-			// The scheduled time is already in the past: fade from now.
-			fadeVolume(aVoiceHandle, aTo, aFadeTime);
+			// The scheduled time is already in the past: fade from write head.
+			FOR_ALL_VOICES_PRE
+			if (aFadeTime <= 0 || aTo == from)
+			{
+				mVoice[ch]->mVolumeFader.mActive = 0;
+				setVoiceVolume_internal(ch, aTo);
+				journalParam_internal(ch, mVoice[ch]->mPlayIndex, RetroJournalEntry::PARAM_VOLUME, aTo, mStreamTime, 0);
+			}
+			else
+			{
+				mVoice[ch]->mVolumeFader.set(from, aTo, aFadeTime, mVoice[ch]->mStreamTime);
+				journalParam_internal(ch, mVoice[ch]->mPlayIndex, RetroJournalEntry::PARAM_VOLUME, aTo, mStreamTime, aFadeTime);
+			}
+			FOR_ALL_VOICES_POST
+			if (aThenStop)
+			{
+				scheduleStopAt(aVoiceHandle, mStreamTime + aFadeTime);
+			}
+			return;
 		}
 		else if (tryRetro)
 		{
